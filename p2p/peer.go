@@ -5,11 +5,11 @@ import (
 	"net"
 	"time"
 
-	"github.com/tendermint/tendermint/libs/cmap"
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/libs/service"
+	"github.com/lazyledger/lazyledger-core/libs/cmap"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/libs/service"
 
-	tmconn "github.com/tendermint/tendermint/p2p/conn"
+	tmconn "github.com/lazyledger/lazyledger-core/p2p/conn"
 )
 
 const metricsTickerDuration = 10 * time.Second

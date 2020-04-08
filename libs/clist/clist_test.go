@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	tmrand "github.com/tendermint/tendermint/libs/rand"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 )
 
 func TestPanicOnMaxLength(t *testing.T) {

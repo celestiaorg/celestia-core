@@ -7,8 +7,8 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/tendermint/tendermint/abci/types"
-	tmnet "github.com/tendermint/tendermint/libs/net"
+	"github.com/lazyledger/lazyledger-core/abci/types"
+	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
 )
 
 func main() {

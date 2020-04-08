@@ -14,14 +14,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/crypto/tmhash"
-	"github.com/tendermint/tendermint/libs/bits"
-	"github.com/tendermint/tendermint/libs/bytes"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	tmtime "github.com/tendermint/tendermint/types/time"
-	"github.com/tendermint/tendermint/version"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/libs/bits"
+	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
+	"github.com/lazyledger/lazyledger-core/version"
 )
 
 func TestMain(m *testing.M) {

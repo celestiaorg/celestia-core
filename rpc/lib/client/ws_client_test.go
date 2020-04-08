@@ -12,9 +12,9 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/libs/log"
+	"github.com/lazyledger/lazyledger-core/libs/log"
 
-	types "github.com/tendermint/tendermint/rpc/lib/types"
+	types "github.com/lazyledger/lazyledger-core/rpc/lib/types"
 )
 
 var wsCallTimeout = 5 * time.Second

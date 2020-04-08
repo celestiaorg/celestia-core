@@ -5,9 +5,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	nm "github.com/tendermint/tendermint/node"
-	rpctest "github.com/tendermint/tendermint/rpc/test"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	nm "github.com/lazyledger/lazyledger-core/node"
+	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
 )
 
 var node *nm.Node

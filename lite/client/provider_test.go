@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
-	rpctest "github.com/tendermint/tendermint/rpc/test"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
+	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 func TestMain(m *testing.M) {

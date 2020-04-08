@@ -7,11 +7,11 @@ import (
 
 	"github.com/pkg/errors"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	mempl "github.com/tendermint/tendermint/mempool"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	rpctypes "github.com/tendermint/tendermint/rpc/lib/types"
-	"github.com/tendermint/tendermint/types"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	mempl "github.com/lazyledger/lazyledger-core/mempool"
+	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/lib/types"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 //-----------------------------------------------------------------------------

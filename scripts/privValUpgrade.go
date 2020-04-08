@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/privval"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/privval"
 )
 
 var (

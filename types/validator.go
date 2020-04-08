@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tendermint/tendermint/crypto"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 )
 
 // Volatile state for each Validator

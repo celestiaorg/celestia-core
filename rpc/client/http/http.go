@@ -11,14 +11,14 @@ import (
 
 	amino "github.com/tendermint/go-amino"
 
-	"github.com/tendermint/tendermint/libs/bytes"
-	"github.com/tendermint/tendermint/libs/log"
-	tmpubsub "github.com/tendermint/tendermint/libs/pubsub"
-	"github.com/tendermint/tendermint/libs/service"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	rpcclientlib "github.com/tendermint/tendermint/rpc/lib/client"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
+	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	rpcclientlib "github.com/lazyledger/lazyledger-core/rpc/lib/client"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 /*

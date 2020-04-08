@@ -1,11 +1,11 @@
 package core
 
 import (
-	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/libs/bytes"
-	"github.com/tendermint/tendermint/proxy"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	rpctypes "github.com/tendermint/tendermint/rpc/lib/types"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/proxy"
+	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/lib/types"
 )
 
 // ABCIQuery queries the application for some information.

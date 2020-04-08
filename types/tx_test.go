@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	ctest "github.com/tendermint/tendermint/libs/test"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	ctest "github.com/lazyledger/lazyledger-core/libs/test"
 )
 
 func makeTxs(cnt, size int) Txs {

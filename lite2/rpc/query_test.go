@@ -9,14 +9,14 @@ package rpc
 //	"github.com/stretchr/testify/assert"
 //	"github.com/stretchr/testify/require"
 
-//	"github.com/tendermint/tendermint/abci/example/kvstore"
-//	"github.com/tendermint/tendermint/crypto/merkle"
-//	"github.com/tendermint/tendermint/lite"
-//	certclient "github.com/tendermint/tendermint/lite/client"
-//	nm "github.com/tendermint/tendermint/node"
-//	"github.com/tendermint/tendermint/rpc/client"
-//	rpctest "github.com/tendermint/tendermint/rpc/test"
-//	"github.com/tendermint/tendermint/types"
+//	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+//	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+//	"github.com/lazyledger/lazyledger-core/lite"
+//	certclient "github.com/lazyledger/lazyledger-core/lite/client"
+//	nm "github.com/lazyledger/lazyledger-core/node"
+//	"github.com/lazyledger/lazyledger-core/rpc/client"
+//	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
+//	"github.com/lazyledger/lazyledger-core/types"
 //)
 
 //var node *nm.Node

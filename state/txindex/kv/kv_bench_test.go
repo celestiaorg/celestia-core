@@ -9,10 +9,10 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/libs/kv"
-	"github.com/tendermint/tendermint/libs/pubsub/query"
-	"github.com/tendermint/tendermint/types"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/kv"
+	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 func BenchmarkTxSearch(b *testing.B) {

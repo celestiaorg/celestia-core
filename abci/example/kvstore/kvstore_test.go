@@ -9,13 +9,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/libs/service"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/libs/service"
 
-	abcicli "github.com/tendermint/tendermint/abci/client"
-	"github.com/tendermint/tendermint/abci/example/code"
-	abciserver "github.com/tendermint/tendermint/abci/server"
-	"github.com/tendermint/tendermint/abci/types"
+	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
+	"github.com/lazyledger/lazyledger-core/abci/example/code"
+	abciserver "github.com/lazyledger/lazyledger-core/abci/server"
+	"github.com/lazyledger/lazyledger-core/abci/types"
 )
 
 const (

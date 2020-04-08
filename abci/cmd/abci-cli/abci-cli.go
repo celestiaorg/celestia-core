@@ -11,18 +11,18 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tendermint/tendermint/libs/log"
-	tmos "github.com/tendermint/tendermint/libs/os"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 
-	abcicli "github.com/tendermint/tendermint/abci/client"
-	"github.com/tendermint/tendermint/abci/example/code"
-	"github.com/tendermint/tendermint/abci/example/counter"
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	"github.com/tendermint/tendermint/abci/server"
-	servertest "github.com/tendermint/tendermint/abci/tests/server"
-	"github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/abci/version"
-	"github.com/tendermint/tendermint/crypto/merkle"
+	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
+	"github.com/lazyledger/lazyledger-core/abci/example/code"
+	"github.com/lazyledger/lazyledger-core/abci/example/counter"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	"github.com/lazyledger/lazyledger-core/abci/server"
+	servertest "github.com/lazyledger/lazyledger-core/abci/tests/server"
+	"github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/abci/version"
+	"github.com/lazyledger/lazyledger-core/crypto/merkle"
 )
 
 // client is a global variable so it can be reused by the console

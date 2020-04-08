@@ -8,7 +8,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/tendermint/tendermint/libs/service"
+	"github.com/lazyledger/lazyledger-core/libs/service"
 )
 
 const (

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tendermint/tendermint/libs/bytes"
-	tmtime "github.com/tendermint/tendermint/types/time"
+	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
 
 var (

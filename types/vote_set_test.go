@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/crypto"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	tmtime "github.com/tendermint/tendermint/types/time"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
 
 // NOTE: privValidators are in order

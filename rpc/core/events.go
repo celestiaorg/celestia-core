@@ -6,10 +6,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	tmpubsub "github.com/tendermint/tendermint/libs/pubsub"
-	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	rpctypes "github.com/tendermint/tendermint/rpc/lib/types"
+	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
+	tmquery "github.com/lazyledger/lazyledger-core/libs/pubsub/query"
+	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/lib/types"
 )
 
 const (

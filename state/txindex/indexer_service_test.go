@@ -9,11 +9,11 @@ import (
 
 	db "github.com/tendermint/tm-db"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/state/txindex"
-	"github.com/tendermint/tendermint/state/txindex/kv"
-	"github.com/tendermint/tendermint/types"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/state/txindex"
+	"github.com/lazyledger/lazyledger-core/state/txindex/kv"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 func TestIndexerServiceIndexesBlocks(t *testing.T) {

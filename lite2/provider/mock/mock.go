@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tendermint/tendermint/lite2/provider"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/lite2/provider"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 type mock struct {

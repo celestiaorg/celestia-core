@@ -6,15 +6,15 @@ import (
 
 	amino "github.com/tendermint/go-amino"
 
-	"github.com/tendermint/tendermint/libs/bytes"
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/rpc/client"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
-	"github.com/tendermint/tendermint/rpc/core"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	rpcserver "github.com/tendermint/tendermint/rpc/lib/server"
-	rpctypes "github.com/tendermint/tendermint/rpc/lib/types"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/rpc/client"
+	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
+	"github.com/lazyledger/lazyledger-core/rpc/core"
+	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	rpcserver "github.com/lazyledger/lazyledger-core/rpc/lib/server"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/lib/types"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 const (

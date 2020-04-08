@@ -5,12 +5,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	"github.com/tendermint/tendermint/libs/log"
-	tmnet "github.com/tendermint/tendermint/libs/net"
-	tmos "github.com/tendermint/tendermint/libs/os"
+	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 
-	"github.com/tendermint/tendermint/privval"
+	"github.com/lazyledger/lazyledger-core/privval"
 )
 
 func main() {

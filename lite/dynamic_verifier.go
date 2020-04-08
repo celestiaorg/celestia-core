@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"sync"
 
-	log "github.com/tendermint/tendermint/libs/log"
-	lerr "github.com/tendermint/tendermint/lite/errors"
-	"github.com/tendermint/tendermint/types"
+	log "github.com/lazyledger/lazyledger-core/libs/log"
+	lerr "github.com/lazyledger/lazyledger-core/lite/errors"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 const sizeOfPendingMap = 1024

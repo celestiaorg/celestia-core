@@ -1,9 +1,9 @@
 package core
 
 import (
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	rpctypes "github.com/tendermint/tendermint/rpc/lib/types"
-	"github.com/tendermint/tendermint/types"
+	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/lib/types"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // BroadcastEvidence broadcasts evidence of the misbehavior.

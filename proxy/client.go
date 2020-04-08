@@ -5,10 +5,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	abcicli "github.com/tendermint/tendermint/abci/client"
-	"github.com/tendermint/tendermint/abci/example/counter"
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	"github.com/tendermint/tendermint/abci/types"
+	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
+	"github.com/lazyledger/lazyledger-core/abci/example/counter"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	"github.com/lazyledger/lazyledger-core/abci/types"
 )
 
 // NewABCIClient returns newly connected client

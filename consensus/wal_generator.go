@@ -13,16 +13,16 @@ import (
 
 	db "github.com/tendermint/tm-db"
 
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	cfg "github.com/tendermint/tendermint/config"
-	"github.com/tendermint/tendermint/libs/log"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	"github.com/tendermint/tendermint/mock"
-	"github.com/tendermint/tendermint/privval"
-	"github.com/tendermint/tendermint/proxy"
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/store"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	"github.com/lazyledger/lazyledger-core/mock"
+	"github.com/lazyledger/lazyledger-core/privval"
+	"github.com/lazyledger/lazyledger-core/proxy"
+	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/store"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // WALGenerateNBlocks generates a consensus WAL. It does this by spinning up a

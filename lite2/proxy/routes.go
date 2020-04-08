@@ -1,12 +1,12 @@
 package proxy
 
 import (
-	"github.com/tendermint/tendermint/libs/bytes"
-	lrpc "github.com/tendermint/tendermint/lite2/rpc"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	rpcserver "github.com/tendermint/tendermint/rpc/lib/server"
-	rpctypes "github.com/tendermint/tendermint/rpc/lib/types"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	lrpc "github.com/lazyledger/lazyledger-core/lite2/rpc"
+	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	rpcserver "github.com/lazyledger/lazyledger-core/rpc/lib/server"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/lib/types"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {

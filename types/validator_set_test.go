@@ -11,11 +11,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	tmmath "github.com/tendermint/tendermint/libs/math"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	tmtime "github.com/tendermint/tendermint/types/time"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
 
 func TestValidatorSetBasic(t *testing.T) {

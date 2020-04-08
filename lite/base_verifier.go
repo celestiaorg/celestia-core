@@ -5,8 +5,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	lerr "github.com/tendermint/tendermint/lite/errors"
-	"github.com/tendermint/tendermint/types"
+	lerr "github.com/lazyledger/lazyledger-core/lite/errors"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 var _ Verifier = (*BaseVerifier)(nil)

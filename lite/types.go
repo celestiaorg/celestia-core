@@ -1,7 +1,7 @@
 package lite
 
 import (
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // Verifier checks the votes to make sure the block really is signed properly.

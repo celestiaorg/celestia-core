@@ -8,13 +8,13 @@ package client
 import (
 	"fmt"
 
-	log "github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/lite"
-	lerr "github.com/tendermint/tendermint/lite/errors"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
-	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	"github.com/tendermint/tendermint/types"
+	log "github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/lite"
+	lerr "github.com/lazyledger/lazyledger-core/lite/errors"
+	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
+	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
+	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // SignStatusClient combines a SignClient and StatusClient.

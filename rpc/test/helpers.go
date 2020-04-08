@@ -8,18 +8,18 @@ import (
 	"strings"
 	"time"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/libs/log"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/log"
 
-	cfg "github.com/tendermint/tendermint/config"
-	tmnet "github.com/tendermint/tendermint/libs/net"
-	nm "github.com/tendermint/tendermint/node"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/privval"
-	"github.com/tendermint/tendermint/proxy"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	core_grpc "github.com/tendermint/tendermint/rpc/grpc"
-	rpcclient "github.com/tendermint/tendermint/rpc/lib/client"
+	cfg "github.com/lazyledger/lazyledger-core/config"
+	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
+	nm "github.com/lazyledger/lazyledger-core/node"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/privval"
+	"github.com/lazyledger/lazyledger-core/proxy"
+	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	core_grpc "github.com/lazyledger/lazyledger-core/rpc/grpc"
+	rpcclient "github.com/lazyledger/lazyledger-core/rpc/lib/client"
 )
 
 // Options helps with specifying some parameters for our RPC testing for greater

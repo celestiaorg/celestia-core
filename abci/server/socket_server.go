@@ -7,9 +7,9 @@ import (
 	"net"
 	"sync"
 
-	"github.com/tendermint/tendermint/abci/types"
-	tmnet "github.com/tendermint/tendermint/libs/net"
-	"github.com/tendermint/tendermint/libs/service"
+	"github.com/lazyledger/lazyledger-core/abci/types"
+	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
+	"github.com/lazyledger/lazyledger-core/libs/service"
 )
 
 // var maxNumberConnections = 2

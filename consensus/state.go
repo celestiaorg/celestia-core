@@ -10,18 +10,18 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/tendermint/tendermint/libs/fail"
-	"github.com/tendermint/tendermint/libs/log"
-	tmos "github.com/tendermint/tendermint/libs/os"
-	"github.com/tendermint/tendermint/libs/service"
-	tmtime "github.com/tendermint/tendermint/types/time"
+	"github.com/lazyledger/lazyledger-core/libs/fail"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 
-	cfg "github.com/tendermint/tendermint/config"
-	cstypes "github.com/tendermint/tendermint/consensus/types"
-	tmevents "github.com/tendermint/tendermint/libs/events"
-	"github.com/tendermint/tendermint/p2p"
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/types"
+	cfg "github.com/lazyledger/lazyledger-core/config"
+	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
+	tmevents "github.com/lazyledger/lazyledger-core/libs/events"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 //-----------------------------------------------------------------------------

@@ -14,8 +14,8 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/net/netutil"
 
-	"github.com/tendermint/tendermint/libs/log"
-	types "github.com/tendermint/tendermint/rpc/lib/types"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	types "github.com/lazyledger/lazyledger-core/rpc/lib/types"
 )
 
 // Config is a RPC server configuration.

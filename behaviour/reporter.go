@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/tendermint/tendermint/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p"
 )
 
 // Reporter provides an interface for reactors to report the behaviour

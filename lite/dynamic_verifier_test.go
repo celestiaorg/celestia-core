@@ -10,8 +10,8 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	log "github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/types"
+	log "github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 const testChainID = "inquiry-test"

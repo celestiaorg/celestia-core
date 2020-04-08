@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tendermint/tendermint/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 )
 
 func TestNodeInfoValidate(t *testing.T) {

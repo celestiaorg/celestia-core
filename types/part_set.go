@@ -8,10 +8,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/libs/bits"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-	tmmath "github.com/tendermint/tendermint/libs/math"
+	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+	"github.com/lazyledger/lazyledger-core/libs/bits"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 )
 
 var (
