@@ -17,11 +17,11 @@ import (
 
 	amino "github.com/tendermint/go-amino"
 
-	flow "github.com/tendermint/tendermint/libs/flowrate"
-	"github.com/tendermint/tendermint/libs/log"
-	tmmath "github.com/tendermint/tendermint/libs/math"
-	"github.com/tendermint/tendermint/libs/service"
-	"github.com/tendermint/tendermint/libs/timer"
+	flow "github.com/lazyledger/lazyledger-core/libs/flowrate"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	"github.com/lazyledger/lazyledger-core/libs/timer"
 )
 
 const (

@@ -12,14 +12,14 @@ import (
 	"github.com/tendermint/go-amino"
 	dbm "github.com/tendermint/tm-db"
 
-	"github.com/tendermint/tendermint/libs/log"
-	tmos "github.com/tendermint/tendermint/libs/os"
-	lite "github.com/tendermint/tendermint/lite2"
-	lproxy "github.com/tendermint/tendermint/lite2/proxy"
-	lrpc "github.com/tendermint/tendermint/lite2/rpc"
-	dbs "github.com/tendermint/tendermint/lite2/store/db"
-	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
-	rpcserver "github.com/tendermint/tendermint/rpc/lib/server"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	lite "github.com/lazyledger/lazyledger-core/lite2"
+	lproxy "github.com/lazyledger/lazyledger-core/lite2/proxy"
+	lrpc "github.com/lazyledger/lazyledger-core/lite2/rpc"
+	dbs "github.com/lazyledger/lazyledger-core/lite2/store/db"
+	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
+	rpcserver "github.com/lazyledger/lazyledger-core/rpc/lib/server"
 )
 
 // LiteCmd represents the base command when called without any subcommands

@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	auto "github.com/tendermint/tendermint/libs/autofile"
-	tmos "github.com/tendermint/tendermint/libs/os"
+	auto "github.com/lazyledger/lazyledger-core/libs/autofile"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 )
 
 const Version = "0.0.1"

@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/libs/kv"
-	tmpubsub "github.com/tendermint/tendermint/libs/pubsub"
-	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/kv"
+	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
+	tmquery "github.com/lazyledger/lazyledger-core/libs/pubsub/query"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 )
 
 func TestEventBusPublishEventTx(t *testing.T) {

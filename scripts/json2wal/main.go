@@ -16,8 +16,8 @@ import (
 
 	amino "github.com/tendermint/go-amino"
 
-	cs "github.com/tendermint/tendermint/consensus"
-	"github.com/tendermint/tendermint/types"
+	cs "github.com/lazyledger/lazyledger-core/consensus"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 var cdc = amino.NewCodec()

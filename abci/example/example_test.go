@@ -13,14 +13,14 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/tendermint/tendermint/libs/log"
-	tmnet "github.com/tendermint/tendermint/libs/net"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
 
-	abcicli "github.com/tendermint/tendermint/abci/client"
-	"github.com/tendermint/tendermint/abci/example/code"
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	abciserver "github.com/tendermint/tendermint/abci/server"
-	"github.com/tendermint/tendermint/abci/types"
+	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
+	"github.com/lazyledger/lazyledger-core/abci/example/code"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	abciserver "github.com/lazyledger/lazyledger-core/abci/server"
+	"github.com/lazyledger/lazyledger-core/abci/types"
 )
 
 func TestKVStore(t *testing.T) {

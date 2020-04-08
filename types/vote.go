@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tendermint/tendermint/crypto"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 )
 
 const (

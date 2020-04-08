@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tendermint/tendermint/config"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
+	"github.com/lazyledger/lazyledger-core/config"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 )
 
 // FuzzedConnection wraps any net.Conn and depending on the mode either delays

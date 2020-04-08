@@ -3,8 +3,8 @@ package privval
 import (
 	amino "github.com/tendermint/go-amino"
 
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // SignerMessage is sent between Signer Clients and Servers.

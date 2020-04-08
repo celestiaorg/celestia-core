@@ -1,4 +1,4 @@
-module github.com/tendermint/tendermint
+module github.com/lazyledger/lazyledger-core
 
 go 1.13
 

@@ -9,9 +9,9 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/tendermint/tendermint/abci/types"
-	tmnet "github.com/tendermint/tendermint/libs/net"
-	"github.com/tendermint/tendermint/libs/service"
+	"github.com/lazyledger/lazyledger-core/abci/types"
+	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
+	"github.com/lazyledger/lazyledger-core/libs/service"
 )
 
 var _ Client = (*grpcClient)(nil)

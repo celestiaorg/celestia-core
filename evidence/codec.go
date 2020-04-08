@@ -3,8 +3,8 @@ package evidence
 import (
 	amino "github.com/tendermint/go-amino"
 
-	cryptoamino "github.com/tendermint/tendermint/crypto/encoding/amino"
-	"github.com/tendermint/tendermint/types"
+	cryptoamino "github.com/lazyledger/lazyledger-core/crypto/encoding/amino"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 var cdc = amino.NewCodec()

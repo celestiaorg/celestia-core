@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tendermint/tendermint/lite2/provider"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
-	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/lite2/provider"
+	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
+	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // SignStatusClient combines a SignClient and StatusClient.

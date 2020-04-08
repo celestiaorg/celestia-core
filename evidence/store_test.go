@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	dbm "github.com/tendermint/tm-db"
 
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 //-------------------------------------------

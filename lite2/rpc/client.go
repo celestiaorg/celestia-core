@@ -9,14 +9,14 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/tendermint/tendermint/crypto/merkle"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-	service "github.com/tendermint/tendermint/libs/service"
-	lite "github.com/tendermint/tendermint/lite2"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	rpctypes "github.com/tendermint/tendermint/rpc/lib/types"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	service "github.com/lazyledger/lazyledger-core/libs/service"
+	lite "github.com/lazyledger/lazyledger-core/lite2"
+	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
+	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/lib/types"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // Client is an RPC client, which uses lite#Client to verify data (if it can be

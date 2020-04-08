@@ -4,8 +4,8 @@ import (
 	"io"
 	"sync"
 
-	"github.com/tendermint/tendermint/libs/service"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // ValidationRequestHandlerFunc handles different remoteSigner requests
