@@ -5,7 +5,6 @@
 [![Go version](https://img.shields.io/badge/go-1.14-blue.svg)](https://github.com/moovweb/gvm)
 [![Telegram](https://img.shields.io/discord/669268347736686612.svg)](https://medium.com/lazyledger)
 [![license](https://img.shields.io/github/license/tendermint/tendermint.svg)](https://github.com/lazyledger/lazyledger-core/blob/master/LICENSE)
-[![](https://tokei.rs/b1/github/lazyledger/lazyledger-core?category=lines)](https://github.com/lazyledger/lazyledger-core)
 
 LazyLedger Core will power the LazyLedger main chain by leveraging Tendermint.
 
