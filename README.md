@@ -1,6 +1,6 @@
 # LazyLedger Core
 
-![banner](docs/lazyledger-banner.png)
+<img src="docs/lazyledger-banner.png" width="500">
 
 [![Go version](https://img.shields.io/badge/go-1.14-blue.svg)](https://github.com/moovweb/gvm)
 [![Telegram](https://img.shields.io/discord/669268347736686612.svg)](https://medium.com/lazyledger)
