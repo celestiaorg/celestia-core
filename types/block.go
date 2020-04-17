@@ -872,7 +872,7 @@ type Message struct {
 	NamespaceID []byte
 
 	// Data is the actual data contained in the message
-	// (e.g. a block of an optimistic rollup sidechain).
+	// (e.g. a block of a virtual sidechain).
 	Data []byte
 }
 
