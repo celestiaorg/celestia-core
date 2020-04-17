@@ -42,9 +42,9 @@ const (
 // For details see Section 5.2: https://arxiv.org/abs/1809.09044
 type DataAvailabilityHeader struct {
 	// RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
-	RowsRoots [][]byte
+	RowsRoots [][]byte `json:"row_roots"`
 	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
-	ColumnRoots [][]byte
+	ColumnRoots [][]byte `json:"column_roots"`
 }
 
 // Hash computes the root of the row and column roots
@@ -59,9 +59,9 @@ type Block struct {
 
 	Header                 `json:"header"`
 	Data                   `json:"data"`
-	DataAvailabilityHeader DataAvailabilityHeader
-	Evidence               EvidenceData `json:"evidence"`
-	LastCommit             *Commit      `json:"last_commit"`
+	DataAvailabilityHeader DataAvailabilityHeader `json:"availability_header"`
+	Evidence               EvidenceData           `json:"evidence"`
+	LastCommit             *Commit                `json:"last_commit"`
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data.
@@ -852,12 +852,12 @@ type Data struct {
 	//
 	// TODO: replace with a dedicated type `IntermediateStateRoot`
 	// as soon as we settle on the format / sparse Merkle tree etc
-	IntermediateStateRoots []tmbytes.HexBytes
+	IntermediateStateRoots []tmbytes.HexBytes `json:"intermediate_roots"`
 
 	// The messages included in this block.
 	// TODO: clarify the relation between Txs and Messages and
 	// define a mechanism to split up both (maybe via CheckTx)
-	Messages []Message
+	Messages []Message `json:"msgs"`
 
 	// Volatile
 	hash tmbytes.HexBytes
