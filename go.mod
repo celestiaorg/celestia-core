@@ -1,6 +1,6 @@
 module github.com/lazyledger/lazyledger-core
 
-go 1.13
+go 1.14
 
 require (
 	github.com/ChainSafe/go-schnorrkel v0.0.0-20200115165343-aa45d48b5ed6
