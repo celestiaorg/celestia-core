@@ -42,9 +42,9 @@ const (
 // For details see Section 5.2: https://arxiv.org/abs/1809.09044
 type DataAvailabilityHeader struct {
 	// RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
-	RowsRoots [][]byte `json:"row_roots"`
+	RowsRoots []tmbytes.HexBytes `json:"row_roots"`
 	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
-	ColumnRoots [][]byte `json:"column_roots"`
+	ColumnRoots []tmbytes.HexBytes `json:"column_roots"`
 }
 
 // Hash computes the root of the row and column roots
@@ -60,7 +60,6 @@ type Block struct {
 	Header                 `json:"header"`
 	Data                   `json:"data"`
 	DataAvailabilityHeader DataAvailabilityHeader `json:"availability_header"`
-	Evidence               EvidenceData           `json:"evidence"`
 	LastCommit             *Commit                `json:"last_commit"`
 }
 
@@ -840,6 +839,9 @@ func (sh SignedHeader) StringIndented(indent string) string {
 //  - intermediate state roots computed from the Tx of the previous block
 //  - Evidence included in the block
 //  - LazyLedger (namespaced) messages included in the block
+//
+// Note that all these fields will be namespaced. The dedicated namespaces
+// for all fields other than `Messages` are constant defined in // TODO.
 type Data struct {
 
 	// Txs that will be applied by state @ block.Height+1.
@@ -855,9 +857,10 @@ type Data struct {
 	IntermediateStateRoots []tmbytes.HexBytes `json:"intermediate_roots"`
 
 	// The messages included in this block.
-	// TODO: clarify the relation between Txs and Messages and
-	// define a mechanism to split up both (maybe via CheckTx)
+	// TODO: define a mechanism to split up both (maybe via CheckTx)
 	Messages []Message `json:"msgs"`
+
+	Evidence EvidenceData `json:"evidence"`
 
 	// Volatile
 	hash tmbytes.HexBytes
