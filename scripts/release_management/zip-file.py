@@ -25,7 +25,7 @@ def zip_asset(file,destination,arcname,version,goos,goarch):
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
-  parser.add_argument("--file", default="build/tendermint_{0}_{1}".format(os.environ.get('GOOS'),os.environ.get('GOARCH')), help="File to zip")
+  parser.add_argument("--file", default="build/lazyledger-core_{0}_{1}".format(os.environ.get('GOOS'),os.environ.get('GOARCH')), help="File to zip")
   parser.add_argument("--destination", default="build", help="Destination folder for files")
   parser.add_argument("--version", default=os.environ.get('CIRCLE_TAG'), help="Version number for binary, e.g.: v1.0.0")
   parser.add_argument("--goos", default=os.environ.get('GOOS'), help="GOOS parameter")
@@ -39,6 +39,6 @@ if __name__ == "__main__":
   if args.goarch is None:
     raise parser.error("argument --goarch is required")
 
-  file = zip_asset(args.file,args.destination,"tendermint",args.version,args.goos,args.goarch)
+  file = zip_asset(args.file,args.destination,"lazyledger-core",args.version,args.goos,args.goarch)
   print(file)
 
