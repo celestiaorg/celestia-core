@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -13,7 +14,6 @@ import (
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
-	tmsync "github.com/tendermint/tendermint/internal/libs/sync"
 	"github.com/tendermint/tendermint/libs/bits"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	tmmath "github.com/tendermint/tendermint/libs/math"
@@ -38,14 +38,34 @@ const (
 	MaxOverheadForBlock int64 = 11
 )
 
+// DataAvailabilityHeader contains the row and column roots of the erasure
+// coded version of the data in Block.Data.
+// Therefor the original Block.Data is arranged in a
+// k × k matrix, which is then "extended" to a
+// 2k × 2k matrix applying multiple times Reed-Solomon encoding.
+// For details see Section 5.2: https://arxiv.org/abs/1809.09044
+type DataAvailabilityHeader struct {
+	// RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
+	RowsRoots [][]byte `json:"row_roots"`
+	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
+	ColumnRoots [][]byte `json:"column_roots"`
+}
+
+// Hash computes the root of the row and column roots
+// TODO: feed this into Header.DataHash.
+func (dah *DataAvailabilityHeader) Hash() {
+	panic("TODO: implement")
+}
+
 // Block defines the atomic unit of a Tendermint blockchain.
 type Block struct {
-	mtx tmsync.Mutex
+	mtx sync.Mutex
 
-	Header     `json:"header"`
-	Data       `json:"data"`
-	Evidence   EvidenceData `json:"evidence"`
-	LastCommit *Commit      `json:"last_commit"`
+	Header                 `json:"header"`
+	Data                   `json:"data"`
+	DataAvailabilityHeader DataAvailabilityHeader `json:"availability_header"`
+	Evidence               EvidenceData           `json:"evidence"`
+	LastCommit             *Commit                `json:"last_commit"`
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data.
@@ -342,7 +362,9 @@ type Header struct {
 
 	// hashes of block data
 	LastCommitHash tmbytes.HexBytes `json:"last_commit_hash"` // commit from validators from the last block
-	DataHash       tmbytes.HexBytes `json:"data_hash"`        // transactions
+	// DataHash = root((rowRoot_1 || rowRoot_2 || ... ||rowRoot_2k || columnRoot1 || columnRoot2 || ... || columnRoot2k))
+	// Block.DataAvailabilityHeader for stores (row|column)Root_i // TODO ...
+	DataHash tmbytes.HexBytes `json:"data_hash"` // transactions
 
 	// hashes from the app output from the prev block
 	ValidatorsHash     tmbytes.HexBytes `json:"validators_hash"`      // validators for the current block
@@ -997,7 +1019,17 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 
 //-----------------------------------------------------------------------------
 
-// Data contains the set of transactions included in the block
+// Data contains the data that will be erasure coded and is guaranteed to be available
+// via the data availability scheme.
+//
+// TODO: update Data.Hash() to data availability root
+// and clarify this here too.
+//
+// Data consists of:
+//  - the set of transactions included in the block
+//  - intermediate state roots computed from the Tx of the previous block
+//  - Evidence included in the block
+//  - LazyLedger (namespaced) messages included in the block
 type Data struct {
 
 	// Txs that will be applied by state @ block.Height+1.
@@ -1005,8 +1037,33 @@ type Data struct {
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
 
+	// Intermediate state roots of the Txs included in block.Height
+	// and executed by state state @ block.Height+1.
+	//
+	// TODO: replace with a dedicated type `IntermediateStateRoot`
+	// as soon as we settle on the format / sparse Merkle tree etc
+	IntermediateStateRoots []tmbytes.HexBytes `json:"intermediate_roots"`
+
+	// The messages included in this block.
+	// TODO: clarify the relation between Txs and Messages and
+	// define a mechanism to split up both (maybe via CheckTx)
+	Messages []Message `json:"msgs"`
+
 	// Volatile
 	hash tmbytes.HexBytes
+}
+
+type Message struct {
+	// NamespaceID defines the namespace of this message, i.e. the
+	// namespace it will use in the namespaced Merkle tree.
+	//
+	// TODO: spec out constrains and
+	// introduce dedicated type instead of just []byte
+	NamespaceID []byte
+
+	// Data is the actual data contained in the message
+	// (e.g. a block of a virtual sidechain).
+	Data []byte
 }
 
 // Hash returns the hash of the data
