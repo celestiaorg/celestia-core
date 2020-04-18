@@ -80,9 +80,9 @@ func MakeBlock(height int64, txs []Tx, lastCommit *Commit, evidence []Evidence) 
 			Height: height,
 		},
 		Data: Data{
-			Txs: txs,
+			Txs:      txs,
+			Evidence: EvidenceData{Evidence: evidence},
 		},
-		Evidence:   EvidenceData{Evidence: evidence},
 		LastCommit: lastCommit,
 	}
 	block.fillHeader()
