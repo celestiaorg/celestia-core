@@ -42,9 +42,9 @@ const (
 // For details see Section 5.2: https://arxiv.org/abs/1809.09044
 type DataAvailabilityHeader struct {
 	// RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
-	RowsRoots [][]byte `json:"row_roots"`
+	RowsRoots []tmbytes.HexBytes `json:"row_roots"`
 	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
-	ColumnRoots [][]byte `json:"column_roots"`
+	ColumnRoots []tmbytes.HexBytes `json:"column_roots"`
 }
 
 // Hash computes the root of the row and column roots
