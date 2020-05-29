@@ -23,7 +23,7 @@ require (
 	github.com/snikch/goodman v0.0.0-20171125024755-10e37e294daa
 	github.com/spf13/cobra v0.0.7
 	github.com/spf13/viper v1.6.2
-	github.com/stretchr/testify v1.5.1
+	github.com/stretchr/testify v1.6.0
 	github.com/tendermint/go-amino v0.14.1
 	github.com/tendermint/tm-db v0.5.1
 	golang.org/x/crypto v0.0.0-20200302210943-78000ba7a073
