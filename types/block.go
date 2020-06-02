@@ -14,8 +14,8 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/bits"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	tmproto "github.com/tendermint/tendermint/proto/types"
-	tmversion "github.com/tendermint/tendermint/proto/version"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/types"
+	tmversion "github.com/lazyledger/lazyledger-core/proto/version"
 	"github.com/lazyledger/lazyledger-core/version"
 )
 

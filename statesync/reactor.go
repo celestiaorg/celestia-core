@@ -5,11 +5,11 @@ import (
 	"sort"
 	"sync"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/proxy"
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/types"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/proxy"
+	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 const (

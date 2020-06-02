@@ -8,9 +8,9 @@ import (
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	_ "github.com/golang/protobuf/ptypes/timestamp"
-	merkle "github.com/tendermint/tendermint/proto/crypto/merkle"
-	bits "github.com/tendermint/tendermint/proto/libs/bits"
-	version "github.com/tendermint/tendermint/proto/version"
+	merkle "github.com/lazyledger/lazyledger-core/proto/crypto/merkle"
+	bits "github.com/lazyledger/lazyledger-core/proto/libs/bits"
+	version "github.com/lazyledger/lazyledger-core/proto/version"
 	math "math"
 	time "time"
 )

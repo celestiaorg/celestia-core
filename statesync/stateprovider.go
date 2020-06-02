@@ -8,15 +8,15 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	"github.com/tendermint/tendermint/libs/log"
-	lite "github.com/tendermint/tendermint/lite2"
-	liteprovider "github.com/tendermint/tendermint/lite2/provider"
-	litehttp "github.com/tendermint/tendermint/lite2/provider/http"
-	literpc "github.com/tendermint/tendermint/lite2/rpc"
-	litedb "github.com/tendermint/tendermint/lite2/store/db"
-	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	lite "github.com/lazyledger/lazyledger-core/lite2"
+	liteprovider "github.com/lazyledger/lazyledger-core/lite2/provider"
+	litehttp "github.com/lazyledger/lazyledger-core/lite2/provider/http"
+	literpc "github.com/lazyledger/lazyledger-core/lite2/rpc"
+	litedb "github.com/lazyledger/lazyledger-core/lite2/store/db"
+	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
+	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 //go:generate mockery -case underscore -name StateProvider

@@ -11,7 +11,7 @@ import (
 	dbm "github.com/tendermint/tm-db"
 
 	sm "github.com/lazyledger/lazyledger-core/state"
-	"github.com/tendermint/tendermint/store"
+	"github.com/lazyledger/lazyledger-core/store"
 	"github.com/lazyledger/lazyledger-core/types"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tendermint/tendermint/lite2/provider"
+	"github.com/lazyledger/lazyledger-core/lite2/provider"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 

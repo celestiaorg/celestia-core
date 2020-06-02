@@ -11,7 +11,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/bits"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	tmproto "github.com/tendermint/tendermint/proto/types"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/types"
 )
 
 var (

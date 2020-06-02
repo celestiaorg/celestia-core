@@ -9,7 +9,7 @@ import (
 
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	tmprotobits "github.com/tendermint/tendermint/proto/libs/bits"
+	tmprotobits "github.com/lazyledger/lazyledger-core/proto/libs/bits"
 )
 
 // BitArray is a thread-safe implementation of a bit array.

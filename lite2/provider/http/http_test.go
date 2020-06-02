@@ -12,7 +12,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/lite2/provider"
 	litehttp "github.com/lazyledger/lazyledger-core/lite2/provider/http"
 	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
-	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
+	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
 	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
 	"github.com/lazyledger/lazyledger-core/types"
 )

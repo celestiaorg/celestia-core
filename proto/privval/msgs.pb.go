@@ -7,8 +7,8 @@ import (
 	fmt "fmt"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
-	keys "github.com/tendermint/tendermint/proto/crypto/keys"
-	types "github.com/tendermint/tendermint/proto/types"
+	keys "github.com/lazyledger/lazyledger-core/proto/crypto/keys"
+	types "github.com/lazyledger/lazyledger-core/proto/types"
 	math "math"
 )
 

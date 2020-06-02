@@ -5,7 +5,7 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 
 	"github.com/lazyledger/lazyledger-core/types"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"

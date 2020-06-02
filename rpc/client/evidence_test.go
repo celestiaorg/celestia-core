@@ -8,14 +8,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	"github.com/tendermint/tendermint/crypto/tmhash"
-	"github.com/tendermint/tendermint/privval"
-	"github.com/tendermint/tendermint/rpc/client"
-	rpctest "github.com/tendermint/tendermint/rpc/test"
-	"github.com/tendermint/tendermint/types"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/privval"
+	"github.com/lazyledger/lazyledger-core/rpc/client"
+	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 func newEvidence(t *testing.T, val *privval.FilePV,

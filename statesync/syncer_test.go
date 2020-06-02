@@ -10,16 +10,16 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/p2p"
-	p2pmocks "github.com/tendermint/tendermint/p2p/mocks"
-	"github.com/tendermint/tendermint/proxy"
-	proxymocks "github.com/tendermint/tendermint/proxy/mocks"
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/statesync/mocks"
-	"github.com/tendermint/tendermint/types"
-	"github.com/tendermint/tendermint/version"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	p2pmocks "github.com/lazyledger/lazyledger-core/p2p/mocks"
+	"github.com/lazyledger/lazyledger-core/proxy"
+	proxymocks "github.com/lazyledger/lazyledger-core/proxy/mocks"
+	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/statesync/mocks"
+	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/lazyledger-core/version"
 )
 
 // Sets up a basic syncer that can be used to test OfferSnapshot requests

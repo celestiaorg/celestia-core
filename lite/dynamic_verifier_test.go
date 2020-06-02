@@ -10,7 +10,7 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	log "github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/types"
 )

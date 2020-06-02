@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tendermint/tendermint/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p"
 )
 
 // errDone is returned by chunkQueue.Next() when all chunks have been returned.

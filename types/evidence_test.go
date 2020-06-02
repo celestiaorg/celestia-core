@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	tmrand "github.com/lazyledger/lazyledger/libs/rand"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 )
 
 type voteData struct {

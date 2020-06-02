@@ -26,7 +26,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/privval"
 	"github.com/lazyledger/lazyledger-core/proxy"
 	sm "github.com/lazyledger/lazyledger-core/state"
-	"github.com/tendermint/tendermint/store"
+	"github.com/lazyledger/lazyledger-core/store"
 	"github.com/lazyledger/lazyledger-core/types"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 	"github.com/lazyledger/lazyledger-core/version"

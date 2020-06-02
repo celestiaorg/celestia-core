@@ -11,9 +11,9 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
-	"github.com/lazyledger/lazyledger/crypto/tmhash"
-	tmmath "github.com/lazyledger/lazyledger/libs/math"
-	tmproto "github.com/lazyledger/lazyledger/proto/types"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/types"
 )
 
 const (

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	lerr "github.com/lazyledger/lazyledger-core/lite/errors"
 	"github.com/lazyledger/lazyledger-core/types"
 )
