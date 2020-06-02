@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/minio/highwayhash"
+
 	"github.com/lazyledger/lazyledger-core/crypto"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
