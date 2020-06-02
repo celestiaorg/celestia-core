@@ -137,10 +137,12 @@ func (memR *Reactor) OnStart() error {
 // GetChannels implements Reactor.
 // It returns the list of channels for this reactor.
 func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
+	maxMsgSize := calcMaxMsgSize(memR.config.MaxTxBytes)
 	return []*p2p.ChannelDescriptor{
 		{
-			ID:       MempoolChannel,
-			Priority: 5,
+			ID:                  MempoolChannel,
+			Priority:            5,
+			RecvMessageCapacity: maxMsgSize,
 		},
 	}
 }
@@ -148,7 +150,9 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 // AddPeer implements Reactor.
 // It starts a broadcast routine ensuring all txs are forwarded to the given peer.
 func (memR *Reactor) AddPeer(peer p2p.Peer) {
-	go memR.broadcastTxRoutine(peer)
+	if memR.config.Broadcast {
+		go memR.broadcastTxRoutine(peer)
+	}
 }
 
 // RemovePeer implements Reactor.
@@ -191,10 +195,6 @@ type PeerState interface {
 
 // Send new mempool txs to peer.
 func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
-	if !memR.config.Broadcast {
-		return
-	}
-
 	peerID := memR.ids.GetForPeer(peer)
 	var next *clist.CElement
 	for {
@@ -271,10 +271,6 @@ func RegisterMessages(cdc *amino.Codec) {
 }
 
 func (memR *Reactor) decodeMsg(bz []byte) (msg Message, err error) {
-	maxMsgSize := calcMaxMsgSize(memR.config.MaxTxBytes)
-	if l := len(bz); l > maxMsgSize {
-		return msg, ErrTxTooLarge{maxMsgSize, l}
-	}
 	err = cdc.UnmarshalBinaryBare(bz, &msg)
 	return
 }

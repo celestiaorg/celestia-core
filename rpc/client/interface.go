@@ -65,6 +65,7 @@ type ABCIClient interface {
 // and prove anything about the chain.
 type SignClient interface {
 	Block(height *int64) (*ctypes.ResultBlock, error)
+	BlockByHash(hash []byte) (*ctypes.ResultBlock, error)
 	BlockResults(height *int64) (*ctypes.ResultBlockResults, error)
 	Commit(height *int64) (*ctypes.ResultCommit, error)
 	Validators(height *int64, page, perPage int) (*ctypes.ResultValidators, error)
@@ -120,4 +121,12 @@ type MempoolClient interface {
 // behaviour.
 type EvidenceClient interface {
 	BroadcastEvidence(ev types.Evidence) (*ctypes.ResultBroadcastEvidence, error)
+}
+
+// RemoteClient is a Client, which can also return the remote network address.
+type RemoteClient interface {
+	Client
+
+	// Remote returns the remote network address in a string form.
+	Remote() string
 }

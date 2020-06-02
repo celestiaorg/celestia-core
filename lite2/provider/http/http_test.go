@@ -9,29 +9,31 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
-	"github.com/lazyledger/lazyledger-core/lite2/provider/http"
+	"github.com/lazyledger/lazyledger-core/lite2/provider"
 	litehttp "github.com/lazyledger/lazyledger-core/lite2/provider/http"
 	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
+	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
 	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
 func TestNewProvider(t *testing.T) {
-	c, err := http.New("chain-test", "192.168.0.1:26657")
+	c, err := litehttp.New("chain-test", "192.168.0.1:26657")
 	require.NoError(t, err)
 	require.Equal(t, fmt.Sprintf("%s", c), "http{http://192.168.0.1:26657}")
 
-	c, err = http.New("chain-test", "http://153.200.0.1:26657")
+	c, err = litehttp.New("chain-test", "http://153.200.0.1:26657")
 	require.NoError(t, err)
 	require.Equal(t, fmt.Sprintf("%s", c), "http{http://153.200.0.1:26657}")
 
-	c, err = http.New("chain-test", "153.200.0.1")
+	c, err = litehttp.New("chain-test", "153.200.0.1")
 	require.NoError(t, err)
 	require.Equal(t, fmt.Sprintf("%s", c), "http{http://153.200.0.1}")
 }
 
 func TestMain(m *testing.M) {
 	app := kvstore.NewApplication()
+	app.RetainBlocks = 9
 	node := rpctest.StartTendermint(app)
 
 	code := m.Run()
@@ -50,26 +52,47 @@ func TestProvider(t *testing.T) {
 	}
 	chainID := genDoc.ChainID
 	t.Log("chainID:", chainID)
-	p, err := litehttp.New(chainID, rpcAddr)
+
+	c, err := rpchttp.New(rpcAddr, "/websocket")
 	require.Nil(t, err)
+
+	p := litehttp.NewWithClient(chainID, c)
+	require.NoError(t, err)
 	require.NotNil(t, p)
 
 	// let it produce some blocks
-	err = rpcclient.WaitForHeight(p.(rpcclient.StatusClient), 6, nil)
-	require.Nil(t, err)
+	err = rpcclient.WaitForHeight(c, 10, nil)
+	require.NoError(t, err)
 
 	// let's get the highest block
 	sh, err := p.SignedHeader(0)
 
-	require.Nil(t, err, "%+v", err)
-	assert.True(t, sh.Height < 5000)
+	require.NoError(t, err)
+	assert.True(t, sh.Height < 1000)
 
 	// let's check this is valid somehow
 	assert.Nil(t, sh.ValidateBasic(chainID))
 
 	// historical queries now work :)
-	lower := sh.Height - 5
+	lower := sh.Height - 3
 	sh, err = p.SignedHeader(lower)
-	assert.Nil(t, err, "%+v", err)
+	require.NoError(t, err)
 	assert.Equal(t, lower, sh.Height)
+
+	// fetching missing heights (both future and pruned) should return appropriate errors
+	_, err = p.SignedHeader(1000)
+	require.Error(t, err)
+	assert.Equal(t, provider.ErrSignedHeaderNotFound, err)
+
+	_, err = p.ValidatorSet(1000)
+	require.Error(t, err)
+	assert.Equal(t, provider.ErrValidatorSetNotFound, err)
+
+	_, err = p.SignedHeader(1)
+	require.Error(t, err)
+	assert.Equal(t, provider.ErrSignedHeaderNotFound, err)
+
+	_, err = p.ValidatorSet(1)
+	require.Error(t, err)
+	assert.Equal(t, provider.ErrValidatorSetNotFound, err)
 }

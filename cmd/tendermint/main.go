@@ -4,11 +4,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/lazyledger/lazyledger-core/libs/cli"
-
 	cmd "github.com/lazyledger/lazyledger-core/cmd/tendermint/commands"
 	"github.com/lazyledger/lazyledger-core/cmd/tendermint/commands/debug"
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/libs/cli"
 	nm "github.com/lazyledger/lazyledger-core/node"
 )
 
@@ -29,6 +28,7 @@ func main() {
 		cmd.GenNodeKeyCmd,
 		cmd.VersionCmd,
 		debug.DebugCmd,
+		cli.NewCompletionCmd(rootCmd, true),
 	)
 
 	// NOTE:

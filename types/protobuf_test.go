@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/proto" // nolint: staticcheck // still used by gogoproto
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -136,9 +136,8 @@ func TestABCIEvidence(t *testing.T) {
 	pubKey, err := val.GetPubKey()
 	require.NoError(t, err)
 	ev := &DuplicateVoteEvidence{
-		PubKey: pubKey,
-		VoteA:  makeVote(t, val, chainID, 0, 10, 2, 1, blockID),
-		VoteB:  makeVote(t, val, chainID, 0, 10, 2, 1, blockID2),
+		VoteA: makeVote(t, val, chainID, 0, 10, 2, 1, blockID, defaultVoteTime),
+		VoteB: makeVote(t, val, chainID, 0, 10, 2, 1, blockID2, defaultVoteTime),
 	}
 	abciEv := TM2PB.Evidence(
 		ev,

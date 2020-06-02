@@ -17,8 +17,6 @@ import (
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/lazyledger/lazyledger-core/libs/kv"
-	"github.com/lazyledger/lazyledger-core/libs/rand"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -136,8 +134,8 @@ func TestABCIResponsesSaveLoad2(t *testing.T) {
 				{
 					Data: []byte("Gotcha!"),
 					Events: []abci.Event{
-						{Type: "type1", Attributes: []kv.Pair{{Key: []byte("a"), Value: []byte("1")}}},
-						{Type: "type2", Attributes: []kv.Pair{{Key: []byte("build"), Value: []byte("stuff")}}},
+						{Type: "type1", Attributes: []abci.EventAttribute{{Key: []byte("a"), Value: []byte("1")}}},
+						{Type: "type2", Attributes: []abci.EventAttribute{{Key: []byte("build"), Value: []byte("stuff")}}},
 					},
 				},
 			},
@@ -347,7 +345,7 @@ func genValSetWithPowers(powers []int64) *types.ValidatorSet {
 	for i := 0; i < size; i++ {
 		totalVotePower += powers[i]
 		val := types.NewValidator(ed25519.GenPrivKey().PubKey(), powers[i])
-		val.ProposerPriority = rand.Int64()
+		val.ProposerPriority = tmrand.Int64()
 		vals[i] = val
 	}
 	valSet := types.NewValidatorSet(vals)
@@ -987,7 +985,7 @@ func TestConsensusParamsChangesSaveLoad(t *testing.T) {
 }
 
 func TestApplyUpdates(t *testing.T) {
-	initParams := makeConsensusParams(1, 2, 3, 4)
+	initParams := makeConsensusParams(1, 2, 3, 4, 5)
 	const maxAge int64 = 66
 	cases := [...]struct {
 		init     types.ConsensusParams
@@ -1003,15 +1001,16 @@ func TestApplyUpdates(t *testing.T) {
 					MaxGas:   55,
 				},
 			},
-			makeConsensusParams(44, 55, 3, 4)},
+			makeConsensusParams(44, 55, 3, 4, 5)},
 		3: {initParams,
 			abci.ConsensusParams{
 				Evidence: &abci.EvidenceParams{
 					MaxAgeNumBlocks: maxAge,
 					MaxAgeDuration:  time.Duration(maxAge),
+					MaxNum:          10,
 				},
 			},
-			makeConsensusParams(1, 2, 3, maxAge)},
+			makeConsensusParams(1, 2, 3, maxAge, 10)},
 	}
 
 	for i, tc := range cases {

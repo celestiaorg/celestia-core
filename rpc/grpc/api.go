@@ -5,7 +5,7 @@ import (
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	core "github.com/lazyledger/lazyledger-core/rpc/core"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/lib/types"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 )
 
 type broadcastAPI struct {

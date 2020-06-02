@@ -7,13 +7,19 @@ a newer version of Tendermint Core.
 
 <Overview>
 
+### Events
+
+- `KV.Pair` has been replaced with `abci.EventAttribute`. This allows applications to indicate if a msg should be indexed at runtime. Previously this was only possible if the node operator decided to index specific or all messages on startup of the node, now the application can indicate which msgs should be indexed.
+
+## v0.33.4
+
 ### Go API
 
 - `rpc/client` HTTP and local clients have been moved into `http` and `local` subpackages, and their constructors have been renamed to `New()`.
 
 ### Protobuf Changes
 
-When upgrading to version <version #> you will have to fetch the `third_party` directory along with the updated proto files.
+When upgrading to version 0.33.4 you will have to fetch the `third_party` directory along with the updated proto files.
 
 ## v0.33.0
 

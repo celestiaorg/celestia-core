@@ -1,6 +1,4 @@
-## v0.33.4
-
-- Nodes are no longer guaranteed to contain all blocks up to the latest height. The ABCI app can now control which blocks to retain through the ABCI field `ResponseCommit.retain_height`, all blocks and associated data below this height will be removed.
+## v0.33.6
 
 \*\*
 
@@ -12,37 +10,44 @@ Friendly reminder, we have a [bug bounty program](https://hackerone.com/tendermi
 
 - CLI/RPC/Config
 
+  - [evidence] \#4725 Remove `Pubkey` from DuplicateVoteEvidence
+  - [rpc] [\#4792](https://github.com/tendermint/tendermint/pull/4792) `/validators` are now sorted by voting power (@melekes)
+
 - Apps
+
+  - [abci] [\#4704](https://github.com/tendermint/tendermint/pull/4704) Add ABCI methods `ListSnapshots`, `LoadSnapshotChunk`, `OfferSnapshot`, and `ApplySnapshotChunk` for state sync snapshots. `ABCIVersion` bumped to 0.17.0.
 
 - P2P Protocol
 
 - Go API
 
-  - [rpc/client] [\#4628](https://github.com/tendermint/tendermint/pull/4628) Split out HTTP and local clients into `http` and `local` packages (@erikgrinaker).
-  - [lite2] [\#4616](https://github.com/tendermint/tendermint/pull/4616) Make `maxClockDrift` an option (@melekes).
-    `Verify/VerifyAdjacent/VerifyNonAdjacent` now accept `maxClockDrift time.Duration`.
+  - [crypto] [\#4721](https://github.com/tendermint/tendermint/pull/4721) Remove `SimpleHashFromMap()` and `SimpleProofsFromMap()` (@erikgrinaker)
+  - [types] \#4798 Simplify `VerifyCommitTrusting` func + remove extra validation (@melekes)
+  - [libs] \#4831 Remove `Bech32` pkg from Tendermint. This pkg now lives in the [cosmos-sdk](https://github.com/cosmos/cosmos-sdk/tree/4173ea5ebad906dd9b45325bed69b9c655504867/types/bech32)
+- Blockchain Protocol
+
+  - [types] [\#4792](https://github.com/tendermint/tendermint/pull/4792) Sort validators by voting power to enable faster commit verification (@melekes)
+  - [evidence] [\#4780](https://github.com/tendermint/tendermint/pull/4780) Cap evidence to an absolute number (@cmwaters)
+    Add `max_num` to consensus evidence parameters (default: 50 items).
 
 ### FEATURES:
 
-- [abci] Add `ResponseCommit.retain_height` field, which will automatically remove blocks below this height.
-- [rpc] Add `/status` response fields for the earliest block available on the node
-- [rpc] [\#4611](https://github.com/tendermint/tendermint/pull/4611) Add `codespace` to `ResultBroadcastTx` (@whylee259)
+- [statesync] Add state sync support, where a new node can be rapidly bootstrapped by fetching state snapshots from peers instead of replaying blocks. See the `[statesync]` config section.
+- [evidence] [\#4532](https://github.com/tendermint/tendermint/pull/4532) Handle evidence from light clients (@melekes)
+- [lite2] [\#4532](https://github.com/tendermint/tendermint/pull/4532) Submit conflicting headers, if any, to a full node & all witnesses (@melekes)
+- [rpc] [\#4532](https://github.com/tendermint/tendermint/pull/4923) Support `BlockByHash` query (@fedekunze)
 
 ### IMPROVEMENTS:
 
-- [blockchain] Add `Base` to blockchain reactor P2P messages `StatusRequest` and `StatusResponse`
-- [example/kvstore] Add `RetainBlocks` option to control block retention
-- [p2p] [\#4548](https://github.com/tendermint/tendermint/pull/4548) Add ban list to address book (@cmwaters)
-- [privval] \#4534 Add `error` as a return value on`GetPubKey()`
-- [Docker] \#4569 Default configuration added to docker image (you can still mount your own config the same way) (@greg-szabo)
-- [lite2] [\#4562](https://github.com/tendermint/tendermint/pull/4562) Cache headers when using bisection (@cmwaters)
-- [all] [\#4608](https://github.com/tendermint/tendermint/pull/4608) Give reactors descriptive names when they're initialized
-- [lite2] [\#4575](https://github.com/tendermint/tendermint/pull/4575) Use bisection for within-range verification (@cmwaters)
-- [tools] \#4615 Allow developers to use Docker to generate proto stubs, via `make proto-gen-docker`.
-- [p2p] \#4621(https://github.com/tendermint/tendermint/pull/4621) ban peers when messages are unsolicited or too frequent (@cmwaters)
-- [evidence] [\#4632](https://github.com/tendermint/tendermint/pull/4632) Inbound evidence checked if already existing (@cmwaters)
+- [txindex] [\#4466](https://github.com/tendermint/tendermint/pull/4466) Allow to index an event at runtime (@favadi)
+  - `abci.EventAttribute` replaces `KV.Pair`
+- [evidence] [\#4722](https://github.com/tendermint/tendermint/pull/4722) Improved evidence db (@cmwaters)
+- [state] [\#4781](https://github.com/tendermint/tendermint/pull/4781) Export `InitStateVersion` for the initial state version (@erikgrinaker)
+- [p2p/conn] \#4795 Return err on `signChallenge()` instead of panic
+- [evidence] [\#4839](https://github.com/tendermint/tendermint/pull/4839) Reject duplicate evidence from being proposed (@cmwaters)
+- [evidence] [\#4892](https://github.com/tendermint/tendermint/pull/4892) Remove redundant header from phantom validator evidence (@cmwaters)
+- [types] [\#4905](https://github.com/tendermint/tendermint/pull/4905) Add ValidateBasic to validator and validator set (@cmwaters)
 
 ### BUG FIXES:
 
-- [rpc] \#4568 Fix panic when `Subscribe` is called, but HTTP client is not running (@melekes)
-  `Subscribe`, `Unsubscribe(All)` methods return an error now.
+- [consensus] [\#4895](https://github.com/tendermint/tendermint/pull/4895) Cache the address of the validator to reduce querying a remote KMS (@joe-bowman)

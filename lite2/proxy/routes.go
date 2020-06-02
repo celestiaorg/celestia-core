@@ -4,8 +4,8 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/bytes"
 	lrpc "github.com/lazyledger/lazyledger-core/lite2/rpc"
 	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpcserver "github.com/lazyledger/lazyledger-core/rpc/lib/server"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/lib/types"
+	rpcserver "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -23,6 +23,7 @@ func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {
 		"blockchain":           rpcserver.NewRPCFunc(makeBlockchainInfoFunc(c), "minHeight,maxHeight"),
 		"genesis":              rpcserver.NewRPCFunc(makeGenesisFunc(c), ""),
 		"block":                rpcserver.NewRPCFunc(makeBlockFunc(c), "height"),
+		"block_by_hash":        rpcserver.NewRPCFunc(makeBlockByHashFunc(c), "hash"),
 		"block_results":        rpcserver.NewRPCFunc(makeBlockResultsFunc(c), "height"),
 		"commit":               rpcserver.NewRPCFunc(makeCommitFunc(c), "height"),
 		"tx":                   rpcserver.NewRPCFunc(makeTxFunc(c), "hash,prove"),
@@ -94,6 +95,14 @@ type rpcBlockFunc func(ctx *rpctypes.Context, height *int64) (*ctypes.ResultBloc
 func makeBlockFunc(c *lrpc.Client) rpcBlockFunc {
 	return func(ctx *rpctypes.Context, height *int64) (*ctypes.ResultBlock, error) {
 		return c.Block(height)
+	}
+}
+
+type rpcBlockByHashFunc func(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error)
+
+func makeBlockByHashFunc(c *lrpc.Client) rpcBlockByHashFunc {
+	return func(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error) {
+		return c.BlockByHash(hash)
 	}
 }
 

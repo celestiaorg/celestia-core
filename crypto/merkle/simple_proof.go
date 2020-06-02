@@ -2,9 +2,8 @@ package merkle
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
-
-	"github.com/pkg/errors"
 
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 )
@@ -47,31 +46,6 @@ func SimpleProofsFromByteSlices(items [][]byte) (rootHash []byte, proofs []*Simp
 	return
 }
 
-// SimpleProofsFromMap generates proofs from a map. The keys/values of the map will be used as the keys/values
-// in the underlying key-value pairs.
-// The keys are sorted before the proofs are computed.
-func SimpleProofsFromMap(m map[string][]byte) (rootHash []byte, proofs map[string]*SimpleProof, keys []string) {
-	sm := newSimpleMap()
-	for k, v := range m {
-		sm.Set(k, v)
-	}
-	sm.Sort()
-	kvs := sm.kvs
-	kvsBytes := make([][]byte, len(kvs))
-	for i, kvp := range kvs {
-		kvsBytes[i] = KVPair(kvp).Bytes()
-	}
-
-	rootHash, proofList := SimpleProofsFromByteSlices(kvsBytes)
-	proofs = make(map[string]*SimpleProof)
-	keys = make([]string, len(proofList))
-	for i, kvp := range kvs {
-		proofs[string(kvp.Key)] = proofList[i]
-		keys[i] = string(kvp.Key)
-	}
-	return
-}
-
 // Verify that the SimpleProof proves the root hash.
 // Check sp.Index/sp.Total manually if needed
 func (sp *SimpleProof) Verify(rootHash []byte, leaf []byte) error {
@@ -83,11 +57,11 @@ func (sp *SimpleProof) Verify(rootHash []byte, leaf []byte) error {
 		return errors.New("proof index cannot be negative")
 	}
 	if !bytes.Equal(sp.LeafHash, leafHash) {
-		return errors.Errorf("invalid leaf hash: wanted %X got %X", leafHash, sp.LeafHash)
+		return fmt.Errorf("invalid leaf hash: wanted %X got %X", leafHash, sp.LeafHash)
 	}
 	computedHash := sp.ComputeRootHash()
 	if !bytes.Equal(computedHash, rootHash) {
-		return errors.Errorf("invalid root hash: wanted %X got %X", rootHash, computedHash)
+		return fmt.Errorf("invalid root hash: wanted %X got %X", rootHash, computedHash)
 	}
 	return nil
 }
@@ -128,14 +102,14 @@ func (sp *SimpleProof) ValidateBasic() error {
 		return errors.New("negative Index")
 	}
 	if len(sp.LeafHash) != tmhash.Size {
-		return errors.Errorf("expected LeafHash size to be %d, got %d", tmhash.Size, len(sp.LeafHash))
+		return fmt.Errorf("expected LeafHash size to be %d, got %d", tmhash.Size, len(sp.LeafHash))
 	}
 	if len(sp.Aunts) > MaxAunts {
-		return errors.Errorf("expected no more than %d aunts, got %d", MaxAunts, len(sp.Aunts))
+		return fmt.Errorf("expected no more than %d aunts, got %d", MaxAunts, len(sp.Aunts))
 	}
 	for i, auntHash := range sp.Aunts {
 		if len(auntHash) != tmhash.Size {
-			return errors.Errorf("expected Aunts#%d size to be %d, got %d", i, tmhash.Size, len(auntHash))
+			return fmt.Errorf("expected Aunts#%d size to be %d, got %d", i, tmhash.Size, len(auntHash))
 		}
 	}
 	return nil

@@ -10,7 +10,6 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/abci/example/code"
 	"github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/kv"
 	"github.com/lazyledger/lazyledger-core/version"
 )
 
@@ -99,9 +98,11 @@ func (app *Application) DeliverTx(req types.RequestDeliverTx) types.ResponseDeli
 	events := []types.Event{
 		{
 			Type: "app",
-			Attributes: []kv.Pair{
+			Attributes: []types.EventAttribute{
 				{Key: []byte("creator"), Value: []byte("Cosmoshi Netowoko")},
 				{Key: []byte("key"), Value: key},
+				{Key: []byte("index_key"), Value: []byte("index is working"), Index: true},
+				{Key: []byte("noindex_key"), Value: []byte("index is working"), Index: false},
 			},
 		},
 	}

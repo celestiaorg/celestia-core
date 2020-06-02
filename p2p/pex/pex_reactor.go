@@ -1,18 +1,16 @@
 package pex
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
-
 	"github.com/tendermint/go-amino"
 
 	"github.com/lazyledger/lazyledger-core/libs/cmap"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	"github.com/lazyledger/lazyledger-core/libs/rand"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	"github.com/lazyledger/lazyledger-core/libs/service"
 	"github.com/lazyledger/lazyledger-core/p2p"
@@ -180,9 +178,10 @@ func (r *Reactor) OnStop() {
 func (r *Reactor) GetChannels() []*conn.ChannelDescriptor {
 	return []*conn.ChannelDescriptor{
 		{
-			ID:                PexChannel,
-			Priority:          1,
-			SendQueueCapacity: 10,
+			ID:                  PexChannel,
+			Priority:            1,
+			SendQueueCapacity:   10,
+			RecvMessageCapacity: maxMsgSize,
 		},
 	}
 }
@@ -409,7 +408,7 @@ func (r *Reactor) SetEnsurePeersPeriod(d time.Duration) {
 // Ensures that sufficient peers are connected. (continuous)
 func (r *Reactor) ensurePeersRoutine() {
 	var (
-		seed   = rand.NewRand()
+		seed   = tmrand.NewRand()
 		jitter = seed.Int63n(r.ensurePeersPeriod.Nanoseconds())
 	)
 
@@ -545,8 +544,8 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 
 	// exponential backoff if it's not our first attempt to dial given address
 	if attempts > 0 {
-		jitterSeconds := time.Duration(tmrand.Float64() * float64(time.Second)) // 1s == (1e9 ns)
-		backoffDuration := jitterSeconds + ((1 << uint(attempts)) * time.Second)
+		jitter := time.Duration(tmrand.Float64() * float64(time.Second)) // 1s == (1e9 ns)
+		backoffDuration := jitter + ((1 << uint(attempts)) * time.Second)
 		backoffDuration = r.maxBackoffDurationForPeer(addr, backoffDuration)
 		sinceLastDialed := time.Since(lastDialed)
 		if sinceLastDialed < backoffDuration {
@@ -568,7 +567,7 @@ func (r *Reactor) dialPeer(addr *p2p.NetAddress) error {
 		default:
 			r.attemptsToDial.Store(addr.DialString(), _attemptsToDial{attempts + 1, time.Now()})
 		}
-		return errors.Wrapf(err, "dialing failed (attempts: %d)", attempts+1)
+		return fmt.Errorf("dialing failed (attempts: %d): %w", attempts+1, err)
 	}
 
 	// cleanup any history
@@ -603,7 +602,7 @@ func (r *Reactor) checkSeeds() (numOnline int, netAddrs []*p2p.NetAddress, err e
 		case p2p.ErrNetAddressLookup:
 			r.Logger.Error("Connecting to seed failed", "err", e)
 		default:
-			return 0, nil, errors.Wrap(e, "seed node configuration has error")
+			return 0, nil, fmt.Errorf("seed node configuration has error: %w", e)
 		}
 	}
 	return numOnline, netAddrs, nil
@@ -771,9 +770,6 @@ func RegisterMessages(cdc *amino.Codec) {
 }
 
 func decodeMsg(bz []byte) (msg Message, err error) {
-	if len(bz) > maxMsgSize {
-		return msg, fmt.Errorf("msg exceeds max size (%d > %d)", len(bz), maxMsgSize)
-	}
 	err = cdc.UnmarshalBinaryBare(bz, &msg)
 	return
 }

@@ -9,10 +9,9 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/kv"
-	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/lazyledger/lazyledger/abci/types"
+	"github.com/lazyledger/lazyledger/libs/pubsub/query"
+	"github.com/lazyledger/lazyledger/types"
 )
 
 func BenchmarkTxSearch(b *testing.B) {
@@ -33,7 +32,7 @@ func BenchmarkTxSearch(b *testing.B) {
 		events := []abci.Event{
 			{
 				Type: "transfer",
-				Attributes: []kv.Pair{
+				Attributes: []abci.EventAttribute{
 					{Key: []byte("address"), Value: []byte(fmt.Sprintf("address_%d", i%100))},
 					{Key: []byte("amount"), Value: []byte("50")},
 				},

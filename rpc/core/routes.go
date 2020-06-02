@@ -1,7 +1,7 @@
 package core
 
 import (
-	rpc "github.com/lazyledger/lazyledger-core/rpc/lib/server"
+	rpc "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server"
 )
 
 // TODO: better system than "unsafe" prefix

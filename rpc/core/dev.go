@@ -5,12 +5,12 @@ import (
 	"runtime/pprof"
 
 	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/lib/types"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 )
 
 // UnsafeFlushMempool removes all transactions from the mempool.
 func UnsafeFlushMempool(ctx *rpctypes.Context) (*ctypes.ResultUnsafeFlushMempool, error) {
-	mempool.Flush()
+	env.Mempool.Flush()
 	return &ctypes.ResultUnsafeFlushMempool{}, nil
 }
 
