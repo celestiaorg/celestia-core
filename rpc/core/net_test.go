@@ -9,7 +9,7 @@ import (
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/p2p"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/lib/types"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 )
 
 func TestUnsafeDialSeeds(t *testing.T) {
@@ -19,8 +19,8 @@ func TestUnsafeDialSeeds(t *testing.T) {
 	require.NoError(t, err)
 	defer sw.Stop()
 
-	logger = log.TestingLogger()
-	p2pPeers = sw
+	env.Logger = log.TestingLogger()
+	env.P2PPeers = sw
 
 	testCases := []struct {
 		seeds []string
@@ -49,8 +49,8 @@ func TestUnsafeDialPeers(t *testing.T) {
 	require.NoError(t, err)
 	defer sw.Stop()
 
-	logger = log.TestingLogger()
-	p2pPeers = sw
+	env.Logger = log.TestingLogger()
+	env.P2PPeers = sw
 
 	testCases := []struct {
 		peers []string

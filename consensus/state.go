@@ -2,13 +2,12 @@ package consensus
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"reflect"
 	"runtime/debug"
 	"sync"
 	"time"
-
-	"github.com/pkg/errors"
 
 	"github.com/lazyledger/lazyledger-core/libs/fail"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -66,6 +65,7 @@ type txNotifier interface {
 // interface to the evidence pool
 type evidencePool interface {
 	AddEvidence(types.Evidence) error
+	AddPOLC(types.ProofOfLockChange) error
 }
 
 // State handles execution of the consensus algorithm.
@@ -205,7 +205,7 @@ func StateMetrics(metrics *Metrics) StateOption {
 // String returns a string.
 func (cs *State) String() string {
 	// better not to access shared variables
-	return fmt.Sprintf("ConsensusState") //(H:%v R:%v S:%v", cs.Height, cs.Round, cs.Step)
+	return "ConsensusState"
 }
 
 // GetState returns a copy of the chain state.
@@ -734,11 +734,9 @@ func (cs *State) handleMsg(mi msgInfo) {
 		return
 	}
 
-	if err != nil { // nolint:staticcheck
-		// Causes TestReactorValidatorSetChanges to timeout
-		// https://github.com/tendermint/tendermint/issues/3406
-		// cs.Logger.Error("Error with msg", "height", cs.Height, "round", cs.Round,
-		// 	"peer", peerID, "err", err, "msg", msg)
+	if err != nil {
+		cs.Logger.Error("Error with msg", "height", cs.Height, "round", cs.Round,
+			"peer", peerID, "err", err, "msg", msg)
 	}
 }
 
@@ -1092,7 +1090,7 @@ func (cs *State) defaultDoPrevote(height int64, round int) {
 
 	// If a block is locked, prevote that.
 	if cs.LockedBlock != nil {
-		logger.Info("enterPrevote: Block was locked")
+		logger.Info("enterPrevote: Already locked on a block, prevoting locked block")
 		cs.signAddVote(types.PrevoteType, cs.LockedBlock.Hash(), cs.LockedBlockParts.Header())
 		return
 	}
@@ -1244,7 +1242,7 @@ func (cs *State) enterPrecommit(height int64, round int) {
 	// There was a polka in this round for a block we don't have.
 	// Fetch that block, unlock, and precommit nil.
 	// The +2/3 prevotes for this round is the POL for our unlock.
-	// TODO: In the future save the POL prevotes for justification.
+	logger.Info("enterPrecommit: +2/3 prevotes for a block we don't have. Voting nil", "blockID", blockID)
 	cs.LockedRound = -1
 	cs.LockedBlock = nil
 	cs.LockedBlockParts = nil
@@ -1254,6 +1252,29 @@ func (cs *State) enterPrecommit(height int64, round int) {
 	}
 	cs.eventBus.PublishEventUnlock(cs.RoundStateEvent())
 	cs.signAddVote(types.PrecommitType, nil, types.PartSetHeader{})
+}
+
+func (cs *State) savePOLC(round int, blockID types.BlockID) {
+	// polc must be for rounds greater than 0
+	if round == 0 {
+		return
+	}
+	pubKey, err := cs.privValidator.GetPubKey()
+	if err != nil {
+		cs.Logger.Error("Error on retrieval of pubkey", "err", err)
+		return
+	}
+	polc, err := types.MakePOLCFromVoteSet(cs.Votes.Prevotes(round), pubKey, blockID)
+	if err != nil {
+		cs.Logger.Error("Error on forming POLC", "err", err)
+		return
+	}
+	err = cs.evpool.AddPOLC(polc)
+	if err != nil {
+		cs.Logger.Error("Error on saving POLC", "err", err)
+		return
+	}
+	cs.Logger.Info("Saved POLC to evidence pool", "round", round, "height", polc.Height())
 }
 
 // Enter: any +2/3 precommits for next round.
@@ -1281,7 +1302,6 @@ func (cs *State) enterPrecommitWait(height int64, round int) {
 
 	// Wait for some more precommits; enterNewRound
 	cs.scheduleTimeout(cs.config.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
-
 }
 
 // Enter: +2/3 precommits for block
@@ -1393,16 +1413,16 @@ func (cs *State) finalizeCommit(height int64) {
 	block, blockParts := cs.ProposalBlock, cs.ProposalBlockParts
 
 	if !ok {
-		panic(fmt.Sprintf("Cannot finalizeCommit, commit does not have two thirds majority"))
+		panic("Cannot finalizeCommit, commit does not have two thirds majority")
 	}
 	if !blockParts.HasHeader(blockID.PartsHeader) {
-		panic(fmt.Sprintf("Expected ProposalBlockParts header to be commit header"))
+		panic("Expected ProposalBlockParts header to be commit header")
 	}
 	if !block.HashesTo(blockID.Hash) {
-		panic(fmt.Sprintf("Cannot finalizeCommit, ProposalBlock does not hash to commit hash"))
+		panic("Cannot finalizeCommit, ProposalBlock does not hash to commit hash")
 	}
 	if err := cs.blockExec.ValidateBlock(cs.state, block); err != nil {
-		panic(fmt.Sprintf("+2/3 committed an invalid block: %v", err))
+		panic(fmt.Errorf("+2/3 committed an invalid block: %w", err))
 	}
 
 	cs.Logger.Info("Finalizing commit of block with N txs",
@@ -1532,10 +1552,21 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 		var (
 			commitSize = block.LastCommit.Size()
 			valSetLen  = len(cs.LastValidators.Validators)
+			address    types.Address
 		)
 		if commitSize != valSetLen {
 			panic(fmt.Sprintf("commit size (%d) doesn't match valset length (%d) at height %d\n\n%v\n\n%v",
 				commitSize, valSetLen, block.Height, block.LastCommit.Signatures, cs.LastValidators.Validators))
+		}
+
+		if cs.privValidator != nil {
+			pubkey, err := cs.privValidator.GetPubKey()
+			if err != nil {
+				// Metrics won't be updated, but it's not critical.
+				cs.Logger.Error("Error on retrieval of pubkey", "err", err)
+			} else {
+				address = pubkey.Address()
+			}
 		}
 
 		for i, val := range cs.LastValidators.Validators {
@@ -1545,26 +1576,18 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 				missingValidatorsPower += val.VotingPower
 			}
 
-			if cs.privValidator != nil {
-				pubKey, err := cs.privValidator.GetPubKey()
-				if err != nil {
-					// Metrics won't be updated, but it's not critical.
-					cs.Logger.Error("Error on retrival of pubkey", "err", err)
-					continue
+			if bytes.Equal(val.Address, address) {
+				label := []string{
+					"validator_address", val.Address.String(),
 				}
-
-				if bytes.Equal(val.Address, pubKey.Address()) {
-					label := []string{
-						"validator_address", val.Address.String(),
-					}
-					cs.metrics.ValidatorPower.With(label...).Set(float64(val.VotingPower))
-					if commitSig.ForBlock() {
-						cs.metrics.ValidatorLastSignedHeight.With(label...).Set(float64(height))
-					} else {
-						cs.metrics.ValidatorMissedBlocks.With(label...).Add(float64(1))
-					}
+				cs.metrics.ValidatorPower.With(label...).Set(float64(val.VotingPower))
+				if commitSig.ForBlock() {
+					cs.metrics.ValidatorLastSignedHeight.With(label...).Set(float64(height))
+				} else {
+					cs.metrics.ValidatorMissedBlocks.With(label...).Add(float64(1))
 				}
 			}
+
 		}
 	}
 	cs.metrics.MissingValidators.Set(float64(missingValidators))
@@ -1715,7 +1738,7 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 		} else if voteErr, ok := err.(*types.ErrVoteConflictingVotes); ok {
 			pubKey, err := cs.privValidator.GetPubKey()
 			if err != nil {
-				return false, errors.Wrap(err, "can't get pubkey")
+				return false, fmt.Errorf("can't get pubkey: %w", err)
 			}
 
 			if bytes.Equal(vote.ValidatorAddress, pubKey.Address()) {
@@ -1831,6 +1854,9 @@ func (cs *State) addVote(
 				cs.LockedRound = -1
 				cs.LockedBlock = nil
 				cs.LockedBlockParts = nil
+				// If this is not the first round and we have already locked onto something then we are
+				// changing the locked block so save POLC prevotes in evidence db in case of future justification
+				cs.savePOLC(vote.Round, blockID)
 				cs.eventBus.PublishEventUnlock(cs.RoundStateEvent())
 			}
 
@@ -1919,7 +1945,7 @@ func (cs *State) signVote(
 
 	pubKey, err := cs.privValidator.GetPubKey()
 	if err != nil {
-		return nil, errors.Wrap(err, "can't get pubkey")
+		return nil, fmt.Errorf("can't get pubkey: %w", err)
 	}
 	addr := pubKey.Address()
 	valIdx, _ := cs.Validators.GetByAddress(addr)
@@ -1943,12 +1969,12 @@ func (cs *State) voteTime() time.Time {
 	minVoteTime := now
 	// TODO: We should remove next line in case we don't vote for v in case cs.ProposalBlock == nil,
 	// even if cs.LockedBlock != nil. See https://docs.tendermint.com/master/spec/.
-	timeIotaMs := time.Duration(cs.state.ConsensusParams.Block.TimeIotaMs) * time.Millisecond
+	timeIota := time.Duration(cs.state.ConsensusParams.Block.TimeIotaMs) * time.Millisecond
 	if cs.LockedBlock != nil {
 		// See the BFT time spec https://docs.tendermint.com/master/spec/consensus/bft-time.html
-		minVoteTime = cs.LockedBlock.Time.Add(timeIotaMs)
+		minVoteTime = cs.LockedBlock.Time.Add(timeIota)
 	} else if cs.ProposalBlock != nil {
-		minVoteTime = cs.ProposalBlock.Time.Add(timeIotaMs)
+		minVoteTime = cs.ProposalBlock.Time.Add(timeIota)
 	}
 
 	if now.After(minVoteTime) {

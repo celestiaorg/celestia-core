@@ -75,7 +75,7 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 	// TODO: is this still true with new pubsub?
 	for i := 0; i < n; i++ {
 		s := reactors[i].conS.GetState()
-		reactors[i].SwitchToConsensus(s, 0)
+		reactors[i].SwitchToConsensus(s, false)
 	}
 	return reactors, blocksSubs, eventBuses
 }
@@ -204,12 +204,12 @@ type mockEvidencePool struct {
 
 func newMockEvidencePool(val []byte) *mockEvidencePool {
 	return &mockEvidencePool{
-		ev: []types.Evidence{types.NewMockEvidence(1, time.Now().UTC(), 1, val)},
+		ev: []types.Evidence{types.NewMockEvidence(1, time.Now().UTC(), val)},
 	}
 }
 
 // NOTE: maxBytes is ignored
-func (m *mockEvidencePool) PendingEvidence(maxBytes int64) []types.Evidence {
+func (m *mockEvidencePool) PendingEvidence(maxBytes uint32) []types.Evidence {
 	if m.height > 0 {
 		return m.ev
 	}
@@ -225,6 +225,17 @@ func (m *mockEvidencePool) Update(block *types.Block, state sm.State) {
 	m.height++
 }
 func (m *mockEvidencePool) IsCommitted(types.Evidence) bool { return false }
+func (m *mockEvidencePool) IsPending(evidence types.Evidence) bool {
+	if m.height > 0 {
+		for _, e := range m.ev {
+			if e.Equal(evidence) {
+				return true
+			}
+		}
+	}
+	return false
+}
+func (m *mockEvidencePool) AddPOLC(types.ProofOfLockChange) error { return nil }
 
 //------------------------------------
 
@@ -762,7 +773,7 @@ func TestProposalPOLMessageValidateBasic(t *testing.T) {
 		{func(msg *ProposalPOLMessage) { msg.ProposalPOLRound = -1 }, "negative ProposalPOLRound"},
 		{func(msg *ProposalPOLMessage) { msg.ProposalPOL = bits.NewBitArray(0) }, "empty ProposalPOL bit array"},
 		{func(msg *ProposalPOLMessage) { msg.ProposalPOL = bits.NewBitArray(types.MaxVotesCount + 1) },
-			"ProposalPOL bit array is too big: 10001, max: 10000"},
+			"proposalPOL bit array is too big: 10001, max: 10000"},
 	}
 
 	for i, tc := range testCases {

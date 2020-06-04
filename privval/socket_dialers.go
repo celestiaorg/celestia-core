@@ -1,10 +1,9 @@
 package privval
 
 import (
+	"errors"
 	"net"
 	"time"
-
-	"github.com/pkg/errors"
 
 	"github.com/lazyledger/lazyledger-core/crypto"
 	tmnet "github.com/lazyledger/lazyledger-core/libs/net"

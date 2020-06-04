@@ -11,7 +11,7 @@ import (
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/lib/types"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
 )
@@ -79,9 +79,10 @@ func TestBlockResults(t *testing.T) {
 		BeginBlock: &abci.ResponseBeginBlock{},
 	}
 
-	stateDB = dbm.NewMemDB()
-	sm.SaveABCIResponses(stateDB, 100, results)
-	blockStore = mockBlockStore{height: 100}
+	env = &Environment{}
+	env.StateDB = dbm.NewMemDB()
+	sm.SaveABCIResponses(env.StateDB, 100, results)
+	env.BlockStore = mockBlockStore{height: 100}
 
 	testCases := []struct {
 		height  int64

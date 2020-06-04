@@ -22,7 +22,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/rpc/client"
 	"github.com/lazyledger/lazyledger-core/rpc/core"
 	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/lib/types"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -148,6 +148,10 @@ func (c Client) Genesis() (*ctypes.ResultGenesis, error) {
 
 func (c Client) Block(height *int64) (*ctypes.ResultBlock, error) {
 	return core.Block(&rpctypes.Context{}, height)
+}
+
+func (c Client) BlockByHash(hash []byte) (*ctypes.ResultBlock, error) {
+	return core.BlockByHash(&rpctypes.Context{}, hash)
 }
 
 func (c Client) Commit(height *int64) (*ctypes.ResultCommit, error) {

@@ -19,7 +19,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/proxy"
 	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
 	core_grpc "github.com/lazyledger/lazyledger-core/rpc/grpc"
-	rpcclient "github.com/lazyledger/lazyledger-core/rpc/lib/client"
+	rpcclient "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/client"
 )
 
 // Options helps with specifying some parameters for our RPC testing for greater
@@ -37,7 +37,7 @@ var defaultOptions = Options{
 
 func waitForRPC() {
 	laddr := GetConfig().RPC.ListenAddress
-	client, err := rpcclient.NewJSONRPCClient(laddr)
+	client, err := rpcclient.New(laddr)
 	if err != nil {
 		panic(err)
 	}

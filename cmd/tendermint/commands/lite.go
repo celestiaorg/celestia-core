@@ -1,12 +1,12 @@
 package commands
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
 	"github.com/tendermint/go-amino"
@@ -19,7 +19,7 @@ import (
 	lrpc "github.com/lazyledger/lazyledger-core/lite2/rpc"
 	dbs "github.com/lazyledger/lazyledger-core/lite2/store/db"
 	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
-	rpcserver "github.com/lazyledger/lazyledger-core/rpc/lib/server"
+	rpcserver "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server"
 )
 
 // LiteCmd represents the base command when called without any subcommands
@@ -36,16 +36,16 @@ Example:
 
 start a fresh instance:
 
-lite cosmoshub-3 -p 52.57.29.196:26657 -w public-seed-node.cosmoshub.certus.one:26657
+lite cosmoshub-3 -p http://52.57.29.196:26657 -w http://public-seed-node.cosmoshub.certus.one:26657
 	--height 962118 --hash 28B97BE9F6DE51AC69F70E0B7BFD7E5C9CD1A595B7DC31AFF27C50D4948020CD
 
 continue from latest state:
 
-lite cosmoshub-3 -p 52.57.29.196:26657 -w public-seed-node.cosmoshub.certus.one:26657
+lite cosmoshub-3 -p http://52.57.29.196:26657 -w http://public-seed-node.cosmoshub.certus.one:26657
 `,
 	RunE: runProxy,
 	Args: cobra.ExactArgs(1),
-	Example: `lite cosmoshub-3 -p 52.57.29.196:26657 -w public-seed-node.cosmoshub.certus.one:26657
+	Example: `lite cosmoshub-3 -p http://52.57.29.196:26657 -w http://public-seed-node.cosmoshub.certus.one:26657
 	--height 962118 --hash 28B97BE9F6DE51AC69F70E0B7BFD7E5C9CD1A595B7DC31AFF27C50D4948020CD`,
 }
 
@@ -102,7 +102,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 
 	db, err := dbm.NewGoLevelDB("lite-client-db", home)
 	if err != nil {
-		return errors.Wrap(err, "new goleveldb")
+		return fmt.Errorf("can't create a db: %w", err)
 	}
 
 	var c *lite.Client
@@ -135,7 +135,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 
 	rpcClient, err := rpchttp.New(primaryAddr, "/websocket")
 	if err != nil {
-		return errors.Wrapf(err, "http client for %s", primaryAddr)
+		return fmt.Errorf("http client for %s: %w", primaryAddr, err)
 	}
 	p := lproxy.Proxy{
 		Addr:   listenAddr,

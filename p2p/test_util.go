@@ -5,8 +5,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/pkg/errors"
-
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -245,7 +243,7 @@ func testPeerConn(
 	// Encrypt connection
 	conn, err = upgradeSecretConn(conn, cfg.HandshakeTimeout, ourNodePrivKey)
 	if err != nil {
-		return pc, errors.Wrap(err, "Error creating peer")
+		return pc, fmt.Errorf("error creating peer: %w", err)
 	}
 
 	// Only the information we already have
