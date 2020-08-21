@@ -19,6 +19,7 @@ const (
 // All `Sync` methods return the appropriate protobuf ResponseXxx struct and an error.
 // Note these are client errors, eg. ABCI socket connectivity issues.
 // Application-related errors are reflected in response via ABCI error codes and logs.
+//go:generate mockery -case underscore -name Client
 type Client interface {
 	service.Service
 
