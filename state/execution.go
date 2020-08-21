@@ -107,7 +107,12 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// Fetch a limited amount of valid txs
 	maxDataBytes := types.MaxDataBytes(maxBytes, state.Validators.Size(), len(evidence))
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
-	// processedBlockTxs = PreProcess(txs) //TODO: create preprocess func
+	processedBlockTxs, err := blockExec.proxyApp.PreprocessTxs(abci.RequestPreprocessTxs{Txs: txs}) //TODO txs != [][]byte
+	if err != nil {
+		// TODO: what to do??
+	}
+
+	processedBlockTxs.GetTxs()
 
 	return state.MakeBlock(height, txs, commit, evidence, proposerAddr)
 }

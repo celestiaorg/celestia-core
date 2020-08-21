@@ -20,6 +20,8 @@ type AppConnConsensus interface {
 	DeliverTxAsync(types.RequestDeliverTx) *abcicli.ReqRes
 	EndBlockSync(types.RequestEndBlock) (*types.ResponseEndBlock, error)
 	CommitSync() (*types.ResponseCommit, error)
+
+	PreprocessTxs(types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error)
 }
 
 type AppConnMempool interface {
@@ -28,8 +30,6 @@ type AppConnMempool interface {
 
 	CheckTxAsync(types.RequestCheckTx) *abcicli.ReqRes
 	CheckTxSync(types.RequestCheckTx) (*types.ResponseCheckTx, error)
-	PreprocessTxsSync(types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error)
-	PreprocessTxsAsync(types.RequestPreprocessTxs) *abcicli.ReqRes
 
 	FlushAsync() *abcicli.ReqRes
 	FlushSync() error
@@ -95,6 +95,10 @@ func (app *appConnConsensus) CommitSync() (*types.ResponseCommit, error) {
 	return app.appConn.CommitSync()
 }
 
+func (app *appConnConsensus) PreprocessTxs(req types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error) {
+	return app.appConn.PreprocessTxsSync(req)
+}
+
 //------------------------------------------------
 // Implements AppConnMempool (subset of abcicli.Client)
 
@@ -130,14 +134,6 @@ func (app *appConnMempool) CheckTxAsync(req types.RequestCheckTx) *abcicli.ReqRe
 
 func (app *appConnMempool) CheckTxSync(req types.RequestCheckTx) (*types.ResponseCheckTx, error) {
 	return app.appConn.CheckTxSync(req)
-}
-
-func (app *appConnMempool) PreprocessTxsAsync(req types.RequestPreprocessTxs) *abcicli.ReqRes {
-	return app.appConn.PreprocessTxsAsync(req)
-}
-
-func (app *appConnMempool) PreprocessTxsSync(req types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error) {
-	return app.appConn.PreprocessTxsSync(req)
 }
 
 //------------------------------------------------
