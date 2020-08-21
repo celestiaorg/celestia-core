@@ -171,6 +171,7 @@ func (app *PersistentKVStoreApplication) ApplySnapshotChunk(
 	return types.ResponseApplySnapshotChunk{Result: types.ResponseApplySnapshotChunk_ABORT}
 }
 
+// TODO: add some funcality to test this
 func (app *PersistentKVStoreApplication) PreprocessTxs(
 	req types.RequestPreprocessTxs) types.ResponsePreprocessTxs {
 	return types.ResponsePreprocessTxs{}

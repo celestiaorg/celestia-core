@@ -107,14 +107,26 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// Fetch a limited amount of valid txs
 	maxDataBytes := types.MaxDataBytes(maxBytes, state.Validators.Size(), len(evidence))
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
-	processedBlockTxs, err := blockExec.proxyApp.PreprocessTxs(abci.RequestPreprocessTxs{Txs: txs}) //TODO txs != [][]byte
-	if err != nil {
-		// TODO: what to do??
+	l := len(txs)
+	bzs := make([][]byte, l)
+	for i := 0; i < l; i++ {
+		bzs[i] = txs[i]
 	}
 
-	processedBlockTxs.GetTxs()
+	processedBlockTxs, err := blockExec.proxyApp.PreprocessTxsSync(abci.RequestPreprocessTxs{Txs: bzs})
+	if err != nil {
+		panic(err) // TODO: what to do??
+	}
 
-	return state.MakeBlock(height, txs, commit, evidence, proposerAddr)
+	ppt := processedBlockTxs.GetTxs()
+
+	lp := len(ppt)
+	processedTxs := make(types.Txs, lp)
+	for i := 0; i < l; i++ {
+		processedTxs[i] = ppt[i]
+	}
+
+	return state.MakeBlock(height, processedTxs, commit, evidence, proposerAddr)
 }
 
 // ValidateBlock validates the given block against the given state.
