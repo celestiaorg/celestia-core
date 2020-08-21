@@ -201,6 +201,17 @@ func (app *localClient) ApplySnapshotChunkAsync(req types.RequestApplySnapshotCh
 	)
 }
 
+func (app *localClient) PreprocessTxsAsync(req types.RequestPreprocessTxs) *ReqRes {
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+
+	res := app.Application.PreprocessTxs(req)
+	return app.callback(
+		types.ToRequestPreprocessTxs(req),
+		types.ToResponsePreprocessTx(res),
+	)
+}
+
 //-------------------------------------------------------
 
 func (app *localClient) FlushSync() error {
@@ -314,6 +325,15 @@ func (app *localClient) ApplySnapshotChunkSync(
 	defer app.mtx.Unlock()
 
 	res := app.Application.ApplySnapshotChunk(req)
+	return &res, nil
+}
+
+func (app *localClient) PreprocessTxsSync(
+	req types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error) {
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+
+	res := app.Application.PreprocessTxs(req)
 	return &res, nil
 }
 

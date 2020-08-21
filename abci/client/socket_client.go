@@ -282,6 +282,10 @@ func (cli *socketClient) ApplySnapshotChunkAsync(req types.RequestApplySnapshotC
 	return cli.queueRequest(types.ToRequestApplySnapshotChunk(req))
 }
 
+func (cli *socketClient) PreprocessTxsAsync(req types.RequestPreprocessTxs) *ReqRes {
+	return cli.queueRequest(types.ToRequestPreprocessTxs(req))
+}
+
 //----------------------------------------
 
 func (cli *socketClient) FlushSync() error {
@@ -416,6 +420,13 @@ func (cli *socketClient) ApplySnapshotChunkSync(
 	reqres := cli.queueRequest(types.ToRequestApplySnapshotChunk(req))
 	cli.FlushSync()
 	return reqres.Response.GetApplySnapshotChunk(), cli.Error()
+}
+
+func (cli *socketClient) PreprocessTxsSync(
+	req types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error) {
+	reqres := cli.queueRequest(types.ToRequestPreprocessTxs(req))
+	cli.FlushSync()
+	return reqres.Response.GetPreprocessTxs(), cli.Error()
 }
 
 //----------------------------------------

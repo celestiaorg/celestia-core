@@ -15,7 +15,8 @@ type Application interface {
 	Query(RequestQuery) ResponseQuery             // Query for state
 
 	// Mempool Connection
-	CheckTx(RequestCheckTx) ResponseCheckTx // Validate a tx for the mempool
+	CheckTx(RequestCheckTx) ResponseCheckTx                   // Validate a tx for the mempool
+	PreprocessTxs(RequestPreprocessTxs) ResponsePreprocessTxs // State machine preprocessing of txs
 
 	// Consensus Connection
 	InitChain(RequestInitChain) ResponseInitChain    // Initialize blockchain w validators/other info from TendermintCore
@@ -31,7 +32,6 @@ type Application interface {
 	ApplySnapshotChunk(RequestApplySnapshotChunk) ResponseApplySnapshotChunk // Apply a shapshot chunk
 
 	// PreProcess Txs
-	PreprocessTxs(RequestPreprocessTxs) ResponsePreprocessTxs // State machine preprocessing of txs
 }
 
 //-------------------------------------------------------
