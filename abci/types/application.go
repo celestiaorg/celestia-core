@@ -29,6 +29,9 @@ type Application interface {
 	OfferSnapshot(RequestOfferSnapshot) ResponseOfferSnapshot                // Offer a snapshot to the application
 	LoadSnapshotChunk(RequestLoadSnapshotChunk) ResponseLoadSnapshotChunk    // Load a snapshot chunk
 	ApplySnapshotChunk(RequestApplySnapshotChunk) ResponseApplySnapshotChunk // Apply a shapshot chunk
+
+	// PreProcess Txs
+	PreprocessTxs(RequestPreprocessTxs) ResponsePreprocessTxs // State machine preprocessing of txs
 }
 
 //-------------------------------------------------------
@@ -93,6 +96,10 @@ func (BaseApplication) LoadSnapshotChunk(req RequestLoadSnapshotChunk) ResponseL
 
 func (BaseApplication) ApplySnapshotChunk(req RequestApplySnapshotChunk) ResponseApplySnapshotChunk {
 	return ResponseApplySnapshotChunk{}
+}
+
+func (BaseApplication) PreprocessTxs(req RequestPreprocessTxs) ResponsePreprocessTxs {
+	return ResponsePreprocessTxs{}
 }
 
 //-------------------------------------------------------
@@ -180,5 +187,11 @@ func (app *GRPCApplication) LoadSnapshotChunk(
 func (app *GRPCApplication) ApplySnapshotChunk(
 	ctx context.Context, req *RequestApplySnapshotChunk) (*ResponseApplySnapshotChunk, error) {
 	res := app.app.ApplySnapshotChunk(*req)
+	return &res, nil
+}
+
+func (app *GRPCApplication) PreprocessTxs(
+	ctx context.Context, req *RequestPreprocessTxs) (*ResponsePreprocessTxs, error) {
+	res := app.app.PreprocessTxs(*req)
 	return &res, nil
 }

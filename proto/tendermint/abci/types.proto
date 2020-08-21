@@ -36,6 +36,7 @@ message Request {
     RequestOfferSnapshot      offer_snapshot       = 13;
     RequestLoadSnapshotChunk  load_snapshot_chunk  = 14;
     RequestApplySnapshotChunk apply_snapshot_chunk = 15;
+    RequestPreprocessTxs      preprocess_txs       = 17;
   }
 }
 
@@ -125,6 +126,10 @@ message RequestApplySnapshotChunk {
   string sender = 3;
 }
 
+message RequestPreprocessTxs {
+  repeated bytes txs = 1;
+}
+
 //----------------------------------------
 // Response types
 
@@ -146,6 +151,7 @@ message Response {
     ResponseOfferSnapshot      offer_snapshot       = 14;
     ResponseLoadSnapshotChunk  load_snapshot_chunk  = 15;
     ResponseApplySnapshotChunk apply_snapshot_chunk = 16;
+    ResponsePreprocessTxs      preprocess_txs       = 17;
   }
 }
 
@@ -276,6 +282,10 @@ message ResponseApplySnapshotChunk {
   }
 }
 
+message ResponsePreprocessTxs {
+  repeated bytes txs = 1;
+}
+
 //----------------------------------------
 // Misc.
 
@@ -334,9 +344,9 @@ message TxResult {
 
 // Validator
 message Validator {
-  bytes address = 1; // The first 20 bytes of SHA256(public key)
+  bytes address = 1;  // The first 20 bytes of SHA256(public key)
   // PubKey pub_key = 2 [(gogoproto.nullable)=false];
-  int64 power = 3; // The voting power
+  int64 power = 3;  // The voting power
 }
 
 // ValidatorUpdate
@@ -352,13 +362,13 @@ message VoteInfo {
 }
 
 message Evidence {
-  string                    type      = 1;
+  string type = 1;
   // The offending validator
-  Validator                 validator = 2 [(gogoproto.nullable) = false];
-  // The height when the offense occurred 
-  int64                     height    = 3;
+  Validator validator = 2 [(gogoproto.nullable) = false];
+  // The height when the offense occurred
+  int64 height = 3;
   // The corresponding time where the offense occurred
-  google.protobuf.Timestamp time      = 4 [
+  google.protobuf.Timestamp time = 4 [
     (gogoproto.nullable) = false,
     (gogoproto.stdtime)  = true
   ];
