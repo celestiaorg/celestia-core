@@ -5,7 +5,7 @@ go 1.14
 require (
 	github.com/ChainSafe/go-schnorrkel v0.0.0-20200405005733-88cbf1b4c40d
 	github.com/Workiva/go-datastructures v1.0.52
-	github.com/btcsuite/btcd v0.20.1-beta
+	github.com/btcsuite/btcd v0.21.0-beta
 	github.com/btcsuite/btcutil v1.0.2
 	github.com/fortytw2/leaktest v1.3.0
 	github.com/go-kit/kit v0.10.0
@@ -27,7 +27,7 @@ require (
 	github.com/stretchr/testify v1.6.0
 	github.com/tendermint/go-amino v0.14.1
 	github.com/tendermint/tm-db v0.5.1
-	golang.org/x/crypto v0.0.0-20200406173513-056763e48d71
+	golang.org/x/crypto v0.0.0-20200510223506-06a226fb4e37
 	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e
 	google.golang.org/grpc v1.29.1
 )
