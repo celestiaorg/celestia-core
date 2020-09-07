@@ -12,7 +12,7 @@ import (
 	tmconn "github.com/lazyledger/lazyledger-core/p2p/conn"
 )
 
-//go:generate mockery -case underscore -name Peer
+//go:generate mockery --case underscore --name Peer
 
 const metricsTickerDuration = 10 * time.Second
 

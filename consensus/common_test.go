@@ -25,7 +25,6 @@ import (
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
-	"github.com/lazyledger/lazyledger-core/evidence"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
@@ -399,7 +398,10 @@ func newStateWithConfigAndBlockStore(
 
 	eventBus := types.NewEventBus()
 	eventBus.SetLogger(log.TestingLogger().With("module", "events"))
-	eventBus.Start()
+	err := eventBus.Start()
+	if err != nil {
+		panic(err)
+	}
 	cs.SetEventBus(eventBus)
 	return cs
 }
@@ -428,47 +430,6 @@ func randState(nValidators int) (*State, []*validatorStub) {
 	incrementHeight(vss[1:]...)
 
 	return cs, vss
-}
-
-func randStateWithEvpool(nValidators int) (*State, []*validatorStub, *evidence.Pool) {
-	state, privVals := randGenesisState(nValidators, false, 10)
-
-	vss := make([]*validatorStub, nValidators)
-
-	app := counter.NewApplication(true)
-	config := cfg.ResetTestRoot("consensus_state_test")
-
-	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	evidenceDB := dbm.NewMemDB()
-
-	mtx := new(tmsync.Mutex)
-	proxyAppConnMem := abcicli.NewLocalClient(mtx, app)
-	proxyAppConnCon := abcicli.NewLocalClient(mtx, app)
-
-	mempool := mempl.NewCListMempool(config.Mempool, proxyAppConnMem, 0)
-	mempool.SetLogger(log.TestingLogger().With("module", "mempool"))
-	if config.Consensus.WaitForTxs() {
-		mempool.EnableTxsAvailable()
-	}
-	stateDB := dbm.NewMemDB()
-	evpool, _ := evidence.NewPool(stateDB, evidenceDB, blockStore)
-	blockExec := sm.NewBlockExecutor(stateDB, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-	cs := NewState(config.Consensus, state, blockExec, blockStore, mempool, evpool)
-	cs.SetLogger(log.TestingLogger().With("module", "consensus"))
-	cs.SetPrivValidator(privVals[0])
-
-	eventBus := types.NewEventBus()
-	eventBus.SetLogger(log.TestingLogger().With("module", "events"))
-	eventBus.Start()
-	cs.SetEventBus(eventBus)
-
-	for i := 0; i < nValidators; i++ {
-		vss[i] = newValidatorStub(privVals[i], int32(i))
-	}
-	// since cs1 starts at 1
-	incrementHeight(vss[1:]...)
-
-	return cs, vss, evpool
 }
 
 //-------------------------------------------------------------------------------
@@ -821,9 +782,10 @@ func randGenesisDoc(numValidators int, randPower bool, minPower int64) (*types.G
 	sort.Sort(types.PrivValidatorsByAddress(privValidators))
 
 	return &types.GenesisDoc{
-		GenesisTime: tmtime.Now(),
-		ChainID:     config.ChainID(),
-		Validators:  validators,
+		GenesisTime:   tmtime.Now(),
+		InitialHeight: 1,
+		ChainID:       config.ChainID(),
+		Validators:    validators,
 	}, privValidators
 }
 

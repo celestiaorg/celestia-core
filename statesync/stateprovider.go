@@ -20,7 +20,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
-//go:generate mockery -case underscore -name StateProvider
+//go:generate mockery --case underscore --name StateProvider
 
 // StateProvider is a provider of trusted state data for bootstrapping a node. This refers
 // to the state.State object, not the state machine.
@@ -35,16 +35,18 @@ type StateProvider interface {
 
 // lightClientStateProvider is a state provider using the light client.
 type lightClientStateProvider struct {
-	tmsync.Mutex // light.Client is not concurrency-safe
-	lc           *light.Client
-	version      tmstate.Version
-	providers    map[lightprovider.Provider]string
+	tmsync.Mutex  // light.Client is not concurrency-safe
+	lc            *light.Client
+	version       tmstate.Version
+	initialHeight int64
+	providers     map[lightprovider.Provider]string
 }
 
 // NewLightClientStateProvider creates a new StateProvider using a light client and RPC clients.
 func NewLightClientStateProvider(
 	chainID string,
 	version tmstate.Version,
+	initialHeight int64,
 	servers []string,
 	trustOptions light.TrustOptions,
 	logger log.Logger,
@@ -73,9 +75,10 @@ func NewLightClientStateProvider(
 		return nil, err
 	}
 	return &lightClientStateProvider{
-		lc:        lc,
-		version:   version,
-		providers: providerRemotes,
+		lc:            lc,
+		version:       version,
+		initialHeight: initialHeight,
+		providers:     providerRemotes,
 	}, nil
 }
 
@@ -85,7 +88,7 @@ func (s *lightClientStateProvider) AppHash(height uint64) ([]byte, error) {
 	defer s.Unlock()
 
 	// We have to fetch the next height, which contains the app hash for the previous height.
-	header, err := s.lc.VerifyHeaderAtHeight(int64(height+1), time.Now())
+	header, err := s.lc.VerifyLightBlockAtHeight(int64(height+1), time.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +99,7 @@ func (s *lightClientStateProvider) AppHash(height uint64) ([]byte, error) {
 func (s *lightClientStateProvider) Commit(height uint64) (*types.Commit, error) {
 	s.Lock()
 	defer s.Unlock()
-	header, err := s.lc.VerifyHeaderAtHeight(int64(height), time.Now())
+	header, err := s.lc.VerifyLightBlockAtHeight(int64(height), time.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -109,43 +112,44 @@ func (s *lightClientStateProvider) State(height uint64) (sm.State, error) {
 	defer s.Unlock()
 
 	state := sm.State{
-		ChainID: s.lc.ChainID(),
-		Version: s.version,
+		ChainID:       s.lc.ChainID(),
+		Version:       s.version,
+		InitialHeight: s.initialHeight,
+	}
+	if state.InitialHeight == 0 {
+		state.InitialHeight = 1
 	}
 
-	// We need to verify up until h+2, to get the validator set. This also prefetches the headers
-	// for h and h+1 in the typical case where the trusted header is after the snapshot height.
-	_, err := s.lc.VerifyHeaderAtHeight(int64(height+2), time.Now())
+	// The snapshot height maps onto the state heights as follows:
+	//
+	// height: last block, i.e. the snapshotted height
+	// height+1: current block, i.e. the first block we'll process after the snapshot
+	// height+2: next block, i.e. the second block after the snapshot
+	//
+	// We need to fetch the NextValidators from height+2 because if the application changed
+	// the validator set at the snapshot height then this only takes effect at height+2.
+	lastLightBlock, err := s.lc.VerifyLightBlockAtHeight(int64(height), time.Now())
 	if err != nil {
 		return sm.State{}, err
 	}
-	header, err := s.lc.VerifyHeaderAtHeight(int64(height), time.Now())
+	curLightBlock, err := s.lc.VerifyLightBlockAtHeight(int64(height+1), time.Now())
 	if err != nil {
 		return sm.State{}, err
 	}
-	nextHeader, err := s.lc.VerifyHeaderAtHeight(int64(height+1), time.Now())
+	nextLightBlock, err := s.lc.VerifyLightBlockAtHeight(int64(height+2), time.Now())
 	if err != nil {
 		return sm.State{}, err
 	}
-	state.LastBlockHeight = header.Height
-	state.LastBlockTime = header.Time
-	state.LastBlockID = header.Commit.BlockID
-	state.AppHash = nextHeader.AppHash
-	state.LastResultsHash = nextHeader.LastResultsHash
 
-	state.LastValidators, _, err = s.lc.TrustedValidatorSet(int64(height))
-	if err != nil {
-		return sm.State{}, err
-	}
-	state.Validators, _, err = s.lc.TrustedValidatorSet(int64(height + 1))
-	if err != nil {
-		return sm.State{}, err
-	}
-	state.NextValidators, _, err = s.lc.TrustedValidatorSet(int64(height + 2))
-	if err != nil {
-		return sm.State{}, err
-	}
-	state.LastHeightValidatorsChanged = int64(height)
+	state.LastBlockHeight = lastLightBlock.Height
+	state.LastBlockTime = lastLightBlock.Time
+	state.LastBlockID = lastLightBlock.Commit.BlockID
+	state.AppHash = curLightBlock.AppHash
+	state.LastResultsHash = curLightBlock.LastResultsHash
+	state.LastValidators = lastLightBlock.ValidatorSet
+	state.Validators = curLightBlock.ValidatorSet
+	state.NextValidators = nextLightBlock.ValidatorSet
+	state.LastHeightValidatorsChanged = nextLightBlock.Height
 
 	// We'll also need to fetch consensus params via RPC, using light client verification.
 	primaryURL, ok := s.providers[s.lc.Primary()]
@@ -157,10 +161,10 @@ func (s *lightClientStateProvider) State(height uint64) (sm.State, error) {
 		return sm.State{}, fmt.Errorf("unable to create RPC client: %w", err)
 	}
 	rpcclient := lightrpc.NewClient(primaryRPC, s.lc)
-	result, err := rpcclient.ConsensusParams(&nextHeader.Height)
+	result, err := rpcclient.ConsensusParams(&nextLightBlock.Height)
 	if err != nil {
 		return sm.State{}, fmt.Errorf("unable to fetch consensus parameters for height %v: %w",
-			nextHeader.Height, err)
+			nextLightBlock.Height, err)
 	}
 	state.ConsensusParams = result.ConsensusParams
 

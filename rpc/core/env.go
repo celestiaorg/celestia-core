@@ -58,6 +58,8 @@ type transport interface {
 
 type peers interface {
 	AddPersistentPeers([]string) error
+	AddUnconditionalPeerIDs([]string) error
+	AddPrivatePeerIDs([]string) error
 	DialPeersAsync([]string) error
 	Peers() p2p.IPeerSet
 }
@@ -150,7 +152,7 @@ func getHeight(latestHeight int64, heightPtr *int64) (int64, error) {
 		}
 		base := env.BlockStore.Base()
 		if height < base {
-			return 0, fmt.Errorf("height %v is not available, blocks pruned at height %v",
+			return 0, fmt.Errorf("height %v is not available, lowest height is %v",
 				height, base)
 		}
 		return height, nil

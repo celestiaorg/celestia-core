@@ -345,9 +345,6 @@ func (vals *ValidatorSet) findProposer() *Validator {
 // Hash returns the Merkle root hash build using validators (as leaves) in the
 // set.
 func (vals *ValidatorSet) Hash() []byte {
-	if len(vals.Validators) == 0 {
-		return nil
-	}
 	bzs := make([][]byte, len(vals.Validators))
 	for i, val := range vals.Validators {
 		bzs[i] = val.Bytes()
@@ -691,7 +688,7 @@ func (vals *ValidatorSet) VerifyCommit(chainID string, blockID BlockID,
 
 		// Validate signature.
 		voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
-		if !val.PubKey.VerifyBytes(voteSignBytes, commitSig.Signature) {
+		if !val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature) {
 			return fmt.Errorf("wrong signature (#%d): %X", idx, commitSig.Signature)
 		}
 		// Good!
@@ -749,7 +746,7 @@ func (vals *ValidatorSet) VerifyCommitLight(chainID string, blockID BlockID,
 
 		// Validate signature.
 		voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
-		if !val.PubKey.VerifyBytes(voteSignBytes, commitSig.Signature) {
+		if !val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature) {
 			return fmt.Errorf("wrong signature (#%d): %X", idx, commitSig.Signature)
 		}
 
@@ -810,7 +807,7 @@ func (vals *ValidatorSet) VerifyCommitLightTrusting(chainID string, commit *Comm
 
 			// Validate signature.
 			voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
-			if !val.PubKey.VerifyBytes(voteSignBytes, commitSig.Signature) {
+			if !val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature) {
 				return fmt.Errorf("wrong signature (#%d): %X", idx, commitSig.Signature)
 			}
 
@@ -823,6 +820,24 @@ func (vals *ValidatorSet) VerifyCommitLightTrusting(chainID string, commit *Comm
 	}
 
 	return ErrNotEnoughVotingPowerSigned{Got: talliedVotingPower, Needed: votingPowerNeeded}
+}
+
+// findPreviousProposer reverses the compare proposer priority function to find the validator
+// with the lowest proposer priority which would have been the previous proposer.
+//
+// Is used when recreating a validator set from an existing array of validators.
+func (vals *ValidatorSet) findPreviousProposer() *Validator {
+	var previousProposer *Validator
+	for _, val := range vals.Validators {
+		if previousProposer == nil {
+			previousProposer = val
+			continue
+		}
+		if previousProposer == previousProposer.CompareProposerPriority(val) {
+			previousProposer = val
+		}
+	}
+	return previousProposer
 }
 
 //-----------------
@@ -967,6 +982,25 @@ func ValidatorSetFromProto(vp *tmproto.ValidatorSet) (*ValidatorSet, error) {
 	vals.totalVotingPower = vp.GetTotalVotingPower()
 
 	return vals, vals.ValidateBasic()
+}
+
+// ValidatorSetFromExistingValidators takes an existing array of validators and rebuilds
+// the exact same validator set that corresponds to it without changing the proposer priority or power
+// if any of the validators fail validate basic then an empty set is returned.
+func ValidatorSetFromExistingValidators(valz []*Validator) (*ValidatorSet, error) {
+	for _, val := range valz {
+		err := val.ValidateBasic()
+		if err != nil {
+			return nil, fmt.Errorf("can't create validator set: %w", err)
+		}
+	}
+	vals := &ValidatorSet{
+		Validators: valz,
+	}
+	vals.Proposer = vals.findPreviousProposer()
+	vals.updateTotalVotingPower()
+	sort.Sort(ValidatorsByVotingPower(vals.Validators))
+	return vals, nil
 }
 
 //----------------------------------------

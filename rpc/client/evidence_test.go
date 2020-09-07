@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
@@ -19,6 +18,12 @@ import (
 	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
 	"github.com/lazyledger/lazyledger-core/types"
 )
+
+// For some reason the empty node used in tests has a time of
+// 2018-10-10 08:20:13.695936996 +0000 UTC
+// this is because the test genesis time is set here
+// so in order to validate evidence we need evidence to be the same time
+var defaultTestTime = time.Date(2018, 10, 10, 8, 20, 13, 695936996, time.UTC)
 
 func newEvidence(t *testing.T, val *privval.FilePV,
 	vote *types.Vote, vote2 *types.Vote,
@@ -35,7 +40,7 @@ func newEvidence(t *testing.T, val *privval.FilePV,
 	vote2.Signature, err = val.Key.PrivKey.Sign(types.VoteSignBytes(chainID, v2))
 	require.NoError(t, err)
 
-	return types.NewDuplicateVoteEvidence(vote, vote2)
+	return types.NewDuplicateVoteEvidence(vote, vote2, defaultTestTime)
 }
 
 func makeEvidences(
@@ -49,7 +54,7 @@ func makeEvidences(
 		Height:           1,
 		Round:            0,
 		Type:             tmproto.PrevoteType,
-		Timestamp:        time.Now().UTC(),
+		Timestamp:        defaultTestTime,
 		BlockID: types.BlockID{
 			Hash: tmhash.Sum([]byte("blockhash")),
 			PartSetHeader: types.PartSetHeader{
@@ -69,13 +74,6 @@ func makeEvidences(
 	{
 		v := vote2
 		v.ValidatorAddress = []byte("some_address")
-		fakes = append(fakes, newEvidence(t, val, &vote, &v, chainID))
-	}
-
-	// different index
-	{
-		v := vote2
-		v.ValidatorIndex = vote.ValidatorIndex + 1
 		fakes = append(fakes, newEvidence(t, val, &vote, &v, chainID))
 	}
 
@@ -121,6 +119,8 @@ func TestBroadcastEvidence_DuplicateVoteEvidence(t *testing.T) {
 	for i, c := range GetClients() {
 		t.Logf("client %d", i)
 
+		t.Log(correct.Time())
+
 		result, err := c.BroadcastEvidence(correct)
 		require.NoError(t, err, "BroadcastEvidence(%s) failed", correct)
 		assert.Equal(t, correct.Hash(), result.Hash, "expected result hash to match evidence hash")
@@ -144,82 +144,13 @@ func TestBroadcastEvidence_DuplicateVoteEvidence(t *testing.T) {
 		pk, err := cryptoenc.PubKeyFromProto(v.PubKey)
 		require.NoError(t, err)
 
-		require.EqualValues(t, rawpub, pk.Bytes(), "Stored PubKey not equal with expected, value %v", string(qres.Value))
+		require.EqualValues(t, rawpub, pk, "Stored PubKey not equal with expected, value %v", string(qres.Value))
 		require.Equal(t, int64(9), v.Power, "Stored Power not equal with expected, value %v", string(qres.Value))
 
 		for _, fake := range fakes {
 			_, err := c.BroadcastEvidence(fake)
 			require.Error(t, err, "BroadcastEvidence(%s) succeeded, but the evidence was fake", fake)
 		}
-	}
-}
-
-func TestBroadcastEvidence_ConflictingHeadersEvidence(t *testing.T) {
-	var (
-		config  = rpctest.GetConfig()
-		chainID = config.ChainID()
-		pv      = privval.LoadOrGenFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile())
-	)
-
-	for i, c := range GetClients() {
-		t.Logf("client %d", i)
-
-		h1, err := c.Commit(nil)
-		require.NoError(t, err)
-		require.NotNil(t, h1.SignedHeader.Header)
-
-		// Create an alternative header with a different AppHash.
-		h2 := &types.SignedHeader{
-			Header: &types.Header{
-				Version:            h1.Version,
-				ChainID:            h1.ChainID,
-				Height:             h1.Height,
-				Time:               h1.Time,
-				LastBlockID:        h1.LastBlockID,
-				LastCommitHash:     h1.LastCommitHash,
-				DataHash:           h1.DataHash,
-				ValidatorsHash:     h1.ValidatorsHash,
-				NextValidatorsHash: h1.NextValidatorsHash,
-				ConsensusHash:      h1.ConsensusHash,
-				AppHash:            crypto.CRandBytes(32),
-				LastResultsHash:    h1.LastResultsHash,
-				EvidenceHash:       h1.EvidenceHash,
-				ProposerAddress:    h1.ProposerAddress,
-			},
-			Commit: types.NewCommit(h1.Height, 1, h1.Commit.BlockID, h1.Commit.Signatures),
-		}
-		h2.Commit.BlockID = types.BlockID{
-			Hash:          h2.Hash(),
-			PartSetHeader: types.PartSetHeader{Total: 1, Hash: crypto.CRandBytes(32)},
-		}
-		vote := &types.Vote{
-			ValidatorAddress: pv.Key.Address,
-			ValidatorIndex:   0,
-			Height:           h2.Height,
-			Round:            h2.Commit.Round,
-			Timestamp:        h2.Time,
-			Type:             tmproto.PrecommitType,
-			BlockID:          h2.Commit.BlockID,
-		}
-
-		v := vote.ToProto()
-		signBytes, err := pv.Key.PrivKey.Sign(types.VoteSignBytes(chainID, v))
-		require.NoError(t, err)
-		vote.Signature = v.Signature
-
-		h2.Commit.Signatures[0] = types.NewCommitSigForBlock(signBytes, pv.Key.Address, h2.Time)
-
-		t.Logf("h1 AppHash: %X", h1.AppHash)
-		t.Logf("h2 AppHash: %X", h2.AppHash)
-
-		ev := &types.ConflictingHeadersEvidence{
-			H1: &h1.SignedHeader,
-			H2: h2,
-		}
-
-		result, err := c.BroadcastEvidence(ev)
-		require.NoError(t, err, "BroadcastEvidence(%s) failed", ev)
-		assert.Equal(t, ev.Hash(), result.Hash, "expected result hash to match evidence hash")
 	}
 }
 

@@ -88,7 +88,7 @@ moniker = "{{ .BaseConfig.Moniker }}"
 # and verifying their commits
 fast_sync = {{ .BaseConfig.FastSyncMode }}
 
-# Database backend: goleveldb | cleveldb | boltdb | rocksdb
+# Database backend: goleveldb | cleveldb | boltdb | rocksdb | badgerdb
 # * goleveldb (github.com/syndtr/goleveldb - most popular implementation)
 #   - pure go
 #   - stable
@@ -104,6 +104,9 @@ fast_sync = {{ .BaseConfig.FastSyncMode }}
 #   - EXPERIMENTAL
 #   - requires gcc
 #   - use rocksdb build tag (go build -tags rocksdb)
+# * badgerdb (uses github.com/dgraph-io/badger)
+#   - EXPERIMENTAL
+#   - use badgerdb build tag (go build -tags badgerdb)
 db_backend = "{{ .BaseConfig.DBBackend }}"
 
 # Database directory
@@ -135,9 +138,6 @@ node_key_file = "{{ js .BaseConfig.NodeKey }}"
 
 # Mechanism to connect to the ABCI application: socket | grpc
 abci = "{{ .BaseConfig.ABCI }}"
-
-# TCP or UNIX socket address for the profiling server to listen on
-prof_laddr = "{{ .BaseConfig.ProfListenAddress }}"
 
 # If true, query the ABCI app on connecting to a new peer
 # so the app can decide if we should keep the connection or not
@@ -228,6 +228,9 @@ tls_cert_file = "{{ .RPC.TLSCertFile }}"
 # NOTE: both tls_cert_file and tls_key_file must be present for Tendermint to create HTTPS server.
 # Otherwise, HTTP server is run.
 tls_key_file = "{{ .RPC.TLSKeyFile }}"
+
+# pprof listen address (https://golang.org/pkg/net/http/pprof)
+pprof_laddr = "{{ .RPC.PprofListenAddress }}"
 
 #######################################################
 ###           P2P Configuration Options             ###
@@ -360,7 +363,7 @@ temp_dir = "{{ .StateSync.TempDir }}"
 # Fast Sync version to use:
 #   1) "v0" (default) - the legacy fast sync implementation
 #   2) "v1" - refactor of v0 version for better testability
-#   2) "v2" - complete redesign of v0, optimized for testability & readability 
+#   2) "v2" - complete redesign of v0, optimized for testability & readability
 version = "{{ .FastSync.Version }}"
 
 #######################################################
@@ -377,6 +380,12 @@ timeout_prevote_delta = "{{ .Consensus.TimeoutPrevoteDelta }}"
 timeout_precommit = "{{ .Consensus.TimeoutPrecommit }}"
 timeout_precommit_delta = "{{ .Consensus.TimeoutPrecommitDelta }}"
 timeout_commit = "{{ .Consensus.TimeoutCommit }}"
+
+# How many blocks to look back to check existence of the node's consensus votes before joining consensus
+# When non-zero, the node will panic upon restart
+# if the same consensus key was used to sign {double_sign_check_height} last blocks.
+# So, validators should stop the state machine, wait for some blocks, and then restart the state machine to avoid panic.
+double_sign_check_height = {{ .Consensus.DoubleSignCheckHeight }}
 
 # Make progress as soon as we have all the precommits (as if TimeoutCommit = 0)
 skip_timeout_commit = {{ .Consensus.SkipTimeoutCommit }}
@@ -395,7 +404,7 @@ peer_query_maj23_sleep_duration = "{{ .Consensus.PeerQueryMaj23SleepDuration }}"
 [tx_index]
 
 # What indexer to use for transactions
-# 
+#
 # The application will set which txs to index. In some cases a node operator will be able
 # to decide which txs to index based on configuration set in the application.
 #
@@ -476,6 +485,7 @@ func ResetTestRootWithChainID(testName string, chainID string) *Config {
 var testGenesisFmt = `{
   "genesis_time": "2018-10-10T08:20:13.695936996Z",
   "chain_id": "%s",
+  "initial_height": "1",
   "validators": [
     {
       "pub_key": {

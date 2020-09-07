@@ -86,12 +86,6 @@ func TestBlockValidateBasic(t *testing.T) {
 		{"Tampered EvidenceHash", func(blk *Block) {
 			blk.EvidenceHash = []byte("something else")
 		}, true},
-		{"ConflictingHeadersEvidence", func(blk *Block) {
-			blk.Evidence = EvidenceData{Evidence: []Evidence{&ConflictingHeadersEvidence{}}}
-		}, true},
-		{"PotentialAmnesiaEvidence", func(blk *Block) {
-			blk.Evidence = EvidenceData{Evidence: []Evidence{&PotentialAmnesiaEvidence{}}}
-		}, true},
 	}
 	for i, tc := range testCases {
 		tc := tc
@@ -179,8 +173,8 @@ func makeBlockIDRandom() BlockID {
 		blockHash   = make([]byte, tmhash.Size)
 		partSetHash = make([]byte, tmhash.Size)
 	)
-	rand.Read(blockHash)
-	rand.Read(partSetHash)
+	rand.Read(blockHash)   //nolint: errcheck // ignore errcheck for read
+	rand.Read(partSetHash) //nolint: errcheck // ignore errcheck for read
 	return BlockID{blockHash, PartSetHeader{123, partSetHash}}
 }
 
@@ -202,14 +196,19 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
 
 var nilBytes []byte
 
+// This follows RFC-6962, i.e. `echo -n '' | sha256sum`
+var emptyBytes = []byte{0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8,
+	0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b,
+	0x78, 0x52, 0xb8, 0x55}
+
 func TestNilHeaderHashDoesntCrash(t *testing.T) {
-	assert.Equal(t, []byte((*Header)(nil).Hash()), nilBytes)
-	assert.Equal(t, []byte((new(Header)).Hash()), nilBytes)
+	assert.Equal(t, nilBytes, []byte((*Header)(nil).Hash()))
+	assert.Equal(t, nilBytes, []byte((new(Header)).Hash()))
 }
 
 func TestNilDataHashDoesntCrash(t *testing.T) {
-	assert.Equal(t, []byte((*Data)(nil).Hash()), nilBytes)
-	assert.Equal(t, []byte(new(Data).Hash()), nilBytes)
+	assert.Equal(t, emptyBytes, []byte((*Data)(nil).Hash()))
+	assert.Equal(t, emptyBytes, []byte(new(Data).Hash()))
 }
 
 func TestCommit(t *testing.T) {
@@ -538,59 +537,6 @@ func TestCommitToVoteSetWithVotesForNilBlock(t *testing.T) {
 	}
 }
 
-func TestSignedHeaderValidateBasic(t *testing.T) {
-	commit := randCommit(time.Now())
-	chainID := "𠜎"
-	timestamp := time.Date(math.MaxInt64, 0, 0, 0, 0, 0, math.MaxInt64, time.UTC)
-	h := Header{
-		Version:            version.Consensus{Block: math.MaxInt64, App: math.MaxInt64},
-		ChainID:            chainID,
-		Height:             commit.Height,
-		Time:               timestamp,
-		LastBlockID:        commit.BlockID,
-		LastCommitHash:     commit.Hash(),
-		DataHash:           commit.Hash(),
-		ValidatorsHash:     commit.Hash(),
-		NextValidatorsHash: commit.Hash(),
-		ConsensusHash:      commit.Hash(),
-		AppHash:            commit.Hash(),
-		LastResultsHash:    commit.Hash(),
-		EvidenceHash:       commit.Hash(),
-		ProposerAddress:    crypto.AddressHash([]byte("proposer_address")),
-	}
-
-	validSignedHeader := SignedHeader{Header: &h, Commit: commit}
-	validSignedHeader.Commit.BlockID.Hash = validSignedHeader.Hash()
-	invalidSignedHeader := SignedHeader{}
-
-	testCases := []struct {
-		testName  string
-		shHeader  *Header
-		shCommit  *Commit
-		expectErr bool
-	}{
-		{"Valid Signed Header", validSignedHeader.Header, validSignedHeader.Commit, false},
-		{"Invalid Signed Header", invalidSignedHeader.Header, validSignedHeader.Commit, true},
-		{"Invalid Signed Header", validSignedHeader.Header, invalidSignedHeader.Commit, true},
-	}
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.testName, func(t *testing.T) {
-			sh := SignedHeader{
-				Header: tc.shHeader,
-				Commit: tc.shCommit,
-			}
-			assert.Equal(
-				t,
-				tc.expectErr,
-				sh.ValidateBasic(validSignedHeader.Header.ChainID) != nil,
-				"Validate Basic had an unexpected result",
-			)
-		})
-	}
-}
-
 func TestBlockIDValidateBasic(t *testing.T) {
 	validBlockID := BlockID{
 		Hash: bytes.HexBytes{},
@@ -639,7 +585,8 @@ func TestBlockProtoBuf(t *testing.T) {
 
 	b2 := MakeBlock(h, []Tx{Tx([]byte{1})}, c1, []Evidence{})
 	b2.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
-	evi := NewMockDuplicateVoteEvidence(h, time.Now(), "block-test-chain")
+	evidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
+	evi := NewMockDuplicateVoteEvidence(h, evidenceTime, "block-test-chain")
 	b2.Evidence = EvidenceData{Evidence: EvidenceList{evi}}
 	b2.EvidenceHash = b2.Evidence.Hash()
 
@@ -709,7 +656,7 @@ func TestEvidenceDataProtoBuf(t *testing.T) {
 	const chainID = "mychain"
 	v := makeVote(t, val, chainID, math.MaxInt32, math.MaxInt64, 1, 0x01, blockID, time.Now())
 	v2 := makeVote(t, val, chainID, math.MaxInt32, math.MaxInt64, 2, 0x01, blockID2, time.Now())
-	ev := NewDuplicateVoteEvidence(v2, v)
+	ev := NewDuplicateVoteEvidence(v2, v, v2.Timestamp)
 	data := &EvidenceData{Evidence: EvidenceList{ev}}
 	_ = data.Hash()
 	testCases := []struct {

@@ -7,16 +7,20 @@ import (
 	fmt "fmt"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
+
 	crypto "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
+
 	io "io"
 	math "math"
 	math_bits "math/bits"
+	time "time"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
+var _ = time.Kitchen
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the proto package it is being compiled against.
@@ -27,8 +31,9 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 // DuplicateVoteEvidence contains evidence a validator signed two conflicting
 // votes.
 type DuplicateVoteEvidence struct {
-	VoteA *Vote `protobuf:"bytes,1,opt,name=vote_a,json=voteA,proto3" json:"vote_a,omitempty"`
-	VoteB *Vote `protobuf:"bytes,2,opt,name=vote_b,json=voteB,proto3" json:"vote_b,omitempty"`
+	VoteA     *Vote     `protobuf:"bytes,1,opt,name=vote_a,json=voteA,proto3" json:"vote_a,omitempty"`
+	VoteB     *Vote     `protobuf:"bytes,2,opt,name=vote_b,json=voteB,proto3" json:"vote_b,omitempty"`
+	Timestamp time.Time `protobuf:"bytes,3,opt,name=timestamp,proto3,stdtime" json:"timestamp"`
 }
 
 func (m *DuplicateVoteEvidence) Reset()         { *m = DuplicateVoteEvidence{} }
@@ -78,237 +83,16 @@ func (m *DuplicateVoteEvidence) GetVoteB() *Vote {
 	return nil
 }
 
-type PotentialAmnesiaEvidence struct {
-	VoteA       *Vote `protobuf:"bytes,1,opt,name=vote_a,json=voteA,proto3" json:"vote_a,omitempty"`
-	VoteB       *Vote `protobuf:"bytes,2,opt,name=vote_b,json=voteB,proto3" json:"vote_b,omitempty"`
-	HeightStamp int64 `protobuf:"varint,3,opt,name=height_stamp,json=heightStamp,proto3" json:"height_stamp,omitempty"`
-}
-
-func (m *PotentialAmnesiaEvidence) Reset()         { *m = PotentialAmnesiaEvidence{} }
-func (m *PotentialAmnesiaEvidence) String() string { return proto.CompactTextString(m) }
-func (*PotentialAmnesiaEvidence) ProtoMessage()    {}
-func (*PotentialAmnesiaEvidence) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6825fabc78e0a168, []int{1}
-}
-func (m *PotentialAmnesiaEvidence) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *PotentialAmnesiaEvidence) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_PotentialAmnesiaEvidence.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *PotentialAmnesiaEvidence) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_PotentialAmnesiaEvidence.Merge(m, src)
-}
-func (m *PotentialAmnesiaEvidence) XXX_Size() int {
-	return m.Size()
-}
-func (m *PotentialAmnesiaEvidence) XXX_DiscardUnknown() {
-	xxx_messageInfo_PotentialAmnesiaEvidence.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_PotentialAmnesiaEvidence proto.InternalMessageInfo
-
-func (m *PotentialAmnesiaEvidence) GetVoteA() *Vote {
+func (m *DuplicateVoteEvidence) GetTimestamp() time.Time {
 	if m != nil {
-		return m.VoteA
+		return m.Timestamp
 	}
-	return nil
-}
-
-func (m *PotentialAmnesiaEvidence) GetVoteB() *Vote {
-	if m != nil {
-		return m.VoteB
-	}
-	return nil
-}
-
-func (m *PotentialAmnesiaEvidence) GetHeightStamp() int64 {
-	if m != nil {
-		return m.HeightStamp
-	}
-	return 0
-}
-
-type AmnesiaEvidence struct {
-	PotentialAmnesiaEvidence *PotentialAmnesiaEvidence `protobuf:"bytes,1,opt,name=potential_amnesia_evidence,json=potentialAmnesiaEvidence,proto3" json:"potential_amnesia_evidence,omitempty"`
-	Polc                     *ProofOfLockChange        `protobuf:"bytes,2,opt,name=polc,proto3" json:"polc,omitempty"`
-}
-
-func (m *AmnesiaEvidence) Reset()         { *m = AmnesiaEvidence{} }
-func (m *AmnesiaEvidence) String() string { return proto.CompactTextString(m) }
-func (*AmnesiaEvidence) ProtoMessage()    {}
-func (*AmnesiaEvidence) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6825fabc78e0a168, []int{2}
-}
-func (m *AmnesiaEvidence) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *AmnesiaEvidence) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_AmnesiaEvidence.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *AmnesiaEvidence) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_AmnesiaEvidence.Merge(m, src)
-}
-func (m *AmnesiaEvidence) XXX_Size() int {
-	return m.Size()
-}
-func (m *AmnesiaEvidence) XXX_DiscardUnknown() {
-	xxx_messageInfo_AmnesiaEvidence.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_AmnesiaEvidence proto.InternalMessageInfo
-
-func (m *AmnesiaEvidence) GetPotentialAmnesiaEvidence() *PotentialAmnesiaEvidence {
-	if m != nil {
-		return m.PotentialAmnesiaEvidence
-	}
-	return nil
-}
-
-func (m *AmnesiaEvidence) GetPolc() *ProofOfLockChange {
-	if m != nil {
-		return m.Polc
-	}
-	return nil
-}
-
-type ConflictingHeadersEvidence struct {
-	H1 *SignedHeader `protobuf:"bytes,1,opt,name=h1,proto3" json:"h1,omitempty"`
-	H2 *SignedHeader `protobuf:"bytes,2,opt,name=h2,proto3" json:"h2,omitempty"`
-}
-
-func (m *ConflictingHeadersEvidence) Reset()         { *m = ConflictingHeadersEvidence{} }
-func (m *ConflictingHeadersEvidence) String() string { return proto.CompactTextString(m) }
-func (*ConflictingHeadersEvidence) ProtoMessage()    {}
-func (*ConflictingHeadersEvidence) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6825fabc78e0a168, []int{3}
-}
-func (m *ConflictingHeadersEvidence) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *ConflictingHeadersEvidence) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_ConflictingHeadersEvidence.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *ConflictingHeadersEvidence) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ConflictingHeadersEvidence.Merge(m, src)
-}
-func (m *ConflictingHeadersEvidence) XXX_Size() int {
-	return m.Size()
-}
-func (m *ConflictingHeadersEvidence) XXX_DiscardUnknown() {
-	xxx_messageInfo_ConflictingHeadersEvidence.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_ConflictingHeadersEvidence proto.InternalMessageInfo
-
-func (m *ConflictingHeadersEvidence) GetH1() *SignedHeader {
-	if m != nil {
-		return m.H1
-	}
-	return nil
-}
-
-func (m *ConflictingHeadersEvidence) GetH2() *SignedHeader {
-	if m != nil {
-		return m.H2
-	}
-	return nil
-}
-
-type LunaticValidatorEvidence struct {
-	Header             *Header `protobuf:"bytes,1,opt,name=header,proto3" json:"header,omitempty"`
-	Vote               *Vote   `protobuf:"bytes,2,opt,name=vote,proto3" json:"vote,omitempty"`
-	InvalidHeaderField string  `protobuf:"bytes,3,opt,name=invalid_header_field,json=invalidHeaderField,proto3" json:"invalid_header_field,omitempty"`
-}
-
-func (m *LunaticValidatorEvidence) Reset()         { *m = LunaticValidatorEvidence{} }
-func (m *LunaticValidatorEvidence) String() string { return proto.CompactTextString(m) }
-func (*LunaticValidatorEvidence) ProtoMessage()    {}
-func (*LunaticValidatorEvidence) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6825fabc78e0a168, []int{4}
-}
-func (m *LunaticValidatorEvidence) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *LunaticValidatorEvidence) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_LunaticValidatorEvidence.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *LunaticValidatorEvidence) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_LunaticValidatorEvidence.Merge(m, src)
-}
-func (m *LunaticValidatorEvidence) XXX_Size() int {
-	return m.Size()
-}
-func (m *LunaticValidatorEvidence) XXX_DiscardUnknown() {
-	xxx_messageInfo_LunaticValidatorEvidence.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_LunaticValidatorEvidence proto.InternalMessageInfo
-
-func (m *LunaticValidatorEvidence) GetHeader() *Header {
-	if m != nil {
-		return m.Header
-	}
-	return nil
-}
-
-func (m *LunaticValidatorEvidence) GetVote() *Vote {
-	if m != nil {
-		return m.Vote
-	}
-	return nil
-}
-
-func (m *LunaticValidatorEvidence) GetInvalidHeaderField() string {
-	if m != nil {
-		return m.InvalidHeaderField
-	}
-	return ""
+	return time.Time{}
 }
 
 type Evidence struct {
 	// Types that are valid to be assigned to Sum:
 	//	*Evidence_DuplicateVoteEvidence
-	//	*Evidence_ConflictingHeadersEvidence
-	//	*Evidence_LunaticValidatorEvidence
-	//	*Evidence_PotentialAmnesiaEvidence
-	//	*Evidence_AmnesiaEvidence
 	Sum isEvidence_Sum `protobuf_oneof:"sum"`
 }
 
@@ -316,7 +100,7 @@ func (m *Evidence) Reset()         { *m = Evidence{} }
 func (m *Evidence) String() string { return proto.CompactTextString(m) }
 func (*Evidence) ProtoMessage()    {}
 func (*Evidence) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6825fabc78e0a168, []int{5}
+	return fileDescriptor_6825fabc78e0a168, []int{1}
 }
 func (m *Evidence) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -354,24 +138,8 @@ type isEvidence_Sum interface {
 type Evidence_DuplicateVoteEvidence struct {
 	DuplicateVoteEvidence *DuplicateVoteEvidence `protobuf:"bytes,1,opt,name=duplicate_vote_evidence,json=duplicateVoteEvidence,proto3,oneof" json:"duplicate_vote_evidence,omitempty"`
 }
-type Evidence_ConflictingHeadersEvidence struct {
-	ConflictingHeadersEvidence *ConflictingHeadersEvidence `protobuf:"bytes,2,opt,name=conflicting_headers_evidence,json=conflictingHeadersEvidence,proto3,oneof" json:"conflicting_headers_evidence,omitempty"`
-}
-type Evidence_LunaticValidatorEvidence struct {
-	LunaticValidatorEvidence *LunaticValidatorEvidence `protobuf:"bytes,3,opt,name=lunatic_validator_evidence,json=lunaticValidatorEvidence,proto3,oneof" json:"lunatic_validator_evidence,omitempty"`
-}
-type Evidence_PotentialAmnesiaEvidence struct {
-	PotentialAmnesiaEvidence *PotentialAmnesiaEvidence `protobuf:"bytes,4,opt,name=potential_amnesia_evidence,json=potentialAmnesiaEvidence,proto3,oneof" json:"potential_amnesia_evidence,omitempty"`
-}
-type Evidence_AmnesiaEvidence struct {
-	AmnesiaEvidence *AmnesiaEvidence `protobuf:"bytes,5,opt,name=amnesia_evidence,json=amnesiaEvidence,proto3,oneof" json:"amnesia_evidence,omitempty"`
-}
 
-func (*Evidence_DuplicateVoteEvidence) isEvidence_Sum()      {}
-func (*Evidence_ConflictingHeadersEvidence) isEvidence_Sum() {}
-func (*Evidence_LunaticValidatorEvidence) isEvidence_Sum()   {}
-func (*Evidence_PotentialAmnesiaEvidence) isEvidence_Sum()   {}
-func (*Evidence_AmnesiaEvidence) isEvidence_Sum()            {}
+func (*Evidence_DuplicateVoteEvidence) isEvidence_Sum() {}
 
 func (m *Evidence) GetSum() isEvidence_Sum {
 	if m != nil {
@@ -387,42 +155,10 @@ func (m *Evidence) GetDuplicateVoteEvidence() *DuplicateVoteEvidence {
 	return nil
 }
 
-func (m *Evidence) GetConflictingHeadersEvidence() *ConflictingHeadersEvidence {
-	if x, ok := m.GetSum().(*Evidence_ConflictingHeadersEvidence); ok {
-		return x.ConflictingHeadersEvidence
-	}
-	return nil
-}
-
-func (m *Evidence) GetLunaticValidatorEvidence() *LunaticValidatorEvidence {
-	if x, ok := m.GetSum().(*Evidence_LunaticValidatorEvidence); ok {
-		return x.LunaticValidatorEvidence
-	}
-	return nil
-}
-
-func (m *Evidence) GetPotentialAmnesiaEvidence() *PotentialAmnesiaEvidence {
-	if x, ok := m.GetSum().(*Evidence_PotentialAmnesiaEvidence); ok {
-		return x.PotentialAmnesiaEvidence
-	}
-	return nil
-}
-
-func (m *Evidence) GetAmnesiaEvidence() *AmnesiaEvidence {
-	if x, ok := m.GetSum().(*Evidence_AmnesiaEvidence); ok {
-		return x.AmnesiaEvidence
-	}
-	return nil
-}
-
 // XXX_OneofWrappers is for the internal use of the proto package.
 func (*Evidence) XXX_OneofWrappers() []interface{} {
 	return []interface{}{
 		(*Evidence_DuplicateVoteEvidence)(nil),
-		(*Evidence_ConflictingHeadersEvidence)(nil),
-		(*Evidence_LunaticValidatorEvidence)(nil),
-		(*Evidence_PotentialAmnesiaEvidence)(nil),
-		(*Evidence_AmnesiaEvidence)(nil),
 	}
 }
 
@@ -436,7 +172,7 @@ func (m *EvidenceData) Reset()         { *m = EvidenceData{} }
 func (m *EvidenceData) String() string { return proto.CompactTextString(m) }
 func (*EvidenceData) ProtoMessage()    {}
 func (*EvidenceData) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6825fabc78e0a168, []int{6}
+	return fileDescriptor_6825fabc78e0a168, []int{2}
 }
 func (m *EvidenceData) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -479,114 +215,39 @@ func (m *EvidenceData) GetHash() []byte {
 	return nil
 }
 
-type ProofOfLockChange struct {
-	Votes  []*Vote           `protobuf:"bytes,1,rep,name=votes,proto3" json:"votes,omitempty"`
-	PubKey *crypto.PublicKey `protobuf:"bytes,2,opt,name=pub_key,json=pubKey,proto3" json:"pub_key,omitempty"`
-}
-
-func (m *ProofOfLockChange) Reset()         { *m = ProofOfLockChange{} }
-func (m *ProofOfLockChange) String() string { return proto.CompactTextString(m) }
-func (*ProofOfLockChange) ProtoMessage()    {}
-func (*ProofOfLockChange) Descriptor() ([]byte, []int) {
-	return fileDescriptor_6825fabc78e0a168, []int{7}
-}
-func (m *ProofOfLockChange) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *ProofOfLockChange) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_ProofOfLockChange.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *ProofOfLockChange) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ProofOfLockChange.Merge(m, src)
-}
-func (m *ProofOfLockChange) XXX_Size() int {
-	return m.Size()
-}
-func (m *ProofOfLockChange) XXX_DiscardUnknown() {
-	xxx_messageInfo_ProofOfLockChange.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_ProofOfLockChange proto.InternalMessageInfo
-
-func (m *ProofOfLockChange) GetVotes() []*Vote {
-	if m != nil {
-		return m.Votes
-	}
-	return nil
-}
-
-func (m *ProofOfLockChange) GetPubKey() *crypto.PublicKey {
-	if m != nil {
-		return m.PubKey
-	}
-	return nil
-}
-
 func init() {
 	proto.RegisterType((*DuplicateVoteEvidence)(nil), "tendermint.types.DuplicateVoteEvidence")
-	proto.RegisterType((*PotentialAmnesiaEvidence)(nil), "tendermint.types.PotentialAmnesiaEvidence")
-	proto.RegisterType((*AmnesiaEvidence)(nil), "tendermint.types.AmnesiaEvidence")
-	proto.RegisterType((*ConflictingHeadersEvidence)(nil), "tendermint.types.ConflictingHeadersEvidence")
-	proto.RegisterType((*LunaticValidatorEvidence)(nil), "tendermint.types.LunaticValidatorEvidence")
 	proto.RegisterType((*Evidence)(nil), "tendermint.types.Evidence")
 	proto.RegisterType((*EvidenceData)(nil), "tendermint.types.EvidenceData")
-	proto.RegisterType((*ProofOfLockChange)(nil), "tendermint.types.ProofOfLockChange")
 }
 
 func init() { proto.RegisterFile("tendermint/types/evidence.proto", fileDescriptor_6825fabc78e0a168) }
 
 var fileDescriptor_6825fabc78e0a168 = []byte{
-	// 656 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xbc, 0x55, 0x4f, 0x4f, 0xd4, 0x40,
-	0x1c, 0x6d, 0xd9, 0x65, 0xc5, 0x1f, 0x24, 0x60, 0x03, 0xda, 0x34, 0xa4, 0x40, 0x3d, 0x48, 0x08,
-	0x76, 0x61, 0x8d, 0xe1, 0xe2, 0x85, 0x3f, 0x9a, 0x4d, 0x20, 0x8a, 0x43, 0xc2, 0xc1, 0x4b, 0x9d,
-	0x6d, 0x67, 0xdb, 0x81, 0x6e, 0xa7, 0xd9, 0x4e, 0x37, 0x6e, 0xe2, 0x67, 0x30, 0xde, 0xfd, 0x06,
-	0x9e, 0xfd, 0x10, 0x1c, 0x39, 0x7a, 0x32, 0x06, 0xbe, 0x88, 0xe9, 0x74, 0x76, 0x17, 0xb7, 0x5b,
-	0x36, 0x5e, 0xbc, 0x34, 0xcd, 0xef, 0xf7, 0xe6, 0xbd, 0x37, 0x79, 0xf3, 0x9b, 0x81, 0x35, 0x4e,
-	0x22, 0x8f, 0x74, 0x3b, 0x34, 0xe2, 0x75, 0xde, 0x8f, 0x49, 0x52, 0x27, 0x3d, 0xea, 0x91, 0xc8,
-	0x25, 0x76, 0xdc, 0x65, 0x9c, 0x69, 0x4b, 0x23, 0x80, 0x2d, 0x00, 0xc6, 0xb2, 0xcf, 0x7c, 0x26,
-	0x9a, 0xf5, 0xec, 0x2f, 0xc7, 0x19, 0xab, 0x05, 0x22, 0xf1, 0x9d, 0xd0, 0x75, 0xbb, 0xfd, 0x98,
-	0xb3, 0xfa, 0x25, 0xe9, 0xcb, 0xae, 0x95, 0xc2, 0xca, 0x51, 0x1a, 0x87, 0xd4, 0xc5, 0x9c, 0x9c,
-	0x33, 0x4e, 0x5e, 0x4b, 0x0b, 0xda, 0x73, 0xa8, 0xf5, 0x18, 0x27, 0x0e, 0xd6, 0xd5, 0x75, 0x75,
-	0x73, 0xbe, 0xf1, 0xd8, 0x1e, 0x77, 0x63, 0x67, 0x78, 0x34, 0x9b, 0xa1, 0xf6, 0x87, 0xf0, 0x96,
-	0x3e, 0x33, 0x1d, 0x7e, 0x60, 0x7d, 0x53, 0x41, 0x3f, 0x65, 0x9c, 0x44, 0x9c, 0xe2, 0x70, 0xbf,
-	0x13, 0x91, 0x84, 0xe2, 0xff, 0x23, 0xad, 0x6d, 0xc0, 0x42, 0x40, 0xa8, 0x1f, 0x70, 0x27, 0xe1,
-	0xb8, 0x13, 0xeb, 0x95, 0x75, 0x75, 0xb3, 0x82, 0xe6, 0xf3, 0xda, 0x59, 0x56, 0xb2, 0x7e, 0xa8,
-	0xb0, 0x38, 0x6e, 0x2a, 0x00, 0x23, 0x1e, 0x18, 0x76, 0x70, 0xde, 0x74, 0x06, 0x81, 0x49, 0xa3,
-	0x5b, 0x45, 0xe5, 0xb2, 0x4d, 0x22, 0x3d, 0x2e, 0xdb, 0xfe, 0x1e, 0x54, 0x63, 0x16, 0xba, 0x72,
-	0x37, 0x4f, 0x27, 0x70, 0x76, 0x19, 0x6b, 0xbf, 0x6b, 0x9f, 0x30, 0xf7, 0xf2, 0x30, 0xc0, 0x91,
-	0x4f, 0x90, 0x58, 0x60, 0x7d, 0x06, 0xe3, 0x90, 0x45, 0xed, 0x90, 0xba, 0x9c, 0x46, 0x7e, 0x93,
-	0x60, 0x8f, 0x74, 0x93, 0x21, 0xad, 0x0d, 0x33, 0xc1, 0xae, 0x34, 0x6a, 0x16, 0x49, 0xcf, 0xa8,
-	0x1f, 0x11, 0x2f, 0x5f, 0x84, 0x66, 0x82, 0x5d, 0x81, 0x6f, 0x48, 0x13, 0xd3, 0xf1, 0x0d, 0xeb,
-	0xbb, 0x0a, 0xfa, 0x49, 0x1a, 0x61, 0x4e, 0xdd, 0x73, 0x1c, 0x52, 0x0f, 0x73, 0xd6, 0x1d, 0x8a,
-	0xef, 0x40, 0x2d, 0x10, 0x50, 0x69, 0x40, 0x2f, 0x12, 0x4a, 0x2a, 0x89, 0xd3, 0xb6, 0xa0, 0x9a,
-	0xe5, 0x35, 0x25, 0x53, 0x81, 0xd1, 0x76, 0x60, 0x99, 0x46, 0xbd, 0x4c, 0xd4, 0xc9, 0x57, 0x3b,
-	0x6d, 0x4a, 0x42, 0x4f, 0x44, 0xfb, 0x10, 0x69, 0xb2, 0x97, 0x0b, 0xbc, 0xc9, 0x3a, 0xd6, 0x97,
-	0x2a, 0xcc, 0x0d, 0xcd, 0x61, 0x78, 0xe2, 0x0d, 0x66, 0xc0, 0x11, 0x47, 0x69, 0x2c, 0xd7, 0x67,
-	0x45, 0xf5, 0x89, 0x43, 0xd3, 0x54, 0xd0, 0x8a, 0x37, 0x71, 0x9a, 0x62, 0x58, 0x75, 0x47, 0xd1,
-	0x48, 0x97, 0xc9, 0x48, 0x27, 0xdf, 0xe5, 0x76, 0x51, 0xa7, 0x3c, 0xd0, 0xa6, 0x82, 0x0c, 0xb7,
-	0x3c, 0xee, 0x0b, 0x30, 0xc2, 0x3c, 0x0d, 0xa7, 0x37, 0x88, 0x63, 0xa4, 0x57, 0x29, 0x3b, 0xaf,
-	0x65, 0x09, 0x36, 0x15, 0xa4, 0x87, 0x65, 0xe9, 0x5e, 0xdc, 0x3b, 0x1b, 0xd5, 0x7f, 0x9d, 0x8d,
-	0x4c, 0xab, 0x74, 0x3a, 0xde, 0xc2, 0x52, 0x41, 0x61, 0x56, 0x28, 0x6c, 0x14, 0x15, 0x8a, 0xc4,
-	0x8b, 0xf8, 0xef, 0xd2, 0xc1, 0x2c, 0x54, 0x92, 0xb4, 0x63, 0x7d, 0x84, 0x85, 0x41, 0xe9, 0x08,
-	0x73, 0xac, 0xbd, 0x82, 0xb9, 0x3b, 0x87, 0xa0, 0xb2, 0x39, 0xdf, 0x30, 0x8a, 0xf4, 0x43, 0x92,
-	0xea, 0xd5, 0xaf, 0x35, 0x05, 0x0d, 0x57, 0x68, 0x1a, 0x54, 0x03, 0x9c, 0x04, 0x22, 0xd6, 0x05,
-	0x24, 0xfe, 0xad, 0x4f, 0xf0, 0xa8, 0x30, 0xb8, 0xda, 0x36, 0x88, 0x5b, 0x29, 0x91, 0x1a, 0xf7,
-	0x5e, 0x5d, 0x89, 0xf6, 0x12, 0x1e, 0xc4, 0x69, 0xcb, 0xb9, 0x24, 0x7d, 0x79, 0x60, 0x56, 0xef,
-	0xe2, 0xf3, 0xcb, 0xdd, 0x3e, 0x4d, 0x5b, 0x21, 0x75, 0x8f, 0x49, 0x1f, 0xd5, 0xe2, 0xb4, 0x75,
-	0x4c, 0xfa, 0x07, 0xef, 0xaf, 0x6e, 0x4c, 0xf5, 0xfa, 0xc6, 0x54, 0x7f, 0xdf, 0x98, 0xea, 0xd7,
-	0x5b, 0x53, 0xb9, 0xbe, 0x35, 0x95, 0x9f, 0xb7, 0xa6, 0xf2, 0x61, 0xcf, 0xa7, 0x3c, 0x48, 0x5b,
-	0xb6, 0xcb, 0x3a, 0xf5, 0xbb, 0x8f, 0xc8, 0xe8, 0x37, 0x7f, 0x6c, 0xc6, 0x1f, 0x98, 0x56, 0x4d,
-	0xd4, 0x5f, 0xfc, 0x09, 0x00, 0x00, 0xff, 0xff, 0xb8, 0xe6, 0x16, 0x08, 0xc4, 0x06, 0x00, 0x00,
+	// 355 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x84, 0x92, 0xcf, 0x4e, 0xf2, 0x40,
+	0x14, 0xc5, 0x3b, 0x1f, 0x7f, 0xc2, 0x37, 0xb2, 0x30, 0x8d, 0x28, 0x21, 0xa6, 0x35, 0x6c, 0x74,
+	0xe3, 0x4c, 0xa2, 0x0b, 0x37, 0x6e, 0x6c, 0x30, 0x71, 0x6b, 0x63, 0x5c, 0xb8, 0xc1, 0x69, 0x7b,
+	0x2d, 0x8d, 0x94, 0x69, 0xe8, 0x2d, 0x09, 0x6f, 0xc1, 0xeb, 0xf8, 0x06, 0x2c, 0x59, 0xba, 0x52,
+	0x03, 0x2f, 0x62, 0x3a, 0xb4, 0x85, 0x40, 0x13, 0x37, 0xcd, 0xed, 0x9c, 0xdf, 0xed, 0x3d, 0x67,
+	0x7a, 0xa9, 0x89, 0x30, 0xf2, 0x60, 0x1c, 0x06, 0x23, 0xe4, 0x38, 0x8d, 0x20, 0xe6, 0x30, 0x09,
+	0x3c, 0x18, 0xb9, 0xc0, 0xa2, 0xb1, 0x44, 0xa9, 0x1f, 0x6e, 0x00, 0xa6, 0x80, 0xce, 0x91, 0x2f,
+	0x7d, 0xa9, 0x44, 0x9e, 0x56, 0x6b, 0xae, 0x63, 0xfa, 0x52, 0xfa, 0x43, 0xe0, 0xea, 0xcd, 0x49,
+	0xde, 0x38, 0x06, 0x21, 0xc4, 0x28, 0xc2, 0x28, 0x03, 0x4e, 0xf7, 0x26, 0xa9, 0x67, 0x89, 0xea,
+	0x8e, 0xa7, 0x11, 0x4a, 0xfe, 0x0e, 0xd3, 0x4c, 0xed, 0x7e, 0x10, 0xda, 0xea, 0x25, 0xd1, 0x30,
+	0x70, 0x05, 0xc2, 0xb3, 0x44, 0xb8, 0xcf, 0x4c, 0xea, 0x97, 0xb4, 0x3e, 0x91, 0x08, 0x7d, 0xd1,
+	0x26, 0x67, 0xe4, 0xe2, 0xe0, 0xea, 0x98, 0xed, 0xfa, 0x65, 0x29, 0x6f, 0xd7, 0x52, 0xea, 0xae,
+	0xc0, 0x9d, 0xf6, 0xbf, 0xbf, 0x71, 0x4b, 0xb7, 0xe8, 0xff, 0x22, 0x46, 0xbb, 0xa2, 0x3a, 0x3a,
+	0x6c, 0x1d, 0x94, 0xe5, 0x41, 0xd9, 0x53, 0x4e, 0x58, 0x8d, 0xf9, 0x97, 0xa9, 0xcd, 0xbe, 0x4d,
+	0x62, 0x6f, 0xda, 0xba, 0x48, 0x1b, 0x85, 0x5b, 0x41, 0x4f, 0xbc, 0x3c, 0x46, 0x5f, 0x19, 0xc9,
+	0x6f, 0x3b, 0xb3, 0x7f, 0xbe, 0xef, 0xa7, 0x34, 0xf7, 0x83, 0x66, 0xb7, 0xbc, 0x32, 0xc1, 0xaa,
+	0xd1, 0x4a, 0x9c, 0x84, 0xdd, 0x57, 0xda, 0xcc, 0x8f, 0x7a, 0x02, 0x85, 0x7e, 0x4b, 0x1b, 0x5b,
+	0xa3, 0x2a, 0x2a, 0xc8, 0xde, 0xa8, 0xe2, 0x23, 0xd5, 0x34, 0x88, 0x5d, 0x74, 0xe8, 0x3a, 0xad,
+	0x0e, 0x44, 0x3c, 0x50, 0x97, 0xd6, 0xb4, 0x55, 0x6d, 0x3d, 0xce, 0x97, 0x06, 0x59, 0x2c, 0x0d,
+	0xf2, 0xb3, 0x34, 0xc8, 0x6c, 0x65, 0x68, 0x8b, 0x95, 0xa1, 0x7d, 0xae, 0x0c, 0xed, 0xe5, 0xc6,
+	0x0f, 0x70, 0x90, 0x38, 0xcc, 0x95, 0x21, 0xdf, 0xfe, 0xe9, 0x9b, 0x72, 0xbd, 0x3d, 0xbb, 0x0b,
+	0xe1, 0xd4, 0xd5, 0xf9, 0xf5, 0x6f, 0x00, 0x00, 0x00, 0xff, 0xff, 0x0d, 0x48, 0x97, 0xaf, 0x95,
+	0x02, 0x00, 0x00,
 }
 
 func (m *DuplicateVoteEvidence) Marshal() (dAtA []byte, err error) {
@@ -609,6 +270,14 @@ func (m *DuplicateVoteEvidence) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	n1, err1 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err1 != nil {
+		return 0, err1
+	}
+	i -= n1
+	i = encodeVarintEvidence(dAtA, i, uint64(n1))
+	i--
+	dAtA[i] = 0x1a
 	if m.VoteB != nil {
 		{
 			size, err := m.VoteB.MarshalToSizedBuffer(dAtA[:i])
@@ -624,206 +293,6 @@ func (m *DuplicateVoteEvidence) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if m.VoteA != nil {
 		{
 			size, err := m.VoteA.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintEvidence(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *PotentialAmnesiaEvidence) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *PotentialAmnesiaEvidence) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *PotentialAmnesiaEvidence) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.HeightStamp != 0 {
-		i = encodeVarintEvidence(dAtA, i, uint64(m.HeightStamp))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.VoteB != nil {
-		{
-			size, err := m.VoteB.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintEvidence(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.VoteA != nil {
-		{
-			size, err := m.VoteA.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintEvidence(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *AmnesiaEvidence) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *AmnesiaEvidence) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *AmnesiaEvidence) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.Polc != nil {
-		{
-			size, err := m.Polc.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintEvidence(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.PotentialAmnesiaEvidence != nil {
-		{
-			size, err := m.PotentialAmnesiaEvidence.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintEvidence(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *ConflictingHeadersEvidence) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *ConflictingHeadersEvidence) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *ConflictingHeadersEvidence) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.H2 != nil {
-		{
-			size, err := m.H2.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintEvidence(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.H1 != nil {
-		{
-			size, err := m.H1.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintEvidence(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *LunaticValidatorEvidence) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *LunaticValidatorEvidence) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *LunaticValidatorEvidence) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if len(m.InvalidHeaderField) > 0 {
-		i -= len(m.InvalidHeaderField)
-		copy(dAtA[i:], m.InvalidHeaderField)
-		i = encodeVarintEvidence(dAtA, i, uint64(len(m.InvalidHeaderField)))
-		i--
-		dAtA[i] = 0x1a
-	}
-	if m.Vote != nil {
-		{
-			size, err := m.Vote.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintEvidence(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Header != nil {
-		{
-			size, err := m.Header.MarshalToSizedBuffer(dAtA[:i])
 			if err != nil {
 				return 0, err
 			}
@@ -889,90 +358,6 @@ func (m *Evidence_DuplicateVoteEvidence) MarshalToSizedBuffer(dAtA []byte) (int,
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Evidence_ConflictingHeadersEvidence) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Evidence_ConflictingHeadersEvidence) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.ConflictingHeadersEvidence != nil {
-		{
-			size, err := m.ConflictingHeadersEvidence.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintEvidence(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x12
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Evidence_LunaticValidatorEvidence) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Evidence_LunaticValidatorEvidence) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.LunaticValidatorEvidence != nil {
-		{
-			size, err := m.LunaticValidatorEvidence.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintEvidence(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x1a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Evidence_PotentialAmnesiaEvidence) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Evidence_PotentialAmnesiaEvidence) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.PotentialAmnesiaEvidence != nil {
-		{
-			size, err := m.PotentialAmnesiaEvidence.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintEvidence(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x22
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Evidence_AmnesiaEvidence) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Evidence_AmnesiaEvidence) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.AmnesiaEvidence != nil {
-		{
-			size, err := m.AmnesiaEvidence.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintEvidence(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x2a
-	}
-	return len(dAtA) - i, nil
-}
 func (m *EvidenceData) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -1017,55 +402,6 @@ func (m *EvidenceData) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ProofOfLockChange) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *ProofOfLockChange) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *ProofOfLockChange) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.PubKey != nil {
-		{
-			size, err := m.PubKey.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintEvidence(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Votes) > 0 {
-		for iNdEx := len(m.Votes) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Votes[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintEvidence(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0xa
-		}
-	}
-	return len(dAtA) - i, nil
-}
-
 func encodeVarintEvidence(dAtA []byte, offset int, v uint64) int {
 	offset -= sovEvidence(v)
 	base := offset
@@ -1091,81 +427,8 @@ func (m *DuplicateVoteEvidence) Size() (n int) {
 		l = m.VoteB.Size()
 		n += 1 + l + sovEvidence(uint64(l))
 	}
-	return n
-}
-
-func (m *PotentialAmnesiaEvidence) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.VoteA != nil {
-		l = m.VoteA.Size()
-		n += 1 + l + sovEvidence(uint64(l))
-	}
-	if m.VoteB != nil {
-		l = m.VoteB.Size()
-		n += 1 + l + sovEvidence(uint64(l))
-	}
-	if m.HeightStamp != 0 {
-		n += 1 + sovEvidence(uint64(m.HeightStamp))
-	}
-	return n
-}
-
-func (m *AmnesiaEvidence) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.PotentialAmnesiaEvidence != nil {
-		l = m.PotentialAmnesiaEvidence.Size()
-		n += 1 + l + sovEvidence(uint64(l))
-	}
-	if m.Polc != nil {
-		l = m.Polc.Size()
-		n += 1 + l + sovEvidence(uint64(l))
-	}
-	return n
-}
-
-func (m *ConflictingHeadersEvidence) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.H1 != nil {
-		l = m.H1.Size()
-		n += 1 + l + sovEvidence(uint64(l))
-	}
-	if m.H2 != nil {
-		l = m.H2.Size()
-		n += 1 + l + sovEvidence(uint64(l))
-	}
-	return n
-}
-
-func (m *LunaticValidatorEvidence) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Header != nil {
-		l = m.Header.Size()
-		n += 1 + l + sovEvidence(uint64(l))
-	}
-	if m.Vote != nil {
-		l = m.Vote.Size()
-		n += 1 + l + sovEvidence(uint64(l))
-	}
-	l = len(m.InvalidHeaderField)
-	if l > 0 {
-		n += 1 + l + sovEvidence(uint64(l))
-	}
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp)
+	n += 1 + l + sovEvidence(uint64(l))
 	return n
 }
 
@@ -1193,54 +456,6 @@ func (m *Evidence_DuplicateVoteEvidence) Size() (n int) {
 	}
 	return n
 }
-func (m *Evidence_ConflictingHeadersEvidence) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.ConflictingHeadersEvidence != nil {
-		l = m.ConflictingHeadersEvidence.Size()
-		n += 1 + l + sovEvidence(uint64(l))
-	}
-	return n
-}
-func (m *Evidence_LunaticValidatorEvidence) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.LunaticValidatorEvidence != nil {
-		l = m.LunaticValidatorEvidence.Size()
-		n += 1 + l + sovEvidence(uint64(l))
-	}
-	return n
-}
-func (m *Evidence_PotentialAmnesiaEvidence) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.PotentialAmnesiaEvidence != nil {
-		l = m.PotentialAmnesiaEvidence.Size()
-		n += 1 + l + sovEvidence(uint64(l))
-	}
-	return n
-}
-func (m *Evidence_AmnesiaEvidence) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.AmnesiaEvidence != nil {
-		l = m.AmnesiaEvidence.Size()
-		n += 1 + l + sovEvidence(uint64(l))
-	}
-	return n
-}
 func (m *EvidenceData) Size() (n int) {
 	if m == nil {
 		return 0
@@ -1255,25 +470,6 @@ func (m *EvidenceData) Size() (n int) {
 	}
 	l = len(m.Hash)
 	if l > 0 {
-		n += 1 + l + sovEvidence(uint64(l))
-	}
-	return n
-}
-
-func (m *ProofOfLockChange) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if len(m.Votes) > 0 {
-		for _, e := range m.Votes {
-			l = e.Size()
-			n += 1 + l + sovEvidence(uint64(l))
-		}
-	}
-	if m.PubKey != nil {
-		l = m.PubKey.Size()
 		n += 1 + l + sovEvidence(uint64(l))
 	}
 	return n
@@ -1386,530 +582,11 @@ func (m *DuplicateVoteEvidence) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipEvidence(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *PotentialAmnesiaEvidence) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowEvidence
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: PotentialAmnesiaEvidence: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: PotentialAmnesiaEvidence: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field VoteA", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.VoteA == nil {
-				m.VoteA = &Vote{}
-			}
-			if err := m.VoteA.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field VoteB", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.VoteB == nil {
-				m.VoteB = &Vote{}
-			}
-			if err := m.VoteB.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field HeightStamp", wireType)
-			}
-			m.HeightStamp = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.HeightStamp |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := skipEvidence(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *AmnesiaEvidence) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowEvidence
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: AmnesiaEvidence: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AmnesiaEvidence: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PotentialAmnesiaEvidence", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.PotentialAmnesiaEvidence == nil {
-				m.PotentialAmnesiaEvidence = &PotentialAmnesiaEvidence{}
-			}
-			if err := m.PotentialAmnesiaEvidence.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Polc", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Polc == nil {
-				m.Polc = &ProofOfLockChange{}
-			}
-			if err := m.Polc.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipEvidence(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *ConflictingHeadersEvidence) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowEvidence
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: ConflictingHeadersEvidence: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ConflictingHeadersEvidence: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field H1", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.H1 == nil {
-				m.H1 = &SignedHeader{}
-			}
-			if err := m.H1.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field H2", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.H2 == nil {
-				m.H2 = &SignedHeader{}
-			}
-			if err := m.H2.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipEvidence(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *LunaticValidatorEvidence) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowEvidence
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: LunaticValidatorEvidence: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: LunaticValidatorEvidence: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Header", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Header == nil {
-				m.Header = &Header{}
-			}
-			if err := m.Header.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Vote", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Vote == nil {
-				m.Vote = &Vote{}
-			}
-			if err := m.Vote.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field InvalidHeaderField", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Timestamp", wireType)
 			}
-			var stringLen uint64
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowEvidence
@@ -1919,23 +596,24 @@ func (m *LunaticValidatorEvidence) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if msglen < 0 {
 				return ErrInvalidLengthEvidence
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + msglen
 			if postIndex < 0 {
 				return ErrInvalidLengthEvidence
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.InvalidHeaderField = string(dAtA[iNdEx:postIndex])
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.Timestamp, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -2024,146 +702,6 @@ func (m *Evidence) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			m.Sum = &Evidence_DuplicateVoteEvidence{v}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ConflictingHeadersEvidence", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			v := &ConflictingHeadersEvidence{}
-			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			m.Sum = &Evidence_ConflictingHeadersEvidence{v}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LunaticValidatorEvidence", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			v := &LunaticValidatorEvidence{}
-			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			m.Sum = &Evidence_LunaticValidatorEvidence{v}
-			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PotentialAmnesiaEvidence", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			v := &PotentialAmnesiaEvidence{}
-			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			m.Sum = &Evidence_PotentialAmnesiaEvidence{v}
-			iNdEx = postIndex
-		case 5:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AmnesiaEvidence", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			v := &AmnesiaEvidence{}
-			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			m.Sum = &Evidence_AmnesiaEvidence{v}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -2284,129 +822,6 @@ func (m *EvidenceData) Unmarshal(dAtA []byte) error {
 			m.Hash = append(m.Hash[:0], dAtA[iNdEx:postIndex]...)
 			if m.Hash == nil {
 				m.Hash = []byte{}
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipEvidence(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *ProofOfLockChange) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowEvidence
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: ProofOfLockChange: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ProofOfLockChange: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Votes", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Votes = append(m.Votes, &Vote{})
-			if err := m.Votes[len(m.Votes)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PubKey", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowEvidence
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthEvidence
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.PubKey == nil {
-				m.PubKey = &crypto.PublicKey{}
-			}
-			if err := m.PubKey.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
 			}
 			iNdEx = postIndex
 		default:

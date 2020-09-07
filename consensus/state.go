@@ -34,9 +34,10 @@ import (
 // Errors
 
 var (
-	ErrInvalidProposalSignature = errors.New("error invalid proposal signature")
-	ErrInvalidProposalPOLRound  = errors.New("error invalid proposal POL round")
-	ErrAddingVote               = errors.New("error adding vote")
+	ErrInvalidProposalSignature   = errors.New("error invalid proposal signature")
+	ErrInvalidProposalPOLRound    = errors.New("error invalid proposal POL round")
+	ErrAddingVote                 = errors.New("error adding vote")
+	ErrSignatureFoundInPastBlocks = errors.New("found signature from the same key")
 
 	errPubKeyIsNotSet = errors.New("pubkey is not set. Look for \"Can't get private validator pubkey\" errors")
 )
@@ -73,7 +74,6 @@ type txNotifier interface {
 // interface to the evidence pool
 type evidencePool interface {
 	AddEvidence(types.Evidence) error
-	AddPOLC(*types.ProofOfLockChange) error
 }
 
 // State handles execution of the consensus algorithm.
@@ -366,6 +366,11 @@ func (cs *State) OnStart() error {
 		return err
 	}
 
+	// Double Signing Risk Reduction
+	if err := cs.checkDoubleSigningRisk(cs.Height); err != nil {
+		return err
+	}
+
 	// now start the receiveRoutine
 	go cs.receiveRoutine(0)
 
@@ -400,8 +405,12 @@ func (cs *State) loadWalFile() error {
 
 // OnStop implements service.Service.
 func (cs *State) OnStop() {
-	cs.evsw.Stop()
-	cs.timeoutTicker.Stop()
+	if err := cs.evsw.Stop(); err != nil {
+		cs.Logger.Error("error trying to stop eventSwitch", "error", err)
+	}
+	if err := cs.timeoutTicker.Stop(); err != nil {
+		cs.Logger.Error("error trying to stop timeoutTicket", "error", err)
+	}
 	// WAL is stopped in receiveRoutine.
 }
 
@@ -555,27 +564,33 @@ func (cs *State) updateToState(state sm.State) {
 		panic(fmt.Sprintf("updateToState() expected state height of %v but found %v",
 			cs.Height, state.LastBlockHeight))
 	}
-	if !cs.state.IsEmpty() && cs.state.LastBlockHeight+1 != cs.Height {
-		// This might happen when someone else is mutating cs.state.
-		// Someone forgot to pass in state.Copy() somewhere?!
-		panic(fmt.Sprintf("Inconsistent cs.state.LastBlockHeight+1 %v vs cs.Height %v",
-			cs.state.LastBlockHeight+1, cs.Height))
-	}
+	if !cs.state.IsEmpty() {
+		if cs.state.LastBlockHeight > 0 && cs.state.LastBlockHeight+1 != cs.Height {
+			// This might happen when someone else is mutating cs.state.
+			// Someone forgot to pass in state.Copy() somewhere?!
+			panic(fmt.Sprintf("Inconsistent cs.state.LastBlockHeight+1 %v vs cs.Height %v",
+				cs.state.LastBlockHeight+1, cs.Height))
+		}
+		if cs.state.LastBlockHeight > 0 && cs.Height == cs.state.InitialHeight {
+			panic(fmt.Sprintf("Inconsistent cs.state.LastBlockHeight %v, expected 0 for initial height %v",
+				cs.state.LastBlockHeight, cs.state.InitialHeight))
+		}
 
-	// If state isn't further out than cs.state, just ignore.
-	// This happens when SwitchToConsensus() is called in the reactor.
-	// We don't want to reset e.g. the Votes, but we still want to
-	// signal the new round step, because other services (eg. txNotifier)
-	// depend on having an up-to-date peer state!
-	if !cs.state.IsEmpty() && (state.LastBlockHeight <= cs.state.LastBlockHeight) {
-		cs.Logger.Info(
-			"Ignoring updateToState()",
-			"newHeight",
-			state.LastBlockHeight+1,
-			"oldHeight",
-			cs.state.LastBlockHeight+1)
-		cs.newStep()
-		return
+		// If state isn't further out than cs.state, just ignore.
+		// This happens when SwitchToConsensus() is called in the reactor.
+		// We don't want to reset e.g. the Votes, but we still want to
+		// signal the new round step, because other services (eg. txNotifier)
+		// depend on having an up-to-date peer state!
+		if state.LastBlockHeight <= cs.state.LastBlockHeight {
+			cs.Logger.Info(
+				"Ignoring updateToState()",
+				"newHeight",
+				state.LastBlockHeight+1,
+				"oldHeight",
+				cs.state.LastBlockHeight+1)
+			cs.newStep()
+			return
+		}
 	}
 
 	// Reset fields based on state.
@@ -595,13 +610,16 @@ func (cs *State) updateToState(state sm.State) {
 	case cs.LastCommit == nil:
 		// NOTE: when Tendermint starts, it has no votes. reconstructLastCommit
 		// must be called to reconstruct LastCommit from SeenCommit.
-		panic(fmt.Sprintf("LastCommit cannot be empty in heights > 1 (H:%d)",
+		panic(fmt.Sprintf("LastCommit cannot be empty after initial block (H:%d)",
 			state.LastBlockHeight+1,
 		))
 	}
 
 	// Next desired block height
 	height := state.LastBlockHeight + 1
+	if height == 1 {
+		height = state.InitialHeight
+	}
 
 	// RoundState fields
 	cs.updateHeight(height)
@@ -664,7 +682,9 @@ func (cs *State) receiveRoutine(maxSteps int) {
 		// priv_val tracks LastSig
 
 		// close wal now that we're done writing to it
-		cs.wal.Stop()
+		if err := cs.wal.Stop(); err != nil {
+			cs.Logger.Error("error trying to stop wal", "error", err)
+		}
 		cs.wal.Wait()
 
 		close(cs.done)
@@ -933,7 +953,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 // needProofBlock returns true on the first height (so the genesis app hash is signed right away)
 // and where the last block (height-1) caused the app hash to change
 func (cs *State) needProofBlock(height int64) bool {
-	if height == 1 {
+	if height == cs.state.InitialHeight {
 		return true
 	}
 
@@ -1090,7 +1110,7 @@ func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.Pa
 
 	var commit *types.Commit
 	switch {
-	case cs.Height == 1:
+	case cs.Height == cs.state.InitialHeight:
 		// We're creating a proposal for the first block.
 		// The commit is empty, but not nil.
 		commit = types.NewCommit(0, 0, types.BlockID{}, nil)
@@ -1311,30 +1331,6 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	}
 	cs.eventBus.PublishEventUnlock(cs.RoundStateEvent())
 	cs.signAddVote(tmproto.PrecommitType, nil, types.PartSetHeader{})
-}
-
-func (cs *State) savePOLC(round int32, blockID types.BlockID) {
-	// polc must be for rounds greater than 0
-	if round == 0 {
-		return
-	}
-	if cs.privValidatorPubKey == nil {
-		// This may result in this validator being slashed later during an amnesia
-		// trial.
-		cs.Logger.Error(fmt.Sprintf("savePOLC: %v", errPubKeyIsNotSet))
-		return
-	}
-	polc, err := types.NewPOLCFromVoteSet(cs.Votes.Prevotes(round), cs.privValidatorPubKey, blockID)
-	if err != nil {
-		cs.Logger.Error("Error on forming POLC", "err", err)
-		return
-	}
-	err = cs.evpool.AddPOLC(polc)
-	if err != nil {
-		cs.Logger.Error("Error on saving POLC", "err", err)
-		return
-	}
-	cs.Logger.Info("Saved POLC to evidence pool", "round", round, "height", polc.Height())
 }
 
 // Enter: any +2/3 precommits for next round.
@@ -1607,7 +1603,7 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	// height=0 -> MissingValidators and MissingValidatorsPower are both 0.
 	// Remember that the first LastCommit is intentionally empty, so it's not
 	// fair to increment missing validators number.
-	if height > 1 {
+	if height > cs.state.InitialHeight {
 		// Sanity check that commit size matches validator set size - only applies
 		// after first block.
 		var (
@@ -1665,7 +1661,7 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	if height > 1 {
 		lastBlockMeta := cs.blockStore.LoadBlockMeta(height - 1)
 		if lastBlockMeta != nil {
-			cs.metrics.BlockIntervalSeconds.Set(
+			cs.metrics.BlockIntervalSeconds.Observe(
 				block.Time.Sub(lastBlockMeta.Header.Time).Seconds(),
 			)
 		}
@@ -1699,7 +1695,9 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 
 	p := proposal.ToProto()
 	// Verify signature
-	if !cs.Validators.GetProposer().PubKey.VerifyBytes(types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature) {
+	if !cs.Validators.GetProposer().PubKey.VerifySignature(
+		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
+	) {
 		return ErrInvalidProposalSignature
 	}
 
@@ -1817,7 +1815,16 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 					vote.Type)
 				return added, err
 			}
-			cs.evpool.AddEvidence(voteErr.DuplicateVoteEvidence)
+			var timestamp time.Time
+			if voteErr.VoteA.Height == cs.state.InitialHeight {
+				timestamp = cs.state.LastBlockTime // genesis time
+			} else {
+				timestamp = sm.MedianTime(cs.LastCommit.MakeCommit(), cs.LastValidators)
+			}
+			evidenceErr := cs.evpool.AddEvidence(types.NewDuplicateVoteEvidence(voteErr.VoteA, voteErr.VoteB, timestamp))
+			if evidenceErr != nil {
+				cs.Logger.Error("Failed to add evidence to the evidence pool", "err", evidenceErr)
+			}
 			return added, err
 		} else if err == types.ErrVoteNonDeterministicSignature {
 			cs.Logger.Debug("Vote has non-deterministic signature", "err", err)
@@ -1918,9 +1925,6 @@ func (cs *State) addVote(
 				cs.LockedRound = -1
 				cs.LockedBlock = nil
 				cs.LockedBlockParts = nil
-				// If this is not the first round and we have already locked onto something then we are
-				// changing the locked block so save POLC prevotes in evidence db in case of future justification
-				cs.savePOLC(vote.Round, blockID)
 				cs.eventBus.PublishEventUnlock(cs.RoundStateEvent())
 			}
 
@@ -2091,6 +2095,29 @@ func (cs *State) updatePrivValidatorPubKey() error {
 		return err
 	}
 	cs.privValidatorPubKey = pubKey
+	return nil
+}
+
+// look back to check existence of the node's consensus votes before joining consensus
+func (cs *State) checkDoubleSigningRisk(height int64) error {
+	if cs.privValidator != nil && cs.privValidatorPubKey != nil && cs.config.DoubleSignCheckHeight > 0 && height > 0 {
+		valAddr := cs.privValidatorPubKey.Address()
+		doubleSignCheckHeight := cs.config.DoubleSignCheckHeight
+		if doubleSignCheckHeight > height {
+			doubleSignCheckHeight = height
+		}
+		for i := int64(1); i < doubleSignCheckHeight; i++ {
+			lastCommit := cs.blockStore.LoadSeenCommit(height - i)
+			if lastCommit != nil {
+				for sigIdx, s := range lastCommit.Signatures {
+					if s.BlockIDFlag == types.BlockIDFlagCommit && bytes.Equal(s.ValidatorAddress, valAddr) {
+						cs.Logger.Info("Found signature from the same key", "sig", s, "idx", sigIdx, "height", height-i)
+						return ErrSignatureFoundInPastBlocks
+					}
+				}
+			}
+		}
+	}
 	return nil
 }
 

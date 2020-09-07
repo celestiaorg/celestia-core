@@ -46,8 +46,9 @@ func TestValidatorSetBasic(t *testing.T) {
 	assert.Zero(t, vset.Size())
 	assert.Equal(t, int64(0), vset.TotalVotingPower())
 	assert.Nil(t, vset.GetProposer())
-	assert.Nil(t, vset.Hash())
-
+	assert.Equal(t, []byte{0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4,
+		0xc8, 0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95,
+		0x99, 0x1b, 0x78, 0x52, 0xb8, 0x55}, vset.Hash())
 	// add
 	val = randValidator(vset.TotalVotingPower())
 	assert.NoError(t, vset.UpdateWithChangeSet([]*Validator{val}))
@@ -1422,6 +1423,25 @@ func verifyValSetUpdatePriorityOrder(t *testing.T, valSet *ValidatorSet, cfg tes
 			assert.Equal(t, expectedPri, val.ProposerPriority)
 		}
 	}
+}
+
+func TestNewValidatorSetFromExistingValidators(t *testing.T) {
+	size := 5
+	vals := make([]*Validator, size)
+	for i := 0; i < size; i++ {
+		pv := NewMockPV()
+		vals[i] = pv.ExtractIntoValidator(int64(i + 1))
+	}
+	valSet := NewValidatorSet(vals)
+	valSet.IncrementProposerPriority(5)
+
+	newValSet := NewValidatorSet(valSet.Validators)
+	assert.NotEqual(t, valSet, newValSet)
+
+	existingValSet, err := ValidatorSetFromExistingValidators(valSet.Validators)
+	assert.NoError(t, err)
+	assert.Equal(t, valSet, existingValSet)
+	assert.Equal(t, valSet.CopyIncrementProposerPriority(3), existingValSet.CopyIncrementProposerPriority(3))
 }
 
 func TestValSetUpdateOverflowRelated(t *testing.T) {

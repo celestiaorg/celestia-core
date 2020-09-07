@@ -1,6 +1,7 @@
 package mempool
 
 import (
+	"encoding/hex"
 	"errors"
 	"net"
 	"sync"
@@ -10,12 +11,14 @@ import (
 	"github.com/fortytw2/leaktest"
 	"github.com/go-kit/kit/log/term"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/p2p"
 	"github.com/lazyledger/lazyledger-core/p2p/mock"
+	memproto "github.com/lazyledger/lazyledger-core/proto/tendermint/mempool"
 	"github.com/lazyledger/lazyledger-core/proxy"
 	"github.com/lazyledger/lazyledger-core/types"
 )
@@ -45,7 +48,9 @@ func TestReactorBroadcastTxMessage(t *testing.T) {
 	reactors := makeAndConnectReactors(config, N)
 	defer func() {
 		for _, r := range reactors {
-			r.Stop()
+			if err := r.Stop(); err != nil {
+				assert.NoError(t, err)
+			}
 		}
 	}()
 	for _, r := range reactors {
@@ -66,7 +71,9 @@ func TestReactorNoBroadcastToSender(t *testing.T) {
 	reactors := makeAndConnectReactors(config, N)
 	defer func() {
 		for _, r := range reactors {
-			r.Stop()
+			if err := r.Stop(); err != nil {
+				assert.NoError(t, err)
+			}
 		}
 	}()
 
@@ -85,7 +92,9 @@ func TestBroadcastTxForPeerStopsWhenPeerStops(t *testing.T) {
 	reactors := makeAndConnectReactors(config, N)
 	defer func() {
 		for _, r := range reactors {
-			r.Stop()
+			if err := r.Stop(); err != nil {
+				assert.NoError(t, err)
+			}
 		}
 	}()
 
@@ -109,7 +118,9 @@ func TestBroadcastTxForPeerStopsWhenReactorStops(t *testing.T) {
 
 	// stop reactors
 	for _, r := range reactors {
-		r.Stop()
+		if err := r.Stop(); err != nil {
+			assert.NoError(t, err)
+		}
 	}
 
 	// check that we are not leaking any go-routines
@@ -156,7 +167,9 @@ func TestDontExhaustMaxActiveIDs(t *testing.T) {
 	reactors := makeAndConnectReactors(config, N)
 	defer func() {
 		for _, r := range reactors {
-			r.Stop()
+			if err := r.Stop(); err != nil {
+				assert.NoError(t, err)
+			}
 		}
 	}()
 	reactor := reactors[0]
@@ -245,4 +258,31 @@ func waitForTxsOnReactor(t *testing.T, txs types.Txs, reactor *Reactor, reactorI
 func ensureNoTxs(t *testing.T, reactor *Reactor, timeout time.Duration) {
 	time.Sleep(timeout) // wait for the txs in all mempools
 	assert.Zero(t, reactor.mempool.Size())
+}
+
+func TestMempoolVectors(t *testing.T) {
+
+	testCases := []struct {
+		testName string
+		tx       []byte
+		expBytes string
+	}{
+		{"tx 1", []byte{123}, "0a030a017b"},
+		{"tx 2", []byte("proto encoding in mempool"), "0a1b0a1970726f746f20656e636f64696e6720696e206d656d706f6f6c"},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+
+		msg := memproto.Message{
+			Sum: &memproto.Message_Tx{
+				Tx: &memproto.Tx{Tx: tc.tx},
+			},
+		}
+		bz, err := msg.Marshal()
+		require.NoError(t, err, tc.testName)
+
+		require.Equal(t, tc.expBytes, hex.EncodeToString(bz), tc.testName)
+	}
+
 }
