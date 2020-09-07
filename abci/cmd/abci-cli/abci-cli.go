@@ -11,18 +11,18 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	"github.com/tendermint/tendermint/libs/log"
+	tmos "github.com/tendermint/tendermint/libs/os"
 
-	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
-	"github.com/lazyledger/lazyledger-core/abci/example/code"
-	"github.com/lazyledger/lazyledger-core/abci/example/counter"
-	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
-	"github.com/lazyledger/lazyledger-core/abci/server"
-	servertest "github.com/lazyledger/lazyledger-core/abci/tests/server"
-	"github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/abci/version"
-	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+	abcicli "github.com/tendermint/tendermint/abci/client"
+	"github.com/tendermint/tendermint/abci/example/code"
+	"github.com/tendermint/tendermint/abci/example/counter"
+	"github.com/tendermint/tendermint/abci/example/kvstore"
+	"github.com/tendermint/tendermint/abci/server"
+	servertest "github.com/tendermint/tendermint/abci/tests/server"
+	"github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/abci/version"
+	"github.com/tendermint/tendermint/proto/tendermint/crypto"
 )
 
 // client is a global variable so it can be reused by the console
@@ -98,10 +98,10 @@ type response struct {
 }
 
 type queryResponse struct {
-	Key    []byte
-	Value  []byte
-	Height int64
-	Proof  *merkle.Proof
+	Key      []byte
+	Value    []byte
+	Height   int64
+	ProofOps *crypto.ProofOps
 }
 
 func Execute() error {
@@ -616,10 +616,10 @@ func cmdQuery(cmd *cobra.Command, args []string) error {
 		Info: resQuery.Info,
 		Log:  resQuery.Log,
 		Query: &queryResponse{
-			Key:    resQuery.Key,
-			Value:  resQuery.Value,
-			Height: resQuery.Height,
-			Proof:  resQuery.Proof,
+			Key:      resQuery.Key,
+			Value:    resQuery.Value,
+			Height:   resQuery.Height,
+			ProofOps: resQuery.ProofOps,
 		},
 	})
 	return nil
@@ -642,7 +642,9 @@ func cmdCounter(cmd *cobra.Command, args []string) error {
 	// Stop upon receiving SIGTERM or CTRL-C.
 	tmos.TrapSignal(logger, func() {
 		// Cleanup
-		srv.Stop()
+		if err := srv.Stop(); err != nil {
+			logger.Error("Error while stopping server", "err", err)
+		}
 	})
 
 	// Run forever.
@@ -674,7 +676,9 @@ func cmdKVStore(cmd *cobra.Command, args []string) error {
 	// Stop upon receiving SIGTERM or CTRL-C.
 	tmos.TrapSignal(logger, func() {
 		// Cleanup
-		srv.Stop()
+		if err := srv.Stop(); err != nil {
+			logger.Error("Error while stopping server", "err", err)
+		}
 	})
 
 	// Run forever.
@@ -719,8 +723,8 @@ func printResponse(cmd *cobra.Command, args []string, rsp response) {
 			fmt.Printf("-> value: %s\n", rsp.Query.Value)
 			fmt.Printf("-> value.hex: %X\n", rsp.Query.Value)
 		}
-		if rsp.Query.Proof != nil {
-			fmt.Printf("-> proof: %#v\n", rsp.Query.Proof)
+		if rsp.Query.ProofOps != nil {
+			fmt.Printf("-> proof: %#v\n", rsp.Query.ProofOps)
 		}
 	}
 }

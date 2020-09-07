@@ -200,7 +200,9 @@ func (p *peer) FlushStop() {
 func (p *peer) OnStop() {
 	p.metricsTicker.Stop()
 	p.BaseService.OnStop()
-	p.mconn.Stop() // stop everything and close the conn
+	if err := p.mconn.Stop(); err != nil { // stop everything and close the conn
+		p.Logger.Error("Error while stopping peer", "err", err)
+	}
 }
 
 //---------------------------------------------------
@@ -320,7 +322,7 @@ func (p *peer) CloseConn() error {
 
 // CloseConn closes the underlying connection
 func (pc *peerConn) CloseConn() {
-	pc.conn.Close() // nolint: errcheck
+	pc.conn.Close()
 }
 
 // RemoteAddr returns peer's remote network address.

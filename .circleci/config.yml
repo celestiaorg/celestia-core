@@ -36,7 +36,6 @@ commands:
           name: "Running test"
           command: |
             bash << parameters.script_path >>
-
 jobs:
   setup_dependencies:
     executor: golang
@@ -251,9 +250,6 @@ workflows:
   test-suite:
     jobs:
       - setup_dependencies
-      - test_cover:
-          requires:
-            - setup_dependencies
       - test_persistence:
           requires:
             - setup_dependencies

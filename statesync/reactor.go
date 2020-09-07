@@ -3,10 +3,11 @@ package statesync
 import (
 	"errors"
 	"sort"
-	"sync"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/p2p"
+	ssproto "github.com/lazyledger/lazyledger-core/proto/tendermint/statesync"
 	"github.com/lazyledger/lazyledger-core/proxy"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -32,7 +33,7 @@ type Reactor struct {
 
 	// This will only be set when a state sync is in progress. It is used to feed received
 	// snapshots and chunks into the sync.
-	mtx    sync.RWMutex
+	mtx    tmsync.RWMutex
 	syncer *syncer
 }
 
@@ -99,7 +100,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 		r.Switch.StopPeerForError(src, err)
 		return
 	}
-	err = msg.ValidateBasic()
+	err = validateMsg(msg)
 	if err != nil {
 		r.Logger.Error("Invalid message", "peer", src, "msg", msg, "err", err)
 		r.Switch.StopPeerForError(src, err)
@@ -109,7 +110,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 	switch chID {
 	case SnapshotChannel:
 		switch msg := msg.(type) {
-		case *snapshotsRequestMessage:
+		case *ssproto.SnapshotsRequest:
 			snapshots, err := r.recentSnapshots(recentSnapshots)
 			if err != nil {
 				r.Logger.Error("Failed to fetch snapshots", "err", err)
@@ -118,7 +119,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 			for _, snapshot := range snapshots {
 				r.Logger.Debug("Advertising snapshot", "height", snapshot.Height,
 					"format", snapshot.Format, "peer", src.ID())
-				src.Send(chID, cdc.MustMarshalBinaryBare(&snapshotsResponseMessage{
+				src.Send(chID, mustEncodeMsg(&ssproto.SnapshotsResponse{
 					Height:   snapshot.Height,
 					Format:   snapshot.Format,
 					Chunks:   snapshot.Chunks,
@@ -127,7 +128,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 				}))
 			}
 
-		case *snapshotsResponseMessage:
+		case *ssproto.SnapshotsResponse:
 			r.mtx.RLock()
 			defer r.mtx.RUnlock()
 			if r.syncer == nil {
@@ -154,7 +155,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 
 	case ChunkChannel:
 		switch msg := msg.(type) {
-		case *chunkRequestMessage:
+		case *ssproto.ChunkRequest:
 			r.Logger.Debug("Received chunk request", "height", msg.Height, "format", msg.Format,
 				"chunk", msg.Index, "peer", src.ID())
 			resp, err := r.conn.LoadSnapshotChunkSync(abci.RequestLoadSnapshotChunk{
@@ -169,7 +170,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 			}
 			r.Logger.Debug("Sending chunk", "height", msg.Height, "format", msg.Format,
 				"chunk", msg.Index, "peer", src.ID())
-			src.Send(ChunkChannel, cdc.MustMarshalBinaryBare(&chunkResponseMessage{
+			src.Send(ChunkChannel, mustEncodeMsg(&ssproto.ChunkResponse{
 				Height:  msg.Height,
 				Format:  msg.Format,
 				Index:   msg.Index,
@@ -177,7 +178,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 				Missing: resp.Chunk == nil,
 			}))
 
-		case *chunkResponseMessage:
+		case *ssproto.ChunkResponse:
 			r.mtx.RLock()
 			defer r.mtx.RUnlock()
 			if r.syncer == nil {

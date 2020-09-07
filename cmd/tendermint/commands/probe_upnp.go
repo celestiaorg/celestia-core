@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 	"github.com/lazyledger/lazyledger-core/p2p/upnp"
 )
 
@@ -21,7 +22,7 @@ func probeUpnp(cmd *cobra.Command, args []string) error {
 		fmt.Println("Probe failed: ", err)
 	} else {
 		fmt.Println("Probe success!")
-		jsonBytes, err := cdc.MarshalJSON(capabilities)
+		jsonBytes, err := tmjson.Marshal(capabilities)
 		if err != nil {
 			return err
 		}

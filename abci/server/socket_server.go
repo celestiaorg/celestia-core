@@ -7,12 +7,12 @@ import (
 	"net"
 	"os"
 	"runtime"
-	"sync"
 
 	"github.com/lazyledger/lazyledger-core/abci/types"
 	tmlog "github.com/lazyledger/lazyledger-core/libs/log"
 	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
 	"github.com/lazyledger/lazyledger-core/libs/service"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 )
 
 // var maxNumberConnections = 2
@@ -25,11 +25,11 @@ type SocketServer struct {
 	addr     string
 	listener net.Listener
 
-	connsMtx   sync.Mutex
+	connsMtx   tmsync.Mutex
 	conns      map[int]net.Conn
 	nextConnID int
 
-	appMtx sync.Mutex
+	appMtx tmsync.Mutex
 	app    types.Application
 }
 

@@ -45,7 +45,7 @@ func (p testPeer) simulateInput(input inputData) {
 	input.pool.AddBlock(input.request.PeerID, block, 123)
 	// TODO: uncommenting this creates a race which is detected by:
 	// https://github.com/golang/go/blob/2bd767b1022dd3254bcec469f0ee164024726486/src/testing/testing.go#L854-L856
-	// see: https://github.com/tendermint/tendermint/issues/3390#issue-418379890
+	// see: https://github.comlazyledger/lazyledger-cor/issues/3390#issue-418379890
 	// input.t.Logf("Added block from peer %v (height: %v)", input.request.PeerID, input.request.Height)
 }
 
@@ -90,7 +90,11 @@ func TestBlockPoolBasic(t *testing.T) {
 		t.Error(err)
 	}
 
-	defer pool.Stop()
+	t.Cleanup(func() {
+		if err := pool.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	peers.start()
 	defer peers.stop()
@@ -144,7 +148,11 @@ func TestBlockPoolTimeout(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	defer pool.Stop()
+	t.Cleanup(func() {
+		if err := pool.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	for _, peer := range peers {
 		t.Logf("Peer %v", peer.id)
@@ -206,7 +214,11 @@ func TestBlockPoolRemovePeer(t *testing.T) {
 	pool.SetLogger(log.TestingLogger())
 	err := pool.Start()
 	require.NoError(t, err)
-	defer pool.Stop()
+	t.Cleanup(func() {
+		if err := pool.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	// add peers
 	for peerID, peer := range peers {

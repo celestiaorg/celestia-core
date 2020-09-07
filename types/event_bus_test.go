@@ -41,12 +41,12 @@ func TestEventBusPublishEventTx(t *testing.T) {
 		edt := msg.Data().(EventDataTx)
 		assert.Equal(t, int64(1), edt.Height)
 		assert.Equal(t, uint32(0), edt.Index)
-		assert.Equal(t, tx, edt.Tx)
+		assert.EqualValues(t, tx, edt.Tx)
 		assert.Equal(t, result, edt.Result)
 		close(done)
 	}()
 
-	err = eventBus.PublishEventTx(EventDataTx{TxResult{
+	err = eventBus.PublishEventTx(EventDataTx{abci.TxResult{
 		Height: 1,
 		Index:  0,
 		Tx:     tx,
@@ -183,7 +183,7 @@ func TestEventBusPublishEventTxDuplicateKeys(t *testing.T) {
 				data := msg.Data().(EventDataTx)
 				assert.Equal(t, int64(1), data.Height)
 				assert.Equal(t, uint32(0), data.Index)
-				assert.Equal(t, tx, data.Tx)
+				assert.EqualValues(t, tx, data.Tx)
 				assert.Equal(t, result, data.Result)
 				close(done)
 			case <-time.After(1 * time.Second):
@@ -191,7 +191,7 @@ func TestEventBusPublishEventTxDuplicateKeys(t *testing.T) {
 			}
 		}()
 
-		err = eventBus.PublishEventTx(EventDataTx{TxResult{
+		err = eventBus.PublishEventTx(EventDataTx{abci.TxResult{
 			Height: 1,
 			Index:  0,
 			Tx:     tx,
@@ -249,6 +249,40 @@ func TestEventBusPublishEventNewBlockHeader(t *testing.T) {
 		Header:           block.Header,
 		ResultBeginBlock: resultBeginBlock,
 		ResultEndBlock:   resultEndBlock,
+	})
+	assert.NoError(t, err)
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("did not receive a block header after 1 sec.")
+	}
+}
+
+func TestEventBusPublishEventNewEvidence(t *testing.T) {
+	eventBus := NewEventBus()
+	err := eventBus.Start()
+	require.NoError(t, err)
+	defer eventBus.Stop()
+
+	ev := NewMockDuplicateVoteEvidence(1, time.Now(), "test-chain-id")
+
+	query := "tm.event='NewEvidence'"
+	evSub, err := eventBus.Subscribe(context.Background(), "test", tmquery.MustParse(query))
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		msg := <-evSub.Out()
+		edt := msg.Data().(EventDataNewEvidence)
+		assert.Equal(t, ev, edt.Evidence)
+		assert.Equal(t, int64(4), edt.Height)
+		close(done)
+	}()
+
+	err = eventBus.PublishEventNewEvidence(EventDataNewEvidence{
+		Evidence: ev,
+		Height:   4,
 	})
 	assert.NoError(t, err)
 

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
-	"sync"
 
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/p2p"
 )
 
@@ -42,7 +42,7 @@ func (s *snapshot) Key() snapshotKey {
 type snapshotPool struct {
 	stateProvider StateProvider
 
-	sync.Mutex
+	tmsync.Mutex
 	snapshots     map[snapshotKey]*snapshot
 	snapshotPeers map[snapshotKey]map[p2p.ID]p2p.Peer
 
@@ -140,7 +140,7 @@ func (p *snapshotPool) GetPeer(snapshot *snapshot) p2p.Peer {
 	if len(peers) == 0 {
 		return nil
 	}
-	return peers[rand.Intn(len(peers))]
+	return peers[rand.Intn(len(peers))] // nolint:gosec // G404: Use of weak random number generator
 }
 
 // GetPeers returns the peers for a snapshot.

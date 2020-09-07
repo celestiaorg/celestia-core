@@ -5,6 +5,9 @@ import (
 	"time"
 
 	"github.com/lazyledger/lazyledger-core/crypto"
+	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	privvalproto "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -48,16 +51,14 @@ func (sc *SignerClient) WaitForConnection(maxWait time.Duration) error {
 
 // Ping sends a ping request to the remote signer
 func (sc *SignerClient) Ping() error {
-	response, err := sc.endpoint.SendRequest(&PingRequest{})
-
+	response, err := sc.endpoint.SendRequest(mustWrapMsg(&privvalproto.PingRequest{}))
 	if err != nil {
 		sc.endpoint.Logger.Error("SignerClient::Ping", "err", err)
 		return nil
 	}
 
-	_, ok := response.(*PingResponse)
-	if !ok {
-		sc.endpoint.Logger.Error("SignerClient::Ping", "err", "response != PingResponse")
+	pb := response.GetPingResponse()
+	if pb == nil {
 		return err
 	}
 
@@ -67,64 +68,62 @@ func (sc *SignerClient) Ping() error {
 // GetPubKey retrieves a public key from a remote signer
 // returns an error if client is not able to provide the key
 func (sc *SignerClient) GetPubKey() (crypto.PubKey, error) {
-	response, err := sc.endpoint.SendRequest(&PubKeyRequest{})
+	response, err := sc.endpoint.SendRequest(mustWrapMsg(&privvalproto.PubKeyRequest{}))
 	if err != nil {
-		sc.endpoint.Logger.Error("SignerClient::GetPubKey", "err", err)
 		return nil, fmt.Errorf("send: %w", err)
 	}
 
-	pubKeyResp, ok := response.(*PubKeyResponse)
-	if !ok {
-		sc.endpoint.Logger.Error("SignerClient::GetPubKey", "err", "response != PubKeyResponse")
-		return nil, fmt.Errorf("unexpected response type %T", response)
+	resp := response.GetPubKeyResponse()
+	if resp == nil {
+		return nil, ErrUnexpectedResponse
+	}
+	if resp.Error != nil {
+		return nil, &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
 	}
 
-	if pubKeyResp.Error != nil {
-		sc.endpoint.Logger.Error("failed to get private validator's public key", "err", pubKeyResp.Error)
-		return nil, fmt.Errorf("remote error: %w", pubKeyResp.Error)
+	pk, err := cryptoenc.PubKeyFromProto(*resp.PubKey)
+	if err != nil {
+		return nil, err
 	}
 
-	return pubKeyResp.PubKey, nil
+	return pk, nil
 }
 
 // SignVote requests a remote signer to sign a vote
-func (sc *SignerClient) SignVote(chainID string, vote *types.Vote) error {
-	response, err := sc.endpoint.SendRequest(&SignVoteRequest{Vote: vote})
+func (sc *SignerClient) SignVote(chainID string, vote *tmproto.Vote) error {
+	response, err := sc.endpoint.SendRequest(mustWrapMsg(&privvalproto.SignVoteRequest{Vote: vote}))
 	if err != nil {
-		sc.endpoint.Logger.Error("SignerClient::SignVote", "err", err)
 		return err
 	}
 
-	resp, ok := response.(*SignedVoteResponse)
-	if !ok {
-		sc.endpoint.Logger.Error("SignerClient::GetPubKey", "err", "response != SignedVoteResponse")
+	resp := response.GetSignedVoteResponse()
+	if resp == nil {
 		return ErrUnexpectedResponse
 	}
-
 	if resp.Error != nil {
-		return resp.Error
+		return &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
 	}
+
 	*vote = *resp.Vote
 
 	return nil
 }
 
 // SignProposal requests a remote signer to sign a proposal
-func (sc *SignerClient) SignProposal(chainID string, proposal *types.Proposal) error {
-	response, err := sc.endpoint.SendRequest(&SignProposalRequest{Proposal: proposal})
+func (sc *SignerClient) SignProposal(chainID string, proposal *tmproto.Proposal) error {
+	response, err := sc.endpoint.SendRequest(mustWrapMsg(&privvalproto.SignProposalRequest{Proposal: *proposal}))
 	if err != nil {
-		sc.endpoint.Logger.Error("SignerClient::SignProposal", "err", err)
 		return err
 	}
 
-	resp, ok := response.(*SignedProposalResponse)
-	if !ok {
-		sc.endpoint.Logger.Error("SignerClient::SignProposal", "err", "response != SignedProposalResponse")
+	resp := response.GetSignedProposalResponse()
+	if resp == nil {
 		return ErrUnexpectedResponse
 	}
 	if resp.Error != nil {
-		return resp.Error
+		return &RemoteSignerError{Code: int(resp.Error.Code), Description: resp.Error.Description}
 	}
+
 	*proposal = *resp.Proposal
 
 	return nil

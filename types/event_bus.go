@@ -156,6 +156,10 @@ func (b *EventBus) PublishEventNewBlockHeader(data EventDataNewBlockHeader) erro
 	return b.pubsub.PublishWithEvents(ctx, data, events)
 }
 
+func (b *EventBus) PublishEventNewEvidence(evidence EventDataNewEvidence) error {
+	return b.Publish(EventNewEvidence, evidence)
+}
+
 func (b *EventBus) PublishEventVote(data EventDataVote) error {
 	return b.Publish(EventVote, data)
 }
@@ -175,7 +179,7 @@ func (b *EventBus) PublishEventTx(data EventDataTx) error {
 
 	// add predefined compositeKeys
 	events[EventTypeKey] = append(events[EventTypeKey], EventTx)
-	events[TxHashKey] = append(events[TxHashKey], fmt.Sprintf("%X", data.Tx.Hash()))
+	events[TxHashKey] = append(events[TxHashKey], fmt.Sprintf("%X", Tx(data.Tx).Hash()))
 	events[TxHeightKey] = append(events[TxHeightKey], fmt.Sprintf("%d", data.Height))
 
 	return b.pubsub.PublishWithEvents(ctx, data, events)
@@ -246,6 +250,10 @@ func (NopEventBus) PublishEventNewBlock(data EventDataNewBlock) error {
 }
 
 func (NopEventBus) PublishEventNewBlockHeader(data EventDataNewBlockHeader) error {
+	return nil
+}
+
+func (NopEventBus) PublishEventNewEvidence(evidence EventDataNewEvidence) error {
 	return nil
 }
 

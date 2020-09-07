@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	"github.com/lazyledger/lazyledger-core/privval"
 )
@@ -29,7 +30,7 @@ func showValidator(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("can't get pubkey: %w", err)
 	}
 
-	bz, err := cdc.MarshalJSON(pubKey)
+	bz, err := tmjson.Marshal(pubKey)
 	if err != nil {
 		return fmt.Errorf("failed to marshal private validator pubkey: %w", err)
 	}

@@ -3,23 +3,21 @@ package mempool
 import (
 	"fmt"
 	"math"
-	"reflect"
-	"sync"
 	"time"
-
-	amino "github.com/tendermint/go-amino"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/libs/clist"
 	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/p2p"
+	protomem "github.com/lazyledger/lazyledger-core/proto/tendermint/mempool"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
 const (
 	MempoolChannel = byte(0x30)
 
-	aminoOverheadForTxMessage = 8
+	protoOverheadForTxMessage = 4
 
 	peerCatchupSleepIntervalMS = 100 // If peer is behind, sleep this amount
 
@@ -41,7 +39,7 @@ type Reactor struct {
 }
 
 type mempoolIDs struct {
-	mtx       sync.RWMutex
+	mtx       tmsync.RWMutex
 	peerMap   map[p2p.ID]uint16
 	nextID    uint16              // assumes that a node will never have over 65536 active peers
 	activeIDs map[uint16]struct{} // used to check if a given peerID key is used, the value doesn't matter
@@ -172,20 +170,15 @@ func (memR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 	}
 	memR.Logger.Debug("Receive", "src", src, "chId", chID, "msg", msg)
 
-	switch msg := msg.(type) {
-	case *TxMessage:
-		txInfo := TxInfo{SenderID: memR.ids.GetForPeer(src)}
-		if src != nil {
-			txInfo.SenderP2PID = src.ID()
-		}
-		err := memR.mempool.CheckTx(msg.Tx, nil, txInfo)
-		if err != nil {
-			memR.Logger.Info("Could not check tx", "tx", txID(msg.Tx), "err", err)
-		}
-		// broadcasting happens from go routines per peer
-	default:
-		memR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
+	txInfo := TxInfo{SenderID: memR.ids.GetForPeer(src)}
+	if src != nil {
+		txInfo.SenderP2PID = src.ID()
 	}
+	err = memR.mempool.CheckTx(msg.Tx, nil, txInfo)
+	if err != nil {
+		memR.Logger.Info("Could not check tx", "tx", txID(msg.Tx), "err", err)
+	}
+	// broadcasting happens from go routines per peer
 }
 
 // PeerState describes the state of a peer.
@@ -238,9 +231,19 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 
 		// ensure peer hasn't already sent us this tx
 		if _, ok := memTx.senders.Load(peerID); !ok {
-			// send memTx
-			msg := &TxMessage{Tx: memTx.tx}
-			success := peer.Send(MempoolChannel, cdc.MustMarshalBinaryBare(msg))
+			msg := protomem.Message{
+				Sum: &protomem.Message_Tx{
+					Tx: &protomem.Tx{
+						Tx: []byte(memTx.tx),
+					},
+				},
+			}
+
+			bz, err := msg.Marshal()
+			if err != nil {
+				panic(err)
+			}
+			success := peer.Send(MempoolChannel, bz)
 			if !success {
 				time.Sleep(peerCatchupSleepIntervalMS * time.Millisecond)
 				continue
@@ -262,17 +265,22 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 //-----------------------------------------------------------------------------
 // Messages
 
-// Message is a message sent or received by the Reactor.
-type Message interface{}
+func (memR *Reactor) decodeMsg(bz []byte) (TxMessage, error) {
+	msg := protomem.Message{}
+	err := msg.Unmarshal(bz)
+	if err != nil {
+		return TxMessage{}, err
+	}
 
-func RegisterMessages(cdc *amino.Codec) {
-	cdc.RegisterInterface((*Message)(nil), nil)
-	cdc.RegisterConcrete(&TxMessage{}, "tendermint/mempool/TxMessage", nil)
-}
+	var message TxMessage
 
-func (memR *Reactor) decodeMsg(bz []byte) (msg Message, err error) {
-	err = cdc.UnmarshalBinaryBare(bz, &msg)
-	return
+	if i, ok := msg.Sum.(*protomem.Message_Tx); ok {
+		message = TxMessage{
+			Tx: types.Tx(i.Tx.GetTx()),
+		}
+		return message, nil
+	}
+	return message, fmt.Errorf("msg type: %T is not supported", msg)
 }
 
 //-------------------------------------
@@ -288,7 +296,7 @@ func (m *TxMessage) String() string {
 }
 
 // calcMaxMsgSize returns the max size of TxMessage
-// account for amino overhead of TxMessage
+// account for proto overhead of bytesValue
 func calcMaxMsgSize(maxTxSize int) int {
-	return maxTxSize + aminoOverheadForTxMessage
+	return maxTxSize + protoOverheadForTxMessage
 }

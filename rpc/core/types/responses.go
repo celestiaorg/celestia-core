@@ -7,8 +7,8 @@ import (
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/libs/bytes"
-
 	"github.com/lazyledger/lazyledger-core/p2p"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -134,8 +134,8 @@ type ResultValidators struct {
 
 // ConsensusParams for given height
 type ResultConsensusParams struct {
-	BlockHeight     int64                 `json:"block_height"`
-	ConsensusParams types.ConsensusParams `json:"consensus_params"`
+	BlockHeight     int64                   `json:"block_height"`
+	ConsensusParams tmproto.ConsensusParams `json:"consensus_params"`
 }
 
 // Info about the consensus state.
@@ -172,6 +172,11 @@ type ResultBroadcastTxCommit struct {
 	DeliverTx abci.ResponseDeliverTx `json:"deliver_tx"`
 	Hash      bytes.HexBytes         `json:"hash"`
 	Height    int64                  `json:"height"`
+}
+
+// ResultCheckTx wraps abci.ResponseCheckTx.
+type ResultCheckTx struct {
+	abci.ResponseCheckTx
 }
 
 // Result of querying for a tx

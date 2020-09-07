@@ -10,6 +10,7 @@ import (
 	dbm "github.com/tendermint/tm-db"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
 	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
 	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 	sm "github.com/lazyledger/lazyledger-core/state"
@@ -69,7 +70,7 @@ func TestBlockchainInfo(t *testing.T) {
 }
 
 func TestBlockResults(t *testing.T) {
-	results := &sm.ABCIResponses{
+	results := &tmstate.ABCIResponses{
 		DeliverTxs: []*abci.ResponseDeliverTx{
 			{Code: 0, Data: []byte{0x01}, Log: "ok"},
 			{Code: 0, Data: []byte{0x02}, Log: "ok"},

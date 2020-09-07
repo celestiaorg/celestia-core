@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 
-	amino "github.com/tendermint/go-amino"
 	dbm "github.com/tendermint/tm-db"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
@@ -26,17 +25,17 @@ import (
 	cs "github.com/lazyledger/lazyledger-core/consensus"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/evidence"
+	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
 	"github.com/lazyledger/lazyledger-core/libs/service"
-	lite "github.com/lazyledger/lazyledger-core/lite2"
+	"github.com/lazyledger/lazyledger-core/light"
 	mempl "github.com/lazyledger/lazyledger-core/mempool"
 	"github.com/lazyledger/lazyledger-core/p2p"
 	"github.com/lazyledger/lazyledger-core/p2p/pex"
 	"github.com/lazyledger/lazyledger-core/privval"
 	"github.com/lazyledger/lazyledger-core/proxy"
 	rpccore "github.com/lazyledger/lazyledger-core/rpc/core"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
 	grpccore "github.com/lazyledger/lazyledger-core/rpc/grpc"
 	rpcserver "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server"
 	sm "github.com/lazyledger/lazyledger-core/state"
@@ -65,7 +64,7 @@ type DBProvider func(*DBContext) (dbm.DB, error)
 // specified in the ctx.Config.
 func DefaultDBProvider(ctx *DBContext) (dbm.DB, error) {
 	dbType := dbm.BackendType(ctx.Config.DBBackend)
-	return dbm.NewDB(ctx.ID, dbType, ctx.Config.DBDir()), nil
+	return dbm.NewDB(ctx.ID, dbType, ctx.Config.DBDir())
 }
 
 // GenesisDocProvider returns a GenesisDoc.
@@ -249,14 +248,7 @@ func createAndStartIndexerService(config *cfg.Config, dbProvider DBProvider,
 		if err != nil {
 			return nil, nil, err
 		}
-		switch {
-		case config.TxIndex.IndexKeys != "":
-			txIndexer = kv.NewTxIndex(store, kv.IndexEvents(splitAndTrimEmpty(config.TxIndex.IndexKeys, ",", " ")))
-		case config.TxIndex.IndexAllKeys:
-			txIndexer = kv.NewTxIndex(store, kv.IndexAllEvents())
-		default:
-			txIndexer = kv.NewTxIndex(store)
-		}
+		txIndexer = kv.NewTxIndex(store)
 	default:
 		txIndexer = &null.TxIndex{}
 	}
@@ -574,11 +566,11 @@ func startStateSync(ssR *statesync.Reactor, bcR fastSyncReactor, conR *cs.Reacto
 	if stateProvider == nil {
 		var err error
 		stateProvider, err = statesync.NewLightClientStateProvider(state.ChainID, state.Version,
-			config.RPCServers, lite.TrustOptions{
+			config.RPCServers, light.TrustOptions{
 				Period: config.TrustPeriod,
 				Height: config.TrustHeight,
 				Hash:   config.TrustHashBytes(),
-			}, ssR.Logger.With("module", "lite"))
+			}, ssR.Logger.With("module", "light"))
 		if err != nil {
 			return fmt.Errorf("failed to set up light client state provider: %w", err)
 		}
@@ -959,7 +951,8 @@ func (n *Node) ConfigureRPC() error {
 		return fmt.Errorf("can't get pubkey: %w", err)
 	}
 	rpccore.SetEnvironment(&rpccore.Environment{
-		ProxyAppQuery: n.proxyApp.Query(),
+		ProxyAppQuery:   n.proxyApp.Query(),
+		ProxyAppMempool: n.proxyApp.Mempool(),
 
 		StateDB:        n.stateDB,
 		BlockStore:     n.blockStore,
@@ -989,8 +982,6 @@ func (n *Node) startRPC() ([]net.Listener, error) {
 	}
 
 	listenAddrs := splitAndTrimEmpty(n.config.RPC.ListenAddress, ",", " ")
-	coreCodec := amino.NewCodec()
-	ctypes.RegisterAmino(coreCodec)
 
 	if n.config.RPC.Unsafe {
 		rpccore.AddUnsafeRoutes()
@@ -1013,7 +1004,7 @@ func (n *Node) startRPC() ([]net.Listener, error) {
 		mux := http.NewServeMux()
 		rpcLogger := n.Logger.With("module", "rpc-server")
 		wmLogger := rpcLogger.With("protocol", "websocket")
-		wm := rpcserver.NewWebsocketManager(rpccore.Routes, coreCodec,
+		wm := rpcserver.NewWebsocketManager(rpccore.Routes,
 			rpcserver.OnDisconnect(func(remoteAddr string) {
 				err := n.eventBus.UnsubscribeAll(context.Background(), remoteAddr)
 				if err != nil && err != tmpubsub.ErrSubscriptionNotFound {
@@ -1024,7 +1015,7 @@ func (n *Node) startRPC() ([]net.Listener, error) {
 		)
 		wm.SetLogger(wmLogger)
 		mux.HandleFunc("/websocket", wm.WebsocketHandler)
-		rpcserver.RegisterRPCFuncs(mux, rpccore.Routes, coreCodec, rpcLogger)
+		rpcserver.RegisterRPCFuncs(mux, rpccore.Routes, rpcLogger)
 		listener, err := rpcserver.Listen(
 			listenAddr,
 			config,
@@ -1278,7 +1269,9 @@ func LoadStateFromDBOrGenesisDocProvider(
 		}
 		// save genesis doc to prevent a certain class of user errors (e.g. when it
 		// was changed, accidentally or not). Also good for audit trail.
-		saveGenesisDoc(stateDB, genDoc)
+		if err := saveGenesisDoc(stateDB, genDoc); err != nil {
+			return sm.State{}, nil, err
+		}
 	}
 	state, err := sm.LoadStateFromDBOrGenesisDoc(stateDB, genDoc)
 	if err != nil {
@@ -1297,7 +1290,7 @@ func loadGenesisDoc(db dbm.DB) (*types.GenesisDoc, error) {
 		return nil, errors.New("genesis doc not found")
 	}
 	var genDoc *types.GenesisDoc
-	err = cdc.UnmarshalJSON(b, &genDoc)
+	err = tmjson.Unmarshal(b, &genDoc)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to load genesis doc due to unmarshaling error: %v (bytes: %X)", err, b))
 	}
@@ -1305,12 +1298,16 @@ func loadGenesisDoc(db dbm.DB) (*types.GenesisDoc, error) {
 }
 
 // panics if failed to marshal the given genesis document
-func saveGenesisDoc(db dbm.DB, genDoc *types.GenesisDoc) {
-	b, err := cdc.MarshalJSON(genDoc)
+func saveGenesisDoc(db dbm.DB, genDoc *types.GenesisDoc) error {
+	b, err := tmjson.Marshal(genDoc)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to save genesis doc due to marshaling error: %v", err))
+		return fmt.Errorf("failed to save genesis doc due to marshaling error: %w", err)
 	}
-	db.SetSync(genesisDocKey, b)
+	if err := db.SetSync(genesisDocKey, b); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func createAndStartPrivValidatorSocketClient(

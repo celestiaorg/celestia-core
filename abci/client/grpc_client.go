@@ -3,7 +3,6 @@ package abcicli
 import (
 	"fmt"
 	"net"
-	"sync"
 	"time"
 
 	"golang.org/x/net/context"
@@ -12,6 +11,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/abci/types"
 	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
 	"github.com/lazyledger/lazyledger-core/libs/service"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 )
 
 var _ Client = (*grpcClient)(nil)
@@ -25,7 +25,7 @@ type grpcClient struct {
 	client types.ABCIApplicationClient
 	conn   *grpc.ClientConn
 
-	mtx   sync.Mutex
+	mtx   tmsync.Mutex
 	addr  string
 	err   error
 	resCb func(*types.Request, *types.Response) // listens to all callbacks

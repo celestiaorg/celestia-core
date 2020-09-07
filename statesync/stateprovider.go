@@ -3,17 +3,18 @@ package statesync
 import (
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	dbm "github.com/tendermint/tm-db"
 
 	"github.com/lazyledger/lazyledger-core/libs/log"
-	lite "github.com/lazyledger/lazyledger-core/lite2"
-	liteprovider "github.com/lazyledger/lazyledger-core/lite2/provider"
-	litehttp "github.com/lazyledger/lazyledger-core/lite2/provider/http"
-	literpc "github.com/lazyledger/lazyledger-core/lite2/rpc"
-	litedb "github.com/lazyledger/lazyledger-core/lite2/store/db"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/light"
+	lightprovider "github.com/lazyledger/lazyledger-core/light/provider"
+	lighthttp "github.com/lazyledger/lazyledger-core/light/provider/http"
+	lightrpc "github.com/lazyledger/lazyledger-core/light/rpc"
+	lightdb "github.com/lazyledger/lazyledger-core/light/store/db"
+	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
 	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -34,40 +35,40 @@ type StateProvider interface {
 
 // lightClientStateProvider is a state provider using the light client.
 type lightClientStateProvider struct {
-	sync.Mutex // lite.Client is not concurrency-safe
-	lc         *lite.Client
-	version    sm.Version
-	providers  map[liteprovider.Provider]string
+	tmsync.Mutex // light.Client is not concurrency-safe
+	lc           *light.Client
+	version      tmstate.Version
+	providers    map[lightprovider.Provider]string
 }
 
 // NewLightClientStateProvider creates a new StateProvider using a light client and RPC clients.
 func NewLightClientStateProvider(
 	chainID string,
-	version sm.Version,
+	version tmstate.Version,
 	servers []string,
-	trustOptions lite.TrustOptions,
+	trustOptions light.TrustOptions,
 	logger log.Logger,
 ) (StateProvider, error) {
 	if len(servers) < 2 {
 		return nil, fmt.Errorf("at least 2 RPC servers are required, got %v", len(servers))
 	}
 
-	providers := make([]liteprovider.Provider, 0, len(servers))
-	providerRemotes := make(map[liteprovider.Provider]string)
+	providers := make([]lightprovider.Provider, 0, len(servers))
+	providerRemotes := make(map[lightprovider.Provider]string)
 	for _, server := range servers {
 		client, err := rpcClient(server)
 		if err != nil {
 			return nil, fmt.Errorf("failed to set up RPC client: %w", err)
 		}
-		provider := litehttp.NewWithClient(chainID, client)
+		provider := lighthttp.NewWithClient(chainID, client)
 		providers = append(providers, provider)
 		// We store the RPC addresses keyed by provider, so we can find the address of the primary
 		// provider used by the light client and use it to fetch consensus parameters.
 		providerRemotes[provider] = server
 	}
 
-	lc, err := lite.NewClient(chainID, trustOptions, providers[0], providers[1:],
-		litedb.New(dbm.NewMemDB(), ""), lite.Logger(logger), lite.MaxRetryAttempts(5))
+	lc, err := light.NewClient(chainID, trustOptions, providers[0], providers[1:],
+		lightdb.New(dbm.NewMemDB(), ""), light.Logger(logger), light.MaxRetryAttempts(5))
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +156,7 @@ func (s *lightClientStateProvider) State(height uint64) (sm.State, error) {
 	if err != nil {
 		return sm.State{}, fmt.Errorf("unable to create RPC client: %w", err)
 	}
-	rpcclient := literpc.NewClient(primaryRPC, s.lc)
+	rpcclient := lightrpc.NewClient(primaryRPC, s.lc)
 	result, err := rpcclient.ConsensusParams(&nextHeader.Height)
 	if err != nil {
 		return sm.State{}, fmt.Errorf("unable to fetch consensus parameters for height %v: %w",
