@@ -8,13 +8,13 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	cryptoenc "github.com/tendermint/tendermint/crypto/encoding"
-	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	privproto "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 var stamp = time.Date(2019, 10, 13, 16, 14, 44, 0, time.UTC)
