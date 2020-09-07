@@ -1,12 +1,11 @@
 syntax = "proto3";
 package tendermint.types;
 
-option go_package = "github.com/tendermint/tendermint/proto/tendermint/types";
+option go_package = "github.com/lazyledger/lazyledger-core/proto/tendermint/types";
 
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "tendermint/types/types.proto";
-import "tendermint/crypto/keys.proto";
 
 // DuplicateVoteEvidence contains evidence a validator signed two conflicting
 // votes.

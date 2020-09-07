@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/proto/tendermint/version"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/proto/tendermint/version"
 )
 
 func TestLightBlockValidateBasic(t *testing.T) {
