@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/tendermint/tendermint/evidence/mocks"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/evidence/mocks"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 func TestVerifyEvidenceWrongAddress(t *testing.T) {
