@@ -48,6 +48,7 @@ func WaitForHeight(c StatusClient, h int64, waiter Waiter) error {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -67,7 +68,11 @@ func WaitForOneEvent(c EventsClient, evtTyp string, timeout time.Duration) (type
 		return nil, fmt.Errorf("failed to subscribe: %w", err)
 	}
 	// make sure to unregister after the test is over
-	defer c.UnsubscribeAll(ctx, subscriber)
+	defer func() {
+		if deferErr := c.UnsubscribeAll(ctx, subscriber); deferErr != nil {
+			panic(err)
+		}
+	}()
 
 	select {
 	case event := <-eventCh:

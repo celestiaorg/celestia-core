@@ -16,8 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	amino "github.com/tendermint/go-amino"
-
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
@@ -63,9 +61,6 @@ var Routes = map[string]*server.RPCFunc{
 	"echo_data_bytes": server.NewRPCFunc(EchoDataBytesResult, "arg"),
 	"echo_int":        server.NewRPCFunc(EchoIntResult, "arg"),
 }
-
-// Amino codec required to encode/decode everything above.
-var RoutesCdc = amino.NewCodec()
 
 func EchoResult(ctx *types.Context, v string) (*ResultEcho, error) {
 	return &ResultEcho{v}, nil
@@ -121,8 +116,8 @@ func setup() {
 
 	tcpLogger := logger.With("socket", "tcp")
 	mux := http.NewServeMux()
-	server.RegisterRPCFuncs(mux, Routes, RoutesCdc, tcpLogger)
-	wm := server.NewWebsocketManager(Routes, RoutesCdc, server.ReadWait(5*time.Second), server.PingPeriod(1*time.Second))
+	server.RegisterRPCFuncs(mux, Routes, tcpLogger)
+	wm := server.NewWebsocketManager(Routes, server.ReadWait(5*time.Second), server.PingPeriod(1*time.Second))
 	wm.SetLogger(tcpLogger)
 	mux.HandleFunc(websocketEndpoint, wm.WebsocketHandler)
 	config := server.DefaultConfig()
@@ -130,19 +125,27 @@ func setup() {
 	if err != nil {
 		panic(err)
 	}
-	go server.Serve(listener1, mux, tcpLogger, config)
+	go func() {
+		if err := server.Serve(listener1, mux, tcpLogger, config); err != nil {
+			panic(err)
+		}
+	}()
 
 	unixLogger := logger.With("socket", "unix")
 	mux2 := http.NewServeMux()
-	server.RegisterRPCFuncs(mux2, Routes, RoutesCdc, unixLogger)
-	wm = server.NewWebsocketManager(Routes, RoutesCdc)
+	server.RegisterRPCFuncs(mux2, Routes, unixLogger)
+	wm = server.NewWebsocketManager(Routes)
 	wm.SetLogger(unixLogger)
 	mux2.HandleFunc(websocketEndpoint, wm.WebsocketHandler)
 	listener2, err := server.Listen(unixAddr, config)
 	if err != nil {
 		panic(err)
 	}
-	go server.Serve(listener2, mux2, unixLogger, config)
+	go func() {
+		if err := server.Serve(listener2, mux2, unixLogger, config); err != nil {
+			panic(err)
+		}
+	}()
 
 	// wait for servers to start
 	time.Sleep(time.Second * 2)
@@ -292,7 +295,8 @@ func TestServersAndClientsBasic(t *testing.T) {
 		require.Nil(t, err)
 		fmt.Printf("=== testing server on %s using WS client", addr)
 		testWithWSClient(t, cl3)
-		cl3.Stop()
+		err = cl3.Stop()
+		require.NoError(t, err)
 	}
 }
 
@@ -322,7 +326,11 @@ func TestWSNewWSRPCFunc(t *testing.T) {
 	cl.SetLogger(log.TestingLogger())
 	err = cl.Start()
 	require.Nil(t, err)
-	defer cl.Stop()
+	t.Cleanup(func() {
+		if err := cl.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	val := testVal
 	params := map[string]interface{}{
@@ -348,7 +356,11 @@ func TestWSHandlesArrayParams(t *testing.T) {
 	cl.SetLogger(log.TestingLogger())
 	err = cl.Start()
 	require.Nil(t, err)
-	defer cl.Stop()
+	t.Cleanup(func() {
+		if err := cl.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	val := testVal
 	params := []interface{}{val}
@@ -374,7 +386,11 @@ func TestWSClientPingPong(t *testing.T) {
 	cl.SetLogger(log.TestingLogger())
 	err = cl.Start()
 	require.Nil(t, err)
-	defer cl.Stop()
+	t.Cleanup(func() {
+		if err := cl.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	time.Sleep(6 * time.Second)
 }

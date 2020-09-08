@@ -1,6 +1,8 @@
 # LazyLedger Core
 
+<!-- markdownlint-disable -->
 <img src="docs/lazyledger-banner.png" width="500">
+<!-- markdownlint-enable -->
 
 [![Go version](https://img.shields.io/badge/go-1.14-blue.svg)](https://github.com/moovweb/gvm)
 [![Telegram](https://img.shields.io/discord/669268347736686612.svg)](https://medium.com/lazyledger)

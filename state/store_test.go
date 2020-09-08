@@ -10,7 +10,13 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
 )
@@ -42,11 +48,13 @@ func BenchmarkLoadValidators(b *testing.B) {
 	config := cfg.ResetTestRoot("state_")
 	defer os.RemoveAll(config.RootDir)
 	dbType := dbm.BackendType(config.DBBackend)
-	stateDB := dbm.NewDB("state", dbType, config.DBDir())
+	stateDB, err := dbm.NewDB("state", dbType, config.DBDir())
+	require.NoError(b, err)
 	state, err := sm.LoadStateFromDBOrGenesisFile(stateDB, config.GenesisFile())
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	state.Validators = genValSet(valSetSize)
 	state.NextValidators = state.Validators.CopyIncrementProposerPriority(1)
 	sm.SaveState(stateDB, state)
@@ -90,10 +98,11 @@ func TestPruneStates(t *testing.T) {
 		tc := tc
 		t.Run(name, func(t *testing.T) {
 			db := dbm.NewMemDB()
+			pk := ed25519.GenPrivKey().PubKey()
 
 			// Generate a bunch of state data. Validators change for heights ending with 3, and
 			// parameters when ending with 5.
-			validator := &types.Validator{Address: []byte{1, 2, 3}, VotingPower: 100}
+			validator := &types.Validator{Address: tmrand.Bytes(crypto.AddressSize), VotingPower: 100, PubKey: pk}
 			validatorSet := &types.ValidatorSet{
 				Validators: []*types.Validator{validator},
 				Proposer:   validator,
@@ -109,26 +118,31 @@ func TestPruneStates(t *testing.T) {
 					paramsChanged = h
 				}
 
-				sm.SaveState(db, sm.State{
+				state := sm.State{
+					InitialHeight:   1,
 					LastBlockHeight: h - 1,
 					Validators:      validatorSet,
 					NextValidators:  validatorSet,
-					ConsensusParams: types.ConsensusParams{
-						Block: types.BlockParams{MaxBytes: 10e6},
+					ConsensusParams: tmproto.ConsensusParams{
+						Block: tmproto.BlockParams{MaxBytes: 10e6},
 					},
 					LastHeightValidatorsChanged:      valsChanged,
 					LastHeightConsensusParamsChanged: paramsChanged,
-				})
-				sm.SaveABCIResponses(db, h, sm.NewABCIResponses(&types.Block{
-					Header: types.Header{Height: h},
-					Data: types.Data{
-						Txs: types.Txs{
-							[]byte{1},
-							[]byte{2},
-							[]byte{3},
-						},
+				}
+
+				if state.LastBlockHeight >= 1 {
+					state.LastValidators = state.Validators
+				}
+
+				sm.SaveState(db, state)
+
+				sm.SaveABCIResponses(db, h, &tmstate.ABCIResponses{
+					DeliverTxs: []*abci.ResponseDeliverTx{
+						{Data: []byte{1}},
+						{Data: []byte{2}},
+						{Data: []byte{3}},
 					},
-				}))
+				})
 			}
 
 			// Test assertions
@@ -156,7 +170,7 @@ func TestPruneStates(t *testing.T) {
 				params, err := sm.LoadConsensusParams(db, h)
 				if expectParams[h] {
 					require.NoError(t, err, "params height %v", h)
-					require.False(t, params.Equals(&types.ConsensusParams{}))
+					require.False(t, params.Equal(&tmproto.ConsensusParams{}))
 				} else {
 					require.Error(t, err, "params height %v", h)
 					require.Equal(t, sm.ErrNoConsensusParamsForHeight{Height: h}, err)
@@ -173,6 +187,28 @@ func TestPruneStates(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestABCIResponsesResultsHash(t *testing.T) {
+	responses := &tmstate.ABCIResponses{
+		BeginBlock: &abci.ResponseBeginBlock{},
+		DeliverTxs: []*abci.ResponseDeliverTx{
+			{Code: 32, Data: []byte("Hello"), Log: "Huh?"},
+		},
+		EndBlock: &abci.ResponseEndBlock{},
+	}
+
+	root := sm.ABCIResponsesResultsHash(responses)
+
+	// root should be Merkle tree root of DeliverTxs responses
+	results := types.NewResults(responses.DeliverTxs)
+	assert.Equal(t, root, results.Hash())
+
+	// test we can prove first DeliverTx
+	proof := results.ProveResult(0)
+	bz, err := results[0].Marshal()
+	require.NoError(t, err)
+	assert.NoError(t, proof.Verify(root, bz))
 }
 
 func sliceToMap(s []int64) map[int64]bool {

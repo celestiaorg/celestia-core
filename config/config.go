@@ -177,6 +177,9 @@ type BaseConfig struct { //nolint: maligned
 	//   - EXPERIMENTAL
 	//   - requires gcc
 	//   - use rocksdb build tag (go build -tags rocksdb)
+	// * badgerdb (uses github.com/dgraph-io/badger)
+	//   - EXPERIMENTAL
+	//   - use badgerdb build tag (go build -tags badgerdb)
 	DBBackend string `mapstructure:"db_backend"`
 
 	// Database directory
@@ -207,9 +210,6 @@ type BaseConfig struct { //nolint: maligned
 	// Mechanism to connect to the ABCI application: socket | grpc
 	ABCI string `mapstructure:"abci"`
 
-	// TCP or UNIX socket address for the profiling server to listen on
-	ProfListenAddress string `mapstructure:"prof_laddr"`
-
 	// If true, query the ABCI app on connecting to a new peer
 	// so the app can decide if we should keep the connection or not
 	FilterPeers bool `mapstructure:"filter_peers"` // false
@@ -227,7 +227,6 @@ func DefaultBaseConfig() BaseConfig {
 		ABCI:               "socket",
 		LogLevel:           DefaultPackageLogLevels(),
 		LogFormat:          LogFormatPlain,
-		ProfListenAddress:  "",
 		FastSyncMode:       true,
 		FilterPeers:        false,
 		DBBackend:          "goleveldb",
@@ -380,6 +379,9 @@ type RPCConfig struct {
 	// NOTE: both tls_cert_file and tls_key_file must be present for Tendermint to create HTTPS server.
 	// Otherwise, HTTP server is run.
 	TLSKeyFile string `mapstructure:"tls_key_file"`
+
+	// pprof listen address (https://golang.org/pkg/net/http/pprof)
+	PprofListenAddress string `mapstructure:"pprof_laddr"`
 }
 
 // DefaultRPCConfig returns a default configuration for the RPC server
@@ -726,7 +728,9 @@ func (cfg *StateSyncConfig) TrustHashBytes() []byte {
 
 // DefaultStateSyncConfig returns a default configuration for the state sync service
 func DefaultStateSyncConfig() *StateSyncConfig {
-	return &StateSyncConfig{}
+	return &StateSyncConfig{
+		TrustPeriod: 168 * time.Hour,
+	}
 }
 
 // TestFastSyncConfig returns a default configuration for the state sync service
@@ -827,6 +831,8 @@ type ConsensusConfig struct {
 	// Reactor sleep duration parameters
 	PeerGossipSleepDuration     time.Duration `mapstructure:"peer_gossip_sleep_duration"`
 	PeerQueryMaj23SleepDuration time.Duration `mapstructure:"peer_query_maj23_sleep_duration"`
+
+	DoubleSignCheckHeight int64 `mapstructure:"double_sign_check_height"`
 }
 
 // DefaultConsensusConfig returns a default configuration for the consensus service
@@ -845,6 +851,7 @@ func DefaultConsensusConfig() *ConsensusConfig {
 		CreateEmptyBlocksInterval:   0 * time.Second,
 		PeerGossipSleepDuration:     100 * time.Millisecond,
 		PeerQueryMaj23SleepDuration: 2000 * time.Millisecond,
+		DoubleSignCheckHeight:       int64(0),
 	}
 }
 
@@ -861,6 +868,7 @@ func TestConsensusConfig() *ConsensusConfig {
 	cfg.SkipTimeoutCommit = true
 	cfg.PeerGossipSleepDuration = 5 * time.Millisecond
 	cfg.PeerQueryMaj23SleepDuration = 250 * time.Millisecond
+	cfg.DoubleSignCheckHeight = int64(0)
 	return cfg
 }
 
@@ -870,21 +878,21 @@ func (cfg *ConsensusConfig) WaitForTxs() bool {
 }
 
 // Propose returns the amount of time to wait for a proposal
-func (cfg *ConsensusConfig) Propose(round int) time.Duration {
+func (cfg *ConsensusConfig) Propose(round int32) time.Duration {
 	return time.Duration(
 		cfg.TimeoutPropose.Nanoseconds()+cfg.TimeoutProposeDelta.Nanoseconds()*int64(round),
 	) * time.Nanosecond
 }
 
 // Prevote returns the amount of time to wait for straggler votes after receiving any +2/3 prevotes
-func (cfg *ConsensusConfig) Prevote(round int) time.Duration {
+func (cfg *ConsensusConfig) Prevote(round int32) time.Duration {
 	return time.Duration(
 		cfg.TimeoutPrevote.Nanoseconds()+cfg.TimeoutPrevoteDelta.Nanoseconds()*int64(round),
 	) * time.Nanosecond
 }
 
 // Precommit returns the amount of time to wait for straggler votes after receiving any +2/3 precommits
-func (cfg *ConsensusConfig) Precommit(round int) time.Duration {
+func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 	return time.Duration(
 		cfg.TimeoutPrecommit.Nanoseconds()+cfg.TimeoutPrecommitDelta.Nanoseconds()*int64(round),
 	) * time.Nanosecond
@@ -942,6 +950,9 @@ func (cfg *ConsensusConfig) ValidateBasic() error {
 	if cfg.PeerQueryMaj23SleepDuration < 0 {
 		return errors.New("peer_query_maj23_sleep_duration can't be negative")
 	}
+	if cfg.DoubleSignCheckHeight < 0 {
+		return errors.New("double_sign_check_height can't be negative")
+	}
 	return nil
 }
 
@@ -964,31 +975,12 @@ type TxIndexConfig struct {
 	//   2) "kv" (default) - the simplest possible indexer,
 	//      backed by key-value storage (defaults to levelDB; see DBBackend).
 	Indexer string `mapstructure:"indexer"`
-
-	// Comma-separated list of compositeKeys to index (by default the only key is "tx.hash")
-	//
-	// You can also index transactions by height by adding "tx.height" key here.
-	//
-	// It's recommended to index only a subset of keys due to possible memory
-	// bloat. This is, of course, depends on the indexer's DB and the volume of
-	// transactions.
-	IndexKeys string `mapstructure:"index_keys"`
-
-	// When set to true, tells indexer to index all compositeKeys (predefined keys:
-	// "tx.hash", "tx.height" and all keys from DeliverTx responses).
-	//
-	// Note this may be not desirable (see the comment above). IndexKeys has a
-	// precedence over IndexAllKeys (i.e. when given both, IndexKeys will be
-	// indexed).
-	IndexAllKeys bool `mapstructure:"index_all_keys"`
 }
 
 // DefaultTxIndexConfig returns a default configuration for the transaction indexer.
 func DefaultTxIndexConfig() *TxIndexConfig {
 	return &TxIndexConfig{
-		Indexer:      "kv",
-		IndexKeys:    "",
-		IndexAllKeys: false,
+		Indexer: "kv",
 	}
 }
 

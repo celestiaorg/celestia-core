@@ -5,16 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/p2p"
+	ssproto "github.com/lazyledger/lazyledger-core/proto/tendermint/statesync"
 	"github.com/lazyledger/lazyledger-core/proxy"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/lazyledger/lazyledger-core/version"
 )
 
 const (
@@ -58,7 +58,7 @@ type syncer struct {
 	snapshots     *snapshotPool
 	tempDir       string
 
-	mtx    sync.RWMutex
+	mtx    tmsync.RWMutex
 	chunks *chunkQueue
 }
 
@@ -115,7 +115,7 @@ func (s *syncer) AddSnapshot(peer p2p.Peer, snapshot *snapshot) (bool, error) {
 // to discover snapshots, later we may want to do retries and stuff.
 func (s *syncer) AddPeer(peer p2p.Peer) {
 	s.logger.Debug("Requesting snapshots from peer", "peer", peer.ID())
-	peer.Send(SnapshotChannel, cdc.MustMarshalBinaryBare(&snapshotsRequestMessage{}))
+	peer.Send(SnapshotChannel, mustEncodeMsg(&ssproto.SnapshotsRequest{}))
 }
 
 // RemovePeer removes a peer from the pool.
@@ -262,7 +262,7 @@ func (s *syncer) Sync(snapshot *snapshot, chunks *chunkQueue) (sm.State, *types.
 	if err != nil {
 		return sm.State{}, nil, err
 	}
-	state.Version.Consensus.App = version.Protocol(appVersion)
+	state.Version.Consensus.App = appVersion
 
 	// Done! 🎉
 	s.logger.Info("Snapshot restored", "height", snapshot.Height, "format", snapshot.Format,
@@ -303,7 +303,7 @@ func (s *syncer) offerSnapshot(snapshot *snapshot) error {
 	case abci.ResponseOfferSnapshot_REJECT_SENDER:
 		return errRejectSender
 	default:
-		return fmt.Errorf("invalid ResponseOfferSnapshot result %v", resp.Result)
+		return fmt.Errorf("unknown ResponseOfferSnapshot result %v", resp.Result)
 	}
 }
 
@@ -411,7 +411,7 @@ func (s *syncer) requestChunk(snapshot *snapshot, chunk uint32) {
 	}
 	s.logger.Debug("Requesting snapshot chunk", "height", snapshot.Height,
 		"format", snapshot.Format, "chunk", chunk, "peer", peer.ID())
-	peer.Send(ChunkChannel, cdc.MustMarshalBinaryBare(&chunkRequestMessage{
+	peer.Send(ChunkChannel, mustEncodeMsg(&ssproto.ChunkRequest{
 		Height: snapshot.Height,
 		Format: snapshot.Format,
 		Index:  chunk,

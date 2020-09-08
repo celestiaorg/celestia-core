@@ -1,23 +1,25 @@
 package evidence
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
+	gogotypes "github.com/gogo/protobuf/types"
 	dbm "github.com/tendermint/tm-db"
 
 	clist "github.com/lazyledger/lazyledger-core/libs/clist"
 	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	sm "github.com/lazyledger/lazyledger-core/state"
-	"github.com/lazyledger/lazyledger-core/store"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
 const (
 	baseKeyCommitted = byte(0x00)
 	baseKeyPending   = byte(0x01)
-	baseKeyPOLC      = byte(0x02)
 )
 
 // Pool maintains a pool of valid evidence to be broadcasted and committed
@@ -28,50 +30,34 @@ type Pool struct {
 	evidenceList  *clist.CList // concurrent linked-list of evidence
 
 	// needed to load validators to verify evidence
-	stateDB dbm.DB
+	stateDB StateStore
 	// needed to load headers to verify evidence
-	blockStore *store.BlockStore
+	blockStore BlockStore
 
 	mtx sync.Mutex
 	// latest state
 	state sm.State
-	// a map of active validators and respective last heights validator is active
-	// if it was in validator set after EvidenceParams.MaxAgeNumBlocks or
-	// currently is (ie. [MaxAgeNumBlocks, CurrentHeight])
-	// In simple words, it means it's still bonded -> therefore slashable.
-	valToLastHeight valToLastHeightMap
 }
 
-// Validator.Address -> Last height it was in validator set
-type valToLastHeightMap map[string]int64
-
-func NewPool(stateDB, evidenceDB dbm.DB, blockStore *store.BlockStore) (*Pool, error) {
+// NewPool creates an evidence pool. If using an existing evidence store,
+// it will add all pending evidence to the concurrent list.
+func NewPool(evidenceDB dbm.DB, stateDB StateStore, blockStore BlockStore) (*Pool, error) {
 	var (
-		state = sm.LoadState(stateDB)
+		state = stateDB.LoadState()
 	)
 
-	valToLastHeight, err := buildValToLastHeightMap(state, stateDB, blockStore)
-	if err != nil {
-		return nil, err
-	}
-
 	pool := &Pool{
-		stateDB:         stateDB,
-		blockStore:      blockStore,
-		state:           state,
-		logger:          log.NewNopLogger(),
-		evidenceStore:   evidenceDB,
-		evidenceList:    clist.New(),
-		valToLastHeight: valToLastHeight,
+		stateDB:       stateDB,
+		blockStore:    blockStore,
+		state:         state,
+		logger:        log.NewNopLogger(),
+		evidenceStore: evidenceDB,
+		evidenceList:  clist.New(),
 	}
 
 	// if pending evidence already in db, in event of prior failure, then load it back to the evidenceList
 	evList := pool.AllPendingEvidence()
 	for _, ev := range evList {
-		if pool.IsEvidenceExpired(ev) {
-			pool.removePendingEvidence(ev)
-			continue
-		}
 		pool.evidenceList.PushBack(ev)
 	}
 
@@ -79,8 +65,9 @@ func NewPool(stateDB, evidenceDB dbm.DB, blockStore *store.BlockStore) (*Pool, e
 }
 
 // PendingEvidence is used primarily as part of block proposal and returns up to maxNum of uncommitted evidence.
-// If maxNum is -1, all evidence is returned. Pending evidence is prioritised based on time.
+// If maxNum is -1, all evidence is returned. Pending evidence is prioritized based on time.
 func (evpool *Pool) PendingEvidence(maxNum uint32) []types.Evidence {
+	evpool.removeExpiredPendingEvidence()
 	evidence, err := evpool.listEvidence(baseKeyPending, int64(maxNum))
 	if err != nil {
 		evpool.logger.Error("Unable to retrieve pending evidence", "err", err)
@@ -88,7 +75,9 @@ func (evpool *Pool) PendingEvidence(maxNum uint32) []types.Evidence {
 	return evidence
 }
 
+// AllPendingEvidence returns all evidence ready to be proposed and committed.
 func (evpool *Pool) AllPendingEvidence() []types.Evidence {
+	evpool.removeExpiredPendingEvidence()
 	evidence, err := evpool.listEvidence(baseKeyPending, -1)
 	if err != nil {
 		evpool.logger.Error("Unable to retrieve pending evidence", "err", err)
@@ -96,126 +85,94 @@ func (evpool *Pool) AllPendingEvidence() []types.Evidence {
 	return evidence
 }
 
-// Update uses the latest block & state to update its copy of the state,
-// validator to last height map and calls MarkEvidenceAsCommitted.
+// Update uses the latest block & state to update any evidence that has been committed, to prune all expired evidence
 func (evpool *Pool) Update(block *types.Block, state sm.State) {
 	// sanity check
 	if state.LastBlockHeight != block.Height {
-		panic(
-			fmt.Sprintf("Failed EvidencePool.Update sanity check: got state.Height=%d with block.Height=%d",
-				state.LastBlockHeight,
-				block.Height,
-			),
+		panic(fmt.Sprintf("Failed EvidencePool.Update sanity check: got state.Height=%d with block.Height=%d",
+			state.LastBlockHeight,
+			block.Height,
+		),
 		)
 	}
 
-	// remove evidence from pending and mark committed
-	evpool.MarkEvidenceAsCommitted(block.Height, block.Time, block.Evidence.Evidence)
-
-	// remove expired evidence - this should be done at every height to ensure we don't send expired evidence to peers
-	evpool.removeExpiredPendingEvidence()
-
-	// as it's not vital to remove expired POLCs, we only prune periodically
-	if block.Height%state.ConsensusParams.Evidence.MaxAgeNumBlocks == 0 {
-		evpool.pruneExpiredPOLC()
-	}
-
 	// update the state
-	evpool.mtx.Lock()
-	defer evpool.mtx.Unlock()
-	evpool.state = state
-	evpool.updateValToLastHeight(block.Height, state)
+	evpool.updateState(state)
+
+	// remove evidence from pending and mark committed
+	evpool.MarkEvidenceAsCommitted(block.Height, block.Evidence.Evidence)
+
+	// prune pending, committed and potential evidence and polc's periodically
+	if block.Height%state.ConsensusParams.Evidence.MaxAgeNumBlocks == 0 {
+		evpool.logger.Debug("Pruning expired evidence")
+		// NOTE: As this is periodic, this implies that there may be some pending evidence in the
+		// db that have already expired. However, expired evidence will also be removed whenever
+		// PendingEvidence() is called ensuring that no expired evidence is proposed.
+		evpool.removeExpiredPendingEvidence()
+	}
 }
 
-// AddPOLC adds a proof of lock change to the evidence database
-// that may be needed in the future to verify votes
-func (evpool *Pool) AddPOLC(polc types.ProofOfLockChange) error {
-	key := keyPOLC(polc)
-	polcBytes := cdc.MustMarshalBinaryBare(polc)
-	return evpool.evidenceStore.Set(key, polcBytes)
-}
+// AddEvidence checks the evidence is valid and adds it to the pool.
+func (evpool *Pool) AddEvidence(ev types.Evidence) error {
+	evpool.logger.Debug("Attempting to add evidence", "ev", ev)
 
-// AddEvidence checks the evidence is valid and adds it to the pool. If
-// evidence is composite (ConflictingHeadersEvidence), it will be broken up
-// into smaller pieces.
-func (evpool *Pool) AddEvidence(evidence types.Evidence) error {
-	var (
-		state  = evpool.State()
-		evList = []types.Evidence{evidence}
-	)
-
-	valSet, err := sm.LoadValidators(evpool.stateDB, evidence.Height())
-	if err != nil {
-		return fmt.Errorf("can't load validators at height #%d: %w", evidence.Height(), err)
+	if evpool.Has(ev) {
+		return nil
 	}
 
-	// Break composite evidence into smaller pieces.
-	if ce, ok := evidence.(types.CompositeEvidence); ok {
-		evpool.logger.Info("Breaking up composite evidence", "ev", evidence)
-
-		blockMeta := evpool.blockStore.LoadBlockMeta(evidence.Height())
-		if blockMeta == nil {
-			return fmt.Errorf("don't have block meta at height #%d", evidence.Height())
-		}
-
-		if err := ce.VerifyComposite(&blockMeta.Header, valSet); err != nil {
-			return err
-		}
-
-		// XXX: Copy here since this should be a rare case.
-		evpool.mtx.Lock()
-		valToLastHeightCopy := make(valToLastHeightMap, len(evpool.valToLastHeight))
-		for k, v := range evpool.valToLastHeight {
-			valToLastHeightCopy[k] = v
-		}
-		evpool.mtx.Unlock()
-
-		evList = ce.Split(&blockMeta.Header, valSet, valToLastHeightCopy)
+	// 1) Verify against state.
+	if err := evpool.verify(ev); err != nil {
+		return types.NewErrEvidenceInvalid(ev, err)
 	}
 
-	for _, ev := range evList {
-		if evpool.Has(ev) {
-			continue
-		}
-
-		// For lunatic validator evidence, a header needs to be fetched.
-		var header *types.Header
-		if _, ok := ev.(*types.LunaticValidatorEvidence); ok {
-			blockMeta := evpool.blockStore.LoadBlockMeta(ev.Height())
-			if blockMeta == nil {
-				return fmt.Errorf("don't have block meta at height #%d", ev.Height())
-			}
-			header = &blockMeta.Header
-		}
-
-		// 1) Verify against state.
-		if err := sm.VerifyEvidence(evpool.stateDB, state, ev, header); err != nil {
-			return fmt.Errorf("failed to verify %v: %w", ev, err)
-		}
-
-		// 2) Save to store.
-		if err := evpool.addPendingEvidence(ev); err != nil {
-			return fmt.Errorf("database error: %v", err)
-		}
-
-		// 3) Add evidence to clist.
-		evpool.evidenceList.PushBack(ev)
-
-		evpool.logger.Info("Verified new evidence of byzantine behaviour", "evidence", ev)
+	// 2) Save to store.
+	if err := evpool.addPendingEvidence(ev); err != nil {
+		return fmt.Errorf("database error when adding evidence: %v", err)
 	}
+
+	// 3) Add evidence to clist.
+	evpool.evidenceList.PushBack(ev)
+
+	evpool.logger.Info("Verified new evidence of byzantine behavior", "evidence", ev)
 
 	return nil
 }
 
+// Verify verifies the evidence against the node's (or evidence pool's) state. More specifically, to validate
+// evidence against state is to validate it against the nodes own header and validator set for that height. This ensures
+// as well as meeting the evidence's own validation rules, that the evidence hasn't expired, that the validator is still
+// bonded and that the evidence can be committed to the chain.
+func (evpool *Pool) Verify(evidence types.Evidence) error {
+	if evpool.IsCommitted(evidence) {
+		return errors.New("evidence was already committed")
+	}
+	// We have already verified this piece of evidence - no need to do it again
+	if evpool.IsPending(evidence) {
+		return nil
+	}
+
+	return evpool.verify(evidence)
+}
+
+func (evpool *Pool) verify(evidence types.Evidence) error {
+	return VerifyEvidence(evidence, evpool.State(), evpool.stateDB, evpool.blockStore)
+}
+
 // MarkEvidenceAsCommitted marks all the evidence as committed and removes it
 // from the queue.
-func (evpool *Pool) MarkEvidenceAsCommitted(height int64, lastBlockTime time.Time, evidence []types.Evidence) {
+func (evpool *Pool) MarkEvidenceAsCommitted(height int64, evidence []types.Evidence) {
 	// make a map of committed evidence to remove from the clist
 	blockEvidenceMap := make(map[string]struct{})
 	for _, ev := range evidence {
 		// As the evidence is stored in the block store we only need to record the height that it was saved at.
 		key := keyCommitted(ev)
-		evBytes := cdc.MustMarshalBinaryBare(height)
+
+		h := gogotypes.Int64Value{Value: height}
+		evBytes, err := proto.Marshal(&h)
+		if err != nil {
+			panic(err)
+		}
+
 		if err := evpool.evidenceStore.Set(key, evBytes); err != nil {
 			evpool.logger.Error("Unable to add committed evidence", "err", err)
 			// if we can't move evidence to committed then don't remove the evidence from pending
@@ -266,7 +223,7 @@ func (evpool *Pool) IsCommitted(evidence types.Evidence) bool {
 	return ok
 }
 
-// Checks whether the evidence is already pending. DB errors are passed to the logger.
+// IsPending checks whether the evidence is already pending. DB errors are passed to the logger.
 func (evpool *Pool) IsPending(evidence types.Evidence) bool {
 	key := keyPending(evidence)
 	ok, err := evpool.evidenceStore.Has(key)
@@ -274,21 +231,6 @@ func (evpool *Pool) IsPending(evidence types.Evidence) bool {
 		evpool.logger.Error("Unable to find pending evidence", "err", err)
 	}
 	return ok
-}
-
-// RetrievePOLC attempts to find a polc at the given height and round, if not there it returns an error
-func (evpool *Pool) RetrievePOLC(height int64, round int) (types.ProofOfLockChange, error) {
-	var polc types.ProofOfLockChange
-	key := keyPOLCFromHeightAndRound(height, round)
-	polcBytes, err := evpool.evidenceStore.Get(key)
-	if err != nil {
-		return polc, err
-	}
-	if polcBytes == nil {
-		return polc, fmt.Errorf("unable to find polc at height %d and round %d", height, round)
-	}
-	err = cdc.UnmarshalBinaryBare(polcBytes, &polc)
-	return polc, err
 }
 
 // EvidenceFront goes to the first evidence in the clist
@@ -306,21 +248,6 @@ func (evpool *Pool) SetLogger(l log.Logger) {
 	evpool.logger = l
 }
 
-// ValidatorLastHeight returns the last height of the validator w/ the
-// given address. 0 - if address never was a validator or was such a
-// long time ago (> ConsensusParams.Evidence.MaxAgeDuration && >
-// ConsensusParams.Evidence.MaxAgeNumBlocks).
-func (evpool *Pool) ValidatorLastHeight(address []byte) int64 {
-	evpool.mtx.Lock()
-	defer evpool.mtx.Unlock()
-
-	h, ok := evpool.valToLastHeight[string(address)]
-	if !ok {
-		return 0
-	}
-	return h
-}
-
 // State returns the current state of the evpool.
 func (evpool *Pool) State() sm.State {
 	evpool.mtx.Lock()
@@ -329,8 +256,18 @@ func (evpool *Pool) State() sm.State {
 }
 
 func (evpool *Pool) addPendingEvidence(evidence types.Evidence) error {
-	evBytes := cdc.MustMarshalBinaryBare(evidence)
+	evi, err := types.EvidenceToProto(evidence)
+	if err != nil {
+		return fmt.Errorf("unable to convert to proto, err: %w", err)
+	}
+
+	evBytes, err := proto.Marshal(evi)
+	if err != nil {
+		return fmt.Errorf("unable to marshal evidence: %w", err)
+	}
+
 	key := keyPending(evidence)
+
 	return evpool.evidenceStore.Set(key, evBytes)
 }
 
@@ -354,20 +291,29 @@ func (evpool *Pool) listEvidence(prefixKey byte, maxNum int64) ([]types.Evidence
 	}
 	defer iter.Close()
 	for ; iter.Valid(); iter.Next() {
-		val := iter.Value()
-
 		if count == maxNum {
 			return evidence, nil
 		}
 		count++
 
-		var ev types.Evidence
-		err := cdc.UnmarshalBinaryBare(val, &ev)
+		val := iter.Value()
+		var (
+			ev   types.Evidence
+			evpb tmproto.Evidence
+		)
+		err := proto.Unmarshal(val, &evpb)
 		if err != nil {
 			return nil, err
 		}
+
+		ev, err = types.EvidenceFromProto(&evpb)
+		if err != nil {
+			return nil, err
+		}
+
 		evidence = append(evidence, ev)
 	}
+
 	return evidence, nil
 }
 
@@ -381,16 +327,26 @@ func (evpool *Pool) removeExpiredPendingEvidence() {
 	blockEvidenceMap := make(map[string]struct{})
 	for ; iter.Valid(); iter.Next() {
 		evBytes := iter.Value()
-		var ev types.Evidence
-		err := cdc.UnmarshalBinaryBare(evBytes, &ev)
+		var (
+			ev   types.Evidence
+			evpb tmproto.Evidence
+		)
+		err := proto.Unmarshal(evBytes, &evpb)
 		if err != nil {
-			evpool.logger.Error("Unable to unmarshal POLC", "err", err)
+			evpool.logger.Error("Unable to unmarshal Evidence", "err", err)
+			continue
+		}
+
+		ev, err = types.EvidenceFromProto(&evpb)
+		if err != nil {
+			evpool.logger.Error("Error in transition evidence from protobuf", "err", err)
 			continue
 		}
 		if !evpool.IsExpired(ev.Height()-1, ev.Time()) {
 			if len(blockEvidenceMap) != 0 {
 				evpool.removeEvidenceFromList(blockEvidenceMap)
 			}
+
 			return
 		}
 		evpool.removePendingEvidence(ev)
@@ -411,112 +367,14 @@ func (evpool *Pool) removeEvidenceFromList(
 	}
 }
 
-func (evpool *Pool) pruneExpiredPOLC() {
-	evpool.logger.Debug("Pruning expired POLC's")
-	iter, err := dbm.IteratePrefix(evpool.evidenceStore, []byte{baseKeyPOLC})
-	if err != nil {
-		evpool.logger.Error("Unable to iterate over POLC's", "err", err)
-		return
-	}
-	defer iter.Close()
-	for ; iter.Valid(); iter.Next() {
-		proofBytes := iter.Value()
-		var proof types.ProofOfLockChange
-		err := cdc.UnmarshalBinaryBare(proofBytes, &proof)
-		if err != nil {
-			evpool.logger.Error("Unable to unmarshal POLC", "err", err)
-			continue
-		}
-		if !evpool.IsExpired(proof.Height()-1, proof.Time()) {
-			return
-		}
-		err = evpool.evidenceStore.Delete(iter.Key())
-		if err != nil {
-			evpool.logger.Error("Unable to delete expired POLC", "err", err)
-			continue
-		}
-		evpool.logger.Info("Deleted expired POLC", "polc", proof)
-	}
+func (evpool *Pool) updateState(state sm.State) {
+	evpool.mtx.Lock()
+	defer evpool.mtx.Unlock()
+	evpool.state = state
 }
 
 func evMapKey(ev types.Evidence) string {
 	return string(ev.Hash())
-}
-
-func (evpool *Pool) updateValToLastHeight(blockHeight int64, state sm.State) {
-	// Update current validators & add new ones.
-	for _, val := range state.Validators.Validators {
-		evpool.valToLastHeight[string(val.Address)] = blockHeight
-	}
-
-	// Remove validators outside of MaxAgeNumBlocks & MaxAgeDuration.
-	removeHeight := blockHeight - state.ConsensusParams.Evidence.MaxAgeNumBlocks
-	if removeHeight >= 1 {
-		for val, height := range evpool.valToLastHeight {
-			if height <= removeHeight {
-				delete(evpool.valToLastHeight, val)
-			}
-		}
-	}
-}
-
-func buildValToLastHeightMap(state sm.State, stateDB dbm.DB, blockStore *store.BlockStore) (valToLastHeightMap, error) {
-	var (
-		valToLastHeight = make(map[string]int64)
-		params          = state.ConsensusParams.Evidence
-
-		numBlocks  = int64(0)
-		minAgeTime = time.Now().Add(-params.MaxAgeDuration)
-		height     = state.LastBlockHeight
-	)
-
-	if height == 0 {
-		return valToLastHeight, nil
-	}
-
-	meta := blockStore.LoadBlockMeta(height)
-	if meta == nil {
-		return nil, fmt.Errorf("block meta for height %d not found", height)
-	}
-	blockTime := meta.Header.Time
-
-	// From state.LastBlockHeight, build a map of "active" validators until
-	// MaxAgeNumBlocks is passed and block time is less than now() -
-	// MaxAgeDuration.
-	for height >= 1 && (numBlocks <= params.MaxAgeNumBlocks || !blockTime.Before(minAgeTime)) {
-		valSet, err := sm.LoadValidators(stateDB, height)
-		if err != nil {
-			// last stored height -> return
-			if _, ok := err.(sm.ErrNoValSetForHeight); ok {
-				return valToLastHeight, nil
-			}
-			return nil, fmt.Errorf("validator set for height %d not found", height)
-		}
-
-		for _, val := range valSet.Validators {
-			key := string(val.Address)
-			if _, ok := valToLastHeight[key]; !ok {
-				valToLastHeight[key] = height
-			}
-		}
-
-		height--
-
-		if height > 0 {
-			// NOTE: we assume here blockStore and state.Validators are in sync. I.e if
-			// block N is stored, then validators for height N are also stored in
-			// state.
-			meta := blockStore.LoadBlockMeta(height)
-			if meta == nil {
-				return nil, fmt.Errorf("block meta for height %d not found", height)
-			}
-			blockTime = meta.Header.Time
-		}
-
-		numBlocks++
-	}
-
-	return valToLastHeight, nil
 }
 
 // big endian padded hex
@@ -532,23 +390,6 @@ func keyPending(evidence types.Evidence) []byte {
 	return append([]byte{baseKeyPending}, keySuffix(evidence)...)
 }
 
-func keyPOLC(polc types.ProofOfLockChange) []byte {
-	return keyPOLCFromHeightAndRound(polc.Height(), polc.Round())
-}
-
-func keyPOLCFromHeightAndRound(height int64, round int) []byte {
-	return append([]byte{baseKeyPOLC}, []byte(fmt.Sprintf("%s/%s", bE(height), bE(int64(round))))...)
-}
-
 func keySuffix(evidence types.Evidence) []byte {
 	return []byte(fmt.Sprintf("%s/%X", bE(evidence.Height()), evidence.Hash()))
-}
-
-// ErrInvalidEvidence returns when evidence failed to validate
-type ErrInvalidEvidence struct {
-	Reason error
-}
-
-func (e ErrInvalidEvidence) Error() string {
-	return fmt.Sprintf("evidence is not valid: %v ", e.Reason)
 }

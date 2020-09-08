@@ -1,6 +1,7 @@
 package evidence
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sync"
 	"testing"
@@ -8,14 +9,19 @@ import (
 
 	"github.com/go-kit/kit/log/term"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/tendermint/tm-db"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/evidence/mocks"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/p2p"
-	sm "github.com/lazyledger/lazyledger-core/state"
+	ep "github.com/lazyledger/lazyledger-core/proto/tendermint/evidence"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -33,17 +39,20 @@ func evidenceLogger() log.Logger {
 }
 
 // connect N evidence reactors through N switches
-func makeAndConnectReactors(config *cfg.Config, stateDBs []dbm.DB) []*Reactor {
-	N := len(stateDBs)
+func makeAndConnectReactors(config *cfg.Config, stateStores []StateStore) []*Reactor {
+	N := len(stateStores)
 
 	reactors := make([]*Reactor, N)
 	logger := evidenceLogger()
+	evidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	for i := 0; i < N; i++ {
 		evidenceDB := dbm.NewMemDB()
-		blockStoreDB := dbm.NewMemDB()
-		blockStore := initializeBlockStore(blockStoreDB, sm.LoadState(stateDBs[i]), []byte("myval"))
-		pool, err := NewPool(stateDBs[i], evidenceDB, blockStore)
+		blockStore := &mocks.BlockStore{}
+		blockStore.On("LoadBlockMeta", mock.AnythingOfType("int64")).Return(
+			&types.BlockMeta{Header: types.Header{Time: evidenceTime}},
+		)
+		pool, err := NewPool(evidenceDB, stateStores[i], blockStore)
 		if err != nil {
 			panic(err)
 		}
@@ -112,10 +121,11 @@ func _waitForEvidence(
 	wg.Done()
 }
 
-func sendEvidence(t *testing.T, evpool *Pool, valAddr []byte, n int) types.EvidenceList {
+func sendEvidence(t *testing.T, evpool *Pool, val types.PrivValidator, n int) types.EvidenceList {
 	evList := make([]types.Evidence, n)
 	for i := 0; i < n; i++ {
-		ev := types.NewMockEvidence(int64(i+1), time.Now().UTC(), valAddr)
+		ev := types.NewMockDuplicateVoteEvidenceWithValidator(int64(i+1),
+			time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC), val, evidenceChainID)
 		err := evpool.AddEvidence(ev)
 		require.NoError(t, err)
 		evList[i] = ev
@@ -133,12 +143,12 @@ func TestReactorBroadcastEvidence(t *testing.T) {
 	N := 7
 
 	// create statedb for everyone
-	stateDBs := make([]dbm.DB, N)
-	valAddr := []byte("myval")
+	stateDBs := make([]StateStore, N)
+	val := types.NewMockPV()
 	// we need validators saved for heights at least as high as we have evidence for
 	height := int64(numEvidence) + 10
 	for i := 0; i < N; i++ {
-		stateDBs[i] = initializeValidatorState(valAddr, height)
+		stateDBs[i] = initializeValidatorState(val, height)
 	}
 
 	// make reactors from statedb
@@ -154,7 +164,7 @@ func TestReactorBroadcastEvidence(t *testing.T) {
 
 	// send a bunch of valid evidence to the first reactor's evpool
 	// and wait for them all to be received in the others
-	evList := sendEvidence(t, reactors[0].evpool, valAddr, numEvidence)
+	evList := sendEvidence(t, reactors[0].evpool, val, numEvidence)
 	waitForEvidence(t, evList, reactors)
 }
 
@@ -169,16 +179,16 @@ func (ps peerState) GetHeight() int64 {
 func TestReactorSelectiveBroadcast(t *testing.T) {
 	config := cfg.TestConfig()
 
-	valAddr := []byte("myval")
+	val := types.NewMockPV()
 	height1 := int64(numEvidence) + 10
 	height2 := int64(numEvidence) / 2
 
 	// DB1 is ahead of DB2
-	stateDB1 := initializeValidatorState(valAddr, height1)
-	stateDB2 := initializeValidatorState(valAddr, height2)
+	stateDB1 := initializeValidatorState(val, height1)
+	stateDB2 := initializeValidatorState(val, height2)
 
 	// make reactors from statedb
-	reactors := makeAndConnectReactors(config, []dbm.DB{stateDB1, stateDB2})
+	reactors := makeAndConnectReactors(config, []StateStore{stateDB1, stateDB2})
 
 	// set the peer height on each reactor
 	for _, r := range reactors {
@@ -194,7 +204,7 @@ func TestReactorSelectiveBroadcast(t *testing.T) {
 	peer.Set(types.PeerStateKey, ps)
 
 	// send a bunch of valid evidence to the first reactor's evpool
-	evList := sendEvidence(t, reactors[0].evpool, valAddr, numEvidence)
+	evList := sendEvidence(t, reactors[0].evpool, val, numEvidence)
 
 	// only ones less than the peers height should make it through
 	waitForEvidence(t, evList[:numEvidence/2], reactors[1:2])
@@ -203,31 +213,62 @@ func TestReactorSelectiveBroadcast(t *testing.T) {
 	peers := reactors[1].Switch.Peers().List()
 	assert.Equal(t, 1, len(peers))
 }
-func TestListMessageValidationBasic(t *testing.T) {
+
+func exampleVote(t byte) *types.Vote {
+	var stamp, err = time.Parse(types.TimeFormat, "2017-12-25T03:00:01.234Z")
+	if err != nil {
+		panic(err)
+	}
+
+	return &types.Vote{
+		Type:      tmproto.SignedMsgType(t),
+		Height:    3,
+		Round:     2,
+		Timestamp: stamp,
+		BlockID: types.BlockID{
+			Hash: tmhash.Sum([]byte("blockID_hash")),
+			PartSetHeader: types.PartSetHeader{
+				Total: 1000000,
+				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
+			},
+		},
+		ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
+		ValidatorIndex:   56789,
+	}
+}
+
+// nolint:lll //ignore line length for tests
+func TestEvidenceVectors(t *testing.T) {
+
+	dupl := types.NewDuplicateVoteEvidence(exampleVote(1), exampleVote(2), time.Date(2019, 10, 13, 16, 14, 44, 0, time.UTC))
 
 	testCases := []struct {
-		testName          string
-		malleateEvListMsg func(*ListMessage)
-		expectErr         bool
+		testName     string
+		evidenceList []types.Evidence
+		expBytes     string
 	}{
-		{"Good ListMessage", func(evList *ListMessage) {}, false},
-		{"Invalid ListMessage", func(evList *ListMessage) {
-			evList.Evidence = append(evList.Evidence,
-				&types.DuplicateVoteEvidence{})
-		}, true},
+		{"DuplicateVoteEvidence", []types.Evidence{dupl}, "0a81020afe010a79080210031802224a0a208b01023386c371778ecb6368573e539afc3cc860ec3a2f614e54fe5652f4fc80122608c0843d122072db3d959635dff1bb567bedaa70573392c5159666a3f8caf11e413aac52207a2a0b08b1d381d20510809dca6f32146af1f4111082efb388211bc72c55bcd61e9ac3d538d5bb031279080110031802224a0a208b01023386c371778ecb6368573e539afc3cc860ec3a2f614e54fe5652f4fc80122608c0843d122072db3d959635dff1bb567bedaa70573392c5159666a3f8caf11e413aac52207a2a0b08b1d381d20510809dca6f32146af1f4111082efb388211bc72c55bcd61e9ac3d538d5bb031a0608f49a8ded05"},
 	}
+
 	for _, tc := range testCases {
 		tc := tc
-		t.Run(tc.testName, func(t *testing.T) {
-			evListMsg := &ListMessage{}
-			n := 3
-			valAddr := []byte("myval")
-			evListMsg.Evidence = make([]types.Evidence, n)
-			for i := 0; i < n; i++ {
-				evListMsg.Evidence[i] = types.NewMockEvidence(int64(i+1), time.Now(), valAddr)
-			}
-			tc.malleateEvListMsg(evListMsg)
-			assert.Equal(t, tc.expectErr, evListMsg.ValidateBasic() != nil, "Validate Basic had an unexpected result")
-		})
+
+		evi := make([]*tmproto.Evidence, len(tc.evidenceList))
+		for i := 0; i < len(tc.evidenceList); i++ {
+			ev, err := types.EvidenceToProto(tc.evidenceList[i])
+			require.NoError(t, err, tc.testName)
+			evi[i] = ev
+		}
+
+		epl := ep.List{
+			Evidence: evi,
+		}
+
+		bz, err := epl.Marshal()
+		require.NoError(t, err, tc.testName)
+
+		require.Equal(t, tc.expBytes, hex.EncodeToString(bz), tc.testName)
+
 	}
+
 }

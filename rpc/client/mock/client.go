@@ -110,6 +110,10 @@ func (c Client) BroadcastTxSync(tx types.Tx) (*ctypes.ResultBroadcastTx, error) 
 	return core.BroadcastTxSync(&rpctypes.Context{}, tx)
 }
 
+func (c Client) CheckTx(tx types.Tx) (*ctypes.ResultCheckTx, error) {
+	return core.CheckTx(&rpctypes.Context{}, tx)
+}
+
 func (c Client) NetInfo() (*ctypes.ResultNetInfo, error) {
 	return core.NetInfo(&rpctypes.Context{})
 }
@@ -134,8 +138,8 @@ func (c Client) DialSeeds(seeds []string) (*ctypes.ResultDialSeeds, error) {
 	return core.UnsafeDialSeeds(&rpctypes.Context{}, seeds)
 }
 
-func (c Client) DialPeers(peers []string, persistent bool) (*ctypes.ResultDialPeers, error) {
-	return core.UnsafeDialPeers(&rpctypes.Context{}, peers, persistent)
+func (c Client) DialPeers(peers []string, persistent, unconditional, private bool) (*ctypes.ResultDialPeers, error) {
+	return core.UnsafeDialPeers(&rpctypes.Context{}, peers, persistent, unconditional, private)
 }
 
 func (c Client) BlockchainInfo(minHeight, maxHeight int64) (*ctypes.ResultBlockchainInfo, error) {
@@ -158,7 +162,7 @@ func (c Client) Commit(height *int64) (*ctypes.ResultCommit, error) {
 	return core.Commit(&rpctypes.Context{}, height)
 }
 
-func (c Client) Validators(height *int64, page, perPage int) (*ctypes.ResultValidators, error) {
+func (c Client) Validators(height *int64, page, perPage *int) (*ctypes.ResultValidators, error) {
 	return core.Validators(&rpctypes.Context{}, height, page, perPage)
 }
 

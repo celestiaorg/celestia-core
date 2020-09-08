@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 	"github.com/lazyledger/lazyledger-core/privval"
 )
 
@@ -18,7 +19,7 @@ var GenValidatorCmd = &cobra.Command{
 
 func genValidator(cmd *cobra.Command, args []string) {
 	pv := privval.GenFilePV("", "")
-	jsbz, err := cdc.MarshalJSON(pv)
+	jsbz, err := tmjson.Marshal(pv)
 	if err != nil {
 		panic(err)
 	}
