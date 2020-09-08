@@ -1,6 +1,6 @@
 default: true,
 MD007: { "indent": 4 }
-MD013: false
+MD013: true
 MD024: { siblings_only: true }
 MD025: false
 MD033: { no-inline-html: false }
