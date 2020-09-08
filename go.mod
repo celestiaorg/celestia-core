@@ -23,6 +23,7 @@ require (
 	github.com/snikch/goodman v0.0.0-20171125024755-10e37e294daa
 	github.com/spf13/cobra v1.0.0
 	github.com/spf13/viper v1.7.1
+	github.com/square/certstrap v1.2.0 // indirect
 	github.com/stretchr/testify v1.6.1
 	github.com/tendermint/tendermint v0.33.7
 	github.com/tendermint/tm-db v0.6.2
