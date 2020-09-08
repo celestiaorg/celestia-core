@@ -780,7 +780,7 @@ type FastSyncConfig struct {
 // DefaultFastSyncConfig returns a default configuration for the fast sync service
 func DefaultFastSyncConfig() *FastSyncConfig {
 	return &FastSyncConfig{
-		Version: "v0",
+		Version: "v2",
 	}
 }
 
@@ -793,8 +793,6 @@ func TestFastSyncConfig() *FastSyncConfig {
 func (cfg *FastSyncConfig) ValidateBasic() error {
 	switch cfg.Version {
 	case "v0":
-		return nil
-	case "v1":
 		return nil
 	case "v2":
 		return nil

@@ -19,7 +19,6 @@ import (
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	bcv0 "github.com/lazyledger/lazyledger-core/blockchain/v0"
-	bcv1 "github.com/lazyledger/lazyledger-core/blockchain/v1"
 	bcv2 "github.com/lazyledger/lazyledger-core/blockchain/v2"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cs "github.com/lazyledger/lazyledger-core/consensus"
@@ -361,8 +360,6 @@ func createBlockchainReactor(config *cfg.Config,
 	switch config.FastSync.Version {
 	case "v0":
 		bcReactor = bcv0.NewBlockchainReactor(state.Copy(), blockExec, blockStore, fastSync)
-	case "v1":
-		bcReactor = bcv1.NewBlockchainReactor(state.Copy(), blockExec, blockStore, fastSync)
 	case "v2":
 		bcReactor = bcv2.NewBlockchainReactor(state.Copy(), blockExec, blockStore, fastSync)
 	default:
@@ -1225,8 +1222,6 @@ func makeNodeInfo(
 	switch config.FastSync.Version {
 	case "v0":
 		bcChannel = bcv0.BlockchainChannel
-	case "v1":
-		bcChannel = bcv1.BlockchainChannel
 	case "v2":
 		bcChannel = bcv2.BlockchainChannel
 	default:
