@@ -283,7 +283,8 @@ message ResponseApplySnapshotChunk {
 }
 
 message ResponsePreprocessTxs {
-  repeated bytes txs = 1;
+  repeated bytes txs   = 1;
+  bytes          proof = 2;
 }
 
 //----------------------------------------

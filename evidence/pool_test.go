@@ -151,7 +151,7 @@ func TestEvidencePoolUpdate(t *testing.T) {
 	// create new block (no need to save it to blockStore)
 	evidence := types.NewMockDuplicateVoteEvidence(height, time.Now(), evidenceChainID)
 	lastCommit := makeCommit(height, val.PrivKey.PubKey().Address())
-	block := types.MakeBlock(height+1, []types.Tx{}, lastCommit, []types.Evidence{evidence})
+	block := types.MakeBlock(height+1, []types.Tx{}, []byte("proof"), lastCommit, []types.Evidence{evidence})
 	// update state (partially)
 	state.LastBlockHeight = height + 1
 
@@ -213,7 +213,7 @@ func TestAddingAndPruningPOLC(t *testing.T) {
 	assert.Nil(t, emptyPolc)
 
 	lastCommit := makeCommit(height-1, val.PrivKey.PubKey().Address())
-	block := types.MakeBlock(height, []types.Tx{}, lastCommit, []types.Evidence{})
+	block := types.MakeBlock(height, []types.Tx{}, []byte("proof"), lastCommit, []types.Evidence{})
 	// update state (partially)
 	state.LastBlockHeight = height
 	pool.state.LastBlockHeight = height
@@ -419,7 +419,7 @@ func TestAmnesiaEvidence(t *testing.T) {
 	// now evidence is ready to be upgraded to amnesia evidence -> we expect -1 to be the next height as their is
 	// no more pending potential amnesia evidence left
 	lastCommit := makeCommit(height+1, pubKey.Address())
-	block := types.MakeBlock(height+2, []types.Tx{}, lastCommit, []types.Evidence{})
+	block := types.MakeBlock(height+2, []types.Tx{}, []byte("proof"), lastCommit, []types.Evidence{})
 	state.LastBlockHeight = height + 2
 
 	pool.Update(block, state)
@@ -552,7 +552,7 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.Bloc
 
 	for i := int64(1); i <= state.LastBlockHeight; i++ {
 		lastCommit := makeCommit(i-1, valAddr)
-		block, _ := state.MakeBlock(i, []types.Tx{}, lastCommit, nil,
+		block, _ := state.MakeBlock(i, []types.Tx{}, []byte("proof"), lastCommit, nil,
 			state.Validators.GetProposer().Address)
 
 		const parts = 1
