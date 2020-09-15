@@ -999,9 +999,10 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 
 //-----------------------------------------------------------------------------
 
-// Data contains the set of transactions included in the block
+// Data contains all the available Data of the block.
+// Data with reserved namespaces and LazyLedger application
+// specific Messages.
 type Data struct {
-
 	// Txs that will be applied by state @ block.Height+1.
 	// NOTE: not all txs here are valid.  We're just agreeing on the order first.
 	// This means that block.AppHash does not include these txs.
@@ -1014,11 +1015,16 @@ type Data struct {
 	// as soon as we settle on the format / sparse Merkle tree etc
 	IntermediateStateRoots []tmbytes.HexBytes `json:"intermediate_roots"`
 
-	// The messages included in this block.
-	// TODO: define a mechanism to split up both (maybe via CheckTx)
-	Messages []Message `json:"msgs"`
-
 	Evidence EvidenceData `json:"evidence"`
+
+	// The messages included in this block.
+	// TODO: how do messages end up here? (abci) app <-> ll-core?
+	// A simple approach could be: include them in the Tx above and
+	// have a mechanism to split them out somehow? Probably better to include
+	// them only when necessary (before proposing the block) as messages do not
+	// really need to be processed by tendermint (they do not even need to be in the
+	// mempool IMO)
+	Messages []Message `json:"msgs"`
 
 	// Volatile
 	hash tmbytes.HexBytes
