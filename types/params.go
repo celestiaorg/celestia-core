@@ -22,6 +22,14 @@ const (
 
 	// Restrict the upper bound of the amount of evidence (uses uint16 for safe conversion)
 	MaxEvidencePerBlock = 65535
+
+	// TODO move lazyledger specific consts into separate file to avoid potential merge conflicts etc
+	// ShareSize is the size of a share (in bytes).
+	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#constants
+    ShareSize = 256
+
+    // NamespaceSize is the namespace size in bytes.
+    NamespaceSize = 8
 )
 
 // DefaultConsensusParams returns a default ConsensusParams.
