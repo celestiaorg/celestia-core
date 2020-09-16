@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/lazyledger/lazyledger-core/libs/protoio"
@@ -62,7 +63,7 @@ func MakeShares(data []proto.Message, shareSize int, nidFunc func(elem interface
 		if err != nil {
 			// The (abci) app has to guarantee that it only includes messages
 			// that can be encoded without an error
-			panic("Can not encode ")
+			panic(fmt.Sprintf("can not encode %v", element))
 		}
 		nid := nidFunc(element)
 		if len(rawData) < shareSize {
@@ -71,17 +72,23 @@ func MakeShares(data []proto.Message, shareSize int, nidFunc func(elem interface
 			share := NamespacedShare{paddedShare, nid}
 			shares = append(shares, share)
 		} else { // len(rawData) >= shareWithoutNidSize:
-			firstRawShare := rawData[:shareSize]
-			shares = append(shares, NamespacedShare{firstRawShare, nid})
-			rawData := rawData[shareSize:]
-			for len(rawData) > 0 {
-				shareSizeOrLen := min(shareSize, len(rawData))
-				paddedShare := zeroPadIfNecessary(rawData[:shareSizeOrLen], shareSize)
-				share := NamespacedShare{paddedShare, nid}
-				shares = append(shares, share)
-				rawData = rawData[shareSizeOrLen:]
-			}
+			shares = append(shares, split(rawData, shareSize, nid)...)
 		}
+	}
+	return shares
+}
+
+func split(rawData []byte, shareSize int, nid namespace.ID) []NamespacedShare {
+	shares := make([]NamespacedShare, 0)
+	firstRawShare := rawData[:shareSize]
+	shares = append(shares, NamespacedShare{firstRawShare, nid})
+	rawData = rawData[shareSize:]
+	for len(rawData) > 0 {
+		shareSizeOrLen := min(shareSize, len(rawData))
+		paddedShare := zeroPadIfNecessary(rawData[:shareSizeOrLen], shareSize)
+		share := NamespacedShare{paddedShare, nid}
+		shares = append(shares, share)
+		rawData = rawData[shareSizeOrLen:]
 	}
 	return shares
 }
