@@ -93,7 +93,7 @@ func MakeShares(data []LenDelimitedMarshaler, shareSize int, nidFunc func(elem i
 		// first start of a transaction in the share (aka SHARE_RESERVED_BYTES)
 		rawData, err := element.MarshalDelimited()
 		if err != nil {
-			// The (abci) app has to guarantee that it only includes messages
+			// The lazyledger-(abci) will have to guarantee that it only includes messages
 			// that can be encoded without an error (equivalently tendermint
 			// must not include any Tx, Evidence etc that is unencodable)
 			panic(fmt.Sprintf("can not encode %v", element))
@@ -104,7 +104,7 @@ func MakeShares(data []LenDelimitedMarshaler, shareSize int, nidFunc func(elem i
 			paddedShare := zeroPadIfNecessary(rawShare, shareSize)
 			share := NamespacedShare{paddedShare, nid}
 			shares = append(shares, share)
-		} else { // len(rawData) >= shareWithoutNidSize:
+		} else { // len(rawData) >= shareSize
 			shares = append(shares, split(rawData, shareSize, nid)...)
 		}
 	}
