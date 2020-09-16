@@ -47,10 +47,24 @@ func (ns NamespacedShares) Shares() []Share {
 	return res
 }
 
+type LenDelimitedMarshaler interface {
+	MarshalDelimited() ([]byte,error)
+}
+
+type ProtoLenDelimitedMarshaler struct {
+	proto.Message
+}
+
+func (p ProtoLenDelimitedMarshaler) MarshalDelimited() ([]byte, error) {
+	return protoio.MarshalDelimited(p.Message)
+}
+
+var _ LenDelimitedMarshaler = ProtoLenDelimitedMarshaler{}
+
 // XXX: We could easily generalize this s.t. it does not use
 // proto.Message in the method signature. But for now this
 // does not seem necessary.
-func MakeShares(data []proto.Message, shareSize int, nidFunc func(elem interface{}) namespace.ID) NamespacedShares {
+func MakeShares(data []LenDelimitedMarshaler, shareSize int, nidFunc func(elem interface{}) namespace.ID) NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	for _, element := range data {
 		// TODO: implement a helper that also returns the size
@@ -59,7 +73,7 @@ func MakeShares(data []proto.Message, shareSize int, nidFunc func(elem interface
 		// For now, we do not squeeze multiple Tx into one share and
 		// hence can ignore prefixing with the starting location of the
 		// first start of a transaction in the share (aka SHARE_RESERVED_BYTES)
-		rawData, err := protoio.MarshalDelimited(element)
+		rawData, err := element.MarshalDelimited()
 		if err != nil {
 			// The (abci) app has to guarantee that it only includes messages
 			// that can be encoded without an error

@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	"github.com/lazyledger/nmt/namespace"
 )
@@ -28,8 +27,11 @@ func TestMakeShares(t *testing.T) {
 		t.Fatalf("Could not encode evidence: %v, error: %v", testEvidence, err)
 	}
 	resveredEvidenceNamespaceID := append(bytes.Repeat([]byte{0}, 7), 3)
+	evidenceNidFunc := func(elem interface{}) namespace.ID {
+		return resveredEvidenceNamespaceID
+	}
 	type args struct {
-		data      []proto.Message
+		data      []LenDelimitedMarshaler
 		shareSize int
 		nidFunc   func(elem interface{}) namespace.ID
 	}
@@ -38,19 +40,27 @@ func TestMakeShares(t *testing.T) {
 		args args
 		want NamespacedShares
 	}{
-		{"evidence", args{
-			data:      []proto.Message{testEvidence.ToProto()},
-			shareSize: ShareSize,
-			nidFunc: func(elem interface{}) namespace.ID {
-				return resveredEvidenceNamespaceID
+		{"evidence",
+			args{
+				data:      []LenDelimitedMarshaler{ProtoLenDelimitedMarshaler{testEvidence.ToProto()}},
+				shareSize: ShareSize,
+				nidFunc:   evidenceNidFunc,
+			}, NamespacedShares{NamespacedShare{
+				Share: testEvidenceBytes[:ShareSize],
+				ID:    resveredEvidenceNamespaceID,
+			}, NamespacedShare{
+				Share: zeroPadIfNecessary(testEvidenceBytes[ShareSize:], ShareSize),
+				ID:    resveredEvidenceNamespaceID,
+			}},
+		},
+		{"ll-app messages",
+			args{
+				data:      nil,
+				shareSize: 0,
+				nidFunc:   nil,
 			},
-		}, NamespacedShares{NamespacedShare{
-			Share: testEvidenceBytes[:ShareSize],
-			ID:    resveredEvidenceNamespaceID,
-		}, NamespacedShare{
-			Share: zeroPadIfNecessary(testEvidenceBytes[ShareSize:], ShareSize),
-			ID:    resveredEvidenceNamespaceID,
-		}}},
+			NamespacedShares{},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
