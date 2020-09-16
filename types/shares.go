@@ -1,6 +1,8 @@
 package types
 
 import (
+	"bytes"
+
 	"github.com/lazyledger/nmt/namespace"
 )
 
@@ -12,39 +14,75 @@ import (
 //   - padding
 //   - abstract away encoding (?)
 
+// Share contains the raw share data without the corresponding namespace.
 type Share []byte
 
-func makeShares(data Data, shareSize int, nameSpaceSize int) ([]Share, map[int]namespace.ID) {
-	//	shares := make([]Share,0)
-	//	shareIdxToNID := make(map[int]namespace.ID)
-	//	shareIdx := 0
-	//	for _, field := range data.FieldsAsList() {
-	//		for _, element := range field {
-	//			rawData := serialize(element) // data without nid
-	//			if len(rawData) < shareSize {
-	//				share := encode(0) || rawData
-	//				share = pad(share, shareSize)
-	//				shares = append(shares, share)
-	//				shareIdxToNID[shareIdx] = nid(element)
-	//				shareIdx++
-	//			} else { // len(rawData) >= shareWithoutNidSize:
-	//				nid := nid(element)
-	//				splitIntoShares := ceil((len(rawData) + 1) / shareSize)
-	//				firstShare := encode(splitIntoShares) || rawData[:shareSize-1]
-	//				shares = append(shares, firstShare)
-	//				shareIdxToNID[shareIdx] = nid
-	//				shareIdx++
-	//				rawData := rawData[:shareSize-1]
-	//				for len(rawData) > 0 {
-	//					share := rawData[:shareSize-1]
-	//					share = pad(share, shareSize) // pad if necessary
-	//					shares = append(shares, share)
-	//					shareIdxToNID[shareIdx] = nid
-	//					shareIdx++
-	//				}
-	//			}
-	//		}
-	//	}
-	//	return shares
-	panic("todo")
+var _ namespace.Data = NamespacedShare{}
+
+// NamespacedShare extends a Share with the corresponding namespace.
+// It implements the namespace.Data interface and hence can be used
+// for pushing the shares to the namespaced Merkle tree.
+type NamespacedShare struct {
+	Share
+	ID namespace.ID
+}
+
+func (n NamespacedShare) NamespaceID() namespace.ID {
+	return n.ID
+}
+
+func (n NamespacedShare) Data() []byte {
+	return n.Share
+}
+
+type NamespacedShares []NamespacedShare
+
+// Shares returns the raw shares that can be fed into the erasure coding
+// library (e.g. rsmt2d).
+func (ns NamespacedShares) Shares() []Share {
+	res := make([]Share, len(ns))
+	for i, nsh := range ns {
+		res[i] = nsh.Share
+	}
+	return res
+}
+
+type Byter interface {
+	Bytes() []byte
+}
+
+func MakeShares(data []Byter, shareSize int, nidFunc func(elem interface{}) namespace.ID) NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, element := range data {
+		rawData := element.Bytes() // data without nid
+		nid := nidFunc(element)
+		if len(rawData) < shareSize {
+			rawShare := rawData
+			paddedShare := zeroPadIfNecessary(rawShare, shareSize)
+			share := NamespacedShare{paddedShare, nid}
+			shares = append(shares, share)
+		} else { // len(rawData) >= shareWithoutNidSize:
+			firstRawShare := rawData[:shareSize-1]
+			shares = append(shares, NamespacedShare{firstRawShare, nid})
+			rawData := rawData[:shareSize-1]
+			for len(rawData) > 0 {
+				paddedShare := zeroPadIfNecessary(rawData[:shareSize-1], shareSize)
+				share := NamespacedShare{paddedShare, nid}
+				shares = append(shares, share)
+			}
+		}
+	}
+	return shares
+}
+
+func zeroPadIfNecessary(share []byte, width int) []byte {
+	oldLen := len(share)
+	if oldLen < width {
+		missingBytes := width - oldLen
+		padByte := []byte{0}
+		padding := bytes.Repeat(padByte, missingBytes)
+		share = append(share, padding...)
+		return share
+	}
+	return share
 }
