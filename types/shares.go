@@ -11,9 +11,6 @@ import (
 // TODO list:
 // * pass in a way to extract / get the namespace ID of an element
 // * data structures & algos:
-//   - Iterator for each list in Block.Data (instead of passing in Data directly) ?
-//   - define Share as pair (namespace, rawData)
-//   - padding
 //   - abstract away encoding (?)
 
 // Share contains the raw share data without the corresponding namespace.
