@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/gogo/protobuf/proto"
@@ -51,12 +52,26 @@ type LenDelimitedMarshaler interface {
 	MarshalDelimited() ([]byte,error)
 }
 
+// ProtoLenDelimitedMarshaler decorates any (gogo)proto.Message with a MarshalDelimited
+// method.
 type ProtoLenDelimitedMarshaler struct {
 	proto.Message
 }
 
 func (p ProtoLenDelimitedMarshaler) MarshalDelimited() ([]byte, error) {
 	return protoio.MarshalDelimited(p.Message)
+}
+
+// TxLenDelimitedMarshaler turns a Tx into a LenDelimitedMarshaler.
+// It prefixes the Tx with its length as protoio.MarshalDelimited would do.
+type TxLenDelimitedMarshaler Tx
+
+func (tx TxLenDelimitedMarshaler)  MarshalDelimited() ([]byte, error) {
+	lenBuf := make([]byte, binary.MaxVarintLen64)
+	length := uint64(len(tx))
+	n := binary.PutUvarint(lenBuf, length)
+
+	return append(lenBuf[:n], tx...), nil
 }
 
 var _ LenDelimitedMarshaler = ProtoLenDelimitedMarshaler{}
@@ -76,7 +91,8 @@ func MakeShares(data []LenDelimitedMarshaler, shareSize int, nidFunc func(elem i
 		rawData, err := element.MarshalDelimited()
 		if err != nil {
 			// The (abci) app has to guarantee that it only includes messages
-			// that can be encoded without an error
+			// that can be encoded without an error (equivalently tendermint
+			// must not include any Tx, Evidence etc that is unencodable)
 			panic(fmt.Sprintf("can not encode %v", element))
 		}
 		nid := nidFunc(element)
