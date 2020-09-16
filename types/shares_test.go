@@ -10,7 +10,21 @@ import (
 )
 
 func TestMakeShares(t *testing.T) {
-	// resveredTxNamespaceID := append(bytes.Repeat([]byte{0}, 7), 1)
+	reservedTxNamespaceID := append(bytes.Repeat([]byte{0}, 7), 1)
+	reservedEvidenceNamespaceID := append(bytes.Repeat([]byte{0}, 7), 3)
+	evidenceNidFunc := func(elem interface{}) namespace.ID {
+		return reservedEvidenceNamespaceID
+	}
+	txNidFunc := func(elem interface{}) namespace.ID {
+		return reservedTxNamespaceID
+	}
+	msgNidFunc := func(elem interface{}) namespace.ID {
+		msg, ok := elem.(Message)
+		if !ok {
+			panic("method called on other type than Message")
+		}
+		return msg.NamespaceID
+	}
 	// resveredIntermediateStateRootsNamespaceID := append(bytes.Repeat([]byte{0}, 7), 2)
 	val := NewMockPV()
 	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
@@ -23,12 +37,17 @@ func TestMakeShares(t *testing.T) {
 		Timestamp: defaultVoteTime,
 	}
 	testEvidenceBytes, err := protoio.MarshalDelimited(testEvidence.ToProto())
+	largeTx := Tx(bytes.Repeat([]byte("large Tx"), 50))
+	largeTxLenDelimited, _ := largeTx.MarshalDelimited()
+	smolTx := Tx("small Tx")
+	smolTxLenDelimited, _ := smolTx.MarshalDelimited()
+	msg1 := Message{
+		NamespaceID: namespace.ID("8bytesss"),
+		Data:        []byte("some data"),
+	}
+	msg1Marshaled, _ := msg1.MarshalDelimited()
 	if err != nil {
 		t.Fatalf("Could not encode evidence: %v, error: %v", testEvidence, err)
-	}
-	resveredEvidenceNamespaceID := append(bytes.Repeat([]byte{0}, 7), 3)
-	evidenceNidFunc := func(elem interface{}) namespace.ID {
-		return resveredEvidenceNamespaceID
 	}
 	type args struct {
 		data      []LenDelimitedMarshaler
@@ -47,25 +66,56 @@ func TestMakeShares(t *testing.T) {
 				nidFunc:   evidenceNidFunc,
 			}, NamespacedShares{NamespacedShare{
 				Share: testEvidenceBytes[:ShareSize],
-				ID:    resveredEvidenceNamespaceID,
+				ID:    reservedEvidenceNamespaceID,
 			}, NamespacedShare{
 				Share: zeroPadIfNecessary(testEvidenceBytes[ShareSize:], ShareSize),
-				ID:    resveredEvidenceNamespaceID,
+				ID:    reservedEvidenceNamespaceID,
 			}},
 		},
-		{"ll-app messages",
+		{"small LL Tx",
 			args{
-				data:      nil,
-				shareSize: 0,
-				nidFunc:   nil,
+				data:      []LenDelimitedMarshaler{smolTx},
+				shareSize: ShareSize,
+				nidFunc:   txNidFunc,
 			},
-			NamespacedShares{},
+			NamespacedShares{
+				NamespacedShare{
+					Share: zeroPadIfNecessary(smolTxLenDelimited, ShareSize),
+					ID:    reservedTxNamespaceID,
+				},
+			},
+		},
+		{"one large LL Tx",
+			args{
+				data:      []LenDelimitedMarshaler{largeTx},
+				shareSize: ShareSize,
+				nidFunc:   txNidFunc,
+			},
+			NamespacedShares{
+				NamespacedShare{
+					Share: Share(largeTxLenDelimited[:ShareSize]),
+					ID:    reservedTxNamespaceID,
+				},
+				NamespacedShare{
+					Share: zeroPadIfNecessary(largeTxLenDelimited[ShareSize:], ShareSize),
+					ID:    reservedTxNamespaceID,
+				},
+			},
+		},
+		{"ll-app message",
+			args{
+				data:      []LenDelimitedMarshaler{msg1},
+				shareSize: ShareSize,
+				nidFunc:   msgNidFunc,
+			},
+			NamespacedShares{
+				NamespacedShare{zeroPadIfNecessary(msg1Marshaled, ShareSize), msg1.NamespaceID},
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := MakeShares(tt.args.data, tt.args.shareSize, tt.args.nidFunc); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("len(MakeShares()) = %v want %v", len(got), len(tt.want))
 				t.Errorf("MakeShares() = %v\n want %v", got, tt.want)
 			}
 		})
