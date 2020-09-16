@@ -52,6 +52,10 @@ type LenDelimitedMarshaler interface {
 	MarshalDelimited() ([]byte,error)
 }
 
+var _ LenDelimitedMarshaler = Message{}
+var _ LenDelimitedMarshaler = ProtoLenDelimitedMarshaler{}
+var _ LenDelimitedMarshaler = Tx{}
+
 // ProtoLenDelimitedMarshaler decorates any (gogo)proto.Message with a MarshalDelimited
 // method.
 type ProtoLenDelimitedMarshaler struct {
@@ -62,24 +66,27 @@ func (p ProtoLenDelimitedMarshaler) MarshalDelimited() ([]byte, error) {
 	return protoio.MarshalDelimited(p.Message)
 }
 
-// TxLenDelimitedMarshaler turns a Tx into a LenDelimitedMarshaler.
-// It prefixes the Tx with its length as protoio.MarshalDelimited would do.
-type TxLenDelimitedMarshaler Tx
-
-func (tx TxLenDelimitedMarshaler)  MarshalDelimited() ([]byte, error) {
+func (tx Tx)  MarshalDelimited() ([]byte, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	length := uint64(len(tx))
 	n := binary.PutUvarint(lenBuf, length)
 
 	return append(lenBuf[:n], tx...), nil
 }
+// MarshalDelimited marshals the raw data (excluding the namespace) of this
+// message and prefixes it with the length of that encoding.
+func (m Message) MarshalDelimited() ([]byte, error) {
+	lenBuf := make([]byte, binary.MaxVarintLen64)
+	length := uint64(len(m.Data))
+	n := binary.PutUvarint(lenBuf, length)
 
-var _ LenDelimitedMarshaler = ProtoLenDelimitedMarshaler{}
+	return append(lenBuf[:n], m.Data...), nil
+}
 
-// XXX: We could easily generalize this s.t. it does not use
-// proto.Message in the method signature. But for now this
-// does not seem necessary.
 func MakeShares(data []LenDelimitedMarshaler, shareSize int, nidFunc func(elem interface{}) namespace.ID) NamespacedShares {
+	if shareSize <= 0 {
+		panic("invalid shareSize")
+	}
 	shares := make([]NamespacedShare, 0)
 	for _, element := range data {
 		// TODO: implement a helper that also returns the size
