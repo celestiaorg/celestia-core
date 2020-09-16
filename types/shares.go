@@ -31,6 +31,8 @@ func (n NamespacedShare) Data() []byte {
 	return n.Share
 }
 
+// NamespacedShares is just a list of NamespacedShare elements.
+// It can be used to extract the raw Shares.
 type NamespacedShares []NamespacedShare
 
 // Shares returns the raw shares that can be fed into the erasure coding
@@ -79,7 +81,11 @@ func (m Message) MarshalDelimited() ([]byte, error) {
 	return append(lenBuf[:n], m.Data...), nil
 }
 
-func MakeShares(data []LenDelimitedMarshaler, shareSize int, nidFunc func(elem interface{}) namespace.ID) NamespacedShares {
+func MakeShares(
+	data []LenDelimitedMarshaler,
+	shareSize int,
+	nidFunc func(elem interface{}) namespace.ID,
+) NamespacedShares {
 	if shareSize <= 0 {
 		panic("invalid shareSize")
 	}
