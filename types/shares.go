@@ -10,11 +10,6 @@ import (
 	"github.com/lazyledger/nmt/namespace"
 )
 
-// TODO list:
-// * pass in a way to extract / get the namespace ID of an element
-// * data structures & algos:
-//   - abstract away encoding (?)
-
 // Share contains the raw share data without the corresponding namespace.
 type Share []byte
 
@@ -49,7 +44,7 @@ func (ns NamespacedShares) Shares() []Share {
 }
 
 type LenDelimitedMarshaler interface {
-	MarshalDelimited() ([]byte,error)
+	MarshalDelimited() ([]byte, error)
 }
 
 var _ LenDelimitedMarshaler = Message{}
@@ -66,13 +61,14 @@ func (p ProtoLenDelimitedMarshaler) MarshalDelimited() ([]byte, error) {
 	return protoio.MarshalDelimited(p.Message)
 }
 
-func (tx Tx)  MarshalDelimited() ([]byte, error) {
+func (tx Tx) MarshalDelimited() ([]byte, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	length := uint64(len(tx))
 	n := binary.PutUvarint(lenBuf, length)
 
 	return append(lenBuf[:n], tx...), nil
 }
+
 // MarshalDelimited marshals the raw data (excluding the namespace) of this
 // message and prefixes it with the length of that encoding.
 func (m Message) MarshalDelimited() ([]byte, error) {
@@ -131,7 +127,9 @@ func split(rawData []byte, shareSize int, nid namespace.ID) []NamespacedShare {
 }
 
 func min(a, b int) int {
-	if a <= b { return a}
+	if a <= b {
+		return a
+	}
 	return b
 }
 

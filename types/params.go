@@ -26,10 +26,10 @@ const (
 	// TODO move lazyledger specific consts into separate file to avoid potential merge conflicts etc
 	// ShareSize is the size of a share (in bytes).
 	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#constants
-    ShareSize = 256
+	ShareSize = 256
 
-    // NamespaceSize is the namespace size in bytes.
-    NamespaceSize = 8
+	// NamespaceSize is the namespace size in bytes.
+	NamespaceSize = 8
 )
 
 // DefaultConsensusParams returns a default ConsensusParams.
