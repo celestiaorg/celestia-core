@@ -32,6 +32,17 @@ const (
 	NamespaceSize = 8
 )
 
+type ReservedNamespaceID [NamespaceSize]byte
+
+var (
+	TxNamespaceID                     = ReservedNamespaceID{0, 0, 0, 0, 0, 0, 0, 1}
+	IntermediateStateRootsNamespaceID = ReservedNamespaceID{0, 0, 0, 0, 0, 0, 0, 2}
+	EvidenceNamespaceID               = ReservedNamespaceID{0, 0, 0, 0, 0, 0, 0, 3}
+
+	TailPaddingNamespaceID = ReservedNamespaceID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE}
+	ParityShareNamespaceID = ReservedNamespaceID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+)
+
 // DefaultConsensusParams returns a default ConsensusParams.
 func DefaultConsensusParams() *tmproto.ConsensusParams {
 	return &tmproto.ConsensusParams{
