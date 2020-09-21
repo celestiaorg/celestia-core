@@ -10,10 +10,10 @@ import (
 	"github.com/lazyledger/nmt/namespace"
 )
 
+var _ namespace.Data = NamespacedShare{}
+
 // Share contains the raw share data without the corresponding namespace.
 type Share []byte
-
-var _ namespace.Data = NamespacedShare{}
 
 // NamespacedShare extends a Share with the corresponding namespace.
 // It implements the namespace.Data interface and hence can be used
@@ -81,6 +81,9 @@ func (m Message) MarshalDelimited() ([]byte, error) {
 	return append(lenBuf[:n], m.Data...), nil
 }
 
+// MakeShares creates NamespacedShares from slices of serializable data.
+// The returned shares have the passed in width shareSize and the
+// associated namespace per share is computed via the passed in nidFunc.
 func MakeShares(
 	data []LenDelimitedMarshaler,
 	shareSize int,
