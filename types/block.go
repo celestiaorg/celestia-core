@@ -11,6 +11,10 @@ import (
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 
+	"github.com/lazyledger/nmt"
+	"github.com/lazyledger/nmt/namespace"
+	"github.com/lazyledger/rsmt2d"
+
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
@@ -46,15 +50,25 @@ const (
 // For details see Section 5.2: https://arxiv.org/abs/1809.09044
 type DataAvailabilityHeader struct {
 	// RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
-	RowsRoots []tmbytes.HexBytes `json:"row_roots"`
+	RowsRoots []namespace.IntervalDigest `json:"row_roots"`
 	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
-	ColumnRoots []tmbytes.HexBytes `json:"column_roots"`
+	ColumnRoots []namespace.IntervalDigest `json:"column_roots"`
 }
 
 // Hash computes the root of the row and column roots
-// TODO: feed this into Header.DataHash.
-func (dah *DataAvailabilityHeader) Hash() {
-	panic("TODO: implement")
+func (dah *DataAvailabilityHeader) Hash() []byte {
+	colsCount := len(dah.RowsRoots)
+	rowsCount := len(dah.ColumnRoots)
+	slices := make([][]byte, colsCount+rowsCount)
+	for i, rowRoot := range dah.RowsRoots {
+		slices[i] = rowRoot.Bytes()
+	}
+	for i, colRoot := range dah.RowsRoots {
+		slices[i+colsCount] = colRoot.Bytes()
+	}
+	// The single data root is computed using a simple binary merkle tree.
+	// Effectively being root(rowRoots || columnRoots):
+	return merkle.HashFromByteSlices(slices)
 }
 
 // Block defines the atomic unit of a Tendermint blockchain.
@@ -124,6 +138,53 @@ func (b *Block) fillHeader() {
 	if b.EvidenceHash == nil {
 		b.EvidenceHash = b.Evidence.Hash()
 	}
+}
+
+// fillDataAvailabilityHeader fills in any remaining DataAvailabilityHeader fields
+// that are a function of the block data.
+func (b *Block) fillDataAvailabilityHeader() {
+	namespacedShares := b.Data.computeShares()
+	shares := namespacedShares.RawShares()
+	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.LeopardFF16)
+	if err != nil {
+		panic(fmt.Sprintf("unexpected error: %v", err))
+	}
+	// compute roots:
+	squareWidth := extendedDataSquare.Width()
+	originalDataWidth := squareWidth / 2
+	b.DataAvailabilityHeader = DataAvailabilityHeader{
+		RowsRoots:   make([]namespace.IntervalDigest, squareWidth),
+		ColumnRoots: make([]namespace.IntervalDigest, squareWidth),
+	}
+
+	// compute row and column roots:
+	for outerIdx := uint(0); outerIdx < squareWidth; outerIdx++ {
+		rowTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
+		colTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
+		for innerIdx := uint(0); innerIdx < squareWidth; innerIdx++ {
+			if outerIdx < originalDataWidth && innerIdx < originalDataWidth {
+				rowTree.Push(namespacedShares[outerIdx*originalDataWidth+innerIdx])
+				colTree.Push(namespacedShares[innerIdx*originalDataWidth+outerIdx])
+			} else {
+				rowData := extendedDataSquare.Row(outerIdx)
+				colData := extendedDataSquare.Column(outerIdx)
+
+				parityCellFromRow := rowData[innerIdx]
+				parityCellFromCol := colData[innerIdx]
+				// FIXME: do not hardcode usage of PrefixedData8 here:
+				rowTree.Push(namespace.PrefixedData8(
+					append(ParitySharesNamespaceID, parityCellFromRow...),
+				))
+				colTree.Push(namespace.PrefixedData8(
+					append(ParitySharesNamespaceID, parityCellFromCol...),
+				))
+			}
+		}
+		b.DataAvailabilityHeader.RowsRoots[outerIdx] = rowTree.Root()
+		b.DataAvailabilityHeader.ColumnRoots[outerIdx] = colTree.Root()
+	}
+
+	b.DataHash = b.DataAvailabilityHeader.Hash()
 }
 
 // Hash computes and returns the block hash.
@@ -1028,7 +1089,7 @@ type Data struct {
 	hash tmbytes.HexBytes
 }
 
-func (data *Data) ComputeShares() NamespacedShares {
+func (data *Data) computeShares() NamespacedShares {
 	txs, roots, evidence, msgs := extractMarshalers(data)
 
 	txShares := makeShares(txs, ShareSize, txNIDFunc)
@@ -1067,7 +1128,6 @@ func extractMarshalers(data *Data) (
 	for i := range data.IntermediateStateRoots {
 		roots[i] = data.IntermediateStateRoots[i]
 	}
-
 	for i := range data.Evidence.Evidence {
 		if evidence, ok := data.Evidence.Evidence[i].(*DuplicateVoteEvidence); ok {
 			evidences = append(evidences, ProtoLenDelimitedMarshaler{evidence.ToProto()})

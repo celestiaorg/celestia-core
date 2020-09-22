@@ -1,6 +1,9 @@
 package types
 
-import "github.com/lazyledger/nmt/namespace"
+import (
+	"github.com/lazyledger/nmt/namespace"
+	"golang.org/x/crypto/sha3"
+)
 
 const (
 	// ShareSize is the size of a share (in bytes).
@@ -18,6 +21,9 @@ var (
 
 	TailPaddingNamespaceID  = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE}
 	ParitySharesNamespaceID = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+
+	// change accordingly if another hash.Hash should be used as a base hasher in the NMT:
+	newBaseHashFunc = sha3.New256
 
 	// private helper methods that can be used in makeShares
 	txNIDFunc = func(elem interface{}) namespace.ID {
