@@ -4,10 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
-
-	mbits "math/bits"
 
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
@@ -1038,7 +1037,7 @@ func (data *Data) ComputeShares() NamespacedShares {
 	msgShares := MakeShares(msgs, ShareSize, msgNidFunc)
 
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
-	wantLen := getNextPowerOf2(curLen)
+	wantLen := getNextSquareNum(curLen)
 	tailShares := GenerateTailPaddingShares(wantLen-curLen, ShareSize)
 
 	return append(append(append(append(
@@ -1076,17 +1075,9 @@ func extractMarshalers(data *Data) ([]LenDelimitedMarshaler, []LenDelimitedMarsh
 	return txs, roots, evidence, msgs
 }
 
-func getNextPowerOf2(length int) int {
-	if length < 0 {
-		panic("invalid argument: expected non-negative value")
-	}
-	if length == 0 {
-		return 1
-	}
-	uLength := uint(length - 1)
-	bitlen := mbits.Len(uLength)
-	k := 1 << uint(bitlen)
-	return k
+func getNextSquareNum(length int) int {
+	width := int(math.Ceil(math.Sqrt(float64(length))))
+	return width*width
 }
 
 type Message struct {
