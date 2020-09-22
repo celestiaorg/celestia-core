@@ -116,8 +116,8 @@ func TestMakeShares(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt // stupid scopelint :-/
 		t.Run(tt.name, func(t *testing.T) {
-			if got := MakeShares(tt.args.data, tt.args.shareSize, tt.args.nidFunc); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("MakeShares() = %v\n want %v", got, tt.want)
+			if got := makeShares(tt.args.data, tt.args.shareSize, tt.args.nidFunc); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("makeShares() = %v\n want %v", got, tt.want)
 			}
 		})
 	}
