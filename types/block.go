@@ -1059,7 +1059,7 @@ func extractMarshalers(data *Data) (
 	// them into []LenDelimitedMarshaler
 	txs := make([]LenDelimitedMarshaler, len(data.Txs))
 	roots := make([]LenDelimitedMarshaler, len(data.IntermediateStateRoots))
-	evidence := make([]LenDelimitedMarshaler, 0)
+	evidences := make([]LenDelimitedMarshaler, 0)
 	msgs := make([]LenDelimitedMarshaler, len(data.Messages))
 	for i := range data.Txs {
 		txs[i] = data.Txs[i]
@@ -1069,17 +1069,14 @@ func extractMarshalers(data *Data) (
 	}
 
 	for i := range data.Evidence.Evidence {
-		switch data.Evidence.Evidence[i].(type) {
-		case *DuplicateVoteEvidence:
-			evidence = append(evidence, ProtoLenDelimitedMarshaler{data.Evidence.Evidence[i].(*DuplicateVoteEvidence).ToProto()})
-		default:
-			panic("unknown evidence type")
+		if evidence, ok := data.Evidence.Evidence[i].(*DuplicateVoteEvidence); ok {
+			evidences = append(evidences, ProtoLenDelimitedMarshaler{evidence.ToProto()})
 		}
 	}
 	for i := range data.Messages {
 		msgs[i] = data.Messages[i]
 	}
-	return txs, roots, evidence, msgs
+	return txs, roots, evidences, msgs
 }
 
 func getNextSquareNum(length int) int {
