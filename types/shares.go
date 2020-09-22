@@ -6,8 +6,10 @@ import (
 	"fmt"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	"github.com/lazyledger/nmt/namespace"
+
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/libs/protoio"
 )
 
 var _ namespace.Data = NamespacedShare{}
@@ -51,6 +53,7 @@ type LenDelimitedMarshaler interface {
 
 var _ LenDelimitedMarshaler = Message{}
 var _ LenDelimitedMarshaler = ProtoLenDelimitedMarshaler{}
+var _ LenDelimitedMarshaler = tmbytes.HexBytes{}
 var _ LenDelimitedMarshaler = Tx{}
 
 // ProtoLenDelimitedMarshaler decorates any (gogo)proto.Message with a MarshalDelimited
@@ -131,6 +134,14 @@ func split(rawData []byte, shareSize int, nid namespace.ID) []NamespacedShare {
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
 		rawData = rawData[shareSizeOrLen:]
+	}
+	return shares
+}
+
+func GenerateTailPaddingShares(n int, shareWidth int) NamespacedShares {
+	shares := make([]NamespacedShare, n)
+	for i := 0; i < n; i++ {
+		shares[i] = NamespacedShare{bytes.Repeat([]byte{0}, shareWidth), TailPaddingNamespaceID}
 	}
 	return shares
 }
