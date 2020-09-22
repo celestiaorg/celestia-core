@@ -19,26 +19,25 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	abcicli "github.com/tendermint/tendermint/abci/client"
-	"github.com/tendermint/tendermint/abci/example/counter"
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	abci "github.com/tendermint/tendermint/abci/types"
-	cfg "github.com/tendermint/tendermint/config"
-	cstypes "github.com/tendermint/tendermint/consensus/types"
-	"github.com/tendermint/tendermint/evidence"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-	"github.com/tendermint/tendermint/libs/log"
-	tmos "github.com/tendermint/tendermint/libs/os"
-	tmpubsub "github.com/tendermint/tendermint/libs/pubsub"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	mempl "github.com/tendermint/tendermint/mempool"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/privval"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/store"
-	"github.com/tendermint/tendermint/types"
-	tmtime "github.com/tendermint/tendermint/types/time"
+	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
+	"github.com/lazyledger/lazyledger-core/abci/example/counter"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	cfg "github.com/lazyledger/lazyledger-core/config"
+	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	mempl "github.com/lazyledger/lazyledger-core/mempool"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/privval"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/store"
+	"github.com/lazyledger/lazyledger-core/types"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
 
 const (
@@ -399,7 +398,10 @@ func newStateWithConfigAndBlockStore(
 
 	eventBus := types.NewEventBus()
 	eventBus.SetLogger(log.TestingLogger().With("module", "events"))
-	eventBus.Start()
+	err := eventBus.Start()
+	if err != nil {
+		panic(err)
+	}
 	cs.SetEventBus(eventBus)
 	return cs
 }
@@ -428,49 +430,6 @@ func randState(nValidators int) (*State, []*validatorStub) {
 	incrementHeight(vss[1:]...)
 
 	return cs, vss
-}
-
-func randStateWithEvpool(t *testing.T, nValidators int) (*State, []*validatorStub, *evidence.Pool) {
-	state, privVals := randGenesisState(nValidators, false, 10)
-
-	vss := make([]*validatorStub, nValidators)
-
-	app := counter.NewApplication(true)
-	config := cfg.ResetTestRoot("consensus_state_test")
-
-	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	evidenceDB := dbm.NewMemDB()
-
-	mtx := new(tmsync.Mutex)
-	proxyAppConnMem := abcicli.NewLocalClient(mtx, app)
-	proxyAppConnCon := abcicli.NewLocalClient(mtx, app)
-
-	mempool := mempl.NewCListMempool(config.Mempool, proxyAppConnMem, 0)
-	mempool.SetLogger(log.TestingLogger().With("module", "mempool"))
-	if config.Consensus.WaitForTxs() {
-		mempool.EnableTxsAvailable()
-	}
-	stateDB := dbm.NewMemDB()
-	sm.SaveState(stateDB, state)
-	evpool, err := evidence.NewPool(evidenceDB, evidence.NewEvidenceStateStore(stateDB), blockStore)
-	require.NoError(t, err)
-	blockExec := sm.NewBlockExecutor(stateDB, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-	cs := NewState(config.Consensus, state, blockExec, blockStore, mempool, evpool)
-	cs.SetLogger(log.TestingLogger().With("module", "consensus"))
-	cs.SetPrivValidator(privVals[0])
-
-	eventBus := types.NewEventBus()
-	eventBus.SetLogger(log.TestingLogger().With("module", "events"))
-	eventBus.Start()
-	cs.SetEventBus(eventBus)
-
-	for i := 0; i < nValidators; i++ {
-		vss[i] = newValidatorStub(privVals[i], int32(i))
-	}
-	// since cs1 starts at 1
-	incrementHeight(vss[1:]...)
-
-	return cs, vss, evpool
 }
 
 //-------------------------------------------------------------------------------

@@ -14,9 +14,9 @@ import (
 	"os"
 	"strings"
 
-	cs "github.com/tendermint/tendermint/consensus"
-	tmjson "github.com/tendermint/tendermint/libs/json"
-	"github.com/tendermint/tendermint/types"
+	cs "github.com/lazyledger/lazyledger-core/consensus"
+	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 func main() {

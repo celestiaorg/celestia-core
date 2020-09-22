@@ -8,13 +8,13 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	"github.com/tendermint/tendermint/libs/cmap"
-	tmmath "github.com/tendermint/tendermint/libs/math"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	"github.com/tendermint/tendermint/libs/service"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/p2p/conn"
-	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
+	"github.com/lazyledger/lazyledger-core/libs/cmap"
+	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p/conn"
+	tmp2p "github.com/lazyledger/lazyledger-core/proto/tendermint/p2p"
 )
 
 type Peer = p2p.Peer
@@ -171,7 +171,9 @@ func (r *Reactor) OnStart() error {
 
 // OnStop implements BaseService
 func (r *Reactor) OnStop() {
-	r.book.Stop()
+	if err := r.book.Stop(); err != nil {
+		r.Logger.Error("Error stopping address book", "err", err)
+	}
 }
 
 // GetChannels implements Reactor

@@ -3,10 +3,10 @@ package mock
 import (
 	"net"
 
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	"github.com/tendermint/tendermint/libs/service"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/p2p/conn"
+	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p/conn"
 )
 
 type Peer struct {
@@ -36,11 +36,13 @@ func NewPeer(ip net.IP) *Peer {
 		kv:   make(map[string]interface{}),
 	}
 	mp.BaseService = service.NewBaseService(nil, "MockPeer", mp)
-	mp.Start()
+	if err := mp.Start(); err != nil {
+		panic(err)
+	}
 	return mp
 }
 
-func (mp *Peer) FlushStop()                              { mp.Stop() }
+func (mp *Peer) FlushStop()                              { mp.Stop() } //nolint:errcheck //ignore error
 func (mp *Peer) TrySend(chID byte, msgBytes []byte) bool { return true }
 func (mp *Peer) Send(chID byte, msgBytes []byte) bool    { return true }
 func (mp *Peer) NodeInfo() p2p.NodeInfo {

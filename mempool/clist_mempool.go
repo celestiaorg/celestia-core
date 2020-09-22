@@ -8,21 +8,23 @@ import (
 	"sync"
 	"sync/atomic"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	cfg "github.com/tendermint/tendermint/config"
-	auto "github.com/tendermint/tendermint/libs/autofile"
-	"github.com/tendermint/tendermint/libs/clist"
-	"github.com/tendermint/tendermint/libs/log"
-	tmmath "github.com/tendermint/tendermint/libs/math"
-	tmos "github.com/tendermint/tendermint/libs/os"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/proxy"
-	"github.com/tendermint/tendermint/types"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	cfg "github.com/lazyledger/lazyledger-core/config"
+	auto "github.com/lazyledger/lazyledger-core/libs/autofile"
+	"github.com/lazyledger/lazyledger-core/libs/clist"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/proxy"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // TxKeySize is the size of the transaction key index
 const TxKeySize = sha256.Size
+
+var newline = []byte("\n")
 
 //--------------------------------------------------------------------------------
 
@@ -253,7 +255,23 @@ func (mem *CListMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo Tx
 		}
 	}
 
-	// CACHE
+	// NOTE: writing to the WAL and calling proxy must be done before adding tx
+	// to the cache. otherwise, if either of them fails, next time CheckTx is
+	// called with tx, ErrTxInCache will be returned without tx being checked at
+	// all even once.
+	if mem.wal != nil {
+		// TODO: Notify administrators when WAL fails
+		_, err := mem.wal.Write(append([]byte(tx), newline...))
+		if err != nil {
+			return fmt.Errorf("wal.Write: %w", err)
+		}
+	}
+
+	// NOTE: proxyAppConn may error if tx buffer is full
+	if err := mem.proxyAppConn.Error(); err != nil {
+		return err
+	}
+
 	if !mem.cache.Push(tx) {
 		// Record a new sender for a tx we've already seen.
 		// Note it's possible a tx is still in the cache but no longer in the mempool
@@ -265,30 +283,9 @@ func (mem *CListMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo Tx
 			// TODO: consider punishing peer for dups,
 			// its non-trivial since invalid txs can become valid,
 			// but they can spam the same tx with little cost to them atm.
-
 		}
 
 		return ErrTxInCache
-	}
-	// END CACHE
-
-	// WAL
-	if mem.wal != nil {
-		// TODO: Notify administrators when WAL fails
-		_, err := mem.wal.Write([]byte(tx))
-		if err != nil {
-			mem.logger.Error("Error writing to WAL", "err", err)
-		}
-		_, err = mem.wal.Write([]byte("\n"))
-		if err != nil {
-			mem.logger.Error("Error writing to WAL", "err", err)
-		}
-	}
-	// END WAL
-
-	// NOTE: proxyAppConn may error if tx buffer is full
-	if err := mem.proxyAppConn.Error(); err != nil {
-		return err
 	}
 
 	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx})

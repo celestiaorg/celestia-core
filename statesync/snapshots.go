@@ -6,8 +6,8 @@ import (
 	"math/rand"
 	"sort"
 
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	"github.com/tendermint/tendermint/p2p"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/p2p"
 )
 
 // snapshotKey is a snapshot key used for lookups.
@@ -30,9 +30,9 @@ type snapshot struct {
 func (s *snapshot) Key() snapshotKey {
 	// Hash.Write() never returns an error.
 	hasher := sha256.New()
-	hasher.Write([]byte(fmt.Sprintf("%v:%v:%v", s.Height, s.Format, s.Chunks)))
-	hasher.Write(s.Hash)
-	hasher.Write(s.Metadata)
+	hasher.Write([]byte(fmt.Sprintf("%v:%v:%v", s.Height, s.Format, s.Chunks))) //nolint:errcheck // ignore error
+	hasher.Write(s.Hash)                                                        //nolint:errcheck // ignore error
+	hasher.Write(s.Metadata)                                                    //nolint:errcheck // ignore error
 	var key snapshotKey
 	copy(key[:], hasher.Sum(nil))
 	return key

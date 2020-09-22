@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	"github.com/tendermint/tendermint/libs/service"
+	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/libs/service"
 )
 
 // mockPeer for testing the PeerSet
@@ -18,7 +18,7 @@ type mockPeer struct {
 	id ID
 }
 
-func (mp *mockPeer) FlushStop()                              { mp.Stop() }
+func (mp *mockPeer) FlushStop()                              { mp.Stop() } //nolint:errcheck // ignore error
 func (mp *mockPeer) TrySend(chID byte, msgBytes []byte) bool { return true }
 func (mp *mockPeer) Send(chID byte, msgBytes []byte) bool    { return true }
 func (mp *mockPeer) NodeInfo() NodeInfo                      { return DefaultNodeInfo{} }

@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
 var (
@@ -64,10 +64,9 @@ func makeParams(
 			TimeIotaMs: blockTimeIotaMs,
 		},
 		Evidence: tmproto.EvidenceParams{
-			MaxAgeNumBlocks:  evidenceAge,
-			MaxAgeDuration:   time.Duration(evidenceAge),
-			MaxNum:           maxEvidence,
-			ProofTrialPeriod: 1,
+			MaxAgeNumBlocks: evidenceAge,
+			MaxAgeDuration:  time.Duration(evidenceAge),
+			MaxNum:          maxEvidence,
 		},
 		Validator: tmproto.ValidatorParams{
 			PubKeyTypes: pubkeyTypes,

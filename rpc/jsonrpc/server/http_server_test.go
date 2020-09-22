@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/libs/log"
-	types "github.com/tendermint/tendermint/rpc/jsonrpc/types"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 )
 
 type sampleResult struct {
@@ -85,7 +85,11 @@ func TestServeTLS(t *testing.T) {
 		fmt.Fprint(w, "some body")
 	})
 
-	go ServeTLS(ln, mux, "test.crt", "test.key", log.TestingLogger(), DefaultConfig())
+	go func() {
+		if err := ServeTLS(ln, mux, "test.crt", "test.key", log.TestingLogger(), DefaultConfig()); err != nil {
+			t.Log(err)
+		}
+	}()
 
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},

@@ -3,9 +3,9 @@ package coregrpc
 import (
 	"context"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	core "github.com/tendermint/tendermint/rpc/core"
-	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	core "github.com/lazyledger/lazyledger-core/rpc/core"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 )
 
 type broadcastAPI struct {

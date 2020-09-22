@@ -7,15 +7,15 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	cryptoenc "github.com/tendermint/tendermint/crypto/encoding"
-	"github.com/tendermint/tendermint/libs/fail"
-	"github.com/tendermint/tendermint/libs/log"
-	mempl "github.com/tendermint/tendermint/mempool"
-	tmstate "github.com/tendermint/tendermint/proto/tendermint/state"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	"github.com/tendermint/tendermint/proxy"
-	"github.com/tendermint/tendermint/types"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	"github.com/lazyledger/lazyledger-core/libs/fail"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	mempl "github.com/lazyledger/lazyledger-core/mempool"
+	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/proxy"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 //-----------------------------------------------------------------------------
@@ -494,39 +494,49 @@ func fireEvents(
 	abciResponses *tmstate.ABCIResponses,
 	validatorUpdates []*types.Validator,
 ) {
-	eventBus.PublishEventNewBlock(types.EventDataNewBlock{
+	if err := eventBus.PublishEventNewBlock(types.EventDataNewBlock{
 		Block:            block,
 		ResultBeginBlock: *abciResponses.BeginBlock,
 		ResultEndBlock:   *abciResponses.EndBlock,
-	})
-	eventBus.PublishEventNewBlockHeader(types.EventDataNewBlockHeader{
+	}); err != nil {
+		logger.Error("Error publishing new block", "err", err)
+	}
+	if err := eventBus.PublishEventNewBlockHeader(types.EventDataNewBlockHeader{
 		Header:           block.Header,
 		NumTxs:           int64(len(block.Txs)),
 		ResultBeginBlock: *abciResponses.BeginBlock,
 		ResultEndBlock:   *abciResponses.EndBlock,
-	})
+	}); err != nil {
+		logger.Error("Error publishing new block header", "err", err)
+	}
 
 	if len(block.Evidence.Evidence) != 0 {
 		for _, ev := range block.Evidence.Evidence {
-			eventBus.PublishEventNewEvidence(types.EventDataNewEvidence{
+			if err := eventBus.PublishEventNewEvidence(types.EventDataNewEvidence{
 				Evidence: ev,
 				Height:   block.Height,
-			})
+			}); err != nil {
+				logger.Error("Error publishing new evidence", "err", err)
+			}
 		}
 	}
 
 	for i, tx := range block.Data.Txs {
-		eventBus.PublishEventTx(types.EventDataTx{TxResult: abci.TxResult{
+		if err := eventBus.PublishEventTx(types.EventDataTx{TxResult: abci.TxResult{
 			Height: block.Height,
 			Index:  uint32(i),
 			Tx:     tx,
 			Result: *(abciResponses.DeliverTxs[i]),
-		}})
+		}}); err != nil {
+			logger.Error("Error publishing event TX", "err", err)
+		}
 	}
 
 	if len(validatorUpdates) > 0 {
-		eventBus.PublishEventValidatorSetUpdates(
-			types.EventDataValidatorSetUpdates{ValidatorUpdates: validatorUpdates})
+		if err := eventBus.PublishEventValidatorSetUpdates(
+			types.EventDataValidatorSetUpdates{ValidatorUpdates: validatorUpdates}); err != nil {
+			logger.Error("Error publishing event", "err", err)
+		}
 	}
 }
 

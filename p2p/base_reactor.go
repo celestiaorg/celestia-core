@@ -1,8 +1,8 @@
 package p2p
 
 import (
-	"github.com/tendermint/tendermint/libs/service"
-	"github.com/tendermint/tendermint/p2p/conn"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	"github.com/lazyledger/lazyledger-core/p2p/conn"
 )
 
 // Reactor is responsible for handling incoming messages on one or more

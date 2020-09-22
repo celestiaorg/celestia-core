@@ -8,10 +8,10 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/tendermint/tendermint/abci/types"
-	tmnet "github.com/tendermint/tendermint/libs/net"
-	"github.com/tendermint/tendermint/libs/service"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
+	"github.com/lazyledger/lazyledger-core/abci/types"
+	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 )
 
 var _ Client = (*grpcClient)(nil)
@@ -99,7 +99,9 @@ func (cli *grpcClient) StopForError(err error) {
 	cli.mtx.Unlock()
 
 	cli.Logger.Error(fmt.Sprintf("Stopping abci.grpcClient for error: %v", err.Error()))
-	cli.Stop()
+	if err := cli.Stop(); err != nil {
+		cli.Logger.Error("Error stopping abci.grpcClient", "err", err)
+	}
 }
 
 func (cli *grpcClient) Error() error {

@@ -9,12 +9,11 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	"github.com/tendermint/tendermint/abci/example/code"
-	"github.com/tendermint/tendermint/abci/types"
-	cryptoenc "github.com/tendermint/tendermint/crypto/encoding"
-	"github.com/tendermint/tendermint/libs/log"
-	pc "github.com/tendermint/tendermint/proto/tendermint/crypto"
-	tmtypes "github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/abci/example/code"
+	"github.com/lazyledger/lazyledger-core/abci/types"
+	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	pc "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
 )
 
 const (
@@ -127,7 +126,7 @@ func (app *PersistentKVStoreApplication) BeginBlock(req types.RequestBeginBlock)
 
 	// Punish validators who committed equivocation.
 	for _, ev := range req.ByzantineValidators {
-		if ev.Type == tmtypes.ABCIEvidenceTypeDuplicateVote {
+		if ev.Type == types.EvidenceType_DUPLICATE_VOTE {
 			addr := string(ev.Validator.Address)
 			if pubKey, ok := app.valAddrToPubKeyMap[addr]; ok {
 				app.updateValidator(types.ValidatorUpdate{

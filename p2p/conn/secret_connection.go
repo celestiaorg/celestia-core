@@ -21,13 +21,13 @@ import (
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/crypto/nacl/box"
 
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	cryptoenc "github.com/tendermint/tendermint/crypto/encoding"
-	"github.com/tendermint/tendermint/libs/async"
-	"github.com/tendermint/tendermint/libs/protoio"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	"github.com/lazyledger/lazyledger-core/libs/async"
+	"github.com/lazyledger/lazyledger-core/libs/protoio"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	tmp2p "github.com/lazyledger/lazyledger-core/proto/tendermint/p2p"
 )
 
 // 4 + 1024 == 1028 total frame size
@@ -59,7 +59,7 @@ var (
 // Consumers of the SecretConnection are responsible for authenticating
 // the remote peer's pubkey against known information, like a nodeID.
 // Otherwise they are vulnerable to MITM.
-// (TODO(ismail): see also https://github.com/tendermint/tendermint/issues/3010)
+// (TODO(ismail): see also https://github.com/lazyledger/lazyledger-core/issues/3010)
 type SecretConnection struct {
 
 	// immutable

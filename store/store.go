@@ -7,10 +7,10 @@ import (
 	"github.com/gogo/protobuf/proto"
 	dbm "github.com/tendermint/tm-db"
 
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	tmstore "github.com/tendermint/tendermint/proto/tendermint/store"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	"github.com/tendermint/tendermint/types"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	tmstore "github.com/lazyledger/lazyledger-core/proto/tendermint/store"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 /*

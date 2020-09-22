@@ -10,12 +10,13 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	"github.com/tendermint/tendermint/light"
-	"github.com/tendermint/tendermint/light/provider"
-	httpp "github.com/tendermint/tendermint/light/provider/http"
-	dbs "github.com/tendermint/tendermint/light/store/db"
-	rpctest "github.com/tendermint/tendermint/rpc/test"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/light"
+	"github.com/lazyledger/lazyledger-core/light/provider"
+	httpp "github.com/lazyledger/lazyledger-core/light/provider/http"
+	dbs "github.com/lazyledger/lazyledger-core/light/store/db"
+	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
 )
 
 // Automatically getting new headers and verifying them.
@@ -39,7 +40,7 @@ func ExampleClient_Update() {
 		stdlog.Fatal(err)
 	}
 
-	header, err := primary.SignedHeader(2)
+	block, err := primary.LightBlock(2)
 	if err != nil {
 		stdlog.Fatal(err)
 	}
@@ -54,18 +55,20 @@ func ExampleClient_Update() {
 		light.TrustOptions{
 			Period: 504 * time.Hour, // 21 days
 			Height: 2,
-			Hash:   header.Hash(),
+			Hash:   block.Hash(),
 		},
 		primary,
 		[]provider.Provider{primary}, // NOTE: primary should not be used here
 		dbs.New(db, chainID),
-		// Logger(log.TestingLogger()),
+		light.Logger(log.TestingLogger()),
 	)
 	if err != nil {
 		stdlog.Fatal(err)
 	}
 	defer func() {
-		c.Cleanup()
+		if err := c.Cleanup(); err != nil {
+			stdlog.Fatal(err)
+		}
 	}()
 
 	time.Sleep(2 * time.Second)
@@ -73,7 +76,7 @@ func ExampleClient_Update() {
 	// XXX: 30 * time.Minute clock drift is needed because a) Tendermint strips
 	// monotonic component (see types/time/time.go) b) single instance is being
 	// run.
-	// https://github.com/tendermint/tendermint/issues/4489
+	// https://github.com/lazyledger/lazyledger-core/issues/4489
 	h, err := c.Update(time.Now().Add(30 * time.Minute))
 	if err != nil {
 		stdlog.Fatal(err)
@@ -87,8 +90,8 @@ func ExampleClient_Update() {
 	// Output: successful update
 }
 
-// Manually getting headers and verifying them.
-func ExampleClient_VerifyHeaderAtHeight() {
+// Manually getting light blocks and verifying them.
+func ExampleClient_VerifyLightBlockAtHeight() {
 	// give Tendermint time to generate some blocks
 	time.Sleep(5 * time.Second)
 
@@ -108,7 +111,7 @@ func ExampleClient_VerifyHeaderAtHeight() {
 		stdlog.Fatal(err)
 	}
 
-	header, err := primary.SignedHeader(2)
+	block, err := primary.LightBlock(2)
 	if err != nil {
 		stdlog.Fatal(err)
 	}
@@ -123,26 +126,28 @@ func ExampleClient_VerifyHeaderAtHeight() {
 		light.TrustOptions{
 			Period: 504 * time.Hour, // 21 days
 			Height: 2,
-			Hash:   header.Hash(),
+			Hash:   block.Hash(),
 		},
 		primary,
 		[]provider.Provider{primary}, // NOTE: primary should not be used here
 		dbs.New(db, chainID),
-		// Logger(log.TestingLogger()),
+		light.Logger(log.TestingLogger()),
 	)
 	if err != nil {
 		stdlog.Fatal(err)
 	}
 	defer func() {
-		c.Cleanup()
+		if err := c.Cleanup(); err != nil {
+			stdlog.Fatal(err)
+		}
 	}()
 
-	_, err = c.VerifyHeaderAtHeight(3, time.Now())
+	_, err = c.VerifyLightBlockAtHeight(3, time.Now())
 	if err != nil {
 		stdlog.Fatal(err)
 	}
 
-	h, err := c.TrustedHeader(3)
+	h, err := c.TrustedLightBlock(3)
 	if err != nil {
 		stdlog.Fatal(err)
 	}

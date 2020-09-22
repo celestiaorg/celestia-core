@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
 func MakeCommit(blockID BlockID, height int64, round int32,
@@ -90,8 +90,8 @@ func MakeBlock(height int64, txs []Tx, metaData []byte, lastCommit *Commit, evid
 		Data: Data{
 			Txs:      txs,
 			MetaData: metaData,
+			Evidence: EvidenceData{Evidence: evidence},
 		},
-		Evidence:   EvidenceData{Evidence: evidence},
 		LastCommit: lastCommit,
 	}
 	block.fillHeader()

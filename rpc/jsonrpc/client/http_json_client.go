@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"strings"
 
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	types "github.com/tendermint/tendermint/rpc/jsonrpc/types"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 )
 
 const (

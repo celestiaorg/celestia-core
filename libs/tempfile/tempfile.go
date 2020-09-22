@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	tmsync "github.com/tendermint/tendermint/libs/sync"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 )
 
 const (

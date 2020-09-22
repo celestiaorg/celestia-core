@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	tmrand "github.com/tendermint/tendermint/libs/rand"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 )
 
 /* AutoFile usage
@@ -79,7 +79,7 @@ func OpenAutoFile(path string) (*AutoFile, error) {
 	signal.Notify(af.hupc, syscall.SIGHUP)
 	go func() {
 		for range af.hupc {
-			af.closeFile()
+			_ = af.closeFile()
 		}
 	}()
 
@@ -103,7 +103,7 @@ func (af *AutoFile) closeFileRoutine() {
 	for {
 		select {
 		case <-af.closeTicker.C:
-			af.closeFile()
+			_ = af.closeFile()
 		case <-af.closeTickerStopc:
 			return
 		}

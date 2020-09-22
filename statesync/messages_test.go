@@ -7,8 +7,8 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/require"
 
-	ssproto "github.com/tendermint/tendermint/proto/tendermint/statesync"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	ssproto "github.com/lazyledger/lazyledger-core/proto/tendermint/statesync"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
 func TestValidateMsg(t *testing.T) {

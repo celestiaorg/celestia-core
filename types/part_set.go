@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/libs/bits"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-	tmjson "github.com/tendermint/tendermint/libs/json"
-	tmmath "github.com/tendermint/tendermint/libs/math"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+	"github.com/lazyledger/lazyledger-core/libs/bits"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
+	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
 var (

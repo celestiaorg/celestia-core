@@ -133,7 +133,7 @@ func TestFastSyncConfigValidateBasic(t *testing.T) {
 	assert.NoError(t, cfg.ValidateBasic())
 
 	// tamper with version
-	cfg.Version = "v1"
+	cfg.Version = "v2"
 	assert.NoError(t, cfg.ValidateBasic())
 
 	cfg.Version = "invalid"
@@ -164,6 +164,7 @@ func TestConsensusConfig_ValidateBasic(t *testing.T) {
 		"PeerGossipSleepDuration negative":     {func(c *ConsensusConfig) { c.PeerGossipSleepDuration = -1 }, true},
 		"PeerQueryMaj23SleepDuration":          {func(c *ConsensusConfig) { c.PeerQueryMaj23SleepDuration = time.Second }, false},
 		"PeerQueryMaj23SleepDuration negative": {func(c *ConsensusConfig) { c.PeerQueryMaj23SleepDuration = -1 }, true},
+		"DoubleSignCheckHeight negative":       {func(c *ConsensusConfig) { c.DoubleSignCheckHeight = -1 }, true},
 	}
 	for desc, tc := range testcases {
 		tc := tc // appease linter

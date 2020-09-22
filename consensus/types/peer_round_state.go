@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tendermint/tendermint/libs/bits"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/libs/bits"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 //-----------------------------------------------------------------------------

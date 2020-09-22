@@ -3,12 +3,12 @@ package consensus
 import (
 	"testing"
 
-	"github.com/tendermint/tendermint/libs/bytes"
-	"github.com/tendermint/tendermint/libs/log"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	"github.com/tendermint/tendermint/p2p"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 //----------------------------------------------
@@ -83,7 +83,10 @@ func invalidDoPrevoteFunc(t *testing.T, height int64, round int32, cs *State, sw
 				PartSetHeader: types.PartSetHeader{Total: 1, Hash: tmrand.Bytes(32)}},
 		}
 		p := precommit.ToProto()
-		cs.privValidator.SignVote(cs.state.ChainID, p)
+		err = cs.privValidator.SignVote(cs.state.ChainID, p)
+		if err != nil {
+			t.Error(err)
+		}
 		precommit.Signature = p.Signature
 		cs.privValidator = nil // disable priv val so we don't do normal votes
 		cs.mtx.Unlock()

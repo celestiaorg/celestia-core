@@ -10,17 +10,21 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	tmpubsub "github.com/tendermint/tendermint/libs/pubsub"
-	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
+	tmquery "github.com/lazyledger/lazyledger-core/libs/pubsub/query"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 )
 
 func TestEventBusPublishEventTx(t *testing.T) {
 	eventBus := NewEventBus()
 	err := eventBus.Start()
 	require.NoError(t, err)
-	defer eventBus.Stop()
+	t.Cleanup(func() {
+		if err := eventBus.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	tx := Tx("foo")
 	result := abci.ResponseDeliverTx{
@@ -65,7 +69,11 @@ func TestEventBusPublishEventNewBlock(t *testing.T) {
 	eventBus := NewEventBus()
 	err := eventBus.Start()
 	require.NoError(t, err)
-	defer eventBus.Stop()
+	t.Cleanup(func() {
+		if err := eventBus.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	block := MakeBlock(0, []Tx{}, []byte("proof"), nil, []Evidence{})
 	resultBeginBlock := abci.ResponseBeginBlock{
@@ -112,7 +120,11 @@ func TestEventBusPublishEventTxDuplicateKeys(t *testing.T) {
 	eventBus := NewEventBus()
 	err := eventBus.Start()
 	require.NoError(t, err)
-	defer eventBus.Stop()
+	t.Cleanup(func() {
+		if err := eventBus.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	tx := Tx("foo")
 	result := abci.ResponseDeliverTx{
@@ -216,7 +228,11 @@ func TestEventBusPublishEventNewBlockHeader(t *testing.T) {
 	eventBus := NewEventBus()
 	err := eventBus.Start()
 	require.NoError(t, err)
-	defer eventBus.Stop()
+	t.Cleanup(func() {
+		if err := eventBus.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	block := MakeBlock(0, []Tx{}, []byte("proof"), nil, []Evidence{})
 	resultBeginBlock := abci.ResponseBeginBlock{
@@ -263,7 +279,11 @@ func TestEventBusPublishEventNewEvidence(t *testing.T) {
 	eventBus := NewEventBus()
 	err := eventBus.Start()
 	require.NoError(t, err)
-	defer eventBus.Stop()
+	t.Cleanup(func() {
+		if err := eventBus.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	ev := NewMockDuplicateVoteEvidence(1, time.Now(), "test-chain-id")
 
@@ -297,7 +317,11 @@ func TestEventBusPublish(t *testing.T) {
 	eventBus := NewEventBus()
 	err := eventBus.Start()
 	require.NoError(t, err)
-	defer eventBus.Stop()
+	t.Cleanup(func() {
+		if err := eventBus.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	const numEventsExpected = 14
 
@@ -389,8 +413,15 @@ func benchmarkEventBus(numClients int, randQueries bool, randEvents bool, b *tes
 	rand.Seed(time.Now().Unix())
 
 	eventBus := NewEventBusWithBufferCapacity(0) // set buffer capacity to 0 so we are not testing cache
-	eventBus.Start()
-	defer eventBus.Stop()
+	err := eventBus.Start()
+	if err != nil {
+		b.Error(err)
+	}
+	b.Cleanup(func() {
+		if err := eventBus.Stop(); err != nil {
+			b.Error(err)
+		}
+	})
 
 	ctx := context.Background()
 	q := EventQueryNewBlock
@@ -423,7 +454,10 @@ func benchmarkEventBus(numClients int, randQueries bool, randEvents bool, b *tes
 			eventType = randEvent()
 		}
 
-		eventBus.Publish(eventType, EventDataString("Gamora"))
+		err := eventBus.Publish(eventType, EventDataString("Gamora"))
+		if err != nil {
+			b.Error(err)
+		}
 	}
 }
 

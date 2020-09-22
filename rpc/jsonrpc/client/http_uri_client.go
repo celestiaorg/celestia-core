@@ -5,7 +5,7 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	types "github.com/tendermint/tendermint/rpc/jsonrpc/types"
+	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 )
 
 const (

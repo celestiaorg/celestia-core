@@ -1,13 +1,13 @@
 package consensus
 
 import (
-	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/libs/clist"
-	mempl "github.com/tendermint/tendermint/mempool"
-	tmstate "github.com/tendermint/tendermint/proto/tendermint/state"
-	"github.com/tendermint/tendermint/proxy"
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/types"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/clist"
+	mempl "github.com/lazyledger/lazyledger-core/mempool"
+	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
+	"github.com/lazyledger/lazyledger-core/proxy"
+	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 //-----------------------------------------------------------------------------
@@ -57,7 +57,6 @@ func (emptyEvidencePool) Update(*types.Block, sm.State)           {}
 func (emptyEvidencePool) Verify(types.Evidence) error             { return nil }
 func (emptyEvidencePool) IsCommitted(types.Evidence) bool         { return false }
 func (emptyEvidencePool) IsPending(types.Evidence) bool           { return false }
-func (emptyEvidencePool) AddPOLC(*types.ProofOfLockChange) error  { return nil }
 func (emptyEvidencePool) Header(int64) *types.Header              { return nil }
 
 //-----------------------------------------------------------------------------

@@ -6,10 +6,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/libs/log"
+	"github.com/lazyledger/lazyledger-core/libs/log"
 
-	"github.com/tendermint/tendermint/libs/pubsub"
-	"github.com/tendermint/tendermint/libs/pubsub/query"
+	"github.com/lazyledger/lazyledger-core/libs/pubsub"
+	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
 )
 
 func TestExample(t *testing.T) {

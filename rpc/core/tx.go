@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"sort"
 
-	tmmath "github.com/tendermint/tendermint/libs/math"
-	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
-	"github.com/tendermint/tendermint/state/txindex/null"
-	"github.com/tendermint/tendermint/types"
+	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	tmquery "github.com/lazyledger/lazyledger-core/libs/pubsub/query"
+	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	"github.com/lazyledger/lazyledger-core/state/txindex/null"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // Tx allows you to query the transaction results. `nil` could mean the

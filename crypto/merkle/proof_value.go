@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/tendermint/tendermint/crypto/tmhash"
-	tmcrypto "github.com/tendermint/tendermint/proto/tendermint/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	tmcrypto "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
 )
 
 const ProofOpValue = "simple:v"
@@ -80,13 +80,13 @@ func (op ValueOp) Run(args [][]byte) ([][]byte, error) {
 	}
 	value := args[0]
 	hasher := tmhash.New()
-	hasher.Write(value) // does not error
+	hasher.Write(value) //nolint: errcheck // does not error
 	vhash := hasher.Sum(nil)
 
 	bz := new(bytes.Buffer)
 	// Wrap <op.Key, vhash> to hash the KVPair.
-	encodeByteSlice(bz, op.key) // does not error
-	encodeByteSlice(bz, vhash)  // does not error
+	encodeByteSlice(bz, op.key) //nolint: errcheck // does not error
+	encodeByteSlice(bz, vhash)  //nolint: errcheck // does not error
 	kvhash := leafHash(bz.Bytes())
 
 	if !bytes.Equal(kvhash, op.Proof.LeafHash) {

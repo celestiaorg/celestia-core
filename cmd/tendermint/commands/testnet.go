@@ -10,13 +10,13 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	cfg "github.com/tendermint/tendermint/config"
-	"github.com/tendermint/tendermint/libs/bytes"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/privval"
-	"github.com/tendermint/tendermint/types"
-	tmtime "github.com/tendermint/tendermint/types/time"
+	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/privval"
+	"github.com/lazyledger/lazyledger-core/types"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
 
 var (
@@ -136,7 +136,9 @@ func testnetFiles(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		initFilesWithConfig(config)
+		if err := initFilesWithConfig(config); err != nil {
+			return err
+		}
 
 		pvKeyFile := filepath.Join(nodeDir, config.BaseConfig.PrivValidatorKey)
 		pvStateFile := filepath.Join(nodeDir, config.BaseConfig.PrivValidatorState)
@@ -170,7 +172,9 @@ func testnetFiles(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		initFilesWithConfig(config)
+		if err := initFilesWithConfig(config); err != nil {
+			return err
+		}
 	}
 
 	// Generate genesis doc from generated validators

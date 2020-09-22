@@ -17,36 +17,35 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	bcv0 "github.com/tendermint/tendermint/blockchain/v0"
-	bcv1 "github.com/tendermint/tendermint/blockchain/v1"
-	bcv2 "github.com/tendermint/tendermint/blockchain/v2"
-	cfg "github.com/tendermint/tendermint/config"
-	cs "github.com/tendermint/tendermint/consensus"
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/evidence"
-	tmjson "github.com/tendermint/tendermint/libs/json"
-	"github.com/tendermint/tendermint/libs/log"
-	tmpubsub "github.com/tendermint/tendermint/libs/pubsub"
-	"github.com/tendermint/tendermint/libs/service"
-	"github.com/tendermint/tendermint/light"
-	mempl "github.com/tendermint/tendermint/mempool"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/p2p/pex"
-	"github.com/tendermint/tendermint/privval"
-	"github.com/tendermint/tendermint/proxy"
-	rpccore "github.com/tendermint/tendermint/rpc/core"
-	grpccore "github.com/tendermint/tendermint/rpc/grpc"
-	rpcserver "github.com/tendermint/tendermint/rpc/jsonrpc/server"
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/state/txindex"
-	"github.com/tendermint/tendermint/state/txindex/kv"
-	"github.com/tendermint/tendermint/state/txindex/null"
-	"github.com/tendermint/tendermint/statesync"
-	"github.com/tendermint/tendermint/store"
-	"github.com/tendermint/tendermint/types"
-	tmtime "github.com/tendermint/tendermint/types/time"
-	"github.com/tendermint/tendermint/version"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	bcv0 "github.com/lazyledger/lazyledger-core/blockchain/v0"
+	bcv2 "github.com/lazyledger/lazyledger-core/blockchain/v2"
+	cfg "github.com/lazyledger/lazyledger-core/config"
+	cs "github.com/lazyledger/lazyledger-core/consensus"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/evidence"
+	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	"github.com/lazyledger/lazyledger-core/light"
+	mempl "github.com/lazyledger/lazyledger-core/mempool"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p/pex"
+	"github.com/lazyledger/lazyledger-core/privval"
+	"github.com/lazyledger/lazyledger-core/proxy"
+	rpccore "github.com/lazyledger/lazyledger-core/rpc/core"
+	grpccore "github.com/lazyledger/lazyledger-core/rpc/grpc"
+	rpcserver "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server"
+	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/state/txindex"
+	"github.com/lazyledger/lazyledger-core/state/txindex/kv"
+	"github.com/lazyledger/lazyledger-core/state/txindex/null"
+	"github.com/lazyledger/lazyledger-core/statesync"
+	"github.com/lazyledger/lazyledger-core/store"
+	"github.com/lazyledger/lazyledger-core/types"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
+	"github.com/lazyledger/lazyledger-core/version"
 )
 
 //------------------------------------------------------------------------------
@@ -193,6 +192,7 @@ type Node struct {
 	stateSync         bool                    // whether the node should state sync on startup
 	stateSyncReactor  *statesync.Reactor      // for hosting and restoring state sync snapshots
 	stateSyncProvider statesync.StateProvider // provides state data for bootstrapping a node
+	stateSyncGenesis  sm.State                // provides the genesis state for state sync
 	consensusState    *cs.State               // latest consensus state
 	consensusReactor  *cs.Reactor             // for participating in the consensus
 	pexReactor        *pex.Reactor            // for exchanging peer addresses
@@ -360,8 +360,6 @@ func createBlockchainReactor(config *cfg.Config,
 	switch config.FastSync.Version {
 	case "v0":
 		bcReactor = bcv0.NewBlockchainReactor(state.Copy(), blockExec, blockStore, fastSync)
-	case "v1":
-		bcReactor = bcv1.NewBlockchainReactor(state.Copy(), blockExec, blockStore, fastSync)
 	case "v2":
 		bcReactor = bcv2.NewBlockchainReactor(state.Copy(), blockExec, blockStore, fastSync)
 	default:
@@ -558,10 +556,9 @@ func createPEXReactorAndAddToSwitch(addrBook pex.AddrBook, config *cfg.Config,
 // startStateSync starts an asynchronous state sync process, then switches to fast sync mode.
 func startStateSync(ssR *statesync.Reactor, bcR fastSyncReactor, conR *cs.Reactor,
 	stateProvider statesync.StateProvider, config *cfg.StateSyncConfig, fastSync bool,
-	stateDB dbm.DB, blockStore *store.BlockStore) error {
+	stateDB dbm.DB, blockStore *store.BlockStore, state sm.State) error {
 	ssR.Logger.Info("Starting state sync")
 
-	state := sm.LoadState(stateDB)
 	if stateProvider == nil {
 		var err error
 		stateProvider, err = statesync.NewLightClientStateProvider(
@@ -787,9 +784,10 @@ func NewNode(config *cfg.Config,
 		pexReactor = createPEXReactorAndAddToSwitch(addrBook, config, sw, logger)
 	}
 
-	if config.ProfListenAddress != "" {
+	if config.RPC.PprofListenAddress != "" {
 		go func() {
-			logger.Error("Profile server", "err", http.ListenAndServe(config.ProfListenAddress, nil))
+			logger.Info("Starting pprof server", "laddr", config.RPC.PprofListenAddress)
+			logger.Error("pprof server error", "err", http.ListenAndServe(config.RPC.PprofListenAddress, nil))
 		}()
 	}
 
@@ -813,6 +811,7 @@ func NewNode(config *cfg.Config,
 		consensusReactor: consensusReactor,
 		stateSyncReactor: stateSyncReactor,
 		stateSync:        stateSync,
+		stateSyncGenesis: state, // Shouldn't be necessary, but need a way to pass the genesis state
 		pexReactor:       pexReactor,
 		evidencePool:     evidencePool,
 		proxyApp:         proxyApp,
@@ -893,7 +892,7 @@ func (n *Node) OnStart() error {
 			return fmt.Errorf("this blockchain reactor does not support switching from state sync")
 		}
 		err := startStateSync(n.stateSyncReactor, bcR, n.consensusReactor, n.stateSyncProvider,
-			n.config.StateSync, n.config.FastSyncMode, n.stateDB, n.blockStore)
+			n.config.StateSync, n.config.FastSyncMode, n.stateDB, n.blockStore, n.stateSyncGenesis)
 		if err != nil {
 			return fmt.Errorf("failed to start state sync: %w", err)
 		}
@@ -909,11 +908,17 @@ func (n *Node) OnStop() {
 	n.Logger.Info("Stopping Node")
 
 	// first stop the non-reactor services
-	n.eventBus.Stop()
-	n.indexerService.Stop()
+	if err := n.eventBus.Stop(); err != nil {
+		n.Logger.Error("Error closing eventBus", "err", err)
+	}
+	if err := n.indexerService.Stop(); err != nil {
+		n.Logger.Error("Error closing indexerService", "err", err)
+	}
 
 	// now stop the reactors
-	n.sw.Stop()
+	if err := n.sw.Stop(); err != nil {
+		n.Logger.Error("Error closing switch", "err", err)
+	}
 
 	// stop mempool WAL
 	if n.config.Mempool.WalEnabled() {
@@ -935,7 +940,9 @@ func (n *Node) OnStop() {
 	}
 
 	if pvsc, ok := n.privValidator.(service.Service); ok {
-		pvsc.Stop()
+		if err := pvsc.Stop(); err != nil {
+			n.Logger.Error("Error closing private validator", "err", err)
+		}
 	}
 
 	if n.prometheusSrv != nil {
@@ -1036,21 +1043,29 @@ func (n *Node) startRPC() ([]net.Listener, error) {
 			rootHandler = corsMiddleware.Handler(mux)
 		}
 		if n.config.RPC.IsTLSEnabled() {
-			go rpcserver.ServeTLS(
-				listener,
-				rootHandler,
-				n.config.RPC.CertFile(),
-				n.config.RPC.KeyFile(),
-				rpcLogger,
-				config,
-			)
+			go func() {
+				if err := rpcserver.ServeTLS(
+					listener,
+					rootHandler,
+					n.config.RPC.CertFile(),
+					n.config.RPC.KeyFile(),
+					rpcLogger,
+					config,
+				); err != nil {
+					n.Logger.Error("Error serving server with TLS", "err", err)
+				}
+			}()
 		} else {
-			go rpcserver.Serve(
-				listener,
-				rootHandler,
-				rpcLogger,
-				config,
-			)
+			go func() {
+				if err := rpcserver.Serve(
+					listener,
+					rootHandler,
+					rpcLogger,
+					config,
+				); err != nil {
+					n.Logger.Error("Error serving server", "err", err)
+				}
+			}()
 		}
 
 		listeners[i] = listener
@@ -1074,11 +1089,17 @@ func (n *Node) startRPC() ([]net.Listener, error) {
 		if err != nil {
 			return nil, err
 		}
-		go grpccore.StartGRPCServer(listener)
+		go func() {
+			if err := grpccore.StartGRPCServer(listener); err != nil {
+				n.Logger.Error("Error starting gRPC server", "err", err)
+			}
+		}()
 		listeners = append(listeners, listener)
+
 	}
 
 	return listeners, nil
+
 }
 
 // startPrometheusServer starts a Prometheus HTTP server, listening for metrics
@@ -1201,8 +1222,6 @@ func makeNodeInfo(
 	switch config.FastSync.Version {
 	case "v0":
 		bcChannel = bcv0.BlockchainChannel
-	case "v1":
-		bcChannel = bcv1.BlockchainChannel
 	case "v2":
 		bcChannel = bcv2.BlockchainChannel
 	default:

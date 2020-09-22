@@ -16,24 +16,24 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	abcicli "github.com/tendermint/tendermint/abci/client"
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	abci "github.com/tendermint/tendermint/abci/types"
-	cfg "github.com/tendermint/tendermint/config"
-	cstypes "github.com/tendermint/tendermint/consensus/types"
-	cryptoenc "github.com/tendermint/tendermint/crypto/encoding"
-	"github.com/tendermint/tendermint/crypto/tmhash"
-	"github.com/tendermint/tendermint/libs/bits"
-	"github.com/tendermint/tendermint/libs/bytes"
-	"github.com/tendermint/tendermint/libs/log"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	mempl "github.com/tendermint/tendermint/mempool"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/p2p/mock"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/store"
-	"github.com/tendermint/tendermint/types"
+	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	cfg "github.com/lazyledger/lazyledger-core/config"
+	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
+	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/libs/bits"
+	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	mempl "github.com/lazyledger/lazyledger-core/mempool"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p/mock"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/store"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 //----------------------------------------------
@@ -89,11 +89,15 @@ func stopConsensusNet(logger log.Logger, reactors []*Reactor, eventBuses []*type
 	logger.Info("stopConsensusNet", "n", len(reactors))
 	for i, r := range reactors {
 		logger.Info("stopConsensusNet: Stopping Reactor", "i", i)
-		r.Switch.Stop()
+		if err := r.Switch.Stop(); err != nil {
+			logger.Error("error trying to stop switch", "error", err)
+		}
 	}
 	for i, b := range eventBuses {
 		logger.Info("stopConsensusNet: Stopping eventBus", "i", i)
-		b.Stop()
+		if err := b.Stop(); err != nil {
+			logger.Error("error trying to stop eventbus", "error", err)
+		}
 	}
 	logger.Info("stopConsensusNet: DONE", "n", len(reactors))
 }
@@ -167,7 +171,8 @@ func TestReactorWithEvidence(t *testing.T) {
 
 		eventBus := types.NewEventBus()
 		eventBus.SetLogger(log.TestingLogger().With("module", "events"))
-		eventBus.Start()
+		err := eventBus.Start()
+		require.NoError(t, err)
 		cs.SetEventBus(eventBus)
 
 		cs.SetTimeoutTicker(tickerFunc())
@@ -224,8 +229,7 @@ func (m *mockEvidencePool) Update(block *types.Block, state sm.State) {
 	}
 	m.height++
 }
-func (m *mockEvidencePool) Verify(types.Evidence) error            { return nil }
-func (m *mockEvidencePool) AddPOLC(*types.ProofOfLockChange) error { return nil }
+func (m *mockEvidencePool) Verify(types.Evidence) error { return nil }
 
 //------------------------------------
 
@@ -671,7 +675,8 @@ func timeoutWaitGroup(t *testing.T, n int, f func(int), css []*State) {
 			t.Log("")
 		}
 		os.Stdout.Write([]byte("pprof.Lookup('goroutine'):\n"))
-		pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+		err := pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+		require.NoError(t, err)
 		capture()
 		panic("Timed out waiting for all validators to commit a block")
 	}

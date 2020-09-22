@@ -3,11 +3,11 @@ package v2
 import (
 	"fmt"
 
-	bc "github.com/tendermint/tendermint/blockchain"
-	"github.com/tendermint/tendermint/p2p"
-	bcproto "github.com/tendermint/tendermint/proto/tendermint/blockchain"
-	"github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/types"
+	bc "github.com/lazyledger/lazyledger-core/blockchain"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	bcproto "github.com/lazyledger/lazyledger-core/proto/tendermint/blockchain"
+	"github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 type iIO interface {

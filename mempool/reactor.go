@@ -5,13 +5,13 @@ import (
 	"math"
 	"time"
 
-	cfg "github.com/tendermint/tendermint/config"
-	"github.com/tendermint/tendermint/libs/clist"
-	"github.com/tendermint/tendermint/libs/log"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	"github.com/tendermint/tendermint/p2p"
-	protomem "github.com/tendermint/tendermint/proto/tendermint/mempool"
-	"github.com/tendermint/tendermint/types"
+	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/libs/clist"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	protomem "github.com/lazyledger/lazyledger-core/proto/tendermint/mempool"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 const (

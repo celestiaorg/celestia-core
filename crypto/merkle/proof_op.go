@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	tmcrypto "github.com/tendermint/tendermint/proto/tendermint/crypto"
+	tmcrypto "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
 )
 
 //----------------------------------------

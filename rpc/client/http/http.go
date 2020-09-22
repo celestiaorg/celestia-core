@@ -7,16 +7,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tendermint/tendermint/libs/bytes"
-	tmjson "github.com/tendermint/tendermint/libs/json"
-	"github.com/tendermint/tendermint/libs/log"
-	tmpubsub "github.com/tendermint/tendermint/libs/pubsub"
-	"github.com/tendermint/tendermint/libs/service"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	jsonrpcclient "github.com/tendermint/tendermint/rpc/jsonrpc/client"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
+	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	jsonrpcclient "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/client"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 /*

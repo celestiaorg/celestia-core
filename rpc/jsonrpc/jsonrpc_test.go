@@ -16,13 +16,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-	"github.com/tendermint/tendermint/libs/log"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 
-	client "github.com/tendermint/tendermint/rpc/jsonrpc/client"
-	server "github.com/tendermint/tendermint/rpc/jsonrpc/server"
-	types "github.com/tendermint/tendermint/rpc/jsonrpc/types"
+	client "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/client"
+	server "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server"
+	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 )
 
 // Client and Server should work over tcp or unix sockets
@@ -125,7 +125,11 @@ func setup() {
 	if err != nil {
 		panic(err)
 	}
-	go server.Serve(listener1, mux, tcpLogger, config)
+	go func() {
+		if err := server.Serve(listener1, mux, tcpLogger, config); err != nil {
+			panic(err)
+		}
+	}()
 
 	unixLogger := logger.With("socket", "unix")
 	mux2 := http.NewServeMux()
@@ -137,7 +141,11 @@ func setup() {
 	if err != nil {
 		panic(err)
 	}
-	go server.Serve(listener2, mux2, unixLogger, config)
+	go func() {
+		if err := server.Serve(listener2, mux2, unixLogger, config); err != nil {
+			panic(err)
+		}
+	}()
 
 	// wait for servers to start
 	time.Sleep(time.Second * 2)

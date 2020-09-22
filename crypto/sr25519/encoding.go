@@ -1,8 +1,8 @@
 package sr25519
 
 import (
-	"github.com/tendermint/tendermint/crypto"
-	tmjson "github.com/tendermint/tendermint/libs/json"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 )
 
 var _ crypto.PrivKey = PrivKey{}

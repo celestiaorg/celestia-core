@@ -12,15 +12,11 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	"github.com/tendermint/tendermint/crypto/tmhash"
-	"github.com/tendermint/tendermint/evidence/mocks"
-	"github.com/tendermint/tendermint/libs/bytes"
-	"github.com/tendermint/tendermint/libs/log"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/store"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/evidence/mocks"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/store"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 func TestMain(m *testing.M) {
@@ -161,6 +157,7 @@ func TestEvidencePoolUpdate(t *testing.T) {
 	assert.True(t, pool.IsCommitted(evidence))
 }
 
+<<<<<<< HEAD
 func TestAddingAndPruningPOLC(t *testing.T) {
 	var (
 		val           = types.NewMockPV()
@@ -227,6 +224,8 @@ func TestAddingAndPruningPOLC(t *testing.T) {
 
 }
 
+=======
+>>>>>>> master
 func TestVerifyEvidenceCommittedEvidenceFails(t *testing.T) {
 	height := int64(1)
 	pool, _ := defaultTestPool(height)
@@ -302,6 +301,7 @@ func TestRecoverPendingEvidence(t *testing.T) {
 	assert.False(t, pool.Has(expiredEvidence))
 }
 
+<<<<<<< HEAD
 // Comprehensive set of test cases relating to the adding, upgrading and overall
 // processing of PotentialAmnesiaEvidence and AmnesiaEvidence
 func TestAmnesiaEvidence(t *testing.T) {
@@ -497,6 +497,8 @@ func TestAmnesiaEvidence(t *testing.T) {
 
 }
 
+=======
+>>>>>>> master
 func initializeStateFromValidatorSet(valSet *types.ValidatorSet, height int64) StateStore {
 	stateDB := dbm.NewMemDB()
 	state := sm.State{
@@ -514,10 +516,9 @@ func initializeStateFromValidatorSet(valSet *types.ValidatorSet, height int64) S
 				MaxGas:   -1,
 			},
 			Evidence: tmproto.EvidenceParams{
-				MaxAgeNumBlocks:  20,
-				MaxAgeDuration:   48 * time.Hour,
-				MaxNum:           50,
-				ProofTrialPeriod: 1,
+				MaxAgeNumBlocks: 20,
+				MaxAgeDuration:  48 * time.Hour,
+				MaxNum:          50,
 			},
 		},
 	}
@@ -573,19 +574,6 @@ func makeCommit(height int64, valAddr []byte) *types.Commit {
 		Signature:        []byte("Signature"),
 	}}
 	return types.NewCommit(height, 0, types.BlockID{}, commitSigs)
-}
-
-func makeVote(height int64, round, index int32, addr bytes.HexBytes,
-	blockID types.BlockID, time time.Time) *types.Vote {
-	return &types.Vote{
-		Type:             tmproto.SignedMsgType(2),
-		Height:           height,
-		Round:            round,
-		BlockID:          blockID,
-		Timestamp:        time,
-		ValidatorAddress: addr,
-		ValidatorIndex:   index,
-	}
 }
 
 func defaultTestPool(height int64) (*Pool, types.MockPV) {

@@ -10,13 +10,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	"github.com/tendermint/tendermint/libs/bytes"
-	"github.com/tendermint/tendermint/libs/log"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/libs/log"
 
-	"github.com/tendermint/tendermint/config"
-	tmconn "github.com/tendermint/tendermint/p2p/conn"
+	"github.com/lazyledger/lazyledger-core/config"
+	tmconn "github.com/lazyledger/lazyledger-core/p2p/conn"
 )
 
 func TestPeerBasic(t *testing.T) {
@@ -25,14 +25,18 @@ func TestPeerBasic(t *testing.T) {
 	// simulate remote peer
 	rp := &remotePeer{PrivKey: ed25519.GenPrivKey(), Config: cfg}
 	rp.Start()
-	defer rp.Stop()
+	t.Cleanup(rp.Stop)
 
 	p, err := createOutboundPeerAndPerformHandshake(rp.Addr(), cfg, tmconn.DefaultMConnConfig())
 	require.Nil(err)
 
 	err = p.Start()
 	require.Nil(err)
-	defer p.Stop()
+	t.Cleanup(func() {
+		if err := p.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	assert.True(p.IsRunning())
 	assert.True(p.IsOutbound())
@@ -51,7 +55,7 @@ func TestPeerSend(t *testing.T) {
 	// simulate remote peer
 	rp := &remotePeer{PrivKey: ed25519.GenPrivKey(), Config: config}
 	rp.Start()
-	defer rp.Stop()
+	t.Cleanup(rp.Stop)
 
 	p, err := createOutboundPeerAndPerformHandshake(rp.Addr(), config, tmconn.DefaultMConnConfig())
 	require.Nil(err)
@@ -59,7 +63,11 @@ func TestPeerSend(t *testing.T) {
 	err = p.Start()
 	require.Nil(err)
 
-	defer p.Stop()
+	t.Cleanup(func() {
+		if err := p.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	assert.True(p.CanSend(testCh))
 	assert.True(p.Send(testCh, []byte("Asylum")))

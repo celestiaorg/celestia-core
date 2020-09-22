@@ -4,7 +4,7 @@ package tendermint.privval;
 import "tendermint/crypto/keys.proto";
 import "tendermint/types/types.proto";
 
-option go_package = "github.com/tendermint/tendermint/proto/tendermint/privval";
+option go_package = "github.com/lazyledger/lazyledger-core/proto/tendermint/privval";
 
 enum Errors {
   ERRORS_UNKNOWN             = 0;

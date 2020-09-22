@@ -11,13 +11,13 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	auto "github.com/tendermint/tendermint/libs/autofile"
-	tmjson "github.com/tendermint/tendermint/libs/json"
-	"github.com/tendermint/tendermint/libs/log"
-	tmos "github.com/tendermint/tendermint/libs/os"
-	"github.com/tendermint/tendermint/libs/service"
-	tmcons "github.com/tendermint/tendermint/proto/tendermint/consensus"
-	tmtime "github.com/tendermint/tendermint/types/time"
+	auto "github.com/lazyledger/lazyledger-core/libs/autofile"
+	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	tmcons "github.com/lazyledger/lazyledger-core/proto/tendermint/consensus"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
 
 const (
@@ -126,7 +126,9 @@ func (wal *BaseWAL) OnStart() error {
 	if err != nil {
 		return err
 	} else if size == 0 {
-		wal.WriteSync(EndHeightMessage{0})
+		if err := wal.WriteSync(EndHeightMessage{0}); err != nil {
+			return err
+		}
 	}
 	err = wal.group.Start()
 	if err != nil {
@@ -161,8 +163,12 @@ func (wal *BaseWAL) FlushAndSync() error {
 // before cleaning up files.
 func (wal *BaseWAL) OnStop() {
 	wal.flushTicker.Stop()
-	wal.FlushAndSync()
-	wal.group.Stop()
+	if err := wal.FlushAndSync(); err != nil {
+		wal.Logger.Error("error on flush data to disk", "error", err)
+	}
+	if err := wal.group.Stop(); err != nil {
+		wal.Logger.Error("error trying to stop wal", "error", err)
+	}
 	wal.group.Close()
 }
 
@@ -202,7 +208,7 @@ func (wal *BaseWAL) WriteSync(msg WALMessage) error {
 	}
 
 	if err := wal.FlushAndSync(); err != nil {
-		wal.Logger.Error(`WriteSync failed to flush consensus wal. 
+		wal.Logger.Error(`WriteSync failed to flush consensus wal.
 		WARNING: may result in creating alternative proposals / votes for the current height iff the node restarted`,
 			"err", err)
 		return err

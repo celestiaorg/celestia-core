@@ -5,9 +5,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	nm "github.com/tendermint/tendermint/node"
-	rpctest "github.com/tendermint/tendermint/rpc/test"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	nm "github.com/lazyledger/lazyledger-core/node"
+	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
 )
 
 var node *nm.Node
@@ -18,6 +18,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
+
 	app := kvstore.NewPersistentKVStoreApplication(dir)
 	node = rpctest.StartTendermint(app)
 
@@ -25,5 +26,6 @@ func TestMain(m *testing.M) {
 
 	// and shut down proper at the end
 	rpctest.StopTendermint(node)
+	_ = os.RemoveAll(dir)
 	os.Exit(code)
 }

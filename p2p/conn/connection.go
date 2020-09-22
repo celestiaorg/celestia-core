@@ -14,14 +14,14 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	flow "github.com/tendermint/tendermint/libs/flowrate"
-	"github.com/tendermint/tendermint/libs/log"
-	tmmath "github.com/tendermint/tendermint/libs/math"
-	"github.com/tendermint/tendermint/libs/protoio"
-	"github.com/tendermint/tendermint/libs/service"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	"github.com/tendermint/tendermint/libs/timer"
-	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
+	flow "github.com/lazyledger/lazyledger-core/libs/flowrate"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	"github.com/lazyledger/lazyledger-core/libs/protoio"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/libs/timer"
+	tmp2p "github.com/lazyledger/lazyledger-core/proto/tendermint/p2p"
 )
 
 const (
@@ -336,7 +336,9 @@ func (c *MConnection) _recover() {
 }
 
 func (c *MConnection) stopForError(r interface{}) {
-	c.Stop()
+	if err := c.Stop(); err != nil {
+		c.Logger.Error("Error stopping connection", "err", err)
+	}
 	if atomic.CompareAndSwapUint32(&c.errored, 0, 1) {
 		if c.onError != nil {
 			c.onError(r)

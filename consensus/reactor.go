@@ -9,18 +9,18 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	cstypes "github.com/tendermint/tendermint/consensus/types"
-	"github.com/tendermint/tendermint/libs/bits"
-	tmevents "github.com/tendermint/tendermint/libs/events"
-	tmjson "github.com/tendermint/tendermint/libs/json"
-	"github.com/tendermint/tendermint/libs/log"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	"github.com/tendermint/tendermint/p2p"
-	tmcons "github.com/tendermint/tendermint/proto/tendermint/consensus"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/types"
-	tmtime "github.com/tendermint/tendermint/types/time"
+	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
+	"github.com/lazyledger/lazyledger-core/libs/bits"
+	tmevents "github.com/lazyledger/lazyledger-core/libs/events"
+	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	tmcons "github.com/lazyledger/lazyledger-core/proto/tendermint/consensus"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/types"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
 
 const (
@@ -93,7 +93,9 @@ func (conR *Reactor) OnStart() error {
 // state.
 func (conR *Reactor) OnStop() {
 	conR.unsubscribeFromBroadcastEvents()
-	conR.conS.Stop()
+	if err := conR.conS.Stop(); err != nil {
+		conR.Logger.Error("Error stopping consensus state", "err", err)
+	}
 	if !conR.WaitSync() {
 		conR.conS.Wait()
 	}
@@ -395,20 +397,26 @@ func (conR *Reactor) WaitSync() bool {
 // them to peers upon receiving.
 func (conR *Reactor) subscribeToBroadcastEvents() {
 	const subscriber = "consensus-reactor"
-	conR.conS.evsw.AddListenerForEvent(subscriber, types.EventNewRoundStep,
+	if err := conR.conS.evsw.AddListenerForEvent(subscriber, types.EventNewRoundStep,
 		func(data tmevents.EventData) {
 			conR.broadcastNewRoundStepMessage(data.(*cstypes.RoundState))
-		})
+		}); err != nil {
+		conR.Logger.Error("Error adding listener for events", "err", err)
+	}
 
-	conR.conS.evsw.AddListenerForEvent(subscriber, types.EventValidBlock,
+	if err := conR.conS.evsw.AddListenerForEvent(subscriber, types.EventValidBlock,
 		func(data tmevents.EventData) {
 			conR.broadcastNewValidBlockMessage(data.(*cstypes.RoundState))
-		})
+		}); err != nil {
+		conR.Logger.Error("Error adding listener for events", "err", err)
+	}
 
-	conR.conS.evsw.AddListenerForEvent(subscriber, types.EventVote,
+	if err := conR.conS.evsw.AddListenerForEvent(subscriber, types.EventVote,
 		func(data tmevents.EventData) {
 			conR.broadcastHasVoteMessage(data.(*types.Vote))
-		})
+		}); err != nil {
+		conR.Logger.Error("Error adding listener for events", "err", err)
+	}
 
 }
 

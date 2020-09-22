@@ -4,11 +4,11 @@ import (
 	"os"
 	"path/filepath"
 
-	cmd "github.com/tendermint/tendermint/cmd/tendermint/commands"
-	"github.com/tendermint/tendermint/cmd/tendermint/commands/debug"
-	cfg "github.com/tendermint/tendermint/config"
-	"github.com/tendermint/tendermint/libs/cli"
-	nm "github.com/tendermint/tendermint/node"
+	cmd "github.com/lazyledger/lazyledger-core/cmd/tendermint/commands"
+	"github.com/lazyledger/lazyledger-core/cmd/tendermint/commands/debug"
+	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/libs/cli"
+	nm "github.com/lazyledger/lazyledger-core/node"
 )
 
 func main() {

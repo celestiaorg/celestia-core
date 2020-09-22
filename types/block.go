@@ -10,15 +10,15 @@ import (
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/crypto/tmhash"
-	"github.com/tendermint/tendermint/libs/bits"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-	tmmath "github.com/tendermint/tendermint/libs/math"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/libs/bits"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
 )
 
 const (
@@ -36,14 +36,33 @@ const (
 	MaxOverheadForBlock int64 = 11
 )
 
+// DataAvailabilityHeader contains the row and column roots of the erasure
+// coded version of the data in Block.Data.
+// Therefor the original Block.Data is arranged in a
+// k × k matrix, which is then "extended" to a
+// 2k × 2k matrix applying multiple times Reed-Solomon encoding.
+// For details see Section 5.2: https://arxiv.org/abs/1809.09044
+type DataAvailabilityHeader struct {
+	// RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
+	RowsRoots []tmbytes.HexBytes `json:"row_roots"`
+	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
+	ColumnRoots []tmbytes.HexBytes `json:"column_roots"`
+}
+
+// Hash computes the root of the row and column roots
+// TODO: feed this into Header.DataHash.
+func (dah *DataAvailabilityHeader) Hash() {
+	panic("TODO: implement")
+}
+
 // Block defines the atomic unit of a Tendermint blockchain.
 type Block struct {
 	mtx tmsync.Mutex
 
-	Header     `json:"header"`
-	Data       `json:"data"`
-	Evidence   EvidenceData `json:"evidence"`
-	LastCommit *Commit      `json:"last_commit"`
+	Header                 `json:"header"`
+	Data                   `json:"data"`
+	DataAvailabilityHeader DataAvailabilityHeader `json:"availability_header"`
+	LastCommit             *Commit                `json:"last_commit"`
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data.
@@ -87,17 +106,6 @@ func (b *Block) ValidateBasic() error {
 
 	// NOTE: b.Evidence.Evidence may be nil, but we're just looping.
 	for i, ev := range b.Evidence.Evidence {
-		switch ev.(type) {
-		case *ConflictingHeadersEvidence:
-			// ConflictingHeadersEvidence must be broken up in pieces and never
-			// committed as a single piece.
-			return fmt.Errorf("found ConflictingHeadersEvidence (#%d)", i)
-		case *PotentialAmnesiaEvidence:
-			// PotentialAmnesiaEvidence does not contribute to anything on its own, so
-			// reject it as well.
-			return fmt.Errorf("found PotentialAmnesiaEvidence (#%d)", i)
-		}
-
 		if err := ev.ValidateBasic(); err != nil {
 			return fmt.Errorf("invalid evidence (#%d): %v", i, err)
 		}
@@ -263,7 +271,9 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 		return nil, err
 	}
 	b.Data = data
-	b.Evidence.FromProto(&bp.Evidence)
+	if err := b.Evidence.FromProto(&bp.Evidence); err != nil {
+		return nil, err
+	}
 
 	if bp.LastCommit != nil {
 		lc, err := CommitFromProto(bp.LastCommit)
@@ -343,7 +353,9 @@ type Header struct {
 
 	// hashes of block data
 	LastCommitHash tmbytes.HexBytes `json:"last_commit_hash"` // commit from validators from the last block
-	DataHash       tmbytes.HexBytes `json:"data_hash"`        // transactions
+	// DataHash = root((rowRoot_1 || rowRoot_2 || ... ||rowRoot_2k || columnRoot1 || columnRoot2 || ... || columnRoot2k))
+	// Block.DataAvailabilityHeader for stores (row|column)Root_i // TODO ...
+	DataHash tmbytes.HexBytes `json:"data_hash"` // transactions
 
 	// hashes from the app output from the prev block
 	ValidatorsHash     tmbytes.HexBytes `json:"validators_hash"`      // validators for the current block
@@ -987,116 +999,6 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 
 //-----------------------------------------------------------------------------
 
-// SignedHeader is a header along with the commits that prove it.
-// It is the basis of the light client.
-type SignedHeader struct {
-	*Header `json:"header"`
-
-	Commit *Commit `json:"commit"`
-}
-
-// ValidateBasic does basic consistency checks and makes sure the header
-// and commit are consistent.
-//
-// NOTE: This does not actually check the cryptographic signatures.  Make sure
-// to use a Verifier to validate the signatures actually provide a
-// significantly strong proof for this header's validity.
-func (sh SignedHeader) ValidateBasic(chainID string) error {
-	if sh.Header == nil {
-		return errors.New("missing header")
-	}
-	if sh.Commit == nil {
-		return errors.New("missing commit")
-	}
-
-	if err := sh.Header.ValidateBasic(); err != nil {
-		return fmt.Errorf("invalid header: %w", err)
-	}
-	if err := sh.Commit.ValidateBasic(); err != nil {
-		return fmt.Errorf("invalid commit: %w", err)
-	}
-
-	if sh.ChainID != chainID {
-		return fmt.Errorf("header belongs to another chain %q, not %q", sh.ChainID, chainID)
-	}
-
-	// Make sure the header is consistent with the commit.
-	if sh.Commit.Height != sh.Height {
-		return fmt.Errorf("header and commit height mismatch: %d vs %d", sh.Height, sh.Commit.Height)
-	}
-	if hhash, chash := sh.Hash(), sh.Commit.BlockID.Hash; !bytes.Equal(hhash, chash) {
-		return fmt.Errorf("commit signs block %X, header is block %X", chash, hhash)
-	}
-
-	return nil
-}
-
-// String returns a string representation of SignedHeader.
-func (sh SignedHeader) String() string {
-	return sh.StringIndented("")
-}
-
-// StringIndented returns an indented string representation of SignedHeader.
-//
-// Header
-// Commit
-func (sh SignedHeader) StringIndented(indent string) string {
-	return fmt.Sprintf(`SignedHeader{
-%s  %v
-%s  %v
-%s}`,
-		indent, sh.Header.StringIndented(indent+"  "),
-		indent, sh.Commit.StringIndented(indent+"  "),
-		indent)
-}
-
-// ToProto converts SignedHeader to protobuf
-func (sh *SignedHeader) ToProto() *tmproto.SignedHeader {
-	if sh == nil {
-		return nil
-	}
-
-	psh := new(tmproto.SignedHeader)
-	if sh.Header != nil {
-		psh.Header = sh.Header.ToProto()
-	}
-	if sh.Commit != nil {
-		psh.Commit = sh.Commit.ToProto()
-	}
-
-	return psh
-}
-
-// FromProto sets a protobuf SignedHeader to the given pointer.
-// It returns an error if the hader or the commit is invalid.
-func SignedHeaderFromProto(shp *tmproto.SignedHeader) (*SignedHeader, error) {
-	if shp == nil {
-		return nil, errors.New("nil SignedHeader")
-	}
-
-	sh := new(SignedHeader)
-
-	if shp.Header != nil {
-		h, err := HeaderFromProto(shp.Header)
-		if err != nil {
-			return nil, err
-		}
-		sh.Header = &h
-	}
-
-	if shp.Commit != nil {
-		c, err := CommitFromProto(shp.Commit)
-		if err != nil {
-			return nil, err
-		}
-		sh.Commit = c
-	}
-
-	return sh, nil
-}
-
-//-----------------------------------------------------------------------------
-
 // Data contains the set of transactions included in the block
 type Data struct {
 
@@ -1108,9 +1010,34 @@ type Data struct {
 	// MetaData is a arbitrary byte slice. This field will vary on the use case of the application
 	// NOTE: can be empty or populated.
 	MetaData []byte `json:"meta_data"`
+	// Intermediate state roots of the Txs included in block.Height
+	// and executed by state state @ block.Height+1.
+	//
+	// TODO: replace with a dedicated type `IntermediateStateRoot`
+	// as soon as we settle on the format / sparse Merkle tree etc
+	IntermediateStateRoots []tmbytes.HexBytes `json:"intermediate_roots"`
+
+	// The messages included in this block.
+	// TODO: define a mechanism to split up both (maybe via CheckTx)
+	Messages []Message `json:"msgs"`
+
+	Evidence EvidenceData `json:"evidence"`
 
 	// Volatile
 	hash tmbytes.HexBytes
+}
+
+type Message struct {
+	// NamespaceID defines the namespace of this message, i.e. the
+	// namespace it will use in the namespaced Merkle tree.
+	//
+	// TODO: spec out constrains and
+	// introduce dedicated type instead of just []byte
+	NamespaceID []byte
+
+	// Data is the actual data contained in the message
+	// (e.g. a block of a virtual sidechain).
+	Data []byte
 }
 
 // Hash returns the hash of the data

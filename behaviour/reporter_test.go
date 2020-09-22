@@ -4,8 +4,8 @@ import (
 	"sync"
 	"testing"
 
-	bh "github.com/tendermint/tendermint/behaviour"
-	"github.com/tendermint/tendermint/p2p"
+	bh "github.com/lazyledger/lazyledger-core/behaviour"
+	"github.com/lazyledger/lazyledger-core/p2p"
 )
 
 // TestMockReporter tests the MockReporter's ability to store reported
@@ -20,7 +20,9 @@ func TestMockReporter(t *testing.T) {
 	}
 
 	badMessage := bh.BadMessage(peerID, "bad message")
-	pr.Report(badMessage)
+	if err := pr.Report(badMessage); err != nil {
+		t.Error(err)
+	}
 	behaviours = pr.GetBehaviours(peerID)
 	if len(behaviours) != 1 {
 		t.Error("Expected the peer have one reported behaviour")
@@ -164,7 +166,9 @@ func TestMockPeerBehaviourReporterConcurrency(t *testing.T) {
 			for {
 				select {
 				case pb := <-scriptItems:
-					pr.Report(pb.behaviour)
+					if err := pr.Report(pb.behaviour); err != nil {
+						t.Error(err)
+					}
 				case <-done:
 					return
 				}

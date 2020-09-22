@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-	"github.com/tendermint/tendermint/libs/protoio"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	tmtime "github.com/tendermint/tendermint/types/time"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/libs/protoio"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
 
 var (
@@ -100,9 +100,11 @@ func (p *Proposal) String() string {
 }
 
 // ProposalSignBytes returns the proto-encoding of the canonicalized Proposal,
-// for signing.
+// for signing. Panics if the marshaling fails.
 //
-// Panics if the marshaling fails.
+// The encoded Protobuf message is varint length-prefixed (using MarshalDelimited)
+// for backwards-compatibility with the Amino encoding, due to e.g. hardware
+// devices that rely on this encoding.
 //
 // See CanonicalizeProposal
 func ProposalSignBytes(chainID string, p *tmproto.Proposal) []byte {

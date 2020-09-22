@@ -6,11 +6,11 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/light"
-	"github.com/tendermint/tendermint/light/provider"
-	mockp "github.com/tendermint/tendermint/light/provider/mock"
-	dbs "github.com/tendermint/tendermint/light/store/db"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/light"
+	"github.com/lazyledger/lazyledger-core/light/provider"
+	mockp "github.com/lazyledger/lazyledger-core/light/provider/mock"
+	dbs "github.com/lazyledger/lazyledger-core/light/store/db"
 )
 
 // NOTE: block is produced every minute. Make sure the verification time
@@ -22,7 +22,7 @@ import (
 // Remember that none of these benchmarks account for network latency.
 var (
 	benchmarkFullNode = mockp.New(GenMockNode(chainID, 1000, 100, 1, bTime))
-	genesisHeader, _  = benchmarkFullNode.SignedHeader(1)
+	genesisBlock, _   = benchmarkFullNode.LightBlock(1)
 )
 
 func BenchmarkSequence(b *testing.B) {
@@ -31,7 +31,7 @@ func BenchmarkSequence(b *testing.B) {
 		light.TrustOptions{
 			Period: 24 * time.Hour,
 			Height: 1,
-			Hash:   genesisHeader.Hash(),
+			Hash:   genesisBlock.Hash(),
 		},
 		benchmarkFullNode,
 		[]provider.Provider{benchmarkFullNode},
@@ -45,7 +45,7 @@ func BenchmarkSequence(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_, err = c.VerifyHeaderAtHeight(1000, bTime.Add(1000*time.Minute))
+		_, err = c.VerifyLightBlockAtHeight(1000, bTime.Add(1000*time.Minute))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -58,7 +58,7 @@ func BenchmarkBisection(b *testing.B) {
 		light.TrustOptions{
 			Period: 24 * time.Hour,
 			Height: 1,
-			Hash:   genesisHeader.Hash(),
+			Hash:   genesisBlock.Hash(),
 		},
 		benchmarkFullNode,
 		[]provider.Provider{benchmarkFullNode},
@@ -71,7 +71,7 @@ func BenchmarkBisection(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_, err = c.VerifyHeaderAtHeight(1000, bTime.Add(1000*time.Minute))
+		_, err = c.VerifyLightBlockAtHeight(1000, bTime.Add(1000*time.Minute))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -79,13 +79,13 @@ func BenchmarkBisection(b *testing.B) {
 }
 
 func BenchmarkBackwards(b *testing.B) {
-	trustedHeader, _ := benchmarkFullNode.SignedHeader(0)
+	trustedBlock, _ := benchmarkFullNode.LightBlock(0)
 	c, err := light.NewClient(
 		chainID,
 		light.TrustOptions{
 			Period: 24 * time.Hour,
-			Height: trustedHeader.Height,
-			Hash:   trustedHeader.Hash(),
+			Height: trustedBlock.Height,
+			Hash:   trustedBlock.Hash(),
 		},
 		benchmarkFullNode,
 		[]provider.Provider{benchmarkFullNode},
@@ -98,7 +98,7 @@ func BenchmarkBackwards(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_, err = c.VerifyHeaderAtHeight(1, bTime)
+		_, err = c.VerifyLightBlockAtHeight(1, bTime)
 		if err != nil {
 			b.Fatal(err)
 		}

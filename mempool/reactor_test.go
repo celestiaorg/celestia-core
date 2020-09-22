@@ -13,14 +13,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	cfg "github.com/tendermint/tendermint/config"
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/p2p/mock"
-	memproto "github.com/tendermint/tendermint/proto/tendermint/mempool"
-	"github.com/tendermint/tendermint/proxy"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p/mock"
+	memproto "github.com/lazyledger/lazyledger-core/proto/tendermint/mempool"
+	"github.com/lazyledger/lazyledger-core/proxy"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 const (
@@ -48,7 +48,9 @@ func TestReactorBroadcastTxMessage(t *testing.T) {
 	reactors := makeAndConnectReactors(config, N)
 	defer func() {
 		for _, r := range reactors {
-			r.Stop()
+			if err := r.Stop(); err != nil {
+				assert.NoError(t, err)
+			}
 		}
 	}()
 	for _, r := range reactors {
@@ -69,7 +71,9 @@ func TestReactorNoBroadcastToSender(t *testing.T) {
 	reactors := makeAndConnectReactors(config, N)
 	defer func() {
 		for _, r := range reactors {
-			r.Stop()
+			if err := r.Stop(); err != nil {
+				assert.NoError(t, err)
+			}
 		}
 	}()
 
@@ -88,7 +92,9 @@ func TestBroadcastTxForPeerStopsWhenPeerStops(t *testing.T) {
 	reactors := makeAndConnectReactors(config, N)
 	defer func() {
 		for _, r := range reactors {
-			r.Stop()
+			if err := r.Stop(); err != nil {
+				assert.NoError(t, err)
+			}
 		}
 	}()
 
@@ -112,7 +118,9 @@ func TestBroadcastTxForPeerStopsWhenReactorStops(t *testing.T) {
 
 	// stop reactors
 	for _, r := range reactors {
-		r.Stop()
+		if err := r.Stop(); err != nil {
+			assert.NoError(t, err)
+		}
 	}
 
 	// check that we are not leaking any go-routines
@@ -159,7 +167,9 @@ func TestDontExhaustMaxActiveIDs(t *testing.T) {
 	reactors := makeAndConnectReactors(config, N)
 	defer func() {
 		for _, r := range reactors {
-			r.Stop()
+			if err := r.Stop(); err != nil {
+				assert.NoError(t, err)
+			}
 		}
 	}()
 	reactor := reactors[0]

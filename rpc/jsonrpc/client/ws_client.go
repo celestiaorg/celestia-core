@@ -12,10 +12,10 @@ import (
 	"github.com/gorilla/websocket"
 	metrics "github.com/rcrowley/go-metrics"
 
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	"github.com/tendermint/tendermint/libs/service"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	types "github.com/tendermint/tendermint/rpc/jsonrpc/types"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 )
 
 const (
@@ -349,7 +349,10 @@ func (c *WSClient) reconnectRoutine() {
 			c.wg.Wait()
 			if err := c.reconnect(); err != nil {
 				c.Logger.Error("failed to reconnect", "err", err, "original_err", originalError)
-				c.Stop()
+				if err = c.Stop(); err != nil {
+					c.Logger.Error("failed to stop conn", "error", err)
+				}
+
 				return
 			}
 			// drain reconnectAfter

@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tendermint/tendermint/libs/bytes"
-	"github.com/tendermint/tendermint/libs/log"
-	tmpubsub "github.com/tendermint/tendermint/libs/pubsub"
-	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
-	nm "github.com/tendermint/tendermint/node"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
-	"github.com/tendermint/tendermint/rpc/core"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
+	tmquery "github.com/lazyledger/lazyledger-core/libs/pubsub/query"
+	nm "github.com/lazyledger/lazyledger-core/node"
+	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
+	"github.com/lazyledger/lazyledger-core/rpc/core"
+	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 /*
@@ -50,7 +50,9 @@ type Local struct {
 // don't run in parallel, or try to simulate an entire network in
 // one process...
 func New(node *nm.Node) *Local {
-	node.ConfigureRPC()
+	if err := node.ConfigureRPC(); err != nil {
+		node.Logger.Error("Error configuring RPC", "err", err)
+	}
 	return &Local{
 		EventBus: node.EventBus(),
 		Logger:   log.NewNopLogger(),
@@ -132,8 +134,8 @@ func (c *Local) DialSeeds(seeds []string) (*ctypes.ResultDialSeeds, error) {
 	return core.UnsafeDialSeeds(c.ctx, seeds)
 }
 
-func (c *Local) DialPeers(peers []string, persistent bool) (*ctypes.ResultDialPeers, error) {
-	return core.UnsafeDialPeers(c.ctx, peers, persistent)
+func (c *Local) DialPeers(peers []string, persistent, unconditional, private bool) (*ctypes.ResultDialPeers, error) {
+	return core.UnsafeDialPeers(c.ctx, peers, persistent, unconditional, private)
 }
 
 func (c *Local) BlockchainInfo(minHeight, maxHeight int64) (*ctypes.ResultBlockchainInfo, error) {

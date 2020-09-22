@@ -3,11 +3,11 @@ package proxy
 import (
 	"fmt"
 
-	abcicli "github.com/tendermint/tendermint/abci/client"
-	"github.com/tendermint/tendermint/abci/example/counter"
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	"github.com/tendermint/tendermint/abci/types"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
+	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
+	"github.com/lazyledger/lazyledger-core/abci/example/counter"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	"github.com/lazyledger/lazyledger-core/abci/types"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 )
 
 // ClientCreator creates new ABCI clients.

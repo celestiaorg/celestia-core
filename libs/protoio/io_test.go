@@ -40,7 +40,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/test"
 
-	"github.com/tendermint/tendermint/libs/protoio"
+	"github.com/lazyledger/lazyledger-core/libs/protoio"
 )
 
 func iotest(writer protoio.WriteCloser, reader protoio.ReadCloser) error {

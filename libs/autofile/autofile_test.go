@@ -11,13 +11,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tmos "github.com/tendermint/tendermint/libs/os"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 )
 
 func TestSIGHUP(t *testing.T) {
 	origDir, err := os.Getwd()
 	require.NoError(t, err)
-	defer os.Chdir(origDir)
+	t.Cleanup(func() {
+		if err := os.Chdir(origDir); err != nil {
+			t.Error(err)
+		}
+	})
 
 	// First, create a temporary directory and move into it
 	dir, err := ioutil.TempDir("", "sighup_test")

@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	ctest "github.com/tendermint/tendermint/libs/test"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	ctest "github.com/lazyledger/lazyledger-core/libs/test"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
 func makeTxs(cnt, size int) Txs {

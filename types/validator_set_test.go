@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	tmmath "github.com/tendermint/tendermint/libs/math"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
 func TestValidatorSetBasic(t *testing.T) {
@@ -1423,6 +1423,25 @@ func verifyValSetUpdatePriorityOrder(t *testing.T, valSet *ValidatorSet, cfg tes
 			assert.Equal(t, expectedPri, val.ProposerPriority)
 		}
 	}
+}
+
+func TestNewValidatorSetFromExistingValidators(t *testing.T) {
+	size := 5
+	vals := make([]*Validator, size)
+	for i := 0; i < size; i++ {
+		pv := NewMockPV()
+		vals[i] = pv.ExtractIntoValidator(int64(i + 1))
+	}
+	valSet := NewValidatorSet(vals)
+	valSet.IncrementProposerPriority(5)
+
+	newValSet := NewValidatorSet(valSet.Validators)
+	assert.NotEqual(t, valSet, newValSet)
+
+	existingValSet, err := ValidatorSetFromExistingValidators(valSet.Validators)
+	assert.NoError(t, err)
+	assert.Equal(t, valSet, existingValSet)
+	assert.Equal(t, valSet.CopyIncrementProposerPriority(3), existingValSet.CopyIncrementProposerPriority(3))
 }
 
 func TestValSetUpdateOverflowRelated(t *testing.T) {

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/tendermint/tendermint/crypto/tmhash"
-	tmcrypto "github.com/tendermint/tendermint/proto/tendermint/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	tmcrypto "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
 )
 
 const (

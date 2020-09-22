@@ -18,20 +18,20 @@ import (
 	"github.com/stretchr/testify/require"
 	dbm "github.com/tendermint/tm-db"
 
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	abci "github.com/tendermint/tendermint/abci/types"
-	cfg "github.com/tendermint/tendermint/config"
-	"github.com/tendermint/tendermint/crypto"
-	cryptoenc "github.com/tendermint/tendermint/crypto/encoding"
-	"github.com/tendermint/tendermint/libs/log"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	mempl "github.com/tendermint/tendermint/mempool"
-	"github.com/tendermint/tendermint/privval"
-	tmstate "github.com/tendermint/tendermint/proto/tendermint/state"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	"github.com/tendermint/tendermint/proxy"
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	mempl "github.com/lazyledger/lazyledger-core/mempool"
+	"github.com/lazyledger/lazyledger-core/privval"
+	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/proxy"
+	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 func TestMain(m *testing.M) {
@@ -83,7 +83,11 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 
 	err := cs.Start()
 	require.NoError(t, err)
-	defer cs.Stop()
+	defer func() {
+		if err := cs.Stop(); err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// This is just a signal that we haven't halted; its not something contained
 	// in the WAL itself. Assuming the consensus state is running, replay of any
@@ -107,7 +111,9 @@ func sendTxs(ctx context.Context, cs *State) {
 			return
 		default:
 			tx := []byte{byte(i)}
-			assertMempool(cs.txNotifier).CheckTx(tx, nil, mempl.TxInfo{})
+			if err := assertMempool(cs.txNotifier).CheckTx(tx, nil, mempl.TxInfo{}); err != nil {
+				panic(err)
+			}
 			i++
 		}
 	}
@@ -196,7 +202,7 @@ LOOP:
 			startNewStateAndWaitForBlock(t, consensusReplayConfig, cs.Height, blockDB, stateDB)
 
 			// stop consensus state and transactions sender (initFn)
-			cs.Stop() // Logging this error causes failure
+			cs.Stop() //nolint:errcheck // Logging this error causes failure
 			cancel()
 
 			// if we reached the required height, exit
@@ -683,7 +689,11 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 		wal.SetLogger(log.TestingLogger())
 		err = wal.Start()
 		require.NoError(t, err)
-		defer wal.Stop()
+		t.Cleanup(func() {
+			if err := wal.Stop(); err != nil {
+				t.Error(err)
+			}
+		})
 		chain, commits, err = makeBlockchainFromWAL(wal)
 		require.NoError(t, err)
 		pubKey, err := privVal.GetPubKey()
@@ -730,7 +740,11 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 		t.Fatalf("Error starting proxy app connections: %v", err)
 	}
 
-	defer proxyApp.Stop()
+	t.Cleanup(func() {
+		if err := proxyApp.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	err := handshaker.Handshake(proxyApp)
 	if expectError {
@@ -896,7 +910,11 @@ func TestHandshakePanicsIfAppReturnsWrongAppHash(t *testing.T) {
 		proxyApp := proxy.NewAppConns(clientCreator)
 		err := proxyApp.Start()
 		require.NoError(t, err)
-		defer proxyApp.Stop()
+		t.Cleanup(func() {
+			if err := proxyApp.Stop(); err != nil {
+				t.Error(err)
+			}
+		})
 
 		assert.Panics(t, func() {
 			h := NewHandshaker(stateDB, state, store, genDoc)
@@ -916,7 +934,11 @@ func TestHandshakePanicsIfAppReturnsWrongAppHash(t *testing.T) {
 		proxyApp := proxy.NewAppConns(clientCreator)
 		err := proxyApp.Start()
 		require.NoError(t, err)
-		defer proxyApp.Stop()
+		t.Cleanup(func() {
+			if err := proxyApp.Stop(); err != nil {
+				t.Error(err)
+			}
+		})
 
 		assert.Panics(t, func() {
 			h := NewHandshaker(stateDB, state, store, genDoc)
@@ -1211,7 +1233,11 @@ func TestHandshakeUpdatesValidators(t *testing.T) {
 	if err := proxyApp.Start(); err != nil {
 		t.Fatalf("Error starting proxy app connections: %v", err)
 	}
-	defer proxyApp.Stop()
+	t.Cleanup(func() {
+		if err := proxyApp.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 	if err := handshaker.Handshake(proxyApp); err != nil {
 		t.Fatalf("Error on abci handshake: %v", err)
 	}

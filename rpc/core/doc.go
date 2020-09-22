@@ -2,7 +2,7 @@
 Package core defines the Tendermint RPC endpoints.
 
 Tendermint ships with its own JSONRPC library -
-https://github.com/tendermint/tendermint/tree/master/rpc/jsonrpc.
+https://github.com/lazyledger/lazyledger-core/tree/master/rpc/jsonrpc.
 
 ## Get the list
 
@@ -25,7 +25,6 @@ Available endpoints:
 /health
 /unconfirmed_txs
 /unsafe_flush_mempool
-/unsafe_stop_cpu_profiler
 /validators
 
 Endpoints that require arguments:
@@ -40,8 +39,6 @@ Endpoints that require arguments:
 /dial_persistent_peers?persistent_peers=_
 /subscribe?event=_
 /tx?hash=_&prove=_
-/unsafe_start_cpu_profiler?filename=_
-/unsafe_write_heap_profile?filename=_
 /unsubscribe?event=_
 ```
 */

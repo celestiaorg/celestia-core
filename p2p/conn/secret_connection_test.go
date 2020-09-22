@@ -17,12 +17,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	"github.com/tendermint/tendermint/crypto/secp256k1"
-	"github.com/tendermint/tendermint/libs/async"
-	tmos "github.com/tendermint/tendermint/libs/os"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/crypto/sr25519"
+	"github.com/lazyledger/lazyledger-core/libs/async"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 )
 
 // Run go test -update from within this module
@@ -276,7 +276,7 @@ func TestNonEd25519Pubkey(t *testing.T) {
 	defer fooConn.Close()
 	defer barConn.Close()
 	var fooPrvKey = ed25519.GenPrivKey()
-	var barPrvKey = secp256k1.GenPrivKey()
+	var barPrvKey = sr25519.GenPrivKey()
 
 	go MakeSecretConnection(fooConn, fooPrvKey) //nolint:errcheck // ignore for tests
 

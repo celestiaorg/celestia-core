@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/privval"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/privval"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 const (
@@ -48,8 +48,7 @@ const (
 		"evidence": {
 			"max_age_num_blocks": "100000",
 			"max_age_duration": "172800000000000",
-			"max_num": 50,
-			"proof_trial_period": "50000"
+			"max_num": 50
 		},
 		"validator": {
 			"pub_key_types": [

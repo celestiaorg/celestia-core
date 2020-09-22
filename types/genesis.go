@@ -8,12 +8,12 @@ import (
 	"io/ioutil"
 	"time"
 
-	"github.com/tendermint/tendermint/crypto"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-	tmjson "github.com/tendermint/tendermint/libs/json"
-	tmos "github.com/tendermint/tendermint/libs/os"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	tmtime "github.com/tendermint/tendermint/types/time"
+	"github.com/lazyledger/lazyledger-core/crypto"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
 
 const (

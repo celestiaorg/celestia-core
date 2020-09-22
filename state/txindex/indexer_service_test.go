@@ -9,11 +9,11 @@ import (
 
 	db "github.com/tendermint/tm-db"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/state/txindex"
-	"github.com/tendermint/tendermint/state/txindex/kv"
-	"github.com/tendermint/tendermint/types"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/state/txindex"
+	"github.com/lazyledger/lazyledger-core/state/txindex/kv"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 func TestIndexerServiceIndexesBlocks(t *testing.T) {
@@ -22,7 +22,11 @@ func TestIndexerServiceIndexesBlocks(t *testing.T) {
 	eventBus.SetLogger(log.TestingLogger())
 	err := eventBus.Start()
 	require.NoError(t, err)
-	defer eventBus.Stop()
+	t.Cleanup(func() {
+		if err := eventBus.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	// tx indexer
 	store := db.NewMemDB()
@@ -32,27 +36,34 @@ func TestIndexerServiceIndexesBlocks(t *testing.T) {
 	service.SetLogger(log.TestingLogger())
 	err = service.Start()
 	require.NoError(t, err)
-	defer service.Stop()
+	t.Cleanup(func() {
+		if err := service.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	// publish block with txs
-	eventBus.PublishEventNewBlockHeader(types.EventDataNewBlockHeader{
+	err = eventBus.PublishEventNewBlockHeader(types.EventDataNewBlockHeader{
 		Header: types.Header{Height: 1},
 		NumTxs: int64(2),
 	})
+	require.NoError(t, err)
 	txResult1 := &abci.TxResult{
 		Height: 1,
 		Index:  uint32(0),
 		Tx:     types.Tx("foo"),
 		Result: abci.ResponseDeliverTx{Code: 0},
 	}
-	eventBus.PublishEventTx(types.EventDataTx{TxResult: *txResult1})
+	err = eventBus.PublishEventTx(types.EventDataTx{TxResult: *txResult1})
+	require.NoError(t, err)
 	txResult2 := &abci.TxResult{
 		Height: 1,
 		Index:  uint32(1),
 		Tx:     types.Tx("bar"),
 		Result: abci.ResponseDeliverTx{Code: 0},
 	}
-	eventBus.PublishEventTx(types.EventDataTx{TxResult: *txResult2})
+	err = eventBus.PublishEventTx(types.EventDataTx{TxResult: *txResult2})
+	require.NoError(t, err)
 
 	time.Sleep(100 * time.Millisecond)
 

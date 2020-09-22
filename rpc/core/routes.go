@@ -1,11 +1,12 @@
 package core
 
 import (
-	rpc "github.com/tendermint/tendermint/rpc/jsonrpc/server"
+	rpc "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server"
 )
 
 // TODO: better system than "unsafe" prefix
 
+// Routes is a map of available routes.
 var Routes = map[string]*rpc.RPCFunc{
 	// subscribe/unsubscribe are reserved for websocket events.
 	"subscribe":       rpc.NewWSRPCFunc(Subscribe, "query"),
@@ -45,14 +46,10 @@ var Routes = map[string]*rpc.RPCFunc{
 	"broadcast_evidence": rpc.NewRPCFunc(BroadcastEvidence, "evidence"),
 }
 
+// AddUnsafeRoutes adds unsafe routes.
 func AddUnsafeRoutes() {
 	// control API
 	Routes["dial_seeds"] = rpc.NewRPCFunc(UnsafeDialSeeds, "seeds")
-	Routes["dial_peers"] = rpc.NewRPCFunc(UnsafeDialPeers, "peers,persistent")
+	Routes["dial_peers"] = rpc.NewRPCFunc(UnsafeDialPeers, "peers,persistent,unconditional,private")
 	Routes["unsafe_flush_mempool"] = rpc.NewRPCFunc(UnsafeFlushMempool, "")
-
-	// profiler API
-	Routes["unsafe_start_cpu_profiler"] = rpc.NewRPCFunc(UnsafeStartCPUProfiler, "filename")
-	Routes["unsafe_stop_cpu_profiler"] = rpc.NewRPCFunc(UnsafeStopCPUProfiler, "")
-	Routes["unsafe_write_heap_profile"] = rpc.NewRPCFunc(UnsafeWriteHeapProfile, "filename")
 }

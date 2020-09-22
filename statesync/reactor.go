@@ -4,13 +4,13 @@ import (
 	"errors"
 	"sort"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	"github.com/tendermint/tendermint/p2p"
-	ssproto "github.com/tendermint/tendermint/proto/tendermint/statesync"
-	"github.com/tendermint/tendermint/proxy"
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/types"
+	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/p2p"
+	ssproto "github.com/lazyledger/lazyledger-core/proto/tendermint/statesync"
+	"github.com/lazyledger/lazyledger-core/proxy"
+	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 const (
@@ -253,6 +253,10 @@ func (r *Reactor) Sync(stateProvider StateProvider) (sm.State, *types.Commit, er
 	}
 	r.syncer = newSyncer(r.Logger, r.conn, r.connQuery, stateProvider, r.tempDir)
 	r.mtx.Unlock()
+
+	// Request snapshots from all currently connected peers
+	r.Logger.Debug("Requesting snapshots from known peers")
+	r.Switch.Broadcast(SnapshotChannel, mustEncodeMsg(&ssproto.SnapshotsRequest{}))
 
 	state, commit, err := r.syncer.SyncAny(defaultDiscoveryTime)
 	r.mtx.Lock()

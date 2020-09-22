@@ -3,10 +3,10 @@ package privval
 import (
 	"io"
 
-	"github.com/tendermint/tendermint/libs/service"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	privvalproto "github.com/tendermint/tendermint/proto/tendermint/privval"
-	"github.com/tendermint/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/libs/service"
+	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	privvalproto "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // ValidationRequestHandlerFunc handles different remoteSigner requests

@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	. "github.com/tendermint/tendermint/libs/test"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	. "github.com/lazyledger/lazyledger-core/libs/test"
 
-	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 )
 
 type testItem []byte

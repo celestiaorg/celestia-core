@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	abcimocks "github.com/tendermint/tendermint/abci/client/mocks"
-	"github.com/tendermint/tendermint/proxy/mocks"
+	abcimocks "github.com/lazyledger/lazyledger-core/abci/client/mocks"
+	"github.com/lazyledger/lazyledger-core/proxy/mocks"
 )
 
 func TestAppConns_Start_Stop(t *testing.T) {
@@ -35,7 +35,8 @@ func TestAppConns_Start_Stop(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	appConns.Stop()
+	err = appConns.Stop()
+	require.NoError(t, err)
 
 	clientMock.AssertExpectations(t)
 }
@@ -71,7 +72,11 @@ func TestAppConns_Failure(t *testing.T) {
 
 	err := appConns.Start()
 	require.NoError(t, err)
-	defer appConns.Stop()
+	t.Cleanup(func() {
+		if err := appConns.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 
 	// simulate failure
 	close(quitCh)

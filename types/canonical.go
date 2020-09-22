@@ -3,8 +3,8 @@ package types
 import (
 	"time"
 
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	tmtime "github.com/tendermint/tendermint/types/time"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
 
 // Canonical* wraps the structs in types for amino encoding them for use in SignBytes / the Signable interface.

@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/crypto/tmhash"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
 // Tx is an arbitrary byte array.
