@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	mbits "math/bits"
+
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 
@@ -1025,6 +1027,66 @@ type Data struct {
 
 	// Volatile
 	hash tmbytes.HexBytes
+}
+
+func (data *Data) ComputeShares() NamespacedShares {
+	txs, roots, evidence, msgs := extractMarshalers(data)
+
+	txShares := MakeShares(txs, ShareSize, txNIDFunc)
+	intermRootsShares := MakeShares(roots, ShareSize, intermediateRootsNIDFunc)
+	evidenceShares := MakeShares(evidence, ShareSize, evidenceNIDFunc)
+	msgShares := MakeShares(msgs, ShareSize, msgNidFunc)
+
+	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
+	wantLen := getNextPowerOf2(curLen)
+	tailShares := GenerateTailPaddingShares(wantLen-curLen, ShareSize)
+
+	return append(append(append(append(
+		txShares,
+		intermRootsShares...),
+		evidenceShares...),
+		msgShares...),
+		tailShares...)
+}
+
+func extractMarshalers(data *Data) ([]LenDelimitedMarshaler, []LenDelimitedMarshaler, []LenDelimitedMarshaler, []LenDelimitedMarshaler) {
+	// FIXME: the LenDelimitedMarshaler abstraction is not really worth the costs:
+	// we have to iterate through each data.X slice here to convert
+	// them into []LenDelimitedMarshaler
+	txs := make([]LenDelimitedMarshaler, len(data.Txs))
+	roots := make([]LenDelimitedMarshaler, len(data.IntermediateStateRoots))
+	evidence := make([]LenDelimitedMarshaler, 0)
+	msgs := make([]LenDelimitedMarshaler, len(data.Messages))
+	for i := range data.Txs {
+		txs[i] = data.Txs[i]
+	}
+	for i := range data.IntermediateStateRoots {
+		roots[i] = data.IntermediateStateRoots[i]
+	}
+
+	for i := range data.Evidence.Evidence {
+		switch data.Evidence.Evidence[i].(type) {
+		case *DuplicateVoteEvidence:
+			evidence = append(evidence, ProtoLenDelimitedMarshaler{data.Evidence.Evidence[i].(*DuplicateVoteEvidence).ToProto()})
+		}
+	}
+	for i := range data.Messages {
+		msgs[i] = data.Messages[i]
+	}
+	return txs, roots, evidence, msgs
+}
+
+func getNextPowerOf2(length int) int {
+	if length < 0 {
+		panic("invalid argument: expected non-negative value")
+	}
+	if length == 0 {
+		return 1
+	}
+	uLength := uint(length - 1)
+	bitlen := mbits.Len(uLength)
+	k := 1 << uint(bitlen)
+	return k
 }
 
 type Message struct {
