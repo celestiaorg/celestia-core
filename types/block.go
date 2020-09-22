@@ -1048,7 +1048,12 @@ func (data *Data) ComputeShares() NamespacedShares {
 		tailShares...)
 }
 
-func extractMarshalers(data *Data) ([]LenDelimitedMarshaler, []LenDelimitedMarshaler, []LenDelimitedMarshaler, []LenDelimitedMarshaler) {
+func extractMarshalers(data *Data) (
+	[]LenDelimitedMarshaler, // txs
+	[]LenDelimitedMarshaler, // roots
+	[]LenDelimitedMarshaler, // evidence
+	[]LenDelimitedMarshaler, // messages
+) {
 	// FIXME: the LenDelimitedMarshaler abstraction is not really worth the costs:
 	// we have to iterate through each data.X slice here to convert
 	// them into []LenDelimitedMarshaler
@@ -1067,6 +1072,8 @@ func extractMarshalers(data *Data) ([]LenDelimitedMarshaler, []LenDelimitedMarsh
 		switch data.Evidence.Evidence[i].(type) {
 		case *DuplicateVoteEvidence:
 			evidence = append(evidence, ProtoLenDelimitedMarshaler{data.Evidence.Evidence[i].(*DuplicateVoteEvidence).ToProto()})
+		default:
+			panic("unknown evidence type")
 		}
 	}
 	for i := range data.Messages {
@@ -1077,7 +1084,7 @@ func extractMarshalers(data *Data) ([]LenDelimitedMarshaler, []LenDelimitedMarsh
 
 func getNextSquareNum(length int) int {
 	width := int(math.Ceil(math.Sqrt(float64(length))))
-	return width*width
+	return width * width
 }
 
 type Message struct {
