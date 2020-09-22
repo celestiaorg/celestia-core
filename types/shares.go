@@ -84,10 +84,10 @@ func (m Message) MarshalDelimited() ([]byte, error) {
 	return append(lenBuf[:n], m.Data...), nil
 }
 
-// MakeShares creates NamespacedShares from slices of serializable data.
+// makeShares creates NamespacedShares from slices of serializable data.
 // The returned shares have the passed in width shareSize and the
 // associated namespace per share is computed via the passed in nidFunc.
-func MakeShares(
+func makeShares(
 	data []LenDelimitedMarshaler,
 	shareSize int,
 	nidFunc func(elem interface{}) namespace.ID,

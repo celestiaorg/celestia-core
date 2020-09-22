@@ -1031,10 +1031,10 @@ type Data struct {
 func (data *Data) ComputeShares() NamespacedShares {
 	txs, roots, evidence, msgs := extractMarshalers(data)
 
-	txShares := MakeShares(txs, ShareSize, txNIDFunc)
-	intermRootsShares := MakeShares(roots, ShareSize, intermediateRootsNIDFunc)
-	evidenceShares := MakeShares(evidence, ShareSize, evidenceNIDFunc)
-	msgShares := MakeShares(msgs, ShareSize, msgNidFunc)
+	txShares := makeShares(txs, ShareSize, txNIDFunc)
+	intermRootsShares := makeShares(roots, ShareSize, intermediateRootsNIDFunc)
+	evidenceShares := makeShares(evidence, ShareSize, evidenceNIDFunc)
+	msgShares := makeShares(msgs, ShareSize, msgNidFunc)
 
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 	wantLen := getNextSquareNum(curLen)

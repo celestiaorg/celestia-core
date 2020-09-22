@@ -19,7 +19,7 @@ var (
 	TailPaddingNamespaceID  = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE}
 	ParitySharesNamespaceID = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 
-	// private helper methods that can be used in MakeShares
+	// private helper methods that can be used in makeShares
 	txNIDFunc = func(elem interface{}) namespace.ID {
 		return TxNamespaceID
 	}
