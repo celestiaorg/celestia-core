@@ -120,7 +120,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	ppt := processedBlockTxs.GetTxs()
 
-	dataProof := processedBlockTxs.GetProof()
+	metaData := processedBlockTxs.GetMetaData()
 
 	lp := len(ppt)
 	processedTxs := make(types.Txs, lp)
@@ -128,7 +128,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		processedTxs[i] = ppt[i]
 	}
 
-	return state.MakeBlock(height, processedTxs, dataProof, commit, evidence, proposerAddr)
+	return state.MakeBlock(height, processedTxs, metaData, commit, evidence, proposerAddr)
 }
 
 // ValidateBlock validates the given block against the given state.
@@ -316,6 +316,7 @@ func execBlockOnProxyApp(
 		Header:              *pbh,
 		LastCommitInfo:      commitInfo,
 		ByzantineValidators: byzVals,
+		MetaData:            block.MetaData,
 	})
 	if err != nil {
 		logger.Error("Error in proxyAppConn.BeginBlock", "err", err)

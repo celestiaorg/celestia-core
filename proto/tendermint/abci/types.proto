@@ -80,6 +80,7 @@ message RequestBeginBlock {
   tendermint.types.Header header               = 2 [(gogoproto.nullable) = false];
   LastCommitInfo          last_commit_info     = 3 [(gogoproto.nullable) = false];
   repeated Evidence       byzantine_validators = 4 [(gogoproto.nullable) = false];
+  bytes                   meta_data            = 5;
 }
 
 enum CheckTxType {
@@ -283,8 +284,8 @@ message ResponseApplySnapshotChunk {
 }
 
 message ResponsePreprocessTxs {
-  repeated bytes txs   = 1;
-  bytes          proof = 2;
+  repeated bytes txs       = 1;
+  bytes          meta_data = 2;
 }
 
 //----------------------------------------

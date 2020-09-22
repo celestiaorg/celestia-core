@@ -1105,9 +1105,9 @@ type Data struct {
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
 
-	// Proof is a arbitrary byte slice. This field will vary on the use case of the application
+	// MetaData is a arbitrary byte slice. This field will vary on the use case of the application
 	// NOTE: can be empty or populated.
-	Proof []byte `json:"proof"`
+	MetaData []byte `json:"meta_data"`
 
 	// Volatile
 	hash tmbytes.HexBytes
