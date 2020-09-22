@@ -1,6 +1,7 @@
 package bytes
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -8,6 +9,14 @@ import (
 
 // The main purpose of HexBytes is to enable HEX-encoding for json/encoding.
 type HexBytes []byte
+
+func (bz HexBytes) MarshalDelimited() ([]byte, error) {
+	lenBuf := make([]byte, binary.MaxVarintLen64)
+	length := uint64(len(bz))
+	n := binary.PutUvarint(lenBuf, length)
+
+	return append(lenBuf[:n], bz...), nil
+}
 
 // Marshal needed for protobuf compatibility
 func (bz HexBytes) Marshal() ([]byte, error) {
