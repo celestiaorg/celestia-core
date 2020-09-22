@@ -13,6 +13,7 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/gtank/merlin v0.1.1
 	github.com/lazyledger/nmt v0.0.0-20200908210531-1a5d9124ad10
+	github.com/lazyledger/rsmt2d v0.0.0-20200626141417-ea94438fa457
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/minio/highwayhash v1.0.0
 	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect

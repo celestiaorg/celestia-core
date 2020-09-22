@@ -34,13 +34,13 @@ func (n NamespacedShare) Data() []byte {
 }
 
 // NamespacedShares is just a list of NamespacedShare elements.
-// It can be used to extract the raw Shares.
+// It can be used to extract the raw raw shares.
 type NamespacedShares []NamespacedShare
 
-// Shares returns the raw shares that can be fed into the erasure coding
+// RawShares returns the raw shares that can be fed into the erasure coding
 // library (e.g. rsmt2d).
-func (ns NamespacedShares) Shares() []Share {
-	res := make([]Share, len(ns))
+func (ns NamespacedShares) RawShares() [][]byte {
+	res := make([][]byte, len(ns))
 	for i, nsh := range ns {
 		res[i] = nsh.Share
 	}
