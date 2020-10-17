@@ -6,7 +6,6 @@ import (
 	mempl "github.com/lazyledger/lazyledger-core/mempool"
 	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
 	"github.com/lazyledger/lazyledger-core/proxy"
-	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -44,20 +43,6 @@ func (emptyMempool) TxsWaitChan() <-chan struct{} { return nil }
 
 func (emptyMempool) InitWAL() error { return nil }
 func (emptyMempool) CloseWAL()      {}
-
-//-----------------------------------------------------------------------------
-
-type emptyEvidencePool struct{}
-
-var _ sm.EvidencePool = emptyEvidencePool{}
-
-func (emptyEvidencePool) PendingEvidence(uint32) []types.Evidence { return nil }
-func (emptyEvidencePool) AddEvidence(types.Evidence) error        { return nil }
-func (emptyEvidencePool) Update(*types.Block, sm.State)           {}
-func (emptyEvidencePool) Verify(types.Evidence) error             { return nil }
-func (emptyEvidencePool) IsCommitted(types.Evidence) bool         { return false }
-func (emptyEvidencePool) IsPending(types.Evidence) bool           { return false }
-func (emptyEvidencePool) Header(int64) *types.Header              { return nil }
 
 //-----------------------------------------------------------------------------
 // mockProxyApp uses ABCIResponses to give the right results.

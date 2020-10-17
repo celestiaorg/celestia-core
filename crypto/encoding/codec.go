@@ -5,8 +5,14 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/libs/json"
 	pc "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
 )
+
+func init() {
+	json.RegisterType((*pc.PublicKey)(nil), "tendermint.crypto.PublicKey")
+	json.RegisterType((*pc.PublicKey_Ed25519)(nil), "tendermint.crypto.PublicKey_Ed25519")
+}
 
 // PubKeyToProto takes crypto.PubKey and transforms it to a protobuf Pubkey
 func PubKeyToProto(k crypto.PubKey) (pc.PublicKey, error) {

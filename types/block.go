@@ -19,6 +19,7 @@ import (
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
+	"github.com/lazyledger/lazyledger-core/version"
 )
 
 const (
@@ -88,20 +89,13 @@ func (b *Block) ValidateBasic() error {
 		return fmt.Errorf("wrong LastCommit: %v", err)
 	}
 
-	if !bytes.Equal(b.LastCommitHash, b.LastCommit.Hash()) {
-		return fmt.Errorf("wrong Header.LastCommitHash. Expected %v, got %v",
-			b.LastCommit.Hash(),
-			b.LastCommitHash,
-		)
+	if w, g := b.LastCommit.Hash(), b.LastCommitHash; !bytes.Equal(w, g) {
+		return fmt.Errorf("wrong Header.LastCommitHash. Expected %X, got %X", w, g)
 	}
 
 	// NOTE: b.Data.Txs may be nil, but b.Data.Hash() still works fine.
-	if !bytes.Equal(b.DataHash, b.Data.Hash()) {
-		return fmt.Errorf(
-			"wrong Header.DataHash. Expected %v, got %v",
-			b.Data.Hash(),
-			b.DataHash,
-		)
+	if w, g := b.Data.Hash(), b.DataHash; !bytes.Equal(w, g) {
+		return fmt.Errorf("wrong Header.DataHash. Expected %X, got %X", w, g)
 	}
 
 	// NOTE: b.Evidence.Evidence may be nil, but we're just looping.
@@ -111,11 +105,8 @@ func (b *Block) ValidateBasic() error {
 		}
 	}
 
-	if !bytes.Equal(b.EvidenceHash, b.Evidence.Hash()) {
-		return fmt.Errorf("wrong Header.EvidenceHash. Expected %v, got %v",
-			b.EvidenceHash,
-			b.Evidence.Hash(),
-		)
+	if w, g := b.Evidence.Hash(), b.EvidenceHash; !bytes.Equal(w, g) {
+		return fmt.Errorf("wrong Header.EvidenceHash. Expected %X, got %X", w, g)
 	}
 
 	return nil
@@ -291,12 +282,12 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 // MaxDataBytes returns the maximum size of block's data.
 //
 // XXX: Panics on negative result.
-func MaxDataBytes(maxBytes int64, valsCount, evidenceCount int) int64 {
+func MaxDataBytes(maxBytes, evidenceBytes int64, valsCount int) int64 {
 	maxDataBytes := maxBytes -
 		MaxOverheadForBlock -
 		MaxHeaderBytes -
 		int64(valsCount)*MaxVoteBytes -
-		int64(evidenceCount)*MaxEvidenceBytes
+		evidenceBytes
 
 	if maxDataBytes < 0 {
 		panic(fmt.Sprintf(
@@ -310,18 +301,16 @@ func MaxDataBytes(maxBytes int64, valsCount, evidenceCount int) int64 {
 
 }
 
-// MaxDataBytesUnknownEvidence returns the maximum size of block's data when
+// MaxDataBytesNoEvidence returns the maximum size of block's data when
 // evidence count is unknown. MaxEvidencePerBlock will be used for the size
 // of evidence.
 //
 // XXX: Panics on negative result.
-func MaxDataBytesUnknownEvidence(maxBytes int64, valsCount int, maxNumEvidence uint32) int64 {
-	maxEvidenceBytes := int64(maxNumEvidence) * MaxEvidenceBytes
+func MaxDataBytesNoEvidence(maxBytes int64, valsCount int) int64 {
 	maxDataBytes := maxBytes -
 		MaxOverheadForBlock -
 		MaxHeaderBytes -
-		int64(valsCount)*MaxVoteBytes -
-		maxEvidenceBytes
+		int64(valsCount)*MaxVoteBytes
 
 	if maxDataBytes < 0 {
 		panic(fmt.Sprintf(
@@ -396,6 +385,9 @@ func (h *Header) Populate(
 //
 // NOTE: Timestamp validation is subtle and handled elsewhere.
 func (h Header) ValidateBasic() error {
+	if h.Version.Block != version.BlockProtocol {
+		return fmt.Errorf("block protocol is incorrect: got: %d, want: %d ", h.Version.Block, version.BlockProtocol)
+	}
 	if len(h.ChainID) > MaxChainIDLen {
 		return fmt.Errorf("chainID is too long; got: %d, max: %d", len(h.ChainID), MaxChainIDLen)
 	}
@@ -1116,8 +1108,9 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 type EvidenceData struct {
 	Evidence EvidenceList `json:"evidence"`
 
-	// Volatile
-	hash tmbytes.HexBytes
+	// Volatile. Used as cache
+	hash     tmbytes.HexBytes
+	byteSize int64
 }
 
 // Hash returns the hash of the data.
@@ -1126,6 +1119,20 @@ func (data *EvidenceData) Hash() tmbytes.HexBytes {
 		data.hash = data.Evidence.Hash()
 	}
 	return data.hash
+}
+
+// ByteSize returns the total byte size of all the evidence
+func (data *EvidenceData) ByteSize() int64 {
+	if data.byteSize == 0 && len(data.Evidence) != 0 {
+		for _, ev := range data.Evidence {
+			pb, err := EvidenceToProto(ev)
+			if err != nil {
+				panic(err)
+			}
+			data.byteSize += int64(pb.Size())
+		}
+	}
+	return data.byteSize
 }
 
 // StringIndented returns a string representation of the evidence.
@@ -1185,10 +1192,9 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceData) error {
 			return err
 		}
 		eviBzs[i] = evi
+		data.byteSize += int64(eviData.Evidence[i].Size())
 	}
 	data.Evidence = eviBzs
-
-	data.hash = eviData.GetHash()
 
 	return nil
 }

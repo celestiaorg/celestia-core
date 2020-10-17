@@ -72,59 +72,19 @@ jobs:
           paths:
             - "."
 
-  test_persistence:
-    executor: golang
+  deploy_docs:
+    executor: docs
     steps:
-      - run_test:
-          script_path: test/persist/test_failure_indices.sh
-
-  test_cover:
-    executor: golang
-    parallelism: 4
-    steps:
-      - restore_cache:
-          name: "Restore source code cache"
-          keys:
-            - go-src-v1-{{ .Revision }}
       - checkout
-      - restore_cache:
-          name: "Restore go module cache"
-          keys:
-            - go-mod-v2-{{ checksum "go.sum" }}
       - run:
-          name: "Run tests"
-          command: |
-            export VERSION="$(git describe --tags --long | sed 's/v\(.*\)/\1/')"
-            export GO111MODULE=on
-            mkdir -p /tmp/logs /tmp/workspace/profiles
-            for pkg in $(go list github.com/lazyledger/lazyledger-core/... | circleci tests split --split-by=timings); do
-              id=$(basename "$pkg")
-              go test -timeout 7m -mod=readonly -race -coverprofile=/tmp/workspace/profiles/$id.out -covermode=atomic "$pkg" | tee "/tmp/logs/$id-$RANDOM.log"
-            done
-      - persist_to_workspace:
-          root: /tmp/workspace
-          paths:
-            - "profiles/*"
-      - store_artifacts:
-          path: /tmp/logs
-
-  test_p2p:
-    environment:
-      GOBIN: /home/circleci/.go_workspace/bin
-      GOPATH: /home/circleci/.go_workspace
-    machine:
-      image: circleci/classic:latest
-    parameters:
-      ipv:
-        type: integer
-        default: 4
-    steps:
-      - checkout
-      - run: mkdir -p $GOPATH/src/github.com/lazyledger
-      - run: ln -sf /home/circleci/project $GOPATH/src/github.com/lazyledger/lazyledger-core
-      - run: bash test/p2p/circleci.sh << parameters.ipv >>
-      - store_artifacts:
-          path: /home/circleci/project/test/p2p/logs
+          name: "Pull versions"
+          command: git fetch origin v0.32 v0.33
+      - run:
+          name: "Build docs"
+          command: make build-docs
+      - run:
+          name: "Sync to S3"
+          command: make sync-docs
 
   prepare_build:
     executor: golang
@@ -222,28 +182,69 @@ jobs:
             python -u scripts/release_management/github-upload.py --file "/tmp/workspace/SHA256SUMS" --id "${RELEASE_ID}"
             python -u scripts/release_management/github-publish.py --id "${RELEASE_ID}"
 
+  # # Test RPC implementation against the swagger documented specs
+  # contract_tests:
+  #   working_directory: /home/circleci/.go_workspace/src/github.com/tendermint/tendermint
+  #   machine:
+  #     image: circleci/classic:latest
+  #   environment:
+  #     GOBIN: /home/circleci/.go_workspace/bin
+  #     GOPATH: /home/circleci/.go_workspace/
+  #     GOOS: linux
+  #     GOARCH: amd64
+  #   parallelism: 1
+  #   steps:
+  #     - checkout
+  #     - run:
+  #         name: Test RPC endpoints against swagger documentation
+  #         command: |
+  #           set -x
+  #           export PATH=~/.local/bin:$PATH
+  #           # install node and dredd
+  #           ./scripts/get_nodejs.sh
+  #           # build the binaries with a proper version of Go
+  #           docker run --rm -v "$PWD":/go/src/github.com/tendermint/tendermint -w /go/src/github.com/tendermint/tendermint golang make build-linux build-contract-tests-hooks
+  #           # This docker image works with go 1.7, we can install here the hook handler that contract-tests is going to use
+  #           go get github.com/snikch/goodman/cmd/goodman
+  #           make contract-tests
+
 workflows:
   version: 2
-  test-suite:
+  docs:
     jobs:
-      - setup_dependencies
-      - test_persistence:
-          requires:
-            - setup_dependencies
-      - test_p2p
-      - test_p2p:
-          name: test_p2p_ipv6
-          ipv: 6
+      - deploy_docs:
+          context: tendermint-docs
+          filters:
+            branches:
+              only:
+                - master
+            tags:
+              only:
+                - /^v.*/
+      - deploy_docs:
+          context: tendermint-docs-staging
+          filters:
+            branches:
+              only:
+                - docs-staging
       # - contract_tests:
       #     requires:
       #       - setup_dependencies
 
   release:
     jobs:
-      - prepare_build
+      - prepare_build:
+          filters:
+            branches:
+              only:
+                - /v[0-9]+\.[0-9]+/
       - build_artifacts:
           requires:
             - prepare_build
+          filters:
+            branches:
+              only:
+                - /v[0-9]+\.[0-9]+/
       - release_artifacts:
           requires:
             - prepare_build
