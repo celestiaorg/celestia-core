@@ -1083,9 +1083,7 @@ func (data *Data) ToProto() tmproto.Data {
 		tp.Txs = txBzs
 	}
 
-	if data.hash != nil {
-		tp.Hash = data.hash
-	}
+	tp.MetaData = data.MetaData
 
 	return *tp
 }

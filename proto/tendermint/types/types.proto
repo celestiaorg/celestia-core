@@ -88,8 +88,8 @@ message Data {
   // NOTE: not all txs here are valid.  We're just agreeing on the order first.
   // This means that block.AppHash does not include these txs.
   repeated bytes txs = 1;
-  // Volatile
-  bytes hash = 2;
+
+  bytes meta_data = 2;
 }
 
 // Vote represents a prevote, precommit, or commit vote from validators for
