@@ -9,9 +9,6 @@ executors:
       GOBIN: /tmp/bin
   release:
     machine: true
-  docs:
-    docker:
-      - image: tendermintdev/docker-website-deployment
     environment:
       AWS_REGION: us-east-1
 
@@ -71,20 +68,6 @@ jobs:
           root: "/tmp/bin"
           paths:
             - "."
-
-  deploy_docs:
-    executor: docs
-    steps:
-      - checkout
-      - run:
-          name: "Pull versions"
-          command: git fetch origin v0.32 v0.33
-      - run:
-          name: "Build docs"
-          command: make build-docs
-      - run:
-          name: "Sync to S3"
-          command: make sync-docs
 
   prepare_build:
     executor: golang
@@ -210,26 +193,6 @@ jobs:
 
 workflows:
   version: 2
-  docs:
-    jobs:
-      - deploy_docs:
-          context: tendermint-docs
-          filters:
-            branches:
-              only:
-                - master
-            tags:
-              only:
-                - /^v.*/
-      - deploy_docs:
-          context: tendermint-docs-staging
-          filters:
-            branches:
-              only:
-                - docs-staging
-      # - contract_tests:
-      #     requires:
-      #       - setup_dependencies
 
   release:
     jobs:
