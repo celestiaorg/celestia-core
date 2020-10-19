@@ -8,6 +8,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	"github.com/lazyledger/lazyledger-core/crypto/secp256k1"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
@@ -15,13 +16,15 @@ import (
 // Use strings to distinguish types in ABCI messages
 
 const (
-	ABCIPubKeyTypeEd25519 = "ed25519"
+	ABCIPubKeyTypeEd25519   = ed25519.KeyType
+	ABCIPubKeyTypeSecp256k1 = secp256k1.KeyType
 )
 
 // TODO: Make non-global by allowing for registration of more pubkey types
 
 var ABCIPubKeyTypesToNames = map[string]string{
-	ABCIPubKeyTypeEd25519: ed25519.PubKeyName,
+	ABCIPubKeyTypeEd25519:   ed25519.PubKeyName,
+	ABCIPubKeyTypeSecp256k1: secp256k1.PubKeyName,
 }
 
 //-------------------------------------------------------

@@ -29,6 +29,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
+//go:generate mockery --case underscore --name Client
 // Client wraps most important rpc calls a client would make if you want to
 // listen for events, test if it also implements events.EventSwitch.
 type Client interface {
