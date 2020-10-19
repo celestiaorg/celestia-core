@@ -124,8 +124,10 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	lp := len(ppt)
 	processedTxs := make(types.Txs, lp)
-	for i := 0; i < l; i++ {
-		processedTxs[i] = ppt[i]
+	if lp > 0 {
+		for i := 0; i < l; i++ {
+			processedTxs[i] = ppt[i]
+		}
 	}
 
 	return state.MakeBlock(height, processedTxs, metaData, commit, evidence, proposerAddr)

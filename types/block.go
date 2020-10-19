@@ -1106,7 +1106,7 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		data.Txs = Txs{}
 	}
 
-	data.hash = dp.Hash
+	data.MetaData = dp.MetaData
 
 	return *data, nil
 }
