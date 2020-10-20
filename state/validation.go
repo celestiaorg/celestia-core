@@ -5,16 +5,13 @@ import (
 	"errors"
 	"fmt"
 
-	dbm "github.com/tendermint/tm-db"
-
-	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
 //-----------------------------------------------------
 // Validate block
 
-func validateBlock(evidencePool EvidencePool, stateDB dbm.DB, state State, block *types.Block) error {
+func validateBlock(evidencePool EvidencePool, state State, block *types.Block) error {
 	// Validate internal consistency.
 	if err := block.ValidateBasic(); err != nil {
 		return err
@@ -98,15 +95,10 @@ func validateBlock(evidencePool EvidencePool, stateDB dbm.DB, state State, block
 		}
 	}
 
-	// NOTE: We can't actually verify it's the right proposer because we dont
+	// NOTE: We can't actually verify it's the right proposer because we don't
 	// know what round the block was first proposed. So just check that it's
 	// a legit address and a known validator.
-	if len(block.ProposerAddress) != crypto.AddressSize {
-		return fmt.Errorf("expected ProposerAddress size %d, got %d",
-			crypto.AddressSize,
-			len(block.ProposerAddress),
-		)
-	}
+	// The length is checked in ValidateBasic above.
 	if !state.Validators.HasAddress(block.ProposerAddress) {
 		return fmt.Errorf("block.Header.ProposerAddress %X is not a validator",
 			block.ProposerAddress,
@@ -144,27 +136,11 @@ func validateBlock(evidencePool EvidencePool, stateDB dbm.DB, state State, block
 			block.Height, state.InitialHeight)
 	}
 
-	// Check evidence doesn't exceed the limit. MaxNumEvidence is capped at uint16, so conversion is always safe.
-	if max, got := int(state.ConsensusParams.Evidence.MaxNum), len(block.Evidence.Evidence); got > max {
+	// Check evidence doesn't exceed the limit amount of bytes.
+	if max, got := state.ConsensusParams.Evidence.MaxBytes, block.Evidence.ByteSize(); got > max {
 		return types.NewErrEvidenceOverflow(max, got)
 	}
 
 	// Validate all evidence.
-	for idx, ev := range block.Evidence.Evidence {
-		// Check that no evidence has been submitted more than once
-		for i := idx + 1; i < len(block.Evidence.Evidence); i++ {
-			if ev.Equal(block.Evidence.Evidence[i]) {
-				return types.NewErrEvidenceInvalid(ev, errors.New("evidence was submitted twice"))
-			}
-		}
-
-		// Verify evidence using the evidence pool
-		err := evidencePool.Verify(ev)
-		if err != nil {
-			return types.NewErrEvidenceInvalid(ev, err)
-		}
-
-	}
-
-	return nil
+	return evidencePool.CheckEvidence(block.Evidence.Evidence)
 }

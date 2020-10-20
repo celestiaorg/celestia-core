@@ -33,7 +33,7 @@ a more detailed overview what to expect from this repository.
 
 ### Install
 
-See the [install instructions](/docs/introduction/install.md)
+See the [install instructions](/docs/introduction/install.md).
 
 ### Quick Start
 

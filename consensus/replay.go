@@ -8,8 +8,6 @@ import (
 	"reflect"
 	"time"
 
-	dbm "github.com/tendermint/tm-db"
-
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -200,7 +198,7 @@ func makeHeightSearchFunc(height int64) auto.SearchFunc {
 //---------------------------------------------------
 
 type Handshaker struct {
-	stateDB      dbm.DB
+	stateStore   sm.Store
 	initialState sm.State
 	store        sm.BlockStore
 	eventBus     types.BlockEventPublisher
@@ -210,11 +208,11 @@ type Handshaker struct {
 	nBlocks int // number of blocks applied to the state
 }
 
-func NewHandshaker(stateDB dbm.DB, state sm.State,
+func NewHandshaker(stateStore sm.Store, state sm.State,
 	store sm.BlockStore, genDoc *types.GenesisDoc) *Handshaker {
 
 	return &Handshaker{
-		stateDB:      stateDB,
+		stateStore:   stateStore,
 		initialState: state,
 		store:        store,
 		eventBus:     types.NopEventBus{},
@@ -325,7 +323,7 @@ func (h *Handshaker) ReplayBlocks(
 
 		appHash = res.AppHash
 
-		if stateBlockHeight == 0 { //we only update state when we are in initial state
+		if stateBlockHeight == 0 { // we only update state when we are in initial state
 			// If the app did not return an app hash, we keep the one set from the genesis doc in
 			// the state. We don't set appHash since we don't want the genesis doc app hash
 			// recorded in the genesis block. We should probably just remove GenesisDoc.AppHash.
@@ -351,7 +349,9 @@ func (h *Handshaker) ReplayBlocks(
 			}
 			// We update the last results hash with the empty hash, to conform with RFC-6962.
 			state.LastResultsHash = merkle.HashFromByteSlices(nil)
-			sm.SaveState(h.stateDB, state)
+			if err := h.stateStore.Save(state); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -418,7 +418,7 @@ func (h *Handshaker) ReplayBlocks(
 
 		case appBlockHeight == storeBlockHeight:
 			// We ran Commit, but didn't save the state, so replayBlock with mock app.
-			abciResponses, err := sm.LoadABCIResponses(h.stateDB, storeBlockHeight)
+			abciResponses, err := h.stateStore.LoadABCIResponses(storeBlockHeight)
 			if err != nil {
 				return nil, err
 			}
@@ -468,7 +468,7 @@ func (h *Handshaker) replayBlocks(
 			assertAppHashEqualsOneFromBlock(appHash, block)
 		}
 
-		appHash, err = sm.ExecCommitBlock(proxyApp.Consensus(), block, h.logger, h.stateDB, h.genDoc.InitialHeight)
+		appHash, err = sm.ExecCommitBlock(proxyApp.Consensus(), block, h.logger, h.stateStore, h.genDoc.InitialHeight)
 		if err != nil {
 			return nil, err
 		}
@@ -496,7 +496,7 @@ func (h *Handshaker) replayBlock(state sm.State, height int64, proxyApp proxy.Ap
 
 	// Use stubs for both mempool and evidence pool since no transactions nor
 	// evidence are needed here - block already exists.
-	blockExec := sm.NewBlockExecutor(h.stateDB, h.logger, proxyApp, emptyMempool{}, emptyEvidencePool{})
+	blockExec := sm.NewBlockExecutor(h.stateStore, h.logger, proxyApp, emptyMempool{}, sm.EmptyEvidencePool{})
 	blockExec.SetEventBus(h.eventBus)
 
 	var err error

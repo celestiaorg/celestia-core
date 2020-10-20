@@ -8,6 +8,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	"github.com/lazyledger/lazyledger-core/crypto/secp256k1"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
@@ -15,13 +16,15 @@ import (
 // Use strings to distinguish types in ABCI messages
 
 const (
-	ABCIPubKeyTypeEd25519 = "ed25519"
+	ABCIPubKeyTypeEd25519   = ed25519.KeyType
+	ABCIPubKeyTypeSecp256k1 = secp256k1.KeyType
 )
 
 // TODO: Make non-global by allowing for registration of more pubkey types
 
 var ABCIPubKeyTypesToNames = map[string]string{
-	ABCIPubKeyTypeEd25519: ed25519.PubKeyName,
+	ABCIPubKeyTypeEd25519:   ed25519.PubKeyName,
+	ABCIPubKeyTypeSecp256k1: secp256k1.PubKeyName,
 }
 
 //-------------------------------------------------------
@@ -112,27 +115,21 @@ func (tm2pb) ConsensusParams(params *tmproto.ConsensusParams) *abci.ConsensusPar
 // so Evidence types stays compact.
 // XXX: panics on nil or unknown pubkey type
 func (tm2pb) Evidence(ev Evidence, valSet *ValidatorSet) abci.Evidence {
-	addr := ev.Address()
-	_, val := valSet.GetByAddress(addr)
-	if val == nil {
-		// should already have checked this
-		panic(fmt.Sprintf("validator in evidence is not in val set, val addr: %v", addr))
-	}
 
 	// set type
 	var evType abci.EvidenceType
 	switch ev.(type) {
 	case *DuplicateVoteEvidence:
 		evType = abci.EvidenceType_DUPLICATE_VOTE
+	case *LightClientAttackEvidence:
+		evType = abci.EvidenceType_LIGHT_CLIENT_ATTACK
 	default:
 		panic(fmt.Sprintf("unknown evidence type: %v %v", ev, reflect.TypeOf(ev)))
 	}
 
 	return abci.Evidence{
 		Type:             evType,
-		Validator:        TM2PB.Validator(val),
 		Height:           ev.Height(),
-		Time:             ev.Time(),
 		TotalVotingPower: valSet.TotalVotingPower(),
 	}
 }

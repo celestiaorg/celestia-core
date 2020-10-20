@@ -227,6 +227,7 @@ func (bcR *BlockchainReactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) 
 		bi, err := types.BlockFromProto(msg.Block)
 		if err != nil {
 			bcR.Logger.Error("Block content is invalid", "err", err)
+			bcR.Switch.StopPeerForError(src, err)
 			return
 		}
 		bcR.pool.AddBlock(src.ID(), bi, len(msgBytes))
@@ -346,7 +347,7 @@ FOR_LOOP:
 
 			// See if there are any blocks to sync.
 			first, second := bcR.pool.PeekTwoBlocks()
-			//bcR.Logger.Info("TrySync peeked", "first", first, "second", second)
+			// bcR.Logger.Info("TrySync peeked", "first", first, "second", second)
 			if first == nil || second == nil {
 				// We need both to sync the first block.
 				continue FOR_LOOP

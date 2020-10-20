@@ -43,7 +43,7 @@ func waitForRPC() {
 	}
 	result := new(ctypes.ResultStatus)
 	for {
-		_, err := client.Call("status", map[string]interface{}{}, result)
+		_, err := client.Call(context.Background(), "status", map[string]interface{}{}, result)
 		if err == nil {
 			return
 		}
@@ -72,7 +72,7 @@ func makePathname() string {
 	}
 	// fmt.Println(p)
 	sep := string(filepath.Separator)
-	return strings.Replace(p, sep, "_", -1)
+	return strings.ReplaceAll(p, sep, "_")
 }
 
 func randPort() int {
