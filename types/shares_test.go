@@ -34,7 +34,6 @@ func TestMakeShares(t *testing.T) {
 	testEvidence := &DuplicateVoteEvidence{
 		VoteA:     vote1,
 		VoteB:     vote2,
-		Timestamp: defaultVoteTime,
 	}
 	testEvidenceBytes, err := protoio.MarshalDelimited(testEvidence.ToProto())
 	largeTx := Tx(bytes.Repeat([]byte("large Tx"), 50))

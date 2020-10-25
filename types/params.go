@@ -19,25 +19,6 @@ const (
 
 	// MaxBlockPartsCount is the maximum number of block parts.
 	MaxBlockPartsCount = (MaxBlockSizeBytes / BlockPartSizeBytes) + 1
-
-	// TODO move lazyledger specific consts into separate file to avoid potential merge conflicts etc
-	// ShareSize is the size of a share (in bytes).
-	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#constants
-	ShareSize = 256
-
-	// NamespaceSize is the namespace size in bytes.
-	NamespaceSize = 8
-)
-
-type ReservedNamespaceID [NamespaceSize]byte
-
-var (
-	TxNamespaceID                     = ReservedNamespaceID{0, 0, 0, 0, 0, 0, 0, 1}
-	IntermediateStateRootsNamespaceID = ReservedNamespaceID{0, 0, 0, 0, 0, 0, 0, 2}
-	EvidenceNamespaceID               = ReservedNamespaceID{0, 0, 0, 0, 0, 0, 0, 3}
-
-	TailPaddingNamespaceID = ReservedNamespaceID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE}
-	ParityShareNamespaceID = ReservedNamespaceID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 )
 
 // DefaultConsensusParams returns a default ConsensusParams.
