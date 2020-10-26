@@ -105,6 +105,12 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// Fetch a limited amount of valid txs
 	maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
 
+	// TODO(ismail): reaping the mempool has to happen in relation to a max
+	// allowed square size instead of (only) Gas / bytes
+	// maybe the mempool actually should track things separately
+	// meaning that CheckTx should already do the mapping:
+	// Tx -> Txs, Message
+	// https://github.com/lazyledger/lazyledger-core/issues/77
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
 
 	return state.MakeBlock(height, txs, commit, evidence, proposerAddr)
