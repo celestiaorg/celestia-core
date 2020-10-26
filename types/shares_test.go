@@ -32,8 +32,8 @@ func TestMakeShares(t *testing.T) {
 	vote1 := makeVote(t, val, "chainID", 0, 10, 2, 1, blockID, defaultVoteTime)
 	vote2 := makeVote(t, val, "chainID", 0, 10, 2, 1, blockID2, defaultVoteTime)
 	testEvidence := &DuplicateVoteEvidence{
-		VoteA:     vote1,
-		VoteB:     vote2,
+		VoteA: vote1,
+		VoteB: vote2,
 	}
 	testEvidenceBytes, err := protoio.MarshalDelimited(testEvidence.ToProto())
 	largeTx := Tx(bytes.Repeat([]byte("large Tx"), 50))

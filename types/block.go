@@ -133,6 +133,7 @@ func (b *Block) fillHeader() {
 		b.LastCommitHash = b.LastCommit.Hash()
 	}
 	if b.DataHash == nil {
+		// TODO(ismail): this is obsolete now
 		b.DataHash = b.Data.Hash()
 	}
 	if b.EvidenceHash == nil {
@@ -1059,8 +1060,8 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 //-----------------------------------------------------------------------------
 
 // Data contains all the available Data of the block.
-// Data with reserved namespaces and LazyLedger application
-// specific Messages.
+// Data with reserved namespaces (Txs, IntermediateStateRoots, Evidence) and
+// LazyLedger application specific Messages.
 type Data struct {
 	// Txs that will be applied by state @ block.Height+1.
 	// NOTE: not all txs here are valid.  We're just agreeing on the order first.
@@ -1081,8 +1082,7 @@ type Data struct {
 	// A simple approach could be: include them in the Tx above and
 	// have a mechanism to split them out somehow? Probably better to include
 	// them only when necessary (before proposing the block) as messages do not
-	// really need to be processed by tendermint (they do not even need to be in the
-	// mempool IMO)
+	// really need to be processed by tendermint
 	Messages []Message `json:"msgs"`
 
 	// Volatile
@@ -1115,7 +1115,7 @@ func extractMarshalers(data *Data) (
 	[]LenDelimitedMarshaler, // evidence
 	[]LenDelimitedMarshaler, // messages
 ) {
-	// FIXME: the LenDelimitedMarshaler abstraction is not really worth the costs:
+	// TODO(ismail): the LenDelimitedMarshaler abstraction is not really worth the costs:
 	// we have to iterate through each data.X slice here to convert
 	// them into []LenDelimitedMarshaler
 	txs := make([]LenDelimitedMarshaler, len(data.Txs))

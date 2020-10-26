@@ -241,7 +241,9 @@ func (state State) MakeBlock(
 ) (*types.Block, *types.PartSet) {
 
 	// Build base block with block data.
-	block := types.MakeBlock(height, txs, commit, evidence)
+	// TODO(ismail) 1. get those interm. state roots & messages from somewhere and
+	//				2. feed them into below method
+	block := types.MakeBlock(height, txs, evidence, nil, nil, commit)
 
 	// Set time.
 	var timestamp time.Time
