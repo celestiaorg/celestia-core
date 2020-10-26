@@ -112,8 +112,11 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// Tx -> Txs, Message
 	// https://github.com/lazyledger/lazyledger-core/issues/77
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
-
-	return state.MakeBlock(height, txs, commit, evidence, proposerAddr)
+	// TODO(ismail):
+	//  1. get those intermediate state roots & messages either from the
+	//     mempool or from the abci-app
+	//	2. feed them into MakeBlock below:
+	return state.MakeBlock(height, txs, evidence, nil, nil, commit, proposerAddr)
 }
 
 // ValidateBlock validates the given block against the given state.

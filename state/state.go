@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 
 	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
@@ -234,16 +235,13 @@ func StateFromProto(pb *tmstate.State) (*State, error) { //nolint:golint
 // track rounds, and hence does not know the correct proposer. TODO: fix this!
 func (state State) MakeBlock(
 	height int64,
-	txs []types.Tx,
+	txs []types.Tx, evidence []types.Evidence, intermediateStateRoots []tmbytes.HexBytes, messages []types.Message, // Block.Data
 	commit *types.Commit,
-	evidence []types.Evidence,
 	proposerAddress []byte,
 ) (*types.Block, *types.PartSet) {
 
 	// Build base block with block data.
-	// TODO(ismail) 1. get those interm. state roots & messages from somewhere and
-	//				2. feed them into below method
-	block := types.MakeBlock(height, txs, evidence, nil, nil, commit)
+	block := types.MakeBlock(height, txs, evidence, intermediateStateRoots, messages, commit)
 
 	// Set time.
 	var timestamp time.Time
