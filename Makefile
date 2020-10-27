@@ -4,6 +4,7 @@ PACKAGES=$(shell go list ./...)
 BUILDDIR ?= $(CURDIR)/build
 
 BUILD_TAGS?=tendermint
+# leopard flag is needed for rsmt2d lib to register the leopard codec(s)
 BUILD_TAGS += leopard
 LD_FLAGS = -X github.com/tendermint/tendermint/version.GitCommit=`git rev-parse --short=8 HEAD`
 BUILD_FLAGS = -mod=readonly -ldflags "$(LD_FLAGS)"

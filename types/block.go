@@ -49,11 +49,33 @@ const (
 // k × k matrix, which is then "extended" to a
 // 2k × 2k matrix applying multiple times Reed-Solomon encoding.
 // For details see Section 5.2: https://arxiv.org/abs/1809.09044
+// or the LazyLedger specification:
+// https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#availabledataheader
+// Note that currently we list row and column roots in separate fields
+// (different from the spec).
 type DataAvailabilityHeader struct {
 	// RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
-	RowsRoots []namespace.IntervalDigest `json:"row_roots"`
+	RowsRoots NmtRoots `json:"row_roots"`
 	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
-	ColumnRoots []namespace.IntervalDigest `json:"column_roots"`
+	ColumnRoots NmtRoots `json:"column_roots"`
+}
+
+type NmtRoots []namespace.IntervalDigest
+
+func (roots NmtRoots) Bytes() [][]byte {
+	res := make([][]byte, len(roots))
+	for i := 0; i < len(roots); i++ {
+		res[i] = roots[i].Bytes()
+	}
+	return res
+}
+
+func NmtRootsFromBytes(in [][]byte) NmtRoots {
+	roots := make([]namespace.IntervalDigest, len(in))
+	for i := 0; i < len(in); i++ {
+		roots[i] = namespace.IntervalDigestFromBytes(NamespaceSize, in[i])
+	}
+	return roots
 }
 
 // Hash computes the root of the row and column roots
@@ -70,6 +92,31 @@ func (dah *DataAvailabilityHeader) Hash() []byte {
 	// The single data root is computed using a simple binary merkle tree.
 	// Effectively being root(rowRoots || columnRoots):
 	return merkle.HashFromByteSlices(slices)
+}
+
+func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, error) {
+	if dah == nil {
+		return nil, errors.New("nil DataAvailabilityHeader")
+	}
+
+	dahp := new(tmproto.DataAvailabilityHeader)
+
+	dahp.RowRoots = dah.RowsRoots.Bytes()
+	dahp.ColumnRoots = dah.ColumnRoots.Bytes()
+
+	return dahp, nil
+}
+
+func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (*DataAvailabilityHeader, error) {
+	if dahp == nil {
+		return nil, errors.New("nil DataAvailabilityHeader")
+	}
+
+	dah := new(DataAvailabilityHeader)
+	dah.RowsRoots = NmtRootsFromBytes(dahp.RowRoots)
+	dah.ColumnRoots = NmtRootsFromBytes(dahp.ColumnRoots)
+
+	return dah, nil
 }
 
 // Block defines the atomic unit of a Tendermint blockchain.
@@ -302,7 +349,12 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 	if err != nil {
 		return nil, err
 	}
-	pb.Evidence = *protoEvidence
+	pb.Data.Evidence = *protoEvidence
+	dah, err := b.DataAvailabilityHeader.ToProto()
+	if err != nil {
+		return nil, err
+	}
+	pb.DataAvailabilityHeader = dah
 
 	return pb, nil
 }
@@ -325,10 +377,15 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 		return nil, err
 	}
 	b.Data = data
-	if err := b.Evidence.FromProto(&bp.Evidence); err != nil {
+	if err := b.Evidence.FromProto(&bp.Data.Evidence); err != nil {
 		return nil, err
 	}
 
+	dah, err := DataAvailabilityHeaderFromProto(bp.DataAvailabilityHeader)
+	if err != nil {
+		return nil, err
+	}
+	b.DataAvailabilityHeader = *dah
 	if bp.LastCommit != nil {
 		lc, err := CommitFromProto(bp.LastCommit)
 		if err != nil {
@@ -1208,6 +1265,10 @@ func (data *Data) ToProto() tmproto.Data {
 		}
 		tp.Txs = txBzs
 	}
+	// TODO handle evidence here for the sake of consistency
+	if len(data.Messages.MessagesList) > 0 {
+
+	}
 
 	return *tp
 }
@@ -1229,6 +1290,9 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 	} else {
 		data.Txs = Txs{}
 	}
+	// TODO:
+	data.Messages = Messages{}
+	data.IntermediateStateRoots = IntermediateStateRoots{}
 
 	return *data, nil
 }

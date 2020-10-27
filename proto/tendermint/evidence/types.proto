@@ -6,7 +6,7 @@ option go_package = "github.com/lazyledger/lazyledger-core/proto/tendermint/evid
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "tendermint/types/validator.proto";
-import "tendermint/types/evidence.proto";
+import "tendermint/types/types.proto";
 
 message List {
   repeated tendermint.types.Evidence evidence = 1;
