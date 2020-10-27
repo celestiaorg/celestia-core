@@ -19,9 +19,9 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	"github.com/lazyledger/lazyledger-core/libs/bits"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
@@ -110,7 +110,7 @@ func (b *Block) ValidateBasic() error {
 	}
 
 	// NOTE: b.Data.Txs may be nil, but b.Data.Hash() still works fine.
-	if w, g := b.Data.Hash(), b.DataHash; !bytes.Equal(w, g) {
+	if w, g := b.DataAvailabilityHeader.Hash(), b.DataHash; !bytes.Equal(w, g) {
 		return fmt.Errorf("wrong Header.DataHash. Expected %X, got %X", w, g)
 	}
 
@@ -134,8 +134,7 @@ func (b *Block) fillHeader() {
 		b.LastCommitHash = b.LastCommit.Hash()
 	}
 	if b.DataHash == nil {
-		// TODO(ismail): this is obsolete now
-		b.DataHash = b.Data.Hash()
+		b.fillDataAvailabilityHeader()
 	}
 	if b.EvidenceHash == nil {
 		b.EvidenceHash = b.Evidence.Hash()
@@ -1330,7 +1329,7 @@ func (data *EvidenceData) splitIntoShares(shareSize int) NamespacedShares {
 	for _, ev := range data.Evidence {
 		dve, ok := ev.(*DuplicateVoteEvidence)
 		if !ok {
-			panic(fmt.Sprintf("unkown evidence included in evidence pool (don't know how to encode this) %#v", ev))
+			panic(fmt.Sprintf("unknown evidence included in evidence pool (don't know how to encode this) %#v", ev))
 		}
 		rawData, err := protoio.MarshalDelimited(dve.ToProto())
 		if err != nil {

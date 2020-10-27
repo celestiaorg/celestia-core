@@ -43,7 +43,6 @@ func TestMakeShares(t *testing.T) {
 	type args struct {
 		data      splitter
 		shareSize int
-		nidFunc   func(elem interface{}) namespace.ID
 	}
 	tests := []struct {
 		name string
@@ -104,6 +103,7 @@ func TestMakeShares(t *testing.T) {
 	}
 	for i, tt := range tests {
 		tt := tt // stupid scopelint :-/
+		i := i
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.args.data.splitIntoShares(tt.args.shareSize); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("%v: makeShares() = \n%v\nwant\n%v", i, got, tt.want)

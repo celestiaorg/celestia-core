@@ -117,8 +117,8 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	//     mempool or from the abci-app
 	//  1.1 at this point we should now the square / block size:
 	//      https://github.com/lazyledger/lazyledger-specs/blob/53e5f350838f1e0785ad670704bf91dac2f4f5a3/specs/block_proposer.md#deciding-on-a-block-size
-	// 		Here, we instead assume a fixed (max) square size instead.
-	//	2. feed them into MakeBlock below:
+	//      Here, we instead assume a fixed (max) square size instead.
+	//  2. feed them into MakeBlock below:
 	return state.MakeBlock(height, txs, evidence, nil, nil, commit, proposerAddr)
 }
 
