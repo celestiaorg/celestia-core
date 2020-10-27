@@ -125,8 +125,8 @@ message Messages {
 }
 
 message Message {
-  repeated bytes namespace_id = 1;
-  repeated bytes data = 2;
+  bytes namespace_id = 1;
+  bytes data = 2;
 }
 
 // DataAvailabilityHeader contains the row and column roots of the erasure

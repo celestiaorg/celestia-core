@@ -1280,9 +1280,25 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 	} else {
 		data.Txs = Txs{}
 	}
-	// TODO:
-	data.Messages = Messages{}
-	data.IntermediateStateRoots = IntermediateStateRoots{}
+
+	if len(dp.Messages.MessagesList) > 0 {
+		msgs := make([]Message, len(dp.Messages.MessagesList))
+		for i, m := range dp.Messages.MessagesList {
+			msgs[i] = Message{NamespaceID: m.NamespaceId, Data: m.Data}
+		}
+		data.Messages = Messages{MessagesList: msgs}
+	} else {
+		data.Messages = Messages{}
+	}
+	if len(dp.IntermediateStateRoots.RawRootsList) > 0 {
+		roots := make([]tmbytes.HexBytes, len(dp.IntermediateStateRoots.RawRootsList))
+		for i, r := range dp.IntermediateStateRoots.RawRootsList {
+			roots[i] = r
+		}
+		data.IntermediateStateRoots = IntermediateStateRoots{RawRootsList: roots}
+	} else {
+		data.IntermediateStateRoots = IntermediateStateRoots{}
+	}
 
 	return *data, nil
 }
