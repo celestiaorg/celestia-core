@@ -47,6 +47,8 @@ func (ns NamespacedShares) RawShares() [][]byte {
 	return res
 }
 
+// TODO(ismail): this abstraction is not as use-ful as it seems on first
+// sight. Remove it!
 type LenDelimitedMarshaler interface {
 	MarshalDelimited() ([]byte, error)
 }
@@ -110,19 +112,25 @@ func makeShares(
 			// must not include any Tx, Evidence etc that is unencodable)
 			panic(fmt.Sprintf("can not encode %v", element))
 		}
-		nid := nidFunc(element)
-		if len(rawData) < shareSize {
-			rawShare := rawData
-			paddedShare := zeroPadIfNecessary(rawShare, shareSize)
-			share := NamespacedShare{paddedShare, nid}
-			shares = append(shares, share)
-		} else { // len(rawData) >= shareSize
-			shares = append(shares, split(rawData, shareSize, nid)...)
-		}
+		shares = appendShares(rawData, nidFunc(element), shareSize, shares)
 	}
 	return shares
 }
 
+func appendShares(rawData []byte, nid namespace.ID, shareSize int, shares []NamespacedShare) []NamespacedShare {
+	if len(rawData) < shareSize {
+		rawShare := rawData
+		paddedShare := zeroPadIfNecessary(rawShare, shareSize)
+		share := NamespacedShare{paddedShare, nid}
+		shares = append(shares, share)
+	} else { // len(rawData) >= shareSize
+		shares = append(shares, split(rawData, shareSize, nid)...)
+	}
+	return shares
+}
+
+// TODO(ismail): implement corresponding merge method for clients requesting
+// shares for a particular namespace
 func split(rawData []byte, shareSize int, nid namespace.ID) []NamespacedShare {
 	shares := make([]NamespacedShare, 0)
 	firstRawShare := rawData[:shareSize]
