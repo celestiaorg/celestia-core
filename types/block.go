@@ -19,6 +19,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	"github.com/lazyledger/lazyledger-core/libs/bits"
+	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
@@ -1073,7 +1074,7 @@ type Data struct {
 	//
 	// TODO: replace with a dedicated type `IntermediateStateRoot`
 	// as soon as we settle on the format / sparse Merkle tree etc
-	IntermediateStateRoots []tmbytes.HexBytes `json:"intermediate_roots"`
+	IntermediateStateRoots IntermediateStateRoots `json:"intermediate_roots"`
 
 	Evidence EvidenceData `json:"evidence"`
 
@@ -1083,21 +1084,59 @@ type Data struct {
 	// have a mechanism to split them out somehow? Probably better to include
 	// them only when necessary (before proposing the block) as messages do not
 	// really need to be processed by tendermint
-	Messages []Message `json:"msgs"`
+	Messages Messages `json:"msgs"`
 
 	// Volatile
 	hash tmbytes.HexBytes
 }
 
+type Messages struct {
+	MessagesList []Message `json:"msgs"`
+}
+
+type IntermediateStateRoots struct {
+	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
+}
+
+func (roots IntermediateStateRoots) splitIntoShares(shareSize int) NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, root := range roots.RawRootsList {
+		rawData, err := root.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("app returned intermediate state root that can not be encoded %#v", root))
+		}
+		shares = appendToShares(shares, IntermediateStateRootsNamespaceID, rawData, shareSize)
+	}
+	return shares
+}
+
+func (msgs Messages) splitIntoShares(shareSize int) NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, m := range msgs.MessagesList {
+		rawData, err := m.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
+		}
+		shares = appendToShares(shares, m.NamespaceID, rawData, shareSize)
+	}
+	return shares
+}
+
 func (data *Data) computeShares() NamespacedShares {
-	txs, roots, evidence, msgs := extractMarshalers(data)
+	// TODO(ismail): splitting into shares should depend on the block size and layout
+	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
 
-	txShares := makeShares(txs, ShareSize, txNIDFunc)
-	intermRootsShares := makeShares(roots, ShareSize, intermediateRootsNIDFunc)
-	evidenceShares := makeShares(evidence, ShareSize, evidenceNIDFunc)
-	msgShares := makeShares(msgs, ShareSize, msgNidFunc)
+	// reserved shares:
+	txShares := data.Txs.splitIntoShares(ShareSize)
+	intermRootsShares := data.IntermediateStateRoots.splitIntoShares(ShareSize)
+	evidenceShares := data.Evidence.splitIntoShares(ShareSize)
 
+	// application data shares from messages:
+	msgShares := data.Messages.splitIntoShares(ShareSize)
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
+
+	// FIXME(ismail): this is not a power of two
+	// see: https://github.com/lazyledger/lazyledger-specs/issues/80 and
 	wantLen := getNextSquareNum(curLen)
 	tailShares := GenerateTailPaddingShares(wantLen-curLen, ShareSize)
 
@@ -1109,38 +1148,9 @@ func (data *Data) computeShares() NamespacedShares {
 		tailShares...)
 }
 
-func extractMarshalers(data *Data) (
-	[]LenDelimitedMarshaler, // txs
-	[]LenDelimitedMarshaler, // roots
-	[]LenDelimitedMarshaler, // evidence
-	[]LenDelimitedMarshaler, // messages
-) {
-	// TODO(ismail): the LenDelimitedMarshaler abstraction is not really worth the costs:
-	// we have to iterate through each data.X slice here to convert
-	// them into []LenDelimitedMarshaler
-	txs := make([]LenDelimitedMarshaler, len(data.Txs))
-	roots := make([]LenDelimitedMarshaler, len(data.IntermediateStateRoots))
-	evidences := make([]LenDelimitedMarshaler, 0)
-	msgs := make([]LenDelimitedMarshaler, len(data.Messages))
-	for i := range data.Txs {
-		txs[i] = data.Txs[i]
-	}
-	for i := range data.IntermediateStateRoots {
-		roots[i] = data.IntermediateStateRoots[i]
-	}
-	for i := range data.Evidence.Evidence {
-		if evidence, ok := data.Evidence.Evidence[i].(*DuplicateVoteEvidence); ok {
-			evidences = append(evidences, ProtoLenDelimitedMarshaler{evidence.ToProto()})
-		}
-	}
-	for i := range data.Messages {
-		msgs[i] = data.Messages[i]
-	}
-	return txs, roots, evidences, msgs
-}
-
 func getNextSquareNum(length int) int {
 	width := int(math.Ceil(math.Sqrt(float64(length))))
+	// TODO(ismail): make width a power of two instead
 	return width * width
 }
 
@@ -1150,7 +1160,7 @@ type Message struct {
 	//
 	// TODO: spec out constrains and
 	// introduce dedicated type instead of just []byte
-	NamespaceID []byte
+	NamespaceID namespace.ID
 
 	// Data is the actual data contained in the message
 	// (e.g. a block of a virtual sidechain).
@@ -1313,6 +1323,22 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceData) error {
 	data.byteSize = int64(eviData.Size())
 
 	return nil
+}
+
+func (data *EvidenceData) splitIntoShares(shareSize int) NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, ev := range data.Evidence {
+		dve, ok := ev.(*DuplicateVoteEvidence)
+		if !ok {
+			panic(fmt.Sprintf("unkown evidence included in evidence pool (don't know how to encode this) %#v", ev))
+		}
+		rawData, err := protoio.MarshalDelimited(dve.ToProto())
+		if err != nil {
+			panic(fmt.Sprintf("evidence included in evidence pool that can not be encoded %#v, err: %v", ev, err))
+		}
+		shares = appendToShares(shares, EvidenceNamespaceID, rawData, shareSize)
+	}
+	return shares
 }
 
 //--------------------------------------------------------------------------------

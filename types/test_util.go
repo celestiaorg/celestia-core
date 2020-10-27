@@ -98,9 +98,9 @@ func MakeBlock(
 		},
 		Data: Data{
 			Txs:                    txs,
-			IntermediateStateRoots: intermediateStateRoots,
+			IntermediateStateRoots: IntermediateStateRoots{RawRootsList: intermediateStateRoots},
 			Evidence:               EvidenceData{Evidence: evidence},
-			Messages:               messages,
+			Messages:               Messages{MessagesList: messages},
 		},
 		LastCommit: lastCommit,
 	}

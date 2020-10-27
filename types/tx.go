@@ -79,6 +79,18 @@ func (txs Txs) Proof(i int) TxProof {
 	}
 }
 
+func (txs Txs) splitIntoShares(shareSize int) NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, tx := range txs {
+		rawData, err := tx.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("included Tx in mem-pool that can not be encoded %v", tx))
+		}
+		shares = appendToShares(shares, TxNamespaceID, rawData, shareSize)
+	}
+	return shares
+}
+
 // TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
 type TxProof struct {
 	RootHash tmbytes.HexBytes `json:"root_hash"`

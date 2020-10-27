@@ -9,22 +9,13 @@ import (
 	"github.com/lazyledger/nmt/namespace"
 )
 
+type splitter interface {
+	splitIntoShares(shareSize int) NamespacedShares
+}
+
 func TestMakeShares(t *testing.T) {
 	reservedTxNamespaceID := append(bytes.Repeat([]byte{0}, 7), 1)
 	reservedEvidenceNamespaceID := append(bytes.Repeat([]byte{0}, 7), 3)
-	evidenceNidFunc := func(elem interface{}) namespace.ID {
-		return reservedEvidenceNamespaceID
-	}
-	txNidFunc := func(elem interface{}) namespace.ID {
-		return reservedTxNamespaceID
-	}
-	msgNidFunc := func(elem interface{}) namespace.ID {
-		msg, ok := elem.(Message)
-		if !ok {
-			panic("method called on other type than Message")
-		}
-		return msg.NamespaceID
-	}
 	// resveredIntermediateStateRootsNamespaceID := append(bytes.Repeat([]byte{0}, 7), 2)
 	val := NewMockPV()
 	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
@@ -48,8 +39,9 @@ func TestMakeShares(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not encode evidence: %v, error: %v", testEvidence, err)
 	}
+
 	type args struct {
-		data      []LenDelimitedMarshaler
+		data      splitter
 		shareSize int
 		nidFunc   func(elem interface{}) namespace.ID
 	}
@@ -60,9 +52,10 @@ func TestMakeShares(t *testing.T) {
 	}{
 		{"evidence",
 			args{
-				data:      []LenDelimitedMarshaler{ProtoLenDelimitedMarshaler{testEvidence.ToProto()}},
+				data: &EvidenceData{
+					Evidence: []Evidence{testEvidence},
+				},
 				shareSize: ShareSize,
-				nidFunc:   evidenceNidFunc,
 			}, NamespacedShares{NamespacedShare{
 				Share: testEvidenceBytes[:ShareSize],
 				ID:    reservedEvidenceNamespaceID,
@@ -73,9 +66,8 @@ func TestMakeShares(t *testing.T) {
 		},
 		{"small LL Tx",
 			args{
-				data:      []LenDelimitedMarshaler{smolTx},
+				data:      Txs{smolTx},
 				shareSize: ShareSize,
-				nidFunc:   txNidFunc,
 			},
 			NamespacedShares{
 				NamespacedShare{
@@ -86,9 +78,8 @@ func TestMakeShares(t *testing.T) {
 		},
 		{"one large LL Tx",
 			args{
-				data:      []LenDelimitedMarshaler{largeTx},
+				data:      Txs{largeTx},
 				shareSize: ShareSize,
-				nidFunc:   txNidFunc,
 			},
 			NamespacedShares{
 				NamespacedShare{
@@ -103,20 +94,19 @@ func TestMakeShares(t *testing.T) {
 		},
 		{"ll-app message",
 			args{
-				data:      []LenDelimitedMarshaler{msg1},
+				data:      Messages{[]Message{msg1}},
 				shareSize: ShareSize,
-				nidFunc:   msgNidFunc,
 			},
 			NamespacedShares{
 				NamespacedShare{zeroPadIfNecessary(msg1Marshaled, ShareSize), msg1.NamespaceID},
 			},
 		},
 	}
-	for _, tt := range tests {
+	for i, tt := range tests {
 		tt := tt // stupid scopelint :-/
 		t.Run(tt.name, func(t *testing.T) {
-			if got := makeShares(tt.args.data, tt.args.shareSize, tt.args.nidFunc); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("makeShares() = %v\n want %v", got, tt.want)
+			if got := tt.args.data.splitIntoShares(tt.args.shareSize); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("%v: makeShares() = \n%v\nwant\n%v", i, got, tt.want)
 			}
 		})
 	}

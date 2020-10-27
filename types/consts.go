@@ -5,6 +5,8 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
+// This contains all constants of:
+// https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#constants
 const (
 	// ShareSize is the size of a share (in bytes).
 	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#constants
@@ -12,6 +14,13 @@ const (
 
 	// NamespaceSize is the namespace size in bytes.
 	NamespaceSize = 8
+
+	// MaxSquareSize is the maximum number of
+	// rows/columns of the original data shares in square layout.
+	// Corresponds to AVAILABLE_DATA_ORIGINAL_SQUARE_MAX in the spec.
+	// 128*128*256 = 4 Megabytes
+	// TODO(ismail): settle on a proper max square
+	MaxSquareSize = 128
 )
 
 var (
@@ -24,22 +33,4 @@ var (
 
 	// change accordingly if another hash.Hash should be used as a base hasher in the NMT:
 	newBaseHashFunc = sha3.New256
-
-	// private helper methods that can be used in makeShares
-	txNIDFunc = func(elem interface{}) namespace.ID {
-		return TxNamespaceID
-	}
-	intermediateRootsNIDFunc = func(elem interface{}) namespace.ID {
-		return IntermediateStateRootsNamespaceID
-	}
-	evidenceNIDFunc = func(elem interface{}) namespace.ID {
-		return EvidenceNamespaceID
-	}
-	msgNidFunc = func(elem interface{}) namespace.ID {
-		msg, ok := elem.(Message)
-		if !ok {
-			panic("method called on other type than Message")
-		}
-		return msg.NamespaceID
-	}
 )

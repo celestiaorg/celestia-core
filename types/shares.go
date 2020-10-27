@@ -3,13 +3,8 @@ package types
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/lazyledger/nmt/namespace"
-
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
 )
 
 var _ namespace.Data = NamespacedShare{}
@@ -47,27 +42,6 @@ func (ns NamespacedShares) RawShares() [][]byte {
 	return res
 }
 
-// TODO(ismail): this abstraction is not as use-ful as it seems on first
-// sight. Remove it!
-type LenDelimitedMarshaler interface {
-	MarshalDelimited() ([]byte, error)
-}
-
-var _ LenDelimitedMarshaler = Message{}
-var _ LenDelimitedMarshaler = ProtoLenDelimitedMarshaler{}
-var _ LenDelimitedMarshaler = tmbytes.HexBytes{}
-var _ LenDelimitedMarshaler = Tx{}
-
-// ProtoLenDelimitedMarshaler decorates any (gogo)proto.Message with a MarshalDelimited
-// method.
-type ProtoLenDelimitedMarshaler struct {
-	proto.Message
-}
-
-func (p ProtoLenDelimitedMarshaler) MarshalDelimited() ([]byte, error) {
-	return protoio.MarshalDelimited(p.Message)
-}
-
 func (tx Tx) MarshalDelimited() ([]byte, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	length := uint64(len(tx))
@@ -86,38 +60,7 @@ func (m Message) MarshalDelimited() ([]byte, error) {
 	return append(lenBuf[:n], m.Data...), nil
 }
 
-// makeShares creates NamespacedShares from slices of serializable data.
-// The returned shares have the passed in width shareSize and the
-// associated namespace per share is computed via the passed in nidFunc.
-func makeShares(
-	data []LenDelimitedMarshaler,
-	shareSize int,
-	nidFunc func(elem interface{}) namespace.ID,
-) NamespacedShares {
-	if shareSize <= 0 {
-		panic("invalid shareSize")
-	}
-	shares := make([]NamespacedShare, 0)
-	for _, element := range data {
-		// TODO: implement a helper that also returns the size
-		// to make it possible to (cleanly) implement:
-		// https://github.com/lazyledger/lazyledger-specs/issues/69
-		// For now, we do not squeeze multiple Tx into one share and
-		// hence can ignore prefixing with the starting location of the
-		// first start of a transaction in the share (aka SHARE_RESERVED_BYTES)
-		rawData, err := element.MarshalDelimited()
-		if err != nil {
-			// The lazyledger-(abci) will have to guarantee that it only includes messages
-			// that can be encoded without an error (equivalently tendermint
-			// must not include any Tx, Evidence etc that is unencodable)
-			panic(fmt.Sprintf("can not encode %v", element))
-		}
-		shares = appendShares(rawData, nidFunc(element), shareSize, shares)
-	}
-	return shares
-}
-
-func appendShares(rawData []byte, nid namespace.ID, shareSize int, shares []NamespacedShare) []NamespacedShare {
+func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte, shareSize int) []NamespacedShare {
 	if len(rawData) < shareSize {
 		rawShare := rawData
 		paddedShare := zeroPadIfNecessary(rawShare, shareSize)
