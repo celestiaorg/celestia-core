@@ -100,7 +100,12 @@ func TestValidateBlockHeader(t *testing.T) {
 	}
 
 	nextHeight := validationTestsStopHeight
-	block, _ := state.MakeBlock(nextHeight, makeTxs(nextHeight), nil, nil, nil, lastCommit, state.Validators.GetProposer().Address)
+	block, _ := state.MakeBlock(
+		nextHeight,
+		makeTxs(nextHeight), nil, nil, nil,
+		lastCommit,
+		state.Validators.GetProposer().Address,
+	)
 	state.InitialHeight = nextHeight + 1
 	err := blockExec.ValidateBlock(state, block)
 	require.Error(t, err, "expected an error when state is ahead of block")
