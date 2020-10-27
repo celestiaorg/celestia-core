@@ -1381,11 +1381,21 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceData) error {
 func (data *EvidenceData) splitIntoShares(shareSize int) NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	for _, ev := range data.Evidence {
-		dve, ok := ev.(*DuplicateVoteEvidence)
-		if !ok {
+		var rawData []byte
+		var err error
+		switch cev := ev.(type) {
+		case *DuplicateVoteEvidence:
+			rawData, err = protoio.MarshalDelimited(cev.ToProto())
+		case *LightClientAttackEvidence:
+			pcev, iErr := cev.ToProto()
+			if iErr != nil {
+				err = iErr
+				break
+			}
+			rawData, err = protoio.MarshalDelimited(pcev)
+		default:
 			panic(fmt.Sprintf("unknown evidence included in evidence pool (don't know how to encode this) %#v", ev))
 		}
-		rawData, err := protoio.MarshalDelimited(dve.ToProto())
 		if err != nil {
 			panic(fmt.Sprintf("evidence included in evidence pool that can not be encoded %#v, err: %v", ev, err))
 		}

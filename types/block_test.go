@@ -143,7 +143,7 @@ func TestBlockMakePartSetWithEvidence(t *testing.T) {
 
 	partSet := MakeBlock(h, []Tx{Tx("Hello World")}, evList, nil, nil, commit).MakePartSet(512)
 	assert.NotNil(t, partSet)
-	assert.EqualValues(t, 4, partSet.Total())
+	assert.EqualValues(t, 5, partSet.Total())
 }
 
 func TestBlockHashesTo(t *testing.T) {
