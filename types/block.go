@@ -193,6 +193,11 @@ func (b *Block) fillHeader() {
 func (b *Block) fillDataAvailabilityHeader() {
 	namespacedShares := b.Data.computeShares()
 	shares := namespacedShares.RawShares()
+	if len(shares) == 0 {
+		// no shares -> no row/colum roots -> hash(empty)
+		b.DataHash = b.DataAvailabilityHeader.Hash()
+		return
+	}
 	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.LeopardFF16)
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
@@ -1141,9 +1146,6 @@ type Data struct {
 	// them only when necessary (before proposing the block) as messages do not
 	// really need to be processed by tendermint
 	Messages Messages `json:"msgs"`
-
-	// Volatile
-	hash tmbytes.HexBytes
 }
 
 type Messages struct {
@@ -1223,17 +1225,6 @@ type Message struct {
 	Data []byte
 }
 
-// Hash returns the hash of the data
-func (data *Data) Hash() tmbytes.HexBytes {
-	if data == nil {
-		return (Txs{}).Hash()
-	}
-	if data.hash == nil {
-		data.hash = data.Txs.Hash() // NOTE: leaves of merkle tree are TxIDs
-	}
-	return data.hash
-}
-
 // StringIndented returns an indented string representation of the transactions.
 func (data *Data) StringIndented(indent string) string {
 	if data == nil {
@@ -1249,9 +1240,8 @@ func (data *Data) StringIndented(indent string) string {
 	}
 	return fmt.Sprintf(`Data{
 %s  %v
-%s}#%v`,
-		indent, strings.Join(txStrings, "\n"+indent+"  "),
-		indent, data.hash)
+}`,
+		indent, strings.Join(txStrings, "\n"+indent+"  "))
 }
 
 // ToProto converts Data to protobuf

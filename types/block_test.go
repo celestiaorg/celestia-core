@@ -79,7 +79,7 @@ func TestBlockValidateBasic(t *testing.T) {
 		{"Remove LastCommitHash", func(blk *Block) { blk.LastCommitHash = []byte("something else") }, true},
 		{"Tampered Data", func(blk *Block) {
 			blk.Data.Txs[0] = Tx("something else")
-			blk.Data.hash = nil // clear hash or change wont be noticed
+			blk.DataHash = nil // clear hash or change wont be noticed
 		}, true},
 		{"Tampered DataHash", func(blk *Block) {
 			blk.DataHash = tmrand.Bytes(len(blk.DataHash))
@@ -219,11 +219,6 @@ var emptyBytes = []byte{0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0x
 func TestNilHeaderHashDoesntCrash(t *testing.T) {
 	assert.Equal(t, nilBytes, []byte((*Header)(nil).Hash()))
 	assert.Equal(t, nilBytes, []byte((new(Header)).Hash()))
-}
-
-func TestNilDataHashDoesntCrash(t *testing.T) {
-	assert.Equal(t, emptyBytes, []byte((*Data)(nil).Hash()))
-	assert.Equal(t, emptyBytes, []byte(new(Data).Hash()))
 }
 
 func TestCommit(t *testing.T) {
