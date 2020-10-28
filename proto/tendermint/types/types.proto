@@ -121,7 +121,7 @@ message IntermediateStateRoots {
 }
 
 message Messages {
-  repeated Message MessagesList = 1;
+  repeated Message messages_list = 1;
 }
 
 message Message {
