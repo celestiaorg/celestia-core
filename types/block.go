@@ -198,7 +198,9 @@ func (b *Block) fillDataAvailabilityHeader() {
 		b.DataHash = b.DataAvailabilityHeader.Hash()
 		return
 	}
-	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.LeopardFF16)
+	// TODO(ismail): for better efficiency and a larger number shares
+	// we should switch to the rsmt2d.LeopardFF16 codec:
+	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8)
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
 	}
