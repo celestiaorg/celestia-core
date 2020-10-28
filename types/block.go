@@ -221,19 +221,19 @@ func (b *Block) fillDataAvailabilityHeader() {
 		colTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
 		for innerIdx := uint(0); innerIdx < squareWidth; innerIdx++ {
 			if outerIdx < originalDataWidth && innerIdx < originalDataWidth {
-				rowTree.Push(namespacedShares[outerIdx*originalDataWidth+innerIdx])
-				colTree.Push(namespacedShares[innerIdx*originalDataWidth+outerIdx])
+				mustPush(rowTree, namespacedShares[outerIdx*originalDataWidth+innerIdx])
+				mustPush(colTree, namespacedShares[innerIdx*originalDataWidth+outerIdx])
 			} else {
 				rowData := extendedDataSquare.Row(outerIdx)
 				colData := extendedDataSquare.Column(outerIdx)
 
 				parityCellFromRow := rowData[innerIdx]
 				parityCellFromCol := colData[innerIdx]
-				// FIXME: do not hardcode usage of PrefixedData8 here:
-				rowTree.Push(namespace.PrefixedData8(
+				// FIXME(ismail): do not hardcode usage of PrefixedData8 here:
+				mustPush(rowTree, namespace.PrefixedData8(
 					append(ParitySharesNamespaceID, parityCellFromRow...),
 				))
-				colTree.Push(namespace.PrefixedData8(
+				mustPush(colTree, namespace.PrefixedData8(
 					append(ParitySharesNamespaceID, parityCellFromCol...),
 				))
 			}
@@ -243,6 +243,17 @@ func (b *Block) fillDataAvailabilityHeader() {
 	}
 
 	b.DataHash = b.DataAvailabilityHeader.Hash()
+}
+
+func mustPush(rowTree *nmt.NamespacedMerkleTree, namespacedShare namespace.Data) {
+	if err := rowTree.Push(namespacedShare); err != nil {
+		panic(
+			fmt.Sprintf("invalid data; could not push share to tree: %#v, err: %v",
+				namespacedShare,
+				err,
+			),
+		)
+	}
 }
 
 // Hash computes and returns the block hash.
@@ -1260,11 +1271,18 @@ func (data *Data) ToProto() tmproto.Data {
 		}
 		tp.Txs = txBzs
 	}
-	// TODO handle evidence here for the sake of consistency
-	if len(data.Messages.MessagesList) > 0 {
-
+	rawRoots := data.IntermediateStateRoots.RawRootsList
+	if len(rawRoots) > 0 {
+		roots := make([][]byte, len(rawRoots))
+		for i := range rawRoots {
+			roots[i] = rawRoots[i]
+		}
+		tp.IntermediateStateRoots.RawRootsList = roots
 	}
+	// TODO(ismail): fill in messages too
 
+	// TODO(ismail): handle evidence here instead of the block
+	// for the sake of consistency
 	return *tp
 }
 
