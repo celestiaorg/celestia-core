@@ -221,6 +221,11 @@ func TestNilHeaderHashDoesntCrash(t *testing.T) {
 	assert.Equal(t, nilBytes, []byte((new(Header)).Hash()))
 }
 
+func TestNilDataAvailabilityHeaderHashDoesntCrash(t *testing.T) {
+	assert.Equal(t, emptyBytes, (*DataAvailabilityHeader)(nil).Hash())
+	assert.Equal(t, emptyBytes, new(DataAvailabilityHeader).Hash())
+}
+
 func TestCommit(t *testing.T) {
 	lastID := makeBlockIDRandom()
 	h := int64(3)

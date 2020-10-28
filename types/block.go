@@ -80,6 +80,9 @@ func NmtRootsFromBytes(in [][]byte) NmtRoots {
 
 // Hash computes the root of the row and column roots
 func (dah *DataAvailabilityHeader) Hash() []byte {
+	if dah == nil {
+		return merkle.HashFromByteSlices(nil)
+	}
 	colsCount := len(dah.RowsRoots)
 	rowsCount := len(dah.ColumnRoots)
 	slices := make([][]byte, colsCount+rowsCount)
