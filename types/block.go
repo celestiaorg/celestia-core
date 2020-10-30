@@ -216,6 +216,8 @@ func (b *Block) fillDataAvailabilityHeader() {
 	}
 
 	// compute row and column roots:
+	// TODO(ismail): refactor this to use rsmt2d lib directly instead
+	// depends on https://github.com/lazyledger/rsmt2d/issues/8
 	for outerIdx := uint(0); outerIdx < squareWidth; outerIdx++ {
 		rowTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
 		colTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
