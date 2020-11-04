@@ -469,6 +469,9 @@ func TestReactorSetSwitchNil(t *testing.T) {
 	assert.Nil(t, reactor.io)
 }
 
+//----------------------------------------------
+// utility funcs
+
 type testApp struct {
 	abci.BaseApplication
 }

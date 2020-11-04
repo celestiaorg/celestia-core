@@ -35,14 +35,8 @@ func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 		Timestamp:        timestamp,
 		Signature:        []byte("Signature"),
 	}}
-	return types.NewCommit(
-		height,
-		0,
-		types.BlockID{
-			Hash:          crypto.CRandBytes(32),
-			PartSetHeader: types.PartSetHeader{Hash: crypto.CRandBytes(32), Total: 2},
-		},
-		commitSigs)
+	return types.NewCommit(height, 0,
+		types.BlockID{Hash: []byte(""), PartSetHeader: types.PartSetHeader{Hash: []byte(""), Total: 2}}, commitSigs)
 }
 
 func makeStateAndBlockStore(logger log.Logger) (sm.State, *BlockStore, cleanupFunc) {
