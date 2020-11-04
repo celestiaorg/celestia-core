@@ -80,7 +80,7 @@ func TestBcStatusResponseMessageValidateBasic(t *testing.T) {
 
 // nolint:lll // ignore line length in tests
 func TestBlockchainMessageVectors(t *testing.T) {
-	block := types.MakeBlock(int64(3), []types.Tx{types.Tx("Hello World")}, nil, nil)
+	block := types.MakeBlock(int64(3), []types.Tx{types.Tx("Hello World")}, nil, nil, nil, nil)
 	block.Version.Block = 11 // overwrite updated protocol version
 
 	bpb, err := block.ToProto()
@@ -97,7 +97,7 @@ func TestBlockchainMessageVectors(t *testing.T) {
 			BlockRequest: &bcproto.BlockRequest{Height: math.MaxInt64}}},
 			"0a0a08ffffffffffffffff7f"},
 		{"BlockResponseMessage", &bcproto.Message{Sum: &bcproto.Message_BlockResponse{
-			BlockResponse: &bcproto.BlockResponse{Block: bpb}}}, "1a700a6e0a5b0a02080b1803220b088092b8c398feffffff012a0212003a20c4da88e876062aa1543400d50d0eaa0dac88096057949cfb7bca7f3a48c04bf96a20e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855120d0a0b48656c6c6f20576f726c641a00"},
+			BlockResponse: &bcproto.BlockResponse{Block: bpb}}}, "1ac0020abd020a5b0a02080b1803220b088092b8c398feffffff012a0212003a20ba28ef83fed712be8a128587469a4effda9f4f4895bd5638dab1f10775c9bed66a20e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85512130a0b48656c6c6f20576f726c6412001a0022001ac8010a300000000000000001000000000000000119251d276ad8a1831db7b86ead3f42c4e03093d50ecf026da7ecc3b0da8ec87d0a30ffffffffffffffffffffffffffffffff12d55aea72367d0d6a7899103a437c913ee5a6f9e86f42e0fe8743b0d8d3a1e812300000000000000001000000000000000119251d276ad8a1831db7b86ead3f42c4e03093d50ecf026da7ecc3b0da8ec87d1230ffffffffffffffffffffffffffffffff12d55aea72367d0d6a7899103a437c913ee5a6f9e86f42e0fe8743b0d8d3a1e8"},
 		{"NoBlockResponseMessage", &bcproto.Message{Sum: &bcproto.Message_NoBlockResponse{
 			NoBlockResponse: &bcproto.NoBlockResponse{Height: 1}}}, "12020801"},
 		{"NoBlockResponseMessage", &bcproto.Message{Sum: &bcproto.Message_NoBlockResponse{

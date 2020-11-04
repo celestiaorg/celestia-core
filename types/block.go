@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
+
+	"github.com/lazyledger/nmt"
+	"github.com/lazyledger/nmt/namespace"
+	"github.com/lazyledger/rsmt2d"
 
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
@@ -16,6 +21,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/bits"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
@@ -43,17 +49,77 @@ const (
 // k × k matrix, which is then "extended" to a
 // 2k × 2k matrix applying multiple times Reed-Solomon encoding.
 // For details see Section 5.2: https://arxiv.org/abs/1809.09044
+// or the LazyLedger specification:
+// https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#availabledataheader
+// Note that currently we list row and column roots in separate fields
+// (different from the spec).
 type DataAvailabilityHeader struct {
 	// RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
-	RowsRoots []tmbytes.HexBytes `json:"row_roots"`
+	RowsRoots NmtRoots `json:"row_roots"`
 	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
-	ColumnRoots []tmbytes.HexBytes `json:"column_roots"`
+	ColumnRoots NmtRoots `json:"column_roots"`
+}
+
+type NmtRoots []namespace.IntervalDigest
+
+func (roots NmtRoots) Bytes() [][]byte {
+	res := make([][]byte, len(roots))
+	for i := 0; i < len(roots); i++ {
+		res[i] = roots[i].Bytes()
+	}
+	return res
+}
+
+func NmtRootsFromBytes(in [][]byte) NmtRoots {
+	roots := make([]namespace.IntervalDigest, len(in))
+	for i := 0; i < len(in); i++ {
+		roots[i] = namespace.IntervalDigestFromBytes(NamespaceSize, in[i])
+	}
+	return roots
 }
 
 // Hash computes the root of the row and column roots
-// TODO: feed this into Header.DataHash.
-func (dah *DataAvailabilityHeader) Hash() {
-	panic("TODO: implement")
+func (dah *DataAvailabilityHeader) Hash() []byte {
+	if dah == nil {
+		return merkle.HashFromByteSlices(nil)
+	}
+	colsCount := len(dah.RowsRoots)
+	rowsCount := len(dah.ColumnRoots)
+	slices := make([][]byte, colsCount+rowsCount)
+	for i, rowRoot := range dah.RowsRoots {
+		slices[i] = rowRoot.Bytes()
+	}
+	for i, colRoot := range dah.RowsRoots {
+		slices[i+colsCount] = colRoot.Bytes()
+	}
+	// The single data root is computed using a simple binary merkle tree.
+	// Effectively being root(rowRoots || columnRoots):
+	return merkle.HashFromByteSlices(slices)
+}
+
+func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, error) {
+	if dah == nil {
+		return nil, errors.New("nil DataAvailabilityHeader")
+	}
+
+	dahp := new(tmproto.DataAvailabilityHeader)
+
+	dahp.RowRoots = dah.RowsRoots.Bytes()
+	dahp.ColumnRoots = dah.ColumnRoots.Bytes()
+
+	return dahp, nil
+}
+
+func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (*DataAvailabilityHeader, error) {
+	if dahp == nil {
+		return nil, errors.New("nil DataAvailabilityHeader")
+	}
+
+	dah := new(DataAvailabilityHeader)
+	dah.RowsRoots = NmtRootsFromBytes(dahp.RowRoots)
+	dah.ColumnRoots = NmtRootsFromBytes(dahp.ColumnRoots)
+
+	return dah, nil
 }
 
 // Block defines the atomic unit of a Tendermint blockchain.
@@ -94,7 +160,7 @@ func (b *Block) ValidateBasic() error {
 	}
 
 	// NOTE: b.Data.Txs may be nil, but b.Data.Hash() still works fine.
-	if w, g := b.Data.Hash(), b.DataHash; !bytes.Equal(w, g) {
+	if w, g := b.DataAvailabilityHeader.Hash(), b.DataHash; !bytes.Equal(w, g) {
 		return fmt.Errorf("wrong Header.DataHash. Expected %X, got %X", w, g)
 	}
 
@@ -118,10 +184,77 @@ func (b *Block) fillHeader() {
 		b.LastCommitHash = b.LastCommit.Hash()
 	}
 	if b.DataHash == nil {
-		b.DataHash = b.Data.Hash()
+		b.fillDataAvailabilityHeader()
 	}
 	if b.EvidenceHash == nil {
 		b.EvidenceHash = b.Evidence.Hash()
+	}
+}
+
+// fillDataAvailabilityHeader fills in any remaining DataAvailabilityHeader fields
+// that are a function of the block data.
+func (b *Block) fillDataAvailabilityHeader() {
+	namespacedShares := b.Data.computeShares()
+	shares := namespacedShares.RawShares()
+	if len(shares) == 0 {
+		// no shares -> no row/colum roots -> hash(empty)
+		b.DataHash = b.DataAvailabilityHeader.Hash()
+		return
+	}
+	// TODO(ismail): for better efficiency and a larger number shares
+	// we should switch to the rsmt2d.LeopardFF16 codec:
+	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8)
+	if err != nil {
+		panic(fmt.Sprintf("unexpected error: %v", err))
+	}
+	// compute roots:
+	squareWidth := extendedDataSquare.Width()
+	originalDataWidth := squareWidth / 2
+	b.DataAvailabilityHeader = DataAvailabilityHeader{
+		RowsRoots:   make([]namespace.IntervalDigest, squareWidth),
+		ColumnRoots: make([]namespace.IntervalDigest, squareWidth),
+	}
+
+	// compute row and column roots:
+	// TODO(ismail): refactor this to use rsmt2d lib directly instead
+	// depends on https://github.com/lazyledger/rsmt2d/issues/8
+	for outerIdx := uint(0); outerIdx < squareWidth; outerIdx++ {
+		rowTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
+		colTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
+		for innerIdx := uint(0); innerIdx < squareWidth; innerIdx++ {
+			if outerIdx < originalDataWidth && innerIdx < originalDataWidth {
+				mustPush(rowTree, namespacedShares[outerIdx*originalDataWidth+innerIdx])
+				mustPush(colTree, namespacedShares[innerIdx*originalDataWidth+outerIdx])
+			} else {
+				rowData := extendedDataSquare.Row(outerIdx)
+				colData := extendedDataSquare.Column(outerIdx)
+
+				parityCellFromRow := rowData[innerIdx]
+				parityCellFromCol := colData[innerIdx]
+				// FIXME(ismail): do not hardcode usage of PrefixedData8 here:
+				mustPush(rowTree, namespace.PrefixedData8(
+					append(ParitySharesNamespaceID, parityCellFromRow...),
+				))
+				mustPush(colTree, namespace.PrefixedData8(
+					append(ParitySharesNamespaceID, parityCellFromCol...),
+				))
+			}
+		}
+		b.DataAvailabilityHeader.RowsRoots[outerIdx] = rowTree.Root()
+		b.DataAvailabilityHeader.ColumnRoots[outerIdx] = colTree.Root()
+	}
+
+	b.DataHash = b.DataAvailabilityHeader.Hash()
+}
+
+func mustPush(rowTree *nmt.NamespacedMerkleTree, namespacedShare namespace.Data) {
+	if err := rowTree.Push(namespacedShare); err != nil {
+		panic(
+			fmt.Sprintf("invalid data; could not push share to tree: %#v, err: %v",
+				namespacedShare,
+				err,
+			),
+		)
 	}
 }
 
@@ -239,7 +372,12 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 	if err != nil {
 		return nil, err
 	}
-	pb.Evidence = *protoEvidence
+	pb.Data.Evidence = *protoEvidence
+	dah, err := b.DataAvailabilityHeader.ToProto()
+	if err != nil {
+		return nil, err
+	}
+	pb.DataAvailabilityHeader = dah
 
 	return pb, nil
 }
@@ -262,10 +400,15 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 		return nil, err
 	}
 	b.Data = data
-	if err := b.Evidence.FromProto(&bp.Evidence); err != nil {
+	if err := b.Evidence.FromProto(&bp.Data.Evidence); err != nil {
 		return nil, err
 	}
 
+	dah, err := DataAvailabilityHeaderFromProto(bp.DataAvailabilityHeader)
+	if err != nil {
+		return nil, err
+	}
+	b.DataAvailabilityHeader = *dah
 	if bp.LastCommit != nil {
 		lc, err := CommitFromProto(bp.LastCommit)
 		if err != nil {
@@ -996,9 +1139,10 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 
 //-----------------------------------------------------------------------------
 
-// Data contains the set of transactions included in the block
+// Data contains all the available Data of the block.
+// Data with reserved namespaces (Txs, IntermediateStateRoots, Evidence) and
+// LazyLedger application specific Messages.
 type Data struct {
-
 	// Txs that will be applied by state @ block.Height+1.
 	// NOTE: not all txs here are valid.  We're just agreeing on the order first.
 	// This means that block.AppHash does not include these txs.
@@ -1009,16 +1153,81 @@ type Data struct {
 	//
 	// TODO: replace with a dedicated type `IntermediateStateRoot`
 	// as soon as we settle on the format / sparse Merkle tree etc
-	IntermediateStateRoots []tmbytes.HexBytes `json:"intermediate_roots"`
-
-	// The messages included in this block.
-	// TODO: define a mechanism to split up both (maybe via CheckTx)
-	Messages []Message `json:"msgs"`
+	IntermediateStateRoots IntermediateStateRoots `json:"intermediate_roots"`
 
 	Evidence EvidenceData `json:"evidence"`
 
-	// Volatile
-	hash tmbytes.HexBytes
+	// The messages included in this block.
+	// TODO: how do messages end up here? (abci) app <-> ll-core?
+	// A simple approach could be: include them in the Tx above and
+	// have a mechanism to split them out somehow? Probably better to include
+	// them only when necessary (before proposing the block) as messages do not
+	// really need to be processed by tendermint
+	Messages Messages `json:"msgs"`
+}
+
+type Messages struct {
+	MessagesList []Message `json:"msgs"`
+}
+
+type IntermediateStateRoots struct {
+	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
+}
+
+func (roots IntermediateStateRoots) splitIntoShares(shareSize int) NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, root := range roots.RawRootsList {
+		rawData, err := root.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("app returned intermediate state root that can not be encoded %#v", root))
+		}
+		shares = appendToShares(shares, IntermediateStateRootsNamespaceID, rawData, shareSize)
+	}
+	return shares
+}
+
+func (msgs Messages) splitIntoShares(shareSize int) NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, m := range msgs.MessagesList {
+		rawData, err := m.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
+		}
+		shares = appendToShares(shares, m.NamespaceID, rawData, shareSize)
+	}
+	return shares
+}
+
+func (data *Data) computeShares() NamespacedShares {
+	// TODO(ismail): splitting into shares should depend on the block size and layout
+	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
+
+	// reserved shares:
+	txShares := data.Txs.splitIntoShares(ShareSize)
+	intermRootsShares := data.IntermediateStateRoots.splitIntoShares(ShareSize)
+	evidenceShares := data.Evidence.splitIntoShares(ShareSize)
+
+	// application data shares from messages:
+	msgShares := data.Messages.splitIntoShares(ShareSize)
+	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
+
+	// FIXME(ismail): this is not a power of two
+	// see: https://github.com/lazyledger/lazyledger-specs/issues/80 and
+	wantLen := getNextSquareNum(curLen)
+	tailShares := GenerateTailPaddingShares(wantLen-curLen, ShareSize)
+
+	return append(append(append(append(
+		txShares,
+		intermRootsShares...),
+		evidenceShares...),
+		msgShares...),
+		tailShares...)
+}
+
+func getNextSquareNum(length int) int {
+	width := int(math.Ceil(math.Sqrt(float64(length))))
+	// TODO(ismail): make width a power of two instead
+	return width * width
 }
 
 type Message struct {
@@ -1027,22 +1236,11 @@ type Message struct {
 	//
 	// TODO: spec out constrains and
 	// introduce dedicated type instead of just []byte
-	NamespaceID []byte
+	NamespaceID namespace.ID
 
 	// Data is the actual data contained in the message
 	// (e.g. a block of a virtual sidechain).
 	Data []byte
-}
-
-// Hash returns the hash of the data
-func (data *Data) Hash() tmbytes.HexBytes {
-	if data == nil {
-		return (Txs{}).Hash()
-	}
-	if data.hash == nil {
-		data.hash = data.Txs.Hash() // NOTE: leaves of merkle tree are TxIDs
-	}
-	return data.hash
 }
 
 // StringIndented returns an indented string representation of the transactions.
@@ -1060,9 +1258,8 @@ func (data *Data) StringIndented(indent string) string {
 	}
 	return fmt.Sprintf(`Data{
 %s  %v
-%s}#%v`,
-		indent, strings.Join(txStrings, "\n"+indent+"  "),
-		indent, data.hash)
+}`,
+		indent, strings.Join(txStrings, "\n"+indent+"  "))
 }
 
 // ToProto converts Data to protobuf
@@ -1076,7 +1273,18 @@ func (data *Data) ToProto() tmproto.Data {
 		}
 		tp.Txs = txBzs
 	}
+	rawRoots := data.IntermediateStateRoots.RawRootsList
+	if len(rawRoots) > 0 {
+		roots := make([][]byte, len(rawRoots))
+		for i := range rawRoots {
+			roots[i] = rawRoots[i]
+		}
+		tp.IntermediateStateRoots.RawRootsList = roots
+	}
+	// TODO(ismail): fill in messages too
 
+	// TODO(ismail): handle evidence here instead of the block
+	// for the sake of consistency
 	return *tp
 }
 
@@ -1096,6 +1304,25 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		data.Txs = txBzs
 	} else {
 		data.Txs = Txs{}
+	}
+
+	if len(dp.Messages.MessagesList) > 0 {
+		msgs := make([]Message, len(dp.Messages.MessagesList))
+		for i, m := range dp.Messages.MessagesList {
+			msgs[i] = Message{NamespaceID: m.NamespaceId, Data: m.Data}
+		}
+		data.Messages = Messages{MessagesList: msgs}
+	} else {
+		data.Messages = Messages{}
+	}
+	if len(dp.IntermediateStateRoots.RawRootsList) > 0 {
+		roots := make([]tmbytes.HexBytes, len(dp.IntermediateStateRoots.RawRootsList))
+		for i, r := range dp.IntermediateStateRoots.RawRootsList {
+			roots[i] = r
+		}
+		data.IntermediateStateRoots = IntermediateStateRoots{RawRootsList: roots}
+	} else {
+		data.IntermediateStateRoots = IntermediateStateRoots{}
 	}
 
 	return *data, nil
@@ -1190,6 +1417,32 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceData) error {
 	data.byteSize = int64(eviData.Size())
 
 	return nil
+}
+
+func (data *EvidenceData) splitIntoShares(shareSize int) NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, ev := range data.Evidence {
+		var rawData []byte
+		var err error
+		switch cev := ev.(type) {
+		case *DuplicateVoteEvidence:
+			rawData, err = protoio.MarshalDelimited(cev.ToProto())
+		case *LightClientAttackEvidence:
+			pcev, iErr := cev.ToProto()
+			if iErr != nil {
+				err = iErr
+				break
+			}
+			rawData, err = protoio.MarshalDelimited(pcev)
+		default:
+			panic(fmt.Sprintf("unknown evidence included in evidence pool (don't know how to encode this) %#v", ev))
+		}
+		if err != nil {
+			panic(fmt.Sprintf("evidence included in evidence pool that can not be encoded %#v, err: %v", ev, err))
+		}
+		shares = appendToShares(shares, EvidenceNamespaceID, rawData, shareSize)
+	}
+	return shares
 }
 
 //--------------------------------------------------------------------------------

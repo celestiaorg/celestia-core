@@ -17,6 +17,8 @@ require (
 	github.com/golang/protobuf v1.4.3
 	github.com/gorilla/websocket v1.4.2
 	github.com/gtank/merlin v0.1.1
+	github.com/lazyledger/nmt v0.0.0-20200908210531-1a5d9124ad10
+	github.com/lazyledger/rsmt2d v0.0.0-20200626141417-ea94438fa457
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/minio/highwayhash v1.0.1
 	github.com/pkg/errors v0.9.1
