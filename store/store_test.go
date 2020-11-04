@@ -35,14 +35,20 @@ func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 		Timestamp:        timestamp,
 		Signature:        []byte("Signature"),
 	}}
-	return types.NewCommit(
-		height,
-		0,
-		types.BlockID{
-			Hash:          crypto.CRandBytes(32),
-			PartSetHeader: types.PartSetHeader{Hash: crypto.CRandBytes(32), Total: 2},
-		},
-		commitSigs)
+	return types.NewCommit(height, 0,
+		types.BlockID{Hash: []byte(""), PartSetHeader: types.PartSetHeader{Hash: []byte(""), Total: 2}}, commitSigs)
+}
+
+func makeTxs(height int64) (txs []types.Tx) {
+	for i := 0; i < 10; i++ {
+		txs = append(txs, types.Tx([]byte{byte(height), byte(i)}))
+	}
+	return txs
+}
+
+func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Block {
+	block, _ := state.MakeBlock(height, makeTxs(height), nil, nil, nil, lastCommit, state.Validators.GetProposer().Address)
+	return block
 }
 
 func makeStateAndBlockStore(logger log.Logger) (sm.State, *BlockStore, cleanupFunc) {

@@ -22,6 +22,10 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+const (
+	nTxsPerBlock = 10
+)
+
 type paramsChangeTestCase struct {
 	height int64
 	params types.ConsensusParams
@@ -57,7 +61,15 @@ func makeAndCommitGoodBlock(
 
 func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commit, proposerAddr []byte,
 	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, types.BlockID, error) {
-	block, _ := state.MakeBlock(height, factory.MakeTenTxs(height), lastCommit, evidence, proposerAddr)
+	block, _ := state.MakeBlock(
+		height,
+		factory.MakeTenTxs(height),
+		evidence,
+		nil,
+		nil,
+		lastCommit,
+		proposerAddr,
+	)
 	if err := blockExec.ValidateBlock(state, block); err != nil {
 		return state, types.BlockID{}, err
 	}
