@@ -5,7 +5,6 @@ import (
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
 	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
-	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -23,7 +22,7 @@ func Validators(ctx *rpctypes.Context, heightPtr *int64, pagePtr, perPagePtr *in
 		return nil, err
 	}
 
-	validators, err := sm.LoadValidators(env.StateDB, height)
+	validators, err := env.StateStore.LoadValidators(height)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +98,7 @@ func ConsensusParams(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCon
 		return nil, err
 	}
 
-	consensusParams, err := sm.LoadConsensusParams(env.StateDB, height)
+	consensusParams, err := env.StateStore.LoadConsensusParams(height)
 	if err != nil {
 		return nil, err
 	}

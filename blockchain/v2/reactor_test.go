@@ -156,8 +156,11 @@ func newTestReactor(p testReactorParams) *BlockchainReactor {
 			panic(fmt.Errorf("error start app: %w", err))
 		}
 		db := dbm.NewMemDB()
-		appl = sm.NewBlockExecutor(db, p.logger, proxyApp.Consensus(), mock.Mempool{}, sm.MockEvidencePool{})
-		sm.SaveState(db, state)
+		stateStore := sm.NewStore(db)
+		appl = sm.NewBlockExecutor(stateStore, p.logger, proxyApp.Consensus(), mock.Mempool{}, sm.EmptyEvidencePool{})
+		if err = stateStore.Save(state); err != nil {
+			panic(err)
+		}
 	}
 
 	r := newReactor(state, store, reporter, appl, true)
@@ -168,7 +171,7 @@ func newTestReactor(p testReactorParams) *BlockchainReactor {
 }
 
 // This test is left here and not deleted to retain the termination cases for
-// future improvement in [#4482](https://github.com/lazyledger/lazyledger-cor/issues/4482).
+// future improvement in [#4482](https://github.com/tendermint/tendermint/issues/4482).
 // func TestReactorTerminationScenarios(t *testing.T) {
 
 // 	config := cfg.ResetTestRoot("blockchain_reactor_v2_test")
@@ -450,7 +453,7 @@ func makeTxs(height int64) (txs []types.Tx) {
 }
 
 func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Block {
-	block, _ := state.MakeBlock(height, makeTxs(height), []byte("proof"), lastCommit, nil, state.Validators.GetProposer().Address)
+	block, _ := state.MakeBlock(height, makeTxs(height), nil, nil, nil, nil, lastCommit, state.Validators.GetProposer().Address)
 	return block
 }
 
@@ -498,16 +501,19 @@ func newReactorStore(
 
 	stateDB := dbm.NewMemDB()
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
-
-	state, err := sm.LoadStateFromDBOrGenesisDoc(stateDB, genDoc)
+	stateStore := sm.NewStore(stateDB)
+	state, err := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 	if err != nil {
 		panic(fmt.Errorf("error constructing state from genesis file: %w", err))
 	}
 
 	db := dbm.NewMemDB()
-	blockExec := sm.NewBlockExecutor(db, log.TestingLogger(), proxyApp.Consensus(),
-		mock.Mempool{}, sm.MockEvidencePool{})
-	sm.SaveState(db, state)
+	stateStore = sm.NewStore(db)
+	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
+		mock.Mempool{}, sm.EmptyEvidencePool{})
+	if err = stateStore.Save(state); err != nil {
+		panic(err)
+	}
 
 	// add blocks in
 	for blockHeight := int64(1); blockHeight <= maxBlockHeight; blockHeight++ {

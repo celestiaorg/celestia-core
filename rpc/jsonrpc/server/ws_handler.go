@@ -17,19 +17,13 @@ import (
 	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 )
 
-///////////////////////////////////////////////////////////////////////////////
 // WebSocket handler
-///////////////////////////////////////////////////////////////////////////////
 
 const (
 	defaultWSWriteChanCapacity = 100
 	defaultWSWriteWait         = 10 * time.Second
 	defaultWSReadWait          = 30 * time.Second
 	defaultWSPingPeriod        = (defaultWSReadWait * 9) / 10
-)
-
-var (
-	newline = []byte{'\n'}
 )
 
 // WebsocketManager provides a WS handler for incoming connections and passes a
@@ -104,9 +98,7 @@ func (wm *WebsocketManager) WebsocketHandler(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-///////////////////////////////////////////////////////////////////////////////
 // WebSocket connection
-///////////////////////////////////////////////////////////////////////////////
 
 // A single websocket connection contains listener id, underlying ws
 // connection, and the event switch for subscribing to events.
@@ -439,40 +431,13 @@ func (wsc *wsConnection) writeRoutine() {
 				return
 			}
 		case msg := <-wsc.writeChan:
-			if err := wsc.baseConn.SetWriteDeadline(time.Now().Add(wsc.writeWait)); err != nil {
-				wsc.Logger.Error("Failed to set write deadline", "err", err)
-				return
-			}
-
 			jsonBytes, err := json.MarshalIndent(msg, "", "  ")
 			if err != nil {
 				wsc.Logger.Error("Failed to marshal RPCResponse to JSON", "err", err)
 				continue
 			}
-
-			w, err := wsc.baseConn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				wsc.Logger.Error("Can't get NextWriter", "err", err)
-				return
-			}
-			w.Write(jsonBytes) //nolint:errcheck //ignore error
-
-			// Add queued messages to the current websocket message.
-			n := len(wsc.writeChan)
-			for i := 0; i < n; i++ {
-				w.Write(newline) //nolint:errcheck //ignore error
-
-				msg = <-wsc.writeChan
-				jsonBytes, err = json.MarshalIndent(msg, "", "  ")
-				if err != nil {
-					wsc.Logger.Error("Failed to marshal RPCResponse to JSON", "err", err)
-					continue
-				}
-				w.Write(jsonBytes) //nolint:errcheck //ignore error
-			}
-
-			if err := w.Close(); err != nil {
-				wsc.Logger.Error("Can't close NextWriter", "err", err)
+			if err = wsc.writeMessageWithDeadline(websocket.TextMessage, jsonBytes); err != nil {
+				wsc.Logger.Error("Failed to write response", "err", err, "msg", msg)
 				return
 			}
 		}

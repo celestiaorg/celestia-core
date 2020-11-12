@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"time"
 
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
+	"github.com/lazyledger/lazyledger-core/version"
 )
 
 func MakeCommit(blockID BlockID, height int64, round int32,
@@ -82,15 +85,23 @@ func MakeVote(
 // MakeBlock returns a new block with an empty header, except what can be
 // computed from itself.
 // It populates the same set of fields validated by ValidateBasic.
-func MakeBlock(height int64, txs []Tx, metaData []byte, lastCommit *Commit, evidence []Evidence) *Block {
+// TODO(ismail): tell the IG team that this method isn't only used in tests
+// hence, test_util.go is quite misleading.
+func MakeBlock(
+	height int64,
+	txs []Tx, metaData []byte, evidence []Evidence, intermediateStateRoots []tmbytes.HexBytes, messages []Message,
+	lastCommit *Commit) *Block {
 	block := &Block{
 		Header: Header{
-			Height: height,
+			Version: tmversion.Consensus{Block: version.BlockProtocol, App: 0},
+			Height:  height,
 		},
 		Data: Data{
-			Txs:      txs,
-			MetaData: metaData,
-			Evidence: EvidenceData{Evidence: evidence},
+			Txs:                    txs,
+			MetaData:               metaData,
+			IntermediateStateRoots: IntermediateStateRoots{RawRootsList: intermediateStateRoots},
+			Evidence:               EvidenceData{Evidence: evidence},
+			Messages:               Messages{MessagesList: messages},
 		},
 		LastCommit: lastCommit,
 	}

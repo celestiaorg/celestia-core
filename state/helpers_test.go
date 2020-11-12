@@ -54,7 +54,16 @@ func makeAndCommitGoodBlock(
 
 func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commit, proposerAddr []byte,
 	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, types.BlockID, error) {
-	block, _ := state.MakeBlock(height, makeTxs(height), []byte("proof"), lastCommit, evidence, proposerAddr)
+	block, _ := state.MakeBlock(
+		height,
+		makeTxs(height),
+		evidence,
+		nil,
+		nil,
+		nil,
+		lastCommit,
+		proposerAddr,
+	)
 	if err := blockExec.ValidateBlock(state, block); err != nil {
 		return state, types.BlockID{}, err
 	}
@@ -115,12 +124,17 @@ func makeState(nVals, height int) (sm.State, dbm.DB, map[string]types.PrivValida
 	})
 
 	stateDB := dbm.NewMemDB()
-	sm.SaveState(stateDB, s)
+	stateStore := sm.NewStore(stateDB)
+	if err := stateStore.Save(s); err != nil {
+		panic(err)
+	}
 
 	for i := 1; i < height; i++ {
 		s.LastBlockHeight++
 		s.LastValidators = s.Validators.Copy()
-		sm.SaveState(stateDB, s)
+		if err := stateStore.Save(s); err != nil {
+			panic(err)
+		}
 	}
 
 	return s, stateDB, privVals
@@ -130,9 +144,11 @@ func makeBlock(state sm.State, height int64) *types.Block {
 	block, _ := state.MakeBlock(
 		height,
 		makeTxs(state.LastBlockHeight),
-		[]byte("proof"),
-		new(types.Commit),
 		nil,
+		nil,
+		nil,
+		nil,
+		new(types.Commit),
 		state.Validators.GetProposer().Address,
 	)
 	return block

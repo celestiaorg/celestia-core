@@ -35,7 +35,6 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	logger := log.TestingLogger().With("wal_generator", "wal_generator")
 	logger.Info("generating WAL (last height msg excluded)", "numBlocks", numBlocks)
 
-	/////////////////////////////////////////////////////////////////////////////
 	// COPY PASTE FROM node.go WITH A FEW MODIFICATIONS
 	// NOTE: we can't import node package because of circular dependency.
 	// NOTE: we don't do handshake so need to set state.Version.Consensus.App directly.
@@ -48,12 +47,16 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	}
 	blockStoreDB := db.NewMemDB()
 	stateDB := blockStoreDB
+	stateStore := sm.NewStore(stateDB)
 	state, err := sm.MakeGenesisState(genDoc)
 	if err != nil {
 		return fmt.Errorf("failed to make genesis state: %w", err)
 	}
 	state.Version.Consensus.App = kvstore.ProtocolVersion
-	sm.SaveState(stateDB, state)
+	if err = stateStore.Save(state); err != nil {
+		t.Error(err)
+	}
+
 	blockStore := store.NewBlockStore(blockStoreDB)
 
 	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(app))
@@ -78,8 +81,8 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 		}
 	})
 	mempool := emptyMempool{}
-	evpool := emptyEvidencePool{}
-	blockExec := sm.NewBlockExecutor(stateDB, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
+	evpool := sm.EmptyEvidencePool{}
+	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore, mempool, evpool)
 	consensusState.SetLogger(logger)
 	consensusState.SetEventBus(eventBus)
@@ -87,7 +90,6 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 		consensusState.SetPrivValidator(privValidator)
 	}
 	// END OF COPY PASTE
-	/////////////////////////////////////////////////////////////////////////////
 
 	// set consensus wal to buffered WAL, which will write all incoming msgs to buffer
 	numBlocksWritten := make(chan struct{})
@@ -117,7 +119,7 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	}
 }
 
-//WALWithNBlocks returns a WAL content with numBlocks.
+// WALWithNBlocks returns a WAL content with numBlocks.
 func WALWithNBlocks(t *testing.T, numBlocks int) (data []byte, err error) {
 	var b bytes.Buffer
 	wr := bufio.NewWriter(&b)

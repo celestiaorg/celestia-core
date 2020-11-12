@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 
 	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
@@ -131,7 +132,7 @@ func (state State) IsEmpty() bool {
 	return state.Validators == nil // XXX can't compare to Empty
 }
 
-//ToProto takes the local state type and returns the equivalent proto type
+// ToProto takes the local state type and returns the equivalent proto type
 func (state *State) ToProto() (*tmstate.State, error) {
 	if state == nil {
 		return nil, errors.New("state is nil")
@@ -235,14 +236,16 @@ func StateFromProto(pb *tmstate.State) (*State, error) { //nolint:golint
 func (state State) MakeBlock(
 	height int64,
 	txs []types.Tx,
-	proof []byte,
-	commit *types.Commit,
+	metaData []byte,
 	evidence []types.Evidence,
+	intermediateStateRoots []tmbytes.HexBytes,
+	messages []types.Message,
+	commit *types.Commit,
 	proposerAddress []byte,
 ) (*types.Block, *types.PartSet) {
 
 	// Build base block with block data.
-	block := types.MakeBlock(height, txs, proof, commit, evidence)
+	block := types.MakeBlock(height, txs, metaData, evidence, intermediateStateRoots, messages, commit)
 
 	// Set time.
 	var timestamp time.Time
