@@ -33,7 +33,7 @@ jobs:
         run: ./run-multiple.sh networks/nightly/*-group${{ matrix.group }}-*.toml
 
       - name: Notify Slack on failure
-        uses: rtCamp/action-slack-notify@e9db0ef
+        uses: rtCamp/action-slack-notify@ecc1353ce30ef086ce3fc3d1ea9ac2e32e150402
         if: ${{ failure() }}
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
