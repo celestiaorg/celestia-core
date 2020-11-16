@@ -57,8 +57,8 @@ func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commi
 	block, _ := state.MakeBlock(
 		height,
 		makeTxs(height),
-		evidence,
 		nil,
+		evidence,
 		nil,
 		nil,
 		lastCommit,
