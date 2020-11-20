@@ -14,6 +14,7 @@ import (
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	pc "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
+	tmtypes "github.com/lazyledger/lazyledger-core/types"
 )
 
 const (
@@ -190,13 +191,13 @@ func (app *PersistentKVStoreApplication) Validators() (validators []types.Valida
 	return
 }
 
-func MakeValSetChangeTx(pubkey pc.PublicKey, power int64) []byte {
+func MakeValSetChangeTx(pubkey pc.PublicKey, power int64) tmtypes.Tx {
 	pk, err := cryptoenc.PubKeyFromProto(pubkey)
 	if err != nil {
 		panic(err)
 	}
 	pubStr := base64.StdEncoding.EncodeToString(pk.Bytes())
-	return []byte(fmt.Sprintf("val:%s!%d", pubStr, power))
+	return tmtypes.Tx{Value: []byte(fmt.Sprintf("val:%s!%d", pubStr, power))}
 }
 
 func isValidatorTx(tx []byte) bool {

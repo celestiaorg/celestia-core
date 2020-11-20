@@ -503,7 +503,7 @@ func cmdDeliverTx(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	res, err := client.DeliverTxSync(types.RequestDeliverTx{Tx: txBytes})
+	res, err := client.DeliverTxSync(types.RequestDeliverTx{Value: txBytes})
 	if err != nil {
 		return err
 	}

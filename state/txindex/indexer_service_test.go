@@ -11,6 +11,7 @@ import (
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/state/txindex"
 	"github.com/lazyledger/lazyledger-core/state/txindex/kv"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -51,7 +52,7 @@ func TestIndexerServiceIndexesBlocks(t *testing.T) {
 	txResult1 := &abci.TxResult{
 		Height: 1,
 		Index:  uint32(0),
-		Tx:     types.Tx("foo"),
+		Tx:     &tmproto.Tx{Value: []byte("foo")},
 		Result: abci.ResponseDeliverTx{Code: 0},
 	}
 	err = eventBus.PublishEventTx(types.EventDataTx{TxResult: *txResult1})
@@ -59,7 +60,7 @@ func TestIndexerServiceIndexesBlocks(t *testing.T) {
 	txResult2 := &abci.TxResult{
 		Height: 1,
 		Index:  uint32(1),
-		Tx:     types.Tx("bar"),
+		Tx:     &tmproto.Tx{Value: []byte("bar")},
 		Result: abci.ResponseDeliverTx{Code: 0},
 	}
 	err = eventBus.PublishEventTx(types.EventDataTx{TxResult: *txResult2})
@@ -68,10 +69,10 @@ func TestIndexerServiceIndexesBlocks(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// check the result
-	res, err := txIndexer.Get(types.Tx("foo").Hash())
+	res, err := txIndexer.Get(types.Tx{Value: []byte("foo")}.Hash())
 	assert.NoError(t, err)
 	assert.Equal(t, txResult1, res)
-	res, err = txIndexer.Get(types.Tx("bar").Hash())
+	res, err = txIndexer.Get(types.Tx{Value: []byte("bar")}.Hash())
 	assert.NoError(t, err)
 	assert.Equal(t, txResult2, res)
 }

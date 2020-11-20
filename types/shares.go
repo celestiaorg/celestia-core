@@ -44,10 +44,15 @@ func (ns NamespacedShares) RawShares() [][]byte {
 
 func (tx Tx) MarshalDelimited() ([]byte, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
-	length := uint64(len(tx))
+	length := uint64(tx.Size())
 	n := binary.PutUvarint(lenBuf, length)
 
-	return append(lenBuf[:n], tx...), nil
+	txBytes, err := tx.ToProto().Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	return append(lenBuf[:n], txBytes...), nil
 }
 
 // MarshalDelimited marshals the raw data (excluding the namespace) of this

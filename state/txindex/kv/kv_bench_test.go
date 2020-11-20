@@ -11,7 +11,7 @@ import (
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
-	"github.com/lazyledger/lazyledger-core/types"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
 func BenchmarkTxSearch(b *testing.B) {
@@ -46,7 +46,7 @@ func BenchmarkTxSearch(b *testing.B) {
 		txResult := &abci.TxResult{
 			Height: int64(i),
 			Index:  0,
-			Tx:     types.Tx(string(txBz)),
+			Tx:     &tmproto.Tx{Value: txBz},
 			Result: abci.ResponseDeliverTx{
 				Data:   []byte{0},
 				Code:   abci.CodeTypeOK,

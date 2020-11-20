@@ -27,9 +27,9 @@ func TestMakeShares(t *testing.T) {
 		VoteB: vote2,
 	}
 	testEvidenceBytes, err := protoio.MarshalDelimited(testEvidence.ToProto())
-	largeTx := Tx(bytes.Repeat([]byte("large Tx"), 50))
+	largeTx := Tx{Value: bytes.Repeat([]byte("large Tx"), 50)}
 	largeTxLenDelimited, _ := largeTx.MarshalDelimited()
-	smolTx := Tx("small Tx")
+	smolTx := Tx{Value: []byte("small Tx")}
 	smolTxLenDelimited, _ := smolTx.MarshalDelimited()
 	msg1 := Message{
 		NamespaceID: namespace.ID("8bytesss"),

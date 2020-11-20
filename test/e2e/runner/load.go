@@ -76,7 +76,7 @@ func loadGenerate(ctx context.Context, chTx chan<- types.Tx) {
 		if err != nil {
 			panic(fmt.Sprintf("Failed to read random bytes: %v", err))
 		}
-		tx := types.Tx(fmt.Sprintf("load-%X=%x", id, bz))
+		tx := types.Tx{Value: []byte(fmt.Sprintf("load-%X=%x", id, bz))} //todo: add key when abci methods have changed
 
 		select {
 		case chTx <- tx:

@@ -10,6 +10,7 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/libs/service"
+	tmtypes "github.com/lazyledger/lazyledger-core/types"
 
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
 	"github.com/lazyledger/lazyledger-core/abci/example/code"
@@ -189,7 +190,7 @@ func makeApplyBlock(
 	kvstore types.Application,
 	heightInt int,
 	diff []types.ValidatorUpdate,
-	txs ...[]byte) {
+	txs ...tmtypes.Tx) {
 	// make and apply block
 	height := int64(heightInt)
 	hash := []byte("foo")
@@ -199,7 +200,7 @@ func makeApplyBlock(
 
 	kvstore.BeginBlock(types.RequestBeginBlock{Hash: hash, Header: header})
 	for _, tx := range txs {
-		if r := kvstore.DeliverTx(types.RequestDeliverTx{Tx: tx}); r.IsErr() {
+		if r := kvstore.DeliverTx(types.RequestDeliverTx{Key: tx.Key, Value: tx.Value}); r.IsErr() {
 			t.Fatal(r)
 		}
 	}

@@ -88,7 +88,7 @@ func (app *Application) CheckTx(req abci.RequestCheckTx) abci.ResponseCheckTx {
 
 // DeliverTx implements ABCI.
 func (app *Application) DeliverTx(req abci.RequestDeliverTx) abci.ResponseDeliverTx {
-	key, value, err := parseTx(req.Tx)
+	key, value, err := parseTx(req.Value)
 	if err != nil {
 		panic(err) // shouldn't happen since we verified it in CheckTx
 	}

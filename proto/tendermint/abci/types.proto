@@ -81,11 +81,13 @@ enum CheckTxType {
 
 message RequestCheckTx {
   bytes       tx   = 1;
-  CheckTxType type = 2;
+  bytes      tx_id   = 2;
+  CheckTxType type = 3;
 }
 
 message RequestDeliverTx {
-  bytes tx = 1;
+  bytes key = 1;
+  bytes value = 2;
 }
 
 message RequestEndBlock {
@@ -309,7 +311,7 @@ message EventAttribute {
 message TxResult {
   int64             height = 1;
   uint32            index  = 2;
-  bytes             tx     = 3;
+  tendermint.types.Tx             tx     = 3;
   ResponseDeliverTx result = 4 [(gogoproto.nullable) = false];
 }
 

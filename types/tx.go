@@ -44,6 +44,20 @@ func (tx Tx) String() string {
 	return fmt.Sprintf("Tx{Key:%X, Value:%X}", []byte(tx.Key), []byte(tx.Value))
 }
 
+func (tx Tx) ToProto() *tmproto.Tx {
+	return &tmproto.Tx{
+		Key:   tx.Key,
+		Value: tx.Value,
+	}
+}
+
+func TxFromProto(pbTx tmproto.Tx) Tx {
+	return Tx{
+		Key:   pbTx.Key,
+		Value: pbTx.Value,
+	}
+}
+
 // Txs is a slice of Tx.
 type Txs []Tx
 

@@ -67,7 +67,7 @@ func TestApp_Tx(t *testing.T) {
 
 		key := fmt.Sprintf("testapp-tx-%v", node.Name)
 		value := fmt.Sprintf("%x", bz)
-		tx := types.Tx(fmt.Sprintf("%v=%v", key, value))
+		tx := types.Tx{Value: []byte(fmt.Sprintf("%v=%v", key, value))} //todo: add key when abci methods are added
 
 		_, err = client.BroadcastTxCommit(ctx, tx)
 		require.NoError(t, err)

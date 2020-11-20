@@ -16,6 +16,7 @@ import (
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/state/txindex"
 	"github.com/lazyledger/lazyledger-core/types"
 )
@@ -23,11 +24,11 @@ import (
 func TestTxIndex(t *testing.T) {
 	indexer := NewTxIndex(db.NewMemDB())
 
-	tx := types.Tx("HELLO WORLD")
+	tx := types.Tx{Value: []byte("HELLO WORLD")}
 	txResult := &abci.TxResult{
 		Height: 1,
 		Index:  0,
-		Tx:     tx,
+		Tx:     tx.ToProto(),
 		Result: abci.ResponseDeliverTx{
 			Data: []byte{0},
 			Code: abci.CodeTypeOK, Log: "", Events: nil,
@@ -46,11 +47,11 @@ func TestTxIndex(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, proto.Equal(txResult, loadedTxResult))
 
-	tx2 := types.Tx("BYE BYE WORLD")
+	tx2 := types.Tx{Value: []byte("BYE BYE WORLD")}
 	txResult2 := &abci.TxResult{
 		Height: 1,
 		Index:  0,
-		Tx:     tx2,
+		Tx:     tx2.ToProto(),
 		Result: abci.ResponseDeliverTx{
 			Data: []byte{0},
 			Code: abci.CodeTypeOK, Log: "", Events: nil,
@@ -74,7 +75,7 @@ func TestTxSearch(t *testing.T) {
 		{Type: "account", Attributes: []abci.EventAttribute{{Key: []byte("owner"), Value: []byte("Ivan"), Index: true}}},
 		{Type: "", Attributes: []abci.EventAttribute{{Key: []byte("not_allowed"), Value: []byte("Vlad"), Index: true}}},
 	})
-	hash := types.Tx(txResult.Tx).Hash()
+	hash := types.Tx(*txResult.Tx).Hash()
 
 	err := indexer.Index(txResult)
 	require.NoError(t, err)
@@ -165,16 +166,16 @@ func TestTxSearchDeprecatedIndexing(t *testing.T) {
 	txResult1 := txResultWithEvents([]abci.Event{
 		{Type: "account", Attributes: []abci.EventAttribute{{Key: []byte("number"), Value: []byte("1"), Index: true}}},
 	})
-	hash1 := types.Tx(txResult1.Tx).Hash()
+	hash1 := types.Tx(*txResult1.Tx).Hash()
 
 	err := indexer.Index(txResult1)
 	require.NoError(t, err)
 
 	// index tx also using deprecated indexing (event as key)
 	txResult2 := txResultWithEvents(nil)
-	txResult2.Tx = types.Tx("HELLO WORLD 2")
+	txResult2.Tx = &tmproto.Tx{Value: []byte("HELLO WORLD 2")}
 
-	hash2 := types.Tx(txResult2.Tx).Hash()
+	hash2 := types.Tx(*txResult2.Tx).Hash()
 	b := indexer.store.NewBatch()
 
 	rawBytes, err := proto.Marshal(txResult2)
@@ -267,7 +268,7 @@ func TestTxSearchMultipleTxs(t *testing.T) {
 		{Type: "account", Attributes: []abci.EventAttribute{{Key: []byte("number"), Value: []byte("1"), Index: true}}},
 	})
 
-	txResult.Tx = types.Tx("Bob's account")
+	txResult.Tx = &tmproto.Tx{Value: []byte("Bob's account")}
 	txResult.Height = 2
 	txResult.Index = 1
 	err := indexer.Index(txResult)
@@ -277,7 +278,7 @@ func TestTxSearchMultipleTxs(t *testing.T) {
 	txResult2 := txResultWithEvents([]abci.Event{
 		{Type: "account", Attributes: []abci.EventAttribute{{Key: []byte("number"), Value: []byte("2"), Index: true}}},
 	})
-	txResult2.Tx = types.Tx("Alice's account")
+	txResult2.Tx = &tmproto.Tx{Value: []byte("Alice's account")}
 	txResult2.Height = 1
 	txResult2.Index = 2
 
@@ -288,7 +289,7 @@ func TestTxSearchMultipleTxs(t *testing.T) {
 	txResult3 := txResultWithEvents([]abci.Event{
 		{Type: "account", Attributes: []abci.EventAttribute{{Key: []byte("number"), Value: []byte("3"), Index: true}}},
 	})
-	txResult3.Tx = types.Tx("Jack's account")
+	txResult3.Tx = &tmproto.Tx{Value: []byte("Jack's account")}
 	txResult3.Height = 1
 	txResult3.Index = 1
 	err = indexer.Index(txResult3)
@@ -299,7 +300,7 @@ func TestTxSearchMultipleTxs(t *testing.T) {
 	txResult4 := txResultWithEvents([]abci.Event{
 		{Type: "account", Attributes: []abci.EventAttribute{{Key: []byte("number.id"), Value: []byte("1"), Index: true}}},
 	})
-	txResult4.Tx = types.Tx("Mike's account")
+	txResult4.Tx = &tmproto.Tx{Value: []byte("Mike's account")}
 	txResult4.Height = 2
 	txResult4.Index = 2
 	err = indexer.Index(txResult4)
@@ -314,11 +315,11 @@ func TestTxSearchMultipleTxs(t *testing.T) {
 }
 
 func txResultWithEvents(events []abci.Event) *abci.TxResult {
-	tx := types.Tx("HELLO WORLD")
+	tx := types.Tx{Value: []byte("HELLO WORLD")}
 	return &abci.TxResult{
 		Height: 1,
 		Index:  0,
-		Tx:     tx,
+		Tx:     tx.ToProto(),
 		Result: abci.ResponseDeliverTx{
 			Data:   []byte{0},
 			Code:   abci.CodeTypeOK,
@@ -340,11 +341,11 @@ func benchmarkTxIndex(txsCount int64, b *testing.B) {
 	batch := txindex.NewBatch(txsCount)
 	txIndex := uint32(0)
 	for i := int64(0); i < txsCount; i++ {
-		tx := tmrand.Bytes(250)
+		tx := types.Tx{Value: tmrand.Bytes(250)}
 		txResult := &abci.TxResult{
 			Height: 1,
 			Index:  txIndex,
-			Tx:     tx,
+			Tx:     tx.ToProto(),
 			Result: abci.ResponseDeliverTx{
 				Data:   []byte{0},
 				Code:   abci.CodeTypeOK,

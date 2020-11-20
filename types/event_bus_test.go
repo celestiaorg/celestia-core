@@ -26,7 +26,7 @@ func TestEventBusPublishEventTx(t *testing.T) {
 		}
 	})
 
-	tx := Tx("foo")
+	tx := Tx{Value: []byte("foo")}
 	result := abci.ResponseDeliverTx{
 		Data: []byte("bar"),
 		Events: []abci.Event{
@@ -53,7 +53,7 @@ func TestEventBusPublishEventTx(t *testing.T) {
 	err = eventBus.PublishEventTx(EventDataTx{abci.TxResult{
 		Height: 1,
 		Index:  0,
-		Tx:     tx,
+		Tx:     tx.ToProto(),
 		Result: result,
 	}})
 	assert.NoError(t, err)
@@ -126,7 +126,7 @@ func TestEventBusPublishEventTxDuplicateKeys(t *testing.T) {
 		}
 	})
 
-	tx := Tx("foo")
+	tx := Tx{Value: []byte("foo")}
 	result := abci.ResponseDeliverTx{
 		Data: []byte("bar"),
 		Events: []abci.Event{
@@ -206,7 +206,7 @@ func TestEventBusPublishEventTxDuplicateKeys(t *testing.T) {
 		err = eventBus.PublishEventTx(EventDataTx{abci.TxResult{
 			Height: 1,
 			Index:  0,
-			Tx:     tx,
+			Tx:     tx.ToProto(),
 			Result: result,
 		}})
 		assert.NoError(t, err)

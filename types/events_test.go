@@ -8,7 +8,7 @@ import (
 )
 
 func TestQueryTxFor(t *testing.T) {
-	tx := Tx("foo")
+	tx := Tx{Value: []byte("foo")}
 	assert.Equal(t,
 		fmt.Sprintf("tm.event='Tx' AND tx.hash='%X'", tx.Hash()),
 		EventQueryTxFor(tx).String(),
