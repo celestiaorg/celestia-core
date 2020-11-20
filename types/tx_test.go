@@ -15,7 +15,8 @@ import (
 func makeTxs(cnt, size int) Txs {
 	txs := make(Txs, cnt)
 	for i := 0; i < cnt; i++ {
-		txs[i] = tmrand.Bytes(size)
+		txs[i].Key = tmrand.Bytes(size)
+		txs[i].Value = tmrand.Bytes(size)
 	}
 	return txs
 }
@@ -33,8 +34,8 @@ func TestTxIndex(t *testing.T) {
 			idx := txs.Index(tx)
 			assert.Equal(t, j, idx)
 		}
-		assert.Equal(t, -1, txs.Index(nil))
-		assert.Equal(t, -1, txs.Index(Tx("foodnwkf")))
+		assert.Equal(t, -1, txs.Index(Tx{Value: nil}))
+		assert.Equal(t, -1, txs.Index(Tx{Value: []byte("foodnwkf")}))
 	}
 }
 
@@ -47,7 +48,7 @@ func TestTxIndexByHash(t *testing.T) {
 			assert.Equal(t, j, idx)
 		}
 		assert.Equal(t, -1, txs.IndexByHash(nil))
-		assert.Equal(t, -1, txs.IndexByHash(Tx("foodnwkf").Hash()))
+		assert.Equal(t, -1, txs.IndexByHash(Tx{Value: []byte("foodnwkf")}.Hash()))
 	}
 }
 
@@ -55,9 +56,9 @@ func TestValidTxProof(t *testing.T) {
 	cases := []struct {
 		txs Txs
 	}{
-		{Txs{{1, 4, 34, 87, 163, 1}}},
-		{Txs{{5, 56, 165, 2}, {4, 77}}},
-		{Txs{Tx("foo"), Tx("bar"), Tx("baz")}},
+		{Txs{{Value: []byte{1, 4, 34, 87, 163, 1}}}},
+		{Txs{{Value: []byte{5, 56, 165, 2}}, {Value: []byte{4, 77}}}},
+		{Txs{Tx{Value: []byte("foo")}, Tx{Value: []byte("bar")}, Tx{Value: []byte("baz")}}},
 		{makeTxs(20, 5)},
 		{makeTxs(7, 81)},
 		{makeTxs(61, 15)},
@@ -68,7 +69,7 @@ func TestValidTxProof(t *testing.T) {
 		root := txs.Hash()
 		// make sure valid proof for every tx
 		for i := range txs {
-			tx := []byte(txs[i])
+			tx := []byte(txs[i].Value)
 			proof := txs.Proof(i)
 			assert.EqualValues(t, i, proof.Proof.Index, "%d: %d", h, i)
 			assert.EqualValues(t, len(txs), proof.Proof.Total, "%d: %d", h, i)

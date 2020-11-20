@@ -111,7 +111,7 @@ func TestLightClientAttackEvidence_Equivocation(t *testing.T) {
 		// we don't have a network partition so we will make 4/5 (greater than 2/3) malicious and vote again for
 		// a different block (which we do by adding txs)
 		primaryHeaders[height] = chainKeys[height].GenSignedHeader(chainID, height,
-			bTime.Add(time.Duration(height)*time.Minute), []types.Tx{[]byte("abcd")},
+			bTime.Add(time.Duration(height)*time.Minute), []types.Tx{{Value: []byte("abcd")}},
 			witnessValidators[height], witnessValidators[height+1], hash("app_hash"),
 			hash("cons_hash"), hash("results_hash"), 0, len(chainKeys[height])-1)
 		primaryValidators[height] = witnessValidators[height]

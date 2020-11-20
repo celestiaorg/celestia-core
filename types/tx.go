@@ -11,19 +11,37 @@ import (
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
-// Tx is an arbitrary byte array.
+// Tx has a key and value arbitrary byte array.
 // NOTE: Tx has no types at this level, so when wire encoded it's just length-prefixed.
 // Might we want types here ?
-type Tx []byte
+type Tx struct {
+	Key   []byte
+	Value []byte
+}
 
 // Hash computes the TMHASH hash of the wire encoded transaction.
+// Hash(key) + Hash(value)
 func (tx Tx) Hash() []byte {
-	return tmhash.Sum(tx)
+	var hash []byte
+	hash = append(hash, tmhash.Sum(tx.Key)...)
+	hash = append(hash, tmhash.Sum(tx.Value)...)
+
+	return hash
+}
+
+// Size returns the size of a transaction (Key + Value)
+func (tx Tx) Size() int64 {
+	var txSize int64
+
+	txSize += int64(len(tx.Key))
+	txSize += int64(len(tx.Value))
+
+	return txSize
 }
 
 // String returns the hex-encoded transaction as a string.
 func (tx Tx) String() string {
-	return fmt.Sprintf("Tx{%X}", []byte(tx))
+	return fmt.Sprintf("Tx{Key:%X, Value:%X}", []byte(tx.Key), []byte(tx.Value))
 }
 
 // Txs is a slice of Tx.
@@ -44,7 +62,7 @@ func (txs Txs) Hash() []byte {
 // Index returns the index of this transaction in the list, or -1 if not found
 func (txs Txs) Index(tx Tx) int {
 	for i := range txs {
-		if bytes.Equal(txs[i], tx) {
+		if bytes.Equal(txs[i].Hash(), tx.Hash()) {
 			return i
 		}
 	}
@@ -128,7 +146,7 @@ func (tp TxProof) ToProto() tmproto.TxProof {
 
 	pbtp := tmproto.TxProof{
 		RootHash: tp.RootHash,
-		Data:     tp.Data,
+		Data:     &tmproto.Tx{Key: tp.Data.Key, Value: tp.Data.Value},
 		Proof:    pbProof,
 	}
 
@@ -143,7 +161,7 @@ func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
 
 	pbtp := TxProof{
 		RootHash: pb.RootHash,
-		Data:     pb.Data,
+		Data:     Tx{Key: pb.Data.Key, Value: pb.Data.Value},
 		Proof:    *pbProof,
 	}
 
