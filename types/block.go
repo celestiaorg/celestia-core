@@ -89,7 +89,7 @@ func (dah *DataAvailabilityHeader) Hash() []byte {
 	for i, rowRoot := range dah.RowsRoots {
 		slices[i] = rowRoot.Bytes()
 	}
-	for i, colRoot := range dah.RowsRoots {
+	for i, colRoot := range dah.ColumnRoots {
 		slices[i+colsCount] = colRoot.Bytes()
 	}
 	// The single data root is computed using a simple binary merkle tree.
