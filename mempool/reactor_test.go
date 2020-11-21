@@ -21,6 +21,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/p2p"
 	"github.com/lazyledger/lazyledger-core/p2p/mock"
 	memproto "github.com/lazyledger/lazyledger-core/proto/tendermint/mempool"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/proxy"
 	"github.com/lazyledger/lazyledger-core/types"
 )
@@ -170,7 +171,7 @@ func TestReactor_MaxBatchBytes(t *testing.T) {
 
 	// Broadcast a tx, which has the max size (minus proto overhead)
 	// => ensure it's received by the second reactor.
-	tx1 := tmrand.Bytes(1018)
+	tx1 := types.Tx{Value: tmrand.Bytes(1018)}
 	err := reactors[0].mempool.CheckTx(tx1, nil, TxInfo{SenderID: UnknownPeerID})
 	require.NoError(t, err)
 	waitForTxsOnReactors(t, []types.Tx{tx1}, reactors)
@@ -180,7 +181,7 @@ func TestReactor_MaxBatchBytes(t *testing.T) {
 
 	// Broadcast a tx, which is beyond the max size
 	// => ensure it's not sent
-	tx2 := tmrand.Bytes(1020)
+	tx2 := types.Tx{Value: tmrand.Bytes(1020)}
 	err = reactors[0].mempool.CheckTx(tx2, nil, TxInfo{SenderID: UnknownPeerID})
 	require.NoError(t, err)
 	ensureNoTxs(t, reactors[1], 100*time.Millisecond)
@@ -382,7 +383,7 @@ func TestMempoolVectors(t *testing.T) {
 
 		msg := memproto.Message{
 			Sum: &memproto.Message_Txs{
-				Txs: &memproto.Txs{Txs: [][]byte{tc.tx}},
+				Txs: &memproto.Txs{Txs: []*tmproto.Tx{{Value: tc.tx}}},
 			},
 		}
 		bz, err := msg.Marshal()

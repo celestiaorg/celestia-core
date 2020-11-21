@@ -69,7 +69,7 @@ func TestValidTxProof(t *testing.T) {
 		root := txs.Hash()
 		// make sure valid proof for every tx
 		for i := range txs {
-			tx := []byte(txs[i].Value)
+			tx := Tx{Key: txs[i].Key, Value: txs[i].Value}
 			proof := txs.Proof(i)
 			assert.EqualValues(t, i, proof.Proof.Index, "%d: %d", h, i)
 			assert.EqualValues(t, len(txs), proof.Proof.Total, "%d: %d", h, i)

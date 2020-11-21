@@ -236,9 +236,7 @@ func (mem *CListMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo Tx
 	// use defer to unlock mutex because application (*local client*) might panic
 	defer mem.updateMtx.RUnlock()
 
-	txSize := len(tx)
-
-	if err := mem.isFull(txSize); err != nil {
+	if err := mem.isFull(tx.Size()); err != nil {
 		return err
 	}
 
@@ -322,7 +320,7 @@ func (mem *CListMempool) globalCb(req *abci.Request, res *abci.Response) {
 //
 // Used in CheckTx to record PeerID who sent us the tx.
 func (mem *CListMempool) reqResCb(
-	tx []byte,
+	tx types.Tx,
 	peerID uint16,
 	peerP2PID p2p.ID,
 	externalCb func(*abci.Response),
@@ -378,7 +376,7 @@ func (mem *CListMempool) RemoveTxByKey(txKey [TxKeySize]byte, removeFromCache bo
 	}
 }
 
-func (mem *CListMempool) isFull(txSize int) error {
+func (mem *CListMempool) isFull(txSize int64) error {
 	var (
 		memSize  = mem.Size()
 		txsBytes = mem.TxsBytes()
@@ -399,7 +397,7 @@ func (mem *CListMempool) isFull(txSize int) error {
 // The case where the app checks the tx for the second and subsequent times is
 // handled by the resCbRecheck callback.
 func (mem *CListMempool) resCbFirstTime(
-	tx []byte,
+	tx types.Tx,
 	peerID uint16,
 	peerP2PID p2p.ID,
 	res *abci.Response,
@@ -413,7 +411,7 @@ func (mem *CListMempool) resCbFirstTime(
 		if (r.CheckTx.Code == abci.CodeTypeOK) && postCheckErr == nil {
 			// Check mempool isn't full again to reduce the chance of exceeding the
 			// limits.
-			if err := mem.isFull(len(tx)); err != nil {
+			if err := mem.isFull(tx.Size()); err != nil {
 				// remove from cache (mempool might have a space later)
 				mem.cache.Remove(tx)
 				mem.logger.Error(err.Error())
@@ -752,10 +750,10 @@ func (nopTxCache) Remove(types.Tx)    {}
 
 // TxKey is the fixed length array hash used as the key in maps.
 func TxKey(tx types.Tx) [TxKeySize]byte {
-	return sha256.Sum256(tx)
+	return sha256.Sum256(tx.Value)
 }
 
 // txID is the hex encoded hash of the bytes as a types.Tx.
-func txID(tx []byte) string {
-	return fmt.Sprintf("%X", types.Tx(tx).Hash())
+func txID(tx types.Tx) string {
+	return fmt.Sprintf("Key: %X, Value: %X", tx.Key, tx.Value)
 }

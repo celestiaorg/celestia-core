@@ -51,7 +51,10 @@ func (tx Tx) ToProto() *tmproto.Tx {
 	}
 }
 
-func TxFromProto(pbTx tmproto.Tx) Tx {
+func TxFromProto(pbTx *tmproto.Tx) Tx {
+	if pbTx == nil {
+		return Tx{}
+	}
 	return Tx{
 		Key:   pbTx.Key,
 		Value: pbTx.Value,
@@ -175,8 +178,11 @@ func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
 
 	pbtp := TxProof{
 		RootHash: pb.RootHash,
-		Data:     Tx{Key: pb.Data.Key, Value: pb.Data.Value},
 		Proof:    *pbProof,
+	}
+
+	if pb.Data != nil {
+		pbtp.Data = Tx{Key: pb.Data.Key, Value: pb.Data.Value}
 	}
 
 	return pbtp, nil

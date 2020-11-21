@@ -12,6 +12,7 @@ import (
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/p2p"
 	protomem "github.com/lazyledger/lazyledger-core/proto/tendermint/mempool"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -268,8 +269,8 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 // txs iterates over the transaction list and builds a batch of txs. next is
 // included.
 // WARNING: mutates next!
-func (memR *Reactor) txs(next *clist.CElement, peerID uint16, peerHeight int64) [][]byte {
-	batch := make([][]byte, 0)
+func (memR *Reactor) txs(next *clist.CElement, peerID uint16, peerHeight int64) []*tmproto.Tx {
+	batch := make([]*tmproto.Tx, 0)
 
 	for {
 		memTx := next.Value.(*mempoolTx)
@@ -278,14 +279,14 @@ func (memR *Reactor) txs(next *clist.CElement, peerID uint16, peerHeight int64) 
 			// If current batch + this tx size is greater than max => return.
 			batchMsg := protomem.Message{
 				Sum: &protomem.Message_Txs{
-					Txs: &protomem.Txs{Txs: append(batch, memTx.tx)},
+					Txs: &protomem.Txs{Txs: append(batch, memTx.tx.ToProto())},
 				},
 			}
 			if batchMsg.Size() > memR.config.MaxBatchBytes {
 				return batch
 			}
 
-			batch = append(batch, memTx.tx)
+			batch = append(batch, memTx.tx.ToProto())
 		}
 
 		n := next.Next()
@@ -317,7 +318,7 @@ func (memR *Reactor) decodeMsg(bz []byte) (TxsMessage, error) {
 
 		decoded := make([]types.Tx, len(txs))
 		for j, tx := range txs {
-			decoded[j] = types.Tx(tx)
+			decoded[j] = types.TxFromProto(tx)
 		}
 
 		message = TxsMessage{

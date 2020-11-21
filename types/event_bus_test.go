@@ -45,7 +45,7 @@ func TestEventBusPublishEventTx(t *testing.T) {
 		edt := msg.Data().(EventDataTx)
 		assert.Equal(t, int64(1), edt.Height)
 		assert.Equal(t, uint32(0), edt.Index)
-		assert.EqualValues(t, tx, edt.Tx)
+		assert.EqualValues(t, &tx, edt.Tx)
 		assert.Equal(t, result, edt.Result)
 		close(done)
 	}()
@@ -195,7 +195,7 @@ func TestEventBusPublishEventTxDuplicateKeys(t *testing.T) {
 				data := msg.Data().(EventDataTx)
 				assert.Equal(t, int64(1), data.Height)
 				assert.Equal(t, uint32(0), data.Index)
-				assert.EqualValues(t, tx, data.Tx)
+				assert.EqualValues(t, &tx, data.Tx)
 				assert.Equal(t, result, data.Result)
 				close(done)
 			case <-time.After(1 * time.Second):

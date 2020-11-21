@@ -1299,9 +1299,7 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 	if len(dp.Txs) > 0 {
 		txBzs := make(Txs, len(dp.Txs))
 		for i := range dp.Txs {
-			if dp.Txs[i] != nil {
-				txBzs[i] = TxFromProto(*dp.Txs[i])
-			}
+			txBzs[i] = TxFromProto(dp.Txs[i])
 		}
 		data.Txs = txBzs
 	} else {
