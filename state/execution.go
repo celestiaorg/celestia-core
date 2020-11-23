@@ -323,7 +323,7 @@ func execBlockOnProxyApp(
 
 	// Run txs of block.
 	for _, tx := range block.Txs {
-		proxyAppConn.DeliverTxAsync(abci.RequestDeliverTx{Key: tx.Key, Value: tx.Value})
+		proxyAppConn.DeliverTxAsync(abci.RequestDeliverTx{Tx: tx.ToProto()})
 		if err := proxyAppConn.Error(); err != nil {
 			return nil, err
 		}

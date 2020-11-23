@@ -80,14 +80,12 @@ enum CheckTxType {
 }
 
 message RequestCheckTx {
-  bytes       tx   = 1;
-  bytes      tx_id   = 2;
-  CheckTxType type = 3;
+  tendermint.types.Tx      tx   = 1;
+  CheckTxType type = 2;
 }
 
 message RequestDeliverTx {
-  bytes key = 1;
-  bytes value = 2;
+  tendermint.types.Tx Tx = 1;
 }
 
 message RequestEndBlock {

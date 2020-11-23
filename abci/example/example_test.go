@@ -10,19 +10,17 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
-	"google.golang.org/grpc"
-
 	"golang.org/x/net/context"
-
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
+	"google.golang.org/grpc"
 
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
 	"github.com/lazyledger/lazyledger-core/abci/example/code"
 	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
 	abciserver "github.com/lazyledger/lazyledger-core/abci/server"
 	"github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
+	tmtypes "github.com/lazyledger/lazyledger-core/types"
 )
 
 func init() {
@@ -104,7 +102,7 @@ func testStream(t *testing.T, app types.Application) {
 	// Write requests
 	for counter := 0; counter < numDeliverTxs; counter++ {
 		// Send request
-		reqRes := client.DeliverTxAsync(types.RequestDeliverTx{Tx: []byte("test")})
+		reqRes := client.DeliverTxAsync(types.RequestDeliverTx{Tx: tmtypes.Tx{Value: []byte("test")}.ToProto()})
 		_ = reqRes
 		// check err ?
 
@@ -164,7 +162,7 @@ func testGRPCSync(t *testing.T, app types.ABCIApplicationServer) {
 	// Write requests
 	for counter := 0; counter < numDeliverTxs; counter++ {
 		// Send request
-		response, err := client.DeliverTx(context.Background(), &types.RequestDeliverTx{Tx: []byte("test")})
+		response, err := client.DeliverTx(context.Background(), &types.RequestDeliverTx{Tx: tmtypes.Tx{Value: []byte("test")}.ToProto()})
 		if err != nil {
 			t.Fatalf("Error in GRPC DeliverTx: %v", err.Error())
 		}

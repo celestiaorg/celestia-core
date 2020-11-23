@@ -16,11 +16,11 @@ import (
 func TestCacheRemove(t *testing.T) {
 	cache := newMapTxCache(100)
 	numTxs := 10
-	txs := make([][]byte, numTxs)
+	txs := make([]types.Tx, numTxs)
 	for i := 0; i < numTxs; i++ {
 		// probability of collision is 2**-256
-		txBytes := make([]byte, 32)
-		_, err := rand.Read(txBytes)
+		txBytes := types.Tx{Value: make([]byte, 32)}
+		_, err := rand.Read(txBytes.Value)
 		require.NoError(t, err)
 		txs[i] = txBytes
 		cache.Push(txBytes)
@@ -58,21 +58,21 @@ func TestCacheAfterUpdate(t *testing.T) {
 	}
 	for tcIndex, tc := range tests {
 		for i := 0; i < tc.numTxsToCreate; i++ {
-			tx := types.Tx{byte(i)}
+			tx := types.Tx{Value: []byte{byte(i)}}
 			err := mempool.CheckTx(tx, nil, TxInfo{})
 			require.NoError(t, err)
 		}
 
 		updateTxs := []types.Tx{}
 		for _, v := range tc.updateIndices {
-			tx := types.Tx{byte(v)}
+			tx := types.Tx{Value: []byte{byte(v)}}
 			updateTxs = append(updateTxs, tx)
 		}
 		err := mempool.Update(int64(tcIndex), updateTxs, abciResponses(len(updateTxs), abci.CodeTypeOK), nil, nil)
 		require.NoError(t, err)
 
 		for _, v := range tc.reAddIndices {
-			tx := types.Tx{byte(v)}
+			tx := types.Tx{Value: []byte{byte(v)}}
 			_ = mempool.CheckTx(tx, nil, TxInfo{})
 		}
 

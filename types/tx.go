@@ -39,6 +39,17 @@ func (tx Tx) Size() int64 {
 	return txSize
 }
 
+func (tx Tx) Equal(t Tx) bool {
+	// check keys are the same
+	if !bytes.Equal(tx.Key, t.Key) {
+		return false
+	}
+	if !bytes.Equal(tx.Value, t.Value) {
+		return false
+	}
+	return true
+}
+
 // String returns the hex-encoded transaction as a string.
 func (tx Tx) String() string {
 	return fmt.Sprintf("Tx{Key:%X, Value:%X}", []byte(tx.Key), []byte(tx.Value))

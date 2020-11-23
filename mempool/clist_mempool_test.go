@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	gogotypes "github.com/gogo/protobuf/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -71,9 +70,9 @@ func checkTxs(t *testing.T, mempool Mempool, count int, peerID uint16) types.Txs
 	txs := make(types.Txs, count)
 	txInfo := TxInfo{SenderID: peerID}
 	for i := 0; i < count; i++ {
-		txBytes := make([]byte, 20)
+		txBytes := types.Tx{Value: make([]byte, 20)}
 		txs[i] = txBytes
-		_, err := rand.Read(txBytes)
+		_, err := rand.Read(txBytes.Value)
 		if err != nil {
 			t.Error(err)
 		}
@@ -100,10 +99,10 @@ func TestReapMaxBytesMaxGas(t *testing.T) {
 	checkTxs(t, mempool, 1, UnknownPeerID)
 	tx0 := mempool.TxsFront().Value.(*mempoolTx)
 	// assert that kv store has gas wanted = 1.
-	require.Equal(t, app.CheckTx(abci.RequestCheckTx{Tx: tx0.tx}).GasWanted, int64(1), "KVStore had a gas value neq to 1")
+	require.Equal(t, app.CheckTx(abci.RequestCheckTx{Tx: tx0.tx.ToProto()}).GasWanted, int64(1), "KVStore had a gas value neq to 1")
 	require.Equal(t, tx0.gasWanted, int64(1), "transactions gas was set incorrectly")
 	// ensure each tx is 20 bytes long
-	require.Equal(t, len(tx0.tx), 20, "Tx is longer than 20 bytes")
+	require.Equal(t, tx0.tx.Size(), 20, "Tx is longer than 20 bytes")
 	mempool.Flush()
 
 	// each table driven test creates numTxsToCreate txs with checkTx, and at the end clears all remaining txs.
@@ -144,7 +143,7 @@ func TestMempoolFilters(t *testing.T) {
 	cc := proxy.NewLocalClientCreator(app)
 	mempool, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
-	emptyTxArr := []types.Tx{[]byte{}}
+	emptyTxArr := []types.Tx{{Value: []byte{}}}
 
 	nopPreFilter := func(tx types.Tx) error { return nil }
 	nopPostFilter := func(tx types.Tx, res *abci.ResponseCheckTx) error { return nil }
@@ -186,9 +185,9 @@ func TestMempoolUpdate(t *testing.T) {
 
 	// 1. Adds valid txs to the cache
 	{
-		err := mempool.Update(1, []types.Tx{[]byte{0x01}}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+		err := mempool.Update(1, []types.Tx{{Value: []byte{0x01}}}, abciResponses(1, abci.CodeTypeOK), nil, nil)
 		require.NoError(t, err)
-		err = mempool.CheckTx([]byte{0x01}, nil, TxInfo{})
+		err = mempool.CheckTx(types.Tx{Value: []byte{0x01}}, nil, TxInfo{})
 		if assert.Error(t, err) {
 			assert.Equal(t, ErrTxInCache, err)
 		}
@@ -196,22 +195,22 @@ func TestMempoolUpdate(t *testing.T) {
 
 	// 2. Removes valid txs from the mempool
 	{
-		err := mempool.CheckTx([]byte{0x02}, nil, TxInfo{})
+		err := mempool.CheckTx(types.Tx{Value: []byte{0x02}}, nil, TxInfo{})
 		require.NoError(t, err)
-		err = mempool.Update(1, []types.Tx{[]byte{0x02}}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+		err = mempool.Update(1, []types.Tx{{Value: []byte{0x02}}}, abciResponses(1, abci.CodeTypeOK), nil, nil)
 		require.NoError(t, err)
 		assert.Zero(t, mempool.Size())
 	}
 
 	// 3. Removes invalid transactions from the cache and the mempool (if present)
 	{
-		err := mempool.CheckTx([]byte{0x03}, nil, TxInfo{})
+		err := mempool.CheckTx(types.Tx{Value: []byte{0x03}}, nil, TxInfo{})
 		require.NoError(t, err)
-		err = mempool.Update(1, []types.Tx{[]byte{0x03}}, abciResponses(1, 1), nil, nil)
+		err = mempool.Update(1, []types.Tx{{Value: []byte{0x03}}}, abciResponses(1, 1), nil, nil)
 		require.NoError(t, err)
 		assert.Zero(t, mempool.Size())
 
-		err = mempool.CheckTx([]byte{0x03}, nil, TxInfo{})
+		err = mempool.CheckTx(types.Tx{Value: []byte{0x03}}, nil, TxInfo{})
 		require.NoError(t, err)
 	}
 }
@@ -278,16 +277,16 @@ func TestSerialReap(t *testing.T) {
 		for i := start; i < end; i++ {
 
 			// This will succeed
-			txBytes := make([]byte, 8)
-			binary.BigEndian.PutUint64(txBytes, uint64(i))
+			txBytes := types.Tx{Value: tmrand.Bytes(8)}
+			binary.BigEndian.PutUint64(txBytes.Value, uint64(i)) //TODO possibly remove
 			err := mempool.CheckTx(txBytes, nil, TxInfo{})
-			_, cached := cacheMap[string(txBytes)]
+			_, cached := cacheMap[txBytes.String()]
 			if cached {
 				require.NotNil(t, err, "expected error for cached tx")
 			} else {
 				require.Nil(t, err, "expected no err for uncached tx")
 			}
-			cacheMap[string(txBytes)] = struct{}{}
+			cacheMap[txBytes.String()] = struct{}{}
 
 			// Duplicates are cached and should return error
 			err = mempool.CheckTx(txBytes, nil, TxInfo{})
@@ -303,8 +302,8 @@ func TestSerialReap(t *testing.T) {
 	updateRange := func(start, end int) {
 		txs := make([]types.Tx, 0)
 		for i := start; i < end; i++ {
-			txBytes := make([]byte, 8)
-			binary.BigEndian.PutUint64(txBytes, uint64(i))
+			txBytes := types.Tx{Value: make([]byte, 8)}
+			binary.BigEndian.PutUint64(txBytes.Value, uint64(i)) //TODO: possibly remove?
 			txs = append(txs, txBytes)
 		}
 		if err := mempool.Update(0, txs, abciResponses(len(txs), abci.CodeTypeOK), nil, nil); err != nil {
@@ -315,9 +314,9 @@ func TestSerialReap(t *testing.T) {
 	commitRange := func(start, end int) {
 		// Deliver some txs.
 		for i := start; i < end; i++ {
-			txBytes := make([]byte, 8)
-			binary.BigEndian.PutUint64(txBytes, uint64(i))
-			res, err := appConnCon.DeliverTxSync(abci.RequestDeliverTx{Tx: txBytes})
+			txBytes := types.Tx{Value: make([]byte, 8)}
+			binary.BigEndian.PutUint64(txBytes.Value, uint64(i))
+			res, err := appConnCon.DeliverTxSync(abci.RequestDeliverTx{Tx: txBytes.ToProto()})
 			if err != nil {
 				t.Errorf("client error committing tx: %v", err)
 			}
@@ -397,7 +396,7 @@ func TestMempoolCloseWAL(t *testing.T) {
 	require.Equal(t, 1, len(m2), "expecting the wal match in")
 
 	// 5. Write some contents to the WAL
-	err = mempool.CheckTx(types.Tx([]byte("foo")), nil, TxInfo{})
+	err = mempool.CheckTx(types.Tx{Value: []byte("foo")}, nil, TxInfo{})
 	require.NoError(t, err)
 	walFilepath := mempool.wal.Path
 	sum1 := checksumFile(walFilepath, t)
@@ -408,7 +407,7 @@ func TestMempoolCloseWAL(t *testing.T) {
 	// 7. Invoke CloseWAL() and ensure it discards the
 	// WAL thus any other write won't go through.
 	mempool.CloseWAL()
-	err = mempool.CheckTx(types.Tx([]byte("bar")), nil, TxInfo{})
+	err = mempool.CheckTx(types.Tx{Value: []byte("bar")}, nil, TxInfo{})
 	require.NoError(t, err)
 	sum2 := checksumFile(walFilepath, t)
 	require.Equal(t, sum1, sum2, "expected no change to the WAL after invoking CloseWAL() since it was discarded")
@@ -445,13 +444,14 @@ func TestMempool_CheckTxChecksTxSize(t *testing.T) {
 	for i, testCase := range testCases {
 		caseString := fmt.Sprintf("case %d, len %d", i, testCase.len)
 
-		tx := tmrand.Bytes(testCase.len)
+		txValue := tmrand.Bytes(testCase.len)
+		tx := types.Tx{Value: txValue}
 
 		err := mempl.CheckTx(tx, nil, TxInfo{})
-		bv := gogotypes.BytesValue{Value: tx}
+		bv := tx.ToProto()
 		bz, err2 := bv.Marshal()
 		require.NoError(t, err2)
-		require.Equal(t, len(bz), proto.Size(&bv), caseString)
+		require.Equal(t, len(bz), proto.Size(bv), caseString)
 
 		if !testCase.err {
 			require.NoError(t, err, caseString)
@@ -473,17 +473,17 @@ func TestMempoolTxsBytes(t *testing.T) {
 	assert.EqualValues(t, 0, mempool.TxsBytes())
 
 	// 2. len(tx) after CheckTx
-	err := mempool.CheckTx([]byte{0x01}, nil, TxInfo{})
+	err := mempool.CheckTx(types.Tx{Value: []byte{0x01}}, nil, TxInfo{})
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, mempool.TxsBytes())
 
 	// 3. zero again after tx is removed by Update
-	err = mempool.Update(1, []types.Tx{[]byte{0x01}}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+	err = mempool.Update(1, []types.Tx{{Value: []byte{0x01}}}, abciResponses(1, abci.CodeTypeOK), nil, nil)
 	require.NoError(t, err)
 	assert.EqualValues(t, 0, mempool.TxsBytes())
 
 	// 4. zero after Flush
-	err = mempool.CheckTx([]byte{0x02, 0x03}, nil, TxInfo{})
+	err = mempool.CheckTx(types.Tx{Value: []byte{0x02, 0x03}}, nil, TxInfo{})
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, mempool.TxsBytes())
 
@@ -491,9 +491,9 @@ func TestMempoolTxsBytes(t *testing.T) {
 	assert.EqualValues(t, 0, mempool.TxsBytes())
 
 	// 5. ErrMempoolIsFull is returned when/if MaxTxsBytes limit is reached.
-	err = mempool.CheckTx([]byte{0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}, nil, TxInfo{})
+	err = mempool.CheckTx(types.Tx{Value: []byte{0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}}, nil, TxInfo{})
 	require.NoError(t, err)
-	err = mempool.CheckTx([]byte{0x05}, nil, TxInfo{})
+	err = mempool.CheckTx(types.Tx{Value: []byte{0x05}}, nil, TxInfo{})
 	if assert.Error(t, err) {
 		assert.IsType(t, ErrMempoolIsFull{}, err)
 	}
@@ -504,8 +504,8 @@ func TestMempoolTxsBytes(t *testing.T) {
 	mempool, cleanup = newMempoolWithApp(cc)
 	defer cleanup()
 
-	txBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(txBytes, uint64(0))
+	txBytes := types.Tx{Value: make([]byte, 8)}
+	binary.BigEndian.PutUint64(txBytes.Value, uint64(0))
 
 	err = mempool.CheckTx(txBytes, nil, TxInfo{})
 	require.NoError(t, err)
@@ -520,7 +520,7 @@ func TestMempoolTxsBytes(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	res, err := appConnCon.DeliverTxSync(abci.RequestDeliverTx{Tx: txBytes})
+	res, err := appConnCon.DeliverTxSync(abci.RequestDeliverTx{Tx: txBytes.ToProto()})
 	require.NoError(t, err)
 	require.EqualValues(t, 0, res.Code)
 	res2, err := appConnCon.CommitSync()
@@ -533,12 +533,12 @@ func TestMempoolTxsBytes(t *testing.T) {
 	assert.EqualValues(t, 0, mempool.TxsBytes())
 
 	// 7. Test RemoveTxByKey function
-	err = mempool.CheckTx([]byte{0x06}, nil, TxInfo{})
+	err = mempool.CheckTx(types.Tx{Value: []byte{0x06}}, nil, TxInfo{})
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, mempool.TxsBytes())
-	mempool.RemoveTxByKey(TxKey([]byte{0x07}), true)
+	mempool.RemoveTxByKey(TxKey(types.Tx{Value: []byte{0x07}}), true)
 	assert.EqualValues(t, 1, mempool.TxsBytes())
-	mempool.RemoveTxByKey(TxKey([]byte{0x06}), true)
+	mempool.RemoveTxByKey(TxKey(types.Tx{Value: []byte{0x06}}), true)
 	assert.EqualValues(t, 0, mempool.TxsBytes())
 
 }
@@ -565,7 +565,7 @@ func TestMempoolRemoteAppConcurrency(t *testing.T) {
 	txLen := 200
 	txs := make([]types.Tx, nTxs)
 	for i := 0; i < nTxs; i++ {
-		txs[i] = tmrand.Bytes(txLen)
+		txs[i].Value = tmrand.Bytes(txLen)
 	}
 
 	// simulate a group of peers sending them over and over

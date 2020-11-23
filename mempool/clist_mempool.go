@@ -1,7 +1,6 @@
 package mempool
 
 import (
-	"bytes"
 	"container/list"
 	"crypto/sha256"
 	"fmt"
@@ -240,8 +239,8 @@ func (mem *CListMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo Tx
 		return err
 	}
 
-	if txSize > mem.config.MaxTxBytes {
-		return ErrTxTooLarge{mem.config.MaxTxBytes, txSize}
+	if tx.Size() > int64(mem.config.MaxTxBytes) {
+		return ErrTxTooLarge{mem.config.MaxTxBytes, int(tx.Size())}
 	}
 
 	if mem.preCheck != nil {
@@ -256,7 +255,11 @@ func (mem *CListMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo Tx
 	// all even once.
 	if mem.wal != nil {
 		// TODO: Notify administrators when WAL fails
-		_, err := mem.wal.Write(append([]byte(tx), newline...))
+		bz, err := tx.ToProto().Marshal()
+		if err != nil {
+			return err
+		}
+		_, err = mem.wal.Write(append(bz, newline...))
 		if err != nil {
 			return fmt.Errorf("wal.Write: %w", err)
 		}
@@ -283,7 +286,7 @@ func (mem *CListMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo Tx
 		return ErrTxInCache
 	}
 
-	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx})
+	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx.ToProto()})
 	reqRes.SetCallback(mem.reqResCb(tx, txInfo.SenderID, txInfo.SenderP2PID, cb))
 
 	return nil
@@ -348,8 +351,8 @@ func (mem *CListMempool) reqResCb(
 func (mem *CListMempool) addTx(memTx *mempoolTx) {
 	e := mem.txs.PushBack(memTx)
 	mem.txsMap.Store(TxKey(memTx.tx), e)
-	atomic.AddInt64(&mem.txsBytes, int64(len(memTx.tx)))
-	mem.metrics.TxSizeBytes.Observe(float64(len(memTx.tx)))
+	atomic.AddInt64(&mem.txsBytes, int64(memTx.tx.Size()))
+	mem.metrics.TxSizeBytes.Observe(float64(memTx.tx.Size()))
 }
 
 // Called from:
@@ -359,7 +362,7 @@ func (mem *CListMempool) removeTx(tx types.Tx, elem *clist.CElement, removeFromC
 	mem.txs.Remove(elem)
 	elem.DetachPrev()
 	mem.txsMap.Delete(TxKey(tx))
-	atomic.AddInt64(&mem.txsBytes, int64(-len(tx)))
+	atomic.AddInt64(&mem.txsBytes, int64(-tx.Size()))
 
 	if removeFromCache {
 		mem.cache.Remove(tx)
@@ -452,9 +455,11 @@ func (mem *CListMempool) resCbFirstTime(
 func (mem *CListMempool) resCbRecheck(req *abci.Request, res *abci.Response) {
 	switch r := res.Value.(type) {
 	case *abci.Response_CheckTx:
-		tx := req.GetCheckTx().Tx
+		pbTx := req.GetCheckTx().Tx
+		tx := types.TxFromProto(pbTx)
+
 		memTx := mem.recheckCursor.Value.(*mempoolTx)
-		if !bytes.Equal(tx, memTx.tx) {
+		if !tx.Equal(memTx.tx) {
 			panic(fmt.Sprintf(
 				"Unexpected tx response from proxy during recheck\nExpected %X, got %X",
 				memTx.tx,
@@ -637,7 +642,7 @@ func (mem *CListMempool) recheckTxs() {
 	for e := mem.txs.Front(); e != nil; e = e.Next() {
 		memTx := e.Value.(*mempoolTx)
 		mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{
-			Tx:   memTx.tx,
+			Tx:   memTx.tx.ToProto(),
 			Type: abci.CheckTxType_Recheck,
 		})
 	}

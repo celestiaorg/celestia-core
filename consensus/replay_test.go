@@ -110,7 +110,7 @@ func sendTxs(ctx context.Context, cs *State) {
 		case <-ctx.Done():
 			return
 		default:
-			tx := []byte{byte(i)}
+			tx := types.Tx{Value: []byte{byte(i)}}
 			if err := assertMempool(cs.txNotifier).CheckTx(tx, nil, mempl.TxInfo{}); err != nil {
 				panic(err)
 			}
@@ -626,8 +626,8 @@ func TestMockProxyApp(t *testing.T) {
 		}
 		mock.SetResponseCallback(proxyCb)
 
-		someTx := []byte("tx")
-		mock.DeliverTxAsync(abci.RequestDeliverTx{Tx: someTx})
+		someTx := types.Tx{Value: []byte("tx")}
+		mock.DeliverTxAsync(abci.RequestDeliverTx{Tx: someTx.ToProto()})
 	})
 	assert.True(t, validTxs == 1)
 	assert.True(t, invalidTxs == 0)

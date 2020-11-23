@@ -524,7 +524,7 @@ func waitForAndValidateBlock(
 	activeVals map[string]struct{},
 	blocksSubs []types.Subscription,
 	css []*State,
-	txs ...[]byte,
+	txs ...types.Tx,
 ) {
 	timeoutWaitGroup(t, n, func(j int) {
 		css[j].Logger.Debug("waitForAndValidateBlock")
@@ -534,7 +534,7 @@ func waitForAndValidateBlock(
 		err := validateBlock(newBlock, activeVals)
 		assert.Nil(t, err)
 		for _, tx := range txs {
-			err := assertMempool(css[j].txNotifier).CheckTx(types.Tx{Value: tx}, nil, mempl.TxInfo{})
+			err := assertMempool(css[j].txNotifier).CheckTx(tx, nil, mempl.TxInfo{})
 			assert.Nil(t, err)
 		}
 	}, css)
@@ -546,7 +546,7 @@ func waitForAndValidateBlockWithTx(
 	activeVals map[string]struct{},
 	blocksSubs []types.Subscription,
 	css []*State,
-	txs ...[]byte,
+	txs ...types.Tx,
 ) {
 	timeoutWaitGroup(t, n, func(j int) {
 		ntxs := 0

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/abci/example/code"
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/version"
 )
 
@@ -88,7 +88,7 @@ func (app *Application) CheckTx(req abci.RequestCheckTx) abci.ResponseCheckTx {
 
 // DeliverTx implements ABCI.
 func (app *Application) DeliverTx(req abci.RequestDeliverTx) abci.ResponseDeliverTx {
-	key, value, err := parseTx(req.Value)
+	key, value, err := parseTx(req.Tx)
 	if err != nil {
 		panic(err) // shouldn't happen since we verified it in CheckTx
 	}
@@ -205,13 +205,9 @@ func (app *Application) validatorUpdates(height uint64) (abci.ValidatorUpdates, 
 }
 
 // parseTx parses a tx in 'key=value' format into a key and value.
-func parseTx(tx []byte) (string, string, error) {
-	parts := bytes.Split(tx, []byte("="))
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid tx format: %q", string(tx))
-	}
-	if len(parts[0]) == 0 {
+func parseTx(tx *tmproto.Tx) (string, string, error) {
+	if len(tx.Key) == 0 {
 		return "", "", errors.New("key cannot be empty")
 	}
-	return string(parts[0]), string(parts[1]), nil
+	return string(tx.Key), string(tx.Value), nil
 }

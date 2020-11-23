@@ -101,8 +101,8 @@ func TestMempoolProgressInHigherRound(t *testing.T) {
 func deliverTxsRange(cs *State, start, end int) {
 	// Deliver some txs.
 	for i := start; i < end; i++ {
-		txBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(txBytes, uint64(i))
+		txBytes := types.Tx{Value: make([]byte, 8)}
+		binary.BigEndian.PutUint64(txBytes.Value, uint64(i))
 		err := assertMempool(cs.txNotifier).CheckTx(txBytes, nil, mempl.TxInfo{})
 		if err != nil {
 			panic(fmt.Sprintf("Error after CheckTx: %v", err))
@@ -144,10 +144,10 @@ func TestMempoolRmBadTx(t *testing.T) {
 	require.NoError(t, err)
 
 	// increment the counter by 1
-	txBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(txBytes, uint64(0))
+	txBytes := types.Tx{Value: make([]byte, 8)}
+	binary.BigEndian.PutUint64(txBytes.Value, uint64(0))
 
-	resDeliver := app.DeliverTx(abci.RequestDeliverTx{Tx: txBytes})
+	resDeliver := app.DeliverTx(abci.RequestDeliverTx{Tx: txBytes.ToProto()})
 	assert.False(t, resDeliver.IsErr(), fmt.Sprintf("expected no error. got %v", resDeliver))
 
 	resCommit := app.Commit()
@@ -173,7 +173,7 @@ func TestMempoolRmBadTx(t *testing.T) {
 
 		// check for the tx
 		for {
-			txs := assertMempool(cs.txNotifier).ReapMaxBytesMaxGas(int64(len(txBytes)), -1)
+			txs := assertMempool(cs.txNotifier).ReapMaxBytesMaxGas(txBytes.Size(), -1)
 			if len(txs) == 0 {
 				emptyMempoolCh <- struct{}{}
 				return
@@ -220,7 +220,7 @@ func (app *CounterApplication) Info(req abci.RequestInfo) abci.ResponseInfo {
 }
 
 func (app *CounterApplication) DeliverTx(req abci.RequestDeliverTx) abci.ResponseDeliverTx {
-	txValue := txAsUint64(req.Tx)
+	txValue := txAsUint64(req.Tx.Value)
 	if txValue != uint64(app.txCount) {
 		return abci.ResponseDeliverTx{
 			Code: code.CodeTypeBadNonce,
@@ -231,7 +231,7 @@ func (app *CounterApplication) DeliverTx(req abci.RequestDeliverTx) abci.Respons
 }
 
 func (app *CounterApplication) CheckTx(req abci.RequestCheckTx) abci.ResponseCheckTx {
-	txValue := txAsUint64(req.Tx)
+	txValue := txAsUint64(req.Tx.Value)
 	if txValue != uint64(app.mempoolTxCount) {
 		return abci.ResponseCheckTx{
 			Code: code.CodeTypeBadNonce,
