@@ -99,7 +99,8 @@ func TestReapMaxBytesMaxGas(t *testing.T) {
 	checkTxs(t, mempool, 1, UnknownPeerID)
 	tx0 := mempool.TxsFront().Value.(*mempoolTx)
 	// assert that kv store has gas wanted = 1.
-	require.Equal(t, app.CheckTx(abci.RequestCheckTx{Tx: tx0.tx.ToProto()}).GasWanted, int64(1), "KVStore had a gas value neq to 1")
+	require.Equal(t, app.CheckTx(abci.RequestCheckTx{Tx: tx0.tx.ToProto()}).GasWanted,
+		int64(1), "KVStore had a gas value neq to 1")
 	require.Equal(t, tx0.gasWanted, int64(1), "transactions gas was set incorrectly")
 	// ensure each tx is 20 bytes long
 	require.Equal(t, tx0.tx.Size(), int64(20), "Tx is longer than 20 bytes")
@@ -120,11 +121,11 @@ func TestReapMaxBytesMaxGas(t *testing.T) {
 		{20, 0, -1, 0},
 		{20, 0, 10, 0},
 		{20, 10, 10, 0},
-		{20, 28, 10, 1}, // account for overhead in Data{}
+		{20, 30, 10, 1}, // account for overhead in Data{}
 		{20, 240, 5, 5},
-		{20, 240, -1, 10},
-		{20, 240, 10, 10},
-		{20, 240, 15, 10},
+		{20, 250, -1, 10},
+		{20, 250, 10, 10},
+		{20, 250, 15, 10},
 		{20, 20000, -1, 20},
 		{20, 20000, 5, 5},
 		{20, 20000, 30, 20},
@@ -158,14 +159,14 @@ func TestMempoolFilters(t *testing.T) {
 	}{
 		{10, nopPreFilter, nopPostFilter, 10},
 		{10, PreCheckMaxBytes(10), nopPostFilter, 0},
-		{10, PreCheckMaxBytes(28), nopPostFilter, 10},
+		{10, PreCheckMaxBytes(30), nopPostFilter, 10},
 		{10, nopPreFilter, PostCheckMaxGas(-1), 10},
 		{10, nopPreFilter, PostCheckMaxGas(0), 0},
 		{10, nopPreFilter, PostCheckMaxGas(1), 10},
 		{10, nopPreFilter, PostCheckMaxGas(3000), 10},
 		{10, PreCheckMaxBytes(10), PostCheckMaxGas(20), 0},
 		{10, PreCheckMaxBytes(30), PostCheckMaxGas(20), 10},
-		{10, PreCheckMaxBytes(28), PostCheckMaxGas(1), 10},
+		{10, PreCheckMaxBytes(30), PostCheckMaxGas(1), 10},
 		{10, PreCheckMaxBytes(22), PostCheckMaxGas(0), 0},
 	}
 	for tcIndex, tt := range tests {
@@ -278,7 +279,7 @@ func TestSerialReap(t *testing.T) {
 
 			// This will succeed
 			txBytes := types.Tx{Value: tmrand.Bytes(8)}
-			binary.BigEndian.PutUint64(txBytes.Value, uint64(i)) //TODO possibly remove
+			binary.BigEndian.PutUint64(txBytes.Value, uint64(i)) // TODO possibly remove
 			err := mempool.CheckTx(txBytes, nil, TxInfo{})
 			_, cached := cacheMap[txBytes.String()]
 			if cached {
@@ -303,7 +304,7 @@ func TestSerialReap(t *testing.T) {
 		txs := make([]types.Tx, 0)
 		for i := start; i < end; i++ {
 			txBytes := types.Tx{Value: make([]byte, 8)}
-			binary.BigEndian.PutUint64(txBytes.Value, uint64(i)) //TODO: possibly remove?
+			binary.BigEndian.PutUint64(txBytes.Value, uint64(i)) // TODO: possibly remove?
 			txs = append(txs, txBytes)
 		}
 		if err := mempool.Update(0, txs, abciResponses(len(txs), abci.CodeTypeOK), nil, nil); err != nil {
@@ -491,7 +492,8 @@ func TestMempoolTxsBytes(t *testing.T) {
 	assert.EqualValues(t, 0, mempool.TxsBytes())
 
 	// 5. ErrMempoolIsFull is returned when/if MaxTxsBytes limit is reached.
-	err = mempool.CheckTx(types.Tx{Value: []byte{0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}}, nil, TxInfo{})
+	err = mempool.CheckTx(types.Tx{Value: []byte{0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}},
+		nil, TxInfo{})
 	require.NoError(t, err)
 	err = mempool.CheckTx(types.Tx{Value: []byte{0x05}}, nil, TxInfo{})
 	if assert.Error(t, err) {
@@ -509,7 +511,7 @@ func TestMempoolTxsBytes(t *testing.T) {
 
 	err = mempool.CheckTx(txBytes, nil, TxInfo{})
 	require.NoError(t, err)
-	assert.EqualValues(t, 8, mempool.TxsBytes())
+	assert.EqualValues(t, int64(8), mempool.TxsBytes())
 
 	appConnCon, _ := cc.NewABCIClient()
 	appConnCon.SetLogger(log.TestingLogger().With("module", "abci-client", "connection", "consensus"))
@@ -522,7 +524,7 @@ func TestMempoolTxsBytes(t *testing.T) {
 	})
 	res, err := appConnCon.DeliverTxSync(abci.RequestDeliverTx{Tx: txBytes.ToProto()})
 	require.NoError(t, err)
-	require.EqualValues(t, 0, res.Code)
+	require.EqualValues(t, uint32(0), res.Code)
 	res2, err := appConnCon.CommitSync()
 	require.NoError(t, err)
 	require.NotEmpty(t, res2.Data)

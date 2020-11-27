@@ -162,7 +162,8 @@ func testGRPCSync(t *testing.T, app types.ABCIApplicationServer) {
 	// Write requests
 	for counter := 0; counter < numDeliverTxs; counter++ {
 		// Send request
-		response, err := client.DeliverTx(context.Background(), &types.RequestDeliverTx{Tx: tmtypes.Tx{Value: []byte("test")}.ToProto()})
+		response, err := client.DeliverTx(context.Background(),
+			&types.RequestDeliverTx{Tx: tmtypes.Tx{Value: []byte("test")}.ToProto()})
 		if err != nil {
 			t.Fatalf("Error in GRPC DeliverTx: %v", err.Error())
 		}

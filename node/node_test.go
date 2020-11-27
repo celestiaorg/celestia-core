@@ -344,7 +344,7 @@ func TestMaxProposalBlockSize(t *testing.T) {
 
 	// fill the mempool with one txs just below the maximum size
 	txLength := int(types.MaxDataBytesNoEvidence(maxBytes, 1))
-	tx := tmrand.Bytes(txLength - 4 - 5) // to account for the varint and the fields in Data{}
+	tx := tmrand.Bytes(txLength - 7 - 5) // to account for the varint and the fields in Data{}
 	err = mempool.CheckTx(types.Tx{Value: tx}, nil, mempl.TxInfo{})
 	assert.NoError(t, err)
 

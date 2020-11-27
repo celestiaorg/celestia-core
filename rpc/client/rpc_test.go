@@ -245,7 +245,7 @@ func TestAppCalls(t *testing.T) {
 		ptx, err := c.Tx(context.Background(), bres.Hash, true)
 		require.NoError(err)
 		assert.EqualValues(txh, ptx.Height)
-		assert.EqualValues(tx, ptx.Tx)
+		assert.EqualValues(tx, ptx.Tx.Value)
 
 		// and we can even check the block is added
 		block, err := c.Block(context.Background(), &apph)
@@ -340,8 +340,8 @@ func TestBroadcastTxSync(t *testing.T) {
 	initMempoolSize := mempool.Size()
 
 	for i, c := range GetClients() {
-		k, v, kv := MakeTxKV()
-		tx := types.Tx{Key: k, Value: v}
+		_, _, kv := MakeTxKV()
+		tx := types.Tx{Key: nil, Value: kv}
 
 		bres, err := c.BroadcastTxSync(context.Background(), kv)
 		require.Nil(err, "%d: %+v", i, err)
@@ -483,14 +483,14 @@ func TestTx(t *testing.T) {
 			} else {
 				require.Nil(t, err, "%+v", err)
 				assert.EqualValues(t, txHeight, ptx.Height)
-				assert.EqualValues(t, tx, ptx.Tx)
+				assert.EqualValues(t, tx, ptx.Tx.Value)
 				assert.Zero(t, ptx.Index)
 				assert.True(t, ptx.TxResult.IsOK())
 				assert.EqualValues(t, txHash, ptx.Hash)
 
 				// time to verify the proof
 				proof := ptx.Proof
-				if tc.prove && assert.EqualValues(t, tx, proof.Data) {
+				if tc.prove && assert.EqualValues(t, tx, proof.Data.Value) {
 					assert.NoError(t, proof.Proof.Verify(proof.RootHash, txHash))
 				}
 			}

@@ -2,7 +2,6 @@ package types
 
 import (
 	"bytes"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -102,7 +101,7 @@ func TestValidTxProof(t *testing.T) {
 
 func TestTxProofUnchangable(t *testing.T) {
 	// run the other test a bunch...
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 40; i++ {
 		testTxProofUnchangable(t)
 	}
 }
@@ -143,7 +142,6 @@ func assertBadProof(t *testing.T, root []byte, bad []byte, good TxProof) {
 		if err == nil {
 			err = proof.Validate(root)
 			if err == nil {
-				fmt.Println(proof.Proof.Total, good.Proof.Total)
 				// XXX Fix simple merkle proofs so the following is *not* OK.
 				// This can happen if we have a slightly different total (where the
 				// path ends up the same). If it is something else, we have a real

@@ -119,7 +119,7 @@ func testTxEventsSent(t *testing.T, broadcastMethod string) {
 			}
 
 			// make the tx
-			_, _, tx := MakeTxKV()
+			_, v, _ := MakeTxKV()
 
 			// send
 			go func() {
@@ -130,9 +130,9 @@ func testTxEventsSent(t *testing.T, broadcastMethod string) {
 				)
 				switch broadcastMethod {
 				case "async":
-					txres, err = c.BroadcastTxAsync(ctx, tx)
+					txres, err = c.BroadcastTxAsync(ctx, v)
 				case "sync":
-					txres, err = c.BroadcastTxSync(ctx, tx)
+					txres, err = c.BroadcastTxSync(ctx, v)
 				default:
 					panic(fmt.Sprintf("Unknown broadcastMethod %s", broadcastMethod))
 				}
@@ -150,7 +150,7 @@ func testTxEventsSent(t *testing.T, broadcastMethod string) {
 			require.True(t, ok)
 
 			// make sure this is the proper tx
-			require.EqualValues(t, tx, txe.Tx)
+			require.EqualValues(t, v, txe.Tx.Value)
 			require.True(t, txe.Result.IsOK())
 		})
 	}

@@ -287,8 +287,7 @@ func (mem *CListMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo Tx
 	}
 
 	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx.ToProto()})
-	postTx := types.Tx{Key: reqRes.Response.GetCheckTx().TxId, Value: tx.Value}
-	reqRes.SetCallback(mem.reqResCb(postTx, txInfo.SenderID, txInfo.SenderP2PID, cb))
+	reqRes.SetCallback(mem.reqResCb(tx, txInfo.SenderID, txInfo.SenderP2PID, cb))
 
 	return nil
 }
@@ -352,7 +351,7 @@ func (mem *CListMempool) reqResCb(
 func (mem *CListMempool) addTx(memTx *mempoolTx) {
 	e := mem.txs.PushBack(memTx)
 	mem.txsMap.Store(TxKey(memTx.tx), e)
-	atomic.AddInt64(&mem.txsBytes, int64(memTx.tx.Size()))
+	atomic.AddInt64(&mem.txsBytes, memTx.tx.Size())
 	mem.metrics.TxSizeBytes.Observe(float64(memTx.tx.Size()))
 }
 
@@ -363,7 +362,7 @@ func (mem *CListMempool) removeTx(tx types.Tx, elem *clist.CElement, removeFromC
 	mem.txs.Remove(elem)
 	elem.DetachPrev()
 	mem.txsMap.Delete(TxKey(tx))
-	atomic.AddInt64(&mem.txsBytes, int64(-tx.Size()))
+	atomic.AddInt64(&mem.txsBytes, -tx.Size())
 
 	if removeFromCache {
 		mem.cache.Remove(tx)
@@ -386,7 +385,7 @@ func (mem *CListMempool) isFull(txSize int64) error {
 		txsBytes = mem.TxsBytes()
 	)
 
-	if memSize >= mem.config.Size || int64(txSize)+txsBytes > mem.config.MaxTxsBytes {
+	if memSize >= mem.config.Size || txSize+txsBytes > mem.config.MaxTxsBytes {
 		return ErrMempoolIsFull{
 			memSize, mem.config.Size,
 			txsBytes, mem.config.MaxTxsBytes,
@@ -761,5 +760,5 @@ func TxKey(tx types.Tx) [TxKeySize]byte {
 
 // txID is the hex encoded hash of the bytes as a types.Tx.
 func txID(tx types.Tx) string {
-	return fmt.Sprintf("Key: %X, Value: %X", tx.Key, tx.Value)
+	return fmt.Sprintf("%X", tx.Hash())
 }

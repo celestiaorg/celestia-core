@@ -22,10 +22,10 @@ type Tx struct {
 // Hash computes the TMHASH hash of the wire encoded transaction.
 // Hash(key) + Hash(value)
 func (tx Tx) Hash() []byte {
-	var bz []byte
-	bz = append(bz, tmhash.Sum(tx.Key)...)
-	bz = append(bz, tmhash.Sum(tx.Value)...)
-	return bz
+	var hash []byte
+	hash = append(hash, tmhash.Sum(tx.Key)...)
+	hash = append(hash, tmhash.Sum(tx.Value)...)
+	return hash
 }
 
 // Size returns the size of a transaction (Key + Value)

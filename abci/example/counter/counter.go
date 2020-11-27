@@ -26,10 +26,10 @@ func (app *Application) Info(req types.RequestInfo) types.ResponseInfo {
 
 func (app *Application) DeliverTx(req types.RequestDeliverTx) types.ResponseDeliverTx {
 	if app.serial {
-		if req.Tx.Size() > 8 {
+		if req.Tx.Size() > 10 {
 			return types.ResponseDeliverTx{
 				Code: code.CodeTypeEncodingError,
-				Log:  fmt.Sprintf("Max tx size is 8 bytes, got %d", int64(req.Tx.Size()))}
+				Log:  fmt.Sprintf("Max tx size is 10 bytes, got %d", int64(req.Tx.Size()))}
 		}
 		tx8 := make([]byte, 8)
 		copy(tx8[len(tx8)-len(req.Tx.Value):], req.Tx.Value)
@@ -46,7 +46,7 @@ func (app *Application) DeliverTx(req types.RequestDeliverTx) types.ResponseDeli
 
 func (app *Application) CheckTx(req types.RequestCheckTx) types.ResponseCheckTx {
 	if app.serial {
-		if req.Tx.Size() > 8 {
+		if req.Tx.Size() > 10 {
 			return types.ResponseCheckTx{
 				Code: code.CodeTypeEncodingError,
 				Log:  fmt.Sprintf("Max tx size is 8 bytes, got %d", req.Tx.Size())}

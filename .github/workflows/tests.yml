@@ -30,9 +30,6 @@ jobs:
             **/**.go
             go.mod
             go.sum
-      - name: Set GOBIN
-        run: |
-          echo "::add-path::$(go env GOPATH)/bin"
       - name: install
         run: make install install_abci
         if: "env.GIT_DIFF != ''"
@@ -62,9 +59,6 @@ jobs:
             **/**.go
             go.mod
             go.sum
-      - name: Set GOBIN
-        run: |
-          echo "::add-path::$(go env GOPATH)/bin"
       - uses: actions/cache@v2.1.2
         with:
           path: ~/go/pkg/mod
@@ -94,9 +88,6 @@ jobs:
             **/**.go
             go.mod
             go.sum
-      - name: Set GOBIN
-        run: |
-          echo "::add-path::$(go env GOPATH)/bin"
       - uses: actions/cache@v2.1.2
         with:
           path: ~/go/pkg/mod
@@ -125,9 +116,6 @@ jobs:
             **/**.go
             go.mod
             go.sum
-      - name: Set GOBIN
-        run: |
-          echo "::add-path::$(go env GOPATH)/bin"
       - uses: actions/cache@v2.1.2
         with:
           path: ~/go/pkg/mod

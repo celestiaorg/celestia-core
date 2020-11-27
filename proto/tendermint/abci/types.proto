@@ -196,7 +196,6 @@ message ResponseCheckTx {
   repeated Event events     = 7
       [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
   string codespace = 8;
-  bytes  tx_id     = 9;
 }
 
 message ResponseDeliverTx {
@@ -209,7 +208,6 @@ message ResponseDeliverTx {
   repeated Event events     = 7
       [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
   string codespace = 8;
-  bytes  tx_id     = 9;
 }
 
 message ResponseEndBlock {

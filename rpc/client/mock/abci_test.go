@@ -3,7 +3,6 @@ package mock_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -168,10 +167,10 @@ func TestABCIApp(t *testing.T) {
 	require.Nil(err)
 	assert.Equal(`{"size":0}`, info.Response.GetData())
 
-	// add a key
-	key, value := "foo", "bar"
-	tx := fmt.Sprintf("%s=%s", key, value)
-	res, err := m.BroadcastTxCommit(context.Background(), []byte(tx))
+	// add a kv
+	kv := "bar"
+
+	res, err := m.BroadcastTxCommit(context.Background(), []byte(kv))
 	require.Nil(err)
 	assert.True(res.CheckTx.IsOK())
 	require.NotNil(res.DeliverTx)
@@ -187,12 +186,12 @@ func TestABCIApp(t *testing.T) {
 	_qres, err := m.ABCIQueryWithOptions(
 		context.Background(),
 		"/key",
-		bytes.HexBytes(key),
+		bytes.HexBytes(kv),
 		client.ABCIQueryOptions{Prove: true},
 	)
 	qres := _qres.Response
 	require.Nil(err)
-	assert.EqualValues(value, qres.Value)
+	assert.EqualValues(kv, qres.Value)
 
 	// XXX Check proof
 }
