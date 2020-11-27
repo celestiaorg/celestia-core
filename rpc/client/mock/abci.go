@@ -70,7 +70,7 @@ func (a ABCIApp) BroadcastTxAsync(ctx context.Context, txValue []byte) (*ctypes.
 	}
 	return &ctypes.ResultBroadcastTx{
 		Code:      c.Code,
-		Data:      c.Value,
+		Data:      c.Data,
 		Log:       c.Log,
 		Codespace: c.Codespace,
 		Hash:      tx.Hash(),
@@ -86,7 +86,7 @@ func (a ABCIApp) BroadcastTxSync(ctx context.Context, txValue []byte) (*ctypes.R
 	}
 	return &ctypes.ResultBroadcastTx{
 		Code:      c.Code,
-		Data:      c.Value,
+		Data:      c.Data,
 		Log:       c.Log,
 		Codespace: c.Codespace,
 		Hash:      tx.Hash(),

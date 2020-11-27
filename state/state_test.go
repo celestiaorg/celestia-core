@@ -107,8 +107,8 @@ func TestABCIResponsesSaveLoad1(t *testing.T) {
 	dtxs := make([]*abci.ResponseDeliverTx, 2)
 	abciResponses.DeliverTxs = dtxs
 
-	abciResponses.DeliverTxs[0] = &abci.ResponseDeliverTx{Value: []byte("foo"), Events: nil}
-	abciResponses.DeliverTxs[1] = &abci.ResponseDeliverTx{Value: []byte("bar"), Log: "ok", Events: nil}
+	abciResponses.DeliverTxs[0] = &abci.ResponseDeliverTx{Data: []byte("foo"), Events: nil}
+	abciResponses.DeliverTxs[1] = &abci.ResponseDeliverTx{Data: []byte("bar"), Log: "ok", Events: nil}
 	abciResponses.EndBlock = &abci.ResponseEndBlock{ValidatorUpdates: []abci.ValidatorUpdate{
 		types.TM2PB.NewValidatorUpdate(ed25519.GenPrivKey().PubKey(), 10),
 	}}
@@ -142,16 +142,16 @@ func TestABCIResponsesSaveLoad2(t *testing.T) {
 		},
 		1: {
 			[]*abci.ResponseDeliverTx{
-				{Code: 32, Value: []byte("Hello"), Log: "Huh?"},
+				{Code: 32, Data: []byte("Hello"), Log: "Huh?"},
 			},
 			[]*abci.ResponseDeliverTx{
-				{Code: 32, Value: []byte("Hello")},
+				{Code: 32, Data: []byte("Hello")},
 			}},
 		2: {
 			[]*abci.ResponseDeliverTx{
 				{Code: 383},
 				{
-					Value: []byte("Gotcha!"),
+					Data: []byte("Gotcha!"),
 					Events: []abci.Event{
 						{Type: "type1", Attributes: []abci.EventAttribute{{Key: []byte("a"), Value: []byte("1")}}},
 						{Type: "type2", Attributes: []abci.EventAttribute{{Key: []byte("build"), Value: []byte("stuff")}}},
@@ -159,8 +159,8 @@ func TestABCIResponsesSaveLoad2(t *testing.T) {
 				},
 			},
 			[]*abci.ResponseDeliverTx{
-				{Code: 383, Value: nil},
-				{Code: 0, Value: []byte("Gotcha!"), Events: []abci.Event{
+				{Code: 383, Data: nil},
+				{Code: 0, Data: []byte("Gotcha!"), Events: []abci.Event{
 					{Type: "type1", Attributes: []abci.EventAttribute{{Key: []byte("a"), Value: []byte("1")}}},
 					{Type: "type2", Attributes: []abci.EventAttribute{{Key: []byte("build"), Value: []byte("stuff")}}},
 				}},

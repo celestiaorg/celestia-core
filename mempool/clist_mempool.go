@@ -287,7 +287,8 @@ func (mem *CListMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo Tx
 	}
 
 	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx.ToProto()})
-	reqRes.SetCallback(mem.reqResCb(tx, txInfo.SenderID, txInfo.SenderP2PID, cb))
+	postTx := types.Tx{Key: reqRes.Response.GetCheckTx().TxId, Value: tx.Value}
+	reqRes.SetCallback(mem.reqResCb(postTx, txInfo.SenderID, txInfo.SenderP2PID, cb))
 
 	return nil
 }

@@ -36,8 +36,8 @@ func TestABCIMock(t *testing.T) {
 		BroadcastCommit: mock.Call{
 			Args: goodTx,
 			Response: &ctypes.ResultBroadcastTxCommit{
-				CheckTx:   abci.ResponseCheckTx{Value: bytes.HexBytes("stand")},
-				DeliverTx: abci.ResponseDeliverTx{Value: bytes.HexBytes("deliver")},
+				CheckTx:   abci.ResponseCheckTx{Data: bytes.HexBytes("stand")},
+				DeliverTx: abci.ResponseDeliverTx{Data: bytes.HexBytes("deliver")},
 			},
 			Error: errors.New("bad tx"),
 		},
@@ -73,8 +73,8 @@ func TestABCIMock(t *testing.T) {
 	bres, err := m.BroadcastTxCommit(context.Background(), goodTx)
 	require.Nil(err, "%+v", err)
 	assert.EqualValues(0, bres.CheckTx.Code)
-	assert.EqualValues("stand", bres.CheckTx.Value)
-	assert.EqualValues("deliver", bres.DeliverTx.Value)
+	assert.EqualValues("stand", bres.CheckTx.Data)
+	assert.EqualValues("deliver", bres.DeliverTx.Data)
 }
 
 func TestABCIRecorder(t *testing.T) {

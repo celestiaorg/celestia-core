@@ -28,7 +28,7 @@ func TestEventBusPublishEventTx(t *testing.T) {
 
 	tx := Tx{Value: []byte("foo")}
 	result := abci.ResponseDeliverTx{
-		Value: []byte("bar"),
+		Data: []byte("bar"),
 		Events: []abci.Event{
 			{Type: "testType", Attributes: []abci.EventAttribute{{Key: []byte("baz"), Value: []byte("1")}}},
 		},
@@ -128,7 +128,7 @@ func TestEventBusPublishEventTxDuplicateKeys(t *testing.T) {
 
 	tx := Tx{Value: []byte("foo")}
 	result := abci.ResponseDeliverTx{
-		Value: []byte("bar"),
+		Data: []byte("bar"),
 		Events: []abci.Event{
 			{
 				Type: "transfer",

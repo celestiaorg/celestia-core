@@ -48,7 +48,7 @@ func BroadcastTxSync(ctx *rpctypes.Context, txValue []byte) (*ctypes.ResultBroad
 	r := res.GetCheckTx()
 	return &ctypes.ResultBroadcastTx{
 		Code:      r.Code,
-		Data:      r.Value,
+		Data:      r.Data,
 		Log:       r.Log,
 		Codespace: r.Codespace,
 		Hash:      tx.Hash(),
@@ -59,7 +59,6 @@ func BroadcastTxSync(ctx *rpctypes.Context, txValue []byte) (*ctypes.ResultBroad
 // More: https://docs.tendermint.com/master/rpc/#/Tx/broadcast_tx_commit
 func BroadcastTxCommit(ctx *rpctypes.Context, txValue []byte) (*ctypes.ResultBroadcastTxCommit, error) {
 	tx := types.Tx{Value: txValue}
-
 	subscriber := ctx.RemoteAddr()
 
 	if env.EventBus.NumClients() >= env.Config.MaxSubscriptionClients {

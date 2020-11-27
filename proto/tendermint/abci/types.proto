@@ -188,28 +188,28 @@ message ResponseBeginBlock {
 
 message ResponseCheckTx {
   uint32         code       = 1;
-  bytes          key        = 2;
-  bytes          value      = 3;
-  string         log        = 4;  // nondeterministic
-  string         info       = 5;  // nondeterministic
-  int64          gas_wanted = 6 [json_name = "gas_wanted"];
-  int64          gas_used   = 7 [json_name = "gas_used"];
-  repeated Event events     = 8
+  bytes          data       = 2;
+  string         log        = 3;  // nondeterministic
+  string         info       = 4;  // nondeterministic
+  int64          gas_wanted = 5 [json_name = "gas_wanted"];
+  int64          gas_used   = 6 [json_name = "gas_used"];
+  repeated Event events     = 7
       [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
-  string codespace = 9;
+  string codespace = 8;
+  bytes  tx_id     = 9;
 }
 
 message ResponseDeliverTx {
   uint32         code       = 1;
-  bytes          key        = 2;
-  bytes          value      = 3;
-  string         log        = 4;  // nondeterministic
-  string         info       = 5;  // nondeterministic
-  int64          gas_wanted = 6 [json_name = "gas_wanted"];
-  int64          gas_used   = 7 [json_name = "gas_used"];
-  repeated Event events     = 8
+  bytes          data       = 2;
+  string         log        = 3;  // nondeterministic
+  string         info       = 4;  // nondeterministic
+  int64          gas_wanted = 5 [json_name = "gas_wanted"];
+  int64          gas_used   = 6 [json_name = "gas_used"];
+  repeated Event events     = 7
       [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
-  string codespace = 9;
+  string codespace = 8;
+  bytes  tx_id     = 9;
 }
 
 message ResponseEndBlock {

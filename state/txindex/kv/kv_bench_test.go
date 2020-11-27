@@ -48,7 +48,7 @@ func BenchmarkTxSearch(b *testing.B) {
 			Index:  0,
 			Tx:     &tmproto.Tx{Value: txBz},
 			Result: abci.ResponseDeliverTx{
-				Value:  []byte{0},
+				Data:   []byte{0},
 				Code:   abci.CodeTypeOK,
 				Log:    "",
 				Events: events,
