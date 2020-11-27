@@ -189,26 +189,26 @@ func makeNumUnconfirmedTxsFunc(c *lrpc.Client) rpcNumUnconfirmedTxsFunc {
 	}
 }
 
-type rpcBroadcastTxCommitFunc func(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTxCommit, error)
+type rpcBroadcastTxCommitFunc func(ctx *rpctypes.Context, tx []byte) (*ctypes.ResultBroadcastTxCommit, error)
 
 func makeBroadcastTxCommitFunc(c *lrpc.Client) rpcBroadcastTxCommitFunc {
-	return func(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTxCommit, error) {
+	return func(ctx *rpctypes.Context, tx []byte) (*ctypes.ResultBroadcastTxCommit, error) {
 		return c.BroadcastTxCommit(ctx.Context(), tx)
 	}
 }
 
-type rpcBroadcastTxSyncFunc func(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error)
+type rpcBroadcastTxSyncFunc func(ctx *rpctypes.Context, tx []byte) (*ctypes.ResultBroadcastTx, error)
 
 func makeBroadcastTxSyncFunc(c *lrpc.Client) rpcBroadcastTxSyncFunc {
-	return func(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
+	return func(ctx *rpctypes.Context, tx []byte) (*ctypes.ResultBroadcastTx, error) {
 		return c.BroadcastTxSync(ctx.Context(), tx)
 	}
 }
 
-type rpcBroadcastTxAsyncFunc func(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error)
+type rpcBroadcastTxAsyncFunc func(ctx *rpctypes.Context, tx []byte) (*ctypes.ResultBroadcastTx, error)
 
 func makeBroadcastTxAsyncFunc(c *lrpc.Client) rpcBroadcastTxAsyncFunc {
-	return func(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
+	return func(ctx *rpctypes.Context, tx []byte) (*ctypes.ResultBroadcastTx, error) {
 		return c.BroadcastTxAsync(ctx.Context(), tx)
 	}
 }

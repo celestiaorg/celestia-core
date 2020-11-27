@@ -26,14 +26,14 @@ func (bapi *broadcastAPI) BroadcastTx(ctx context.Context, req *RequestBroadcast
 
 	return &ResponseBroadcastTx{
 		CheckTx: &abci.ResponseCheckTx{
-			Code: res.CheckTx.Code,
-			Data: res.CheckTx.Data,
-			Log:  res.CheckTx.Log,
+			Code:  res.CheckTx.Code,
+			Value: res.CheckTx.Value,
+			Log:   res.CheckTx.Log,
 		},
 		DeliverTx: &abci.ResponseDeliverTx{
-			Code: res.DeliverTx.Code,
-			Data: res.DeliverTx.Data,
-			Log:  res.DeliverTx.Log,
+			Code:  res.DeliverTx.Code,
+			Value: res.DeliverTx.Value,
+			Log:   res.DeliverTx.Log,
 		},
 	}, nil
 }

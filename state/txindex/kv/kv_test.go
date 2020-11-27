@@ -30,8 +30,8 @@ func TestTxIndex(t *testing.T) {
 		Index:  0,
 		Tx:     tx.ToProto(),
 		Result: abci.ResponseDeliverTx{
-			Data: []byte{0},
-			Code: abci.CodeTypeOK, Log: "", Events: nil,
+			Value: []byte{0},
+			Code:  abci.CodeTypeOK, Log: "", Events: nil,
 		},
 	}
 	hash := tx.Hash()
@@ -53,8 +53,8 @@ func TestTxIndex(t *testing.T) {
 		Index:  0,
 		Tx:     tx2.ToProto(),
 		Result: abci.ResponseDeliverTx{
-			Data: []byte{0},
-			Code: abci.CodeTypeOK, Log: "", Events: nil,
+			Value: []byte{0},
+			Code:  abci.CodeTypeOK, Log: "", Events: nil,
 		},
 	}
 	hash2 := tx2.Hash()
@@ -321,7 +321,7 @@ func txResultWithEvents(events []abci.Event) *abci.TxResult {
 		Index:  0,
 		Tx:     tx.ToProto(),
 		Result: abci.ResponseDeliverTx{
-			Data:   []byte{0},
+			Value:  []byte{0},
 			Code:   abci.CodeTypeOK,
 			Log:    "",
 			Events: events,
@@ -347,7 +347,7 @@ func benchmarkTxIndex(txsCount int64, b *testing.B) {
 			Index:  txIndex,
 			Tx:     tx.ToProto(),
 			Result: abci.ResponseDeliverTx{
-				Data:   []byte{0},
+				Value:  []byte{0},
 				Code:   abci.CodeTypeOK,
 				Log:    "",
 				Events: []abci.Event{},

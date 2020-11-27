@@ -10,12 +10,12 @@ import (
 )
 
 func TestABCIResults(t *testing.T) {
-	a := &abci.ResponseDeliverTx{Code: 0, Data: nil}
-	b := &abci.ResponseDeliverTx{Code: 0, Data: []byte{}}
-	c := &abci.ResponseDeliverTx{Code: 0, Data: []byte("one")}
-	d := &abci.ResponseDeliverTx{Code: 14, Data: nil}
-	e := &abci.ResponseDeliverTx{Code: 14, Data: []byte("foo")}
-	f := &abci.ResponseDeliverTx{Code: 14, Data: []byte("bar")}
+	a := &abci.ResponseDeliverTx{Code: 0, Value: nil}
+	b := &abci.ResponseDeliverTx{Code: 0, Value: []byte{}}
+	c := &abci.ResponseDeliverTx{Code: 0, Value: []byte("one")}
+	d := &abci.ResponseDeliverTx{Code: 14, Value: nil}
+	e := &abci.ResponseDeliverTx{Code: 14, Value: []byte("foo")}
+	f := &abci.ResponseDeliverTx{Code: 14, Value: []byte("bar")}
 
 	// Nil and []byte{} should produce the same bytes
 	bzA, err := a.Marshal()

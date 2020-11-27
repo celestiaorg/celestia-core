@@ -87,15 +87,15 @@ func (c *Local) ABCIQueryWithOptions(
 	return core.ABCIQuery(c.ctx, path, data, opts.Height, opts.Prove)
 }
 
-func (c *Local) BroadcastTxCommit(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTxCommit, error) {
+func (c *Local) BroadcastTxCommit(ctx context.Context, tx []byte) (*ctypes.ResultBroadcastTxCommit, error) {
 	return core.BroadcastTxCommit(c.ctx, tx)
 }
 
-func (c *Local) BroadcastTxAsync(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
+func (c *Local) BroadcastTxAsync(ctx context.Context, tx []byte) (*ctypes.ResultBroadcastTx, error) {
 	return core.BroadcastTxAsync(c.ctx, tx)
 }
 
-func (c *Local) BroadcastTxSync(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
+func (c *Local) BroadcastTxSync(ctx context.Context, tx []byte) (*ctypes.ResultBroadcastTx, error) {
 	return core.BroadcastTxSync(c.ctx, tx)
 }
 

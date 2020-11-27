@@ -47,7 +47,7 @@ func (a ABCIResults) toByteSlices() [][]byte {
 func deterministicResponseDeliverTx(response *abci.ResponseDeliverTx) *abci.ResponseDeliverTx {
 	return &abci.ResponseDeliverTx{
 		Code:      response.Code,
-		Data:      response.Data,
+		Value:     response.Value,
 		GasWanted: response.GasWanted,
 		GasUsed:   response.GasUsed,
 	}

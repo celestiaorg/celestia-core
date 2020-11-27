@@ -7,7 +7,6 @@ import (
 	"time"
 
 	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
-	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -67,7 +66,7 @@ func TestApp_Tx(t *testing.T) {
 
 		key := fmt.Sprintf("testapp-tx-%v", node.Name)
 		value := fmt.Sprintf("%x", bz)
-		tx := types.Tx{Value: []byte(fmt.Sprintf("%v=%v", key, value))} //todo: add key when abci methods are added
+		tx := []byte(fmt.Sprintf("%v=%v", key, value))
 
 		_, err = client.BroadcastTxCommit(ctx, tx)
 		require.NoError(t, err)

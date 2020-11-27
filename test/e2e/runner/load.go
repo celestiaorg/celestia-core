@@ -10,7 +10,6 @@ import (
 
 	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
 	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
-	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // Load generates transactions against the network until the given
@@ -28,8 +27,8 @@ func Load(ctx context.Context, testnet *e2e.Testnet) error {
 	initialTimeout := 1 * time.Minute
 	stallTimeout := 30 * time.Second
 
-	chTx := make(chan types.Tx)
-	chSuccess := make(chan types.Tx)
+	chTx := make(chan []byte)
+	chSuccess := make(chan []byte)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -65,7 +64,7 @@ func Load(ctx context.Context, testnet *e2e.Testnet) error {
 }
 
 // loadGenerate generates jobs until the context is cancelled
-func loadGenerate(ctx context.Context, chTx chan<- types.Tx) {
+func loadGenerate(ctx context.Context, chTx chan<- []byte) {
 	for i := 0; i < math.MaxInt64; i++ {
 		// We keep generating the same 1000 keys over and over, with different values.
 		// This gives a reasonable load without putting too much data in the app.
@@ -76,7 +75,7 @@ func loadGenerate(ctx context.Context, chTx chan<- types.Tx) {
 		if err != nil {
 			panic(fmt.Sprintf("Failed to read random bytes: %v", err))
 		}
-		tx := types.Tx{Value: []byte(fmt.Sprintf("load-%X=%x", id, bz))} //todo: add key when abci methods have changed
+		tx := []byte(fmt.Sprintf("load-%X=%x", id, bz))
 
 		select {
 		case chTx <- tx:
@@ -89,7 +88,7 @@ func loadGenerate(ctx context.Context, chTx chan<- types.Tx) {
 }
 
 // loadProcess processes transactions
-func loadProcess(ctx context.Context, testnet *e2e.Testnet, chTx <-chan types.Tx, chSuccess chan<- types.Tx) {
+func loadProcess(ctx context.Context, testnet *e2e.Testnet, chTx <-chan []byte, chSuccess chan<- []byte) {
 	// Each worker gets its own client to each node, which allows for some
 	// concurrency while still bounding it.
 	clients := map[string]*rpchttp.HTTP{}

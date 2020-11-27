@@ -9,7 +9,8 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/tendermint/tendermint/libs/log"
+
+	"github.com/lazyledger/lazyledger-core/libs/log"
 )
 
 const (

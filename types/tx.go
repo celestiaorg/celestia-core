@@ -22,11 +22,7 @@ type Tx struct {
 // Hash computes the TMHASH hash of the wire encoded transaction.
 // Hash(key) + Hash(value)
 func (tx Tx) Hash() []byte {
-	var hash []byte
-	hash = append(hash, tmhash.Sum(tx.Key)...)
-	hash = append(hash, tmhash.Sum(tx.Value)...)
-
-	return hash
+	return tmhash.Sum(tx.Value)
 }
 
 // Size returns the size of a transaction (Key + Value)
@@ -52,7 +48,7 @@ func (tx Tx) Equal(t Tx) bool {
 
 // String returns the hex-encoded transaction as a string.
 func (tx Tx) String() string {
-	return fmt.Sprintf("Tx{Key:%X, Value:%X}", []byte(tx.Key), []byte(tx.Value))
+	return fmt.Sprintf("Tx{Key:%X, Value:%X}", tx.Key, tx.Value)
 }
 
 func (tx Tx) ToProto() *tmproto.Tx {

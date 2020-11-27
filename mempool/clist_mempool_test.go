@@ -322,7 +322,7 @@ func TestSerialReap(t *testing.T) {
 			}
 			if res.IsErr() {
 				t.Errorf("error committing tx. Code:%v result:%X log:%v",
-					res.Code, res.Data, res.Log)
+					res.Code, res.Value, res.Log)
 			}
 		}
 		res, err := appConnCon.CommitSync()

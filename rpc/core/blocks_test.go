@@ -72,8 +72,8 @@ func TestBlockchainInfo(t *testing.T) {
 func TestBlockResults(t *testing.T) {
 	results := &tmstate.ABCIResponses{
 		DeliverTxs: []*abci.ResponseDeliverTx{
-			{Code: 0, Data: []byte{0x01}, Log: "ok"},
-			{Code: 0, Data: []byte{0x02}, Log: "ok"},
+			{Code: 0, Value: []byte{0x01}, Log: "ok"},
+			{Code: 0, Value: []byte{0x02}, Log: "ok"},
 			{Code: 1, Log: "not ok"},
 		},
 		EndBlock:   &abci.ResponseEndBlock{},

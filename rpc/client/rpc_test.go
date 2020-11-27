@@ -340,14 +340,16 @@ func TestBroadcastTxSync(t *testing.T) {
 	initMempoolSize := mempool.Size()
 
 	for i, c := range GetClients() {
-		_, _, tx := MakeTxKV()
-		bres, err := c.BroadcastTxSync(context.Background(), tx)
+		k, v, kv := MakeTxKV()
+		tx := types.Tx{Key: k, Value: v}
+
+		bres, err := c.BroadcastTxSync(context.Background(), kv)
 		require.Nil(err, "%d: %+v", i, err)
 		require.Equal(bres.Code, abci.CodeTypeOK) // FIXME
 
 		require.Equal(initMempoolSize+1, mempool.Size())
 
-		txs := mempool.ReapMaxTxs(len(tx))
+		txs := mempool.ReapMaxTxs(int(tx.Size()))
 		require.EqualValues(tx, txs[0])
 		mempool.Flush()
 	}
@@ -369,11 +371,11 @@ func TestBroadcastTxCommit(t *testing.T) {
 }
 
 func TestUnconfirmedTxs(t *testing.T) {
-	_, _, tx := MakeTxKV()
+	v, k, _ := MakeTxKV()
 
 	ch := make(chan *abci.Response, 1)
 	mempool := node.Mempool()
-	err := mempool.CheckTx(tx, func(resp *abci.Response) { ch <- resp }, mempl.TxInfo{})
+	err := mempool.CheckTx(types.Tx{Key: k, Value: v}, func(resp *abci.Response) { ch <- resp }, mempl.TxInfo{})
 	require.NoError(t, err)
 
 	// wait for tx to arrive in mempoool.
@@ -392,18 +394,18 @@ func TestUnconfirmedTxs(t *testing.T) {
 		assert.Equal(t, 1, res.Count)
 		assert.Equal(t, 1, res.Total)
 		assert.Equal(t, mempool.TxsBytes(), res.TotalBytes)
-		assert.Exactly(t, types.Txs{tx}, types.Txs(res.Txs))
+		assert.Exactly(t, types.Txs{{Key: k, Value: v}}, types.Txs(res.Txs))
 	}
 
 	mempool.Flush()
 }
 
 func TestNumUnconfirmedTxs(t *testing.T) {
-	_, _, tx := MakeTxKV()
+	k, v, _ := MakeTxKV()
 
 	ch := make(chan *abci.Response, 1)
 	mempool := node.Mempool()
-	err := mempool.CheckTx(tx, func(resp *abci.Response) { ch <- resp }, mempl.TxInfo{})
+	err := mempool.CheckTx(types.Tx{Key: k, Value: v}, func(resp *abci.Response) { ch <- resp }, mempl.TxInfo{})
 	require.NoError(t, err)
 
 	// wait for tx to arrive in mempoool.
@@ -434,7 +436,7 @@ func TestCheckTx(t *testing.T) {
 	for _, c := range GetClients() {
 		_, _, tx := MakeTxKV()
 
-		res, err := c.CheckTx(context.Background(), tx)
+		res, err := c.CheckTx(context.Background(), types.Tx{Value: tx})
 		require.NoError(t, err)
 		assert.Equal(t, abci.CodeTypeOK, res.Code)
 
@@ -452,7 +454,7 @@ func TestTx(t *testing.T) {
 	txHeight := bres.Height
 	txHash := bres.Hash
 
-	anotherTxHash := types.Tx("a different tx").Hash()
+	anotherTxHash := types.Tx{Value: []byte("a different tx")}.Hash()
 
 	cases := []struct {
 		valid bool
@@ -528,7 +530,7 @@ func TestTxSearch(t *testing.T) {
 
 	// pick out the last tx to have something to search for in tests
 	find := result.Txs[len(result.Txs)-1]
-	anotherTxHash := types.Tx("a different tx").Hash()
+	anotherTxHash := types.Tx{Value: []byte("a different tx")}.Hash()
 
 	for i, c := range GetClients() {
 		t.Logf("client %d", i)

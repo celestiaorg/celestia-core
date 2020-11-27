@@ -46,7 +46,7 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 		Height:   height,
 		Index:    index,
 		TxResult: r.Result,
-		Tx:       r.Tx,
+		Tx:       types.TxFromProto(r.Tx),
 		Proof:    proof,
 	}, nil
 }
@@ -111,12 +111,14 @@ func TxSearch(ctx *rpctypes.Context, query string, prove bool, pagePtr, perPageP
 			proof = block.Data.Txs.Proof(int(r.Index)) // XXX: overflow on 32-bit machines
 		}
 
+		tx := types.TxFromProto(r.Tx)
+
 		apiResults = append(apiResults, &ctypes.ResultTx{
-			Hash:     types.Tx(r.Tx).Hash(),
+			Hash:     types.Tx(tx).Hash(),
 			Height:   r.Height,
 			Index:    r.Index,
 			TxResult: r.Result,
-			Tx:       r.Tx,
+			Tx:       tx,
 			Proof:    proof,
 		})
 	}

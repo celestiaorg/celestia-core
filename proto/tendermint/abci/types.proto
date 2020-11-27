@@ -80,8 +80,8 @@ enum CheckTxType {
 }
 
 message RequestCheckTx {
-  tendermint.types.Tx      tx   = 1;
-  CheckTxType type = 2;
+  tendermint.types.Tx tx   = 1;
+  CheckTxType         type = 2;
 }
 
 message RequestDeliverTx {
@@ -188,26 +188,28 @@ message ResponseBeginBlock {
 
 message ResponseCheckTx {
   uint32         code       = 1;
-  bytes          data       = 2;
-  string         log        = 3;  // nondeterministic
-  string         info       = 4;  // nondeterministic
-  int64          gas_wanted = 5 [json_name = "gas_wanted"];
-  int64          gas_used   = 6 [json_name = "gas_used"];
-  repeated Event events     = 7
+  bytes          key        = 2;
+  bytes          value      = 3;
+  string         log        = 4;  // nondeterministic
+  string         info       = 5;  // nondeterministic
+  int64          gas_wanted = 6 [json_name = "gas_wanted"];
+  int64          gas_used   = 7 [json_name = "gas_used"];
+  repeated Event events     = 8
       [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
-  string codespace = 8;
+  string codespace = 9;
 }
 
 message ResponseDeliverTx {
   uint32         code       = 1;
-  bytes          data       = 2;
-  string         log        = 3;  // nondeterministic
-  string         info       = 4;  // nondeterministic
-  int64          gas_wanted = 5 [json_name = "gas_wanted"];
-  int64          gas_used   = 6 [json_name = "gas_used"];
-  repeated Event events     = 7
+  bytes          key        = 2;
+  bytes          value      = 3;
+  string         log        = 4;  // nondeterministic
+  string         info       = 5;  // nondeterministic
+  int64          gas_wanted = 6 [json_name = "gas_wanted"];
+  int64          gas_used   = 7 [json_name = "gas_used"];
+  repeated Event events     = 8
       [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
-  string codespace = 8;
+  string codespace = 9;
 }
 
 message ResponseEndBlock {
@@ -307,10 +309,10 @@ message EventAttribute {
 //
 // One usage is indexing transaction results.
 message TxResult {
-  int64             height = 1;
-  uint32            index  = 2;
-  tendermint.types.Tx             tx     = 3;
-  ResponseDeliverTx result = 4 [(gogoproto.nullable) = false];
+  int64               height = 1;
+  uint32              index  = 2;
+  tendermint.types.Tx tx     = 3;
+  ResponseDeliverTx   result = 4 [(gogoproto.nullable) = false];
 }
 
 //----------------------------------------

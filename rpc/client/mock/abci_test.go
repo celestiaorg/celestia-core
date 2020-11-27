@@ -15,7 +15,6 @@ import (
 	"github.com/lazyledger/lazyledger-core/rpc/client"
 	"github.com/lazyledger/lazyledger-core/rpc/client/mock"
 	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	"github.com/lazyledger/lazyledger-core/types"
 )
 
 func TestABCIMock(t *testing.T) {
@@ -23,8 +22,8 @@ func TestABCIMock(t *testing.T) {
 
 	key, value := []byte("foo"), []byte("bar")
 	height := int64(10)
-	goodTx := types.Tx{0x01, 0xff}
-	badTx := types.Tx{0x12, 0x21}
+	goodTx := []byte{0x01, 0xff}
+	badTx := []byte{0x12, 0x21}
 
 	m := mock.ABCIMock{
 		Info: mock.Call{Error: errors.New("foobar")},
@@ -37,8 +36,8 @@ func TestABCIMock(t *testing.T) {
 		BroadcastCommit: mock.Call{
 			Args: goodTx,
 			Response: &ctypes.ResultBroadcastTxCommit{
-				CheckTx:   abci.ResponseCheckTx{Data: bytes.HexBytes("stand")},
-				DeliverTx: abci.ResponseDeliverTx{Data: bytes.HexBytes("deliver")},
+				CheckTx:   abci.ResponseCheckTx{Value: bytes.HexBytes("stand")},
+				DeliverTx: abci.ResponseDeliverTx{Value: bytes.HexBytes("deliver")},
 			},
 			Error: errors.New("bad tx"),
 		},
@@ -74,8 +73,8 @@ func TestABCIMock(t *testing.T) {
 	bres, err := m.BroadcastTxCommit(context.Background(), goodTx)
 	require.Nil(err, "%+v", err)
 	assert.EqualValues(0, bres.CheckTx.Code)
-	assert.EqualValues("stand", bres.CheckTx.Data)
-	assert.EqualValues("deliver", bres.DeliverTx.Data)
+	assert.EqualValues("stand", bres.CheckTx.Value)
+	assert.EqualValues("deliver", bres.DeliverTx.Value)
 }
 
 func TestABCIRecorder(t *testing.T) {
@@ -130,7 +129,7 @@ func TestABCIRecorder(t *testing.T) {
 	assert.False(qa.Prove)
 
 	// now add some broadcasts (should all err)
-	txs := []types.Tx{{1}, {2}, {3}}
+	txs := [][]byte{{1}, {2}, {3}}
 	_, err = r.BroadcastTxCommit(context.Background(), txs[0])
 	assert.NotNil(err, "expected err on broadcast")
 	_, err = r.BroadcastTxSync(context.Background(), txs[1])
@@ -172,7 +171,7 @@ func TestABCIApp(t *testing.T) {
 	// add a key
 	key, value := "foo", "bar"
 	tx := fmt.Sprintf("%s=%s", key, value)
-	res, err := m.BroadcastTxCommit(context.Background(), types.Tx(tx))
+	res, err := m.BroadcastTxCommit(context.Background(), []byte(tx))
 	require.Nil(err)
 	assert.True(res.CheckTx.IsOK())
 	require.NotNil(res.DeliverTx)

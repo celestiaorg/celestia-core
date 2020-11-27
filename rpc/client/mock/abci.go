@@ -49,41 +49,44 @@ func (a ABCIApp) ABCIQueryWithOptions(
 // NOTE: Caller should call a.App.Commit() separately,
 // this function does not actually wait for a commit.
 // TODO: Make it wait for a commit and set res.Height appropriately.
-func (a ABCIApp) BroadcastTxCommit(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTxCommit, error) {
+func (a ABCIApp) BroadcastTxCommit(ctx context.Context, txValue []byte) (*ctypes.ResultBroadcastTxCommit, error) {
+	tx := types.Tx{Value: txValue}
 	res := ctypes.ResultBroadcastTxCommit{}
-	res.CheckTx = a.App.CheckTx(abci.RequestCheckTx{Tx: tx})
+	res.CheckTx = a.App.CheckTx(abci.RequestCheckTx{Tx: tx.ToProto()})
 	if res.CheckTx.IsErr() {
 		return &res, nil
 	}
-	res.DeliverTx = a.App.DeliverTx(abci.RequestDeliverTx{Tx: tx})
+	res.DeliverTx = a.App.DeliverTx(abci.RequestDeliverTx{Tx: tx.ToProto()})
 	res.Height = -1 // TODO
 	return &res, nil
 }
 
-func (a ABCIApp) BroadcastTxAsync(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
-	c := a.App.CheckTx(abci.RequestCheckTx{Tx: tx})
+func (a ABCIApp) BroadcastTxAsync(ctx context.Context, txValue []byte) (*ctypes.ResultBroadcastTx, error) {
+	tx := types.Tx{Value: txValue}
+	c := a.App.CheckTx(abci.RequestCheckTx{Tx: tx.ToProto()})
 	// and this gets written in a background thread...
 	if !c.IsErr() {
-		go func() { a.App.DeliverTx(abci.RequestDeliverTx{Tx: tx}) }()
+		go func() { a.App.DeliverTx(abci.RequestDeliverTx{Tx: tx.ToProto()}) }()
 	}
 	return &ctypes.ResultBroadcastTx{
 		Code:      c.Code,
-		Data:      c.Data,
+		Data:      c.Value,
 		Log:       c.Log,
 		Codespace: c.Codespace,
 		Hash:      tx.Hash(),
 	}, nil
 }
 
-func (a ABCIApp) BroadcastTxSync(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
-	c := a.App.CheckTx(abci.RequestCheckTx{Tx: tx})
+func (a ABCIApp) BroadcastTxSync(ctx context.Context, txValue []byte) (*ctypes.ResultBroadcastTx, error) {
+	tx := types.Tx{Value: txValue}
+	c := a.App.CheckTx(abci.RequestCheckTx{Tx: tx.ToProto()})
 	// and this gets written in a background thread...
 	if !c.IsErr() {
-		go func() { a.App.DeliverTx(abci.RequestDeliverTx{Tx: tx}) }()
+		go func() { a.App.DeliverTx(abci.RequestDeliverTx{Tx: tx.ToProto()}) }()
 	}
 	return &ctypes.ResultBroadcastTx{
 		Code:      c.Code,
-		Data:      c.Data,
+		Data:      c.Value,
 		Log:       c.Log,
 		Codespace: c.Codespace,
 		Hash:      tx.Hash(),
@@ -125,7 +128,7 @@ func (m ABCIMock) ABCIQueryWithOptions(
 	return &ctypes.ResultABCIQuery{Response: resQuery}, nil
 }
 
-func (m ABCIMock) BroadcastTxCommit(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTxCommit, error) {
+func (m ABCIMock) BroadcastTxCommit(ctx context.Context, tx []byte) (*ctypes.ResultBroadcastTxCommit, error) {
 	res, err := m.BroadcastCommit.GetResponse(tx)
 	if err != nil {
 		return nil, err
@@ -133,7 +136,7 @@ func (m ABCIMock) BroadcastTxCommit(ctx context.Context, tx types.Tx) (*ctypes.R
 	return res.(*ctypes.ResultBroadcastTxCommit), nil
 }
 
-func (m ABCIMock) BroadcastTxAsync(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
+func (m ABCIMock) BroadcastTxAsync(ctx context.Context, tx []byte) (*ctypes.ResultBroadcastTx, error) {
 	res, err := m.Broadcast.GetResponse(tx)
 	if err != nil {
 		return nil, err
@@ -141,7 +144,7 @@ func (m ABCIMock) BroadcastTxAsync(ctx context.Context, tx types.Tx) (*ctypes.Re
 	return res.(*ctypes.ResultBroadcastTx), nil
 }
 
-func (m ABCIMock) BroadcastTxSync(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
+func (m ABCIMock) BroadcastTxSync(ctx context.Context, tx []byte) (*ctypes.ResultBroadcastTx, error) {
 	res, err := m.Broadcast.GetResponse(tx)
 	if err != nil {
 		return nil, err
@@ -207,7 +210,7 @@ func (r *ABCIRecorder) ABCIQueryWithOptions(
 	return res, err
 }
 
-func (r *ABCIRecorder) BroadcastTxCommit(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTxCommit, error) {
+func (r *ABCIRecorder) BroadcastTxCommit(ctx context.Context, tx []byte) (*ctypes.ResultBroadcastTxCommit, error) {
 	res, err := r.Client.BroadcastTxCommit(ctx, tx)
 	r.addCall(Call{
 		Name:     "broadcast_tx_commit",
@@ -218,7 +221,7 @@ func (r *ABCIRecorder) BroadcastTxCommit(ctx context.Context, tx types.Tx) (*cty
 	return res, err
 }
 
-func (r *ABCIRecorder) BroadcastTxAsync(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
+func (r *ABCIRecorder) BroadcastTxAsync(ctx context.Context, tx []byte) (*ctypes.ResultBroadcastTx, error) {
 	res, err := r.Client.BroadcastTxAsync(ctx, tx)
 	r.addCall(Call{
 		Name:     "broadcast_tx_async",
@@ -229,7 +232,7 @@ func (r *ABCIRecorder) BroadcastTxAsync(ctx context.Context, tx types.Tx) (*ctyp
 	return res, err
 }
 
-func (r *ABCIRecorder) BroadcastTxSync(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
+func (r *ABCIRecorder) BroadcastTxSync(ctx context.Context, tx []byte) (*ctypes.ResultBroadcastTx, error) {
 	res, err := r.Client.BroadcastTxSync(ctx, tx)
 	r.addCall(Call{
 		Name:     "broadcast_tx_sync",

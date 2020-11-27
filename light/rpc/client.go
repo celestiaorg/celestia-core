@@ -163,15 +163,15 @@ func (c *Client) ABCIQueryWithOptions(ctx context.Context, path string, data tmb
 	return &ctypes.ResultABCIQuery{Response: resp}, nil
 }
 
-func (c *Client) BroadcastTxCommit(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTxCommit, error) {
+func (c *Client) BroadcastTxCommit(ctx context.Context, tx []byte) (*ctypes.ResultBroadcastTxCommit, error) {
 	return c.next.BroadcastTxCommit(ctx, tx)
 }
 
-func (c *Client) BroadcastTxAsync(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
+func (c *Client) BroadcastTxAsync(ctx context.Context, tx []byte) (*ctypes.ResultBroadcastTx, error) {
 	return c.next.BroadcastTxAsync(ctx, tx)
 }
 
-func (c *Client) BroadcastTxSync(ctx context.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
+func (c *Client) BroadcastTxSync(ctx context.Context, tx []byte) (*ctypes.ResultBroadcastTx, error) {
 	return c.next.BroadcastTxSync(ctx, tx)
 }
 
