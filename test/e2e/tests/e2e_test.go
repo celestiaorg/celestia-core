@@ -7,11 +7,12 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
 	rpctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
 	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
 	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/stretchr/testify/require"
 )
 
 func init() {

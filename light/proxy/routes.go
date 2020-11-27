@@ -3,6 +3,7 @@ package proxy
 import (
 	"github.com/lazyledger/lazyledger-core/libs/bytes"
 	lrpc "github.com/lazyledger/lazyledger-core/light/rpc"
+	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
 	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
 	rpcserver "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server"
 	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
@@ -213,11 +214,17 @@ func makeBroadcastTxAsyncFunc(c *lrpc.Client) rpcBroadcastTxAsyncFunc {
 	}
 }
 
-type rpcABCIQueryFunc func(ctx *rpctypes.Context, path string, data bytes.HexBytes) (*ctypes.ResultABCIQuery, error)
+type rpcABCIQueryFunc func(ctx *rpctypes.Context, path string,
+	data bytes.HexBytes, height int64, prove bool) (*ctypes.ResultABCIQuery, error)
 
 func makeABCIQueryFunc(c *lrpc.Client) rpcABCIQueryFunc {
-	return func(ctx *rpctypes.Context, path string, data bytes.HexBytes) (*ctypes.ResultABCIQuery, error) {
-		return c.ABCIQuery(ctx.Context(), path, data)
+	return func(ctx *rpctypes.Context, path string, data bytes.HexBytes,
+		height int64, prove bool) (*ctypes.ResultABCIQuery, error) {
+
+		return c.ABCIQueryWithOptions(ctx.Context(), path, data, rpcclient.ABCIQueryOptions{
+			Height: height,
+			Prove:  prove,
+		})
 	}
 }
 

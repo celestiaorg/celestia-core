@@ -4,7 +4,8 @@ PACKAGES=$(shell go list ./...)
 BUILDDIR ?= $(CURDIR)/build
 
 BUILD_TAGS?=tendermint
-LD_FLAGS = -X github.com/tendermint/tendermint/version.GitCommit=`git rev-parse --short=8 HEAD`
+VERSION := $(shell git describe --always)
+LD_FLAGS = -X github.com/tendermint/tendermint/version.TMCoreSemVer=$(VERSION)
 BUILD_FLAGS = -mod=readonly -ldflags "$(LD_FLAGS)"
 HTTPS_GIT := https://github.com/tendermint/tendermint.git
 DOCKER_BUF := docker run -v $(shell pwd):/workspace --workdir /workspace bufbuild/buf
@@ -51,8 +52,8 @@ all: check build test install
 .PHONY: all
 
 # The below include contains the tools.
-include tools.mk
-include tests.mk
+include tools/Makefile
+include test/Makefile
 
 ###############################################################################
 ###                                Build Tendermint                        ###
@@ -191,7 +192,7 @@ DESTINATION = ./index.html.md
 ###############################################################################
 ###                           Documentation                                 ###
 ###############################################################################
-
+# todo remove once tendermint.com DNS is solved
 build-docs:
 	@cd docs && \
 	while read -r branch path_prefix; do \
@@ -201,14 +202,6 @@ build-docs:
 		cp ~/output/$${path_prefix}/index.html ~/output ; \
 	done < versions ;
 .PHONY: build-docs
-
-sync-docs:
-	cd ~/output && \
-	echo "role_arn = ${DEPLOYMENT_ROLE_ARN}" >> /root/.aws/config ; \
-	echo "CI job = ${CIRCLE_BUILD_URL}" >> version.html ; \
-	aws s3 sync . s3://${WEBSITE_BUCKET} --profile terraform --delete ; \
-	aws cloudfront create-invalidation --distribution-id ${CF_DISTRIBUTION_ID} --profile terraform --path "/*" ;
-.PHONY: sync-docs
 
 ###############################################################################
 ###                            Docker image                                 ###
