@@ -29,7 +29,7 @@ func (app *Application) DeliverTx(req types.RequestDeliverTx) types.ResponseDeli
 		if req.Tx.Size() > 8 {
 			return types.ResponseDeliverTx{
 				Code: code.CodeTypeEncodingError,
-				Log:  fmt.Sprintf("Max tx size is 8 bytes, got %d", req.Tx.Size)}
+				Log:  fmt.Sprintf("Max tx size is 8 bytes, got %d", int64(req.Tx.Size()))}
 		}
 		tx8 := make([]byte, 8)
 		copy(tx8[len(tx8)-len(req.Tx.Value):], req.Tx.Value)

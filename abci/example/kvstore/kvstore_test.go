@@ -23,8 +23,8 @@ const (
 	testValue = "def"
 )
 
-func testKVStore(t *testing.T, app types.Application, tx []byte, key, value string) {
-	req := types.RequestDeliverTx{Tx: tmtypes.Tx{Key: []byte(key), Value: tx}.ToProto()}
+func testKVStore(t *testing.T, app types.Application, key, value string) {
+	req := types.RequestDeliverTx{Tx: tmtypes.Tx{Key: []byte(key), Value: []byte(value)}.ToProto()}
 	ar := app.DeliverTx(req)
 	require.False(t, ar.IsErr(), ar)
 	// repeating tx doesn't raise error
@@ -62,12 +62,12 @@ func TestKVStoreKV(t *testing.T) {
 	kvstore := NewApplication()
 	key := testKey
 	value := key
-	tx := []byte(key)
-	testKVStore(t, kvstore, tx, key, value)
+	// tx := []byte(key)
+	testKVStore(t, kvstore, testKey, value)
 
 	value = testValue
-	tx = []byte(key + "=" + value)
-	testKVStore(t, kvstore, tx, key, value)
+	// tx = []byte(key + "=" + value)
+	testKVStore(t, kvstore, key, value)
 }
 
 func TestPersistentKVStoreKV(t *testing.T) {
@@ -78,12 +78,12 @@ func TestPersistentKVStoreKV(t *testing.T) {
 	kvstore := NewPersistentKVStoreApplication(dir)
 	key := testKey
 	value := key
-	tx := []byte(key)
-	testKVStore(t, kvstore, tx, key, value)
+	// tx := []byte(key)
+	testKVStore(t, kvstore, key, value)
 
 	value = testValue
-	tx = []byte(key + "=" + value)
-	testKVStore(t, kvstore, tx, key, value)
+	// tx = []byte(key + "=" + value)
+	testKVStore(t, kvstore, key, value)
 }
 
 func TestPersistentKVStoreInfo(t *testing.T) {
@@ -314,20 +314,20 @@ func runClientTests(t *testing.T, client abcicli.Client) {
 	// run some tests....
 	key := testKey
 	value := key
-	tx := []byte(key)
-	testClient(t, client, tx, key, value)
+	// tx := []byte(key)
+	testClient(t, client, key, value)
 
 	value = testValue
-	tx = []byte(key + "=" + value)
-	testClient(t, client, tx, key, value)
+	// tx = []byte(key + "=" + value)
+	testClient(t, client, key, value)
 }
 
-func testClient(t *testing.T, app abcicli.Client, tx []byte, key, value string) {
-	ar, err := app.DeliverTxSync(types.RequestDeliverTx{Tx: tmtypes.Tx{Key: []byte(key), Value: tx}.ToProto()})
+func testClient(t *testing.T, app abcicli.Client, key, value string) {
+	ar, err := app.DeliverTxSync(types.RequestDeliverTx{Tx: tmtypes.Tx{Key: []byte(key), Value: []byte(value)}.ToProto()})
 	require.NoError(t, err)
 	require.False(t, ar.IsErr(), ar)
 	// repeating tx doesn't raise error
-	ar, err = app.DeliverTxSync(types.RequestDeliverTx{Tx: tmtypes.Tx{Key: []byte(key), Value: tx}.ToProto()})
+	ar, err = app.DeliverTxSync(types.RequestDeliverTx{Tx: tmtypes.Tx{Key: []byte(key), Value: []byte(value)}.ToProto()})
 	require.NoError(t, err)
 	require.False(t, ar.IsErr(), ar)
 	// commit
@@ -346,6 +346,7 @@ func testClient(t *testing.T, app abcicli.Client, tx []byte, key, value string) 
 	require.Nil(t, err)
 	require.Equal(t, code.CodeTypeOK, resQuery.Code)
 	require.Equal(t, key, string(resQuery.Key))
+	fmt.Println(value, key)
 	require.Equal(t, value, string(resQuery.Value))
 	require.EqualValues(t, info.LastBlockHeight, resQuery.Height)
 

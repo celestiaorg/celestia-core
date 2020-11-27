@@ -89,6 +89,8 @@ func (app *Application) DeliverTx(req types.RequestDeliverTx) types.ResponseDeli
 	var key []byte
 	if req.Tx.GetKey() == nil {
 		key = req.Tx.Value
+	} else {
+		key = req.Tx.Key
 	}
 
 	err := app.state.db.Set(prefixKey(key), req.Tx.Value)
