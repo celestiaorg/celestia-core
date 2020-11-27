@@ -22,6 +22,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	"github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
+	tmtypes "github.com/lazyledger/lazyledger-core/types"
 )
 
 // client is a global variable so it can be reused by the console
@@ -503,7 +504,11 @@ func cmdDeliverTx(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	res, err := client.DeliverTxSync(types.RequestDeliverTx{Value: txBytes})
+	txKey, err := stringOrHexToBytes(args[0])
+	if err != nil {
+		return err
+	}
+	res, err := client.DeliverTxSync(types.RequestDeliverTx{Tx: tmtypes.Tx{Key: txKey, Value: txBytes}.ToProto()})
 	if err != nil {
 		return err
 	}
@@ -529,7 +534,11 @@ func cmdCheckTx(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	res, err := client.CheckTxSync(types.RequestCheckTx{Tx: txBytes})
+	txKey, err := stringOrHexToBytes(args[0])
+	if err != nil {
+		return err
+	}
+	res, err := client.CheckTxSync(types.RequestCheckTx{Tx: tmtypes.Tx{Key: txKey, Value: txBytes}.ToProto()})
 	if err != nil {
 		return err
 	}

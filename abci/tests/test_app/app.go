@@ -8,6 +8,7 @@ import (
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
 	"github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmtypes "github.com/lazyledger/lazyledger-core/types"
 )
 
 func startClient(abciType string) abcicli.Client {
@@ -36,7 +37,7 @@ func commit(client abcicli.Client, hashExp []byte) {
 }
 
 func deliverTx(client abcicli.Client, txBytes []byte, codeExp uint32, dataExp []byte) {
-	res, err := client.DeliverTxSync(types.RequestDeliverTx{Value: txBytes})
+	res, err := client.DeliverTxSync(types.RequestDeliverTx{Tx: tmtypes.Tx{Key: txBytes, Value: txBytes}.ToProto()})
 	if err != nil {
 		panicf("client error: %v", err)
 	}

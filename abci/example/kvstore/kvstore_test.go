@@ -8,15 +8,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/libs/service"
-	tmtypes "github.com/lazyledger/lazyledger-core/types"
-
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
 	"github.com/lazyledger/lazyledger-core/abci/example/code"
 	abciserver "github.com/lazyledger/lazyledger-core/abci/server"
 	"github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/libs/service"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	tmtypes "github.com/lazyledger/lazyledger-core/types"
 )
 
 const (
@@ -25,7 +24,7 @@ const (
 )
 
 func testKVStore(t *testing.T, app types.Application, tx []byte, key, value string) {
-	req := types.RequestDeliverTx{Tx: tx}
+	req := types.RequestDeliverTx{Tx: tmtypes.Tx{Key: []byte(key), Value: tx}.ToProto()}
 	ar := app.DeliverTx(req)
 	require.False(t, ar.IsErr(), ar)
 	// repeating tx doesn't raise error
@@ -200,7 +199,7 @@ func makeApplyBlock(
 
 	kvstore.BeginBlock(types.RequestBeginBlock{Hash: hash, Header: header})
 	for _, tx := range txs {
-		if r := kvstore.DeliverTx(types.RequestDeliverTx{Key: tx.Key, Value: tx.Value}); r.IsErr() {
+		if r := kvstore.DeliverTx(types.RequestDeliverTx{tmtypes.Tx{Key: tx.Key, Value: tx.Value}.ToProto()}); r.IsErr() {
 			t.Fatal(r)
 		}
 	}
@@ -324,11 +323,11 @@ func runClientTests(t *testing.T, client abcicli.Client) {
 }
 
 func testClient(t *testing.T, app abcicli.Client, tx []byte, key, value string) {
-	ar, err := app.DeliverTxSync(types.RequestDeliverTx{Tx: tx})
+	ar, err := app.DeliverTxSync(types.RequestDeliverTx{Tx: tmtypes.Tx{Key: []byte(key), Value: tx}.ToProto()})
 	require.NoError(t, err)
 	require.False(t, ar.IsErr(), ar)
 	// repeating tx doesn't raise error
-	ar, err = app.DeliverTxSync(types.RequestDeliverTx{Tx: tx})
+	ar, err = app.DeliverTxSync(types.RequestDeliverTx{Tx: tmtypes.Tx{Key: []byte(key), Value: tx}.ToProto()})
 	require.NoError(t, err)
 	require.False(t, ar.IsErr(), ar)
 	// commit

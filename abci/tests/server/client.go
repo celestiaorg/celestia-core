@@ -8,6 +8,7 @@ import (
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
 	"github.com/lazyledger/lazyledger-core/abci/types"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	tmtypes "github.com/lazyledger/lazyledger-core/types"
 )
 
 func InitChain(client abcicli.Client) error {
@@ -47,7 +48,7 @@ func Commit(client abcicli.Client, hashExp []byte) error {
 }
 
 func DeliverTx(client abcicli.Client, txBytes []byte, codeExp uint32, dataExp []byte) error {
-	res, _ := client.DeliverTxSync(types.RequestDeliverTx{Value: txBytes})
+	res, _ := client.DeliverTxSync(types.RequestDeliverTx{Tx: tmtypes.Tx{Value: txBytes}.ToProto()})
 	code, data, log := res.Code, res.Data, res.Log
 	if code != codeExp {
 		fmt.Println("Failed test: DeliverTx")
@@ -66,7 +67,7 @@ func DeliverTx(client abcicli.Client, txBytes []byte, codeExp uint32, dataExp []
 }
 
 func CheckTx(client abcicli.Client, txBytes []byte, codeExp uint32, dataExp []byte) error {
-	res, _ := client.CheckTxSync(types.RequestCheckTx{Tx: txBytes})
+	res, _ := client.CheckTxSync(types.RequestCheckTx{Tx: tmtypes.Tx{Value: txBytes}.ToProto()})
 	code, data, log := res.Code, res.Data, res.Log
 	if code != codeExp {
 		fmt.Println("Failed test: CheckTx")
