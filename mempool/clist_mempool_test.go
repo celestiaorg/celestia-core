@@ -402,8 +402,12 @@ func TestMempoolCloseWAL(t *testing.T) {
 	walFilepath := mempool.wal.Path
 	sum1 := checksumFile(walFilepath, t)
 
+	bz, err := types.Tx{Value: []byte("foo")}.ToProto().Marshal()
+	require.NoError(t, err)
+	// add newline directive
+	bz = append(bz, newline...)
 	// 6. Sanity check to ensure that the written TX matches the expectation.
-	require.Equal(t, sum1, checksumIt([]byte("foo\n")), "foo with a newline should be written")
+	require.Equal(t, sum1, checksumIt(bz), "foo with a newline should be written")
 
 	// 7. Invoke CloseWAL() and ensure it discards the
 	// WAL thus any other write won't go through.
@@ -612,6 +616,7 @@ func checksumIt(data []byte) string {
 
 func checksumFile(p string, t *testing.T) string {
 	data, err := ioutil.ReadFile(p)
+	fmt.Println(data)
 	require.Nil(t, err, "expecting successful read of %q", p)
 	return checksumIt(data)
 }
