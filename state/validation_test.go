@@ -84,7 +84,7 @@ func TestValidateBlockHeader(t *testing.T) {
 			Invalid blocks don't pass
 		*/
 		for _, tc := range testCases {
-			block, _ := state.MakeBlock(height, makeTxs(height), []byte("proof"), nil, nil, nil, lastCommit, proposerAddr)
+			block, _ := state.MakeBlock(height, makeTxs(height), nil, nil, nil, nil, lastCommit, proposerAddr)
 			tc.malleateBlock(block)
 			err := blockExec.ValidateBlock(state, block)
 			t.Logf("%s: %v", tc.name, err)
