@@ -314,7 +314,8 @@ func TestVerifyLightClientAttack_Amnesia(t *testing.T) {
 	abciEv := pool.ABCIEvidence(block.Height, block.Evidence.Evidence)
 	// as we are unable to find out which subset of validators in the commit were malicious, no information
 	// is sent to the application. We expect the array to be empty
-	emptyEvidenceBlock := types.MakeBlock(state.LastBlockHeight, []types.Tx{}, nil, []types.Evidence{}, nil, nil, lastCommit)
+	emptyEvidenceBlock := types.MakeBlock(state.LastBlockHeight, []types.Tx{}, nil,
+		[]types.Evidence{}, nil, nil, lastCommit)
 	expectedAbciEv := pool.ABCIEvidence(emptyEvidenceBlock.Height, emptyEvidenceBlock.Evidence.Evidence)
 
 	assert.Equal(t, expectedAbciEv, abciEv)

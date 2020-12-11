@@ -413,7 +413,9 @@ func (cli *socketClient) ApplySnapshotChunkSync(
 func (cli *socketClient) PreprocessTxsSync(
 	req types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error) {
 	reqres := cli.queueRequest(types.ToRequestPreprocessTxs(req))
-	cli.FlushSync()
+	if err := cli.FlushSync(); err != nil {
+		return nil, err
+	}
 	return reqres.Response.GetPreprocessTxs(), cli.Error()
 }
 
