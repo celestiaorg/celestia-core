@@ -5,8 +5,8 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/crypto"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	privvalproto "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
 	cryptoproto "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
+	privvalproto "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
 )
