@@ -84,3 +84,8 @@ func (app *Application) Query(reqQuery types.RequestQuery) types.ResponseQuery {
 		return types.ResponseQuery{Log: fmt.Sprintf("Invalid query path. Expected hash or tx, got %v", reqQuery.Path)}
 	}
 }
+
+func (app *Application) PreprocessTxs(
+	req types.RequestPreprocessTxs) types.ResponsePreprocessTxs {
+	return types.ResponsePreprocessTxs{Txs: req.Txs}
+}
