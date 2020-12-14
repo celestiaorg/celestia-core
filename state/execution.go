@@ -128,7 +128,14 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	processedBlockTxs, err := blockExec.proxyApp.PreprocessTxsSync(abci.RequestPreprocessTxs{Txs: bzs})
 	if err != nil {
-		panic(err) // TODO: what to do??
+		// The App MUST ensure that only valid (and hence 'processable') 
+		// Tx enter the mempool. Hence, at this point, we can't have any non-processable 
+		// transaction causing an error. Also, the App can simply skip any Tx that could cause any 
+		// kind of trouble.
+		// Either way, we can not recover in a meaningful way, unless we skip proposing 
+		// this block, repair what caused the error and try again. 
+		// Hence we panic on purpose for now.
+		panic(err) 
 	}
 
 	ppt := processedBlockTxs.GetTxs()
