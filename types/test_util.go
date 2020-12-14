@@ -89,7 +89,7 @@ func MakeVote(
 // hence, test_util.go is quite misleading.
 func MakeBlock(
 	height int64,
-	txs []Tx, metaData []byte, evidence []Evidence, intermediateStateRoots []tmbytes.HexBytes, messages []Message,
+	txs []Tx, evidence []Evidence, intermediateStateRoots []tmbytes.HexBytes, messages Messages,
 	lastCommit *Commit) *Block {
 	block := &Block{
 		Header: Header{
@@ -98,10 +98,9 @@ func MakeBlock(
 		},
 		Data: Data{
 			Txs:                    txs,
-			MetaData:               metaData,
 			IntermediateStateRoots: IntermediateStateRoots{RawRootsList: intermediateStateRoots},
 			Evidence:               EvidenceData{Evidence: evidence},
-			Messages:               Messages{MessagesList: messages},
+			Messages:               messages,
 		},
 		LastCommit: lastCommit,
 	}

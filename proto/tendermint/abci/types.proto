@@ -73,7 +73,6 @@ message RequestBeginBlock {
   tendermint.types.Header header               = 2 [(gogoproto.nullable) = false];
   LastCommitInfo          last_commit_info     = 3 [(gogoproto.nullable) = false];
   repeated Evidence       byzantine_validators = 4 [(gogoproto.nullable) = false];
-  bytes meta_data = 5;
 }
 
 enum CheckTxType {
@@ -144,7 +143,7 @@ message Response {
     ResponseOfferSnapshot      offer_snapshot       = 13;
     ResponseLoadSnapshotChunk  load_snapshot_chunk  = 14;
     ResponseApplySnapshotChunk apply_snapshot_chunk = 15;
-    ResponsePreprocessTxs     preprocess_txs = 16;
+    ResponsePreprocessTxs      preprocess_txs       = 16;
   }
 }
 
@@ -268,8 +267,8 @@ message ResponseApplySnapshotChunk {
 }
 
 message ResponsePreprocessTxs {
-  repeated bytes txs       = 1;
-  bytes          meta_data = 2;
+  repeated bytes            txs      = 1;
+  tendermint.types.Messages messages = 2;
 }
 
 //----------------------------------------

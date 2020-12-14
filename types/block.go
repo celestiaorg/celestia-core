@@ -1148,9 +1148,6 @@ type Data struct {
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
 
-	// MetaData is a arbitrary byte slice. This field will vary on the use case of the application
-	// NOTE: can be empty or populated.
-	MetaData []byte `json:"meta_data"`
 	// Intermediate state roots of the Txs included in block.Height
 	// and executed by state state @ block.Height+1.
 	//
@@ -1246,6 +1243,34 @@ type Message struct {
 	Data []byte
 }
 
+var (
+	MessageEmpty  = Message{}
+	MessagesEmpty = Messages{}
+)
+
+func MessageFromProto(p *tmproto.Message) Message {
+	if p == nil {
+		return MessageEmpty
+	}
+	return Message{
+		NamespaceID: p.NamespaceId,
+		Data:        p.Data,
+	}
+}
+
+func MessagesFromProto(p *tmproto.Messages) Messages {
+	if p == nil {
+		return MessagesEmpty
+	}
+
+	msgs := make([]Message, 0, len(p.MessagesList))
+
+	for i := 0; i < len(p.MessagesList); i++ {
+		msgs = append(msgs, MessageFromProto(p.MessagesList[i]))
+	}
+	return Messages{MessagesList: msgs}
+}
+
 // StringIndented returns an indented string representation of the transactions.
 func (data *Data) StringIndented(indent string) string {
 	if data == nil {
@@ -1277,7 +1302,6 @@ func (data *Data) ToProto() tmproto.Data {
 		tp.Txs = txBzs
 	}
 
-	tp.MetaData = data.MetaData
 	rawRoots := data.IntermediateStateRoots.RawRootsList
 	if len(rawRoots) > 0 {
 		roots := make([][]byte, len(rawRoots))
@@ -1311,7 +1335,6 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		data.Txs = Txs{}
 	}
 
-	data.MetaData = dp.MetaData
 	if len(dp.Messages.MessagesList) > 0 {
 		msgs := make([]Message, len(dp.Messages.MessagesList))
 		for i, m := range dp.Messages.MessagesList {
