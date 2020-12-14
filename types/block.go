@@ -83,8 +83,8 @@ func (dah *DataAvailabilityHeader) Hash() []byte {
 	if dah == nil {
 		return merkle.HashFromByteSlices(nil)
 	}
-	colsCount := len(dah.RowsRoots)
-	rowsCount := len(dah.ColumnRoots)
+	colsCount := len(dah.ColumnRoots)
+	rowsCount := len(dah.RowsRoots)
 	slices := make([][]byte, colsCount+rowsCount)
 	for i, rowRoot := range dah.RowsRoots {
 		slices[i] = rowRoot.Bytes()
