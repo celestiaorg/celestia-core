@@ -30,10 +30,16 @@ const (
 	// Corresponds to AVAILABLE_DATA_ORIGINAL_SQUARE_MAX in the spec.
 	// 128*128*256 = 4 Megabytes
 	// TODO(ismail): settle on a proper max square
+	// if the square size is larger than this, the block producer will panic
 	MaxSquareSize = 128
+	// MaxShareCount is the maximum number of shares allowed in the original data square.
+	// if there are more shares than this, the block producer will panic.
+	MaxShareCount = MaxSquareSize * MaxSquareSize
 
-	// MinSquareSize depicts the smallest original square width.
+	// MinSquareSize depicts the smallest original square width. A square size smaller than this will
+	// cause block producer to panic
 	MinSquareSize = 1
+	// MinshareCount is the minimum shares required in an original data square.
 	MinSharecount = MinSquareSize * MinSquareSize
 )
 
