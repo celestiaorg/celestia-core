@@ -492,6 +492,8 @@ func resMatchesReq(req *types.Request, res *types.Response) (ok bool) {
 		_, ok = res.Value.(*types.Response_ListSnapshots)
 	case *types.Request_OfferSnapshot:
 		_, ok = res.Value.(*types.Response_OfferSnapshot)
+	case *types.Request_PreprocessTxs:
+		_, ok = res.Value.(*types.Response_PreprocessTxs)
 	}
 	return ok
 }
