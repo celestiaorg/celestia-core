@@ -126,7 +126,10 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	//      https://github.com/lazyledger/lazyledger-specs/blob/53e5f350838f1e0785ad670704bf91dac2f4f5a3/specs/block_proposer.md#deciding-on-a-block-size
 	//      Here, we instead assume a fixed (max) square size instead.
 	//  2. feed them into MakeBlock below:
-	processedBlockTxs, err := blockExec.proxyApp.PreprocessTxsSync(context.Background(), abci.RequestPreprocessTxs{Txs: bzs})
+	processedBlockTxs, err := blockExec.proxyApp.PreprocessTxsSync(
+		context.Background(),
+		abci.RequestPreprocessTxs{Txs: bzs},
+	)
 	if err != nil {
 		// The App MUST ensure that only valid (and hence 'processable')
 		// Tx enter the mempool. Hence, at this point, we can't have any non-processable
