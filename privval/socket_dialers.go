@@ -7,7 +7,6 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/crypto"
 	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
-	p2pconn "github.com/lazyledger/lazyledger-core/p2p/conn"
 )
 
 // Socket errors.
@@ -28,7 +27,7 @@ func DialTCPFn(addr string, timeoutReadWrite time.Duration, privKey crypto.PrivK
 			err = conn.SetDeadline(deadline)
 		}
 		if err == nil {
-			conn, err = p2pconn.MakeSecretConnection(conn, privKey)
+			conn, err = MakeSecretConnection(conn, privKey)
 		}
 		return conn, err
 	}

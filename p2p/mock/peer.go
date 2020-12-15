@@ -3,7 +3,6 @@ package mock
 import (
 	"net"
 
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	"github.com/lazyledger/lazyledger-core/libs/service"
 	"github.com/lazyledger/lazyledger-core/p2p"
 	"github.com/lazyledger/lazyledger-core/p2p/conn"
@@ -27,11 +26,11 @@ func NewPeer(ip net.IP) *Peer {
 	} else {
 		netAddr = p2p.NewNetAddressIPPort(ip, 26656)
 	}
-	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
-	netAddr.ID = nodeKey.ID()
+	nodeKey := p2p.GenNodeKey()
+	netAddr.ID = nodeKey.ID
 	mp := &Peer{
 		ip:   ip,
-		id:   nodeKey.ID(),
+		id:   nodeKey.ID,
 		addr: netAddr,
 		kv:   make(map[string]interface{}),
 	}

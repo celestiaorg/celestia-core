@@ -14,7 +14,10 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/crypto/secp256k1"
 	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
+	mcs "github.com/lazyledger/lazyledger-core/test/maverick/consensus"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 const (
@@ -56,6 +59,7 @@ type Testnet struct {
 	Validators       map[*Node]int64
 	ValidatorUpdates map[int64]map[*Node]int64
 	Nodes            []*Node
+	KeyType          string
 }
 
 // Node represents a Tendermint node in a testnet.
@@ -63,7 +67,8 @@ type Node struct {
 	Name             string
 	Testnet          *Testnet
 	Mode             Mode
-	Key              crypto.PrivKey
+	PrivvalKey       crypto.PrivKey
+	NodeKey          crypto.PrivKey
 	IP               net.IP
 	ProxyPort        uint32
 	StartAt          int64
@@ -78,6 +83,7 @@ type Node struct {
 	Seeds            []*Node
 	PersistentPeers  []*Node
 	Perturbations    []Perturbation
+	Misbehaviors     map[int64]string
 }
 
 // LoadTestnet loads a testnet from a manifest file, using the filename to
@@ -116,6 +122,10 @@ func LoadTestnet(file string) (*Testnet, error) {
 		Validators:       map[*Node]int64{},
 		ValidatorUpdates: map[int64]map[*Node]int64{},
 		Nodes:            []*Node{},
+		KeyType:          "ed25519",
+	}
+	if len(manifest.KeyType) != 0 {
+		testnet.KeyType = manifest.KeyType
 	}
 	if manifest.InitialHeight > 0 {
 		testnet.InitialHeight = manifest.InitialHeight
@@ -133,7 +143,8 @@ func LoadTestnet(file string) (*Testnet, error) {
 		node := &Node{
 			Name:             name,
 			Testnet:          testnet,
-			Key:              keyGen.Generate(),
+			PrivvalKey:       keyGen.Generate(manifest.KeyType),
+			NodeKey:          keyGen.Generate("ed25519"),
 			IP:               ipGen.Next(),
 			ProxyPort:        proxyPortGen.Next(),
 			Mode:             ModeValidator,
@@ -147,6 +158,10 @@ func LoadTestnet(file string) (*Testnet, error) {
 			SnapshotInterval: nodeManifest.SnapshotInterval,
 			RetainBlocks:     nodeManifest.RetainBlocks,
 			Perturbations:    []Perturbation{},
+			Misbehaviors:     make(map[int64]string),
+		}
+		if node.StartAt == testnet.InitialHeight {
+			node.StartAt = 0 // normalize to 0 for initial nodes, since code expects this
 		}
 		if nodeManifest.Mode != "" {
 			node.Mode = Mode(nodeManifest.Mode)
@@ -165,6 +180,13 @@ func LoadTestnet(file string) (*Testnet, error) {
 		}
 		for _, p := range nodeManifest.Perturb {
 			node.Perturbations = append(node.Perturbations, Perturbation(p))
+		}
+		for heightString, misbehavior := range nodeManifest.Misbehaviors {
+			height, err := strconv.ParseInt(heightString, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("unable to parse height %s to int64: %w", heightString, err)
+			}
+			node.Misbehaviors[height] = misbehavior
 		}
 		testnet.Nodes = append(testnet.Nodes, node)
 	}
@@ -250,6 +272,11 @@ func (t Testnet) Validate() error {
 	if len(t.Nodes) == 0 {
 		return errors.New("network has no nodes")
 	}
+	switch t.KeyType {
+	case "", types.ABCIPubKeyTypeEd25519, types.ABCIPubKeyTypeSecp256k1:
+	default:
+		return errors.New("unsupported KeyType")
+	}
 	for _, node := range t.Nodes {
 		if err := node.Validate(t); err != nil {
 			return fmt.Errorf("invalid node %q: %w", node.Name, err)
@@ -280,7 +307,7 @@ func (n Node) Validate(testnet Testnet) error {
 		}
 	}
 	switch n.FastSync {
-	case "", "v0", "v1", "v2":
+	case "", "v0", "v2":
 	default:
 		return fmt.Errorf("invalid fast sync setting %q", n.FastSync)
 	}
@@ -324,6 +351,31 @@ func (n Node) Validate(testnet Testnet) error {
 			return fmt.Errorf("invalid perturbation %q", perturbation)
 		}
 	}
+
+	if (n.PrivvalProtocol != "file" || n.Mode != "validator") && len(n.Misbehaviors) != 0 {
+		return errors.New("must be using \"file\" privval protocol to implement misbehaviors")
+	}
+
+	for height, misbehavior := range n.Misbehaviors {
+		if height < n.StartAt {
+			return fmt.Errorf("misbehavior height %d is below node start height %d",
+				height, n.StartAt)
+		}
+		if height < testnet.InitialHeight {
+			return fmt.Errorf("misbehavior height %d is below network initial height %d",
+				height, testnet.InitialHeight)
+		}
+		exists := false
+		for possibleBehaviors := range mcs.MisbehaviorList {
+			if possibleBehaviors == misbehavior {
+				exists = true
+			}
+		}
+		if !exists {
+			return fmt.Errorf("misbehavior %s does not exist", misbehavior)
+		}
+	}
+
 	return nil
 }
 
@@ -365,6 +417,29 @@ func (t Testnet) IPv6() bool {
 	return t.IP.IP.To4() == nil
 }
 
+// HasPerturbations returns whether the network has any perturbations.
+func (t Testnet) HasPerturbations() bool {
+	for _, node := range t.Nodes {
+		if len(node.Perturbations) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// LastMisbehaviorHeight returns the height of the last misbehavior.
+func (t Testnet) LastMisbehaviorHeight() int64 {
+	lastHeight := int64(0)
+	for _, node := range t.Nodes {
+		for height := range node.Misbehaviors {
+			if height > lastHeight {
+				lastHeight = height
+			}
+		}
+	}
+	return lastHeight
+}
+
 // Address returns a P2P endpoint address for the node.
 func (n Node) AddressP2P(withID bool) string {
 	ip := n.IP.String()
@@ -374,7 +449,7 @@ func (n Node) AddressP2P(withID bool) string {
 	}
 	addr := fmt.Sprintf("%v:26656", ip)
 	if withID {
-		addr = fmt.Sprintf("%x@%v", n.Key.PubKey().Address().Bytes(), addr)
+		addr = fmt.Sprintf("%x@%v", n.NodeKey.PubKey().Address().Bytes(), addr)
 	}
 	return addr
 }
@@ -405,15 +480,21 @@ func newKeyGenerator(seed int64) *keyGenerator {
 	}
 }
 
-func (g *keyGenerator) Generate() crypto.PrivKey {
+func (g *keyGenerator) Generate(keyType string) crypto.PrivKey {
 	seed := make([]byte, ed25519.SeedSize)
 
 	_, err := io.ReadFull(g.random, seed)
 	if err != nil {
 		panic(err) // this shouldn't happen
 	}
-
-	return ed25519.GenPrivKeyFromSecret(seed)
+	switch keyType {
+	case "secp256k1":
+		return secp256k1.GenPrivKeySecp256k1(seed)
+	case "", "ed25519":
+		return ed25519.GenPrivKeyFromSecret(seed)
+	default:
+		panic("KeyType not supported") // should not make it this far
+	}
 }
 
 // portGenerator generates local Docker proxy ports for each node.

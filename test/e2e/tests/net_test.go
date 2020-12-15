@@ -3,8 +3,9 @@ package e2e_test
 import (
 	"testing"
 
-	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
 	"github.com/stretchr/testify/require"
+
+	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
 )
 
 // Tests that all nodes have peered with each other, regardless of discovery method.

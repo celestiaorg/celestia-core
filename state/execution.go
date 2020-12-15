@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -125,7 +126,10 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	//      https://github.com/lazyledger/lazyledger-specs/blob/53e5f350838f1e0785ad670704bf91dac2f4f5a3/specs/block_proposer.md#deciding-on-a-block-size
 	//      Here, we instead assume a fixed (max) square size instead.
 	//  2. feed them into MakeBlock below:
-	processedBlockTxs, err := blockExec.proxyApp.PreprocessTxsSync(abci.RequestPreprocessTxs{Txs: bzs})
+	processedBlockTxs, err := blockExec.proxyApp.PreprocessTxsSync(
+		context.Background(),
+		abci.RequestPreprocessTxs{Txs: bzs},
+	)
 	if err != nil {
 		// The App MUST ensure that only valid (and hence 'processable')
 		// Tx enter the mempool. Hence, at this point, we can't have any non-processable
@@ -159,7 +163,11 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 // Validation does not mutate state, but does require historical information from the stateDB,
 // ie. to verify evidence from a validator at an old height.
 func (blockExec *BlockExecutor) ValidateBlock(state State, block *types.Block) error {
-	return validateBlock(blockExec.evpool, state, block)
+	err := validateBlock(state, block)
+	if err != nil {
+		return err
+	}
+	return blockExec.evpool.CheckEvidence(block.Evidence.Evidence)
 }
 
 // ApplyBlock validates the block against the state, executes it against the app,
@@ -172,16 +180,13 @@ func (blockExec *BlockExecutor) ApplyBlock(
 	state State, blockID types.BlockID, block *types.Block,
 ) (State, int64, error) {
 
-	if err := blockExec.ValidateBlock(state, block); err != nil {
+	if err := validateBlock(state, block); err != nil {
 		return state, 0, ErrInvalidBlock(err)
 	}
 
-	// Update evpool with the block and state and get any byzantine validators for that block
-	byzVals := blockExec.evpool.ABCIEvidence(block.Height, block.Evidence.Evidence)
-
 	startTime := time.Now().UnixNano()
 	abciResponses, err := execBlockOnProxyApp(blockExec.logger, blockExec.proxyApp, block,
-		blockExec.store, state.InitialHeight, byzVals)
+		blockExec.store, state.InitialHeight)
 	endTime := time.Now().UnixNano()
 	blockExec.metrics.BlockProcessingTime.Observe(float64(endTime-startTime) / 1000000)
 	if err != nil {
@@ -224,7 +229,7 @@ func (blockExec *BlockExecutor) ApplyBlock(
 	}
 
 	// Update evpool with the latest state.
-	blockExec.evpool.Update(state)
+	blockExec.evpool.Update(state, block.Evidence.Evidence)
 
 	fail.Fail() // XXX
 
@@ -266,7 +271,7 @@ func (blockExec *BlockExecutor) Commit(
 	}
 
 	// Commit block, get hash back
-	res, err := blockExec.proxyApp.CommitSync()
+	res, err := blockExec.proxyApp.CommitSync(context.Background())
 	if err != nil {
 		blockExec.logger.Error(
 			"Client error during proxyAppConn.CommitSync",
@@ -306,7 +311,6 @@ func execBlockOnProxyApp(
 	block *types.Block,
 	store Store,
 	initialHeight int64,
-	byzVals []abci.Evidence,
 ) (*tmstate.ABCIResponses, error) {
 	var validTxs, invalidTxs = 0, 0
 
@@ -336,18 +340,27 @@ func execBlockOnProxyApp(
 
 	commitInfo := getBeginBlockValidatorInfo(block, store, initialHeight)
 
+	byzVals := make([]abci.Evidence, 0)
+	for _, evidence := range block.Evidence.Evidence {
+		byzVals = append(byzVals, evidence.ABCI()...)
+	}
+
+	ctx := context.Background()
+
 	// Begin block
 	var err error
 	pbh := block.Header.ToProto()
 	if pbh == nil {
 		return nil, errors.New("nil header")
 	}
-	abciResponses.BeginBlock, err = proxyAppConn.BeginBlockSync(abci.RequestBeginBlock{
-		Hash:                block.Hash(),
-		Header:              *pbh,
-		LastCommitInfo:      commitInfo,
-		ByzantineValidators: byzVals,
-	})
+	abciResponses.BeginBlock, err = proxyAppConn.BeginBlockSync(
+		ctx,
+		abci.RequestBeginBlock{
+			Hash:                block.Hash(),
+			Header:              *pbh,
+			LastCommitInfo:      commitInfo,
+			ByzantineValidators: byzVals,
+		})
 	if err != nil {
 		logger.Error("Error in proxyAppConn.BeginBlock", "err", err)
 		return nil, err
@@ -355,14 +368,14 @@ func execBlockOnProxyApp(
 
 	// Run txs of block.
 	for _, tx := range block.Txs {
-		proxyAppConn.DeliverTxAsync(abci.RequestDeliverTx{Tx: tx})
-		if err := proxyAppConn.Error(); err != nil {
+		_, err = proxyAppConn.DeliverTxAsync(ctx, abci.RequestDeliverTx{Tx: tx})
+		if err != nil {
 			return nil, err
 		}
 	}
 
 	// End block.
-	abciResponses.EndBlock, err = proxyAppConn.EndBlockSync(abci.RequestEndBlock{Height: block.Height})
+	abciResponses.EndBlock, err = proxyAppConn.EndBlockSync(ctx, abci.RequestEndBlock{Height: block.Height})
 	if err != nil {
 		logger.Error("Error in proxyAppConn.EndBlock", "err", err)
 		return nil, err
@@ -570,13 +583,13 @@ func ExecCommitBlock(
 	store Store,
 	initialHeight int64,
 ) ([]byte, error) {
-	_, err := execBlockOnProxyApp(logger, appConnConsensus, block, store, initialHeight, []abci.Evidence{})
+	_, err := execBlockOnProxyApp(logger, appConnConsensus, block, store, initialHeight)
 	if err != nil {
 		logger.Error("Error executing block on proxy app", "height", block.Height, "err", err)
 		return nil, err
 	}
 	// Commit block, get hash back
-	res, err := appConnConsensus.CommitSync()
+	res, err := appConnConsensus.CommitSync(context.Background())
 	if err != nil {
 		logger.Error("Client error during proxyAppConn.CommitSync", "err", res)
 		return nil, err

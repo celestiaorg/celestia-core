@@ -8,27 +8,34 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	"github.com/lazyledger/lazyledger-core/privval"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // ResetAllCmd removes the database of this Tendermint core
 // instance.
 var ResetAllCmd = &cobra.Command{
-	Use:   "unsafe_reset_all",
-	Short: "(unsafe) Remove all the data and WAL, reset this node's validator to genesis state",
-	Run:   resetAll,
+	Use:     "unsafe-reset-all",
+	Aliases: []string{"unsafe_reset_all"},
+	Short:   "(unsafe) Remove all the data and WAL, reset this node's validator to genesis state",
+	Run:     resetAll,
+	PreRun:  deprecateSnakeCase,
 }
 
 var keepAddrBook bool
 
 func init() {
 	ResetAllCmd.Flags().BoolVar(&keepAddrBook, "keep-addr-book", false, "keep the address book intact")
+	ResetPrivValidatorCmd.Flags().StringVar(&keyType, "key", types.ABCIPubKeyTypeEd25519,
+		"Key type to generate privval file with. Options: ed25519, secp256k1")
 }
 
 // ResetPrivValidatorCmd resets the private validator files.
 var ResetPrivValidatorCmd = &cobra.Command{
-	Use:   "unsafe_reset_priv_validator",
-	Short: "(unsafe) Reset this node's validator to genesis state",
-	Run:   resetPrivValidator,
+	Use:     "unsafe-reset-priv-validator",
+	Aliases: []string{"unsafe_reset_priv_validator"},
+	Short:   "(unsafe) Reset this node's validator to genesis state",
+	Run:     resetPrivValidator,
+	PreRun:  deprecateSnakeCase,
 }
 
 // XXX: this is totally unsafe.
@@ -71,7 +78,10 @@ func resetFilePV(privValKeyFile, privValStateFile string, logger log.Logger) {
 		logger.Info("Reset private validator file to genesis state", "keyFile", privValKeyFile,
 			"stateFile", privValStateFile)
 	} else {
-		pv := privval.GenFilePV(privValKeyFile, privValStateFile)
+		pv, err := privval.GenFilePV(privValKeyFile, privValStateFile, keyType)
+		if err != nil {
+			panic(err)
+		}
 		pv.Save()
 		logger.Info("Generated private validator file", "keyFile", privValKeyFile,
 			"stateFile", privValStateFile)

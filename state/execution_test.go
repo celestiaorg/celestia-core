@@ -10,16 +10,20 @@ import (
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	mmock "github.com/lazyledger/lazyledger-core/mempool/mock"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
 	"github.com/lazyledger/lazyledger-core/proxy"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/state/mocks"
 	"github.com/lazyledger/lazyledger-core/types"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
+	"github.com/lazyledger/lazyledger-core/version"
 )
 
 var (
@@ -126,10 +130,52 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	require.Nil(t, err)
 	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
-	state, stateDB, _ := makeState(1, 1)
+	state, stateDB, privVals := makeState(1, 1)
 	stateStore := sm.NewStore(stateDB)
 
 	defaultEvidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
+	privVal := privVals[state.Validators.Validators[0].Address.String()]
+	blockID := makeBlockID([]byte("headerhash"), 1000, []byte("partshash"))
+	header := &types.Header{
+		Version:            tmversion.Consensus{Block: version.BlockProtocol, App: 1},
+		ChainID:            state.ChainID,
+		Height:             10,
+		Time:               defaultEvidenceTime,
+		LastBlockID:        blockID,
+		LastCommitHash:     crypto.CRandBytes(tmhash.Size),
+		DataHash:           crypto.CRandBytes(tmhash.Size),
+		ValidatorsHash:     state.Validators.Hash(),
+		NextValidatorsHash: state.Validators.Hash(),
+		ConsensusHash:      crypto.CRandBytes(tmhash.Size),
+		AppHash:            crypto.CRandBytes(tmhash.Size),
+		LastResultsHash:    crypto.CRandBytes(tmhash.Size),
+		EvidenceHash:       crypto.CRandBytes(tmhash.Size),
+		ProposerAddress:    crypto.CRandBytes(crypto.AddressSize),
+	}
+
+	// we don't need to worry about validating the evidence as long as they pass validate basic
+	dve := types.NewMockDuplicateVoteEvidenceWithValidator(3, defaultEvidenceTime, privVal, state.ChainID)
+	dve.ValidatorPower = 1000
+	lcae := &types.LightClientAttackEvidence{
+		ConflictingBlock: &types.LightBlock{
+			SignedHeader: &types.SignedHeader{
+				Header: header,
+				Commit: types.NewCommit(10, 0, makeBlockID(header.Hash(), 100, []byte("partshash")), []types.CommitSig{{
+					BlockIDFlag:      types.BlockIDFlagNil,
+					ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
+					Timestamp:        defaultEvidenceTime,
+					Signature:        crypto.CRandBytes(types.MaxSignatureSize),
+				}}),
+			},
+			ValidatorSet: state.Validators,
+		},
+		CommonHeight:        8,
+		ByzantineValidators: []*types.Validator{state.Validators.Validators[0]},
+		TotalVotingPower:    12,
+		Timestamp:           defaultEvidenceTime,
+	}
+
+	ev := []types.Evidence{dve, lcae}
 
 	abciEv := []abci.Evidence{
 		{
@@ -137,7 +183,7 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 			Height:           3,
 			Time:             defaultEvidenceTime,
 			Validator:        types.TM2PB.Validator(state.Validators.Validators[0]),
-			TotalVotingPower: 33,
+			TotalVotingPower: 10,
 		},
 		{
 			Type:             abci.EvidenceType_LIGHT_CLIENT_ATTACK,
@@ -149,15 +195,17 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	}
 
 	evpool := &mocks.EvidencePool{}
-	evpool.On("ABCIEvidence", mock.AnythingOfType("int64"), mock.AnythingOfType("[]types.Evidence")).Return(abciEv)
-	evpool.On("Update", mock.AnythingOfType("state.State")).Return()
+	evpool.On("PendingEvidence", mock.AnythingOfType("int64")).Return(ev, int64(100))
+	evpool.On("Update", mock.AnythingOfType("state.State"), mock.AnythingOfType("types.EvidenceList")).Return()
 	evpool.On("CheckEvidence", mock.AnythingOfType("types.EvidenceList")).Return(nil)
 
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
 		mmock.Mempool{}, evpool)
 
 	block := makeBlock(state, 1)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
+	block.Evidence = types.EvidenceData{Evidence: ev}
+	block.Header.EvidenceHash = block.Evidence.Hash()
+	blockID = types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
 
 	state, retainHeight, err := blockExec.ApplyBlock(state, blockID, block)
 	require.Nil(t, err)
@@ -400,4 +448,20 @@ func TestEndBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 	assert.NotPanics(t, func() { state, _, err = blockExec.ApplyBlock(state, blockID, block) })
 	assert.NotNil(t, err)
 	assert.NotEmpty(t, state.NextValidators.Validators)
+}
+
+func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {
+	var (
+		h   = make([]byte, tmhash.Size)
+		psH = make([]byte, tmhash.Size)
+	)
+	copy(h, hash)
+	copy(psH, partSetHash)
+	return types.BlockID{
+		Hash: h,
+		PartSetHeader: types.PartSetHeader{
+			Total: partSetSize,
+			Hash:  psH,
+		},
+	}
 }

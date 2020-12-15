@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"syscall"
@@ -16,7 +17,9 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	"github.com/lazyledger/lazyledger-core/evidence"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
@@ -230,23 +233,22 @@ func TestCreateProposalBlock(t *testing.T) {
 
 	logger := log.TestingLogger()
 
-	var height int64 = 1
+	const height int64 = 1
 	state, stateDB, privVals := state(1, height)
 	stateStore := sm.NewStore(stateDB)
 	maxBytes := 16384
-	var partSize uint32 = 256
+	const partSize uint32 = 256
 	maxEvidenceBytes := int64(maxBytes / 2)
 	state.ConsensusParams.Block.MaxBytes = int64(maxBytes)
 	state.ConsensusParams.Evidence.MaxBytes = maxEvidenceBytes
 	proposerAddr, _ := state.Validators.GetByIndex(0)
 
 	// Make Mempool
-	memplMetrics := mempl.PrometheusMetrics("node_test_1")
 	mempool := mempl.NewCListMempool(
 		config.Mempool,
 		proxyApp.Mempool(),
 		state.LastBlockHeight,
-		mempl.WithMetrics(memplMetrics),
+		mempl.WithMetrics(mempl.NopMetrics()),
 		mempl.WithPreCheck(sm.TxPreCheck(state)),
 		mempl.WithPostCheck(sm.TxPostCheck(state)),
 	)
@@ -265,9 +267,14 @@ func TestCreateProposalBlock(t *testing.T) {
 	for currentBytes <= maxEvidenceBytes {
 		ev := types.NewMockDuplicateVoteEvidenceWithValidator(height, time.Now(), privVals[0], "test-chain")
 		currentBytes += int64(len(ev.Bytes()))
-		err := evidencePool.AddEvidenceFromConsensus(ev, time.Now(), state.Validators)
+		err := evidencePool.AddEvidenceFromConsensus(ev)
 		require.NoError(t, err)
 	}
+
+	evList, size := evidencePool.PendingEvidence(state.ConsensusParams.Evidence.MaxBytes)
+	require.Less(t, size, state.ConsensusParams.Evidence.MaxBytes+1)
+	evData := &types.EvidenceData{Evidence: evList}
+	require.EqualValues(t, size, evData.ByteSize())
 
 	// fill the mempool with more txs
 	// than can fit in a block
@@ -311,7 +318,7 @@ func TestCreateProposalBlock(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestMaxProposalBlockSize(t *testing.T) {
+func TestMaxTxsProposalBlockSize(t *testing.T) {
 	config := cfg.ResetTestRoot("node_create_proposal")
 	defer os.RemoveAll(config.RootDir)
 	cc := proxy.NewLocalClientCreator(kvstore.NewApplication())
@@ -322,21 +329,20 @@ func TestMaxProposalBlockSize(t *testing.T) {
 
 	logger := log.TestingLogger()
 
-	var height int64 = 1
+	const height int64 = 1
 	state, stateDB, _ := state(1, height)
 	stateStore := sm.NewStore(stateDB)
-	var maxBytes int64 = 16384
-	var partSize uint32 = 256
+	const maxBytes int64 = 16384
+	const partSize uint32 = 256
 	state.ConsensusParams.Block.MaxBytes = maxBytes
 	proposerAddr, _ := state.Validators.GetByIndex(0)
 
 	// Make Mempool
-	memplMetrics := mempl.PrometheusMetrics("node_test_2")
 	mempool := mempl.NewCListMempool(
 		config.Mempool,
 		proxyApp.Mempool(),
 		state.LastBlockHeight,
-		mempl.WithMetrics(memplMetrics),
+		mempl.WithMetrics(mempl.NopMetrics()),
 		mempl.WithPreCheck(sm.TxPreCheck(state)),
 		mempl.WithPostCheck(sm.TxPostCheck(state)),
 	)
@@ -344,7 +350,7 @@ func TestMaxProposalBlockSize(t *testing.T) {
 
 	// fill the mempool with one txs just below the maximum size
 	txLength := int(types.MaxDataBytesNoEvidence(maxBytes, 1))
-	tx := tmrand.Bytes(txLength - 4 - 5) // to account for the varint and the fields in Data{}
+	tx := tmrand.Bytes(txLength - 4 - 5) // to account for the varint
 	err = mempool.CheckTx(tx, nil, mempl.TxInfo{})
 	assert.NoError(t, err)
 
@@ -374,6 +380,119 @@ func TestMaxProposalBlockSize(t *testing.T) {
 	assert.EqualValues(t, partSet.ByteSize(), int64(pb.Size()))
 }
 
+func TestMaxProposalBlockSize(t *testing.T) {
+	config := cfg.ResetTestRoot("node_create_proposal")
+	defer os.RemoveAll(config.RootDir)
+	cc := proxy.NewLocalClientCreator(kvstore.NewApplication())
+	proxyApp := proxy.NewAppConns(cc)
+	err := proxyApp.Start()
+	require.Nil(t, err)
+	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
+
+	logger := log.TestingLogger()
+
+	state, stateDB, _ := state(types.MaxVotesCount, int64(1))
+	stateStore := sm.NewStore(stateDB)
+	const maxBytes int64 = 1024 * 1024 * 2
+	state.ConsensusParams.Block.MaxBytes = maxBytes
+	proposerAddr, _ := state.Validators.GetByIndex(0)
+
+	// Make Mempool
+	mempool := mempl.NewCListMempool(
+		config.Mempool,
+		proxyApp.Mempool(),
+		state.LastBlockHeight,
+		mempl.WithMetrics(mempl.NopMetrics()),
+		mempl.WithPreCheck(sm.TxPreCheck(state)),
+		mempl.WithPostCheck(sm.TxPostCheck(state)),
+	)
+	mempool.SetLogger(logger)
+
+	// fill the mempool with one txs just below the maximum size
+	txLength := int(types.MaxDataBytesNoEvidence(maxBytes, types.MaxVotesCount))
+	tx := tmrand.Bytes(txLength - 6 - 4) // to account for the varint
+	err = mempool.CheckTx(tx, nil, mempl.TxInfo{})
+	assert.NoError(t, err)
+	// now produce more txs than what a normal block can hold with 10 smaller txs
+	// At the end of the test, only the single big tx should be added
+	for i := 0; i < 10; i++ {
+		tx := tmrand.Bytes(10)
+		err = mempool.CheckTx(tx, nil, mempl.TxInfo{})
+		assert.NoError(t, err)
+	}
+
+	blockExec := sm.NewBlockExecutor(
+		stateStore,
+		logger,
+		proxyApp.Consensus(),
+		mempool,
+		sm.EmptyEvidencePool{},
+	)
+
+	blockID := types.BlockID{
+		Hash: tmhash.Sum([]byte("blockID_hash")),
+		PartSetHeader: types.PartSetHeader{
+			Total: math.MaxInt32,
+			Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
+		},
+	}
+
+	timestamp := time.Date(math.MaxInt64, 0, 0, 0, 0, 0, math.MaxInt64, time.UTC)
+	// change state in order to produce the largest accepted header
+	state.LastBlockID = blockID
+	state.LastBlockHeight = math.MaxInt64 - 1
+	state.LastBlockTime = timestamp
+	state.LastResultsHash = tmhash.Sum([]byte("last_results_hash"))
+	state.AppHash = tmhash.Sum([]byte("app_hash"))
+	state.Version.Consensus.Block = math.MaxInt64
+	state.Version.Consensus.App = math.MaxInt64
+	maxChainID := ""
+	for i := 0; i < types.MaxChainIDLen; i++ {
+		maxChainID += "𠜎"
+	}
+	state.ChainID = maxChainID
+
+	cs := types.CommitSig{
+		BlockIDFlag:      types.BlockIDFlagNil,
+		ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
+		Timestamp:        timestamp,
+		Signature:        crypto.CRandBytes(types.MaxSignatureSize),
+	}
+
+	commit := &types.Commit{
+		Height:  math.MaxInt64,
+		Round:   math.MaxInt32,
+		BlockID: blockID,
+	}
+
+	// add maximum amount of signatures to a single commit
+	for i := 0; i < types.MaxVotesCount; i++ {
+		commit.Signatures = append(commit.Signatures, cs)
+	}
+
+	block, partSet := blockExec.CreateProposalBlock(
+		math.MaxInt64,
+		state, commit,
+		proposerAddr,
+	)
+
+	// this ensures that the header is at max size
+	block.Header.Time = timestamp
+
+	pb, err := block.ToProto()
+	require.NoError(t, err)
+
+	// require that the header and commit be the max possible size
+	require.Equal(t, int64(pb.Header.Size()), types.MaxHeaderBytes)
+	require.Equal(t, int64(pb.LastCommit.Size()), types.MaxCommitBytes(types.MaxVotesCount))
+	// make sure that the block is less than the max possible size
+	assert.LessOrEqual(t, maxBytes, int64(pb.Size()))
+	// because of the proto overhead we expect the part set bytes to be equal or
+	// less than the pb block size
+	assert.LessOrEqual(t, partSet.ByteSize(), int64(pb.Size()))
+
+}
+
 func TestNodeNewNodeCustomReactors(t *testing.T) {
 	config := cfg.ResetTestRoot("node_new_node_custom_reactors_test")
 	defer os.RemoveAll(config.RootDir)
@@ -383,9 +502,11 @@ func TestNodeNewNodeCustomReactors(t *testing.T) {
 
 	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 	require.NoError(t, err)
+	pval, err := privval.LoadOrGenFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile())
+	require.NoError(t, err)
 
 	n, err := NewNode(config,
-		privval.LoadOrGenFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile()),
+		pval,
 		nodeKey,
 		proxy.DefaultClientCreator(config.ProxyApp, config.ABCI, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
