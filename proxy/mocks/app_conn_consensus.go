@@ -146,6 +146,29 @@ func (_m *AppConnConsensus) InitChainSync(_a0 context.Context, _a1 types.Request
 	return r0, r1
 }
 
+// PreprocessTxsSync provides a mock function with given fields: _a0, _a1
+func (_m *AppConnConsensus) PreprocessTxsSync(_a0 context.Context, _a1 types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error) {
+	ret := _m.Called(_a0, _a1)
+
+	var r0 *types.ResponsePreprocessTxs
+	if rf, ok := ret.Get(0).(func(context.Context, types.RequestPreprocessTxs) *types.ResponsePreprocessTxs); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.ResponsePreprocessTxs)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, types.RequestPreprocessTxs) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // SetResponseCallback provides a mock function with given fields: _a0
 func (_m *AppConnConsensus) SetResponseCallback(_a0 abcicli.Callback) {
 	_m.Called(_a0)

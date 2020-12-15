@@ -238,7 +238,7 @@ func (state State) MakeBlock(
 	txs []types.Tx,
 	evidence []types.Evidence,
 	intermediateStateRoots []tmbytes.HexBytes,
-	messages []types.Message,
+	messages types.Messages,
 	commit *types.Commit,
 	proposerAddress []byte,
 ) (*types.Block, *types.PartSet) {

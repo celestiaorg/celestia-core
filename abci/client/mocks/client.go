@@ -669,6 +669,52 @@ func (_m *Client) OnStop() {
 	_m.Called()
 }
 
+// PreprocessTxsAsync provides a mock function with given fields: _a0, _a1
+func (_m *Client) PreprocessTxsAsync(_a0 context.Context, _a1 types.RequestPreprocessTxs) (*abcicli.ReqRes, error) {
+	ret := _m.Called(_a0, _a1)
+
+	var r0 *abcicli.ReqRes
+	if rf, ok := ret.Get(0).(func(context.Context, types.RequestPreprocessTxs) *abcicli.ReqRes); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*abcicli.ReqRes)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, types.RequestPreprocessTxs) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// PreprocessTxsSync provides a mock function with given fields: _a0, _a1
+func (_m *Client) PreprocessTxsSync(_a0 context.Context, _a1 types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error) {
+	ret := _m.Called(_a0, _a1)
+
+	var r0 *types.ResponsePreprocessTxs
+	if rf, ok := ret.Get(0).(func(context.Context, types.RequestPreprocessTxs) *types.ResponsePreprocessTxs); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.ResponsePreprocessTxs)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, types.RequestPreprocessTxs) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // QueryAsync provides a mock function with given fields: _a0, _a1
 func (_m *Client) QueryAsync(_a0 context.Context, _a1 types.RequestQuery) (*abcicli.ReqRes, error) {
 	ret := _m.Called(_a0, _a1)

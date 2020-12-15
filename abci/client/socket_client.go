@@ -297,6 +297,13 @@ func (cli *socketClient) ApplySnapshotChunkAsync(
 	return cli.queueRequestAsync(ctx, types.ToRequestApplySnapshotChunk(req))
 }
 
+func (cli *socketClient) PreprocessTxsAsync(
+	ctx context.Context,
+	req types.RequestPreprocessTxs,
+) (*ReqRes, error) {
+	return cli.queueRequestAsync(ctx, types.ToRequestPreprocessTxs(req))
+}
+
 //----------------------------------------
 
 func (cli *socketClient) FlushSync(ctx context.Context) error {
@@ -467,6 +474,16 @@ func (cli *socketClient) ApplySnapshotChunkSync(
 	return reqres.Response.GetApplySnapshotChunk(), nil
 }
 
+func (cli *socketClient) PreprocessTxsSync(
+	ctx context.Context,
+	req types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error) {
+	reqres, err := cli.queueRequestAndFlushSync(ctx, types.ToRequestPreprocessTxs(req))
+	if err != nil {
+		return nil, err
+	}
+	return reqres.Response.GetPreprocessTxs(), cli.Error()
+}
+
 //----------------------------------------
 
 // queueRequest enqueues req onto the queue. If the queue is full, it ether
@@ -593,6 +610,8 @@ func resMatchesReq(req *types.Request, res *types.Response) (ok bool) {
 		_, ok = res.Value.(*types.Response_ListSnapshots)
 	case *types.Request_OfferSnapshot:
 		_, ok = res.Value.(*types.Response_OfferSnapshot)
+	case *types.Request_PreprocessTxs:
+		_, ok = res.Value.(*types.Response_PreprocessTxs)
 	}
 	return ok
 }

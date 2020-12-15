@@ -996,7 +996,7 @@ func makeBlock(state sm.State, lastBlock *types.Block, lastBlockMeta *types.Bloc
 		[]types.Tx{},
 		nil,
 		nil,
-		nil,
+		types.Messages{},
 		lastCommit,
 		state.Validators.GetProposer().Address,
 	)

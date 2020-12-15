@@ -472,7 +472,7 @@ func MaxDataBytesNoEvidence(maxBytes int64, valsCount int) int64 {
 // It populates the same set of fields validated by ValidateBasic.
 func MakeBlock(
 	height int64,
-	txs []Tx, evidence []Evidence, intermediateStateRoots []tmbytes.HexBytes, messages []Message,
+	txs []Tx, evidence []Evidence, intermediateStateRoots []tmbytes.HexBytes, messages Messages,
 	lastCommit *Commit) *Block {
 	block := &Block{
 		Header: Header{
@@ -483,7 +483,7 @@ func MakeBlock(
 			Txs:                    txs,
 			IntermediateStateRoots: IntermediateStateRoots{RawRootsList: intermediateStateRoots},
 			Evidence:               EvidenceData{Evidence: evidence},
-			Messages:               Messages{MessagesList: messages},
+			Messages:               messages,
 		},
 		LastCommit: lastCommit,
 	}
@@ -1267,6 +1267,34 @@ type Message struct {
 	// Data is the actual data contained in the message
 	// (e.g. a block of a virtual sidechain).
 	Data []byte
+}
+
+var (
+	MessageEmpty  = Message{}
+	MessagesEmpty = Messages{}
+)
+
+func MessageFromProto(p *tmproto.Message) Message {
+	if p == nil {
+		return MessageEmpty
+	}
+	return Message{
+		NamespaceID: p.NamespaceId,
+		Data:        p.Data,
+	}
+}
+
+func MessagesFromProto(p *tmproto.Messages) Messages {
+	if p == nil {
+		return MessagesEmpty
+	}
+
+	msgs := make([]Message, 0, len(p.MessagesList))
+
+	for i := 0; i < len(p.MessagesList); i++ {
+		msgs = append(msgs, MessageFromProto(p.MessagesList[i]))
+	}
+	return Messages{MessagesList: msgs}
 }
 
 // StringIndented returns an indented string representation of the transactions.

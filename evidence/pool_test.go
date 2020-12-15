@@ -173,7 +173,7 @@ func TestEvidencePoolUpdate(t *testing.T) {
 	ev := types.NewMockDuplicateVoteEvidenceWithValidator(height, defaultEvidenceTime.Add(21*time.Minute),
 		val, evidenceChainID)
 	lastCommit := makeCommit(height, val.PrivKey.PubKey().Address())
-	block := types.MakeBlock(height+1, []types.Tx{}, []types.Evidence{ev}, nil, nil, lastCommit)
+	block := types.MakeBlock(height+1, []types.Tx{}, []types.Evidence{ev}, nil, types.Messages{}, lastCommit)
 	// update state (partially)
 	state.LastBlockHeight = height + 1
 	state.LastBlockTime = defaultEvidenceTime.Add(22 * time.Minute)
@@ -399,7 +399,8 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.Bloc
 
 	for i := int64(1); i <= state.LastBlockHeight; i++ {
 		lastCommit := makeCommit(i-1, valAddr)
-		block, _ := state.MakeBlock(i, []types.Tx{}, nil, nil, nil, lastCommit, state.Validators.GetProposer().Address)
+		block, _ := state.MakeBlock(i, []types.Tx{}, nil, nil,
+			types.Messages{}, lastCommit, state.Validators.GetProposer().Address)
 		block.Header.Time = defaultEvidenceTime.Add(time.Duration(i) * time.Minute)
 		block.Header.Version = tmversion.Consensus{Block: version.BlockProtocol, App: 1}
 		const parts = 1
