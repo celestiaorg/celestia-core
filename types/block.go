@@ -1077,6 +1077,10 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	msgShares := data.Messages.SplitIntoShares()
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 
+	if curLen > consts.MaxShareCount {
+		panic(fmt.Sprintf("Block data exceeds the max square size. Number of shares required: %d\n", curLen))
+	}
+
 	// find the number of shares needed to create a square that has a power of
 	// two width
 	wantLen := paddedLen(curLen)
@@ -1170,6 +1174,34 @@ type Message struct {
 	Data []byte
 }
 
+var (
+	MessageEmpty  = Message{}
+	MessagesEmpty = Messages{}
+)
+
+func MessageFromProto(p *tmproto.Message) Message {
+	if p == nil {
+		return MessageEmpty
+	}
+	return Message{
+		NamespaceID: p.NamespaceId,
+		Data:        p.Data,
+	}
+}
+
+func MessagesFromProto(p *tmproto.Messages) Messages {
+	if p == nil {
+		return MessagesEmpty
+	}
+
+	msgs := make([]Message, 0, len(p.MessagesList))
+
+	for i := 0; i < len(p.MessagesList); i++ {
+		msgs = append(msgs, MessageFromProto(p.MessagesList[i]))
+	}
+	return Messages{MessagesList: msgs}
+}
+
 // StringIndented returns an indented string representation of the transactions.
 func (data *Data) StringIndented(indent string) string {
 	if data == nil {
@@ -1200,6 +1232,7 @@ func (data *Data) ToProto() tmproto.Data {
 		}
 		tp.Txs = txBzs
 	}
+
 	rawRoots := data.IntermediateStateRoots.RawRootsList
 	if len(rawRoots) > 0 {
 		roots := make([][]byte, len(rawRoots))

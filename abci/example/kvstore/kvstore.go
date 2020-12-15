@@ -171,3 +171,8 @@ func (app *Application) Query(reqQuery types.RequestQuery) (resQuery types.Respo
 
 	return resQuery
 }
+
+func (app *Application) PreprocessTxs(
+	req types.RequestPreprocessTxs) types.ResponsePreprocessTxs {
+	return types.ResponsePreprocessTxs{Txs: req.Txs}
+}

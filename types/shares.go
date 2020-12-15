@@ -46,9 +46,9 @@ func (tx Tx) MarshalDelimited() ([]byte, error) {
 
 // MarshalDelimited marshals the raw data (excluding the namespace) of this
 // message and prefixes it with the length of that encoding.
-func (m Message) MarshalDelimited() ([]byte, error) {
+func (msg Message) MarshalDelimited() ([]byte, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
-	length := uint64(len(m.Data))
+	length := uint64(len(msg.Data))
 	n := binary.PutUvarint(lenBuf, length)
-	return append(lenBuf[:n], m.Data...), nil
+	return append(lenBuf[:n], msg.Data...), nil
 }

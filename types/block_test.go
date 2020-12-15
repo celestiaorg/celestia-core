@@ -639,13 +639,11 @@ func TestBlockProtoBuf(t *testing.T) {
 	b1 := MakeBlock(h, []Tx{Tx([]byte{1})}, []Evidence{}, nil, nil, &Commit{Signatures: []CommitSig{}})
 	b1.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
 
-	b2 := MakeBlock(h, []Tx{Tx([]byte{1})}, []Evidence{}, nil, nil, c1)
-	b2.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
 	evidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 	evi := NewMockDuplicateVoteEvidence(h, evidenceTime, "block-test-chain")
-	b2.Evidence = EvidenceData{Evidence: EvidenceList{evi}}
-	b2.EvidenceHash = b2.Evidence.Hash()
-	b2.Evidence.ByteSize()
+	b2 := MakeBlock(h, []Tx{Tx([]byte{1})}, []Evidence{evi}, nil, nil, c1)
+	b2.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
+	b2.Data.Evidence.ByteSize()
 
 	b3 := MakeBlock(h, []Tx{}, []Evidence{}, nil, nil, c1)
 	b3.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
@@ -696,11 +694,14 @@ func TestDataProtoBuf(t *testing.T) {
 		{"success data2", data2, true},
 	}
 	for _, tc := range testCases {
+		firstHash := tc.data1.Hash()
 		protoData := tc.data1.ToProto()
 		d, err := DataFromProto(&protoData)
 		if tc.expPass {
 			require.NoError(t, err, tc.msg)
+			secondHash := d.Hash()
 			require.EqualValues(t, tc.data1, &d, tc.msg)
+			require.Equal(t, firstHash, secondHash)
 		} else {
 			require.Error(t, err, tc.msg)
 		}

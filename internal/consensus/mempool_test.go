@@ -270,3 +270,8 @@ func (app *CounterApplication) Commit() abci.ResponseCommit {
 	binary.BigEndian.PutUint64(hash, uint64(app.txCount))
 	return abci.ResponseCommit{Data: hash}
 }
+
+func (app *CounterApplication) PreprocessTxs(
+	req abci.RequestPreprocessTxs) abci.ResponsePreprocessTxs {
+	return abci.ResponsePreprocessTxs{Txs: req.Txs}
+}
