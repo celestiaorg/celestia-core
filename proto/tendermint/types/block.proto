@@ -7,8 +7,8 @@ import "gogoproto/gogo.proto";
 import "tendermint/types/types.proto";
 
 message Block {
-  Header                        header                   = 1 [(gogoproto.nullable) = false];
-  Data                          data                     = 2 [(gogoproto.nullable) = false];
-  DataAvailabilityHeader        data_availability_header = 3;
-  Commit                        last_commit              = 4;
+  Header                 header                   = 1 [(gogoproto.nullable) = false];
+  Data                   data                     = 2 [(gogoproto.nullable) = false];
+  DataAvailabilityHeader data_availability_header = 3;
+  Commit                 last_commit              = 4;
 }

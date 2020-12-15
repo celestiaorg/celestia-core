@@ -7,22 +7,37 @@ import (
 
 	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 	"github.com/lazyledger/lazyledger-core/privval"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // GenValidatorCmd allows the generation of a keypair for a
 // validator.
 var GenValidatorCmd = &cobra.Command{
-	Use:   "gen_validator",
-	Short: "Generate new validator keypair",
-	Run:   genValidator,
+	Use:     "gen-validator",
+	Aliases: []string{"gen_validator"},
+	Short:   "Generate new validator keypair",
+	RunE:    genValidator,
+	PreRun:  deprecateSnakeCase,
 }
 
-func genValidator(cmd *cobra.Command, args []string) {
-	pv := privval.GenFilePV("", "")
+func init() {
+	GenValidatorCmd.Flags().StringVar(&keyType, "key", types.ABCIPubKeyTypeEd25519,
+		"Key type to generate privval file with. Options: ed25519, secp256k1")
+}
+
+func genValidator(cmd *cobra.Command, args []string) error {
+	pv, err := privval.GenFilePV("", "", keyType)
+	if err != nil {
+		return err
+	}
+
 	jsbz, err := tmjson.Marshal(pv)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("validator -> json: %w", err)
 	}
+
 	fmt.Printf(`%v
 `, string(jsbz))
+
+	return nil
 }

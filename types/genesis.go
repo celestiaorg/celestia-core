@@ -11,7 +11,6 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
@@ -52,7 +51,8 @@ func (genDoc *GenesisDoc) SaveAs(file string) error {
 	if err != nil {
 		return err
 	}
-	return tmos.WriteFile(file, genDocBytes, 0644)
+
+	return ioutil.WriteFile(file, genDocBytes, 0644) // nolint:gosec
 }
 
 // ValidatorHash returns the hash of the validator set contained in the GenesisDoc

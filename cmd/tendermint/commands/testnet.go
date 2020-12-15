@@ -15,6 +15,7 @@ import (
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	"github.com/lazyledger/lazyledger-core/p2p"
 	"github.com/lazyledger/lazyledger-core/privval"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
@@ -74,6 +75,8 @@ func init() {
 		"P2P Port")
 	TestnetFilesCmd.Flags().BoolVar(&randomMonikers, "random-monikers", false,
 		"randomize the moniker for each generated node")
+	TestnetFilesCmd.Flags().StringVar(&keyType, "key", types.ABCIPubKeyTypeEd25519,
+		"Key type to generate privval file with. Options: ed25519, secp256k1")
 }
 
 // TestnetFilesCmd allows initialisation of files for a Tendermint testnet.
@@ -85,7 +88,7 @@ necessary files (private validator, genesis, config, etc.).
 
 Note, strict routability for addresses is turned off in the config file.
 
-Optionally, it will fill in persistent_peers list in config file using either hostnames or IPs.
+Optionally, it will fill in persistent-peers list in config file using either hostnames or IPs.
 
 Example:
 
@@ -180,10 +183,15 @@ func testnetFiles(cmd *cobra.Command, args []string) error {
 	// Generate genesis doc from generated validators
 	genDoc := &types.GenesisDoc{
 		ChainID:         "chain-" + tmrand.Str(6),
-		ConsensusParams: types.DefaultConsensusParams(),
 		GenesisTime:     tmtime.Now(),
 		InitialHeight:   initialHeight,
 		Validators:      genVals,
+		ConsensusParams: types.DefaultConsensusParams(),
+	}
+	if keyType == "secp256k1" {
+		genDoc.ConsensusParams.Validator = tmproto.ValidatorParams{
+			PubKeyTypes: []string{types.ABCIPubKeyTypeSecp256k1},
+		}
 	}
 
 	// Write genesis file.
@@ -255,7 +263,7 @@ func persistentPeersString(config *cfg.Config) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		persistentPeers[i] = p2p.IDAddressString(nodeKey.ID(), fmt.Sprintf("%s:%d", hostnameOrIP(i), p2pPort))
+		persistentPeers[i] = p2p.IDAddressString(nodeKey.ID, fmt.Sprintf("%s:%d", hostnameOrIP(i), p2pPort))
 	}
 	return strings.Join(persistentPeers, ","), nil
 }

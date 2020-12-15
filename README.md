@@ -28,8 +28,8 @@ a more detailed overview what to expect from this repository.
 ### Minimum requirements
 
 | Requirement | Notes            |
-| ----------- | ---------------- |
-| Go version  | Go1.14 or higher |
+|-------------|------------------|
+| Go version  | Go1.15 or higher |
 
 ### Install
 

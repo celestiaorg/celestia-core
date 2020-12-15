@@ -76,7 +76,7 @@ type Switch struct {
 	dialing      *cmap.CMap
 	reconnecting *cmap.CMap
 	nodeInfo     NodeInfo // our node info
-	nodeKey      *NodeKey // our node privkey
+	nodeKey      NodeKey  // our node privkey
 	addrBook     AddrBook
 	// peers addresses with whom we'll maintain constant connection
 	persistentPeersAddrs []*NetAddress
@@ -212,7 +212,7 @@ func (sw *Switch) NodeInfo() NodeInfo {
 
 // SetNodeKey sets the switch's private key for authenticated encryption.
 // NOTE: Not goroutine safe.
-func (sw *Switch) SetNodeKey(nodeKey *NodeKey) {
+func (sw *Switch) SetNodeKey(nodeKey NodeKey) {
 	sw.nodeKey = nodeKey
 }
 
@@ -322,6 +322,10 @@ func (sw *Switch) Peers() IPeerSet {
 // If the peer is persistent, it will attempt to reconnect.
 // TODO: make record depending on reason.
 func (sw *Switch) StopPeerForError(peer Peer, reason interface{}) {
+	if !peer.IsRunning() {
+		return
+	}
+
 	sw.Logger.Error("Stopping peer for error", "peer", peer, "err", reason)
 	sw.stopAndRemovePeer(peer, reason)
 

@@ -86,22 +86,10 @@ message Data {
   // Txs that will be applied by state @ block.Height+1.
   // NOTE: not all txs here are valid.  We're just agreeing on the order first.
   // This means that block.AppHash does not include these txs.
-  repeated bytes txs = 1;
+  repeated bytes         txs                      = 1;
   IntermediateStateRoots intermediate_state_roots = 2 [(gogoproto.nullable) = false];
-  EvidenceData evidence    = 3 [(gogoproto.nullable) = false];
-  Messages messages        = 4 [(gogoproto.nullable) = false];
-}
-
-// DuplicateVoteEvidence contains evidence a validator signed two conflicting
-// votes.
-message DuplicateVoteEvidence {
-  Vote vote_a = 1;
-  Vote vote_b = 2;
-}
-
-message LightClientAttackEvidence {
-  LightBlock conflicting_block = 1;
-  int64      common_height     = 2;
+  EvidenceList           evidence                 = 3 [(gogoproto.nullable) = false];
+  Messages               messages                 = 4 [(gogoproto.nullable) = false];
 }
 
 message Evidence {
@@ -111,8 +99,25 @@ message Evidence {
   }
 }
 
-// EvidenceData contains any evidence of malicious wrong-doing by validators
-message EvidenceData {
+// DuplicateVoteEvidence contains evidence of a validator signed two conflicting votes.
+message DuplicateVoteEvidence {
+  tendermint.types.Vote     vote_a             = 1;
+  tendermint.types.Vote     vote_b             = 2;
+  int64                     total_voting_power = 3;
+  int64                     validator_power    = 4;
+  google.protobuf.Timestamp timestamp          = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+}
+
+// LightClientAttackEvidence contains evidence of a set of validators attempting to mislead a light client.
+message LightClientAttackEvidence {
+  tendermint.types.LightBlock conflicting_block            = 1;
+  int64                       common_height                = 2;
+  repeated tendermint.types.Validator byzantine_validators = 3;
+  int64                               total_voting_power   = 4;
+  google.protobuf.Timestamp           timestamp            = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+}
+
+message EvidenceList {
   repeated Evidence evidence = 1 [(gogoproto.nullable) = false];
 }
 
@@ -126,7 +131,7 @@ message Messages {
 
 message Message {
   bytes namespace_id = 1;
-  bytes data = 2;
+  bytes data         = 2;
 }
 
 // DataAvailabilityHeader contains the row and column roots of the erasure
@@ -163,10 +168,10 @@ message Vote {
 
 // Commit contains the evidence that a block was committed by a set of validators.
 message Commit {
-  int64                         height     = 1;
-  int32                         round      = 2;
-  BlockID                       block_id   = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
-  repeated CommitSig            signatures = 4 [(gogoproto.nullable) = false];
+  int64              height     = 1;
+  int32              round      = 2;
+  BlockID            block_id   = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
+  repeated CommitSig signatures = 4 [(gogoproto.nullable) = false];
 }
 
 // CommitSig is a part of the Vote included in a Commit.
