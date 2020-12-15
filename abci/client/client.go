@@ -21,6 +21,7 @@ const (
 // All `Sync` methods return the appropriate protobuf ResponseXxx struct and an error.
 // Note these are client errors, eg. ABCI socket connectivity issues.
 // Application-related errors are reflected in response via ABCI error codes and logs.
+//go:generate mockery --case underscore --name Client
 type Client interface {
 	service.Service
 
@@ -41,6 +42,7 @@ type Client interface {
 	OfferSnapshotAsync(types.RequestOfferSnapshot) *ReqRes
 	LoadSnapshotChunkAsync(types.RequestLoadSnapshotChunk) *ReqRes
 	ApplySnapshotChunkAsync(types.RequestApplySnapshotChunk) *ReqRes
+	PreprocessTxsAsync(types.RequestPreprocessTxs) *ReqRes
 
 	FlushSync() error
 	EchoSync(msg string) (*types.ResponseEcho, error)
@@ -56,6 +58,7 @@ type Client interface {
 	OfferSnapshotSync(types.RequestOfferSnapshot) (*types.ResponseOfferSnapshot, error)
 	LoadSnapshotChunkSync(types.RequestLoadSnapshotChunk) (*types.ResponseLoadSnapshotChunk, error)
 	ApplySnapshotChunkSync(types.RequestApplySnapshotChunk) (*types.ResponseApplySnapshotChunk, error)
+	PreprocessTxsSync(types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error)
 }
 
 //----------------------------------------

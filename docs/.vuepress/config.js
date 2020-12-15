@@ -41,13 +41,13 @@ module.exports = {
             },
             // TODO: remove once https://github.com/cosmos/vuepress-theme-cosmos/issues/91 is closed
             {
-              title: 'Version 0.32',
-              path: '/v0.32',
+              title: "Version 0.32",
+              path: "/v0.32",
               static: true
             },
             {
-              title: 'Version 0.33',
-              path: '/v0.33',
+              title: "Version 0.33",
+              path: "/v0.33",
               static: true
             },
           ]
@@ -71,7 +71,7 @@ module.exports = {
     },
     footer: {
       question: {
-        text: 'Chat with Tendermint developers in <a href=\'https://discord.gg/cr7N47p\' target=\'_blank\'>Discord</a> or reach out on the <a href=\'https://forum.cosmos.network/c/tendermint\' target=\'_blank\'>Tendermint Forum</a> to learn more.'
+        text: "Chat with Tendermint developers in <a href=\"https://discord.gg/cr7N47p\" target=\"_blank\">Discord</a> or reach out on the <a href=\"https://forum.cosmos.network/c/tendermint\" target=\"_blank\">Tendermint Forum</a> to learn more."
       },
       logo: '/logo-bw.svg',
       textLink: {
@@ -105,7 +105,7 @@ module.exports = {
         }
       ],
       smallprint:
-          'The development of the Tendermint project is led primarily by Tendermint Inc., the for-profit entity which also maintains this website. Funding for this development comes primarily from the Interchain Foundation, a Swiss non-profit.',
+          "The development of the Tendermint project is led primarily by Tendermint Inc., the for-profit entity which also maintains this website. Funding for this development comes primarily from the Interchain Foundation, a Swiss non-profit.",
       links: [
         {
           title: 'Documentation',

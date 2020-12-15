@@ -252,6 +252,15 @@ func (cli *grpcClient) ApplySnapshotChunkAsync(params types.RequestApplySnapshot
 	return cli.finishAsyncCall(req, &types.Response{Value: &types.Response_ApplySnapshotChunk{ApplySnapshotChunk: res}})
 }
 
+func (cli *grpcClient) PreprocessTxsAsync(params types.RequestPreprocessTxs) *ReqRes {
+	req := types.ToRequestPreprocessTxs(params)
+	res, err := cli.client.PreprocessTxs(context.Background(), req.GetPreprocessTxs(), grpc.WaitForReady(true))
+	if err != nil {
+		cli.StopForError(err)
+	}
+	return cli.finishAsyncCall(req, &types.Response{Value: &types.Response_PreprocessTxs{PreprocessTxs: res}})
+}
+
 func (cli *grpcClient) finishAsyncCall(req *types.Request, res *types.Response) *ReqRes {
 	reqres := NewReqRes(req)
 	reqres.Response = res // Set response
@@ -349,4 +358,10 @@ func (cli *grpcClient) ApplySnapshotChunkSync(
 	params types.RequestApplySnapshotChunk) (*types.ResponseApplySnapshotChunk, error) {
 	reqres := cli.ApplySnapshotChunkAsync(params)
 	return reqres.Response.GetApplySnapshotChunk(), cli.Error()
+}
+
+func (cli *grpcClient) PreprocessTxsSync(
+	params types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error) {
+	reqres := cli.PreprocessTxsAsync(params)
+	return reqres.Response.GetPreprocessTxs(), cli.Error()
 }
