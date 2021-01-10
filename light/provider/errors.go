@@ -10,7 +10,7 @@ var (
 	// requested header.
 	ErrLightBlockNotFound = errors.New("light block not found")
 	// ErrNoResponse is returned if the provider doesn't respond to the
-	// request in a gieven time
+	// request in a given time
 	ErrNoResponse = errors.New("client failed to respond")
 )
 
