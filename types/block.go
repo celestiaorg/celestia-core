@@ -225,21 +225,18 @@ func (b *Block) fillDataAvailabilityHeader() {
 		colTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
 		for innerIdx := uint(0); innerIdx < squareWidth; innerIdx++ {
 			if outerIdx < originalDataWidth && innerIdx < originalDataWidth {
-				mustPush(rowTree, namespacedShares[outerIdx*originalDataWidth+innerIdx])
-				mustPush(colTree, namespacedShares[innerIdx*originalDataWidth+outerIdx])
+				rowShare := namespacedShares[outerIdx*originalDataWidth+innerIdx]
+				colShare := namespacedShares[innerIdx*originalDataWidth+outerIdx]
+				mustPush(rowTree, rowShare.NamespaceID(), rowShare.Data())
+				mustPush(colTree, colShare.NamespaceID(), colShare.Data())
 			} else {
 				rowData := extendedDataSquare.Row(outerIdx)
 				colData := extendedDataSquare.Column(outerIdx)
 
 				parityCellFromRow := rowData[innerIdx]
 				parityCellFromCol := colData[innerIdx]
-				// FIXME(ismail): do not hardcode usage of PrefixedData8 here:
-				mustPush(rowTree, namespace.PrefixedData8(
-					append(ParitySharesNamespaceID, parityCellFromRow...),
-				))
-				mustPush(colTree, namespace.PrefixedData8(
-					append(ParitySharesNamespaceID, parityCellFromCol...),
-				))
+				mustPush(rowTree, ParitySharesNamespaceID, parityCellFromRow)
+				mustPush(colTree, ParitySharesNamespaceID, parityCellFromCol)
 			}
 		}
 		b.DataAvailabilityHeader.RowsRoots[outerIdx] = rowTree.Root()
@@ -249,11 +246,13 @@ func (b *Block) fillDataAvailabilityHeader() {
 	b.DataHash = b.DataAvailabilityHeader.Hash()
 }
 
-func mustPush(rowTree *nmt.NamespacedMerkleTree, namespacedShare namespace.Data) {
-	if err := rowTree.Push(namespacedShare); err != nil {
+func mustPush(rowTree *nmt.NamespacedMerkleTree, id namespace.ID, data []byte) {
+	if err := rowTree.Push(id, data); err != nil {
 		panic(
-			fmt.Sprintf("invalid data; could not push share to tree: %#v, err: %v",
-				namespacedShare,
+			fmt.Sprintf(
+				"invalid data; could not push share to tree, id: %v, data: %v, err: %v",
+				id,
+				data,
 				err,
 			),
 		)
