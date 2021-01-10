@@ -7,14 +7,10 @@ import (
 	"github.com/lazyledger/nmt/namespace"
 )
 
-var _ namespace.Data = NamespacedShare{}
-
 // Share contains the raw share data without the corresponding namespace.
 type Share []byte
 
 // NamespacedShare extends a Share with the corresponding namespace.
-// It implements the namespace.Data interface and hence can be used
-// for pushing the shares to the namespaced Merkle tree.
 type NamespacedShare struct {
 	Share
 	ID namespace.ID
