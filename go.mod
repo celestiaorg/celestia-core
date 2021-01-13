@@ -8,7 +8,6 @@ require (
 	github.com/Workiva/go-datastructures v1.0.52
 	github.com/btcsuite/btcd v0.21.0-beta
 	github.com/btcsuite/btcutil v1.0.2
-	github.com/confio/ics23/go v0.6.3
 	github.com/fortytw2/leaktest v1.3.0
 	github.com/go-kit/kit v0.10.0
 	github.com/go-logfmt/logfmt v0.5.0
@@ -17,6 +16,7 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/gtank/merlin v0.1.1
 	github.com/hdevalence/ed25519consensus v0.0.0-20201207055737-7fde80a9d5ff
+	github.com/ipfs/go-ipfs v0.7.0
 	github.com/lazyledger/nmt v0.0.0-20201231142002-4b4c58a9e7c0
 	github.com/lazyledger/rsmt2d v0.0.0-20200626141417-ea94438fa457
 	github.com/libp2p/go-buffer-pool v0.0.2
