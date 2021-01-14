@@ -17,7 +17,7 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 		leafData [][]byte
 	}{
 		{"16 leaves", generateRandNamespacedRawData(16, types.NamespaceSize, types.ShareSize)},
-		// TODO add at least a row of an extended data square as a test-vector too
+		// TODO add at least a row of an extended data square (incl. parity bytes) as a test-vector too
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -51,10 +51,16 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 			if gotHash, wantHash := firstNodeCid.Hash(), hashLeaf(tt.leafData[0]); !bytes.Equal(gotHash[multiHashOverhead:], wantHash) {
 				t.Errorf("first node's hash does not match the Cid\ngot: %v\nwant: %v", gotHash[multiHashOverhead:], wantHash)
 			}
+			nodePrefixOffset := 1 // leaf / inner node prefix is one byte
+			firstNodeData := gotNodes[0].RawData()
+			if gotData, wantData := firstNodeData[nodePrefixOffset:], tt.leafData[0]; !bytes.Equal(gotData, wantData) {
+				t.Errorf("first node's data does not match the leaf's data\ngot: %v\nwant: %v", gotData, wantData)
+			}
 		})
 	}
 }
 
+// this snippet of the nmt internals is copied here:
 func hashLeaf(data []byte) []byte {
 	h := sha256.New()
 	nID := data[:types.NamespaceSize]

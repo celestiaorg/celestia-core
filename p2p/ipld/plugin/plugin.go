@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -56,9 +57,14 @@ func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
 
 // DataSquareRowOrColumnRawInputParser reads the raw shares and extract the IPLD nodes from the NMT tree.
 // Note, to parse without any error the input has to be of the form:
+//
 // <share_0>| ... |<share_numOfShares>
+//
+// To determine the share and the namespace size the constants
+// types.ShareSize and types.NamespaceSize are used.
+//
 // TODO: in case we want, we can later also encode the namespace size
-// and the share size into the io.Reader. Currently, we use the same constants as defined in types (consts.go)
+// and the share size into the io.Reader.
 func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int) ([]node.Node, error) {
 	br := bufio.NewReader(r)
 	nodes := make([]node.Node, 0)
@@ -105,10 +111,27 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 }
 
 func NmtNodeParser(block blocks.Block) (node.Node, error) {
-	// TODO: this parser needs to differentiate between
-	// leaves and inner nodes; does that mean the RawData methods need
-	// to return the data that was hashed (prefixed etc)?
-	panic("implement me")
+	data := block.RawData()
+	if len(data) == 0 {
+		return &nmtLeafNode{
+			cid: block.Cid(),
+			Data:    nil,
+		}, nil
+	}
+	firstByte := data[:1]
+	if bytes.Equal(firstByte, []byte{nmt.LeafPrefix}) {
+		return &nmtLeafNode{
+			cid: block.Cid(),
+			Data:    data[1:],
+		}, nil
+	} else if bytes.Equal(firstByte, []byte{nmt.NodePrefix}) {
+		return nmtNode{
+			cid: block.Cid(),
+			l:       data[1:33],
+			r:       data[33:],
+		}, nil
+	}
+	return nil, errors.New("unknown err")
 }
 
 var _ node.Node = (*nmtNode)(nil)
@@ -120,10 +143,8 @@ type nmtNode struct {
 }
 
 func (n nmtNode) RawData() []byte {
-	// TODO: do we need to return the preimage of the CID here?
 	//fmt.Sprintf("inner-node-Data: %#v\n", append(innerPrefix, append(i.l, i.r...)...))
-	// return append(innerPrefix, append(i.l, i.r...)...)
-	return nil
+	return append([]byte{nmt.NodePrefix}, append(n.l, n.r...)...)
 }
 
 func (n nmtNode) Cid() cid.Cid {
@@ -201,9 +222,7 @@ type nmtLeafNode struct {
 }
 
 func (l nmtLeafNode) RawData() []byte {
-	// TODO: do we need this?
-	//return append(leafPrefix, l.Data...)
-	return nil
+	return append([]byte{nmt.LeafPrefix}, l.Data...)
 }
 
 func (l nmtLeafNode) Cid() cid.Cid {
