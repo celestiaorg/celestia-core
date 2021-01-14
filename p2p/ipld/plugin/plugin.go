@@ -3,7 +3,6 @@ package plugin
 import (
 	"bufio"
 	"crypto/sha256"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -57,10 +56,11 @@ func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
 
 // DataSquareRowOrColumnRawInputParser reads the raw shares and extract the IPLD nodes from the NMT tree.
 // Note, to parse without any error the input has to be of the form:
-// <shareBytesSize>|<numOfShares>|<share_0>| ... |<share_numOfShares>
+// <share_0>| ... |<share_numOfShares>
+// TODO: in case we want, we can later also encode the namespace size
+// and the share size into the io.Reader. Currently, we use the same constants as defined in types (consts.go)
 func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int) ([]node.Node, error) {
 	br := bufio.NewReader(r)
-
 	nodes := make([]node.Node, 0)
 	nodeCollector := func(hash []byte, children ...[]byte) {
 		cid := cidFromNamespacedSha256(hash)
@@ -70,12 +70,14 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 				cid:  cid,
 				Data: children[0],
 			})
-		} else { // len(children) == 2 otherwise we'll panic
+		} else if len(children) == 2  {
 			nodes = append(nodes, nmtNode{
 				cid: cid,
 				l:   children[0],
 				r:   children[1],
 			})
+		} else {
+			panic("expected a binary tree")
 		}
 	}
 	nidSize := types.NamespaceSize // this could also be encoded into the Reader
@@ -85,20 +87,15 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 		nmt.NamespaceIDSize(nidSize),
 		nmt.NodeVisitor(nodeCollector),
 	)
-	numShares, err := binary.ReadUvarint(br)
-	if err != nil {
-		return nil, err
-	}
-	shareSize, err := binary.ReadUvarint(br)
-	if err != nil {
-		return nil, err
-	}
-	for i := uint64(0); i < numShares; i++ {
-		share := make([]byte, shareSize)
-		if _, err := br.Read(share); err != nil {
+	shareSize := types.ShareSize
+	for  {
+		share := make([]byte, shareSize+nidSize)
+		if _, err := io.ReadFull(br, share); err != nil {
+			if err == io.EOF {
+				break
+			}
 			return nil, err
 		}
-
 		if err := n.Push(share[:nidSize], share[nidSize:]); err != nil {
 			return nil, err
 		}
