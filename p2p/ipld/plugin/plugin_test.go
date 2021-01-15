@@ -1,4 +1,4 @@
-package plugin
+package main
 
 import (
 	"bytes"
@@ -7,16 +7,18 @@ import (
 	"sort"
 	"testing"
 
+	shell "github.com/ipfs/go-ipfs-api"
+
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/nmt"
 )
 
-func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
-	const (
-		namespaceSize = types.NamespaceSize
-		shareSize = types.ShareSize
-	)
+const (
+	namespaceSize = types.NamespaceSize
+	shareSize     = types.ShareSize
+)
 
+func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 	tests := []struct {
 		name     string
 		leafData [][]byte
@@ -28,14 +30,9 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			n := nmt.New(sha256.New())
-			buf := bytes.NewBuffer(make([]byte, 0))
+			buf := createByteBufFromRawData(t, tt.leafData)
 			for _, share := range tt.leafData {
-				_, err := buf.Write(share)
-				if err != nil {
-					t.Errorf("buf.Write() unexpected error = %v", err)
-					return
-				}
-				err = n.Push(share[:namespaceSize], share[namespaceSize:])
+				err := n.Push(share[:namespaceSize], share[namespaceSize:])
 				if err != nil {
 					t.Errorf("nmt.Push() unexpected error = %v", err)
 					return
@@ -46,6 +43,7 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 				t.Errorf("DataSquareRowOrColumnRawInputParser() unexpected error = %v", err)
 				return
 			}
+			// verify that the first node matches the first leaf and the last node matches the root
 			lastNodeCid := gotNodes[len(gotNodes)-1].Cid()
 			multiHashOverhead := 2
 			lastNodeHash := lastNodeCid.Hash()
@@ -63,6 +61,51 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 			}
 		})
 	}
+}
+
+func createByteBufFromRawData(t *testing.T, leafData [][]byte) *bytes.Buffer {
+	buf := bytes.NewBuffer(make([]byte, 0))
+	for _, share := range leafData {
+		_, err := buf.Write(share)
+		if err != nil {
+			t.Fatalf("buf.Write() unexpected error = %v", err)
+			return nil
+		}
+	}
+	return buf
+}
+
+func TestDagPutWithPlugin(t *testing.T) {
+	//t.Skip("Requires running ipfs daemon with the plugin compiled and installed")
+
+	t.Log("Warning: running this test writes to your local IPFS block store!")
+
+	data := generateRandNamespacedRawData(32, namespaceSize, shareSize)
+	buf := createByteBufFromRawData(t, data)
+	printFirst := 10
+	t.Logf("first leaf, nid: %x, data: %x...", data[0][:namespaceSize], data[0][namespaceSize:namespaceSize+printFirst])
+	n := nmt.New(sha256.New())
+	for _, share := range data {
+		err := n.Push(share[:namespaceSize], share[namespaceSize:])
+		if err != nil {
+			t.Errorf("nmt.Push() unexpected error = %v", err)
+			return
+		}
+	}
+
+	sh := shell.NewLocalShell()
+	cid, err := sh.DagPut(buf, "raw", DagParserFormatName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// convert NMT tree root to CID and verify it matches the CID returned by DagPut
+	treeRootBytes := n.Root().Bytes()
+	nmtCid := cidFromNamespacedSha256(treeRootBytes)
+	if nmtCid.String() != cid {
+		t.Errorf("CIDs do not match: got %v, want: %v", cid, nmtCid.String())
+	}
+	// print out cid s.t. it can be used on the commandline
+	t.Logf("cid: %v\n", cid)
 }
 
 // this snippet of the nmt internals is copied here:
