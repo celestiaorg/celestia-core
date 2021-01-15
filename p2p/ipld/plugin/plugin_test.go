@@ -12,11 +12,16 @@ import (
 )
 
 func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
+	const (
+		namespaceSize = types.NamespaceSize
+		shareSize = types.ShareSize
+	)
+
 	tests := []struct {
 		name     string
 		leafData [][]byte
 	}{
-		{"16 leaves", generateRandNamespacedRawData(16, types.NamespaceSize, types.ShareSize)},
+		{"16 leaves", generateRandNamespacedRawData(16, namespaceSize, shareSize)},
 		// TODO add at least a row of an extended data square (incl. parity bytes) as a test-vector too
 	}
 	for _, tt := range tests {
@@ -30,7 +35,7 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 					t.Errorf("buf.Write() unexpected error = %v", err)
 					return
 				}
-				err = n.Push(share[:types.NamespaceSize], share[types.NamespaceSize:])
+				err = n.Push(share[:namespaceSize], share[namespaceSize:])
 				if err != nil {
 					t.Errorf("nmt.Push() unexpected error = %v", err)
 					return

@@ -1,4 +1,4 @@
-package plugin
+package main
 
 import (
 	"bufio"
@@ -20,9 +20,14 @@ import (
 	mh "github.com/multiformats/go-multihash"
 )
 
-// 0x77 seems to be free:
-// https://github.com/multiformats/multicodec/blob/master/table.csv
-const NMT = 0x77
+const (
+	// NMT is the codec used for this plugin.
+	// 0x77 seems to be free:
+	// https://github.com/multiformats/multicodec/blob/master/table.csv
+	NMT                 = 0x77
+	// DagParserFormatName can be used when putting into the IPLD Dag
+	DagParserFormatName = "extended-square-row-or-col"
+)
 
 // Plugins is an exported list of plugins that will be loaded by go-ipfs.
 var Plugins = []plugin.Plugin{
@@ -39,7 +44,7 @@ func (l LazyLedgerPlugin) RegisterBlockDecoders(dec format.BlockDecoder) error {
 }
 
 func (l LazyLedgerPlugin) RegisterInputEncParsers(iec coredag.InputEncParsers) error {
-	iec.AddParser("raw", "extended-square-row-or-col", DataSquareRowOrColumnRawInputParser)
+	iec.AddParser("raw", DagParserFormatName, DataSquareRowOrColumnRawInputParser)
 	return nil
 }
 
@@ -66,6 +71,11 @@ func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
 // TODO: in case we want, we can later also encode the namespace size
 // and the share size into the io.Reader.
 func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int) ([]node.Node, error) {
+	const(
+		nidSize = types.NamespaceSize
+		shareSize = types.ShareSize
+	)
+
 	br := bufio.NewReader(r)
 	nodes := make([]node.Node, 0)
 	nodeCollector := func(hash []byte, children ...[]byte) {
@@ -86,14 +96,11 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 			panic("expected a binary tree")
 		}
 	}
-	nidSize := types.NamespaceSize // this could also be encoded into the Reader
-	// but we don't need this to be variable
 	n := nmt.New(
 		sha256.New(),
 		nmt.NamespaceIDSize(nidSize),
 		nmt.NodeVisitor(nodeCollector),
 	)
-	shareSize := types.ShareSize
 	for  {
 		share := make([]byte, shareSize+nidSize)
 		if _, err := io.ReadFull(br, share); err != nil {
@@ -111,6 +118,12 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 }
 
 func NmtNodeParser(block blocks.Block) (node.Node, error) {
+	// length of the domain separator for leaf and inner nodes:
+	const prefixOffset = 1
+	var (
+		leafPrefix = []byte{nmt.LeafPrefix}
+		innerPrefix = []byte{nmt.NodePrefix}
+	)
 	data := block.RawData()
 	if len(data) == 0 {
 		return &nmtLeafNode{
@@ -118,20 +131,25 @@ func NmtNodeParser(block blocks.Block) (node.Node, error) {
 			Data:    nil,
 		}, nil
 	}
-	firstByte := data[:1]
-	if bytes.Equal(firstByte, []byte{nmt.LeafPrefix}) {
+	domainSeparator := data[:prefixOffset]
+	if bytes.Equal(domainSeparator, leafPrefix) {
 		return &nmtLeafNode{
 			cid: block.Cid(),
-			Data:    data[1:],
+			Data:    data[prefixOffset:],
 		}, nil
-	} else if bytes.Equal(firstByte, []byte{nmt.NodePrefix}) {
+	} else if bytes.Equal(domainSeparator, innerPrefix) {
 		return nmtNode{
 			cid: block.Cid(),
-			l:       data[1:33],
-			r:       data[33:],
+			l:       data[prefixOffset:prefixOffset+sha256.Size],
+			r:       data[prefixOffset+sha256.Size:],
 		}, nil
 	}
-	return nil, errors.New("unknown err")
+	return nil, fmt.Errorf(
+		"expected first byte of block to be either the leaf or inner node prefix: (%x, %x), got: %x)",
+			leafPrefix,
+			innerPrefix,
+		domainSeparator,
+		)
 }
 
 var _ node.Node = (*nmtNode)(nil)
@@ -143,7 +161,6 @@ type nmtNode struct {
 }
 
 func (n nmtNode) RawData() []byte {
-	//fmt.Sprintf("inner-node-Data: %#v\n", append(innerPrefix, append(i.l, i.r...)...))
 	return append([]byte{nmt.NodePrefix}, append(n.l, n.r...)...)
 }
 
@@ -296,6 +313,5 @@ func cidFromNamespacedSha256(namespacedHash []byte) cid.Cid {
 	if err != nil {
 		panic(err)
 	}
-
 	return cid.NewCidV1(NMT, mh.Multihash(buf))
 }
