@@ -61,7 +61,7 @@ var (
 	primaryAddr        string
 	witnessAddrsJoined string
 	chainID            string
-	dir                string
+	home               string
 	maxOpenConnections int
 
 	sequential     bool
@@ -83,8 +83,8 @@ func init() {
 		"connect to a Tendermint node at this address")
 	LightCmd.Flags().StringVarP(&witnessAddrsJoined, "witnesses", "w", "",
 		"tendermint nodes to cross-check the primary node, comma-separated")
-	LightCmd.Flags().StringVarP(&dir, "dir", "d", os.ExpandEnv(filepath.Join("$HOME", ".tendermint-light")),
-		"specify the directory")
+	LightCmd.Flags().StringVar(&home, "home-dir", os.ExpandEnv(filepath.Join("$HOME", ".tendermint-light")),
+		"specify the home directory")
 	LightCmd.Flags().IntVar(
 		&maxOpenConnections,
 		"max-open-connections",
@@ -122,7 +122,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		witnessesAddrs = strings.Split(witnessAddrsJoined, ",")
 	}
 
-	db, err := dbm.NewGoLevelDB("light-client-db", dir)
+	db, err := dbm.NewGoLevelDB("light-client-db", home)
 	if err != nil {
 		return fmt.Errorf("can't create a db: %w", err)
 	}
@@ -215,7 +215,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	cfg.MaxOpenConnections = maxOpenConnections
 	// If necessary adjust global WriteTimeout to ensure it's greater than
 	// TimeoutBroadcastTxCommit.
-	// See https://github.com/lazyledger/lazyledger-core/issues/3435
+	// See https://github.com/tendermint/tendermint/issues/3435
 	if cfg.WriteTimeout <= config.RPC.TimeoutBroadcastTxCommit {
 		cfg.WriteTimeout = config.RPC.TimeoutBroadcastTxCommit + 1*time.Second
 	}

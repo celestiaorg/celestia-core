@@ -330,13 +330,19 @@ max-txs-bytes = {{ .Mempool.MaxTxsBytes }}
 # Size of the cache (used to filter transactions we saw earlier) in transactions
 cache-size = {{ .Mempool.CacheSize }}
 
+# Do not remove invalid transactions from the cache (default: false)
+# Set to true if it's not possible for any invalid transaction to become valid
+# again in the future.
+keep-invalid-txs-in-cache = {{ .Mempool.KeepInvalidTxsInCache }}
+
 # Maximum size of a single transaction.
 # NOTE: the max size of a tx transmitted over the network is {max-tx-bytes}.
 max-tx-bytes = {{ .Mempool.MaxTxBytes }}
 
 # Maximum size of a batch of transactions to send to a peer
 # Including space needed by encoding (one varint per transaction).
-max-batch-bytes = {{ .Mempool.MaxBatchBytes }}
+# XXX: Unused due to https://github.com/tendermint/tendermint/issues/5796
+max_batch_bytes = {{ .Mempool.MaxBatchBytes }}
 
 #######################################################
 ###         State Sync Configuration Options        ###
@@ -355,10 +361,10 @@ enable = {{ .StateSync.Enable }}
 #
 # For Cosmos SDK-based chains, trust-period should usually be about 2/3 of the unbonding time (~2
 # weeks) during which they can be financially punished (slashed) for misbehavior.
-rpc-servers = "{{ StringsJoin .StateSync.RPCServers "," }}"
-trust-height = {{ .StateSync.TrustHeight }}
-trust-hash = "{{ .StateSync.TrustHash }}"
-trust-period = "{{ .StateSync.TrustPeriod }}"
+rpc_servers = "{{ StringsJoin .StateSync.RPCServers "," }}"
+trust_height = {{ .StateSync.TrustHeight }}
+trust_hash = "{{ .StateSync.TrustHash }}"
+trust_period = "{{ .StateSync.TrustPeriod }}"
 
 # Time to spend discovering snapshots before initiating a restore.
 discovery-time = "{{ .StateSync.DiscoveryTime }}"

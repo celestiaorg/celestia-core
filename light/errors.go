@@ -43,7 +43,7 @@ func (e ErrInvalidHeader) Error() string {
 // ErrFailedHeaderCrossReferencing is returned when the detector was not able to cross reference the header
 // with any of the connected witnesses.
 var ErrFailedHeaderCrossReferencing = errors.New(
-	`all witnesses have either not responded, don't have the blocks or sent invalid blocks. 
+	`all witnesses have either not responded, don't have the blocks or sent invalid blocks.
 	You should look to change your witnesses or review the light client's logs for more information`,
 )
 

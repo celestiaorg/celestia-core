@@ -86,12 +86,6 @@ func (c *Client) detectDivergence(ctx context.Context, primaryTrace []*types.Lig
 				"primary", c.primary, "witness", supportingWitness)
 			c.sendEvidence(ctx, primaryEv, supportingWitness)
 
-			if primaryBlock.Commit.Round != witnessTrace[len(witnessTrace)-1].Commit.Round {
-				c.logger.Info("The light client has detected, and prevented, an attempted amnesia attack." +
-					" We think this attack is pretty unlikely, so if you see it, that's interesting to us." +
-					" Can you let us know by opening an issue through https://github.com/tendermint/tendermint/issues/new?")
-			}
-
 			// This may not be valid because the witness itself is at fault. So now we reverse it, examining the
 			// trace provided by the witness and holding the primary as the source of truth. Note: primary may not
 			// respond but this is okay as we will halt anyway.
@@ -104,7 +98,7 @@ func (c *Client) detectDivergence(ctx context.Context, primaryTrace []*types.Lig
 			)
 			if err != nil {
 				c.logger.Info("Error validating primary's divergent header", "primary", c.primary, "err", err)
-				return ErrLightClientAttack
+				continue
 			}
 
 			// We now use the primary trace to create evidence against the witness and send it to the primary
@@ -113,7 +107,7 @@ func (c *Client) detectDivergence(ctx context.Context, primaryTrace []*types.Lig
 				"primary", c.primary, "witness", supportingWitness)
 			c.sendEvidence(ctx, witnessEv, c.primary)
 			// We return the error and don't process anymore witnesses
-			return ErrLightClientAttack
+			return e
 
 		case errBadWitness:
 			c.logger.Info("Witness returned an error during header comparison", "witness", c.witnesses[e.WitnessIndex],

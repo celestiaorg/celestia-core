@@ -102,6 +102,10 @@ func (KVStoreApplication) Info(req abcitypes.RequestInfo) abcitypes.ResponseInfo
 	return abcitypes.ResponseInfo{}
 }
 
+func (KVStoreApplication) SetOption(req abcitypes.RequestSetOption) abcitypes.ResponseSetOption {
+	return abcitypes.ResponseSetOption{}
+}
+
 func (KVStoreApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.ResponseDeliverTx {
 	return abcitypes.ResponseDeliverTx{Code: 0}
 }
@@ -574,12 +578,11 @@ We are going to use [Go modules](https://github.com/golang/go/wiki/Modules) for
 dependency management.
 
 ```bash
-export GO111MODULE=on
 go mod init github.com/me/example
+go get github.com/tendermint/tendermint/@v0.34.0
 ```
 
-This should create a `go.mod` file. The current tutorial only works with
-tendermint > v0.34, so let's make sure we're using the latest version:
+After running the above commands you will see two generated files, go.mod and go.sum. The go.mod file should look similar to:
 
 ```go
 module github.com/me/example
@@ -588,13 +591,13 @@ go 1.15
 
 require (
 	github.com/dgraph-io/badger v1.6.2
-	github.com/tendermint/tendermint v0.34.0-rc4
+	github.com/tendermint/tendermint v0.34.0
 )
 ```
 
-Now we can build the binary:
+Finally, we will build our binary:
 
-```bash
+```sh
 go build
 ```
 
@@ -602,9 +605,7 @@ To create a default configuration, nodeKey and private validator files, let's
 execute `tendermint init`. But before we do that, we will need to install
 Tendermint Core. Please refer to [the official
 guide](https://docs.tendermint.com/master/introduction/install.html). If you're
-installing from source, don't forget to checkout the latest release (`git
-checkout vX.Y.Z`). Don't forget to check that the application uses the same
-major version.
+installing from source, don't forget to checkout the latest release (`git checkout vX.Y.Z`).
 
 ```bash
 $ rm -rf /tmp/example

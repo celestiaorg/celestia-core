@@ -222,6 +222,14 @@ func NewClientFromTrustedStore(
 		return nil, ErrNoWitnesses
 	}
 
+	// Verify witnesses are all on the same chain.
+	for i, w := range witnesses {
+		if w.ChainID() != chainID {
+			return nil, fmt.Errorf("witness #%d: %v is on another chain %s, expected %s",
+				i, w, w.ChainID(), chainID)
+		}
+	}
+
 	// Validate trust level.
 	if err := ValidateTrustLevel(c.trustLevel); err != nil {
 		return nil, err
@@ -447,7 +455,7 @@ func (c *Client) VerifyLightBlockAtHeight(ctx context.Context, height int64, now
 		return nil, errors.New("negative or zero height")
 	}
 
-	// Check if the light block is already verified.
+	// Check if the light block already verified.
 	h, err := c.TrustedLightBlock(height)
 	if err == nil {
 		c.logger.Info("Header has already been verified", "height", height, "hash", hash2str(h.Hash()))
@@ -626,7 +634,7 @@ func (c *Client) verifySequential(
 
 				// If some intermediate header is invalid, replace the primary and try
 				// again.
-				c.logger.Error("primary sent invalid header -> replacing", "err", err, "primary", c.primary)
+				c.logger.Error("primary sent invalid header -> replacing", "err", err)
 				replaceErr := c.replacePrimaryProvider()
 				if replaceErr != nil {
 					c.logger.Error("Can't replace primary", "err", replaceErr)
@@ -760,7 +768,7 @@ func (c *Client) verifySkippingAgainstPrimary(
 
 		// If some intermediate header is invalid, replace the primary and try
 		// again.
-		c.logger.Error("primary sent invalid header -> replacing", "err", err, "primary", c.primary)
+		c.logger.Error("primary sent invalid header -> replacing", "err", err)
 		replaceErr := c.replacePrimaryProvider()
 		if replaceErr != nil {
 			c.logger.Error("Can't replace primary", "err", replaceErr)
@@ -845,7 +853,7 @@ func (c *Client) Witnesses() []provider.Provider {
 // Cleanup removes all the data (headers and validator sets) stored. Note: the
 // client must be stopped at this point.
 func (c *Client) Cleanup() error {
-	c.logger.Info("Removing all light blocks")
+	c.logger.Info("Removing all the data")
 	c.latestTrustedBlock = nil
 	return c.trustedStore.Prune(0)
 }
@@ -924,7 +932,7 @@ func (c *Client) backwards(
 			"newHeight", interimHeader.Height,
 			"newHash", hash2str(interimHeader.Hash()))
 		if err := VerifyBackwards(interimHeader, verifiedHeader); err != nil {
-			c.logger.Error("primary sent invalid header -> replacing", "err", err, "primary", c.primary)
+			c.logger.Error("primary sent invalid header -> replacing", "err", err)
 			if replaceErr := c.replacePrimaryProvider(); replaceErr != nil {
 				c.logger.Error("Can't replace primary", "err", replaceErr)
 				// return original error
@@ -977,7 +985,7 @@ func (c *Client) lightBlockFromPrimary(ctx context.Context, height int64) (*type
 	l, err := c.primary.LightBlock(ctx, height)
 	c.providerMutex.Unlock()
 	if err != nil {
-		c.logger.Debug("Error on light block request from primary", "error", err, "primary", c.primary)
+		c.logger.Debug("Error on light block request from primary", "error", err)
 		replaceErr := c.replacePrimaryProvider()
 		if replaceErr != nil {
 			return nil, fmt.Errorf("%v. Tried to replace primary but: %w", err.Error(), replaceErr)

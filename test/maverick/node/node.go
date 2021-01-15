@@ -156,7 +156,7 @@ func DefaultMetricsProvider(config *cfg.InstrumentationConfig) MetricsProvider {
 // Option sets a parameter for the node.
 type Option func(*Node)
 
-// Temporary interface for switching to fast sync, we should get rid of v0.
+// Temporary interface for switching to fast sync, we should get rid of v0 and v1 reactors.
 // See: https://github.com/tendermint/tendermint/issues/4595
 type fastSyncReactor interface {
 	SwitchToFastSync(sm.State) error
@@ -226,7 +226,7 @@ type Node struct {
 	sw          *p2p.Switch  // p2p connections
 	addrBook    pex.AddrBook // known peers
 	nodeInfo    p2p.NodeInfo
-	nodeKey     p2p.NodeKey // our node privkey
+	nodeKey     *p2p.NodeKey // our node privkey
 	isListening bool
 
 	// services
@@ -456,6 +456,7 @@ func createTransport(
 	config *cfg.Config,
 	nodeInfo p2p.NodeInfo,
 	nodeKey p2p.NodeKey,
+	nodeKey *p2p.NodeKey,
 	proxyApp proxy.AppConns,
 ) (
 	*p2p.MultiplexTransport,
@@ -463,7 +464,7 @@ func createTransport(
 ) {
 	var (
 		mConnConfig = p2p.MConnConfig(config.P2P)
-		transport   = p2p.NewMultiplexTransport(nodeInfo, nodeKey, mConnConfig)
+		transport   = p2p.NewMultiplexTransport(nodeInfo, *nodeKey, mConnConfig)
 		connFilters = []p2p.ConnFilterFunc{}
 		peerFilters = []p2p.PeerFilterFunc{}
 	)
@@ -991,11 +992,6 @@ func (n *Node) OnStop() {
 		n.Logger.Error("Error closing switch", "err", err)
 	}
 
-	// Stop the real state sync reactor separately since the switch uses the shim.
-	if err := n.stateSyncReactor.Stop(); err != nil {
-		n.Logger.Error("failed to stop state sync service", "err", err)
-	}
-
 	// stop mempool WAL
 	if n.config.Mempool.WalEnabled() {
 		n.mempool.CloseWAL()
@@ -1282,7 +1278,7 @@ func (n *Node) NodeInfo() p2p.NodeInfo {
 
 func makeNodeInfo(
 	config *cfg.Config,
-	nodeKey p2p.NodeKey,
+	nodeKey *p2p.NodeKey,
 	txIndexer txindex.TxIndexer,
 	genDoc *types.GenesisDoc,
 	state sm.State,
@@ -1308,7 +1304,7 @@ func makeNodeInfo(
 			state.Version.Consensus.Block,
 			state.Version.Consensus.App,
 		),
-		DefaultNodeID: nodeKey.ID,
+		DefaultNodeID: nodeKey.ID(),
 		Network:       genDoc.ChainID,
 		Version:       version.TMCoreSemVer,
 		Channels: []byte{
@@ -1316,7 +1312,7 @@ func makeNodeInfo(
 			cs.StateChannel, cs.DataChannel, cs.VoteChannel, cs.VoteSetBitsChannel,
 			mempl.MempoolChannel,
 			evidence.EvidenceChannel,
-			byte(statesync.SnapshotChannel), byte(statesync.ChunkChannel),
+			statesync.SnapshotChannel, statesync.ChunkChannel,
 		},
 		Moniker: config.Moniker,
 		Other: p2p.DefaultNodeInfoOther{

@@ -25,7 +25,6 @@ var errNegOrZeroHeight = errors.New("negative or zero height")
 // KeyPathFunc builds a merkle path out of the given path and key.
 type KeyPathFunc func(path string, key []byte) (merkle.KeyPath, error)
 
-//go:generate mockery --case Underscore --Name LightClient
 // LightClient is an interface that contains functionality needed by Client from the light client.
 type LightClient interface {
 	ChainID() string

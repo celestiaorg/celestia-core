@@ -167,14 +167,11 @@ func MsgFromProto(msg *tmcons.Message) (Message, error) {
 	case *tmcons.Message_NewValidBlock:
 		pbPartSetHeader, err := types.PartSetHeaderFromProto(&msg.NewValidBlock.BlockPartSetHeader)
 		if err != nil {
-			return nil, fmt.Errorf("parts header to proto error: %w", err)
+			return nil, fmt.Errorf("parts to proto error: %w", err)
 		}
 
 		pbBits := new(bits.BitArray)
-		err = pbBits.FromProto(msg.NewValidBlock.BlockParts)
-		if err != nil {
-			return nil, fmt.Errorf("parts to proto error: %w", err)
-		}
+		pbBits.FromProto(msg.NewValidBlock.BlockParts)
 
 		pb = &NewValidBlockMessage{
 			Height:             msg.NewValidBlock.Height,

@@ -47,6 +47,11 @@ type BlockchainReactor struct {
 	store    blockStore
 }
 
+//nolint:unused,deadcode
+type blockVerifier interface {
+	VerifyCommit(chainID string, blockID types.BlockID, height int64, commit *types.Commit) error
+}
+
 type blockApplier interface {
 	ApplyBlock(state state.State, blockID types.BlockID, block *types.Block) (state.State, int64, error)
 }
@@ -508,13 +513,13 @@ func (r *BlockchainReactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 		r.mtx.RUnlock()
 
 	case *bcproto.BlockResponse:
-		r.mtx.RLock()
 		bi, err := types.BlockFromProto(msg.Block)
 		if err != nil {
 			logger.Error("error transitioning block from protobuf", "err", err)
 			_ = r.reporter.Report(behaviour.BadMessage(src.ID(), err.Error()))
 			return
 		}
+		r.mtx.RLock()
 		if r.events != nil {
 			r.events <- bcBlockResponse{
 				peerID: src.ID(),
@@ -570,7 +575,7 @@ func (r *BlockchainReactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  BlockchainChannel,
-			Priority:            10,
+			Priority:            5,
 			SendQueueCapacity:   2000,
 			RecvBufferCapacity:  50 * 4096,
 			RecvMessageCapacity: bc.MaxMsgSize,

@@ -600,6 +600,7 @@ OUTER_LOOP:
 			}
 			peer = bpr.pool.pickIncrAvailablePeer(bpr.height)
 			if peer == nil {
+				// log.Info("No peers available", "height", height)
 				time.Sleep(requestIntervalMS * time.Millisecond)
 				continue PICK_PEER_LOOP
 			}

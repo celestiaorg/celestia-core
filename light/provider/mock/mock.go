@@ -11,7 +11,7 @@ import (
 )
 
 type Mock struct {
-	id               string
+	chainID          string
 	headers          map[int64]*types.SignedHeader
 	vals             map[int64]*types.ValidatorSet
 	evidenceToReport map[string]types.Evidence // hash => evidence
@@ -21,13 +21,18 @@ var _ provider.Provider = (*Mock)(nil)
 
 // New creates a mock provider with the given set of headers and validator
 // sets.
-func New(id string, headers map[int64]*types.SignedHeader, vals map[int64]*types.ValidatorSet) *Mock {
+func New(chainID string, headers map[int64]*types.SignedHeader, vals map[int64]*types.ValidatorSet) *Mock {
 	return &Mock{
-		id:               id,
+		chainID:          chainID,
 		headers:          headers,
 		vals:             vals,
 		evidenceToReport: make(map[string]types.Evidence),
 	}
+}
+
+// ChainID returns the blockchain ID.
+func (p *Mock) ChainID() string {
+	return p.chainID
 }
 
 func (p *Mock) String() string {
@@ -41,7 +46,7 @@ func (p *Mock) String() string {
 		fmt.Fprintf(&vals, " %X", v.Hash())
 	}
 
-	return fmt.Sprintf("Mock{id: %s, headers: %s, vals: %v}", p.id, headers.String(), vals.String())
+	return fmt.Sprintf("Mock{headers: %s, vals: %v}", headers.String(), vals.String())
 }
 
 func (p *Mock) LightBlock(_ context.Context, height int64) (*types.LightBlock, error) {
