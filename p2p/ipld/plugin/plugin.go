@@ -114,6 +114,7 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 			return nil, err
 		}
 	}
+	// to triggert the collection of nodes:
 	_ = n.Root()
 	return nodes, nil
 }
@@ -147,8 +148,8 @@ func NmtNodeParser(block blocks.Block) (node.Node, error) {
 	} else if bytes.Equal(domainSeparator, innerPrefix) {
 		return nmtNode{
 			cid: block.Cid(),
-			l:   data[prefixOffset : prefixOffset+sha256.Size],
-			r:   data[prefixOffset+sha256.Size:],
+			l:   data[prefixOffset : prefixOffset+namespaceSize*2+sha256.Size],
+			r:   data[prefixOffset+namespaceSize*2+sha256.Size:],
 		}, nil
 	}
 	return nil, fmt.Errorf(
@@ -316,6 +317,9 @@ func (l nmtLeafNode) Size() (uint64, error) {
 }
 
 func cidFromNamespacedSha256(namespacedHash []byte) cid.Cid {
+	if got, want := len(namespacedHash), 2*namespaceSize+sha256.Size; got != want {
+		panic(fmt.Sprintf("expected a namespace prefixed sha256, got: %v, want: %v", got, want))
+	}
 	buf, err := mh.Encode(namespacedHash, mh.SHA2_256)
 	if err != nil {
 		panic(err)
