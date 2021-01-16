@@ -114,7 +114,7 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 			return nil, err
 		}
 	}
-	// to triggert the collection of nodes:
+	// to trigger the collection of nodes:
 	_ = n.Root()
 	return nodes, nil
 }
@@ -148,6 +148,7 @@ func NmtNodeParser(block blocks.Block) (node.Node, error) {
 	} else if bytes.Equal(domainSeparator, innerPrefix) {
 		return nmtNode{
 			cid: block.Cid(),
+			// TODO namespaceSize*2+sha256.Size should be a constant somewhere
 			l:   data[prefixOffset : prefixOffset+namespaceSize*2+sha256.Size],
 			r:   data[prefixOffset+namespaceSize*2+sha256.Size:],
 		}, nil
