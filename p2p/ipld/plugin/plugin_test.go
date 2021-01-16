@@ -9,13 +9,7 @@ import (
 
 	shell "github.com/ipfs/go-ipfs-api"
 
-	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/nmt"
-)
-
-const (
-	namespaceSize = types.NamespaceSize
-	shareSize     = types.ShareSize
 )
 
 func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
@@ -111,8 +105,8 @@ func TestDagPutWithPlugin(t *testing.T) {
 // this snippet of the nmt internals is copied here:
 func hashLeaf(data []byte) []byte {
 	h := sha256.New()
-	nID := data[:types.NamespaceSize]
-	toCommittToDataWithoutNID := data[types.NamespaceSize:]
+	nID := data[:namespaceSize]
+	toCommittToDataWithoutNID := data[namespaceSize:]
 
 	res := append(append(make([]byte, 0), nID...), nID...)
 	data = append([]byte{nmt.LeafPrefix}, toCommittToDataWithoutNID...)

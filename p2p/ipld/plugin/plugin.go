@@ -10,7 +10,6 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/nmt"
 
 	"github.com/ipfs/go-ipfs/core/coredag"
@@ -24,9 +23,15 @@ const (
 	// NMT is the codec used for this plugin.
 	// 0x77 seems to be free:
 	// https://github.com/multiformats/multicodec/blob/master/table.csv
-	NMT                 = 0x77
+	NMT = 0x77
 	// DagParserFormatName can be used when putting into the IPLD Dag
 	DagParserFormatName = "extended-square-row-or-col"
+
+	// FIXME: These are the same as types.ShareSize and types.NamespaceSize.
+	// Repeated here to avoid a dependency to the wrapping repo as this makes
+	// it hard to compile and use the plugin against a local ipfs version.
+	namespaceSize = 8
+	shareSize     = 256
 )
 
 // Plugins is an exported list of plugins that will be loaded by go-ipfs.
@@ -71,10 +76,6 @@ func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
 // TODO: in case we want, we can later also encode the namespace size
 // and the share size into the io.Reader.
 func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int) ([]node.Node, error) {
-	const(
-		nidSize = types.NamespaceSize
-		shareSize = types.ShareSize
-	)
 
 	br := bufio.NewReader(r)
 	nodes := make([]node.Node, 0)
@@ -86,7 +87,7 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 				cid:  cid,
 				Data: children[0],
 			})
-		} else if len(children) == 2  {
+		} else if len(children) == 2 {
 			nodes = append(nodes, nmtNode{
 				cid: cid,
 				l:   children[0],
@@ -98,18 +99,18 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 	}
 	n := nmt.New(
 		sha256.New(),
-		nmt.NamespaceIDSize(nidSize),
+		nmt.NamespaceIDSize(namespaceSize),
 		nmt.NodeVisitor(nodeCollector),
 	)
-	for  {
-		share := make([]byte, shareSize+nidSize)
+	for {
+		share := make([]byte, shareSize+namespaceSize)
 		if _, err := io.ReadFull(br, share); err != nil {
 			if err == io.EOF {
 				break
 			}
 			return nil, err
 		}
-		if err := n.Push(share[:nidSize], share[nidSize:]); err != nil {
+		if err := n.Push(share[:namespaceSize], share[namespaceSize:]); err != nil {
 			return nil, err
 		}
 	}
@@ -121,35 +122,35 @@ func NmtNodeParser(block blocks.Block) (node.Node, error) {
 	// length of the domain separator for leaf and inner nodes:
 	const prefixOffset = 1
 	var (
-		leafPrefix = []byte{nmt.LeafPrefix}
+		leafPrefix  = []byte{nmt.LeafPrefix}
 		innerPrefix = []byte{nmt.NodePrefix}
 	)
 	data := block.RawData()
 	if len(data) == 0 {
 		return &nmtLeafNode{
-			cid: block.Cid(),
-			Data:    nil,
+			cid:  block.Cid(),
+			Data: nil,
 		}, nil
 	}
 	domainSeparator := data[:prefixOffset]
 	if bytes.Equal(domainSeparator, leafPrefix) {
 		return &nmtLeafNode{
-			cid: block.Cid(),
-			Data:    data[prefixOffset:],
+			cid:  block.Cid(),
+			Data: data[prefixOffset:],
 		}, nil
 	} else if bytes.Equal(domainSeparator, innerPrefix) {
 		return nmtNode{
 			cid: block.Cid(),
-			l:       data[prefixOffset:prefixOffset+sha256.Size],
-			r:       data[prefixOffset+sha256.Size:],
+			l:   data[prefixOffset : prefixOffset+sha256.Size],
+			r:   data[prefixOffset+sha256.Size:],
 		}, nil
 	}
 	return nil, fmt.Errorf(
 		"expected first byte of block to be either the leaf or inner node prefix: (%x, %x), got: %x)",
-			leafPrefix,
-			innerPrefix,
+		leafPrefix,
+		innerPrefix,
 		domainSeparator,
-		)
+	)
 }
 
 var _ node.Node = (*nmtNode)(nil)
