@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	shell "github.com/ipfs/go-ipfs-api"
-
 	"github.com/lazyledger/nmt"
 )
 
@@ -37,36 +36,23 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 				t.Errorf("DataSquareRowOrColumnRawInputParser() unexpected error = %v", err)
 				return
 			}
-			// verify that the first node matches the first leaf and the last node matches the root
-			lastNodeCid := gotNodes[len(gotNodes)-1].Cid()
+			rootNodeCid := gotNodes[0].Cid()
 			multiHashOverhead := 2
-			lastNodeHash := lastNodeCid.Hash()
+			lastNodeHash := rootNodeCid.Hash()
 			if got, want := lastNodeHash[multiHashOverhead:], n.Root().Bytes(); !bytes.Equal(got, want) {
 				t.Errorf("hashes don't match\ngot: %v\nwant: %v", got, want)
 			}
-			firstNodeCid := gotNodes[0].Cid()
-			if gotHash, wantHash := firstNodeCid.Hash(), hashLeaf(tt.leafData[0]); !bytes.Equal(gotHash[multiHashOverhead:], wantHash) {
+			lastNodeCid := gotNodes[len(gotNodes)-1].Cid()
+			if gotHash, wantHash := lastNodeCid.Hash(), hashLeaf(tt.leafData[0]); !bytes.Equal(gotHash[multiHashOverhead:], wantHash) {
 				t.Errorf("first node's hash does not match the Cid\ngot: %v\nwant: %v", gotHash[multiHashOverhead:], wantHash)
 			}
 			nodePrefixOffset := 1 // leaf / inner node prefix is one byte
-			firstNodeData := gotNodes[0].RawData()
-			if gotData, wantData := firstNodeData[nodePrefixOffset:], tt.leafData[0]; !bytes.Equal(gotData, wantData) {
+			lastLeafNodeData := gotNodes[len(gotNodes)-1].RawData()
+			if gotData, wantData := lastLeafNodeData[nodePrefixOffset:], tt.leafData[0]; !bytes.Equal(gotData, wantData) {
 				t.Errorf("first node's data does not match the leaf's data\ngot: %v\nwant: %v", gotData, wantData)
 			}
 		})
 	}
-}
-
-func createByteBufFromRawData(t *testing.T, leafData [][]byte) *bytes.Buffer {
-	buf := bytes.NewBuffer(make([]byte, 0))
-	for _, share := range leafData {
-		_, err := buf.Write(share)
-		if err != nil {
-			t.Fatalf("buf.Write() unexpected error = %v", err)
-			return nil
-		}
-	}
-	return buf
 }
 
 func TestDagPutWithPlugin(t *testing.T) {
@@ -102,6 +88,18 @@ func TestDagPutWithPlugin(t *testing.T) {
 	t.Logf("cid: %v\n", cid)
 }
 
+func createByteBufFromRawData(t *testing.T, leafData [][]byte) *bytes.Buffer {
+	buf := bytes.NewBuffer(make([]byte, 0))
+	for _, share := range leafData {
+		_, err := buf.Write(share)
+		if err != nil {
+			t.Fatalf("buf.Write() unexpected error = %v", err)
+			return nil
+		}
+	}
+	return buf
+}
+
 // this snippet of the nmt internals is copied here:
 func hashLeaf(data []byte) []byte {
 	h := sha256.New()
@@ -113,8 +111,6 @@ func hashLeaf(data []byte) []byte {
 	h.Write(data)
 	return h.Sum(res)
 }
-
-// TODO add a dag put using a IPFS daemon and see if the returned leaf data on dag get matches
 
 func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byte {
 	data := make([][]byte, total)

@@ -83,16 +83,16 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 		cid := cidFromNamespacedSha256(hash)
 		isLeaf := len(children) == 1
 		if isLeaf {
-			nodes = append(nodes, nmtLeafNode{
+			nodes = append([]node.Node{nmtLeafNode{
 				cid:  cid,
 				Data: children[0],
-			})
+			}}, nodes...)
 		} else if len(children) == 2 {
-			nodes = append(nodes, nmtNode{
+			nodes = append([]node.Node{nmtNode{
 				cid: cid,
 				l:   children[0],
 				r:   children[1],
-			})
+			}}, nodes...)
 		} else {
 			panic("expected a binary tree")
 		}
