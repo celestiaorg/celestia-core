@@ -76,23 +76,23 @@ func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
 // TODO: in case we want, we can later also encode the namespace size
 // and the share size into the io.Reader.
 func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int) ([]node.Node, error) {
-
+	const extendedSquareSize = 256
 	br := bufio.NewReader(r)
-	nodes := make([]node.Node, 0)
+	nodes := make([]node.Node, 0, extendedSquareSize)
 	nodeCollector := func(hash []byte, children ...[]byte) {
 		cid := cidFromNamespacedSha256(hash)
 		isLeaf := len(children) == 1
 		if isLeaf {
-			nodes = append([]node.Node{nmtLeafNode{
+			prependNode(nmtLeafNode{
 				cid:  cid,
 				Data: children[0],
-			}}, nodes...)
+			}, &nodes)
 		} else if len(children) == 2 {
-			nodes = append([]node.Node{nmtNode{
+			prependNode(nmtNode{
 				cid: cid,
 				l:   children[0],
 				r:   children[1],
-			}}, nodes...)
+			}, &nodes)
 		} else {
 			panic("expected a binary tree")
 		}
@@ -116,6 +116,12 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 	}
 	_ = n.Root()
 	return nodes, nil
+}
+
+func prependNode(newNode node.Node, nodes *[]node.Node) {
+	*nodes = append(*nodes, node.Node(nil))
+	copy((*nodes)[1:], *nodes)
+	(*nodes)[0] = newNode
 }
 
 func NmtNodeParser(block blocks.Block) (node.Node, error) {
