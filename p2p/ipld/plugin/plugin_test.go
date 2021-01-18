@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"fmt"
 	"math/rand"
 	"sort"
+	"strings"
 	"testing"
 
 	shell "github.com/ipfs/go-ipfs-api"
@@ -60,7 +62,8 @@ func TestDagPutWithPlugin(t *testing.T) {
 
 	t.Log("Warning: running this test writes to your local IPFS block store!")
 
-	data := generateRandNamespacedRawData(32, namespaceSize, shareSize)
+	const numLeaves = 32
+	data := generateRandNamespacedRawData(numLeaves, namespaceSize, shareSize)
 	buf := createByteBufFromRawData(t, data)
 	printFirst := 10
 	t.Logf("first leaf, nid: %x, data: %x...", data[0][:namespaceSize], data[0][namespaceSize:namespaceSize+printFirst])
@@ -85,7 +88,26 @@ func TestDagPutWithPlugin(t *testing.T) {
 		t.Errorf("CIDs do not match: got %v, want: %v", cid, nmtCid.String())
 	}
 	// print out cid s.t. it can be used on the commandline
-	t.Logf("cid: %v\n", cid)
+	t.Logf("Stored with cid: %v\n", cid)
+
+	// DagGet leaf by leaf:
+	for i, wantShare := range data {
+		gotLeaf := &nmtLeafNode{}
+		path := leafIdxToPath(cid, i)
+		if err := sh.DagGet(path, gotLeaf); err != nil {
+			t.Errorf("DagGet(%s) failed: %v", path, err)
+		}
+		if gotShare := gotLeaf.Data; !bytes.Equal(gotShare, wantShare) {
+			t.Errorf("DagGet returned different data than pushed, got: %v, want: %v", gotShare, wantShare)
+		}
+	}
+}
+
+func leafIdxToPath(cid string, idx int) string {
+	// currently this fmt directive assumes 32 leaves:
+	bin := fmt.Sprintf("%05b", idx)
+	path := strings.Join(strings.Split(bin, ""), "/")
+	return cid + "/" + path
 }
 
 func createByteBufFromRawData(t *testing.T, leafData [][]byte) *bytes.Buffer {
