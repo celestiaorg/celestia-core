@@ -19,6 +19,7 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 		leafData [][]byte
 	}{
 		{"16 leaves", generateRandNamespacedRawData(16, namespaceSize, shareSize)},
+		{"32 leaves", generateRandNamespacedRawData(32, namespaceSize, shareSize)},
 		// TODO add at least a row of an extended data square (incl. parity bytes) as a test-vector too
 	}
 	for _, tt := range tests {
@@ -58,7 +59,7 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 }
 
 func TestDagPutWithPlugin(t *testing.T) {
-	//t.Skip("Requires running ipfs daemon with the plugin compiled and installed")
+	t.Skip("Requires running ipfs daemon with the plugin compiled and installed")
 
 	t.Log("Warning: running this test writes to your local IPFS block store!")
 
@@ -79,13 +80,13 @@ func TestDagPutWithPlugin(t *testing.T) {
 	sh := shell.NewLocalShell()
 	cid, err := sh.DagPut(buf, "raw", DagParserFormatName)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("DagPut() failed: %v", err)
 	}
 	// convert NMT tree root to CID and verify it matches the CID returned by DagPut
 	treeRootBytes := n.Root().Bytes()
 	nmtCid := cidFromNamespacedSha256(treeRootBytes)
 	if nmtCid.String() != cid {
-		t.Errorf("CIDs do not match: got %v, want: %v", cid, nmtCid.String())
+		t.Errorf("CIDs from NMT and plugin do not match: got %v, want: %v", cid, nmtCid.String())
 	}
 	// print out cid s.t. it can be used on the commandline
 	t.Logf("Stored with cid: %v\n", cid)
