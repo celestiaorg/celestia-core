@@ -72,9 +72,6 @@ func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
 //
 // To determine the share and the namespace size the constants
 // types.ShareSize and types.NamespaceSize are used.
-//
-// TODO: in case we want, we can later also encode the namespace size
-// and the share size into the io.Reader.
 func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int) ([]node.Node, error) {
 	const extendedSquareSize = 256
 	br := bufio.NewReader(r)
@@ -127,7 +124,10 @@ func prependNode(newNode node.Node, nodes *[]node.Node) {
 
 func NmtNodeParser(block blocks.Block) (node.Node, error) {
 	// length of the domain separator for leaf and inner nodes:
-	const prefixOffset = 1
+	const (
+		prefixOffset = 1
+		nmtHashSize = namespaceSize*2+sha256.Size
+	)
 	var (
 		leafPrefix  = []byte{nmt.LeafPrefix}
 		innerPrefix = []byte{nmt.NodePrefix}
@@ -148,9 +148,8 @@ func NmtNodeParser(block blocks.Block) (node.Node, error) {
 	} else if bytes.Equal(domainSeparator, innerPrefix) {
 		return nmtNode{
 			cid: block.Cid(),
-			// TODO namespaceSize*2+sha256.Size should be a constant somewhere
-			l:   data[prefixOffset : prefixOffset+namespaceSize*2+sha256.Size],
-			r:   data[prefixOffset+namespaceSize*2+sha256.Size:],
+			l:   data[prefixOffset : prefixOffset+nmtHashSize],
+			r:   data[prefixOffset+nmtHashSize:],
 		}, nil
 	}
 	return nil, fmt.Errorf(
