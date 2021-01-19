@@ -156,7 +156,10 @@ func (n nmtWrapper) Prove(idx int) (merkleRoot []byte, proofSet [][]byte, proofI
 	if err != nil {
 		panic(err)
 	}
-	return n.NamespacedMerkleTree.Root().Bytes(), proof.Nodes(), uint64(proof.Start()), 0 // TODO: NMT doesn't return the number of leaves
+	return n.NamespacedMerkleTree.Root().Bytes(),
+		proof.Nodes(),
+		uint64(proof.Start()),
+		0 // TODO: NMT doesn't return the number of leaves
 }
 
 func (n nmtWrapper) Root() []byte {
