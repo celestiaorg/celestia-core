@@ -18,7 +18,7 @@ require (
 	github.com/gtank/merlin v0.1.1
 	github.com/hdevalence/ed25519consensus v0.0.0-20201207055737-7fde80a9d5ff
 	// TODO: this should be changed to the latest master when the NMT PR is merged
-	github.com/lazyledger/nmt v0.0.0-20210113105746-8340e76c6def
+	github.com/lazyledger/nmt v0.1.0
 	github.com/lazyledger/rsmt2d v0.0.0-20200626141417-ea94438fa457
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/minio/highwayhash v1.0.1
