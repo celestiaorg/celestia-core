@@ -10,7 +10,9 @@ import (
 	"testing"
 
 	shell "github.com/ipfs/go-ipfs-api"
+
 	"github.com/lazyledger/nmt"
+	"github.com/lazyledger/rsmt2d"
 )
 
 func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
@@ -20,7 +22,7 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 	}{
 		{"16 leaves", generateRandNamespacedRawData(16, namespaceSize, shareSize)},
 		{"32 leaves", generateRandNamespacedRawData(32, namespaceSize, shareSize)},
-		// TODO add at least a row of an extended data square (incl. parity bytes) as a test-vector too
+		{"extended row", generateExtendedRow(t)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -102,6 +104,63 @@ func TestDagPutWithPlugin(t *testing.T) {
 			t.Errorf("DagGet returned different data than pushed, got: %v, want: %v", gotShare, wantShare)
 		}
 	}
+}
+
+func generateExtendedRow(t *testing.T) [][]byte {
+	origData := generateRandNamespacedRawData(16, namespaceSize, shareSize)
+	origDataWithoutNamespaces := make([][]byte, 16)
+	for i, share := range origData {
+		origDataWithoutNamespaces[i] = share[namespaceSize:]
+	}
+
+	if extendedData, err := rsmt2d.ComputeExtendedDataSquare(origDataWithoutNamespaces, rsmt2d.RSGF8, newNmtConstructor); err != nil {
+		t.Fatalf("rsmt2d.Encode(): %v", err)
+		return nil
+	} else {
+		extendedRow := extendedData.Row(0)
+		for i, rowCell := range extendedRow {
+			if i < len(origData)/4 {
+				nid := origData[i][:namespaceSize]
+				extendedRow[i] = append(nid, rowCell...)
+			} else {
+				maxNid := bytes.Repeat([]byte{0xFF}, namespaceSize)
+				extendedRow[i] = append(maxNid, rowCell...)
+			}
+		}
+		return extendedRow
+	}
+}
+
+var _ rsmt2d.Tree = &nmtWrapper{}
+
+func newNmtConstructor() rsmt2d.Tree {
+	return &nmtWrapper{
+		nmt.New(sha256.New()),
+	}
+}
+
+// we could get rid of this wrapper and use the nmt directly if we
+// make Push take in the data as one one byte array (instead of two).
+type nmtWrapper struct {
+	*nmt.NamespacedMerkleTree
+}
+
+func (n nmtWrapper) Push(data []byte) {
+	if err := n.NamespacedMerkleTree.Push(data[:namespaceSize], data[namespaceSize:]); err != nil {
+		panic(err)
+	}
+}
+
+func (n nmtWrapper) Prove(idx int) (merkleRoot []byte, proofSet [][]byte, proofIndex uint64, numLeaves uint64) {
+	proof, err := n.NamespacedMerkleTree.Prove(idx)
+	if err != nil {
+		panic(err)
+	}
+	return n.NamespacedMerkleTree.Root().Bytes(), proof.Nodes(), uint64(proof.Start()), 0 // TODO: NMT doesn't return the number of leaves
+}
+
+func (n nmtWrapper) Root() []byte {
+	return n.NamespacedMerkleTree.Root().Bytes()
 }
 
 func leafIdxToPath(cid string, idx int) string {
