@@ -77,7 +77,10 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 	br := bufio.NewReader(r)
 	nodes := make([]node.Node, 0, extendedSquareSize)
 	nodeCollector := func(hash []byte, children ...[]byte) {
-		cid := cidFromNamespacedSha256(hash)
+		cid, err := cidFromNamespacedSha256(hash)
+		if err != nil {
+			panic(fmt.Sprintf("nmt lib created a malformed hash: %s", err))
+		}
 		isLeaf := len(children) == 1
 		if isLeaf {
 			prependNode(nmtLeafNode{
@@ -192,9 +195,17 @@ func (n nmtNode) Loggable() map[string]interface{} {
 func (n nmtNode) Resolve(path []string) (interface{}, []string, error) {
 	switch path[0] {
 	case "0":
-		return &node.Link{Cid: cidFromNamespacedSha256(n.l)}, path[1:], nil
+		left, err := cidFromNamespacedSha256(n.l)
+		if err != nil {
+			return nil, nil, err
+		}
+		return &node.Link{Cid: left}, path[1:], nil
 	case "1":
-		return &node.Link{Cid: cidFromNamespacedSha256(n.r)}, path[1:], nil
+		right, err := cidFromNamespacedSha256(n.r)
+		if err != nil {
+			return nil, nil, err
+		}
+		return &node.Link{Cid: right}, path[1:], nil
 	default:
 		return nil, nil, errors.New("invalid path for inner node")
 	}
@@ -230,7 +241,15 @@ func (n nmtNode) Copy() node.Node {
 }
 
 func (n nmtNode) Links() []*node.Link {
-	return []*node.Link{{Cid: cidFromNamespacedSha256(n.l)}, {Cid: cidFromNamespacedSha256(n.r)}}
+	leftCid, err := cidFromNamespacedSha256(n.l)
+	if err != nil {
+		panic(fmt.Errorf("malformed nmtNode, cidFromNamespacedSha256(): %w", err))
+	}
+	rightCid, err := cidFromNamespacedSha256(n.r)
+	if err != nil {
+		panic(fmt.Errorf("malformed nmtNode, cidFromNamespacedSha256(): %w", err))
+	}
+	return []*node.Link{{Cid: leftCid}, {Cid: rightCid}}
 }
 
 func (n nmtNode) Stat() (*node.NodeStat, error) {
@@ -316,13 +335,13 @@ func (l nmtLeafNode) Size() (uint64, error) {
 	return 0, nil
 }
 
-func cidFromNamespacedSha256(namespacedHash []byte) cid.Cid {
+func cidFromNamespacedSha256(namespacedHash []byte) (cid.Cid, error) {
 	if got, want := len(namespacedHash), 2*namespaceSize+sha256.Size; got != want {
-		panic(fmt.Sprintf("expected a namespace prefixed sha256, got: %v, want: %v", got, want))
+		return cid.Cid{}, fmt.Errorf("invalid namespaced hash lenght, got: %v, want: %v", got, want)
 	}
 	buf, err := mh.Encode(namespacedHash, mh.SHA2_256)
 	if err != nil {
-		panic(err)
+		return cid.Cid{}, err
 	}
-	return cid.NewCidV1(NMT, mh.Multihash(buf))
+	return cid.NewCidV1(NMT, mh.Multihash(buf)), nil
 }

@@ -86,7 +86,10 @@ func TestDagPutWithPlugin(t *testing.T) {
 	}
 	// convert NMT tree root to CID and verify it matches the CID returned by DagPut
 	treeRootBytes := n.Root().Bytes()
-	nmtCid := cidFromNamespacedSha256(treeRootBytes)
+	nmtCid, err := cidFromNamespacedSha256(treeRootBytes)
+	if err != nil {
+		t.Fatalf("cidFromNamespacedSha256() failed: %v", err)
+	}
 	if nmtCid.String() != cid {
 		t.Errorf("CIDs from NMT and plugin do not match: got %v, want: %v", cid, nmtCid.String())
 	}
