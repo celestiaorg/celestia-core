@@ -126,9 +126,10 @@ func prependNode(newNode node.Node, nodes *[]node.Node) {
 }
 
 func NmtNodeParser(block blocks.Block) (node.Node, error) {
-	// length of the domain separator for leaf and inner nodes:
 	const (
+		// length of the domain separator for leaf and inner nodes:
 		prefixOffset = 1
+		// nmtHashSize = flagSize+sha256.Size
 		nmtHashSize = namespaceSize*2+sha256.Size
 	)
 	var (
@@ -167,6 +168,7 @@ var _ node.Node = (*nmtNode)(nil)
 var _ node.Node = (*nmtLeafNode)(nil)
 
 type nmtNode struct {
+	// TODO(ismail): we might want to export these later
 	cid  cid.Cid
 	l, r []byte
 }
