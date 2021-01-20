@@ -23,7 +23,7 @@ const (
 	// NMT is the codec used for this plugin.
 	// 0x77 seems to be free:
 	// https://github.com/multiformats/multicodec/blob/master/table.csv
-	NMT = 0x77
+	NMT = 0x1077
 	// DagParserFormatName can be used when putting into the IPLD Dag
 	DagParserFormatName = "extended-square-row-or-col"
 
