@@ -133,9 +133,6 @@ func generateExtendedRow(t *testing.T) [][]byte {
 	}
 	return extendedRow
 }
-		return extendedRow
-	}
-}
 
 var _ rsmt2d.Tree = &nmtWrapper{}
 
