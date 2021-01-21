@@ -149,7 +149,8 @@ func NmtNodeParser(block blocks.Block) (node.Node, error) {
 			cid:  block.Cid(),
 			Data: data[prefixOffset:],
 		}, nil
-	} else if bytes.Equal(domainSeparator, innerPrefix) {
+	}
+	if bytes.Equal(domainSeparator, innerPrefix) {
 		return nmtNode{
 			cid: block.Cid(),
 			l:   data[prefixOffset : prefixOffset+nmtHashSize],

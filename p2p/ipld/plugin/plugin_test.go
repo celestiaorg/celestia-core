@@ -116,20 +116,23 @@ func generateExtendedRow(t *testing.T) [][]byte {
 		origDataWithoutNamespaces[i] = share[namespaceSize:]
 	}
 
-	if extendedData, err := rsmt2d.ComputeExtendedDataSquare(origDataWithoutNamespaces, rsmt2d.RSGF8, newNmtConstructor); err != nil {
+	extendedData, err := rsmt2d.ComputeExtendedDataSquare(origDataWithoutNamespaces, rsmt2d.RSGF8, newNmtConstructor)
+	if err != nil {
 		t.Fatalf("rsmt2d.Encode(): %v", err)
 		return nil
-	} else {
-		extendedRow := extendedData.Row(0)
-		for i, rowCell := range extendedRow {
-			if i < len(origData)/4 {
-				nid := origData[i][:namespaceSize]
-				extendedRow[i] = append(nid, rowCell...)
-			} else {
-				maxNid := bytes.Repeat([]byte{0xFF}, namespaceSize)
-				extendedRow[i] = append(maxNid, rowCell...)
-			}
+	}
+	extendedRow := extendedData.Row(0)
+	for i, rowCell := range extendedRow {
+		if i < len(origData)/4 {
+			nid := origData[i][:namespaceSize]
+			extendedRow[i] = append(nid, rowCell...)
+		} else {
+			maxNid := bytes.Repeat([]byte{0xFF}, namespaceSize)
+			extendedRow[i] = append(maxNid, rowCell...)
 		}
+	}
+	return extendedRow
+}
 		return extendedRow
 	}
 }
