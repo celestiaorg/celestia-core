@@ -65,6 +65,8 @@ type Config struct {
 	Consensus       *ConsensusConfig       `mapstructure:"consensus"`
 	TxIndex         *TxIndexConfig         `mapstructure:"tx-index"`
 	Instrumentation *InstrumentationConfig `mapstructure:"instrumentation"`
+	// Options for IPFS service
+	IPFS 			*IPFSConfig				`mapstructure:"ipfs"`
 }
 
 // DefaultConfig returns a default configuration for a Tendermint node
@@ -79,6 +81,7 @@ func DefaultConfig() *Config {
 		Consensus:       DefaultConsensusConfig(),
 		TxIndex:         DefaultTxIndexConfig(),
 		Instrumentation: DefaultInstrumentationConfig(),
+		IPFS: 			 DefaultIPFSConfig(),
 	}
 }
 
