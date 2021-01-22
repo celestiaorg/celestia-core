@@ -461,6 +461,9 @@ namespace = "{{ .Instrumentation.Namespace }}"
 #######################################################
 [ipfs]
 
+# IPFS repo root.
+repo-root = "{{ .IPFS.ConfigRootPath}}"
+
 # Address for the local API (RPC).
 api = "{{ .IPFS.API }}"
 

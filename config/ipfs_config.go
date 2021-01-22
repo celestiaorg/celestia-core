@@ -8,6 +8,7 @@ type IPFSConfig struct {
 	// The default is ~/.tendermint/ipfs.
 	ConfigRootPath string
 	// TODO: can we avoid copying the fields from ipfs' config.Addresses here?
+	// TODO: also, these are only used on init. Maybe ConfigRootPath is sufficient?
 	API     string // address for the local API (RPC)
 	Gateway string // address to listen on for IPFS HTTP object gateway
 	// swarm related options:
@@ -21,8 +22,13 @@ type IPFSConfig struct {
 // locally for testing purposes.
 func DefaultIPFSConfig() *IPFSConfig {
 	return &IPFSConfig{
+		ConfigRootPath: "ipfs/",
 		API:        "/ip4/127.0.0.1/tcp/5002",
 		Gateway:    "/ip4/127.0.0.1/tcp/5002",
 		Swarm:      []string{"/ip4/0.0.0.0/tcp/4002", "/ip6/::/tcp/4002"},
 	}
+}
+
+func (cfg *Config) IPFSRepoRoot() string {
+	return rootify(cfg.IPFS.ConfigRootPath, cfg.RootDir)
 }
