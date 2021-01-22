@@ -2,8 +2,16 @@ package commands
 
 import (
 	"fmt"
+	"os"
+
+	ipfscfg "github.com/ipfs/go-ipfs-config"
+	"github.com/ipfs/go-ipfs/plugin/loader"
+	"github.com/ipfs/go-ipfs/repo/fsrepo"
+	"github.com/ipfs/interface-go-ipfs-core/options"
 
 	"github.com/spf13/cobra"
+
+	ipldplugin "github.com/lazyledger/lazyledger-core/p2p/ipld/plugin"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
@@ -99,5 +107,67 @@ func initFilesWithConfig(config *cfg.Config) error {
 		logger.Info("Generated genesis file", "path", genFile)
 	}
 
+	if err := InitIpfs(config); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func InitIpfs(config *cfg.Config) error { // add counter part in ResetAllCmd
+	// init IPFS config with params from config.IPFS
+	// and store in config.IPFS.ConfigRootPath
+	repoRoot := config.IPFSRepoRoot()
+	if !fsrepo.IsInitialized(repoRoot) {
+		var conf *ipfscfg.Config
+
+		identity, err := ipfscfg.CreateIdentity(os.Stdout, []options.KeyGenerateOption{
+			options.Key.Type(options.Ed25519Key),
+		})
+		if err != nil {
+			return err
+		}
+
+		logger.Info("initializing IPFS node at:", repoRoot)
+
+		if err := tmos.EnsureDir(repoRoot, 0700); err != nil {
+			return err
+		}
+
+		conf, err = ipfscfg.InitWithIdentity(identity)
+		if err != nil {
+			return err
+		}
+
+		applyFromTmConfig(conf, config.IPFS)
+		plugins, err := loader.NewPluginLoader(repoRoot)
+		if err != nil {
+			return err
+		}
+		// TODO: it doesn't seem like preloading has any impact on the config on init?
+		loader.Preload(ipldplugin.Plugins...)
+
+		if err := plugins.Initialize(); err != nil {
+			return  err
+		}
+
+		if err := plugins.Inject(); err != nil {
+			return err
+		}
+
+		if err := fsrepo.Init(repoRoot, conf); err != nil {
+			return err
+		}
+	} else {
+		logger.Info("IPFS was already initialized in %v", config.IPFS.ConfigRootPath)
+	}
+	return nil
+}
+
+func applyFromTmConfig(ipfsConf *ipfscfg.Config, tmConf *cfg.IPFSConfig) {
+	ipfsConf.Addresses.API = ipfscfg.Strings{tmConf.API}
+	ipfsConf.Addresses.Gateway = ipfscfg.Strings{tmConf.Gateway}
+	ipfsConf.Addresses.Swarm = tmConf.Swarm
+	ipfsConf.Addresses.Announce = tmConf.Announce
+	ipfsConf.Addresses.NoAnnounce = tmConf.NoAnnounce
 }
