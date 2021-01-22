@@ -1424,23 +1424,7 @@ func createIpfsNode(config *cfg.Config) (*ipfscore.IpfsNode, error) {
 		return nil, err
 	}
 
-	// TODO: preload the plugin if necessary ?
-	//plugins, err := loader.NewPluginLoader(repoRoot)
-	//if err != nil {
-	//	return err
-	//}
-	//loader.Preload(ipldplugin.Plugins...)
-	//
-	//if err := plugins.Initialize(); err != nil {
-	//	return  err
-	//}
-	//
-	//if err := plugins.Inject(); err != nil {
-	//	return err
-	//}
-
 	// Construct the node
-
 	nodeOptions := &ipfscore.BuildCfg{
 		Online: true,
 		// This option sets the node to be a full DHT node (both fetching and storing DHT Records)

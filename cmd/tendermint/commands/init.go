@@ -8,10 +8,7 @@ import (
 	"github.com/ipfs/go-ipfs/plugin/loader"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
 	"github.com/ipfs/interface-go-ipfs-core/options"
-
 	"github.com/spf13/cobra"
-
-	ipldplugin "github.com/lazyledger/lazyledger-core/p2p/ipld/plugin"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
@@ -144,9 +141,6 @@ func InitIpfs(config *cfg.Config) error { // add counter part in ResetAllCmd
 		if err != nil {
 			return err
 		}
-		// TODO: it doesn't seem like preloading has any impact on the config on init?
-		loader.Preload(ipldplugin.Plugins...)
-
 		if err := plugins.Initialize(); err != nil {
 			return err
 		}
