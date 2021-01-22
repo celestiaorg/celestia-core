@@ -233,7 +233,7 @@ func (n nmtNode) ResolveLink(path []string) (*node.Link, []string, error) {
 
 	lnk, ok := obj.(*node.Link)
 	if !ok {
-		return nil, nil, fmt.Errorf("was not a link")
+		return nil, nil, errors.New("was not a link")
 	}
 
 	return lnk, rest, nil
@@ -317,7 +317,7 @@ func (l nmtLeafNode) ResolveLink(path []string) (*node.Link, []string, error) {
 
 	lnk, ok := obj.(*node.Link)
 	if !ok {
-		return nil, nil, fmt.Errorf("was not a link")
+		return nil, nil, errors.New("was not a link")
 	}
 	return lnk, rest, nil
 }
