@@ -10,6 +10,7 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-ipfs/plugin/loader"
 	"github.com/lazyledger/nmt"
 
 	"github.com/ipfs/go-ipfs/core/coredag"
@@ -30,6 +31,7 @@ const (
 	// FIXME: These are the same as types.ShareSize and types.NamespaceSize.
 	// Repeated here to avoid a dependency to the wrapping repo as this makes
 	// it hard to compile and use the plugin against a local ipfs version.
+	// TODO: plugins have config options; make this configurable instead
 	namespaceSize = 8
 	shareSize     = 256
 )
@@ -37,6 +39,11 @@ const (
 // Plugins is an exported list of plugins that will be loaded by go-ipfs.
 var Plugins = []plugin.Plugin{
 	&LazyLedgerPlugin{},
+}
+
+func init() {
+	// plugin does not neet to be imported manually
+	loader.Preload(Plugins...)
 }
 
 var _ plugin.PluginIPLD = &LazyLedgerPlugin{}
