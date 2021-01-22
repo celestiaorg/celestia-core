@@ -61,7 +61,7 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 }
 
 func TestDagPutWithPlugin(t *testing.T) {
-	t.Skip("Requires running ipfs daemon with the plugin compiled and installed")
+	t.Skip("Requires running ipfs daemon (serving the HTTP Api) with the plugin compiled and installed")
 
 	t.Log("Warning: running this test writes to your local IPFS block store!")
 
