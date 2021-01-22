@@ -11,6 +11,9 @@ import (
 	"strings"
 	"time"
 
+	ipfscore "github.com/ipfs/go-ipfs/core"
+	"github.com/ipfs/go-ipfs/core/node/libp2p"
+	"github.com/ipfs/go-ipfs/repo/fsrepo"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -207,6 +210,8 @@ type Node struct {
 	txIndexer         txindex.TxIndexer
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
+	// we store a ref to the full IpfsNode (instead of ipfs' CoreAPI) so we can Close() it OnStop()
+	ipfsNode *ipfscore.IpfsNode // ipfs node
 }
 
 func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
@@ -925,6 +930,11 @@ func (n *Node) OnStart() error {
 		}
 	}
 
+	n.ipfsNode, err = createIpfsNode(n.config)
+	if err != nil {
+		return fmt.Errorf("failed to create IPFS node: %w", err)
+	}
+
 	return nil
 }
 
@@ -981,6 +991,15 @@ func (n *Node) OnStop() {
 		if err := n.prometheusSrv.Shutdown(context.Background()); err != nil {
 			// Error from closing listeners, or context timeout:
 			n.Logger.Error("Prometheus HTTP server Shutdown", "err", err)
+		}
+	}
+
+	if n.ipfsNode != nil {
+		// TODO(ismail): As far as I understand, the node gets shut down by cancelling the
+		// context that was passed into the node. But calling Close() seems cleaner and we don't
+		// need to keep a reference to the context around.
+		if err := n.ipfsNode.Close(); err != nil {
+			n.Logger.Error("ipfsNode.Close()", err)
 		}
 	}
 }
@@ -1391,6 +1410,55 @@ func createAndStartPrivValidatorSocketClient(
 	pvscWithRetries := privval.NewRetrySignerClient(pvsc, retries, timeout)
 
 	return pvscWithRetries, nil
+}
+
+func createIpfsNode(config *cfg.Config) (*ipfscore.IpfsNode, error) {
+	repoRoot := config.IPFSRepoRoot()
+	if !fsrepo.IsInitialized(repoRoot) {
+		// TODO: sentinel err
+		return nil, fmt.Errorf("ipfs repo root: %v not intitialized", repoRoot)
+	}
+	// Open the repo
+	repo, err := fsrepo.Open(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: preload the plugin if necessary ?
+	//plugins, err := loader.NewPluginLoader(repoRoot)
+	//if err != nil {
+	//	return err
+	//}
+	//loader.Preload(ipldplugin.Plugins...)
+	//
+	//if err := plugins.Initialize(); err != nil {
+	//	return  err
+	//}
+	//
+	//if err := plugins.Inject(); err != nil {
+	//	return err
+	//}
+
+	// Construct the node
+
+	nodeOptions := &ipfscore.BuildCfg{
+		Online: true,
+		// This option sets the node to be a full DHT node (both fetching and storing DHT Records)
+		Routing: libp2p.DHTOption,
+		// This option sets the node to be a client DHT node (only fetching records)
+		// Routing: libp2p.DHTClientOption,
+		Repo: repo,
+	}
+	// TODO: change to context.WithCancel if we want to use the context for lifecycle management
+	ctx := context.Background()
+	node, err := ipfscore.NewNode(ctx, nodeOptions)
+	if err != nil {
+		return nil, err
+	}
+	// run as daemon:
+	node.IsDaemon = true
+
+	return node, nil
 }
 
 // splitAndTrimEmpty slices s into all subslices separated by sep and returns a
