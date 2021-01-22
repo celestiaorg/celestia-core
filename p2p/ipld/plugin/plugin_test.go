@@ -1,4 +1,4 @@
-package main
+package lazyledger_ipld
 
 import (
 	"bytes"
