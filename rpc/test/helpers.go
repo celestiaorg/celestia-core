@@ -9,6 +9,7 @@ import (
 	"time"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	cmd "github.com/lazyledger/lazyledger-core/cmd/tendermint/commands"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
@@ -150,6 +151,7 @@ func StopTendermint(node *nm.Node) {
 
 // NewTendermint creates a new tendermint server and sleeps forever
 func NewTendermint(app abci.Application, opts *Options) *nm.Node {
+	// TODO init ipfs
 	// Create & start node
 	config := GetConfig(opts.recreateConfig)
 	var logger log.Logger
@@ -167,6 +169,12 @@ func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 	}
 	papp := proxy.NewLocalClientCreator(app)
 	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
+	if err != nil {
+		panic(err)
+	}
+
+	config.IPFS = cfg.DefaultIPFSConfig()
+	err = cmd.InitIpfs(config)
 	if err != nil {
 		panic(err)
 	}
