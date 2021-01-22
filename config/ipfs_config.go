@@ -4,6 +4,9 @@ package config
 // spun up by the tendermint node.
 // It is mostly concerned about port configuration (Addresses).
 type IPFSConfig struct {
+	// is where the generated IPFS config and files will be stored.
+	// The default is ~/.tendermint/ipfs.
+	ConfigRootPath string
 	// TODO: can we avoid copying the fields from ipfs' config.Addresses here?
 	API     string // address for the local API (RPC)
 	Gateway string // address to listen on for IPFS HTTP object gateway
