@@ -148,7 +148,7 @@ func InitIpfs(config *cfg.Config) error { // add counter part in ResetAllCmd
 		loader.Preload(ipldplugin.Plugins...)
 
 		if err := plugins.Initialize(); err != nil {
-			return  err
+			return err
 		}
 
 		if err := plugins.Inject(); err != nil {
