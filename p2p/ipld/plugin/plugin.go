@@ -81,19 +81,19 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 		if err != nil {
 			panic(fmt.Sprintf("nmt lib created a malformed hash: %s", err))
 		}
-		isLeaf := len(children) == 1
-		if isLeaf {
+		switch len(children) {
+		case 1:
 			prependNode(nmtLeafNode{
 				cid:  cid,
 				Data: children[0],
 			}, &nodes)
-		} else if len(children) == 2 {
+		case 2:
 			prependNode(nmtNode{
 				cid: cid,
 				l:   children[0],
 				r:   children[1],
 			}, &nodes)
-		} else {
+		default:
 			panic("expected a binary tree")
 		}
 	}
@@ -130,7 +130,7 @@ func NmtNodeParser(block blocks.Block) (node.Node, error) {
 		// length of the domain separator for leaf and inner nodes:
 		prefixOffset = 1
 		// nmtHashSize = flagSize+sha256.Size
-		nmtHashSize = namespaceSize*2+sha256.Size
+		nmtHashSize = namespaceSize*2 + sha256.Size
 	)
 	var (
 		leafPrefix  = []byte{nmt.LeafPrefix}
