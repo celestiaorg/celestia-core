@@ -1,4 +1,4 @@
-module github.com/lazyledger-core/p2p/ipld/plugin
+module github.com/lazyledger/lazyledger-core/p2p/ipld/plugin
 
 go 1.15
 
