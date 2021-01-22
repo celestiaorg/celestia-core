@@ -28,7 +28,6 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0
 	github.com/rs/cors v1.7.0
 	github.com/sasha-s/go-deadlock v0.2.0
-	github.com/smartystreets/assertions v1.0.1 // indirect
 	github.com/snikch/goodman v0.0.0-20171125024755-10e37e294daa
 	github.com/spf13/cobra v1.1.1
 	github.com/spf13/viper v1.7.1
