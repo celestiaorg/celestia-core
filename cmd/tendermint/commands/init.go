@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	ipfscfg "github.com/ipfs/go-ipfs-config"
 	"github.com/ipfs/go-ipfs/plugin/loader"
@@ -104,14 +105,14 @@ func initFilesWithConfig(config *cfg.Config) error {
 		logger.Info("Generated genesis file", "path", genFile)
 	}
 
-	if err := InitIpfs(config); err != nil {
+	if err := initIpfs(config); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func InitIpfs(config *cfg.Config) error { // add counter part in ResetAllCmd
+func initIpfs(config *cfg.Config) error { // add counter part in ResetAllCmd
 	// init IPFS config with params from config.IPFS
 	// and store in config.IPFS.ConfigRootPath
 	repoRoot := config.IPFSRepoRoot()
@@ -125,7 +126,7 @@ func InitIpfs(config *cfg.Config) error { // add counter part in ResetAllCmd
 			return err
 		}
 
-		logger.Info("initializing IPFS node at:", repoRoot)
+		logger.Info("initializing IPFS node", "ipfs-path", repoRoot)
 
 		if err := tmos.EnsureDir(repoRoot, 0700); err != nil {
 			return err
@@ -137,15 +138,7 @@ func InitIpfs(config *cfg.Config) error { // add counter part in ResetAllCmd
 		}
 
 		applyFromTmConfig(conf, config.IPFS)
-		plugins, err := loader.NewPluginLoader(repoRoot)
-		if err != nil {
-			return err
-		}
-		if err := plugins.Initialize(); err != nil {
-			return err
-		}
-
-		if err := plugins.Inject(); err != nil {
+		if err := setupPlugins(repoRoot); err != nil {
 			return err
 		}
 
@@ -153,8 +146,26 @@ func InitIpfs(config *cfg.Config) error { // add counter part in ResetAllCmd
 			return err
 		}
 	} else {
-		logger.Info("IPFS was already initialized in %v", config.IPFS.ConfigRootPath)
+		logger.Info("IPFS was already initialized", "ipfs-path", repoRoot)
 	}
+	return nil
+}
+
+func setupPlugins(path string) error {
+	// Load plugins. This will skip the repo if not available.
+	plugins, err := loader.NewPluginLoader(filepath.Join(path, "plugins"))
+	if err != nil {
+		return fmt.Errorf("error loading plugins: %s", err)
+	}
+
+	if err := plugins.Initialize(); err != nil {
+		return fmt.Errorf("error initializing plugins: %s", err)
+	}
+
+	if err := plugins.Inject(); err != nil {
+		return fmt.Errorf("error initializing plugins: %s", err)
+	}
+
 	return nil
 }
 

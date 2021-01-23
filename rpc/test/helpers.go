@@ -3,14 +3,20 @@ package rpctest
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	ipfscfg "github.com/ipfs/go-ipfs-config"
+	"github.com/ipfs/go-ipfs/plugin/loader"
+	"github.com/ipfs/go-ipfs/repo/fsrepo"
+	"github.com/ipfs/interface-go-ipfs-core/options"
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	cmd "github.com/lazyledger/lazyledger-core/cmd/tendermint/commands"
 	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
@@ -26,14 +32,16 @@ import (
 // Options helps with specifying some parameters for our RPC testing for greater
 // control.
 type Options struct {
-	suppressStdout bool
-	recreateConfig bool
+	suppressStdout  bool
+	recreateConfig  bool
+	loadIpfsPlugins bool
 }
 
 var globalConfig *cfg.Config
 var defaultOptions = Options{
-	suppressStdout: false,
-	recreateConfig: false,
+	suppressStdout:  false,
+	recreateConfig:  false,
+	loadIpfsPlugins: true,
 }
 
 func waitForRPC() {
@@ -151,7 +159,6 @@ func StopTendermint(node *nm.Node) {
 
 // NewTendermint creates a new tendermint server and sleeps forever
 func NewTendermint(app abci.Application, opts *Options) *nm.Node {
-	// TODO init ipfs
 	// Create & start node
 	config := GetConfig(opts.recreateConfig)
 	var logger log.Logger
@@ -174,7 +181,7 @@ func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 	}
 
 	config.IPFS = cfg.DefaultIPFSConfig()
-	err = cmd.InitIpfs(config)
+	err = initIpfs(config, opts.loadIpfsPlugins, logger)
 	if err != nil {
 		panic(err)
 	}
@@ -182,11 +189,61 @@ func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 		nm.DefaultGenesisDocProviderFunc(config),
 		nm.DefaultDBProvider,
 		nm.DefaultMetricsProvider(config.Instrumentation),
-		logger)
+		logger,
+		nm.IpfsPluginsWereLoaded(true),
+	)
 	if err != nil {
 		panic(err)
 	}
 	return node
+}
+
+func initIpfs(config *cfg.Config, loadPlugins bool, log log.Logger) error { // add counter part in ResetAllCmd
+	// init IPFS config with params from config.IPFS
+	// and store in config.IPFS.ConfigRootPath
+	repoRoot := config.IPFSRepoRoot()
+	if !fsrepo.IsInitialized(repoRoot) {
+		var conf *ipfscfg.Config
+
+		identity, err := ipfscfg.CreateIdentity(ioutil.Discard, []options.KeyGenerateOption{
+			options.Key.Type(options.Ed25519Key),
+		})
+		if err != nil {
+			return err
+		}
+
+		if err := tmos.EnsureDir(repoRoot, 0700); err != nil {
+			return err
+		}
+		if loadPlugins {
+			plugins, err := loader.NewPluginLoader(filepath.Join(repoRoot, "plugins"))
+			if err != nil {
+				return fmt.Errorf("error loading plugins: %s", err)
+			}
+			if err := plugins.Load(&nodes.LazyLedgerPlugin{}); err != nil {
+				return err
+			}
+
+			if err := plugins.Initialize(); err != nil {
+				return fmt.Errorf("error initializing plugins: %s", err)
+			}
+
+			if err := plugins.Inject(); err != nil {
+				return fmt.Errorf("error initializing plugins: %s", err)
+			}
+		}
+		conf, err = ipfscfg.InitWithIdentity(identity)
+		if err != nil {
+			return fmt.Errorf("InitWithIdentity(): %w", err)
+		}
+
+		if err := fsrepo.Init(repoRoot, conf); err != nil {
+			return err
+		}
+	} else {
+		log.Info("ipfs repo already initialized", "repo-root", repoRoot)
+	}
+	return nil
 }
 
 // SuppressStdout is an option that tries to make sure the RPC test Tendermint
@@ -199,4 +256,9 @@ func SuppressStdout(o *Options) {
 // time, instead of treating it as a global singleton.
 func RecreateConfig(o *Options) {
 	o.recreateConfig = true
+}
+
+// DoNotLoadIpfsPlugins
+func DoNotLoadIpfsPlugins(o *Options) {
+	o.loadIpfsPlugins = false
 }

@@ -15,7 +15,7 @@ import (
 func ExampleHTTP_simple() {
 	// Start a tendermint node (and kvstore) in the background to test against
 	app := kvstore.NewApplication()
-	node := rpctest.StartTendermint(app, rpctest.SuppressStdout, rpctest.RecreateConfig)
+	node := rpctest.StartTendermint(app, rpctest.SuppressStdout, rpctest.RecreateConfig, rpctest.DoNotLoadIpfsPlugins)
 	defer rpctest.StopTendermint(node)
 
 	// Create our RPC client
@@ -68,7 +68,7 @@ func ExampleHTTP_simple() {
 func ExampleHTTP_batching() {
 	// Start a tendermint node (and kvstore) in the background to test against
 	app := kvstore.NewApplication()
-	node := rpctest.StartTendermint(app, rpctest.SuppressStdout, rpctest.RecreateConfig)
+	node := rpctest.StartTendermint(app, rpctest.SuppressStdout, rpctest.RecreateConfig, rpctest.DoNotLoadIpfsPlugins)
 
 	// Create our RPC client
 	rpcAddr := rpctest.GetConfig().RPC.ListenAddress

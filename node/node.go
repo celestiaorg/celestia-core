@@ -8,12 +8,15 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" // nolint: gosec // securely exposed on separate, optional port
+	"path/filepath"
 	"strings"
 	"time"
 
 	ipfscore "github.com/ipfs/go-ipfs/core"
 	"github.com/ipfs/go-ipfs/core/node/libp2p"
+	"github.com/ipfs/go-ipfs/plugin/loader"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -107,6 +110,7 @@ func DefaultNewNode(config *cfg.Config, logger log.Logger) (*Node, error) {
 		DefaultDBProvider,
 		DefaultMetricsProvider(config.Instrumentation),
 		logger,
+		EmbedIpfsNode(true),
 	)
 }
 
@@ -170,6 +174,22 @@ func StateProvider(stateProvider statesync.StateProvider) Option {
 	}
 }
 
+// IpfsPluginsWereLoaded indicates that all IPFS plugin were already loaded.
+// Setting up plugins will skipped when creating the IPFS node.
+func IpfsPluginsWereLoaded(wereAlreadyLoaded bool) Option {
+	return func(n *Node) {
+		n.areIfsPluginsAlreadyLoaded = wereAlreadyLoaded
+	}
+}
+
+// IpfsPluginsWereLoaded indicates that all IPFS plugin were already loaded.
+// Setting up plugins will skipped when creating the IPFS node.
+func EmbedIpfsNode(embed bool) Option {
+	return func(n *Node) {
+		n.embedIpfsNode = embed
+	}
+}
+
 //------------------------------------------------------------------------------
 
 // Node is the highest level interface to a full Tendermint node.
@@ -211,7 +231,9 @@ type Node struct {
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
 	// we store a ref to the full IpfsNode (instead of ipfs' CoreAPI) so we can Close() it OnStop()
-	ipfsNode *ipfscore.IpfsNode // ipfs node
+	embedIpfsNode              bool               // whether the node should start an IPFS node on startup
+	ipfsNode                   *ipfscore.IpfsNode // ipfs node
+	areIfsPluginsAlreadyLoaded bool               // avoid injecting plugins twice in tests etc
 }
 
 func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
@@ -929,10 +951,11 @@ func (n *Node) OnStart() error {
 			return fmt.Errorf("failed to start state sync: %w", err)
 		}
 	}
-
-	n.ipfsNode, err = createIpfsNode(n.config)
-	if err != nil {
-		return fmt.Errorf("failed to create IPFS node: %w", err)
+	if n.embedIpfsNode {
+		n.ipfsNode, err = createIpfsNode(n.config, n.areIfsPluginsAlreadyLoaded, n.Logger)
+		if err != nil {
+			return fmt.Errorf("failed to create IPFS node: %w", err)
+		}
 	}
 
 	return nil
@@ -1412,11 +1435,17 @@ func createAndStartPrivValidatorSocketClient(
 	return pvscWithRetries, nil
 }
 
-func createIpfsNode(config *cfg.Config) (*ipfscore.IpfsNode, error) {
+func createIpfsNode(config *cfg.Config, arePluginsAlreadyLoaded bool, logger log.Logger) (*ipfscore.IpfsNode, error) {
 	repoRoot := config.IPFSRepoRoot()
+	logger.Info("creating node in repo", "ipfs-root", repoRoot)
 	if !fsrepo.IsInitialized(repoRoot) {
 		// TODO: sentinel err
 		return nil, fmt.Errorf("ipfs repo root: %v not intitialized", repoRoot)
+	}
+	if !arePluginsAlreadyLoaded {
+		if err := setupPlugins(repoRoot, logger); err != nil {
+			return nil, err
+		}
 	}
 	// Open the repo
 	repo, err := fsrepo.Open(repoRoot)
@@ -1441,8 +1470,29 @@ func createIpfsNode(config *cfg.Config) (*ipfscore.IpfsNode, error) {
 	}
 	// run as daemon:
 	node.IsDaemon = true
-
 	return node, nil
+}
+
+func setupPlugins(path string, logger log.Logger) error {
+	// Load plugins. This will skip the repo if not available.
+	plugins, err := loader.NewPluginLoader(filepath.Join(path, "plugins"))
+	if err != nil {
+		return fmt.Errorf("error loading plugins: %s", err)
+	}
+	plugins.Load(&nodes.LazyLedgerPlugin{})
+	if err != nil {
+		return fmt.Errorf("error loading lazyledger plugin: %s", err)
+	}
+
+	if err := plugins.Initialize(); err != nil {
+		return fmt.Errorf("error initializing plugins: plugins.Initialize(): %s", err)
+	}
+
+	if err := plugins.Inject(); err != nil {
+		logger.Error("error initializing plugins: could not Inject()", "err", err)
+	}
+
+	return nil
 }
 
 // splitAndTrimEmpty slices s into all subslices separated by sep and returns a

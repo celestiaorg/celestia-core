@@ -97,6 +97,7 @@ func TestConfig() *Config {
 		Consensus:       TestConsensusConfig(),
 		TxIndex:         TestTxIndexConfig(),
 		Instrumentation: TestInstrumentationConfig(),
+		IPFS:            TetsIpfsConfig(),
 	}
 }
 
@@ -1027,6 +1028,10 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		MaxOpenConnections:   3,
 		Namespace:            "tendermint",
 	}
+}
+
+func TetsIpfsConfig() *IPFSConfig {
+	return DefaultIPFSConfig()
 }
 
 // TestInstrumentationConfig returns a default configuration for metrics

@@ -40,6 +40,7 @@ func TestNodeStartStop(t *testing.T) {
 
 	// create & start node
 	n, err := DefaultNewNode(config, log.TestingLogger())
+	n.embedIpfsNode = false // TODO: or init ipfs upfront
 	require.NoError(t, err)
 	err = n.Start()
 	require.NoError(t, err)
@@ -103,6 +104,7 @@ func TestNodeDelayedStart(t *testing.T) {
 
 	// create & start node
 	n, err := DefaultNewNode(config, log.TestingLogger())
+	n.embedIpfsNode = false // TODO: or init ipfs upfront
 	n.GenesisDoc().GenesisTime = now.Add(2 * time.Second)
 	require.NoError(t, err)
 
