@@ -1479,15 +1479,12 @@ func setupPlugins(path string, logger log.Logger) error {
 	if err != nil {
 		return fmt.Errorf("error loading plugins: %s", err)
 	}
-	plugins.Load(&nodes.LazyLedgerPlugin{})
-	if err != nil {
+	if err := plugins.Load(&nodes.LazyLedgerPlugin{}); err != nil {
 		return fmt.Errorf("error loading lazyledger plugin: %s", err)
 	}
-
 	if err := plugins.Initialize(); err != nil {
 		return fmt.Errorf("error initializing plugins: plugins.Initialize(): %s", err)
 	}
-
 	if err := plugins.Inject(); err != nil {
 		logger.Error("error initializing plugins: could not Inject()", "err", err)
 	}

@@ -211,7 +211,6 @@ func initIpfs(config *cfg.Config, loadPlugins bool, log log.Logger) error { // a
 		if err != nil {
 			return err
 		}
-
 		if err := tmos.EnsureDir(repoRoot, 0700); err != nil {
 			return err
 		}
@@ -223,18 +222,16 @@ func initIpfs(config *cfg.Config, loadPlugins bool, log log.Logger) error { // a
 			if err := plugins.Load(&nodes.LazyLedgerPlugin{}); err != nil {
 				return err
 			}
-
 			if err := plugins.Initialize(); err != nil {
 				return fmt.Errorf("error initializing plugins: %s", err)
 			}
-
 			if err := plugins.Inject(); err != nil {
 				return fmt.Errorf("error initializing plugins: %s", err)
 			}
 		}
 		conf, err = ipfscfg.InitWithIdentity(identity)
 		if err != nil {
-			return fmt.Errorf("InitWithIdentity(): %w", err)
+			return fmt.Errorf("intializing config failed, InitWithIdentity(): %w", err)
 		}
 
 		if err := fsrepo.Init(repoRoot, conf); err != nil {
@@ -258,7 +255,8 @@ func RecreateConfig(o *Options) {
 	o.recreateConfig = true
 }
 
-// DoNotLoadIpfsPlugins
+// DoNotLoadIpfsPlugins instructs the RPC test to not load the IPFS plugins, e.g.,
+// to prevent loading them several times.
 func DoNotLoadIpfsPlugins(o *Options) {
 	o.loadIpfsPlugins = false
 }
