@@ -35,11 +35,6 @@ const (
 	shareSize     = 256
 )
 
-func init() {
-	// plugin does not neet to be loaded manually
-	// loader.Preload(&LazyLedgerPlugin{})
-}
-
 var _ plugin.PluginIPLD = &LazyLedgerPlugin{}
 
 type LazyLedgerPlugin struct{}
@@ -140,7 +135,7 @@ func NmtNodeParser(block blocks.Block) (node.Node, error) {
 	data := block.RawData()
 	if len(data) == 0 {
 		return &nmtLeafNode{
-			cid:  block.Cid(),
+			cid:  cid.Undef,
 			Data: nil,
 		}, nil
 	}
@@ -345,7 +340,7 @@ func cidFromNamespacedSha256(namespacedHash []byte) (cid.Cid, error) {
 	}
 	buf, err := mh.Encode(namespacedHash, mh.SHA2_256)
 	if err != nil {
-		return cid.Cid{}, err
+		return cid.Undef, err
 	}
 	return cid.NewCidV1(NMT, mh.Multihash(buf)), nil
 }
