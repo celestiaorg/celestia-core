@@ -42,7 +42,7 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 				return
 			}
 			rootNodeCid := gotNodes[0].Cid()
-			multiHashOverhead := 2
+			multiHashOverhead := 4
 			lastNodeHash := rootNodeCid.Hash()
 			if got, want := lastNodeHash[multiHashOverhead:], n.Root().Bytes(); !bytes.Equal(got, want) {
 				t.Errorf("hashes don't match\ngot: %v\nwant: %v", got, want)

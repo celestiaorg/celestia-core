@@ -23,7 +23,7 @@ endif
 .PHONY: install build
 
 go.mod: FORCE
-	./set-target.sh $(IPFS_VERSION)
+	#./set-target.sh github.com/lazyledger/go-ipfs@v0.7.1-0.20210202000024-02a5a799f618
 
 FORCE:
 

@@ -10,12 +10,11 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	"github.com/lazyledger/nmt"
-
 	"github.com/ipfs/go-ipfs/core/coredag"
 	"github.com/ipfs/go-ipfs/plugin"
 	format "github.com/ipfs/go-ipld-format"
 	node "github.com/ipfs/go-ipld-format"
+	"github.com/lazyledger/nmt"
 	mh "github.com/multiformats/go-multihash"
 )
 
@@ -23,7 +22,8 @@ const (
 	// NMT is the codec used for this plugin.
 	// 0x77 seems to be free:
 	// https://github.com/multiformats/multicodec/blob/master/table.csv
-	NMT = 0x1077
+	NMT                   = 0x7700
+	NamespaceTaggedSha256 = 0x7701
 	// DagParserFormatName can be used when putting into the IPLD Dag
 	DagParserFormatName = "extended-square-row-or-col"
 
@@ -338,9 +338,20 @@ func cidFromNamespacedSha256(namespacedHash []byte) (cid.Cid, error) {
 	if got, want := len(namespacedHash), 2*namespaceSize+sha256.Size; got != want {
 		return cid.Cid{}, fmt.Errorf("invalid namespaced hash lenght, got: %v, want: %v", got, want)
 	}
-	buf, err := mh.Encode(namespacedHash, mh.SHA2_256)
+	buf, err := mh.Encode(namespacedHash, mh.SHA2_256_NAMESPACE_TAGGED)
 	if err != nil {
 		return cid.Undef, err
 	}
+	// buf := encodeHashWithInvalidCode(namespacedHash, NamespaceTaggedSha256)
 	return cid.NewCidV1(NMT, mh.Multihash(buf)), nil
 }
+
+// same as mh.Encode but ignoring
+//func encodeHashWithInvalidCode(buf []byte, code uint64) []byte {
+//	newBuf := make([]byte, varint.UvarintSize(code)+varint.UvarintSize(uint64(len(buf)))+len(buf))
+//	n := varint.PutUvarint(newBuf, code)
+//	n += varint.PutUvarint(newBuf[n:], uint64(len(buf)))
+//
+//	copy(newBuf[n:], buf)
+//	return newBuf
+//}
