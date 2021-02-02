@@ -342,16 +342,5 @@ func cidFromNamespacedSha256(namespacedHash []byte) (cid.Cid, error) {
 	if err != nil {
 		return cid.Undef, err
 	}
-	// buf := encodeHashWithInvalidCode(namespacedHash, NamespaceTaggedSha256)
 	return cid.NewCidV1(NMT, mh.Multihash(buf)), nil
 }
-
-// same as mh.Encode but ignoring
-//func encodeHashWithInvalidCode(buf []byte, code uint64) []byte {
-//	newBuf := make([]byte, varint.UvarintSize(code)+varint.UvarintSize(uint64(len(buf)))+len(buf))
-//	n := varint.PutUvarint(newBuf, code)
-//	n += varint.PutUvarint(newBuf[n:], uint64(len(buf)))
-//
-//	copy(newBuf[n:], buf)
-//	return newBuf
-//}
