@@ -15,7 +15,7 @@ require (
 )
 
 replace (
-	github.com/ipfs/go-ipfs v0.7.0 => github.com/lazyledger/go-ipfs v0.7.1-0.20210205200917-d54b4a6b16b2
-	github.com/ipfs/go-verifcid => github.com/lazyledger/go-verifcid v0.0.2-0.20210205200626-6e84e9313713
-    github.com/multiformats/go-multihash => github.com/lazyledger/go-multihash v0.0.15-0.20210205194329-1743be8d8a5b
+	github.com/ipfs/go-ipfs v0.7.0 => github.com/lazyledger/go-ipfs v0.7.1-0.20210205233505-656642674e11
+	github.com/ipfs/go-verifcid => github.com/lazyledger/go-verifcid v0.0.2-0.20210205232850-c3e21cfe4064
+	github.com/multiformats/go-multihash => github.com/lazyledger/go-multihash v0.0.15-0.20210205224750-88bad1265973
 )
