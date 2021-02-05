@@ -45,7 +45,7 @@ require (
 )
 
 replace (
-	github.com/ipfs/go-ipfs v0.7.0 => github.com/lazyledger/go-ipfs v0.7.1-0.20210202000024-02a5a799f618
+	github.com/ipfs/go-ipfs v0.7.0 => github.com/lazyledger/go-ipfs v0.7.1-0.20210205200917-d54b4a6b16b2
 	github.com/ipfs/go-verifcid => github.com/lazyledger/go-verifcid v0.0.2-0.20210202003519-bbb215fd683e
 	github.com/lazyledger/lazyledger-core/p2p/ipld/plugin => ./p2p/ipld/plugin
 	github.com/multiformats/go-multihash => github.com/lazyledger/go-multihash v0.0.15-0.20210201232637-a31dec8c92fa
