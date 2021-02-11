@@ -16,7 +16,6 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	"github.com/lazyledger/lazyledger-core/crypto/secp256k1"
 	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
-	mcs "github.com/lazyledger/lazyledger-core/test/maverick/consensus"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -356,11 +355,12 @@ func (n Node) Validate(testnet Testnet) error {
 				height, testnet.InitialHeight)
 		}
 		exists := false
-		for possibleBehaviors := range mcs.MisbehaviorList {
-			if possibleBehaviors == misbehavior {
-				exists = true
-			}
-		}
+		// FIXME: Maverick has been disabled until it is redesigned
+		// for possibleBehaviors := range mcs.MisbehaviorList {
+		// 	if possibleBehaviors == misbehavior {
+		// 		exists = true
+		// 	}
+		// }
 		if !exists {
 			return fmt.Errorf("misbehavior %s does not exist", misbehavior)
 		}
