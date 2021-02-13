@@ -48,7 +48,7 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 				t.Errorf("hashes don't match\ngot: %v\nwant: %v", got, want)
 			}
 			lastNodeCid := gotNodes[len(gotNodes)-1].Cid()
-			if gotHash, wantHash := lastNodeCid.Hash(), hashLeaf(tt.leafData[0]); !bytes.Equal(gotHash[multiHashOverhead:], wantHash) {
+			if gotHash, wantHash := lastNodeCid.Hash(), nmt.Sha256Namespace8FlaggedLeaf(tt.leafData[0]); !bytes.Equal(gotHash[multiHashOverhead:], wantHash) {
 				t.Errorf("first node's hash does not match the Cid\ngot: %v\nwant: %v", gotHash[multiHashOverhead:], wantHash)
 			}
 			nodePrefixOffset := 1 // leaf / inner node prefix is one byte
@@ -84,14 +84,14 @@ func TestDagPutWithPlugin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DagPut() failed: %v", err)
 	}
-	// convert NMT tree root to CID and verify it matches the CID returned by DagPut
+	// convert Nmt tree root to CID and verify it matches the CID returned by DagPut
 	treeRootBytes := n.Root().Bytes()
 	nmtCid, err := cidFromNamespacedSha256(treeRootBytes)
 	if err != nil {
 		t.Fatalf("cidFromNamespacedSha256() failed: %v", err)
 	}
 	if nmtCid.String() != cid {
-		t.Errorf("CIDs from NMT and plugin do not match: got %v, want: %v", cid, nmtCid.String())
+		t.Errorf("CIDs from Nmt and plugin do not match: got %v, want: %v", cid, nmtCid.String())
 	}
 	// print out cid s.t. it can be used on the commandline
 	t.Logf("Stored with cid: %v\n", cid)
@@ -162,7 +162,7 @@ func (n nmtWrapper) Prove(idx int) (merkleRoot []byte, proofSet [][]byte, proofI
 	return n.NamespacedMerkleTree.Root().Bytes(),
 		proof.Nodes(),
 		uint64(proof.Start()),
-		0 // TODO: NMT doesn't return the number of leaves
+		0 // TODO: Nmt doesn't return the number of leaves
 }
 
 func (n nmtWrapper) Root() []byte {
@@ -186,18 +186,6 @@ func createByteBufFromRawData(t *testing.T, leafData [][]byte) *bytes.Buffer {
 		}
 	}
 	return buf
-}
-
-// this snippet of the nmt internals is copied here:
-func hashLeaf(data []byte) []byte {
-	h := sha256.New()
-	nID := data[:namespaceSize]
-	toCommittToDataWithoutNID := data[namespaceSize:]
-
-	res := append(append(make([]byte, 0), nID...), nID...)
-	data = append([]byte{nmt.LeafPrefix}, toCommittToDataWithoutNID...)
-	h.Write(data)
-	return h.Sum(res)
 }
 
 func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byte {

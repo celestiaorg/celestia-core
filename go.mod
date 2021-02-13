@@ -20,7 +20,9 @@ require (
 	github.com/ipfs/go-ipfs-config v0.9.0
 	github.com/ipfs/interface-go-ipfs-core v0.4.0
 	github.com/lazyledger/lazyledger-core/p2p/ipld/plugin v0.0.0-00010101000000-000000000000
-	github.com/lazyledger/nmt v0.1.0
+	// TODO(ismail): update to tagged version after
+	// https://github.com/lazyledger/nmt/pull/19 gets merged
+	github.com/lazyledger/nmt v0.1.1-0.20210212160145-d6f4312f0a8d
 	github.com/lazyledger/rsmt2d v0.0.0-20201215203123-e5ec7910ddd4
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/minio/highwayhash v1.0.1
@@ -48,5 +50,4 @@ replace (
 	github.com/ipfs/go-ipfs v0.7.0 => github.com/lazyledger/go-ipfs v0.7.1-0.20210205233505-656642674e11
 	github.com/ipfs/go-verifcid => github.com/lazyledger/go-verifcid v0.0.2-0.20210205232850-c3e21cfe4064
 	github.com/lazyledger/lazyledger-core/p2p/ipld/plugin => ./p2p/ipld/plugin
-	github.com/multiformats/go-multihash => github.com/lazyledger/go-multihash v0.0.15-0.20210205224750-88bad1265973
 )

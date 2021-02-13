@@ -19,11 +19,15 @@ import (
 )
 
 const (
-	// NMT is the codec used for this plugin.
-	// 0x77 seems to be free:
+	// Below used multiformats (one codec, one multihash) seem free:
 	// https://github.com/multiformats/multicodec/blob/master/table.csv
-	NMT                   = 0x7700
-	NamespaceTaggedSha256 = 0x7701
+
+	// Nmt is the codec used for leaf and inner nodes of an Namespaced Merkle Tree.
+	Nmt = 0x7700
+	// Sha256Namespace8Flagged is the multihash code used to hash blocks
+	// that contain an NMT node (inner and leaf nodes).
+	Sha256Namespace8Flagged = 0x7701
+
 	// DagParserFormatName can be used when putting into the IPLD Dag
 	DagParserFormatName = "extended-square-row-or-col"
 
@@ -35,12 +39,50 @@ const (
 	shareSize     = 256
 )
 
+func init() {
+	registerNamespacedCodecOrPanic(
+		Sha256Namespace8Flagged,
+		"sha2-256-namespace8-flagged",
+		2*namespaceSize+sha256.Size,
+		sumSha256Namespace8Flagged,
+	)
+}
+
+func registerNamespacedCodecOrPanic(
+	codec uint64,
+	name string,
+	defaulLength int,
+	hashFunc mh.HashFunc,
+) {
+	if _, ok := mh.Codes[codec]; !ok {
+		// add to mh.Codes map first, otherwise mh.RegisterHashFunc would err:
+		mh.Codes[codec] = name
+		mh.Names[name] = codec
+		mh.DefaultLengths[codec] = defaulLength
+
+		if err := mh.RegisterHashFunc(codec, hashFunc); err != nil {
+			panic(fmt.Sprintf("could not register hash function: %v", mh.Codes[codec]))
+		}
+	}
+}
+
+// sumSha256Namespace8Flagged is the mh.HashFunc used to hash leaf and inner nodes.
+// It is registered as a mh.HashFunc in the go-multihash module.
+func sumSha256Namespace8Flagged(data []byte, _length int) ([]byte, error) {
+	isLeafData := data[0] == nmt.LeafPrefix
+	if isLeafData {
+		return nmt.Sha256Namespace8FlaggedLeaf(data[1:]), nil
+	} else {
+		return nmt.Sha256Namespace8FlaggedInner(data[1:]), nil
+	}
+}
+
 var _ plugin.PluginIPLD = &LazyLedgerPlugin{}
 
 type LazyLedgerPlugin struct{}
 
 func (l LazyLedgerPlugin) RegisterBlockDecoders(dec format.BlockDecoder) error {
-	dec.Register(NMT, NmtNodeParser)
+	dec.Register(Nmt, NmtNodeParser)
 	return nil
 }
 
@@ -73,10 +115,7 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 	br := bufio.NewReader(r)
 	nodes := make([]node.Node, 0, extendedSquareSize)
 	nodeCollector := func(hash []byte, children ...[]byte) {
-		cid, err := cidFromNamespacedSha256(hash)
-		if err != nil {
-			panic(fmt.Sprintf("nmt lib created a malformed hash: %s", err))
-		}
+		cid := mustCidFromNamespacedSha256(hash)
 		switch len(children) {
 		case 1:
 			prependNode(nmtLeafNode{
@@ -240,14 +279,9 @@ func (n nmtNode) Copy() node.Node {
 }
 
 func (n nmtNode) Links() []*node.Link {
-	leftCid, err := cidFromNamespacedSha256(n.l)
-	if err != nil {
-		panic(fmt.Errorf("malformed nmtNode, cidFromNamespacedSha256(): %w", err))
-	}
-	rightCid, err := cidFromNamespacedSha256(n.r)
-	if err != nil {
-		panic(fmt.Errorf("malformed nmtNode, cidFromNamespacedSha256(): %w", err))
-	}
+	leftCid := mustCidFromNamespacedSha256(n.l)
+	rightCid := mustCidFromNamespacedSha256(n.r)
+
 	return []*node.Link{{Cid: leftCid}, {Cid: rightCid}}
 }
 
@@ -338,9 +372,23 @@ func cidFromNamespacedSha256(namespacedHash []byte) (cid.Cid, error) {
 	if got, want := len(namespacedHash), 2*namespaceSize+sha256.Size; got != want {
 		return cid.Cid{}, fmt.Errorf("invalid namespaced hash lenght, got: %v, want: %v", got, want)
 	}
-	buf, err := mh.Encode(namespacedHash, mh.SHA2_256_NAMESPACE_TAGGED)
+	buf, err := mh.Encode(namespacedHash, Sha256Namespace8Flagged)
 	if err != nil {
 		return cid.Undef, err
 	}
-	return cid.NewCidV1(NMT, mh.Multihash(buf)), nil
+	return cid.NewCidV1(Nmt, mh.Multihash(buf)), nil
+}
+
+// mustCidFromNamespacedSha256 is a wrapper around cidFromNamespacedSha256 that panics
+// in case of an error. Use with care and only in places where no error should occur.
+func mustCidFromNamespacedSha256(hash []byte) cid.Cid {
+	cid, err := cidFromNamespacedSha256(hash)
+	if err != nil {
+		panic(
+			fmt.Sprintf("malformed hash: %s, codec: %v",
+				err,
+				mh.Codes[Sha256Namespace8Flagged]),
+		)
+	}
+	return cid
 }
