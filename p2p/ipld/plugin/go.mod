@@ -8,6 +8,7 @@ require (
 	github.com/ipfs/go-ipfs v0.7.0
 	github.com/ipfs/go-ipfs-api v0.2.0
 	github.com/ipfs/go-ipld-format v0.2.0
+	github.com/ipfs/go-verifcid v0.0.1
 	// TODO(ismail): change this to a tagged version after
 	// https://github.com/lazyledger/nmt/pull/19 gets merged
 	github.com/lazyledger/nmt v0.1.1-0.20210213205848-6cb03eeda173

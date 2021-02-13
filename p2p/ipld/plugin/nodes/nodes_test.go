@@ -10,15 +10,22 @@ import (
 	"testing"
 
 	shell "github.com/ipfs/go-ipfs-api"
+	"github.com/ipfs/go-verifcid"
 	mh "github.com/multiformats/go-multihash"
 
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/rsmt2d"
 )
 
-func TestIsRegistered(t *testing.T) {
+func TestMultihasherIsRegistered(t *testing.T) {
 	if _, ok := mh.Codes[Sha256Namespace8Flagged]; !ok {
 		t.Fatalf("code not registered in multihash.Codes: %X", Sha256Namespace8Flagged)
+	}
+}
+
+func TestVerifCidAllowsCustomMultihasher(t *testing.T) {
+	if ok := verifcid.IsGoodHash(Sha256Namespace8Flagged); !ok {
+		t.Fatalf("code not allowed by verifcid verifcid.IsGoodHash(%X): %v", Sha256Namespace8Flagged, ok)
 	}
 }
 
