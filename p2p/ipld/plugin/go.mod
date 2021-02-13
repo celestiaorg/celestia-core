@@ -18,6 +18,6 @@ require (
 )
 
 replace (
-	github.com/ipfs/go-ipfs v0.7.0 => /Users/ismail/GolandProjects/go-ipfs
+	github.com/ipfs/go-ipfs v0.7.0 => github.com/lazyledger/go-ipfs v0.7.1-0.20210213193504-c65604ccb2ed
 	github.com/ipfs/go-verifcid => github.com/lazyledger/go-verifcid v0.0.2-0.20210213182512-19890b0d114d
 )
