@@ -22,7 +22,7 @@ require (
 	github.com/lazyledger/lazyledger-core/p2p/ipld/plugin v0.0.0-00010101000000-000000000000
 	// TODO(ismail): update to tagged version after
 	// https://github.com/lazyledger/nmt/pull/19 gets merged
-	github.com/lazyledger/nmt v0.1.1-0.20210212160145-d6f4312f0a8d
+	github.com/lazyledger/nmt v0.1.1-0.20210213205848-6cb03eeda173
 	github.com/lazyledger/rsmt2d v0.0.0-20201215203123-e5ec7910ddd4
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/minio/highwayhash v1.0.1

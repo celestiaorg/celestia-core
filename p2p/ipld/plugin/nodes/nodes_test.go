@@ -10,10 +10,17 @@ import (
 	"testing"
 
 	shell "github.com/ipfs/go-ipfs-api"
+	mh "github.com/multiformats/go-multihash"
 
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/rsmt2d"
 )
+
+func TestIsRegistered(t *testing.T) {
+	if _, ok := mh.Codes[Sha256Namespace8Flagged]; !ok {
+		t.Fatalf("code not registered in multihash.Codes: %X", Sha256Namespace8Flagged)
+	}
+}
 
 func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 	tests := []struct {

@@ -620,8 +620,8 @@ github.com/lazyledger/go-verifcid v0.0.2-0.20210205232850-c3e21cfe4064 h1:qFcXjQ
 github.com/lazyledger/go-verifcid v0.0.2-0.20210205232850-c3e21cfe4064/go.mod h1:i0oimuqPNkw9y4DWtt1G+aPznQkyaYPvr9SRXEOZtb0=
 github.com/lazyledger/merkletree v0.0.0-20201214195110-6901c4c3c75f h1:jbyPAH6o6hGte4RtZBaqWs2n4Fl6hS7qJGXX3qnjiy4=
 github.com/lazyledger/merkletree v0.0.0-20201214195110-6901c4c3c75f/go.mod h1:10PA0NlnYtB8HrtwIDQAyTKWp8TEZ0zBZCGlYC/7+QE=
-github.com/lazyledger/nmt v0.1.1-0.20210212160145-d6f4312f0a8d h1:Q45qTAaYay8r+1kndwjo1EDvpxbqgE7D6xKlaPNeVXk=
-github.com/lazyledger/nmt v0.1.1-0.20210212160145-d6f4312f0a8d/go.mod h1:tY7ypPX26Sbkt6F8EbPl3AT33B5N0BJe4OVPbq849YI=
+github.com/lazyledger/nmt v0.1.1-0.20210213205848-6cb03eeda173 h1:E1OOrJ147fHXSwkW2rdNOyEeFpIhj57JVa6dRCtJtac=
+github.com/lazyledger/nmt v0.1.1-0.20210213205848-6cb03eeda173/go.mod h1:tY7ypPX26Sbkt6F8EbPl3AT33B5N0BJe4OVPbq849YI=
 github.com/lazyledger/rsmt2d v0.0.0-20201215203123-e5ec7910ddd4 h1:r2mI8AnDTOSwL9GWGjgHC4rwzaR56jRCo1GLpG2lwIw=
 github.com/lazyledger/rsmt2d v0.0.0-20201215203123-e5ec7910ddd4/go.mod h1:ORR2U7THCNr1fpUhwYqZN7QCFJ20iR2uiIWfXKz3KJ4=
 github.com/libp2p/go-addr-util v0.0.1/go.mod h1:4ac6O7n9rIAKB1dnd+s8IbbMXkt+oBpzX4/+RACcnlQ=
