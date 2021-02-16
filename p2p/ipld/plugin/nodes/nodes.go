@@ -40,7 +40,7 @@ const (
 )
 
 func init() {
-	mustregisterNamespacedCodec(
+	mustRegisterNamespacedCodec(
 		Sha256Namespace8Flagged,
 		"sha2-256-namespace8-flagged",
 		2*namespaceSize+sha256.Size,
@@ -48,13 +48,17 @@ func init() {
 	)
 }
 
-func mustregisterNamespacedCodec(
+func mustRegisterNamespacedCodec(
 	codec uint64,
 	name string,
 	defaulLength int,
 	hashFunc mh.HashFunc,
 ) {
 	if _, ok := mh.Codes[codec]; !ok {
+		// make sure that the Codec wasn't registered from somewhere different than this plugin already:
+		if _, found := mh.Codes[codec]; found {
+			panic(fmt.Sprintf("Codec 0x%X is already present: %v", codec, mh.Codes[codec]))
+		}
 		// add to mh.Codes map first, otherwise mh.RegisterHashFunc would err:
 		mh.Codes[codec] = name
 		mh.Names[name] = codec
