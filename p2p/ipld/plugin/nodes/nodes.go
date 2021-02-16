@@ -40,7 +40,7 @@ const (
 )
 
 func init() {
-	registerNamespacedCodecOrPanic(
+	mustregisterNamespacedCodec(
 		Sha256Namespace8Flagged,
 		"sha2-256-namespace8-flagged",
 		2*namespaceSize+sha256.Size,
@@ -48,7 +48,7 @@ func init() {
 	)
 }
 
-func registerNamespacedCodecOrPanic(
+func mustregisterNamespacedCodec(
 	codec uint64,
 	name string,
 	defaulLength int,
