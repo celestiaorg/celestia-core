@@ -4,13 +4,7 @@
 
 Usually, a simple `make install` should build and install the plugin locally.
 
-If you want to compile against a locally checked out version of IPFS, run:
-
-```sh
-cd plugin
-./set-target.sh REPLACE_WITH_YOUR_LOCAL_PATH/go-ipfs
-make install
-```
+If you want to compile against a locally checked out version of IPFS, change the `replace` directive in go.mo.
 
 Running ipfs (e.g. `ipfs init` or `ipfs daemon`) loads the plugin automatically.
 

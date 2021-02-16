@@ -18,6 +18,9 @@ require (
 )
 
 replace (
-	github.com/ipfs/go-ipfs v0.7.0 => github.com/lazyledger/go-ipfs v0.7.1-0.20210213193504-c65604ccb2ed
-	github.com/ipfs/go-verifcid => github.com/lazyledger/go-verifcid v0.0.2-0.20210213182512-19890b0d114d
+	// If you encounter:
+	//  plugin was built with a different version of package X
+	// overwrite below line with a local directory with the corresponding version of go-ipfs checked out
+	github.com/ipfs/go-ipfs => github.com/lazyledger/go-ipfs v0.7.0-lazypatch
+	github.com/ipfs/go-verifcid => github.com/lazyledger/go-verifcid v0.0.1-lazypatch
 )
