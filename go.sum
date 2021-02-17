@@ -303,10 +303,8 @@ github.com/lazyledger/go-leopard v0.0.0-20200604113236-298f93361181 h1:mUeCGuCgj
 github.com/lazyledger/go-leopard v0.0.0-20200604113236-298f93361181/go.mod h1:v1o1CRihQ9i7hizx23KK4aR79lxA6VDUIzUCfDva0XQ=
 github.com/lazyledger/merkletree v0.0.0-20201214195110-6901c4c3c75f h1:jbyPAH6o6hGte4RtZBaqWs2n4Fl6hS7qJGXX3qnjiy4=
 github.com/lazyledger/merkletree v0.0.0-20201214195110-6901c4c3c75f/go.mod h1:10PA0NlnYtB8HrtwIDQAyTKWp8TEZ0zBZCGlYC/7+QE=
-github.com/lazyledger/nmt v0.0.0-20210113105746-8340e76c6def h1:+iLRpKZCEERtri3ebJC32xN4rvezdwoKLvkGFbbzHPo=
-github.com/lazyledger/nmt v0.0.0-20210113105746-8340e76c6def/go.mod h1:tY7ypPX26Sbkt6F8EbPl3AT33B5N0BJe4OVPbq849YI=
-github.com/lazyledger/nmt v0.1.0 h1:GSpAmBc3B7cwJSYTjh/v+vPQCsNCqKzSklu8LzYxwaU=
-github.com/lazyledger/nmt v0.1.0/go.mod h1:tY7ypPX26Sbkt6F8EbPl3AT33B5N0BJe4OVPbq849YI=
+github.com/lazyledger/nmt v0.2.0 h1:jKpC+XMSc4P1asLvutSwyMlgUDnAvv1HAVyzal21MbA=
+github.com/lazyledger/nmt v0.2.0/go.mod h1:tY7ypPX26Sbkt6F8EbPl3AT33B5N0BJe4OVPbq849YI=
 github.com/lazyledger/rsmt2d v0.0.0-20200626141417-ea94438fa457 h1:mXl0oKmdYegd8HaP++leltErwDnvcR2v+nttbRA8pk8=
 github.com/lazyledger/rsmt2d v0.0.0-20200626141417-ea94438fa457/go.mod h1:X2BD0VWh4t2V361JujYpGpYKwjsyp8vgr4iFvYo+Ojg=
 github.com/libp2p/go-buffer-pool v0.0.2 h1:QNK2iAFa8gjAe1SPz6mHSMuCcjs+X1wlHzeOSqcmlfs=
