@@ -76,9 +76,8 @@ func sumSha256Namespace8Flagged(data []byte, _length int) ([]byte, error) {
 	isLeafData := data[0] == nmt.LeafPrefix
 	if isLeafData {
 		return nmt.Sha256Namespace8FlaggedLeaf(data[1:]), nil
-	} else {
-		return nmt.Sha256Namespace8FlaggedInner(data[1:]), nil
 	}
+	return nmt.Sha256Namespace8FlaggedInner(data[1:]), nil
 }
 
 var _ plugin.PluginIPLD = &LazyLedgerPlugin{}
@@ -328,9 +327,8 @@ func (l nmtLeafNode) Resolve(path []string) (interface{}, []string, error) {
 		// currently nmtLeafNode{Data:} contains the actual data
 		// instead, there should be a link in the leaf to the actual data
 		return nil, nil, nil
-	} else {
-		return nil, nil, errors.New("invalid path for leaf node")
 	}
+	return nil, nil, errors.New("invalid path for leaf node")
 }
 
 func (l nmtLeafNode) Tree(path string, depth int) []string {
