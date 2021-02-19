@@ -277,7 +277,16 @@ func (n nmtNode) ResolveLink(path []string) (*node.Link, []string, error) {
 }
 
 func (n nmtNode) Copy() node.Node {
-	panic("implement me")
+	l := make([]byte, len(n.l))
+	copy(l, n.l)
+	r := make([]byte, len(n.r))
+	copy(r, n.r)
+
+	return &nmtNode{
+		cid: n.cid,
+		l:   l,
+		r:   r,
+	}
 }
 
 func (n nmtNode) Links() []*node.Link {
