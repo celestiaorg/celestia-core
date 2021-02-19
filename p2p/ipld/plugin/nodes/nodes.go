@@ -37,13 +37,16 @@ const (
 	// TODO: plugins have config options; make this configurable instead
 	namespaceSize = 8
 	shareSize     = 256
+	// nmtHashSize is the size of a digest created by an NMT in bytes:
+	// nmtHashSize = flagSize+sha256.Size.
+	nmtHashSize = 2*namespaceSize + sha256.Size
 )
 
 func init() {
 	mustRegisterNamespacedCodec(
 		Sha256Namespace8Flagged,
 		"sha2-256-namespace8-flagged",
-		2*namespaceSize+sha256.Size,
+		nmtHashSize,
 		sumSha256Namespace8Flagged,
 	)
 }
@@ -164,12 +167,8 @@ func prependNode(newNode node.Node, nodes *[]node.Node) {
 }
 
 func NmtNodeParser(block blocks.Block) (node.Node, error) {
-	const (
-		// length of the domain separator for leaf and inner nodes:
-		prefixOffset = 1
-		// nmtHashSize = flagSize+sha256.Size
-		nmtHashSize = namespaceSize*2 + sha256.Size
-	)
+	// length of the domain separator for leaf and inner nodes:
+	const prefixOffset = 1
 	var (
 		leafPrefix  = []byte{nmt.LeafPrefix}
 		innerPrefix = []byte{nmt.NodePrefix}
@@ -371,7 +370,7 @@ func (l nmtLeafNode) Size() (uint64, error) {
 }
 
 func cidFromNamespacedSha256(namespacedHash []byte) (cid.Cid, error) {
-	if got, want := len(namespacedHash), 2*namespaceSize+sha256.Size; got != want {
+	if got, want := len(namespacedHash), nmtHashSize; got != want {
 		return cid.Cid{}, fmt.Errorf("invalid namespaced hash length, got: %v, want: %v", got, want)
 	}
 	buf, err := mh.Encode(namespacedHash, Sha256Namespace8Flagged)
