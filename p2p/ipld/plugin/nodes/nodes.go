@@ -112,7 +112,7 @@ func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
 // DataSquareRowOrColumnRawInputParser reads the raw shares and extract the IPLD nodes from the NMT tree.
 // Note, to parse without any error the input has to be of the form:
 //
-// <share_0>| ... |<share_numOfShares>
+// <share_0>| ... |<share_numOfShares - 1>
 //
 // To determine the share and the namespace size the constants
 // types.ShareSize and types.NamespaceSize are used.
@@ -144,14 +144,14 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 		nmt.NodeVisitor(nodeCollector),
 	)
 	for {
-		share := make([]byte, shareSize+namespaceSize)
-		if _, err := io.ReadFull(br, share); err != nil {
+		namespacedLeaf := make([]byte, shareSize+namespaceSize)
+		if _, err := io.ReadFull(br, namespacedLeaf); err != nil {
 			if err == io.EOF {
 				break
 			}
 			return nil, err
 		}
-		if err := n.Push(share[:namespaceSize], share[namespaceSize:]); err != nil {
+		if err := n.Push(namespacedLeaf[:namespaceSize], namespacedLeaf[namespaceSize:]); err != nil {
 			return nil, err
 		}
 	}
