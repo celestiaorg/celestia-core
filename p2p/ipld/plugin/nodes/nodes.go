@@ -372,7 +372,7 @@ func (l nmtLeafNode) Size() (uint64, error) {
 
 func cidFromNamespacedSha256(namespacedHash []byte) (cid.Cid, error) {
 	if got, want := len(namespacedHash), 2*namespaceSize+sha256.Size; got != want {
-		return cid.Cid{}, fmt.Errorf("invalid namespaced hash lenght, got: %v, want: %v", got, want)
+		return cid.Cid{}, fmt.Errorf("invalid namespaced hash length, got: %v, want: %v", got, want)
 	}
 	buf, err := mh.Encode(namespacedHash, Sha256Namespace8Flagged)
 	if err != nil {
