@@ -115,11 +115,18 @@ func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
 // <share_0>| ... |<share_numOfShares - 1>
 //
 // To determine the share and the namespace size the constants
-// types.ShareSize and types.NamespaceSize are used.
+// types.ShareSize and types.NamespaceSize are redefined here to avoid
+// lazyledger-core as a dependency.
+//
+// Note while this coredag.DagParser is implemented here so this plugin can be used from
+// the commandline, the ipld Nodes will rather be created together with the NMT
+// root instead of re-computing it here.
 func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int) ([]node.Node, error) {
-	const extendedSquareSize = 256
+	// The extendedRowOrColumnSize is hardcode this here to avoid importing:
+	// https://github.com/lazyledger/lazyledger-core/blob/585566317e519bbb6d35d149b7e856c4c1e8657c/types/consts.go#L23
+	const extendedRowOrColumnSize = 2 * 128
 	br := bufio.NewReader(r)
-	nodes := make([]node.Node, 0, extendedSquareSize)
+	nodes := make([]node.Node, 0, extendedRowOrColumnSize)
 	nodeCollector := func(hash []byte, children ...[]byte) {
 		cid := mustCidFromNamespacedSha256(hash)
 		switch len(children) {
