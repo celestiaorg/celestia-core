@@ -37,8 +37,7 @@ const (
 	// TODO: plugins have config options; make this configurable instead
 	namespaceSize = 8
 	shareSize     = 256
-	// nmtHashSize is the size of a digest created by an NMT in bytes:
-	// nmtHashSize = flagSize+sha256.Size.
+	// nmtHashSize is the size of a digest created by an NMT in bytes.
 	nmtHashSize = 2*namespaceSize + sha256.Size
 )
 
