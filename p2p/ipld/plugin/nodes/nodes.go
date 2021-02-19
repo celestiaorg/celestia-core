@@ -51,7 +51,7 @@ func init() {
 func mustRegisterNamespacedCodec(
 	codec uint64,
 	name string,
-	defaulLength int,
+	defaultLength int,
 	hashFunc mh.HashFunc,
 ) {
 	if _, ok := mh.Codes[codec]; !ok {
@@ -62,7 +62,7 @@ func mustRegisterNamespacedCodec(
 		// add to mh.Codes map first, otherwise mh.RegisterHashFunc would err:
 		mh.Codes[codec] = name
 		mh.Names[name] = codec
-		mh.DefaultLengths[codec] = defaulLength
+		mh.DefaultLengths[codec] = defaultLength
 
 		if err := mh.RegisterHashFunc(codec, hashFunc); err != nil {
 			panic(fmt.Sprintf("could not register hash function: %v", mh.Codes[codec]))
