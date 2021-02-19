@@ -252,8 +252,8 @@ func (n nmtNode) Resolve(path []string) (interface{}, []string, error) {
 }
 
 func (n nmtNode) Tree(path string, depth int) []string {
-	if path != "" || depth == 0 {
-		return nil
+	if path != "" || depth != -1 {
+		panic("proper tree not yet implemented")
 	}
 
 	return []string{
@@ -330,23 +330,11 @@ func (l nmtLeafNode) Loggable() map[string]interface{} {
 }
 
 func (l nmtLeafNode) Resolve(path []string) (interface{}, []string, error) {
-	if path[0] == "Data" {
-		// TODO: store the data separately
-		// currently nmtLeafNode{Data:} contains the actual data
-		// instead, there should be a link in the leaf to the actual data
-		return nil, nil, nil
-	}
 	return nil, nil, errors.New("invalid path for leaf node")
 }
 
-func (l nmtLeafNode) Tree(path string, depth int) []string {
-	if path != "" || depth == 0 {
-		return nil
-	}
-
-	return []string{
-		"Data",
-	}
+func (l nmtLeafNode) Tree(_path string, _depth int) []string {
+	return nil
 }
 
 func (l nmtLeafNode) ResolveLink(path []string) (*node.Link, []string, error) {
