@@ -17,8 +17,8 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/gtank/merlin v0.1.1
 	github.com/hdevalence/ed25519consensus v0.0.0-20201207055737-7fde80a9d5ff
-	github.com/lazyledger/nmt v0.1.0
-	github.com/lazyledger/rsmt2d v0.0.0-20200626141417-ea94438fa457
+	github.com/lazyledger/nmt v0.2.0
+	github.com/lazyledger/rsmt2d v0.0.0-20201215203123-e5ec7910ddd4
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/minio/highwayhash v1.0.1
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
