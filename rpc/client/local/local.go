@@ -49,9 +49,9 @@ type Local struct {
 // you can only have one node per process.  So make sure test cases
 // don't run in parallel, or try to simulate an entire network in
 // one process...
-func New(node *nm.Node) *Local {
+func New(node nm.NodeInterface) *Local {
 	if err := node.ConfigureRPC(); err != nil {
-		node.Logger.Error("Error configuring RPC", "err", err)
+		node.GetLogger().Error("Error configuring RPC", "err", err)
 	}
 	return &Local{
 		EventBus: node.EventBus(),

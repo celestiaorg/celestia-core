@@ -169,6 +169,16 @@ func StateProvider(stateProvider statesync.StateProvider) Option {
 
 //------------------------------------------------------------------------------
 
+type NodeInterface interface {
+	service.Service
+
+	ConfigureRPC() error
+	GetLogger() log.Logger
+	EventBus() *types.EventBus
+}
+
+var _ NodeInterface = &Node{}
+
 // Node is the highest level interface to a full Tendermint node.
 // It includes all configuration information and running services.
 type Node struct {
@@ -1198,6 +1208,10 @@ func (n *Node) EvidencePool() *evidence.Pool {
 // EventBus returns the Node's EventBus.
 func (n *Node) EventBus() *types.EventBus {
 	return n.eventBus
+}
+
+func (n *Node) GetLogger() log.Logger {
+	return n.Logger
 }
 
 // PrivValidator returns the Node's PrivValidator.
