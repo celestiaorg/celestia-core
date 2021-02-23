@@ -471,13 +471,13 @@ repo-root = "{{ .IPFS.ConfigRootPath}}"
 # Address for the local API (RPC).
 api = "{{ .IPFS.API }}"
 # Address to listen on for IPFS HTTP object gateway.
-gateway = "{{ .IPFS.Gateway }}
+gateway = "{{ .IPFS.Gateway }}"
 # Addresses for the swarm to listen on
-swarm = "[{{ range .IPFS.Swarm }}{{ printf "%q, " . }}{{end}}]"
+swarm = [{{ range .IPFS.Swarm }}{{ printf "%q, " . }}{{end}}]
 # Swarm addresses to announce to the network
-announce = "[{{ range .IPFS.Announce }}{{ printf "%q, " . }}{{end}}]"
+announce = [{{ range .IPFS.Announce }}{{ printf "%q, " . }}{{end}}]
 # Swarm addresses not to announce to the network
-no-announce = "[{{ range .IPFS.NoAnnounce }}{{ printf "%q, " . }}{{end}}]"
+no-announce = [{{ range .IPFS.NoAnnounce }}{{ printf "%q, " . }}{{end}}]
 `
 
 /****** these are for test settings ***********/
