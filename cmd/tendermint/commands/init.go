@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	ipfscfg "github.com/ipfs/go-ipfs-config"
 	"github.com/ipfs/go-ipfs/plugin/loader"
@@ -105,14 +106,15 @@ func initFilesWithConfig(config *cfg.Config) error {
 		logger.Info("Generated genesis file", "path", genFile)
 	}
 
-	if err := initIpfs(config); err != nil {
+	if err := InitIpfs(config); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func initIpfs(config *cfg.Config) error { // add counter part in ResetAllCmd
+// TODO move into separate file
+func InitIpfs(config *cfg.Config) error { // add counter part in ResetAllCmd
 	// init IPFS config with params from config.IPFS
 	// and store in config.IPFS.ConfigRootPath
 	repoRoot := config.IPFSRepoRoot()
@@ -151,6 +153,15 @@ func initIpfs(config *cfg.Config) error { // add counter part in ResetAllCmd
 	return nil
 }
 
+// Inject replies on several global vars internally.
+// For instance fsrepo.AddDatastoreConfigHandler will error
+// if called multiple times with the same datastore.
+// But for CI and integration tests, we want to setup the plugins
+// for each repo but only inject once s.t. we can init multiple
+// repos from the same runtime.
+// TODO(ismail): find a more elegant way to achieve the same.
+var injectPluginsOnce sync.Once
+
 func setupPlugins(path string) error {
 	// Load plugins. This will skip the repo if not available.
 	plugins, err := loader.NewPluginLoader(filepath.Join(path, "plugins"))
@@ -162,8 +173,11 @@ func setupPlugins(path string) error {
 		return fmt.Errorf("error initializing plugins: %s", err)
 	}
 
-	if err := plugins.Inject(); err != nil {
-		return fmt.Errorf("error initializing plugins: %s", err)
+	injectPluginsOnce.Do(func() {
+		err = plugins.Inject()
+	})
+	if err != nil {
+		return fmt.Errorf("error injecting plugins onec: %w", err)
 	}
 
 	return nil
