@@ -178,7 +178,7 @@ func StateProvider(stateProvider statesync.StateProvider) Option {
 // Setting up plugins will be skipped when creating the IPFS node.
 func IpfsPluginsWereLoaded(wereAlreadyLoaded bool) Option {
 	return func(n *Node) {
-		n.areIfsPluginsAlreadyLoaded = wereAlreadyLoaded
+		n.areIpfsPluginsAlreadyLoaded = wereAlreadyLoaded
 	}
 }
 
@@ -231,9 +231,9 @@ type Node struct {
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
 	// we store a ref to the full IpfsNode (instead of ipfs' CoreAPI) so we can Close() it OnStop()
-	embedIpfsNode              bool               // whether the node should start an IPFS node on startup
-	ipfsNode                   *ipfscore.IpfsNode // ipfs node
-	areIfsPluginsAlreadyLoaded bool               // avoid injecting plugins twice in tests etc
+	embedIpfsNode               bool               // whether the node should start an IPFS node on startup
+	ipfsNode                    *ipfscore.IpfsNode // ipfs node
+	areIpfsPluginsAlreadyLoaded bool               // avoid injecting plugins twice in tests etc
 }
 
 func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
@@ -956,7 +956,7 @@ func (n *Node) OnStart() error {
 		// each start as internally the node gets only stopped once per instance.
 		// At least in ipfs 0.7.0; see:
 		// https://github.com/lazyledger/go-ipfs/blob/dd295e45608560d2ada7d7c8a30f1eef3f4019bb/core/builder.go#L48-L57
-		n.ipfsNode, err = createIpfsNode(n.config, n.areIfsPluginsAlreadyLoaded, n.Logger)
+		n.ipfsNode, err = createIpfsNode(n.config, n.areIpfsPluginsAlreadyLoaded, n.Logger)
 		if err != nil {
 			return fmt.Errorf("failed to create IPFS node: %w", err)
 		}

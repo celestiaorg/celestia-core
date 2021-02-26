@@ -113,10 +113,13 @@ func initFilesWithConfig(config *cfg.Config) error {
 	return nil
 }
 
-// TODO move into separate file
-func InitIpfs(config *cfg.Config) error { // add counter part in ResetAllCmd
-	// init IPFS config with params from config.IPFS
-	// and store in config.IPFS.ConfigRootPath
+// InitIpfs takes a few config flags from the tendermint config.IPFS
+// and applies them to the freshly created IPFS repo.
+// The IPFS config will stored under config.IPFS.ConfigRootPath.
+// TODO(ismail) move into separate file, and consider making IPFS initialization
+// independent from the `tendermint init` subcommand.
+// TODO(ismail): add counter part in ResetAllCmd
+func InitIpfs(config *cfg.Config) error {
 	repoRoot := config.IPFSRepoRoot()
 	if fsrepo.IsInitialized(repoRoot) {
 		logger.Info("IPFS was already initialized", "ipfs-path", repoRoot)

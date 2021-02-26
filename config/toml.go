@@ -457,7 +457,7 @@ max-open-connections = {{ .Instrumentation.MaxOpenConnections }}
 namespace = "{{ .Instrumentation.Namespace }}"
 
 #######################################################
-###       IPFS Configuration Options     			###
+###       IPFS Configuration Options                ###
 #######################################################
 [ipfs]
 

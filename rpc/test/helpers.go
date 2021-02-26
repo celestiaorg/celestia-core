@@ -198,9 +198,11 @@ func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 	return node
 }
 
-func initIpfs(config *cfg.Config, loadPlugins bool, log log.Logger) error { // add counter part in ResetAllCmd
-	// init IPFS config with params from config.IPFS
-	// and store in config.IPFS.ConfigRootPath
+// initIpfs a slightly modified commands.InitIpfs.
+// To avoid depending on the commands package here, we accept some code duplication.
+// In case commands.InitIpfs gets refactored into a separate package,
+// it could be used instead.
+func initIpfs(config *cfg.Config, loadPlugins bool, log log.Logger) error {
 	repoRoot := config.IPFSRepoRoot()
 	if fsrepo.IsInitialized(repoRoot) {
 		log.Info("IPFS repo already initialized", "repo-root", repoRoot)
