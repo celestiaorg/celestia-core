@@ -234,7 +234,7 @@ func initIpfs(config *cfg.Config, loadPlugins bool, log log.Logger) error { // a
 	}
 	conf, err = ipfscfg.InitWithIdentity(identity)
 	if err != nil {
-		return fmt.Errorf("intializing config failed, InitWithIdentity(): %w", err)
+		return fmt.Errorf("initializing config failed, InitWithIdentity(): %w", err)
 	}
 
 	if err := fsrepo.Init(repoRoot, conf); err != nil {
