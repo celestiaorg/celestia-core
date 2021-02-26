@@ -202,44 +202,45 @@ func initIpfs(config *cfg.Config, loadPlugins bool, log log.Logger) error { // a
 	// init IPFS config with params from config.IPFS
 	// and store in config.IPFS.ConfigRootPath
 	repoRoot := config.IPFSRepoRoot()
-	if !fsrepo.IsInitialized(repoRoot) {
-		var conf *ipfscfg.Config
-
-		identity, err := ipfscfg.CreateIdentity(ioutil.Discard, []options.KeyGenerateOption{
-			options.Key.Type(options.Ed25519Key),
-		})
-		if err != nil {
-			return err
-		}
-		if err := tmos.EnsureDir(repoRoot, 0700); err != nil {
-			return err
-		}
-		if loadPlugins {
-			plugins, err := loader.NewPluginLoader(filepath.Join(repoRoot, "plugins"))
-			if err != nil {
-				return fmt.Errorf("error loading plugins: %s", err)
-			}
-			if err := plugins.Load(&nodes.LazyLedgerPlugin{}); err != nil {
-				return err
-			}
-			if err := plugins.Initialize(); err != nil {
-				return fmt.Errorf("error initializing plugins: %s", err)
-			}
-			if err := plugins.Inject(); err != nil {
-				return fmt.Errorf("error initializing plugins: %s", err)
-			}
-		}
-		conf, err = ipfscfg.InitWithIdentity(identity)
-		if err != nil {
-			return fmt.Errorf("intializing config failed, InitWithIdentity(): %w", err)
-		}
-
-		if err := fsrepo.Init(repoRoot, conf); err != nil {
-			return err
-		}
-	} else {
+	if fsrepo.IsInitialized(repoRoot) {
 		log.Info("ipfs repo already initialized", "repo-root", repoRoot)
+		return nil
 	}
+	var conf *ipfscfg.Config
+
+	identity, err := ipfscfg.CreateIdentity(ioutil.Discard, []options.KeyGenerateOption{
+		options.Key.Type(options.Ed25519Key),
+	})
+	if err != nil {
+		return err
+	}
+	if err := tmos.EnsureDir(repoRoot, 0700); err != nil {
+		return err
+	}
+	if loadPlugins {
+		plugins, err := loader.NewPluginLoader(filepath.Join(repoRoot, "plugins"))
+		if err != nil {
+			return fmt.Errorf("error loading plugins: %s", err)
+		}
+		if err := plugins.Load(&nodes.LazyLedgerPlugin{}); err != nil {
+			return err
+		}
+		if err := plugins.Initialize(); err != nil {
+			return fmt.Errorf("error initializing plugins: %s", err)
+		}
+		if err := plugins.Inject(); err != nil {
+			return fmt.Errorf("error initializing plugins: %s", err)
+		}
+	}
+	conf, err = ipfscfg.InitWithIdentity(identity)
+	if err != nil {
+		return fmt.Errorf("intializing config failed, InitWithIdentity(): %w", err)
+	}
+
+	if err := fsrepo.Init(repoRoot, conf); err != nil {
+		return err
+	}
+
 	return nil
 }
 

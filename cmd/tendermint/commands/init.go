@@ -118,37 +118,37 @@ func InitIpfs(config *cfg.Config) error { // add counter part in ResetAllCmd
 	// init IPFS config with params from config.IPFS
 	// and store in config.IPFS.ConfigRootPath
 	repoRoot := config.IPFSRepoRoot()
-	if !fsrepo.IsInitialized(repoRoot) {
-		var conf *ipfscfg.Config
-
-		identity, err := ipfscfg.CreateIdentity(os.Stdout, []options.KeyGenerateOption{
-			options.Key.Type(options.Ed25519Key),
-		})
-		if err != nil {
-			return err
-		}
-
-		logger.Info("initializing IPFS node", "ipfs-path", repoRoot)
-
-		if err := tmos.EnsureDir(repoRoot, 0700); err != nil {
-			return err
-		}
-
-		conf, err = ipfscfg.InitWithIdentity(identity)
-		if err != nil {
-			return err
-		}
-
-		applyFromTmConfig(conf, config.IPFS)
-		if err := setupPlugins(repoRoot); err != nil {
-			return err
-		}
-
-		if err := fsrepo.Init(repoRoot, conf); err != nil {
-			return err
-		}
-	} else {
+	if fsrepo.IsInitialized(repoRoot) {
 		logger.Info("IPFS was already initialized", "ipfs-path", repoRoot)
+		return nil
+	}
+	var conf *ipfscfg.Config
+
+	identity, err := ipfscfg.CreateIdentity(os.Stdout, []options.KeyGenerateOption{
+		options.Key.Type(options.Ed25519Key),
+	})
+	if err != nil {
+		return err
+	}
+
+	logger.Info("initializing IPFS node", "ipfs-path", repoRoot)
+
+	if err := tmos.EnsureDir(repoRoot, 0700); err != nil {
+		return err
+	}
+
+	conf, err = ipfscfg.InitWithIdentity(identity)
+	if err != nil {
+		return err
+	}
+
+	applyFromTmConfig(conf, config.IPFS)
+	if err := setupPlugins(repoRoot); err != nil {
+		return err
+	}
+
+	if err := fsrepo.Init(repoRoot, conf); err != nil {
+		return err
 	}
 	return nil
 }
