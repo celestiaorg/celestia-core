@@ -177,7 +177,7 @@ func setupPlugins(path string) error {
 		err = plugins.Inject()
 	})
 	if err != nil {
-		return fmt.Errorf("error injecting plugins onec: %w", err)
+		return fmt.Errorf("error injecting plugins once: %w", err)
 	}
 
 	return nil
