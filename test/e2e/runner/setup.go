@@ -19,6 +19,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/lazyledger/lazyledger-core/cmd/tendermint/commands"
 	"github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	"github.com/lazyledger/lazyledger-core/p2p"
@@ -85,6 +86,7 @@ func Setup(testnet *e2e.Testnet) error {
 		if err != nil {
 			return err
 		}
+		cfg.IPFS.ConfigRootPath = filepath.Join(nodeDir, "ipfs")
 		config.WriteConfigFile(filepath.Join(nodeDir, "config", "config.toml"), cfg) // panics
 
 		appCfg, err := MakeAppConfig(node)
@@ -112,6 +114,10 @@ func Setup(testnet *e2e.Testnet) error {
 			filepath.Join(nodeDir, PrivvalDummyKeyFile),
 			filepath.Join(nodeDir, PrivvalDummyStateFile),
 		)).Save()
+		err = commands.InitIpfs(cfg)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -311,6 +317,7 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 		}
 		cfg.P2P.PersistentPeers += peer.AddressP2P(true)
 	}
+
 	return cfg, nil
 }
 

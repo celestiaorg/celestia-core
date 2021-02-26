@@ -65,6 +65,8 @@ type Config struct {
 	Consensus       *ConsensusConfig       `mapstructure:"consensus"`
 	TxIndex         *TxIndexConfig         `mapstructure:"tx-index"`
 	Instrumentation *InstrumentationConfig `mapstructure:"instrumentation"`
+	// Options for IPFS service
+	IPFS *IPFSConfig `mapstructure:"ipfs"`
 }
 
 // DefaultConfig returns a default configuration for a Tendermint node
@@ -79,6 +81,7 @@ func DefaultConfig() *Config {
 		Consensus:       DefaultConsensusConfig(),
 		TxIndex:         DefaultTxIndexConfig(),
 		Instrumentation: DefaultInstrumentationConfig(),
+		IPFS:            DefaultIPFSConfig(),
 	}
 }
 
@@ -94,6 +97,7 @@ func TestConfig() *Config {
 		Consensus:       TestConsensusConfig(),
 		TxIndex:         TestTxIndexConfig(),
 		Instrumentation: TestInstrumentationConfig(),
+		IPFS:            TetsIpfsConfig(),
 	}
 }
 
@@ -1024,6 +1028,10 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		MaxOpenConnections:   3,
 		Namespace:            "tendermint",
 	}
+}
+
+func TetsIpfsConfig() *IPFSConfig {
+	return DefaultIPFSConfig()
 }
 
 // TestInstrumentationConfig returns a default configuration for metrics
