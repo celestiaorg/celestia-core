@@ -175,7 +175,7 @@ func StateProvider(stateProvider statesync.StateProvider) Option {
 }
 
 // IpfsPluginsWereLoaded indicates that all IPFS plugin were already loaded.
-// Setting up plugins will skipped when creating the IPFS node.
+// Setting up plugins will be skipped when creating the IPFS node.
 func IpfsPluginsWereLoaded(wereAlreadyLoaded bool) Option {
 	return func(n *Node) {
 		n.areIfsPluginsAlreadyLoaded = wereAlreadyLoaded
