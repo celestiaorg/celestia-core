@@ -952,6 +952,10 @@ func (n *Node) OnStart() error {
 		}
 	}
 	if n.embedIpfsNode {
+		// It is essential that we create a fresh instance of ipfs node on
+		// each start as internally the node gets only stopped once per instance.
+		// At least in ipfs 0.7.0; see:
+		// https://github.com/lazyledger/go-ipfs/blob/dd295e45608560d2ada7d7c8a30f1eef3f4019bb/core/builder.go#L48-L57
 		n.ipfsNode, err = createIpfsNode(n.config, n.areIfsPluginsAlreadyLoaded, n.Logger)
 		if err != nil {
 			return fmt.Errorf("failed to create IPFS node: %w", err)
@@ -1018,8 +1022,9 @@ func (n *Node) OnStop() {
 	}
 
 	if n.ipfsNode != nil {
-		// TODO(ismail): As far as I understand, the node gets shut down by cancelling the
-		// context that was passed into the node. But calling Close() seems cleaner and we don't
+		// Internally, the node gets shut down by cancelling the
+		// context that was passed into the node.
+		// Calling Close() seems cleaner and we don't
 		// need to keep a reference to the context around.
 		if err := n.ipfsNode.Close(); err != nil {
 			n.Logger.Error("ipfsNode.Close()", err)
@@ -1462,7 +1467,10 @@ func createIpfsNode(config *cfg.Config, arePluginsAlreadyLoaded bool, logger log
 		// Routing: libp2p.DHTClientOption,
 		Repo: repo,
 	}
-	// TODO: change to context.WithCancel if we want to use the context for lifecycle management
+	// Internally, ipfs decorates the context with a
+	// context.WithCancel. Which is then used for lifecycle management.
+	// We do not make use of this context and rely on calling
+	// Close() on the node instead
 	ctx := context.Background()
 	node, err := ipfscore.NewNode(ctx, nodeOptions)
 	if err != nil {
