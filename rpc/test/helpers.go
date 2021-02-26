@@ -203,7 +203,7 @@ func initIpfs(config *cfg.Config, loadPlugins bool, log log.Logger) error { // a
 	// and store in config.IPFS.ConfigRootPath
 	repoRoot := config.IPFSRepoRoot()
 	if fsrepo.IsInitialized(repoRoot) {
-		log.Info("ipfs repo already initialized", "repo-root", repoRoot)
+		log.Info("IPFS repo already initialized", "repo-root", repoRoot)
 		return nil
 	}
 	var conf *ipfscfg.Config
