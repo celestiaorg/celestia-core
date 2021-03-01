@@ -93,12 +93,25 @@ is likely to change when flesh out other parts of the system in more detail.
 
 ## Detailed Design
 
-Also a request / respond pattern?
+Add a package to the library that provides the following features:
+ 1. sample a given number of random row/col indices of extended data square given a DA header and indicate if successful or timeout/other error occurred.
+ 2. reconstruct the whole block from a given DA header
+ 3. get all messages of a particular namespace ID.
 
-- sample a given batch of row/col indices of extended data square
-- sample single cell from extended square (?)
-- reconstruct whole block from DA header (or from data root)
-- randomness source does need to be configurable by caller
+We mention 3. here mostly for completeness. Its details will be described / implemented in a separate ADR / PR.
+
+Apart from the above mentioned features, we informally collect additional requirements:
+- where randomness is needed, the randomness source should be configurable (but should be the same source per instance)
+- all replies by the network should be verified if this is not sufficiently covered by the used libraries already (IPFS)
+- where possible, the requests to the network should happen in parallel (without DoSing the proposer for instance).
+
+This feature should be implemented as two new packages: First, a sub-package should be added to the layzledger-core [p2p] package
+which does not know anything about the core data structures (Block, DA header etc).
+It handles the actual network requests to the IPFS network and operates on IPFS/IPLD objects directly and hence should live under [p2p/ipld]
+
+Second, a high-level API that can "live" closer to the actual types, e.g., in a sub-package in [lazyledger-core/types].
+
+
 
 
 
@@ -145,7 +158,12 @@ Proposed
 
 ### Positive
 
+ - simplicity & ease of implementation
+
 ### Negative
+
+ - latency
+ - being connected to the public IPFS network might be overkill if peers should in fact only care about a subset that participates in the LazyLedger protocol
 
 ### Neutral
 
@@ -158,6 +176,8 @@ Proposed
 - https://fc21.ifca.ai/papers/83.pdf
 - https://github.com/tendermint/spec/pull/254
 
+- https://github.com/lazyledger/lazyledger-core/issues/85
+
 [#17]: https://github.com/lazyledger/lazyledger-core/pull/17
 [#19]: https://github.com/lazyledger/lazyledger-core/pull/19
 [#83]: https://github.com/lazyledger/lazyledger-core/pull/83
@@ -169,5 +189,10 @@ Proposed
 [ipld.Nodes]: https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/format.go#L22-L45
 
 [rsmt2d]: https://github.com/lazyledger/rsmt2d
+
+
+[p2p]: https://github.com/lazyledger/lazyledger-core/tree/master/p2p
+[p2p/ipld]: https://github.com/lazyledger/lazyledger-core/tree/master/p2p/ipld
+[lazyledger-core/types]:  https://github.com/lazyledger/lazyledger-core/tree/master/types
 
 
