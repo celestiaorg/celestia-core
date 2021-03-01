@@ -78,6 +78,7 @@ Also, there is the idea, that nodes only receive the Header with the data root o
 and, in an additional step/request, download the DA header using the library, too.
 While this feature is not considered here, and we assume each node that uses this library has the DA header, this assumption
 is likely to change when flesh out other parts of the system in more detail.
+Note that this also means that light clients would still need to validate that the data root and merkelizing the DA header yield the same result.
 
 ## Decision
 
@@ -101,15 +102,47 @@ Add a package to the library that provides the following features:
 We mention 3. here mostly for completeness. Its details will be described / implemented in a separate ADR / PR.
 
 Apart from the above mentioned features, we informally collect additional requirements:
-- where randomness is needed, the randomness source should be configurable (but should be the same source per instance)
+- where randomness is needed, the randomness source should be configurable
 - all replies by the network should be verified if this is not sufficiently covered by the used libraries already (IPFS)
 - where possible, the requests to the network should happen in parallel (without DoSing the proposer for instance).
 
-This feature should be implemented as two new packages: First, a sub-package should be added to the layzledger-core [p2p] package
-which does not know anything about the core data structures (Block, DA header etc).
-It handles the actual network requests to the IPFS network and operates on IPFS/IPLD objects directly and hence should live under [p2p/ipld]
+This library should be implemented as two new packages:
 
-Second, a high-level API that can "live" closer to the actual types, e.g., in a sub-package in [lazyledger-core/types].
+First, a sub-package should be added to the layzledger-core [p2p] package
+which does not know anything about the core data structures (Block, DA header etc).
+It handles the actual network requests to the IPFS network and operates on IPFS/IPLD objects directly and hence should live under [p2p/ipld].
+
+Second, a high-level API that can "live" closer to the actual types, e.g., in a sub-package in [lazyledger-core/types]
+or in a new top-level package `da`.
+
+We first describe the high-level library here.
+Two functions need to be added and we describe them in detail inline in their
+godoc comments below.
+
+```go
+// ValidateAvailability implements the protocol described in https://fc21.ifca.ai/papers/83.pdf.
+// Specifically all steps of the the protocol described in section
+// _5.2 Random Sampling and Network Block Recovery_ are carried out.
+//
+// In more detail it will first create numSamples random unique coordinates.
+// Then, it will ask the network for the leaf data corresponding to these coordinates.
+// Additionally to the number of requests, the caller can pass in a callback,
+// which will be called on for each retrieved leaf with a verified Merkle proof.
+//
+// Among other use-cases, the callback can be useful to monitoring (progress), or,
+// to process the leaf data the moment it was validated.
+func ValidateAvailability(ctx contex.Context, dah *DataAvailabilityHeader, numSamples int, leafSucessCb func(namespacedleaf []byte)) error {/* ... */}
+
+
+// RetrieveBlock can be used to recover the block Data.
+// It will carry out a similar protocol as described for ValidateAvailability.
+// The key difference is that it will sample enough chunks until it can recover the
+// original data.
+func RetrieveBlock(ctx contex.Context, dah *DataAvailabilityHeader) (types.Data, error) {/* ... */}
+```
+
+We now describe the lower-level library that will be used by above methods.
+
 
 
 
