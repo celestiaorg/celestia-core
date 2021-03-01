@@ -20,6 +20,12 @@ For the time being, besides the academic paper, no other formalization or specif
 Currently, the LazyLedger specification itself only describes the [erasure coding](https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#erasure-coding)
 and how to retrieve the extended data square from the block data.
 
+This ADR:
+- describes the high-level requirements
+- defines the API that and how it can be used by different components of LazyLedger (block gossiping, block sync, DA proofs)
+- documents decision on how to implement this.
+
+
 The core data structures and the erasure coding of the block are already implemented in lazyledger-core ([#17], [#19], [#83]).
 While there are no ADRs for these changes, we can refer to the LazyLedger specification in this case.
 For this aspect, the existing implementation and specification should already be on par for the most part.
@@ -33,12 +39,6 @@ Mustafa Al-Bassam (@musalbas) implemented a [prototype](https://github.com/lazyl
 whose main purpose is to realistically analyse the protocol.
 Although the prototype does make any network requests and only operates locally, it currently is the most advanced implementation of the protocol.
 It uses the [rsmt2d] library.
-
-
-This ADR describes:
- - the high-level requirements
- - the API that and how it can be used by different components of LazyLedger (block gossiping, block sync, DA proofs)
- - decisions on how to implement this.
 
 The implementation will essentially use IPFS' APIs. For reading (and writing) chunks
 will use the IPLD [`DagService`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/merkledag.go#L54),
@@ -116,7 +116,7 @@ Second, a high-level API that can "live" closer to the actual types, e.g., in a 
 or in a new top-level package `da`.
 
 We first describe the high-level library here.
-Two functions need to be added and we describe them in detail inline in their
+Two functions need to be added, and we describe them in detail inline in their
 godoc comments below.
 
 ```go
@@ -131,6 +131,8 @@ godoc comments below.
 //
 // Among other use-cases, the callback can be useful to monitoring (progress), or,
 // to process the leaf data the moment it was validated.
+// The context can be used to provide a timeout.
+// TODO: Should there be a constant = lower bound for #samples
 func ValidateAvailability(
     ctx contex.Context,
     dah *DataAvailabilityHeader,
@@ -143,13 +145,30 @@ func ValidateAvailability(
 // The key difference is that it will sample enough chunks until it can recover the
 // original data.
 func RetrieveBlock(ctx contex.Context, dah *DataAvailabilityHeader) (types.Data, error) {/* ... */}
+
+// PutLeaves takes the namespaced leaves from the extended data square and calls
+// nodes.DataSquareRowOrColumnRawInputParser from the ipld plugin.
+// The resulting ipld nodes are passed to a Batch calling AddMany:
+// https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/batch.go#L29
+// Note, that this method could also return the row and column roots.
+func PutLeaves(namespacedLeaves [][]byte) error
 ```
 
 We now describe the lower-level library that will be used by above methods.
+Again we provide more details inline in the godoc comments directly.
 
-
-
-
+```go
+// GetLeafData takes in a Merkle tree root transformed into a Cid
+// and the leaf index to retrieve.
+// Callers also need to pass in the total number of leaves of that tree
+// to be able to create the path (this can also be achieved by traversing the tree until a leaf is reached).
+func GetLeafData(
+    ctx context.Context,
+    rootCid cid.Cid,
+    leafIndex uint32,
+    totalLeafs uint32,
+) ([]byte, error)
+```
 
 
 
