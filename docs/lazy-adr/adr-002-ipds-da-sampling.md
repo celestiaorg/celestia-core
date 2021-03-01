@@ -131,8 +131,12 @@ godoc comments below.
 //
 // Among other use-cases, the callback can be useful to monitoring (progress), or,
 // to process the leaf data the moment it was validated.
-func ValidateAvailability(ctx contex.Context, dah *DataAvailabilityHeader, numSamples int, leafSucessCb func(namespacedleaf []byte)) error {/* ... */}
-
+func ValidateAvailability(
+    ctx contex.Context,
+    dah *DataAvailabilityHeader,
+    numSamples int,
+    leafSucessCb func(namespacedleaf []byte),
+) error { /* ... */}
 
 // RetrieveBlock can be used to recover the block Data.
 // It will carry out a similar protocol as described for ValidateAvailability.
