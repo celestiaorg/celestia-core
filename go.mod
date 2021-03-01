@@ -45,6 +45,6 @@ require (
 )
 
 replace (
-	github.com/ipfs/go-ipfs => github.com/lazyledger/go-ipfs v0.7.0-lazypatch
+	github.com/ipfs/go-ipfs => github.com/lazyledger/go-ipfs v0.8.0-lazypatch
 	github.com/lazyledger/lazyledger-core/p2p/ipld/plugin => ./p2p/ipld/plugin
 )
