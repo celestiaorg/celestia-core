@@ -44,6 +44,8 @@ The implementation will essentially use IPFS' APIs. For reading (and writing) ch
 will use the IPLD [`DagService`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/merkledag.go#L54),
 more precisely the [`NodeGetter`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/merkledag.go#L18-L27)
 and [`NodeAdder`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/merkledag.go#L29-L39).
+As an optimization, we can also use a [`Batch`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/batch.go#L29)
+to batch add and remove nodes.
 This will be achieved by passing around a [CoreAPI](https://github.com/ipfs/interface-go-ipfs-core/blob/b935dfe5375eac7ea3c65b14b3f9a0242861d0b3/coreapi.go#L15)
 object, which derive from the ipfs node which is created along a with a tendermint node (see [#152]).
 This code snippet does exactly that (see the [go-ipfs documentation] for more examples):
