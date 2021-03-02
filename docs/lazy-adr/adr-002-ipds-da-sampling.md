@@ -147,28 +147,50 @@ func ValidateAvailability(
 func RetrieveBlock(ctx contex.Context, dah *DataAvailabilityHeader) (types.Data, error) {/* ... */}
 
 // PutLeaves takes the namespaced leaves from the extended data square and calls
-// nodes.DataSquareRowOrColumnRawInputParser from the ipld plugin.
+// nodes.DataSquareRowOrColumnRawInputParser of the ipld plugin.
 // The resulting ipld nodes are passed to a Batch calling AddMany:
 // https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/batch.go#L29
 // Note, that this method could also return the row and column roots.
-func PutLeaves(namespacedLeaves [][]byte) error
+// Tha caller is responsible for making sure that the leaves are sorted by namespace ID.
+// The data will be pinned by default.
+func PutLeaves(ctx contex.Context, namespacedLeaves [][]byte) error
 ```
+
+As an alternative to the above `PutLeaves` method, the API could also just take in a block.
+Then it would also need to internally do the erasure coding.
 
 We now describe the lower-level library that will be used by above methods.
 Again we provide more details inline in the godoc comments directly.
 
 ```go
-// GetLeafData takes in a Merkle tree root transformed into a Cid
+// GetLeafData takes in a Namespaced Merkle tree root transformed into a Cid
 // and the leaf index to retrieve.
-// Callers also need to pass in the total number of leaves of that tree
-// to be able to create the path (this can also be achieved by traversing the tree until a leaf is reached).
+// Callers also need to pass in the total number of leaves of that tree.
+// Internally, this will be translated to a path and corresponds to
+// a ipfs dag get request, e.g. namespacedCID/0/1/0/0/1.
+// The retrieved data will be pinned by default.
 func GetLeafData(
     ctx context.Context,
     rootCid cid.Cid,
     leafIndex uint32,
-    totalLeafs uint32,
+    totalLeafs uint32, // this corresponds to the extended square width
 ) ([]byte, error)
 ```
+
+> TODO: add method that calls GetLeafData often enough until the original data can be reconstructed.
+
+`GetLeafData` can be used by above `ValidateAvailability` and `RetrieveBlock`.
+We do not define a corresponding put-function as above's `PutLeaves` already
+
+### A Note on IPFS/IPLD
+
+In IPFS all data is _content addressed_ which basically means the data is identified by its hash.
+Particularly, in the LazyLedger case, the root CID identifies the Namespaced Merkle tree including all its contents (inner and leaf nodes).
+This means that if a `GetLeafData` request succeeds, the retrieved leaf data is in fact the leaf data in the tree.
+We do not need to additionally verify Merkle proofs per leaf as this will essentially be done via IPFS on each layer while
+resolving and getting to the leaf data.
+
+> TODO: validate this assumption and link to code that shows how this is done internally
 
 
 
