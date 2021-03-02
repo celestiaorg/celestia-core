@@ -18,7 +18,7 @@ A high-level, implementation-independent formalization of above mentioned sampli
 
 For the time being, besides the academic paper, no other formalization or specification of the protocol exists.
 Currently, the LazyLedger specification itself only describes the [erasure coding](https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#erasure-coding)
-and how to retrieve the extended data square from the block data.
+and how to construct the extended data square from the block data.
 
 This ADR:
 - describes the high-level requirements
@@ -90,14 +90,19 @@ Note that this also means that light clients would still need to validate that t
 > - mention [ipld experiments]
 
 
+
 ## Detailed Design
 
 Add a package to the library that provides the following features:
- 1. sample a given number of random row/col indices of extended data square given a DA header and indicate if successful or timeout/other error occurred.
- 2. reconstruct the whole block from a given DA header
- 3. get all messages of a particular namespace ID.
+ 1. sample a given number of random row/col indices of extended data square given a DA header and indicate if successful or timeout/other error occurred
+ 2. store the block in the network
+ 3. store the sampled chunks in the network
+ 4. reconstruct the whole block from a given DA header
+ 5. get all messages of a particular namespace ID.
 
-We mention 3. here mostly for completeness. Its details will be described / implemented in a separate ADR / PR.
+
+
+We mention 5. here mostly for completeness. Its details will be described / implemented in a separate ADR / PR.
 
 Apart from the above mentioned features, we informally collect additional requirements:
 - where randomness is needed, the randomness source should be configurable
@@ -106,19 +111,19 @@ Apart from the above mentioned features, we informally collect additional requir
 
 This library should be implemented as two new packages:
 
-First, if necessary, a sub-package should be added to the layzledger-core [p2p] package
+First, a sub-package should be added to the layzledger-core [p2p] package
 which does not know anything about the core data structures (Block, DA header etc).
 It handles the actual network requests to the IPFS network and operates on IPFS/IPLD objects
 directly and hence should live under [p2p/ipld].
 To a some extent this part of the stack already exists.
 
 Second, a high-level API that can "live" closer to the actual types, e.g., in a sub-package in [lazyledger-core/types]
-or in a new top-level package `da`.
+or in a new sub-package `da`.
 
 We first describe the high-level library here and describe functions in
 more detail inline with their godoc comments below.
 
-### API that operates on ll-core types (da package)
+### API that operates on ll-core types
 
 As mentioned above this part of the library has knowledge of the core types (and hence depends on them).
 It does not deal with IPFS internals.
@@ -204,6 +209,21 @@ resolving and getting to the leaf data.
 
 > TODO: validate this assumption and link to code that shows how this is done internally
 
+### Implementation plan
+
+As fully integrating Data Available proofs into tendermint, is a rather larger change we break up the work into the
+following packages (not mentioning the implementation work that was already done):
+
+1. Flesh out the changes in the consensus messages (lazyledger/lazyledger-specs#126, lazyledger/lazyledger-specs#127)
+2. Flesh out the changes that would be necessary to replace the current block gossiping ([LAZY ADR 001](./adr-001-block-propagation.md))
+3. Add the possibility of storing and retrieving block data (samples or whole block) to lazyledger-core (this ADR and related PRs).
+4. Integrate above API (3.) as an addition into lazyledger-core without directly replacing the tendermint counterparts (block gossip etc).
+5. Rip out each component that will be redundant with above integration in one or even several smaller PRs:
+    - block gossiping (see LAZY ADR 001)
+    - modify block store (see LAZY ADR 001)
+    - make downloading full Blocks optional (flag/config)
+    - route some RPC requests to IPFS (see LAZY ADR 001)
+
 
 ## Status
 
@@ -227,6 +247,7 @@ Proposed
  - dependency on a large code-base with lots of features and options of which we only need a small subset of
 
 ### Neutral
+ - two different p2p layers exist in lazyledger-core
 
 ## References
 
