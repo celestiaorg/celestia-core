@@ -152,9 +152,9 @@ func RetrieveBlockData(ctx contex.Context, dah *DataAvailabilityHeader) (types.D
 
 // PutBlock operates directly on the Block.
 // It first computes the erasure coding, aka the extended data square.
-// Row by row calls a lower level library which handles adding the
+// Row by row ir calls a lower level library which handles adding the
 // the row to the Merkle Dag, in our case a Namespaced Merkle Tree.
-// Note, that this method could also return the row and column roots.
+// Note, that this method could also fill the DA header.
 // The data will be pinned by default.
 func (b *Block) PutBlock(ctx contex.Context) error
 ```
