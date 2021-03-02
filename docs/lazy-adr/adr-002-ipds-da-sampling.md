@@ -216,24 +216,28 @@ Proposed
 ### Positive
 
  - simplicity & ease of implementation
+ - can re-use an existing networking and p2p stack (go-ipfs)
+ - potential support of large, cool, and helpful community
+ - high-level API definitions independent of the used stack
 
 ### Negative
 
  - latency
  - being connected to the public IPFS network might be overkill if peers should in fact only care about a subset that participates in the LazyLedger protocol
+ - dependency on a large code-base with lots of features and options of which we only need a small subset of
 
 ### Neutral
 
 ## References
 
-> Are there any relevant PR comments, issues that led up to this, or articles referenced for why we made the given design choice? If so link them here!
+- https://github.com/lazyledger/lazyledger-core/issues/85
+- https://github.com/lazyledger/lazyledger-core/issues/167
 
 - https://docs.ipld.io/#nodes
 - https://arxiv.org/abs/1809.09044
 - https://fc21.ifca.ai/papers/83.pdf
 - https://github.com/tendermint/spec/pull/254
 
-- https://github.com/lazyledger/lazyledger-core/issues/85
 
 [#17]: https://github.com/lazyledger/lazyledger-core/pull/17
 [#19]: https://github.com/lazyledger/lazyledger-core/pull/19
