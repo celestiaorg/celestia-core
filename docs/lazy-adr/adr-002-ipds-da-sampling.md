@@ -7,7 +7,7 @@
 ## Context
 
 In Tendermint's block gossiping each peer gossips random parts of block data to peers.
-For LazyLedger, we need nodes (from light-clients to validators) to be able to sample rows/columns of the erasure coded
+For LazyLedger, we need nodes (from light-clients to validators) to be able to sample row-/column-chunks of the erasure coded
 block (aka the extended data square) from the network.
 This is necessary for Data Availability proofs.
 
