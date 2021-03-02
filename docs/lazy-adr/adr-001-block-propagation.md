@@ -14,35 +14,61 @@ There are two forms of a validator, one that downloads the block and one that sa
 
 ## Detailed Design
 
-> This section does not need to be filled in at the start of the ADR, but must be completed prior to the merging of the implementation.
->
-> Here are some common questions that get answered as part of the detailed design:
->
-> - What are the user requirements?
->
-> - What systems will be affected?
->
-> - What new data structures are needed, what data structures will be changed?
->
-> - What new APIs will be needed, what APIs will be changed?
->
-> - What are the efficiency considerations (time/space)?
->
-> - What are the expected access patterns (load/throughput)?
->
-> - Are there any logging, monitoring or observability needs?
->
-> - Are there any security considerations?
->
-> - Are there any privacy considerations?
->
-> - How will the changes be tested?
->
-> - If the change is large, how will the changes be broken up for ease of review?
->
-> - Will these changes require a breaking (major) release?
->
-> - Does this change require coordination with the SDK or other?
+The proposed design is as follows.
+
+### Proposal
+
+The current proposal type will from having a blockID to having the available data header containing raw hashes that can be transformed into 
+
+```proto
+message Proposal {
+  uint64 height = 1;
+  uint64 round = 2;
+  uint64 timestamp = 3;
+  // 32-byte hash
+  bytes last_header_hash = 4;
+  // 32-byte hash
+  bytes last_commit_hash = 5;
+  // 32-byte hash
+  bytes consensus_root = 6;
+  FeeHeader fee_header = 7;
+  // 32-byte hash
+  bytes state_commitment = 8;
+  uint64 available_data_original_shares_used = 9;
+  AvailableDataHeader available_data_header = 10;
+  // 64-byte signature
+  bytes proposer_signature = 11;
+}
+```
+
+
+### Disk Storage
+
+Currently Lazyledger-core stores all blocks in its store. Going forward only the headers of the blocks within the unbonding period will be stored. This will drastically reduce the amount of storage required by a lazyledger-core node. After the unbonding period all headers will have the option of being pruned. 
+
+Proposed amendment to `BlockStore` interface
+
+```go 
+type BlockStore interface {
+	Base() int64
+	Height() int64
+	Size() int64
+
+	LoadBlockMeta(height int64) *types.BlockMeta
+	LoadHeader(height int64) *types.Header
+
+	SaveHeader(header *types.Header, seenCommit *types.Commit)
+
+	PruneHeaders(height int64) (uint64, error)
+
+	LoadBlockCommit(height int64) *types.Commit
+	LoadSeenCommit(height int64) *types.Commit
+}
+```
+
+Along side these changes the rpc layer will need to change. Instead of querying the LL-core store, the node will redirect the query through IPFS. 
+
+Ideally we would not need to change the client facing interface, documentation on this interface is located [here](../../rpc/openapi/openapi.yaml). This means that CIDS will need to be set and loaded from the store in order to get all the related block information an user requires. 
 
 ## Status
 
