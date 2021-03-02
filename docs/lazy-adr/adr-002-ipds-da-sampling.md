@@ -90,8 +90,6 @@ Note that this also means that light clients would still need to validate that t
 > - mention [ipld experiments]
 
 
-
-
 ## Detailed Design
 
 Add a package to the library that provides the following features:
@@ -108,16 +106,22 @@ Apart from the above mentioned features, we informally collect additional requir
 
 This library should be implemented as two new packages:
 
-First, a sub-package should be added to the layzledger-core [p2p] package
+First, if necessary, a sub-package should be added to the layzledger-core [p2p] package
 which does not know anything about the core data structures (Block, DA header etc).
-It handles the actual network requests to the IPFS network and operates on IPFS/IPLD objects directly and hence should live under [p2p/ipld].
+It handles the actual network requests to the IPFS network and operates on IPFS/IPLD objects
+directly and hence should live under [p2p/ipld].
+To a some extent this part of the stack already exists.
 
 Second, a high-level API that can "live" closer to the actual types, e.g., in a sub-package in [lazyledger-core/types]
 or in a new top-level package `da`.
 
-We first describe the high-level library here.
-Two functions need to be added, and we describe them in detail inline in their
-godoc comments below.
+We first describe the high-level library here and describe functions in
+more detail inline with their godoc comments below.
+
+### API that operates on ll-core types (da package)
+
+As mentioned above this part of the library has knowledge of the core types (and hence depends on them).
+It does not deal with IPFS internals.
 
 ```go
 // ValidateAvailability implements the protocol described in https://fc21.ifca.ai/papers/83.pdf.
@@ -140,14 +144,45 @@ func ValidateAvailability(
     leafSucessCb func(namespacedleaf []byte),
 ) error { /* ... */}
 
-// RetrieveBlock can be used to recover the block Data.
+// RetrieveBlockData can be used to recover the block Data.
 // It will carry out a similar protocol as described for ValidateAvailability.
 // The key difference is that it will sample enough chunks until it can recover the
-// original data.
-func RetrieveBlock(ctx contex.Context, dah *DataAvailabilityHeader) (types.Data, error) {/* ... */}
+// full extended data square, including original data (e.g. by using rsmt2d.RepairExtendedDataSquare).
+func RetrieveBlockData(ctx contex.Context, dah *DataAvailabilityHeader) (types.Data, error) {/* ... */}
 
-// PutLeaves takes the namespaced leaves from the extended data square and calls
-// nodes.DataSquareRowOrColumnRawInputParser of the ipld plugin.
+// PutBlock operates directly on the Block.
+// It first computes the erasure coding, aka the extended data square.
+// Row by row calls a lower level library which handles adding the
+// the row to the Merkle Dag, in our case a Namespaced Merkle Tree.
+// Note, that this method could also return the row and column roots.
+// The data will be pinned by default.
+func (b *Block) PutBlock(ctx contex.Context) error
+```
+
+We now describe the lower-level library that will be used by above methods.
+Again we provide more details inline in the godoc comments directly.
+
+`PutBlock` is a method on `Block` as the erasure coding can then be cached, e.g. in a private field
+in the block.
+
+### Changes to the lower level API closer to IPFS (p2p/ipld)
+
+```go
+// GetLeafData takes in a Namespaced Merkle tree root transformed into a Cid
+// and the leaf index to retrieve.
+// Callers also need to pass in the total number of leaves of that tree.
+// Internally, this will be translated to a IPLD path and corresponds to
+// an ipfs dag get request, e.g. namespacedCID/0/1/0/0/1.
+// The retrieved data should be pinned by default.
+func GetLeafData(
+    ctx context.Context,
+    rootCid cid.Cid,
+    leafIndex uint32,
+    totalLeafs uint32, // this corresponds to the extended square width
+) ([]byte, error)
+
+// PutLeaves takes the namespaced leaves, a row of the from the extended data square,
+// and calls nodes.DataSquareRowOrColumnRawInputParser of the ipld plugin.
 // The resulting ipld nodes are passed to a Batch calling AddMany:
 // https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/batch.go#L29
 // Note, that this method could also return the row and column roots.
@@ -156,31 +191,8 @@ func RetrieveBlock(ctx contex.Context, dah *DataAvailabilityHeader) (types.Data,
 func PutLeaves(ctx contex.Context, namespacedLeaves [][]byte) error
 ```
 
-As an alternative to the above `PutLeaves` method, the API could also just take in a block.
-Then it would also need to internally do the erasure coding.
-
-We now describe the lower-level library that will be used by above methods.
-Again we provide more details inline in the godoc comments directly.
-
-```go
-// GetLeafData takes in a Namespaced Merkle tree root transformed into a Cid
-// and the leaf index to retrieve.
-// Callers also need to pass in the total number of leaves of that tree.
-// Internally, this will be translated to a path and corresponds to
-// a ipfs dag get request, e.g. namespacedCID/0/1/0/0/1.
-// The retrieved data will be pinned by default.
-func GetLeafData(
-    ctx context.Context,
-    rootCid cid.Cid,
-    leafIndex uint32,
-    totalLeafs uint32, // this corresponds to the extended square width
-) ([]byte, error)
-```
-
-> TODO: add method that calls GetLeafData often enough until the original data can be reconstructed.
-
-`GetLeafData` can be used by above `ValidateAvailability` and `RetrieveBlock`.
-We do not define a corresponding put-function as above's `PutLeaves` already
+`GetLeafData` can be used by above `ValidateAvailability` and `RetrieveBlock` and
+`PutLeaves` by `PutBlock`.
 
 ### A Note on IPFS/IPLD
 
@@ -193,40 +205,7 @@ resolving and getting to the leaf data.
 > TODO: validate this assumption and link to code that shows how this is done internally
 
 
-
-> This section does not need to be filled in at the start of the ADR, but must be completed prior to the merging of the implementation.
->
-> Here are some common questions that get answered as part of the detailed design:
->
-> - What are the user requirements?
->
-> - What systems will be affected?
->
-> - What new data structures are needed, what data structures will be changed?
->
-> - What new APIs will be needed, what APIs will be changed?
->
-> - What are the efficiency considerations (time/space)?
->
-> - What are the expected access patterns (load/throughput)?
->
-> - Are there any logging, monitoring or observability needs?
->
-> - Are there any security considerations?
->
-> - Are there any privacy considerations?
->
-> - How will the changes be tested?
->
-> - If the change is large, how will the changes be broken up for ease of review?
->
-> - Will these changes require a breaking (major) release?
->
-> - Does this change require coordination with the SDK or other?
-
 ## Status
-
-> A decision may be "proposed" if it hasn't been agreed upon yet, or "accepted" once it is agreed upon. Once the ADR has been implemented mark the ADR as "implemented". If a later ADR changes or reverses a decision, it may be marked as "deprecated" or "superseded" with a reference to its replacement.
 
 Proposed
 
