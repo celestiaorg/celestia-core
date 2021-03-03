@@ -45,21 +45,21 @@ will use the IPLD [`DagService`](https://github.com/ipfs/go-ipld-format/blob/d2e
 more precisely the [`NodeGetter`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/merkledag.go#L18-L27)
 and [`NodeAdder`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/merkledag.go#L29-L39).
 As an optimization, we can also use a [`Batch`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/batch.go#L29)
-to batch add and remove nodes.
+to batch adding and removing nodes.
 This will be achieved by passing around a [CoreAPI](https://github.com/ipfs/interface-go-ipfs-core/blob/b935dfe5375eac7ea3c65b14b3f9a0242861d0b3/coreapi.go#L15)
-object, which derive from the ipfs node which is created along a with a tendermint node (see [#152]).
+object, which derive from the IPFS node which is created along a with a tendermint node (see [#152]).
 This code snippet does exactly that (see the [go-ipfs documentation] for more examples):
-````go
+```go
 // This constructs an IPFS node instance
 node, _ := core.NewNode(ctx, nodeOptions)
 // This attaches the Core API to the constructed node
 coreApi := coreapi.NewCoreAPI(node)
-````
+```
 
 The above mentioned IPLD methods operate on so called [ipld.Nodes].
 When computing the data root, we can pass in a [`NodeVisitor`](https://github.com/lazyledger/nmt/blob/b22170d6f23796a186c07e87e4ef9856282ffd1a/nmt.go#L22)
 into the Namespaced Merkle Tree library to create these (each inner- and leaf-node in the tree becomes an ipld node).
-As a peer that requests such an ipld node, the LazyLedger ipld plugin provides the [function](https://github.com/lazyledger/lazyledger-core/blob/ceb881a177b6a4a7e456c7c4ab1dd0eb2b263066/p2p/ipld/plugin/nodes/nodes.go#L175)
+As a peer that requests such an IPLD node, the LazyLedger IPLD plugin provides the [function](https://github.com/lazyledger/lazyledger-core/blob/ceb881a177b6a4a7e456c7c4ab1dd0eb2b263066/p2p/ipld/plugin/nodes/nodes.go#L175)
 `NmtNodeParser` to transform the retrieved raw data back into an `ipld.Node`.
 
 A more high-level description on the changes required to rip out the current block gossiping routine,
@@ -274,4 +274,3 @@ Proposed
 [p2p]: https://github.com/lazyledger/lazyledger-core/tree/master/p2p
 [p2p/ipld]: https://github.com/lazyledger/lazyledger-core/tree/master/p2p/ipld
 [lazyledger-core/types]:  https://github.com/lazyledger/lazyledger-core/tree/master/types
-
