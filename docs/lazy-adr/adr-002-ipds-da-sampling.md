@@ -68,13 +68,13 @@ and/or in a few smaller, separate followup ADRs.
 
 ## Alternative Approaches
 
-Instead of creating a full ipfs node object and passing it around as explained above
+Instead of creating a full IPFS node object and passing it around as explained above
  - use API (http)
  - use ipld-light
  - use alternative client
 
 Also, for better performance
- - use graph-sync, ipld selectors (ipld-prime)
+ - use graph-sync, IPLD selectors (ipld-prime)
 
 Also, there is the idea, that nodes only receive the Header with the data root only
 and, in an additional step/request, download the DA header using the library, too.
@@ -102,8 +102,6 @@ Add a package to the library that provides the following features:
  4. reconstruct the whole block from a given DA header
  5. get all messages of a particular namespace ID.
 
-
-
 We mention 5. here mostly for completeness. Its details will be described / implemented in a separate ADR / PR.
 
 Apart from the above mentioned features, we informally collect additional requirements:
@@ -125,14 +123,14 @@ or in a new sub-package `da`.
 We first describe the high-level library here and describe functions in
 more detail inline with their godoc comments below.
 
-### API that operates on ll-core types
+### API that operates on lazyledger-core types
 
 As mentioned above this part of the library has knowledge of the core types (and hence depends on them).
 It does not deal with IPFS internals.
 
 ```go
 // ValidateAvailability implements the protocol described in https://fc21.ifca.ai/papers/83.pdf.
-// Specifically all steps of the the protocol described in section
+// Specifically all steps of the protocol described in section
 // _5.2 Random Sampling and Network Block Recovery_ are carried out.
 //
 // In more detail it will first create numSamples random unique coordinates.
@@ -233,23 +231,21 @@ Proposed
 
 ## Consequences
 
-> This section describes the consequences, after applying the decision. All consequences should be summarized here, not just the "positive" ones.
-
 ### Positive
 
- - simplicity & ease of implementation
- - can re-use an existing networking and p2p stack (go-ipfs)
- - potential support of large, cool, and helpful community
- - high-level API definitions independent of the used stack
+- simplicity & ease of implementation
+- can re-use an existing networking and p2p stack (go-ipfs)
+- potential support of large, cool, and helpful community
+- high-level API definitions independent of the used stack
 
 ### Negative
 
- - latency
- - being connected to the public IPFS network might be overkill if peers should in fact only care about a subset that participates in the LazyLedger protocol
- - dependency on a large code-base with lots of features and options of which we only need a small subset of
+- latency
+- being connected to the public IPFS network might be overkill if peers should in fact only care about a subset that participates in the LazyLedger protocol
+- dependency on a large code-base with lots of features and options of which we only need a small subset of
 
 ### Neutral
- - two different p2p layers exist in lazyledger-core
+- two different p2p layers exist in lazyledger-core
 
 ## References
 
@@ -278,5 +274,4 @@ Proposed
 [p2p]: https://github.com/lazyledger/lazyledger-core/tree/master/p2p
 [p2p/ipld]: https://github.com/lazyledger/lazyledger-core/tree/master/p2p/ipld
 [lazyledger-core/types]:  https://github.com/lazyledger/lazyledger-core/tree/master/types
-
 
