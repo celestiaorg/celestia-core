@@ -5,7 +5,7 @@
 <!-- markdownlint-enable -->
 
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/lazyledger/lazyledger-core)
-[![Telegram](https://img.shields.io/discord/669268347736686612.svg)](https://medium.com/lazyledger)
+[![Community](https://img.shields.io/badge/chat%20on-discord-orange?&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/YsnTPcSfWQ)
 [![license](https://img.shields.io/github/license/tendermint/tendermint.svg)](https://github.com/lazyledger/lazyledger-core/blob/master/LICENSE)
 
 LazyLedger Core will power the LazyLedger main chain by leveraging Tendermint.
