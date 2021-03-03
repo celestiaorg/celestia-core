@@ -45,21 +45,21 @@ will use the IPLD [`DagService`](https://github.com/ipfs/go-ipld-format/blob/d2e
 more precisely the [`NodeGetter`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/merkledag.go#L18-L27)
 and [`NodeAdder`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/merkledag.go#L29-L39).
 As an optimization, we can also use a [`Batch`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/batch.go#L29)
-to batch add and remove nodes.
+to batch adding and removing nodes.
 This will be achieved by passing around a [CoreAPI](https://github.com/ipfs/interface-go-ipfs-core/blob/b935dfe5375eac7ea3c65b14b3f9a0242861d0b3/coreapi.go#L15)
-object, which derive from the ipfs node which is created along a with a tendermint node (see [#152]).
+object, which derive from the IPFS node which is created along a with a tendermint node (see [#152]).
 This code snippet does exactly that (see the [go-ipfs documentation] for more examples):
-````go
+```go
 // This constructs an IPFS node instance
 node, _ := core.NewNode(ctx, nodeOptions)
 // This attaches the Core API to the constructed node
 coreApi := coreapi.NewCoreAPI(node)
-````
+```
 
 The above mentioned IPLD methods operate on so called [ipld.Nodes].
 When computing the data root, we can pass in a [`NodeVisitor`](https://github.com/lazyledger/nmt/blob/b22170d6f23796a186c07e87e4ef9856282ffd1a/nmt.go#L22)
 into the Namespaced Merkle Tree library to create these (each inner- and leaf-node in the tree becomes an ipld node).
-As a peer that requests such an ipld node, the LazyLedger ipld plugin provides the [function](https://github.com/lazyledger/lazyledger-core/blob/ceb881a177b6a4a7e456c7c4ab1dd0eb2b263066/p2p/ipld/plugin/nodes/nodes.go#L175)
+As a peer that requests such an IPLD node, the LazyLedger IPLD plugin provides the [function](https://github.com/lazyledger/lazyledger-core/blob/ceb881a177b6a4a7e456c7c4ab1dd0eb2b263066/p2p/ipld/plugin/nodes/nodes.go#L175)
 `NmtNodeParser` to transform the retrieved raw data back into an `ipld.Node`.
 
 A more high-level description on the changes required to rip out the current block gossiping routine,
@@ -68,13 +68,13 @@ and/or in a few smaller, separate followup ADRs.
 
 ## Alternative Approaches
 
-Instead of creating a full ipfs node object and passing it around as explained above
+Instead of creating a full IPFS node object and passing it around as explained above
  - use API (http)
  - use ipld-light
  - use alternative client
 
 Also, for better performance
- - use graph-sync, ipld selectors (ipld-prime)
+ - use graph-sync, IPLD selectors (ipld-prime)
 
 Also, there is the idea, that nodes only receive the Header with the data root only
 and, in an additional step/request, download the DA header using the library, too.
@@ -102,8 +102,6 @@ Add a package to the library that provides the following features:
  4. reconstruct the whole block from a given DA header
  5. get all messages of a particular namespace ID.
 
-
-
 We mention 5. here mostly for completeness. Its details will be described / implemented in a separate ADR / PR.
 
 Apart from the above mentioned features, we informally collect additional requirements:
@@ -125,14 +123,14 @@ or in a new sub-package `da`.
 We first describe the high-level library here and describe functions in
 more detail inline with their godoc comments below.
 
-### API that operates on ll-core types
+### API that operates on lazyledger-core types
 
 As mentioned above this part of the library has knowledge of the core types (and hence depends on them).
 It does not deal with IPFS internals.
 
 ```go
 // ValidateAvailability implements the protocol described in https://fc21.ifca.ai/papers/83.pdf.
-// Specifically all steps of the the protocol described in section
+// Specifically all steps of the protocol described in section
 // _5.2 Random Sampling and Network Block Recovery_ are carried out.
 //
 // In more detail it will first create numSamples random unique coordinates.
@@ -233,23 +231,21 @@ Proposed
 
 ## Consequences
 
-> This section describes the consequences, after applying the decision. All consequences should be summarized here, not just the "positive" ones.
-
 ### Positive
 
- - simplicity & ease of implementation
- - can re-use an existing networking and p2p stack (go-ipfs)
- - potential support of large, cool, and helpful community
- - high-level API definitions independent of the used stack
+- simplicity & ease of implementation
+- can re-use an existing networking and p2p stack (go-ipfs)
+- potential support of large, cool, and helpful community
+- high-level API definitions independent of the used stack
 
 ### Negative
 
- - latency
- - being connected to the public IPFS network might be overkill if peers should in fact only care about a subset that participates in the LazyLedger protocol
- - dependency on a large code-base with lots of features and options of which we only need a small subset of
+- latency
+- being connected to the public IPFS network might be overkill if peers should in fact only care about a subset that participates in the LazyLedger protocol
+- dependency on a large code-base with lots of features and options of which we only need a small subset of
 
 ### Neutral
- - two different p2p layers exist in lazyledger-core
+- two different p2p layers exist in lazyledger-core
 
 ## References
 
@@ -278,5 +274,3 @@ Proposed
 [p2p]: https://github.com/lazyledger/lazyledger-core/tree/master/p2p
 [p2p/ipld]: https://github.com/lazyledger/lazyledger-core/tree/master/p2p/ipld
 [lazyledger-core/types]:  https://github.com/lazyledger/lazyledger-core/tree/master/types
-
-
