@@ -37,10 +37,10 @@ This new method is a sub-set of the proposed ABCI changes aka [ABCI++](https://g
 
 Mustafa Al-Bassam (@musalbas) implemented a [prototype](https://github.com/lazyledger/lazyledger-prototype)
 whose main purpose is to realistically analyse the protocol.
-Although the prototype does make any network requests and only operates locally, it currently is the most advanced implementation of the protocol.
+Although the prototype does not make any network requests and only operates locally, it can partly serve as a reference implementation.
 It uses the [rsmt2d] library.
 
-The implementation will essentially use IPFS' APIs. For reading (and writing) chunks
+The implementation will essentially use IPFS' APIs. For reading (and writing) chunks it
 will use the IPLD [`DagService`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/merkledag.go#L54),
 more precisely the [`NodeGetter`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/merkledag.go#L18-L27)
 and [`NodeAdder`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/merkledag.go#L29-L39).
