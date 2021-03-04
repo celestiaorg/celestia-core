@@ -97,7 +97,7 @@ Note that this also means that light clients would still need to validate that t
 
 Add a package to the library that provides the following features:
  1. sample a given number of random row/col indices of extended data square given a DA header and indicate if successful or timeout/other error occurred
- 2. store the block in the network
+ 2. store the block in the network by adding it to the peer's local Merkle-DAG whose content is discoverable via a DHT
  3. store the sampled chunks in the network
  4. reconstruct the whole block from a given DA header
  5. get all messages of a particular namespace ID.
