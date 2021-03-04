@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -11,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-
+	ipfsapi "github.com/ipfs/interface-go-ipfs-core"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	"github.com/lazyledger/lazyledger-core/crypto"
@@ -91,6 +92,8 @@ type State struct {
 
 	// store blocks and commits
 	blockStore sm.BlockStore
+
+	IpfsAPI ipfsapi.CoreAPI
 
 	// create and execute blocks
 	blockExec *sm.BlockExecutor
@@ -1073,6 +1076,12 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		block, blockParts = cs.createProposalBlock()
 		if block == nil {
 			return
+		}
+		// post data to ipfs
+		// TODO(evan): use some other context
+		err := block.PutBlock(context.Background(), cs.IpfsAPI)
+		if err != nil {
+			cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
 		}
 	}
 

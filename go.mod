@@ -18,6 +18,7 @@ require (
 	github.com/hdevalence/ed25519consensus v0.0.0-20201207055737-7fde80a9d5ff
 	github.com/ipfs/go-ipfs v0.8.0
 	github.com/ipfs/go-ipfs-config v0.12.0
+	github.com/ipfs/go-ipld-format v0.2.0
 	github.com/ipfs/interface-go-ipfs-core v0.4.0
 	github.com/lazyledger/lazyledger-core/p2p/ipld/plugin v0.0.0-20210219190522-0eccfb24e2aa
 	github.com/lazyledger/nmt v0.2.0
