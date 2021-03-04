@@ -76,7 +76,7 @@ Instead of creating a full IPFS node object and passing it around as explained a
 Also, for better performance
  - use [graph-sync], [IPLD selectors], e.g. via [ipld-prime]
 
-Also, there is the idea, that nodes only receive the Header with the data root only
+Also, there is the idea, that nodes only receive the [Header] with the data root only
 and, in an additional step/request, download the DA header using the library, too.
 While this feature is not considered here, and we assume each node that uses this library has the DA header, this assumption
 is likely to change when flesh out other parts of the system in more detail.
@@ -266,6 +266,7 @@ Proposed
 
 [lazyledger-specs#126]: https://github.com/lazyledger/lazyledger-specs/issues/126
 [lazyledger-specs#127]: https://github.com/lazyledger/lazyledger-specs/pulls/127
+[Header]: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#header
 
 [go-ipfs documentation]: https://github.com/ipfs/go-ipfs/tree/master/docs/examples/go-ipfs-as-a-library#use-go-ipfs-as-a-library-to-spawn-a-node-and-add-a-file
 [ipld experiments]: https://github.com/lazyledger/ipld-plugin-experiments
