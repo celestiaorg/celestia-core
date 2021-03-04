@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -10,7 +11,11 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
+	format "github.com/ipfs/go-ipld-format"
+	ipfsapi "github.com/ipfs/interface-go-ipfs-core"
+	"github.com/ipfs/interface-go-ipfs-core/path"
 
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
 	"github.com/lazyledger/rsmt2d"
@@ -257,6 +262,128 @@ func mustPush(rowTree *nmt.NamespacedMerkleTree, id namespace.ID, data []byte) {
 			),
 		)
 	}
+}
+
+func (b *Block) PutBlock(ctx context.Context, api ipfsapi.CoreAPI) error {
+	if api == nil {
+		return errors.New("no ipfs api object provided")
+	}
+
+	// recomputing the erasured data
+	namespacedShares := b.Data.computeShares()
+	shares := namespacedShares.RawShares()
+	if len(shares) == 0 {
+		// no shares -> no row/colum roots -> hash(empty)
+		b.DataHash = b.DataAvailabilityHeader.Hash()
+		return nil
+	}
+
+	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
+	if err != nil {
+		panic(fmt.Sprintf("unexpected error: %v", err))
+	}
+
+	squareWidth := extendedDataSquare.Width()
+	originalDataWidth := squareWidth / 2
+
+	// add namespaces to erasured shares and chunk into tree sized portions
+	leaves := make([][][]byte, 2*squareWidth)
+	for outerIdx := uint(0); outerIdx < squareWidth; outerIdx++ {
+		rowLeaves := make([][]byte, squareWidth)
+		colLeaves := make([][]byte, squareWidth)
+		for innerIdx := uint(0); innerIdx < squareWidth; innerIdx++ {
+			if outerIdx < originalDataWidth && innerIdx < originalDataWidth {
+				rowShare := namespacedShares[outerIdx*originalDataWidth+innerIdx]
+				colShare := namespacedShares[innerIdx*originalDataWidth+outerIdx]
+				rowLeaves[innerIdx] = append(rowShare.NamespaceID(), rowShare.Data()...)
+				colLeaves[innerIdx] = append(colShare.NamespaceID(), colShare.Data()...)
+			} else {
+				rowData := extendedDataSquare.Row(outerIdx)
+				colData := extendedDataSquare.Column(outerIdx)
+				parityCellFromRow := rowData[innerIdx]
+				parityCellFromCol := colData[innerIdx]
+				rowLeaves[innerIdx] = append(copyOfParityNamespaceID(), parityCellFromRow...)
+				colLeaves[innerIdx] = append(copyOfParityNamespaceID(), parityCellFromCol...)
+			}
+		}
+		leaves[outerIdx] = rowLeaves
+		leaves[2*outerIdx] = colLeaves
+	}
+
+	// create the ipld nodes using the plugin
+	var allNodes []format.Node
+	for _, leafSet := range leaves {
+		ipldNodes, err := generateIPLDNodes(leafSet)
+		if err != nil {
+			return err
+		}
+		allNodes = append(allNodes, ipldNodes...)
+	}
+
+	return format.NewBatch(ctx, pinningAdder{CoreAPI: api}).AddMany(ctx, allNodes)
+}
+
+func generateIPLDNodes(namespacedLeaves [][]byte) ([]format.Node, error) {
+	// make a io.Writer for the leaves
+	b := bytes.NewBuffer([]byte{})
+
+	// flatten the leaves by writing independently
+	for _, leaf := range namespacedLeaves {
+		_, err := b.Write(leaf)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// create the ipld.Nodes using the plugin
+	return nodes.DataSquareRowOrColumnRawInputParser(b, 0, 0)
+}
+
+func copyOfParityNamespaceID() []byte {
+	out := make([]byte, len(ParitySharesNamespaceID))
+	copy(out, ParitySharesNamespaceID)
+	return out
+}
+
+// TODO(evan): put pinningAdder somewhere else
+
+// pinningAdder wraps the core ipfs api in order to pin nodes to the local dag
+// fulfills the ipld.NodeAdder interface
+type pinningAdder struct {
+	ipfsapi.CoreAPI
+}
+
+// Add fulfills the NodeAdder interface by pinning a single ipld nod to
+// the local dag
+func (p pinningAdder) Add(ctx context.Context, nd format.Node) error {
+	// add the node to the dag
+	err := p.Dag().Add(ctx, nd)
+	if err != nil {
+		return err
+	}
+
+	// pin the node to the dag
+	return p.Pin().Add(ctx, path.IpldPath(nd.Cid()))
+}
+
+// AddMany fulfills the NodeAdder interface by pinning multiple ipld nodes to
+// the local dag
+func (p pinningAdder) AddMany(ctx context.Context, nds []format.Node) error {
+	// add the nodes to the dag
+	err := p.Dag().AddMany(ctx, nds)
+	if err != nil {
+		return err
+	}
+
+	// pin the nodes locally
+	for _, n := range nds {
+		err = p.Pin().Add(ctx, path.IpldPath(n.Cid()))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Hash computes and returns the block hash.
