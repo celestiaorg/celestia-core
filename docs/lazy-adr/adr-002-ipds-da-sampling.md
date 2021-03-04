@@ -214,7 +214,7 @@ resolving and getting to the leaf data.
 As fully integrating Data Available proofs into tendermint, is a rather larger change we break up the work into the
 following packages (not mentioning the implementation work that was already done):
 
-1. Flesh out the changes in the consensus messages (lazyledger/lazyledger-specs#126, lazyledger/lazyledger-specs#127)
+1. Flesh out the changes in the consensus messages ([lazyledger-specs#126], [lazyledger-specs#127])
 2. Flesh out the changes that would be necessary to replace the current block gossiping ([LAZY ADR 001](./adr-001-block-propagation.md))
 3. Add the possibility of storing and retrieving block data (samples or whole block) to lazyledger-core (this ADR and related PRs).
 4. Integrate above API (3.) as an addition into lazyledger-core without directly replacing the tendermint counterparts (block gossip etc).
@@ -263,6 +263,9 @@ Proposed
 [#83]: https://github.com/lazyledger/lazyledger-core/pull/83
 
 [#152]: https://github.com/lazyledger/lazyledger-core/pull/152
+
+[lazyledger-specs#126]: https://github.com/lazyledger/lazyledger-specs/issues/126
+[lazyledger-specs#127]: https://github.com/lazyledger/lazyledger-specs/pulls/127
 
 [go-ipfs documentation]: https://github.com/ipfs/go-ipfs/tree/master/docs/examples/go-ipfs-as-a-library#use-go-ipfs-as-a-library-to-spawn-a-node-and-add-a-file
 [ipld experiments]: https://github.com/lazyledger/ipld-plugin-experiments
