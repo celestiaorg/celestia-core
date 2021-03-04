@@ -74,7 +74,7 @@ Instead of creating a full IPFS node object and passing it around as explained a
  - use alternative client
 
 Also, for better performance
- - use graph-sync, IPLD selectors (ipld-prime)
+ - use [graph-sync], [IPLD selectors], e.g. via [ipld-prime]
 
 Also, there is the idea, that nodes only receive the Header with the data root only
 and, in an additional step/request, download the DA header using the library, too.
@@ -267,6 +267,9 @@ Proposed
 [go-ipfs documentation]: https://github.com/ipfs/go-ipfs/tree/master/docs/examples/go-ipfs-as-a-library#use-go-ipfs-as-a-library-to-spawn-a-node-and-add-a-file
 [ipld experiments]: https://github.com/lazyledger/ipld-plugin-experiments
 [ipld.Nodes]: https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/format.go#L22-L45
+[graph-sync]: https://github.com/ipld/specs/blob/master/block-layer/graphsync/graphsync.md
+[IPLD selectors]: https://github.com/ipld/specs/blob/master/selectors/selectors.md
+[ipld-prime]: https://github.com/ipld/go-ipld-prime
 
 [rsmt2d]: https://github.com/lazyledger/rsmt2d
 
