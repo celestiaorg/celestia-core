@@ -277,6 +277,6 @@ Proposed
 [rsmt2d]: https://github.com/lazyledger/rsmt2d
 
 
-[p2p]: https://github.com/lazyledger/lazyledger-core/tree/master/p2p
-[p2p/ipld]: https://github.com/lazyledger/lazyledger-core/tree/master/p2p/ipld
-[lazyledger-core/types]:  https://github.com/lazyledger/lazyledger-core/tree/master/types
+[p2p]: https://github.com/lazyledger/lazyledger-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/p2p
+[p2p/ipld]: https://github.com/lazyledger/lazyledger-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/p2p/ipld
+[lazyledger-core/types]: https://github.com/lazyledger/lazyledger-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/types
