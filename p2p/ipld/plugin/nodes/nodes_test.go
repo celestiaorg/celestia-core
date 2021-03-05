@@ -40,9 +40,42 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
-			n := nmt.New(sha256.New())
 			buf := createByteBufFromRawData(t, tt.leafData)
+
+			gotNodes, err := DataSquareRowOrColumnRawInputParser(buf, 0, 0)
+			if err != nil {
+				t.Errorf("DataSquareRowOrColumnRawInputParser() unexpected error = %v", err)
+				return
+			}
+
+			multiHashOverhead := 4
+			lastNodeCid := gotNodes[len(gotNodes)-1].Cid()
+			if gotHash, wantHash := lastNodeCid.Hash(), nmt.Sha256Namespace8FlaggedLeaf(tt.leafData[0]); !bytes.Equal(gotHash[multiHashOverhead:], wantHash) {
+				t.Errorf("first node's hash does not match the Cid\ngot: %v\nwant: %v", gotHash[multiHashOverhead:], wantHash)
+			}
+			nodePrefixOffset := 1 // leaf / inner node prefix is one byte
+			lastLeafNodeData := gotNodes[len(gotNodes)-1].RawData()
+			if gotData, wantData := lastLeafNodeData[nodePrefixOffset:], tt.leafData[0]; !bytes.Equal(gotData, wantData) {
+				t.Errorf("first node's data does not match the leaf's data\ngot: %v\nwant: %v", gotData, wantData)
+			}
+		})
+	}
+}
+
+func TestNodeCollector(t *testing.T) {
+	tests := []struct {
+		name     string
+		leafData [][]byte
+	}{
+		{"16 leaves", generateRandNamespacedRawData(16, namespaceSize, shareSize)},
+		{"32 leaves", generateRandNamespacedRawData(32, namespaceSize, shareSize)},
+		{"extended row", generateExtendedRow(t)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			collector := NewNodeCollector()
+			n := nmt.New(sha256.New(), nmt.NamespaceIDSize(namespaceSize), nmt.NodeVisitor(collector.Visit))
+
 			for _, share := range tt.leafData {
 				err := n.Push(share[:namespaceSize], share[namespaceSize:])
 				if err != nil {
@@ -50,11 +83,11 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 					return
 				}
 			}
-			gotNodes, err := DataSquareRowOrColumnRawInputParser(buf, 0, 0)
-			if err != nil {
-				t.Errorf("DataSquareRowOrColumnRawInputParser() unexpected error = %v", err)
-				return
-			}
+
+			n.Root()
+
+			gotNodes := collector.Nodes()
+
 			rootNodeCid := gotNodes[0].Cid()
 			multiHashOverhead := 4
 			lastNodeHash := rootNodeCid.Hash()
