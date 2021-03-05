@@ -121,34 +121,15 @@ func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
 // the commandline, the ipld Nodes will rather be created together with the NMT
 // root instead of re-computing it here.
 func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int) ([]node.Node, error) {
-	// The extendedRowOrColumnSize is hardcode this here to avoid importing:
-	// https://github.com/lazyledger/lazyledger-core/blob/585566317e519bbb6d35d149b7e856c4c1e8657c/types/consts.go#L23
-	const extendedRowOrColumnSize = 2 * 128
 	br := bufio.NewReader(r)
-	nodes := make([]node.Node, 0, extendedRowOrColumnSize)
-	nodeCollector := func(hash []byte, children ...[]byte) {
-		cid := mustCidFromNamespacedSha256(hash)
-		switch len(children) {
-		case 1:
-			prependNode(nmtLeafNode{
-				cid:  cid,
-				Data: children[0],
-			}, &nodes)
-		case 2:
-			prependNode(nmtNode{
-				cid: cid,
-				l:   children[0],
-				r:   children[1],
-			}, &nodes)
-		default:
-			panic("expected a binary tree")
-		}
-	}
+	collector := NewNodeCollector()
+
 	n := nmt.New(
 		sha256.New(),
 		nmt.NamespaceIDSize(namespaceSize),
-		nmt.NodeVisitor(nodeCollector),
+		nmt.NodeVisitor(collector.Visit),
 	)
+
 	for {
 		namespacedLeaf := make([]byte, shareSize+namespaceSize)
 		if _, err := io.ReadFull(br, namespacedLeaf); err != nil {
@@ -163,13 +144,48 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 	}
 	// to trigger the collection of nodes:
 	_ = n.Root()
-	return nodes, nil
+	return collector.Nodes(), nil
 }
 
-func prependNode(newNode node.Node, nodes *[]node.Node) {
-	*nodes = append(*nodes, node.Node(nil))
-	copy((*nodes)[1:], *nodes)
-	(*nodes)[0] = newNode
+type NmtNodeCollector struct {
+	nodes []node.Node
+}
+
+func NewNodeCollector() *NmtNodeCollector {
+	// The extendedRowOrColumnSize is hardcode this here to avoid importing:
+	// https://github.com/lazyledger/lazyledger-core/blob/585566317e519bbb6d35d149b7e856c4c1e8657c/types/consts.go#L23
+	const extendedRowOrColumnSize = 2 * 128
+	return &NmtNodeCollector{nodes: make([]node.Node, 0, extendedRowOrColumnSize)}
+}
+
+func (n NmtNodeCollector) Nodes() []node.Node {
+	return n.nodes
+}
+
+func (n *NmtNodeCollector) Visit(hash []byte, children ...[]byte) {
+	cid := mustCidFromNamespacedSha256(hash)
+	switch len(children) {
+	case 1:
+		n.nodes = prependNode(nmtLeafNode{
+			cid:  cid,
+			Data: children[0],
+		}, n.nodes)
+	case 2:
+		n.nodes = prependNode(nmtNode{
+			cid: cid,
+			l:   children[0],
+			r:   children[1],
+		}, n.nodes)
+	default:
+		panic("expected a binary tree")
+	}
+}
+
+func prependNode(newNode node.Node, nodes []node.Node) []node.Node {
+	nodes = append(nodes, node.Node(nil))
+	copy(nodes[1:], nodes)
+	nodes[0] = newNode
+	return nodes
 }
 
 func NmtNodeParser(block blocks.Block) (node.Node, error) {
