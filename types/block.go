@@ -12,8 +12,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 	format "github.com/ipfs/go-ipld-format"
-	ipfsapi "github.com/ipfs/interface-go-ipfs-core"
-	"github.com/ipfs/interface-go-ipfs-core/path"
 
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/lazyledger/nmt"
@@ -264,14 +262,16 @@ func mustPush(rowTree *nmt.NamespacedMerkleTree, id namespace.ID, data []byte) {
 	}
 }
 
-func (b *Block) PutBlock(ctx context.Context, api ipfsapi.CoreAPI) error {
-	if api == nil {
-		return errors.New("no ipfs api object provided")
+func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error {
+	if nodeAdder == nil {
+		return errors.New("no ipfs node adder provided")
 	}
 
 	// recomputing the erasured data
 	namespacedShares := b.Data.computeShares()
 	shares := namespacedShares.RawShares()
+
+	fmt.Println("ns shares", len(namespacedShares))
 
 	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
 	if err != nil {
@@ -280,9 +280,11 @@ func (b *Block) PutBlock(ctx context.Context, api ipfsapi.CoreAPI) error {
 
 	squareWidth := extendedDataSquare.Width()
 	originalDataWidth := squareWidth / 2
-
+	fmt.Println("origianl square width", squareWidth/2)
 	// add namespaces to erasured shares and chunk into tree sized portions
 	leaves := make([][][]byte, 2*squareWidth)
+	// this is adding the namespace back to Q1 shares and the parity ns to the rest
+	// it's also isolating the leaves
 	for outerIdx := uint(0); outerIdx < squareWidth; outerIdx++ {
 		rowLeaves := make([][]byte, squareWidth)
 		colLeaves := make([][]byte, squareWidth)
@@ -307,7 +309,11 @@ func (b *Block) PutBlock(ctx context.Context, api ipfsapi.CoreAPI) error {
 
 	// create the ipld nodes using the plugin
 	var allNodes []format.Node
-	for _, leafSet := range leaves {
+	for i, leafSet := range leaves {
+		if len(leafSet) == 0 {
+			fmt.Println("found empty leaf set!!", i)
+			continue
+		}
 		ipldNodes, err := generateIPLDNodes(leafSet)
 		if err != nil {
 			return err
@@ -315,7 +321,7 @@ func (b *Block) PutBlock(ctx context.Context, api ipfsapi.CoreAPI) error {
 		allNodes = append(allNodes, ipldNodes...)
 	}
 
-	return format.NewBatch(ctx, pinningAdder{CoreAPI: api}).AddMany(ctx, allNodes)
+	return format.NewBatch(ctx, nodeAdder).AddMany(ctx, allNodes)
 }
 
 func generateIPLDNodes(namespacedLeaves [][]byte) ([]format.Node, error) {
@@ -338,47 +344,6 @@ func copyOfParityNamespaceID() []byte {
 	out := make([]byte, len(ParitySharesNamespaceID))
 	copy(out, ParitySharesNamespaceID)
 	return out
-}
-
-// TODO(evan): put pinningAdder somewhere else
-
-// pinningAdder wraps the core ipfs api in order to pin nodes to the local dag
-// fulfills the ipld.NodeAdder interface
-type pinningAdder struct {
-	ipfsapi.CoreAPI
-}
-
-// Add fulfills the NodeAdder interface by pinning a single ipld nod to
-// the local dag
-func (p pinningAdder) Add(ctx context.Context, nd format.Node) error {
-	// add the node to the dag
-	err := p.Dag().Add(ctx, nd)
-	if err != nil {
-		return err
-	}
-
-	// pin the node to the dag
-	return p.Pin().Add(ctx, path.IpldPath(nd.Cid()))
-}
-
-// AddMany fulfills the NodeAdder interface by pinning multiple ipld nodes to
-// the local dag
-func (p pinningAdder) AddMany(ctx context.Context, nds []format.Node) error {
-	// add the nodes to the dag
-	err := p.Dag().AddMany(ctx, nds)
-	if err != nil {
-		return err
-	}
-
-	// pin the nodes locally
-	for _, n := range nds {
-		err = p.Pin().Add(ctx, path.IpldPath(n.Cid()))
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // Hash computes and returns the block hash.
@@ -1347,6 +1312,7 @@ func (msgs Messages) splitIntoShares(shareSize int) NamespacedShares {
 		if err != nil {
 			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
 		}
+		fmt.Println("namespaceID", m.NamespaceID)
 		shares = appendToShares(shares, m.NamespaceID, rawData, shareSize)
 	}
 	return shares

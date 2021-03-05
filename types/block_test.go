@@ -3,6 +3,8 @@ package types
 import (
 	// it is ok to use math/rand here: we do not need a cryptographically secure random
 	// number generator here and we can run the tests a bit faster
+	stdbytes "bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"math"
@@ -12,6 +14,8 @@ import (
 	"time"
 
 	gogotypes "github.com/gogo/protobuf/types"
+	coreapi "github.com/ipfs/go-ipfs/core/coreapi"
+	coremock "github.com/ipfs/go-ipfs/core/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -25,6 +29,7 @@ import (
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 	"github.com/lazyledger/lazyledger-core/version"
+	"github.com/lazyledger/nmt/namespace"
 )
 
 func TestMain(m *testing.M) {
@@ -1307,6 +1312,74 @@ func TestCommit_ValidateBasic(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestPutBlock(t *testing.T) {
+	// mock ipfs node
+	ipfsNode, err := coremock.NewMockNode()
+	if err != nil {
+		t.Error(err)
+	}
+
+	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	if err != nil {
+		t.Error(err)
+	}
+
+	blockData := Data{
+		Messages: Messages{
+			MessagesList: []Message{
+				{
+					NamespaceID: namespace.ID([]byte{1, 1, 1, 1, 1, 1, 1, 1}),
+					Data:        stdbytes.Repeat([]byte{2}, ShareSize*10),
+				},
+				// {
+				// 	NamespaceID: []byte{1, 1, 1, 1, 1, 1, 1, 1},
+				// 	Data:        stdbytes.Repeat([]byte{2}, ShareSize*4),
+				// },
+				// {
+				// 	NamespaceID: []byte{1, 1, 1, 1, 1, 1, 1, 1},
+				// 	Data:        stdbytes.Repeat([]byte{2}, ShareSize*4),
+				// },
+				// {
+				// 	NamespaceID: []byte{1, 1, 1, 1, 1, 1, 1, 1},
+				// 	Data:        stdbytes.Repeat([]byte{2}, ShareSize*4),
+				// },
+			},
+		},
+	}
+
+	testCases := []struct {
+		name      string
+		blockData Data
+		expectErr bool
+		errString string
+	}{
+		{
+			name:      "basic",
+			blockData: blockData,
+			expectErr: false,
+		},
+	}
+	ctx := context.Background()
+	for _, tc := range testCases {
+		tc := tc
+
+		block := &Block{Data: tc.blockData}
+
+		t.Run(tc.name, func(t *testing.T) {
+			err = block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errString)
+			} else {
+				require.NoError(t, err)
+			}
+
+			// // check if the block is pinned to IPFS
+			// ipfsAPI.Pin().IsPinned(ctx, path.IpldPath())
 		})
 	}
 }
