@@ -206,47 +206,48 @@ func (b *Block) fillDataAvailabilityHeader() {
 		b.DataHash = b.DataAvailabilityHeader.Hash()
 		return
 	}
+
 	// TODO(ismail): for better efficiency and a larger number shares
 	// we should switch to the rsmt2d.LeopardFF16 codec:
 	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
 	}
-	// compute roots:
+
+	// record the widths
 	squareWidth := extendedDataSquare.Width()
-	originalDataWidth := squareWidth / 2
+
 	b.DataAvailabilityHeader = DataAvailabilityHeader{
 		RowsRoots:   make([]namespace.IntervalDigest, squareWidth),
 		ColumnRoots: make([]namespace.IntervalDigest, squareWidth),
 	}
 
-	// compute row and column roots:
-	// TODO(ismail): refactor this to use rsmt2d lib directly instead
-	// depends on https://github.com/lazyledger/rsmt2d/issues/8
-	for outerIdx := uint(0); outerIdx < squareWidth; outerIdx++ {
-		rowTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
-		colTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
-		for innerIdx := uint(0); innerIdx < squareWidth; innerIdx++ {
-			if outerIdx < originalDataWidth && innerIdx < originalDataWidth {
-				rowShare := namespacedShares[outerIdx*originalDataWidth+innerIdx]
-				colShare := namespacedShares[innerIdx*originalDataWidth+outerIdx]
-				mustPush(rowTree, rowShare.NamespaceID(), rowShare.Data())
-				mustPush(colTree, colShare.NamespaceID(), colShare.Data())
-			} else {
-				rowData := extendedDataSquare.Row(outerIdx)
-				colData := extendedDataSquare.Column(outerIdx)
+	// flatten the square and add namespaces
+	leaves := flattenNamespacedEDS(namespacedShares, extendedDataSquare)
 
-				parityCellFromRow := rowData[innerIdx]
-				parityCellFromCol := colData[innerIdx]
-				mustPush(rowTree, ParitySharesNamespaceID, parityCellFromRow)
-				mustPush(colTree, ParitySharesNamespaceID, parityCellFromCol)
-			}
+	// compute the roots for each col/row
+	for i, leafSet := range leaves {
+		commitment := nmtCommitment(leafSet)
+
+		// add the commitment to the header
+		if uint(i) < squareWidth {
+			b.DataAvailabilityHeader.ColumnRoots[i] = commitment
+		} else {
+			b.DataAvailabilityHeader.RowsRoots[uint(i)-squareWidth] = commitment
 		}
-		b.DataAvailabilityHeader.RowsRoots[outerIdx] = rowTree.Root()
-		b.DataAvailabilityHeader.ColumnRoots[outerIdx] = colTree.Root()
 	}
 
+	// return the root hash of DA Header
 	b.DataHash = b.DataAvailabilityHeader.Hash()
+}
+
+// nmtcommitment generates the nmt root of some namespaced data
+func nmtCommitment(namespacedData [][]byte) namespace.IntervalDigest {
+	tree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
+	for _, leaf := range namespacedData {
+		mustPush(tree, leaf[:NamespaceSize], leaf[NamespaceSize:])
+	}
+	return tree.Root()
 }
 
 func mustPush(rowTree *nmt.NamespacedMerkleTree, id namespace.ID, data []byte) {
@@ -271,49 +272,18 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 	namespacedShares := b.Data.computeShares()
 	shares := namespacedShares.RawShares()
 
-	fmt.Println("ns shares", len(namespacedShares))
-
-	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
+	// compute the eds
+	eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
 	}
 
-	squareWidth := extendedDataSquare.Width()
-	originalDataWidth := squareWidth / 2
-	fmt.Println("origianl square width", squareWidth/2)
-	// add namespaces to erasured shares and chunk into tree sized portions
-	leaves := make([][][]byte, 2*squareWidth)
-	// this is adding the namespace back to Q1 shares and the parity ns to the rest
-	// it's also isolating the leaves
-	for outerIdx := uint(0); outerIdx < squareWidth; outerIdx++ {
-		rowLeaves := make([][]byte, squareWidth)
-		colLeaves := make([][]byte, squareWidth)
-		for innerIdx := uint(0); innerIdx < squareWidth; innerIdx++ {
-			if outerIdx < originalDataWidth && innerIdx < originalDataWidth {
-				rowShare := namespacedShares[outerIdx*originalDataWidth+innerIdx]
-				colShare := namespacedShares[innerIdx*originalDataWidth+outerIdx]
-				rowLeaves[innerIdx] = append(rowShare.NamespaceID(), rowShare.Data()...)
-				colLeaves[innerIdx] = append(colShare.NamespaceID(), colShare.Data()...)
-			} else {
-				rowData := extendedDataSquare.Row(outerIdx)
-				colData := extendedDataSquare.Column(outerIdx)
-				parityCellFromRow := rowData[innerIdx]
-				parityCellFromCol := colData[innerIdx]
-				rowLeaves[innerIdx] = append(copyOfParityNamespaceID(), parityCellFromRow...)
-				colLeaves[innerIdx] = append(copyOfParityNamespaceID(), parityCellFromCol...)
-			}
-		}
-		leaves[outerIdx] = rowLeaves
-		leaves[2*outerIdx] = colLeaves
-	}
+	// add namespaces to erasured shares and flatten the eds
+	leaves := flattenNamespacedEDS(namespacedShares, eds)
 
 	// create the ipld nodes using the plugin
 	var allNodes []format.Node
-	for i, leafSet := range leaves {
-		if len(leafSet) == 0 {
-			fmt.Println("found empty leaf set!!", i)
-			continue
-		}
+	for _, leafSet := range leaves {
 		ipldNodes, err := generateIPLDNodes(leafSet)
 		if err != nil {
 			return err
@@ -321,7 +291,54 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 		allNodes = append(allNodes, ipldNodes...)
 	}
 
+	// Batch pin the data to ipfs
 	return format.NewBatch(ctx, nodeAdder).AddMany(ctx, allNodes)
+}
+
+// flattenNamespacedEDS returns a flattend extendedDataSquare with namespaces
+// added to each share. NOTE: output is columns first then rows
+func flattenNamespacedEDS(nss NamespacedShares, eds *rsmt2d.ExtendedDataSquare) [][][]byte {
+	squareWidth := eds.Width()
+	originalDataWidth := squareWidth / 2
+
+	// TODO(evan): find out why this assumtion isn't true sometimes
+	// if uint(len(nss)) != originalDataWidth {
+	// 	panic(
+	// 		fmt.Sprintf(
+	// 			"unexpected numbers of namespaces: actual %d expected %d",
+	// 			len(nss),
+	// 			squareWidth/2,
+	// 		),
+	// 	)
+	// }
+
+	leaves := make([][][]byte, 2*squareWidth)
+	// this is adding the namespace back to Q1 shares and the parity ns to the
+	// rest of the quadrants and flattens the square
+	for i := uint(0); i < squareWidth; i++ {
+		rowLeaves := make([][]byte, squareWidth)
+		colLeaves := make([][]byte, squareWidth)
+
+		for j := uint(0); j < squareWidth; j++ {
+			if i < originalDataWidth && j < originalDataWidth {
+				rowShare := nss[i*originalDataWidth+j]
+				colShare := nss[j*originalDataWidth+i]
+				rowLeaves[j] = append(rowShare.NamespaceID(), rowShare.Data()...)
+				colLeaves[j] = append(colShare.NamespaceID(), colShare.Data()...)
+			} else {
+				rowData := eds.Row(i)
+				colData := eds.Column(i)
+				parityCellFromRow := rowData[j]
+				parityCellFromCol := colData[j]
+				rowLeaves[j] = append(copyOfParityNamespaceID(), parityCellFromRow...)
+				colLeaves[j] = append(copyOfParityNamespaceID(), parityCellFromCol...)
+			}
+		}
+		leaves[i] = colLeaves
+		leaves[i+squareWidth] = rowLeaves
+	}
+
+	return leaves
 }
 
 func generateIPLDNodes(namespacedLeaves [][]byte) ([]format.Node, error) {
@@ -1312,7 +1329,6 @@ func (msgs Messages) splitIntoShares(shareSize int) NamespacedShares {
 		if err != nil {
 			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
 		}
-		fmt.Println("namespaceID", m.NamespaceID)
 		shares = appendToShares(shares, m.NamespaceID, rawData, shareSize)
 	}
 	return shares
