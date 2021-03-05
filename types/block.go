@@ -272,11 +272,6 @@ func (b *Block) PutBlock(ctx context.Context, api ipfsapi.CoreAPI) error {
 	// recomputing the erasured data
 	namespacedShares := b.Data.computeShares()
 	shares := namespacedShares.RawShares()
-	if len(shares) == 0 {
-		// no shares -> no row/colum roots -> hash(empty)
-		b.DataHash = b.DataAvailabilityHeader.Hash()
-		return nil
-	}
 
 	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
 	if err != nil {
