@@ -23,6 +23,7 @@ import (
 	"github.com/ipfs/go-ipfs/plugin/loader"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
 	"github.com/ipfs/interface-go-ipfs-core/path"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -36,7 +37,6 @@ import (
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 	"github.com/lazyledger/lazyledger-core/version"
-	"github.com/lazyledger/rsmt2d"
 )
 
 func TestMain(m *testing.M) {
@@ -1324,8 +1324,6 @@ func TestCommit_ValidateBasic(t *testing.T) {
 }
 
 func TestPutBlock(t *testing.T) {
-	// we can't mock using coremock.NewMockNode(), as for some reason that
-	// doesn't use our verifycid package, so it won't allow our hash fucntion
 	ipfsNode, err := testIPFSNode()
 	if err != nil {
 		t.Error(err)
@@ -1351,7 +1349,7 @@ func TestPutBlock(t *testing.T) {
 		block := &Block{Data: tc.blockData}
 
 		t.Run(tc.name, func(t *testing.T) {
-			err = block.PutBlock(ctx, ipfsAPI)
+			err = block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
 			if tc.expectErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.errString)
@@ -1360,27 +1358,32 @@ func TestPutBlock(t *testing.T) {
 
 			require.NoError(t, err)
 
-			timeoutCtx, _ := context.WithTimeout(ctx, time.Second*2)
+			timeoutCtx, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
 
 			block.fillDataAvailabilityHeader()
 			tc.blockData.computeShares()
 			for _, rowRoot := range block.DataAvailabilityHeader.RowsRoots.Bytes() {
+				// recreate the cids using only the computed roots
 				cid, err := nodes.CidFromNamespacedSha256(rowRoot)
 				if err != nil {
 					t.Error(err)
 				}
-				h, pinned, err := ipfsAPI.Pin().IsPinned(ctx, path.IpldPath(cid))
+
+				// check if cid was successfully pinned to IPFS
+				_, pinned, err := ipfsAPI.Pin().IsPinned(ctx, path.IpldPath(cid))
 				if err != nil {
 					t.Error(err)
 				}
-				fmt.Println("is pinned", h, pinned, cid.String())
-
-				node, err := ipfsAPI.Dag().Get(timeoutCtx, cid)
-				if err != nil {
-					fmt.Println("ROOT NOT FOUND", cid.String())
-					continue
+				if !pinned {
+					t.Errorf("failure to pin cid %s to IPFS", cid.String())
 				}
-				fmt.Println("ROOT WAS FOUND", node.String(), cid.ByteLen())
+
+				// retrieve the data from IPFS
+				_, err = ipfsAPI.Dag().Get(timeoutCtx, cid)
+				if err != nil {
+					t.Errorf("Root not found: %s", cid.String())
+				}
 			}
 		})
 	}
@@ -1454,32 +1457,25 @@ func generateRandomData(msgCount int) Data {
 	}
 }
 
-func makeLeaves(d Data) [][][]byte {
-	// recomputing the erasured data
-	namespacedShares := d.computeShares()
-	shares := namespacedShares.RawShares()
-
-	// compute the eds
-	eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
-	if err != nil {
-		panic(fmt.Sprintf("unexpected error: %v", err))
-	}
-
-	// add namespaces to erasured shares and flatten the eds
-	return flattenNamespacedEDS(namespacedShares, eds)
-}
-
+// this code is copy pasted from the plugin, and should likely be exported in the plugin instead
 func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byte {
 	data := make([][]byte, total)
 	for i := 0; i < total; i++ {
 		nid := make([]byte, nidSize)
-		rand.Read(nid)
+		_, err := rand.Read(nid)
+		if err != nil {
+			panic(err)
+		}
 		data[i] = nid
 	}
+
 	sortByteArrays(data)
 	for i := 0; i < total; i++ {
 		d := make([]byte, leafSize)
-		rand.Read(d)
+		_, err := rand.Read(d)
+		if err != nil {
+			panic(err)
+		}
 		data[i] = append(data[i], d...)
 	}
 
