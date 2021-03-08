@@ -7,15 +7,22 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 
 	gogotypes "github.com/gogo/protobuf/types"
+	"github.com/ipfs/go-ipfs/core"
 	coreapi "github.com/ipfs/go-ipfs/core/coreapi"
-	coremock "github.com/ipfs/go-ipfs/core/mock"
+	"github.com/ipfs/go-ipfs/core/node/libp2p"
+	"github.com/ipfs/go-ipfs/plugin/loader"
+	"github.com/ipfs/go-ipfs/repo/fsrepo"
+	"github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -29,7 +36,7 @@ import (
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 	"github.com/lazyledger/lazyledger-core/version"
-	"github.com/lazyledger/nmt/namespace"
+	"github.com/lazyledger/rsmt2d"
 )
 
 func TestMain(m *testing.M) {
@@ -1317,8 +1324,9 @@ func TestCommit_ValidateBasic(t *testing.T) {
 }
 
 func TestPutBlock(t *testing.T) {
-	// mock ipfs node
-	ipfsNode, err := coremock.NewMockNode()
+	// we can't mock using coremock.NewMockNode(), as for some reason that
+	// doesn't use our verifycid package, so it won't allow our hash fucntion
+	ipfsNode, err := testIPFSNode()
 	if err != nil {
 		t.Error(err)
 	}
@@ -1328,40 +1336,13 @@ func TestPutBlock(t *testing.T) {
 		t.Error(err)
 	}
 
-	blockData := Data{
-		Messages: Messages{
-			MessagesList: []Message{
-				{
-					NamespaceID: namespace.ID([]byte{1, 1, 1, 1, 1, 1, 1, 1}),
-					Data:        stdbytes.Repeat([]byte{2}, ShareSize*10),
-				},
-				// {
-				// 	NamespaceID: []byte{1, 1, 1, 1, 1, 1, 1, 1},
-				// 	Data:        stdbytes.Repeat([]byte{2}, ShareSize*4),
-				// },
-				// {
-				// 	NamespaceID: []byte{1, 1, 1, 1, 1, 1, 1, 1},
-				// 	Data:        stdbytes.Repeat([]byte{2}, ShareSize*4),
-				// },
-				// {
-				// 	NamespaceID: []byte{1, 1, 1, 1, 1, 1, 1, 1},
-				// 	Data:        stdbytes.Repeat([]byte{2}, ShareSize*4),
-				// },
-			},
-		},
-	}
-
 	testCases := []struct {
 		name      string
 		blockData Data
 		expectErr bool
 		errString string
 	}{
-		{
-			name:      "basic",
-			blockData: blockData,
-			expectErr: false,
-		},
+		{"basic", generateRandomData(16), false, ""},
 	}
 	ctx := context.Background()
 	for _, tc := range testCases {
@@ -1370,16 +1351,141 @@ func TestPutBlock(t *testing.T) {
 		block := &Block{Data: tc.blockData}
 
 		t.Run(tc.name, func(t *testing.T) {
-			err = block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
+			err = block.PutBlock(ctx, ipfsAPI)
 			if tc.expectErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.errString)
-			} else {
-				require.NoError(t, err)
+				return
 			}
 
-			// // check if the block is pinned to IPFS
-			// ipfsAPI.Pin().IsPinned(ctx, path.IpldPath())
+			require.NoError(t, err)
+
+			timeoutCtx, _ := context.WithTimeout(ctx, time.Second*2)
+
+			block.fillDataAvailabilityHeader()
+			tc.blockData.computeShares()
+			for _, rowRoot := range block.DataAvailabilityHeader.RowsRoots.Bytes() {
+				cid, err := nodes.CidFromNamespacedSha256(rowRoot)
+				if err != nil {
+					t.Error(err)
+				}
+				h, pinned, err := ipfsAPI.Pin().IsPinned(ctx, path.IpldPath(cid))
+				if err != nil {
+					t.Error(err)
+				}
+				fmt.Println("is pinned", h, pinned, cid.String())
+
+				node, err := ipfsAPI.Dag().Get(timeoutCtx, cid)
+				if err != nil {
+					fmt.Println("ROOT NOT FOUND", cid.String())
+					continue
+				}
+				fmt.Println("ROOT WAS FOUND", node.String(), cid.ByteLen())
+			}
 		})
 	}
+}
+
+// most of this is unexported code from the node package
+func testIPFSNode() (*core.IpfsNode, error) {
+	// config := config.DefaultConfig()
+	repoRoot := "/home/evan/.tendermint_app/ipfs"
+
+	if !fsrepo.IsInitialized(repoRoot) {
+		// TODO: sentinel err
+		return nil, fmt.Errorf("ipfs repo root: %v not intitialized", repoRoot)
+	}
+
+	if err := setupPlugins(repoRoot); err != nil {
+		return nil, err
+	}
+
+	repo, err := fsrepo.Open(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	// Construct the node
+	nodeOptions := &core.BuildCfg{
+		Online: true,
+		// This option sets the node to be a full DHT node (both fetching and storing DHT Records)
+		Routing: libp2p.DHTOption,
+		// This option sets the node to be a client DHT node (only fetching records)
+		// Routing: libp2p.DHTClientOption,
+		Repo: repo,
+	}
+
+	ctx := context.Background()
+	node, err := core.NewNode(ctx, nodeOptions)
+	if err != nil {
+		return nil, err
+	}
+	// run as daemon:
+	node.IsDaemon = true
+	return node, nil
+}
+
+func setupPlugins(path string) error {
+	// Load plugins. This will skip the repo if not available.
+	plugins, err := loader.NewPluginLoader(filepath.Join(path, "plugins"))
+	if err != nil {
+		return fmt.Errorf("error loading plugins: %s", err)
+	}
+	if err := plugins.Load(&nodes.LazyLedgerPlugin{}); err != nil {
+		return fmt.Errorf("error loading lazyledger plugin: %s", err)
+	}
+	if err := plugins.Initialize(); err != nil {
+		return fmt.Errorf("error initializing plugins: plugins.Initialize(): %s", err)
+	}
+	if err := plugins.Inject(); err != nil {
+		return fmt.Errorf("error initializing plugins: could not Inject() %w", err)
+	}
+
+	return nil
+}
+
+func generateRandomData(msgCount int) Data {
+	out := make([]Message, msgCount)
+	for i, msg := range generateRandNamespacedRawData(msgCount, NamespaceSize, ShareSize) {
+		out[i] = Message{NamespaceID: msg[:NamespaceSize], Data: msg[:NamespaceSize]}
+	}
+	return Data{
+		Messages: Messages{MessagesList: out},
+	}
+}
+
+func makeLeaves(d Data) [][][]byte {
+	// recomputing the erasured data
+	namespacedShares := d.computeShares()
+	shares := namespacedShares.RawShares()
+
+	// compute the eds
+	eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
+	if err != nil {
+		panic(fmt.Sprintf("unexpected error: %v", err))
+	}
+
+	// add namespaces to erasured shares and flatten the eds
+	return flattenNamespacedEDS(namespacedShares, eds)
+}
+
+func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byte {
+	data := make([][]byte, total)
+	for i := 0; i < total; i++ {
+		nid := make([]byte, nidSize)
+		rand.Read(nid)
+		data[i] = nid
+	}
+	sortByteArrays(data)
+	for i := 0; i < total; i++ {
+		d := make([]byte, leafSize)
+		rand.Read(d)
+		data[i] = append(data[i], d...)
+	}
+
+	return data
+}
+
+func sortByteArrays(src [][]byte) {
+	sort.Slice(src, func(i, j int) bool { return stdbytes.Compare(src[i], src[j]) < 0 })
 }
