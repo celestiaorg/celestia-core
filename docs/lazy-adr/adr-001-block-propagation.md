@@ -108,9 +108,6 @@ The goal is to not change the public interface for RPC's. It is yet to be seen i
 
 Proposed
 
-## Consequences
-
-> This section describes the consequences, after applying the decision. All consequences should be summarized here, not just the "positive" ones.
 
 ### Positive
 
