@@ -6,81 +6,116 @@
 
 ## Context
 
-Block propagation is currently done by splitting the block into arbitrary chunks and gossiping them to validators via a gossip routine. While this does not have downside it does not meet the needs of the lazy-ledger chain. The lazyledger chain requires blocks to be encoded in a different way and for the proposer to not propagate the chunks to peers. 
+Block propagation is currently done by splitting the block into arbitrary chunks and gossiping them to validators via a gossip routine. While this does not have downsides it does not meet the needs of the lazy-ledger chain. The lazyledger chain requires blocks to be encoded in a different way and for the proposer to not propagate the chunks to peers.
 
-Lazyledger wants validators to pull the block from a IPFS network. What does this mean? As I touched on earlier the proposer pushes the block to the network, this in turn means that each validator downloads and reconstructs the block each time to verify it. Instead Lazyledger will encode and split up the block via erasure codes, upload it to IPFS and get back content identifiers. After the proposer has sent the block to IPFS and received the CIDs it will include them into the proposal. This proposal will be gossiped to other validators, once a validator receives the proposal it will begin requesting the CIDs included in the proposal. 
+Lazyledger wants validators to pull the block from a IPFS network. What does this mean? As I touched on earlier the proposer pushes the block to the network, this in turn means that each validator downloads and reconstructs the block each time to verify it. Instead Lazyledger will encode and split up the block via erasure codes, stored locally in the nodes IPFS daemon. After the proposer has sent the block to IPFS and received the CIDs it will include them into the proposal. This proposal will be gossiped to other validators, once a validator receives the proposal it will begin requesting the CIDs included in the proposal.
 
-There are two forms of a validator, one that downloads the block and one that samples it. What does sampling mean? Sampling is the act of checking that a portion or entire block is available for download. 
+There are two forms of a validator, one that downloads the block and one that samples it. What does sampling mean? Sampling is the act of checking that a portion or entire block is available for download.
 
 ## Detailed Design
 
 The proposed design is as follows.
 
-### Proposal
+### Types
 
-The current proposal type will from having a blockID to having the available data header containing raw hashes that can be transformed into 
+The proposal and vote types have a BlockID, this will be replaced with a header hash. The proposal will contain add fields.
+
+The current proposal will be updated to include required fields. The entirety of the message will be reworked at a later date. To see the extent of the needed changes you can visit the [spec repo](https://github.com/lazyledger/lazyledger-specs/blob/master/specs/proto/consensus.proto#L19)
 
 ```proto
 message Proposal {
-  uint64 height = 1;
-  uint64 round = 2;
-  uint64 timestamp = 3;
+  SignedMsgType             type      = 1;
+  int64                     height    = 2;
+  int32                     round     = 3;
+  int32                     pol_round = 4;
+  
+  +++
+    // 32-byte hash
+  bytes last_header_hash = 5; 
   // 32-byte hash
-  bytes last_header_hash = 4;
+  bytes last_commit_hash = 6;
+    // 32-byte hash
+  bytes consensus_root = 7;
+  FeeHeader fee_header = 8;
   // 32-byte hash
-  bytes last_commit_hash = 5;
-  // 32-byte hash
-  bytes consensus_root = 6;
-  FeeHeader fee_header = 7;
-  // 32-byte hash
-  bytes state_commitment = 8;
-  uint64 available_data_original_shares_used = 9;
-  AvailableDataHeader available_data_header = 10;
-  // 64-byte signature
-  bytes proposer_signature = 11;
+  bytes state_commitment = 9;
+  uint64 available_data_original_shares_used = 10;
+  AvailableDataHeader available_data_header = 11;
+  +++
+
+  google.protobuf.Timestamp timestamp = 12
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  bytes signature = 12;
 }
 ```
 
+```proto
+// Vote represents a prevote, precommit, or commit vote from validators for
+// consensus.
+message Vote {
+  SignedMsgType type     = 1;
+  int64         height   = 2;
+  int32         round    = 3;
+  +++
+  bytes header_hash      = 4; 
+  +++
+  google.protobuf.Timestamp timestamp = 5
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  bytes validator_address = 6;
+  int32 validator_index   = 7;
+  bytes signature         = 8;
+}
+```
+
+See [specs](https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#vote) for more details on the vote.
 
 ### Disk Storage
 
-Currently Lazyledger-core stores all blocks in its store. Going forward only the headers of the blocks within the unbonding period will be stored. This will drastically reduce the amount of storage required by a lazyledger-core node. After the unbonding period all headers will have the option of being pruned. 
+Currently Lazyledger-core stores all blocks in its store. Going forward only the headers of the blocks within the unbonding period will be stored. This will drastically reduce the amount of storage required by a lazyledger-core node. After the unbonding period all headers will have the option of being pruned.
 
 Proposed amendment to `BlockStore` interface
 
-```go 
+```go
 type BlockStore interface {
-	Base() int64
-	Height() int64
-	Size() int64
+ Base() int64
+ Height() int64
+ Size() int64
 
-	LoadBlockMeta(height int64) *types.BlockMeta
-	LoadHeader(height int64) *types.Header
+ LoadBlockMeta(height int64) *types.BlockMeta
+ LoadHeader(height int64) *types.Header
+ LoadDAHeader(height int64) *types.DataAvailabilityHeader
 
-	SaveHeader(header *types.Header, seenCommit *types.Commit)
+ SaveHeaders(header *types.Header, daHeader *types.DataAvailabilityHeader, seenCommit *types.Commit)
 
-	PruneHeaders(height int64) (uint64, error)
+ PruneHeaders(height int64) (uint64, error)
 
-	LoadBlockCommit(height int64) *types.Commit
-	LoadSeenCommit(height int64) *types.Commit
+ LoadBlockCommit(height int64) *types.Commit
+ LoadSeenCommit(height int64) *types.Commit
 }
 ```
 
-Along side these changes the rpc layer will need to change. Instead of querying the LL-core store, the node will redirect the query through IPFS. 
+Along side these changes the rpc layer will need to change. Instead of querying the LL-core store, the node will redirect the query through IPFS.
 
-Ideally we would not need to change the client facing interface, documentation on this interface is located [here](../../rpc/openapi/openapi.yaml). This means that CIDS will need to be set and loaded from the store in order to get all the related block information an user requires. 
+Example:
+
+When a user requests a block from the LL node, the request will be set to the IPLD plugin. If the IPLD does not have the requested block, it will make a request to the lazyledger IPFS network for the required CIDs. If the full node does not have the DAheader they will not be able to request the block data.
+
+![user request flow](./assets/user_request.png)
+
+The goal is to not change the public interface for RPC's. It is yet to be seen if this possible. This means that CIDs will need to be set and loaded from the store in order to get all the related block information an user requires.
 
 ## Status
 
-> A decision may be "proposed" if it hasn't been agreed upon yet, or "accepted" once it is agreed upon. Once the ADR has been implemented mark the ADR as "implemented". If a later ADR changes or reverses a decision, it may be marked as "deprecated" or "superseded" with a reference to its replacement.
-
-{Deprecated|Proposed|Accepted|Declined}
+Proposed
 
 ## Consequences
 
 > This section describes the consequences, after applying the decision. All consequences should be summarized here, not just the "positive" ones.
 
 ### Positive
+
+- Minimal breakage to public interface
+- Only store the block in a single place (IPFS)
 
 ### Negative
 
