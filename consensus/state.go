@@ -1080,11 +1080,12 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		// post data to ipfs
 		// TODO(evan): don't hard code context
 		if cs.IpfsAPI != nil {
-			ctx, _ := context.WithTimeout(context.Background(), time.Second)
-			err := block.PutBlock(ctx, cs.IpfsAPI)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			err := block.PutBlock(ctx, cs.IpfsAPI.Dag().Pinning())
 			if err != nil {
 				cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
 			}
+			cancel()
 		}
 	}
 
