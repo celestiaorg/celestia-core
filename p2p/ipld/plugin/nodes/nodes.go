@@ -3,6 +3,7 @@ package nodes
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -122,12 +123,12 @@ func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
 // root instead of re-computing it here.
 func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int) ([]node.Node, error) {
 	br := bufio.NewReader(r)
-	collector := NewNodeCollector()
+	collector := newNodeCollector()
 
 	n := nmt.New(
 		sha256.New(),
 		nmt.NamespaceIDSize(namespaceSize),
-		nmt.NodeVisitor(collector.Visit),
+		nmt.NodeVisitor(collector.visit),
 	)
 
 	for {
@@ -144,25 +145,27 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 	}
 	// to trigger the collection of nodes:
 	_ = n.Root()
-	return collector.Nodes(), nil
+	return collector.ipldNodes(), nil
 }
 
-type NmtNodeCollector struct {
+// nmtNodeCollector creates and collects ipld.Nodes if inserted into a nmt tree.
+// It is mainly used for testing.
+type nmtNodeCollector struct {
 	nodes []node.Node
 }
 
-func NewNodeCollector() *NmtNodeCollector {
+func newNodeCollector() *nmtNodeCollector {
 	// The extendedRowOrColumnSize is hardcode this here to avoid importing:
 	// https://github.com/lazyledger/lazyledger-core/blob/585566317e519bbb6d35d149b7e856c4c1e8657c/types/consts.go#L23
 	const extendedRowOrColumnSize = 2 * 128
-	return &NmtNodeCollector{nodes: make([]node.Node, 0, extendedRowOrColumnSize)}
+	return &nmtNodeCollector{nodes: make([]node.Node, 0, extendedRowOrColumnSize)}
 }
 
-func (n NmtNodeCollector) Nodes() []node.Node {
+func (n nmtNodeCollector) ipldNodes() []node.Node {
 	return n.nodes
 }
 
-func (n *NmtNodeCollector) Visit(hash []byte, children ...[]byte) {
+func (n *nmtNodeCollector) visit(hash []byte, children ...[]byte) {
 	cid := mustCidFromNamespacedSha256(hash)
 	switch len(children) {
 	case 1:
@@ -186,6 +189,47 @@ func prependNode(newNode node.Node, nodes []node.Node) []node.Node {
 	copy(nodes[1:], nodes)
 	nodes[0] = newNode
 	return nodes
+}
+
+// NmtNodeAdder adds ipld.Nodes to the underlying ipld.Batch if it is inserted
+// into an nmt tree
+type NmtNodeAdder struct {
+	batch *format.Batch
+	ctx   context.Context
+}
+
+// NewNmtNodeAdder returns a new NmtNodeAdder with the provided context and
+// batch. Note that the context provided should have a timeout
+func NewNmtNodeAdder(ctx context.Context, batch *format.Batch) *NmtNodeAdder {
+	return &NmtNodeAdder{
+		batch: batch,
+		ctx:   ctx,
+	}
+}
+
+// Visit can be inserted into an nmt tree to create ipld.Nodes while computing the root
+func (n *NmtNodeAdder) Visit(hash []byte, children ...[]byte) {
+	cid := mustCidFromNamespacedSha256(hash)
+	switch len(children) {
+	case 1:
+		n.batch.Add(n.ctx, nmtLeafNode{
+			cid:  cid,
+			Data: children[0],
+		})
+	case 2:
+		n.batch.Add(n.ctx, nmtNode{
+			cid: cid,
+			l:   children[0],
+			r:   children[1],
+		})
+	default:
+		panic("expected a binary tree")
+	}
+}
+
+// Batch return the ipld.Batch originally provided to the NmtNodeAdder
+func (n *NmtNodeAdder) Batch() *format.Batch {
+	return n.batch
 }
 
 func NmtNodeParser(block blocks.Block) (node.Node, error) {
