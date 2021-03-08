@@ -113,8 +113,11 @@ Proposed
 
 - Minimal breakage to public interface
 - Only store the block in a single place (IPFS)
+- Reduce the public interface of the storage within LazyLedger. 
 
 ### Negative
+
+- User requests may take more time to process
 
 ### Neutral
 

@@ -810,7 +810,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// We probably don't want to stop the peer here. The vote does not
 		// necessarily comes from a malicious peer but can be just broadcasted by
 		// a typical peer.
-		// https://github.com/lazyledger/lazyledger-core/issues/1281
+		// https://github.com/tendermint/tendermint/issues/1281
 		// }
 
 		// NOTE: the vote is broadcast to peers by the reactor listening

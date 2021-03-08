@@ -22,11 +22,6 @@ endif
 
 .PHONY: install build
 
-go.mod: FORCE
-	./set-target.sh $(IPFS_VERSION)
-
-FORCE:
-
 lazyledger-plugin.so: plugin.go go.mod
 	$(GOCC) build $(GOFLAGS) -buildmode=plugin -o "$@" "$<"
 	chmod +x "$@"
