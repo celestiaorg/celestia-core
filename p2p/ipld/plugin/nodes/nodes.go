@@ -49,6 +49,7 @@ func init() {
 		nmtHashSize,
 		sumSha256Namespace8Flagged,
 	)
+	format.DefaultBlockDecoder.Register(Nmt, NmtNodeParser) // this should already happen when the plugin is injected but it doesn't for some CI tests
 }
 
 func mustRegisterNamespacedCodec(
@@ -82,6 +83,8 @@ func sumSha256Namespace8Flagged(data []byte, _length int) ([]byte, error) {
 	}
 	return nmt.Sha256Namespace8FlaggedInner(data[1:]), nil
 }
+
+var Plugins = []plugin.Plugin{&LazyLedgerPlugin{}}
 
 var _ plugin.PluginIPLD = &LazyLedgerPlugin{}
 
