@@ -20,14 +20,14 @@ type BlockStore interface {
 
 	LoadBaseMeta() *types.BlockMeta
 	LoadBlockMeta(height int64) *types.BlockMeta
-	LoadBlock(height int64) *types.Block
+	LoadHeader(height int64) (*types.Header, *types.DataAvailabilityHeader)
 
-	SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit)
+	SaveHeader(header *types.Header, blockParts *types.DataAvailabilityHeader, seenCommit *types.Commit)
+	SaveCommit(commit *types.Commit) error
 
-	PruneBlocks(height int64) (uint64, error)
+	PruneHeaders(height int64) (uint64, error)
 
 	LoadBlockByHash(hash []byte) *types.Block
-	LoadBlockPart(height int64, index int) *types.Part
 
 	LoadBlockCommit(height int64) *types.Commit
 	LoadSeenCommit(height int64) *types.Commit
