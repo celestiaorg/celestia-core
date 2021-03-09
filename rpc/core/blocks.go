@@ -83,19 +83,20 @@ func filterMinMax(base, height, min, max, limit int64) (int64, int64, error) {
 // Block gets block at a given height.
 // If no height is provided, it will fetch the latest block.
 // More: https://docs.tendermint.com/master/rpc/#/Info/block
-func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error) {
-	height, err := getHeight(env.BlockStore.Height(), heightPtr)
-	if err != nil {
-		return nil, err
-	}
+// todo: use IPLD plugin interface
+// func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error) {
+// 	height, err := getHeight(env.BlockStore.Height(), heightPtr)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	block := env.BlockStore.LoadBlock(height)
-	blockMeta := env.BlockStore.LoadBlockMeta(height)
-	if blockMeta == nil {
-		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: block}, nil
-	}
-	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
-}
+// 	block := env.BlockStore.LoadBlock(height)
+// 	blockMeta := env.BlockStore.LoadBlockMeta(height)
+// 	if blockMeta == nil {
+// 		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: block}, nil
+// 	}
+// 	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
+// }
 
 // BlockByHash gets block by hash.
 // More: https://docs.tendermint.com/master/rpc/#/Info/block_by_hash

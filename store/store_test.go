@@ -164,10 +164,10 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	require.Equal(t, bs.Base(), int64(0), "initially the base should be zero")
 	require.Equal(t, bs.Height(), int64(0), "initially the height should be zero")
 
-	// check there are no blocks at various heights
-	noBlockHeights := []int64{0, -1, 100, 1000, 2}
-	for i, height := range noBlockHeights {
-		if g := bs.LoadBlock(height); g != nil {
+	// check there are no headers at various heights
+	noHeaderHeights := []int64{0, -1, 100, 1000, 2}
+	for i, height := range noHeaderHeights {
+		if h, da := bs.LoadHeaders(height); h != nil || da == nil {
 			t.Errorf("#%d: height(%d) got a block; want nil", i, height)
 		}
 	}
@@ -176,7 +176,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	block := makeBlock(bs.Height()+1, state, new(types.Commit))
 	validPartSet := block.MakePartSet(2)
 	seenCommit := makeTestCommit(10, tmtime.Now())
-	bs.SaveBlock(block, partSet, seenCommit)
+	bs.SaveHeaders(&block.Header, &block.DataAvailabilityHeader, seenCommit)
 	require.EqualValues(t, 1, bs.Base(), "expecting the new height to be changed")
 	require.EqualValues(t, block.Header.Height, bs.Height(), "expecting the new height to be changed")
 
@@ -297,7 +297,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 		bs, db := freshBlockStore()
 		// SaveBlock
 		res, err, panicErr := doFn(func() (interface{}, error) {
-			bs.SaveBlock(tuple.block, tuple.parts, tuple.seenCommit)
+			bs.SaveHeaders(&tuple.block.Header, &tuple.block.DataAvailabilityHeader, tuple.seenCommit)
 			if tuple.block == nil {
 				return nil, nil
 			}
@@ -306,7 +306,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 				err := db.Set(calcBlockMetaKey(tuple.block.Height), []byte("block-bogus"))
 				require.NoError(t, err)
 			}
-			bBlock := bs.LoadBlock(tuple.block.Height)
+			bHeader, bDAHeader := bs.LoadHeaders(tuple.block.Height)
 			bBlockMeta := bs.LoadBlockMeta(tuple.block.Height)
 
 			if tuple.eraseSeenCommitInDB {

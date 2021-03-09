@@ -290,7 +290,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 //             If all the nodes restart after committing a block,
 //             we need this to reload the precommits to catch-up nodes to the
 //             most recent height.  Otherwise they'd stall at H-1.
-func (bs *BlockStore) SaveHeader(header *types.Header, da *types.DataAvailabilityHeader, seenCommit *types.Commit) {
+func (bs *BlockStore) SaveHeaders(header *types.Header, da *types.DataAvailabilityHeader, seenCommit *types.Commit) {
 	if header == nil || da == nil {
 		panic("BlockStore can only save a non-nil block")
 	}

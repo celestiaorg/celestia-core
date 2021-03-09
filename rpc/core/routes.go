@@ -14,12 +14,12 @@ var Routes = map[string]*rpc.RPCFunc{
 	"unsubscribe_all": rpc.NewWSRPCFunc(UnsubscribeAll, ""),
 
 	// info API
-	"health":               rpc.NewRPCFunc(Health, ""),
-	"status":               rpc.NewRPCFunc(Status, ""),
-	"net_info":             rpc.NewRPCFunc(NetInfo, ""),
-	"blockchain":           rpc.NewRPCFunc(BlockchainInfo, "minHeight,maxHeight"),
-	"genesis":              rpc.NewRPCFunc(Genesis, ""),
-	"block":                rpc.NewRPCFunc(Block, "height"),
+	"health":     rpc.NewRPCFunc(Health, ""),
+	"status":     rpc.NewRPCFunc(Status, ""),
+	"net_info":   rpc.NewRPCFunc(NetInfo, ""),
+	"blockchain": rpc.NewRPCFunc(BlockchainInfo, "minHeight,maxHeight"),
+	"genesis":    rpc.NewRPCFunc(Genesis, ""),
+	// "block":                rpc.NewRPCFunc(Block, "height"), // Todo: use ipld plugin
 	"block_by_hash":        rpc.NewRPCFunc(BlockByHash, "hash"),
 	"block_results":        rpc.NewRPCFunc(BlockResults, "height"),
 	"commit":               rpc.NewRPCFunc(Commit, "height"),

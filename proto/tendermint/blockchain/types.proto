@@ -4,20 +4,22 @@ package tendermint.blockchain;
 option go_package = "github.com/lazyledger/lazyledger-core/proto/tendermint/blockchain";
 
 import "tendermint/types/block.proto";
+import "tendermint/types/types.proto";
 
 // BlockRequest requests a block for a specific height
-message BlockRequest {
+message HeaderRequest {
   int64 height = 1;
 }
 
 // NoBlockResponse informs the node that the peer does not have block at the requested height
-message NoBlockResponse {
+message NoHeaderResponse {
   int64 height = 1;
 }
 
 // BlockResponse returns block to the requested
-message BlockResponse {
-  tendermint.types.Block block = 1;
+message HeaderResponse {
+  tendermint.types.Header                 header                   = 1;
+  tendermint.types.DataAvailabilityHeader data_availability_header = 2;
 }
 
 // StatusRequest requests the status of a peer.
@@ -32,10 +34,10 @@ message StatusResponse {
 
 message Message {
   oneof sum {
-    BlockRequest    block_request     = 1;
-    NoBlockResponse no_block_response = 2;
-    BlockResponse   block_response    = 3;
-    StatusRequest   status_request    = 4;
-    StatusResponse  status_response   = 5;
+    HeaderRequest    header_request     = 1;
+    NoHeaderResponse no_header_response = 2;
+    HeaderResponse   header_response    = 3;
+    StatusRequest    status_request     = 4;
+    StatusResponse   status_response    = 5;
   }
 }
