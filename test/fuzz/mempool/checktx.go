@@ -1,10 +1,10 @@
 package checktx
 
 import (
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	"github.com/tendermint/tendermint/config"
-	mempl "github.com/tendermint/tendermint/mempool"
-	"github.com/tendermint/tendermint/proxy"
+	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
+	"github.com/lazyledger/lazyledger-core/config"
+	mempl "github.com/lazyledger/lazyledger-core/mempool"
+	"github.com/lazyledger/lazyledger-core/proxy"
 )
 
 var mempool mempl.Mempool
