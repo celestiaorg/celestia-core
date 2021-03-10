@@ -282,7 +282,7 @@ func (b *Block) PutBlock(ctx context.Context, api format.NodeAdder) error {
 	// recompute the eds
 	eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
 	if err != nil {
-		panic(fmt.Sprintf("unexpected error: %v", err))
+		return fmt.Errorf("failure to recompute the extended data square: %w", err)
 	}
 
 	// add namespaces to erasured shares and flatten the eds
