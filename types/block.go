@@ -14,7 +14,6 @@ import (
 	gogotypes "github.com/gogo/protobuf/types"
 	format "github.com/ipfs/go-ipld-format"
 
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
 	"github.com/lazyledger/rsmt2d"
@@ -27,6 +26,7 @@ import (
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
 	"github.com/lazyledger/lazyledger-core/version"
@@ -270,11 +270,16 @@ func (b *Block) PutBlock(ctx context.Context, api format.NodeAdder) error {
 		return errors.New("no ipfs node adder provided")
 	}
 
-	// recomputing the erasured data
+	// recompute the shares
 	namespacedShares := b.Data.computeShares()
 	shares := namespacedShares.RawShares()
 
-	// compute the eds
+	// don't do anything if there is no data to put on IPFS
+	if len(shares) == 0 {
+		return nil
+	}
+
+	// recompute the eds
 	eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
