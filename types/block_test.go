@@ -1335,7 +1335,10 @@ func TestPutBlock(t *testing.T) {
 		expectErr bool
 		errString string
 	}{
-		{"basic", generateRandomData(16), false, ""},
+		{"no leaves", generateRandomData(0), false, ""},
+		{"single leaf", generateRandomData(1), false, ""},
+		{"16 leaves", generateRandomData(16), false, ""},
+		{"max square size", generateRandomData(MaxSquareSize), false, ""},
 	}
 	ctx := context.Background()
 	for _, tc := range testCases {
