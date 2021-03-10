@@ -146,7 +146,7 @@ func TestLightClientAttackEvidence_Equivocation(t *testing.T) {
 		// Check verification returns an error.
 		_, err = c.VerifyLightBlockAtHeight(ctx, 10, bTime.Add(1*time.Hour))
 		if assert.Error(t, err) {
-			assert.Equal(t, light.ErrLightClientAttack, err)
+			assert.Contains(t, err.Error(), "does not match primary")
 		}
 
 		// Check evidence was sent to both full nodes.

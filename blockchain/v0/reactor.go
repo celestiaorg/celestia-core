@@ -143,7 +143,7 @@ func (bcR *BlockchainReactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  BlockchainChannel,
-			Priority:            10,
+			Priority:            5,
 			SendQueueCapacity:   1000,
 			RecvBufferCapacity:  50 * 4096,
 			RecvMessageCapacity: bc.MaxMsgSize,
@@ -214,7 +214,7 @@ func (bcR *BlockchainReactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) 
 
 	msg, err := bc.DecodeMsg(msgBytes)
 	if err != nil {
-		logger.Error("Error decoding message", "err", err)
+		bcR.Logger.Error("Error decoding message", "src", src, "chId", chID, "err", err)
 		bcR.Switch.StopPeerForError(src, err)
 		return
 	}
@@ -267,7 +267,16 @@ func (bcR *BlockchainReactor) poolRoutine(stateSynced bool) {
 		statusUpdateTicker      = time.NewTicker(statusUpdateIntervalSeconds * time.Second)
 		switchToConsensusTicker = time.NewTicker(switchToConsensusIntervalSeconds * time.Second)
 
-		blocksSynced = uint64(0)
+	trySyncTicker := time.NewTicker(trySyncIntervalMS * time.Millisecond)
+	defer trySyncTicker.Stop()
+
+	statusUpdateTicker := time.NewTicker(statusUpdateIntervalSeconds * time.Second)
+	defer statusUpdateTicker.Stop()
+
+	switchToConsensusTicker := time.NewTicker(switchToConsensusIntervalSeconds * time.Second)
+	defer switchToConsensusTicker.Stop()
+
+	blocksSynced := uint64(0)
 
 		chainID = bcR.initialState.ChainID
 		state   = bcR.initialState

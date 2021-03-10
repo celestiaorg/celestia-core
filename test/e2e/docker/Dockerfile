@@ -12,8 +12,6 @@ WORKDIR /src/tendermint
 
 # Fetch dependencies separately (for layer caching)
 COPY go.mod go.sum ./
-# LazyLedger submodule which contains the ipld plugin
-COPY p2p/ipld/plugin/go.mod p2p/ipld/plugin/go.sum ./p2p/ipld/plugin/
 RUN go mod download
 
 # Build Tendermint and install into /usr/bin/tendermint
@@ -29,7 +27,7 @@ WORKDIR /tendermint
 VOLUME /tendermint
 ENV TMHOME=/tendermint
 
-EXPOSE 26656 26657 26660
+EXPOSE 26656 26657 26660 6060
 ENTRYPOINT ["/usr/bin/entrypoint"]
-CMD ["start"]
+CMD ["node"]
 STOPSIGNAL SIGTERM

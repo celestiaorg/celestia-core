@@ -28,16 +28,16 @@ func AddNodeFlags(cmd *cobra.Command) {
 	cmd.Flags().String(
 		"priv-validator-laddr",
 		config.PrivValidatorListenAddr,
-		"socket address to listen on for connections from external priv-validator process")
+		"socket address to listen on for connections from external priv_validator process")
 
 	// node flags
-	cmd.Flags().Bool("fast-sync", config.FastSyncMode, "fast blockchain syncing")
+	cmd.Flags().Bool("fast_sync", config.FastSyncMode, "fast blockchain syncing")
 	cmd.Flags().BytesHexVar(
 		&genesisHash,
 		"genesis-hash",
 		[]byte{},
 		"optional SHA-256 hash of the genesis file")
-	cmd.Flags().Int64("consensus.double-sign-check-height", config.Consensus.DoubleSignCheckHeight,
+	cmd.Flags().Int64("consensus.double_sign_check_height", config.Consensus.DoubleSignCheckHeight,
 		"how many blocks to look back to check existence of the node's "+
 			"consensus votes before joining consensus")
 
@@ -58,7 +58,7 @@ func AddNodeFlags(cmd *cobra.Command) {
 		config.RPC.GRPCListenAddress,
 		"GRPC listen address (BroadcastTx only). Port required")
 	cmd.Flags().Bool("rpc.unsafe", config.RPC.Unsafe, "enabled unsafe rpc methods")
-	cmd.Flags().String("rpc.pprof-laddr", config.RPC.PprofListenAddress, "pprof listen address (https://golang.org/pkg/net/http/pprof)")
+	cmd.Flags().String("rpc.pprof_laddr", config.RPC.PprofListenAddress, "pprof listen address (https://golang.org/pkg/net/http/pprof)")
 
 	// p2p flags
 	cmd.Flags().String(

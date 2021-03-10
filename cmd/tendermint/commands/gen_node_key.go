@@ -14,9 +14,9 @@ import (
 var GenNodeKeyCmd = &cobra.Command{
 	Use:     "gen-node-key",
 	Aliases: []string{"gen_node_key"},
-	Short:   "Generate a new node key",
-	RunE:    genNodeKey,
+	Short:   "Generate a node key for this node and print its ID",
 	PreRun:  deprecateSnakeCase,
+	RunE:    genNodeKey,
 }
 
 func genNodeKey(cmd *cobra.Command, args []string) error {

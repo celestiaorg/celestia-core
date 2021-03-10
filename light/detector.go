@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/lazyledger/lazyledger-core/light/provider"
@@ -86,12 +87,6 @@ func (c *Client) detectDivergence(ctx context.Context, primaryTrace []*types.Lig
 				"primary", c.primary, "witness", supportingWitness)
 			c.sendEvidence(ctx, primaryEv, supportingWitness)
 
-			if primaryBlock.Commit.Round != witnessTrace[len(witnessTrace)-1].Commit.Round {
-				c.logger.Info("The light client has detected, and prevented, an attempted amnesia attack." +
-					" We think this attack is pretty unlikely, so if you see it, that's interesting to us." +
-					" Can you let us know by opening an issue through https://github.com/tendermint/tendermint/issues/new?")
-			}
-
 			// This may not be valid because the witness itself is at fault. So now we reverse it, examining the
 			// trace provided by the witness and holding the primary as the source of truth. Note: primary may not
 			// respond but this is okay as we will halt anyway.
@@ -104,7 +99,7 @@ func (c *Client) detectDivergence(ctx context.Context, primaryTrace []*types.Lig
 			)
 			if err != nil {
 				c.logger.Info("Error validating primary's divergent header", "primary", c.primary, "err", err)
-				return ErrLightClientAttack
+				continue
 			}
 
 			// We now use the primary trace to create evidence against the witness and send it to the primary
@@ -127,8 +122,11 @@ func (c *Client) detectDivergence(ctx context.Context, primaryTrace []*types.Lig
 		}
 	}
 
-	for _, idx := range witnessesToRemove {
-		c.removeWitness(idx)
+	// we need to make sure that we remove witnesses by index in the reverse
+	// order so as to not affect the indexes themselves
+	sort.Ints(witnessesToRemove)
+	for i := len(witnessesToRemove) - 1; i >= 0; i-- {
+		c.removeWitness(witnessesToRemove[i])
 	}
 
 	// 1. If we had at least one witness that returned the same header then we

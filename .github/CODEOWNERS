@@ -10,6 +10,5 @@
 *       @marbar3778 @liamsi @musalbas
 
 # Overrides for tooling packages
-.circleci/ @marbar3778 @liamsi
 .github/ @marbar3778 @liamsi
 DOCKER/ @marbar3778 @liamsi

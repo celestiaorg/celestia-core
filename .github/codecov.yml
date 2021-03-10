@@ -2,6 +2,9 @@ coverage:
   precision: 2
   round: down
   range: "70...100"
+  github_checks:
+    annotations: false
+
   status:
     project:
       default:

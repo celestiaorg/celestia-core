@@ -43,7 +43,14 @@ Verify that you have the latest version of Go installed:
 
 ```bash
 $ go version
-go version go1.15.1 darwin/amd64
+go version go1.15.x darwin/amd64
+```
+
+Make sure you have `$GOPATH` environment variable set:
+
+```bash
+echo $GOPATH
+/Users/melekes/go
 ```
 
 ## 1.2 Creating a new Go project
@@ -430,12 +437,11 @@ We are going to use [Go modules](https://github.com/golang/go/wiki/Modules) for
 dependency management.
 
 ```bash
-export GO111MODULE=on
 go mod init github.com/me/example
+go get github.com/tendermint/tendermint/@v0.34.0
 ```
 
-This should create a `go.mod` file. The current tutorial only works with
-tendermint > v0.34, so let's make sure we're using the latest version:
+After running the above commands you will see two generated files, go.mod and go.sum. The go.mod file should look similar to:
 
 ```go
 module github.com/me/example
@@ -444,13 +450,13 @@ go 1.15
 
 require (
 	github.com/dgraph-io/badger v1.6.2
-	github.com/tendermint/tendermint v0.34.0-rc4
+	github.com/tendermint/tendermint v0.34.0
 )
 ```
 
-Now we can build the binary:
+Finally, we will build our binary:
 
-```bash
+```sh
 go build
 ```
 

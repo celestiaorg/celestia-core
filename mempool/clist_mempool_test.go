@@ -122,7 +122,7 @@ func TestReapMaxBytesMaxGas(t *testing.T) {
 		{20, 0, -1, 0},
 		{20, 0, 10, 0},
 		{20, 10, 10, 0},
-		{20, 28, 10, 1},
+		{20, 24, 10, 1},
 		{20, 240, 5, 5},
 		{20, 240, -1, 10},
 		{20, 240, 10, 10},
@@ -160,15 +160,14 @@ func TestMempoolFilters(t *testing.T) {
 	}{
 		{10, nopPreFilter, nopPostFilter, 10},
 		{10, PreCheckMaxBytes(10), nopPostFilter, 0},
-		{10, PreCheckMaxBytes(28), nopPostFilter, 10},
+		{10, PreCheckMaxBytes(22), nopPostFilter, 10},
 		{10, nopPreFilter, PostCheckMaxGas(-1), 10},
 		{10, nopPreFilter, PostCheckMaxGas(0), 0},
 		{10, nopPreFilter, PostCheckMaxGas(1), 10},
 		{10, nopPreFilter, PostCheckMaxGas(3000), 10},
 		{10, PreCheckMaxBytes(10), PostCheckMaxGas(20), 0},
 		{10, PreCheckMaxBytes(30), PostCheckMaxGas(20), 10},
-		{10, PreCheckMaxBytes(28), PostCheckMaxGas(1), 10},
-		{10, PreCheckMaxBytes(28), PostCheckMaxGas(1), 10},
+		{10, PreCheckMaxBytes(22), PostCheckMaxGas(1), 10},
 		{10, PreCheckMaxBytes(22), PostCheckMaxGas(0), 0},
 	}
 	for tcIndex, tt := range tests {
@@ -215,6 +214,63 @@ func TestMempoolUpdate(t *testing.T) {
 
 		err = mempool.CheckTx([]byte{0x03}, nil, TxInfo{})
 		require.NoError(t, err)
+	}
+}
+
+func TestMempool_KeepInvalidTxsInCache(t *testing.T) {
+	app := counter.NewApplication(true)
+	cc := proxy.NewLocalClientCreator(app)
+	wcfg := cfg.DefaultConfig()
+	wcfg.Mempool.KeepInvalidTxsInCache = true
+	mempool, cleanup := newMempoolWithAppAndConfig(cc, wcfg)
+	defer cleanup()
+
+	// 1. An invalid transaction must remain in the cache after Update
+	{
+		a := make([]byte, 8)
+		binary.BigEndian.PutUint64(a, 0)
+
+		b := make([]byte, 8)
+		binary.BigEndian.PutUint64(b, 1)
+
+		err := mempool.CheckTx(b, nil, TxInfo{})
+		require.NoError(t, err)
+
+		// simulate new block
+		_ = app.DeliverTx(abci.RequestDeliverTx{Tx: a})
+		_ = app.DeliverTx(abci.RequestDeliverTx{Tx: b})
+		err = mempool.Update(1, []types.Tx{a, b},
+			[]*abci.ResponseDeliverTx{{Code: abci.CodeTypeOK}, {Code: 2}}, nil, nil)
+		require.NoError(t, err)
+
+		// a must be added to the cache
+		err = mempool.CheckTx(a, nil, TxInfo{})
+		if assert.Error(t, err) {
+			assert.Equal(t, ErrTxInCache, err)
+		}
+
+		// b must remain in the cache
+		err = mempool.CheckTx(b, nil, TxInfo{})
+		if assert.Error(t, err) {
+			assert.Equal(t, ErrTxInCache, err)
+		}
+	}
+
+	// 2. An invalid transaction must remain in the cache
+	{
+		a := make([]byte, 8)
+		binary.BigEndian.PutUint64(a, 0)
+
+		// remove a from the cache to test (2)
+		mempool.cache.Remove(a)
+
+		err := mempool.CheckTx(a, nil, TxInfo{})
+		require.NoError(t, err)
+
+		err = mempool.CheckTx(a, nil, TxInfo{})
+		if assert.Error(t, err) {
+			assert.Equal(t, ErrTxInCache, err)
+		}
 	}
 }
 

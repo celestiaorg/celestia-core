@@ -36,7 +36,7 @@ This guide provides instructions for upgrading to specific versions of Tendermin
 This release is not compatible with previous blockchains due to changes to
 the encoding format (see "Protocol Buffers," below) and the block header (see "Blockchain Protocol").
 
-Note also that Tendermint 0.34 also requires Go 1.15 or higher.
+Note also that Tendermint 0.34 also requires Go 1.15 or higher. 
 
 ### ABCI Changes
 
@@ -70,8 +70,6 @@ Note also that Tendermint 0.34 also requires Go 1.15 or higher.
 * The field `Proof`, on the ABCI type `ResponseQuery`, is now named `ProofOps`.
   For more, see "Crypto," below.
 
-* The method `SetOption` has been removed from the ABCI.Client interface. This feature was used in the early ABCI implementation's.
-
 ### P2P Protocol
 
 The default codec is now proto3, not amino. The schema files can be found in the `/proto`
@@ -79,9 +77,12 @@ directory. For more, see "Protobuf," below.
 
 ### Blockchain Protocol
 
-* `Header#LastResultsHash`, which is the root hash of a Merkle tree built from
-`ResponseDeliverTx(Code, Data)` as of v0.34 also includes `GasWanted` and `GasUsed`
-fields.
+* `Header#LastResultsHash` previously was the root hash of a Merkle tree built from `ResponseDeliverTx(Code, Data)` responses.
+  As of 0.34,`Header#LastResultsHash` is now the root hash of a Merkle tree built from:
+    * `BeginBlock#Events`
+    * Root hash of a Merkle tree built from `ResponseDeliverTx(Code, Data,
+      GasWanted, GasUsed, Events)` responses
+    * `BeginBlock#Events`
 
 * Merkle hashes of empty trees previously returned nothing, but now return the hash of an empty input,
   to conform with [RFC-6962](https://tools.ietf.org/html/rfc6962).
@@ -139,7 +140,7 @@ Tendermint 0.34 includes new and updated consensus parameters.
 
 #### Evidence Parameters
 
-* `MaxBytes`, which caps the total amount of evidence. The default is 1048576 (1 MB).
+* `MaxBytes`, which caps the total amount of evidence. The default is 1048576 (1 MB). 
 
 ### Crypto
 
@@ -185,7 +186,6 @@ Other user-relevant changes include:
 * The `Verifier` was broken up into two pieces:
     * Core verification logic (pure `VerifyX` functions)
     * `Client` object, which represents the complete light client
-* The new light clients stores headers & validator sets as `LightBlock`s
 * The RPC client can be found in the `/rpc` directory.
 * The HTTP(S) proxy is located in the `/proxy` directory.
 
@@ -216,7 +216,7 @@ blockchains, we recommend that you check the chain ID.
 
 ### Version
 
-Version is now set through Go linker flags `ld_flags`. Applications that are using tendermint as a library should set this at compile time.
+Version is now set through Go linker flags `ld_flags`. Applications that are using tendermint as a library should set this at compile time. 
 
 Example:
 
@@ -224,7 +224,7 @@ Example:
 go install -mod=readonly -ldflags "-X github.com/tendermint/tendermint/version.TMCoreSemVer=$(go list -m github.com/tendermint/tendermint | sed  's/ /\@/g') -s -w " -trimpath ./cmd
 ```
 
-Additionally, the exported constant `version.Version` is now `version.TMCoreSemVer`.
+Additionally, the exported constant `version.Version` is now `version.TMCoreSemVer`. 
 
 ## v0.33.4
 

@@ -17,9 +17,6 @@ maverick:
 generator:
 	go build -o build/generator ./generator
 
-generator:
-	go build -o build/generator ./generator
-
 runner:
 	go build -o build/runner ./runner
 

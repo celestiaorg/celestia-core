@@ -109,8 +109,22 @@ func NewReactor(
 		tempDir:     tempDir,
 	}
 
-	r.BaseService = *service.NewBaseService(logger, "StateSync", r)
-	return r
+// GetChannels implements p2p.Reactor.
+func (r *Reactor) GetChannels() []*p2p.ChannelDescriptor {
+	return []*p2p.ChannelDescriptor{
+		{
+			ID:                  SnapshotChannel,
+			Priority:            5,
+			SendQueueCapacity:   10,
+			RecvMessageCapacity: snapshotMsgSize,
+		},
+		{
+			ID:                  ChunkChannel,
+			Priority:            1,
+			SendQueueCapacity:   4,
+			RecvMessageCapacity: chunkMsgSize,
+		},
+	}
 }
 
 // OnStart starts separate go routines for each p2p Channel and listens for
@@ -150,17 +164,24 @@ func (r *Reactor) OnStop() {
 	<-r.peerUpdates.Done()
 }
 
-// handleSnapshotMessage handles enevelopes sent from peers on the
-// SnapshotChannel. It returns an error only if the Envelope.Message is unknown
-// for this channel. This should never be called outside of handleMessage.
-func (r *Reactor) handleSnapshotMessage(envelope p2p.Envelope) error {
-	switch msg := envelope.Message.(type) {
-	case *ssproto.SnapshotsRequest:
-		snapshots, err := r.recentSnapshots(recentSnapshots)
-		if err != nil {
-			r.Logger.Error("failed to fetch snapshots", "err", err)
-			return nil
-		}
+// Receive implements p2p.Reactor.
+func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
+	if !r.IsRunning() {
+		return
+	}
+
+	msg, err := decodeMsg(msgBytes)
+	if err != nil {
+		r.Logger.Error("Error decoding message", "src", src, "chId", chID, "err", err)
+		r.Switch.StopPeerForError(src, err)
+		return
+	}
+	err = validateMsg(msg)
+	if err != nil {
+		r.Logger.Error("Invalid message", "peer", src, "msg", msg, "err", err)
+		r.Switch.StopPeerForError(src, err)
+		return
+	}
 
 		for _, snapshot := range snapshots {
 			r.Logger.Debug(

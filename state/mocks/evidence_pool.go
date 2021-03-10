@@ -6,6 +6,7 @@ import (
 	state "github.com/lazyledger/lazyledger-core/state"
 	mock "github.com/stretchr/testify/mock"
 
+	state "github.com/lazyledger/lazyledger-core/state"
 	types "github.com/lazyledger/lazyledger-core/types"
 )
 

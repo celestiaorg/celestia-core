@@ -598,7 +598,7 @@ func TestTransportHandshake(t *testing.T) {
 			)
 
 			protoReader := protoio.NewDelimitedReader(c, MaxNodeInfoSize())
-			err := protoReader.ReadMsg(&pbni)
+			_, err := protoReader.ReadMsg(&pbni)
 			if err != nil {
 				t.Error(err)
 			}
