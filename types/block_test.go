@@ -183,6 +183,15 @@ func TestBlockString(t *testing.T) {
 	assert.NotEqual(t, "nil-Block", block.StringShort())
 }
 
+func makeDAHeaderRandom() DataAvailabilityHeader {
+	rows, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*NamespaceSize+tmhash.Size)})
+	clns, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*NamespaceSize+tmhash.Size)})
+	return DataAvailabilityHeader{
+		RowsRoots: rows,
+		ColumnRoots: clns,
+	}
+}
+
 func makeBlockIDRandom() BlockID {
 	var (
 		blockHash   = make([]byte, tmhash.Size)

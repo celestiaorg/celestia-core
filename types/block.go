@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
+	"github.com/ipfs/go-cid"
+	mh "github.com/multiformats/go-multihash"
 
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
@@ -64,20 +67,68 @@ type DataAvailabilityHeader struct {
 
 type NmtRoots []namespace.IntervalDigest
 
+func NmtRootsFromBytes(in [][]byte) (roots NmtRoots, err error) {
+	roots = make([]namespace.IntervalDigest, len(in))
+	for i := 0; i < len(in); i++ {
+		roots[i], err = namespace.IntervalDigestFromBytes(NamespaceSize, in[i])
+		if err != nil {
+			return
+		}
+	}
+
+	return
+}
+
+// TODO(Hlib): Import from #178 once merged
+const (
+	namespaceSize = 8
+	Nmt = 0x7700
+	nmtHashSize = 2*namespaceSize + sha256.Size
+	Sha256Namespace8Flagged = 0x7701
+)
+
+func init() {
+	mh.Codes[Sha256Namespace8Flagged] = "sha2-256-namespace8-flagged"
+	mh.DefaultLengths[Sha256Namespace8Flagged] = nmtHashSize
+}
+
+func cidFromNamespacedSha256(namespacedHash []byte) (cid.Cid, error) {
+	if got, want := len(namespacedHash), nmtHashSize; got != want {
+		return cid.Cid{}, fmt.Errorf("invalid namespaced hash length, got: %v, want: %v", got, want)
+	}
+
+	buf, err := mh.Encode(namespacedHash, Sha256Namespace8Flagged)
+	if err != nil {
+		return cid.Undef, err
+	}
+
+	return cid.NewCidV1(Nmt, buf), nil
+}
+
+func (roots NmtRoots) String() string {
+	sb := new(strings.Builder)
+	sb.WriteRune('{')
+
+	for _, r := range roots {
+		id, err := cidFromNamespacedSha256(r.Bytes())
+		if err != nil {
+			panic(err)
+		}
+
+		sb.WriteString(id.String() + ",") // nolint: errcheck
+	}
+
+	sb.WriteRune('}')
+	return sb.String()
+}
+
 func (roots NmtRoots) Bytes() [][]byte {
 	res := make([][]byte, len(roots))
 	for i := 0; i < len(roots); i++ {
 		res[i] = roots[i].Bytes()
 	}
-	return res
-}
 
-func NmtRootsFromBytes(in [][]byte) NmtRoots {
-	roots := make([]namespace.IntervalDigest, len(in))
-	for i := 0; i < len(in); i++ {
-		roots[i] = namespace.IntervalDigestFromBytes(NamespaceSize, in[i])
-	}
-	return roots
+	return res
 }
 
 // Hash computes the root of the row and column roots
@@ -99,29 +150,35 @@ func (dah *DataAvailabilityHeader) Hash() []byte {
 	return merkle.HashFromByteSlices(slices)
 }
 
-func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, error) {
+func (dah *DataAvailabilityHeader) ToProto() *tmproto.DataAvailabilityHeader {
 	if dah == nil {
-		return nil, errors.New("nil DataAvailabilityHeader")
+		return &tmproto.DataAvailabilityHeader{}
 	}
 
 	dahp := new(tmproto.DataAvailabilityHeader)
-
 	dahp.RowRoots = dah.RowsRoots.Bytes()
 	dahp.ColumnRoots = dah.ColumnRoots.Bytes()
 
-	return dahp, nil
+	return dahp
 }
 
-func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (*DataAvailabilityHeader, error) {
+func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (dah *DataAvailabilityHeader, err error) {
 	if dahp == nil {
 		return nil, errors.New("nil DataAvailabilityHeader")
 	}
 
-	dah := new(DataAvailabilityHeader)
-	dah.RowsRoots = NmtRootsFromBytes(dahp.RowRoots)
-	dah.ColumnRoots = NmtRootsFromBytes(dahp.ColumnRoots)
+	dah = new(DataAvailabilityHeader)
+	dah.RowsRoots, err = NmtRootsFromBytes(dahp.RowRoots)
+	if err != nil {
+		return
+	}
 
-	return dah, nil
+	dah.ColumnRoots, err = NmtRootsFromBytes(dahp.ColumnRoots)
+	if err != nil {
+		return
+	}
+
+	return
 }
 
 // Block defines the atomic unit of a Tendermint blockchain.
@@ -374,11 +431,7 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 		return nil, err
 	}
 	pb.Data.Evidence = *protoEvidence
-	dah, err := b.DataAvailabilityHeader.ToProto()
-	if err != nil {
-		return nil, err
-	}
-	pb.DataAvailabilityHeader = dah
+	pb.DataAvailabilityHeader = b.DataAvailabilityHeader.ToProto()
 
 	return pb, nil
 }

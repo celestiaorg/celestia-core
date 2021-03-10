@@ -24,22 +24,22 @@ var (
 // If POLRound >= 0, then BlockID corresponds to the block that is locked in POLRound.
 type Proposal struct {
 	Type      tmproto.SignedMsgType
-	Height    int64     `json:"height"`
-	Round     int32     `json:"round"`     // there can not be greater than 2_147_483_647 rounds
-	POLRound  int32     `json:"pol_round"` // -1 if null.
-	BlockID   BlockID   `json:"block_id"`
-	Timestamp time.Time `json:"timestamp"`
-	Signature []byte    `json:"signature"`
+	Height    int64                  `json:"height"`
+	Round     int32                  `json:"round"`     // there can not be greater than 2_147_483_647 rounds
+	POLRound  int32                  `json:"pol_round"` // -1 if null.
+	DAHeader  DataAvailabilityHeader `json:"da_header"`
+	Timestamp time.Time              `json:"timestamp"`
+	Signature []byte                 `json:"signature"`
 }
 
 // NewProposal returns a new Proposal.
 // If there is no POLRound, polRound should be -1.
-func NewProposal(height int64, round int32, polRound int32, blockID BlockID) *Proposal {
+func NewProposal(height int64, round int32, polRound int32, daH DataAvailabilityHeader) *Proposal {
 	return &Proposal{
 		Type:      tmproto.ProposalType,
 		Height:    height,
 		Round:     round,
-		BlockID:   blockID,
+		DAHeader:  daH,
 		POLRound:  polRound,
 		Timestamp: tmtime.Now(),
 	}
@@ -59,15 +59,10 @@ func (p *Proposal) ValidateBasic() error {
 	if p.POLRound < -1 {
 		return errors.New("negative POLRound (exception: -1)")
 	}
-	if err := p.BlockID.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong BlockID: %v", err)
-	}
-	// ValidateBasic above would pass even if the BlockID was empty:
-	if !p.BlockID.IsComplete() {
-		return fmt.Errorf("expected a complete, non-empty BlockID, got: %v", p.BlockID)
-	}
 
-	// NOTE: Timestamp validation is subtle and handled elsewhere.
+	// NOTE:
+	//  * Timestamp validation is subtle and handled elsewhere.
+	//  * DAHeader is validated within deserialization
 
 	if len(p.Signature) == 0 {
 		return errors.New("signature is missing")
@@ -90,10 +85,10 @@ func (p *Proposal) ValidateBasic() error {
 //
 // See BlockID#String.
 func (p *Proposal) String() string {
-	return fmt.Sprintf("Proposal{%v/%v (%v, %v) %X @ %s}",
+	return fmt.Sprintf("Proposal{%v/%v, %v, %v %X @ %s}",
 		p.Height,
 		p.Round,
-		p.BlockID,
+		p.DAHeader,
 		p.POLRound,
 		tmbytes.Fingerprint(p.Signature),
 		CanonicalTime(p.Timestamp))
@@ -124,7 +119,7 @@ func (p *Proposal) ToProto() *tmproto.Proposal {
 	}
 	pb := new(tmproto.Proposal)
 
-	pb.BlockID = p.BlockID.ToProto()
+	pb.DAHeader = *p.DAHeader.ToProto()
 	pb.Type = p.Type
 	pb.Height = p.Height
 	pb.Round = p.Round
@@ -144,12 +139,12 @@ func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 
 	p := new(Proposal)
 
-	blockID, err := BlockIDFromProto(&pp.BlockID)
+	dah, err := DataAvailabilityHeaderFromProto(&pp.DAHeader)
 	if err != nil {
 		return nil, err
 	}
 
-	p.BlockID = *blockID
+	p.DAHeader = *dah
 	p.Type = pp.Type
 	p.Height = pp.Height
 	p.Round = pp.Round
