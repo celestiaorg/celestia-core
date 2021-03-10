@@ -175,18 +175,19 @@ func (bcR *BlockchainReactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 
 // respondToPeer loads a block and sends it to the requesting peer,
 // if we have it. Otherwise, we'll respond saying we don't have it.
-func (bcR *BlockchainReactor) respondToPeer(msg *bcproto.BlockRequest,
+func (bcR *BlockchainReactor) respondToPeer(msg *bcproto.HeaderRequest,
 	src p2p.Peer) (queued bool) {
 
-	block := bcR.store.LoadBlock(msg.Height)
-	if block != nil {
-		bl, err := block.ToProto()
+	header, daHeader := bcR.store.LoadHeaders(msg.Height)
+	if header != nil || daHeader != nil {
+		h := header.ToProto()
+		dah, err := daHeader.ToProto()
 		if err != nil {
 			bcR.Logger.Error("could not convert msg to protobuf", "err", err)
 			return false
 		}
 
-		msgBytes, err := bc.EncodeMsg(&bcproto.BlockResponse{Block: bl})
+		msgBytes, err := bc.EncodeMsg(&bcproto.HeaderResponse{Header: h, DataAvailabilityHeader: dah})
 		if err != nil {
 			bcR.Logger.Error("could not marshal msg", "err", err)
 			return false
@@ -197,7 +198,7 @@ func (bcR *BlockchainReactor) respondToPeer(msg *bcproto.BlockRequest,
 
 	bcR.Logger.Info("Peer asking for a block we don't have", "src", src, "height", msg.Height)
 
-	msgBytes, err := bc.EncodeMsg(&bcproto.NoBlockResponse{Height: msg.Height})
+	msgBytes, err := bc.EncodeMsg(&bcproto.NoHeaderResponse{Height: msg.Height})
 	if err != nil {
 		bcR.Logger.Error("could not convert msg to protobuf", "err", err)
 		return false
@@ -228,10 +229,10 @@ func (bcR *BlockchainReactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) 
 	logger.Debug("Receive", "msg", msg)
 
 	switch msg := msg.(type) {
-	case *bcproto.BlockRequest:
+	case *bcproto.HeaderRequest:
 		bcR.respondToPeer(msg, src)
-	case *bcproto.BlockResponse:
-		bi, err := types.BlockFromProto(msg.Block)
+	case *bcproto.HeaderResponse:
+		bi, err := types.HeaderFromProto(msg.Header)
 		if err != nil {
 			logger.Error("Block content is invalid", "err", err)
 			bcR.Switch.StopPeerForError(src, err)
@@ -294,7 +295,7 @@ func (bcR *BlockchainReactor) poolRoutine(stateSynced bool) {
 					bcR.Logger.Debug("Can't send request: no peer", "peer_id", request.PeerID)
 					continue
 				}
-				msgBytes, err := bc.EncodeMsg(&bcproto.BlockRequest{Height: request.Height})
+				msgBytes, err := bc.EncodeMsg(&bcproto.HeaderRequest{Height: request.Height})
 				if err != nil {
 					bcR.Logger.Error("could not convert BlockRequest to proto", "err", err)
 					continue
@@ -418,7 +419,7 @@ FOR_LOOP:
 				bcR.pool.PopRequest()
 
 				// TODO: batch saves so we dont persist to disk every block
-				bcR.store.SaveBlock(first, firstParts, second.LastCommit)
+				bcR.store.SaveHeader(first, firstParts, second.LastCommit)
 
 				// TODO: same thing for app - but we would need a way to get the hash
 				// without persisting the state.

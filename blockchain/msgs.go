@@ -24,12 +24,12 @@ func EncodeMsg(pb proto.Message) ([]byte, error) {
 	msg := bcproto.Message{}
 
 	switch pb := pb.(type) {
-	case *bcproto.BlockRequest:
-		msg.Sum = &bcproto.Message_BlockRequest{BlockRequest: pb}
-	case *bcproto.BlockResponse:
-		msg.Sum = &bcproto.Message_BlockResponse{BlockResponse: pb}
-	case *bcproto.NoBlockResponse:
-		msg.Sum = &bcproto.Message_NoBlockResponse{NoBlockResponse: pb}
+	case *bcproto.HeaderRequest:
+		msg.Sum = &bcproto.Message_HeaderRequest{HeaderRequest: pb}
+	case *bcproto.HeaderResponse:
+		msg.Sum = &bcproto.Message_HeaderResponse{HeaderResponse: pb}
+	case *bcproto.NoHeaderResponse:
+		msg.Sum = &bcproto.Message_NoHeaderResponse{NoHeaderResponse: pb}
 	case *bcproto.StatusRequest:
 		msg.Sum = &bcproto.Message_StatusRequest{StatusRequest: pb}
 	case *bcproto.StatusResponse:
@@ -56,12 +56,12 @@ func DecodeMsg(bz []byte) (proto.Message, error) {
 	}
 
 	switch msg := pb.Sum.(type) {
-	case *bcproto.Message_BlockRequest:
-		return msg.BlockRequest, nil
-	case *bcproto.Message_BlockResponse:
-		return msg.BlockResponse, nil
-	case *bcproto.Message_NoBlockResponse:
-		return msg.NoBlockResponse, nil
+	case *bcproto.Message_HeaderRequest:
+		return msg.HeaderRequest, nil
+	case *bcproto.Message_HeaderResponse:
+		return msg.HeaderResponse, nil
+	case *bcproto.Message_NoHeaderResponse:
+		return msg.NoHeaderResponse, nil
 	case *bcproto.Message_StatusRequest:
 		return msg.StatusRequest, nil
 	case *bcproto.Message_StatusResponse:
@@ -78,14 +78,14 @@ func ValidateMsg(pb proto.Message) error {
 	}
 
 	switch msg := pb.(type) {
-	case *bcproto.BlockRequest:
+	case *bcproto.HeaderRequest:
 		if msg.Height < 0 {
 			return errors.New("negative Height")
 		}
-	case *bcproto.BlockResponse:
+	case *bcproto.HeaderResponse:
 		// validate basic is called later when converting from proto
 		return nil
-	case *bcproto.NoBlockResponse:
+	case *bcproto.NoHeaderResponse:
 		if msg.Height < 0 {
 			return errors.New("negative Height")
 		}
