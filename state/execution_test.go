@@ -97,7 +97,7 @@ func TestBeginBlockValidators(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		lastCommit := types.NewCommit(1, 0, prevBlockID, tc.lastCommitSigs)
+		lastCommit := types.NewCommit(1, 0, prevBlockID, tc.lastCommitSigs, []byte("bytes")) //todo: change for actual
 
 		// block for height 2
 		block, _ := state.MakeBlock(2, makeTxs(2), nil, nil,
@@ -165,7 +165,7 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 					ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 					Timestamp:        defaultEvidenceTime,
 					Signature:        crypto.CRandBytes(types.MaxSignatureSize),
-				}}),
+				}}, header.Hash()),
 			},
 			ValidatorSet: state.Validators,
 		},

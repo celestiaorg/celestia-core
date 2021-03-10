@@ -92,7 +92,7 @@ func newBlockchainReactor(
 
 	// let's add some blocks in
 	for blockHeight := int64(1); blockHeight <= maxBlockHeight; blockHeight++ {
-		lastCommit := types.NewCommit(blockHeight-1, 0, types.BlockID{}, nil)
+		lastCommit := types.NewCommit(blockHeight-1, 0, types.BlockID{}, nil, []byte("bytes"))
 		if blockHeight > 1 {
 			lastBlockMeta := blockStore.LoadBlockMeta(blockHeight - 1)
 			lastBlock := blockStore.LoadBlock(blockHeight - 1)
@@ -109,7 +109,7 @@ func newBlockchainReactor(
 				panic(err)
 			}
 			lastCommit = types.NewCommit(vote.Height, vote.Round,
-				lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()})
+				lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()}, []byte("bytes"))
 		}
 
 		thisBlock := makeBlock(blockHeight, state, lastCommit)

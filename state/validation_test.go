@@ -36,7 +36,7 @@ func TestValidateBlockHeader(t *testing.T) {
 		memmock.Mempool{},
 		sm.EmptyEvidencePool{},
 	)
-	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil)
+	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil, nil)
 
 	// some bad values
 	wrongHash := tmhash.Sum([]byte("this hash is wrong"))
@@ -72,7 +72,7 @@ func TestValidateBlockHeader(t *testing.T) {
 		{"Proposer invalid", func(block *types.Block) { block.ProposerAddress = []byte("wrong size") }},
 
 		{"first LastCommit contains signatures", func(block *types.Block) {
-			block.LastCommit = types.NewCommit(0, 0, types.BlockID{}, []types.CommitSig{types.NewCommitSigAbsent()})
+			block.LastCommit = types.NewCommit(0, 0, types.BlockID{}, []types.CommitSig{types.NewCommitSigAbsent()}, nil)
 			block.LastCommitHash = block.LastCommit.Hash()
 		}},
 	}
@@ -95,7 +95,7 @@ func TestValidateBlockHeader(t *testing.T) {
 			A good block passes
 		*/
 		var err error
-		state, _, lastCommit, err = makeAndCommitGoodBlock(state, height, lastCommit, proposerAddr, blockExec, privVals, nil)
+		state, _, lastCommit, _, err = makeAndCommitGoodBlock(state, height, lastCommit, proposerAddr, blockExec, privVals, nil)
 		require.NoError(t, err, "height %d", height)
 	}
 
@@ -126,8 +126,8 @@ func TestValidateBlockCommit(t *testing.T) {
 		memmock.Mempool{},
 		sm.EmptyEvidencePool{},
 	)
-	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil)
-	wrongSigsCommit := types.NewCommit(1, 0, types.BlockID{}, nil)
+	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil, nil)
+	wrongSigsCommit := types.NewCommit(1, 0, types.BlockID{}, nil, nil)
 	badPrivVal := types.NewMockPV()
 
 	for height := int64(1); height < validationTestsStopHeight; height++ {
@@ -151,6 +151,7 @@ func TestValidateBlockCommit(t *testing.T) {
 				wrongHeightVote.Round,
 				state.LastBlockID,
 				[]types.CommitSig{wrongHeightVote.CommitSig()},
+				[]byte("todo replace with actual hash"),
 			)
 			block, _ := state.MakeBlock(height, makeTxs(height), nil, nil, types.Messages{}, wrongHeightCommit, proposerAddr)
 			err = blockExec.ValidateBlock(state, block)
@@ -173,9 +174,12 @@ func TestValidateBlockCommit(t *testing.T) {
 		/*
 			A good block passes
 		*/
-		var err error
-		var blockID types.BlockID
-		state, blockID, lastCommit, err = makeAndCommitGoodBlock(
+		var (
+			err        error
+			blockID    types.BlockID
+			headerHash []byte
+		)
+		state, blockID, lastCommit, headerHash, err = makeAndCommitGoodBlock(
 			state,
 			height,
 			lastCommit,
@@ -222,7 +226,7 @@ func TestValidateBlockCommit(t *testing.T) {
 		goodVote.Signature, badVote.Signature = g.Signature, b.Signature
 
 		wrongSigsCommit = types.NewCommit(goodVote.Height, goodVote.Round,
-			blockID, []types.CommitSig{goodVote.CommitSig(), badVote.CommitSig()})
+			blockID, []types.CommitSig{goodVote.CommitSig(), badVote.CommitSig()}, headerHash)
 	}
 }
 
@@ -249,7 +253,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 		memmock.Mempool{},
 		evpool,
 	)
-	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil)
+	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil, nil)
 
 	for height := int64(1); height < validationTestsStopHeight; height++ {
 		proposerAddr := state.Validators.GetProposer().Address
@@ -292,7 +296,8 @@ func TestValidateBlockEvidence(t *testing.T) {
 		}
 
 		var err error
-		state, _, lastCommit, err = makeAndCommitGoodBlock(
+
+		state, _, lastCommit, _, err = makeAndCommitGoodBlock(
 			state,
 			height,
 			lastCommit,

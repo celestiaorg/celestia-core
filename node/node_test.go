@@ -295,7 +295,7 @@ func TestCreateProposalBlock(t *testing.T) {
 		evidencePool,
 	)
 
-	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
+	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil, []byte("bytes"))
 	block, _ := blockExec.CreateProposalBlock(
 		height,
 		state, commit,
@@ -364,7 +364,7 @@ func TestMaxTxsProposalBlockSize(t *testing.T) {
 		sm.EmptyEvidencePool{},
 	)
 
-	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
+	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil, nil)
 	block, _ := blockExec.CreateProposalBlock(
 		height,
 		state, commit,
