@@ -919,6 +919,7 @@ type Commit struct {
 	Round      int32       `json:"round"`
 	BlockID    BlockID     `json:"block_id"`
 	Signatures []CommitSig `json:"signatures"`
+	HeaderHash []byte      `json:"header_hash"`
 
 	// Memoized in first call to corresponding method.
 	// NOTE: can't memoize in constructor because constructor isn't used for
@@ -1127,6 +1128,7 @@ func (commit *Commit) ToProto() *tmproto.Commit {
 	c.Height = commit.Height
 	c.Round = commit.Round
 	c.BlockID = commit.BlockID.ToProto()
+	c.HeaderHash = commit.HeaderHash
 
 	return c
 }
@@ -1158,6 +1160,7 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 	commit.Height = cp.Height
 	commit.Round = cp.Round
 	commit.BlockID = *bi
+	commit.HeaderHash = cp.HeaderHash
 
 	return commit, commit.ValidateBasic()
 }
