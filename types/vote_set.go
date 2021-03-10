@@ -575,7 +575,7 @@ func (voteSet *VoteSet) sumTotalFrac() (int64, int64, float64) {
 //
 // Panics if the vote type is not PrecommitType or if there's no +2/3 votes for
 // a single block.
-func (voteSet *VoteSet) MakeCommit() *Commit {
+func (voteSet *VoteSet) MakeCommit(headerHash []byte) *Commit {
 	if voteSet.signedMsgType != tmproto.PrecommitType {
 		panic("Cannot MakeCommit() unless VoteSet.Type is PrecommitType")
 	}
@@ -598,7 +598,7 @@ func (voteSet *VoteSet) MakeCommit() *Commit {
 		commitSigs[i] = commitSig
 	}
 
-	return NewCommit(voteSet.GetHeight(), voteSet.GetRound(), *voteSet.maj23, commitSigs, []byte("bytes"))
+	return NewCommit(voteSet.GetHeight(), voteSet.GetRound(), *voteSet.maj23, commitSigs, headerHash)
 }
 
 //--------------------------------------------------------------------------------

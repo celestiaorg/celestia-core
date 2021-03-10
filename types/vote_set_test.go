@@ -2,6 +2,8 @@ package types
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -425,8 +427,12 @@ func TestVoteSet_MakeCommit(t *testing.T) {
 		}
 	}
 
+	var hash []byte
+	hh := sha256.Sum256([]byte("Headerhash"))
+	copy(hash, hh[:])
+
 	// MakeCommit should fail.
-	assert.Panics(t, func() { voteSet.MakeCommit() }, "Doesn't have +2/3 majority")
+	assert.Panics(t, func() { voteSet.MakeCommit(hash) }, "Doesn't have +2/3 majority")
 
 	// 7th voted for some other block.
 	{
@@ -462,8 +468,8 @@ func TestVoteSet_MakeCommit(t *testing.T) {
 		_, err = signAddVote(privValidators[8], vote, voteSet)
 		require.NoError(t, err)
 	}
-
-	commit := voteSet.MakeCommit()
+	commit := voteSet.MakeCommit(hash)
+	fmt.Println(len(hh))
 
 	// Commit should have 10 elements
 	assert.Equal(t, 10, len(commit.Signatures))

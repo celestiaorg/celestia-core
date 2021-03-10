@@ -1052,6 +1052,9 @@ func (commit *Commit) ValidateBasic() error {
 	}
 
 	if commit.Height >= 1 {
+		if len(commit.HeaderHash) != 32 {
+			return fmt.Errorf("incorrect hash length, len: %d expected 32", len(commit.HeaderHash))
+		}
 		if commit.BlockID.IsZero() {
 			return errors.New("commit cannot be for nil block")
 		}

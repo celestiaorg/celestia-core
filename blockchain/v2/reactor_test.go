@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"net"
 	"os"
@@ -526,9 +527,13 @@ func newReactorStore(
 		panic(err)
 	}
 
+	var hash = make([]byte, 32)
+	hh := sha256.Sum256([]byte("Headerhash"))
+	copy(hash, hh[:])
+
 	// add blocks in
 	for blockHeight := int64(1); blockHeight <= maxBlockHeight; blockHeight++ {
-		lastCommit := types.NewCommit(blockHeight-1, 0, types.BlockID{}, nil, []byte("bytes"))
+		lastCommit := types.NewCommit(blockHeight-1, 0, types.BlockID{}, nil, hash)
 		if blockHeight > 1 {
 			lastBlockMeta := blockStore.LoadBlockMeta(blockHeight - 1)
 			lastBlock := blockStore.LoadBlock(blockHeight - 1)
@@ -544,7 +549,7 @@ func newReactorStore(
 				panic(err)
 			}
 			lastCommit = types.NewCommit(vote.Height, vote.Round,
-				lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()}, []byte("bytes"))
+				lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()}, hash)
 		}
 
 		thisBlock := makeBlock(blockHeight, state, lastCommit)
