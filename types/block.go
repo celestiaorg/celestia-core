@@ -266,8 +266,8 @@ func mustPush(rowTree *nmt.NamespacedMerkleTree, id namespace.ID, data []byte) {
 
 // PutBlock posts and pins erasured block data to IPFS using the provided
 // ipld.NodeAdder. Note: the erasured data is currently recomputed
-func (b *Block) PutBlock(ctx context.Context, api format.NodeAdder) error {
-	if api == nil {
+func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error {
+	if nodeAdder == nil {
 		return errors.New("no ipfs node adder provided")
 	}
 
@@ -292,7 +292,7 @@ func (b *Block) PutBlock(ctx context.Context, api format.NodeAdder) error {
 	// iterate through each set of col and row leaves
 	for _, leafSet := range leaves {
 		// create a batch per each leafSet
-		batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, api))
+		batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, nodeAdder))
 		tree := nmt.New(sha256.New(), nmt.NodeVisitor(batchAdder.Visit))
 		for _, share := range leafSet {
 			err = tree.Push(share[:NamespaceSize], share[NamespaceSize:])
