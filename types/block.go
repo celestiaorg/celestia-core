@@ -264,7 +264,8 @@ func mustPush(rowTree *nmt.NamespacedMerkleTree, id namespace.ID, data []byte) {
 	}
 }
 
-// PutBlock add
+// PutBlock posts and pins erasured block data to IPFS using the provided
+// ipld.NodeAdder. Note: the erasured data is currently recomputed
 func (b *Block) PutBlock(ctx context.Context, api format.NodeAdder) error {
 	if api == nil {
 		return errors.New("no ipfs node adder provided")
