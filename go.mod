@@ -47,6 +47,7 @@ require (
 
 replace (
 	github.com/ipfs/go-ipfs => github.com/lazyledger/go-ipfs v0.8.0-lazypatch
+	// adding an extra replace statement here enforces usage of our fork of go-cerifcid
 	github.com/ipfs/go-verifcid => github.com/lazyledger/go-verifcid v0.0.1-lazypatch
 	github.com/lazyledger/lazyledger-core/p2p/ipld/plugin => ./p2p/ipld/plugin
 )
