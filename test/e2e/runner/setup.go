@@ -239,13 +239,8 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
 
 	switch node.ABCIProtocol {
-	case e2e.ProtocolUNIX:
-		cfg.ProxyApp = AppAddressUNIX
-	case e2e.ProtocolTCP:
-		cfg.ProxyApp = AppAddressTCP
-	case e2e.ProtocolGRPC:
-		cfg.ProxyApp = AppAddressTCP
-		cfg.ABCI = "grpc"
+	case e2e.ProtocolUNIX, e2e.ProtocolTCP, e2e.ProtocolGRPC:
+		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
 	case e2e.ProtocolBuiltin:
 		cfg.ProxyApp = ""
 		cfg.ABCI = ""
@@ -327,20 +322,15 @@ func MakeAppConfig(node *e2e.Node) ([]byte, error) {
 		"chain_id":          node.Testnet.Name,
 		"dir":               "data/app",
 		"listen":            AppAddressUNIX,
-		"protocol":          "socket",
+		"protocol":          "builtin",
 		"persist_interval":  node.PersistInterval,
 		"snapshot_interval": node.SnapshotInterval,
 		"retain_blocks":     node.RetainBlocks,
 		"key_type":          node.PrivvalKey.Type(),
 	}
 	switch node.ABCIProtocol {
-	case e2e.ProtocolUNIX:
-		cfg["listen"] = AppAddressUNIX
-	case e2e.ProtocolTCP:
-		cfg["listen"] = AppAddressTCP
-	case e2e.ProtocolGRPC:
-		cfg["listen"] = AppAddressTCP
-		cfg["protocol"] = "grpc"
+	case e2e.ProtocolUNIX, e2e.ProtocolTCP, e2e.ProtocolGRPC:
+		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
 	case e2e.ProtocolBuiltin:
 		delete(cfg, "listen")
 		cfg["protocol"] = "builtin"

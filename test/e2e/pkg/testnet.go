@@ -149,7 +149,7 @@ func LoadTestnet(file string) (*Testnet, error) {
 			ProxyPort:        proxyPortGen.Next(),
 			Mode:             ModeValidator,
 			Database:         "goleveldb",
-			ABCIProtocol:     ProtocolUNIX,
+			ABCIProtocol:     ProtocolBuiltin,
 			PrivvalProtocol:  ProtocolFile,
 			StartAt:          nodeManifest.StartAt,
 			FastSync:         nodeManifest.FastSync,
@@ -312,7 +312,7 @@ func (n Node) Validate(testnet Testnet) error {
 		return fmt.Errorf("invalid fast sync setting %q", n.FastSync)
 	}
 	switch n.Database {
-	case "goleveldb", "cleveldb", "boltdb", "rocksdb", "badgerdb":
+	case "badgerdb":
 	default:
 		return fmt.Errorf("invalid database setting %q", n.Database)
 	}
