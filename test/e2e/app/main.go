@@ -10,7 +10,6 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/lazyledger/lazyledger-core/abci/server"
 	"github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	tmflags "github.com/lazyledger/lazyledger-core/libs/cli/flags"
@@ -62,8 +61,6 @@ func run(configFile string) error {
 
 	// Start app server.
 	switch cfg.Protocol {
-	case "socket", "grpc":
-		err = startApp(cfg)
 	case "builtin":
 		if len(cfg.Misbehaviors) == 0 {
 			err = startNode(cfg)
@@ -81,24 +78,6 @@ func run(configFile string) error {
 	for {
 		time.Sleep(1 * time.Hour)
 	}
-}
-
-// startApp starts the application server, listening for connections from Tendermint.
-func startApp(cfg *Config) error {
-	app, err := NewApplication(cfg)
-	if err != nil {
-		return err
-	}
-	server, err := server.NewServer(cfg.Listen, cfg.Protocol, app)
-	if err != nil {
-		return err
-	}
-	err = server.Start()
-	if err != nil {
-		return err
-	}
-	logger.Info(fmt.Sprintf("Server listening on %v (%v protocol)", cfg.Listen, cfg.Protocol))
-	return nil
 }
 
 // startNode starts a Tendermint node running the application directly. It assumes the Tendermint
