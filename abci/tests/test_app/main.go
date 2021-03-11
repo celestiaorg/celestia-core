@@ -30,9 +30,6 @@ const (
 func ensureABCIIsUp(typ string, n int) error {
 	var err error
 	cmdString := "abci-cli echo hello"
-	if typ == "grpc" {
-		cmdString = "abci-cli --abci grpc echo hello"
-	}
 
 	for i := 0; i < n; i++ {
 		cmd := exec.Command("bash", "-c", cmdString)

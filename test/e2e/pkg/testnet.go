@@ -38,7 +38,6 @@ const (
 
 	ProtocolBuiltin Protocol = "builtin"
 	ProtocolFile    Protocol = "file"
-	ProtocolGRPC    Protocol = "grpc"
 	ProtocolTCP     Protocol = "tcp"
 	ProtocolUNIX    Protocol = "unix"
 
@@ -317,7 +316,7 @@ func (n Node) Validate(testnet Testnet) error {
 		return fmt.Errorf("invalid database setting %q", n.Database)
 	}
 	switch n.ABCIProtocol {
-	case ProtocolBuiltin, ProtocolUNIX, ProtocolTCP, ProtocolGRPC:
+	case ProtocolBuiltin, ProtocolUNIX, ProtocolTCP:
 	default:
 		return fmt.Errorf("invalid ABCI protocol setting %q", n.ABCIProtocol)
 	}

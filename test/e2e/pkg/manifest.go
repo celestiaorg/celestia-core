@@ -72,7 +72,7 @@ type ManifestNode struct {
 	Database string `toml:"database"`
 
 	// ABCIProtocol specifies the protocol used to communicate with the ABCI
-	// application: "unix", "tcp", "grpc", or "builtin". Defaults to unix.
+	// application: "unix", "tcp", or "builtin". Defaults to unix.
 	// builtin will build a complete Tendermint node into the application and
 	// launch it instead of launching a separate Tendermint process.
 	ABCIProtocol string `toml:"abci_protocol"`

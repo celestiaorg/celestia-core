@@ -245,9 +245,6 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 		cfg.ProxyApp = AppAddressUNIX
 	case e2e.ProtocolTCP:
 		cfg.ProxyApp = AppAddressTCP
-	case e2e.ProtocolGRPC:
-		cfg.ProxyApp = AppAddressTCP
-		cfg.ABCI = "grpc"
 	case e2e.ProtocolBuiltin:
 		cfg.ProxyApp = ""
 		cfg.ABCI = ""
@@ -339,9 +336,6 @@ func MakeAppConfig(node *e2e.Node) ([]byte, error) {
 		cfg["listen"] = AppAddressUNIX
 	case e2e.ProtocolTCP:
 		cfg["listen"] = AppAddressTCP
-	case e2e.ProtocolGRPC:
-		cfg["listen"] = AppAddressTCP
-		cfg["protocol"] = "grpc"
 	case e2e.ProtocolBuiltin:
 		delete(cfg, "listen")
 		cfg["protocol"] = "builtin"

@@ -62,7 +62,7 @@ func run(configFile string) error {
 
 	// Start app server.
 	switch cfg.Protocol {
-	case "socket", "grpc":
+	case "socket":
 		err = startApp(cfg)
 	case "builtin":
 		if len(cfg.Misbehaviors) == 0 {
@@ -240,5 +240,5 @@ func setupNode() (*config.Config, log.Logger, *p2p.NodeKey, error) {
 		return nil, nil, nil, fmt.Errorf("failed to load or gen node key %s: %w", tmcfg.NodeKeyFile(), err)
 	}
 
-	return tmcfg, nodeLogger, nodeKey, nil
+	return tmcfg, nodeLogger, &nodeKey, nil
 }

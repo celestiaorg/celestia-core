@@ -214,7 +214,7 @@ type BaseConfig struct { //nolint: maligned
 	// A JSON file containing the private key to use for p2p authenticated encryption
 	NodeKey string `mapstructure:"node-key-file"`
 
-	// Mechanism to connect to the ABCI application: socket | grpc
+	// Mechanism to connect to the ABCI application: socket
 	ABCI string `mapstructure:"abci"`
 
 	// If true, query the ABCI app on connecting to a new peer

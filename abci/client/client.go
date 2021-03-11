@@ -74,8 +74,6 @@ func NewClient(addr, transport string, mustConnect bool) (client Client, err err
 	switch transport {
 	case "socket":
 		client = NewSocketClient(addr, mustConnect)
-	case "grpc":
-		client = NewGRPCClient(addr, mustConnect)
 	default:
 		err = fmt.Errorf("unknown abci transport %s", transport)
 	}

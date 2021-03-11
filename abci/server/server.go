@@ -2,7 +2,6 @@
 Package server is used to start a new ABCI server.
 
 It contains two server implementation:
- * gRPC server
  * socket server
 
 */
@@ -21,8 +20,6 @@ func NewServer(protoAddr, transport string, app types.Application) (service.Serv
 	switch transport {
 	case "socket":
 		s = NewSocketServer(protoAddr, app)
-	case "grpc":
-		s = NewGRPCServer(protoAddr, types.NewGRPCApplication(app))
 	default:
 		err = fmt.Errorf("unknown server type %s", transport)
 	}
