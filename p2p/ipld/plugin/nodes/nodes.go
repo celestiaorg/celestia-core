@@ -49,7 +49,8 @@ func init() {
 		nmtHashSize,
 		sumSha256Namespace8Flagged,
 	)
-	format.DefaultBlockDecoder.Register(Nmt, NmtNodeParser) // this should already happen when the plugin is injected but it doesn't for some CI tests
+	// this should already happen when the plugin is injected but it doesn't for some CI tests
+	format.DefaultBlockDecoder.Register(Nmt, NmtNodeParser)
 }
 
 func mustRegisterNamespacedCodec(
