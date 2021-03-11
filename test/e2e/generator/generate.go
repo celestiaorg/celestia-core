@@ -27,8 +27,9 @@ var (
 	}
 
 	// The following specify randomly chosen values for testnet nodes.
-	// TODO settle for one DB only
-	nodeDatabases         = uniformChoice{"goleveldb", "cleveldb", "rocksdb", "boltdb", "badgerdb"}
+	// TODO(ismail): do we want to stick to badgerdb?
+	// see also: https://github.com/lazyledger/lazyledger-core/issues/211
+	nodeDatabases         = uniformChoice{"badgerdb"}
 	nodeABCIProtocols     = uniformChoice{"builtin"} // we only care about builtin apps here
 	nodePrivvalProtocols  = uniformChoice{"file", "unix", "tcp"}
 	nodeFastSyncs         = uniformChoice{"", "v0"} // disable v2 due to bugs
