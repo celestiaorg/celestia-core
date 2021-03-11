@@ -61,7 +61,7 @@ var (
 	primaryAddr        string
 	witnessAddrsJoined string
 	chainID            string
-	dir                string
+	home               string
 	maxOpenConnections int
 
 	sequential     bool
@@ -122,7 +122,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		witnessesAddrs = strings.Split(witnessAddrsJoined, ",")
 	}
 
-	db, err := dbm.NewGoLevelDB("light-client-db", dir)
+	db, err := dbm.NewGoLevelDB("light-client-db", home)
 	if err != nil {
 		return fmt.Errorf("can't create a db: %w", err)
 	}
