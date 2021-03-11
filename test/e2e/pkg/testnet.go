@@ -148,7 +148,7 @@ func LoadTestnet(file string) (*Testnet, error) {
 			IP:               ipGen.Next(),
 			ProxyPort:        proxyPortGen.Next(),
 			Mode:             ModeValidator,
-			Database:         "goleveldb",
+			Database:         "badgerdb",
 			ABCIProtocol:     ProtocolBuiltin,
 			PrivvalProtocol:  ProtocolFile,
 			StartAt:          nodeManifest.StartAt,
