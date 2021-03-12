@@ -623,6 +623,8 @@ github.com/lazyledger/go-ipfs v0.8.0-lazypatch h1:8Dkw7Or6d0BmpFYFcxwgqWZ047BPGC
 github.com/lazyledger/go-ipfs v0.8.0-lazypatch/go.mod h1:CE4cJkjUmwW5LwJP26KKEAZ11ZED0DxzSryfv5RMf6E=
 github.com/lazyledger/go-leopard v0.0.0-20200604113236-298f93361181 h1:mUeCGuCgjZVadW4CzA2dMBq7p2BqaoCfpnKjxMmSaSE=
 github.com/lazyledger/go-leopard v0.0.0-20200604113236-298f93361181/go.mod h1:v1o1CRihQ9i7hizx23KK4aR79lxA6VDUIzUCfDva0XQ=
+github.com/lazyledger/go-verifcid v0.0.1-lazypatch h1:jAVwUw+DhuCzx5IcYpFh6d6HWxRRz8nhJ3rQo+vlFAc=
+github.com/lazyledger/go-verifcid v0.0.1-lazypatch/go.mod h1:kXPYu0XqTNUKWA1h3M95UHjUqBzDwXVVt/RXZDjKJmQ=
 github.com/lazyledger/merkletree v0.0.0-20201214195110-6901c4c3c75f h1:jbyPAH6o6hGte4RtZBaqWs2n4Fl6hS7qJGXX3qnjiy4=
 github.com/lazyledger/merkletree v0.0.0-20201214195110-6901c4c3c75f/go.mod h1:10PA0NlnYtB8HrtwIDQAyTKWp8TEZ0zBZCGlYC/7+QE=
 github.com/lazyledger/nmt v0.2.0 h1:jKpC+XMSc4P1asLvutSwyMlgUDnAvv1HAVyzal21MbA=

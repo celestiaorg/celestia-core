@@ -3,6 +3,7 @@ package nodes
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -48,6 +49,8 @@ func init() {
 		nmtHashSize,
 		sumSha256Namespace8Flagged,
 	)
+	// this should already happen when the plugin is injected but it doesn't for some CI tests
+	format.DefaultBlockDecoder.Register(Nmt, NmtNodeParser)
 }
 
 func mustRegisterNamespacedCodec(
@@ -81,6 +84,8 @@ func sumSha256Namespace8Flagged(data []byte, _length int) ([]byte, error) {
 	}
 	return nmt.Sha256Namespace8FlaggedInner(data[1:]), nil
 }
+
+var Plugins = []plugin.Plugin{&LazyLedgerPlugin{}}
 
 var _ plugin.PluginIPLD = &LazyLedgerPlugin{}
 
@@ -121,34 +126,15 @@ func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
 // the commandline, the ipld Nodes will rather be created together with the NMT
 // root instead of re-computing it here.
 func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int) ([]node.Node, error) {
-	// The extendedRowOrColumnSize is hardcode this here to avoid importing:
-	// https://github.com/lazyledger/lazyledger-core/blob/585566317e519bbb6d35d149b7e856c4c1e8657c/types/consts.go#L23
-	const extendedRowOrColumnSize = 2 * 128
 	br := bufio.NewReader(r)
-	nodes := make([]node.Node, 0, extendedRowOrColumnSize)
-	nodeCollector := func(hash []byte, children ...[]byte) {
-		cid := mustCidFromNamespacedSha256(hash)
-		switch len(children) {
-		case 1:
-			prependNode(nmtLeafNode{
-				cid:  cid,
-				Data: children[0],
-			}, &nodes)
-		case 2:
-			prependNode(nmtNode{
-				cid: cid,
-				l:   children[0],
-				r:   children[1],
-			}, &nodes)
-		default:
-			panic("expected a binary tree")
-		}
-	}
+	collector := newNodeCollector()
+
 	n := nmt.New(
 		sha256.New(),
 		nmt.NamespaceIDSize(namespaceSize),
-		nmt.NodeVisitor(nodeCollector),
+		nmt.NodeVisitor(collector.visit),
 	)
+
 	for {
 		namespacedLeaf := make([]byte, shareSize+namespaceSize)
 		if _, err := io.ReadFull(br, namespacedLeaf); err != nil {
@@ -163,13 +149,91 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 	}
 	// to trigger the collection of nodes:
 	_ = n.Root()
-	return nodes, nil
+	return collector.ipldNodes(), nil
 }
 
-func prependNode(newNode node.Node, nodes *[]node.Node) {
-	*nodes = append(*nodes, node.Node(nil))
-	copy((*nodes)[1:], *nodes)
-	(*nodes)[0] = newNode
+// nmtNodeCollector creates and collects ipld.Nodes if inserted into a nmt tree.
+// It is mainly used for testing.
+type nmtNodeCollector struct {
+	nodes []node.Node
+}
+
+func newNodeCollector() *nmtNodeCollector {
+	// The extendedRowOrColumnSize is hardcode this here to avoid importing:
+	// https://github.com/lazyledger/lazyledger-core/blob/585566317e519bbb6d35d149b7e856c4c1e8657c/types/consts.go#L23
+	const extendedRowOrColumnSize = 2 * 128
+	return &nmtNodeCollector{nodes: make([]node.Node, 0, extendedRowOrColumnSize)}
+}
+
+func (n nmtNodeCollector) ipldNodes() []node.Node {
+	return n.nodes
+}
+
+func (n *nmtNodeCollector) visit(hash []byte, children ...[]byte) {
+	cid := mustCidFromNamespacedSha256(hash)
+	switch len(children) {
+	case 1:
+		n.nodes = prependNode(nmtLeafNode{
+			cid:  cid,
+			Data: children[0],
+		}, n.nodes)
+	case 2:
+		n.nodes = prependNode(nmtNode{
+			cid: cid,
+			l:   children[0],
+			r:   children[1],
+		}, n.nodes)
+	default:
+		panic("expected a binary tree")
+	}
+}
+
+func prependNode(newNode node.Node, nodes []node.Node) []node.Node {
+	nodes = append(nodes, node.Node(nil))
+	copy(nodes[1:], nodes)
+	nodes[0] = newNode
+	return nodes
+}
+
+// NmtNodeAdder adds ipld.Nodes to the underlying ipld.Batch if it is inserted
+// into an nmt tree
+type NmtNodeAdder struct {
+	batch *format.Batch
+	ctx   context.Context
+}
+
+// NewNmtNodeAdder returns a new NmtNodeAdder with the provided context and
+// batch. Note that the context provided should have a timeout
+func NewNmtNodeAdder(ctx context.Context, batch *format.Batch) *NmtNodeAdder {
+	return &NmtNodeAdder{
+		batch: batch,
+		ctx:   ctx,
+	}
+}
+
+// Visit can be inserted into an nmt tree to create ipld.Nodes while computing the root
+func (n *NmtNodeAdder) Visit(hash []byte, children ...[]byte) {
+	cid := mustCidFromNamespacedSha256(hash)
+	switch len(children) {
+	case 1:
+		n.batch.Add(n.ctx, nmtLeafNode{
+			cid:  cid,
+			Data: children[0],
+		})
+	case 2:
+		n.batch.Add(n.ctx, nmtNode{
+			cid: cid,
+			l:   children[0],
+			r:   children[1],
+		})
+	default:
+		panic("expected a binary tree")
+	}
+}
+
+// Batch return the ipld.Batch originally provided to the NmtNodeAdder
+func (n *NmtNodeAdder) Batch() *format.Batch {
+	return n.batch
 }
 
 func NmtNodeParser(block blocks.Block) (node.Node, error) {
@@ -241,13 +305,13 @@ func (n nmtNode) Loggable() map[string]interface{} {
 func (n nmtNode) Resolve(path []string) (interface{}, []string, error) {
 	switch path[0] {
 	case "0":
-		left, err := cidFromNamespacedSha256(n.l)
+		left, err := CidFromNamespacedSha256(n.l)
 		if err != nil {
 			return nil, nil, err
 		}
 		return &node.Link{Cid: left}, path[1:], nil
 	case "1":
-		right, err := cidFromNamespacedSha256(n.r)
+		right, err := CidFromNamespacedSha256(n.r)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -372,7 +436,8 @@ func (l nmtLeafNode) Size() (uint64, error) {
 	return 0, nil
 }
 
-func cidFromNamespacedSha256(namespacedHash []byte) (cid.Cid, error) {
+// CidFromNamespacedSha256 uses a hash from an nmt tree to create a cide
+func CidFromNamespacedSha256(namespacedHash []byte) (cid.Cid, error) {
 	if got, want := len(namespacedHash), nmtHashSize; got != want {
 		return cid.Cid{}, fmt.Errorf("invalid namespaced hash length, got: %v, want: %v", got, want)
 	}
@@ -386,7 +451,7 @@ func cidFromNamespacedSha256(namespacedHash []byte) (cid.Cid, error) {
 // mustCidFromNamespacedSha256 is a wrapper around cidFromNamespacedSha256 that panics
 // in case of an error. Use with care and only in places where no error should occur.
 func mustCidFromNamespacedSha256(hash []byte) cid.Cid {
-	cid, err := cidFromNamespacedSha256(hash)
+	cid, err := CidFromNamespacedSha256(hash)
 	if err != nil {
 		panic(
 			fmt.Sprintf("malformed hash: %s, codec: %v",
