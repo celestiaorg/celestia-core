@@ -704,17 +704,17 @@ func TestValidatorSet_VerifyCommit_All(t *testing.T) {
 		{"wrong height", chainID, vote.BlockID, vote.Height - 1, commit, true},
 
 		{"wrong set size: 1 vs 0", chainID, vote.BlockID, vote.Height,
-			NewCommit(vote.Height, vote.Round, vote.BlockID, []CommitSig{}, []byte("bytes")), true},
+			NewCommit(vote.Height, vote.Round, vote.BlockID, []CommitSig{}), true},
 
 		{"wrong set size: 1 vs 2", chainID, vote.BlockID, vote.Height,
 			NewCommit(vote.Height, vote.Round, vote.BlockID,
-				[]CommitSig{vote.CommitSig(), {BlockIDFlag: BlockIDFlagAbsent}}, []byte("bytes")), true},
+				[]CommitSig{vote.CommitSig(), {BlockIDFlag: BlockIDFlagAbsent}}), true},
 
 		{"insufficient voting power: got 0, needed more than 666", chainID, vote.BlockID, vote.Height,
-			NewCommit(vote.Height, vote.Round, vote.BlockID, []CommitSig{{BlockIDFlag: BlockIDFlagAbsent}}, []byte("bytes")), true},
+			NewCommit(vote.Height, vote.Round, vote.BlockID, []CommitSig{{BlockIDFlag: BlockIDFlagAbsent}}),true},
 
 		{"wrong signature (#0)", chainID, vote.BlockID, vote.Height,
-			NewCommit(vote.Height, vote.Round, vote.BlockID, []CommitSig{vote2.CommitSig()}, []byte("bytes")), true},
+			NewCommit(vote.Height, vote.Round, vote.BlockID, []CommitSig{vote2.CommitSig()}), true},
 	}
 
 	for _, tc := range testCases {

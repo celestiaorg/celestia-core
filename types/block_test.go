@@ -94,7 +94,7 @@ func TestBlockValidateBasic(t *testing.T) {
 			blk.LastCommit = nil
 		}, true},
 		{"Invalid LastCommit", func(blk *Block) {
-			blk.LastCommit = NewCommit(-1, 0, *voteSet.maj23, nil, []byte("bytes"))
+			blk.LastCommit = NewCommit(-1, 0, *voteSet.maj23, nil)
 		}, true},
 		{"Invalid Evidence", func(blk *Block) {
 			emptyEv := &DuplicateVoteEvidence{}
@@ -587,12 +587,12 @@ func TestCommitToVoteSetWithVotesForNilBlock(t *testing.T) {
 		}
 
 		if tc.valid {
-			commit := voteSet.MakeCommit([]byte("blockhash")) // panics without > 2/3 valid votes
+			commit := voteSet.MakeCommit() // panics without > 2/3 valid votes
 			assert.NotNil(t, commit)
 			err := valSet.VerifyCommit(voteSet.ChainID(), blockID, height-1, commit)
 			assert.Nil(t, err)
 		} else {
-			assert.Panics(t, func() { voteSet.MakeCommit([]byte("blockhash")) })
+			assert.Panics(t, func() { voteSet.MakeCommit() })
 		}
 	}
 }

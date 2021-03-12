@@ -432,7 +432,7 @@ func TestVoteSet_MakeCommit(t *testing.T) {
 	copy(hash, hh[:])
 
 	// MakeCommit should fail.
-	assert.Panics(t, func() { voteSet.MakeCommit(hash) }, "Doesn't have +2/3 majority")
+	assert.Panics(t, func() { voteSet.MakeCommit() }, "Doesn't have +2/3 majority")
 
 	// 7th voted for some other block.
 	{
@@ -468,7 +468,7 @@ func TestVoteSet_MakeCommit(t *testing.T) {
 		_, err = signAddVote(privValidators[8], vote, voteSet)
 		require.NoError(t, err)
 	}
-	commit := voteSet.MakeCommit(hash)
+	commit := voteSet.MakeCommit()
 	fmt.Println(len(hh))
 
 	// Commit should have 10 elements

@@ -929,13 +929,13 @@ type Commit struct {
 }
 
 // NewCommit returns a new Commit.
-func NewCommit(height int64, round int32, blockID BlockID, commitSigs []CommitSig, hh []byte) *Commit {
+func NewCommit(height int64, round int32, blockID BlockID, commitSigs []CommitSig) *Commit {
 	return &Commit{
 		Height:     height,
 		Round:      round,
 		BlockID:    blockID,
 		Signatures: commitSigs,
-		HeaderHash: hh,
+		HeaderHash: blockID.Hash,
 	}
 }
 

@@ -1135,10 +1135,10 @@ func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.Pa
 	case cs.Height == cs.state.InitialHeight:
 		// We're creating a proposal for the first block.
 		// The commit is empty, but not nil.
-		commit = types.NewCommit(0, 0, types.BlockID{}, nil, nil)
+		commit = types.NewCommit(0, 0, types.BlockID{}, nil)
 	case cs.LastCommit.HasTwoThirdsMajority():
 		// Make the commit from LastCommit
-		commit = cs.LastCommit.MakeCommit(cs.LockedBlock.Header.Hash())
+		commit = cs.LastCommit.MakeCommit()
 	default: // This shouldn't happen.
 		cs.Logger.Error("enterPropose: Cannot propose anything: No commit for the previous block")
 		return
@@ -1529,7 +1529,7 @@ func (cs *State) finalizeCommit(height int64) {
 		// NOTE: the seenCommit is local justification to commit this block,
 		// but may differ from the LastCommit included in the next block
 		precommits := cs.Votes.Precommits(cs.CommitRound)
-		seenCommit := precommits.MakeCommit(block.Header.Hash())
+		seenCommit := precommits.MakeCommit()
 		cs.blockStore.SaveBlock(block, blockParts, seenCommit)
 	} else {
 		// Happens during replay if we already saved the block but didn't commit
@@ -1869,7 +1869,7 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 			if voteErr.VoteA.Height == cs.state.InitialHeight {
 				timestamp = cs.state.LastBlockTime // genesis time
 			} else {
-				timestamp = sm.MedianTime(cs.LastCommit.MakeCommit([]byte("unused hash")), cs.LastValidators)
+				timestamp = sm.MedianTime(cs.LastCommit.MakeCommit(), cs.LastValidators)
 			}
 			// form duplicate vote evidence from the conflicting votes and send it across to the
 			// evidence pool

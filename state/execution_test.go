@@ -165,7 +165,7 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 					ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 					Timestamp:        defaultEvidenceTime,
 					Signature:        crypto.CRandBytes(types.MaxSignatureSize),
-				}}, header.Hash()),
+				}}),
 			},
 			ValidatorSet: state.Validators,
 		},
