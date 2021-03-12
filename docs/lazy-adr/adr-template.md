@@ -47,7 +47,7 @@
 >
 > - Will these changes require a breaking (major) release?
 >
-> - Does this change require coordination with the SDK or other?
+> - Does this change require coordination with the LazyLedger fork of the SDK or lazyledger-app?
 
 ## Status
 
