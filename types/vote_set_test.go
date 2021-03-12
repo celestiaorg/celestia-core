@@ -427,7 +427,7 @@ func TestVoteSet_MakeCommit(t *testing.T) {
 		}
 	}
 
-	var hash []byte
+	var hash = make([]byte, 32)
 	hh := sha256.Sum256([]byte("Headerhash"))
 	copy(hash, hh[:])
 

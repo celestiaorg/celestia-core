@@ -32,7 +32,7 @@ func MakeCommit(blockID BlockID, height int64, round int32,
 		}
 	}
 
-	return voteSet.MakeCommit([]byte("unused hash")), nil
+	return voteSet.MakeCommit(blockID.Hash), nil
 }
 
 func signAddVote(privVal PrivValidator, vote *Vote, voteSet *VoteSet) (signed bool, err error) {
