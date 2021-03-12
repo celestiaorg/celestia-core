@@ -7,9 +7,10 @@
 # global owners are only requested if there isn't a more specific
 # codeowner specified below. For this reason, the global codeowners
 # are often repeated in package-level definitions.
-*       @marbar3778 @liamsi @musalbas
+*       @marbar3778 @liamsi @evan-forbes
 
 # Overrides for tooling packages
 .circleci/ @marbar3778 @liamsi
 .github/ @marbar3778 @liamsi
 DOCKER/ @marbar3778 @liamsi
+docs/ @marbar3778 @liamsi @adlerjohn @musalbas
