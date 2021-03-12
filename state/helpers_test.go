@@ -37,23 +37,23 @@ func makeAndCommitGoodBlock(
 	proposerAddr []byte,
 	blockExec *sm.BlockExecutor,
 	privVals map[string]types.PrivValidator,
-	evidence []types.Evidence) (sm.State, types.BlockID, *types.Commit, []byte, error) {
+	evidence []types.Evidence) (sm.State, types.BlockID, *types.Commit, error) {
 	// A good block passes
-	state, blockID, headerHash, err := makeAndApplyGoodBlock(state, height, lastCommit, proposerAddr, blockExec, evidence)
+	state, blockID, err := makeAndApplyGoodBlock(state, height, lastCommit, proposerAddr, blockExec, evidence)
 	if err != nil {
-		return state, types.BlockID{}, nil, nil, err
+		return state, types.BlockID{}, nil, err
 	}
 
 	// Simulate a lastCommit for this block from all validators for the next height
-	commit, err := makeValidCommit(height, blockID, state.Validators, headerHash, privVals)
+	commit, err := makeValidCommit(height, blockID, state.Validators, privVals)
 	if err != nil {
-		return state, types.BlockID{}, nil, nil, err
+		return state, types.BlockID{}, nil, err
 	}
-	return state, blockID, commit, headerHash, nil
+	return state, blockID, commit, nil
 }
 
 func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commit, proposerAddr []byte,
-	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, types.BlockID, []byte, error) {
+	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, types.BlockID, error) {
 	block, _ := state.MakeBlock(
 		height,
 		makeTxs(height),
@@ -64,22 +64,21 @@ func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commi
 		proposerAddr,
 	)
 	if err := blockExec.ValidateBlock(state, block); err != nil {
-		return state, types.BlockID{}, nil, err
+		return state, types.BlockID{}, err
 	}
 	blockID := types.BlockID{Hash: block.Hash(),
 		PartSetHeader: types.PartSetHeader{Total: 3, Hash: tmrand.Bytes(32)}}
 	state, _, err := blockExec.ApplyBlock(state, blockID, block)
 	if err != nil {
-		return state, types.BlockID{}, nil, err
+		return state, types.BlockID{}, err
 	}
-	return state, blockID, block.Header.Hash(), nil
+	return state, blockID, nil
 }
 
 func makeValidCommit(
 	height int64,
 	blockID types.BlockID,
 	vals *types.ValidatorSet,
-	headerHash []byte,
 	privVals map[string]types.PrivValidator,
 ) (*types.Commit, error) {
 	sigs := make([]types.CommitSig, 0)
@@ -91,7 +90,7 @@ func makeValidCommit(
 		}
 		sigs = append(sigs, vote.CommitSig())
 	}
-	return types.NewCommit(height, 0, blockID, sigs, headerHash), nil
+	return types.NewCommit(height, 0, blockID, sigs), nil
 }
 
 // make some bogus txs
