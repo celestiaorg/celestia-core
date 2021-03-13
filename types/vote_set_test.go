@@ -469,7 +469,6 @@ func TestVoteSet_MakeCommit(t *testing.T) {
 		require.NoError(t, err)
 	}
 	commit := voteSet.MakeCommit()
-	fmt.Println(len(hh))
 
 	// Commit should have 10 elements
 	assert.Equal(t, 10, len(commit.Signatures))
