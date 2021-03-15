@@ -919,6 +919,7 @@ type Commit struct {
 	Round      int32       `json:"round"`
 	BlockID    BlockID     `json:"block_id"`
 	Signatures []CommitSig `json:"signatures"`
+	HeaderHash []byte      `json:"header_hash"`
 
 	// Memoized in first call to corresponding method.
 	// NOTE: can't memoize in constructor because constructor isn't used for
@@ -934,6 +935,7 @@ func NewCommit(height int64, round int32, blockID BlockID, commitSigs []CommitSi
 		Round:      round,
 		BlockID:    blockID,
 		Signatures: commitSigs,
+		HeaderHash: blockID.Hash,
 	}
 }
 
@@ -1050,6 +1052,9 @@ func (commit *Commit) ValidateBasic() error {
 	}
 
 	if commit.Height >= 1 {
+		if len(commit.HeaderHash) != 32 {
+			return fmt.Errorf("incorrect hash length, len: %d expected 32", len(commit.HeaderHash))
+		}
 		if commit.BlockID.IsZero() {
 			return errors.New("commit cannot be for nil block")
 		}
@@ -1127,6 +1132,7 @@ func (commit *Commit) ToProto() *tmproto.Commit {
 	c.Height = commit.Height
 	c.Round = commit.Round
 	c.BlockID = commit.BlockID.ToProto()
+	c.HeaderHash = commit.HeaderHash
 
 	return c
 }
@@ -1158,6 +1164,7 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 	commit.Height = cp.Height
 	commit.Round = cp.Round
 	commit.BlockID = *bi
+	commit.HeaderHash = cp.HeaderHash
 
 	return commit, commit.ValidateBasic()
 }

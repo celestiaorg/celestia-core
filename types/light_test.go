@@ -133,6 +133,7 @@ func TestSignedHeaderValidateBasic(t *testing.T) {
 
 	validSignedHeader := SignedHeader{Header: &h, Commit: commit}
 	validSignedHeader.Commit.BlockID.Hash = validSignedHeader.Hash()
+	validSignedHeader.Commit.HeaderHash = validSignedHeader.Hash()
 	invalidSignedHeader := SignedHeader{}
 
 	testCases := []struct {
