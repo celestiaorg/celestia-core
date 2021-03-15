@@ -27,7 +27,7 @@ const (
 	Nmt = 0x7700
 
 	// NmtCodecName is the name used during registry of the Nmt codec
-	NmtCodecName = "nmt-inner-or-leaf-node"
+	NmtCodecName = "nmt-node"
 
 	// Sha256Namespace8Flagged is the multihash code used to hash blocks
 	// that contain an NMT node (inner and leaf nodes).
