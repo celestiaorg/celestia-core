@@ -3,7 +3,6 @@ package types
 import (
 	"bytes"
 	"crypto/sha256"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
