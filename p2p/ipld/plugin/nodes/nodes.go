@@ -25,6 +25,10 @@ const (
 
 	// Nmt is the codec used for leaf and inner nodes of an Namespaced Merkle Tree.
 	Nmt = 0x7700
+
+	// NmtCodecName is the name used during registry of the Nmt codec
+	NmtCodecName = "nmt-inner-or-leaf-node"
+
 	// Sha256Namespace8Flagged is the multihash code used to hash blocks
 	// that contain an NMT node (inner and leaf nodes).
 	Sha256Namespace8Flagged = 0x7701
@@ -51,6 +55,9 @@ func init() {
 	)
 	// this should already happen when the plugin is injected but it doesn't for some CI tests
 	format.DefaultBlockDecoder.Register(Nmt, NmtNodeParser)
+	// register the codecs in the global maps
+	cid.Codecs[NmtCodecName] = Nmt
+	cid.CodecToStr[Nmt] = NmtCodecName
 }
 
 func mustRegisterNamespacedCodec(
