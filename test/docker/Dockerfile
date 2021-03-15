@@ -18,9 +18,6 @@ COPY . $REPO
 # docker caching prevents reinstall on code change!
 RUN make tools
 
-# install ABCI CLI
-RUN make install_abci
-
 # install Tendermint
 RUN make install
 

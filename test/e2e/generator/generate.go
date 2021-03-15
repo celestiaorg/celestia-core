@@ -27,8 +27,10 @@ var (
 	}
 
 	// The following specify randomly chosen values for testnet nodes.
-	nodeDatabases         = uniformChoice{"goleveldb", "cleveldb", "rocksdb", "boltdb", "badgerdb"}
-	nodeABCIProtocols     = uniformChoice{"unix", "tcp", "builtin"} // don't run with grpc
+	// TODO(ismail): do we want to stick to badgerdb?
+	// see also: https://github.com/lazyledger/lazyledger-core/issues/211
+	nodeDatabases         = uniformChoice{"badgerdb"}
+	nodeABCIProtocols     = uniformChoice{"builtin"} // we only care about builtin apps here
 	nodePrivvalProtocols  = uniformChoice{"file", "unix", "tcp"}
 	nodeFastSyncs         = uniformChoice{"", "v0"} // disable v2 due to bugs
 	nodeStateSyncs        = uniformChoice{false, true}
