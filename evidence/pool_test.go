@@ -403,11 +403,9 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.Bloc
 			types.Messages{}, lastCommit, state.Validators.GetProposer().Address)
 		block.Header.Time = defaultEvidenceTime.Add(time.Duration(i) * time.Minute)
 		block.Header.Version = tmversion.Consensus{Block: version.BlockProtocol, App: 1}
-		const parts = 1
-		partSet := block.MakePartSet(parts)
 
 		seenCommit := makeCommit(i, valAddr)
-		blockStore.SaveBlock(block, partSet, seenCommit)
+		blockStore.SaveHeaders(&block.Header, &block.DataAvailabilityHeader, seenCommit)
 	}
 
 	return blockStore

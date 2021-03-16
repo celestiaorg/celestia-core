@@ -291,9 +291,10 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 
 	type quad struct {
-		block  *types.Block
-		commit *types.Commit
-		meta   *types.BlockMeta
+		header   *types.Header
+		daHeader *types.DataAvailabilityHeader
+		commit   *types.Commit
+		meta     *types.BlockMeta
 
 		seenCommit *types.Commit
 	}
@@ -335,7 +336,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 				require.NoError(t, err)
 			}
 			bCommit := bs.LoadBlockCommit(commitHeight)
-			return &quad{block: bBlock, seenCommit: bSeenCommit, commit: bCommit,
+			return &quad{header: bHeader, daHeader: bDAHeader, seenCommit: bSeenCommit, commit: bCommit,
 				meta: bBlockMeta}, nil
 		})
 
@@ -383,9 +384,8 @@ func TestLoadBaseMeta(t *testing.T) {
 
 	for h := int64(1); h <= 10; h++ {
 		block := makeBlock(h, state, new(types.Commit))
-		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, tmtime.Now())
-		bs.SaveBlock(block, partSet, seenCommit)
+		bs.SaveHeaders(&block.Header, &block.DataAvailabilityHeader, seenCommit)
 	}
 
 	_, err = bs.PruneBlocks(4)
@@ -394,39 +394,6 @@ func TestLoadBaseMeta(t *testing.T) {
 	baseBlock := bs.LoadBaseMeta()
 	assert.EqualValues(t, 4, baseBlock.Header.Height)
 	assert.EqualValues(t, 4, bs.Base())
-}
-
-func TestLoadBlockPart(t *testing.T) {
-	bs, db := freshBlockStore()
-	height, index := int64(10), 1
-	loadPart := func() (interface{}, error) {
-		part := bs.LoadBlockPart(height, index)
-		return part, nil
-	}
-
-	// Initially no contents.
-	// 1. Requesting for a non-existent block shouldn't fail
-	res, _, panicErr := doFn(loadPart)
-	require.Nil(t, panicErr, "a non-existent block part shouldn't cause a panic")
-	require.Nil(t, res, "a non-existent block part should return nil")
-
-	// 2. Next save a corrupted block then try to load it
-	err := db.Set(calcBlockPartKey(height, index), []byte("Tendermint"))
-	require.NoError(t, err)
-	res, _, panicErr = doFn(loadPart)
-	require.NotNil(t, panicErr, "expecting a non-nil panic")
-	require.Contains(t, panicErr.Error(), "unmarshal to tmproto.Part failed")
-
-	// 3. A good block serialized and saved to the DB should be retrievable
-	pb1, err := part1.ToProto()
-	require.NoError(t, err)
-	err = db.Set(calcBlockPartKey(height, index), mustEncode(pb1))
-	require.NoError(t, err)
-	gotPart, _, panicErr := doFn(loadPart)
-	require.Nil(t, panicErr, "an existent and proper block should not panic")
-	require.Nil(t, res, "a properly saved block should return a proper block")
-	require.Equal(t, gotPart.(*types.Part), part1,
-		"expecting successful retrieval of previously saved block")
 }
 
 func TestPruneBlocks(t *testing.T) {
@@ -451,16 +418,15 @@ func TestPruneBlocks(t *testing.T) {
 	// make more than 1000 blocks, to test batch deletions
 	for h := int64(1); h <= 1500; h++ {
 		block := makeBlock(h, state, new(types.Commit))
-		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, tmtime.Now())
-		bs.SaveBlock(block, partSet, seenCommit)
+		bs.SaveHeaders(&block.Header, &block.DataAvailabilityHeader, seenCommit)
 	}
 
 	assert.EqualValues(t, 1, bs.Base())
 	assert.EqualValues(t, 1500, bs.Height())
 	assert.EqualValues(t, 1500, bs.Size())
 
-	prunedBlock := bs.LoadBlock(1199)
+	prunedHeader, prunedDAHeader := bs.LoadHeaders(1199)
 
 	// Check that basic pruning works
 	pruned, err := bs.PruneBlocks(1200)
