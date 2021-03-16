@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,16 +28,16 @@ func TestCalcCIDPath(t *testing.T) {
 	type test struct {
 		name         string
 		index, total uint32
-		expected     string
+		expected     []string
 	}
 
 	// test cases
 	tests := []test{
-		{"nil", 0, 0, ""},
-		{"0 index 16 total leaves", 0, 16, "0/0/0/0"},
-		{"1 index 16 total leaves", 1, 16, "0/0/0/1"},
-		{"9 index 16 total leaves", 9, 16, "1/0/0/1"},
-		{"15 index 16 total leaves", 15, 16, "1/1/1/1"},
+		{"nil", 0, 0, []string{}},
+		{"0 index 16 total leaves", 0, 16, strings.Split("0/0/0/0", "/")},
+		{"1 index 16 total leaves", 1, 16, strings.Split("0/0/0/1", "/")},
+		{"9 index 16 total leaves", 9, 16, strings.Split("1/0/0/1", "/")},
+		{"15 index 16 total leaves", 15, 16, strings.Split("1/1/1/1", "/")},
 	}
 
 	for _, tt := range tests {
@@ -112,11 +113,7 @@ func TestGetLeafData(t *testing.T) {
 	data := generateRandNamespacedRawData(16, types.NamespaceSize, types.ShareSize)
 
 	// create a random tree
-	tree, err := createNmtTree(
-		ctx,
-		batch,
-		data,
-	)
+	tree, err := createNmtTree(ctx, batch, data)
 	if err != nil {
 		t.Error(err)
 	}
