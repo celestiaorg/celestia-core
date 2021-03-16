@@ -22,7 +22,7 @@ type IPFSConfig struct {
 // locally for testing purposes.
 func DefaultIPFSConfig() *IPFSConfig {
 	return &IPFSConfig{
-		ConfigRootPath: "ipfs/",
+		ConfigRootPath: ".ipfs/",
 		API:            "/ip4/127.0.0.1/tcp/5002",
 		Gateway:        "/ip4/127.0.0.1/tcp/5002",
 		Swarm:          []string{"/ip4/0.0.0.0/tcp/4002", "/ip6/::/tcp/4002"},

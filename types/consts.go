@@ -1,8 +1,9 @@
 package types
 
 import (
+	"crypto/sha256"
+
 	"github.com/lazyledger/nmt/namespace"
-	"golang.org/x/crypto/sha3"
 )
 
 // This contains all constants of:
@@ -32,5 +33,5 @@ var (
 	ParitySharesNamespaceID = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 
 	// change accordingly if another hash.Hash should be used as a base hasher in the NMT:
-	newBaseHashFunc = sha3.New256
+	newBaseHashFunc = sha256.New
 )

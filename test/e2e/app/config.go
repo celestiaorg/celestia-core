@@ -1,4 +1,3 @@
-//nolint: goconst
 package main
 
 import (
@@ -29,7 +28,7 @@ type Config struct {
 func LoadConfig(file string) (*Config, error) {
 	cfg := &Config{
 		Listen:          "unix:///var/run/app.sock",
-		Protocol:        "socket",
+		Protocol:        "builtin",
 		PersistInterval: 1,
 	}
 	_, err := toml.DecodeFile(file, &cfg)
@@ -45,8 +44,6 @@ func (cfg Config) Validate() error {
 	switch {
 	case cfg.ChainID == "":
 		return errors.New("chain_id parameter is required")
-	case cfg.Listen == "" && cfg.Protocol != "builtin":
-		return errors.New("listen parameter is required")
 	default:
 		return nil
 	}

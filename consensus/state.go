@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -11,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-
+	ipfsapi "github.com/ipfs/interface-go-ipfs-core"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	"github.com/lazyledger/lazyledger-core/crypto"
@@ -91,6 +92,8 @@ type State struct {
 
 	// store blocks and commits
 	blockStore sm.BlockStore
+
+	IpfsAPI ipfsapi.CoreAPI
 
 	// create and execute blocks
 	blockExec *sm.BlockExecutor
@@ -1099,6 +1102,19 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		cs.Logger.Debug(fmt.Sprintf("Signed proposal block: %v", block))
 	} else if !cs.replayMode {
 		cs.Logger.Error("enterPropose: Error signing proposal", "height", height, "round", round, "err", err)
+	}
+
+	// post data to ipfs
+	// TODO(evan): don't hard code context and timeout
+	if cs.IpfsAPI != nil {
+		// longer timeouts result in block proposers failing to propose blocks in time.
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
+		defer cancel()
+		// TODO: post data to IPFS in a goroutine
+		err := block.PutBlock(ctx, cs.IpfsAPI.Dag().Pinning())
+		if err != nil {
+			cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
+		}
 	}
 }
 

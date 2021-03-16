@@ -1,6 +1,7 @@
 package v0
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"sort"
@@ -89,6 +90,10 @@ func newBlockchainReactor(
 	if err = stateStore.Save(state); err != nil {
 		panic(err)
 	}
+
+	var hash = make([]byte, 32)
+	hh := sha256.Sum256([]byte("Headerhash"))
+	copy(hash, hh[:])
 
 	// let's add some blocks in
 	for blockHeight := int64(1); blockHeight <= maxBlockHeight; blockHeight++ {

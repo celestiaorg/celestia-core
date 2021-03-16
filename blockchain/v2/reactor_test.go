@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"net"
 	"os"
@@ -525,6 +526,10 @@ func newReactorStore(
 	if err = stateStore.Save(state); err != nil {
 		panic(err)
 	}
+
+	var hash = make([]byte, 32)
+	hh := sha256.Sum256([]byte("Headerhash"))
+	copy(hash, hh[:])
 
 	// add blocks in
 	for blockHeight := int64(1); blockHeight <= maxBlockHeight; blockHeight++ {
