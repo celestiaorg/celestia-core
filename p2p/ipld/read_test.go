@@ -6,15 +6,18 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"testing"
 	"time"
 
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-ipfs/core"
 	"github.com/ipfs/go-ipfs/core/coreapi"
-	coremock "github.com/ipfs/go-ipfs/core/mock"
+	"github.com/ipfs/go-ipfs/core/node/libp2p"
+	"github.com/ipfs/go-ipfs/repo/fsrepo"
+
+	// coremock "github.com/ipfs/go-ipfs/core/mock"
 	"github.com/ipfs/go-ipfs/plugin/loader"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
@@ -94,14 +97,7 @@ func TestGetLeafData(t *testing.T) {
 	}
 
 	// create a mock node
-	ipfsNode, err := coremock.NewMockNode()
-	if err != nil {
-		t.Error(err)
-	}
-
-	// inject the plugins
-	home := os.Getenv("HOME")
-	err = setupPlugins(home)
+	ipfsNode, err := createTestIPFSNode()
 	if err != nil {
 		t.Error(err)
 	}
@@ -112,7 +108,7 @@ func TestGetLeafData(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	batch := format.NewBatch(ctx, ipfsAPI.Dag().Pinning())
+	batch := format.NewBatch(ctx, ipfsAPI.Dag())
 
 	// create a random tree
 	tree, err := createNmtTree(
@@ -202,19 +198,59 @@ func sortByteArrays(src [][]byte) {
 	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
 }
 
+// most of this is unexported code from the node package
+func createTestIPFSNode() (*core.IpfsNode, error) {
+	// config := config.DefaultConfig()
+	repoRoot := "/home/evan/.tendermint_app/ipfs"
+
+	if !fsrepo.IsInitialized(repoRoot) {
+		// TODO: sentinel err
+		return nil, fmt.Errorf("ipfs repo root: %v not intitialized", repoRoot)
+	}
+
+	if err := setupPlugins(repoRoot); err != nil {
+		return nil, err
+	}
+
+	repo, err := fsrepo.Open(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	// Construct the node
+	nodeOptions := &core.BuildCfg{
+		Online: true,
+		// This option sets the node to be a full DHT node (both fetching and storing DHT Records)
+		Routing: libp2p.DHTOption,
+		// This option sets the node to be a client DHT node (only fetching records)
+		// Routing: libp2p.DHTClientOption,
+		Repo: repo,
+	}
+
+	ctx := context.Background()
+	node, err := core.NewNode(ctx, nodeOptions)
+	if err != nil {
+		return nil, err
+	}
+	// run as daemon:
+	node.IsDaemon = true
+	return node, nil
+}
+
 func setupPlugins(path string) error {
 	// Load plugins. This will skip the repo if not available.
-	plugins, err := loader.NewPluginLoader(filepath.Join(path, ".ipfs/plugins"))
+	plugins, err := loader.NewPluginLoader(filepath.Join(path, "plugins"))
 	if err != nil {
 		return fmt.Errorf("error loading plugins: %s", err)
 	}
-
-	if err := plugins.Initialize(); err != nil {
-		return fmt.Errorf("error initializing plugins: %s", err)
+	if err := plugins.Load(&nodes.LazyLedgerPlugin{}); err != nil {
+		return fmt.Errorf("error loading lazyledger plugin: %s", err)
 	}
-
+	if err := plugins.Initialize(); err != nil {
+		return fmt.Errorf("error initializing plugins: plugins.Initialize(): %s", err)
+	}
 	if err := plugins.Inject(); err != nil {
-		return fmt.Errorf("error injecting plugins: %w", err)
+		return fmt.Errorf("error initializing plugins: could not Inject() %w", err)
 	}
 
 	return nil
