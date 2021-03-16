@@ -12,12 +12,9 @@ import (
 	"time"
 
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-ipfs/core"
 	"github.com/ipfs/go-ipfs/core/coreapi"
-	"github.com/ipfs/go-ipfs/core/node/libp2p"
-	"github.com/ipfs/go-ipfs/repo/fsrepo"
 
-	// coremock "github.com/ipfs/go-ipfs/core/mock"
+	coremock "github.com/ipfs/go-ipfs/core/mock"
 	"github.com/ipfs/go-ipfs/plugin/loader"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
@@ -92,29 +89,33 @@ func TestGetLeafData(t *testing.T) {
 		name    string
 		timeout time.Duration
 		rootCid cid.Cid
-		index   uint32
-		total   uint32
+		leaves  [][]byte
 	}
 
 	// create a mock node
-	ipfsNode, err := createTestIPFSNode()
+	ipfsNode, err := coremock.NewMockNode()
 	if err != nil {
 		t.Error(err)
 	}
 
+	// issue a new API object
 	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
 	if err != nil {
 		t.Error(err)
 	}
 
+	// create the context and batch needed for node collection from the tree
 	ctx := context.Background()
-	batch := format.NewBatch(ctx, ipfsAPI.Dag())
+	batch := format.NewBatch(ctx, ipfsAPI.Dag().Pinning())
+
+	// generate random data for the nmt
+	data := generateRandNamespacedRawData(16, types.NamespaceSize, types.ShareSize)
 
 	// create a random tree
 	tree, err := createNmtTree(
 		ctx,
 		batch,
-		generateRandNamespacedRawData(16, types.NamespaceSize, types.ShareSize),
+		data,
 	)
 	if err != nil {
 		t.Error(err)
@@ -137,19 +138,20 @@ func TestGetLeafData(t *testing.T) {
 
 	// test cases
 	tests := []test{
-		{"basic", time.Second, rootCid, 1, 64},
+		{"16 leaves", time.Second, rootCid, data},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tt.timeout)
 			defer cancel()
-			data, err := GetLeafData(ctx, tt.rootCid, tt.index, tt.total, ipfsAPI.Dag())
-			if err != nil {
-				t.Error(err)
+			for i, leaf := range tt.leaves {
+				data, err := GetLeafData(ctx, tt.rootCid, uint32(i), uint32(len(tt.leaves)), ipfsAPI)
+				if err != nil {
+					t.Error(err)
+				}
+				assert.Equal(t, leaf, data[1:])
 			}
-			fmt.Println(data)
-
 		},
 		)
 	}
@@ -196,45 +198,6 @@ func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byt
 
 func sortByteArrays(src [][]byte) {
 	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
-}
-
-// most of this is unexported code from the node package
-func createTestIPFSNode() (*core.IpfsNode, error) {
-	// config := config.DefaultConfig()
-	repoRoot := "/home/evan/.tendermint_app/ipfs"
-
-	if !fsrepo.IsInitialized(repoRoot) {
-		// TODO: sentinel err
-		return nil, fmt.Errorf("ipfs repo root: %v not intitialized", repoRoot)
-	}
-
-	if err := setupPlugins(repoRoot); err != nil {
-		return nil, err
-	}
-
-	repo, err := fsrepo.Open(repoRoot)
-	if err != nil {
-		return nil, err
-	}
-
-	// Construct the node
-	nodeOptions := &core.BuildCfg{
-		Online: true,
-		// This option sets the node to be a full DHT node (both fetching and storing DHT Records)
-		Routing: libp2p.DHTOption,
-		// This option sets the node to be a client DHT node (only fetching records)
-		// Routing: libp2p.DHTClientOption,
-		Repo: repo,
-	}
-
-	ctx := context.Background()
-	node, err := core.NewNode(ctx, nodeOptions)
-	if err != nil {
-		return nil, err
-	}
-	// run as daemon:
-	node.IsDaemon = true
-	return node, nil
 }
 
 func setupPlugins(path string) error {

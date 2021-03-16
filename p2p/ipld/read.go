@@ -1,17 +1,15 @@
 package ipld
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"math"
-	"strings"
 
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	coreiface "github.com/ipfs/interface-go-ipfs-core"
+	"github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/lazyledger/lazyledger-core/types"
-	mh "github.com/multiformats/go-multihash"
 )
 
 // ValidateAvailability implements the protocol described in https://fc21.ifca.ai/papers/83.pdf.
@@ -50,50 +48,42 @@ func RetrieveBlockData(ctx context.Context, dah *types.DataAvailabilityHeader, n
 // Internally, this will be translated to a IPLD path and corresponds to
 // an ipfs dag get request, e.g. namespacedCID/0/1/0/0/1.
 // The retrieved data should be pinned by default.
+
+// GetLeafData uses the leaf path to
 func GetLeafData(
 	ctx context.Context,
 	rootCid cid.Cid,
 	leafIndex uint32,
 	totalLeafs uint32, // this corresponds to the extended square width
-	nodeGetter format.NodeGetter,
+	api coreiface.CoreAPI,
 ) ([]byte, error) {
-
-	labeledCid, err := addCidPath(rootCid, leafIndex, totalLeafs)
+	// calculate the path to the leaf
+	leafPath, err := calcCIDPath(leafIndex, totalLeafs)
 	if err != nil {
 		return nil, err
 	}
 
-	node, err := nodeGetter.Get(ctx, labeledCid)
+	// use the root cid and the leafPath to create an ipld path
+	p := path.Join(path.IpldPath(rootCid), leafPath...)
+
+	// resolve the path
+	node, err := api.ResolveNode(ctx, p)
 	if err != nil {
 		return nil, err
 	}
 
+	// return the leaf
 	return node.RawData(), nil
 }
 
-// addCidPath adds the link path to the end of the root cid "0/1/1/1/0"
-func addCidPath(id cid.Cid, index, total uint32) (cid.Cid, error) {
-	// use the node getter to
-	treePath, err := calcCIDPath(index, total)
-	if err != nil {
-		return cid.Cid{}, err
-	}
-
-	raw := bytes.Join([][]byte{id.Bytes(), []byte(treePath)}, []byte{})
-
-	labeled := cid.NewCidV1(nodes.Nmt, mh.Multihash(raw))
-
-	return labeled, nil
-}
-
-func calcCIDPath(index, total uint32) (string, error) {
+func calcCIDPath(index, total uint32) ([]string, error) {
 	// ensure that the total is a power of two
 	if total != nextPowerOf2(total) {
-		return "", errors.New("expected total to be a power of 2")
+		return nil, errors.New("expected total to be a power of 2")
 	}
 
 	if total == 0 {
-		return "", nil
+		return nil, nil
 	}
 
 	depth := int(math.Log2(float64(total)))
@@ -108,14 +98,7 @@ func calcCIDPath(index, total uint32) (string, error) {
 		cursor /= 2
 	}
 
-	return strings.Join(path, "/"), nil
-}
-
-func prependString(j []string, i string) []string {
-	j = append(j, "")
-	copy(j[1:], j)
-	j[0] = i
-	return j
+	return path, nil
 }
 
 // nextPowerOf2 returns the next lowest power of 2 unless the input is a power
