@@ -161,7 +161,7 @@ func RetrieveBlockData(ctx contex.Context, dah *DataAvailabilityHeader) (types.D
 // the row to the Merkle Dag, in our case a Namespaced Merkle Tree.
 // Note, that this method could also fill the DA header.
 // The data will be pinned by default.
-func (b *Block) PutBlock(ctx contex.Context) error
+func (b *Block) PutBlock(ctx contex.Context, nodeAdder ipld.NodeAdder) error
 ```
 
 We now describe the lower-level library that will be used by above methods.
@@ -185,15 +185,6 @@ func GetLeafData(
     leafIndex uint32,
     totalLeafs uint32, // this corresponds to the extended square width
 ) ([]byte, error)
-
-// PutLeaves takes the namespaced leaves, a row of the from the extended data square,
-// and calls nodes.DataSquareRowOrColumnRawInputParser of the ipld plugin.
-// The resulting ipld nodes are passed to a Batch calling AddMany:
-// https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/batch.go#L29
-// Note, that this method could also return the row and column roots.
-// Tha caller is responsible for making sure that the leaves are sorted by namespace ID.
-// The data will be pinned by default.
-func PutLeaves(ctx contex.Context, namespacedLeaves [][]byte) error
 ```
 
 `GetLeafData` can be used by above `ValidateAvailability` and `RetrieveBlock` and

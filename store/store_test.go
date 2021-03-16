@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"runtime/debug"
@@ -38,8 +39,13 @@ func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 		Timestamp:        timestamp,
 		Signature:        []byte("Signature"),
 	}}
+
+	var hash = make([]byte, 32)
+	hh := sha256.Sum256([]byte("Headerhash"))
+	copy(hash, hh[:])
+
 	return types.NewCommit(height, 0,
-		types.BlockID{Hash: []byte(""), PartSetHeader: types.PartSetHeader{Hash: []byte(""), Total: 2}}, commitSigs)
+		types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: []byte(""), Total: 2}}, commitSigs)
 }
 
 func makeTxs(height int64) (txs []types.Tx) {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	ipfscore "github.com/ipfs/go-ipfs/core"
+	coreapi "github.com/ipfs/go-ipfs/core/coreapi"
 	"github.com/ipfs/go-ipfs/core/node/libp2p"
 	"github.com/ipfs/go-ipfs/plugin/loader"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
@@ -960,6 +961,13 @@ func (n *Node) OnStart() error {
 		if err != nil {
 			return fmt.Errorf("failed to create IPFS node: %w", err)
 		}
+
+		ipfsAPI, err := coreapi.NewCoreAPI(n.ipfsNode)
+		if err != nil {
+			return fmt.Errorf("failed to create an instance of the IPFS core API: %w", err)
+		}
+
+		n.consensusState.IpfsAPI = ipfsAPI
 	}
 
 	return nil

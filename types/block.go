@@ -2,6 +2,8 @@ package types
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
+	format "github.com/ipfs/go-ipld-format"
 
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
@@ -23,6 +26,7 @@ import (
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
 	"github.com/lazyledger/lazyledger-core/version"
@@ -203,47 +207,48 @@ func (b *Block) fillDataAvailabilityHeader() {
 		b.DataHash = b.DataAvailabilityHeader.Hash()
 		return
 	}
+
 	// TODO(ismail): for better efficiency and a larger number shares
 	// we should switch to the rsmt2d.LeopardFF16 codec:
 	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
 	}
-	// compute roots:
+
+	// record the widths
 	squareWidth := extendedDataSquare.Width()
-	originalDataWidth := squareWidth / 2
+
 	b.DataAvailabilityHeader = DataAvailabilityHeader{
 		RowsRoots:   make([]namespace.IntervalDigest, squareWidth),
 		ColumnRoots: make([]namespace.IntervalDigest, squareWidth),
 	}
 
-	// compute row and column roots:
-	// TODO(ismail): refactor this to use rsmt2d lib directly instead
-	// depends on https://github.com/lazyledger/rsmt2d/issues/8
-	for outerIdx := uint(0); outerIdx < squareWidth; outerIdx++ {
-		rowTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
-		colTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
-		for innerIdx := uint(0); innerIdx < squareWidth; innerIdx++ {
-			if outerIdx < originalDataWidth && innerIdx < originalDataWidth {
-				rowShare := namespacedShares[outerIdx*originalDataWidth+innerIdx]
-				colShare := namespacedShares[innerIdx*originalDataWidth+outerIdx]
-				mustPush(rowTree, rowShare.NamespaceID(), rowShare.Data())
-				mustPush(colTree, colShare.NamespaceID(), colShare.Data())
-			} else {
-				rowData := extendedDataSquare.Row(outerIdx)
-				colData := extendedDataSquare.Column(outerIdx)
+	// flatten the square and add namespaces
+	leaves := flattenNamespacedEDS(namespacedShares, extendedDataSquare)
 
-				parityCellFromRow := rowData[innerIdx]
-				parityCellFromCol := colData[innerIdx]
-				mustPush(rowTree, ParitySharesNamespaceID, parityCellFromRow)
-				mustPush(colTree, ParitySharesNamespaceID, parityCellFromCol)
-			}
+	// compute the roots for each col/row
+	for i, leafSet := range leaves {
+		commitment := nmtCommitment(leafSet)
+
+		// add the commitment to the header
+		if uint(i) < squareWidth {
+			b.DataAvailabilityHeader.ColumnRoots[i] = commitment
+		} else {
+			b.DataAvailabilityHeader.RowsRoots[uint(i)-squareWidth] = commitment
 		}
-		b.DataAvailabilityHeader.RowsRoots[outerIdx] = rowTree.Root()
-		b.DataAvailabilityHeader.ColumnRoots[outerIdx] = colTree.Root()
 	}
 
+	// return the root hash of DA Header
 	b.DataHash = b.DataAvailabilityHeader.Hash()
+}
+
+// nmtcommitment generates the nmt root of some namespaced data
+func nmtCommitment(namespacedData [][]byte) namespace.IntervalDigest {
+	tree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
+	for _, leaf := range namespacedData {
+		mustPush(tree, leaf[:NamespaceSize], leaf[NamespaceSize:])
+	}
+	return tree.Root()
 }
 
 func mustPush(rowTree *nmt.NamespacedMerkleTree, id namespace.ID, data []byte) {
@@ -257,6 +262,107 @@ func mustPush(rowTree *nmt.NamespacedMerkleTree, id namespace.ID, data []byte) {
 			),
 		)
 	}
+}
+
+// PutBlock posts and pins erasured block data to IPFS using the provided
+// ipld.NodeAdder. Note: the erasured data is currently recomputed
+func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error {
+	if nodeAdder == nil {
+		return errors.New("no ipfs node adder provided")
+	}
+
+	// recompute the shares
+	namespacedShares := b.Data.computeShares()
+	shares := namespacedShares.RawShares()
+
+	// don't do anything if there is no data to put on IPFS
+	if len(shares) == 0 {
+		return nil
+	}
+
+	// recompute the eds
+	eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
+	if err != nil {
+		return fmt.Errorf("failure to recompute the extended data square: %w", err)
+	}
+
+	// add namespaces to erasured shares and flatten the eds
+	leaves := flattenNamespacedEDS(namespacedShares, eds)
+
+	// iterate through each set of col and row leaves
+	for _, leafSet := range leaves {
+		// create a batch per each leafSet
+		batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, nodeAdder))
+		tree := nmt.New(sha256.New(), nmt.NodeVisitor(batchAdder.Visit))
+		for _, share := range leafSet {
+			err = tree.Push(share[:NamespaceSize], share[NamespaceSize:])
+			if err != nil {
+				return err
+			}
+		}
+
+		// compute the root in order to collect the ipld.Nodes
+		tree.Root()
+
+		// commit the batch to ipfs
+		err = batchAdder.Batch().Commit()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// flattenNamespacedEDS returns a flattend extendedDataSquare with namespaces
+// added to each share. NOTE: output is columns first then rows
+func flattenNamespacedEDS(nss NamespacedShares, eds *rsmt2d.ExtendedDataSquare) [][][]byte {
+	squareWidth := eds.Width()
+	originalDataWidth := squareWidth / 2
+
+	if uint(len(nss)) != originalDataWidth*originalDataWidth {
+		panic(
+			fmt.Sprintf(
+				"unexpected numbers of namespaces: actual %d expected %d",
+				len(nss),
+				squareWidth/2,
+			),
+		)
+	}
+
+	leaves := make([][][]byte, 2*squareWidth)
+	// this is adding the namespace back to Q1 shares and the parity ns to the
+	// rest of the quadrants and flattens the square
+	for i := uint(0); i < squareWidth; i++ {
+		rowLeaves := make([][]byte, squareWidth)
+		colLeaves := make([][]byte, squareWidth)
+
+		for j := uint(0); j < squareWidth; j++ {
+			if i < originalDataWidth && j < originalDataWidth {
+				rowShare := nss[i*originalDataWidth+j]
+				colShare := nss[j*originalDataWidth+i]
+				rowLeaves[j] = append(rowShare.NamespaceID(), rowShare.Data()...)
+				colLeaves[j] = append(colShare.NamespaceID(), colShare.Data()...)
+			} else {
+				rowData := eds.Row(i)
+				colData := eds.Column(i)
+				parityCellFromRow := rowData[j]
+				parityCellFromCol := colData[j]
+				rowLeaves[j] = append(copyOfParityNamespaceID(), parityCellFromRow...)
+				colLeaves[j] = append(copyOfParityNamespaceID(), parityCellFromCol...)
+			}
+		}
+		leaves[i] = colLeaves
+		leaves[i+squareWidth] = rowLeaves
+	}
+
+	return leaves
+}
+
+func copyOfParityNamespaceID() []byte {
+	out := make([]byte, len(ParitySharesNamespaceID))
+	copy(out, ParitySharesNamespaceID)
+	return out
 }
 
 // Hash computes and returns the block hash.
@@ -919,6 +1025,7 @@ type Commit struct {
 	Round      int32       `json:"round"`
 	BlockID    BlockID     `json:"block_id"`
 	Signatures []CommitSig `json:"signatures"`
+	HeaderHash []byte      `json:"header_hash"`
 
 	// Memoized in first call to corresponding method.
 	// NOTE: can't memoize in constructor because constructor isn't used for
@@ -934,6 +1041,7 @@ func NewCommit(height int64, round int32, blockID BlockID, commitSigs []CommitSi
 		Round:      round,
 		BlockID:    blockID,
 		Signatures: commitSigs,
+		HeaderHash: blockID.Hash,
 	}
 }
 
@@ -1050,6 +1158,9 @@ func (commit *Commit) ValidateBasic() error {
 	}
 
 	if commit.Height >= 1 {
+		if len(commit.HeaderHash) != 32 {
+			return fmt.Errorf("incorrect hash length, len: %d expected 32", len(commit.HeaderHash))
+		}
 		if commit.BlockID.IsZero() {
 			return errors.New("commit cannot be for nil block")
 		}
@@ -1127,6 +1238,7 @@ func (commit *Commit) ToProto() *tmproto.Commit {
 	c.Height = commit.Height
 	c.Round = commit.Round
 	c.BlockID = commit.BlockID.ToProto()
+	c.HeaderHash = commit.HeaderHash
 
 	return c
 }
@@ -1158,6 +1270,7 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 	commit.Height = cp.Height
 	commit.Round = cp.Round
 	commit.BlockID = *bi
+	commit.HeaderHash = cp.HeaderHash
 
 	return commit, commit.ValidateBasic()
 }

@@ -2,17 +2,12 @@ package abcicli
 
 import (
 	"context"
-	"fmt"
+
 	"sync"
 
 	"github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/libs/service"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-)
-
-const (
-	dialRetryIntervalSeconds = 3
-	echoRetryIntervalSeconds = 1
 )
 
 //go:generate mockery --case underscore --name Client
@@ -65,24 +60,6 @@ type Client interface {
 	ApplySnapshotChunkSync(context.Context, types.RequestApplySnapshotChunk) (*types.ResponseApplySnapshotChunk, error)
 	PreprocessTxsSync(context.Context, types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error)
 }
-
-//----------------------------------------
-
-// NewClient returns a new ABCI client of the specified transport type.
-// It returns an error if the transport is not "socket" or "grpc"
-func NewClient(addr, transport string, mustConnect bool) (client Client, err error) {
-	switch transport {
-	case "socket":
-		client = NewSocketClient(addr, mustConnect)
-	case "grpc":
-		client = NewGRPCClient(addr, mustConnect)
-	default:
-		err = fmt.Errorf("unknown abci transport %s", transport)
-	}
-	return
-}
-
-//----------------------------------------
 
 type Callback func(*types.Request, *types.Response)
 

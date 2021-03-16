@@ -3,15 +3,22 @@ package types
 import (
 	// it is ok to use math/rand here: we do not need a cryptographically secure random
 	// number generator here and we can run the tests a bit faster
+	stdbytes "bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"math"
 	"os"
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 
 	gogotypes "github.com/gogo/protobuf/types"
+	coreapi "github.com/ipfs/go-ipfs/core/coreapi"
+	coremock "github.com/ipfs/go-ipfs/core/mock"
+	"github.com/ipfs/interface-go-ipfs-core/path"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -1228,9 +1235,10 @@ func TestCommit_ValidateBasic(t *testing.T) {
 		{
 			"invalid block ID",
 			&Commit{
-				Height:  1,
-				Round:   1,
-				BlockID: BlockID{},
+				Height:     1,
+				Round:      1,
+				BlockID:    BlockID{},
+				HeaderHash: make([]byte, tmhash.Size),
 			},
 			true, "commit cannot be for nil block",
 		},
@@ -1245,6 +1253,7 @@ func TestCommit_ValidateBasic(t *testing.T) {
 						Hash: make([]byte, tmhash.Size),
 					},
 				},
+				HeaderHash: make([]byte, tmhash.Size),
 			},
 			true, "no signatures in commit",
 		},
@@ -1266,6 +1275,7 @@ func TestCommit_ValidateBasic(t *testing.T) {
 						Signature:        make([]byte, MaxSignatureSize+1),
 					},
 				},
+				HeaderHash: make([]byte, tmhash.Size),
 			},
 			true, "wrong CommitSig",
 		},
@@ -1287,6 +1297,7 @@ func TestCommit_ValidateBasic(t *testing.T) {
 						Signature:        make([]byte, MaxSignatureSize),
 					},
 				},
+				HeaderHash: make([]byte, tmhash.Size),
 			},
 			false, "",
 		},
@@ -1305,4 +1316,112 @@ func TestCommit_ValidateBasic(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPutBlock(t *testing.T) {
+	ipfsNode, err := coremock.NewMockNode()
+	if err != nil {
+		t.Error(err)
+	}
+
+	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	if err != nil {
+		t.Error(err)
+	}
+
+	testCases := []struct {
+		name      string
+		blockData Data
+		expectErr bool
+		errString string
+	}{
+		{"no leaves", generateRandomData(0), false, ""},
+		{"single leaf", generateRandomData(1), false, ""},
+		{"16 leaves", generateRandomData(16), false, ""},
+		{"max square size", generateRandomData(MaxSquareSize), false, ""},
+	}
+	ctx := context.Background()
+	for _, tc := range testCases {
+		tc := tc
+
+		block := &Block{Data: tc.blockData}
+
+		t.Run(tc.name, func(t *testing.T) {
+			err = block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errString)
+				return
+			}
+
+			require.NoError(t, err)
+
+			timeoutCtx, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+
+			block.fillDataAvailabilityHeader()
+			tc.blockData.computeShares()
+			for _, rowRoot := range block.DataAvailabilityHeader.RowsRoots.Bytes() {
+				// recreate the cids using only the computed roots
+				cid, err := nodes.CidFromNamespacedSha256(rowRoot)
+				if err != nil {
+					t.Error(err)
+				}
+
+				// check if cid was successfully pinned to IPFS
+				_, pinned, err := ipfsAPI.Pin().IsPinned(ctx, path.IpldPath(cid))
+				if err != nil {
+					t.Error(err)
+				}
+				if !pinned {
+					t.Errorf("failure to pin cid %s to IPFS", cid.String())
+				}
+
+				// retrieve the data from IPFS
+				_, err = ipfsAPI.Dag().Get(timeoutCtx, cid)
+				if err != nil {
+					t.Errorf("Root not found: %s", cid.String())
+				}
+			}
+		})
+	}
+}
+
+func generateRandomData(msgCount int) Data {
+	out := make([]Message, msgCount)
+	for i, msg := range generateRandNamespacedRawData(msgCount, NamespaceSize, ShareSize) {
+		out[i] = Message{NamespaceID: msg[:NamespaceSize], Data: msg[:NamespaceSize]}
+	}
+	return Data{
+		Messages: Messages{MessagesList: out},
+	}
+}
+
+// this code is copy pasted from the plugin, and should likely be exported in the plugin instead
+func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byte {
+	data := make([][]byte, total)
+	for i := 0; i < total; i++ {
+		nid := make([]byte, nidSize)
+		_, err := rand.Read(nid)
+		if err != nil {
+			panic(err)
+		}
+		data[i] = nid
+	}
+
+	sortByteArrays(data)
+	for i := 0; i < total; i++ {
+		d := make([]byte, leafSize)
+		_, err := rand.Read(d)
+		if err != nil {
+			panic(err)
+		}
+		data[i] = append(data[i], d...)
+	}
+
+	return data
+}
+
+func sortByteArrays(src [][]byte) {
+	sort.Slice(src, func(i, j int) bool { return stdbytes.Compare(src[i], src[j]) < 0 })
 }
