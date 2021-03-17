@@ -21,8 +21,59 @@ import (
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/nmt"
+	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// NOTE: this test is not complete. we still need to figure out exactly how we are going to recover
+func TestRetrieveBlockData(t *testing.T) {
+	// create a mock node
+	ipfsNode, err := coremock.NewMockNode()
+	if err != nil {
+		t.Error(err)
+	}
+
+	// issue a new API object
+	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	if err != nil {
+		t.Error(err)
+	}
+
+	testCases := []struct {
+		name      string
+		blockData types.Data
+		expectErr bool
+		errString string
+	}{
+		{"max square size", generateRandomData(16), false, ""},
+	}
+	ctx := context.Background()
+	for _, tc := range testCases {
+		tc := tc
+
+		block := &types.Block{
+			Data:       tc.blockData,
+			LastCommit: &types.Commit{},
+		}
+
+		// fill the DataAvailabilityHeader
+		block.Hash()
+
+		t.Run(tc.name, func(t *testing.T) {
+			err = block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errString)
+				return
+			}
+			require.NoError(t, err)
+
+			_, err := RetrieveBlockData(ctx, &block.DataAvailabilityHeader, ipfsAPI, rsmt2d.RSGF8, messageOnlyEDSParser{})
+			require.NoError(t, err)
+		})
+	}
+}
 
 func TestCalcCIDPath(t *testing.T) {
 	type test struct {
@@ -33,7 +84,7 @@ func TestCalcCIDPath(t *testing.T) {
 
 	// test cases
 	tests := []test{
-		{"nil", 0, 0, []string{}},
+		{"nil", 0, 0, []string(nil)},
 		{"0 index 16 total leaves", 0, 16, strings.Split("0/0/0/0", "/")},
 		{"1 index 16 total leaves", 1, 16, strings.Split("0/0/0/1", "/")},
 		{"9 index 16 total leaves", 9, 16, strings.Split("1/0/0/1", "/")},
@@ -147,7 +198,7 @@ func TestGetLeafData(t *testing.T) {
 				if err != nil {
 					t.Error(err)
 				}
-				assert.Equal(t, leaf, data[1:])
+				assert.Equal(t, leaf, data)
 			}
 		},
 		)
@@ -166,6 +217,16 @@ func createNmtTree(ctx context.Context, batch *format.Batch, namespacedData [][]
 	}
 
 	return tree, nil
+}
+
+func generateRandomData(msgCount int) types.Data {
+	out := make([]types.Message, msgCount)
+	for i, msg := range generateRandNamespacedRawData(msgCount, types.NamespaceSize, types.ShareSize) {
+		out[i] = types.Message{NamespaceID: msg[:types.NamespaceSize], Data: msg[:types.NamespaceSize]}
+	}
+	return types.Data{
+		Messages: types.Messages{MessagesList: out},
+	}
 }
 
 // this code is copy pasted from the plugin, and should likely be exported in the plugin instead

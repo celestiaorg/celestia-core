@@ -4,13 +4,20 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sync"
+	"time"
 
 	"github.com/ipfs/go-cid"
-	format "github.com/ipfs/go-ipld-format"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/ipfs/interface-go-ipfs-core/path"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/rsmt2d"
 )
+
+// NOTE: I'm making the assumption that bandwidth is more expensive than
+// compute, this means that when retrieving data I'm stopping as soon as enough
+// data is retrieved to recompute
 
 // ValidateAvailability implements the protocol described in https://fc21.ifca.ai/papers/83.pdf.
 // Specifically all steps of the protocol described in section
@@ -34,22 +41,228 @@ func ValidateAvailability(
 	return nil
 }
 
-// RetrieveBlockData can be used to recover the block Data.
-// It will carry out a similar protocol as described for ValidateAvailability.
-// The key difference is that it will sample enough chunks until it can recover the
-// full extended data square, including original data (e.g. by using rsmt2d.RepairExtendedDataSquare).
-func RetrieveBlockData(ctx context.Context, dah *types.DataAvailabilityHeader, nodeGetter format.NodeGetter) (types.Data, error) {
-	return types.Data{}, nil
+/////////////////////////////////////////
+//	Retrieve Block Data
+///////////////////////////////////////
+
+type EDSParser interface {
+	Parse(eds *rsmt2d.ExtendedDataSquare) (types.Txs, types.IntermediateStateRoots, types.Messages, error)
 }
 
-// GetLeafData takes in a Namespaced Merkle tree root transformed into a Cid
-// and the leaf index to retrieve.
-// Callers also need to pass in the total number of leaves of that tree.
-// Internally, this will be translated to a IPLD path and corresponds to
-// an ipfs dag get request, e.g. namespacedCID/0/1/0/0/1.
-// The retrieved data should be pinned by default.
+// RetrieveBlockData asynchronously fetches block data until the underlying extended
+// data square can be restored and returned.
+func RetrieveBlockData(
+	ctx context.Context,
+	dah *types.DataAvailabilityHeader,
+	api coreiface.CoreAPI,
+	codec rsmt2d.CodecType,
+	edsParser EDSParser,
+) (types.Data, error) {
+	squareSize := uint32(len(dah.ColumnRoots))
 
-// GetLeafData uses the leaf path to
+	// keep track of leaves using thread safe counter
+	lc := newLeafCounter(squareSize)
+
+	// convert the row and col roots into Cids
+	rowRoots := dah.RowsRoots.Bytes()
+	rowCids, err := convertRoots(rowRoots)
+	if err != nil {
+		return types.Data{}, err
+	}
+
+	colRoots := dah.ColumnRoots.Bytes()
+	colCids, err := convertRoots(colRoots)
+	if err != nil {
+		return types.Data{}, err
+	}
+
+	// add a local cancel to the parent ctx
+	ctx, cancel := context.WithCancel(ctx)
+
+	// async fetch each leaf
+	for outer := uint32(0); outer < squareSize; outer++ {
+		for inner := uint32(0); inner < squareSize; inner++ {
+			// async fetch leaves.
+			go lc.retrieveLeaf(ctx, colCids[inner], false, outer, inner, api)
+			go lc.retrieveLeaf(ctx, rowCids[outer], true, outer, inner, api)
+		}
+	}
+
+	// wait until enough data has been collected. check every 500 milliseconds
+	lc.wait(ctx, time.Millisecond*500)
+
+	// we have enough data to repair the square cancel any ongoing requests
+	cancel()
+
+	// flatten the square
+	flattened := lc.flatten()
+
+	var eds *rsmt2d.ExtendedDataSquare
+	// don't repair the square if all the data is there
+	if lc.counter == lc.squareSize*lc.squareSize {
+		e, err := rsmt2d.ImportExtendedDataSquare(flattened, codec, rsmt2d.NewDefaultTree)
+		if err != nil {
+			return types.Data{}, err
+		}
+
+		eds = e
+	} else {
+		// repair the square
+		e, err := rsmt2d.RepairExtendedDataSquare(rowRoots, colRoots, flattened, codec)
+		if err != nil {
+			return types.Data{}, err
+		}
+		eds = e
+	}
+
+	// parse the square
+	txs, isr, msgs, err := edsParser.Parse(eds)
+
+	// which portion is Txs and which is messages?
+	blockData := types.Data{
+		Txs:                    txs,
+		IntermediateStateRoots: isr,
+		Messages:               msgs,
+	}
+
+	return blockData, nil
+}
+
+// convertRoots converts roots to cids
+func convertRoots(roots [][]byte) ([]cid.Cid, error) {
+	cids := make([]cid.Cid, len(roots))
+	for i, root := range roots {
+		rootCid, err := nodes.CidFromNamespacedSha256(root)
+		if err != nil {
+			return nil, err
+		}
+		cids[i] = rootCid
+	}
+	return cids, nil
+}
+
+// leafCounter is a thread safe tallying mechanism for leaf retrieval
+type leafCounter struct {
+	leaves     [][][]byte
+	counter    uint32
+	squareSize uint32
+	mut        sync.Mutex
+	errors     []error
+}
+
+func newLeafCounter(squareSize uint32) *leafCounter {
+	leaves := make([][][]byte, squareSize)
+	for i := uint32(0); i < squareSize; i++ {
+		leaves[i] = make([][]byte, squareSize)
+	}
+	return &leafCounter{
+		leaves:     leaves,
+		squareSize: squareSize,
+		mut:        sync.Mutex{},
+	}
+}
+
+// retrieveLeaf uses GetLeafData to fetch a single leaf and counts that leaf
+func (lc *leafCounter) retrieveLeaf(
+	ctx context.Context,
+	rootCid cid.Cid,
+	isRow bool,
+	rowIdx uint32,
+	colIdx uint32,
+	api coreiface.CoreAPI,
+) {
+	idx := colIdx
+	if isRow {
+		idx = rowIdx
+	}
+
+	data, err := GetLeafData(ctx, rootCid, idx, lc.squareSize, api)
+	if err != nil {
+		return
+	}
+
+	lc.addLeaf(rowIdx, colIdx, data)
+}
+
+// addLeaf adds a leaf to the leafCounter using the mutex to avoid
+func (lc *leafCounter) addLeaf(rowIdx, colIdx uint32, data []byte) {
+	// avoid panics by not doing anything if the leaf doesn't belong in the leaf
+	// counter
+	if colIdx > lc.squareSize || rowIdx > lc.squareSize {
+		return
+	}
+
+	lc.mut.Lock()
+	defer lc.mut.Unlock()
+
+	// add the leaf if it does not exist
+	if i := lc.leaves[rowIdx][colIdx]; i == nil {
+		lc.leaves[rowIdx][colIdx] = data
+		lc.counter++
+	}
+}
+
+// wait until enough data has been collected. check every interval
+func (lc *leafCounter) wait(ctx context.Context, interval time.Duration) {
+	for {
+		select {
+		case <-ctx.Done():
+		default:
+			if lc.done() {
+				return
+			}
+			time.Sleep(interval)
+		}
+	}
+}
+
+// done checks if there are enough collected leaves to recompute the data square
+// TODO: this can be fixed
+func (lc *leafCounter) done() bool {
+	lc.mut.Lock()
+	defer lc.mut.Unlock()
+	return lc.counter > ((lc.squareSize * lc.squareSize) / 4)
+}
+
+func (lc *leafCounter) flatten() [][]byte {
+	lc.mut.Lock()
+	defer lc.mut.Unlock()
+
+	flattended := make([][]byte, (lc.squareSize * lc.squareSize))
+	for i := uint32(0); i < lc.squareSize; i++ {
+		copy(flattended[i*lc.squareSize:(i+1)*lc.squareSize], lc.leaves[i])
+	}
+
+	return flattended
+}
+
+type messageOnlyEDSParser struct {
+}
+
+// Parse fullfills the EDSParser interface by assuming that there are only
+// messages in the extended data square, and that namespaces are included in
+// each share of the rsmt2d, which is not currently the case. FOR TESTING ONLY.
+func (m messageOnlyEDSParser) Parse(
+	eds *rsmt2d.ExtendedDataSquare,
+) (types.Txs, types.IntermediateStateRoots, types.Messages, error) {
+	var msgs types.Messages
+
+	for i := uint(0); i < eds.Width(); i++ {
+		for _, row := range eds.Row(i) {
+			msgs.MessagesList = append(msgs.MessagesList, types.Message{Data: row})
+		}
+	}
+
+	return types.Txs{}, types.IntermediateStateRoots{}, msgs, nil
+}
+
+/////////////////////////////////////////
+//	Get Leaf Data
+///////////////////////////////////////
+
+// GetLeafData fetches and returns the data for leaf leafIndex of root rootCid.
+// It stops and returns an error if the provided context is cancelled before
+// finishing
 func GetLeafData(
 	ctx context.Context,
 	rootCid cid.Cid,
@@ -72,8 +285,8 @@ func GetLeafData(
 		return nil, err
 	}
 
-	// return the leaf
-	return node.RawData(), nil
+	// return the leaf, without the nmt-leaf-or-node byte
+	return node.RawData()[1:], nil
 }
 
 func calcCIDPath(index, total uint32) ([]string, error) {
