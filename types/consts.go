@@ -11,10 +11,14 @@ import (
 const (
 	// ShareSize is the size of a share (in bytes).
 	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#constants
-	ShareSize = 248
+	ShareSize = 256
 
 	// NamespaceSize is the namespace size in bytes.
 	NamespaceSize = 8
+
+	ShareReservedBytes = 1
+
+	AdjustedShareSize = ShareSize - NamespaceSize
 
 	// MaxSquareSize is the maximum number of
 	// rows/columns of the original data shares in square layout.
