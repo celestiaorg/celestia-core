@@ -1360,7 +1360,6 @@ func TestPutBlock(t *testing.T) {
 			defer cancel()
 
 			block.fillDataAvailabilityHeader()
-			tc.blockData.computeShares()
 			for _, rowRoot := range block.DataAvailabilityHeader.RowsRoots.Bytes() {
 				// recreate the cids using only the computed roots
 				cid, err := nodes.CidFromNamespacedSha256(rowRoot)
@@ -1385,6 +1384,10 @@ func TestPutBlock(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBlockRecovery(t *testing.T) {
+
 }
 
 func generateRandomData(msgCount int) Data {
