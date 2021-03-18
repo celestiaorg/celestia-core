@@ -5,9 +5,10 @@ import (
 	// number generator here and we can run the tests a bit faster
 	stdbytes "bytes"
 	"context"
-	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"reflect"
 	"sort"
@@ -19,6 +20,7 @@ import (
 	coremock "github.com/ipfs/go-ipfs/core/mock"
 	"github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -1386,8 +1388,114 @@ func TestPutBlock(t *testing.T) {
 	}
 }
 
-func TestBlockRecovery(t *testing.T) {
+func TestNextPowerOf2(t *testing.T) {
+	type test struct {
+		input    int
+		expected int
+	}
+	tests := []test{
+		{
+			input:    2,
+			expected: 2,
+		},
+		{
+			input:    11,
+			expected: 8,
+		},
+		{
+			input:    511,
+			expected: 256,
+		},
+		{
+			input:    1,
+			expected: 1,
+		},
+		{
+			input:    0,
+			expected: 0,
+		},
+	}
+	for _, tt := range tests {
+		res := NextPowerOf2(tt.input)
+		assert.Equal(t, tt.expected, res)
+	}
+}
 
+// this test should be moved where PutBlock gets moved.
+func TestBlockRecovery(t *testing.T) {
+	ipfsNode, err := coremock.NewMockNode()
+	if err != nil {
+		t.Error(err)
+	}
+
+	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	if err != nil {
+		t.Error(err)
+	}
+
+	testCases := []struct {
+		name      string
+		blockData Data
+		expectErr bool
+		errString string
+	}{
+		{"16 leaves", generateRandomData(16), false, ""},
+		{"max square size", generateRandomData(17), false, ""},
+	}
+	ctx := context.Background()
+	for _, tc := range testCases {
+		tc := tc
+
+		block := &Block{Data: tc.blockData}
+
+		t.Run(tc.name, func(t *testing.T) {
+			err = block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errString)
+				return
+			}
+
+			require.NoError(t, err)
+
+			block.fillDataAvailabilityHeader()
+
+			rowRoots := block.DataAvailabilityHeader.RowsRoots.Bytes()
+			colRoots := block.DataAvailabilityHeader.ColumnRoots.Bytes()
+
+			data := tc.blockData.computeShares().NamedShares()
+
+			for _, d := range data {
+				fmt.Println(tc.name, len(d), len(rowRoots))
+			}
+
+			_, err := rsmt2d.RepairExtendedDataSquare(
+				rowRoots,
+				colRoots,
+				removeRandShares(data),
+				rsmt2d.RSGF8,
+			)
+
+			require.NoError(t, err)
+			// perform some check that namespaces are recovered as well
+
+		})
+	}
+}
+
+func removeRandShares(data [][]byte) [][]byte {
+	count := len(data)
+	// remove half of the shares randomly
+	for i := 0; i < (count / 2); {
+		ind := rand.Intn(count)
+		if len(data[ind]) == 0 {
+			continue
+		}
+		data[ind] = nil
+		i++
+	}
+	fmt.Println("removal data len", len(data))
+	return data
 }
 
 func generateRandomData(msgCount int) Data {
