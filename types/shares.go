@@ -41,7 +41,7 @@ func (ns NamespacedShares) RawShares() [][]byte {
 func (ns NamespacedShares) NamedShares() [][]byte {
 	res := make([][]byte, len(ns))
 	for i, nsh := range ns {
-		res[i] = append(nsh.ID, nsh.Share...)
+		res[i] = append(nsh.NamespaceID(), nsh.Data()...)
 	}
 	return res
 }
