@@ -201,7 +201,7 @@ func (b *Block) fillHeader() {
 // that are a function of the block data.
 func (b *Block) fillDataAvailabilityHeader() {
 	namespacedShares := b.Data.computeShares()
-	shares := namespacedShares.RawShares()
+	shares := namespacedShares.NamedShares()
 	if len(shares) == 0 {
 		// no shares -> no row/colum roots -> hash(empty)
 		b.DataHash = b.DataAvailabilityHeader.Hash()
@@ -264,6 +264,8 @@ func mustPush(rowTree *nmt.NamespacedMerkleTree, id namespace.ID, data []byte) {
 	}
 }
 
+// the erasured leaves are going to be longer than the non erasured leaves.
+
 // PutBlock posts and pins erasured block data to IPFS using the provided
 // ipld.NodeAdder. Note: the erasured data is currently recomputed
 func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error {
@@ -273,7 +275,7 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 
 	// recompute the shares
 	namespacedShares := b.Data.computeShares()
-	shares := namespacedShares.RawShares()
+	shares := namespacedShares.NamedShares()
 
 	// don't do anything if there is no data to put on IPFS
 	if len(shares) == 0 {
