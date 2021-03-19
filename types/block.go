@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -1348,12 +1349,12 @@ func (data *Data) computeShares() NamespacedShares {
 	evidenceShares := data.Evidence.splitIntoShares(ShareSize)
 
 	// application data shares from messages:
-	msgShares := data.Messages.splitIntoShares(AdjustedShareSize)
+	msgShares := data.Messages.splitIntoShares(AdjustedMessageSize)
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 
 	// FIXME(ismail): this is not a power of two
 	// see: https://github.com/lazyledger/lazyledger-specs/issues/80 and
-	wantLen := NextPowerOf2(curLen)
+	wantLen := getNextSquareNum(curLen)
 	tailShares := GenerateTailPaddingShares(wantLen-curLen, ShareSize)
 
 	return append(append(append(append(
@@ -1364,32 +1365,10 @@ func (data *Data) computeShares() NamespacedShares {
 		tailShares...)
 }
 
-// NextPowerOf2 returns the next lowest power of 2 unless the input is a power
-// of two, in which case it returns the input
-func NextPowerOf2(v int) int {
-	if v == 1 {
-		return 1
-	}
-	// keep track of the input
-	i := v
-
-	// find the next highest power using bit mashing
-	v--
-	v |= v >> 1
-	v |= v >> 2
-	v |= v >> 4
-	v |= v >> 8
-	v |= v >> 16
-	v |= v >> 32
-	v++
-
-	// check if the input was the next highest power
-	if i == v {
-		return v
-	}
-
-	// return the next lowest power
-	return v / 2
+func getNextSquareNum(length int) int {
+	width := int(math.Ceil(math.Sqrt(float64(length))))
+	// TODO(ismail): make width a power of two instead
+	return width * width
 }
 
 type Message struct {
