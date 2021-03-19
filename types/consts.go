@@ -16,9 +16,7 @@ const (
 	// NamespaceSize is the namespace size in bytes.
 	NamespaceSize = 8
 
-	ShareReservedBytes = 1
-
-	AdjustedShareSize = ShareSize - NamespaceSize
+	AdjustedMessageSize = ShareSize - NamespaceSize
 
 	// MaxSquareSize is the maximum number of
 	// rows/columns of the original data shares in square layout.
