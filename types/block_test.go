@@ -1432,10 +1432,6 @@ func TestBlockRecovery(t *testing.T) {
 
 			data := tc.blockData.computeShares().NamedShares()
 
-			for _, d := range data {
-				fmt.Println(tc.name, len(d), len(rowRoots))
-			}
-
 			_, err := rsmt2d.RepairExtendedDataSquare(
 				rowRoots,
 				colRoots,

@@ -217,7 +217,6 @@ func (b *Block) fillDataAvailabilityHeader() {
 
 	// record the widths
 	squareWidth := extendedDataSquare.Width()
-	fmt.Println("square width", squareWidth)
 
 	b.DataAvailabilityHeader = DataAvailabilityHeader{
 		RowsRoots:   make([]namespace.IntervalDigest, squareWidth),
