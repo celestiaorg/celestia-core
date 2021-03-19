@@ -1388,39 +1388,6 @@ func TestPutBlock(t *testing.T) {
 	}
 }
 
-func TestNextPowerOf2(t *testing.T) {
-	type test struct {
-		input    int
-		expected int
-	}
-	tests := []test{
-		{
-			input:    2,
-			expected: 2,
-		},
-		{
-			input:    11,
-			expected: 8,
-		},
-		{
-			input:    511,
-			expected: 256,
-		},
-		{
-			input:    1,
-			expected: 1,
-		},
-		{
-			input:    0,
-			expected: 0,
-		},
-	}
-	for _, tt := range tests {
-		res := NextPowerOf2(tt.input)
-		assert.Equal(t, tt.expected, res)
-	}
-}
-
 // this test should be moved where PutBlock gets moved.
 func TestBlockRecovery(t *testing.T) {
 	ipfsNode, err := coremock.NewMockNode()
