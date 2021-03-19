@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestCalcCIDPath(t *testing.T) {
+func TestLeafPath(t *testing.T) {
 	type test struct {
 		name         string
 		index, total uint32
@@ -40,7 +40,7 @@ func TestCalcCIDPath(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := calcCIDPath(tt.index, tt.total)
+			result, err := leafPath(tt.index, tt.total)
 			if err != nil {
 				t.Error(err)
 			}

@@ -25,7 +25,7 @@ func GetLeafData(
 	api coreiface.CoreAPI,
 ) ([]byte, error) {
 	// calculate the path to the leaf
-	leafPath, err := calcCIDPath(leafIndex, totalLeafs)
+	leafPath, err := leafPath(leafIndex, totalLeafs)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func GetLeafData(
 	return node.RawData()[1:], nil
 }
 
-func calcCIDPath(index, total uint32) ([]string, error) {
+func leafPath(index, total uint32) ([]string, error) {
 	// ensure that the total is a power of two
 	if total != nextPowerOf2(total) {
 		return nil, errors.New("expected total to be a power of 2")
