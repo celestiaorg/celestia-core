@@ -67,10 +67,6 @@ type ManifestNode struct {
 	// this defaults to all other nodes in the network.
 	PersistentPeers []string `toml:"persistent_peers"`
 
-	// TODO: remove this config flag completely -> only badgerdb allowed now anyways
-	// Database specifies the database backend. In LazyLedger we only test with "badgerdb".
-	Database string `toml:"database"`
-
 	// TODO: remove this config flag completely -> only builtin allowed now anyways
 	// ABCIProtocol specifies the protocol used to communicate with the ABCI
 	// application: "unix", "tcp", "grpc", or "builtin". Defaults to builtin.

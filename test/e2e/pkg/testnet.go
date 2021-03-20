@@ -74,7 +74,6 @@ type Node struct {
 	StartAt          int64
 	FastSync         string
 	StateSync        bool
-	Database         string
 	ABCIProtocol     Protocol
 	PrivvalProtocol  Protocol
 	PersistInterval  uint64
@@ -148,7 +147,6 @@ func LoadTestnet(file string) (*Testnet, error) {
 			IP:               ipGen.Next(),
 			ProxyPort:        proxyPortGen.Next(),
 			Mode:             ModeValidator,
-			Database:         "badgerdb",
 			ABCIProtocol:     ProtocolBuiltin,
 			PrivvalProtocol:  ProtocolFile,
 			StartAt:          nodeManifest.StartAt,
@@ -165,9 +163,6 @@ func LoadTestnet(file string) (*Testnet, error) {
 		}
 		if nodeManifest.Mode != "" {
 			node.Mode = Mode(nodeManifest.Mode)
-		}
-		if nodeManifest.Database != "" {
-			node.Database = nodeManifest.Database
 		}
 		if nodeManifest.ABCIProtocol != "" {
 			node.ABCIProtocol = Protocol(nodeManifest.ABCIProtocol)
@@ -310,11 +305,6 @@ func (n Node) Validate(testnet Testnet) error {
 	case "", "v0", "v2":
 	default:
 		return fmt.Errorf("invalid fast sync setting %q", n.FastSync)
-	}
-	switch n.Database {
-	case "badgerdb":
-	default:
-		return fmt.Errorf("invalid database setting %q", n.Database)
 	}
 	switch n.ABCIProtocol {
 	case ProtocolBuiltin, ProtocolUNIX, ProtocolTCP, ProtocolGRPC:
