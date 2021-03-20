@@ -8,6 +8,11 @@ import (
 	"github.com/ipfs/go-cid"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/ipfs/interface-go-ipfs-core/path"
+	"github.com/lazyledger/lazyledger-core/types"
+)
+
+const (
+	AdjustedMessageSize = types.ShareSize - types.NamespaceSize
 )
 
 // /////////////////////////////////////
