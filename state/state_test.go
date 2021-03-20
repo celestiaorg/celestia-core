@@ -11,12 +11,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/tendermint/tm-db"
-
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
@@ -27,8 +27,7 @@ import (
 // setupTestCase does setup common to all test cases.
 func setupTestCase(t *testing.T) (func(t *testing.T), dbm.DB, sm.State) {
 	config := cfg.ResetTestRoot("state_")
-	dbType := dbm.BackendType(config.DBBackend)
-	stateDB, err := dbm.NewDB("state", dbType, config.DBDir())
+	stateDB, err := badgerdb.NewDB("state", config.DBDir())
 	stateStore := sm.NewStore(stateDB)
 	require.NoError(t, err)
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())

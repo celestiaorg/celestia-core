@@ -6,8 +6,7 @@ import (
 	"strings"
 	"time"
 
-	dbm "github.com/tendermint/tm-db"
-
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/light"
@@ -72,7 +71,7 @@ func NewLightClientStateProvider(
 	}
 
 	lc, err := light.NewClient(ctx, chainID, trustOptions, providers[0], providers[1:],
-		lightdb.New(dbm.NewMemDB(), ""), light.Logger(logger), light.MaxRetryAttempts(5))
+		lightdb.New(memdb.NewDB(), ""), light.Logger(logger), light.MaxRetryAttempts(5))
 	if err != nil {
 		return nil, err
 	}

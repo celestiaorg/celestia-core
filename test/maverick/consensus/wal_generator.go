@@ -9,8 +9,7 @@ import (
 	"testing"
 	"time"
 
-	db "github.com/tendermint/tm-db"
-
+	db "github.com/lazyledger/lazyledger-core/libs/db/metadb"
 	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/libs/log"

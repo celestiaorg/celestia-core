@@ -8,12 +8,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/tendermint/tm-db"
-
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
@@ -22,7 +22,7 @@ import (
 )
 
 func TestStoreLoadValidators(t *testing.T) {
-	stateDB := dbm.NewMemDB()
+	stateDB := memdb.NewDB()
 	stateStore := sm.NewStore(stateDB)
 	val, _ := types.RandValidator(true, 10)
 	vals := types.NewValidatorSet([]*types.Validator{val})
@@ -51,8 +51,7 @@ func BenchmarkLoadValidators(b *testing.B) {
 
 	config := cfg.ResetTestRoot("state_")
 	defer os.RemoveAll(config.RootDir)
-	dbType := dbm.BackendType(config.DBBackend)
-	stateDB, err := dbm.NewDB("state", dbType, config.DBDir())
+	stateDB, err := badgerdb.NewDB("state", config.DBDir())
 	require.NoError(b, err)
 	stateStore := sm.NewStore(stateDB)
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
@@ -106,7 +105,7 @@ func TestPruneStates(t *testing.T) {
 	for name, tc := range testcases {
 		tc := tc
 		t.Run(name, func(t *testing.T) {
-			db := dbm.NewMemDB()
+			db := memdb.NewDB()
 			stateStore := sm.NewStore(db)
 			pk := ed25519.GenPrivKey().PubKey()
 

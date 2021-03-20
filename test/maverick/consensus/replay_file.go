@@ -10,8 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	dbm "github.com/tendermint/tm-db"
-
+	dbm "github.com/lazyledger/lazyledger-core/libs/db/metadb"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"

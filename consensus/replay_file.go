@@ -10,9 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	dbm "github.com/tendermint/tm-db"
-
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	"github.com/lazyledger/lazyledger-core/proxy"
@@ -284,16 +283,15 @@ func (pb *playback) replayConsoleLoop() int {
 
 // convenience for replay mode
 func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusConfig) *State {
-	dbType := dbm.BackendType(config.DBBackend)
 	// Get BlockStore
-	blockStoreDB, err := dbm.NewDB("blockstore", dbType, config.DBDir())
+	blockStoreDB, err := badgerdb.NewDB("blockstore", config.DBDir())
 	if err != nil {
 		tmos.Exit(err.Error())
 	}
 	blockStore := store.NewBlockStore(blockStoreDB)
 
 	// Get State
-	stateDB, err := dbm.NewDB("state", dbType, config.DBDir())
+	stateDB, err := badgerdb.NewDB("state", config.DBDir())
 	if err != nil {
 		tmos.Exit(err.Error())
 	}

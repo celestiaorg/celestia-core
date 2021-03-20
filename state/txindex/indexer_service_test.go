@@ -7,9 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	db "github.com/tendermint/tm-db"
-
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/state/txindex"
 	"github.com/lazyledger/lazyledger-core/state/txindex/kv"
@@ -29,7 +28,7 @@ func TestIndexerServiceIndexesBlocks(t *testing.T) {
 	})
 
 	// tx indexer
-	store := db.NewMemDB()
+	store := memdb.NewDB()
 	txIndexer := kv.NewTxIndex(store)
 
 	service := txindex.NewIndexerService(txIndexer, eventBus)

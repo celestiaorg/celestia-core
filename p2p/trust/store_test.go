@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	dbm "github.com/tendermint/tm-db"
 
+	dbm "github.com/lazyledger/lazyledger-core/libs/db/metadb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 )
 

@@ -13,8 +13,8 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	dbm "github.com/tendermint/tm-db"
 
+	dbm "github.com/lazyledger/lazyledger-core/libs/db/metadb"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/libs/log"

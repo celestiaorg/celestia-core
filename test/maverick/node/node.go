@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 
-	dbm "github.com/tendermint/tm-db"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db/metadb"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	bcv0 "github.com/lazyledger/lazyledger-core/blockchain/v0"

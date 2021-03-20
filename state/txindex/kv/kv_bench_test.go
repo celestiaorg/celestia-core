@@ -7,9 +7,8 @@ import (
 	"io/ioutil"
 	"testing"
 
-	dbm "github.com/tendermint/tm-db"
-
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
 	"github.com/lazyledger/lazyledger-core/types"
 )
@@ -20,7 +19,7 @@ func BenchmarkTxSearch(b *testing.B) {
 		b.Errorf("failed to create temporary directory: %s", err)
 	}
 
-	db, err := dbm.NewGoLevelDB("benchmark_tx_search_test", dbDir)
+	db, err := badgerdb.NewDB("benchmark_tx_search_test", dbDir)
 	if err != nil {
 		b.Errorf("failed to create database: %s", err)
 	}

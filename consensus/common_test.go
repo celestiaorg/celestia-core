@@ -17,8 +17,6 @@ import (
 
 	"path"
 
-	dbm "github.com/tendermint/tm-db"
-
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
 	"github.com/lazyledger/lazyledger-core/abci/example/counter"
 	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
@@ -26,6 +24,8 @@ import (
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
@@ -360,7 +360,7 @@ func newStateWithConfig(
 	pv types.PrivValidator,
 	app abci.Application,
 ) *State {
-	blockDB := dbm.NewMemDB()
+	blockDB := memdb.NewDB()
 	return newStateWithConfigAndBlockStore(thisConfig, state, pv, app, blockDB)
 }
 
@@ -682,7 +682,7 @@ func randConsensusNet(nValidators int, testName string, tickerFunc func() Timeou
 	logger := consensusLogger()
 	configRootDirs := make([]string, 0, nValidators)
 	for i := 0; i < nValidators; i++ {
-		stateDB := dbm.NewMemDB() // each state needs its own db
+		stateDB := memdb.NewDB() // each state needs its own db
 		stateStore := sm.NewStore(stateDB)
 		state, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 		thisConfig := ResetConfig(fmt.Sprintf("%s_%d", testName, i))
@@ -720,7 +720,7 @@ func randConsensusNetWithPeers(
 	var peer0Config *cfg.Config
 	configRootDirs := make([]string, 0, nPeers)
 	for i := 0; i < nPeers; i++ {
-		stateDB := dbm.NewMemDB() // each state needs its own db
+		stateDB := memdb.NewDB() // each state needs its own db
 		stateStore := sm.NewStore(stateDB)
 		state, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 		thisConfig := ResetConfig(fmt.Sprintf("%s_%d", testName, i))

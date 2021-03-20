@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/gogo/protobuf/proto"
-	dbm "github.com/tendermint/tm-db"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"

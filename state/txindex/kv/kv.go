@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	dbm "github.com/tendermint/tm-db"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
 	"github.com/lazyledger/lazyledger-core/state/txindex"
 	"github.com/lazyledger/lazyledger-core/types"

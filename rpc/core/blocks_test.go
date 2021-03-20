@@ -7,9 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/tendermint/tm-db"
-
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
 	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
 	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
@@ -81,7 +80,7 @@ func TestBlockResults(t *testing.T) {
 	}
 
 	env = &Environment{}
-	env.StateStore = sm.NewStore(dbm.NewMemDB())
+	env.StateStore = sm.NewStore(memdb.NewDB())
 	err := env.StateStore.SaveABCIResponses(100, results)
 	require.NoError(t, err)
 	env.BlockStore = mockBlockStore{height: 100}

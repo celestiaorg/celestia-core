@@ -6,8 +6,7 @@ import (
 	"regexp"
 	"strconv"
 
-	dbm "github.com/tendermint/tm-db"
-
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/light/store"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"

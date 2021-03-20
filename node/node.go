@@ -22,8 +22,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 
-	dbm "github.com/tendermint/tm-db"
-
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	bcv0 "github.com/lazyledger/lazyledger-core/blockchain/v0"
 	bcv2 "github.com/lazyledger/lazyledger-core/blockchain/v2"
@@ -31,6 +29,8 @@ import (
 	cs "github.com/lazyledger/lazyledger-core/consensus"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/evidence"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
@@ -69,8 +69,7 @@ type DBProvider func(*DBContext) (dbm.DB, error)
 // DefaultDBProvider returns a database using the DBBackend and DBDir
 // specified in the ctx.Config.
 func DefaultDBProvider(ctx *DBContext) (dbm.DB, error) {
-	dbType := dbm.BackendType(ctx.Config.DBBackend)
-	return dbm.NewDB(ctx.ID, dbType, ctx.Config.DBDir())
+	return badgerdb.NewDB(ctx.ID, ctx.Config.DBDir())
 }
 
 // GenesisDocProvider returns a GenesisDoc.
