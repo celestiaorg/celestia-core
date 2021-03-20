@@ -90,10 +90,10 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 					data := generateErasuredData(t, size)
 					n := NewErasuredNamespacedMerkleTree(uint64(size))
 					tree := n.Constructor()
-					for i := len(data) - 1; i > 0; i-- {
-						tree.Push(data[i])
+					for _, d := range data {
+						tree.Push(d)
 					}
-					tree.Prove(size + 1)
+					tree.Prove(size + 100)
 				},
 			),
 		},
