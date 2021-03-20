@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	dbm "github.com/lazyledger/lazyledger-core/libs/db"
-	memdb "github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/abci/example/code"
 	"github.com/lazyledger/lazyledger-core/abci/types"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	memdb "github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/version"
 )
 

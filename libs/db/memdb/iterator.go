@@ -5,7 +5,7 @@ import (
 	"context"
 
 	"github.com/google/btree"
-	
+
 	tmdb "github.com/lazyledger/lazyledger-core/libs/db"
 )
 

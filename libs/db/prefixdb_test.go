@@ -4,9 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	tmdb "github.com/tendermint/tm-db"
-	"github.com/tendermint/tm-db/internal/dbtest"
-	"github.com/tendermint/tm-db/memdb"
+
+	tmdb "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/db/internal/dbtest"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 )
 
 func mockDBWithStuff(t *testing.T) tmdb.DB {

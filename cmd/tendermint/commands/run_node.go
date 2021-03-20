@@ -86,10 +86,6 @@ func AddNodeFlags(cmd *cobra.Command) {
 
 	// db flags
 	cmd.Flags().String(
-		"db-backend",
-		config.DBBackend,
-		"database backend: goleveldb | cleveldb | boltdb | rocksdb | badgerdb")
-	cmd.Flags().String(
 		"db-dir",
 		config.DBPath,
 		"database directory")
