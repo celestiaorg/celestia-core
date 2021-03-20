@@ -51,7 +51,8 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte) {
 	case w.pushCount > 2*w.squareSize:
 		panic("tree size exceeded")
 
-	// if the namespace is included in the data, use that ns
+	// the first half of the tree is non-parity, and includes
+	// the namespace in the data
 	case w.pushCount+1 <= w.squareSize/2:
 		copy(nsID, data[:types.NamespaceSize])
 
