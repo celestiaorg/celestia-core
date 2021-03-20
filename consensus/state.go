@@ -1546,7 +1546,7 @@ func (cs *State) finalizeCommit(height int64) {
 		// but may differ from the LastCommit included in the next block
 		precommits := cs.Votes.Precommits(cs.CommitRound)
 		seenCommit := precommits.MakeCommit()
-		cs.blockStore.SaveBlock(block, blockParts, seenCommit)
+		cs.blockStore.SaveHeader(&block.Header, &block.DataAvailabilityHeader, seenCommit)
 	} else {
 		// Happens during replay if we already saved the block but didn't commit
 		cs.Logger.Info("Calling finalizeCommit on already stored block", "height", block.Height)
@@ -1631,7 +1631,7 @@ func (cs *State) pruneBlocks(retainHeight int64) (uint64, error) {
 	if retainHeight <= base {
 		return 0, nil
 	}
-	pruned, err := cs.blockStore.PruneBlocks(retainHeight)
+	pruned, err := cs.blockStore.PruneHeader(retainHeight)
 	if err != nil {
 		return 0, fmt.Errorf("failed to prune block store: %w", err)
 	}

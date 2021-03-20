@@ -23,11 +23,8 @@ type BlockStore interface {
 	LoadHeader(height int64) (*types.Header, *types.DataAvailabilityHeader)
 
 	SaveHeader(header *types.Header, blockParts *types.DataAvailabilityHeader, seenCommit *types.Commit)
-	SaveCommit(commit *types.Commit) error
 
-	PruneHeaders(height int64) (uint64, error)
-
-	LoadBlockByHash(hash []byte) *types.Block
+	PruneHeader(height int64) (uint64, error)
 
 	LoadBlockCommit(height int64) *types.Commit
 	LoadSeenCommit(height int64) *types.Commit

@@ -21,8 +21,8 @@ const (
 )
 
 type blockStore interface {
-	LoadHeaders(height int64) (*types.Header, *types.DataAvailabilityHeader)
-	SaveHeaders(*types.Header, *types.DataAvailabilityHeader, *types.Commit)
+	LoadHeader(height int64) (*types.Header, *types.DataAvailabilityHeader)
+	SaveHeader(*types.Header, *types.DataAvailabilityHeader, *types.Commit)
 	Base() int64
 	Height() int64
 }

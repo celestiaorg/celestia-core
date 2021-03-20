@@ -20,6 +20,8 @@ message NoHeaderResponse {
 message HeaderResponse {
   tendermint.types.Header                 header                   = 1;
   tendermint.types.DataAvailabilityHeader data_availability_header = 2;
+  // COmmit is required for verification
+  tendermint.types.Commit commit = 3;
 }
 
 // StatusRequest requests the status of a peer.

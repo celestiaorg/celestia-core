@@ -405,7 +405,7 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.Bloc
 		block.Header.Version = tmversion.Consensus{Block: version.BlockProtocol, App: 1}
 
 		seenCommit := makeCommit(i, valAddr)
-		blockStore.SaveHeaders(&block.Header, &block.DataAvailabilityHeader, seenCommit)
+		blockStore.SaveHeader(&block.Header, &block.DataAvailabilityHeader, seenCommit)
 	}
 
 	return blockStore

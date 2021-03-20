@@ -89,7 +89,7 @@ func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 
 // LoadBlock returns the block with the given height.
 // If no block is found for that height, it returns nil.
-func (bs *BlockStore) LoadHeaders(height int64) (*types.Header, *types.DataAvailabilityHeader) {
+func (bs *BlockStore) LoadHeader(height int64) (*types.Header, *types.DataAvailabilityHeader) {
 	var blockMeta = bs.LoadBlockMeta(height)
 	if blockMeta == nil {
 		return nil, nil
@@ -208,7 +208,7 @@ func (bs *BlockStore) LoadSeenCommit(height int64) *types.Commit {
 }
 
 // PruneBlocks removes block up to (but not including) a height. It returns number of blocks pruned.
-func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
+func (bs *BlockStore) PruneHeader(height int64) (uint64, error) {
 	if height <= 0 {
 		return 0, fmt.Errorf("height must be greater than 0")
 	}
@@ -290,7 +290,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 //             If all the nodes restart after committing a block,
 //             we need this to reload the precommits to catch-up nodes to the
 //             most recent height.  Otherwise they'd stall at H-1.
-func (bs *BlockStore) SaveHeaders(header *types.Header, da *types.DataAvailabilityHeader, seenCommit *types.Commit) {
+func (bs *BlockStore) SaveHeader(header *types.Header, da *types.DataAvailabilityHeader, seenCommit *types.Commit) {
 	if header == nil || da == nil {
 		panic("BlockStore can only save a non-nil block")
 	}
@@ -338,16 +338,6 @@ func (bs *BlockStore) SaveHeaders(header *types.Header, da *types.DataAvailabili
 
 	// Save new BlockStoreState descriptor. This also flushes the database.
 	bs.saveState()
-}
-
-func (bs *BlockStore) SaveCommit(height int64, lastCommit *types.Commit) error {
-	// Save block commit (duplicate and separate from the Block)
-	pbc := lastCommit.ToProto()
-	blockCommitBytes := mustEncode(pbc)
-	if err := bs.db.Set(calcBlockCommitKey(height-1), blockCommitBytes); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (bs *BlockStore) saveState() {
