@@ -48,7 +48,7 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte) {
 
 	switch {
 	// panic if the tree size is exceeded
-	case w.pushCount > 2*w.squareSize:
+	case w.pushCount >= 2*w.squareSize:
 		panic("tree size exceeded")
 
 	// the first half of the tree is non-parity, and includes
