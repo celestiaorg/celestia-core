@@ -56,28 +56,51 @@ func (m Message) MarshalDelimited() ([]byte, error) {
 	return append(lenBuf[:n], m.Data...), nil
 }
 
-func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte, shareSize int) []NamespacedShare {
-	if len(rawData) < shareSize {
-		rawShare := rawData
-		paddedShare := zeroPadIfNecessary(rawShare, shareSize)
+// appendToSharesContiguous appends one raw data separately as shares
+// Used for messages
+func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) []NamespacedShare {
+	adjustedSize := ShareSize - NamespaceSize
+	if len(rawData) < adjustedSize {
+		rawShare := []byte(append(nid, rawData...))
+		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
-	} else { // len(rawData) >= shareSize
-		shares = append(shares, split(rawData, shareSize, nid)...)
+	} else { // len(rawData) >= adjustedSize
+		shares = append(shares, split(rawData, nid)...)
+	}
+	return shares
+}
+
+// appendToSharesContiguous appends multiple raw data contiguously as shares
+// Used for transactions, intermediate state roots, and evidence
+func appendToSharesContiguous(shares []NamespacedShare, nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
+	adjustedSize := ShareSize - NamespaceSize - ShareReservedBytes
+	for _, rawData := range rawDatas {
+		if len(rawData) < adjustedSize {
+			rawShare := []byte(append(append(nid, byte(0)), rawData...))
+			paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
+			share := NamespacedShare{paddedShare, nid}
+			shares = append(shares, share)
+		} else { // len(rawData) >= adjustedSize
+			// TODO(john) this needs to be splitContiguous, etc.
+			shares = append(shares, split(rawData, nid)...)
+		}
 	}
 	return shares
 }
 
 // TODO(ismail): implement corresponding merge method for clients requesting
 // shares for a particular namespace
-func split(rawData []byte, shareSize int, nid namespace.ID) []NamespacedShare {
+func split(rawData []byte, nid namespace.ID) []NamespacedShare {
+	adjustedSize := ShareSize - NamespaceSize
 	shares := make([]NamespacedShare, 0)
-	firstRawShare := rawData[:shareSize]
+	firstRawShare := []byte(append(nid, rawData[:adjustedSize]...))
 	shares = append(shares, NamespacedShare{firstRawShare, nid})
-	rawData = rawData[shareSize:]
+	rawData = rawData[adjustedSize:]
 	for len(rawData) > 0 {
-		shareSizeOrLen := min(shareSize, len(rawData))
-		paddedShare := zeroPadIfNecessary(rawData[:shareSizeOrLen], shareSize)
+		shareSizeOrLen := min(adjustedSize, len(rawData))
+		rawShare := []byte(append(nid, rawData[:shareSizeOrLen]...))
+		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
 		rawData = rawData[shareSizeOrLen:]
