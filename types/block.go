@@ -200,7 +200,7 @@ func (b *Block) fillHeader() {
 // fillDataAvailabilityHeader fills in any remaining DataAvailabilityHeader fields
 // that are a function of the block data.
 func (b *Block) fillDataAvailabilityHeader() {
-	namespacedShares := b.Data.computeShares()
+	namespacedShares := b.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
 	if len(shares) == 0 {
 		// no shares -> no row/colum roots -> hash(empty)
@@ -272,7 +272,7 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 	}
 
 	// recompute the shares
-	namespacedShares := b.Data.computeShares()
+	namespacedShares := b.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
 
 	// don't do anything if there is no data to put on IPFS
@@ -1336,7 +1336,7 @@ func (msgs Messages) splitIntoShares(shareSize int) NamespacedShares {
 	return shares
 }
 
-func (data *Data) computeShares() NamespacedShares {
+func (data *Data) ComputeShares() NamespacedShares {
 	// TODO(ismail): splitting into shares should depend on the block size and layout
 	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
 

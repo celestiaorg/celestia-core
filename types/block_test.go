@@ -1360,7 +1360,7 @@ func TestPutBlock(t *testing.T) {
 			defer cancel()
 
 			block.fillDataAvailabilityHeader()
-			tc.blockData.computeShares()
+			tc.blockData.ComputeShares()
 			for _, rowRoot := range block.DataAvailabilityHeader.RowsRoots.Bytes() {
 				// recreate the cids using only the computed roots
 				cid, err := nodes.CidFromNamespacedSha256(rowRoot)
