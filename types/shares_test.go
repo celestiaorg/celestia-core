@@ -10,7 +10,7 @@ import (
 )
 
 type splitter interface {
-	splitIntoShares(shareSize int) NamespacedShares
+	splitIntoShares() NamespacedShares
 }
 
 func TestMakeShares(t *testing.T) {
@@ -41,8 +41,7 @@ func TestMakeShares(t *testing.T) {
 	}
 
 	type args struct {
-		data      splitter
-		shareSize int
+		data splitter
 	}
 	tests := []struct {
 		name string
@@ -54,7 +53,6 @@ func TestMakeShares(t *testing.T) {
 				data: &EvidenceData{
 					Evidence: []Evidence{testEvidence},
 				},
-				shareSize: ShareSize,
 			}, NamespacedShares{NamespacedShare{
 				Share: testEvidenceBytes[:ShareSize],
 				ID:    reservedEvidenceNamespaceID,
@@ -65,8 +63,7 @@ func TestMakeShares(t *testing.T) {
 		},
 		{"small LL Tx",
 			args{
-				data:      Txs{smolTx},
-				shareSize: ShareSize,
+				data: Txs{smolTx},
 			},
 			NamespacedShares{
 				NamespacedShare{
@@ -77,8 +74,7 @@ func TestMakeShares(t *testing.T) {
 		},
 		{"one large LL Tx",
 			args{
-				data:      Txs{largeTx},
-				shareSize: ShareSize,
+				data: Txs{largeTx},
 			},
 			NamespacedShares{
 				NamespacedShare{
@@ -93,8 +89,7 @@ func TestMakeShares(t *testing.T) {
 		},
 		{"ll-app message",
 			args{
-				data:      Messages{[]Message{msg1}},
-				shareSize: ShareSize,
+				data: Messages{[]Message{msg1}},
 			},
 			NamespacedShares{
 				NamespacedShare{zeroPadIfNecessary(msg1Marshaled, ShareSize), msg1.NamespaceID},
@@ -105,7 +100,7 @@ func TestMakeShares(t *testing.T) {
 		tt := tt // stupid scopelint :-/
 		i := i
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.args.data.splitIntoShares(tt.args.shareSize); !reflect.DeepEqual(got, tt.want) {
+			if got := tt.args.data.splitIntoShares(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("%v: makeShares() = \n%v\nwant\n%v", i, got, tt.want)
 			}
 		})

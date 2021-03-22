@@ -1312,26 +1312,26 @@ type IntermediateStateRoots struct {
 	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
 }
 
-func (roots IntermediateStateRoots) splitIntoShares(shareSize int) NamespacedShares {
+func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	for _, root := range roots.RawRootsList {
 		rawData, err := root.MarshalDelimited()
 		if err != nil {
 			panic(fmt.Sprintf("app returned intermediate state root that can not be encoded %#v", root))
 		}
-		shares = appendToShares(shares, IntermediateStateRootsNamespaceID, rawData, shareSize)
+		shares = appendToShares(shares, IntermediateStateRootsNamespaceID, rawData, ShareSize)
 	}
 	return shares
 }
 
-func (msgs Messages) splitIntoShares(shareSize int) NamespacedShares {
+func (msgs Messages) splitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	for _, m := range msgs.MessagesList {
 		rawData, err := m.MarshalDelimited()
 		if err != nil {
 			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
 		}
-		shares = appendToShares(shares, m.NamespaceID, rawData, shareSize)
+		shares = appendToShares(shares, m.NamespaceID, rawData, ShareSize)
 	}
 	return shares
 }
@@ -1342,12 +1342,12 @@ func (data *Data) ComputeShares() NamespacedShares {
 	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
 
 	// reserved shares:
-	txShares := data.Txs.splitIntoShares(ShareSize)
-	intermRootsShares := data.IntermediateStateRoots.splitIntoShares(ShareSize)
-	evidenceShares := data.Evidence.splitIntoShares(ShareSize)
+	txShares := data.Txs.splitIntoShares()
+	intermRootsShares := data.IntermediateStateRoots.splitIntoShares()
+	evidenceShares := data.Evidence.splitIntoShares()
 
 	// application data shares from messages:
-	msgShares := data.Messages.splitIntoShares(ShareSize)
+	msgShares := data.Messages.splitIntoShares()
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 
 	// FIXME(ismail): this is not a power of two
@@ -1588,7 +1588,7 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
 	return nil
 }
 
-func (data *EvidenceData) splitIntoShares(shareSize int) NamespacedShares {
+func (data *EvidenceData) splitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	for _, ev := range data.Evidence {
 		var rawData []byte
@@ -1609,7 +1609,7 @@ func (data *EvidenceData) splitIntoShares(shareSize int) NamespacedShares {
 		if err != nil {
 			panic(fmt.Sprintf("evidence included in evidence pool that can not be encoded %#v, err: %v", ev, err))
 		}
-		shares = appendToShares(shares, EvidenceNamespaceID, rawData, shareSize)
+		shares = appendToShares(shares, EvidenceNamespaceID, rawData, ShareSize)
 	}
 	return shares
 }
