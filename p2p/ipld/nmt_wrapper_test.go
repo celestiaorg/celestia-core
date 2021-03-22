@@ -36,7 +36,7 @@ func TestRootErasuredNamespacedMerkleTree(t *testing.T) {
 	// the case, because the ErasuredNamespacedMerkleTree should add namespaces
 	// to the second half of the tree
 	size := 16
-	data := generateRandNamespacedRawData(size, types.NamespaceSize, AdjustedMessageSize)
+	data := generateRandNamespacedRawData(size, types.NamespaceSize, types.AdjustedMessageSize)
 	n := NewErasuredNamespacedMerkleTree(uint64(16))
 	tree := n.Constructor()
 	nmtTree := nmt.New(sha256.New())
@@ -110,7 +110,7 @@ func generateErasuredData(t *testing.T, numLeaves int) [][]byte {
 	raw := generateRandNamespacedRawData(
 		numLeaves,
 		types.NamespaceSize,
-		AdjustedMessageSize,
+		types.AdjustedMessageSize,
 	)
 	erasuredData, err := rsmt2d.Encode(raw, rsmt2d.RSGF8)
 	if err != nil {
