@@ -1336,6 +1336,7 @@ func (msgs Messages) splitIntoShares(shareSize int) NamespacedShares {
 	return shares
 }
 
+// ComputeShares splits block data into shares of an original data square.
 func (data *Data) ComputeShares() NamespacedShares {
 	// TODO(ismail): splitting into shares should depend on the block size and layout
 	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
