@@ -140,6 +140,21 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 		curIndex += bytesToFetch
 	}
 
+	// Check if there is any more data, if not then we've reached the end
+	// and start index of next is 0
+	for outerIndex < len(rawDatas) {
+		bytesToFetch := len(rawDatas[outerIndex]) - innerIndex
+		if bytesToFetch == 0 {
+			innerIndex = 0
+			outerIndex++
+			continue
+		}
+		break
+	}
+	if outerIndex >= len(rawDatas) {
+		startIndex = 0
+	}
+
 	return rawData, outerIndex, innerIndex, startIndex
 }
 
