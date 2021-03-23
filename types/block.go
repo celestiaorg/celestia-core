@@ -1592,7 +1592,7 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
 
 func (data *EvidenceData) splitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
-	rawDatas := make([][]byte, len(data.Evidence))
+	rawDatas := make([][]byte, 0, len(data.Evidence))
 	for _, ev := range data.Evidence {
 		var rawData []byte
 		var err error
