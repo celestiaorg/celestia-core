@@ -1314,7 +1314,7 @@ type IntermediateStateRoots struct {
 
 func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
-	rawDatas := make([][]byte, len(roots.RawRootsList))
+	rawDatas := make([][]byte, 0, len(roots.RawRootsList))
 	for _, root := range roots.RawRootsList {
 		rawData, err := root.MarshalDelimited()
 		if err != nil {

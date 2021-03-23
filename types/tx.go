@@ -81,7 +81,7 @@ func (txs Txs) Proof(i int) TxProof {
 
 func (txs Txs) splitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
-	rawDatas := make([][]byte, len(txs))
+	rawDatas := make([][]byte, 0, len(txs))
 	for _, tx := range txs {
 		rawData, err := tx.MarshalDelimited()
 		if err != nil {
