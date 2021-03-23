@@ -79,11 +79,11 @@ func TestMakeShares(t *testing.T) {
 			},
 			NamespacedShares{
 				NamespacedShare{
-					Share: Share(largeTxLenDelimited[:ShareSize]),
+					Share: append(append(reservedTxNamespaceID, byte(0)), largeTxLenDelimited[:txShareSize]...),
 					ID:    reservedTxNamespaceID,
 				},
 				NamespacedShare{
-					Share: zeroPadIfNecessary(largeTxLenDelimited[ShareSize:], ShareSize),
+					Share: append(append(reservedTxNamespaceID, byte(0)), zeroPadIfNecessary(largeTxLenDelimited[txShareSize:], txShareSize)...),
 					ID:    reservedTxNamespaceID,
 				},
 			},
