@@ -16,7 +16,6 @@ type splitter interface {
 func TestMakeShares(t *testing.T) {
 	reservedTxNamespaceID := append(bytes.Repeat([]byte{0}, 7), 1)
 	reservedEvidenceNamespaceID := append(bytes.Repeat([]byte{0}, 7), 3)
-	// resveredIntermediateStateRootsNamespaceID := append(bytes.Repeat([]byte{0}, 7), 2)
 	val := NewMockPV()
 	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
 	blockID2 := makeBlockID([]byte("blockhash2"), 1000, []byte("partshash"))
