@@ -80,7 +80,7 @@ func appendToSharesContiguous(shares []NamespacedShare, nid namespace.ID, rawDat
 	// Index into the inner slice of rawDatas
 	innerIndex := 0
 	for outerIndex < len(rawDatas) {
-		rawData := make([]byte, adjustedSize)
+		var rawData []byte
 		startIndex := 0
 		rawData, outerIndex, innerIndex, startIndex = getNextChunk(rawDatas, outerIndex, innerIndex, adjustedSize)
 		rawShare := []byte(append(append(nid, byte(startIndex)), rawData...))
