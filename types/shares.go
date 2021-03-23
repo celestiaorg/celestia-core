@@ -111,7 +111,7 @@ func split(rawData []byte, nid namespace.ID) []NamespacedShare {
 }
 
 func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) ([]byte, int, int, int) {
-	rawData := make([]byte, width)
+	rawData := make([]byte, 0, width)
 	startIndex := len(rawDatas[outerIndex]) - innerIndex - 1
 	// If the start index would go past the end of the share, no transaction begins in this share
 	if startIndex >= width {
@@ -122,7 +122,18 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 		startIndex += NamespaceSize + ShareReservedBytes
 	}
 
-	// TODO do this
+	curIndex := 0
+	for curIndex < width && outerIndex < len(rawDatas) {
+		bytesToFetch := min(len(rawDatas[outerIndex])-innerIndex-1, width-curIndex-1)
+		rawData = append(rawData, rawDatas[outerIndex][innerIndex:innerIndex+bytesToFetch]...)
+		innerIndex += bytesToFetch
+		if innerIndex >= len(rawDatas[outerIndex]) {
+			innerIndex = 0
+			outerIndex++
+		}
+		curIndex += bytesToFetch
+	}
+
 	return rawData, outerIndex, innerIndex, startIndex
 }
 
