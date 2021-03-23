@@ -59,7 +59,7 @@ func (m Message) MarshalDelimited() ([]byte, error) {
 // appendToSharesContiguous appends one raw data separately as shares
 // Used for messages
 func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) []NamespacedShare {
-	adjustedSize := ShareSize - NamespaceSize
+	const adjustedSize = ShareSize - NamespaceSize
 	if len(rawData) < adjustedSize {
 		rawShare := []byte(append(nid, rawData...))
 		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
@@ -74,17 +74,19 @@ func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) 
 // appendToSharesContiguous appends multiple raw data contiguously as shares
 // Used for transactions, intermediate state roots, and evidence
 func appendToSharesContiguous(shares []NamespacedShare, nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
-	adjustedSize := ShareSize - NamespaceSize - ShareReservedBytes
-	for _, rawData := range rawDatas {
-		if len(rawData) < adjustedSize {
-			rawShare := []byte(append(append(nid, byte(0)), rawData...))
-			paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
-			share := NamespacedShare{paddedShare, nid}
-			shares = append(shares, share)
-		} else { // len(rawData) >= adjustedSize
-			// TODO(john) this needs to be splitContiguous, etc.
-			shares = append(shares, split(rawData, nid)...)
-		}
+	const adjustedSize = ShareSize - NamespaceSize - ShareReservedBytes
+	// Index into the outer slice of rawDatas
+	outerIndex := 0
+	// Index into the inner slice of rawDatas
+	innerIndex := 0
+	for outerIndex < len(rawDatas) {
+		rawData := make([]byte, adjustedSize)
+		startIndex := 0
+		rawData, outerIndex, innerIndex, startIndex = getNextBytes(rawDatas, outerIndex, innerIndex, adjustedSize)
+		rawShare := []byte(append(append(nid, byte(startIndex)), rawData...))
+		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
+		share := NamespacedShare{paddedShare, nid}
+		shares = append(shares, share)
 	}
 	return shares
 }
@@ -92,7 +94,7 @@ func appendToSharesContiguous(shares []NamespacedShare, nid namespace.ID, rawDat
 // TODO(ismail): implement corresponding merge method for clients requesting
 // shares for a particular namespace
 func split(rawData []byte, nid namespace.ID) []NamespacedShare {
-	adjustedSize := ShareSize - NamespaceSize
+	const adjustedSize = ShareSize - NamespaceSize
 	shares := make([]NamespacedShare, 0)
 	firstRawShare := []byte(append(nid, rawData[:adjustedSize]...))
 	shares = append(shares, NamespacedShare{firstRawShare, nid})
@@ -106,6 +108,13 @@ func split(rawData []byte, nid namespace.ID) []NamespacedShare {
 		rawData = rawData[shareSizeOrLen:]
 	}
 	return shares
+}
+
+func getNextBytes(rawDatas [][]byte, outerIndex int, innerIndex int, width int) ([]byte, int, int, int) {
+	rawData := make([]byte, width)
+	startIndex := 0
+	// TODO do this
+	return rawData, outerIndex, innerIndex, startIndex
 }
 
 func GenerateTailPaddingShares(n int, shareWidth int) NamespacedShares {
