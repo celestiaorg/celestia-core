@@ -92,8 +92,8 @@ func TestMakeShares(t *testing.T) {
 			},
 			NamespacedShares{
 				NamespacedShare{
-					append([]byte(msg1.NamespaceID), zeroPadIfNecessary(msg1Marshaled, ShareSize-NamespaceSize)...),
-					msg1.NamespaceID,
+					Share: append([]byte(msg1.NamespaceID), zeroPadIfNecessary(msg1Marshaled, ShareSize-NamespaceSize)...),
+					ID:    msg1.NamespaceID,
 				},
 			},
 		},
