@@ -66,7 +66,7 @@ func TestMakeShares(t *testing.T) {
 			},
 			NamespacedShares{
 				NamespacedShare{
-					Share: zeroPadIfNecessary(smolTxLenDelimited, ShareSize),
+					Share: append(append(reservedTxNamespaceID, byte(0)), zeroPadIfNecessary(smolTxLenDelimited, ShareSize-NamespaceSize-ShareReservedBytes)...),
 					ID:    reservedTxNamespaceID,
 				},
 			},
