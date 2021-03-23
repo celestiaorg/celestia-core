@@ -38,6 +38,8 @@ func TestMakeShares(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not encode evidence: %v, error: %v\n", testEvidence, err)
 	}
+	txShareSize := ShareSize - NamespaceSize - ShareReservedBytes
+	msgShareSize := ShareSize - NamespaceSize
 
 	type args struct {
 		data splitter
@@ -53,10 +55,10 @@ func TestMakeShares(t *testing.T) {
 					Evidence: []Evidence{testEvidence},
 				},
 			}, NamespacedShares{NamespacedShare{
-				Share: testEvidenceBytes[:ShareSize],
+				Share: append(append(reservedEvidenceNamespaceID, byte(0)), testEvidenceBytes[:txShareSize]...),
 				ID:    reservedEvidenceNamespaceID,
 			}, NamespacedShare{
-				Share: zeroPadIfNecessary(testEvidenceBytes[ShareSize:], ShareSize),
+				Share: append(append(reservedEvidenceNamespaceID, byte(0)), zeroPadIfNecessary(testEvidenceBytes[txShareSize:], txShareSize)...),
 				ID:    reservedEvidenceNamespaceID,
 			}},
 		},
@@ -66,7 +68,7 @@ func TestMakeShares(t *testing.T) {
 			},
 			NamespacedShares{
 				NamespacedShare{
-					Share: append(append(reservedTxNamespaceID, byte(0)), zeroPadIfNecessary(smolTxLenDelimited, ShareSize-NamespaceSize-ShareReservedBytes)...),
+					Share: append(append(reservedTxNamespaceID, byte(0)), zeroPadIfNecessary(smolTxLenDelimited, txShareSize)...),
 					ID:    reservedTxNamespaceID,
 				},
 			},
@@ -92,7 +94,7 @@ func TestMakeShares(t *testing.T) {
 			},
 			NamespacedShares{
 				NamespacedShare{
-					Share: append([]byte(msg1.NamespaceID), zeroPadIfNecessary(msg1Marshaled, ShareSize-NamespaceSize)...),
+					Share: append([]byte(msg1.NamespaceID), zeroPadIfNecessary(msg1Marshaled, msgShareSize)...),
 					ID:    msg1.NamespaceID,
 				},
 			},
