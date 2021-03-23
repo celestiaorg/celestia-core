@@ -125,7 +125,7 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 
 	curIndex := 0
 	for curIndex < width && outerIndex < len(rawDatas) {
-		bytesToFetch := min(len(rawDatas[outerIndex])-innerIndex-1, width-curIndex-1)
+		bytesToFetch := min(len(rawDatas[outerIndex])-innerIndex, width-curIndex)
 		if bytesToFetch == 0 {
 			innerIndex = 0
 			outerIndex++
