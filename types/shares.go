@@ -82,7 +82,7 @@ func appendToSharesContiguous(shares []NamespacedShare, nid namespace.ID, rawDat
 	for outerIndex < len(rawDatas) {
 		rawData := make([]byte, adjustedSize)
 		startIndex := 0
-		rawData, outerIndex, innerIndex, startIndex = getNextBytes(rawDatas, outerIndex, innerIndex, adjustedSize)
+		rawData, outerIndex, innerIndex, startIndex = getNextChunk(rawDatas, outerIndex, innerIndex, adjustedSize)
 		rawShare := []byte(append(append(nid, byte(startIndex)), rawData...))
 		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
 		share := NamespacedShare{paddedShare, nid}
@@ -110,9 +110,18 @@ func split(rawData []byte, nid namespace.ID) []NamespacedShare {
 	return shares
 }
 
-func getNextBytes(rawDatas [][]byte, outerIndex int, innerIndex int, width int) ([]byte, int, int, int) {
+func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) ([]byte, int, int, int) {
 	rawData := make([]byte, width)
-	startIndex := 0
+	startIndex := len(rawDatas[outerIndex]) - innerIndex - 1
+	// If the start index would go past the end of the share, no transaction begins in this share
+	if startIndex >= width {
+		startIndex = 0
+	}
+	// Offset by the fixed reserved bytes at the beginning of the share
+	if startIndex > 0 {
+		startIndex += NamespaceSize + ShareReservedBytes
+	}
+
 	// TODO do this
 	return rawData, outerIndex, innerIndex, startIndex
 }
