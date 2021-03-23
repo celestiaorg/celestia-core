@@ -80,7 +80,6 @@ func (txs Txs) Proof(i int) TxProof {
 }
 
 func (txs Txs) splitIntoShares() NamespacedShares {
-	shares := make([]NamespacedShare, 0)
 	rawDatas := make([][]byte, 0, len(txs))
 	for _, tx := range txs {
 		rawData, err := tx.MarshalDelimited()
@@ -89,7 +88,7 @@ func (txs Txs) splitIntoShares() NamespacedShares {
 		}
 		rawDatas = append(rawDatas, rawData)
 	}
-	shares = appendToSharesContiguous(shares, TxNamespaceID, rawDatas)
+	shares := splitContiguous(TxNamespaceID, rawDatas)
 	return shares
 }
 

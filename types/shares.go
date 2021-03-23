@@ -71,9 +71,10 @@ func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) 
 	return shares
 }
 
-// appendToSharesContiguous appends multiple raw data contiguously as shares
+// splitContiguous splits multiple raw data contiguously as shares
 // Used for transactions, intermediate state roots, and evidence
-func appendToSharesContiguous(shares []NamespacedShare, nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
+func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
+	shares := make([]NamespacedShare, 0)
 	const adjustedSize = ShareSize - NamespaceSize - ShareReservedBytes
 	// Index into the outer slice of rawDatas
 	outerIndex := 0

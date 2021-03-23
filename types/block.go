@@ -1313,7 +1313,6 @@ type IntermediateStateRoots struct {
 }
 
 func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
-	shares := make([]NamespacedShare, 0)
 	rawDatas := make([][]byte, 0, len(roots.RawRootsList))
 	for _, root := range roots.RawRootsList {
 		rawData, err := root.MarshalDelimited()
@@ -1322,7 +1321,7 @@ func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
 		}
 		rawDatas = append(rawDatas, rawData)
 	}
-	shares = appendToSharesContiguous(shares, IntermediateStateRootsNamespaceID, rawDatas)
+	shares := splitContiguous(IntermediateStateRootsNamespaceID, rawDatas)
 	return shares
 }
 
@@ -1591,7 +1590,6 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
 }
 
 func (data *EvidenceData) splitIntoShares() NamespacedShares {
-	shares := make([]NamespacedShare, 0)
 	rawDatas := make([][]byte, 0, len(data.Evidence))
 	for _, ev := range data.Evidence {
 		var rawData []byte
@@ -1614,7 +1612,7 @@ func (data *EvidenceData) splitIntoShares() NamespacedShares {
 		}
 		rawDatas = append(rawDatas, rawData)
 	}
-	shares = appendToSharesContiguous(shares, EvidenceNamespaceID, rawDatas)
+	shares := splitContiguous(EvidenceNamespaceID, rawDatas)
 	return shares
 }
 
