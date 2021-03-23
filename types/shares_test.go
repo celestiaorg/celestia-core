@@ -37,7 +37,7 @@ func TestMakeShares(t *testing.T) {
 	}
 	msg1Marshaled, _ := msg1.MarshalDelimited()
 	if err != nil {
-		t.Fatalf("Could not encode evidence: %v, error: %v", testEvidence, err)
+		t.Fatalf("Could not encode evidence: %v, error: %v\n", testEvidence, err)
 	}
 
 	type args struct {
@@ -101,7 +101,7 @@ func TestMakeShares(t *testing.T) {
 		i := i
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.args.data.splitIntoShares(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("%v: makeShares() = \n%v\nwant\n%v", i, got, tt.want)
+				t.Errorf("%v: makeShares() = \n%v\nwant\n%v\n", i, got, tt.want)
 			}
 		})
 	}
