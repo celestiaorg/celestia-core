@@ -38,8 +38,8 @@ func TestMakeShares(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not encode evidence: %v, error: %v\n", testEvidence, err)
 	}
-	txShareSize := ShareSize - NamespaceSize - ShareReservedBytes
-	msgShareSize := ShareSize - NamespaceSize
+	const txShareSize = ShareSize - NamespaceSize - ShareReservedBytes
+	const msgShareSize = ShareSize - NamespaceSize
 
 	type args struct {
 		data splitter
@@ -103,6 +103,30 @@ func TestMakeShares(t *testing.T) {
 				},
 			},
 		},
+		{"large then small LL Tx",
+			args{
+				data: Txs{largeTx, smolTx},
+			},
+			NamespacedShares{
+				NamespacedShare{
+					Share: append(
+						append(reservedTxNamespaceID, byte(0)),
+						largeTxLenDelimited[:txShareSize]...,
+					),
+					ID: reservedTxNamespaceID,
+				},
+				NamespacedShare{
+					Share: append(
+						append(reservedTxNamespaceID, byte(len(largeTxLenDelimited)-txShareSize+NamespaceSize+ShareReservedBytes)),
+						zeroPadIfNecessary(
+							append(largeTxLenDelimited[txShareSize:], smolTxLenDelimited...),
+							txShareSize,
+						)...,
+					),
+					ID: reservedTxNamespaceID,
+				},
+			},
+		},
 		{"ll-app message",
 			args{
 				data: Messages{[]Message{msg1}},
@@ -122,8 +146,9 @@ func TestMakeShares(t *testing.T) {
 		tt := tt // stupid scopelint :-/
 		i := i
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.args.data.splitIntoShares(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("%v: makeShares() = \n%v\nwant\n%v\n", i, got, tt.want)
+			got := tt.args.data.splitIntoShares()
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("%v: makeShares() = \n%+v\nwant\n%+v\n", i, got, tt.want)
 			}
 		})
 	}
