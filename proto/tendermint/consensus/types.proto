@@ -5,6 +5,7 @@ option go_package = "github.com/lazyledger/lazyledger-core/proto/tendermint/cons
 
 import "gogoproto/gogo.proto";
 import "tendermint/types/types.proto";
+import "tendermint/types/block.proto";
 import "tendermint/libs/bits/types.proto";
 
 // NewRoundStep is sent for every step taken in the ConsensusState.
@@ -23,9 +24,8 @@ message NewRoundStep {
 message NewValidBlock {
   int64                          height                = 1;
   int32                          round                 = 2;
-  tendermint.types.PartSetHeader block_part_set_header = 3 [(gogoproto.nullable) = false];
-  tendermint.libs.bits.BitArray  block_parts           = 4;
-  bool                           is_commit             = 5;
+  tendermint.types.DataAvailabilityHeader da_header = 3 [(gogoproto.customname) = "DAHeader"];
+  bool                           is_commit             = 4;
 }
 
 // Proposal is sent when a new block is proposed.
@@ -45,6 +45,12 @@ message BlockPart {
   int64                 height = 1;
   int32                 round  = 2;
   tendermint.types.Part part   = 3 [(gogoproto.nullable) = false];
+}
+
+message Block {
+  int64                 height = 1;
+  int32                 round  = 2;
+  tendermint.types.Block block = 3;
 }
 
 // Vote is sent when voting for a proposal (or lack thereof).
@@ -88,5 +94,6 @@ message Message {
     HasVote       has_vote        = 7;
     VoteSetMaj23  vote_set_maj23  = 8;
     VoteSetBits   vote_set_bits   = 9;
+    Block block = 10;
   }
 }

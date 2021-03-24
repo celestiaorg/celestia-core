@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/libs/bits"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	"github.com/lazyledger/lazyledger-core/p2p"
@@ -20,38 +20,34 @@ import (
 )
 
 func TestMsgToProto(t *testing.T) {
-	psh := types.PartSetHeader{
-		Total: 1,
-		Hash:  tmrand.Bytes(32),
-	}
-	pbPsh := psh.ToProto()
 	bi := types.BlockID{
 		Hash:          tmrand.Bytes(32),
-		PartSetHeader: psh,
 	}
 	pbBi := bi.ToProto()
 	bits := bits.NewBitArray(1)
 	pbBits := bits.ToProto()
 
-	parts := types.Part{
-		Index: 1,
-		Bytes: []byte("test"),
-		Proof: merkle.Proof{
-			Total:    1,
-			Index:    1,
-			LeafHash: tmrand.Bytes(32),
-			Aunts:    [][]byte{},
-		},
-	}
-	pbParts, err := parts.ToProto()
+	block := types.MakeBlock(
+		int64(3),
+		[]types.Tx{types.Tx("Hello World")},
+		nil,
+		nil,
+		types.Messages{},
+		&types.Commit{Signatures: []types.CommitSig{}},
+	)
+	block.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
+	pbBlock, err := block.ToProto()
 	require.NoError(t, err)
+
+	dah := &block.DataAvailabilityHeader
+	pbDah := dah.ToProto()
 
 	proposal := types.Proposal{
 		Type:      tmproto.ProposalType,
 		Height:    1,
 		Round:     1,
 		POLRound:  1,
-		BlockID:   bi,
+		DAHeader:  dah,
 		Timestamp: time.Now(),
 		Signature: tmrand.Bytes(20),
 	}
@@ -95,30 +91,28 @@ func TestMsgToProto(t *testing.T) {
 		{"successful NewValidBlockMessage", &NewValidBlockMessage{
 			Height:             1,
 			Round:              1,
-			BlockPartSetHeader: psh,
-			BlockParts:         bits,
+			BlockDAHeader: 		dah,
 			IsCommit:           false,
 		}, &tmcons.Message{
 			Sum: &tmcons.Message_NewValidBlock{
 				NewValidBlock: &tmcons.NewValidBlock{
 					Height:             1,
 					Round:              1,
-					BlockPartSetHeader: pbPsh,
-					BlockParts:         pbBits,
+					DAHeader:           pbDah,
 					IsCommit:           false,
 				},
 			},
 		}, false},
-		{"successful BlockPartMessage", &BlockPartMessage{
+		{"successful BlockPartMessage", &BlockMessage{
 			Height: 100,
 			Round:  1,
-			Part:   &parts,
+			Block: 	block,
 		}, &tmcons.Message{
-			Sum: &tmcons.Message_BlockPart{
-				BlockPart: &tmcons.BlockPart{
+			Sum: &tmcons.Message_Block{
+				Block: &tmcons.Block{
 					Height: 100,
 					Round:  1,
-					Part:   *pbParts,
+					Block:  pbBlock,
 				},
 			},
 		}, false},
@@ -210,18 +204,17 @@ func TestMsgToProto(t *testing.T) {
 }
 
 func TestWALMsgProto(t *testing.T) {
+	block := types.MakeBlock(
+		int64(3),
+		[]types.Tx{types.Tx("Hello World")},
+		nil,
+		nil,
+		types.Messages{},
+		&types.Commit{Signatures: []types.CommitSig{}},
+	)
+	block.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
 
-	parts := types.Part{
-		Index: 1,
-		Bytes: []byte("test"),
-		Proof: merkle.Proof{
-			Total:    1,
-			Index:    1,
-			LeafHash: tmrand.Bytes(32),
-			Aunts:    [][]byte{},
-		},
-	}
-	pbParts, err := parts.ToProto()
+	pbBlock, err := block.ToProto()
 	require.NoError(t, err)
 
 	testsCases := []struct {
@@ -244,21 +237,21 @@ func TestWALMsgProto(t *testing.T) {
 			},
 		}, false},
 		{"successful msgInfo", msgInfo{
-			Msg: &BlockPartMessage{
+			Msg: &BlockMessage{
 				Height: 100,
 				Round:  1,
-				Part:   &parts,
+				Block:  block,
 			},
 			PeerID: p2p.ID("string"),
 		}, &tmcons.WALMessage{
 			Sum: &tmcons.WALMessage_MsgInfo{
 				MsgInfo: &tmcons.MsgInfo{
 					Msg: tmcons.Message{
-						Sum: &tmcons.Message_BlockPart{
-							BlockPart: &tmcons.BlockPart{
+						Sum: &tmcons.Message_Block{
+							Block: &tmcons.Block{
 								Height: 100,
 								Round:  1,
-								Part:   *pbParts,
+								Block:  pbBlock,
 							},
 						},
 					},
@@ -306,7 +299,7 @@ func TestWALMsgProto(t *testing.T) {
 
 			if !tt.wantErr {
 				require.NoError(t, err)
-				assert.Equal(t, tt.msg, msg, tt.testName) // need the concrete type as WAL Message is a empty interface
+				assert.EqualValues(t, tt.msg, msg, tt.testName) // need the concrete type as WAL Message is a empty interface
 			} else {
 				require.Error(t, err, tt.testName)
 			}
@@ -321,7 +314,6 @@ func TestConsMsgsVectors(t *testing.T) {
 		Total: 1,
 		Hash:  []byte("add_more_exclamation_marks_code-"),
 	}
-	pbPsh := psh.ToProto()
 
 	bi := types.BlockID{
 		Hash:          []byte("add_more_exclamation_marks_code-"),
@@ -331,25 +323,26 @@ func TestConsMsgsVectors(t *testing.T) {
 	bits := bits.NewBitArray(1)
 	pbBits := bits.ToProto()
 
-	parts := types.Part{
-		Index: 1,
-		Bytes: []byte("test"),
-		Proof: merkle.Proof{
-			Total:    1,
-			Index:    1,
-			LeafHash: []byte("add_more_exclamation_marks_code-"),
-			Aunts:    [][]byte{},
-		},
-	}
-	pbParts, err := parts.ToProto()
+	block := types.MakeBlock(
+		int64(3),
+		[]types.Tx{types.Tx("Hello World")},
+		nil,
+		nil,
+		types.Messages{},
+		nil,
+	)
+	pbBlock, err := block.ToProto()
 	require.NoError(t, err)
+
+	dah := &block.DataAvailabilityHeader
+	pbDah := dah.ToProto()
 
 	proposal := types.Proposal{
 		Type:      tmproto.ProposalType,
 		Height:    1,
 		Round:     1,
 		POLRound:  1,
-		BlockID:   bi,
+		DAHeader:  dah,
 		Timestamp: date,
 		Signature: []byte("add_more_exclamation"),
 	}
@@ -387,19 +380,19 @@ func TestConsMsgsVectors(t *testing.T) {
 		}}}, "0a2608ffffffffffffffff7f10ffffffff0718ffffffff0f20ffffffffffffffff7f28ffffffff07"},
 		{"NewValidBlock", &tmcons.Message{Sum: &tmcons.Message_NewValidBlock{
 			NewValidBlock: &tmcons.NewValidBlock{
-				Height: 1, Round: 1, BlockPartSetHeader: pbPsh, BlockParts: pbBits, IsCommit: false}}},
-			"1231080110011a24080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d22050801120100"},
+				Height: 1, Round: 1, DAHeader: pbDah, IsCommit: false}}},
+			"12cf01080110011ac8010a300000000000000001000000000000000119251d276ad8a1831db7b86ead3f42c4e03093d50ecf026da7ecc3b0da8ec87d0a30ffffffffffffffffffffffffffffffff12d55aea72367d0d6a7899103a437c913ee5a6f9e86f42e0fe8743b0d8d3a1e812300000000000000001000000000000000119251d276ad8a1831db7b86ead3f42c4e03093d50ecf026da7ecc3b0da8ec87d1230ffffffffffffffffffffffffffffffff12d55aea72367d0d6a7899103a437c913ee5a6f9e86f42e0fe8743b0d8d3a1e8"},
 		{"Proposal", &tmcons.Message{Sum: &tmcons.Message_Proposal{Proposal: &tmcons.Proposal{Proposal: *pbProposal}}},
-			"1a720a7008201001180120012a480a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d1224080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d320608c0b89fdc053a146164645f6d6f72655f6578636c616d6174696f6e"},
+			"1af4010af10108201001180120012ac8010a300000000000000001000000000000000119251d276ad8a1831db7b86ead3f42c4e03093d50ecf026da7ecc3b0da8ec87d0a30ffffffffffffffffffffffffffffffff12d55aea72367d0d6a7899103a437c913ee5a6f9e86f42e0fe8743b0d8d3a1e812300000000000000001000000000000000119251d276ad8a1831db7b86ead3f42c4e03093d50ecf026da7ecc3b0da8ec87d1230ffffffffffffffffffffffffffffffff12d55aea72367d0d6a7899103a437c913ee5a6f9e86f42e0fe8743b0d8d3a1e8320608c0b89fdc053a146164645f6d6f72655f6578636c616d6174696f6e"},
 		{"ProposalPol", &tmcons.Message{Sum: &tmcons.Message_ProposalPol{
 			ProposalPol: &tmcons.ProposalPOL{Height: 1, ProposalPolRound: 1}}},
 			"2206080110011a00"},
-		{"BlockPart", &tmcons.Message{Sum: &tmcons.Message_BlockPart{
-			BlockPart: &tmcons.BlockPart{Height: 1, Round: 1, Part: *pbParts}}},
-			"2a36080110011a3008011204746573741a26080110011a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d"},
+		{"Blocks", &tmcons.Message{Sum: &tmcons.Message_Block{
+			Block: &tmcons.Block{Height: 1, Round: 1, Block: pbBlock}}},
+			"52c402080110011abd020a5b0a02080b1803220b088092b8c398feffffff012a0212003a20ba28ef83fed712be8a128587469a4effda9f4f4895bd5638dab1f10775c9bed66a20e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85512130a0b48656c6c6f20576f726c6412001a0022001ac8010a300000000000000001000000000000000119251d276ad8a1831db7b86ead3f42c4e03093d50ecf026da7ecc3b0da8ec87d0a30ffffffffffffffffffffffffffffffff12d55aea72367d0d6a7899103a437c913ee5a6f9e86f42e0fe8743b0d8d3a1e812300000000000000001000000000000000119251d276ad8a1831db7b86ead3f42c4e03093d50ecf026da7ecc3b0da8ec87d1230ffffffffffffffffffffffffffffffff12d55aea72367d0d6a7899103a437c913ee5a6f9e86f42e0fe8743b0d8d3a1e8"},
 		{"Vote", &tmcons.Message{Sum: &tmcons.Message_Vote{
 			Vote: &tmcons.Vote{Vote: vpb}}},
-			"32700a6e0802100122480a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d1224080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d2a0608c0b89fdc0532146164645f6d6f72655f6578636c616d6174696f6e3801"},
+			"32720a700802100122480a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d1224080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d2a00320608c0b89fdc053a146164645f6d6f72655f6578636c616d6174696f6e4001"},
 		{"HasVote", &tmcons.Message{Sum: &tmcons.Message_HasVote{
 			HasVote: &tmcons.HasVote{Height: 1, Round: 1, Type: tmproto.PrevoteType, Index: 1}}},
 			"3a080801100118012001"},

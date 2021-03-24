@@ -69,10 +69,9 @@ func (cs *State) readReplayMessage(msg *TimedWALMessage, newStepSub types.Subscr
 		switch msg := m.Msg.(type) {
 		case *ProposalMessage:
 			p := msg.Proposal
-			cs.Logger.Info("Replay: Proposal", "height", p.Height, "round", p.Round, "header",
-				p.BlockID.PartSetHeader, "pol", p.POLRound, "peer", peerID)
-		case *BlockPartMessage:
-			cs.Logger.Info("Replay: BlockPart", "height", msg.Height, "round", msg.Round, "peer", peerID)
+			cs.Logger.Info("Replay: Proposal", "height", p.Height, "round", p.Round, "pol", p.POLRound, "peer", peerID)
+		case *BlockMessage:
+			cs.Logger.Info("Replay: Blocks", "height", msg.Height, "round", msg.Round, "peer", peerID)
 		case *VoteMessage:
 			v := msg.Vote
 			cs.Logger.Info("Replay: Vote", "height", v.Height, "round", v.Round, "type", v.Type,
@@ -515,7 +514,7 @@ func assertAppHashEqualsOneFromBlock(appHash []byte, block *types.Block) {
 	if !bytes.Equal(appHash, block.AppHash) {
 		panic(fmt.Sprintf(`block.AppHash does not match AppHash after replay. Got %X, expected %X.
 
-Block: %v
+Blocks: %v
 `,
 			appHash, block.AppHash, block))
 	}

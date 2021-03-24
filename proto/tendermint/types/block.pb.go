@@ -92,7 +92,7 @@ func (m *Block) GetLastCommit() *Commit {
 }
 
 func init() {
-	proto.RegisterType((*Block)(nil), "tendermint.types.Block")
+	proto.RegisterType((*Block)(nil), "tendermint.types.Blocks")
 }
 
 func init() { proto.RegisterFile("tendermint/types/block.proto", fileDescriptor_70840e82f4357ab1) }
@@ -247,10 +247,10 @@ func (m *Block) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Block: wiretype end group for non-group")
+			return fmt.Errorf("proto: Blocks: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Block: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Blocks: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

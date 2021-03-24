@@ -131,7 +131,7 @@ func ValidateConsensusParams(params tmproto.ConsensusParams) error {
 }
 
 // Hash returns a hash of a subset of the parameters to store in the block header.
-// Only the Block.MaxBytes and Block.MaxGas are included in the hash.
+// Only the Blocks.MaxBytes and Blocks.MaxGas are included in the hash.
 // This allows the ConsensusParams to evolve more without breaking the block
 // protocol. No need for a Merkle tree here, just a small struct to hash.
 func HashConsensusParams(params tmproto.ConsensusParams) []byte {

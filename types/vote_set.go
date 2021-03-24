@@ -70,6 +70,7 @@ type VoteSet struct {
 	votes         []*Vote                // Primary votes to share
 	sum           int64                  // Sum of voting power for seen votes, discounting conflicts
 	maj23         *BlockID               // First 2/3 majority seen
+	maj23DA       *DataAvailabilityHeader
 	votesByBlock  map[string]*blockVotes // string(blockHash|blockParts) -> blockVotes
 	peerMaj23s    map[P2PID]BlockID      // Maj23 for each peer
 }
@@ -90,6 +91,7 @@ func NewVoteSet(chainID string, height int64, round int32,
 		votes:         make([]*Vote, valSet.Size()),
 		sum:           0,
 		maj23:         nil,
+		maj23DA:       nil,
 		votesByBlock:  make(map[string]*blockVotes, valSet.Size()),
 		peerMaj23s:    make(map[P2PID]BlockID),
 	}
@@ -287,8 +289,8 @@ func (voteSet *VoteSet) addVerifiedVote(
 	if origSum < quorum && quorum <= votesByBlock.sum {
 		// Only consider the first quorum reached
 		if voteSet.maj23 == nil {
-			maj23BlockID := vote.BlockID
-			voteSet.maj23 = &maj23BlockID
+			voteSet.maj23 = &vote.BlockID
+			voteSet.maj23DA = vote.DAHeader
 			// And also copy votes over to voteSet.votes
 			for i, vote := range votesByBlock.votes {
 				if vote != nil {
@@ -427,16 +429,16 @@ func (voteSet *VoteSet) HasAll() bool {
 
 // If there was a +2/3 majority for blockID, return blockID and true.
 // Else, return the empty BlockID{} and false.
-func (voteSet *VoteSet) TwoThirdsMajority() (blockID BlockID, ok bool) {
+func (voteSet *VoteSet) TwoThirdsMajority() (BlockID, *DataAvailabilityHeader, bool) {
 	if voteSet == nil {
-		return BlockID{}, false
+		return BlockID{}, nil, false
 	}
 	voteSet.mtx.Lock()
 	defer voteSet.mtx.Unlock()
 	if voteSet.maj23 != nil {
-		return *voteSet.maj23, true
+		return *voteSet.maj23, voteSet.maj23DA, true
 	}
-	return BlockID{}, false
+	return BlockID{}, nil,  false
 }
 
 //--------------------------------------------------------------------------------

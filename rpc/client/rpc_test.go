@@ -286,7 +286,7 @@ func TestAppCalls(t *testing.T) {
 		assert.Equal(appHash, cappHash)
 		assert.NotNil(commit.Commit)
 
-		// compare the commits (note Commit(2) has commit from Block(3))
+		// compare the commits (note Commit(2) has commit from Blocks(3))
 		h = apph - 1
 		commit2, err := c.Commit(context.Background(), &h)
 		require.NoError(err)

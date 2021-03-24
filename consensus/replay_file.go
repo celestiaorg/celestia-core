@@ -262,11 +262,11 @@ func (pb *playback) replayConsoleLoop() int {
 				case "proposal":
 					fmt.Println(rs.Proposal)
 				case "proposal_block":
-					fmt.Printf("%v %v\n", rs.ProposalBlockParts.StringShort(), rs.ProposalBlock.StringShort())
+					fmt.Printf("%v\n", rs.ProposalBlock.StringShort())
 				case "locked_round":
 					fmt.Println(rs.LockedRound)
 				case "locked_block":
-					fmt.Printf("%v %v\n", rs.LockedBlockParts.StringShort(), rs.LockedBlock.StringShort())
+					fmt.Printf("%v\n", rs.LockedBlock.StringShort())
 				case "votes":
 					fmt.Println(rs.Votes.StringIndented("  "))
 

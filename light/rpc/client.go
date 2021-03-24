@@ -277,7 +277,7 @@ func (c *Client) Genesis(ctx context.Context) (*ctypes.ResultGenesis, error) {
 	return c.next.Genesis(ctx)
 }
 
-// Block calls rpcclient#Block and then verifies the result.
+// Block calls rpcclient#Blocks and then verifies the result.
 func (c *Client) Block(ctx context.Context, height *int64) (*ctypes.ResultBlock, error) {
 	res, err := c.next.Block(ctx, height)
 	if err != nil {

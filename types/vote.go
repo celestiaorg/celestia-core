@@ -52,6 +52,7 @@ type Vote struct {
 	Height           int64                 `json:"height"`
 	Round            int32                 `json:"round"`    // assume there will not be greater than 2_147_483_647 rounds
 	BlockID          BlockID               `json:"block_id"` // zero if vote is nil.
+	DAHeader         *DataAvailabilityHeader`json:"da_header"`
 	Timestamp        time.Time             `json:"timestamp"`
 	ValidatorAddress Address               `json:"validator_address"`
 	ValidatorIndex   int32                 `json:"validator_index"`
@@ -213,6 +214,7 @@ func (vote *Vote) ToProto() *tmproto.Vote {
 		Height:           vote.Height,
 		Round:            vote.Round,
 		BlockID:          vote.BlockID.ToProto(),
+		DAHeader:         *vote.DAHeader.ToProto(),
 		Timestamp:        vote.Timestamp,
 		ValidatorAddress: vote.ValidatorAddress,
 		ValidatorIndex:   vote.ValidatorIndex,
@@ -232,11 +234,17 @@ func VoteFromProto(pv *tmproto.Vote) (*Vote, error) {
 		return nil, err
 	}
 
+	dah, err := DataAvailabilityHeaderFromProto(&pv.DAHeader)
+	if err != nil {
+		return nil, err
+	}
+
 	vote := new(Vote)
 	vote.Type = pv.Type
 	vote.Height = pv.Height
 	vote.Round = pv.Round
 	vote.BlockID = *blockID
+	vote.DAHeader = dah
 	vote.Timestamp = pv.Timestamp
 	vote.ValidatorAddress = pv.ValidatorAddress
 	vote.ValidatorIndex = pv.ValidatorIndex

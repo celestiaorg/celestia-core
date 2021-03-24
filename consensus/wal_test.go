@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"path/filepath"
-
 	// "sync"
 	"testing"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/lazyledger/lazyledger-core/consensus/types"
-	"github.com/lazyledger/lazyledger-core/crypto/merkle"
 	"github.com/lazyledger/lazyledger-core/libs/autofile"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmtypes "github.com/lazyledger/lazyledger-core/types"
@@ -120,19 +118,20 @@ func TestWALWrite(t *testing.T) {
 		wal.Wait()
 	})
 
+	block := tmtypes.MakeBlock(
+		int64(3),
+		[]tmtypes.Tx{make([]byte, maxMsgSizeBytes-30)},
+		nil,
+		nil,
+		tmtypes.Messages{},
+		nil,
+	)
+
 	// 1) Write returns an error if msg is too big
-	msg := &BlockPartMessage{
+	msg := &BlockMessage{
 		Height: 1,
 		Round:  1,
-		Part: &tmtypes.Part{
-			Index: 1,
-			Bytes: make([]byte, 1),
-			Proof: merkle.Proof{
-				Total:    1,
-				Index:    1,
-				LeafHash: make([]byte, maxMsgSizeBytes-30),
-			},
-		},
+		Block: block,
 	}
 
 	err = wal.Write(msgInfo{

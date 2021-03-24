@@ -576,9 +576,5 @@ func makeMockVote(height int64, round, index int32, addr Address,
 func randBlockID() BlockID {
 	return BlockID{
 		Hash: tmrand.Bytes(tmhash.Size),
-		PartSetHeader: PartSetHeader{
-			Total: 1,
-			Hash:  tmrand.Bytes(tmhash.Size),
-		},
 	}
 }

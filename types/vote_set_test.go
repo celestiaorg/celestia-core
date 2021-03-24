@@ -214,7 +214,7 @@ func TestVoteSet_2_3MajorityRedux(t *testing.T) {
 			"there should be no 2/3 majority: last vote added was nil")
 	}
 
-	// 68th validator voted for a different BlockParts PartSetHeader
+	// 68th validator voted for a different Blocks PartSetHeader
 	{
 		pubKey, err := privValidators[67].GetPubKey()
 		require.NoError(t, err)
@@ -228,7 +228,7 @@ func TestVoteSet_2_3MajorityRedux(t *testing.T) {
 			"there should be no 2/3 majority: last vote added had different PartSetHeader Hash")
 	}
 
-	// 69th validator voted for different BlockParts Total
+	// 69th validator voted for different Blocks Total
 	{
 		pubKey, err := privValidators[68].GetPubKey()
 		require.NoError(t, err)

@@ -20,30 +20,30 @@ func validateBlock(state State, block *types.Block) error {
 	// Validate basic info.
 	if block.Version.App != state.Version.Consensus.App ||
 		block.Version.Block != state.Version.Consensus.Block {
-		return fmt.Errorf("wrong Block.Header.Version. Expected %v, got %v",
+		return fmt.Errorf("wrong Blocks.Header.Version. Expected %v, got %v",
 			state.Version.Consensus,
 			block.Version,
 		)
 	}
 	if block.ChainID != state.ChainID {
-		return fmt.Errorf("wrong Block.Header.ChainID. Expected %v, got %v",
+		return fmt.Errorf("wrong Blocks.Header.ChainID. Expected %v, got %v",
 			state.ChainID,
 			block.ChainID,
 		)
 	}
 	if state.LastBlockHeight == 0 && block.Height != state.InitialHeight {
-		return fmt.Errorf("wrong Block.Header.Height. Expected %v for initial block, got %v",
+		return fmt.Errorf("wrong Blocks.Header.Height. Expected %v for initial block, got %v",
 			block.Height, state.InitialHeight)
 	}
 	if state.LastBlockHeight > 0 && block.Height != state.LastBlockHeight+1 {
-		return fmt.Errorf("wrong Block.Header.Height. Expected %v, got %v",
+		return fmt.Errorf("wrong Blocks.Header.Height. Expected %v, got %v",
 			state.LastBlockHeight+1,
 			block.Height,
 		)
 	}
 	// Validate prev block info.
 	if !block.LastBlockID.Equals(state.LastBlockID) {
-		return fmt.Errorf("wrong Block.Header.LastBlockID.  Expected %v, got %v",
+		return fmt.Errorf("wrong Blocks.Header.LastBlockID.  Expected %v, got %v",
 			state.LastBlockID,
 			block.LastBlockID,
 		)
@@ -51,32 +51,32 @@ func validateBlock(state State, block *types.Block) error {
 
 	// Validate app info
 	if !bytes.Equal(block.AppHash, state.AppHash) {
-		return fmt.Errorf("wrong Block.Header.AppHash.  Expected %X, got %v",
+		return fmt.Errorf("wrong Blocks.Header.AppHash.  Expected %X, got %v",
 			state.AppHash,
 			block.AppHash,
 		)
 	}
 	hashCP := types.HashConsensusParams(state.ConsensusParams)
 	if !bytes.Equal(block.ConsensusHash, hashCP) {
-		return fmt.Errorf("wrong Block.Header.ConsensusHash.  Expected %X, got %v",
+		return fmt.Errorf("wrong Blocks.Header.ConsensusHash.  Expected %X, got %v",
 			hashCP,
 			block.ConsensusHash,
 		)
 	}
 	if !bytes.Equal(block.LastResultsHash, state.LastResultsHash) {
-		return fmt.Errorf("wrong Block.Header.LastResultsHash.  Expected %X, got %v",
+		return fmt.Errorf("wrong Blocks.Header.LastResultsHash.  Expected %X, got %v",
 			state.LastResultsHash,
 			block.LastResultsHash,
 		)
 	}
 	if !bytes.Equal(block.ValidatorsHash, state.Validators.Hash()) {
-		return fmt.Errorf("wrong Block.Header.ValidatorsHash.  Expected %X, got %v",
+		return fmt.Errorf("wrong Blocks.Header.ValidatorsHash.  Expected %X, got %v",
 			state.Validators.Hash(),
 			block.ValidatorsHash,
 		)
 	}
 	if !bytes.Equal(block.NextValidatorsHash, state.NextValidators.Hash()) {
-		return fmt.Errorf("wrong Block.Header.NextValidatorsHash.  Expected %X, got %v",
+		return fmt.Errorf("wrong Blocks.Header.NextValidatorsHash.  Expected %X, got %v",
 			state.NextValidators.Hash(),
 			block.NextValidatorsHash,
 		)

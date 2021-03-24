@@ -51,7 +51,7 @@ type ProtocolVersion struct {
 	App   uint64 `json:"app"`
 }
 
-// defaultProtocolVersion populates the Block and P2P versions using
+// defaultProtocolVersion populates the Blocks and P2P versions using
 // the global values, but not the App.
 var defaultProtocolVersion = NewProtocolVersion(
 	version.P2PProtocol,
@@ -173,7 +173,7 @@ func (info DefaultNodeInfo) Validate() error {
 }
 
 // CompatibleWith checks if two DefaultNodeInfo are compatible with eachother.
-// CONTRACT: two nodes are compatible if the Block version and network match
+// CONTRACT: two nodes are compatible if the Blocks version and network match
 // and they have at least one channel in common.
 func (info DefaultNodeInfo) CompatibleWith(otherInfo NodeInfo) error {
 	other, ok := otherInfo.(DefaultNodeInfo)
@@ -182,7 +182,7 @@ func (info DefaultNodeInfo) CompatibleWith(otherInfo NodeInfo) error {
 	}
 
 	if info.ProtocolVersion.Block != other.ProtocolVersion.Block {
-		return fmt.Errorf("peer is on a different Block version. Got %v, expected %v",
+		return fmt.Errorf("peer is on a different Blocks version. Got %v, expected %v",
 			other.ProtocolVersion.Block, info.ProtocolVersion.Block)
 	}
 

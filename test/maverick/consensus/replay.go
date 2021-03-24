@@ -515,7 +515,7 @@ func assertAppHashEqualsOneFromBlock(appHash []byte, block *types.Block) {
 	if !bytes.Equal(appHash, block.AppHash) {
 		panic(fmt.Sprintf(`block.AppHash does not match AppHash after replay. Got %X, expected %X.
 
-Block: %v
+Blocks: %v
 `,
 			appHash, block.AppHash, block))
 	}

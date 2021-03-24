@@ -607,8 +607,6 @@ github.com/lazyledger/go-leopard v0.0.0-20200604113236-298f93361181/go.mod h1:v1
 github.com/lazyledger/merkletree v0.0.0-20201214195110-6901c4c3c75f h1:jbyPAH6o6hGte4RtZBaqWs2n4Fl6hS7qJGXX3qnjiy4=
 github.com/lazyledger/merkletree v0.0.0-20201214195110-6901c4c3c75f/go.mod h1:10PA0NlnYtB8HrtwIDQAyTKWp8TEZ0zBZCGlYC/7+QE=
 github.com/lazyledger/nmt v0.2.0/go.mod h1:tY7ypPX26Sbkt6F8EbPl3AT33B5N0BJe4OVPbq849YI=
-github.com/lazyledger/nmt v0.2.1-0.20210311211820-a5c8085cd40d h1:/4e9eoYm9qQLoTczb2QCMDQvGrER14HnPdwPzi2ngv4=
-github.com/lazyledger/nmt v0.2.1-0.20210311211820-a5c8085cd40d/go.mod h1:tY7ypPX26Sbkt6F8EbPl3AT33B5N0BJe4OVPbq849YI=
 github.com/lazyledger/nmt v0.2.1 h1:/gSzFilF/fzykHiDDkwvnoyRdtntosgXP5feJbcTs1o=
 github.com/lazyledger/nmt v0.2.1/go.mod h1:tY7ypPX26Sbkt6F8EbPl3AT33B5N0BJe4OVPbq849YI=
 github.com/lazyledger/rsmt2d v0.0.0-20201215203123-e5ec7910ddd4 h1:r2mI8AnDTOSwL9GWGjgHC4rwzaR56jRCo1GLpG2lwIw=

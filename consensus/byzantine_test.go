@@ -132,9 +132,9 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		// allow first height to happen normally so that byzantine validator is no longer proposer
 		if height == prevoteHeight {
 			bcs.Logger.Info("Sending two votes")
-			prevote1, err := bcs.signVote(tmproto.PrevoteType, bcs.ProposalBlock.Hash(), bcs.ProposalBlockParts.Header())
+			prevote1, err := bcs.signVote(tmproto.PrevoteType, bcs.ProposalBlock.Hash(), bcs.ProposalBlockDAHeader)
 			require.NoError(t, err)
-			prevote2, err := bcs.signVote(tmproto.PrevoteType, nil, types.PartSetHeader{})
+			prevote2, err := bcs.signVote(tmproto.PrevoteType, nil, nil)
 			require.NoError(t, err)
 			peerList := reactors[byzantineNode].Switch.Peers().List()
 			bcs.Logger.Info("Getting peer list", "peers", peerList)
@@ -374,9 +374,8 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	// Avoid sending on internalMsgQueue and running consensus state.
 
 	// Create a new proposal block from state/txs from the mempool.
-	block1, blockParts1 := cs.createProposalBlock()
-	polRound, propBlockID := cs.ValidRound, types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
-	proposal1 := types.NewProposal(height, round, polRound, propBlockID)
+	block1 := cs.createProposalBlock()
+	proposal1 := types.NewProposal(height, round, cs.ValidRound, &block1.DataAvailabilityHeader)
 	p1 := proposal1.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p1); err != nil {
 		t.Error(err)
@@ -388,9 +387,8 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	deliverTxsRange(cs, 0, 1)
 
 	// Create a new proposal block from state/txs from the mempool.
-	block2, blockParts2 := cs.createProposalBlock()
-	polRound, propBlockID = cs.ValidRound, types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
-	proposal2 := types.NewProposal(height, round, polRound, propBlockID)
+	block2 := cs.createProposalBlock()
+	proposal2 := types.NewProposal(height, round, cs.ValidRound, &block1.DataAvailabilityHeader)
 	p2 := proposal2.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p2); err != nil {
 		t.Error(err)
@@ -406,41 +404,38 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	t.Logf("Byzantine: broadcasting conflicting proposals to %d peers", len(peers))
 	for i, peer := range peers {
 		if i < len(peers)/2 {
-			go sendProposalAndParts(height, round, cs, peer, proposal1, block1Hash, blockParts1)
+			go sendProposalAndBlock(height, round, cs, peer, proposal1, block1Hash, block1)
 		} else {
-			go sendProposalAndParts(height, round, cs, peer, proposal2, block2Hash, blockParts2)
+			go sendProposalAndBlock(height, round, cs, peer, proposal2, block2Hash, block2)
 		}
 	}
 }
 
-func sendProposalAndParts(
+func sendProposalAndBlock(
 	height int64,
 	round int32,
 	cs *State,
 	peer p2p.Peer,
 	proposal *types.Proposal,
 	blockHash []byte,
-	parts *types.PartSet,
+	block *types.Block,
 ) {
 	// proposal
-	msg := &ProposalMessage{Proposal: proposal}
-	peer.Send(DataChannel, MustEncode(msg))
+	pmsg := &ProposalMessage{Proposal: proposal}
+	peer.Send(DataChannel, MustEncode(pmsg))
 
-	// parts
-	for i := 0; i < int(parts.Total()); i++ {
-		part := parts.GetPart(i)
-		msg := &BlockPartMessage{
-			Height: height, // This tells peer that this part applies to us.
-			Round:  round,  // This tells peer that this part applies to us.
-			Part:   part,
-		}
-		peer.Send(DataChannel, MustEncode(msg))
+	// block
+	bmsg := &BlockMessage{
+		Height: height, // This tells peer that this part applies to us.
+		Round:  round,  // This tells peer that this part applies to us.
+		Block:   block,
 	}
+	peer.Send(DataChannel, MustEncode(bmsg))
 
 	// votes
 	cs.mtx.Lock()
-	prevote, _ := cs.signVote(tmproto.PrevoteType, blockHash, parts.Header())
-	precommit, _ := cs.signVote(tmproto.PrecommitType, blockHash, parts.Header())
+	prevote, _ := cs.signVote(tmproto.PrevoteType, blockHash, &block.DataAvailabilityHeader)
+	precommit, _ := cs.signVote(tmproto.PrecommitType, blockHash, &block.DataAvailabilityHeader)
 	cs.mtx.Unlock()
 
 	peer.Send(VoteChannel, MustEncode(&VoteMessage{prevote}))

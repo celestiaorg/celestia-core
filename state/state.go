@@ -25,7 +25,7 @@ var (
 
 //-----------------------------------------------------------------------------
 
-// InitStateVersion sets the Consensus.Block and Software versions,
+// InitStateVersion sets the Consensus.Blocks and Software versions,
 // but leaves the Consensus.App version blank.
 // The Consensus.App version will be set during the Handshake, once
 // we hear from the app what protocol version it is running.
@@ -159,7 +159,7 @@ func (state *State) ToProto() (*tmstate.State, error) {
 	}
 	sm.NextValidators = nVals
 
-	if state.LastBlockHeight >= 1 { // At Block 1 LastValidators is nil
+	if state.LastBlockHeight >= 1 { // At Blocks 1 LastValidators is nil
 		lVals, err := state.LastValidators.ToProto()
 		if err != nil {
 			return nil, err
@@ -208,7 +208,7 @@ func StateFromProto(pb *tmstate.State) (*State, error) { //nolint:golint
 	}
 	state.NextValidators = nVals
 
-	if state.LastBlockHeight >= 1 { // At Block 1 LastValidators is nil
+	if state.LastBlockHeight >= 1 { // At Blocks 1 LastValidators is nil
 		lVals, err := types.ValidatorSetFromProto(pb.LastValidators)
 		if err != nil {
 			return nil, err

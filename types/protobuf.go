@@ -65,7 +65,7 @@ func (tm2pb) Validator(val *Validator) abci.Validator {
 func (tm2pb) BlockID(blockID BlockID) tmproto.BlockID {
 	return tmproto.BlockID{
 		Hash:          blockID.Hash,
-		PartSetHeader: TM2PB.PartSetHeader(blockID.PartSetHeader),
+		PartSetHeader: TM2PB.PartSetHeader(PartSetHeader{}),
 	}
 }
 

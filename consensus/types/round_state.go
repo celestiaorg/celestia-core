@@ -70,22 +70,22 @@ type RoundState struct {
 	Step      RoundStepType `json:"step"`
 	StartTime time.Time     `json:"start_time"`
 
-	// Subjective time when +2/3 precommits for Block at Round were found
+	// Subjective time when +2/3 precommits for Blocks at Round were found
 	CommitTime         time.Time           `json:"commit_time"`
 	Validators         *types.ValidatorSet `json:"validators"`
+
 	Proposal           *types.Proposal     `json:"proposal"`
 	ProposalBlock      *types.Block        `json:"proposal_block"`
-	ProposalBlockParts *types.PartSet      `json:"proposal_block_parts"`
+	ProposalBlockDAHeader  *types.DataAvailabilityHeader       `json:"proposal_block_da_header"`
+
 	LockedRound        int32               `json:"locked_round"`
 	LockedBlock        *types.Block        `json:"locked_block"`
-	LockedBlockParts   *types.PartSet      `json:"locked_block_parts"`
+	LockedBlockDAHeader  *types.DataAvailabilityHeader         `json:"locked_block_da_header"`
 
-	// Last known round with POL for non-nil valid block.
-	ValidRound int32        `json:"valid_round"`
+	ValidRound int32        `json:"valid_round"` // Last known round with POL for non-nil valid block.
 	ValidBlock *types.Block `json:"valid_block"` // Last known block of POL mentioned above.
+	ValidBlockDAHeader  *types.DataAvailabilityHeader      `json:"valid_block_da_header"` // Last known block ID of POL mentioned above.
 
-	// Last known block parts of POL mentioned above.
-	ValidBlockParts           *types.PartSet      `json:"valid_block_parts"`
 	Votes                     *HeightVoteSet      `json:"votes"`
 	CommitRound               int32               `json:"commit_round"` //
 	LastCommit                *types.VoteSet      `json:"last_commit"`  // Last precommits at Height-1
@@ -146,18 +146,11 @@ func (rs *RoundState) NewRoundEvent() types.EventDataNewRound {
 
 // CompleteProposalEvent returns information about a proposed block as an event.
 func (rs *RoundState) CompleteProposalEvent() types.EventDataCompleteProposal {
-	// We must construct BlockID from ProposalBlock and ProposalBlockParts
-	// cs.Proposal is not guaranteed to be set when this function is called
-	blockID := types.BlockID{
-		Hash:          rs.ProposalBlock.Hash(),
-		PartSetHeader: rs.ProposalBlockParts.Header(),
-	}
-
 	return types.EventDataCompleteProposal{
 		Height:  rs.Height,
 		Round:   rs.Round,
 		Step:    rs.Step.String(),
-		BlockID: blockID,
+		DAHeader: rs.ProposalBlockDAHeader,
 	}
 }
 
@@ -186,8 +179,8 @@ func (rs *RoundState) StringIndented(indent string) string {
 %s  ProposalBlock: %v %v
 %s  LockedRound:   %v
 %s  LockedBlock:   %v %v
-%s  ValidRound:   %v
-%s  ValidBlock:   %v %v
+%s  ValidRound:    %v
+%s  ValidBlock:    %v %v
 %s  Votes:         %v
 %s  LastCommit:    %v
 %s  LastValidators:%v
@@ -197,11 +190,11 @@ func (rs *RoundState) StringIndented(indent string) string {
 		indent, rs.CommitTime,
 		indent, rs.Validators.StringIndented(indent+"  "),
 		indent, rs.Proposal,
-		indent, rs.ProposalBlockParts.StringShort(), rs.ProposalBlock.StringShort(),
+		indent, rs.ProposalBlockDAHeader.String(), rs.ProposalBlock.StringShort(),
 		indent, rs.LockedRound,
-		indent, rs.LockedBlockParts.StringShort(), rs.LockedBlock.StringShort(),
+		indent, rs.LockedBlockDAHeader.String(), rs.LockedBlock.StringShort(),
 		indent, rs.ValidRound,
-		indent, rs.ValidBlockParts.StringShort(), rs.ValidBlock.StringShort(),
+		indent, rs.ValidBlockDAHeader.String(), rs.ValidBlock.StringShort(),
 		indent, rs.Votes.StringIndented(indent+"  "),
 		indent, rs.LastCommit.StringShort(),
 		indent, rs.LastValidators.StringIndented(indent+"  "),

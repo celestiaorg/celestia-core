@@ -86,11 +86,7 @@ func newValidatorStub(privValidator types.PrivValidator, valIndex int32) *valida
 	}
 }
 
-func (vs *validatorStub) signVote(
-	voteType tmproto.SignedMsgType,
-	hash []byte,
-	header types.PartSetHeader) (*types.Vote, error) {
-
+func (vs *validatorStub) signVote(voteType tmproto.SignedMsgType, hash []byte, dah *types.DataAvailabilityHeader) (*types.Vote, error) {
 	pubKey, err := vs.PrivValidator.GetPubKey()
 	if err != nil {
 		return nil, fmt.Errorf("can't get pubkey: %w", err)
@@ -103,8 +99,10 @@ func (vs *validatorStub) signVote(
 		Round:            vs.Round,
 		Timestamp:        tmtime.Now(),
 		Type:             voteType,
-		BlockID:          types.BlockID{Hash: hash, PartSetHeader: header},
+		BlockID:          types.BlockID{Hash: hash},
+		DAHeader: dah,
 	}
+
 	v := vote.ToProto()
 	err = vs.PrivValidator.SignVote(config.ChainID(), v)
 	vote.Signature = v.Signature
@@ -113,8 +111,8 @@ func (vs *validatorStub) signVote(
 }
 
 // Sign vote for type/hash/header
-func signVote(vs *validatorStub, voteType tmproto.SignedMsgType, hash []byte, header types.PartSetHeader) *types.Vote {
-	v, err := vs.signVote(voteType, hash, header)
+func signVote(vs *validatorStub, voteType tmproto.SignedMsgType, hash []byte, dah *types.DataAvailabilityHeader) *types.Vote {
+	v, err := vs.signVote(voteType, hash, dah)
 	if err != nil {
 		panic(fmt.Errorf("failed to sign vote: %v", err))
 	}
@@ -124,11 +122,11 @@ func signVote(vs *validatorStub, voteType tmproto.SignedMsgType, hash []byte, he
 func signVotes(
 	voteType tmproto.SignedMsgType,
 	hash []byte,
-	header types.PartSetHeader,
+	dah *types.DataAvailabilityHeader,
 	vss ...*validatorStub) []*types.Vote {
 	votes := make([]*types.Vote, len(vss))
 	for i, vs := range vss {
-		votes[i] = signVote(vs, voteType, hash, header)
+		votes[i] = signVote(vs, voteType, hash, dah)
 	}
 	return votes
 }
@@ -191,7 +189,7 @@ func decideProposal(
 	round int32,
 ) (proposal *types.Proposal, block *types.Block) {
 	cs1.mtx.Lock()
-	block, blockParts := cs1.createProposalBlock()
+	block = cs1.createProposalBlock()
 	validRound := cs1.ValidRound
 	chainID := cs1.state.ChainID
 	cs1.mtx.Unlock()
@@ -200,8 +198,7 @@ func decideProposal(
 	}
 
 	// Make proposal
-	polRound, propBlockID := validRound, types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal = types.NewProposal(height, round, polRound, propBlockID)
+	proposal = types.NewProposal(height, round, validRound, &block.DataAvailabilityHeader)
 	p := proposal.ToProto()
 	if err := vs.SignProposal(chainID, p); err != nil {
 		panic(err)
@@ -222,10 +219,10 @@ func signAddVotes(
 	to *State,
 	voteType tmproto.SignedMsgType,
 	hash []byte,
-	header types.PartSetHeader,
+	dah *types.DataAvailabilityHeader,
 	vss ...*validatorStub,
 ) {
-	votes := signVotes(voteType, hash, header, vss...)
+	votes := signVotes(voteType, hash, dah, vss...)
 	addVotes(to, votes...)
 }
 
@@ -589,7 +586,7 @@ func ensureNewUnlock(unlockCh <-chan tmpubsub.Message, height int64, round int32
 		"Timeout expired while waiting for NewUnlock event")
 }
 
-func ensureProposal(proposalCh <-chan tmpubsub.Message, height int64, round int32, propID types.BlockID) {
+func ensureProposal(proposalCh <-chan tmpubsub.Message, height int64, round int32, dah *types.DataAvailabilityHeader) {
 	select {
 	case <-time.After(ensureTimeout):
 		panic("Timeout expired while waiting for NewProposal event")
@@ -605,8 +602,8 @@ func ensureProposal(proposalCh <-chan tmpubsub.Message, height int64, round int3
 		if proposalEvent.Round != round {
 			panic(fmt.Sprintf("expected round %v, got %v", round, proposalEvent.Round))
 		}
-		if !proposalEvent.BlockID.Equals(propID) {
-			panic(fmt.Sprintf("Proposed block does not match expected block (%v != %v)", proposalEvent.BlockID, propID))
+		if !proposalEvent.DAHeader.Equal(dah) {
+			panic(fmt.Sprintf("Proposed block does not match expected block (%v != %v)", proposalEvent.DAHeader, dah))
 		}
 	}
 }

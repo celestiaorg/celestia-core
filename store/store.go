@@ -18,12 +18,12 @@ BlockStore is a simple low level store for blocks.
 
 There are three types of information stored:
  - BlockMeta:   Meta information about each block
- - Block part:  Parts of each block, aggregated w/ PartSet
+ - Blocks part:  Parts of each block, aggregated w/ PartSet
  - Commit:      The commit part of each block, for gossiping precommit votes
 
-Currently the precommit signatures are duplicated in the Block parts as
+Currently the precommit signatures are duplicated in the Blocks parts as
 well as the Commit.  In the future this may change, perhaps by moving
-the Commit data outside the Block. (TODO)
+the Commit data outside the Blocks. (TODO)
 
 The store can be assumed to contain all contiguous blocks between base and height (inclusive).
 
@@ -366,7 +366,7 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 		panic(err)
 	}
 
-	// Save block commit (duplicate and separate from the Block)
+	// Save block commit (duplicate and separate from the Blocks)
 	pbc := block.LastCommit.ToProto()
 	blockCommitBytes := mustEncode(pbc)
 	if err := bs.db.Set(calcBlockCommitKey(height-1), blockCommitBytes); err != nil {

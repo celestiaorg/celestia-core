@@ -27,14 +27,14 @@ type Proposal struct {
 	Height    int64                  `json:"height"`
 	Round     int32                  `json:"round"`     // there can not be greater than 2_147_483_647 rounds
 	POLRound  int32                  `json:"pol_round"` // -1 if null.
-	DAHeader  DataAvailabilityHeader `json:"da_header"`
+	DAHeader  *DataAvailabilityHeader `json:"da_header"`
 	Timestamp time.Time              `json:"timestamp"`
 	Signature []byte                 `json:"signature"`
 }
 
 // NewProposal returns a new Proposal.
 // If there is no POLRound, polRound should be -1.
-func NewProposal(height int64, round int32, polRound int32, daH DataAvailabilityHeader) *Proposal {
+func NewProposal(height int64, round int32, polRound int32, daH *DataAvailabilityHeader) *Proposal {
 	return &Proposal{
 		Type:      tmproto.ProposalType,
 		Height:    height,
@@ -78,7 +78,7 @@ func (p *Proposal) ValidateBasic() error {
 //
 // 1. height
 // 2. round
-// 3. block ID
+// 3. DAHeader
 // 4. POL round
 // 5. first 6 bytes of signature
 // 6. timestamp
@@ -144,7 +144,7 @@ func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 		return nil, err
 	}
 
-	p.DAHeader = *dah
+	p.DAHeader = dah
 	p.Type = pp.Type
 	p.Height = pp.Height
 	p.Round = pp.Round

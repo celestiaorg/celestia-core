@@ -22,11 +22,12 @@ import (
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
+	"github.com/lazyledger/lazyledger-core/crypto"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	"github.com/lazyledger/lazyledger-core/libs/bits"
 	"github.com/lazyledger/lazyledger-core/libs/bytes"
 	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	mempl "github.com/lazyledger/lazyledger-core/mempool"
 	"github.com/lazyledger/lazyledger-core/p2p"
@@ -277,7 +278,7 @@ func TestReactorReceivePanicsIfInitPeerHasntBeenCalledYet(t *testing.T) {
 }
 
 // Test we record stats about votes and block parts from other peers.
-func TestReactorRecordsVotesAndBlockParts(t *testing.T) {
+func TestReactorRecordsVotesAndBlocks(t *testing.T) {
 	N := 4
 	css, cleanup := randConsensusNet(N, "consensus_reactor_test", newMockTickerFunc(true), newCounter)
 	defer cleanup()
@@ -295,7 +296,7 @@ func TestReactorRecordsVotesAndBlockParts(t *testing.T) {
 	ps := peer.Get(types.PeerStateKey).(*PeerState)
 
 	assert.Equal(t, true, ps.VotesSent() > 0, "number of votes sent should have increased")
-	assert.Equal(t, true, ps.BlockPartsSent() > 0, "number of votes sent should have increased")
+	assert.Equal(t, true, ps.BlocksSent() > 0, "number of blocks sent should have increased")
 }
 
 //-------------------------------------------------------------
@@ -637,7 +638,7 @@ func timeoutWaitGroup(t *testing.T, n int, f func(int), css []*State) {
 		close(done)
 	}()
 
-	// we're running many nodes in-process, possibly in in a virtual machine,
+	// we're running many nodes in-process, possibly in a virtual machine,
 	// and spewing debug messages - making a block could take a while,
 	timeout := time.Second * 120
 
@@ -749,19 +750,10 @@ func TestNewValidBlockMessageValidateBasic(t *testing.T) {
 		{func(msg *NewValidBlockMessage) { msg.Height = -1 }, "negative Height"},
 		{func(msg *NewValidBlockMessage) { msg.Round = -1 }, "negative Round"},
 		{
-			func(msg *NewValidBlockMessage) { msg.BlockPartSetHeader.Total = 2 },
-			"blockParts bit array size 1 not equal to BlockPartSetHeader.Total 2",
-		},
-		{
 			func(msg *NewValidBlockMessage) {
-				msg.BlockPartSetHeader.Total = 0
-				msg.BlockParts = bits.NewBitArray(0)
+				msg.BlockDAHeader = nil
 			},
-			"empty blockParts",
-		},
-		{
-			func(msg *NewValidBlockMessage) { msg.BlockParts = bits.NewBitArray(int(types.MaxBlockPartsCount) + 1) },
-			"blockParts bit array size 1602 not equal to BlockPartSetHeader.Total 1",
+			"empty BlockDAHeader",
 		},
 	}
 
@@ -771,10 +763,7 @@ func TestNewValidBlockMessageValidateBasic(t *testing.T) {
 			msg := &NewValidBlockMessage{
 				Height: 1,
 				Round:  0,
-				BlockPartSetHeader: types.PartSetHeader{
-					Total: 1,
-				},
-				BlockParts: bits.NewBitArray(1),
+				BlockDAHeader: new(types.DataAvailabilityHeader),
 			}
 
 			tc.malleateFn(msg)
@@ -817,38 +806,45 @@ func TestProposalPOLMessageValidateBasic(t *testing.T) {
 	}
 }
 
-func TestBlockPartMessageValidateBasic(t *testing.T) {
-	testPart := new(types.Part)
-	testPart.Proof.LeafHash = tmhash.Sum([]byte("leaf"))
+func TestBlockMessageValidateBasic(t *testing.T) {
+	testBlock := types.MakeBlock(
+		int64(3),
+		[]types.Tx{types.Tx("Hello World")},
+		nil,
+		nil,
+		types.Messages{},
+		&types.Commit{Signatures: []types.CommitSig{}},
+	)
+	testBlock.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
+
 	testCases := []struct {
 		testName      string
 		messageHeight int64
 		messageRound  int32
-		messagePart   *types.Part
+		messageBlock  *types.Block
 		expectErr     bool
 	}{
-		{"Valid Message", 0, 0, testPart, false},
-		{"Invalid Message", -1, 0, testPart, true},
-		{"Invalid Message", 0, -1, testPart, true},
+		{"Valid Message", 0, 0, testBlock, false},
+		{"Invalid Message", -1, 0, testBlock, true},
+		{"Invalid Message", 0, -1, testBlock, true},
 	}
 
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
-			message := BlockPartMessage{
+			message := BlockMessage{
 				Height: tc.messageHeight,
 				Round:  tc.messageRound,
-				Part:   tc.messagePart,
+				Block:  tc.messageBlock,
 			}
 
 			assert.Equal(t, tc.expectErr, message.ValidateBasic() != nil, "Validate Basic had an unexpected result")
 		})
 	}
 
-	message := BlockPartMessage{Height: 0, Round: 0, Part: new(types.Part)}
-	message.Part.Index = 1
+	message := BlockMessage{Height: 0, Round: 0, Block: new(types.Block)}
 
-	assert.Equal(t, true, message.ValidateBasic() != nil, "Validate Basic had an unexpected result")
+	assert.Error(t, message.ValidateBasic(), "Validate Basic had an unexpected result")
 }
 
 func TestHasVoteMessageValidateBasic(t *testing.T) {
@@ -896,10 +892,6 @@ func TestVoteSetMaj23MessageValidateBasic(t *testing.T) {
 	validBlockID := types.BlockID{}
 	invalidBlockID := types.BlockID{
 		Hash: bytes.HexBytes{},
-		PartSetHeader: types.PartSetHeader{
-			Total: 1,
-			Hash:  []byte{0},
-		},
 	}
 
 	testCases := []struct { // nolint: maligned
@@ -943,10 +935,6 @@ func TestVoteSetBitsMessageValidateBasic(t *testing.T) {
 		{func(msg *VoteSetBitsMessage) {
 			msg.BlockID = types.BlockID{
 				Hash: bytes.HexBytes{},
-				PartSetHeader: types.PartSetHeader{
-					Total: 1,
-					Hash:  []byte{0},
-				},
 			}
 		}, "wrong BlockID: wrong PartSetHeader: wrong Hash:"},
 		{func(msg *VoteSetBitsMessage) { msg.Votes = bits.NewBitArray(types.MaxVotesCount + 1) },

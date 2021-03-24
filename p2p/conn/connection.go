@@ -501,7 +501,7 @@ FOR_LOOP:
 // Returns true if messages from channels were exhausted.
 // Blocks in accordance to .sendMonitor throttling.
 func (c *MConnection) sendSomePacketMsgs() bool {
-	// Block until .sendMonitor says we can write.
+	// Blocks until .sendMonitor says we can write.
 	// Once we're ready we send more than we asked for,
 	// but amortized it should even out.
 	c.sendMonitor.Limit(c._maxPacketMsgSize, atomic.LoadInt64(&c.config.SendRate), true)
@@ -563,7 +563,7 @@ func (c *MConnection) recvRoutine() {
 
 FOR_LOOP:
 	for {
-		// Block until .recvMonitor says we can read.
+		// Blocks until .recvMonitor says we can read.
 		c.recvMonitor.Limit(c._maxPacketMsgSize, atomic.LoadInt64(&c.config.RecvRate), true)
 
 		// Peek into bufConnReader for debugging

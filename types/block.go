@@ -3,6 +3,7 @@ package types
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -63,6 +64,8 @@ type DataAvailabilityHeader struct {
 	RowsRoots NmtRoots `json:"row_roots"`
 	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
 	ColumnRoots NmtRoots `json:"column_roots"`
+	// cached result of Hash() not to be recomputed
+	hash []byte
 }
 
 type NmtRoots []namespace.IntervalDigest
@@ -131,11 +134,30 @@ func (roots NmtRoots) Bytes() [][]byte {
 	return res
 }
 
+func (dah *DataAvailabilityHeader) String() string {
+	if dah == nil {
+		return "<nil>"
+	}
+	return strings.ToUpper(hex.EncodeToString(dah.Hash()))
+}
+
+func (dah DataAvailabilityHeader) IsZero() bool {
+	return len(dah.RowsRoots) == 0 && len(dah.ColumnRoots) == 0
+}
+
+func (dah *DataAvailabilityHeader) Equal(to *DataAvailabilityHeader) bool {
+	return bytes.Equal(dah.Hash(), to.Hash())
+}
+
 // Hash computes the root of the row and column roots
 func (dah *DataAvailabilityHeader) Hash() []byte {
 	if dah == nil {
 		return merkle.HashFromByteSlices(nil)
 	}
+	if len(dah.hash) != 0 {
+		return dah.hash
+	}
+
 	colsCount := len(dah.ColumnRoots)
 	rowsCount := len(dah.RowsRoots)
 	slices := make([][]byte, colsCount+rowsCount)
@@ -147,7 +169,8 @@ func (dah *DataAvailabilityHeader) Hash() []byte {
 	}
 	// The single data root is computed using a simple binary merkle tree.
 	// Effectively being root(rowRoots || columnRoots):
-	return merkle.HashFromByteSlices(slices)
+	dah.hash = merkle.HashFromByteSlices(slices)
+	return dah.hash
 }
 
 func (dah *DataAvailabilityHeader) ToProto() *tmproto.DataAvailabilityHeader {
@@ -1569,13 +1592,7 @@ func (blockID BlockID) Equals(other BlockID) bool {
 
 // Key returns a machine-readable string representation of the BlockID
 func (blockID BlockID) Key() string {
-	pbph := blockID.PartSetHeader.ToProto()
-	bz, err := pbph.Marshal()
-	if err != nil {
-		panic(err)
-	}
-
-	return string(blockID.Hash) + string(bz)
+	return string(blockID.Hash)
 }
 
 // ValidateBasic performs basic validation.
@@ -1598,9 +1615,7 @@ func (blockID BlockID) IsZero() bool {
 
 // IsComplete returns true if this is a valid BlockID of a non-nil block.
 func (blockID BlockID) IsComplete() bool {
-	return len(blockID.Hash) == tmhash.Size &&
-		blockID.PartSetHeader.Total > 0 &&
-		len(blockID.PartSetHeader.Hash) == tmhash.Size
+	return len(blockID.Hash) == tmhash.Size
 }
 
 // String returns a human readable string representation of the BlockID.
