@@ -113,23 +113,26 @@ func split(rawData []byte, nid namespace.ID) []NamespacedShare {
 
 func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) ([]byte, int, int, int) {
 	rawData := make([]byte, 0, width)
-	startIndex := len(rawDatas[outerIndex]) - innerIndex - 1
-	// If the start index would go past the end of the share, no transaction begins in this share
-	if startIndex >= width {
-		startIndex = 0
-	}
-	// Offset by the fixed reserved bytes at the beginning of the share
-	if startIndex > 0 {
-		startIndex += NamespaceSize + ShareReservedBytes
-	}
+	startIndex := 0
+	firstBytesToFetch := 0
 
 	curIndex := 0
 	for curIndex < width && outerIndex < len(rawDatas) {
 		bytesToFetch := min(len(rawDatas[outerIndex])-innerIndex, width-curIndex)
+		// Prune any extra 0-data (this should never happen, but just in case)
 		if bytesToFetch == 0 {
 			innerIndex = 0
 			outerIndex++
 			continue
+		}
+		if curIndex == 0 {
+			firstBytesToFetch = bytesToFetch
+		}
+		// If we've already placed some data in this chunk, that means
+		// a new data segment begins
+		if curIndex != 0 {
+			// Offset by the fixed reserved bytes at the beginning of the share
+			startIndex = firstBytesToFetch + NamespaceSize + ShareReservedBytes
 		}
 		rawData = append(rawData, rawDatas[outerIndex][innerIndex:innerIndex+bytesToFetch]...)
 		innerIndex += bytesToFetch
@@ -140,8 +143,7 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 		curIndex += bytesToFetch
 	}
 
-	// Check if there is any more data, if not then we've reached the end
-	// and start index of next is 0
+	// Prune any extra 0-data (this should never happen, but just in case)
 	for outerIndex < len(rawDatas) {
 		bytesToFetch := len(rawDatas[outerIndex]) - innerIndex
 		if bytesToFetch == 0 {
@@ -150,9 +152,6 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 			continue
 		}
 		break
-	}
-	if outerIndex >= len(rawDatas) {
-		startIndex = 0
 	}
 
 	return rawData, outerIndex, innerIndex, startIndex
