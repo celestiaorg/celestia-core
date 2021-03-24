@@ -56,8 +56,8 @@ func (m Message) MarshalDelimited() ([]byte, error) {
 	return append(lenBuf[:n], m.Data...), nil
 }
 
-// appendToSharesContiguous appends one raw data separately as shares
-// Used for messages
+// appendToShares appends raw data as shares.
+// Used for messages.
 func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) []NamespacedShare {
 	const adjustedSize = ShareSize - NamespaceSize
 	if len(rawData) < adjustedSize {
@@ -71,8 +71,8 @@ func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) 
 	return shares
 }
 
-// splitContiguous splits multiple raw data contiguously as shares
-// Used for transactions, intermediate state roots, and evidence
+// splitContiguous splits multiple raw data contiguously as shares.
+// Used for transactions, intermediate state roots, and evidence.
 func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
 	shares := make([]NamespacedShare, 0)
 	const adjustedSize = ShareSize - NamespaceSize - ShareReservedBytes
