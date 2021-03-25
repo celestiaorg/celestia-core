@@ -1120,26 +1120,26 @@ type IntermediateStateRoots struct {
 	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
 }
 
-func (roots IntermediateStateRoots) splitIntoShares(shareSize int) NamespacedShares {
+func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	for _, root := range roots.RawRootsList {
 		rawData, err := root.MarshalDelimited()
 		if err != nil {
 			panic(fmt.Sprintf("app returned intermediate state root that can not be encoded %#v", root))
 		}
-		shares = appendToShares(shares, consts.IntermediateStateRootsNamespaceID, rawData, shareSize)
+		shares = appendToShares(shares, consts.IntermediateStateRootsNamespaceID, rawData)
 	}
 	return shares
 }
 
-func (msgs Messages) splitIntoShares(shareSize int) NamespacedShares {
+func (msgs Messages) splitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	for _, m := range msgs.MessagesList {
 		rawData, err := m.MarshalDelimited()
 		if err != nil {
 			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
 		}
-		shares = appendToShares(shares, m.NamespaceID, rawData, shareSize)
+		shares = appendToShares(shares, m.NamespaceID, rawData)
 	}
 	return shares
 }
@@ -1346,7 +1346,7 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
 	return nil
 }
 
-func (data *EvidenceData) splitIntoShares(shareSize int) NamespacedShares {
+func (data *EvidenceData) splitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	for _, ev := range data.Evidence {
 		var rawData []byte
@@ -1367,7 +1367,7 @@ func (data *EvidenceData) splitIntoShares(shareSize int) NamespacedShares {
 		if err != nil {
 			panic(fmt.Sprintf("evidence included in evidence pool that can not be encoded %#v, err: %v", ev, err))
 		}
-		shares = appendToShares(shares, consts.EvidenceNamespaceID, rawData, shareSize)
+		shares = appendToShares(shares, consts.EvidenceNamespaceID, rawData)
 	}
 	return shares
 }

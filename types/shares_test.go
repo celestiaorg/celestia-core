@@ -11,13 +11,12 @@ import (
 )
 
 type splitter interface {
-	splitIntoShares(shareSize int) NamespacedShares
+	splitIntoShares() NamespacedShares
 }
 
 func TestMakeShares(t *testing.T) {
 	reservedTxNamespaceID := append(bytes.Repeat([]byte{0}, 7), 1)
 	reservedEvidenceNamespaceID := append(bytes.Repeat([]byte{0}, 7), 3)
-	// resveredIntermediateStateRootsNamespaceID := append(bytes.Repeat([]byte{0}, 7), 2)
 	val := NewMockPV()
 	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
 	blockID2 := makeBlockID([]byte("blockhash2"), 1000, []byte("partshash"))
@@ -38,12 +37,11 @@ func TestMakeShares(t *testing.T) {
 	}
 	msg1Marshaled, _ := msg1.MarshalDelimited()
 	if err != nil {
-		t.Fatalf("Could not encode evidence: %v, error: %v", testEvidence, err)
+		t.Fatalf("Could not encode evidence: %v, error: %v\n", testEvidence, err)
 	}
 
 	type args struct {
-		data      splitter
-		shareSize int
+		data splitter
 	}
 	tests := []struct {
 		name string
@@ -55,50 +53,91 @@ func TestMakeShares(t *testing.T) {
 				data: &EvidenceData{
 					Evidence: []Evidence{testEvidence},
 				},
-				shareSize: consts.ShareSize,
 			}, NamespacedShares{NamespacedShare{
-				Share: testEvidenceBytes[:consts.ShareSize],
-				ID:    reservedEvidenceNamespaceID,
+				Share: append(
+					append(reservedEvidenceNamespaceID, byte(0)),
+					testEvidenceBytes[:consts.TxShareSize]...,
+				),
+				ID: reservedEvidenceNamespaceID,
 			}, NamespacedShare{
-				Share: zeroPadIfNecessary(testEvidenceBytes[consts.ShareSize:], consts.ShareSize),
-				ID:    reservedEvidenceNamespaceID,
+				Share: append(
+					append(reservedEvidenceNamespaceID, byte(0)),
+					zeroPadIfNecessary(testEvidenceBytes[consts.TxShareSize:], consts.TxShareSize)...,
+				),
+				ID: reservedEvidenceNamespaceID,
 			}},
 		},
 		{"small LL Tx",
 			args{
-				data:      Txs{smolTx},
-				shareSize: consts.ShareSize,
+				data: Txs{smolTx},
 			},
 			NamespacedShares{
 				NamespacedShare{
-					Share: zeroPadIfNecessary(smolTxLenDelimited, consts.ShareSize),
-					ID:    reservedTxNamespaceID,
+					Share: append(
+						append(reservedTxNamespaceID, byte(0)),
+						zeroPadIfNecessary(smolTxLenDelimited, consts.TxShareSize)...,
+					),
+					ID: reservedTxNamespaceID,
 				},
 			},
 		},
 		{"one large LL Tx",
 			args{
-				data:      Txs{largeTx},
-				shareSize: consts.ShareSize,
+				data: Txs{largeTx},
 			},
 			NamespacedShares{
 				NamespacedShare{
-					Share: Share(largeTxLenDelimited[:consts.ShareSize]),
-					ID:    reservedTxNamespaceID,
+					Share: append(
+						append(reservedTxNamespaceID, byte(0)),
+						largeTxLenDelimited[:consts.TxShareSize]...,
+					),
+					ID: reservedTxNamespaceID,
 				},
 				NamespacedShare{
-					Share: zeroPadIfNecessary(largeTxLenDelimited[consts.ShareSize:], consts.ShareSize),
-					ID:    reservedTxNamespaceID,
+					Share: append(
+						append(reservedTxNamespaceID, byte(0)),
+						zeroPadIfNecessary(largeTxLenDelimited[consts.TxShareSize:], consts.TxShareSize)...,
+					),
+					ID: reservedTxNamespaceID,
+				},
+			},
+		},
+		{"large then small LL Tx",
+			args{
+				data: Txs{largeTx, smolTx},
+			},
+			NamespacedShares{
+				NamespacedShare{
+					Share: append(
+						append(reservedTxNamespaceID, byte(0)),
+						largeTxLenDelimited[:consts.TxShareSize]...,
+					),
+					ID: reservedTxNamespaceID,
+				},
+				NamespacedShare{
+					Share: append(
+						append(reservedTxNamespaceID, byte(len(largeTxLenDelimited)-consts.TxShareSize+consts.NamespaceSize+consts.ShareReservedBytes)),
+						zeroPadIfNecessary(
+							append(largeTxLenDelimited[consts.TxShareSize:], smolTxLenDelimited...),
+							consts.TxShareSize,
+						)...,
+					),
+					ID: reservedTxNamespaceID,
 				},
 			},
 		},
 		{"ll-app message",
 			args{
-				data:      Messages{[]Message{msg1}},
-				shareSize: consts.ShareSize,
+				data: Messages{[]Message{msg1}},
 			},
 			NamespacedShares{
-				NamespacedShare{zeroPadIfNecessary(msg1Marshaled, consts.ShareSize), msg1.NamespaceID},
+				NamespacedShare{
+					Share: append(
+						[]byte(msg1.NamespaceID),
+						zeroPadIfNecessary(msg1Marshaled, consts.MsgShareSize)...,
+					),
+					ID: msg1.NamespaceID,
+				},
 			},
 		},
 	}
@@ -106,8 +145,9 @@ func TestMakeShares(t *testing.T) {
 		tt := tt // stupid scopelint :-/
 		i := i
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.args.data.splitIntoShares(tt.args.shareSize); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("%v: makeShares() = \n%v\nwant\n%v", i, got, tt.want)
+			got := tt.args.data.splitIntoShares()
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("%v: makeShares() = \n%+v\nwant\n%+v\n", i, got, tt.want)
 			}
 		})
 	}
