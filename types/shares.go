@@ -3,7 +3,6 @@ package types
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 
 	"github.com/lazyledger/nmt/namespace"
 )
@@ -121,7 +120,7 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 	for curIndex < width && outerIndex < len(rawDatas) {
 		bytesToFetch := min(len(rawDatas[outerIndex])-innerIndex, width-curIndex)
 		if bytesToFetch == 0 {
-			panic(fmt.Sprintf("zero-length contiguous share data is invalid"))
+			panic("zero-length contiguous share data is invalid")
 		}
 		if curIndex == 0 {
 			firstBytesToFetch = bytesToFetch
