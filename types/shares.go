@@ -99,8 +99,7 @@ func split(rawData []byte, nid namespace.ID) []NamespacedShare {
 	rawData = rawData[MsgShareSize:]
 	for len(rawData) > 0 {
 		shareSizeOrLen := min(MsgShareSize, len(rawData))
-		rawShare := make([]byte, shareSizeOrLen)
-		copy(rawShare, rawData[:shareSizeOrLen])
+		rawShare := rawData[:shareSizeOrLen]
 		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
