@@ -30,11 +30,12 @@ type Proposal struct {
 	BlockID   BlockID   `json:"block_id"`
 	Timestamp time.Time `json:"timestamp"`
 	Signature []byte    `json:"signature"`
+	DAHeader  *DataAvailabilityHeader `json:"da_header"`
 }
 
 // NewProposal returns a new Proposal.
 // If there is no POLRound, polRound should be -1.
-func NewProposal(height int64, round int32, polRound int32, blockID BlockID) *Proposal {
+func NewProposal(height int64, round int32, polRound int32, blockID BlockID, daH *DataAvailabilityHeader) *Proposal {
 	return &Proposal{
 		Type:      tmproto.ProposalType,
 		Height:    height,
@@ -42,6 +43,7 @@ func NewProposal(height int64, round int32, polRound int32, blockID BlockID) *Pr
 		BlockID:   blockID,
 		POLRound:  polRound,
 		Timestamp: tmtime.Now(),
+		DAHeader: daH,
 	}
 }
 
@@ -84,16 +86,17 @@ func (p *Proposal) ValidateBasic() error {
 // 1. height
 // 2. round
 // 3. block ID
-// 4. POL round
-// 5. first 6 bytes of signature
-// 6. timestamp
-//
+// 4. DAHeader
+// 5. POL round
+// 6. first 6 bytes of signature
+// 7. timestamp
 // See BlockID#String.
 func (p *Proposal) String() string {
-	return fmt.Sprintf("Proposal{%v/%v (%v, %v) %X @ %s}",
+	return fmt.Sprintf("Proposal{%v/%v (%v, %v, %v) %X @ %s}",
 		p.Height,
 		p.Round,
 		p.BlockID,
+		p.DAHeader,
 		p.POLRound,
 		tmbytes.Fingerprint(p.Signature),
 		CanonicalTime(p.Timestamp))
@@ -122,8 +125,8 @@ func (p *Proposal) ToProto() *tmproto.Proposal {
 	if p == nil {
 		return &tmproto.Proposal{}
 	}
-	pb := new(tmproto.Proposal)
 
+	pb := new(tmproto.Proposal)
 	pb.BlockID = p.BlockID.ToProto()
 	pb.Type = p.Type
 	pb.Height = p.Height
@@ -131,6 +134,7 @@ func (p *Proposal) ToProto() *tmproto.Proposal {
 	pb.PolRound = p.POLRound
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
+	pb.DAHeader = p.DAHeader.ToProto()
 
 	return pb
 }
@@ -149,6 +153,11 @@ func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 		return nil, err
 	}
 
+	dah, err := DataAvailabilityHeaderFromProto(pp.DAHeader)
+	if err != nil {
+		return nil, err
+	}
+
 	p.BlockID = *blockID
 	p.Type = pp.Type
 	p.Height = pp.Height
@@ -156,6 +165,7 @@ func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 	p.POLRound = pp.PolRound
 	p.Timestamp = pp.Timestamp
 	p.Signature = pp.Signature
+	p.DAHeader = dah
 
 	return p, p.ValidateBasic()
 }

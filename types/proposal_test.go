@@ -21,6 +21,9 @@ var (
 )
 
 func init() {
+	rows, _ := NmtRootsFromBytes([][]byte{[]byte("HeHasBeenElected--June_15_2020_amino_was_removed")})
+	clmns, _ := NmtRootsFromBytes([][]byte{[]byte("HeHasBeenElected--June_15_2020_amino_was_removed")})
+
 	var stamp, err = time.Parse(TimeFormat, "2018-02-11T07:09:22.765Z")
 	if err != nil {
 		panic(err)
@@ -32,6 +35,10 @@ func init() {
 			PartSetHeader: PartSetHeader{Total: 111, Hash: []byte("--June_15_2020_amino_was_removed")}},
 		POLRound:  -1,
 		Timestamp: stamp,
+		DAHeader: &DataAvailabilityHeader{
+			RowsRoots: rows,
+			ColumnRoots: clmns,
+		},
 	}
 	pbp = testProposal.ToProto()
 }
@@ -48,7 +55,7 @@ func TestProposalSignable(t *testing.T) {
 
 func TestProposalString(t *testing.T) {
 	str := testProposal.String()
-	expected := `Proposal{12345/23456 (2D2D4A756E655F31355F323032305F616D696E6F5F7761735F72656D6F766564:111:2D2D4A756E65, -1) 000000000000 @ 2018-02-11T07:09:22.765Z}` //nolint:lll // ignore line length for tests
+	expected := `Proposal{12345/23456 (2D2D4A756E655F31355F323032305F616D696E6F5F7761735F72656D6F766564:111:2D2D4A756E65, 1ACC82AE4B38A876BEC82CCC91873315063C374599BBCC4BF1E783D5A73B0E5A, -1) 000000000000 @ 2018-02-11T07:09:22.765Z}` //nolint:lll // ignore line length for tests
 	if str != expected {
 		t.Errorf("got unexpected string for Proposal. Expected:\n%v\nGot:\n%v", expected, str)
 	}
@@ -61,7 +68,9 @@ func TestProposalVerifySignature(t *testing.T) {
 
 	prop := NewProposal(
 		4, 2, 2,
-		BlockID{tmrand.Bytes(tmhash.Size), PartSetHeader{777, tmrand.Bytes(tmhash.Size)}})
+		BlockID{tmrand.Bytes(tmhash.Size), PartSetHeader{777, tmrand.Bytes(tmhash.Size)}},
+		makeDAHeaderRandom(),
+	)
 	p := prop.ToProto()
 	signBytes := ProposalSignBytes("test_chain_id", p)
 
@@ -123,7 +132,6 @@ func BenchmarkProposalVerifySignature(b *testing.B) {
 }
 
 func TestProposalValidateBasic(t *testing.T) {
-
 	privVal := NewMockPV()
 	testCases := []struct {
 		testName         string
@@ -146,13 +154,12 @@ func TestProposalValidateBasic(t *testing.T) {
 		}, true},
 	}
 	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
+	dah := makeDAHeaderRandom()
 
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
-			prop := NewProposal(
-				4, 2, 2,
-				blockID)
+			prop := NewProposal(4, 2, 2, blockID, dah)
 			p := prop.ToProto()
 			err := privVal.SignProposal("test_chain_id", p)
 			prop.Signature = p.Signature
@@ -164,9 +171,15 @@ func TestProposalValidateBasic(t *testing.T) {
 }
 
 func TestProposalProtoBuf(t *testing.T) {
-	proposal := NewProposal(1, 2, 3, makeBlockID([]byte("hash"), 2, []byte("part_set_hash")))
+	proposal := NewProposal(
+		1,
+		2,
+		3,
+		makeBlockID([]byte("hash"), 2, []byte("part_set_hash")),
+		makeDAHeaderRandom(),
+	)
 	proposal.Signature = []byte("sig")
-	proposal2 := NewProposal(1, 2, 3, BlockID{})
+	proposal2 := NewProposal(1, 2, 3, BlockID{}, &DataAvailabilityHeader{})
 
 	testCases := []struct {
 		msg     string
@@ -174,7 +187,7 @@ func TestProposalProtoBuf(t *testing.T) {
 		expPass bool
 	}{
 		{"success", proposal, true},
-		{"success", proposal2, false}, // blcokID cannot be empty
+		{"success", proposal2, false}, // blockID cannot be empty
 		{"empty proposal failure validatebasic", &Proposal{}, false},
 		{"nil proposal", nil, false},
 	}
