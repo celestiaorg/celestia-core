@@ -3,6 +3,7 @@ package types
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 
 	"github.com/lazyledger/nmt/namespace"
 )
@@ -108,6 +109,9 @@ func split(rawData []byte, nid namespace.ID) []NamespacedShare {
 	return shares
 }
 
+// getNextChunk gets the next chunk for contiguous shares
+// Precondition: none of the slices in rawDatas is zero-length
+// This precondition should always hold at this point since zero-length txs are simply invalid.
 func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) ([]byte, int, int, int) {
 	rawData := make([]byte, 0, width)
 	startIndex := 0
@@ -116,11 +120,8 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 	curIndex := 0
 	for curIndex < width && outerIndex < len(rawDatas) {
 		bytesToFetch := min(len(rawDatas[outerIndex])-innerIndex, width-curIndex)
-		// Prune any extra 0-data (this should never happen, but just in case)
 		if bytesToFetch == 0 {
-			innerIndex = 0
-			outerIndex++
-			continue
+			panic(fmt.Sprintf("zero-length contiguous share data is invalid"))
 		}
 		if curIndex == 0 {
 			firstBytesToFetch = bytesToFetch
@@ -138,17 +139,6 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 			outerIndex++
 		}
 		curIndex += bytesToFetch
-	}
-
-	// Prune any extra 0-data (this should never happen, but just in case)
-	for outerIndex < len(rawDatas) {
-		bytesToFetch := len(rawDatas[outerIndex]) - innerIndex
-		if bytesToFetch == 0 {
-			innerIndex = 0
-			outerIndex++
-			continue
-		}
-		break
 	}
 
 	return rawData, outerIndex, innerIndex, startIndex
