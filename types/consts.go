@@ -16,6 +16,14 @@ const (
 	// NamespaceSize is the namespace size in bytes.
 	NamespaceSize = 8
 
+	// ShareReservedBytes is the reserved bytes for contiguous appends.
+	ShareReservedBytes = 1
+
+	// TxShareSize is the number of bytes usable for tx/evidence/ISR shares.
+	TxShareSize = ShareSize - NamespaceSize - ShareReservedBytes
+	// MsgShareSize is the number of bytes usable for message shares.
+	MsgShareSize = ShareSize - NamespaceSize
+
 	// MaxSquareSize is the maximum number of
 	// rows/columns of the original data shares in square layout.
 	// Corresponds to AVAILABLE_DATA_ORIGINAL_SQUARE_MAX in the spec.
