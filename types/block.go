@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -49,7 +50,7 @@ const (
 	MaxOverheadForBlock int64 = 11
 )
 
-// DataAvailabilityHeader contains the row and column roots of the erasure
+// DataAvailabilityHeader(DAHeader) contains the row and column roots of the erasure
 // coded version of the data in Block.Data.
 // Therefor the original Block.Data is arranged in a
 // k × k matrix, which is then "extended" to a
@@ -64,6 +65,8 @@ type DataAvailabilityHeader struct {
 	RowsRoots NmtRoots `json:"row_roots"`
 	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
 	ColumnRoots NmtRoots `json:"column_roots"`
+	// cached result of Hash() not to be recomputed
+	hash []byte
 }
 
 type NmtRoots []namespace.IntervalDigest
@@ -76,19 +79,44 @@ func (roots NmtRoots) Bytes() [][]byte {
 	return res
 }
 
-func NmtRootsFromBytes(in [][]byte) NmtRoots {
-	roots := make([]namespace.IntervalDigest, len(in))
+func NmtRootsFromBytes(in [][]byte) (roots NmtRoots, err error) {
+	roots = make([]namespace.IntervalDigest, len(in))
 	for i := 0; i < len(in); i++ {
-		roots[i] = namespace.IntervalDigestFromBytes(NamespaceSize, in[i])
+		roots[i], err = namespace.IntervalDigestFromBytes(NamespaceSize, in[i])
+		if err != nil {
+			return
+		}
 	}
-	return roots
+	return
 }
 
-// Hash computes the root of the row and column roots
+// String returns hex representation of merkle hash of the DAHeader.
+func (dah *DataAvailabilityHeader) String() string {
+	if dah == nil {
+		return "<nil DAHeader>"
+	}
+	return strings.ToUpper(hex.EncodeToString(dah.Hash()))
+}
+
+// IsZero checks if the DAHeader stands for Block with no shares.
+func (dah *DataAvailabilityHeader) IsZero() bool {
+	return len(dah.RowsRoots) == 0 && len(dah.ColumnRoots) == 0
+}
+
+// Equals checks equality of two DAHeaders.
+func (dah *DataAvailabilityHeader) Equals(to *DataAvailabilityHeader) bool {
+	return bytes.Equal(dah.Hash(), to.Hash())
+}
+
+// Hash computes and caches the merkle root of the row and column roots.
 func (dah *DataAvailabilityHeader) Hash() []byte {
 	if dah == nil {
 		return merkle.HashFromByteSlices(nil)
 	}
+	if len(dah.hash) != 0 {
+		return dah.hash
+	}
+
 	colsCount := len(dah.ColumnRoots)
 	rowsCount := len(dah.RowsRoots)
 	slices := make([][]byte, colsCount+rowsCount)
@@ -100,32 +128,38 @@ func (dah *DataAvailabilityHeader) Hash() []byte {
 	}
 	// The single data root is computed using a simple binary merkle tree.
 	// Effectively being root(rowRoots || columnRoots):
-	return merkle.HashFromByteSlices(slices)
+	dah.hash = merkle.HashFromByteSlices(slices)
+	return dah.hash
 }
 
-func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, error) {
+func (dah *DataAvailabilityHeader) ToProto() *tmproto.DataAvailabilityHeader {
 	if dah == nil {
-		return nil, errors.New("nil DataAvailabilityHeader")
+		return nil
 	}
 
 	dahp := new(tmproto.DataAvailabilityHeader)
-
 	dahp.RowRoots = dah.RowsRoots.Bytes()
 	dahp.ColumnRoots = dah.ColumnRoots.Bytes()
-
-	return dahp, nil
+	return dahp
 }
 
-func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (*DataAvailabilityHeader, error) {
+func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (dah *DataAvailabilityHeader, err error) {
 	if dahp == nil {
-		return nil, errors.New("nil DataAvailabilityHeader")
+		return nil, nil
 	}
 
-	dah := new(DataAvailabilityHeader)
-	dah.RowsRoots = NmtRootsFromBytes(dahp.RowRoots)
-	dah.ColumnRoots = NmtRootsFromBytes(dahp.ColumnRoots)
+	dah = new(DataAvailabilityHeader)
+	dah.RowsRoots, err = NmtRootsFromBytes(dahp.RowRoots)
+	if err != nil {
+		return
+	}
 
-	return dah, nil
+	dah.ColumnRoots, err = NmtRootsFromBytes(dahp.ColumnRoots)
+	if err != nil {
+		return
+	}
+
+	return
 }
 
 // Block defines the atomic unit of a Tendermint blockchain.
@@ -470,21 +504,16 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 	}
 
 	pb := new(tmproto.Block)
-
-	pb.Header = *b.Header.ToProto()
-	pb.LastCommit = b.LastCommit.ToProto()
-	pb.Data = b.Data.ToProto()
-
 	protoEvidence, err := b.Evidence.ToProto()
 	if err != nil {
 		return nil, err
 	}
+
+	pb.Header = *b.Header.ToProto()
+	pb.LastCommit = b.LastCommit.ToProto()
+	pb.Data = b.Data.ToProto()
 	pb.Data.Evidence = *protoEvidence
-	dah, err := b.DataAvailabilityHeader.ToProto()
-	if err != nil {
-		return nil, err
-	}
-	pb.DataAvailabilityHeader = dah
+	pb.DataAvailabilityHeader = b.DataAvailabilityHeader.ToProto()
 
 	return pb, nil
 }

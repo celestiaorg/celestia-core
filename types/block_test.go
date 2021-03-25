@@ -216,6 +216,15 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
 	}
 }
 
+func makeDAHeaderRandom() *DataAvailabilityHeader {
+	rows, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*NamespaceSize+tmhash.Size)})
+	clns, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*NamespaceSize+tmhash.Size)})
+	return &DataAvailabilityHeader{
+		RowsRoots: rows,
+		ColumnRoots: clns,
+	}
+}
+
 var nilBytes []byte
 
 // This follows RFC-6962, i.e. `echo -n '' | sha256sum`
