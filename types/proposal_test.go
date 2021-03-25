@@ -36,7 +36,7 @@ func init() {
 		POLRound:  -1,
 		Timestamp: stamp,
 		DAHeader: &DataAvailabilityHeader{
-			RowsRoots: rows,
+			RowsRoots:   rows,
 			ColumnRoots: clmns,
 		},
 	}
