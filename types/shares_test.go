@@ -180,7 +180,7 @@ func Test_zeroPadIfNecessary(t *testing.T) {
 func Test_appendToSharesOverwrite(t *testing.T) {
 	var shares NamespacedShares
 
-	// generate some arbitrary first share that must be split
+	// generate some arbitrary namespaced shares first share that must be split
 	newShare := generateRandomNamespacedShares(1, MsgShareSize+1)[0]
 
 	// make a copy of the portion of the share to check if it's overwritten later
