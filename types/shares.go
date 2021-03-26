@@ -62,12 +62,12 @@ func (m Message) MarshalDelimited() ([]byte, error) {
 // appendToShares appends raw data as shares.
 // Used for messages.
 func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) []NamespacedShare {
-	if len(rawData) < consts.MsgShareSize {
+	if len(rawData) <= consts.MsgShareSize {
 		rawShare := []byte(append(nid, rawData...))
 		paddedShare := zeroPadIfNecessary(rawShare, consts.ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
-	} else { // len(rawData) >= MsgShareSize
+	} else { // len(rawData) > MsgShareSize
 		shares = append(shares, split(rawData, nid)...)
 	}
 	return shares
@@ -102,7 +102,9 @@ func split(rawData []byte, nid namespace.ID) []NamespacedShare {
 	rawData = rawData[consts.MsgShareSize:]
 	for len(rawData) > 0 {
 		shareSizeOrLen := min(consts.MsgShareSize, len(rawData))
-		rawShare := []byte(append(nid, rawData[:shareSizeOrLen]...))
+		rawShare := make([]byte, consts.NamespaceSize)
+		copy(rawShare, nid)
+		rawShare = append(rawShare, rawData[:shareSizeOrLen]...)
 		paddedShare := zeroPadIfNecessary(rawShare, consts.ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
