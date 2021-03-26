@@ -2,10 +2,13 @@ package types
 
 import (
 	"bytes"
+	"crypto/rand"
 	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/celestiaorg/nmt/namespace"
+	"github.com/stretchr/testify/assert"
 	"github.com/tendermint/tendermint/libs/protoio"
 	"github.com/tendermint/tendermint/pkg/consts"
 )
@@ -175,4 +178,54 @@ func Test_zeroPadIfNecessary(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_appendToSharesOverwrite(t *testing.T) {
+	var shares NamespacedShares
+
+	// generate some arbitrary namespaced shares first share that must be split
+	newShare := generateRandomNamespacedShares(1, consts.MsgShareSize+1)[0]
+
+	// make a copy of the portion of the share to check if it's overwritten later
+	extraCopy := make([]byte, consts.MsgShareSize)
+	copy(extraCopy, newShare.Share[:consts.MsgShareSize])
+
+	// use appendToShares to add our new share
+	appendToShares(shares, newShare.ID, newShare.Share)
+
+	// check if the original share data has been overwritten.
+	assert.Equal(t, extraCopy, []byte(newShare.Share[:consts.MsgShareSize]))
+}
+
+func generateRandomNamespacedShares(count, leafSize int) []NamespacedShare {
+	shares := generateRandNamespacedRawData(count, consts.NamespaceSize, leafSize)
+	nsShares := make(NamespacedShares, count)
+	for i, s := range shares {
+		nsShares[i] = NamespacedShare{
+			Share: s[consts.NamespaceSize:],
+			ID:    s[:consts.NamespaceSize],
+		}
+	}
+	return nsShares
+}
+
+func generateRandNamespacedRawData(total, nidSize, leafSize int) [][]byte {
+	data := make([][]byte, total)
+	for i := 0; i < total; i++ {
+		nid := make([]byte, nidSize)
+		rand.Read(nid)
+		data[i] = nid
+	}
+	sortByteArrays(data)
+	for i := 0; i < total; i++ {
+		d := make([]byte, leafSize)
+		rand.Read(d)
+		data[i] = append(data[i], d...)
+	}
+
+	return data
+}
+
+func sortByteArrays(src [][]byte) {
+	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
 }
