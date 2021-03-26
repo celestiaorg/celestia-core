@@ -131,20 +131,20 @@ func (dah *DataAvailabilityHeader) Hash() []byte {
 	return dah.hash
 }
 
-func (dah *DataAvailabilityHeader) ToProto() *tmproto.DataAvailabilityHeader {
+func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, error) {
 	if dah == nil {
-		return nil
+		return nil, errors.New("nil DataAvailabilityHeader")
 	}
 
 	dahp := new(tmproto.DataAvailabilityHeader)
 	dahp.RowRoots = dah.RowsRoots.Bytes()
 	dahp.ColumnRoots = dah.ColumnRoots.Bytes()
-	return dahp
+	return dahp, nil
 }
 
 func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (dah *DataAvailabilityHeader, err error) {
 	if dahp == nil {
-		return nil, nil
+		return nil, errors.New("nil DataAvailabilityHeader")
 	}
 
 	dah = new(DataAvailabilityHeader)
@@ -508,12 +508,16 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 		return nil, err
 	}
 
+	pdah, err := b.DataAvailabilityHeader.ToProto()
+	if err != nil {
+		return nil, err
+	}
+
 	pb.Header = *b.Header.ToProto()
 	pb.LastCommit = b.LastCommit.ToProto()
 	pb.Data = b.Data.ToProto()
 	pb.Data.Evidence = *protoEvidence
-	pb.DataAvailabilityHeader = b.DataAvailabilityHeader.ToProto()
-
+	pb.DataAvailabilityHeader = pdah
 	return pb, nil
 }
 

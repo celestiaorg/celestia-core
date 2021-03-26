@@ -147,8 +147,15 @@ func TestSignerProposal(t *testing.T) {
 			}
 		})
 
-		require.NoError(t, tc.mockPV.SignProposal(tc.chainID, want.ToProto()))
-		require.NoError(t, tc.signerClient.SignProposal(tc.chainID, have.ToProto()))
+		p, err := want.ToProto()
+		require.NoError(t, err)
+		err = tc.mockPV.SignProposal(tc.chainID, p)
+		require.NoError(t, err)
+
+		p, err = have.ToProto()
+		require.NoError(t, err)
+		err = tc.signerClient.SignProposal(tc.chainID, p)
+		require.NoError(t, err)
 
 		assert.Equal(t, want.Signature, have.Signature)
 	}
@@ -335,13 +342,18 @@ func TestSignerSignProposalErrors(t *testing.T) {
 			Signature: []byte("signature"),
 		}
 
-		err := tc.signerClient.SignProposal(tc.chainID, proposal.ToProto())
+		p, err := proposal.ToProto()
+		err = tc.signerClient.SignProposal(tc.chainID, p)
 		require.Equal(t, err.(*RemoteSignerError).Description, types.ErroringMockPVErr.Error())
 
-		err = tc.mockPV.SignProposal(tc.chainID, proposal.ToProto())
+		p, err = proposal.ToProto()
+		require.Error(t, err)
+		err = tc.mockPV.SignProposal(tc.chainID, p)
 		require.Error(t, err)
 
-		err = tc.signerClient.SignProposal(tc.chainID, proposal.ToProto())
+		p, err = proposal.ToProto()
+		require.Error(t, err)
+		err = tc.signerClient.SignProposal(tc.chainID, p)
 		require.Error(t, err)
 	}
 }
