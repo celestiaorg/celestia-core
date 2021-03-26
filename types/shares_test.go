@@ -7,6 +7,7 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	"github.com/lazyledger/nmt/namespace"
+	"github.com/stretchr/testify/assert"
 )
 
 type splitter interface {
@@ -174,4 +175,33 @@ func Test_zeroPadIfNecessary(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_appendToSharesOverwrite(t *testing.T) {
+	var shares NamespacedShares
+
+	// generate some arbitrary namespaced shares first share that must be split
+	newShare := generateRandomNamespacedShares(1, MsgShareSize+1)[0]
+
+	// make a copy of the portion of the share to check if it's overwritten later
+	extraCopy := make([]byte, MsgShareSize)
+	copy(extraCopy, newShare.Share[:MsgShareSize])
+
+	// use appendToShares to add our new share
+	appendToShares(shares, newShare.ID, newShare.Share)
+
+	// check if the original share data has been overwritten.
+	assert.Equal(t, extraCopy, []byte(newShare.Share[:MsgShareSize]))
+}
+
+func generateRandomNamespacedShares(count, leafSize int) []NamespacedShare {
+	shares := generateRandNamespacedRawData(count, NamespaceSize, leafSize)
+	nsShares := make(NamespacedShares, count)
+	for i, s := range shares {
+		nsShares[i] = NamespacedShare{
+			Share: s[NamespaceSize:],
+			ID:    s[:NamespaceSize],
+		}
+	}
+	return nsShares
 }
