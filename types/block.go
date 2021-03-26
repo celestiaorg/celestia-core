@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -95,7 +94,7 @@ func (dah *DataAvailabilityHeader) String() string {
 	if dah == nil {
 		return "<nil DAHeader>"
 	}
-	return strings.ToUpper(hex.EncodeToString(dah.Hash()))
+	return fmt.Sprintf("%x\n", dah.Hash())
 }
 
 // IsZero checks if the DAHeader stands for Block with no shares.
