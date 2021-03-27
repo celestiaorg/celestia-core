@@ -55,7 +55,7 @@ func TestRootErasuredNamespacedMerkleTree(t *testing.T) {
 func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 	testCases := []struct {
 		name  string
-		pFucn assert.PanicTestFunc
+		pFunc assert.PanicTestFunc
 	}{
 		{
 			"push over square size",
@@ -100,7 +100,7 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		tc := tc
-		assert.Panics(t, tc.pFucn, tc.name)
+		assert.Panics(t, tc.pFunc, tc.name)
 
 	}
 }
