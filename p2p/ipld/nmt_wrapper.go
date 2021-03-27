@@ -41,17 +41,17 @@ func (w ErasuredNamespacedMerkleTree) Constructor() rsmt2d.Tree {
 // namespace unless the data pushed to the second half of the tree. Fulfills the
 // rsmt.Tree interface. NOTE: panics if there's an error pushing to underlying
 // NamespaceMerkleTree or if the tree size is exceeded
-func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.CellIndex) {
+func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex) {
 	// determine the namespace based on where in the tree we're pushing
 	nsID := make(namespace.ID, types.NamespaceSize)
 
-	if idx.AxisIndex+1 > 2*uint(w.squareSize) || idx.CellIndex+1 > 2*uint(w.squareSize) {
+	if idx.Axis+1 > 2*uint(w.squareSize) || idx.Cell+1 > 2*uint(w.squareSize) {
 		panic("pushed past predetermined square size")
 	}
 
 	// use the parity namespace if the cell is not in Q0 of the extended
 	// datasquare
-	if idx.AxisIndex+1 > uint(w.squareSize) || idx.CellIndex+1 > uint(w.squareSize) {
+	if idx.Axis+1 > uint(w.squareSize) || idx.Cell+1 > uint(w.squareSize) {
 		copy(nsID, types.ParitySharesNamespaceID)
 	} else {
 		copy(nsID, data[:types.NamespaceSize])

@@ -26,7 +26,7 @@ func TestPushErasuredNamespacedMerkleTree(t *testing.T) {
 		// push test data to the tree
 		for i, d := range generateErasuredData(t, tc.squareSize) {
 			// push will panic if there's an error
-			tree.Push(d, rsmt2d.CellIndex{AxisIndex: uint(0), CellIndex: uint(i)})
+			tree.Push(d, rsmt2d.SquareIndex{Axis: uint(0), Cell: uint(i)})
 		}
 	}
 }
@@ -42,7 +42,7 @@ func TestRootErasuredNamespacedMerkleTree(t *testing.T) {
 	nmtTree := nmt.New(sha256.New())
 
 	for i, d := range data {
-		tree.Push(d, rsmt2d.CellIndex{AxisIndex: uint(0), CellIndex: uint(i)})
+		tree.Push(d, rsmt2d.SquareIndex{Axis: uint(0), Cell: uint(i)})
 		err := nmtTree.Push(d[:types.NamespaceSize], d[types.NamespaceSize:])
 		if err != nil {
 			t.Error(err)
@@ -65,7 +65,7 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 					n := NewErasuredNamespacedMerkleTree(uint64(15))
 					tree := n.Constructor()
 					for i, d := range data {
-						tree.Push(d, rsmt2d.CellIndex{AxisIndex: uint(0), CellIndex: uint(i)})
+						tree.Push(d, rsmt2d.SquareIndex{Axis: uint(0), Cell: uint(i)})
 					}
 				}),
 		},
@@ -77,7 +77,7 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 					n := NewErasuredNamespacedMerkleTree(uint64(16))
 					tree := n.Constructor()
 					for i := len(data) - 1; i > 0; i-- {
-						tree.Push(data[i], rsmt2d.CellIndex{AxisIndex: uint(0), CellIndex: uint(i)})
+						tree.Push(data[i], rsmt2d.SquareIndex{Axis: uint(0), Cell: uint(i)})
 					}
 				},
 			),
@@ -91,7 +91,7 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 					n := NewErasuredNamespacedMerkleTree(uint64(size))
 					tree := n.Constructor()
 					for i, d := range data {
-						tree.Push(d, rsmt2d.CellIndex{AxisIndex: uint(0), CellIndex: uint(i)})
+						tree.Push(d, rsmt2d.SquareIndex{Axis: uint(0), Cell: uint(i)})
 					}
 					tree.Prove(size + 100)
 				},
@@ -125,7 +125,7 @@ func generateErasuredData(t *testing.T, numLeaves int) [][]byte {
 	raw := generateRandNamespacedRawData(
 		numLeaves,
 		types.NamespaceSize,
-		AdjustedMessageSize,
+		types.MsgShareSize,
 	)
 	erasuredData, err := rsmt2d.Encode(raw, rsmt2d.RSGF8)
 	if err != nil {
