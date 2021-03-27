@@ -24,7 +24,7 @@ require (
 	github.com/ipfs/interface-go-ipfs-core v0.4.0
 	github.com/lazyledger/lazyledger-core/p2p/ipld/plugin v0.0.0-20210219190522-0eccfb24e2aa
 	github.com/lazyledger/nmt v0.2.0
-	github.com/lazyledger/rsmt2d v0.0.0-20210326165230-b6417926360b
+	github.com/lazyledger/rsmt2d v0.1.1-0.20210327010029-ef1d6c54461e
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/minio/highwayhash v1.0.1
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect

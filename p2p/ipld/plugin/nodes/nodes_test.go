@@ -182,7 +182,7 @@ func generateExtendedRow(t *testing.T) [][]byte {
 		origDataWithoutNamespaces[i] = share[namespaceSize:]
 	}
 
-	extendedData, err := rsmt2d.ComputeExtendedDataSquare(origDataWithoutNamespaces, rsmt2d.RSGF8, newNmtConstructor)
+	extendedData, err := rsmt2d.ComputeExtendedDataSquare(origDataWithoutNamespaces, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
 	if err != nil {
 		t.Fatalf("rsmt2d.Encode(): %v", err)
 		return nil
@@ -198,41 +198,6 @@ func generateExtendedRow(t *testing.T) [][]byte {
 		}
 	}
 	return extendedRow
-}
-
-var _ rsmt2d.Tree = &nmtWrapper{}
-
-func newNmtConstructor() rsmt2d.Tree {
-	return &nmtWrapper{
-		nmt.New(sha256.New()),
-	}
-}
-
-// we could get rid of this wrapper and use the nmt directly if we
-// make Push take in the data as one one byte array (instead of two).
-type nmtWrapper struct {
-	*nmt.NamespacedMerkleTree
-}
-
-func (n nmtWrapper) Push(data []byte) {
-	if err := n.NamespacedMerkleTree.Push(data[:namespaceSize], data[namespaceSize:]); err != nil {
-		panic(err)
-	}
-}
-
-func (n nmtWrapper) Prove(idx int) (merkleRoot []byte, proofSet [][]byte, proofIndex uint64, numLeaves uint64) {
-	proof, err := n.NamespacedMerkleTree.Prove(idx)
-	if err != nil {
-		panic(err)
-	}
-	return n.NamespacedMerkleTree.Root().Bytes(),
-		proof.Nodes(),
-		uint64(proof.Start()),
-		0 // TODO: Nmt doesn't return the number of leaves
-}
-
-func (n nmtWrapper) Root() []byte {
-	return n.NamespacedMerkleTree.Root().Bytes()
 }
 
 func leafIdxToPath(cid string, idx int) string {
