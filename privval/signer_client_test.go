@@ -125,6 +125,7 @@ func TestSignerProposal(t *testing.T) {
 			POLRound:  2,
 			BlockID:   types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp: ts,
+			DAHeader: &types.DataAvailabilityHeader{},
 		}
 		want := &types.Proposal{
 			Type:      tmproto.ProposalType,
@@ -133,6 +134,7 @@ func TestSignerProposal(t *testing.T) {
 			POLRound:  2,
 			BlockID:   types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp: ts,
+			DAHeader: &types.DataAvailabilityHeader{},
 		}
 
 		tc := tc

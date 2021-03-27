@@ -194,7 +194,7 @@ func TestProposalProtoBuf(t *testing.T) {
 	}{
 		{"success", proposal, true},
 		{"success", proposal2, false}, // blockID cannot be empty
-		{"empty proposal failure validatebasic", &Proposal{}, false},
+		{"empty proposal failure validatebasic", &Proposal{DAHeader: &DataAvailabilityHeader{}}, false},
 		{"nil proposal", nil, false},
 	}
 	for _, tc := range testCases {
