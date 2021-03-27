@@ -228,7 +228,7 @@ func (th *TestHarness) TestSignProposal() error {
 			},
 		},
 		Timestamp: time.Now(),
-		DAHeader: &types.DataAvailabilityHeader{},
+		DAHeader:  &types.DataAvailabilityHeader{},
 	}
 	p, err := prop.ToProto()
 	if err != nil {

@@ -125,7 +125,7 @@ func TestSignerProposal(t *testing.T) {
 			POLRound:  2,
 			BlockID:   types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp: ts,
-			DAHeader: &types.DataAvailabilityHeader{},
+			DAHeader:  &types.DataAvailabilityHeader{},
 		}
 		want := &types.Proposal{
 			Type:      tmproto.ProposalType,
@@ -134,7 +134,7 @@ func TestSignerProposal(t *testing.T) {
 			POLRound:  2,
 			BlockID:   types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp: ts,
-			DAHeader: &types.DataAvailabilityHeader{},
+			DAHeader:  &types.DataAvailabilityHeader{},
 		}
 
 		tc := tc
@@ -342,19 +342,21 @@ func TestSignerSignProposalErrors(t *testing.T) {
 			BlockID:   types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp: ts,
 			Signature: []byte("signature"),
+			DAHeader:  &types.DataAvailabilityHeader{},
 		}
 
 		p, err := proposal.ToProto()
+		require.NoError(t, err)
 		err = tc.signerClient.SignProposal(tc.chainID, p)
 		require.Equal(t, err.(*RemoteSignerError).Description, types.ErroringMockPVErr.Error())
 
 		p, err = proposal.ToProto()
-		require.Error(t, err)
+		require.NoError(t, err)
 		err = tc.mockPV.SignProposal(tc.chainID, p)
 		require.Error(t, err)
 
 		p, err = proposal.ToProto()
-		require.Error(t, err)
+		require.NoError(t, err)
 		err = tc.signerClient.SignProposal(tc.chainID, p)
 		require.Error(t, err)
 	}

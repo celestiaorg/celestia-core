@@ -57,8 +57,8 @@ func TestMsgToProto(t *testing.T) {
 		BlockID:   bi,
 		Timestamp: time.Now(),
 		Signature: tmrand.Bytes(20),
-		DAHeader:  &types.DataAvailabilityHeader{
-			RowsRoots: roots,
+		DAHeader: &types.DataAvailabilityHeader{
+			RowsRoots:   roots,
 			ColumnRoots: roots,
 		},
 	}
@@ -360,7 +360,7 @@ func TestConsMsgsVectors(t *testing.T) {
 		BlockID:   bi,
 		Timestamp: date,
 		Signature: []byte("add_more_exclamation"),
-		DAHeader: &types.DataAvailabilityHeader{},
+		DAHeader:  &types.DataAvailabilityHeader{},
 	}
 	pbProposal, err := proposal.ToProto()
 	require.NoError(t, err)
