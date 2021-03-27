@@ -105,6 +105,20 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 	}
 }
 
+func TestExtendedDataSquare(t *testing.T) {
+	// data for a 4X4 square
+	raw := generateRandNamespacedRawData(
+		16,
+		types.NamespaceSize,
+		types.MsgShareSize,
+	)
+
+	tree := NewErasuredNamespacedMerkleTree(4)
+
+	_, err := rsmt2d.ComputeExtendedDataSquare(raw, rsmt2d.RSGF8, tree.Constructor)
+	assert.NoError(t, err)
+}
+
 // generateErasuredData produces a slice that is twice as long as it erasures
 // the data
 func generateErasuredData(t *testing.T, numLeaves int) [][]byte {
@@ -118,18 +132,4 @@ func generateErasuredData(t *testing.T, numLeaves int) [][]byte {
 		t.Error(err)
 	}
 	return append(raw, erasuredData...)
-}
-
-func TestExtendedDataSquare(t *testing.T) {
-	// data for a 4X4 square
-	raw := generateRandNamespacedRawData(
-		16,
-		types.NamespaceSize,
-		types.MsgShareSize,
-	)
-
-	tree := NewErasuredNamespacedMerkleTree(4)
-
-	_, err := rsmt2d.ComputeExtendedDataSquare(raw, rsmt2d.RSGF8, tree.Constructor)
-	assert.NoError(t, err)
 }
