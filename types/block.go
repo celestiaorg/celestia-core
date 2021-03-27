@@ -49,7 +49,7 @@ const (
 	MaxOverheadForBlock int64 = 11
 )
 
-// DataAvailabilityHeader(DAHeader) contains the row and column roots of the erasure
+// DataAvailabilityHeader (DAHeader) contains the row and column roots of the erasure
 // coded version of the data in Block.Data.
 // Therefor the original Block.Data is arranged in a
 // k × k matrix, which is then "extended" to a
@@ -94,7 +94,7 @@ func (dah *DataAvailabilityHeader) String() string {
 	if dah == nil {
 		return "<nil DAHeader>"
 	}
-	return fmt.Sprintf("%x\n", dah.Hash())
+	return strings.ToUpper(fmt.Sprintf("%x", dah.Hash()))
 }
 
 // IsZero checks if the DAHeader stands for Block with no shares.
