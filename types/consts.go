@@ -16,8 +16,6 @@ const (
 	// NamespaceSize is the namespace size in bytes.
 	NamespaceSize = 8
 
-	// AdjustedMessageSize describes the numbers of bytes in a share that are
-	// not reserved for the namespace
 	AdjustedMessageSize = ShareSize - NamespaceSize
 
 	// MaxSquareSize is the maximum number of
