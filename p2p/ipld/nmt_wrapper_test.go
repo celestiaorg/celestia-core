@@ -106,14 +106,15 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 }
 
 func TestExtendedDataSquare(t *testing.T) {
+	squareSize := 4
 	// data for a 4X4 square
 	raw := generateRandNamespacedRawData(
-		16,
+		squareSize*squareSize,
 		types.NamespaceSize,
 		types.MsgShareSize,
 	)
 
-	tree := NewErasuredNamespacedMerkleTree(4)
+	tree := NewErasuredNamespacedMerkleTree(uint64(squareSize))
 
 	_, err := rsmt2d.ComputeExtendedDataSquare(raw, rsmt2d.RSGF8, tree.Constructor)
 	assert.NoError(t, err)
