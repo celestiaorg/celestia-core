@@ -11,35 +11,35 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tmdb "github.com/lazyledger/lazyledger-core/libs/db"
+	lldb "github.com/lazyledger/lazyledger-core/libs/db"
 )
 
 //----------------------------------------
 // Helper functions.
 
-func Valid(t *testing.T, itr tmdb.Iterator, expected bool) {
+func Valid(t *testing.T, itr lldb.Iterator, expected bool) {
 	valid := itr.Valid()
 	require.Equal(t, expected, valid)
 }
 
-func Next(t *testing.T, itr tmdb.Iterator, expected bool) {
+func Next(t *testing.T, itr lldb.Iterator, expected bool) {
 	itr.Next()
 	// assert.NoError(t, err) TODO: look at fixing this
 	valid := itr.Valid()
 	require.Equal(t, expected, valid)
 }
 
-func NextPanics(t *testing.T, itr tmdb.Iterator) {
+func NextPanics(t *testing.T, itr lldb.Iterator) {
 	assert.Panics(t, func() { itr.Next() }, "checkNextPanics expected an error but didn't")
 }
 
-func Domain(t *testing.T, itr tmdb.Iterator, start, end []byte) {
+func Domain(t *testing.T, itr lldb.Iterator, start, end []byte) {
 	ds, de := itr.Domain()
 	assert.Equal(t, start, ds, "checkDomain domain start incorrect")
 	assert.Equal(t, end, de, "checkDomain domain end incorrect")
 }
 
-func Item(t *testing.T, itr tmdb.Iterator, key []byte, value []byte) {
+func Item(t *testing.T, itr lldb.Iterator, key []byte, value []byte) {
 	v := itr.Value()
 
 	k := itr.Key()
@@ -48,24 +48,24 @@ func Item(t *testing.T, itr tmdb.Iterator, key []byte, value []byte) {
 	assert.Exactly(t, value, v)
 }
 
-func Invalid(t *testing.T, itr tmdb.Iterator) {
+func Invalid(t *testing.T, itr lldb.Iterator) {
 	Valid(t, itr, false)
 	KeyPanics(t, itr)
 	ValuePanics(t, itr)
 	NextPanics(t, itr)
 }
 
-func KeyPanics(t *testing.T, itr tmdb.Iterator) {
+func KeyPanics(t *testing.T, itr lldb.Iterator) {
 	assert.Panics(t, func() { itr.Key() }, "checkKeyPanics expected panic but didn't")
 }
 
-func Value(t *testing.T, db tmdb.DB, key []byte, valueWanted []byte) {
+func Value(t *testing.T, db lldb.DB, key []byte, valueWanted []byte) {
 	valueGot, err := db.Get(key)
 	assert.NoError(t, err)
 	assert.Equal(t, valueWanted, valueGot)
 }
 
-func ValuePanics(t *testing.T, itr tmdb.Iterator) {
+func ValuePanics(t *testing.T, itr lldb.Iterator) {
 	assert.Panics(t, func() { itr.Value() })
 }
 
@@ -112,7 +112,7 @@ func Bytes2Int64(buf []byte) int64 {
 	return int64(binary.BigEndian.Uint64(buf))
 }
 
-func BenchmarkRangeScans(b *testing.B, db tmdb.DB, dbSize int64) {
+func BenchmarkRangeScans(b *testing.B, db lldb.DB, dbSize int64) {
 	b.StopTimer()
 
 	rangeSize := int64(10000)
@@ -145,7 +145,7 @@ func BenchmarkRangeScans(b *testing.B, db tmdb.DB, dbSize int64) {
 	}
 }
 
-func BenchmarkRandomReadsWrites(b *testing.B, db tmdb.DB) {
+func BenchmarkRandomReadsWrites(b *testing.B, db lldb.DB) {
 	b.StopTimer()
 
 	// create dummy data

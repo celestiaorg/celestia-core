@@ -6,7 +6,8 @@ import (
 	"sync"
 
 	"github.com/google/btree"
-	tmdb "github.com/lazyledger/lazyledger-core/libs/db"
+
+	lldb "github.com/lazyledger/lazyledger-core/libs/db"
 )
 
 const (
@@ -48,7 +49,7 @@ type MemDB struct {
 	btree *btree.BTree
 }
 
-var _ tmdb.DB = (*MemDB)(nil)
+var _ lldb.DB = (*MemDB)(nil)
 
 // NewDB creates a new in-memory database.
 func NewDB() *MemDB {
@@ -61,7 +62,7 @@ func NewDB() *MemDB {
 // Get implements DB.
 func (db *MemDB) Get(key []byte) ([]byte, error) {
 	if len(key) == 0 {
-		return nil, tmdb.ErrKeyEmpty
+		return nil, lldb.ErrKeyEmpty
 	}
 	db.mtx.RLock()
 	defer db.mtx.RUnlock()
@@ -76,7 +77,7 @@ func (db *MemDB) Get(key []byte) ([]byte, error) {
 // Has implements DB.
 func (db *MemDB) Has(key []byte) (bool, error) {
 	if len(key) == 0 {
-		return false, tmdb.ErrKeyEmpty
+		return false, lldb.ErrKeyEmpty
 	}
 	db.mtx.RLock()
 	defer db.mtx.RUnlock()
@@ -87,10 +88,10 @@ func (db *MemDB) Has(key []byte) (bool, error) {
 // Set implements DB.
 func (db *MemDB) Set(key []byte, value []byte) error {
 	if len(key) == 0 {
-		return tmdb.ErrKeyEmpty
+		return lldb.ErrKeyEmpty
 	}
 	if value == nil {
-		return tmdb.ErrValueNil
+		return lldb.ErrValueNil
 	}
 	db.mtx.Lock()
 	defer db.mtx.Unlock()
@@ -112,7 +113,7 @@ func (db *MemDB) SetSync(key []byte, value []byte) error {
 // Delete implements DB.
 func (db *MemDB) Delete(key []byte) error {
 	if len(key) == 0 {
-		return tmdb.ErrKeyEmpty
+		return lldb.ErrKeyEmpty
 	}
 	db.mtx.Lock()
 	defer db.mtx.Unlock()
@@ -164,24 +165,24 @@ func (db *MemDB) Stats() map[string]string {
 }
 
 // NewBatch implements DB.
-func (db *MemDB) NewBatch() tmdb.Batch {
+func (db *MemDB) NewBatch() lldb.Batch {
 	return newMemDBBatch(db)
 }
 
 // Iterator implements DB.
 // Takes out a read-lock on the database until the iterator is closed.
-func (db *MemDB) Iterator(start, end []byte) (tmdb.Iterator, error) {
+func (db *MemDB) Iterator(start, end []byte) (lldb.Iterator, error) {
 	if (start != nil && len(start) == 0) || (end != nil && len(end) == 0) {
-		return nil, tmdb.ErrKeyEmpty
+		return nil, lldb.ErrKeyEmpty
 	}
 	return newMemDBIterator(db, start, end, false), nil
 }
 
 // ReverseIterator implements DB.
 // Takes out a read-lock on the database until the iterator is closed.
-func (db *MemDB) ReverseIterator(start, end []byte) (tmdb.Iterator, error) {
+func (db *MemDB) ReverseIterator(start, end []byte) (lldb.Iterator, error) {
 	if (start != nil && len(start) == 0) || (end != nil && len(end) == 0) {
-		return nil, tmdb.ErrKeyEmpty
+		return nil, lldb.ErrKeyEmpty
 	}
 	return newMemDBIterator(db, start, end, true), nil
 }

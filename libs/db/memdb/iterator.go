@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/btree"
 
-	tmdb "github.com/lazyledger/lazyledger-core/libs/db"
+	lldb "github.com/lazyledger/lazyledger-core/libs/db"
 )
 
 const (
@@ -25,7 +25,7 @@ type memDBIterator struct {
 	end    []byte
 }
 
-var _ tmdb.Iterator = (*memDBIterator)(nil)
+var _ lldb.Iterator = (*memDBIterator)(nil)
 
 // newMemDBIterator creates a new memDBIterator.
 func newMemDBIterator(db *MemDB, start []byte, end []byte, reverse bool) *memDBIterator {

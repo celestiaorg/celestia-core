@@ -14,7 +14,7 @@ func IteratePrefix(db DB, prefix []byte) (Iterator, error) {
 		end = nil
 	} else {
 		start = cp(prefix)
-		end = cpIncr(prefix)
+		end = copyIncrement(prefix)
 	}
 	itr, err := db.Iterator(start, end)
 	if err != nil {

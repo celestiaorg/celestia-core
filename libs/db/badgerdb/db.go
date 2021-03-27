@@ -8,7 +8,7 @@ import (
 
 	"github.com/dgraph-io/badger/v3"
 
-	tmdb "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/db"
 )
 
 // NewDB creates a Badger key-value store backed to the
@@ -42,11 +42,11 @@ type BadgerDB struct {
 	db *badger.DB
 }
 
-var _ tmdb.DB = (*BadgerDB)(nil)
+var _ db.DB = (*BadgerDB)(nil)
 
 func (b *BadgerDB) Get(key []byte) ([]byte, error) {
 	if len(key) == 0 {
-		return nil, tmdb.ErrKeyEmpty
+		return nil, db.ErrKeyEmpty
 	}
 	var val []byte
 	err := b.db.View(func(txn *badger.Txn) error {
@@ -67,7 +67,7 @@ func (b *BadgerDB) Get(key []byte) ([]byte, error) {
 
 func (b *BadgerDB) Has(key []byte) (bool, error) {
 	if len(key) == 0 {
-		return false, tmdb.ErrKeyEmpty
+		return false, db.ErrKeyEmpty
 	}
 	var found bool
 	err := b.db.View(func(txn *badger.Txn) error {
@@ -83,10 +83,10 @@ func (b *BadgerDB) Has(key []byte) (bool, error) {
 
 func (b *BadgerDB) Set(key, value []byte) error {
 	if len(key) == 0 {
-		return tmdb.ErrKeyEmpty
+		return db.ErrKeyEmpty
 	}
 	if value == nil {
-		return tmdb.ErrValueNil
+		return db.ErrValueNil
 	}
 	return b.db.Update(func(txn *badger.Txn) error {
 		return txn.Set(key, value)
@@ -106,7 +106,7 @@ func (b *BadgerDB) SetSync(key, value []byte) error {
 
 func (b *BadgerDB) Delete(key []byte) error {
 	if len(key) == 0 {
-		return tmdb.ErrKeyEmpty
+		return db.ErrKeyEmpty
 	}
 	return b.db.Update(func(txn *badger.Txn) error {
 		return txn.Delete(key)
@@ -127,7 +127,7 @@ func (b *BadgerDB) Print() error {
 
 func (b *BadgerDB) iteratorOpts(start, end []byte, opts badger.IteratorOptions) (*badgerDBIterator, error) {
 	if (start != nil && len(start) == 0) || (end != nil && len(end) == 0) {
-		return nil, tmdb.ErrKeyEmpty
+		return nil, db.ErrKeyEmpty
 	}
 	txn := b.db.NewTransaction(false)
 	iter := txn.NewIterator(opts)
@@ -148,22 +148,23 @@ func (b *BadgerDB) iteratorOpts(start, end []byte, opts badger.IteratorOptions) 
 	}, nil
 }
 
-func (b *BadgerDB) Iterator(start, end []byte) (tmdb.Iterator, error) {
+func (b *BadgerDB) Iterator(start, end []byte) (db.Iterator, error) {
 	opts := badger.DefaultIteratorOptions
 	return b.iteratorOpts(start, end, opts)
 }
 
-func (b *BadgerDB) ReverseIterator(start, end []byte) (tmdb.Iterator, error) {
+func (b *BadgerDB) ReverseIterator(start, end []byte) (db.Iterator, error) {
 	opts := badger.DefaultIteratorOptions
 	opts.Reverse = true
 	return b.iteratorOpts(end, start, opts)
 }
 
+// todo: see about exposing badgerdb stats
 func (b *BadgerDB) Stats() map[string]string {
 	return nil
 }
 
-func (b *BadgerDB) NewBatch() tmdb.Batch {
+func (b *BadgerDB) NewBatch() db.Batch {
 	wb := &badgerDBBatch{
 		db:         b.db,
 		wb:         b.db.NewWriteBatch(),
@@ -173,7 +174,7 @@ func (b *BadgerDB) NewBatch() tmdb.Batch {
 	return wb
 }
 
-var _ tmdb.Batch = (*badgerDBBatch)(nil)
+var _ db.Batch = (*badgerDBBatch)(nil)
 
 type badgerDBBatch struct {
 	db *badger.DB
@@ -190,17 +191,17 @@ type badgerDBBatch struct {
 
 func (b *badgerDBBatch) Set(key, value []byte) error {
 	if len(key) == 0 {
-		return tmdb.ErrKeyEmpty
+		return db.ErrKeyEmpty
 	}
 	if value == nil {
-		return tmdb.ErrValueNil
+		return db.ErrValueNil
 	}
 	return b.wb.Set(key, value)
 }
 
 func (b *badgerDBBatch) Delete(key []byte) error {
 	if len(key) == 0 {
-		return tmdb.ErrKeyEmpty
+		return db.ErrKeyEmpty
 	}
 	return b.wb.Delete(key)
 }

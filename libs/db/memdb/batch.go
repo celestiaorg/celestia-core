@@ -3,7 +3,7 @@ package memdb
 import (
 	"fmt"
 
-	tmdb "github.com/lazyledger/lazyledger-core/libs/db"
+	lldb "github.com/lazyledger/lazyledger-core/libs/db"
 )
 
 // memDBBatch operations
@@ -26,7 +26,7 @@ type memDBBatch struct {
 	ops []operation
 }
 
-var _ tmdb.Batch = (*memDBBatch)(nil)
+var _ lldb.Batch = (*memDBBatch)(nil)
 
 // newMemDBBatch creates a new memDBBatch
 func newMemDBBatch(db *MemDB) *memDBBatch {
@@ -39,13 +39,13 @@ func newMemDBBatch(db *MemDB) *memDBBatch {
 // Set implements Batch.
 func (b *memDBBatch) Set(key, value []byte) error {
 	if len(key) == 0 {
-		return tmdb.ErrKeyEmpty
+		return lldb.ErrKeyEmpty
 	}
 	if value == nil {
-		return tmdb.ErrValueNil
+		return lldb.ErrValueNil
 	}
 	if b.ops == nil {
-		return tmdb.ErrBatchClosed
+		return lldb.ErrBatchClosed
 	}
 	b.ops = append(b.ops, operation{opTypeSet, key, value})
 	return nil
@@ -54,10 +54,10 @@ func (b *memDBBatch) Set(key, value []byte) error {
 // Delete implements Batch.
 func (b *memDBBatch) Delete(key []byte) error {
 	if len(key) == 0 {
-		return tmdb.ErrKeyEmpty
+		return lldb.ErrKeyEmpty
 	}
 	if b.ops == nil {
-		return tmdb.ErrBatchClosed
+		return lldb.ErrBatchClosed
 	}
 	b.ops = append(b.ops, operation{opTypeDelete, key, nil})
 	return nil
@@ -66,7 +66,7 @@ func (b *memDBBatch) Delete(key []byte) error {
 // Write implements Batch.
 func (b *memDBBatch) Write() error {
 	if b.ops == nil {
-		return tmdb.ErrBatchClosed
+		return lldb.ErrBatchClosed
 	}
 	b.db.mtx.Lock()
 	defer b.db.mtx.Unlock()
