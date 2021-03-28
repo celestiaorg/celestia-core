@@ -5,9 +5,9 @@ import (
 	// number generator here and we can run the tests a bit faster
 	stdbytes "bytes"
 	"context"
-	"crypto/rand"
 	"encoding/hex"
 	"math"
+	"math/rand"
 	"os"
 	"reflect"
 	"sort"
@@ -1335,10 +1335,10 @@ func TestPutBlock(t *testing.T) {
 		expectErr bool
 		errString string
 	}{
-		{"no leaves", generateRandomData(0), false, ""},
-		{"single leaf", generateRandomData(1), false, ""},
+		// {"no leaves", generateRandomData(0), false, ""},
+		// {"single leaf", generateRandomData(1), false, ""},
 		{"16 leaves", generateRandomData(16), false, ""},
-		{"max square size", generateRandomData(MaxSquareSize), false, ""},
+		// {"max square size", generateRandomData(MaxSquareSize), false, ""},
 	}
 	ctx := context.Background()
 	for _, tc := range testCases {
@@ -1360,7 +1360,7 @@ func TestPutBlock(t *testing.T) {
 			defer cancel()
 
 			block.fillDataAvailabilityHeader()
-			tc.blockData.ComputeShares()
+
 			for _, rowRoot := range block.DataAvailabilityHeader.RowsRoots.Bytes() {
 				// recreate the cids using only the computed roots
 				cid, err := nodes.CidFromNamespacedSha256(rowRoot)
@@ -1390,7 +1390,7 @@ func TestPutBlock(t *testing.T) {
 func generateRandomData(msgCount int) Data {
 	out := make([]Message, msgCount)
 	for i, msg := range generateRandNamespacedRawData(msgCount, NamespaceSize, ShareSize) {
-		out[i] = Message{NamespaceID: msg[:NamespaceSize], Data: msg[:NamespaceSize]}
+		out[i] = Message{NamespaceID: msg[:NamespaceSize], Data: msg[NamespaceSize:]}
 	}
 	return Data{
 		Messages: Messages{MessagesList: out},

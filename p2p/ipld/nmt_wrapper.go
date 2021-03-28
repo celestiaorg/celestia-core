@@ -2,6 +2,7 @@ package ipld
 
 import (
 	"crypto/sha256"
+	"fmt"
 
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/nmt"
@@ -45,6 +46,7 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex)
 	// determine the namespace based on where in the tree we're pushing
 	nsID := make(namespace.ID, types.NamespaceSize)
 
+	fmt.Println("axis ", idx.Axis, idx.Cell)
 	if idx.Axis+1 > 2*uint(w.squareSize) || idx.Cell+1 > 2*uint(w.squareSize) {
 		panic("pushed past predetermined square size")
 	}

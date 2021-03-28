@@ -3,8 +3,9 @@ package ipld
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
+	"fmt"
+	"math/rand"
 	"sort"
 	"strings"
 	"testing"
@@ -18,7 +19,9 @@ import (
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/nmt"
+	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLeafPath(t *testing.T) {
@@ -153,6 +156,71 @@ func TestGetLeafData(t *testing.T) {
 	}
 }
 
+func TestBlockRecovery(t *testing.T) {
+	ipfsNode, err := coremock.NewMockNode()
+	if err != nil {
+		t.Error(err)
+	}
+
+	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	if err != nil {
+		t.Error(err)
+	}
+
+	testCases := []struct {
+		name      string
+		blockData types.Data
+		expectErr bool
+		errString string
+	}{
+		{"16 leaves", generateRandomData(16), false, ""},
+		// {"max square size", generateRandomData(17), false, ""},
+	}
+	ctx := context.Background()
+	for _, tc := range testCases {
+		tc := tc
+
+		block := &types.Block{
+			Data:       tc.blockData,
+			LastCommit: &types.Commit{},
+		}
+
+		block.Hash()
+
+		t.Run(tc.name, func(t *testing.T) {
+			err = block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errString)
+				return
+			}
+
+			require.NoError(t, err)
+
+			rowRoots := block.DataAvailabilityHeader.RowsRoots.Bytes()
+			colRoots := block.DataAvailabilityHeader.ColumnRoots.Bytes()
+
+			data := tc.blockData.ComputeShares().RawShares()
+
+			fmt.Println("row roots", len(rowRoots))
+
+			tree := NewErasuredNamespacedMerkleTree(uint64(len(rowRoots) / 2))
+
+			_, err := rsmt2d.RepairExtendedDataSquare(
+				rowRoots,
+				colRoots,
+				removeRandShares(data),
+				rsmt2d.RSGF8,
+				tree.Constructor,
+			)
+
+			require.NoError(t, err)
+			// perform some check that namespaces are recovered as well
+
+		})
+	}
+}
+
 // nmtcommitment generates the nmt root of some namespaced data
 func createNmtTree(
 	ctx context.Context,
@@ -198,4 +266,29 @@ func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byt
 
 func sortByteArrays(src [][]byte) {
 	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
+}
+
+func generateRandomData(msgCount int) types.Data {
+	out := make([]types.Message, msgCount)
+	for i, msg := range generateRandNamespacedRawData(msgCount, types.NamespaceSize, types.ShareSize) {
+		out[i] = types.Message{NamespaceID: msg[:types.NamespaceSize], Data: msg[:types.NamespaceSize]}
+	}
+	return types.Data{
+		Messages: types.Messages{MessagesList: out},
+	}
+}
+
+func removeRandShares(data [][]byte) [][]byte {
+	count := len(data)
+	// remove half of the shares randomly
+	for i := 0; i < (count / 2); {
+		ind := rand.Intn(count)
+		if len(data[ind]) == 0 {
+			continue
+		}
+		data[ind] = nil
+		i++
+	}
+	fmt.Println("removal data len", len(data))
+	return data
 }
