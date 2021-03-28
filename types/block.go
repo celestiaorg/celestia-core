@@ -94,7 +94,7 @@ func (dah *DataAvailabilityHeader) String() string {
 	if dah == nil {
 		return "<nil DAHeader>"
 	}
-	return strings.ToUpper(fmt.Sprintf("%x", dah.Hash()))
+	return fmt.Sprintf("%X", dah.Hash())
 }
 
 // IsZero checks if the DAHeader stands for Block with no shares.
