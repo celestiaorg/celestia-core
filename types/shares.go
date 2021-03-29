@@ -61,7 +61,7 @@ func appendToShares(shares []NamespacedShare, id namespace.ID, rawData []byte) [
 	nid := make([]byte, len(id))
 	copy(nid, id)
 	if len(rawData) <= MsgShareSize {
-		rawShare := []byte(append(nid, rawData...))
+		rawShare := append(nid, rawData...)
 		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
@@ -85,7 +85,7 @@ func splitContiguous(id namespace.ID, rawDatas [][]byte) []NamespacedShare {
 		copy(nid, id)
 		startIndex := 0
 		rawData, outerIndex, innerIndex, startIndex = getNextChunk(rawDatas, outerIndex, innerIndex, TxShareSize)
-		rawShare := []byte(append(append(nid, byte(startIndex)), rawData...))
+		rawShare := append(append(nid, byte(startIndex)), rawData...)
 		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
