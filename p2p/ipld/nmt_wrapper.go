@@ -26,14 +26,15 @@ type ErasuredNamespacedMerkleTree struct {
 
 // NewErasuredNamespacedMerkleTree issues a new ErasuredNamespacedMerkleTree
 func NewErasuredNamespacedMerkleTree(squareSize uint64, setters ...nmt.Option) ErasuredNamespacedMerkleTree {
-	return ErasuredNamespacedMerkleTree{squareSize: squareSize, options: setters}
+	tree := nmt.New(sha256.New(), setters...)
+	return ErasuredNamespacedMerkleTree{squareSize: squareSize, options: setters, tree: tree}
 }
 
 // Constructor acts as the rsmt2d.TreeConstructorFn for
 // ErasuredNamespacedMerkleTree
 func (w ErasuredNamespacedMerkleTree) Constructor() rsmt2d.Tree {
-	w.tree = nmt.New(sha256.New(), w.options...)
-	return &w
+	newTree := NewErasuredNamespacedMerkleTree(w.squareSize, w.options...)
+	return &newTree
 }
 
 // Push adds the provided data to the underlying NamespaceMerkleTree, and
