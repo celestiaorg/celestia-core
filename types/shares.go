@@ -55,9 +55,6 @@ func (m Message) MarshalDelimited() ([]byte, error) {
 	return append(lenBuf[:n], m.Data...), nil
 }
 
-// m.Data is being altered somehwere along the line, where the first two bytes are being replaces with the above append
-// the append isn't inherently wrong, it's that the data should not altered after that.
-
 // appendToShares appends raw data as shares.
 // Used for messages.
 func appendToShares(shares []NamespacedShare, id namespace.ID, rawData []byte) []NamespacedShare {
