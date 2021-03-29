@@ -97,11 +97,6 @@ func (dah *DataAvailabilityHeader) String() string {
 	return fmt.Sprintf("%X", dah.Hash())
 }
 
-// IsZero checks if the DAHeader stands for Block with no shares.
-func (dah *DataAvailabilityHeader) IsZero() bool {
-	return len(dah.RowsRoots) == 0 && len(dah.ColumnRoots) == 0
-}
-
 // Equals checks equality of two DAHeaders.
 func (dah *DataAvailabilityHeader) Equals(to *DataAvailabilityHeader) bool {
 	return bytes.Equal(dah.Hash(), to.Hash())
