@@ -2,7 +2,6 @@ package ipld
 
 import (
 	"crypto/sha256"
-	"fmt"
 
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/nmt"
@@ -27,14 +26,15 @@ type ErasuredNamespacedMerkleTree struct {
 
 // NewErasuredNamespacedMerkleTree issues a new ErasuredNamespacedMerkleTree
 func NewErasuredNamespacedMerkleTree(squareSize uint64, setters ...nmt.Option) ErasuredNamespacedMerkleTree {
-	return ErasuredNamespacedMerkleTree{squareSize: squareSize, options: setters}
+	tree := nmt.New(sha256.New(), setters...)
+	return ErasuredNamespacedMerkleTree{squareSize: squareSize, options: setters, tree: tree}
 }
 
 // Constructor acts as the rsmt2d.TreeConstructorFn for
 // ErasuredNamespacedMerkleTree
 func (w ErasuredNamespacedMerkleTree) Constructor() rsmt2d.Tree {
-	w.tree = nmt.New(sha256.New(), w.options...)
-	return &w
+	newTree := NewErasuredNamespacedMerkleTree(w.squareSize, w.options...)
+	return &newTree
 }
 
 // Push adds the provided data to the underlying NamespaceMerkleTree, and
@@ -46,7 +46,6 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex)
 	// determine the namespace based on where in the tree we're pushing
 	nsID := make(namespace.ID, types.NamespaceSize)
 
-	fmt.Println("axis ", idx.Axis, idx.Cell)
 	if idx.Axis+1 > 2*uint(w.squareSize) || idx.Cell+1 > 2*uint(w.squareSize) {
 		panic("pushed past predetermined square size")
 	}
