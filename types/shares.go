@@ -57,11 +57,9 @@ func (m Message) MarshalDelimited() ([]byte, error) {
 
 // appendToShares appends raw data as shares.
 // Used for messages.
-func appendToShares(shares []NamespacedShare, id namespace.ID, rawData []byte) []NamespacedShare {
-	nid := make([]byte, len(id))
-	copy(nid, id)
+func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) []NamespacedShare {
 	if len(rawData) <= MsgShareSize {
-		rawShare := append(nid, rawData...)
+		rawShare := appendCopy(nid, rawData)
 		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
@@ -73,7 +71,7 @@ func appendToShares(shares []NamespacedShare, id namespace.ID, rawData []byte) [
 
 // splitContiguous splits multiple raw data contiguously as shares.
 // Used for transactions, intermediate state roots, and evidence.
-func splitContiguous(id namespace.ID, rawDatas [][]byte) []NamespacedShare {
+func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
 	shares := make([]NamespacedShare, 0)
 	// Index into the outer slice of rawDatas
 	outerIndex := 0
@@ -81,11 +79,9 @@ func splitContiguous(id namespace.ID, rawDatas [][]byte) []NamespacedShare {
 	innerIndex := 0
 	for outerIndex < len(rawDatas) {
 		var rawData []byte
-		nid := make([]byte, len(id))
-		copy(nid, id)
 		startIndex := 0
 		rawData, outerIndex, innerIndex, startIndex = getNextChunk(rawDatas, outerIndex, innerIndex, TxShareSize)
-		rawShare := append(append(nid, byte(startIndex)), rawData...)
+		rawShare := append(appendCopy(nid, []byte{byte(startIndex)}), rawData...)
 		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
@@ -102,9 +98,7 @@ func split(rawData []byte, nid namespace.ID) []NamespacedShare {
 	rawData = rawData[MsgShareSize:]
 	for len(rawData) > 0 {
 		shareSizeOrLen := min(MsgShareSize, len(rawData))
-		rawShare := make([]byte, NamespaceSize)
-		copy(rawShare, nid)
-		rawShare = append(rawShare, rawData[:shareSizeOrLen]...)
+		rawShare := appendCopy(nid, rawData[:shareSizeOrLen])
 		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
@@ -173,4 +167,16 @@ func zeroPadIfNecessary(share []byte, width int) []byte {
 		return share
 	}
 	return share
+}
+
+// appendCopy makes a copy of slice a and appends slices b to that copy
+func appendCopy(a []byte, b ...[]byte) []byte {
+	c := make([]byte, len(a))
+	copy(c, a)
+
+	for _, bi := range b {
+		c = append(c, bi...)
+	}
+
+	return c
 }
