@@ -77,7 +77,7 @@ func TestNodeCollector(t *testing.T) {
 			n := nmt.New(sha256.New(), nmt.NamespaceIDSize(namespaceSize), nmt.NodeVisitor(collector.visit))
 
 			for _, share := range tt.leafData {
-				err := n.Push(share[:namespaceSize], share[namespaceSize:])
+				err := n.Push(share)
 				if err != nil {
 					t.Errorf("nmt.Push() unexpected error = %v", err)
 					return
@@ -138,7 +138,7 @@ func TestDagPutWithPlugin(t *testing.T) {
 	t.Logf("first leaf, nid: %x, data: %x...", data[0][:namespaceSize], data[0][namespaceSize:namespaceSize+printFirst])
 	n := nmt.New(sha256.New())
 	for _, share := range data {
-		err := n.Push(share[:namespaceSize], share[namespaceSize:])
+		err := n.Push(share)
 		if err != nil {
 			t.Errorf("nmt.Push() unexpected error = %v", err)
 			return

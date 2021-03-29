@@ -162,7 +162,7 @@ func createNmtTree(
 	na := nodes.NewNmtNodeAdder(ctx, batch)
 	tree := nmt.New(sha256.New(), nmt.NamespaceIDSize(types.NamespaceSize), nmt.NodeVisitor(na.Visit))
 	for _, leaf := range namespacedData {
-		err := tree.Push(leaf[:types.NamespaceSize], leaf[types.NamespaceSize:])
+		err := tree.Push(leaf)
 		if err != nil {
 			return tree, err
 		}
