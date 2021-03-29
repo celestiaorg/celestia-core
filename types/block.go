@@ -83,7 +83,7 @@ func NmtRootsFromBytes(in [][]byte) (roots NmtRoots, err error) {
 	for i := 0; i < len(in); i++ {
 		roots[i], err = namespace.IntervalDigestFromBytes(NamespaceSize, in[i])
 		if err != nil {
-			return
+			return roots, err
 		}
 	}
 	return
