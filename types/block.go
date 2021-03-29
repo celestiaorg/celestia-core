@@ -274,18 +274,18 @@ func (b *Block) fillDataAvailabilityHeader() {
 func nmtCommitment(namespacedData [][]byte) namespace.IntervalDigest {
 	tree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
 	for _, leaf := range namespacedData {
-		mustPush(tree, leaf[:NamespaceSize], leaf[NamespaceSize:])
+		mustPush(tree, leaf)
 	}
 	return tree.Root()
 }
 
-func mustPush(rowTree *nmt.NamespacedMerkleTree, id namespace.ID, data []byte) {
-	if err := rowTree.Push(id, data); err != nil {
+func mustPush(rowTree *nmt.NamespacedMerkleTree, nidAndData []byte) {
+	if err := rowTree.Push(nidAndData); err != nil {
 		panic(
 			fmt.Sprintf(
 				"invalid data; could not push share to tree, id: %v, data: %v, err: %v",
-				id,
-				data,
+				nidAndData[:NamespaceSize],
+				nidAndData[NamespaceSize:],
 				err,
 			),
 		)
@@ -323,7 +323,7 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 		batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, nodeAdder))
 		tree := nmt.New(sha256.New(), nmt.NodeVisitor(batchAdder.Visit))
 		for _, share := range leafSet {
-			err = tree.Push(share[:NamespaceSize], share[NamespaceSize:])
+			err = tree.Push(share)
 			if err != nil {
 				return err
 			}
