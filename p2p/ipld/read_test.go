@@ -3,8 +3,9 @@ package ipld
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
+	"math"
+	"math/rand"
 	"sort"
 	"strings"
 	"testing"
@@ -18,7 +19,9 @@ import (
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/nmt"
+	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLeafPath(t *testing.T) {
@@ -153,6 +156,88 @@ func TestGetLeafData(t *testing.T) {
 	}
 }
 
+func TestBlockRecovery(t *testing.T) {
+	// adjustedLeafSize describes the size of a leaf that will not get split
+	adjustedLeafSize := types.MsgShareSize
+
+	originalSquareWidth := 2
+	sharecount := originalSquareWidth * originalSquareWidth
+	extendedSquareWidth := originalSquareWidth * originalSquareWidth
+	extendedShareCount := extendedSquareWidth * extendedSquareWidth
+
+	// generate test data
+	quarterShares := generateRandNamespacedRawData(sharecount, types.NamespaceSize, adjustedLeafSize)
+	allShares := generateRandNamespacedRawData(sharecount, types.NamespaceSize, adjustedLeafSize)
+
+	testCases := []struct {
+		name string
+		// blockData types.Data
+		shares    [][]byte
+		expectErr bool
+		errString string
+		d         int // number of shares to delete
+	}{
+		// missing more shares causes RepairExtendedDataSquare to hang see
+		// https://github.com/lazyledger/rsmt2d/issues/21
+		{"missing 1/4 shares", quarterShares, false, "", extendedShareCount / 4},
+		{"missing all but one shares", allShares, true, "failed to solve data square", extendedShareCount - 1},
+	}
+	for _, tc := range testCases {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			squareSize := uint64(math.Sqrt(float64(len(tc.shares))))
+
+			// create trees for creating roots
+			tree := NewErasuredNamespacedMerkleTree(squareSize)
+			recoverTree := NewErasuredNamespacedMerkleTree(squareSize)
+
+			eds, err := rsmt2d.ComputeExtendedDataSquare(tc.shares, rsmt2d.RSGF8, tree.Constructor)
+			if err != nil {
+				t.Error(err)
+			}
+
+			// calculate roots using the first complete square
+			rowRoots := eds.RowRoots()
+			colRoots := eds.ColumnRoots()
+
+			flat := flatten(eds)
+
+			// recover a partially complete square
+			reds, err := rsmt2d.RepairExtendedDataSquare(
+				rowRoots,
+				colRoots,
+				removeRandShares(flat, tc.d),
+				rsmt2d.RSGF8,
+				recoverTree.Constructor,
+			)
+
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errString)
+				return
+			}
+
+			require.NoError(t, err)
+
+			// check that the squares are equal
+			assert.Equal(t, flatten(eds), flatten(reds))
+		})
+	}
+}
+
+func flatten(eds *rsmt2d.ExtendedDataSquare) [][]byte {
+	out := make([][]byte, eds.Width()*eds.Width())
+	count := 0
+	for i := uint(0); i < eds.Width(); i++ {
+		for _, share := range eds.Row(i) {
+			out[count] = share
+			count++
+		}
+	}
+	return out
+}
+
 // nmtcommitment generates the nmt root of some namespaced data
 func createNmtTree(
 	ctx context.Context,
@@ -198,4 +283,19 @@ func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byt
 
 func sortByteArrays(src [][]byte) {
 	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
+}
+
+// removes d shares from data
+func removeRandShares(data [][]byte, d int) [][]byte {
+	count := len(data)
+	// remove shares randomly
+	for i := 0; i < d; {
+		ind := rand.Intn(count)
+		if len(data[ind]) == 0 {
+			continue
+		}
+		data[ind] = nil
+		i++
+	}
+	return data
 }

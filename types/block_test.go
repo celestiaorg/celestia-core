@@ -1463,8 +1463,8 @@ func removeRandShares(data [][]byte) [][]byte {
 
 func generateRandomData(msgCount int) Data {
 	out := make([]Message, msgCount)
-	for i, msg := range generateRandNamespacedRawData(msgCount, NamespaceSize, ShareSize) {
-		out[i] = Message{NamespaceID: msg[:NamespaceSize], Data: msg[:NamespaceSize]}
+	for i, msg := range generateRandNamespacedRawData(msgCount, NamespaceSize, MsgShareSize-2) {
+		out[i] = Message{NamespaceID: msg[:NamespaceSize], Data: msg[NamespaceSize:]}
 	}
 	return Data{
 		Messages: Messages{MessagesList: out},

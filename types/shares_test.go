@@ -7,16 +7,16 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	"github.com/lazyledger/nmt/namespace"
+	"github.com/stretchr/testify/assert"
 )
 
 type splitter interface {
-	splitIntoShares(shareSize int) NamespacedShares
+	splitIntoShares() NamespacedShares
 }
 
 func TestMakeShares(t *testing.T) {
 	reservedTxNamespaceID := append(bytes.Repeat([]byte{0}, 7), 1)
 	reservedEvidenceNamespaceID := append(bytes.Repeat([]byte{0}, 7), 3)
-	// resveredIntermediateStateRootsNamespaceID := append(bytes.Repeat([]byte{0}, 7), 2)
 	val := NewMockPV()
 	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
 	blockID2 := makeBlockID([]byte("blockhash2"), 1000, []byte("partshash"))
@@ -37,12 +37,11 @@ func TestMakeShares(t *testing.T) {
 	}
 	msg1Marshaled, _ := msg1.MarshalDelimited()
 	if err != nil {
-		t.Fatalf("Could not encode evidence: %v, error: %v", testEvidence, err)
+		t.Fatalf("Could not encode evidence: %v, error: %v\n", testEvidence, err)
 	}
 
 	type args struct {
-		data      splitter
-		shareSize int
+		data splitter
 	}
 	tests := []struct {
 		name string
@@ -54,50 +53,91 @@ func TestMakeShares(t *testing.T) {
 				data: &EvidenceData{
 					Evidence: []Evidence{testEvidence},
 				},
-				shareSize: ShareSize,
 			}, NamespacedShares{NamespacedShare{
-				Share: testEvidenceBytes[:ShareSize],
-				ID:    reservedEvidenceNamespaceID,
+				Share: append(
+					append(reservedEvidenceNamespaceID, byte(0)),
+					testEvidenceBytes[:TxShareSize]...,
+				),
+				ID: reservedEvidenceNamespaceID,
 			}, NamespacedShare{
-				Share: zeroPadIfNecessary(testEvidenceBytes[ShareSize:], ShareSize),
-				ID:    reservedEvidenceNamespaceID,
+				Share: append(
+					append(reservedEvidenceNamespaceID, byte(0)),
+					zeroPadIfNecessary(testEvidenceBytes[TxShareSize:], TxShareSize)...,
+				),
+				ID: reservedEvidenceNamespaceID,
 			}},
 		},
 		{"small LL Tx",
 			args{
-				data:      Txs{smolTx},
-				shareSize: ShareSize,
+				data: Txs{smolTx},
 			},
 			NamespacedShares{
 				NamespacedShare{
-					Share: zeroPadIfNecessary(smolTxLenDelimited, ShareSize),
-					ID:    reservedTxNamespaceID,
+					Share: append(
+						append(reservedTxNamespaceID, byte(0)),
+						zeroPadIfNecessary(smolTxLenDelimited, TxShareSize)...,
+					),
+					ID: reservedTxNamespaceID,
 				},
 			},
 		},
 		{"one large LL Tx",
 			args{
-				data:      Txs{largeTx},
-				shareSize: ShareSize,
+				data: Txs{largeTx},
 			},
 			NamespacedShares{
 				NamespacedShare{
-					Share: Share(largeTxLenDelimited[:ShareSize]),
-					ID:    reservedTxNamespaceID,
+					Share: append(
+						append(reservedTxNamespaceID, byte(0)),
+						largeTxLenDelimited[:TxShareSize]...,
+					),
+					ID: reservedTxNamespaceID,
 				},
 				NamespacedShare{
-					Share: zeroPadIfNecessary(largeTxLenDelimited[ShareSize:], ShareSize),
-					ID:    reservedTxNamespaceID,
+					Share: append(
+						append(reservedTxNamespaceID, byte(0)),
+						zeroPadIfNecessary(largeTxLenDelimited[TxShareSize:], TxShareSize)...,
+					),
+					ID: reservedTxNamespaceID,
+				},
+			},
+		},
+		{"large then small LL Tx",
+			args{
+				data: Txs{largeTx, smolTx},
+			},
+			NamespacedShares{
+				NamespacedShare{
+					Share: append(
+						append(reservedTxNamespaceID, byte(0)),
+						largeTxLenDelimited[:TxShareSize]...,
+					),
+					ID: reservedTxNamespaceID,
+				},
+				NamespacedShare{
+					Share: append(
+						append(reservedTxNamespaceID, byte(len(largeTxLenDelimited)-TxShareSize+NamespaceSize+ShareReservedBytes)),
+						zeroPadIfNecessary(
+							append(largeTxLenDelimited[TxShareSize:], smolTxLenDelimited...),
+							TxShareSize,
+						)...,
+					),
+					ID: reservedTxNamespaceID,
 				},
 			},
 		},
 		{"ll-app message",
 			args{
-				data:      Messages{[]Message{msg1}},
-				shareSize: ShareSize,
+				data: Messages{[]Message{msg1}},
 			},
 			NamespacedShares{
-				NamespacedShare{zeroPadIfNecessary(msg1Marshaled, ShareSize), msg1.NamespaceID},
+				NamespacedShare{
+					Share: append(
+						[]byte(msg1.NamespaceID),
+						zeroPadIfNecessary(msg1Marshaled, MsgShareSize)...,
+					),
+					ID: msg1.NamespaceID,
+				},
 			},
 		},
 	}
@@ -105,8 +145,9 @@ func TestMakeShares(t *testing.T) {
 		tt := tt // stupid scopelint :-/
 		i := i
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.args.data.splitIntoShares(tt.args.shareSize); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("%v: makeShares() = \n%v\nwant\n%v", i, got, tt.want)
+			got := tt.args.data.splitIntoShares()
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("%v: makeShares() = \n%+v\nwant\n%+v\n", i, got, tt.want)
 			}
 		})
 	}
@@ -134,4 +175,33 @@ func Test_zeroPadIfNecessary(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_appendToSharesOverwrite(t *testing.T) {
+	var shares NamespacedShares
+
+	// generate some arbitrary namespaced shares first share that must be split
+	newShare := generateRandomNamespacedShares(1, MsgShareSize+1)[0]
+
+	// make a copy of the portion of the share to check if it's overwritten later
+	extraCopy := make([]byte, MsgShareSize)
+	copy(extraCopy, newShare.Share[:MsgShareSize])
+
+	// use appendToShares to add our new share
+	appendToShares(shares, newShare.ID, newShare.Share)
+
+	// check if the original share data has been overwritten.
+	assert.Equal(t, extraCopy, []byte(newShare.Share[:MsgShareSize]))
+}
+
+func generateRandomNamespacedShares(count, leafSize int) []NamespacedShare {
+	shares := generateRandNamespacedRawData(count, NamespaceSize, leafSize)
+	nsShares := make(NamespacedShares, count)
+	for i, s := range shares {
+		nsShares[i] = NamespacedShare{
+			Share: s[NamespaceSize:],
+			ID:    s[:NamespaceSize],
+		}
+	}
+	return nsShares
 }
