@@ -221,7 +221,6 @@ func NewNmtNodeAdder(ctx context.Context, batch *format.Batch) *NmtNodeAdder {
 // Visit can be inserted into an nmt tree to create ipld.Nodes while computing the root
 func (n *NmtNodeAdder) Visit(hash []byte, children ...[]byte) {
 	cid := mustCidFromNamespacedSha256(hash)
-	fmt.Println("collecting cid", cid.String())
 	switch len(children) {
 	case 1:
 		n.batch.Add(n.ctx, nmtLeafNode{

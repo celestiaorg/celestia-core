@@ -52,13 +52,17 @@ func (m Message) MarshalDelimited() ([]byte, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	length := uint64(len(m.Data))
 	n := binary.PutUvarint(lenBuf, length)
-
 	return append(lenBuf[:n], m.Data...), nil
 }
 
+// m.Data is being altered somehwere along the line, where the first two bytes are being replaces with the above append
+// the append isn't inherently wrong, it's that the data should not altered after that.
+
 // appendToShares appends raw data as shares.
 // Used for messages.
-func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) []NamespacedShare {
+func appendToShares(shares []NamespacedShare, id namespace.ID, rawData []byte) []NamespacedShare {
+	nid := make([]byte, len(id))
+	copy(nid, id)
 	if len(rawData) <= MsgShareSize {
 		rawShare := []byte(append(nid, rawData...))
 		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
@@ -72,7 +76,7 @@ func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) 
 
 // splitContiguous splits multiple raw data contiguously as shares.
 // Used for transactions, intermediate state roots, and evidence.
-func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
+func splitContiguous(id namespace.ID, rawDatas [][]byte) []NamespacedShare {
 	shares := make([]NamespacedShare, 0)
 	// Index into the outer slice of rawDatas
 	outerIndex := 0
@@ -80,6 +84,8 @@ func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
 	innerIndex := 0
 	for outerIndex < len(rawDatas) {
 		var rawData []byte
+		nid := make([]byte, len(id))
+		copy(nid, id)
 		startIndex := 0
 		rawData, outerIndex, innerIndex, startIndex = getNextChunk(rawDatas, outerIndex, innerIndex, TxShareSize)
 		rawShare := []byte(append(append(nid, byte(startIndex)), rawData...))

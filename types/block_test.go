@@ -1335,10 +1335,10 @@ func TestPutBlock(t *testing.T) {
 		expectErr bool
 		errString string
 	}{
-		// {"no leaves", generateRandomData(0), false, ""},
-		// {"single leaf", generateRandomData(1), false, ""},
+		{"no leaves", generateRandomData(0), false, ""},
+		{"single leaf", generateRandomData(1), false, ""},
 		{"16 leaves", generateRandomData(16), false, ""},
-		// {"max square size", generateRandomData(MaxSquareSize), false, ""},
+		{"max square size", generateRandomData(MaxSquareSize), false, ""},
 	}
 	ctx := context.Background()
 	for _, tc := range testCases {
@@ -1389,7 +1389,7 @@ func TestPutBlock(t *testing.T) {
 
 func generateRandomData(msgCount int) Data {
 	out := make([]Message, msgCount)
-	for i, msg := range generateRandNamespacedRawData(msgCount, NamespaceSize, ShareSize) {
+	for i, msg := range generateRandNamespacedRawData(msgCount, NamespaceSize, MsgShareSize-2) {
 		out[i] = Message{NamespaceID: msg[:NamespaceSize], Data: msg[NamespaceSize:]}
 	}
 	return Data{
