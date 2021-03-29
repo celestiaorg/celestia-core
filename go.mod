@@ -20,11 +20,11 @@ require (
 	github.com/ipfs/go-ipfs v0.8.0
 	github.com/ipfs/go-ipfs-config v0.12.0
 	github.com/ipfs/go-ipld-format v0.2.0
-	github.com/ipfs/go-path v0.0.8
+	github.com/ipfs/go-path v0.0.9 // indirect
 	github.com/ipfs/interface-go-ipfs-core v0.4.0
 	github.com/lazyledger/lazyledger-core/p2p/ipld/plugin v0.0.0-20210219190522-0eccfb24e2aa
 	github.com/lazyledger/nmt v0.2.0
-	github.com/lazyledger/rsmt2d v0.0.0-20201215203123-e5ec7910ddd4
+	github.com/lazyledger/rsmt2d v0.1.1-0.20210327010029-ef1d6c54461e
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/minio/highwayhash v1.0.1
 	github.com/multiformats/go-multihash v0.0.14

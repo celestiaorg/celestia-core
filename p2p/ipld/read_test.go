@@ -3,10 +3,9 @@ package ipld
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"fmt"
-	"path/filepath"
+	"math"
+	"math/rand"
 	"sort"
 	"strings"
 	"testing"
@@ -16,7 +15,6 @@ import (
 	"github.com/ipfs/go-ipfs/core/coreapi"
 
 	coremock "github.com/ipfs/go-ipfs/core/mock"
-	"github.com/ipfs/go-ipfs/plugin/loader"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -26,56 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// NOTE: this test is not complete. we still need to figure out exactly how we are going to recover
-func TestRetrieveBlockData(t *testing.T) {
-	// create a mock node
-	ipfsNode, err := coremock.NewMockNode()
-	if err != nil {
-		t.Error(err)
-	}
-
-	// issue a new API object
-	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
-	if err != nil {
-		t.Error(err)
-	}
-
-	testCases := []struct {
-		name      string
-		blockData types.Data
-		expectErr bool
-		errString string
-	}{
-		{"max square size", generateRandomData(16), false, ""},
-	}
-	ctx := context.Background()
-	for _, tc := range testCases {
-		tc := tc
-
-		block := &types.Block{
-			Data:       tc.blockData,
-			LastCommit: &types.Commit{},
-		}
-
-		// fill the DataAvailabilityHeader
-		block.Hash()
-
-		t.Run(tc.name, func(t *testing.T) {
-			err = block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
-			if tc.expectErr {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tc.errString)
-				return
-			}
-			require.NoError(t, err)
-
-			_, err := RetrieveBlockData(ctx, &block.DataAvailabilityHeader, ipfsAPI, rsmt2d.RSGF8, messageOnlyEDSParser{})
-			require.NoError(t, err)
-		})
-	}
-}
-
-func TestCalcCIDPath(t *testing.T) {
+func TestLeafPath(t *testing.T) {
 	type test struct {
 		name         string
 		index, total uint32
@@ -92,8 +41,9 @@ func TestCalcCIDPath(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := calcCIDPath(tt.index, tt.total)
+			result, err := leafPath(tt.index, tt.total)
 			if err != nil {
 				t.Error(err)
 			}
@@ -190,6 +140,7 @@ func TestGetLeafData(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tt.timeout)
 			defer cancel()
@@ -205,8 +156,94 @@ func TestGetLeafData(t *testing.T) {
 	}
 }
 
+func TestBlockRecovery(t *testing.T) {
+	// adjustedLeafSize describes the size of a leaf that will not get split
+	adjustedLeafSize := types.MsgShareSize
+
+	originalSquareWidth := 2
+	sharecount := originalSquareWidth * originalSquareWidth
+	extendedSquareWidth := originalSquareWidth * originalSquareWidth
+	extendedShareCount := extendedSquareWidth * extendedSquareWidth
+
+	// generate test data
+	quarterShares := generateRandNamespacedRawData(sharecount, types.NamespaceSize, adjustedLeafSize)
+	allShares := generateRandNamespacedRawData(sharecount, types.NamespaceSize, adjustedLeafSize)
+
+	testCases := []struct {
+		name string
+		// blockData types.Data
+		shares    [][]byte
+		expectErr bool
+		errString string
+		d         int // number of shares to delete
+	}{
+		// missing more shares causes RepairExtendedDataSquare to hang see
+		// https://github.com/lazyledger/rsmt2d/issues/21
+		{"missing 1/4 shares", quarterShares, false, "", extendedShareCount / 4},
+		{"missing all but one shares", allShares, true, "failed to solve data square", extendedShareCount - 1},
+	}
+	for _, tc := range testCases {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			squareSize := uint64(math.Sqrt(float64(len(tc.shares))))
+
+			// create trees for creating roots
+			tree := NewErasuredNamespacedMerkleTree(squareSize)
+			recoverTree := NewErasuredNamespacedMerkleTree(squareSize)
+
+			eds, err := rsmt2d.ComputeExtendedDataSquare(tc.shares, rsmt2d.RSGF8, tree.Constructor)
+			if err != nil {
+				t.Error(err)
+			}
+
+			// calculate roots using the first complete square
+			rowRoots := eds.RowRoots()
+			colRoots := eds.ColumnRoots()
+
+			flat := flatten(eds)
+
+			// recover a partially complete square
+			reds, err := rsmt2d.RepairExtendedDataSquare(
+				rowRoots,
+				colRoots,
+				removeRandShares(flat, tc.d),
+				rsmt2d.RSGF8,
+				recoverTree.Constructor,
+			)
+
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errString)
+				return
+			}
+
+			require.NoError(t, err)
+
+			// check that the squares are equal
+			assert.Equal(t, flatten(eds), flatten(reds))
+		})
+	}
+}
+
+func flatten(eds *rsmt2d.ExtendedDataSquare) [][]byte {
+	out := make([][]byte, eds.Width()*eds.Width())
+	count := 0
+	for i := uint(0); i < eds.Width(); i++ {
+		for _, share := range eds.Row(i) {
+			out[count] = share
+			count++
+		}
+	}
+	return out
+}
+
 // nmtcommitment generates the nmt root of some namespaced data
-func createNmtTree(ctx context.Context, batch *format.Batch, namespacedData [][]byte) (*nmt.NamespacedMerkleTree, error) {
+func createNmtTree(
+	ctx context.Context,
+	batch *format.Batch,
+	namespacedData [][]byte,
+) (*nmt.NamespacedMerkleTree, error) {
 	na := nodes.NewNmtNodeAdder(ctx, batch)
 	tree := nmt.New(sha256.New(), nmt.NamespaceIDSize(types.NamespaceSize), nmt.NodeVisitor(na.Visit))
 	for _, leaf := range namespacedData {
@@ -217,16 +254,6 @@ func createNmtTree(ctx context.Context, batch *format.Batch, namespacedData [][]
 	}
 
 	return tree, nil
-}
-
-func generateRandomData(msgCount int) types.Data {
-	out := make([]types.Message, msgCount)
-	for i, msg := range generateRandNamespacedRawData(msgCount, types.NamespaceSize, types.ShareSize) {
-		out[i] = types.Message{NamespaceID: msg[:types.NamespaceSize], Data: msg[:types.NamespaceSize]}
-	}
-	return types.Data{
-		Messages: types.Messages{MessagesList: out},
-	}
 }
 
 // this code is copy pasted from the plugin, and should likely be exported in the plugin instead
@@ -258,21 +285,17 @@ func sortByteArrays(src [][]byte) {
 	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
 }
 
-func setupPlugins(path string) error {
-	// Load plugins. This will skip the repo if not available.
-	plugins, err := loader.NewPluginLoader(filepath.Join(path, "plugins"))
-	if err != nil {
-		return fmt.Errorf("error loading plugins: %s", err)
+// removes d shares from data
+func removeRandShares(data [][]byte, d int) [][]byte {
+	count := len(data)
+	// remove shares randomly
+	for i := 0; i < d; {
+		ind := rand.Intn(count)
+		if len(data[ind]) == 0 {
+			continue
+		}
+		data[ind] = nil
+		i++
 	}
-	if err := plugins.Load(&nodes.LazyLedgerPlugin{}); err != nil {
-		return fmt.Errorf("error loading lazyledger plugin: %s", err)
-	}
-	if err := plugins.Initialize(); err != nil {
-		return fmt.Errorf("error initializing plugins: plugins.Initialize(): %s", err)
-	}
-	if err := plugins.Inject(); err != nil {
-		return fmt.Errorf("error initializing plugins: could not Inject() %w", err)
-	}
-
-	return nil
+	return data
 }

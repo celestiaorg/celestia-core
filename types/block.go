@@ -200,7 +200,7 @@ func (b *Block) fillHeader() {
 // fillDataAvailabilityHeader fills in any remaining DataAvailabilityHeader fields
 // that are a function of the block data.
 func (b *Block) fillDataAvailabilityHeader() {
-	namespacedShares := b.Data.computeShares()
+	namespacedShares := b.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
 	if len(shares) == 0 {
 		// no shares -> no row/colum roots -> hash(empty)
@@ -272,7 +272,7 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 	}
 
 	// recompute the shares
-	namespacedShares := b.Data.computeShares()
+	namespacedShares := b.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
 
 	// don't do anything if there is no data to put on IPFS
@@ -1312,41 +1312,43 @@ type IntermediateStateRoots struct {
 	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
 }
 
-func (roots IntermediateStateRoots) splitIntoShares(shareSize int) NamespacedShares {
-	shares := make([]NamespacedShare, 0)
+func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
+	rawDatas := make([][]byte, 0, len(roots.RawRootsList))
 	for _, root := range roots.RawRootsList {
 		rawData, err := root.MarshalDelimited()
 		if err != nil {
 			panic(fmt.Sprintf("app returned intermediate state root that can not be encoded %#v", root))
 		}
-		shares = appendToShares(shares, IntermediateStateRootsNamespaceID, rawData, shareSize)
+		rawDatas = append(rawDatas, rawData)
 	}
+	shares := splitContiguous(IntermediateStateRootsNamespaceID, rawDatas)
 	return shares
 }
 
-func (msgs Messages) splitIntoShares(shareSize int) NamespacedShares {
+func (msgs Messages) splitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	for _, m := range msgs.MessagesList {
 		rawData, err := m.MarshalDelimited()
 		if err != nil {
 			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
 		}
-		shares = appendToShares(shares, m.NamespaceID, rawData, shareSize)
+		shares = appendToShares(shares, m.NamespaceID, rawData)
 	}
 	return shares
 }
 
-func (data *Data) computeShares() NamespacedShares {
+// ComputeShares splits block data into shares of an original data square.
+func (data *Data) ComputeShares() NamespacedShares {
 	// TODO(ismail): splitting into shares should depend on the block size and layout
 	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
 
 	// reserved shares:
-	txShares := data.Txs.splitIntoShares(ShareSize)
-	intermRootsShares := data.IntermediateStateRoots.splitIntoShares(ShareSize)
-	evidenceShares := data.Evidence.splitIntoShares(ShareSize)
+	txShares := data.Txs.splitIntoShares()
+	intermRootsShares := data.IntermediateStateRoots.splitIntoShares()
+	evidenceShares := data.Evidence.splitIntoShares()
 
 	// application data shares from messages:
-	msgShares := data.Messages.splitIntoShares(ShareSize)
+	msgShares := data.Messages.splitIntoShares()
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 
 	// FIXME(ismail): this is not a power of two
@@ -1587,8 +1589,8 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
 	return nil
 }
 
-func (data *EvidenceData) splitIntoShares(shareSize int) NamespacedShares {
-	shares := make([]NamespacedShare, 0)
+func (data *EvidenceData) splitIntoShares() NamespacedShares {
+	rawDatas := make([][]byte, 0, len(data.Evidence))
 	for _, ev := range data.Evidence {
 		var rawData []byte
 		var err error
@@ -1608,8 +1610,9 @@ func (data *EvidenceData) splitIntoShares(shareSize int) NamespacedShares {
 		if err != nil {
 			panic(fmt.Sprintf("evidence included in evidence pool that can not be encoded %#v, err: %v", ev, err))
 		}
-		shares = appendToShares(shares, EvidenceNamespaceID, rawData, shareSize)
+		rawDatas = append(rawDatas, rawData)
 	}
+	shares := splitContiguous(EvidenceNamespaceID, rawDatas)
 	return shares
 }
 
