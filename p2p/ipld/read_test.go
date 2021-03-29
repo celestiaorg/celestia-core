@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"fmt"
+	"math"
 	"math/rand"
 	"sort"
 	"strings"
@@ -157,38 +157,61 @@ func TestGetLeafData(t *testing.T) {
 }
 
 func TestBlockRecovery(t *testing.T) {
-	ipfsNode, err := coremock.NewMockNode()
-	if err != nil {
-		t.Error(err)
-	}
+	// adjustedLeafSize describes the size of a leaf that will not get split
+	adjustedLeafSize := types.MsgShareSize
 
-	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
-	if err != nil {
-		t.Error(err)
-	}
+	originalSquareWidth := 2
+	sharecount := originalSquareWidth * originalSquareWidth
+	extendedSquareWidth := originalSquareWidth * originalSquareWidth
+	extendedShareCount := extendedSquareWidth * extendedSquareWidth
+
+	// generate test data
+	quarterShares := generateRandNamespacedRawData(sharecount, types.NamespaceSize, adjustedLeafSize)
+	allShares := generateRandNamespacedRawData(sharecount, types.NamespaceSize, adjustedLeafSize)
 
 	testCases := []struct {
-		name      string
-		blockData types.Data
+		name string
+		// blockData types.Data
+		shares    [][]byte
 		expectErr bool
 		errString string
+		d         int // number of shares to delete
 	}{
-		{"16 leaves", generateRandomData(16), false, ""},
-		// {"max square size", generateRandomData(17), false, ""},
+		// missing more shares causes RepairExtendedDataSquare to hang see
+		// https://github.com/lazyledger/rsmt2d/issues/21
+		{"missing 1/4 shares", quarterShares, false, "", extendedShareCount / 4},
+		{"missing all but one shares", allShares, true, "failed to solve data square", extendedShareCount - 1},
 	}
-	ctx := context.Background()
 	for _, tc := range testCases {
 		tc := tc
 
-		block := &types.Block{
-			Data:       tc.blockData,
-			LastCommit: &types.Commit{},
-		}
-
-		block.Hash()
-
 		t.Run(tc.name, func(t *testing.T) {
-			err = block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
+			squareSize := uint64(math.Sqrt(float64(len(tc.shares))))
+
+			// create trees for creating roots
+			tree := NewErasuredNamespacedMerkleTree(squareSize)
+			recoverTree := NewErasuredNamespacedMerkleTree(squareSize)
+
+			eds, err := rsmt2d.ComputeExtendedDataSquare(tc.shares, rsmt2d.RSGF8, tree.Constructor)
+			if err != nil {
+				t.Error(err)
+			}
+
+			// calculate roots using the first complete square
+			rowRoots := eds.RowRoots()
+			colRoots := eds.ColumnRoots()
+
+			flat := flatten(eds)
+
+			// recover a partially complete square
+			reds, err := rsmt2d.RepairExtendedDataSquare(
+				rowRoots,
+				colRoots,
+				removeRandShares(flat, tc.d),
+				rsmt2d.RSGF8,
+				recoverTree.Constructor,
+			)
+
 			if tc.expectErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.errString)
@@ -197,28 +220,22 @@ func TestBlockRecovery(t *testing.T) {
 
 			require.NoError(t, err)
 
-			rowRoots := block.DataAvailabilityHeader.RowsRoots.Bytes()
-			colRoots := block.DataAvailabilityHeader.ColumnRoots.Bytes()
-
-			data := tc.blockData.ComputeShares().RawShares()
-
-			fmt.Println("row roots", len(rowRoots))
-
-			tree := NewErasuredNamespacedMerkleTree(uint64(len(rowRoots) / 2))
-
-			_, err := rsmt2d.RepairExtendedDataSquare(
-				rowRoots,
-				colRoots,
-				removeRandShares(data),
-				rsmt2d.RSGF8,
-				tree.Constructor,
-			)
-
-			require.NoError(t, err)
-			// perform some check that namespaces are recovered as well
-
+			// check that the squares are equal
+			assert.Equal(t, flatten(eds), flatten(reds))
 		})
 	}
+}
+
+func flatten(eds *rsmt2d.ExtendedDataSquare) [][]byte {
+	out := make([][]byte, eds.Width()*eds.Width())
+	count := 0
+	for i := uint(0); i < eds.Width(); i++ {
+		for _, share := range eds.Row(i) {
+			out[count] = share
+			count++
+		}
+	}
+	return out
 }
 
 // nmtcommitment generates the nmt root of some namespaced data
@@ -268,20 +285,11 @@ func sortByteArrays(src [][]byte) {
 	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
 }
 
-func generateRandomData(msgCount int) types.Data {
-	out := make([]types.Message, msgCount)
-	for i, msg := range generateRandNamespacedRawData(msgCount, types.NamespaceSize, types.ShareSize) {
-		out[i] = types.Message{NamespaceID: msg[:types.NamespaceSize], Data: msg[:types.NamespaceSize]}
-	}
-	return types.Data{
-		Messages: types.Messages{MessagesList: out},
-	}
-}
-
-func removeRandShares(data [][]byte) [][]byte {
+// removes d shares from data
+func removeRandShares(data [][]byte, d int) [][]byte {
 	count := len(data)
-	// remove half of the shares randomly
-	for i := 0; i < (count / 2); {
+	// remove shares randomly
+	for i := 0; i < d; {
 		ind := rand.Intn(count)
 		if len(data[ind]) == 0 {
 			continue
@@ -289,6 +297,5 @@ func removeRandShares(data [][]byte) [][]byte {
 		data[ind] = nil
 		i++
 	}
-	fmt.Println("removal data len", len(data))
 	return data
 }
