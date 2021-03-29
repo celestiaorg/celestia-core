@@ -38,14 +38,6 @@ func (ns NamespacedShares) RawShares() [][]byte {
 	return res
 }
 
-func (ns NamespacedShares) NamedShares() [][]byte {
-	res := make([][]byte, len(ns))
-	for i, nsh := range ns {
-		res[i] = append(nsh.NamespaceID(), nsh.Data()...)
-	}
-	return res
-}
-
 func (tx Tx) MarshalDelimited() ([]byte, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	length := uint64(len(tx))
