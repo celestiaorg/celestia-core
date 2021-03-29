@@ -217,7 +217,6 @@ func (b *Block) fillDataAvailabilityHeader() {
 
 	// record the widths
 	squareWidth := extendedDataSquare.Width()
-	fmt.Println("square width", squareWidth)
 
 	b.DataAvailabilityHeader = DataAvailabilityHeader{
 		RowsRoots:   make([]namespace.IntervalDigest, squareWidth),
@@ -264,8 +263,6 @@ func mustPush(rowTree *nmt.NamespacedMerkleTree, id namespace.ID, data []byte) {
 		)
 	}
 }
-
-// the erasured leaves are going to be longer than the non erasured leaves.
 
 // PutBlock posts and pins erasured block data to IPFS using the provided
 // ipld.NodeAdder. Note: the erasured data is currently recomputed
