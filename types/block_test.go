@@ -6,7 +6,6 @@ import (
 	stdbytes "bytes"
 	"context"
 	"encoding/hex"
-	"fmt"
 	"math"
 	"math/rand"
 	"os"
@@ -20,7 +19,6 @@ import (
 	coremock "github.com/ipfs/go-ipfs/core/mock"
 	"github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
-	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
