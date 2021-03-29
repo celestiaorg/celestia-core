@@ -150,7 +150,7 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 			}
 			return nil, err
 		}
-		if err := n.Push(namespacedLeaf[:namespaceSize], namespacedLeaf[namespaceSize:]); err != nil {
+		if err := n.Push(namespacedLeaf); err != nil {
 			return nil, err
 		}
 	}

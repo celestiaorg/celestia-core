@@ -57,9 +57,9 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex)
 	} else {
 		copy(nsID, data[:types.NamespaceSize])
 	}
-
+	nidAndData := append(append(make([]byte, 0, types.NamespaceSize+len(data)), nsID...), data...)
 	// push to the underlying tree
-	err := w.tree.Push(nsID, data)
+	err := w.tree.Push(nidAndData)
 	// panic on error
 	if err != nil {
 		panic(err)

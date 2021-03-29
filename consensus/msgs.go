@@ -50,7 +50,11 @@ func MsgToProto(msg Message) (*tmcons.Message, error) {
 			},
 		}
 	case *ProposalMessage:
-		pbP := msg.Proposal.ToProto()
+		pbP, err := msg.Proposal.ToProto()
+		if err != nil {
+			return nil, err
+		}
+
 		pb = tmcons.Message{
 			Sum: &tmcons.Message_Proposal{
 				Proposal: &tmcons.Proposal{

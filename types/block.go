@@ -49,7 +49,7 @@ const (
 	MaxOverheadForBlock int64 = 11
 )
 
-// DataAvailabilityHeader contains the row and column roots of the erasure
+// DataAvailabilityHeader (DAHeader) contains the row and column roots of the erasure
 // coded version of the data in Block.Data.
 // Therefor the original Block.Data is arranged in a
 // k × k matrix, which is then "extended" to a
@@ -64,6 +64,8 @@ type DataAvailabilityHeader struct {
 	RowsRoots NmtRoots `json:"row_roots"`
 	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
 	ColumnRoots NmtRoots `json:"column_roots"`
+	// cached result of Hash() not to be recomputed
+	hash []byte
 }
 
 type NmtRoots []namespace.IntervalDigest
@@ -76,19 +78,39 @@ func (roots NmtRoots) Bytes() [][]byte {
 	return res
 }
 
-func NmtRootsFromBytes(in [][]byte) NmtRoots {
-	roots := make([]namespace.IntervalDigest, len(in))
+func NmtRootsFromBytes(in [][]byte) (roots NmtRoots, err error) {
+	roots = make([]namespace.IntervalDigest, len(in))
 	for i := 0; i < len(in); i++ {
-		roots[i] = namespace.IntervalDigestFromBytes(NamespaceSize, in[i])
+		roots[i], err = namespace.IntervalDigestFromBytes(NamespaceSize, in[i])
+		if err != nil {
+			return roots, err
+		}
 	}
-	return roots
+	return
 }
 
-// Hash computes the root of the row and column roots
+// String returns hex representation of merkle hash of the DAHeader.
+func (dah *DataAvailabilityHeader) String() string {
+	if dah == nil {
+		return "<nil DAHeader>"
+	}
+	return fmt.Sprintf("%X", dah.Hash())
+}
+
+// Equals checks equality of two DAHeaders.
+func (dah *DataAvailabilityHeader) Equals(to *DataAvailabilityHeader) bool {
+	return bytes.Equal(dah.Hash(), to.Hash())
+}
+
+// Hash computes and caches the merkle root of the row and column roots.
 func (dah *DataAvailabilityHeader) Hash() []byte {
 	if dah == nil {
 		return merkle.HashFromByteSlices(nil)
 	}
+	if len(dah.hash) != 0 {
+		return dah.hash
+	}
+
 	colsCount := len(dah.ColumnRoots)
 	rowsCount := len(dah.RowsRoots)
 	slices := make([][]byte, colsCount+rowsCount)
@@ -100,7 +122,8 @@ func (dah *DataAvailabilityHeader) Hash() []byte {
 	}
 	// The single data root is computed using a simple binary merkle tree.
 	// Effectively being root(rowRoots || columnRoots):
-	return merkle.HashFromByteSlices(slices)
+	dah.hash = merkle.HashFromByteSlices(slices)
+	return dah.hash
 }
 
 func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, error) {
@@ -109,23 +132,28 @@ func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, e
 	}
 
 	dahp := new(tmproto.DataAvailabilityHeader)
-
 	dahp.RowRoots = dah.RowsRoots.Bytes()
 	dahp.ColumnRoots = dah.ColumnRoots.Bytes()
-
 	return dahp, nil
 }
 
-func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (*DataAvailabilityHeader, error) {
+func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (dah *DataAvailabilityHeader, err error) {
 	if dahp == nil {
 		return nil, errors.New("nil DataAvailabilityHeader")
 	}
 
-	dah := new(DataAvailabilityHeader)
-	dah.RowsRoots = NmtRootsFromBytes(dahp.RowRoots)
-	dah.ColumnRoots = NmtRootsFromBytes(dahp.ColumnRoots)
+	dah = new(DataAvailabilityHeader)
+	dah.RowsRoots, err = NmtRootsFromBytes(dahp.RowRoots)
+	if err != nil {
+		return
+	}
 
-	return dah, nil
+	dah.ColumnRoots, err = NmtRootsFromBytes(dahp.ColumnRoots)
+	if err != nil {
+		return
+	}
+
+	return
 }
 
 // Block defines the atomic unit of a Tendermint blockchain.
@@ -246,18 +274,18 @@ func (b *Block) fillDataAvailabilityHeader() {
 func nmtCommitment(namespacedData [][]byte) namespace.IntervalDigest {
 	tree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
 	for _, leaf := range namespacedData {
-		mustPush(tree, leaf[:NamespaceSize], leaf[NamespaceSize:])
+		mustPush(tree, leaf)
 	}
 	return tree.Root()
 }
 
-func mustPush(rowTree *nmt.NamespacedMerkleTree, id namespace.ID, data []byte) {
-	if err := rowTree.Push(id, data); err != nil {
+func mustPush(rowTree *nmt.NamespacedMerkleTree, nidAndData []byte) {
+	if err := rowTree.Push(nidAndData); err != nil {
 		panic(
 			fmt.Sprintf(
 				"invalid data; could not push share to tree, id: %v, data: %v, err: %v",
-				id,
-				data,
+				nidAndData[:NamespaceSize],
+				nidAndData[NamespaceSize:],
 				err,
 			),
 		)
@@ -295,7 +323,7 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 		batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, nodeAdder))
 		tree := nmt.New(sha256.New(), nmt.NodeVisitor(batchAdder.Visit))
 		for _, share := range leafSet {
-			err = tree.Push(share[:NamespaceSize], share[NamespaceSize:])
+			err = tree.Push(share)
 			if err != nil {
 				return err
 			}
@@ -470,22 +498,21 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 	}
 
 	pb := new(tmproto.Block)
-
-	pb.Header = *b.Header.ToProto()
-	pb.LastCommit = b.LastCommit.ToProto()
-	pb.Data = b.Data.ToProto()
-
 	protoEvidence, err := b.Evidence.ToProto()
 	if err != nil {
 		return nil, err
 	}
-	pb.Data.Evidence = *protoEvidence
-	dah, err := b.DataAvailabilityHeader.ToProto()
+
+	pdah, err := b.DataAvailabilityHeader.ToProto()
 	if err != nil {
 		return nil, err
 	}
-	pb.DataAvailabilityHeader = dah
 
+	pb.Header = *b.Header.ToProto()
+	pb.LastCommit = b.LastCommit.ToProto()
+	pb.Data = b.Data.ToProto()
+	pb.Data.Evidence = *protoEvidence
+	pb.DataAvailabilityHeader = pdah
 	return pb, nil
 }
 
