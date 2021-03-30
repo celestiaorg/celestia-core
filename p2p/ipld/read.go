@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sync"
+	"time"
 
 	"github.com/ipfs/go-cid"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
@@ -43,10 +45,6 @@ func ValidateAvailability(
 //	Retrieve Block Data
 ///////////////////////////////////////
 
-type EDSParser interface {
-	Parse(eds *rsmt2d.ExtendedDataSquare) (types.Txs, types.IntermediateStateRoots, types.Messages, error)
-}
-
 // RetrieveBlockData asynchronously fetches block data until the underlying extended
 // data square can be restored and returned.
 func RetrieveBlockData(
@@ -54,7 +52,6 @@ func RetrieveBlockData(
 	dah *types.DataAvailabilityHeader,
 	api coreiface.CoreAPI,
 	codec rsmt2d.CodecType,
-	edsParser EDSParser,
 ) (types.Data, error) {
 	squareSize := uint32(len(dah.ColumnRoots))
 
@@ -113,15 +110,8 @@ func RetrieveBlockData(
 		eds = e
 	}
 
-	// parse the square
-	txs, isr, msgs, err := edsParser.Parse(eds)
-
-	// which portion is Txs and which is messages?
-	blockData := types.Data{
-		Txs:                    txs,
-		IntermediateStateRoots: isr,
-		Messages:               msgs,
-	}
+	// // which portion is Txs and which is messages?
+	// blockData, err := types.ParseBlockData(eds)
 
 	return blockData, nil
 }
