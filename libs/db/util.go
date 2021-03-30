@@ -1,10 +1,5 @@
 package db
 
-import (
-	"bytes"
-	"os"
-)
-
 func cp(bz []byte) (ret []byte) {
 	ret = make([]byte, len(bz))
 	copy(ret, bz)
@@ -15,7 +10,7 @@ func cp(bz []byte) (ret []byte) {
 // except incremented by one.
 // Returns nil on overflow (e.g. if bz bytes are all 0xFF)
 // CONTRACT: len(bz) > 0
-func copyIncrement(bz []byte) (ret []byte) {
+func increment(bz []byte) (ret []byte) {
 	if len(bz) == 0 {
 		panic("cpIncr expects non-zero bz length")
 	}
@@ -32,20 +27,4 @@ func copyIncrement(bz []byte) (ret []byte) {
 		}
 	}
 	return nil
-}
-
-// See DB interface documentation for more information.
-func IsKeyInDomain(key, start, end []byte) bool {
-	if bytes.Compare(key, start) < 0 {
-		return false
-	}
-	if end != nil && bytes.Compare(end, key) <= 0 {
-		return false
-	}
-	return true
-}
-
-func FileExists(filePath string) bool {
-	_, err := os.Stat(filePath)
-	return !os.IsNotExist(err)
 }
