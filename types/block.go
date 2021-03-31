@@ -36,7 +36,7 @@ const (
 	// MaxHeaderBytes is a maximum header size.
 	// NOTE: Because app hash can be of arbitrary size, the header is therefore not
 	// capped in size and thus this number should be seen as a soft max
-	MaxHeaderBytes int64 = 626
+	MaxHeaderBytes int64 = 636
 
 	// MaxOverheadForBlock - maximum overhead to encode a block (up to
 	// MaxBlockSizeBytes in size) not including it's parts except Data.
@@ -645,9 +645,9 @@ type Header struct {
 	LastCommitHash tmbytes.HexBytes `json:"last_commit_hash"` // commit from validators from the last block
 	// DataHash = root((rowRoot_1 || rowRoot_2 || ... ||rowRoot_2k || columnRoot1 || columnRoot2 || ... || columnRoot2k))
 	// Block.DataAvailabilityHeader for stores (row|column)Root_i // TODO ...
-	DataHash   tmbytes.HexBytes `json:"data_hash"`   // transactions
+	DataHash tmbytes.HexBytes `json:"data_hash"` // transactions
 	// amount of data shares within a Block #specs:availableDataOriginalSharesUsed
-	DataShares int64            `json:"data_shares"`
+	DataShares int64 `json:"data_shares"`
 
 	// hashes from the app output from the prev block
 	ValidatorsHash     tmbytes.HexBytes `json:"validators_hash"`      // validators for the current block
@@ -776,6 +776,7 @@ func (h *Header) Hash() tmbytes.HexBytes {
 		bzbi,
 		cdcEncode(h.LastCommitHash),
 		cdcEncode(h.DataHash),
+		cdcEncode(h.DataShares),
 		cdcEncode(h.ValidatorsHash),
 		cdcEncode(h.NextValidatorsHash),
 		cdcEncode(h.ConsensusHash),
