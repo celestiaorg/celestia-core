@@ -68,17 +68,18 @@ message Header {
   // hashes of block data
   bytes last_commit_hash = 6;  // commit from validators from the last block
   bytes data_hash        = 7;  // transactions
+  int64 data_shares      = 8;
 
   // hashes from the app output from the prev block
-  bytes validators_hash      = 8;   // validators for the current block
-  bytes next_validators_hash = 9;   // validators for the next block
-  bytes consensus_hash       = 10;  // consensus params for current block
-  bytes app_hash             = 11;  // state after txs from the previous block
-  bytes last_results_hash    = 12;  // root hash of all results from the txs from the previous block
+  bytes validators_hash      = 9;   // validators for the current block
+  bytes next_validators_hash = 10;   // validators for the next block
+  bytes consensus_hash       = 11;  // consensus params for current block
+  bytes app_hash             = 12;  // state after txs from the previous block
+  bytes last_results_hash    = 13;  // root hash of all results from the txs from the previous block
 
   // consensus info
-  bytes evidence_hash    = 13;  // evidence included in the block
-  bytes proposer_address = 14;  // original proposer of the block
+  bytes evidence_hash    = 14;  // evidence included in the block
+  bytes proposer_address = 15;  // original proposer of the block
 }
 
 // Data contains the set of transactions included in the block

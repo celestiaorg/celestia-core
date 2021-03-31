@@ -228,7 +228,7 @@ func (b *Block) fillHeader() {
 // fillDataAvailabilityHeader fills in any remaining DataAvailabilityHeader fields
 // that are a function of the block data.
 func (b *Block) fillDataAvailabilityHeader() {
-	namespacedShares := b.Data.ComputeShares()
+	namespacedShares, dataSharesLen := b.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
 	if len(shares) == 0 {
 		// no shares -> no row/colum roots -> hash(empty)
@@ -268,6 +268,7 @@ func (b *Block) fillDataAvailabilityHeader() {
 
 	// return the root hash of DA Header
 	b.DataHash = b.DataAvailabilityHeader.Hash()
+	b.DataShares = int64(dataSharesLen)
 }
 
 // nmtcommitment generates the nmt root of some namespaced data
@@ -300,7 +301,7 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 	}
 
 	// recompute the shares
-	namespacedShares := b.Data.ComputeShares()
+	namespacedShares, _ := b.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
 
 	// don't do anything if there is no data to put on IPFS
@@ -644,7 +645,9 @@ type Header struct {
 	LastCommitHash tmbytes.HexBytes `json:"last_commit_hash"` // commit from validators from the last block
 	// DataHash = root((rowRoot_1 || rowRoot_2 || ... ||rowRoot_2k || columnRoot1 || columnRoot2 || ... || columnRoot2k))
 	// Block.DataAvailabilityHeader for stores (row|column)Root_i // TODO ...
-	DataHash tmbytes.HexBytes `json:"data_hash"` // transactions
+	DataHash   tmbytes.HexBytes `json:"data_hash"`   // transactions
+	// amount of data shares within a Block #specs:availableDataOriginalSharesUsed
+	DataShares int64            `json:"data_shares"`
 
 	// hashes from the app output from the prev block
 	ValidatorsHash     tmbytes.HexBytes `json:"validators_hash"`      // validators for the current block
@@ -838,6 +841,7 @@ func (h *Header) ToProto() *tmproto.Header {
 		ConsensusHash:      h.ConsensusHash,
 		AppHash:            h.AppHash,
 		DataHash:           h.DataHash,
+		DataShares:         h.DataShares,
 		EvidenceHash:       h.EvidenceHash,
 		LastResultsHash:    h.LastResultsHash,
 		LastCommitHash:     h.LastCommitHash,
@@ -870,6 +874,7 @@ func HeaderFromProto(ph *tmproto.Header) (Header, error) {
 	h.ConsensusHash = ph.ConsensusHash
 	h.AppHash = ph.AppHash
 	h.DataHash = ph.DataHash
+	h.DataShares = ph.DataShares
 	h.EvidenceHash = ph.EvidenceHash
 	h.LastResultsHash = ph.LastResultsHash
 	h.LastCommitHash = ph.LastCommitHash
@@ -1364,8 +1369,9 @@ func (msgs Messages) splitIntoShares() NamespacedShares {
 	return shares
 }
 
-// ComputeShares splits block data into shares of an original data square.
-func (data *Data) ComputeShares() NamespacedShares {
+// ComputeShares splits block data into shares of an original data square and
+// returns them along with an amount of non-redundant shares.
+func (data *Data) ComputeShares() (NamespacedShares, int) {
 	// TODO(ismail): splitting into shares should depend on the block size and layout
 	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
 
@@ -1388,7 +1394,7 @@ func (data *Data) ComputeShares() NamespacedShares {
 		intermRootsShares...),
 		evidenceShares...),
 		msgShares...),
-		tailShares...)
+		tailShares...), wantLen
 }
 
 func getNextSquareNum(length int) int {
