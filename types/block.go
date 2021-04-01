@@ -832,21 +832,21 @@ func (h *Header) ToProto() *tmproto.Header {
 	}
 
 	return &tmproto.Header{
-		Version:            h.Version,
-		ChainID:            h.ChainID,
-		Height:             h.Height,
-		Time:               h.Time,
-		LastBlockId:        h.LastBlockID.ToProto(),
-		ValidatorsHash:     h.ValidatorsHash,
-		NextValidatorsHash: h.NextValidatorsHash,
-		ConsensusHash:      h.ConsensusHash,
-		AppHash:            h.AppHash,
-		DataHash:           h.DataHash,
-		NumOriginalDataShares:         h.NumOriginalDataShares,
-		EvidenceHash:       h.EvidenceHash,
-		LastResultsHash:    h.LastResultsHash,
-		LastCommitHash:     h.LastCommitHash,
-		ProposerAddress:    h.ProposerAddress,
+		Version:               h.Version,
+		ChainID:               h.ChainID,
+		Height:                h.Height,
+		Time:                  h.Time,
+		LastBlockId:           h.LastBlockID.ToProto(),
+		ValidatorsHash:        h.ValidatorsHash,
+		NextValidatorsHash:    h.NextValidatorsHash,
+		ConsensusHash:         h.ConsensusHash,
+		AppHash:               h.AppHash,
+		DataHash:              h.DataHash,
+		NumOriginalDataShares: h.NumOriginalDataShares,
+		EvidenceHash:          h.EvidenceHash,
+		LastResultsHash:       h.LastResultsHash,
+		LastCommitHash:        h.LastCommitHash,
+		ProposerAddress:       h.ProposerAddress,
 	}
 }
 
