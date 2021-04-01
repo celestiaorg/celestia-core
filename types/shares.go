@@ -443,19 +443,19 @@ func parseMsgShares(shares [][]byte) ([]Message, error) {
 	return msgs, nil
 }
 
-func nextMsg(shares [][]byte, current, nid []byte, cursor, l uint64) ([]byte, []byte, uint64, uint64, Message, error) {
+func nextMsg(shares [][]byte, current, nid []byte, cursor, msgLen uint64) ([]byte, []byte, uint64, uint64, Message, error) {
 	switch {
 	// the message uses all of the current share data and at least some of the
 	// next share
-	case l > uint64(len(current)):
+	case msgLen > uint64(len(current)):
 		// add the next share to the current one and try again
 		cursor++
 		current = append(current, shares[cursor][NamespaceSize:]...)
-		return nextMsg(shares, current, nid, cursor, l)
+		return nextMsg(shares, current, nid, cursor, msgLen)
 
 	// the msg we're looking for is contained in the current share
-	case l <= uint64(len(current)):
-		msg := Message{nid, current[:l]}
+	case msgLen <= uint64(len(current)):
+		msg := Message{nid, current[:msgLen]}
 		cursor++
 
 		// call it a day if the work is done
