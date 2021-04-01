@@ -1395,7 +1395,7 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 		intermRootsShares...),
 		evidenceShares...),
 		msgShares...),
-		tailShares...), wantLen
+		tailShares...), curLen
 }
 
 func getNextSquareNum(length int) int {
