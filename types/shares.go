@@ -89,7 +89,7 @@ func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
 		startIndex := 0
 		rawData, outerIndex, innerIndex, startIndex = getNextChunk(rawDatas, outerIndex, innerIndex, TxShareSize)
 		rawShare := append(append(append(
-			make([]byte, 0, len(nid)+1+len(rawData)),
+			make([]byte, 0, len(nid)+len(rawData)),
 			nid...),
 			byte(startIndex)),
 			rawData...)
@@ -103,7 +103,7 @@ func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
 func split(rawData []byte, nid namespace.ID) []NamespacedShare {
 	shares := make([]NamespacedShare, 0)
 	firstRawShare := append(append(
-		make([]byte, 0, len(nid)+len(rawData[:MsgShareSize])),
+		make([]byte, 0, ShareSize),
 		nid...),
 		rawData[:MsgShareSize]...,
 	)
@@ -112,7 +112,7 @@ func split(rawData []byte, nid namespace.ID) []NamespacedShare {
 	for len(rawData) > 0 {
 		shareSizeOrLen := min(MsgShareSize, len(rawData))
 		rawShare := append(append(
-			make([]byte, 0, len(nid)+1+len(rawData[:shareSizeOrLen])),
+			make([]byte, 0, len(nid)+len(rawData[:shareSizeOrLen])),
 			nid...),
 			rawData[:shareSizeOrLen]...,
 		)
@@ -365,7 +365,7 @@ func processContiguousShares(shares [][]byte) (txs [][]byte, err error) {
 		}
 
 		// create the next share by merging the next share with the extra
-		share = append(share, shares[i+1][NamespaceSize+ShareReservedBytes:]...)
+		share = append(share, nextShare...)
 	}
 
 	return txs, err
