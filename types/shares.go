@@ -291,7 +291,7 @@ func parseIsrs(shares [][]byte) (IntermediateStateRoots, error) {
 	return IntermediateStateRoots{RawRootsList: ISRs}, nil
 }
 
-// parseMsgs collects all evidence from the shares provided
+// parseEvd collects all evidence from the shares provided.
 func parseEvd(shares [][]byte) (EvidenceData, error) {
 	rawEvd, err := processContiguousShares(shares)
 	if err != nil {
