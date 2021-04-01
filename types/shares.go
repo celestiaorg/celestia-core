@@ -223,6 +223,10 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 			case bytes.Equal(TailPaddingNamespaceID, nid):
 				continue
 
+			// ignore unused but reserved namespaces
+			case bytes.Compare(nid, MaxReservedNamespace) < 0:
+				continue
+
 			// every other namespaceID should be a message
 			default:
 				msgShares = append(msgShares, share)

@@ -36,6 +36,7 @@ var (
 	TxNamespaceID                     = namespace.ID{0, 0, 0, 0, 0, 0, 0, 1}
 	IntermediateStateRootsNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 2}
 	EvidenceNamespaceID               = namespace.ID{0, 0, 0, 0, 0, 0, 0, 3}
+	MaxReservedNamespace              = namespace.ID{0, 0, 0, 0, 0, 0, 0, 255}
 
 	TailPaddingNamespaceID  = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE}
 	ParitySharesNamespaceID = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
