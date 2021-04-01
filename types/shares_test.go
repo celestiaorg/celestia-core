@@ -220,6 +220,7 @@ func Test_processContiguousShares(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 
 		// run the tests with identically sized txs
 		t.Run(fmt.Sprintf("idendically sized %s", tc.name), func(t *testing.T) {
@@ -239,7 +240,6 @@ func Test_processContiguousShares(t *testing.T) {
 		})
 
 		// run the same tests using randomly sized txs with caps of tc.msgSize
-		tc := tc
 		t.Run(fmt.Sprintf("randomly sized %s", tc.name), func(t *testing.T) {
 			txs := generateRandomlySizedContiguousShares(tc.txCount, tc.txSize)
 
@@ -310,6 +310,7 @@ func Test_parseMsgShares(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 
 		// run the tests with identically sized messagses
 		t.Run(fmt.Sprintf("idendically sized %s", tc.name), func(t *testing.T) {
@@ -334,7 +335,6 @@ func Test_parseMsgShares(t *testing.T) {
 		})
 
 		// run the same tests using randomly sized messages with caps of tc.msgSize
-		tc := tc
 		t.Run(fmt.Sprintf("randomly sized %s", tc.name), func(t *testing.T) {
 			msgs := generateRandomlySizedMessages(tc.msgCount, tc.msgSize)
 			shares := msgs.splitIntoShares()

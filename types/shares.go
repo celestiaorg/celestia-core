@@ -358,6 +358,9 @@ func processContiguousShares(shares [][]byte) (txs [][]byte, err error) {
 		// if there is no current share, process the next share
 		if len(share) == 0 {
 			share, txLen, err = parseDelimiter(nextShare)
+			if err != nil {
+				break
+			}
 			continue
 		}
 
@@ -365,7 +368,7 @@ func processContiguousShares(shares [][]byte) (txs [][]byte, err error) {
 		share = append(share, shares[i+1][NamespaceSize+ShareReservedBytes:]...)
 	}
 
-	return txs, nil
+	return txs, err
 }
 
 func collectTxFromShare(share []byte, txLen uint64) (txs [][]byte, extra []byte, l uint64, err error) {
@@ -380,11 +383,11 @@ func collectTxFromShare(share []byte, txLen uint64) (txs [][]byte, extra []byte,
 		share = share[txLen:]
 
 		share, txLen, err = parseDelimiter(share)
-		if txLen == 0 {
+		if txLen == 0 || err != nil {
 			break
 		}
 	}
-	return txs, share, txLen, nil
+	return txs, share, txLen, err
 }
 
 // parseMessages iterates through raw shares and separates the contiguous chunks
