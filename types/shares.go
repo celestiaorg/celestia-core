@@ -87,7 +87,7 @@ func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
 	for outerIndex < len(rawDatas) {
 		var rawData []byte
 		startIndex := 0
-		rawData, outerIndex, innerIndex, startIndex = getNextChunk(rawDatas, outerIndex, innerIndex, MsgShareSize)
+		rawData, outerIndex, innerIndex, startIndex = getNextChunk(rawDatas, outerIndex, innerIndex, TxShareSize)
 		rawShare := append(append(append(
 			make([]byte, 0, len(nid)+1+len(rawData)),
 			nid...),
