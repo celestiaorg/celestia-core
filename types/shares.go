@@ -339,7 +339,7 @@ func parseMsgs(shares [][]byte) (Messages, error) {
 // namespaces or length delimiters and are ready to be unmarshalled
 func processContiguousShares(shares [][]byte) (txs [][]byte, err error) {
 	if len(shares) == 0 {
-		return nil, err
+		return nil, nil
 	}
 	share := shares[0][NamespaceSize+ShareReservedBytes:]
 	share, txLen, err := parseDelimiter(share)
