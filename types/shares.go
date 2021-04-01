@@ -446,7 +446,7 @@ func nextMsg(shares [][]byte, current, nid []byte, cursor, l uint64) ([]byte, []
 	case l > uint64(len(current)):
 		// add the next share to the current one and try again
 		cursor++
-		current := append(current, shares[cursor][NamespaceSize:]...)
+		current = append(current, shares[cursor][NamespaceSize:]...)
 		return nextMsg(shares, current, nid, cursor, l)
 
 	// the msg we're looking for is contained in the current share
