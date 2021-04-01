@@ -268,7 +268,7 @@ func (b *Block) fillDataAvailabilityHeader() {
 
 	// return the root hash of DA Header
 	b.DataHash = b.DataAvailabilityHeader.Hash()
-	b.DataShares = int64(dataSharesLen)
+	b.NumOriginalDataShares = int64(dataSharesLen)
 }
 
 // nmtcommitment generates the nmt root of some namespaced data
@@ -647,7 +647,7 @@ type Header struct {
 	// Block.DataAvailabilityHeader for stores (row|column)Root_i // TODO ...
 	DataHash tmbytes.HexBytes `json:"data_hash"` // transactions
 	// amount of data shares within a Block #specs:availableDataOriginalSharesUsed
-	DataShares int64 `json:"data_shares"`
+	NumOriginalDataShares int64 `json:"data_shares"`
 
 	// hashes from the app output from the prev block
 	ValidatorsHash     tmbytes.HexBytes `json:"validators_hash"`      // validators for the current block
@@ -776,7 +776,7 @@ func (h *Header) Hash() tmbytes.HexBytes {
 		bzbi,
 		cdcEncode(h.LastCommitHash),
 		cdcEncode(h.DataHash),
-		cdcEncode(h.DataShares),
+		cdcEncode(h.NumOriginalDataShares),
 		cdcEncode(h.ValidatorsHash),
 		cdcEncode(h.NextValidatorsHash),
 		cdcEncode(h.ConsensusHash),
@@ -842,7 +842,7 @@ func (h *Header) ToProto() *tmproto.Header {
 		ConsensusHash:      h.ConsensusHash,
 		AppHash:            h.AppHash,
 		DataHash:           h.DataHash,
-		DataShares:         h.DataShares,
+		NumOriginalDataShares:         h.NumOriginalDataShares,
 		EvidenceHash:       h.EvidenceHash,
 		LastResultsHash:    h.LastResultsHash,
 		LastCommitHash:     h.LastCommitHash,
@@ -875,7 +875,7 @@ func HeaderFromProto(ph *tmproto.Header) (Header, error) {
 	h.ConsensusHash = ph.ConsensusHash
 	h.AppHash = ph.AppHash
 	h.DataHash = ph.DataHash
-	h.DataShares = ph.DataShares
+	h.NumOriginalDataShares = ph.NumOriginalDataShares
 	h.EvidenceHash = ph.EvidenceHash
 	h.LastResultsHash = ph.LastResultsHash
 	h.LastCommitHash = ph.LastCommitHash
