@@ -46,9 +46,7 @@ func (tx Tx) MarshalDelimited() ([]byte, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	length := uint64(len(tx))
 	n := binary.PutUvarint(lenBuf, length)
-	out := append(lenBuf[:n], tx...)
-
-	return out, nil
+	return append(lenBuf[:n], tx...), nil
 }
 
 // MarshalDelimited marshals the raw data (excluding the namespace) of this
@@ -88,10 +86,12 @@ func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
 	innerIndex := 0
 	for outerIndex < len(rawDatas) {
 		var rawData []byte
-		rawData, outerIndex, innerIndex, _ = getNextChunk(rawDatas, outerIndex, innerIndex, MsgShareSize)
-		rawShare := append(append(
-			make([]byte, 0, MsgShareSize),
+		startIndex := 0
+		rawData, outerIndex, innerIndex, startIndex = getNextChunk(rawDatas, outerIndex, innerIndex, MsgShareSize)
+		rawShare := append(append(append(
+			make([]byte, 0, len(nid)+1+len(rawData)),
 			nid...),
+			byte(startIndex)),
 			rawData...)
 		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
 		share := NamespacedShare{paddedShare, nid}
@@ -211,16 +211,16 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 			share := eds.Cell(x, y)
 			nid := share[:NamespaceSize]
 			switch {
-			case bytes.Compare(TxNamespaceID, nid) == 0:
+			case bytes.Equal(TxNamespaceID, nid):
 				txsShares = append(txsShares, share)
 
-			case bytes.Compare(IntermediateStateRootsNamespaceID, nid) == 0:
+			case bytes.Equal(IntermediateStateRootsNamespaceID, nid):
 				isrShares = append(isrShares, share)
 
-			case bytes.Compare(EvidenceNamespaceID, nid) == 0:
+			case bytes.Equal(EvidenceNamespaceID, nid):
 				evdShares = append(evdShares, share)
 
-			case bytes.Compare(TailPaddingNamespaceID, nid) == 0:
+			case bytes.Equal(TailPaddingNamespaceID, nid):
 				continue
 
 			// every other namespaceID should be a message
@@ -231,9 +231,15 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 	}
 
 	// pass the raw share data to their respective parsers
-	txs := parseTxs(txsShares)
+	txs, err := parseTxs(txsShares)
+	if err != nil {
+		return Data{}, err
+	}
 
-	isrs := parseIsrs(isrShares)
+	isrs, err := parseIsrs(isrShares)
+	if err != nil {
+		return Data{}, err
+	}
 
 	evd, err := parseEvd(evdShares)
 	if err != nil {
@@ -253,9 +259,13 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 	}, nil
 }
 
-func parseTxs(shares [][]byte) Txs {
+// parseTxs collects all of the transactions from the shares provided
+func parseTxs(shares [][]byte) (Txs, error) {
 	// parse the sharse
-	rawTxs := parseShares(shares)
+	rawTxs, err := processContiguousShares(shares)
+	if err != nil {
+		return nil, err
+	}
 
 	// convert to the Tx type
 	txs := make(Txs, len(rawTxs))
@@ -263,23 +273,30 @@ func parseTxs(shares [][]byte) Txs {
 		txs[i] = Tx(rawTxs[i])
 	}
 
-	return txs
+	return txs, nil
 }
 
-func parseIsrs(shares [][]byte) IntermediateStateRoots {
-	rawISRs := parseShares(shares)
+// parseIsrs collects all the intermediate state roots from the shares provided
+func parseIsrs(shares [][]byte) (IntermediateStateRoots, error) {
+	rawISRs, err := processContiguousShares(shares)
+	if err != nil {
+		return IntermediateStateRoots{}, err
+	}
 
 	ISRs := make([]tmbytes.HexBytes, len(rawISRs))
 	for i := 0; i < len(ISRs); i++ {
 		ISRs[i] = rawISRs[i]
 	}
 
-	return IntermediateStateRoots{RawRootsList: ISRs}
+	return IntermediateStateRoots{RawRootsList: ISRs}, nil
 }
 
-// parseMsgs collects all messages from the shares provided
+// parseMsgs collects all evidence from the shares provided
 func parseEvd(shares [][]byte) (EvidenceData, error) {
-	rawEvd := parseShares(shares)
+	rawEvd, err := processContiguousShares(shares)
+	if err != nil {
+		return EvidenceData{}, err
+	}
 
 	evdList := make(EvidenceList, len(rawEvd))
 
@@ -315,90 +332,59 @@ func parseMsgs(shares [][]byte) (Messages, error) {
 	}, nil
 }
 
-// parseShares iterates through raw shares and separates the contiguous chunks
-// of data. we use this for transactions, evidence, and intermediate state roots
-func parseShares(shares [][]byte) [][]byte {
-	currentShare := shares[0][NamespaceSize+ShareReservedBytes:]
-	txLen := uint8(shares[0][NamespaceSize])
-	var parsed [][]byte
-	for cursor := 0; cursor < len(shares); {
-		var p []byte
-
-		currentShare, cursor, txLen, p = next(shares, currentShare, cursor, txLen)
-		if p != nil {
-			parsed = append(parsed, p)
-		}
+func processContiguousShares(shares [][]byte) (txs [][]byte, err error) {
+	share := shares[0][NamespaceSize+ShareReservedBytes:]
+	share, txLen, err := parseDelimiter(share)
+	if err != nil {
+		return nil, err
 	}
 
-	return parsed
+	for i := 0; i < len(shares); i++ {
+		var newTxs [][]byte
+		newTxs, share, txLen, err = collectTxFromShare(share, txLen)
+		if err != nil {
+			return nil, err
+		}
+
+		txs = append(txs, newTxs...)
+
+		// if there is no next share
+		if len(shares) <= i+1 {
+			break
+		}
+
+		nextShare := shares[i+1][NamespaceSize+ShareReservedBytes:]
+
+		// if there is no current share, process the next share
+		if len(share) == 0 {
+			share, txLen, err = parseDelimiter(nextShare)
+			continue
+		}
+
+		// create the next share by merging the next share with the extra
+		share = append(share, shares[i+1][NamespaceSize+ShareReservedBytes:]...)
+	}
+
+	return txs, nil
 }
 
-// next returns the next chunk of a contiguous share. Used for parsing
-// transaction, evidence, and intermediate state root block data.
-func next(shares [][]byte, current []byte, cursor int, l uint8) ([]byte, int, uint8, []byte) {
-	switch {
-	// the rest of the shares should be tail padding
-	case l == 0:
-
-		cursor++
-		if len(shares) != cursor {
-			panic("contiguous share of length zero")
-		}
-		return nil, cursor, 0, nil
-
-	// the tx is contained in the current share
-	case int(l) < len(current):
-
-		tx := append(make([]byte, 0, l), current[:l]...)
-
-		// set the next txLen and update the next share
-		txLen := current[l]
-
-		// make sure that nothing panics if txLen is at the end of the share
-		if len(current) < int(l)+ShareReservedBytes+1 {
-			cursor++
-			return shares[cursor][NamespaceSize:], cursor, txLen, tx
+func collectTxFromShare(share []byte, txLen uint64) (txs [][]byte, extra []byte, l uint64, err error) {
+	for uint64(len(share)) >= txLen {
+		tx := share[:txLen]
+		if len(tx) == 0 {
+			share = nil
+			break
 		}
 
-		current := current[l+ShareReservedBytes:]
-		// try printing current everytime instead
+		txs = append(txs, tx)
+		share = share[txLen:]
 
-		return current, cursor, txLen, tx
-
-	// the tx requires some portion of the following share
-	case int(l) > len(current):
-
-		cursor++
-
-		// merge the current and the next share
-
-		current := append(current, shares[cursor][NamespaceSize:]...)
-
-		// try again using the next share
-		return next(shares, current, cursor, l)
-
-	// the tx is exactly the same size of the current share
-	case int(l) == len(current):
-
-		tx := make([]byte, l)
-		copy(tx, current)
-
-		cursor++
-
-		// if this is the end of shares only return the tx
-		if cursor == len(shares) {
-			return []byte{}, cursor, 0, tx
+		share, txLen, err = parseDelimiter(share)
+		if txLen == 0 {
+			break
 		}
-
-		// set the next txLen and next share
-		next := shares[cursor][NamespaceSize+ShareReservedBytes:]
-		nextTxLen := shares[cursor][NamespaceSize]
-
-		return next, cursor, nextTxLen, tx
 	}
-
-	// this code is unreachable but the compiler doesn't know that
-	return nil, 0, 0, nil
+	return txs, share, txLen, nil
 }
 
 // parseMessages iterates through raw shares and separates the contiguous chunks
@@ -409,15 +395,15 @@ func parseMsgShares(shares [][]byte) ([]Message, error) {
 	currentShare := shares[0][NamespaceSize:]
 
 	// find and remove the msg len delimiter
-	currentShare, msgLen, err := tailorMsg(currentShare)
+	currentShare, msgLen, err := parseDelimiter(currentShare)
 	if err != nil {
 		return nil, err
 	}
 
 	var msgs []Message
-	for cursor := 0; cursor < len(shares); {
+	for cursor := uint64(0); cursor < uint64(len(shares)); {
 		var msg Message
-		currentShare, cursor, msgLen, msg, err = nextMsg(
+		currentShare, nid, cursor, msgLen, msg, err = nextMsg(
 			shares,
 			currentShare,
 			nid,
@@ -435,69 +421,48 @@ func parseMsgShares(shares [][]byte) ([]Message, error) {
 	return msgs, nil
 }
 
-// next returns the next chunk of a contiguous share. Used for parsing
-// transaction, evidence, and intermediate state root block data.
-func nextMsg(shares [][]byte, current, nid []byte, cursor int, l uint64) ([]byte, int, uint64, Message, error) {
+func nextMsg(shares [][]byte, current, nid []byte, cursor, l uint64) ([]byte, []byte, uint64, uint64, Message, error) {
 	switch {
-	// the rest of the share should be tail padding
-	case l == 0:
+	// the message uses all of the current share data and at least some of the
+	// next share
+	case l > uint64(len(current)):
+		// add the next share to the current one and try again
 		cursor++
-		if len(shares) != cursor {
-			panic("message of length zero")
-		}
-		return nil, cursor, 0, MessageEmpty, nil
-
-	// the msg is contained in the current share
-	case int(l) < len(current):
-		msg := Message{NamespaceID: nid, Data: current[:l]}
-
-		// set the next msgLen and update the next share
-		next, msgLen, err := tailorMsg(current[l:])
-		if err != nil {
-			return nil, 0, 0, MessageEmpty, err
-		}
-
-		return next, cursor, msgLen, msg, nil
-
-	// the msg requires some portion of the following share
-	case int(l) > len(current):
-		cursor++
-
-		// merge the current and the next share
 		current := append(current, shares[cursor][NamespaceSize:]...)
-
-		// try again using the next share
 		return nextMsg(shares, current, nid, cursor, l)
 
-	// the msg is exactly the same size of the current share
-	case l == uint64(len(current)):
-		msg := Message{NamespaceID: nid, Data: current}
-
+	// the msg we're looking for is contained in the current share
+	case l <= uint64(len(current)):
+		msg := Message{nid, current[:l]}
 		cursor++
 
-		// if this is the end of shares only return the msg
-		if cursor == len(shares) {
-			return []byte{}, cursor, 0, msg, nil
+		// call it a day if the work is done
+		if cursor >= uint64(len(shares)) {
+			return nil, nil, cursor, 0, msg, nil
 		}
 
-		// set the next msgLen and next share
-		next, nextMsgLen, err := tailorMsg(shares[cursor][NamespaceSize:])
-		if err != nil {
-			return nil, 0, 0, MessageEmpty, err
-		}
-
-		return next, cursor, nextMsgLen, msg, nil
+		nextNid := shares[cursor][:NamespaceSize]
+		next, msgLen, err := parseDelimiter(shares[cursor][NamespaceSize:])
+		return next, nextNid, cursor, msgLen, msg, err
 	}
-
 	// this code is unreachable but the compiler doesn't know that
-	return nil, 0, 0, MessageEmpty, nil
+	return nil, nil, 0, 0, MessageEmpty, nil
 }
 
-// tailorMsg finds and returns the length delimiter of the message provided
+// parseDelimiter finds and returns the length delimiter of the message provided
 // while also removing the delimiter bytes from the input
-func tailorMsg(input []byte) ([]byte, uint64, error) {
+func parseDelimiter(input []byte) ([]byte, uint64, error) {
+	if len(input) == 0 {
+		return input, 0, nil
+	}
+
+	l := binary.MaxVarintLen64
+	if len(input) < binary.MaxVarintLen64 {
+		l = len(input)
+	}
+
 	// read the length of the message
-	r := bytes.NewBuffer(input[:binary.MaxVarintLen64])
+	r := bytes.NewBuffer(input[:l])
 	msgLen, err := binary.ReadUvarint(r)
 	if err != nil {
 		return nil, 0, err
@@ -508,5 +473,5 @@ func tailorMsg(input []byte) ([]byte, uint64, error) {
 	n := binary.PutUvarint(lenBuf, msgLen)
 
 	// return the input without the length delimiter
-	return input[n+1:], msgLen, nil
+	return input[n:], msgLen, nil
 }
