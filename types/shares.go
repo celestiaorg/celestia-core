@@ -236,7 +236,7 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 		return Data{}, err
 	}
 
-	isrs, err := parseIsrs(isrShares)
+	isrs, err := parseISRs(isrShares)
 	if err != nil {
 		return Data{}, err
 	}
@@ -276,8 +276,8 @@ func parseTxs(shares [][]byte) (Txs, error) {
 	return txs, nil
 }
 
-// parseIsrs collects all the intermediate state roots from the shares provided
-func parseIsrs(shares [][]byte) (IntermediateStateRoots, error) {
+// parseISRs collects all the intermediate state roots from the shares provided
+func parseISRs(shares [][]byte) (IntermediateStateRoots, error) {
 	rawISRs, err := processContiguousShares(shares)
 	if err != nil {
 		return IntermediateStateRoots{}, err
