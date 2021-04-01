@@ -216,7 +216,7 @@ func Test_processContiguousShares(t *testing.T) {
 		{"single big tx", 1000, 1},
 		{"many big txs", 1000, 10},
 		{"single exact size tx", exactTxShareSize, 1},
-		{"many exact size txs", exactTxShareSize, 2},
+		{"many exact size txs", exactTxShareSize, 10},
 	}
 
 	for _, tc := range tests {
@@ -239,7 +239,7 @@ func Test_processContiguousShares(t *testing.T) {
 			}
 		})
 
-		// run the same tests using randomly sized txs with caps of tc.msgSize
+		// run the same tests using randomly sized txs with caps of tc.txSize
 		t.Run(fmt.Sprintf("%s randomly sized", tc.name), func(t *testing.T) {
 			txs := generateRandomlySizedContiguousShares(tc.txCount, tc.txSize)
 

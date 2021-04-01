@@ -293,6 +293,8 @@ func parseIsrs(shares [][]byte) (IntermediateStateRoots, error) {
 
 // parseEvd collects all evidence from the shares provided.
 func parseEvd(shares [][]byte) (EvidenceData, error) {
+	// the raw data returned does not have length delimiters or namespaces and
+	// is ready to be unmarshaled
 	rawEvd, err := processContiguousShares(shares)
 	if err != nil {
 		return EvidenceData{}, err
@@ -332,7 +334,13 @@ func parseMsgs(shares [][]byte) (Messages, error) {
 	}, nil
 }
 
+// processContiguousShares takes raw shares and extracts out transactions,
+// intermediate state roots, or evidence. The returned [][]byte do have
+// namespaces or length delimiters and are ready to be unmarshalled
 func processContiguousShares(shares [][]byte) (txs [][]byte, err error) {
+	if len(shares) == 0 {
+		return nil, err
+	}
 	share := shares[0][NamespaceSize+ShareReservedBytes:]
 	share, txLen, err := parseDelimiter(share)
 	if err != nil {
@@ -341,21 +349,22 @@ func processContiguousShares(shares [][]byte) (txs [][]byte, err error) {
 
 	for i := 0; i < len(shares); i++ {
 		var newTxs [][]byte
-		newTxs, share, txLen, err = collectTxFromShare(share, txLen)
+		newTxs, share, txLen, err = collectTxsFromShare(share, txLen)
 		if err != nil {
 			return nil, err
 		}
 
 		txs = append(txs, newTxs...)
 
-		// if there is no next share
-		if len(shares) <= i+1 {
+		// if there is no next share, the work is done
+		// if not, then we know there are more shares to process
+		if len(shares) == i+1 {
 			break
 		}
 
 		nextShare := shares[i+1][NamespaceSize+ShareReservedBytes:]
 
-		// if there is no current share, process the next share
+		// if there is no current share remaining, process the next share
 		if len(share) == 0 {
 			share, txLen, err = parseDelimiter(nextShare)
 			if err != nil {
@@ -364,14 +373,15 @@ func processContiguousShares(shares [][]byte) (txs [][]byte, err error) {
 			continue
 		}
 
-		// create the next share by merging the next share with the extra
+		// create the next share by merging the next share with the remaining of
+		// the current share
 		share = append(share, nextShare...)
 	}
 
 	return txs, err
 }
 
-func collectTxFromShare(share []byte, txLen uint64) (txs [][]byte, extra []byte, l uint64, err error) {
+func collectTxsFromShare(share []byte, txLen uint64) (txs [][]byte, extra []byte, l uint64, err error) {
 	for uint64(len(share)) >= txLen {
 		tx := share[:txLen]
 		if len(tx) == 0 {
