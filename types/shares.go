@@ -354,6 +354,7 @@ func processContiguousShares(shares [][]byte) (txs [][]byte, err error) {
 			return nil, err
 		}
 
+		// add the collected txs to the output
 		txs = append(txs, newTxs...)
 
 		// if there is no next share, the work is done
@@ -403,6 +404,10 @@ func collectTxsFromShare(share []byte, txLen uint64) (txs [][]byte, extra []byte
 // parseMessages iterates through raw shares and separates the contiguous chunks
 // of data. we use this for transactions, evidence, and intermediate state roots
 func parseMsgShares(shares [][]byte) ([]Message, error) {
+	if len(shares) == 0 {
+		return nil, nil
+	}
+
 	// set the first nid and current share
 	nid := shares[0][:NamespaceSize]
 	currentShare := shares[0][NamespaceSize:]
