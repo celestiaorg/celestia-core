@@ -224,7 +224,7 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 				continue
 
 			// ignore unused but reserved namespaces
-			case bytes.Compare(nid, MaxReservedNamespace) < 0:
+			case bytes.Compare(nid, MaxReservedNamespace) < 1:
 				continue
 
 			// every other namespaceID should be a message
@@ -443,7 +443,13 @@ func parseMsgShares(shares [][]byte) ([]Message, error) {
 	return msgs, nil
 }
 
-func nextMsg(shares [][]byte, current, nid []byte, cursor, msgLen uint64) ([]byte, []byte, uint64, uint64, Message, error) {
+func nextMsg(
+	shares [][]byte,
+	current,
+	nid []byte,
+	cursor,
+	msgLen uint64,
+) ([]byte, []byte, uint64, uint64, Message, error) {
 	switch {
 	// the message uses all of the current share data and at least some of the
 	// next share
