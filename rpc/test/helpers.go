@@ -3,6 +3,8 @@ package rpctest
 import (
 	"context"
 	"fmt"
+	opticonv "github.com/lazyledger/optimint/conv"
+	optinode "github.com/lazyledger/optimint/node"
 	"os"
 	"path/filepath"
 	"strings"
@@ -191,4 +193,30 @@ func SuppressStdout(o *Options) {
 // time, instead of treating it as a global singleton.
 func RecreateConfig(o *Options) {
 	o.recreateConfig = true
+}
+
+func StartOptimint(app abci.Application) *optinode.Node {
+	logger := log.NewTMLogger(log.NewSyncWriter(os.Stdout))
+	logger = log.NewFilter(logger, log.AllowError())
+	papp := proxy.NewLocalClientCreator(app)
+	config := GetConfig()
+	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
+	if err != nil {
+		panic(err)
+	}
+	oNodeKey, err := opticonv.GetNodeKey(&nodeKey)
+	if err != nil {
+		panic(err)
+	}
+	genDocProvider :=nm.DefaultGenesisDocProviderFunc(config)
+
+	genesis, err := genDocProvider()
+	if err != nil {
+		panic(err)
+	}
+	optiNode, err := optinode.NewNode(context.Background(), opticonv.GetNodeConfig(config), oNodeKey, papp, genesis, logger)
+	if err != nil {
+		panic(err)
+	}
+	return optiNode
 }

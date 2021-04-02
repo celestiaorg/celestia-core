@@ -22,6 +22,7 @@ import (
 	rpclocal "github.com/lazyledger/lazyledger-core/rpc/client/local"
 	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
 	rpcclient "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/client"
+	opticlient "github.com/lazyledger/optimint/rpcclient"
 	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
 	"github.com/lazyledger/lazyledger-core/types"
 )
@@ -59,6 +60,7 @@ func GetClients() []client.Client {
 	return []client.Client{
 		getHTTPClient(),
 		getLocalClient(),
+		opticlient.NewLocal(optiNode),
 	}
 }
 
