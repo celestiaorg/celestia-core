@@ -3,6 +3,7 @@ package types
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 
 	"github.com/gogo/protobuf/proto"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
@@ -309,13 +310,13 @@ func parseEvd(shares [][]byte) (EvidenceData, error) {
 	// parse into protobuf bytes
 	for i := 0; i < len(rawEvd); i++ {
 		// unmarshal the evidence
-		var protoEvd *tmproto.Evidence
-		err := proto.Unmarshal(rawEvd[i], protoEvd)
+		var protoEvd tmproto.Evidence
+		err := proto.Unmarshal(rawEvd[i], &protoEvd)
 		if err != nil {
 			return EvidenceData{}, err
 		}
 
-		evd, err := EvidenceFromProto(protoEvd)
+		evd, err := EvidenceFromProto(&protoEvd)
 		if err != nil {
 			return EvidenceData{}, err
 		}
@@ -348,12 +349,14 @@ func processContiguousShares(shares [][]byte) (txs [][]byte, err error) {
 	share := shares[0][NamespaceSize+ShareReservedBytes:]
 	share, txLen, err := parseDelimiter(share)
 	if err != nil {
+		fmt.Println("error here!!!")
 		return nil, err
 	}
 
 	for i := 0; i < len(shares); i++ {
 		var newTxs [][]byte
 		newTxs, share, txLen, err = collectTxsFromShare(share, txLen)
+		// fmt.Println("new txs", newTxs, "remaining", len(share), "txLen:", txLen)
 		if err != nil {
 			return nil, err
 		}
@@ -373,6 +376,7 @@ func processContiguousShares(shares [][]byte) (txs [][]byte, err error) {
 		if len(share) == 0 {
 			share, txLen, err = parseDelimiter(nextShare)
 			if err != nil {
+				fmt.Println("ERROR HERE ------------------")
 				break
 			}
 			continue
@@ -389,16 +393,23 @@ func processContiguousShares(shares [][]byte) (txs [][]byte, err error) {
 func collectTxsFromShare(share []byte, txLen uint64) (txs [][]byte, extra []byte, l uint64, err error) {
 	for uint64(len(share)) >= txLen {
 		tx := share[:txLen]
+
 		if len(tx) == 0 {
+			fmt.Println("breaking where I think it shouldn't")
 			share = nil
 			break
 		}
 
 		txs = append(txs, tx)
 		share = share[txLen:]
-
+		preShare := share
 		share, txLen, err = parseDelimiter(share)
+		if err != nil {
+			fmt.Println("ERROR HERE 2 ------------------")
+			fmt.Println(preShare)
+		}
 		if txLen == 0 || err != nil {
+			share = nil
 			break
 		}
 	}

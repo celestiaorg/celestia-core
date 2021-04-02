@@ -3,12 +3,16 @@ package types
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"math/rand"
 	"reflect"
 	"testing"
+	"time"
 
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	"github.com/lazyledger/nmt/namespace"
+	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -28,7 +32,11 @@ func TestMakeShares(t *testing.T) {
 		VoteA: vote1,
 		VoteB: vote2,
 	}
-	testEvidenceBytes, err := protoio.MarshalDelimited(testEvidence.ToProto())
+	protoTestEvidence, err := EvidenceToProto(testEvidence)
+	if err != nil {
+		t.Error(err)
+	}
+	testEvidenceBytes, err := protoio.MarshalDelimited(protoTestEvidence)
 	largeTx := Tx(bytes.Repeat([]byte("large Tx"), 50))
 	largeTxLenDelimited, _ := largeTx.MarshalDelimited()
 	smolTx := Tx("small Tx")
@@ -196,6 +204,70 @@ func Test_appendToSharesOverwrite(t *testing.T) {
 	assert.Equal(t, extraCopy, []byte(newShare.Share[:MsgShareSize]))
 }
 
+func TestDataFromSquare(t *testing.T) {
+	type test struct {
+		name     string
+		txCount  int
+		isrCount int
+		evdCount int
+		msgCount int
+		maxSize  int // max size of each tx or msg
+	}
+
+	tests := []test{
+		{"one of each random small size", 1, 1, 1, 1, 40},
+		{"one of each random large size", 1, 1, 1, 1, 400},
+		{"many of each random large size", 10, 10, 10, 10, 40},
+		{"many of each random large size", 10, 10, 10, 10, 400},
+		{"only transactions", 10, 0, 0, 0, 400},
+		{"only intermediate state roots", 0, 10, 0, 0, 400},
+		{"only evidence", 0, 0, 10, 0, 400},
+		{"only messages", 0, 0, 0, 10, 400},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			// generate random data
+			data := generateRandomBlockData(
+				t,
+				tc.txCount,
+				tc.isrCount,
+				tc.evdCount,
+				tc.msgCount,
+				tc.maxSize,
+			)
+
+			shares := data.ComputeShares().RawShares()
+
+			eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
+			if err != nil {
+				t.Error(err)
+			}
+
+			res, err := DataFromSquare(eds)
+			assert.NoError(t, err)
+
+			// we have to compare the evidence by string because the the
+			// timestamps differ not by actual time represented, but by
+			// internals see https://github.com/stretchr/testify/issues/666
+			for i := 0; i < len(data.Evidence.Evidence); i++ {
+				inputEvidence := data.Evidence.Evidence[i].(*DuplicateVoteEvidence)
+				resultEvidence := res.Evidence.Evidence[i].(*DuplicateVoteEvidence)
+				assert.Equal(t, inputEvidence.String(), resultEvidence.String())
+			}
+
+			// compare the original to the result w/o the evidence
+			data.Evidence = EvidenceData{}
+			res.Evidence = EvidenceData{}
+
+			assert.Equal(t, data, res)
+		})
+	}
+
+}
+
 func Test_processContiguousShares(t *testing.T) {
 	// exactTxShareSize is the length of tx that will fit exactly into a single
 	// share, accounting for namespace id and the length delimiter prepended to
@@ -212,7 +284,7 @@ func Test_processContiguousShares(t *testing.T) {
 	// using it as a cap for randomly sized txs
 	tests := []test{
 		{"single small tx", 10, 1},
-		{"many small txs", 80, 10},
+		{"many small txs", 10, 10},
 		{"single big tx", 1000, 1},
 		{"many big txs", 1000, 10},
 		{"single exact size tx", exactTxShareSize, 1},
@@ -256,34 +328,6 @@ func Test_processContiguousShares(t *testing.T) {
 			}
 		})
 	}
-}
-
-func generateRandomlySizedContiguousShares(count, max int) Txs {
-	txs := make(Txs, count)
-	for i := 0; i < count; i++ {
-		size := rand.Intn(max)
-		// TODO: find out why
-		// txs smaller than 5 bytes that get mixed in with other randomly
-		// sized txs *sometimes* cause processContiguousShares to end early
-		if size <= 5 {
-			size = max
-		}
-		txs[i] = generateRandomContiguousShares(1, size)[0]
-	}
-	return txs
-}
-
-func generateRandomContiguousShares(count, size int) Txs {
-	txs := make(Txs, count)
-	for i := 0; i < count; i++ {
-		tx := make([]byte, size)
-		_, err := rand.Read(tx)
-		if err != nil {
-			panic(err)
-		}
-		txs[i] = Tx(tx)
-	}
-	return txs
 }
 
 func Test_parseMsgShares(t *testing.T) {
@@ -353,11 +397,88 @@ func Test_parseMsgShares(t *testing.T) {
 	}
 }
 
+func Test_parseDelimiter(t *testing.T) {
+	for i := uint64(0); i < 1000; i++ {
+		tx := generateRandomContiguousShares(1, int(i))[0]
+		input, err := tx.MarshalDelimited()
+		if err != nil {
+			panic(err)
+		}
+		res, txLen, err := parseDelimiter(input)
+		if err != nil {
+			panic(err)
+		}
+		assert.Equal(t, i, txLen)
+		assert.Equal(t, []byte(tx), res)
+	}
+}
+
+// ////////////////////////////
+// Test data generation
+// ////////////////////////////
+
+func generateRandomBlockData(t *testing.T, txCount, isrCount, evdCount, msgCount, maxSize int) Data {
+	var out Data
+	out.Txs = generateRandomlySizedContiguousShares(txCount, maxSize)
+	out.IntermediateStateRoots = generateRandomISR(isrCount)
+	out.Evidence = generateIdenticalEvidence(t, evdCount)
+	out.Messages = generateRandomlySizedMessages(msgCount, maxSize)
+	return out
+}
+
+func generateRandomlySizedContiguousShares(count, max int) Txs {
+	txs := make(Txs, count)
+	for i := 0; i < count; i++ {
+		size := rand.Intn(max)
+		if size == 0 {
+			size = 1
+		}
+		txs[i] = generateRandomContiguousShares(1, size)[0]
+	}
+	return txs
+}
+
+func generateRandomContiguousShares(count, size int) Txs {
+	txs := make(Txs, count)
+	for i := 0; i < count; i++ {
+		tx := make([]byte, size)
+		_, err := rand.Read(tx)
+		if err != nil {
+			panic(err)
+		}
+		txs[i] = Tx(tx)
+	}
+	return txs
+}
+
+func generateRandomISR(count int) IntermediateStateRoots {
+	roots := make([]tmbytes.HexBytes, count)
+	for i := 0; i < count; i++ {
+		roots[i] = tmbytes.HexBytes(generateRandomContiguousShares(1, 32)[0])
+	}
+	return IntermediateStateRoots{RawRootsList: roots}
+}
+
+func generateIdenticalEvidence(t *testing.T, count int) EvidenceData {
+	evidence := make([]Evidence, count)
+	for i := 0; i < count; i++ {
+		ev := NewMockDuplicateVoteEvidence(math.MaxInt64, time.Now(), "chainID")
+		evidence[i] = ev
+	}
+	return EvidenceData{Evidence: EvidenceList(evidence)}
+}
+
 func generateRandomlySizedMessages(count, maxMsgSize int) Messages {
 	msgs := make([]Message, count)
 	for i := 0; i < count; i++ {
 		msgs[i] = generateRandomMessage(rand.Intn(maxMsgSize))
 	}
+
+	// this is just to let us use assert.Equal
+	if count == 0 {
+		msgs = nil
+	}
+
 	return Messages{MessagesList: msgs}
 }
 
