@@ -116,6 +116,7 @@ func TestBackendGetSetDelete(t *testing.T) {
 }
 
 func TestDBIterator(t *testing.T) {
+	t.Skip()
 	name := fmt.Sprintf("test_%x", dbtest.RandStr(12))
 	dir := os.TempDir()
 	db, err := NewDB("badger", dir)
