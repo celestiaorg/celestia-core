@@ -71,7 +71,7 @@ func TestMakeShares(t *testing.T) {
 				ID: reservedEvidenceNamespaceID,
 			}, NamespacedShare{
 				Share: append(
-					append(reservedEvidenceNamespaceID, byte(0)),
+					append(reservedEvidenceNamespaceID, byte(131)),
 					zeroPadIfNecessary(testEvidenceBytes[TxShareSize:], TxShareSize)...,
 				),
 				ID: reservedEvidenceNamespaceID,
@@ -105,7 +105,7 @@ func TestMakeShares(t *testing.T) {
 				},
 				NamespacedShare{
 					Share: append(
-						append(reservedTxNamespaceID, byte(0)),
+						append(reservedTxNamespaceID, byte(155)),
 						zeroPadIfNecessary(largeTxLenDelimited[TxShareSize:], TxShareSize)...,
 					),
 					ID: reservedTxNamespaceID,
@@ -126,7 +126,7 @@ func TestMakeShares(t *testing.T) {
 				},
 				NamespacedShare{
 					Share: append(
-						append(reservedTxNamespaceID, byte(len(largeTxLenDelimited)-TxShareSize+NamespaceSize+ShareReservedBytes)),
+						append(reservedTxNamespaceID, byte(len(largeTxLenDelimited)-TxShareSize)),
 						zeroPadIfNecessary(
 							append(largeTxLenDelimited[TxShareSize:], smolTxLenDelimited...),
 							TxShareSize,
@@ -247,7 +247,9 @@ func TestDataFromSquare(t *testing.T) {
 			}
 
 			res, err := DataFromSquare(eds)
-			assert.NoError(t, err)
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			// we have to compare the evidence by string because the the
 			// timestamps differ not by actual time represented, but by
@@ -265,7 +267,6 @@ func TestDataFromSquare(t *testing.T) {
 			assert.Equal(t, data, res)
 		})
 	}
-
 }
 
 func Test_processContiguousShares(t *testing.T) {
@@ -290,7 +291,6 @@ func Test_processContiguousShares(t *testing.T) {
 		{"single exact size tx", exactTxShareSize, 1},
 		{"many exact size txs", exactTxShareSize, 10},
 	}
-
 	for _, tc := range tests {
 		tc := tc
 
@@ -322,7 +322,7 @@ func Test_processContiguousShares(t *testing.T) {
 				t.Error(err)
 			}
 
-			// check that the data parsed is identical
+			// check that the data parsed is identical to the original
 			for i := 0; i < len(txs); i++ {
 				assert.Equal(t, []byte(txs[i]), parsedTxs[i])
 			}
@@ -398,7 +398,7 @@ func Test_parseMsgShares(t *testing.T) {
 }
 
 func Test_parseDelimiter(t *testing.T) {
-	for i := uint64(0); i < 1000; i++ {
+	for i := uint64(0); i < 100; i++ {
 		tx := generateRandomContiguousShares(1, int(i))[0]
 		input, err := tx.MarshalDelimited()
 		if err != nil {
