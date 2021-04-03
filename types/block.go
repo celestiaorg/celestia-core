@@ -1624,6 +1624,9 @@ func (data *EvidenceData) splitIntoShares() NamespacedShares {
 			panic("failure to convert evidence to equivalent proto type")
 		}
 		rawData, err := protoio.MarshalDelimited(pev)
+		if err != nil {
+			panic(err)
+		}
 		rawDatas = append(rawDatas, rawData)
 	}
 	shares := splitContiguous(EvidenceNamespaceID, rawDatas)
