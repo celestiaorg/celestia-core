@@ -240,7 +240,7 @@ func TestDataFromSquare(t *testing.T) {
 				tc.maxSize,
 			)
 
-			shares := data.ComputeShares()
+			shares, _ := data.ComputeShares()
 			rawShares := shares.RawShares()
 
 			eds, err := rsmt2d.ComputeExtendedDataSquare(rawShares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
