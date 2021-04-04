@@ -107,69 +107,63 @@ func splitMessage(rawData []byte, nid namespace.ID) []NamespacedShare {
 	return shares
 }
 
-// splitContiguous fits the provided raw length delimited transactions,
-// intermediate state roots, or evidence into the minimum number of namespaced
-// shares.
-func splitContiguous(nid namespace.ID, rawTxs [][]byte) []NamespacedShare {
+// splitContiguous splits multiple raw data contiguously as shares.
+// Used for transactions, intermediate state roots, and evidence.
+func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
 	shares := make([]NamespacedShare, 0)
-	if len(rawTxs) == 0 {
-		return nil
-	}
-	// set start index == 0 by preppending an empty slice
-	rawTxs = append(append(
-		make([][]byte, 0, len(rawTxs)+1),
-		[]byte{}),
-		rawTxs...)
-
-	for len(rawTxs) > 0 {
-		var share NamespacedShare
-		share, rawTxs = mintShare(nid, rawTxs)
+	// Index into the outer slice of rawDatas
+	outerIndex := 0
+	// Index into the inner slice of rawDatas
+	innerIndex := 0
+	for outerIndex < len(rawDatas) {
+		var rawData []byte
+		startIndex := 0
+		rawData, outerIndex, innerIndex, startIndex = getNextChunk(rawDatas, outerIndex, innerIndex, TxShareSize)
+		rawShare := append(append(append(
+			make([]byte, 0, len(nid)+1+len(rawData)),
+			nid...),
+			byte(startIndex)),
+			rawData...)
+		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
+		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
 	}
-
 	return shares
 }
 
-// mintShare creates a single share using as many transactions as possible.
-// Transactions are broken apart to maximize share space usage
-func mintShare(nid namespace.ID, rawTxs [][]byte) (NamespacedShare, [][]byte) {
-	reservedStartIndex := len(rawTxs[0])
-	rawData := make([]byte, 0, TxShareSize)
-	outTxs := rawTxs
+// getNextChunk gets the next chunk for contiguous shares
+// Precondition: none of the slices in rawDatas is zero-length
+// This precondition should always hold at this point since zero-length txs are simply invalid.
+func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) ([]byte, int, int, int) {
+	rawData := make([]byte, 0, width)
+	startIndex := 0
+	firstBytesToFetch := 0
 
-	// add as many txs as possible to the share
-	for i := 0; i < len(rawTxs); i++ {
-		tx := rawTxs[i]
-
-		// add the tx if we still have room in the share
-		if len(rawData)+len(tx) <= TxShareSize {
-			rawData = append(rawData, tx...)
-			outTxs = outTxs[1:]
-			continue
+	curIndex := 0
+	for curIndex < width && outerIndex < len(rawDatas) {
+		bytesToFetch := min(len(rawDatas[outerIndex])-innerIndex, width-curIndex)
+		if bytesToFetch == 0 {
+			panic("zero-length contiguous share data is invalid")
 		}
-
-		// If we don't have room, fill remaining data in the share with as much
-		// of the tx as possible
-		remaining := TxShareSize - len(rawData)
-
-		rawData = append(rawData, tx[:remaining]...)
-
-		// remove the portion of the tx that was added in this share
-		outTxs[0] = tx[remaining:]
-
-		break
+		if curIndex == 0 {
+			firstBytesToFetch = bytesToFetch
+		}
+		// If we've already placed some data in this chunk, that means
+		// a new data segment begins
+		if curIndex != 0 {
+			// Offset by the fixed reserved bytes at the beginning of the share
+			startIndex = firstBytesToFetch + NamespaceSize + ShareReservedBytes
+		}
+		rawData = append(rawData, rawDatas[outerIndex][innerIndex:innerIndex+bytesToFetch]...)
+		innerIndex += bytesToFetch
+		if innerIndex >= len(rawDatas[outerIndex]) {
+			innerIndex = 0
+			outerIndex++
+		}
+		curIndex += bytesToFetch
 	}
 
-	rawData = zeroPadIfNecessary(rawData, TxShareSize)
-
-	// assemble the new share
-	share := append(append(append(
-		make([]byte, 0, ShareSize),
-		nid...),
-		byte(reservedStartIndex)),
-		rawData...)
-
-	return NamespacedShare{share, nid}, outTxs
+	return rawData, outerIndex, innerIndex, startIndex
 }
 
 func GenerateTailPaddingShares(n int, shareWidth int) NamespacedShares {
