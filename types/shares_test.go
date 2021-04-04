@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -239,9 +240,10 @@ func TestDataFromSquare(t *testing.T) {
 				tc.maxSize,
 			)
 
-			shares := data.ComputeShares().RawShares()
+			shares := data.ComputeShares()
+			rawShares := shares.RawShares()
 
-			eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
+			eds, err := rsmt2d.ComputeExtendedDataSquare(rawShares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
 			if err != nil {
 				t.Error(err)
 			}
@@ -269,6 +271,21 @@ func TestDataFromSquare(t *testing.T) {
 	}
 }
 
+func TestFuzz_DataFromSquare(t *testing.T) {
+	t.Skip()
+	// run random shares through processContiguousShares for a minute
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			TestDataFromSquare(t)
+		}
+	}
+}
+
 func Test_processContiguousShares(t *testing.T) {
 	// exactTxShareSize is the length of tx that will fit exactly into a single
 	// share, accounting for namespace id and the length delimiter prepended to
@@ -291,6 +308,7 @@ func Test_processContiguousShares(t *testing.T) {
 		{"single exact size tx", exactTxShareSize, 1},
 		{"many exact size txs", exactTxShareSize, 10},
 	}
+
 	for _, tc := range tests {
 		tc := tc
 
@@ -327,6 +345,21 @@ func Test_processContiguousShares(t *testing.T) {
 				assert.Equal(t, []byte(txs[i]), parsedTxs[i])
 			}
 		})
+	}
+}
+
+func TestFuzz_processContiguousShares(t *testing.T) {
+	t.Skip()
+	// run random shares through processContiguousShares for a minute
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			Test_processContiguousShares(t)
+		}
 	}
 }
 

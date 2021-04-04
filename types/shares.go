@@ -3,6 +3,7 @@ package types
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 
 	"github.com/gogo/protobuf/proto"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
@@ -150,6 +151,7 @@ func mintShare(nid namespace.ID, rawTxs [][]byte) (NamespacedShare, [][]byte) {
 		// If we don't have room, fill remaining data in the share with as much
 		// of the tx as possible
 		remaining := TxShareSize - len(rawData)
+
 		rawData = append(rawData, tx[:remaining]...)
 
 		// remove the portion of the tx that was added in this share
@@ -359,60 +361,65 @@ func processContiguousShares(shares [][]byte) (txs [][]byte, err error) {
 	if len(shares) == 0 {
 		return nil, nil
 	}
-	share := shares[0][NamespaceSize+ShareReservedBytes:]
-	share, txLen, err := parseDelimiter(share)
-	if err != nil {
-		return nil, err
-	}
 
-	for i := 0; i < len(shares); i++ {
-		var newTxs [][]byte
-		newTxs, share, txLen, err = collectTxsFromShare(share, txLen)
-		if err != nil {
-			return nil, err
-		}
-
-		// add the collected txs to the output
-		txs = append(txs, newTxs...)
-
-		// if there is no next share, the work is done
-		// if not, then we know there are more shares to process
-		if len(shares) == i+1 {
-			break
-		}
-
-		nextShare := shares[i+1][NamespaceSize+ShareReservedBytes:]
-
-		// if there is no current share remaining, process the next share
-		if len(share) == 0 {
-			share, txLen, err = parseDelimiter(nextShare)
-			if err != nil {
-				break
-			}
-			continue
-		}
-
-		// create the next share by merging the next share with the remaining of
-		// the current share
-		share = append(share, nextShare...)
-	}
-
-	return txs, err
+	ss := newShareStack(shares)
+	return ss.resolve()
 }
 
-func collectTxsFromShare(share []byte, txLen uint64) (txs [][]byte, extra []byte, l uint64, err error) {
-	for uint64(len(share)) >= txLen {
-		tx := share[:txLen]
-		txs = append(txs, tx)
+// shareStack hold variables for peel
+type shareStack struct {
+	shares [][]byte
+	txLen  uint64
+	txs    [][]byte
+	cursor int
+}
 
-		share = share[txLen:]
-		share, txLen, err = parseDelimiter(share)
-		if txLen == 0 || err != nil {
-			share = nil
-			break
-		}
+func newShareStack(shares [][]byte) *shareStack {
+	return &shareStack{shares: shares}
+}
+
+func (ss *shareStack) resolve() ([][]byte, error) {
+	if len(ss.shares) == 0 {
+		return nil, nil
 	}
-	return txs, share, txLen, err
+	err := ss.peel(ss.shares[0][NamespaceSize+ShareReservedBytes:], true)
+	return ss.txs, err
+}
+
+// peel recursively parses each chunk of data (either a transaction,
+// intermediate state root, or evidence) and adds it to the underlying slice of data.
+func (ss *shareStack) peel(share []byte, delimited bool) (err error) {
+	if delimited {
+		var txLen uint64
+		share, txLen, err = parseDelimiter(share)
+		if err != nil {
+			return err
+		}
+		if txLen == 0 {
+			return nil
+		}
+		ss.txLen = txLen
+	}
+	safeLen := len(share) - binary.MaxVarintLen64
+	if safeLen < 0 {
+		safeLen = 0
+	}
+	if int(ss.txLen) <= safeLen {
+		ss.txs = append(ss.txs, share[:ss.txLen])
+		share = share[ss.txLen:]
+		return ss.peel(share, true)
+	}
+	if len(ss.shares) > ss.cursor+1 {
+		ss.cursor++
+		share := append(share, ss.shares[ss.cursor][NamespaceSize+ShareReservedBytes:]...)
+		return ss.peel(share, false)
+	}
+	if ss.txLen <= uint64(len(share)) {
+		ss.txs = append(ss.txs, share[:ss.txLen])
+		share = share[ss.txLen:]
+		return ss.peel(share, true)
+	}
+	return errors.New("failure to parse block data: transaction length exceeded data length")
 }
 
 // parseMessages iterates through raw shares and separates the contiguous chunks
