@@ -116,10 +116,9 @@ func TestBackendGetSetDelete(t *testing.T) {
 }
 
 func TestDBIterator(t *testing.T) {
-	t.Skip()
 	name := fmt.Sprintf("test_%x", dbtest.RandStr(12))
 	dir := os.TempDir()
-	db, err := NewDB("badger", dir)
+	db, err := NewDB(name, dir)
 	require.NoError(t, err)
 	defer dbtest.CleanupDBDir(dir, name)
 
@@ -286,7 +285,7 @@ func verifyIterator(t *testing.T, itr tmdb.Iterator, expected []int64, msg strin
 func TestDBBatch(t *testing.T) {
 	name := fmt.Sprintf("test_%x", dbtest.RandStr(12))
 	dir := os.TempDir()
-	db, err := NewDB("badger", dir)
+	db, err := NewDB(name, dir)
 	require.NoError(t, err)
 	defer dbtest.CleanupDBDir(dir, name)
 
