@@ -33,7 +33,7 @@ const (
 )
 
 var (
-	// See spec for further details on the types of availble data
+	// See spec for further details on the types of available data
 	// https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#reserved-namespace-ids
 	// https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#availabledata
 
