@@ -204,13 +204,9 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 	// sort block data by namespace
 	// define a slice for the raw share data of each type
 	var (
-		// transactions
 		txsShares [][]byte
-		// intermediate state roots
 		isrShares [][]byte
-		// evidence
 		evdShares [][]byte
-		// messages
 		msgShares [][]byte
 	)
 
