@@ -416,8 +416,8 @@ func (ss *shareStack) peel(share []byte, delimited bool) (err error) {
 	return errors.New("failure to parse block data: transaction length exceeded data length")
 }
 
-// parseMessages iterates through raw shares and separates the contiguous chunks
-// of data. we use this for transactions, evidence, and intermediate state roots
+// parseMsgShares iterates through raw shares and separates the contiguous chunks
+// of data. It is only used for Messages, i.e. shares with a non-reserved namespace.
 func parseMsgShares(shares [][]byte) ([]Message, error) {
 	if len(shares) == 0 {
 		return nil, nil
