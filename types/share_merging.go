@@ -147,7 +147,7 @@ func parseEvd(shares [][]byte) (EvidenceData, error) {
 
 // parseMsgs collects all messages from the shares provided
 func parseMsgs(shares [][]byte) (Messages, error) {
-	msgList, err := parsesortedMsgShares(shares)
+	msgList, err := parseMsgShares(shares)
 	if err != nil {
 		return MessagesEmpty, err
 	}
@@ -230,9 +230,9 @@ func (ss *shareStack) peel(share []byte, delimited bool) (err error) {
 	return errors.New("failure to parse block data: transaction length exceeded data length")
 }
 
-// parsesortedMsgShares iterates through raw shares and separates the contiguous chunks
+// parseMsgShares iterates through raw shares and separates the contiguous chunks
 // of data. It is only used for Messages, i.e. shares with a non-reserved namespace.
-func parsesortedMsgShares(shares [][]byte) ([]Message, error) {
+func parseMsgShares(shares [][]byte) ([]Message, error) {
 	if len(shares) == 0 {
 		return nil, nil
 	}
