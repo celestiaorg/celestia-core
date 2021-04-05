@@ -15,13 +15,12 @@ import (
 func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 	originalWidth := eds.Width() / 2
 
-	// sort block data by namespace
-	// define a slice for the raw share data of each type
+	// sort block data shares by namespace
 	var (
-		txsShares [][]byte
-		isrShares [][]byte
-		evdShares [][]byte
-		msgShares [][]byte
+		sortedTxShares  [][]byte
+		sortedISRShares [][]byte
+		sortedEvdShares [][]byte
+		sortedMsgShares [][]byte
 	)
 
 	// iterate over each row index
@@ -33,13 +32,13 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 			nid := share[:NamespaceSize]
 			switch {
 			case bytes.Equal(TxNamespaceID, nid):
-				txsShares = append(txsShares, share)
+				sortedTxShares = append(sortedTxShares, share)
 
 			case bytes.Equal(IntermediateStateRootsNamespaceID, nid):
-				isrShares = append(isrShares, share)
+				sortedISRShares = append(sortedISRShares, share)
 
 			case bytes.Equal(EvidenceNamespaceID, nid):
-				evdShares = append(evdShares, share)
+				sortedEvdShares = append(sortedEvdShares, share)
 
 			case bytes.Equal(TailPaddingNamespaceID, nid):
 				continue
@@ -50,28 +49,28 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 
 			// every other namespaceID should be a message
 			default:
-				msgShares = append(msgShares, share)
+				sortedMsgShares = append(sortedMsgShares, share)
 			}
 		}
 	}
 
 	// pass the raw share data to their respective parsers
-	txs, err := parseTxs(txsShares)
+	txs, err := parseTxs(sortedTxShares)
 	if err != nil {
 		return Data{}, err
 	}
 
-	isrs, err := parseISRs(isrShares)
+	isrs, err := parseISRs(sortedISRShares)
 	if err != nil {
 		return Data{}, err
 	}
 
-	evd, err := parseEvd(evdShares)
+	evd, err := parseEvd(sortedEvdShares)
 	if err != nil {
 		return Data{}, err
 	}
 
-	msgs, err := parseMsgs(msgShares)
+	msgs, err := parseMsgs(sortedMsgShares)
 	if err != nil {
 		return Data{}, err
 	}
@@ -148,7 +147,7 @@ func parseEvd(shares [][]byte) (EvidenceData, error) {
 
 // parseMsgs collects all messages from the shares provided
 func parseMsgs(shares [][]byte) (Messages, error) {
-	msgList, err := parseMsgShares(shares)
+	msgList, err := parsesortedMsgShares(shares)
 	if err != nil {
 		return MessagesEmpty, err
 	}
@@ -231,9 +230,9 @@ func (ss *shareStack) peel(share []byte, delimited bool) (err error) {
 	return errors.New("failure to parse block data: transaction length exceeded data length")
 }
 
-// parseMsgShares iterates through raw shares and separates the contiguous chunks
+// parsesortedMsgShares iterates through raw shares and separates the contiguous chunks
 // of data. It is only used for Messages, i.e. shares with a non-reserved namespace.
-func parseMsgShares(shares [][]byte) ([]Message, error) {
+func parsesortedMsgShares(shares [][]byte) ([]Message, error) {
 	if len(shares) == 0 {
 		return nil, nil
 	}
