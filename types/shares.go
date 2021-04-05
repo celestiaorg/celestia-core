@@ -394,20 +394,25 @@ func (ss *shareStack) peel(share []byte, delimited bool) (err error) {
 		}
 		ss.txLen = txLen
 	}
+	// safeLen describes the point in the share where it can be safely split. If
+	// split beyond this point, it is possible to break apart a length
+	// delimiter, which will result in incorrect share merging
 	safeLen := len(share) - binary.MaxVarintLen64
 	if safeLen < 0 {
 		safeLen = 0
 	}
-	if int(ss.txLen) <= safeLen {
+	if ss.txLen <= uint64(safeLen) {
 		ss.txs = append(ss.txs, share[:ss.txLen])
 		share = share[ss.txLen:]
 		return ss.peel(share, true)
 	}
+	// add the next share to the current share to continue merging if possible
 	if len(ss.shares) > ss.cursor+1 {
 		ss.cursor++
 		share := append(share, ss.shares[ss.cursor][NamespaceSize+ShareReservedBytes:]...)
 		return ss.peel(share, false)
 	}
+	// collect any remaining data
 	if ss.txLen <= uint64(len(share)) {
 		ss.txs = append(ss.txs, share[:ss.txLen])
 		share = share[ss.txLen:]
