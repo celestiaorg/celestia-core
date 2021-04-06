@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 
 	"github.com/celestiaorg/nmt/namespace"
+	"github.com/celestiaorg/rsmt2d"
 )
 
 // This contains all constants of:
@@ -61,4 +62,6 @@ var (
 
 	// NewBaseHashFunc change accordingly if another hash.Hash should be used as a base hasher in the NMT:
 	NewBaseHashFunc = sha256.New
+
+	DefaultCodec = rsmt2d.NewRSGF8Codec
 )
