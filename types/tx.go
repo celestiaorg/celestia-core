@@ -80,13 +80,13 @@ func (txs Txs) Proof(i int) TxProof {
 }
 
 func (txs Txs) splitIntoShares() NamespacedShares {
-	rawDatas := make([][]byte, 0, len(txs))
-	for _, tx := range txs {
+	rawDatas := make([][]byte, len(txs))
+	for i, tx := range txs {
 		rawData, err := tx.MarshalDelimited()
 		if err != nil {
 			panic(fmt.Sprintf("included Tx in mem-pool that can not be encoded %v", tx))
 		}
-		rawDatas = append(rawDatas, rawData)
+		rawDatas[i] = rawData
 	}
 	shares := splitContiguous(TxNamespaceID, rawDatas)
 	return shares
