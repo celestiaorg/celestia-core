@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -1112,6 +1113,69 @@ func (data *Data) Hash() tmbytes.HexBytes {
 	return data.hash
 }
 
+// ComputeShares splits block data into shares of an original data square and
+// returns them along with an amount of non-redundant shares. The shares
+// returned are padded to complete a square size that is a power of two
+func (data *Data) ComputeShares() (NamespacedShares, int) {
+	// TODO(ismail): splitting into shares should depend on the block size and layout
+	// see: https://github.com/celestiaorg/celestia-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
+
+	// reserved shares:
+	txShares := data.Txs.SplitIntoShares()
+	intermRootsShares := data.IntermediateStateRoots.SplitIntoShares()
+	evidenceShares := data.Evidence.SplitIntoShares()
+
+	// application data shares from messages:
+	msgShares := data.Messages.SplitIntoShares()
+	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
+
+	// find the number of shares needed to create a square that has a power of
+	// two width
+	wantLen := paddedLen(curLen)
+
+	// ensure that the min square size is used
+	if wantLen < consts.MinSharecount {
+		wantLen = consts.MinSharecount
+	}
+
+	tailShares := TailPaddingShares(wantLen - curLen)
+
+	return append(append(append(append(
+		txShares,
+		intermRootsShares...),
+		evidenceShares...),
+		msgShares...),
+		tailShares...), curLen
+}
+
+// paddedLen calculates the number of shares needed to make a power of 2 square
+// given the current number of shares
+func paddedLen(length int) int {
+	width := uint32(math.Ceil(math.Sqrt(float64(length))))
+	width = nextHighestPowerOf2(width)
+	return int(width * width)
+}
+
+// nextPowerOf2 returns the next highest power of 2 unless the input is a power
+// of two, in which case it returns the input
+func nextHighestPowerOf2(v uint32) uint32 {
+	if v == 0 {
+		return 0
+	}
+
+	// find the next highest power using bit mashing
+	v--
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+	v++
+
+	// return the next highest power
+	return v
+}
+
 type Messages struct {
 	MessagesList []Message `json:"msgs"`
 }
@@ -1120,19 +1184,20 @@ type IntermediateStateRoots struct {
 	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
 }
 
-func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
-	shares := make([]NamespacedShare, 0)
+func (roots IntermediateStateRoots) SplitIntoShares() NamespacedShares {
+	rawDatas := make([][]byte, 0, len(roots.RawRootsList))
 	for _, root := range roots.RawRootsList {
 		rawData, err := root.MarshalDelimited()
 		if err != nil {
 			panic(fmt.Sprintf("app returned intermediate state root that can not be encoded %#v", root))
 		}
-		shares = appendToShares(shares, consts.IntermediateStateRootsNamespaceID, rawData)
+		rawDatas = append(rawDatas, rawData)
 	}
+	shares := splitContiguous(consts.IntermediateStateRootsNamespaceID, rawDatas)
 	return shares
 }
 
-func (msgs Messages) splitIntoShares() NamespacedShares {
+func (msgs Messages) SplitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	for _, m := range msgs.MessagesList {
 		rawData, err := m.MarshalDelimited()
@@ -1346,29 +1411,20 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
 	return nil
 }
 
-func (data *EvidenceData) splitIntoShares() NamespacedShares {
-	shares := make([]NamespacedShare, 0)
+func (data *EvidenceData) SplitIntoShares() NamespacedShares {
+	rawDatas := make([][]byte, 0, len(data.Evidence))
 	for _, ev := range data.Evidence {
-		var rawData []byte
-		var err error
-		switch cev := ev.(type) {
-		case *DuplicateVoteEvidence:
-			rawData, err = protoio.MarshalDelimited(cev.ToProto())
-		case *LightClientAttackEvidence:
-			pcev, iErr := cev.ToProto()
-			if iErr != nil {
-				err = iErr
-				break
-			}
-			rawData, err = protoio.MarshalDelimited(pcev)
-		default:
-			panic(fmt.Sprintf("unknown evidence included in evidence pool (don't know how to encode this) %#v", ev))
-		}
+		pev, err := EvidenceToProto(ev)
 		if err != nil {
-			panic(fmt.Sprintf("evidence included in evidence pool that can not be encoded %#v, err: %v", ev, err))
+			panic("failure to convert evidence to equivalent proto type")
 		}
-		shares = appendToShares(shares, consts.EvidenceNamespaceID, rawData)
+		rawData, err := protoio.MarshalDelimited(pev)
+		if err != nil {
+			panic(err)
+		}
+		rawDatas = append(rawDatas, rawData)
 	}
+	shares := splitContiguous(consts.EvidenceNamespaceID, rawDatas)
 	return shares
 }
 
