@@ -160,14 +160,14 @@ func TestBlockRecovery(t *testing.T) {
 	// adjustedLeafSize describes the size of a leaf that will not get split
 	adjustedLeafSize := types.MsgShareSize
 
-	originalSquareWidth := 2
-	sharecount := originalSquareWidth * originalSquareWidth
-	extendedSquareWidth := originalSquareWidth * originalSquareWidth
+	originalSquareWidth := 8
+	shareCount := originalSquareWidth * originalSquareWidth
+	extendedSquareWidth := 2 * originalSquareWidth
 	extendedShareCount := extendedSquareWidth * extendedSquareWidth
 
 	// generate test data
-	quarterShares := generateRandNamespacedRawData(sharecount, types.NamespaceSize, adjustedLeafSize)
-	allShares := generateRandNamespacedRawData(sharecount, types.NamespaceSize, adjustedLeafSize)
+	quarterShares := generateRandNamespacedRawData(shareCount, types.NamespaceSize, adjustedLeafSize)
+	allShares := generateRandNamespacedRawData(shareCount, types.NamespaceSize, adjustedLeafSize)
 
 	testCases := []struct {
 		name string
@@ -177,8 +177,7 @@ func TestBlockRecovery(t *testing.T) {
 		errString string
 		d         int // number of shares to delete
 	}{
-		// missing more shares causes RepairExtendedDataSquare to hang see
-		// https://github.com/lazyledger/rsmt2d/issues/21
+		{"missing 1/2 shares", quarterShares, false, "", extendedShareCount / 2},
 		{"missing 1/4 shares", quarterShares, false, "", extendedShareCount / 4},
 		{"missing all but one shares", allShares, true, "failed to solve data square", extendedShareCount - 1},
 	}
@@ -227,7 +226,8 @@ func TestBlockRecovery(t *testing.T) {
 }
 
 func flatten(eds *rsmt2d.ExtendedDataSquare) [][]byte {
-	out := make([][]byte, eds.Width()*eds.Width())
+	flattenedEDSSize := eds.Width() * eds.Width()
+	out := make([][]byte, flattenedEDSSize)
 	count := 0
 	for i := uint(0); i < eds.Width(); i++ {
 		for _, share := range eds.Row(i) {
@@ -247,7 +247,7 @@ func createNmtTree(
 	na := nodes.NewNmtNodeAdder(ctx, batch)
 	tree := nmt.New(sha256.New(), nmt.NamespaceIDSize(types.NamespaceSize), nmt.NodeVisitor(na.Visit))
 	for _, leaf := range namespacedData {
-		err := tree.Push(leaf[:types.NamespaceSize], leaf[types.NamespaceSize:])
+		err := tree.Push(leaf)
 		if err != nil {
 			return tree, err
 		}

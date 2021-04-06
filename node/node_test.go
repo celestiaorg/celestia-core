@@ -480,6 +480,7 @@ func TestMaxProposalBlockSize(t *testing.T) {
 
 	// this ensures that the header is at max size
 	block.Header.Time = timestamp
+	block.Header.NumOriginalDataShares = math.MaxInt64
 
 	pb, err := block.ToProto()
 	require.NoError(t, err)

@@ -43,7 +43,7 @@ func TestRootErasuredNamespacedMerkleTree(t *testing.T) {
 
 	for i, d := range data {
 		tree.Push(d, rsmt2d.SquareIndex{Axis: uint(0), Cell: uint(i)})
-		err := nmtTree.Push(d[:types.NamespaceSize], d[types.NamespaceSize:])
+		err := nmtTree.Push(d)
 		if err != nil {
 			t.Error(err)
 		}
