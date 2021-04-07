@@ -12,21 +12,55 @@ import (
 	"testing"
 	"time"
 
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-ipfs/core/coreapi"
-
 	coremock "github.com/ipfs/go-ipfs/core/mock"
 	format "github.com/ipfs/go-ipld-format"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
-	"github.com/lazyledger/lazyledger-core/types"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
 	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 var raceDetectorActive = false
+
+// TODO(@Wondertan): Add test to simulate ErrValidationFailed
+
+func TestValidateAvailability(t *testing.T) {
+	const (
+		shares = 15
+		squareSize = 64
+		adjustedMsgSize = types.MsgShareSize - 2
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// issue a new API object
+	ipfsAPI := mockedIpfsAPI(t)
+
+	blockData := generateRandomBlockData(squareSize*squareSize, adjustedMsgSize)
+	block := types.Block{
+		Data:       blockData,
+		LastCommit: &types.Commit{},
+	}
+	block.Hash()
+
+	err := block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
+	require.NoError(t, err)
+
+	calls := 0
+	err = ValidateAvailability(ctx, ipfsAPI, &block.DataAvailabilityHeader, shares, func(data namespace.PrefixedData8) {
+		calls++
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, shares, calls)
+}
 
 func TestLeafPath(t *testing.T) {
 	type test struct {
@@ -98,20 +132,12 @@ func TestGetLeafData(t *testing.T) {
 		leaves  [][]byte
 	}
 
-	// create a mock node
-	ipfsNode, err := coremock.NewMockNode()
-	if err != nil {
-		t.Error(err)
-	}
+	// create the context and batch needed for node collection from the tree
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// issue a new API object
-	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
-	if err != nil {
-		t.Error(err)
-	}
-
-	// create the context and batch needed for node collection from the tree
-	ctx := context.Background()
+	ipfsAPI := mockedIpfsAPI(t)
 	batch := format.NewBatch(ctx, ipfsAPI.Dag())
 
 	// generate random data for the nmt
@@ -238,17 +264,8 @@ func TestRetrieveBlockData(t *testing.T) {
 		errStr     string
 	}
 
-	// create a mock node
-	ipfsNode, err := coremock.NewMockNode()
-	if err != nil {
-		t.Error(err)
-	}
-
 	// issue a new API object
-	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
-	if err != nil {
-		t.Error(err)
-	}
+	ipfsAPI := mockedIpfsAPI(t)
 
 	// the max size of messages that won't get split
 	adjustedMsgSize := types.MsgShareSize - 2
@@ -446,4 +463,19 @@ func generateRandomContiguousShares(count int) types.Txs {
 		txs[i] = types.Tx(tx)
 	}
 	return txs
+}
+
+func mockedIpfsAPI(t *testing.T) iface.CoreAPI {
+	ipfsNode, err := coremock.NewMockNode()
+	if err != nil {
+		t.Error(err)
+	}
+
+	// issue a new API object
+	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	if err != nil {
+		t.Error(err)
+	}
+
+	return ipfsAPI
 }
