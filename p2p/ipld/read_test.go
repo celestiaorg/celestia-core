@@ -33,8 +33,8 @@ var raceDetectorActive = false
 
 func TestValidateAvailability(t *testing.T) {
 	const (
-		shares = 15
-		squareSize = 64
+		shares          = 15
+		squareSize      = 8
 		adjustedMsgSize = types.MsgShareSize - 2
 	)
 

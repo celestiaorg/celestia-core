@@ -7,8 +7,8 @@ import (
 )
 
 func TestSampleSquare(t *testing.T) {
-	tests := []struct{
-		width uint32
+	tests := []struct {
+		width   uint32
 		samples int
 	}{
 		{width: 10, samples: 5},
@@ -19,14 +19,14 @@ func TestSampleSquare(t *testing.T) {
 		ss := SampleSquare(tt.width, tt.samples)
 		assert.Len(t, ss, tt.samples)
 		// check points are within width
-		for _, s := range ss{
+		for _, s := range ss {
 			assert.Less(t, s.Row, tt.width)
 			assert.Less(t, s.Col, tt.width)
 		}
 		// checks samples are not equal
-		for i, s1 := range ss{
-			for j, s2 := range ss{
-				if  i != j {
+		for i, s1 := range ss {
+			for j, s2 := range ss {
+				if i != j {
 					assert.False(t, s1.Equals(s2))
 				}
 			}

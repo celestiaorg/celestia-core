@@ -56,7 +56,7 @@ func ValidateAvailability(
 
 	type res struct {
 		data []byte
-		err error
+		err  error
 	}
 	resCh := make(chan res, len(samples))
 	for _, s := range samples {
@@ -91,7 +91,7 @@ func ValidateAvailability(
 
 			// the fact that we read the data, already gives us Merkle proof,
 			// thus the data availability is successfully validated :)
-			onLeafValidity( r.data)
+			onLeafValidity(r.data)
 		case <-ctx.Done():
 			err := ctx.Err()
 			if err == context.DeadlineExceeded {
@@ -105,7 +105,7 @@ func ValidateAvailability(
 	return nil
 }
 
-/// //////////////////////////////////////
+// ///////////////////////////////////////
 //	Retrieve Block Data
 // ////////////////////////////////////
 
