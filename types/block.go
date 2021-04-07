@@ -333,15 +333,10 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 
 		// compute the root in order to collect the ipld.Nodes
 		tree.Root()
-
-		// commit the batch to ipfs
-		err = batchAdder.Batch().Commit()
-		if err != nil {
-			return err
-		}
 	}
 
-	return nil
+	// commit the batch to ipfs
+	return batchAdder.Batch().Commit()
 }
 
 // flattenNamespacedEDS returns a flattend extendedDataSquare with namespaces
