@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/gogo/protobuf/proto"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
@@ -240,9 +241,10 @@ func parseMsgShares(shares [][]byte) ([]Message, error) {
 	// set the first nid and current share
 	nid := shares[0][:NamespaceSize]
 	currentShare := shares[0][NamespaceSize:]
-
+	fmt.Println("current", len(shares[0]), nid, shares[0][:25])
 	// find and remove the msg len delimiter
 	currentShare, msgLen, err := parseDelimiter(currentShare)
+	fmt.Println("msglen", msgLen)
 	if err != nil {
 		return nil, err
 	}

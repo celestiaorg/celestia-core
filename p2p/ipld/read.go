@@ -3,9 +3,9 @@ package ipld
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/ipfs/go-cid"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
@@ -19,31 +19,14 @@ import (
 // compute, this means that when retrieving data I'm stopping as soon as enough
 // data is retrieved to recompute
 
-// ValidateAvailability implements the protocol described in https://fc21.ifca.ai/papers/83.pdf.
-// Specifically all steps of the protocol described in section
-// _5.2 Random Sampling and Network Block Recovery_ are carried out.
-//
-// In more detail it will first create numSamples random unique coordinates.
-// Then, it will ask the network for the leaf data corresponding to these coordinates.
-// Additionally to the number of requests, the caller can pass in a callback,
-// which will be called on for each retrieved leaf with a verified Merkle proof.
-//
-// Among other use-cases, the callback can be useful to monitoring (progress), or,
-// to process the leaf data the moment it was validated.
-// The context can be used to provide a timeout.
-// TODO: Should there be a constant = lower bound for #samples
-func ValidateAvailability(
-	ctx context.Context,
-	dah *types.DataAvailabilityHeader,
-	numSamples int,
-	leafSucessCb func(namespacedleaf []byte),
-) error {
-	return nil
-}
-
 /////////////////////////////////////////
 //	Retrieve Block Data
 ///////////////////////////////////////
+
+const baseErrorMsg = "failure to retrieve block data:"
+
+var ErrEncounteredTooManyErrors = fmt.Errorf("%s %s", baseErrorMsg, "encountered too many errors")
+var ErrTimeout = fmt.Errorf("%s %s", baseErrorMsg, "timeout")
 
 // RetrieveBlockData asynchronously fetches block data until the underlying extended
 // data square can be restored and returned.
@@ -53,20 +36,21 @@ func RetrieveBlockData(
 	api coreiface.CoreAPI,
 	codec rsmt2d.CodecType,
 ) (types.Data, error) {
-	squareSize := uint32(len(dah.ColumnRoots))
+	edsWidth := uint32(len(dah.ColumnRoots))
+	originalSquareWidth := edsWidth / 2
 
 	// keep track of leaves using thread safe counter
-	lc := newLeafCounter(squareSize)
+	sc := newshareCounter(edsWidth)
 
 	// convert the row and col roots into Cids
 	rowRoots := dah.RowsRoots.Bytes()
-	rowCids, err := convertRoots(rowRoots)
+	rowCids, err := rootsToCids(rowRoots)
 	if err != nil {
 		return types.Data{}, err
 	}
 
 	colRoots := dah.ColumnRoots.Bytes()
-	colCids, err := convertRoots(colRoots)
+	colCids, err := rootsToCids(colRoots)
 	if err != nil {
 		return types.Data{}, err
 	}
@@ -75,49 +59,59 @@ func RetrieveBlockData(
 	ctx, cancel := context.WithCancel(ctx)
 
 	// async fetch each leaf
-	for outer := uint32(0); outer < squareSize; outer++ {
-		for inner := uint32(0); inner < squareSize; inner++ {
+	for outer := uint32(0); outer < edsWidth; outer++ {
+		for inner := uint32(0); inner < edsWidth; inner++ {
 			// async fetch leaves.
-			go lc.retrieveLeaf(ctx, colCids[inner], false, outer, inner, api)
-			go lc.retrieveLeaf(ctx, rowCids[outer], true, outer, inner, api)
+			go sc.retrieveShare(ctx, colCids[inner], false, outer, inner, api)
+			go sc.retrieveShare(ctx, rowCids[outer], true, outer, inner, api)
 		}
 	}
 
-	// wait until enough data has been collected. check every 500 milliseconds
-	lc.wait(ctx, time.Millisecond*500)
-
-	// we have enough data to repair the square cancel any ongoing requests
+	// wait until enough data has been collected, too many errors encountered,
+	// or the timeout is reached
+	err = sc.wait(ctx)
+	// there is now either enough data collected or it is impossible
+	// therefore cancel any ongoing requests.
 	cancel()
+	fmt.Println("done canceling")
+	if err != nil {
+		return types.Data{}, err
+	}
 
 	// flatten the square
-	flattened := lc.flatten()
+	flattened := sc.flatten()
+	fmt.Println("done flattening")
 
 	var eds *rsmt2d.ExtendedDataSquare
 	// don't repair the square if all the data is there
-	if lc.counter == lc.squareSize*lc.squareSize {
+	if sc.counter == sc.edsWidth*sc.edsWidth {
+		fmt.Println("importing")
 		e, err := rsmt2d.ImportExtendedDataSquare(flattened, codec, rsmt2d.NewDefaultTree)
 		if err != nil {
 			return types.Data{}, err
 		}
-
 		eds = e
 	} else {
+		tree := NewErasuredNamespacedMerkleTree(uint64(originalSquareWidth))
 		// repair the square
-		e, err := rsmt2d.RepairExtendedDataSquare(rowRoots, colRoots, flattened, codec)
+		e, err := rsmt2d.RepairExtendedDataSquare(rowRoots, colRoots, flattened, codec, tree.Constructor)
 		if err != nil {
 			return types.Data{}, err
 		}
 		eds = e
 	}
 
-	// // which portion is Txs and which is messages?
-	// blockData, err := types.ParseBlockData(eds)
+	fmt.Println("parsing data")
+	blockData, err := types.DataFromSquare(eds)
+	if err != nil {
+		return types.Data{}, err
+	}
 
 	return blockData, nil
 }
 
-// convertRoots converts roots to cids
-func convertRoots(roots [][]byte) ([]cid.Cid, error) {
+// rootsToCids converts roots to cids
+func rootsToCids(roots [][]byte) ([]cid.Cid, error) {
 	cids := make([]cid.Cid, len(roots))
 	for i, root := range roots {
 		rootCid, err := nodes.CidFromNamespacedSha256(root)
@@ -129,29 +123,40 @@ func convertRoots(roots [][]byte) ([]cid.Cid, error) {
 	return cids, nil
 }
 
-// leafCounter is a thread safe tallying mechanism for leaf retrieval
-type leafCounter struct {
-	leaves     [][][]byte
-	counter    uint32
-	squareSize uint32
-	mut        sync.Mutex
-	errors     []error
+// shareCounter is a thread safe tallying mechanism for leaf retrieval
+type shareCounter struct {
+	// all shares
+	shares [][][]byte
+	// number of shares successfully collected
+	counter uint32
+	// the width of the extended data square
+	edsWidth uint32
+	// the minimum shares needed to repair the extended data square
+	minSharesNeeded uint32
+	mut             sync.Mutex
+	finished        chan error
+	// any errors encountered when attempting to retrieve shares
+	errors []error
 }
 
-func newLeafCounter(squareSize uint32) *leafCounter {
-	leaves := make([][][]byte, squareSize)
-	for i := uint32(0); i < squareSize; i++ {
-		leaves[i] = make([][]byte, squareSize)
+func newshareCounter(edsWidth uint32) *shareCounter {
+	shares := make([][][]byte, edsWidth)
+	for i := uint32(0); i < edsWidth; i++ {
+		shares[i] = make([][]byte, edsWidth)
 	}
-	return &leafCounter{
-		leaves:     leaves,
-		squareSize: squareSize,
-		mut:        sync.Mutex{},
+	originalSquareWidth := edsWidth / 2
+	minSharesNeeded := (originalSquareWidth + 1) * (originalSquareWidth + 1)
+	return &shareCounter{
+		shares:          shares,
+		edsWidth:        edsWidth,
+		mut:             sync.Mutex{},
+		minSharesNeeded: minSharesNeeded,
+		finished:        make(chan error, 10), //TODO: evan fix this
 	}
 }
 
 // retrieveLeaf uses GetLeafData to fetch a single leaf and counts that leaf
-func (lc *leafCounter) retrieveLeaf(
+func (sc *shareCounter) retrieveShare(
 	ctx context.Context,
 	rootCid cid.Cid,
 	isRow bool,
@@ -164,84 +169,73 @@ func (lc *leafCounter) retrieveLeaf(
 		idx = rowIdx
 	}
 
-	data, err := GetLeafData(ctx, rootCid, idx, lc.squareSize, api)
+	data, err := GetLeafData(ctx, rootCid, idx, sc.edsWidth, api)
 	if err != nil {
+		sc.addError(err)
 		return
 	}
 
-	lc.addLeaf(rowIdx, colIdx, data)
+	sc.addShare(rowIdx, colIdx, data[types.NamespaceSize:])
 }
 
-// addLeaf adds a leaf to the leafCounter using the mutex to avoid
-func (lc *leafCounter) addLeaf(rowIdx, colIdx uint32, data []byte) {
-	// avoid panics by not doing anything if the leaf doesn't belong in the leaf
+// addShare adds shares data to the underlying square in a thread safe fashion
+func (sc *shareCounter) addShare(rowIdx, colIdx uint32, data []byte) {
+	// avoid panics by not doing anything if the share doesn't belong in the share
 	// counter
-	if colIdx > lc.squareSize || rowIdx > lc.squareSize {
+	if colIdx > sc.edsWidth || rowIdx > sc.edsWidth {
 		return
 	}
 
-	lc.mut.Lock()
-	defer lc.mut.Unlock()
+	sc.mut.Lock()
+	defer sc.mut.Unlock()
 
-	// add the leaf if it does not exist
-	if i := lc.leaves[rowIdx][colIdx]; i == nil {
-		lc.leaves[rowIdx][colIdx] = data
-		lc.counter++
+	// add the share if it does not exist
+	if i := sc.shares[rowIdx][colIdx]; i == nil {
+		sc.shares[rowIdx][colIdx] = data
+		sc.counter++
+
+		// signal to stop retrieving data from ipfs as there is now enough data
+		// to complete the data square
+		if sc.minSharesNeeded <= sc.counter {
+			sc.finished <- nil
+		}
+	}
+}
+
+// addError simply adds an error to the underlying errors in a thread safe manor
+func (sc *shareCounter) addError(err error) {
+	sc.mut.Lock()
+	defer sc.mut.Unlock()
+
+	sc.errors = append(sc.errors, err)
+
+	// signal to close processes as there have been so many errors that it is
+	// impossible to recover the data square
+	if uint32(len(sc.errors)) > ((sc.edsWidth * sc.edsWidth) - sc.minSharesNeeded) {
+		sc.finished <- ErrEncounteredTooManyErrors
 	}
 }
 
 // wait until enough data has been collected. check every interval
-func (lc *leafCounter) wait(ctx context.Context, interval time.Duration) {
-	for {
-		select {
-		case <-ctx.Done():
-		default:
-			if lc.done() {
-				return
-			}
-			time.Sleep(interval)
-		}
+func (sc *shareCounter) wait(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ErrTimeout
+	case err := <-sc.finished:
+		return err
 	}
 }
 
-// done checks if there are enough collected leaves to recompute the data square
-// TODO: this can be fixed
-func (lc *leafCounter) done() bool {
-	lc.mut.Lock()
-	defer lc.mut.Unlock()
-	return lc.counter > ((lc.squareSize * lc.squareSize) / 4)
-}
+func (sc *shareCounter) flatten() [][]byte {
+	sc.mut.Lock()
+	defer sc.mut.Unlock()
 
-func (lc *leafCounter) flatten() [][]byte {
-	lc.mut.Lock()
-	defer lc.mut.Unlock()
-
-	flattended := make([][]byte, (lc.squareSize * lc.squareSize))
-	for i := uint32(0); i < lc.squareSize; i++ {
-		copy(flattended[i*lc.squareSize:(i+1)*lc.squareSize], lc.leaves[i])
+	flattended := make([][]byte, (sc.edsWidth * sc.edsWidth))
+	for i := uint32(0); i < sc.edsWidth; i++ {
+		copy(flattended[i*sc.edsWidth:(i+1)*sc.edsWidth], sc.shares[i])
 	}
 
 	return flattended
-}
-
-type messageOnlyEDSParser struct {
-}
-
-// Parse fullfills the EDSParser interface by assuming that there are only
-// messages in the extended data square, and that namespaces are included in
-// each share of the rsmt2d, which is not currently the case. FOR TESTING ONLY.
-func (m messageOnlyEDSParser) Parse(
-	eds *rsmt2d.ExtendedDataSquare,
-) (types.Txs, types.IntermediateStateRoots, types.Messages, error) {
-	var msgs types.Messages
-
-	for i := uint(0); i < eds.Width(); i++ {
-		for _, row := range eds.Row(i) {
-			msgs.MessagesList = append(msgs.MessagesList, types.Message{Data: row})
-		}
-	}
-
-	return types.Txs{}, types.IntermediateStateRoots{}, msgs, nil
 }
 
 /////////////////////////////////////////

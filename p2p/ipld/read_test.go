@@ -13,12 +13,15 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-ipfs/core/coreapi"
+	iface "github.com/ipfs/interface-go-ipfs-core"
+	"github.com/ipfs/interface-go-ipfs-core/path"
 
 	coremock "github.com/ipfs/go-ipfs/core/mock"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/nmt"
+	"github.com/lazyledger/nmt/namespace"
 	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -225,6 +228,118 @@ func TestBlockRecovery(t *testing.T) {
 	}
 }
 
+func TestRetrieveBlockData(t *testing.T) {
+	type test struct {
+		name       string
+		squareSize int
+		remove     int
+	}
+
+	// create a mock node
+	ipfsNode, err := coremock.NewMockNode()
+	if err != nil {
+		t.Error(err)
+	}
+
+	// issue a new API object
+	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// the max size of message that won't get splitl
+	adjustedMsgSize := types.MsgShareSize - 2
+
+	tests := []test{
+		{"no missing data", 8, 0},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		ctx, _ := context.WithTimeout(context.Background(), time.Second*3)
+		blockData := generateRandomBlockData(tc.squareSize*tc.squareSize, adjustedMsgSize)
+		block := types.Block{
+			Data:       blockData,
+			LastCommit: &types.Commit{},
+		}
+
+		err := block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		shareData, _ := blockData.ComputeShares()
+		rawData := shareData.RawShares()
+
+		tree := NewErasuredNamespacedMerkleTree(uint64(tc.squareSize))
+		eds, err := rsmt2d.ComputeExtendedDataSquare(rawData, rsmt2d.RSGF8, tree.Constructor)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		rawRowRoots := eds.RowRoots()
+		rawColRoots := eds.ColumnRoots()
+		rowRoots := rootsToDigests(rawRowRoots)
+		colRoots := rootsToDigests(rawColRoots)
+
+		t.Run(tc.name, func(t *testing.T) {
+
+			// remove data from IPFS
+			// removeRandomLeaves(ctx, ipfsAPI, rawRowRoots, tc.remove/2)
+			// removeRandomLeaves(ctx, ipfsAPI, rawColRoots, tc.remove/2)
+
+			blockData, err := RetrieveBlockData(
+				ctx,
+				&types.DataAvailabilityHeader{
+					RowsRoots:   rowRoots,
+					ColumnRoots: colRoots,
+				},
+				ipfsAPI,
+				rsmt2d.RSGF8,
+			)
+
+			assert.NoError(t, err)
+
+			nsShares, _ := blockData.ComputeShares()
+
+			assert.Equal(t, len(rawData), len(nsShares.RawShares()))
+		})
+
+	}
+}
+
+// removes random leaves. only use with either row or column roots
+func removeRandomLeaves(ctx context.Context, api iface.CoreAPI, roots [][]byte, numLeaves int) error {
+	nodesToRemove := make([]cid.Cid, numLeaves)
+	for i := 0; i < numLeaves; i++ {
+		randRootInd := uint32(rand.Intn(len(roots)))
+		randLeafInd := uint32(rand.Intn(len(roots)))
+		randRoot := roots[randRootInd]
+		randRootCid, err := nodes.CidFromNamespacedSha256(randRoot)
+		if err != nil {
+			return err
+		}
+
+		// calculate the path to the leaf
+		leafPath, err := leafPath(randLeafInd, uint32(len(roots)))
+		if err != nil {
+			return err
+		}
+		// use the root cid and the leafPath to create an ipld path
+		p := path.Join(path.IpldPath(randRootCid), leafPath...)
+
+		// resolve the path
+		node, err := api.ResolveNode(ctx, p)
+		if err != nil {
+			return err
+		}
+
+		nodesToRemove[i] = node.Cid()
+	}
+
+	return api.Dag().RemoveMany(ctx, nodesToRemove)
+}
+
 func flatten(eds *rsmt2d.ExtendedDataSquare) [][]byte {
 	flattenedEDSSize := eds.Width() * eds.Width()
 	out := make([][]byte, flattenedEDSSize)
@@ -298,4 +413,34 @@ func removeRandShares(data [][]byte, d int) [][]byte {
 		i++
 	}
 	return data
+}
+
+func rootsToDigests(roots [][]byte) []namespace.IntervalDigest {
+	out := make([]namespace.IntervalDigest, len(roots))
+	for i, root := range roots {
+		idigest, err := namespace.IntervalDigestFromBytes(types.NamespaceSize, root)
+		if err != nil {
+			panic(err)
+		}
+		out[i] = idigest
+	}
+	return out
+}
+
+func generateRandomBlockData(msgCount, msgSize int) types.Data {
+	var out types.Data
+	out.Messages = generateRandomMessages(msgCount, msgSize)
+	return out
+}
+
+func generateRandomMessages(count, msgSize int) types.Messages {
+	shares := generateRandNamespacedRawData(count, types.NamespaceSize, msgSize)
+	msgs := make([]types.Message, count)
+	for i, s := range shares {
+		msgs[i] = types.Message{
+			Data:        s[types.NamespaceSize:],
+			NamespaceID: s[:types.NamespaceSize],
+		}
+	}
+	return types.Messages{MessagesList: msgs}
 }
