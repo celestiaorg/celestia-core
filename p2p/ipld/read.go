@@ -73,19 +73,16 @@ func RetrieveBlockData(
 	// there is now either enough data collected or it is impossible
 	// therefore cancel any ongoing requests.
 	cancel()
-	fmt.Println("done canceling")
 	if err != nil {
 		return types.Data{}, err
 	}
 
 	// flatten the square
 	flattened := sc.flatten()
-	fmt.Println("done flattening")
 
 	var eds *rsmt2d.ExtendedDataSquare
 	// don't repair the square if all the data is there
 	if sc.counter == sc.edsWidth*sc.edsWidth {
-		fmt.Println("importing")
 		e, err := rsmt2d.ImportExtendedDataSquare(flattened, codec, rsmt2d.NewDefaultTree)
 		if err != nil {
 			return types.Data{}, err
@@ -101,7 +98,6 @@ func RetrieveBlockData(
 		eds = e
 	}
 
-	fmt.Println("parsing data")
 	blockData, err := types.DataFromSquare(eds)
 	if err != nil {
 		return types.Data{}, err
