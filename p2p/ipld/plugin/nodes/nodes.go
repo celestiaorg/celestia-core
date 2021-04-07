@@ -205,8 +205,8 @@ func prependNode(newNode node.Node, nodes []node.Node) []node.Node {
 // NmtNodeAdder adds ipld.Nodes to the underlying ipld.Batch if it is inserted
 // into an nmt tree
 type NmtNodeAdder struct {
-	batch *format.Batch
 	ctx   context.Context
+	batch *format.Batch
 	leaves *cid.Set
 }
 
