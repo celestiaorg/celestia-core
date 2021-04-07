@@ -207,6 +207,7 @@ func prependNode(newNode node.Node, nodes []node.Node) []node.Node {
 type NmtNodeAdder struct {
 	batch *format.Batch
 	ctx   context.Context
+	leaves *cid.Set
 }
 
 // NewNmtNodeAdder returns a new NmtNodeAdder with the provided context and
@@ -215,6 +216,7 @@ func NewNmtNodeAdder(ctx context.Context, batch *format.Batch) *NmtNodeAdder {
 	return &NmtNodeAdder{
 		batch: batch,
 		ctx:   ctx,
+		leaves: cid.NewSet(),
 	}
 }
 
@@ -223,10 +225,12 @@ func (n *NmtNodeAdder) Visit(hash []byte, children ...[]byte) {
 	cid := mustCidFromNamespacedSha256(hash)
 	switch len(children) {
 	case 1:
-		n.batch.Add(n.ctx, nmtLeafNode{
-			cid:  cid,
-			Data: children[0],
-		})
+		if n.leaves.Visit(cid) {
+			n.batch.Add(n.ctx, nmtLeafNode{
+				cid:  cid,
+				Data: children[0],
+			})
+		}
 	case 2:
 		n.batch.Add(n.ctx, nmtNode{
 			cid: cid,
