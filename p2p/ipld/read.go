@@ -89,16 +89,20 @@ func RetrieveBlockData(
 	return blockData, nil
 }
 
-type indexedShare struct {
-	data   []byte
-	rowIdx uint32
-	colIdx uint32
+type index struct {
+	row uint32
+	col uint32
 }
 
-// shareCounter is a thread safe tallying mechanism for leaf retrieval
+type indexedShare struct {
+	data []byte
+	index
+}
+
+// shareCounter is a thread safe tallying mechanism for share retrieval
 type shareCounter struct {
 	// all shares
-	shares [][][]byte
+	shares map[index][]byte
 	// number of shares successfully collected
 	counter uint32
 	// the width of the extended data square
@@ -118,19 +122,14 @@ type shareCounter struct {
 func newshareCounter(parentCtx context.Context, edsWidth uint32) *shareCounter {
 	ctx, cancel := context.WithCancel(parentCtx)
 
-	shares := make([][][]byte, edsWidth)
-	for i := uint32(0); i < edsWidth; i++ {
-		shares[i] = make([][]byte, edsWidth)
-	}
-
 	// calculate the min number of shares needed to repair the square
 	originalSquareWidth := edsWidth / 2
-	minSharesNeeded := (originalSquareWidth + 1) * (originalSquareWidth + 1)
+	minSharesNeeded := (edsWidth * edsWidth) - (originalSquareWidth+1)*(originalSquareWidth+1)
 
 	maxErrors := edsWidth*edsWidth - minSharesNeeded
 
 	return &shareCounter{
-		shares:          shares,
+		shares:          make(map[index][]byte),
 		edsWidth:        edsWidth,
 		minSharesNeeded: minSharesNeeded,
 		shareChan:       make(chan indexedShare),
@@ -171,10 +170,8 @@ func (sc *shareCounter) retrieveShare(
 
 	select {
 	case <-sc.ctx.Done():
-
 	default:
-
-		sc.shareChan <- indexedShare{data: data[types.NamespaceSize:], rowIdx: rowIdx, colIdx: colIdx}
+		sc.shareChan <- indexedShare{data: data[types.NamespaceSize:], index: index{row: rowIdx, col: colIdx}}
 	}
 }
 
@@ -188,13 +185,13 @@ func (sc *shareCounter) wait() error {
 		case <-sc.ctx.Done():
 			return ErrTimeout
 		case share := <-sc.shareChan:
-			existing := sc.shares[share.rowIdx][share.colIdx]
+			_, has := sc.shares[share.index]
 			// add iff it does not already exists
-			if existing == nil {
-				sc.shares[share.rowIdx][share.colIdx] = share.data
+			if !has {
+				sc.shares[share.index] = share.data
 				sc.counter++
 				// check finishing condition
-				if sc.counter > sc.minSharesNeeded {
+				if sc.counter >= sc.minSharesNeeded {
 					return nil
 				}
 			}
@@ -209,9 +206,9 @@ func (sc *shareCounter) wait() error {
 }
 
 func (sc *shareCounter) flatten() [][]byte {
-	flattended := make([][]byte, 0)
-	for _, row := range sc.shares {
-		flattended = append(flattended, row...)
+	flattended := make([][]byte, sc.edsWidth*sc.edsWidth)
+	for index, data := range sc.shares {
+		flattended[(index.row*sc.edsWidth)+index.col] = data
 	}
 	return flattended
 }

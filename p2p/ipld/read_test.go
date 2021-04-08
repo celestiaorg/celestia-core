@@ -183,6 +183,7 @@ func TestBlockRecovery(t *testing.T) {
 	}{
 		{"missing 1/2 shares", quarterShares, false, "", extendedShareCount / 2},
 		{"missing 1/4 shares", quarterShares, false, "", extendedShareCount / 4},
+		{"max missing data", quarterShares, false, "", ((originalSquareWidth + 1) * (originalSquareWidth + 1))},
 		{"missing all but one shares", allShares, true, "failed to solve data square", extendedShareCount - 1},
 	}
 	for _, tc := range testCases {
@@ -221,7 +222,7 @@ func TestBlockRecovery(t *testing.T) {
 				return
 			}
 
-			require.NoError(t, err)
+			assert.NoError(t, err)
 
 			// check that the squares are equal
 			assert.Equal(t, flatten(eds), flatten(reds))
@@ -256,10 +257,10 @@ func TestRetrieveBlockData(t *testing.T) {
 	tests := []test{
 		{"no missing data", 4, 0, false, ""},
 		{"single missing share", 8, 1, false, ""},
-		{"missing half", 8, 64, false, ""},
-		{"missing max", 8, 91, false, ""},
-		// this test should either timeout or be unable to repair the data square
-		{"missing 3/4", 8, 192, true, "fail"},
+		// {"missing half", 8, 64, false, ""},
+		// {"missing max", 8, 91, false, ""},
+		// // this test should either timeout or be unable to repair the data square
+		// {"missing 3/4", 8, 192, true, "fail"},
 	}
 
 	for _, tc := range tests {
@@ -304,7 +305,7 @@ func TestRetrieveBlockData(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			retrievalCtx, cancel := context.WithTimeout(background, time.Second*7)
+			retrievalCtx, cancel := context.WithTimeout(background, time.Second*4)
 			defer cancel()
 
 			rblockData, err := RetrieveBlockData(
@@ -329,6 +330,12 @@ func TestRetrieveBlockData(t *testing.T) {
 
 			assert.Equal(t, rawData, nsShares.RawShares())
 		})
+	}
+}
+
+func TestFuzzRDS(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		TestRetrieveBlockData(t)
 	}
 }
 
