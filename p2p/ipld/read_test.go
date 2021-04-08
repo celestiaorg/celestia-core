@@ -305,7 +305,7 @@ func TestRetrieveBlockData(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			retrievalCtx, cancel := context.WithTimeout(background, time.Second*8)
+			retrievalCtx, cancel := context.WithTimeout(background, time.Second*25)
 			defer cancel()
 
 			rblockData, err := RetrieveBlockData(
