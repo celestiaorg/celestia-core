@@ -318,10 +318,11 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 	// add namespaces to erasured shares and flatten the eds
 	leaves := flattenNamespacedEDS(namespacedShares, eds)
 
+	// create nmt adder wrapping batch adder
+	batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, nodeAdder))
+
 	// iterate through each set of col and row leaves
 	for _, leafSet := range leaves {
-		// create a batch per each leafSet
-		batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, nodeAdder))
 		tree := nmt.New(sha256.New(), nmt.NodeVisitor(batchAdder.Visit))
 		for _, share := range leafSet {
 			err = tree.Push(share)
@@ -332,15 +333,10 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 
 		// compute the root in order to collect the ipld.Nodes
 		tree.Root()
-
-		// commit the batch to ipfs
-		err = batchAdder.Batch().Commit()
-		if err != nil {
-			return err
-		}
 	}
 
-	return nil
+	// commit the batch to ipfs
+	return batchAdder.Batch().Commit()
 }
 
 // flattenNamespacedEDS returns a flattend extendedDataSquare with namespaces
