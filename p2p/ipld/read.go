@@ -120,7 +120,7 @@ func newshareCounter(parentCtx context.Context, edsWidth uint32) *shareCounter {
 
 	// calculate the min number of shares needed to repair the square
 	originalSquareWidth := edsWidth / 2
-	minSharesNeeded := (edsWidth * edsWidth) - (originalSquareWidth+1)*(originalSquareWidth+1)
+	minSharesNeeded := (edsWidth * edsWidth) - ((originalSquareWidth + 1) * (originalSquareWidth + 1))
 
 	maxErrors := edsWidth*edsWidth - minSharesNeeded
 
@@ -128,8 +128,8 @@ func newshareCounter(parentCtx context.Context, edsWidth uint32) *shareCounter {
 		shares:          make(map[index][]byte),
 		edsWidth:        edsWidth,
 		minSharesNeeded: minSharesNeeded,
-		shareChan:       make(chan indexedShare, 5),
-		errc:            make(chan error, 5),
+		shareChan:       make(chan indexedShare, 1),
+		errc:            make(chan error, 1),
 		maxErrors:       maxErrors,
 		ctx:             ctx,
 		cancel:          cancel,

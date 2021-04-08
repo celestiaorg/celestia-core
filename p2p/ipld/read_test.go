@@ -256,9 +256,8 @@ func TestRetrieveBlockData(t *testing.T) {
 
 	tests := []test{
 		{"no missing data", 4, 0, false, ""},
-		{"single missing share", 8, 1, false, ""},
 		{"missing half", 8, 64, false, ""},
-		{"missing max", 8, 91, false, ""},
+		{"missing max", 8, 81, false, ""},
 		// this test should either timeout or be unable to repair the data square
 		{"missing 3/4", 8, 192, true, "fail"},
 	}
@@ -295,17 +294,21 @@ func TestRetrieveBlockData(t *testing.T) {
 
 			removalCtx, cancel := context.WithTimeout(background, time.Second*2)
 			defer cancel()
-			err = removeRandomLeaves(removalCtx, ipfsAPI, rawRowRoots, tc.remove/2)
+
+			// remove shares
+			rowRootsToRemove := tc.remove / 2
+			colRootsToRemove := tc.remove - rowRootsToRemove
+			err = removeRandomLeaves(removalCtx, ipfsAPI, rawRowRoots, rowRootsToRemove)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			err = removeRandomLeaves(removalCtx, ipfsAPI, rawColRoots, tc.remove/2)
+			err = removeRandomLeaves(removalCtx, ipfsAPI, rawColRoots, colRootsToRemove)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			retrievalCtx, cancel := context.WithTimeout(background, time.Second*10)
+			retrievalCtx, cancel := context.WithTimeout(background, time.Second*5)
 			defer cancel()
 
 			rblockData, err := RetrieveBlockData(
