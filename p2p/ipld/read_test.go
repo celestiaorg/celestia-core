@@ -257,10 +257,10 @@ func TestRetrieveBlockData(t *testing.T) {
 	tests := []test{
 		{"no missing data", 4, 0, false, ""},
 		{"single missing share", 8, 1, false, ""},
-		// {"missing half", 8, 64, false, ""},
-		// {"missing max", 8, 91, false, ""},
-		// // this test should either timeout or be unable to repair the data square
-		// {"missing 3/4", 8, 192, true, "fail"},
+		{"missing half", 8, 64, false, ""},
+		{"missing max", 8, 91, false, ""},
+		// this test should either timeout or be unable to repair the data square
+		{"missing 3/4", 8, 192, true, "fail"},
 	}
 
 	for _, tc := range tests {
