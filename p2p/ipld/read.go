@@ -14,10 +14,6 @@ import (
 	"github.com/lazyledger/rsmt2d"
 )
 
-// NOTE: I'm making the assumption that bandwidth is more expensive than
-// compute, this means that when retrieving data I'm stopping as soon as enough
-// data is retrieved to recompute
-
 // //////////////////////////////////////
 //	Retrieve Block Data
 // ////////////////////////////////////

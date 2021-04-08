@@ -333,12 +333,6 @@ func TestRetrieveBlockData(t *testing.T) {
 	}
 }
 
-func TestFuzzRDS(t *testing.T) {
-	for i := 0; i < 10; i++ {
-		TestRetrieveBlockData(t)
-	}
-}
-
 // removes random leaves. only use with either row or column roots
 func removeRandomLeaves(ctx context.Context, api iface.CoreAPI, roots [][]byte, numLeaves int) error {
 	nodesToRemove := make(map[string]cid.Cid)
