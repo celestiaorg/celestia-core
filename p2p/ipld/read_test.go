@@ -267,7 +267,7 @@ func TestRetrieveBlockData(t *testing.T) {
 
 		t.Run(fmt.Sprintf("%s size %d", tc.name, tc.squareSize), func(t *testing.T) {
 			background := context.Background()
-			putCtx, cancel := context.WithTimeout(background, time.Second*2)
+			putCtx, cancel := context.WithTimeout(background, time.Second*4)
 			defer cancel()
 			blockData := generateRandomBlockData(tc.squareSize*tc.squareSize, adjustedMsgSize)
 			block := types.Block{
@@ -294,7 +294,7 @@ func TestRetrieveBlockData(t *testing.T) {
 			rowRoots := rootsToDigests(rawRowRoots)
 			colRoots := rootsToDigests(rawColRoots)
 
-			removalCtx, cancel := context.WithTimeout(background, time.Second*1)
+			removalCtx, cancel := context.WithTimeout(background, time.Second*4)
 			defer cancel()
 			err = removeRandomLeaves(removalCtx, ipfsAPI, rawRowRoots, tc.remove/2)
 			if err != nil {
@@ -306,7 +306,7 @@ func TestRetrieveBlockData(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			retrievalCtx, cancel := context.WithTimeout(background, time.Second*2)
+			retrievalCtx, cancel := context.WithTimeout(background, time.Second*5)
 			defer cancel()
 
 			rblockData, err := RetrieveBlockData(
