@@ -73,22 +73,12 @@ func RetrieveBlockData(
 	// flatten the square
 	flattened := sc.flatten()
 
-	var eds *rsmt2d.ExtendedDataSquare
-	// don't repair the square if all the data is there
-	if sc.counter == sc.edsWidth*sc.edsWidth {
-		e, err := rsmt2d.ImportExtendedDataSquare(flattened, codec, rsmt2d.NewDefaultTree)
-		if err != nil {
-			return types.Data{}, err
-		}
-		eds = e
-	} else {
-		tree := NewErasuredNamespacedMerkleTree(uint64(originalSquareWidth))
-		// repair the square
-		e, err := rsmt2d.RepairExtendedDataSquare(rowRoots, colRoots, flattened, codec, tree.Constructor)
-		if err != nil {
-			return types.Data{}, err
-		}
-		eds = e
+	tree := NewErasuredNamespacedMerkleTree(uint64(originalSquareWidth))
+
+	// repair the square
+	eds, err := rsmt2d.RepairExtendedDataSquare(rowRoots, colRoots, flattened, codec, tree.Constructor)
+	if err != nil {
+		return types.Data{}, err
 	}
 
 	blockData, err := types.DataFromSquare(eds)
@@ -143,8 +133,8 @@ func newshareCounter(parentCtx context.Context, edsWidth uint32) *shareCounter {
 		shares:          shares,
 		edsWidth:        edsWidth,
 		minSharesNeeded: minSharesNeeded,
-		shareChan:       make(chan indexedShare, 1000),
-		errc:            make(chan error, 1000),
+		shareChan:       make(chan indexedShare),
+		errc:            make(chan error),
 		maxErrors:       maxErrors,
 		ctx:             ctx,
 		cancel:          cancel,

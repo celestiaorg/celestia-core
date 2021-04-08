@@ -254,8 +254,8 @@ func TestRetrieveBlockData(t *testing.T) {
 	adjustedMsgSize := types.MsgShareSize - 2
 
 	tests := []test{
-		{"no missing data small", 4, 0, false, ""},
-		{"no missing data medium", 8, 0, false, ""},
+		{"no missing data", 4, 0, false, ""},
+		{"single missing share", 8, 1, false, ""},
 		{"missing half", 8, 64, false, ""},
 		{"missing max", 8, 91, false, ""},
 		// this test should either timeout or be unable to repair the data square
@@ -267,15 +267,13 @@ func TestRetrieveBlockData(t *testing.T) {
 
 		t.Run(fmt.Sprintf("%s size %d", tc.name, tc.squareSize), func(t *testing.T) {
 			background := context.Background()
-			putCtx, cancel := context.WithTimeout(background, time.Second*20)
-			defer cancel()
 			blockData := generateRandomBlockData(tc.squareSize*tc.squareSize, adjustedMsgSize)
 			block := types.Block{
 				Data:       blockData,
 				LastCommit: &types.Commit{},
 			}
 
-			err := block.PutBlock(putCtx, ipfsAPI.Dag().Pinning())
+			err := block.PutBlock(background, ipfsAPI.Dag().Pinning())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -294,7 +292,7 @@ func TestRetrieveBlockData(t *testing.T) {
 			rowRoots := rootsToDigests(rawRowRoots)
 			colRoots := rootsToDigests(rawColRoots)
 
-			removalCtx, cancel := context.WithTimeout(background, time.Second*20)
+			removalCtx, cancel := context.WithTimeout(background, time.Second*2)
 			defer cancel()
 			err = removeRandomLeaves(removalCtx, ipfsAPI, rawRowRoots, tc.remove/2)
 			if err != nil {
@@ -306,7 +304,7 @@ func TestRetrieveBlockData(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			retrievalCtx, cancel := context.WithTimeout(background, time.Second*20)
+			retrievalCtx, cancel := context.WithTimeout(background, time.Second*7)
 			defer cancel()
 
 			rblockData, err := RetrieveBlockData(
