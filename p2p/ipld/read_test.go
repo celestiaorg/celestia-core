@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"fmt"
 	"math"
 	"math/rand"
 	"sort"
@@ -233,6 +234,8 @@ func TestRetrieveBlockData(t *testing.T) {
 		name       string
 		squareSize int
 		remove     int
+		expectErr  bool
+		errStr     string
 	}
 
 	// create a mock node
@@ -251,45 +254,63 @@ func TestRetrieveBlockData(t *testing.T) {
 	adjustedMsgSize := types.MsgShareSize - 2
 
 	tests := []test{
-		{"no missing data", 8, 0},
+		{"no missing data small", 4, 0, false, ""},
+		{"no missing data medium", 8, 0, false, ""},
+		{"missing half", 8, 64, false, ""},
+		{"missing max", 8, 91, false, ""},
+		// this test should either timeout or be unable to repair the data square
+		{"missing 3/4", 8, 192, true, "fail"},
 	}
 
 	for _, tc := range tests {
 		tc := tc
-		ctx, _ := context.WithTimeout(context.Background(), time.Second*3)
-		blockData := generateRandomBlockData(tc.squareSize*tc.squareSize, adjustedMsgSize)
-		block := types.Block{
-			Data:       blockData,
-			LastCommit: &types.Commit{},
-		}
 
-		err := block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
-		if err != nil {
-			t.Fatal(err)
-		}
+		t.Run(fmt.Sprintf("%s size %d", tc.name, tc.squareSize), func(t *testing.T) {
+			background := context.Background()
+			putCtx, cancel := context.WithTimeout(background, time.Second*2)
+			defer cancel()
+			blockData := generateRandomBlockData(tc.squareSize*tc.squareSize, adjustedMsgSize)
+			block := types.Block{
+				Data:       blockData,
+				LastCommit: &types.Commit{},
+			}
 
-		shareData, _ := blockData.ComputeShares()
-		rawData := shareData.RawShares()
+			err := block.PutBlock(putCtx, ipfsAPI.Dag().Pinning())
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		tree := NewErasuredNamespacedMerkleTree(uint64(tc.squareSize))
-		eds, err := rsmt2d.ComputeExtendedDataSquare(rawData, rsmt2d.RSGF8, tree.Constructor)
-		if err != nil {
-			t.Fatal(err)
-		}
+			shareData, _ := blockData.ComputeShares()
+			rawData := shareData.RawShares()
 
-		rawRowRoots := eds.RowRoots()
-		rawColRoots := eds.ColumnRoots()
-		rowRoots := rootsToDigests(rawRowRoots)
-		colRoots := rootsToDigests(rawColRoots)
+			tree := NewErasuredNamespacedMerkleTree(uint64(tc.squareSize))
+			eds, err := rsmt2d.ComputeExtendedDataSquare(rawData, rsmt2d.RSGF8, tree.Constructor)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		t.Run(tc.name, func(t *testing.T) {
+			rawRowRoots := eds.RowRoots()
+			rawColRoots := eds.ColumnRoots()
+			rowRoots := rootsToDigests(rawRowRoots)
+			colRoots := rootsToDigests(rawColRoots)
 
-			// remove data from IPFS
-			// removeRandomLeaves(ctx, ipfsAPI, rawRowRoots, tc.remove/2)
-			// removeRandomLeaves(ctx, ipfsAPI, rawColRoots, tc.remove/2)
+			removalCtx, cancel := context.WithTimeout(background, time.Second*1)
+			defer cancel()
+			err = removeRandomLeaves(removalCtx, ipfsAPI, rawRowRoots, tc.remove/2)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-			blockData, err := RetrieveBlockData(
-				ctx,
+			err = removeRandomLeaves(removalCtx, ipfsAPI, rawColRoots, tc.remove/2)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			retrievalCtx, cancel := context.WithTimeout(background, time.Second*2)
+			defer cancel()
+
+			rblockData, err := RetrieveBlockData(
+				retrievalCtx,
 				&types.DataAvailabilityHeader{
 					RowsRoots:   rowRoots,
 					ColumnRoots: colRoots,
@@ -298,19 +319,24 @@ func TestRetrieveBlockData(t *testing.T) {
 				rsmt2d.RSGF8,
 			)
 
-			assert.NoError(t, err)
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errStr)
+				return
+			}
 
-			nsShares, _ := blockData.ComputeShares()
+			require.NoError(t, err)
 
-			assert.Equal(t, len(rawData), len(nsShares.RawShares()))
+			nsShares, _ := rblockData.ComputeShares()
+
+			assert.Equal(t, rawData, nsShares.RawShares())
 		})
-
 	}
 }
 
 // removes random leaves. only use with either row or column roots
 func removeRandomLeaves(ctx context.Context, api iface.CoreAPI, roots [][]byte, numLeaves int) error {
-	nodesToRemove := make([]cid.Cid, numLeaves)
+	nodesToRemove := make(map[string]cid.Cid)
 	for i := 0; i < numLeaves; i++ {
 		randRootInd := uint32(rand.Intn(len(roots)))
 		randLeafInd := uint32(rand.Intn(len(roots)))
@@ -331,13 +357,27 @@ func removeRandomLeaves(ctx context.Context, api iface.CoreAPI, roots [][]byte, 
 		// resolve the path
 		node, err := api.ResolveNode(ctx, p)
 		if err != nil {
-			return err
+			i--
+			continue
 		}
 
-		nodesToRemove[i] = node.Cid()
+		_, has := nodesToRemove[node.Cid().String()]
+		if has {
+			i--
+			continue
+		}
+
+		nodesToRemove[node.Cid().String()] = node.Cid()
+
 	}
 
-	return api.Dag().RemoveMany(ctx, nodesToRemove)
+	cidList := make([]cid.Cid, len(nodesToRemove))
+	counter := 0
+	for _, c := range nodesToRemove {
+		cidList[counter] = c
+		counter++
+	}
+	return api.Dag().RemoveMany(ctx, cidList)
 }
 
 func flatten(eds *rsmt2d.ExtendedDataSquare) [][]byte {
