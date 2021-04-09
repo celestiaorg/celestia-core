@@ -256,9 +256,8 @@ func TestRetrieveBlockData(t *testing.T) {
 
 	tests := []test{
 		{"no missing data", 4, 0, false, ""},
-		{"missing half", 8, 64, false, ""},
-		{"missing max", 8, 81, false, ""},
-		// this test should either timeout or be unable to repair the data square
+		{"16 KB block missing half", 8, 64, false, ""},
+		{"4 MB block missing max", types.MaxSquareSize, 16641, false, ""},
 		{"missing 3/4", 8, 192, true, "fail"},
 	}
 
@@ -308,7 +307,7 @@ func TestRetrieveBlockData(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			retrievalCtx, cancel := context.WithTimeout(background, time.Second*5)
+			retrievalCtx, cancel := context.WithTimeout(background, time.Second*20)
 			defer cancel()
 
 			rblockData, err := RetrieveBlockData(
