@@ -112,7 +112,7 @@ func TestGetLeafData(t *testing.T) {
 
 	// create the context and batch needed for node collection from the tree
 	ctx := context.Background()
-	batch := format.NewBatch(ctx, ipfsAPI.Dag().Pinning())
+	batch := format.NewBatch(ctx, ipfsAPI.Dag())
 
 	// generate random data for the nmt
 	data := generateRandNamespacedRawData(16, types.NamespaceSize, types.ShareSize)
@@ -273,7 +273,7 @@ func TestRetrieveBlockData(t *testing.T) {
 				LastCommit: &types.Commit{},
 			}
 
-			err := block.PutBlock(background, ipfsAPI.Dag().Pinning())
+			err := block.PutBlock(background, ipfsAPI.Dag())
 			if err != nil {
 				t.Fatal(err)
 			}
