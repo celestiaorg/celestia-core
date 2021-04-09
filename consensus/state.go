@@ -1116,7 +1116,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
 		defer cancel()
 		// TODO: post data to IPFS in a goroutine
-		err := block.PutBlock(ctx, cs.IpfsAPI.Dag().Pinning())
+		err := block.PutBlock(ctx, cs.IpfsAPI.Dag())
 		if err != nil {
 			cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
 		}

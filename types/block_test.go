@@ -17,7 +17,6 @@ import (
 	gogotypes "github.com/gogo/protobuf/types"
 	coreapi "github.com/ipfs/go-ipfs/core/coreapi"
 	coremock "github.com/ipfs/go-ipfs/core/mock"
-	"github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1340,6 +1339,9 @@ func TestPutBlock(t *testing.T) {
 		t.Error(err)
 	}
 
+	maxOriginalSquareSize := MaxSquareSize / 2
+	maxShareCount := maxOriginalSquareSize * maxOriginalSquareSize
+
 	testCases := []struct {
 		name      string
 		blockData Data
@@ -1349,7 +1351,7 @@ func TestPutBlock(t *testing.T) {
 		{"no leaves", generateRandomMsgOnlyData(0), false, ""},
 		{"single leaf", generateRandomMsgOnlyData(1), false, ""},
 		{"16 leaves", generateRandomMsgOnlyData(16), false, ""},
-		{"max square size", generateRandomMsgOnlyData(MaxSquareSize), false, ""},
+		{"max square size", generateRandomMsgOnlyData(maxShareCount), false, ""},
 	}
 	ctx := context.Background()
 	for _, tc := range testCases {
@@ -1358,7 +1360,7 @@ func TestPutBlock(t *testing.T) {
 		block := &Block{Data: tc.blockData}
 
 		t.Run(tc.name, func(t *testing.T) {
-			err = block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
+			err = block.PutBlock(ctx, ipfsAPI.Dag())
 			if tc.expectErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.errString)
@@ -1376,15 +1378,6 @@ func TestPutBlock(t *testing.T) {
 				cid, err := nodes.CidFromNamespacedSha256(rowRoot)
 				if err != nil {
 					t.Error(err)
-				}
-
-				// check if cid was successfully pinned to IPFS
-				_, pinned, err := ipfsAPI.Pin().IsPinned(ctx, path.IpldPath(cid))
-				if err != nil {
-					t.Error(err)
-				}
-				if !pinned {
-					t.Errorf("failure to pin cid %s to IPFS", cid.String())
 				}
 
 				// retrieve the data from IPFS
