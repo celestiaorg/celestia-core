@@ -29,39 +29,6 @@ import (
 
 var raceDetectorActive = false
 
-// TODO(@Wondertan): Add test to simulate ErrValidationFailed
-
-func TestValidateAvailability(t *testing.T) {
-	const (
-		shares          = 15
-		squareSize      = 8
-		adjustedMsgSize = types.MsgShareSize - 2
-	)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// issue a new API object
-	ipfsAPI := mockedIpfsAPI(t)
-
-	blockData := generateRandomBlockData(squareSize*squareSize, adjustedMsgSize)
-	block := types.Block{
-		Data:       blockData,
-		LastCommit: &types.Commit{},
-	}
-	block.Hash()
-
-	err := block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
-	require.NoError(t, err)
-
-	calls := 0
-	err = ValidateAvailability(ctx, ipfsAPI, &block.DataAvailabilityHeader, shares, func(data namespace.PrefixedData8) {
-		calls++
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, shares, calls)
-}
-
 func TestLeafPath(t *testing.T) {
 	type test struct {
 		name         string
