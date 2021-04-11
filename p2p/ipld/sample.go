@@ -64,6 +64,10 @@ func newSquareSampler(squareWidth uint32, expectedSamples int) *squareSampler {
 }
 
 func (ss *squareSampler) sample(num int) {
+	if uint32(num) > ss.squareWidth*ss.squareWidth {
+		panic("number of samples must be less than squared width of square")
+	}
+
 	done := 0
 	for done < num {
 		s := Sample{
