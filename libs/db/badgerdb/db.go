@@ -2,7 +2,6 @@ package badgerdb
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -166,11 +165,9 @@ func (b *BadgerDB) Stats() map[string]string {
 
 func (b *BadgerDB) NewBatch() db.Batch {
 	wb := &badgerDBBatch{
-		db:         b.db,
-		wb:         b.db.NewWriteBatch(),
-		firstFlush: make(chan struct{}, 1),
+		db: b.db,
+		wb: b.db.NewWriteBatch(),
 	}
-	wb.firstFlush <- struct{}{}
 	return wb
 }
 
@@ -179,14 +176,6 @@ var _ db.Batch = (*badgerDBBatch)(nil)
 type badgerDBBatch struct {
 	db *badger.DB
 	wb *badger.WriteBatch
-
-	// Calling db.Flush twice panics, so we must keep track of whether we've
-	// flushed already on our own. If Write can receive from the firstFlush
-	// channel, then it's the first and only Flush call we should do.
-	//
-	// Upstream bug report:
-	// https://github.com/dgraph-io/badger/issues/1394
-	firstFlush chan struct{}
 }
 
 func (b *badgerDBBatch) Set(key, value []byte) error {
@@ -207,12 +196,7 @@ func (b *badgerDBBatch) Delete(key []byte) error {
 }
 
 func (b *badgerDBBatch) Write() error {
-	select {
-	case <-b.firstFlush:
-		return b.wb.Flush()
-	default:
-		return fmt.Errorf("batch already flushed")
-	}
+	return b.wb.Flush()
 }
 
 func (b *badgerDBBatch) WriteSync() error {
@@ -220,11 +204,8 @@ func (b *badgerDBBatch) WriteSync() error {
 }
 
 func (b *badgerDBBatch) Close() error {
-	select {
-	case <-b.firstFlush: // a Flush after Cancel panics too
-	default:
-	}
 	b.wb.Cancel()
+
 	return nil
 }
 
