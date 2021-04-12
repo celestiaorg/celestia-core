@@ -14,8 +14,6 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-ipfs/core/coreapi"
-	iface "github.com/ipfs/interface-go-ipfs-core"
-	"github.com/ipfs/interface-go-ipfs-core/path"
 
 	coremock "github.com/ipfs/go-ipfs/core/mock"
 	format "github.com/ipfs/go-ipld-format"
@@ -234,7 +232,6 @@ func TestRetrieveBlockData(t *testing.T) {
 	type test struct {
 		name       string
 		squareSize int
-		remove     int
 		expectErr  bool
 		errStr     string
 	}
@@ -255,10 +252,10 @@ func TestRetrieveBlockData(t *testing.T) {
 	adjustedMsgSize := types.MsgShareSize - 2
 
 	tests := []test{
-		{"no missing data", 4, 0, false, ""},
-		{"16 KB block missing half", 8, 64, false, ""},
-		{"4 MB block missing max", types.MaxSquareSize, 16641, false, ""},
-		{"missing 3/4", 8, 192, true, "fail"},
+		{"4 KB block", 4, false, ""},
+		{"16 KB block", 8, false, ""},
+		{"16 KB block timeout expected", 8, true, "timeout"},
+		{"1 MB block", 64, false, ""},
 	}
 
 	for _, tc := range tests {
@@ -272,9 +269,12 @@ func TestRetrieveBlockData(t *testing.T) {
 				LastCommit: &types.Commit{},
 			}
 
-			err := block.PutBlock(background, ipfsAPI.Dag())
-			if err != nil {
-				t.Fatal(err)
+			// if an error is exected, don't put the block
+			if !tc.expectErr {
+				err := block.PutBlock(background, ipfsAPI.Dag())
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 
 			shareData, _ := blockData.ComputeShares()
@@ -291,23 +291,7 @@ func TestRetrieveBlockData(t *testing.T) {
 			rowRoots := rootsToDigests(rawRowRoots)
 			colRoots := rootsToDigests(rawColRoots)
 
-			removalCtx, cancel := context.WithTimeout(background, time.Second*2)
-			defer cancel()
-
-			// remove shares
-			rowRootsToRemove := tc.remove / 2
-			colRootsToRemove := tc.remove - rowRootsToRemove
-			err = removeRandomLeaves(removalCtx, ipfsAPI, rawRowRoots, rowRootsToRemove)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			err = removeRandomLeaves(removalCtx, ipfsAPI, rawColRoots, colRootsToRemove)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			retrievalCtx, cancel := context.WithTimeout(background, time.Second*20)
+			retrievalCtx, cancel := context.WithTimeout(background, time.Second*10)
 			defer cancel()
 
 			rblockData, err := RetrieveBlockData(
@@ -333,52 +317,6 @@ func TestRetrieveBlockData(t *testing.T) {
 			assert.Equal(t, rawData, nsShares.RawShares())
 		})
 	}
-}
-
-// removes random leaves. only use with either row or column roots
-func removeRandomLeaves(ctx context.Context, api iface.CoreAPI, roots [][]byte, numLeaves int) error {
-	nodesToRemove := make(map[string]cid.Cid)
-	for i := 0; i < numLeaves; i++ {
-		randRootInd := uint32(rand.Intn(len(roots)))
-		randLeafInd := uint32(rand.Intn(len(roots)))
-		randRoot := roots[randRootInd]
-		randRootCid, err := nodes.CidFromNamespacedSha256(randRoot)
-		if err != nil {
-			return err
-		}
-
-		// calculate the path to the leaf
-		leafPath, err := leafPath(randLeafInd, uint32(len(roots)))
-		if err != nil {
-			return err
-		}
-		// use the root cid and the leafPath to create an ipld path
-		p := path.Join(path.IpldPath(randRootCid), leafPath...)
-
-		// resolve the path
-		node, err := api.ResolveNode(ctx, p)
-		if err != nil {
-			i--
-			continue
-		}
-
-		_, has := nodesToRemove[node.Cid().String()]
-		if has {
-			i--
-			continue
-		}
-
-		nodesToRemove[node.Cid().String()] = node.Cid()
-
-	}
-
-	cidList := make([]cid.Cid, len(nodesToRemove))
-	counter := 0
-	for _, c := range nodesToRemove {
-		cidList[counter] = c
-		counter++
-	}
-	return api.Dag().RemoveMany(ctx, cidList)
 }
 
 func flatten(eds *rsmt2d.ExtendedDataSquare) [][]byte {
@@ -470,7 +408,8 @@ func rootsToDigests(roots [][]byte) []namespace.IntervalDigest {
 
 func generateRandomBlockData(msgCount, msgSize int) types.Data {
 	var out types.Data
-	out.Messages = generateRandomMessages(msgCount, msgSize)
+	out.Messages = generateRandomMessages(msgCount-1, msgSize)
+	out.Txs = generateRandomContiguousShares(1)
 	return out
 }
 
@@ -484,4 +423,19 @@ func generateRandomMessages(count, msgSize int) types.Messages {
 		}
 	}
 	return types.Messages{MessagesList: msgs}
+}
+
+func generateRandomContiguousShares(count int) types.Txs {
+	// the size of a length delimited tx that takes up an entire share
+	const adjustedTxSize = types.TxShareSize - 2
+	txs := make(types.Txs, count)
+	for i := 0; i < count; i++ {
+		tx := make([]byte, adjustedTxSize)
+		_, err := rand.Read(tx)
+		if err != nil {
+			panic(err)
+		}
+		txs[i] = types.Tx(tx)
+	}
+	return txs
 }

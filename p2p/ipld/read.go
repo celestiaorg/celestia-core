@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 
 	"github.com/ipfs/go-cid"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
@@ -23,45 +24,37 @@ const baseErrorMsg = "failure to retrieve block data:"
 var ErrEncounteredTooManyErrors = fmt.Errorf("%s %s", baseErrorMsg, "encountered too many errors")
 var ErrTimeout = fmt.Errorf("%s %s", baseErrorMsg, "timeout")
 
-// RetrieveBlockData asynchronously fetches block data until the underlying extended
-// data square can be restored and returned.
+// RetrieveBlockData asynchronously fetches block data using the minimum number
+// of requests to IPFS. It fails if one of the random samples sampled is not available.
 func RetrieveBlockData(
 	ctx context.Context,
 	dah *types.DataAvailabilityHeader,
 	api coreiface.CoreAPI,
 	codec rsmt2d.CodecType,
 ) (types.Data, error) {
-	edsWidth := uint32(len(dah.ColumnRoots))
-	originalSquareWidth := edsWidth / 2
-
-	// keep track of leaves using thread safe counter
-	sc := newshareCounter(ctx, edsWidth)
+	edsWidth := len(dah.RowsRoots)
+	sc := newshareCounter(ctx, uint32(edsWidth))
 
 	// convert the row and col roots into Cids
 	rowRoots := dah.RowsRoots.Bytes()
-	rowCids, err := rootsToCids(rowRoots)
-	if err != nil {
-		return types.Data{}, err
-	}
-
 	colRoots := dah.ColumnRoots.Bytes()
-	colCids, err := rootsToCids(colRoots)
-	if err != nil {
-		return types.Data{}, err
-	}
 
-	// async attempt to fetch each leaf
-	for axisIdx := uint32(0); axisIdx < uint32(len(rowCids)); axisIdx++ {
-		for idx := uint32(0); idx < edsWidth; idx++ {
-			go sc.retrieveShare(colCids[axisIdx], false, axisIdx, idx, api)
-			go sc.retrieveShare(rowCids[axisIdx], true, axisIdx, idx, api)
+	// sample 1/4 of the total extended square by sampling half of the leaves in
+	// half of the rows
+	for _, row := range uniqueRandNumbers(edsWidth/2, edsWidth) {
+		for _, col := range uniqueRandNumbers(edsWidth/2, edsWidth) {
+			rootCid, err := nodes.CidFromNamespacedSha256(rowRoots[row])
+			if err != nil {
+				return types.Data{}, err
+			}
+
+			go sc.retrieveShare(rootCid, true, row, col, api)
 		}
 	}
 
 	// wait until enough data has been collected, too many errors encountered,
 	// or the timeout is reached
-	err = sc.wait()
-
+	err := sc.wait()
 	if err != nil {
 		return types.Data{}, err
 	}
@@ -69,7 +62,7 @@ func RetrieveBlockData(
 	// flatten the square
 	flattened := sc.flatten()
 
-	tree := NewErasuredNamespacedMerkleTree(uint64(originalSquareWidth))
+	tree := NewErasuredNamespacedMerkleTree(uint64(edsWidth) / 2)
 
 	// repair the square
 	eds, err := rsmt2d.RepairExtendedDataSquare(rowRoots, colRoots, flattened, codec, tree.Constructor)
@@ -83,6 +76,29 @@ func RetrieveBlockData(
 	}
 
 	return blockData, nil
+}
+
+// uniqueRandNumbers generates count unique random numbers with a max of max
+func uniqueRandNumbers(count, max int) []uint32 {
+	if count > max {
+		panic(fmt.Sprintf("cannot create %d unique samples from a max of %d", count, max))
+	}
+	samples := make(map[uint32]struct{}, count)
+	for i := 0; i < count; {
+		sample := uint32(rand.Intn(max))
+		if _, has := samples[sample]; has {
+			continue
+		}
+		samples[sample] = struct{}{}
+		i++
+	}
+	out := make([]uint32, count)
+	counter := 0
+	for s := range samples {
+		out[counter] = s
+		counter++
+	}
+	return out
 }
 
 type index struct {
@@ -110,19 +126,14 @@ type shareCounter struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	// any errors encountered when attempting to retrieve shares
-	errc      chan error
-	errCount  uint32
-	maxErrors uint32
+	errc chan error
 }
 
 func newshareCounter(parentCtx context.Context, edsWidth uint32) *shareCounter {
 	ctx, cancel := context.WithCancel(parentCtx)
 
 	// calculate the min number of shares needed to repair the square
-	originalSquareWidth := edsWidth / 2
-	minSharesNeeded := (edsWidth * edsWidth) - ((originalSquareWidth + 1) * (originalSquareWidth + 1))
-
-	maxErrors := edsWidth*edsWidth - minSharesNeeded
+	minSharesNeeded := (edsWidth * edsWidth / 4)
 
 	return &shareCounter{
 		shares:          make(map[index][]byte),
@@ -130,7 +141,6 @@ func newshareCounter(parentCtx context.Context, edsWidth uint32) *shareCounter {
 		minSharesNeeded: minSharesNeeded,
 		shareChan:       make(chan indexedShare, 1),
 		errc:            make(chan error, 1),
-		maxErrors:       maxErrors,
 		ctx:             ctx,
 		cancel:          cancel,
 	}
@@ -180,6 +190,7 @@ func (sc *shareCounter) wait() error {
 		select {
 		case <-sc.ctx.Done():
 			return ErrTimeout
+
 		case share := <-sc.shareChan:
 			_, has := sc.shares[share.index]
 			// add iff it does not already exists
@@ -191,12 +202,9 @@ func (sc *shareCounter) wait() error {
 					return nil
 				}
 			}
-		case <-sc.errc:
-			sc.errCount++
 
-			if sc.errCount > sc.maxErrors {
-				return ErrEncounteredTooManyErrors
-			}
+		case err := <-sc.errc:
+			return fmt.Errorf("failure to retrieve data square: %w", err)
 		}
 	}
 }
@@ -292,17 +300,4 @@ func nextPowerOf2(v uint32) uint32 {
 
 	// return the next lowest power
 	return v / 2
-}
-
-// rootsToCids converts roots to cids
-func rootsToCids(roots [][]byte) ([]cid.Cid, error) {
-	cids := make([]cid.Cid, len(roots))
-	for i, root := range roots {
-		rootCid, err := nodes.CidFromNamespacedSha256(root)
-		if err != nil {
-			return nil, err
-		}
-		cids[i] = rootCid
-	}
-	return cids, nil
 }
