@@ -2,10 +2,10 @@ package ipld
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 
 	"github.com/ipfs/go-cid"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
@@ -85,6 +85,7 @@ func uniqueRandNumbers(count, max int) []uint32 {
 	}
 	samples := make(map[uint32]struct{}, count)
 	for i := 0; i < count; {
+		// nolint:gosec // G404: Use of weak random number generator
 		sample := uint32(rand.Intn(max))
 		if _, has := samples[sample]; has {
 			continue
