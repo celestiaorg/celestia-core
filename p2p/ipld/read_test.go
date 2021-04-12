@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"sort"
@@ -25,6 +26,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+var raceDetectorActive = false
 
 func TestLeafPath(t *testing.T) {
 	type test struct {
@@ -255,7 +258,19 @@ func TestRetrieveBlockData(t *testing.T) {
 		{"4 KB block", 4, false, ""},
 		{"16 KB block", 8, false, ""},
 		{"16 KB block timeout expected", 8, true, "timeout"},
-		{"1 MB block", 64, false, ""},
+	}
+
+	// largeTests are tests that too big to be ran with the race dectector
+	largeTests := []test{
+		{"max square size", types.MaxSquareSize, false, ""},
+	}
+
+	// if we're using the race detector, skip some large tests due to time and
+	// concurrency constraints
+	if raceDetectorActive {
+		log.Println("Not running large tests for TestRetrieveBlockData: race detector is active")
+	} else {
+		tests = append(tests, largeTests...)
 	}
 
 	for _, tc := range tests {
@@ -291,7 +306,7 @@ func TestRetrieveBlockData(t *testing.T) {
 			rowRoots := rootsToDigests(rawRowRoots)
 			colRoots := rootsToDigests(rawColRoots)
 
-			retrievalCtx, cancel := context.WithTimeout(background, time.Second*142)
+			retrievalCtx, cancel := context.WithTimeout(background, time.Second*2)
 			defer cancel()
 
 			rblockData, err := RetrieveBlockData(
