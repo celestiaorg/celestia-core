@@ -251,7 +251,7 @@ func TestRetrieveBlockData(t *testing.T) {
 		t.Error(err)
 	}
 
-	// the max size of message that won't get splitl
+	// the max size of messages that won't get split
 	adjustedMsgSize := types.MsgShareSize - 2
 
 	tests := []test{
