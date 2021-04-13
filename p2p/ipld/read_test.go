@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"log"
 	"math"
 	"math/rand"
 	"sort"
@@ -258,25 +257,19 @@ func TestRetrieveBlockData(t *testing.T) {
 		{"4 KB block", 4, false, ""},
 		{"16 KB block", 8, false, ""},
 		{"16 KB block timeout expected", 8, true, "timeout"},
-	}
-
-	// largeTests are tests that too big to be ran with the race detector
-	largeTests := []test{
 		{"max square size", types.MaxSquareSize, false, ""},
-	}
-
-	// if we're using the race detector, skip some large tests due to time and
-	// concurrency constraints
-	if raceDetectorActive {
-		log.Println("Not running large tests for TestRetrieveBlockData: race detector is active")
-	} else {
-		tests = append(tests, largeTests...)
 	}
 
 	for _, tc := range tests {
 		tc := tc
 
 		t.Run(fmt.Sprintf("%s size %d", tc.name, tc.squareSize), func(t *testing.T) {
+			// if we're using the race detector, skip some large tests due to time and
+			// concurrency constraints
+			if raceDetectorActive && tc.squareSize > 8 {
+				t.Skip("Not running large test due to time and concurrency constraints while race detector is active.")
+			}
+
 			background := context.Background()
 			blockData := generateRandomBlockData(tc.squareSize*tc.squareSize, adjustedMsgSize)
 			block := types.Block{
