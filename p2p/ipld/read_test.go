@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"fmt"
 	"math"
 	"math/rand"
 	"sort"
@@ -19,10 +20,13 @@ import (
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/nmt"
+	"github.com/lazyledger/nmt/namespace"
 	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+var raceDetectorActive = false
 
 func TestLeafPath(t *testing.T) {
 	type test struct {
@@ -179,6 +183,7 @@ func TestBlockRecovery(t *testing.T) {
 	}{
 		{"missing 1/2 shares", quarterShares, false, "", extendedShareCount / 2},
 		{"missing 1/4 shares", quarterShares, false, "", extendedShareCount / 4},
+		{"max missing data", quarterShares, false, "", ((originalSquareWidth + 1) * (originalSquareWidth + 1))},
 		{"missing all but one shares", allShares, true, "failed to solve data square", extendedShareCount - 1},
 	}
 	for _, tc := range testCases {
@@ -217,10 +222,107 @@ func TestBlockRecovery(t *testing.T) {
 				return
 			}
 
-			require.NoError(t, err)
+			assert.NoError(t, err)
 
 			// check that the squares are equal
 			assert.Equal(t, flatten(eds), flatten(reds))
+		})
+	}
+}
+
+func TestRetrieveBlockData(t *testing.T) {
+	type test struct {
+		name       string
+		squareSize int
+		expectErr  bool
+		errStr     string
+	}
+
+	// create a mock node
+	ipfsNode, err := coremock.NewMockNode()
+	if err != nil {
+		t.Error(err)
+	}
+
+	// issue a new API object
+	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// the max size of messages that won't get split
+	adjustedMsgSize := types.MsgShareSize - 2
+
+	tests := []test{
+		{"4 KB block", 4, false, ""},
+		{"16 KB block", 8, false, ""},
+		{"16 KB block timeout expected", 8, true, "timeout"},
+		{"max square size", types.MaxSquareSize, false, ""},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+
+		t.Run(fmt.Sprintf("%s size %d", tc.name, tc.squareSize), func(t *testing.T) {
+			// if we're using the race detector, skip some large tests due to time and
+			// concurrency constraints
+			if raceDetectorActive && tc.squareSize > 8 {
+				t.Skip("Not running large test due to time and concurrency constraints while race detector is active.")
+			}
+
+			background := context.Background()
+			blockData := generateRandomBlockData(tc.squareSize*tc.squareSize, adjustedMsgSize)
+			block := types.Block{
+				Data:       blockData,
+				LastCommit: &types.Commit{},
+			}
+
+			// if an error is exected, don't put the block
+			if !tc.expectErr {
+				err := block.PutBlock(background, ipfsAPI.Dag())
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			shareData, _ := blockData.ComputeShares()
+			rawData := shareData.RawShares()
+
+			tree := NewErasuredNamespacedMerkleTree(uint64(tc.squareSize))
+			eds, err := rsmt2d.ComputeExtendedDataSquare(rawData, rsmt2d.RSGF8, tree.Constructor)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			rawRowRoots := eds.RowRoots()
+			rawColRoots := eds.ColumnRoots()
+			rowRoots := rootsToDigests(rawRowRoots)
+			colRoots := rootsToDigests(rawColRoots)
+
+			retrievalCtx, cancel := context.WithTimeout(background, time.Second*2)
+			defer cancel()
+
+			rblockData, err := RetrieveBlockData(
+				retrievalCtx,
+				&types.DataAvailabilityHeader{
+					RowsRoots:   rowRoots,
+					ColumnRoots: colRoots,
+				},
+				ipfsAPI,
+				rsmt2d.RSGF8,
+			)
+
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errStr)
+				return
+			}
+
+			require.NoError(t, err)
+
+			nsShares, _ := rblockData.ComputeShares()
+
+			assert.Equal(t, rawData, nsShares.RawShares())
 		})
 	}
 }
@@ -298,4 +400,50 @@ func removeRandShares(data [][]byte, d int) [][]byte {
 		i++
 	}
 	return data
+}
+
+func rootsToDigests(roots [][]byte) []namespace.IntervalDigest {
+	out := make([]namespace.IntervalDigest, len(roots))
+	for i, root := range roots {
+		idigest, err := namespace.IntervalDigestFromBytes(types.NamespaceSize, root)
+		if err != nil {
+			panic(err)
+		}
+		out[i] = idigest
+	}
+	return out
+}
+
+func generateRandomBlockData(msgCount, msgSize int) types.Data {
+	var out types.Data
+	out.Messages = generateRandomMessages(msgCount-1, msgSize)
+	out.Txs = generateRandomContiguousShares(1)
+	return out
+}
+
+func generateRandomMessages(count, msgSize int) types.Messages {
+	shares := generateRandNamespacedRawData(count, types.NamespaceSize, msgSize)
+	msgs := make([]types.Message, count)
+	for i, s := range shares {
+		msgs[i] = types.Message{
+			Data:        s[types.NamespaceSize:],
+			NamespaceID: s[:types.NamespaceSize],
+		}
+	}
+	return types.Messages{MessagesList: msgs}
+}
+
+func generateRandomContiguousShares(count int) types.Txs {
+	// the size of a length delimited tx that takes up an entire share
+	const adjustedTxSize = types.TxShareSize - 2
+	txs := make(types.Txs, count)
+	for i := 0; i < count; i++ {
+		tx := make([]byte, adjustedTxSize)
+		_, err := rand.Read(tx)
+		if err != nil {
+			panic(err)
+		}
+		txs[i] = types.Tx(tx)
+	}
+	return txs
 }

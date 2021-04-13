@@ -240,7 +240,6 @@ func parseMsgShares(shares [][]byte) ([]Message, error) {
 	// set the first nid and current share
 	nid := shares[0][:NamespaceSize]
 	currentShare := shares[0][NamespaceSize:]
-
 	// find and remove the msg len delimiter
 	currentShare, msgLen, err := parseDelimiter(currentShare)
 	if err != nil {
