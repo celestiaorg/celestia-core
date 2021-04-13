@@ -20,19 +20,11 @@ const ValidationTimeout = time.Minute
 // ErrValidationFailed is returned whenever DA validation fails
 var ErrValidationFailed = errors.New("validation failed")
 
-// ValidateAvailability implements the protocol described in https://fc21.ifca.ai/papers/83.pdf.
-// Specifically all steps of the protocol described in section
-// _5.2 Random Sampling and Network Block Recovery_ are carried out.
-//
-// In more detail it will first create numSamples random unique coordinates.
-// Then, it will ask the network for the leaf data corresponding to these coordinates.
-// Additionally to the number of requests, the caller can pass in a callback,
-// which will be called on for each retrieved leaf with a verified Merkle proof.
-//
-// Among other use-cases, the callback can be useful to monitoring (progress), or,
-// to process the leaf data the moment it was validated.
-// The context can be used to provide a timeout.
-// TODO: Should there be a constant = lower bound for #samples
+// ValidateAvailability randomly samples the block data that composes a provided
+// data availability header. It only returns when all samples have been completed
+// successfully. `onLeafValidity` is called on each sampled leaf after
+// retrieval. Implements the protocol described in
+// https://fc21.ifca.ai/papers/83.pdf.
 func ValidateAvailability(
 	ctx context.Context,
 	api coreiface.CoreAPI,
