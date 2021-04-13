@@ -260,7 +260,7 @@ func TestRetrieveBlockData(t *testing.T) {
 		{"16 KB block timeout expected", 8, true, "timeout"},
 	}
 
-	// largeTests are tests that too big to be ran with the race dectector
+	// largeTests are tests that too big to be ran with the race detector
 	largeTests := []test{
 		{"max square size", types.MaxSquareSize, false, ""},
 	}
