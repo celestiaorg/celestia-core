@@ -30,6 +30,10 @@ const (
 	// 128*128*256 = 4 Megabytes
 	// TODO(ismail): settle on a proper max square
 	MaxSquareSize = 128
+
+	// MinSquareSize depicts the smallest original square width.
+	MinSquareSize = 1
+	minSharecount = MinSquareSize * MinSquareSize
 )
 
 var (

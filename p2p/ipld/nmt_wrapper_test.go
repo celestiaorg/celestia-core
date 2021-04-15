@@ -24,7 +24,7 @@ func TestPushErasuredNamespacedMerkleTree(t *testing.T) {
 		tree := n.Constructor()
 
 		// push test data to the tree
-		for i, d := range generateErasuredData(t, tc.squareSize) {
+		for i, d := range generateErasuredData(t, tc.squareSize, rsmt2d.NewRSGF8Codec()) {
 			// push will panic if there's an error
 			tree.Push(d, rsmt2d.SquareIndex{Axis: uint(0), Cell: uint(i)})
 		}
@@ -61,7 +61,7 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 			"push over square size",
 			assert.PanicTestFunc(
 				func() {
-					data := generateErasuredData(t, 16)
+					data := generateErasuredData(t, 16, rsmt2d.NewRSGF8Codec())
 					n := NewErasuredNamespacedMerkleTree(uint64(15))
 					tree := n.Constructor()
 					for i, d := range data {
@@ -73,7 +73,7 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 			"push in incorrect lexigraphic order",
 			assert.PanicTestFunc(
 				func() {
-					data := generateErasuredData(t, 16)
+					data := generateErasuredData(t, 16, rsmt2d.NewRSGF8Codec())
 					n := NewErasuredNamespacedMerkleTree(uint64(16))
 					tree := n.Constructor()
 					for i := len(data) - 1; i > 0; i-- {
@@ -87,7 +87,7 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 			assert.PanicTestFunc(
 				func() {
 					size := 16
-					data := generateErasuredData(t, size)
+					data := generateErasuredData(t, size, rsmt2d.NewRSGF8Codec())
 					n := NewErasuredNamespacedMerkleTree(uint64(size))
 					tree := n.Constructor()
 					for i, d := range data {
@@ -116,19 +116,19 @@ func TestExtendedDataSquare(t *testing.T) {
 
 	tree := NewErasuredNamespacedMerkleTree(uint64(squareSize))
 
-	_, err := rsmt2d.ComputeExtendedDataSquare(raw, rsmt2d.RSGF8, tree.Constructor)
+	_, err := rsmt2d.ComputeExtendedDataSquare(raw, rsmt2d.NewRSGF8Codec(), tree.Constructor)
 	assert.NoError(t, err)
 }
 
 // generateErasuredData produces a slice that is twice as long as it erasures
 // the data
-func generateErasuredData(t *testing.T, numLeaves int) [][]byte {
+func generateErasuredData(t *testing.T, numLeaves int, codec rsmt2d.Codec) [][]byte {
 	raw := generateRandNamespacedRawData(
 		numLeaves,
 		types.NamespaceSize,
 		types.MsgShareSize,
 	)
-	erasuredData, err := rsmt2d.Encode(raw, rsmt2d.RSGF8)
+	erasuredData, err := codec.Encode(raw)
 	if err != nil {
 		t.Error(err)
 	}

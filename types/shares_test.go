@@ -243,7 +243,7 @@ func TestDataFromSquare(t *testing.T) {
 			shares, _ := data.ComputeShares()
 			rawShares := shares.RawShares()
 
-			eds, err := rsmt2d.ComputeExtendedDataSquare(rawShares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
+			eds, err := rsmt2d.ComputeExtendedDataSquare(rawShares, rsmt2d.NewRSGF8Codec(), rsmt2d.NewDefaultTree)
 			if err != nil {
 				t.Error(err)
 			}
@@ -445,10 +445,6 @@ func Test_parseDelimiter(t *testing.T) {
 		assert.Equal(t, []byte(tx), res)
 	}
 }
-
-// ////////////////////////////
-// Test data generation
-// ////////////////////////////
 
 // generateRandomBlockData returns randomly generated block data for testing purposes
 func generateRandomBlockData(t *testing.T, txCount, isrCount, evdCount, msgCount, maxSize int) Data {
