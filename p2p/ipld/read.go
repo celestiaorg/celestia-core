@@ -16,10 +16,6 @@ import (
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
-// ///////////////////////////////////////
-//	Retrieve Block Data
-// ////////////////////////////////////
-
 const baseErrorMsg = "failure to retrieve block data:"
 
 var ErrEncounteredTooManyErrors = fmt.Errorf("%s %s", baseErrorMsg, "encountered too many errors")
@@ -218,10 +214,6 @@ func (sc *shareCounter) flatten() [][]byte {
 	}
 	return flattended
 }
-
-// //////////////////////////////////////
-//	Get Leaf Data
-// ////////////////////////////////////
 
 // GetLeafData fetches and returns the data for leaf leafIndex of root rootCid.
 // It stops and returns an error if the provided context is cancelled before
