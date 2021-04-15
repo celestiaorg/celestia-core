@@ -10,12 +10,13 @@ import (
 	"github.com/ipfs/go-cid"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/ipfs/interface-go-ipfs-core/path"
+	"github.com/lazyledger/rsmt2d"
+
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/lazyledger/rsmt2d"
 )
 
-// //////////////////////////////////////
+// ///////////////////////////////////////
 //	Retrieve Block Data
 // ////////////////////////////////////
 
