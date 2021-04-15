@@ -1384,6 +1384,12 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	// FIXME(ismail): this is not a power of two
 	// see: https://github.com/lazyledger/lazyledger-specs/issues/80 and
 	wantLen := getNextSquareNum(curLen)
+
+	// ensure that the min square size is used
+	if wantLen < MinSquareSize {
+		wantLen = MinSquareSize
+	}
+
 	tailShares := GenerateTailPaddingShares(wantLen-curLen, ShareSize)
 
 	return append(append(append(append(

@@ -241,6 +241,12 @@ func TestNilDataAvailabilityHeaderHashDoesntCrash(t *testing.T) {
 	assert.Equal(t, emptyBytes, new(DataAvailabilityHeader).Hash())
 }
 
+func TestEmptyBlockData(t *testing.T) {
+	blockData := Data{}
+	shares, _ := blockData.ComputeShares()
+	assert.Equal(t, GenerateTailPaddingShares(MinSquareSize, ShareSize), shares)
+}
+
 func TestCommit(t *testing.T) {
 	lastID := makeBlockIDRandom()
 	h := int64(3)

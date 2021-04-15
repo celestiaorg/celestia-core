@@ -446,10 +446,6 @@ func Test_parseDelimiter(t *testing.T) {
 	}
 }
 
-// ////////////////////////////
-// Test data generation
-// ////////////////////////////
-
 // generateRandomBlockData returns randomly generated block data for testing purposes
 func generateRandomBlockData(t *testing.T, txCount, isrCount, evdCount, msgCount, maxSize int) Data {
 	var out Data
