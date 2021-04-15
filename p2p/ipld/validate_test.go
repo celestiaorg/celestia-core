@@ -33,7 +33,7 @@ func TestValidateAvailability(t *testing.T) {
 	}
 	block.Hash()
 
-	err := block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
+	err := block.PutBlock(ctx, ipfsAPI.Dag())
 	require.NoError(t, err)
 
 	calls := 0
