@@ -1,12 +1,12 @@
 package ipld
 
 import (
-	"math/rand"
+	crand "crypto/rand"
+	"math/big"
 
 	"github.com/ipfs/go-cid"
 	"github.com/lazyledger/nmt/namespace"
 
-	crand "github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/lazyledger/lazyledger-core/types"
 )
@@ -22,7 +22,7 @@ type Sample struct {
 // SampleSquare randomly picks *num* unique points from arbitrary *width* square
 // and returns them as samples.
 func SampleSquare(squareWidth uint32, num int) []Sample {
-	ss := newSquareSampler(squareWidth, num, crand.CRandSeed(8))
+	ss := newSquareSampler(squareWidth, num)
 	ss.sample(num)
 	return ss.samples()
 }
@@ -57,14 +57,12 @@ func (s Sample) Equals(to Sample) bool {
 }
 
 type squareSampler struct {
-	rand        *rand.Rand //nolint:gosec // as under we use cryptographically secure seed
 	squareWidth uint32
 	smpls       map[Sample]struct{}
 }
 
-func newSquareSampler(squareWidth uint32, expectedSamples int, seed int64) *squareSampler {
+func newSquareSampler(squareWidth uint32, expectedSamples int) *squareSampler {
 	return &squareSampler{
-		rand:        rand.New(rand.NewSource(seed)), //nolint:gosec // as under we use cryptographically secure seed
 		squareWidth: squareWidth,
 		smpls:       make(map[Sample]struct{}, expectedSamples),
 	}
@@ -78,9 +76,9 @@ func (ss *squareSampler) sample(num int) {
 	done := 0
 	for done < num {
 		s := Sample{
-			Row: uint32(ss.rand.Int31n(int32(ss.squareWidth))),
-			Col: uint32(ss.rand.Int31n(int32(ss.squareWidth))),
-			src: ss.rand.Intn(2) == 0,
+			Row: randUint32(ss.squareWidth),
+			Col: randUint32(ss.squareWidth),
+			src: randUint32(2) == 0,
 		}
 
 		if _, ok := ss.smpls[s]; ok {
@@ -98,4 +96,13 @@ func (ss *squareSampler) samples() []Sample {
 		samples = append(samples, s)
 	}
 	return samples
+}
+
+func randUint32(max uint32) uint32 {
+	n, err := crand.Int(crand.Reader, big.NewInt(int64(max)))
+	if err != nil {
+		panic(err) // won't panic as rand.Reader is endless
+	}
+
+	return uint32(n.Int64())
 }
