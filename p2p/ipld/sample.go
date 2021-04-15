@@ -1,10 +1,11 @@
 package ipld
 
 import (
+	"math/rand"
+
 	"github.com/ipfs/go-cid"
 	"github.com/lazyledger/nmt/namespace"
 
-	"github.com/lazyledger/lazyledger-core/libs/rand"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/lazyledger/lazyledger-core/types"
 )
@@ -19,7 +20,7 @@ type Sample struct {
 func SampleSquare(squareWidth uint32, num int) []Sample {
 	ss := newSquareSampler(squareWidth, num)
 	ss.sample(num)
-	return ss.sampled()
+	return ss.samples()
 }
 
 // Leaf returns leaf info needed for retrieval using data provided with DAHeader.
@@ -30,7 +31,7 @@ func (s Sample) Leaf(dah *types.DataAvailabilityHeader) (cid.Cid, uint32, error)
 	)
 
 	// spread leaves retrieval from both Row and Column roots
-	if rand.Bool() {
+	if rand.Intn(2) == 0 {
 		root = dah.ColumnRoots[s.Col]
 		leaf = s.Row
 	} else {
@@ -53,13 +54,13 @@ func (s Sample) Equals(to Sample) bool {
 
 type squareSampler struct {
 	squareWidth uint32
-	samples     map[Sample]struct{}
+	smpls       map[Sample]struct{}
 }
 
 func newSquareSampler(squareWidth uint32, expectedSamples int) *squareSampler {
 	return &squareSampler{
 		squareWidth: squareWidth,
-		samples:     make(map[Sample]struct{}, expectedSamples),
+		smpls:       make(map[Sample]struct{}, expectedSamples),
 	}
 }
 
@@ -75,28 +76,19 @@ func (ss *squareSampler) sample(num int) {
 			Col: uint32(rand.Int31n(int32(ss.squareWidth))),
 		}
 
-		if ss.isSampled(s) {
+		if _, ok := ss.smpls[s]; ok {
 			continue
 		}
 
 		done++
-		ss.addSample(s)
+		ss.smpls[s] = struct{}{}
 	}
 }
 
-func (ss *squareSampler) sampled() []Sample {
-	samples := make([]Sample, 0, len(ss.samples))
-	for s := range ss.samples {
+func (ss *squareSampler) samples() []Sample {
+	samples := make([]Sample, 0, len(ss.smpls))
+	for s := range ss.smpls {
 		samples = append(samples, s)
 	}
 	return samples
-}
-
-func (ss *squareSampler) addSample(s Sample) {
-	ss.samples[s] = struct{}{}
-}
-
-func (ss *squareSampler) isSampled(s Sample) bool {
-	_, ok := ss.samples[s]
-	return ok
 }
