@@ -238,7 +238,7 @@ func (b *Block) fillDataAvailabilityHeader() {
 
 	// TODO(ismail): for better efficiency and a larger number shares
 	// we should switch to the rsmt2d.LeopardFF16 codec:
-	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
+	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), rsmt2d.NewDefaultTree)
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
 	}
@@ -310,7 +310,7 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 	}
 
 	// recompute the eds
-	eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
+	eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), rsmt2d.NewDefaultTree)
 	if err != nil {
 		return fmt.Errorf("failure to recompute the extended data square: %w", err)
 	}

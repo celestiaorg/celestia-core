@@ -614,8 +614,8 @@ github.com/lazyledger/merkletree v0.0.0-20201214195110-6901c4c3c75f/go.mod h1:10
 github.com/lazyledger/nmt v0.3.1 h1:zP172RR33Es4dhb88GmUr9kBpAkH6Wcl7nQGJ3HQzu4=
 github.com/lazyledger/nmt v0.3.1/go.mod h1:tY7ypPX26Sbkt6F8EbPl3AT33B5N0BJe4OVPbq849YI=
 github.com/lazyledger/rsmt2d v0.1.1-0.20210327010029-ef1d6c54461e/go.mod h1:ORR2U7THCNr1fpUhwYqZN7QCFJ20iR2uiIWfXKz3KJ4=
-github.com/lazyledger/rsmt2d v0.1.1-0.20210406153014-e1fd589bdb09 h1:5wpWhlalAm1vNpkR/L1BlWHyn8GT5XNieIZqTlKG9hc=
-github.com/lazyledger/rsmt2d v0.1.1-0.20210406153014-e1fd589bdb09/go.mod h1:EbB1gGbX51gBNm0hC5lMcbkgEyO3Wj2RYwba9mCUvPA=
+github.com/lazyledger/rsmt2d v0.1.1-0.20210415220608-7e7a24d335ec h1:/IGzh1W9EIXaedfViov20288GAEY94R89r82NyHeusE=
+github.com/lazyledger/rsmt2d v0.1.1-0.20210415220608-7e7a24d335ec/go.mod h1:EbB1gGbX51gBNm0hC5lMcbkgEyO3Wj2RYwba9mCUvPA=
 github.com/libp2p/go-addr-util v0.0.1/go.mod h1:4ac6O7n9rIAKB1dnd+s8IbbMXkt+oBpzX4/+RACcnlQ=
 github.com/libp2p/go-addr-util v0.0.2 h1:7cWK5cdA5x72jX0g8iLrQWm5TRJZ6CzGdPEhWj7plWU=
 github.com/libp2p/go-addr-util v0.0.2/go.mod h1:Ecd6Fb3yIuLzq4bD7VcywcVSBtefcAwnUISBM3WG15E=
@@ -1353,7 +1353,6 @@ golang.org/x/exp v0.0.0-20191030013958-a1ab85dbe136/go.mod h1:JXzH8nQsPlswgeRAPE
 golang.org/x/exp v0.0.0-20191129062945-2f5052295587/go.mod h1:2RIsYlXP63K8oxa1u096TMicItID8zy7Y6sNkU49FU4=
 golang.org/x/exp v0.0.0-20191227195350-da58074b4299/go.mod h1:2RIsYlXP63K8oxa1u096TMicItID8zy7Y6sNkU49FU4=
 golang.org/x/exp v0.0.0-20200207192155-f17229e696bd/go.mod h1:J/WKrq2StrnmMY6+EHIKF9dgMWnmCNThgcyBT1FY9mM=
-golang.org/x/exp v0.0.0-20200331195152-e8c3332aa8e5/go.mod h1:4M0jN8W1tt0AVLNr8HDosyJCDCDuyL9N9+3m7wDWgKw=
 golang.org/x/image v0.0.0-20180708004352-c73c2afc3b81/go.mod h1:ux5Hcp/YLpHSI86hEcLt0YII63i6oz57MZXIpbrjZUs=
 golang.org/x/image v0.0.0-20190227222117-0694c2d4d067/go.mod h1:kZ7UVZpmo3dzQBMxlp+ypCbDeSB+sBbTgSJuh5dn5js=
 golang.org/x/image v0.0.0-20190802002840-cff245a6509b/go.mod h1:FeLwcggjj3mMvU+oOTbSwawSJRM1uh48EjtB4UJZlP0=

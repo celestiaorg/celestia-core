@@ -189,7 +189,7 @@ func TestBlockRecovery(t *testing.T) {
 			tree := NewErasuredNamespacedMerkleTree(squareSize)
 			recoverTree := NewErasuredNamespacedMerkleTree(squareSize)
 
-			eds, err := rsmt2d.ComputeExtendedDataSquare(tc.shares, rsmt2d.RSGF8, tree.Constructor)
+			eds, err := rsmt2d.ComputeExtendedDataSquare(tc.shares, rsmt2d.NewRSGF8Codec(), tree.Constructor)
 			if err != nil {
 				t.Error(err)
 			}
@@ -205,7 +205,7 @@ func TestBlockRecovery(t *testing.T) {
 				rowRoots,
 				colRoots,
 				removeRandShares(flat, tc.d),
-				rsmt2d.RSGF8,
+				rsmt2d.NewRSGF8Codec(),
 				recoverTree.Constructor,
 			)
 
@@ -273,7 +273,7 @@ func TestRetrieveBlockData(t *testing.T) {
 			rawData := shareData.RawShares()
 
 			tree := NewErasuredNamespacedMerkleTree(uint64(tc.squareSize))
-			eds, err := rsmt2d.ComputeExtendedDataSquare(rawData, rsmt2d.RSGF8, tree.Constructor)
+			eds, err := rsmt2d.ComputeExtendedDataSquare(rawData, rsmt2d.NewRSGF8Codec(), tree.Constructor)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -293,7 +293,7 @@ func TestRetrieveBlockData(t *testing.T) {
 					ColumnRoots: colRoots,
 				},
 				ipfsAPI,
-				rsmt2d.RSGF8,
+				rsmt2d.NewRSGF8Codec(),
 			)
 
 			if tc.expectErr {

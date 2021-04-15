@@ -243,7 +243,7 @@ func TestDataFromSquare(t *testing.T) {
 			shares, _ := data.ComputeShares()
 			rawShares := shares.RawShares()
 
-			eds, err := rsmt2d.ComputeExtendedDataSquare(rawShares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
+			eds, err := rsmt2d.ComputeExtendedDataSquare(rawShares, rsmt2d.NewRSGF8Codec(), rsmt2d.NewDefaultTree)
 			if err != nil {
 				t.Error(err)
 			}

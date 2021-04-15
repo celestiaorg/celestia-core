@@ -182,7 +182,7 @@ func generateExtendedRow(t *testing.T) [][]byte {
 		origDataWithoutNamespaces[i] = share[namespaceSize:]
 	}
 
-	extendedData, err := rsmt2d.ComputeExtendedDataSquare(origDataWithoutNamespaces, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
+	extendedData, err := rsmt2d.ComputeExtendedDataSquare(origDataWithoutNamespaces, rsmt2d.NewRSGF8Codec(), rsmt2d.NewDefaultTree)
 	if err != nil {
 		t.Fatalf("rsmt2d.Encode(): %v", err)
 		return nil

@@ -31,7 +31,7 @@ func RetrieveBlockData(
 	ctx context.Context,
 	dah *types.DataAvailabilityHeader,
 	api coreiface.CoreAPI,
-	codec rsmt2d.CodecType,
+	codec rsmt2d.Codec,
 ) (types.Data, error) {
 	edsWidth := len(dah.RowsRoots)
 	sc := newshareCounter(ctx, uint32(edsWidth))
