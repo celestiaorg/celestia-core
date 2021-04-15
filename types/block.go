@@ -1386,8 +1386,8 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	wantLen := getNextSquareNum(curLen)
 
 	// ensure that the min square size is used
-	if wantLen < MinSquareSize {
-		wantLen = MinSquareSize
+	if wantLen < minSharecount {
+		wantLen = minSharecount
 	}
 
 	tailShares := GenerateTailPaddingShares(wantLen-curLen, ShareSize)

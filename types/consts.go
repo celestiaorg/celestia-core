@@ -33,6 +33,7 @@ const (
 
 	// MinSquareSize depicts the smallest original square width.
 	MinSquareSize = 1
+	minSharecount = MinSquareSize * MinSquareSize
 )
 
 var (
