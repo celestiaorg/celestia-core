@@ -13,10 +13,11 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	dbm "github.com/tendermint/tm-db"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmstore "github.com/lazyledger/lazyledger-core/proto/tendermint/store"
@@ -63,10 +64,10 @@ func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Bl
 
 func makeStateAndBlockStore(logger log.Logger) (sm.State, *BlockStore, cleanupFunc) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
-	// blockDB := dbm.NewDebugDB("blockDB", dbm.NewMemDB())
-	// stateDB := dbm.NewDebugDB("stateDB", dbm.NewMemDB())
-	blockDB := dbm.NewMemDB()
-	stateDB := dbm.NewMemDB()
+	// blockDB := dbm.NewDebugDB("blockDB", memdb.NewDB())
+	// stateDB := dbm.NewDebugDB("stateDB", memdb.NewDB())
+	blockDB := memdb.NewDB()
+	stateDB := memdb.NewDB()
 	stateStore := sm.NewStore(stateDB)
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	if err != nil {
@@ -91,7 +92,7 @@ func TestLoadBlockStoreState(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		db := dbm.NewMemDB()
+		db := memdb.NewDB()
 		SaveBlockStoreState(tc.bss, db)
 		retrBSJ := LoadBlockStoreState(db)
 		assert.Equal(t, tc.want, retrBSJ, "expected the retrieved DBs to match: %s", tc.testName)
@@ -99,7 +100,7 @@ func TestLoadBlockStoreState(t *testing.T) {
 }
 
 func TestNewBlockStore(t *testing.T) {
-	db := dbm.NewMemDB()
+	db := memdb.NewDB()
 	bss := tmstore.BlockStoreState{Base: 100, Height: 10000}
 	bz, _ := proto.Marshal(&bss)
 	err := db.Set(blockStoreKey, bz)
@@ -136,7 +137,7 @@ func TestNewBlockStore(t *testing.T) {
 }
 
 func freshBlockStore() (*BlockStore, dbm.DB) {
-	db := dbm.NewMemDB()
+	db := memdb.NewDB()
 	return NewBlockStore(db), db
 }
 
@@ -376,10 +377,10 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 func TestLoadBaseMeta(t *testing.T) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)
-	stateStore := sm.NewStore(dbm.NewMemDB())
+	stateStore := sm.NewStore(memdb.NewDB())
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	require.NoError(t, err)
-	bs := NewBlockStore(dbm.NewMemDB())
+	bs := NewBlockStore(memdb.NewDB())
 
 	for h := int64(1); h <= 10; h++ {
 		block := makeBlock(h, state, new(types.Commit))
@@ -432,10 +433,10 @@ func TestLoadBlockPart(t *testing.T) {
 func TestPruneBlocks(t *testing.T) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)
-	stateStore := sm.NewStore(dbm.NewMemDB())
+	stateStore := sm.NewStore(memdb.NewDB())
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	require.NoError(t, err)
-	db := dbm.NewMemDB()
+	db := memdb.NewDB()
 	bs := NewBlockStore(db)
 	assert.EqualValues(t, 0, bs.Base())
 	assert.EqualValues(t, 0, bs.Height())

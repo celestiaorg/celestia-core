@@ -14,9 +14,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	dbm "github.com/tendermint/tm-db"
-
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
@@ -122,7 +122,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		witnessesAddrs = strings.Split(witnessAddrsJoined, ",")
 	}
 
-	db, err := dbm.NewGoLevelDB("light-client-db", dir)
+	db, err := badgerdb.NewDB("light-client-db", dir)
 	if err != nil {
 		return fmt.Errorf("can't create a db: %w", err)
 	}

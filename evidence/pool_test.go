@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/tendermint/tm-db"
-
 	"github.com/lazyledger/lazyledger-core/evidence"
 	"github.com/lazyledger/lazyledger-core/evidence/mocks"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
@@ -40,7 +40,7 @@ func TestEvidencePoolBasic(t *testing.T) {
 	var (
 		height     = int64(1)
 		stateStore = &smmocks.Store{}
-		evidenceDB = dbm.NewMemDB()
+		evidenceDB = memdb.NewDB()
 		blockStore = &mocks.BlockStore{}
 	)
 
@@ -100,7 +100,7 @@ func TestAddExpiredEvidence(t *testing.T) {
 		val                 = types.NewMockPV()
 		height              = int64(30)
 		stateStore          = initializeValidatorState(val, height)
-		evidenceDB          = dbm.NewMemDB()
+		evidenceDB          = memdb.NewDB()
 		blockStore          = &mocks.BlockStore{}
 		expiredEvidenceTime = time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC)
 		expiredHeight       = int64(2)
@@ -275,7 +275,7 @@ func TestCheckEvidenceWithLightClientAttack(t *testing.T) {
 	blockStore.On("LoadBlockMeta", height).Return(&types.BlockMeta{Header: *trustedHeader})
 	blockStore.On("LoadBlockCommit", height).Return(trustedCommit)
 
-	pool, err := evidence.NewPool(dbm.NewMemDB(), stateStore, blockStore)
+	pool, err := evidence.NewPool(memdb.NewDB(), stateStore, blockStore)
 	require.NoError(t, err)
 	pool.SetLogger(log.TestingLogger())
 
@@ -298,11 +298,11 @@ func TestRecoverPendingEvidence(t *testing.T) {
 	height := int64(10)
 	val := types.NewMockPV()
 	valAddress := val.PrivKey.PubKey().Address()
-	evidenceDB := dbm.NewMemDB()
+	evidenceDB := memdb.NewDB()
 	stateStore := initializeValidatorState(val, height)
 	state, err := stateStore.Load()
 	require.NoError(t, err)
-	blockStore := initializeBlockStore(dbm.NewMemDB(), state, valAddress)
+	blockStore := initializeBlockStore(memdb.NewDB(), state, valAddress)
 	// create previous pool and populate it
 	pool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 	require.NoError(t, err)
@@ -343,7 +343,7 @@ func TestRecoverPendingEvidence(t *testing.T) {
 }
 
 func initializeStateFromValidatorSet(valSet *types.ValidatorSet, height int64) sm.Store {
-	stateDB := dbm.NewMemDB()
+	stateDB := memdb.NewDB()
 	stateStore := sm.NewStore(stateDB)
 	state := sm.State{
 		ChainID:                     evidenceChainID,
@@ -426,10 +426,10 @@ func makeCommit(height int64, valAddr []byte) *types.Commit {
 func defaultTestPool(height int64) (*evidence.Pool, types.MockPV) {
 	val := types.NewMockPV()
 	valAddress := val.PrivKey.PubKey().Address()
-	evidenceDB := dbm.NewMemDB()
+	evidenceDB := memdb.NewDB()
 	stateStore := initializeValidatorState(val, height)
 	state, _ := stateStore.Load()
-	blockStore := initializeBlockStore(dbm.NewMemDB(), state, valAddress)
+	blockStore := initializeBlockStore(memdb.NewDB(), state, valAddress)
 	pool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 	if err != nil {
 		panic("test evidence pool could not be created")

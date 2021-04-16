@@ -5,8 +5,7 @@ import (
 	"testing"
 	"time"
 
-	dbm "github.com/tendermint/tm-db"
-
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/light"
 	"github.com/lazyledger/lazyledger-core/light/provider"
@@ -37,7 +36,7 @@ func BenchmarkSequence(b *testing.B) {
 		},
 		benchmarkFullNode,
 		[]provider.Provider{benchmarkFullNode},
-		dbs.New(dbm.NewMemDB(), chainID),
+		dbs.New(memdb.NewDB(), chainID),
 		light.Logger(log.TestingLogger()),
 		light.SequentialVerification(),
 	)
@@ -65,7 +64,7 @@ func BenchmarkBisection(b *testing.B) {
 		},
 		benchmarkFullNode,
 		[]provider.Provider{benchmarkFullNode},
-		dbs.New(dbm.NewMemDB(), chainID),
+		dbs.New(memdb.NewDB(), chainID),
 		light.Logger(log.TestingLogger()),
 	)
 	if err != nil {
@@ -93,7 +92,7 @@ func BenchmarkBackwards(b *testing.B) {
 		},
 		benchmarkFullNode,
 		[]provider.Provider{benchmarkFullNode},
-		dbs.New(dbm.NewMemDB(), chainID),
+		dbs.New(memdb.NewDB(), chainID),
 		light.Logger(log.TestingLogger()),
 	)
 	if err != nil {

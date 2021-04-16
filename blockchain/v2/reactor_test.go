@@ -12,12 +12,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	dbm "github.com/tendermint/tm-db"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/behaviour"
 	bc "github.com/lazyledger/lazyledger-core/blockchain"
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/libs/service"
 	"github.com/lazyledger/lazyledger-core/mempool/mock"
@@ -65,14 +65,17 @@ type mockBlockStore struct {
 	blocks map[int64]*types.Block
 }
 
+//nolint:unused
 func (ml *mockBlockStore) Height() int64 {
 	return int64(len(ml.blocks))
 }
 
+//nolint:unused
 func (ml *mockBlockStore) LoadBlock(height int64) *types.Block {
 	return ml.blocks[height]
 }
 
+//nolint:unused
 func (ml *mockBlockStore) SaveBlock(block *types.Block, part *types.PartSet, commit *types.Commit) {
 	ml.blocks[block.Height] = block
 }
@@ -166,7 +169,7 @@ func newTestReactor(p testReactorParams) *BlockchainReactor {
 		if err != nil {
 			panic(fmt.Errorf("error start app: %w", err))
 		}
-		db := dbm.NewMemDB()
+		db := memdb.NewDB()
 		stateStore := sm.NewStore(db)
 		appl = sm.NewBlockExecutor(stateStore, p.logger, proxyApp.Consensus(), mock.Mempool{}, sm.EmptyEvidencePool{})
 		if err = stateStore.Save(state); err != nil {
@@ -511,15 +514,15 @@ func newReactorStore(
 		panic(fmt.Errorf("error start app: %w", err))
 	}
 
-	stateDB := dbm.NewMemDB()
-	blockStore := store.NewBlockStore(dbm.NewMemDB())
+	stateDB := memdb.NewDB()
+	blockStore := store.NewBlockStore(memdb.NewDB())
 	stateStore := sm.NewStore(stateDB)
 	state, err := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 	if err != nil {
 		panic(fmt.Errorf("error constructing state from genesis file: %w", err))
 	}
 
-	db := dbm.NewMemDB()
+	db := memdb.NewDB()
 	stateStore = sm.NewStore(db)
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
 		mock.Mempool{}, sm.EmptyEvidencePool{})

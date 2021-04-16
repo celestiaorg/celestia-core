@@ -1,14 +1,12 @@
 package state_test
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/tendermint/tm-db"
-
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -31,8 +29,7 @@ func TestTxFilter(t *testing.T) {
 	}
 
 	for i, tc := range testCases {
-		stateDB, err := dbm.NewDB("state", "memdb", os.TempDir())
-		require.NoError(t, err)
+		stateDB := memdb.NewDB()
 		stateStore := sm.NewStore(stateDB)
 		state, err := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 		require.NoError(t, err)

@@ -9,8 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/tendermint/tm-db"
-
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/light"
 	"github.com/lazyledger/lazyledger-core/light/provider"
@@ -231,7 +230,7 @@ func TestClient_SequentialVerification(t *testing.T) {
 					tc.otherHeaders,
 					tc.vals,
 				)},
-				dbs.New(dbm.NewMemDB(), chainID),
+				dbs.New(memdb.NewDB(), chainID),
 				light.SequentialVerification(),
 				light.Logger(log.TestingLogger()),
 			)
@@ -356,7 +355,7 @@ func TestClient_SkippingVerification(t *testing.T) {
 					tc.otherHeaders,
 					tc.vals,
 				)},
-				dbs.New(dbm.NewMemDB(), chainID),
+				dbs.New(memdb.NewDB(), chainID),
 				light.SkippingVerification(light.DefaultTrustLevel),
 				light.Logger(log.TestingLogger()),
 			)
@@ -394,7 +393,7 @@ func TestClientLargeBisectionVerification(t *testing.T) {
 		},
 		veryLargeFullNode,
 		[]provider.Provider{veryLargeFullNode},
-		dbs.New(dbm.NewMemDB(), chainID),
+		dbs.New(memdb.NewDB(), chainID),
 		light.SkippingVerification(light.DefaultTrustLevel),
 	)
 	require.NoError(t, err)
@@ -416,7 +415,7 @@ func TestClientBisectionBetweenTrustedHeaders(t *testing.T) {
 		},
 		fullNode,
 		[]provider.Provider{fullNode},
-		dbs.New(dbm.NewMemDB(), chainID),
+		dbs.New(memdb.NewDB(), chainID),
 		light.SkippingVerification(light.DefaultTrustLevel),
 	)
 	require.NoError(t, err)
@@ -440,7 +439,7 @@ func TestClient_Cleanup(t *testing.T) {
 		trustOptions,
 		fullNode,
 		[]provider.Provider{fullNode},
-		dbs.New(dbm.NewMemDB(), chainID),
+		dbs.New(memdb.NewDB(), chainID),
 		light.Logger(log.TestingLogger()),
 	)
 	require.NoError(t, err)
@@ -460,7 +459,7 @@ func TestClient_Cleanup(t *testing.T) {
 func TestClientRestoresTrustedHeaderAfterStartup1(t *testing.T) {
 	// 1. options.Hash == trustedHeader.Hash
 	{
-		trustedStore := dbs.New(dbm.NewMemDB(), chainID)
+		trustedStore := dbs.New(memdb.NewDB(), chainID)
 		err := trustedStore.SaveLightBlock(l1)
 		require.NoError(t, err)
 
@@ -484,7 +483,7 @@ func TestClientRestoresTrustedHeaderAfterStartup1(t *testing.T) {
 
 	// 2. options.Hash != trustedHeader.Hash
 	{
-		trustedStore := dbs.New(dbm.NewMemDB(), chainID)
+		trustedStore := dbs.New(memdb.NewDB(), chainID)
 		err := trustedStore.SaveLightBlock(l1)
 		require.NoError(t, err)
 
@@ -529,7 +528,7 @@ func TestClientRestoresTrustedHeaderAfterStartup1(t *testing.T) {
 func TestClientRestoresTrustedHeaderAfterStartup2(t *testing.T) {
 	// 1. options.Hash == trustedHeader.Hash
 	{
-		trustedStore := dbs.New(dbm.NewMemDB(), chainID)
+		trustedStore := dbs.New(memdb.NewDB(), chainID)
 		err := trustedStore.SaveLightBlock(l1)
 		require.NoError(t, err)
 
@@ -559,7 +558,7 @@ func TestClientRestoresTrustedHeaderAfterStartup2(t *testing.T) {
 	// 2. options.Hash != trustedHeader.Hash
 	// This could happen if previous provider was lying to us.
 	{
-		trustedStore := dbs.New(dbm.NewMemDB(), chainID)
+		trustedStore := dbs.New(memdb.NewDB(), chainID)
 		err := trustedStore.SaveLightBlock(l1)
 		require.NoError(t, err)
 
@@ -606,7 +605,7 @@ func TestClientRestoresTrustedHeaderAfterStartup3(t *testing.T) {
 	// 1. options.Hash == trustedHeader.Hash
 	{
 		// load the first three headers into the trusted store
-		trustedStore := dbs.New(dbm.NewMemDB(), chainID)
+		trustedStore := dbs.New(memdb.NewDB(), chainID)
 		err := trustedStore.SaveLightBlock(l1)
 		require.NoError(t, err)
 
@@ -644,7 +643,7 @@ func TestClientRestoresTrustedHeaderAfterStartup3(t *testing.T) {
 	// 2. options.Hash != trustedHeader.Hash
 	// This could happen if previous provider was lying to us.
 	{
-		trustedStore := dbs.New(dbm.NewMemDB(), chainID)
+		trustedStore := dbs.New(memdb.NewDB(), chainID)
 		err := trustedStore.SaveLightBlock(l1)
 		require.NoError(t, err)
 
@@ -704,7 +703,7 @@ func TestClient_Update(t *testing.T) {
 		trustOptions,
 		fullNode,
 		[]provider.Provider{fullNode},
-		dbs.New(dbm.NewMemDB(), chainID),
+		dbs.New(memdb.NewDB(), chainID),
 		light.Logger(log.TestingLogger()),
 	)
 	require.NoError(t, err)
@@ -725,7 +724,7 @@ func TestClient_Concurrency(t *testing.T) {
 		trustOptions,
 		fullNode,
 		[]provider.Provider{fullNode},
-		dbs.New(dbm.NewMemDB(), chainID),
+		dbs.New(memdb.NewDB(), chainID),
 		light.Logger(log.TestingLogger()),
 	)
 	require.NoError(t, err)
@@ -766,7 +765,7 @@ func TestClientReplacesPrimaryWithWitnessIfPrimaryIsUnavailable(t *testing.T) {
 		trustOptions,
 		deadNode,
 		[]provider.Provider{fullNode, fullNode},
-		dbs.New(dbm.NewMemDB(), chainID),
+		dbs.New(memdb.NewDB(), chainID),
 		light.Logger(log.TestingLogger()),
 		light.MaxRetryAttempts(1),
 	)
@@ -792,7 +791,7 @@ func TestClient_BackwardsVerification(t *testing.T) {
 			},
 			largeFullNode,
 			[]provider.Provider{largeFullNode},
-			dbs.New(dbm.NewMemDB(), chainID),
+			dbs.New(memdb.NewDB(), chainID),
 			light.Logger(log.TestingLogger()),
 		)
 		require.NoError(t, err)
@@ -874,7 +873,7 @@ func TestClient_BackwardsVerification(t *testing.T) {
 				},
 				tc.provider,
 				[]provider.Provider{tc.provider},
-				dbs.New(dbm.NewMemDB(), chainID),
+				dbs.New(memdb.NewDB(), chainID),
 				light.Logger(log.TestingLogger()),
 			)
 			require.NoError(t, err, idx)
@@ -887,7 +886,7 @@ func TestClient_BackwardsVerification(t *testing.T) {
 
 func TestClient_NewClientFromTrustedStore(t *testing.T) {
 	// 1) Initiate DB and fill with a "trusted" header
-	db := dbs.New(dbm.NewMemDB(), chainID)
+	db := dbs.New(memdb.NewDB(), chainID)
 	err := db.SaveLightBlock(l1)
 	require.NoError(t, err)
 
@@ -944,7 +943,7 @@ func TestClientRemovesWitnessIfItSendsUsIncorrectHeader(t *testing.T) {
 		trustOptions,
 		fullNode,
 		[]provider.Provider{badProvider1, badProvider2},
-		dbs.New(dbm.NewMemDB(), chainID),
+		dbs.New(memdb.NewDB(), chainID),
 		light.Logger(log.TestingLogger()),
 		light.MaxRetryAttempts(1),
 	)
@@ -994,7 +993,7 @@ func TestClient_TrustedValidatorSet(t *testing.T) {
 		trustOptions,
 		fullNode,
 		[]provider.Provider{badValSetNode, fullNode},
-		dbs.New(dbm.NewMemDB(), chainID),
+		dbs.New(memdb.NewDB(), chainID),
 		light.Logger(log.TestingLogger()),
 	)
 	require.NoError(t, err)
@@ -1012,7 +1011,7 @@ func TestClientPrunesHeadersAndValidatorSets(t *testing.T) {
 		trustOptions,
 		fullNode,
 		[]provider.Provider{fullNode},
-		dbs.New(dbm.NewMemDB(), chainID),
+		dbs.New(memdb.NewDB(), chainID),
 		light.Logger(log.TestingLogger()),
 		light.PruningSize(1),
 	)
@@ -1085,7 +1084,7 @@ func TestClientEnsureValidHeadersAndValSets(t *testing.T) {
 			trustOptions,
 			badNode,
 			[]provider.Provider{badNode, badNode},
-			dbs.New(dbm.NewMemDB(), chainID),
+			dbs.New(memdb.NewDB(), chainID),
 			light.MaxRetryAttempts(1),
 		)
 		require.NoError(t, err)

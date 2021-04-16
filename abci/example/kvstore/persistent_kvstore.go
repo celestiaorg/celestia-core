@@ -7,11 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	dbm "github.com/tendermint/tm-db"
-
 	"github.com/lazyledger/lazyledger-core/abci/example/code"
 	"github.com/lazyledger/lazyledger-core/abci/types"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	dbb "github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	pc "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
 )
@@ -37,7 +36,7 @@ type PersistentKVStoreApplication struct {
 
 func NewPersistentKVStoreApplication(dbDir string) *PersistentKVStoreApplication {
 	name := "kvstore"
-	db, err := dbm.NewGoLevelDB(name, dbDir)
+	db, err := dbb.NewDB(name, dbDir)
 	if err != nil {
 		panic(err)
 	}
