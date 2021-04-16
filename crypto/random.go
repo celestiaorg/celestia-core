@@ -16,7 +16,7 @@ func randBytes(numBytes int) []byte {
 	return b
 }
 
-// This only uses the OS's randomness
+// CRandBytes returns requested number of bytes from the OS's randomness.
 func CRandBytes(numBytes int) []byte {
 	return randBytes(numBytes)
 }
@@ -29,7 +29,7 @@ func CRandHex(numDigits int) string {
 	return hex.EncodeToString(CRandBytes(numDigits / 2))
 }
 
-// Returns a crand.Reader.
+// CReader returns a crand.Reader.
 func CReader() io.Reader {
 	return crand.Reader
 }
