@@ -3,12 +3,14 @@ package p2p
 import (
 	"fmt"
 	"math"
+	mrand "math/rand"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/libs/cmap"
-	"github.com/lazyledger/lazyledger-core/libs/rand"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	"github.com/lazyledger/lazyledger-core/libs/service"
 	"github.com/lazyledger/lazyledger-core/p2p/conn"
 )
@@ -87,7 +89,7 @@ type Switch struct {
 	filterTimeout time.Duration
 	peerFilters   []PeerFilterFunc
 
-	rng *rand.Rand // seed for randomizing dial times and orders
+	rng *mrand.Rand // seed for randomizing dial times and orders
 
 	metrics *Metrics
 }
@@ -123,7 +125,7 @@ func NewSwitch(
 	}
 
 	// Ensure we have a completely undeterministic PRNG.
-	sw.rng = rand.NewRand()
+	sw.rng = tmrand.NewRand()
 
 	sw.BaseService = *service.NewBaseService(nil, "P2P Switch", sw)
 
