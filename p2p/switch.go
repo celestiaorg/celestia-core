@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	mrand "math/rand"
-	"net"
 	"sync"
 	"time"
 
