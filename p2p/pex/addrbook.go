@@ -89,7 +89,6 @@ type addrBook struct {
 
 	// accessed concurrently
 	mtx        tmsync.Mutex
-	rand       *mrand.Rand
 	ourAddrs   map[string]struct{}
 	privateIDs map[p2p.ID]struct{}
 	addrLookup map[p2p.ID]*knownAddress // new & old
@@ -118,7 +117,6 @@ func newHashKey() []byte {
 // Use Start to begin processing asynchronous address updates.
 func NewAddrBook(filePath string, routabilityStrict bool) AddrBook {
 	am := &addrBook{
-		rand:              tmrand.NewRand(),
 		ourAddrs:          make(map[string]struct{}),
 		privateIDs:        make(map[p2p.ID]struct{}),
 		addrLookup:        make(map[p2p.ID]*knownAddress),
@@ -292,7 +290,7 @@ func (a *addrBook) PickAddress(biasTowardsNewAddrs int) *p2p.NetAddress {
 
 	// pick a random peer from a random bucket
 	var bucket map[string]*knownAddress
-	pickFromOldBucket := (newCorrelation+oldCorrelation)*a.rand.Float64() < oldCorrelation
+	pickFromOldBucket := (newCorrelation+oldCorrelation)*mrand.Float64() < oldCorrelation
 	if (pickFromOldBucket && a.nOld == 0) ||
 		(!pickFromOldBucket && a.nNew == 0) {
 		return nil
@@ -300,13 +298,13 @@ func (a *addrBook) PickAddress(biasTowardsNewAddrs int) *p2p.NetAddress {
 	// loop until we pick a random non-empty bucket
 	for len(bucket) == 0 {
 		if pickFromOldBucket {
-			bucket = a.bucketsOld[a.rand.Intn(len(a.bucketsOld))]
+			bucket = a.bucketsOld[mrand.Intn(len(a.bucketsOld))]
 		} else {
-			bucket = a.bucketsNew[a.rand.Intn(len(a.bucketsNew))]
+			bucket = a.bucketsNew[mrand.Intn(len(a.bucketsNew))]
 		}
 	}
 	// pick a random index and loop over the map to return that index
-	randIndex := a.rand.Intn(len(bucket))
+	randIndex := mrand.Intn(len(bucket))
 	for _, ka := range bucket {
 		if randIndex == 0 {
 			return ka.Addr
@@ -681,7 +679,7 @@ func (a *addrBook) addAddress(addr, src *p2p.NetAddress) error {
 		}
 		// The more entries we have, the less likely we are to add more.
 		factor := int32(2 * len(ka.Buckets))
-		if a.rand.Int31n(factor) != 0 {
+		if mrand.Int31n(factor) != 0 {
 			return nil
 		}
 	} else {
