@@ -386,7 +386,6 @@ func (a *addrBook) ReinstateBadPeers() {
 // GetSelection implements AddrBook.
 // It randomly selects some addresses (old & new). Suitable for peer-exchange protocols.
 // Must never return a nil address.
-// nolint:gosec // G404: Use of weak random number generator
 func (a *addrBook) GetSelection() []*p2p.NetAddress {
 	a.mtx.Lock()
 	defer a.mtx.Unlock()
@@ -417,6 +416,7 @@ func (a *addrBook) GetSelection() []*p2p.NetAddress {
 	// `numAddresses' since we are throwing the rest.
 	for i := 0; i < numAddresses; i++ {
 		// pick a number between current index and the end
+		// nolint:gosec // G404: Use of weak random number generator
 		j := mrand.Intn(len(allAddr)-i) + i
 		allAddr[i], allAddr[j] = allAddr[j], allAddr[i]
 	}
@@ -681,6 +681,7 @@ func (a *addrBook) addAddress(addr, src *p2p.NetAddress) error {
 		}
 		// The more entries we have, the less likely we are to add more.
 		factor := int32(2 * len(ka.Buckets))
+		// nolint:gosec // G404: Use of weak random number generator
 		if mrand.Int31n(factor) != 0 {
 			return nil
 		}
