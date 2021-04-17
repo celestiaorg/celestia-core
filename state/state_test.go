@@ -18,7 +18,6 @@ import (
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	sm "github.com/lazyledger/lazyledger-core/state"

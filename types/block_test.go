@@ -194,8 +194,8 @@ func makeBlockIDRandom() BlockID {
 		blockHash   = make([]byte, tmhash.Size)
 		partSetHash = make([]byte, tmhash.Size)
 	)
-	rand.Read(blockHash)   //nolint: errcheck // ignore errcheck for read
-	rand.Read(partSetHash) //nolint: errcheck // ignore errcheck for read
+	mrand.Read(blockHash)
+	mrand.Read(partSetHash)
 	return BlockID{blockHash, PartSetHeader{123, partSetHash}}
 }
 
@@ -1411,7 +1411,7 @@ func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byt
 	data := make([][]byte, total)
 	for i := 0; i < total; i++ {
 		nid := make([]byte, nidSize)
-		_, err := rand.Read(nid)
+		_, err := mrand.Read(nid)
 		if err != nil {
 			panic(err)
 		}
@@ -1421,7 +1421,7 @@ func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byt
 	sortByteArrays(data)
 	for i := 0; i < total; i++ {
 		d := make([]byte, leafSize)
-		_, err := rand.Read(d)
+		_, err := mrand.Read(d)
 		if err != nil {
 			panic(err)
 		}
