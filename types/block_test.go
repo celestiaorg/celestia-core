@@ -671,6 +671,8 @@ func TestBlockProtoBuf(t *testing.T) {
 	evidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 	evi := NewMockDuplicateVoteEvidence(h, evidenceTime, "block-test-chain")
 	b2.Evidence = EvidenceData{Evidence: EvidenceList{evi}}
+	// update internal byteSize field s.t. the expected b2.Evidence matches with the decoded one:
+	_ = b2.Evidence.ByteSize()
 	b2.EvidenceHash = b2.Evidence.Hash()
 
 	b3 := MakeBlock(h, []Tx{}, []Evidence{}, nil, Messages{}, c1)
