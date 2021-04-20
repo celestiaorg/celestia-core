@@ -24,7 +24,7 @@ func TestPushErasuredNamespacedMerkleTree(t *testing.T) {
 		tree := n.Constructor()
 
 		// push test data to the tree
-		for i, d := range generateErasuredData(t, tc.squareSize, rsmt2d.NewRSGF8Codec()) {
+		for i, d := range generateErasuredData(t, tc.squareSize, types.DefaultCodec()) {
 			// push will panic if there's an error
 			tree.Push(d, rsmt2d.SquareIndex{Axis: uint(0), Cell: uint(i)})
 		}
@@ -61,7 +61,7 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 			"push over square size",
 			assert.PanicTestFunc(
 				func() {
-					data := generateErasuredData(t, 16, rsmt2d.NewRSGF8Codec())
+					data := generateErasuredData(t, 16, types.DefaultCodec())
 					n := NewErasuredNamespacedMerkleTree(uint64(15))
 					tree := n.Constructor()
 					for i, d := range data {
@@ -73,7 +73,7 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 			"push in incorrect lexigraphic order",
 			assert.PanicTestFunc(
 				func() {
-					data := generateErasuredData(t, 16, rsmt2d.NewRSGF8Codec())
+					data := generateErasuredData(t, 16, types.DefaultCodec())
 					n := NewErasuredNamespacedMerkleTree(uint64(16))
 					tree := n.Constructor()
 					for i := len(data) - 1; i > 0; i-- {
@@ -87,7 +87,7 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 			assert.PanicTestFunc(
 				func() {
 					size := 16
-					data := generateErasuredData(t, size, rsmt2d.NewRSGF8Codec())
+					data := generateErasuredData(t, size, types.DefaultCodec())
 					n := NewErasuredNamespacedMerkleTree(uint64(size))
 					tree := n.Constructor()
 					for i, d := range data {
@@ -116,7 +116,7 @@ func TestExtendedDataSquare(t *testing.T) {
 
 	tree := NewErasuredNamespacedMerkleTree(uint64(squareSize))
 
-	_, err := rsmt2d.ComputeExtendedDataSquare(raw, rsmt2d.NewRSGF8Codec(), tree.Constructor)
+	_, err := rsmt2d.ComputeExtendedDataSquare(raw, types.DefaultCodec(), tree.Constructor)
 	assert.NoError(t, err)
 }
 

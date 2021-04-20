@@ -15,6 +15,8 @@ import (
 
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/rsmt2d"
+
+	"github.com/lazyledger/lazyledger-core/types"
 )
 
 func TestMultihasherIsRegistered(t *testing.T) {
@@ -186,7 +188,7 @@ func generateExtendedRow(t *testing.T) [][]byte {
 
 	extendedData, err := rsmt2d.ComputeExtendedDataSquare(
 		origDataWithoutNamespaces,
-		rsmt2d.NewRSGF8Codec(),
+		types.DefaultCodec(),
 		rsmt2d.NewDefaultTree,
 	)
 	if err != nil {
