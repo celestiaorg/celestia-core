@@ -161,11 +161,10 @@ func (state *pcState) handle(event Event) (Event, error) {
 		var (
 			first, second = firstItem.block, secondItem.block
 			firstParts    = first.MakePartSet(types.BlockPartSizeBytes)
-			firstID       = types.BlockID{Hash: first.Hash(), PartSetHeader: firstParts.Header()}
 		)
 
 		// verify if +second+ last commit "confirms" +first+ block
-		err = state.context.verifyCommit(tmState.ChainID, firstID, first.Height, second.LastCommit)
+		err = state.context.verifyCommit(tmState.ChainID, first.Hash(), first.Height, second.LastCommit)
 		if err != nil {
 			state.purgePeer(firstItem.peerID)
 			if firstItem.peerID != secondItem.peerID {
@@ -178,7 +177,7 @@ func (state *pcState) handle(event Event) (Event, error) {
 
 		state.context.saveBlock(first, firstParts, second.LastCommit)
 
-		if err := state.context.applyBlock(firstID, first); err != nil {
+		if err := state.context.applyBlock(first); err != nil {
 			panic(fmt.Sprintf("failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))
 		}
 

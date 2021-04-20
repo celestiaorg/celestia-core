@@ -146,18 +146,12 @@ func (rs *RoundState) NewRoundEvent() types.EventDataNewRound {
 
 // CompleteProposalEvent returns information about a proposed block as an event.
 func (rs *RoundState) CompleteProposalEvent() types.EventDataCompleteProposal {
-	// We must construct BlockID from ProposalBlock and ProposalBlockParts
 	// cs.Proposal is not guaranteed to be set when this function is called
-	blockID := types.BlockID{
-		Hash:          rs.ProposalBlock.Hash(),
-		PartSetHeader: rs.ProposalBlockParts.Header(),
-	}
-
 	return types.EventDataCompleteProposal{
-		Height:  rs.Height,
-		Round:   rs.Round,
-		Step:    rs.Step.String(),
-		BlockID: blockID,
+		Height:     rs.Height,
+		Round:      rs.Round,
+		Step:       rs.Step.String(),
+		HeaderHash: rs.ProposalBlock.Hash(),
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -20,7 +21,6 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	"github.com/lazyledger/lazyledger-core/libs/bits"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
@@ -126,9 +126,75 @@ func (dah *DataAvailabilityHeader) Hash() []byte {
 	return dah.hash
 }
 
-func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, error) {
+// ValidateBasic runs stateless checks on the DataAvailabilityHeader. Calls Hash() if not already called
+func (dah *DataAvailabilityHeader) ValidateBasic() error {
 	if dah == nil {
-		return nil, errors.New("nil DataAvailabilityHeader")
+		return errors.New("nil header is invalid")
+	}
+	if dah.IsZero() {
+		return errors.New("must have at least one row and column roots")
+	}
+	if len(dah.ColumnRoots) != len(dah.RowsRoots) {
+		return fmt.Errorf(
+			"unequal number of row and column roots: row %d col %d",
+			len(dah.RowsRoots),
+			len(dah.ColumnRoots),
+		)
+	}
+	if len(dah.hash) == 0 {
+		dah.Hash()
+	}
+
+	return nil
+}
+
+func (dah *DataAvailabilityHeader) IsZero() bool {
+	return len(dah.ColumnRoots) == 0 || len(dah.RowsRoots) == 0
+}
+
+// MinDataAvailabilityHeader returns a hard coded copy of an data availability
+// header from empty block data
+func MinDataAvailabilityHeader() *DataAvailabilityHeader {
+	first, err := namespace.IntervalDigestFromBytes(
+		NamespaceSize,
+		hexBytesFromString("fffffffffffffffefffffffffffffffe669aa8f0d85221a05b6f0917884d30616a6c7d5330a5640a08a04dcc5b092f4f"),
+	)
+	if err != nil {
+		panic(err)
+	}
+	second, err := namespace.IntervalDigestFromBytes(
+		NamespaceSize,
+		hexBytesFromString("ffffffffffffffffffffffffffffffff293437f3b6a5611e25c90d5a44b84cc4b3720cdba68553defe8b719af1f5c395"),
+	)
+	if err != nil {
+		panic(err)
+	}
+	dah := &DataAvailabilityHeader{
+		RowsRoots: []namespace.IntervalDigest{
+			first, second,
+		},
+		ColumnRoots: []namespace.IntervalDigest{
+			first, second,
+		},
+		hash: []byte{
+			4, 122, 211, 141, 172, 30, 22, 215, 241, 73, 77, 225, 174, 40, 53, 252, 106, 158, 117, 238,
+			88, 77, 86, 66, 235, 146, 121, 62, 161, 36, 160, 111,
+		},
+	}
+	return dah
+}
+
+func hexBytesFromString(s string) tmbytes.HexBytes {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	return tmbytes.HexBytes(b)
+}
+
+func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, error) {
+	if dah == nil || len(dah.ColumnRoots) == 0 {
+		dah = MinDataAvailabilityHeader()
 	}
 
 	dahp := new(tmproto.DataAvailabilityHeader)
@@ -635,7 +701,7 @@ type Header struct {
 	Time    time.Time           `json:"time"`
 
 	// prev block info
-	LastBlockID BlockID `json:"last_block_id"`
+	LastHeaderHash tmbytes.HexBytes `json:"last_header_hash"`
 
 	// hashes of block data
 	LastCommitHash tmbytes.HexBytes `json:"last_commit_hash"` // commit from validators from the last block
@@ -662,7 +728,7 @@ type Header struct {
 // Call this after MakeBlock to complete the Header.
 func (h *Header) Populate(
 	version tmversion.Consensus, chainID string,
-	timestamp time.Time, lastBlockID BlockID,
+	timestamp time.Time, lastHeaderHash []byte,
 	valHash, nextValHash []byte,
 	consensusHash, appHash, lastResultsHash []byte,
 	proposerAddress Address,
@@ -670,7 +736,7 @@ func (h *Header) Populate(
 	h.Version = version
 	h.ChainID = chainID
 	h.Time = timestamp
-	h.LastBlockID = lastBlockID
+	h.LastHeaderHash = lastHeaderHash
 	h.ValidatorsHash = valHash
 	h.NextValidatorsHash = nextValHash
 	h.ConsensusHash = consensusHash
@@ -697,8 +763,8 @@ func (h Header) ValidateBasic() error {
 		return errors.New("zero Height")
 	}
 
-	if err := h.LastBlockID.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong LastBlockID: %w", err)
+	if err := ValidateHash(h.LastHeaderHash); err != nil {
+		return fmt.Errorf("wrong LastHeaderHash: %w", err)
 	}
 
 	if err := ValidateHash(h.LastCommitHash); err != nil {
@@ -759,17 +825,12 @@ func (h *Header) Hash() tmbytes.HexBytes {
 		return nil
 	}
 
-	pbbi := h.LastBlockID.ToProto()
-	bzbi, err := pbbi.Marshal()
-	if err != nil {
-		return nil
-	}
 	return merkle.HashFromByteSlices([][]byte{
 		hbz,
 		cdcEncode(h.ChainID),
 		cdcEncode(h.Height),
 		pbt,
-		bzbi,
+		cdcEncode(h.LastHeaderHash),
 		cdcEncode(h.LastCommitHash),
 		cdcEncode(h.DataHash),
 		cdcEncode(h.NumOriginalDataShares),
@@ -808,7 +869,7 @@ func (h *Header) StringIndented(indent string) string {
 		indent, h.ChainID,
 		indent, h.Height,
 		indent, h.Time,
-		indent, h.LastBlockID,
+		indent, h.LastHeaderHash,
 		indent, h.LastCommitHash,
 		indent, h.DataHash,
 		indent, h.ValidatorsHash,
@@ -832,7 +893,7 @@ func (h *Header) ToProto() *tmproto.Header {
 		ChainID:               h.ChainID,
 		Height:                h.Height,
 		Time:                  h.Time,
-		LastBlockId:           h.LastBlockID.ToProto(),
+		LastHeaderHash:        h.LastHeaderHash,
 		ValidatorsHash:        h.ValidatorsHash,
 		NextValidatorsHash:    h.NextValidatorsHash,
 		ConsensusHash:         h.ConsensusHash,
@@ -855,17 +916,12 @@ func HeaderFromProto(ph *tmproto.Header) (Header, error) {
 
 	h := new(Header)
 
-	bi, err := BlockIDFromProto(&ph.LastBlockId)
-	if err != nil {
-		return Header{}, err
-	}
-
 	h.Version = ph.Version
 	h.ChainID = ph.ChainID
 	h.Height = ph.Height
 	h.Time = ph.Time
 	h.Height = ph.Height
-	h.LastBlockID = *bi
+	h.LastHeaderHash = ph.LastHeaderHash
 	h.ValidatorsHash = ph.ValidatorsHash
 	h.NextValidatorsHash = ph.NextValidatorsHash
 	h.ConsensusHash = ph.ConsensusHash
@@ -882,16 +938,16 @@ func HeaderFromProto(ph *tmproto.Header) (Header, error) {
 
 //-------------------------------------
 
-// BlockIDFlag indicates which BlockID the signature is for.
-type BlockIDFlag byte
+// CommitFlag indicates which BlockID the signature is for.
+type CommitFlag byte
 
 const (
-	// BlockIDFlagAbsent - no vote was received from a validator.
-	BlockIDFlagAbsent BlockIDFlag = iota + 1
-	// BlockIDFlagCommit - voted for the Commit.BlockID.
-	BlockIDFlagCommit
-	// BlockIDFlagNil - voted for nil.
-	BlockIDFlagNil
+	// CommitFlagAbsent - no vote was received from a validator.
+	CommitFlagAbsent CommitFlag = iota + 1
+	// CommitFlagCommit - voted for the Commit.BlockID.
+	CommitFlagCommit
+	// CommitFlagNil - voted for nil.
+	CommitFlagNil
 )
 
 const (
@@ -904,16 +960,16 @@ const (
 
 // CommitSig is a part of the Vote included in a Commit.
 type CommitSig struct {
-	BlockIDFlag      BlockIDFlag `json:"block_id_flag"`
-	ValidatorAddress Address     `json:"validator_address"`
-	Timestamp        time.Time   `json:"timestamp"`
-	Signature        []byte      `json:"signature"`
+	CommitFlag       CommitFlag `json:"block_id_flag"`
+	ValidatorAddress Address    `json:"validator_address"`
+	Timestamp        time.Time  `json:"timestamp"`
+	Signature        []byte     `json:"signature"`
 }
 
-// NewCommitSigForBlock returns new CommitSig with BlockIDFlagCommit.
+// NewCommitSigForBlock returns new CommitSig with CommitFlagCommit.
 func NewCommitSigForBlock(signature []byte, valAddr Address, ts time.Time) CommitSig {
 	return CommitSig{
-		BlockIDFlag:      BlockIDFlagCommit,
+		CommitFlag:       CommitFlagCommit,
 		ValidatorAddress: valAddr,
 		Timestamp:        ts,
 		Signature:        signature,
@@ -926,22 +982,22 @@ func MaxCommitBytes(valCount int) int64 {
 	return MaxCommitOverheadBytes + ((MaxCommitSigBytes + protoEncodingOverhead) * int64(valCount))
 }
 
-// NewCommitSigAbsent returns new CommitSig with BlockIDFlagAbsent. Other
+// NewCommitSigAbsent returns new CommitSig with CommitFlagAbsent. Other
 // fields are all empty.
 func NewCommitSigAbsent() CommitSig {
 	return CommitSig{
-		BlockIDFlag: BlockIDFlagAbsent,
+		CommitFlag: CommitFlagAbsent,
 	}
 }
 
 // ForBlock returns true if CommitSig is for the block.
 func (cs CommitSig) ForBlock() bool {
-	return cs.BlockIDFlag == BlockIDFlagCommit
+	return cs.CommitFlag == CommitFlagCommit
 }
 
 // Absent returns true if CommitSig is absent.
 func (cs CommitSig) Absent() bool {
-	return cs.BlockIDFlag == BlockIDFlagAbsent
+	return cs.CommitFlag == CommitFlagAbsent
 }
 
 // CommitSig returns a string representation of CommitSig.
@@ -954,39 +1010,39 @@ func (cs CommitSig) String() string {
 	return fmt.Sprintf("CommitSig{%X by %X on %v @ %s}",
 		tmbytes.Fingerprint(cs.Signature),
 		tmbytes.Fingerprint(cs.ValidatorAddress),
-		cs.BlockIDFlag,
+		cs.CommitFlag,
 		CanonicalTime(cs.Timestamp))
 }
 
-// BlockID returns the Commit's BlockID if CommitSig indicates signing,
-// otherwise - empty BlockID.
-func (cs CommitSig) BlockID(commitBlockID BlockID) BlockID {
-	var blockID BlockID
-	switch cs.BlockIDFlag {
-	case BlockIDFlagAbsent:
-		blockID = BlockID{}
-	case BlockIDFlagCommit:
-		blockID = commitBlockID
-	case BlockIDFlagNil:
-		blockID = BlockID{}
+// HeaderHash returns the Commit's headerHash if CommitSig indicates signing,
+// otherwise - empty slice.
+func (cs CommitSig) HeaderHash(commitHeaderHash []byte) []byte {
+	var headerHash []byte
+	switch cs.CommitFlag {
+	case CommitFlagAbsent:
+		headerHash = []byte{}
+	case CommitFlagCommit:
+		headerHash = commitHeaderHash
+	case CommitFlagNil:
+		headerHash = []byte{}
 	default:
-		panic(fmt.Sprintf("Unknown BlockIDFlag: %v", cs.BlockIDFlag))
+		panic(fmt.Sprintf("Unknown CommitFlag: %v", cs.CommitFlag))
 	}
-	return blockID
+	return headerHash
 }
 
 // ValidateBasic performs basic validation.
 func (cs CommitSig) ValidateBasic() error {
-	switch cs.BlockIDFlag {
-	case BlockIDFlagAbsent:
-	case BlockIDFlagCommit:
-	case BlockIDFlagNil:
+	switch cs.CommitFlag {
+	case CommitFlagAbsent:
+	case CommitFlagCommit:
+	case CommitFlagNil:
 	default:
-		return fmt.Errorf("unknown BlockIDFlag: %v", cs.BlockIDFlag)
+		return fmt.Errorf("unknown CommitFlag: %v", cs.CommitFlag)
 	}
 
-	switch cs.BlockIDFlag {
-	case BlockIDFlagAbsent:
+	switch cs.CommitFlag {
+	case CommitFlagAbsent:
 		if len(cs.ValidatorAddress) != 0 {
 			return errors.New("validator address is present")
 		}
@@ -1022,7 +1078,7 @@ func (cs *CommitSig) ToProto() *tmproto.CommitSig {
 	}
 
 	return &tmproto.CommitSig{
-		BlockIdFlag:      tmproto.BlockIDFlag(cs.BlockIDFlag),
+		CommitFlag:       tmproto.CommitFlag(cs.CommitFlag),
 		ValidatorAddress: cs.ValidatorAddress,
 		Timestamp:        cs.Timestamp,
 		Signature:        cs.Signature,
@@ -1033,7 +1089,7 @@ func (cs *CommitSig) ToProto() *tmproto.CommitSig {
 // It returns an error if the CommitSig is invalid.
 func (cs *CommitSig) FromProto(csp tmproto.CommitSig) error {
 
-	cs.BlockIDFlag = BlockIDFlag(csp.BlockIdFlag)
+	cs.CommitFlag = CommitFlag(csp.CommitFlag)
 	cs.ValidatorAddress = csp.ValidatorAddress
 	cs.Timestamp = csp.Timestamp
 	cs.Signature = csp.Signature
@@ -1052,7 +1108,6 @@ type Commit struct {
 	// recalculating the active ValidatorSet.
 	Height     int64       `json:"height"`
 	Round      int32       `json:"round"`
-	BlockID    BlockID     `json:"block_id"`
 	Signatures []CommitSig `json:"signatures"`
 	HeaderHash []byte      `json:"header_hash"`
 
@@ -1064,13 +1119,12 @@ type Commit struct {
 }
 
 // NewCommit returns a new Commit.
-func NewCommit(height int64, round int32, blockID BlockID, commitSigs []CommitSig) *Commit {
+func NewCommit(height int64, round int32, commitSigs []CommitSig, headerHash []byte) *Commit {
 	return &Commit{
 		Height:     height,
 		Round:      round,
-		BlockID:    blockID,
 		Signatures: commitSigs,
-		HeaderHash: blockID.Hash,
+		HeaderHash: headerHash,
 	}
 }
 
@@ -1100,7 +1154,7 @@ func (commit *Commit) GetVote(valIdx int32) *Vote {
 		Type:             tmproto.PrecommitType,
 		Height:           commit.Height,
 		Round:            commit.Round,
-		BlockID:          commitSig.BlockID(commit.BlockID),
+		HeaderHash:       commitSig.HeaderHash(commit.HeaderHash),
 		Timestamp:        commitSig.Timestamp,
 		ValidatorAddress: commitSig.ValidatorAddress,
 		ValidatorIndex:   valIdx,
@@ -1190,9 +1244,6 @@ func (commit *Commit) ValidateBasic() error {
 		if len(commit.HeaderHash) != 32 {
 			return fmt.Errorf("incorrect hash length, len: %d expected 32", len(commit.HeaderHash))
 		}
-		if commit.BlockID.IsZero() {
-			return errors.New("commit cannot be for nil block")
-		}
 
 		if len(commit.Signatures) == 0 {
 			return errors.New("no signatures in commit")
@@ -1239,13 +1290,13 @@ func (commit *Commit) StringIndented(indent string) string {
 	return fmt.Sprintf(`Commit{
 %s  Height:     %d
 %s  Round:      %d
-%s  BlockID:    %v
+%s  HeaderHash:    %v
 %s  Signatures:
 %s    %v
 %s}#%v`,
 		indent, commit.Height,
 		indent, commit.Round,
-		indent, commit.BlockID,
+		indent, commit.HeaderHash,
 		indent,
 		indent, strings.Join(commitSigStrings, "\n"+indent+"    "),
 		indent, commit.hash)
@@ -1266,7 +1317,6 @@ func (commit *Commit) ToProto() *tmproto.Commit {
 
 	c.Height = commit.Height
 	c.Round = commit.Round
-	c.BlockID = commit.BlockID.ToProto()
 	c.HeaderHash = commit.HeaderHash
 
 	return c
@@ -1283,11 +1333,6 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 		commit = new(Commit)
 	)
 
-	bi, err := BlockIDFromProto(&cp.BlockID)
-	if err != nil {
-		return nil, err
-	}
-
 	sigs := make([]CommitSig, len(cp.Signatures))
 	for i := range cp.Signatures {
 		if err := sigs[i].FromProto(cp.Signatures[i]); err != nil {
@@ -1298,7 +1343,6 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 
 	commit.Height = cp.Height
 	commit.Round = cp.Round
-	commit.BlockID = *bi
 	commit.HeaderHash = cp.HeaderHash
 
 	return commit, commit.ValidateBasic()
@@ -1640,95 +1684,4 @@ func (data *EvidenceData) splitIntoShares() NamespacedShares {
 	}
 	shares := splitContiguous(EvidenceNamespaceID, rawDatas)
 	return shares
-}
-
-//--------------------------------------------------------------------------------
-
-// BlockID
-type BlockID struct {
-	Hash          tmbytes.HexBytes `json:"hash"`
-	PartSetHeader PartSetHeader    `json:"part_set_header"`
-}
-
-// Equals returns true if the BlockID matches the given BlockID
-func (blockID BlockID) Equals(other BlockID) bool {
-	return bytes.Equal(blockID.Hash, other.Hash) &&
-		blockID.PartSetHeader.Equals(other.PartSetHeader)
-}
-
-// Key returns a machine-readable string representation of the BlockID
-func (blockID BlockID) Key() string {
-	pbph := blockID.PartSetHeader.ToProto()
-	bz, err := pbph.Marshal()
-	if err != nil {
-		panic(err)
-	}
-
-	return string(blockID.Hash) + string(bz)
-}
-
-// ValidateBasic performs basic validation.
-func (blockID BlockID) ValidateBasic() error {
-	// Hash can be empty in case of POLBlockID in Proposal.
-	if err := ValidateHash(blockID.Hash); err != nil {
-		return fmt.Errorf("wrong Hash")
-	}
-	if err := blockID.PartSetHeader.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong PartSetHeader: %v", err)
-	}
-	return nil
-}
-
-// IsZero returns true if this is the BlockID of a nil block.
-func (blockID BlockID) IsZero() bool {
-	return len(blockID.Hash) == 0 &&
-		blockID.PartSetHeader.IsZero()
-}
-
-// IsComplete returns true if this is a valid BlockID of a non-nil block.
-func (blockID BlockID) IsComplete() bool {
-	return len(blockID.Hash) == tmhash.Size &&
-		blockID.PartSetHeader.Total > 0 &&
-		len(blockID.PartSetHeader.Hash) == tmhash.Size
-}
-
-// String returns a human readable string representation of the BlockID.
-//
-// 1. hash
-// 2. part set header
-//
-// See PartSetHeader#String
-func (blockID BlockID) String() string {
-	return fmt.Sprintf(`%v:%v`, blockID.Hash, blockID.PartSetHeader)
-}
-
-// ToProto converts BlockID to protobuf
-func (blockID *BlockID) ToProto() tmproto.BlockID {
-	if blockID == nil {
-		return tmproto.BlockID{}
-	}
-
-	return tmproto.BlockID{
-		Hash:          blockID.Hash,
-		PartSetHeader: blockID.PartSetHeader.ToProto(),
-	}
-}
-
-// FromProto sets a protobuf BlockID to the given pointer.
-// It returns an error if the block id is invalid.
-func BlockIDFromProto(bID *tmproto.BlockID) (*BlockID, error) {
-	if bID == nil {
-		return nil, errors.New("nil BlockID")
-	}
-
-	blockID := new(BlockID)
-	ph, err := PartSetHeaderFromProto(&bID.PartSetHeader)
-	if err != nil {
-		return nil, err
-	}
-
-	blockID.PartSetHeader = *ph
-	blockID.Hash = bID.Hash
-
-	return blockID, blockID.ValidateBasic()
 }

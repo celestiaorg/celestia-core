@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/lazyledger/lazyledger-core/libs/bits"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
@@ -351,13 +352,13 @@ func (voteSet *VoteSet) BitArray() *bits.BitArray {
 	return voteSet.votesBitArray.Copy()
 }
 
-func (voteSet *VoteSet) BitArrayByBlockID(blockID BlockID) *bits.BitArray {
+func (voteSet *VoteSet) BitArrayByHeaderHash(headerHash tmbytes.HexBytes) *bits.BitArray {
 	if voteSet == nil {
 		return nil
 	}
 	voteSet.mtx.Lock()
 	defer voteSet.mtx.Unlock()
-	votesByBlock, ok := voteSet.votesByBlock[blockID.Key()]
+	votesByBlock, ok := voteSet.votesByBlock[headerHash.String()]
 	if ok {
 		return votesByBlock.bitArray.Copy()
 	}
@@ -427,16 +428,16 @@ func (voteSet *VoteSet) HasAll() bool {
 
 // If there was a +2/3 majority for blockID, return blockID and true.
 // Else, return the empty BlockID{} and false.
-func (voteSet *VoteSet) TwoThirdsMajority() (blockID BlockID, ok bool) {
+func (voteSet *VoteSet) TwoThirdsMajority() (headerHash []byte, ok bool) {
 	if voteSet == nil {
-		return BlockID{}, false
+		return nil, false
 	}
 	voteSet.mtx.Lock()
 	defer voteSet.mtx.Unlock()
 	if voteSet.maj23 != nil {
 		return *voteSet.maj23, true
 	}
-	return BlockID{}, false
+	return nil, false
 }
 
 //--------------------------------------------------------------------------------
@@ -501,9 +502,9 @@ func (voteSet *VoteSet) MarshalJSON() ([]byte, error) {
 // NOTE: insufficient for unmarshalling from (compressed votes)
 // TODO: make the peerMaj23s nicer to read (eg just the block hash)
 type VoteSetJSON struct {
-	Votes         []string          `json:"votes"`
-	VotesBitArray string            `json:"votes_bit_array"`
-	PeerMaj23s    map[P2PID]BlockID `json:"peer_maj_23s"`
+	Votes         []string         `json:"votes"`
+	VotesBitArray string           `json:"votes_bit_array"`
+	PeerMaj23s    map[P2PID][]byte `json:"peer_maj_23s"`
 }
 
 // Return the bit-array of votes including

@@ -383,20 +383,19 @@ FOR_LOOP:
 			}
 
 			var (
-				firstParts         = first.MakePartSet(types.BlockPartSizeBytes)
-				firstPartSetHeader = firstParts.Header()
-				firstID            = types.BlockID{Hash: first.Hash(), PartSetHeader: firstPartSetHeader}
+				firstParts = first.MakePartSet(types.BlockPartSizeBytes)
+				firstHash  = first.Hash()
 			)
 
 			// Finally, verify the first block using the second's commit
 			// NOTE: we can probably make this more efficient, but note that calling
 			// first.Hash() doesn't verify the tx contents, so MakePartSet() is
 			// currently necessary.
-			err := state.Validators.VerifyCommitLight(chainID, firstID, first.Height, second.LastCommit)
+			err := state.Validators.VerifyCommitLight(chainID, firstHash, first.Height, second.LastCommit)
 			if err != nil {
 				err = fmt.Errorf("invalid last commit: %w", err)
 				bcR.Logger.Error(err.Error(),
-					"last_commit", second.LastCommit, "block_id", firstID, "height", first.Height)
+					"last_commit", second.LastCommit, "block_id", firstHash, "height", first.Height)
 
 				peerID := bcR.pool.RedoRequest(first.Height)
 				peer := bcR.Switch.Peers().Get(peerID)
@@ -423,7 +422,7 @@ FOR_LOOP:
 				// TODO: same thing for app - but we would need a way to get the hash
 				// without persisting the state.
 				var err error
-				state, _, err = bcR.blockExec.ApplyBlock(state, firstID, first)
+				state, _, err = bcR.blockExec.ApplyBlock(state, first)
 				if err != nil {
 					// TODO This is bad, are we zombie?
 					panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))

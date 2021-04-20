@@ -7,7 +7,7 @@ import (
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
-func MakeCommit(blockID BlockID, height int64, round int32,
+func MakeCommit(headerHash []byte, height int64, round int32,
 	voteSet *VoteSet, validators []PrivValidator, now time.Time) (*Commit, error) {
 
 	// all sign
@@ -22,7 +22,7 @@ func MakeCommit(blockID BlockID, height int64, round int32,
 			Height:           height,
 			Round:            round,
 			Type:             tmproto.PrecommitType,
-			BlockID:          blockID,
+			HeaderHash:       headerHash,
 			Timestamp:        now,
 		}
 
@@ -47,7 +47,7 @@ func signAddVote(privVal PrivValidator, vote *Vote, voteSet *VoteSet) (signed bo
 
 func MakeVote(
 	height int64,
-	blockID BlockID,
+	headerHash []byte,
 	valSet *ValidatorSet,
 	privVal PrivValidator,
 	chainID string,
@@ -66,7 +66,7 @@ func MakeVote(
 		Round:            0,
 		Timestamp:        now,
 		Type:             tmproto.PrecommitType,
-		BlockID:          blockID,
+		HeaderHash:       headerHash,
 	}
 	v := vote.ToProto()
 

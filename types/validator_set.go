@@ -659,7 +659,7 @@ func (vals *ValidatorSet) UpdateWithChangeSet(changes []*Validator) error {
 // application that depends on the LastCommitInfo sent in BeginBlock, which
 // includes which validators signed. For instance, Gaia incentivizes proposers
 // with a bonus for including more than +2/3 of the signatures.
-func (vals *ValidatorSet) VerifyCommit(chainID string, blockID BlockID,
+func (vals *ValidatorSet) VerifyCommit(chainID string, headerHash []byte,
 	height int64, commit *Commit) error {
 	if commit == nil {
 		return errors.New("nil commit")
@@ -673,9 +673,9 @@ func (vals *ValidatorSet) VerifyCommit(chainID string, blockID BlockID,
 	if height != commit.Height {
 		return NewErrInvalidCommitHeight(height, commit.Height)
 	}
-	if !blockID.Equals(commit.BlockID) {
-		return fmt.Errorf("invalid commit -- wrong block ID: want %v, got %v",
-			blockID, commit.BlockID)
+	if !bytes.Equal(headerHash, commit.HeaderHash) {
+		return fmt.Errorf("invalid commit -- wrong header hash: want %v, got %v",
+			headerHash, commit.HeaderHash)
 	}
 
 	talliedVotingPower := int64(0)
@@ -717,7 +717,7 @@ func (vals *ValidatorSet) VerifyCommit(chainID string, blockID BlockID,
 //
 // This method is primarily used by the light client and does not check all the
 // signatures.
-func (vals *ValidatorSet) VerifyCommitLight(chainID string, blockID BlockID,
+func (vals *ValidatorSet) VerifyCommitLight(chainID string, headerHash []byte,
 	height int64, commit *Commit) error {
 	if commit == nil {
 		return errors.New("nil commit")
@@ -731,9 +731,9 @@ func (vals *ValidatorSet) VerifyCommitLight(chainID string, blockID BlockID,
 	if height != commit.Height {
 		return NewErrInvalidCommitHeight(height, commit.Height)
 	}
-	if !blockID.Equals(commit.BlockID) {
+	if !bytes.Equal(headerHash, commit.HeaderHash) {
 		return fmt.Errorf("invalid commit -- wrong block ID: want %v, got %v",
-			blockID, commit.BlockID)
+			headerHash, commit.HeaderHash)
 	}
 
 	talliedVotingPower := int64(0)

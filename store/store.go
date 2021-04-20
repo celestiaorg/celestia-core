@@ -288,7 +288,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 		if err := batch.Delete(calcBlockMetaKey(h)); err != nil {
 			return 0, err
 		}
-		if err := batch.Delete(calcBlockHashKey(meta.BlockID.Hash)); err != nil {
+		if err := batch.Delete(calcBlockHashKey(meta.HeaderHash)); err != nil {
 			return 0, err
 		}
 		if err := batch.Delete(calcBlockCommitKey(h)); err != nil {

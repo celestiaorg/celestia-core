@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/lazyledger/lazyledger-core/crypto/merkle"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 
 	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
@@ -55,7 +56,7 @@ type State struct {
 
 	// LastBlockHeight=0 at genesis (ie. block(H=0) does not exist)
 	LastBlockHeight int64
-	LastBlockID     types.BlockID
+	LastHeaderHash  tmbytes.HexBytes
 	LastBlockTime   time.Time
 
 	// LastValidators is used to validate block.LastCommit.
@@ -90,7 +91,7 @@ func (state State) Copy() State {
 		InitialHeight: state.InitialHeight,
 
 		LastBlockHeight: state.LastBlockHeight,
-		LastBlockID:     state.LastBlockID,
+		LastHeaderHash:  state.LastHeaderHash,
 		LastBlockTime:   state.LastBlockTime,
 
 		NextValidators:              state.NextValidators.Copy(),
@@ -145,7 +146,7 @@ func (state *State) ToProto() (*tmstate.State, error) {
 	sm.InitialHeight = state.InitialHeight
 	sm.LastBlockHeight = state.LastBlockHeight
 
-	sm.LastBlockID = state.LastBlockID.ToProto()
+	sm.HeaderHash = state.LastHeaderHash
 	sm.LastBlockTime = state.LastBlockTime
 	vals, err := state.Validators.ToProto()
 	if err != nil {
@@ -188,11 +189,7 @@ func StateFromProto(pb *tmstate.State) (*State, error) { //nolint:golint
 	state.ChainID = pb.ChainID
 	state.InitialHeight = pb.InitialHeight
 
-	bi, err := types.BlockIDFromProto(&pb.LastBlockID)
-	if err != nil {
-		return nil, err
-	}
-	state.LastBlockID = *bi
+	state.LastHeaderHash = pb.HeaderHash
 	state.LastBlockHeight = pb.LastBlockHeight
 	state.LastBlockTime = pb.LastBlockTime
 
@@ -257,7 +254,7 @@ func (state State) MakeBlock(
 	// Fill rest of header with state data.
 	block.Header.Populate(
 		state.Version.Consensus, state.ChainID,
-		timestamp, state.LastBlockID,
+		timestamp, state.LastHeaderHash,
 		state.Validators.Hash(), state.NextValidators.Hash(),
 		types.HashConsensusParams(state.ConsensusParams), state.AppHash, state.LastResultsHash,
 		proposerAddress,
@@ -343,7 +340,7 @@ func MakeGenesisState(genDoc *types.GenesisDoc) (State, error) {
 		InitialHeight: genDoc.InitialHeight,
 
 		LastBlockHeight: 0,
-		LastBlockID:     types.BlockID{},
+		LastHeaderHash:  merkle.HashFromByteSlices(nil),
 		LastBlockTime:   genDoc.GenesisTime,
 
 		NextValidators:              nextValidatorSet,

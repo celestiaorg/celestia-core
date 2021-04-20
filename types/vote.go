@@ -50,8 +50,8 @@ type Address = crypto.Address
 type Vote struct {
 	Type             tmproto.SignedMsgType `json:"type"`
 	Height           int64                 `json:"height"`
-	Round            int32                 `json:"round"`    // assume there will not be greater than 2_147_483_647 rounds
-	BlockID          BlockID               `json:"block_id"` // zero if vote is nil.
+	Round            int32                 `json:"round"` // assume there will not be greater than 2_147_483_647 rounds
+	HeaderHash       []byte                `json:"header_hash"`
 	Timestamp        time.Time             `json:"timestamp"`
 	ValidatorAddress Address               `json:"validator_address"`
 	ValidatorIndex   int32                 `json:"validator_index"`
@@ -64,18 +64,15 @@ func (vote *Vote) CommitSig() CommitSig {
 		return NewCommitSigAbsent()
 	}
 
-	var blockIDFlag BlockIDFlag
-	switch {
-	case vote.BlockID.IsComplete():
-		blockIDFlag = BlockIDFlagCommit
-	case vote.BlockID.IsZero():
-		blockIDFlag = BlockIDFlagNil
-	default:
-		panic(fmt.Sprintf("Invalid vote %v - expected BlockID to be either empty or complete", vote))
+	var commitFlag CommitFlag
+	if err := ValidateHash(vote.HeaderHash); err == nil {
+		commitFlag = CommitFlagCommit
+	} else {
+		commitFlag = CommitFlagNil
 	}
 
 	return CommitSig{
-		BlockIDFlag:      blockIDFlag,
+		CommitFlag:       commitFlag,
 		ValidatorAddress: vote.ValidatorAddress,
 		Timestamp:        vote.Timestamp,
 		Signature:        vote.Signature,
@@ -138,7 +135,7 @@ func (vote *Vote) String() string {
 		vote.Round,
 		vote.Type,
 		typeString,
-		tmbytes.Fingerprint(vote.BlockID.Hash),
+		tmbytes.Fingerprint(vote.HeaderHash),
 		tmbytes.Fingerprint(vote.Signature),
 		CanonicalTime(vote.Timestamp),
 	)
@@ -171,14 +168,8 @@ func (vote *Vote) ValidateBasic() error {
 
 	// NOTE: Timestamp validation is subtle and handled elsewhere.
 
-	if err := vote.BlockID.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong BlockID: %v", err)
-	}
-
-	// BlockID.ValidateBasic would not err if we for instance have an empty hash but a
-	// non-empty PartsSetHeader:
-	if !vote.BlockID.IsZero() && !vote.BlockID.IsComplete() {
-		return fmt.Errorf("blockID must be either empty or complete, got: %v", vote.BlockID)
+	if err := ValidateHash(vote.HeaderHash); err != nil {
+		return fmt.Errorf("wrong HeaderHash: %v", err)
 	}
 
 	if len(vote.ValidatorAddress) != crypto.AddressSize {
@@ -212,7 +203,7 @@ func (vote *Vote) ToProto() *tmproto.Vote {
 		Type:             vote.Type,
 		Height:           vote.Height,
 		Round:            vote.Round,
-		BlockID:          vote.BlockID.ToProto(),
+		HeaderHash:       vote.HeaderHash,
 		Timestamp:        vote.Timestamp,
 		ValidatorAddress: vote.ValidatorAddress,
 		ValidatorIndex:   vote.ValidatorIndex,
@@ -227,16 +218,11 @@ func VoteFromProto(pv *tmproto.Vote) (*Vote, error) {
 		return nil, errors.New("nil vote")
 	}
 
-	blockID, err := BlockIDFromProto(&pv.BlockID)
-	if err != nil {
-		return nil, err
-	}
-
 	vote := new(Vote)
 	vote.Type = pv.Type
 	vote.Height = pv.Height
 	vote.Round = pv.Round
-	vote.BlockID = *blockID
+	vote.HeaderHash = pv.HeaderHash
 	vote.Timestamp = pv.Timestamp
 	vote.ValidatorAddress = pv.ValidatorAddress
 	vote.ValidatorIndex = pv.ValidatorIndex

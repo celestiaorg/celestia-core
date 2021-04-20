@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
 	tmquery "github.com/lazyledger/lazyledger-core/libs/pubsub/query"
@@ -112,7 +113,7 @@ type EventDataCompleteProposal struct {
 	Round  int32  `json:"round"`
 	Step   string `json:"step"`
 
-	BlockID BlockID `json:"block_id"`
+	HeaderHash tmbytes.HexBytes `json:"header_hash"`
 }
 
 type EventDataVote struct {

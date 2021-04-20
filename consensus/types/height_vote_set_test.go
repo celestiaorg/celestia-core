@@ -71,7 +71,7 @@ func makeVoteHR(t *testing.T, height int64, valIndex, round int32, privVals []ty
 		Round:            round,
 		Timestamp:        tmtime.Now(),
 		Type:             tmproto.PrecommitType,
-		BlockID:          types.BlockID{Hash: randBytes, PartSetHeader: types.PartSetHeader{}},
+		HeaderHash:       randBytes,
 	}
 	chainID := config.ChainID()
 

@@ -175,9 +175,8 @@ func (blockExec *BlockExecutor) ValidateBlock(state State, block *types.Block) e
 // It returns the new state and the block height to retain (pruning older blocks).
 // It's the only function that needs to be called
 // from outside this package to process and commit an entire block.
-// It takes a blockID to avoid recomputing the parts hash.
 func (blockExec *BlockExecutor) ApplyBlock(
-	state State, blockID types.BlockID, block *types.Block,
+	state State, block *types.Block,
 ) (State, int64, error) {
 
 	if err := validateBlock(state, block); err != nil {
@@ -217,7 +216,7 @@ func (blockExec *BlockExecutor) ApplyBlock(
 	}
 
 	// Update the state with the block and responses.
-	state, err = updateState(state, blockID, &block.Header, abciResponses, validatorUpdates)
+	state, err = updateState(state, &block.Header, abciResponses, validatorUpdates)
 	if err != nil {
 		return state, 0, fmt.Errorf("commit failed for application: %v", err)
 	}
@@ -452,7 +451,6 @@ func validateValidatorUpdates(abciUpdates []abci.ValidatorUpdate,
 // updateState returns a new State updated according to the header and responses.
 func updateState(
 	state State,
-	blockID types.BlockID,
 	header *types.Header,
 	abciResponses *tmstate.ABCIResponses,
 	validatorUpdates []*types.Validator,
@@ -502,7 +500,7 @@ func updateState(
 		ChainID:                          state.ChainID,
 		InitialHeight:                    state.InitialHeight,
 		LastBlockHeight:                  header.Height,
-		LastBlockID:                      blockID,
+		LastHeaderHash:                   header.Hash(),
 		LastBlockTime:                    header.Time,
 		NextValidators:                   nValSet,
 		Validators:                       state.NextValidators.Copy(),

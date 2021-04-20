@@ -85,7 +85,7 @@ type mockBlockApplier struct {
 
 // XXX: Add whitelist/blacklist?
 func (mba *mockBlockApplier) ApplyBlock(
-	state sm.State, blockID types.BlockID, block *types.Block,
+	state sm.State, block *types.Block,
 ) (sm.State, int64, error) {
 	state.LastBlockHeight++
 	return state, 0, nil
@@ -536,13 +536,13 @@ func newReactorStore(
 
 	// add blocks in
 	for blockHeight := int64(1); blockHeight <= maxBlockHeight; blockHeight++ {
-		lastCommit := types.NewCommit(blockHeight-1, 0, types.BlockID{}, nil)
+		lastCommit := types.NewCommit(blockHeight-1, 0, nil, nil)
 		if blockHeight > 1 {
 			lastBlockMeta := blockStore.LoadBlockMeta(blockHeight - 1)
 			lastBlock := blockStore.LoadBlock(blockHeight - 1)
 			vote, err := types.MakeVote(
 				lastBlock.Header.Height,
-				lastBlockMeta.BlockID,
+				lastBlockMeta.HeaderHash,
 				state.Validators,
 				privVals[0],
 				lastBlock.Header.ChainID,
@@ -551,16 +551,19 @@ func newReactorStore(
 			if err != nil {
 				panic(err)
 			}
-			lastCommit = types.NewCommit(vote.Height, vote.Round,
-				lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()})
+			lastCommit = types.NewCommit(
+				vote.Height,
+				vote.Round,
+				[]types.CommitSig{vote.CommitSig()},
+				lastBlockMeta.HeaderHash,
+			)
 		}
 
 		thisBlock := makeBlock(blockHeight, state, lastCommit)
 
 		thisParts := thisBlock.MakePartSet(types.BlockPartSizeBytes)
-		blockID := types.BlockID{Hash: thisBlock.Hash(), PartSetHeader: thisParts.Header()}
 
-		state, _, err = blockExec.ApplyBlock(state, blockID, thisBlock)
+		state, _, err = blockExec.ApplyBlock(state, thisBlock)
 		if err != nil {
 			panic(fmt.Errorf("error apply block: %w", err))
 		}

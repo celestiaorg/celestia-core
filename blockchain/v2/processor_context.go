@@ -8,8 +8,8 @@ import (
 )
 
 type processorContext interface {
-	applyBlock(blockID types.BlockID, block *types.Block) error
-	verifyCommit(chainID string, blockID types.BlockID, height int64, commit *types.Commit) error
+	applyBlock(block *types.Block) error
+	verifyCommit(chainID string, headerHash []byte, height int64, commit *types.Commit) error
 	saveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit)
 	tmState() state.State
 	setState(state.State)
@@ -29,8 +29,8 @@ func newProcessorContext(st blockStore, ex blockApplier, s state.State) *pContex
 	}
 }
 
-func (pc *pContext) applyBlock(blockID types.BlockID, block *types.Block) error {
-	newState, _, err := pc.applier.ApplyBlock(pc.state, blockID, block)
+func (pc *pContext) applyBlock(block *types.Block) error {
+	newState, _, err := pc.applier.ApplyBlock(pc.state, block)
 	pc.state = newState
 	return err
 }
@@ -43,8 +43,8 @@ func (pc *pContext) setState(state state.State) {
 	pc.state = state
 }
 
-func (pc pContext) verifyCommit(chainID string, blockID types.BlockID, height int64, commit *types.Commit) error {
-	return pc.state.Validators.VerifyCommitLight(chainID, blockID, height, commit)
+func (pc pContext) verifyCommit(chainID string, headerHash []byte, height int64, commit *types.Commit) error {
+	return pc.state.Validators.VerifyCommitLight(chainID, headerHash, height, commit)
 }
 
 func (pc *pContext) saveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
@@ -68,7 +68,7 @@ func newMockProcessorContext(
 	}
 }
 
-func (mpc *mockPContext) applyBlock(blockID types.BlockID, block *types.Block) error {
+func (mpc *mockPContext) applyBlock(block *types.Block) error {
 	for _, h := range mpc.applicationBL {
 		if h == block.Height {
 			return fmt.Errorf("generic application error")
@@ -78,7 +78,7 @@ func (mpc *mockPContext) applyBlock(blockID types.BlockID, block *types.Block) e
 	return nil
 }
 
-func (mpc *mockPContext) verifyCommit(chainID string, blockID types.BlockID, height int64, commit *types.Commit) error {
+func (mpc *mockPContext) verifyCommit(chainID string, headerHash []byte, height int64, commit *types.Commit) error {
 	for _, h := range mpc.verificationBL {
 		if h == height {
 			return fmt.Errorf("generic verification error")
