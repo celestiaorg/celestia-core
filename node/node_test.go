@@ -296,7 +296,7 @@ func TestCreateProposalBlock(t *testing.T) {
 	)
 
 	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
-	block, _ := blockExec.CreateProposalBlock(
+	block := blockExec.CreateProposalBlock(
 		height,
 		state, commit,
 		proposerAddr,
@@ -365,7 +365,7 @@ func TestMaxTxsProposalBlockSize(t *testing.T) {
 	)
 
 	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
-	block, _ := blockExec.CreateProposalBlock(
+	block := blockExec.CreateProposalBlock(
 		height,
 		state, commit,
 		proposerAddr,
@@ -472,7 +472,7 @@ func TestMaxProposalBlockSize(t *testing.T) {
 		commit.Signatures = append(commit.Signatures, cs)
 	}
 
-	block, partSet := blockExec.CreateProposalBlock(
+	block := blockExec.CreateProposalBlock(
 		math.MaxInt64,
 		state, commit,
 		proposerAddr,
@@ -490,10 +490,6 @@ func TestMaxProposalBlockSize(t *testing.T) {
 	require.Equal(t, int64(pb.LastCommit.Size()), types.MaxCommitBytes(types.MaxVotesCount))
 	// make sure that the block is less than the max possible size
 	assert.LessOrEqual(t, maxBytes, int64(pb.Size()))
-	// because of the proto overhead we expect the part set bytes to be equal or
-	// less than the pb block size
-	assert.LessOrEqual(t, partSet.ByteSize(), int64(pb.Size()))
-
 }
 
 func TestNodeNewNodeCustomReactors(t *testing.T) {
