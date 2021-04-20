@@ -18,17 +18,20 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/gtank/merlin v0.1.1
 	github.com/hdevalence/ed25519consensus v0.0.0-20201207055737-7fde80a9d5ff
+	github.com/ipfs/go-block-format v0.0.2
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-ipfs v0.8.0
+	github.com/ipfs/go-ipfs-api v0.2.0
 	github.com/ipfs/go-ipfs-config v0.12.0
 	github.com/ipfs/go-ipld-format v0.2.0
 	github.com/ipfs/go-path v0.0.9 // indirect
+	github.com/ipfs/go-verifcid v0.0.1
 	github.com/ipfs/interface-go-ipfs-core v0.4.0
-	github.com/lazyledger/lazyledger-core/p2p/ipld/plugin v0.0.0-20210219190522-0eccfb24e2aa
 	github.com/lazyledger/nmt v0.3.1
 	github.com/lazyledger/rsmt2d v0.2.0
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/minio/highwayhash v1.0.1
+	github.com/multiformats/go-multihash v0.0.14
 	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.8.0
@@ -50,5 +53,4 @@ replace (
 	github.com/ipfs/go-ipfs => github.com/lazyledger/go-ipfs v0.8.0-lazypatch
 	// adding an extra replace statement here enforces usage of our fork of go-cerifcid
 	github.com/ipfs/go-verifcid => github.com/lazyledger/go-verifcid v0.0.1-lazypatch
-	github.com/lazyledger/lazyledger-core/p2p/ipld/plugin => ./p2p/ipld/plugin
 )
