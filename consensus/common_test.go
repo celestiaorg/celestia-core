@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -13,9 +14,10 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/term"
+	"github.com/ipfs/go-ipfs/core/coreapi"
+	coremock "github.com/ipfs/go-ipfs/core/mock"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/stretchr/testify/require"
-
-	"path"
 
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
 	"github.com/lazyledger/lazyledger-core/abci/example/counter"
@@ -425,13 +427,14 @@ func loadPrivValidator(config *cfg.Config) *privval.FilePV {
 	return privValidator
 }
 
-func randState(nValidators int) (*State, []*validatorStub) {
+func randState(t *testing.T, nValidators int) (*State, []*validatorStub) {
 	// Get State
 	state, privVals := randGenesisState(nValidators, false, 10)
 
 	vss := make([]*validatorStub, nValidators)
 
 	cs := newState(state, privVals[0], counter.NewApplication(true))
+	cs.IpfsAPI = mockedIpfsAPI(t)
 
 	for i := 0; i < nValidators; i++ {
 		vss[i] = newValidatorStub(privVals[i], int32(i))
@@ -440,6 +443,21 @@ func randState(nValidators int) (*State, []*validatorStub) {
 	incrementHeight(vss[1:]...)
 
 	return cs, vss
+}
+
+func mockedIpfsAPI(t *testing.T) iface.CoreAPI {
+	ipfsNode, err := coremock.NewMockNode()
+	if err != nil {
+		t.Error(err)
+	}
+
+	// issue a new API object
+	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	if err != nil {
+		t.Error(err)
+	}
+
+	return ipfsAPI
 }
 
 //-------------------------------------------------------------------------------
