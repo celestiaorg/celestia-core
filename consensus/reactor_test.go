@@ -23,9 +23,10 @@ import (
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	"github.com/lazyledger/lazyledger-core/libs/bits"
-	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	mempl "github.com/lazyledger/lazyledger-core/mempool"
 	"github.com/lazyledger/lazyledger-core/p2p"
@@ -892,38 +893,30 @@ func TestVoteSetMaj23MessageValidateBasic(t *testing.T) {
 		invalidSignedMsgType tmproto.SignedMsgType = 0x03
 	)
 
-	validBlockID := types.BlockID{}
-	invalidBlockID := types.BlockID{
-		Hash: bytes.HexBytes{},
-		PartSetHeader: types.PartSetHeader{
-			Total: 1,
-			Hash:  []byte{0},
-		},
-	}
+	headerHash := tmrand.Bytes(tmhash.Size)
 
 	testCases := []struct { // nolint: maligned
-		expectErr      bool
-		messageRound   int32
-		messageHeight  int64
-		testName       string
-		messageType    tmproto.SignedMsgType
-		messageBlockID types.BlockID
+		expectErr         bool
+		messageRound      int32
+		messageHeight     int64
+		testName          string
+		messageType       tmproto.SignedMsgType
+		messageHeaderHash tmbytes.HexBytes
 	}{
-		{false, 0, 0, "Valid Message", validSignedMsgType, validBlockID},
-		{true, -1, 0, "Invalid Message", validSignedMsgType, validBlockID},
-		{true, 0, -1, "Invalid Message", validSignedMsgType, validBlockID},
-		{true, 0, 0, "Invalid Message", invalidSignedMsgType, validBlockID},
-		{true, 0, 0, "Invalid Message", validSignedMsgType, invalidBlockID},
+		{false, 0, 0, "Valid Message", validSignedMsgType, headerHash},
+		{true, -1, 0, "Invalid Message", validSignedMsgType, headerHash},
+		{true, 0, -1, "Invalid Message", validSignedMsgType, headerHash},
+		{true, 0, 0, "Invalid Message", invalidSignedMsgType, headerHash},
 	}
 
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
 			message := VoteSetMaj23Message{
-				Height:  tc.messageHeight,
-				Round:   tc.messageRound,
-				Type:    tc.messageType,
-				BlockID: tc.messageBlockID,
+				Height:     tc.messageHeight,
+				Round:      tc.messageRound,
+				Type:       tc.messageType,
+				HeaderHash: tc.messageHeaderHash,
 			}
 
 			assert.Equal(t, tc.expectErr, message.ValidateBasic() != nil, "Validate Basic had an unexpected result")
@@ -939,15 +932,6 @@ func TestVoteSetBitsMessageValidateBasic(t *testing.T) {
 		{func(msg *VoteSetBitsMessage) {}, ""},
 		{func(msg *VoteSetBitsMessage) { msg.Height = -1 }, "negative Height"},
 		{func(msg *VoteSetBitsMessage) { msg.Type = 0x03 }, "invalid Type"},
-		{func(msg *VoteSetBitsMessage) {
-			msg.BlockID = types.BlockID{
-				Hash: bytes.HexBytes{},
-				PartSetHeader: types.PartSetHeader{
-					Total: 1,
-					Hash:  []byte{0},
-				},
-			}
-		}, "wrong BlockID: wrong PartSetHeader: wrong Hash:"},
 		{func(msg *VoteSetBitsMessage) { msg.Votes = bits.NewBitArray(types.MaxVotesCount + 1) },
 			"votes bit array is too big: 10001, max: 10000"},
 	}
@@ -956,11 +940,11 @@ func TestVoteSetBitsMessageValidateBasic(t *testing.T) {
 		tc := tc
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
 			msg := &VoteSetBitsMessage{
-				Height:  1,
-				Round:   0,
-				Type:    0x01,
-				Votes:   bits.NewBitArray(1),
-				BlockID: types.BlockID{},
+				Height:     1,
+				Round:      0,
+				Type:       0x01,
+				Votes:      bits.NewBitArray(1),
+				HeaderHash: nil,
 			}
 
 			tc.malleateFn(msg)

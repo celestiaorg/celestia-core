@@ -39,7 +39,7 @@ func (tm2pb) Header(header *Header) tmproto.Header {
 		Height:  header.Height,
 		Time:    header.Time,
 
-		LastBlockId: header.LastBlockID.ToProto(),
+		LastHeaderHash: header.Hash(),
 
 		LastCommitHash: header.LastCommitHash,
 		DataHash:       header.DataHash,
@@ -59,13 +59,6 @@ func (tm2pb) Validator(val *Validator) abci.Validator {
 	return abci.Validator{
 		Address: val.PubKey.Address(),
 		Power:   val.VotingPower,
-	}
-}
-
-func (tm2pb) BlockID(blockID BlockID) tmproto.BlockID {
-	return tmproto.BlockID{
-		Hash:          blockID.Hash,
-		PartSetHeader: TM2PB.PartSetHeader(blockID.PartSetHeader),
 	}
 }
 

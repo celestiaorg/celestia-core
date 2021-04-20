@@ -1204,8 +1204,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	}
 
 	// Make proposal
-	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID, &block.DataAvailabilityHeader)
+	proposal := types.NewProposal(height, round, cs.ValidRound, block.Hash(), &block.DataAvailabilityHeader)
 	p, err := proposal.ToProto()
 	if err != nil {
 		cs.Logger.Error(fmt.Sprintf("can't serialize proposal: %s", err.Error()))
@@ -1261,7 +1260,7 @@ func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.Pa
 	case cs.Height == cs.state.InitialHeight:
 		// We're creating a proposal for the first block.
 		// The commit is empty, but not nil.
-		commit = types.NewCommit(0, 0, types.BlockID{}, nil)
+		commit = types.NewCommit(0, 0, nil, nil)
 	case cs.LastCommit.HasTwoThirdsMajority():
 		// Make the commit from LastCommit
 		commit = cs.LastCommit.MakeCommit()
@@ -1373,21 +1372,21 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 	// The Locked* fields no longer matter.
 	// Move them over to ProposalBlock if they match the commit hash,
 	// otherwise they'll be cleared in updateToState.
-	if cs.LockedBlock.HashesTo(blockID.Hash) {
-		logger.Info("Commit is for locked block. Set ProposalBlock=LockedBlock", "blockHash", blockID.Hash)
+	if cs.LockedBlock.HashesTo(blockID) {
+		logger.Info("Commit is for locked block. Set ProposalBlock=LockedBlock", "blockHash", blockIDs)
 		cs.ProposalBlock = cs.LockedBlock
 		cs.ProposalBlockParts = cs.LockedBlockParts
 	}
 
 	// If we don't have the block being committed, set up to get it.
-	if !cs.ProposalBlock.HashesTo(blockID.Hash) {
+	if !cs.ProposalBlock.HashesTo(blockID) {
 		if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 			logger.Info(
 				"Commit is for a block we don't know about. Set ProposalBlock=nil",
 				"proposal",
 				cs.ProposalBlock.Hash(),
 				"commit",
-				blockID.Hash)
+				blockID)
 			// We're getting the wrong block.
 			// Set up ProposalBlockParts and keep waiting.
 			cs.ProposalBlock = nil
@@ -1412,11 +1411,11 @@ func (cs *State) tryFinalizeCommit(height int64) {
 	}
 
 	blockID, ok := cs.Votes.Precommits(cs.CommitRound).TwoThirdsMajority()
-	if !ok || len(blockID.Hash) == 0 {
+	if !ok || len(blockID) == 0 {
 		logger.Error("Attempt to finalize failed. There was no +2/3 majority, or +2/3 was for <nil>.")
 		return
 	}
-	if !cs.ProposalBlock.HashesTo(blockID.Hash) {
+	if !cs.ProposalBlock.HashesTo(blockID) {
 		// TODO: this happens every time if we're not a validator (ugly logs)
 		// TODO: ^^ wait, why does it matter that we're a validator?
 		logger.Info(
@@ -1424,7 +1423,7 @@ func (cs *State) tryFinalizeCommit(height int64) {
 			"proposal-block",
 			cs.ProposalBlock.Hash(),
 			"commit-block",
-			blockID.Hash)
+			blockID)
 		return
 	}
 
@@ -1453,7 +1452,7 @@ func (cs *State) finalizeCommit(height int64) {
 	if !blockParts.HasHeader(blockID.PartSetHeader) {
 		panic("Expected ProposalBlockParts header to be commit header")
 	}
-	if !block.HashesTo(blockID.Hash) {
+	if !block.HashesTo(blockID) {
 		panic("Cannot finalizeCommit, ProposalBlock does not hash to commit hash")
 	}
 	if err := cs.blockExec.ValidateBlock(cs.state, block); err != nil {
@@ -1511,10 +1510,7 @@ func (cs *State) finalizeCommit(height int64) {
 	// NOTE The block.AppHash wont reflect these txs until the next block.
 	var err error
 	var retainHeight int64
-	stateCopy, retainHeight, err = cs.blockExec.ApplyBlock(
-		stateCopy,
-		types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()},
-		block)
+	stateCopy, retainHeight, err = cs.blockExec.ApplyBlock(stateCopy, block)
 	if err != nil {
 		cs.Logger.Error("Error on ApplyBlock", "err", err)
 		return
@@ -1718,8 +1714,8 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		// Update Valid* if we can.
 		prevotes := cs.Votes.Prevotes(cs.Round)
 		blockID, hasTwoThirds := prevotes.TwoThirdsMajority()
-		if hasTwoThirds && !blockID.IsZero() && (cs.ValidRound < cs.Round) {
-			if cs.ProposalBlock.HashesTo(blockID.Hash) {
+		if hasTwoThirds && len(blockID) != 0 && (cs.ValidRound < cs.Round) {
+			if cs.ProposalBlock.HashesTo(blockID) {
 				cs.Logger.Info("Updating valid block to new proposal block",
 					"valid-round", cs.Round, "valid-block-hash", cs.ProposalBlock.Hash())
 				cs.ValidRound = cs.Round
@@ -1805,7 +1801,6 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 func (cs *State) signVote(
 	msgType tmproto.SignedMsgType,
 	hash []byte,
-	header types.PartSetHeader,
 ) (*types.Vote, error) {
 	// Flush the WAL. Otherwise, we may not recompute the same vote to sign,
 	// and the privValidator will refuse to sign anything.
@@ -1826,7 +1821,7 @@ func (cs *State) signVote(
 		Round:            cs.Round,
 		Timestamp:        cs.voteTime(),
 		Type:             msgType,
-		BlockID:          types.BlockID{Hash: hash, PartSetHeader: header},
+		HeaderHash:       hash,
 	}
 	v := vote.ToProto()
 	err := cs.privValidator.SignVote(cs.state.ChainID, v)
@@ -1855,7 +1850,7 @@ func (cs *State) voteTime() time.Time {
 }
 
 // sign the vote and publish on internalMsgQueue
-func (cs *State) signAddVote(msgType tmproto.SignedMsgType, hash []byte, header types.PartSetHeader) *types.Vote {
+func (cs *State) signAddVote(msgType tmproto.SignedMsgType, hash []byte) *types.Vote {
 	if cs.privValidator == nil { // the node does not have a key
 		return nil
 	}
@@ -1872,7 +1867,7 @@ func (cs *State) signAddVote(msgType tmproto.SignedMsgType, hash []byte, header 
 	}
 
 	// TODO: pass pubKey to signVote
-	vote, err := cs.signVote(msgType, hash, header)
+	vote, err := cs.signVote(msgType, hash)
 	if err == nil {
 		cs.sendInternalMessage(msgInfo{&VoteMessage{vote}, ""})
 		cs.Logger.Info("Signed and pushed vote", "height", cs.Height, "round", cs.Round, "vote", vote)
@@ -1912,7 +1907,7 @@ func (cs *State) checkDoubleSigningRisk(height int64) error {
 			lastCommit := cs.blockStore.LoadSeenCommit(height - i)
 			if lastCommit != nil {
 				for sigIdx, s := range lastCommit.Signatures {
-					if s.BlockIDFlag == types.BlockIDFlagCommit && bytes.Equal(s.ValidatorAddress, valAddr) {
+					if s.CommitFlag == types.CommitFlagCommit && bytes.Equal(s.ValidatorAddress, valAddr) {
 						cs.Logger.Info("Found signature from the same key", "sig", s, "idx", sigIdx, "height", height-i)
 						return ErrSignatureFoundInPastBlocks
 					}

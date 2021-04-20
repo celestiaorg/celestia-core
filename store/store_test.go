@@ -35,7 +35,7 @@ type cleanupFunc func()
 // make a Commit with a single vote containing just the height and a timestamp
 func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 	commitSigs := []types.CommitSig{{
-		BlockIDFlag:      types.BlockIDFlagCommit,
+		CommitFlag:       types.CommitFlagCommit,
 		ValidatorAddress: tmrand.Bytes(crypto.AddressSize),
 		Timestamp:        timestamp,
 		Signature:        []byte("Signature"),
@@ -45,8 +45,7 @@ func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 	hh := sha256.Sum256([]byte("Headerhash"))
 	copy(hash, hh[:])
 
-	return types.NewCommit(height, 0,
-		types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: []byte(""), Total: 2}}, commitSigs)
+	return types.NewCommit(height, 0, commitSigs, hash)
 }
 
 func makeTxs(height int64) (txs []types.Tx) {

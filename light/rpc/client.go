@@ -285,13 +285,13 @@ func (c *Client) Block(ctx context.Context, height *int64) (*ctypes.ResultBlock,
 	}
 
 	// Validate res.
-	if err := res.BlockID.ValidateBasic(); err != nil {
+	if err := types.ValidateHash(res.Block.Hash()); err != nil {
 		return nil, err
 	}
 	if err := res.Block.ValidateBasic(); err != nil {
 		return nil, err
 	}
-	if bmH, bH := res.BlockID.Hash, res.Block.Hash(); !bytes.Equal(bmH, bH) {
+	if bmH, bH := res.Block.Hash(), res.Block.Hash(); !bytes.Equal(bmH, bH) {
 		return nil, fmt.Errorf("blockID %X does not match with block %X",
 			bmH, bH)
 	}
@@ -319,13 +319,13 @@ func (c *Client) BlockByHash(ctx context.Context, hash []byte) (*ctypes.ResultBl
 	}
 
 	// Validate res.
-	if err := res.BlockID.ValidateBasic(); err != nil {
+	if err := types.ValidateHash(res.Block.Hash()); err != nil {
 		return nil, err
 	}
 	if err := res.Block.ValidateBasic(); err != nil {
 		return nil, err
 	}
-	if bmH, bH := res.BlockID.Hash, res.Block.Hash(); !bytes.Equal(bmH, bH) {
+	if bmH, bH := res.Block.Hash(), res.Block.Hash(); !bytes.Equal(bmH, bH) {
 		return nil, fmt.Errorf("blockID %X does not match with block %X",
 			bmH, bH)
 	}

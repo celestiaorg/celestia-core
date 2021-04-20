@@ -30,17 +30,11 @@ func exampleVote(t byte) *Vote {
 	}
 
 	return &Vote{
-		Type:      tmproto.SignedMsgType(t),
-		Height:    12345,
-		Round:     2,
-		Timestamp: stamp,
-		BlockID: BlockID{
-			Hash: tmhash.Sum([]byte("blockID_hash")),
-			PartSetHeader: PartSetHeader{
-				Total: 1000000,
-				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
-			},
-		},
+		Type:             tmproto.SignedMsgType(t),
+		Height:           12345,
+		Round:            2,
+		Timestamp:        stamp,
+		HeaderHash:       tmhash.Sum([]byte("blockID_hash")),
 		ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 		ValidatorIndex:   56789,
 	}
@@ -242,9 +236,7 @@ func TestVoteValidateBasic(t *testing.T) {
 		{"Good Vote", func(v *Vote) {}, false},
 		{"Negative Height", func(v *Vote) { v.Height = -1 }, true},
 		{"Negative Round", func(v *Vote) { v.Round = -1 }, true},
-		{"Invalid BlockID", func(v *Vote) {
-			v.BlockID = BlockID{[]byte{1, 2, 3}, PartSetHeader{111, []byte("blockparts")}}
-		}, true},
+		{"Invalid HeaderHash", func(v *Vote) { v.HeaderHash = []byte{1, 2, 3} }, true},
 		{"Invalid Address", func(v *Vote) { v.ValidatorAddress = make([]byte, 1) }, true},
 		{"Invalid ValidatorIndex", func(v *Vote) { v.ValidatorIndex = -1 }, true},
 		{"Invalid Signature", func(v *Vote) { v.Signature = nil }, true},

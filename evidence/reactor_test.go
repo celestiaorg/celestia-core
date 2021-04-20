@@ -313,17 +313,11 @@ func exampleVote(t byte) *types.Vote {
 	}
 
 	return &types.Vote{
-		Type:      tmproto.SignedMsgType(t),
-		Height:    3,
-		Round:     2,
-		Timestamp: stamp,
-		BlockID: types.BlockID{
-			Hash: tmhash.Sum([]byte("blockID_hash")),
-			PartSetHeader: types.PartSetHeader{
-				Total: 1000000,
-				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
-			},
-		},
+		Type:             tmproto.SignedMsgType(t),
+		Height:           3,
+		Round:            2,
+		Timestamp:        stamp,
+		HeaderHash:       tmhash.Sum([]byte("blockID_hash")),
 		ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 		ValidatorIndex:   56789,
 	}

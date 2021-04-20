@@ -24,7 +24,7 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 	if earliestBlockMeta := env.BlockStore.LoadBaseMeta(); earliestBlockMeta != nil {
 		earliestBlockHeight = earliestBlockMeta.Header.Height
 		earliestAppHash = earliestBlockMeta.Header.AppHash
-		earliestBlockHash = earliestBlockMeta.BlockID.Hash
+		earliestBlockHash = earliestBlockMeta.HeaderHash
 		earliestBlockTimeNano = earliestBlockMeta.Header.Time.UnixNano()
 	}
 
@@ -38,7 +38,7 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 
 	if latestHeight != 0 {
 		if latestBlockMeta := env.BlockStore.LoadBlockMeta(latestHeight); latestBlockMeta != nil {
-			latestBlockHash = latestBlockMeta.BlockID.Hash
+			latestBlockHash = latestBlockMeta.HeaderHash
 			latestAppHash = latestBlockMeta.Header.AppHash
 			latestBlockTimeNano = latestBlockMeta.Header.Time.UnixNano()
 		}

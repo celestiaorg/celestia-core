@@ -216,19 +216,13 @@ func (th *TestHarness) TestSignProposal() error {
 	// sha256 hash of "hash"
 	hash := tmhash.Sum([]byte("hash"))
 	prop := &types.Proposal{
-		Type:     tmproto.ProposalType,
-		Height:   100,
-		Round:    0,
-		POLRound: -1,
-		BlockID: types.BlockID{
-			Hash: hash,
-			PartSetHeader: types.PartSetHeader{
-				Hash:  hash,
-				Total: 1000000,
-			},
-		},
-		Timestamp: time.Now(),
-		DAHeader:  &types.DataAvailabilityHeader{},
+		Type:       tmproto.ProposalType,
+		Height:     100,
+		Round:      0,
+		POLRound:   -1,
+		HeaderHash: hash,
+		Timestamp:  time.Now(),
+		DAHeader:   &types.DataAvailabilityHeader{},
 	}
 	p, err := prop.ToProto()
 	if err != nil {
@@ -268,16 +262,10 @@ func (th *TestHarness) TestSignVote() error {
 		th.logger.Info("Testing vote type", "type", voteType)
 		hash := tmhash.Sum([]byte("hash"))
 		vote := &types.Vote{
-			Type:   voteType,
-			Height: 101,
-			Round:  0,
-			BlockID: types.BlockID{
-				Hash: hash,
-				PartSetHeader: types.PartSetHeader{
-					Hash:  hash,
-					Total: 1000000,
-				},
-			},
+			Type:             voteType,
+			Height:           101,
+			Round:            0,
+			HeaderHash:       hash,
 			ValidatorIndex:   0,
 			ValidatorAddress: tmhash.SumTruncated([]byte("addr")),
 			Timestamp:        time.Now(),

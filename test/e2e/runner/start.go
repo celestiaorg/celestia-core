@@ -51,7 +51,7 @@ func Start(testnet *e2e.Testnet) error {
 
 	// Wait for initial height
 	logger.Info(fmt.Sprintf("Waiting for initial height %v...", testnet.InitialHeight))
-	block, blockID, err := waitForHeight(testnet, testnet.InitialHeight)
+	block, err := waitForHeight(testnet, testnet.InitialHeight)
 	if err != nil {
 		return err
 	}
@@ -59,7 +59,7 @@ func Start(testnet *e2e.Testnet) error {
 	// Update any state sync nodes with a trusted height and hash
 	for _, node := range nodeQueue {
 		if node.StateSync {
-			err = UpdateConfigStateSync(node, block.Height, blockID.Hash.Bytes())
+			err = UpdateConfigStateSync(node, block.Height, block.Hash())
 			if err != nil {
 				return err
 			}
@@ -69,7 +69,7 @@ func Start(testnet *e2e.Testnet) error {
 	// Start up remaining nodes
 	for _, node := range nodeQueue {
 		logger.Info(fmt.Sprintf("Starting node %v at height %v...", node.Name, node.StartAt))
-		if _, _, err := waitForHeight(testnet, node.StartAt); err != nil {
+		if _, err := waitForHeight(testnet, node.StartAt); err != nil {
 			return err
 		}
 		if err := execCompose(testnet.Dir, "up", "-d", node.Name); err != nil {

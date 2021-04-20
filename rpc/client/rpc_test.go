@@ -254,7 +254,7 @@ func TestAppCalls(t *testing.T) {
 		assert.True(len(appHash) > 0)
 		assert.EqualValues(apph, block.Block.Header.Height)
 
-		blockByHash, err := c.BlockByHash(context.Background(), block.BlockID.Hash)
+		blockByHash, err := c.BlockByHash(context.Background(), block.Block.Hash())
 		require.NoError(err)
 		require.Equal(block, blockByHash)
 
@@ -276,7 +276,7 @@ func TestAppCalls(t *testing.T) {
 			assert.EqualValues(apph, lastMeta.Header.Height)
 			blockData := block.Block
 			assert.Equal(blockData.Header.AppHash, lastMeta.Header.AppHash)
-			assert.Equal(block.BlockID, lastMeta.BlockID)
+			assert.Equal(block.Block.Hash(), lastMeta.HeaderHash)
 		}
 
 		// and get the corresponding commit with the same apphash

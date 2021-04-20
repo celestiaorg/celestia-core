@@ -17,13 +17,13 @@ func TestLightBlockValidateBasic(t *testing.T) {
 	commit := randCommit(time.Now())
 	vals, _ := RandValidatorSet(5, 1)
 	header.Height = commit.Height
-	header.LastBlockID = commit.BlockID
+	header.LastHeaderHash = commit.HeaderHash
 	header.ValidatorsHash = vals.Hash()
 	header.Version.Block = version.BlockProtocol
 	vals2, _ := RandValidatorSet(3, 1)
 	vals3 := vals.Copy()
 	vals3.Proposer = &Validator{}
-	commit.BlockID.Hash = header.Hash()
+	commit.HeaderHash = header.Hash()
 
 	sh := &SignedHeader{
 		Header: &header,
@@ -62,12 +62,12 @@ func TestLightBlockProtobuf(t *testing.T) {
 	commit := randCommit(time.Now())
 	vals, _ := RandValidatorSet(5, 1)
 	header.Height = commit.Height
-	header.LastBlockID = commit.BlockID
+	header.LastHeaderHash = commit.HeaderHash
 	header.Version.Block = version.BlockProtocol
 	header.ValidatorsHash = vals.Hash()
 	vals3 := vals.Copy()
 	vals3.Proposer = &Validator{}
-	commit.BlockID.Hash = header.Hash()
+	commit.HeaderHash = header.Hash()
 
 	sh := &SignedHeader{
 		Header: &header,
@@ -119,7 +119,7 @@ func TestSignedHeaderValidateBasic(t *testing.T) {
 		ChainID:            chainID,
 		Height:             commit.Height,
 		Time:               timestamp,
-		LastBlockID:        commit.BlockID,
+		LastHeaderHash:     commit.HeaderHash,
 		LastCommitHash:     commit.Hash(),
 		DataHash:           commit.Hash(),
 		ValidatorsHash:     commit.Hash(),
@@ -132,7 +132,7 @@ func TestSignedHeaderValidateBasic(t *testing.T) {
 	}
 
 	validSignedHeader := SignedHeader{Header: &h, Commit: commit}
-	validSignedHeader.Commit.BlockID.Hash = validSignedHeader.Hash()
+	validSignedHeader.Commit.HeaderHash = validSignedHeader.Hash()
 	validSignedHeader.Commit.HeaderHash = validSignedHeader.Hash()
 	invalidSignedHeader := SignedHeader{}
 

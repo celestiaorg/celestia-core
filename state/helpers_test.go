@@ -8,9 +8,9 @@ import (
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/proxy"
@@ -37,23 +37,23 @@ func makeAndCommitGoodBlock(
 	proposerAddr []byte,
 	blockExec *sm.BlockExecutor,
 	privVals map[string]types.PrivValidator,
-	evidence []types.Evidence) (sm.State, types.BlockID, *types.Commit, error) {
+	evidence []types.Evidence) (sm.State, tmbytes.HexBytes, *types.Commit, error) {
 	// A good block passes
-	state, blockID, err := makeAndApplyGoodBlock(state, height, lastCommit, proposerAddr, blockExec, evidence)
+	state, headerHash, err := makeAndApplyGoodBlock(state, height, lastCommit, proposerAddr, blockExec, evidence)
 	if err != nil {
-		return state, types.BlockID{}, nil, err
+		return state, nil, nil, err
 	}
 
 	// Simulate a lastCommit for this block from all validators for the next height
-	commit, err := makeValidCommit(height, blockID, state.Validators, privVals)
+	commit, err := makeValidCommit(height, headerHash, state.Validators, privVals)
 	if err != nil {
-		return state, types.BlockID{}, nil, err
+		return state, nil, nil, err
 	}
-	return state, blockID, commit, nil
+	return state, headerHash, commit, nil
 }
 
 func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commit, proposerAddr []byte,
-	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, types.BlockID, error) {
+	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, tmbytes.HexBytes, error) {
 	block, _ := state.MakeBlock(
 		height,
 		makeTxs(height),
@@ -64,33 +64,32 @@ func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commi
 		proposerAddr,
 	)
 	if err := blockExec.ValidateBlock(state, block); err != nil {
-		return state, types.BlockID{}, err
+		return state, nil, err
 	}
-	blockID := types.BlockID{Hash: block.Hash(),
-		PartSetHeader: types.PartSetHeader{Total: 3, Hash: tmrand.Bytes(32)}}
-	state, _, err := blockExec.ApplyBlock(state, blockID, block)
+	headerHash := block.Hash()
+	state, _, err := blockExec.ApplyBlock(state, block)
 	if err != nil {
-		return state, types.BlockID{}, err
+		return state, headerHash, err
 	}
-	return state, blockID, nil
+	return state, headerHash, nil
 }
 
 func makeValidCommit(
 	height int64,
-	blockID types.BlockID,
+	headerHash []byte,
 	vals *types.ValidatorSet,
 	privVals map[string]types.PrivValidator,
 ) (*types.Commit, error) {
 	sigs := make([]types.CommitSig, 0)
 	for i := 0; i < vals.Size(); i++ {
 		_, val := vals.GetByIndex(int32(i))
-		vote, err := types.MakeVote(height, blockID, vals, privVals[val.Address.String()], chainID, time.Now())
+		vote, err := types.MakeVote(height, headerHash, vals, privVals[val.Address.String()], chainID, time.Now())
 		if err != nil {
 			return nil, err
 		}
 		sigs = append(sigs, vote.CommitSig())
 	}
-	return types.NewCommit(height, 0, blockID, sigs), nil
+	return types.NewCommit(height, 0, sigs, headerHash), nil
 }
 
 // make some bogus txs
@@ -163,7 +162,7 @@ func genValSet(size int) *types.ValidatorSet {
 func makeHeaderPartsResponsesValPubKeyChange(
 	state sm.State,
 	pubkey crypto.PubKey,
-) (types.Header, types.BlockID, *tmstate.ABCIResponses) {
+) (types.Header, *tmstate.ABCIResponses) {
 
 	block := makeBlock(state, state.LastBlockHeight+1)
 	abciResponses := &tmstate.ABCIResponses{
@@ -181,13 +180,13 @@ func makeHeaderPartsResponsesValPubKeyChange(
 		}
 	}
 
-	return block.Header, types.BlockID{Hash: block.Hash(), PartSetHeader: types.PartSetHeader{}}, abciResponses
+	return block.Header, abciResponses
 }
 
 func makeHeaderPartsResponsesValPowerChange(
 	state sm.State,
 	power int64,
-) (types.Header, types.BlockID, *tmstate.ABCIResponses) {
+) (types.Header, *tmstate.ABCIResponses) {
 
 	block := makeBlock(state, state.LastBlockHeight+1)
 	abciResponses := &tmstate.ABCIResponses{
@@ -205,20 +204,20 @@ func makeHeaderPartsResponsesValPowerChange(
 		}
 	}
 
-	return block.Header, types.BlockID{Hash: block.Hash(), PartSetHeader: types.PartSetHeader{}}, abciResponses
+	return block.Header, abciResponses
 }
 
 func makeHeaderPartsResponsesParams(
 	state sm.State,
 	params tmproto.ConsensusParams,
-) (types.Header, types.BlockID, *tmstate.ABCIResponses) {
+) (types.Header, *tmstate.ABCIResponses) {
 
 	block := makeBlock(state, state.LastBlockHeight+1)
 	abciResponses := &tmstate.ABCIResponses{
 		BeginBlock: &abci.ResponseBeginBlock{},
 		EndBlock:   &abci.ResponseEndBlock{ConsensusParamUpdates: types.TM2PB.ConsensusParams(&params)},
 	}
-	return block.Header, types.BlockID{Hash: block.Hash(), PartSetHeader: types.PartSetHeader{}}, abciResponses
+	return block.Header, abciResponses
 }
 
 func randomGenesisDoc() *types.GenesisDoc {

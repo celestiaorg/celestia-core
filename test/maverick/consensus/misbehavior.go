@@ -210,7 +210,7 @@ func defaultEnterPrecommit(cs *State, height int64, round int32) {
 	}
 
 	// +2/3 prevoted nil. Unlock and precommit nil.
-	if len(blockID.Hash) == 0 {
+	if len(blockID) == 0 {
 		if cs.LockedBlock == nil {
 			logger.Info("enterPrecommit: +2/3 prevoted for nil.")
 		} else {
@@ -227,17 +227,17 @@ func defaultEnterPrecommit(cs *State, height int64, round int32) {
 	// At this point, +2/3 prevoted for a particular block.
 
 	// If we're already locked on that block, precommit it, and update the LockedRound
-	if cs.LockedBlock.HashesTo(blockID.Hash) {
+	if cs.LockedBlock.HashesTo(blockID) {
 		logger.Info("enterPrecommit: +2/3 prevoted locked block. Relocking")
 		cs.LockedRound = round
 		_ = cs.eventBus.PublishEventRelock(cs.RoundStateEvent())
-		cs.signAddVote(tmproto.PrecommitType, blockID.Hash, blockID.PartSetHeader)
+		cs.signAddVote(tmproto.PrecommitType, blockID, blockID.PartSetHeader)
 		return
 	}
 
 	// If +2/3 prevoted for proposal block, stage and precommit it
-	if cs.ProposalBlock.HashesTo(blockID.Hash) {
-		logger.Info("enterPrecommit: +2/3 prevoted proposal block. Locking", "hash", blockID.Hash)
+	if cs.ProposalBlock.HashesTo(blockID) {
+		logger.Info("enterPrecommit: +2/3 prevoted proposal block. Locking", "hash", blockID)
 		// Validate the block.
 		if err := cs.blockExec.ValidateBlock(cs.state, cs.ProposalBlock); err != nil {
 			panic(fmt.Sprintf("enterPrecommit: +2/3 prevoted for an invalid block: %v", err))
@@ -246,7 +246,7 @@ func defaultEnterPrecommit(cs *State, height int64, round int32) {
 		cs.LockedBlock = cs.ProposalBlock
 		cs.LockedBlockParts = cs.ProposalBlockParts
 		_ = cs.eventBus.PublishEventLock(cs.RoundStateEvent())
-		cs.signAddVote(tmproto.PrecommitType, blockID.Hash, blockID.PartSetHeader)
+		cs.signAddVote(tmproto.PrecommitType, blockID, blockID.PartSetHeader)
 		return
 	}
 
@@ -281,7 +281,7 @@ func defaultReceivePrevote(cs *State, vote *types.Vote) {
 		if (cs.LockedBlock != nil) &&
 			(cs.LockedRound < vote.Round) &&
 			(vote.Round <= cs.Round) &&
-			!cs.LockedBlock.HashesTo(blockID.Hash) {
+			!cs.LockedBlock.HashesTo(blockID) {
 
 			cs.Logger.Info("Unlocking because of POL.", "lockedRound", cs.LockedRound, "POLRound", vote.Round)
 			cs.LockedRound = -1
@@ -292,9 +292,9 @@ func defaultReceivePrevote(cs *State, vote *types.Vote) {
 
 		// Update Valid* if we can.
 		// NOTE: our proposal block may be nil or not what received a polka..
-		if len(blockID.Hash) != 0 && (cs.ValidRound < vote.Round) && (vote.Round == cs.Round) {
+		if len(blockID) != 0 && (cs.ValidRound < vote.Round) && (vote.Round == cs.Round) {
 
-			if cs.ProposalBlock.HashesTo(blockID.Hash) {
+			if cs.ProposalBlock.HashesTo(blockID) {
 				cs.Logger.Info(
 					"Updating ValidBlock because of POL.", "validRound", cs.ValidRound, "POLRound", vote.Round)
 				cs.ValidRound = vote.Round
@@ -303,7 +303,7 @@ func defaultReceivePrevote(cs *State, vote *types.Vote) {
 			} else {
 				cs.Logger.Info(
 					"Valid block we don't know about. Set ProposalBlock=nil",
-					"proposal", cs.ProposalBlock.Hash(), "blockID", blockID.Hash)
+					"proposal", cs.ProposalBlock.Hash(), "blockID", blockID)
 				// We're getting the wrong block.
 				cs.ProposalBlock = nil
 			}
@@ -322,7 +322,7 @@ func defaultReceivePrevote(cs *State, vote *types.Vote) {
 		cs.enterNewRound(height, vote.Round)
 	case cs.Round == vote.Round && cstypes.RoundStepPrevote <= cs.Step: // current round
 		blockID, ok := prevotes.TwoThirdsMajority()
-		if ok && (cs.isProposalComplete() || len(blockID.Hash) == 0) {
+		if ok && (cs.isProposalComplete() || len(blockID) == 0) {
 			cs.enterPrecommit(height, vote.Round)
 		} else if prevotes.HasTwoThirdsAny() {
 			cs.enterPrevoteWait(height, vote.Round)
@@ -346,7 +346,7 @@ func defaultReceivePrecommit(cs *State, vote *types.Vote) {
 		// Executed as TwoThirdsMajority could be from a higher round
 		cs.enterNewRound(height, vote.Round)
 		cs.enterPrecommit(height, vote.Round)
-		if len(blockID.Hash) != 0 {
+		if len(blockID) != 0 {
 			cs.enterCommit(height, vote.Round)
 			if cs.config.SkipTimeoutCommit && precommits.HasAll() {
 				cs.enterNewRound(cs.Height, 0)

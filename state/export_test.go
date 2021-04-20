@@ -25,12 +25,11 @@ const ValSetCheckpointInterval = valSetCheckpointInterval
 // exclusively and explicitly for testing.
 func UpdateState(
 	state State,
-	blockID types.BlockID,
 	header *types.Header,
 	abciResponses *tmstate.ABCIResponses,
 	validatorUpdates []*types.Validator,
 ) (State, error) {
-	return updateState(state, blockID, header, abciResponses, validatorUpdates)
+	return updateState(state, header, abciResponses, validatorUpdates)
 }
 
 // ValidateValidatorUpdates is an alias for validateValidatorUpdates exported

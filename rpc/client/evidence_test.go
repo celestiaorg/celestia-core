@@ -60,17 +60,11 @@ func makeEvidences(
 		Round:            0,
 		Type:             tmproto.PrevoteType,
 		Timestamp:        defaultTestTime,
-		BlockID: types.BlockID{
-			Hash: tmhash.Sum(tmrand.Bytes(tmhash.Size)),
-			PartSetHeader: types.PartSetHeader{
-				Total: 1000,
-				Hash:  tmhash.Sum([]byte("partset")),
-			},
-		},
+		HeaderHash:       tmhash.Sum(tmrand.Bytes(tmhash.Size)),
 	}
 
 	vote2 := vote
-	vote2.BlockID.Hash = tmhash.Sum([]byte("blockhash2"))
+	vote2.HeaderHash = tmhash.Sum([]byte("blockhash2"))
 	correct = newEvidence(t, val, &vote, &vote2, chainID)
 
 	fakes = make([]*types.DuplicateVoteEvidence, 0)

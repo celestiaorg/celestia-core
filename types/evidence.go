@@ -56,7 +56,7 @@ func NewDuplicateVoteEvidence(vote1, vote2 *Vote, blockTime time.Time, valSet *V
 		return nil
 	}
 
-	if strings.Compare(vote1.BlockID.Key(), vote2.BlockID.Key()) == -1 {
+	if strings.Compare(string(vote1.HeaderHash), string(vote2.HeaderHash)) == -1 {
 		voteA = vote1
 		voteB = vote2
 	} else {
@@ -132,8 +132,8 @@ func (dve *DuplicateVoteEvidence) ValidateBasic() error {
 	if err := dve.VoteB.ValidateBasic(); err != nil {
 		return fmt.Errorf("invalid VoteB: %w", err)
 	}
-	// Enforce Votes are lexicographically sorted on blockID
-	if strings.Compare(dve.VoteA.BlockID.Key(), dve.VoteB.BlockID.Key()) >= 0 {
+	// Enforce Votes are lexicographically sorted on headerHash
+	if strings.Compare(string(dve.VoteA.HeaderHash), string(dve.VoteB.HeaderHash)) >= 0 {
 		return errors.New("duplicate votes in invalid order")
 	}
 	return nil
@@ -549,11 +549,11 @@ func NewMockDuplicateVoteEvidenceWithValidator(height int64, time time.Time,
 	pv PrivValidator, chainID string) *DuplicateVoteEvidence {
 	pubKey, _ := pv.GetPubKey()
 	val := NewValidator(pubKey, 10)
-	voteA := makeMockVote(height, 0, 0, pubKey.Address(), randBlockID(), time)
+	voteA := makeMockVote(height, 0, 0, pubKey.Address(), tmrand.Bytes(tmhash.Size), time)
 	vA := voteA.ToProto()
 	_ = pv.SignVote(chainID, vA)
 	voteA.Signature = vA.Signature
-	voteB := makeMockVote(height, 0, 0, pubKey.Address(), randBlockID(), time)
+	voteB := makeMockVote(height, 0, 0, pubKey.Address(), tmrand.Bytes(tmhash.Size), time)
 	vB := voteB.ToProto()
 	_ = pv.SignVote(chainID, vB)
 	voteB.Signature = vB.Signature
@@ -561,24 +561,14 @@ func NewMockDuplicateVoteEvidenceWithValidator(height int64, time time.Time,
 }
 
 func makeMockVote(height int64, round, index int32, addr Address,
-	blockID BlockID, time time.Time) *Vote {
+	headerHash []byte, time time.Time) *Vote {
 	return &Vote{
 		Type:             tmproto.SignedMsgType(2),
 		Height:           height,
 		Round:            round,
-		BlockID:          blockID,
+		HeaderHash:       headerHash,
 		Timestamp:        time,
 		ValidatorAddress: addr,
 		ValidatorIndex:   index,
-	}
-}
-
-func randBlockID() BlockID {
-	return BlockID{
-		Hash: tmrand.Bytes(tmhash.Size),
-		PartSetHeader: PartSetHeader{
-			Total: 1,
-			Hash:  tmrand.Bytes(tmhash.Size),
-		},
 	}
 }

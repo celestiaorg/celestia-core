@@ -108,27 +108,25 @@ func MsgToProto(msg Message) (*tmcons.Message, error) {
 			},
 		}
 	case *VoteSetMaj23Message:
-		bi := msg.BlockID.ToProto()
 		pb = tmcons.Message{
 			Sum: &tmcons.Message_VoteSetMaj23{
 				VoteSetMaj23: &tmcons.VoteSetMaj23{
-					Height:  msg.Height,
-					Round:   msg.Round,
-					Type:    msg.Type,
-					BlockID: bi,
+					Height:     msg.Height,
+					Round:      msg.Round,
+					Type:       msg.Type,
+					HeaderHash: msg.HeaderHash,
 				},
 			},
 		}
 	case *VoteSetBitsMessage:
-		bi := msg.BlockID.ToProto()
 		bits := msg.Votes.ToProto()
 
 		vsb := &tmcons.Message_VoteSetBits{
 			VoteSetBits: &tmcons.VoteSetBits{
-				Height:  msg.Height,
-				Round:   msg.Round,
-				Type:    msg.Type,
-				BlockID: bi,
+				Height:     msg.Height,
+				Round:      msg.Round,
+				Type:       msg.Type,
+				HeaderHash: msg.HeaderHash,
 			},
 		}
 
@@ -234,33 +232,25 @@ func MsgFromProto(msg *tmcons.Message) (Message, error) {
 			Index:  msg.HasVote.Index,
 		}
 	case *tmcons.Message_VoteSetMaj23:
-		bi, err := types.BlockIDFromProto(&msg.VoteSetMaj23.BlockID)
-		if err != nil {
-			return nil, fmt.Errorf("voteSetMaj23 msg to proto error: %w", err)
-		}
 		pb = &VoteSetMaj23Message{
-			Height:  msg.VoteSetMaj23.Height,
-			Round:   msg.VoteSetMaj23.Round,
-			Type:    msg.VoteSetMaj23.Type,
-			BlockID: *bi,
+			Height:     msg.VoteSetMaj23.Height,
+			Round:      msg.VoteSetMaj23.Round,
+			Type:       msg.VoteSetMaj23.Type,
+			HeaderHash: msg.VoteSetMaj23.HeaderHash,
 		}
 	case *tmcons.Message_VoteSetBits:
-		bi, err := types.BlockIDFromProto(&msg.VoteSetBits.BlockID)
-		if err != nil {
-			return nil, fmt.Errorf("block ID to proto error: %w", err)
-		}
 		bits := new(bits.BitArray)
-		err = bits.FromProto(&msg.VoteSetBits.Votes)
+		err := bits.FromProto(&msg.VoteSetBits.Votes)
 		if err != nil {
 			return nil, fmt.Errorf("votes to proto error: %w", err)
 		}
 
 		pb = &VoteSetBitsMessage{
-			Height:  msg.VoteSetBits.Height,
-			Round:   msg.VoteSetBits.Round,
-			Type:    msg.VoteSetBits.Type,
-			BlockID: *bi,
-			Votes:   bits,
+			Height:     msg.VoteSetBits.Height,
+			Round:      msg.VoteSetBits.Round,
+			Type:       msg.VoteSetBits.Type,
+			HeaderHash: msg.VoteSetBits.HeaderHash,
+			Votes:      bits,
 		}
 	default:
 		return nil, fmt.Errorf("consensus: message not recognized: %T", msg)

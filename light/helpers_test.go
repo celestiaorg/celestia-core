@@ -79,22 +79,17 @@ func (pkz privKeys) signHeader(header *types.Header, valSet *types.ValidatorSet,
 		commitSigs[i] = types.NewCommitSigAbsent()
 	}
 
-	blockID := types.BlockID{
-		Hash:          header.Hash(),
-		PartSetHeader: types.PartSetHeader{Total: 1, Hash: crypto.CRandBytes(32)},
-	}
-
 	// Fill in the votes we want.
 	for i := first; i < last && i < len(pkz); i++ {
-		vote := makeVote(header, valSet, pkz[i], blockID)
+		vote := makeVote(header, valSet, pkz[i], header.Hash())
 		commitSigs[vote.ValidatorIndex] = vote.CommitSig()
 	}
 
-	return types.NewCommit(header.Height, 1, blockID, commitSigs)
+	return types.NewCommit(header.Height, 1, commitSigs, header.Hash())
 }
 
 func makeVote(header *types.Header, valset *types.ValidatorSet,
-	key crypto.PrivKey, blockID types.BlockID) *types.Vote {
+	key crypto.PrivKey, headerHash []byte) *types.Vote {
 
 	addr := key.PubKey().Address()
 	idx, _ := valset.GetByAddress(addr)
@@ -105,7 +100,7 @@ func makeVote(header *types.Header, valset *types.ValidatorSet,
 		Round:            1,
 		Timestamp:        tmtime.Now(),
 		Type:             tmproto.PrecommitType,
-		BlockID:          blockID,
+		HeaderHash:       headerHash,
 	}
 
 	v := vote.ToProto()
@@ -155,10 +150,10 @@ func (pkz privKeys) GenSignedHeader(chainID string, height int64, bTime time.Tim
 // GenSignedHeaderLastBlockID calls genHeader and signHeader and combines them into a SignedHeader.
 func (pkz privKeys) GenSignedHeaderLastBlockID(chainID string, height int64, bTime time.Time, txs types.Txs,
 	valset, nextValset *types.ValidatorSet, appHash, consHash, resHash []byte, first, last int,
-	lastBlockID types.BlockID) *types.SignedHeader {
+	lastBlockHeader []byte) *types.SignedHeader {
 
 	header := genHeader(chainID, height, bTime, txs, valset, nextValset, appHash, consHash, resHash)
-	header.LastBlockID = lastBlockID
+	header.LastHeaderHash = lastBlockHeader
 	return &types.SignedHeader{
 		Header: header,
 		Commit: pkz.signHeader(header, valset, first, last),
@@ -216,7 +211,7 @@ func genMockNodeWithKeys(
 		currentHeader = keys.GenSignedHeaderLastBlockID(chainID, height, bTime.Add(time.Duration(height)*time.Minute),
 			nil,
 			keys.ToValidators(2, 0), newKeys.ToValidators(2, 0), hash("app_hash"), hash("cons_hash"),
-			hash("results_hash"), 0, len(keys), types.BlockID{Hash: lastHeader.Hash()})
+			hash("results_hash"), 0, len(keys), lastHeader.Hash())
 		headers[height] = currentHeader
 		valset[height] = keys.ToValidators(2, 0)
 		lastHeader = currentHeader

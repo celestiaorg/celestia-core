@@ -295,7 +295,7 @@ func TestCreateProposalBlock(t *testing.T) {
 		evidencePool,
 	)
 
-	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
+	commit := types.NewCommit(height-1, 0, nil, nil)
 	block, _ := blockExec.CreateProposalBlock(
 		height,
 		state, commit,
@@ -364,7 +364,7 @@ func TestMaxTxsProposalBlockSize(t *testing.T) {
 		sm.EmptyEvidencePool{},
 	)
 
-	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
+	commit := types.NewCommit(height-1, 0, nil, nil)
 	block, _ := blockExec.CreateProposalBlock(
 		height,
 		state, commit,
@@ -431,17 +431,11 @@ func TestMaxProposalBlockSize(t *testing.T) {
 		sm.EmptyEvidencePool{},
 	)
 
-	blockID := types.BlockID{
-		Hash: tmhash.Sum([]byte("blockID_hash")),
-		PartSetHeader: types.PartSetHeader{
-			Total: math.MaxInt32,
-			Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
-		},
-	}
+	blockID := tmhash.Sum([]byte("blockID_hash"))
 
 	timestamp := time.Date(math.MaxInt64, 0, 0, 0, 0, 0, math.MaxInt64, time.UTC)
 	// change state in order to produce the largest accepted header
-	state.LastBlockID = blockID
+	state.LastHeaderHash = blockID
 	state.LastBlockHeight = math.MaxInt64 - 1
 	state.LastBlockTime = timestamp
 	state.LastResultsHash = tmhash.Sum([]byte("last_results_hash"))
@@ -455,16 +449,16 @@ func TestMaxProposalBlockSize(t *testing.T) {
 	state.ChainID = maxChainID
 
 	cs := types.CommitSig{
-		BlockIDFlag:      types.BlockIDFlagNil,
+		CommitFlag:       types.CommitFlagNil,
 		ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 		Timestamp:        timestamp,
 		Signature:        crypto.CRandBytes(types.MaxSignatureSize),
 	}
 
 	commit := &types.Commit{
-		Height:  math.MaxInt64,
-		Round:   math.MaxInt32,
-		BlockID: blockID,
+		Height:     math.MaxInt64,
+		Round:      math.MaxInt32,
+		HeaderHash: blockID,
 	}
 
 	// add maximum amount of signatures to a single commit

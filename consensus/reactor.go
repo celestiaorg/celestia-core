@@ -11,6 +11,7 @@ import (
 
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	"github.com/lazyledger/lazyledger-core/libs/bits"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmevents "github.com/lazyledger/lazyledger-core/libs/events"
 	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -275,7 +276,7 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 				return
 			}
 			// Peer claims to have a maj23 for some BlockID at H,R,S,
-			err := votes.SetPeerMaj23(msg.Round, msg.Type, ps.peer.ID(), msg.BlockID)
+			err := votes.SetPeerMaj23(msg.Round, msg.Type, ps.peer.ID(), msg.HeaderHash)
 			if err != nil {
 				conR.Switch.StopPeerForError(src, err)
 				return
@@ -292,11 +293,11 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 				panic("Bad VoteSetBitsMessage field Type. Forgot to add a check in ValidateBasic?")
 			}
 			src.TrySend(VoteSetBitsChannel, MustEncode(&VoteSetBitsMessage{
-				Height:  msg.Height,
-				Round:   msg.Round,
-				Type:    msg.Type,
-				BlockID: msg.BlockID,
-				Votes:   ourVotes,
+				Height:     msg.Height,
+				Round:      msg.Round,
+				Type:       msg.Type,
+				HeaderHash: msg.HeaderHash,
+				Votes:      ourVotes,
 			}))
 		default:
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -780,10 +781,10 @@ OUTER_LOOP:
 			if rs.Height == prs.Height {
 				if maj23, ok := rs.Votes.Prevotes(prs.Round).TwoThirdsMajority(); ok {
 					peer.TrySend(StateChannel, MustEncode(&VoteSetMaj23Message{
-						Height:  prs.Height,
-						Round:   prs.Round,
-						Type:    tmproto.PrevoteType,
-						BlockID: maj23,
+						Height:     prs.Height,
+						Round:      prs.Round,
+						Type:       tmproto.PrevoteType,
+						HeaderHash: maj23,
 					}))
 					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
 				}
@@ -797,10 +798,10 @@ OUTER_LOOP:
 			if rs.Height == prs.Height {
 				if maj23, ok := rs.Votes.Precommits(prs.Round).TwoThirdsMajority(); ok {
 					peer.TrySend(StateChannel, MustEncode(&VoteSetMaj23Message{
-						Height:  prs.Height,
-						Round:   prs.Round,
-						Type:    tmproto.PrecommitType,
-						BlockID: maj23,
+						Height:     prs.Height,
+						Round:      prs.Round,
+						Type:       tmproto.PrecommitType,
+						HeaderHash: maj23,
 					}))
 					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
 				}
@@ -814,10 +815,10 @@ OUTER_LOOP:
 			if rs.Height == prs.Height && prs.ProposalPOLRound >= 0 {
 				if maj23, ok := rs.Votes.Prevotes(prs.ProposalPOLRound).TwoThirdsMajority(); ok {
 					peer.TrySend(StateChannel, MustEncode(&VoteSetMaj23Message{
-						Height:  prs.Height,
-						Round:   prs.ProposalPOLRound,
-						Type:    tmproto.PrevoteType,
-						BlockID: maj23,
+						Height:     prs.Height,
+						Round:      prs.ProposalPOLRound,
+						Type:       tmproto.PrevoteType,
+						HeaderHash: maj23,
 					}))
 					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
 				}
@@ -834,10 +835,10 @@ OUTER_LOOP:
 				prs.Height >= conR.conS.blockStore.Base() {
 				if commit := conR.conS.LoadCommit(prs.Height); commit != nil {
 					peer.TrySend(StateChannel, MustEncode(&VoteSetMaj23Message{
-						Height:  prs.Height,
-						Round:   commit.Round,
-						Type:    tmproto.PrecommitType,
-						BlockID: commit.BlockID,
+						Height:     prs.Height,
+						Round:      commit.Round,
+						Type:       tmproto.PrecommitType,
+						HeaderHash: commit.HeaderHash,
 					}))
 					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
 				}
@@ -1017,7 +1018,6 @@ func (ps *PeerState) SetHasProposal(proposal *types.Proposal) {
 		return
 	}
 
-	ps.PRS.ProposalBlockPartSetHeader = proposal.BlockID.PartSetHeader
 	ps.PRS.ProposalBlockParts = bits.NewBitArray(int(proposal.BlockID.PartSetHeader.Total))
 	ps.PRS.ProposalPOLRound = proposal.POLRound
 	ps.PRS.ProposalPOL = nil // Nil until ProposalPOLMessage received.
@@ -1661,10 +1661,10 @@ func (m *HasVoteMessage) String() string {
 
 // VoteSetMaj23Message is sent to indicate that a given BlockID has seen +2/3 votes.
 type VoteSetMaj23Message struct {
-	Height  int64
-	Round   int32
-	Type    tmproto.SignedMsgType
-	BlockID types.BlockID
+	Height     int64
+	Round      int32
+	Type       tmproto.SignedMsgType
+	HeaderHash tmbytes.HexBytes
 }
 
 // ValidateBasic performs basic validation.
@@ -1678,7 +1678,7 @@ func (m *VoteSetMaj23Message) ValidateBasic() error {
 	if !types.IsVoteTypeValid(m.Type) {
 		return errors.New("invalid Type")
 	}
-	if err := m.BlockID.ValidateBasic(); err != nil {
+	if err := types.ValidateHash(m.HeaderHash); err != nil {
 		return fmt.Errorf("wrong BlockID: %v", err)
 	}
 	return nil
@@ -1686,18 +1686,18 @@ func (m *VoteSetMaj23Message) ValidateBasic() error {
 
 // String returns a string representation.
 func (m *VoteSetMaj23Message) String() string {
-	return fmt.Sprintf("[VSM23 %v/%02d/%v %v]", m.Height, m.Round, m.Type, m.BlockID)
+	return fmt.Sprintf("[VSM23 %v/%02d/%v %s]", m.Height, m.Round, m.Type, m.HeaderHash)
 }
 
 //-------------------------------------
 
 // VoteSetBitsMessage is sent to communicate the bit-array of votes seen for the BlockID.
 type VoteSetBitsMessage struct {
-	Height  int64
-	Round   int32
-	Type    tmproto.SignedMsgType
-	BlockID types.BlockID
-	Votes   *bits.BitArray
+	Height     int64
+	Round      int32
+	Type       tmproto.SignedMsgType
+	HeaderHash tmbytes.HexBytes
+	Votes      *bits.BitArray
 }
 
 // ValidateBasic performs basic validation.
@@ -1708,7 +1708,7 @@ func (m *VoteSetBitsMessage) ValidateBasic() error {
 	if !types.IsVoteTypeValid(m.Type) {
 		return errors.New("invalid Type")
 	}
-	if err := m.BlockID.ValidateBasic(); err != nil {
+	if err := types.ValidateHash(m.HeaderHash); err != nil {
 		return fmt.Errorf("wrong BlockID: %v", err)
 	}
 	// NOTE: Votes.Size() can be zero if the node does not have any
@@ -1720,7 +1720,7 @@ func (m *VoteSetBitsMessage) ValidateBasic() error {
 
 // String returns a string representation.
 func (m *VoteSetBitsMessage) String() string {
-	return fmt.Sprintf("[VSB %v/%02d/%v %v %v]", m.Height, m.Round, m.Type, m.BlockID, m.Votes)
+	return fmt.Sprintf("[VSB %v/%02d/%v %s %v]", m.Height, m.Round, m.Type, m.HeaderHash, m.Votes)
 }
 
 //-------------------------------------

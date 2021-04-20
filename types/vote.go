@@ -51,7 +51,7 @@ type Vote struct {
 	Type             tmproto.SignedMsgType `json:"type"`
 	Height           int64                 `json:"height"`
 	Round            int32                 `json:"round"` // assume there will not be greater than 2_147_483_647 rounds
-	HeaderHash       []byte                `json:"header_hash"`
+	HeaderHash       tmbytes.HexBytes      `json:"header_hash"`
 	Timestamp        time.Time             `json:"timestamp"`
 	ValidatorAddress Address               `json:"validator_address"`
 	ValidatorIndex   int32                 `json:"validator_index"`

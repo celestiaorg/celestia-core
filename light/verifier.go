@@ -78,7 +78,7 @@ func VerifyNonAdjacent(
 	// NOTE: this should always be the last check because untrustedVals can be
 	// intentionally made very large to DOS the light client. not the case for
 	// VerifyAdjacent, where validator set is known in advance.
-	if err := untrustedVals.VerifyCommitLight(trustedHeader.ChainID, untrustedHeader.Commit.BlockID,
+	if err := untrustedVals.VerifyCommitLight(trustedHeader.ChainID, untrustedHeader.Commit.HeaderHash,
 		untrustedHeader.Height, untrustedHeader.Commit); err != nil {
 		return ErrInvalidHeader{err}
 	}
@@ -138,7 +138,7 @@ func VerifyAdjacent(
 	}
 
 	// Ensure that +2/3 of new validators signed correctly.
-	if err := untrustedVals.VerifyCommitLight(trustedHeader.ChainID, untrustedHeader.Commit.BlockID,
+	if err := untrustedVals.VerifyCommitLight(trustedHeader.ChainID, untrustedHeader.Commit.HeaderHash,
 		untrustedHeader.Height, untrustedHeader.Commit); err != nil {
 		return ErrInvalidHeader{err}
 	}
@@ -210,11 +210,11 @@ func VerifyBackwards(untrustedHeader, trustedHeader *types.Header) error {
 				trustedHeader.Time)}
 	}
 
-	if !bytes.Equal(untrustedHeader.Hash(), trustedHeader.LastBlockID.Hash) {
+	if !bytes.Equal(untrustedHeader.Hash(), trustedHeader.Hash()) {
 		return ErrInvalidHeader{
 			fmt.Errorf("older header hash %X does not match trusted header's last block %X",
 				untrustedHeader.Hash(),
-				trustedHeader.LastBlockID.Hash)}
+				trustedHeader.Hash())}
 	}
 
 	return nil

@@ -15,7 +15,7 @@ import (
 // waitForHeight waits for the network to reach a certain height (or above),
 // returning the highest height seen. Errors if the network is not making
 // progress at all.
-func waitForHeight(testnet *e2e.Testnet, height int64) (*types.Block, *types.BlockID, error) {
+func waitForHeight(testnet *e2e.Testnet, height int64) (*types.Block, error) {
 	var (
 		err          error
 		maxResult    *rpctypes.ResultBlock
@@ -48,18 +48,18 @@ func waitForHeight(testnet *e2e.Testnet, height int64) (*types.Block, *types.Blo
 				lastIncrease = time.Now()
 			}
 			if maxResult != nil && maxResult.Block.Height >= height {
-				return maxResult.Block, &maxResult.BlockID, nil
+				return maxResult.Block, nil
 			}
 		}
 
 		if len(clients) == 0 {
-			return nil, nil, errors.New("unable to connect to any network nodes")
+			return nil, errors.New("unable to connect to any network nodes")
 		}
 		if time.Since(lastIncrease) >= 20*time.Second {
 			if maxResult == nil {
-				return nil, nil, errors.New("chain stalled at unknown height")
+				return nil, errors.New("chain stalled at unknown height")
 			}
-			return nil, nil, fmt.Errorf("chain stalled at height %v", maxResult.Block.Height)
+			return nil, fmt.Errorf("chain stalled at height %v", maxResult.Block.Height)
 		}
 		time.Sleep(1 * time.Second)
 	}

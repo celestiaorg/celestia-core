@@ -15,24 +15,6 @@ const TimeFormat = time.RFC3339Nano
 //-----------------------------------
 // Canonicalize the structs
 
-func CanonicalizeBlockID(bid tmproto.BlockID) *tmproto.CanonicalBlockID {
-	rbid, err := BlockIDFromProto(&bid)
-	if err != nil {
-		panic(err)
-	}
-	var cbid *tmproto.CanonicalBlockID
-	if rbid == nil || rbid.IsZero() {
-		cbid = nil
-	} else {
-		cbid = &tmproto.CanonicalBlockID{
-			Hash:          bid.Hash,
-			PartSetHeader: CanonicalizePartSetHeader(bid.PartSetHeader),
-		}
-	}
-
-	return cbid
-}
-
 // CanonicalizeVote transforms the given PartSetHeader to a CanonicalPartSetHeader.
 func CanonicalizePartSetHeader(psh tmproto.PartSetHeader) tmproto.CanonicalPartSetHeader {
 	return tmproto.CanonicalPartSetHeader(psh)
@@ -41,14 +23,14 @@ func CanonicalizePartSetHeader(psh tmproto.PartSetHeader) tmproto.CanonicalPartS
 // CanonicalizeVote transforms the given Proposal to a CanonicalProposal.
 func CanonicalizeProposal(chainID string, proposal *tmproto.Proposal) tmproto.CanonicalProposal {
 	return tmproto.CanonicalProposal{
-		Type:      tmproto.ProposalType,
-		Height:    proposal.Height,       // encoded as sfixed64
-		Round:     int64(proposal.Round), // encoded as sfixed64
-		POLRound:  int64(proposal.PolRound),
-		BlockID:   CanonicalizeBlockID(proposal.BlockID),
-		Timestamp: proposal.Timestamp,
-		ChainID:   chainID,
-		DAHeader:  proposal.DAHeader,
+		Type:       tmproto.ProposalType,
+		Height:     proposal.Height,       // encoded as sfixed64
+		Round:      int64(proposal.Round), // encoded as sfixed64
+		POLRound:   int64(proposal.PolRound),
+		HeaderHash: proposal.HeaderHash,
+		Timestamp:  proposal.Timestamp,
+		ChainID:    chainID,
+		DAHeader:   proposal.DAHeader,
 	}
 }
 
@@ -56,12 +38,12 @@ func CanonicalizeProposal(chainID string, proposal *tmproto.Proposal) tmproto.Ca
 // not contain ValidatorIndex and ValidatorAddress fields.
 func CanonicalizeVote(chainID string, vote *tmproto.Vote) tmproto.CanonicalVote {
 	return tmproto.CanonicalVote{
-		Type:      vote.Type,
-		Height:    vote.Height,       // encoded as sfixed64
-		Round:     int64(vote.Round), // encoded as sfixed64
-		BlockID:   CanonicalizeBlockID(vote.BlockID),
-		Timestamp: vote.Timestamp,
-		ChainID:   chainID,
+		Type:       vote.Type,
+		Height:     vote.Height,       // encoded as sfixed64
+		Round:      int64(vote.Round), // encoded as sfixed64
+		HeaderHash: vote.HeaderHash,
+		Timestamp:  vote.Timestamp,
+		ChainID:    chainID,
 	}
 }
 

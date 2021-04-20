@@ -92,9 +92,9 @@ func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error)
 	block := env.BlockStore.LoadBlock(height)
 	blockMeta := env.BlockStore.LoadBlockMeta(height)
 	if blockMeta == nil {
-		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: block}, nil
+		return &ctypes.ResultBlock{Block: block}, nil
 	}
-	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
+	return &ctypes.ResultBlock{Block: block}, nil
 }
 
 // BlockByHash gets block by hash.
@@ -102,11 +102,10 @@ func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error)
 func BlockByHash(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error) {
 	block := env.BlockStore.LoadBlockByHash(hash)
 	if block == nil {
-		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: nil}, nil
+		return &ctypes.ResultBlock{Block: nil}, nil
 	}
 	// If block is not nil, then blockMeta can't be nil.
-	blockMeta := env.BlockStore.LoadBlockMeta(block.Height)
-	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
+	return &ctypes.ResultBlock{Block: block}, nil
 }
 
 // Commit gets block commit at a given height.

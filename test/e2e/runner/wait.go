@@ -10,7 +10,7 @@ import (
 // Wait waits for a number of blocks to be produced, and for all nodes to catch
 // up with it.
 func Wait(testnet *e2e.Testnet, blocks int64) error {
-	block, _, err := waitForHeight(testnet, 0)
+	block, err := waitForHeight(testnet, 0)
 	if err != nil {
 		return err
 	}

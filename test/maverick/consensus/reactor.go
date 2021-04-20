@@ -11,6 +11,7 @@ import (
 
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	"github.com/lazyledger/lazyledger-core/libs/bits"
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmevents "github.com/lazyledger/lazyledger-core/libs/events"
 	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -1655,10 +1656,10 @@ func (m *HasVoteMessage) String() string {
 
 // VoteSetMaj23Message is sent to indicate that a given BlockID has seen +2/3 votes.
 type VoteSetMaj23Message struct {
-	Height  int64
-	Round   int32
-	Type    tmproto.SignedMsgType
-	BlockID types.BlockID
+	Height     int64
+	Round      int32
+	Type       tmproto.SignedMsgType
+	HeaderHash tmbytes.HexBytes
 }
 
 // ValidateBasic performs basic validation.

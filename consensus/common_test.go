@@ -191,7 +191,7 @@ func decideProposal(
 	round int32,
 ) (proposal *types.Proposal, block *types.Block) {
 	cs1.mtx.Lock()
-	block, blockParts := cs1.createProposalBlock()
+	block, _ = cs1.createProposalBlock()
 	validRound := cs1.ValidRound
 	chainID := cs1.state.ChainID
 	cs1.mtx.Unlock()
@@ -200,8 +200,8 @@ func decideProposal(
 	}
 
 	// Make proposal
-	polRound, propBlockID := validRound, types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal = types.NewProposal(height, round, polRound, propBlockID, &block.DataAvailabilityHeader)
+	polRound, propBlockHash := validRound, block.Hash()
+	proposal = types.NewProposal(height, round, polRound, propBlockHash, &block.DataAvailabilityHeader)
 	p, err := proposal.ToProto()
 	if err != nil {
 		panic(err)
@@ -242,12 +242,12 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 		panic("Failed to find prevote from validator")
 	}
 	if blockHash == nil {
-		if vote.BlockID.Hash != nil {
-			panic(fmt.Sprintf("Expected prevote to be for nil, got %X", vote.BlockID.Hash))
+		if vote.HeaderHash != nil {
+			panic(fmt.Sprintf("Expected prevote to be for nil, got %X", vote.HeaderHash))
 		}
 	} else {
-		if !bytes.Equal(vote.BlockID.Hash, blockHash) {
-			panic(fmt.Sprintf("Expected prevote to be for %X, got %X", blockHash, vote.BlockID.Hash))
+		if !bytes.Equal(vote.HeaderHash, blockHash) {
+			panic(fmt.Sprintf("Expected prevote to be for %X, got %X", blockHash, vote.HeaderHash))
 		}
 	}
 }
@@ -261,8 +261,8 @@ func validateLastPrecommit(t *testing.T, cs *State, privVal *validatorStub, bloc
 	if vote = votes.GetByAddress(address); vote == nil {
 		panic("Failed to find precommit from validator")
 	}
-	if !bytes.Equal(vote.BlockID.Hash, blockHash) {
-		panic(fmt.Sprintf("Expected precommit to be for %X, got %X", blockHash, vote.BlockID.Hash))
+	if !bytes.Equal(vote.HeaderHash, blockHash) {
+		panic(fmt.Sprintf("Expected precommit to be for %X, got %X", blockHash, vote.HeaderHash))
 	}
 }
 
@@ -285,11 +285,11 @@ func validatePrecommit(
 	}
 
 	if votedBlockHash == nil {
-		if vote.BlockID.Hash != nil {
+		if vote.HeaderHash != nil {
 			panic("Expected precommit to be for nil")
 		}
 	} else {
-		if !bytes.Equal(vote.BlockID.Hash, votedBlockHash) {
+		if !bytes.Equal(vote.HeaderHash, votedBlockHash) {
 			panic("Expected precommit to be for proposal block")
 		}
 	}
@@ -592,7 +592,7 @@ func ensureNewUnlock(unlockCh <-chan tmpubsub.Message, height int64, round int32
 		"Timeout expired while waiting for NewUnlock event")
 }
 
-func ensureProposal(proposalCh <-chan tmpubsub.Message, height int64, round int32, propID types.BlockID) {
+func ensureProposal(proposalCh <-chan tmpubsub.Message, height int64, round int32, propID tmbytes.HexBytes) {
 	select {
 	case <-time.After(ensureTimeout):
 		panic("Timeout expired while waiting for NewProposal event")
@@ -608,8 +608,8 @@ func ensureProposal(proposalCh <-chan tmpubsub.Message, height int64, round int3
 		if proposalEvent.Round != round {
 			panic(fmt.Sprintf("expected round %v, got %v", round, proposalEvent.Round))
 		}
-		if !proposalEvent.BlockID.Equals(propID) {
-			panic(fmt.Sprintf("Proposed block does not match expected block (%v != %v)", proposalEvent.BlockID, propID))
+		if !bytes.Equal(proposalEvent.HeaderHash, propID) {
+			panic(fmt.Sprintf("Proposed block does not match expected block (%v != %v)", proposalEvent.HeaderHash, propID))
 		}
 	}
 }

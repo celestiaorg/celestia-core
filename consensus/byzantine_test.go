@@ -131,9 +131,9 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		// allow first height to happen normally so that byzantine validator is no longer proposer
 		if height == prevoteHeight {
 			bcs.Logger.Info("Sending two votes")
-			prevote1, err := bcs.signVote(tmproto.PrevoteType, bcs.ProposalBlock.Hash(), bcs.ProposalBlockParts.Header())
+			prevote1, err := bcs.signVote(tmproto.PrevoteType, bcs.ProposalBlock.Hash())
 			require.NoError(t, err)
-			prevote2, err := bcs.signVote(tmproto.PrevoteType, nil, types.PartSetHeader{})
+			prevote2, err := bcs.signVote(tmproto.PrevoteType, nil)
 			require.NoError(t, err)
 			peerList := reactors[byzantineNode].Switch.Peers().List()
 			bcs.Logger.Info("Getting peer list", "peers", peerList)
@@ -374,7 +374,7 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 
 	// Create a new proposal block from state/txs from the mempool.
 	block1, blockParts1 := cs.createProposalBlock()
-	polRound, propBlockID := cs.ValidRound, types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
+	polRound, propBlockID := cs.ValidRound, block1.Hash()
 	proposal1 := types.NewProposal(height, round, polRound, propBlockID, &block1.DataAvailabilityHeader)
 	p1, err := proposal1.ToProto()
 	require.NoError(t, err)
@@ -389,7 +389,7 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 
 	// Create a new proposal block from state/txs from the mempool.
 	block2, blockParts2 := cs.createProposalBlock()
-	polRound, propBlockID = cs.ValidRound, types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
+	polRound, propBlockID = cs.ValidRound, block2.Hash()
 	proposal2 := types.NewProposal(height, round, polRound, propBlockID, &block2.DataAvailabilityHeader)
 	p2, err := proposal2.ToProto()
 	require.NoError(t, err)
@@ -440,8 +440,8 @@ func sendProposalAndParts(
 
 	// votes
 	cs.mtx.Lock()
-	prevote, _ := cs.signVote(tmproto.PrevoteType, blockHash, parts.Header())
-	precommit, _ := cs.signVote(tmproto.PrecommitType, blockHash, parts.Header())
+	prevote, _ := cs.signVote(tmproto.PrevoteType, blockHash)
+	precommit, _ := cs.signVote(tmproto.PrecommitType, blockHash)
 	cs.mtx.Unlock()
 
 	peer.Send(VoteChannel, MustEncode(&VoteMessage{prevote}))
