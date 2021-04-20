@@ -11,7 +11,7 @@ require (
 	github.com/ipfs/go-verifcid v0.0.1
 	github.com/lazyledger/nmt v0.3.1
 	// rsmt2d is only used in tests:
-	github.com/lazyledger/rsmt2d v0.1.1-0.20210327010029-ef1d6c54461e
+	github.com/lazyledger/rsmt2d v0.2.0
 	github.com/multiformats/go-multihash v0.0.14
 )
 
