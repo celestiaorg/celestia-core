@@ -13,8 +13,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-ipfs/core/coredag"
 	"github.com/ipfs/go-ipfs/plugin"
-	format "github.com/ipfs/go-ipld-format"
-	node "github.com/ipfs/go-ipld-format"
+	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/lazyledger/nmt"
 	mh "github.com/multiformats/go-multihash"
 )
@@ -54,7 +53,7 @@ func init() {
 		sumSha256Namespace8Flagged,
 	)
 	// this should already happen when the plugin is injected but it doesn't for some CI tests
-	format.DefaultBlockDecoder.Register(Nmt, NmtNodeParser)
+	ipld.DefaultBlockDecoder.Register(Nmt, NmtNodeParser)
 	// register the codecs in the global maps
 	cid.Codecs[NmtCodecName] = Nmt
 	cid.CodecToStr[Nmt] = NmtCodecName
@@ -98,7 +97,7 @@ var _ plugin.PluginIPLD = &LazyLedgerPlugin{}
 
 type LazyLedgerPlugin struct{}
 
-func (l LazyLedgerPlugin) RegisterBlockDecoders(dec format.BlockDecoder) error {
+func (l LazyLedgerPlugin) RegisterBlockDecoders(dec ipld.BlockDecoder) error {
 	dec.Register(Nmt, NmtNodeParser)
 	return nil
 }
@@ -132,7 +131,7 @@ func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
 // Note while this coredag.DagParser is implemented here so this plugin can be used from
 // the commandline, the ipld Nodes will rather be created together with the NMT
 // root instead of re-computing it here.
-func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int) ([]node.Node, error) {
+func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int) ([]ipld.Node, error) {
 	br := bufio.NewReader(r)
 	collector := newNodeCollector()
 
@@ -162,17 +161,17 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 // nmtNodeCollector creates and collects ipld.Nodes if inserted into a nmt tree.
 // It is mainly used for testing.
 type nmtNodeCollector struct {
-	nodes []node.Node
+	nodes []ipld.Node
 }
 
 func newNodeCollector() *nmtNodeCollector {
 	// The extendedRowOrColumnSize is hardcode this here to avoid importing:
 	// https://github.com/lazyledger/lazyledger-core/blob/585566317e519bbb6d35d149b7e856c4c1e8657c/types/consts.go#L23
 	const extendedRowOrColumnSize = 2 * 128
-	return &nmtNodeCollector{nodes: make([]node.Node, 0, extendedRowOrColumnSize)}
+	return &nmtNodeCollector{nodes: make([]ipld.Node, 0, extendedRowOrColumnSize)}
 }
 
-func (n nmtNodeCollector) ipldNodes() []node.Node {
+func (n nmtNodeCollector) ipldNodes() []ipld.Node {
 	return n.nodes
 }
 
@@ -195,8 +194,8 @@ func (n *nmtNodeCollector) visit(hash []byte, children ...[]byte) {
 	}
 }
 
-func prependNode(newNode node.Node, nodes []node.Node) []node.Node {
-	nodes = append(nodes, node.Node(nil))
+func prependNode(newNode ipld.Node, nodes []ipld.Node) []ipld.Node {
+	nodes = append(nodes, ipld.Node(nil))
 	copy(nodes[1:], nodes)
 	nodes[0] = newNode
 	return nodes
@@ -206,7 +205,7 @@ func prependNode(newNode node.Node, nodes []node.Node) []node.Node {
 // into an nmt tree
 type NmtNodeAdder struct {
 	ctx    context.Context
-	batch  *format.Batch
+	batch  *ipld.Batch
 	leaves *cid.Set
 	err    error
 }
@@ -214,7 +213,7 @@ type NmtNodeAdder struct {
 // NewNmtNodeAdder returns a new NmtNodeAdder with the provided context and
 // batch. Note that the context provided should have a timeout
 // It is not thread-safe.
-func NewNmtNodeAdder(ctx context.Context, batch *format.Batch) *NmtNodeAdder {
+func NewNmtNodeAdder(ctx context.Context, batch *ipld.Batch) *NmtNodeAdder {
 	return &NmtNodeAdder{
 		batch:  batch,
 		ctx:    ctx,
@@ -249,7 +248,7 @@ func (n *NmtNodeAdder) Visit(hash []byte, children ...[]byte) {
 }
 
 // Batch return the ipld.Batch originally provided to the NmtNodeAdder
-func (n *NmtNodeAdder) Batch() *format.Batch {
+func (n *NmtNodeAdder) Batch() *ipld.Batch {
 	return n.batch
 }
 
@@ -262,7 +261,7 @@ func (n *NmtNodeAdder) Commit() error {
 	return n.batch.Commit()
 }
 
-func NmtNodeParser(block blocks.Block) (node.Node, error) {
+func NmtNodeParser(block blocks.Block) (ipld.Node, error) {
 	// length of the domain separator for leaf and inner nodes:
 	const prefixOffset = 1
 	var (
@@ -298,8 +297,8 @@ func NmtNodeParser(block blocks.Block) (node.Node, error) {
 	)
 }
 
-var _ node.Node = (*nmtNode)(nil)
-var _ node.Node = (*nmtLeafNode)(nil)
+var _ ipld.Node = (*nmtNode)(nil)
+var _ ipld.Node = (*nmtLeafNode)(nil)
 
 type nmtNode struct {
 	// TODO(ismail): we might want to export these later
@@ -335,13 +334,13 @@ func (n nmtNode) Resolve(path []string) (interface{}, []string, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		return &node.Link{Cid: left}, path[1:], nil
+		return &ipld.Link{Cid: left}, path[1:], nil
 	case "1":
 		right, err := CidFromNamespacedSha256(n.r)
 		if err != nil {
 			return nil, nil, err
 		}
-		return &node.Link{Cid: right}, path[1:], nil
+		return &ipld.Link{Cid: right}, path[1:], nil
 	default:
 		return nil, nil, errors.New("invalid path for inner node")
 	}
@@ -358,13 +357,13 @@ func (n nmtNode) Tree(path string, depth int) []string {
 	}
 }
 
-func (n nmtNode) ResolveLink(path []string) (*node.Link, []string, error) {
+func (n nmtNode) ResolveLink(path []string) (*ipld.Link, []string, error) {
 	obj, rest, err := n.Resolve(path)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	lnk, ok := obj.(*node.Link)
+	lnk, ok := obj.(*ipld.Link)
 	if !ok {
 		return nil, nil, errors.New("was not a link")
 	}
@@ -372,7 +371,7 @@ func (n nmtNode) ResolveLink(path []string) (*node.Link, []string, error) {
 	return lnk, rest, nil
 }
 
-func (n nmtNode) Copy() node.Node {
+func (n nmtNode) Copy() ipld.Node {
 	l := make([]byte, len(n.l))
 	copy(l, n.l)
 	r := make([]byte, len(n.r))
@@ -385,15 +384,15 @@ func (n nmtNode) Copy() node.Node {
 	}
 }
 
-func (n nmtNode) Links() []*node.Link {
+func (n nmtNode) Links() []*ipld.Link {
 	leftCid := mustCidFromNamespacedSha256(n.l)
 	rightCid := mustCidFromNamespacedSha256(n.r)
 
-	return []*node.Link{{Cid: leftCid}, {Cid: rightCid}}
+	return []*ipld.Link{{Cid: leftCid}, {Cid: rightCid}}
 }
 
-func (n nmtNode) Stat() (*node.NodeStat, error) {
-	return &node.NodeStat{}, nil
+func (n nmtNode) Stat() (*ipld.NodeStat, error) {
+	return &ipld.NodeStat{}, nil
 }
 
 func (n nmtNode) Size() (uint64, error) {
@@ -433,29 +432,29 @@ func (l nmtLeafNode) Tree(_path string, _depth int) []string {
 	return nil
 }
 
-func (l nmtLeafNode) ResolveLink(path []string) (*node.Link, []string, error) {
+func (l nmtLeafNode) ResolveLink(path []string) (*ipld.Link, []string, error) {
 	obj, rest, err := l.Resolve(path)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	lnk, ok := obj.(*node.Link)
+	lnk, ok := obj.(*ipld.Link)
 	if !ok {
 		return nil, nil, errors.New("was not a link")
 	}
 	return lnk, rest, nil
 }
 
-func (l nmtLeafNode) Copy() node.Node {
+func (l nmtLeafNode) Copy() ipld.Node {
 	panic("implement me")
 }
 
-func (l nmtLeafNode) Links() []*node.Link {
-	return []*node.Link{{Cid: l.Cid()}}
+func (l nmtLeafNode) Links() []*ipld.Link {
+	return []*ipld.Link{{Cid: l.Cid()}}
 }
 
-func (l nmtLeafNode) Stat() (*node.NodeStat, error) {
-	return &node.NodeStat{}, nil
+func (l nmtLeafNode) Stat() (*ipld.NodeStat, error) {
+	return &ipld.NodeStat{}, nil
 }
 
 func (l nmtLeafNode) Size() (uint64, error) {
