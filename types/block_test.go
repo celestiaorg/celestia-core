@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/hex"
 	"math"
-	"math/rand"
+	mrand "math/rand"
 	"os"
 	"reflect"
 	"sort"
@@ -194,8 +194,8 @@ func makeBlockIDRandom() BlockID {
 		blockHash   = make([]byte, tmhash.Size)
 		partSetHash = make([]byte, tmhash.Size)
 	)
-	rand.Read(blockHash)
-	rand.Read(partSetHash)
+	mrand.Read(blockHash)
+	mrand.Read(partSetHash)
 	return BlockID{blockHash, PartSetHeader{123, partSetHash}}
 }
 
@@ -661,7 +661,7 @@ func TestBlockIDValidateBasic(t *testing.T) {
 }
 
 func TestBlockProtoBuf(t *testing.T) {
-	h := tmrand.Int63()
+	h := mrand.Int63()
 	c1 := randCommit(time.Now())
 	b1 := MakeBlock(h, []Tx{Tx([]byte{1})}, []Evidence{}, nil, Messages{}, &Commit{Signatures: []CommitSig{}})
 	b1.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
@@ -671,6 +671,8 @@ func TestBlockProtoBuf(t *testing.T) {
 	evidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 	evi := NewMockDuplicateVoteEvidence(h, evidenceTime, "block-test-chain")
 	b2.Evidence = EvidenceData{Evidence: EvidenceList{evi}}
+	// update internal byteSize field s.t. the expected b2.Evidence matches with the decoded one:
+	_ = b2.Evidence.ByteSize()
 	b2.EvidenceHash = b2.Evidence.Hash()
 
 	b3 := MakeBlock(h, []Tx{}, []Evidence{}, nil, Messages{}, c1)
@@ -698,7 +700,7 @@ func TestBlockProtoBuf(t *testing.T) {
 		if tc.expPass2 {
 			require.NoError(t, err, tc.msg)
 			require.EqualValues(t, tc.b1.Header, block.Header, tc.msg)
-			// require.EqualValues(t, tc.b1.Data, block.Data, tc.msg)
+			require.EqualValues(t, tc.b1.Data, block.Data, tc.msg)
 			require.EqualValues(t, tc.b1.Evidence.Evidence, block.Evidence.Evidence, tc.msg)
 			require.EqualValues(t, *tc.b1.LastCommit, *block.LastCommit, tc.msg)
 		} else {
@@ -769,7 +771,7 @@ func TestEvidenceDataProtoBuf(t *testing.T) {
 func makeRandHeader() Header {
 	chainID := "test"
 	t := time.Now()
-	height := tmrand.Int63()
+	height := mrand.Int63()
 	randBytes := tmrand.Bytes(tmhash.Size)
 	randAddress := tmrand.Bytes(crypto.AddressSize)
 	h := Header{
@@ -1411,7 +1413,7 @@ func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byt
 	data := make([][]byte, total)
 	for i := 0; i < total; i++ {
 		nid := make([]byte, nidSize)
-		_, err := rand.Read(nid)
+		_, err := mrand.Read(nid)
 		if err != nil {
 			panic(err)
 		}
@@ -1421,7 +1423,7 @@ func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byt
 	sortByteArrays(data)
 	for i := 0; i < total; i++ {
 		d := make([]byte, leafSize)
-		_, err := rand.Read(d)
+		_, err := mrand.Read(d)
 		if err != nil {
 			panic(err)
 		}

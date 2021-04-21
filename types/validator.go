@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	mrand "math/rand"
 	"strings"
 
 	"github.com/lazyledger/lazyledger-core/crypto"
 	ce "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
@@ -182,7 +182,8 @@ func RandValidator(randPower bool, minPower int64) (*Validator, PrivValidator) {
 	privVal := NewMockPV()
 	votePower := minPower
 	if randPower {
-		votePower += int64(tmrand.Uint32())
+		// nolint:gosec // G404: Use of weak random number generator
+		votePower += int64(mrand.Uint32())
 	}
 	pubKey, err := privVal.GetPubKey()
 	if err != nil {

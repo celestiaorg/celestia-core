@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	mrand "math/rand"
 	"path/filepath"
 	"testing"
 	"time"
@@ -13,7 +14,6 @@ import (
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	"github.com/lazyledger/lazyledger-core/privval"
 	"github.com/lazyledger/lazyledger-core/proxy"
 	sm "github.com/lazyledger/lazyledger-core/state"
@@ -88,7 +88,7 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore, mempool, evpool)
 	consensusState.SetLogger(logger)
 	consensusState.SetEventBus(eventBus)
-	if privValidator != nil {
+	if privValidator != nil && privValidator != (*privval.FilePV)(nil) {
 		consensusState.SetPrivValidator(privValidator)
 	}
 	// END OF COPY PASTE
@@ -137,7 +137,8 @@ func WALWithNBlocks(t *testing.T, numBlocks int) (data []byte, err error) {
 func randPort() int {
 	// returns between base and base + spread
 	base, spread := 20000, 20000
-	return base + tmrand.Intn(spread)
+	// nolint:gosec // G404: Use of weak random number generator
+	return base + mrand.Intn(spread)
 }
 
 func makeAddrs() (string, string, string) {
