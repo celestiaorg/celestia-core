@@ -128,17 +128,24 @@ func Setup(testnet *e2e.Testnet) error {
 func MakeDockerCompose(testnet *e2e.Testnet) ([]byte, error) {
 	// Must use version 2 Docker Compose format, to support IPv6.
 	tmpl, err := template.New("docker-compose").Funcs(template.FuncMap{
-		"misbehaviorsToString": func(misbehaviors map[int64]string) string {
-			str := ""
-			for height, misbehavior := range misbehaviors {
-				// after the first behavior set, a comma must be prepended
-				if str != "" {
-					str += ","
-				}
-				heightString := strconv.Itoa(int(height))
-				str += misbehavior + "," + heightString
-			}
-			return str
+		"startCommands": func(misbehaviors map[int64]string, logLevel string) string {
+			command := "start"
+
+			// FIXME: Temporarily disable behaviors until maverick is redesigned
+			// misbehaviorString := ""
+			// for height, misbehavior := range misbehaviors {
+			// 	// after the first behavior set, a comma must be prepended
+			// 	if misbehaviorString != "" {
+			// 		misbehaviorString += ","
+			// 	}
+			// 	heightString := strconv.Itoa(int(height))
+			// 	misbehaviorString += misbehavior + "," + heightString
+			// }
+
+			// if misbehaviorString != "" {
+			// 	command += " --misbehaviors " + misbehaviorString
+			// }
+			return command
 		},
 	}).Parse(`version: '2.4'
 
@@ -164,9 +171,9 @@ services:
     image: tendermint/e2e-node
 {{- if eq .ABCIProtocol "builtin" }}
     entrypoint: /usr/bin/entrypoint-builtin
-{{- else if .Misbehaviors }}
-    entrypoint: /usr/bin/entrypoint-maverick
-    command: ["start", "--misbehaviors", "{{ misbehaviorsToString .Misbehaviors }}"]
+{{- end }}
+{{- if ne .ABCIProtocol "builtin"}}
+    command: {{ startCommands .Misbehaviors .LogLevel }}
 {{- end }}
     init: true
     ports:
