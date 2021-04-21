@@ -208,10 +208,12 @@ type NmtNodeAdder struct {
 	ctx    context.Context
 	batch  *format.Batch
 	leaves *cid.Set
+	err    error
 }
 
 // NewNmtNodeAdder returns a new NmtNodeAdder with the provided context and
 // batch. Note that the context provided should have a timeout
+// It is not thread-safe.
 func NewNmtNodeAdder(ctx context.Context, batch *format.Batch) *NmtNodeAdder {
 	return &NmtNodeAdder{
 		batch:  batch,
@@ -222,17 +224,21 @@ func NewNmtNodeAdder(ctx context.Context, batch *format.Batch) *NmtNodeAdder {
 
 // Visit can be inserted into an nmt tree to create ipld.Nodes while computing the root
 func (n *NmtNodeAdder) Visit(hash []byte, children ...[]byte) {
+	if n.err != nil {
+		return // if there is an error
+	}
+
 	cid := mustCidFromNamespacedSha256(hash)
 	switch len(children) {
 	case 1:
 		if n.leaves.Visit(cid) {
-			n.batch.Add(n.ctx, nmtLeafNode{
+			n.err = n.batch.Add(n.ctx, nmtLeafNode{
 				cid:  cid,
 				Data: children[0],
 			})
 		}
 	case 2:
-		n.batch.Add(n.ctx, nmtNode{
+		n.err = n.batch.Add(n.ctx, nmtNode{
 			cid: cid,
 			l:   children[0],
 			r:   children[1],
@@ -245,6 +251,15 @@ func (n *NmtNodeAdder) Visit(hash []byte, children ...[]byte) {
 // Batch return the ipld.Batch originally provided to the NmtNodeAdder
 func (n *NmtNodeAdder) Batch() *format.Batch {
 	return n.batch
+}
+
+// Commit checks for errors happened during Visit and if absent commits data to inner Batch.
+func (n *NmtNodeAdder) Commit() error {
+	if n.err != nil {
+		return n.err
+	}
+
+	return n.batch.Commit()
 }
 
 func NmtNodeParser(block blocks.Block) (node.Node, error) {

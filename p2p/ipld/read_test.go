@@ -111,16 +111,7 @@ func TestGetLeafData(t *testing.T) {
 	data := generateRandNamespacedRawData(16, types.NamespaceSize, types.ShareSize)
 
 	// create a random tree
-	tree, err := createNmtTree(ctx, batch, data)
-	if err != nil {
-		t.Error(err)
-	}
-
-	// calculate the root
-	root := tree.Root()
-
-	// commit the data to IPFS
-	err = batch.Commit()
+	root, err := createNmtTree(ctx, batch, data)
 	if err != nil {
 		t.Error(err)
 	}
@@ -329,17 +320,17 @@ func createNmtTree(
 	ctx context.Context,
 	batch *format.Batch,
 	namespacedData [][]byte,
-) (*nmt.NamespacedMerkleTree, error) {
+) (namespace.IntervalDigest, error) {
 	na := nodes.NewNmtNodeAdder(ctx, batch)
 	tree := nmt.New(sha256.New(), nmt.NamespaceIDSize(types.NamespaceSize), nmt.NodeVisitor(na.Visit))
 	for _, leaf := range namespacedData {
 		err := tree.Push(leaf)
 		if err != nil {
-			return tree, err
+			return namespace.IntervalDigest{}, err
 		}
 	}
 
-	return tree, nil
+	return tree.Root(), na.Commit()
 }
 
 // this code is copy pasted from the plugin, and should likely be exported in the plugin instead
