@@ -12,8 +12,6 @@ WORKDIR /src/tendermint
 
 # Fetch dependencies separately (for layer caching)
 COPY go.mod go.sum ./
-# LazyLedger submodule which contains the ipld plugin
-COPY p2p/ipld/plugin/go.mod p2p/ipld/plugin/go.sum ./p2p/ipld/plugin/
 RUN go mod download
 
 # Build Tendermint and install into /usr/bin/tendermint
