@@ -111,7 +111,7 @@ func TestGetLeafData(t *testing.T) {
 	data := generateRandNamespacedRawData(16, types.NamespaceSize, types.ShareSize)
 
 	// create a random tree
-	root, err := createNmtTree(ctx, batch, data)
+	root, err := getNmtRoot(ctx, batch, data)
 	if err != nil {
 		t.Error(err)
 	}
@@ -315,8 +315,8 @@ func flatten(eds *rsmt2d.ExtendedDataSquare) [][]byte {
 	return out
 }
 
-// nmtcommitment generates the nmt root of some namespaced data
-func createNmtTree(
+// getNmtRoot generates the nmt root of some namespaced data
+func getNmtRoot(
 	ctx context.Context,
 	batch *format.Batch,
 	namespacedData [][]byte,
