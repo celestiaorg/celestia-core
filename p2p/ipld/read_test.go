@@ -302,6 +302,25 @@ func TestRetrieveBlockData(t *testing.T) {
 	}
 }
 
+func TestPutRetrieveEmptyBlock(t *testing.T) {
+	// create the context and batch needed for node collection from the tree
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// issue a new API object
+	ipfsAPI := mockedIpfsAPI(t)
+
+	block := types.Block{LastCommit: &types.Commit{}}
+	block.Hash()
+
+	err := block.PutBlock(ctx, ipfsAPI.Dag())
+	require.NoError(t, err)
+
+	data, err := RetrieveBlockData(ctx, &block.DataAvailabilityHeader, ipfsAPI, types.DefaultCodec())
+	assert.NoError(t, err)
+	assert.NotNil(t, data)
+}
+
 func flatten(eds *rsmt2d.ExtendedDataSquare) [][]byte {
 	flattenedEDSSize := eds.Width() * eds.Width()
 	out := make([][]byte, flattenedEDSSize)
