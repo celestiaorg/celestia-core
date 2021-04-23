@@ -50,7 +50,8 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 
 			multiHashOverhead := 4
 			lastNodeCid := gotNodes[len(gotNodes)-1].Cid()
-			if gotHash, wantHash := lastNodeCid.Hash(), nmt.Sha256Namespace8FlaggedLeaf(tt.leafData[0]); !bytes.Equal(gotHash[multiHashOverhead:], wantHash) {
+			gotHash, wantHash := lastNodeCid.Hash(), nmt.Sha256Namespace8FlaggedLeaf(tt.leafData[0])
+			if !bytes.Equal(gotHash[multiHashOverhead:], wantHash) {
 				t.Errorf("first node's hash does not match the Cid\ngot: %v\nwant: %v", gotHash[multiHashOverhead:], wantHash)
 			}
 			nodePrefixOffset := 1 // leaf / inner node prefix is one byte
@@ -100,7 +101,8 @@ func TestNodeCollector(t *testing.T) {
 			}
 
 			lastNodeCid := gotNodes[len(gotNodes)-1].Cid()
-			if gotHash, wantHash := lastNodeCid.Hash(), nmt.Sha256Namespace8FlaggedLeaf(tt.leafData[0]); !bytes.Equal(gotHash[multiHashOverhead:], wantHash) {
+			gotHash, wantHash := lastNodeCid.Hash(), nmt.Sha256Namespace8FlaggedLeaf(tt.leafData[0])
+			if !bytes.Equal(gotHash[multiHashOverhead:], wantHash) {
 				t.Errorf("first node's hash does not match the Cid\ngot: %v\nwant: %v", gotHash[multiHashOverhead:], wantHash)
 			}
 			nodePrefixOffset := 1 // leaf / inner node prefix is one byte
@@ -182,7 +184,11 @@ func generateExtendedRow(t *testing.T) [][]byte {
 		origDataWithoutNamespaces[i] = share[namespaceSize:]
 	}
 
-	extendedData, err := rsmt2d.ComputeExtendedDataSquare(origDataWithoutNamespaces, rsmt2d.NewRSGF8Codec(), rsmt2d.NewDefaultTree)
+	extendedData, err := rsmt2d.ComputeExtendedDataSquare(
+		origDataWithoutNamespaces,
+		rsmt2d.NewRSGF8Codec(),
+		rsmt2d.NewDefaultTree,
+	)
 	if err != nil {
 		t.Fatalf("rsmt2d.Encode(): %v", err)
 		return nil
@@ -200,6 +206,8 @@ func generateExtendedRow(t *testing.T) [][]byte {
 	return extendedRow
 }
 
+//nolint:unused
+// when it actually used in the code ;)
 func leafIdxToPath(cid string, idx int) string {
 	// currently this fmt directive assumes 32 leaves:
 	bin := fmt.Sprintf("%05b", idx)

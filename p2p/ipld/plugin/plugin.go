@@ -7,6 +7,7 @@ import (
 )
 
 // Plugins is an exported list of plugins that will be loaded by go-ipfs.
+//nolint:deadcode
 var Plugins = []plugin.Plugin{
 	&nodes.LazyLedgerPlugin{},
 }
