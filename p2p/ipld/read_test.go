@@ -229,6 +229,7 @@ func TestRetrieveBlockData(t *testing.T) {
 	adjustedMsgSize := types.MsgShareSize - 2
 
 	tests := []test{
+		{"Empty block", 1, false, ""},
 		{"4 KB block", 4, false, ""},
 		{"16 KB block", 8, false, ""},
 		{"16 KB block timeout expected", 8, true, "timeout"},
@@ -300,25 +301,6 @@ func TestRetrieveBlockData(t *testing.T) {
 			assert.Equal(t, rawData, nsShares.RawShares())
 		})
 	}
-}
-
-func TestPutRetrieveEmptyBlock(t *testing.T) {
-	// create the context and batch needed for node collection from the tree
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// issue a new API object
-	ipfsAPI := mockedIpfsAPI(t)
-
-	block := types.Block{LastCommit: &types.Commit{}}
-	block.Hash()
-
-	err := block.PutBlock(ctx, ipfsAPI.Dag())
-	require.NoError(t, err)
-
-	data, err := RetrieveBlockData(ctx, &block.DataAvailabilityHeader, ipfsAPI, types.DefaultCodec())
-	assert.NoError(t, err)
-	assert.NotNil(t, data)
 }
 
 func flatten(eds *rsmt2d.ExtendedDataSquare) [][]byte {
@@ -410,6 +392,9 @@ func rootsToDigests(roots [][]byte) []namespace.IntervalDigest {
 
 func generateRandomBlockData(msgCount, msgSize int) types.Data {
 	var out types.Data
+	if msgCount == 1 {
+		return out
+	}
 	out.Messages = generateRandomMessages(msgCount-1, msgSize)
 	out.Txs = generateRandomContiguousShares(1)
 	return out
