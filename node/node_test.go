@@ -10,9 +10,12 @@ import (
 	"testing"
 	"time"
 
+	coreapi "github.com/ipfs/go-ipfs/core/coreapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	coremock "github.com/ipfs/go-ipfs/core/mock"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto"
@@ -40,7 +43,14 @@ func TestNodeStartStop(t *testing.T) {
 
 	// create & start node
 	n, err := DefaultNewNode(config, log.TestingLogger())
-	n.embedIpfsNode = false // TODO: or init ipfs upfront
+	if err != nil {
+		t.Fatal(err)
+	}
+	ipfsNode, err := coremock.NewMockNode()
+	if err != nil {
+		panic(err)
+	}
+	n.ipfsNode = ipfsNode
 	require.NoError(t, err)
 	err = n.Start()
 	require.NoError(t, err)
@@ -258,7 +268,7 @@ func TestCreateProposalBlock(t *testing.T) {
 
 	// Make EvidencePool
 	evidenceDB := memdb.NewDB()
-	blockStore := store.NewBlockStore(memdb.NewDB())
+	blockStore := store.NewBlockStore(memdb.NewDB(), mockedIpfsAPI())
 	evidencePool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 	require.NoError(t, err)
 	evidencePool.SetLogger(logger)
@@ -565,4 +575,19 @@ func state(nVals int, height int64) (sm.State, dbm.DB, []types.PrivValidator) {
 		}
 	}
 	return s, stateDB, privVals
+}
+
+func mockedIpfsAPI() iface.CoreAPI {
+	ipfsNode, err := coremock.NewMockNode()
+	if err != nil {
+		panic(err)
+	}
+
+	// issue a new API object
+	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	if err != nil {
+		panic(err)
+	}
+
+	return ipfsAPI
 }

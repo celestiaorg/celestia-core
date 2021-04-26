@@ -236,13 +236,14 @@ type Node struct {
 	areIpfsPluginsAlreadyLoaded bool               // avoid injecting plugins twice in tests etc
 }
 
-func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
+func initDBs(config *cfg.Config, dbProvider DBProvider, logger log.Logger) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
 	var blockStoreDB dbm.DB
 	blockStoreDB, err = dbProvider(&DBContext{"blockstore", config})
 	if err != nil {
-		return
+		return nil, nil, err
 	}
-	blockStore = store.NewBlockStore(blockStoreDB)
+
+	blockStore = store.NewBlockStore(blockStoreDB, nil)
 
 	stateDB, err = dbProvider(&DBContext{"state", config})
 	if err != nil {
@@ -652,7 +653,7 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
-	blockStore, stateDB, err := initDBs(config, dbProvider)
+	blockStore, stateDB, err := initDBs(config, dbProvider, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -951,22 +952,22 @@ func (n *Node) OnStart() error {
 			return fmt.Errorf("failed to start state sync: %w", err)
 		}
 	}
+
 	if n.embedIpfsNode {
 		// It is essential that we create a fresh instance of ipfs node on
 		// each start as internally the node gets only stopped once per instance.
 		// At least in ipfs 0.7.0; see:
 		// https://github.com/lazyledger/go-ipfs/blob/dd295e45608560d2ada7d7c8a30f1eef3f4019bb/core/builder.go#L48-L57
-		n.ipfsNode, err = createIpfsNode(n.config, n.areIpfsPluginsAlreadyLoaded, n.Logger)
+		ipfsNode, err := createIpfsNode(n.config, false, n.Logger)
 		if err != nil {
 			return fmt.Errorf("failed to create IPFS node: %w", err)
 		}
 
-		ipfsAPI, err := coreapi.NewCoreAPI(n.ipfsNode)
+		ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
 		if err != nil {
-			return fmt.Errorf("failed to create an instance of the IPFS core API: %w", err)
 		}
 
-		n.consensusState.IpfsAPI = ipfsAPI
+		n.blockStore.SetIpfsAPI(ipfsAPI)
 	}
 
 	return nil
@@ -1036,6 +1037,7 @@ func (n *Node) OnStop() {
 		if err := n.ipfsNode.Close(); err != nil {
 			n.Logger.Error("ipfsNode.Close()", err)
 		}
+		n.ipfsNode = nil
 	}
 }
 

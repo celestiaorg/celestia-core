@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -32,6 +33,7 @@ import (
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/proxy"
 	sm "github.com/lazyledger/lazyledger-core/state"
+	"github.com/lazyledger/lazyledger-core/test/mockipfs"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -1181,11 +1183,12 @@ type mockBlockStore struct {
 	chain   []*types.Block
 	commits []*types.Commit
 	base    int64
+	api     iface.CoreAPI
 }
 
 // TODO: NewBlockStore(db.NewMemDB) ...
 func newMockBlockStore(config *cfg.Config, params tmproto.ConsensusParams) *mockBlockStore {
-	return &mockBlockStore{config, params, nil, nil, 0}
+	return &mockBlockStore{config, params, nil, nil, 0, mockipfs.MockedIpfsAPI()}
 }
 
 func (bs *mockBlockStore) Height() int64                       { return int64(len(bs.chain)) }
@@ -1222,6 +1225,10 @@ func (bs *mockBlockStore) PruneBlocks(height int64) (uint64, error) {
 	}
 	bs.base = height
 	return pruned, nil
+}
+
+func (bs *mockBlockStore) IpfsAPI() iface.CoreAPI {
+	return bs.api
 }
 
 //---------------------------------------

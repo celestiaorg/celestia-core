@@ -17,6 +17,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/proxy"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/store"
+	"github.com/lazyledger/lazyledger-core/test/mockipfs"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -288,7 +289,7 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 	if err != nil {
 		tmos.Exit(err.Error())
 	}
-	blockStore := store.NewBlockStore(blockStoreDB)
+	blockStore := store.NewBlockStore(blockStoreDB, mockipfs.MockedIpfsAPI())
 
 	// Get State
 	stateDB, err := badgerdb.NewDB("state", config.DBDir())

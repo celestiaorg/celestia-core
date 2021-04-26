@@ -34,6 +34,7 @@ import (
 	sm "github.com/lazyledger/lazyledger-core/state"
 	statemocks "github.com/lazyledger/lazyledger-core/state/mocks"
 	"github.com/lazyledger/lazyledger-core/store"
+	"github.com/lazyledger/lazyledger-core/test/mockipfs"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -149,7 +150,7 @@ func TestReactorWithEvidence(t *testing.T) {
 		// css[i] = newStateWithConfig(thisConfig, state, privVals[i], app)
 
 		blockDB := memdb.NewDB()
-		blockStore := store.NewBlockStore(blockDB)
+		blockStore := store.NewBlockStore(blockDB, mockipfs.MockedIpfsAPI())
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)

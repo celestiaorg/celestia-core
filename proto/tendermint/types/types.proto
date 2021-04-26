@@ -50,6 +50,7 @@ message Part {
 message BlockID {
   bytes         hash            = 1;
   PartSetHeader part_set_header = 2 [(gogoproto.nullable) = false];
+  DataAvailabilityHeader data_availability_header = 3;
 }
 
 // --------------------------------

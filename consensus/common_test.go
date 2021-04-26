@@ -36,6 +36,7 @@ import (
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/store"
+	"github.com/lazyledger/lazyledger-core/test/mockipfs"
 	"github.com/lazyledger/lazyledger-core/types"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
@@ -375,7 +376,7 @@ func newStateWithConfigAndBlockStore(
 	blockDB dbm.DB,
 ) *State {
 	// Get BlockStore
-	blockStore := store.NewBlockStore(blockDB)
+	blockStore := store.NewBlockStore(blockDB, mockipfs.MockedIpfsAPI())
 
 	// one for mempool, one for consensus
 	mtx := new(tmsync.Mutex)

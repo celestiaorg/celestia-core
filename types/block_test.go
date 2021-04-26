@@ -5,7 +5,6 @@ import (
 	// number generator here and we can run the tests a bit faster
 	stdbytes "bytes"
 	"context"
-	"encoding/hex"
 	"math"
 	mrand "math/rand"
 	"os"
@@ -196,7 +195,7 @@ func makeBlockIDRandom() BlockID {
 	)
 	mrand.Read(blockHash)
 	mrand.Read(partSetHash)
-	return BlockID{blockHash, PartSetHeader{123, partSetHash}}
+	return BlockID{blockHash, PartSetHeader{123, partSetHash}, nil}
 }
 
 func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
@@ -466,14 +465,6 @@ func randCommit(now time.Time) *Commit {
 		panic(err)
 	}
 	return commit
-}
-
-func hexBytesFromString(s string) bytes.HexBytes {
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		panic(err)
-	}
-	return bytes.HexBytes(b)
 }
 
 func TestBlockMaxDataBytes(t *testing.T) {

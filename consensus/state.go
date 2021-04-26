@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	ipfsapi "github.com/ipfs/interface-go-ipfs-core"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	"github.com/lazyledger/lazyledger-core/crypto"
@@ -92,8 +92,6 @@ type State struct {
 
 	// store blocks and commits
 	blockStore sm.BlockStore
-
-	IpfsAPI ipfsapi.CoreAPI
 
 	// create and execute blocks
 	blockExec *sm.BlockExecutor
@@ -301,6 +299,10 @@ func (cs *State) LoadCommit(height int64) *types.Commit {
 		return cs.blockStore.LoadSeenCommit(height)
 	}
 	return cs.blockStore.LoadBlockCommit(height)
+}
+
+func (cs *State) IpfsAPI() iface.CoreAPI {
+	return cs.blockStore.IpfsAPI()
 }
 
 // OnStart loads the latest state via the WAL, and starts the timeout and
@@ -1111,15 +1113,13 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 	// post data to ipfs
 	// TODO(evan): don't hard code context and timeout
-	if cs.IpfsAPI != nil {
-		// longer timeouts result in block proposers failing to propose blocks in time.
-		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
-		defer cancel()
-		// TODO: post data to IPFS in a goroutine
-		err := block.PutBlock(ctx, cs.IpfsAPI.Dag())
-		if err != nil {
-			cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
-		}
+	// longer timeouts result in block proposers failing to propose blocks in time.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
+	defer cancel()
+	// TODO: post data to IPFS in a goroutine
+	err = block.PutBlock(ctx, cs.IpfsAPI().Dag())
+	if err != nil {
+		cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
 	}
 }
 

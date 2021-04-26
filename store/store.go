@@ -1,16 +1,21 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/gogo/protobuf/proto"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmstore "github.com/lazyledger/lazyledger-core/proto/tendermint/store"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/rsmt2d"
 )
 
 /*
@@ -31,7 +36,8 @@ The store can be assumed to contain all contiguous blocks between base and heigh
 // deserializing loaded data, indicating probable corruption on disk.
 */
 type BlockStore struct {
-	db dbm.DB
+	db  dbm.DB
+	api iface.CoreAPI
 
 	// mtx guards access to the struct fields listed below it. We rely on the database to enforce
 	// fine-grained concurrency control for its data, and thus this mutex does not apply to
@@ -45,12 +51,13 @@ type BlockStore struct {
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB) *BlockStore {
+func NewBlockStore(db dbm.DB, api iface.CoreAPI) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	return &BlockStore{
 		base:   bs.Base,
 		height: bs.Height,
 		db:     db,
+		api:    api,
 	}
 }
 
@@ -88,6 +95,14 @@ func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 	return bs.LoadBlockMeta(bs.base)
 }
 
+func (bs *BlockStore) IpfsAPI() iface.CoreAPI {
+	return bs.api
+}
+
+func (bs *BlockStore) SetIpfsAPI(api iface.CoreAPI) {
+	bs.api = api
+}
+
 // LoadBlock returns the block with the given height.
 // If no block is found for that height, it returns nil.
 func (bs *BlockStore) LoadBlock(height int64) *types.Block {
@@ -96,27 +111,29 @@ func (bs *BlockStore) LoadBlock(height int64) *types.Block {
 		return nil
 	}
 
-	pbb := new(tmproto.Block)
-	buf := []byte{}
-	for i := 0; i < int(blockMeta.BlockID.PartSetHeader.Total); i++ {
-		part := bs.LoadBlockPart(height, i)
-		// If the part is missing (e.g. since it has been deleted after we
-		// loaded the block meta) we consider the whole block to be missing.
-		if part == nil {
-			return nil
-		}
-		buf = append(buf, part.Bytes...)
-	}
-	err := proto.Unmarshal(buf, pbb)
-	if err != nil {
-		// NOTE: The existence of meta should imply the existence of the
-		// block. So, make sure meta is only saved after blocks are saved.
-		panic(fmt.Sprintf("Error reading block: %v", err))
+	// if there's no data availability header, then the block data cannot be retrieved.
+	if blockMeta.BlockID.DataAvailabilityHeader == nil {
+		return nil
 	}
 
-	block, err := types.BlockFromProto(pbb)
+	// todo: don't hardcode this timeout (there does need to be *a* timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	defer cancel()
+	blockData, err := ipld.RetrieveBlockData(ctx, blockMeta.BlockID.DataAvailabilityHeader, bs.api, rsmt2d.NewRSGF8Codec())
 	if err != nil {
-		panic(fmt.Errorf("error from proto block: %w", err))
+		return nil
+	}
+
+	commit := bs.LoadSeenCommit(height)
+	if commit == nil {
+		return nil
+	}
+
+	block := &types.Block{
+		Header:                 blockMeta.Header,
+		DataAvailabilityHeader: *blockMeta.BlockID.DataAvailabilityHeader,
+		Data:                   blockData,
+		LastCommit:             commit,
 	}
 
 	return block
@@ -135,6 +152,7 @@ func (bs *BlockStore) LoadBlockByHash(hash []byte) *types.Block {
 	}
 
 	s := string(bz)
+
 	height, err := strconv.ParseInt(s, 10, 64)
 
 	if err != nil {

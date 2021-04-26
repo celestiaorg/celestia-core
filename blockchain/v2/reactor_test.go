@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"net"
@@ -27,6 +28,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/proxy"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/store"
+	"github.com/lazyledger/lazyledger-core/test/mockipfs"
 	"github.com/lazyledger/lazyledger-core/types"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
@@ -515,7 +517,8 @@ func newReactorStore(
 	}
 
 	stateDB := memdb.NewDB()
-	blockStore := store.NewBlockStore(memdb.NewDB())
+	ipfsAPI := mockipfs.MockedIpfsAPI()
+	blockStore := store.NewBlockStore(memdb.NewDB(), ipfsAPI)
 	stateStore := sm.NewStore(stateDB)
 	state, err := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 	if err != nil {
@@ -556,6 +559,11 @@ func newReactorStore(
 		}
 
 		thisBlock := makeBlock(blockHeight, state, lastCommit)
+
+		err = thisBlock.PutBlock(context.Background(), ipfsAPI.Dag())
+		if err != nil {
+			panic(err)
+		}
 
 		thisParts := thisBlock.MakePartSet(types.BlockPartSizeBytes)
 		blockID := types.BlockID{Hash: thisBlock.Hash(), PartSetHeader: thisParts.Header()}

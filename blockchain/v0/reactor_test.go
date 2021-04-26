@@ -1,6 +1,7 @@
 package v0
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"os"
@@ -11,6 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ipfs/go-ipfs/core/coreapi"
+	coremock "github.com/ipfs/go-ipfs/core/mock"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
@@ -71,7 +75,8 @@ func newBlockchainReactor(
 	blockDB := memdb.NewDB()
 	stateDB := memdb.NewDB()
 	stateStore := sm.NewStore(stateDB)
-	blockStore := store.NewBlockStore(blockDB)
+	ipfsAPI := mockedIpfsAPI()
+	blockStore := store.NewBlockStore(blockDB, ipfsAPI)
 
 	state, err := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 	if err != nil {
@@ -100,7 +105,6 @@ func newBlockchainReactor(
 		if blockHeight > 1 {
 			lastBlockMeta := blockStore.LoadBlockMeta(blockHeight - 1)
 			lastBlock := blockStore.LoadBlock(blockHeight - 1)
-
 			vote, err := types.MakeVote(
 				lastBlock.Header.Height,
 				lastBlockMeta.BlockID,
@@ -118,8 +122,13 @@ func newBlockchainReactor(
 
 		thisBlock := makeBlock(blockHeight, state, lastCommit)
 
+		err = thisBlock.PutBlock(context.Background(), ipfsAPI.Dag())
+		if err != nil {
+			panic(err)
+		}
+
 		thisParts := thisBlock.MakePartSet(types.BlockPartSizeBytes)
-		blockID := types.BlockID{Hash: thisBlock.Hash(), PartSetHeader: thisParts.Header()}
+		blockID := types.BlockID{Hash: thisBlock.Hash(), PartSetHeader: thisParts.Header(), DataAvailabilityHeader: &thisBlock.DataAvailabilityHeader}
 
 		state, _, err = blockExec.ApplyBlock(state, blockID, thisBlock)
 		if err != nil {
@@ -330,4 +339,19 @@ func (app *testApp) Commit() abci.ResponseCommit {
 
 func (app *testApp) Query(reqQuery abci.RequestQuery) (resQuery abci.ResponseQuery) {
 	return
+}
+
+func mockedIpfsAPI() iface.CoreAPI {
+	ipfsNode, err := coremock.NewMockNode()
+	if err != nil {
+		panic(err)
+	}
+
+	// issue a new API object
+	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	if err != nil {
+		panic(err)
+	}
+
+	return ipfsAPI
 }
