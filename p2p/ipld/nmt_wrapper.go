@@ -57,7 +57,7 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex)
 	if idx.Axis+1 > uint(w.squareSize) || idx.Cell+1 > uint(w.squareSize) {
 		copy(nsID, types.ParitySharesNamespaceID)
 	} else {
-		if bytes.Equal(data[:types.NamespaceSize], nsID){
+		if bytes.Equal(data[:types.NamespaceSize], nsID) {
 			copy(nsID, types.TailPaddingNamespaceID)
 		} else {
 			copy(nsID, data[:types.NamespaceSize])
