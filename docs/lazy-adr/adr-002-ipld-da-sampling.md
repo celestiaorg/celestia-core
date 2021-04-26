@@ -157,7 +157,7 @@ func RetrieveBlockData(
     ctx contex.Context, 
     dah *DataAvailabilityHeader,
     api coreiface.CoreAPI,
-	codec rsmt2d.Codec,
+    codec rsmt2d.Codec,
     ) (types.Data, error) {/* ... */}
 
 // PutBlock operates directly on the Block.
