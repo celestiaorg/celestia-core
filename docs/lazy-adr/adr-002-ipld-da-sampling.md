@@ -146,14 +146,19 @@ func ValidateAvailability(
     ctx contex.Context,
     dah *DataAvailabilityHeader,
     numSamples int,
-    leafSucessCb func(namespacedleaf []byte),
+    onLeafValidity func(namespace.PrefixedData8),
 ) error { /* ... */}
 
 // RetrieveBlockData can be used to recover the block Data.
 // It will carry out a similar protocol as described for ValidateAvailability.
 // The key difference is that it will sample enough chunks until it can recover the
 // full extended data square, including original data (e.g. by using rsmt2d.RepairExtendedDataSquare).
-func RetrieveBlockData(ctx contex.Context, dah *DataAvailabilityHeader) (types.Data, error) {/* ... */}
+func RetrieveBlockData(
+    ctx contex.Context, 
+    dah *DataAvailabilityHeader,
+    api coreiface.CoreAPI,
+	codec rsmt2d.Codec,
+    ) (types.Data, error) {/* ... */}
 
 // PutBlock operates directly on the Block.
 // It first computes the erasure coding, aka the extended data square.
@@ -184,6 +189,7 @@ func GetLeafData(
     rootCid cid.Cid,
     leafIndex uint32,
     totalLeafs uint32, // this corresponds to the extended square width
+    api coreiface.CoreAPI,
 ) ([]byte, error)
 ```
 
