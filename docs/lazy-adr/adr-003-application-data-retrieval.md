@@ -9,10 +9,9 @@
 The academic Lazyledger [paper](https://arxiv.org/abs/1905.09274) describes the motivation and context for this API.
 The main motivation can be quoted from section 3.3 of that paper:
 
-> **Application message retrieval partitioning.** Client nodes must be able to download all of the messages relevant to the applications they use [...], without needing to downloading any messages for other applications.
+> (Property1) **Application message retrieval partitioning.** Client nodes must be able to download all of the messages relevant to the applications they use [...], without needing to downloading any messages for other applications.
 
-> **Application message retrieval completeness.** When client nodes download messages relevant to the applications they use [...]
-nodes, they must be able to verify that the messages they received are the complete set of messages relevant to their applications, for specific
+> (Property2) **Application message retrieval completeness.** When client nodes download messages relevant to the applications they use [...], they must be able to verify that the messages they received are the complete set of messages relevant to their applications, for specific
 blocks, and that there are no omitted messages.
 
 
@@ -39,10 +38,19 @@ We briefly mention potential optimizations for the future here:
 
 ## Decision
 
-> This section records the decision that was made.
-> It is best to record as much info as possible from the discussion that happened. This aids in not having to go back to the Pull Request to get the needed information.
+Most discussions on this particular API happened either on calls or on other non-documented way.
+We only describe the decision in this section.
+
+We decide to implement the simplest approach first.
+We informally describe the protocol informally here first and explain why this fulfils Property1 and Property2 in the [Context](#context) section above.
+
+In the case that leaves with the requested namespace exist, this basically boils down to the following: traverse the tree starting from the root until finding first leaf (start) with the namespace in question, then directly request and download all leaves coming after the start until the namespace changes to a greater than the requested one again.
+In the case that no leaves with the requested namespace exist in the tree, we traverse the tree to find the leaf in the position in the tree where the namespace would have been and download the neighbouring leaves.
+
+This is pretty much what the [`ProveNamespace`](https://github.com/lazyledger/nmt/blob/ddcc72040149c115f83b2199eafabf3127ae12ac/nmt.go#L132-L146) method does but using IPFS we can simply locate and then request the leaves, and the corresponding inner proof nodes will automatically be downloaded on the way, too.
 
 ## Detailed Design
+
 
 > This section does not need to be filled in at the start of the ADR, but must be completed prior to the merging of the implementation.
 >
