@@ -52,8 +52,8 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex)
 		panic("pushed past predetermined square size")
 	}
 
-	// use the parity namespace if the cell is not in Q0 of the extended
-	// datasquare
+	// use the parity namespace if the cell is not in Q0 of the extended datasquare
+	// if the cell is empty it means we got an empty block so we need to use TailPaddingNamespaceID
 	if idx.Axis+1 > uint(w.squareSize) || idx.Cell+1 > uint(w.squareSize) {
 		copy(nsID, types.ParitySharesNamespaceID)
 	} else {
