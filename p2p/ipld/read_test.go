@@ -229,6 +229,7 @@ func TestRetrieveBlockData(t *testing.T) {
 	adjustedMsgSize := types.MsgShareSize - 2
 
 	tests := []test{
+		{"Empty block", 1, false, ""},
 		{"4 KB block", 4, false, ""},
 		{"16 KB block", 8, false, ""},
 		{"16 KB block timeout expected", 8, true, "timeout"},
@@ -391,6 +392,9 @@ func rootsToDigests(roots [][]byte) []namespace.IntervalDigest {
 
 func generateRandomBlockData(msgCount, msgSize int) types.Data {
 	var out types.Data
+	if msgCount == 1 {
+		return out
+	}
 	out.Messages = generateRandomMessages(msgCount-1, msgSize)
 	out.Txs = generateRandomContiguousShares(1)
 	return out
