@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -21,7 +22,7 @@ const (
 )
 
 type blockStore interface {
-	LoadBlock(height int64) *types.Block
+	LoadBlock(ctx context.Context, height int64) (*types.Block, error)
 	SaveBlock(*types.Block, *types.PartSet, *types.Commit)
 	Base() int64
 	Height() int64
@@ -488,7 +489,10 @@ func (r *BlockchainReactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 		}
 
 	case *bcproto.BlockRequest:
-		block := r.store.LoadBlock(msg.Height)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+		defer cancel()
+		block, err := r.store.LoadBlock(ctx, msg.Height)
+
 		if block != nil {
 			if err = r.io.sendBlockToPeer(block, src); err != nil {
 				logger.Error("Could not send block message to src peer", "err", err)

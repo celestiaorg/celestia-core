@@ -178,7 +178,10 @@ func (bcR *BlockchainReactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 func (bcR *BlockchainReactor) respondToPeer(msg *bcproto.BlockRequest,
 	src p2p.Peer) (queued bool) {
 
-	block := bcR.store.LoadBlock(msg.Height)
+	block, err := bcR.store.LoadBlock(nil, msg.Height)
+	if err != nil {
+		return false
+	}
 	if block != nil {
 		bl, err := block.ToProto()
 		if err != nil {

@@ -103,30 +103,34 @@ func (bs *BlockStore) SetIpfsAPI(api iface.CoreAPI) {
 	bs.api = api
 }
 
-// LoadBlock returns the block with the given height.
-// If no block is found for that height, it returns nil.
-func (bs *BlockStore) LoadBlock(height int64) *types.Block {
+// LoadBlock returns the block with the given height. If a nil context is used,
+// a context with a 10 second timeout is provided.
+func (bs *BlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block, error) {
+	// provide some context if not provided already
+	if ctx == nil {
+		cctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+		ctx = cctx
+	}
+
 	var blockMeta = bs.LoadBlockMeta(height)
 	if blockMeta == nil {
-		return nil
+		return nil, fmt.Errorf("block at height %d not found", height)
 	}
 
 	// if there's no data availability header, then the block data cannot be retrieved.
-	if blockMeta.BlockID.DataAvailabilityHeader == nil {
-		return nil
+	if blockMeta.BlockID.DataAvailabilityHeader.IsZero() {
+		return nil, fmt.Errorf("data availability header is zero")
 	}
 
-	// todo: don't hardcode this timeout (there does need to be *a* timeout)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
-	defer cancel()
 	blockData, err := ipld.RetrieveBlockData(ctx, blockMeta.BlockID.DataAvailabilityHeader, bs.api, rsmt2d.NewRSGF8Codec())
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("failuring retrieve block data from ipfs: %w", err)
 	}
 
 	commit := bs.LoadSeenCommit(height)
 	if commit == nil {
-		return nil
+		return nil, fmt.Errorf("no commit found for block at height %d", height)
 	}
 
 	block := &types.Block{
@@ -136,19 +140,19 @@ func (bs *BlockStore) LoadBlock(height int64) *types.Block {
 		LastCommit:             commit,
 	}
 
-	return block
+	return block, nil
 }
 
 // LoadBlockByHash returns the block with the given hash.
 // If no block is found for that hash, it returns nil.
 // Panics if it fails to parse height associated with the given hash.
-func (bs *BlockStore) LoadBlockByHash(hash []byte) *types.Block {
+func (bs *BlockStore) LoadBlockByHash(ctx context.Context, hash []byte) (*types.Block, error) {
 	bz, err := bs.db.Get(calcBlockHashKey(hash))
 	if err != nil {
 		panic(err)
 	}
 	if len(bz) == 0 {
-		return nil
+		return nil, fmt.Errorf("failure to load block: hash not found %s", hash)
 	}
 
 	s := string(bz)
@@ -158,7 +162,7 @@ func (bs *BlockStore) LoadBlockByHash(hash []byte) *types.Block {
 	if err != nil {
 		panic(fmt.Sprintf("failed to extract height from %s: %v", s, err))
 	}
-	return bs.LoadBlock(height)
+	return bs.LoadBlock(ctx, height)
 }
 
 // LoadBlockPart returns the Part at the given index

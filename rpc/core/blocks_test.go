@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -119,13 +120,17 @@ type mockBlockStore struct {
 	height int64
 }
 
-func (mockBlockStore) Base() int64                                       { return 1 }
-func (store mockBlockStore) Height() int64                               { return store.height }
-func (store mockBlockStore) Size() int64                                 { return store.height }
-func (mockBlockStore) LoadBaseMeta() *types.BlockMeta                    { return nil }
-func (mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta       { return nil }
-func (mockBlockStore) LoadBlock(height int64) *types.Block               { return nil }
-func (mockBlockStore) LoadBlockByHash(hash []byte) *types.Block          { return nil }
+func (mockBlockStore) Base() int64                                 { return 1 }
+func (store mockBlockStore) Height() int64                         { return store.height }
+func (store mockBlockStore) Size() int64                           { return store.height }
+func (mockBlockStore) LoadBaseMeta() *types.BlockMeta              { return nil }
+func (mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta { return nil }
+func (mockBlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block, error) {
+	return nil, nil
+}
+func (mockBlockStore) LoadBlockByHash(ctx context.Context, hash []byte) (*types.Block, error) {
+	return nil, nil
+}
 func (mockBlockStore) LoadBlockPart(height int64, index int) *types.Part { return nil }
 func (mockBlockStore) LoadBlockCommit(height int64) *types.Commit        { return nil }
 func (mockBlockStore) LoadSeenCommit(height int64) *types.Commit         { return nil }
