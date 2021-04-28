@@ -133,7 +133,5 @@ We should document it properly and move it together with relevant parts from ADR
 
 ## References
 
-> Are there any relevant PR comments, issues that led up to this, or articles referenced for why we made the given design choice? If so link them here!
-
 - [ADR 002](./adr-002-ipld-da-sampling.md)
 - IPLD selectors: https://github.com/ipld/specs/blob/5d3a3485c5fe2863d613cd9d6e18f96e5e568d16/selectors/selectors.md
