@@ -52,28 +52,29 @@ This is pretty much what the [`ProveNamespace`](https://github.com/lazyledger/nm
 ## Detailed Design
 
 We define one function that returns all shares of a block belonging to a requested namespace and block (via the block's data availability header).
+See [`ComputeShares`](https://github.com/lazyledger/lazyledger-core/blob/1a08b430a8885654b6e020ac588b1080e999170c/types/block.go#L1371) for reference how encode the block data into namespace shares.
 
 ```go
 // RetrieveShares returns all raw data (raw shares) of the passed-in
-// namespace ID and included in the block with the DataAvailabilityHeader dah.
+// namespace ID nID and included in the block with the DataAvailabilityHeader dah.
 func RetrieveShares(
-ctx context.Context,
-nID namespace.ID, // the Namespace ID we are requesting data for
-dah *types.DataAvailabilityHeader,
-api coreiface.CoreAPI,
+    ctx context.Context,
+    nID namespace.ID,
+    dah *types.DataAvailabilityHeader,
+    api coreiface.CoreAPI,
 ) ([]byte, error) {
-	// 1. Find the row root(s) that contains the namespace ID nID
-	// 2. Traverse the corresponding tree(s) according to the
-	//    above informally described algorithm and get the corresponding
-	//    leaves (if any)
-	// 3. Return all (raw) shares corresponding to the nID
+    // 1. Find the row root(s) that contains the namespace ID nID
+    // 2. Traverse the corresponding tree(s) according to the
+    //    above informally described algorithm and get the corresponding
+    //    leaves (if any)
+    // 3. Return all (raw) shares corresponding to the nID
 }
 
 ```
 
 Additionally, we define two functions that use the first one above to:
-1. return all the parsed (non-padding) data with [reserved namespace IDs](https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/consensus.md#reserved-namespace-ids): transactions, intermediate state roots, evidence
-2. return all application specific blobs belonging to one namespace ID parsed as a slice of [Messages](https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#message)
+1. return all the parsed (non-padding) data with [reserved namespace IDs](https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/consensus.md#reserved-namespace-ids): transactions, intermediate state roots, evidence.
+2. return all application specific blobs (shares) belonging to one namespace ID parsed as a slice of Messages ([specification](https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#message) and [code](https://github.com/lazyledger/lazyledger-core/blob/1a08b430a8885654b6e020ac588b1080e999170c/types/block.go#L1336)).
 
 The latter two methods might require moving or exporting a few currently unexported functions that (currently) live in [share_merging.go](https://github.com/lazyledger/lazyledger-core/blob/1a08b430a8885654b6e020ac588b1080e999170c/types/share_merging.go#L57-L76) and could be implemented in a separate pull request.
 
@@ -82,27 +83,27 @@ The latter two methods might require moving or exporting a few currently unexpor
 // (transactions, intermediate state roots, and evidence) included in a block
 // with the DataAvailabilityHeader dah.
 func RetrieveStateRelevantMessages(
-ctx context.Context,
-nID namespace.ID,
-dah *types.DataAvailabilityHeader,
-api coreiface.CoreAPI,
+    ctx context.Context,
+    nID namespace.ID,
+    dah *types.DataAvailabilityHeader,
+    api coreiface.CoreAPI,
 ) (Txs, IntermediateStateRoots, Evidence, error) {
-	// like RetrieveShares but for all reserved namespaces
-	// additionally the shares are parsed (merged) into the
-	// corresponding types in the return arguments
+    // like RetrieveShares but for all reserved namespaces
+    // additionally the shares are parsed (merged) into the
+    // corresponding types in the return arguments
 }
 ```
 
 ```go
-// RetrieveStateMessages returns all Messages of the passed-in
+// RetrieveMessages returns all Messages of the passed-in
 // namespace ID and included in the block with the DataAvailabilityHeader dah.
 func RetrieveMessages(
-ctx context.Context,
-dah *types.DataAvailabilityHeader,
-api coreiface.CoreAPI,
+    ctx context.Context,
+    dah *types.DataAvailabilityHeader,
+    api coreiface.CoreAPI,
 ) (Messages, error) {
-	// like RetrieveShares but this additionally parsed the shares
-	// into the Messages type
+    // like RetrieveShares but this additionally parsed the shares
+    // into the Messages type
 }
 ```
 
@@ -120,7 +121,6 @@ We should document it properly and move it together with relevant parts from ADR
 - easy to implement with the existing code (see [ADR 002](https://github.com/lazyledger/lazyledger-core/blob/47d6c965704e102ae877b2f4e10aeab782d9c648/docs/lazy-adr/adr-002-ipld-da-sampling.md#detailed-design))
 - resilient data retrieval via a p2p network
 - dependence on a mature and well-tested code-base with a large and welcoming community
--
 
 ### Negative
 
