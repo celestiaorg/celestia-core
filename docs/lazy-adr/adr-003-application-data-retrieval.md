@@ -51,36 +51,60 @@ This is pretty much what the [`ProveNamespace`](https://github.com/lazyledger/nm
 
 ## Detailed Design
 
+We define one function that returns all shares of a block belonging to a requested namespace and block (via the block's data availability header).
 
-> This section does not need to be filled in at the start of the ADR, but must be completed prior to the merging of the implementation.
->
-> Here are some common questions that get answered as part of the detailed design:
->
-> - What are the user requirements?
->
-> - What systems will be affected?
->
-> - What new data structures are needed, what data structures will be changed?
->
-> - What new APIs will be needed, what APIs will be changed?
->
-> - What are the efficiency considerations (time/space)?
->
-> - What are the expected access patterns (load/throughput)?
->
-> - Are there any logging, monitoring or observability needs?
->
-> - Are there any security considerations?
->
-> - Are there any privacy considerations?
->
-> - How will the changes be tested?
->
-> - If the change is large, how will the changes be broken up for ease of review?
->
-> - Will these changes require a breaking (major) release?
->
-> - Does this change require coordination with the LazyLedger fork of the SDK or lazyledger-app?
+```go
+// RetrieveShares returns all raw data (raw shares) of the passed-in
+// namespace ID and included in the block with the DataAvailabilityHeader dah.
+func RetrieveShares(
+ctx context.Context,
+nID namespace.ID, // the Namespace ID we are requesting data for
+dah *types.DataAvailabilityHeader,
+api coreiface.CoreAPI,
+) ([]byte, error) {
+	// 1. Find the row root(s) that contains the namespace ID nID
+	// 2. Traverse the corresponding tree(s) according to the
+	//    above informally described algorithm and get the corresponding
+	//    leaves (if any)
+	// 3. Return all (raw) shares corresponding to the nID
+}
+
+```
+
+Additionally, we define two functions that use the first one above to:
+1. return all the parsed (non-padding) data with [reserved namespace IDs](https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/consensus.md#reserved-namespace-ids): transactions, intermediate state roots, evidence
+2. return all application specific blobs belonging to one namespace ID parsed as a slice of [Messages](https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#message)
+
+The latter two methods might require moving or exporting a few currently unexported functions that (currently) live in [share_merging.go](https://github.com/lazyledger/lazyledger-core/blob/1a08b430a8885654b6e020ac588b1080e999170c/types/share_merging.go#L57-L76) and could be implemented in a separate pull request.
+
+```go
+// RetrieveStateRelevantMessages returns all state-relevant transactions
+// (transactions, intermediate state roots, and evidence) included in a block
+// with the DataAvailabilityHeader dah.
+func RetrieveStateRelevantMessages(
+ctx context.Context,
+nID namespace.ID,
+dah *types.DataAvailabilityHeader,
+api coreiface.CoreAPI,
+) (Txs, IntermediateStateRoots, Evidence, error) {
+	// like RetrieveShares but for all reserved namespaces
+	// additionally the shares are parsed (merged) into the
+	// corresponding types in the return arguments
+}
+```
+
+```go
+// RetrieveStateMessages returns all Messages of the passed-in
+// namespace ID and included in the block with the DataAvailabilityHeader dah.
+func RetrieveMessages(
+ctx context.Context,
+dah *types.DataAvailabilityHeader,
+api coreiface.CoreAPI,
+) (Messages, error) {
+	// like RetrieveShares but this additionally parsed the shares
+	// into the Messages type
+}
+```
 
 ## Status
 
@@ -88,7 +112,8 @@ Proposed
 
 ## Consequences
 
-> This section describes the consequences, after applying the decision. All consequences should be summarized here, not just the "positive" ones.
+This API will most likely be used by Rollups too.
+We should document it properly and move it together with relevant parts from ADR 002 into a separate go-package.
 
 ### Positive
 
@@ -99,8 +124,8 @@ Proposed
 
 ### Negative
 
-- with IPFS, we inherit the fact that potentially a lot of round-trips are done until the data is fully downloaded
-- in other words: this could end up way slower than potentially possible
+- with IPFS, we inherit the fact that potentially a lot of round-trips are done until the data is fully downloaded; in other words: this could end up way slower than potentially possible
+- anyone interacting with that API needs to run an IPFS node
 
 ### Neutral
 
@@ -110,4 +135,5 @@ Proposed
 
 > Are there any relevant PR comments, issues that led up to this, or articles referenced for why we made the given design choice? If so link them here!
 
+- [ADR 002](./adr-002-ipld-da-sampling.md)
 - IPLD selectors: https://github.com/ipld/specs/blob/5d3a3485c5fe2863d613cd9d6e18f96e5e568d16/selectors/selectors.md
