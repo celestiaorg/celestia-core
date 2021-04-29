@@ -42,7 +42,7 @@ Most discussions on this particular API happened either on calls or on other non
 We only describe the decision in this section.
 
 We decide to implement the simplest approach first.
-We informally describe the protocol informally here first and explain why this fulfils Property1 and Property2 in the [Context](#context) section above.
+We first describe the protocol informally here and explain why this fulfils (Property1) and (Property2) in the [Context](#context) section above.
 
 In the case that leaves with the requested namespace exist, this basically boils down to the following: traverse the tree starting from the root until finding first leaf (start) with the namespace in question, then directly request and download all leaves coming after the start until the namespace changes to a greater than the requested one again.
 In the case that no leaves with the requested namespace exist in the tree, we traverse the tree to find the leaf in the position in the tree where the namespace would have been and download the neighbouring leaves.
