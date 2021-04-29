@@ -205,8 +205,7 @@ func TestStateBadProposal(t *testing.T) {
 	stateHash[0] = (stateHash[0] + 1) % 255
 	propBlock.AppHash = stateHash
 	propBlockParts := propBlock.MakePartSet(partSize)
-	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
-	proposal := types.NewProposal(vs2.Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal := propBlock.MakeProposal(vs2.Height, round, -1)
 	p, err := proposal.ToProto()
 	require.NoError(t, err)
 	if err := vs2.SignProposal(config.ChainID(), p); err != nil {
@@ -224,7 +223,7 @@ func TestStateBadProposal(t *testing.T) {
 	startTestRound(cs1, height, round)
 
 	// wait for proposal
-	ensureProposal(proposalCh, height, round, blockID)
+	ensureProposal(proposalCh, height, round, proposal.BlockID)
 
 	// wait for prevote
 	ensurePrevote(voteCh, height, round)
@@ -260,8 +259,7 @@ func TestStateOversizedBlock(t *testing.T) {
 	incrementRound(vss[1:]...)
 
 	propBlockParts := propBlock.MakePartSet(partSize)
-	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
-	proposal := types.NewProposal(height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal := propBlock.MakeProposal(height, round, -1)
 	p, err := proposal.ToProto()
 	require.NoError(t, err)
 	if err := vs2.SignProposal(config.ChainID(), p); err != nil {
@@ -1042,7 +1040,6 @@ func TestStateLockPOLSafety2(t *testing.T) {
 	_, propBlock0 := decideProposal(cs1, vss[0], height, round)
 	propBlockHash0 := propBlock0.Hash()
 	propBlockParts0 := propBlock0.MakePartSet(partSize)
-	propBlockID0 := types.BlockID{Hash: propBlockHash0, PartSetHeader: propBlockParts0.Header()}
 
 	// the others sign a polka but we don't see it
 	prevotes := signVotes(tmproto.PrevoteType, propBlockHash0, propBlockParts0.Header(), vs2, vs3, vs4)
@@ -1085,7 +1082,7 @@ func TestStateLockPOLSafety2(t *testing.T) {
 
 	round++ // moving to the next round
 	// in round 2 we see the polkad block from round 0
-	newProp := types.NewProposal(height, round, 0, propBlockID0, &propBlock0.DataAvailabilityHeader)
+	newProp := propBlock0.MakeProposal(height, round, 0)
 	p, err := newProp.ToProto()
 	require.NoError(t, err)
 	if err := vs3.SignProposal(config.ChainID(), p); err != nil {

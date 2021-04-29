@@ -191,8 +191,7 @@ func decideProposal(
 	round int32,
 ) (proposal *types.Proposal, block *types.Block) {
 	cs1.mtx.Lock()
-	block, blockParts := cs1.createProposalBlock()
-	validRound := cs1.ValidRound
+	block, _ = cs1.createProposalBlock()
 	chainID := cs1.state.ChainID
 	cs1.mtx.Unlock()
 	if block == nil {
@@ -200,8 +199,7 @@ func decideProposal(
 	}
 
 	// Make proposal
-	polRound, propBlockID := validRound, types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal = types.NewProposal(height, round, polRound, propBlockID, &block.DataAvailabilityHeader)
+	proposal = block.MakeProposal(height, round, cs1.ValidRound)
 	p, err := proposal.ToProto()
 	if err != nil {
 		panic(err)

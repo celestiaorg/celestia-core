@@ -1086,8 +1086,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	}
 
 	// Make proposal
-	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID, &block.DataAvailabilityHeader)
+	proposal := block.MakeProposal(height, round, cs.ValidRound)
 	p, err := proposal.ToProto()
 	if err != nil {
 		cs.Logger.Error(fmt.Sprintf("can't serialize proposal: %s", err.Error()))

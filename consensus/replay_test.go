@@ -366,9 +366,8 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ := css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts := propBlock.MakePartSet(partSize)
-	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
-	proposal := types.NewProposal(vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal := propBlock.MakeProposal(vss[1].Height, round, -1)
 	p, err := proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[1].SignProposal(config.ChainID(), p); err != nil {
@@ -397,9 +396,8 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts = propBlock.MakePartSet(partSize)
-	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
-	proposal = types.NewProposal(vss[2].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal = propBlock.MakeProposal(vss[2].Height, round, -1)
 	p, err = proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[2].SignProposal(config.ChainID(), p); err != nil {
@@ -435,7 +433,6 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts = propBlock.MakePartSet(partSize)
-	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 	newVss := make([]*validatorStub, nVals+1)
 	copy(newVss, vss[:nVals+1])
 	sort.Sort(ValidatorStubsByPower(newVss))
@@ -457,7 +454,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 
 	selfIndex := valIndexFn(0)
 
-	proposal = types.NewProposal(vss[3].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal = propBlock.MakeProposal(vss[3].Height, round, -1,)
 	p, err = proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[3].SignProposal(config.ChainID(), p); err != nil {
@@ -511,13 +508,12 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts = propBlock.MakePartSet(partSize)
-	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 	newVss = make([]*validatorStub, nVals+3)
 	copy(newVss, vss[:nVals+3])
 	sort.Sort(ValidatorStubsByPower(newVss))
 
 	selfIndex = valIndexFn(0)
-	proposal = types.NewProposal(vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal = propBlock.MakeProposal(vss[1].Height, round, -1)
 	p, err = proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[1].SignProposal(config.ChainID(), p); err != nil {

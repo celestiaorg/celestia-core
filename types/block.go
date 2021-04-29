@@ -427,6 +427,22 @@ func (b *Block) MakePartSet(partSize uint32) *PartSet {
 	return NewPartSetFromData(bz, partSize)
 }
 
+// MakeProposal creates new Proposal for the Block
+func (b *Block) MakeProposal(height int64, round, polRound int32) *Proposal {
+	id := BlockID{Hash: b.Hash(), PartSetHeader: b.MakePartSet(BlockPartSizeBytes).Header()}
+	return NewProposal(
+		height,
+		round,
+		polRound,
+		id,
+		&b.DataAvailabilityHeader,
+		b.AppHash,
+		b.LastCommitHash,
+		b.ConsensusHash,
+		b.NumOriginalDataShares,
+	)
+}
+
 // HashesTo is a convenience function that checks if a block hashes to the given argument.
 // Returns false if the block is nil or the hash is empty.
 func (b *Block) HashesTo(hash []byte) bool {

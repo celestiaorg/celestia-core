@@ -25,25 +25,47 @@ var (
 type Proposal struct {
 	Type      tmproto.SignedMsgType
 	Height    int64                   `json:"height"`
-	Round     int32                   `json:"round"`     // there can not be greater than 2_147_483_647 rounds
+	Round     int32                   `json:"round"`     // no more than 2_147_483_647 rounds
 	POLRound  int32                   `json:"pol_round"` // -1 if null.
 	BlockID   BlockID                 `json:"block_id"`
 	Timestamp time.Time               `json:"timestamp"`
 	Signature []byte                  `json:"signature"`
 	DAHeader  *DataAvailabilityHeader `json:"da_header"`
+	// state after txs from the previous Block #specs:ConsensusProposal.state_commitment
+	AppHash tmbytes.HexBytes `json:"app_hash"`
+	// commit from validators from the last Block #specs:ConsensusProposal.last_commit_hash
+	LastCommitHash tmbytes.HexBytes `json:"last_commit_hash"`
+	// consensus params for current Block #specs:ConsensusProposal.consensus_root
+	ConsensusHash tmbytes.HexBytes `json:"consensus_hash"`
+	// amount of data shares within a Block #specs:ConsensusProposal.available_data_original_shares_used
+	NumOriginalDataShares uint64 `json:"data_shares"`
 }
 
 // NewProposal returns a new Proposal.
 // If there is no POLRound, polRound should be -1.
-func NewProposal(height int64, round int32, polRound int32, blockID BlockID, daH *DataAvailabilityHeader) *Proposal {
+func NewProposal(
+	height int64,
+	round int32,
+	polRound int32,
+	blockID BlockID,
+	daH *DataAvailabilityHeader,
+	appHash tmbytes.HexBytes,
+	commHash tmbytes.HexBytes,
+	consHash tmbytes.HexBytes,
+	numShares uint64,
+) *Proposal {
 	return &Proposal{
-		Type:      tmproto.ProposalType,
-		Height:    height,
-		Round:     round,
-		BlockID:   blockID,
-		POLRound:  polRound,
-		Timestamp: tmtime.Now(),
-		DAHeader:  daH,
+		Type:                  tmproto.ProposalType,
+		Height:                height,
+		Round:                 round,
+		BlockID:               blockID,
+		POLRound:              polRound,
+		Timestamp:             tmtime.Now(),
+		DAHeader:              daH,
+		AppHash:               appHash,
+		LastCommitHash:        commHash,
+		ConsensusHash:         consHash,
+		NumOriginalDataShares: numShares,
 	}
 }
 
@@ -77,6 +99,18 @@ func (p *Proposal) ValidateBasic() error {
 
 	if len(p.Signature) > MaxSignatureSize {
 		return fmt.Errorf("signature is too big (max: %d)", MaxSignatureSize)
+	}
+	if err := ValidateHash(p.AppHash); err != nil {
+		return fmt.Errorf("wrong AppHash: %v", err)
+	}
+	if err := ValidateHash(p.LastCommitHash); err != nil {
+		return fmt.Errorf("wrong LastCommitHash: %v", err)
+	}
+	if err := ValidateHash(p.ConsensusHash); err != nil {
+		return fmt.Errorf("wrong ConsensusHash: %v", err)
+	}
+	if p.NumOriginalDataShares < minSharecount {
+		return fmt.Errorf("wrong NumOriginalDataShares: have %d, want >= %d", p.NumOriginalDataShares, minSharecount)
 	}
 	return nil
 }
@@ -140,6 +174,10 @@ func (p *Proposal) ToProto() (*tmproto.Proposal, error) {
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
 	pb.DAHeader = pdah
+	pb.AppHash = p.AppHash
+	pb.LastCommitHash = p.LastCommitHash
+	pb.ConsensusHash = p.ConsensusHash
+	pb.NumOriginalDataShares = p.NumOriginalDataShares
 	return pb, nil
 }
 
@@ -170,6 +208,9 @@ func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 	p.Timestamp = pp.Timestamp
 	p.Signature = pp.Signature
 	p.DAHeader = dah
-
+	p.AppHash = pp.AppHash
+	p.LastCommitHash = pp.LastCommitHash
+	p.ConsensusHash = pp.ConsensusHash
+	p.NumOriginalDataShares = pp.NumOriginalDataShares
 	return p, p.ValidateBasic()
 }
