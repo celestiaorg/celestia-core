@@ -454,7 +454,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 
 	selfIndex := valIndexFn(0)
 
-	proposal = propBlock.MakeProposal(vss[3].Height, round, -1,)
+	proposal = propBlock.MakeProposal(vss[3].Height, round, -1)
 	p, err = proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[3].SignProposal(config.ChainID(), p); err != nil {

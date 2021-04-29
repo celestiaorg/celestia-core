@@ -41,14 +41,18 @@ func CanonicalizePartSetHeader(psh tmproto.PartSetHeader) tmproto.CanonicalPartS
 // CanonicalizeVote transforms the given Proposal to a CanonicalProposal.
 func CanonicalizeProposal(chainID string, proposal *tmproto.Proposal) tmproto.CanonicalProposal {
 	return tmproto.CanonicalProposal{
-		Type:      tmproto.ProposalType,
-		Height:    proposal.Height,       // encoded as sfixed64
-		Round:     int64(proposal.Round), // encoded as sfixed64
-		POLRound:  int64(proposal.PolRound),
-		BlockID:   CanonicalizeBlockID(proposal.BlockID),
-		Timestamp: proposal.Timestamp,
-		ChainID:   chainID,
-		DAHeader:  proposal.DAHeader,
+		Type:                  tmproto.ProposalType,
+		Height:                proposal.Height,       // encoded as sfixed64
+		Round:                 int64(proposal.Round), // encoded as sfixed64
+		POLRound:              int64(proposal.PolRound),
+		BlockID:               CanonicalizeBlockID(proposal.BlockID),
+		Timestamp:             proposal.Timestamp,
+		ChainID:               chainID,
+		DAHeader:              proposal.DAHeader,
+		AppHash:               proposal.AppHash,
+		LastCommitHash:        proposal.LastCommitHash,
+		ConsensusHash:         proposal.ConsensusHash,
+		NumOriginalDataShares: proposal.NumOriginalDataShares,
 	}
 }
 

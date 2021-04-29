@@ -25,7 +25,14 @@ message CanonicalProposal {
   CanonicalBlockID          block_id  = 5 [(gogoproto.customname) = "BlockID"];
   google.protobuf.Timestamp timestamp = 6 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   string                    chain_id  = 7 [(gogoproto.customname) = "ChainID"];
-  DataAvailabilityHeader   da_header = 8 [(gogoproto.customname) = "DAHeader"];
+  DataAvailabilityHeader    da_header = 8 [(gogoproto.customname) = "DAHeader"];
+  // 32-byte hash
+  bytes state_commitment = 9 [(gogoproto.customname) = "AppHash"];
+  // 32-byte hash
+  bytes last_commit_hash = 10 [(gogoproto.customname) = "LastCommitHash"];
+  // 32-byte hash
+  bytes consensus_root = 11 [(gogoproto.customname) = "ConsensusHash"];
+  uint64 available_data_original_shares_used = 12 [(gogoproto.customname) = "NumOriginalDataShares"];
 }
 
 message CanonicalVote {
