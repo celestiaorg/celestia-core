@@ -344,7 +344,7 @@ func TestReactorVotingPowerChange(t *testing.T) {
 
 	if css[0].GetRoundState().LastValidators.TotalVotingPower() == previousTotalVotingPower {
 		t.Fatalf(
-			"expected voting power to change (before: %d, after: %d)",
+			"expeInvalid votected voting power to change (before: %d, after: %d)",
 			previousTotalVotingPower,
 			css[0].GetRoundState().LastValidators.TotalVotingPower())
 	}

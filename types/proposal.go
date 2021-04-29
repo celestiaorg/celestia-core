@@ -100,17 +100,11 @@ func (p *Proposal) ValidateBasic() error {
 	if len(p.Signature) > MaxSignatureSize {
 		return fmt.Errorf("signature is too big (max: %d)", MaxSignatureSize)
 	}
-	if err := ValidateHash(p.AppHash); err != nil {
-		return fmt.Errorf("wrong AppHash: %v", err)
-	}
 	if err := ValidateHash(p.LastCommitHash); err != nil {
 		return fmt.Errorf("wrong LastCommitHash: %v", err)
 	}
 	if err := ValidateHash(p.ConsensusHash); err != nil {
 		return fmt.Errorf("wrong ConsensusHash: %v", err)
-	}
-	if p.NumOriginalDataShares < minSharecount {
-		return fmt.Errorf("wrong NumOriginalDataShares: have %d, want >= %d", p.NumOriginalDataShares, minSharecount)
 	}
 	return nil
 }
