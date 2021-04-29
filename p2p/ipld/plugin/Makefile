@@ -22,7 +22,7 @@ endif
 
 .PHONY: install build
 
-lazyledger-plugin.so: plugin.go go.mod
+lazyledger-plugin.so: plugin.go
 	$(GOCC) build $(GOFLAGS) -buildmode=plugin -o "$@" "$<"
 	chmod +x "$@"
 

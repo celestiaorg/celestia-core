@@ -411,7 +411,7 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 	}
 
 	// commit the batch to ipfs
-	return batchAdder.Batch().Commit()
+	return batchAdder.Commit()
 }
 
 // flattenNamespacedEDS returns a flattend extendedDataSquare with namespaces

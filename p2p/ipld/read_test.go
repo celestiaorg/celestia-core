@@ -111,16 +111,7 @@ func TestGetLeafData(t *testing.T) {
 	data := generateRandNamespacedRawData(16, types.NamespaceSize, types.ShareSize)
 
 	// create a random tree
-	tree, err := createNmtTree(ctx, batch, data)
-	if err != nil {
-		t.Error(err)
-	}
-
-	// calculate the root
-	root := tree.Root()
-
-	// commit the data to IPFS
-	err = batch.Commit()
+	root, err := getNmtRoot(ctx, batch, data)
 	if err != nil {
 		t.Error(err)
 	}
@@ -238,7 +229,7 @@ func TestRetrieveBlockData(t *testing.T) {
 	adjustedMsgSize := types.MsgShareSize - 2
 
 	tests := []test{
-		{"empty", 0, false, ""},
+		{"Empty block", 1, false, ""},
 		{"4 KB block", 4, false, ""},
 		{"16 KB block", 8, false, ""},
 		{"16 KB block timeout expected", 8, true, "timeout"},
@@ -330,22 +321,22 @@ func flatten(eds *rsmt2d.ExtendedDataSquare) [][]byte {
 	return out
 }
 
-// nmtcommitment generates the nmt root of some namespaced data
-func createNmtTree(
+// getNmtRoot generates the nmt root of some namespaced data
+func getNmtRoot(
 	ctx context.Context,
 	batch *format.Batch,
 	namespacedData [][]byte,
-) (*nmt.NamespacedMerkleTree, error) {
+) (namespace.IntervalDigest, error) {
 	na := nodes.NewNmtNodeAdder(ctx, batch)
 	tree := nmt.New(sha256.New(), nmt.NamespaceIDSize(types.NamespaceSize), nmt.NodeVisitor(na.Visit))
 	for _, leaf := range namespacedData {
 		err := tree.Push(leaf)
 		if err != nil {
-			return tree, err
+			return namespace.IntervalDigest{}, err
 		}
 	}
 
-	return tree, nil
+	return tree.Root(), na.Commit()
 }
 
 // this code is copy pasted from the plugin, and should likely be exported in the plugin instead
@@ -406,7 +397,7 @@ func rootsToDigests(roots [][]byte) []namespace.IntervalDigest {
 
 func generateRandomBlockData(msgCount, msgSize int) types.Data {
 	var out types.Data
-	if msgCount < 1 {
+	if msgCount == 1 {
 		return out
 	}
 	out.Messages = generateRandomMessages(msgCount-1, msgSize)
