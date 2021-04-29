@@ -236,8 +236,8 @@ func TestNilHeaderHashDoesntCrash(t *testing.T) {
 }
 
 func TestNilDataAvailabilityHeaderHashDoesntCrash(t *testing.T) {
-	assert.Equal(t, emptyBytes, (*DataAvailabilityHeader)(nil).Hash())
-	assert.Equal(t, emptyBytes, new(DataAvailabilityHeader).Hash())
+	assert.Equal(t, MinDataAvailabilityHeader().Hash(), (*DataAvailabilityHeader)(nil).Hash())
+	assert.Equal(t, MinDataAvailabilityHeader().Hash(), new(DataAvailabilityHeader).Hash())
 }
 
 func TestEmptyBlockData(t *testing.T) {

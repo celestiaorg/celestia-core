@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" // nolint: gosec // securely exposed on separate, optional port
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -17,11 +18,14 @@ import (
 	"github.com/ipfs/go-ipfs/core/node/libp2p"
 	"github.com/ipfs/go-ipfs/plugin/loader"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
+	"github.com/ipfs/interface-go-ipfs-core/options"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 
+	ipfscfg "github.com/ipfs/go-ipfs-config"
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	bcv0 "github.com/lazyledger/lazyledger-core/blockchain/v0"
 	bcv2 "github.com/lazyledger/lazyledger-core/blockchain/v2"
@@ -236,7 +240,7 @@ type Node struct {
 	areIpfsPluginsAlreadyLoaded bool               // avoid injecting plugins twice in tests etc
 }
 
-func initDBs(config *cfg.Config, dbProvider DBProvider, logger log.Logger) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
+func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
 	var blockStoreDB dbm.DB
 	blockStoreDB, err = dbProvider(&DBContext{"blockstore", config})
 	if err != nil {
@@ -653,10 +657,24 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
-	blockStore, stateDB, err := initDBs(config, dbProvider, logger)
+	blockStore, stateDB, err := initDBs(config, dbProvider)
 	if err != nil {
 		return nil, err
 	}
+
+	InitIpfs(config, logger)
+
+	ipfsNode, err := createIpfsNode(config, false, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create IPFS node: %w", err)
+	}
+
+	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ipfs api object: %w", err)
+	}
+
+	blockStore.SetIpfsAPI(ipfsAPI)
 
 	stateStore := sm.NewStore(stateDB)
 
@@ -1453,8 +1471,10 @@ func createIpfsNode(config *cfg.Config, arePluginsAlreadyLoaded bool, logger log
 	repoRoot := config.IPFSRepoRoot()
 	logger.Info("creating node in repo", "ipfs-root", repoRoot)
 	if !fsrepo.IsInitialized(repoRoot) {
-		// TODO: sentinel err
-		return nil, fmt.Errorf("ipfs repo root: %v not intitialized", repoRoot)
+		err := InitIpfs(config, logger)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if !arePluginsAlreadyLoaded {
 		if err := setupPlugins(repoRoot, logger); err != nil {
@@ -1528,4 +1548,55 @@ func splitAndTrimEmpty(s, sep, cutset string) []string {
 		}
 	}
 	return nonEmptyStrings
+}
+
+// InitIpfs takes a few config flags from the tendermint config.IPFS
+// and applies them to the freshly created IPFS repo.
+// The IPFS config will stored under config.IPFS.ConfigRootPath.
+// TODO(ismail) move into separate file, and consider making IPFS initialization
+// independent from the `tendermint init` subcommand.
+// TODO(ismail): add counter part in ResetAllCmd
+func InitIpfs(config *cfg.Config, logger log.Logger) error {
+	repoRoot := config.IPFSRepoRoot()
+	if fsrepo.IsInitialized(repoRoot) {
+		logger.Info("IPFS was already initialized", "ipfs-path", repoRoot)
+		return nil
+	}
+	var conf *ipfscfg.Config
+
+	identity, err := ipfscfg.CreateIdentity(os.Stdout, []options.KeyGenerateOption{
+		options.Key.Type(options.Ed25519Key),
+	})
+	if err != nil {
+		return err
+	}
+
+	logger.Info("initializing IPFS node", "ipfs-path", repoRoot)
+
+	if err := tmos.EnsureDir(repoRoot, 0700); err != nil {
+		return err
+	}
+
+	conf, err = ipfscfg.InitWithIdentity(identity)
+	if err != nil {
+		return err
+	}
+
+	applyFromTmConfig(conf, config.IPFS)
+	if err := setupPlugins(repoRoot, logger); err != nil {
+		return err
+	}
+
+	if err := fsrepo.Init(repoRoot, conf); err != nil {
+		return err
+	}
+	return nil
+}
+
+func applyFromTmConfig(ipfsConf *ipfscfg.Config, tmConf *cfg.IPFSConfig) {
+	ipfsConf.Addresses.API = ipfscfg.Strings{tmConf.API}
+	ipfsConf.Addresses.Gateway = ipfscfg.Strings{tmConf.Gateway}
+	ipfsConf.Addresses.Swarm = tmConf.Swarm
+	ipfsConf.Addresses.Announce = tmConf.Announce
+	ipfsConf.Addresses.NoAnnounce = tmConf.NoAnnounce
 }

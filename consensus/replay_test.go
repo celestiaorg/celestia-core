@@ -78,6 +78,7 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		privValidator,
 		kvstore.NewApplication(),
 		blockDB,
+		mockipfs.MockedIpfsAPI(),
 	)
 	cs.SetLogger(logger)
 
@@ -172,6 +173,7 @@ LOOP:
 			privValidator,
 			kvstore.NewApplication(),
 			blockDB,
+			mockipfs.MockedIpfsAPI(),
 		)
 		cs.SetLogger(logger)
 
@@ -324,6 +326,7 @@ var modes = []uint{0, 1, 2, 3}
 
 // This is actually not a test, it's for storing validator change tx data for testHandshakeReplay
 func TestSimulateValidatorsChange(t *testing.T) {
+	globalCtx := context.Background()
 	nPeers := 7
 	nVals := 4
 	css, genDoc, config, cleanup := randConsensusNetWithPeers(
@@ -331,7 +334,9 @@ func TestSimulateValidatorsChange(t *testing.T) {
 		nPeers,
 		"replay_test",
 		newMockTickerFunc(true),
-		newPersistentKVStoreWithPath)
+		newPersistentKVStoreWithPath,
+		mockipfs.MockedIpfsAPI(),
+	)
 	sim.Config = config
 	sim.GenesisState, _ = sm.MakeGenesisState(genDoc)
 	sim.CleanupFunc = cleanup
@@ -368,7 +373,11 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ := css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts := propBlock.MakePartSet(partSize)
-	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
+	err = propBlock.PutBlock(globalCtx, css[0].blockStore.IpfsAPI().Dag())
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockID := types.NewBlockID(propBlock.Hash(), propBlockParts.Header(), &propBlock.DataAvailabilityHeader)
 
 	proposal := types.NewProposal(vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
 	p, err := proposal.ToProto()
@@ -399,8 +408,11 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts = propBlock.MakePartSet(partSize)
-	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
-
+	blockID = types.NewBlockID(propBlock.Hash(), propBlockParts.Header(), &propBlock.DataAvailabilityHeader)
+	err = propBlock.PutBlock(globalCtx, css[0].blockStore.IpfsAPI().Dag())
+	if err != nil {
+		t.Fatal(err)
+	}
 	proposal = types.NewProposal(vss[2].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
 	p, err = proposal.ToProto()
 	require.NoError(t, err)
@@ -436,8 +448,12 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	err = assertMempool(css[0].txNotifier).CheckTx(newValidatorTx3, nil, mempl.TxInfo{})
 	assert.Nil(t, err)
 	propBlock, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
+	err = propBlock.PutBlock(globalCtx, css[0].blockStore.IpfsAPI().Dag())
+	if err != nil {
+		t.Fatal(err)
+	}
 	propBlockParts = propBlock.MakePartSet(partSize)
-	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
+	blockID = types.NewBlockID(propBlock.Hash(), propBlockParts.Header(), &propBlock.DataAvailabilityHeader)
 	newVss := make([]*validatorStub, nVals+1)
 	copy(newVss, vss[:nVals+1])
 	sort.Sort(ValidatorStubsByPower(newVss))
@@ -512,8 +528,12 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	err = assertMempool(css[0].txNotifier).CheckTx(removeValidatorTx3, nil, mempl.TxInfo{})
 	assert.Nil(t, err)
 	propBlock, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
+	err = propBlock.PutBlock(globalCtx, css[0].blockStore.IpfsAPI().Dag())
+	if err != nil {
+		t.Fatal(err)
+	}
 	propBlockParts = propBlock.MakePartSet(partSize)
-	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
+	blockID = types.NewBlockID(propBlock.Hash(), propBlockParts.Header(), &propBlock.DataAvailabilityHeader)
 	newVss = make([]*validatorStub, nVals+3)
 	copy(newVss, vss[:nVals+3])
 	sort.Sort(ValidatorStubsByPower(newVss))
@@ -544,13 +564,22 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	sim.Chain = make([]*types.Block, 0)
 	sim.Commits = make([]*types.Commit, 0)
 	for i := 1; i <= numBlocks; i++ {
-		b, err := css[0].blockStore.LoadBlock(nil, int64(i))
+		// the block is not being loaded for some reason.
+		b, _ := css[0].blockStore.LoadBlock(nil, int64(i))
 		if err != nil {
 			t.Error(err)
 		}
 		sim.Chain = append(sim.Chain, b)
-		sim.Commits = append(sim.Commits, css[0].blockStore.LoadBlockCommit(int64(i)))
+		commit := css[0].blockStore.LoadBlockCommit(int64(i))
+		if commit != nil {
+			fmt.Println(i, commit.BlockID.DataAvailabilityHeader.IsZero(), b.LastCommit.BlockID.DataAvailabilityHeader.IsZero())
+		} else {
+			fmt.Println(b.LastCommit.BlockID.DataAvailabilityHeader.IsZero())
+		}
+
+		sim.Commits = append(sim.Commits, commit)
 	}
+
 }
 
 // Sync from scratch
@@ -791,7 +820,7 @@ func applyBlock(stateStore sm.Store, st sm.State, blk *types.Block, proxyApp pro
 	testPartSize := types.BlockPartSizeBytes
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 
-	blkID := types.BlockID{Hash: blk.Hash(), PartSetHeader: blk.MakePartSet(testPartSize).Header()}
+	blkID := types.NewBlockID(blk.Hash(), blk.MakePartSet(testPartSize).Header(), &blk.DataAvailabilityHeader)
 	newState, _, err := blockExec.ApplyBlock(st, blkID, blk)
 	if err != nil {
 		panic(err)
@@ -1208,7 +1237,7 @@ func (bs *mockBlockStore) LoadBlockByHash(ctx context.Context, hash []byte) (*ty
 func (bs *mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	block := bs.chain[height-1]
 	return &types.BlockMeta{
-		BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(types.BlockPartSizeBytes).Header()},
+		BlockID: types.NewBlockID(block.Hash(), block.MakePartSet(types.BlockPartSizeBytes).Header(), &block.DataAvailabilityHeader),
 		Header:  block.Header,
 	}
 }

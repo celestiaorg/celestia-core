@@ -194,15 +194,15 @@ func TestNoBlockResponse(t *testing.T) {
 
 	assert.Equal(t, maxBlockHeight, reactorPairs[0].reactor.store.Height())
 
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*300)
+	defer cancel()
+
 	for _, tt := range tests {
-		block, err := reactorPairs[1].reactor.store.LoadBlock(nil, tt.height)
-		if err != nil {
-			t.Error(err)
-		}
+		block, _ := reactorPairs[1].reactor.store.LoadBlock(ctx, tt.height)
 		if tt.existent {
-			assert.True(t, block != nil)
+			assert.True(t, block != nil, fmt.Sprintf("height %d", tt.height))
 		} else {
-			assert.True(t, block == nil)
+			assert.True(t, block == nil, tt.height, fmt.Sprintf("height %d", tt.height))
 		}
 	}
 }

@@ -216,7 +216,13 @@ func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 	N := 4
 	logger := consensusLogger().With("test", "byzantine")
 	app := newCounter
-	css, cleanup := randConsensusNet(N, "consensus_byzantine_test", newMockTickerFunc(false), app)
+	css, cleanup := randConsensusNet(
+		N,
+		"consensus_byzantine_test",
+		newMockTickerFunc(false),
+		app,
+		mockipfs.MockedIpfsAPI(),
+	)
 	defer cleanup()
 
 	// give the byzantine validator a normal ticker

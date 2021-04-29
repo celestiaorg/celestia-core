@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/term"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/stretchr/testify/require"
 
 	"path"
@@ -36,7 +37,6 @@ import (
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/store"
-	"github.com/lazyledger/lazyledger-core/test/mockipfs"
 	"github.com/lazyledger/lazyledger-core/types"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
@@ -353,9 +353,9 @@ func subscribeToVoter(cs *State, addr []byte) <-chan tmpubsub.Message {
 //-------------------------------------------------------------------------------
 // consensus states
 
-func newState(state sm.State, pv types.PrivValidator, app abci.Application) *State {
+func newState(state sm.State, pv types.PrivValidator, app abci.Application, api iface.CoreAPI) *State {
 	config := cfg.ResetTestRoot("consensus_state_test")
-	return newStateWithConfig(config, state, pv, app)
+	return newStateWithConfig(config, state, pv, app, api)
 }
 
 func newStateWithConfig(
@@ -363,9 +363,10 @@ func newStateWithConfig(
 	state sm.State,
 	pv types.PrivValidator,
 	app abci.Application,
+	api iface.CoreAPI,
 ) *State {
 	blockDB := memdb.NewDB()
-	return newStateWithConfigAndBlockStore(thisConfig, state, pv, app, blockDB)
+	return newStateWithConfigAndBlockStore(thisConfig, state, pv, app, blockDB, api)
 }
 
 func newStateWithConfigAndBlockStore(
@@ -374,9 +375,10 @@ func newStateWithConfigAndBlockStore(
 	pv types.PrivValidator,
 	app abci.Application,
 	blockDB dbm.DB,
+	api iface.CoreAPI,
 ) *State {
 	// Get BlockStore
-	blockStore := store.NewBlockStore(blockDB, mockipfs.MockedIpfsAPI())
+	blockStore := store.NewBlockStore(blockDB, api)
 
 	// one for mempool, one for consensus
 	mtx := new(tmsync.Mutex)
@@ -426,13 +428,13 @@ func loadPrivValidator(config *cfg.Config) *privval.FilePV {
 	return privValidator
 }
 
-func randState(nValidators int) (*State, []*validatorStub) {
+func randState(nValidators int, api iface.CoreAPI) (*State, []*validatorStub) {
 	// Get State
 	state, privVals := randGenesisState(nValidators, false, 10)
 
 	vss := make([]*validatorStub, nValidators)
 
-	cs := newState(state, privVals[0], counter.NewApplication(true))
+	cs := newState(state, privVals[0], counter.NewApplication(true), api)
 
 	for i := 0; i < nValidators; i++ {
 		vss[i] = newValidatorStub(privVals[i], int32(i))
@@ -680,7 +682,7 @@ func consensusLogger() log.Logger {
 }
 
 func randConsensusNet(nValidators int, testName string, tickerFunc func() TimeoutTicker,
-	appFunc func() abci.Application, configOpts ...func(*cfg.Config)) ([]*State, cleanupFunc) {
+	appFunc func() abci.Application, api iface.CoreAPI, configOpts ...func(*cfg.Config)) ([]*State, cleanupFunc) {
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30)
 	css := make([]*State, nValidators)
 	logger := consensusLogger()
@@ -699,7 +701,7 @@ func randConsensusNet(nValidators int, testName string, tickerFunc func() Timeou
 		vals := types.TM2PB.ValidatorUpdates(state.Validators)
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
-		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB)
+		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB, api)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
 	}
@@ -717,6 +719,7 @@ func randConsensusNetWithPeers(
 	testName string,
 	tickerFunc func() TimeoutTicker,
 	appFunc func(string) abci.Application,
+	api iface.CoreAPI,
 ) ([]*State, *types.GenesisDoc, *cfg.Config, cleanupFunc) {
 	genDoc, privVals := randGenesisDoc(nValidators, false, testMinPower)
 	css := make([]*State, nPeers)
@@ -761,7 +764,7 @@ func randConsensusNetWithPeers(
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 		// sm.SaveState(stateDB,state)	//height 1's validatorsInfo already saved in LoadStateFromDBOrGenesisDoc above
 
-		css[i] = newStateWithConfig(thisConfig, state, privVal, app)
+		css[i] = newStateWithConfig(thisConfig, state, privVal, app, api)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
 	}

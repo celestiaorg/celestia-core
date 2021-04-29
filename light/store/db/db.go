@@ -212,7 +212,6 @@ func (s *dbs) LightBlockBefore(height int64) (*types.LightBlock, error) {
 	if err = itr.Error(); err != nil {
 		return nil, err
 	}
-
 	return nil, store.ErrLightBlockNotFound
 }
 

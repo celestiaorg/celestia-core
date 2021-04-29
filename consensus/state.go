@@ -507,6 +507,7 @@ func (cs *State) SetProposalAndBlock(
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -1088,7 +1089,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	}
 
 	// Make proposal
-	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
+	propBlockID := types.NewBlockID(block.Hash(), blockParts.Header(), &block.DataAvailabilityHeader)
 	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID, &block.DataAvailabilityHeader)
 	p, err := proposal.ToProto()
 	if err != nil {

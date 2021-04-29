@@ -105,9 +105,10 @@ func (dah *DataAvailabilityHeader) Equals(to *DataAvailabilityHeader) bool {
 
 // Hash computes and caches the merkle root of the row and column roots.
 func (dah *DataAvailabilityHeader) Hash() []byte {
-	if dah == nil {
-		return merkle.HashFromByteSlices(nil)
+	if dah.IsZero() {
+		dah = MinDataAvailabilityHeader()
 	}
+
 	if len(dah.hash) != 0 {
 		return dah.hash
 	}
@@ -368,6 +369,10 @@ func mustPush(rowTree *nmt.NamespacedMerkleTree, nidAndData []byte) {
 func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error {
 	if nodeAdder == nil {
 		return errors.New("no ipfs node adder provided")
+	}
+
+	if b.DataAvailabilityHeader.IsZero() {
+		b.DataAvailabilityHeader = *MinDataAvailabilityHeader()
 	}
 
 	// recompute the shares
@@ -1135,6 +1140,9 @@ type Commit struct {
 
 // NewCommit returns a new Commit.
 func NewCommit(height int64, round int32, blockID BlockID, commitSigs []CommitSig) *Commit {
+	if blockID.DataAvailabilityHeader.IsZero() {
+		blockID.DataAvailabilityHeader = MinDataAvailabilityHeader()
+	}
 	return &Commit{
 		Height:     height,
 		Round:      round,

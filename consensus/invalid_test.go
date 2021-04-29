@@ -8,6 +8,7 @@ import (
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	"github.com/lazyledger/lazyledger-core/p2p"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/test/mockipfs"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -18,7 +19,13 @@ import (
 // Ensure a testnet makes blocks
 func TestReactorInvalidPrecommit(t *testing.T) {
 	N := 4
-	css, cleanup := randConsensusNet(N, "consensus_reactor_test", newMockTickerFunc(true), newCounter)
+	css, cleanup := randConsensusNet(
+		N,
+		"consensus_reactor_test",
+		newMockTickerFunc(true),
+		newCounter,
+		mockipfs.MockedIpfsAPI(),
+	)
 	t.Cleanup(cleanup)
 
 	for i := 0; i < 4; i++ {
