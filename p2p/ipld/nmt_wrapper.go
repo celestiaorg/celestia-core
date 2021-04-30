@@ -3,6 +3,7 @@ package ipld
 import (
 	"bytes"
 	"crypto/sha256"
+	"fmt"
 
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
@@ -57,7 +58,7 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex)
 	nsID := make(namespace.ID, types.NamespaceSize)
 
 	if idx.Axis+1 > 2*uint(w.squareSize) || idx.Cell+1 > 2*uint(w.squareSize) {
-		panic("pushed past predetermined square size")
+		panic(fmt.Sprintf("pushed past predetermined square size: boundary at %d index at %+v", 2*w.squareSize, idx))
 	}
 
 	// use the parity namespace if the cell is not in Q0 of the extended
