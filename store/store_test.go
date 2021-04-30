@@ -613,7 +613,6 @@ func TestBlockFetchAtHeight(t *testing.T) {
 	defer cleanup()
 	require.Equal(t, bs.Height(), int64(0), "initially the height should be zero")
 	block := makeBlock(bs.Height()+1, state, new(types.Commit))
-	block.Hash()
 
 	partSet := block.MakePartSet(2)
 	seenCommit := makeTestCommit(10, tmtime.Now())
@@ -627,6 +626,13 @@ func TestBlockFetchAtHeight(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+
+	if blockAtHeight.LastCommit != nil {
+		t.Fatal("expected nil for LastCommit of loaded block")
+	}
+
+	blockAtHeight.LastCommit = new(types.Commit)
+
 	b1, err := block.ToProto()
 	require.NoError(t, err)
 	b2, err := blockAtHeight.ToProto()
@@ -638,14 +644,8 @@ func TestBlockFetchAtHeight(t *testing.T) {
 		"expecting a successful load of the last saved block")
 
 	blockAtHeightPlus1, err := bs.LoadBlock(nil, bs.Height()+1)
-	if err != nil {
-		t.Error(err)
-	}
 	require.Nil(t, blockAtHeightPlus1, "expecting an unsuccessful load of Height()+1")
 	blockAtHeightPlus2, err := bs.LoadBlock(nil, bs.Height()+2)
-	if err != nil {
-		t.Error(err)
-	}
 	require.Nil(t, blockAtHeightPlus2, "expecting an unsuccessful load of Height()+2")
 }
 
