@@ -16,7 +16,7 @@ import (
 	"github.com/go-kit/kit/log/term"
 	"github.com/ipfs/go-ipfs/core/coreapi"
 	coremock "github.com/ipfs/go-ipfs/core/mock"
-	iface "github.com/ipfs/interface-go-ipfs-core"
+	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
 
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
@@ -194,6 +194,7 @@ func decideProposal(
 ) (proposal *types.Proposal, block *types.Block) {
 	cs1.mtx.Lock()
 	block = cs1.createProposalBlock()
+	cs1.shareProposalBlock(block)
 	validRound := cs1.ValidRound
 	chainID := cs1.state.ChainID
 	cs1.mtx.Unlock()
@@ -434,7 +435,6 @@ func randState(t *testing.T, nValidators int) (*State, []*validatorStub) {
 	vss := make([]*validatorStub, nValidators)
 
 	cs := newState(state, privVals[0], counter.NewApplication(true))
-	cs.IpfsAPI = mockedIpfsAPI(t)
 
 	for i := 0; i < nValidators; i++ {
 		vss[i] = newValidatorStub(privVals[i], int32(i))
@@ -442,22 +442,43 @@ func randState(t *testing.T, nValidators int) (*State, []*validatorStub) {
 	// since cs1 starts at 1
 	incrementHeight(vss[1:]...)
 
-	return cs, vss
+	return withIPFS(t, cs), vss
 }
 
-func mockedIpfsAPI(t *testing.T) iface.CoreAPI {
+func withIPFS(t *testing.T, s *State) *State {
 	ipfsNode, err := coremock.NewMockNode()
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
-	// issue a new API object
-	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	s.IpfsAPI, err = coreapi.NewCoreAPI(ipfsNode)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
-	return ipfsAPI
+	return s
+}
+
+func withIPFSNet(t *testing.T, ss []*State) []*State {
+	ctx := context.TODO()
+	net, err := mocknet.FullMeshConnected(ctx, len(ss))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, s := range ss {
+		nd, err := coremock.MockPublicNode(ctx, net)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		s.IpfsAPI, err = coreapi.NewCoreAPI(nd)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	return ss
 }
 
 //-------------------------------------------------------------------------------

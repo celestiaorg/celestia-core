@@ -182,6 +182,8 @@ func TestStateEnterProposeYesPrivValidator(t *testing.T) {
 }
 
 func TestStateBadProposal(t *testing.T) {
+	t.Skip("AppHash is not shared through Block anymore ")
+
 	cs1, vss := randState(t, 2)
 	height, round := cs1.Height, cs1.Round
 	vs2 := vss[1]
@@ -216,7 +218,7 @@ func TestStateBadProposal(t *testing.T) {
 	proposal.Signature = p.Signature
 
 	// set the proposal block
-	if err := cs1.SetProposalAndBlock(proposal, propBlock, propBlockParts, "some peer"); err != nil {
+	if err := cs1.SetProposal(proposal, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -251,38 +253,34 @@ func TestStateOversizedBlock(t *testing.T) {
 	timeoutProposeCh := subscribe(cs1.eventBus, types.EventQueryTimeoutPropose)
 	voteCh := subscribe(cs1.eventBus, types.EventQueryVote)
 
-	propBlock := cs1.createProposalBlock()
-	propBlock.Data.Txs = []types.Tx{tmrand.Bytes(2001)}
-	propBlock.Header.DataHash = propBlock.DataAvailabilityHeader.Hash()
+	pblk := cs1.createProposalBlock()
+	pblk.Data.Txs = []types.Tx{tmrand.Bytes(2048)}
+	pblk.DataHash = nil
+	pblkHash := pblk.Hash()
+
+	cs1.shareProposalBlock(pblk)
 
 	// make the second validator the proposer by incrementing round
 	round++
 	incrementRound(vss[1:]...)
 
-	propBlockParts := propBlock.MakePartSet(partSize)
-	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
-	proposal := types.NewProposal(height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	propBlockParts := pblk.MakePartSet(partSize)
+	blockID := types.BlockID{Hash: pblkHash, PartSetHeader: propBlockParts.Header()}
+	proposal := types.NewProposal(height, round, -1, blockID, &pblk.DataAvailabilityHeader)
 	p, err := proposal.ToProto()
 	require.NoError(t, err)
-	if err := vs2.SignProposal(config.ChainID(), p); err != nil {
-		t.Fatal("failed to sign bad proposal", err)
-	}
+
+	err = vs2.SignProposal(config.ChainID(), p)
+	require.NoError(t, err, "failed to sign bad proposal")
+
 	proposal.Signature = p.Signature
-
-	totalBytes := 0
-	for i := 0; i < int(propBlockParts.Total()); i++ {
-		part := propBlockParts.GetPart(i)
-		totalBytes += len(part.Bytes)
-	}
-
-	if err := cs1.SetProposalAndBlock(proposal, propBlock, propBlockParts, "some peer"); err != nil {
-		t.Fatal(err)
-	}
+	err = cs1.SetProposal(proposal, "some peer")
+	require.NoError(t, err)
 
 	// start the machine
 	startTestRound(cs1, height, round)
 
-	t.Log("Block Sizes", "Limit", cs1.state.ConsensusParams.Block.MaxBytes, "Current", totalBytes)
+	t.Log("Block Sizes", "Limit", cs1.state.ConsensusParams.Block.MaxBytes, "Current", pblk.Size())
 
 	// c1 should log an error with the block part message as it exceeds the consensus params. The
 	// block is not added to cs.ProposalBlock so the node timeouts.
@@ -292,11 +290,11 @@ func TestStateOversizedBlock(t *testing.T) {
 	// precommit on it
 	ensurePrevote(voteCh, height, round)
 	validatePrevote(t, cs1, round, vss[0], nil)
-	signAddVotes(cs1, tmproto.PrevoteType, propBlock.Hash(), propBlock.MakePartSet(partSize).Header(), vs2)
+	signAddVotes(cs1, tmproto.PrevoteType, pblk.Hash(), pblk.MakePartSet(partSize).Header(), vs2)
 	ensurePrevote(voteCh, height, round)
 	ensurePrecommit(voteCh, height, round)
 	validatePrecommit(t, cs1, round, -1, vss[0], nil, nil)
-	signAddVotes(cs1, tmproto.PrecommitType, propBlock.Hash(), propBlock.MakePartSet(partSize).Header(), vs2)
+	signAddVotes(cs1, tmproto.PrecommitType, pblk.Hash(), pblk.MakePartSet(partSize).Header(), vs2)
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -557,7 +555,7 @@ func TestStateLockNoPOL(t *testing.T) {
 
 	// now we're on a new round and not the proposer
 	// so set the proposal block
-	if err := cs1.SetProposalAndBlock(prop, propBlock, propBlock.MakePartSet(partSize), ""); err != nil {
+	if err := cs1.SetProposal(prop, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -648,7 +646,7 @@ func TestStateLockPOLRelock(t *testing.T) {
 
 	round++ // moving to the next round
 	//XXX: this isnt guaranteed to get there before the timeoutPropose ...
-	if err := cs1.SetProposalAndBlock(prop, propBlock, propBlockParts, "some peer"); err != nil {
+	if err := cs1.SetProposal(prop, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -689,8 +687,6 @@ func TestStateLockPOLUnlock(t *testing.T) {
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 
-	partSize := types.BlockPartSizeBytes
-
 	proposalCh := subscribe(cs1.eventBus, types.EventQueryCompleteProposal)
 	timeoutWaitCh := subscribe(cs1.eventBus, types.EventQueryTimeoutWait)
 	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
@@ -730,8 +726,7 @@ func TestStateLockPOLUnlock(t *testing.T) {
 	signAddVotes(cs1, tmproto.PrecommitType, theBlockHash, theBlockParts, vs3)
 
 	// before we time out into new round, set next proposal block
-	prop, propBlock := decideProposal(cs1, vs2, vs2.Height, vs2.Round+1)
-	propBlockParts := propBlock.MakePartSet(partSize)
+	prop, _ := decideProposal(cs1, vs2, vs2.Height, vs2.Round+1)
 
 	// timeout to new round
 	ensureNewTimeout(timeoutWaitCh, height, round, cs1.config.Precommit(round).Nanoseconds())
@@ -748,7 +743,7 @@ func TestStateLockPOLUnlock(t *testing.T) {
 		cs1 unlocks!
 	*/
 	//XXX: this isnt guaranteed to get there before the timeoutPropose ...
-	if err := cs1.SetProposalAndBlock(prop, propBlock, propBlockParts, "some peer"); err != nil {
+	if err := cs1.SetProposal(prop, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -853,7 +848,7 @@ func TestStateLockPOLUnlockOnUnknownBlock(t *testing.T) {
 	// we should have unlocked and locked on the new block, sending a precommit for this new block
 	validatePrecommit(t, cs1, round, -1, vss[0], nil, nil)
 
-	if err := cs1.SetProposalAndBlock(prop, propBlock, secondBlockParts, "some peer"); err != nil {
+	if err := cs1.SetProposal(prop, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -883,7 +878,7 @@ func TestStateLockPOLUnlockOnUnknownBlock(t *testing.T) {
 		Round2 (vs3, C) // C C C C // C nil nil nil)
 	*/
 
-	if err := cs1.SetProposalAndBlock(prop, propBlock, thirdPropBlockParts, "some peer"); err != nil {
+	if err := cs1.SetProposal(prop, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -953,7 +948,7 @@ func TestStateLockPOLSafety1(t *testing.T) {
 	ensureNewRound(newRoundCh, height, round)
 
 	//XXX: this isnt guaranteed to get there before the timeoutPropose ...
-	if err := cs1.SetProposalAndBlock(prop, propBlock, propBlockParts, "some peer"); err != nil {
+	if err := cs1.SetProposal(prop, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 	/*Round2
@@ -1060,7 +1055,7 @@ func TestStateLockPOLSafety2(t *testing.T) {
 	startTestRound(cs1, height, round)
 	ensureNewRound(newRoundCh, height, round)
 
-	if err := cs1.SetProposalAndBlock(prop1, propBlock1, propBlockParts1, "some peer"); err != nil {
+	if err := cs1.SetProposal(prop1, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 	ensureNewProposal(proposalCh, height, round)
@@ -1094,7 +1089,7 @@ func TestStateLockPOLSafety2(t *testing.T) {
 
 	newProp.Signature = p.Signature
 
-	if err := cs1.SetProposalAndBlock(newProp, propBlock0, propBlockParts0, "some peer"); err != nil {
+	if err := cs1.SetProposal(newProp, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1312,7 +1307,7 @@ func TestSetValidBlockOnDelayedProposal(t *testing.T) {
 	ensurePrecommit(voteCh, height, round)
 	validatePrecommit(t, cs1, round, -1, vss[0], nil, nil)
 
-	if err := cs1.SetProposalAndBlock(prop, propBlock, propBlockParts, "some peer"); err != nil {
+	if err := cs1.SetProposal(prop, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1511,7 +1506,7 @@ func TestCommitFromPreviousRound(t *testing.T) {
 	assert.True(t, rs.ProposalBlock == nil)
 	assert.True(t, rs.ProposalBlockParts.Header().Equals(propBlockParts.Header()))
 
-	if err := cs1.SetProposalAndBlock(prop, propBlock, propBlockParts, "some peer"); err != nil {
+	if err := cs1.SetProposal(prop, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1602,8 +1597,6 @@ func TestResetTimeoutPrecommitUponNewHeight(t *testing.T) {
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 
-	partSize := types.BlockPartSizeBytes
-
 	proposalCh := subscribe(cs1.eventBus, types.EventQueryCompleteProposal)
 
 	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
@@ -1637,10 +1630,8 @@ func TestResetTimeoutPrecommitUponNewHeight(t *testing.T) {
 
 	ensureNewBlockHeader(newBlockHeader, height, theBlockHash)
 
-	prop, propBlock := decideProposal(cs1, vs2, height+1, 0)
-	propBlockParts := propBlock.MakePartSet(partSize)
-
-	if err := cs1.SetProposalAndBlock(prop, propBlock, propBlockParts, "some peer"); err != nil {
+	prop, _ := decideProposal(cs1, vs2, height+1, 0)
+	if err := cs1.SetProposal(prop, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 	ensureNewProposal(proposalCh, height+1, 0)
