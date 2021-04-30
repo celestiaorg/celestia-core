@@ -53,8 +53,10 @@ var (
 	// https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#constants
 	MaxReservedNamespace = namespace.ID{0, 0, 0, 0, 0, 0, 0, 255}
 	// TailPaddingNamespaceID is the namespace ID for tail padding. All data
-	// with this namespace will not be
-	TailPaddingNamespaceID  = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE}
+	// with this namespace will be ignored
+	TailPaddingNamespaceID = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE}
+
+	// ParitySharesNamespaceID indicates that share contains erasure data
 	ParitySharesNamespaceID = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 
 	// change accordingly if another hash.Hash should be used as a base hasher in the NMT:
