@@ -234,7 +234,7 @@ func TestRetrieveBlockData(t *testing.T) {
 		{"Empty block", 1, false, ""},
 		{"4 KB block", 4, false, ""},
 		{"16 KB block", 8, false, ""},
-		{"16 KB block timeout expected", 8, true, "timeout"},
+		{"16 KB block timeout expected", 8, true, ""},
 		{"max square size", types.MaxSquareSize, false, ""},
 	}
 
