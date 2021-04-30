@@ -46,11 +46,11 @@ func TestNodeStartStop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ipfsNode, err := coremock.NewMockNode()
-	if err != nil {
-		panic(err)
-	}
-	n.ipfsNode = ipfsNode
+	// ipfsNode, err := coremock.NewMockNode()
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// n.ipfsNode = ipfsNode
 	require.NoError(t, err)
 	err = n.Start()
 	require.NoError(t, err)
