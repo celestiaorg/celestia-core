@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"os"
@@ -175,8 +176,10 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	// check there are no blocks at various heights
 	noBlockHeights := []int64{0, -1, 100, 1000, 2}
 	for i, height := range noBlockHeights {
-		g, err := bs.LoadBlock(nil, height)
-		if g != nil || err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*400)
+		defer cancel()
+		g, _ := bs.LoadBlock(ctx, height)
+		if g != nil {
 			t.Errorf("#%d: height(%d) got a block; want nil", i, height)
 		}
 	}
@@ -217,16 +220,19 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 		corruptSeenCommitInDB bool
 		eraseCommitInDB       bool
 		eraseSeenCommitInDB   bool
+		msg                   string
 	}{
 		{
 			block:      newBlock(header1, commitAtH10),
 			parts:      validPartSet,
 			seenCommit: seenCommit1,
+			msg:        "normal",
 		},
 
 		{
 			block:     nil,
-			wantPanic: "only save a non-nil block",
+			wantPanic: "invalid memory address or nil pointer dereference",
+			msg:       "nil block",
 		},
 
 		{
@@ -241,12 +247,14 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 			),
 			parts:      validPartSet,
 			seenCommit: makeTestCommit(5, tmtime.Now()),
+			msg:        "block height 5",
 		},
 
 		{
 			block:     newBlock(header1, commitAtH10),
 			parts:     incompletePartSet,
 			wantPanic: "only save complete block", // incomplete parts
+			msg:       "complete block",
 		},
 
 		{
@@ -255,6 +263,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 			seenCommit:        seenCommit1,
 			corruptCommitInDB: true, // Corrupt the DB's commit entry
 			wantPanic:         "error reading block commit",
+			msg:               "corupt db commit db history",
 		},
 
 		{
@@ -263,6 +272,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 			seenCommit:       seenCommit1,
 			wantPanic:        "unmarshal to tmproto.BlockMeta",
 			corruptBlockInDB: true, // Corrupt the DB's block entry
+			msg:              "corrupt block entry",
 		},
 
 		{
@@ -272,6 +282,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 
 			// Expecting no error and we want a nil back
 			eraseSeenCommitInDB: true,
+			msg:                 "expecting nor error and want nil back",
 		},
 
 		{
@@ -281,6 +292,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 
 			corruptSeenCommitInDB: true,
 			wantPanic:             "error reading block seen commit",
+			msg:                   "corrupt seent commit",
 		},
 
 		{
@@ -290,6 +302,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 
 			// Expecting no error and we want a nil back
 			eraseCommitInDB: true,
+			msg:             "no error and we want nil back",
 		},
 	}
 
@@ -306,6 +319,18 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 		bs, db := freshBlockStore()
 		// SaveBlock
 		res, err, panicErr := doFn(func() (interface{}, error) {
+			// fill the data availability header
+			tuple.block.DataHash = nil
+			tuple.block.Hash()
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+			defer cancel()
+
+			err = tuple.block.PutBlock(ctx, bs.IpfsAPI().Dag())
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			bs.SaveBlock(tuple.block, tuple.parts, tuple.seenCommit)
 			if tuple.block == nil {
 				return nil, nil
@@ -317,7 +342,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 			}
 			bBlock, err := bs.LoadBlock(nil, tuple.block.Height)
 			if err != nil {
-				t.Error(err)
+				t.Error(err, tuple.msg)
 			}
 			bBlockMeta := bs.LoadBlockMeta(tuple.block.Height)
 
@@ -349,7 +374,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 			if panicErr == nil {
 				t.Errorf("#%d: want a non-nil panic", i)
 			} else if got := fmt.Sprintf("%#v", panicErr); !strings.Contains(got, subStr) {
-				t.Errorf("#%d:\n\tgotErr: %q\nwant substring: %q", i, got, subStr)
+				t.Errorf("#%d:\n\tgotErr: %q\nwant substring: %q : msg %s", i, got, subStr, tuple.msg)
 			}
 			continue
 		}
@@ -361,8 +386,8 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 			continue
 		}
 
-		assert.Nil(t, panicErr, "#%d: unexpected panic", i)
-		assert.Nil(t, err, "#%d: expecting a non-nil error", i)
+		assert.Nil(t, panicErr, "#%d: unexpected panic", i, tuple.msg)
+		assert.Nil(t, err, "#%d: expecting a non-nil error", i, tuple.msg)
 		qua, ok := res.(*quad)
 		if !ok || qua == nil {
 			t.Errorf("#%d: got nil quad back; gotType=%T", i, res)

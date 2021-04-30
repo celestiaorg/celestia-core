@@ -23,7 +23,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	"github.com/lazyledger/lazyledger-core/test/mockipfs"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -306,6 +308,35 @@ func TestRetrieveBlockData(t *testing.T) {
 			assert.Equal(t, rawData, nsShares.RawShares())
 		})
 	}
+}
+
+func TestRetrieveMinimumBlockData(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*800)
+	defer cancel()
+	emptyBlock := types.Block{
+		Data: types.Data{
+			Txs: types.Txs{},
+			IntermediateStateRoots: types.IntermediateStateRoots{
+				RawRootsList: []tmbytes.HexBytes{},
+			},
+			Evidence: types.EvidenceData{
+				Evidence: types.EvidenceList{},
+			},
+		},
+		LastCommit: &types.Commit{},
+	}
+	api := mockipfs.MockedIpfsAPI()
+	err := emptyBlock.PutBlock(ctx, api.Dag())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blockData, err := RetrieveBlockData(ctx, &emptyBlock.DataAvailabilityHeader, api, rsmt2d.NewRSGF8Codec())
+	if err != nil {
+		t.Error(err)
+	}
+
+	assert.Equal(t, emptyBlock.Data, blockData)
 }
 
 func flatten(eds *rsmt2d.ExtendedDataSquare) [][]byte {

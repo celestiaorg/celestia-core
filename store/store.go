@@ -107,13 +107,14 @@ func (bs *BlockStore) SetIpfsAPI(api iface.CoreAPI) {
 // a context with a 10 second timeout is provided.
 func (bs *BlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block, error) {
 	// provide some context if not provided already
+	// this is needed to prevent massive goroutine leak by IPFS
 	if ctx == nil {
-		cctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		cctx, cancel := context.WithTimeout(context.Background(), time.Second*4)
 		defer cancel()
 		ctx = cctx
 	}
 
-	var blockMeta = bs.LoadBlockMeta(height)
+	blockMeta := bs.LoadBlockMeta(height)
 	if blockMeta == nil {
 		return nil, fmt.Errorf("block at height %d not found", height)
 	}
