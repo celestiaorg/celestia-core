@@ -11,6 +11,9 @@ import (
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
+// emptyNamepsaceID occurs when a share is empty and indicates that
+var emptyNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 0}
+
 // Fulfills the rsmt2d.Tree interface and rsmt2d.TreeConstructorFn function
 var _ rsmt2d.TreeConstructorFn = ErasuredNamespacedMerkleTree{}.Constructor
 var _ rsmt2d.Tree = &ErasuredNamespacedMerkleTree{}
@@ -28,7 +31,7 @@ type ErasuredNamespacedMerkleTree struct {
 	tree       *nmt.NamespacedMerkleTree
 }
 
-// NewErasuredNamespacedMerkleTree issues a new ErasuredNamespacedMerkleTree. Panics for squareSize of zero.
+// NewErasuredNamespacedMerkleTree issues a new ErasuredNamespacedMerkleTree. squareSize must be greater than zero
 func NewErasuredNamespacedMerkleTree(squareSize uint64, setters ...nmt.Option) ErasuredNamespacedMerkleTree {
 	if squareSize == 0 {
 		panic("cannot create a ErasuredNamespacedMerkleTree of squareSize == 0")
@@ -65,7 +68,7 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex)
 	} else {
 		// empty shares use the TailPaddingNamespaceID if the data is empty, so
 		// here we check if the share is empty (namepsace == [0,0,0,0,0,0,0,0])
-		if bytes.Equal(data[:types.NamespaceSize], nsID) {
+		if bytes.Equal(data[:types.NamespaceSize], emptyNamespaceID) {
 			copy(nsID, types.TailPaddingNamespaceID)
 		} else {
 			copy(nsID, data[:types.NamespaceSize])
