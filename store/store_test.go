@@ -520,15 +520,11 @@ func TestPruneBlocks(t *testing.T) {
 	}
 	require.NotNil(t, b)
 	b, err = bs.LoadBlock(nil, 1199)
-	if err != nil {
-		t.Error(err)
-	}
 	require.Nil(t, b)
+	require.Error(t, err)
 	b, err = bs.LoadBlockByHash(nil, prunedBlock.Hash())
-	if err != nil {
-		t.Error(err)
-	}
 	require.Nil(t, b)
+	require.Error(t, err)
 	require.Nil(t, bs.LoadBlockCommit(1199))
 	require.Nil(t, bs.LoadBlockMeta(1199))
 	require.Nil(t, bs.LoadBlockPart(1199, 1))
