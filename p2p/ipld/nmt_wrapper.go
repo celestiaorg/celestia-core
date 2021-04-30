@@ -18,10 +18,10 @@ var _ rsmt2d.Tree = &ErasuredNamespacedMerkleTree{}
 // ErasuredNamespacedMerkleTree wraps NamespaceMerkleTree to conform to the
 // rsmt2d.Tree interface while also providing the correct namespaces to the
 // underlying NamespaceMerkleTree. It does this by adding the already included
-// namespace to the first half of the tree, and then uses the it uses the parity
-// namespace ID for each share pushed to the second half of the tree. This
-// allows for the namespaces to be included in the erasure data, while also
-// keeping constant share size.
+// namespace to the first half of the tree, and then uses the parity namespace
+// ID for each share pushed to the second half of the tree. This allows for the
+// namespaces to be included in the erasure data, while also keeping the nmt
+// library sufficiently general
 type ErasuredNamespacedMerkleTree struct {
 	squareSize uint64 // note: this refers to the width of the original square before erasure-coded
 	options    []nmt.Option
