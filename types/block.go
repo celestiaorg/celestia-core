@@ -1140,9 +1140,9 @@ type Commit struct {
 
 // NewCommit returns a new Commit.
 func NewCommit(height int64, round int32, blockID BlockID, commitSigs []CommitSig) *Commit {
-	if blockID.DataAvailabilityHeader.IsZero() {
-		blockID.DataAvailabilityHeader = MinDataAvailabilityHeader()
-	}
+	// if blockID.DataAvailabilityHeader.IsZero() {
+	// 	blockID.DataAvailabilityHeader = MinDataAvailabilityHeader()
+	// }
 	return &Commit{
 		Height:     height,
 		Round:      round,

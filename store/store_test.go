@@ -188,13 +188,16 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	block := makeBlock(bs.Height()+1, state, new(types.Commit))
 	validPartSet := block.MakePartSet(2)
 	seenCommit := makeTestCommit(10, tmtime.Now())
-	bs.SaveBlock(block, partSet, seenCommit)
+	err := bs.SaveBlock(nil, block, partSet, seenCommit)
+	if err != nil {
+		t.Error(err)
+	}
 	require.EqualValues(t, 1, bs.Base(), "expecting the new height to be changed")
 	require.EqualValues(t, block.Header.Height, bs.Height(), "expecting the new height to be changed")
 
 	incompletePartSet := types.NewPartSetFromHeader(types.PartSetHeader{Total: 2})
 	uncontiguousPartSet := types.NewPartSetFromHeader(types.PartSetHeader{Total: 0})
-	_, err := uncontiguousPartSet.AddPart(part2)
+	_, err = uncontiguousPartSet.AddPart(part2)
 	require.Error(t, err)
 
 	header1 := types.Header{
@@ -323,15 +326,10 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 			tuple.block.DataHash = nil
 			tuple.block.Hash()
 
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
-			defer cancel()
-
-			err = tuple.block.PutBlock(ctx, bs.IpfsAPI().Dag())
+			err = bs.SaveBlock(nil, tuple.block, tuple.parts, tuple.seenCommit)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
-
-			bs.SaveBlock(tuple.block, tuple.parts, tuple.seenCommit)
 			if tuple.block == nil {
 				return nil, nil
 			}
@@ -416,7 +414,10 @@ func TestLoadBaseMeta(t *testing.T) {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, tmtime.Now())
-		bs.SaveBlock(block, partSet, seenCommit)
+		err = bs.SaveBlock(nil, block, partSet, seenCommit)
+		if err != nil {
+			t.Error(err)
+		}
 	}
 
 	_, err = bs.PruneBlocks(4)
@@ -484,7 +485,10 @@ func TestPruneBlocks(t *testing.T) {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, tmtime.Now())
-		bs.SaveBlock(block, partSet, seenCommit)
+		err = bs.SaveBlock(nil, block, partSet, seenCommit)
+		if err != nil {
+			t.Error(err)
+		}
 	}
 
 	assert.EqualValues(t, 1, bs.Base())
@@ -613,10 +617,14 @@ func TestBlockFetchAtHeight(t *testing.T) {
 	defer cleanup()
 	require.Equal(t, bs.Height(), int64(0), "initially the height should be zero")
 	block := makeBlock(bs.Height()+1, state, new(types.Commit))
+	block.Hash()
 
 	partSet := block.MakePartSet(2)
 	seenCommit := makeTestCommit(10, tmtime.Now())
-	bs.SaveBlock(block, partSet, seenCommit)
+	err := bs.SaveBlock(nil, block, partSet, seenCommit)
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.Equal(t, bs.Height(), block.Header.Height, "expecting the new height to be changed")
 
 	blockAtHeight, err := bs.LoadBlock(nil, bs.Height())

@@ -25,7 +25,7 @@ type BlockStore interface {
 	LoadBlockMeta(height int64) *types.BlockMeta
 	LoadBlock(ctx context.Context, height int64) (*types.Block, error)
 
-	SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit)
+	SaveBlock(ctx context.Context, block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) error
 
 	PruneBlocks(height int64) (uint64, error)
 

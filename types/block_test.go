@@ -263,6 +263,9 @@ func TestCommit(t *testing.T) {
 	commit, err := MakeCommit(lastID, h-1, 1, voteSet, vals, time.Now())
 	require.NoError(t, err)
 
+	// set the minimum dah
+	// commit.BlockID.DataAvailabilityHeader = MinDataAvailabilityHeader()
+
 	assert.Equal(t, h-1, commit.Height)
 	assert.EqualValues(t, 1, commit.Round)
 	assert.Equal(t, tmproto.PrecommitType, tmproto.SignedMsgType(commit.Type()))

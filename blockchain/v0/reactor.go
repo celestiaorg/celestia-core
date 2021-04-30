@@ -421,7 +421,11 @@ FOR_LOOP:
 				bcR.pool.PopRequest()
 
 				// TODO: batch saves so we dont persist to disk every block
-				bcR.store.SaveBlock(first, firstParts, second.LastCommit)
+				err = bcR.store.SaveBlock(nil, first, firstParts, second.LastCommit)
+				// todo: should we panic here!?
+				if err != nil {
+					panic(err)
+				}
 
 				// TODO: same thing for app - but we would need a way to get the hash
 				// without persisting the state.

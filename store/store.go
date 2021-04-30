@@ -356,9 +356,15 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 //             If all the nodes restart after committing a block,
 //             we need this to reload the precommits to catch-up nodes to the
 //             most recent height.  Otherwise they'd stall at H-1.
-func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
+func (bs *BlockStore) SaveBlock(ctx context.Context, block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) error {
 	if block == nil {
 		panic("BlockStore can only save a non-nil block")
+	}
+
+	if ctx == nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), time.Second*2)
+		defer cancel()
 	}
 
 	height := block.Height
@@ -369,6 +375,11 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 	}
 	if !blockParts.IsComplete() {
 		panic("BlockStore can only save complete block part sets")
+	}
+
+	err := block.PutBlock(ctx, bs.IpfsAPI().Dag())
+	if err != nil {
+		return err
 	}
 
 	// Save block parts. This must be done before the block meta, since callers
@@ -419,6 +430,7 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 
 	// Save new BlockStoreState descriptor. This also flushes the database.
 	bs.saveState()
+	return nil
 }
 
 func (bs *BlockStore) saveBlockPart(height int64, index int, part *types.Part) {

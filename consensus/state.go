@@ -1552,7 +1552,11 @@ func (cs *State) finalizeCommit(height int64) {
 		// but may differ from the LastCommit included in the next block
 		precommits := cs.Votes.Precommits(cs.CommitRound)
 		seenCommit := precommits.MakeCommit()
-		cs.blockStore.SaveBlock(block, blockParts, seenCommit)
+		err := cs.blockStore.SaveBlock(nil, block, blockParts, seenCommit)
+		// todo: should we panic here!?
+		if err != nil {
+			panic(err)
+		}
 	} else {
 		// Happens during replay if we already saved the block but didn't commit
 		cs.Logger.Info("Calling finalizeCommit on already stored block", "height", block.Height)

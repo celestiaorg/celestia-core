@@ -576,7 +576,10 @@ func newReactorStore(
 			panic(fmt.Errorf("error apply block: %w", err))
 		}
 
-		blockStore.SaveBlock(thisBlock, thisParts, lastCommit)
+		err = blockStore.SaveBlock(nil, thisBlock, thisParts, lastCommit)
+		if err != nil {
+			panic(err)
+		}
 	}
 	return blockStore, state, blockExec
 }

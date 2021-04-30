@@ -176,7 +176,10 @@ func (state *pcState) handle(event Event) (Event, error) {
 				nil
 		}
 
-		state.context.saveBlock(first, firstParts, second.LastCommit)
+		err = state.context.saveBlock(nil, first, firstParts, second.LastCommit)
+		if err != nil {
+			return nil, err
+		}
 
 		if err := state.context.applyBlock(firstID, first); err != nil {
 			panic(fmt.Sprintf("failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))

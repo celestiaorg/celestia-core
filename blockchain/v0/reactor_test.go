@@ -138,7 +138,10 @@ func newBlockchainReactor(
 			panic(fmt.Errorf("error apply block: %w", err))
 		}
 
-		blockStore.SaveBlock(thisBlock, thisParts, lastCommit)
+		err = blockStore.SaveBlock(nil, thisBlock, thisParts, lastCommit)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	bcReactor := NewBlockchainReactor(state.Copy(), blockExec, blockStore, fastSync)

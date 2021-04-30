@@ -408,7 +408,10 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.Bloc
 		partSet := block.MakePartSet(parts)
 
 		seenCommit := makeCommit(i, valAddr)
-		blockStore.SaveBlock(block, partSet, seenCommit)
+		err := blockStore.SaveBlock(nil, block, partSet, seenCommit)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	return blockStore

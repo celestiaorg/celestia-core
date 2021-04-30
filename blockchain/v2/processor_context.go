@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/lazyledger/lazyledger-core/state"
@@ -10,7 +11,7 @@ import (
 type processorContext interface {
 	applyBlock(blockID types.BlockID, block *types.Block) error
 	verifyCommit(chainID string, blockID types.BlockID, height int64, commit *types.Commit) error
-	saveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit)
+	saveBlock(ctx context.Context, block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) error
 	tmState() state.State
 	setState(state.State)
 }
@@ -47,8 +48,8 @@ func (pc pContext) verifyCommit(chainID string, blockID types.BlockID, height in
 	return pc.state.Validators.VerifyCommitLight(chainID, blockID, height, commit)
 }
 
-func (pc *pContext) saveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
-	pc.store.SaveBlock(block, blockParts, seenCommit)
+func (pc *pContext) saveBlock(ctx context.Context, block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) error {
+	return pc.store.SaveBlock(ctx, block, blockParts, seenCommit)
 }
 
 type mockPContext struct {
@@ -87,8 +88,8 @@ func (mpc *mockPContext) verifyCommit(chainID string, blockID types.BlockID, hei
 	return nil
 }
 
-func (mpc *mockPContext) saveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
-
+func (mpc *mockPContext) saveBlock(ctx context.Context, block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) error {
+	return nil
 }
 
 func (mpc *mockPContext) setState(state state.State) {

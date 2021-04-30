@@ -23,7 +23,7 @@ const (
 
 type blockStore interface {
 	LoadBlock(ctx context.Context, height int64) (*types.Block, error)
-	SaveBlock(*types.Block, *types.PartSet, *types.Commit)
+	SaveBlock(context.Context, *types.Block, *types.PartSet, *types.Commit) error
 	Base() int64
 	Height() int64
 }
