@@ -29,6 +29,7 @@ An implementation can be found in [this repository](https://github.com/lazyledge
 This ADR basically describes version of the [`GetWithProof`](https://github.com/lazyledger/nmt/blob/ddcc72040149c115f83b2199eafabf3127ae12ac/nmt.go#L193-L196) of the NMT that leverages the fact that IPFS uses content addressing and that we have implemented an [IPLD plugin](https://github.com/lazyledger/lazyledger-core/tree/37502aac69d755c189df37642b87327772f4ac2a/p2p/ipld) for an NMT.
 
 **Note**: The APIs defined here will be particularly relevant for Optimistic Rollup (full) nodes that want to download their Rollup's data (see [lazyledger/optimint#48](https://github.com/lazyledger/optimint/issues/48)).
+Another potential use-case of this API could be for so-called [light validator nodes](https://github.com/lazyledger/lazyledger-specs/blob/master/specs/node_types.md#node-type-definitions) that want to download and replay the state-relevant portion of the block data, i.e. transactions with [reserved namespace IDs](https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#reserved-namespace-ids).
 
 ## Alternative Approaches
 
