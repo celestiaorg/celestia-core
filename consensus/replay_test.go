@@ -571,12 +571,6 @@ func TestSimulateValidatorsChange(t *testing.T) {
 		}
 		sim.Chain = append(sim.Chain, b)
 		commit := css[0].blockStore.LoadBlockCommit(int64(i))
-		if commit != nil {
-			fmt.Println(i, commit.BlockID.DataAvailabilityHeader.IsZero(), b.LastCommit.BlockID.DataAvailabilityHeader.IsZero())
-		} else {
-			fmt.Println(b.LastCommit.BlockID.DataAvailabilityHeader.IsZero())
-		}
-
 		sim.Commits = append(sim.Commits, commit)
 	}
 
@@ -1017,7 +1011,6 @@ func makeBlocks(n int, state *sm.State, privVal types.PrivValidator) []*types.Bl
 
 func makeBlock(state sm.State, lastBlock *types.Block, lastBlockMeta *types.BlockMeta,
 	privVal types.PrivValidator, height int64) (*types.Block, *types.PartSet) {
-
 	lastCommit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
 	if height > 1 {
 		vote, _ := types.MakeVote(

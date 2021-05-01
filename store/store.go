@@ -129,15 +129,7 @@ func (bs *BlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block
 		return nil, fmt.Errorf("failuring retrieve block data from ipfs: %w", err)
 	}
 
-	var lastCommit *types.Commit
-	switch {
-	case height > bs.Height()-1:
-		lastCommit = bs.LoadSeenCommit(height - 1)
-	case height == 0:
-		lastCommit = nil
-	default:
-		lastCommit = bs.LoadBlockCommit(height - 1)
-	}
+	lastCommit := bs.LoadBlockCommit(height - 1)
 
 	block := &types.Block{
 		Header:                 blockMeta.Header,
