@@ -6,6 +6,9 @@
 
 ## Context
 
+This ADR builds on top of [ADR 002](adr-002-ipld-da-sampling.md) and will use the implemented APIs described there.
+The reader should familiarize themselves at least with the high-level concepts the as well as in the [specs](https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#2d-reed-solomon-encoding-scheme).
+
 The academic Lazyledger [paper](https://arxiv.org/abs/1905.09274) describes the motivation and context for this API.
 The main motivation can be quoted from section 3.3 of that paper:
 
