@@ -62,7 +62,7 @@ func RetrieveShares(
     nID namespace.ID,
     dah *types.DataAvailabilityHeader,
     api coreiface.CoreAPI,
-) ([]byte, error) {
+) ([][]byte, error) {
     // 1. Find the row root(s) that contains the namespace ID nID
     // 2. Traverse the corresponding tree(s) according to the
     //    above informally described algorithm and get the corresponding
