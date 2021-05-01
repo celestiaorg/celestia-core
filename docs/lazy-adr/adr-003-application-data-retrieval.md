@@ -87,7 +87,7 @@ func RetrieveStateRelevantMessages(
     nID namespace.ID,
     dah *types.DataAvailabilityHeader,
     api coreiface.CoreAPI,
-) (Txs, IntermediateStateRoots, Evidence, error) {
+) (Txs, IntermediateStateRoots, EvidenceData, error) {
     // like RetrieveShares but for all reserved namespaces
     // additionally the shares are parsed (merged) into the
     // corresponding types in the return arguments
