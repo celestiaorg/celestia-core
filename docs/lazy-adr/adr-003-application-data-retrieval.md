@@ -18,7 +18,7 @@ blocks, and that there are no omitted messages.
 
 The main data structure that enables above properties is called a Namespaced Merkle Tree (NMT), an ordered binary Merkle tree where:
 1. each node in the tree includes the range of namespaces of the messages in all descendants of each node
-2. leaves in the tree are ordered by the  namespace identifiers of the leaf messages
+2. leaves in the tree are ordered by the namespace identifiers of the leaf messages
 
 A more formal description can be found the [specification](https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#namespace-merkle-tree).
 An implementation can be found in [this repository](https://github.com/lazyledger/nmt).
