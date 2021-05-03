@@ -26,7 +26,9 @@ func TestMakeShares(t *testing.T) {
 	reservedEvidenceNamespaceID := append(bytes.Repeat([]byte{0}, 7), 3)
 	val := NewMockPV()
 	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
+	blockID.DataAvailabilityHeader = MinDataAvailabilityHeader()
 	blockID2 := makeBlockID([]byte("blockhash2"), 1000, []byte("partshash"))
+	blockID2.DataAvailabilityHeader = MinDataAvailabilityHeader()
 	vote1 := makeVote(t, val, "chainID", 0, 10, 2, 1, blockID, defaultVoteTime)
 	vote2 := makeVote(t, val, "chainID", 0, 10, 2, 1, blockID2, defaultVoteTime)
 	testEvidence := &DuplicateVoteEvidence{
@@ -73,10 +75,24 @@ func TestMakeShares(t *testing.T) {
 			}, NamespacedShare{
 				Share: append(
 					append(reservedEvidenceNamespaceID, byte(0)),
-					zeroPadIfNecessary(testEvidenceBytes[TxShareSize:], TxShareSize)...,
+					testEvidenceBytes[TxShareSize:2*TxShareSize]...,
 				),
 				ID: reservedEvidenceNamespaceID,
-			}},
+			}, NamespacedShare{
+				Share: append(
+					append(reservedEvidenceNamespaceID, byte(0)),
+					zeroPadIfNecessary(testEvidenceBytes[TxShareSize*2:TxShareSize*3], TxShareSize)...,
+				),
+				ID: reservedEvidenceNamespaceID,
+			},
+				NamespacedShare{
+					Share: append(
+						append(reservedEvidenceNamespaceID, byte(0)),
+						zeroPadIfNecessary(testEvidenceBytes[TxShareSize*3:], TxShareSize)...,
+					),
+					ID: reservedEvidenceNamespaceID,
+				},
+			},
 		},
 		{"small LL Tx",
 			args{

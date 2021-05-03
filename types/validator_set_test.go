@@ -677,6 +677,7 @@ func TestValidatorSet_VerifyCommit_All(t *testing.T) {
 	)
 
 	vote := examplePrecommit()
+	vote.BlockID = makeBlockIDRandom()
 	vote.ValidatorAddress = pubKey.Address()
 	v := vote.ToProto()
 	sig, err := privKey.Sign(VoteSignBytes(chainID, v))

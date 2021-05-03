@@ -31,8 +31,11 @@ func init() {
 	testProposal = &Proposal{
 		Height: 12345,
 		Round:  23456,
-		BlockID: BlockID{Hash: []byte("--June_15_2020_amino_was_removed"),
-			PartSetHeader: PartSetHeader{Total: 111, Hash: []byte("--June_15_2020_amino_was_removed")}},
+		BlockID: BlockID{
+			Hash:                   []byte("--June_15_2020_amino_was_removed"),
+			PartSetHeader:          PartSetHeader{Total: 111, Hash: []byte("--June_15_2020_amino_was_removed")},
+			DataAvailabilityHeader: makeDAHeaderRandom(),
+		},
 		POLRound:  -1,
 		Timestamp: stamp,
 		DAHeader: &DataAvailabilityHeader{
@@ -69,10 +72,14 @@ func TestProposalVerifySignature(t *testing.T) {
 	pubKey, err := privVal.GetPubKey()
 	require.NoError(t, err)
 
+	dah := makeDAHeaderRandom()
+
 	prop := NewProposal(
 		4, 2, 2,
-		BlockID{tmrand.Bytes(tmhash.Size), PartSetHeader{777, tmrand.Bytes(tmhash.Size)}},
-		makeDAHeaderRandom(),
+		BlockID{
+			tmrand.Bytes(tmhash.Size),
+			PartSetHeader{777, tmrand.Bytes(tmhash.Size)}, dah},
+		dah,
 	)
 	p, err := prop.ToProto()
 	require.NoError(t, err)
@@ -149,7 +156,7 @@ func TestProposalValidateBasic(t *testing.T) {
 		{"Invalid Round", func(p *Proposal) { p.Round = -1 }, true},
 		{"Invalid POLRound", func(p *Proposal) { p.POLRound = -2 }, true},
 		{"Invalid BlockId", func(p *Proposal) {
-			p.BlockID = BlockID{[]byte{1, 2, 3}, PartSetHeader{111, []byte("blockparts")}}
+			p.BlockID = BlockID{[]byte{1, 2, 3}, PartSetHeader{111, []byte("blockparts")}, makeDAHeaderRandom()}
 		}, true},
 		{"Invalid Signature", func(p *Proposal) {
 			p.Signature = make([]byte, 0)
@@ -160,6 +167,7 @@ func TestProposalValidateBasic(t *testing.T) {
 	}
 	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
 	dah := makeDAHeaderRandom()
+	blockID.DataAvailabilityHeader = dah
 
 	for _, tc := range testCases {
 		tc := tc
@@ -177,12 +185,13 @@ func TestProposalValidateBasic(t *testing.T) {
 }
 
 func TestProposalProtoBuf(t *testing.T) {
+	blockID := makeBlockIDRandom()
 	proposal := NewProposal(
 		1,
 		2,
 		3,
-		makeBlockID([]byte("hash"), 2, []byte("part_set_hash")),
-		makeDAHeaderRandom(),
+		blockID,
+		blockID.DataAvailabilityHeader,
 	)
 	proposal.Signature = []byte("sig")
 	proposal2 := NewProposal(1, 2, 3, BlockID{}, &DataAvailabilityHeader{})

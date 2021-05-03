@@ -35,7 +35,7 @@ func TestVoteSet_AddVote_Good(t *testing.T) {
 		Round:            round,
 		Type:             tmproto.PrevoteType,
 		Timestamp:        tmtime.Now(),
-		BlockID:          BlockID{nil, PartSetHeader{}},
+		BlockID:          makeBlockIDRandom(),
 	}
 	_, err = signAddVote(val0, vote, voteSet)
 	require.NoError(t, err)
@@ -57,7 +57,7 @@ func TestVoteSet_AddVote_Bad(t *testing.T) {
 		Round:            round,
 		Timestamp:        tmtime.Now(),
 		Type:             tmproto.PrevoteType,
-		BlockID:          BlockID{nil, PartSetHeader{}},
+		BlockID:          makeBlockIDRandom(),
 	}
 
 	// val0 votes for nil.
@@ -132,7 +132,7 @@ func TestVoteSet_2_3Majority(t *testing.T) {
 		Round:            round,
 		Type:             tmproto.PrevoteType,
 		Timestamp:        tmtime.Now(),
-		BlockID:          BlockID{nil, PartSetHeader{}},
+		BlockID:          makeBlockIDRandom(),
 	}
 	// 6 out of 10 voted for nil.
 	for i := int32(0); i < 6; i++ {
@@ -177,6 +177,7 @@ func TestVoteSet_2_3MajorityRedux(t *testing.T) {
 
 	blockHash := crypto.CRandBytes(32)
 	blockPartsTotal := uint32(123)
+	randDAH := makeDAHeaderRandom()
 	blockPartSetHeader := PartSetHeader{blockPartsTotal, crypto.CRandBytes(32)}
 
 	voteProto := &Vote{
@@ -186,7 +187,7 @@ func TestVoteSet_2_3MajorityRedux(t *testing.T) {
 		Round:            round,
 		Timestamp:        tmtime.Now(),
 		Type:             tmproto.PrevoteType,
-		BlockID:          BlockID{blockHash, blockPartSetHeader},
+		BlockID:          BlockID{blockHash, blockPartSetHeader, randDAH},
 	}
 
 	// 66 out of 100 voted for nil.
@@ -265,7 +266,7 @@ func TestVoteSet_2_3MajorityRedux(t *testing.T) {
 		_, err = signAddVote(privValidators[70], vote, voteSet)
 		require.NoError(t, err)
 		blockID, ok = voteSet.TwoThirdsMajority()
-		assert.True(t, ok && blockID.Equals(BlockID{blockHash, blockPartSetHeader}),
+		assert.True(t, ok && blockID.Equals(BlockID{blockHash, blockPartSetHeader, randDAH}),
 			"there should be 2/3 majority")
 	}
 }
@@ -275,6 +276,8 @@ func TestVoteSet_Conflicts(t *testing.T) {
 	voteSet, _, privValidators := randVoteSet(height, round, tmproto.PrevoteType, 4, 1)
 	blockHash1 := tmrand.Bytes(32)
 	blockHash2 := tmrand.Bytes(32)
+	randDAH := makeDAHeaderRandom()
+	randDAH2 := makeDAHeaderRandom()
 
 	voteProto := &Vote{
 		ValidatorAddress: nil,
@@ -283,7 +286,7 @@ func TestVoteSet_Conflicts(t *testing.T) {
 		Round:            round,
 		Timestamp:        tmtime.Now(),
 		Type:             tmproto.PrevoteType,
-		BlockID:          BlockID{nil, PartSetHeader{}},
+		BlockID:          BlockID{DataAvailabilityHeader: randDAH},
 	}
 
 	val0, err := privValidators[0].GetPubKey()
@@ -299,7 +302,7 @@ func TestVoteSet_Conflicts(t *testing.T) {
 		}
 	}
 
-	// val0 votes again for blockHash1.
+	// val0 votes for blockHash1.
 	{
 		vote := withValidator(voteProto, val0Addr, 0)
 		added, err := signAddVote(privValidators[0], withBlockHash(vote, blockHash1), voteSet)
@@ -308,7 +311,7 @@ func TestVoteSet_Conflicts(t *testing.T) {
 	}
 
 	// start tracking blockHash1
-	err = voteSet.SetPeerMaj23("peerA", BlockID{blockHash1, PartSetHeader{}})
+	err = voteSet.SetPeerMaj23("peerA", BlockID{blockHash1, PartSetHeader{}, randDAH})
 	require.NoError(t, err)
 
 	// val0 votes again for blockHash1.
@@ -320,7 +323,7 @@ func TestVoteSet_Conflicts(t *testing.T) {
 	}
 
 	// attempt tracking blockHash2, should fail because already set for peerA.
-	err = voteSet.SetPeerMaj23("peerA", BlockID{blockHash2, PartSetHeader{}})
+	err = voteSet.SetPeerMaj23("peerA", BlockID{blockHash2, PartSetHeader{}, randDAH2})
 	require.Error(t, err)
 
 	// val0 votes again for blockHash1.
@@ -372,7 +375,7 @@ func TestVoteSet_Conflicts(t *testing.T) {
 	}
 
 	// now attempt tracking blockHash1
-	err = voteSet.SetPeerMaj23("peerB", BlockID{blockHash1, PartSetHeader{}})
+	err = voteSet.SetPeerMaj23("peerB", BlockID{blockHash1, PartSetHeader{}, randDAH})
 	require.NoError(t, err)
 
 	// val2 votes for blockHash1.
@@ -402,7 +405,6 @@ func TestVoteSet_Conflicts(t *testing.T) {
 func TestVoteSet_MakeCommit(t *testing.T) {
 	height, round := int64(1), int32(0)
 	voteSet, _, privValidators := randVoteSet(height, round, tmproto.PrecommitType, 10, 1)
-	blockHash, blockPartSetHeader := crypto.CRandBytes(32), PartSetHeader{123, crypto.CRandBytes(32)}
 
 	voteProto := &Vote{
 		ValidatorAddress: nil,
@@ -411,7 +413,7 @@ func TestVoteSet_MakeCommit(t *testing.T) {
 		Round:            round,
 		Timestamp:        tmtime.Now(),
 		Type:             tmproto.PrecommitType,
-		BlockID:          BlockID{blockHash, blockPartSetHeader},
+		BlockID:          makeBlockIDRandom(),
 	}
 
 	// 6 out of 10 voted for some block.
@@ -462,7 +464,7 @@ func TestVoteSet_MakeCommit(t *testing.T) {
 		assert.NoError(t, err)
 		addr := pv.Address()
 		vote := withValidator(voteProto, addr, 8)
-		vote.BlockID = BlockID{}
+		vote.BlockID = BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader()}
 
 		_, err = signAddVote(privValidators[8], vote, voteSet)
 		require.NoError(t, err)

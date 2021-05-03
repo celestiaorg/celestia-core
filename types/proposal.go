@@ -126,11 +126,6 @@ func (p *Proposal) ToProto() (*tmproto.Proposal, error) {
 		return &tmproto.Proposal{}, nil
 	}
 
-	pdah, err := p.DAHeader.ToProto()
-	if err != nil {
-		return nil, err
-	}
-
 	pb := new(tmproto.Proposal)
 	pb.BlockID = p.BlockID.ToProto()
 	pb.Type = p.Type
@@ -139,7 +134,7 @@ func (p *Proposal) ToProto() (*tmproto.Proposal, error) {
 	pb.PolRound = p.POLRound
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
-	pb.DAHeader = pdah
+	pb.DAHeader = p.DAHeader.ToProto()
 	return pb, nil
 }
 

@@ -30,8 +30,8 @@ func TestEvidenceList(t *testing.T) {
 
 func randomDuplicateVoteEvidence(t *testing.T) *DuplicateVoteEvidence {
 	val := NewMockPV()
-	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
-	blockID2 := makeBlockID([]byte("blockhash2"), 1000, []byte("partshash"))
+	blockID := makeBlockIDRandom()
+	blockID2 := makeBlockIDRandom()
 	const chainID = "mychain"
 	return &DuplicateVoteEvidence{
 		VoteA:            makeVote(t, val, chainID, 0, 10, 2, 1, blockID, defaultVoteTime),
@@ -52,8 +52,8 @@ func TestDuplicateVoteEvidence(t *testing.T) {
 
 func TestDuplicateVoteEvidenceValidation(t *testing.T) {
 	val := NewMockPV()
-	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
-	blockID2 := makeBlockID(tmhash.Sum([]byte("blockhash2")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
+	blockID := makeBlockIDRandom()
+	blockID2 := makeBlockIDRandom()
 	const chainID = "mychain"
 
 	testCases := []struct {
@@ -95,7 +95,7 @@ func TestLightClientAttackEvidence(t *testing.T) {
 	voteSet, valSet, privVals := randVoteSet(height, 1, tmproto.PrecommitType, 10, 1)
 	header := makeHeaderRandom()
 	header.Height = height
-	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
+	blockID := makeBlockIDRandom()
 	commit, err := MakeCommit(blockID, height, 1, voteSet, privVals, defaultVoteTime)
 	require.NoError(t, err)
 	lcae := &LightClientAttackEvidence{
@@ -159,7 +159,8 @@ func TestLightClientAttackEvidenceValidation(t *testing.T) {
 	header := makeHeaderRandom()
 	header.Height = height
 	header.ValidatorsHash = valSet.Hash()
-	blockID := makeBlockID(header.Hash(), math.MaxInt32, tmhash.Sum([]byte("partshash")))
+	blockID := makeBlockIDRandom()
+	blockID.Hash = header.Hash()
 	commit, err := MakeCommit(blockID, height, 1, voteSet, privVals, time.Now())
 	require.NoError(t, err)
 	lcae := &LightClientAttackEvidence{
@@ -265,8 +266,8 @@ func makeHeaderRandom() *Header {
 func TestEvidenceProto(t *testing.T) {
 	// -------- Votes --------
 	val := NewMockPV()
-	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
-	blockID2 := makeBlockID(tmhash.Sum([]byte("blockhash2")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
+	blockID := makeBlockIDRandom()
+	blockID2 := makeBlockIDRandom()
 	const chainID = "mychain"
 	v := makeVote(t, val, chainID, math.MaxInt32, math.MaxInt64, 1, 0x01, blockID, defaultVoteTime)
 	v2 := makeVote(t, val, chainID, math.MaxInt32, math.MaxInt64, 2, 0x01, blockID2, defaultVoteTime)

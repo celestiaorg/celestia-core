@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -104,9 +105,10 @@ func (dah *DataAvailabilityHeader) Equals(to *DataAvailabilityHeader) bool {
 
 // Hash computes and caches the merkle root of the row and column roots.
 func (dah *DataAvailabilityHeader) Hash() []byte {
-	if dah == nil {
-		return merkle.HashFromByteSlices(nil)
+	if dah.IsZero() {
+		dah = MinDataAvailabilityHeader()
 	}
+
 	if len(dah.hash) != 0 {
 		return dah.hash
 	}
@@ -126,20 +128,89 @@ func (dah *DataAvailabilityHeader) Hash() []byte {
 	return dah.hash
 }
 
-func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, error) {
+// ValidateBasic runs stateless checks on the DataAvailabilityHeader. Calls Hash() if not already called
+func (dah *DataAvailabilityHeader) ValidateBasic() error {
 	if dah == nil {
-		return nil, errors.New("nil DataAvailabilityHeader")
+		return errors.New("nil header is invalid")
+	}
+	if dah.IsZero() {
+		return errors.New("must have at least one row and column roots")
+	}
+	if len(dah.ColumnRoots) != len(dah.RowsRoots) {
+		return fmt.Errorf(
+			"unequal number of row and column roots: row %d col %d",
+			len(dah.RowsRoots),
+			len(dah.ColumnRoots),
+		)
+	}
+	if len(dah.hash) == 0 {
+		dah.Hash()
+	}
+
+	return nil
+}
+
+func (dah *DataAvailabilityHeader) IsZero() bool {
+	if dah == nil {
+		return true
+	}
+	return len(dah.ColumnRoots) == 0 || len(dah.RowsRoots) == 0
+}
+
+// MinDataAvailabilityHeader returns a hard coded copy of a data availability
+// header from empty block data
+func MinDataAvailabilityHeader() *DataAvailabilityHeader {
+	first, err := namespace.IntervalDigestFromBytes(
+		NamespaceSize,
+		hexBytesFromString("fffffffffffffffefffffffffffffffe669aa8f0d85221a05b6f0917884d30616a6c7d5330a5640a08a04dcc5b092f4f"),
+	)
+	if err != nil {
+		panic(err)
+	}
+	second, err := namespace.IntervalDigestFromBytes(
+		NamespaceSize,
+		hexBytesFromString("ffffffffffffffffffffffffffffffff293437f3b6a5611e25c90d5a44b84cc4b3720cdba68553defe8b719af1f5c395"),
+	)
+	if err != nil {
+		panic(err)
+	}
+	dah := &DataAvailabilityHeader{
+		RowsRoots: []namespace.IntervalDigest{
+			first, second,
+		},
+		ColumnRoots: []namespace.IntervalDigest{
+			first, second,
+		},
+		hash: []byte{
+			4, 122, 211, 141, 172, 30, 22, 215, 241, 73, 77, 225, 174, 40, 53, 252, 106, 158, 117, 238,
+			88, 77, 86, 66, 235, 146, 121, 62, 161, 36, 160, 111,
+		},
+	}
+	return dah
+}
+
+func hexBytesFromString(s string) tmbytes.HexBytes {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	return tmbytes.HexBytes(b)
+}
+
+func (dah *DataAvailabilityHeader) ToProto() *tmproto.DataAvailabilityHeader {
+	if dah == nil {
+		return nil
 	}
 
 	dahp := new(tmproto.DataAvailabilityHeader)
 	dahp.RowRoots = dah.RowsRoots.Bytes()
 	dahp.ColumnRoots = dah.ColumnRoots.Bytes()
-	return dahp, nil
+	return dahp
 }
 
 func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (dah *DataAvailabilityHeader, err error) {
 	if dahp == nil {
-		return nil, errors.New("nil DataAvailabilityHeader")
+		return nil, nil
 	}
 
 	dah = new(DataAvailabilityHeader)
@@ -152,6 +223,8 @@ func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (dah 
 	if err != nil {
 		return
 	}
+
+	dah.Hash()
 
 	return
 }
@@ -222,6 +295,17 @@ func (b *Block) fillHeader() {
 	}
 	if b.EvidenceHash == nil {
 		b.EvidenceHash = b.Evidence.Hash()
+	}
+}
+
+func (b *Block) BlockID() BlockID {
+	if b.DataAvailabilityHeader.IsZero() {
+		b.fillDataAvailabilityHeader()
+	}
+	return BlockID{
+		Hash:                   b.Hash(),
+		PartSetHeader:          b.MakePartSet(BlockPartSizeBytes).Header(),
+		DataAvailabilityHeader: &b.DataAvailabilityHeader,
 	}
 }
 
@@ -500,16 +584,11 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 		return nil, err
 	}
 
-	pdah, err := b.DataAvailabilityHeader.ToProto()
-	if err != nil {
-		return nil, err
-	}
-
 	pb.Header = *b.Header.ToProto()
 	pb.LastCommit = b.LastCommit.ToProto()
 	pb.Data = b.Data.ToProto()
 	pb.Data.Evidence = *protoEvidence
-	pb.DataAvailabilityHeader = pdah
+	pb.DataAvailabilityHeader = b.DataAvailabilityHeader.ToProto()
 	return pb, nil
 }
 
@@ -759,8 +838,9 @@ func (h *Header) Hash() tmbytes.HexBytes {
 		return nil
 	}
 
-	pbbi := h.LastBlockID.ToProto()
-	bzbi, err := pbbi.Marshal()
+	pBID := h.LastBlockID.ToProto()
+
+	bzbi, err := pBID.Marshal()
 	if err != nil {
 		return nil
 	}
@@ -1646,14 +1726,30 @@ func (data *EvidenceData) splitIntoShares() NamespacedShares {
 
 // BlockID
 type BlockID struct {
-	Hash          tmbytes.HexBytes `json:"hash"`
-	PartSetHeader PartSetHeader    `json:"part_set_header"`
+	Hash                   tmbytes.HexBytes `json:"hash"`
+	PartSetHeader          PartSetHeader    `json:"part_set_header"`
+	DataAvailabilityHeader *DataAvailabilityHeader
+}
+
+// NewBlockID issues a new BlockID. If the provided data availability header is
+// nil or has no row or column roots, then the minimum data availability header
+// is used
+func NewBlockID(hash []byte, psh PartSetHeader, dah *DataAvailabilityHeader) BlockID {
+	if dah.IsZero() {
+		dah = MinDataAvailabilityHeader()
+	}
+	return BlockID{
+		Hash:                   hash,
+		PartSetHeader:          psh,
+		DataAvailabilityHeader: dah,
+	}
 }
 
 // Equals returns true if the BlockID matches the given BlockID
 func (blockID BlockID) Equals(other BlockID) bool {
 	return bytes.Equal(blockID.Hash, other.Hash) &&
-		blockID.PartSetHeader.Equals(other.PartSetHeader)
+		blockID.PartSetHeader.Equals(other.PartSetHeader) &&
+		blockID.DataAvailabilityHeader.Equals(other.DataAvailabilityHeader)
 }
 
 // Key returns a machine-readable string representation of the BlockID
@@ -1664,7 +1760,7 @@ func (blockID BlockID) Key() string {
 		panic(err)
 	}
 
-	return string(blockID.Hash) + string(bz)
+	return string(blockID.Hash) + string(bz) + string(blockID.DataAvailabilityHeader.Hash())
 }
 
 // ValidateBasic performs basic validation.
@@ -1675,6 +1771,9 @@ func (blockID BlockID) ValidateBasic() error {
 	}
 	if err := blockID.PartSetHeader.ValidateBasic(); err != nil {
 		return fmt.Errorf("wrong PartSetHeader: %v", err)
+	}
+	if err := blockID.DataAvailabilityHeader.ValidateBasic(); err != nil {
+		return fmt.Errorf("wrong DataAvailabilityHeader: %w", err)
 	}
 	return nil
 }
@@ -1709,8 +1808,9 @@ func (blockID *BlockID) ToProto() tmproto.BlockID {
 	}
 
 	return tmproto.BlockID{
-		Hash:          blockID.Hash,
-		PartSetHeader: blockID.PartSetHeader.ToProto(),
+		Hash:                   blockID.Hash,
+		PartSetHeader:          blockID.PartSetHeader.ToProto(),
+		DataAvailabilityHeader: blockID.DataAvailabilityHeader.ToProto(),
 	}
 }
 
@@ -1727,8 +1827,14 @@ func BlockIDFromProto(bID *tmproto.BlockID) (*BlockID, error) {
 		return nil, err
 	}
 
+	dah, err := DataAvailabilityHeaderFromProto(bID.DataAvailabilityHeader)
+	if err != nil {
+		return nil, err
+	}
+
 	blockID.PartSetHeader = *ph
 	blockID.Hash = bID.Hash
+	blockID.DataAvailabilityHeader = dah
 
 	return blockID, blockID.ValidateBasic()
 }

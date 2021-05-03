@@ -11,14 +11,27 @@ import (
 
 func TestCanonicalizeBlockID(t *testing.T) {
 	randhash := tmrand.Bytes(tmhash.Size)
-	block1 := tmproto.BlockID{Hash: randhash,
-		PartSetHeader: tmproto.PartSetHeader{Total: 5, Hash: randhash}}
-	block2 := tmproto.BlockID{Hash: randhash,
-		PartSetHeader: tmproto.PartSetHeader{Total: 10, Hash: randhash}}
-	cblock1 := tmproto.CanonicalBlockID{Hash: randhash,
-		PartSetHeader: tmproto.CanonicalPartSetHeader{Total: 5, Hash: randhash}}
-	cblock2 := tmproto.CanonicalBlockID{Hash: randhash,
-		PartSetHeader: tmproto.CanonicalPartSetHeader{Total: 10, Hash: randhash}}
+	randDah := makeDAHeaderRandom().ToProto()
+	block1 := tmproto.BlockID{
+		Hash:                   randhash,
+		PartSetHeader:          tmproto.PartSetHeader{Total: 5, Hash: randhash},
+		DataAvailabilityHeader: randDah,
+	}
+	block2 := tmproto.BlockID{
+		Hash:                   randhash,
+		PartSetHeader:          tmproto.PartSetHeader{Total: 10, Hash: randhash},
+		DataAvailabilityHeader: randDah,
+	}
+	cblock1 := tmproto.CanonicalBlockID{
+		Hash:                   randhash,
+		PartSetHeader:          tmproto.CanonicalPartSetHeader{Total: 5, Hash: randhash},
+		DataAvailabilityHeader: randDah,
+	}
+	cblock2 := tmproto.CanonicalBlockID{
+		Hash:                   randhash,
+		PartSetHeader:          tmproto.CanonicalPartSetHeader{Total: 10, Hash: randhash},
+		DataAvailabilityHeader: randDah,
+	}
 
 	tests := []struct {
 		name string
