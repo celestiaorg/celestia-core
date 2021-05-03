@@ -381,7 +381,7 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 
 	// Create a new proposal block from state/txs from the mempool.
 	block1, blockParts1 := cs.createProposalBlock()
-	polRound, propBlockID := cs.ValidRound, types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
+	polRound, propBlockID := cs.ValidRound, block1.BlockID()
 	proposal1 := types.NewProposal(height, round, polRound, propBlockID, &block1.DataAvailabilityHeader)
 	p1, err := proposal1.ToProto()
 	require.NoError(t, err)
@@ -396,7 +396,7 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 
 	// Create a new proposal block from state/txs from the mempool.
 	block2, blockParts2 := cs.createProposalBlock()
-	polRound, propBlockID = cs.ValidRound, types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
+	polRound, propBlockID = cs.ValidRound, block2.BlockID()
 	proposal2 := types.NewProposal(height, round, polRound, propBlockID, &block2.DataAvailabilityHeader)
 	p2, err := proposal2.ToProto()
 	require.NoError(t, err)

@@ -626,6 +626,14 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 	return b, b.ValidateBasic()
 }
 
+func (b *Block) BlockID() BlockID {
+	return BlockID{
+		Hash:                   b.Hash(),
+		PartSetHeader:          b.MakePartSet(BlockPartSizeBytes).Header(),
+		DataAvailabilityHeader: &b.DataAvailabilityHeader,
+	}
+}
+
 //-----------------------------------------------------------------------------
 
 // MaxDataBytes returns the maximum size of block's data.
