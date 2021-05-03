@@ -47,7 +47,7 @@ const (
 
 // DataAvailabilityHeader (DAHeader) contains the row and column roots of the erasure
 // coded version of the data in Block.Data.
-// Therefor the original Block.Data is arranged in a
+// Therefore, the original Block.Data is arranged in a
 // k × k matrix, which is then "extended" to a
 // 2k × 2k matrix applying multiple times Reed-Solomon encoding.
 // For details see Section 5.2: https://arxiv.org/abs/1809.09044

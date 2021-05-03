@@ -24,7 +24,7 @@ func (n NamespacedShare) Data() []byte {
 }
 
 // NamespacedShares is just a list of NamespacedShare elements.
-// It can be used to extract the raw raw shares.
+// It can be used to extract the raw shares.
 type NamespacedShares []NamespacedShare
 
 // RawShares returns the raw shares that can be fed into the erasure coding
