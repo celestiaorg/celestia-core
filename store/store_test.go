@@ -627,7 +627,7 @@ func TestBlockFetchAtHeight(t *testing.T) {
 		t.Error(err)
 	}
 
-	if blockAtHeight.LastCommit != nil {
+	if blockAtHeight.LastCommit != nil && blockAtHeight.LastCommit.IsCommit() {
 		t.Fatal("expected nil for LastCommit of loaded block")
 	}
 
