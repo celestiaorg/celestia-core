@@ -26,7 +26,7 @@ Then light clients would not need to wait for the canonical commit to be include
 
 For the RPC-based light client it could also make sense to add a new RPC endpoint to tendermint for clients to retrieve the DA header, or embed the DAHeader.
 The [Commit](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/rpc/core/routes.go#L25) only contains the [SignedHeader](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/rpc/core/types/responses.go#L32-L36) (Header and Commit signatures).
-Not all light clients will need the full DAHeader though (e.g. super-light-client do not).
+Not all light clients will need the full [DataAvailabilityHeader](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/types/block.go#L52-L69) (DAHeader) though (e.g. super-light-clients do not).
 
 
 ## Decision
@@ -203,15 +203,14 @@ Proposed
 
 - simple to implement and understand
 - familiar to tendermint / Cosmos devs
-- allows trying out the MVP without relying on the [lazyledger-app](https://github.com/lazyledger/lazyledger-app) (instead a simple abci app like a modified KV-store app could be used to demo the light client)
-- from the RPC serving node a DAS and a non-DAS client look the same
+- allows trying out the MVP without relying on the [lazyledger-app](https://github.com/lazyledger/lazyledger-app) (instead a simple abci app like a modified [KVStore](https://github.com/lazyledger/lazyledger-core/blob/42e4e8b58ebc58ebd663c114d2bcd7ab045b1c55/abci/example/kvstore/README.md) app could be used to demo the DAS light client)
 
 ### Negative
 
 - light client does not discover peers
 - requires the light client that currently runs simple RPC requests only to run an IPFS node
-- even though DAS light clients will need the DAHeader anyways, we require them to do somewhat superfluous network round-trips to download the DAHeader
 - rpc makes it extremely easy to infer which light clients are doing DAS and which not
+- the initial light client implementation might still be confusing to devs familiar to tendermint/Cosmos for the reason that it does DAS (and state fraud proofs) to get rid of the underlying honest majority assumption, but it will still do all checks related to that same honest majority assumption (e.g. download validator sets, Commits and validate that > 2/3 of them signed the header)
 
 ### Neutral
 
