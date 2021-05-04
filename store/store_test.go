@@ -389,11 +389,14 @@ func TestLoadBaseMeta(t *testing.T) {
 	require.NoError(t, err)
 	bs := NewBlockStore(memdb.NewDB())
 
+	lastCommit := &types.Commit{BlockID: types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()}}
+
 	for h := int64(1); h <= 10; h++ {
-		block := makeBlock(h, state, new(types.Commit))
+		block := makeBlock(h, state, lastCommit)
 		partSet := block.MakePartSet(2)
-		seenCommit := makeTestCommit(block, h, tmtime.Now())
-		bs.SaveBlock(block, partSet, seenCommit)
+		lastCommit := makeTestCommit(block, h, tmtime.Now())
+		block.Header.LastBlockID = lastCommit.BlockID
+		bs.SaveBlock(block, partSet, lastCommit)
 	}
 
 	_, err = bs.PruneBlocks(4)
