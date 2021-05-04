@@ -81,11 +81,53 @@ diff --git a/cmd/tendermint/commands/light.go b/cmd/tendermint/commands/light.go
 
 For the Data Availability sampling, the light client will have to run an IPFS node.
 It makes sense to make this mostly opaque to the user as everything around IPFS can be [configured](https://github.com/ipfs/go-ipfs/blob/d6322f485af222e319c893eeac51c44a9859e901/docs/config.md) in the $IPFS_PATH.
-
-TODO: align init'ing the ipfs repo for light client and full nodes
-
+This IPFS path should simply be a sub-directory inside the light client's [directory](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/light.go#L86-L87).
+We can later add the ability to let users configure the IPFS setup more granular.
 
 ### Light Client Protocol with DAS
+
+#### Running an IPFS node
+
+We already have methods to [initialize](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/init.go#L116-L157) and [run](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/node/node.go#L1449-L1488)  an IPFS node in place.
+These need to be refactored such that they can effectively be for the light client as well.
+This means:
+1. these methods need to be exported and available in a place that does not introduce interdependence of go packages
+2. users should be able to run a light client with a single command and hence most of the initialization logic should be coupled with creating the actual IPFS node and [made independent](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/init.go#L119-L120) of the `tendermint init` command
+
+An example for 2. can be found in the IPFS [code](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L239) itself.
+We might want to provide a slightly different default initialization though (see how this is [overridable](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L164-L165) in the ipfs daemon cmd).
+
+#### Light Store
+
+The light client stores data in its own [badgerdb instance](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/cmd/tendermint/commands/light.go#L125) in the given directory:
+
+```go
+db, err := badgerdb.NewDB("light-client-db", dir)
+```
+
+While it is not critical for this feature, we should at least try to re-use that same DB instance for the local ipld store.
+Otherwise, we introduce yet another DB instance - something we want to avoid, especially on the long run (see [#283](https://github.com/lazyledger/lazyledger-core/issues/283)).
+For the first implementation, it might still be simpler to create a separate DB instance and tackle cleaning this up in a separate pull request, e.g. together with other [instances]([#283](https://github.com/lazyledger/lazyledger-core/issues/283)).
+
+#### DAS
+
+#### RPC
+
+No changes to the RPC endpoints are _required_.
+Although, for convenience and ease of use, we could either add the `DAHeader` to the existing [Commit](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/rpc/core/routes.go#L25) endpoint, or, introduce a new endpoint to retrieve the `DAHeader` on demand and for a certain height or block hash.
+
+The first has the downside that not every light client needs the DAHeader.
+The second explicitly reveals to full-nodes which clients are doing DAS and which not.
+
+
+#### Testing
+
+Ideally, we add the DAS light client to the existing e2e tests.
+It might be worth to catch up with some relevant changes from tendermint upstream.
+In particular, [tendermint/tendermint#6196](https://github.com/tendermint/tendermint/pull/6196) and previous changes that it depends on.
+
+Additionally, we should provide a simple example in the documentation that walks through the DAS light client.
+It would be good if the light client logs some (info) output related to DAS to provide feedback to the user.
 
 > This section does not need to be filled in at the start of the ADR, but must be completed prior to the merging of the implementation.
 >
@@ -102,20 +144,6 @@ TODO: align init'ing the ipfs repo for light client and full nodes
 > - What are the efficiency considerations (time/space)?
 >
 > - What are the expected access patterns (load/throughput)?
->
-> - Are there any logging, monitoring or observability needs?
->
-> - Are there any security considerations?
->
-> - Are there any privacy considerations?
->
-> - How will the changes be tested?
->
-> - If the change is large, how will the changes be broken up for ease of review?
->
-> - Will these changes require a breaking (major) release?
->
-> - Does this change require coordination with the LazyLedger fork of the SDK or lazyledger-app?
 
 ## Status
 
