@@ -585,10 +585,14 @@ func TestBlockFetchAtHeight(t *testing.T) {
 	state, bs, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	defer cleanup()
 	require.Equal(t, bs.Height(), int64(0), "initially the height should be zero")
-	block := makeBlock(bs.Height()+1, state, new(types.Commit))
+	emptyBID := types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()}
+	emptyCommit := &types.Commit{BlockID: emptyBID}
+	block := makeBlock(bs.Height()+1, state, emptyCommit)
+	block.LastBlockID = emptyBID
 
 	partSet := block.MakePartSet(2)
 	seenCommit := makeTestCommit(block, 10, tmtime.Now())
+	block.LastCommit = emptyCommit
 	bs.SaveBlock(block, partSet, seenCommit)
 	require.Equal(t, bs.Height(), block.Header.Height, "expecting the new height to be changed")
 
