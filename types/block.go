@@ -162,14 +162,18 @@ func (dah *DataAvailabilityHeader) IsZero() bool {
 func MinDataAvailabilityHeader() *DataAvailabilityHeader {
 	first, err := namespace.IntervalDigestFromBytes(
 		NamespaceSize,
-		hexBytesFromString("fffffffffffffffefffffffffffffffe669aa8f0d85221a05b6f0917884d30616a6c7d5330a5640a08a04dcc5b092f4f"),
+		hexBytesFromString(
+			"fffffffffffffffefffffffffffffffe669aa8f0d85221a05b6f0917884d30616a6c7d5330a5640a08a04dcc5b092f4f",
+		),
 	)
 	if err != nil {
 		panic(err)
 	}
 	second, err := namespace.IntervalDigestFromBytes(
 		NamespaceSize,
-		hexBytesFromString("ffffffffffffffffffffffffffffffff293437f3b6a5611e25c90d5a44b84cc4b3720cdba68553defe8b719af1f5c395"),
+		hexBytesFromString(
+			"ffffffffffffffffffffffffffffffff293437f3b6a5611e25c90d5a44b84cc4b3720cdba68553defe8b719af1f5c395",
+		),
 	)
 	if err != nil {
 		panic(err)
@@ -619,6 +623,7 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 		return nil, err
 	}
 	b.DataAvailabilityHeader = *dah
+
 	if bp.LastCommit != nil {
 		lc, err := CommitFromProto(bp.LastCommit)
 		if err != nil {
@@ -1804,7 +1809,7 @@ func (blockID BlockID) String() string {
 // ToProto converts BlockID to protobuf
 func (blockID *BlockID) ToProto() tmproto.BlockID {
 	if blockID == nil {
-		return tmproto.BlockID{}
+		return tmproto.BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader().ToProto()}
 	}
 
 	return tmproto.BlockID{
@@ -1818,7 +1823,7 @@ func (blockID *BlockID) ToProto() tmproto.BlockID {
 // It returns an error if the block id is invalid.
 func BlockIDFromProto(bID *tmproto.BlockID) (*BlockID, error) {
 	if bID == nil {
-		return nil, errors.New("nil BlockID")
+		return nil, nil
 	}
 
 	blockID := new(BlockID)
@@ -1830,6 +1835,10 @@ func BlockIDFromProto(bID *tmproto.BlockID) (*BlockID, error) {
 	dah, err := DataAvailabilityHeaderFromProto(bID.DataAvailabilityHeader)
 	if err != nil {
 		return nil, err
+	}
+
+	if dah.IsZero() {
+		dah = MinDataAvailabilityHeader()
 	}
 
 	blockID.PartSetHeader = *ph
