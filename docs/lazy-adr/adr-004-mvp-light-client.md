@@ -152,11 +152,17 @@ As mentioned above the LightBlock should optionally contain the DataAvailability
 Index: types/light.go
 ===================================================================
 diff --git a/types/light.go b/types/light.go
---- a/types/light.go	(revision 8ab6c09f3a741a9c474fca88d49d535aae7665be)
-+++ b/types/light.go	(date 1620153360000)
-@@ -11,8 +11,11 @@
- // LightBlock is a SignedHeader and a ValidatorSet.
- // It is the basis of the light client
+--- a/types/light.go	(revision 64fdfaf9143d7af69925aae4f3ae4ea33abd61e5)
++++ b/types/light.go	(date 1620161433642)
+@@ -8,11 +8,15 @@
+ 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+ )
+
+-// LightBlock is a SignedHeader and a ValidatorSet.
+-// It is the basis of the light client
++// LightBlock is a SignedHeader and a ValidatorSet
++// and optionally a DataAvailabilityHeader (for DAS light clients).
++// It is the basis of the light client.
  type LightBlock struct {
 -	*SignedHeader `json:"signed_header"`
 -	ValidatorSet  *ValidatorSet `json:"validator_set"`
