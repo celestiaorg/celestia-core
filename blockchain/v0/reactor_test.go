@@ -96,7 +96,12 @@ func newBlockchainReactor(
 
 	// let's add some blocks in
 	for blockHeight := int64(1); blockHeight <= maxBlockHeight; blockHeight++ {
-		lastCommit := types.NewCommit(blockHeight-1, 0, types.BlockID{}, nil)
+		lastCommit := types.NewCommit(
+			blockHeight-1,
+			0,
+			types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()},
+			nil,
+		)
 		if blockHeight > 1 {
 			lastBlockMeta := blockStore.LoadBlockMeta(blockHeight - 1)
 			lastBlock := blockStore.LoadBlock(blockHeight - 1)
@@ -117,10 +122,14 @@ func newBlockchainReactor(
 		}
 
 		thisBlock := makeBlock(blockHeight, state, lastCommit)
+		thisBlock.Hash()
 
 		thisParts := thisBlock.MakePartSet(types.BlockPartSizeBytes)
-		blockID := types.BlockID{Hash: thisBlock.Hash(), PartSetHeader: thisParts.Header()}
-
+		blockID := types.BlockID{
+			Hash:                   thisBlock.Hash(),
+			PartSetHeader:          thisParts.Header(),
+			DataAvailabilityHeader: &thisBlock.DataAvailabilityHeader,
+		}
 		state, _, err = blockExec.ApplyBlock(state, blockID, thisBlock)
 		if err != nil {
 			panic(fmt.Errorf("error apply block: %w", err))
@@ -153,6 +162,8 @@ func TestNoBlockResponse(t *testing.T) {
 
 	}, p2p.Connect2Switches)
 
+	fmt.Println("after make conns", len(reactorPairs[0].reactor.pool.peers), len(reactorPairs[1].reactor.pool.peers))
+
 	defer func() {
 		for _, r := range reactorPairs {
 			err := r.reactor.Stop()
@@ -177,13 +188,15 @@ func TestNoBlockResponse(t *testing.T) {
 			break
 		}
 
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 	}
 
 	assert.Equal(t, maxBlockHeight, reactorPairs[0].reactor.store.Height())
 
-	for _, tt := range tests {
+	for i, tt := range tests {
+		fmt.Println("test", i, "loading block")
 		block := reactorPairs[1].reactor.store.LoadBlock(tt.height)
+		fmt.Println("finished loading block")
 		if tt.existent {
 			assert.True(t, block != nil)
 		} else {
@@ -295,6 +308,8 @@ func makeTxs(height int64) (txs []types.Tx) {
 func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Block {
 	block, _ := state.MakeBlock(height, makeTxs(height), nil,
 		nil, types.Messages{}, lastCommit, state.Validators.GetProposer().Address)
+
+	block.LastBlockID = lastCommit.BlockID
 	return block
 }
 
