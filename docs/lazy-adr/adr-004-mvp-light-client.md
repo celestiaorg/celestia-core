@@ -75,8 +75,6 @@ diff --git a/cmd/tendermint/commands/light.go b/cmd/tendermint/commands/light.go
 +		"data availability sampling. For each verified header, additionally verify data availability via data availability sampling",
 +	)
  }
-
- func runProxy(cmd *cobra.Command, args []string) error {
 ```
 
 For the Data Availability sampling, the light client will have to run an IPFS node.
@@ -128,13 +126,50 @@ In parallel but in a separate pull request, we add a separate RPC endpoint to do
 The changes for DAS are very simple from a high-level perspective assuming that the light client has the ability to download the DAHeader along with the required data (signed header + validator set) of a given height:
 
 Every time the light client validates a retrieved light-block, it additionally starts DAS in the background (once).
-This is independent of if the validator is run in [skipping](https://github.com/tendermint/tendermint/blob/f366ae3c875a4f4f61f37f4b39383558ac5a58cc/light/client.go#L55-L69) mode or [sequential](https://github.com/tendermint/tendermint/blob/f366ae3c875a4f4f61f37f4b39383558ac5a58cc/light/client.go#L46-L53) mode.
+For a DAS light client it is important to use [sequential](https://github.com/tendermint/tendermint/blob/f366ae3c875a4f4f61f37f4b39383558ac5a58cc/light/client.go#L46-L53) verification and not [skipping](https://github.com/tendermint/tendermint/blob/f366ae3c875a4f4f61f37f4b39383558ac5a58cc/light/client.go#L55-L69) verification.
+Skipping verification only works under the assumption that 2/3+1 of voting power is honest.
+The whole point of doing DAS (and state fraud proofs) is to remove that assumption.
+See also this related issue in the LL specification: [#159](https://github.com/lazyledger/lazyledger-specs/issues/159).
+
+Independent of the existing implementation, there are three ways this could be implemented:
+1. the DAS light client only accepts a header as valid and trusts it after DAS succeeds (additionally to the tendermint verification), and it waits until DAS succeeds (or there was an error or timeout on the way)
+2. (aka 1.5) the DAS light client stages headers where the tendermint verification passes as valid and spins up DAS sampling rotines in the background; the staged headers are committed as valid iff all routines successfully return in time
+3. the DAS light client optimistically accepts a header as valid and trusts it if the regular tendermint verification succeeds; the DAS is run in the background (with potentially much longer timeouts as in 1.) and after the background routine returns (or errs or times out), the already trusted headers are marked as unavailable; this might require rolling back the already trusted headers
+
+We note that from an implementation point of view 1. is not only the simplest approach, but it would also work best with the currently implemented light client design.
+It is the approach that should be implemented first.
+
+The 2. approach can be seen as an optimization where the higher latency DAS can be conducted in parallel for various heights.
+This could speed up catching-up (sequentially) if the light client went offline (shorter than the weak subjectivity time window).
+
+The 3. approach is the most general of all, but it moves the responsibility to wait or to rollback headers to the caller and hence is undesirable as it offers too much flexibility.
 
 
 #### Data Structures
 
-- TODO: LightBlock
+As mentioned above the LightBlock should optionally contain the DataAvailabilityHeader.
+```diff
+Index: types/light.go
+===================================================================
+diff --git a/types/light.go b/types/light.go
+--- a/types/light.go	(revision 8ab6c09f3a741a9c474fca88d49d535aae7665be)
++++ b/types/light.go	(date 1620153360000)
+@@ -11,8 +11,11 @@
+ // LightBlock is a SignedHeader and a ValidatorSet.
+ // It is the basis of the light client
+ type LightBlock struct {
+-	*SignedHeader `json:"signed_header"`
+-	ValidatorSet  *ValidatorSet `json:"validator_set"`
++	*SignedHeader          `json:"signed_header"`
++	ValidatorSet           *ValidatorSet           `json:"validator_set"`
++
++	// DataAvailabilityHeader is only populated for DAS light clients for others it can be nil.
++	DataAvailabilityHeader *DataAvailabilityHeader `json:"data_availability_header"`
+ }
+```
+
 - TODO: rpc endpoint
+- TODO: Provider
 
 
 #### Testing
