@@ -226,6 +226,7 @@ func (th *TestHarness) TestSignProposal() error {
 				Hash:  hash,
 				Total: 1000000,
 			},
+			DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
 		},
 		Timestamp: time.Now(),
 		DAHeader:  &types.DataAvailabilityHeader{},
