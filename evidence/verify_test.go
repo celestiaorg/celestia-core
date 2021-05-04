@@ -1,6 +1,7 @@
 package evidence_test
 
 import (
+	mrand "math/rand"
 	"testing"
 	"time"
 
@@ -40,6 +41,7 @@ func TestVerifyLightClientAttack_Lunatic(t *testing.T) {
 
 	// we are simulating a lunatic light client attack
 	blockID := makeBlockID(conflictingHeader.Hash(), 1000, []byte("partshash"))
+	blockID.DataAvailabilityHeader = types.MinDataAvailabilityHeader()
 	voteSet := types.NewVoteSet(evidenceChainID, 10, 1, tmproto.SignedMsgType(2), conflictingVals)
 	commit, err := types.MakeCommit(blockID, 10, 1, voteSet, conflictingPrivVals, defaultEvidenceTime)
 	require.NoError(t, err)
@@ -62,6 +64,7 @@ func TestVerifyLightClientAttack_Lunatic(t *testing.T) {
 		Commit: &types.Commit{},
 	}
 	trustedBlockID := makeBlockID(trustedHeader.Hash(), 1000, []byte("partshash"))
+	trustedBlockID.DataAvailabilityHeader = types.MinDataAvailabilityHeader()
 	vals, privVals := types.RandValidatorSet(3, 8)
 	trustedVoteSet := types.NewVoteSet(evidenceChainID, 10, 1, tmproto.SignedMsgType(2), vals)
 	trustedCommit, err := types.MakeCommit(trustedBlockID, 10, 1, trustedVoteSet, privVals, defaultEvidenceTime)
@@ -227,6 +230,7 @@ func TestVerifyLightClientAttack_Amnesia(t *testing.T) {
 	// we are simulating an amnesia attack where all the validators in the conflictingVals set
 	// except the last validator vote twice. However this time the commits are of different rounds.
 	blockID := makeBlockID(conflictingHeader.Hash(), 1000, []byte("partshash"))
+	blockID.DataAvailabilityHeader = types.MinDataAvailabilityHeader()
 	voteSet := types.NewVoteSet(evidenceChainID, 10, 0, tmproto.SignedMsgType(2), conflictingVals)
 	commit, err := types.MakeCommit(blockID, 10, 0, voteSet, conflictingPrivVals, defaultEvidenceTime)
 	require.NoError(t, err)
@@ -245,6 +249,7 @@ func TestVerifyLightClientAttack_Amnesia(t *testing.T) {
 	}
 
 	trustedBlockID := makeBlockID(trustedHeader.Hash(), 1000, []byte("partshash"))
+	trustedBlockID.DataAvailabilityHeader = types.MinDataAvailabilityHeader()
 	trustedVoteSet := types.NewVoteSet(evidenceChainID, 10, 1, tmproto.SignedMsgType(2), conflictingVals)
 	trustedCommit, err := types.MakeCommit(trustedBlockID, 10, 1, trustedVoteSet, conflictingPrivVals, defaultEvidenceTime)
 	require.NoError(t, err)
@@ -272,7 +277,14 @@ func TestVerifyLightClientAttack_Amnesia(t *testing.T) {
 	stateStore.On("LoadValidators", int64(10)).Return(conflictingVals, nil)
 	stateStore.On("Load").Return(state, nil)
 	blockStore := &mocks.BlockStore{}
-	blockStore.On("LoadBlockMeta", int64(10)).Return(&types.BlockMeta{Header: *trustedHeader})
+	blockStore.On("LoadBlockMeta", int64(10)).Return(
+		&types.BlockMeta{
+			Header: *trustedHeader,
+			BlockID: types.BlockID{
+				DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
+			},
+		},
+	)
 	blockStore.On("LoadBlockCommit", int64(10)).Return(trustedCommit)
 
 	pool, err := evidence.NewPool(memdb.NewDB(), stateStore, blockStore)
@@ -299,9 +311,13 @@ func TestVerifyDuplicateVoteEvidence(t *testing.T) {
 	valSet := types.NewValidatorSet([]*types.Validator{val.ExtractIntoValidator(1)})
 
 	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
+	blockID.DataAvailabilityHeader = types.MinDataAvailabilityHeader()
 	blockID2 := makeBlockID([]byte("blockhash2"), 1000, []byte("partshash"))
+	blockID2.DataAvailabilityHeader = types.MinDataAvailabilityHeader()
 	blockID3 := makeBlockID([]byte("blockhash"), 10000, []byte("partshash"))
+	blockID3.DataAvailabilityHeader = types.MinDataAvailabilityHeader()
 	blockID4 := makeBlockID([]byte("blockhash"), 10000, []byte("partshash2"))
+	blockID4.DataAvailabilityHeader = types.MinDataAvailabilityHeader()
 
 	const chainID = "mychain"
 
@@ -411,12 +427,13 @@ func makeVote(
 }
 
 func makeHeaderRandom(height int64) *types.Header {
+	bID := makeRandomBlockID()
 	return &types.Header{
 		Version:            tmversion.Consensus{Block: version.BlockProtocol, App: 1},
 		ChainID:            evidenceChainID,
 		Height:             height,
 		Time:               defaultEvidenceTime,
-		LastBlockID:        makeBlockID([]byte("headerhash"), 1000, []byte("partshash")),
+		LastBlockID:        bID,
 		LastCommitHash:     crypto.CRandBytes(tmhash.Size),
 		DataHash:           crypto.CRandBytes(tmhash.Size),
 		ValidatorsHash:     crypto.CRandBytes(tmhash.Size),
@@ -443,4 +460,14 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.Bloc
 			Hash:  psH,
 		},
 	}
+}
+
+func makeRandomBlockID() types.BlockID {
+	var (
+		blockHash   = make([]byte, tmhash.Size)
+		partSetHash = make([]byte, tmhash.Size)
+	)
+	mrand.Read(blockHash)
+	mrand.Read(partSetHash)
+	return types.BlockID{blockHash, types.PartSetHeader{123, partSetHash}, types.MinDataAvailabilityHeader()}
 }

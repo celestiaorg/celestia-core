@@ -580,6 +580,6 @@ func randBlockID() BlockID {
 			Total: 1,
 			Hash:  tmrand.Bytes(tmhash.Size),
 		},
-		DataAvailabilityHeader: makeDAHeaderRandom(),
+		DataAvailabilityHeader: MinDataAvailabilityHeader(),
 	}
 }

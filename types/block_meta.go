@@ -17,9 +17,13 @@ type BlockMeta struct {
 }
 
 // NewBlockMeta returns a new BlockMeta.
-func NewBlockMeta(block *Block) *BlockMeta {
+func NewBlockMeta(block *Block, parts *PartSet) *BlockMeta {
 	return &BlockMeta{
-		BlockID:   block.BlockID(),
+		BlockID: BlockID{
+			Hash:                   block.Hash(),
+			DataAvailabilityHeader: &block.DataAvailabilityHeader,
+			PartSetHeader:          parts.Header(),
+		},
 		BlockSize: block.Size(),
 		Header:    block.Header,
 		NumTxs:    len(block.Data.Txs),
@@ -61,7 +65,6 @@ func BlockMetaFromProto(pb *tmproto.BlockMeta) (*BlockMeta, error) {
 	bm.BlockSize = int(pb.BlockSize)
 	bm.Header = h
 	bm.NumTxs = int(pb.NumTxs)
-
 	return bm, bm.ValidateBasic()
 }
 

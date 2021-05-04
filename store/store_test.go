@@ -33,7 +33,7 @@ import (
 type cleanupFunc func()
 
 // make a Commit with a single vote containing just the height and a timestamp
-func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
+func makeTestCommit(block *types.Block, height int64, timestamp time.Time) *types.Commit {
 	commitSigs := []types.CommitSig{{
 		BlockIDFlag:      types.BlockIDFlagCommit,
 		ValidatorAddress: tmrand.Bytes(crypto.AddressSize),
@@ -46,7 +46,11 @@ func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 	copy(hash, hh[:])
 
 	return types.NewCommit(height, 0,
-		types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: []byte(""), Total: 2}}, commitSigs)
+		types.BlockID{
+			Hash:                   hash,
+			PartSetHeader:          types.PartSetHeader{Hash: []byte(""), Total: 2},
+			DataAvailabilityHeader: &block.DataAvailabilityHeader,
+		}, commitSigs)
 }
 
 func makeTxs(height int64) (txs []types.Tx) {
@@ -59,6 +63,7 @@ func makeTxs(height int64) (txs []types.Tx) {
 func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Block {
 	block, _ := state.MakeBlock(height, makeTxs(height), nil,
 		nil, types.Messages{}, lastCommit, state.Validators.GetProposer().Address)
+	block.Hash()
 	return block
 }
 
@@ -157,7 +162,7 @@ func TestMain(m *testing.M) {
 	partSet = block.MakePartSet(2)
 	part1 = partSet.GetPart(0)
 	part2 = partSet.GetPart(1)
-	seenCommit1 = makeTestCommit(10, tmtime.Now())
+	seenCommit1 = makeTestCommit(block, 10, tmtime.Now())
 	code := m.Run()
 	cleanup()
 	os.Exit(code)
@@ -182,7 +187,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	// save a block
 	block := makeBlock(bs.Height()+1, state, new(types.Commit))
 	validPartSet := block.MakePartSet(2)
-	seenCommit := makeTestCommit(10, tmtime.Now())
+	seenCommit := makeTestCommit(block, 10, tmtime.Now())
 	bs.SaveBlock(block, partSet, seenCommit)
 	require.EqualValues(t, 1, bs.Base(), "expecting the new height to be changed")
 	require.EqualValues(t, block.Header.Height, bs.Height(), "expecting the new height to be changed")
@@ -202,7 +207,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 
 	// End of setup, test data
 
-	commitAtH10 := makeTestCommit(10, tmtime.Now())
+	commitAtH10 := makeTestCommit(block, 10, tmtime.Now())
 	tuples := []struct {
 		block      *types.Block
 		parts      *types.PartSet
@@ -235,10 +240,10 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 					ChainID:         "block_test",
 					Time:            tmtime.Now(),
 					ProposerAddress: tmrand.Bytes(crypto.AddressSize)},
-				makeTestCommit(5, tmtime.Now()),
+				makeTestCommit(block, 5, tmtime.Now()),
 			),
 			parts:      validPartSet,
-			seenCommit: makeTestCommit(5, tmtime.Now()),
+			seenCommit: makeTestCommit(block, 5, tmtime.Now()),
 		},
 
 		{
@@ -374,6 +379,8 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 }
 
+// the header and the blockID hashes are not matching during pruneblocks
+
 func TestLoadBaseMeta(t *testing.T) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)
@@ -385,7 +392,7 @@ func TestLoadBaseMeta(t *testing.T) {
 	for h := int64(1); h <= 10; h++ {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
-		seenCommit := makeTestCommit(h, tmtime.Now())
+		seenCommit := makeTestCommit(block, h, tmtime.Now())
 		bs.SaveBlock(block, partSet, seenCommit)
 	}
 
@@ -453,7 +460,7 @@ func TestPruneBlocks(t *testing.T) {
 	for h := int64(1); h <= 1500; h++ {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
-		seenCommit := makeTestCommit(h, tmtime.Now())
+		seenCommit := makeTestCommit(block, h, tmtime.Now())
 		bs.SaveBlock(block, partSet, seenCommit)
 	}
 
@@ -563,7 +570,7 @@ func TestBlockFetchAtHeight(t *testing.T) {
 	block := makeBlock(bs.Height()+1, state, new(types.Commit))
 
 	partSet := block.MakePartSet(2)
-	seenCommit := makeTestCommit(10, tmtime.Now())
+	seenCommit := makeTestCommit(block, 10, tmtime.Now())
 	bs.SaveBlock(block, partSet, seenCommit)
 	require.Equal(t, bs.Height(), block.Header.Height, "expecting the new height to be changed")
 

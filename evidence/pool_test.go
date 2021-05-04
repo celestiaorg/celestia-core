@@ -82,7 +82,7 @@ func TestEvidencePoolBasic(t *testing.T) {
 	next := pool.EvidenceFront()
 	assert.Equal(t, ev, next.Value.(types.Evidence))
 
-	const evidenceBytes int64 = 372
+	const evidenceBytes int64 = 780
 	evs, size = pool.PendingEvidence(evidenceBytes)
 	assert.Equal(t, 1, len(evs))
 	assert.Equal(t, evidenceBytes, size) // check that the size of the single evidence in bytes is correct
@@ -420,7 +420,12 @@ func makeCommit(height int64, valAddr []byte) *types.Commit {
 		Timestamp:        defaultEvidenceTime,
 		Signature:        []byte("Signature"),
 	}}
-	return types.NewCommit(height, 0, types.BlockID{}, commitSigs)
+	return types.NewCommit(
+		height,
+		0,
+		types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()},
+		commitSigs,
+	)
 }
 
 func defaultTestPool(height int64) (*evidence.Pool, types.MockPV) {
