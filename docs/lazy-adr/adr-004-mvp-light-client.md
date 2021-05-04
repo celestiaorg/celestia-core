@@ -109,15 +109,32 @@ While it is not critical for this feature, we should at least try to re-use that
 Otherwise, we introduce yet another DB instance - something we want to avoid, especially on the long run (see [#283](https://github.com/lazyledger/lazyledger-core/issues/283)).
 For the first implementation, it might still be simpler to create a separate DB instance and tackle cleaning this up in a separate pull request, e.g. together with other [instances]([#283](https://github.com/lazyledger/lazyledger-core/issues/283)).
 
-#### DAS
-
 #### RPC
 
-No changes to the RPC endpoints are _required_.
-Although, for convenience and ease of use, we could either add the `DAHeader` to the existing [Commit](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/rpc/core/routes.go#L25) endpoint, or, introduce a new endpoint to retrieve the `DAHeader` on demand and for a certain height or block hash.
+No changes to the RPC endpoints are absolutely required.
+Although, for convenience and ease of use, we should either add the `DAHeader` to the existing [Commit](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/rpc/core/routes.go#L25) endpoint, or, introduce a new endpoint to retrieve the `DAHeader` on demand and for a certain height or block hash.
 
 The first has the downside that not every light client needs the DAHeader.
 The second explicitly reveals to full-nodes which clients are doing DAS and which not.
+
+**Implementation Note:** The additional (or modified) RPC endpoint could work as a simple first step until we implement downloading the DAHeader from a given data root in the header.
+Also, the light client uses a so called [`Provider`](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/provider.go#L9-L26) to retrieve [LightBlocks](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/types/light.go#L11-L16), i.e. signed headers and validator sets.
+Currently, only the [`http` provider](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/http/http.go#L1) is implemented.
+Hence, as _a first implementation step_, we should augment the `Provider` and the `LightBlock` to optionally include the DAHeader (details below).
+In parallel but in a separate pull request, we add a separate RPC endpoint to download the DAHeader for a certain height.
+
+#### DAS
+
+The changes for DAS are very simple from a high-level perspective assuming that the light client has the ability to download the DAHeader along with the required data (signed header + validator set) of a given height:
+
+Every time the light client validates a retrieved light-block, it additionally starts DAS in the background (once).
+This is independent of if the validator is run in [skipping](https://github.com/tendermint/tendermint/blob/f366ae3c875a4f4f61f37f4b39383558ac5a58cc/light/client.go#L55-L69) mode or [sequential](https://github.com/tendermint/tendermint/blob/f366ae3c875a4f4f61f37f4b39383558ac5a58cc/light/client.go#L46-L53) mode.
+
+
+#### Data Structures
+
+- TODO: LightBlock
+- TODO: rpc endpoint
 
 
 #### Testing
@@ -163,6 +180,7 @@ Proposed
 - light client does not discover peers
 - requires the light client that currently runs simple RPC requests only to run an IPFS node
 - even though DAS light clients will need the DAHeader anyways, we require them to do somewhat superfluous network round-trips to download the DAHeader
+- rpc makes it extremely easy to infer which light clients are doing DAS and which not
 
 ### Neutral
 
