@@ -459,12 +459,15 @@ func TestPruneBlocks(t *testing.T) {
 	_, err = bs.PruneBlocks(0)
 	require.Error(t, err)
 
+	lastCommit := &types.Commit{BlockID: types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()}}
+
 	// make more than 1000 blocks, to test batch deletions
 	for h := int64(1); h <= 1500; h++ {
-		block := makeBlock(h, state, new(types.Commit))
+		block := makeBlock(h, state, lastCommit)
 		partSet := block.MakePartSet(2)
-		seenCommit := makeTestCommit(block, h, tmtime.Now())
-		bs.SaveBlock(block, partSet, seenCommit)
+		lastCommit = makeTestCommit(block, h, tmtime.Now())
+		block.Header.LastBlockID = lastCommit.BlockID
+		bs.SaveBlock(block, partSet, lastCommit)
 	}
 
 	assert.EqualValues(t, 1, bs.Base())
@@ -549,9 +552,21 @@ func TestLoadBlockMeta(t *testing.T) {
 	require.Contains(t, panicErr.Error(), "unmarshal to tmproto.BlockMeta")
 
 	// 3. A good blockMeta serialized and saved to the DB should be retrievable
-	meta := &types.BlockMeta{Header: types.Header{
-		Version: tmversion.Consensus{
-			Block: version.BlockProtocol, App: 0}, Height: 1, ProposerAddress: tmrand.Bytes(crypto.AddressSize)}}
+	bID := types.BlockID{
+		DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
+	}
+	meta := &types.BlockMeta{
+		Header: types.Header{
+			Version: tmversion.Consensus{
+				Block: version.BlockProtocol,
+				App:   0,
+			},
+			Height:          1,
+			ProposerAddress: tmrand.Bytes(crypto.AddressSize),
+			LastBlockID:     bID,
+		},
+		BlockID: bID,
+	}
 	pbm := meta.ToProto()
 	err = db.Set(calcBlockMetaKey(height), mustEncode(pbm))
 	require.NoError(t, err)
