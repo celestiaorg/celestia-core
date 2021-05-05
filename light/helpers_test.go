@@ -80,8 +80,9 @@ func (pkz privKeys) signHeader(header *types.Header, valSet *types.ValidatorSet,
 	}
 
 	blockID := types.BlockID{
-		Hash:          header.Hash(),
-		PartSetHeader: types.PartSetHeader{Total: 1, Hash: crypto.CRandBytes(32)},
+		Hash:                   header.Hash(),
+		PartSetHeader:          types.PartSetHeader{Total: 1, Hash: crypto.CRandBytes(32)},
+		DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
 	}
 
 	// Fill in the votes we want.
@@ -125,11 +126,11 @@ func genHeader(chainID string, height int64, bTime time.Time, txs types.Txs,
 	valset, nextValset *types.ValidatorSet, appHash, consHash, resHash []byte) *types.Header {
 
 	return &types.Header{
-		Version: tmversion.Consensus{Block: version.BlockProtocol, App: 0},
-		ChainID: chainID,
-		Height:  height,
-		Time:    bTime,
-		// LastBlockID
+		Version:     tmversion.Consensus{Block: version.BlockProtocol, App: 0},
+		ChainID:     chainID,
+		Height:      height,
+		Time:        bTime,
+		LastBlockID: types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()},
 		// LastCommitHash
 		ValidatorsHash:     valset.Hash(),
 		NextValidatorsHash: nextValset.Hash(),

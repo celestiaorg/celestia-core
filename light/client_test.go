@@ -31,10 +31,12 @@ var (
 		hash("app_hash"), hash("cons_hash"), hash("results_hash"), 0, len(keys))
 	// 3/3 signed
 	h2 = keys.GenSignedHeaderLastBlockID(chainID, 2, bTime.Add(30*time.Minute), nil, vals, vals,
-		hash("app_hash"), hash("cons_hash"), hash("results_hash"), 0, len(keys), types.BlockID{Hash: h1.Hash()})
+		hash("app_hash"), hash("cons_hash"), hash("results_hash"), 0, len(keys),
+		types.BlockID{Hash: h1.Hash(), DataAvailabilityHeader: types.MinDataAvailabilityHeader()})
 	// 3/3 signed
 	h3 = keys.GenSignedHeaderLastBlockID(chainID, 3, bTime.Add(1*time.Hour), nil, vals, vals,
-		hash("app_hash"), hash("cons_hash"), hash("results_hash"), 0, len(keys), types.BlockID{Hash: h2.Hash()})
+		hash("app_hash"), hash("cons_hash"), hash("results_hash"), 0, len(keys),
+		types.BlockID{Hash: h2.Hash(), DataAvailabilityHeader: types.MinDataAvailabilityHeader()})
 	trustPeriod  = 4 * time.Hour
 	trustOptions = light.TrustOptions{
 		Period: 4 * time.Hour,
