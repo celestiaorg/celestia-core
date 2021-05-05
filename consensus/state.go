@@ -1213,7 +1213,11 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	// If a block is locked, prevote that.
 	if cs.LockedBlock != nil {
 		logger.Info("enterPrevote: Already locked on a block, prevoting locked block")
-		cs.signAddVote(tmproto.PrevoteType, cs.LockedBlock.BlockID())
+		cs.signAddVote(tmproto.PrevoteType, types.BlockID{
+			Hash:                   cs.LockedBlock.Hash(),
+			PartSetHeader:          cs.LockedBlockParts.Header(),
+			DataAvailabilityHeader: &cs.ProposalBlock.DataAvailabilityHeader},
+		)
 		return
 	}
 
@@ -1237,7 +1241,11 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	// NOTE: the proposal signature is validated when it is received,
 	// and the proposal block parts are validated as they are received (against the merkle hash in the proposal)
 	logger.Info("enterPrevote: ProposalBlock is valid")
-	cs.signAddVote(tmproto.PrevoteType, cs.ProposalBlock.BlockID())
+	cs.signAddVote(tmproto.PrevoteType, types.BlockID{
+		Hash:                   cs.ProposalBlock.Hash(),
+		PartSetHeader:          cs.ProposalBlockParts.Header(),
+		DataAvailabilityHeader: &cs.ProposalBlock.DataAvailabilityHeader},
+	)
 }
 
 // Enter: any +2/3 prevotes at next round.

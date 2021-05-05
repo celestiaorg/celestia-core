@@ -302,17 +302,6 @@ func (b *Block) fillHeader() {
 	}
 }
 
-func (b *Block) BlockID() BlockID {
-	if b.DataAvailabilityHeader.IsZero() {
-		b.fillDataAvailabilityHeader()
-	}
-	return BlockID{
-		Hash:                   b.Hash(),
-		PartSetHeader:          b.MakePartSet(BlockPartSizeBytes).Header(),
-		DataAvailabilityHeader: &b.DataAvailabilityHeader,
-	}
-}
-
 // fillDataAvailabilityHeader fills in any remaining DataAvailabilityHeader fields
 // that are a function of the block data.
 func (b *Block) fillDataAvailabilityHeader() {
