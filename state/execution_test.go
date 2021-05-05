@@ -136,6 +136,7 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	defaultEvidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 	privVal := privVals[state.Validators.Validators[0].Address.String()]
 	blockID := makeBlockID([]byte("headerhash"), 1000, []byte("partshash"))
+	blockID.DataAvailabilityHeader = types.MinDataAvailabilityHeader()
 	header := &types.Header{
 		Version:            tmversion.Consensus{Block: version.BlockProtocol, App: 1},
 		ChainID:            state.ChainID,
