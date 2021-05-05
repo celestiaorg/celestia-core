@@ -129,7 +129,7 @@ func TestBlockHash(t *testing.T) {
 func TestBlockMakePartSet(t *testing.T) {
 	assert.Nil(t, (*Block)(nil).MakePartSet(2))
 
-	partSet := MakeBlock(int64(3), []Tx{Tx("Hello World")}, nil, nil, Messages{}, nil).MakePartSet(1024)
+	partSet := MakeBlock(int64(3), []Tx{Tx("Hello World")}, nil, nil, Messages{}, &Commit{}).MakePartSet(1024)
 	assert.NotNil(t, partSet)
 	assert.EqualValues(t, 1, partSet.Total())
 }
@@ -151,7 +151,7 @@ func TestBlockMakePartSetWithEvidence(t *testing.T) {
 	blk.DataAvailabilityHeader = *MinDataAvailabilityHeader()
 	partSet := blk.MakePartSet(512)
 	assert.NotNil(t, partSet)
-	assert.EqualValues(t, 5, partSet.Total())
+	assert.EqualValues(t, 6, partSet.Total())
 }
 
 func TestBlockHashesTo(t *testing.T) {
