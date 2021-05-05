@@ -1751,6 +1751,13 @@ func NewBlockID(hash []byte, psh PartSetHeader, dah *DataAvailabilityHeader) Blo
 	}
 }
 
+// EmptyBlockID returns a blockID with only the minimum data availability header
+func EmptyBlockID() BlockID {
+	return BlockID{
+		DataAvailabilityHeader: MinDataAvailabilityHeader(),
+	}
+}
+
 // Equals returns true if the BlockID matches the given BlockID
 func (blockID BlockID) Equals(other BlockID) bool {
 	return bytes.Equal(blockID.Hash, other.Hash) &&

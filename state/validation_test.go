@@ -36,7 +36,7 @@ func TestValidateBlockHeader(t *testing.T) {
 		memmock.Mempool{},
 		sm.EmptyEvidencePool{},
 	)
-	lastCommit := types.NewCommit(0, 0, types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()}, nil)
+	lastCommit := types.NewCommit(0, 0, types.EmptyBlockID(), nil)
 
 	// some bad values
 	wrongHash := tmhash.Sum([]byte("this hash is wrong"))
@@ -75,7 +75,7 @@ func TestValidateBlockHeader(t *testing.T) {
 			block.LastCommit = types.NewCommit(
 				0,
 				0,
-				types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()},
+				types.EmptyBlockID(),
 				[]types.CommitSig{types.NewCommitSigAbsent()},
 			)
 			block.LastCommitHash = block.LastCommit.Hash()

@@ -130,7 +130,7 @@ func genHeader(chainID string, height int64, bTime time.Time, txs types.Txs,
 		ChainID:     chainID,
 		Height:      height,
 		Time:        bTime,
-		LastBlockID: types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()},
+		LastBlockID: types.EmptyBlockID(),
 		// LastCommitHash
 		ValidatorsHash:     valset.Hash(),
 		NextValidatorsHash: nextValset.Hash(),

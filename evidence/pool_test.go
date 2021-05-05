@@ -423,7 +423,7 @@ func makeCommit(height int64, valAddr []byte) *types.Commit {
 	return types.NewCommit(
 		height,
 		0,
-		types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()},
+		types.EmptyBlockID(),
 		commitSigs,
 	)
 }

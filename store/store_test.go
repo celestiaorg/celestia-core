@@ -389,7 +389,7 @@ func TestLoadBaseMeta(t *testing.T) {
 	require.NoError(t, err)
 	bs := NewBlockStore(memdb.NewDB())
 
-	lastCommit := &types.Commit{BlockID: types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()}}
+	lastCommit := &types.Commit{BlockID: types.EmptyBlockID()}
 
 	for h := int64(1); h <= 10; h++ {
 		block := makeBlock(h, state, lastCommit)
@@ -459,7 +459,7 @@ func TestPruneBlocks(t *testing.T) {
 	_, err = bs.PruneBlocks(0)
 	require.Error(t, err)
 
-	lastCommit := &types.Commit{BlockID: types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()}}
+	lastCommit := &types.Commit{BlockID: types.EmptyBlockID()}
 
 	// make more than 1000 blocks, to test batch deletions
 	for h := int64(1); h <= 1500; h++ {
@@ -585,7 +585,7 @@ func TestBlockFetchAtHeight(t *testing.T) {
 	state, bs, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	defer cleanup()
 	require.Equal(t, bs.Height(), int64(0), "initially the height should be zero")
-	emptyBID := types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()}
+	emptyBID := types.EmptyBlockID()
 	emptyCommit := &types.Commit{BlockID: emptyBID}
 	block := makeBlock(bs.Height()+1, state, emptyCommit)
 	block.LastBlockID = emptyBID

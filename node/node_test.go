@@ -298,7 +298,7 @@ func TestCreateProposalBlock(t *testing.T) {
 	commit := types.NewCommit(
 		height-1,
 		0,
-		types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()},
+		types.EmptyBlockID(),
 		nil,
 	)
 	block, _ := blockExec.CreateProposalBlock(
