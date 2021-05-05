@@ -64,6 +64,7 @@ var (
 	dir                string
 	maxOpenConnections int
 
+	daSampling	   bool
 	sequential     bool
 	trustingPeriod time.Duration
 	trustedHeight  int64
@@ -100,6 +101,9 @@ func init() {
 	)
 	LightCmd.Flags().BoolVar(&sequential, "sequential", false,
 		"sequential verification. Verify all headers sequentially as opposed to using skipping verification",
+	)
+	LightCmd.Flags().BoolVar(&daSampling, "da-sampling", false,
+		"data availability sampling. For each verified header, additionally verify data availability via data availability sampling",
 	)
 }
 
