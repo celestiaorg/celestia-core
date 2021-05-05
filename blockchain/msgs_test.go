@@ -80,7 +80,18 @@ func TestBcStatusResponseMessageValidateBasic(t *testing.T) {
 
 // nolint:lll // ignore line length in tests
 func TestBlockchainMessageVectors(t *testing.T) {
-	block := types.MakeBlock(int64(3), []types.Tx{types.Tx("Hello World")}, nil, nil, types.Messages{}, nil)
+	block := types.MakeBlock(
+		int64(3),
+		[]types.Tx{types.Tx("Hello World")},
+		nil,
+		nil,
+		types.Messages{},
+		&types.Commit{
+			BlockID: types.BlockID{
+				DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
+			},
+		},
+	)
 	block.Version.Block = 11 // overwrite updated protocol version
 
 	bpb, err := block.ToProto()
@@ -97,7 +108,7 @@ func TestBlockchainMessageVectors(t *testing.T) {
 			BlockRequest: &bcproto.BlockRequest{Height: math.MaxInt64}}},
 			"0a0a08ffffffffffffffff7f"},
 		{"BlockResponseMessage", &bcproto.Message{Sum: &bcproto.Message_BlockResponse{
-			BlockResponse: &bcproto.BlockResponse{Block: bpb}}}, "1ac2020abf020a5d0a02080b1803220b088092b8c398feffffff012a021200380142204c149a7cfadc92b669b0cbfa4951a1b18c2d9f3177a3b8756d39ebb96e9d63317220e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85512130a0b48656c6c6f20576f726c6412001a0022001ac8010a3000000000000000010000000000000001b81cb5596c28d044214b9f935e4af7dbe76e417f6182d86fbee68bfff7b2ff3a0a30ffffffffffffffffffffffffffffffffc4096ba8fccf882c309896e9168fa43fe62fccb752cb12d5160cc1d9c2ebffe7123000000000000000010000000000000001b81cb5596c28d044214b9f935e4af7dbe76e417f6182d86fbee68bfff7b2ff3a1230ffffffffffffffffffffffffffffffffc4096ba8fccf882c309896e9168fa43fe62fccb752cb12d5160cc1d9c2ebffe7"},
+			BlockResponse: &bcproto.BlockResponse{Block: bpb}}}, "1a84060a81060acb020a02080b1803220b088092b8c398feffffff012acd0112001ac8010a30fffffffffffffffefffffffffffffffe669aa8f0d85221a05b6f0917884d30616a6c7d5330a5640a08a04dcc5b092f4f0a30ffffffffffffffffffffffffffffffff293437f3b6a5611e25c90d5a44b84cc4b3720cdba68553defe8b719af1f5c3951230fffffffffffffffefffffffffffffffe669aa8f0d85221a05b6f0917884d30616a6c7d5330a5640a08a04dcc5b092f4f1230ffffffffffffffffffffffffffffffff293437f3b6a5611e25c90d5a44b84cc4b3720cdba68553defe8b719af1f5c3953220e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855380142204c149a7cfadc92b669b0cbfa4951a1b18c2d9f3177a3b8756d39ebb96e9d63317220e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85512130a0b48656c6c6f20576f726c6412001a0022001ac8010a3000000000000000010000000000000001b81cb5596c28d044214b9f935e4af7dbe76e417f6182d86fbee68bfff7b2ff3a0a30ffffffffffffffffffffffffffffffffc4096ba8fccf882c309896e9168fa43fe62fccb752cb12d5160cc1d9c2ebffe7123000000000000000010000000000000001b81cb5596c28d044214b9f935e4af7dbe76e417f6182d86fbee68bfff7b2ff3a1230ffffffffffffffffffffffffffffffffc4096ba8fccf882c309896e9168fa43fe62fccb752cb12d5160cc1d9c2ebffe722d0011acd0112001ac8010a30fffffffffffffffefffffffffffffffe669aa8f0d85221a05b6f0917884d30616a6c7d5330a5640a08a04dcc5b092f4f0a30ffffffffffffffffffffffffffffffff293437f3b6a5611e25c90d5a44b84cc4b3720cdba68553defe8b719af1f5c3951230fffffffffffffffefffffffffffffffe669aa8f0d85221a05b6f0917884d30616a6c7d5330a5640a08a04dcc5b092f4f1230ffffffffffffffffffffffffffffffff293437f3b6a5611e25c90d5a44b84cc4b3720cdba68553defe8b719af1f5c395"},
 		{"NoBlockResponseMessage", &bcproto.Message{Sum: &bcproto.Message_NoBlockResponse{
 			NoBlockResponse: &bcproto.NoBlockResponse{Height: 1}}}, "12020801"},
 		{"NoBlockResponseMessage", &bcproto.Message{Sum: &bcproto.Message_NoBlockResponse{
