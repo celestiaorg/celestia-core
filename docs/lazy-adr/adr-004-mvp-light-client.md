@@ -82,6 +82,9 @@ It makes sense to make this mostly opaque to the user as everything around IPFS 
 This IPFS path should simply be a sub-directory inside the light client's [directory](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/light.go#L86-L87).
 We can later add the ability to let users configure the IPFS setup more granular.
 
+**Note:** DAS should only be compatible to sequential verification.
+In case a light client is parametrized to run DAS and skipping verification, the CLI should return an easy-to-understand warning or even an error explaining why this does not make sense.
+
 ### Light Client Protocol with DAS
 
 #### Running an IPFS node
@@ -120,6 +123,17 @@ Also, the light client uses a so called [`Provider`](https://github.com/tendermi
 Currently, only the [`http` provider](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/http/http.go#L1) is implemented.
 Hence, as _a first implementation step_, we should augment the `Provider` and the `LightBlock` to optionally include the DAHeader (details below).
 In parallel but in a separate pull request, we add a separate RPC endpoint to download the DAHeader for a certain height.
+
+#### Store DataAvailabilityHeader
+
+For full nodes to be able to serve the `DataAvailabilityHeader` without having to recompute it each time, it needs to be stored somewhere.
+While this is independent of the concrete serving mechanism, it is more so relevant for the RPC endpoint.
+There is ongoing work to make the Tendermint Store only store Headers and the DataAvailabilityHeader in [#218](https://github.com/lazyledger/lazyledger-core/pull/218/) / [#182](https://github.com/lazyledger/lazyledger-core/issues/182).
+
+At the time writing this ADR, another pull request ([#312](https://github.com/lazyledger/lazyledger-core/pull/312)) is in the works with a more isolated change that adds the `DataAvailabilityHeader` to the `BlockID`.
+Hence, the DAHeader is [stored](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/store/store.go#L355-L367) along the [`BlockMeta`](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/types/block_meta.go#L11-L17) there.
+For a first implementation, we could first build on top of #312 and adapt to the
+
 
 #### DAS
 
@@ -174,7 +188,6 @@ diff --git a/types/light.go b/types/light.go
  }
 ```
 
-- TODO: rpc endpoint
 - TODO: Provider
 
 
