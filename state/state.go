@@ -343,7 +343,7 @@ func MakeGenesisState(genDoc *types.GenesisDoc) (State, error) {
 		InitialHeight: genDoc.InitialHeight,
 
 		LastBlockHeight: 0,
-		LastBlockID:     types.BlockID{},
+		LastBlockID:     types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()},
 		LastBlockTime:   genDoc.GenesisTime,
 
 		NextValidators:              nextValidatorSet,

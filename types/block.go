@@ -689,8 +689,9 @@ func MakeBlock(
 	lastCommit *Commit) *Block {
 	block := &Block{
 		Header: Header{
-			Version: tmversion.Consensus{Block: version.BlockProtocol, App: 0},
-			Height:  height,
+			Version:     tmversion.Consensus{Block: version.BlockProtocol, App: 0},
+			Height:      height,
+			LastBlockID: lastCommit.BlockID,
 		},
 		Data: Data{
 			Txs:                    txs,
