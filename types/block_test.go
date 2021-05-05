@@ -123,7 +123,7 @@ func TestBlockValidateBasic(t *testing.T) {
 
 func TestBlockHash(t *testing.T) {
 	assert.Nil(t, (*Block)(nil).Hash())
-	assert.Nil(t, MakeBlock(int64(3), []Tx{Tx("Hello World")}, nil, nil, Messages{}, nil).Hash())
+	assert.Nil(t, MakeBlock(int64(3), []Tx{Tx("Hello World")}, nil, nil, Messages{}, &Commit{}).Hash())
 }
 
 func TestBlockMakePartSet(t *testing.T) {
