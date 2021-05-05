@@ -174,7 +174,7 @@ func TestBlockHashesTo(t *testing.T) {
 }
 
 func TestBlockSize(t *testing.T) {
-	size := MakeBlock(int64(3), []Tx{Tx("Hello World")}, nil, nil, Messages{}, nil).Size()
+	size := MakeBlock(int64(3), []Tx{Tx("Hello World")}, nil, nil, Messages{}, &Commit{}).Size()
 	if size <= 0 {
 		t.Fatal("Size of the block is zero or negative")
 	}
@@ -185,7 +185,7 @@ func TestBlockString(t *testing.T) {
 	assert.Equal(t, "nil-Block", (*Block)(nil).StringIndented(""))
 	assert.Equal(t, "nil-Block", (*Block)(nil).StringShort())
 
-	block := MakeBlock(int64(3), []Tx{Tx("Hello World")}, nil, nil, Messages{}, nil)
+	block := MakeBlock(int64(3), []Tx{Tx("Hello World")}, nil, nil, Messages{}, &Commit{})
 	assert.NotEqual(t, "nil-Block", block.String())
 	assert.NotEqual(t, "nil-Block", block.StringIndented(""))
 	assert.NotEqual(t, "nil-Block", block.StringShort())
