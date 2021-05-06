@@ -163,6 +163,8 @@ The 3. approach is the most general of all, but it moves the responsibility to w
 
 #### Data Structures
 
+##### LightBlock
+
 As mentioned above the LightBlock should optionally contain the DataAvailabilityHeader.
 ```diff
 Index: types/light.go
@@ -190,8 +192,43 @@ diff --git a/types/light.go b/types/light.go
  }
 ```
 
-- TODO: Provider
+##### Provider
 
+The [`Provider`](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/provider.go#L9-L26) should be changed to enable DAS light clients to additionally
+Implementations of the interface need to additionally to retrieve the DataAvailability header in the [changed LightBlock](#lightblock).
+Users of the provider need to indicate this to the provider.
+
+We could either augment the `LightBlock` method with a flag, add a new method solely for providing the `DataAvailabilityHeader`, or, we could introduce a new method for DAS light clients.
+
+The latter is preferable because it is the most explicit and clear, and it still keeps places where DAS is not used without any code changes.
+
+Hence:
+
+```diff
+Index: light/provider/provider.go
+===================================================================
+diff --git a/light/provider/provider.go b/light/provider/provider.go
+--- a/light/provider/provider.go	(revision 7d06ae28196e8765c9747aca9db7d2732f56cfc3)
++++ b/light/provider/provider.go	(date 1620298115962)
+@@ -21,6 +21,14 @@
+ 	// error is returned.
+ 	LightBlock(ctx context.Context, height int64) (*types.LightBlock, error)
+
++	// DASLightBlock returns the LightBlock containing the DataAvailabilityHeader.
++	// Other than including the DataAvailabilityHeader it behaves exactly the same
++	// as LightBlock.
++	//
++	// It can be used by DAS light clients.
++	DASLightBlock(ctx context.Context, height int64) (*types.LightBlock, error)
++
++
+ 	// ReportEvidence reports an evidence of misbehavior.
+ 	ReportEvidence(context.Context, types.Evidence) error
+ }
+```
+
+Regular light clients will call `LightBlock` and DAS light clients will call `DASLightBlock`.
+In the first case the result will be the same as for vanilla Tendermint and in the second case the returned `LightBlock` will additionally contain the `DataAvailabilityHeader` of the requested height.
 
 #### Testing
 
