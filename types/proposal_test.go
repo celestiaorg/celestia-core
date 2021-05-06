@@ -21,7 +21,7 @@ var (
 )
 
 func init() {
-	dah := makeDAHeaderRandom()
+	dah := MinDataAvailabilityHeader()
 
 	var stamp, err = time.Parse(TimeFormat, "2018-02-11T07:09:22.765Z")
 	if err != nil {
@@ -151,7 +151,7 @@ func TestProposalValidateBasic(t *testing.T) {
 		{"Invalid Round", func(p *Proposal) { p.Round = -1 }, true},
 		{"Invalid POLRound", func(p *Proposal) { p.POLRound = -2 }, true},
 		{"Invalid BlockId", func(p *Proposal) {
-			p.BlockID = BlockID{[]byte{1, 2, 3}, PartSetHeader{111, []byte("blockparts")}, makeDAHeaderRandom()}
+			p.BlockID = BlockID{[]byte{1, 2, 3}, PartSetHeader{111, []byte("blockparts")}, MinDataAvailabilityHeader()}
 		}, true},
 		{"Invalid Signature", func(p *Proposal) {
 			p.Signature = make([]byte, 0)
@@ -195,7 +195,7 @@ func TestProposalProtoBuf(t *testing.T) {
 		expPass bool
 	}{
 		{"success", proposal, true},
-		{"success", proposal2, true}, // blockID cannot be empty
+		{"empty blockID", proposal2, false}, // blockID cannot be empty
 		{"empty proposal failure validatebasic", &Proposal{DAHeader: &DataAvailabilityHeader{}}, false},
 		{"nil proposal", nil, false},
 	}
@@ -203,6 +203,7 @@ func TestProposalProtoBuf(t *testing.T) {
 		protoProposal, err := tc.p1.ToProto()
 		require.NoError(t, err)
 		p, err := ProposalFromProto(protoProposal)
+		// fmt.Println(tc.msg, tc.p1.Header.)
 		if tc.expPass {
 			require.NoError(t, err)
 			require.Equal(t, tc.p1, p, tc.msg)

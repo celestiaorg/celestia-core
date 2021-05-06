@@ -151,7 +151,7 @@ func (dah *DataAvailabilityHeader) ValidateBasic() error {
 }
 
 func (dah *DataAvailabilityHeader) IsZero() bool {
-	if dah == nil || dah.hash == nil || len(dah.hash) == 0 {
+	if dah == nil {
 		return true
 	}
 	return len(dah.ColumnRoots) == 0 || len(dah.RowsRoots) == 0
@@ -227,8 +227,6 @@ func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (dah 
 	if err != nil {
 		return
 	}
-
-	dah.Hash()
 
 	return
 }
@@ -1831,10 +1829,6 @@ func BlockIDFromProto(bID *tmproto.BlockID) (*BlockID, error) {
 	dah, err := DataAvailabilityHeaderFromProto(bID.DataAvailabilityHeader)
 	if err != nil {
 		return nil, err
-	}
-
-	if dah.IsZero() {
-		dah = MinDataAvailabilityHeader()
 	}
 
 	blockID.PartSetHeader = *ph
