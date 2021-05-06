@@ -266,27 +266,11 @@ func makeHeaderRandom() *Header {
 func TestEvidenceProto(t *testing.T) {
 	// -------- Votes --------
 	val := NewMockPV()
-	blockID := makeBlockIDRandom()
-	blockID2 := makeBlockIDRandom()
+	blockID := EmptyBlockID()
+	blockID2 := EmptyBlockID()
 	const chainID = "mychain"
 	v := makeVote(t, val, chainID, math.MaxInt32, math.MaxInt64, 1, 0x01, blockID, defaultVoteTime)
 	v2 := makeVote(t, val, chainID, math.MaxInt32, math.MaxInt64, 2, 0x01, blockID2, defaultVoteTime)
-
-	// -------- SignedHeaders --------
-	const height int64 = 37
-
-	var (
-		header1 = makeHeaderRandom()
-		header2 = makeHeaderRandom()
-	)
-
-	header1.Height = height
-	header1.LastBlockID = blockID
-	header1.ChainID = chainID
-
-	header2.Height = height
-	header2.LastBlockID = blockID
-	header2.ChainID = chainID
 
 	tests := []struct {
 		testName     string
