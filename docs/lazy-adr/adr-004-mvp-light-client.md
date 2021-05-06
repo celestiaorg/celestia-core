@@ -132,7 +132,9 @@ There is ongoing work to make the Tendermint Store only store Headers and the Da
 
 At the time writing this ADR, another pull request ([#312](https://github.com/lazyledger/lazyledger-core/pull/312)) is in the works with a more isolated change that adds the `DataAvailabilityHeader` to the `BlockID`.
 Hence, the DAHeader is [stored](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/store/store.go#L355-L367) along the [`BlockMeta`](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/types/block_meta.go#L11-L17) there.
-For a first implementation, we could first build on top of #312 and adapt to the
+
+For a first implementation, we could first build on top of #312 and adapt to the changed storage API where only headers and the DAHeader are stored inside tendermint's store (as drafted in #218).
+A major downside of storing block data inside of tendermint's store as well as in the IPFS' block store is that is not only redundantly stored data but also IO intense work that will slow down full nodes.
 
 
 #### DAS
