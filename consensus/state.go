@@ -1086,8 +1086,12 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	}
 
 	// Make proposal
-	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID, &block.DataAvailabilityHeader)
+	propBlockID := types.BlockID{
+		Hash:                   block.Hash(),
+		PartSetHeader:          blockParts.Header(),
+		DataAvailabilityHeader: &block.DataAvailabilityHeader,
+	}
+	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID)
 	p, err := proposal.ToProto()
 	if err != nil {
 		cs.Logger.Error(fmt.Sprintf("can't serialize proposal: %s", err.Error()))
@@ -1156,7 +1160,7 @@ func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.Pa
 	case cs.Height == cs.state.InitialHeight:
 		// We're creating a proposal for the first block.
 		// The commit is empty, but not nil.
-		commit = types.NewCommit(0, 0, types.BlockID{}, nil)
+		commit = types.NewCommit(0, 0, types.EmptyBlockID(), nil)
 	case cs.LastCommit.HasTwoThirdsMajority():
 		// Make the commit from LastCommit
 		commit = cs.LastCommit.MakeCommit()
@@ -1597,7 +1601,11 @@ func (cs *State) finalizeCommit(height int64) {
 	var retainHeight int64
 	stateCopy, retainHeight, err = cs.blockExec.ApplyBlock(
 		stateCopy,
-		types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()},
+		types.BlockID{
+			Hash:                   block.Hash(),
+			PartSetHeader:          blockParts.Header(),
+			DataAvailabilityHeader: &block.DataAvailabilityHeader,
+		},
 		block)
 	if err != nil {
 		cs.Logger.Error("Error on ApplyBlock", "err", err)

@@ -49,7 +49,8 @@ func exampleVote(t byte) *Vote {
 func TestVoteSignable(t *testing.T) {
 	vote := examplePrecommit()
 	v := vote.ToProto()
-	v.BlockID = tmproto.BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader().ToProto()}
+	emptyBID := EmptyBlockID()
+	v.BlockID = emptyBID.ToProto()
 	signBytes := VoteSignBytes("test_chain_id", v)
 	pb := CanonicalizeVote("test_chain_id", v)
 	expected, err := protoio.MarshalDelimited(&pb)

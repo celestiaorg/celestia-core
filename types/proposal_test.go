@@ -79,7 +79,6 @@ func TestProposalVerifySignature(t *testing.T) {
 		BlockID{
 			tmrand.Bytes(tmhash.Size),
 			PartSetHeader{777, tmrand.Bytes(tmhash.Size)}, dah},
-		dah,
 	)
 	p, err := prop.ToProto()
 	require.NoError(t, err)
@@ -172,7 +171,7 @@ func TestProposalValidateBasic(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
-			prop := NewProposal(4, 2, 2, blockID, dah)
+			prop := NewProposal(4, 2, 2, blockID)
 			p, err := prop.ToProto()
 			require.NoError(t, err)
 			err = privVal.SignProposal("test_chain_id", p)
@@ -191,10 +190,9 @@ func TestProposalProtoBuf(t *testing.T) {
 		2,
 		3,
 		blockID,
-		blockID.DataAvailabilityHeader,
 	)
 	proposal.Signature = []byte("sig")
-	proposal2 := NewProposal(1, 2, 3, BlockID{}, &DataAvailabilityHeader{})
+	proposal2 := NewProposal(1, 2, 3, EmptyBlockID())
 
 	testCases := []struct {
 		msg     string

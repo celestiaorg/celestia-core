@@ -99,7 +99,7 @@ func newBlockchainReactor(
 		lastCommit := types.NewCommit(
 			blockHeight-1,
 			0,
-			types.BlockID{DataAvailabilityHeader: types.MinDataAvailabilityHeader()},
+			types.EmptyBlockID(),
 			nil,
 		)
 		if blockHeight > 1 {
@@ -162,8 +162,6 @@ func TestNoBlockResponse(t *testing.T) {
 
 	}, p2p.Connect2Switches)
 
-	fmt.Println("after make conns", len(reactorPairs[0].reactor.pool.peers), len(reactorPairs[1].reactor.pool.peers))
-
 	defer func() {
 		for _, r := range reactorPairs {
 			err := r.reactor.Stop()
@@ -184,19 +182,29 @@ func TestNoBlockResponse(t *testing.T) {
 	}
 
 	for {
+		fmt.Println("is caught up?")
 		if reactorPairs[1].reactor.pool.IsCaughtUp() {
 			break
 		}
 
-		time.Sleep(1000 * time.Millisecond)
+		// The mutex is getting hit now, I don't know why
+
+		// fmt.Println(
+		// 	"ahead reactor peer count",
+		// 	// "is running", reactorPairs[0].reactor.pool.IsRunning(),
+		// 	len(reactorPairs[0].reactor.pool.peers),
+		// 	"behind reactor peer count",
+		// 	// "is running", reactorPairs[1].reactor.pool.IsRunning(),
+		// 	len(reactorPairs[1].reactor.pool.peers),
+		// )
+
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	assert.Equal(t, maxBlockHeight, reactorPairs[0].reactor.store.Height())
 
-	for i, tt := range tests {
-		fmt.Println("test", i, "loading block")
+	for _, tt := range tests {
 		block := reactorPairs[1].reactor.store.LoadBlock(tt.height)
-		fmt.Println("finished loading block")
 		if tt.existent {
 			assert.True(t, block != nil)
 		} else {

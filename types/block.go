@@ -151,7 +151,7 @@ func (dah *DataAvailabilityHeader) ValidateBasic() error {
 }
 
 func (dah *DataAvailabilityHeader) IsZero() bool {
-	if dah == nil {
+	if dah == nil || dah.hash == nil || len(dah.hash) == 0 {
 		return true
 	}
 	return len(dah.ColumnRoots) == 0 || len(dah.RowsRoots) == 0
@@ -294,7 +294,7 @@ func (b *Block) fillHeader() {
 	if b.LastCommitHash == nil {
 		b.LastCommitHash = b.LastCommit.Hash()
 	}
-	if b.DataHash == nil {
+	if b.DataHash == nil || len(b.DataHash) == 0 {
 		b.fillDataAvailabilityHeader()
 	}
 	if b.EvidenceHash == nil {
@@ -479,7 +479,7 @@ func (b *Block) Hash() tmbytes.HexBytes {
 	if b.LastCommit == nil {
 		return nil
 	}
-	b.fillHeader()
+	// b.fillHeader()
 	return b.Header.Hash()
 }
 
@@ -1750,8 +1750,7 @@ func EmptyBlockID() BlockID {
 // Equals returns true if the BlockID matches the given BlockID
 func (blockID BlockID) Equals(other BlockID) bool {
 	return bytes.Equal(blockID.Hash, other.Hash) &&
-		blockID.PartSetHeader.Equals(other.PartSetHeader) &&
-		blockID.DataAvailabilityHeader.Equals(other.DataAvailabilityHeader)
+		blockID.PartSetHeader.Equals(other.PartSetHeader)
 }
 
 // Key returns a machine-readable string representation of the BlockID
@@ -1762,7 +1761,7 @@ func (blockID BlockID) Key() string {
 		panic(err)
 	}
 
-	return string(blockID.Hash) + string(bz) + string(blockID.DataAvailabilityHeader.Hash())
+	return string(blockID.Hash) + string(bz)
 }
 
 // ValidateBasic performs basic validation.
@@ -1806,7 +1805,7 @@ func (blockID BlockID) String() string {
 // ToProto converts BlockID to protobuf
 func (blockID *BlockID) ToProto() tmproto.BlockID {
 	if blockID == nil {
-		return tmproto.BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader().ToProto()}
+		return tmproto.BlockID{}
 	}
 
 	return tmproto.BlockID{

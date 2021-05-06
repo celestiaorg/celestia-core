@@ -351,7 +351,12 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	ensureNewRound(newRoundCh, height, 0)
 	ensureNewProposal(proposalCh, height, round)
 	rs := css[0].GetRoundState()
-	signAddVotes(css[0], tmproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), vss[1:nVals]...)
+	propBlockID := types.BlockID{
+		Hash:                   rs.ProposalBlock.Hash(),
+		PartSetHeader:          rs.ProposalBlockParts.Header(),
+		DataAvailabilityHeader: &rs.ProposalBlock.DataAvailabilityHeader,
+	}
+	signAddVotes(css[0], tmproto.PrecommitType, propBlockID, vss[1:nVals]...)
 	ensureNewRound(newRoundCh, height+1, 0)
 
 	// HEIGHT 2
@@ -366,9 +371,13 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ := css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts := propBlock.MakePartSet(partSize)
-	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
+	blockID := types.BlockID{
+		Hash:                   propBlock.Hash(),
+		PartSetHeader:          propBlockParts.Header(),
+		DataAvailabilityHeader: &propBlock.DataAvailabilityHeader,
+	}
 
-	proposal := types.NewProposal(vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal := types.NewProposal(vss[1].Height, round, -1, blockID)
 	p, err := proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[1].SignProposal(config.ChainID(), p); err != nil {
@@ -382,7 +391,14 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	}
 	ensureNewProposal(proposalCh, height, round)
 	rs = css[0].GetRoundState()
-	signAddVotes(css[0], tmproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), vss[1:nVals]...)
+
+	propBlockID = types.BlockID{
+		Hash:                   rs.ProposalBlock.Hash(),
+		PartSetHeader:          rs.ProposalBlockParts.Header(),
+		DataAvailabilityHeader: &rs.ProposalBlock.DataAvailabilityHeader,
+	}
+
+	signAddVotes(css[0], tmproto.PrecommitType, propBlockID, vss[1:nVals]...)
 	ensureNewRound(newRoundCh, height+1, 0)
 
 	// HEIGHT 3
@@ -397,9 +413,13 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts = propBlock.MakePartSet(partSize)
-	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
+	blockID = types.BlockID{
+		Hash:                   propBlock.Hash(),
+		PartSetHeader:          propBlockParts.Header(),
+		DataAvailabilityHeader: &propBlock.DataAvailabilityHeader,
+	}
 
-	proposal = types.NewProposal(vss[2].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal = types.NewProposal(vss[2].Height, round, -1, blockID)
 	p, err = proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[2].SignProposal(config.ChainID(), p); err != nil {
@@ -413,7 +433,14 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	}
 	ensureNewProposal(proposalCh, height, round)
 	rs = css[0].GetRoundState()
-	signAddVotes(css[0], tmproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), vss[1:nVals]...)
+
+	propBlockID = types.BlockID{
+		Hash:                   rs.ProposalBlock.Hash(),
+		PartSetHeader:          rs.ProposalBlockParts.Header(),
+		DataAvailabilityHeader: &rs.ProposalBlock.DataAvailabilityHeader,
+	}
+
+	signAddVotes(css[0], tmproto.PrecommitType, propBlockID, vss[1:nVals]...)
 	ensureNewRound(newRoundCh, height+1, 0)
 
 	// HEIGHT 4
@@ -435,7 +462,11 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts = propBlock.MakePartSet(partSize)
-	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
+	blockID = types.BlockID{
+		Hash:                   propBlock.Hash(),
+		PartSetHeader:          propBlockParts.Header(),
+		DataAvailabilityHeader: &propBlock.DataAvailabilityHeader,
+	}
 	newVss := make([]*validatorStub, nVals+1)
 	copy(newVss, vss[:nVals+1])
 	sort.Sort(ValidatorStubsByPower(newVss))
@@ -457,7 +488,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 
 	selfIndex := valIndexFn(0)
 
-	proposal = types.NewProposal(vss[3].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal = types.NewProposal(vss[3].Height, round, -1, blockID)
 	p, err = proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[3].SignProposal(config.ChainID(), p); err != nil {
@@ -476,11 +507,16 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 
 	rs = css[0].GetRoundState()
+	blockID = types.BlockID{
+		Hash:                   rs.ProposalBlock.Hash(),
+		PartSetHeader:          rs.ProposalBlockParts.Header(),
+		DataAvailabilityHeader: &rs.ProposalBlock.DataAvailabilityHeader,
+	}
 	for i := 0; i < nVals+1; i++ {
 		if i == selfIndex {
 			continue
 		}
-		signAddVotes(css[0], tmproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), newVss[i])
+		signAddVotes(css[0], tmproto.PrecommitType, blockID, newVss[i])
 	}
 
 	ensureNewRound(newRoundCh, height+1, 0)
@@ -495,11 +531,16 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	selfIndex = valIndexFn(0)
 	ensureNewProposal(proposalCh, height, round)
 	rs = css[0].GetRoundState()
+	blockID = types.BlockID{
+		Hash:                   rs.ProposalBlock.Hash(),
+		PartSetHeader:          rs.ProposalBlockParts.Header(),
+		DataAvailabilityHeader: &rs.ProposalBlock.DataAvailabilityHeader,
+	}
 	for i := 0; i < nVals+1; i++ {
 		if i == selfIndex {
 			continue
 		}
-		signAddVotes(css[0], tmproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), newVss[i])
+		signAddVotes(css[0], tmproto.PrecommitType, blockID, newVss[i])
 	}
 	ensureNewRound(newRoundCh, height+1, 0)
 
@@ -511,13 +552,17 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts = propBlock.MakePartSet(partSize)
-	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
+	blockID = types.BlockID{
+		Hash:                   propBlock.Hash(),
+		PartSetHeader:          propBlockParts.Header(),
+		DataAvailabilityHeader: &propBlock.DataAvailabilityHeader,
+	}
 	newVss = make([]*validatorStub, nVals+3)
 	copy(newVss, vss[:nVals+3])
 	sort.Sort(ValidatorStubsByPower(newVss))
 
 	selfIndex = valIndexFn(0)
-	proposal = types.NewProposal(vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal = types.NewProposal(vss[1].Height, round, -1, blockID)
 	p, err = proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[1].SignProposal(config.ChainID(), p); err != nil {
@@ -531,11 +576,16 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	}
 	ensureNewProposal(proposalCh, height, round)
 	rs = css[0].GetRoundState()
+	blockID = types.BlockID{
+		Hash:                   rs.ProposalBlock.Hash(),
+		PartSetHeader:          rs.ProposalBlockParts.Header(),
+		DataAvailabilityHeader: &rs.ProposalBlock.DataAvailabilityHeader,
+	}
 	for i := 0; i < nVals+3; i++ {
 		if i == selfIndex {
 			continue
 		}
-		signAddVotes(css[0], tmproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), newVss[i])
+		signAddVotes(css[0], tmproto.PrecommitType, blockID, newVss[i])
 	}
 	ensureNewRound(newRoundCh, height+1, 0)
 
@@ -785,7 +835,11 @@ func applyBlock(stateStore sm.Store, st sm.State, blk *types.Block, proxyApp pro
 	testPartSize := types.BlockPartSizeBytes
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 
-	blkID := types.BlockID{Hash: blk.Hash(), PartSetHeader: blk.MakePartSet(testPartSize).Header()}
+	blkID := types.BlockID{
+		Hash:                   blk.Hash(),
+		PartSetHeader:          blk.MakePartSet(testPartSize).Header(),
+		DataAvailabilityHeader: &blk.DataAvailabilityHeader,
+	}
 	newState, _, err := blockExec.ApplyBlock(st, blkID, blk)
 	if err != nil {
 		panic(err)
@@ -983,7 +1037,7 @@ func makeBlocks(n int, state *sm.State, privVal types.PrivValidator) []*types.Bl
 func makeBlock(state sm.State, lastBlock *types.Block, lastBlockMeta *types.BlockMeta,
 	privVal types.PrivValidator, height int64) (*types.Block, *types.PartSet) {
 
-	lastCommit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
+	lastCommit := types.NewCommit(height-1, 0, types.EmptyBlockID(), nil)
 	if height > 1 {
 		vote, _ := types.MakeVote(
 			lastBlock.Header.Height,
@@ -1199,8 +1253,12 @@ func (bs *mockBlockStore) LoadBlockByHash(hash []byte) *types.Block {
 func (bs *mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	block := bs.chain[height-1]
 	return &types.BlockMeta{
-		BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(types.BlockPartSizeBytes).Header()},
-		Header:  block.Header,
+		BlockID: types.BlockID{
+			Hash:                   block.Hash(),
+			PartSetHeader:          block.MakePartSet(types.BlockPartSizeBytes).Header(),
+			DataAvailabilityHeader: &block.DataAvailabilityHeader,
+		},
+		Header: block.Header,
 	}
 }
 func (bs *mockBlockStore) LoadBlockPart(height int64, index int) *types.Part { return nil }

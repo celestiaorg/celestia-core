@@ -47,7 +47,11 @@ func TestApplyBlock(t *testing.T) {
 		mmock.Mempool{}, sm.EmptyEvidencePool{})
 
 	block := makeBlock(state, 1)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
+	blockID := types.BlockID{
+		Hash:                   block.Hash(),
+		PartSetHeader:          block.MakePartSet(testPartSize).Header(),
+		DataAvailabilityHeader: &block.DataAvailabilityHeader,
+	}
 
 	state, retainHeight, err := blockExec.ApplyBlock(state, blockID, block)
 	require.Nil(t, err)
