@@ -467,14 +467,8 @@ func TestMaxHeaderBytes(t *testing.T) {
 func randCommit(now time.Time) *Commit {
 	h := int64(3)
 	voteSet, _, vals := randVoteSet(h-1, 1, tmproto.PrecommitType, 10, 1)
-	bid := EmptyBlockID()
-	bid.Hash = []byte{
-		1, 2, 3, 4, 5, 6, 7, 8, 9, 0,
-		1, 2, 3, 4, 5, 6, 7, 8, 9, 0,
-		1, 2, 3, 4, 5, 6, 7, 8, 9, 0,
-		1, 2,
-	}
-	commit, err := MakeCommit(EmptyBlockID(), h-1, 1, voteSet, vals, now)
+	bid := randBlockID()
+	commit, err := MakeCommit(bid, h-1, 1, voteSet, vals, now)
 	if err != nil {
 		panic(err)
 	}
