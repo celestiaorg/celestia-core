@@ -198,7 +198,11 @@ func makeBlockIDRandom() BlockID {
 	)
 	mrand.Read(blockHash)
 	mrand.Read(partSetHash)
-	return BlockID{blockHash, PartSetHeader{123, partSetHash}, makeDAHeaderRandom()}
+	return BlockID{
+		Hash:                   blockHash,
+		PartSetHeader:          PartSetHeader{123, partSetHash},
+		DataAvailabilityHeader: MinDataAvailabilityHeader(),
+	}
 }
 
 func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte, dah *DataAvailabilityHeader) BlockID {
@@ -216,17 +220,6 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte, dah *DataA
 		},
 		DataAvailabilityHeader: dah,
 	}
-}
-
-func makeDAHeaderRandom() *DataAvailabilityHeader {
-	rows, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*NamespaceSize + tmhash.Size)})
-	clns, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*NamespaceSize + tmhash.Size)})
-	dah := &DataAvailabilityHeader{
-		RowsRoots:   rows,
-		ColumnRoots: clns,
-	}
-	dah.Hash()
-	return dah
 }
 
 var nilBytes []byte
@@ -368,7 +361,7 @@ func TestHeaderHash(t *testing.T) {
 			LastResultsHash:       tmhash.Sum([]byte("last_results_hash")),
 			EvidenceHash:          tmhash.Sum([]byte("evidence_hash")),
 			ProposerAddress:       crypto.AddressHash([]byte("proposer_address")),
-		}, hexBytesFromString("3BA96EAE652191EDBEA84E130C32E94AD86A901B856EC7201B776669F72DE39F")},
+		}, hexBytesFromString("04228325DE861EF041AD44B04433AA9DA3487A3993BEB2984E9F4FD5D7C225D6")},
 		{"nil header yields nil", nil, nil},
 		{"nil ValidatorsHash yields nil", &Header{
 			Version: tmversion.Consensus{Block: 1, App: 2},
@@ -847,7 +840,7 @@ func TestHeaderProto(t *testing.T) {
 func TestBlockIDProtoBuf(t *testing.T) {
 	blockID := makeBlockID([]byte("hash"), 2, []byte("part_set_hash"),
 		MinDataAvailabilityHeader())
-	blockID.DataAvailabilityHeader = makeDAHeaderRandom()
+	blockID.DataAvailabilityHeader = MinDataAvailabilityHeader()
 	testCases := []struct {
 		msg     string
 		bid1    *BlockID
