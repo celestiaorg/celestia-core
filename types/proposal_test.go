@@ -162,8 +162,6 @@ func TestProposalValidateBasic(t *testing.T) {
 	}
 	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), math.MaxInt32, tmhash.Sum([]byte("partshash")),
 		MinDataAvailabilityHeader())
-	dah := makeDAHeaderRandom()
-	blockID.DataAvailabilityHeader = dah
 
 	for _, tc := range testCases {
 		tc := tc
@@ -175,7 +173,7 @@ func TestProposalValidateBasic(t *testing.T) {
 			prop.Signature = p.Signature
 			require.NoError(t, err)
 			tc.malleateProposal(prop)
-			assert.Equal(t, tc.expectErr, prop.ValidateBasic() != nil, "Validate Basic had an unexpected result")
+			assert.Equal(t, tc.expectErr, prop.ValidateBasic() != nil, "Validate Basic had an unexpected result", tc.testName)
 		})
 	}
 }
