@@ -201,8 +201,7 @@ func makeBlockIDRandom() BlockID {
 	return BlockID{blockHash, PartSetHeader{123, partSetHash}, makeDAHeaderRandom()}
 }
 
-// makeblockID does not set the data availability header, unlike makeBlockIDRandom
-func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
+func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte, dah *DataAvailabilityHeader) BlockID {
 	var (
 		h   = make([]byte, tmhash.Size)
 		psH = make([]byte, tmhash.Size)
@@ -215,6 +214,7 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
 			Total: partSetSize,
 			Hash:  psH,
 		},
+		DataAvailabilityHeader: dah,
 	}
 }
 
@@ -325,6 +325,7 @@ func TestMaxCommitBytes(t *testing.T) {
 				Total: math.MaxInt32,
 				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
 			},
+			DataAvailabilityHeader: MinDataAvailabilityHeader(),
 		},
 		Signatures: []CommitSig{cs},
 	}
@@ -351,11 +352,12 @@ func TestHeaderHash(t *testing.T) {
 		expectHash bytes.HexBytes
 	}{
 		{"Generates expected hash", &Header{
-			Version:               tmversion.Consensus{Block: 1, App: 2},
-			ChainID:               "chainId",
-			Height:                3,
-			Time:                  time.Date(2019, 10, 13, 16, 14, 44, 0, time.UTC),
-			LastBlockID:           makeBlockID(make([]byte, tmhash.Size), 6, make([]byte, tmhash.Size)),
+			Version: tmversion.Consensus{Block: 1, App: 2},
+			ChainID: "chainId",
+			Height:  3,
+			Time:    time.Date(2019, 10, 13, 16, 14, 44, 0, time.UTC),
+			LastBlockID: makeBlockID(make([]byte, tmhash.Size), 6, make([]byte, tmhash.Size),
+				MinDataAvailabilityHeader()),
 			LastCommitHash:        tmhash.Sum([]byte("last_commit_hash")),
 			DataHash:              tmhash.Sum([]byte("data_hash")),
 			NumOriginalDataShares: 4,
@@ -369,11 +371,12 @@ func TestHeaderHash(t *testing.T) {
 		}, hexBytesFromString("3BA96EAE652191EDBEA84E130C32E94AD86A901B856EC7201B776669F72DE39F")},
 		{"nil header yields nil", nil, nil},
 		{"nil ValidatorsHash yields nil", &Header{
-			Version:            tmversion.Consensus{Block: 1, App: 2},
-			ChainID:            "chainId",
-			Height:             3,
-			Time:               time.Date(2019, 10, 13, 16, 14, 44, 0, time.UTC),
-			LastBlockID:        makeBlockID(make([]byte, tmhash.Size), 6, make([]byte, tmhash.Size)),
+			Version: tmversion.Consensus{Block: 1, App: 2},
+			ChainID: "chainId",
+			Height:  3,
+			Time:    time.Date(2019, 10, 13, 16, 14, 44, 0, time.UTC),
+			LastBlockID: makeBlockID(make([]byte, tmhash.Size), 6, make([]byte, tmhash.Size),
+				MinDataAvailabilityHeader()),
 			LastCommitHash:     tmhash.Sum([]byte("last_commit_hash")),
 			DataHash:           tmhash.Sum([]byte("data_hash")),
 			ValidatorsHash:     nil,
@@ -444,11 +447,12 @@ func TestMaxHeaderBytes(t *testing.T) {
 	timestamp := time.Date(math.MaxInt64, 0, 0, 0, 0, 0, math.MaxInt64, time.UTC)
 
 	h := Header{
-		Version:               tmversion.Consensus{Block: math.MaxInt64, App: math.MaxInt64},
-		ChainID:               maxChainID,
-		Height:                math.MaxInt64,
-		Time:                  timestamp,
-		LastBlockID:           makeBlockID(make([]byte, tmhash.Size), math.MaxInt32, make([]byte, tmhash.Size)),
+		Version: tmversion.Consensus{Block: math.MaxInt64, App: math.MaxInt64},
+		ChainID: maxChainID,
+		Height:  math.MaxInt64,
+		Time:    timestamp,
+		LastBlockID: makeBlockID(make([]byte, tmhash.Size), math.MaxInt32, make([]byte, tmhash.Size),
+			MinDataAvailabilityHeader()),
 		LastCommitHash:        tmhash.Sum([]byte("last_commit_hash")),
 		DataHash:              tmhash.Sum([]byte("data_hash")),
 		NumOriginalDataShares: math.MaxInt64,
@@ -468,10 +472,16 @@ func TestMaxHeaderBytes(t *testing.T) {
 }
 
 func randCommit(now time.Time) *Commit {
-	lastID := makeBlockIDRandom()
 	h := int64(3)
 	voteSet, _, vals := randVoteSet(h-1, 1, tmproto.PrecommitType, 10, 1)
-	commit, err := MakeCommit(lastID, h-1, 1, voteSet, vals, now)
+	bid := EmptyBlockID()
+	bid.Hash = []byte{
+		1, 2, 3, 4, 5, 6, 7, 8, 9, 0,
+		1, 2, 3, 4, 5, 6, 7, 8, 9, 0,
+		1, 2, 3, 4, 5, 6, 7, 8, 9, 0,
+		1, 2,
+	}
+	commit, err := MakeCommit(EmptyBlockID(), h-1, 1, voteSet, vals, now)
 	if err != nil {
 		panic(err)
 	}
@@ -790,7 +800,7 @@ func makeRandHeader() Header {
 		ChainID:            chainID,
 		Height:             height,
 		Time:               t,
-		LastBlockID:        makeBlockIDRandom(),
+		LastBlockID:        EmptyBlockID(),
 		LastCommitHash:     randBytes,
 		DataHash:           randBytes,
 		ValidatorsHash:     randBytes,
@@ -835,7 +845,8 @@ func TestHeaderProto(t *testing.T) {
 }
 
 func TestBlockIDProtoBuf(t *testing.T) {
-	blockID := makeBlockID([]byte("hash"), 2, []byte("part_set_hash"))
+	blockID := makeBlockID([]byte("hash"), 2, []byte("part_set_hash"),
+		MinDataAvailabilityHeader())
 	blockID.DataAvailabilityHeader = makeDAHeaderRandom()
 	testCases := []struct {
 		msg     string
@@ -889,10 +900,13 @@ func TestSignedHeaderProtoBuf(t *testing.T) {
 
 func TestBlockIDEquals(t *testing.T) {
 	var (
-		blockID          = makeBlockID([]byte("hash"), 2, []byte("part_set_hash"))
-		blockIDDuplicate = makeBlockID([]byte("hash"), 2, []byte("part_set_hash"))
-		blockIDDifferent = makeBlockID([]byte("different_hash"), 2, []byte("part_set_hash"))
-		blockIDEmpty     = BlockID{}
+		blockID = makeBlockID([]byte("hash"), 2, []byte("part_set_hash"),
+			MinDataAvailabilityHeader())
+		blockIDDuplicate = makeBlockID([]byte("hash"), 2, []byte("part_set_hash"),
+			MinDataAvailabilityHeader())
+		blockIDDifferent = makeBlockID([]byte("different_hash"), 2, []byte("part_set_hash"),
+			MinDataAvailabilityHeader())
+		blockIDEmpty = EmptyBlockID()
 	)
 
 	assert.True(t, blockID.Equals(blockIDDuplicate))
@@ -1061,7 +1075,7 @@ func TestHeader_ValidateBasic(t *testing.T) {
 					PartSetHeader: PartSetHeader{
 						Hash: make([]byte, tmhash.Size),
 					},
-					DataAvailabilityHeader: makeDAHeaderRandom(),
+					DataAvailabilityHeader: MinDataAvailabilityHeader(),
 				},
 				LastCommitHash: make([]byte, tmhash.Size+1),
 			},
@@ -1292,6 +1306,7 @@ func TestCommit_ValidateBasic(t *testing.T) {
 					PartSetHeader: PartSetHeader{
 						Hash: make([]byte, tmhash.Size),
 					},
+					DataAvailabilityHeader: MinDataAvailabilityHeader(),
 				},
 				HeaderHash: make([]byte, tmhash.Size),
 			},
@@ -1307,6 +1322,7 @@ func TestCommit_ValidateBasic(t *testing.T) {
 					PartSetHeader: PartSetHeader{
 						Hash: make([]byte, tmhash.Size),
 					},
+					DataAvailabilityHeader: MinDataAvailabilityHeader(),
 				},
 				Signatures: []CommitSig{
 					{
@@ -1329,6 +1345,7 @@ func TestCommit_ValidateBasic(t *testing.T) {
 					PartSetHeader: PartSetHeader{
 						Hash: make([]byte, tmhash.Size),
 					},
+					DataAvailabilityHeader: MinDataAvailabilityHeader(),
 				},
 				Signatures: []CommitSig{
 					{
