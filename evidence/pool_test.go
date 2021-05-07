@@ -1,7 +1,6 @@
 package evidence_test
 
 import (
-	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -447,7 +446,6 @@ func defaultTestPool(height int64) (*evidence.Pool, types.MockPV) {
 	blockStore := initializeBlockStore(memdb.NewDB(), state, valAddress)
 	pool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 	if err != nil {
-		fmt.Println(err)
 		panic("test evidence pool could not be created")
 	}
 	pool.SetLogger(log.TestingLogger())

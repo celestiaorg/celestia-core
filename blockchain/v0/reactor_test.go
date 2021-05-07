@@ -186,17 +186,6 @@ func TestNoBlockResponse(t *testing.T) {
 			break
 		}
 
-		// The mutex is getting hit now, I don't know why
-
-		// fmt.Println(
-		// 	"ahead reactor peer count",
-		// 	// "is running", reactorPairs[0].reactor.pool.IsRunning(),
-		// 	len(reactorPairs[0].reactor.pool.peers),
-		// 	"behind reactor peer count",
-		// 	// "is running", reactorPairs[1].reactor.pool.IsRunning(),
-		// 	len(reactorPairs[1].reactor.pool.peers),
-		// )
-
 		time.Sleep(100 * time.Millisecond)
 	}
 

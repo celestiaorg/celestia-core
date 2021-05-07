@@ -203,7 +203,6 @@ func TestProposalProtoBuf(t *testing.T) {
 		protoProposal, err := tc.p1.ToProto()
 		require.NoError(t, err)
 		p, err := ProposalFromProto(protoProposal)
-		// fmt.Println(tc.msg, tc.p1.Header.)
 		if tc.expPass {
 			require.NoError(t, err)
 			require.Equal(t, tc.p1, p, tc.msg)
