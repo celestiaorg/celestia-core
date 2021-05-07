@@ -75,7 +75,11 @@ func TestBeginBlockValidators(t *testing.T) {
 
 	prevHash := state.LastBlockID.Hash
 	prevParts := types.PartSetHeader{}
-	prevBlockID := types.BlockID{Hash: prevHash, PartSetHeader: prevParts}
+	prevBlockID := types.BlockID{
+		Hash:                   prevHash,
+		PartSetHeader:          prevParts,
+		DataAvailabilityHeader: state.LastBlockID.DataAvailabilityHeader,
+	}
 
 	var (
 		now        = tmtime.Now()
@@ -140,7 +144,6 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	defaultEvidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 	privVal := privVals[state.Validators.Validators[0].Address.String()]
 	blockID := makeBlockID([]byte("headerhash"), 1000, []byte("partshash"))
-	blockID.DataAvailabilityHeader = types.MinDataAvailabilityHeader()
 	header := &types.Header{
 		Version:            tmversion.Consensus{Block: version.BlockProtocol, App: 1},
 		ChainID:            state.ChainID,
@@ -161,11 +164,12 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	// we don't need to worry about validating the evidence as long as they pass validate basic
 	dve := types.NewMockDuplicateVoteEvidenceWithValidator(3, defaultEvidenceTime, privVal, state.ChainID)
 	dve.ValidatorPower = 1000
+	blockID = makeBlockID(header.Hash(), 100, []byte("partshash"))
 	lcae := &types.LightClientAttackEvidence{
 		ConflictingBlock: &types.LightBlock{
 			SignedHeader: &types.SignedHeader{
 				Header: header,
-				Commit: types.NewCommit(10, 0, makeBlockID(header.Hash(), 100, []byte("partshash")), []types.CommitSig{{
+				Commit: types.NewCommit(10, 0, blockID, []types.CommitSig{{
 					BlockIDFlag:      types.BlockIDFlagNil,
 					ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 					Timestamp:        defaultEvidenceTime,
@@ -210,7 +214,11 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	block := makeBlock(state, 1)
 	block.Evidence = types.EvidenceData{Evidence: ev}
 	block.Header.EvidenceHash = block.Evidence.Hash()
-	blockID = types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
+	blockID = types.BlockID{
+		Hash:                   block.Hash(),
+		PartSetHeader:          block.MakePartSet(testPartSize).Header(),
+		DataAvailabilityHeader: &block.DataAvailabilityHeader,
+	}
 
 	state, retainHeight, err := blockExec.ApplyBlock(state, blockID, block)
 	require.Nil(t, err)
@@ -385,7 +393,11 @@ func TestEndBlockValidatorUpdates(t *testing.T) {
 	require.NoError(t, err)
 
 	block := makeBlock(state, 1)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
+	blockID := types.BlockID{
+		Hash:                   block.Hash(),
+		PartSetHeader:          block.MakePartSet(testPartSize).Header(),
+		DataAvailabilityHeader: &block.DataAvailabilityHeader,
+	}
 
 	pubkey := ed25519.GenPrivKey().PubKey()
 	pk, err := cryptoenc.PubKeyToProto(pubkey)
@@ -441,7 +453,11 @@ func TestEndBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 	)
 
 	block := makeBlock(state, 1)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
+	blockID := types.BlockID{
+		Hash:                   block.Hash(),
+		PartSetHeader:          block.MakePartSet(testPartSize).Header(),
+		DataAvailabilityHeader: &block.DataAvailabilityHeader,
+	}
 
 	vp, err := cryptoenc.PubKeyToProto(state.Validators.Validators[0].PubKey)
 	require.NoError(t, err)
@@ -468,5 +484,6 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.Bloc
 			Total: partSetSize,
 			Hash:  psH,
 		},
+		DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
 	}
 }

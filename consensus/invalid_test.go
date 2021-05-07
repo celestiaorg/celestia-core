@@ -79,8 +79,10 @@ func invalidDoPrevoteFunc(t *testing.T, height int64, round int32, cs *State, sw
 			Timestamp:        cs.voteTime(),
 			Type:             tmproto.PrecommitType,
 			BlockID: types.BlockID{
-				Hash:          blockHash,
-				PartSetHeader: types.PartSetHeader{Total: 1, Hash: tmrand.Bytes(32)}},
+				Hash:                   blockHash,
+				PartSetHeader:          types.PartSetHeader{Total: 1, Hash: tmrand.Bytes(32)},
+				DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
+			},
 		}
 		p := precommit.ToProto()
 		err = cs.privValidator.SignVote(cs.state.ChainID, p)

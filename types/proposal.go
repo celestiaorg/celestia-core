@@ -126,15 +126,17 @@ func (p *Proposal) ToProto() (*tmproto.Proposal, error) {
 		return &tmproto.Proposal{}, nil
 	}
 
+	pBID := p.BlockID.ToProto()
+
 	pb := new(tmproto.Proposal)
-	pb.BlockID = p.BlockID.ToProto()
+	pb.BlockID = pBID
 	pb.Type = p.Type
 	pb.Height = p.Height
 	pb.Round = p.Round
 	pb.PolRound = p.POLRound
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
-	pb.DAHeader = p.DAHeader.ToProto()
+	pb.DAHeader = pBID.DataAvailabilityHeader
 	return pb, nil
 }
 
@@ -152,11 +154,6 @@ func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 		return nil, err
 	}
 
-	dah, err := DataAvailabilityHeaderFromProto(pp.DAHeader)
-	if err != nil {
-		return nil, err
-	}
-
 	p.BlockID = *blockID
 	p.Type = pp.Type
 	p.Height = pp.Height
@@ -164,7 +161,7 @@ func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 	p.POLRound = pp.PolRound
 	p.Timestamp = pp.Timestamp
 	p.Signature = pp.Signature
-	p.DAHeader = dah
+	p.DAHeader = blockID.DataAvailabilityHeader
 
 	return p, p.ValidateBasic()
 }

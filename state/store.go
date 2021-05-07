@@ -150,6 +150,8 @@ func (store dbStore) loadState(key []byte) (state State, err error) {
 	return *sm, nil
 }
 
+// The state cannot be unmarshalled because it contains some empty dah
+
 // Save persists the State, the ValidatorsInfo, and the ConsensusParamsInfo to the database.
 // This flushes the writes (e.g. calls SetSync).
 func (store dbStore) Save(state State) error {
@@ -184,7 +186,7 @@ func (store dbStore) save(state State, key []byte) error {
 	return nil
 }
 
-// BootstrapState saves a new state, used e.g. by state sync when starting from non-zero height.
+// Bootstrap saves a new state, used e.g. by state sync when starting from non-zero height.
 func (store dbStore) Bootstrap(state State) error {
 	height := state.LastBlockHeight + 1
 	if height == 1 {

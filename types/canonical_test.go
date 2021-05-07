@@ -11,7 +11,7 @@ import (
 
 func TestCanonicalizeBlockID(t *testing.T) {
 	randhash := tmrand.Bytes(tmhash.Size)
-	randDah := makeDAHeaderRandom().ToProto()
+	randDah := MinDataAvailabilityHeader().ToProto()
 	block1 := tmproto.BlockID{
 		Hash:                   randhash,
 		PartSetHeader:          tmproto.PartSetHeader{Total: 5, Hash: randhash},

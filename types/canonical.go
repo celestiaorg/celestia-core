@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"time"
 
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
@@ -18,6 +19,7 @@ const TimeFormat = time.RFC3339Nano
 func CanonicalizeBlockID(bid tmproto.BlockID) *tmproto.CanonicalBlockID {
 	rbid, err := BlockIDFromProto(&bid)
 	if err != nil {
+		fmt.Println("----------------", bid, err)
 		panic(err)
 	}
 	var cbid *tmproto.CanonicalBlockID

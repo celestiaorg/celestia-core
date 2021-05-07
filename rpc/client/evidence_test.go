@@ -66,6 +66,7 @@ func makeEvidences(
 				Total: 1000,
 				Hash:  tmhash.Sum([]byte("partset")),
 			},
+			DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
 		},
 	}
 

@@ -177,7 +177,7 @@ func TestVoteSet_2_3MajorityRedux(t *testing.T) {
 
 	blockHash := crypto.CRandBytes(32)
 	blockPartsTotal := uint32(123)
-	randDAH := makeDAHeaderRandom()
+	randDAH := MinDataAvailabilityHeader()
 	blockPartSetHeader := PartSetHeader{blockPartsTotal, crypto.CRandBytes(32)}
 
 	voteProto := &Vote{
@@ -276,8 +276,8 @@ func TestVoteSet_Conflicts(t *testing.T) {
 	voteSet, _, privValidators := randVoteSet(height, round, tmproto.PrevoteType, 4, 1)
 	blockHash1 := tmrand.Bytes(32)
 	blockHash2 := tmrand.Bytes(32)
-	randDAH := makeDAHeaderRandom()
-	randDAH2 := makeDAHeaderRandom()
+	randDAH := MinDataAvailabilityHeader()
+	randDAH2 := MinDataAvailabilityHeader()
 
 	voteProto := &Vote{
 		ValidatorAddress: nil,
@@ -464,7 +464,7 @@ func TestVoteSet_MakeCommit(t *testing.T) {
 		assert.NoError(t, err)
 		addr := pv.Address()
 		vote := withValidator(voteProto, addr, 8)
-		vote.BlockID = BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader()}
+		vote.BlockID = EmptyBlockID()
 
 		_, err = signAddVote(privValidators[8], vote, voteSet)
 		require.NoError(t, err)

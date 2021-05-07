@@ -40,6 +40,7 @@ func exampleVote(t byte) *Vote {
 				Total: 1000000,
 				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
 			},
+			DataAvailabilityHeader: MinDataAvailabilityHeader(),
 		},
 		ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 		ValidatorIndex:   56789,
@@ -67,7 +68,7 @@ func TestVoteSignBytesTestVectors(t *testing.T) {
 		want    []byte
 	}{
 		0: {
-			"", &Vote{BlockID: BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader()}},
+			"", &Vote{BlockID: EmptyBlockID()},
 			// NOTE: Height and Round are skipped here. This case needs to be considered while parsing.
 			[]byte{0xd, 0x2a, 0xb, 0x8, 0x80, 0x92, 0xb8, 0xc3, 0x98, 0xfe, 0xff, 0xff, 0xff, 0x1},
 		},
@@ -77,7 +78,7 @@ func TestVoteSignBytesTestVectors(t *testing.T) {
 				Height:  1,
 				Round:   1,
 				Type:    tmproto.PrecommitType,
-				BlockID: BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader()},
+				BlockID: EmptyBlockID(),
 			},
 			[]byte{
 				0x21,                                   // length
@@ -97,7 +98,7 @@ func TestVoteSignBytesTestVectors(t *testing.T) {
 				Height:  1,
 				Round:   1,
 				Type:    tmproto.PrevoteType,
-				BlockID: BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader()},
+				BlockID: EmptyBlockID(),
 			},
 			[]byte{
 				0x21,                                   // length
@@ -112,7 +113,7 @@ func TestVoteSignBytesTestVectors(t *testing.T) {
 				0xb, 0x8, 0x80, 0x92, 0xb8, 0xc3, 0x98, 0xfe, 0xff, 0xff, 0xff, 0x1},
 		},
 		3: {
-			"", &Vote{Height: 1, Round: 1, BlockID: BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader()}},
+			"", &Vote{Height: 1, Round: 1, BlockID: EmptyBlockID()},
 			[]byte{
 				0x1f,                                   // length
 				0x11,                                   // (field_number << 3) | wire_type
@@ -128,7 +129,7 @@ func TestVoteSignBytesTestVectors(t *testing.T) {
 			"test_chain_id", &Vote{
 				Height:  1,
 				Round:   1,
-				BlockID: BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader()},
+				BlockID: EmptyBlockID(),
 			},
 			[]byte{
 				0x2e,                                   // length
@@ -153,19 +154,20 @@ func TestVoteSignBytesTestVectors(t *testing.T) {
 }
 
 func TestVoteProposalNotEq(t *testing.T) {
+	emptyBID := EmptyBlockID()
 	cv := CanonicalizeVote(
 		"",
 		&tmproto.Vote{
 			Height:  1,
 			Round:   1,
-			BlockID: tmproto.BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader().ToProto()},
+			BlockID: emptyBID.ToProto(),
 		})
 	p := CanonicalizeProposal(
 		"",
 		&tmproto.Proposal{
 			Height:  1,
 			Round:   1,
-			BlockID: tmproto.BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader().ToProto()},
+			BlockID: emptyBID.ToProto(),
 		})
 	vb, err := proto.Marshal(&cv)
 	require.NoError(t, err)
@@ -180,7 +182,7 @@ func TestVoteVerifySignature(t *testing.T) {
 	require.NoError(t, err)
 
 	vote := examplePrecommit()
-	vote.BlockID = BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader()}
+	vote.BlockID = EmptyBlockID()
 	v := vote.ToProto()
 	signBytes := VoteSignBytes("test_chain_id", v)
 
@@ -194,7 +196,8 @@ func TestVoteVerifySignature(t *testing.T) {
 
 	// serialize, deserialize and verify again....
 	precommit := new(tmproto.Vote)
-	precommit.BlockID = tmproto.BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader().ToProto()}
+	emptyBID := EmptyBlockID()
+	precommit.BlockID = emptyBID.ToProto()
 	bs, err := proto.Marshal(v)
 	require.NoError(t, err)
 	err = proto.Unmarshal(bs, precommit)
@@ -235,7 +238,7 @@ func TestVoteVerify(t *testing.T) {
 
 	vote := examplePrevote()
 	vote.ValidatorAddress = pubkey.Address()
-	vote.BlockID = BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader()}
+	vote.BlockID = EmptyBlockID()
 
 	err = vote.Verify("test_chain_id", ed25519.GenPrivKey().PubKey())
 	if assert.Error(t, err) {
@@ -285,7 +288,7 @@ func TestVoteValidateBasic(t *testing.T) {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
 			vote := examplePrecommit()
-			vote.BlockID = BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader()}
+			vote.BlockID = EmptyBlockID()
 			v := vote.ToProto()
 			err := privVal.SignVote("test_chain_id", v)
 			vote.Signature = v.Signature
@@ -299,7 +302,7 @@ func TestVoteValidateBasic(t *testing.T) {
 func TestVoteProtobuf(t *testing.T) {
 	privVal := NewMockPV()
 	vote := examplePrecommit()
-	vote.BlockID = BlockID{DataAvailabilityHeader: MinDataAvailabilityHeader()}
+	vote.BlockID = EmptyBlockID()
 	v := vote.ToProto()
 	err := privVal.SignVote("test_chain_id", v)
 	vote.Signature = v.Signature

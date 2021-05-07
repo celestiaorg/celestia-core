@@ -37,7 +37,11 @@ func TestSyncer_SyncAny(t *testing.T) {
 		},
 
 		LastBlockHeight: 1,
-		LastBlockID:     types.BlockID{Hash: []byte("blockhash")},
+		LastBlockID: types.BlockID{
+			Hash:                   []byte("blockhash"),
+			PartSetHeader:          types.PartSetHeader{},
+			DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
+		},
 		LastBlockTime:   time.Now(),
 		LastResultsHash: []byte("last_results_hash"),
 		AppHash:         []byte("app_hash"),
@@ -49,7 +53,11 @@ func TestSyncer_SyncAny(t *testing.T) {
 		ConsensusParams:                  *types.DefaultConsensusParams(),
 		LastHeightConsensusParamsChanged: 1,
 	}
-	commit := &types.Commit{BlockID: types.BlockID{Hash: []byte("blockhash")}}
+	commit := &types.Commit{BlockID: types.BlockID{
+		Hash:                   []byte("blockhash"),
+		PartSetHeader:          types.PartSetHeader{},
+		DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
+	}}
 
 	chunks := []*chunk{
 		{Height: 1, Format: 1, Index: 0, Chunk: []byte{1, 1, 0}},

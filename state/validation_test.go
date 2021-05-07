@@ -132,8 +132,8 @@ func TestValidateBlockCommit(t *testing.T) {
 		memmock.Mempool{},
 		sm.EmptyEvidencePool{},
 	)
-	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil)
-	wrongSigsCommit := types.NewCommit(1, 0, types.BlockID{}, nil)
+	lastCommit := types.NewCommit(0, 0, types.EmptyBlockID(), nil)
+	wrongSigsCommit := types.NewCommit(1, 0, types.EmptyBlockID(), nil)
 	badPrivVal := types.NewMockPV()
 
 	for height := int64(1); height < validationTestsStopHeight; height++ {
@@ -257,7 +257,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 		memmock.Mempool{},
 		evpool,
 	)
-	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil)
+	lastCommit := types.NewCommit(0, 0, types.EmptyBlockID(), nil)
 
 	for height := int64(1); height < validationTestsStopHeight; height++ {
 		proposerAddr := state.Validators.GetProposer().Address

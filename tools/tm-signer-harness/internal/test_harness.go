@@ -229,7 +229,7 @@ func (th *TestHarness) TestSignProposal() error {
 			DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
 		},
 		Timestamp: time.Now(),
-		DAHeader:  &types.DataAvailabilityHeader{},
+		DAHeader:  types.MinDataAvailabilityHeader(),
 	}
 	p, err := prop.ToProto()
 	if err != nil {
@@ -278,6 +278,7 @@ func (th *TestHarness) TestSignVote() error {
 					Hash:  hash,
 					Total: 1000000,
 				},
+				DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
 			},
 			ValidatorIndex:   0,
 			ValidatorAddress: tmhash.SumTruncated([]byte("addr")),

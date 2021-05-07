@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -52,21 +53,26 @@ func Test_SaveLightBlock(t *testing.T) {
 
 	// 1 key
 	err = dbStore.SaveLightBlock(randLightBlock(1))
+	fmt.Println(err)
 	require.NoError(t, err)
 
 	size := dbStore.Size()
 	assert.Equal(t, uint16(1), size)
+	fmt.Println(err)
 	t.Log(size)
 
 	h, err = dbStore.LightBlock(1)
+	fmt.Println(err)
 	require.NoError(t, err)
 	assert.NotNil(t, h)
 
 	// Empty store
 	err = dbStore.DeleteLightBlock(1)
+	fmt.Println(err)
 	require.NoError(t, err)
 
 	h, err = dbStore.LightBlock(1)
+	fmt.Println(err)
 	require.Error(t, err)
 	assert.Nil(t, h)
 

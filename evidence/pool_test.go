@@ -1,6 +1,7 @@
 package evidence_test
 
 import (
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -47,7 +48,10 @@ func TestEvidencePoolBasic(t *testing.T) {
 	valSet, privVals := types.RandValidatorSet(1, 10)
 
 	blockStore.On("LoadBlockMeta", mock.AnythingOfType("int64")).Return(
-		&types.BlockMeta{Header: types.Header{Time: defaultEvidenceTime}},
+		&types.BlockMeta{
+			Header:  types.Header{Time: defaultEvidenceTime},
+			BlockID: types.EmptyBlockID(),
+		},
 	)
 	stateStore.On("LoadValidators", mock.AnythingOfType("int64")).Return(valSet, nil)
 	stateStore.On("Load").Return(createState(height+1, valSet), nil)
@@ -108,9 +112,15 @@ func TestAddExpiredEvidence(t *testing.T) {
 
 	blockStore.On("LoadBlockMeta", mock.AnythingOfType("int64")).Return(func(h int64) *types.BlockMeta {
 		if h == height || h == expiredHeight {
-			return &types.BlockMeta{Header: types.Header{Time: defaultEvidenceTime}}
+			return &types.BlockMeta{
+				Header:  types.Header{Time: defaultEvidenceTime},
+				BlockID: types.EmptyBlockID(),
+			}
 		}
-		return &types.BlockMeta{Header: types.Header{Time: expiredEvidenceTime}}
+		return &types.BlockMeta{
+			Header:  types.Header{Time: expiredEvidenceTime},
+			BlockID: types.EmptyBlockID(),
+		}
 	})
 
 	pool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
@@ -239,7 +249,7 @@ func TestCheckEvidenceWithLightClientAttack(t *testing.T) {
 
 	// for simplicity we are simulating a duplicate vote attack where all the validators in the
 	// conflictingVals set voted twice
-	blockID := makeBlockID(conflictingHeader.Hash(), 1000, []byte("partshash"))
+	blockID := makeBlockID(conflictingHeader.Hash(), 1000, []byte("partshash"), types.MinDataAvailabilityHeader())
 	voteSet := types.NewVoteSet(evidenceChainID, height, 1, tmproto.SignedMsgType(2), conflictingVals)
 	commit, err := types.MakeCommit(blockID, height, 1, voteSet, conflictingPrivVals, defaultEvidenceTime)
 	require.NoError(t, err)
@@ -257,7 +267,7 @@ func TestCheckEvidenceWithLightClientAttack(t *testing.T) {
 		Timestamp:           defaultEvidenceTime,
 	}
 
-	trustedBlockID := makeBlockID(trustedHeader.Hash(), 1000, []byte("partshash"))
+	trustedBlockID := makeBlockID(trustedHeader.Hash(), 1000, []byte("partshash"), types.MinDataAvailabilityHeader())
 	trustedVoteSet := types.NewVoteSet(evidenceChainID, height, 1, tmproto.SignedMsgType(2), conflictingVals)
 	trustedCommit, err := types.MakeCommit(trustedBlockID, height, 1, trustedVoteSet, conflictingPrivVals,
 		defaultEvidenceTime)
@@ -272,7 +282,7 @@ func TestCheckEvidenceWithLightClientAttack(t *testing.T) {
 	stateStore.On("LoadValidators", height).Return(conflictingVals, nil)
 	stateStore.On("Load").Return(state, nil)
 	blockStore := &mocks.BlockStore{}
-	blockStore.On("LoadBlockMeta", height).Return(&types.BlockMeta{Header: *trustedHeader})
+	blockStore.On("LoadBlockMeta", height).Return(&types.BlockMeta{Header: *trustedHeader, BlockID: types.EmptyBlockID()})
 	blockStore.On("LoadBlockCommit", height).Return(trustedCommit)
 
 	pool, err := evidence.NewPool(memdb.NewDB(), stateStore, blockStore)
@@ -437,6 +447,7 @@ func defaultTestPool(height int64) (*evidence.Pool, types.MockPV) {
 	blockStore := initializeBlockStore(memdb.NewDB(), state, valAddress)
 	pool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 	if err != nil {
+		fmt.Println(err)
 		panic("test evidence pool could not be created")
 	}
 	pool.SetLogger(log.TestingLogger())

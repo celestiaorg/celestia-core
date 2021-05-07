@@ -14,7 +14,7 @@ func TestBlockMeta_ToProto(t *testing.T) {
 	bi := BlockID{
 		Hash:                   h.Hash(),
 		PartSetHeader:          PartSetHeader{Total: 123, Hash: tmrand.Bytes(tmhash.Size)},
-		DataAvailabilityHeader: makeDAHeaderRandom(),
+		DataAvailabilityHeader: MinDataAvailabilityHeader(),
 	}
 
 	bm := &BlockMeta{
@@ -60,7 +60,7 @@ func TestBlockMeta_ValidateBasic(t *testing.T) {
 	bi2 := BlockID{
 		Hash:                   tmrand.Bytes(tmhash.Size),
 		PartSetHeader:          PartSetHeader{Total: 123, Hash: tmrand.Bytes(tmhash.Size)},
-		DataAvailabilityHeader: makeDAHeaderRandom(),
+		DataAvailabilityHeader: MinDataAvailabilityHeader(),
 	}
 	bi3 := BlockID{
 		Hash:                   []byte("incorrect hash"),

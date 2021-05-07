@@ -217,7 +217,7 @@ func genMockNodeWithKeys(
 		currentHeader = keys.GenSignedHeaderLastBlockID(chainID, height, bTime.Add(time.Duration(height)*time.Minute),
 			nil,
 			keys.ToValidators(2, 0), newKeys.ToValidators(2, 0), hash("app_hash"), hash("cons_hash"),
-			hash("results_hash"), 0, len(keys), types.BlockID{Hash: lastHeader.Hash()})
+			hash("results_hash"), 0, len(keys), lastHeader.Commit.BlockID)
 		headers[height] = currentHeader
 		valset[height] = keys.ToValidators(2, 0)
 		lastHeader = currentHeader

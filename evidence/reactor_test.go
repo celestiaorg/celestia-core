@@ -211,7 +211,7 @@ func makeAndConnectReactorsAndPools(config *cfg.Config, stateStores []sm.Store) 
 		evidenceDB := memdb.NewDB()
 		blockStore := &mocks.BlockStore{}
 		blockStore.On("LoadBlockMeta", mock.AnythingOfType("int64")).Return(
-			&types.BlockMeta{Header: types.Header{Time: evidenceTime}},
+			&types.BlockMeta{Header: types.Header{Time: evidenceTime}, BlockID: types.EmptyBlockID()},
 		)
 		pool, err := evidence.NewPool(evidenceDB, stateStores[i], blockStore)
 		if err != nil {
@@ -323,6 +323,7 @@ func exampleVote(t byte) *types.Vote {
 				Total: 1000000,
 				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
 			},
+			DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
 		},
 		ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 		ValidatorIndex:   56789,

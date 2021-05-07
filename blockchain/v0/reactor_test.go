@@ -182,7 +182,6 @@ func TestNoBlockResponse(t *testing.T) {
 	}
 
 	for {
-		fmt.Println("is caught up?")
 		if reactorPairs[1].reactor.pool.IsCaughtUp() {
 			break
 		}

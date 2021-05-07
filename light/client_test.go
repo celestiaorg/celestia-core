@@ -32,11 +32,11 @@ var (
 	// 3/3 signed
 	h2 = keys.GenSignedHeaderLastBlockID(chainID, 2, bTime.Add(30*time.Minute), nil, vals, vals,
 		hash("app_hash"), hash("cons_hash"), hash("results_hash"), 0, len(keys),
-		types.BlockID{Hash: h1.Hash(), DataAvailabilityHeader: types.MinDataAvailabilityHeader()})
+		h1.Commit.BlockID)
 	// 3/3 signed
 	h3 = keys.GenSignedHeaderLastBlockID(chainID, 3, bTime.Add(1*time.Hour), nil, vals, vals,
 		hash("app_hash"), hash("cons_hash"), hash("results_hash"), 0, len(keys),
-		types.BlockID{Hash: h2.Hash(), DataAvailabilityHeader: types.MinDataAvailabilityHeader()})
+		h2.Commit.BlockID)
 	trustPeriod  = 4 * time.Hour
 	trustOptions = light.TrustOptions{
 		Period: 4 * time.Hour,
@@ -916,7 +916,7 @@ func TestClientRemovesWitnessIfItSendsUsIncorrectHeader(t *testing.T) {
 			1: h1,
 			2: keys.GenSignedHeaderLastBlockID(chainID, 2, bTime.Add(30*time.Minute), nil, vals, vals,
 				hash("app_hash2"), hash("cons_hash"), hash("results_hash"),
-				len(keys), len(keys), types.BlockID{Hash: h1.Hash()}),
+				len(keys), len(keys), types.BlockID{Hash: h1.Hash(), DataAvailabilityHeader: h1.Commit.BlockID.DataAvailabilityHeader}),
 		},
 		map[int64]*types.ValidatorSet{
 			1: vals,
@@ -979,7 +979,7 @@ func TestClient_TrustedValidatorSet(t *testing.T) {
 			// should be removed.
 			2: keys.GenSignedHeaderLastBlockID(chainID, 2, bTime.Add(30*time.Minute), nil, vals, vals,
 				hash("app_hash2"), hash("cons_hash"), hash("results_hash"),
-				0, len(keys), types.BlockID{Hash: h1.Hash()}),
+				0, len(keys), h1.Commit.BlockID),
 			3: h3,
 		},
 		map[int64]*types.ValidatorSet{

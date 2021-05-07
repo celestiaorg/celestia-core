@@ -56,7 +56,7 @@ func exampleProposal() *types.Proposal {
 			},
 			DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
 		},
-		DAHeader: &types.DataAvailabilityHeader{},
+		DAHeader: types.MinDataAvailabilityHeader(),
 	}
 }
 

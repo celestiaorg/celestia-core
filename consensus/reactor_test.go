@@ -892,13 +892,14 @@ func TestVoteSetMaj23MessageValidateBasic(t *testing.T) {
 		invalidSignedMsgType tmproto.SignedMsgType = 0x03
 	)
 
-	validBlockID := types.BlockID{}
+	validBlockID := types.EmptyBlockID()
 	invalidBlockID := types.BlockID{
 		Hash: bytes.HexBytes{},
 		PartSetHeader: types.PartSetHeader{
 			Total: 1,
 			Hash:  []byte{0},
 		},
+		DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
 	}
 
 	testCases := []struct { // nolint: maligned
@@ -946,6 +947,7 @@ func TestVoteSetBitsMessageValidateBasic(t *testing.T) {
 					Total: 1,
 					Hash:  []byte{0},
 				},
+				DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
 			}
 		}, "wrong BlockID: wrong PartSetHeader: wrong Hash:"},
 		{func(msg *VoteSetBitsMessage) { msg.Votes = bits.NewBitArray(types.MaxVotesCount + 1) },
@@ -960,7 +962,7 @@ func TestVoteSetBitsMessageValidateBasic(t *testing.T) {
 				Round:   0,
 				Type:    0x01,
 				Votes:   bits.NewBitArray(1),
-				BlockID: types.BlockID{},
+				BlockID: types.EmptyBlockID(),
 			}
 
 			tc.malleateFn(msg)

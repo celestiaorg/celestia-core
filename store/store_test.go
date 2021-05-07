@@ -552,9 +552,7 @@ func TestLoadBlockMeta(t *testing.T) {
 	require.Contains(t, panicErr.Error(), "unmarshal to tmproto.BlockMeta")
 
 	// 3. A good blockMeta serialized and saved to the DB should be retrievable
-	bID := types.BlockID{
-		DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
-	}
+	bID := types.EmptyBlockID()
 	meta := &types.BlockMeta{
 		Header: types.Header{
 			Version: tmversion.Consensus{

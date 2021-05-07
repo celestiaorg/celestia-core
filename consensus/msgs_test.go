@@ -26,9 +26,17 @@ func TestMsgToProto(t *testing.T) {
 		Hash:  tmrand.Bytes(32),
 	}
 	pbPsh := psh.ToProto()
+	roots, err := types.NmtRootsFromBytes([][]byte{tmrand.Bytes(2*types.NamespaceSize + tmhash.Size)})
+	require.NoError(t, err)
+	dah := &types.DataAvailabilityHeader{
+		RowsRoots:   roots,
+		ColumnRoots: roots,
+	}
+	dah.Hash()
 	bi := types.BlockID{
-		Hash:          tmrand.Bytes(32),
-		PartSetHeader: psh,
+		Hash:                   tmrand.Bytes(32),
+		PartSetHeader:          psh,
+		DataAvailabilityHeader: dah,
 	}
 	pbBi := bi.ToProto()
 	bits := bits.NewBitArray(1)
@@ -47,8 +55,6 @@ func TestMsgToProto(t *testing.T) {
 	pbParts, err := parts.ToProto()
 	require.NoError(t, err)
 
-	roots, err := types.NmtRootsFromBytes([][]byte{tmrand.Bytes(2*types.NamespaceSize + tmhash.Size)})
-	require.NoError(t, err)
 	proposal := types.Proposal{
 		Type:      tmproto.ProposalType,
 		Height:    1,
@@ -57,10 +63,7 @@ func TestMsgToProto(t *testing.T) {
 		BlockID:   bi,
 		Timestamp: time.Now(),
 		Signature: tmrand.Bytes(20),
-		DAHeader: &types.DataAvailabilityHeader{
-			RowsRoots:   roots,
-			ColumnRoots: roots,
-		},
+		DAHeader:  bi.DataAvailabilityHeader,
 	}
 	pbProposal, err := proposal.ToProto()
 	require.NoError(t, err)
@@ -71,7 +74,7 @@ func TestMsgToProto(t *testing.T) {
 	val := types.NewValidator(pk, 100)
 
 	vote, err := types.MakeVote(
-		1, types.BlockID{}, &types.ValidatorSet{Proposer: val, Validators: []*types.Validator{val}},
+		1, types.EmptyBlockID(), &types.ValidatorSet{Proposer: val, Validators: []*types.Validator{val}},
 		pv, "chainID", time.Now())
 	require.NoError(t, err)
 	pbVote := vote.ToProto()
@@ -332,8 +335,9 @@ func TestConsMsgsVectors(t *testing.T) {
 	pbPsh := psh.ToProto()
 
 	bi := types.BlockID{
-		Hash:          []byte("add_more_exclamation_marks_code-"),
-		PartSetHeader: psh,
+		Hash:                   []byte("add_more_exclamation_marks_code-"),
+		PartSetHeader:          psh,
+		DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
 	}
 	pbBi := bi.ToProto()
 	bits := bits.NewBitArray(1)
@@ -360,7 +364,7 @@ func TestConsMsgsVectors(t *testing.T) {
 		BlockID:   bi,
 		Timestamp: date,
 		Signature: []byte("add_more_exclamation"),
-		DAHeader:  &types.DataAvailabilityHeader{},
+		DAHeader:  bi.DataAvailabilityHeader,
 	}
 	pbProposal, err := proposal.ToProto()
 	require.NoError(t, err)
