@@ -226,6 +226,29 @@ This means:
 An example for 2. can be found in the IPFS [code](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L239) itself.
 We might want to provide a slightly different default initialization though (see how this is [overridable](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L164-L165) in the ipfs daemon cmd).
 
+##### Client
+
+We add another [`Option`](TODO) to the [`Client`](TODO) that indicates that this client does DAS.
+
+This option indicates:
+1. to do sequential verification and
+2. to request [`DASLightBlocks`](#lightblock) from the [provider](#provider).
+
+All other changes should only affect unexported methods only.
+> TODO: validate this assumption via the implementation.
+
+##### ValidateAvailability
+
+In order for the light clients to perform DAS to validate availability, they do not need to be aware of the fact that an IPFS node is run.
+Instead, we can use the existing `ValidateAvailability` function (as defined in [ADR 002](adr-002-ipld-da-sampling.md) and implemented in [#XXX](TODO)).
+Note that this expects an ipfs core API object `CoreAPI`to be passed in.
+Using that interface has the major benefit that we could even change the requirement that the light client itself runs the IPFS node without changing most of the validation logic.
+E.g., the IPFS node (with our custom IPLD plugin) could run in different process (or machine), and we could still just pass in that same `CoreAPI` interface.
+
+Orthogonal to this ADR, we also note that we could change all IPFS readonly methods to accept the minimal interface they actually use, namely something that implements `ResolveNode` (and maybe additionally a `NodeGetter`).
+
+`ValidateAvailability` needs to be called each time a header is validated.
+A DAS light client will have to request the `DASLightBlock` for this as per above to be able to pass in a `DataAvailabilityHeader`.
 
 #### Testing
 
