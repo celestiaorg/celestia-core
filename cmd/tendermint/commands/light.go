@@ -219,7 +219,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	cfg.MaxOpenConnections = maxOpenConnections
 	// If necessary adjust global WriteTimeout to ensure it's greater than
 	// TimeoutBroadcastTxCommit.
-	// See https://github.com/lazyledger/lazyledger-core/issues/3435
+	// See https://github.com/tendermint/tendermint/issues/3435
 	if cfg.WriteTimeout <= config.RPC.TimeoutBroadcastTxCommit {
 		cfg.WriteTimeout = config.RPC.TimeoutBroadcastTxCommit + 1*time.Second
 	}
