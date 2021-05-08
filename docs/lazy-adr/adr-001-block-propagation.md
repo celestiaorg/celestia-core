@@ -1,4 +1,4 @@
-# LAZY ADR 001: Erasure Coding Block Propagation
+# ADR 001: Erasure Coding Block Propagation
 
 ## Changelog
 
@@ -28,10 +28,10 @@ message Proposal {
   int64                     height    = 2;
   int32                     round     = 3;
   int32                     pol_round = 4;
-  
+
   +++
     // 32-byte hash
-  bytes last_header_hash = 5; 
+  bytes last_header_hash = 5;
   // 32-byte hash
   bytes last_commit_hash = 6;
     // 32-byte hash
@@ -57,7 +57,7 @@ message Vote {
   int64         height   = 2;
   int32         round    = 3;
   +++
-  bytes header_hash      = 4; 
+  bytes header_hash      = 4;
   +++
   google.protobuf.Timestamp timestamp = 5
       [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
@@ -113,7 +113,7 @@ Proposed
 
 - Minimal breakage to public interface
 - Only store the block in a single place (IPFS)
-- Reduce the public interface of the storage within LazyLedger. 
+- Reduce the public interface of the storage within LazyLedger.
 
 ### Negative
 
