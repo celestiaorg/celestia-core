@@ -45,7 +45,7 @@ Additionally, the light client operator can decide the number of successful samp
 
 In case DAS is enabled, the light client will need to:
 1. retrieve the DAHeader corresponding to the data root in the Header
-2. request a predefined number of samples.
+2. request a parametrizable number of random samples.
 
 If the number of samples succeed, the whole block is available (with some high enough probability).
 
