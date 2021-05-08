@@ -259,12 +259,6 @@ In particular, [tendermint/tendermint#6196](https://github.com/tendermint/tender
 Additionally, we should provide a simple example in the documentation that walks through the DAS light client.
 It would be good if the light client logs some (info) output related to DAS to provide feedback to the user.
 
-> - What systems will be affected?
->
-> - What are the efficiency considerations (time/space)?
->
-> - What are the expected access patterns (load/throughput)?
-
 ## Status
 
 Proposed
