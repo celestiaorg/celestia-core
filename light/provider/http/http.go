@@ -86,6 +86,26 @@ func (p *http) LightBlock(ctx context.Context, height int64) (*types.LightBlock,
 	return lb, nil
 }
 
+func (p *http) DASLightBlock(ctx context.Context, height int64) (*types.LightBlock, error) {
+	h, err := validateHeight(height)
+	if err != nil {
+		return nil, provider.ErrBadLightBlock{Reason: err}
+	}
+
+	lb, err := p.LightBlock(ctx, height)
+	if err != nil {
+		return nil, err
+	}
+	// additionally get DAHeader from rpc:
+	dah, err := p.daHeader(ctx, h)
+	if err != nil {
+		return nil, provider.ErrBadLightBlock{Reason: err}
+	}
+	lb.DataAvailabilityHeader = dah
+
+	return lb,nil
+}
+
 // ReportEvidence calls `/broadcast_evidence` endpoint.
 func (p *http) ReportEvidence(ctx context.Context, ev types.Evidence) error {
 	_, err := p.client.BroadcastEvidence(ctx, ev)
@@ -147,6 +167,22 @@ func (p *http) signedHeader(ctx context.Context, height *int64) (*types.SignedHe
 			continue
 		}
 		return &commit.SignedHeader, nil
+	}
+	return nil, provider.ErrNoResponse
+}
+
+func (p *http) daHeader(ctx context.Context, height *int64) (*types.DataAvailabilityHeader, error) {
+	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
+		daHeaderRes, err := p.client.DataAvailabilityHeader(ctx, height)
+		if err != nil {
+			if regexpMissingHeight.MatchString(err.Error()) {
+				return nil, provider.ErrDAHeaderNotFound
+			}
+			// we wait and try again with exponential backoff
+			time.Sleep(backoffTimeout(uint16(attempt)))
+			continue
+		}
+		return &daHeaderRes.DataAvailabilityHeader, nil
 	}
 	return nil, provider.ErrNoResponse
 }

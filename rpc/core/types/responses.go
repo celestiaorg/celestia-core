@@ -35,6 +35,10 @@ type ResultCommit struct {
 	CanonicalCommit    bool `json:"canonical"`
 }
 
+type ResultDataAvailabilityHeader struct {
+	types.DataAvailabilityHeader `json:"data_availability_header"`
+}
+
 // ABCI results from a block
 type ResultBlockResults struct {
 	Height                int64                     `json:"height"`

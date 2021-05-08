@@ -128,7 +128,7 @@ In parallel but in a separate pull request, we add a separate RPC endpoint to do
 
 For full nodes to be able to serve the `DataAvailabilityHeader` without having to recompute it each time, it needs to be stored somewhere.
 While this is independent of the concrete serving mechanism, it is more so relevant for the RPC endpoint.
-There is ongoing work to make the Tendermint Store only store Headers and the DataAvailabilityHeader in [#218](https://github.com/lazyledger/lazyledger-core/pull/218/) / [#182](https://github.com/lazyledger/lazyledger-core/issues/182).
+There is ongoing work to make the Tendermint Store only store Headers and the DataAvailabilityHeader in [#218](https://github.com/lazyledger/lazyledger-core/pull/218) / [#182](https://github.com/lazyledger/lazyledger-core/issues/182).
 
 At the time writing this ADR, another pull request ([#312](https://github.com/lazyledger/lazyledger-core/pull/312)) is in the works with a more isolated change that adds the `DataAvailabilityHeader` to the `BlockID`.
 Hence, the DAHeader is [stored](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/store/store.go#L355-L367) along the [`BlockMeta`](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/types/block_meta.go#L11-L17) there.

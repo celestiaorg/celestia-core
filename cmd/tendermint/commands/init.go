@@ -146,7 +146,7 @@ func InitIpfs(config *cfg.Config) error {
 	}
 
 	applyFromTmConfig(conf, config.IPFS)
-	if err := setupPlugins(repoRoot); err != nil {
+	if err := SetupPlugins(repoRoot); err != nil {
 		return err
 	}
 
@@ -165,7 +165,7 @@ func InitIpfs(config *cfg.Config) error {
 // TODO(ismail): find a more elegant way to achieve the same.
 var injectPluginsOnce sync.Once
 
-func setupPlugins(path string) error {
+func SetupPlugins(path string) error {
 	// Load plugins. This will skip the repo if not available.
 	plugins, err := loader.NewPluginLoader(filepath.Join(path, "plugins"))
 	if err != nil {

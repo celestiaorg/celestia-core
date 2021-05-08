@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"time"
 
+	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/light/provider"
 	"github.com/lazyledger/lazyledger-core/light/store"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/nmt/namespace"
 )
 
 type mode byte
@@ -20,6 +23,7 @@ type mode byte
 const (
 	sequential mode = iota + 1
 	skipping
+	dataAvailabilitySampling
 
 	defaultPruningSize      = 1000
 	defaultMaxRetryAttempts = 10
@@ -61,6 +65,13 @@ func SkippingVerification(trustLevel tmmath.Fraction) Option {
 	return func(c *Client) {
 		c.verificationMode = skipping
 		c.trustLevel = trustLevel
+	}
+}
+
+func DataAvailabilitySampling(numSamples uint32) Option {
+	return func(c *Client) {
+		c.verificationMode = dataAvailabilitySampling
+		c.numSamples = int(numSamples)
 	}
 }
 
@@ -116,6 +127,7 @@ type Client struct {
 	trustingPeriod   time.Duration // see TrustOptions.Period
 	verificationMode mode
 	trustLevel       tmmath.Fraction
+	numSamples       int
 	maxRetryAttempts uint16 // see MaxRetryAttempts option
 	maxClockDrift    time.Duration
 
@@ -139,6 +151,8 @@ type Client struct {
 	quit chan struct{}
 
 	logger log.Logger
+	// TODO: initialize this
+	ipfsCoreAPI coreiface.CoreAPI
 }
 
 // NewClient returns a new light client. It returns an error if it fails to
@@ -225,6 +239,13 @@ func NewClientFromTrustedStore(
 	// Validate trust level.
 	if err := ValidateTrustLevel(c.trustLevel); err != nil {
 		return nil, err
+	}
+
+	if c.verificationMode == dataAvailabilitySampling {
+		if err := ValidateNumSamples(c.numSamples); err != nil {
+			return nil, err
+		}
+		// TODO spin up ipfs node and set ipfsCoreAPI field
 	}
 
 	if err := c.restoreTrustedLightBlock(); err != nil {
@@ -534,7 +555,7 @@ func (c *Client) verifyLightBlock(ctx context.Context, newLightBlock *types.Ligh
 	)
 
 	switch c.verificationMode {
-	case sequential:
+	case sequential, dataAvailabilitySampling:
 		verifyFunc = c.verifySequential
 	case skipping:
 		verifyFunc = c.verifySkippingAgainstPrimary
@@ -655,6 +676,19 @@ func (c *Client) verifySequential(
 				continue
 			default:
 				return err
+			}
+		}
+
+		if c.verificationMode == dataAvailabilitySampling {
+			err = ipld.ValidateAvailability(
+				ctx,
+				c.ipfsCoreAPI,
+				interimBlock.DataAvailabilityHeader,
+				c.numSamples,
+				func(data namespace.PrefixedData8) {},
+			)
+			if err != nil {
+				return fmt.Errorf("data availability sampling failed; ipld.ValidateAvailability: %w", err)
 			}
 		}
 
@@ -974,7 +1008,16 @@ func (c *Client) replacePrimaryProvider() error {
 // with an alternative provider.
 func (c *Client) lightBlockFromPrimary(ctx context.Context, height int64) (*types.LightBlock, error) {
 	c.providerMutex.Lock()
-	l, err := c.primary.LightBlock(ctx, height)
+	var (
+		l   *types.LightBlock
+		err error
+	)
+	switch c.verificationMode {
+	case dataAvailabilitySampling:
+		l, err = c.primary.DASLightBlock(ctx, height)
+	default:
+		l, err = c.primary.LightBlock(ctx, height)
+	}
 	c.providerMutex.Unlock()
 	if err != nil {
 		c.logger.Debug("Error on light block request from primary", "error", err, "primary", c.primary)

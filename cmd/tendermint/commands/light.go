@@ -64,7 +64,8 @@ var (
 	dir                string
 	maxOpenConnections int
 
-	daSampling	   bool
+	daSampling     bool
+	numSamples     int32
 	sequential     bool
 	trustingPeriod time.Duration
 	trustedHeight  int64
@@ -105,6 +106,7 @@ func init() {
 	LightCmd.Flags().BoolVar(&daSampling, "da-sampling", false,
 		"data availability sampling. For each verified header, additionally verify data availability via data availability sampling",
 	)
+	LightCmd.Flags().Int32Var(&numSamples, "num-samples", 15, "Number of data availability samples until block data deemed available.")
 }
 
 func runProxy(cmd *cobra.Command, args []string) error {
@@ -175,6 +177,8 @@ func runProxy(cmd *cobra.Command, args []string) error {
 
 	if sequential {
 		options = append(options, light.SequentialVerification())
+	} else if daSampling {
+		options = append(options, light.DataAvailabilitySampling(uint32(numSamples)))
 	} else {
 		options = append(options, light.SkippingVerification(trustLevel))
 	}
