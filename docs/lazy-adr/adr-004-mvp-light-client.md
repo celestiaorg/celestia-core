@@ -12,7 +12,7 @@ See [ADR 002](adr-002-ipld-da-sampling.md) for more context on DAS.
 
 A great introduction on the Tendermint light client (and light clients in general) can be found in this series of [blog posts](https://medium.com/tendermint/everything-you-need-to-know-about-the-tendermint-light-client-f80d03856f98) as well as this [paper](https://arxiv.org/abs/2010.07031).
 
-This ADR describes the changes necessary to augment the existing Tendermint light client implementation with Data Availability Sampling from a UX as well as from a protocol perspective.
+This ADR describes the changes necessary to augment the existing Tendermint light client implementation with DAS from a UX as well as from a protocol perspective.
 
 ## Alternative Approaches
 
