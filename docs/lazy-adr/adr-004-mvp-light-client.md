@@ -1,4 +1,4 @@
-# ADR 004: Data Availability Sampling light-client
+# ADR 004: Data Availability Sampling Light Client
 
 ## Changelog
 
@@ -72,7 +72,7 @@ diff --git a/cmd/tendermint/commands/light.go b/cmd/tendermint/commands/light.go
  		"sequential verification. Verify all headers sequentially as opposed to using skipping verification",
  	)
 +	LightCmd.Flags().BoolVar(&daSampling, "da-sampling", false,
-+		"data availability sampling. For each verified header, additionally verify data availability via data availability sampling",
++		"data availability sampling. Verify each header (sequential verification), additionally verify data availability via data availability sampling",
 +	)
  }
 ```
@@ -86,17 +86,6 @@ We can later add the ability to let users configure the IPFS setup more granular
 In case a light client is parametrized to run DAS and skipping verification, the CLI should return an easy-to-understand warning or even an error explaining why this does not make sense.
 
 ### Light Client Protocol with DAS
-
-#### Running an IPFS node
-
-We already have methods to [initialize](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/init.go#L116-L157) and [run](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/node/node.go#L1449-L1488)  an IPFS node in place.
-These need to be refactored such that they can effectively be for the light client as well.
-This means:
-1. these methods need to be exported and available in a place that does not introduce interdependence of go packages
-2. users should be able to run a light client with a single command and hence most of the initialization logic should be coupled with creating the actual IPFS node and [made independent](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/init.go#L119-L120) of the `tendermint init` command
-
-An example for 2. can be found in the IPFS [code](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L239) itself.
-We might want to provide a slightly different default initialization though (see how this is [overridable](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L164-L165) in the ipfs daemon cmd).
 
 #### Light Store
 
@@ -226,9 +215,23 @@ diff --git a/light/provider/provider.go b/light/provider/provider.go
  	ReportEvidence(context.Context, types.Evidence) error
  }
 ```
+Alternatively, with the exact same result, we could embed the existing `Provider` into a new interface: e.g. `DASProvider`that add this method.
+This is completely equivaltent as above and which approach is better will become more clear when we spent more time on the implementation.
 
 Regular light clients will call `LightBlock` and DAS light clients will call `DASLightBlock`.
 In the first case the result will be the same as for vanilla Tendermint and in the second case the returned `LightBlock` will additionally contain the `DataAvailabilityHeader` of the requested height.
+
+#### Running an IPFS node
+
+We already have methods to [initialize](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/init.go#L116-L157) and [run](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/node/node.go#L1449-L1488)  an IPFS node in place.
+These need to be refactored such that they can effectively be for the light client as well.
+This means:
+1. these methods need to be exported and available in a place that does not introduce interdependence of go packages
+2. users should be able to run a light client with a single command and hence most of the initialization logic should be coupled with creating the actual IPFS node and [made independent](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/init.go#L119-L120) of the `tendermint init` command
+
+An example for 2. can be found in the IPFS [code](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L239) itself.
+We might want to provide a slightly different default initialization though (see how this is [overridable](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L164-L165) in the ipfs daemon cmd).
+
 
 #### Testing
 
