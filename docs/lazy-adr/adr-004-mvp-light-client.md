@@ -24,9 +24,9 @@ See this [abandoned pull request](https://github.com/tendermint/tendermint/pull/
 For some use-cases—like DAS light validator nodes, or the light clients of a Data Availability Layer that are run by full nodes of an Optimistic Rollup—it would even make sense that the light client (passively) participates in the consensus protocol to some extent; i.e. runs a subset of the consensus reactor to Consensus messages ([Votes](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/types/vote.go#L48-L59) etc.) come in as early as possible.
 Then light clients would not need to wait for the canonical commit to be included in the next [block](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/types/block.go#L48).
 
-For the RPC-based light client it could also make sense to add a new RPC endpoint to tendermint for clients to retrieve the DA header, or embed the DAHeader.
+For the RPC-based light client it could also make sense to add a new RPC endpoint to tendermint for clients to retrieve the [`DataAvailabilityHeader`](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/types/block.go#L52-L69) (DAHeader), or embed the DAHeader.
 The [Commit](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/rpc/core/routes.go#L25) only contains the [SignedHeader](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/rpc/core/types/responses.go#L32-L36) (Header and Commit signatures).
-Not all light clients will need the full [DataAvailabilityHeader](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/types/block.go#L52-L69) (DAHeader) though (e.g. super-light-clients do not).
+Not all light clients will need the full DAHeader though (e.g. super-light-clients do not).
 
 
 ## Decision
