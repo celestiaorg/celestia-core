@@ -78,7 +78,7 @@ diff --git a/cmd/tendermint/commands/light.go b/cmd/tendermint/commands/light.go
 ```
 
 For the Data Availability sampling, the light client will have to run an IPFS node.
-It makes sense to make this mostly opaque to the user as everything around IPFS can be [configured](https://github.com/ipfs/go-ipfs/blob/d6322f485af222e319c893eeac51c44a9859e901/docs/config.md) in the $IPFS_PATH.
+It makes sense to make this mostly opaque to the user as everything around IPFS can be [configured](https://github.com/ipfs/go-ipfs/blob/d6322f485af222e319c893eeac51c44a9859e901/docs/config.md) in the `$IPFS_PATH`.
 This IPFS path should simply be a sub-directory inside the light client's [directory](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/light.go#L86-L87).
 We can later add the ability to let users configure the IPFS setup more granular.
 
@@ -171,6 +171,10 @@ diff --git a/types/light.go b/types/light.go
  }
 ```
 
+Alternatively, we could introduce a `DASLightBlock` that embeds a `LightBlock` and has the `DataAvailabilityHeader` as the only (non-optional) field.
+This would be more explict as it is a new type.
+Instead, adding a field to the existing `LightBlock`is backwards compatible and does not require any further code changes; the new type requires `To`- and `FromProto` functions at least.
+
 ##### Provider
 
 The [`Provider`](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/provider.go#L9-L26) should be changed to enable DAS light clients to additionally
@@ -206,7 +210,7 @@ diff --git a/light/provider/provider.go b/light/provider/provider.go
  }
 ```
 Alternatively, with the exact same result, we could embed the existing `Provider` into a new interface: e.g. `DASProvider`that add this method.
-This is completely equivaltent as above and which approach is better will become more clear when we spent more time on the implementation.
+This is completely equivalent as above and which approach is better will become more clear when we spent more time on the implementation.
 
 Regular light clients will call `LightBlock` and DAS light clients will call `DASLightBlock`.
 In the first case the result will be the same as for vanilla Tendermint and in the second case the returned `LightBlock` will additionally contain the `DataAvailabilityHeader` of the requested height.
