@@ -477,7 +477,7 @@ func (b *Block) Hash() tmbytes.HexBytes {
 	if b.LastCommit == nil {
 		return nil
 	}
-	// b.fillHeader()
+	b.fillHeader()
 	return b.Header.Hash()
 }
 

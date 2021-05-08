@@ -355,6 +355,7 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 	// Save block meta
 	blockMeta := types.NewBlockMeta(block, blockParts)
 	pbm := blockMeta.ToProto()
+
 	if pbm == nil {
 		panic("nil blockmeta")
 	}

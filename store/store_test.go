@@ -185,7 +185,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 
 	// save a block
-	block := makeBlock(bs.Height()+1, state, new(types.Commit))
+	block := makeBlock(bs.Height()+1, state, &types.Commit{BlockID: types.EmptyBlockID()})
 	validPartSet := block.MakePartSet(2)
 	seenCommit := makeTestCommit(block, 10, tmtime.Now())
 	bs.SaveBlock(block, partSet, seenCommit)
@@ -203,6 +203,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 		ChainID:         "block_test",
 		Time:            tmtime.Now(),
 		ProposerAddress: tmrand.Bytes(crypto.AddressSize),
+		LastBlockID:     types.EmptyBlockID(),
 	}
 
 	// End of setup, test data
@@ -239,7 +240,9 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 					Height:          5,
 					ChainID:         "block_test",
 					Time:            tmtime.Now(),
-					ProposerAddress: tmrand.Bytes(crypto.AddressSize)},
+					ProposerAddress: tmrand.Bytes(crypto.AddressSize),
+					LastBlockID:     types.EmptyBlockID(),
+				},
 				makeTestCommit(block, 5, tmtime.Now()),
 			),
 			parts:      validPartSet,
@@ -635,7 +638,8 @@ func doFn(fn func() (interface{}, error)) (res interface{}, err error, panicErr 
 
 func newBlock(hdr types.Header, lastCommit *types.Commit) *types.Block {
 	return &types.Block{
-		Header:     hdr,
-		LastCommit: lastCommit,
+		Header:                 hdr,
+		LastCommit:             lastCommit,
+		DataAvailabilityHeader: *types.MinDataAvailabilityHeader(),
 	}
 }
