@@ -226,6 +226,10 @@ This means:
 An example for 2. can be found in the IPFS [code](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L239) itself.
 We might want to provide a slightly different default initialization though (see how this is [overridable](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L164-L165) in the ipfs daemon cmd).
 
+We note that for operating a fully functional light client the IPFS node could be running in client mode [`dht.ModeClient`](TODO) but be actually want light clients to also respond to incoming queries, e.g. from other light clients.
+Hence, they should by default run in `dht.ModeServer`.
+In an environment were any bandwidth must be saved, or, were the network conditions do not allow the server mode, we make it easy to change the default behavior.
+
 ##### Client
 
 We add another [`Option`](TODO) to the [`Client`](TODO) that indicates that this client does DAS.
