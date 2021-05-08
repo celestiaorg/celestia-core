@@ -107,7 +107,7 @@ db, err := badgerdb.NewDB("light-client-db", dir)
 ```
 
 While it is not critical for this feature, we should at least try to re-use that same DB instance for the local ipld store.
-Otherwise, we introduce yet another DB instance - something we want to avoid, especially on the long run (see [#283](https://github.com/lazyledger/lazyledger-core/issues/283)).
+Otherwise, we introduce yet another DB instance; something we want to avoid, especially on the long run (see [#283](https://github.com/lazyledger/lazyledger-core/issues/283)).
 For the first implementation, it might still be simpler to create a separate DB instance and tackle cleaning this up in a separate pull request, e.g. together with other [instances]([#283](https://github.com/lazyledger/lazyledger-core/issues/283)).
 
 #### RPC
