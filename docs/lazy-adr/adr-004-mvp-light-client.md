@@ -63,7 +63,7 @@ diff --git a/cmd/tendermint/commands/light.go b/cmd/tendermint/commands/light.go
  	dir                string
  	maxOpenConnections int
 
-+	daSampling	   bool
++	daSampling     bool
  	sequential     bool
  	trustingPeriod time.Duration
  	trustedHeight  int64
