@@ -52,28 +52,30 @@ If the all sampling requests succeed, the whole block is available ([with some h
 ### UX
 
 The main change to the light client [command](https://github.com/lazyledger/lazyledger-core/blob/master/cmd/tendermint/commands/light.go#L32-L104) is to add in a new flag to indicate if it should run DAS or not.
+Additionally, the user can choose the number of succeeding samples required for a block to be considered available.
 
 ```diff
-Index: cmd/tendermint/commands/light.go
 ===================================================================
 diff --git a/cmd/tendermint/commands/light.go b/cmd/tendermint/commands/light.go
---- a/cmd/tendermint/commands/light.go	(revision cbf1f1a4a0472373289a9834b0d33e0918237b7f)
-+++ b/cmd/tendermint/commands/light.go	(date 1620077232436)
-@@ -64,6 +64,7 @@
+--- a/cmd/tendermint/commands/light.go	(revision 48b043014f0243edd1e8ebad8cd0564ab9100407)
++++ b/cmd/tendermint/commands/light.go	(date 1620546761822)
+@@ -64,6 +64,8 @@
  	dir                string
  	maxOpenConnections int
 
 +	daSampling     bool
++	numSamples     uint32
  	sequential     bool
  	trustingPeriod time.Duration
  	trustedHeight  int64
-@@ -101,6 +102,9 @@
+@@ -101,6 +103,10 @@
  	LightCmd.Flags().BoolVar(&sequential, "sequential", false,
  		"sequential verification. Verify all headers sequentially as opposed to using skipping verification",
  	)
 +	LightCmd.Flags().BoolVar(&daSampling, "da-sampling", false,
 +		"data availability sampling. Verify each header (sequential verification), additionally verify data availability via data availability sampling",
 +	)
++	LightCmd.Flags().Uint32Var(&numSamples, "num-samples", 15, "Number of data availability samples until block data deemed available.")
  }
 ```
 
