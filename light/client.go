@@ -679,6 +679,7 @@ func (c *Client) verifySequential(
 			}
 		}
 
+		// 2.1) Verify that the data behind the block data is actually available.
 		if c.verificationMode == dataAvailabilitySampling {
 			err = ipld.ValidateAvailability(
 				ctx,
