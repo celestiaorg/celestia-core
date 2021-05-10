@@ -14,9 +14,6 @@ import (
 // Sample is a point in 2D space over square.
 type Sample struct {
 	Row, Col uint32
-
-	// src defines the source for sampling, either from column(true) or row(false) root
-	src bool
 }
 
 // SampleSquare randomly picks *num* unique points from arbitrary *width* square
@@ -35,7 +32,7 @@ func (s Sample) Leaf(dah *types.DataAvailabilityHeader) (cid.Cid, uint32, error)
 	)
 
 	// spread leaves retrieval from both Row and Column roots
-	if s.src {
+	if randUint32(2) == 0 {
 		root = dah.ColumnRoots[s.Col]
 		leaf = s.Row
 	} else {
@@ -78,7 +75,6 @@ func (ss *squareSampler) sample(num int) {
 		s := Sample{
 			Row: randUint32(ss.squareWidth),
 			Col: randUint32(ss.squareWidth),
-			src: randUint32(2) == 0,
 		}
 
 		if _, ok := ss.smpls[s]; ok {
