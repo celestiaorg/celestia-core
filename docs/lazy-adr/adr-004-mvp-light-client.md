@@ -179,8 +179,8 @@ Instead, adding a field to the existing `LightBlock`is backwards compatible and 
 
 ##### Provider
 
-The [`Provider`](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/provider.go#L9-L26) should be changed to enable DAS light clients to additionally
-Implementations of the interface need to additionally to retrieve the DataAvailability header in the [changed LightBlock](#lightblock).
+The [`Provider`](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/provider.go#L9-L26) should be changed to additionally provide the `DataAvailabilityHeader` to enable DAS light clients.
+Implementations of the interface need to additionally to retrieve the `DataAvailabilityHeader` for the [modified LightBlock](#lightblock).
 Users of the provider need to indicate this to the provider.
 
 We could either augment the `LightBlock` method with a flag, add a new method solely for providing the `DataAvailabilityHeader`, or, we could introduce a new method for DAS light clients.
@@ -228,26 +228,25 @@ This means:
 An example for 2. can be found in the IPFS [code](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L239) itself.
 We might want to provide a slightly different default initialization though (see how this is [overridable](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L164-L165) in the ipfs daemon cmd).
 
-We note that for operating a fully functional light client the IPFS node could be running in client mode [`dht.ModeClient`](TODO) but be actually want light clients to also respond to incoming queries, e.g. from other light clients.
-Hence, they should by default run in `dht.ModeServer`.
+We note that for operating a fully functional light client the IPFS node could be running in client mode [`dht.ModeClient`](https://github.com/libp2p/go-libp2p-kad-dht/blob/09d923fcf68218181b5cd329bf5199e767bd33c3/dht_options.go#L29-L30) but be actually want light clients to also respond to incoming queries, e.g. from other light clients.
+Hence, they should by default run in [`dht.ModeServer`](https://github.com/libp2p/go-libp2p-kad-dht/blob/09d923fcf68218181b5cd329bf5199e767bd33c3/dht_options.go#L31-L32).
 In an environment were any bandwidth must be saved, or, were the network conditions do not allow the server mode, we make it easy to change the default behavior.
 
 ##### Client
 
-We add another [`Option`](TODO) to the [`Client`](TODO) that indicates that this client does DAS.
+We add another [`Option`](https://github.com/tendermint/tendermint/blob/a91680efee3653e3de620f24eb8ddca1c95ce8f9/light/client.go#L43-L117) to the [`Client`](https://github.com/tendermint/tendermint/blob/a91680efee3653e3de620f24eb8ddca1c95ce8f9/light/client.go#L173) that indicates that this client does DAS.
 
 This option indicates:
 1. to do sequential verification and
 2. to request [`DASLightBlocks`](#lightblock) from the [provider](#provider).
 
 All other changes should only affect unexported methods only.
-> TODO: validate this assumption via the implementation.
 
 ##### ValidateAvailability
 
 In order for the light clients to perform DAS to validate availability, they do not need to be aware of the fact that an IPFS node is run.
-Instead, we can use the existing `ValidateAvailability` function (as defined in [ADR 002](adr-002-ipld-da-sampling.md) and implemented in [#XXX](TODO)).
-Note that this expects an ipfs core API object `CoreAPI`to be passed in.
+Instead, we can use the existing [`ValidateAvailability`](https://github.com/lazyledger/lazyledger-core/blame/master/p2p/ipld/validate.go#L23-L28) function (as defined in [ADR 002](adr-002-ipld-da-sampling.md) and implemented in [#270](https://github.com/lazyledger/lazyledger-core/pull/270)).
+Note that this expects an ipfs core API object `CoreAPI` to be passed in.
 Using that interface has the major benefit that we could even change the requirement that the light client itself runs the IPFS node without changing most of the validation logic.
 E.g., the IPFS node (with our custom IPLD plugin) could run in different process (or machine), and we could still just pass in that same `CoreAPI` interface.
 
