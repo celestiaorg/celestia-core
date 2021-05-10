@@ -218,6 +218,10 @@ func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (dah 
 	}
 
 	dah = new(DataAvailabilityHeader)
+	if len(dahp.ColumnRoots) == 0 {
+		return dah, nil
+	}
+
 	dah.RowsRoots, err = NmtRootsFromBytes(dahp.RowRoots)
 	if err != nil {
 		return
@@ -1721,9 +1725,9 @@ func (data *EvidenceData) splitIntoShares() NamespacedShares {
 
 // BlockID
 type BlockID struct {
-	Hash                   tmbytes.HexBytes `json:"hash"`
-	PartSetHeader          PartSetHeader    `json:"part_set_header"`
-	DataAvailabilityHeader *DataAvailabilityHeader
+	Hash                   tmbytes.HexBytes        `json:"hash"`
+	PartSetHeader          PartSetHeader           `json:"part_set_header"`
+	DataAvailabilityHeader *DataAvailabilityHeader `json:"data_availability_header"`
 }
 
 // NewBlockID issues a new BlockID. If the provided data availability header is
