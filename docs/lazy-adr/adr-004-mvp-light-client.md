@@ -6,7 +6,7 @@
 
 ## Context
 
-We decided to augment the existing [RCP-based Tendermint light client](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/light/doc.go#L2-L126) by adding the possibility to additionally validate blocks by doing Data Availability Sampling (DAS).
+We decided to augment the existing [RPC-based Tendermint light client](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/light/doc.go#L2-L126) by adding the possibility to additionally validate blocks by doing Data Availability Sampling (DAS).
 In general, DAS gives light clients assurance that the data behind the block header they validated is actually available in the network and hence, that state fraud proofs could be generated.
 See [ADR 002](adr-002-ipld-da-sampling.md) for more context on DAS.
 
