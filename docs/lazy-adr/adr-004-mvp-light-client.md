@@ -180,7 +180,7 @@ Instead, adding a field to the existing `LightBlock`is backwards compatible and 
 ##### Provider
 
 The [`Provider`](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/provider.go#L9-L26) should be changed to additionally provide the `DataAvailabilityHeader` to enable DAS light clients.
-Implementations of the interface need to additionally to retrieve the `DataAvailabilityHeader` for the [modified LightBlock](#lightblock).
+Implementations of the interface need to additionally retrieve the `DataAvailabilityHeader` for the [modified LightBlock](#lightblock).
 Users of the provider need to indicate this to the provider.
 
 We could either augment the `LightBlock` method with a flag, add a new method solely for providing the `DataAvailabilityHeader`, or, we could introduce a new method for DAS light clients.
