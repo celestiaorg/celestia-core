@@ -347,7 +347,7 @@ func (b *Block) fillDataAvailabilityHeader() {
 
 	// return the root hash of DA Header
 	b.DataHash = b.DataAvailabilityHeader.Hash()
-	b.NumOriginalDataShares = int64(dataSharesLen)
+	b.NumOriginalDataShares = uint64(dataSharesLen)
 }
 
 // nmtcommitment generates the nmt root of some namespaced data
@@ -719,7 +719,7 @@ type Header struct {
 	// Block.DataAvailabilityHeader for stores (row|column)Root_i // TODO ...
 	DataHash tmbytes.HexBytes `json:"data_hash"` // transactions
 	// amount of data shares within a Block #specs:availableDataOriginalSharesUsed
-	NumOriginalDataShares int64 `json:"data_shares"`
+	NumOriginalDataShares uint64 `json:"data_shares"`
 
 	// hashes from the app output from the prev block
 	ValidatorsHash     tmbytes.HexBytes `json:"validators_hash"`      // validators for the current block
