@@ -211,7 +211,7 @@ diff --git a/light/provider/provider.go b/light/provider/provider.go
  	ReportEvidence(context.Context, types.Evidence) error
  }
 ```
-Alternatively, with the exact same result, we could embed the existing `Provider` into a new interface: e.g. `DASProvider`that add this method.
+Alternatively, with the exact same result, we could embed the existing `Provider` into a new interface: e.g. `DASProvider` that adds this method.
 This is completely equivalent as above and which approach is better will become more clear when we spent more time on the implementation.
 
 Regular light clients will call `LightBlock` and DAS light clients will call `DASLightBlock`.
