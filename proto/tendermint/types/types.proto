@@ -67,7 +67,7 @@ message Header {
 
   // hashes of block data
   bytes last_commit_hash = 6;  // commit from validators from the last block
-  int64 num_original_data_shares = 7;  // number of shares used in the original data square
+  uint64 num_original_data_shares = 7;  // number of shares used in the original data square
   bytes data_hash        = 8;  // transactions
 
   // hashes from the app output from the prev block
