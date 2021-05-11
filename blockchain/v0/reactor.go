@@ -382,9 +382,6 @@ FOR_LOOP:
 				didProcessCh <- struct{}{}
 			}
 
-			first.DataHash = nil
-			first.Hash()
-
 			var (
 				firstParts         = first.MakePartSet(types.BlockPartSizeBytes)
 				firstPartSetHeader = firstParts.Header()
