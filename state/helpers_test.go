@@ -16,6 +16,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/proxy"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
+	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
 
 type paramsChangeTestCase struct {
@@ -234,6 +235,23 @@ func makeHeaderPartsResponsesParams(
 		PartSetHeader:          types.PartSetHeader{},
 		DataAvailabilityHeader: &block.DataAvailabilityHeader,
 	}, abciResponses
+}
+
+func randomGenesisDoc() *types.GenesisDoc {
+	pubkey := ed25519.GenPrivKey().PubKey()
+	return &types.GenesisDoc{
+		GenesisTime: tmtime.Now(),
+		ChainID:     "abc",
+		Validators: []types.GenesisValidator{
+			{
+				Address: pubkey.Address(),
+				PubKey:  pubkey,
+				Power:   10,
+				Name:    "myval",
+			},
+		},
+		ConsensusParams: types.DefaultConsensusParams(),
+	}
 }
 
 //----------------------------------------------------------------------------
