@@ -56,11 +56,31 @@ func InitIpfs(config *tmcfg.Config) error {
 	if err := SetupPlugins(repoRoot); err != nil {
 		return err
 	}
+	// TODO comment
+	_ = applyBadgerSpec(conf)
 
 	if err := fsrepo.Init(repoRoot, conf); err != nil {
 		return err
 	}
 	return nil
+}
+
+func applyBadgerSpec(c *ipfscfg.Config) error {
+	c.Datastore.Spec = badgerSpec()
+	return nil
+}
+
+func badgerSpec() map[string]interface{} {
+	return map[string]interface{}{
+		"type":   "measure",
+		"prefix": "badger.datastore",
+		"child": map[string]interface{}{
+			"type":       "badgerds",
+			"path":       "badgerds",
+			"syncWrites": false,
+			"truncate":   true,
+		},
+	}
 }
 
 // Inject replies on several global vars internally.
