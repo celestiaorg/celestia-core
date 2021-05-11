@@ -309,11 +309,6 @@ func (b *Block) fillHeader() {
 func (b *Block) fillDataAvailabilityHeader() {
 	namespacedShares, dataSharesLen := b.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
-	if len(shares) == 0 {
-		// no shares -> no row/colum roots -> hash(empty)
-		b.DataHash = b.DataAvailabilityHeader.Hash()
-		return
-	}
 
 	// TODO(ismail): for better efficiency and a larger number shares
 	// we should switch to the rsmt2d.LeopardFF16 codec:
