@@ -519,6 +519,7 @@ func TestStateLockNoPOL(t *testing.T) {
 
 	// wait to finish prevote
 	ensurePrevote(voteCh, height, round)
+
 	// we should have prevoted our locked block
 	validatePrevote(t, cs1, round, vss[0], rs.LockedBlock.Hash())
 

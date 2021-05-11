@@ -1043,11 +1043,11 @@ func (cs CommitSig) BlockID(commitBlockID BlockID) BlockID {
 	var blockID BlockID
 	switch cs.BlockIDFlag {
 	case BlockIDFlagAbsent:
-		blockID = BlockID{}
+		blockID = EmptyBlockID()
 	case BlockIDFlagCommit:
 		blockID = commitBlockID
 	case BlockIDFlagNil:
-		blockID = BlockID{}
+		blockID = EmptyBlockID()
 	default:
 		panic(fmt.Sprintf("Unknown BlockIDFlag: %v", cs.BlockIDFlag))
 	}

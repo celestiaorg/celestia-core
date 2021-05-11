@@ -1220,7 +1220,7 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		cs.signAddVote(tmproto.PrevoteType, types.BlockID{
 			Hash:                   cs.LockedBlock.Hash(),
 			PartSetHeader:          cs.LockedBlockParts.Header(),
-			DataAvailabilityHeader: &cs.ProposalBlock.DataAvailabilityHeader},
+			DataAvailabilityHeader: &cs.LockedBlock.DataAvailabilityHeader},
 		)
 		return
 	}

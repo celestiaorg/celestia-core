@@ -369,8 +369,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	newValidatorTx1 := kvstore.MakeValSetChangeTx(valPubKey1ABCI, testMinPower)
 	err = assertMempool(css[0].txNotifier).CheckTx(newValidatorTx1, nil, mempl.TxInfo{})
 	assert.Nil(t, err)
-	propBlock, _ := css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
-	propBlockParts := propBlock.MakePartSet(partSize)
+	propBlock, propBlockParts := css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	blockID := types.BlockID{
 		Hash:                   propBlock.Hash(),
 		PartSetHeader:          propBlockParts.Header(),
