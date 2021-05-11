@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
@@ -101,9 +102,13 @@ func (p *http) DASLightBlock(ctx context.Context, height int64) (*types.LightBlo
 	if err != nil {
 		return nil, provider.ErrBadLightBlock{Reason: err}
 	}
+	// do LightBlock and DAHeader match hashes?
+	if !bytes.Equal(dah.Hash(), lb.DataHash) {
+		return nil, provider.ErrBadLightBlock{Reason: fmt.Errorf("mismatching data hashes, dah.Hash(): %X != lb.DataHash: %X\ndah: %v", dah.Hash(), lb.DataHash, dah)}
+	}
 	lb.DataAvailabilityHeader = dah
 
-	return lb,nil
+	return lb, nil
 }
 
 // ReportEvidence calls `/broadcast_evidence` endpoint.

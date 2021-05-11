@@ -13,6 +13,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 	format "github.com/ipfs/go-ipld-format"
+	"github.com/lazyledger/lazyledger-core/libs/json"
 
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
@@ -94,7 +95,13 @@ func (dah *DataAvailabilityHeader) String() string {
 	if dah == nil {
 		return "<nil DAHeader>"
 	}
-	return fmt.Sprintf("%X", dah.Hash())
+	// TODO: currently used for debugging
+	// remove JSON encoding here
+	b, err := json.MarshalIndent(dah, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	return fmt.Sprintf("%s", string(b))
 }
 
 // Equals checks equality of two DAHeaders.
@@ -232,8 +239,8 @@ func (b *Block) fillDataAvailabilityHeader() {
 	shares := namespacedShares.RawShares()
 	if len(shares) == 0 {
 		// no shares -> no row/colum roots -> hash(empty)
-		b.DataHash = b.DataAvailabilityHeader.Hash()
-		return
+		//b.DataHash = b.DataAvailabilityHeader.Hash()
+		panic("shares cannot be empty")
 	}
 
 	// TODO(ismail): for better efficiency and a larger number shares

@@ -703,12 +703,15 @@ func (c *Client) verifySequential(
 		// 2.1) Verify that the data behind the block data is actually available.
 		if c.verificationMode == dataAvailabilitySampling {
 			start := time.Now()
-			c.logger.Info("Starting DAS sampling", "height", height, "numSamples", c.numSamples)
+			// TODO: decide how to handle this case:
+			// https://github.com/lazyledger/lazyledger-core/issues/319
+			numSamples := min(c.numSamples, len(interimBlock.DataAvailabilityHeader.RowsRoots))
+			c.logger.Info("Starting DAS sampling", "height", height, "numSamples", numSamples)
 			err = ipld.ValidateAvailability(
 				ctx,
 				c.ipfsCoreAPI,
 				interimBlock.DataAvailabilityHeader,
-				c.numSamples,
+				numSamples,
 				func(data namespace.PrefixedData8) {},
 			)
 			if err != nil {
@@ -731,6 +734,13 @@ func (c *Client) verifySequential(
 	// CORRECTNESS ASSUMPTION: there's at least 1 correct full node
 	// (primary or one of the witnesses).
 	return c.detectDivergence(ctx, trace, now)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // see VerifyHeader

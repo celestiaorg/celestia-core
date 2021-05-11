@@ -143,7 +143,7 @@ func DataAvailabilityHeader(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.Re
 		return nil, err
 	}
 
-	// TODO: store DAHeader to avoid recomputing the DAHeader each time
+	// TODO: store DAHeader to avoid loading the full block each time
 	// depends on either:
 	// - https://github.com/lazyledger/lazyledger-core/pull/312, or
 	// - https://github.com/lazyledger/lazyledger-core/pull/218
