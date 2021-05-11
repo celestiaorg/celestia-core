@@ -29,8 +29,7 @@ var ErrIPFSIsAlreadyInit = errors.New("ipfs repo was already initialized")
 // TODO(ismail) move into separate file, and consider making IPFS initialization
 // independent from the `tendermint init` subcommand.
 // TODO(ismail): add counter part in ResetAllCmd
-func InitIpfs(config *tmcfg.Config) error {
-	repoRoot := config.IPFSRepoRoot()
+func InitIpfs(repoRoot string, transformers ...ipfscfg.Transformer) error {
 	if fsrepo.IsInitialized(repoRoot) {
 		return ErrIPFSIsAlreadyInit
 	}
@@ -52,20 +51,16 @@ func InitIpfs(config *tmcfg.Config) error {
 		return err
 	}
 
-	applyFromTmConfig(conf, config.IPFS)
 	if err := SetupPlugins(repoRoot); err != nil {
 		return err
 	}
-	// TODO comment
-	_ = applyBadgerSpec(conf)
-
 	if err := fsrepo.Init(repoRoot, conf); err != nil {
 		return err
 	}
 	return nil
 }
 
-func applyBadgerSpec(c *ipfscfg.Config) error {
+func ApplyBadgerSpec(c *ipfscfg.Config) error {
 	c.Datastore.Spec = badgerSpec()
 	return nil
 }
@@ -113,8 +108,7 @@ func SetupPlugins(path string) error {
 	return nil
 }
 
-func CreateIpfsNode(config *tmcfg.Config, arePluginsAlreadyLoaded bool, logger log.Logger) (*ipfscore.IpfsNode, error) {
-	repoRoot := config.IPFSRepoRoot()
+func CreateIpfsNode(repoRoot string, arePluginsAlreadyLoaded bool, logger log.Logger) (*ipfscore.IpfsNode, error) {
 	logger.Info("creating node in repo", "ipfs-root", repoRoot)
 	if !fsrepo.IsInitialized(repoRoot) {
 		// TODO: sentinel err

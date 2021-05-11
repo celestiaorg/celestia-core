@@ -114,7 +114,7 @@ func Setup(testnet *e2e.Testnet) error {
 			filepath.Join(nodeDir, PrivvalDummyKeyFile),
 			filepath.Join(nodeDir, PrivvalDummyStateFile),
 		)).Save()
-		err = p2p.InitIpfs(cfg)
+		err = p2p.InitIpfs(cfg.IPFSRepoRoot())
 		if err != nil {
 			return err
 		}

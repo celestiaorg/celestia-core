@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 
+	ipfscfg "github.com/ipfs/go-ipfs-config"
 	"github.com/spf13/cobra"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
@@ -99,7 +100,21 @@ func initFilesWithConfig(config *cfg.Config) error {
 		logger.Info("Generated genesis file", "path", genFile)
 	}
 
-	if err := p2p.InitIpfs(config); err != nil {
+	applyFromTmConf := func(ipfsConf *ipfscfg.Config) error {
+		tmConf := config.IPFS
+		ipfsConf.Addresses.API = ipfscfg.Strings{tmConf.API}
+		ipfsConf.Addresses.Gateway = ipfscfg.Strings{tmConf.Gateway}
+		ipfsConf.Addresses.Swarm = tmConf.Swarm
+		ipfsConf.Addresses.Announce = tmConf.Announce
+		ipfsConf.Addresses.NoAnnounce = tmConf.NoAnnounce
+		return nil
+	}
+
+	if err := p2p.InitIpfs(
+		config.IPFSRepoRoot(),
+		applyFromTmConf,
+		p2p.ApplyBadgerSpec,
+	); err != nil {
 		return err
 	}
 

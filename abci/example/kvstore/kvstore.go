@@ -179,7 +179,7 @@ func (app *Application) PreprocessTxs(
 	req types.RequestPreprocessTxs) types.ResponsePreprocessTxs {
 	// TODO: create random Txs and Messages
 	// randTxs := generateRandTx()
-	randMsgs := generateRandNamespacedRawData(10, nmt.DefaultNamespaceIDLen, 128)
+	randMsgs := generateRandNamespacedRawData(16, nmt.DefaultNamespaceIDLen, 256)
 	randMessages := toMessageSlice(randMsgs)
 	return types.ResponsePreprocessTxs{Txs: req.Txs, Messages: &types1.Messages{MessagesList: randMessages}}
 }

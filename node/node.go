@@ -949,7 +949,7 @@ func (n *Node) OnStart() error {
 		// each start as internally the node gets only stopped once per instance.
 		// At least in ipfs 0.7.0; see:
 		// https://github.com/lazyledger/go-ipfs/blob/dd295e45608560d2ada7d7c8a30f1eef3f4019bb/core/builder.go#L48-L57
-		n.ipfsNode, err = p2p.CreateIpfsNode(n.config, n.areIpfsPluginsAlreadyLoaded, n.Logger)
+		n.ipfsNode, err = p2p.CreateIpfsNode(n.config.IPFSRepoRoot(), n.areIpfsPluginsAlreadyLoaded, n.Logger)
 		if err != nil {
 			return fmt.Errorf("failed to create IPFS node: %w", err)
 		}
@@ -958,6 +958,8 @@ func (n *Node) OnStart() error {
 		if err != nil {
 			return fmt.Errorf("failed to create an instance of the IPFS core API: %w", err)
 		}
+		maddrs, _ := ipfsAPI.Swarm().ListenAddrs(context.Background())
+		n.Logger.Info("created IPFS node", "ListenAddrs", maddrs)
 
 		n.consensusState.IpfsAPI = ipfsAPI
 	}

@@ -5,14 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"time"
 
+	ipfscfg "github.com/ipfs/go-ipfs-config"
 	"github.com/ipfs/go-ipfs/core/coreapi"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
-
 	"github.com/lazyledger/nmt/namespace"
 
-	"github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
@@ -250,15 +250,17 @@ func NewClientFromTrustedStore(
 		if err := ValidateNumSamples(c.numSamples); err != nil {
 			return nil, err
 		}
-		cfg := config.DefaultConfig()
-		err := p2p.InitIpfs(cfg)
+		// TODO: this is ugly; instead move out the initialization from the
+		// constructor and pass in a CoreAPI object as an option instead!
+		repoRoot := rootify("ipfs", filepath.Join("$HOME", ".tendermint-light"))
+		err := p2p.InitIpfs(repoRoot, p2p.ApplyBadgerSpec, applyDefaultLightClientConfig)
 		if err != nil {
 			if !errors.Is(err, p2p.ErrIPFSIsAlreadyInit) {
 				return nil, err
 			}
-			c.logger.Info("IPFS was already initialized", "ipfs-path", cfg.IPFSRepoRoot())
+			c.logger.Info("IPFS was already initialized", "ipfs-path", repoRoot)
 		}
-		ipfsNode, err := p2p.CreateIpfsNode(cfg, err == nil, c.logger)
+		ipfsNode, err := p2p.CreateIpfsNode(repoRoot, err == nil, c.logger)
 		if err != nil {
 			return nil, err
 		}
@@ -274,6 +276,14 @@ func NewClientFromTrustedStore(
 	}
 
 	return c, nil
+}
+
+func applyDefaultLightClientConfig(ipfsConf *ipfscfg.Config) error {
+	ipfsConf.Addresses.API = ipfscfg.Strings{"/ip4/127.0.0.1/tcp/5003"}
+	ipfsConf.Addresses.Gateway = ipfscfg.Strings{"/ip4/127.0.0.1/tcp/5003"}
+	ipfsConf.Addresses.Swarm = []string{"/ip4/0.0.0.0/tcp/4003", "/ip6/::/tcp/4003"}
+
+	return nil
 }
 
 // restoreTrustedLightBlock loads the latest trusted light block from the store
@@ -705,7 +715,8 @@ func (c *Client) verifySequential(
 			start := time.Now()
 			// TODO: decide how to handle this case:
 			// https://github.com/lazyledger/lazyledger-core/issues/319
-			numSamples := min(c.numSamples, len(interimBlock.DataAvailabilityHeader.RowsRoots))
+			numRows := len(interimBlock.DataAvailabilityHeader.RowsRoots)
+			numSamples := min(c.numSamples, numRows*numRows)
 			c.logger.Info("Starting DAS sampling", "height", height, "numSamples", numSamples)
 			err = ipld.ValidateAvailability(
 				ctx,
@@ -718,7 +729,7 @@ func (c *Client) verifySequential(
 				return fmt.Errorf("data availability sampling failed; ipld.ValidateAvailability: %w", err)
 			}
 			elapsed := time.Since(start)
-			c.logger.Info("Successfully finished DAS sampling", "height", height, "numSamples", c.numSamples, "elapsed time", elapsed)
+			c.logger.Info("Successfully finished DAS sampling", "height", height, "numSamples", numSamples, "elapsed time", elapsed)
 		}
 
 		// 3) Update verifiedBlock
@@ -1115,4 +1126,11 @@ and remove witness. Otherwise, use the different primary`, e.WitnessIndex), "wit
 
 func hash2str(hash []byte) string {
 	return fmt.Sprintf("%X", hash)
+}
+
+func rootify(path, root string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(root, path)
 }
