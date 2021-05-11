@@ -523,6 +523,7 @@ func ensureNewRound(roundCh <-chan tmpubsub.Message, height int64, round int32) 
 
 func ensureNewTimeout(timeoutCh <-chan tmpubsub.Message, height int64, round int32, timeout int64) {
 	timeoutDuration := time.Duration(timeout*10) * time.Nanosecond
+	fmt.Println(timeoutDuration.Nanoseconds())
 	ensureNewEvent(timeoutCh, height, round, timeoutDuration,
 		"Timeout expired while waiting for NewTimeout event")
 }
