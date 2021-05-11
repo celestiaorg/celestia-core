@@ -5,12 +5,16 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math/rand"
+	"sort"
 
 	"github.com/lazyledger/lazyledger-core/abci/example/code"
 	"github.com/lazyledger/lazyledger-core/abci/types"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	memdb "github.com/lazyledger/lazyledger-core/libs/db/memdb"
+	types1 "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/version"
+	"github.com/lazyledger/nmt"
 )
 
 var (
@@ -173,5 +177,38 @@ func (app *Application) Query(reqQuery types.RequestQuery) (resQuery types.Respo
 
 func (app *Application) PreprocessTxs(
 	req types.RequestPreprocessTxs) types.ResponsePreprocessTxs {
-	return types.ResponsePreprocessTxs{Txs: req.Txs}
+	// TODO: create random Txs and Messages
+	// randTxs := generateRandTx()
+	randMsgs := generateRandNamespacedRawData(16, nmt.DefaultNamespaceIDLen, 256)
+	randMessages := toMessageSlice(randMsgs)
+	return types.ResponsePreprocessTxs{Txs: req.Txs, Messages: &types1.Messages{MessagesList: randMessages}}
+}
+
+func toMessageSlice(msgs [][]byte) []*types1.Message {
+	res := make([]*types1.Message, len(msgs))
+	for i := 0; i < len(msgs); i++ {
+		res[i] = &types1.Message{NamespaceId: msgs[i][:nmt.DefaultNamespaceIDLen], Data: msgs[i][nmt.DefaultNamespaceIDLen:]}
+	}
+	return res
+}
+
+func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byte {
+	data := make([][]byte, total)
+	for i := 0; i < total; i++ {
+		nid := make([]byte, nidSize)
+		rand.Read(nid)
+		data[i] = nid
+	}
+	sortByteArrays(data)
+	for i := 0; i < total; i++ {
+		d := make([]byte, leafSize)
+		rand.Read(d)
+		data[i] = append(data[i], d...)
+	}
+
+	return data
+}
+
+func sortByteArrays(src [][]byte) {
+	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
 }
