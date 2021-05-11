@@ -7,15 +7,20 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ipfs/go-ipfs/core/coreapi"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
+
+	"github.com/lazyledger/nmt/namespace"
+
+	"github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/light/provider"
 	"github.com/lazyledger/lazyledger-core/light/store"
+	"github.com/lazyledger/lazyledger-core/p2p"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/lazyledger/nmt/namespace"
 )
 
 type mode byte
@@ -245,7 +250,23 @@ func NewClientFromTrustedStore(
 		if err := ValidateNumSamples(c.numSamples); err != nil {
 			return nil, err
 		}
-		// TODO spin up ipfs node and set ipfsCoreAPI field
+		cfg := config.DefaultConfig()
+		err := p2p.InitIpfs(cfg)
+		if err != nil {
+			if !errors.Is(err, p2p.ErrIPFSIsAlreadyInit) {
+				return nil, err
+			}
+			c.logger.Info("IPFS was already initialized", "ipfs-path", cfg.IPFSRepoRoot())
+		}
+		ipfsNode, err := p2p.CreateIpfsNode(cfg, err == nil, c.logger)
+		if err != nil {
+			return nil, err
+		}
+		coreAPI, err := coreapi.NewCoreAPI(ipfsNode)
+		if err != nil {
+			return nil, err
+		}
+		c.ipfsCoreAPI = coreAPI
 	}
 
 	if err := c.restoreTrustedLightBlock(); err != nil {
@@ -681,6 +702,8 @@ func (c *Client) verifySequential(
 
 		// 2.1) Verify that the data behind the block data is actually available.
 		if c.verificationMode == dataAvailabilitySampling {
+			start := time.Now()
+			c.logger.Info("Starting DAS sampling", "height", height, "numSamples", c.numSamples)
 			err = ipld.ValidateAvailability(
 				ctx,
 				c.ipfsCoreAPI,
@@ -691,6 +714,8 @@ func (c *Client) verifySequential(
 			if err != nil {
 				return fmt.Errorf("data availability sampling failed; ipld.ValidateAvailability: %w", err)
 			}
+			elapsed := time.Since(start)
+			c.logger.Info("Successfully finished DAS sampling", "height", height, "numSamples", c.numSamples, "elapsed time", elapsed)
 		}
 
 		// 3) Update verifiedBlock

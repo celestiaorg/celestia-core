@@ -8,16 +8,11 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" // nolint: gosec // securely exposed on separate, optional port
-	"path/filepath"
 	"strings"
 	"time"
 
 	ipfscore "github.com/ipfs/go-ipfs/core"
 	coreapi "github.com/ipfs/go-ipfs/core/coreapi"
-	"github.com/ipfs/go-ipfs/core/node/libp2p"
-	"github.com/ipfs/go-ipfs/plugin/loader"
-	"github.com/ipfs/go-ipfs/repo/fsrepo"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -954,7 +949,7 @@ func (n *Node) OnStart() error {
 		// each start as internally the node gets only stopped once per instance.
 		// At least in ipfs 0.7.0; see:
 		// https://github.com/lazyledger/go-ipfs/blob/dd295e45608560d2ada7d7c8a30f1eef3f4019bb/core/builder.go#L48-L57
-		n.ipfsNode, err = CreateIpfsNode(n.config, n.areIpfsPluginsAlreadyLoaded, n.Logger)
+		n.ipfsNode, err = p2p.CreateIpfsNode(n.config, n.areIpfsPluginsAlreadyLoaded, n.Logger)
 		if err != nil {
 			return fmt.Errorf("failed to create IPFS node: %w", err)
 		}
@@ -1443,66 +1438,6 @@ func createAndStartPrivValidatorSocketClient(
 	pvscWithRetries := privval.NewRetrySignerClient(pvsc, retries, timeout)
 
 	return pvscWithRetries, nil
-}
-
-func CreateIpfsNode(config *cfg.Config, arePluginsAlreadyLoaded bool, logger log.Logger) (*ipfscore.IpfsNode, error) {
-	repoRoot := config.IPFSRepoRoot()
-	logger.Info("creating node in repo", "ipfs-root", repoRoot)
-	if !fsrepo.IsInitialized(repoRoot) {
-		// TODO: sentinel err
-		return nil, fmt.Errorf("ipfs repo root: %v not intitialized", repoRoot)
-	}
-	if !arePluginsAlreadyLoaded {
-		if err := setupPlugins(repoRoot, logger); err != nil {
-			return nil, err
-		}
-	}
-	// Open the repo
-	repo, err := fsrepo.Open(repoRoot)
-	if err != nil {
-		return nil, err
-	}
-
-	// Construct the node
-	nodeOptions := &ipfscore.BuildCfg{
-		Online: true,
-		// This option sets the node to be a full DHT node (both fetching and storing DHT Records)
-		Routing: libp2p.DHTOption,
-		// This option sets the node to be a client DHT node (only fetching records)
-		// Routing: libp2p.DHTClientOption,
-		Repo: repo,
-	}
-	// Internally, ipfs decorates the context with a
-	// context.WithCancel. Which is then used for lifecycle management.
-	// We do not make use of this context and rely on calling
-	// Close() on the node instead
-	ctx := context.Background()
-	node, err := ipfscore.NewNode(ctx, nodeOptions)
-	if err != nil {
-		return nil, err
-	}
-	// run as daemon:
-	node.IsDaemon = true
-	return node, nil
-}
-
-func setupPlugins(path string, logger log.Logger) error {
-	// Load plugins. This will skip the repo if not available.
-	plugins, err := loader.NewPluginLoader(filepath.Join(path, "plugins"))
-	if err != nil {
-		return fmt.Errorf("error loading plugins: %s", err)
-	}
-	if err := plugins.Load(&nodes.LazyLedgerPlugin{}); err != nil {
-		return fmt.Errorf("error loading lazyledger plugin: %s", err)
-	}
-	if err := plugins.Initialize(); err != nil {
-		return fmt.Errorf("error initializing plugins: plugins.Initialize(): %s", err)
-	}
-	if err := plugins.Inject(); err != nil {
-		logger.Error("error initializing plugins: could not Inject()", "err", err)
-	}
-
-	return nil
 }
 
 // splitAndTrimEmpty slices s into all subslices separated by sep and returns a
