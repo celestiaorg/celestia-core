@@ -916,7 +916,9 @@ func TestClientRemovesWitnessIfItSendsUsIncorrectHeader(t *testing.T) {
 			1: h1,
 			2: keys.GenSignedHeaderLastBlockID(chainID, 2, bTime.Add(30*time.Minute), nil, vals, vals,
 				hash("app_hash2"), hash("cons_hash"), hash("results_hash"),
-				len(keys), len(keys), types.BlockID{Hash: h1.Hash(), DataAvailabilityHeader: h1.Commit.BlockID.DataAvailabilityHeader}),
+				len(keys), len(keys), types.BlockID{
+					Hash:                   h1.Hash(),
+					DataAvailabilityHeader: h1.Commit.BlockID.DataAvailabilityHeader}),
 		},
 		map[int64]*types.ValidatorSet{
 			1: vals,
