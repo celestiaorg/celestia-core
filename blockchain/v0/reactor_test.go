@@ -122,7 +122,6 @@ func newBlockchainReactor(
 		}
 
 		thisBlock := makeBlock(blockHeight, state, lastCommit)
-		thisBlock.Hash()
 
 		thisParts := thisBlock.MakePartSet(types.BlockPartSizeBytes)
 		blockID := types.BlockID{
@@ -186,7 +185,7 @@ func TestNoBlockResponse(t *testing.T) {
 			break
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	assert.Equal(t, maxBlockHeight, reactorPairs[0].reactor.store.Height())
