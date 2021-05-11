@@ -1441,7 +1441,9 @@ func (msgs Messages) splitIntoShares() NamespacedShares {
 }
 
 // ComputeShares splits block data into shares of an original data square and
-// returns them along with an amount of non-redundant shares.
+// returns them along with an amount of non-redundant shares. To enforce non nil
+// squares, empty Data results in a single zero padded share with a Tailpadded
+// namespace.
 func (data *Data) ComputeShares() (NamespacedShares, int) {
 	// TODO(ismail): splitting into shares should depend on the block size and layout
 	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
