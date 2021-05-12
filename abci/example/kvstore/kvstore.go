@@ -12,7 +12,8 @@ import (
 	"github.com/lazyledger/lazyledger-core/abci/types"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	memdb "github.com/lazyledger/lazyledger-core/libs/db/memdb"
-	types1 "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	tmtypes "github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/lazyledger-core/version"
 	"github.com/lazyledger/nmt"
 )
@@ -178,16 +179,24 @@ func (app *Application) Query(reqQuery types.RequestQuery) (resQuery types.Respo
 func (app *Application) PreprocessTxs(
 	req types.RequestPreprocessTxs) types.ResponsePreprocessTxs {
 	// TODO: create random Txs and Messages
-	// randTxs := generateRandTx()
-	randMsgs := generateRandNamespacedRawData(16, nmt.DefaultNamespaceIDLen, 256)
+	randTxs := generateRandTxs(16, 128)
+	randMsgs := generateRandNamespacedRawData(32, nmt.DefaultNamespaceIDLen, 256)
 	randMessages := toMessageSlice(randMsgs)
-	return types.ResponsePreprocessTxs{Txs: req.Txs, Messages: &types1.Messages{MessagesList: randMessages}}
+	return types.ResponsePreprocessTxs{Txs: append(req.Txs, randTxs...), Messages: &tmproto.Messages{MessagesList: randMessages}}
 }
 
-func toMessageSlice(msgs [][]byte) []*types1.Message {
-	res := make([]*types1.Message, len(msgs))
+func generateRandTxs(num int, size int) [][]byte {
+	randMsgs := generateRandNamespacedRawData(num, nmt.DefaultNamespaceIDLen, size)
+	for _, msg := range randMsgs {
+		copy(msg[:nmt.DefaultNamespaceIDLen], tmtypes.TxNamespaceID)
+	}
+	return randMsgs
+}
+
+func toMessageSlice(msgs [][]byte) []*tmproto.Message {
+	res := make([]*tmproto.Message, len(msgs))
 	for i := 0; i < len(msgs); i++ {
-		res[i] = &types1.Message{NamespaceId: msgs[i][:nmt.DefaultNamespaceIDLen], Data: msgs[i][nmt.DefaultNamespaceIDLen:]}
+		res[i] = &tmproto.Message{NamespaceId: msgs[i][:nmt.DefaultNamespaceIDLen], Data: msgs[i][nmt.DefaultNamespaceIDLen:]}
 	}
 	return res
 }
