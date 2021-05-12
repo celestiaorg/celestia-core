@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -162,18 +161,22 @@ func (dah *DataAvailabilityHeader) IsZero() bool {
 func MinDataAvailabilityHeader() *DataAvailabilityHeader {
 	first, err := namespace.IntervalDigestFromBytes(
 		NamespaceSize,
-		hexBytesFromString(
-			"fffffffffffffffefffffffffffffffe669aa8f0d85221a05b6f0917884d30616a6c7d5330a5640a08a04dcc5b092f4f",
-		),
+		[]byte{
+			255, 255, 255, 255, 255, 255, 255, 254, 255, 255, 255, 255, 255, 255, 255, 254, 102, 154, 168, 240,
+			216, 82, 33, 160, 91, 111, 9, 23, 136, 77, 48, 97, 106, 108, 125, 83, 48, 165, 100, 10, 8, 160, 77,
+			204, 91, 9, 47, 79,
+		},
 	)
 	if err != nil {
 		panic(err)
 	}
 	second, err := namespace.IntervalDigestFromBytes(
 		NamespaceSize,
-		hexBytesFromString(
-			"ffffffffffffffffffffffffffffffff293437f3b6a5611e25c90d5a44b84cc4b3720cdba68553defe8b719af1f5c395",
-		),
+		[]byte{
+			255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 41, 52, 55, 243,
+			182, 165, 97, 30, 37, 201, 13, 90, 68, 184, 76, 196, 179, 114, 12, 219, 166, 133, 83, 222, 254,
+			139, 113, 154, 241, 245, 195, 149,
+		},
 	)
 	if err != nil {
 		panic(err)
@@ -191,14 +194,6 @@ func MinDataAvailabilityHeader() *DataAvailabilityHeader {
 		},
 	}
 	return dah
-}
-
-func hexBytesFromString(s string) tmbytes.HexBytes {
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		panic(err)
-	}
-	return tmbytes.HexBytes(b)
 }
 
 func (dah *DataAvailabilityHeader) ToProto() *tmproto.DataAvailabilityHeader {
