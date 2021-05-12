@@ -673,7 +673,7 @@ func TestStateLockPOLRelock(t *testing.T) {
 
 	// timeouts have been increased because the CI keeps failing when the tests
 	// pass locally
-	precommitTimeout := cs1.config.Precommit(round).Nanoseconds() * 4
+	precommitTimeout := cs1.config.Precommit(round).Nanoseconds() * 2
 
 	partSize := types.BlockPartSizeBytes
 
