@@ -8,15 +8,19 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" // nolint: gosec // securely exposed on separate, optional port
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	ipfscfg "github.com/ipfs/go-ipfs-config"
 	ipfscore "github.com/ipfs/go-ipfs/core"
-	coreapi "github.com/ipfs/go-ipfs/core/coreapi"
+	"github.com/ipfs/go-ipfs/core/coreapi"
 	"github.com/ipfs/go-ipfs/core/node/libp2p"
 	"github.com/ipfs/go-ipfs/plugin/loader"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
+	"github.com/ipfs/interface-go-ipfs-core/options"
+	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -651,6 +655,21 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
+	err := InitIpfs(config, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	ipfsNode, err := createIpfsNode(config, true, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create IPFS node: %w", err)
+	}
+
+	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create an instance of the IPFS core API: %w", err)
+	}
+
 	blockStore, stateDB, err := initDBs(config, dbProvider)
 	if err != nil {
 		return nil, err
@@ -687,7 +706,7 @@ func NewNode(config *cfg.Config,
 	// If an address is provided, listen on the socket for a connection from an
 	// external signing process.
 	if config.PrivValidatorListenAddr != "" {
-		// FIXME: we should start services inside OnStart
+		// FIXME: we should start services inside 		rt
 		privValidator, err = createAndStartPrivValidatorSocketClient(config.PrivValidatorListenAddr, genDoc.ChainID, logger)
 		if err != nil {
 			return nil, fmt.Errorf("error with private validator socket client: %w", err)
@@ -767,6 +786,8 @@ func NewNode(config *cfg.Config,
 		config, state, blockExec, blockStore, mempool, evidencePool,
 		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger,
 	)
+
+	consensusState.IpfsAPI = ipfsAPI
 
 	// Set up state sync reactor, and schedule a sync if requested.
 	// FIXME The way we do phased startups (e.g. replay -> fast sync -> consensus) is very messy,
@@ -949,23 +970,6 @@ func (n *Node) OnStart() error {
 		if err != nil {
 			return fmt.Errorf("failed to start state sync: %w", err)
 		}
-	}
-	if n.embedIpfsNode {
-		// It is essential that we create a fresh instance of ipfs node on
-		// each start as internally the node gets only stopped once per instance.
-		// At least in ipfs 0.7.0; see:
-		// https://github.com/lazyledger/go-ipfs/blob/dd295e45608560d2ada7d7c8a30f1eef3f4019bb/core/builder.go#L48-L57
-		n.ipfsNode, err = createIpfsNode(n.config, n.areIpfsPluginsAlreadyLoaded, n.Logger)
-		if err != nil {
-			return fmt.Errorf("failed to create IPFS node: %w", err)
-		}
-
-		ipfsAPI, err := coreapi.NewCoreAPI(n.ipfsNode)
-		if err != nil {
-			return fmt.Errorf("failed to create an instance of the IPFS core API: %w", err)
-		}
-
-		n.consensusState.IpfsAPI = ipfsAPI
 	}
 
 	return nil
@@ -1525,4 +1529,85 @@ func splitAndTrimEmpty(s, sep, cutset string) []string {
 		}
 	}
 	return nonEmptyStrings
+}
+
+// InitIpfs takes a few config flags from the tendermint config.IPFS
+// and applies them to the freshly created IPFS repo.
+// The IPFS config will stored under config.IPFS.ConfigRootPath.
+// TODO(ismail) move into separate file, and consider making IPFS initialization
+// independent from the `tendermint init` subcommand.
+// TODO(ismail): add counter part in ResetAllCmd
+func InitIpfs(config *cfg.Config, logger log.Logger) error {
+	repoRoot := config.IPFSRepoRoot()
+	if fsrepo.IsInitialized(repoRoot) {
+		logger.Info("IPFS was already initialized", "ipfs-path", repoRoot)
+		return nil
+	}
+	var conf *ipfscfg.Config
+
+	identity, err := ipfscfg.CreateIdentity(os.Stdout, []options.KeyGenerateOption{
+		options.Key.Type(options.Ed25519Key),
+	})
+	if err != nil {
+		return err
+	}
+
+	logger.Info("initializing IPFS node", "ipfs-path", repoRoot)
+
+	if err := tmos.EnsureDir(repoRoot, 0700); err != nil {
+		return err
+	}
+
+	conf, err = ipfscfg.InitWithIdentity(identity)
+	if err != nil {
+		return err
+	}
+
+	applyFromTmConfig(conf, config.IPFS)
+	if err := setupPlugins(repoRoot, logger); err != nil {
+		return err
+	}
+
+	if err := fsrepo.Init(repoRoot, conf); err != nil {
+		return err
+	}
+	return nil
+}
+
+// // Inject replies on several global vars internally.
+// // For instance fsrepo.AddDatastoreConfigHandler will error
+// // if called multiple times with the same datastore.
+// // But for CI and integration tests, we want to setup the plugins
+// // for each repo but only inject once s.t. we can init multiple
+// // repos from the same runtime.
+// // TODO(ismail): find a more elegant way to achieve the same.
+// var injectPluginsOnce sync.Once
+
+// func setupPlugins(path string) error {
+// 	// Load plugins. This will skip the repo if not available.
+// 	plugins, err := loader.NewPluginLoader(filepath.Join(path, "plugins"))
+// 	if err != nil {
+// 		return fmt.Errorf("error loading plugins: %s", err)
+// 	}
+
+// 	if err := plugins.Initialize(); err != nil {
+// 		return fmt.Errorf("error initializing plugins: %s", err)
+// 	}
+
+// 	injectPluginsOnce.Do(func() {
+// 		err = plugins.Inject()
+// 	})
+// 	if err != nil {
+// 		return fmt.Errorf("error injecting plugins once: %w", err)
+// 	}
+
+// 	return nil
+// }
+
+func applyFromTmConfig(ipfsConf *ipfscfg.Config, tmConf *cfg.IPFSConfig) {
+	ipfsConf.Addresses.API = ipfscfg.Strings{tmConf.API}
+	ipfsConf.Addresses.Gateway = ipfscfg.Strings{tmConf.Gateway}
+	ipfsConf.Addresses.Swarm = tmConf.Swarm
+	ipfsConf.Addresses.Announce = tmConf.Announce
+	ipfsConf.Addresses.NoAnnounce = tmConf.NoAnnounce
 }
