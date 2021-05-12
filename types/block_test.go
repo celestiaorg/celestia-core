@@ -26,7 +26,6 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	"github.com/lazyledger/lazyledger-core/libs/bits"
 	"github.com/lazyledger/lazyledger-core/libs/bytes"
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
@@ -1471,10 +1470,10 @@ func sortByteArrays(src [][]byte) {
 	sort.Slice(src, func(i, j int) bool { return stdbytes.Compare(src[i], src[j]) < 0 })
 }
 
-func hexBytesFromString(s string) tmbytes.HexBytes {
+func hexBytesFromString(s string) bytes.HexBytes {
 	b, err := hex.DecodeString(s)
 	if err != nil {
 		panic(err)
 	}
-	return tmbytes.HexBytes(b)
+	return bytes.HexBytes(b)
 }
