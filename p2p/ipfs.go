@@ -51,6 +51,12 @@ func InitIpfs(repoRoot string, transformers ...ipfscfg.Transformer) error {
 		return err
 	}
 
+	for _, transformer := range transformers {
+		if err := transformer(conf); err != nil {
+			return err
+		}
+	}
+
 	if err := SetupPlugins(repoRoot); err != nil {
 		return err
 	}
