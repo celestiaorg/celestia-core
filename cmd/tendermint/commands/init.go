@@ -100,16 +100,6 @@ func initFilesWithConfig(config *cfg.Config) error {
 		logger.Info("Generated genesis file", "path", genFile)
 	}
 
-	applyFromTmConf := func(ipfsConf *ipfscfg.Config) error {
-		tmConf := config.IPFS
-		ipfsConf.Addresses.API = ipfscfg.Strings{tmConf.API}
-		ipfsConf.Addresses.Gateway = ipfscfg.Strings{tmConf.Gateway}
-		ipfsConf.Addresses.Swarm = tmConf.Swarm
-		ipfsConf.Addresses.Announce = tmConf.Announce
-		ipfsConf.Addresses.NoAnnounce = tmConf.NoAnnounce
-		return nil
-	}
-
 	if err := p2p.InitIpfs(
 		config.IPFSRepoRoot(),
 		applyFromTmConf,
@@ -118,5 +108,15 @@ func initFilesWithConfig(config *cfg.Config) error {
 		return err
 	}
 
+	return nil
+}
+
+func applyFromTmConf(ipfsConf *ipfscfg.Config) error {
+	tmConf := config.IPFS
+	ipfsConf.Addresses.API = ipfscfg.Strings{tmConf.API}
+	ipfsConf.Addresses.Gateway = ipfscfg.Strings{tmConf.Gateway}
+	ipfsConf.Addresses.Swarm = tmConf.Swarm
+	ipfsConf.Addresses.Announce = tmConf.Announce
+	ipfsConf.Addresses.NoAnnounce = tmConf.NoAnnounce
 	return nil
 }
