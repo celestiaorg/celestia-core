@@ -37,7 +37,7 @@ func NewErasuredNamespacedMerkleTree(squareSize uint64, setters ...nmt.Option) E
 	if squareSize == 0 {
 		panic("cannot create a ErasuredNamespacedMerkleTree of squareSize == 0")
 	}
-	tree := nmt.New(sha256.New(), setters...)
+	tree := nmt.New(sha256.New, setters...)
 	return ErasuredNamespacedMerkleTree{squareSize: squareSize, options: setters, tree: tree}
 }
 

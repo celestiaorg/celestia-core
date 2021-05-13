@@ -3,7 +3,6 @@ package types
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math"
@@ -282,7 +281,7 @@ func (b *Block) fillDataAvailabilityHeader() {
 
 // nmtcommitment generates the nmt root of some namespaced data
 func nmtCommitment(namespacedData [][]byte) namespace.IntervalDigest {
-	tree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
+	tree := nmt.New(newBaseHashFunc, nmt.NamespaceIDSize(NamespaceSize))
 	for _, leaf := range namespacedData {
 		mustPush(tree, leaf)
 	}
@@ -332,7 +331,7 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 
 	// iterate through each set of col and row leaves
 	for _, leafSet := range leaves {
-		tree := nmt.New(sha256.New(), nmt.NodeVisitor(batchAdder.Visit))
+		tree := nmt.New(newBaseHashFunc, nmt.NodeVisitor(batchAdder.Visit))
 		for _, share := range leafSet {
 			err = tree.Push(share)
 			if err != nil {

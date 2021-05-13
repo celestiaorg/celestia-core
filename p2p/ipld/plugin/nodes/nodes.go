@@ -136,7 +136,7 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 	collector := newNodeCollector()
 
 	n := nmt.New(
-		sha256.New(),
+		sha256.New,
 		nmt.NamespaceIDSize(namespaceSize),
 		nmt.NodeVisitor(collector.visit),
 	)
