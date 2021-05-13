@@ -732,7 +732,9 @@ func (c *Client) verifySequential(
 				c.ipfsCoreAPI,
 				interimBlock.DataAvailabilityHeader,
 				numSamples,
-				func(data namespace.PrefixedData8) {},
+				func(data namespace.PrefixedData8) {
+					c.logger.Info("successfully got leaf data", " with nid", data[:8])
+				},
 			)
 			if err != nil {
 				return fmt.Errorf("data availability sampling failed; ipld.ValidateAvailability: %w", err)
