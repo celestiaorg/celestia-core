@@ -236,19 +236,21 @@ func (b *Block) fillHeader() {
 // that are a function of the block data.
 func (b *Block) fillDataAvailabilityHeader() {
 	namespacedShares, dataSharesLen := b.Data.ComputeShares()
+	fmt.Println("dataSharesLen", dataSharesLen)
 	shares := namespacedShares.RawShares()
 	if len(shares) == 0 {
 		// no shares -> no row/colum roots -> hash(empty)
 		//b.DataHash = b.DataAvailabilityHeader.Hash()
 		panic("shares cannot be empty")
 	}
-
+	fmt.Println("len(shares)", len(shares))
 	// TODO(ismail): for better efficiency and a larger number shares
 	// we should switch to the rsmt2d.LeopardFF16 codec:
 	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), rsmt2d.NewDefaultTree)
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
 	}
+	fmt.Println("squareWidth = extendedDataSquare.Width()", extendedDataSquare.Width())
 
 	// record the widths
 	squareWidth := extendedDataSquare.Width()
@@ -1390,14 +1392,16 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 
 	// FIXME(ismail): this is not a power of two
 	// see: https://github.com/lazyledger/lazyledger-specs/issues/80 and
-	wantLen := getNextSquareNum(curLen)
+	wantLen := getNextSquareNum(int(powerOf2(uint32(curLen))))
+	// fmt.Println("curLen", curLen)
+	// fmt.Println("wantLen", wantLen)
 
 	// ensure that the min square size is used
 	if wantLen < minSharecount {
 		wantLen = minSharecount
 	}
 
-	tailShares := GenerateTailPaddingShares(wantLen-curLen, ShareSize)
+	tailShares := GenerateTailPaddingShares(int(wantLen)-curLen, ShareSize)
 
 	return append(append(append(append(
 		txShares,
@@ -1411,6 +1415,31 @@ func getNextSquareNum(length int) int {
 	width := int(math.Ceil(math.Sqrt(float64(length))))
 	// TODO(ismail): make width a power of two instead
 	return width * width
+}
+
+func powerOf2(v uint32) uint32 {
+	if v == 1 {
+		return 1
+	}
+	// keep track of the input
+	i := v
+
+	// find the next highest power using bit mashing
+	v--
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+	v++
+
+	// check if the input was the next highest power
+	if i == v {
+		return v
+	}
+
+	// return the next lowest power
+	return v
 }
 
 type Message struct {
