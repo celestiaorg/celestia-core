@@ -179,10 +179,10 @@ func (app *Application) Query(reqQuery types.RequestQuery) (resQuery types.Respo
 func (app *Application) PreprocessTxs(
 	req types.RequestPreprocessTxs) types.ResponsePreprocessTxs {
 	// TODO: create random Txs and Messages
-	randTxs := generateRandTxs(16, 128)
-	randMsgs := generateRandNamespacedRawData(32, nmt.DefaultNamespaceIDLen, 256)
+	//randTxs := generateRandTxs(64, 256)
+	randMsgs := generateRandNamespacedRawData(10, nmt.DefaultNamespaceIDLen, 256)
 	randMessages := toMessageSlice(randMsgs)
-	return types.ResponsePreprocessTxs{Txs: append(req.Txs, randTxs...), Messages: &tmproto.Messages{MessagesList: randMessages}}
+	return types.ResponsePreprocessTxs{Txs: /*append(*/ req.Txs /*, randTxs...)*/, Messages: &tmproto.Messages{MessagesList: randMessages}}
 }
 
 func generateRandTxs(num int, size int) [][]byte {
