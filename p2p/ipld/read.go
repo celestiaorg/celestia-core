@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"os"
+	"runtime/trace"
 
 	"github.com/ipfs/go-cid"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
@@ -224,12 +226,14 @@ func GetLeafData(
 	totalLeafs uint32, // this corresponds to the extended square width
 	api coreiface.CoreAPI,
 ) ([]byte, error) {
+	trace.Start(os.Stderr)
+	defer trace.Stop()
 	// calculate the path to the leaf
 	leafPath, err := leafPath(leafIndex, totalLeafs)
 	if err != nil {
 		return nil, err
 	}
-
+	fmt.Println("GetLeafData", leafPath, "cid", rootCid)
 	// use the root cid and the leafPath to create an ipld path
 	p := path.Join(path.IpldPath(rootCid), leafPath...)
 

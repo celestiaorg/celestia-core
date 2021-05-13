@@ -358,7 +358,7 @@ func flattenNamespacedEDS(nss NamespacedShares, eds *rsmt2d.ExtendedDataSquare) 
 			fmt.Sprintf(
 				"unexpected numbers of namespaces: actual %d expected %d",
 				len(nss),
-				squareWidth/2,
+				originalDataWidth*originalDataWidth,
 			),
 		)
 	}
