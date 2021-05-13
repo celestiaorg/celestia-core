@@ -291,7 +291,7 @@ func validatePrecommit(
 		if !bytes.Equal(vote.BlockID.Hash, votedBlockHash) {
 			panic(
 				fmt.Sprintf(
-					"Expected precommit to be for proposal block: epxected %s got %s",
+					"Expected precommit to be for proposal block: expected %s got %s",
 					votedBlockHash,
 					vote.BlockID.Hash,
 				),
