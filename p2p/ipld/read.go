@@ -2,7 +2,6 @@ package ipld
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -247,7 +246,7 @@ func GetLeafData(
 func leafPath(index, total uint32) ([]string, error) {
 	// ensure that the total is a power of two
 	if total != nextPowerOf2(total) {
-		return nil, errors.New("expected total to be a power of 2")
+		return nil, fmt.Errorf("expected total to be a power of 2, got: %v, want: %v", total, nextPowerOf2(total))
 	}
 
 	if total == 0 {
