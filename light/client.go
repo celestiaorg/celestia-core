@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -73,6 +74,7 @@ func SkippingVerification(trustLevel tmmath.Fraction) Option {
 	}
 }
 
+// TODO: also pass in a CoreAPI object here
 func DataAvailabilitySampling(numSamples uint32) Option {
 	return func(c *Client) {
 		c.verificationMode = dataAvailabilitySampling
@@ -252,7 +254,8 @@ func NewClientFromTrustedStore(
 		}
 		// TODO: this is ugly; instead move out the initialization from the
 		// constructor and pass in a CoreAPI object as an option instead!
-		repoRoot := rootify("ipfs", filepath.Join("$HOME", ".tendermint-light"))
+		home, _ := os.UserHomeDir()
+		repoRoot := rootify("ipfs", filepath.Join(home, ".tendermint-light"))
 		err := p2p.InitIpfs(repoRoot, p2p.ApplyBadgerSpec, applyDefaultLightClientConfig)
 		if err != nil {
 			if !errors.Is(err, p2p.ErrIPFSIsAlreadyInit) {
@@ -717,7 +720,13 @@ func (c *Client) verifySequential(
 			// https://github.com/lazyledger/lazyledger-core/issues/319
 			numRows := len(interimBlock.DataAvailabilityHeader.RowsRoots)
 			numSamples := min(c.numSamples, numRows*numRows)
-			c.logger.Info("Starting DAS sampling", "height", height, "numSamples", numSamples)
+			c.logger.Info("Starting DAS sampling", "height", height, "numSamples", numSamples, "squareWidth", numRows)
+			peers, _ := c.ipfsCoreAPI.Swarm().Peers(ctx)
+			peersStr := ""
+			for _, p := range peers {
+				peersStr = peersStr + "\n" + p.Address().String()
+			}
+			c.logger.Info("connected peers", "peers", peersStr)
 			err = ipld.ValidateAvailability(
 				ctx,
 				c.ipfsCoreAPI,
