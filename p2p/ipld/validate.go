@@ -3,6 +3,7 @@ package ipld
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	format "github.com/ipfs/go-ipld-format"
@@ -80,7 +81,7 @@ func ValidateAvailability(
 		case <-ctx.Done():
 			err := ctx.Err()
 			if err == context.DeadlineExceeded {
-				return ErrValidationFailed
+				return fmt.Errorf("%v: %w", ErrValidationFailed, err)
 			}
 
 			return err
