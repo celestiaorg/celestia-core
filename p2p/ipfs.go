@@ -135,10 +135,8 @@ func CreateIpfsNode(repoRoot string, arePluginsAlreadyLoaded bool, logger log.Lo
 	nodeOptions := &ipfscore.BuildCfg{
 		Online: true,
 		// This option sets the node to be a full DHT node (both fetching and storing DHT Records)
-		Routing: libp2p.DHTOption,
-		// This option sets the node to be a client DHT node (only fetching records)
-		// Routing: libp2p.DHTClientOption,
-		Repo: repo,
+		Routing: libp2p.DHTServerOption,
+		Repo:    repo,
 	}
 	// Internally, ipfs decorates the context with a
 	// context.WithCancel. Which is then used for lifecycle management.
