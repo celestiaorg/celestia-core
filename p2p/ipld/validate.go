@@ -16,7 +16,7 @@ import (
 // ValidationTimeout specifies timeout for DA validation during which data have to be found on the network,
 // otherwise ErrValidationFailed is thrown.
 // TODO: github.com/lazyledger/lazyledger-core/issues/280
-const ValidationTimeout = time.Minute
+const ValidationTimeout = 10 * time.Minute
 
 // ErrValidationFailed is returned whenever DA validation fails
 var ErrValidationFailed = errors.New("validation failed")
