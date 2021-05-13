@@ -495,7 +495,7 @@ func TestMaxProposalBlockSize(t *testing.T) {
 
 	// require that the header and commit be the max possible size
 	require.Equal(t, types.MaxHeaderBytes, int64(pb.Header.Size()))
-	// require.Equal(t, types.MaxCommitBytes(types.MaxVotesCount), int64(pb.LastCommit.Size()))
+	assert.LessOrEqual(t, int64(pb.LastCommit.Size()), types.MaxCommitBytes(types.MaxVotesCount))
 	// make sure that the block is less than the max possible size
 	assert.LessOrEqual(t, int64(pb.Size()), maxBytes)
 	// because of the proto overhead we expect the part set bytes to be equal or
