@@ -1391,9 +1391,9 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 
 	// FIXME(ismail): this is not a power of two
 	// see: https://github.com/lazyledger/lazyledger-specs/issues/80 and
-	wantLen := getNextSquareNum(int(powerOf2(uint32(curLen))))
-	// fmt.Println("curLen", curLen)
-	// fmt.Println("wantLen", wantLen)
+	curWidth := uint32(math.Ceil(math.Sqrt(float64(curLen))))
+	nextPowOfTwoWidth := powerOf2(curWidth)
+	wantLen := nextPowOfTwoWidth * nextPowOfTwoWidth
 
 	// ensure that the min square size is used
 	if wantLen < minSharecount {
