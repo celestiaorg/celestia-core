@@ -382,8 +382,6 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 }
 
-// the header and the blockID hashes are not matching during pruneblocks
-
 func TestLoadBaseMeta(t *testing.T) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)
