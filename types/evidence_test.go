@@ -266,8 +266,8 @@ func makeHeaderRandom() *Header {
 func TestEvidenceProto(t *testing.T) {
 	// -------- Votes --------
 	val := NewMockPV()
-	blockID := EmptyBlockID()
-	blockID2 := EmptyBlockID()
+	blockID := makeBlockIDRandom()
+	blockID2 := makeBlockIDRandom()
 	const chainID = "mychain"
 	v := makeVote(t, val, chainID, math.MaxInt32, math.MaxInt64, 1, 0x01, blockID, defaultVoteTime)
 	v2 := makeVote(t, val, chainID, math.MaxInt32, math.MaxInt64, 2, 0x01, blockID2, defaultVoteTime)
