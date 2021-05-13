@@ -24,8 +24,8 @@ func DefaultIPFSConfig() *IPFSConfig {
 	return &IPFSConfig{
 		ConfigRootPath: ".ipfs/",
 		API:            "/ip4/127.0.0.1/tcp/5002",
-		Gateway:        "/ip4/127.0.0.1/tcp/5002",
-		Swarm:          []string{"/ip4/0.0.0.0/tcp/4002", "/ip6/::/tcp/4002"},
+		Gateway:        "/ip4/127.0.0.1/tcp/8081",
+		Swarm:          []string{"/ip4/0.0.0.0/tcp/4002"},
 	}
 }
 

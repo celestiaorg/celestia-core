@@ -283,8 +283,8 @@ func NewClientFromTrustedStore(
 
 func applyDefaultLightClientConfig(ipfsConf *ipfscfg.Config) error {
 	ipfsConf.Addresses.API = ipfscfg.Strings{"/ip4/127.0.0.1/tcp/5003"}
-	ipfsConf.Addresses.Gateway = ipfscfg.Strings{"/ip4/127.0.0.1/tcp/5003"}
-	ipfsConf.Addresses.Swarm = []string{"/ip4/0.0.0.0/tcp/4003", "/ip6/::/tcp/4003"}
+	ipfsConf.Addresses.Gateway = ipfscfg.Strings{"/ip4/127.0.0.1/tcp/8081"}
+	ipfsConf.Addresses.Swarm = []string{"/ip4/0.0.0.0/tcp/4003"}
 
 	return nil
 }

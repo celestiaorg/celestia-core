@@ -16,7 +16,6 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 
-	tmcfg "github.com/lazyledger/lazyledger-core/config"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 )
 
@@ -168,12 +167,4 @@ func setupPlugins(path string, logger log.Logger) error {
 	}
 
 	return nil
-}
-
-func applyFromTmConfig(ipfsConf *ipfscfg.Config, tmConf *tmcfg.IPFSConfig) {
-	ipfsConf.Addresses.API = ipfscfg.Strings{tmConf.API}
-	ipfsConf.Addresses.Gateway = ipfscfg.Strings{tmConf.Gateway}
-	ipfsConf.Addresses.Swarm = tmConf.Swarm
-	ipfsConf.Addresses.Announce = tmConf.Announce
-	ipfsConf.Addresses.NoAnnounce = tmConf.NoAnnounce
 }
