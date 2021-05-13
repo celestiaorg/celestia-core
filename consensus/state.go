@@ -1113,12 +1113,13 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	// TODO(evan): don't hard code context and timeout
 	if cs.IpfsAPI != nil {
 		// longer timeouts result in block proposers failing to propose blocks in time.
-		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*10000)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 		defer cancel()
 		// TODO: post data to IPFS in a goroutine
 		err := block.PutBlock(ctx, cs.IpfsAPI.Dag())
 		if err != nil {
 			cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
+			panic(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
 		}
 	}
 }
