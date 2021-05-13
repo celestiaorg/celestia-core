@@ -720,7 +720,7 @@ func (c *Client) verifySequential(
 			// https://github.com/lazyledger/lazyledger-core/issues/319
 			numRows := len(interimBlock.DataAvailabilityHeader.RowsRoots)
 			numSamples := min(c.numSamples, numRows*numRows)
-			c.logger.Info("Starting DAS sampling", "height", height, "numSamples", numSamples, "squareWidth", numRows)
+			c.logger.Info("Starting Data Availability sampling", "height", height, "numSamples", numSamples, "squareWidth", numRows)
 			peers, _ := c.ipfsCoreAPI.Swarm().Peers(ctx)
 			peersStr := ""
 			for _, p := range peers {
