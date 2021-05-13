@@ -12,7 +12,6 @@ import (
 	ipfscore "github.com/ipfs/go-ipfs/core"
 	"github.com/ipfs/go-ipfs/plugin/loader"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
-	ipfslog "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/interface-go-ipfs-core/options"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
@@ -130,7 +129,7 @@ func CreateIpfsNode(repoRoot string, arePluginsAlreadyLoaded bool, logger log.Lo
 	if err != nil {
 		return nil, err
 	}
-	ipfslog.SetLogLevel("dht", "debug")
+	// ipfslog.SetLogLevel("dht", "debug")
 	// Construct the node
 	nodeOptions := &ipfscore.BuildCfg{
 		Online: true,
