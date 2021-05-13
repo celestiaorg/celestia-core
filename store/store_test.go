@@ -396,7 +396,6 @@ func TestLoadBaseMeta(t *testing.T) {
 		block := makeBlock(h, state, lastCommit)
 		partSet := block.MakePartSet(2)
 		lastCommit := makeTestCommit(block, h, tmtime.Now())
-		block.Header.LastBlockID = lastCommit.BlockID
 		bs.SaveBlock(block, partSet, lastCommit)
 	}
 
