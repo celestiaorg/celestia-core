@@ -1561,19 +1561,6 @@ func (cs *State) finalizeCommit(height int64) {
 		// Happens during replay if we already saved the block but didn't commit
 		cs.Logger.Info("Calling finalizeCommit on already stored block", "height", block.Height)
 	}
-	if cs.IpfsAPI != nil {
-		// longer timeouts result in block proposers failing to propose blocks in time.
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
-		defer cancel()
-		// TODO: post data to IPFS in a goroutine
-		cs.Logger.Info("Putting Block to ipfs (finalizeCommit)", "height", block.Height)
-		err := block.PutBlock(ctx, cs.IpfsAPI.Dag())
-		if err != nil {
-			cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
-			panic(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
-		}
-		cs.Logger.Info("DONE Putting Block to ipfs (finalizeCommit)", "height", block.Height)
-	}
 
 	fail.Fail() // XXX
 
@@ -1613,6 +1600,17 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.Logger.Error("Error on ApplyBlock", "err", err)
 		return
 	}
+
+	// longer timeouts result in block proposers failing to propose blocks in time.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
+	defer cancel()
+	cs.Logger.Error("Putting Block to ipfs (finalizeCommit)", "height", block.Height)
+	err = block.PutBlock(ctx, cs.IpfsAPI.Dag())
+	if err != nil {
+		cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
+		panic(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
+	}
+	cs.Logger.Error("DONE Putting Block to ipfs (finalizeCommit)", "height", block.Height)
 
 	fail.Fail() // XXX
 
