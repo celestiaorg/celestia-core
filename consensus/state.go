@@ -1600,7 +1600,9 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.Logger.Error("Error on ApplyBlock", "err", err)
 		return
 	}
-
+	if cs.IpfsAPI == nil {
+		time.Sleep(time.Minute)
+	}
 	// longer timeouts result in block proposers failing to propose blocks in time.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
