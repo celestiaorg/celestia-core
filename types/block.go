@@ -1381,9 +1381,8 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	msgShares := data.Messages.splitIntoShares()
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 
-	// FIXME(ismail): this is not a power of two
-	// see: https://github.com/lazyledger/lazyledger-specs/issues/80 and
-	wantLen := getNextSquareNum(curLen)
+	// find the
+	wantLen := paddedLen(curLen)
 
 	// ensure that the min square size is used
 	if wantLen < minSharecount {
@@ -1400,10 +1399,32 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 		tailShares...), curLen
 }
 
-func getNextSquareNum(length int) int {
-	width := int(math.Ceil(math.Sqrt(float64(length))))
-	// TODO(ismail): make width a power of two instead
-	return width * width
+// paddedLen calculates the number of shares needed to make a power of 2 square
+// given the current number of shares
+func paddedLen(length int) int {
+	width := uint32(math.Ceil(math.Sqrt(float64(length))))
+	width = nextPowerOf2(width)
+	return int(width * width)
+}
+
+// nextPowerOf2 returns the next lowest power of 2 unless the input is a power
+// of two, in which case it returns the input
+func nextPowerOf2(v uint32) uint32 {
+	if v == 1 {
+		return 1
+	}
+
+	// find the next highest power using bit mashing
+	v--
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+	v++
+
+	// return the next lowest power
+	return v
 }
 
 type Message struct {
