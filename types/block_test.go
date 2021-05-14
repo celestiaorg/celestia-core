@@ -1398,6 +1398,70 @@ func TestPutBlock(t *testing.T) {
 	}
 }
 
+func TestPaddedLength(t *testing.T) {
+	type test struct {
+		input, expected int
+	}
+	tests := []test{
+		{0, 0},
+		{1, 1},
+		{2, 4},
+		{4, 4},
+		{5, 16},
+		{11, 16},
+		{128, 256},
+	}
+	for _, tt := range tests {
+		res := paddedLen(tt.input)
+		assert.Equal(t, tt.expected, res)
+	}
+}
+
+func TestNextHighestPowerOf2(t *testing.T) {
+	type test struct {
+		input    uint32
+		expected uint32
+	}
+	tests := []test{
+		{
+			input:    2,
+			expected: 2,
+		},
+		{
+			input:    11,
+			expected: 16,
+		},
+		{
+			input:    511,
+			expected: 512,
+		},
+		{
+			input:    1,
+			expected: 1,
+		},
+		{
+			input:    0,
+			expected: 0,
+		},
+		{
+			input:    5,
+			expected: 8,
+		},
+		{
+			input:    6,
+			expected: 8,
+		},
+		{
+			input:    16,
+			expected: 16,
+		},
+	}
+	for _, tt := range tests {
+		res := nextHighestPowerOf2(tt.input)
+		assert.Equal(t, tt.expected, res)
+	}
+}
+
 func generateRandomMsgOnlyData(msgCount int) Data {
 	out := make([]Message, msgCount)
 	for i, msg := range generateRandNamespacedRawData(msgCount, NamespaceSize, MsgShareSize-2) {
