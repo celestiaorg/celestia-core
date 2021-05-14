@@ -1,4 +1,4 @@
-# LAZY ADR 002: Sampling erasure coded Block chunks
+# ADR 002: Sampling erasure coded Block chunks
 
 ## Changelog
 
@@ -154,7 +154,7 @@ func ValidateAvailability(
 // The key difference is that it will sample enough chunks until it can recover the
 // full extended data square, including original data (e.g. by using rsmt2d.RepairExtendedDataSquare).
 func RetrieveBlockData(
-    ctx contex.Context, 
+    ctx contex.Context,
     dah *DataAvailabilityHeader,
     api coreiface.CoreAPI,
     codec rsmt2d.Codec,
