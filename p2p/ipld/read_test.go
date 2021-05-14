@@ -58,36 +58,41 @@ func TestLeafPath(t *testing.T) {
 	}
 }
 
-func TestNextPowerOf2(t *testing.T) {
+func Test_isPowerOf2(t *testing.T) {
 	type test struct {
 		input    uint32
-		expected uint32
+		expected bool
 	}
 	tests := []test{
 		{
 			input:    2,
-			expected: 2,
+			expected: true,
 		},
 		{
 			input:    11,
-			expected: 8,
+			expected: false,
 		},
 		{
 			input:    511,
-			expected: 256,
+			expected: false,
+		},
+
+		{
+			input:    0,
+			expected: true,
 		},
 		{
 			input:    1,
-			expected: 1,
+			expected: true,
 		},
 		{
-			input:    0,
-			expected: 0,
+			input:    16,
+			expected: true,
 		},
 	}
 	for _, tt := range tests {
-		res := nextPowerOf2(tt.input)
-		assert.Equal(t, tt.expected, res)
+		res := isPowerOf2(tt.input)
+		assert.Equal(t, tt.expected, res, fmt.Sprintf("input was %d", tt.input))
 	}
 }
 
