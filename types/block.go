@@ -1381,7 +1381,8 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	msgShares := data.Messages.splitIntoShares()
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 
-	// find the
+	// find the number of shares needed to create a square that has a power of
+	// two
 	wantLen := paddedLen(curLen)
 
 	// ensure that the min square size is used
