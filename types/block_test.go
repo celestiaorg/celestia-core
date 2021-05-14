@@ -1417,7 +1417,7 @@ func TestPaddedLength(t *testing.T) {
 	}
 }
 
-func TestNextPowerOf2(t *testing.T) {
+func TestNextHighestPowerOf2(t *testing.T) {
 	type test struct {
 		input    uint32
 		expected uint32
@@ -1451,9 +1451,13 @@ func TestNextPowerOf2(t *testing.T) {
 			input:    6,
 			expected: 8,
 		},
+		{
+			input:    16,
+			expected: 16,
+		},
 	}
 	for _, tt := range tests {
-		res := nextPowerOf2(tt.input)
+		res := nextHighestPowerOf2(tt.input)
 		assert.Equal(t, tt.expected, res)
 	}
 }

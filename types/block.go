@@ -1382,7 +1382,7 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 
 	// find the number of shares needed to create a square that has a power of
-	// two
+	// two width
 	wantLen := paddedLen(curLen)
 
 	// ensure that the min square size is used
@@ -1404,15 +1404,15 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 // given the current number of shares
 func paddedLen(length int) int {
 	width := uint32(math.Ceil(math.Sqrt(float64(length))))
-	width = nextPowerOf2(width)
+	width = nextHighestPowerOf2(width)
 	return int(width * width)
 }
 
-// nextPowerOf2 returns the next lowest power of 2 unless the input is a power
+// nextPowerOf2 returns the next highest power of 2 unless the input is a power
 // of two, in which case it returns the input
-func nextPowerOf2(v uint32) uint32 {
-	if v == 1 {
-		return 1
+func nextHighestPowerOf2(v uint32) uint32 {
+	if v == 0 {
+		return 0
 	}
 
 	// find the next highest power using bit mashing
@@ -1424,7 +1424,7 @@ func nextPowerOf2(v uint32) uint32 {
 	v |= v >> 16
 	v++
 
-	// return the next lowest power
+	// return the next highest power
 	return v
 }
 
