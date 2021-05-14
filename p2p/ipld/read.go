@@ -245,7 +245,7 @@ func GetLeafData(
 
 func leafPath(index, total uint32) ([]string, error) {
 	// ensure that the total is a power of two
-	if isPowerOf2(total) {
+	if !isPowerOf2(total) {
 		return nil, fmt.Errorf("expected total to be a power of 2, got %d", total)
 	}
 
