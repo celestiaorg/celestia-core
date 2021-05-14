@@ -327,7 +327,7 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 	leaves := flattenNamespacedEDS(namespacedShares, eds)
 
 	// create nmt adder wrapping batch adder
-	batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, nodeAdder))
+	batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, nodeAdder /*, format.MaxNodesBatchOption(16)*/))
 
 	// iterate through each set of col and row leaves
 	for _, leafSet := range leaves {
