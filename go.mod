@@ -21,7 +21,7 @@ require (
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-ipfs v0.8.0
 	github.com/ipfs/go-ipfs-api v0.2.0
-	github.com/ipfs/go-ipfs-config v0.12.0
+	github.com/ipfs/go-ipfs-config v0.14.0
 	github.com/ipfs/go-ipld-format v0.2.0
 	github.com/ipfs/go-path v0.0.9 // indirect
 	github.com/ipfs/go-verifcid v0.0.1
