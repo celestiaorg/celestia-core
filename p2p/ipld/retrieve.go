@@ -11,6 +11,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
+	"math"
 )
 
 var (
@@ -70,14 +71,117 @@ func getSharesByNamespace(
 		if err != nil {
 			return shares, err
 		}
-		share, err := walk(ctx, nID, dah, rootCid, api)
+		startingIndex, err := findStartingIndex(ctx, nID, dah, rootCid, api)
 		if err != nil {
 			return shares, err
 		}
-		shares = append(shares, share)
+		fmt.Println("got starting index: ", startingIndex)
+		for {
+			leaf, err := GetLeafData(ctx, rootCid, uint32(startingIndex), uint32(len(dah.RowsRoots)), api)
+			if err != nil {
+				return shares, err
+			}
+			if nID.Equal(leaf[:8]) {
+				shares = append(shares, leaf)
+				startingIndex++
+			} else {
+				break
+			}
+		}
+	}
+	 // TODO it shouldn't hit here:
+	return shares, nil
+}
+
+// findStartingIndex returns the path to the first leaf that contains the given nID
+// in the tree corresponding to the given root CID.
+func findStartingIndex( // TODO maybe rename to pathToStartingIndex
+	ctx context.Context,
+	nID namespace.ID,
+	dah *types.DataAvailabilityHeader,
+	rootCid cid.Cid,
+	api coreiface.CoreAPI) (int, error) {
+
+	left := "0"
+	right := "1"
+
+	treeDepth := int(math.Log2(float64(len(dah.RowsRoots)))) // TODO totalLeaves == len(rowRoots in DAH) right?
+	currentPath := make([]string, 0)
+
+	for {
+		leafLevel := len(currentPath)+1 == treeDepth
+		fmt.Println("leaflevel? ", leafLevel)
+
+		leftNode, err := api.ResolveNode(ctx, path.Join(path.IpldPath(rootCid), append(currentPath, left)...))
+		if err != nil {
+			return 0, err
+		}
+		fmt.Println("got left node")
+		leftIntvlDigest, err := namespace.IntervalDigestFromBytes(nmt.DefaultNamespaceIDLen, leftNode.Cid().Hash()[4:])
+		if err != nil {
+			return 0, err
+		}
+		fmt.Println("got left node intvl digest: ", leftIntvlDigest.String())
+
+		rightNode, err := api.ResolveNode(ctx, path.Join(path.IpldPath(rootCid), append(currentPath, right)...))
+		if err != nil {
+			return 0, err
+		}
+		fmt.Println("got right node")
+		rightIntvlDigest, err := namespace.IntervalDigestFromBytes(nmt.DefaultNamespaceIDLen, rightNode.Cid().Hash()[4:])
+		if err != nil {
+			return 0, err
+		}
+		fmt.Println("got right node intvl digest: ", rightIntvlDigest.String())
+
+		if leafLevel {
+			if intervalContains(nID, leftIntvlDigest) {
+				// return index from path to left leaf
+				return startIndexFromPath(append(currentPath, left)), nil
+			} else if intervalContains(nID, rightIntvlDigest) {
+				// return path to right leaf
+				return startIndexFromPath(append(currentPath, right)), nil
+			} else {
+				
+				// todo proof of absence
+				// todo this means returning a proof that the nID is either left or right of the current leaves
+			}
+		}
+
+		if intervalContains(nID, leftIntvlDigest) {
+			currentPath = append(currentPath, left)
+		} else {
+			currentPath = append(currentPath, right)
+		}
+	}
+}
+
+func startIndexFromPath(path []string) int {
+	start := 0
+	indices := make([]int, 0)
+	totalLeaves := math.Pow(2, float64(len(path)))
+	for i := 0; i < int(totalLeaves); i++ {
+		indices = append(indices, i)
 	}
 
-	return shares, nil
+	for _, pos := range path {
+		if pos == "0" {
+			if len(indices) == 2 {
+				return indices[0]
+			}
+			indices = indices[0:len(indices)/2]
+		} else {
+			if len(indices) == 2 {
+				return indices[1]
+			}
+			indices = indices[len(indices)/2:]
+		}
+	}
+	return start
+}
+
+func intervalContains(nID namespace.ID, intvlDigest namespace.IntervalDigest) bool {
+	return !nID.Less(intvlDigest.Min())	&& nID.LessOrEqual(intvlDigest.Max())
 }
 
 func walk(
@@ -90,16 +194,12 @@ func walk(
 		data []byte
 		currentIndex = uint32(len(dah.RowsRoots)/2)  // start in the middle // TODO
 	)
-
-	fmt.Println(len(dah.RowsRoots))
-
 	for {
 		lPath, err := leafPath(currentIndex, uint32(len(dah.RowsRoots)))
 		if err != nil {
 			return data, err
 		}
 		fmt.Println("got leaf path: ", lPath)
-
 
 		node, err := api.ResolveNode(ctx, path.Join(path.IpldPath(rootCid), lPath...))
 		if err != nil {
@@ -114,9 +214,15 @@ func walk(
 			return data, err
 		}
 		fmt.Println("converted to Intvl Digest: ", digest.String())
+		fmt.Printf("digest min: %v, digest max: %v\n", []byte(digest.Min()), []byte(digest.Max()))
 
-		fmt.Println(fmt.Sprintf("GIVEN NID: %x", nID))
+		fmt.Println(fmt.Sprintf("GIVEN NID: %v", []byte(nID)))
 
+		if !nID.Less(digest.Min()) && nID.LessOrEqual(digest.Max()) {
+			fmt.Println("EQUAAAAAALS!!!!!!!")
+			fmt.Println(fmt.Sprintf("digest min: %x, digest max: %x", digest.Min(), digest.Max()))
+			return node.RawData()[1:], nil
+		}
 		if nID.Less(digest.Min()) {
 			fmt.Println("LEFT")
 			// go left
@@ -128,11 +234,6 @@ func walk(
 			// go right
 			currentIndex++
 			fmt.Println("CURRENT INDEX: ", currentIndex)
-		}
-		if !nID.Less(digest.Min()) && nID.LessOrEqual(digest.Max()) {
-			fmt.Println("EQUAAAAAALS!!!!!!!")
-			fmt.Println(fmt.Sprintf("digest min: %x, digest max: %x", digest.Min(), digest.Max()))
-			return node.RawData()[1:], nil
 		}
 	}
 }
