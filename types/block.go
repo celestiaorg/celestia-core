@@ -142,9 +142,6 @@ func (dah *DataAvailabilityHeader) ValidateBasic() error {
 			len(dah.ColumnRoots),
 		)
 	}
-	if len(dah.hash) == 0 {
-		dah.Hash()
-	}
 
 	return nil
 }
@@ -227,7 +224,11 @@ func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (dah 
 		return
 	}
 
-	return
+	if len(dah.hash) == 0 {
+		dah.Hash()
+	}
+
+	return dah, nil
 }
 
 // Block defines the atomic unit of a Tendermint blockchain.
