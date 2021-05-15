@@ -446,9 +446,6 @@ func TestStateLockNoPOL(t *testing.T) {
 
 	// timeouts have been increased because the CI keeps failing when the tests
 	// pass locally
-	precommitTimeout := cs1.config.Precommit(round).Nanoseconds() * 4
-	proposeTimeout := cs1.config.Propose(round).Nanoseconds() * 4
-	prevoteTimeout := cs1.config.Prevote(round).Nanoseconds() * 4
 
 	partSize := types.BlockPartSizeBytes
 
@@ -501,7 +498,7 @@ func TestStateLockNoPOL(t *testing.T) {
 
 	// (note we're entering precommit for a second time this round)
 	// but with invalid args. then we enterPrecommitWait, and the timeout to new round
-	ensureNewTimeout(timeoutWaitCh, height, round, precommitTimeout)
+	ensureNewTimeout(timeoutWaitCh, height, round, cs1.config.Precommit(round).Nanoseconds())
 
 	///
 
@@ -515,7 +512,7 @@ func TestStateLockNoPOL(t *testing.T) {
 	incrementRound(vs2)
 
 	// now we're on a new round and not the proposer, so wait for timeout
-	ensureNewTimeout(timeoutProposeCh, height, round, proposeTimeout)
+	ensureNewTimeout(timeoutProposeCh, height, round, cs1.config.Propose(round).Nanoseconds())
 
 	rs := cs1.GetRoundState()
 
@@ -540,7 +537,7 @@ func TestStateLockNoPOL(t *testing.T) {
 
 	// now we're going to enter prevote again, but with invalid args
 	// and then prevote wait, which should timeout. then wait for precommit
-	ensureNewTimeout(timeoutWaitCh, height, round, prevoteTimeout)
+	ensureNewTimeout(timeoutWaitCh, height, round, cs1.config.Prevote(round).Nanoseconds())
 
 	ensurePrecommit(voteCh, height, round) // precommit
 	// the proposed block should still be locked and our precommit added
@@ -553,7 +550,7 @@ func TestStateLockNoPOL(t *testing.T) {
 
 	// (note we're entering precommit for a second time this round, but with invalid args
 	// then we enterPrecommitWait and timeout into NewRound
-	ensureNewTimeout(timeoutWaitCh, height, round, precommitTimeout)
+	ensureNewTimeout(timeoutWaitCh, height, round, cs1.config.Precommit(round).Nanoseconds())
 
 	round++ // entering new round
 	ensureNewRound(newRoundCh, height, round)
@@ -587,7 +584,7 @@ func TestStateLockNoPOL(t *testing.T) {
 	signAddVotes(cs1, tmproto.PrevoteType, blockID, vs2)
 	ensurePrevote(voteCh, height, round)
 
-	ensureNewTimeout(timeoutWaitCh, height, round, prevoteTimeout)
+	ensureNewTimeout(timeoutWaitCh, height, round, cs1.config.Prevote(round).Nanoseconds())
 	ensurePrecommit(voteCh, height, round) // precommit
 
 	validatePrecommit(t, cs1, round, 0, vss[0], nil, theBlockHash) // precommit nil but be locked on proposal
@@ -605,7 +602,7 @@ func TestStateLockNoPOL(t *testing.T) {
 		vs2) // NOTE: conflicting precommits at same height
 	ensurePrecommit(voteCh, height, round)
 
-	ensureNewTimeout(timeoutWaitCh, height, round, precommitTimeout)
+	ensureNewTimeout(timeoutWaitCh, height, round, cs1.config.Precommit(round).Nanoseconds())
 
 	cs2, _ := randState(2) // needed so generated block is different than locked block
 	// before we time out into new round, set next proposal block
@@ -644,7 +641,7 @@ func TestStateLockNoPOL(t *testing.T) {
 	signAddVotes(cs1, tmproto.PrevoteType, blockID, vs2)
 	ensurePrevote(voteCh, height, round)
 
-	ensureNewTimeout(timeoutWaitCh, height, round, prevoteTimeout)
+	ensureNewTimeout(timeoutWaitCh, height, round, cs1.config.Prevote(round).Nanoseconds())
 	ensurePrecommit(voteCh, height, round)
 	validatePrecommit(t, cs1, round, 0, vss[0], nil, theBlockHash) // precommit nil but locked on proposal
 
@@ -670,10 +667,6 @@ func TestStateLockPOLRelock(t *testing.T) {
 	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
-
-	// timeouts have been increased because the CI keeps failing when the tests
-	// pass locally
-	precommitTimeout := cs1.config.Precommit(round).Nanoseconds() * 2
 
 	partSize := types.BlockPartSizeBytes
 
@@ -733,7 +726,7 @@ func TestStateLockPOLRelock(t *testing.T) {
 	incrementRound(vs2, vs3, vs4)
 
 	// timeout to new round // the extra second added is purely for CI
-	ensureNewTimeout(timeoutWaitCh, height, round, precommitTimeout)
+	ensureNewTimeout(timeoutWaitCh, height, round, cs1.config.Precommit(round).Nanoseconds())
 
 	round++ // moving to the next round
 	//XXX: this isnt guaranteed to get there before the timeoutPropose ...
