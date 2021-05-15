@@ -88,10 +88,13 @@ func walk(
 	api coreiface.CoreAPI) ([]byte, error) {
 	var (
 		data []byte
-		currentIndex = uint32(len(dah.ColumnRoots)/2)  // start in the middle // TODO
+		currentIndex = uint32(len(dah.RowsRoots)/2)  // start in the middle // TODO
 	)
+
+	fmt.Println(len(dah.RowsRoots))
+
 	for {
-		lPath, err := leafPath(currentIndex, uint32(len(dah.ColumnRoots)))
+		lPath, err := leafPath(currentIndex, uint32(len(dah.RowsRoots)))
 		if err != nil {
 			return data, err
 		}
@@ -130,7 +133,6 @@ func walk(
 			fmt.Println("EQUAAAAAALS!!!!!!!")
 			fmt.Println(fmt.Sprintf("digest min: %x, digest max: %x", digest.Min(), digest.Max()))
 			return node.RawData()[1:], nil
-
 		}
 	}
 }
