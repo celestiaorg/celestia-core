@@ -1,4 +1,4 @@
-package nodes
+package plugin
 
 import (
 	"bytes"
@@ -96,7 +96,7 @@ func TestNodeCollector(t *testing.T) {
 				t.Errorf("hashes don't match\ngot: %v\nwant: %v", got, want)
 			}
 
-			if mustCidFromNamespacedSha256(rootDigest.Bytes()).String() != rootNodeCid.String() {
+			if MustCidFromNamespacedSha256(rootDigest.Bytes()).String() != rootNodeCid.String() {
 				t.Error("root cid nod and hash not identical")
 			}
 
@@ -118,7 +118,7 @@ func TestNodeCollector(t *testing.T) {
 			}
 			hasher := nmt.NewNmtHasher(sha256.New(), namespaceSize, true)
 			for _, leaf := range tt.leafData {
-				leafCid := mustCidFromNamespacedSha256(hasher.HashLeaf(leaf))
+				leafCid := MustCidFromNamespacedSha256(hasher.HashLeaf(leaf))
 				_, has := hasMap[leafCid.String()]
 				if !has {
 					t.Errorf("leaf CID not found in collected nodes. missing: %s", leafCid.String())
@@ -171,7 +171,7 @@ func TestDagPutWithPlugin(t *testing.T) {
 		if err := sh.DagGet(path, gotLeaf); err != nil {
 			t.Errorf("DagGet(%s) failed: %v", path, err)
 		}
-		if gotShare := gotLeaf.Data; !bytes.Equal(gotShare, wantShare) {
+		if gotShare := gotLeaf.data; !bytes.Equal(gotShare, wantShare) {
 			t.Errorf("DagGet returned different data than pushed, got: %v, want: %v", gotShare, wantShare)
 		}
 	}
