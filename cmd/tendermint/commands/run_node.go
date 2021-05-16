@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	nm "github.com/lazyledger/lazyledger-core/node"
 )
@@ -89,6 +90,8 @@ func AddNodeFlags(cmd *cobra.Command) {
 		"db-dir",
 		config.DBPath,
 		"database directory")
+
+	ipfs.AddFlags(cmd, config.IPFS)
 }
 
 // NewRunNodeCmd returns the command that allows the CLI to start a node.

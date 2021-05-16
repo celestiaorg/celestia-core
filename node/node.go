@@ -5,19 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // nolint: gosec // securely exposed on separate, optional port
-	"path/filepath"
 	"strings"
 	"time"
 
-	ipfscore "github.com/ipfs/go-ipfs/core"
-	coreapi "github.com/ipfs/go-ipfs/core/coreapi"
-	"github.com/ipfs/go-ipfs/core/node/libp2p"
-	"github.com/ipfs/go-ipfs/plugin/loader"
-	"github.com/ipfs/go-ipfs/repo/fsrepo"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -28,6 +23,7 @@ import (
 	cs "github.com/lazyledger/lazyledger-core/consensus"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/evidence"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
@@ -107,9 +103,9 @@ func DefaultNewNode(config *cfg.Config, logger log.Logger) (*Node, error) {
 		proxy.DefaultClientCreator(config.ProxyApp, config.ABCI, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
 		DefaultDBProvider,
+		ipfs.Embedded(config.IPFS, logger),
 		DefaultMetricsProvider(config.Instrumentation),
 		logger,
-		EmbedIpfsNode(true),
 	)
 }
 
@@ -173,22 +169,6 @@ func StateProvider(stateProvider statesync.StateProvider) Option {
 	}
 }
 
-// IpfsPluginsWereLoaded indicates that all IPFS plugin were already loaded.
-// Setting up plugins will be skipped when creating the IPFS node.
-func IpfsPluginsWereLoaded(wereAlreadyLoaded bool) Option {
-	return func(n *Node) {
-		n.areIpfsPluginsAlreadyLoaded = wereAlreadyLoaded
-	}
-}
-
-// IpfsPluginsWereLoaded indicates that all IPFS plugin were already loaded.
-// Setting up plugins will skipped when creating the IPFS node.
-func EmbedIpfsNode(embed bool) Option {
-	return func(n *Node) {
-		n.embedIpfsNode = embed
-	}
-}
-
 //------------------------------------------------------------------------------
 
 // Node is the highest level interface to a full Tendermint node.
@@ -229,10 +209,10 @@ type Node struct {
 	txIndexer         txindex.TxIndexer
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
-	// we store a ref to the full IpfsNode (instead of ipfs' CoreAPI) so we can Close() it OnStop()
-	embedIpfsNode               bool               // whether the node should start an IPFS node on startup
-	ipfsNode                    *ipfscore.IpfsNode // ipfs node
-	areIpfsPluginsAlreadyLoaded bool               // avoid injecting plugins twice in tests etc
+
+	ipfsAPIProvider ipfs.APIProvider
+	ipfsAPI         iface.CoreAPI
+	ipfsClose       io.Closer
 }
 
 func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
@@ -647,6 +627,7 @@ func NewNode(config *cfg.Config,
 	clientCreator proxy.ClientCreator,
 	genesisDocProvider GenesisDocProvider,
 	dbProvider DBProvider,
+	ipfsProvider ipfs.APIProvider,
 	metricsProvider MetricsProvider,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
@@ -866,6 +847,7 @@ func NewNode(config *cfg.Config,
 		txIndexer:        txIndexer,
 		indexerService:   indexerService,
 		eventBus:         eventBus,
+		ipfsAPIProvider:  ipfsProvider,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
@@ -950,23 +932,12 @@ func (n *Node) OnStart() error {
 			return fmt.Errorf("failed to start state sync: %w", err)
 		}
 	}
-	if n.embedIpfsNode {
-		// It is essential that we create a fresh instance of ipfs node on
-		// each start as internally the node gets only stopped once per instance.
-		// At least in ipfs 0.7.0; see:
-		// https://github.com/lazyledger/go-ipfs/blob/dd295e45608560d2ada7d7c8a30f1eef3f4019bb/core/builder.go#L48-L57
-		n.ipfsNode, err = createIpfsNode(n.config, n.areIpfsPluginsAlreadyLoaded, n.Logger)
-		if err != nil {
-			return fmt.Errorf("failed to create IPFS node: %w", err)
-		}
 
-		ipfsAPI, err := coreapi.NewCoreAPI(n.ipfsNode)
-		if err != nil {
-			return fmt.Errorf("failed to create an instance of the IPFS core API: %w", err)
-		}
-
-		n.consensusState.IpfsAPI = ipfsAPI
+	n.ipfsAPI, n.ipfsClose, err = n.ipfsAPIProvider()
+	if err != nil {
+		return fmt.Errorf("failed to get IPFS API: %w", err)
 	}
+	n.consensusState.IpfsAPI = n.ipfsAPI
 
 	return nil
 }
@@ -1027,14 +998,8 @@ func (n *Node) OnStop() {
 		}
 	}
 
-	if n.ipfsNode != nil {
-		// Internally, the node gets shut down by cancelling the
-		// context that was passed into the node.
-		// Calling Close() seems cleaner and we don't
-		// need to keep a reference to the context around.
-		if err := n.ipfsNode.Close(); err != nil {
-			n.Logger.Error("ipfsNode.Close()", err)
-		}
+	if err := n.ipfsClose.Close(); err != nil {
+		n.Logger.Error("ipfsClose.Close()", err)
 	}
 }
 
@@ -1444,66 +1409,6 @@ func createAndStartPrivValidatorSocketClient(
 	pvscWithRetries := privval.NewRetrySignerClient(pvsc, retries, timeout)
 
 	return pvscWithRetries, nil
-}
-
-func createIpfsNode(config *cfg.Config, arePluginsAlreadyLoaded bool, logger log.Logger) (*ipfscore.IpfsNode, error) {
-	repoRoot := config.IPFSRepoRoot()
-	logger.Info("creating node in repo", "ipfs-root", repoRoot)
-	if !fsrepo.IsInitialized(repoRoot) {
-		// TODO: sentinel err
-		return nil, fmt.Errorf("ipfs repo root: %v not intitialized", repoRoot)
-	}
-	if !arePluginsAlreadyLoaded {
-		if err := setupPlugins(repoRoot, logger); err != nil {
-			return nil, err
-		}
-	}
-	// Open the repo
-	repo, err := fsrepo.Open(repoRoot)
-	if err != nil {
-		return nil, err
-	}
-
-	// Construct the node
-	nodeOptions := &ipfscore.BuildCfg{
-		Online: true,
-		// This option sets the node to be a full DHT node (both fetching and storing DHT Records)
-		Routing: libp2p.DHTOption,
-		// This option sets the node to be a client DHT node (only fetching records)
-		// Routing: libp2p.DHTClientOption,
-		Repo: repo,
-	}
-	// Internally, ipfs decorates the context with a
-	// context.WithCancel. Which is then used for lifecycle management.
-	// We do not make use of this context and rely on calling
-	// Close() on the node instead
-	ctx := context.Background()
-	node, err := ipfscore.NewNode(ctx, nodeOptions)
-	if err != nil {
-		return nil, err
-	}
-	// run as daemon:
-	node.IsDaemon = true
-	return node, nil
-}
-
-func setupPlugins(path string, logger log.Logger) error {
-	// Load plugins. This will skip the repo if not available.
-	plugins, err := loader.NewPluginLoader(filepath.Join(path, "plugins"))
-	if err != nil {
-		return fmt.Errorf("error loading plugins: %s", err)
-	}
-	if err := plugins.Load(&nodes.LazyLedgerPlugin{}); err != nil {
-		return fmt.Errorf("error loading lazyledger plugin: %s", err)
-	}
-	if err := plugins.Initialize(); err != nil {
-		return fmt.Errorf("error initializing plugins: plugins.Initialize(): %s", err)
-	}
-	if err := plugins.Inject(); err != nil {
-		logger.Error("error initializing plugins: could not Inject()", "err", err)
-	}
-
-	return nil
 }
 
 // splitAndTrimEmpty slices s into all subslices separated by sep and returns a
