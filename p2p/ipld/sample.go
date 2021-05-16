@@ -7,7 +7,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/lazyledger/nmt/namespace"
 
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -40,7 +40,7 @@ func (s Sample) Leaf(dah *types.DataAvailabilityHeader) (cid.Cid, uint32, error)
 		leaf = s.Col
 	}
 
-	rootCid, err := nodes.CidFromNamespacedSha256(root.Bytes())
+	rootCid, err := plugin.CidFromNamespacedSha256(root.Bytes())
 	if err != nil {
 		return cid.Undef, 0, err
 	}

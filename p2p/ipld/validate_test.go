@@ -27,13 +27,13 @@ func TestValidateAvailability(t *testing.T) {
 	ipfsAPI := mockedIpfsAPI(t)
 
 	blockData := generateRandomBlockData(squareSize*squareSize, adjustedMsgSize)
-	block := types.Block{
+	block := &types.Block{
 		Data:       blockData,
 		LastCommit: &types.Commit{},
 	}
 	block.Hash()
 
-	err := block.PutBlock(ctx, ipfsAPI.Dag())
+	err := PutBlock(ctx, ipfsAPI.Dag(), block)
 	require.NoError(t, err)
 
 	calls := 0
