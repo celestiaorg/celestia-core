@@ -39,6 +39,8 @@ func TestValidateAvailability(t *testing.T) {
 	calls := 0
 	err = ValidateAvailability(ctx, ipfsAPI, &block.DataAvailabilityHeader, shares, func(data namespace.PrefixedData8) {
 		calls++
+		t.Log("successfully got leaf data", " with nid", data[:8])
+
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, shares, calls)

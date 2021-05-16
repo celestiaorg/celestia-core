@@ -1113,18 +1113,18 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	// TODO(evan): don't hard code context and timeout
 	// FIXME: we have to put on proposing a block for DAS validators
 	//  to be able to start sampling immediately
-	if false && cs.IpfsAPI != nil {
+	if cs.IpfsAPI != nil {
 		// longer timeouts result in block proposers failing to propose blocks in time.
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 		defer cancel()
 		// TODO: post data to IPFS in a goroutine
-		cs.Logger.Info("Putting Block to ipfs", "height", block.Height)
+		cs.Logger.Error("Putting Block to ipfs", "height", block.Height)
 		err := block.PutBlock(ctx, cs.IpfsAPI.Dag())
 		if err != nil {
 			cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
 			panic(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
 		}
-		cs.Logger.Info("DONE Putting Block to ipfs", "height", block.Height)
+		cs.Logger.Error("DONE Putting Block to ipfs", "height", block.Height)
 	}
 }
 
@@ -1600,19 +1600,6 @@ func (cs *State) finalizeCommit(height int64) {
 		cs.Logger.Error("Error on ApplyBlock", "err", err)
 		return
 	}
-	if cs.IpfsAPI == nil {
-		time.Sleep(time.Minute)
-	}
-	// longer timeouts result in block proposers failing to propose blocks in time.
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
-	defer cancel()
-	cs.Logger.Error("Putting Block to ipfs (finalizeCommit)", "height", block.Height)
-	err = block.PutBlock(ctx, cs.IpfsAPI.Dag())
-	if err != nil {
-		cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
-		panic(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
-	}
-	cs.Logger.Error("DONE Putting Block to ipfs (finalizeCommit)", "height", block.Height)
 
 	fail.Fail() // XXX
 

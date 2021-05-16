@@ -12,8 +12,6 @@ import (
 	ipfscfg "github.com/ipfs/go-ipfs-config"
 	"github.com/ipfs/go-ipfs/core/coreapi"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
-	"github.com/lazyledger/nmt/namespace"
-
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
@@ -22,6 +20,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/p2p"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/nmt/namespace"
 )
 
 type mode byte
@@ -727,6 +726,8 @@ func (c *Client) verifySequential(
 				peersStr = peersStr + "\n" + p.Address().String()
 			}
 			c.logger.Info("connected peers", "peers", peersStr)
+			fmt.Println("interimBlock.Height", interimBlock.Height)
+
 			err = ipld.ValidateAvailability(
 				ctx,
 				c.ipfsCoreAPI,

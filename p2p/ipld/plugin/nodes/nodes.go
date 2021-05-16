@@ -226,11 +226,13 @@ func (n *NmtNodeAdder) Visit(hash []byte, children ...[]byte) {
 	if n.err != nil {
 		return // protect from further visits if there is an error
 	}
-
 	cid := mustCidFromNamespacedSha256(hash)
+	fmt.Println("Visiting node with CID:")
+	fmt.Println(cid)
 	switch len(children) {
 	case 1:
 		if n.leaves.Visit(cid) {
+			fmt.Printf("adding leaf to batch: %x\n", children[0])
 			n.err = n.batch.Add(n.ctx, nmtLeafNode{
 				cid:  cid,
 				Data: children[0],
