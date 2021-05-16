@@ -3,22 +3,15 @@ package rpctest
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	ipfscfg "github.com/ipfs/go-ipfs-config"
-	"github.com/ipfs/go-ipfs/plugin/loader"
-	"github.com/ipfs/go-ipfs/repo/fsrepo"
-	"github.com/ipfs/interface-go-ipfs-core/options"
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
-
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/ipfs"
+	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
 	nm "github.com/lazyledger/lazyledger-core/node"
 	"github.com/lazyledger/lazyledger-core/p2p"
@@ -180,70 +173,17 @@ func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 		panic(err)
 	}
 
-	config.IPFS = cfg.DefaultIPFSConfig()
-	err = initIpfs(config, opts.loadIpfsPlugins, logger)
-	if err != nil {
-		panic(err)
-	}
 	node, err := nm.NewNode(config, pv, nodeKey, papp,
 		nm.DefaultGenesisDocProviderFunc(config),
 		nm.DefaultDBProvider,
+		ipfs.Mock(),
 		nm.DefaultMetricsProvider(config.Instrumentation),
 		logger,
-		nm.IpfsPluginsWereLoaded(true),
 	)
 	if err != nil {
 		panic(err)
 	}
 	return node
-}
-
-// initIpfs a slightly modified commands.InitIpfs.
-// To avoid depending on the commands package here, we accept some code duplication.
-// In case commands.InitIpfs gets refactored into a separate package,
-// it could be used instead.
-func initIpfs(config *cfg.Config, loadPlugins bool, log log.Logger) error {
-	repoRoot := config.IPFSRepoRoot()
-	if fsrepo.IsInitialized(repoRoot) {
-		log.Info("IPFS repo already initialized", "repo-root", repoRoot)
-		return nil
-	}
-	var conf *ipfscfg.Config
-
-	identity, err := ipfscfg.CreateIdentity(ioutil.Discard, []options.KeyGenerateOption{
-		options.Key.Type(options.Ed25519Key),
-	})
-	if err != nil {
-		return err
-	}
-	if err := tmos.EnsureDir(repoRoot, 0700); err != nil {
-		return err
-	}
-	if loadPlugins {
-		plugins, err := loader.NewPluginLoader(filepath.Join(repoRoot, "plugins"))
-		if err != nil {
-			return fmt.Errorf("error loading plugins: %s", err)
-		}
-		if err := plugins.Load(&nodes.LazyLedgerPlugin{}); err != nil {
-			return err
-		}
-		if err := plugins.Initialize(); err != nil {
-			return fmt.Errorf("error initializing plugins: %s", err)
-		}
-		if err := plugins.Inject(); err != nil {
-			return fmt.Errorf("error initializing plugins: %s", err)
-		}
-	}
-	conf, err = ipfscfg.InitWithIdentity(identity)
-	if err != nil {
-		return fmt.Errorf("initializing config failed, InitWithIdentity(): %w", err)
-	}
-
-	if err := fsrepo.Init(repoRoot, conf); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // SuppressStdout is an option that tries to make sure the RPC test Tendermint

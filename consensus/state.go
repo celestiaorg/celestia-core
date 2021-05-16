@@ -25,6 +25,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/service"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -1116,7 +1117,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
 		defer cancel()
 		// TODO: post data to IPFS in a goroutine
-		err := block.PutBlock(ctx, cs.IpfsAPI.Dag())
+		err := ipld.PutBlock(ctx, cs.IpfsAPI.Dag(), block)
 		if err != nil {
 			cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
 		}
