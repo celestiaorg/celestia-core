@@ -27,7 +27,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
-var raceDetectorActive = false
+var raceDetectorActive = true
 
 func TestLeafPath(t *testing.T) {
 	type test struct {
