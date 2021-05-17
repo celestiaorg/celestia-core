@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	iface "github.com/ipfs/interface-go-ipfs-core"
+	ipface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -210,9 +210,8 @@ type Node struct {
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
 
-	ipfsAPIProvider ipfs.APIProvider
-	ipfsAPI         iface.CoreAPI
-	ipfsClose       io.Closer
+	ipfsAPI   ipface.CoreAPI
+	ipfsClose io.Closer
 }
 
 func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
@@ -391,6 +390,7 @@ func createConsensusReactor(config *cfg.Config,
 	csMetrics *cs.Metrics,
 	waitSync bool,
 	eventBus *types.EventBus,
+	ipfs ipface.CoreAPI,
 	consensusLogger log.Logger) (*cs.Reactor, *cs.State) {
 
 	consensusState := cs.NewState(
@@ -402,6 +402,7 @@ func createConsensusReactor(config *cfg.Config,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
 	)
+	consensusState.SetIPFSApi(ipfs)
 	consensusState.SetLogger(consensusLogger)
 	if privValidator != nil {
 		consensusState.SetPrivValidator(privValidator)
@@ -632,6 +633,11 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
+	ipfs, ipfsclose, err := ipfsProvider()
+	if err != nil {
+		return nil, err
+	}
+
 	blockStore, stateDB, err := initDBs(config, dbProvider)
 	if err != nil {
 		return nil, err
@@ -746,7 +752,7 @@ func NewNode(config *cfg.Config,
 	}
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger,
+		privValidator, csMetrics, stateSync || fastSync, eventBus, ipfs, consensusLogger,
 	)
 
 	// Set up state sync reactor, and schedule a sync if requested.
@@ -847,7 +853,8 @@ func NewNode(config *cfg.Config,
 		txIndexer:        txIndexer,
 		indexerService:   indexerService,
 		eventBus:         eventBus,
-		ipfsAPIProvider:  ipfsProvider,
+		ipfsAPI:          ipfs,
+		ipfsClose:        ipfsclose,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
@@ -932,12 +939,6 @@ func (n *Node) OnStart() error {
 			return fmt.Errorf("failed to start state sync: %w", err)
 		}
 	}
-
-	n.ipfsAPI, n.ipfsClose, err = n.ipfsAPIProvider()
-	if err != nil {
-		return fmt.Errorf("failed to get IPFS API: %w", err)
-	}
-	n.consensusState.SetIPFSApi(n.ipfsAPI)
 
 	return nil
 }
