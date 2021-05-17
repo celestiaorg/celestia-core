@@ -35,7 +35,7 @@ const (
 	// DagParserFormatName can be used when putting into the IPLD Dag
 	DagParserFormatName = "extended-square-row-or-col"
 
-	// FIXME: These are the same as types.ShareSize and types.NamespaceSize.
+	// FIXME: These are the same as types.ShareSize and consts.NamespaceSize.
 	// Repeated here to avoid a dependency to the wrapping repo as this makes
 	// it hard to compile and use the plugin against a local ipfs version.
 	// TODO: plugins have config options; make this configurable instead
@@ -125,7 +125,7 @@ func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
 // <share_0>| ... |<share_numOfShares - 1>
 //
 // To determine the share and the namespace size the constants
-// types.ShareSize and types.NamespaceSize are redefined here to avoid
+// types.ShareSize and consts.NamespaceSize are redefined here to avoid
 // lazyledger-core as a dependency.
 //
 // Note while this coredag.DagParser is implemented here so this plugin can be used from

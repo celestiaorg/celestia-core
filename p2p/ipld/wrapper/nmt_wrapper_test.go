@@ -1,10 +1,13 @@
-package ipld
+package wrapper
 
 import (
+	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
+	"sort"
 	"testing"
 
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"
@@ -36,7 +39,7 @@ func TestRootErasuredNamespacedMerkleTree(t *testing.T) {
 	// the case, because the ErasuredNamespacedMerkleTree should add namespaces
 	// to the second half of the tree
 	size := 8
-	data := generateRandNamespacedRawData(size, types.NamespaceSize, types.MsgShareSize)
+	data := generateRandNamespacedRawData(size, consts.NamespaceSize, consts.MsgShareSize)
 	n := NewErasuredNamespacedMerkleTree(uint64(size))
 	tree := n.Constructor()
 	nmtTree := nmt.New(sha256.New())
@@ -110,8 +113,8 @@ func TestExtendedDataSquare(t *testing.T) {
 	// data for a 4X4 square
 	raw := generateRandNamespacedRawData(
 		squareSize*squareSize,
-		types.NamespaceSize,
-		types.MsgShareSize,
+		consts.NamespaceSize,
+		consts.MsgShareSize,
 	)
 
 	tree := NewErasuredNamespacedMerkleTree(uint64(squareSize))
@@ -125,12 +128,41 @@ func TestExtendedDataSquare(t *testing.T) {
 func generateErasuredData(t *testing.T, numLeaves int, codec rsmt2d.Codec) [][]byte {
 	raw := generateRandNamespacedRawData(
 		numLeaves,
-		types.NamespaceSize,
-		types.MsgShareSize,
+		consts.NamespaceSize,
+		consts.MsgShareSize,
 	)
 	erasuredData, err := codec.Encode(raw)
 	if err != nil {
 		t.Error(err)
 	}
 	return append(raw, erasuredData...)
+}
+
+// this code is copy pasted from the plugin, and should likely be exported in the plugin instead
+func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byte {
+	data := make([][]byte, total)
+	for i := 0; i < total; i++ {
+		nid := make([]byte, nidSize)
+		_, err := rand.Read(nid)
+		if err != nil {
+			panic(err)
+		}
+		data[i] = nid
+	}
+
+	sortByteArrays(data)
+	for i := 0; i < total; i++ {
+		d := make([]byte, leafSize)
+		_, err := rand.Read(d)
+		if err != nil {
+			panic(err)
+		}
+		data[i] = append(data[i], d...)
+	}
+
+	return data
+}
+
+func sortByteArrays(src [][]byte) {
+	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
 }

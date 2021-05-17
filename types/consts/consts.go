@@ -1,4 +1,4 @@
-package types
+package consts
 
 import (
 	"crypto/sha256"
@@ -33,7 +33,7 @@ const (
 
 	// MinSquareSize depicts the smallest original square width.
 	MinSquareSize = 1
-	minSharecount = MinSquareSize * MinSquareSize
+	MinSharecount = MinSquareSize * MinSquareSize
 )
 
 var (
@@ -60,5 +60,5 @@ var (
 	ParitySharesNamespaceID = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 
 	// change accordingly if another hash.Hash should be used as a base hasher in the NMT:
-	newBaseHashFunc = sha256.New
+	NewBaseHashFunc = sha256.New
 )

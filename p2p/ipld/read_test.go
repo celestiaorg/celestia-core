@@ -24,7 +24,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
 var raceDetectorActive = false
@@ -113,7 +115,7 @@ func TestGetLeafData(t *testing.T) {
 	batch := format.NewBatch(ctx, ipfsAPI.Dag())
 
 	// generate random data for the nmt
-	data := generateRandNamespacedRawData(16, types.NamespaceSize, types.ShareSize)
+	data := generateRandNamespacedRawData(16, consts.NamespaceSize, consts.ShareSize)
 
 	// create a random tree
 	root, err := getNmtRoot(ctx, batch, data)
@@ -151,7 +153,7 @@ func TestGetLeafData(t *testing.T) {
 
 func TestBlockRecovery(t *testing.T) {
 	// adjustedLeafSize describes the size of a leaf that will not get split
-	adjustedLeafSize := types.MsgShareSize
+	adjustedLeafSize := consts.MsgShareSize
 
 	originalSquareWidth := 8
 	shareCount := originalSquareWidth * originalSquareWidth
@@ -159,8 +161,8 @@ func TestBlockRecovery(t *testing.T) {
 	extendedShareCount := extendedSquareWidth * extendedSquareWidth
 
 	// generate test data
-	quarterShares := generateRandNamespacedRawData(shareCount, types.NamespaceSize, adjustedLeafSize)
-	allShares := generateRandNamespacedRawData(shareCount, types.NamespaceSize, adjustedLeafSize)
+	quarterShares := generateRandNamespacedRawData(shareCount, consts.NamespaceSize, adjustedLeafSize)
+	allShares := generateRandNamespacedRawData(shareCount, consts.NamespaceSize, adjustedLeafSize)
 
 	testCases := []struct {
 		name string
@@ -182,8 +184,8 @@ func TestBlockRecovery(t *testing.T) {
 			squareSize := uint64(math.Sqrt(float64(len(tc.shares))))
 
 			// create trees for creating roots
-			tree := NewErasuredNamespacedMerkleTree(squareSize)
-			recoverTree := NewErasuredNamespacedMerkleTree(squareSize)
+			tree := wrapper.NewErasuredNamespacedMerkleTree(squareSize)
+			recoverTree := wrapper.NewErasuredNamespacedMerkleTree(squareSize)
 
 			eds, err := rsmt2d.ComputeExtendedDataSquare(tc.shares, rsmt2d.NewRSGF8Codec(), tree.Constructor)
 			if err != nil {
@@ -231,14 +233,14 @@ func TestRetrieveBlockData(t *testing.T) {
 	ipfsAPI := mockedIpfsAPI(t)
 
 	// the max size of messages that won't get split
-	adjustedMsgSize := types.MsgShareSize - 2
+	adjustedMsgSize := consts.MsgShareSize - 2
 
 	tests := []test{
 		{"Empty block", 1, false, ""},
 		{"4 KB block", 4, false, ""},
 		{"16 KB block", 8, false, ""},
 		{"16 KB block timeout expected", 8, true, "timeout"},
-		{"max square size", types.MaxSquareSize, false, ""},
+		{"max square size", consts.MaxSquareSize, false, ""},
 	}
 
 	for _, tc := range tests {
@@ -269,7 +271,7 @@ func TestRetrieveBlockData(t *testing.T) {
 			shareData, _ := blockData.ComputeShares()
 			rawData := shareData.RawShares()
 
-			tree := NewErasuredNamespacedMerkleTree(uint64(tc.squareSize))
+			tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(tc.squareSize))
 			eds, err := rsmt2d.ComputeExtendedDataSquare(rawData, rsmt2d.NewRSGF8Codec(), tree.Constructor)
 			if err != nil {
 				t.Fatal(err)
@@ -328,7 +330,7 @@ func getNmtRoot(
 	namespacedData [][]byte,
 ) (namespace.IntervalDigest, error) {
 	na := nodes.NewNmtNodeAdder(ctx, batch)
-	tree := nmt.New(sha256.New(), nmt.NamespaceIDSize(types.NamespaceSize), nmt.NodeVisitor(na.Visit))
+	tree := nmt.New(sha256.New(), nmt.NamespaceIDSize(consts.NamespaceSize), nmt.NodeVisitor(na.Visit))
 	for _, leaf := range namespacedData {
 		err := tree.Push(leaf)
 		if err != nil {
@@ -386,7 +388,7 @@ func removeRandShares(data [][]byte, d int) [][]byte {
 func rootsToDigests(roots [][]byte) []namespace.IntervalDigest {
 	out := make([]namespace.IntervalDigest, len(roots))
 	for i, root := range roots {
-		idigest, err := namespace.IntervalDigestFromBytes(types.NamespaceSize, root)
+		idigest, err := namespace.IntervalDigestFromBytes(consts.NamespaceSize, root)
 		if err != nil {
 			panic(err)
 		}
@@ -406,12 +408,12 @@ func generateRandomBlockData(msgCount, msgSize int) types.Data {
 }
 
 func generateRandomMessages(count, msgSize int) types.Messages {
-	shares := generateRandNamespacedRawData(count, types.NamespaceSize, msgSize)
+	shares := generateRandNamespacedRawData(count, consts.NamespaceSize, msgSize)
 	msgs := make([]types.Message, count)
 	for i, s := range shares {
 		msgs[i] = types.Message{
-			Data:        s[types.NamespaceSize:],
-			NamespaceID: s[:types.NamespaceSize],
+			Data:        s[consts.NamespaceSize:],
+			NamespaceID: s[:consts.NamespaceSize],
 		}
 	}
 	return types.Messages{MessagesList: msgs}
@@ -419,7 +421,7 @@ func generateRandomMessages(count, msgSize int) types.Messages {
 
 func generateRandomContiguousShares(count int) types.Txs {
 	// the size of a length delimited tx that takes up an entire share
-	const adjustedTxSize = types.TxShareSize - 2
+	const adjustedTxSize = consts.TxShareSize - 2
 	txs := make(types.Txs, count)
 	for i := 0; i < count; i++ {
 		tx := make([]byte, adjustedTxSize)

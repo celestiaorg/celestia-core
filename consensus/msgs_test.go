@@ -18,6 +18,7 @@ import (
 	tmcons "github.com/lazyledger/lazyledger-core/proto/tendermint/consensus"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
 func TestMsgToProto(t *testing.T) {
@@ -47,7 +48,7 @@ func TestMsgToProto(t *testing.T) {
 	pbParts, err := parts.ToProto()
 	require.NoError(t, err)
 
-	roots, err := types.NmtRootsFromBytes([][]byte{tmrand.Bytes(2*types.NamespaceSize + tmhash.Size)})
+	roots, err := types.NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
 	require.NoError(t, err)
 	proposal := types.Proposal{
 		Type:      tmproto.ProposalType,

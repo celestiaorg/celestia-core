@@ -29,6 +29,7 @@ import (
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 	"github.com/lazyledger/lazyledger-core/version"
 )
@@ -216,8 +217,8 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
 }
 
 func makeDAHeaderRandom() *DataAvailabilityHeader {
-	rows, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*NamespaceSize + tmhash.Size)})
-	clns, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*NamespaceSize + tmhash.Size)})
+	rows, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
+	clns, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
 	return &DataAvailabilityHeader{
 		RowsRoots:   rows,
 		ColumnRoots: clns,
@@ -244,7 +245,7 @@ func TestNilDataAvailabilityHeaderHashDoesntCrash(t *testing.T) {
 func TestEmptyBlockData(t *testing.T) {
 	blockData := Data{}
 	shares, _ := blockData.ComputeShares()
-	assert.Equal(t, GenerateTailPaddingShares(MinSquareSize, ShareSize), shares)
+	assert.Equal(t, GenerateTailPaddingShares(consts.MinSquareSize, consts.ShareSize), shares)
 }
 
 func TestCommit(t *testing.T) {
@@ -1347,7 +1348,7 @@ func TestPutBlock(t *testing.T) {
 		t.Error(err)
 	}
 
-	maxOriginalSquareSize := MaxSquareSize / 2
+	maxOriginalSquareSize := consts.MaxSquareSize / 2
 	maxShareCount := maxOriginalSquareSize * maxOriginalSquareSize
 
 	testCases := []struct {
@@ -1464,8 +1465,8 @@ func TestNextHighestPowerOf2(t *testing.T) {
 
 func generateRandomMsgOnlyData(msgCount int) Data {
 	out := make([]Message, msgCount)
-	for i, msg := range generateRandNamespacedRawData(msgCount, NamespaceSize, MsgShareSize-2) {
-		out[i] = Message{NamespaceID: msg[:NamespaceSize], Data: msg[NamespaceSize:]}
+	for i, msg := range generateRandNamespacedRawData(msgCount, consts.NamespaceSize, consts.MsgShareSize-2) {
+		out[i] = Message{NamespaceID: msg[:consts.NamespaceSize], Data: msg[consts.NamespaceSize:]}
 	}
 	return Data{
 		Messages: Messages{MessagesList: out},

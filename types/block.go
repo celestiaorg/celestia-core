@@ -29,6 +29,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	"github.com/lazyledger/lazyledger-core/version"
 )
 
@@ -81,7 +82,7 @@ func (roots NmtRoots) Bytes() [][]byte {
 func NmtRootsFromBytes(in [][]byte) (roots NmtRoots, err error) {
 	roots = make([]namespace.IntervalDigest, len(in))
 	for i := 0; i < len(in); i++ {
-		roots[i], err = namespace.IntervalDigestFromBytes(NamespaceSize, in[i])
+		roots[i], err = namespace.IntervalDigestFromBytes(consts.NamespaceSize, in[i])
 		if err != nil {
 			return roots, err
 		}
@@ -230,11 +231,6 @@ func (b *Block) fillHeader() {
 func (b *Block) fillDataAvailabilityHeader() {
 	namespacedShares, dataSharesLen := b.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
-	if len(shares) == 0 {
-		// no shares -> no row/colum roots -> hash(empty)
-		b.DataHash = b.DataAvailabilityHeader.Hash()
-		return
-	}
 
 	// TODO(ismail): for better efficiency and a larger number shares
 	// we should switch to the rsmt2d.LeopardFF16 codec:
@@ -273,7 +269,7 @@ func (b *Block) fillDataAvailabilityHeader() {
 
 // nmtcommitment generates the nmt root of some namespaced data
 func nmtCommitment(namespacedData [][]byte) namespace.IntervalDigest {
-	tree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
+	tree := nmt.New(consts.NewBaseHashFunc(), nmt.NamespaceIDSize(consts.NamespaceSize))
 	for _, leaf := range namespacedData {
 		mustPush(tree, leaf)
 	}
@@ -285,8 +281,8 @@ func mustPush(rowTree *nmt.NamespacedMerkleTree, nidAndData []byte) {
 		panic(
 			fmt.Sprintf(
 				"invalid data; could not push share to tree, id: %v, data: %v, err: %v",
-				nidAndData[:NamespaceSize],
-				nidAndData[NamespaceSize:],
+				nidAndData[:consts.NamespaceSize],
+				nidAndData[consts.NamespaceSize:],
 				err,
 			),
 		)
@@ -385,8 +381,8 @@ func flattenNamespacedEDS(nss NamespacedShares, eds *rsmt2d.ExtendedDataSquare) 
 }
 
 func copyOfParityNamespaceID() []byte {
-	out := make([]byte, len(ParitySharesNamespaceID))
-	copy(out, ParitySharesNamespaceID)
+	out := make([]byte, len(consts.ParitySharesNamespaceID))
+	copy(out, consts.ParitySharesNamespaceID)
 	return out
 }
 
@@ -1350,7 +1346,7 @@ func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
 		}
 		rawDatas = append(rawDatas, rawData)
 	}
-	shares := splitContiguous(IntermediateStateRootsNamespaceID, rawDatas)
+	shares := splitContiguous(consts.IntermediateStateRootsNamespaceID, rawDatas)
 	return shares
 }
 
@@ -1386,11 +1382,11 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	wantLen := paddedLen(curLen)
 
 	// ensure that the min square size is used
-	if wantLen < minSharecount {
-		wantLen = minSharecount
+	if wantLen < consts.MinSharecount {
+		wantLen = consts.MinSharecount
 	}
 
-	tailShares := GenerateTailPaddingShares(wantLen-curLen, ShareSize)
+	tailShares := GenerateTailPaddingShares(wantLen-curLen, consts.ShareSize)
 
 	return append(append(append(append(
 		txShares,
@@ -1660,7 +1656,7 @@ func (data *EvidenceData) splitIntoShares() NamespacedShares {
 		}
 		rawDatas = append(rawDatas, rawData)
 	}
-	shares := splitContiguous(EvidenceNamespaceID, rawDatas)
+	shares := splitContiguous(consts.EvidenceNamespaceID, rawDatas)
 	return shares
 }
 
