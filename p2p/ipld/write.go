@@ -15,13 +15,13 @@ import (
 
 // PutBlock posts and pins erasured block data to IPFS using the provided
 // ipld.NodeAdder. Note: the erasured data is currently recomputed
-func PutBlock(ctx context.Context, adder format.NodeAdder, b *types.Block) error {
+func PutBlock(ctx context.Context, adder format.NodeAdder, block *types.Block) error {
 	if adder == nil {
 		return errors.New("no ipfs node adder provided")
 	}
 
 	// recompute the shares
-	namespacedShares, _ := b.Data.ComputeShares()
+	namespacedShares, _ := block.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
 
 	// don't do anything if there is no data to put on IPFS

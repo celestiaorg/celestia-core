@@ -150,7 +150,7 @@ func (n *nmtNodeCollector) visit(hash []byte, children ...[]byte) {
 	case 1:
 		n.nodes = prependNode(nmtLeafNode{
 			cid:  cid,
-			data: children[0],
+			Data: children[0],
 		}, n.nodes)
 	case 2:
 		n.nodes = prependNode(nmtNode{
@@ -181,14 +181,14 @@ func NmtNodeParser(block blocks.Block) (ipld.Node, error) {
 	if len(data) == 0 {
 		return &nmtLeafNode{
 			cid:  cid.Undef,
-			data: nil,
+			Data: nil,
 		}, nil
 	}
 	domainSeparator := data[:prefixOffset]
 	if bytes.Equal(domainSeparator, leafPrefix) {
 		return &nmtLeafNode{
 			cid:  block.Cid(),
-			data: data[prefixOffset:],
+			Data: data[prefixOffset:],
 		}, nil
 	}
 	if bytes.Equal(domainSeparator, innerPrefix) {
@@ -314,7 +314,7 @@ func (n nmtNode) Size() (uint64, error) {
 
 type nmtLeafNode struct {
 	cid  cid.Cid
-	data []byte
+	Data []byte
 }
 
 func NewNMTLeafNode(id cid.Cid, data []byte) ipld.Node {
@@ -322,7 +322,7 @@ func NewNMTLeafNode(id cid.Cid, data []byte) ipld.Node {
 }
 
 func (l nmtLeafNode) RawData() []byte {
-	return append([]byte{nmt.LeafPrefix}, l.data...)
+	return append([]byte{nmt.LeafPrefix}, l.Data...)
 }
 
 func (l nmtLeafNode) Cid() cid.Cid {
@@ -334,7 +334,7 @@ func (l nmtLeafNode) String() string {
 leaf {
 	hash: 		%x,
 	len(Data): 	%v
-}`, l.cid.Hash(), len(l.data))
+}`, l.cid.Hash(), len(l.Data))
 }
 
 func (l nmtLeafNode) Loggable() map[string]interface{} {

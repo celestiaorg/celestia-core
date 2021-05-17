@@ -171,7 +171,7 @@ func TestDagPutWithPlugin(t *testing.T) {
 		if err := sh.DagGet(path, gotLeaf); err != nil {
 			t.Errorf("DagGet(%s) failed: %v", path, err)
 		}
-		if gotShare := gotLeaf.data; !bytes.Equal(gotShare, wantShare) {
+		if gotShare := gotLeaf.Data; !bytes.Equal(gotShare, wantShare) {
 			t.Errorf("DagGet returned different data than pushed, got: %v, want: %v", gotShare, wantShare)
 		}
 	}
