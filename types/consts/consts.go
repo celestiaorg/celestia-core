@@ -59,6 +59,6 @@ var (
 	// ParitySharesNamespaceID indicates that share contains erasure data
 	ParitySharesNamespaceID = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 
-	// change accordingly if another hash.Hash should be used as a base hasher in the NMT:
+	// NewBaseHashFunc change accordingly if another hash.Hash should be used as a base hasher in the NMT:
 	NewBaseHashFunc = sha256.New
 )
