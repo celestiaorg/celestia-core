@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	ipfsapi "github.com/ipfs/interface-go-ipfs-core"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
@@ -206,6 +207,13 @@ func NewState(
 
 //----------------------------------------
 // Public interface
+
+// SetIPFSApi sets the IPFSAPI
+func (cs *State) SetIPFSApi(api iface.CoreAPI) {
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
+	cs.IpfsAPI = api
+}
 
 // SetLogger implements Service.
 func (cs *State) SetLogger(l log.Logger) {

@@ -937,7 +937,7 @@ func (n *Node) OnStart() error {
 	if err != nil {
 		return fmt.Errorf("failed to get IPFS API: %w", err)
 	}
-	n.consensusState.IpfsAPI = n.ipfsAPI
+	n.consensusState.SetIPFSApi(n.ipfsAPI)
 
 	return nil
 }
