@@ -24,10 +24,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/racedetector"
 	"github.com/lazyledger/lazyledger-core/types"
 )
-
-var raceDetectorActive = true
 
 func TestLeafPath(t *testing.T) {
 	type test struct {
@@ -247,7 +246,7 @@ func TestRetrieveBlockData(t *testing.T) {
 		t.Run(fmt.Sprintf("%s size %d", tc.name, tc.squareSize), func(t *testing.T) {
 			// if we're using the race detector, skip some large tests due to time and
 			// concurrency constraints
-			if raceDetectorActive && tc.squareSize > 8 {
+			if racedetector.IsActive() && tc.squareSize > 8 {
 				t.Skip("Not running large test due to time and concurrency constraints while race detector is active.")
 			}
 
