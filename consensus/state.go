@@ -207,6 +207,13 @@ func NewState(
 //----------------------------------------
 // Public interface
 
+// SetIPFSApi sets the IPFSAPI
+func (cs *State) SetIPFSApi(api ipfsapi.CoreAPI) {
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
+	cs.IpfsAPI = api
+}
+
 // SetLogger implements Service.
 func (cs *State) SetLogger(l log.Logger) {
 	cs.BaseService.Logger = l
