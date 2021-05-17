@@ -844,16 +844,16 @@ func DefaultConsensusConfig() *ConsensusConfig {
 // TestConsensusConfig returns a configuration for testing the consensus service
 func TestConsensusConfig() *ConsensusConfig {
 	cfg := DefaultConsensusConfig()
-	cfg.TimeoutPropose = 40 * time.Millisecond
-	cfg.TimeoutProposeDelta = 1 * time.Millisecond
-	cfg.TimeoutPrevote = 10 * time.Millisecond
-	cfg.TimeoutPrevoteDelta = 1 * time.Millisecond
-	cfg.TimeoutPrecommit = 10 * time.Millisecond
-	cfg.TimeoutPrecommitDelta = 1 * time.Millisecond
+	cfg.TimeoutPropose = 100 * time.Millisecond
+	cfg.TimeoutProposeDelta = 10 * time.Millisecond
+	cfg.TimeoutPrevote = 40 * time.Millisecond
+	cfg.TimeoutPrevoteDelta = 10 * time.Millisecond
+	cfg.TimeoutPrecommit = 40 * time.Millisecond
+	cfg.TimeoutPrecommitDelta = 10 * time.Millisecond
 	// NOTE: when modifying, make sure to update time_iota_ms (testGenesisFmt) in toml.go
-	cfg.TimeoutCommit = 10 * time.Millisecond
+	cfg.TimeoutCommit = 40 * time.Millisecond
 	cfg.SkipTimeoutCommit = true
-	cfg.PeerGossipSleepDuration = 5 * time.Millisecond
+	cfg.PeerGossipSleepDuration = 10 * time.Millisecond
 	cfg.PeerQueryMaj23SleepDuration = 250 * time.Millisecond
 	cfg.DoubleSignCheckHeight = int64(0)
 	return cfg
