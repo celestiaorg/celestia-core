@@ -104,7 +104,7 @@ func startNode(cfg *Config) error {
 		proxy.NewLocalClientCreator(app),
 		node.DefaultGenesisDocProviderFunc(tmcfg),
 		node.DefaultDBProvider,
-		ipfs.Mock(), // TODO(ismail): Should we use real IPFS for E2E?
+		ipfs.Mock(), // TODO(Wondertan): Should we use real IPFS for E2E?
 		node.DefaultMetricsProvider(tmcfg.Instrumentation),
 		nodeLogger,
 	)
