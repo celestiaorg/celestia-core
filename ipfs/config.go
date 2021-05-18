@@ -13,7 +13,7 @@ type Config struct {
 	ServeAPI bool   `mapstructure:"serve-api"`
 }
 
-// DefaultConfig returns a default config different from the default IPFS config.
+// DefaultFullNodeConfig returns a default config different from the default IPFS config.
 // This avoids conflicts with existing installations when running LazyLedger-core node
 // locally for testing purposes.
 func DefaultConfig() *Config {

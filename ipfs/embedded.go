@@ -22,12 +22,9 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/log"
 )
 
-// EmbeddedInit defines whenever IPFS repo has to be initialized for an embedded node.
-var EmbeddedInit bool
-
 // Embedded is the provider that embeds IPFS node within the same process.
 // It also returns closable for graceful node shutdown.
-func Embedded(cfg *Config, logger log.Logger) APIProvider {
+func Embedded(init bool, cfg *Config, logger log.Logger) APIProvider {
 	return func() (coreiface.CoreAPI, io.Closer, error) {
 		path := cfg.Path()
 		// NOTE: no need to validate the path before
@@ -35,7 +32,7 @@ func Embedded(cfg *Config, logger log.Logger) APIProvider {
 			return nil, nil, err
 		}
 		// Init Repo if requested
-		if EmbeddedInit {
+		if init {
 			if err := InitRepo(path, logger); err != nil {
 				return nil, nil, err
 			}
