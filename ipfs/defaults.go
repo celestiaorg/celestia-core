@@ -22,7 +22,7 @@ func DefaultFullNodeConfig() (*ipfscfg.Config, error) {
 
 	var conf = &ipfscfg.Config{
 		// ed25519 PKI identity for p2p communication
-		// TODO: Any reason not reuse ed25519 key from consensus identity?
+		// TODO(Wondertan): Any reason not reuse ed25519 key from consensus identity?
 		Identity: identity,
 		// List of libp2p peer addresses the node automatically connects on start
 		Bootstrap: ipfscfg.BootstrapPeerStrings(BootstrapPeers),
