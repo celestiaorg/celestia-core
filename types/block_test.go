@@ -1531,7 +1531,7 @@ func toMessageSlice(msgs [][]byte) []*tmproto.Message {
 	return res
 }
 
-func TestDataAvailabilityHeaderRewriteBug2(t *testing.T) {
+func TestDataAvailabilityHeaderRewriteBug(t *testing.T) {
 	ipfsNode, err := coremock.NewMockNode()
 	if err != nil {
 		t.Error(err)
