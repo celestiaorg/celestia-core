@@ -1117,7 +1117,6 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		// longer timeouts result in block proposers failing to propose blocks in time.
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 		defer cancel()
-		// TODO: post data to IPFS in a goroutine
 		cs.Logger.Error("Putting Block to ipfs", "height", block.Height)
 		err := block.PutBlock(ctx, cs.IpfsAPI.Dag())
 		if err != nil {

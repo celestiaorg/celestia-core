@@ -263,7 +263,6 @@ func (b *Block) fillDataAvailabilityHeader() {
 
 	// flatten the square and add namespaces
 	leaves := flattenNamespacedEDS(namespacedShares, extendedDataSquare)
-	fmt.Println("fillDataAvailabilityHeader len(leaves)=", len(leaves))
 	// compute the roots for each col/row
 	for i, leafSet := range leaves {
 		commitment := nmtCommitment(leafSet)
@@ -281,13 +280,9 @@ func (b *Block) fillDataAvailabilityHeader() {
 	b.NumOriginalDataShares = int64(dataSharesLen)
 }
 
-var Visit = func(_ []byte, children ...[]byte) {
-	fmt.Printf("adding leaf to tree: %x\n", children[0])
-}
-
 // nmtcommitment generates the nmt root of some namespaced data
 func nmtCommitment(namespacedData [][]byte) namespace.IntervalDigest {
-	tree := nmt.New(newBaseHashFunc, nmt.NamespaceIDSize(NamespaceSize), nmt.NodeVisitor(Visit))
+	tree := nmt.New(newBaseHashFunc, nmt.NamespaceIDSize(NamespaceSize))
 	for _, leaf := range namespacedData {
 		mustPush(tree, leaf)
 	}
@@ -337,7 +332,6 @@ func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error 
 		// compute the root in order to collect the ipld.Nodes
 		root := tree.Root()
 		rootCid, _ := nodes.CidFromNamespacedSha256(root.Bytes())
-		fmt.Println("root", rootCid)
 		// add the commitment to the header
 		if uint(i) < squareWidth {
 			if !b.DataAvailabilityHeader.ColumnRoots[i].Equal(&root) {
