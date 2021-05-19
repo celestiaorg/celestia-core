@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 
 	ipfscfg "github.com/ipfs/go-ipfs-config"
@@ -27,6 +28,8 @@ import (
 func Embedded(init bool, cfg *Config, logger log.Logger) APIProvider {
 	return func() (coreiface.CoreAPI, io.Closer, error) {
 		path := cfg.Path()
+		defer os.Setenv(ipfscfg.EnvDir, path)
+
 		// NOTE: no need to validate the path before
 		if err := plugins(path); err != nil {
 			return nil, nil, err
@@ -127,6 +130,7 @@ func serveAPI(path string, repo repo.Repo, node *core.IpfsNode) error {
 			ConstructNode: func() (*core.IpfsNode, error) {
 				return node, nil
 			},
+			ReqLog: &commands.ReqLog{},
 		}),
 		corehttp.CheckVersionOption(),
 		corehttp.HostnameOption(),
