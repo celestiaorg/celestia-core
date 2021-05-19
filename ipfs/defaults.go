@@ -32,10 +32,10 @@ func DefaultFullNodeConfig() (*ipfscfg.Config, error) {
 			Swarm: []string{
 				// listen on all network interfaces.
 				// NOTE: We don't use IPv6 for now, but we might add support for it at some point.
-				"/ip4/0.0.0.0/tcp/4001",
+				"/ip4/0.0.0.0/tcp/16001",
 			},
 			API: []string{
-				"/ip4/127.0.0.1/tcp/5001",
+				"/ip4/127.0.0.1/tcp/17001",
 			},
 			// List of public libp2p WAN address the Node can be connected with
 			// NOTE: Should be configured by Node administrator manually
@@ -87,7 +87,7 @@ func DefaultFullNodeConfig() (*ipfscfg.Config, error) {
 					Noise: ipfscfg.DefaultPriority,
 					// we don't use SECIO as it's now deprecated and has know issues
 					SECIO: ipfscfg.Disabled,
-					// we don't allow TLS option, despite being a production ready protocol, to lower bug vectors
+					// we don't allow TLS option as we use noise only
 					TLS: ipfscfg.Disabled,
 				},
 				// Multiplexers provide ability to run multiple logical streams over one transport stream, e.g TCP conn
