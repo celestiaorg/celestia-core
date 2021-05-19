@@ -633,11 +633,6 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
-	ipfs, ipfsclose, err := ipfsProvider()
-	if err != nil {
-		return nil, err
-	}
-
 	blockStore, stateDB, err := initDBs(config, dbProvider)
 	if err != nil {
 		return nil, err
@@ -736,6 +731,11 @@ func NewNode(config *cfg.Config,
 		evidencePool,
 		sm.BlockExecutorWithMetrics(smMetrics),
 	)
+
+	ipfs, ipfsclose, err := ipfsProvider()
+	if err != nil {
+		return nil, err
+	}
 
 	// Make BlockchainReactor. Don't start fast sync if we're doing a state sync first.
 	bcReactor, err := createBlockchainReactor(config, state, blockExec, blockStore, fastSync && !stateSync, logger)

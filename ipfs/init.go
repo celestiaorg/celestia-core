@@ -1,11 +1,7 @@
 package ipfs
 
 import (
-	"os"
-
-	ipfscfg "github.com/ipfs/go-ipfs-config"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
-	"github.com/ipfs/interface-go-ipfs-core/options"
 
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
@@ -27,19 +23,13 @@ func InitRepo(path string, logger log.Logger) error {
 		return err
 	}
 
-	identity, err := ipfscfg.CreateIdentity(os.Stdout, []options.KeyGenerateOption{
-		options.Key.Type(options.Ed25519Key),
-	})
+	// TODO: Define node types, pass a node type as param and get relative config instead
+	cfg, err := DefaultFullNodeConfig()
 	if err != nil {
 		return err
 	}
 
-	conf, err := ipfscfg.InitWithIdentity(identity)
-	if err != nil {
-		return err
-	}
-
-	if err := fsrepo.Init(path, conf); err != nil {
+	if err := fsrepo.Init(path, cfg); err != nil {
 		return err
 	}
 
