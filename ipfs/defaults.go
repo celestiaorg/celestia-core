@@ -11,6 +11,7 @@ import (
 // TODO: Change this to LL defaults at some point
 var BootstrapPeers, _ = ipfscfg.DefaultBootstrapPeers()
 
+// DefaultFullNodeConfig provides default embedded IPFS configuration for FullNode
 func DefaultFullNodeConfig() (*ipfscfg.Config, error) {
 	identity, err := ipfscfg.CreateIdentity(os.Stdout, []options.KeyGenerateOption{
 		options.Key.Type(options.Ed25519Key),

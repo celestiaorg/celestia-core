@@ -164,7 +164,7 @@ func TestNodeSetPrivValTCP(t *testing.T) {
 	defer signerServer.Stop() //nolint:errcheck // ignore for tests
 
 	logger := log.TestingLogger()
-	n, err := DefaultNewNode(config, ipfs.Embedded(true, config.IPFS, logger), logger)
+	n, err := DefaultNewNode(config, ipfs.Mock(), logger)
 	require.NoError(t, err)
 	assert.IsType(t, &privval.RetrySignerClient{}, n.PrivValidator())
 }
@@ -209,7 +209,7 @@ func TestNodeSetPrivValIPC(t *testing.T) {
 	defer pvsc.Stop() //nolint:errcheck // ignore for tests
 
 	logger := log.TestingLogger()
-	n, err := DefaultNewNode(config, ipfs.Embedded(true, config.IPFS, logger), logger)
+	n, err := DefaultNewNode(config, ipfs.Mock(), logger)
 	require.NoError(t, err)
 	assert.IsType(t, &privval.RetrySignerClient{}, n.PrivValidator())
 }
