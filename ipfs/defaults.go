@@ -87,7 +87,7 @@ func DefaultFullNodeConfig() (*ipfscfg.Config, error) {
 					Noise: ipfscfg.DefaultPriority,
 					// we don't use SECIO as it's now deprecated and has know issues
 					SECIO: ipfscfg.Disabled,
-					// we don't allow TLS option, even it's a production ready protocol, to lower bug vectors
+					// we don't allow TLS option, despite being a production ready protocol, to lower bug vectors
 					TLS: ipfscfg.Disabled,
 				},
 				// Multiplexers provide ability to run multiple logical streams over one transport stream, e.g TCP conn
