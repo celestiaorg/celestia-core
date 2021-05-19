@@ -73,7 +73,7 @@ func DefaultFullNodeConfig() (*ipfscfg.Config, error) {
 			Transports: ipfscfg.Transports{
 				Network: transport{
 					// we default to TCP as it's most common, battle tested transport, but we may migrate to the one below
-					TCP: ipfscfg.False,
+					TCP: ipfscfg.True,
 					// we might default to QUIC at some point, but for now TCP is more common and reliable
 					QUIC: ipfscfg.False,
 					// we don't use Websocket as we don't target for browser nodes
