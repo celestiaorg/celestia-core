@@ -8,7 +8,7 @@ import (
 )
 
 // BootstrapPeers is a list of default bootstrap peers for IPFS network
-// TODO: Change this to LL defaults at some point
+// TODO(Wondertan): Change this to LL defaults at some point
 var BootstrapPeers, _ = ipfscfg.DefaultBootstrapPeers()
 
 // DefaultFullNodeConfig provides default embedded IPFS configuration for FullNode
