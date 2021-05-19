@@ -1510,7 +1510,10 @@ func (app *preprocessingApp) PreprocessTxs(
 	randTxs := generateRandTxs(64, 256)
 	randMsgs := generateRandNamespacedRawData(128, nmt.DefaultNamespaceIDLen, 256)
 	randMessages := toMessageSlice(randMsgs)
-	return abci.ResponsePreprocessTxs{Txs: append(req.Txs, randTxs...), Messages: &tmproto.Messages{MessagesList: randMessages}}
+	return abci.ResponsePreprocessTxs{
+		Txs:      append(req.Txs, randTxs...),
+		Messages: &tmproto.Messages{MessagesList: randMessages},
+	}
 }
 func generateRandTxs(num int, size int) [][]byte {
 	randMsgs := generateRandNamespacedRawData(num, nmt.DefaultNamespaceIDLen, size)
