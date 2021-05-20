@@ -23,7 +23,8 @@ func NewDB(dbName, dir string) (*BadgerDB, error) {
 	}
 	opts := badger.DefaultOptions(path)
 	opts.SyncWrites = false // note that we have Sync methods
-	opts.Logger = nil       // badger is too chatty by default
+	// TODO(ismail): investigate if we don't want a logger here at least for errors though:
+	opts.Logger = nil // badger is too chatty by default
 	return NewDBWithOptions(opts)
 }
 
@@ -46,6 +47,7 @@ func NewInMemoryDB() (*BadgerDB, error) {
 	opts.NumCompactors = 2          // minimize number of go-routines
 	opts.Compression = options.None // this is supposed to be short-lived
 	opts.ZSTDCompressionLevel = 0   // this is supposed to be short-lived
+	opts.Logger = nil               // there is not much that can go wrong in-memory
 	db, err := badger.Open(opts)
 	if err != nil {
 		return nil, err
