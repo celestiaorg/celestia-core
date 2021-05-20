@@ -4,7 +4,6 @@ import (
 	// it is ok to use math/rand here: we do not need a cryptographically secure random
 	// number generator here and we can run the tests a bit faster
 	stdbytes "bytes"
-	"context"
 	"encoding/hex"
 	"math"
 	mrand "math/rand"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	gogotypes "github.com/gogo/protobuf/types"
-	"github.com/ipfs/go-ipfs/core/coreapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -30,7 +28,6 @@ import (
 	"github.com/lazyledger/lazyledger-core/types/consts"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 	"github.com/lazyledger/lazyledger-core/version"
-	"github.com/lazyledger/nmt"
 )
 
 func TestMain(m *testing.M) {
@@ -1423,93 +1420,6 @@ func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byt
 	}
 
 	return data
-}
-
-type preprocessingApp struct {
-	abci.BaseApplication
-}
-
-func (app *preprocessingApp) PreprocessTxs(
-	req abci.RequestPreprocessTxs) abci.ResponsePreprocessTxs {
-	time.Sleep(time.Second * 2)
-	randTxs := generateRandTxs(64, 256)
-	randMsgs := generateRandNamespacedRawData(128, nmt.DefaultNamespaceIDLen, 256)
-	randMessages := toMessageSlice(randMsgs)
-	return abci.ResponsePreprocessTxs{
-		Txs:      append(req.Txs, randTxs...),
-		Messages: &tmproto.Messages{MessagesList: randMessages},
-	}
-}
-func generateRandTxs(num int, size int) [][]byte {
-	randMsgs := generateRandNamespacedRawData(num, nmt.DefaultNamespaceIDLen, size)
-	for _, msg := range randMsgs {
-		copy(msg[:nmt.DefaultNamespaceIDLen], consts.TxNamespaceID)
-	}
-	return randMsgs
-}
-
-func toMessageSlice(msgs [][]byte) []*tmproto.Message {
-	res := make([]*tmproto.Message, len(msgs))
-	for i := 0; i < len(msgs); i++ {
-		res[i] = &tmproto.Message{NamespaceId: msgs[i][:nmt.DefaultNamespaceIDLen], Data: msgs[i][nmt.DefaultNamespaceIDLen:]}
-	}
-	return res
-}
-
-func TestDataAvailabilityHeaderRewriteBug(t *testing.T) {
-	ipfsNode, err := coremock.NewMockNode()
-	if err != nil {
-		t.Error(err)
-	}
-
-	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
-	if err != nil {
-		t.Error(err)
-	}
-	txs := Txs{}
-	l := len(txs)
-	bzs := make([][]byte, l)
-	for i := 0; i < l; i++ {
-		bzs[i] = txs[i]
-	}
-	app := &preprocessingApp{}
-
-	// See state.CreateProposalBlock to understand why we do this here:
-	processedBlockTxs := app.PreprocessTxs(abci.RequestPreprocessTxs{Txs: bzs})
-	ppt := processedBlockTxs.GetTxs()
-
-	pbmessages := processedBlockTxs.GetMessages()
-
-	lp := len(ppt)
-	processedTxs := make(Txs, lp)
-	if lp > 0 {
-		for i := 0; i < l; i++ {
-			processedTxs[i] = ppt[i]
-		}
-	}
-
-	messages := MessagesFromProto(pbmessages)
-	lastID := makeBlockIDRandom()
-	h := int64(3)
-
-	voteSet, _, vals := randVoteSet(h-1, 1, tmproto.PrecommitType, 10, 1)
-	commit, err := MakeCommit(lastID, h-1, 1, voteSet, vals, time.Now())
-	assert.NoError(t, err)
-	block := MakeBlock(1, processedTxs, nil, nil, messages, commit)
-	block.Hash()
-
-	hash1 := block.DataAvailabilityHeader.Hash()
-
-	ctx := context.TODO()
-	err = block.PutBlock(ctx, ipfsAPI.Dag())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	block.fillDataAvailabilityHeader()
-	hash2 := block.DataAvailabilityHeader.Hash()
-	assert.Equal(t, hash1, hash2)
-
 }
 
 func sortByteArrays(src [][]byte) {

@@ -2,7 +2,6 @@ package types
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -11,8 +10,6 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
-	format "github.com/ipfs/go-ipld-format"
-	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
 	"github.com/lazyledger/rsmt2d"
 
@@ -275,44 +272,6 @@ func (b *Block) fillDataAvailabilityHeader() {
 	// return the root hash of DA Header
 	b.DataHash = b.DataAvailabilityHeader.Hash()
 	b.NumOriginalDataShares = uint64(dataSharesLen)
-}
-
-// PutBlock posts and pins erasured block data to IPFS using the provided
-// ipld.NodeAdder. Note: the erasured data is currently recomputed
-func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error {
-	if nodeAdder == nil {
-		return errors.New("no ipfs node adder provided")
-	}
-
-	// recompute the shares
-	namespacedShares, _ := b.Data.ComputeShares()
-	shares := namespacedShares.RawShares()
-
-	// don't do anything if there is no data to put on IPFS
-	if len(shares) == 0 {
-		return nil
-	}
-
-	// create nmt adder wrapping batch adder
-	batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, nodeAdder))
-
-	// create the nmt wrapper to generate row and col commitments
-	squareSize := uint32(math.Sqrt(float64(len(shares))))
-	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(squareSize), nmt.NodeVisitor(batchAdder.Visit))
-
-	// recompute the eds
-	eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), tree.Constructor)
-	if err != nil {
-		return fmt.Errorf("failure to recompute the extended data square: %w", err)
-	}
-
-	// thanks to the batchAdder.Visit func we added to the nmt wrapper,
-	// generating the roots will start adding the data to IPFS
-	eds.RowRoots()
-	eds.ColumnRoots()
-
-	// commit the batch to ipfs
-	return batchAdder.Commit()
 }
 
 // Hash computes and returns the block hash.

@@ -329,7 +329,7 @@ func getNmtRoot(
 	namespacedData [][]byte,
 ) (namespace.IntervalDigest, error) {
 	na := NewNmtNodeAdder(ctx, batch)
-	tree := nmt.New(sha256.New(), nmt.NamespaceIDSize(types.NamespaceSize), nmt.NodeVisitor(na.Visit))
+	tree := nmt.New(sha256.New(), nmt.NamespaceIDSize(consts.NamespaceSize), nmt.NodeVisitor(na.Visit))
 	for _, leaf := range namespacedData {
 		err := tree.Push(leaf)
 		if err != nil {
