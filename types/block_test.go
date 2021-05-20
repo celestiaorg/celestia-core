@@ -25,6 +25,7 @@ import (
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 	"github.com/lazyledger/lazyledger-core/version"
 )
@@ -212,8 +213,8 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
 }
 
 func makeDAHeaderRandom() *DataAvailabilityHeader {
-	rows, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*NamespaceSize + tmhash.Size)})
-	clns, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*NamespaceSize + tmhash.Size)})
+	rows, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
+	clns, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
 	return &DataAvailabilityHeader{
 		RowsRoots:   rows,
 		ColumnRoots: clns,
@@ -240,7 +241,7 @@ func TestNilDataAvailabilityHeaderHashDoesntCrash(t *testing.T) {
 func TestEmptyBlockData(t *testing.T) {
 	blockData := Data{}
 	shares, _ := blockData.ComputeShares()
-	assert.Equal(t, GenerateTailPaddingShares(MinSquareSize, ShareSize), shares)
+	assert.Equal(t, GenerateTailPaddingShares(consts.MinSquareSize, consts.ShareSize), shares)
 }
 
 func TestCommit(t *testing.T) {

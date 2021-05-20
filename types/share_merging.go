@@ -8,6 +8,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	"github.com/lazyledger/rsmt2d"
 )
 
@@ -29,22 +30,22 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 		for y := uint(0); y < originalWidth; y++ {
 			// sort the data of that share types via namespace
 			share := eds.Cell(x, y)
-			nid := share[:NamespaceSize]
+			nid := share[:consts.NamespaceSize]
 			switch {
-			case bytes.Equal(TxNamespaceID, nid):
+			case bytes.Equal(consts.TxNamespaceID, nid):
 				sortedTxShares = append(sortedTxShares, share)
 
-			case bytes.Equal(IntermediateStateRootsNamespaceID, nid):
+			case bytes.Equal(consts.IntermediateStateRootsNamespaceID, nid):
 				sortedISRShares = append(sortedISRShares, share)
 
-			case bytes.Equal(EvidenceNamespaceID, nid):
+			case bytes.Equal(consts.EvidenceNamespaceID, nid):
 				sortedEvdShares = append(sortedEvdShares, share)
 
-			case bytes.Equal(TailPaddingNamespaceID, nid):
+			case bytes.Equal(consts.TailPaddingNamespaceID, nid):
 				continue
 
 			// ignore unused but reserved namespaces
-			case bytes.Compare(nid, MaxReservedNamespace) < 1:
+			case bytes.Compare(nid, consts.MaxReservedNamespace) < 1:
 				continue
 
 			// every other namespaceID should be a message
@@ -185,7 +186,7 @@ func (ss *shareStack) resolve() ([][]byte, error) {
 	if len(ss.shares) == 0 {
 		return nil, nil
 	}
-	err := ss.peel(ss.shares[0][NamespaceSize+ShareReservedBytes:], true)
+	err := ss.peel(ss.shares[0][consts.NamespaceSize+consts.ShareReservedBytes:], true)
 	return ss.txs, err
 }
 
@@ -218,7 +219,7 @@ func (ss *shareStack) peel(share []byte, delimited bool) (err error) {
 	// add the next share to the current share to continue merging if possible
 	if len(ss.shares) > ss.cursor+1 {
 		ss.cursor++
-		share := append(share, ss.shares[ss.cursor][NamespaceSize+ShareReservedBytes:]...)
+		share := append(share, ss.shares[ss.cursor][consts.NamespaceSize+consts.ShareReservedBytes:]...)
 		return ss.peel(share, false)
 	}
 	// collect any remaining data
@@ -238,8 +239,8 @@ func parseMsgShares(shares [][]byte) ([]Message, error) {
 	}
 
 	// set the first nid and current share
-	nid := shares[0][:NamespaceSize]
-	currentShare := shares[0][NamespaceSize:]
+	nid := shares[0][:consts.NamespaceSize]
+	currentShare := shares[0][consts.NamespaceSize:]
 	// find and remove the msg len delimiter
 	currentShare, msgLen, err := parseDelimiter(currentShare)
 	if err != nil {
@@ -280,7 +281,7 @@ func nextMsg(
 	case msgLen > uint64(len(current)):
 		// add the next share to the current one and try again
 		cursor++
-		current = append(current, shares[cursor][NamespaceSize:]...)
+		current = append(current, shares[cursor][consts.NamespaceSize:]...)
 		return nextMsg(shares, current, nid, cursor, msgLen)
 
 	// the msg we're looking for is contained in the current share
@@ -293,8 +294,8 @@ func nextMsg(
 			return nil, nil, cursor, 0, msg, nil
 		}
 
-		nextNid := shares[cursor][:NamespaceSize]
-		next, msgLen, err := parseDelimiter(shares[cursor][NamespaceSize:])
+		nextNid := shares[cursor][:consts.NamespaceSize]
+		next, msgLen, err := parseDelimiter(shares[cursor][consts.NamespaceSize:])
 		return next, nextNid, cursor, msgLen, msg, err
 	}
 	// this code is unreachable but the compiler doesn't know that
