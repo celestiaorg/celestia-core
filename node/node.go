@@ -67,6 +67,11 @@ func DefaultDBProvider(ctx *DBContext) (dbm.DB, error) {
 	return badgerdb.NewDB(ctx.ID, ctx.Config.DBDir())
 }
 
+// InMemDBProvider provides an in-memory DB.
+func InMemDBProvider(ctx *DBContext) (dbm.DB, error) {
+	return badgerdb.NewInMemoryDB()
+}
+
 // GenesisDocProvider returns a GenesisDoc.
 // It allows the GenesisDoc to be pulled from sources other than the
 // filesystem, for instance from a distributed key-value store cluster.
