@@ -11,7 +11,7 @@ import (
 	"github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/lazyledger/rsmt2d"
 
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/lazyledger-core/types/consts"
@@ -41,7 +41,7 @@ func RetrieveBlockData(
 	// half of the rows
 	for _, row := range uniqueRandNumbers(edsWidth/2, edsWidth) {
 		for _, col := range uniqueRandNumbers(edsWidth/2, edsWidth) {
-			rootCid, err := nodes.CidFromNamespacedSha256(rowRoots[row])
+			rootCid, err := plugin.CidFromNamespacedSha256(rowRoots[row])
 			if err != nil {
 				return types.Data{}, err
 			}

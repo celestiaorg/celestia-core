@@ -1,6 +1,6 @@
 // +build race
 
-package ipld
+package racedetector
 
 func init() {
 	raceDetectorActive = true

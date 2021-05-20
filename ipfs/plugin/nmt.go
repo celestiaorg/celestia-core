@@ -1,9 +1,8 @@
-package nodes
+package plugin
 
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -11,8 +10,6 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-ipfs/core/coredag"
-	"github.com/ipfs/go-ipfs/plugin"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/lazyledger/nmt"
 	mh "github.com/multiformats/go-multihash"
@@ -22,10 +19,10 @@ const (
 	// Below used multiformats (one codec, one multihash) seem free:
 	// https://github.com/multiformats/multicodec/blob/master/table.csv
 
-	// Nmt is the codec used for leaf and inner nodes of an Namespaced Merkle Tree.
-	Nmt = 0x7700
+	// NmtCodec is the codec used for leaf and inner nodes of an Namespaced Merkle Tree.
+	NmtCodec = 0x7700
 
-	// NmtCodecName is the name used during registry of the Nmt codec
+	// NmtCodecName is the name used during registry of the NmtCodec codec
 	NmtCodecName = "nmt-node"
 
 	// Sha256Namespace8Flagged is the multihash code used to hash blocks
@@ -53,10 +50,10 @@ func init() {
 		sumSha256Namespace8Flagged,
 	)
 	// this should already happen when the plugin is injected but it doesn't for some CI tests
-	ipld.DefaultBlockDecoder.Register(Nmt, NmtNodeParser)
+	ipld.DefaultBlockDecoder.Register(NmtCodec, NmtNodeParser)
 	// register the codecs in the global maps
-	cid.Codecs[NmtCodecName] = Nmt
-	cid.CodecToStr[Nmt] = NmtCodecName
+	cid.Codecs[NmtCodecName] = NmtCodec
+	cid.CodecToStr[NmtCodec] = NmtCodecName
 }
 
 func mustRegisterNamespacedCodec(
@@ -89,34 +86,6 @@ func sumSha256Namespace8Flagged(data []byte, _length int) ([]byte, error) {
 		return nmt.Sha256Namespace8FlaggedLeaf(data[1:]), nil
 	}
 	return nmt.Sha256Namespace8FlaggedInner(data[1:]), nil
-}
-
-var Plugins = []plugin.Plugin{&LazyLedgerPlugin{}}
-
-var _ plugin.PluginIPLD = &LazyLedgerPlugin{}
-
-type LazyLedgerPlugin struct{}
-
-func (l LazyLedgerPlugin) RegisterBlockDecoders(dec ipld.BlockDecoder) error {
-	dec.Register(Nmt, NmtNodeParser)
-	return nil
-}
-
-func (l LazyLedgerPlugin) RegisterInputEncParsers(iec coredag.InputEncParsers) error {
-	iec.AddParser("raw", DagParserFormatName, DataSquareRowOrColumnRawInputParser)
-	return nil
-}
-
-func (l LazyLedgerPlugin) Name() string {
-	return "LazyLedger"
-}
-
-func (l LazyLedgerPlugin) Version() string {
-	return "0.0.0"
-}
-
-func (l LazyLedgerPlugin) Init(env *plugin.Environment) error {
-	return nil
 }
 
 // DataSquareRowOrColumnRawInputParser reads the raw shares and extract the IPLD nodes from the NMT tree.
@@ -176,7 +145,7 @@ func (n nmtNodeCollector) ipldNodes() []ipld.Node {
 }
 
 func (n *nmtNodeCollector) visit(hash []byte, children ...[]byte) {
-	cid := mustCidFromNamespacedSha256(hash)
+	cid := MustCidFromNamespacedSha256(hash)
 	switch len(children) {
 	case 1:
 		n.nodes = prependNode(nmtLeafNode{
@@ -199,66 +168,6 @@ func prependNode(newNode ipld.Node, nodes []ipld.Node) []ipld.Node {
 	copy(nodes[1:], nodes)
 	nodes[0] = newNode
 	return nodes
-}
-
-// NmtNodeAdder adds ipld.Nodes to the underlying ipld.Batch if it is inserted
-// into an nmt tree
-type NmtNodeAdder struct {
-	ctx    context.Context
-	batch  *ipld.Batch
-	leaves *cid.Set
-	err    error
-}
-
-// NewNmtNodeAdder returns a new NmtNodeAdder with the provided context and
-// batch. Note that the context provided should have a timeout
-// It is not thread-safe.
-func NewNmtNodeAdder(ctx context.Context, batch *ipld.Batch) *NmtNodeAdder {
-	return &NmtNodeAdder{
-		batch:  batch,
-		ctx:    ctx,
-		leaves: cid.NewSet(),
-	}
-}
-
-// Visit can be inserted into an nmt tree to create ipld.Nodes while computing the root
-func (n *NmtNodeAdder) Visit(hash []byte, children ...[]byte) {
-	if n.err != nil {
-		return // protect from further visits if there is an error
-	}
-
-	cid := mustCidFromNamespacedSha256(hash)
-	switch len(children) {
-	case 1:
-		if n.leaves.Visit(cid) {
-			n.err = n.batch.Add(n.ctx, nmtLeafNode{
-				cid:  cid,
-				Data: children[0],
-			})
-		}
-	case 2:
-		n.err = n.batch.Add(n.ctx, nmtNode{
-			cid: cid,
-			l:   children[0],
-			r:   children[1],
-		})
-	default:
-		panic("expected a binary tree")
-	}
-}
-
-// Batch return the ipld.Batch originally provided to the NmtNodeAdder
-func (n *NmtNodeAdder) Batch() *ipld.Batch {
-	return n.batch
-}
-
-// Commit checks for errors happened during Visit and if absent commits data to inner Batch.
-func (n *NmtNodeAdder) Commit() error {
-	if n.err != nil {
-		return n.err
-	}
-
-	return n.batch.Commit()
 }
 
 func NmtNodeParser(block blocks.Block) (ipld.Node, error) {
@@ -304,6 +213,10 @@ type nmtNode struct {
 	// TODO(ismail): we might want to export these later
 	cid  cid.Cid
 	l, r []byte
+}
+
+func NewNMTNode(id cid.Cid, l, r []byte) ipld.Node {
+	return nmtNode{id, l, r}
 }
 
 func (n nmtNode) RawData() []byte {
@@ -385,8 +298,8 @@ func (n nmtNode) Copy() ipld.Node {
 }
 
 func (n nmtNode) Links() []*ipld.Link {
-	leftCid := mustCidFromNamespacedSha256(n.l)
-	rightCid := mustCidFromNamespacedSha256(n.r)
+	leftCid := MustCidFromNamespacedSha256(n.l)
+	rightCid := MustCidFromNamespacedSha256(n.r)
 
 	return []*ipld.Link{{Cid: leftCid}, {Cid: rightCid}}
 }
@@ -402,6 +315,10 @@ func (n nmtNode) Size() (uint64, error) {
 type nmtLeafNode struct {
 	cid  cid.Cid
 	Data []byte
+}
+
+func NewNMTLeafNode(id cid.Cid, data []byte) ipld.Node {
+	return &nmtLeafNode{id, data}
 }
 
 func (l nmtLeafNode) RawData() []byte {
@@ -470,12 +387,12 @@ func CidFromNamespacedSha256(namespacedHash []byte) (cid.Cid, error) {
 	if err != nil {
 		return cid.Undef, err
 	}
-	return cid.NewCidV1(Nmt, mh.Multihash(buf)), nil
+	return cid.NewCidV1(NmtCodec, mh.Multihash(buf)), nil
 }
 
-// mustCidFromNamespacedSha256 is a wrapper around cidFromNamespacedSha256 that panics
+// MustCidFromNamespacedSha256 is a wrapper around cidFromNamespacedSha256 that panics
 // in case of an error. Use with care and only in places where no error should occur.
-func mustCidFromNamespacedSha256(hash []byte) cid.Cid {
+func MustCidFromNamespacedSha256(hash []byte) cid.Cid {
 	cid, err := CidFromNamespacedSha256(hash)
 	if err != nil {
 		panic(
