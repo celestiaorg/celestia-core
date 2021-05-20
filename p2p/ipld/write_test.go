@@ -187,7 +187,13 @@ func makeBlockIDRandom() types.BlockID {
 	)
 	mrand.Read(blockHash)
 	mrand.Read(partSetHash)
-	return types.BlockID{blockHash, types.PartSetHeader{123, partSetHash}}
+	return types.BlockID{
+		Hash: blockHash,
+		PartSetHeader: types.PartSetHeader{
+			Total: 123,
+			Hash:  partSetHash,
+		},
+	}
 }
 
 func randVoteSet(
