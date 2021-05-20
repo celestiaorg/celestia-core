@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v3/options"
 
 	"github.com/lazyledger/lazyledger-core/libs/db"
 )
@@ -30,6 +31,21 @@ func NewDB(dbName, dir string) (*BadgerDB, error) {
 // gives the flexibility of initializing a database with the
 // respective options.
 func NewDBWithOptions(opts badger.Options) (*BadgerDB, error) {
+	db, err := badger.Open(opts)
+	if err != nil {
+		return nil, err
+	}
+	return &BadgerDB{db: db}, nil
+}
+
+// NewInMemoryDB creates a light weight in-memory BadgerDB.
+// Mainly useful for unit-tests.
+func NewInMemoryDB() (*BadgerDB, error) {
+	opts := badger.DefaultOptions("")
+	opts.InMemory = true
+	opts.NumCompactors = 2          // minimize number of go-routines
+	opts.Compression = options.None // this is supposed to be short-lived
+	opts.ZSTDCompressionLevel = 0   // this is supposed to be short-lived
 	db, err := badger.Open(opts)
 	if err != nil {
 		return nil, err
