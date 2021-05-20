@@ -615,7 +615,7 @@ func TestTransportHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ni, err := handshake(c, 20*time.Millisecond, emptyNodeInfo())
+	ni, err := handshake(c, 100*time.Millisecond, emptyNodeInfo())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -651,7 +651,7 @@ func testSetupMultiplexTransport(t *testing.T) *MultiplexTransport {
 	}
 
 	// give the listener some time to get ready
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	return mt
 }

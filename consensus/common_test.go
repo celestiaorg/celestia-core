@@ -52,7 +52,7 @@ type cleanupFunc func()
 var (
 	config                *cfg.Config // NOTE: must be reset for each _test.go file
 	consensusReplayConfig *cfg.Config
-	ensureTimeout         = 2400 * time.Millisecond
+	ensureTimeout         = 1000 * time.Millisecond
 )
 
 func ensureDir(dir string, mode os.FileMode) {

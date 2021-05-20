@@ -2,8 +2,6 @@ package types
 
 import (
 	"bytes"
-	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math"
@@ -12,8 +10,6 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
-	format "github.com/ipfs/go-ipld-format"
-
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
 	"github.com/lazyledger/rsmt2d"
@@ -26,7 +22,6 @@ import (
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
 	"github.com/lazyledger/lazyledger-core/version"
@@ -300,6 +295,7 @@ func (b *Block) fillHeader() {
 	}
 }
 
+// TODO: Move out from 'types' package
 // fillDataAvailabilityHeader fills in any remaining DataAvailabilityHeader fields
 // that are a function of the block data.
 func (b *Block) fillDataAvailabilityHeader() {
@@ -322,7 +318,7 @@ func (b *Block) fillDataAvailabilityHeader() {
 	}
 
 	// flatten the square and add namespaces
-	leaves := flattenNamespacedEDS(namespacedShares, extendedDataSquare)
+	leaves := FlattenNamespacedEDS(namespacedShares, extendedDataSquare)
 
 	// compute the roots for each col/row
 	for i, leafSet := range leaves {
@@ -363,55 +359,10 @@ func mustPush(rowTree *nmt.NamespacedMerkleTree, nidAndData []byte) {
 	}
 }
 
-// PutBlock posts and pins erasured block data to IPFS using the provided
-// ipld.NodeAdder. Note: the erasured data is currently recomputed
-func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error {
-	if nodeAdder == nil {
-		return errors.New("no ipfs node adder provided")
-	}
-
-	// recompute the shares
-	namespacedShares, _ := b.Data.ComputeShares()
-	shares := namespacedShares.RawShares()
-
-	// don't do anything if there is no data to put on IPFS
-	if len(shares) == 0 {
-		return nil
-	}
-
-	// recompute the eds
-	eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), rsmt2d.NewDefaultTree)
-	if err != nil {
-		return fmt.Errorf("failure to recompute the extended data square: %w", err)
-	}
-
-	// add namespaces to erasured shares and flatten the eds
-	leaves := flattenNamespacedEDS(namespacedShares, eds)
-
-	// create nmt adder wrapping batch adder
-	batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, nodeAdder))
-
-	// iterate through each set of col and row leaves
-	for _, leafSet := range leaves {
-		tree := nmt.New(sha256.New(), nmt.NodeVisitor(batchAdder.Visit))
-		for _, share := range leafSet {
-			err = tree.Push(share)
-			if err != nil {
-				return err
-			}
-		}
-
-		// compute the root in order to collect the ipld.Nodes
-		tree.Root()
-	}
-
-	// commit the batch to ipfs
-	return batchAdder.Commit()
-}
-
-// flattenNamespacedEDS returns a flattend extendedDataSquare with namespaces
+// TODO: Move out from 'types' package
+// FlattenNamespacedEDS returns a flattend extendedDataSquare with namespaces
 // added to each share. NOTE: output is columns first then rows
-func flattenNamespacedEDS(nss NamespacedShares, eds *rsmt2d.ExtendedDataSquare) [][][]byte {
+func FlattenNamespacedEDS(nss NamespacedShares, eds *rsmt2d.ExtendedDataSquare) [][][]byte {
 	squareWidth := eds.Width()
 	originalDataWidth := squareWidth / 2
 
@@ -1453,9 +1404,9 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	msgShares := data.Messages.splitIntoShares()
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 
-	// FIXME(ismail): this is not a power of two
-	// see: https://github.com/lazyledger/lazyledger-specs/issues/80 and
-	wantLen := getNextSquareNum(curLen)
+	// find the number of shares needed to create a square that has a power of
+	// two width
+	wantLen := paddedLen(curLen)
 
 	// ensure that the min square size is used
 	if wantLen < minSharecount {
@@ -1472,10 +1423,32 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 		tailShares...), curLen
 }
 
-func getNextSquareNum(length int) int {
-	width := int(math.Ceil(math.Sqrt(float64(length))))
-	// TODO(ismail): make width a power of two instead
-	return width * width
+// paddedLen calculates the number of shares needed to make a power of 2 square
+// given the current number of shares
+func paddedLen(length int) int {
+	width := uint32(math.Ceil(math.Sqrt(float64(length))))
+	width = nextHighestPowerOf2(width)
+	return int(width * width)
+}
+
+// nextPowerOf2 returns the next highest power of 2 unless the input is a power
+// of two, in which case it returns the input
+func nextHighestPowerOf2(v uint32) uint32 {
+	if v == 0 {
+		return 0
+	}
+
+	// find the next highest power using bit mashing
+	v--
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+	v++
+
+	// return the next highest power
+	return v
 }
 
 type Message struct {

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	ipfsapi "github.com/ipfs/interface-go-ipfs-core"
+	ipface "github.com/ipfs/interface-go-ipfs-core"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	"github.com/lazyledger/lazyledger-core/crypto"
@@ -25,6 +25,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/service"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -93,7 +94,7 @@ type State struct {
 	// store blocks and commits
 	blockStore sm.BlockStore
 
-	IpfsAPI ipfsapi.CoreAPI
+	ipfs ipface.CoreAPI
 
 	// create and execute blocks
 	blockExec *sm.BlockExecutor
@@ -205,6 +206,13 @@ func NewState(
 
 //----------------------------------------
 // Public interface
+
+// SetIPFSApi sets the IPFSAPI
+func (cs *State) SetIPFSApi(api ipface.CoreAPI) {
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
+	cs.ipfs = api
+}
 
 // SetLogger implements Service.
 func (cs *State) SetLogger(l log.Logger) {
@@ -1115,12 +1123,12 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 	// post data to ipfs
 	// TODO(evan): don't hard code context and timeout
-	if cs.IpfsAPI != nil {
+	if cs.ipfs != nil {
 		// longer timeouts result in block proposers failing to propose blocks in time.
 		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
 		defer cancel()
 		// TODO: post data to IPFS in a goroutine
-		err := block.PutBlock(ctx, cs.IpfsAPI.Dag())
+		err := ipld.PutBlock(ctx, cs.ipfs.Dag(), block)
 		if err != nil {
 			cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
 		}

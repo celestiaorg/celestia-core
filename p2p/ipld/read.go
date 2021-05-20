@@ -2,7 +2,6 @@ package ipld
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -12,7 +11,7 @@ import (
 	"github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/lazyledger/rsmt2d"
 
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -40,7 +39,7 @@ func RetrieveBlockData(
 	// half of the rows
 	for _, row := range uniqueRandNumbers(edsWidth/2, edsWidth) {
 		for _, col := range uniqueRandNumbers(edsWidth/2, edsWidth) {
-			rootCid, err := nodes.CidFromNamespacedSha256(rowRoots[row])
+			rootCid, err := plugin.CidFromNamespacedSha256(rowRoots[row])
 			if err != nil {
 				return types.Data{}, err
 			}
@@ -246,8 +245,8 @@ func GetLeafData(
 
 func leafPath(index, total uint32) ([]string, error) {
 	// ensure that the total is a power of two
-	if total != nextPowerOf2(total) {
-		return nil, errors.New("expected total to be a power of 2")
+	if !isPowerOf2(total) {
+		return nil, fmt.Errorf("expected total to be a power of 2, got %d", total)
 	}
 
 	if total == 0 {
@@ -269,29 +268,7 @@ func leafPath(index, total uint32) ([]string, error) {
 	return path, nil
 }
 
-// nextPowerOf2 returns the next lowest power of 2 unless the input is a power
-// of two, in which case it returns the input
-func nextPowerOf2(v uint32) uint32 {
-	if v == 1 {
-		return 1
-	}
-	// keep track of the input
-	i := v
-
-	// find the next highest power using bit mashing
-	v--
-	v |= v >> 1
-	v |= v >> 2
-	v |= v >> 4
-	v |= v >> 8
-	v |= v >> 16
-	v++
-
-	// check if the input was the next highest power
-	if i == v {
-		return v
-	}
-
-	// return the next lowest power
-	return v / 2
+// isPowerOf2 returns checks if a given number is a power of two
+func isPowerOf2(v uint32) bool {
+	return math.Ceil(math.Log2(float64(v))) == math.Floor(math.Log2(float64(v)))
 }
