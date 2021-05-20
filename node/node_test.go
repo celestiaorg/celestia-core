@@ -19,6 +19,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	"github.com/lazyledger/lazyledger-core/evidence"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -34,13 +35,35 @@ import (
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
 
+func defaultNewTestNode(config *cfg.Config, logger log.Logger) (*Node, error) {
+	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
+	if err != nil {
+		return nil, fmt.Errorf("failed to load or gen node key %s: %w", config.NodeKeyFile(), err)
+	}
+
+	pval, err := privval.LoadOrGenFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile())
+	if err != nil {
+		return nil, err
+	}
+
+	return NewNode(config,
+		pval,
+		nodeKey,
+		proxy.DefaultClientCreator(config.ProxyApp, config.ABCI, config.DBDir()),
+		DefaultGenesisDocProviderFunc(config),
+		InMemDBProvider,
+		ipfs.Mock(),
+		DefaultMetricsProvider(config.Instrumentation),
+		logger,
+	)
+}
+
 func TestNodeStartStop(t *testing.T) {
 	config := cfg.ResetTestRoot("node_node_test")
 	defer os.RemoveAll(config.RootDir)
 
 	// create & start node
-	n, err := DefaultNewNode(config, log.TestingLogger())
-	n.embedIpfsNode = false // TODO: or init ipfs upfront
+	n, err := defaultNewTestNode(config, log.TestingLogger())
 	require.NoError(t, err)
 	err = n.Start()
 	require.NoError(t, err)
@@ -103,8 +126,7 @@ func TestNodeDelayedStart(t *testing.T) {
 	now := tmtime.Now()
 
 	// create & start node
-	n, err := DefaultNewNode(config, log.TestingLogger())
-	n.embedIpfsNode = false // TODO: or init ipfs upfront
+	n, err := defaultNewTestNode(config, log.TestingLogger())
 	n.GenesisDoc().GenesisTime = now.Add(2 * time.Second)
 	require.NoError(t, err)
 
@@ -121,7 +143,7 @@ func TestNodeSetAppVersion(t *testing.T) {
 	defer os.RemoveAll(config.RootDir)
 
 	// create & start node
-	n, err := DefaultNewNode(config, log.TestingLogger())
+	n, err := defaultNewTestNode(config, log.TestingLogger())
 	require.NoError(t, err)
 
 	// default config uses the kvstore app
@@ -137,6 +159,7 @@ func TestNodeSetAppVersion(t *testing.T) {
 }
 
 func TestNodeSetPrivValTCP(t *testing.T) {
+	t.Skip("TODO(ismail): Mock these conns using net.Pipe instead")
 	addr := "tcp://" + testFreeAddr(t)
 
 	config := cfg.ResetTestRoot("node_priv_val_tcp_test")
@@ -164,7 +187,8 @@ func TestNodeSetPrivValTCP(t *testing.T) {
 	}()
 	defer signerServer.Stop() //nolint:errcheck // ignore for tests
 
-	n, err := DefaultNewNode(config, log.TestingLogger())
+	logger := log.TestingLogger()
+	n, err := defaultNewTestNode(config, logger)
 	require.NoError(t, err)
 	assert.IsType(t, &privval.RetrySignerClient{}, n.PrivValidator())
 }
@@ -177,7 +201,7 @@ func TestPrivValidatorListenAddrNoProtocol(t *testing.T) {
 	defer os.RemoveAll(config.RootDir)
 	config.BaseConfig.PrivValidatorListenAddr = addrNoPrefix
 
-	_, err := DefaultNewNode(config, log.TestingLogger())
+	_, err := defaultNewTestNode(config, log.TestingLogger())
 	assert.Error(t, err)
 }
 
@@ -208,7 +232,8 @@ func TestNodeSetPrivValIPC(t *testing.T) {
 	}()
 	defer pvsc.Stop() //nolint:errcheck // ignore for tests
 
-	n, err := DefaultNewNode(config, log.TestingLogger())
+	logger := log.TestingLogger()
+	n, err := defaultNewTestNode(config, logger)
 	require.NoError(t, err)
 	assert.IsType(t, &privval.RetrySignerClient{}, n.PrivValidator())
 }
@@ -513,7 +538,8 @@ func TestNodeNewNodeCustomReactors(t *testing.T) {
 		nodeKey,
 		proxy.DefaultClientCreator(config.ProxyApp, config.ABCI, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
-		DefaultDBProvider,
+		InMemDBProvider,
+		ipfs.Mock(),
 		DefaultMetricsProvider(config.Instrumentation),
 		log.TestingLogger(),
 		CustomReactors(map[string]p2p.Reactor{"FOO": cr, "BLOCKCHAIN": customBlockchainReactor}),

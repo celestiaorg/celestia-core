@@ -11,6 +11,7 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	tmflags "github.com/lazyledger/lazyledger-core/libs/cli/flags"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
@@ -103,6 +104,7 @@ func startNode(cfg *Config) error {
 		proxy.NewLocalClientCreator(app),
 		node.DefaultGenesisDocProviderFunc(tmcfg),
 		node.DefaultDBProvider,
+		ipfs.Embedded(true, ipfs.DefaultConfig(), nodeLogger),
 		node.DefaultMetricsProvider(tmcfg.Instrumentation),
 		nodeLogger,
 	)

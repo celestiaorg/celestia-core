@@ -21,7 +21,7 @@ require (
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-ipfs v0.8.0
 	github.com/ipfs/go-ipfs-api v0.2.0
-	github.com/ipfs/go-ipfs-config v0.12.0
+	github.com/ipfs/go-ipfs-config v0.11.0
 	github.com/ipfs/go-ipld-format v0.2.0
 	github.com/ipfs/go-path v0.0.9 // indirect
 	github.com/ipfs/go-verifcid v0.0.1
@@ -30,6 +30,7 @@ require (
 	github.com/lazyledger/rsmt2d v0.2.0
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/minio/highwayhash v1.0.1
+	github.com/multiformats/go-multiaddr v0.3.1
 	github.com/multiformats/go-multihash v0.0.14
 	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect
 	github.com/pkg/errors v0.9.1

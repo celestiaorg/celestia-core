@@ -4,7 +4,6 @@ import (
 	// it is ok to use math/rand here: we do not need a cryptographically secure random
 	// number generator here and we can run the tests a bit faster
 	stdbytes "bytes"
-	"context"
 	"encoding/hex"
 	"math"
 	mrand "math/rand"
@@ -15,9 +14,6 @@ import (
 	"time"
 
 	gogotypes "github.com/gogo/protobuf/types"
-	coreapi "github.com/ipfs/go-ipfs/core/coreapi"
-	coremock "github.com/ipfs/go-ipfs/core/mock"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -1336,68 +1332,6 @@ func TestCommit_ValidateBasic(t *testing.T) {
 	}
 }
 
-func TestPutBlock(t *testing.T) {
-	ipfsNode, err := coremock.NewMockNode()
-	if err != nil {
-		t.Error(err)
-	}
-
-	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
-	if err != nil {
-		t.Error(err)
-	}
-
-	maxOriginalSquareSize := MaxSquareSize / 2
-	maxShareCount := maxOriginalSquareSize * maxOriginalSquareSize
-
-	testCases := []struct {
-		name      string
-		blockData Data
-		expectErr bool
-		errString string
-	}{
-		{"no leaves", generateRandomMsgOnlyData(0), false, ""},
-		{"single leaf", generateRandomMsgOnlyData(1), false, ""},
-		{"16 leaves", generateRandomMsgOnlyData(16), false, ""},
-		{"max square size", generateRandomMsgOnlyData(maxShareCount), false, ""},
-	}
-	ctx := context.Background()
-	for _, tc := range testCases {
-		tc := tc
-
-		block := &Block{Data: tc.blockData}
-
-		t.Run(tc.name, func(t *testing.T) {
-			err = block.PutBlock(ctx, ipfsAPI.Dag())
-			if tc.expectErr {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tc.errString)
-				return
-			}
-
-			require.NoError(t, err)
-
-			timeoutCtx, cancel := context.WithTimeout(ctx, time.Second)
-			defer cancel()
-
-			block.fillDataAvailabilityHeader()
-			for _, rowRoot := range block.DataAvailabilityHeader.RowsRoots.Bytes() {
-				// recreate the cids using only the computed roots
-				cid, err := nodes.CidFromNamespacedSha256(rowRoot)
-				if err != nil {
-					t.Error(err)
-				}
-
-				// retrieve the data from IPFS
-				_, err = ipfsAPI.Dag().Get(timeoutCtx, cid)
-				if err != nil {
-					t.Errorf("Root not found: %s", cid.String())
-				}
-			}
-		})
-	}
-}
-
 func TestPaddedLength(t *testing.T) {
 	type test struct {
 		input, expected int
@@ -1459,16 +1393,6 @@ func TestNextHighestPowerOf2(t *testing.T) {
 	for _, tt := range tests {
 		res := nextHighestPowerOf2(tt.input)
 		assert.Equal(t, tt.expected, res)
-	}
-}
-
-func generateRandomMsgOnlyData(msgCount int) Data {
-	out := make([]Message, msgCount)
-	for i, msg := range generateRandNamespacedRawData(msgCount, NamespaceSize, MsgShareSize-2) {
-		out[i] = Message{NamespaceID: msg[:NamespaceSize], Data: msg[NamespaceSize:]}
-	}
-	return Data{
-		Messages: Messages{MessagesList: out},
 	}
 }
 

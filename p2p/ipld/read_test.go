@@ -23,11 +23,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/racedetector"
 	"github.com/lazyledger/lazyledger-core/types"
 )
-
-var raceDetectorActive = false
 
 func TestLeafPath(t *testing.T) {
 	type test struct {
@@ -122,7 +121,7 @@ func TestGetLeafData(t *testing.T) {
 	}
 
 	// compute the root and create a cid for the root hash
-	rootCid, err := nodes.CidFromNamespacedSha256(root.Bytes())
+	rootCid, err := plugin.CidFromNamespacedSha256(root.Bytes())
 	if err != nil {
 		t.Error(err)
 	}
@@ -247,20 +246,20 @@ func TestRetrieveBlockData(t *testing.T) {
 		t.Run(fmt.Sprintf("%s size %d", tc.name, tc.squareSize), func(t *testing.T) {
 			// if we're using the race detector, skip some large tests due to time and
 			// concurrency constraints
-			if raceDetectorActive && tc.squareSize > 8 {
+			if racedetector.IsActive() && tc.squareSize > 8 {
 				t.Skip("Not running large test due to time and concurrency constraints while race detector is active.")
 			}
 
 			background := context.Background()
 			blockData := generateRandomBlockData(tc.squareSize*tc.squareSize, adjustedMsgSize)
-			block := types.Block{
+			block := &types.Block{
 				Data:       blockData,
 				LastCommit: &types.Commit{},
 			}
 
 			// if an error is exected, don't put the block
 			if !tc.expectErr {
-				err := block.PutBlock(background, ipfsAPI.Dag())
+				err := PutBlock(background, ipfsAPI.Dag(), block)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -327,7 +326,7 @@ func getNmtRoot(
 	batch *format.Batch,
 	namespacedData [][]byte,
 ) (namespace.IntervalDigest, error) {
-	na := nodes.NewNmtNodeAdder(ctx, batch)
+	na := NewNmtNodeAdder(ctx, batch)
 	tree := nmt.New(sha256.New(), nmt.NamespaceIDSize(types.NamespaceSize), nmt.NodeVisitor(na.Visit))
 	for _, leaf := range namespacedData {
 		err := tree.Push(leaf)
