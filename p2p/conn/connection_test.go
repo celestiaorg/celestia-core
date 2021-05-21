@@ -455,42 +455,42 @@ func TestMConnectionReadErrorUnknownChannel(t *testing.T) {
 	t.Cleanup(stopAll(t, mconnClient, mconnServer))
 }
 
-// func TestMConnectionReadErrorLongMessage(t *testing.T) {
-// 	chOnErr := make(chan struct{})
-// 	chOnRcv := make(chan struct{})
+func TestMConnectionReadErrorLongMessage(t *testing.T) {
+	chOnErr := make(chan struct{})
+	chOnRcv := make(chan struct{})
 
-// 	mconnClient, mconnServer := newClientAndServerConnsForReadErrors(t, chOnErr)
-// 	t.Cleanup(stopAll(t, mconnClient, mconnServer))
+	mconnClient, mconnServer := newClientAndServerConnsForReadErrors(t, chOnErr)
+	t.Cleanup(stopAll(t, mconnClient, mconnServer))
 
-// 	mconnServer.onReceive = func(chID byte, msgBytes []byte) {
-// 		chOnRcv <- struct{}{}
-// 	}
+	mconnServer.onReceive = func(chID byte, msgBytes []byte) {
+		chOnRcv <- struct{}{}
+	}
 
-// 	client := mconnClient.conn
-// 	protoWriter := protoio.NewDelimitedWriter(client)
+	client := mconnClient.conn
+	protoWriter := protoio.NewDelimitedWriter(client)
 
-// 	// send msg thats just right
-// 	var packet = tmp2p.PacketMsg{
-// 		ChannelID: 0x01,
-// 		EOF:       true,
-// 		Data:      make([]byte, mconnClient.config.MaxPacketMsgPayloadSize),
-// 	}
+	// send msg thats just right
+	var packet = tmp2p.PacketMsg{
+		ChannelID: 0x01,
+		EOF:       true,
+		Data:      make([]byte, mconnClient.config.MaxPacketMsgPayloadSize),
+	}
 
-// 	_, err := protoWriter.WriteMsg(mustWrapPacket(&packet))
-// 	require.NoError(t, err)
-// 	assert.True(t, expectSend(chOnRcv), "msg just right")
+	_, err := protoWriter.WriteMsg(mustWrapPacket(&packet))
+	require.NoError(t, err)
+	assert.True(t, expectSend(chOnRcv), "msg just right")
 
-// 	// send msg thats too long
-// 	packet = tmp2p.PacketMsg{
-// 		ChannelID: 0x01,
-// 		EOF:       true,
-// 		Data:      make([]byte, mconnClient.config.MaxPacketMsgPayloadSize+100),
-// 	}
+	// send msg thats too long
+	packet = tmp2p.PacketMsg{
+		ChannelID: 0x01,
+		EOF:       true,
+		Data:      make([]byte, mconnClient.config.MaxPacketMsgPayloadSize+100),
+	}
 
-// 	_, err = protoWriter.WriteMsg(mustWrapPacket(&packet))
-// 	require.Error(t, err)
-// 	assert.True(t, expectSend(chOnErr), "msg too long")
-// }
+	_, err = protoWriter.WriteMsg(mustWrapPacket(&packet))
+	require.Error(t, err)
+	assert.True(t, expectSend(chOnErr), "msg too long")
+}
 
 func TestMConnectionReadErrorUnknownMsgType(t *testing.T) {
 	chOnErr := make(chan struct{})
