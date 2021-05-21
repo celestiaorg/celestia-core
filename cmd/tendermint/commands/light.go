@@ -178,11 +178,10 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	}
 
 	switch {
-	case sequential:
-		options = append(options, light.SequentialVerification())
 	case daSampling:
 		cfg := ipfs.DefaultConfig()
 		cfg.RootDir = dir
+		// TODO(ismail): share badger instance
 		apiProvider := ipfs.Embedded(true, cfg, logger)
 		// TODO(ismail): use closer for shutdown!
 		coreAPI, _, err := apiProvider()
@@ -190,6 +189,8 @@ func runProxy(cmd *cobra.Command, args []string) error {
 			panic(err)
 		}
 		options = append(options, light.DataAvailabilitySampling(uint32(numSamples), coreAPI))
+	case sequential:
+		options = append(options, light.SequentialVerification())
 	default:
 		options = append(options, light.SkippingVerification(trustLevel))
 	}
