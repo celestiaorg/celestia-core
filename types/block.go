@@ -1324,31 +1324,6 @@ func nextHighestPowerOf2(v uint32) uint32 {
 	return v
 }
 
-func powerOf2(v uint32) uint32 {
-	if v == 1 {
-		return 1
-	}
-	// keep track of the input
-	i := v
-
-	// find the next highest power using bit mashing
-	v--
-	v |= v >> 1
-	v |= v >> 2
-	v |= v >> 4
-	v |= v >> 8
-	v |= v >> 16
-	v++
-
-	// check if the input was the next highest power
-	if i == v {
-		return v
-	}
-
-	// return the next lowest power
-	return v
-}
-
 type Message struct {
 	// NamespaceID defines the namespace of this message, i.e. the
 	// namespace it will use in the namespaced Merkle tree.
