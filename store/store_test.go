@@ -33,7 +33,7 @@ import (
 type cleanupFunc func()
 
 // make a Commit with a single vote containing just the height and a timestamp
-func makeTestCommit(block *types.Block, height int64, timestamp time.Time) *types.Commit {
+func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 	commitSigs := []types.CommitSig{{
 		BlockIDFlag:      types.BlockIDFlagCommit,
 		ValidatorAddress: tmrand.Bytes(crypto.AddressSize),
@@ -49,7 +49,7 @@ func makeTestCommit(block *types.Block, height int64, timestamp time.Time) *type
 		types.BlockID{
 			Hash:                   hash,
 			PartSetHeader:          types.PartSetHeader{Hash: []byte(""), Total: 2},
-			DataAvailabilityHeader: &block.DataAvailabilityHeader,
+			DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
 		}, commitSigs)
 }
 
@@ -162,7 +162,7 @@ func TestMain(m *testing.M) {
 	partSet = block.MakePartSet(2)
 	part1 = partSet.GetPart(0)
 	part2 = partSet.GetPart(1)
-	seenCommit1 = makeTestCommit(block, 10, tmtime.Now())
+	seenCommit1 = makeTestCommit(10, tmtime.Now())
 	code := m.Run()
 	cleanup()
 	os.Exit(code)
@@ -187,7 +187,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	// save a block
 	block := makeBlock(bs.Height()+1, state, &types.Commit{BlockID: types.EmptyBlockID()})
 	validPartSet := block.MakePartSet(2)
-	seenCommit := makeTestCommit(block, 10, tmtime.Now())
+	seenCommit := makeTestCommit(10, tmtime.Now())
 	bs.SaveBlock(block, partSet, seenCommit)
 	require.EqualValues(t, 1, bs.Base(), "expecting the new height to be changed")
 	require.EqualValues(t, block.Header.Height, bs.Height(), "expecting the new height to be changed")
@@ -208,7 +208,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 
 	// End of setup, test data
 
-	commitAtH10 := makeTestCommit(block, 10, tmtime.Now())
+	commitAtH10 := makeTestCommit(10, tmtime.Now())
 	tuples := []struct {
 		block      *types.Block
 		parts      *types.PartSet
@@ -243,10 +243,10 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 					ProposerAddress: tmrand.Bytes(crypto.AddressSize),
 					LastBlockID:     types.EmptyBlockID(),
 				},
-				makeTestCommit(block, 5, tmtime.Now()),
+				makeTestCommit(5, tmtime.Now()),
 			),
 			parts:      validPartSet,
-			seenCommit: makeTestCommit(block, 5, tmtime.Now()),
+			seenCommit: makeTestCommit(5, tmtime.Now()),
 		},
 
 		{
@@ -395,7 +395,7 @@ func TestLoadBaseMeta(t *testing.T) {
 	for h := int64(1); h <= 10; h++ {
 		block := makeBlock(h, state, lastCommit)
 		partSet := block.MakePartSet(2)
-		lastCommit := makeTestCommit(block, h, tmtime.Now())
+		lastCommit := makeTestCommit(h, tmtime.Now())
 		bs.SaveBlock(block, partSet, lastCommit)
 	}
 
@@ -465,7 +465,7 @@ func TestPruneBlocks(t *testing.T) {
 	for h := int64(1); h <= 1500; h++ {
 		block := makeBlock(h, state, lastCommit)
 		partSet := block.MakePartSet(2)
-		lastCommit = makeTestCommit(block, h, tmtime.Now())
+		lastCommit = makeTestCommit(h, tmtime.Now())
 		block.Header.LastBlockID = lastCommit.BlockID
 		bs.SaveBlock(block, partSet, lastCommit)
 	}
@@ -589,7 +589,7 @@ func TestBlockFetchAtHeight(t *testing.T) {
 	block.LastBlockID = emptyBID
 
 	partSet := block.MakePartSet(2)
-	seenCommit := makeTestCommit(block, 10, tmtime.Now())
+	seenCommit := makeTestCommit(10, tmtime.Now())
 	block.LastCommit = emptyCommit
 	bs.SaveBlock(block, partSet, seenCommit)
 	require.Equal(t, bs.Height(), block.Header.Height, "expecting the new height to be changed")
