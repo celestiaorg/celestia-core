@@ -5,13 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
 	ipfscfg "github.com/ipfs/go-ipfs-config"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
-	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
@@ -156,7 +154,7 @@ type Client struct {
 	quit chan struct{}
 
 	logger log.Logger
-	// TODO: initialize this
+
 	ipfsCoreAPI coreiface.CoreAPI
 }
 
@@ -247,23 +245,10 @@ func NewClientFromTrustedStore(
 	}
 
 	if c.verificationMode == dataAvailabilitySampling {
+		// TODO(ismail): move validation of param out!
 		if err := ValidateNumSamples(c.numSamples); err != nil {
 			return nil, err
 		}
-		// TODO: this is ugly; instead move out the initialization from the
-		// constructor and pass in a CoreAPI object as an option instead!
-		home, _ := os.UserHomeDir()
-		repoRoot := rootify("ipfs", filepath.Join(home, ".tendermint-light"))
-		if err := ipfs.InitRepo(repoRoot, c.logger); err != nil {
-			return nil, err
-		}
-		apiProvider := ipfs.Embedded(false, ipfs.DefaultConfig(), c.logger)
-		// TODO(ismail): use closer for shutdown!
-		coreAPI, _, err := apiProvider()
-		if err != nil {
-			return nil, err
-		}
-		c.ipfsCoreAPI = coreAPI
 	}
 
 	if err := c.restoreTrustedLightBlock(); err != nil {
@@ -273,6 +258,8 @@ func NewClientFromTrustedStore(
 	return c, nil
 }
 
+// TODO(ismail): Reintroduce the concept of transforms
+// useful for running both fullnode and lc on one machine for instance
 func applyDefaultLightClientConfig(ipfsConf *ipfscfg.Config) error {
 	ipfsConf.Addresses.API = ipfscfg.Strings{"/ip4/127.0.0.1/tcp/5003"}
 	ipfsConf.Addresses.Gateway = ipfscfg.Strings{"/ip4/127.0.0.1/tcp/8081"}
