@@ -10,7 +10,6 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
-	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
 	"github.com/lazyledger/rsmt2d"
 
@@ -22,8 +21,10 @@ import (
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	"github.com/lazyledger/lazyledger-core/version"
 )
 
@@ -76,7 +77,7 @@ func (roots NmtRoots) Bytes() [][]byte {
 func NmtRootsFromBytes(in [][]byte) (roots NmtRoots, err error) {
 	roots = make([]namespace.IntervalDigest, len(in))
 	for i := 0; i < len(in); i++ {
-		roots[i], err = namespace.IntervalDigestFromBytes(NamespaceSize, in[i])
+		roots[i], err = namespace.IntervalDigestFromBytes(consts.NamespaceSize, in[i])
 		if err != nil {
 			return roots, err
 		}
@@ -152,7 +153,7 @@ func (dah *DataAvailabilityHeader) IsZero() bool {
 // header from empty block data
 func MinDataAvailabilityHeader() *DataAvailabilityHeader {
 	first, err := namespace.IntervalDigestFromBytes(
-		NamespaceSize,
+		consts.NamespaceSize,
 		[]byte{
 			255, 255, 255, 255, 255, 255, 255, 254, 255, 255, 255, 255, 255, 255, 255, 254, 102, 154, 168, 240,
 			216, 82, 33, 160, 91, 111, 9, 23, 136, 77, 48, 97, 106, 108, 125, 83, 48, 165, 100, 10, 8, 160, 77,
@@ -163,7 +164,7 @@ func MinDataAvailabilityHeader() *DataAvailabilityHeader {
 		panic(err)
 	}
 	second, err := namespace.IntervalDigestFromBytes(
-		NamespaceSize,
+		consts.NamespaceSize,
 		[]byte{
 			255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 41, 52, 55, 243,
 			182, 165, 97, 30, 37, 201, 13, 90, 68, 184, 76, 196, 179, 114, 12, 219, 166, 133, 83, 222, 254,
@@ -302,113 +303,44 @@ func (b *Block) fillDataAvailabilityHeader() {
 	namespacedShares, dataSharesLen := b.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
 
+	// create the nmt wrapper to generate row and col commitments
+	squareSize := uint32(math.Sqrt(float64(len(shares))))
+	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(squareSize))
+
 	// TODO(ismail): for better efficiency and a larger number shares
 	// we should switch to the rsmt2d.LeopardFF16 codec:
-	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), rsmt2d.NewDefaultTree)
+	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), tree.Constructor)
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
 	}
 
-	// record the widths
-	squareWidth := extendedDataSquare.Width()
+	// generate the row and col roots using the EDS and nmt wrapper
+	rowRoots := extendedDataSquare.RowRoots()
+	colRoots := extendedDataSquare.ColumnRoots()
 
 	b.DataAvailabilityHeader = DataAvailabilityHeader{
-		RowsRoots:   make([]namespace.IntervalDigest, squareWidth),
-		ColumnRoots: make([]namespace.IntervalDigest, squareWidth),
+		RowsRoots:   make([]namespace.IntervalDigest, extendedDataSquare.Width()),
+		ColumnRoots: make([]namespace.IntervalDigest, extendedDataSquare.Width()),
 	}
 
-	// flatten the square and add namespaces
-	leaves := FlattenNamespacedEDS(namespacedShares, extendedDataSquare)
-
-	// compute the roots for each col/row
-	for i, leafSet := range leaves {
-		commitment := nmtCommitment(leafSet)
-
-		// add the commitment to the header
-		if uint(i) < squareWidth {
-			b.DataAvailabilityHeader.ColumnRoots[i] = commitment
-		} else {
-			b.DataAvailabilityHeader.RowsRoots[uint(i)-squareWidth] = commitment
+	// todo(evan): remove interval digests
+	// convert the roots to interval digests
+	for i := 0; i < len(rowRoots); i++ {
+		rowRoot, err := namespace.IntervalDigestFromBytes(consts.NamespaceSize, rowRoots[i])
+		if err != nil {
+			panic(err)
 		}
+		colRoot, err := namespace.IntervalDigestFromBytes(consts.NamespaceSize, colRoots[i])
+		if err != nil {
+			panic(err)
+		}
+		b.DataAvailabilityHeader.RowsRoots[i] = rowRoot
+		b.DataAvailabilityHeader.ColumnRoots[i] = colRoot
 	}
 
 	// return the root hash of DA Header
 	b.DataHash = b.DataAvailabilityHeader.Hash()
 	b.NumOriginalDataShares = uint64(dataSharesLen)
-}
-
-// nmtcommitment generates the nmt root of some namespaced data
-func nmtCommitment(namespacedData [][]byte) namespace.IntervalDigest {
-	tree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
-	for _, leaf := range namespacedData {
-		mustPush(tree, leaf)
-	}
-	return tree.Root()
-}
-
-func mustPush(rowTree *nmt.NamespacedMerkleTree, nidAndData []byte) {
-	if err := rowTree.Push(nidAndData); err != nil {
-		panic(
-			fmt.Sprintf(
-				"invalid data; could not push share to tree, id: %v, data: %v, err: %v",
-				nidAndData[:NamespaceSize],
-				nidAndData[NamespaceSize:],
-				err,
-			),
-		)
-	}
-}
-
-// TODO: Move out from 'types' package
-// FlattenNamespacedEDS returns a flattend extendedDataSquare with namespaces
-// added to each share. NOTE: output is columns first then rows
-func FlattenNamespacedEDS(nss NamespacedShares, eds *rsmt2d.ExtendedDataSquare) [][][]byte {
-	squareWidth := eds.Width()
-	originalDataWidth := squareWidth / 2
-
-	if uint(len(nss)) != originalDataWidth*originalDataWidth {
-		panic(
-			fmt.Sprintf(
-				"unexpected numbers of namespaces: actual %d expected %d",
-				len(nss),
-				squareWidth/2,
-			),
-		)
-	}
-
-	leaves := make([][][]byte, 2*squareWidth)
-	// this is adding the namespace back to Q1 shares and the parity ns to the
-	// rest of the quadrants and flattens the square
-	for i := uint(0); i < squareWidth; i++ {
-		rowLeaves := make([][]byte, squareWidth)
-		colLeaves := make([][]byte, squareWidth)
-
-		for j := uint(0); j < squareWidth; j++ {
-			if i < originalDataWidth && j < originalDataWidth {
-				rowShare := nss[i*originalDataWidth+j]
-				colShare := nss[j*originalDataWidth+i]
-				rowLeaves[j] = append(rowShare.NamespaceID(), rowShare.Data()...)
-				colLeaves[j] = append(colShare.NamespaceID(), colShare.Data()...)
-			} else {
-				rowData := eds.Row(i)
-				colData := eds.Column(i)
-				parityCellFromRow := rowData[j]
-				parityCellFromCol := colData[j]
-				rowLeaves[j] = append(copyOfParityNamespaceID(), parityCellFromRow...)
-				colLeaves[j] = append(copyOfParityNamespaceID(), parityCellFromCol...)
-			}
-		}
-		leaves[i] = colLeaves
-		leaves[i+squareWidth] = rowLeaves
-	}
-
-	return leaves
-}
-
-func copyOfParityNamespaceID() []byte {
-	out := make([]byte, len(ParitySharesNamespaceID))
-	copy(out, ParitySharesNamespaceID)
-	return out
 }
 
 // Hash computes and returns the block hash.
@@ -1371,7 +1303,7 @@ func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
 		}
 		rawDatas = append(rawDatas, rawData)
 	}
-	shares := splitContiguous(IntermediateStateRootsNamespaceID, rawDatas)
+	shares := splitContiguous(consts.IntermediateStateRootsNamespaceID, rawDatas)
 	return shares
 }
 
@@ -1409,11 +1341,11 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	wantLen := paddedLen(curLen)
 
 	// ensure that the min square size is used
-	if wantLen < minSharecount {
-		wantLen = minSharecount
+	if wantLen < consts.MinSharecount {
+		wantLen = consts.MinSharecount
 	}
 
-	tailShares := GenerateTailPaddingShares(wantLen-curLen, ShareSize)
+	tailShares := GenerateTailPaddingShares(wantLen-curLen, consts.ShareSize)
 
 	return append(append(append(append(
 		txShares,
@@ -1683,7 +1615,7 @@ func (data *EvidenceData) splitIntoShares() NamespacedShares {
 		}
 		rawDatas = append(rawDatas, rawData)
 	}
-	shares := splitContiguous(EvidenceNamespaceID, rawDatas)
+	shares := splitContiguous(consts.EvidenceNamespaceID, rawDatas)
 	return shares
 }
 

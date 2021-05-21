@@ -25,6 +25,7 @@ import (
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 	"github.com/lazyledger/lazyledger-core/version"
 )
@@ -234,7 +235,7 @@ func TestNilDataAvailabilityHeaderHashDoesntCrash(t *testing.T) {
 func TestEmptyBlockData(t *testing.T) {
 	blockData := Data{}
 	shares, _ := blockData.ComputeShares()
-	assert.Equal(t, GenerateTailPaddingShares(MinSquareSize, ShareSize), shares)
+	assert.Equal(t, GenerateTailPaddingShares(consts.MinSquareSize, consts.ShareSize), shares)
 }
 
 func Test_emptyDataAvailabilityHeader(t *testing.T) {

@@ -12,7 +12,9 @@ import (
 	"github.com/lazyledger/rsmt2d"
 
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
 const baseErrorMsg = "failure to retrieve block data:"
@@ -58,7 +60,7 @@ func RetrieveBlockData(
 	// flatten the square
 	flattened := sc.flatten()
 
-	tree := NewErasuredNamespacedMerkleTree(uint64(edsWidth) / 2)
+	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(edsWidth) / 2)
 
 	// repair the square
 	eds, err := rsmt2d.RepairExtendedDataSquare(rowRoots, colRoots, flattened, codec, tree.Constructor)
@@ -159,7 +161,7 @@ func (sc *shareCounter) retrieveShare(
 		}
 	}
 
-	if len(data) < types.ShareSize {
+	if len(data) < consts.ShareSize {
 		return
 	}
 
@@ -174,7 +176,7 @@ func (sc *shareCounter) retrieveShare(
 	select {
 	case <-sc.ctx.Done():
 	default:
-		sc.shareChan <- indexedShare{data: data[types.NamespaceSize:], index: index{row: rowIdx, col: colIdx}}
+		sc.shareChan <- indexedShare{data: data[consts.NamespaceSize:], index: index{row: rowIdx, col: colIdx}}
 	}
 }
 
