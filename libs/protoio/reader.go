@@ -47,7 +47,7 @@ func NewDelimitedReader(r io.Reader, maxSize int) ReadCloser {
 	if c, ok := r.(io.Closer); ok {
 		closer = c
 	}
-	return &varintReader{newByteReader(r), nil, maxSize, closer}
+	return &varintReader{newByteReader(r), nil, maxSize, closer, 0}
 }
 
 type varintReader struct {
@@ -55,16 +55,18 @@ type varintReader struct {
 	buf     []byte
 	maxSize int
 	closer  io.Closer
+	count   int
 }
 
 func (r *varintReader) ReadMsg(msg proto.Message) error {
+	r.count++
 	length64, err := binary.ReadUvarint(newByteReader(r.r))
 	if err != nil {
 		return err
 	}
 	length := int(length64)
 	if length < 0 || length > r.maxSize {
-		return fmt.Errorf("message exceeds max size (%v > %v) %T %T", length, r.maxSize, msg, r.r.Reader)
+		return fmt.Errorf("message exceeds max size (%v > %v) %T %T %d", length, r.maxSize, msg, r.r.Reader, r.count)
 	}
 	if len(r.buf) < length {
 		r.buf = make([]byte, length)
