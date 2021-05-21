@@ -46,7 +46,7 @@ jobs:
         with:
           go-version: "1.15"
       - uses: actions/checkout@v2
-      - uses: technote-space/get-diff-action@v4
+      - uses: technote-space/get-diff-action@v4.1.1
         with:
           PATTERNS: |
             **/**.go
@@ -68,7 +68,7 @@ jobs:
         with:
           go-version: "1.15"
       - uses: actions/checkout@v2
-      - uses: technote-space/get-diff-action@v4
+      - uses: technote-space/get-diff-action@v4.1.1
         with:
           PATTERNS: |
             **/**.go
@@ -96,7 +96,7 @@ jobs:
     needs: tests
     steps:
       - uses: actions/checkout@v2
-      - uses: technote-space/get-diff-action@v4
+      - uses: technote-space/get-diff-action@v4.1.1
         with:
           PATTERNS: |
             **/**.go
@@ -121,7 +121,7 @@ jobs:
       - run: |
           cat ./*profile.out | grep -v "mode: atomic" >> coverage.txt
         if: env.GIT_DIFF
-      - uses: codecov/codecov-action@v1.4.1
+      - uses: codecov/codecov-action@v1.5.0
         with:
           file: ./coverage.txt
         if: env.GIT_DIFF

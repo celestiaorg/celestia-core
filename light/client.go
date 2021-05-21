@@ -10,14 +10,13 @@ import (
 	"time"
 
 	ipfscfg "github.com/ipfs/go-ipfs-config"
-	"github.com/ipfs/go-ipfs/core/coreapi"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/light/provider"
 	"github.com/lazyledger/lazyledger-core/light/store"
-	"github.com/lazyledger/lazyledger-core/p2p"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/nmt/namespace"
@@ -255,18 +254,12 @@ func NewClientFromTrustedStore(
 		// constructor and pass in a CoreAPI object as an option instead!
 		home, _ := os.UserHomeDir()
 		repoRoot := rootify("ipfs", filepath.Join(home, ".tendermint-light"))
-		err := p2p.InitIpfs(repoRoot, p2p.ApplyBadgerSpec, applyDefaultLightClientConfig)
-		if err != nil {
-			if !errors.Is(err, p2p.ErrIPFSIsAlreadyInit) {
-				return nil, err
-			}
-			c.logger.Info("IPFS was already initialized", "ipfs-path", repoRoot)
-		}
-		ipfsNode, err := p2p.CreateIpfsNode(repoRoot, err == nil, c.logger)
-		if err != nil {
+		if err := ipfs.InitRepo(repoRoot, c.logger); err != nil {
 			return nil, err
 		}
-		coreAPI, err := coreapi.NewCoreAPI(ipfsNode)
+		apiProvider := ipfs.Embedded(false, ipfs.DefaultConfig(), c.logger)
+		// TODO(ismail): use closer for shutdown!
+		coreAPI, _, err := apiProvider()
 		if err != nil {
 			return nil, err
 		}

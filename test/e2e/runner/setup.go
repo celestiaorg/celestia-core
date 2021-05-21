@@ -21,6 +21,7 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/p2p"
 	"github.com/lazyledger/lazyledger-core/privval"
 	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
@@ -86,7 +87,7 @@ func Setup(testnet *e2e.Testnet) error {
 			return err
 		}
 		// todo(evan): the path should be a constant
-		cfg.IPFS.ConfigRootPath = filepath.Join(nodeDir, ".ipfs")
+		cfg.IPFS.RepoPath = filepath.Join(nodeDir, ".ipfs")
 		config.WriteConfigFile(filepath.Join(nodeDir, "config", "config.toml"), cfg) // panics
 
 		appCfg, err := MakeAppConfig(node)
@@ -114,7 +115,7 @@ func Setup(testnet *e2e.Testnet) error {
 			filepath.Join(nodeDir, PrivvalDummyKeyFile),
 			filepath.Join(nodeDir, PrivvalDummyStateFile),
 		)).Save()
-		err = p2p.InitIpfs(cfg.IPFSRepoRoot())
+		err = ipfs.InitRepo(cfg.IPFS.RepoPath, logger)
 		if err != nil {
 			return err
 		}

@@ -7,16 +7,13 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/lazyledger/nmt/namespace"
 
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // Sample is a point in 2D space over square.
 type Sample struct {
 	Row, Col uint32
-
-	// src defines the source for sampling, either from column(true) or row(false) root
-	src bool
 }
 
 // SampleSquare randomly picks *num* unique points from arbitrary *width* square
@@ -35,7 +32,7 @@ func (s Sample) Leaf(dah *types.DataAvailabilityHeader) (cid.Cid, uint32, error)
 	)
 
 	// spread leaves retrieval from both Row and Column roots
-	if s.src {
+	if randUint32(2) == 0 {
 		root = dah.ColumnRoots[s.Col]
 		leaf = s.Row
 	} else {
@@ -43,7 +40,7 @@ func (s Sample) Leaf(dah *types.DataAvailabilityHeader) (cid.Cid, uint32, error)
 		leaf = s.Col
 	}
 
-	rootCid, err := nodes.CidFromNamespacedSha256(root.Bytes())
+	rootCid, err := plugin.CidFromNamespacedSha256(root.Bytes())
 	if err != nil {
 		return cid.Undef, 0, err
 	}
@@ -78,7 +75,6 @@ func (ss *squareSampler) sample(num int) {
 		s := Sample{
 			Row: randUint32(ss.squareWidth),
 			Col: randUint32(ss.squareWidth),
-			src: randUint32(2) == 0,
 		}
 
 		if _, ok := ss.smpls[s]; ok {

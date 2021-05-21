@@ -3,10 +3,10 @@ package commands
 import (
 	"fmt"
 
-	ipfscfg "github.com/ipfs/go-ipfs-config"
 	"github.com/spf13/cobra"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	"github.com/lazyledger/lazyledger-core/p2p"
@@ -73,7 +73,6 @@ func initFilesWithConfig(config *cfg.Config) error {
 	if tmos.FileExists(genFile) {
 		logger.Info("Found genesis file", "path", genFile)
 	} else {
-
 		genDoc := types.GenesisDoc{
 			ChainID:         fmt.Sprintf("test-chain-%v", tmrand.Str(6)),
 			GenesisTime:     tmtime.Now(),
@@ -100,23 +99,6 @@ func initFilesWithConfig(config *cfg.Config) error {
 		logger.Info("Generated genesis file", "path", genFile)
 	}
 
-	if err := p2p.InitIpfs(
-		config.IPFSRepoRoot(),
-		applyFromTmConf,
-		p2p.ApplyBadgerSpec,
-	); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func applyFromTmConf(ipfsConf *ipfscfg.Config) error {
-	tmConf := config.IPFS
-	ipfsConf.Addresses.API = ipfscfg.Strings{tmConf.API}
-	ipfsConf.Addresses.Gateway = ipfscfg.Strings{tmConf.Gateway}
-	ipfsConf.Addresses.Swarm = tmConf.Swarm
-	ipfsConf.Addresses.Announce = tmConf.Announce
-	ipfsConf.Addresses.NoAnnounce = tmConf.NoAnnounce
-	return nil
+	// TODO(ismail): add counter part in ResetAllCmd
+	return ipfs.InitRepo(config.IPFS.Path(), logger)
 }

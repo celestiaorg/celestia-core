@@ -1,4 +1,4 @@
-# ADR 004: Data Availability Sampling light-client
+# ADR 004: Data Availability Sampling Light Client
 
 ## Changelog
 
@@ -6,13 +6,13 @@
 
 ## Context
 
-We decided to augment the existing [RCP-based Tendermint light client](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/light/doc.go#L2-L126) by adding the possibility to additionally validate blocks by doing Data Availability Sampling (DAS).
+We decided to augment the existing [RPC-based Tendermint light client](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/light/doc.go#L2-L126) by adding the possibility to additionally validate blocks by doing Data Availability Sampling (DAS).
 In general, DAS gives light clients assurance that the data behind the block header they validated is actually available in the network and hence, that state fraud proofs could be generated.
 See [ADR 002](adr-002-ipld-da-sampling.md) for more context on DAS.
 
 A great introduction on the Tendermint light client (and light clients in general) can be found in this series of [blog posts](https://medium.com/tendermint/everything-you-need-to-know-about-the-tendermint-light-client-f80d03856f98) as well as this [paper](https://arxiv.org/abs/2010.07031).
 
-This ADR describes the changes necessary to augment the existing Tendermint light client implementation with Data Availability Sampling from a UX as well as from a protocol perspective.
+This ADR describes the changes necessary to augment the existing Tendermint light client implementation with DAS from a UX as well as from a protocol perspective.
 
 ## Alternative Approaches
 
@@ -21,12 +21,12 @@ We will eventually implement this. For more context, we refer to this [issue](ht
 This would require that the (signed) headers are provided via other means than the RPC.
 See this [abandoned pull request](https://github.com/tendermint/tendermint/pull/4508) and [issue](https://github.com/tendermint/tendermint/issues/4456) in the Tendermint repository and also this [suggestion](https://github.com/lazyledger/lazyledger-core/issues/86#issuecomment-831182564) by [@Wondertan](https://github.com/Wondertan) in this repository.
 
-For some use-cases - like DAS light validator nodes, or the light clients of a Data Availability that are run by full nodes of an Optimistic Rollup - it would even make sense that the light client (passively) participates in the consensus protocol to some extent; i.e. runs a subset of the consensus reactor to Consensus messages ([Votes](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/types/vote.go#L48-L59) etc.) come in as early as possible.
+For some use-cases—like DAS light validator nodes, or the light clients of a Data Availability Layer that are run by full nodes of an Optimistic Rollup—it would even make sense that the light client (passively) participates in the consensus protocol to some extent; i.e. runs a subset of the consensus reactor to Consensus messages ([Votes](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/types/vote.go#L48-L59) etc.) come in as early as possible.
 Then light clients would not need to wait for the canonical commit to be included in the next [block](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/types/block.go#L48).
 
-For the RPC-based light client it could also make sense to add a new RPC endpoint to tendermint for clients to retrieve the DA header, or embed the DAHeader.
+For the RPC-based light client it could also make sense to add a new RPC endpoint to tendermint for clients to retrieve the [`DataAvailabilityHeader`](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/types/block.go#L52-L69) (DAHeader), or embed the DAHeader.
 The [Commit](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/rpc/core/routes.go#L25) only contains the [SignedHeader](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/rpc/core/types/responses.go#L32-L36) (Header and Commit signatures).
-Not all light clients will need the full [DataAvailabilityHeader](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/types/block.go#L52-L69) (DAHeader) though (e.g. super-light-clients do not).
+Not all light clients will need the full DAHeader though (e.g. super-light-clients do not).
 
 
 ## Decision
@@ -45,35 +45,37 @@ Additionally, the light client operator can decide the number of successful samp
 
 In case DAS is enabled, the light client will need to:
 1. retrieve the DAHeader corresponding to the data root in the Header
-2. request a predefined number of samples.
+2. request a parameterizable number of random samples.
 
-If the number of samples succeed, the whole block is available (with some high enough probability).
+If the all sampling requests succeed, the whole block is available ([with some high enough probability](https://arxiv.org/abs/1809.09044)).
 
 ### UX
 
 The main change to the light client [command](https://github.com/lazyledger/lazyledger-core/blob/master/cmd/tendermint/commands/light.go#L32-L104) is to add in a new flag to indicate if it should run DAS or not.
+Additionally, the user can choose the number of succeeding samples required for a block to be considered available.
 
 ```diff
-Index: cmd/tendermint/commands/light.go
 ===================================================================
 diff --git a/cmd/tendermint/commands/light.go b/cmd/tendermint/commands/light.go
---- a/cmd/tendermint/commands/light.go	(revision cbf1f1a4a0472373289a9834b0d33e0918237b7f)
-+++ b/cmd/tendermint/commands/light.go	(date 1620077232436)
-@@ -64,6 +64,7 @@
+--- a/cmd/tendermint/commands/light.go	(revision 48b043014f0243edd1e8ebad8cd0564ab9100407)
++++ b/cmd/tendermint/commands/light.go	(date 1620546761822)
+@@ -64,6 +64,8 @@
  	dir                string
  	maxOpenConnections int
 
-+	daSampling	   bool
++	daSampling     bool
++	numSamples     uint32
  	sequential     bool
  	trustingPeriod time.Duration
  	trustedHeight  int64
-@@ -101,6 +102,9 @@
+@@ -101,6 +103,10 @@
  	LightCmd.Flags().BoolVar(&sequential, "sequential", false,
  		"sequential verification. Verify all headers sequentially as opposed to using skipping verification",
  	)
 +	LightCmd.Flags().BoolVar(&daSampling, "da-sampling", false,
-+		"data availability sampling. For each verified header, additionally verify data availability via data availability sampling",
++		"data availability sampling. Verify each header (sequential verification), additionally verify data availability via data availability sampling",
 +	)
++	LightCmd.Flags().Uint32Var(&numSamples, "num-samples", 15, "Number of data availability samples until block data deemed available.")
  }
 ```
 
@@ -87,17 +89,6 @@ In case a light client is parametrized to run DAS and skipping verification, the
 
 ### Light Client Protocol with DAS
 
-#### Running an IPFS node
-
-We already have methods to [initialize](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/init.go#L116-L157) and [run](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/node/node.go#L1449-L1488)  an IPFS node in place.
-These need to be refactored such that they can effectively be for the light client as well.
-This means:
-1. these methods need to be exported and available in a place that does not introduce interdependence of go packages
-2. users should be able to run a light client with a single command and hence most of the initialization logic should be coupled with creating the actual IPFS node and [made independent](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/init.go#L119-L120) of the `tendermint init` command
-
-An example for 2. can be found in the IPFS [code](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L239) itself.
-We might want to provide a slightly different default initialization though (see how this is [overridable](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L164-L165) in the ipfs daemon cmd).
-
 #### Light Store
 
 The light client stores data in its own [badgerdb instance](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/cmd/tendermint/commands/light.go#L125) in the given directory:
@@ -107,7 +98,7 @@ db, err := badgerdb.NewDB("light-client-db", dir)
 ```
 
 While it is not critical for this feature, we should at least try to re-use that same DB instance for the local ipld store.
-Otherwise, we introduce yet another DB instance - something we want to avoid, especially on the long run (see [#283](https://github.com/lazyledger/lazyledger-core/issues/283)).
+Otherwise, we introduce yet another DB instance; something we want to avoid, especially on the long run (see [#283](https://github.com/lazyledger/lazyledger-core/issues/283)).
 For the first implementation, it might still be simpler to create a separate DB instance and tackle cleaning this up in a separate pull request, e.g. together with other [instances]([#283](https://github.com/lazyledger/lazyledger-core/issues/283)).
 
 #### RPC
@@ -128,11 +119,13 @@ In parallel but in a separate pull request, we add a separate RPC endpoint to do
 
 For full nodes to be able to serve the `DataAvailabilityHeader` without having to recompute it each time, it needs to be stored somewhere.
 While this is independent of the concrete serving mechanism, it is more so relevant for the RPC endpoint.
-There is ongoing work to make the Tendermint Store only store Headers and the DataAvailabilityHeader in [#218](https://github.com/lazyledger/lazyledger-core/pull/218) / [#182](https://github.com/lazyledger/lazyledger-core/issues/182).
+There is ongoing work to make the Tendermint Store only store Headers and the DataAvailabilityHeader in [#218](https://github.com/lazyledger/lazyledger-core/pull/218/) / [#182](https://github.com/lazyledger/lazyledger-core/issues/182).
 
 At the time writing this ADR, another pull request ([#312](https://github.com/lazyledger/lazyledger-core/pull/312)) is in the works with a more isolated change that adds the `DataAvailabilityHeader` to the `BlockID`.
 Hence, the DAHeader is [stored](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/store/store.go#L355-L367) along the [`BlockMeta`](https://github.com/lazyledger/lazyledger-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/types/block_meta.go#L11-L17) there.
-For a first implementation, we could first build on top of #312 and adapt to the
+
+For a first implementation, we could first build on top of #312 and adapt to the changed storage API where only headers and the DAHeader are stored inside tendermint's store (as drafted in #218).
+A major downside of storing block data inside of tendermint's store as well as in the IPFS' block store is that is not only redundantly stored data but also IO intense work that will slow down full nodes.
 
 
 #### DAS
@@ -161,35 +154,106 @@ The 3. approach is the most general of all, but it moves the responsibility to w
 
 #### Data Structures
 
+##### LightBlock
+
 As mentioned above the LightBlock should optionally contain the DataAvailabilityHeader.
 ```diff
 Index: types/light.go
 ===================================================================
 diff --git a/types/light.go b/types/light.go
---- a/types/light.go	(revision 64fdfaf9143d7af69925aae4f3ae4ea33abd61e5)
-+++ b/types/light.go	(date 1620161433642)
-@@ -8,11 +8,15 @@
- 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
- )
-
--// LightBlock is a SignedHeader and a ValidatorSet.
--// It is the basis of the light client
-+// LightBlock is a SignedHeader and a ValidatorSet
-+// and optionally a DataAvailabilityHeader (for DAS light clients).
-+// It is the basis of the light client.
+--- a/types/light.go	(revision 64044aa2f2f2266d1476013595aa33bb274ba161)
++++ b/types/light.go	(date 1620481205049)
+@@ -13,6 +13,9 @@
  type LightBlock struct {
--	*SignedHeader `json:"signed_header"`
--	ValidatorSet  *ValidatorSet `json:"validator_set"`
-+	*SignedHeader          `json:"signed_header"`
-+	ValidatorSet           *ValidatorSet           `json:"validator_set"`
+ 	*SignedHeader `json:"signed_header"`
+ 	ValidatorSet  *ValidatorSet `json:"validator_set"`
 +
 +	// DataAvailabilityHeader is only populated for DAS light clients for others it can be nil.
 +	DataAvailabilityHeader *DataAvailabilityHeader `json:"data_availability_header"`
  }
 ```
 
-- TODO: Provider
+Alternatively, we could introduce a `DASLightBlock` that embeds a `LightBlock` and has the `DataAvailabilityHeader` as the only (non-optional) field.
+This would be more explict as it is a new type.
+Instead, adding a field to the existing `LightBlock`is backwards compatible and does not require any further code changes; the new type requires `To`- and `FromProto` functions at least.
 
+##### Provider
+
+The [`Provider`](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/provider.go#L9-L26) should be changed to additionally provide the `DataAvailabilityHeader` to enable DAS light clients.
+Implementations of the interface need to additionally retrieve the `DataAvailabilityHeader` for the [modified LightBlock](#lightblock).
+Users of the provider need to indicate this to the provider.
+
+We could either augment the `LightBlock` method with a flag, add a new method solely for providing the `DataAvailabilityHeader`, or, we could introduce a new method for DAS light clients.
+
+The latter is preferable because it is the most explicit and clear, and it still keeps places where DAS is not used without any code changes.
+
+Hence:
+
+```diff
+Index: light/provider/provider.go
+===================================================================
+diff --git a/light/provider/provider.go b/light/provider/provider.go
+--- a/light/provider/provider.go	(revision 7d06ae28196e8765c9747aca9db7d2732f56cfc3)
++++ b/light/provider/provider.go	(date 1620298115962)
+@@ -21,6 +21,14 @@
+ 	// error is returned.
+ 	LightBlock(ctx context.Context, height int64) (*types.LightBlock, error)
+
++	// DASLightBlock returns the LightBlock containing the DataAvailabilityHeader.
++	// Other than including the DataAvailabilityHeader it behaves exactly the same
++	// as LightBlock.
++	//
++	// It can be used by DAS light clients.
++	DASLightBlock(ctx context.Context, height int64) (*types.LightBlock, error)
++
++
+ 	// ReportEvidence reports an evidence of misbehavior.
+ 	ReportEvidence(context.Context, types.Evidence) error
+ }
+```
+Alternatively, with the exact same result, we could embed the existing `Provider` into a new interface: e.g. `DASProvider` that adds this method.
+This is completely equivalent as above and which approach is better will become more clear when we spent more time on the implementation.
+
+Regular light clients will call `LightBlock` and DAS light clients will call `DASLightBlock`.
+In the first case the result will be the same as for vanilla Tendermint and in the second case the returned `LightBlock` will additionally contain the `DataAvailabilityHeader` of the requested height.
+
+#### Running an IPFS node
+
+We already have methods to [initialize](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/init.go#L116-L157) and [run](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/node/node.go#L1449-L1488)  an IPFS node in place.
+These need to be refactored such that they can effectively be for the light client as well.
+This means:
+1. these methods need to be exported and available in a place that does not introduce interdependence of go packages
+2. users should be able to run a light client with a single command and hence most of the initialization logic should be coupled with creating the actual IPFS node and [made independent](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/init.go#L119-L120) of the `tendermint init` command
+
+An example for 2. can be found in the IPFS [code](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L239) itself.
+We might want to provide a slightly different default initialization though (see how this is [overridable](https://github.com/ipfs/go-ipfs/blob/cd72589cfd41a5397bb8fc9765392bca904b596a/cmd/ipfs/daemon.go#L164-L165) in the ipfs daemon cmd).
+
+We note that for operating a fully functional light client the IPFS node could be running in client mode [`dht.ModeClient`](https://github.com/libp2p/go-libp2p-kad-dht/blob/09d923fcf68218181b5cd329bf5199e767bd33c3/dht_options.go#L29-L30) but be actually want light clients to also respond to incoming queries, e.g. from other light clients.
+Hence, they should by default run in [`dht.ModeServer`](https://github.com/libp2p/go-libp2p-kad-dht/blob/09d923fcf68218181b5cd329bf5199e767bd33c3/dht_options.go#L31-L32).
+In an environment were any bandwidth must be saved, or, were the network conditions do not allow the server mode, we make it easy to change the default behavior.
+
+##### Client
+
+We add another [`Option`](https://github.com/tendermint/tendermint/blob/a91680efee3653e3de620f24eb8ddca1c95ce8f9/light/client.go#L43-L117) to the [`Client`](https://github.com/tendermint/tendermint/blob/a91680efee3653e3de620f24eb8ddca1c95ce8f9/light/client.go#L173) that indicates that this client does DAS.
+
+This option indicates:
+1. to do sequential verification and
+2. to request [`DASLightBlocks`](#lightblock) from the [provider](#provider).
+
+All other changes should only affect unexported methods only.
+
+##### ValidateAvailability
+
+In order for the light clients to perform DAS to validate availability, they do not need to be aware of the fact that an IPFS node is run.
+Instead, we can use the existing [`ValidateAvailability`](https://github.com/lazyledger/lazyledger-core/blame/master/p2p/ipld/validate.go#L23-L28) function (as defined in [ADR 002](adr-002-ipld-da-sampling.md) and implemented in [#270](https://github.com/lazyledger/lazyledger-core/pull/270)).
+Note that this expects an ipfs core API object `CoreAPI` to be passed in.
+Using that interface has the major benefit that we could even change the requirement that the light client itself runs the IPFS node without changing most of the validation logic.
+E.g., the IPFS node (with our custom IPLD plugin) could run in different process (or machine), and we could still just pass in that same `CoreAPI` interface.
+
+Orthogonal to this ADR, we also note that we could change all IPFS readonly methods to accept the minimal interface they actually use, namely something that implements `ResolveNode` (and maybe additionally a `NodeGetter`).
+
+`ValidateAvailability` needs to be called each time a header is validated.
+A DAS light client will have to request the `DASLightBlock` for this as per above to be able to pass in a `DataAvailabilityHeader`.
 
 #### Testing
 
@@ -199,12 +263,6 @@ In particular, [tendermint/tendermint#6196](https://github.com/tendermint/tender
 
 Additionally, we should provide a simple example in the documentation that walks through the DAS light client.
 It would be good if the light client logs some (info) output related to DAS to provide feedback to the user.
-
-> - What systems will be affected?
->
-> - What are the efficiency considerations (time/space)?
->
-> - What are the expected access patterns (load/throughput)?
 
 ## Status
 

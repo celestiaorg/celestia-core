@@ -9,6 +9,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
 // Tx is an arbitrary byte array.
@@ -88,7 +89,7 @@ func (txs Txs) splitIntoShares() NamespacedShares {
 		}
 		rawDatas[i] = rawData
 	}
-	shares := splitContiguous(TxNamespaceID, rawDatas)
+	shares := splitContiguous(consts.TxNamespaceID, rawDatas)
 	return shares
 }
 

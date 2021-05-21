@@ -14,9 +14,8 @@ import (
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	memdb "github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	tmtypes "github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	"github.com/lazyledger/lazyledger-core/version"
-	"github.com/lazyledger/nmt"
 )
 
 var (
@@ -181,15 +180,15 @@ func (app *Application) PreprocessTxs(
 	req types.RequestPreprocessTxs) types.ResponsePreprocessTxs {
 	time.Sleep(time.Second * 1)
 	randTxs := generateRandTxs(10, 50)
-	randMsgs := generateRandNamespacedRawData(32, nmt.DefaultNamespaceIDLen, 128)
+	randMsgs := generateRandNamespacedRawData(32, consts.NamespaceSize, 128)
 	randMessages := toMessageSlice(randMsgs)
 	return types.ResponsePreprocessTxs{Txs: append(req.Txs, randTxs...), Messages: &tmproto.Messages{MessagesList: randMessages}}
 }
 
 func generateRandTxs(num int, size int) [][]byte {
-	randMsgs := generateRandNamespacedRawData(num, nmt.DefaultNamespaceIDLen, size)
+	randMsgs := generateRandNamespacedRawData(num, consts.NamespaceSize, size)
 	for _, msg := range randMsgs {
-		copy(msg[:nmt.DefaultNamespaceIDLen], tmtypes.TxNamespaceID)
+		copy(msg[:consts.NamespaceSize], consts.TxNamespaceID)
 	}
 	return randMsgs
 }
@@ -197,7 +196,7 @@ func generateRandTxs(num int, size int) [][]byte {
 func toMessageSlice(msgs [][]byte) []*tmproto.Message {
 	res := make([]*tmproto.Message, len(msgs))
 	for i := 0; i < len(msgs); i++ {
-		res[i] = &tmproto.Message{NamespaceId: msgs[i][:nmt.DefaultNamespaceIDLen], Data: msgs[i][nmt.DefaultNamespaceIDLen:]}
+		res[i] = &tmproto.Message{NamespaceId: msgs[i][:consts.NamespaceSize], Data: msgs[i][consts.NamespaceSize:]}
 	}
 	return res
 }

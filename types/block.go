@@ -2,7 +2,7 @@ package types
 
 import (
 	"bytes"
-	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -11,9 +11,6 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
-	format "github.com/ipfs/go-ipld-format"
-	"github.com/lazyledger/lazyledger-core/libs/json"
-	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
 	"github.com/lazyledger/rsmt2d"
 
@@ -25,9 +22,10 @@ import (
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	"github.com/lazyledger/lazyledger-core/version"
 )
 
@@ -80,7 +78,7 @@ func (roots NmtRoots) Bytes() [][]byte {
 func NmtRootsFromBytes(in [][]byte) (roots NmtRoots, err error) {
 	roots = make([]namespace.IntervalDigest, len(in))
 	for i := 0; i < len(in); i++ {
-		roots[i], err = namespace.IntervalDigestFromBytes(NamespaceSize, in[i])
+		roots[i], err = namespace.IntervalDigestFromBytes(consts.NamespaceSize, in[i])
 		if err != nil {
 			return roots, err
 		}
@@ -233,178 +231,59 @@ func (b *Block) fillHeader() {
 	}
 }
 
+// TODO: Move out from 'types' package
 // fillDataAvailabilityHeader fills in any remaining DataAvailabilityHeader fields
 // that are a function of the block data.
 func (b *Block) fillDataAvailabilityHeader() {
 	namespacedShares, dataSharesLen := b.Data.ComputeShares()
 	fmt.Println("dataSharesLen", dataSharesLen)
 	shares := namespacedShares.RawShares()
+
 	if len(shares) == 0 {
 		// no shares -> no row/colum roots -> hash(empty)
 		//b.DataHash = b.DataAvailabilityHeader.Hash()
 		panic("shares cannot be empty")
 	}
-	fmt.Println("len(shares)", len(shares))
+
+	// create the nmt wrapper to generate row and col commitments
+	squareSize := uint32(math.Sqrt(float64(len(shares))))
+	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(squareSize))
+
 	// TODO(ismail): for better efficiency and a larger number shares
 	// we should switch to the rsmt2d.LeopardFF16 codec:
-	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), rsmt2d.NewDefaultTree)
+	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), tree.Constructor)
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
 	}
 	fmt.Println("squareWidth = extendedDataSquare.Width()", extendedDataSquare.Width())
 	b.eds = extendedDataSquare
-	// record the widths
-	squareWidth := extendedDataSquare.Width()
+	// generate the row and col roots using the EDS and nmt wrapper
+	rowRoots := extendedDataSquare.RowRoots()
+	colRoots := extendedDataSquare.ColumnRoots()
 
 	b.DataAvailabilityHeader = DataAvailabilityHeader{
-		RowsRoots:   make([]namespace.IntervalDigest, squareWidth),
-		ColumnRoots: make([]namespace.IntervalDigest, squareWidth),
+		RowsRoots:   make([]namespace.IntervalDigest, extendedDataSquare.Width()),
+		ColumnRoots: make([]namespace.IntervalDigest, extendedDataSquare.Width()),
 	}
 
-	// flatten the square and add namespaces
-	leaves := flattenNamespacedEDS(namespacedShares, extendedDataSquare)
-	// compute the roots for each col/row
-	for i, leafSet := range leaves {
-		commitment := nmtCommitment(leafSet)
-
-		// add the commitment to the header
-		if uint(i) < squareWidth {
-			b.DataAvailabilityHeader.ColumnRoots[i] = commitment
-		} else {
-			b.DataAvailabilityHeader.RowsRoots[uint(i)-squareWidth] = commitment
+	// todo(evan): remove interval digests
+	// convert the roots to interval digests
+	for i := 0; i < len(rowRoots); i++ {
+		rowRoot, err := namespace.IntervalDigestFromBytes(consts.NamespaceSize, rowRoots[i])
+		if err != nil {
+			panic(err)
 		}
+		colRoot, err := namespace.IntervalDigestFromBytes(consts.NamespaceSize, colRoots[i])
+		if err != nil {
+			panic(err)
+		}
+		b.DataAvailabilityHeader.RowsRoots[i] = rowRoot
+		b.DataAvailabilityHeader.ColumnRoots[i] = colRoot
 	}
 
 	// return the root hash of DA Header
 	b.DataHash = b.DataAvailabilityHeader.Hash()
-	b.NumOriginalDataShares = int64(dataSharesLen)
-}
-
-// nmtcommitment generates the nmt root of some namespaced data
-func nmtCommitment(namespacedData [][]byte) namespace.IntervalDigest {
-	tree := nmt.New(newBaseHashFunc, nmt.NamespaceIDSize(NamespaceSize))
-	for _, leaf := range namespacedData {
-		mustPush(tree, leaf)
-	}
-	return tree.Root()
-}
-
-func mustPush(rowTree *nmt.NamespacedMerkleTree, nidAndData []byte) {
-	if err := rowTree.Push(nidAndData); err != nil {
-		panic(
-			fmt.Sprintf(
-				"invalid data; could not push share to tree, id: %v, data: %v, err: %v",
-				nidAndData[:NamespaceSize],
-				nidAndData[NamespaceSize:],
-				err,
-			),
-		)
-	}
-}
-
-// PutBlock posts and pins erasured block data to IPFS using the provided
-// ipld.NodeAdder. Note: the erasured data is currently recomputed
-func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error {
-	if nodeAdder == nil {
-		return errors.New("no ipfs node adder provided")
-	}
-
-	// recompute the shares
-	namespacedShares, _ := b.Data.ComputeShares()
-
-	squareWidth := b.eds.Width()
-	// add namespaces to erasured shares and flatten the eds
-	leaves := flattenNamespacedEDS(namespacedShares, b.eds)
-
-	// create nmt adder wrapping batch adder
-	batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, nodeAdder /*, format.MaxNodesBatchOption(16)*/))
-	fmt.Println("PutBlock len(leaves)=", len(leaves))
-	// iterate through each set of col and row leaves
-	for i, leafSet := range leaves {
-		tree := nmt.New(newBaseHashFunc, nmt.NamespaceIDSize(NamespaceSize), nmt.NodeVisitor(batchAdder.Visit))
-		for _, share := range leafSet {
-			err := tree.Push(share)
-			if err != nil {
-				return err
-			}
-		}
-
-		// compute the root in order to collect the ipld.Nodes
-		root := tree.Root()
-		rootCid, _ := nodes.CidFromNamespacedSha256(root.Bytes())
-		// add the commitment to the header
-		if uint(i) < squareWidth {
-			if !b.DataAvailabilityHeader.ColumnRoots[i].Equal(&root) {
-				fmt.Println("b.DataAvailabilityHeader.ColumnRoots[i]")
-				fmt.Println(b.DataAvailabilityHeader.ColumnRoots[i])
-				fmt.Println(root)
-
-				panic("sth is seriously wrong(col): " + rootCid.String())
-			}
-		} else {
-			if !b.DataAvailabilityHeader.RowsRoots[uint(i)-squareWidth].Equal(&root) {
-				fmt.Println("b.DataAvailabilityHeader.RowsRoots[uint(i)-squareWidth]")
-				fmt.Println(b.DataAvailabilityHeader.RowsRoots[uint(i)-squareWidth])
-				fmt.Println(root)
-
-				panic("sth is seriously wrong (row): " + rootCid.String())
-			}
-		}
-	}
-
-	// commit the batch to ipfs
-	return batchAdder.Commit()
-}
-
-// flattenNamespacedEDS returns a flattend extendedDataSquare with namespaces
-// added to each share. NOTE: output is columns first then rows
-func flattenNamespacedEDS(nss NamespacedShares, eds *rsmt2d.ExtendedDataSquare) [][][]byte {
-	squareWidth := eds.Width()
-	originalDataWidth := squareWidth / 2
-
-	if uint(len(nss)) != originalDataWidth*originalDataWidth {
-		panic(
-			fmt.Sprintf(
-				"unexpected numbers of namespaces: actual %d expected %d",
-				len(nss),
-				originalDataWidth*originalDataWidth,
-			),
-		)
-	}
-
-	leaves := make([][][]byte, 2*squareWidth)
-	// this is adding the namespace back to Q1 shares and the parity ns to the
-	// rest of the quadrants and flattens the square
-	for i := uint(0); i < squareWidth; i++ {
-		rowLeaves := make([][]byte, squareWidth)
-		colLeaves := make([][]byte, squareWidth)
-
-		for j := uint(0); j < squareWidth; j++ {
-			if i < originalDataWidth && j < originalDataWidth {
-				rowShare := nss[i*originalDataWidth+j]
-				colShare := nss[j*originalDataWidth+i]
-				rowLeaves[j] = append(append(make([]byte, 0), rowShare.NamespaceID()...), rowShare.Data()...)
-				colLeaves[j] = append(append(make([]byte, 0), colShare.NamespaceID()...), colShare.Data()...)
-			} else {
-				rowData := eds.Row(i)
-				colData := eds.Column(i)
-				parityCellFromRow := rowData[j]
-				parityCellFromCol := colData[j]
-				rowLeaves[j] = append(copyOfParityNamespaceID(), parityCellFromRow...)
-				colLeaves[j] = append(copyOfParityNamespaceID(), parityCellFromCol...)
-			}
-		}
-		leaves[i] = colLeaves
-		leaves[i+squareWidth] = rowLeaves
-	}
-
-	return leaves
-}
-
-func copyOfParityNamespaceID() []byte {
-	out := make([]byte, len(ParitySharesNamespaceID))
-	copy(out, ParitySharesNamespaceID)
-	return out
+	b.NumOriginalDataShares = uint64(dataSharesLen)
 }
 
 // Hash computes and returns the block hash.
@@ -660,7 +539,7 @@ type Header struct {
 	// Block.DataAvailabilityHeader for stores (row|column)Root_i // TODO ...
 	DataHash tmbytes.HexBytes `json:"data_hash"` // transactions
 	// amount of data shares within a Block #specs:availableDataOriginalSharesUsed
-	NumOriginalDataShares int64 `json:"data_shares"`
+	NumOriginalDataShares uint64 `json:"data_shares"`
 
 	// hashes from the app output from the prev block
 	ValidatorsHash     tmbytes.HexBytes `json:"validators_hash"`      // validators for the current block
@@ -1367,7 +1246,7 @@ func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
 		}
 		rawDatas = append(rawDatas, rawData)
 	}
-	shares := splitContiguous(IntermediateStateRootsNamespaceID, rawDatas)
+	shares := splitContiguous(consts.IntermediateStateRootsNamespaceID, rawDatas)
 	return shares
 }
 
@@ -1398,18 +1277,16 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	msgShares := data.Messages.splitIntoShares()
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 
-	// FIXME(ismail): this is not a power of two
-	// see: https://github.com/lazyledger/lazyledger-specs/issues/80 and
-	curWidth := uint32(math.Ceil(math.Sqrt(float64(curLen))))
-	nextPowOfTwoWidth := powerOf2(curWidth)
-	wantLen := nextPowOfTwoWidth * nextPowOfTwoWidth
+	// find the number of shares needed to create a square that has a power of
+	// two width
+	wantLen := paddedLen(curLen)
 
 	// ensure that the min square size is used
-	if wantLen < minSharecount {
-		wantLen = minSharecount
+	if wantLen < consts.MinSharecount {
+		wantLen = consts.MinSharecount
 	}
 
-	tailShares := GenerateTailPaddingShares(int(wantLen)-curLen, ShareSize)
+	tailShares := GenerateTailPaddingShares(int(wantLen)-curLen, consts.ShareSize)
 
 	return append(append(append(append(
 		txShares,
@@ -1419,10 +1296,32 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 		tailShares...), curLen
 }
 
-func getNextSquareNum(length int) int {
-	width := int(math.Ceil(math.Sqrt(float64(length))))
-	// TODO(ismail): make width a power of two instead
-	return width * width
+// paddedLen calculates the number of shares needed to make a power of 2 square
+// given the current number of shares
+func paddedLen(length int) int {
+	width := uint32(math.Ceil(math.Sqrt(float64(length))))
+	width = nextHighestPowerOf2(width)
+	return int(width * width)
+}
+
+// nextPowerOf2 returns the next highest power of 2 unless the input is a power
+// of two, in which case it returns the input
+func nextHighestPowerOf2(v uint32) uint32 {
+	if v == 0 {
+		return 0
+	}
+
+	// find the next highest power using bit mashing
+	v--
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+	v++
+
+	// return the next highest power
+	return v
 }
 
 func powerOf2(v uint32) uint32 {
@@ -1682,7 +1581,7 @@ func (data *EvidenceData) splitIntoShares() NamespacedShares {
 		}
 		rawDatas = append(rawDatas, rawData)
 	}
-	shares := splitContiguous(EvidenceNamespaceID, rawDatas)
+	shares := splitContiguous(consts.EvidenceNamespaceID, rawDatas)
 	return shares
 }
 

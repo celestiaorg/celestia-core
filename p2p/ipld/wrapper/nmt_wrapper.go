@@ -1,4 +1,4 @@
-package ipld
+package wrapper
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"github.com/lazyledger/nmt/namespace"
 	"github.com/lazyledger/rsmt2d"
 
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
 // emptyNamepsaceID occurs when a share is empty and indicates that
@@ -55,7 +55,7 @@ func (w ErasuredNamespacedMerkleTree) Constructor() rsmt2d.Tree {
 // if the tree size is exceeded.
 func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex) {
 	// determine the namespace based on where in the tree we're pushing
-	nsID := make(namespace.ID, types.NamespaceSize)
+	nsID := make(namespace.ID, consts.NamespaceSize)
 
 	if idx.Axis+1 > 2*uint(w.squareSize) || idx.Cell+1 > 2*uint(w.squareSize) {
 		panic(fmt.Sprintf("pushed past predetermined square size: boundary at %d index at %+v", 2*w.squareSize, idx))
@@ -65,17 +65,17 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex)
 	// datasquare if the cell is empty it means we got an empty block so we need
 	// to use TailPaddingNamespaceID
 	if idx.Axis+1 > uint(w.squareSize) || idx.Cell+1 > uint(w.squareSize) {
-		copy(nsID, types.ParitySharesNamespaceID)
+		copy(nsID, consts.ParitySharesNamespaceID)
 	} else {
 		// empty shares use the TailPaddingNamespaceID if the data is empty, so
 		// here we check if the share is empty (namepsace == [0,0,0,0,0,0,0,0])
-		if bytes.Equal(data[:types.NamespaceSize], emptyNamespaceID) {
-			copy(nsID, types.TailPaddingNamespaceID)
+		if bytes.Equal(data[:consts.NamespaceSize], emptyNamespaceID) {
+			copy(nsID, consts.TailPaddingNamespaceID)
 		} else {
-			copy(nsID, data[:types.NamespaceSize])
+			copy(nsID, data[:consts.NamespaceSize])
 		}
 	}
-	nidAndData := append(append(make([]byte, 0, types.NamespaceSize+len(data)), nsID...), data...)
+	nidAndData := append(append(make([]byte, 0, consts.NamespaceSize+len(data)), nsID...), data...)
 	// push to the underlying tree
 	err := w.tree.Push(nidAndData)
 	// panic on error

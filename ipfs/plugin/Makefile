@@ -22,13 +22,13 @@ endif
 
 .PHONY: install build
 
-lazyledger-plugin.so: plugin.go
+nmt-plugin.so: main/main.go
 	$(GOCC) build $(GOFLAGS) -buildmode=plugin -o "$@" "$<"
 	chmod +x "$@"
 
-build: lazyledger-plugin.so
+build: nmt-plugin.so
 	@echo "Built against" $(IPFS_VERSION)
 
 install: build
 	mkdir -p "$(IPFS_PATH)/plugins/"
-	cp -f lazyledger-plugin.so "$(IPFS_PATH)/plugins/lazyledger-plugin.so"
+	cp -f nmt-plugin.so "$(IPFS_PATH)/plugins/nmt-plugin.so"

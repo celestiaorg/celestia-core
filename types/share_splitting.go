@@ -3,19 +3,20 @@ package types
 import (
 	"bytes"
 
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	"github.com/lazyledger/nmt/namespace"
 )
 
 // appendToShares appends raw data as shares.
 // Used for messages.
 func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) []NamespacedShare {
-	if len(rawData) <= MsgShareSize {
+	if len(rawData) <= consts.MsgShareSize {
 		rawShare := append(append(
 			make([]byte, 0, len(nid)+len(rawData)),
 			nid...),
 			rawData...,
 		)
-		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
+		paddedShare := zeroPadIfNecessary(rawShare, consts.ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
 	} else { // len(rawData) > MsgShareSize
@@ -29,20 +30,20 @@ func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) 
 func splitMessage(rawData []byte, nid namespace.ID) []NamespacedShare {
 	shares := make([]NamespacedShare, 0)
 	firstRawShare := append(append(
-		make([]byte, 0, ShareSize),
+		make([]byte, 0, consts.ShareSize),
 		nid...),
-		rawData[:MsgShareSize]...,
+		rawData[:consts.MsgShareSize]...,
 	)
 	shares = append(shares, NamespacedShare{firstRawShare, nid})
-	rawData = rawData[MsgShareSize:]
+	rawData = rawData[consts.MsgShareSize:]
 	for len(rawData) > 0 {
-		shareSizeOrLen := min(MsgShareSize, len(rawData))
+		shareSizeOrLen := min(consts.MsgShareSize, len(rawData))
 		rawShare := append(append(
-			make([]byte, 0, ShareSize),
+			make([]byte, 0, consts.ShareSize),
 			nid...),
 			rawData[:shareSizeOrLen]...,
 		)
-		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
+		paddedShare := zeroPadIfNecessary(rawShare, consts.ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
 		rawData = rawData[shareSizeOrLen:]
@@ -61,13 +62,13 @@ func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
 	for outerIndex < len(rawDatas) {
 		var rawData []byte
 		startIndex := 0
-		rawData, outerIndex, innerIndex, startIndex = getNextChunk(rawDatas, outerIndex, innerIndex, TxShareSize)
+		rawData, outerIndex, innerIndex, startIndex = getNextChunk(rawDatas, outerIndex, innerIndex, consts.TxShareSize)
 		rawShare := append(append(append(
 			make([]byte, 0, len(nid)+1+len(rawData)),
 			nid...),
 			byte(startIndex)),
 			rawData...)
-		paddedShare := zeroPadIfNecessary(rawShare, ShareSize)
+		paddedShare := zeroPadIfNecessary(rawShare, consts.ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
 	}
@@ -95,7 +96,7 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 		// a new data segment begins
 		if curIndex != 0 {
 			// Offset by the fixed reserved bytes at the beginning of the share
-			startIndex = firstBytesToFetch + NamespaceSize + ShareReservedBytes
+			startIndex = firstBytesToFetch + consts.NamespaceSize + consts.ShareReservedBytes
 		}
 		rawData = append(rawData, rawDatas[outerIndex][innerIndex:innerIndex+bytesToFetch]...)
 		innerIndex += bytesToFetch
@@ -112,7 +113,7 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 func GenerateTailPaddingShares(n int, shareWidth int) NamespacedShares {
 	shares := make([]NamespacedShare, n)
 	for i := 0; i < n; i++ {
-		shares[i] = NamespacedShare{bytes.Repeat([]byte{0}, shareWidth), TailPaddingNamespaceID}
+		shares[i] = NamespacedShare{bytes.Repeat([]byte{0}, shareWidth), consts.TailPaddingNamespaceID}
 	}
 	return shares
 }

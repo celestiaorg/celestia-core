@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
 // TODO(@Wondertan): Add test to simulate ErrValidationFailed
@@ -17,7 +18,7 @@ func TestValidateAvailability(t *testing.T) {
 	const (
 		shares          = 15
 		squareSize      = 8
-		adjustedMsgSize = types.MsgShareSize - 2
+		adjustedMsgSize = consts.MsgShareSize - 2
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -27,13 +28,13 @@ func TestValidateAvailability(t *testing.T) {
 	ipfsAPI := mockedIpfsAPI(t)
 
 	blockData := generateRandomBlockData(squareSize*squareSize, adjustedMsgSize)
-	block := types.Block{
+	block := &types.Block{
 		Data:       blockData,
 		LastCommit: &types.Commit{},
 	}
 	block.Hash()
 
-	err := block.PutBlock(ctx, ipfsAPI.Dag())
+	err := PutBlock(ctx, ipfsAPI.Dag(), block)
 	require.NoError(t, err)
 
 	calls := 0
