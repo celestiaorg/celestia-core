@@ -32,7 +32,7 @@ func PerturbNode(node *e2e.Node, perturbation e2e.Perturbation) (*rpctypes.Resul
 		if err := execDocker("network", "disconnect", testnet.Name+"_"+testnet.Name, node.Name); err != nil {
 			return nil, err
 		}
-		time.Sleep(15 * time.Second)
+		time.Sleep(10 * time.Second)
 		if err := execDocker("network", "connect", testnet.Name+"_"+testnet.Name, node.Name); err != nil {
 			return nil, err
 		}
@@ -66,7 +66,7 @@ func PerturbNode(node *e2e.Node, perturbation e2e.Perturbation) (*rpctypes.Resul
 		return nil, fmt.Errorf("unexpected perturbation %q", perturbation)
 	}
 
-	status, err := waitForNode(node, 0, 30*time.Second)
+	status, err := waitForNode(node, 0, 20*time.Second)
 	if err != nil {
 		return nil, err
 	}
