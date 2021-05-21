@@ -33,6 +33,7 @@ package protoio
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 
 	"github.com/gogo/protobuf/proto"
@@ -62,9 +63,9 @@ func (r *varintReader) ReadMsg(msg proto.Message) error {
 		return err
 	}
 	length := int(length64)
-	// if length < 0 || length > r.maxSize {
-	// 	return fmt.Errorf("message exceeds max size (%v > %v)", length, r.maxSize)
-	// }
+	if length < 0 || length > r.maxSize {
+		return fmt.Errorf("message exceeds max size (%v > %v)", length, r.maxSize)
+	}
 	if len(r.buf) < length {
 		r.buf = make([]byte, length)
 	}

@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	maxNodeInfoSize = 10240 // 10KB
-	maxNumChannels  = 16    // plenty of room for upgrades, for now
+	maxNodeInfoSize = 5120000 // 5MB
+	maxNumChannels  = 16      // plenty of room for upgrades, for now
 )
 
 // Max size of the NodeInfo struct
