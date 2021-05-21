@@ -37,7 +37,7 @@ func waitForHeight(testnet *e2e.Testnet, height int64) (*types.Block, *types.Blo
 				clients[node.Name] = client
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 			defer cancel()
 			result, err := client.Block(ctx, nil)
 			if err != nil {
