@@ -191,6 +191,7 @@ func setupNode() (*config.Config, log.Logger, *p2p.NodeKey, error) {
 		return nil, nil, nil, err
 	}
 	tmcfg = config.DefaultConfig()
+	tmcfg.RPC.TimeoutBroadcastTxCommit = time.Second * 60
 	err = viper.Unmarshal(tmcfg)
 	if err != nil {
 		return nil, nil, nil, err
