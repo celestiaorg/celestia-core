@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/spf13/cobra"
 
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
@@ -178,7 +179,15 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	if sequential {
 		options = append(options, light.SequentialVerification())
 	} else if daSampling {
-		options = append(options, light.DataAvailabilitySampling(uint32(numSamples)))
+		cfg := ipfs.DefaultConfig()
+		cfg.RootDir = dir
+		apiProvider := ipfs.Embedded(true, cfg, logger)
+		// TODO(ismail): use closer for shutdown!
+		coreAPI, _, err := apiProvider()
+		if err != nil {
+			panic(err)
+		}
+		options = append(options, light.DataAvailabilitySampling(uint32(numSamples), coreAPI))
 	} else {
 		options = append(options, light.SkippingVerification(trustLevel))
 	}

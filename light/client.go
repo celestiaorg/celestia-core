@@ -72,11 +72,11 @@ func SkippingVerification(trustLevel tmmath.Fraction) Option {
 	}
 }
 
-// TODO: also pass in a CoreAPI object here
-func DataAvailabilitySampling(numSamples uint32) Option {
+func DataAvailabilitySampling(numSamples uint32, ipfsApi coreiface.CoreAPI) Option {
 	return func(c *Client) {
 		c.verificationMode = dataAvailabilitySampling
 		c.numSamples = int(numSamples)
+		c.ipfsCoreAPI = ipfsApi
 	}
 }
 
