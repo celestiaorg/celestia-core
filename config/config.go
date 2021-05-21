@@ -194,7 +194,7 @@ type BaseConfig struct { //nolint: maligned
 	NodeKey string `mapstructure:"node-key-file"`
 
 	// Mechanism to connect to the ABCI application: socket | grpc
-	ABCI string `mapstructure:"abci"`
+	// ABCI string `mapstructure:"abci"` // we only use in process apps
 
 	// If true, query the ABCI app on connecting to a new peer
 	// so the app can decide if we should keep the connection or not
@@ -210,7 +210,6 @@ func DefaultBaseConfig() BaseConfig {
 		NodeKey:            defaultNodeKeyPath,
 		Moniker:            defaultMoniker,
 		ProxyApp:           "tcp://127.0.0.1:26658",
-		ABCI:               "socket",
 		LogLevel:           DefaultPackageLogLevels(),
 		LogFormat:          LogFormatPlain,
 		FastSyncMode:       true,

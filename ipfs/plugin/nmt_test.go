@@ -75,7 +75,7 @@ func TestNodeCollector(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			collector := newNodeCollector()
-			n := nmt.New(sha256.New(), nmt.NamespaceIDSize(namespaceSize), nmt.NodeVisitor(collector.visit))
+			n := nmt.New(sha256.New, nmt.NamespaceIDSize(namespaceSize), nmt.NodeVisitor(collector.visit))
 
 			for _, share := range tt.leafData {
 				err := n.Push(share)
@@ -116,7 +116,7 @@ func TestNodeCollector(t *testing.T) {
 			for _, node := range gotNodes {
 				hasMap[node.Cid().String()] = true
 			}
-			hasher := nmt.NewNmtHasher(sha256.New(), namespaceSize, true)
+			hasher := nmt.NewNmtHasher(sha256.New, namespaceSize, true)
 			for _, leaf := range tt.leafData {
 				leafCid := MustCidFromNamespacedSha256(hasher.HashLeaf(leaf))
 				_, has := hasMap[leafCid.String()]
