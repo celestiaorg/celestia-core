@@ -193,6 +193,7 @@ func makeBlockIDRandom() types.BlockID {
 			Total: 123,
 			Hash:  partSetHash,
 		},
+		DataAvailabilityHeader: types.MinDataAvailabilityHeader(),
 	}
 }
 
