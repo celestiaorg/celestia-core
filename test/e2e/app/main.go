@@ -53,7 +53,7 @@ func run(configFile string) error {
 			return err
 		}
 		if cfg.Protocol == "builtin" {
-			time.Sleep(1 * time.Second)
+			time.Sleep(20 * time.Second)
 		}
 	}
 
