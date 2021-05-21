@@ -64,7 +64,7 @@ func (r *varintReader) ReadMsg(msg proto.Message) error {
 	}
 	length := int(length64)
 	if length < 0 || length > r.maxSize {
-		return fmt.Errorf("message exceeds max size (%v > %v)", length, r.maxSize)
+		return fmt.Errorf("message exceeds max size (%v > %v) %T", length, r.maxSize, msg)
 	}
 	if len(r.buf) < length {
 		r.buf = make([]byte, length)
