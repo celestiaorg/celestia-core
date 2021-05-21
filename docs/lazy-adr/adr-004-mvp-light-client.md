@@ -80,7 +80,7 @@ diff --git a/cmd/tendermint/commands/light.go b/cmd/tendermint/commands/light.go
 ```
 
 For the Data Availability sampling, the light client will have to run an IPFS node.
-It makes sense to make this mostly opaque to the user as everything around IPFS can be [configured](https://github.com/ipfs/go-ipfs/blob/d6322f485af222e319c893eeac51c44a9859e901/docs/config.md) in the $IPFS_PATH.
+It makes sense to make this mostly opaque to the user as everything around IPFS can be [configured](https://github.com/ipfs/go-ipfs/blob/d6322f485af222e319c893eeac51c44a9859e901/docs/config.md) in the `$IPFS_PATH`.
 This IPFS path should simply be a sub-directory inside the light client's [directory](https://github.com/lazyledger/lazyledger-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/cmd/tendermint/commands/light.go#L86-L87).
 We can later add the ability to let users configure the IPFS setup more granular.
 
