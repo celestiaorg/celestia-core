@@ -1721,7 +1721,7 @@ func (blockID *BlockID) ToProto() tmproto.BlockID {
 // It returns an error if the block id is invalid.
 func BlockIDFromProto(bID *tmproto.BlockID) (*BlockID, error) {
 	if bID == nil {
-		return nil, nil
+		return nil, errors.New("expected non nil proto BlockID")
 	}
 
 	blockID := new(BlockID)
