@@ -105,9 +105,10 @@ func init() {
 		"sequential verification. Verify all headers sequentially as opposed to using skipping verification",
 	)
 	LightCmd.Flags().BoolVar(&daSampling, "da-sampling", false,
-		"data availability sampling. For each verified header, additionally verify data availability via data availability sampling",
+		"data availability sampling. Verify each header's data availability via sampling",
 	)
-	LightCmd.Flags().Int32Var(&numSamples, "num-samples", 15, "Number of data availability samples until block data deemed available.")
+	LightCmd.Flags().Int32Var(&numSamples, "num-samples", 15,
+		"Number of data availability samples until block data deemed available.")
 }
 
 func runProxy(cmd *cobra.Command, args []string) error {
@@ -176,9 +177,10 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		}),
 	}
 
-	if sequential {
+	switch {
+	case sequential:
 		options = append(options, light.SequentialVerification())
-	} else if daSampling {
+	case daSampling:
 		cfg := ipfs.DefaultConfig()
 		cfg.RootDir = dir
 		apiProvider := ipfs.Embedded(true, cfg, logger)
@@ -188,7 +190,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 			panic(err)
 		}
 		options = append(options, light.DataAvailabilitySampling(uint32(numSamples), coreAPI))
-	} else {
+	default:
 		options = append(options, light.SkippingVerification(trustLevel))
 	}
 
