@@ -73,7 +73,7 @@ func SkippingVerification(trustLevel tmmath.Fraction) Option {
 func DataAvailabilitySampling(numSamples uint32, ipfsApi coreiface.CoreAPI) Option {
 	return func(c *Client) {
 		c.verificationMode = dataAvailabilitySampling
-		c.numSamples = int(numSamples)
+		c.numSamples = numSamples
 		c.ipfsCoreAPI = ipfsApi
 	}
 }
@@ -130,7 +130,7 @@ type Client struct {
 	trustingPeriod   time.Duration // see TrustOptions.Period
 	verificationMode mode
 	trustLevel       tmmath.Fraction
-	numSamples       int
+	numSamples       uint32
 	maxRetryAttempts uint16 // see MaxRetryAttempts option
 	maxClockDrift    time.Duration
 
@@ -245,7 +245,6 @@ func NewClientFromTrustedStore(
 	}
 
 	if c.verificationMode == dataAvailabilitySampling {
-		// TODO(ismail): move validation of param out!
 		if err := ValidateNumSamples(c.numSamples); err != nil {
 			return nil, err
 		}
@@ -698,7 +697,7 @@ func (c *Client) verifySequential(
 			// TODO: decide how to handle this case:
 			// https://github.com/lazyledger/lazyledger-core/issues/319
 			numRows := len(interimBlock.DataAvailabilityHeader.RowsRoots)
-			numSamples := min(c.numSamples, numRows*numRows)
+			numSamples := min(c.numSamples, uint32(numRows*numRows))
 			c.logger.Info("Starting Data Availability sampling", "height", height, "numSamples", numSamples, "squareWidth", numRows)
 			peers, _ := c.ipfsCoreAPI.Swarm().Peers(ctx)
 			peersStr := ""
@@ -739,11 +738,11 @@ func (c *Client) verifySequential(
 	return c.detectDivergence(ctx, trace, now)
 }
 
-func min(a, b int) int {
+func min(a, b uint32) int {
 	if a < b {
-		return a
+		return int(a)
 	}
-	return b
+	return int(b)
 }
 
 // see VerifyHeader

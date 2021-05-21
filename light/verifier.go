@@ -177,8 +177,8 @@ func ValidateTrustLevel(lvl tmmath.Fraction) error {
 	return nil
 }
 
-func ValidateNumSamples( numSamples int) error {
-	if numSamples <= 0 {
+func ValidateNumSamples(numSamples uint32) error {
+	if numSamples == 0 {
 		return fmt.Errorf("numSamples must be > 0, given %v", numSamples)
 	}
 	return nil
