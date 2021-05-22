@@ -160,9 +160,6 @@ type Block struct {
 	Data                   `json:"data"`
 	DataAvailabilityHeader DataAvailabilityHeader `json:"availability_header"`
 	LastCommit             *Commit                `json:"last_commit"`
-
-	// cache the eds:
-	eds *rsmt2d.ExtendedDataSquare
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data.
@@ -246,7 +243,6 @@ func (b *Block) fillDataAvailabilityHeader() {
 		panic(fmt.Sprintf("unexpected error: %v", err))
 	}
 
-	b.eds = extendedDataSquare
 	// generate the row and col roots using the EDS and nmt wrapper
 	rowRoots := extendedDataSquare.RowRoots()
 	colRoots := extendedDataSquare.ColumnRoots()
