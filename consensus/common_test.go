@@ -680,8 +680,14 @@ func consensusLogger() log.Logger {
 	}).With("module", "consensus")
 }
 
-func randConsensusNet(nValidators int, testName string, tickerFunc func() TimeoutTicker,
-	appFunc func() abci.Application, ipfsProvider ipfs.APIProvider, configOpts ...func(*cfg.Config)) ([]*State, cleanupFunc) {
+func randConsensusNet(
+	nValidators int,
+	testName string,
+	tickerFunc func() TimeoutTicker,
+	appFunc func() abci.Application,
+	ipfsProvider ipfs.APIProvider,
+	configOpts ...func(*cfg.Config),
+) ([]*State, cleanupFunc) {
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30)
 	ipfsAPI, closer, _ := ipfsProvider()
 
