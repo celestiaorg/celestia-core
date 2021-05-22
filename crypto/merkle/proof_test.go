@@ -171,7 +171,6 @@ func TestProofValidateBasic(t *testing.T) {
 	}
 }
 func TestVoteProtobuf(t *testing.T) {
-
 	_, proofs := ProofsFromByteSlices([][]byte{
 		[]byte("apple"),
 		[]byte("watermelon"),
