@@ -26,7 +26,7 @@ require (
 	github.com/ipfs/go-path v0.0.9 // indirect
 	github.com/ipfs/go-verifcid v0.0.1
 	github.com/ipfs/interface-go-ipfs-core v0.4.0
-	github.com/lazyledger/nmt v0.4.0
+	github.com/lazyledger/nmt v0.5.0
 	github.com/lazyledger/rsmt2d v0.2.0
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/minio/highwayhash v1.0.1
