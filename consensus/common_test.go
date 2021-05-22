@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -49,17 +50,33 @@ const (
 // test.
 type cleanupFunc func()
 
-// genesis, chain_id, priv_val
+// genesis, chain_id, priv_val, ipfsAPI
 var (
 	config                *cfg.Config // NOTE: must be reset for each _test.go file
 	consensusReplayConfig *cfg.Config
 	ensureTimeout         = 1000 * time.Millisecond
+
+	ipfsTestAPI iface.CoreAPI
+	ipfsCloser  io.Closer
 )
 
 func ensureDir(dir string, mode os.FileMode) {
 	if err := tmos.EnsureDir(dir, mode); err != nil {
 		panic(err)
 	}
+}
+
+func setTestIpfsAPI() (err error) {
+	mockIPFSProvider := ipfs.Mock()
+	if ipfsTestAPI, ipfsCloser, err = mockIPFSProvider(); err != nil {
+		return
+	}
+	return
+}
+
+func teardownTestIpfsAPI() (err error) {
+	err = ipfsCloser.Close()
+	return
 }
 
 func ResetConfig(name string) *cfg.Config {
@@ -426,14 +443,14 @@ func loadPrivValidator(config *cfg.Config) *privval.FilePV {
 	return privValidator
 }
 
-func randState(nValidators int, ipfsAPI iface.CoreAPI) (*State, []*validatorStub) {
+func randState(nValidators int) (*State, []*validatorStub) {
 	// Get State
 	state, privVals := randGenesisState(nValidators, false, 10)
 
 	vss := make([]*validatorStub, nValidators)
 
 	cs := newState(state, privVals[0], counter.NewApplication(true))
-	cs.SetIPFSApi(ipfsAPI)
+	cs.SetIPFSApi(ipfsTestAPI)
 
 	for i := 0; i < nValidators; i++ {
 		vss[i] = newValidatorStub(privVals[i], int32(i))
@@ -685,11 +702,9 @@ func randConsensusNet(
 	testName string,
 	tickerFunc func() TimeoutTicker,
 	appFunc func() abci.Application,
-	ipfsProvider ipfs.APIProvider,
 	configOpts ...func(*cfg.Config),
 ) ([]*State, cleanupFunc) {
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30)
-	ipfsAPI, closer, _ := ipfsProvider()
 
 	css := make([]*State, nValidators)
 	logger := consensusLogger()
@@ -711,12 +726,11 @@ func randConsensusNet(
 		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
-		css[i].SetIPFSApi(ipfsAPI)
+		css[i].SetIPFSApi(ipfsTestAPI)
 	}
 	return css, func() {
 		for _, dir := range configRootDirs {
 			os.RemoveAll(dir)
-			closer.Close()
 		}
 	}
 }
@@ -728,14 +742,13 @@ func randConsensusNetWithPeers(
 	testName string,
 	tickerFunc func() TimeoutTicker,
 	appFunc func(string) abci.Application,
-	ipfsProvider ipfs.APIProvider,
 ) ([]*State, *types.GenesisDoc, *cfg.Config, cleanupFunc) {
 	genDoc, privVals := randGenesisDoc(nValidators, false, testMinPower)
 	css := make([]*State, nPeers)
 	logger := consensusLogger()
 	var peer0Config *cfg.Config
 	configRootDirs := make([]string, 0, nPeers)
-	ipfsAPI, closer, _ := ipfsProvider()
+
 	for i := 0; i < nPeers; i++ {
 		stateDB := memdb.NewDB() // each state needs its own db
 		stateStore := sm.NewStore(stateDB)
@@ -777,12 +790,11 @@ func randConsensusNetWithPeers(
 		css[i] = newStateWithConfig(thisConfig, state, privVal, app)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
-		css[i].SetIPFSApi(ipfsAPI)
+		css[i].SetIPFSApi(ipfsTestAPI)
 	}
 	return css, genDoc, peer0Config, func() {
 		for _, dir := range configRootDirs {
 			os.RemoveAll(dir)
-			closer.Close()
 		}
 	}
 }

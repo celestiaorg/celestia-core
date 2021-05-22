@@ -56,10 +56,8 @@ x * TestHalt1 - if we see +2/3 precommits after timing out into new round, we sh
 // ProposeSuite
 
 func TestStateProposerSelection0(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	height, round := cs1.Height, cs1.Round
 
 	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
@@ -99,10 +97,7 @@ func TestStateProposerSelection0(t *testing.T) {
 
 // Now let's do it all again, but starting from round 2 instead of 0
 func TestStateProposerSelection2(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
-
-	cs1, vss := randState(4, ipfsAPI) // test needs more work for more than 3 validators
+	cs1, vss := randState(4) // test needs more work for more than 3 validators
 	height := cs1.Height
 	newRoundCh := subscribe(cs1.eventBus, types.EventQueryNewRound)
 
@@ -139,10 +134,7 @@ func TestStateProposerSelection2(t *testing.T) {
 
 // a non-validator should timeout into the prevote round
 func TestStateEnterProposeNoPrivValidator(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
-
-	cs, _ := randState(1, ipfsAPI)
+	cs, _ := randState(1)
 	cs.SetPrivValidator(nil)
 	height, round := cs.Height, cs.Round
 
@@ -161,10 +153,7 @@ func TestStateEnterProposeNoPrivValidator(t *testing.T) {
 
 // a validator should not timeout of the prevote round (TODO: unless the block is really big!)
 func TestStateEnterProposeYesPrivValidator(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
-
-	cs, _ := randState(1, ipfsAPI)
+	cs, _ := randState(1)
 	height, round := cs.Height, cs.Round
 
 	// Listen for propose timeout event
@@ -194,10 +183,8 @@ func TestStateEnterProposeYesPrivValidator(t *testing.T) {
 }
 
 func TestStateBadProposal(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(2, ipfsAPI)
+	cs1, vss := randState(2)
 	height, round := cs1.Height, cs1.Round
 	vs2 := vss[1]
 
@@ -256,10 +243,8 @@ func TestStateBadProposal(t *testing.T) {
 }
 
 func TestStateOversizedBlock(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(2, ipfsAPI)
+	cs1, vss := randState(2)
 	cs1.state.ConsensusParams.Block.MaxBytes = 2000
 	height, round := cs1.Height, cs1.Round
 	vs2 := vss[1]
@@ -322,10 +307,8 @@ func TestStateOversizedBlock(t *testing.T) {
 
 // propose, prevote, and precommit a block
 func TestStateFullRound1(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs, vss := randState(1, ipfsAPI)
+	cs, vss := randState(1)
 	height, round := cs.Height, cs.Round
 
 	// NOTE: buffer capacity of 0 ensures we can validate prevote and last commit
@@ -365,10 +348,8 @@ func TestStateFullRound1(t *testing.T) {
 
 // nil is proposed, so prevote and precommit nil
 func TestStateFullRoundNil(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs, vss := randState(1, ipfsAPI)
+	cs, vss := randState(1)
 	height, round := cs.Height, cs.Round
 
 	voteCh := subscribeUnBuffered(cs.eventBus, types.EventQueryVote)
@@ -386,10 +367,8 @@ func TestStateFullRoundNil(t *testing.T) {
 // run through propose, prevote, precommit commit with two validators
 // where the first validator has to wait for votes from the second
 func TestStateFullRound2(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(2, ipfsAPI)
+	cs1, vss := randState(2)
 	vs2 := vss[1]
 	height, round := cs1.Height, cs1.Round
 
@@ -429,10 +408,8 @@ func TestStateFullRound2(t *testing.T) {
 // two validators, 4 rounds.
 // two vals take turns proposing. val1 locks on first one, precommits nil on everything else
 func TestStateLockNoPOL(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(2, ipfsAPI)
+	cs1, vss := randState(2)
 	vs2 := vss[1]
 	height, round := cs1.Height, cs1.Round
 
@@ -569,7 +546,7 @@ func TestStateLockNoPOL(t *testing.T) {
 
 	ensureNewTimeout(timeoutWaitCh, height, round, cs1.config.Precommit(round).Nanoseconds())
 
-	cs2, _ := randState(2, ipfsAPI) // needed so generated block is different than locked block
+	cs2, _ := randState(2) // needed so generated block is different than locked block
 	// before we time out into new round, set next proposal block
 	prop, propBlock := decideProposal(cs2, vs2, vs2.Height, vs2.Round+1)
 	if prop == nil || propBlock == nil {
@@ -618,9 +595,7 @@ func TestStateLockNoPOL(t *testing.T) {
 // in round two: v1 prevotes the same block that the node is locked on
 // the others prevote a new block hence v1 changes lock and precommits the new block with the others
 func TestStateLockPOLRelock(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 
@@ -665,7 +640,7 @@ func TestStateLockPOLRelock(t *testing.T) {
 
 	// before we timeout to the new round set the new proposal
 	cs2 := newState(cs1.state, vs2, counter.NewApplication(true))
-	cs2.SetIPFSApi(ipfsAPI)
+	cs2.SetIPFSApi(ipfsTestAPI)
 	prop, propBlock := decideProposal(cs2, vs2, vs2.Height, vs2.Round+1)
 	if prop == nil || propBlock == nil {
 		t.Fatal("Failed to create proposal block with vs2")
@@ -718,10 +693,8 @@ func TestStateLockPOLRelock(t *testing.T) {
 
 // 4 vals, one precommits, other 3 polka at next round, so we unlock and precomit the polka
 func TestStateLockPOLUnlock(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 
@@ -813,9 +786,7 @@ func TestStateLockPOLUnlock(t *testing.T) {
 // v1 should unlock and precommit nil. In the third round another block is proposed, all vals
 // prevote and now v1 can lock onto the third block and precommit that
 func TestStateLockPOLUnlockOnUnknownBlock(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 
@@ -856,7 +827,7 @@ func TestStateLockPOLUnlockOnUnknownBlock(t *testing.T) {
 
 	// before we timeout to the new round set the new proposal
 	cs2 := newState(cs1.state, vs2, counter.NewApplication(true))
-	cs2.SetIPFSApi(ipfsAPI)
+	cs2.SetIPFSApi(ipfsTestAPI)
 	prop, propBlock := decideProposal(cs2, vs2, vs2.Height, vs2.Round+1)
 	if prop == nil || propBlock == nil {
 		t.Fatal("Failed to create proposal block with vs2")
@@ -901,7 +872,7 @@ func TestStateLockPOLUnlockOnUnknownBlock(t *testing.T) {
 
 	// before we timeout to the new round set the new proposal
 	cs3 := newState(cs1.state, vs3, counter.NewApplication(true))
-	cs3.SetIPFSApi(ipfsAPI)
+	cs3.SetIPFSApi(ipfsTestAPI)
 	prop, propBlock = decideProposal(cs3, vs3, vs3.Height, vs3.Round+1)
 	if prop == nil || propBlock == nil {
 		t.Fatal("Failed to create proposal block with vs2")
@@ -943,10 +914,8 @@ func TestStateLockPOLUnlockOnUnknownBlock(t *testing.T) {
 // then a polka at round 2 that we lock on
 // then we see the polka from round 1 but shouldn't unlock
 func TestStateLockPOLSafety1(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 
@@ -1065,10 +1034,8 @@ func TestStateLockPOLSafety1(t *testing.T) {
 // What we want:
 // dont see P0, lock on P1 at R1, dont unlock using P0 at R2
 func TestStateLockPOLSafety2(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 
@@ -1166,10 +1133,8 @@ func TestStateLockPOLSafety2(t *testing.T) {
 // What we want:
 // P0 proposes B0 at R3.
 func TestProposeValidBlock(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 
@@ -1259,10 +1224,8 @@ func TestProposeValidBlock(t *testing.T) {
 // What we want:
 // P0 miss to lock B but set valid block to B after receiving delayed prevote.
 func TestSetValidBlockOnDelayedPrevote(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 
@@ -1324,10 +1287,8 @@ func TestSetValidBlockOnDelayedPrevote(t *testing.T) {
 // P0 miss to lock B as Proposal Block is missing, but set valid block to B after
 // receiving delayed Block Proposal.
 func TestSetValidBlockOnDelayedProposal(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 
@@ -1383,10 +1344,8 @@ func TestSetValidBlockOnDelayedProposal(t *testing.T) {
 // What we want:
 // P0 waits for timeoutPrecommit before starting next round
 func TestWaitingTimeoutOnNilPolka(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 
@@ -1407,10 +1366,8 @@ func TestWaitingTimeoutOnNilPolka(t *testing.T) {
 // What we want:
 // P0 waits for timeoutPropose in the next round before entering prevote
 func TestWaitingTimeoutProposeOnNewRound(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 
@@ -1446,10 +1403,8 @@ func TestWaitingTimeoutProposeOnNewRound(t *testing.T) {
 // What we want:
 // P0 jump to higher round, precommit and start precommit wait
 func TestRoundSkipOnNilPolkaFromHigherRound(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 
@@ -1485,10 +1440,8 @@ func TestRoundSkipOnNilPolkaFromHigherRound(t *testing.T) {
 // What we want:
 // P0 wait for timeoutPropose to expire before sending prevote.
 func TestWaitTimeoutProposeOnNilPolkaForTheCurrentRound(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, int32(1)
 
@@ -1515,10 +1468,8 @@ func TestWaitTimeoutProposeOnNilPolkaForTheCurrentRound(t *testing.T) {
 // What we want:
 // P0 emit NewValidBlock event upon receiving 2/3+ Precommit for B but hasn't received block B yet
 func TestEmitNewValidBlockEventOnCommitWithoutBlock(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, int32(1)
 
@@ -1552,10 +1503,8 @@ func TestEmitNewValidBlockEventOnCommitWithoutBlock(t *testing.T) {
 // P0 receives 2/3+ Precommit for B for round 0, while being in round 1. It emits NewValidBlock event.
 // After receiving block, it executes block and moves to the next height.
 func TestCommitFromPreviousRound(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, int32(1)
 
@@ -1609,10 +1558,8 @@ func (n *fakeTxNotifier) Notify() {
 // start of the next round
 func TestStartNextHeightCorrectlyAfterTimeout(t *testing.T) {
 	config.Consensus.SkipTimeoutCommit = false
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	cs1.txNotifier = &fakeTxNotifier{ch: make(chan struct{})}
 
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
@@ -1673,10 +1620,8 @@ func TestStartNextHeightCorrectlyAfterTimeout(t *testing.T) {
 
 func TestResetTimeoutPrecommitUponNewHeight(t *testing.T) {
 	config.Consensus.SkipTimeoutCommit = false
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
@@ -1817,10 +1762,8 @@ func TestStateSlashingPrecommits(t *testing.T) {
 // 4 vals.
 // we receive a final precommit after going into next round, but others might have gone to commit already!
 func TestStateHalt1(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs1, vss := randState(4, ipfsAPI)
+	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
 	height, round := cs1.Height, cs1.Round
 	partSize := types.BlockPartSizeBytes
@@ -1887,11 +1830,9 @@ func TestStateHalt1(t *testing.T) {
 }
 
 func TestStateOutputsBlockPartsStats(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
 	// create dummy peer
-	cs, _ := randState(1, ipfsAPI)
+	cs, _ := randState(1)
 	peer := p2pmock.NewPeer(nil)
 
 	// 1) new block part
@@ -1933,10 +1874,8 @@ func TestStateOutputsBlockPartsStats(t *testing.T) {
 }
 
 func TestStateOutputVoteStats(t *testing.T) {
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
-	cs, vss := randState(2, ipfsAPI)
+	cs, vss := randState(2)
 	// create dummy peer
 	peer := p2pmock.NewPeer(nil)
 

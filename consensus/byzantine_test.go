@@ -15,7 +15,6 @@ import (
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/evidence"
-	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/libs/service"
@@ -42,9 +41,6 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30)
 	css := make([]*State, nValidators)
-
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
 	for i := 0; i < nValidators; i++ {
 		logger := consensusLogger().With("test", "byzantine", "validator", i)
@@ -95,7 +91,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		cs.SetTimeoutTicker(tickerFunc())
 		cs.SetLogger(logger)
-		cs.SetIPFSApi(ipfsAPI)
+		cs.SetIPFSApi(ipfsTestAPI)
 		css[i] = cs
 	}
 
@@ -224,7 +220,6 @@ func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 		"consensus_byzantine_test",
 		newMockTickerFunc(false),
 		app,
-		ipfs.Mock(),
 	)
 	defer cleanup()
 

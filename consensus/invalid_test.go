@@ -1,19 +1,14 @@
 package consensus
 
 import (
-	"io"
 	"testing"
 
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
-
-	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/bytes"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	"github.com/lazyledger/lazyledger-core/p2p"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/stretchr/testify/require"
 )
 
 //----------------------------------------------
@@ -28,7 +23,6 @@ func TestReactorInvalidPrecommit(t *testing.T) {
 		"consensus_reactor_test",
 		newMockTickerFunc(true),
 		newCounter,
-		ipfs.Mock(),
 	)
 	t.Cleanup(cleanup)
 
@@ -62,13 +56,6 @@ func TestReactorInvalidPrecommit(t *testing.T) {
 			<-blocksSubs[j].Out()
 		}, css)
 	}
-}
-
-func createMockIpfsAPI(t *testing.T) (coreiface.CoreAPI, io.Closer) {
-	mockIPFSProvider := ipfs.Mock()
-	ipfsAPI, closer, err := mockIPFSProvider()
-	require.NoError(t, err)
-	return ipfsAPI, closer
 }
 
 func invalidDoPrevoteFunc(t *testing.T, height int64, round int32, cs *State, sw *p2p.Switch, pv types.PrivValidator) {

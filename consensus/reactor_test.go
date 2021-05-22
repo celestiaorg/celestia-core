@@ -22,7 +22,6 @@ import (
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/bits"
 	"github.com/lazyledger/lazyledger-core/libs/bytes"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
@@ -115,7 +114,6 @@ func TestReactorBasic(t *testing.T) {
 		"consensus_reactor_test",
 		newMockTickerFunc(true),
 		newCounter,
-		ipfs.Mock(),
 	)
 	defer cleanup()
 	reactors, blocksSubs, eventBuses := startConsensusNet(t, css, N)
@@ -132,8 +130,6 @@ func TestReactorWithEvidence(t *testing.T) {
 	testName := "consensus_reactor_test"
 	tickerFunc := newMockTickerFunc(true)
 	appFunc := newCounter
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 
 	// heed the advice from https://www.sandimetz.com/blog/2016/1/20/the-wrong-abstraction
 	// to unroll unwieldy abstractions. Here we duplicate the code from:
@@ -189,7 +185,7 @@ func TestReactorWithEvidence(t *testing.T) {
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
-		cs.SetIPFSApi(ipfsAPI)
+		cs.SetIPFSApi(ipfsTestAPI)
 
 		eventBus := types.NewEventBus()
 		eventBus.SetLogger(log.TestingLogger().With("module", "events"))
@@ -226,7 +222,6 @@ func TestReactorCreatesBlockWhenEmptyBlocksFalse(t *testing.T) {
 		"consensus_reactor_test",
 		newMockTickerFunc(true),
 		newCounter,
-		ipfs.Mock(),
 		func(c *cfg.Config) {
 			c.Consensus.CreateEmptyBlocks = false
 		})
@@ -252,7 +247,6 @@ func TestReactorReceiveDoesNotPanicIfAddPeerHasntBeenCalledYet(t *testing.T) {
 		"consensus_reactor_test",
 		newMockTickerFunc(true),
 		newCounter,
-		ipfs.Mock(),
 	)
 	defer cleanup()
 	reactors, _, eventBuses := startConsensusNet(t, css, N)
@@ -281,7 +275,6 @@ func TestReactorReceivePanicsIfInitPeerHasntBeenCalledYet(t *testing.T) {
 		"consensus_reactor_test",
 		newMockTickerFunc(true),
 		newCounter,
-		ipfs.Mock(),
 	)
 	defer cleanup()
 	reactors, _, eventBuses := startConsensusNet(t, css, N)
@@ -310,7 +303,6 @@ func TestReactorRecordsVotesAndBlockParts(t *testing.T) {
 		"consensus_reactor_test",
 		newMockTickerFunc(true),
 		newCounter,
-		ipfs.Mock(),
 	)
 	defer cleanup()
 	reactors, blocksSubs, eventBuses := startConsensusNet(t, css, N)
@@ -341,7 +333,6 @@ func TestReactorVotingPowerChange(t *testing.T) {
 		"consensus_voting_power_changes_test",
 		newMockTickerFunc(true),
 		newPersistentKVStore,
-		ipfs.Mock(),
 	)
 	defer cleanup()
 	reactors, blocksSubs, eventBuses := startConsensusNet(t, css, nVals)
@@ -424,7 +415,6 @@ func TestReactorValidatorSetChanges(t *testing.T) {
 		"consensus_val_set_changes_test",
 		newMockTickerFunc(true),
 		newPersistentKVStoreWithPath,
-		ipfs.Mock(),
 	)
 
 	defer cleanup()
@@ -541,7 +531,6 @@ func TestReactorWithTimeoutCommit(t *testing.T) {
 		"consensus_reactor_with_timeout_commit_test",
 		newMockTickerFunc(false),
 		newCounter,
-		ipfs.Mock(),
 	)
 	defer cleanup()
 	// override default SkipTimeoutCommit == true for tests

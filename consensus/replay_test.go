@@ -22,7 +22,6 @@ import (
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -38,6 +37,7 @@ import (
 
 func TestMain(m *testing.M) {
 	config = ResetConfig("consensus_reactor_test")
+	_ = setTestIpfsAPI()
 	consensusReplayConfig = ResetConfig("consensus_replay_test")
 	configStateTest := ResetConfig("consensus_state_test")
 	configMempoolTest := ResetConfig("consensus_mempool_test")
@@ -48,6 +48,7 @@ func TestMain(m *testing.M) {
 	os.RemoveAll(configStateTest.RootDir)
 	os.RemoveAll(configMempoolTest.RootDir)
 	os.RemoveAll(configByzantineTest.RootDir)
+	_ = teardownTestIpfsAPI()
 	os.Exit(code)
 }
 
@@ -71,7 +72,6 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 	logger := log.TestingLogger()
 	state, _ := stateStore.LoadFromDBOrGenesisFile(consensusReplayConfig.GenesisFile())
 	privValidator := loadPrivValidator(consensusReplayConfig)
-	ipfsAPI, closer := createMockIpfsAPI(t)
 
 	cs := newStateWithConfigAndBlockStore(
 		consensusReplayConfig,
@@ -81,7 +81,7 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		blockDB,
 	)
 	cs.SetLogger(logger)
-	cs.SetIPFSApi(ipfsAPI)
+	cs.SetIPFSApi(ipfsTestAPI)
 
 	bytes, _ := ioutil.ReadFile(cs.config.WalFile())
 	t.Logf("====== WAL: \n\r%X\n", bytes)
@@ -92,7 +92,6 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		if err := cs.Stop(); err != nil {
 			t.Error(err)
 		}
-		closer.Close()
 	}()
 
 	// This is just a signal that we haven't halted; its not something contained
@@ -133,10 +132,13 @@ func TestWALCrash(t *testing.T) {
 		heightToStop int64
 	}{
 		{"empty block",
-			func(stateDB dbm.DB, cs *State, ctx context.Context) {},
+			func(stateDB dbm.DB, cs *State, ctx context.Context) {
+				cs.SetIPFSApi(ipfsTestAPI)
+			},
 			1},
 		{"many non-empty blocks",
 			func(stateDB dbm.DB, cs *State, ctx context.Context) {
+				cs.SetIPFSApi(ipfsTestAPI)
 				go sendTxs(ctx, cs)
 			},
 			3},
@@ -155,8 +157,6 @@ func crashWALandCheckLiveness(t *testing.T, consensusReplayConfig *cfg.Config,
 	initFn func(dbm.DB, *State, context.Context), heightToStop int64) {
 	walPanicked := make(chan error)
 	crashingWal := &crashingWAL{panicCh: walPanicked, heightToStop: heightToStop}
-	ipfsAPI, closer := createMockIpfsAPI(t)
-	defer closer.Close()
 	i := 1
 LOOP:
 	for {
@@ -178,7 +178,6 @@ LOOP:
 			kvstore.NewApplication(),
 			blockDB,
 		)
-		cs.SetIPFSApi(ipfsAPI)
 		cs.SetLogger(logger)
 
 		// start sending transactions
@@ -338,7 +337,6 @@ func TestSimulateValidatorsChange(t *testing.T) {
 		"replay_test",
 		newMockTickerFunc(true),
 		newPersistentKVStoreWithPath,
-		ipfs.Mock(),
 	)
 	sim.Config = config
 	sim.GenesisState, _ = sm.MakeGenesisState(genDoc)
