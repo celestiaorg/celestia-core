@@ -85,6 +85,7 @@ func toMessageSlice(msgs [][]byte) []*tmproto.Message {
 	return res
 }
 
+// nolint:gosec // G404: Use of weak random number generator
 func generateRandNamespacedRawData(total, nidSize, leafSize uint32) [][]byte {
 	data := make([][]byte, total)
 	for i := uint32(0); i < total; i++ {
