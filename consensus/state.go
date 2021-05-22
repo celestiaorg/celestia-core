@@ -1117,26 +1117,21 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		cs.Logger.Error("enterPropose: Error signing proposal", "height", height, "round", round, "err", err)
 	}
 
-	// TODO(evan): don't hard code context and timeout
-	//
-	// TODO(ismail): get rid of this check and ensure that ipfs was
-	// initialized here
-	//
 	// TODO(ismail): capture this in the Consensus ADR
 	// post data to ipfs
-	if cs.ipfs != nil {
-		// longer timeouts result in block proposers failing to propose blocks in time.
-		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
-		defer cancel()
-		cs.Logger.Info("Putting Block to ipfs", "height", block.Height)
-		// TODO: post data to IPFS in a goroutine
-		err := ipld.PutBlock(ctx, cs.ipfs.Dag(), block)
-		if err != nil {
-			cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
-			panic(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
-		}
-		cs.Logger.Info("Finished putting nlock to ipfs", "height", block.Height)
+	// TODO(evan): don't hard code context and timeout
+	//
+	// longer timeouts result in block proposers failing to propose blocks in time.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
+	defer cancel()
+	cs.Logger.Info("Putting Block to ipfs", "height", block.Height)
+	// TODO: post data to IPFS in a goroutine
+	err = ipld.PutBlock(ctx, cs.ipfs.Dag(), block)
+	if err != nil {
+		cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
+		panic(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
 	}
+	cs.Logger.Info("Finished putting nlock to ipfs", "height", block.Height)
 }
 
 // Returns true if the proposal block is complete &&
