@@ -1128,7 +1128,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	// TODO: post data to IPFS in a goroutine
 	err = ipld.PutBlock(ctx, cs.ipfs.Dag(), block)
 	if err != nil {
-		cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
+		// If PutBlock fails we will be the only node that has the data
+		// this means something is seriously wrong and we can not recover
+		// from that automatically.
 		panic(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
 	}
 	cs.Logger.Info("Finished putting nlock to ipfs", "height", block.Height)
