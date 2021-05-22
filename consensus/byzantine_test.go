@@ -43,9 +43,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30)
 	css := make([]*State, nValidators)
 
-	mockIPFSProvider := ipfs.Mock()
-	ipfsAPI, closer, err := mockIPFSProvider()
-	require.NoError(t, err)
+	ipfsAPI, closer := createMockIpfsAPI(t)
 	defer closer.Close()
 
 	for i := 0; i < nValidators; i++ {
@@ -221,7 +219,13 @@ func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 	N := 4
 	logger := consensusLogger().With("test", "byzantine")
 	app := newCounter
-	css, cleanup := randConsensusNet(N, "consensus_byzantine_test", newMockTickerFunc(false), app)
+	css, cleanup := randConsensusNet(
+		N,
+		"consensus_byzantine_test",
+		newMockTickerFunc(false),
+		app,
+		ipfs.Mock(),
+	)
 	defer cleanup()
 
 	// give the byzantine validator a normal ticker

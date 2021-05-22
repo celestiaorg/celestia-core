@@ -12,6 +12,7 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/privval"
@@ -19,6 +20,7 @@ import (
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/store"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/stretchr/testify/require"
 )
 
 // WALGenerateNBlocks generates a consensus WAL. It does this by spinning up a
@@ -85,7 +87,11 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	mempool := emptyMempool{}
 	evpool := sm.EmptyEvidencePool{}
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
+	mockIPFSProvider := ipfs.Mock()
+	ipfsAPI, closer, err := mockIPFSProvider()
+	require.NoError(t, err)
 	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore, mempool, evpool)
+	consensusState.SetIPFSApi(ipfsAPI)
 	consensusState.SetLogger(logger)
 	consensusState.SetEventBus(eventBus)
 	if privValidator != nil && privValidator != (*privval.FilePV)(nil) {
@@ -114,6 +120,7 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 		}
 		return nil
 	case <-time.After(1 * time.Minute):
+		closer.Close()
 		if err := consensusState.Stop(); err != nil {
 			t.Error(err)
 		}

@@ -27,9 +27,13 @@ func TestMempoolNoProgressUntilTxsAvailable(t *testing.T) {
 	config := ResetConfig("consensus_mempool_txs_available_test")
 	t.Cleanup(func() { _ = os.RemoveAll(config.RootDir) })
 
+	ipfsAPI, closer := createMockIpfsAPI(t)
+	defer closer.Close()
+
 	config.Consensus.CreateEmptyBlocks = false
 	state, privVals := randGenesisState(1, false, 10)
 	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication())
+	cs.SetIPFSApi(ipfsAPI)
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 	height, round := cs.Height, cs.Round
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
@@ -47,9 +51,13 @@ func TestMempoolProgressAfterCreateEmptyBlocksInterval(t *testing.T) {
 	config := ResetConfig("consensus_mempool_txs_available_test")
 	t.Cleanup(func() { _ = os.RemoveAll(config.RootDir) })
 
+	ipfsAPI, closer := createMockIpfsAPI(t)
+	defer closer.Close()
+
 	config.Consensus.CreateEmptyBlocksInterval = ensureTimeout
 	state, privVals := randGenesisState(1, false, 10)
 	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication())
+	cs.SetIPFSApi(ipfsAPI)
 
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 
@@ -65,9 +73,14 @@ func TestMempoolProgressInHigherRound(t *testing.T) {
 	config := ResetConfig("consensus_mempool_txs_available_test")
 	t.Cleanup(func() { _ = os.RemoveAll(config.RootDir) })
 
+	ipfsAPI, closer := createMockIpfsAPI(t)
+	defer closer.Close()
+
 	config.Consensus.CreateEmptyBlocks = false
 	state, privVals := randGenesisState(1, false, 10)
 	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication())
+	cs.SetIPFSApi(ipfsAPI)
+
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 	height, round := cs.Height, cs.Round
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
@@ -115,7 +128,11 @@ func TestMempoolTxConcurrentWithCommit(t *testing.T) {
 	state, privVals := randGenesisState(1, false, 10)
 	blockDB := memdb.NewDB()
 	stateStore := sm.NewStore(blockDB)
+	ipfsAPI, closer := createMockIpfsAPI(t)
+	defer closer.Close()
+
 	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], NewCounterApplication(), blockDB)
+	cs.SetIPFSApi(ipfsAPI)
 	err := stateStore.Save(state)
 	require.NoError(t, err)
 	newBlockHeaderCh := subscribe(cs.eventBus, types.EventQueryNewBlockHeader)
@@ -139,8 +156,12 @@ func TestMempoolRmBadTx(t *testing.T) {
 	state, privVals := randGenesisState(1, false, 10)
 	app := NewCounterApplication()
 	blockDB := memdb.NewDB()
+	ipfsAPI, closer := createMockIpfsAPI(t)
+	defer closer.Close()
+
 	stateStore := sm.NewStore(blockDB)
 	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], app, blockDB)
+	cs.SetIPFSApi(ipfsAPI)
 	err := stateStore.Save(state)
 	require.NoError(t, err)
 

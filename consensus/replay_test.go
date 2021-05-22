@@ -22,6 +22,7 @@ import (
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -70,6 +71,8 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 	logger := log.TestingLogger()
 	state, _ := stateStore.LoadFromDBOrGenesisFile(consensusReplayConfig.GenesisFile())
 	privValidator := loadPrivValidator(consensusReplayConfig)
+	ipfsAPI, closer := createMockIpfsAPI(t)
+
 	cs := newStateWithConfigAndBlockStore(
 		consensusReplayConfig,
 		state,
@@ -78,6 +81,7 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		blockDB,
 	)
 	cs.SetLogger(logger)
+	cs.SetIPFSApi(ipfsAPI)
 
 	bytes, _ := ioutil.ReadFile(cs.config.WalFile())
 	t.Logf("====== WAL: \n\r%X\n", bytes)
@@ -88,6 +92,7 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		if err := cs.Stop(); err != nil {
 			t.Error(err)
 		}
+		closer.Close()
 	}()
 
 	// This is just a signal that we haven't halted; its not something contained
@@ -150,7 +155,8 @@ func crashWALandCheckLiveness(t *testing.T, consensusReplayConfig *cfg.Config,
 	initFn func(dbm.DB, *State, context.Context), heightToStop int64) {
 	walPanicked := make(chan error)
 	crashingWal := &crashingWAL{panicCh: walPanicked, heightToStop: heightToStop}
-
+	ipfsAPI, closer := createMockIpfsAPI(t)
+	defer closer.Close()
 	i := 1
 LOOP:
 	for {
@@ -160,6 +166,7 @@ LOOP:
 		logger := log.NewNopLogger()
 		blockDB := memdb.NewDB()
 		stateDB := blockDB
+
 		stateStore := sm.NewStore(stateDB)
 		state, err := sm.MakeGenesisStateFromFile(consensusReplayConfig.GenesisFile())
 		require.NoError(t, err)
@@ -171,6 +178,7 @@ LOOP:
 			kvstore.NewApplication(),
 			blockDB,
 		)
+		cs.SetIPFSApi(ipfsAPI)
 		cs.SetLogger(logger)
 
 		// start sending transactions
@@ -329,7 +337,9 @@ func TestSimulateValidatorsChange(t *testing.T) {
 		nPeers,
 		"replay_test",
 		newMockTickerFunc(true),
-		newPersistentKVStoreWithPath)
+		newPersistentKVStoreWithPath,
+		ipfs.Mock(),
+	)
 	sim.Config = config
 	sim.GenesisState, _ = sm.MakeGenesisState(genDoc)
 	sim.CleanupFunc = cleanup

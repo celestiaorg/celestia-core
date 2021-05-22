@@ -1,7 +1,10 @@
 package consensus
 
 import (
+	"io"
 	"testing"
+
+	coreiface "github.com/ipfs/interface-go-ipfs-core"
 
 	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/bytes"
@@ -20,18 +23,19 @@ import (
 // Ensure a testnet makes blocks
 func TestReactorInvalidPrecommit(t *testing.T) {
 	N := 4
-	css, cleanup := randConsensusNet(N, "consensus_reactor_test", newMockTickerFunc(true), newCounter)
+	css, cleanup := randConsensusNet(
+		N,
+		"consensus_reactor_test",
+		newMockTickerFunc(true),
+		newCounter,
+		ipfs.Mock(),
+	)
 	t.Cleanup(cleanup)
 
-	mockIPFSProvider := ipfs.Mock()
-	ipfsAPI, closer, err := mockIPFSProvider()
-	require.NoError(t, err)
-	defer closer.Close()
 	for i := 0; i < 4; i++ {
 		ticker := NewTimeoutTicker()
 		ticker.SetLogger(css[i].Logger)
 		css[i].SetTimeoutTicker(ticker)
-		css[i].SetIPFSApi(ipfsAPI)
 	}
 
 	reactors, blocksSubs, eventBuses := startConsensusNet(t, css, N)
@@ -58,6 +62,13 @@ func TestReactorInvalidPrecommit(t *testing.T) {
 			<-blocksSubs[j].Out()
 		}, css)
 	}
+}
+
+func createMockIpfsAPI(t *testing.T) (coreiface.CoreAPI, io.Closer) {
+	mockIPFSProvider := ipfs.Mock()
+	ipfsAPI, closer, err := mockIPFSProvider()
+	require.NoError(t, err)
+	return ipfsAPI, closer
 }
 
 func invalidDoPrevoteFunc(t *testing.T, height int64, round int32, cs *State, sw *p2p.Switch, pv types.PrivValidator) {
