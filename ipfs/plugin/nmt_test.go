@@ -138,7 +138,7 @@ func TestDagPutWithPlugin(t *testing.T) {
 	buf := createByteBufFromRawData(t, data)
 	printFirst := 10
 	t.Logf("first leaf, nid: %x, data: %x...", data[0][:namespaceSize], data[0][namespaceSize:namespaceSize+printFirst])
-	n := nmt.New(sha256.New())
+	n := nmt.New(sha256.New)
 	for _, share := range data {
 		err := n.Push(share)
 		if err != nil {

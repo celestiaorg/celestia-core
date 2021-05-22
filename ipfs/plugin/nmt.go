@@ -11,6 +11,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	"github.com/lazyledger/nmt"
 	mh "github.com/multiformats/go-multihash"
 )
@@ -105,7 +106,7 @@ func DataSquareRowOrColumnRawInputParser(r io.Reader, _mhType uint64, _mhLen int
 	collector := newNodeCollector()
 
 	n := nmt.New(
-		sha256.New(),
+		consts.NewBaseHashFunc,
 		nmt.NamespaceIDSize(namespaceSize),
 		nmt.NodeVisitor(collector.visit),
 	)
