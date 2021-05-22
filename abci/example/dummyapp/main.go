@@ -88,7 +88,10 @@ func DummyNode(config *cfg.Config, ipfs ipfs.APIProvider, logger log.Logger) (*n
 	if err != nil {
 		return nil, err
 	}
-	app := dummy.NewApplication(dummy.RandMessagesOnPreprocess(randTxs, txSize, randMsgs, msgSize))
+	app := dummy.NewApplication(
+		dummy.RandMessagesOnPreprocess(randTxs, txSize, randMsgs, msgSize),
+		dummy.SleepDuration(sleepDuringPreprocess),
+	)
 
 	return node.NewNode(config,
 		pval,
