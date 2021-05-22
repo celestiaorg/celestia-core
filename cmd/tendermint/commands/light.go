@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/spf13/cobra"
 
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
@@ -177,14 +179,15 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		}),
 	}
 
+	var ipfsCloser io.Closer
 	switch {
 	case daSampling:
 		cfg := ipfs.DefaultConfig()
 		cfg.RootDir = dir
 		// TODO(ismail): share badger instance
 		apiProvider := ipfs.Embedded(true, cfg, logger)
-		// TODO(ismail): use closer for shutdown!
-		coreAPI, _, err := apiProvider()
+		var coreAPI coreiface.CoreAPI
+		coreAPI, ipfsCloser, err = apiProvider()
 		if err != nil {
 			panic(err)
 		}
@@ -249,6 +252,9 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	// Stop upon receiving SIGTERM or CTRL-C.
 	tmos.TrapSignal(logger, func() {
 		p.Listener.Close()
+		if ipfsCloser != nil {
+			ipfsCloser.Close()
+		}
 	})
 
 	logger.Info("Starting proxy...", "laddr", listenAddr)
