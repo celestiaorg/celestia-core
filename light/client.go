@@ -699,14 +699,6 @@ func (c *Client) verifySequential(
 			numRows := len(interimBlock.DataAvailabilityHeader.RowsRoots)
 			numSamples := min(c.numSamples, uint32(numRows*numRows))
 			c.logger.Info("Starting Data Availability sampling", "height", height, "numSamples", numSamples, "squareWidth", numRows)
-			peers, _ := c.ipfsCoreAPI.Swarm().Peers(ctx)
-			peersStr := ""
-			for _, p := range peers {
-				peersStr = peersStr + "\n" + p.Address().String()
-			}
-			c.logger.Info("connected peers", "peers", peersStr)
-			fmt.Println("interimBlock.Height", interimBlock.Height)
-
 			err = ipld.ValidateAvailability(
 				ctx,
 				c.ipfsCoreAPI,

@@ -2,7 +2,6 @@ package types
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -91,13 +90,7 @@ func (dah *DataAvailabilityHeader) String() string {
 	if dah == nil {
 		return "<nil DAHeader>"
 	}
-	// TODO: currently used for debugging
-	// remove JSON encoding here
-	b, err := json.MarshalIndent(dah, "", "  ")
-	if err != nil {
-		panic(err)
-	}
-	return fmt.Sprintf("%s", string(b))
+	return fmt.Sprintf("{dah.Hash = %X}", dah.Hash())
 }
 
 // Equals checks equality of two DAHeaders.
@@ -236,7 +229,6 @@ func (b *Block) fillHeader() {
 // that are a function of the block data.
 func (b *Block) fillDataAvailabilityHeader() {
 	namespacedShares, dataSharesLen := b.Data.ComputeShares()
-	fmt.Println("dataSharesLen", dataSharesLen)
 	shares := namespacedShares.RawShares()
 
 	if len(shares) == 0 {
@@ -255,7 +247,7 @@ func (b *Block) fillDataAvailabilityHeader() {
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
 	}
-	fmt.Println("squareWidth = extendedDataSquare.Width()", extendedDataSquare.Width())
+
 	b.eds = extendedDataSquare
 	// generate the row and col roots using the EDS and nmt wrapper
 	rowRoots := extendedDataSquare.RowRoots()
@@ -1286,7 +1278,7 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 		wantLen = consts.MinSharecount
 	}
 
-	tailShares := GenerateTailPaddingShares(int(wantLen)-curLen, consts.ShareSize)
+	tailShares := GenerateTailPaddingShares(wantLen-curLen, consts.ShareSize)
 
 	return append(append(append(append(
 		txShares,

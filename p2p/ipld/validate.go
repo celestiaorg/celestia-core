@@ -33,8 +33,6 @@ func ValidateAvailability(
 	numSamples int,
 	onLeafValidity func(namespace.PrefixedData8),
 ) error {
-	//trace.Start(os.Stderr)
-	//defer trace.Stop()
 	// TODO(@Wondertan): Ensure data is fetched within one DAG session
 	ctx, cancel := context.WithTimeout(ctx, ValidationTimeout)
 	defer cancel()
