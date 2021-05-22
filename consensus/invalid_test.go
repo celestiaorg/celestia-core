@@ -3,12 +3,14 @@ package consensus
 import (
 	"testing"
 
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/bytes"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	"github.com/lazyledger/lazyledger-core/p2p"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/stretchr/testify/require"
 )
 
 //----------------------------------------------
@@ -21,11 +23,15 @@ func TestReactorInvalidPrecommit(t *testing.T) {
 	css, cleanup := randConsensusNet(N, "consensus_reactor_test", newMockTickerFunc(true), newCounter)
 	t.Cleanup(cleanup)
 
+	mockIPFSProvider := ipfs.Mock()
+	ipfsAPI, closer, err := mockIPFSProvider()
+	require.NoError(t, err)
+	defer closer.Close()
 	for i := 0; i < 4; i++ {
 		ticker := NewTimeoutTicker()
 		ticker.SetLogger(css[i].Logger)
 		css[i].SetTimeoutTicker(ticker)
-
+		css[i].SetIPFSApi(ipfsAPI)
 	}
 
 	reactors, blocksSubs, eventBuses := startConsensusNet(t, css, N)
