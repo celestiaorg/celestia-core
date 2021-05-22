@@ -44,7 +44,10 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	css := make([]*State, nValidators)
 
 	mockIPFSProvider := ipfs.Mock()
-	ipfsAPI, _, _ := mockIPFSProvider()
+	ipfsAPI, closer, err := mockIPFSProvider()
+	require.NoError(t, err)
+	defer closer.Close()
+
 	for i := 0; i < nValidators; i++ {
 		logger := consensusLogger().With("test", "byzantine", "validator", i)
 		stateDB := memdb.NewDB() // each state needs its own db
