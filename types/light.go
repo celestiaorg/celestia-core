@@ -12,8 +12,8 @@ import (
 // and optionally a DataAvailabilityHeader (for DAS light clients).
 // It is the basis of the light client.
 type LightBlock struct {
-	*SignedHeader          `json:"signed_header"`
-	ValidatorSet           *ValidatorSet           `json:"validator_set"`
+	*SignedHeader `json:"signed_header"`
+	ValidatorSet  *ValidatorSet `json:"validator_set"`
 
 	// DataAvailabilityHeader is only populated for DAS light clients for others it can be nil.
 	DataAvailabilityHeader *DataAvailabilityHeader `json:"data_availability_header"`

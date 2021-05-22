@@ -28,7 +28,6 @@ type Provider interface {
 	// It can be used by DAS light clients.
 	DASLightBlock(ctx context.Context, height int64) (*types.LightBlock, error)
 
-
 	// ReportEvidence reports an evidence of misbehavior.
 	ReportEvidence(context.Context, types.Evidence) error
 }

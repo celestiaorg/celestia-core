@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/spf13/cobra"
 
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
