@@ -449,7 +449,10 @@ func (c *baseRPCClient) Commit(ctx context.Context, height *int64) (*ctypes.Resu
 	return result, nil
 }
 
-func (c *baseRPCClient) DataAvailabilityHeader(ctx context.Context, height *int64) (*ctypes.ResultDataAvailabilityHeader, error) {
+func (c *baseRPCClient) DataAvailabilityHeader(
+	ctx context.Context,
+	height *int64,
+) (*ctypes.ResultDataAvailabilityHeader, error) {
 	result := new(ctypes.ResultDataAvailabilityHeader)
 	params := make(map[string]interface{})
 	if height != nil {

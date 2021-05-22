@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	ipfscfg "github.com/ipfs/go-ipfs-config"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
@@ -69,11 +68,11 @@ func SkippingVerification(trustLevel tmmath.Fraction) Option {
 	}
 }
 
-func DataAvailabilitySampling(numSamples uint32, ipfsApi coreiface.CoreAPI) Option {
+func DataAvailabilitySampling(numSamples uint32, ipfsAPI coreiface.CoreAPI) Option {
 	return func(c *Client) {
 		c.verificationMode = dataAvailabilitySampling
 		c.numSamples = numSamples
-		c.ipfsCoreAPI = ipfsApi
+		c.ipfsCoreAPI = ipfsAPI
 	}
 }
 
@@ -254,16 +253,6 @@ func NewClientFromTrustedStore(
 	}
 
 	return c, nil
-}
-
-// TODO(ismail): Reintroduce the concept of transforms
-// useful for running both fullnode and lc on one machine for instance
-func applyDefaultLightClientConfig(ipfsConf *ipfscfg.Config) error {
-	ipfsConf.Addresses.API = ipfscfg.Strings{"/ip4/127.0.0.1/tcp/5003"}
-	ipfsConf.Addresses.Gateway = ipfscfg.Strings{"/ip4/127.0.0.1/tcp/8081"}
-	ipfsConf.Addresses.Swarm = []string{"/ip4/0.0.0.0/tcp/4003"}
-
-	return nil
 }
 
 // restoreTrustedLightBlock loads the latest trusted light block from the store
@@ -697,7 +686,11 @@ func (c *Client) verifySequential(
 			// https://github.com/lazyledger/lazyledger-core/issues/319
 			numRows := len(interimBlock.DataAvailabilityHeader.RowsRoots)
 			numSamples := min(c.numSamples, uint32(numRows*numRows))
-			c.logger.Info("Starting Data Availability sampling", "height", height, "numSamples", numSamples, "squareWidth", numRows)
+			c.logger.Info("Starting Data Availability sampling",
+				"height", height,
+				"numSamples", numSamples,
+				"squareWidth", numRows)
+
 			err = ipld.ValidateAvailability(
 				ctx,
 				c.ipfsCoreAPI,
@@ -711,7 +704,10 @@ func (c *Client) verifySequential(
 				return fmt.Errorf("data availability sampling failed; ipld.ValidateAvailability: %w", err)
 			}
 			elapsed := time.Since(start)
-			c.logger.Info("Successfully finished DAS sampling", "height", height, "numSamples", numSamples, "elapsed time", elapsed)
+			c.logger.Info("Successfully finished DAS sampling",
+				"height", height,
+				"numSamples", numSamples,
+				"elapsed time", elapsed)
 		}
 
 		// 3) Update verifiedBlock

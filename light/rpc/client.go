@@ -421,7 +421,10 @@ func (c *Client) Commit(ctx context.Context, height *int64) (*ctypes.ResultCommi
 	}, nil
 }
 
-func (c *Client) DataAvailabilityHeader(ctx context.Context, height *int64) (*ctypes.ResultDataAvailabilityHeader, error) {
+func (c *Client) DataAvailabilityHeader(
+	ctx context.Context,
+	height *int64,
+) (*ctypes.ResultDataAvailabilityHeader, error) {
 	l, err := c.updateLightClientIfNeededTo(ctx, *height)
 	if err != nil {
 		return nil, err

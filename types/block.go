@@ -232,8 +232,6 @@ func (b *Block) fillDataAvailabilityHeader() {
 	shares := namespacedShares.RawShares()
 
 	if len(shares) == 0 {
-		// no shares -> no row/colum roots -> hash(empty)
-		//b.DataHash = b.DataAvailabilityHeader.Hash()
 		panic("shares cannot be empty")
 	}
 

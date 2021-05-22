@@ -169,7 +169,10 @@ func (c *Local) Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit
 	return core.Commit(c.ctx, height)
 }
 
-func (c *Local) DataAvailabilityHeader(ctx context.Context, height *int64) (*ctypes.ResultDataAvailabilityHeader, error) {
+func (c *Local) DataAvailabilityHeader(
+	ctx context.Context,
+	height *int64,
+) (*ctypes.ResultDataAvailabilityHeader, error) {
 	return core.DataAvailabilityHeader(c.ctx, height)
 }
 
