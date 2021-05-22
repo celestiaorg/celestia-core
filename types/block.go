@@ -90,7 +90,7 @@ func (dah *DataAvailabilityHeader) String() string {
 	if dah == nil {
 		return "<nil DAHeader>"
 	}
-	return fmt.Sprintf("{dah.Hash = %X}", dah.Hash())
+	return fmt.Sprintf("%X", dah.Hash())
 }
 
 // Equals checks equality of two DAHeaders.
