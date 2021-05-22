@@ -5,16 +5,11 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"math/rand"
-	"sort"
-	"time"
 
 	"github.com/lazyledger/lazyledger-core/abci/example/code"
 	"github.com/lazyledger/lazyledger-core/abci/types"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	memdb "github.com/lazyledger/lazyledger-core/libs/db/memdb"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
 	"github.com/lazyledger/lazyledger-core/version"
 )
 
@@ -174,50 +169,4 @@ func (app *Application) Query(reqQuery types.RequestQuery) (resQuery types.Respo
 	resQuery.Height = app.state.Height
 
 	return resQuery
-}
-
-func (app *Application) PreprocessTxs(
-	req types.RequestPreprocessTxs) types.ResponsePreprocessTxs {
-	time.Sleep(time.Second * 1)
-	randTxs := generateRandTxs(10, 50)
-	randMsgs := generateRandNamespacedRawData(32, consts.NamespaceSize, 128)
-	randMessages := toMessageSlice(randMsgs)
-	return types.ResponsePreprocessTxs{Txs: append(req.Txs, randTxs...), Messages: &tmproto.Messages{MessagesList: randMessages}}
-}
-
-func generateRandTxs(num int, size int) [][]byte {
-	randMsgs := generateRandNamespacedRawData(num, consts.NamespaceSize, size)
-	for _, msg := range randMsgs {
-		copy(msg[:consts.NamespaceSize], consts.TxNamespaceID)
-	}
-	return randMsgs
-}
-
-func toMessageSlice(msgs [][]byte) []*tmproto.Message {
-	res := make([]*tmproto.Message, len(msgs))
-	for i := 0; i < len(msgs); i++ {
-		res[i] = &tmproto.Message{NamespaceId: msgs[i][:consts.NamespaceSize], Data: msgs[i][consts.NamespaceSize:]}
-	}
-	return res
-}
-
-func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byte {
-	data := make([][]byte, total)
-	for i := 0; i < total; i++ {
-		nid := make([]byte, nidSize)
-		rand.Read(nid)
-		data[i] = nid
-	}
-	sortByteArrays(data)
-	for i := 0; i < total; i++ {
-		d := make([]byte, leafSize)
-		rand.Read(d)
-		data[i] = append(data[i], d...)
-	}
-
-	return data
-}
-
-func sortByteArrays(src [][]byte) {
-	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
 }
