@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	ipfscfg "github.com/ipfs/go-ipfs-config"
@@ -1109,11 +1108,4 @@ and remove witness. Otherwise, use the different primary`, e.WitnessIndex), "wit
 
 func hash2str(hash []byte) string {
 	return fmt.Sprintf("%X", hash)
-}
-
-func rootify(path, root string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	return filepath.Join(root, path)
 }
