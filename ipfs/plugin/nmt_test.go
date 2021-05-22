@@ -75,7 +75,7 @@ func TestNodeCollector(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			collector := newNodeCollector()
-			n := nmt.New(sha256.New(), nmt.NamespaceIDSize(namespaceSize), nmt.NodeVisitor(collector.visit))
+			n := nmt.New(sha256.New, nmt.NamespaceIDSize(namespaceSize), nmt.NodeVisitor(collector.visit))
 
 			for _, share := range tt.leafData {
 				err := n.Push(share)
@@ -116,7 +116,7 @@ func TestNodeCollector(t *testing.T) {
 			for _, node := range gotNodes {
 				hasMap[node.Cid().String()] = true
 			}
-			hasher := nmt.NewNmtHasher(sha256.New(), namespaceSize, true)
+			hasher := nmt.NewNmtHasher(sha256.New, namespaceSize, true)
 			for _, leaf := range tt.leafData {
 				leafCid := MustCidFromNamespacedSha256(hasher.HashLeaf(leaf))
 				_, has := hasMap[leafCid.String()]
@@ -138,7 +138,7 @@ func TestDagPutWithPlugin(t *testing.T) {
 	buf := createByteBufFromRawData(t, data)
 	printFirst := 10
 	t.Logf("first leaf, nid: %x, data: %x...", data[0][:namespaceSize], data[0][namespaceSize:namespaceSize+printFirst])
-	n := nmt.New(sha256.New())
+	n := nmt.New(sha256.New)
 	for _, share := range data {
 		err := n.Push(share)
 		if err != nil {
