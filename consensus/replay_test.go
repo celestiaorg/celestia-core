@@ -683,7 +683,7 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 	} else { // test single node
 		testConfig := ResetConfig(fmt.Sprintf("%s_%v_s", t.Name(), mode))
 		defer func() { _ = os.RemoveAll(testConfig.RootDir) }()
-		walBody, err := WALWithNBlocks(t, numBlocks)
+		walBody, err := walWithNBlocks(t, numBlocks)
 		require.NoError(t, err)
 		walFile := tempWALWithData(walBody)
 		config.Consensus.SetWalFile(walFile)
