@@ -61,7 +61,7 @@ func NewApplication(opts ...Option) *Application {
 func (app *Application) PreprocessTxs(req types.RequestPreprocessTxs) types.ResponsePreprocessTxs {
 	time.Sleep(app.sleep)
 	if app.randTxs > 0 || app.randMsgs > 0 {
-		randMsgs := generateRandNamespacedRawData(app.randMsgs, consts.NamespaceSize, app.randMsgs)
+		randMsgs := generateRandNamespacedRawData(app.randMsgs, consts.NamespaceSize, app.msgSize)
 		randMessages := toMessageSlice(randMsgs)
 		// yeah, we misuse same function as above to generate Txs
 		// as they will still be app.txSize large ¯\_(ツ)_/¯
