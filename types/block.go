@@ -213,7 +213,7 @@ func (b *Block) fillHeader() {
 	if b.LastCommitHash == nil {
 		b.LastCommitHash = b.LastCommit.Hash()
 	}
-	if b.DataHash == nil || len(b.DataAvailabilityHeader.hash) == 0 {
+	if b.DataHash == nil || b.DataAvailabilityHeader.hash == nil {
 		b.fillDataAvailabilityHeader()
 	}
 	if b.EvidenceHash == nil {
