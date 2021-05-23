@@ -68,7 +68,7 @@ var (
 	maxOpenConnections int
 
 	daSampling     bool
-	numSamples     int32
+	numSamples     uint32
 	sequential     bool
 	trustingPeriod time.Duration
 	trustedHeight  int64
@@ -109,7 +109,7 @@ func init() {
 	LightCmd.Flags().BoolVar(&daSampling, "da-sampling", false,
 		"data availability sampling. Verify each header's data availability via sampling",
 	)
-	LightCmd.Flags().Int32Var(&numSamples, "num-samples", 15,
+	LightCmd.Flags().Uint32Var(&numSamples, "num-samples", 15,
 		"Number of data availability samples until block data deemed available.")
 }
 

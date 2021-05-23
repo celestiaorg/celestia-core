@@ -8,7 +8,6 @@ import (
 
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
 var (
@@ -179,9 +178,8 @@ func ValidateTrustLevel(lvl tmmath.Fraction) error {
 }
 
 func ValidateNumSamples(numSamples uint32) error {
-	maxShares := consts.MaxSquareSize * consts.MaxSquareSize
-	if numSamples == 0 && numSamples < uint32(maxShares) {
-		return fmt.Errorf("numSamples must be > 0, and < %v; got: %v", maxShares, numSamples)
+	if numSamples == 0 {
+		return fmt.Errorf("number of samples must be > 0")
 	}
 	return nil
 }
