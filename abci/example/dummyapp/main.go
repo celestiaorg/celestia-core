@@ -42,7 +42,7 @@ func init() {
 	runNodeCmd.PersistentFlags().Uint32Var(&txSize, "dummy.tx-size", 50, "size of random transactions")
 
 	runNodeCmd.PersistentFlags().Uint32Var(&randMsgs, "dummy.msgs", 16, "generate random messages")
-	runNodeCmd.PersistentFlags().Uint32Var(&txSize, "dummy.msg-size", 128, "size of random messages")
+	runNodeCmd.PersistentFlags().Uint32Var(&msgSize, "dummy.msg-size", 128, "size of random messages")
 }
 
 func main() {
