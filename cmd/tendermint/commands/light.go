@@ -191,7 +191,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			panic(err)
 		}
-		options = append(options, light.DataAvailabilitySampling(uint32(numSamples), coreAPI))
+		options = append(options, light.DataAvailabilitySampling(numSamples, coreAPI))
 	case sequential:
 		options = append(options, light.SequentialVerification())
 	default:
