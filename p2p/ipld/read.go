@@ -7,8 +7,8 @@ import (
 	"math/rand"
 
 	"github.com/ipfs/go-cid"
+	format "github.com/ipfs/go-ipld-format"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
-	"github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/lazyledger/rsmt2d"
 
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
@@ -153,7 +153,7 @@ func (sc *shareCounter) retrieveShare(
 	idx uint32,
 	api coreiface.CoreAPI,
 ) {
-	data, err := GetLeafData(sc.ctx, rootCid, idx, sc.edsWidth, api)
+	data, err := GetLeafData(sc.ctx, rootCid, idx, sc.edsWidth, api.Dag())
 	if err != nil {
 		select {
 		case <-sc.ctx.Done():
@@ -224,25 +224,35 @@ func GetLeafData(
 	rootCid cid.Cid,
 	leafIndex uint32,
 	totalLeafs uint32, // this corresponds to the extended square width
-	api coreiface.CoreAPI,
+	dag format.NodeGetter,
 ) ([]byte, error) {
-	// calculate the path to the leaf
-	leafPath, err := leafPath(leafIndex, totalLeafs)
+	nd, err := GetTreeLeaf(ctx, dag, rootCid, leafIndex, totalLeafs)
 	if err != nil {
 		return nil, err
 	}
 
-	// use the root cid and the leafPath to create an ipld path
-	p := path.Join(path.IpldPath(rootCid), leafPath...)
+	return nd.RawData()[1:], nil
+}
 
-	// resolve the path
-	node, err := api.ResolveNode(ctx, p)
+func GetTreeLeaf(ctx context.Context, dag format.NodeGetter, root cid.Cid, leaf, total uint32) (format.Node, error) {
+	nd, err := dag.Get(ctx, root)
 	if err != nil {
 		return nil, err
 	}
 
-	// return the leaf, without the nmt-leaf-or-node byte
-	return node.RawData()[1:], nil
+	lnks := nd.Links()
+	if len(lnks) == 1 {
+		return dag.Get(ctx, lnks[0].Cid)
+	}
+
+	total /= 2
+	if leaf < total {
+		root = lnks[0].Cid
+	} else {
+		root, leaf = lnks[1].Cid, leaf-total
+	}
+
+	return GetTreeLeaf(ctx, dag, root, leaf, total)
 }
 
 func leafPath(index, total uint32) ([]string, error) {

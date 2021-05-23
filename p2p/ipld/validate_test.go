@@ -34,11 +34,12 @@ func TestValidateAvailability(t *testing.T) {
 	}
 	block.Hash()
 
-	err := PutBlock(ctx, ipfsAPI.Dag(), block)
+	dag := ipfsAPI.Dag()
+	err := PutBlock(ctx, dag, block)
 	require.NoError(t, err)
 
 	calls := 0
-	err = ValidateAvailability(ctx, ipfsAPI, &block.DataAvailabilityHeader, shares, func(data namespace.PrefixedData8) {
+	err = ValidateAvailability(ctx, dag, &block.DataAvailabilityHeader, shares, func(data namespace.PrefixedData8) {
 		calls++
 		t.Log("successfully got leaf data", " with nid", data[:8])
 

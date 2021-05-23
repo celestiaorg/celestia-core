@@ -139,7 +139,7 @@ func TestGetLeafData(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tt.timeout)
 			defer cancel()
 			for i, leaf := range tt.leaves {
-				data, err := GetLeafData(ctx, tt.rootCid, uint32(i), uint32(len(tt.leaves)), ipfsAPI)
+				data, err := GetLeafData(ctx, tt.rootCid, uint32(i), uint32(len(tt.leaves)), ipfsAPI.Dag())
 				if err != nil {
 					t.Error(err)
 				}

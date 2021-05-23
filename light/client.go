@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	format "github.com/ipfs/go-ipld-format"
+	dag "github.com/ipfs/go-merkledag"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
@@ -73,6 +75,7 @@ func DataAvailabilitySampling(numSamples uint32, ipfsAPI coreiface.CoreAPI) Opti
 		c.verificationMode = dataAvailabilitySampling
 		c.numSamples = numSamples
 		c.ipfsCoreAPI = ipfsAPI
+		c.dag = dag.NewSession(context.TODO(), ipfsAPI.Dag())
 	}
 }
 
@@ -154,6 +157,7 @@ type Client struct {
 	logger log.Logger
 
 	ipfsCoreAPI coreiface.CoreAPI
+	dag         format.NodeGetter
 }
 
 // NewClient returns a new light client. It returns an error if it fails to
@@ -693,7 +697,7 @@ func (c *Client) verifySequential(
 
 			err = ipld.ValidateAvailability(
 				ctx,
-				c.ipfsCoreAPI,
+				c.dag,
 				interimBlock.DataAvailabilityHeader,
 				numSamples,
 				func(data namespace.PrefixedData8) {}, // noop

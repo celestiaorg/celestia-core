@@ -7,7 +7,6 @@ import (
 	"time"
 
 	format "github.com/ipfs/go-ipld-format"
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/lazyledger/nmt/namespace"
 
 	"github.com/lazyledger/lazyledger-core/types"
@@ -28,7 +27,7 @@ var ErrValidationFailed = errors.New("validation failed")
 // https://fc21.ifca.ai/papers/83.pdf.
 func ValidateAvailability(
 	ctx context.Context,
-	api coreiface.CoreAPI,
+	dag format.NodeGetter,
 	dah *types.DataAvailabilityHeader,
 	numSamples int,
 	onLeafValidity func(namespace.PrefixedData8),
@@ -56,7 +55,7 @@ func ValidateAvailability(
 				return
 			}
 
-			data, err := GetLeafData(ctx, root, leaf, squareWidth, api)
+			data, err := GetLeafData(ctx, root, leaf, squareWidth, dag)
 			select {
 			case resCh <- res{data: data, err: err}:
 			case <-ctx.Done():
