@@ -281,7 +281,7 @@ func TestRetrieveBlockData(t *testing.T) {
 			rowRoots := rootsToDigests(rawRowRoots)
 			colRoots := rootsToDigests(rawColRoots)
 
-			retrievalCtx, cancel := context.WithTimeout(background, time.Second*4)
+			retrievalCtx, cancel := context.WithTimeout(background, time.Second*6)
 			defer cancel()
 
 			rblockData, err := RetrieveBlockData(
