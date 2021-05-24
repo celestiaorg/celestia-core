@@ -1133,7 +1133,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		// from that automatically.
 		panic(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
 	}
-	cs.Logger.Info("Finished putting nlock to ipfs", "height", block.Height)
+	cs.Logger.Info("Finished putting block to ipfs", "height", block.Height)
 }
 
 // Returns true if the proposal block is complete &&
