@@ -189,7 +189,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		var coreAPI coreiface.CoreAPI
 		coreAPI, ipfsCloser, err = apiProvider()
 		if err != nil {
-			panic(err)
+			return fmt.Errorf("could not start ipfs API: %w", err)
 		}
 		options = append(options, light.DataAvailabilitySampling(numSamples, coreAPI))
 	case sequential:
