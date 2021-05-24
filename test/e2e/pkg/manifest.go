@@ -67,13 +67,6 @@ type ManifestNode struct {
 	// this defaults to all other nodes in the network.
 	PersistentPeers []string `toml:"persistent_peers"`
 
-	// TODO: remove this config flag completely -> only builtin allowed now anyways
-	// ABCIProtocol specifies the protocol used to communicate with the ABCI
-	// application: "unix", "tcp", "grpc", or "builtin". Defaults to builtin.
-	// builtin will build a complete Tendermint node into the application and
-	// launch it instead of launching a separate Tendermint process.
-	ABCIProtocol string `toml:"abci_protocol"`
-
 	// PrivvalProtocol specifies the protocol used to sign consensus messages:
 	// "file", "unix", or "tcp". Defaults to "file". For unix and tcp, the ABCI
 	// application will launch a remote signer client in a separate goroutine.

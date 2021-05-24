@@ -73,7 +73,7 @@ type Node struct {
 	StartAt          int64
 	FastSync         string
 	StateSync        bool
-	ABCIProtocol     Protocol
+	ABCIProtocol     Protocol // always set to builtin in this repository
 	PrivvalProtocol  Protocol
 	PersistInterval  uint64
 	SnapshotInterval uint64
@@ -162,9 +162,6 @@ func LoadTestnet(file string) (*Testnet, error) {
 		}
 		if nodeManifest.Mode != "" {
 			node.Mode = Mode(nodeManifest.Mode)
-		}
-		if nodeManifest.ABCIProtocol != "" {
-			node.ABCIProtocol = Protocol(nodeManifest.ABCIProtocol)
 		}
 		if nodeManifest.PrivvalProtocol != "" {
 			node.PrivvalProtocol = Protocol(nodeManifest.PrivvalProtocol)
@@ -306,7 +303,7 @@ func (n Node) Validate(testnet Testnet) error {
 		return fmt.Errorf("invalid fast sync setting %q", n.FastSync)
 	}
 	switch n.ABCIProtocol {
-	case ProtocolBuiltin, ProtocolUNIX, ProtocolTCP, ProtocolGRPC:
+	case ProtocolBuiltin:
 	default:
 		return fmt.Errorf("invalid ABCI protocol setting %q", n.ABCIProtocol)
 	}

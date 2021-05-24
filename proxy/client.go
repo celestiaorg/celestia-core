@@ -36,10 +36,10 @@ func (l *localClientCreator) NewABCIClient() (abcicli.Client, error) {
 }
 
 // DefaultClientCreator returns a default ClientCreator, which will create a
-// local client if addr is one of: 'counter', 'counter_serial', 'kvstore',
+// local client if app is one of: 'counter', 'counter_serial', 'kvstore',
 // 'persistent_kvstore' or 'noop', otherwise - a remote client.
-func DefaultClientCreator(addr, transport, dbDir string) ClientCreator {
-	switch addr {
+func DefaultClientCreator(app, dbDir string) ClientCreator {
+	switch app {
 	case "counter":
 		return NewLocalClientCreator(counter.NewApplication(false))
 	case "counter_serial":

@@ -105,7 +105,7 @@ func DefaultNewNode(config *cfg.Config, ipfs ipfs.APIProvider, logger log.Logger
 	return NewNode(config,
 		pval,
 		nodeKey,
-		proxy.DefaultClientCreator(config.ProxyApp, config.ABCI, config.DBDir()),
+		proxy.DefaultClientCreator(config.ProxyApp, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
 		DefaultDBProvider,
 		ipfs,

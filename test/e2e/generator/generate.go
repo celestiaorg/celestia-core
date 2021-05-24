@@ -27,7 +27,7 @@ var (
 	}
 
 	// The following specify randomly chosen values for testnet nodes.
-	nodeABCIProtocols     = uniformChoice{"builtin"} // we only care about builtin apps here
+	// nodeABCIProtocols     = uniformChoice{"builtin"} // we only care about builtin apps here
 	nodePrivvalProtocols  = uniformChoice{"file", "unix", "tcp"}
 	nodeFastSyncs         = uniformChoice{"", "v0"} // disable v2 due to bugs
 	nodeStateSyncs        = uniformChoice{false, true}
@@ -192,7 +192,6 @@ func generateNode(
 	node := e2e.ManifestNode{
 		Mode:             string(mode),
 		StartAt:          startAt,
-		ABCIProtocol:     nodeABCIProtocols.Choose(r).(string),
 		PrivvalProtocol:  nodePrivvalProtocols.Choose(r).(string),
 		FastSync:         nodeFastSyncs.Choose(r).(string),
 		StateSync:        nodeStateSyncs.Choose(r).(bool) && startAt > 0,
