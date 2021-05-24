@@ -32,6 +32,7 @@ package protoio
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -57,12 +58,11 @@ type varintReader struct {
 }
 
 func (r *varintReader) ReadMsg(msg proto.Message) error {
-	// length64, err := binary.ReadUvarint(newByteReader(r.r))
-	// if err != nil {
-	// 	return err
-	// }
-	// length := int(length64)
-	length := proto.Size(msg)
+	length64, err := binary.ReadUvarint(newByteReader(r.r))
+	if err != nil {
+		return err
+	}
+	length := int(length64)
 	if length < 0 || length > r.maxSize {
 		return fmt.Errorf("message exceeds max size (%v > %v) %T %T", length, r.maxSize, msg, r.r.Reader)
 	}
