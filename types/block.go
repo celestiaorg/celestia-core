@@ -228,10 +228,6 @@ func (b *Block) fillDataAvailabilityHeader() {
 	namespacedShares, dataSharesLen := b.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
 
-	if len(shares) == 0 {
-		panic("shares cannot be empty")
-	}
-
 	// create the nmt wrapper to generate row and col commitments
 	squareSize := uint32(math.Sqrt(float64(len(shares))))
 	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(squareSize))
