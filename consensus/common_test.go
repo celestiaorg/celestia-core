@@ -54,7 +54,7 @@ type cleanupFunc func()
 var (
 	config                *cfg.Config // NOTE: must be reset for each _test.go file
 	consensusReplayConfig *cfg.Config
-	ensureTimeout         = 1000 * time.Millisecond
+	ensureTimeout         = 2 * time.Second
 
 	ipfsTestAPI iface.CoreAPI
 	ipfsCloser  io.Closer
