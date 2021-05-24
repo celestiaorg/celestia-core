@@ -136,6 +136,25 @@ func Commit(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCommit, erro
 	return ctypes.NewResultCommit(&header, commit, true), nil
 }
 
+// DataAvailabilityHeader TODO
+func DataAvailabilityHeader(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultDataAvailabilityHeader, error) {
+	height, err := getHeight(env.BlockStore.Height(), heightPtr)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: store DAHeader to avoid loading the full block each time
+	// depends on either:
+	// - https://github.com/lazyledger/lazyledger-core/pull/312, or
+	// - https://github.com/lazyledger/lazyledger-core/pull/218
+	block := env.BlockStore.LoadBlock(height)
+	_ = block.Hash()
+	dah := block.DataAvailabilityHeader
+	return &ctypes.ResultDataAvailabilityHeader{
+		DataAvailabilityHeader: dah,
+	}, nil
+}
+
 // BlockResults gets ABCIResults at a given height.
 // If no height is provided, it will fetch results for the latest block.
 //

@@ -51,7 +51,6 @@ func AddNodeFlags(cmd *cobra.Command) {
 			" 'persistent_kvstore',"+
 			" 'counter',"+
 			" 'counter_serial' or 'noop' for local testing.")
-	cmd.Flags().String("abci", config.ABCI, "specify abci transport (socket | grpc)")
 
 	// rpc flags
 	cmd.Flags().String("rpc.laddr", config.RPC.ListenAddress, "RPC listen address. Port required")

@@ -49,7 +49,7 @@ func defaultNewTestNode(config *cfg.Config, logger log.Logger) (*Node, error) {
 	return NewNode(config,
 		pval,
 		nodeKey,
-		proxy.DefaultClientCreator(config.ProxyApp, config.ABCI, config.DBDir()),
+		proxy.DefaultClientCreator(config.ProxyApp, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
 		InMemDBProvider,
 		ipfs.Mock(),
@@ -89,7 +89,7 @@ func TestNodeStartStop(t *testing.T) {
 
 	select {
 	case <-n.Quit():
-	case <-time.After(5 * time.Second):
+	case <-time.After(10 * time.Second):
 		pid := os.Getpid()
 		p, err := os.FindProcess(pid)
 		if err != nil {
@@ -544,7 +544,7 @@ func TestNodeNewNodeCustomReactors(t *testing.T) {
 	n, err := NewNode(config,
 		pval,
 		nodeKey,
-		proxy.DefaultClientCreator(config.ProxyApp, config.ABCI, config.DBDir()),
+		proxy.DefaultClientCreator(config.ProxyApp, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
 		InMemDBProvider,
 		ipfs.Mock(),

@@ -8,11 +8,15 @@ import (
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
-// LightBlock is a SignedHeader and a ValidatorSet.
-// It is the basis of the light client
+// LightBlock is a SignedHeader and a ValidatorSet
+// and optionally a DataAvailabilityHeader (for DAS light clients).
+// It is the basis of the light client.
 type LightBlock struct {
 	*SignedHeader `json:"signed_header"`
 	ValidatorSet  *ValidatorSet `json:"validator_set"`
+
+	// DataAvailabilityHeader is only populated for DAS light clients for others it can be nil.
+	DataAvailabilityHeader *DataAvailabilityHeader `json:"data_availability_header"`
 }
 
 // ValidateBasic checks that the data is correct and consistent

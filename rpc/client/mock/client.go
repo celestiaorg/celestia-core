@@ -170,6 +170,13 @@ func (c Client) Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit
 	return core.Commit(&rpctypes.Context{}, height)
 }
 
+func (c Client) DataAvailabilityHeader(
+	ctx context.Context,
+	height *int64,
+) (*ctypes.ResultDataAvailabilityHeader, error) {
+	return core.DataAvailabilityHeader(&rpctypes.Context{}, height)
+}
+
 func (c Client) Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error) {
 	return core.Validators(&rpctypes.Context{}, height, page, perPage)
 }

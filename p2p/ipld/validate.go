@@ -3,6 +3,7 @@ package ipld
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	format "github.com/ipfs/go-ipld-format"
@@ -15,7 +16,7 @@ import (
 // ValidationTimeout specifies timeout for DA validation during which data have to be found on the network,
 // otherwise ErrValidationFailed is thrown.
 // TODO: github.com/lazyledger/lazyledger-core/issues/280
-const ValidationTimeout = time.Minute
+const ValidationTimeout = 1 * time.Minute
 
 // ErrValidationFailed is returned whenever DA validation fails
 var ErrValidationFailed = errors.New("validation failed")
@@ -80,7 +81,7 @@ func ValidateAvailability(
 		case <-ctx.Done():
 			err := ctx.Err()
 			if err == context.DeadlineExceeded {
-				return ErrValidationFailed
+				return fmt.Errorf("%v: %w", ErrValidationFailed, err)
 			}
 
 			return err

@@ -21,6 +21,13 @@ type Provider interface {
 	// error is returned.
 	LightBlock(ctx context.Context, height int64) (*types.LightBlock, error)
 
+	// DASLightBlock returns the LightBlock containing the DataAvailabilityHeader.
+	// Other than including the DataAvailabilityHeader it behaves exactly the same
+	// as LightBlock.
+	//
+	// It can be used by DAS light clients.
+	DASLightBlock(ctx context.Context, height int64) (*types.LightBlock, error)
+
 	// ReportEvidence reports an evidence of misbehavior.
 	ReportEvidence(context.Context, types.Evidence) error
 }
