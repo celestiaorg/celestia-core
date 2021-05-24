@@ -845,12 +845,12 @@ func TestConsensusConfig() *ConsensusConfig {
 	cfg := DefaultConsensusConfig()
 	cfg.TimeoutPropose = 200 * time.Millisecond
 	cfg.TimeoutProposeDelta = 20 * time.Millisecond
-	cfg.TimeoutPrevote = 80 * time.Millisecond
+	cfg.TimeoutPrevote = 120 * time.Millisecond
 	cfg.TimeoutPrevoteDelta = 20 * time.Millisecond
-	cfg.TimeoutPrecommit = 80 * time.Millisecond
+	cfg.TimeoutPrecommit = 120 * time.Millisecond
 	cfg.TimeoutPrecommitDelta = 20 * time.Millisecond
 	// NOTE: when modifying, make sure to update time_iota_ms (testGenesisFmt) in toml.go
-	cfg.TimeoutCommit = 80 * time.Millisecond
+	cfg.TimeoutCommit = 120 * time.Millisecond
 	cfg.SkipTimeoutCommit = true
 	cfg.PeerGossipSleepDuration = 20 * time.Millisecond
 	cfg.PeerQueryMaj23SleepDuration = 500 * time.Millisecond
