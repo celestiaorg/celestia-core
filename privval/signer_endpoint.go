@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	defaultTimeoutReadWriteSeconds = 5
+	defaultTimeoutReadWriteSeconds = 20
 )
 
 type signerEndpoint struct {
@@ -94,7 +94,7 @@ func (se *signerEndpoint) ReadMessage() (msg privvalproto.Message, err error) {
 	if err != nil {
 		return
 	}
-	const maxRemoteSignerMsgSize = 1024 * 10
+	const maxRemoteSignerMsgSize = 12923
 	protoReader := protoio.NewDelimitedReader(se.conn, maxRemoteSignerMsgSize)
 	err = protoReader.ReadMsg(&msg)
 	if _, ok := err.(timeoutError); ok {
