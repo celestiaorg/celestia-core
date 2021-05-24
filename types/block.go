@@ -353,6 +353,7 @@ func (b *Block) Hash() tmbytes.HexBytes {
 	defer b.mtx.Unlock()
 
 	if b.LastCommit == nil {
+		fmt.Println("returning nil during the last commit", b)
 		return nil
 	}
 	b.fillHeader()

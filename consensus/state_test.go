@@ -1052,7 +1052,7 @@ func TestStateLockPOLSafety1(t *testing.T) {
 
 	ensurePrevote(voteCh, height, round)
 	validatePrevote(t, cs1, round, vss[0], propBlock.Hash())
-
+	fmt.Println("ci failure point 1")
 	blockID := types.BlockID{
 		Hash:                   propBlock.Hash(),
 		PartSetHeader:          propBlock.MakePartSet(partSize).Header(),
@@ -1103,6 +1103,7 @@ func TestStateLockPOLSafety1(t *testing.T) {
 	// go to prevote, prevote for proposal block
 	ensurePrevote(voteCh, height, round)
 	validatePrevote(t, cs1, round, vss[0], propBlockHash)
+	fmt.Println("ci failure point 2")
 
 	blockID = types.BlockID{
 		Hash:                   propBlock.Hash(),
@@ -1138,6 +1139,7 @@ func TestStateLockPOLSafety1(t *testing.T) {
 	ensurePrevote(voteCh, height, round)
 	// we should prevote what we're locked on
 	validatePrevote(t, cs1, round, vss[0], propBlockHash)
+	fmt.Println("ci failure point 3")
 
 	newStepCh := subscribe(cs1.eventBus, types.EventQueryNewRoundStep)
 
