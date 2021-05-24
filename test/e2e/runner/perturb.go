@@ -16,7 +16,7 @@ func Perturb(testnet *e2e.Testnet) error {
 			if err != nil {
 				return err
 			}
-			time.Sleep(3 * time.Second) // give network some time to recover between each
+			time.Sleep(8 * time.Second) // give network some time to recover between each
 		}
 	}
 	return nil
