@@ -30,7 +30,6 @@ require (
 	github.com/lazyledger/rsmt2d v0.2.0
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/minio/highwayhash v1.0.1
-	github.com/minio/sha256-simd v0.1.1
 	github.com/multiformats/go-multiaddr v0.3.1
 	github.com/multiformats/go-multihash v0.0.14
 	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect
