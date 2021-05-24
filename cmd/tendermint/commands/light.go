@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,9 +13,11 @@ import (
 	"strings"
 	"time"
 
+	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/spf13/cobra"
 
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -64,6 +67,8 @@ var (
 	dir                string
 	maxOpenConnections int
 
+	daSampling     bool
+	numSamples     uint32
 	sequential     bool
 	trustingPeriod time.Duration
 	trustedHeight  int64
@@ -101,6 +106,11 @@ func init() {
 	LightCmd.Flags().BoolVar(&sequential, "sequential", false,
 		"sequential verification. Verify all headers sequentially as opposed to using skipping verification",
 	)
+	LightCmd.Flags().BoolVar(&daSampling, "da-sampling", false,
+		"data availability sampling. Verify each header's data availability via sampling",
+	)
+	LightCmd.Flags().Uint32Var(&numSamples, "num-samples", 15,
+		"Number of data availability samples until block data deemed available.")
 }
 
 func runProxy(cmd *cobra.Command, args []string) error {
@@ -169,9 +179,22 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		}),
 	}
 
-	if sequential {
+	var ipfsCloser io.Closer
+	switch {
+	case daSampling:
+		cfg := ipfs.DefaultConfig()
+		cfg.RootDir = dir
+		// TODO(ismail): share badger instance
+		apiProvider := ipfs.Embedded(true, cfg, logger)
+		var coreAPI coreiface.CoreAPI
+		coreAPI, ipfsCloser, err = apiProvider()
+		if err != nil {
+			return fmt.Errorf("could not start ipfs API: %w", err)
+		}
+		options = append(options, light.DataAvailabilitySampling(numSamples, coreAPI))
+	case sequential:
 		options = append(options, light.SequentialVerification())
-	} else {
+	default:
 		options = append(options, light.SkippingVerification(trustLevel))
 	}
 
@@ -215,7 +238,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	cfg.MaxOpenConnections = maxOpenConnections
 	// If necessary adjust global WriteTimeout to ensure it's greater than
 	// TimeoutBroadcastTxCommit.
-	// See https://github.com/lazyledger/lazyledger-core/issues/3435
+	// See https://github.com/tendermint/tendermint/issues/3435
 	if cfg.WriteTimeout <= config.RPC.TimeoutBroadcastTxCommit {
 		cfg.WriteTimeout = config.RPC.TimeoutBroadcastTxCommit + 1*time.Second
 	}
@@ -229,6 +252,9 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	// Stop upon receiving SIGTERM or CTRL-C.
 	tmos.TrapSignal(logger, func() {
 		p.Listener.Close()
+		if ipfsCloser != nil {
+			ipfsCloser.Close()
+		}
 	})
 
 	logger.Info("Starting proxy...", "laddr", listenAddr)

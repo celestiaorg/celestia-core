@@ -213,7 +213,7 @@ func (b *Block) fillHeader() {
 	if b.LastCommitHash == nil {
 		b.LastCommitHash = b.LastCommit.Hash()
 	}
-	if b.DataHash == nil {
+	if b.DataHash == nil || b.DataAvailabilityHeader.hash == nil {
 		b.fillDataAvailabilityHeader()
 	}
 	if b.EvidenceHash == nil {
@@ -227,12 +227,6 @@ func (b *Block) fillHeader() {
 func (b *Block) fillDataAvailabilityHeader() {
 	namespacedShares, dataSharesLen := b.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
-
-	if len(shares) == 0 {
-		// no shares -> no row/colum roots -> hash(empty)
-		b.DataHash = b.DataAvailabilityHeader.Hash()
-		return
-	}
 
 	// create the nmt wrapper to generate row and col commitments
 	squareSize := uint32(math.Sqrt(float64(len(shares))))

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -13,9 +15,8 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/term"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/stretchr/testify/require"
-
-	"path"
 
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
 	"github.com/lazyledger/lazyledger-core/abci/example/counter"
@@ -23,6 +24,7 @@ import (
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
@@ -48,17 +50,33 @@ const (
 // test.
 type cleanupFunc func()
 
-// genesis, chain_id, priv_val
+// genesis, chain_id, priv_val, ipfsAPI
 var (
 	config                *cfg.Config // NOTE: must be reset for each _test.go file
 	consensusReplayConfig *cfg.Config
-	ensureTimeout         = 1000 * time.Millisecond
+	ensureTimeout         = 2 * time.Second
+
+	ipfsTestAPI iface.CoreAPI
+	ipfsCloser  io.Closer
 )
 
 func ensureDir(dir string, mode os.FileMode) {
 	if err := tmos.EnsureDir(dir, mode); err != nil {
 		panic(err)
 	}
+}
+
+func setTestIpfsAPI() (err error) {
+	mockIPFSProvider := ipfs.Mock()
+	if ipfsTestAPI, ipfsCloser, err = mockIPFSProvider(); err != nil {
+		return
+	}
+	return
+}
+
+func teardownTestIpfsAPI() (err error) {
+	err = ipfsCloser.Close()
+	return
 }
 
 func ResetConfig(name string) *cfg.Config {
@@ -432,6 +450,7 @@ func randState(nValidators int) (*State, []*validatorStub) {
 	vss := make([]*validatorStub, nValidators)
 
 	cs := newState(state, privVals[0], counter.NewApplication(true))
+	cs.SetIPFSApi(ipfsTestAPI)
 
 	for i := 0; i < nValidators; i++ {
 		vss[i] = newValidatorStub(privVals[i], int32(i))
@@ -678,9 +697,15 @@ func consensusLogger() log.Logger {
 	}).With("module", "consensus")
 }
 
-func randConsensusNet(nValidators int, testName string, tickerFunc func() TimeoutTicker,
-	appFunc func() abci.Application, configOpts ...func(*cfg.Config)) ([]*State, cleanupFunc) {
+func randConsensusNet(
+	nValidators int,
+	testName string,
+	tickerFunc func() TimeoutTicker,
+	appFunc func() abci.Application,
+	configOpts ...func(*cfg.Config),
+) ([]*State, cleanupFunc) {
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30)
+
 	css := make([]*State, nValidators)
 	logger := consensusLogger()
 	configRootDirs := make([]string, 0, nValidators)
@@ -701,6 +726,7 @@ func randConsensusNet(nValidators int, testName string, tickerFunc func() Timeou
 		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
+		css[i].SetIPFSApi(ipfsTestAPI)
 	}
 	return css, func() {
 		for _, dir := range configRootDirs {
@@ -722,6 +748,7 @@ func randConsensusNetWithPeers(
 	logger := consensusLogger()
 	var peer0Config *cfg.Config
 	configRootDirs := make([]string, 0, nPeers)
+
 	for i := 0; i < nPeers; i++ {
 		stateDB := memdb.NewDB() // each state needs its own db
 		stateStore := sm.NewStore(stateDB)
@@ -763,6 +790,7 @@ func randConsensusNetWithPeers(
 		css[i] = newStateWithConfig(thisConfig, state, privVal, app)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
+		css[i].SetIPFSApi(ipfsTestAPI)
 	}
 	return css, genDoc, peer0Config, func() {
 		for _, dir := range configRootDirs {

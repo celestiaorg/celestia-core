@@ -75,6 +75,10 @@ func (p *Mock) LightBlock(_ context.Context, height int64) (*types.LightBlock, e
 	return lb, nil
 }
 
+func (p *Mock) DASLightBlock(ctx context.Context, height int64) (*types.LightBlock, error) {
+	panic("not implemented")
+}
+
 func (p *Mock) ReportEvidence(_ context.Context, ev types.Evidence) error {
 	p.evidenceToReport[string(ev.Hash())] = ev
 	return nil

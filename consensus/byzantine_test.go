@@ -91,7 +91,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		cs.SetTimeoutTicker(tickerFunc())
 		cs.SetLogger(logger)
-
+		cs.SetIPFSApi(ipfsTestAPI)
 		css[i] = cs
 	}
 
@@ -215,7 +215,12 @@ func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 	N := 4
 	logger := consensusLogger().With("test", "byzantine")
 	app := newCounter
-	css, cleanup := randConsensusNet(N, "consensus_byzantine_test", newMockTickerFunc(false), app)
+	css, cleanup := randConsensusNet(
+		N,
+		"consensus_byzantine_test",
+		newMockTickerFunc(false),
+		app,
+	)
 	defer cleanup()
 
 	// give the byzantine validator a normal ticker

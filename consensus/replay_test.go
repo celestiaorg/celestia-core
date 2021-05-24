@@ -37,6 +37,7 @@ import (
 
 func TestMain(m *testing.M) {
 	config = ResetConfig("consensus_reactor_test")
+	_ = setTestIpfsAPI()
 	consensusReplayConfig = ResetConfig("consensus_replay_test")
 	configStateTest := ResetConfig("consensus_state_test")
 	configMempoolTest := ResetConfig("consensus_mempool_test")
@@ -47,6 +48,7 @@ func TestMain(m *testing.M) {
 	os.RemoveAll(configStateTest.RootDir)
 	os.RemoveAll(configMempoolTest.RootDir)
 	os.RemoveAll(configByzantineTest.RootDir)
+	_ = teardownTestIpfsAPI()
 	os.Exit(code)
 }
 
@@ -70,6 +72,7 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 	logger := log.TestingLogger()
 	state, _ := stateStore.LoadFromDBOrGenesisFile(consensusReplayConfig.GenesisFile())
 	privValidator := loadPrivValidator(consensusReplayConfig)
+
 	cs := newStateWithConfigAndBlockStore(
 		consensusReplayConfig,
 		state,
@@ -78,6 +81,7 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		blockDB,
 	)
 	cs.SetLogger(logger)
+	cs.SetIPFSApi(ipfsTestAPI)
 
 	bytes, _ := ioutil.ReadFile(cs.config.WalFile())
 	t.Logf("====== WAL: \n\r%X\n", bytes)
@@ -100,7 +104,7 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 	case <-newBlockSub.Out():
 	case <-newBlockSub.Cancelled():
 		t.Fatal("newBlockSub was cancelled")
-	case <-time.After(120 * time.Second):
+	case <-time.After(4 * time.Minute):
 		t.Fatal("Timed out waiting for new block (see trace above)")
 	}
 }
@@ -128,10 +132,13 @@ func TestWALCrash(t *testing.T) {
 		heightToStop int64
 	}{
 		{"empty block",
-			func(stateDB dbm.DB, cs *State, ctx context.Context) {},
+			func(stateDB dbm.DB, cs *State, ctx context.Context) {
+				cs.SetIPFSApi(ipfsTestAPI)
+			},
 			1},
 		{"many non-empty blocks",
 			func(stateDB dbm.DB, cs *State, ctx context.Context) {
+				cs.SetIPFSApi(ipfsTestAPI)
 				go sendTxs(ctx, cs)
 			},
 			3},
@@ -150,7 +157,6 @@ func crashWALandCheckLiveness(t *testing.T, consensusReplayConfig *cfg.Config,
 	initFn func(dbm.DB, *State, context.Context), heightToStop int64) {
 	walPanicked := make(chan error)
 	crashingWal := &crashingWAL{panicCh: walPanicked, heightToStop: heightToStop}
-
 	i := 1
 LOOP:
 	for {
@@ -160,6 +166,7 @@ LOOP:
 		logger := log.NewNopLogger()
 		blockDB := memdb.NewDB()
 		stateDB := blockDB
+
 		stateStore := sm.NewStore(stateDB)
 		state, err := sm.MakeGenesisStateFromFile(consensusReplayConfig.GenesisFile())
 		require.NoError(t, err)
@@ -329,7 +336,8 @@ func TestSimulateValidatorsChange(t *testing.T) {
 		nPeers,
 		"replay_test",
 		newMockTickerFunc(true),
-		newPersistentKVStoreWithPath)
+		newPersistentKVStoreWithPath,
+	)
 	sim.Config = config
 	sim.GenesisState, _ = sm.MakeGenesisState(genDoc)
 	sim.CleanupFunc = cleanup
@@ -675,7 +683,7 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 	} else { // test single node
 		testConfig := ResetConfig(fmt.Sprintf("%s_%v_s", t.Name(), mode))
 		defer func() { _ = os.RemoveAll(testConfig.RootDir) }()
-		walBody, err := WALWithNBlocks(t, numBlocks)
+		walBody, err := walWithNBlocks(t, numBlocks)
 		require.NoError(t, err)
 		walFile := tempWALWithData(walBody)
 		config.Consensus.SetWalFile(walFile)

@@ -177,6 +177,13 @@ func ValidateTrustLevel(lvl tmmath.Fraction) error {
 	return nil
 }
 
+func ValidateNumSamples(numSamples uint32) error {
+	if numSamples == 0 {
+		return fmt.Errorf("number of samples must be > 0")
+	}
+	return nil
+}
+
 // HeaderExpired return true if the given header expired.
 func HeaderExpired(h *types.SignedHeader, trustingPeriod time.Duration, now time.Time) bool {
 	expirationTime := h.Time.Add(trustingPeriod)

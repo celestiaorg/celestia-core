@@ -28,6 +28,10 @@ func (p *deadMock) LightBlock(_ context.Context, height int64) (*types.LightBloc
 	return nil, errNoResp
 }
 
+func (p *deadMock) DASLightBlock(_ctx context.Context, height int64) (*types.LightBlock, error) {
+	return nil, errNoResp
+}
+
 func (p *deadMock) ReportEvidence(_ context.Context, ev types.Evidence) error {
 	return errNoResp
 }

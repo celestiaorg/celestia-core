@@ -89,7 +89,7 @@ func TestNodeStartStop(t *testing.T) {
 
 	select {
 	case <-n.Quit():
-	case <-time.After(5 * time.Second):
+	case <-time.After(10 * time.Second):
 		pid := os.Getpid()
 		p, err := os.FindProcess(pid)
 		if err != nil {
