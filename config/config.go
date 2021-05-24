@@ -194,7 +194,7 @@ type BaseConfig struct { //nolint: maligned
 	NodeKey string `mapstructure:"node-key-file"`
 
 	// Mechanism to connect to the ABCI application: socket | grpc
-	ABCI string `mapstructure:"abci"`
+	// ABCI string `mapstructure:"abci"` // we only use in process apps
 
 	// If true, query the ABCI app on connecting to a new peer
 	// so the app can decide if we should keep the connection or not
@@ -210,7 +210,6 @@ func DefaultBaseConfig() BaseConfig {
 		NodeKey:            defaultNodeKeyPath,
 		Moniker:            defaultMoniker,
 		ProxyApp:           "tcp://127.0.0.1:26658",
-		ABCI:               "socket",
 		LogLevel:           DefaultPackageLogLevels(),
 		LogFormat:          LogFormatPlain,
 		FastSyncMode:       true,
@@ -844,17 +843,17 @@ func DefaultConsensusConfig() *ConsensusConfig {
 // TestConsensusConfig returns a configuration for testing the consensus service
 func TestConsensusConfig() *ConsensusConfig {
 	cfg := DefaultConsensusConfig()
-	cfg.TimeoutPropose = 100 * time.Millisecond
-	cfg.TimeoutProposeDelta = 10 * time.Millisecond
-	cfg.TimeoutPrevote = 40 * time.Millisecond
-	cfg.TimeoutPrevoteDelta = 10 * time.Millisecond
-	cfg.TimeoutPrecommit = 40 * time.Millisecond
-	cfg.TimeoutPrecommitDelta = 10 * time.Millisecond
+	cfg.TimeoutPropose = 200 * time.Millisecond
+	cfg.TimeoutProposeDelta = 20 * time.Millisecond
+	cfg.TimeoutPrevote = 80 * time.Millisecond
+	cfg.TimeoutPrevoteDelta = 20 * time.Millisecond
+	cfg.TimeoutPrecommit = 80 * time.Millisecond
+	cfg.TimeoutPrecommitDelta = 20 * time.Millisecond
 	// NOTE: when modifying, make sure to update time_iota_ms (testGenesisFmt) in toml.go
-	cfg.TimeoutCommit = 40 * time.Millisecond
+	cfg.TimeoutCommit = 80 * time.Millisecond
 	cfg.SkipTimeoutCommit = true
-	cfg.PeerGossipSleepDuration = 10 * time.Millisecond
-	cfg.PeerQueryMaj23SleepDuration = 250 * time.Millisecond
+	cfg.PeerGossipSleepDuration = 20 * time.Millisecond
+	cfg.PeerQueryMaj23SleepDuration = 500 * time.Millisecond
 	cfg.DoubleSignCheckHeight = int64(0)
 	return cfg
 }

@@ -169,6 +169,13 @@ func (c *Local) Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit
 	return core.Commit(c.ctx, height)
 }
 
+func (c *Local) DataAvailabilityHeader(
+	ctx context.Context,
+	height *int64,
+) (*ctypes.ResultDataAvailabilityHeader, error) {
+	return core.DataAvailabilityHeader(c.ctx, height)
+}
+
 func (c *Local) Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error) {
 	return core.Validators(c.ctx, height, page, perPage)
 }

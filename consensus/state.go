@@ -1121,18 +1121,23 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		cs.Logger.Error("enterPropose: Error signing proposal", "height", height, "round", round, "err", err)
 	}
 
+	// TODO(ismail): capture this in the Consensus ADR
 	// post data to ipfs
 	// TODO(evan): don't hard code context and timeout
-	if cs.ipfs != nil {
-		// longer timeouts result in block proposers failing to propose blocks in time.
-		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
-		defer cancel()
-		// TODO: post data to IPFS in a goroutine
-		err := ipld.PutBlock(ctx, cs.ipfs.Dag(), block)
-		if err != nil {
-			cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
-		}
+	//
+	// longer timeouts result in block proposers failing to propose blocks in time.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
+	defer cancel()
+	cs.Logger.Info("Putting Block to ipfs", "height", block.Height)
+	// TODO: post data to IPFS in a goroutine
+	err = ipld.PutBlock(ctx, cs.ipfs.Dag(), block)
+	if err != nil {
+		// If PutBlock fails we will be the only node that has the data
+		// this means something is seriously wrong and we can not recover
+		// from that automatically.
+		panic(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
 	}
+	cs.Logger.Info("Finished putting block to ipfs", "height", block.Height)
 }
 
 // Returns true if the proposal block is complete &&

@@ -250,7 +250,6 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
 	case e2e.ProtocolBuiltin:
 		cfg.ProxyApp = ""
-		cfg.ABCI = ""
 	default:
 		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
 	}
