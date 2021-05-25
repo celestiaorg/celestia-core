@@ -1,22 +1,27 @@
 package merkle
 
 import (
+	"crypto/sha256"
+	"hash"
 	"math/bits"
 )
 
 // HashFromByteSlices computes a Merkle tree where the leaves are the byte slice,
 // in the provided order. It follows RFC-6962.
 func HashFromByteSlices(items [][]byte) []byte {
+	return hashFromByteSlices(sha256.New(), items)
+}
+func hashFromByteSlices(sha hash.Hash, items [][]byte) []byte {
 	switch len(items) {
 	case 0:
 		return emptyHash()
 	case 1:
-		return leafHash(items[0])
+		return leafHashOpt(sha, items[0])
 	default:
 		k := getSplitPoint(int64(len(items)))
-		left := HashFromByteSlices(items[:k])
-		right := HashFromByteSlices(items[k:])
-		return innerHash(left, right)
+		left := hashFromByteSlices(sha, items[:k])
+		right := hashFromByteSlices(sha, items[k:])
+		return innerHashOpt(sha, left, right)
 	}
 }
 
@@ -60,10 +65,11 @@ func HashFromByteSlices(items [][]byte) []byte {
 // read, it might not be worthwhile to switch to a less intuitive
 // implementation for so little benefit.
 func HashFromByteSlicesIterative(input [][]byte) []byte {
+	sha := sha256.New()
 	items := make([][]byte, len(input))
 
 	for i, leaf := range input {
-		items[i] = leafHash(leaf)
+		items[i] = leafHashOpt(sha, leaf)
 	}
 
 	size := len(items)
@@ -78,7 +84,7 @@ func HashFromByteSlicesIterative(input [][]byte) []byte {
 			wp := 0 // write position
 			for rp < size {
 				if rp+1 < size {
-					items[wp] = innerHash(items[rp], items[rp+1])
+					items[wp] = innerHashOpt(sha, items[rp], items[rp+1])
 					rp += 2
 				} else {
 					items[wp] = items[rp]
