@@ -290,7 +290,7 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 		tmos.Exit(err.Error())
 	}
 	ipfsAPI, _, _ := ipfs.Mock()()
-	blockStore := store.NewBlockStore(blockStoreDB, ipfsAPI)
+	blockStore := store.NewBlockStore(blockStoreDB, ipfsAPI.Dag())
 
 	// Get State
 	stateDB, err := badgerdb.NewDB("state", config.DBDir())

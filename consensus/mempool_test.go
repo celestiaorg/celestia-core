@@ -31,7 +31,7 @@ func TestMempoolNoProgressUntilTxsAvailable(t *testing.T) {
 	config.Consensus.CreateEmptyBlocks = false
 	state, privVals := randGenesisState(1, false, 10)
 	ipfsAPI, _, _ := ipfs.Mock()()
-	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication(), ipfsAPI)
+	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication(), ipfsAPI.Dag())
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 	height, round := cs.Height, cs.Round
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
@@ -51,7 +51,7 @@ func TestMempoolProgressAfterCreateEmptyBlocksInterval(t *testing.T) {
 
 	config.Consensus.CreateEmptyBlocksInterval = ensureTimeout
 	state, privVals := randGenesisState(1, false, 10)
-	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication(), ipfsTestAPI)
+	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication(), ipfsTestAPI.Dag())
 
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 
@@ -69,7 +69,7 @@ func TestMempoolProgressInHigherRound(t *testing.T) {
 
 	config.Consensus.CreateEmptyBlocks = false
 	state, privVals := randGenesisState(1, false, 10)
-	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication(), ipfsTestAPI)
+	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication(), ipfsTestAPI.Dag())
 
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 	height, round := cs.Height, cs.Round
@@ -119,7 +119,7 @@ func TestMempoolTxConcurrentWithCommit(t *testing.T) {
 	blockDB := memdb.NewDB()
 	stateStore := sm.NewStore(blockDB)
 
-	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], NewCounterApplication(), blockDB, ipfsTestAPI)
+	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], NewCounterApplication(), blockDB, ipfsTestAPI.Dag())
 	err := stateStore.Save(state)
 	require.NoError(t, err)
 	newBlockHeaderCh := subscribe(cs.eventBus, types.EventQueryNewBlockHeader)
@@ -145,7 +145,7 @@ func TestMempoolRmBadTx(t *testing.T) {
 	blockDB := memdb.NewDB()
 
 	stateStore := sm.NewStore(blockDB)
-	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], app, blockDB, ipfsTestAPI)
+	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], app, blockDB, ipfsTestAPI.Dag())
 	err := stateStore.Save(state)
 	require.NoError(t, err)
 

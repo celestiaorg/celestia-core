@@ -43,18 +43,18 @@ type BlockStore struct {
 	base   int64
 	height int64
 
-	ipfsAPI iface.CoreAPI
+	ipfsDagAPI iface.APIDagService
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB, ipfsAPI iface.CoreAPI) *BlockStore {
+func NewBlockStore(db dbm.DB, dagAPI iface.APIDagService) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	return &BlockStore{
-		base:    bs.Base,
-		height:  bs.Height,
-		db:      db,
-		ipfsAPI: ipfsAPI,
+		base:       bs.Base,
+		height:     bs.Height,
+		db:         db,
+		ipfsDagAPI: dagAPI,
 	}
 }
 
@@ -430,8 +430,8 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 
 // IpfsAPI returns the ipfs api object of the BlockStore. Fullfills the
 // state.BlockStore interface.
-func (bs *BlockStore) IpfsAPI() iface.CoreAPI {
-	return bs.ipfsAPI
+func (bs *BlockStore) IpfsDagAPI() iface.APIDagService {
+	return bs.ipfsDagAPI
 }
 
 //-----------------------------------------------------------------------------

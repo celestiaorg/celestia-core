@@ -370,9 +370,9 @@ func subscribeToVoter(cs *State, addr []byte) <-chan tmpubsub.Message {
 //-------------------------------------------------------------------------------
 // consensus states
 
-func newState(state sm.State, pv types.PrivValidator, app abci.Application, ipfsAPI iface.CoreAPI) *State {
+func newState(state sm.State, pv types.PrivValidator, app abci.Application, ipfsDagAPI iface.APIDagService) *State {
 	config := cfg.ResetTestRoot("consensus_state_test")
-	return newStateWithConfig(config, state, pv, app, ipfsAPI)
+	return newStateWithConfig(config, state, pv, app, ipfsDagAPI)
 }
 
 func newStateWithConfig(
@@ -380,10 +380,10 @@ func newStateWithConfig(
 	state sm.State,
 	pv types.PrivValidator,
 	app abci.Application,
-	ipfsAPI iface.CoreAPI,
+	ipfsDagAPI iface.APIDagService,
 ) *State {
 	blockDB := memdb.NewDB()
-	return newStateWithConfigAndBlockStore(thisConfig, state, pv, app, blockDB, ipfsAPI)
+	return newStateWithConfigAndBlockStore(thisConfig, state, pv, app, blockDB, ipfsDagAPI)
 }
 
 func newStateWithConfigAndBlockStore(
@@ -392,10 +392,10 @@ func newStateWithConfigAndBlockStore(
 	pv types.PrivValidator,
 	app abci.Application,
 	blockDB dbm.DB,
-	ipfsAPI iface.CoreAPI,
+	ipfsDagAPI iface.APIDagService,
 ) *State {
 	// Get BlockStore
-	blockStore := store.NewBlockStore(blockDB, ipfsAPI)
+	blockStore := store.NewBlockStore(blockDB, ipfsDagAPI)
 
 	// one for mempool, one for consensus
 	mtx := new(tmsync.Mutex)
@@ -451,7 +451,7 @@ func randState(nValidators int) (*State, []*validatorStub) {
 
 	vss := make([]*validatorStub, nValidators)
 
-	cs := newState(state, privVals[0], counter.NewApplication(true), ipfsTestAPI)
+	cs := newState(state, privVals[0], counter.NewApplication(true), ipfsTestAPI.Dag())
 
 	for i := 0; i < nValidators; i++ {
 		vss[i] = newValidatorStub(privVals[i], int32(i))
@@ -724,7 +724,7 @@ func randConsensusNet(
 		vals := types.TM2PB.ValidatorUpdates(state.Validators)
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
-		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB, ipfsTestAPI)
+		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB, ipfsTestAPI.Dag())
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
 	}
@@ -787,7 +787,7 @@ func randConsensusNetWithPeers(
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 		// sm.SaveState(stateDB,state)	//height 1's validatorsInfo already saved in LoadStateFromDBOrGenesisDoc above
 
-		css[i] = newStateWithConfig(thisConfig, state, privVal, app, ipfsTestAPI)
+		css[i] = newStateWithConfig(thisConfig, state, privVal, app, ipfsTestAPI.Dag())
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
 	}

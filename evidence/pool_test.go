@@ -398,7 +398,7 @@ func initializeValidatorState(privVal types.PrivValidator, height int64) sm.Stor
 func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.BlockStore {
 	ipfsAPI, _, _ := ipfs.Mock()()
 
-	blockStore := store.NewBlockStore(db, ipfsAPI)
+	blockStore := store.NewBlockStore(db, ipfsAPI.Dag())
 
 	for i := int64(1); i <= state.LastBlockHeight; i++ {
 		lastCommit := makeCommit(i-1, valAddr)

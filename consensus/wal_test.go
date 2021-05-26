@@ -311,7 +311,7 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 		t.Error(err)
 	}
 
-	blockStore := store.NewBlockStore(blockStoreDB, ipfsTestAPI)
+	blockStore := store.NewBlockStore(blockStoreDB, ipfsTestAPI.Dag())
 
 	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(app))
 	proxyApp.SetLogger(logger.With("module", "proxy"))

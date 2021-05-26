@@ -229,7 +229,7 @@ func initDBs(
 	if err != nil {
 		return
 	}
-	blockStore = store.NewBlockStore(blockStoreDB, ipfsAPI)
+	blockStore = store.NewBlockStore(blockStoreDB, ipfsAPI.Dag())
 
 	stateDB, err = dbProvider(&DBContext{"state", config})
 	if err != nil {

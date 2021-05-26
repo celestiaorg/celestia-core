@@ -58,7 +58,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
 		blockDB := memdb.NewDB()
-		blockStore := store.NewBlockStore(blockDB, ipfsAPI)
+		blockStore := store.NewBlockStore(blockDB, ipfsAPI.Dag())
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)

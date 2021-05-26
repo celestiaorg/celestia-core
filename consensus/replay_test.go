@@ -81,7 +81,7 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		privValidator,
 		kvstore.NewApplication(),
 		blockDB,
-		ipfsTestAPI,
+		ipfsTestAPI.Dag(),
 	)
 	cs.SetLogger(logger)
 
@@ -176,7 +176,7 @@ LOOP:
 			privValidator,
 			kvstore.NewApplication(),
 			blockDB,
-			ipfsTestAPI,
+			ipfsTestAPI.Dag(),
 		)
 		cs.SetLogger(logger)
 
@@ -1184,12 +1184,12 @@ func stateAndStore(
 // mock block store
 
 type mockBlockStore struct {
-	config  *cfg.Config
-	params  tmproto.ConsensusParams
-	chain   []*types.Block
-	commits []*types.Commit
-	base    int64
-	ipfsAPI iface.CoreAPI
+	config     *cfg.Config
+	params     tmproto.ConsensusParams
+	chain      []*types.Block
+	commits    []*types.Commit
+	base       int64
+	ipfsDagAPI iface.APIDagService
 }
 
 // TODO: NewBlockStore(db.NewMemDB) ...
@@ -1198,7 +1198,7 @@ func newMockBlockStore(config *cfg.Config, params tmproto.ConsensusParams) *mock
 	if err != nil {
 		panic("failure to create mock IPFS object")
 	}
-	return &mockBlockStore{config, params, nil, nil, 0, api}
+	return &mockBlockStore{config, params, nil, nil, 0, api.Dag()}
 }
 
 func (bs *mockBlockStore) Height() int64                       { return int64(len(bs.chain)) }
@@ -1237,8 +1237,8 @@ func (bs *mockBlockStore) PruneBlocks(height int64) (uint64, error) {
 	return pruned, nil
 }
 
-func (bs *mockBlockStore) IpfsAPI() iface.CoreAPI {
-	return bs.ipfsAPI
+func (bs *mockBlockStore) IpfsDagAPI() iface.APIDagService {
+	return bs.ipfsDagAPI
 }
 
 //---------------------------------------

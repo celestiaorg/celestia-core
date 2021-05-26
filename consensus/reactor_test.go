@@ -154,7 +154,7 @@ func TestReactorWithEvidence(t *testing.T) {
 		// css[i] = newStateWithConfig(thisConfig, state, privVals[i], app)
 
 		blockDB := memdb.NewDB()
-		blockStore := store.NewBlockStore(blockDB, ipfsTestAPI)
+		blockStore := store.NewBlockStore(blockDB, ipfsTestAPI.Dag())
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)

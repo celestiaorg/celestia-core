@@ -73,7 +73,7 @@ func newBlockchainReactor(
 	stateDB := memdb.NewDB()
 	stateStore := sm.NewStore(stateDB)
 	ipfsAPI, _, _ := ipfs.Mock()()
-	blockStore := store.NewBlockStore(blockDB, ipfsAPI)
+	blockStore := store.NewBlockStore(blockDB, ipfsAPI.Dag())
 
 	state, err := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 	if err != nil {
