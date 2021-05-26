@@ -640,7 +640,6 @@ func TestStateLockPOLRelock(t *testing.T) {
 
 	// before we timeout to the new round set the new proposal
 	cs2 := newState(cs1.state, vs2, counter.NewApplication(true))
-	cs2.SetIPFSApi(ipfsTestAPI)
 	prop, propBlock := decideProposal(cs2, vs2, vs2.Height, vs2.Round+1)
 	if prop == nil || propBlock == nil {
 		t.Fatal("Failed to create proposal block with vs2")
@@ -827,7 +826,6 @@ func TestStateLockPOLUnlockOnUnknownBlock(t *testing.T) {
 
 	// before we timeout to the new round set the new proposal
 	cs2 := newState(cs1.state, vs2, counter.NewApplication(true))
-	cs2.SetIPFSApi(ipfsTestAPI)
 	prop, propBlock := decideProposal(cs2, vs2, vs2.Height, vs2.Round+1)
 	if prop == nil || propBlock == nil {
 		t.Fatal("Failed to create proposal block with vs2")
@@ -872,7 +870,6 @@ func TestStateLockPOLUnlockOnUnknownBlock(t *testing.T) {
 
 	// before we timeout to the new round set the new proposal
 	cs3 := newState(cs1.state, vs3, counter.NewApplication(true))
-	cs3.SetIPFSApi(ipfsTestAPI)
 	prop, propBlock = decideProposal(cs3, vs3, vs3.Height, vs3.Round+1)
 	if prop == nil || propBlock == nil {
 		t.Fatal("Failed to create proposal block with vs2")

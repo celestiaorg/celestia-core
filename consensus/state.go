@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	ipface "github.com/ipfs/interface-go-ipfs-core"
+	format "github.com/ipfs/go-ipld-format"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	"github.com/lazyledger/lazyledger-core/crypto"
@@ -94,7 +94,7 @@ type State struct {
 	// store blocks and commits
 	blockStore sm.BlockStore
 
-	ipfs ipface.CoreAPI
+	dag format.DAGService
 
 	// create and execute blocks
 	blockExec *sm.BlockExecutor
@@ -163,6 +163,7 @@ func NewState(
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
 	txNotifier txNotifier,
+	dag format.DAGService,
 	evpool evidencePool,
 	options ...StateOption,
 ) *State {
@@ -170,6 +171,7 @@ func NewState(
 		config:           config,
 		blockExec:        blockExec,
 		blockStore:       blockStore,
+		dag:              dag,
 		txNotifier:       txNotifier,
 		peerMsgQueue:     make(chan msgInfo, msgQueueSize),
 		internalMsgQueue: make(chan msgInfo, msgQueueSize),
@@ -206,13 +208,6 @@ func NewState(
 
 //----------------------------------------
 // Public interface
-
-// SetIPFSApi sets the IPFSAPI
-func (cs *State) SetIPFSApi(api ipface.CoreAPI) {
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
-	cs.ipfs = api
-}
 
 // SetLogger implements Service.
 func (cs *State) SetLogger(l log.Logger) {
@@ -1126,7 +1121,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	defer cancel()
 	cs.Logger.Info("Putting Block to ipfs", "height", block.Height)
 	// TODO: post data to IPFS in a goroutine
-	err = ipld.PutBlock(ctx, cs.ipfs.Dag(), block)
+	err = ipld.PutBlock(ctx, cs.dag, block)
 	if err != nil {
 		// If PutBlock fails we will be the only node that has the data
 		// this means something is seriously wrong and we can not recover

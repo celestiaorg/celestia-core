@@ -3,7 +3,9 @@ package ipld
 import (
 	"context"
 	"testing"
+	"time"
 
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/lazyledger/nmt/namespace"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,11 +23,8 @@ func TestValidateAvailability(t *testing.T) {
 		adjustedMsgSize = consts.MsgShareSize - 2
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-
-	// issue a new API object
-	ipfsAPI := mockedIpfsAPI(t)
 
 	blockData := generateRandomBlockData(squareSize*squareSize, adjustedMsgSize)
 	block := &types.Block{
@@ -34,15 +33,13 @@ func TestValidateAvailability(t *testing.T) {
 	}
 	block.Hash()
 
-	dag := ipfsAPI.Dag()
+	dag := mdutils.Mock()
 	err := PutBlock(ctx, dag, block)
 	require.NoError(t, err)
 
 	calls := 0
 	err = ValidateAvailability(ctx, dag, &block.DataAvailabilityHeader, shares, func(data namespace.PrefixedData8) {
 		calls++
-		t.Log("successfully got leaf data", " with nid", data[:8])
-
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, shares, calls)
