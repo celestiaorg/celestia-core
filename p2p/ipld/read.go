@@ -6,7 +6,7 @@ import (
 	"math/rand"
 
 	"github.com/ipfs/go-cid"
-	format "github.com/ipfs/go-ipld-format"
+	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/lazyledger/rsmt2d"
 
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
@@ -25,7 +25,7 @@ var ErrTimeout = fmt.Errorf("%s %s", baseErrorMsg, "timeout")
 func RetrieveBlockData(
 	ctx context.Context,
 	dah *types.DataAvailabilityHeader,
-	dag format.NodeGetter,
+	dag ipld.NodeGetter,
 	codec rsmt2d.Codec,
 ) (types.Data, error) {
 	edsWidth := len(dah.RowsRoots)
@@ -149,7 +149,7 @@ func (sc *shareCounter) retrieveShare(
 	isRow bool,
 	axisIdx uint32,
 	idx uint32,
-	dag format.NodeGetter,
+	dag ipld.NodeGetter,
 ) {
 	data, err := GetLeafData(sc.ctx, rootCid, idx, sc.edsWidth, dag)
 	if err != nil {
@@ -222,7 +222,7 @@ func GetLeafData(
 	rootCid cid.Cid,
 	leafIndex uint32,
 	totalLeafs uint32, // this corresponds to the extended square width
-	dag format.NodeGetter,
+	dag ipld.NodeGetter,
 ) ([]byte, error) {
 	nd, err := GetLeaf(ctx, dag, rootCid, leafIndex, totalLeafs)
 	if err != nil {
@@ -234,7 +234,7 @@ func GetLeafData(
 
 // GetLeafData fetches and returns the raw leaf.
 // It walks down the IPLD NMT tree until it finds the requested one.
-func GetLeaf(ctx context.Context, dag format.NodeGetter, root cid.Cid, leaf, total uint32) (format.Node, error) {
+func GetLeaf(ctx context.Context, dag ipld.NodeGetter, root cid.Cid, leaf, total uint32) (ipld.Node, error) {
 	// request the node
 	nd, err := dag.Get(ctx, root)
 	if err != nil {

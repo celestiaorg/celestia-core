@@ -2,15 +2,15 @@ package ipld
 
 import (
 	"context"
+	mrand "math/rand"
 	"testing"
 	"time"
 
 	"github.com/ipfs/go-ipfs/core/coreapi"
 	coremock "github.com/ipfs/go-ipfs/core/mock"
+	"github.com/lazyledger/nmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	mrand "math/rand"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
@@ -18,7 +18,6 @@ import (
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/lazyledger-core/types/consts"
-	"github.com/lazyledger/nmt"
 )
 
 func TestPutBlock(t *testing.T) {

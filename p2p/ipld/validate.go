@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	format "github.com/ipfs/go-ipld-format"
+	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/lazyledger/nmt/namespace"
 
 	"github.com/lazyledger/lazyledger-core/types"
@@ -27,7 +27,7 @@ var ErrValidationFailed = errors.New("validation failed")
 // https://fc21.ifca.ai/papers/83.pdf.
 func ValidateAvailability(
 	ctx context.Context,
-	dag format.NodeGetter,
+	dag ipld.NodeGetter,
 	dah *types.DataAvailabilityHeader,
 	numSamples int,
 	onLeafValidity func(namespace.PrefixedData8),
@@ -66,7 +66,7 @@ func ValidateAvailability(
 		select {
 		case r := <-resCh:
 			if r.err != nil {
-				if errors.Is(r.err, format.ErrNotFound) {
+				if errors.Is(r.err, ipld.ErrNotFound) {
 					return ErrValidationFailed
 				}
 
