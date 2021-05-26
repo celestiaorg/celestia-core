@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 
-	format "github.com/ipfs/go-ipld-format"
+	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/rsmt2d"
 
@@ -16,7 +16,7 @@ import (
 
 // PutBlock posts and pins erasured block data to IPFS using the provided
 // ipld.NodeAdder. Note: the erasured data is currently recomputed
-func PutBlock(ctx context.Context, adder format.NodeAdder, block *types.Block) error {
+func PutBlock(ctx context.Context, adder ipld.NodeAdder, block *types.Block) error {
 	if adder == nil {
 		return errors.New("no ipfs node adder provided")
 	}
@@ -31,7 +31,7 @@ func PutBlock(ctx context.Context, adder format.NodeAdder, block *types.Block) e
 	}
 
 	// create nmt adder wrapping batch adder
-	batchAdder := NewNmtNodeAdder(ctx, format.NewBatch(ctx, adder))
+	batchAdder := NewNmtNodeAdder(ctx, ipld.NewBatch(ctx, adder))
 
 	// create the nmt wrapper to generate row and col commitments
 	squareSize := uint32(math.Sqrt(float64(len(shares))))

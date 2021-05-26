@@ -3,12 +3,10 @@ package ipld
 import (
 	"context"
 	"fmt"
-	"math"
 	"math/rand"
 
 	"github.com/ipfs/go-cid"
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
-	"github.com/ipfs/interface-go-ipfs-core/path"
+	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/lazyledger/rsmt2d"
 
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
@@ -27,7 +25,7 @@ var ErrTimeout = fmt.Errorf("%s %s", baseErrorMsg, "timeout")
 func RetrieveBlockData(
 	ctx context.Context,
 	dah *types.DataAvailabilityHeader,
-	api coreiface.CoreAPI,
+	dag ipld.NodeGetter,
 	codec rsmt2d.Codec,
 ) (types.Data, error) {
 	edsWidth := len(dah.RowsRoots)
@@ -46,7 +44,7 @@ func RetrieveBlockData(
 				return types.Data{}, err
 			}
 
-			go sc.retrieveShare(rootCid, true, row, col, api)
+			go sc.retrieveShare(rootCid, true, row, col, dag)
 		}
 	}
 
@@ -132,7 +130,7 @@ func newshareCounter(parentCtx context.Context, edsWidth uint32) *shareCounter {
 	ctx, cancel := context.WithCancel(parentCtx)
 
 	// calculate the min number of shares needed to repair the square
-	minSharesNeeded := (edsWidth * edsWidth / 4)
+	minSharesNeeded := edsWidth * edsWidth / 4
 
 	return &shareCounter{
 		shares:          make(map[index][]byte),
@@ -151,9 +149,9 @@ func (sc *shareCounter) retrieveShare(
 	isRow bool,
 	axisIdx uint32,
 	idx uint32,
-	api coreiface.CoreAPI,
+	dag ipld.NodeGetter,
 ) {
-	data, err := GetLeafData(sc.ctx, rootCid, idx, sc.edsWidth, api)
+	data, err := GetLeafData(sc.ctx, rootCid, idx, sc.edsWidth, dag)
 	if err != nil {
 		select {
 		case <-sc.ctx.Done():
@@ -224,53 +222,40 @@ func GetLeafData(
 	rootCid cid.Cid,
 	leafIndex uint32,
 	totalLeafs uint32, // this corresponds to the extended square width
-	api coreiface.CoreAPI,
+	dag ipld.NodeGetter,
 ) ([]byte, error) {
-	// calculate the path to the leaf
-	leafPath, err := leafPath(leafIndex, totalLeafs)
+	nd, err := GetLeaf(ctx, dag, rootCid, leafIndex, totalLeafs)
 	if err != nil {
 		return nil, err
 	}
 
-	// use the root cid and the leafPath to create an ipld path
-	p := path.Join(path.IpldPath(rootCid), leafPath...)
+	return nd.RawData()[1:], nil
+}
 
-	// resolve the path
-	node, err := api.ResolveNode(ctx, p)
+// GetLeafData fetches and returns the raw leaf.
+// It walks down the IPLD NMT tree until it finds the requested one.
+func GetLeaf(ctx context.Context, dag ipld.NodeGetter, root cid.Cid, leaf, total uint32) (ipld.Node, error) {
+	// request the node
+	nd, err := dag.Get(ctx, root)
 	if err != nil {
 		return nil, err
 	}
 
-	// return the leaf, without the nmt-leaf-or-node byte
-	return node.RawData()[1:], nil
-}
-
-func leafPath(index, total uint32) ([]string, error) {
-	// ensure that the total is a power of two
-	if !isPowerOf2(total) {
-		return nil, fmt.Errorf("expected total to be a power of 2, got %d", total)
+	// look for links
+	lnks := nd.Links()
+	if len(lnks) == 1 {
+		// in case there is only one we reached tree's bottom, so finally request the leaf.
+		return dag.Get(ctx, lnks[0].Cid)
 	}
 
-	if total == 0 {
-		return nil, nil
+	// route walk to appropriate children
+	total /= 2 // as we are using binary tree, every step decreases total leaves in a half
+	if leaf < total {
+		root = lnks[0].Cid // if target leave on the left, go with walk down the first children
+	} else {
+		root, leaf = lnks[1].Cid, leaf-total // otherwise go down the second
 	}
 
-	depth := int(math.Log2(float64(total)))
-	cursor := index
-	path := make([]string, depth)
-	for i := depth - 1; i >= 0; i-- {
-		if cursor%2 == 0 {
-			path[i] = "0"
-		} else {
-			path[i] = "1"
-		}
-		cursor /= 2
-	}
-
-	return path, nil
-}
-
-// isPowerOf2 returns checks if a given number is a power of two
-func isPowerOf2(v uint32) bool {
-	return math.Ceil(math.Log2(float64(v))) == math.Floor(math.Log2(float64(v)))
+	// recursively walk down through selected children
+	return GetLeaf(ctx, dag, root, leaf, total)
 }
