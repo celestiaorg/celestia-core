@@ -13,7 +13,6 @@ import (
 	"time"
 
 	iface "github.com/ipfs/interface-go-ipfs-core"
-	ipface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -216,11 +215,15 @@ type Node struct {
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
 
-	ipfsAPI   ipface.CoreAPI
+	ipfsAPI   iface.CoreAPI
 	ipfsClose io.Closer
 }
 
-func initDBs(config *cfg.Config, dbProvider DBProvider, ipfsAPI iface.CoreAPI) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
+func initDBs(
+	config *cfg.Config,
+	dbProvider DBProvider,
+	ipfsAPI iface.CoreAPI,
+) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
 	var blockStoreDB dbm.DB
 	blockStoreDB, err = dbProvider(&DBContext{"blockstore", config})
 	if err != nil {
@@ -396,7 +399,7 @@ func createConsensusReactor(config *cfg.Config,
 	csMetrics *cs.Metrics,
 	waitSync bool,
 	eventBus *types.EventBus,
-	ipfs ipface.CoreAPI,
+	ipfs iface.CoreAPI,
 	consensusLogger log.Logger) (*cs.Reactor, *cs.State) {
 
 	consensusState := cs.NewState(
