@@ -178,7 +178,7 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 	peer.Set(types.PeerStateKey, ps)
 
 	// wait to see that only two evidence is sent
-	time.Sleep(600 * time.Millisecond)
+	time.Sleep(1200 * time.Millisecond)
 
 	peerEv, _ = pools[1].PendingEvidence(1000)
 	assert.EqualValues(t, []types.Evidence{evList[0], evList[1]}, peerEv)
