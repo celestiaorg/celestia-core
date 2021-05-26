@@ -154,7 +154,7 @@ func TestReactorWithEvidence(t *testing.T) {
 		// css[i] = newStateWithConfig(thisConfig, state, privVals[i], app)
 
 		blockDB := memdb.NewDB()
-		blockStore := store.NewBlockStore(blockDB)
+		blockStore := store.NewBlockStore(blockDB, ipfsTestAPI)
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)
@@ -185,7 +185,6 @@ func TestReactorWithEvidence(t *testing.T) {
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
-		cs.SetIPFSApi(ipfsTestAPI)
 
 		eventBus := types.NewEventBus()
 		eventBus.SetLogger(log.TestingLogger().With("module", "events"))

@@ -1,6 +1,7 @@
 package state
 
 import (
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -31,6 +32,8 @@ type BlockStore interface {
 
 	LoadBlockCommit(height int64) *types.Commit
 	LoadSeenCommit(height int64) *types.Commit
+
+	IpfsAPI() iface.CoreAPI
 }
 
 //-----------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -131,3 +132,4 @@ func (mockBlockStore) LoadSeenCommit(height int64) *types.Commit         { retur
 func (mockBlockStore) PruneBlocks(height int64) (uint64, error)          { return 0, nil }
 func (mockBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 }
+func (mockBlockStore) IpfsAPI() iface.CoreAPI { return nil }

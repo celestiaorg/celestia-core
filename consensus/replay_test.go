@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -22,6 +23,7 @@ import (
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -79,9 +81,9 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		privValidator,
 		kvstore.NewApplication(),
 		blockDB,
+		ipfsTestAPI,
 	)
 	cs.SetLogger(logger)
-	cs.SetIPFSApi(ipfsTestAPI)
 
 	bytes, _ := ioutil.ReadFile(cs.config.WalFile())
 	t.Logf("====== WAL: \n\r%X\n", bytes)
@@ -132,13 +134,10 @@ func TestWALCrash(t *testing.T) {
 		heightToStop int64
 	}{
 		{"empty block",
-			func(stateDB dbm.DB, cs *State, ctx context.Context) {
-				cs.SetIPFSApi(ipfsTestAPI)
-			},
+			func(stateDB dbm.DB, cs *State, ctx context.Context) {},
 			1},
 		{"many non-empty blocks",
 			func(stateDB dbm.DB, cs *State, ctx context.Context) {
-				cs.SetIPFSApi(ipfsTestAPI)
 				go sendTxs(ctx, cs)
 			},
 			3},
@@ -177,6 +176,7 @@ LOOP:
 			privValidator,
 			kvstore.NewApplication(),
 			blockDB,
+			ipfsTestAPI,
 		)
 		cs.SetLogger(logger)
 
@@ -1189,11 +1189,16 @@ type mockBlockStore struct {
 	chain   []*types.Block
 	commits []*types.Commit
 	base    int64
+	ipfsAPI iface.CoreAPI
 }
 
 // TODO: NewBlockStore(db.NewMemDB) ...
 func newMockBlockStore(config *cfg.Config, params tmproto.ConsensusParams) *mockBlockStore {
-	return &mockBlockStore{config, params, nil, nil, 0}
+	api, _, err := ipfs.Mock()()
+	if err != nil {
+		panic("failure to create mock IPFS object")
+	}
+	return &mockBlockStore{config, params, nil, nil, 0, api}
 }
 
 func (bs *mockBlockStore) Height() int64                       { return int64(len(bs.chain)) }
@@ -1230,6 +1235,10 @@ func (bs *mockBlockStore) PruneBlocks(height int64) (uint64, error) {
 	}
 	bs.base = height
 	return pruned, nil
+}
+
+func (bs *mockBlockStore) IpfsAPI() iface.CoreAPI {
+	return bs.ipfsAPI
 }
 
 //---------------------------------------

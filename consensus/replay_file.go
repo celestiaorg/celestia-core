@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
@@ -288,7 +289,8 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 	if err != nil {
 		tmos.Exit(err.Error())
 	}
-	blockStore := store.NewBlockStore(blockStoreDB)
+	ipfsAPI, _, _ := ipfs.Mock()()
+	blockStore := store.NewBlockStore(blockStoreDB, ipfsAPI)
 
 	// Get State
 	stateDB, err := badgerdb.NewDB("state", config.DBDir())

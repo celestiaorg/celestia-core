@@ -15,6 +15,7 @@ import (
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/evidence"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/libs/service"
@@ -42,6 +43,8 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30)
 	css := make([]*State, nValidators)
 
+	ipfsAPI, _, _ := ipfs.Mock()()
+
 	for i := 0; i < nValidators; i++ {
 		logger := consensusLogger().With("test", "byzantine", "validator", i)
 		stateDB := memdb.NewDB() // each state needs its own db
@@ -55,7 +58,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
 		blockDB := memdb.NewDB()
-		blockStore := store.NewBlockStore(blockDB)
+		blockStore := store.NewBlockStore(blockDB, ipfsAPI)
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)
@@ -91,7 +94,6 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		cs.SetTimeoutTicker(tickerFunc())
 		cs.SetLogger(logger)
-		cs.SetIPFSApi(ipfsTestAPI)
 		css[i] = cs
 	}
 

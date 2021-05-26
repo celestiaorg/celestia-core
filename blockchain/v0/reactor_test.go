@@ -13,6 +13,7 @@ import (
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/mempool/mock"
@@ -71,7 +72,8 @@ func newBlockchainReactor(
 	blockDB := memdb.NewDB()
 	stateDB := memdb.NewDB()
 	stateStore := sm.NewStore(stateDB)
-	blockStore := store.NewBlockStore(blockDB)
+	ipfsAPI, _, _ := ipfs.Mock()()
+	blockStore := store.NewBlockStore(blockDB, ipfsAPI)
 
 	state, err := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 	if err != nil {

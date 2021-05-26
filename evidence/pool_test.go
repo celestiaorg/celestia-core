@@ -11,6 +11,7 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/evidence"
 	"github.com/lazyledger/lazyledger-core/evidence/mocks"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -395,7 +396,9 @@ func initializeValidatorState(privVal types.PrivValidator, height int64) sm.Stor
 // initializeBlockStore creates a block storage and populates it w/ a dummy
 // block at +height+.
 func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.BlockStore {
-	blockStore := store.NewBlockStore(db)
+	ipfsAPI, _, _ := ipfs.Mock()()
+
+	blockStore := store.NewBlockStore(db, ipfsAPI)
 
 	for i := int64(1); i <= state.LastBlockHeight; i++ {
 		lastCommit := makeCommit(i-1, valAddr)

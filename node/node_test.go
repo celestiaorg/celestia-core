@@ -283,7 +283,8 @@ func TestCreateProposalBlock(t *testing.T) {
 
 	// Make EvidencePool
 	evidenceDB := memdb.NewDB()
-	blockStore := store.NewBlockStore(memdb.NewDB())
+	ipfsAPI, _, _ := ipfs.Mock()()
+	blockStore := store.NewBlockStore(memdb.NewDB(), ipfsAPI)
 	evidencePool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 	require.NoError(t, err)
 	evidencePool.SetLogger(logger)

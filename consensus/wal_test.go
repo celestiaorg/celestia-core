@@ -311,7 +311,7 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 		t.Error(err)
 	}
 
-	blockStore := store.NewBlockStore(blockStoreDB)
+	blockStore := store.NewBlockStore(blockStoreDB, ipfsTestAPI)
 
 	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(app))
 	proxyApp.SetLogger(logger.With("module", "proxy"))
@@ -339,7 +339,6 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 	require.NoError(t, err)
 	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore, mempool, evpool)
-	consensusState.SetIPFSApi(ipfsTestAPI)
 	consensusState.SetLogger(logger)
 	consensusState.SetEventBus(eventBus)
 	if privValidator != nil && privValidator != (*privval.FilePV)(nil) {

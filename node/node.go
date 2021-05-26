@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	ipface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -219,13 +220,13 @@ type Node struct {
 	ipfsClose io.Closer
 }
 
-func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
+func initDBs(config *cfg.Config, dbProvider DBProvider, ipfsAPI iface.CoreAPI) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
 	var blockStoreDB dbm.DB
 	blockStoreDB, err = dbProvider(&DBContext{"blockstore", config})
 	if err != nil {
 		return
 	}
-	blockStore = store.NewBlockStore(blockStoreDB)
+	blockStore = store.NewBlockStore(blockStoreDB, ipfsAPI)
 
 	stateDB, err = dbProvider(&DBContext{"state", config})
 	if err != nil {
@@ -407,7 +408,6 @@ func createConsensusReactor(config *cfg.Config,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
 	)
-	consensusState.SetIPFSApi(ipfs)
 	consensusState.SetLogger(consensusLogger)
 	if privValidator != nil {
 		consensusState.SetPrivValidator(privValidator)
@@ -638,7 +638,12 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
-	blockStore, stateDB, err := initDBs(config, dbProvider)
+	ipfs, ipfsclose, err := ipfsProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	blockStore, stateDB, err := initDBs(config, dbProvider, ipfs)
 	if err != nil {
 		return nil, err
 	}
@@ -736,11 +741,6 @@ func NewNode(config *cfg.Config,
 		evidencePool,
 		sm.BlockExecutorWithMetrics(smMetrics),
 	)
-
-	ipfs, ipfsclose, err := ipfsProvider()
-	if err != nil {
-		return nil, err
-	}
 
 	// Make BlockchainReactor. Don't start fast sync if we're doing a state sync first.
 	bcReactor, err := createBlockchainReactor(config, state, blockExec, blockStore, fastSync && !stateSync, logger)

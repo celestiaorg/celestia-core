@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gogo/protobuf/proto"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
@@ -41,16 +42,19 @@ type BlockStore struct {
 	mtx    tmsync.RWMutex
 	base   int64
 	height int64
+
+	ipfsAPI iface.CoreAPI
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB) *BlockStore {
+func NewBlockStore(db dbm.DB, ipfsAPI iface.CoreAPI) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	return &BlockStore{
-		base:   bs.Base,
-		height: bs.Height,
-		db:     db,
+		base:    bs.Base,
+		height:  bs.Height,
+		db:      db,
+		ipfsAPI: ipfsAPI,
 	}
 }
 
@@ -422,6 +426,12 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 		return fmt.Errorf("unable to marshal commit: %w", err)
 	}
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
+}
+
+// IpfsAPI returns the ipfs api object of the BlockStore. Fullfills the
+// state.BlockStore interface.
+func (bs *BlockStore) IpfsAPI() iface.CoreAPI {
+	return bs.ipfsAPI
 }
 
 //-----------------------------------------------------------------------------
