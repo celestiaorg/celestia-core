@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	format "github.com/ipfs/go-ipld-format"
 	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -399,7 +400,7 @@ func createConsensusReactor(config *cfg.Config,
 	csMetrics *cs.Metrics,
 	waitSync bool,
 	eventBus *types.EventBus,
-	ipfs iface.CoreAPI,
+	dag format.DAGService,
 	consensusLogger log.Logger) (*cs.Reactor, *cs.State) {
 
 	consensusState := cs.NewState(
@@ -760,7 +761,7 @@ func NewNode(config *cfg.Config,
 	}
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, ipfs, consensusLogger,
+		privValidator, csMetrics, stateSync || fastSync, eventBus, ipfs.Dag(), consensusLogger,
 	)
 
 	// Set up state sync reactor, and schedule a sync if requested.

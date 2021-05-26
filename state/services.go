@@ -1,7 +1,7 @@
 package state
 
 import (
-	iface "github.com/ipfs/interface-go-ipfs-core"
+	format "github.com/ipfs/go-ipld-format"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -33,7 +33,7 @@ type BlockStore interface {
 	LoadBlockCommit(height int64) *types.Commit
 	LoadSeenCommit(height int64) *types.Commit
 
-	IpfsDagAPI() iface.APIDagService
+	IpfsDagAPI() format.DAGService
 }
 
 //-----------------------------------------------------------------------------

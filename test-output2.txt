@@ -1,0 +1,148 @@
+--> Running go test
+?   	github.com/lazyledger/lazyledger-core/abci/client	[no test files]
+?   	github.com/lazyledger/lazyledger-core/abci/client/mocks	[no test files]
+?   	github.com/lazyledger/lazyledger-core/abci/example/code	[no test files]
+?   	github.com/lazyledger/lazyledger-core/abci/example/counter	[no test files]
+?   	github.com/lazyledger/lazyledger-core/abci/example/dummyapp	[no test files]
+?   	github.com/lazyledger/lazyledger-core/abci/example/dummyapp/app	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/abci/example/kvstore	(cached)
+?   	github.com/lazyledger/lazyledger-core/abci/tests	[no test files]
+?   	github.com/lazyledger/lazyledger-core/abci/tests/benchmarks	[no test files]
+?   	github.com/lazyledger/lazyledger-core/abci/tests/benchmarks/parallel	[no test files]
+?   	github.com/lazyledger/lazyledger-core/abci/tests/benchmarks/simple	[no test files]
+?   	github.com/lazyledger/lazyledger-core/abci/tests/server	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/abci/types	(cached)
+?   	github.com/lazyledger/lazyledger-core/abci/version	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/behaviour	(cached)
+ok  	github.com/lazyledger/lazyledger-core/blockchain	(cached)
+ok  	github.com/lazyledger/lazyledger-core/blockchain/v0	6.054s
+?   	github.com/lazyledger/lazyledger-core/cmd/contract_tests	[no test files]
+?   	github.com/lazyledger/lazyledger-core/cmd/priv_val_server	[no test files]
+?   	github.com/lazyledger/lazyledger-core/cmd/tendermint	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/cmd/tendermint/commands	0.076s
+?   	github.com/lazyledger/lazyledger-core/cmd/tendermint/commands/debug	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/config	(cached)
+ok  	github.com/lazyledger/lazyledger-core/consensus	43.838s
+ok  	github.com/lazyledger/lazyledger-core/consensus/types	(cached)
+ok  	github.com/lazyledger/lazyledger-core/crypto	(cached)
+ok  	github.com/lazyledger/lazyledger-core/crypto/armor	(cached)
+ok  	github.com/lazyledger/lazyledger-core/crypto/ed25519	(cached)
+?   	github.com/lazyledger/lazyledger-core/crypto/encoding	[no test files]
+?   	github.com/lazyledger/lazyledger-core/crypto/internal/benchmarking	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/crypto/merkle	(cached)
+ok  	github.com/lazyledger/lazyledger-core/crypto/secp256k1	(cached)
+ok  	github.com/lazyledger/lazyledger-core/crypto/sr25519	(cached)
+ok  	github.com/lazyledger/lazyledger-core/crypto/tmhash	(cached)
+ok  	github.com/lazyledger/lazyledger-core/crypto/xchacha20poly1305	(cached)
+ok  	github.com/lazyledger/lazyledger-core/crypto/xsalsa20symmetric	(cached)
+ok  	github.com/lazyledger/lazyledger-core/evidence	3.732s
+?   	github.com/lazyledger/lazyledger-core/evidence/mocks	[no test files]
+?   	github.com/lazyledger/lazyledger-core/ipfs	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/ipfs/plugin	(cached)
+?   	github.com/lazyledger/lazyledger-core/ipfs/plugin/main	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/libs/async	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/autofile	(cached)
+?   	github.com/lazyledger/lazyledger-core/libs/autofile/cmd	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/libs/bits	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/bytes	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/cli	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/cli/flags	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/clist	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/cmap	(cached)
+?   	github.com/lazyledger/lazyledger-core/libs/db	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/libs/db/badgerdb	(cached)
+?   	github.com/lazyledger/lazyledger-core/libs/db/internal/dbtest	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/libs/db/memdb	(cached) [no tests to run]
+ok  	github.com/lazyledger/lazyledger-core/libs/events	(cached)
+?   	github.com/lazyledger/lazyledger-core/libs/fail	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/libs/flowrate	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/json	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/log	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/math	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/net	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/os	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/protoio	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/pubsub	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/pubsub/query	(cached)
+?   	github.com/lazyledger/lazyledger-core/libs/pubsub/query/fuzz_test	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/libs/rand	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/service	(cached)
+ok  	github.com/lazyledger/lazyledger-core/libs/strings	(cached)
+?   	github.com/lazyledger/lazyledger-core/libs/sync	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/libs/tempfile	(cached)
+?   	github.com/lazyledger/lazyledger-core/libs/test	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/libs/timer	(cached)
+ok  	github.com/lazyledger/lazyledger-core/light	18.630s
+ok  	github.com/lazyledger/lazyledger-core/light/mbt	0.066s
+?   	github.com/lazyledger/lazyledger-core/light/provider	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/light/provider/http	9.801s
+?   	github.com/lazyledger/lazyledger-core/light/provider/mock	[no test files]
+?   	github.com/lazyledger/lazyledger-core/light/proxy	[no test files]
+?   	github.com/lazyledger/lazyledger-core/light/rpc	[no test files]
+?   	github.com/lazyledger/lazyledger-core/light/rpc/mocks	[no test files]
+?   	github.com/lazyledger/lazyledger-core/light/store	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/light/store/db	(cached)
+ok  	github.com/lazyledger/lazyledger-core/mempool	(cached)
+?   	github.com/lazyledger/lazyledger-core/mempool/mock	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/node	8.193s
+ok  	github.com/lazyledger/lazyledger-core/p2p	(cached)
+ok  	github.com/lazyledger/lazyledger-core/p2p/conn	(cached)
+ok  	github.com/lazyledger/lazyledger-core/p2p/ipld	3.593s
+ok  	github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper	(cached)
+?   	github.com/lazyledger/lazyledger-core/p2p/mock	[no test files]
+?   	github.com/lazyledger/lazyledger-core/p2p/mocks	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/p2p/pex	(cached)
+ok  	github.com/lazyledger/lazyledger-core/p2p/trust	(cached)
+?   	github.com/lazyledger/lazyledger-core/p2p/upnp	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/privval	(cached)
+?   	github.com/lazyledger/lazyledger-core/proto/tendermint/blockchain	[no test files]
+?   	github.com/lazyledger/lazyledger-core/proto/tendermint/consensus	[no test files]
+?   	github.com/lazyledger/lazyledger-core/proto/tendermint/crypto	[no test files]
+?   	github.com/lazyledger/lazyledger-core/proto/tendermint/libs/bits	[no test files]
+?   	github.com/lazyledger/lazyledger-core/proto/tendermint/mempool	[no test files]
+?   	github.com/lazyledger/lazyledger-core/proto/tendermint/p2p	[no test files]
+?   	github.com/lazyledger/lazyledger-core/proto/tendermint/privval	[no test files]
+?   	github.com/lazyledger/lazyledger-core/proto/tendermint/state	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/proto/tendermint/statesync	(cached)
+?   	github.com/lazyledger/lazyledger-core/proto/tendermint/store	[no test files]
+?   	github.com/lazyledger/lazyledger-core/proto/tendermint/types	[no test files]
+?   	github.com/lazyledger/lazyledger-core/proto/tendermint/version	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/proxy	(cached)
+?   	github.com/lazyledger/lazyledger-core/proxy/mocks	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/rpc/client	9.836s
+?   	github.com/lazyledger/lazyledger-core/rpc/client/http	[no test files]
+?   	github.com/lazyledger/lazyledger-core/rpc/client/local	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/rpc/client/mock	0.063s
+?   	github.com/lazyledger/lazyledger-core/rpc/client/mocks	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/rpc/core	0.068s
+ok  	github.com/lazyledger/lazyledger-core/rpc/core/types	(cached)
+ok  	github.com/lazyledger/lazyledger-core/rpc/grpc	0.452s
+ok  	github.com/lazyledger/lazyledger-core/rpc/jsonrpc	(cached)
+ok  	github.com/lazyledger/lazyledger-core/rpc/jsonrpc/client	(cached)
+ok  	github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server	(cached)
+?   	github.com/lazyledger/lazyledger-core/rpc/jsonrpc/test	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types	(cached)
+?   	github.com/lazyledger/lazyledger-core/rpc/test	[no test files]
+?   	github.com/lazyledger/lazyledger-core/scripts/json2wal	[no test files]
+?   	github.com/lazyledger/lazyledger-core/scripts/wal2json	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/state	2.796s
+?   	github.com/lazyledger/lazyledger-core/state/mocks	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/state/txindex	(cached)
+ok  	github.com/lazyledger/lazyledger-core/state/txindex/kv	(cached)
+?   	github.com/lazyledger/lazyledger-core/state/txindex/null	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/statesync	2.662s
+?   	github.com/lazyledger/lazyledger-core/statesync/mocks	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/store	10.785s
+?   	github.com/lazyledger/lazyledger-core/test/app	[no test files]
+?   	github.com/lazyledger/lazyledger-core/test/e2e/app	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/test/e2e/generator	(cached)
+?   	github.com/lazyledger/lazyledger-core/test/e2e/pkg	[no test files]
+?   	github.com/lazyledger/lazyledger-core/test/e2e/runner	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/test/e2e/tests	(cached)
+?   	github.com/lazyledger/lazyledger-core/test/maverick/consensus	[no test files]
+?   	github.com/lazyledger/lazyledger-core/tools/tm-signer-harness	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/tools/tm-signer-harness/internal	0.098s
+ok  	github.com/lazyledger/lazyledger-core/types	(cached)
+?   	github.com/lazyledger/lazyledger-core/types/consts	[no test files]
+ok  	github.com/lazyledger/lazyledger-core/types/time	(cached)
+?   	github.com/lazyledger/lazyledger-core/version	[no test files]

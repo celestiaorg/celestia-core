@@ -14,7 +14,8 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	iface "github.com/ipfs/interface-go-ipfs-core"
+	format "github.com/ipfs/go-ipld-format"
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -39,7 +40,6 @@ import (
 
 func TestMain(m *testing.M) {
 	config = ResetConfig("consensus_reactor_test")
-	_ = setTestIpfsAPI()
 	consensusReplayConfig = ResetConfig("consensus_replay_test")
 	configStateTest := ResetConfig("consensus_state_test")
 	configMempoolTest := ResetConfig("consensus_mempool_test")
@@ -50,7 +50,6 @@ func TestMain(m *testing.M) {
 	os.RemoveAll(configStateTest.RootDir)
 	os.RemoveAll(configMempoolTest.RootDir)
 	os.RemoveAll(configByzantineTest.RootDir)
-	_ = teardownTestIpfsAPI()
 	os.Exit(code)
 }
 
@@ -81,7 +80,7 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		privValidator,
 		kvstore.NewApplication(),
 		blockDB,
-		ipfsTestAPI.Dag(),
+		mdutils.Mock(),
 	)
 	cs.SetLogger(logger)
 
@@ -176,7 +175,7 @@ LOOP:
 			privValidator,
 			kvstore.NewApplication(),
 			blockDB,
-			ipfsTestAPI.Dag(),
+			mdutils.Mock(),
 		)
 		cs.SetLogger(logger)
 
@@ -1189,7 +1188,7 @@ type mockBlockStore struct {
 	chain      []*types.Block
 	commits    []*types.Commit
 	base       int64
-	ipfsDagAPI iface.APIDagService
+	ipfsDagAPI format.DAGService
 }
 
 // TODO: NewBlockStore(db.NewMemDB) ...
@@ -1237,7 +1236,7 @@ func (bs *mockBlockStore) PruneBlocks(height int64) (uint64, error) {
 	return pruned, nil
 }
 
-func (bs *mockBlockStore) IpfsDagAPI() iface.APIDagService {
+func (bs *mockBlockStore) IpfsDagAPI() format.DAGService {
 	return bs.ipfsDagAPI
 }
 

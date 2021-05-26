@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -154,7 +155,7 @@ func TestReactorWithEvidence(t *testing.T) {
 		// css[i] = newStateWithConfig(thisConfig, state, privVals[i], app)
 
 		blockDB := memdb.NewDB()
-		blockStore := store.NewBlockStore(blockDB, ipfsTestAPI.Dag())
+		blockStore := store.NewBlockStore(blockDB, mdutils.Mock())
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)

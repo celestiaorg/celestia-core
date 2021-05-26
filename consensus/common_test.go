@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -15,7 +14,8 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/term"
-	iface "github.com/ipfs/interface-go-ipfs-core"
+	format "github.com/ipfs/go-ipld-format"
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/require"
 
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
@@ -24,7 +24,6 @@ import (
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
-	"github.com/lazyledger/lazyledger-core/ipfs"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
@@ -54,29 +53,13 @@ type cleanupFunc func()
 var (
 	config                *cfg.Config // NOTE: must be reset for each _test.go file
 	consensusReplayConfig *cfg.Config
-	ensureTimeout         = 4 * time.Second
-
-	ipfsTestAPI iface.CoreAPI
-	ipfsCloser  io.Closer
+	ensureTimeout         = 2 * time.Second
 )
 
 func ensureDir(dir string, mode os.FileMode) {
 	if err := tmos.EnsureDir(dir, mode); err != nil {
 		panic(err)
 	}
-}
-
-func setTestIpfsAPI() (err error) {
-	mockIPFSProvider := ipfs.Mock()
-	if ipfsTestAPI, ipfsCloser, err = mockIPFSProvider(); err != nil {
-		return
-	}
-	return
-}
-
-func teardownTestIpfsAPI() (err error) {
-	err = ipfsCloser.Close()
-	return
 }
 
 func ResetConfig(name string) *cfg.Config {
@@ -370,7 +353,7 @@ func subscribeToVoter(cs *State, addr []byte) <-chan tmpubsub.Message {
 //-------------------------------------------------------------------------------
 // consensus states
 
-func newState(state sm.State, pv types.PrivValidator, app abci.Application, ipfsDagAPI iface.APIDagService) *State {
+func newState(state sm.State, pv types.PrivValidator, app abci.Application, ipfsDagAPI format.DAGService) *State {
 	config := cfg.ResetTestRoot("consensus_state_test")
 	return newStateWithConfig(config, state, pv, app, ipfsDagAPI)
 }
@@ -380,7 +363,7 @@ func newStateWithConfig(
 	state sm.State,
 	pv types.PrivValidator,
 	app abci.Application,
-	ipfsDagAPI iface.APIDagService,
+	ipfsDagAPI format.DAGService,
 ) *State {
 	blockDB := memdb.NewDB()
 	return newStateWithConfigAndBlockStore(thisConfig, state, pv, app, blockDB, ipfsDagAPI)
@@ -392,7 +375,7 @@ func newStateWithConfigAndBlockStore(
 	pv types.PrivValidator,
 	app abci.Application,
 	blockDB dbm.DB,
-	ipfsDagAPI iface.APIDagService,
+	ipfsDagAPI format.DAGService,
 ) *State {
 	// Get BlockStore
 	blockStore := store.NewBlockStore(blockDB, ipfsDagAPI)
@@ -451,7 +434,7 @@ func randState(nValidators int) (*State, []*validatorStub) {
 
 	vss := make([]*validatorStub, nValidators)
 
-	cs := newState(state, privVals[0], counter.NewApplication(true), ipfsTestAPI.Dag())
+	cs := newState(state, privVals[0], counter.NewApplication(true), mdutils.Mock())
 
 	for i := 0; i < nValidators; i++ {
 		vss[i] = newValidatorStub(privVals[i], int32(i))
@@ -724,7 +707,7 @@ func randConsensusNet(
 		vals := types.TM2PB.ValidatorUpdates(state.Validators)
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
-		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB, ipfsTestAPI.Dag())
+		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB, mdutils.Mock())
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
 	}
@@ -787,7 +770,7 @@ func randConsensusNetWithPeers(
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 		// sm.SaveState(stateDB,state)	//height 1's validatorsInfo already saved in LoadStateFromDBOrGenesisDoc above
 
-		css[i] = newStateWithConfig(thisConfig, state, privVal, app, ipfsTestAPI.Dag())
+		css[i] = newStateWithConfig(thisConfig, state, privVal, app, mdutils.Mock())
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
 	}
