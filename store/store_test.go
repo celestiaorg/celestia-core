@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -74,8 +74,7 @@ func makeStateAndBlockStore(logger log.Logger) (sm.State, *BlockStore, cleanupFu
 	if err != nil {
 		panic(fmt.Errorf("error constructing state from genesis file: %w", err))
 	}
-	api, _, _ := ipfs.Mock()()
-	return state, NewBlockStore(blockDB, api.Dag()), func() { os.RemoveAll(config.RootDir) }
+	return state, NewBlockStore(blockDB, mdutils.Mock()), func() { os.RemoveAll(config.RootDir) }
 }
 
 func TestLoadBlockStoreState(t *testing.T) {
@@ -107,8 +106,7 @@ func TestNewBlockStore(t *testing.T) {
 	bz, _ := proto.Marshal(&bss)
 	err := db.Set(blockStoreKey, bz)
 	require.NoError(t, err)
-	ipfsAPI, _, _ := ipfs.Mock()()
-	bs := NewBlockStore(db, ipfsAPI.Dag())
+	bs := NewBlockStore(db, mdutils.Mock())
 	require.Equal(t, int64(100), bs.Base(), "failed to properly parse blockstore")
 	require.Equal(t, int64(10000), bs.Height(), "failed to properly parse blockstore")
 
@@ -126,7 +124,7 @@ func TestNewBlockStore(t *testing.T) {
 		_, _, panicErr := doFn(func() (interface{}, error) {
 			err := db.Set(blockStoreKey, tt.data)
 			require.NoError(t, err)
-			_ = NewBlockStore(db, ipfsAPI.Dag())
+			_ = NewBlockStore(db, mdutils.Mock())
 			return nil, nil
 		})
 		require.NotNil(t, panicErr, "#%d panicCauser: %q expected a panic", i, tt.data)
@@ -135,14 +133,13 @@ func TestNewBlockStore(t *testing.T) {
 
 	err = db.Set(blockStoreKey, []byte{})
 	require.NoError(t, err)
-	bs = NewBlockStore(db, ipfsAPI.Dag())
+	bs = NewBlockStore(db, mdutils.Mock())
 	assert.Equal(t, bs.Height(), int64(0), "expecting empty bytes to be unmarshaled alright")
 }
 
 func freshBlockStore() (*BlockStore, dbm.DB) {
 	db := memdb.NewDB()
-	ipfsAPI, _, _ := ipfs.Mock()()
-	return NewBlockStore(db, ipfsAPI.Dag()), db
+	return NewBlockStore(db, mdutils.Mock()), db
 }
 
 var (
@@ -384,8 +381,7 @@ func TestLoadBaseMeta(t *testing.T) {
 	stateStore := sm.NewStore(memdb.NewDB())
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	require.NoError(t, err)
-	ipfsAPI, _, _ := ipfs.Mock()()
-	bs := NewBlockStore(memdb.NewDB(), ipfsAPI.Dag())
+	bs := NewBlockStore(memdb.NewDB(), mdutils.Mock())
 
 	for h := int64(1); h <= 10; h++ {
 		block := makeBlock(h, state, new(types.Commit))
@@ -441,9 +437,8 @@ func TestPruneBlocks(t *testing.T) {
 	stateStore := sm.NewStore(memdb.NewDB())
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	require.NoError(t, err)
-	ipfsAPI, _, _ := ipfs.Mock()()
 	db := memdb.NewDB()
-	bs := NewBlockStore(db, ipfsAPI.Dag())
+	bs := NewBlockStore(db, mdutils.Mock())
 	assert.EqualValues(t, 0, bs.Base())
 	assert.EqualValues(t, 0, bs.Height())
 	assert.EqualValues(t, 0, bs.Size())

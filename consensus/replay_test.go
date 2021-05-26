@@ -24,7 +24,6 @@ import (
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -1193,11 +1192,7 @@ type mockBlockStore struct {
 
 // TODO: NewBlockStore(db.NewMemDB) ...
 func newMockBlockStore(config *cfg.Config, params tmproto.ConsensusParams) *mockBlockStore {
-	api, _, err := ipfs.Mock()()
-	if err != nil {
-		panic("failure to create mock IPFS object")
-	}
-	return &mockBlockStore{config, params, nil, nil, 0, api.Dag()}
+	return &mockBlockStore{config, params, nil, nil, 0, mdutils.Mock()}
 }
 
 func (bs *mockBlockStore) Height() int64                       { return int64(len(bs.chain)) }
