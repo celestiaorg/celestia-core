@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -15,7 +14,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/term"
-	iface "github.com/ipfs/interface-go-ipfs-core"
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/require"
 
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
@@ -24,7 +23,6 @@ import (
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
-	"github.com/lazyledger/lazyledger-core/ipfs"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
@@ -54,29 +52,13 @@ type cleanupFunc func()
 var (
 	config                *cfg.Config // NOTE: must be reset for each _test.go file
 	consensusReplayConfig *cfg.Config
-	ensureTimeout         = 1000 * time.Millisecond
-
-	ipfsTestAPI iface.CoreAPI
-	ipfsCloser  io.Closer
+	ensureTimeout         = 4 * time.Second
 )
 
 func ensureDir(dir string, mode os.FileMode) {
 	if err := tmos.EnsureDir(dir, mode); err != nil {
 		panic(err)
 	}
-}
-
-func setTestIpfsAPI() (err error) {
-	mockIPFSProvider := ipfs.Mock()
-	if ipfsTestAPI, ipfsCloser, err = mockIPFSProvider(); err != nil {
-		return
-	}
-	return
-}
-
-func teardownTestIpfsAPI() (err error) {
-	err = ipfsCloser.Close()
-	return
 }
 
 func ResetConfig(name string) *cfg.Config {
@@ -422,7 +404,7 @@ func newStateWithConfigAndBlockStore(
 	}
 
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool)
+	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, mdutils.Mock(), evpool)
 	cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 	cs.SetPrivValidator(pv)
 
@@ -455,7 +437,6 @@ func randState(nValidators int) (*State, []*validatorStub) {
 	vss := make([]*validatorStub, nValidators)
 
 	cs := newState(state, privVals[0], counter.NewApplication(true))
-	cs.SetIPFSApi(ipfsTestAPI)
 
 	for i := 0; i < nValidators; i++ {
 		vss[i] = newValidatorStub(privVals[i], int32(i))
@@ -731,7 +712,6 @@ func randConsensusNet(
 		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
-		css[i].SetIPFSApi(ipfsTestAPI)
 	}
 	return css, func() {
 		for _, dir := range configRootDirs {
@@ -795,7 +775,6 @@ func randConsensusNetWithPeers(
 		css[i] = newStateWithConfig(thisConfig, state, privVal, app)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
-		css[i].SetIPFSApi(ipfsTestAPI)
 	}
 	return css, genDoc, peer0Config, func() {
 		for _, dir := range configRootDirs {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -37,7 +38,6 @@ import (
 
 func TestMain(m *testing.M) {
 	config = ResetConfig("consensus_reactor_test")
-	_ = setTestIpfsAPI()
 	consensusReplayConfig = ResetConfig("consensus_replay_test")
 	configStateTest := ResetConfig("consensus_state_test")
 	configMempoolTest := ResetConfig("consensus_mempool_test")
@@ -48,7 +48,6 @@ func TestMain(m *testing.M) {
 	os.RemoveAll(configStateTest.RootDir)
 	os.RemoveAll(configMempoolTest.RootDir)
 	os.RemoveAll(configByzantineTest.RootDir)
-	_ = teardownTestIpfsAPI()
 	os.Exit(code)
 }
 
@@ -81,7 +80,6 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		blockDB,
 	)
 	cs.SetLogger(logger)
-	cs.SetIPFSApi(ipfsTestAPI)
 
 	bytes, _ := ioutil.ReadFile(cs.config.WalFile())
 	t.Logf("====== WAL: \n\r%X\n", bytes)
@@ -133,12 +131,11 @@ func TestWALCrash(t *testing.T) {
 	}{
 		{"empty block",
 			func(stateDB dbm.DB, cs *State, ctx context.Context) {
-				cs.SetIPFSApi(ipfsTestAPI)
+				cs.dag = mdutils.Mock()
 			},
 			1},
 		{"many non-empty blocks",
 			func(stateDB dbm.DB, cs *State, ctx context.Context) {
-				cs.SetIPFSApi(ipfsTestAPI)
 				go sendTxs(ctx, cs)
 			},
 			3},
