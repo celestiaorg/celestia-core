@@ -219,7 +219,7 @@ func TestNodeSetPrivValIPC(t *testing.T) {
 		log.TestingLogger(),
 		dialer,
 	)
-	privval.SignerDialerEndpointTimeoutReadWrite(4 * time.Second)(dialerEndpoint)
+	privval.SignerDialerEndpointTimeoutReadWrite(20 * time.Second)(dialerEndpoint)
 
 	pvsc := privval.NewSignerServer(
 		dialerEndpoint,
