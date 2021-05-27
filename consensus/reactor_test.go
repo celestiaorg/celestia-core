@@ -155,7 +155,8 @@ func TestReactorWithEvidence(t *testing.T) {
 		// css[i] = newStateWithConfig(thisConfig, state, privVals[i], app)
 
 		blockDB := memdb.NewDB()
-		blockStore := store.NewBlockStore(blockDB)
+		dag := mdutils.Mock()
+		blockStore := store.NewBlockStore(blockDB, dag)
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)
@@ -183,7 +184,7 @@ func TestReactorWithEvidence(t *testing.T) {
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, mdutils.Mock(), evpool2)
+		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, dag, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
 
@@ -670,7 +671,7 @@ func timeoutWaitGroup(t *testing.T, n int, f func(int), css []*State) {
 
 	// we're running many nodes in-process, possibly in in a virtual machine,
 	// and spewing debug messages - making a block could take a while,
-	timeout := time.Minute * 4
+	timeout := time.Minute * 8
 
 	select {
 	case <-done:

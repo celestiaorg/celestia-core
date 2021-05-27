@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	format "github.com/ipfs/go-ipld-format"
-	ipface "github.com/ipfs/interface-go-ipfs-core"
+	ipld "github.com/ipfs/go-ipld-format"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -216,17 +216,20 @@ type Node struct {
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
 
-	ipfsAPI   ipface.CoreAPI
 	ipfsClose io.Closer
 }
 
-func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
+func initDBs(
+	config *cfg.Config,
+	dbProvider DBProvider,
+	dag iface.APIDagService,
+) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
 	var blockStoreDB dbm.DB
 	blockStoreDB, err = dbProvider(&DBContext{"blockstore", config})
 	if err != nil {
 		return
 	}
-	blockStore = store.NewBlockStore(blockStoreDB)
+	blockStore = store.NewBlockStore(blockStoreDB, dag)
 
 	stateDB, err = dbProvider(&DBContext{"state", config})
 	if err != nil {
@@ -386,7 +389,8 @@ func createBlockchainReactor(config *cfg.Config,
 	return bcReactor, nil
 }
 
-func createConsensusReactor(config *cfg.Config,
+func createConsensusReactor(
+	config *cfg.Config,
 	state sm.State,
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
@@ -396,7 +400,7 @@ func createConsensusReactor(config *cfg.Config,
 	csMetrics *cs.Metrics,
 	waitSync bool,
 	eventBus *types.EventBus,
-	dag format.DAGService,
+	dag ipld.DAGService,
 	consensusLogger log.Logger) (*cs.Reactor, *cs.State) {
 
 	consensusState := cs.NewState(
@@ -639,7 +643,12 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
-	blockStore, stateDB, err := initDBs(config, dbProvider)
+	dag, ipfsclose, err := ipfsProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	blockStore, stateDB, err := initDBs(config, dbProvider, dag)
 	if err != nil {
 		return nil, err
 	}
@@ -738,11 +747,6 @@ func NewNode(config *cfg.Config,
 		sm.BlockExecutorWithMetrics(smMetrics),
 	)
 
-	ipfs, ipfsclose, err := ipfsProvider()
-	if err != nil {
-		return nil, err
-	}
-
 	// Make BlockchainReactor. Don't start fast sync if we're doing a state sync first.
 	bcReactor, err := createBlockchainReactor(config, state, blockExec, blockStore, fastSync && !stateSync, logger)
 	if err != nil {
@@ -758,7 +762,7 @@ func NewNode(config *cfg.Config,
 	}
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, ipfs.Dag(), consensusLogger,
+		privValidator, csMetrics, stateSync || fastSync, eventBus, dag, consensusLogger,
 	)
 
 	// Set up state sync reactor, and schedule a sync if requested.
@@ -859,7 +863,6 @@ func NewNode(config *cfg.Config,
 		txIndexer:        txIndexer,
 		indexerService:   indexerService,
 		eventBus:         eventBus,
-		ipfsAPI:          ipfs,
 		ipfsClose:        ipfsclose,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
@@ -1410,8 +1413,8 @@ func createAndStartPrivValidatorSocketClient(
 	}
 
 	const (
-		retries = 50 // 50 * 100ms = 5s total
-		timeout = 100 * time.Millisecond
+		retries = 50 // 50 * 200ms = 10s total
+		timeout = 200 * time.Millisecond
 	)
 	pvscWithRetries := privval.NewRetrySignerClient(pvsc, retries, timeout)
 

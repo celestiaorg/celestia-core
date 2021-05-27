@@ -3,28 +3,24 @@ package ipfs
 import (
 	"io"
 
-	"github.com/ipfs/go-ipfs/core/coreapi"
-	coremock "github.com/ipfs/go-ipfs/core/mock"
+	ipld "github.com/ipfs/go-ipld-format"
+	mdutils "github.com/ipfs/go-merkledag/test"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
-
-	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
 )
 
 // Mock provides simple mock IPFS API useful for testing
 func Mock() APIProvider {
-	return func() (coreiface.CoreAPI, io.Closer, error) {
-		plugin.EnableNMT()
+	return func() (coreiface.APIDagService, io.Closer, error) {
+		dom := dagOnlyMock{mdutils.Mock()}
 
-		nd, err := coremock.NewMockNode()
-		if err != nil {
-			return nil, nil, err
-		}
-
-		api, err := coreapi.NewCoreAPI(nd)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		return api, nd, nil
+		return dom, dom, nil
 	}
 }
+
+type dagOnlyMock struct {
+	ipld.DAGService
+}
+
+func (dom dagOnlyMock) Dag() coreiface.APIDagService { return dom }
+func (dagOnlyMock) Close() error                     { return nil }
+func (dom dagOnlyMock) Pinning() ipld.NodeAdder      { return dom }
