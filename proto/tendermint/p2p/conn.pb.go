@@ -724,7 +724,10 @@ func (m *PacketPing) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthConn
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthConn
 			}
 			if (iNdEx + skippy) > l {
@@ -774,7 +777,10 @@ func (m *PacketPong) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthConn
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthConn
 			}
 			if (iNdEx + skippy) > l {
@@ -897,7 +903,10 @@ func (m *PacketMsg) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthConn
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthConn
 			}
 			if (iNdEx + skippy) > l {
@@ -1052,7 +1061,10 @@ func (m *Packet) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthConn
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthConn
 			}
 			if (iNdEx + skippy) > l {
@@ -1169,7 +1181,10 @@ func (m *AuthSigMessage) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthConn
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthConn
 			}
 			if (iNdEx + skippy) > l {

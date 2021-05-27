@@ -542,15 +542,18 @@ func TestLoadBlockMeta(t *testing.T) {
 	meta := &types.BlockMeta{Header: types.Header{
 		Version: tmversion.Consensus{
 			Block: version.BlockProtocol, App: 0}, Height: 1, ProposerAddress: tmrand.Bytes(crypto.AddressSize)}}
-	pbm := meta.ToProto()
+	pbm, err := meta.ToProto()
+	require.NoError(t, err)
 	err = db.Set(calcBlockMetaKey(height), mustEncode(pbm))
 	require.NoError(t, err)
 	gotMeta, _, panicErr := doFn(loadMeta)
 	require.Nil(t, panicErr, "an existent and proper block should not panic")
 	require.Nil(t, res, "a properly saved blockMeta should return a proper blocMeta ")
-	pbmeta := meta.ToProto()
+	pbmeta, err := meta.ToProto()
+	require.NoError(t, err)
 	if gmeta, ok := gotMeta.(*types.BlockMeta); ok {
-		pbgotMeta := gmeta.ToProto()
+		pbgotMeta, err := gmeta.ToProto()
+		require.NoError(t, err)
 		require.Equal(t, mustEncode(pbmeta), mustEncode(pbgotMeta),
 			"expecting successful retrieval of previously saved blockMeta")
 	}
