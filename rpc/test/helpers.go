@@ -176,7 +176,7 @@ func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 	node, err := nm.NewNode(config, pv, nodeKey, papp,
 		nm.DefaultGenesisDocProviderFunc(config),
 		nm.InMemDBProvider,
-		ipfs.Mock(),
+		ipfs.DagOnlyMock(),
 		nm.DefaultMetricsProvider(config.Instrumentation),
 		logger,
 	)
