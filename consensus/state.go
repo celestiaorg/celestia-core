@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	format "github.com/ipfs/go-ipld-format"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	"github.com/lazyledger/lazyledger-core/crypto"
@@ -92,6 +93,8 @@ type State struct {
 
 	// store blocks and commits
 	blockStore sm.BlockStore
+
+	dag format.DAGService
 
 	// create and execute blocks
 	blockExec *sm.BlockExecutor
@@ -1116,7 +1119,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	defer cancel()
 	cs.Logger.Info("Putting Block to ipfs", "height", block.Height)
 	// TODO: post data to IPFS in a goroutine
-	err = ipld.PutBlock(ctx, cs.blockStore.IpfsDagAPI(), block)
+	err = ipld.PutBlock(ctx, cs.dag, block)
 	if err != nil {
 		// If PutBlock fails we will be the only node that has the data
 		// this means something is seriously wrong and we can not recover

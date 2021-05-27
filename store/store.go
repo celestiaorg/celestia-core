@@ -428,12 +428,6 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
 }
 
-// IpfsAPI returns the ipfs api object of the BlockStore. Fullfills the
-// state.BlockStore interface.
-func (bs *BlockStore) IpfsDagAPI() ipld.DAGService {
-	return bs.ipfsDagAPI
-}
-
 //-----------------------------------------------------------------------------
 
 func calcBlockMetaKey(height int64) []byte {

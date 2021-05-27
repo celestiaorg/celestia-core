@@ -1231,10 +1231,6 @@ func (bs *mockBlockStore) PruneBlocks(height int64) (uint64, error) {
 	return pruned, nil
 }
 
-func (bs *mockBlockStore) IpfsDagAPI() format.DAGService {
-	return bs.ipfsDagAPI
-}
-
 //---------------------------------------
 // Test handshake/init chain
 
