@@ -215,7 +215,6 @@ type Node struct {
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
 
-	ipfsAPI   iface.CoreAPI
 	ipfsClose io.Closer
 }
 
@@ -860,7 +859,6 @@ func NewNode(config *cfg.Config,
 		txIndexer:        txIndexer,
 		indexerService:   indexerService,
 		eventBus:         eventBus,
-		ipfsAPI:          ipfs,
 		ipfsClose:        ipfsclose,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
@@ -1411,8 +1409,8 @@ func createAndStartPrivValidatorSocketClient(
 	}
 
 	const (
-		retries = 50 // 50 * 100ms = 5s total
-		timeout = 100 * time.Millisecond
+		retries = 50 // 50 * 200ms = 10s total
+		timeout = 200 * time.Millisecond
 	)
 	pvscWithRetries := privval.NewRetrySignerClient(pvsc, retries, timeout)
 
