@@ -163,6 +163,7 @@ func NewState(
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
 	txNotifier txNotifier,
+	dag format.DAGService,
 	evpool evidencePool,
 	options ...StateOption,
 ) *State {
@@ -170,6 +171,7 @@ func NewState(
 		config:           config,
 		blockExec:        blockExec,
 		blockStore:       blockStore,
+		dag:              dag,
 		txNotifier:       txNotifier,
 		peerMsgQueue:     make(chan msgInfo, msgQueueSize),
 		internalMsgQueue: make(chan msgInfo, msgQueueSize),

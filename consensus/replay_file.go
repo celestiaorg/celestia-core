@@ -130,7 +130,7 @@ func (pb *playback) replayReset(count int, newStepSub types.Subscription) error 
 	pb.cs.Wait()
 
 	newCS := NewState(pb.cs.config, pb.genesisState.Copy(), pb.cs.blockExec,
-		pb.cs.blockStore, pb.cs.txNotifier, pb.cs.evpool)
+		pb.cs.blockStore, pb.cs.txNotifier, mdutils.Mock(), pb.cs.evpool)
 	newCS.SetEventBus(pb.cs.eventBus)
 	newCS.startForReplay()
 
@@ -289,7 +289,8 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 	if err != nil {
 		tmos.Exit(err.Error())
 	}
-	blockStore := store.NewBlockStore(blockStoreDB, mdutils.Mock())
+	dag := mdutils.Mock()
+	blockStore := store.NewBlockStore(blockStoreDB, dag)
 
 	// Get State
 	stateDB, err := badgerdb.NewDB("state", config.DBDir())
@@ -330,7 +331,7 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 
 	consensusState := NewState(csConfig, state.Copy(), blockExec,
-		blockStore, mempool, evpool)
+		blockStore, mempool, dag, evpool)
 
 	consensusState.SetEventBus(eventBus)
 	return consensusState

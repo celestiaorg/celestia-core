@@ -56,7 +56,8 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
 		blockDB := memdb.NewDB()
-		blockStore := store.NewBlockStore(blockDB, mdutils.Mock())
+		dag := mdutils.Mock()
+		blockStore := store.NewBlockStore(blockDB, dag)
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)
@@ -78,7 +79,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool)
+		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, dag, evpool)
 		cs.SetLogger(cs.Logger)
 		// set private validator
 		pv := privVals[i]

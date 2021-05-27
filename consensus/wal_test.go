@@ -311,8 +311,8 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	if err = stateStore.Save(state); err != nil {
 		t.Error(err)
 	}
-
-	blockStore := store.NewBlockStore(blockStoreDB, mdutils.Mock())
+	dag := mdutils.Mock()
+	blockStore := store.NewBlockStore(blockStoreDB, dag)
 
 	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(app))
 	proxyApp.SetLogger(logger.With("module", "proxy"))
@@ -339,7 +339,7 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	evpool := sm.EmptyEvidencePool{}
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 	require.NoError(t, err)
-	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore, mempool, evpool)
+	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore, mempool, dag, evpool)
 	consensusState.SetLogger(logger)
 	consensusState.SetEventBus(eventBus)
 	if privValidator != nil && privValidator != (*privval.FilePV)(nil) {

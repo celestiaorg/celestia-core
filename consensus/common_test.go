@@ -375,10 +375,10 @@ func newStateWithConfigAndBlockStore(
 	pv types.PrivValidator,
 	app abci.Application,
 	blockDB dbm.DB,
-	ipfsDagAPI format.DAGService,
+	dag format.DAGService,
 ) *State {
 	// Get BlockStore
-	blockStore := store.NewBlockStore(blockDB, ipfsDagAPI)
+	blockStore := store.NewBlockStore(blockDB, dag)
 
 	// one for mempool, one for consensus
 	mtx := new(tmsync.Mutex)
@@ -402,7 +402,7 @@ func newStateWithConfigAndBlockStore(
 	}
 
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool)
+	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, dag, evpool)
 	cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 	cs.SetPrivValidator(pv)
 

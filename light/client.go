@@ -71,12 +71,12 @@ func SkippingVerification(trustLevel tmmath.Fraction) Option {
 	}
 }
 
-func DataAvailabilitySampling(numSamples uint32, ipfsAPI coreiface.CoreAPI) Option {
+func DataAvailabilitySampling(numSamples uint32, ipfsAPI coreiface.APIDagService) Option {
 	return func(c *Client) {
 		c.verificationMode = dataAvailabilitySampling
 		c.numSamples = numSamples
-		c.ipfsCoreAPI = ipfsAPI
-		c.dag = merkledag.NewSession(context.TODO(), ipfsAPI.Dag())
+		c.dag = ipfsAPI
+		c.sessionDAG = merkledag.NewSession(context.TODO(), ipfsAPI)
 	}
 }
 
@@ -157,8 +157,8 @@ type Client struct {
 
 	logger log.Logger
 
-	ipfsCoreAPI coreiface.CoreAPI
-	dag         format.NodeGetter
+	dag        coreiface.APIDagService
+	sessionDAG format.NodeGetter
 }
 
 // NewClient returns a new light client. It returns an error if it fails to

@@ -7,4 +7,4 @@ import (
 )
 
 // APIProvider allows customizable IPFS core APIs.
-type APIProvider func() (coreiface.CoreAPI, io.Closer, error)
+type APIProvider func() (coreiface.APIDagService, io.Closer, error)

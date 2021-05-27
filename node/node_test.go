@@ -53,7 +53,7 @@ func defaultNewTestNode(config *cfg.Config, logger log.Logger) (*Node, error) {
 		proxy.DefaultClientCreator(config.ProxyApp, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
 		InMemDBProvider,
-		ipfs.DagOnlyMock(),
+		ipfs.Mock(),
 		DefaultMetricsProvider(config.Instrumentation),
 		logger,
 	)
@@ -540,7 +540,7 @@ func TestNodeNewNodeCustomReactors(t *testing.T) {
 		proxy.DefaultClientCreator(config.ProxyApp, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
 		InMemDBProvider,
-		ipfs.DagOnlyMock(),
+		ipfs.Mock(),
 		DefaultMetricsProvider(config.Instrumentation),
 		log.TestingLogger(),
 		CustomReactors(map[string]p2p.Reactor{"FOO": cr, "BLOCKCHAIN": customBlockchainReactor}),

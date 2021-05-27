@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	format "github.com/ipfs/go-ipld-format"
 	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -221,14 +222,14 @@ type Node struct {
 func initDBs(
 	config *cfg.Config,
 	dbProvider DBProvider,
-	ipfsAPI iface.CoreAPI,
+	dag iface.APIDagService,
 ) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
 	var blockStoreDB dbm.DB
 	blockStoreDB, err = dbProvider(&DBContext{"blockstore", config})
 	if err != nil {
 		return
 	}
-	blockStore = store.NewBlockStore(blockStoreDB, ipfsAPI.Dag())
+	blockStore = store.NewBlockStore(blockStoreDB, dag)
 
 	stateDB, err = dbProvider(&DBContext{"state", config})
 	if err != nil {
@@ -388,7 +389,8 @@ func createBlockchainReactor(config *cfg.Config,
 	return bcReactor, nil
 }
 
-func createConsensusReactor(config *cfg.Config,
+func createConsensusReactor(
+	config *cfg.Config,
 	state sm.State,
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
@@ -398,6 +400,7 @@ func createConsensusReactor(config *cfg.Config,
 	csMetrics *cs.Metrics,
 	waitSync bool,
 	eventBus *types.EventBus,
+	dag format.DAGService,
 	consensusLogger log.Logger) (*cs.Reactor, *cs.State) {
 
 	consensusState := cs.NewState(
@@ -406,6 +409,7 @@ func createConsensusReactor(config *cfg.Config,
 		blockExec,
 		blockStore,
 		mempool,
+		dag,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
 	)
@@ -639,12 +643,12 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
-	ipfs, ipfsclose, err := ipfsProvider()
+	dag, ipfsclose, err := ipfsProvider()
 	if err != nil {
 		return nil, err
 	}
 
-	blockStore, stateDB, err := initDBs(config, dbProvider, ipfs)
+	blockStore, stateDB, err := initDBs(config, dbProvider, dag)
 	if err != nil {
 		return nil, err
 	}
@@ -758,7 +762,7 @@ func NewNode(config *cfg.Config,
 	}
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger,
+		privValidator, csMetrics, stateSync || fastSync, eventBus, dag, consensusLogger,
 	)
 
 	// Set up state sync reactor, and schedule a sync if requested.

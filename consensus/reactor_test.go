@@ -155,7 +155,8 @@ func TestReactorWithEvidence(t *testing.T) {
 		// css[i] = newStateWithConfig(thisConfig, state, privVals[i], app)
 
 		blockDB := memdb.NewDB()
-		blockStore := store.NewBlockStore(blockDB, mdutils.Mock())
+		dag := mdutils.Mock()
+		blockStore := store.NewBlockStore(blockDB, dag)
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)
@@ -183,7 +184,7 @@ func TestReactorWithEvidence(t *testing.T) {
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool2)
+		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, dag, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
 
