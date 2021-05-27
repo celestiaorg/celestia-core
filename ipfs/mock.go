@@ -50,7 +50,7 @@ type dagOnlyMock struct {
 	format.DAGService
 }
 
-func (dom dagOnlyMock) Dag() coreiface.APIDagService { return mockAPIDagService{dom.DAGService} }
+func (dom dagOnlyMock) Dag() coreiface.APIDagService { return dom }
 
 func (dagOnlyMock) Unixfs() coreiface.UnixfsAPI                                   { return nil }
 func (dagOnlyMock) Block() coreiface.BlockAPI                                     { return nil }
@@ -65,9 +65,4 @@ func (dagOnlyMock) ResolvePath(context.Context, path.Path) (path.Resolved, error
 func (dagOnlyMock) ResolveNode(context.Context, path.Path) (format.Node, error)   { return nil, nil }
 func (dagOnlyMock) WithOptions(...options.ApiOption) (coreiface.CoreAPI, error)   { return nil, nil }
 func (dagOnlyMock) Close() error                                                  { return nil }
-
-type mockAPIDagService struct {
-	format.DAGService
-}
-
-func (mockAPIDagService) Pinning() format.NodeAdder { return nil }
+func (dagOnlyMock) Pinning() format.NodeAdder                                     { return nil }
