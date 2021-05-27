@@ -184,6 +184,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	case daSampling:
 		cfg := ipfs.DefaultConfig()
 		cfg.RootDir = dir
+		cfg.ServeAPI = true
 		// TODO(ismail): share badger instance
 		apiProvider := ipfs.Embedded(true, cfg, logger)
 		var dag coreiface.APIDagService
