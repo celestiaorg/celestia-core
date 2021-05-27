@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gogo/protobuf/proto"
-	format "github.com/ipfs/go-ipld-format"
+	ipld "github.com/ipfs/go-ipld-format"
 
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
@@ -43,12 +43,12 @@ type BlockStore struct {
 	base   int64
 	height int64
 
-	ipfsDagAPI format.DAGService
+	ipfsDagAPI ipld.DAGService
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB, dagAPI format.DAGService) *BlockStore {
+func NewBlockStore(db dbm.DB, dagAPI ipld.DAGService) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	return &BlockStore{
 		base:       bs.Base,
@@ -430,7 +430,7 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 
 // IpfsAPI returns the ipfs api object of the BlockStore. Fullfills the
 // state.BlockStore interface.
-func (bs *BlockStore) IpfsDagAPI() format.DAGService {
+func (bs *BlockStore) IpfsDagAPI() ipld.DAGService {
 	return bs.ipfsDagAPI
 }
 
