@@ -671,7 +671,7 @@ func timeoutWaitGroup(t *testing.T, n int, f func(int), css []*State) {
 
 	// we're running many nodes in-process, possibly in in a virtual machine,
 	// and spewing debug messages - making a block could take a while,
-	timeout := time.Minute * 6
+	timeout := time.Minute * 8
 
 	select {
 	case <-done:
