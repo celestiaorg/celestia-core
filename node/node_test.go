@@ -47,13 +47,12 @@ func defaultNewTestNode(config *cfg.Config, logger log.Logger) (*Node, error) {
 		return nil, err
 	}
 
-	return NewNode(config,
+	return NewTestNode(config,
 		pval,
 		nodeKey,
 		proxy.DefaultClientCreator(config.ProxyApp, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
 		InMemDBProvider,
-		ipfs.Mock(),
 		DefaultMetricsProvider(config.Instrumentation),
 		logger,
 	)
