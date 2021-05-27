@@ -186,12 +186,12 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		cfg.RootDir = dir
 		// TODO(ismail): share badger instance
 		apiProvider := ipfs.Embedded(true, cfg, logger)
-		var coreAPI coreiface.CoreAPI
-		coreAPI, ipfsCloser, err = apiProvider()
+		var dag coreiface.APIDagService
+		dag, ipfsCloser, err = apiProvider()
 		if err != nil {
 			return fmt.Errorf("could not start ipfs API: %w", err)
 		}
-		options = append(options, light.DataAvailabilitySampling(numSamples, coreAPI))
+		options = append(options, light.DataAvailabilitySampling(numSamples, dag))
 	case sequential:
 		options = append(options, light.SequentialVerification())
 	default:

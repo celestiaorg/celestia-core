@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	mdutils "github.com/ipfs/go-merkledag/test"
-
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -290,7 +289,8 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 	if err != nil {
 		tmos.Exit(err.Error())
 	}
-	blockStore := store.NewBlockStore(blockStoreDB)
+	dag := mdutils.Mock()
+	blockStore := store.NewBlockStore(blockStoreDB, dag)
 
 	// Get State
 	stateDB, err := badgerdb.NewDB("state", config.DBDir())
@@ -331,7 +331,7 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 
 	consensusState := NewState(csConfig, state.Copy(), blockExec,
-		blockStore, mempool, mdutils.Mock(), evpool)
+		blockStore, mempool, dag, evpool)
 
 	consensusState.SetEventBus(eventBus)
 	return consensusState
