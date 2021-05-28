@@ -15,6 +15,7 @@ import (
 	tmstore "github.com/lazyledger/lazyledger-core/proto/tendermint/store"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/rsmt2d"
 )
 
 /*
@@ -98,35 +99,27 @@ func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 // LoadBlock returns the block with the given height.
 // If no block is found for that height, it returns nil.
 func (bs *BlockStore) LoadBlock(height int64) (*types.Block, error) {
-	var blockMeta = bs.LoadBlockMeta(height)
+	blockMeta := bs.LoadBlockMeta(height)
 	if blockMeta == nil {
+		// TODO(evan): return an error
 		return nil, nil
 	}
 
-	pbb := new(tmproto.Block)
-	buf := []byte{}
-	for i := 0; i < int(blockMeta.BlockID.PartSetHeader.Total); i++ {
-		part := bs.LoadBlockPart(height, i)
-		// If the part is missing (e.g. since it has been deleted after we
-		// loaded the block meta) we consider the whole block to be missing.
-		if part == nil {
-			return nil, nil
-		}
-		buf = append(buf, part.Bytes...)
-	}
-	err := proto.Unmarshal(buf, pbb)
+	lastCommit := bs.LoadBlockCommit(height - 1)
+
+	data, err := ipld.RetrieveBlockData(context.TODO(), &blockMeta.DAHeader, bs.dag, rsmt2d.NewRSGF8Codec())
 	if err != nil {
-		// NOTE: The existence of meta should imply the existence of the
-		// block. So, make sure meta is only saved after blocks are saved.
-		panic(fmt.Sprintf("Error reading block: %v", err))
+		return nil, err
 	}
 
-	block, err := types.BlockFromProto(pbb)
-	if err != nil {
-		panic(fmt.Errorf("error from proto block: %w", err))
+	block := types.Block{
+		Header:                 blockMeta.Header,
+		Data:                   data,
+		DataAvailabilityHeader: blockMeta.DAHeader,
+		LastCommit:             lastCommit,
 	}
 
-	return block, nil
+	return &block, nil
 }
 
 // LoadBlockByHash returns the block with the given hash.
