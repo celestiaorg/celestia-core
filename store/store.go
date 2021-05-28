@@ -97,10 +97,10 @@ func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 
 // LoadBlock returns the block with the given height.
 // If no block is found for that height, it returns nil.
-func (bs *BlockStore) LoadBlock(height int64) *types.Block {
+func (bs *BlockStore) LoadBlock(height int64) (*types.Block, error) {
 	var blockMeta = bs.LoadBlockMeta(height)
 	if blockMeta == nil {
-		return nil
+		return nil, nil
 	}
 
 	pbb := new(tmproto.Block)
@@ -110,7 +110,7 @@ func (bs *BlockStore) LoadBlock(height int64) *types.Block {
 		// If the part is missing (e.g. since it has been deleted after we
 		// loaded the block meta) we consider the whole block to be missing.
 		if part == nil {
-			return nil
+			return nil, nil
 		}
 		buf = append(buf, part.Bytes...)
 	}
@@ -126,19 +126,19 @@ func (bs *BlockStore) LoadBlock(height int64) *types.Block {
 		panic(fmt.Errorf("error from proto block: %w", err))
 	}
 
-	return block
+	return block, nil
 }
 
 // LoadBlockByHash returns the block with the given hash.
 // If no block is found for that hash, it returns nil.
 // Panics if it fails to parse height associated with the given hash.
-func (bs *BlockStore) LoadBlockByHash(hash []byte) *types.Block {
+func (bs *BlockStore) LoadBlockByHash(hash []byte) (*types.Block, error) {
 	bz, err := bs.db.Get(calcBlockHashKey(hash))
 	if err != nil {
 		panic(err)
 	}
 	if len(bz) == 0 {
-		return nil
+		return nil, errors.New("failure to load block by hash: block height not found")
 	}
 
 	s := string(bz)

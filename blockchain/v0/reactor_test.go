@@ -100,7 +100,10 @@ func newBlockchainReactor(
 		lastCommit := types.NewCommit(blockHeight-1, 0, types.BlockID{}, nil)
 		if blockHeight > 1 {
 			lastBlockMeta := blockStore.LoadBlockMeta(blockHeight - 1)
-			lastBlock := blockStore.LoadBlock(blockHeight - 1)
+			lastBlock, err := blockStore.LoadBlock(blockHeight - 1)
+			if err != nil {
+				panic(err)
+			}
 
 			vote, err := types.MakeVote(
 				lastBlock.Header.Height,
@@ -187,8 +190,9 @@ func TestNoBlockResponse(t *testing.T) {
 	assert.Equal(t, maxBlockHeight, reactorPairs[0].reactor.store.Height())
 
 	for _, tt := range tests {
-		block := reactorPairs[1].reactor.store.LoadBlock(tt.height)
+		block, err := reactorPairs[1].reactor.store.LoadBlock(tt.height)
 		if tt.existent {
+			require.NoError(t, err)
 			assert.True(t, block != nil)
 		} else {
 			assert.True(t, block == nil)
