@@ -17,10 +17,14 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/gtank/merlin v0.1.1
 	github.com/hdevalence/ed25519consensus v0.0.0-20201207055737-7fde80a9d5ff
+	github.com/ipfs/go-bitswap v0.3.3 // indirect
 	github.com/ipfs/go-block-format v0.0.2
+	github.com/ipfs/go-blockservice v0.1.4 // indirect
 	github.com/ipfs/go-cid v0.0.7
+	github.com/ipfs/go-datastore v0.4.5 // indirect
 	github.com/ipfs/go-ipfs v0.8.0
 	github.com/ipfs/go-ipfs-api v0.2.0
+	github.com/ipfs/go-ipfs-blockstore v0.1.4 // indirect
 	github.com/ipfs/go-ipfs-config v0.11.0
 	github.com/ipfs/go-ipld-format v0.2.0
 	github.com/ipfs/go-merkledag v0.3.2
@@ -30,6 +34,8 @@ require (
 	github.com/lazyledger/nmt v0.5.0
 	github.com/lazyledger/rsmt2d v0.2.0
 	github.com/libp2p/go-buffer-pool v0.0.2
+	github.com/libp2p/go-libp2p v0.12.0 // indirect
+	github.com/libp2p/go-libp2p-kad-dht v0.11.1 // indirect
 	github.com/minio/highwayhash v1.0.1
 	github.com/multiformats/go-multiaddr v0.3.1
 	github.com/multiformats/go-multihash v0.0.14
