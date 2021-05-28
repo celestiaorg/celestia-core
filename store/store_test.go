@@ -184,13 +184,14 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	block := makeBlock(bs.Height()+1, state, new(types.Commit))
 	validPartSet := block.MakePartSet(2)
 	seenCommit := makeTestCommit(10, tmtime.Now())
-	bs.SaveBlock(block, partSet, seenCommit)
+	err := bs.SaveBlock(block, partSet, seenCommit)
+	require.NoError(t, err)
 	require.EqualValues(t, 1, bs.Base(), "expecting the new height to be changed")
 	require.EqualValues(t, block.Header.Height, bs.Height(), "expecting the new height to be changed")
 
 	incompletePartSet := types.NewPartSetFromHeader(types.PartSetHeader{Total: 2})
 	uncontiguousPartSet := types.NewPartSetFromHeader(types.PartSetHeader{Total: 0})
-	_, err := uncontiguousPartSet.AddPart(part2)
+	_, err = uncontiguousPartSet.AddPart(part2)
 	require.Error(t, err)
 
 	header1 := types.Header{
@@ -305,7 +306,8 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 		bs, db := freshBlockStore()
 		// SaveBlock
 		res, err, panicErr := doFn(func() (interface{}, error) {
-			bs.SaveBlock(tuple.block, tuple.parts, tuple.seenCommit)
+			err = bs.SaveBlock(tuple.block, tuple.parts, tuple.seenCommit)
+			require.NoError(t, err)
 			if tuple.block == nil {
 				return nil, nil
 			}
@@ -387,7 +389,8 @@ func TestLoadBaseMeta(t *testing.T) {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, tmtime.Now())
-		bs.SaveBlock(block, partSet, seenCommit)
+		err = bs.SaveBlock(block, partSet, seenCommit)
+		require.NoError(t, err)
 	}
 
 	_, err = bs.PruneBlocks(4)
@@ -455,7 +458,8 @@ func TestPruneBlocks(t *testing.T) {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, tmtime.Now())
-		bs.SaveBlock(block, partSet, seenCommit)
+		err = bs.SaveBlock(block, partSet, seenCommit)
+		require.NoError(t, err)
 	}
 
 	assert.EqualValues(t, 1, bs.Base())
@@ -568,7 +572,8 @@ func TestBlockFetchAtHeight(t *testing.T) {
 
 	partSet := block.MakePartSet(2)
 	seenCommit := makeTestCommit(10, tmtime.Now())
-	bs.SaveBlock(block, partSet, seenCommit)
+	err := bs.SaveBlock(block, partSet, seenCommit)
+	require.NoError(t, err)
 	require.Equal(t, bs.Height(), block.Header.Height, "expecting the new height to be changed")
 
 	blockAtHeight := bs.LoadBlock(bs.Height())

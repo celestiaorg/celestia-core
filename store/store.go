@@ -1,14 +1,17 @@
 package store
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/gogo/protobuf/proto"
-	ipld "github.com/ipfs/go-ipld-format"
+	format "github.com/ipfs/go-ipld-format"
 
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmstore "github.com/lazyledger/lazyledger-core/proto/tendermint/store"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -43,18 +46,18 @@ type BlockStore struct {
 	base   int64
 	height int64
 
-	ipfsDagAPI ipld.DAGService
+	dag format.DAGService
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB, dagAPI ipld.DAGService) *BlockStore {
+func NewBlockStore(db dbm.DB, dagAPI format.DAGService) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	return &BlockStore{
-		base:       bs.Base,
-		height:     bs.Height,
-		db:         db,
-		ipfsDagAPI: dagAPI,
+		base:   bs.Base,
+		height: bs.Height,
+		db:     db,
+		dag:    dagAPI,
 	}
 }
 
@@ -332,7 +335,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 //             If all the nodes restart after committing a block,
 //             we need this to reload the precommits to catch-up nodes to the
 //             most recent height.  Otherwise they'd stall at H-1.
-func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
+func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) error {
 	if block == nil {
 		panic("BlockStore can only save a non-nil block")
 	}
@@ -356,14 +359,19 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 		bs.saveBlockPart(height, i, part)
 	}
 
+	err := ipld.PutBlock(context.TODO(), bs.dag, block)
+	if err != nil {
+		return err
+	}
+
 	// Save block meta
 	blockMeta := types.NewBlockMeta(block, blockParts)
 	pbm, err := blockMeta.ToProto()
 	if err != nil {
-		panic(fmt.Errorf("failure to save block: %w", err))
+		return fmt.Errorf("failure to save block: %w", err)
 	}
 	if pbm == nil {
-		panic("nil blockmeta")
+		return errors.New("nil blockmeta")
 	}
 	metaBytes := mustEncode(pbm)
 	if err := bs.db.Set(calcBlockMetaKey(height), metaBytes); err != nil {
@@ -398,6 +406,7 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 
 	// Save new BlockStoreState descriptor. This also flushes the database.
 	bs.saveState()
+	return nil
 }
 
 func (bs *BlockStore) saveBlockPart(height int64, index int, part *types.Part) {

@@ -394,7 +394,7 @@ func initializeValidatorState(privVal types.PrivValidator, height int64) sm.Stor
 }
 
 // initializeBlockStore creates a block storage and populates it w/ a dummy
-// block at +height+.
+// block at +height+. panics if an error is encountered while saving the block
 func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.BlockStore {
 	blockStore := store.NewBlockStore(db, mdutils.Mock())
 
@@ -408,7 +408,10 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.Bloc
 		partSet := block.MakePartSet(parts)
 
 		seenCommit := makeCommit(i, valAddr)
-		blockStore.SaveBlock(block, partSet, seenCommit)
+		err := blockStore.SaveBlock(block, partSet, seenCommit)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	return blockStore

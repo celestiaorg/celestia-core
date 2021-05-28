@@ -22,7 +22,7 @@ type BlockStore interface {
 	LoadBlockMeta(height int64) *types.BlockMeta
 	LoadBlock(height int64) *types.Block
 
-	SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit)
+	SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) error
 
 	PruneBlocks(height int64) (uint64, error)
 
