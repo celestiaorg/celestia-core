@@ -1122,7 +1122,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	// TODO(evan): don't hard code context and timeout
 	//
 	// longer timeouts result in block proposers failing to propose blocks in time.
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5)
 	defer cancel()
 	cs.Logger.Info("Putting Block to ipfs", "height", block.Height)
 	err = ipld.PutBlock(ctx, cs.dag, block, cs.croute)
