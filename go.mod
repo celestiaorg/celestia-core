@@ -26,6 +26,7 @@ require (
 	github.com/ipfs/go-ipfs-api v0.2.0
 	github.com/ipfs/go-ipfs-blockstore v0.1.4 // indirect
 	github.com/ipfs/go-ipfs-config v0.11.0
+	github.com/ipfs/go-ipfs-routing v0.1.0 // indirect
 	github.com/ipfs/go-ipld-format v0.2.0
 	github.com/ipfs/go-merkledag v0.3.2
 	github.com/ipfs/go-path v0.0.9 // indirect
@@ -35,6 +36,7 @@ require (
 	github.com/lazyledger/rsmt2d v0.2.0
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/libp2p/go-libp2p v0.12.0 // indirect
+	github.com/libp2p/go-libp2p-core v0.7.0 // indirect
 	github.com/libp2p/go-libp2p-kad-dht v0.11.1 // indirect
 	github.com/minio/highwayhash v1.0.1
 	github.com/multiformats/go-multiaddr v0.3.1

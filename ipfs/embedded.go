@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sync"
 
@@ -26,7 +25,7 @@ import (
 // Embedded is the provider that embeds IPFS node within the same process.
 // It also returns closable for graceful node shutdown.
 func Embedded(init bool, cfg *Config, logger log.Logger) APIProvider {
-	return func() (coreiface.APIDagService, io.Closer, error) {
+	return func() (coreiface.APIDagService, *core.IpfsNode, error) {
 		path := cfg.Path()
 		defer os.Setenv(ipfscfg.EnvDir, path)
 

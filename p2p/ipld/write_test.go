@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-ipfs/core/coreapi"
-	coremock "github.com/ipfs/go-ipfs/core/mock"
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/lazyledger/nmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -21,15 +21,8 @@ import (
 )
 
 func TestPutBlock(t *testing.T) {
-	ipfsNode, err := coremock.NewMockNode()
-	if err != nil {
-		t.Error(err)
-	}
-
-	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
-	if err != nil {
-		t.Error(err)
-	}
+	dag := mdutils.Mock()
+	croute := ipfs.MockRouting()
 
 	maxOriginalSquareSize := consts.MaxSquareSize / 2
 	maxShareCount := maxOriginalSquareSize * maxOriginalSquareSize
@@ -52,7 +45,7 @@ func TestPutBlock(t *testing.T) {
 		block := &types.Block{Data: tc.blockData}
 
 		t.Run(tc.name, func(t *testing.T) {
-			err = PutBlock(ctx, ipfsAPI.Dag(), block)
+			err := PutBlock(ctx, dag, block, croute)
 			if tc.expectErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.errString)
@@ -73,7 +66,7 @@ func TestPutBlock(t *testing.T) {
 				}
 
 				// retrieve the data from IPFS
-				_, err = ipfsAPI.Dag().Get(timeoutCtx, cid)
+				_, err = dag.Get(timeoutCtx, cid)
 				if err != nil {
 					t.Errorf("Root not found: %s", cid.String())
 				}
@@ -114,15 +107,9 @@ func toMessageSlice(msgs [][]byte) []*tmproto.Message {
 }
 
 func TestDataAvailabilityHeaderRewriteBug(t *testing.T) {
-	ipfsNode, err := coremock.NewMockNode()
-	if err != nil {
-		t.Error(err)
-	}
+	dag := mdutils.Mock()
+	croute := ipfs.MockRouting()
 
-	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
-	if err != nil {
-		t.Error(err)
-	}
 	txs := types.Txs{}
 	l := len(txs)
 	bzs := make([][]byte, l)
@@ -158,7 +145,7 @@ func TestDataAvailabilityHeaderRewriteBug(t *testing.T) {
 	hash1 := block.DataAvailabilityHeader.Hash()
 
 	ctx := context.TODO()
-	err = PutBlock(ctx, ipfsAPI.Dag(), block)
+	err = PutBlock(ctx, dag, block, croute)
 	if err != nil {
 		t.Fatal(err)
 	}

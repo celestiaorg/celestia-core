@@ -14,6 +14,7 @@ import (
 
 	ipld "github.com/ipfs/go-ipld-format"
 	iface "github.com/ipfs/interface-go-ipfs-core"
+	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -401,6 +402,7 @@ func createConsensusReactor(
 	waitSync bool,
 	eventBus *types.EventBus,
 	dag ipld.DAGService,
+	croute routing.ContentRouting,
 	consensusLogger log.Logger) (*cs.Reactor, *cs.State) {
 
 	consensusState := cs.NewState(
@@ -410,6 +412,7 @@ func createConsensusReactor(
 		blockStore,
 		mempool,
 		dag,
+		croute,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
 	)
@@ -643,7 +646,7 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
-	dag, ipfsclose, err := ipfsProvider()
+	dag, ipfsNode, err := ipfsProvider()
 	if err != nil {
 		return nil, err
 	}
@@ -762,7 +765,7 @@ func NewNode(config *cfg.Config,
 	}
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, dag, consensusLogger,
+		privValidator, csMetrics, stateSync || fastSync, eventBus, dag, ipfsNode.Routing, consensusLogger,
 	)
 
 	// Set up state sync reactor, and schedule a sync if requested.
@@ -863,7 +866,7 @@ func NewNode(config *cfg.Config,
 		txIndexer:        txIndexer,
 		indexerService:   indexerService,
 		eventBus:         eventBus,
-		ipfsClose:        ipfsclose,
+		ipfsClose:        ipfsNode,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 

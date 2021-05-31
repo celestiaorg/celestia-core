@@ -8,26 +8,25 @@ import (
 	"io"
 	mrand "math/rand"
 	"path/filepath"
-
-	// "sync"
 	"testing"
 	"time"
 
 	mdutils "github.com/ipfs/go-merkledag/test"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/consensus/types"
+	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+	"github.com/lazyledger/lazyledger-core/ipfs"
+	"github.com/lazyledger/lazyledger-core/libs/autofile"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
+	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/privval"
 	"github.com/lazyledger/lazyledger-core/proxy"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/store"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/lazyledger/lazyledger-core/consensus/types"
-	"github.com/lazyledger/lazyledger-core/crypto/merkle"
-	"github.com/lazyledger/lazyledger-core/libs/autofile"
-	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmtypes "github.com/lazyledger/lazyledger-core/types"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
@@ -339,7 +338,8 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	evpool := sm.EmptyEvidencePool{}
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 	require.NoError(t, err)
-	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore, mempool, dag, evpool)
+	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore,
+		mempool, dag, ipfs.MockRouting(), evpool)
 	consensusState.SetLogger(logger)
 	consensusState.SetEventBus(eventBus)
 	if privValidator != nil && privValidator != (*privval.FilePV)(nil) {

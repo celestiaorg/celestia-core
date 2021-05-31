@@ -24,11 +24,11 @@ import (
 	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
-func TestDiscovery(t *testing.T)  {
+func TestDiscovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	dhts := dhtNet(t, ctx, 2)
+	dhts := dhtNet(ctx, t, 2)
 	dht1, dht2 := dhts[0], dhts[0]
 
 	data := generateRandomBlockData(64, consts.MsgShareSize-2)
@@ -53,7 +53,7 @@ func TestWriteDiscoveryReadData(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
 
-	dags := dagNet(t, ctx, 5)
+	dags, dhts := dagNet(ctx, t, 5)
 	blocks := make([]*types.Block, len(dags))
 	for i, dag := range dags {
 		data := generateRandomBlockData(64, consts.MsgShareSize-2)
@@ -64,7 +64,7 @@ func TestWriteDiscoveryReadData(t *testing.T) {
 		b.Hash()
 		blocks[i] = b
 
-		err := PutBlock(ctx, dag, blocks[i])
+		err := PutBlock(ctx, dag, blocks[i], dhts[i])
 		require.NoError(t, err)
 	}
 
@@ -80,37 +80,37 @@ func TestWriteDiscoveryReadData(t *testing.T) {
 	}
 }
 
-func dagNet(t *testing.T, ctx context.Context, num int) []ipld.DAGService {
+func dagNet(ctx context.Context, t *testing.T, num int) ([]ipld.DAGService, []*dht.IpfsDHT) {
 	net := mocknet.New(ctx)
-	_, medium := dagNode(t, ctx, net)
+	_, medium := dagNode(ctx, t, net)
 	dags, dhts := make([]ipld.DAGService, num), make([]*dht.IpfsDHT, num)
 	for i := range dags {
-		dags[i], dhts[i] = dagNode(t, ctx, net)
+		dags[i], dhts[i] = dagNode(ctx, t, net)
 	}
-	bootstrap(t, ctx, net, medium, dhts...)
-	return dags
+	bootstrap(ctx, t, net, medium, dhts...)
+	return dags, dhts
 }
 
-func dhtNet(t *testing.T, ctx context.Context, num int) []*dht.IpfsDHT {
+func dhtNet(ctx context.Context, t *testing.T, num int) []*dht.IpfsDHT {
 	net := mocknet.New(ctx)
-	medium := dhtNode(t, ctx, net)
+	medium := dhtNode(ctx, t, net)
 	dhts := make([]*dht.IpfsDHT, num)
 	for i := range dhts {
-		dhts[i] = dhtNode(t, ctx, net)
+		dhts[i] = dhtNode(ctx, t, net)
 	}
-	bootstrap(t, ctx, net, medium, dhts...)
+	bootstrap(ctx, t, net, medium, dhts...)
 	return dhts
 }
 
-func dagNode(t *testing.T, ctx context.Context, net mocknet.Mocknet) (ipld.DAGService, *dht.IpfsDHT) {
+func dagNode(ctx context.Context, t *testing.T, net mocknet.Mocknet) (ipld.DAGService, *dht.IpfsDHT) {
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
-	routing := dhtNode(t, ctx, net)
+	routing := dhtNode(ctx, t, net)
 	bs := bitswap.New(ctx, network.NewFromIpfsHost(routing.Host(), routing), bstore)
 	return merkledag.NewDAGService(blockservice.New(bstore, bs)), routing
 }
 
-func dhtNode(t *testing.T, ctx context.Context, net mocknet.Mocknet) *dht.IpfsDHT {
+func dhtNode(ctx context.Context, t *testing.T, net mocknet.Mocknet) *dht.IpfsDHT {
 	host, err := net.GenPeer()
 	require.NoError(t, err)
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
@@ -119,7 +119,7 @@ func dhtNode(t *testing.T, ctx context.Context, net mocknet.Mocknet) *dht.IpfsDH
 	return routing
 }
 
-func bootstrap(t *testing.T, ctx context.Context,  net mocknet.Mocknet, bstrapper *dht.IpfsDHT, peers ...*dht.IpfsDHT) {
+func bootstrap(ctx context.Context, t *testing.T, net mocknet.Mocknet, bstrapper *dht.IpfsDHT, peers ...*dht.IpfsDHT) {
 	err := net.LinkAll()
 	require.NoError(t, err)
 	for _, p := range peers {
@@ -131,4 +131,3 @@ func bootstrap(t *testing.T, ctx context.Context,  net mocknet.Mocknet, bstrappe
 	err = bstrapper.Bootstrap(ctx)
 	require.NoError(t, err)
 }
-

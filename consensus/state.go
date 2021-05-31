@@ -13,6 +13,8 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	format "github.com/ipfs/go-ipld-format"
+	"github.com/libp2p/go-libp2p-core/routing"
+
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	"github.com/lazyledger/lazyledger-core/crypto"
@@ -94,7 +96,8 @@ type State struct {
 	// store blocks and commits
 	blockStore sm.BlockStore
 
-	dag format.DAGService
+	dag    format.DAGService
+	croute routing.ContentRouting
 
 	// create and execute blocks
 	blockExec *sm.BlockExecutor
@@ -164,6 +167,7 @@ func NewState(
 	blockStore sm.BlockStore,
 	txNotifier txNotifier,
 	dag format.DAGService,
+	croute routing.ContentRouting,
 	evpool evidencePool,
 	options ...StateOption,
 ) *State {
@@ -172,6 +176,7 @@ func NewState(
 		blockExec:        blockExec,
 		blockStore:       blockStore,
 		dag:              dag,
+		croute:           croute,
 		txNotifier:       txNotifier,
 		peerMsgQueue:     make(chan msgInfo, msgQueueSize),
 		internalMsgQueue: make(chan msgInfo, msgQueueSize),
@@ -1120,8 +1125,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
 	defer cancel()
 	cs.Logger.Info("Putting Block to ipfs", "height", block.Height)
-	// TODO: post data to IPFS in a goroutine
-	err = ipld.PutBlock(ctx, cs.dag, block)
+	err = ipld.PutBlock(ctx, cs.dag, block, cs.croute)
 	if err != nil {
 		// If PutBlock fails we will be the only node that has the data
 		// this means something is seriously wrong and we can not recover
