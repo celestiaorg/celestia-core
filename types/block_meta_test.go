@@ -12,12 +12,14 @@ import (
 func TestBlockMeta_ToProto(t *testing.T) {
 	h := makeRandHeader()
 	bi := BlockID{Hash: h.Hash(), PartSetHeader: PartSetHeader{Total: 123, Hash: tmrand.Bytes(tmhash.Size)}}
+	dah := makeDAHeaderRandom()
 
 	bm := &BlockMeta{
 		BlockID:   bi,
 		BlockSize: 200,
 		Header:    h,
 		NumTxs:    0,
+		DAHeader:  *dah,
 	}
 
 	tests := []struct {
@@ -32,7 +34,8 @@ func TestBlockMeta_ToProto(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.testName, func(t *testing.T) {
-			pb := tt.bm.ToProto()
+			pb, err := tt.bm.ToProto()
+			require.NoError(t, err)
 
 			bm, err := BlockMetaFromProto(pb)
 
