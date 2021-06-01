@@ -38,6 +38,7 @@ require (
 	github.com/libp2p/go-libp2p v0.12.0 // indirect
 	github.com/libp2p/go-libp2p-core v0.7.0 // indirect
 	github.com/libp2p/go-libp2p-kad-dht v0.11.1 // indirect
+	github.com/libp2p/go-libp2p-kbucket v0.4.7 // indirect
 	github.com/minio/highwayhash v1.0.1
 	github.com/multiformats/go-multiaddr v0.3.1
 	github.com/multiformats/go-multihash v0.0.14

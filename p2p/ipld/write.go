@@ -11,15 +11,26 @@ import (
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/rsmt2d"
 	"github.com/libp2p/go-libp2p-core/routing"
+	kbucket "github.com/libp2p/go-libp2p-kbucket"
 
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
+	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // PutBlock posts and pins erasured block data to IPFS using the provided
 // ipld.NodeAdder. Note: the erasured data is currently recomputed
-func PutBlock(ctx context.Context, adder ipld.NodeAdder, block *types.Block, croute routing.ContentRouting) error {
+// TODO this craves for refactor
+func PutBlock(
+	ctx context.Context,
+	adder ipld.NodeAdder,
+	block *types.Block,
+	croute routing.ContentRouting,
+	logger log.Logger,
+	sync bool,
+) error {
 	// recompute the shares
 	namespacedShares, _ := block.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
@@ -43,45 +54,48 @@ func PutBlock(ctx context.Context, adder ipld.NodeAdder, block *types.Block, cro
 	}
 	// get row and col roots to be provided
 	// this also triggers adding data to DAG
-	prov := newProvider(ctx, croute)
+	prov := newProvider(ctx, croute, logger.With("block", block.Hash().String()))
 	for _, root := range eds.RowRoots() {
 		prov.Provide(plugin.MustCidFromNamespacedSha256(root))
 	}
 	for _, root := range eds.ColumnRoots() {
 		prov.Provide(plugin.MustCidFromNamespacedSha256(root))
 	}
-	// wait until we provided all the roots
-	select {
-	case err = <-prov.Done():
-		if err != nil {
-			return err
-		}
-		// commit the batch to ipfs
-		return batchAdder.Commit()
-	case <-ctx.Done():
-		return ctx.Err()
+	// commit the batch to ipfs
+	err = batchAdder.Commit()
+	if err != nil {
+		return err
 	}
+	// wait until we provided all the roots if requested
+	if sync {
+		<-prov.Done()
+	}
+	return prov.Err()
 }
 
 var provideWorkers = 32
 
 type provider struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	done   chan error
-	jobs   chan cid.Cid
-	total  int32
+	ctx  context.Context
+	done chan struct{}
+
+	err   error
+	errLk sync.RWMutex
+
+	jobs  chan cid.Cid
+	total int32
+
 	croute routing.ContentRouting
+	log    log.Logger
 }
 
-func newProvider(ctx context.Context, croute routing.ContentRouting) *provider {
-	ctx, cancel := context.WithCancel(ctx)
+func newProvider(ctx context.Context, croute routing.ContentRouting, logger log.Logger) *provider {
 	p := &provider{
 		ctx:    ctx,
-		cancel: cancel,
-		done:   make(chan error, 1),
+		done:   make(chan struct{}),
 		jobs:   make(chan cid.Cid, provideWorkers),
 		croute: croute,
+		log:    logger,
 	}
 	for range make([]bool, provideWorkers) {
 		go p.worker()
@@ -97,8 +111,17 @@ func (p *provider) Provide(id cid.Cid) {
 	}
 }
 
-func (p *provider) Done() <-chan error {
+func (p *provider) Done() <-chan struct{} {
 	return p.done
+}
+
+func (p *provider) Err() error {
+	p.errLk.RLock()
+	defer p.errLk.RUnlock()
+	if p.err != nil {
+		return p.err
+	}
+	return p.ctx.Err()
 }
 
 func (p *provider) worker() {
@@ -106,20 +129,31 @@ func (p *provider) worker() {
 		select {
 		case id := <-p.jobs:
 			err := p.croute.Provide(p.ctx, id, true)
-			if err != nil {
-				select {
-				case p.done <- err:
-				case <-p.ctx.Done():
+			if err != nil && err != kbucket.ErrLookupFailure { // Check for error to decrease test log spamming
+				if p.Err() == nil {
+					p.errLk.Lock()
+					p.err = err
+					p.errLk.Unlock()
 				}
+
+				p.log.Error("failed to provide to DHT", "err", err.Error())
 			}
 
-			if atomic.AddInt32(&p.total, -1) == 0 {
-				p.cancel()
-				close(p.done)
-				return
-			}
+			p.provided()
 		case <-p.ctx.Done():
+			for range p.jobs { // drain chan
+				p.provided() // ensure done is closed
+			}
+			return
+		case <-p.done:
 			return
 		}
+	}
+}
+
+func (p *provider) provided() {
+	if atomic.AddInt32(&p.total, -1) == 0 {
+		p.log.Debug("Finished providing to DHT")
+		close(p.done)
 	}
 }

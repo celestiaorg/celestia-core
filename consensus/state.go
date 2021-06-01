@@ -1125,7 +1125,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5)
 	defer cancel()
 	cs.Logger.Info("Putting Block to ipfs", "height", block.Height)
-	err = ipld.PutBlock(ctx, cs.dag, block, cs.croute)
+	err = ipld.PutBlock(ctx, cs.dag, block, cs.croute, cs.Logger, false)
 	if err != nil {
 		// If PutBlock fails we will be the only node that has the data
 		// this means something is seriously wrong and we can not recover

@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
+	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/lazyledger-core/types/consts"
 )
@@ -50,6 +51,7 @@ func TestDiscovery(t *testing.T) {
 }
 
 func TestWriteDiscoveryReadData(t *testing.T) {
+	logger := log.TestingLogger()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
 
@@ -64,7 +66,7 @@ func TestWriteDiscoveryReadData(t *testing.T) {
 		b.Hash()
 		blocks[i] = b
 
-		err := PutBlock(ctx, dag, blocks[i], dhts[i])
+		err := PutBlock(ctx, dag, blocks[i], dhts[i], logger, true)
 		require.NoError(t, err)
 	}
 

@@ -15,12 +15,14 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
+	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
 func TestPutBlock(t *testing.T) {
+	logger := log.TestingLogger()
 	dag := mdutils.Mock()
 	croute := ipfs.MockRouting()
 
@@ -45,7 +47,7 @@ func TestPutBlock(t *testing.T) {
 		block := &types.Block{Data: tc.blockData}
 
 		t.Run(tc.name, func(t *testing.T) {
-			err := PutBlock(ctx, dag, block, croute)
+			err := PutBlock(ctx, dag, block, croute, logger, true)
 			if tc.expectErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.errString)
@@ -107,6 +109,7 @@ func toMessageSlice(msgs [][]byte) []*tmproto.Message {
 }
 
 func TestDataAvailabilityHeaderRewriteBug(t *testing.T) {
+	logger := log.TestingLogger()
 	dag := mdutils.Mock()
 	croute := ipfs.MockRouting()
 
@@ -145,7 +148,7 @@ func TestDataAvailabilityHeaderRewriteBug(t *testing.T) {
 	hash1 := block.DataAvailabilityHeader.Hash()
 
 	ctx := context.TODO()
-	err = PutBlock(ctx, dag, block, croute)
+	err = PutBlock(ctx, dag, block, croute, logger, true)
 	if err != nil {
 		t.Fatal(err)
 	}
