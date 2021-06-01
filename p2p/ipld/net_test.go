@@ -108,7 +108,7 @@ func dagNode(ctx context.Context, t *testing.T, net mocknet.Mocknet) (ipld.DAGSe
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
 	routing := dhtNode(ctx, t, net)
-	bs := bitswap.New(ctx, network.NewFromIpfsHost(routing.Host(), routing), bstore)
+	bs := bitswap.New(ctx, network.NewFromIpfsHost(routing.Host(), routing), bstore, bitswap.ProvideEnabled(false))
 	return merkledag.NewDAGService(blockservice.New(bstore, bs)), routing
 }
 
