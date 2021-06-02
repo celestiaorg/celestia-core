@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sync/atomic"
+	"time"
 
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -87,6 +88,7 @@ type provider struct {
 
 	croute routing.ContentRouting
 	log    log.Logger
+	took time.Time
 }
 
 func newProvider(ctx context.Context, croute routing.ContentRouting, logger log.Logger) *provider {
@@ -100,6 +102,8 @@ func newProvider(ctx context.Context, croute routing.ContentRouting, logger log.
 	for range make([]bool, provideWorkers) {
 		go p.worker()
 	}
+	logger.Info("Started Providing to DHT")
+	p.took = time.Now()
 	return p
 }
 
@@ -153,7 +157,7 @@ func (p *provider) worker() {
 
 func (p *provider) provided() {
 	if atomic.AddInt32(&p.total, -1) == 0 {
-		p.log.Debug("Finished providing to DHT")
+		p.log.Info("Finished providing to DHT", "took", time.Since(p.took).String())
 		close(p.done)
 	}
 }
