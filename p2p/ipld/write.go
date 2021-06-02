@@ -55,7 +55,7 @@ func PutBlock(
 	}
 	// get row and col roots to be provided
 	// this also triggers adding data to DAG
-	prov := newProvider(ctx, croute, logger.With("block", block.Hash().String()))
+	prov := newProvider(ctx, croute, logger.With("height", block.Height))
 	for _, root := range eds.RowRoots() {
 		prov.Provide(plugin.MustCidFromNamespacedSha256(root))
 	}
