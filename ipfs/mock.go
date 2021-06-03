@@ -10,7 +10,7 @@ import (
 
 // Mock provides simple mock IPFS API useful for testing
 func Mock() APIProvider {
-	return func() (coreiface.APIDagService, io.Closer, error) {
+	return func(bool) (coreiface.APIDagService, io.Closer, error) {
 		dom := dagOnlyMock{mdutils.Mock()}
 
 		return dom, dom, nil

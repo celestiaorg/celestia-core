@@ -643,12 +643,12 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
-	dag, ipfsclose, err := ipfsProvider()
+	offlineDAG, ipfsclose, err := ipfsProvider(false)
 	if err != nil {
 		return nil, err
 	}
 
-	blockStore, stateDB, err := initDBs(config, dbProvider, dag)
+	blockStore, stateDB, err := initDBs(config, dbProvider, offlineDAG)
 	if err != nil {
 		return nil, err
 	}
@@ -760,9 +760,16 @@ func NewNode(config *cfg.Config,
 	} else if fastSync {
 		csMetrics.FastSyncing.Set(1)
 	}
+
+	// the ipfscloser is already declared, so we don't do anything with it here
+	onlineDAG, _, err := ipfsProvider(true)
+	if err != nil {
+		return nil, err
+	}
+
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, dag, consensusLogger,
+		privValidator, csMetrics, stateSync || fastSync, eventBus, onlineDAG, consensusLogger,
 	)
 
 	// Set up state sync reactor, and schedule a sync if requested.

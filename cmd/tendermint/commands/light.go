@@ -185,9 +185,12 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		cfg := ipfs.DefaultConfig()
 		cfg.RootDir = dir
 		// TODO(ismail): share badger instance
-		apiProvider := ipfs.Embedded(true, cfg, logger)
+		apiProvider, err := ipfs.Embedded(true, cfg, logger)
+		if err != nil {
+			return err
+		}
 		var dag coreiface.APIDagService
-		dag, ipfsCloser, err = apiProvider()
+		dag, ipfsCloser, err = apiProvider(true)
 		if err != nil {
 			return fmt.Errorf("could not start ipfs API: %w", err)
 		}

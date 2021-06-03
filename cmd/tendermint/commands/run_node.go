@@ -121,11 +121,12 @@ func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
 				return err
 			}
 
-			n, err := nodeProvider(
-				config,
-				ipfs.Embedded(initIPFS, config.IPFS, logger),
-				logger,
-			)
+			provider, err := ipfs.Embedded(initIPFS, config.IPFS, logger)
+			if err != nil {
+				return err
+			}
+
+			n, err := nodeProvider(config, provider, logger)
 			if err != nil {
 				return fmt.Errorf("failed to create node: %w", err)
 			}
