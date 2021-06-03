@@ -98,7 +98,7 @@ func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 
 // LoadBlock returns the block with the given height.
 // If no block is found for that height, it returns nil.
-func (bs *BlockStore) LoadBlock(height int64) (*types.Block, error) {
+func (bs *BlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block, error) {
 	blockMeta := bs.LoadBlockMeta(height)
 	if blockMeta == nil {
 		// TODO(evan): return an error
@@ -107,7 +107,7 @@ func (bs *BlockStore) LoadBlock(height int64) (*types.Block, error) {
 
 	lastCommit := bs.LoadBlockCommit(height - 1)
 
-	data, err := ipld.RetrieveBlockData(context.TODO(), &blockMeta.DAHeader, bs.dag, rsmt2d.NewRSGF8Codec())
+	data, err := ipld.RetrieveBlockData(ctx, &blockMeta.DAHeader, bs.dag, rsmt2d.NewRSGF8Codec())
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (bs *BlockStore) LoadBlock(height int64) (*types.Block, error) {
 // LoadBlockByHash returns the block with the given hash.
 // If no block is found for that hash, it returns nil.
 // Panics if it fails to parse height associated with the given hash.
-func (bs *BlockStore) LoadBlockByHash(hash []byte) (*types.Block, error) {
+func (bs *BlockStore) LoadBlockByHash(ctx context.Context, hash []byte) (*types.Block, error) {
 	bz, err := bs.db.Get(calcBlockHashKey(hash))
 	if err != nil {
 		panic(err)
@@ -140,7 +140,7 @@ func (bs *BlockStore) LoadBlockByHash(hash []byte) (*types.Block, error) {
 	if err != nil {
 		panic(fmt.Sprintf("failed to extract height from %s: %v", s, err))
 	}
-	return bs.LoadBlock(height)
+	return bs.LoadBlock(ctx, height)
 }
 
 // LoadBlockPart returns the Part at the given index
@@ -328,7 +328,12 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 //             If all the nodes restart after committing a block,
 //             we need this to reload the precommits to catch-up nodes to the
 //             most recent height.  Otherwise they'd stall at H-1.
-func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) error {
+func (bs *BlockStore) SaveBlock(
+	ctx context.Context,
+	block *types.Block,
+	blockParts *types.PartSet,
+	seenCommit *types.Commit,
+) error {
 	if block == nil {
 		panic("BlockStore can only save a non-nil block")
 	}
@@ -352,7 +357,7 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 		bs.saveBlockPart(height, i, part)
 	}
 
-	err := ipld.PutBlock(context.TODO(), bs.dag, block)
+	err := ipld.PutBlock(ctx, bs.dag, block)
 	if err != nil {
 		return err
 	}

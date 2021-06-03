@@ -1559,7 +1559,7 @@ func (cs *State) finalizeCommit(height int64) {
 		// but may differ from the LastCommit included in the next block
 		precommits := cs.Votes.Precommits(cs.CommitRound)
 		seenCommit := precommits.MakeCommit()
-		err := cs.blockStore.SaveBlock(block, blockParts, seenCommit)
+		err := cs.blockStore.SaveBlock(context.TODO(), block, blockParts, seenCommit)
 		if err != nil {
 			panic(err)
 		}

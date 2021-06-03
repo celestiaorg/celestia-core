@@ -1,6 +1,7 @@
 package v0
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"time"
@@ -178,7 +179,7 @@ func (bcR *BlockchainReactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 func (bcR *BlockchainReactor) respondToPeer(msg *bcproto.BlockRequest,
 	src p2p.Peer) (queued bool) {
 
-	block, err := bcR.store.LoadBlock(msg.Height)
+	block, err := bcR.store.LoadBlock(context.TODO(), msg.Height)
 	if err != nil {
 		bcR.Logger.Error("failure to load block", "err", err)
 		return false
@@ -422,7 +423,7 @@ FOR_LOOP:
 				bcR.pool.PopRequest()
 
 				// TODO: batch saves so we dont persist to disk every block
-				err = bcR.store.SaveBlock(first, firstParts, second.LastCommit)
+				err = bcR.store.SaveBlock(context.TODO(), first, firstParts, second.LastCommit)
 				if err != nil {
 					panic(err)
 				}

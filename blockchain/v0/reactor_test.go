@@ -1,6 +1,7 @@
 package v0
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"os"
@@ -100,7 +101,7 @@ func newBlockchainReactor(
 		lastCommit := types.NewCommit(blockHeight-1, 0, types.BlockID{}, nil)
 		if blockHeight > 1 {
 			lastBlockMeta := blockStore.LoadBlockMeta(blockHeight - 1)
-			lastBlock, err := blockStore.LoadBlock(blockHeight - 1)
+			lastBlock, err := blockStore.LoadBlock(context.TODO(), blockHeight-1)
 			if err != nil {
 				panic(err)
 			}
@@ -130,7 +131,7 @@ func newBlockchainReactor(
 			panic(fmt.Errorf("error apply block: %w", err))
 		}
 
-		err = blockStore.SaveBlock(thisBlock, thisParts, lastCommit)
+		err = blockStore.SaveBlock(context.TODO(), thisBlock, thisParts, lastCommit)
 		if err != nil {
 			panic(err)
 		}
@@ -190,7 +191,7 @@ func TestNoBlockResponse(t *testing.T) {
 	assert.Equal(t, maxBlockHeight, reactorPairs[0].reactor.store.Height())
 
 	for _, tt := range tests {
-		block, err := reactorPairs[1].reactor.store.LoadBlock(tt.height)
+		block, err := reactorPairs[1].reactor.store.LoadBlock(context.TODO(), tt.height)
 		if tt.existent {
 			require.NoError(t, err)
 			assert.True(t, block != nil)

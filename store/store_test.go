@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"os"
@@ -175,7 +176,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	// check there are no blocks at various heights
 	noBlockHeights := []int64{0, -1, 100, 1000, 2}
 	for i, height := range noBlockHeights {
-		if g, _ := bs.LoadBlock(height); g != nil {
+		if g, _ := bs.LoadBlock(context.TODO(), height); g != nil {
 			t.Errorf("#%d: height(%d) got a block; want nil", i, height)
 		}
 	}
@@ -184,7 +185,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	block := makeBlock(bs.Height()+1, state, new(types.Commit))
 	validPartSet := block.MakePartSet(2)
 	seenCommit := makeTestCommit(10, tmtime.Now())
-	err := bs.SaveBlock(block, partSet, seenCommit)
+	err := bs.SaveBlock(context.TODO(), block, partSet, seenCommit)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, bs.Base(), "expecting the new height to be changed")
 	require.EqualValues(t, block.Header.Height, bs.Height(), "expecting the new height to be changed")
@@ -306,7 +307,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 		bs, db := freshBlockStore()
 		// SaveBlock
 		res, err, panicErr := doFn(func() (interface{}, error) {
-			err = bs.SaveBlock(tuple.block, tuple.parts, tuple.seenCommit)
+			err = bs.SaveBlock(context.TODO(), tuple.block, tuple.parts, tuple.seenCommit)
 			require.NoError(t, err)
 			if tuple.block == nil {
 				return nil, nil
@@ -316,7 +317,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 				err := db.Set(calcBlockMetaKey(tuple.block.Height), []byte("block-bogus"))
 				require.NoError(t, err)
 			}
-			bBlock, err := bs.LoadBlock(tuple.block.Height)
+			bBlock, err := bs.LoadBlock(context.TODO(), tuple.block.Height)
 			require.NoError(t, err)
 			bBlockMeta := bs.LoadBlockMeta(tuple.block.Height)
 
@@ -390,7 +391,7 @@ func TestLoadBaseMeta(t *testing.T) {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, tmtime.Now())
-		err = bs.SaveBlock(block, partSet, seenCommit)
+		err = bs.SaveBlock(context.TODO(), block, partSet, seenCommit)
 		require.NoError(t, err)
 	}
 
@@ -459,7 +460,7 @@ func TestPruneBlocks(t *testing.T) {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, tmtime.Now())
-		err = bs.SaveBlock(block, partSet, seenCommit)
+		err = bs.SaveBlock(context.TODO(), block, partSet, seenCommit)
 		require.NoError(t, err)
 	}
 
@@ -467,7 +468,7 @@ func TestPruneBlocks(t *testing.T) {
 	assert.EqualValues(t, 1500, bs.Height())
 	assert.EqualValues(t, 1500, bs.Size())
 
-	prunedBlock, err := bs.LoadBlock(1199)
+	prunedBlock, err := bs.LoadBlock(context.TODO(), 1199)
 	assert.NoError(t, err)
 
 	// Check that basic pruning works
@@ -482,22 +483,22 @@ func TestPruneBlocks(t *testing.T) {
 		Height: 1500,
 	}, LoadBlockStoreState(db))
 
-	block, _ := bs.LoadBlock(1200)
+	block, _ := bs.LoadBlock(context.TODO(), 1200)
 	require.NotNil(t, block)
-	block, _ = bs.LoadBlock(1199)
+	block, _ = bs.LoadBlock(context.TODO(), 1199)
 	require.Nil(t, block)
-	block, _ = bs.LoadBlockByHash(prunedBlock.Hash())
+	block, _ = bs.LoadBlockByHash(context.TODO(), prunedBlock.Hash())
 	require.Nil(t, block)
 	require.Nil(t, bs.LoadBlockCommit(1199))
 	require.Nil(t, bs.LoadBlockMeta(1199))
 	require.Nil(t, bs.LoadBlockPart(1199, 1))
 
 	for i := int64(1); i < 1200; i++ {
-		block, _ = bs.LoadBlock(i)
+		block, _ = bs.LoadBlock(context.TODO(), i)
 		require.Nil(t, block)
 	}
 	for i := int64(1200); i <= 1500; i++ {
-		block, _ = bs.LoadBlock(i)
+		block, _ = bs.LoadBlock(context.TODO(), i)
 		require.NotNil(t, block)
 	}
 
@@ -524,11 +525,11 @@ func TestPruneBlocks(t *testing.T) {
 	pruned, err = bs.PruneBlocks(1500)
 	require.NoError(t, err)
 	assert.EqualValues(t, 200, pruned)
-	block, _ = bs.LoadBlock(1499)
+	block, _ = bs.LoadBlock(context.TODO(), 1499)
 	assert.Nil(t, block)
-	block, _ = bs.LoadBlock(1500)
+	block, _ = bs.LoadBlock(context.TODO(), 1500)
 	assert.NotNil(t, block)
-	block, _ = bs.LoadBlock(1501)
+	block, _ = bs.LoadBlock(context.TODO(), 1501)
 	assert.Nil(t, block)
 }
 
@@ -582,11 +583,11 @@ func TestBlockFetchAtHeight(t *testing.T) {
 
 	partSet := block.MakePartSet(2)
 	seenCommit := makeTestCommit(10, tmtime.Now())
-	err := bs.SaveBlock(block, partSet, seenCommit)
+	err := bs.SaveBlock(context.TODO(), block, partSet, seenCommit)
 	require.NoError(t, err)
 	require.Equal(t, bs.Height(), block.Header.Height, "expecting the new height to be changed")
 
-	blockAtHeight, _ := bs.LoadBlock(bs.Height())
+	blockAtHeight, _ := bs.LoadBlock(context.TODO(), bs.Height())
 	b1, err := block.ToProto()
 	require.NoError(t, err)
 	b2, err := blockAtHeight.ToProto()
@@ -597,10 +598,10 @@ func TestBlockFetchAtHeight(t *testing.T) {
 	require.Equal(t, block.Hash(), blockAtHeight.Hash(),
 		"expecting a successful load of the last saved block")
 
-	blockAtHeightPlus1, err := bs.LoadBlock(bs.Height() + 1)
+	blockAtHeightPlus1, err := bs.LoadBlock(context.TODO(), bs.Height()+1)
 	require.NoError(t, err)
 	require.Nil(t, blockAtHeightPlus1, "expecting an unsuccessful load of Height()+1")
-	blockAtHeightPlus2, err := bs.LoadBlock(bs.Height() + 2)
+	blockAtHeightPlus2, err := bs.LoadBlock(context.TODO(), bs.Height()+2)
 	require.NoError(t, err)
 	require.Nil(t, blockAtHeightPlus2, "expecting an unsuccessful load of Height()+2")
 }

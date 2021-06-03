@@ -463,7 +463,7 @@ func (h *Handshaker) replayBlocks(
 	}
 	for i := firstBlock; i <= finalBlock; i++ {
 		h.logger.Info("Applying block", "height", i)
-		block, err := h.store.LoadBlock(i)
+		block, err := h.store.LoadBlock(context.TODO(), i)
 		if err != nil {
 			return nil, err
 		}
@@ -495,7 +495,7 @@ func (h *Handshaker) replayBlocks(
 
 // ApplyBlock on the proxyApp with the last block.
 func (h *Handshaker) replayBlock(state sm.State, height int64, proxyApp proxy.AppConnConsensus) (sm.State, error) {
-	block, err := h.store.LoadBlock(height)
+	block, err := h.store.LoadBlock(context.TODO(), height)
 	if err != nil {
 		return sm.State{}, err
 	}

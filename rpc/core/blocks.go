@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
@@ -89,7 +90,7 @@ func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error)
 		return nil, err
 	}
 
-	block, err := env.BlockStore.LoadBlock(height)
+	block, err := env.BlockStore.LoadBlock(context.TODO(), height)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +104,7 @@ func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error)
 // BlockByHash gets block by hash.
 // More: https://docs.tendermint.com/master/rpc/#/Info/block_by_hash
 func BlockByHash(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error) {
-	block, err := env.BlockStore.LoadBlockByHash(hash)
+	block, err := env.BlockStore.LoadBlockByHash(context.TODO(), hash)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +154,7 @@ func DataAvailabilityHeader(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.Re
 	// depends on either:
 	// - https://github.com/lazyledger/lazyledger-core/pull/312, or
 	// - https://github.com/lazyledger/lazyledger-core/pull/218
-	block, err := env.BlockStore.LoadBlock(height)
+	block, err := env.BlockStore.LoadBlock(context.TODO(), height)
 	if err != nil {
 		return nil, err
 	}

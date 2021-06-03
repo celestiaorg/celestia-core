@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -37,7 +38,7 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 
 	var proof types.TxProof
 	if prove {
-		block, err := env.BlockStore.LoadBlock(height)
+		block, err := env.BlockStore.LoadBlock(context.TODO(), height)
 		if err != nil {
 			return nil, err
 		}
@@ -111,7 +112,7 @@ func TxSearch(ctx *rpctypes.Context, query string, prove bool, pagePtr, perPageP
 		var proof types.TxProof
 		if prove {
 			// TODO(evan): do something with this error
-			block, _ := env.BlockStore.LoadBlock(r.Height)
+			block, _ := env.BlockStore.LoadBlock(context.TODO(), r.Height)
 			proof = block.Data.Txs.Proof(int(r.Index)) // XXX: overflow on 32-bit machines
 		}
 
