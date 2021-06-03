@@ -108,7 +108,7 @@ func (bs *BlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block
 
 	data, err := ipld.RetrieveBlockData(ctx, &blockMeta.DAHeader, bs.dag, rsmt2d.NewRSGF8Codec())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failure to retrieve block data from local ipfs store: %w", err)
 	}
 
 	block := types.Block{
