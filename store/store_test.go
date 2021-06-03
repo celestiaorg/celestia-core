@@ -525,11 +525,14 @@ func TestPruneBlocks(t *testing.T) {
 	pruned, err = bs.PruneBlocks(1500)
 	require.NoError(t, err)
 	assert.EqualValues(t, 200, pruned)
-	block, _ = bs.LoadBlock(context.TODO(), 1499)
+	block, err = bs.LoadBlock(context.TODO(), 1499)
+	assert.NoError(t, err)
 	assert.Nil(t, block)
-	block, _ = bs.LoadBlock(context.TODO(), 1500)
+	block, err = bs.LoadBlock(context.TODO(), 1500)
+	assert.NoError(t, err)
 	assert.NotNil(t, block)
 	block, _ = bs.LoadBlock(context.TODO(), 1501)
+	assert.NoError(t, err)
 	assert.Nil(t, block)
 }
 
