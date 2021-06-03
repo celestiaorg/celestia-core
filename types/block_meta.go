@@ -43,7 +43,7 @@ func (bm *BlockMeta) ToProto() (*tmproto.BlockMeta, error) {
 		BlockSize: int64(bm.BlockSize),
 		Header:    *bm.Header.ToProto(),
 		NumTxs:    int64(bm.NumTxs),
-		DaHeader:  *protoDAH,
+		DaHeader:  protoDAH,
 	}
 	return pb, nil
 }
@@ -65,7 +65,7 @@ func BlockMetaFromProto(pb *tmproto.BlockMeta) (*BlockMeta, error) {
 		return nil, err
 	}
 
-	dah, err := DataAvailabilityHeaderFromProto(&pb.DaHeader)
+	dah, err := DataAvailabilityHeaderFromProto(pb.DaHeader)
 	if err != nil {
 		return nil, err
 	}
