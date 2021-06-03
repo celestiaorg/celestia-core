@@ -96,8 +96,7 @@ func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 	return bs.LoadBlockMeta(bs.base)
 }
 
-// LoadBlock returns the block with the given height.
-// If no block is found for that height, it returns nil.
+// LoadBlock fetches the block at the provided height from IPFS and the local db
 func (bs *BlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block, error) {
 	blockMeta := bs.LoadBlockMeta(height)
 	if blockMeta == nil {
@@ -122,7 +121,7 @@ func (bs *BlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block
 	return &block, nil
 }
 
-// LoadBlockByHash returns the block with the given hash.
+// LoadBlockByHash fetches the block from IPFS using the provided hash.
 // If no block is found for that hash, it returns nil.
 // Panics if it fails to parse height associated with the given hash.
 func (bs *BlockStore) LoadBlockByHash(ctx context.Context, hash []byte) (*types.Block, error) {
@@ -322,9 +321,11 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 	return pruned, nil
 }
 
-// SaveBlock persists the given block, blockParts, and seenCommit to the underlying db.
+// SaveBlock persists the given block, blockParts, and seenCommit to the
+// underlying db, while also putting the block data onto IPFS
 // blockParts: Must be parts of the block
-// seenCommit: The +2/3 precommits that were seen which committed at height.
+// seenCommit: The +2/3 precommits that were seen which
+// committed at height.
 //             If all the nodes restart after committing a block,
 //             we need this to reload the precommits to catch-up nodes to the
 //             most recent height.  Otherwise they'd stall at H-1.
