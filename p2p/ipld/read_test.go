@@ -220,7 +220,7 @@ func TestNonExistentBlockData(t *testing.T) {
 	// ensure that the error provided is as expected and that the timeout was not reached
 	if assert.Error(t, err) {
 		assert.Contains(t, err.Error(), format.ErrNotFound.Error())
-		assert.Less(t, end.Sub(start), timeout)
+		assert.Less(t, end.Sub(start), timeout-time.Second*5)
 	}
 }
 
