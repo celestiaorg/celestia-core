@@ -100,7 +100,7 @@ Example:
 
 When a user requests a block from the LL node, the request will be set to the IPLD plugin. If the IPLD does not have the requested block, it will make a request to the lazyledger IPFS network for the required CIDs. If the full node does not have the DAheader they will not be able to request the block data.
 
-![user request flow](./assets/user_request.png)
+![user request flow](./assets/user-request.png)
 
 The goal is to not change the public interface for RPC's. It is yet to be seen if this possible. This means that CIDs will need to be set and loaded from the store in order to get all the related block information an user requires.
 
