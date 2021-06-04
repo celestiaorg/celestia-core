@@ -55,7 +55,7 @@ func PutBlock(
 	}
 	// get row and col roots to be provided
 	// this also triggers adding data to DAG
-	prov := newProvider(ctx, croute, logger.With("height", block.Height))
+	prov := newProvider(ctx, croute, int32(squareSize*4), logger.With("height", block.Height))
 	for _, root := range eds.RowRoots() {
 		prov.Provide(plugin.MustCidFromNamespacedSha256(root))
 	}
@@ -91,11 +91,12 @@ type provider struct {
 	took   time.Time
 }
 
-func newProvider(ctx context.Context, croute routing.ContentRouting, logger log.Logger) *provider {
+func newProvider(ctx context.Context, croute routing.ContentRouting, toProvide int32, logger log.Logger) *provider {
 	p := &provider{
 		ctx:    ctx,
 		done:   make(chan struct{}),
 		jobs:   make(chan cid.Cid, provideWorkers),
+		total:  toProvide,
 		croute: croute,
 		log:    logger,
 	}
@@ -108,7 +109,6 @@ func newProvider(ctx context.Context, croute routing.ContentRouting, logger log.
 }
 
 func (p *provider) Provide(id cid.Cid) {
-	atomic.AddInt32(&p.total, 1)
 	select {
 	case p.jobs <- id:
 	case <-p.ctx.Done():
@@ -145,10 +145,14 @@ func (p *provider) worker() {
 
 			p.provided()
 		case <-p.ctx.Done():
-			for range p.jobs { // drain chan
-				p.provided() // ensure done is closed
+			for {
+				select {
+				case <-p.jobs: // drain chan
+					p.provided() // ensure done is closed
+				default:
+					return
+				}
 			}
-			return
 		case <-p.done:
 			return
 		}
