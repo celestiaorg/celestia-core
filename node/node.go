@@ -13,7 +13,6 @@ import (
 	"time"
 
 	ipld "github.com/ipfs/go-ipld-format"
-	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -218,26 +217,6 @@ type Node struct {
 	prometheusSrv     *http.Server
 
 	ipfsClose io.Closer
-}
-
-func initDBs(
-	config *cfg.Config,
-	dbProvider DBProvider,
-	dag iface.APIDagService,
-) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
-	var blockStoreDB dbm.DB
-	blockStoreDB, err = dbProvider(&DBContext{"blockstore", config})
-	if err != nil {
-		return
-	}
-	blockStore = store.NewBlockStore(blockStoreDB, dag)
-
-	stateDB, err = dbProvider(&DBContext{"state", config})
-	if err != nil {
-		return
-	}
-
-	return
 }
 
 func createAndStartProxyAppConns(clientCreator proxy.ClientCreator, logger log.Logger) (proxy.AppConns, error) {
@@ -646,12 +625,7 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
-	dag, ipfsNode, err := ipfsProvider()
-	if err != nil {
-		return nil, err
-	}
-
-	blockStore, stateDB, err := initDBs(config, dbProvider, dag)
+	stateDB, err := dbProvider(&DBContext{"state", config})
 	if err != nil {
 		return nil, err
 	}
@@ -705,6 +679,18 @@ func NewNode(config *cfg.Config,
 		logger.Info("Found local state with non-zero height, skipping state sync")
 		stateSync = false
 	}
+
+	dag, ipfsNode, err := ipfsProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	blockStoreDB, err := dbProvider(&DBContext{"blockstore", config})
+	if err != nil {
+		return nil, err
+	}
+
+	blockStore := store.NewBlockStore(blockStoreDB, dag)
 
 	// Create the handshaker, which calls RequestInfo, sets the AppVersion on the state,
 	// and replays any blocks as necessary to sync tendermint with the app.
