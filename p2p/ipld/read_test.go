@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -187,6 +188,39 @@ func TestRetrieveBlockData(t *testing.T) {
 			nsShares, _ := rblockData.ComputeShares()
 			assert.Equal(t, rawData, nsShares.RawShares())
 		})
+	}
+}
+
+func TestNonExistentBlockData(t *testing.T) {
+	provider := ipfs.Mock()
+
+	dag, _, err := provider(false)
+	require.NoError(t, err)
+
+	// this timeout should not be reached
+	timeout := 10 * time.Second
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	blockData := generateRandomBlockData(4, consts.MsgShareSize-2)
+	block := &types.Block{
+		Data:       blockData,
+		LastCommit: &types.Commit{},
+	}
+
+	// fill the data availability header
+	block.Hash()
+
+	// time how long it takes to recieve an error
+	start := time.Now()
+	_, err = RetrieveBlockData(ctx, &block.DataAvailabilityHeader, dag, rsmt2d.NewRSGF8Codec())
+	end := time.Now()
+
+	// ensure that the error provided is as expected and that the timeout was not reached
+	if assert.Error(t, err) {
+		assert.Contains(t, err.Error(), "merkledag: not found")
+		assert.Less(t, end.Sub(start), timeout)
 	}
 }
 
