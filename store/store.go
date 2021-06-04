@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/gogo/protobuf/proto"
 	format "github.com/ipfs/go-ipld-format"
@@ -108,7 +109,10 @@ func (bs *BlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block
 
 	data, err := ipld.RetrieveBlockData(ctx, &blockMeta.DAHeader, bs.dag, rsmt2d.NewRSGF8Codec())
 	if err != nil {
-		return nil, fmt.Errorf("failure to retrieve block data from local ipfs store: %w", err)
+		if strings.Contains(err.Error(), format.ErrNotFound.Error()) {
+			return nil, fmt.Errorf("failure to retrieve block data from local ipfs store: %w", err)
+		}
+		return nil, err
 	}
 
 	block := types.Block{

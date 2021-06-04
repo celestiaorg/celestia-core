@@ -212,14 +212,14 @@ func TestNonExistentBlockData(t *testing.T) {
 	// fill the data availability header
 	block.Hash()
 
-	// time how long it takes to recieve an error
+	// time how long it takes to receive an error
 	start := time.Now()
 	_, err = RetrieveBlockData(ctx, &block.DataAvailabilityHeader, dag, rsmt2d.NewRSGF8Codec())
 	end := time.Now()
 
 	// ensure that the error provided is as expected and that the timeout was not reached
 	if assert.Error(t, err) {
-		assert.Contains(t, err.Error(), "merkledag: not found")
+		assert.Contains(t, err.Error(), format.ErrNotFound.Error())
 		assert.Less(t, end.Sub(start), timeout)
 	}
 }
