@@ -88,7 +88,7 @@ type provider struct {
 
 	croute routing.ContentRouting
 	log    log.Logger
-	took time.Time
+	took   time.Time
 }
 
 func newProvider(ctx context.Context, croute routing.ContentRouting, logger log.Logger) *provider {

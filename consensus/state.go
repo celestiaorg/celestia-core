@@ -1122,10 +1122,11 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	// TODO(evan): don't hard code context and timeout
 	//
 	// longer timeouts result in block proposers failing to propose blocks in time
-	// TODO(Wondertan): rework context for cancel to be callable
-	ctx, _ := context.WithTimeout(context.Background(), time.Minute*5)
 	cs.Logger.Info("Putting Block to ipfs", "height", block.Height)
-	err = ipld.PutBlock(ctx, cs.dag, block, cs.croute, cs.Logger, false)
+	// TODO(Wondertan): CONTEXT !!!
+	//  We can't pass there cancelable context right now
+	//  Ideally, we should create context once proposing and it keep it alive until it is next turn to propose
+	err = ipld.PutBlock(context.TODO(), cs.dag, block, cs.croute, cs.Logger, false)
 	if err != nil {
 		// If PutBlock fails we will be the only node that has the data
 		// this means something is seriously wrong and we can not recover
