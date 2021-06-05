@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 
 	format "github.com/ipfs/go-ipld-format"
@@ -18,7 +19,7 @@ import (
 	"github.com/lazyledger/nmt/namespace"
 )
 
-func TestReturnContainingRow(t *testing.T) {
+func Test_rowRootsFromNamespaceID(t *testing.T) {
 	data := generateRandNamespacedRawData(16, 8, 8)
 	nID := data[len(data)/2][:8]
 	dah, err := makeDAHeader(data)
@@ -26,29 +27,19 @@ func TestReturnContainingRow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmt.Println("num rows: ", len(dah.RowsRoots))
-	fmt.Println("num cols: ", len(dah.ColumnRoots))
-
 	indices, err := rowRootsFromNamespaceID(nID, dah)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("got %d rows", len(indices))
-	for _, index := range indices {
-		fmt.Println("row num: ", index, "data: ", dah.RowsRoots[index].Bytes())
-	}
-	// TODO implement check
-}
 
-func makeFakeNMT(nIDSize int, data [][]byte) *nmt.NamespacedMerkleTree {
-	tree := nmt.New(sha256.New(), nmt.NamespaceIDSize(nIDSize)) // TODO consider changing this to default size
-	// add some fake data
-	for _, d := range data {
-		if err := tree.Push(d); err != nil {
-			panic(fmt.Sprintf("unexpected error: %v", err))
+	expected := make([]int, 0)
+	for i, row := range dah.RowsRoots {
+		if !namespace.ID(nID).Less(row.Min()) && namespace.ID(nID).LessOrEqual(row.Max()) {
+			expected = append(expected, i)
 		}
 	}
-	return tree
+
+	assert.Equal(t, expected, indices)
 }
 
 func makeDAHeader(data [][]byte) (*types.DataAvailabilityHeader, error) {
@@ -68,9 +59,6 @@ func makeDAHeader(data [][]byte) (*types.DataAvailabilityHeader, error) {
 }
 
 func TestRetrieveShares(t *testing.T) {
-}
-
-func Test_getSharesByNamespace(t *testing.T) {
 	// set nID
 	api := mockedIpfsAPI(t)
 	treeRoots := make(types.NmtRoots, 0)
@@ -89,7 +77,7 @@ func Test_getSharesByNamespace(t *testing.T) {
 		data := generateRandNamespacedRawData(4, nmt.DefaultNamespaceIDLen, 16)
 		fmt.Printf("%+v\n", data)
 		if len(nID) == 0 {
-			nIDData = data[rand.Intn(len(data)-1)] // todo maybe make this nicer later
+			nIDData = data[rand.Intn(len(data)-1)]
 			nID = nIDData[:8]
 		}
 
@@ -110,20 +98,14 @@ func Test_getSharesByNamespace(t *testing.T) {
 		RowsRoots: treeRoots,
 	}
 
-	rowIndices, err := rowRootsFromNamespaceID(nID, dah)
+	shares, err := RetrieveShares(ctx, nID, dah, api)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log("row indices: ", rowIndices)
-
-	shares, err := getSharesByNamespace(ctx, nID, dah, rowIndices, api)
-	if err != nil {
-		t.Fatal(err)
+	if len(shares) > 1 {
+		t.Fatal("unexpected share(s) returned: ", shares)
 	}
-	for i, share := range shares {
-		fmt.Printf("share %d: %v\n", i, share)
-	}
-	fmt.Println("SUCCESS!")
+	assert.Equal(t, nIDData, shares[0])
 }
 
 func Test_walk(t *testing.T) {
@@ -181,15 +163,6 @@ func Test_walk(t *testing.T) {
 	}
 }
 
-//func makeDAHeader(data [][]byte, api coreiface.CoreAPI) (*types.DataAvailabilityHeader, error) {
-//	treeRoot, err := commitTreeDataToDAG(data, api)
-//	if err != nil {
-//		return nil, err
-//	}
-//	return &types.DataAvailabilityHeader{
-//		RowsRoots:   types.NmtRoots{treeRoot}, // only need row roots
-//	}, nil
-//}
 
 // todo fix later
 func commitTreeDataToDAG(ctx context.Context, data [][]byte, batchAdder *nodes.NmtNodeAdder) (namespace.IntervalDigest, error) {
@@ -451,12 +424,65 @@ func Test_unsuccessful_findStartingIndex(t *testing.T) {
 	}
 	fmt.Println("rootCID: ", rootCid)
 
-	startIndex, err := findStartingIndex(ctx, nID, dah, rootCid, api)
-	if err != nil {
+	_, err = findStartingIndex(ctx, nID, dah, rootCid, api)
+	if err == nil {
 		t.Fatal(err)
 	}
+	assert.True(t, strings.Contains(err.Error(), "within range of tree, but does not exist"))
+}
 
-	fmt.Println("start path: ", startIndex)
+func Test_unsuccessfulLessThan_findStartingIndex(t *testing.T) { // TODO
+	// set nID
+	api := mockedIpfsAPI(t)
+	treeRoots := make(types.NmtRoots, 0)
+
+	ctx := context.Background()
+
+	var (
+		nIDData []byte
+		nID     []byte
+	)
+
+	// create nmt adder wrapping batch adder
+	batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, api.Dag()))
+
+	for i := 0; i < 4; i++ {
+		data := generateRandNamespacedRawData(4, nmt.DefaultNamespaceIDLen, 16)
+		fmt.Printf("%+v\n", data)
+		if len(nID) == 0 {
+			nIDData = data[rand.Intn(len(data)-1)] // todo maybe make this nicer later
+			nID = nIDData[:8]
+		}
+
+		treeRoot, err := commitTreeDataToDAG(ctx, data, batchAdder)
+		if err != nil {
+			t.Fatal(err)
+		}
+		treeRoots = append(treeRoots, treeRoot)
+
+		if err := batchAdder.Commit(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	fmt.Println("NID DATA: ", nIDData, "\nnID: ", nID)
+
+	dah := &types.DataAvailabilityHeader{
+		RowsRoots: treeRoots,
+	}
+
+	// get rootCID of a row in which nID does NOT exist
+	rootCid, err := nodes.CidFromNamespacedSha256(dah.RowsRoots[2].Bytes())
+	if err != nil {
+		t.Error(err)
+	}
+	fmt.Println("rootCID: ", rootCid)
+
+	_, err = findStartingIndex(ctx, nID, dah, rootCid, api)
+	if err == nil {
+		t.Fatal(err)
+	}
+	assert.True(t, strings.Contains(err.Error(), "within range of tree, but does not exist"))
 }
 
 func Test_startIndexFromPath(t *testing.T) {
