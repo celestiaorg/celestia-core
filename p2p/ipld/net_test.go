@@ -66,7 +66,7 @@ func TestWriteDiscoveryReadData(t *testing.T) {
 		b.Hash()
 		blocks[i] = b
 
-		err := PutBlock(ctx, dag, blocks[i], dhts[i], logger, true)
+		err := PutBlock(ctx, dag, blocks[i], dhts[i], logger)
 		require.NoError(t, err)
 	}
 

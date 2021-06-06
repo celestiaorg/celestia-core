@@ -47,7 +47,7 @@ func TestPutBlock(t *testing.T) {
 		block := &types.Block{Data: tc.blockData}
 
 		t.Run(tc.name, func(t *testing.T) {
-			err := PutBlock(ctx, dag, block, croute, logger, true)
+			err := PutBlock(ctx, dag, block, croute, logger)
 			if tc.expectErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.errString)
@@ -148,7 +148,7 @@ func TestDataAvailabilityHeaderRewriteBug(t *testing.T) {
 	hash1 := block.DataAvailabilityHeader.Hash()
 
 	ctx := context.TODO()
-	err = PutBlock(ctx, dag, block, croute, logger, true)
+	err = PutBlock(ctx, dag, block, croute, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

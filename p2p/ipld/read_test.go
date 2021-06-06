@@ -151,7 +151,7 @@ func TestRetrieveBlockData(t *testing.T) {
 
 			// if an error is exected, don't put the block
 			if !tc.expectErr {
-				err := PutBlock(ctx, dag, block, croute, logger, true)
+				err := PutBlock(ctx, dag, block, croute, logger)
 				require.NoError(t, err)
 			}
 

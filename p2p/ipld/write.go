@@ -30,7 +30,6 @@ func PutBlock(
 	block *types.Block,
 	croute routing.ContentRouting,
 	logger log.Logger,
-	sync bool,
 ) error {
 	// recompute the shares
 	namespacedShares, _ := block.Data.ComputeShares()
@@ -68,9 +67,7 @@ func PutBlock(
 		return err
 	}
 	// wait until we provided all the roots if requested
-	if sync {
-		<-prov.Done()
-	}
+	<-prov.Done()
 	return prov.Err()
 }
 

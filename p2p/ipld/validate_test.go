@@ -36,7 +36,7 @@ func TestValidateAvailability(t *testing.T) {
 	block.Hash()
 
 	dag := mdutils.Mock()
-	err := PutBlock(ctx, dag, block, ipfs.MockRouting(), log.TestingLogger(), true)
+	err := PutBlock(ctx, dag, block, ipfs.MockRouting(), log.TestingLogger())
 	require.NoError(t, err)
 
 	calls := 0
