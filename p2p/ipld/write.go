@@ -83,9 +83,9 @@ type provider struct {
 	jobs  chan cid.Cid
 	total int32
 
-	croute routing.ContentRouting
-	log    log.Logger
-	took   time.Time
+	croute    routing.ContentRouting
+	log       log.Logger
+	startTime time.Time
 }
 
 func newProvider(ctx context.Context, croute routing.ContentRouting, toProvide int32, logger log.Logger) *provider {
@@ -101,7 +101,7 @@ func newProvider(ctx context.Context, croute routing.ContentRouting, toProvide i
 		go p.worker()
 	}
 	logger.Info("Started Providing to DHT")
-	p.took = time.Now()
+	p.startTime = time.Now()
 	return p
 }
 
@@ -158,7 +158,7 @@ func (p *provider) worker() {
 
 func (p *provider) provided() {
 	if atomic.AddInt32(&p.total, -1) == 0 {
-		p.log.Info("Finished providing to DHT", "took", time.Since(p.took).String())
+		p.log.Info("Finished providing to DHT", "took", time.Since(p.startTime).String())
 		close(p.done)
 	}
 }

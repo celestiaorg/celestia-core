@@ -51,5 +51,4 @@ type dagOnlyMock struct {
 }
 
 func (dom dagOnlyMock) Dag() coreiface.APIDagService { return dom }
-func (dagOnlyMock) Close() error                     { return nil }
 func (dom dagOnlyMock) Pinning() ipld.NodeAdder      { return dom }
