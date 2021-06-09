@@ -20,7 +20,7 @@ type APIProvider interface {
 
 var _ APIProvider = FullNodeProvider{}
 
-// FullNodeProvider wraps a ipfs core node to fullfill the APIProvider interface
+// FullNodeProvider wraps a ipfs core node to fulfill the APIProvider interface
 type FullNodeProvider struct {
 	node *core.IpfsNode
 }
@@ -38,5 +38,5 @@ func (f FullNodeProvider) Blockstore() blockstore.Blockstore {
 }
 
 func (f FullNodeProvider) Close() error {
-	return f.Close()
+	return f.node.Close()
 }
