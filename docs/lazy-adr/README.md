@@ -29,5 +29,7 @@ Note the context/background should be written in the present tense.
 
 ### Table of Contents:
 
-- [ADR-001-Block-Propagation](./adr-001-block-propagation.md)
-- [ADR-002-Data-Availability-Sampling](./adr-002-ipld-da-sampling.md)
+- [ADR 001: Erasure Coding Block Propagation](./adr-001-block-propagation.md)
+- [ADR 002: Sampling erasure coded Block chunks](./adr-002-ipld-da-sampling.md)
+- [ADR 003: Retrieving Application messages](./adr-003-application-data-retrieval.md)
+- [ADR 004: Data Availability Sampling Light Client](./adr-004-mvp-light-client.md)
