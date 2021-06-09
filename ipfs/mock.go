@@ -9,18 +9,18 @@ import (
 
 // Mock provides simple mock IPFS API useful for testing
 func Mock() APIProvider {
-	return mockProvider{
+	return dagOnlyMockProvider{
 		dag: mdutils.Mock(),
 	}
 }
 
-var _ APIProvider = mockProvider{}
+var _ APIProvider = dagOnlyMockProvider{}
 
-type mockProvider struct {
+type dagOnlyMockProvider struct {
 	dag ipld.DAGService
 }
 
-func (m mockProvider) DAG() ipld.DAGService              { return m.dag }
-func (m mockProvider) Routing() routing.ContentRouting   { return nil }
-func (m mockProvider) Blockstore() blockstore.Blockstore { return nil }
-func (m mockProvider) Close() error                      { return nil }
+func (m dagOnlyMockProvider) DAG() ipld.DAGService              { return m.dag }
+func (m dagOnlyMockProvider) Routing() routing.ContentRouting   { return nil }
+func (m dagOnlyMockProvider) Blockstore() blockstore.Blockstore { return nil }
+func (m dagOnlyMockProvider) Close() error                      { return nil }
