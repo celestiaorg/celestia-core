@@ -3,17 +3,21 @@ package ipfs
 import (
 	"io"
 
+	coremock "github.com/ipfs/go-ipfs/core/mock"
 	ipld "github.com/ipfs/go-ipld-format"
-	mdutils "github.com/ipfs/go-merkledag/test"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 )
 
 // Mock provides simple mock IPFS API useful for testing
 func Mock() APIProvider {
 	return func() (coreiface.APIDagService, io.Closer, error) {
-		dom := dagOnlyMock{mdutils.Mock()}
+		node, err := coremock.NewMockNode()
+		if err != nil {
+			return nil, nil, err
+		}
+		dom := dagOnlyMock{node.DAG}
 
-		return dom, dom, nil
+		return dom, node, nil
 	}
 }
 
