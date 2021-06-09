@@ -1,6 +1,6 @@
 ---
 name: ADR
-about: Write and ADR for certain aspect of the system
+about: Write an ADR for certain aspect of the system
 
 ---
 
@@ -41,4 +41,3 @@ Make sure to link those here to facilitate writing the ADR and
 to give the author all required context (this can be helpful even
 if you are the author yourself).
 -->
-
