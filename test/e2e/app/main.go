@@ -98,13 +98,19 @@ func startNode(cfg *Config) error {
 	if err != nil {
 		return err
 	}
+
+	ipfsProvider, err := ipfs.Embedded(true, ipfs.DefaultConfig(), nodeLogger)
+	if err != nil {
+		return err
+	}
+
 	n, err := node.NewNode(tmcfg,
 		pval,
 		*nodeKey,
 		proxy.NewLocalClientCreator(app),
 		node.DefaultGenesisDocProviderFunc(tmcfg),
 		node.DefaultDBProvider,
-		ipfs.Embedded(true, ipfs.DefaultConfig(), nodeLogger),
+		ipfsProvider,
 		node.DefaultMetricsProvider(tmcfg.Instrumentation),
 		nodeLogger,
 	)

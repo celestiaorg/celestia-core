@@ -121,9 +121,14 @@ func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
 				return err
 			}
 
+			apiProvider, err := ipfs.Embedded(initIPFS, config.IPFS, logger)
+			if err != nil {
+				return err
+			}
+
 			n, err := nodeProvider(
 				config,
-				ipfs.Embedded(initIPFS, config.IPFS, logger),
+				apiProvider,
 				logger,
 			)
 			if err != nil {

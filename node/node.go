@@ -13,7 +13,6 @@ import (
 	"time"
 
 	ipld "github.com/ipfs/go-ipld-format"
-	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -222,7 +221,7 @@ type Node struct {
 func initDBs(
 	config *cfg.Config,
 	dbProvider DBProvider,
-	dag iface.APIDagService,
+	dag ipld.DAGService,
 ) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
 	var blockStoreDB dbm.DB
 	blockStoreDB, err = dbProvider(&DBContext{"blockstore", config})
@@ -643,12 +642,7 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
-	dag, ipfsclose, err := ipfsProvider()
-	if err != nil {
-		return nil, err
-	}
-
-	blockStore, stateDB, err := initDBs(config, dbProvider, dag)
+	blockStore, stateDB, err := initDBs(config, dbProvider, ipfsProvider.DAG())
 	if err != nil {
 		return nil, err
 	}
@@ -762,7 +756,7 @@ func NewNode(config *cfg.Config,
 	}
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, dag, consensusLogger,
+		privValidator, csMetrics, stateSync || fastSync, eventBus, ipfsProvider.DAG(), consensusLogger,
 	)
 
 	// Set up state sync reactor, and schedule a sync if requested.
@@ -863,7 +857,7 @@ func NewNode(config *cfg.Config,
 		txIndexer:        txIndexer,
 		indexerService:   indexerService,
 		eventBus:         eventBus,
-		ipfsClose:        ipfsclose,
+		ipfsClose:        ipfsProvider,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 

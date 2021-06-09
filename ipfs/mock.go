@@ -1,26 +1,26 @@
 package ipfs
 
 import (
-	"io"
-
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	ipld "github.com/ipfs/go-ipld-format"
 	mdutils "github.com/ipfs/go-merkledag/test"
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
+	"github.com/libp2p/go-libp2p-core/routing"
 )
 
 // Mock provides simple mock IPFS API useful for testing
 func Mock() APIProvider {
-	return func() (coreiface.APIDagService, io.Closer, error) {
-		dom := dagOnlyMock{mdutils.Mock()}
-
-		return dom, dom, nil
+	return mockProvider{
+		dag: mdutils.Mock(),
 	}
 }
 
-type dagOnlyMock struct {
-	ipld.DAGService
+var _ APIProvider = mockProvider{}
+
+type mockProvider struct {
+	dag ipld.DAGService
 }
 
-func (dom dagOnlyMock) Dag() coreiface.APIDagService { return dom }
-func (dagOnlyMock) Close() error                     { return nil }
-func (dom dagOnlyMock) Pinning() ipld.NodeAdder      { return dom }
+func (m mockProvider) DAG() ipld.DAGService              { return m.dag }
+func (m mockProvider) Routing() routing.ContentRouting   { return nil }
+func (m mockProvider) Blockstore() blockstore.Blockstore { return nil }
+func (m mockProvider) Close() error                      { return nil }
