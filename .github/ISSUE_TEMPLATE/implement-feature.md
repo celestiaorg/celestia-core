@@ -40,5 +40,6 @@ blocked by: #XXX
 depends on: #XXX
 implements ADR: link to ADR
 included in: #link to tracking issue
+reference to specification: perma-link to spec
 -->
 

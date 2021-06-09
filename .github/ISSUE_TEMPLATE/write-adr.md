@@ -32,9 +32,11 @@ This will help guiding the author on decision for the implementation plan.
 
 <!-- Usually, before we decide to write ADR about a certain aspect,
 there are pre-existing:
+ - reference to specification (perma-link to spec)
  - discussions
  - issues (e.g. Proposals)
  - or even draft PRs.
+
 Make sure to link those here to facilitate writing the ADR and
 to give the author all required context (this can be helpful even
 if you are the author yourself).
