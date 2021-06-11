@@ -130,7 +130,9 @@ func (p *provider) worker() {
 		select {
 		case id := <-p.jobs:
 			err := p.croute.Provide(p.ctx, id, true)
-			if err != nil && err != kbucket.ErrLookupFailure { // Check for error to decrease test log spamming
+			// Omit ErrLookupFailure to decrease test log spamming as
+			// this simply indicates we haven't connected to other DHT nodes yet.
+			if err != nil && err != kbucket.ErrLookupFailure {
 				if p.Err() == nil {
 					p.errLk.Lock()
 					p.err = err
