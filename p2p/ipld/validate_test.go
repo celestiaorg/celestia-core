@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/lazyledger/lazyledger-core/ipfs"
+	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/lazyledger-core/types/consts"
 )
@@ -34,7 +36,7 @@ func TestValidateAvailability(t *testing.T) {
 	block.Hash()
 
 	dag := mdutils.Mock()
-	err := PutBlock(ctx, dag, block)
+	err := PutBlock(ctx, dag, block, ipfs.MockRouting(), log.TestingLogger())
 	require.NoError(t, err)
 
 	calls := 0

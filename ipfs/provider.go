@@ -1,10 +1,9 @@
 package ipfs
 
 import (
-	"io"
-
+	"github.com/ipfs/go-ipfs/core"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 )
 
 // APIProvider allows customizable IPFS core APIs.
-type APIProvider func() (coreiface.APIDagService, io.Closer, error)
+type APIProvider func() (coreiface.APIDagService, *core.IpfsNode, error)

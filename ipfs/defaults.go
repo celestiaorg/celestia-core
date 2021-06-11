@@ -125,9 +125,15 @@ func DefaultFullNodeConfig() (*ipfscfg.Config, error) {
 		// In kDHT all records have TTL, thus we have to regularly(Interval) reprovide/reannounce stored CID to the
 		// network. Otherwise information that the node stores something will be lost. Should be in tact with kDHT
 		// record cleaning configuration
+		// TODO(Wondertan) In case StrategicProviding is true, we have to implement reproviding manually.
 		Reprovider: ipfscfg.Reprovider{
 			Interval: "12h",
 			Strategy: "all",
+		},
+		// List of all experimental IPFS features
+		Experimental: ipfscfg.Experiments{
+			// Disables BitSwap providing and reproviding in favour of manual providing.
+			StrategicProviding: true,
 		},
 		Routing: ipfscfg.Routing{
 			// Full node must be available from the WAN thus 'dhtserver'
@@ -152,9 +158,6 @@ func DefaultFullNodeConfig() (*ipfscfg.Config, error) {
 		// Unused fields:
 		// we currently don't use PubSub
 		Pubsub: ipfscfg.PubsubConfig{},
-		// List of all experimental IPFS features
-		// We currently don't use any of them
-		Experimental: ipfscfg.Experiments{},
 		// bi-directional agreement between peers to hold connections with
 		Peering: ipfscfg.Peering{},
 		// local network discovery is useful, but there is no practical reason to have two FullNode in one LAN
