@@ -23,6 +23,7 @@ import (
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/bits"
 	"github.com/lazyledger/lazyledger-core/libs/bytes"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
@@ -184,7 +185,8 @@ func TestReactorWithEvidence(t *testing.T) {
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, dag, evpool2)
+		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore,
+			mempool, dag, ipfs.MockRouting(), evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
 

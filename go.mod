@@ -5,8 +5,8 @@ go 1.15
 require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/ChainSafe/go-schnorrkel v0.0.0-20200405005733-88cbf1b4c40d
-	github.com/btcsuite/btcd v0.21.0-beta
-	github.com/btcsuite/btcutil v1.0.2
+	github.com/btcsuite/btcd v0.22.0-beta
+	github.com/btcsuite/btcutil v1.0.3-0.20201208143702-a53e38424cce
 	github.com/dgraph-io/badger/v3 v3.2011.1
 	github.com/fortytw2/leaktest v1.3.0
 	github.com/go-kit/kit v0.10.0
@@ -17,11 +17,16 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/gtank/merlin v0.1.1
 	github.com/hdevalence/ed25519consensus v0.0.0-20201207055737-7fde80a9d5ff
+	github.com/ipfs/go-bitswap v0.3.3
 	github.com/ipfs/go-block-format v0.0.2
+	github.com/ipfs/go-blockservice v0.1.4
 	github.com/ipfs/go-cid v0.0.7
+	github.com/ipfs/go-datastore v0.4.5
 	github.com/ipfs/go-ipfs v0.8.0
 	github.com/ipfs/go-ipfs-api v0.2.0
+	github.com/ipfs/go-ipfs-blockstore v0.1.4
 	github.com/ipfs/go-ipfs-config v0.11.0
+	github.com/ipfs/go-ipfs-routing v0.1.0
 	github.com/ipfs/go-ipld-format v0.2.0
 	github.com/ipfs/go-merkledag v0.3.2
 	github.com/ipfs/go-path v0.0.9 // indirect
@@ -30,6 +35,10 @@ require (
 	github.com/lazyledger/nmt v0.5.0
 	github.com/lazyledger/rsmt2d v0.2.0
 	github.com/libp2p/go-buffer-pool v0.0.2
+	github.com/libp2p/go-libp2p v0.12.0
+	github.com/libp2p/go-libp2p-core v0.7.0
+	github.com/libp2p/go-libp2p-kad-dht v0.11.1
+	github.com/libp2p/go-libp2p-kbucket v0.4.7
 	github.com/minio/highwayhash v1.0.1
 	github.com/multiformats/go-multiaddr v0.3.1
 	github.com/multiformats/go-multihash v0.0.14
