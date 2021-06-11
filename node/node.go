@@ -13,7 +13,6 @@ import (
 	"time"
 
 	ipld "github.com/ipfs/go-ipld-format"
-	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -87,12 +86,12 @@ func DefaultGenesisDocProviderFunc(config *cfg.Config) GenesisDocProvider {
 }
 
 // Provider takes a config and a logger and returns a ready to go Node.
-type Provider func(*cfg.Config, ipfs.APIProvider, log.Logger) (*Node, error)
+type Provider func(*cfg.Config, ipfs.NodeProvider, log.Logger) (*Node, error)
 
 // DefaultNewNode returns a Tendermint node with default settings for the
 // PrivValidator, ClientCreator, GenesisDoc, and DBProvider.
 // It implements NodeProvider.
-func DefaultNewNode(config *cfg.Config, ipfs ipfs.APIProvider, logger log.Logger) (*Node, error) {
+func DefaultNewNode(config *cfg.Config, ipfs ipfs.NodeProvider, logger log.Logger) (*Node, error) {
 	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load or gen node key %s: %w", config.NodeKeyFile(), err)
@@ -217,26 +216,6 @@ type Node struct {
 	prometheusSrv     *http.Server
 
 	ipfsClose io.Closer
-}
-
-func initDBs(
-	config *cfg.Config,
-	dbProvider DBProvider,
-	dag iface.APIDagService,
-) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
-	var blockStoreDB dbm.DB
-	blockStoreDB, err = dbProvider(&DBContext{"blockstore", config})
-	if err != nil {
-		return
-	}
-	blockStore = store.NewBlockStore(blockStoreDB, dag)
-
-	stateDB, err = dbProvider(&DBContext{"state", config})
-	if err != nil {
-		return
-	}
-
-	return
 }
 
 func createAndStartProxyAppConns(clientCreator proxy.ClientCreator, logger log.Logger) (proxy.AppConns, error) {
@@ -638,17 +617,17 @@ func NewNode(config *cfg.Config,
 	clientCreator proxy.ClientCreator,
 	genesisDocProvider GenesisDocProvider,
 	dbProvider DBProvider,
-	ipfsProvider ipfs.APIProvider,
+	ipfsProvider ipfs.NodeProvider,
 	metricsProvider MetricsProvider,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
-	dag, ipfsclose, err := ipfsProvider()
+	ipfsNode, err := ipfsProvider()
 	if err != nil {
 		return nil, err
 	}
 
-	blockStore, stateDB, err := initDBs(config, dbProvider, dag)
+	stateDB, err := dbProvider(&DBContext{"state", config})
 	if err != nil {
 		return nil, err
 	}
@@ -702,6 +681,13 @@ func NewNode(config *cfg.Config,
 		logger.Info("Found local state with non-zero height, skipping state sync")
 		stateSync = false
 	}
+
+	blockStoreDB, err := dbProvider(&DBContext{"blockstore", config})
+	if err != nil {
+		return nil, err
+	}
+
+	blockStore := store.NewBlockStore(blockStoreDB, ipfsNode.DAG)
 
 	// Create the handshaker, which calls RequestInfo, sets the AppVersion on the state,
 	// and replays any blocks as necessary to sync tendermint with the app.
@@ -762,7 +748,7 @@ func NewNode(config *cfg.Config,
 	}
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, dag, consensusLogger,
+		privValidator, csMetrics, stateSync || fastSync, eventBus, ipfsNode.DAG, consensusLogger,
 	)
 
 	// Set up state sync reactor, and schedule a sync if requested.
@@ -863,7 +849,7 @@ func NewNode(config *cfg.Config,
 		txIndexer:        txIndexer,
 		indexerService:   indexerService,
 		eventBus:         eventBus,
-		ipfsClose:        ipfsclose,
+		ipfsClose:        ipfsNode,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
