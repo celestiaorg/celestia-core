@@ -1126,9 +1126,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		cs.proposalCancel()
 	}
 	cs.proposalCtx, cs.proposalCancel = context.WithCancel(context.TODO())
-	go func() {
+	go func(ctx context.Context) {
 		cs.Logger.Info("Putting Block to IPFS", "height", block.Height)
-		err = ipld.PutBlock(cs.proposalCtx, cs.dag, block, cs.croute, cs.Logger)
+		err = ipld.PutBlock(ctx, cs.dag, block, cs.croute, cs.Logger)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				cs.Logger.Error("Putting Block didn't finish in time and was terminated", "height", block.Height)
@@ -1138,7 +1138,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			return
 		}
 		cs.Logger.Info("Finished putting block to IPFS", "height", block.Height)
-	}()
+	}(cs.proposalCtx)
 }
 
 // Returns true if the proposal block is complete &&
