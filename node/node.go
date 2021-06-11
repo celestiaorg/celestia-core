@@ -751,7 +751,7 @@ func NewNode(config *cfg.Config,
 	}
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, ipfsNode.DAG, consensusLogger,
+		privValidator, csMetrics, stateSync || fastSync, eventBus, ipfsNode.DAG, ipfsNode.Routing, consensusLogger,
 	)
 
 	// Set up state sync reactor, and schedule a sync if requested.
