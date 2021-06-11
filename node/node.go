@@ -13,6 +13,7 @@ import (
 	"time"
 
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -380,6 +381,7 @@ func createConsensusReactor(
 	waitSync bool,
 	eventBus *types.EventBus,
 	dag ipld.DAGService,
+	croute routing.ContentRouting,
 	consensusLogger log.Logger) (*cs.Reactor, *cs.State) {
 
 	consensusState := cs.NewState(
@@ -389,6 +391,7 @@ func createConsensusReactor(
 		blockStore,
 		mempool,
 		dag,
+		croute,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
 	)
@@ -622,11 +625,6 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
-	ipfsNode, err := ipfsProvider()
-	if err != nil {
-		return nil, err
-	}
-
 	stateDB, err := dbProvider(&DBContext{"state", config})
 	if err != nil {
 		return nil, err
@@ -683,6 +681,11 @@ func NewNode(config *cfg.Config,
 	}
 
 	blockStoreDB, err := dbProvider(&DBContext{"blockstore", config})
+	if err != nil {
+		return nil, err
+	}
+
+	ipfsNode, err := ipfsProvider()
 	if err != nil {
 		return nil, err
 	}

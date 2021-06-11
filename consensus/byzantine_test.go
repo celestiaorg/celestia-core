@@ -16,6 +16,7 @@ import (
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/evidence"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/libs/service"
@@ -79,7 +80,8 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, dag, evpool)
+		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore,
+			mempool, dag, ipfs.MockRouting(), evpool)
 		cs.SetLogger(cs.Logger)
 		// set private validator
 		pv := privVals[i]
