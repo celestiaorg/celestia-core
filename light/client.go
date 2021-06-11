@@ -9,6 +9,7 @@ import (
 
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
+	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/lazyledger/nmt/namespace"
 
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -70,7 +71,7 @@ func SkippingVerification(trustLevel tmmath.Fraction) Option {
 	}
 }
 
-func DataAvailabilitySampling(numSamples uint32, ipfsAPI format.DAGService) Option {
+func DataAvailabilitySampling(numSamples uint32, ipfsAPI coreiface.APIDagService) Option {
 	return func(c *Client) {
 		c.verificationMode = dataAvailabilitySampling
 		c.numSamples = numSamples
@@ -156,7 +157,7 @@ type Client struct {
 
 	logger log.Logger
 
-	dag        format.DAGService
+	dag        coreiface.APIDagService
 	sessionDAG format.NodeGetter
 }
 

@@ -4,16 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 
 	ipfscfg "github.com/ipfs/go-ipfs-config"
 	"github.com/ipfs/go-ipfs/commands"
 	"github.com/ipfs/go-ipfs/core"
+	"github.com/ipfs/go-ipfs/core/coreapi"
 	"github.com/ipfs/go-ipfs/core/corehttp"
 	"github.com/ipfs/go-ipfs/core/node/libp2p"
 	"github.com/ipfs/go-ipfs/repo"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
+	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 
@@ -22,62 +25,70 @@ import (
 
 // Embedded is the provider that embeds IPFS node within the same process.
 // It also returns closable for graceful node shutdown.
-func Embedded(init bool, cfg *Config, logger log.Logger) (APIProvider, error) {
-	path := cfg.Path()
-	defer os.Setenv(ipfscfg.EnvDir, path)
+func Embedded(init bool, cfg *Config, logger log.Logger) APIProvider {
+	return func() (coreiface.APIDagService, io.Closer, error) {
+		path := cfg.Path()
+		defer os.Setenv(ipfscfg.EnvDir, path)
 
-	// NOTE: no need to validate the path before
-	if err := plugins(path); err != nil {
-		return nil, err
-	}
-	// Init Repo if requested
-	if init {
-		if err := InitRepo(path, logger); err != nil {
-			return nil, err
+		// NOTE: no need to validate the path before
+		if err := plugins(path); err != nil {
+			return nil, nil, err
 		}
-	}
-	// Open the repo
-	repo, err := fsrepo.Open(path)
-	if err != nil {
-		var nrerr fsrepo.NoRepoError
-		if errors.As(err, &nrerr) {
-			return nil, fmt.Errorf("no IPFS repo found in %s.\nplease use flag: --ipfs-init", nrerr.Path)
+		// Init Repo if requested
+		if init {
+			if err := InitRepo(path, logger); err != nil {
+				return nil, nil, err
+			}
 		}
-		return nil, err
-	}
-	// Construct the node
-	nodeOptions := &core.BuildCfg{
-		Online: true,
-		// This option sets the node to be a full DHT node (both fetching and storing DHT Records)
-		Routing: libp2p.DHTOption,
-		// This option sets the node to be a client DHT node (only fetching records)
-		// Routing: libp2p.DHTClientOption,
-		Repo: repo,
-	}
-	// Internally, ipfs decorates the context with a
-	// context.WithCancel. Which is then used for lifecycle management.
-	// We do not make use of this context and rely on calling
-	// Close() on the node instead
-	ctx := context.Background()
-	// It is essential that we create a fresh instance of ipfs node on
-	// each start as internally the node gets only stopped once per instance.
-	// At least in ipfs 0.7.0; see:
-	// https://github.com/lazyledger/go-ipfs/blob/dd295e45608560d2ada7d7c8a30f1eef3f4019bb/core/builder.go#L48-L57
-	node, err := core.NewNode(ctx, nodeOptions)
-	if err != nil {
-		_ = repo.Close()
-		return nil, err
-	}
-	// Serve API if requested
-	if cfg.ServeAPI {
-		if err := serveAPI(path, repo, node); err != nil {
+		// Open the repo
+		repo, err := fsrepo.Open(path)
+		if err != nil {
+			var nrerr fsrepo.NoRepoError
+			if errors.As(err, &nrerr) {
+				return nil, nil, fmt.Errorf("no IPFS repo found in %s.\nplease use flag: --ipfs-init", nrerr.Path)
+			}
+			return nil, nil, err
+		}
+		// Construct the node
+		nodeOptions := &core.BuildCfg{
+			Online: true,
+			// This option sets the node to be a full DHT node (both fetching and storing DHT Records)
+			Routing: libp2p.DHTOption,
+			// This option sets the node to be a client DHT node (only fetching records)
+			// Routing: libp2p.DHTClientOption,
+			Repo: repo,
+		}
+		// Internally, ipfs decorates the context with a
+		// context.WithCancel. Which is then used for lifecycle management.
+		// We do not make use of this context and rely on calling
+		// Close() on the node instead
+		ctx := context.Background()
+		// It is essential that we create a fresh instance of ipfs node on
+		// each start as internally the node gets only stopped once per instance.
+		// At least in ipfs 0.7.0; see:
+		// https://github.com/lazyledger/go-ipfs/blob/dd295e45608560d2ada7d7c8a30f1eef3f4019bb/core/builder.go#L48-L57
+		node, err := core.NewNode(ctx, nodeOptions)
+		if err != nil {
+			_ = repo.Close()
+			return nil, nil, err
+		}
+		// Serve API if requested
+		if cfg.ServeAPI {
+			if err := serveAPI(path, repo, node); err != nil {
+				_ = node.Close()
+				return nil, nil, err
+			}
+		}
+		// Wrap Node and create CoreAPI
+		api, err := coreapi.NewCoreAPI(node)
+		if err != nil {
 			_ = node.Close()
-			return nil, err
+			return nil, nil, fmt.Errorf("failed to create an instance of the IPFS core API: %w", err)
 		}
-	}
 
-	logger.Info("Successfully created embedded IPFS node", "ipfs-repo", path)
-	return FullNodeProvider{node: node}, nil
+		logger.Info("Successfully created embedded IPFS node", "ipfs-repo", path)
+		return api.Dag(), node, nil
+	}
 }
 
 // serveAPI creates and HTTP server for IPFS API.
