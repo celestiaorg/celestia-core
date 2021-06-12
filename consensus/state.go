@@ -1122,8 +1122,24 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	}
 
 	// cancel ctx for previous proposal block to ensure block putting/providing does not queues up
-	if cs.proposalCancel != nil {
-		cs.proposalCancel()
+	if cs.proposalCancel != nil { //nolint:staticcheck
+		// FIXME(ismail): below commented out cancel tries to prevent block putting
+		// and providing no to queue up endlessly.
+		// But in a real network proposers should have enough time in between.
+		// And even if not, queuing up to a problematic extent will take a lot of time:
+		// Even on the Cosmos Hub the largest validator only proposes every 15 blocks.
+		// With an average block time of roughly 7.5 seconds this means almost
+		// two minutes between two different proposals by the same validator.
+		// For other validators much more time passes in between.
+		// In our case block interval times will likely be larger.
+		// And independent of this DHT providing will be made faster:
+		//  - https://github.com/lazyledger/lazyledger-core/issues/395
+		//
+		// Furthermore, and independent of all of the above,
+		// the provide timeout could still be larger than just the time between
+		// two consecutive proposals.
+		//
+		// cs.proposalCancel()
 	}
 	cs.proposalCtx, cs.proposalCancel = context.WithCancel(context.TODO())
 	go func(ctx context.Context) {
