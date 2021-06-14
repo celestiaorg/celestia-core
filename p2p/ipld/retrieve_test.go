@@ -42,6 +42,37 @@ func Test_rowRootsFromNamespaceID(t *testing.T) {
 	assert.Equal(t, expected, indices)
 }
 
+func Test_unsuccessful_rowRootsFromNamespaceID(t *testing.T) {
+	data := generateRandNamespacedRawData(16, 8, 8)
+	nIDBelow := make([]byte, 8)
+	for i, byt := range data[0][:8] {
+		// assuming the data is never 0
+		nIDBelow[i] = byt-1
+	}
+	nIDExceeds := make([]byte, 8)
+	for i, byt := range data[len(data)-1][:8] {
+		nIDExceeds[i] = byt+1
+	}
+
+	dah, err := makeDAHeader(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	indicesBelow, err := rowRootsFromNamespaceID(nIDBelow, dah)
+
+	assert.Equal(t, 1, len(indicesBelow))
+	assert.Equal(t, 0, indicesBelow[0])
+	assert.True(t, strings.Contains(err.Error(), "below minimum"))
+
+	indicesExceeds, err := rowRootsFromNamespaceID(nIDExceeds, dah)
+
+	assert.Equal(t, 1, len(indicesExceeds))
+	assert.Equal(t, len(data)-1, indicesExceeds[0])
+	assert.True(t, strings.Contains(err.Error(), "exceeds maximum"))
+}
+
+
 func makeDAHeader(data [][]byte) (*types.DataAvailabilityHeader, error) {
 	rows, err := types.NmtRootsFromBytes(data)
 	if err != nil {
@@ -62,7 +93,6 @@ func TestRetrieveShares(t *testing.T) {
 	// set nID
 	api := mockedIpfsAPI(t)
 	treeRoots := make(types.NmtRoots, 0)
-
 	ctx := context.Background()
 
 	var (
@@ -428,61 +458,8 @@ func Test_unsuccessful_findStartingIndex(t *testing.T) {
 	if err == nil {
 		t.Fatal(err)
 	}
-	assert.True(t, strings.Contains(err.Error(), "within range of tree, but does not exist"))
-}
-
-func Test_unsuccessfulLessThan_findStartingIndex(t *testing.T) { // TODO
-	// set nID
-	api := mockedIpfsAPI(t)
-	treeRoots := make(types.NmtRoots, 0)
-
-	ctx := context.Background()
-
-	var (
-		nIDData []byte
-		nID     []byte
-	)
-
-	// create nmt adder wrapping batch adder
-	batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, api.Dag()))
-
-	for i := 0; i < 4; i++ {
-		data := generateRandNamespacedRawData(4, nmt.DefaultNamespaceIDLen, 16)
-		fmt.Printf("%+v\n", data)
-		if len(nID) == 0 {
-			nIDData = data[rand.Intn(len(data)-1)] // todo maybe make this nicer later
-			nID = nIDData[:8]
-		}
-
-		treeRoot, err := commitTreeDataToDAG(ctx, data, batchAdder)
-		if err != nil {
-			t.Fatal(err)
-		}
-		treeRoots = append(treeRoots, treeRoot)
-
-		if err := batchAdder.Commit(); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	fmt.Println("NID DATA: ", nIDData, "\nnID: ", nID)
-
-	dah := &types.DataAvailabilityHeader{
-		RowsRoots: treeRoots,
-	}
-
-	// get rootCID of a row in which nID does NOT exist
-	rootCid, err := nodes.CidFromNamespacedSha256(dah.RowsRoots[2].Bytes())
-	if err != nil {
-		t.Error(err)
-	}
-	fmt.Println("rootCID: ", rootCid)
-
-	_, err = findStartingIndex(ctx, nID, dah, rootCid, api)
-	if err == nil {
-		t.Fatal(err)
-	}
-	assert.True(t, strings.Contains(err.Error(), "within range of tree, but does not exist"))
+	fmt.Println(err.Error())
+	assert.True(t, strings.Contains(err.Error(), "within range of namespace IDs in tree, but does not exist"))
 }
 
 func Test_startIndexFromPath(t *testing.T) {

@@ -4,6 +4,8 @@ package ipld
 import (
 	"context"
 	"fmt"
+	"math"
+
 	"github.com/ipfs/go-cid"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/ipfs/interface-go-ipfs-core/path"
@@ -11,7 +13,6 @@ import (
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
-	"math"
 )
 
 var (
@@ -20,6 +21,7 @@ var (
 	ErrExceedsRange    = fmt.Errorf("namespaceID exceeds maximum namespace ID in range")
 )
 
+// RetrieveShares retrieves share data for the given namespace ID using the given DataAvailabilityHeader.
 func RetrieveShares(ctx context.Context, nID namespace.ID, dah *types.DataAvailabilityHeader, api coreiface.CoreAPI) ([][]byte, error) {
 	// 1. Find the row root(s) that contains the namespace ID nID
 	// loop over row roots and find the root in which the nID exists within the range of root min -> root max
@@ -38,7 +40,7 @@ func RetrieveShares(ctx context.Context, nID namespace.ID, dah *types.DataAvaila
 	return getSharesByNamespace(ctx, nID, dah, rowRoots, api)
 }
 
-// rowRootsFromNamespaceID finds the row root(s) that contain the namespace ID `nID`.
+// rowRootsFromNamespaceID finds the row root(s) that contain the given namespace ID.
 func rowRootsFromNamespaceID(nID namespace.ID, dah *types.DataAvailabilityHeader) ([]int, error) {
 	roots := make([]int, 0)
 	for i, row := range dah.RowsRoots {
@@ -149,7 +151,7 @@ func findStartingIndex(
 				// return path to right leaf
 				return startIndexFromPath(append(currentPath, right)), nil
 			} else {
-				return 0, fmt.Errorf("namespace ID %x within range of namespace IDs in tree, " +
+				return 0, fmt.Errorf("namespace ID %x within range of namespace IDs in tree, "+
 					"but does not exist", nID.String())
 			}
 		}
