@@ -2,8 +2,6 @@ package types
 
 import (
 	"bytes"
-	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math"
@@ -12,9 +10,6 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
-	format "github.com/ipfs/go-ipld-format"
-
-	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/nmt/namespace"
 	"github.com/lazyledger/rsmt2d"
 
@@ -26,9 +21,10 @@ import (
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	"github.com/lazyledger/lazyledger-core/version"
 )
 
@@ -36,7 +32,7 @@ const (
 	// MaxHeaderBytes is a maximum header size.
 	// NOTE: Because app hash can be of arbitrary size, the header is therefore not
 	// capped in size and thus this number should be seen as a soft max
-	MaxHeaderBytes int64 = 626
+	MaxHeaderBytes int64 = 636
 
 	// MaxOverheadForBlock - maximum overhead to encode a block (up to
 	// MaxBlockSizeBytes in size) not including it's parts except Data.
@@ -49,7 +45,7 @@ const (
 	MaxOverheadForBlock int64 = 11
 )
 
-// DataAvailabilityHeader contains the row and column roots of the erasure
+// DataAvailabilityHeader (DAHeader) contains the row and column roots of the erasure
 // coded version of the data in Block.Data.
 // Therefor the original Block.Data is arranged in a
 // k × k matrix, which is then "extended" to a
@@ -64,6 +60,8 @@ type DataAvailabilityHeader struct {
 	RowsRoots NmtRoots `json:"row_roots"`
 	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
 	ColumnRoots NmtRoots `json:"column_roots"`
+	// cached result of Hash() not to be recomputed
+	hash []byte
 }
 
 type NmtRoots []namespace.IntervalDigest
@@ -76,19 +74,39 @@ func (roots NmtRoots) Bytes() [][]byte {
 	return res
 }
 
-func NmtRootsFromBytes(in [][]byte) NmtRoots {
-	roots := make([]namespace.IntervalDigest, len(in))
+func NmtRootsFromBytes(in [][]byte) (roots NmtRoots, err error) {
+	roots = make([]namespace.IntervalDigest, len(in))
 	for i := 0; i < len(in); i++ {
-		roots[i] = namespace.IntervalDigestFromBytes(NamespaceSize, in[i])
+		roots[i], err = namespace.IntervalDigestFromBytes(consts.NamespaceSize, in[i])
+		if err != nil {
+			return roots, err
+		}
 	}
-	return roots
+	return
 }
 
-// Hash computes the root of the row and column roots
+// String returns hex representation of merkle hash of the DAHeader.
+func (dah *DataAvailabilityHeader) String() string {
+	if dah == nil {
+		return "<nil DAHeader>"
+	}
+	return fmt.Sprintf("%X", dah.Hash())
+}
+
+// Equals checks equality of two DAHeaders.
+func (dah *DataAvailabilityHeader) Equals(to *DataAvailabilityHeader) bool {
+	return bytes.Equal(dah.Hash(), to.Hash())
+}
+
+// Hash computes and caches the merkle root of the row and column roots.
 func (dah *DataAvailabilityHeader) Hash() []byte {
 	if dah == nil {
 		return merkle.HashFromByteSlices(nil)
 	}
+	if len(dah.hash) != 0 {
+		return dah.hash
+	}
+
 	colsCount := len(dah.ColumnRoots)
 	rowsCount := len(dah.RowsRoots)
 	slices := make([][]byte, colsCount+rowsCount)
@@ -100,7 +118,8 @@ func (dah *DataAvailabilityHeader) Hash() []byte {
 	}
 	// The single data root is computed using a simple binary merkle tree.
 	// Effectively being root(rowRoots || columnRoots):
-	return merkle.HashFromByteSlices(slices)
+	dah.hash = merkle.HashFromByteSlices(slices)
+	return dah.hash
 }
 
 func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, error) {
@@ -109,23 +128,28 @@ func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, e
 	}
 
 	dahp := new(tmproto.DataAvailabilityHeader)
-
 	dahp.RowRoots = dah.RowsRoots.Bytes()
 	dahp.ColumnRoots = dah.ColumnRoots.Bytes()
-
 	return dahp, nil
 }
 
-func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (*DataAvailabilityHeader, error) {
+func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (dah *DataAvailabilityHeader, err error) {
 	if dahp == nil {
 		return nil, errors.New("nil DataAvailabilityHeader")
 	}
 
-	dah := new(DataAvailabilityHeader)
-	dah.RowsRoots = NmtRootsFromBytes(dahp.RowRoots)
-	dah.ColumnRoots = NmtRootsFromBytes(dahp.ColumnRoots)
+	dah = new(DataAvailabilityHeader)
+	dah.RowsRoots, err = NmtRootsFromBytes(dahp.RowRoots)
+	if err != nil {
+		return
+	}
 
-	return dah, nil
+	dah.ColumnRoots, err = NmtRootsFromBytes(dahp.ColumnRoots)
+	if err != nil {
+		return
+	}
+
+	return
 }
 
 // Block defines the atomic unit of a Tendermint blockchain.
@@ -189,7 +213,7 @@ func (b *Block) fillHeader() {
 	if b.LastCommitHash == nil {
 		b.LastCommitHash = b.LastCommit.Hash()
 	}
-	if b.DataHash == nil {
+	if b.DataHash == nil || b.DataAvailabilityHeader.hash == nil {
 		b.fillDataAvailabilityHeader()
 	}
 	if b.EvidenceHash == nil {
@@ -197,172 +221,51 @@ func (b *Block) fillHeader() {
 	}
 }
 
+// TODO: Move out from 'types' package
 // fillDataAvailabilityHeader fills in any remaining DataAvailabilityHeader fields
 // that are a function of the block data.
 func (b *Block) fillDataAvailabilityHeader() {
-	namespacedShares := b.Data.computeShares()
+	namespacedShares, dataSharesLen := b.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
-	if len(shares) == 0 {
-		// no shares -> no row/colum roots -> hash(empty)
-		b.DataHash = b.DataAvailabilityHeader.Hash()
-		return
-	}
+
+	// create the nmt wrapper to generate row and col commitments
+	squareSize := uint32(math.Sqrt(float64(len(shares))))
+	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(squareSize))
 
 	// TODO(ismail): for better efficiency and a larger number shares
 	// we should switch to the rsmt2d.LeopardFF16 codec:
-	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
+	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), tree.Constructor)
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
 	}
 
-	// record the widths
-	squareWidth := extendedDataSquare.Width()
+	// generate the row and col roots using the EDS and nmt wrapper
+	rowRoots := extendedDataSquare.RowRoots()
+	colRoots := extendedDataSquare.ColumnRoots()
 
 	b.DataAvailabilityHeader = DataAvailabilityHeader{
-		RowsRoots:   make([]namespace.IntervalDigest, squareWidth),
-		ColumnRoots: make([]namespace.IntervalDigest, squareWidth),
+		RowsRoots:   make([]namespace.IntervalDigest, extendedDataSquare.Width()),
+		ColumnRoots: make([]namespace.IntervalDigest, extendedDataSquare.Width()),
 	}
 
-	// flatten the square and add namespaces
-	leaves := flattenNamespacedEDS(namespacedShares, extendedDataSquare)
-
-	// compute the roots for each col/row
-	for i, leafSet := range leaves {
-		commitment := nmtCommitment(leafSet)
-
-		// add the commitment to the header
-		if uint(i) < squareWidth {
-			b.DataAvailabilityHeader.ColumnRoots[i] = commitment
-		} else {
-			b.DataAvailabilityHeader.RowsRoots[uint(i)-squareWidth] = commitment
+	// todo(evan): remove interval digests
+	// convert the roots to interval digests
+	for i := 0; i < len(rowRoots); i++ {
+		rowRoot, err := namespace.IntervalDigestFromBytes(consts.NamespaceSize, rowRoots[i])
+		if err != nil {
+			panic(err)
 		}
+		colRoot, err := namespace.IntervalDigestFromBytes(consts.NamespaceSize, colRoots[i])
+		if err != nil {
+			panic(err)
+		}
+		b.DataAvailabilityHeader.RowsRoots[i] = rowRoot
+		b.DataAvailabilityHeader.ColumnRoots[i] = colRoot
 	}
 
 	// return the root hash of DA Header
 	b.DataHash = b.DataAvailabilityHeader.Hash()
-}
-
-// nmtcommitment generates the nmt root of some namespaced data
-func nmtCommitment(namespacedData [][]byte) namespace.IntervalDigest {
-	tree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
-	for _, leaf := range namespacedData {
-		mustPush(tree, leaf[:NamespaceSize], leaf[NamespaceSize:])
-	}
-	return tree.Root()
-}
-
-func mustPush(rowTree *nmt.NamespacedMerkleTree, id namespace.ID, data []byte) {
-	if err := rowTree.Push(id, data); err != nil {
-		panic(
-			fmt.Sprintf(
-				"invalid data; could not push share to tree, id: %v, data: %v, err: %v",
-				id,
-				data,
-				err,
-			),
-		)
-	}
-}
-
-// PutBlock posts and pins erasured block data to IPFS using the provided
-// ipld.NodeAdder. Note: the erasured data is currently recomputed
-func (b *Block) PutBlock(ctx context.Context, nodeAdder format.NodeAdder) error {
-	if nodeAdder == nil {
-		return errors.New("no ipfs node adder provided")
-	}
-
-	// recompute the shares
-	namespacedShares := b.Data.computeShares()
-	shares := namespacedShares.RawShares()
-
-	// don't do anything if there is no data to put on IPFS
-	if len(shares) == 0 {
-		return nil
-	}
-
-	// recompute the eds
-	eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8, rsmt2d.NewDefaultTree)
-	if err != nil {
-		return fmt.Errorf("failure to recompute the extended data square: %w", err)
-	}
-
-	// add namespaces to erasured shares and flatten the eds
-	leaves := flattenNamespacedEDS(namespacedShares, eds)
-
-	// iterate through each set of col and row leaves
-	for _, leafSet := range leaves {
-		// create a batch per each leafSet
-		batchAdder := nodes.NewNmtNodeAdder(ctx, format.NewBatch(ctx, nodeAdder))
-		tree := nmt.New(sha256.New(), nmt.NodeVisitor(batchAdder.Visit))
-		for _, share := range leafSet {
-			err = tree.Push(share[:NamespaceSize], share[NamespaceSize:])
-			if err != nil {
-				return err
-			}
-		}
-
-		// compute the root in order to collect the ipld.Nodes
-		tree.Root()
-
-		// commit the batch to ipfs
-		err = batchAdder.Batch().Commit()
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// flattenNamespacedEDS returns a flattend extendedDataSquare with namespaces
-// added to each share. NOTE: output is columns first then rows
-func flattenNamespacedEDS(nss NamespacedShares, eds *rsmt2d.ExtendedDataSquare) [][][]byte {
-	squareWidth := eds.Width()
-	originalDataWidth := squareWidth / 2
-
-	if uint(len(nss)) != originalDataWidth*originalDataWidth {
-		panic(
-			fmt.Sprintf(
-				"unexpected numbers of namespaces: actual %d expected %d",
-				len(nss),
-				squareWidth/2,
-			),
-		)
-	}
-
-	leaves := make([][][]byte, 2*squareWidth)
-	// this is adding the namespace back to Q1 shares and the parity ns to the
-	// rest of the quadrants and flattens the square
-	for i := uint(0); i < squareWidth; i++ {
-		rowLeaves := make([][]byte, squareWidth)
-		colLeaves := make([][]byte, squareWidth)
-
-		for j := uint(0); j < squareWidth; j++ {
-			if i < originalDataWidth && j < originalDataWidth {
-				rowShare := nss[i*originalDataWidth+j]
-				colShare := nss[j*originalDataWidth+i]
-				rowLeaves[j] = append(rowShare.NamespaceID(), rowShare.Data()...)
-				colLeaves[j] = append(colShare.NamespaceID(), colShare.Data()...)
-			} else {
-				rowData := eds.Row(i)
-				colData := eds.Column(i)
-				parityCellFromRow := rowData[j]
-				parityCellFromCol := colData[j]
-				rowLeaves[j] = append(copyOfParityNamespaceID(), parityCellFromRow...)
-				colLeaves[j] = append(copyOfParityNamespaceID(), parityCellFromCol...)
-			}
-		}
-		leaves[i] = colLeaves
-		leaves[i+squareWidth] = rowLeaves
-	}
-
-	return leaves
-}
-
-func copyOfParityNamespaceID() []byte {
-	out := make([]byte, len(ParitySharesNamespaceID))
-	copy(out, ParitySharesNamespaceID)
-	return out
+	b.NumOriginalDataShares = uint64(dataSharesLen)
 }
 
 // Hash computes and returns the block hash.
@@ -470,22 +373,21 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 	}
 
 	pb := new(tmproto.Block)
-
-	pb.Header = *b.Header.ToProto()
-	pb.LastCommit = b.LastCommit.ToProto()
-	pb.Data = b.Data.ToProto()
-
 	protoEvidence, err := b.Evidence.ToProto()
 	if err != nil {
 		return nil, err
 	}
-	pb.Data.Evidence = *protoEvidence
-	dah, err := b.DataAvailabilityHeader.ToProto()
+
+	pdah, err := b.DataAvailabilityHeader.ToProto()
 	if err != nil {
 		return nil, err
 	}
-	pb.DataAvailabilityHeader = dah
 
+	pb.Header = *b.Header.ToProto()
+	pb.LastCommit = b.LastCommit.ToProto()
+	pb.Data = b.Data.ToProto()
+	pb.Data.Evidence = *protoEvidence
+	pb.DataAvailabilityHeader = pdah
 	return pb, nil
 }
 
@@ -618,6 +520,8 @@ type Header struct {
 	// DataHash = root((rowRoot_1 || rowRoot_2 || ... ||rowRoot_2k || columnRoot1 || columnRoot2 || ... || columnRoot2k))
 	// Block.DataAvailabilityHeader for stores (row|column)Root_i // TODO ...
 	DataHash tmbytes.HexBytes `json:"data_hash"` // transactions
+	// amount of data shares within a Block #specs:availableDataOriginalSharesUsed
+	NumOriginalDataShares uint64 `json:"data_shares"`
 
 	// hashes from the app output from the prev block
 	ValidatorsHash     tmbytes.HexBytes `json:"validators_hash"`      // validators for the current block
@@ -746,6 +650,7 @@ func (h *Header) Hash() tmbytes.HexBytes {
 		bzbi,
 		cdcEncode(h.LastCommitHash),
 		cdcEncode(h.DataHash),
+		cdcEncode(h.NumOriginalDataShares),
 		cdcEncode(h.ValidatorsHash),
 		cdcEncode(h.NextValidatorsHash),
 		cdcEncode(h.ConsensusHash),
@@ -801,20 +706,21 @@ func (h *Header) ToProto() *tmproto.Header {
 	}
 
 	return &tmproto.Header{
-		Version:            h.Version,
-		ChainID:            h.ChainID,
-		Height:             h.Height,
-		Time:               h.Time,
-		LastBlockId:        h.LastBlockID.ToProto(),
-		ValidatorsHash:     h.ValidatorsHash,
-		NextValidatorsHash: h.NextValidatorsHash,
-		ConsensusHash:      h.ConsensusHash,
-		AppHash:            h.AppHash,
-		DataHash:           h.DataHash,
-		EvidenceHash:       h.EvidenceHash,
-		LastResultsHash:    h.LastResultsHash,
-		LastCommitHash:     h.LastCommitHash,
-		ProposerAddress:    h.ProposerAddress,
+		Version:               h.Version,
+		ChainID:               h.ChainID,
+		Height:                h.Height,
+		Time:                  h.Time,
+		LastBlockId:           h.LastBlockID.ToProto(),
+		ValidatorsHash:        h.ValidatorsHash,
+		NextValidatorsHash:    h.NextValidatorsHash,
+		ConsensusHash:         h.ConsensusHash,
+		AppHash:               h.AppHash,
+		DataHash:              h.DataHash,
+		NumOriginalDataShares: h.NumOriginalDataShares,
+		EvidenceHash:          h.EvidenceHash,
+		LastResultsHash:       h.LastResultsHash,
+		LastCommitHash:        h.LastCommitHash,
+		ProposerAddress:       h.ProposerAddress,
 	}
 }
 
@@ -843,6 +749,7 @@ func HeaderFromProto(ph *tmproto.Header) (Header, error) {
 	h.ConsensusHash = ph.ConsensusHash
 	h.AppHash = ph.AppHash
 	h.DataHash = ph.DataHash
+	h.NumOriginalDataShares = ph.NumOriginalDataShares
 	h.EvidenceHash = ph.EvidenceHash
 	h.LastResultsHash = ph.LastResultsHash
 	h.LastCommitHash = ph.LastCommitHash
@@ -1312,60 +1219,91 @@ type IntermediateStateRoots struct {
 	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
 }
 
-func (roots IntermediateStateRoots) splitIntoShares(shareSize int) NamespacedShares {
-	shares := make([]NamespacedShare, 0)
+func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
+	rawDatas := make([][]byte, 0, len(roots.RawRootsList))
 	for _, root := range roots.RawRootsList {
 		rawData, err := root.MarshalDelimited()
 		if err != nil {
 			panic(fmt.Sprintf("app returned intermediate state root that can not be encoded %#v", root))
 		}
-		shares = appendToShares(shares, IntermediateStateRootsNamespaceID, rawData, shareSize)
+		rawDatas = append(rawDatas, rawData)
 	}
+	shares := splitContiguous(consts.IntermediateStateRootsNamespaceID, rawDatas)
 	return shares
 }
 
-func (msgs Messages) splitIntoShares(shareSize int) NamespacedShares {
+func (msgs Messages) splitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	for _, m := range msgs.MessagesList {
 		rawData, err := m.MarshalDelimited()
 		if err != nil {
 			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
 		}
-		shares = appendToShares(shares, m.NamespaceID, rawData, shareSize)
+		shares = appendToShares(shares, m.NamespaceID, rawData)
 	}
 	return shares
 }
 
-func (data *Data) computeShares() NamespacedShares {
+// ComputeShares splits block data into shares of an original data square and
+// returns them along with an amount of non-redundant shares.
+func (data *Data) ComputeShares() (NamespacedShares, int) {
 	// TODO(ismail): splitting into shares should depend on the block size and layout
 	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
 
 	// reserved shares:
-	txShares := data.Txs.splitIntoShares(ShareSize)
-	intermRootsShares := data.IntermediateStateRoots.splitIntoShares(ShareSize)
-	evidenceShares := data.Evidence.splitIntoShares(ShareSize)
+	txShares := data.Txs.splitIntoShares()
+	intermRootsShares := data.IntermediateStateRoots.splitIntoShares()
+	evidenceShares := data.Evidence.splitIntoShares()
 
 	// application data shares from messages:
-	msgShares := data.Messages.splitIntoShares(ShareSize)
+	msgShares := data.Messages.splitIntoShares()
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 
-	// FIXME(ismail): this is not a power of two
-	// see: https://github.com/lazyledger/lazyledger-specs/issues/80 and
-	wantLen := getNextSquareNum(curLen)
-	tailShares := GenerateTailPaddingShares(wantLen-curLen, ShareSize)
+	// find the number of shares needed to create a square that has a power of
+	// two width
+	wantLen := paddedLen(curLen)
+
+	// ensure that the min square size is used
+	if wantLen < consts.MinSharecount {
+		wantLen = consts.MinSharecount
+	}
+
+	tailShares := GenerateTailPaddingShares(wantLen-curLen, consts.ShareSize)
 
 	return append(append(append(append(
 		txShares,
 		intermRootsShares...),
 		evidenceShares...),
 		msgShares...),
-		tailShares...)
+		tailShares...), curLen
 }
 
-func getNextSquareNum(length int) int {
-	width := int(math.Ceil(math.Sqrt(float64(length))))
-	// TODO(ismail): make width a power of two instead
-	return width * width
+// paddedLen calculates the number of shares needed to make a power of 2 square
+// given the current number of shares
+func paddedLen(length int) int {
+	width := uint32(math.Ceil(math.Sqrt(float64(length))))
+	width = nextHighestPowerOf2(width)
+	return int(width * width)
+}
+
+// nextPowerOf2 returns the next highest power of 2 unless the input is a power
+// of two, in which case it returns the input
+func nextHighestPowerOf2(v uint32) uint32 {
+	if v == 0 {
+		return 0
+	}
+
+	// find the next highest power using bit mashing
+	v--
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+	v++
+
+	// return the next highest power
+	return v
 }
 
 type Message struct {
@@ -1587,29 +1525,20 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
 	return nil
 }
 
-func (data *EvidenceData) splitIntoShares(shareSize int) NamespacedShares {
-	shares := make([]NamespacedShare, 0)
+func (data *EvidenceData) splitIntoShares() NamespacedShares {
+	rawDatas := make([][]byte, 0, len(data.Evidence))
 	for _, ev := range data.Evidence {
-		var rawData []byte
-		var err error
-		switch cev := ev.(type) {
-		case *DuplicateVoteEvidence:
-			rawData, err = protoio.MarshalDelimited(cev.ToProto())
-		case *LightClientAttackEvidence:
-			pcev, iErr := cev.ToProto()
-			if iErr != nil {
-				err = iErr
-				break
-			}
-			rawData, err = protoio.MarshalDelimited(pcev)
-		default:
-			panic(fmt.Sprintf("unknown evidence included in evidence pool (don't know how to encode this) %#v", ev))
-		}
+		pev, err := EvidenceToProto(ev)
 		if err != nil {
-			panic(fmt.Sprintf("evidence included in evidence pool that can not be encoded %#v, err: %v", ev, err))
+			panic("failure to convert evidence to equivalent proto type")
 		}
-		shares = appendToShares(shares, EvidenceNamespaceID, rawData, shareSize)
+		rawData, err := protoio.MarshalDelimited(pev)
+		if err != nil {
+			panic(err)
+		}
+		rawDatas = append(rawDatas, rawData)
 	}
+	shares := splitContiguous(consts.EvidenceNamespaceID, rawDatas)
 	return shares
 }
 

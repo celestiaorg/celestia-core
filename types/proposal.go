@@ -24,17 +24,18 @@ var (
 // If POLRound >= 0, then BlockID corresponds to the block that is locked in POLRound.
 type Proposal struct {
 	Type      tmproto.SignedMsgType
-	Height    int64     `json:"height"`
-	Round     int32     `json:"round"`     // there can not be greater than 2_147_483_647 rounds
-	POLRound  int32     `json:"pol_round"` // -1 if null.
-	BlockID   BlockID   `json:"block_id"`
-	Timestamp time.Time `json:"timestamp"`
-	Signature []byte    `json:"signature"`
+	Height    int64                   `json:"height"`
+	Round     int32                   `json:"round"`     // there can not be greater than 2_147_483_647 rounds
+	POLRound  int32                   `json:"pol_round"` // -1 if null.
+	BlockID   BlockID                 `json:"block_id"`
+	Timestamp time.Time               `json:"timestamp"`
+	Signature []byte                  `json:"signature"`
+	DAHeader  *DataAvailabilityHeader `json:"da_header"`
 }
 
 // NewProposal returns a new Proposal.
 // If there is no POLRound, polRound should be -1.
-func NewProposal(height int64, round int32, polRound int32, blockID BlockID) *Proposal {
+func NewProposal(height int64, round int32, polRound int32, blockID BlockID, daH *DataAvailabilityHeader) *Proposal {
 	return &Proposal{
 		Type:      tmproto.ProposalType,
 		Height:    height,
@@ -42,6 +43,7 @@ func NewProposal(height int64, round int32, polRound int32, blockID BlockID) *Pr
 		BlockID:   blockID,
 		POLRound:  polRound,
 		Timestamp: tmtime.Now(),
+		DAHeader:  daH,
 	}
 }
 
@@ -84,16 +86,17 @@ func (p *Proposal) ValidateBasic() error {
 // 1. height
 // 2. round
 // 3. block ID
-// 4. POL round
-// 5. first 6 bytes of signature
-// 6. timestamp
-//
+// 4. DAHeader
+// 5. POL round
+// 6. first 6 bytes of signature
+// 7. timestamp
 // See BlockID#String.
 func (p *Proposal) String() string {
-	return fmt.Sprintf("Proposal{%v/%v (%v, %v) %X @ %s}",
+	return fmt.Sprintf("Proposal{%v/%v (%v, %v, %v) %X @ %s}",
 		p.Height,
 		p.Round,
 		p.BlockID,
+		p.DAHeader,
 		p.POLRound,
 		tmbytes.Fingerprint(p.Signature),
 		CanonicalTime(p.Timestamp))
@@ -118,12 +121,17 @@ func ProposalSignBytes(chainID string, p *tmproto.Proposal) []byte {
 }
 
 // ToProto converts Proposal to protobuf
-func (p *Proposal) ToProto() *tmproto.Proposal {
+func (p *Proposal) ToProto() (*tmproto.Proposal, error) {
 	if p == nil {
-		return &tmproto.Proposal{}
+		return &tmproto.Proposal{}, nil
 	}
-	pb := new(tmproto.Proposal)
 
+	pdah, err := p.DAHeader.ToProto()
+	if err != nil {
+		return nil, err
+	}
+
+	pb := new(tmproto.Proposal)
 	pb.BlockID = p.BlockID.ToProto()
 	pb.Type = p.Type
 	pb.Height = p.Height
@@ -131,11 +139,11 @@ func (p *Proposal) ToProto() *tmproto.Proposal {
 	pb.PolRound = p.POLRound
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
-
-	return pb
+	pb.DAHeader = pdah
+	return pb, nil
 }
 
-// FromProto sets a protobuf Proposal to the given pointer.
+// ProposalFromProto sets a protobuf Proposal to the given pointer.
 // It returns an error if the proposal is invalid.
 func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 	if pp == nil {
@@ -149,6 +157,11 @@ func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 		return nil, err
 	}
 
+	dah, err := DataAvailabilityHeaderFromProto(pp.DAHeader)
+	if err != nil {
+		return nil, err
+	}
+
 	p.BlockID = *blockID
 	p.Type = pp.Type
 	p.Height = pp.Height
@@ -156,6 +169,7 @@ func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 	p.POLRound = pp.PolRound
 	p.Timestamp = pp.Timestamp
 	p.Signature = pp.Signature
+	p.DAHeader = dah
 
 	return p, p.ValidateBasic()
 }

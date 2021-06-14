@@ -14,15 +14,18 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	format "github.com/ipfs/go-ipld-format"
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	dbm "github.com/tendermint/tm-db"
 
 	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	mempl "github.com/lazyledger/lazyledger-core/mempool"
@@ -69,12 +72,14 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 	logger := log.TestingLogger()
 	state, _ := stateStore.LoadFromDBOrGenesisFile(consensusReplayConfig.GenesisFile())
 	privValidator := loadPrivValidator(consensusReplayConfig)
+
 	cs := newStateWithConfigAndBlockStore(
 		consensusReplayConfig,
 		state,
 		privValidator,
 		kvstore.NewApplication(),
 		blockDB,
+		mdutils.Mock(),
 	)
 	cs.SetLogger(logger)
 
@@ -99,7 +104,7 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 	case <-newBlockSub.Out():
 	case <-newBlockSub.Cancelled():
 		t.Fatal("newBlockSub was cancelled")
-	case <-time.After(120 * time.Second):
+	case <-time.After(4 * time.Minute):
 		t.Fatal("Timed out waiting for new block (see trace above)")
 	}
 }
@@ -149,7 +154,6 @@ func crashWALandCheckLiveness(t *testing.T, consensusReplayConfig *cfg.Config,
 	initFn func(dbm.DB, *State, context.Context), heightToStop int64) {
 	walPanicked := make(chan error)
 	crashingWal := &crashingWAL{panicCh: walPanicked, heightToStop: heightToStop}
-
 	i := 1
 LOOP:
 	for {
@@ -157,8 +161,9 @@ LOOP:
 
 		// create consensus state from a clean slate
 		logger := log.NewNopLogger()
-		blockDB := dbm.NewMemDB()
+		blockDB := memdb.NewDB()
 		stateDB := blockDB
+
 		stateStore := sm.NewStore(stateDB)
 		state, err := sm.MakeGenesisStateFromFile(consensusReplayConfig.GenesisFile())
 		require.NoError(t, err)
@@ -169,6 +174,7 @@ LOOP:
 			privValidator,
 			kvstore.NewApplication(),
 			blockDB,
+			mdutils.Mock(),
 		)
 		cs.SetLogger(logger)
 
@@ -328,7 +334,8 @@ func TestSimulateValidatorsChange(t *testing.T) {
 		nPeers,
 		"replay_test",
 		newMockTickerFunc(true),
-		newPersistentKVStoreWithPath)
+		newPersistentKVStoreWithPath,
+	)
 	sim.Config = config
 	sim.GenesisState, _ = sm.MakeGenesisState(genDoc)
 	sim.CleanupFunc = cleanup
@@ -367,8 +374,9 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	propBlockParts := propBlock.MakePartSet(partSize)
 	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
-	proposal := types.NewProposal(vss[1].Height, round, -1, blockID)
-	p := proposal.ToProto()
+	proposal := types.NewProposal(vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	p, err := proposal.ToProto()
+	require.NoError(t, err)
 	if err := vss[1].SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal("failed to sign bad proposal", err)
 	}
@@ -397,8 +405,9 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	propBlockParts = propBlock.MakePartSet(partSize)
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
-	proposal = types.NewProposal(vss[2].Height, round, -1, blockID)
-	p = proposal.ToProto()
+	proposal = types.NewProposal(vss[2].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	p, err = proposal.ToProto()
+	require.NoError(t, err)
 	if err := vss[2].SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal("failed to sign bad proposal", err)
 	}
@@ -454,8 +463,9 @@ func TestSimulateValidatorsChange(t *testing.T) {
 
 	selfIndex := valIndexFn(0)
 
-	proposal = types.NewProposal(vss[3].Height, round, -1, blockID)
-	p = proposal.ToProto()
+	proposal = types.NewProposal(vss[3].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	p, err = proposal.ToProto()
+	require.NoError(t, err)
 	if err := vss[3].SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal("failed to sign bad proposal", err)
 	}
@@ -513,8 +523,9 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	sort.Sort(ValidatorStubsByPower(newVss))
 
 	selfIndex = valIndexFn(0)
-	proposal = types.NewProposal(vss[1].Height, round, -1, blockID)
-	p = proposal.ToProto()
+	proposal = types.NewProposal(vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	p, err = proposal.ToProto()
+	require.NoError(t, err)
 	if err := vss[1].SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal("failed to sign bad proposal", err)
 	}
@@ -660,7 +671,7 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 	if testValidatorsChange {
 		testConfig := ResetConfig(fmt.Sprintf("%s_%v_m", t.Name(), mode))
 		defer func() { _ = os.RemoveAll(testConfig.RootDir) }()
-		stateDB = dbm.NewMemDB()
+		stateDB = memdb.NewDB()
 
 		genesisState = sim.GenesisState
 		config = sim.Config
@@ -670,7 +681,7 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 	} else { // test single node
 		testConfig := ResetConfig(fmt.Sprintf("%s_%v_s", t.Name(), mode))
 		defer func() { _ = os.RemoveAll(testConfig.RootDir) }()
-		walBody, err := WALWithNBlocks(t, numBlocks)
+		walBody, err := walWithNBlocks(t, numBlocks)
 		require.NoError(t, err)
 		walFile := tempWALWithData(walBody)
 		config.Consensus.SetWalFile(walFile)
@@ -712,7 +723,7 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 		// run nBlocks against a new client to build up the app state.
 		// use a throwaway tendermint state
 		proxyApp := proxy.NewAppConns(clientCreator2)
-		stateDB1 := dbm.NewMemDB()
+		stateDB1 := memdb.NewDB()
 		stateStore := sm.NewStore(stateDB1)
 		err := stateStore.Save(genesisState)
 		require.NoError(t, err)
@@ -1156,7 +1167,7 @@ func stateAndStore(
 	config *cfg.Config,
 	pubKey crypto.PubKey,
 	appVersion uint64) (dbm.DB, sm.State, *mockBlockStore) {
-	stateDB := dbm.NewMemDB()
+	stateDB := memdb.NewDB()
 	stateStore := sm.NewStore(stateDB)
 	state, _ := sm.MakeGenesisStateFromFile(config.GenesisFile())
 	state.Version.Consensus.App = appVersion
@@ -1171,16 +1182,17 @@ func stateAndStore(
 // mock block store
 
 type mockBlockStore struct {
-	config  *cfg.Config
-	params  tmproto.ConsensusParams
-	chain   []*types.Block
-	commits []*types.Commit
-	base    int64
+	config     *cfg.Config
+	params     tmproto.ConsensusParams
+	chain      []*types.Block
+	commits    []*types.Commit
+	base       int64
+	ipfsDagAPI format.DAGService
 }
 
 // TODO: NewBlockStore(db.NewMemDB) ...
 func newMockBlockStore(config *cfg.Config, params tmproto.ConsensusParams) *mockBlockStore {
-	return &mockBlockStore{config, params, nil, nil, 0}
+	return &mockBlockStore{config, params, nil, nil, 0, mdutils.Mock()}
 }
 
 func (bs *mockBlockStore) Height() int64                       { return int64(len(bs.chain)) }

@@ -93,27 +93,6 @@ moniker = "{{ .BaseConfig.Moniker }}"
 # and verifying their commits
 fast-sync = {{ .BaseConfig.FastSyncMode }}
 
-# Database backend: goleveldb | cleveldb | boltdb | rocksdb | badgerdb
-# * goleveldb (github.com/syndtr/goleveldb - most popular implementation)
-#   - pure go
-#   - stable
-# * cleveldb (uses levigo wrapper)
-#   - fast
-#   - requires gcc
-#   - use cleveldb build tag (go build -tags cleveldb)
-# * boltdb (uses etcd's fork of bolt - github.com/etcd-io/bbolt)
-#   - EXPERIMENTAL
-#   - may be faster is some use-cases (random reads - indexer)
-#   - use boltdb build tag (go build -tags boltdb)
-# * rocksdb (uses github.com/tecbot/gorocksdb)
-#   - EXPERIMENTAL
-#   - requires gcc
-#   - use rocksdb build tag (go build -tags rocksdb)
-# * badgerdb (uses github.com/dgraph-io/badger)
-#   - EXPERIMENTAL
-#   - use badgerdb build tag (go build -tags badgerdb)
-db-backend = "{{ .BaseConfig.DBBackend }}"
-
 # Database directory
 db-dir = "{{ js .BaseConfig.DBPath }}"
 
@@ -140,9 +119,6 @@ priv-validator-laddr = "{{ .BaseConfig.PrivValidatorListenAddr }}"
 
 # Path to the JSON file containing the private key to use for node authentication in the p2p protocol
 node-key-file = "{{ js .BaseConfig.NodeKey }}"
-
-# Mechanism to connect to the ABCI application: socket | grpc
-abci = "{{ .BaseConfig.ABCI }}"
 
 # If true, query the ABCI app on connecting to a new peer
 # so the app can decide if we should keep the connection or not
@@ -374,7 +350,6 @@ temp-dir = "{{ .StateSync.TempDir }}"
 
 # Fast Sync version to use:
 #   1) "v0" (default) - the legacy fast sync implementation
-#   2) "v2" - complete redesign of v0, optimized for testability & readability
 version = "{{ .FastSync.Version }}"
 
 #######################################################
@@ -461,23 +436,9 @@ namespace = "{{ .Instrumentation.Namespace }}"
 #######################################################
 [ipfs]
 
-# IPFS repo root.
-repo-root = "{{ .IPFS.ConfigRootPath}}"
-
-## Below options will be passed to ipfs when initializing an ipfs repo.
-## They will be written into the repo-root/config on init.
-## To modify the generated config, edit repo-root/config accordingly.
-
-# Address for the local API (RPC).
-api = "{{ .IPFS.API }}"
-# Address to listen on for IPFS HTTP object gateway.
-gateway = "{{ .IPFS.Gateway }}"
-# Addresses for the swarm to listen on
-swarm = [{{ range .IPFS.Swarm }}{{ printf "%q, " . }}{{end}}]
-# Swarm addresses to announce to the network
-announce = [{{ range .IPFS.Announce }}{{ printf "%q, " . }}{{end}}]
-# Swarm addresses not to announce to the network
-no-announce = [{{ range .IPFS.NoAnnounce }}{{ printf "%q, " . }}{{end}}]
+# IPFS related configuration
+repo-path = "{{ .IPFS.RepoPath}}"
+serve-api = "{{ .IPFS.ServeAPI}}"
 `
 
 /****** these are for test settings ***********/

@@ -36,11 +36,11 @@ seeds = ["seed01"]
 seeds = ["seed01"]
 snapshot_interval = 5
 perturb = ["disconnect"]
-misbehaviors = { 1018 = "double-prevote" }
+# FIXME: maverick has been disabled until it is redesigned (https://github.com/tendermint/tendermint/issues/5575)
+# misbehaviors = { 1018 = "double-prevote" }
 
 [node.validator02]
 seeds = ["seed02"]
-database = "badgerdb"
 abci_protocol = "builtin"
 privval_protocol = "tcp"
 persist_interval = 0
@@ -48,7 +48,6 @@ perturb = ["restart"]
 
 [node.validator03]
 seeds = ["seed01"]
-database = "badgerdb"
 privval_protocol = "unix"
 persist_interval = 3
 retain_blocks = 3
@@ -56,14 +55,12 @@ perturb = ["kill"]
 
 [node.validator04]
 persistent_peers = ["validator01"]
-database = "badgerdb"
 abci_protocol = "builtin"
 perturb = ["pause"]
 
 [node.validator05]
 start_at = 1005 # Becomes part of the validator set at 1010
 seeds = ["seed02"]
-database = "badgerdb"
 fast_sync = "v0"
 privval_protocol = "tcp"
 perturb = ["kill", "pause", "disconnect", "restart"]

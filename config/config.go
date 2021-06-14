@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/lazyledger/lazyledger-core/ipfs"
 )
 
 const (
@@ -66,7 +68,7 @@ type Config struct {
 	TxIndex         *TxIndexConfig         `mapstructure:"tx-index"`
 	Instrumentation *InstrumentationConfig `mapstructure:"instrumentation"`
 	// Options for IPFS service
-	IPFS *IPFSConfig `mapstructure:"ipfs"`
+	IPFS *ipfs.Config `mapstructure:"ipfs"`
 }
 
 // DefaultConfig returns a default configuration for a Tendermint node
@@ -81,7 +83,7 @@ func DefaultConfig() *Config {
 		Consensus:       DefaultConsensusConfig(),
 		TxIndex:         DefaultTxIndexConfig(),
 		Instrumentation: DefaultInstrumentationConfig(),
-		IPFS:            DefaultIPFSConfig(),
+		IPFS:            ipfs.DefaultConfig(),
 	}
 }
 
@@ -108,6 +110,7 @@ func (cfg *Config) SetRoot(root string) *Config {
 	cfg.P2P.RootDir = root
 	cfg.Mempool.RootDir = root
 	cfg.Consensus.RootDir = root
+	cfg.IPFS.RootDir = root
 	return cfg
 }
 
@@ -165,27 +168,6 @@ type BaseConfig struct { //nolint: maligned
 	// and verifying their commits
 	FastSyncMode bool `mapstructure:"fast-sync"`
 
-	// Database backend: goleveldb | cleveldb | boltdb | rocksdb
-	// * goleveldb (github.com/syndtr/goleveldb - most popular implementation)
-	//   - pure go
-	//   - stable
-	// * cleveldb (uses levigo wrapper)
-	//   - fast
-	//   - requires gcc
-	//   - use cleveldb build tag (go build -tags cleveldb)
-	// * boltdb (uses etcd's fork of bolt - github.com/etcd-io/bbolt)
-	//   - EXPERIMENTAL
-	//   - may be faster is some use-cases (random reads - indexer)
-	//   - use boltdb build tag (go build -tags boltdb)
-	// * rocksdb (uses github.com/tecbot/gorocksdb)
-	//   - EXPERIMENTAL
-	//   - requires gcc
-	//   - use rocksdb build tag (go build -tags rocksdb)
-	// * badgerdb (uses github.com/dgraph-io/badger)
-	//   - EXPERIMENTAL
-	//   - use badgerdb build tag (go build -tags badgerdb)
-	DBBackend string `mapstructure:"db-backend"`
-
 	// Database directory
 	DBPath string `mapstructure:"db-dir"`
 
@@ -212,7 +194,7 @@ type BaseConfig struct { //nolint: maligned
 	NodeKey string `mapstructure:"node-key-file"`
 
 	// Mechanism to connect to the ABCI application: socket | grpc
-	ABCI string `mapstructure:"abci"`
+	// ABCI string `mapstructure:"abci"` // we only use in process apps
 
 	// If true, query the ABCI app on connecting to a new peer
 	// so the app can decide if we should keep the connection or not
@@ -228,12 +210,10 @@ func DefaultBaseConfig() BaseConfig {
 		NodeKey:            defaultNodeKeyPath,
 		Moniker:            defaultMoniker,
 		ProxyApp:           "tcp://127.0.0.1:26658",
-		ABCI:               "socket",
 		LogLevel:           DefaultPackageLogLevels(),
 		LogFormat:          LogFormatPlain,
 		FastSyncMode:       true,
 		FilterPeers:        false,
-		DBBackend:          "goleveldb",
 		DBPath:             "data",
 	}
 }
@@ -244,7 +224,6 @@ func TestBaseConfig() BaseConfig {
 	cfg.chainID = "tendermint_test"
 	cfg.ProxyApp = "kvstore"
 	cfg.FastSyncMode = false
-	cfg.DBBackend = "memdb"
 	return cfg
 }
 
@@ -778,7 +757,7 @@ type FastSyncConfig struct {
 // DefaultFastSyncConfig returns a default configuration for the fast sync service
 func DefaultFastSyncConfig() *FastSyncConfig {
 	return &FastSyncConfig{
-		Version: "v2",
+		Version: "v0",
 	}
 }
 
@@ -792,8 +771,8 @@ func (cfg *FastSyncConfig) ValidateBasic() error {
 	switch cfg.Version {
 	case "v0":
 		return nil
-	case "v2":
-		return nil
+	// case "v2":
+	//	return nil
 	default:
 		return fmt.Errorf("unknown fastsync version %s", cfg.Version)
 	}
@@ -864,17 +843,17 @@ func DefaultConsensusConfig() *ConsensusConfig {
 // TestConsensusConfig returns a configuration for testing the consensus service
 func TestConsensusConfig() *ConsensusConfig {
 	cfg := DefaultConsensusConfig()
-	cfg.TimeoutPropose = 40 * time.Millisecond
-	cfg.TimeoutProposeDelta = 1 * time.Millisecond
-	cfg.TimeoutPrevote = 10 * time.Millisecond
-	cfg.TimeoutPrevoteDelta = 1 * time.Millisecond
-	cfg.TimeoutPrecommit = 10 * time.Millisecond
-	cfg.TimeoutPrecommitDelta = 1 * time.Millisecond
+	cfg.TimeoutPropose = 200 * time.Millisecond
+	cfg.TimeoutProposeDelta = 20 * time.Millisecond
+	cfg.TimeoutPrevote = 80 * time.Millisecond
+	cfg.TimeoutPrevoteDelta = 20 * time.Millisecond
+	cfg.TimeoutPrecommit = 160 * time.Millisecond
+	cfg.TimeoutPrecommitDelta = 20 * time.Millisecond
 	// NOTE: when modifying, make sure to update time_iota_ms (testGenesisFmt) in toml.go
-	cfg.TimeoutCommit = 10 * time.Millisecond
+	cfg.TimeoutCommit = 80 * time.Millisecond
 	cfg.SkipTimeoutCommit = true
-	cfg.PeerGossipSleepDuration = 5 * time.Millisecond
-	cfg.PeerQueryMaj23SleepDuration = 250 * time.Millisecond
+	cfg.PeerGossipSleepDuration = 20 * time.Millisecond
+	cfg.PeerQueryMaj23SleepDuration = 500 * time.Millisecond
 	cfg.DoubleSignCheckHeight = int64(0)
 	return cfg
 }
@@ -1030,8 +1009,8 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 	}
 }
 
-func TetsIpfsConfig() *IPFSConfig {
-	return DefaultIPFSConfig()
+func TetsIpfsConfig() *ipfs.Config {
+	return ipfs.DefaultConfig()
 }
 
 // TestInstrumentationConfig returns a default configuration for metrics

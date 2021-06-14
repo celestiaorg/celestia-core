@@ -7,12 +7,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/tendermint/tm-db"
-
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	"github.com/lazyledger/lazyledger-core/evidence"
 	"github.com/lazyledger/lazyledger-core/evidence/mocks"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
@@ -103,7 +102,7 @@ func TestVerifyLightClientAttack_Lunatic(t *testing.T) {
 	blockStore.On("LoadBlockCommit", int64(4)).Return(commit)
 	blockStore.On("LoadBlockCommit", int64(10)).Return(trustedCommit)
 
-	pool, err := evidence.NewPool(dbm.NewMemDB(), stateStore, blockStore)
+	pool, err := evidence.NewPool(memdb.NewDB(), stateStore, blockStore)
 	require.NoError(t, err)
 	pool.SetLogger(log.TestingLogger())
 
@@ -201,7 +200,7 @@ func TestVerifyLightClientAttack_Equivocation(t *testing.T) {
 	blockStore.On("LoadBlockMeta", int64(10)).Return(&types.BlockMeta{Header: *trustedHeader})
 	blockStore.On("LoadBlockCommit", int64(10)).Return(trustedCommit)
 
-	pool, err := evidence.NewPool(dbm.NewMemDB(), stateStore, blockStore)
+	pool, err := evidence.NewPool(memdb.NewDB(), stateStore, blockStore)
 	require.NoError(t, err)
 	pool.SetLogger(log.TestingLogger())
 
@@ -276,7 +275,7 @@ func TestVerifyLightClientAttack_Amnesia(t *testing.T) {
 	blockStore.On("LoadBlockMeta", int64(10)).Return(&types.BlockMeta{Header: *trustedHeader})
 	blockStore.On("LoadBlockCommit", int64(10)).Return(trustedCommit)
 
-	pool, err := evidence.NewPool(dbm.NewMemDB(), stateStore, blockStore)
+	pool, err := evidence.NewPool(memdb.NewDB(), stateStore, blockStore)
 	require.NoError(t, err)
 	pool.SetLogger(log.TestingLogger())
 
@@ -369,7 +368,7 @@ func TestVerifyDuplicateVoteEvidence(t *testing.T) {
 	blockStore := &mocks.BlockStore{}
 	blockStore.On("LoadBlockMeta", int64(10)).Return(&types.BlockMeta{Header: types.Header{Time: defaultEvidenceTime}})
 
-	pool, err := evidence.NewPool(dbm.NewMemDB(), stateStore, blockStore)
+	pool, err := evidence.NewPool(memdb.NewDB(), stateStore, blockStore)
 	require.NoError(t, err)
 
 	evList := types.EvidenceList{goodEv}

@@ -3,12 +3,13 @@ package p2p
 import (
 	"fmt"
 	"math"
+	mrand "math/rand"
 	"sync"
 	"time"
 
 	"github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/libs/cmap"
-	"github.com/lazyledger/lazyledger-core/libs/rand"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	"github.com/lazyledger/lazyledger-core/libs/service"
 	"github.com/lazyledger/lazyledger-core/p2p/conn"
 )
@@ -87,8 +88,6 @@ type Switch struct {
 	filterTimeout time.Duration
 	peerFilters   []PeerFilterFunc
 
-	rng *rand.Rand // seed for randomizing dial times and orders
-
 	metrics *Metrics
 }
 
@@ -122,8 +121,8 @@ func NewSwitch(
 		unconditionalPeerIDs: make(map[ID]struct{}),
 	}
 
-	// Ensure we have a completely undeterministic PRNG.
-	sw.rng = rand.NewRand()
+	// Ensure PRNG is reseeded.
+	tmrand.Reseed()
 
 	sw.BaseService = *service.NewBaseService(nil, "P2P Switch", sw)
 
@@ -503,7 +502,7 @@ func (sw *Switch) dialPeersAsync(netAddrs []*NetAddress) {
 	}
 
 	// permute the list, dial them in random order.
-	perm := sw.rng.Perm(len(netAddrs))
+	perm := mrand.Perm(len(netAddrs))
 	for i := 0; i < len(perm); i++ {
 		go func(i int) {
 			j := perm[i]
@@ -546,7 +545,8 @@ func (sw *Switch) DialPeerWithAddress(addr *NetAddress) error {
 
 // sleep for interval plus some random amount of ms on [0, dialRandomizerIntervalMilliseconds]
 func (sw *Switch) randomSleep(interval time.Duration) {
-	r := time.Duration(sw.rng.Int63n(dialRandomizerIntervalMilliseconds)) * time.Millisecond
+	// nolint:gosec // G404: Use of weak random number generator
+	r := time.Duration(mrand.Int63n(dialRandomizerIntervalMilliseconds)) * time.Millisecond
 	time.Sleep(r + interval)
 }
 

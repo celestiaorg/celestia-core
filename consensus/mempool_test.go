@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/tendermint/tm-db"
-
 	"github.com/lazyledger/lazyledger-core/abci/example/code"
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	mempl "github.com/lazyledger/lazyledger-core/mempool"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -30,7 +30,7 @@ func TestMempoolNoProgressUntilTxsAvailable(t *testing.T) {
 
 	config.Consensus.CreateEmptyBlocks = false
 	state, privVals := randGenesisState(1, false, 10)
-	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication())
+	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication(), mdutils.Mock())
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 	height, round := cs.Height, cs.Round
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
@@ -50,7 +50,7 @@ func TestMempoolProgressAfterCreateEmptyBlocksInterval(t *testing.T) {
 
 	config.Consensus.CreateEmptyBlocksInterval = ensureTimeout
 	state, privVals := randGenesisState(1, false, 10)
-	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication())
+	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication(), mdutils.Mock())
 
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 
@@ -68,7 +68,8 @@ func TestMempoolProgressInHigherRound(t *testing.T) {
 
 	config.Consensus.CreateEmptyBlocks = false
 	state, privVals := randGenesisState(1, false, 10)
-	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication())
+	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication(), mdutils.Mock())
+
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 	height, round := cs.Height, cs.Round
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
@@ -114,9 +115,10 @@ func deliverTxsRange(cs *State, start, end int) {
 
 func TestMempoolTxConcurrentWithCommit(t *testing.T) {
 	state, privVals := randGenesisState(1, false, 10)
-	blockDB := dbm.NewMemDB()
+	blockDB := memdb.NewDB()
 	stateStore := sm.NewStore(blockDB)
-	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], NewCounterApplication(), blockDB)
+
+	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], NewCounterApplication(), blockDB, mdutils.Mock())
 	err := stateStore.Save(state)
 	require.NoError(t, err)
 	newBlockHeaderCh := subscribe(cs.eventBus, types.EventQueryNewBlockHeader)
@@ -139,9 +141,10 @@ func TestMempoolTxConcurrentWithCommit(t *testing.T) {
 func TestMempoolRmBadTx(t *testing.T) {
 	state, privVals := randGenesisState(1, false, 10)
 	app := NewCounterApplication()
-	blockDB := dbm.NewMemDB()
+	blockDB := memdb.NewDB()
+
 	stateStore := sm.NewStore(blockDB)
-	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], app, blockDB)
+	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], app, blockDB, mdutils.Mock())
 	err := stateStore.Save(state)
 	require.NoError(t, err)
 

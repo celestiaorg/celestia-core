@@ -10,12 +10,14 @@ import (
 	"github.com/spf13/cobra"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	nm "github.com/lazyledger/lazyledger-core/node"
 )
 
 var (
 	genesisHash []byte
+	initIPFS    bool
 )
 
 // AddNodeFlags exposes some common configuration options on the command-line
@@ -49,7 +51,6 @@ func AddNodeFlags(cmd *cobra.Command) {
 			" 'persistent_kvstore',"+
 			" 'counter',"+
 			" 'counter_serial' or 'noop' for local testing.")
-	cmd.Flags().String("abci", config.ABCI, "specify abci transport (socket | grpc)")
 
 	// rpc flags
 	cmd.Flags().String("rpc.laddr", config.RPC.ListenAddress, "RPC listen address. Port required")
@@ -86,13 +87,26 @@ func AddNodeFlags(cmd *cobra.Command) {
 
 	// db flags
 	cmd.Flags().String(
-		"db-backend",
-		config.DBBackend,
-		"database backend: goleveldb | cleveldb | boltdb | rocksdb | badgerdb")
-	cmd.Flags().String(
 		"db-dir",
 		config.DBPath,
 		"database directory")
+
+	cmd.Flags().String(
+		"ipfs.repo-path",
+		config.IPFS.RepoPath,
+		"custom IPFS repository path. Defaults to `.{RootDir}/ipfs`",
+	)
+	cmd.Flags().Bool(
+		"ipfs.serve-api",
+		config.IPFS.ServeAPI,
+		"set this to expose IPFS API(useful for debugging)",
+	)
+	cmd.Flags().BoolVar(
+		&initIPFS,
+		"ipfs.init",
+		false,
+		"set this to initialize repository for embedded IPFS node. Flag is ignored if repo is already initialized",
+	)
 }
 
 // NewRunNodeCmd returns the command that allows the CLI to start a node.
@@ -107,7 +121,11 @@ func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
 				return err
 			}
 
-			n, err := nodeProvider(config, logger)
+			n, err := nodeProvider(
+				config,
+				ipfs.Embedded(initIPFS, config.IPFS, logger),
+				logger,
+			)
 			if err != nil {
 				return fmt.Errorf("failed to create node: %w", err)
 			}

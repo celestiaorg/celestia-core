@@ -5,32 +5,28 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // nolint: gosec // securely exposed on separate, optional port
-	"path/filepath"
 	"strings"
 	"time"
 
-	ipfscore "github.com/ipfs/go-ipfs/core"
-	coreapi "github.com/ipfs/go-ipfs/core/coreapi"
-	"github.com/ipfs/go-ipfs/core/node/libp2p"
-	"github.com/ipfs/go-ipfs/plugin/loader"
-	"github.com/ipfs/go-ipfs/repo/fsrepo"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
+	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 
-	dbm "github.com/tendermint/tm-db"
-
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	bcv0 "github.com/lazyledger/lazyledger-core/blockchain/v0"
-	bcv2 "github.com/lazyledger/lazyledger-core/blockchain/v2"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cs "github.com/lazyledger/lazyledger-core/consensus"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/evidence"
+	"github.com/lazyledger/lazyledger-core/ipfs"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
@@ -69,8 +65,12 @@ type DBProvider func(*DBContext) (dbm.DB, error)
 // DefaultDBProvider returns a database using the DBBackend and DBDir
 // specified in the ctx.Config.
 func DefaultDBProvider(ctx *DBContext) (dbm.DB, error) {
-	dbType := dbm.BackendType(ctx.Config.DBBackend)
-	return dbm.NewDB(ctx.ID, dbType, ctx.Config.DBDir())
+	return badgerdb.NewDB(ctx.ID, ctx.Config.DBDir())
+}
+
+// InMemDBProvider provides an in-memory DB.
+func InMemDBProvider(ctx *DBContext) (dbm.DB, error) {
+	return badgerdb.NewInMemoryDB()
 }
 
 // GenesisDocProvider returns a GenesisDoc.
@@ -87,12 +87,12 @@ func DefaultGenesisDocProviderFunc(config *cfg.Config) GenesisDocProvider {
 }
 
 // Provider takes a config and a logger and returns a ready to go Node.
-type Provider func(*cfg.Config, log.Logger) (*Node, error)
+type Provider func(*cfg.Config, ipfs.NodeProvider, log.Logger) (*Node, error)
 
 // DefaultNewNode returns a Tendermint node with default settings for the
 // PrivValidator, ClientCreator, GenesisDoc, and DBProvider.
 // It implements NodeProvider.
-func DefaultNewNode(config *cfg.Config, logger log.Logger) (*Node, error) {
+func DefaultNewNode(config *cfg.Config, ipfs ipfs.NodeProvider, logger log.Logger) (*Node, error) {
 	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load or gen node key %s: %w", config.NodeKeyFile(), err)
@@ -106,12 +106,12 @@ func DefaultNewNode(config *cfg.Config, logger log.Logger) (*Node, error) {
 	return NewNode(config,
 		pval,
 		nodeKey,
-		proxy.DefaultClientCreator(config.ProxyApp, config.ABCI, config.DBDir()),
+		proxy.DefaultClientCreator(config.ProxyApp, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
 		DefaultDBProvider,
+		ipfs,
 		DefaultMetricsProvider(config.Instrumentation),
 		logger,
-		EmbedIpfsNode(true),
 	)
 }
 
@@ -175,22 +175,6 @@ func StateProvider(stateProvider statesync.StateProvider) Option {
 	}
 }
 
-// IpfsPluginsWereLoaded indicates that all IPFS plugin were already loaded.
-// Setting up plugins will be skipped when creating the IPFS node.
-func IpfsPluginsWereLoaded(wereAlreadyLoaded bool) Option {
-	return func(n *Node) {
-		n.areIpfsPluginsAlreadyLoaded = wereAlreadyLoaded
-	}
-}
-
-// IpfsPluginsWereLoaded indicates that all IPFS plugin were already loaded.
-// Setting up plugins will skipped when creating the IPFS node.
-func EmbedIpfsNode(embed bool) Option {
-	return func(n *Node) {
-		n.embedIpfsNode = embed
-	}
-}
-
 //------------------------------------------------------------------------------
 
 // Node is the highest level interface to a full Tendermint node.
@@ -231,26 +215,8 @@ type Node struct {
 	txIndexer         txindex.TxIndexer
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
-	// we store a ref to the full IpfsNode (instead of ipfs' CoreAPI) so we can Close() it OnStop()
-	embedIpfsNode               bool               // whether the node should start an IPFS node on startup
-	ipfsNode                    *ipfscore.IpfsNode // ipfs node
-	areIpfsPluginsAlreadyLoaded bool               // avoid injecting plugins twice in tests etc
-}
 
-func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
-	var blockStoreDB dbm.DB
-	blockStoreDB, err = dbProvider(&DBContext{"blockstore", config})
-	if err != nil {
-		return
-	}
-	blockStore = store.NewBlockStore(blockStoreDB)
-
-	stateDB, err = dbProvider(&DBContext{"state", config})
-	if err != nil {
-		return
-	}
-
-	return
+	ipfsClose io.Closer
 }
 
 func createAndStartProxyAppConns(clientCreator proxy.ClientCreator, logger log.Logger) (proxy.AppConns, error) {
@@ -393,8 +359,8 @@ func createBlockchainReactor(config *cfg.Config,
 	switch config.FastSync.Version {
 	case "v0":
 		bcReactor = bcv0.NewBlockchainReactor(state.Copy(), blockExec, blockStore, fastSync)
-	case "v2":
-		bcReactor = bcv2.NewBlockchainReactor(state.Copy(), blockExec, blockStore, fastSync)
+	// case "v2":
+	//	bcReactor = bcv2.NewBlockchainReactor(state.Copy(), blockExec, blockStore, fastSync)
 	default:
 		return nil, fmt.Errorf("unknown fastsync version %s", config.FastSync.Version)
 	}
@@ -403,7 +369,8 @@ func createBlockchainReactor(config *cfg.Config,
 	return bcReactor, nil
 }
 
-func createConsensusReactor(config *cfg.Config,
+func createConsensusReactor(
+	config *cfg.Config,
 	state sm.State,
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
@@ -413,6 +380,8 @@ func createConsensusReactor(config *cfg.Config,
 	csMetrics *cs.Metrics,
 	waitSync bool,
 	eventBus *types.EventBus,
+	dag ipld.DAGService,
+	croute routing.ContentRouting,
 	consensusLogger log.Logger) (*cs.Reactor, *cs.State) {
 
 	consensusState := cs.NewState(
@@ -421,6 +390,8 @@ func createConsensusReactor(config *cfg.Config,
 		blockExec,
 		blockStore,
 		mempool,
+		dag,
+		croute,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
 	)
@@ -649,11 +620,12 @@ func NewNode(config *cfg.Config,
 	clientCreator proxy.ClientCreator,
 	genesisDocProvider GenesisDocProvider,
 	dbProvider DBProvider,
+	ipfsProvider ipfs.NodeProvider,
 	metricsProvider MetricsProvider,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
 
-	blockStore, stateDB, err := initDBs(config, dbProvider)
+	stateDB, err := dbProvider(&DBContext{"state", config})
 	if err != nil {
 		return nil, err
 	}
@@ -707,6 +679,18 @@ func NewNode(config *cfg.Config,
 		logger.Info("Found local state with non-zero height, skipping state sync")
 		stateSync = false
 	}
+
+	blockStoreDB, err := dbProvider(&DBContext{"blockstore", config})
+	if err != nil {
+		return nil, err
+	}
+
+	ipfsNode, err := ipfsProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	blockStore := store.NewBlockStore(blockStoreDB, ipfsNode.DAG)
 
 	// Create the handshaker, which calls RequestInfo, sets the AppVersion on the state,
 	// and replays any blocks as necessary to sync tendermint with the app.
@@ -767,7 +751,7 @@ func NewNode(config *cfg.Config,
 	}
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger,
+		privValidator, csMetrics, stateSync || fastSync, eventBus, ipfsNode.DAG, ipfsNode.Routing, consensusLogger,
 	)
 
 	// Set up state sync reactor, and schedule a sync if requested.
@@ -868,6 +852,7 @@ func NewNode(config *cfg.Config,
 		txIndexer:        txIndexer,
 		indexerService:   indexerService,
 		eventBus:         eventBus,
+		ipfsClose:        ipfsNode,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
@@ -952,23 +937,6 @@ func (n *Node) OnStart() error {
 			return fmt.Errorf("failed to start state sync: %w", err)
 		}
 	}
-	if n.embedIpfsNode {
-		// It is essential that we create a fresh instance of ipfs node on
-		// each start as internally the node gets only stopped once per instance.
-		// At least in ipfs 0.7.0; see:
-		// https://github.com/lazyledger/go-ipfs/blob/dd295e45608560d2ada7d7c8a30f1eef3f4019bb/core/builder.go#L48-L57
-		n.ipfsNode, err = createIpfsNode(n.config, n.areIpfsPluginsAlreadyLoaded, n.Logger)
-		if err != nil {
-			return fmt.Errorf("failed to create IPFS node: %w", err)
-		}
-
-		ipfsAPI, err := coreapi.NewCoreAPI(n.ipfsNode)
-		if err != nil {
-			return fmt.Errorf("failed to create an instance of the IPFS core API: %w", err)
-		}
-
-		n.consensusState.IpfsAPI = ipfsAPI
-	}
 
 	return nil
 }
@@ -1029,14 +997,8 @@ func (n *Node) OnStop() {
 		}
 	}
 
-	if n.ipfsNode != nil {
-		// Internally, the node gets shut down by cancelling the
-		// context that was passed into the node.
-		// Calling Close() seems cleaner and we don't
-		// need to keep a reference to the context around.
-		if err := n.ipfsNode.Close(); err != nil {
-			n.Logger.Error("ipfsNode.Close()", err)
-		}
+	if err := n.ipfsClose.Close(); err != nil {
+		n.Logger.Error("ipfsClose.Close()", err)
 	}
 }
 
@@ -1309,8 +1271,8 @@ func makeNodeInfo(
 	switch config.FastSync.Version {
 	case "v0":
 		bcChannel = bcv0.BlockchainChannel
-	case "v2":
-		bcChannel = bcv2.BlockchainChannel
+	// case "v2":
+	//	bcChannel = bcv2.BlockchainChannel
 	default:
 		return nil, fmt.Errorf("unknown fastsync version %s", config.FastSync.Version)
 	}
@@ -1440,72 +1402,12 @@ func createAndStartPrivValidatorSocketClient(
 	}
 
 	const (
-		retries = 50 // 50 * 100ms = 5s total
-		timeout = 100 * time.Millisecond
+		retries = 50 // 50 * 200ms = 10s total
+		timeout = 200 * time.Millisecond
 	)
 	pvscWithRetries := privval.NewRetrySignerClient(pvsc, retries, timeout)
 
 	return pvscWithRetries, nil
-}
-
-func createIpfsNode(config *cfg.Config, arePluginsAlreadyLoaded bool, logger log.Logger) (*ipfscore.IpfsNode, error) {
-	repoRoot := config.IPFSRepoRoot()
-	logger.Info("creating node in repo", "ipfs-root", repoRoot)
-	if !fsrepo.IsInitialized(repoRoot) {
-		// TODO: sentinel err
-		return nil, fmt.Errorf("ipfs repo root: %v not intitialized", repoRoot)
-	}
-	if !arePluginsAlreadyLoaded {
-		if err := setupPlugins(repoRoot, logger); err != nil {
-			return nil, err
-		}
-	}
-	// Open the repo
-	repo, err := fsrepo.Open(repoRoot)
-	if err != nil {
-		return nil, err
-	}
-
-	// Construct the node
-	nodeOptions := &ipfscore.BuildCfg{
-		Online: true,
-		// This option sets the node to be a full DHT node (both fetching and storing DHT Records)
-		Routing: libp2p.DHTOption,
-		// This option sets the node to be a client DHT node (only fetching records)
-		// Routing: libp2p.DHTClientOption,
-		Repo: repo,
-	}
-	// Internally, ipfs decorates the context with a
-	// context.WithCancel. Which is then used for lifecycle management.
-	// We do not make use of this context and rely on calling
-	// Close() on the node instead
-	ctx := context.Background()
-	node, err := ipfscore.NewNode(ctx, nodeOptions)
-	if err != nil {
-		return nil, err
-	}
-	// run as daemon:
-	node.IsDaemon = true
-	return node, nil
-}
-
-func setupPlugins(path string, logger log.Logger) error {
-	// Load plugins. This will skip the repo if not available.
-	plugins, err := loader.NewPluginLoader(filepath.Join(path, "plugins"))
-	if err != nil {
-		return fmt.Errorf("error loading plugins: %s", err)
-	}
-	if err := plugins.Load(&nodes.LazyLedgerPlugin{}); err != nil {
-		return fmt.Errorf("error loading lazyledger plugin: %s", err)
-	}
-	if err := plugins.Initialize(); err != nil {
-		return fmt.Errorf("error initializing plugins: plugins.Initialize(): %s", err)
-	}
-	if err := plugins.Inject(); err != nil {
-		logger.Error("error initializing plugins: could not Inject()", "err", err)
-	}
-
-	return nil
 }
 
 // splitAndTrimEmpty slices s into all subslices separated by sep and returns a

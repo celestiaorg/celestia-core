@@ -4,6 +4,7 @@ Package blockchain provides two implementations of the fast-sync protocol.
 - v0 was the very first implementation. it's battle tested, but does not have a
 lot of test coverage.
 - v2 is the newest implementation, with a focus on testability and readability.
+Note: we deleted v2 in LL until it stabilizes / gets simplified.
 
 Check out ADR-40 for the formal model and requirements.
 

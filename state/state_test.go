@@ -5,19 +5,19 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	mrand "math/rand"
 	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/tendermint/tm-db"
-
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	sm "github.com/lazyledger/lazyledger-core/state"
@@ -27,8 +27,7 @@ import (
 // setupTestCase does setup common to all test cases.
 func setupTestCase(t *testing.T) (func(t *testing.T), dbm.DB, sm.State) {
 	config := cfg.ResetTestRoot("state_")
-	dbType := dbm.BackendType(config.DBBackend)
-	stateDB, err := dbm.NewDB("state", dbType, config.DBDir())
+	stateDB, err := badgerdb.NewDB("state", config.DBDir())
 	stateStore := sm.NewStore(stateDB)
 	require.NoError(t, err)
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
@@ -356,18 +355,18 @@ func TestProposerFrequency(t *testing.T) {
 	maxPower := 1000
 	nTestCases := 5
 	for i := 0; i < nTestCases; i++ {
-		N := tmrand.Int()%maxVals + 1
+		N := mrand.Int()%maxVals + 1
 		vals := make([]*types.Validator, N)
 		totalVotePower := int64(0)
 		for j := 0; j < N; j++ {
 			// make sure votePower > 0
-			votePower := int64(tmrand.Int()%maxPower) + 1
+			votePower := int64(mrand.Int()%maxPower) + 1
 			totalVotePower += votePower
 			privVal := types.NewMockPV()
 			pubKey, err := privVal.GetPubKey()
 			require.NoError(t, err)
 			val := types.NewValidator(pubKey, votePower)
-			val.ProposerPriority = tmrand.Int64()
+			val.ProposerPriority = mrand.Int63()
 			vals[j] = val
 		}
 		valSet := types.NewValidatorSet(vals)
@@ -384,7 +383,7 @@ func genValSetWithPowers(powers []int64) *types.ValidatorSet {
 	for i := 0; i < size; i++ {
 		totalVotePower += powers[i]
 		val := types.NewValidator(ed25519.GenPrivKey().PubKey(), powers[i])
-		val.ProposerPriority = tmrand.Int64()
+		val.ProposerPriority = mrand.Int63()
 		vals[i] = val
 	}
 	valSet := types.NewValidatorSet(vals)

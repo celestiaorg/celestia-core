@@ -10,9 +10,10 @@ import (
 	"strconv"
 	"strings"
 
-	dbm "github.com/tendermint/tm-db"
-
+	mdutils "github.com/ipfs/go-merkledag/test"
 	cfg "github.com/lazyledger/lazyledger-core/config"
+	"github.com/lazyledger/lazyledger-core/ipfs"
+	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	"github.com/lazyledger/lazyledger-core/proxy"
@@ -130,7 +131,7 @@ func (pb *playback) replayReset(count int, newStepSub types.Subscription) error 
 	pb.cs.Wait()
 
 	newCS := NewState(pb.cs.config, pb.genesisState.Copy(), pb.cs.blockExec,
-		pb.cs.blockStore, pb.cs.txNotifier, pb.cs.evpool)
+		pb.cs.blockStore, pb.cs.txNotifier, mdutils.Mock(), ipfs.MockRouting(), pb.cs.evpool)
 	newCS.SetEventBus(pb.cs.eventBus)
 	newCS.startForReplay()
 
@@ -284,16 +285,16 @@ func (pb *playback) replayConsoleLoop() int {
 
 // convenience for replay mode
 func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusConfig) *State {
-	dbType := dbm.BackendType(config.DBBackend)
 	// Get BlockStore
-	blockStoreDB, err := dbm.NewDB("blockstore", dbType, config.DBDir())
+	blockStoreDB, err := badgerdb.NewDB("blockstore", config.DBDir())
 	if err != nil {
 		tmos.Exit(err.Error())
 	}
-	blockStore := store.NewBlockStore(blockStoreDB)
+	dag := mdutils.Mock()
+	blockStore := store.NewBlockStore(blockStoreDB, dag)
 
 	// Get State
-	stateDB, err := dbm.NewDB("state", dbType, config.DBDir())
+	stateDB, err := badgerdb.NewDB("state", config.DBDir())
 	if err != nil {
 		tmos.Exit(err.Error())
 	}
@@ -308,7 +309,7 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 	}
 
 	// Create proxyAppConn connection (consensus, mempool, query)
-	clientCreator := proxy.DefaultClientCreator(config.ProxyApp, config.ABCI, config.DBDir())
+	clientCreator := proxy.DefaultClientCreator(config.ProxyApp, config.DBDir())
 	proxyApp := proxy.NewAppConns(clientCreator)
 	err = proxyApp.Start()
 	if err != nil {
@@ -331,8 +332,7 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 
 	consensusState := NewState(csConfig, state.Copy(), blockExec,
-		blockStore, mempool, evpool)
-
+		blockStore, mempool, dag, ipfs.MockRouting(), evpool)
 	consensusState.SetEventBus(eventBus)
 	return consensusState
 }

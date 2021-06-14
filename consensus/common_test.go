@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -13,11 +14,9 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/term"
+	format "github.com/ipfs/go-ipld-format"
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/require"
-
-	"path"
-
-	dbm "github.com/tendermint/tm-db"
 
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
 	"github.com/lazyledger/lazyledger-core/abci/example/counter"
@@ -25,7 +24,10 @@ import (
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmos "github.com/lazyledger/lazyledger-core/libs/os"
 	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
@@ -48,11 +50,11 @@ const (
 // test.
 type cleanupFunc func()
 
-// genesis, chain_id, priv_val
+// genesis, chain_id, priv_val, ipfsAPI
 var (
 	config                *cfg.Config // NOTE: must be reset for each _test.go file
 	consensusReplayConfig *cfg.Config
-	ensureTimeout         = time.Millisecond * 200
+	ensureTimeout         = 4 * time.Second
 )
 
 func ensureDir(dir string, mode os.FileMode) {
@@ -201,8 +203,11 @@ func decideProposal(
 
 	// Make proposal
 	polRound, propBlockID := validRound, types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal = types.NewProposal(height, round, polRound, propBlockID)
-	p := proposal.ToProto()
+	proposal = types.NewProposal(height, round, polRound, propBlockID, &block.DataAvailabilityHeader)
+	p, err := proposal.ToProto()
+	if err != nil {
+		panic(err)
+	}
 	if err := vs.SignProposal(chainID, p); err != nil {
 		panic(err)
 	}
@@ -349,9 +354,9 @@ func subscribeToVoter(cs *State, addr []byte) <-chan tmpubsub.Message {
 //-------------------------------------------------------------------------------
 // consensus states
 
-func newState(state sm.State, pv types.PrivValidator, app abci.Application) *State {
+func newState(state sm.State, pv types.PrivValidator, app abci.Application, ipfsDagAPI format.DAGService) *State {
 	config := cfg.ResetTestRoot("consensus_state_test")
-	return newStateWithConfig(config, state, pv, app)
+	return newStateWithConfig(config, state, pv, app, ipfsDagAPI)
 }
 
 func newStateWithConfig(
@@ -359,9 +364,10 @@ func newStateWithConfig(
 	state sm.State,
 	pv types.PrivValidator,
 	app abci.Application,
+	ipfsDagAPI format.DAGService,
 ) *State {
-	blockDB := dbm.NewMemDB()
-	return newStateWithConfigAndBlockStore(thisConfig, state, pv, app, blockDB)
+	blockDB := memdb.NewDB()
+	return newStateWithConfigAndBlockStore(thisConfig, state, pv, app, blockDB, ipfsDagAPI)
 }
 
 func newStateWithConfigAndBlockStore(
@@ -370,9 +376,10 @@ func newStateWithConfigAndBlockStore(
 	pv types.PrivValidator,
 	app abci.Application,
 	blockDB dbm.DB,
+	dag format.DAGService,
 ) *State {
 	// Get BlockStore
-	blockStore := store.NewBlockStore(blockDB)
+	blockStore := store.NewBlockStore(blockDB, dag)
 
 	// one for mempool, one for consensus
 	mtx := new(tmsync.Mutex)
@@ -396,7 +403,7 @@ func newStateWithConfigAndBlockStore(
 	}
 
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool)
+	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, dag, ipfs.MockRouting(), evpool)
 	cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 	cs.SetPrivValidator(pv)
 
@@ -428,7 +435,7 @@ func randState(nValidators int) (*State, []*validatorStub) {
 
 	vss := make([]*validatorStub, nValidators)
 
-	cs := newState(state, privVals[0], counter.NewApplication(true))
+	cs := newState(state, privVals[0], counter.NewApplication(true), mdutils.Mock())
 
 	for i := 0; i < nValidators; i++ {
 		vss[i] = newValidatorStub(privVals[i], int32(i))
@@ -675,14 +682,20 @@ func consensusLogger() log.Logger {
 	}).With("module", "consensus")
 }
 
-func randConsensusNet(nValidators int, testName string, tickerFunc func() TimeoutTicker,
-	appFunc func() abci.Application, configOpts ...func(*cfg.Config)) ([]*State, cleanupFunc) {
+func randConsensusNet(
+	nValidators int,
+	testName string,
+	tickerFunc func() TimeoutTicker,
+	appFunc func() abci.Application,
+	configOpts ...func(*cfg.Config),
+) ([]*State, cleanupFunc) {
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30)
+
 	css := make([]*State, nValidators)
 	logger := consensusLogger()
 	configRootDirs := make([]string, 0, nValidators)
 	for i := 0; i < nValidators; i++ {
-		stateDB := dbm.NewMemDB() // each state needs its own db
+		stateDB := memdb.NewDB() // each state needs its own db
 		stateStore := sm.NewStore(stateDB)
 		state, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 		thisConfig := ResetConfig(fmt.Sprintf("%s_%d", testName, i))
@@ -695,7 +708,7 @@ func randConsensusNet(nValidators int, testName string, tickerFunc func() Timeou
 		vals := types.TM2PB.ValidatorUpdates(state.Validators)
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
-		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB)
+		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB, mdutils.Mock())
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
 	}
@@ -719,8 +732,9 @@ func randConsensusNetWithPeers(
 	logger := consensusLogger()
 	var peer0Config *cfg.Config
 	configRootDirs := make([]string, 0, nPeers)
+
 	for i := 0; i < nPeers; i++ {
-		stateDB := dbm.NewMemDB() // each state needs its own db
+		stateDB := memdb.NewDB() // each state needs its own db
 		stateStore := sm.NewStore(stateDB)
 		state, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 		thisConfig := ResetConfig(fmt.Sprintf("%s_%d", testName, i))
@@ -757,7 +771,7 @@ func randConsensusNetWithPeers(
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 		// sm.SaveState(stateDB,state)	//height 1's validatorsInfo already saved in LoadStateFromDBOrGenesisDoc above
 
-		css[i] = newStateWithConfig(thisConfig, state, privVal, app)
+		css[i] = newStateWithConfig(thisConfig, state, privVal, app, mdutils.Mock())
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
 	}

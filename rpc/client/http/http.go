@@ -449,6 +449,22 @@ func (c *baseRPCClient) Commit(ctx context.Context, height *int64) (*ctypes.Resu
 	return result, nil
 }
 
+func (c *baseRPCClient) DataAvailabilityHeader(
+	ctx context.Context,
+	height *int64,
+) (*ctypes.ResultDataAvailabilityHeader, error) {
+	result := new(ctypes.ResultDataAvailabilityHeader)
+	params := make(map[string]interface{})
+	if height != nil {
+		params["height"] = height
+	}
+	_, err := c.caller.Call(ctx, "data_availability_header", params, result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (c *baseRPCClient) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
 	result := new(ctypes.ResultTx)
 	params := map[string]interface{}{

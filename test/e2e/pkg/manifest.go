@@ -67,17 +67,6 @@ type ManifestNode struct {
 	// this defaults to all other nodes in the network.
 	PersistentPeers []string `toml:"persistent_peers"`
 
-	// TODO: remove this config flag completely -> only badgerdb allowed now anyways
-	// Database specifies the database backend. In LazyLedger we only test with "badgerdb".
-	Database string `toml:"database"`
-
-	// TODO: remove this config flag completely -> only builtin allowed now anyways
-	// ABCIProtocol specifies the protocol used to communicate with the ABCI
-	// application: "unix", "tcp", "grpc", or "builtin". Defaults to builtin.
-	// builtin will build a complete Tendermint node into the application and
-	// launch it instead of launching a separate Tendermint process.
-	ABCIProtocol string `toml:"abci_protocol"`
-
 	// PrivvalProtocol specifies the protocol used to sign consensus messages:
 	// "file", "unix", or "tcp". Defaults to "file". For unix and tcp, the ABCI
 	// application will launch a remote signer client in a separate goroutine.
@@ -88,7 +77,7 @@ type ManifestNode struct {
 	// runner will wait for the network to reach at least this block height.
 	StartAt int64 `toml:"start_at"`
 
-	// FastSync specifies the fast sync mode: "" (disable), "v0" or "v2".
+	// FastSync specifies the fast sync mode: "" (disable), "v0"
 	// Defaults to disabled.
 	FastSync string `toml:"fast_sync"`
 

@@ -19,9 +19,9 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/lazyledger/lazyledger-core/cmd/tendermint/commands"
 	"github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/p2p"
 	"github.com/lazyledger/lazyledger-core/privval"
 	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
@@ -87,7 +87,7 @@ func Setup(testnet *e2e.Testnet) error {
 			return err
 		}
 		// todo(evan): the path should be a constant
-		cfg.IPFS.ConfigRootPath = filepath.Join(nodeDir, ".ipfs")
+		cfg.IPFS.RepoPath = filepath.Join(nodeDir, ".ipfs")
 		config.WriteConfigFile(filepath.Join(nodeDir, "config", "config.toml"), cfg) // panics
 
 		appCfg, err := MakeAppConfig(node)
@@ -115,7 +115,7 @@ func Setup(testnet *e2e.Testnet) error {
 			filepath.Join(nodeDir, PrivvalDummyKeyFile),
 			filepath.Join(nodeDir, PrivvalDummyStateFile),
 		)).Save()
-		err = commands.InitIpfs(cfg)
+		err = ipfs.InitRepo(cfg.IPFS.RepoPath, logger)
 		if err != nil {
 			return err
 		}
@@ -128,17 +128,24 @@ func Setup(testnet *e2e.Testnet) error {
 func MakeDockerCompose(testnet *e2e.Testnet) ([]byte, error) {
 	// Must use version 2 Docker Compose format, to support IPv6.
 	tmpl, err := template.New("docker-compose").Funcs(template.FuncMap{
-		"misbehaviorsToString": func(misbehaviors map[int64]string) string {
-			str := ""
-			for height, misbehavior := range misbehaviors {
-				// after the first behavior set, a comma must be prepended
-				if str != "" {
-					str += ","
-				}
-				heightString := strconv.Itoa(int(height))
-				str += misbehavior + "," + heightString
-			}
-			return str
+		"startCommands": func(misbehaviors map[int64]string, logLevel string) string {
+			command := "start"
+
+			// FIXME: Temporarily disable behaviors until maverick is redesigned
+			// misbehaviorString := ""
+			// for height, misbehavior := range misbehaviors {
+			// 	// after the first behavior set, a comma must be prepended
+			// 	if misbehaviorString != "" {
+			// 		misbehaviorString += ","
+			// 	}
+			// 	heightString := strconv.Itoa(int(height))
+			// 	misbehaviorString += misbehavior + "," + heightString
+			// }
+
+			// if misbehaviorString != "" {
+			// 	command += " --misbehaviors " + misbehaviorString
+			// }
+			return command
 		},
 	}).Parse(`version: '2.4'
 
@@ -164,9 +171,9 @@ services:
     image: tendermint/e2e-node
 {{- if eq .ABCIProtocol "builtin" }}
     entrypoint: /usr/bin/entrypoint-builtin
-{{- else if .Misbehaviors }}
-    entrypoint: /usr/bin/entrypoint-maverick
-    command: ["start", "--misbehaviors", "{{ misbehaviorsToString .Misbehaviors }}"]
+{{- end }}
+{{- if ne .ABCIProtocol "builtin"}}
+    command: {{ startCommands .Misbehaviors .LogLevel }}
 {{- end }}
     init: true
     ports:
@@ -236,7 +243,6 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.RPC.ListenAddress = "tcp://0.0.0.0:26657"
 	cfg.P2P.ExternalAddress = fmt.Sprintf("tcp://%v", node.AddressP2P(false))
 	cfg.P2P.AddrBookStrict = false
-	cfg.DBBackend = node.Database
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
 
 	switch node.ABCIProtocol {
@@ -244,7 +250,6 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
 	case e2e.ProtocolBuiltin:
 		cfg.ProxyApp = ""
-		cfg.ABCI = ""
 	default:
 		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
 	}

@@ -4,10 +4,9 @@ import (
 	// it is ok to use math/rand here: we do not need a cryptographically secure random
 	// number generator here and we can run the tests a bit faster
 	stdbytes "bytes"
-	"context"
-	"crypto/rand"
 	"encoding/hex"
 	"math"
+	mrand "math/rand"
 	"os"
 	"reflect"
 	"sort"
@@ -15,10 +14,6 @@ import (
 	"time"
 
 	gogotypes "github.com/gogo/protobuf/types"
-	coreapi "github.com/ipfs/go-ipfs/core/coreapi"
-	coremock "github.com/ipfs/go-ipfs/core/mock"
-	"github.com/ipfs/interface-go-ipfs-core/path"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/plugin/nodes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -30,6 +25,7 @@ import (
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 	"github.com/lazyledger/lazyledger-core/version"
 )
@@ -195,8 +191,8 @@ func makeBlockIDRandom() BlockID {
 		blockHash   = make([]byte, tmhash.Size)
 		partSetHash = make([]byte, tmhash.Size)
 	)
-	rand.Read(blockHash)   //nolint: errcheck // ignore errcheck for read
-	rand.Read(partSetHash) //nolint: errcheck // ignore errcheck for read
+	mrand.Read(blockHash)
+	mrand.Read(partSetHash)
 	return BlockID{blockHash, PartSetHeader{123, partSetHash}}
 }
 
@@ -216,6 +212,15 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
 	}
 }
 
+func makeDAHeaderRandom() *DataAvailabilityHeader {
+	rows, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
+	clns, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
+	return &DataAvailabilityHeader{
+		RowsRoots:   rows,
+		ColumnRoots: clns,
+	}
+}
+
 var nilBytes []byte
 
 // This follows RFC-6962, i.e. `echo -n '' | sha256sum`
@@ -231,6 +236,12 @@ func TestNilHeaderHashDoesntCrash(t *testing.T) {
 func TestNilDataAvailabilityHeaderHashDoesntCrash(t *testing.T) {
 	assert.Equal(t, emptyBytes, (*DataAvailabilityHeader)(nil).Hash())
 	assert.Equal(t, emptyBytes, new(DataAvailabilityHeader).Hash())
+}
+
+func TestEmptyBlockData(t *testing.T) {
+	blockData := Data{}
+	shares, _ := blockData.ComputeShares()
+	assert.Equal(t, GenerateTailPaddingShares(consts.MinSquareSize, consts.ShareSize), shares)
 }
 
 func TestCommit(t *testing.T) {
@@ -327,21 +338,22 @@ func TestHeaderHash(t *testing.T) {
 		expectHash bytes.HexBytes
 	}{
 		{"Generates expected hash", &Header{
-			Version:            tmversion.Consensus{Block: 1, App: 2},
-			ChainID:            "chainId",
-			Height:             3,
-			Time:               time.Date(2019, 10, 13, 16, 14, 44, 0, time.UTC),
-			LastBlockID:        makeBlockID(make([]byte, tmhash.Size), 6, make([]byte, tmhash.Size)),
-			LastCommitHash:     tmhash.Sum([]byte("last_commit_hash")),
-			DataHash:           tmhash.Sum([]byte("data_hash")),
-			ValidatorsHash:     tmhash.Sum([]byte("validators_hash")),
-			NextValidatorsHash: tmhash.Sum([]byte("next_validators_hash")),
-			ConsensusHash:      tmhash.Sum([]byte("consensus_hash")),
-			AppHash:            tmhash.Sum([]byte("app_hash")),
-			LastResultsHash:    tmhash.Sum([]byte("last_results_hash")),
-			EvidenceHash:       tmhash.Sum([]byte("evidence_hash")),
-			ProposerAddress:    crypto.AddressHash([]byte("proposer_address")),
-		}, hexBytesFromString("F740121F553B5418C3EFBD343C2DBFE9E007BB67B0D020A0741374BAB65242A4")},
+			Version:               tmversion.Consensus{Block: 1, App: 2},
+			ChainID:               "chainId",
+			Height:                3,
+			Time:                  time.Date(2019, 10, 13, 16, 14, 44, 0, time.UTC),
+			LastBlockID:           makeBlockID(make([]byte, tmhash.Size), 6, make([]byte, tmhash.Size)),
+			LastCommitHash:        tmhash.Sum([]byte("last_commit_hash")),
+			DataHash:              tmhash.Sum([]byte("data_hash")),
+			NumOriginalDataShares: 4,
+			ValidatorsHash:        tmhash.Sum([]byte("validators_hash")),
+			NextValidatorsHash:    tmhash.Sum([]byte("next_validators_hash")),
+			ConsensusHash:         tmhash.Sum([]byte("consensus_hash")),
+			AppHash:               tmhash.Sum([]byte("app_hash")),
+			LastResultsHash:       tmhash.Sum([]byte("last_results_hash")),
+			EvidenceHash:          tmhash.Sum([]byte("evidence_hash")),
+			ProposerAddress:       crypto.AddressHash([]byte("proposer_address")),
+		}, hexBytesFromString("3BA96EAE652191EDBEA84E130C32E94AD86A901B856EC7201B776669F72DE39F")},
 		{"nil header yields nil", nil, nil},
 		{"nil ValidatorsHash yields nil", &Header{
 			Version:            tmversion.Consensus{Block: 1, App: 2},
@@ -378,7 +390,7 @@ func TestHeaderHash(t *testing.T) {
 						s.Type().Field(i).Name)
 
 					switch f := f.Interface().(type) {
-					case int64, bytes.HexBytes, string:
+					case int64, uint64, bytes.HexBytes, string:
 						byteSlices = append(byteSlices, cdcEncode(f))
 					case time.Time:
 						bz, err := gogotypes.StdTimeMarshal(f)
@@ -419,20 +431,21 @@ func TestMaxHeaderBytes(t *testing.T) {
 	timestamp := time.Date(math.MaxInt64, 0, 0, 0, 0, 0, math.MaxInt64, time.UTC)
 
 	h := Header{
-		Version:            tmversion.Consensus{Block: math.MaxInt64, App: math.MaxInt64},
-		ChainID:            maxChainID,
-		Height:             math.MaxInt64,
-		Time:               timestamp,
-		LastBlockID:        makeBlockID(make([]byte, tmhash.Size), math.MaxInt32, make([]byte, tmhash.Size)),
-		LastCommitHash:     tmhash.Sum([]byte("last_commit_hash")),
-		DataHash:           tmhash.Sum([]byte("data_hash")),
-		ValidatorsHash:     tmhash.Sum([]byte("validators_hash")),
-		NextValidatorsHash: tmhash.Sum([]byte("next_validators_hash")),
-		ConsensusHash:      tmhash.Sum([]byte("consensus_hash")),
-		AppHash:            tmhash.Sum([]byte("app_hash")),
-		LastResultsHash:    tmhash.Sum([]byte("last_results_hash")),
-		EvidenceHash:       tmhash.Sum([]byte("evidence_hash")),
-		ProposerAddress:    crypto.AddressHash([]byte("proposer_address")),
+		Version:               tmversion.Consensus{Block: math.MaxInt64, App: math.MaxInt64},
+		ChainID:               maxChainID,
+		Height:                math.MaxInt64,
+		Time:                  timestamp,
+		LastBlockID:           makeBlockID(make([]byte, tmhash.Size), math.MaxInt32, make([]byte, tmhash.Size)),
+		LastCommitHash:        tmhash.Sum([]byte("last_commit_hash")),
+		DataHash:              tmhash.Sum([]byte("data_hash")),
+		NumOriginalDataShares: math.MaxInt64,
+		ValidatorsHash:        tmhash.Sum([]byte("validators_hash")),
+		NextValidatorsHash:    tmhash.Sum([]byte("next_validators_hash")),
+		ConsensusHash:         tmhash.Sum([]byte("consensus_hash")),
+		AppHash:               tmhash.Sum([]byte("app_hash")),
+		LastResultsHash:       tmhash.Sum([]byte("last_results_hash")),
+		EvidenceHash:          tmhash.Sum([]byte("evidence_hash")),
+		ProposerAddress:       crypto.AddressHash([]byte("proposer_address")),
 	}
 
 	bz, err := h.ToProto().Marshal()
@@ -470,11 +483,11 @@ func TestBlockMaxDataBytes(t *testing.T) {
 	}{
 		0: {-10, 1, 0, true, 0},
 		1: {10, 1, 0, true, 0},
-		2: {841, 1, 0, true, 0},
-		3: {842, 1, 0, false, 0},
-		4: {843, 1, 0, false, 1},
-		5: {954, 2, 0, false, 1},
-		6: {1053, 2, 100, false, 0},
+		2: {851, 1, 0, true, 0},
+		3: {852, 1, 0, false, 0},
+		4: {853, 1, 0, false, 1},
+		5: {964, 2, 0, false, 1},
+		6: {1063, 2, 100, false, 0},
 	}
 
 	for i, tc := range testCases {
@@ -501,9 +514,9 @@ func TestBlockMaxDataBytesNoEvidence(t *testing.T) {
 	}{
 		0: {-10, 1, true, 0},
 		1: {10, 1, true, 0},
-		2: {841, 1, true, 0},
-		3: {842, 1, false, 0},
-		4: {843, 1, false, 1},
+		2: {851, 1, true, 0},
+		3: {852, 1, false, 0},
+		4: {853, 1, false, 1},
 	}
 
 	for i, tc := range testCases {
@@ -645,7 +658,7 @@ func TestBlockIDValidateBasic(t *testing.T) {
 }
 
 func TestBlockProtoBuf(t *testing.T) {
-	h := tmrand.Int63()
+	h := mrand.Int63()
 	c1 := randCommit(time.Now())
 	b1 := MakeBlock(h, []Tx{Tx([]byte{1})}, []Evidence{}, nil, Messages{}, &Commit{Signatures: []CommitSig{}})
 	b1.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
@@ -655,6 +668,8 @@ func TestBlockProtoBuf(t *testing.T) {
 	evidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 	evi := NewMockDuplicateVoteEvidence(h, evidenceTime, "block-test-chain")
 	b2.Evidence = EvidenceData{Evidence: EvidenceList{evi}}
+	// update internal byteSize field s.t. the expected b2.Evidence matches with the decoded one:
+	_ = b2.Evidence.ByteSize()
 	b2.EvidenceHash = b2.Evidence.Hash()
 
 	b3 := MakeBlock(h, []Tx{}, []Evidence{}, nil, Messages{}, c1)
@@ -682,7 +697,7 @@ func TestBlockProtoBuf(t *testing.T) {
 		if tc.expPass2 {
 			require.NoError(t, err, tc.msg)
 			require.EqualValues(t, tc.b1.Header, block.Header, tc.msg)
-			// require.EqualValues(t, tc.b1.Data, block.Data, tc.msg)
+			require.EqualValues(t, tc.b1.Data, block.Data, tc.msg)
 			require.EqualValues(t, tc.b1.Evidence.Evidence, block.Evidence.Evidence, tc.msg)
 			require.EqualValues(t, *tc.b1.LastCommit, *block.LastCommit, tc.msg)
 		} else {
@@ -753,7 +768,7 @@ func TestEvidenceDataProtoBuf(t *testing.T) {
 func makeRandHeader() Header {
 	chainID := "test"
 	t := time.Now()
-	height := tmrand.Int63()
+	height := mrand.Int63()
 	randBytes := tmrand.Bytes(tmhash.Size)
 	randAddress := tmrand.Bytes(crypto.AddressSize)
 	h := Header{
@@ -1318,82 +1333,67 @@ func TestCommit_ValidateBasic(t *testing.T) {
 	}
 }
 
-func TestPutBlock(t *testing.T) {
-	ipfsNode, err := coremock.NewMockNode()
-	if err != nil {
-		t.Error(err)
+func TestPaddedLength(t *testing.T) {
+	type test struct {
+		input, expected int
 	}
-
-	ipfsAPI, err := coreapi.NewCoreAPI(ipfsNode)
-	if err != nil {
-		t.Error(err)
+	tests := []test{
+		{0, 0},
+		{1, 1},
+		{2, 4},
+		{4, 4},
+		{5, 16},
+		{11, 16},
+		{128, 256},
 	}
-
-	testCases := []struct {
-		name      string
-		blockData Data
-		expectErr bool
-		errString string
-	}{
-		{"no leaves", generateRandomData(0), false, ""},
-		{"single leaf", generateRandomData(1), false, ""},
-		{"16 leaves", generateRandomData(16), false, ""},
-		{"max square size", generateRandomData(MaxSquareSize), false, ""},
-	}
-	ctx := context.Background()
-	for _, tc := range testCases {
-		tc := tc
-
-		block := &Block{Data: tc.blockData}
-
-		t.Run(tc.name, func(t *testing.T) {
-			err = block.PutBlock(ctx, ipfsAPI.Dag().Pinning())
-			if tc.expectErr {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tc.errString)
-				return
-			}
-
-			require.NoError(t, err)
-
-			timeoutCtx, cancel := context.WithTimeout(ctx, time.Second)
-			defer cancel()
-
-			block.fillDataAvailabilityHeader()
-			tc.blockData.computeShares()
-			for _, rowRoot := range block.DataAvailabilityHeader.RowsRoots.Bytes() {
-				// recreate the cids using only the computed roots
-				cid, err := nodes.CidFromNamespacedSha256(rowRoot)
-				if err != nil {
-					t.Error(err)
-				}
-
-				// check if cid was successfully pinned to IPFS
-				_, pinned, err := ipfsAPI.Pin().IsPinned(ctx, path.IpldPath(cid))
-				if err != nil {
-					t.Error(err)
-				}
-				if !pinned {
-					t.Errorf("failure to pin cid %s to IPFS", cid.String())
-				}
-
-				// retrieve the data from IPFS
-				_, err = ipfsAPI.Dag().Get(timeoutCtx, cid)
-				if err != nil {
-					t.Errorf("Root not found: %s", cid.String())
-				}
-			}
-		})
+	for _, tt := range tests {
+		res := paddedLen(tt.input)
+		assert.Equal(t, tt.expected, res)
 	}
 }
 
-func generateRandomData(msgCount int) Data {
-	out := make([]Message, msgCount)
-	for i, msg := range generateRandNamespacedRawData(msgCount, NamespaceSize, ShareSize) {
-		out[i] = Message{NamespaceID: msg[:NamespaceSize], Data: msg[:NamespaceSize]}
+func TestNextHighestPowerOf2(t *testing.T) {
+	type test struct {
+		input    uint32
+		expected uint32
 	}
-	return Data{
-		Messages: Messages{MessagesList: out},
+	tests := []test{
+		{
+			input:    2,
+			expected: 2,
+		},
+		{
+			input:    11,
+			expected: 16,
+		},
+		{
+			input:    511,
+			expected: 512,
+		},
+		{
+			input:    1,
+			expected: 1,
+		},
+		{
+			input:    0,
+			expected: 0,
+		},
+		{
+			input:    5,
+			expected: 8,
+		},
+		{
+			input:    6,
+			expected: 8,
+		},
+		{
+			input:    16,
+			expected: 16,
+		},
+	}
+	for _, tt := range tests {
+		res := nextHighestPowerOf2(tt.input)
+		assert.Equal(t, tt.expected, res)
 	}
 }
 
@@ -1402,7 +1402,7 @@ func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byt
 	data := make([][]byte, total)
 	for i := 0; i < total; i++ {
 		nid := make([]byte, nidSize)
-		_, err := rand.Read(nid)
+		_, err := mrand.Read(nid)
 		if err != nil {
 			panic(err)
 		}
@@ -1412,7 +1412,7 @@ func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byt
 	sortByteArrays(data)
 	for i := 0; i < total; i++ {
 		d := make([]byte, leafSize)
-		_, err := rand.Read(d)
+		_, err := mrand.Read(d)
 		if err != nil {
 			panic(err)
 		}

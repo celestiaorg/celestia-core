@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	mrand "math/rand"
 	"net"
 	"net/http"
 	"sync"
@@ -12,7 +13,6 @@ import (
 	"github.com/gorilla/websocket"
 	metrics "github.com/rcrowley/go-metrics"
 
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	"github.com/lazyledger/lazyledger-core/libs/service"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
@@ -287,7 +287,8 @@ func (c *WSClient) reconnect() error {
 	}()
 
 	for {
-		jitter := time.Duration(tmrand.Float64() * float64(time.Second)) // 1s == (1e9 ns)
+		// nolint:gosec // G404: Use of weak random number generator
+		jitter := time.Duration(mrand.Float64() * float64(time.Second)) // 1s == (1e9 ns)
 		backoffDuration := jitter + ((1 << uint(attempt)) * time.Second)
 
 		c.Logger.Info("reconnecting", "attempt", attempt+1, "backoff_duration", backoffDuration)

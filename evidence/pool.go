@@ -11,9 +11,9 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
-	dbm "github.com/tendermint/tm-db"
 
 	clist "github.com/lazyledger/lazyledger-core/libs/clist"
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	sm "github.com/lazyledger/lazyledger-core/state"

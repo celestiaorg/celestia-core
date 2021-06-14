@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	ipfsapi "github.com/ipfs/interface-go-ipfs-core"
+	format "github.com/ipfs/go-ipld-format"
+	"github.com/libp2p/go-libp2p-core/routing"
+
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	"github.com/lazyledger/lazyledger-core/crypto"
@@ -25,6 +27,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/service"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -93,7 +96,8 @@ type State struct {
 	// store blocks and commits
 	blockStore sm.BlockStore
 
-	IpfsAPI ipfsapi.CoreAPI
+	dag    format.DAGService
+	croute routing.ContentRouting
 
 	// create and execute blocks
 	blockExec *sm.BlockExecutor
@@ -150,6 +154,10 @@ type State struct {
 
 	// for reporting metrics
 	metrics *Metrics
+
+	// context of the recent proposed block
+	proposalCtx    context.Context
+	proposalCancel context.CancelFunc
 }
 
 // StateOption sets an optional parameter on the State.
@@ -162,6 +170,8 @@ func NewState(
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
 	txNotifier txNotifier,
+	dag format.DAGService,
+	croute routing.ContentRouting,
 	evpool evidencePool,
 	options ...StateOption,
 ) *State {
@@ -169,6 +179,8 @@ func NewState(
 		config:           config,
 		blockExec:        blockExec,
 		blockStore:       blockStore,
+		dag:              dag,
+		croute:           croute,
 		txNotifier:       txNotifier,
 		peerMsgQueue:     make(chan msgInfo, msgQueueSize),
 		internalMsgQueue: make(chan msgInfo, msgQueueSize),
@@ -1087,8 +1099,13 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 	// Make proposal
 	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID)
-	p := proposal.ToProto()
+	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID, &block.DataAvailabilityHeader)
+	p, err := proposal.ToProto()
+	if err != nil {
+		cs.Logger.Error(fmt.Sprintf("can't serialize proposal: %s", err.Error()))
+		return
+	}
+
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
 		proposal.Signature = p.Signature
 
@@ -1104,18 +1121,40 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		cs.Logger.Error("enterPropose: Error signing proposal", "height", height, "round", round, "err", err)
 	}
 
-	// post data to ipfs
-	// TODO(evan): don't hard code context and timeout
-	if cs.IpfsAPI != nil {
-		// longer timeouts result in block proposers failing to propose blocks in time.
-		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
-		defer cancel()
-		// TODO: post data to IPFS in a goroutine
-		err := block.PutBlock(ctx, cs.IpfsAPI.Dag().Pinning())
-		if err != nil {
-			cs.Logger.Error(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
-		}
+	// cancel ctx for previous proposal block to ensure block putting/providing does not queues up
+	if cs.proposalCancel != nil { //nolint:staticcheck
+		// FIXME(ismail): below commented out cancel tries to prevent block putting
+		// and providing no to queue up endlessly.
+		// But in a real network proposers should have enough time in between.
+		// And even if not, queuing up to a problematic extent will take a lot of time:
+		// Even on the Cosmos Hub the largest validator only proposes every 15 blocks.
+		// With an average block time of roughly 7.5 seconds this means almost
+		// two minutes between two different proposals by the same validator.
+		// For other validators much more time passes in between.
+		// In our case block interval times will likely be larger.
+		// And independent of this DHT providing will be made faster:
+		//  - https://github.com/lazyledger/lazyledger-core/issues/395
+		//
+		// Furthermore, and independent of all of the above,
+		// the provide timeout could still be larger than just the time between
+		// two consecutive proposals.
+		//
+		// cs.proposalCancel()
 	}
+	cs.proposalCtx, cs.proposalCancel = context.WithCancel(context.TODO())
+	go func(ctx context.Context) {
+		cs.Logger.Info("Putting Block to IPFS", "height", block.Height)
+		err = ipld.PutBlock(ctx, cs.dag, block, cs.croute, cs.Logger)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				cs.Logger.Error("Putting Block didn't finish in time and was terminated", "height", block.Height)
+				return
+			}
+			cs.Logger.Error("Failed to put Block to IPFS", "err", err, "height", block.Height)
+			return
+		}
+		cs.Logger.Info("Finished putting block to IPFS", "height", block.Height)
+	}(cs.proposalCtx)
 }
 
 // Returns true if the proposal block is complete &&
@@ -1750,7 +1789,11 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		return ErrInvalidProposalPOLRound
 	}
 
-	p := proposal.ToProto()
+	p, err := proposal.ToProto()
+	if err != nil {
+		return err
+	}
+
 	// Verify signature
 	if !cs.Validators.GetProposer().PubKey.VerifySignature(
 		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,

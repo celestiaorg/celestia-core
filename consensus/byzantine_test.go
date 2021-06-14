@@ -9,14 +9,15 @@ import (
 	"testing"
 	"time"
 
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	dbm "github.com/tendermint/tm-db"
 
 	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/evidence"
+	"github.com/lazyledger/lazyledger-core/ipfs"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/libs/service"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
@@ -45,7 +46,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 	for i := 0; i < nValidators; i++ {
 		logger := consensusLogger().With("test", "byzantine", "validator", i)
-		stateDB := dbm.NewMemDB() // each state needs its own db
+		stateDB := memdb.NewDB() // each state needs its own db
 		stateStore := sm.NewStore(stateDB)
 		state, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 		thisConfig := ResetConfig(fmt.Sprintf("%s_%d", testName, i))
@@ -55,8 +56,9 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		vals := types.TM2PB.ValidatorUpdates(state.Validators)
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
-		blockDB := dbm.NewMemDB()
-		blockStore := store.NewBlockStore(blockDB)
+		blockDB := memdb.NewDB()
+		dag := mdutils.Mock()
+		blockStore := store.NewBlockStore(blockDB, dag)
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)
@@ -71,14 +73,15 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		}
 
 		// Make a full instance of the evidence pool
-		evidenceDB := dbm.NewMemDB()
+		evidenceDB := memdb.NewDB()
 		evpool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 		require.NoError(t, err)
 		evpool.SetLogger(logger.With("module", "evidence"))
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool)
+		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore,
+			mempool, dag, ipfs.MockRouting(), evpool)
 		cs.SetLogger(cs.Logger)
 		// set private validator
 		pv := privVals[i]
@@ -92,7 +95,6 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		cs.SetTimeoutTicker(tickerFunc())
 		cs.SetLogger(logger)
-
 		css[i] = cs
 	}
 
@@ -216,7 +218,12 @@ func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 	N := 4
 	logger := consensusLogger().With("test", "byzantine")
 	app := newCounter
-	css, cleanup := randConsensusNet(N, "consensus_byzantine_test", newMockTickerFunc(false), app)
+	css, cleanup := randConsensusNet(
+		N,
+		"consensus_byzantine_test",
+		newMockTickerFunc(false),
+		app,
+	)
 	defer cleanup()
 
 	// give the byzantine validator a normal ticker
@@ -376,8 +383,9 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	// Create a new proposal block from state/txs from the mempool.
 	block1, blockParts1 := cs.createProposalBlock()
 	polRound, propBlockID := cs.ValidRound, types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
-	proposal1 := types.NewProposal(height, round, polRound, propBlockID)
-	p1 := proposal1.ToProto()
+	proposal1 := types.NewProposal(height, round, polRound, propBlockID, &block1.DataAvailabilityHeader)
+	p1, err := proposal1.ToProto()
+	require.NoError(t, err)
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p1); err != nil {
 		t.Error(err)
 	}
@@ -390,8 +398,9 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	// Create a new proposal block from state/txs from the mempool.
 	block2, blockParts2 := cs.createProposalBlock()
 	polRound, propBlockID = cs.ValidRound, types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
-	proposal2 := types.NewProposal(height, round, polRound, propBlockID)
-	p2 := proposal2.ToProto()
+	proposal2 := types.NewProposal(height, round, polRound, propBlockID, &block2.DataAvailabilityHeader)
+	p2, err := proposal2.ToProto()
+	require.NoError(t, err)
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p2); err != nil {
 		t.Error(err)
 	}

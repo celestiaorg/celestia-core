@@ -12,13 +12,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/tendermint/tm-db"
-
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	"github.com/lazyledger/lazyledger-core/evidence"
 	"github.com/lazyledger/lazyledger-core/evidence/mocks"
+	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/p2p"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
@@ -131,7 +130,7 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 	pools[0].Update(state, evList)
 	require.EqualValues(t, uint32(0), pools[0].Size())
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	peer := reactors[0].Switch.Peers().List()[0]
 	ps := peerState{height - 2}
@@ -142,7 +141,7 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 	peer.Set(types.PeerStateKey, ps)
 
 	// wait to see that no evidence comes through
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(600 * time.Millisecond)
 
 	// the second pool should not have received any evidence because it has already been committed
 	assert.Equal(t, uint32(0), pools[1].Size(), "second reactor should not have received evidence")
@@ -158,7 +157,7 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 	}
 
 	// wait to see that only one evidence is sent
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(600 * time.Millisecond)
 
 	// the second pool should only have received the first evidence because it is behind
 	peerEv, _ := pools[1].PendingEvidence(10000)
@@ -179,9 +178,9 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 	peer.Set(types.PeerStateKey, ps)
 
 	// wait to see that only two evidence is sent
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(1800 * time.Millisecond)
 
-	peerEv, _ = pools[1].PendingEvidence(1000)
+	peerEv, _ = pools[1].PendingEvidence(2000)
 	assert.EqualValues(t, []types.Evidence{evList[0], evList[1]}, peerEv)
 }
 
@@ -209,7 +208,7 @@ func makeAndConnectReactorsAndPools(config *cfg.Config, stateStores []sm.Store) 
 	evidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	for i := 0; i < N; i++ {
-		evidenceDB := dbm.NewMemDB()
+		evidenceDB := memdb.NewDB()
 		blockStore := &mocks.BlockStore{}
 		blockStore.On("LoadBlockMeta", mock.AnythingOfType("int64")).Return(
 			&types.BlockMeta{Header: types.Header{Time: evidenceTime}},

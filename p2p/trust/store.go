@@ -8,8 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	dbm "github.com/tendermint/tm-db"
-
+	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/service"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 )

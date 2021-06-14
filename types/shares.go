@@ -1,7 +1,6 @@
 package types
 
 import (
-	"bytes"
 	"encoding/binary"
 
 	"github.com/lazyledger/nmt/namespace"
@@ -42,7 +41,6 @@ func (tx Tx) MarshalDelimited() ([]byte, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	length := uint64(len(tx))
 	n := binary.PutUvarint(lenBuf, length)
-
 	return append(lenBuf[:n], tx...), nil
 }
 
@@ -52,62 +50,5 @@ func (m Message) MarshalDelimited() ([]byte, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	length := uint64(len(m.Data))
 	n := binary.PutUvarint(lenBuf, length)
-
 	return append(lenBuf[:n], m.Data...), nil
-}
-
-func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte, shareSize int) []NamespacedShare {
-	if len(rawData) < shareSize {
-		rawShare := rawData
-		paddedShare := zeroPadIfNecessary(rawShare, shareSize)
-		share := NamespacedShare{paddedShare, nid}
-		shares = append(shares, share)
-	} else { // len(rawData) >= shareSize
-		shares = append(shares, split(rawData, shareSize, nid)...)
-	}
-	return shares
-}
-
-// TODO(ismail): implement corresponding merge method for clients requesting
-// shares for a particular namespace
-func split(rawData []byte, shareSize int, nid namespace.ID) []NamespacedShare {
-	shares := make([]NamespacedShare, 0)
-	firstRawShare := rawData[:shareSize]
-	shares = append(shares, NamespacedShare{firstRawShare, nid})
-	rawData = rawData[shareSize:]
-	for len(rawData) > 0 {
-		shareSizeOrLen := min(shareSize, len(rawData))
-		paddedShare := zeroPadIfNecessary(rawData[:shareSizeOrLen], shareSize)
-		share := NamespacedShare{paddedShare, nid}
-		shares = append(shares, share)
-		rawData = rawData[shareSizeOrLen:]
-	}
-	return shares
-}
-
-func GenerateTailPaddingShares(n int, shareWidth int) NamespacedShares {
-	shares := make([]NamespacedShare, n)
-	for i := 0; i < n; i++ {
-		shares[i] = NamespacedShare{bytes.Repeat([]byte{0}, shareWidth), TailPaddingNamespaceID}
-	}
-	return shares
-}
-
-func min(a, b int) int {
-	if a <= b {
-		return a
-	}
-	return b
-}
-
-func zeroPadIfNecessary(share []byte, width int) []byte {
-	oldLen := len(share)
-	if oldLen < width {
-		missingBytes := width - oldLen
-		padByte := []byte{0}
-		padding := bytes.Repeat(padByte, missingBytes)
-		share = append(share, padding...)
-		return share
-	}
-	return share
 }

@@ -2,6 +2,7 @@ package v0
 
 import (
 	"fmt"
+	mrand "math/rand"
 	"testing"
 	"time"
 
@@ -45,7 +46,7 @@ func (p testPeer) simulateInput(input inputData) {
 	input.pool.AddBlock(input.request.PeerID, block, 123)
 	// TODO: uncommenting this creates a race which is detected by:
 	// https://github.com/golang/go/blob/2bd767b1022dd3254bcec469f0ee164024726486/src/testing/testing.go#L854-L856
-	// see: https://github.comlazyledger/lazyledger-cor/issues/3390#issue-418379890
+	// see: https://github.com/tendermint/tendermint/issues/3390#issue-418379890
 	// input.t.Logf("Added block from peer %v (height: %v)", input.request.PeerID, input.request.Height)
 }
 
@@ -67,7 +68,7 @@ func makePeers(numPeers int, minHeight, maxHeight int64) testPeers {
 	peers := make(testPeers, numPeers)
 	for i := 0; i < numPeers; i++ {
 		peerID := p2p.ID(tmrand.Str(12))
-		height := minHeight + tmrand.Int63n(maxHeight-minHeight)
+		height := minHeight + mrand.Int63n(maxHeight-minHeight)
 		base := minHeight + int64(i)
 		if base > height {
 			base = height

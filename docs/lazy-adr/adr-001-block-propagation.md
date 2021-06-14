@@ -1,4 +1,4 @@
-# LAZY ADR 001: Erasure Coding Block Propagation
+# ADR 001: Erasure Coding Block Propagation
 
 ## Changelog
 
@@ -28,10 +28,10 @@ message Proposal {
   int64                     height    = 2;
   int32                     round     = 3;
   int32                     pol_round = 4;
-  
+
   +++
     // 32-byte hash
-  bytes last_header_hash = 5; 
+  bytes last_header_hash = 5;
   // 32-byte hash
   bytes last_commit_hash = 6;
     // 32-byte hash
@@ -57,7 +57,7 @@ message Vote {
   int64         height   = 2;
   int32         round    = 3;
   +++
-  bytes header_hash      = 4; 
+  bytes header_hash      = 4;
   +++
   google.protobuf.Timestamp timestamp = 5
       [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
@@ -100,7 +100,7 @@ Example:
 
 When a user requests a block from the LL node, the request will be set to the IPLD plugin. If the IPLD does not have the requested block, it will make a request to the lazyledger IPFS network for the required CIDs. If the full node does not have the DAheader they will not be able to request the block data.
 
-![user request flow](./assets/user_request.png)
+![user request flow](./assets/user-request.png)
 
 The goal is to not change the public interface for RPC's. It is yet to be seen if this possible. This means that CIDs will need to be set and loaded from the store in order to get all the related block information an user requires.
 
@@ -113,7 +113,7 @@ Proposed
 
 - Minimal breakage to public interface
 - Only store the block in a single place (IPFS)
-- Reduce the public interface of the storage within LazyLedger. 
+- Reduce the public interface of the storage within LazyLedger.
 
 ### Negative
 

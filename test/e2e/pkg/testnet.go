@@ -16,7 +16,6 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	"github.com/lazyledger/lazyledger-core/crypto/secp256k1"
 	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
-	mcs "github.com/lazyledger/lazyledger-core/test/maverick/consensus"
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -74,8 +73,7 @@ type Node struct {
 	StartAt          int64
 	FastSync         string
 	StateSync        bool
-	Database         string
-	ABCIProtocol     Protocol
+	ABCIProtocol     Protocol // always set to builtin in this repository
 	PrivvalProtocol  Protocol
 	PersistInterval  uint64
 	SnapshotInterval uint64
@@ -148,7 +146,6 @@ func LoadTestnet(file string) (*Testnet, error) {
 			IP:               ipGen.Next(),
 			ProxyPort:        proxyPortGen.Next(),
 			Mode:             ModeValidator,
-			Database:         "badgerdb",
 			ABCIProtocol:     ProtocolBuiltin,
 			PrivvalProtocol:  ProtocolFile,
 			StartAt:          nodeManifest.StartAt,
@@ -165,12 +162,6 @@ func LoadTestnet(file string) (*Testnet, error) {
 		}
 		if nodeManifest.Mode != "" {
 			node.Mode = Mode(nodeManifest.Mode)
-		}
-		if nodeManifest.Database != "" {
-			node.Database = nodeManifest.Database
-		}
-		if nodeManifest.ABCIProtocol != "" {
-			node.ABCIProtocol = Protocol(nodeManifest.ABCIProtocol)
 		}
 		if nodeManifest.PrivvalProtocol != "" {
 			node.PrivvalProtocol = Protocol(nodeManifest.PrivvalProtocol)
@@ -307,17 +298,12 @@ func (n Node) Validate(testnet Testnet) error {
 		}
 	}
 	switch n.FastSync {
-	case "", "v0", "v2":
+	case "", "v0":
 	default:
 		return fmt.Errorf("invalid fast sync setting %q", n.FastSync)
 	}
-	switch n.Database {
-	case "badgerdb":
-	default:
-		return fmt.Errorf("invalid database setting %q", n.Database)
-	}
 	switch n.ABCIProtocol {
-	case ProtocolBuiltin, ProtocolUNIX, ProtocolTCP, ProtocolGRPC:
+	case ProtocolBuiltin:
 	default:
 		return fmt.Errorf("invalid ABCI protocol setting %q", n.ABCIProtocol)
 	}
@@ -366,11 +352,12 @@ func (n Node) Validate(testnet Testnet) error {
 				height, testnet.InitialHeight)
 		}
 		exists := false
-		for possibleBehaviors := range mcs.MisbehaviorList {
-			if possibleBehaviors == misbehavior {
-				exists = true
-			}
-		}
+		// FIXME: Maverick has been disabled until it is redesigned
+		// for possibleBehaviors := range mcs.MisbehaviorList {
+		// 	if possibleBehaviors == misbehavior {
+		// 		exists = true
+		// 	}
+		// }
 		if !exists {
 			return fmt.Errorf("misbehavior %s does not exist", misbehavior)
 		}
