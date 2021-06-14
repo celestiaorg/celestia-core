@@ -10,12 +10,10 @@ import (
 	ipfscfg "github.com/ipfs/go-ipfs-config"
 	"github.com/ipfs/go-ipfs/commands"
 	"github.com/ipfs/go-ipfs/core"
-	"github.com/ipfs/go-ipfs/core/coreapi"
 	"github.com/ipfs/go-ipfs/core/corehttp"
 	"github.com/ipfs/go-ipfs/core/node/libp2p"
 	"github.com/ipfs/go-ipfs/repo"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 
@@ -24,19 +22,19 @@ import (
 
 // Embedded is the provider that embeds IPFS node within the same process.
 // It also returns closable for graceful node shutdown.
-func Embedded(init bool, cfg *Config, logger log.Logger) APIProvider {
-	return func() (coreiface.APIDagService, *core.IpfsNode, error) {
+func Embedded(init bool, cfg *Config, logger log.Logger) NodeProvider {
+	return func() (*core.IpfsNode, error) {
 		path := cfg.Path()
 		defer os.Setenv(ipfscfg.EnvDir, path)
 
 		// NOTE: no need to validate the path before
 		if err := plugins(path); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		// Init Repo if requested
 		if init {
 			if err := InitRepo(path, logger); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 		}
 		// Open the repo
@@ -44,9 +42,9 @@ func Embedded(init bool, cfg *Config, logger log.Logger) APIProvider {
 		if err != nil {
 			var nrerr fsrepo.NoRepoError
 			if errors.As(err, &nrerr) {
-				return nil, nil, fmt.Errorf("no IPFS repo found in %s.\nplease use flag: --ipfs-init", nrerr.Path)
+				return nil, fmt.Errorf("no IPFS repo found in %s.\nplease use flag: --ipfs-init", nrerr.Path)
 			}
-			return nil, nil, err
+			return nil, err
 		}
 		// Construct the node
 		nodeOptions := &core.BuildCfg{
@@ -69,24 +67,18 @@ func Embedded(init bool, cfg *Config, logger log.Logger) APIProvider {
 		node, err := core.NewNode(ctx, nodeOptions)
 		if err != nil {
 			_ = repo.Close()
-			return nil, nil, err
+			return nil, err
 		}
 		// Serve API if requested
 		if cfg.ServeAPI {
 			if err := serveAPI(path, repo, node); err != nil {
 				_ = node.Close()
-				return nil, nil, err
+				return nil, err
 			}
-		}
-		// Wrap Node and create CoreAPI
-		api, err := coreapi.NewCoreAPI(node)
-		if err != nil {
-			_ = node.Close()
-			return nil, nil, fmt.Errorf("failed to create an instance of the IPFS core API: %w", err)
 		}
 
 		logger.Info("Successfully created embedded IPFS node", "ipfs-repo", path)
-		return api.Dag(), node, nil
+		return node, nil
 	}
 }
 
