@@ -10,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ipfs/go-blockservice"
+	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	"github.com/ipfs/go-merkledag"
 	mdutils "github.com/ipfs/go-merkledag/test"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/ipfs"
@@ -290,8 +293,9 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 	if err != nil {
 		tmos.Exit(err.Error())
 	}
-	dag := mdutils.Mock()
-	blockStore := store.NewBlockStore(blockStoreDB, dag)
+	bstore := ipfs.MockBlockStore()
+	dag := merkledag.NewDAGService(blockservice.New(bstore, offline.Exchange(bstore)))
+	blockStore := store.NewBlockStore(blockStoreDB, bstore, ipfs.MockRouting(), log.TestingLogger())
 
 	// Get State
 	stateDB, err := badgerdb.NewDB("state", config.DBDir())

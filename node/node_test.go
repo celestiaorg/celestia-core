@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -284,7 +283,7 @@ func TestCreateProposalBlock(t *testing.T) {
 
 	// Make EvidencePool
 	evidenceDB := memdb.NewDB()
-	blockStore := store.NewBlockStore(memdb.NewDB(), mdutils.Mock())
+	blockStore := store.MockBlockStore()
 	evidencePool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 	require.NoError(t, err)
 	evidencePool.SetLogger(logger)

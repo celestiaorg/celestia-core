@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
-	mdutils "github.com/ipfs/go-merkledag/test"
+	"github.com/ipfs/go-blockservice"
+	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	"github.com/ipfs/go-merkledag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -57,8 +59,9 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
 		blockDB := memdb.NewDB()
-		dag := mdutils.Mock()
-		blockStore := store.NewBlockStore(blockDB, dag)
+		bs := ipfs.MockBlockStore()
+		dag := merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
+		blockStore := store.NewBlockStore(blockDB, bs, ipfs.MockRouting(), log.TestingLogger())
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)

@@ -195,11 +195,6 @@ func TestRetrieveBlockData(t *testing.T) {
 }
 
 func TestNonExistentBlockData(t *testing.T) {
-	provider := ipfs.Mock()
-
-	dag, _, err := provider(false)
-	require.NoError(t, err)
-
 	// this timeout should not be reached
 	timeout := 10 * time.Second
 
@@ -217,7 +212,7 @@ func TestNonExistentBlockData(t *testing.T) {
 
 	// time how long it takes to receive an error
 	start := time.Now()
-	_, err = RetrieveBlockData(ctx, &block.DataAvailabilityHeader, dag, rsmt2d.NewRSGF8Codec())
+	_, err := RetrieveBlockData(ctx, &block.DataAvailabilityHeader, mdutils.Mock(), rsmt2d.NewRSGF8Codec())
 	end := time.Now()
 
 	// ensure that the error provided is as expected and that the timeout was not reached

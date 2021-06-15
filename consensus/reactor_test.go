@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
-	mdutils "github.com/ipfs/go-merkledag/test"
+	"github.com/ipfs/go-blockservice"
+	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	"github.com/ipfs/go-merkledag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -156,8 +158,9 @@ func TestReactorWithEvidence(t *testing.T) {
 		// css[i] = newStateWithConfig(thisConfig, state, privVals[i], app)
 
 		blockDB := memdb.NewDB()
-		dag := mdutils.Mock()
-		blockStore := store.NewBlockStore(blockDB, dag)
+		bstore := ipfs.MockBlockStore()
+		dag := merkledag.NewDAGService(blockservice.New(bstore, offline.Exchange(bstore)))
+		blockStore := store.NewBlockStore(blockDB, bstore, ipfs.MockRouting(), log.TestingLogger())
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)

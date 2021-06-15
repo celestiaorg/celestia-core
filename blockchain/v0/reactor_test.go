@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -70,11 +69,9 @@ func newBlockchainReactor(
 		panic(fmt.Errorf("error start app: %w", err))
 	}
 
-	blockDB := memdb.NewDB()
 	stateDB := memdb.NewDB()
 	stateStore := sm.NewStore(stateDB)
-	blockStore := store.NewBlockStore(blockDB, mdutils.Mock())
-
+	blockStore := store.MockBlockStore()
 	state, err := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 	if err != nil {
 		panic(fmt.Errorf("error constructing state from genesis file: %w", err))

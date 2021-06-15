@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -397,7 +396,7 @@ func initializeValidatorState(privVal types.PrivValidator, height int64) sm.Stor
 // initializeBlockStore creates a block storage and populates it w/ a dummy
 // block at +height+. panics if an error is encountered while saving the block
 func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.BlockStore {
-	blockStore := store.NewBlockStore(db, mdutils.Mock())
+	blockStore := store.MockBlockStore()
 
 	for i := int64(1); i <= state.LastBlockHeight; i++ {
 		lastCommit := makeCommit(i-1, valAddr)

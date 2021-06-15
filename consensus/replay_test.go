@@ -24,6 +24,7 @@ import (
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -79,7 +80,8 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		privValidator,
 		kvstore.NewApplication(),
 		blockDB,
-		mdutils.Mock(),
+		ipfs.MockBlockStore(),
+		ipfs.MockRouting(),
 	)
 	cs.SetLogger(logger)
 
@@ -174,7 +176,8 @@ LOOP:
 			privValidator,
 			kvstore.NewApplication(),
 			blockDB,
-			mdutils.Mock(),
+			ipfs.MockBlockStore(),
+			ipfs.MockRouting(),
 		)
 		cs.SetLogger(logger)
 

@@ -8,9 +8,15 @@ import (
 	"strings"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/ipfs/go-blockservice"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	format "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-merkledag"
+	"github.com/libp2p/go-libp2p-core/routing"
 
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmstore "github.com/lazyledger/lazyledger-core/proto/tendermint/store"
@@ -48,18 +54,22 @@ type BlockStore struct {
 	base   int64
 	height int64
 
-	dag format.DAGService
+	dag     format.DAGService
+	routing routing.ContentRouting
+	logger  log.Logger
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB, dagAPI format.DAGService) *BlockStore {
+func NewBlockStore(db dbm.DB, bstore blockstore.Blockstore, crouting routing.ContentRouting, logger log.Logger) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	return &BlockStore{
-		base:   bs.Base,
-		height: bs.Height,
-		db:     db,
-		dag:    dagAPI,
+		base:    bs.Base,
+		height:  bs.Height,
+		db:      db,
+		dag:     merkledag.NewDAGService(blockservice.New(bstore, offline.Exchange(bstore))),
+		routing: crouting,
+		logger:  logger,
 	}
 }
 
@@ -362,7 +372,7 @@ func (bs *BlockStore) SaveBlock(
 		bs.saveBlockPart(height, i, part)
 	}
 
-	err := ipld.PutBlock(ctx, bs.dag, block, bs.routing)
+	err := ipld.PutBlock(ctx, bs.dag, block, bs.routing, bs.logger)
 	if err != nil {
 		return err
 	}

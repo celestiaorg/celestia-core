@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -66,16 +65,14 @@ func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Bl
 
 func makeStateAndBlockStore(logger log.Logger) (sm.State, *BlockStore, cleanupFunc) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
-	// blockDB := dbm.NewDebugDB("blockDB", memdb.NewDB())
 	// stateDB := dbm.NewDebugDB("stateDB", memdb.NewDB())
-	blockDB := memdb.NewDB()
 	stateDB := memdb.NewDB()
 	stateStore := sm.NewStore(stateDB)
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	if err != nil {
 		panic(fmt.Errorf("error constructing state from genesis file: %w", err))
 	}
-	return state, NewBlockStore(blockDB, mdutils.Mock()), func() { os.RemoveAll(config.RootDir) }
+	return state, MockBlockStore(), func() { os.RemoveAll(config.RootDir) }
 }
 
 func TestLoadBlockStoreState(t *testing.T) {
@@ -107,7 +104,7 @@ func TestNewBlockStore(t *testing.T) {
 	bz, _ := proto.Marshal(&bss)
 	err := db.Set(blockStoreKey, bz)
 	require.NoError(t, err)
-	bs := NewBlockStore(db, mdutils.Mock())
+	bs := MockBlockStore()
 	require.Equal(t, int64(100), bs.Base(), "failed to properly parse blockstore")
 	require.Equal(t, int64(10000), bs.Height(), "failed to properly parse blockstore")
 
@@ -125,7 +122,7 @@ func TestNewBlockStore(t *testing.T) {
 		_, _, panicErr := doFn(func() (interface{}, error) {
 			err := db.Set(blockStoreKey, tt.data)
 			require.NoError(t, err)
-			_ = NewBlockStore(db, mdutils.Mock())
+			_ = MockBlockStore()
 			return nil, nil
 		})
 		require.NotNil(t, panicErr, "#%d panicCauser: %q expected a panic", i, tt.data)
@@ -134,13 +131,13 @@ func TestNewBlockStore(t *testing.T) {
 
 	err = db.Set(blockStoreKey, []byte{})
 	require.NoError(t, err)
-	bs = NewBlockStore(db, mdutils.Mock())
+	bs = MockBlockStore()
 	assert.Equal(t, bs.Height(), int64(0), "expecting empty bytes to be unmarshaled alright")
 }
 
 func freshBlockStore() (*BlockStore, dbm.DB) {
 	db := memdb.NewDB()
-	return NewBlockStore(db, mdutils.Mock()), db
+	return MockBlockStore(), db
 }
 
 var (
@@ -385,7 +382,7 @@ func TestLoadBaseMeta(t *testing.T) {
 	stateStore := sm.NewStore(memdb.NewDB())
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	require.NoError(t, err)
-	bs := NewBlockStore(memdb.NewDB(), mdutils.Mock())
+	bs := MockBlockStore()
 
 	for h := int64(1); h <= 10; h++ {
 		block := makeBlock(h, state, new(types.Commit))
@@ -443,7 +440,7 @@ func TestPruneBlocks(t *testing.T) {
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	require.NoError(t, err)
 	db := memdb.NewDB()
-	bs := NewBlockStore(db, mdutils.Mock())
+	bs := MockBlockStore()
 	assert.EqualValues(t, 0, bs.Base())
 	assert.EqualValues(t, 0, bs.Height())
 	assert.EqualValues(t, 0, bs.Size())

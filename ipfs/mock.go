@@ -3,12 +3,15 @@ package ipfs
 import (
 	"context"
 
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	nilrouting "github.com/ipfs/go-ipfs-routing/none"
 	"github.com/ipfs/go-ipfs/core"
 	coremock "github.com/ipfs/go-ipfs/core/mock"
 	"github.com/libp2p/go-libp2p-core/routing"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 
+	ds "github.com/ipfs/go-datastore"
+	ds_sync "github.com/ipfs/go-datastore/sync"
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
 )
 
@@ -42,4 +45,8 @@ func MockNode() (*core.IpfsNode, error) {
 func MockRouting() routing.Routing {
 	croute, _ := nilrouting.ConstructNilRouting(context.TODO(), nil, nil, nil)
 	return croute
+}
+
+func MockBlockStore() blockstore.Blockstore {
+	return blockstore.NewBlockstore(ds_sync.MutexWrap(ds.NewMapDatastore()))
 }

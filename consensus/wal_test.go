@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
-	mdutils "github.com/ipfs/go-merkledag/test"
+	"github.com/ipfs/go-blockservice"
+	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	"github.com/ipfs/go-merkledag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -310,8 +312,9 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	if err = stateStore.Save(state); err != nil {
 		t.Error(err)
 	}
-	dag := mdutils.Mock()
-	blockStore := store.NewBlockStore(blockStoreDB, dag)
+	bstore := ipfs.MockBlockStore()
+	dag := merkledag.NewDAGService(blockservice.New(bstore, offline.Exchange(bstore)))
+	blockStore := store.NewBlockStore(blockStoreDB, bstore, ipfs.MockRouting(), log.TestingLogger())
 
 	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(app))
 	proxyApp.SetLogger(logger.With("module", "proxy"))

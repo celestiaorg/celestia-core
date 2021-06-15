@@ -99,10 +99,7 @@ func startNode(cfg *Config) error {
 		return err
 	}
 
-	provider, err := ipfs.Embedded(true, ipfs.DefaultConfig(), nodeLogger)
-	if err != nil {
-		return err
-	}
+	provider := ipfs.Embedded(true, ipfs.DefaultConfig(), nodeLogger)
 
 	n, err := node.NewNode(
 		tmcfg,
