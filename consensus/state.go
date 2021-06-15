@@ -13,6 +13,8 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	format "github.com/ipfs/go-ipld-format"
+	"github.com/libp2p/go-libp2p-core/routing"
+
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	"github.com/lazyledger/lazyledger-core/crypto"
@@ -94,7 +96,8 @@ type State struct {
 	// store blocks and commits
 	blockStore sm.BlockStore
 
-	dag format.DAGService
+	dag    format.DAGService
+	croute routing.ContentRouting
 
 	// create and execute blocks
 	blockExec *sm.BlockExecutor
@@ -151,6 +154,10 @@ type State struct {
 
 	// for reporting metrics
 	metrics *Metrics
+
+	// context of the recent proposed block
+	proposalCtx    context.Context
+	proposalCancel context.CancelFunc
 }
 
 // StateOption sets an optional parameter on the State.
@@ -164,6 +171,7 @@ func NewState(
 	blockStore sm.BlockStore,
 	txNotifier txNotifier,
 	dag format.DAGService,
+	croute routing.ContentRouting,
 	evpool evidencePool,
 	options ...StateOption,
 ) *State {
@@ -172,6 +180,7 @@ func NewState(
 		blockExec:        blockExec,
 		blockStore:       blockStore,
 		dag:              dag,
+		croute:           croute,
 		txNotifier:       txNotifier,
 		peerMsgQueue:     make(chan msgInfo, msgQueueSize),
 		internalMsgQueue: make(chan msgInfo, msgQueueSize),
@@ -1112,23 +1121,40 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		cs.Logger.Error("enterPropose: Error signing proposal", "height", height, "round", round, "err", err)
 	}
 
-	// TODO(ismail): capture this in the Consensus ADR
-	// post data to ipfs
-	// TODO(evan): don't hard code context and timeout
-	//
-	// longer timeouts result in block proposers failing to propose blocks in time.
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*1500)
-	defer cancel()
-	cs.Logger.Info("Putting Block to ipfs", "height", block.Height)
-	// TODO: post data to IPFS in a goroutine
-	err = ipld.PutBlock(ctx, cs.dag, block)
-	if err != nil {
-		// If PutBlock fails we will be the only node that has the data
-		// this means something is seriously wrong and we can not recover
-		// from that automatically.
-		panic(fmt.Sprintf("failure to post block data to IPFS: %s", err.Error()))
+	// cancel ctx for previous proposal block to ensure block putting/providing does not queues up
+	if cs.proposalCancel != nil { //nolint:staticcheck
+		// FIXME(ismail): below commented out cancel tries to prevent block putting
+		// and providing no to queue up endlessly.
+		// But in a real network proposers should have enough time in between.
+		// And even if not, queuing up to a problematic extent will take a lot of time:
+		// Even on the Cosmos Hub the largest validator only proposes every 15 blocks.
+		// With an average block time of roughly 7.5 seconds this means almost
+		// two minutes between two different proposals by the same validator.
+		// For other validators much more time passes in between.
+		// In our case block interval times will likely be larger.
+		// And independent of this DHT providing will be made faster:
+		//  - https://github.com/lazyledger/lazyledger-core/issues/395
+		//
+		// Furthermore, and independent of all of the above,
+		// the provide timeout could still be larger than just the time between
+		// two consecutive proposals.
+		//
+		// cs.proposalCancel()
 	}
-	cs.Logger.Info("Finished putting block to ipfs", "height", block.Height)
+	cs.proposalCtx, cs.proposalCancel = context.WithCancel(context.TODO())
+	go func(ctx context.Context) {
+		cs.Logger.Info("Putting Block to IPFS", "height", block.Height)
+		err = ipld.PutBlock(ctx, cs.dag, block, cs.croute, cs.Logger)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				cs.Logger.Error("Putting Block didn't finish in time and was terminated", "height", block.Height)
+				return
+			}
+			cs.Logger.Error("Failed to put Block to IPFS", "err", err, "height", block.Height)
+			return
+		}
+		cs.Logger.Info("Finished putting block to IPFS", "height", block.Height)
+	}(cs.proposalCtx)
 }
 
 // Returns true if the proposal block is complete &&

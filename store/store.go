@@ -362,7 +362,7 @@ func (bs *BlockStore) SaveBlock(
 		bs.saveBlockPart(height, i, part)
 	}
 
-	err := ipld.PutBlock(ctx, bs.dag, block)
+	err := ipld.PutBlock(ctx, bs.dag, block, bs.routing)
 	if err != nil {
 		return err
 	}

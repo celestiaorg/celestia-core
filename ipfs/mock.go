@@ -1,26 +1,45 @@
 package ipfs
 
 import (
-	"io"
+	"context"
 
-	ipld "github.com/ipfs/go-ipld-format"
-	mdutils "github.com/ipfs/go-merkledag/test"
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
+	nilrouting "github.com/ipfs/go-ipfs-routing/none"
+	"github.com/ipfs/go-ipfs/core"
+	coremock "github.com/ipfs/go-ipfs/core/mock"
+	"github.com/libp2p/go-libp2p-core/routing"
+	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+
+	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
 )
 
 // Mock provides simple mock IPFS API useful for testing
-func Mock() APIProvider {
-	return func(bool) (coreiface.APIDagService, io.Closer, error) {
-		dom := dagOnlyMock{mdutils.Mock()}
+func Mock() NodeProvider {
+	return func() (*core.IpfsNode, error) {
+		plugin.EnableNMT()
 
-		return dom, dom, nil
+		nd, err := MockNode()
+		if err != nil {
+			return nil, err
+		}
+
+		return nd, nil
 	}
 }
 
-type dagOnlyMock struct {
-	ipld.DAGService
+func MockNode() (*core.IpfsNode, error) {
+	ctx := context.TODO()
+	nd, err := core.NewNode(ctx, &core.BuildCfg{
+		Online: true,
+		Host:   coremock.MockHostOption(mocknet.New(ctx)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	nd.Routing = MockRouting()
+	return nd, err
 }
 
-func (dom dagOnlyMock) Dag() coreiface.APIDagService { return dom }
-func (dagOnlyMock) Close() error                     { return nil }
-func (dom dagOnlyMock) Pinning() ipld.NodeAdder      { return dom }
+func MockRouting() routing.Routing {
+	croute, _ := nilrouting.ConstructNilRouting(context.TODO(), nil, nil, nil)
+	return croute
+}

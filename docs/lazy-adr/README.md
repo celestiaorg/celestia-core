@@ -6,7 +6,7 @@ parent:
 
 # Architecture Decision Records (ADR)
 
-This is a location to record all high-level architecture decisions in the tendermint project.
+This is a location to record all high-level architecture decisions in this repository.
 
 You can read more about the ADR concept in this [blog post](https://product.reverb.com/documenting-architecture-decisions-the-reverb-way-a3563bb24bd0#.78xhdix6t).
 
@@ -27,7 +27,11 @@ If recorded decisions turned out to be lacking, convene a discussion, record the
 
 Note the context/background should be written in the present tense.
 
+To start a new ADR, you can use this template: [adr-template.md](./adr-template.md)
+
 ### Table of Contents:
 
-- [ADR-001-Block-Propagation](./adr-001-block-propagation.md)
-- [ADR-002-Data-Availability-Sampling](./adr-002-ipld-da-sampling.md)
+- [ADR 001: Erasure Coding Block Propagation](./adr-001-block-propagation.md)
+- [ADR 002: Sampling erasure coded Block chunks](./adr-002-ipld-da-sampling.md)
+- [ADR 003: Retrieving Application messages](./adr-003-application-data-retrieval.md)
+- [ADR 004: Data Availability Sampling Light Client](./adr-004-mvp-light-client.md)

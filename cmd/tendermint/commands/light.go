@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/spf13/cobra"
 
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
@@ -184,17 +183,13 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	case daSampling:
 		cfg := ipfs.DefaultConfig()
 		cfg.RootDir = dir
+		cfg.ServeAPI = true
 		// TODO(ismail): share badger instance
-		apiProvider, err := ipfs.Embedded(true, cfg, logger)
-		if err != nil {
-			return err
-		}
-		var dag coreiface.APIDagService
-		dag, ipfsCloser, err = apiProvider(true)
+		ipfsNode, err := ipfs.Embedded(true, cfg, logger)()
 		if err != nil {
 			return fmt.Errorf("could not start ipfs API: %w", err)
 		}
-		options = append(options, light.DataAvailabilitySampling(numSamples, dag))
+		options = append(options, light.DataAvailabilitySampling(numSamples, ipfsNode.DAG))
 	case sequential:
 		options = append(options, light.SequentialVerification())
 	default:
