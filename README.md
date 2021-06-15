@@ -45,7 +45,7 @@ See the [install instructions](/docs/introduction/install.md).
 Before contributing to the project, please take a look at the [contributing guidelines](CONTRIBUTING.md)
 and the [style guide](STYLE_GUIDE.md).
 
-Join the community at [Telegram](https://t.me/CelestiaCommunity) or jump onto the [Forum](https://talk.lazyledger.io/)
+Join the community at [Telegram](https://t.me/CelestiaCommunity) or jump onto the [Forum](https://forum.celestia.org/)
 to get more involved into discussions.
 
 Learn more by reading the code and the
