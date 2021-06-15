@@ -67,7 +67,7 @@ According to SemVer, anything in the public API can change at any time before ve
 - [Blog](https://blog.celestia.org)
 - [Project web site](https://celestia.org)
 - [Academic LazyLedger prototype](https://github.com/LazyLedger/lazyledger-prototype)
-- [Follow LazyLedger on Twitter](https://twitter.com/lazyledger_io)
+- [Follow Celestia on Twitter](https://twitter.com/CelestiaOrg)
 
 ### Tendermint Core
 
