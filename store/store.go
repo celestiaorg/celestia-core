@@ -61,7 +61,12 @@ type BlockStore struct {
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB, bstore blockstore.Blockstore, crouting routing.ContentRouting, logger log.Logger) *BlockStore {
+func NewBlockStore(
+	db dbm.DB,
+	bstore blockstore.Blockstore,
+	crouting routing.ContentRouting,
+	logger log.Logger,
+) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	return &BlockStore{
 		base:    bs.Base,

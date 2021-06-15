@@ -721,7 +721,15 @@ func randConsensusNet(
 		vals := types.TM2PB.ValidatorUpdates(state.Validators)
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
-		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB, ipfs.MockBlockStore(), ipfs.MockRouting())
+		css[i] = newStateWithConfigAndBlockStore(
+			thisConfig,
+			state,
+			privVals[i],
+			app,
+			stateDB,
+			ipfs.MockBlockStore(),
+			ipfs.MockRouting(),
+		)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
 	}
