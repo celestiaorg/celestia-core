@@ -1,16 +1,22 @@
 package store
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/gogo/protobuf/proto"
-	ipld "github.com/ipfs/go-ipld-format"
+	format "github.com/ipfs/go-ipld-format"
 
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmstore "github.com/lazyledger/lazyledger-core/proto/tendermint/store"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/rsmt2d"
 )
 
 /*
@@ -42,18 +48,18 @@ type BlockStore struct {
 	base   int64
 	height int64
 
-	ipfsDagAPI ipld.DAGService
+	dag format.DAGService
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB, dagAPI ipld.DAGService) *BlockStore {
+func NewBlockStore(db dbm.DB, dagAPI format.DAGService) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	return &BlockStore{
-		base:       bs.Base,
-		height:     bs.Height,
-		db:         db,
-		ipfsDagAPI: dagAPI,
+		base:   bs.Base,
+		height: bs.Height,
+		db:     db,
+		dag:    dagAPI,
 	}
 }
 
@@ -89,6 +95,55 @@ func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 		return nil
 	}
 	return bs.LoadBlockMeta(bs.base)
+}
+
+// LoadBlock fetches the block at the provided height from IPFS and the local db
+func (bs *BlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block, error) {
+	blockMeta := bs.LoadBlockMeta(height)
+	if blockMeta == nil {
+		// TODO(evan): return an error
+		return nil, nil
+	}
+
+	lastCommit := bs.LoadBlockCommit(height - 1)
+
+	data, err := ipld.RetrieveBlockData(ctx, &blockMeta.DAHeader, bs.dag, rsmt2d.NewRSGF8Codec())
+	if err != nil {
+		if strings.Contains(err.Error(), format.ErrNotFound.Error()) {
+			return nil, fmt.Errorf("failure to retrieve block data from local ipfs store: %w", err)
+		}
+		return nil, err
+	}
+
+	block := types.Block{
+		Header:                 blockMeta.Header,
+		Data:                   data,
+		DataAvailabilityHeader: blockMeta.DAHeader,
+		LastCommit:             lastCommit,
+	}
+
+	return &block, nil
+}
+
+// LoadBlockByHash fetches the block from IPFS using the provided hash.
+// If no block is found for that hash, it returns nil.
+// Panics if it fails to parse height associated with the given hash.
+func (bs *BlockStore) LoadBlockByHash(ctx context.Context, hash []byte) (*types.Block, error) {
+	bz, err := bs.db.Get(calcBlockHashKey(hash))
+	if err != nil {
+		panic(err)
+	}
+	if len(bz) == 0 {
+		return nil, errors.New("failure to load block by hash: block height not found")
+	}
+
+	s := string(bz)
+	height, err := strconv.ParseInt(s, 10, 64)
+
+	if err != nil {
+		panic(fmt.Sprintf("failed to extract height from %s: %v", s, err))
+	}
+	return bs.LoadBlock(ctx, height)
 }
 
 // LoadBlock returns the block with the given height.
@@ -300,6 +355,7 @@ func (bs *BlockStore) SaveHeader(header *types.Header, da *types.DataAvailabilit
 	}
 
 	height := header.Height
+	hash := seenCommit.HeaderHash
 
 	if g, w := height, bs.Height()+1; bs.Base() > 0 && g != w {
 		panic(fmt.Sprintf("BlockStore can only save contiguous blocks. Wanted %v, got %v", w, g))
@@ -322,6 +378,9 @@ func (bs *BlockStore) SaveHeader(header *types.Header, da *types.DataAvailabilit
 	}
 	daBytes := mustEncode(pbda)
 	if err := bs.db.Set(calcDAHeaderKey(height), daBytes); err != nil {
+		panic(err)
+	}
+	if err := bs.db.Set(calcBlockHashKey(hash), []byte(fmt.Sprintf("%d", height))); err != nil {
 		panic(err)
 	}
 	// Save seen commit (seen +2/3 precommits for block)

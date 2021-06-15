@@ -1,6 +1,8 @@
 package state
 
 import (
+	"context"
+
 	"github.com/lazyledger/lazyledger-core/types"
 )
 
@@ -20,10 +22,11 @@ type BlockStore interface {
 
 	LoadBaseMeta() *types.BlockMeta
 	LoadBlockMeta(height int64) *types.BlockMeta
+	LoadBlock(ctx context.Context, height int64) (*types.Block, error)
+	LoadBlockByHash(ctx context.Context, hash []byte) (*types.Block, error)
 	LoadHeader(height int64) (*types.Header, *types.DataAvailabilityHeader)
 
 	SaveHeader(header *types.Header, blockParts *types.DataAvailabilityHeader, seenCommit *types.Commit)
-
 	PruneHeader(height int64) (uint64, error)
 
 	LoadBlockCommit(height int64) *types.Commit

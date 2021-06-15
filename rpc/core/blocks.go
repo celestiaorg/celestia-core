@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
@@ -84,25 +85,28 @@ func filterMinMax(base, height, min, max, limit int64) (int64, int64, error) {
 // If no height is provided, it will fetch the latest block.
 // More: https://docs.tendermint.com/master/rpc/#/Info/block
 // todo: use IPLD plugin interface
-// func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error) {
-// 	height, err := getHeight(env.BlockStore.Height(), heightPtr)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error) {
+	height, err := getHeight(env.BlockStore.Height(), heightPtr)
+	if err != nil {
+		return nil, err
+	}
 
-// 	block := env.BlockStore.LoadBlock(height)
-// 	blockMeta := env.BlockStore.LoadBlockMeta(height)
-// 	if blockMeta == nil {
-// 		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: block}, nil
-// 	}
-// 	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
-// }
+	block, err := env.BlockStore.LoadBlock(context.TODO(), height)
+	if err != nil {
+		return nil, err
+	}
+	blockMeta := env.BlockStore.LoadBlockMeta(height)
+	if blockMeta == nil {
+		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: block}, nil
+	}
+	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
+}
 
 // BlockByHash gets block by hash.
 // More: https://docs.tendermint.com/master/rpc/#/Info/block_by_hash
 func BlockByHash(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error) {
-	block := env.BlockStore.LoadBlockByHash(hash)
-	if block == nil {
+	block, err := env.BlockStore.LoadBlockByHash(context.TODO(), hash)
+	if err != nil {
 		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: nil}, nil
 	}
 	// If block is not nil, then blockMeta can't be nil.
@@ -148,7 +152,10 @@ func DataAvailabilityHeader(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.Re
 	// depends on either:
 	// - https://github.com/lazyledger/lazyledger-core/pull/312, or
 	// - https://github.com/lazyledger/lazyledger-core/pull/218
-	block := env.BlockStore.LoadBlock(height)
+	block, err := env.BlockStore.LoadBlock(context.TODO(), height)
+	if err != nil {
+		return nil, err
+	}
 	_ = block.Hash()
 	dah := block.DataAvailabilityHeader
 	return &ctypes.ResultDataAvailabilityHeader{
