@@ -21,10 +21,10 @@ Currently, the LazyLedger specification itself only describes the [erasure codin
 and how to construct the extended data square from the block data.
 
 This ADR:
+
 - describes the high-level requirements
 - defines the API that and how it can be used by different components of LazyLedger (block gossiping, block sync, DA proofs)
 - documents decision on how to implement this.
-
 
 The core data structures and the erasure coding of the block are already implemented in lazyledger-core ([#17], [#19], [#83]).
 While there are no ADRs for these changes, we can refer to the LazyLedger specification in this case.
@@ -49,6 +49,7 @@ to batch adding and removing nodes.
 This will be achieved by passing around a [CoreAPI](https://github.com/ipfs/interface-go-ipfs-core/blob/b935dfe5375eac7ea3c65b14b3f9a0242861d0b3/coreapi.go#L15)
 object, which derive from the IPFS node which is created along a with a tendermint node (see [#152]).
 This code snippet does exactly that (see the [go-ipfs documentation] for more examples):
+
 ```go
 // This constructs an IPFS node instance
 node, _ := core.NewNode(ctx, nodeOptions)
@@ -69,12 +70,14 @@ and/or in a few smaller, separate followup ADRs.
 ## Alternative Approaches
 
 Instead of creating a full IPFS node object and passing it around as explained above
- - use API (http)
- - use ipld-light
- - use alternative client
+
+- use API (http)
+- use ipld-light
+- use alternative client
 
 Also, for better performance
- - use [graph-sync], [IPLD selectors], e.g. via [ipld-prime]
+
+- use [graph-sync], [IPLD selectors], e.g. via [ipld-prime]
 
 Also, there is the idea, that nodes only receive the [Header] with the data root only
 and, in an additional step/request, download the DA header using the library, too.
@@ -91,11 +94,10 @@ Note that this also means that light clients would still need to validate that t
 > - also mention Mustafa's prototype and compare both apis briefly (RequestSamples, RespondSamples, ProcessSamplesResponse)
 > - mention [ipld experiments]
 
-
-
 ## Detailed Design
 
 Add a package to the library that provides the following features:
+
  1. sample a given number of random row/col indices of extended data square given a DA header and indicate if successful or timeout/other error occurred
  2. store the block in the network by adding it to the peer's local Merkle-DAG whose content is discoverable via a DHT
  3. store the sampled chunks in the network
@@ -105,6 +107,7 @@ Add a package to the library that provides the following features:
 We mention 5. here mostly for completeness. Its details will be described / implemented in a separate ADR / PR.
 
 Apart from the above mentioned features, we informally collect additional requirements:
+
 - where randomness is needed, the randomness source should be configurable
 - all replies by the network should be verified if this is not sufficiently covered by the used libraries already (IPFS)
 - where possible, the requests to the network should happen in parallel (without DoSing the proposer for instance).
@@ -221,7 +224,6 @@ following packages (not mentioning the implementation work that was already done
     - make downloading full Blocks optional (flag/config)
     - route some RPC requests to IPFS (see LAZY ADR 001)
 
-
 ## Status
 
 Proposed
@@ -242,18 +244,18 @@ Proposed
 - dependency on a large code-base with lots of features and options of which we only need a small subset of
 
 ### Neutral
+
 - two different p2p layers exist in lazyledger-core
 
 ## References
 
-- https://github.com/lazyledger/lazyledger-core/issues/85
-- https://github.com/lazyledger/lazyledger-core/issues/167
+- <https://github.com/lazyledger/lazyledger-core/issues/85>
+- <https://github.com/lazyledger/lazyledger-core/issues/167>
 
-- https://docs.ipld.io/#nodes
-- https://arxiv.org/abs/1809.09044
-- https://fc21.ifca.ai/papers/83.pdf
-- https://github.com/tendermint/spec/pull/254
-
+- <https://docs.ipld.io/#nodes>
+- <https://arxiv.org/abs/1809.09044>
+- <https://fc21.ifca.ai/papers/83.pdf>
+- <https://github.com/tendermint/spec/pull/254>
 
 [#17]: https://github.com/lazyledger/lazyledger-core/pull/17
 [#19]: https://github.com/lazyledger/lazyledger-core/pull/19
@@ -273,7 +275,6 @@ Proposed
 [ipld-prime]: https://github.com/ipld/go-ipld-prime
 
 [rsmt2d]: https://github.com/lazyledger/rsmt2d
-
 
 [p2p]: https://github.com/lazyledger/lazyledger-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/p2p
 [p2p/ipld]: https://github.com/lazyledger/lazyledger-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/p2p/ipld

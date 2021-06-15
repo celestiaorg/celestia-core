@@ -378,9 +378,9 @@ FOR_LOOP:
 			}
 
 			var (
-				firstParts         = first.MakePartSet(types.BlockPartSizeBytes)
-				firstPartSetHeader = firstParts.Header()
-				firstID            = types.BlockID{Hash: first.Hash(), PartSetHeader: firstPartSetHeader}
+				// 	firstParts         = first.MakePartSet(types.BlockPartSizeBytes)
+				// 	firstPartSetHeader = firstParts.Header()
+				firstID = types.BlockID{Hash: first.Commit.HeaderHash}
 			)
 
 			c, err := types.CommitFromProto(second.Commit)
@@ -432,12 +432,12 @@ FOR_LOOP:
 
 				// TODO: same thing for app - but we would need a way to get the hash
 				// without persisting the state.
-				var err error
-				state, _, err = bcR.blockExec.ApplyBlock(state, firstID, first)
-				if err != nil {
-					// TODO This is bad, are we zombie?
-					panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Header.Height, first.Header.Hash(), err))
-				}
+				// var err error
+				// state, _, err = bcR.blockExec.ApplyBlock(state, firstID, first)
+				// if err != nil {
+				// 	// TODO This is bad, are we zombie?
+				// 	panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Header.Height, first.Header.Hash(), err))
+				// }
 				blocksSynced++
 
 				if blocksSynced%100 == 0 {

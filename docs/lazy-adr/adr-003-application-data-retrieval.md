@@ -17,9 +17,8 @@ The main motivation can be quoted from section 3.3 of that paper:
 > (Property2) **Application message retrieval completeness.** When client nodes download messages relevant to the applications they use [...], they must be able to verify that the messages they received are the complete set of messages relevant to their applications, for specific
 blocks, and that there are no omitted messages.
 
-
-
 The main data structure that enables above properties is called a Namespaced Merkle Tree (NMT), an ordered binary Merkle tree where:
+
 1. each node in the tree includes the range of namespaces of the messages in all descendants of each node
 2. leaves in the tree are ordered by the namespace identifiers of the leaf messages
 
@@ -37,6 +36,7 @@ The approach described below will rely on IPFS' block exchange protocol (bitswap
 This will likely be much slower than it potentially could be and for a first implementation we intentionally do not incorporate the optimizations that we could.
 
 We briefly mention potential optimizations for the future here:
+
 - Use of [graphsync](https://github.com/ipld/specs/blob/5d3a3485c5fe2863d613cd9d6e18f96e5e568d16/block-layer/graphsync/graphsync.md) instead of [bitswap](https://docs.ipfs.io/concepts/bitswap/) and use of [IPLD selectors](https://github.com/ipld/specs/blob/5d3a3485c5fe2863d613cd9d6e18f96e5e568d16/design/history/exploration-reports/2018.10-selectors-design-goals.md)
 - expose an API to be able to download application specific data by namespace (including proofs) with the minimal number of round-trips (e.g. finding nodes that expose an RPC endpoint like [`GetWithProof`](https://github.com/lazyledger/nmt/blob/ddcc72040149c115f83b2199eafabf3127ae12ac/nmt.go#L193-L196))
 
@@ -77,6 +77,7 @@ func RetrieveShares(
 ```
 
 Additionally, we define two functions that use the first one above to:
+
 1. return all the parsed (non-padding) data with [reserved namespace IDs](https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/consensus.md#reserved-namespace-ids): transactions, intermediate state roots, evidence.
 2. return all application specific blobs (shares) belonging to one namespace ID parsed as a slice of Messages ([specification](https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#message) and [code](https://github.com/lazyledger/lazyledger-core/blob/1a08b430a8885654b6e020ac588b1080e999170c/types/block.go#L1336)).
 

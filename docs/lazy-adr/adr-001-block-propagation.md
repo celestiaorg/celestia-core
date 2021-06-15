@@ -82,6 +82,8 @@ type BlockStore interface {
  Size() int64
 
  LoadBlockMeta(height int64) *types.BlockMeta
+ // used for fetching the block from a specified IPFS
+ LoadBlock(ctx context.Context, height int64) (*types.Block, error)
  LoadHeader(height int64) *types.Header
  LoadDAHeader(height int64) *types.DataAvailabilityHeader
 
@@ -107,7 +109,6 @@ The goal is to not change the public interface for RPC's. It is yet to be seen i
 ## Status
 
 Proposed
-
 
 ### Positive
 
