@@ -17,6 +17,7 @@ import (
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
@@ -104,7 +105,7 @@ func TestNewBlockStore(t *testing.T) {
 	bz, _ := proto.Marshal(&bss)
 	err := db.Set(blockStoreKey, bz)
 	require.NoError(t, err)
-	bs := MockBlockStore()
+	bs := NewBlockStore(db, ipfs.MockBlockStore(), ipfs.MockRouting(), log.TestingLogger())
 	require.Equal(t, int64(100), bs.Base(), "failed to properly parse blockstore")
 	require.Equal(t, int64(10000), bs.Height(), "failed to properly parse blockstore")
 
@@ -122,7 +123,7 @@ func TestNewBlockStore(t *testing.T) {
 		_, _, panicErr := doFn(func() (interface{}, error) {
 			err := db.Set(blockStoreKey, tt.data)
 			require.NoError(t, err)
-			_ = MockBlockStore()
+			_ = NewBlockStore(db, ipfs.MockBlockStore(), ipfs.MockRouting(), log.TestingLogger())
 			return nil, nil
 		})
 		require.NotNil(t, panicErr, "#%d panicCauser: %q expected a panic", i, tt.data)
@@ -137,7 +138,8 @@ func TestNewBlockStore(t *testing.T) {
 
 func freshBlockStore() (*BlockStore, dbm.DB) {
 	db := memdb.NewDB()
-	return MockBlockStore(), db
+	bs := NewBlockStore(db, ipfs.MockBlockStore(), ipfs.MockRouting(), log.TestingLogger())
+	return bs, db
 }
 
 var (
@@ -440,7 +442,7 @@ func TestPruneBlocks(t *testing.T) {
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	require.NoError(t, err)
 	db := memdb.NewDB()
-	bs := MockBlockStore()
+	bs := NewBlockStore(db, ipfs.MockBlockStore(), ipfs.MockRouting(), log.TestingLogger())
 	assert.EqualValues(t, 0, bs.Base())
 	assert.EqualValues(t, 0, bs.Height())
 	assert.EqualValues(t, 0, bs.Size())

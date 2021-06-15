@@ -7,5 +7,10 @@ import (
 )
 
 func MockBlockStore() *BlockStore {
-	return NewBlockStore(memdb.NewDB(), ipfs.MockBlockStore(), ipfs.MockRouting(), log.TestingLogger())
+	return NewBlockStore(
+		memdb.NewDB(),
+		ipfs.MockBlockStore(),
+		ipfs.MockRouting(),
+		log.NewNopLogger(),
+	)
 }
