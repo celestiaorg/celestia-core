@@ -179,12 +179,16 @@ func (bcR *BlockchainReactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 func (bcR *BlockchainReactor) respondToPeer(msg *bcproto.BlockRequest,
 	src p2p.Peer) (queued bool) {
 
-	block, err := bcR.store.LoadBlock(context.TODO(), msg.Height)
-	if err != nil {
-		bcR.Logger.Error("failure to load block", "err", err)
-		return false
-	}
-	if block != nil {
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*4)
+	defer cancel()
+
+	blockMeta := bcR.store.LoadBlockMeta(msg.Height)
+	if blockMeta != nil {
+		block, err := bcR.store.LoadBlock(ctx, msg.Height)
+		if err != nil {
+			bcR.Logger.Error("failure to load block", "err", err)
+			return false
+		}
 		bl, err := block.ToProto()
 		if err != nil {
 			bcR.Logger.Error("could not convert msg to protobuf", "err", err)
