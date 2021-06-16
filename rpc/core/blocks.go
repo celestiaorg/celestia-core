@@ -90,14 +90,16 @@ func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error)
 		return nil, err
 	}
 
+	blockMeta := env.BlockStore.LoadBlockMeta(height)
+	if blockMeta == nil {
+		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: nil}, nil
+	}
+
 	block, err := env.BlockStore.LoadBlock(context.TODO(), height)
 	if err != nil {
 		return nil, err
 	}
-	blockMeta := env.BlockStore.LoadBlockMeta(height)
-	if blockMeta == nil {
-		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: block}, nil
-	}
+
 	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
 }
 
