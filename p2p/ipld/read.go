@@ -8,6 +8,7 @@ import (
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/lazyledger/rsmt2d"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
@@ -30,6 +31,7 @@ func RetrieveBlockData(
 ) (types.Data, error) {
 	edsWidth := len(dah.RowsRoots)
 	sc := newshareCounter(ctx, uint32(edsWidth))
+	sem := semaphore.NewWeighted(100)
 
 	// convert the row and col roots into Cids
 	rowRoots := dah.RowsRoots.Bytes()
@@ -43,8 +45,17 @@ func RetrieveBlockData(
 			if err != nil {
 				return types.Data{}, err
 			}
-
-			go sc.retrieveShare(rootCid, true, row, col, dag)
+			sem.Acquire(context.Background(), 1)
+			go func(
+				rootCid cid.Cid,
+				isRow bool,
+				axisIdx uint32,
+				idx uint32,
+				dag ipld.NodeGetter,
+			) {
+				sc.retrieveShare(rootCid, isRow, axisIdx, idx, dag)
+				sem.Release(1)
+			}(rootCid, true, row, col, dag)
 		}
 	}
 
