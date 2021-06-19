@@ -1,6 +1,7 @@
 package evidence_test
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -408,7 +409,10 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.Bloc
 		partSet := block.MakePartSet(parts)
 
 		seenCommit := makeCommit(i, valAddr)
-		blockStore.SaveBlock(block, partSet, seenCommit)
+		err := blockStore.SaveBlock(context.TODO(), block, partSet, seenCommit)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	return blockStore
