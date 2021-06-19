@@ -18,6 +18,8 @@ import (
 
 const baseErrorMsg = "failure to retrieve block data:"
 
+const maxGoRoutines = 512
+
 var ErrEncounteredTooManyErrors = fmt.Errorf("%s %s", baseErrorMsg, "encountered too many errors")
 var ErrTimeout = fmt.Errorf("%s %s", baseErrorMsg, "timeout")
 
@@ -31,7 +33,7 @@ func RetrieveBlockData(
 ) (types.Data, error) {
 	edsWidth := len(dah.RowsRoots)
 	sc := newshareCounter(ctx, uint32(edsWidth))
-	sem := semaphore.NewWeighted(100)
+	sem := semaphore.NewWeighted(maxGoRoutines)
 
 	// convert the row and col roots into Cids
 	rowRoots := dah.RowsRoots.Bytes()
@@ -45,17 +47,15 @@ func RetrieveBlockData(
 			if err != nil {
 				return types.Data{}, err
 			}
-			sem.Acquire(context.Background(), 1)
+			sem.Acquire(ctx, 1)
 			go func(
 				rootCid cid.Cid,
-				isRow bool,
 				axisIdx uint32,
 				idx uint32,
-				dag ipld.NodeGetter,
 			) {
-				sc.retrieveShare(rootCid, isRow, axisIdx, idx, dag)
+				sc.retrieveShare(rootCid, true, axisIdx, idx, dag)
 				sem.Release(1)
-			}(rootCid, true, row, col, dag)
+			}(rootCid, row, col)
 		}
 	}
 
