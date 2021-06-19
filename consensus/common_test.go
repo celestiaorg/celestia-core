@@ -379,7 +379,7 @@ func newStateWithConfigAndBlockStore(
 	dag format.DAGService,
 ) *State {
 	// Get BlockStore
-	blockStore := store.NewBlockStore(blockDB, dag)
+	blockStore := store.MockBlockStore(blockDB)
 
 	// one for mempool, one for consensus
 	mtx := new(tmsync.Mutex)

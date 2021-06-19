@@ -3,12 +3,19 @@ package store
 import (
 	"context"
 	"fmt"
+
 	"strconv"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/ipfs/go-blockservice"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	format "github.com/ipfs/go-ipld-format"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-merkledag"
 
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	tmstore "github.com/lazyledger/lazyledger-core/proto/tendermint/store"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
@@ -44,18 +51,22 @@ type BlockStore struct {
 	base   int64
 	height int64
 
+	dag    format.DAGService
+	logger log.Logger
+
 	ipfsDagAPI ipld.DAGService
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB, dagAPI ipld.DAGService) *BlockStore {
+func NewBlockStore(db dbm.DB, bstore blockstore.Blockstore, logger log.Logger) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	return &BlockStore{
-		base:       bs.Base,
-		height:     bs.Height,
-		db:         db,
-		ipfsDagAPI: dagAPI,
+		base:   bs.Base,
+		height: bs.Height,
+		db:     db,
+		dag:    merkledag.NewDAGService(blockservice.New(bstore, offline.Exchange(bstore))),
+		logger: logger,
 	}
 }
 

@@ -155,10 +155,8 @@ func TestReactorWithEvidence(t *testing.T) {
 		// duplicate code from:
 		// css[i] = newStateWithConfig(thisConfig, state, privVals[i], app)
 
-		blockDB := memdb.NewDB()
 		dag := mdutils.Mock()
-		blockStore := store.NewBlockStore(blockDB, dag)
-
+		blockStore := store.MockBlockStore(nil)
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)
 		proxyAppConnMem := abcicli.NewLocalClient(mtx, app)
