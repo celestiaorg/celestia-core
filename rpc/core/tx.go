@@ -38,7 +38,9 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 	var proof types.TxProof
 	if prove {
 		block, err := env.BlockStore.LoadBlock(ctx.Context(), height)
-		return nil, fmt.Errorf("tx (%X) not found: %w", hash, err)
+		if err != nil {
+			return nil, err
+		}
 		proof = block.Data.Txs.Proof(int(index)) // XXX: overflow on 32-bit machines
 	}
 
