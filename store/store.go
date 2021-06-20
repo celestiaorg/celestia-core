@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"strconv"
 
@@ -11,15 +12,17 @@ import (
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	format "github.com/ipfs/go-ipld-format"
-	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
 
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmstore "github.com/lazyledger/lazyledger-core/proto/tendermint/store"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/rsmt2d"
 )
 
 /*
@@ -53,8 +56,6 @@ type BlockStore struct {
 
 	dag    format.DAGService
 	logger log.Logger
-
-	ipfsDagAPI ipld.DAGService
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
@@ -107,35 +108,30 @@ func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 // LoadBlock returns the block with the given height.
 // If no block is found for that height, it returns nil.
 func (bs *BlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block, error) {
-	var blockMeta = bs.LoadBlockMeta(height)
+	blockMeta := bs.LoadBlockMeta(height)
 	if blockMeta == nil {
 		return nil, nil
 	}
 
-	pbb := new(tmproto.Block)
-	buf := []byte{}
-	for i := 0; i < int(blockMeta.BlockID.PartSetHeader.Total); i++ {
-		part := bs.LoadBlockPart(height, i)
-		// If the part is missing (e.g. since it has been deleted after we
-		// loaded the block meta) we consider the whole block to be missing.
-		if part == nil {
-			return nil, nil
+	lastCommit := bs.LoadBlockCommit(height - 1)
+
+	data, err := ipld.RetrieveBlockData(ctx, &blockMeta.DAHeader, bs.dag, rsmt2d.NewRSGF8Codec())
+	if err != nil {
+		if strings.Contains(err.Error(), format.ErrNotFound.Error()) {
+			return nil, fmt.Errorf("failure to retrieve block data from local ipfs store: %w", err)
 		}
-		buf = append(buf, part.Bytes...)
-	}
-	err := proto.Unmarshal(buf, pbb)
-	if err != nil {
-		// NOTE: The existence of meta should imply the existence of the
-		// block. So, make sure meta is only saved after blocks are saved.
-		panic(fmt.Sprintf("Error reading block: %v", err))
+		bs.logger.Info("failure to retrieve block data", err)
+		return nil, err
 	}
 
-	block, err := types.BlockFromProto(pbb)
-	if err != nil {
-		panic(fmt.Errorf("error from proto block: %w", err))
+	block := types.Block{
+		Header:                 blockMeta.Header,
+		Data:                   data,
+		DataAvailabilityHeader: blockMeta.DAHeader,
+		LastCommit:             lastCommit,
 	}
 
-	return block, nil
+	return &block, nil
 }
 
 // LoadBlockByHash returns the block with the given hash.
@@ -371,6 +367,11 @@ func (bs *BlockStore) SaveBlock(
 	for i := 0; i < int(blockParts.Total()); i++ {
 		part := blockParts.GetPart(i)
 		bs.saveBlockPart(height, i, part)
+	}
+
+	err := ipld.PutBlock(ctx, bs.dag, block, ipfs.MockRouting(), bs.logger)
+	if err != nil {
+		return err
 	}
 
 	// Save block meta
