@@ -48,14 +48,7 @@ func RetrieveBlockData(
 				return types.Data{}, err
 			}
 			sem.Acquire(ctx, 1)
-			go func(
-				rootCid cid.Cid,
-				axisIdx uint32,
-				idx uint32,
-			) {
-				sc.retrieveShare(rootCid, true, axisIdx, idx, dag)
-				sem.Release(1)
-			}(rootCid, row, col)
+			go sc.retrieveShare(rootCid, true, row, col, dag, sem)
 		}
 	}
 
@@ -161,6 +154,7 @@ func (sc *shareCounter) retrieveShare(
 	axisIdx uint32,
 	idx uint32,
 	dag ipld.NodeGetter,
+	sem *semaphore.Weighted,
 ) {
 	data, err := GetLeafData(sc.ctx, rootCid, idx, sc.edsWidth, dag)
 	if err != nil {
@@ -171,6 +165,7 @@ func (sc *shareCounter) retrieveShare(
 	}
 
 	if len(data) < consts.ShareSize {
+		sem.Release(1)
 		return
 	}
 
@@ -185,6 +180,7 @@ func (sc *shareCounter) retrieveShare(
 	select {
 	case <-sc.ctx.Done():
 	default:
+		sem.Release(1)
 		sc.shareChan <- indexedShare{data: data[consts.NamespaceSize:], index: index{row: rowIdx, col: colIdx}}
 	}
 }
