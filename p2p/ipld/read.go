@@ -18,7 +18,7 @@ import (
 
 const baseErrorMsg = "failure to retrieve block data:"
 
-const maxGoRoutines = 512
+const maxGoRoutines = 4096
 
 var ErrEncounteredTooManyErrors = fmt.Errorf("%s %s", baseErrorMsg, "encountered too many errors")
 var ErrTimeout = fmt.Errorf("%s %s", baseErrorMsg, "timeout")
@@ -140,8 +140,8 @@ func newshareCounter(parentCtx context.Context, edsWidth uint32) *shareCounter {
 		shares:          make(map[index][]byte),
 		edsWidth:        edsWidth,
 		minSharesNeeded: minSharesNeeded,
-		shareChan:       make(chan indexedShare, 1),
-		errc:            make(chan error, 1),
+		shareChan:       make(chan indexedShare),
+		errc:            make(chan error),
 		ctx:             ctx,
 		cancel:          cancel,
 	}
