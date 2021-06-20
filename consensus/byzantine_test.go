@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
-	mdutils "github.com/ipfs/go-merkledag/test"
+	"github.com/ipfs/go-blockservice"
+	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	"github.com/ipfs/go-merkledag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -56,7 +58,10 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		vals := types.TM2PB.ValidatorUpdates(state.Validators)
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
-		blockStore := store.MockBlockStore(nil)
+		blockDB := memdb.NewDB()
+		bs := ipfs.MockBlockStore()
+		dag := merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
+		blockStore := store.NewBlockStore(blockDB, bs, log.TestingLogger())
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)
@@ -79,7 +84,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore,
-			mempool, mdutils.Mock(), ipfs.MockRouting(), evpool)
+			mempool, dag, ipfs.MockRouting(), evpool)
 		cs.SetLogger(cs.Logger)
 		// set private validator
 		pv := privVals[i]

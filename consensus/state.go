@@ -1139,7 +1139,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		// the provide timeout could still be larger than just the time between
 		// two consecutive proposals.
 		//
-		// cs.proposalCancel()
+		cs.proposalCancel()
 	}
 	cs.proposalCtx, cs.proposalCancel = context.WithCancel(context.TODO())
 	go func(ctx context.Context) {
@@ -1585,7 +1585,7 @@ func (cs *State) finalizeCommit(height int64) {
 		// but may differ from the LastCommit included in the next block
 		precommits := cs.Votes.Precommits(cs.CommitRound)
 		seenCommit := precommits.MakeCommit()
-		err := cs.blockStore.SaveBlock(cs.proposalCtx, block, blockParts, seenCommit)
+		err := cs.blockStore.SaveBlock(context.TODO(), block, blockParts, seenCommit)
 		if err != nil {
 			panic(err)
 		}

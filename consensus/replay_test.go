@@ -79,7 +79,6 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		privValidator,
 		kvstore.NewApplication(),
 		blockDB,
-		mdutils.Mock(),
 	)
 	cs.SetLogger(logger)
 
@@ -174,7 +173,6 @@ LOOP:
 			privValidator,
 			kvstore.NewApplication(),
 			blockDB,
-			mdutils.Mock(),
 		)
 		cs.SetLogger(logger)
 
@@ -1215,7 +1213,12 @@ func (bs *mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	}
 }
 func (bs *mockBlockStore) LoadBlockPart(height int64, index int) *types.Part { return nil }
-func (bs *mockBlockStore) SaveBlock(ctx context.Context, block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) error {
+func (bs *mockBlockStore) SaveBlock(
+	ctx context.Context,
+	block *types.Block,
+	blockParts *types.PartSet,
+	seenCommit *types.Commit,
+) error {
 	return nil
 }
 func (bs *mockBlockStore) LoadBlockCommit(height int64) *types.Commit {
