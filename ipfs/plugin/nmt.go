@@ -380,7 +380,7 @@ func (l nmtLeafNode) Size() (uint64, error) {
 	return 0, nil
 }
 
-// CidFromNamespacedSha256 uses a hash from an nmt tree to create a cide
+// CidFromNamespacedSha256 uses a hash from an nmt tree to create a CID
 func CidFromNamespacedSha256(namespacedHash []byte) (cid.Cid, error) {
 	if got, want := len(namespacedHash), nmtHashSize; got != want {
 		return cid.Cid{}, fmt.Errorf("invalid namespaced hash length, got: %v, want: %v", got, want)

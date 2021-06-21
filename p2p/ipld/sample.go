@@ -8,7 +8,6 @@ import (
 	"github.com/lazyledger/nmt/namespace"
 
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
-	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // Sample is a point in 2D space over square.
@@ -25,7 +24,7 @@ func SampleSquare(squareWidth uint32, num int) []Sample {
 }
 
 // Leaf returns leaf info needed for retrieval using data provided with DAHeader.
-func (s Sample) Leaf(dah *types.DataAvailabilityHeader) (cid.Cid, uint32, error) {
+func (s Sample) Leaf(dah *DataAvailabilityHeader) (cid.Cid, uint32, error) {
 	var (
 		leaf uint32
 		root namespace.IntervalDigest
