@@ -8,6 +8,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types/consts"
 )
@@ -80,7 +81,7 @@ func (txs Txs) Proof(i int) TxProof {
 	}
 }
 
-func (txs Txs) splitIntoShares() NamespacedShares {
+func (txs Txs) splitIntoShares() ipld.NamespacedShares {
 	rawDatas := make([][]byte, len(txs))
 	for i, tx := range txs {
 		rawData, err := tx.MarshalDelimited()

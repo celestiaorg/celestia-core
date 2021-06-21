@@ -5,16 +5,17 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
 // BlockMeta contains meta information.
 type BlockMeta struct {
-	BlockID   BlockID                `json:"block_id"`
-	BlockSize int                    `json:"block_size"`
-	Header    Header                 `json:"header"`
-	NumTxs    int                    `json:"num_txs"`
-	DAHeader  DataAvailabilityHeader `json:"da_header"`
+	BlockID   BlockID                     `json:"block_id"`
+	BlockSize int                         `json:"block_size"`
+	Header    Header                      `json:"header"`
+	NumTxs    int                         `json:"num_txs"`
+	DAHeader  ipld.DataAvailabilityHeader `json:"da_header"`
 }
 
 // NewBlockMeta returns a new BlockMeta.
@@ -65,7 +66,7 @@ func BlockMetaFromProto(pb *tmproto.BlockMeta) (*BlockMeta, error) {
 		return nil, err
 	}
 
-	dah, err := DataAvailabilityHeaderFromProto(pb.DaHeader)
+	dah, err := ipld.DataAvailabilityHeaderFromProto(pb.DaHeader)
 	if err != nil {
 		return nil, err
 	}

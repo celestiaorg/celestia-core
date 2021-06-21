@@ -7,6 +7,7 @@ import (
 
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	"github.com/lazyledger/lazyledger-core/libs/protoio"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
@@ -24,18 +25,24 @@ var (
 // If POLRound >= 0, then BlockID corresponds to the block that is locked in POLRound.
 type Proposal struct {
 	Type      tmproto.SignedMsgType
-	Height    int64                   `json:"height"`
-	Round     int32                   `json:"round"`     // there can not be greater than 2_147_483_647 rounds
-	POLRound  int32                   `json:"pol_round"` // -1 if null.
-	BlockID   BlockID                 `json:"block_id"`
-	Timestamp time.Time               `json:"timestamp"`
-	Signature []byte                  `json:"signature"`
-	DAHeader  *DataAvailabilityHeader `json:"da_header"`
+	Height    int64                        `json:"height"`
+	Round     int32                        `json:"round"`     // there can not be greater than 2_147_483_647 rounds
+	POLRound  int32                        `json:"pol_round"` // -1 if null.
+	BlockID   BlockID                      `json:"block_id"`
+	Timestamp time.Time                    `json:"timestamp"`
+	Signature []byte                       `json:"signature"`
+	DAHeader  *ipld.DataAvailabilityHeader `json:"da_header"`
 }
 
 // NewProposal returns a new Proposal.
 // If there is no POLRound, polRound should be -1.
-func NewProposal(height int64, round int32, polRound int32, blockID BlockID, daH *DataAvailabilityHeader) *Proposal {
+func NewProposal(
+	height int64,
+	round int32,
+	polRound int32,
+	blockID BlockID,
+	daH *ipld.DataAvailabilityHeader,
+) *Proposal {
 	return &Proposal{
 		Type:      tmproto.ProposalType,
 		Height:    height,
@@ -157,7 +164,7 @@ func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 		return nil, err
 	}
 
-	dah, err := DataAvailabilityHeaderFromProto(pp.DAHeader)
+	dah, err := ipld.DataAvailabilityHeaderFromProto(pp.DAHeader)
 	if err != nil {
 		return nil, err
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	"github.com/lazyledger/lazyledger-core/libs/protoio"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
@@ -21,8 +22,8 @@ var (
 )
 
 func init() {
-	rows, _ := NmtRootsFromBytes([][]byte{[]byte("HeHasBeenElected--June_15_2020_amino_was_removed")})
-	clmns, _ := NmtRootsFromBytes([][]byte{[]byte("HeHasBeenElected--June_15_2020_amino_was_removed")})
+	rows, _ := ipld.NmtRootsFromBytes([][]byte{[]byte("HeHasBeenElected--June_15_2020_amino_was_removed")})
+	clmns, _ := ipld.NmtRootsFromBytes([][]byte{[]byte("HeHasBeenElected--June_15_2020_amino_was_removed")})
 
 	var stamp, err = time.Parse(TimeFormat, "2018-02-11T07:09:22.765Z")
 	if err != nil {
@@ -35,7 +36,7 @@ func init() {
 			PartSetHeader: PartSetHeader{Total: 111, Hash: []byte("--June_15_2020_amino_was_removed")}},
 		POLRound:  -1,
 		Timestamp: stamp,
-		DAHeader: &DataAvailabilityHeader{
+		DAHeader: &ipld.DataAvailabilityHeader{
 			RowsRoots:   rows,
 			ColumnRoots: clmns,
 		},
@@ -185,7 +186,7 @@ func TestProposalProtoBuf(t *testing.T) {
 		makeDAHeaderRandom(),
 	)
 	proposal.Signature = []byte("sig")
-	proposal2 := NewProposal(1, 2, 3, BlockID{}, &DataAvailabilityHeader{})
+	proposal2 := NewProposal(1, 2, 3, BlockID{}, &ipld.DataAvailabilityHeader{})
 
 	testCases := []struct {
 		msg     string
@@ -194,7 +195,7 @@ func TestProposalProtoBuf(t *testing.T) {
 	}{
 		{"success", proposal, true},
 		{"success", proposal2, false}, // blockID cannot be empty
-		{"empty proposal failure validatebasic", &Proposal{DAHeader: &DataAvailabilityHeader{}}, false},
+		{"empty proposal failure validatebasic", &Proposal{DAHeader: &ipld.DataAvailabilityHeader{}}, false},
 		{"nil proposal", nil, false},
 	}
 	for _, tc := range testCases {
