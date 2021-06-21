@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lazyledger/lazyledger-core/light/provider"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
 	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -181,7 +182,7 @@ func (p *http) signedHeader(ctx context.Context, height *int64) (*types.SignedHe
 	return nil, provider.ErrNoResponse
 }
 
-func (p *http) daHeader(ctx context.Context, height *int64) (*types.DataAvailabilityHeader, error) {
+func (p *http) daHeader(ctx context.Context, height *int64) (*ipld.DataAvailabilityHeader, error) {
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		daHeaderRes, err := p.client.DataAvailabilityHeader(ctx, height)
 		if err != nil {

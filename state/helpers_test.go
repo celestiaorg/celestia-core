@@ -2,8 +2,11 @@ package state_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"time"
+
+	mdutils "github.com/ipfs/go-merkledag/test"
 
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	"github.com/lazyledger/lazyledger-core/crypto"
@@ -54,7 +57,7 @@ func makeAndCommitGoodBlock(
 
 func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commit, proposerAddr []byte,
 	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, types.BlockID, error) {
-	block, _ := state.MakeBlock(
+	block := state.MakeBlock(
 		height,
 		makeTxs(height),
 		evidence,
@@ -63,12 +66,16 @@ func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commi
 		lastCommit,
 		proposerAddr,
 	)
+	_, err := block.RowSet(context.TODO(), mdutils.Mock())
+	if err != nil {
+		return sm.State{}, types.BlockID{}, err
+	}
 	if err := blockExec.ValidateBlock(state, block); err != nil {
 		return state, types.BlockID{}, err
 	}
 	blockID := types.BlockID{Hash: block.Hash(),
 		PartSetHeader: types.PartSetHeader{Total: 3, Hash: tmrand.Bytes(32)}}
-	state, _, err := blockExec.ApplyBlock(state, blockID, block)
+	state, _, err = blockExec.ApplyBlock(state, blockID, block)
 	if err != nil {
 		return state, types.BlockID{}, err
 	}
@@ -140,7 +147,7 @@ func makeState(nVals, height int) (sm.State, dbm.DB, map[string]types.PrivValida
 }
 
 func makeBlock(state sm.State, height int64) *types.Block {
-	block, _ := state.MakeBlock(
+	block := state.MakeBlock(
 		height,
 		makeTxs(state.LastBlockHeight),
 		nil,

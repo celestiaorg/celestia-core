@@ -15,6 +15,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/bits"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmcons "github.com/lazyledger/lazyledger-core/proto/tendermint/consensus"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -48,7 +49,7 @@ func TestMsgToProto(t *testing.T) {
 	pbParts, err := parts.ToProto()
 	require.NoError(t, err)
 
-	roots, err := types.NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
+	roots, err := ipld.NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
 	require.NoError(t, err)
 	proposal := types.Proposal{
 		Type:      tmproto.ProposalType,
@@ -58,7 +59,7 @@ func TestMsgToProto(t *testing.T) {
 		BlockID:   bi,
 		Timestamp: time.Now(),
 		Signature: tmrand.Bytes(20),
-		DAHeader: &types.DataAvailabilityHeader{
+		DAHeader: &ipld.DataAvailabilityHeader{
 			RowsRoots:   roots,
 			ColumnRoots: roots,
 		},
@@ -361,7 +362,7 @@ func TestConsMsgsVectors(t *testing.T) {
 		BlockID:   bi,
 		Timestamp: date,
 		Signature: []byte("add_more_exclamation"),
-		DAHeader:  &types.DataAvailabilityHeader{},
+		DAHeader:  &ipld.DataAvailabilityHeader{},
 	}
 	pbProposal, err := proposal.ToProto()
 	require.NoError(t, err)

@@ -12,6 +12,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	cryptoproto "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
 	privproto "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
@@ -54,7 +55,7 @@ func exampleProposal() *types.Proposal {
 				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
 			},
 		},
-		DAHeader: &types.DataAvailabilityHeader{},
+		DAHeader: &ipld.DataAvailabilityHeader{},
 	}
 }
 

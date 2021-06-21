@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 
 	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
 	"github.com/lazyledger/lazyledger-core/privval"
@@ -228,7 +229,7 @@ func (th *TestHarness) TestSignProposal() error {
 			},
 		},
 		Timestamp: time.Now(),
-		DAHeader:  &types.DataAvailabilityHeader{},
+		DAHeader:  &ipld.DataAvailabilityHeader{},
 	}
 	p, err := prop.ToProto()
 	if err != nil {
