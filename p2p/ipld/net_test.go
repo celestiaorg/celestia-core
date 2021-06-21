@@ -18,11 +18,9 @@ import (
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 
-	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
 	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
 func TestDiscovery(t *testing.T) {
@@ -32,17 +30,8 @@ func TestDiscovery(t *testing.T) {
 	dhts := dhtNet(ctx, t, 2)
 	dht1, dht2 := dhts[0], dhts[0]
 
-	data := generateRandomBlockData(64, consts.MsgShareSize-2)
-	b := &types.Block{
-		Data:       data,
-		LastCommit: &types.Commit{},
-	}
-	b.Hash()
-
-	id, err := plugin.CidFromNamespacedSha256(b.DataAvailabilityHeader.RowsRoots[0].Bytes())
-	require.NoError(t, err)
-
-	err = dht1.Provide(ctx, id, false)
+	id := RandNamespacedCID(t)
+	err := dht1.Provide(ctx, id, false)
 	require.NoError(t, err)
 
 	prvs, err := dht2.FindProviders(ctx, id)
@@ -50,37 +39,69 @@ func TestDiscovery(t *testing.T) {
 	assert.Equal(t, dht1.PeerID(), prvs[0].ID, "peer not found")
 }
 
-func TestWriteDiscoveryReadData(t *testing.T) {
-	logger := log.TestingLogger()
+func TestWriteDiscoveryValidateReadData(t *testing.T) {
+	const (
+		netSize = 4
+		edsSize = 4 // TODO(Wondertan): Increase size once race issue is fixed
+		samples = 16
+	)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
-	dags, dhts := dagNet(ctx, t, 5)
-	blocks := make([]*types.Block, len(dags))
+	logger := log.TestingLogger()
+	dags, dhts := dagNet(ctx, t, netSize)
+
+	gp, execCtx := errgroup.WithContext(ctx)
+	eds := make([]*rsmt2d.ExtendedDataSquare, len(dags))
 	for i, dag := range dags {
-		data := generateRandomBlockData(64, consts.MsgShareSize-2)
-		b := &types.Block{
-			Data:       data,
-			LastCommit: &types.Commit{},
-		}
-		b.Hash()
-		blocks[i] = b
-
-		err := PutBlock(ctx, dag, blocks[i], dhts[i], logger)
-		require.NoError(t, err)
+		i, dag := i, dag
+		gp.Go(func() (err error) {
+			eds[i], err = PutData(execCtx, RandNamespacedShares(t, edsSize*edsSize), dag)
+			if err != nil {
+				return
+			}
+			return ProvideData(execCtx, MakeDataHeader(eds[i]), dhts[i], logger)
+		})
 	}
+	err := gp.Wait()
+	require.NoError(t, err)
 
+	gp, execCtx = errgroup.WithContext(ctx)
 	for i, dag := range dags {
 		if i == len(dags)-1 {
 			i = 0
 		}
-
-		exp := blocks[i+1]
-		actual, err := RetrieveBlockData(ctx, &exp.DataAvailabilityHeader, dag, rsmt2d.NewRSGF8Codec())
-		assert.NoError(t, err)
-		assert.EqualValues(t, exp.Data.Txs, actual.Txs, "blocks are not equal")
+		i, dag := i, dag
+		gp.Go(func() error {
+			exp := eds[i+1]
+			return ValidateAvailability(execCtx, dag, MakeDataHeader(exp), samples, func(NamespacedShare) {})
+		})
 	}
+	err = gp.Wait()
+	require.NoError(t, err)
+
+	gp, execCtx = errgroup.WithContext(ctx)
+	for i, dag := range dags {
+		if i == len(dags)-1 {
+			i = 0
+		}
+		i, dag := i, dag
+		gp.Go(func() error {
+			exp := eds[i+1]
+			got, err := RetrieveData(execCtx, MakeDataHeader(exp), dag, rsmt2d.NewRSGF8Codec())
+			if err != nil {
+				return err
+			}
+			assert.True(t, EqualEDS(exp, got))
+			return nil
+		})
+	}
+	err = gp.Wait()
+	require.NoError(t, err)
 }
+
+// TODO(Wondertan): Consider making utilities below as public
 
 func dagNet(ctx context.Context, t *testing.T, num int) ([]ipld.DAGService, []*dht.IpfsDHT) {
 	net := mocknet.New(ctx)

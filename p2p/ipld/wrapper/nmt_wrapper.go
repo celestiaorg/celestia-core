@@ -11,6 +11,8 @@ import (
 	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
+// TODO(Wondertan): Do we really need a separate package for this?
+
 // emptyNamepsaceID occurs when a share is empty and indicates that
 var emptyNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 0}
 
