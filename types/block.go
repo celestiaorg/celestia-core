@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
+	format "github.com/ipfs/go-ipld-format"
 	"github.com/lazyledger/nmt/namespace"
 
 	"github.com/lazyledger/lazyledger-core/crypto"
@@ -136,6 +138,23 @@ func (b *Block) MakePartSet(partSize uint32) *PartSet {
 		panic(err)
 	}
 	return NewPartSetFromData(bz, partSize)
+}
+
+// TODO(Wondertan): Aim for Block to be complete without calling RowSet
+func (b *Block) RowSet(ctx context.Context, adder format.NodeAdder) (*RowSet, error) {
+	shares, dataLen := b.ComputeShares()
+	eds, err := ipld.PutData(ctx, shares, adder)
+	if err != nil {
+		return nil, fmt.Errorf("failed to put Block into DAG: %w", err)
+	}
+
+	// TODO(Wondertan): Finish DAHeader removal from Block
+	//  Currently needed for StoreTests
+	b.DataAvailabilityHeader = *ipld.MakeDataHeader(eds)
+
+	b.Header.NumOriginalDataShares = uint64(dataLen)
+	b.Header.DataHash = b.DataAvailabilityHeader.Hash()
+	return NewRowSet(eds), nil
 }
 
 // HashesTo is a convenience function that checks if a block hashes to the given argument.
