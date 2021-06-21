@@ -163,7 +163,7 @@ func TestRetrieveBlockData(t *testing.T) {
 			colRoots := rootsToDigests(rawColRoots)
 
 			// limit with deadline retrieval specifically
-			ctx, cancel := context.WithTimeout(ctx, time.Second*2)
+			ctx, cancel := context.WithTimeout(ctx, time.Minute*1)
 			defer cancel()
 
 			rblockData, err := RetrieveBlockData(
