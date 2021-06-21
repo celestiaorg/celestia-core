@@ -18,57 +18,47 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
-	"github.com/lazyledger/lazyledger-core/types"
 )
 
-// PutBlock posts and pins erasured block data to IPFS using the provided
-// ipld.NodeAdder. Note: the erasured data is currently recomputed
-// TODO this craves for refactor
-func PutBlock(
-	ctx context.Context,
-	adder ipld.NodeAdder,
-	block *types.Block,
-	croute routing.ContentRouting,
-	logger log.Logger,
-) error {
-	// recompute the shares
-	namespacedShares, _ := block.Data.ComputeShares()
-	shares := namespacedShares.RawShares()
+// TODO(Wondertan) Improve API
 
-	// don't do anything if there is no data to put on IPFS
+// PutData posts erasured block data to IPFS using the provided ipld.NodeAdder.
+func PutData(ctx context.Context, shares NamespacedShares, adder ipld.NodeAdder) (*rsmt2d.ExtendedDataSquare, error) {
 	if len(shares) == 0 {
-		return nil
+		return nil, fmt.Errorf("empty data") // empty block is not an empty Data
 	}
-
 	// create nmt adder wrapping batch adder
 	batchAdder := NewNmtNodeAdder(ctx, ipld.NewBatch(ctx, adder))
-
 	// create the nmt wrapper to generate row and col commitments
 	squareSize := uint32(math.Sqrt(float64(len(shares))))
 	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(squareSize), nmt.NodeVisitor(batchAdder.Visit))
-
 	// recompute the eds
-	eds, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), tree.Constructor)
+	eds, err := rsmt2d.ComputeExtendedDataSquare(shares.Raw(), rsmt2d.NewRSGF8Codec(), tree.Constructor)
 	if err != nil {
-		return fmt.Errorf("failure to recompute the extended data square: %w", err)
+		return nil, fmt.Errorf("failure to recompute the extended data square: %w", err)
 	}
+	// compute roots
+	eds.ColumnRoots()
+	// commit the batch to ipfs
+	return eds, batchAdder.Commit()
+}
+
+func ProvideData(
+	ctx context.Context,
+	dah *DataAvailabilityHeader,
+	croute routing.ContentRouting,
+	logger log.Logger) error {
 	// get row and col roots to be provided
 	// this also triggers adding data to DAG
-	prov := newProvider(ctx, croute, int32(squareSize*4), logger.With("height", block.Height))
-	for _, root := range eds.RowRoots() {
-		prov.Provide(plugin.MustCidFromNamespacedSha256(root))
+	prov := newProvider(ctx, croute, int32(len(dah.RowsRoots)+len(dah.ColumnRoots)), logger)
+	for _, root := range dah.RowsRoots {
+		prov.Provide(plugin.MustCidFromNamespacedSha256(root.Bytes()))
 	}
-	for _, root := range eds.ColumnRoots() {
-		prov.Provide(plugin.MustCidFromNamespacedSha256(root))
-	}
-	// commit the batch to ipfs
-	err = batchAdder.Commit()
-	if err != nil {
-		return err
+	for _, root := range dah.ColumnRoots {
+		prov.Provide(plugin.MustCidFromNamespacedSha256(root.Bytes()))
 	}
 	// wait until we provided all the roots if requested
-	<-prov.Done()
-	return prov.Err()
+	return prov.Done()
 }
 
 var provideWorkers = 32
@@ -112,8 +102,9 @@ func (p *provider) Provide(id cid.Cid) {
 	}
 }
 
-func (p *provider) Done() <-chan struct{} {
-	return p.done
+func (p *provider) Done() error {
+	<-p.done
+	return p.Err()
 }
 
 func (p *provider) Err() error {
@@ -139,7 +130,7 @@ func (p *provider) worker() {
 					p.errLk.Unlock()
 				}
 
-				p.log.Error("failed to provide to DHT", "err", err.Error())
+				p.log.Error("Failed to provide to DHT", "err", err.Error())
 			}
 
 			p.provided()
