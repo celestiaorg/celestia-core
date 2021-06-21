@@ -156,8 +156,8 @@ type State struct {
 	metrics *Metrics
 
 	// context of the recent proposed block
-	proposalCtx    context.Context
-	proposalCancel context.CancelFunc
+	provideCtx    context.Context
+	provideCancel context.CancelFunc
 }
 
 // StateOption sets an optional parameter on the State.
@@ -658,12 +658,15 @@ func (cs *State) updateToState(state sm.State) {
 	cs.Proposal = nil
 	cs.ProposalBlock = nil
 	cs.ProposalBlockParts = nil
+	cs.ProposalBlockRows = nil
 	cs.LockedRound = -1
 	cs.LockedBlock = nil
 	cs.LockedBlockParts = nil
+	cs.LockedBlockRows = nil
 	cs.ValidRound = -1
 	cs.ValidBlock = nil
 	cs.ValidBlockParts = nil
+	cs.ValidBlockRows = nil
 	cs.Votes = cstypes.NewHeightVoteSet(state.ChainID, height, validators)
 	cs.CommitRound = -1
 	cs.LastValidators = state.LastValidators
@@ -962,6 +965,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.Proposal = nil
 		cs.ProposalBlock = nil
 		cs.ProposalBlockParts = nil
+		cs.ProposalBlockRows = nil
 	}
 	cs.Votes.SetRound(tmmath.SafeAddInt32(round, 1)) // also track next round (round+1) to allow round-skipping
 	cs.TriggeredTimeoutPrecommit = false
@@ -1078,14 +1082,15 @@ func (cs *State) isProposer(address []byte) bool {
 func (cs *State) defaultDecideProposal(height int64, round int32) {
 	var block *types.Block
 	var blockParts *types.PartSet
+	var blockRows *types.RowSet
 
 	// Decide on block
 	if cs.ValidBlock != nil {
 		// If there is valid block, choose that.
-		block, blockParts = cs.ValidBlock, cs.ValidBlockParts
+		block, blockParts, blockRows = cs.ValidBlock, cs.ValidBlockParts, cs.ValidBlockRows
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
-		block, blockParts = cs.createProposalBlock()
+		block, blockParts, blockRows = cs.createProposalBlock()
 		if block == nil {
 			return
 		}
@@ -1121,9 +1126,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		cs.Logger.Error("enterPropose: Error signing proposal", "height", height, "round", round, "err", err)
 	}
 
-	// cancel ctx for previous proposal block to ensure block putting/providing does not queues up
-	if cs.proposalCancel != nil {
-		// FIXME(ismail): below commented out cancel tries to prevent block putting
+	// cancel ctx for previous proposal block to ensure block providing does not queues up
+	if cs.provideCancel != nil { //nolint:staticcheck
+		// FIXME(ismail): below commented out cancel tries to prevent block providing
 		// and providing no to queue up endlessly.
 		// But in a real network proposers should have enough time in between.
 		// And even if not, queuing up to a problematic extent will take a lot of time:
@@ -1139,22 +1144,20 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		// the provide timeout could still be larger than just the time between
 		// two consecutive proposals.
 		//
-		cs.proposalCancel()
+		cs.provideCancel()
 	}
-	cs.proposalCtx, cs.proposalCancel = context.WithCancel(context.TODO())
-	go func(ctx context.Context) {
-		cs.Logger.Info("Putting Block to IPFS", "height", block.Height)
-		err = ipld.PutBlock(ctx, cs.dag, block, cs.croute, cs.Logger)
+	cs.provideCtx, cs.provideCancel = context.WithCancel(context.TODO())
+	go func(ctx context.Context, dah *ipld.DataAvailabilityHeader) {
+		err = ipld.ProvideData(ctx, dah, cs.croute, cs.Logger.With("height", block.Height))
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				cs.Logger.Error("Putting Block didn't finish in time and was terminated", "height", block.Height)
+				cs.Logger.Error("Providing Block didn't finish in time and was terminated", "height", block.Height)
 				return
 			}
-			cs.Logger.Error("Failed to put Block to IPFS", "err", err, "height", block.Height)
+			cs.Logger.Error("Failed to provide Block to DHT", "err", err, "height", block.Height)
 			return
 		}
-		cs.Logger.Info("Finished putting block to IPFS", "height", block.Height)
-	}(cs.proposalCtx)
+	}(cs.provideCtx, blockRows.DAHeader)
 }
 
 // Returns true if the proposal block is complete &&
@@ -1180,7 +1183,7 @@ func (cs *State) isProposalComplete() bool {
 //
 // NOTE: keep it side-effect free for clarity.
 // CONTRACT: cs.privValidator is not nil.
-func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.PartSet) {
+func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.PartSet, blockRows *types.RowSet) {
 	if cs.privValidator == nil {
 		panic("entered createProposalBlock with privValidator being nil")
 	}
@@ -1365,6 +1368,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 			cs.LockedRound = -1
 			cs.LockedBlock = nil
 			cs.LockedBlockParts = nil
+			cs.LockedBlockRows = nil
 			if err := cs.eventBus.PublishEventUnlock(cs.RoundStateEvent()); err != nil {
 				cs.Logger.Error("Error publishing event unlock", "err", err)
 			}
@@ -1413,6 +1417,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 		cs.ProposalBlock = nil
 		cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
+		cs.ProposalBlockRows = nil
 	}
 	if err := cs.eventBus.PublishEventUnlock(cs.RoundStateEvent()); err != nil {
 		cs.Logger.Error("Error publishing event unlock", "err", err)
@@ -1487,6 +1492,7 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 		logger.Info("Commit is for locked block. Set ProposalBlock=LockedBlock", "blockHash", blockID.Hash)
 		cs.ProposalBlock = cs.LockedBlock
 		cs.ProposalBlockParts = cs.LockedBlockParts
+		cs.ProposalBlockRows = cs.LockedBlockRows
 	}
 
 	// If we don't have the block being committed, set up to get it.
@@ -1502,6 +1508,7 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 			// Set up ProposalBlockParts and keep waiting.
 			cs.ProposalBlock = nil
 			cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
+			cs.ProposalBlockRows = nil
 			if err := cs.eventBus.PublishEventValidBlock(cs.RoundStateEvent()); err != nil {
 				cs.Logger.Error("Error publishing valid block", "err", err)
 			}
@@ -1864,6 +1871,10 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		}
 
 		cs.ProposalBlock = block
+		cs.ProposalBlockRows, err = block.RowSet(context.TODO(), cs.dag)
+		if err != nil {
+			return false, err
+		}
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("Received complete proposal block", "height", cs.ProposalBlock.Height, "hash", cs.ProposalBlock.Hash())
 		if err := cs.eventBus.PublishEventCompleteProposal(cs.CompleteProposalEvent()); err != nil {
@@ -1880,6 +1891,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 				cs.ValidRound = cs.Round
 				cs.ValidBlock = cs.ProposalBlock
 				cs.ValidBlockParts = cs.ProposalBlockParts
+				cs.ValidBlockRows = cs.ProposalBlockRows
 			}
 			// TODO: In case there is +2/3 majority in Prevotes set for some
 			// block and cs.ProposalBlock contains different block, either
@@ -2046,6 +2058,7 @@ func (cs *State) addVote(
 				cs.LockedRound = -1
 				cs.LockedBlock = nil
 				cs.LockedBlockParts = nil
+				cs.LockedBlockRows = nil
 				if err := cs.eventBus.PublishEventUnlock(cs.RoundStateEvent()); err != nil {
 					return added, err
 				}
@@ -2061,12 +2074,14 @@ func (cs *State) addVote(
 					cs.ValidRound = vote.Round
 					cs.ValidBlock = cs.ProposalBlock
 					cs.ValidBlockParts = cs.ProposalBlockParts
+					cs.ValidBlockRows = cs.ProposalBlockRows
 				} else {
 					cs.Logger.Info(
 						"Valid block we don't know about. Set ProposalBlock=nil",
 						"proposal", cs.ProposalBlock.Hash(), "blockID", blockID.Hash)
 					// We're getting the wrong block.
 					cs.ProposalBlock = nil
+					cs.ProposalBlockRows = nil
 				}
 				if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 					cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)

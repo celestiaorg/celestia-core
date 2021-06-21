@@ -734,6 +734,7 @@ func NewNode(config *cfg.Config,
 		mempool,
 		evidencePool,
 		sm.BlockExecutorWithMetrics(smMetrics),
+		sm.BlockExecutorWithDAG(ipfsNode.DAG),
 	)
 
 	// Make BlockchainReactor. Don't start fast sync if we're doing a state sync first.
