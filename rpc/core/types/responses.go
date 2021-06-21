@@ -8,6 +8,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/libs/bytes"
 	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
 )
@@ -36,7 +37,7 @@ type ResultCommit struct {
 }
 
 type ResultDataAvailabilityHeader struct {
-	types.DataAvailabilityHeader `json:"data_availability_header"`
+	ipld.DataAvailabilityHeader `json:"data_availability_header"`
 }
 
 // ABCI results from a block

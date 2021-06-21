@@ -11,6 +11,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	cryptoproto "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
 	privvalproto "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
@@ -125,7 +126,7 @@ func TestSignerProposal(t *testing.T) {
 			POLRound:  2,
 			BlockID:   types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp: ts,
-			DAHeader:  &types.DataAvailabilityHeader{},
+			DAHeader:  &ipld.DataAvailabilityHeader{},
 		}
 		want := &types.Proposal{
 			Type:      tmproto.ProposalType,
@@ -134,7 +135,7 @@ func TestSignerProposal(t *testing.T) {
 			POLRound:  2,
 			BlockID:   types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp: ts,
-			DAHeader:  &types.DataAvailabilityHeader{},
+			DAHeader:  &ipld.DataAvailabilityHeader{},
 		}
 
 		tc := tc
@@ -342,7 +343,7 @@ func TestSignerSignProposalErrors(t *testing.T) {
 			BlockID:   types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp: ts,
 			Signature: []byte("signature"),
-			DAHeader:  &types.DataAvailabilityHeader{},
+			DAHeader:  &ipld.DataAvailabilityHeader{},
 		}
 
 		p, err := proposal.ToProto()

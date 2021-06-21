@@ -1,11 +1,13 @@
 package blockchain
 
 import (
+	"context"
 	"encoding/hex"
 	"math"
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -82,6 +84,9 @@ func TestBcStatusResponseMessageValidateBasic(t *testing.T) {
 func TestBlockchainMessageVectors(t *testing.T) {
 	block := types.MakeBlock(int64(3), []types.Tx{types.Tx("Hello World")}, nil, nil, types.Messages{}, nil)
 	block.Version.Block = 11 // overwrite updated protocol version
+
+	_, err := block.RowSet(context.TODO(), mdutils.Mock())
+	require.NoError(t, err)
 
 	bpb, err := block.ToProto()
 	require.NoError(t, err)

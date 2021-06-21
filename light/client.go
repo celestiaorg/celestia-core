@@ -9,7 +9,6 @@ import (
 
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
-	"github.com/lazyledger/nmt/namespace"
 
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
@@ -700,7 +699,7 @@ func (c *Client) verifySequential(
 				c.dag,
 				interimBlock.DataAvailabilityHeader,
 				numSamples,
-				func(data namespace.PrefixedData8) {}, // noop
+				func(ipld.NamespacedShare) {}, // noop
 			)
 			if err != nil {
 				return fmt.Errorf("data availability sampling failed; ipld.ValidateAvailability: %w", err)

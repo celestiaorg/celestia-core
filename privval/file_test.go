@@ -15,6 +15,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
 	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
@@ -350,6 +351,6 @@ func newProposal(height int64, round int32, blockID types.BlockID) *types.Propos
 		Round:     round,
 		BlockID:   blockID,
 		Timestamp: tmtime.Now(),
-		DAHeader:  &types.DataAvailabilityHeader{},
+		DAHeader:  &ipld.DataAvailabilityHeader{},
 	}
 }
