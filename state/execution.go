@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	format "github.com/ipfs/go-ipld-format"
+	mdutils "github.com/ipfs/go-merkledag/test"
+
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
 	"github.com/lazyledger/lazyledger-core/libs/fail"
@@ -24,6 +27,9 @@ import (
 
 // BlockExecutor provides the context and accessories for properly executing a block.
 type BlockExecutor struct {
+	// DAG Store
+	adder format.NodeAdder
+
 	// save state, validators, consensus params, abci responses here
 	store Store
 
@@ -51,6 +57,12 @@ func BlockExecutorWithMetrics(metrics *Metrics) BlockExecutorOption {
 	}
 }
 
+func BlockExecutorWithDAG(adder format.NodeAdder) BlockExecutorOption {
+	return func(blockExec *BlockExecutor) {
+		blockExec.adder = adder
+	}
+}
+
 // NewBlockExecutor returns a new BlockExecutor with a NopEventBus.
 // Call SetEventBus to provide one.
 func NewBlockExecutor(
@@ -74,7 +86,9 @@ func NewBlockExecutor(
 	for _, option := range options {
 		option(res)
 	}
-
+	if res.adder == nil {
+		res.adder = mdutils.Mock()
+	}
 	return res
 }
 
@@ -96,7 +110,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	height int64,
 	state State, commit *types.Commit,
 	proposerAddr []byte,
-) (*types.Block, *types.PartSet) {
+) (*types.Block, *types.PartSet, *types.RowSet) {
 
 	maxBytes := state.ConsensusParams.Block.MaxBytes
 	maxGas := state.ConsensusParams.Block.MaxGas
@@ -155,7 +169,14 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	messages := types.MessagesFromProto(pbmessages)
 
-	return state.MakeBlock(height, processedTxs, evidence, nil, messages, commit, proposerAddr)
+	block := state.MakeBlock(height, processedTxs, evidence, nil, messages, commit, proposerAddr)
+	rows, err := block.RowSet(context.TODO(), blockExec.adder)
+	if err != nil {
+		blockExec.logger.Error("Can't make RowSet", "err", err)
+		return nil, nil, nil
+	}
+
+	return block, block.MakePartSet(types.BlockPartSizeBytes), rows
 }
 
 // ValidateBlock validates the given block against the given state.

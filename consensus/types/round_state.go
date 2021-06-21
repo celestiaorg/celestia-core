@@ -76,13 +76,16 @@ type RoundState struct {
 	Proposal           *types.Proposal     `json:"proposal"`
 	ProposalBlock      *types.Block        `json:"proposal_block"`
 	ProposalBlockParts *types.PartSet      `json:"proposal_block_parts"`
+	ProposalBlockRows  *types.RowSet       `json:"proposal_block_rows"`
 	LockedRound        int32               `json:"locked_round"`
 	LockedBlock        *types.Block        `json:"locked_block"`
 	LockedBlockParts   *types.PartSet      `json:"locked_block_parts"`
+	LockedBlockRows    *types.RowSet       `json:"locked_block_rows"`
 
 	// Last known round with POL for non-nil valid block.
-	ValidRound int32        `json:"valid_round"`
-	ValidBlock *types.Block `json:"valid_block"` // Last known block of POL mentioned above.
+	ValidRound     int32         `json:"valid_round"`
+	ValidBlock     *types.Block  `json:"valid_block"` // Last known block of POL mentioned above.
+	ValidBlockRows *types.RowSet `json:"valid_block_rows"`
 
 	// Last known block parts of POL mentioned above.
 	ValidBlockParts           *types.PartSet      `json:"valid_block_parts"`
