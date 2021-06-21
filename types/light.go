@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 )
 
@@ -16,7 +17,7 @@ type LightBlock struct {
 	ValidatorSet  *ValidatorSet `json:"validator_set"`
 
 	// DataAvailabilityHeader is only populated for DAS light clients for others it can be nil.
-	DataAvailabilityHeader *DataAvailabilityHeader `json:"data_availability_header"`
+	DataAvailabilityHeader *ipld.DataAvailabilityHeader `json:"data_availability_header"`
 }
 
 // ValidateBasic checks that the data is correct and consistent

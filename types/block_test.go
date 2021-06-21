@@ -4,6 +4,7 @@ import (
 	// it is ok to use math/rand here: we do not need a cryptographically secure random
 	// number generator here and we can run the tests a bit faster
 	stdbytes "bytes"
+	"context"
 	"encoding/hex"
 	"math"
 	mrand "math/rand"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	gogotypes "github.com/gogo/protobuf/types"
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -23,6 +25,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/bits"
 	"github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
 	"github.com/lazyledger/lazyledger-core/types/consts"
@@ -80,13 +83,6 @@ func TestBlockValidateBasic(t *testing.T) {
 			blk.LastCommit.hash = nil // clear hash or change wont be noticed
 		}, true},
 		{"Remove LastCommitHash", func(blk *Block) { blk.LastCommitHash = []byte("something else") }, true},
-		{"Tampered Data", func(blk *Block) {
-			blk.Data.Txs[0] = Tx("something else")
-			blk.DataHash = nil // clear hash or change wont be noticed
-		}, true},
-		{"Tampered DataHash", func(blk *Block) {
-			blk.DataHash = tmrand.Bytes(len(blk.DataHash))
-		}, true},
 		{"Tampered EvidenceHash", func(blk *Block) {
 			blk.EvidenceHash = tmrand.Bytes(len(blk.EvidenceHash))
 		}, true},
@@ -109,6 +105,8 @@ func TestBlockValidateBasic(t *testing.T) {
 		i := i
 		t.Run(tc.testName, func(t *testing.T) {
 			block := MakeBlock(h, txs, evList, nil, Messages{}, commit)
+			_, err = block.RowSet(context.TODO(), mdutils.Mock())
+			require.NoError(t, err)
 			block.ProposerAddress = valSet.GetProposer().Address
 			tc.malleateBlock(block)
 			err = block.ValidateBasic()
@@ -146,7 +144,7 @@ func TestBlockMakePartSetWithEvidence(t *testing.T) {
 
 	partSet := MakeBlock(h, []Tx{Tx("Hello World")}, evList, nil, Messages{}, commit).MakePartSet(512)
 	assert.NotNil(t, partSet)
-	assert.EqualValues(t, 5, partSet.Total())
+	assert.EqualValues(t, 4, partSet.Total())
 }
 
 func TestBlockHashesTo(t *testing.T) {
@@ -163,6 +161,8 @@ func TestBlockHashesTo(t *testing.T) {
 
 	block := MakeBlock(h, []Tx{Tx("Hello World")}, evList, nil, Messages{}, commit)
 	block.ValidatorsHash = valSet.Hash()
+	_, err = block.RowSet(context.TODO(), mdutils.Mock())
+	require.NoError(t, err)
 	assert.False(t, block.HashesTo([]byte{}))
 	assert.False(t, block.HashesTo([]byte("something else")))
 	assert.True(t, block.HashesTo(block.Hash()))
@@ -212,10 +212,10 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
 	}
 }
 
-func makeDAHeaderRandom() *DataAvailabilityHeader {
-	rows, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
-	clns, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
-	return &DataAvailabilityHeader{
+func makeDAHeaderRandom() *ipld.DataAvailabilityHeader {
+	rows, _ := ipld.NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
+	clns, _ := ipld.NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
+	return &ipld.DataAvailabilityHeader{
 		RowsRoots:   rows,
 		ColumnRoots: clns,
 	}
@@ -223,19 +223,9 @@ func makeDAHeaderRandom() *DataAvailabilityHeader {
 
 var nilBytes []byte
 
-// This follows RFC-6962, i.e. `echo -n '' | sha256sum`
-var emptyBytes = []byte{0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8,
-	0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b,
-	0x78, 0x52, 0xb8, 0x55}
-
 func TestNilHeaderHashDoesntCrash(t *testing.T) {
 	assert.Equal(t, nilBytes, []byte((*Header)(nil).Hash()))
 	assert.Equal(t, nilBytes, []byte((new(Header)).Hash()))
-}
-
-func TestNilDataAvailabilityHeaderHashDoesntCrash(t *testing.T) {
-	assert.Equal(t, emptyBytes, (*DataAvailabilityHeader)(nil).Hash())
-	assert.Equal(t, emptyBytes, new(DataAvailabilityHeader).Hash())
 }
 
 func TestEmptyBlockData(t *testing.T) {

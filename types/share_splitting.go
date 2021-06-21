@@ -3,13 +3,15 @@ package types
 import (
 	"bytes"
 
-	"github.com/lazyledger/lazyledger-core/types/consts"
 	"github.com/lazyledger/nmt/namespace"
+
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
 // appendToShares appends raw data as shares.
 // Used for messages.
-func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) []NamespacedShare {
+func appendToShares(shares []ipld.NamespacedShare, nid namespace.ID, rawData []byte) []ipld.NamespacedShare {
 	if len(rawData) <= consts.MsgShareSize {
 		rawShare := append(append(
 			make([]byte, 0, len(nid)+len(rawData)),
@@ -17,7 +19,7 @@ func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) 
 			rawData...,
 		)
 		paddedShare := zeroPadIfNecessary(rawShare, consts.ShareSize)
-		share := NamespacedShare{paddedShare, nid}
+		share := ipld.NamespacedShare{Share: paddedShare, ID: nid}
 		shares = append(shares, share)
 	} else { // len(rawData) > MsgShareSize
 		shares = append(shares, splitMessage(rawData, nid)...)
@@ -27,14 +29,14 @@ func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) 
 
 // splitMessage breaks the data in a message into the minimum number of
 // namespaced shares
-func splitMessage(rawData []byte, nid namespace.ID) []NamespacedShare {
-	shares := make([]NamespacedShare, 0)
+func splitMessage(rawData []byte, nid namespace.ID) []ipld.NamespacedShare {
+	shares := make([]ipld.NamespacedShare, 0)
 	firstRawShare := append(append(
 		make([]byte, 0, consts.ShareSize),
 		nid...),
 		rawData[:consts.MsgShareSize]...,
 	)
-	shares = append(shares, NamespacedShare{firstRawShare, nid})
+	shares = append(shares, ipld.NamespacedShare{Share: firstRawShare, ID: nid})
 	rawData = rawData[consts.MsgShareSize:]
 	for len(rawData) > 0 {
 		shareSizeOrLen := min(consts.MsgShareSize, len(rawData))
@@ -44,7 +46,7 @@ func splitMessage(rawData []byte, nid namespace.ID) []NamespacedShare {
 			rawData[:shareSizeOrLen]...,
 		)
 		paddedShare := zeroPadIfNecessary(rawShare, consts.ShareSize)
-		share := NamespacedShare{paddedShare, nid}
+		share := ipld.NamespacedShare{Share: paddedShare, ID: nid}
 		shares = append(shares, share)
 		rawData = rawData[shareSizeOrLen:]
 	}
@@ -53,8 +55,8 @@ func splitMessage(rawData []byte, nid namespace.ID) []NamespacedShare {
 
 // splitContiguous splits multiple raw data contiguously as shares.
 // Used for transactions, intermediate state roots, and evidence.
-func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
-	shares := make([]NamespacedShare, 0)
+func splitContiguous(nid namespace.ID, rawDatas [][]byte) []ipld.NamespacedShare {
+	shares := make([]ipld.NamespacedShare, 0)
 	// Index into the outer slice of rawDatas
 	outerIndex := 0
 	// Index into the inner slice of rawDatas
@@ -69,7 +71,7 @@ func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
 			byte(startIndex)),
 			rawData...)
 		paddedShare := zeroPadIfNecessary(rawShare, consts.ShareSize)
-		share := NamespacedShare{paddedShare, nid}
+		share := ipld.NamespacedShare{Share: paddedShare, ID: nid}
 		shares = append(shares, share)
 	}
 	return shares
@@ -110,10 +112,10 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 	return rawData, outerIndex, innerIndex, startIndex
 }
 
-func GenerateTailPaddingShares(n int, shareWidth int) NamespacedShares {
-	shares := make([]NamespacedShare, n)
+func GenerateTailPaddingShares(n int, shareWidth int) ipld.NamespacedShares {
+	shares := make([]ipld.NamespacedShare, n)
 	for i := 0; i < n; i++ {
-		shares[i] = NamespacedShare{bytes.Repeat([]byte{0}, shareWidth), consts.TailPaddingNamespaceID}
+		shares[i] = ipld.NamespacedShare{Share: bytes.Repeat([]byte{0}, shareWidth), ID: consts.TailPaddingNamespaceID}
 	}
 	return shares
 }

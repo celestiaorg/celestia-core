@@ -10,16 +10,18 @@ import (
 	"testing"
 	"time"
 
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
-	"github.com/lazyledger/lazyledger-core/types/consts"
 	"github.com/lazyledger/nmt/namespace"
 	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"
+
+	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/lazyledger/lazyledger-core/libs/protoio"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
 type splitter interface {
-	splitIntoShares() NamespacedShares
+	splitIntoShares() ipld.NamespacedShares
 }
 
 func TestMakeShares(t *testing.T) {
@@ -58,20 +60,20 @@ func TestMakeShares(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want NamespacedShares
+		want ipld.NamespacedShares
 	}{
 		{"evidence",
 			args{
 				data: &EvidenceData{
 					Evidence: []Evidence{testEvidence},
 				},
-			}, NamespacedShares{NamespacedShare{
+			}, ipld.NamespacedShares{ipld.NamespacedShare{
 				Share: append(
 					append(reservedEvidenceNamespaceID, byte(0)),
 					testEvidenceBytes[:consts.TxShareSize]...,
 				),
 				ID: reservedEvidenceNamespaceID,
-			}, NamespacedShare{
+			}, ipld.NamespacedShare{
 				Share: append(
 					append(reservedEvidenceNamespaceID, byte(0)),
 					zeroPadIfNecessary(testEvidenceBytes[consts.TxShareSize:], consts.TxShareSize)...,
@@ -83,8 +85,8 @@ func TestMakeShares(t *testing.T) {
 			args{
 				data: Txs{smolTx},
 			},
-			NamespacedShares{
-				NamespacedShare{
+			ipld.NamespacedShares{
+				ipld.NamespacedShare{
 					Share: append(
 						append(reservedTxNamespaceID, byte(0)),
 						zeroPadIfNecessary(smolTxLenDelimited, consts.TxShareSize)...,
@@ -97,15 +99,15 @@ func TestMakeShares(t *testing.T) {
 			args{
 				data: Txs{largeTx},
 			},
-			NamespacedShares{
-				NamespacedShare{
+			ipld.NamespacedShares{
+				ipld.NamespacedShare{
 					Share: append(
 						append(reservedTxNamespaceID, byte(0)),
 						largeTxLenDelimited[:consts.TxShareSize]...,
 					),
 					ID: reservedTxNamespaceID,
 				},
-				NamespacedShare{
+				ipld.NamespacedShare{
 					Share: append(
 						append(reservedTxNamespaceID, byte(0)),
 						zeroPadIfNecessary(largeTxLenDelimited[consts.TxShareSize:], consts.TxShareSize)...,
@@ -118,15 +120,15 @@ func TestMakeShares(t *testing.T) {
 			args{
 				data: Txs{largeTx, smolTx},
 			},
-			NamespacedShares{
-				NamespacedShare{
+			ipld.NamespacedShares{
+				ipld.NamespacedShare{
 					Share: append(
 						append(reservedTxNamespaceID, byte(0)),
 						largeTxLenDelimited[:consts.TxShareSize]...,
 					),
 					ID: reservedTxNamespaceID,
 				},
-				NamespacedShare{
+				ipld.NamespacedShare{
 					Share: append(
 						append(
 							reservedTxNamespaceID,
@@ -145,8 +147,8 @@ func TestMakeShares(t *testing.T) {
 			args{
 				data: Messages{[]Message{msg1}},
 			},
-			NamespacedShares{
-				NamespacedShare{
+			ipld.NamespacedShares{
+				ipld.NamespacedShare{
 					Share: append(
 						[]byte(msg1.NamespaceID),
 						zeroPadIfNecessary(msg1Marshaled, consts.MsgShareSize)...,
@@ -193,7 +195,7 @@ func Test_zeroPadIfNecessary(t *testing.T) {
 }
 
 func Test_appendToSharesOverwrite(t *testing.T) {
-	var shares NamespacedShares
+	var shares ipld.NamespacedShares
 
 	// generate some arbitrary namespaced shares first share that must be split
 	newShare := generateRandomNamespacedShares(1, consts.MsgShareSize+1)[0]
@@ -245,7 +247,7 @@ func TestDataFromSquare(t *testing.T) {
 			)
 
 			shares, _ := data.ComputeShares()
-			rawShares := shares.RawShares()
+			rawShares := shares.Raw()
 
 			eds, err := rsmt2d.ComputeExtendedDataSquare(rawShares, rsmt2d.NewRSGF8Codec(), rsmt2d.NewDefaultTree)
 			if err != nil {
@@ -322,7 +324,7 @@ func Test_processContiguousShares(t *testing.T) {
 
 			shares := txs.splitIntoShares()
 
-			parsedTxs, err := processContiguousShares(shares.RawShares())
+			parsedTxs, err := processContiguousShares(shares.Raw())
 			if err != nil {
 				t.Error(err)
 			}
@@ -339,7 +341,7 @@ func Test_processContiguousShares(t *testing.T) {
 
 			shares := txs.splitIntoShares()
 
-			parsedTxs, err := processContiguousShares(shares.RawShares())
+			parsedTxs, err := processContiguousShares(shares.Raw())
 			if err != nil {
 				t.Error(err)
 			}
@@ -403,7 +405,7 @@ func Test_parseMsgShares(t *testing.T) {
 
 			shares := msgs.splitIntoShares()
 
-			parsedMsgs, err := parseMsgShares(shares.RawShares())
+			parsedMsgs, err := parseMsgShares(shares.Raw())
 			if err != nil {
 				t.Error(err)
 			}
@@ -420,7 +422,7 @@ func Test_parseMsgShares(t *testing.T) {
 			msgs := generateRandomlySizedMessages(tc.msgCount, tc.msgSize)
 			shares := msgs.splitIntoShares()
 
-			parsedMsgs, err := parseMsgShares(shares.RawShares())
+			parsedMsgs, err := parseMsgShares(shares.Raw())
 			if err != nil {
 				t.Error(err)
 			}
@@ -525,7 +527,7 @@ func generateRandomMessage(size int) Message {
 	return msg
 }
 
-func generateRandomNamespacedShares(count, msgSize int) NamespacedShares {
+func generateRandomNamespacedShares(count, msgSize int) ipld.NamespacedShares {
 	shares := generateRandNamespacedRawData(count, consts.NamespaceSize, msgSize)
 	msgs := make([]Message, count)
 	for i, s := range shares {
