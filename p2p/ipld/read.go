@@ -2,6 +2,7 @@ package ipld
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 
@@ -11,67 +12,46 @@ import (
 
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
-	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
-const baseErrorMsg = "failure to retrieve block data:"
+var ErrRetrieveTimeout = errors.New("retrieve data timeout")
 
-var ErrEncounteredTooManyErrors = fmt.Errorf("%s %s", baseErrorMsg, "encountered too many errors")
-var ErrTimeout = fmt.Errorf("%s %s", baseErrorMsg, "timeout")
-
-// RetrieveBlockData asynchronously fetches block data using the minimum number
+// RetrieveData asynchronously fetches block data using the minimum number
 // of requests to IPFS. It fails if one of the random samples sampled is not available.
-func RetrieveBlockData(
+func RetrieveData(
 	ctx context.Context,
-	dah *types.DataAvailabilityHeader,
+	dah *DataAvailabilityHeader,
 	dag ipld.NodeGetter,
 	codec rsmt2d.Codec,
-) (types.Data, error) {
+) (*rsmt2d.ExtendedDataSquare, error) {
 	edsWidth := len(dah.RowsRoots)
 	sc := newshareCounter(ctx, uint32(edsWidth))
-
 	// convert the row and col roots into Cids
 	rowRoots := dah.RowsRoots.Bytes()
 	colRoots := dah.ColumnRoots.Bytes()
-
 	// sample 1/4 of the total extended square by sampling half of the leaves in
 	// half of the rows
 	for _, row := range uniqueRandNumbers(edsWidth/2, edsWidth) {
 		for _, col := range uniqueRandNumbers(edsWidth/2, edsWidth) {
 			rootCid, err := plugin.CidFromNamespacedSha256(rowRoots[row])
 			if err != nil {
-				return types.Data{}, err
+				return nil, err
 			}
 
 			go sc.retrieveShare(rootCid, true, row, col, dag)
 		}
 	}
-
 	// wait until enough data has been collected, too many errors encountered,
 	// or the timeout is reached
 	err := sc.wait()
 	if err != nil {
-		return types.Data{}, err
+		return nil, err
 	}
-
 	// flatten the square
 	flattened := sc.flatten()
-
-	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(edsWidth) / 2)
-
 	// repair the square
-	eds, err := rsmt2d.RepairExtendedDataSquare(rowRoots, colRoots, flattened, codec, tree.Constructor)
-	if err != nil {
-		return types.Data{}, err
-	}
-
-	blockData, err := types.DataFromSquare(eds)
-	if err != nil {
-		return types.Data{}, err
-	}
-
-	return blockData, nil
+	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(edsWidth) / 2)
+	return rsmt2d.RepairExtendedDataSquare(rowRoots, colRoots, flattened, codec, tree.Constructor)
 }
 
 // uniqueRandNumbers generates count unique random numbers with a max of max
@@ -136,7 +116,7 @@ func newshareCounter(parentCtx context.Context, edsWidth uint32) *shareCounter {
 		shares:          make(map[index][]byte),
 		edsWidth:        edsWidth,
 		minSharesNeeded: minSharesNeeded,
-		shareChan:       make(chan indexedShare, 1),
+		shareChan:       make(chan indexedShare, 512),
 		errc:            make(chan error, 1),
 		ctx:             ctx,
 		cancel:          cancel,
@@ -159,7 +139,7 @@ func (sc *shareCounter) retrieveShare(
 		}
 	}
 
-	if len(data) < consts.ShareSize {
+	if len(data) < ShareSize {
 		return
 	}
 
@@ -173,8 +153,7 @@ func (sc *shareCounter) retrieveShare(
 
 	select {
 	case <-sc.ctx.Done():
-	default:
-		sc.shareChan <- indexedShare{data: data[consts.NamespaceSize:], index: index{row: rowIdx, col: colIdx}}
+	case sc.shareChan <- indexedShare{data: data[NamespaceSize:], index: index{row: rowIdx, col: colIdx}}:
 	}
 }
 
@@ -186,8 +165,11 @@ func (sc *shareCounter) wait() error {
 	for {
 		select {
 		case <-sc.ctx.Done():
-			return ErrTimeout
-
+			err := sc.ctx.Err()
+			if err == context.DeadlineExceeded {
+				return ErrRetrieveTimeout
+			}
+			return err
 		case share := <-sc.shareChan:
 			_, has := sc.shares[share.index]
 			// add iff it does not already exists
