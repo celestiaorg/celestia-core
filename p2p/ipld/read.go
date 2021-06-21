@@ -18,7 +18,7 @@ import (
 
 const baseErrorMsg = "failure to retrieve block data:"
 
-const maxGoRoutines = 4096
+const maxGoRoutines = 512
 
 var ErrEncounteredTooManyErrors = fmt.Errorf("%s %s", baseErrorMsg, "encountered too many errors")
 var ErrTimeout = fmt.Errorf("%s %s", baseErrorMsg, "timeout")
@@ -41,16 +41,21 @@ func RetrieveBlockData(
 
 	// sample 1/4 of the total extended square by sampling half of the leaves in
 	// half of the rows
-	for _, row := range uniqueRandNumbers(edsWidth/2, edsWidth) {
-		for _, col := range uniqueRandNumbers(edsWidth/2, edsWidth) {
-			rootCid, err := plugin.CidFromNamespacedSha256(rowRoots[row])
-			if err != nil {
-				return types.Data{}, err
+	go func() {
+		for _, row := range uniqueRandNumbers(edsWidth/2, edsWidth) {
+			for _, col := range uniqueRandNumbers(edsWidth/2, edsWidth) {
+				rootCid, err := plugin.CidFromNamespacedSha256(rowRoots[row])
+				if err != nil {
+					select {
+					case <-sc.ctx.Done():
+					case sc.errc <- err:
+					}
+				}
+				sem.Acquire(ctx, 1)
+				go sc.retrieveShare(rootCid, true, row, col, dag, sem)
 			}
-			sem.Acquire(ctx, 1)
-			go sc.retrieveShare(rootCid, true, row, col, dag, sem)
 		}
-	}
+	}()
 
 	// wait until enough data has been collected, too many errors encountered,
 	// or the timeout is reached
@@ -140,8 +145,8 @@ func newshareCounter(parentCtx context.Context, edsWidth uint32) *shareCounter {
 		shares:          make(map[index][]byte),
 		edsWidth:        edsWidth,
 		minSharesNeeded: minSharesNeeded,
-		shareChan:       make(chan indexedShare),
-		errc:            make(chan error),
+		shareChan:       make(chan indexedShare, 1),
+		errc:            make(chan error, 1),
 		ctx:             ctx,
 		cancel:          cancel,
 	}
@@ -180,8 +185,8 @@ func (sc *shareCounter) retrieveShare(
 	select {
 	case <-sc.ctx.Done():
 	default:
-		sem.Release(1)
 		sc.shareChan <- indexedShare{data: data[consts.NamespaceSize:], index: index{row: rowIdx, col: colIdx}}
+		sem.Release(1)
 	}
 }
 
