@@ -7,9 +7,6 @@ import (
 	"time"
 
 	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/lazyledger/nmt/namespace"
-
-	"github.com/lazyledger/lazyledger-core/types"
 )
 
 // ValidationTimeout specifies timeout for DA validation during which data have to be found on the network,
@@ -28,9 +25,9 @@ var ErrValidationFailed = errors.New("validation failed")
 func ValidateAvailability(
 	ctx context.Context,
 	dag ipld.NodeGetter,
-	dah *types.DataAvailabilityHeader,
+	dah *DataAvailabilityHeader,
 	numSamples int,
-	onLeafValidity func(namespace.PrefixedData8),
+	onLeafValidity func(NamespacedShare),
 ) error {
 	ctx, cancel := context.WithTimeout(ctx, ValidationTimeout)
 	defer cancel()
@@ -75,7 +72,7 @@ func ValidateAvailability(
 
 			// the fact that we read the data, already gives us Merkle proof,
 			// thus the data availability is successfully validated :)
-			onLeafValidity(r.data)
+			onLeafValidity(NamespacedShare{ID: r.data[:NamespaceSize], Share: r.data})
 		case <-ctx.Done():
 			err := ctx.Err()
 			if err == context.DeadlineExceeded {
