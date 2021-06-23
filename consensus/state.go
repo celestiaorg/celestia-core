@@ -1122,7 +1122,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	}
 
 	// cancel ctx for previous proposal block to ensure block putting/providing does not queues up
-	if cs.proposalCancel != nil { //nolint:staticcheck
+	if cs.proposalCancel != nil {
 		// FIXME(ismail): below commented out cancel tries to prevent block putting
 		// and providing no to queue up endlessly.
 		// But in a real network proposers should have enough time in between.
@@ -1139,7 +1139,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		// the provide timeout could still be larger than just the time between
 		// two consecutive proposals.
 		//
-		// cs.proposalCancel()
+		cs.proposalCancel()
 	}
 	cs.proposalCtx, cs.proposalCancel = context.WithCancel(context.TODO())
 	go func(ctx context.Context) {
@@ -1585,7 +1585,10 @@ func (cs *State) finalizeCommit(height int64) {
 		// but may differ from the LastCommit included in the next block
 		precommits := cs.Votes.Precommits(cs.CommitRound)
 		seenCommit := precommits.MakeCommit()
-		cs.blockStore.SaveBlock(block, blockParts, seenCommit)
+		err := cs.blockStore.SaveBlock(context.TODO(), block, blockParts, seenCommit)
+		if err != nil {
+			panic(err)
+		}
 	} else {
 		// Happens during replay if we already saved the block but didn't commit
 		cs.Logger.Info("Calling finalizeCommit on already stored block", "height", block.Height)

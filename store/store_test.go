@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"os"
@@ -11,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -74,7 +74,7 @@ func makeStateAndBlockStore(logger log.Logger) (sm.State, *BlockStore, cleanupFu
 	if err != nil {
 		panic(fmt.Errorf("error constructing state from genesis file: %w", err))
 	}
-	return state, NewBlockStore(blockDB, mdutils.Mock()), func() { os.RemoveAll(config.RootDir) }
+	return state, MockBlockStore(blockDB), func() { os.RemoveAll(config.RootDir) }
 }
 
 func TestLoadBlockStoreState(t *testing.T) {
@@ -106,7 +106,7 @@ func TestNewBlockStore(t *testing.T) {
 	bz, _ := proto.Marshal(&bss)
 	err := db.Set(blockStoreKey, bz)
 	require.NoError(t, err)
-	bs := NewBlockStore(db, mdutils.Mock())
+	bs := MockBlockStore(db)
 	require.Equal(t, int64(100), bs.Base(), "failed to properly parse blockstore")
 	require.Equal(t, int64(10000), bs.Height(), "failed to properly parse blockstore")
 
@@ -124,7 +124,7 @@ func TestNewBlockStore(t *testing.T) {
 		_, _, panicErr := doFn(func() (interface{}, error) {
 			err := db.Set(blockStoreKey, tt.data)
 			require.NoError(t, err)
-			_ = NewBlockStore(db, mdutils.Mock())
+			_ = MockBlockStore(db)
 			return nil, nil
 		})
 		require.NotNil(t, panicErr, "#%d panicCauser: %q expected a panic", i, tt.data)
@@ -133,13 +133,13 @@ func TestNewBlockStore(t *testing.T) {
 
 	err = db.Set(blockStoreKey, []byte{})
 	require.NoError(t, err)
-	bs = NewBlockStore(db, mdutils.Mock())
+	bs = MockBlockStore(db)
 	assert.Equal(t, bs.Height(), int64(0), "expecting empty bytes to be unmarshaled alright")
 }
 
 func freshBlockStore() (*BlockStore, dbm.DB) {
 	db := memdb.NewDB()
-	return NewBlockStore(db, mdutils.Mock()), db
+	return MockBlockStore(db), db
 }
 
 var (
@@ -172,10 +172,12 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	require.Equal(t, bs.Base(), int64(0), "initially the base should be zero")
 	require.Equal(t, bs.Height(), int64(0), "initially the height should be zero")
 
+	ctx := context.TODO()
+
 	// check there are no blocks at various heights
 	noBlockHeights := []int64{0, -1, 100, 1000, 2}
 	for i, height := range noBlockHeights {
-		if g := bs.LoadBlock(height); g != nil {
+		if g, _ := bs.LoadBlock(ctx, height); g != nil {
 			t.Errorf("#%d: height(%d) got a block; want nil", i, height)
 		}
 	}
@@ -184,13 +186,14 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	block := makeBlock(bs.Height()+1, state, new(types.Commit))
 	validPartSet := block.MakePartSet(2)
 	seenCommit := makeTestCommit(10, tmtime.Now())
-	bs.SaveBlock(block, partSet, seenCommit)
+	err := bs.SaveBlock(ctx, block, partSet, seenCommit)
+	require.NoError(t, err)
 	require.EqualValues(t, 1, bs.Base(), "expecting the new height to be changed")
 	require.EqualValues(t, block.Header.Height, bs.Height(), "expecting the new height to be changed")
 
 	incompletePartSet := types.NewPartSetFromHeader(types.PartSetHeader{Total: 2})
 	uncontiguousPartSet := types.NewPartSetFromHeader(types.PartSetHeader{Total: 0})
-	_, err := uncontiguousPartSet.AddPart(part2)
+	_, err = uncontiguousPartSet.AddPart(part2)
 	require.Error(t, err)
 
 	header1 := types.Header{
@@ -305,16 +308,20 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 		bs, db := freshBlockStore()
 		// SaveBlock
 		res, err, panicErr := doFn(func() (interface{}, error) {
-			bs.SaveBlock(tuple.block, tuple.parts, tuple.seenCommit)
+			err := bs.SaveBlock(ctx, tuple.block, tuple.parts, tuple.seenCommit)
 			if tuple.block == nil {
 				return nil, nil
+			}
+			if err != nil {
+				return nil, err
 			}
 
 			if tuple.corruptBlockInDB {
 				err := db.Set(calcBlockMetaKey(tuple.block.Height), []byte("block-bogus"))
 				require.NoError(t, err)
 			}
-			bBlock := bs.LoadBlock(tuple.block.Height)
+			bBlock, err := bs.LoadBlock(ctx, tuple.block.Height)
+			require.NoError(t, err)
 			bBlockMeta := bs.LoadBlockMeta(tuple.block.Height)
 
 			if tuple.eraseSeenCommitInDB {
@@ -381,13 +388,14 @@ func TestLoadBaseMeta(t *testing.T) {
 	stateStore := sm.NewStore(memdb.NewDB())
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	require.NoError(t, err)
-	bs := NewBlockStore(memdb.NewDB(), mdutils.Mock())
+	bs := MockBlockStore(nil)
 
 	for h := int64(1); h <= 10; h++ {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, tmtime.Now())
-		bs.SaveBlock(block, partSet, seenCommit)
+		err := bs.SaveBlock(context.TODO(), block, partSet, seenCommit)
+		require.NoError(t, err)
 	}
 
 	_, err = bs.PruneBlocks(4)
@@ -438,10 +446,12 @@ func TestPruneBlocks(t *testing.T) {
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	require.NoError(t, err)
 	db := memdb.NewDB()
-	bs := NewBlockStore(db, mdutils.Mock())
+	bs := MockBlockStore(db)
 	assert.EqualValues(t, 0, bs.Base())
 	assert.EqualValues(t, 0, bs.Height())
 	assert.EqualValues(t, 0, bs.Size())
+
+	ctx := context.TODO()
 
 	// pruning an empty store should error, even when pruning to 0
 	_, err = bs.PruneBlocks(1)
@@ -455,14 +465,16 @@ func TestPruneBlocks(t *testing.T) {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, tmtime.Now())
-		bs.SaveBlock(block, partSet, seenCommit)
+		err := bs.SaveBlock(ctx, block, partSet, seenCommit)
+		require.NoError(t, err)
 	}
 
 	assert.EqualValues(t, 1, bs.Base())
 	assert.EqualValues(t, 1500, bs.Height())
 	assert.EqualValues(t, 1500, bs.Size())
 
-	prunedBlock := bs.LoadBlock(1199)
+	prunedBlock, err := bs.LoadBlock(ctx, 1199)
+	require.NoError(t, err)
 
 	// Check that basic pruning works
 	pruned, err := bs.PruneBlocks(1200)
@@ -476,18 +488,29 @@ func TestPruneBlocks(t *testing.T) {
 		Height: 1500,
 	}, LoadBlockStoreState(db))
 
-	require.NotNil(t, bs.LoadBlock(1200))
-	require.Nil(t, bs.LoadBlock(1199))
-	require.Nil(t, bs.LoadBlockByHash(prunedBlock.Hash()))
+	b, err := bs.LoadBlock(ctx, 1200)
+	require.NotNil(t, b)
+	require.NoError(t, err)
+	b, err = bs.LoadBlock(ctx, 1199)
+	require.NoError(t, err)
+	require.Nil(t, b)
+	b, err = bs.LoadBlockByHash(ctx, prunedBlock.Hash())
+	require.Nil(t, b)
+	require.NoError(t, err)
+
 	require.Nil(t, bs.LoadBlockCommit(1199))
 	require.Nil(t, bs.LoadBlockMeta(1199))
 	require.Nil(t, bs.LoadBlockPart(1199, 1))
 
 	for i := int64(1); i < 1200; i++ {
-		require.Nil(t, bs.LoadBlock(i))
+		b, err := bs.LoadBlock(ctx, i)
+		require.Nil(t, b)
+		require.NoError(t, err)
 	}
 	for i := int64(1200); i <= 1500; i++ {
-		require.NotNil(t, bs.LoadBlock(i))
+		b, err := bs.LoadBlock(ctx, i)
+		require.NotNil(t, b)
+		require.NoError(t, err)
 	}
 
 	// Pruning below the current base should error
@@ -513,9 +536,15 @@ func TestPruneBlocks(t *testing.T) {
 	pruned, err = bs.PruneBlocks(1500)
 	require.NoError(t, err)
 	assert.EqualValues(t, 200, pruned)
-	assert.Nil(t, bs.LoadBlock(1499))
-	assert.NotNil(t, bs.LoadBlock(1500))
-	assert.Nil(t, bs.LoadBlock(1501))
+	b, err = bs.LoadBlock(ctx, 1499)
+	assert.Nil(t, b)
+	require.NoError(t, err)
+	b, err = bs.LoadBlock(ctx, 1500)
+	assert.NotNil(t, b)
+	require.NoError(t, err)
+	b, err = bs.LoadBlock(ctx, 1501)
+	assert.Nil(t, b)
+	require.NoError(t, err)
 }
 
 func TestLoadBlockMeta(t *testing.T) {
@@ -561,6 +590,7 @@ func TestLoadBlockMeta(t *testing.T) {
 }
 
 func TestBlockFetchAtHeight(t *testing.T) {
+	ctx := context.TODO()
 	state, bs, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	defer cleanup()
 	require.Equal(t, bs.Height(), int64(0), "initially the height should be zero")
@@ -568,10 +598,12 @@ func TestBlockFetchAtHeight(t *testing.T) {
 
 	partSet := block.MakePartSet(2)
 	seenCommit := makeTestCommit(10, tmtime.Now())
-	bs.SaveBlock(block, partSet, seenCommit)
+	err := bs.SaveBlock(ctx, block, partSet, seenCommit)
+	require.NoError(t, err)
 	require.Equal(t, bs.Height(), block.Header.Height, "expecting the new height to be changed")
 
-	blockAtHeight := bs.LoadBlock(bs.Height())
+	blockAtHeight, err := bs.LoadBlock(ctx, bs.Height())
+	require.NoError(t, err)
 	b1, err := block.ToProto()
 	require.NoError(t, err)
 	b2, err := blockAtHeight.ToProto()
@@ -582,9 +614,11 @@ func TestBlockFetchAtHeight(t *testing.T) {
 	require.Equal(t, block.Hash(), blockAtHeight.Hash(),
 		"expecting a successful load of the last saved block")
 
-	blockAtHeightPlus1 := bs.LoadBlock(bs.Height() + 1)
+	blockAtHeightPlus1, err := bs.LoadBlock(ctx, bs.Height()+1)
+	require.NoError(t, err)
 	require.Nil(t, blockAtHeightPlus1, "expecting an unsuccessful load of Height()+1")
-	blockAtHeightPlus2 := bs.LoadBlock(bs.Height() + 2)
+	blockAtHeightPlus2, err := bs.LoadBlock(ctx, bs.Height()+2)
+	require.NoError(t, err)
 	require.Nil(t, blockAtHeightPlus2, "expecting an unsuccessful load of Height()+2")
 }
 

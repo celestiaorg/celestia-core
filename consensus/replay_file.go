@@ -291,7 +291,7 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 		tmos.Exit(err.Error())
 	}
 	dag := mdutils.Mock()
-	blockStore := store.NewBlockStore(blockStoreDB, dag)
+	blockStore := store.MockBlockStore(blockStoreDB)
 
 	// Get State
 	stateDB, err := badgerdb.NewDB("state", config.DBDir())

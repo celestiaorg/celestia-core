@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -30,7 +29,7 @@ func TestMempoolNoProgressUntilTxsAvailable(t *testing.T) {
 
 	config.Consensus.CreateEmptyBlocks = false
 	state, privVals := randGenesisState(1, false, 10)
-	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication(), mdutils.Mock())
+	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication())
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 	height, round := cs.Height, cs.Round
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
@@ -50,7 +49,7 @@ func TestMempoolProgressAfterCreateEmptyBlocksInterval(t *testing.T) {
 
 	config.Consensus.CreateEmptyBlocksInterval = ensureTimeout
 	state, privVals := randGenesisState(1, false, 10)
-	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication(), mdutils.Mock())
+	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication())
 
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 
@@ -68,7 +67,7 @@ func TestMempoolProgressInHigherRound(t *testing.T) {
 
 	config.Consensus.CreateEmptyBlocks = false
 	state, privVals := randGenesisState(1, false, 10)
-	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication(), mdutils.Mock())
+	cs := newStateWithConfig(config, state, privVals[0], NewCounterApplication())
 
 	assertMempool(cs.txNotifier).EnableTxsAvailable()
 	height, round := cs.Height, cs.Round
@@ -118,7 +117,7 @@ func TestMempoolTxConcurrentWithCommit(t *testing.T) {
 	blockDB := memdb.NewDB()
 	stateStore := sm.NewStore(blockDB)
 
-	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], NewCounterApplication(), blockDB, mdutils.Mock())
+	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], NewCounterApplication(), blockDB)
 	err := stateStore.Save(state)
 	require.NoError(t, err)
 	newBlockHeaderCh := subscribe(cs.eventBus, types.EventQueryNewBlockHeader)
@@ -144,7 +143,7 @@ func TestMempoolRmBadTx(t *testing.T) {
 	blockDB := memdb.NewDB()
 
 	stateStore := sm.NewStore(blockDB)
-	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], app, blockDB, mdutils.Mock())
+	cs := newStateWithConfigAndBlockStore(config, state, privVals[0], app, blockDB)
 	err := stateStore.Save(state)
 	require.NoError(t, err)
 

@@ -1,6 +1,7 @@
 package v0
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"time"
@@ -178,7 +179,10 @@ func (bcR *BlockchainReactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 func (bcR *BlockchainReactor) respondToPeer(msg *bcproto.BlockRequest,
 	src p2p.Peer) (queued bool) {
 
-	block := bcR.store.LoadBlock(msg.Height)
+	block, err := bcR.store.LoadBlock(context.TODO(), msg.Height)
+	if err != nil {
+		panic(err)
+	}
 	if block != nil {
 		bl, err := block.ToProto()
 		if err != nil {
@@ -418,11 +422,14 @@ FOR_LOOP:
 				bcR.pool.PopRequest()
 
 				// TODO: batch saves so we dont persist to disk every block
-				bcR.store.SaveBlock(first, firstParts, second.LastCommit)
+				err := bcR.store.SaveBlock(context.TODO(), first, firstParts, second.LastCommit)
+				if err != nil {
+					// an error is only returned if something with the local IPFS blockstore is seriously wrong
+					panic(err)
+				}
 
 				// TODO: same thing for app - but we would need a way to get the hash
 				// without persisting the state.
-				var err error
 				state, _, err = bcR.blockExec.ApplyBlock(state, firstID, first)
 				if err != nil {
 					// TODO This is bad, are we zombie?

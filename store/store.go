@@ -1,17 +1,28 @@
 package store
 
 import (
+	"context"
 	"fmt"
+	"strings"
+
 	"strconv"
 
 	"github.com/gogo/protobuf/proto"
-	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-blockservice"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	format "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-merkledag"
 
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmstore "github.com/lazyledger/lazyledger-core/proto/tendermint/store"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/rsmt2d"
 )
 
 /*
@@ -43,18 +54,20 @@ type BlockStore struct {
 	base   int64
 	height int64
 
-	ipfsDagAPI ipld.DAGService
+	dag    format.DAGService
+	logger log.Logger
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB, dagAPI ipld.DAGService) *BlockStore {
+func NewBlockStore(db dbm.DB, bstore blockstore.Blockstore, logger log.Logger) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	return &BlockStore{
-		base:       bs.Base,
-		height:     bs.Height,
-		db:         db,
-		ipfsDagAPI: dagAPI,
+		base:   bs.Base,
+		height: bs.Height,
+		db:     db,
+		dag:    merkledag.NewDAGService(blockservice.New(bstore, offline.Exchange(bstore))),
+		logger: logger,
 	}
 }
 
@@ -94,48 +107,43 @@ func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 
 // LoadBlock returns the block with the given height.
 // If no block is found for that height, it returns nil.
-func (bs *BlockStore) LoadBlock(height int64) *types.Block {
-	var blockMeta = bs.LoadBlockMeta(height)
+func (bs *BlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block, error) {
+	blockMeta := bs.LoadBlockMeta(height)
 	if blockMeta == nil {
-		return nil
+		return nil, nil
 	}
 
-	pbb := new(tmproto.Block)
-	buf := []byte{}
-	for i := 0; i < int(blockMeta.BlockID.PartSetHeader.Total); i++ {
-		part := bs.LoadBlockPart(height, i)
-		// If the part is missing (e.g. since it has been deleted after we
-		// loaded the block meta) we consider the whole block to be missing.
-		if part == nil {
-			return nil
+	lastCommit := bs.LoadBlockCommit(height - 1)
+
+	data, err := ipld.RetrieveBlockData(ctx, &blockMeta.DAHeader, bs.dag, rsmt2d.NewRSGF8Codec())
+	if err != nil {
+		if strings.Contains(err.Error(), format.ErrNotFound.Error()) {
+			return nil, fmt.Errorf("failure to retrieve block data from local ipfs store: %w", err)
 		}
-		buf = append(buf, part.Bytes...)
-	}
-	err := proto.Unmarshal(buf, pbb)
-	if err != nil {
-		// NOTE: The existence of meta should imply the existence of the
-		// block. So, make sure meta is only saved after blocks are saved.
-		panic(fmt.Sprintf("Error reading block: %v", err))
+		bs.logger.Info("failure to retrieve block data", err)
+		return nil, err
 	}
 
-	block, err := types.BlockFromProto(pbb)
-	if err != nil {
-		panic(fmt.Errorf("error from proto block: %w", err))
+	block := types.Block{
+		Header:                 blockMeta.Header,
+		Data:                   data,
+		DataAvailabilityHeader: blockMeta.DAHeader,
+		LastCommit:             lastCommit,
 	}
 
-	return block
+	return &block, nil
 }
 
 // LoadBlockByHash returns the block with the given hash.
 // If no block is found for that hash, it returns nil.
 // Panics if it fails to parse height associated with the given hash.
-func (bs *BlockStore) LoadBlockByHash(hash []byte) *types.Block {
+func (bs *BlockStore) LoadBlockByHash(ctx context.Context, hash []byte) (*types.Block, error) {
 	bz, err := bs.db.Get(calcBlockHashKey(hash))
 	if err != nil {
 		panic(err)
 	}
 	if len(bz) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	s := string(bz)
@@ -144,7 +152,7 @@ func (bs *BlockStore) LoadBlockByHash(hash []byte) *types.Block {
 	if err != nil {
 		panic(fmt.Sprintf("failed to extract height from %s: %v", s, err))
 	}
-	return bs.LoadBlock(height)
+	return bs.LoadBlock(ctx, height)
 }
 
 // LoadBlockPart returns the Part at the given index
@@ -332,7 +340,12 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 //             If all the nodes restart after committing a block,
 //             we need this to reload the precommits to catch-up nodes to the
 //             most recent height.  Otherwise they'd stall at H-1.
-func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
+func (bs *BlockStore) SaveBlock(
+	ctx context.Context,
+	block *types.Block,
+	blockParts *types.PartSet,
+	seenCommit *types.Commit,
+) error {
 	if block == nil {
 		panic("BlockStore can only save a non-nil block")
 	}
@@ -354,6 +367,11 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 	for i := 0; i < int(blockParts.Total()); i++ {
 		part := blockParts.GetPart(i)
 		bs.saveBlockPart(height, i, part)
+	}
+
+	err := ipld.PutBlock(ctx, bs.dag, block, ipfs.MockRouting(), bs.logger)
+	if err != nil {
+		return err
 	}
 
 	// Save block meta
@@ -398,6 +416,8 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 
 	// Save new BlockStoreState descriptor. This also flushes the database.
 	bs.saveState()
+
+	return nil
 }
 
 func (bs *BlockStore) saveBlockPart(height int64, index int, part *types.Part) {
