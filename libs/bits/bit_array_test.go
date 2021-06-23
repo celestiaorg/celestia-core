@@ -174,6 +174,15 @@ func TestBytes(t *testing.T) {
 	check(bA, []byte{0x80, 0x03})
 }
 
+func TestBitArrayOnes(t *testing.T) {
+	ba := NewBitArray(5)
+	ba.SetIndex(0, true)
+	ba.SetIndex(2, true)
+	ba.SetIndex(4, true)
+	assert.Equal(t, 3, ba.Ones())
+}
+
+
 func TestEmptyFull(t *testing.T) {
 	ns := []int{47, 123}
 	for _, n := range ns {

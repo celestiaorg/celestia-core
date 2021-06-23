@@ -222,6 +222,16 @@ func (bA *BitArray) IsEmpty() bool {
 	return true
 }
 
+// Ones returns amount of 1 bits in the array.
+func (bA *BitArray) Ones() int {
+	if bA == nil {
+		return 0
+	}
+	bA.mtx.Lock()
+	defer bA.mtx.Unlock()
+	return len(bA.getTrueIndices())
+}
+
 // IsFull returns true iff all bits in the bit array are 1.
 func (bA *BitArray) IsFull() bool {
 	if bA == nil {
