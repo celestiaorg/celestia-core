@@ -181,7 +181,6 @@ func (bcR *BlockchainReactor) respondToPeer(msg *bcproto.BlockRequest,
 
 	block, err := bcR.store.LoadBlock(context.TODO(), msg.Height)
 	if err != nil {
-		// todo(evan): handle this error
 		panic(err)
 	}
 	if block != nil {
@@ -425,7 +424,7 @@ FOR_LOOP:
 				// TODO: batch saves so we dont persist to disk every block
 				err := bcR.store.SaveBlock(context.TODO(), first, firstParts, second.LastCommit)
 				if err != nil {
-					// todo(evan): don't panic
+					// an error is only returned if something with the local IPFS blockstore is seriously wrong
 					panic(err)
 				}
 
