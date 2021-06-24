@@ -17,7 +17,7 @@ import (
 
 const baseErrorMsg = "failure to retrieve block data:"
 
-const maxGoRoutines = 512
+var maxGoRoutines = 512
 
 var ErrEncounteredTooManyErrors = fmt.Errorf("%s %s", baseErrorMsg, "encountered too many errors")
 var ErrTimeout = fmt.Errorf("%s %s", baseErrorMsg, "timeout")
