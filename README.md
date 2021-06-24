@@ -1,22 +1,22 @@
-# LazyLedger Core
+# Celestia Core
 
 <!-- markdownlint-disable -->
-<img src="docs/lazyledger-banner.png" width="500">
+<img src="docs/celestia-logo.png">
 <!-- markdownlint-enable -->
 
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/lazyledger/lazyledger-core)
 [![Community](https://img.shields.io/badge/chat%20on-discord-orange?&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/YsnTPcSfWQ)
 [![license](https://img.shields.io/github/license/tendermint/tendermint.svg)](https://github.com/lazyledger/lazyledger-core/blob/master/LICENSE)
 
-LazyLedger Core will power the LazyLedger main chain by leveraging Tendermint.
+Celestia Core will power the Celestia main chain by leveraging Tendermint.
 
-LazyLedger itself is a scale-out data availability-focused minimal blockchain.
+Celestia itself is a scale-out data availability-focused minimal blockchain.
 It allows users to post arbitrary data on the chain, as well as define their own execution layers.
 This data is ordered on-chain but not executed. This allows for the first scalable data layer for
 decentralised applications, including optimistic rollup sidechains. Additionally, this design allows developers to
 define their own execution environments.
 
-Read this [blog post](https://medium.com/lazyledger/lazyledger-a-scalable-general-purpose-data-availability-layer-for-trust-minimized-sidechains-and-82d901963de9)
+Read this [blog post](https://blog.celestia.org/celestia-a-scalable-general-purpose-data-availability-layer-for-decentralized-apps-and-trust-minimized-sidechains/)
 to learn more about what we are building.
 
 ## Documentation
@@ -45,7 +45,7 @@ See the [install instructions](/docs/introduction/install.md).
 Before contributing to the project, please take a look at the [contributing guidelines](CONTRIBUTING.md)
 and the [style guide](STYLE_GUIDE.md).
 
-Join the community at [Telegram](https://t.me/lazyledgerchat) or jump onto the [Forum](https://talk.lazyledger.io/)
+Join the community at [Telegram](https://t.me/CelestiaCommunity) or jump onto the [Forum](https://forum.celestia.org/)
 to get more involved into discussions.
 
 Learn more by reading the code and the
@@ -64,10 +64,10 @@ According to SemVer, anything in the public API can change at any time before ve
 
 - [LazyLedger Ethereum research post](https://ethresear.ch/t/a-data-availability-blockchain-with-sub-linear-full-block-validation/5503)
 - [LazyLedger academic paper](https://arxiv.org/abs/1905.09274)
-- [Blog](https://medium.com/lazyledger)
-- [Project web site](https://lazyledger.io/)
+- [Blog](https://blog.celestia.org)
+- [Project web site](https://celestia.org)
 - [Academic LazyLedger prototype](https://github.com/LazyLedger/lazyledger-prototype)
-- [Follow LazyLedger on Twitter](https://twitter.com/lazyledger_io)
+- [Follow Celestia on Twitter](https://twitter.com/CelestiaOrg)
 
 ### Tendermint Core
 

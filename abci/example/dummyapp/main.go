@@ -78,7 +78,7 @@ func main() {
 }
 
 // DummyNode implements NodeProvider.
-func DummyNode(config *cfg.Config, ipfs ipfs.APIProvider, logger log.Logger) (*node.Node, error) {
+func DummyNode(config *cfg.Config, provider ipfs.NodeProvider, logger log.Logger) (*node.Node, error) {
 	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load or gen node key %s: %w", config.NodeKeyFile(), err)
@@ -99,7 +99,7 @@ func DummyNode(config *cfg.Config, ipfs ipfs.APIProvider, logger log.Logger) (*n
 		proxy.NewLocalClientCreator(app),
 		node.DefaultGenesisDocProviderFunc(config),
 		node.DefaultDBProvider,
-		ipfs,
+		provider,
 		node.DefaultMetricsProvider(config.Instrumentation),
 		logger,
 	)

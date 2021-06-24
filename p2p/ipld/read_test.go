@@ -19,7 +19,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
+	"github.com/lazyledger/lazyledger-core/libs/log"
 	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
 	"github.com/lazyledger/lazyledger-core/types"
 	"github.com/lazyledger/lazyledger-core/types/consts"
@@ -114,6 +116,7 @@ func TestBlockRecovery(t *testing.T) {
 }
 
 func TestRetrieveBlockData(t *testing.T) {
+	logger := log.TestingLogger()
 	type test struct {
 		name       string
 		squareSize int
@@ -138,6 +141,7 @@ func TestRetrieveBlockData(t *testing.T) {
 		t.Run(fmt.Sprintf("%s size %d", tc.name, tc.squareSize), func(t *testing.T) {
 			ctx := context.Background()
 			dag := mdutils.Mock()
+			croute := ipfs.MockRouting()
 
 			blockData := generateRandomBlockData(tc.squareSize*tc.squareSize, consts.MsgShareSize-2)
 			block := &types.Block{
@@ -147,7 +151,7 @@ func TestRetrieveBlockData(t *testing.T) {
 
 			// if an error is exected, don't put the block
 			if !tc.expectErr {
-				err := PutBlock(ctx, dag, block)
+				err := PutBlock(ctx, dag, block, croute, logger)
 				require.NoError(t, err)
 			}
 

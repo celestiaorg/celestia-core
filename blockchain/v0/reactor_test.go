@@ -1,6 +1,7 @@
 package v0
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"os"
@@ -68,10 +69,9 @@ func newBlockchainReactor(
 		panic(fmt.Errorf("error start app: %w", err))
 	}
 
-	blockDB := memdb.NewDB()
 	stateDB := memdb.NewDB()
 	stateStore := sm.NewStore(stateDB)
-	blockStore := store.NewBlockStore(blockDB)
+	blockStore := store.MockBlockStore(nil)
 
 	state, err := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 	if err != nil {
@@ -104,7 +104,10 @@ func newBlockchainReactor(
 		)
 		if blockHeight > 1 {
 			lastBlockMeta := blockStore.LoadBlockMeta(blockHeight - 1)
-			lastBlock := blockStore.LoadBlock(blockHeight - 1)
+			lastBlock, err := blockStore.LoadBlock(context.TODO(), blockHeight-1)
+			if err != nil {
+				panic(err)
+			}
 
 			vote, err := types.MakeVote(
 				lastBlock.Header.Height,
@@ -134,7 +137,10 @@ func newBlockchainReactor(
 			panic(fmt.Errorf("error apply block: %w", err))
 		}
 
-		blockStore.SaveBlock(thisBlock, thisParts, lastCommit)
+		err := blockStore.SaveBlock(context.TODO(), thisBlock, thisParts, lastCommit)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	bcReactor := NewBlockchainReactor(state.Copy(), blockExec, blockStore, fastSync)
@@ -191,7 +197,10 @@ func TestNoBlockResponse(t *testing.T) {
 	assert.Equal(t, maxBlockHeight, reactorPairs[0].reactor.store.Height())
 
 	for _, tt := range tests {
-		block := reactorPairs[1].reactor.store.LoadBlock(tt.height)
+		block, err := reactorPairs[1].reactor.store.LoadBlock(context.TODO(), tt.height)
+		if err != nil {
+			panic(err)
+		}
 		if tt.existent {
 			assert.True(t, block != nil)
 		} else {
