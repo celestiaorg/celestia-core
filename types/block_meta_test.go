@@ -22,7 +22,7 @@ func TestBlockMeta_ToProto(t *testing.T) {
 		BlockSize: 200,
 		Header:    h,
 		NumTxs:    0,
-		DAHeader:  *dah,
+		DAHeader:  *bi.DataAvailabilityHeader,
 	}
 
 	tests := []struct {

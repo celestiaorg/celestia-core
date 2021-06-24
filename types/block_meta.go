@@ -37,10 +37,7 @@ func (bm *BlockMeta) ToProto() (*tmproto.BlockMeta, error) {
 		return nil, nil
 	}
 
-	protoDAH, err := bm.DAHeader.ToProto()
-	if err != nil {
-		return nil, err
-	}
+	protoDAH := bm.DAHeader.ToProto()
 
 	pb := &tmproto.BlockMeta{
 		BlockID:   bm.BlockID.ToProto(),

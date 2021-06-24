@@ -594,7 +594,8 @@ func TestLoadBlockMeta(t *testing.T) {
 		},
 		BlockID: bID,
 	}
-	pbm := meta.ToProto()
+	pbm, err := meta.ToProto()
+	require.NoError(t, err)
 	err = db.Set(calcBlockMetaKey(height), mustEncode(pbm))
 	require.NoError(t, err)
 	gotMeta, _, panicErr := doFn(loadMeta)
