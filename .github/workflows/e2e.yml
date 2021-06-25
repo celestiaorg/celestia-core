@@ -17,7 +17,7 @@ jobs:
         with:
           go-version: '1.15'
       - uses: actions/checkout@v2
-      - uses: technote-space/get-diff-action@v4.1.1
+      - uses: technote-space/get-diff-action@v4.1.2
         with:
           PATTERNS: |
             **/**.go
