@@ -11,7 +11,7 @@ Currently, we inherit the following from Tendermint. Our codebase relies on the 
 Celestia comes with a different block representation from Tendermint. It lays out block as a table of data shares, where Rows or Columns can be and should be gossiped instead of Parts, keeping only one system-wide commitment to data.
 
 ## Alternative Approaches
-### ["nah it works just don't touch it"](https://https://ahseeit.com//king-include/uploads/2020/11/121269295_375504380484919_2997236194077828589_n-6586327691.jpg) approach
+### ["nah it works just don't touch it"](https://ahseeit.com//king-include/uploads/2020/11/121269295_375504380484919_2997236194077828589_n-6586327691.jpg) approach
 
 It turns out that we could fully treat the Tendermint consensus as a black box. However, that means that we need to verify block integrity twice for both PartSetHeader and DAHeader.
 
