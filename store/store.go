@@ -3,9 +3,8 @@ package store
 import (
 	"context"
 	"fmt"
-	"strings"
-
 	"strconv"
+	"strings"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/ipfs/go-blockservice"
@@ -14,7 +13,8 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
 
-	"github.com/lazyledger/lazyledger-core/ipfs"
+	"github.com/lazyledger/rsmt2d"
+
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
@@ -22,7 +22,6 @@ import (
 	tmstore "github.com/lazyledger/lazyledger-core/proto/tendermint/store"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/lazyledger/rsmt2d"
 )
 
 /*
@@ -115,7 +114,7 @@ func (bs *BlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block
 
 	lastCommit := bs.LoadBlockCommit(height - 1)
 
-	data, err := ipld.RetrieveBlockData(ctx, &blockMeta.DAHeader, bs.dag, rsmt2d.NewRSGF8Codec())
+	data, err := ipld.RetrieveData(ctx, &blockMeta.DAHeader, bs.dag, rsmt2d.NewRSGF8Codec())
 	if err != nil {
 		if strings.Contains(err.Error(), format.ErrNotFound.Error()) {
 			return nil, fmt.Errorf("failure to retrieve block data from local ipfs store: %w", err)
@@ -124,9 +123,14 @@ func (bs *BlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block
 		return nil, err
 	}
 
+	bdata, err := types.DataFromSquare(data)
+	if err != nil {
+		return nil, err
+	}
+
 	block := types.Block{
 		Header:                 blockMeta.Header,
-		Data:                   data,
+		Data:                   bdata,
 		DataAvailabilityHeader: blockMeta.DAHeader,
 		LastCommit:             lastCommit,
 	}
@@ -369,13 +373,15 @@ func (bs *BlockStore) SaveBlock(
 		bs.saveBlockPart(height, i, part)
 	}
 
-	err := ipld.PutBlock(ctx, bs.dag, block, ipfs.MockRouting(), bs.logger)
+	shares, _ := block.ComputeShares()
+	eds, err := ipld.PutData(ctx, shares, bs.dag)
 	if err != nil {
 		return err
 	}
 
 	// Save block meta
 	blockMeta := types.NewBlockMeta(block, blockParts)
+	blockMeta.DAHeader = *ipld.MakeDataHeader(eds)
 	pbm, err := blockMeta.ToProto()
 	if err != nil {
 		panic(fmt.Errorf("failed to marshal block meta while saving: %w", err))

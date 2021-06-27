@@ -1127,7 +1127,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	}
 
 	// cancel ctx for previous proposal block to ensure block providing does not queues up
-	if cs.provideCancel != nil { //nolint:staticcheck
+	if cs.provideCancel != nil {
 		// FIXME(ismail): below commented out cancel tries to prevent block providing
 		// and providing no to queue up endlessly.
 		// But in a real network proposers should have enough time in between.

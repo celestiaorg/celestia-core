@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -413,7 +414,7 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.Bloc
 			panic(err)
 		}
 		seenCommit := makeCommit(i, valAddr)
-		err := blockStore.SaveBlock(context.TODO(), block, partSet, seenCommit)
+		err = blockStore.SaveBlock(context.TODO(), block, partSet, seenCommit)
 		if err != nil {
 			panic(err)
 		}

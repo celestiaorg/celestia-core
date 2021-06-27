@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
 	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -156,7 +157,7 @@ func DataAvailabilityHeader(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.Re
 	block, err := env.BlockStore.LoadBlock(ctx.Context(), height)
 	if err != nil {
 		return &ctypes.ResultDataAvailabilityHeader{
-			DataAvailabilityHeader: types.DataAvailabilityHeader{},
+			DataAvailabilityHeader: ipld.DataAvailabilityHeader{},
 		}, err
 	}
 	_ = block.Hash()
