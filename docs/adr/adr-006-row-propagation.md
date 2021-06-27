@@ -22,7 +22,7 @@ It turns out that we could fully treat the Tendermint consensus as a black box. 
 * This isn't adequate in terms of protocol and software design
 * Potentially introduces security issues(implementer can forget/miss secondary data verification)
 * Wastes more CPU cycles on building and verifying additional Merkle Tree
-* Extends DOSing vector for huge blocks cause to verify a block, you need two verify its two complete RAM copies in different layouts.
+* Extends DOSing vector for huge blocks cause to verify a block, you need to verify its two complete RAM copies in different layouts.
 * We would also need to add PartSetHeader to Celestia-specs and bring there such an ugliness
 
 ## Decision
