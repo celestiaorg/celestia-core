@@ -113,7 +113,13 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 func GenerateTailPaddingShares(n int, shareWidth int) NamespacedShares {
 	shares := make([]NamespacedShare, n)
 	for i := 0; i < n; i++ {
-		shares[i] = NamespacedShare{bytes.Repeat([]byte{0}, shareWidth), consts.TailPaddingNamespaceID}
+		shares[i] = NamespacedShare{
+			Share: append(
+				append(make([]byte, 0, shareWidth), consts.TailPaddingNamespaceID...),
+				bytes.Repeat([]byte{0}, shareWidth-consts.NamespaceSize)...,
+			),
+			ID: consts.TailPaddingNamespaceID,
+		}
 	}
 	return shares
 }
