@@ -42,13 +42,14 @@ message State {
 
   // immutable
   string chain_id       = 2 [(gogoproto.customname) = "ChainID"];
-  int64  initial_height = 14;
+  int64  initial_height = 15;
 
   // LastBlockHeight=0 at genesis (ie. block(H=0) does not exist)
   int64                    last_block_height = 3;
   tendermint.types.BlockID last_block_id     = 4
       [(gogoproto.nullable) = false, (gogoproto.customname) = "LastBlockID"];
-  google.protobuf.Timestamp last_block_time = 5
+  tendermint.types.PartSetHeader last_part_set_header = 5;
+  google.protobuf.Timestamp last_block_time = 6
       [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
 
   // LastValidators is used to validate block.LastCommit.
@@ -57,19 +58,19 @@ message State {
   // Note that if s.LastBlockHeight causes a valset change,
   // we set s.LastHeightValidatorsChanged = s.LastBlockHeight + 1 + 1
   // Extra +1 due to nextValSet delay.
-  tendermint.types.ValidatorSet next_validators                = 6;
-  tendermint.types.ValidatorSet validators                     = 7;
-  tendermint.types.ValidatorSet last_validators                = 8;
-  int64                         last_height_validators_changed = 9;
+  tendermint.types.ValidatorSet next_validators                = 7;
+  tendermint.types.ValidatorSet validators                     = 8;
+  tendermint.types.ValidatorSet last_validators                = 9;
+  int64                         last_height_validators_changed = 10;
 
   // Consensus parameters used for validating blocks.
   // Changes returned by EndBlock and updated after Commit.
-  tendermint.types.ConsensusParams consensus_params                     = 10 [(gogoproto.nullable) = false];
-  int64                            last_height_consensus_params_changed = 11;
+  tendermint.types.ConsensusParams consensus_params                     = 11 [(gogoproto.nullable) = false];
+  int64                            last_height_consensus_params_changed = 12;
 
   // Merkle root of the results from executing prev block
-  bytes last_results_hash = 12;
+  bytes last_results_hash = 13;
 
   // the latest AppHash we've received from calling abci.Commit()
-  bytes app_hash = 13;
+  bytes app_hash = 14;
 }
