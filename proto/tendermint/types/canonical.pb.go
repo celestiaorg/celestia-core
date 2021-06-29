@@ -571,12 +571,12 @@ func (m *CanonicalVote) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x32
 	}
-	n6, err6 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
-	if err6 != nil {
-		return 0, err6
+	n7, err7 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err7 != nil {
+		return 0, err7
 	}
-	i -= n6
-	i = encodeVarintCanonical(dAtA, i, uint64(n6))
+	i -= n7
+	i = encodeVarintCanonical(dAtA, i, uint64(n7))
 	i--
 	dAtA[i] = 0x2a
 	if m.BlockID != nil {

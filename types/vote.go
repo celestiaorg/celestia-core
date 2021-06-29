@@ -175,6 +175,10 @@ func (vote *Vote) ValidateBasic() error {
 	if err := vote.BlockID.ValidateBasic(); err != nil {
 		return fmt.Errorf("wrong BlockID: %v", err)
 	}
+	// todo(evan): add back in
+	// if err := vote.PartSetHeader.ValidateBasic(); err != nil {
+	// 	return fmt.Errorf("wrong PartSetHeader: %v", err)
+	// }
 
 	if err := vote.PartSetHeader.ValidateBasic(); err != nil {
 		return fmt.Errorf("wrong PartSetHeader: %v", err)
