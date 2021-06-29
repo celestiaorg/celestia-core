@@ -474,3 +474,12 @@ func makePartSetHeader(partSetSize uint32, partSetHash []byte) types.PartSetHead
 		Hash:  psH,
 	}
 }
+
+func makePartSetHeader(partSetSize uint32, partSetHash []byte) types.PartSetHeader {
+	var psH = make([]byte, tmhash.Size)
+	copy(psH, partSetHash)
+	return types.PartSetHeader{
+		Total: partSetSize,
+		Hash:  psH,
+	}
+}
