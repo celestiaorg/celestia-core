@@ -97,7 +97,7 @@ func TestBeginBlockValidators(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		lastCommit := types.NewCommit(1, 0, prevBlockID, tc.lastCommitSigs)
+		lastCommit := types.NewCommit(1, 0, prevBlockID, tc.lastCommitSigs, prevParts)
 
 		// block for height 2
 		block, _ := state.MakeBlock(2, makeTxs(2), nil, nil,
@@ -156,16 +156,18 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	// we don't need to worry about validating the evidence as long as they pass validate basic
 	dve := types.NewMockDuplicateVoteEvidenceWithValidator(3, defaultEvidenceTime, privVal, state.ChainID)
 	dve.ValidatorPower = 1000
+	bID := makeBlockID(header.Hash(), 100, []byte("partshash"))
+	psH := makePartSetHeader(100, []byte("partshash"))
 	lcae := &types.LightClientAttackEvidence{
 		ConflictingBlock: &types.LightBlock{
 			SignedHeader: &types.SignedHeader{
 				Header: header,
-				Commit: types.NewCommit(10, 0, makeBlockID(header.Hash(), 100, []byte("partshash")), []types.CommitSig{{
+				Commit: types.NewCommit(10, 0, bID, []types.CommitSig{{
 					BlockIDFlag:      types.BlockIDFlagNil,
 					ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 					Timestamp:        defaultEvidenceTime,
 					Signature:        crypto.CRandBytes(types.MaxSignatureSize),
-				}}),
+				}}, psH),
 			},
 			ValidatorSet: state.Validators,
 		},
@@ -463,5 +465,14 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.Bloc
 			Total: partSetSize,
 			Hash:  psH,
 		},
+	}
+}
+
+func makePartSetHeader(partSetSize uint32, partSetHash []byte) types.PartSetHeader {
+	var psH = make([]byte, tmhash.Size)
+	copy(psH, partSetHash)
+	return types.PartSetHeader{
+		Total: partSetSize,
+		Hash:  psH,
 	}
 }

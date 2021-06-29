@@ -424,7 +424,7 @@ func makeCommit(height int64, valAddr []byte) *types.Commit {
 		Timestamp:        defaultEvidenceTime,
 		Signature:        []byte("Signature"),
 	}}
-	return types.NewCommit(height, 0, types.BlockID{}, commitSigs)
+	return types.NewCommit(height, 0, types.BlockID{}, commitSigs, types.PartSetHeader{})
 }
 
 func defaultTestPool(height int64) (*evidence.Pool, types.MockPV) {

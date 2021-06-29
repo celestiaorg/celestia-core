@@ -36,7 +36,7 @@ func TestValidateBlockHeader(t *testing.T) {
 		memmock.Mempool{},
 		sm.EmptyEvidencePool{},
 	)
-	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil)
+	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil, types.PartSetHeader{})
 
 	// some bad values
 	wrongHash := tmhash.Sum([]byte("this hash is wrong"))
@@ -72,7 +72,7 @@ func TestValidateBlockHeader(t *testing.T) {
 		{"Proposer invalid", func(block *types.Block) { block.ProposerAddress = []byte("wrong size") }},
 
 		{"first LastCommit contains signatures", func(block *types.Block) {
-			block.LastCommit = types.NewCommit(0, 0, types.BlockID{}, []types.CommitSig{types.NewCommitSigAbsent()})
+			block.LastCommit = types.NewCommit(0, 0, types.BlockID{}, []types.CommitSig{types.NewCommitSigAbsent()}, types.PartSetHeader{})
 			block.LastCommitHash = block.LastCommit.Hash()
 		}},
 	}
@@ -127,8 +127,8 @@ func TestValidateBlockCommit(t *testing.T) {
 		memmock.Mempool{},
 		sm.EmptyEvidencePool{},
 	)
-	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil)
-	wrongSigsCommit := types.NewCommit(1, 0, types.BlockID{}, nil)
+	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil, types.PartSetHeader{})
+	wrongSigsCommit := types.NewCommit(1, 0, types.BlockID{}, nil, types.PartSetHeader{})
 	badPrivVal := types.NewMockPV()
 
 	for height := int64(1); height < validationTestsStopHeight; height++ {
@@ -152,6 +152,7 @@ func TestValidateBlockCommit(t *testing.T) {
 				wrongHeightVote.Round,
 				state.LastBlockID,
 				[]types.CommitSig{wrongHeightVote.CommitSig()},
+				state.LastBlockID.PartSetHeader,
 			)
 			block, _ := state.MakeBlock(height, makeTxs(height), nil, nil, types.Messages{}, wrongHeightCommit, proposerAddr)
 			err = blockExec.ValidateBlock(state, block)
@@ -225,7 +226,7 @@ func TestValidateBlockCommit(t *testing.T) {
 		goodVote.Signature, badVote.Signature = g.Signature, b.Signature
 
 		wrongSigsCommit = types.NewCommit(goodVote.Height, goodVote.Round,
-			blockID, []types.CommitSig{goodVote.CommitSig(), badVote.CommitSig()})
+			blockID, []types.CommitSig{goodVote.CommitSig(), badVote.CommitSig()}, blockID.PartSetHeader)
 	}
 }
 
@@ -252,7 +253,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 		memmock.Mempool{},
 		evpool,
 	)
-	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil)
+	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil, types.PartSetHeader{})
 
 	for height := int64(1); height < validationTestsStopHeight; height++ {
 		proposerAddr := state.Validators.GetProposer().Address

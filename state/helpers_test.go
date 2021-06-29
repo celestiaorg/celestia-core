@@ -90,7 +90,7 @@ func makeValidCommit(
 		}
 		sigs = append(sigs, vote.CommitSig())
 	}
-	return types.NewCommit(height, 0, blockID, sigs), nil
+	return types.NewCommit(height, 0, blockID, sigs, blockID.PartSetHeader), nil
 }
 
 // make some bogus txs

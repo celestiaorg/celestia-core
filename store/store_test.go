@@ -46,8 +46,10 @@ func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 	hh := sha256.Sum256([]byte("Headerhash"))
 	copy(hash, hh[:])
 
+	psh := types.PartSetHeader{Hash: []byte(""), Total: 2}
+
 	return types.NewCommit(height, 0,
-		types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: []byte(""), Total: 2}}, commitSigs)
+		types.BlockID{Hash: hash, PartSetHeader: psh}, commitSigs, psh)
 }
 
 func makeTxs(height int64) (txs []types.Tx) {
