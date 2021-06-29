@@ -165,6 +165,7 @@ message Vote {
   bytes validator_address = 6;
   int32 validator_index   = 7;
   bytes signature         = 8;
+  PartSetHeader part_set_header = 9;
 }
 
 // Commit contains the evidence that a block was committed by a set of validators.
