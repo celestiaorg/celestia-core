@@ -23,27 +23,29 @@ var (
 // a so-called Proof-of-Lock (POL) round, as noted in the POLRound.
 // If POLRound >= 0, then BlockID corresponds to the block that is locked in POLRound.
 type Proposal struct {
-	Type      tmproto.SignedMsgType
-	Height    int64                   `json:"height"`
-	Round     int32                   `json:"round"`     // there can not be greater than 2_147_483_647 rounds
-	POLRound  int32                   `json:"pol_round"` // -1 if null.
-	BlockID   BlockID                 `json:"block_id"`
-	Timestamp time.Time               `json:"timestamp"`
-	Signature []byte                  `json:"signature"`
-	DAHeader  *DataAvailabilityHeader `json:"da_header"`
+	Type          tmproto.SignedMsgType
+	Height        int64                   `json:"height"`
+	Round         int32                   `json:"round"`     // there can not be greater than 2_147_483_647 rounds
+	POLRound      int32                   `json:"pol_round"` // -1 if null.
+	BlockID       BlockID                 `json:"block_id"`
+	Timestamp     time.Time               `json:"timestamp"`
+	Signature     []byte                  `json:"signature"`
+	DAHeader      *DataAvailabilityHeader `json:"da_header"`
+	PartSetHeader PartSetHeader           `json:"part_set_header"`
 }
 
 // NewProposal returns a new Proposal.
 // If there is no POLRound, polRound should be -1.
-func NewProposal(height int64, round int32, polRound int32, blockID BlockID, daH *DataAvailabilityHeader) *Proposal {
+func NewProposal(height int64, round int32, polRound int32, blockID BlockID, daH *DataAvailabilityHeader, psh PartSetHeader) *Proposal {
 	return &Proposal{
-		Type:      tmproto.ProposalType,
-		Height:    height,
-		Round:     round,
-		BlockID:   blockID,
-		POLRound:  polRound,
-		Timestamp: tmtime.Now(),
-		DAHeader:  daH,
+		Type:          tmproto.ProposalType,
+		Height:        height,
+		Round:         round,
+		BlockID:       blockID,
+		POLRound:      polRound,
+		Timestamp:     tmtime.Now(),
+		DAHeader:      daH,
+		PartSetHeader: psh,
 	}
 }
 
@@ -67,6 +69,9 @@ func (p *Proposal) ValidateBasic() error {
 	// ValidateBasic above would pass even if the BlockID was empty:
 	if !p.BlockID.IsComplete() {
 		return fmt.Errorf("expected a complete, non-empty BlockID, got: %v", p.BlockID)
+	}
+	if err := p.PartSetHeader.ValidateBasic(); err != nil {
+		return fmt.Errorf("wrong PartSetHeader: %w", err)
 	}
 
 	// NOTE: Timestamp validation is subtle and handled elsewhere.
@@ -92,10 +97,11 @@ func (p *Proposal) ValidateBasic() error {
 // 7. timestamp
 // See BlockID#String.
 func (p *Proposal) String() string {
-	return fmt.Sprintf("Proposal{%v/%v (%v, %v, %v) %X @ %s}",
+	return fmt.Sprintf("Proposal{%v/%v (%v, %v %v, %v) %X @ %s}",
 		p.Height,
 		p.Round,
 		p.BlockID,
+		p.PartSetHeader,
 		p.DAHeader,
 		p.POLRound,
 		tmbytes.Fingerprint(p.Signature),
@@ -131,6 +137,8 @@ func (p *Proposal) ToProto() (*tmproto.Proposal, error) {
 		return nil, err
 	}
 
+	ppsh := p.PartSetHeader.ToProto()
+
 	pb := new(tmproto.Proposal)
 	pb.BlockID = p.BlockID.ToProto()
 	pb.Type = p.Type
@@ -140,6 +148,7 @@ func (p *Proposal) ToProto() (*tmproto.Proposal, error) {
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
 	pb.DAHeader = pdah
+	pb.PartSetHeader = &ppsh
 	return pb, nil
 }
 
@@ -162,6 +171,11 @@ func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 		return nil, err
 	}
 
+	psh, err := PartSetHeaderFromProto(pp.PartSetHeader)
+	if err != nil {
+		return nil, err
+	}
+
 	p.BlockID = *blockID
 	p.Type = pp.Type
 	p.Height = pp.Height
@@ -170,6 +184,7 @@ func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 	p.Timestamp = pp.Timestamp
 	p.Signature = pp.Signature
 	p.DAHeader = dah
+	p.PartSetHeader = *psh
 
 	return p, p.ValidateBasic()
 }

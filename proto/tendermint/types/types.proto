@@ -195,6 +195,7 @@ message Proposal {
       [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   bytes signature = 7;
   DataAvailabilityHeader    da_header = 8 [(gogoproto.customname) = "DAHeader"];
+  PartSetHeader part_set_header = 9;
 }
 
 message SignedHeader {

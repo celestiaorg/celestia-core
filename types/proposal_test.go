@@ -73,6 +73,7 @@ func TestProposalVerifySignature(t *testing.T) {
 		4, 2, 2,
 		BlockID{tmrand.Bytes(tmhash.Size), PartSetHeader{777, tmrand.Bytes(tmhash.Size)}},
 		makeDAHeaderRandom(),
+		PartSetHeader{777, tmrand.Bytes(tmhash.Size)},
 	)
 	p, err := prop.ToProto()
 	require.NoError(t, err)
@@ -158,13 +159,13 @@ func TestProposalValidateBasic(t *testing.T) {
 			p.Signature = make([]byte, MaxSignatureSize+1)
 		}, true},
 	}
-	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
+	blockID, psh := makeBlockIDandPartSetHeader(tmhash.Sum([]byte("blockhash")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
 	dah := makeDAHeaderRandom()
 
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
-			prop := NewProposal(4, 2, 2, blockID, dah)
+			prop := NewProposal(4, 2, 2, blockID, dah, psh)
 			p, err := prop.ToProto()
 			require.NoError(t, err)
 			err = privVal.SignProposal("test_chain_id", p)
@@ -177,15 +178,17 @@ func TestProposalValidateBasic(t *testing.T) {
 }
 
 func TestProposalProtoBuf(t *testing.T) {
+	bid := makeBlockID([]byte("hash"), 2, []byte("part_set_hash"))
 	proposal := NewProposal(
 		1,
 		2,
 		3,
-		makeBlockID([]byte("hash"), 2, []byte("part_set_hash")),
+		bid,
 		makeDAHeaderRandom(),
+		bid.PartSetHeader,
 	)
 	proposal.Signature = []byte("sig")
-	proposal2 := NewProposal(1, 2, 3, BlockID{}, &DataAvailabilityHeader{})
+	proposal2 := NewProposal(1, 2, 3, BlockID{}, &DataAvailabilityHeader{}, PartSetHeader{})
 
 	testCases := []struct {
 		msg     string
