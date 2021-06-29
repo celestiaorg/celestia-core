@@ -1268,7 +1268,7 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 		wantLen = consts.MinSharecount
 	}
 
-	tailShares := GenerateTailPaddingShares(wantLen-curLen, consts.ShareSize)
+	tailShares := TailPaddingShares(wantLen - curLen)
 
 	return append(append(append(append(
 		txShares,
