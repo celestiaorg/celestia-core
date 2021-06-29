@@ -487,12 +487,12 @@ func (m *CanonicalProposal) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x3a
 	}
-	n3, err3 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
-	if err3 != nil {
-		return 0, err3
+	n4, err4 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err4 != nil {
+		return 0, err4
 	}
-	i -= n3
-	i = encodeVarintCanonical(dAtA, i, uint64(n3))
+	i -= n4
+	i = encodeVarintCanonical(dAtA, i, uint64(n4))
 	i--
 	dAtA[i] = 0x32
 	if m.BlockID != nil {
