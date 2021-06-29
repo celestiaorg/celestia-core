@@ -214,6 +214,7 @@ message BlockMeta {
   Header  header     = 3 [(gogoproto.nullable) = false];
   int64   num_txs    = 4;
   DataAvailabilityHeader da_header = 5;
+  PartSetHeader part_set_header = 6;
 }
 
 // TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
