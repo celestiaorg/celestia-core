@@ -49,6 +49,7 @@ func signAddVote(privVal PrivValidator, vote *Vote, voteSet *VoteSet) (signed bo
 func MakeVote(
 	height int64,
 	blockID BlockID,
+	partSetHeader PartSetHeader,
 	valSet *ValidatorSet,
 	privVal PrivValidator,
 	chainID string,
@@ -68,6 +69,7 @@ func MakeVote(
 		Timestamp:        now,
 		Type:             tmproto.PrecommitType,
 		BlockID:          blockID,
+		PartSetHeader:    partSetHeader,
 	}
 	v := vote.ToProto()
 
