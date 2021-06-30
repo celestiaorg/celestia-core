@@ -594,7 +594,12 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 
 	if index, ok := prs.ProposalBlockRows.Not().PickRandom(); ok {
 		// TODO(Wondertan): Surely loading block from store every time can be optimized
-		b := conR.conS.blockStore.LoadBlock(prs.Height)
+		b, err := conR.conS.blockStore.LoadBlock(context.TODO(), prs.Height)
+		if err != nil {
+			conR.Logger.Error("can't load block", "err", err)
+			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
+			return
+		}
 		rs, err := b.RowSet(context.TODO(), mdutils.Mock())
 		if err != nil {
 			conR.Logger.Error("can't make RowSet", "err", err)
