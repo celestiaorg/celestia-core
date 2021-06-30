@@ -313,7 +313,7 @@ func TestVoteSet_Conflicts(t *testing.T) {
 	}
 
 	// start tracking blockHash1
-	err = voteSet.SetPeerMaj23("peerA", BlockID{blockHash1})
+	err = voteSet.SetPeerMaj23("peerA", BlockID{blockHash1}, PartSetHeader{})
 	require.NoError(t, err)
 
 	// val0 votes again for blockHash1.
@@ -325,7 +325,7 @@ func TestVoteSet_Conflicts(t *testing.T) {
 	}
 
 	// attempt tracking blockHash2, should fail because already set for peerA.
-	err = voteSet.SetPeerMaj23("peerA", BlockID{blockHash2})
+	err = voteSet.SetPeerMaj23("peerA", BlockID{blockHash2}, PartSetHeader{})
 	require.Error(t, err)
 
 	// val0 votes again for blockHash1.
@@ -377,7 +377,7 @@ func TestVoteSet_Conflicts(t *testing.T) {
 	}
 
 	// now attempt tracking blockHash1
-	err = voteSet.SetPeerMaj23("peerB", BlockID{blockHash1})
+	err = voteSet.SetPeerMaj23("peerB", BlockID{blockHash1}, PartSetHeader{})
 	require.NoError(t, err)
 
 	// val2 votes for blockHash1.

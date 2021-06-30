@@ -186,11 +186,12 @@ func VerifyDuplicateVote(e *types.DuplicateVoteEvidence, chainID string, valSet 
 		)
 	}
 
-	// BlockIDs must be different
-	if e.VoteA.BlockID.Equals(e.VoteB.BlockID) {
+	// BlockIDs or PartSetHeaders must be different
+	if e.VoteA.BlockID.Equals(e.VoteB.BlockID) && e.VoteA.PartSetHeader.Equals(e.VoteB.PartSetHeader) {
 		return fmt.Errorf(
-			"block IDs are the same (%v) - not a real duplicate vote",
+			"block IDs and PartSetHeaders are the same (%v, %v) - not a real duplicate vote",
 			e.VoteA.BlockID,
+			e.VoteA.PartSetHeader,
 		)
 	}
 

@@ -505,10 +505,10 @@ func TestBlockMaxDataBytes(t *testing.T) {
 		0: {-10, 1, 0, true, 0},
 		1: {10, 1, 0, true, 0},
 		2: {851, 1, 0, true, 0},
-		3: {852, 1, 0, false, 0},
-		4: {853, 1, 0, false, 1},
-		5: {964, 2, 0, false, 1},
-		6: {1063, 2, 100, false, 0},
+		3: {853, 1, 0, false, 0},
+		4: {854, 1, 0, false, 1},
+		5: {965, 2, 0, false, 1},
+		6: {1064, 2, 100, false, 0},
 	}
 
 	for i, tc := range testCases {
@@ -536,8 +536,8 @@ func TestBlockMaxDataBytesNoEvidence(t *testing.T) {
 		0: {-10, 1, true, 0},
 		1: {10, 1, true, 0},
 		2: {851, 1, true, 0},
-		3: {852, 1, false, 0},
-		4: {853, 1, false, 1},
+		3: {853, 1, false, 0},
+		4: {854, 1, false, 1},
 	}
 
 	for i, tc := range testCases {
@@ -585,8 +585,7 @@ func TestCommitToVoteSet(t *testing.T) {
 
 func TestCommitToVoteSetWithVotesForNilBlock(t *testing.T) {
 	blockID := makeBlockID([]byte("blockhash"))
-	// psh := makePartSetHeader(1000, []byte("partshash"))
-	// todo(evan): double check this and delete if not needed
+	psh := makePartSetHeader(1000, []byte("partshash"))
 
 	const (
 		height = int64(3)
@@ -594,14 +593,15 @@ func TestCommitToVoteSetWithVotesForNilBlock(t *testing.T) {
 	)
 
 	type commitVoteTest struct {
-		blockIDs      []BlockID
-		numVotes      []int // must sum to numValidators
-		numValidators int
-		valid         bool
+		blockIDs       []BlockID
+		partSetHeaders []PartSetHeader
+		numVotes       []int // must sum to numValidators
+		numValidators  int
+		valid          bool
 	}
 
 	testCases := []commitVoteTest{
-		{[]BlockID{blockID, {}}, []int{67, 33}, 100, true},
+		{[]BlockID{blockID, {}}, []PartSetHeader{psh, {}}, []int{67, 33}, 100, true},
 	}
 
 	for _, tc := range testCases {
@@ -619,6 +619,7 @@ func TestCommitToVoteSetWithVotesForNilBlock(t *testing.T) {
 					Round:            round,
 					Type:             tmproto.PrecommitType,
 					BlockID:          tc.blockIDs[n],
+					PartSetHeader:    tc.partSetHeaders[n],
 					Timestamp:        tmtime.Now(),
 				}
 
@@ -633,7 +634,7 @@ func TestCommitToVoteSetWithVotesForNilBlock(t *testing.T) {
 		if tc.valid {
 			commit := voteSet.MakeCommit() // panics without > 2/3 valid votes
 			assert.NotNil(t, commit)
-			err := valSet.VerifyCommit(voteSet.ChainID(), blockID, height-1, commit)
+			err := valSet.VerifyCommit(voteSet.ChainID(), blockID, psh, height-1, commit)
 			assert.Nil(t, err)
 		} else {
 			assert.Panics(t, func() { voteSet.MakeCommit() })
@@ -657,7 +658,6 @@ func TestBlockIDValidateBasic(t *testing.T) {
 	}{
 		{"Valid BlockID", validBlockID.Hash, false},
 		{"Invalid BlockID", invalidBlockID.Hash, true},
-		{"Invalid BlockID", validBlockID.Hash, true},
 	}
 
 	for _, tc := range testCases {

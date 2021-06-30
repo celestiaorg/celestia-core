@@ -112,7 +112,8 @@ type EventDataCompleteProposal struct {
 	Round  int32  `json:"round"`
 	Step   string `json:"step"`
 
-	BlockID BlockID `json:"block_id"`
+	BlockID       BlockID `json:"block_id"`
+	PartSetHeader `json:"part_set_header"`
 }
 
 type EventDataVote struct {

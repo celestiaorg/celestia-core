@@ -158,7 +158,7 @@ func (voteSet *VoteSet) addVote(vote *Vote) (added bool, err error) {
 	}
 	valIndex := vote.ValidatorIndex
 	valAddr := vote.ValidatorAddress
-	blockKey := vote.BlockID.Key()
+	blockKey := vote.BlockID.Key(vote.PartSetHeader)
 
 	// Ensure that validator index was set
 	if valIndex < 0 {
@@ -218,7 +218,7 @@ func (voteSet *VoteSet) addVote(vote *Vote) (added bool, err error) {
 
 // Returns (vote, true) if vote exists for valIndex and blockKey.
 func (voteSet *VoteSet) getVote(valIndex int32, blockKey string) (vote *Vote, ok bool) {
-	if existing := voteSet.votes[valIndex]; existing != nil && existing.BlockID.Key() == blockKey {
+	if existing := voteSet.votes[valIndex]; existing != nil && existing.BlockID.Key(existing.PartSetHeader) == blockKey {
 		return existing, true
 	}
 	if existing := voteSet.votesByBlock[blockKey].getByIndex(valIndex); existing != nil {
@@ -244,7 +244,7 @@ func (voteSet *VoteSet) addVerifiedVote(
 			conflicting = existing
 		}
 		// Replace vote if blockKey matches voteSet.maj23.
-		if voteSet.maj23 != nil && voteSet.maj23.Key() == blockKey {
+		if voteSet.maj23 != nil && voteSet.maj23.Key(*voteSet.maj23PartSetHeader) == blockKey {
 			voteSet.votes[valIndex] = vote
 			voteSet.votesBitArray.SetIndex(int(valIndex), true)
 		}
@@ -309,14 +309,14 @@ func (voteSet *VoteSet) addVerifiedVote(
 // this can cause memory issues.
 // TODO: implement ability to remove peers too
 // NOTE: VoteSet must not be nil
-func (voteSet *VoteSet) SetPeerMaj23(peerID P2PID, blockID BlockID) error {
+func (voteSet *VoteSet) SetPeerMaj23(peerID P2PID, blockID BlockID, partSetHeader PartSetHeader) error {
 	if voteSet == nil {
 		panic("SetPeerMaj23() on nil VoteSet")
 	}
 	voteSet.mtx.Lock()
 	defer voteSet.mtx.Unlock()
 
-	blockKey := blockID.Key()
+	blockKey := blockID.Key(partSetHeader)
 
 	// Make sure peer hasn't already told us something.
 	if existing, ok := voteSet.peerMaj23s[peerID]; ok {
@@ -354,13 +354,13 @@ func (voteSet *VoteSet) BitArray() *bits.BitArray {
 	return voteSet.votesBitArray.Copy()
 }
 
-func (voteSet *VoteSet) BitArrayByBlockID(blockID BlockID) *bits.BitArray {
+func (voteSet *VoteSet) BitArrayByBlockID(blockID BlockID, partSetHeader PartSetHeader) *bits.BitArray {
 	if voteSet == nil {
 		return nil
 	}
 	voteSet.mtx.Lock()
 	defer voteSet.mtx.Unlock()
-	votesByBlock, ok := voteSet.votesByBlock[blockID.Key()]
+	votesByBlock, ok := voteSet.votesByBlock[blockID.Key(partSetHeader)]
 	if ok {
 		return votesByBlock.bitArray.Copy()
 	}

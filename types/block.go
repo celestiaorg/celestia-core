@@ -32,7 +32,7 @@ const (
 	// MaxHeaderBytes is a maximum header size.
 	// NOTE: Because app hash can be of arbitrary size, the header is therefore not
 	// capped in size and thus this number should be seen as a soft max
-	MaxHeaderBytes int64 = 636
+	MaxHeaderBytes int64 = 637
 
 	// MaxOverheadForBlock - maximum overhead to encode a block (up to
 	// MaxBlockSizeBytes in size) not including it's parts except Data.
@@ -1611,8 +1611,14 @@ func (blockID BlockID) Equals(other BlockID) bool {
 }
 
 // Key returns a machine-readable string representation of the BlockID
-func (blockID BlockID) Key() string {
-	return string(blockID.Hash)
+func (blockID BlockID) Key(partSetHeader PartSetHeader) string {
+	pbph := partSetHeader.ToProto()
+	bz, err := pbph.Marshal()
+	if err != nil {
+		panic(err)
+	}
+
+	return string(blockID.Hash) + string(bz)
 }
 
 // ValidateBasic performs basic validation.
