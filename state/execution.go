@@ -110,7 +110,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	height int64,
 	state State, commit *types.Commit,
 	proposerAddr []byte,
-) (*types.Block, *types.PartSet, *types.RowSet) {
+) (*types.Block, *types.RowSet) {
 
 	maxBytes := state.ConsensusParams.Block.MaxBytes
 	maxGas := state.ConsensusParams.Block.MaxGas
@@ -173,10 +173,10 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	rows, err := block.RowSet(context.TODO(), blockExec.adder)
 	if err != nil {
 		blockExec.logger.Error("Can't make RowSet", "err", err)
-		return nil, nil, nil
+		return nil, nil
 	}
 
-	return block, block.MakePartSet(types.BlockPartSizeBytes), rows
+	return block, rows
 }
 
 // ValidateBlock validates the given block against the given state.
