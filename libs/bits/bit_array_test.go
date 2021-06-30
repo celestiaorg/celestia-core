@@ -182,7 +182,6 @@ func TestBitArrayOnes(t *testing.T) {
 	assert.Equal(t, 3, ba.Ones())
 }
 
-
 func TestEmptyFull(t *testing.T) {
 	ns := []int{47, 123}
 	for _, n := range ns {
