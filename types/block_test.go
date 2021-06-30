@@ -366,7 +366,7 @@ func TestHeaderHash(t *testing.T) {
 			LastResultsHash:       tmhash.Sum([]byte("last_results_hash")),
 			EvidenceHash:          tmhash.Sum([]byte("evidence_hash")),
 			ProposerAddress:       crypto.AddressHash([]byte("proposer_address")),
-		}, hexBytesFromString("3BA96EAE652191EDBEA84E130C32E94AD86A901B856EC7201B776669F72DE39F")},
+		}, hexBytesFromString("CBE1A9A83217E1EEDE92B9F85B6519B6DA2B2AC8BF69421A1CB0227C5CD3B353")},
 		{"nil header yields nil", nil, nil},
 		{"nil ValidatorsHash yields nil", &Header{
 			Version:            tmversion.Consensus{Block: 1, App: 2},
@@ -417,6 +417,11 @@ func TestHeaderHash(t *testing.T) {
 					case BlockID:
 						pbbi := f.ToProto()
 						bz, err := pbbi.Marshal()
+						require.NoError(t, err)
+						byteSlices = append(byteSlices, bz)
+					case PartSetHeader:
+						pbpsh := f.ToProto()
+						bz, err := pbpsh.Marshal()
 						require.NoError(t, err)
 						byteSlices = append(byteSlices, bz)
 					default:
