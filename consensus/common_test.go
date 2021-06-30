@@ -27,6 +27,7 @@ import (
 	abci "github.com/lazyledger/lazyledger-core/abci/types"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
+	"github.com/lazyledger/lazyledger-core/crypto"
 	"github.com/lazyledger/lazyledger-core/ipfs"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	dbm "github.com/lazyledger/lazyledger-core/libs/db"
@@ -89,6 +90,11 @@ func newValidatorStub(privValidator types.PrivValidator, valIndex int32) *valida
 		PrivValidator: privValidator,
 		VotingPower:   testMinPower,
 	}
+}
+
+func (vs *validatorStub) Address() crypto.Address {
+	pk, _ := vs.GetPubKey()
+	return pk.Address()
 }
 
 func (vs *validatorStub) signVote(
@@ -194,9 +200,9 @@ func decideProposal(
 	vs *validatorStub,
 	height int64,
 	round int32,
-) (proposal *types.Proposal, block *types.Block) {
+) (proposal *types.Proposal, block *types.Block, rows *types.RowSet) {
 	cs1.mtx.Lock()
-	block, blockParts, _ := cs1.createProposalBlock()
+	block, blockParts, rows := cs1.createProposalBlock(vs.Address())
 	validRound := cs1.ValidRound
 	chainID := cs1.state.ChainID
 	cs1.mtx.Unlock()
@@ -599,6 +605,7 @@ func ensureNewUnlock(unlockCh <-chan tmpubsub.Message, height int64, round int32
 		"Timeout expired while waiting for NewUnlock event")
 }
 
+//nolint:unused
 func ensureProposal(proposalCh <-chan tmpubsub.Message, height int64, round int32, propID types.BlockID) {
 	select {
 	case <-time.After(ensureTimeout):
@@ -785,6 +792,7 @@ func randConsensusNetWithPeers(
 	}
 }
 
+//nolint:unused
 func getSwitchIndex(switches []*p2p.Switch, peer p2p.Peer) int {
 	for i, s := range switches {
 		if peer.NodeInfo().ID() == s.NodeInfo().ID() {
