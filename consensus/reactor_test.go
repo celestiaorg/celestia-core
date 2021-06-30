@@ -28,15 +28,18 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/bytes"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
 	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	mempl "github.com/lazyledger/lazyledger-core/mempool"
 	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	p2pmock "github.com/lazyledger/lazyledger-core/p2p/mock"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	statemocks "github.com/lazyledger/lazyledger-core/state/mocks"
 	"github.com/lazyledger/lazyledger-core/store"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
 //----------------------------------------------
@@ -781,32 +784,35 @@ func TestNewValidBlockMessageValidateBasic(t *testing.T) {
 		{func(msg *NewValidBlockMessage) { msg.Height = -1 }, "negative Height"},
 		{func(msg *NewValidBlockMessage) { msg.Round = -1 }, "negative Round"},
 		{
-			func(msg *NewValidBlockMessage) { msg.BlockPartSetHeader.Total = 2 },
-			"blockParts bit array size 1 not equal to BlockPartSetHeader.Total 2",
+			func(msg *NewValidBlockMessage) { msg.BlockDAHeader.RowsRoots = nil },
+			"block rows bit array size 1 not equal to BlockDAHeader.Rows 0",
 		},
 		{
 			func(msg *NewValidBlockMessage) {
-				msg.BlockPartSetHeader.Total = 0
-				msg.BlockParts = bits.NewBitArray(0)
+				msg.BlockDAHeader.RowsRoots = nil
+				msg.BlockRows = bits.NewBitArray(0)
 			},
-			"empty blockParts",
+			"empty BlockRows",
 		},
 		{
-			func(msg *NewValidBlockMessage) { msg.BlockParts = bits.NewBitArray(int(types.MaxBlockPartsCount) + 1) },
-			"blockParts bit array size 1602 not equal to BlockPartSetHeader.Total 1",
+			func(msg *NewValidBlockMessage) { msg.BlockRows = bits.NewBitArray(int(types.MaxBlockPartsCount) + 1) },
+			"block rows bit array size 1602 not equal to BlockDAHeader.Rows 1",
 		},
 	}
 
 	for i, tc := range testCases {
 		tc := tc
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
+			rows, _ := ipld.NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
+			clns, _ := ipld.NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
 			msg := &NewValidBlockMessage{
 				Height: 1,
 				Round:  0,
-				BlockPartSetHeader: types.PartSetHeader{
-					Total: 1,
+				BlockDAHeader: &ipld.DataAvailabilityHeader{
+					RowsRoots:   rows,
+					ColumnRoots: clns,
 				},
-				BlockParts: bits.NewBitArray(1),
+				BlockRows: bits.NewBitArray(1),
 			}
 
 			tc.malleateFn(msg)
@@ -850,37 +856,34 @@ func TestProposalPOLMessageValidateBasic(t *testing.T) {
 }
 
 func TestBlockPartMessageValidateBasic(t *testing.T) {
-	testPart := new(types.Part)
-	testPart.Proof.LeafHash = tmhash.Sum([]byte("leaf"))
+	testRow := &types.Row{
+		Data: tmrand.Bytes(consts.ShareSize),
+	}
+
 	testCases := []struct {
 		testName      string
 		messageHeight int64
 		messageRound  int32
-		messagePart   *types.Part
+		messagePart   *types.Row
 		expectErr     bool
 	}{
-		{"Valid Message", 0, 0, testPart, false},
-		{"Invalid Message", -1, 0, testPart, true},
-		{"Invalid Message", 0, -1, testPart, true},
+		{"Valid Message", 0, 0, testRow, false},
+		{"Invalid Message", -1, 0, testRow, true},
+		{"Invalid Message", 0, -1, testRow, true},
 	}
 
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
-			message := BlockPartMessage{
+			message := BlockRowMessage{
 				Height: tc.messageHeight,
 				Round:  tc.messageRound,
-				Part:   tc.messagePart,
+				Row:    tc.messagePart,
 			}
 
 			assert.Equal(t, tc.expectErr, message.ValidateBasic() != nil, "Validate Basic had an unexpected result")
 		})
 	}
-
-	message := BlockPartMessage{Height: 0, Round: 0, Part: new(types.Part)}
-	message.Part.Index = 1
-
-	assert.Equal(t, true, message.ValidateBasic() != nil, "Validate Basic had an unexpected result")
 }
 
 func TestHasVoteMessageValidateBasic(t *testing.T) {
