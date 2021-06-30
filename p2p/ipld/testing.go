@@ -3,7 +3,6 @@ package ipld
 import (
 	"bytes"
 	"crypto/sha256"
-	"math"
 	mrand "math/rand"
 	"sort"
 	"testing"
@@ -48,11 +47,11 @@ func RandNamespacedCID(t *testing.T) cid.Cid {
 func RandEDS(t *testing.T, size int) *rsmt2d.ExtendedDataSquare {
 	shares := RandNamespacedShares(t, size*size)
 	// create the nmt wrapper to generate row and col commitments
-	squareSize := uint32(math.Sqrt(float64(len(shares))))
-	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(squareSize))
+	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(size))
 	// recompute the eds
 	eds, err := rsmt2d.ComputeExtendedDataSquare(shares.Raw(), rsmt2d.NewRSGF8Codec(), tree.Constructor)
 	require.NoError(t, err, "failure to recompute the extended data square")
+	eds.RowRoots()
 	return eds
 }
 
@@ -73,7 +72,7 @@ func RandNamespacedShares(t *testing.T, total int) NamespacedShares {
 	shares := make(NamespacedShares, total)
 	for i := 0; i < total; i++ {
 		shares[i].ID = data[i]
-		shares[i].Share = make([]byte, NamespaceSize+ShareSize)
+		shares[i].Share = make([]byte, ShareSize)
 		copy(shares[i].Share[:NamespaceSize], data[i])
 		_, err := mrand.Read(shares[i].Share[NamespaceSize:]) // nolint:gosec // G404: Use of weak random number generator
 		require.NoError(t, err)
