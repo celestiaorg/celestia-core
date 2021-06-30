@@ -5,14 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"runtime/debug"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	format "github.com/ipfs/go-ipld-format"
+	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/libp2p/go-libp2p-core/routing"
 
 	cfg "github.com/lazyledger/lazyledger-core/config"
@@ -488,13 +487,13 @@ func (cs *State) SetProposal(proposal *types.Proposal, peerID p2p.ID) error {
 	return nil
 }
 
-// AddProposalBlockPart inputs a part of the proposal block.
-func (cs *State) AddProposalBlockPart(height int64, round int32, part *types.Part, peerID p2p.ID) error {
+// AddProposalBlockRow inputs a part of the proposal block.
+func (cs *State) AddProposalBlockRow(height int64, round int32, part *types.Row, peerID p2p.ID) error {
 
 	if peerID == "" {
-		cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+		cs.internalMsgQueue <- msgInfo{&BlockRowMessage{height, round, part}, ""}
 	} else {
-		cs.peerMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, peerID}
+		cs.peerMsgQueue <- msgInfo{&BlockRowMessage{height, round, part}, peerID}
 	}
 
 	// TODO: wait for event?!
@@ -505,15 +504,15 @@ func (cs *State) AddProposalBlockPart(height int64, round int32, part *types.Par
 func (cs *State) SetProposalAndBlock(
 	proposal *types.Proposal,
 	block *types.Block,
-	parts *types.PartSet,
+	parts *types.RowSet,
 	peerID p2p.ID,
 ) error {
 	if err := cs.SetProposal(proposal, peerID); err != nil {
 		return err
 	}
-	for i := 0; i < int(parts.Total()); i++ {
-		part := parts.GetPart(i)
-		if err := cs.AddProposalBlockPart(proposal.Height, proposal.Round, part, peerID); err != nil {
+	for i := 0; i < parts.Total(); i++ {
+		part := parts.GetRow(i)
+		if err := cs.AddProposalBlockRow(proposal.Height, proposal.Round, part, peerID); err != nil {
 			return err
 		}
 	}
@@ -797,9 +796,9 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// will not cause transition.
 		// once proposal is set, we can receive block parts
 		err = cs.setProposal(msg.Proposal)
-	case *BlockPartMessage:
+	case *BlockRowMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
-		added, err = cs.addProposalBlockPart(msg, peerID)
+		added, err = cs.addProposalBlockRow(msg, peerID)
 		if added {
 			cs.statsMsgQueue <- mi
 		}
@@ -1028,7 +1027,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 		cs.newStep()
 
 		// If we have the whole proposal + POL, then goto Prevote now.
-		// else, we'll enterPrevote when the rest of the proposal is received (in AddProposalBlockPart),
+		// else, we'll enterPrevote when the rest of the proposal is received (in AddProposalBlockRow),
 		// or else after timeoutPropose
 		if cs.isProposalComplete() {
 			cs.enterPrevote(height, cs.Round)
@@ -1090,7 +1089,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		block, blockParts, blockRows = cs.ValidBlock, cs.ValidBlockParts, cs.ValidBlockRows
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
-		block, blockParts, blockRows = cs.createProposalBlock()
+		block, blockParts, blockRows = cs.createProposalBlock(cs.privValidatorPubKey.Address())
 		if block == nil {
 			return
 		}
@@ -1104,7 +1103,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 	// Make proposal
 	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID, &block.DataAvailabilityHeader)
+	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID, blockRows.DAHeader)
 	p, err := proposal.ToProto()
 	if err != nil {
 		cs.Logger.Error(fmt.Sprintf("can't serialize proposal: %s", err.Error()))
@@ -1116,9 +1115,12 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
-		for i := 0; i < int(blockParts.Total()); i++ {
-			part := blockParts.GetPart(i)
-			cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.Height, cs.Round, part}, ""})
+		for i := 0; i < blockRows.Total(); i++ {
+			cs.sendInternalMessage(msgInfo{&BlockRowMessage{
+				cs.Height,
+				cs.Round,
+				blockRows.GetRow(i),
+			}, ""})
 		}
 		cs.Logger.Info("Signed proposal", "height", height, "round", round, "proposal", proposal)
 		cs.Logger.Debug(fmt.Sprintf("Signed proposal block: %v", block))
@@ -1183,7 +1185,11 @@ func (cs *State) isProposalComplete() bool {
 //
 // NOTE: keep it side-effect free for clarity.
 // CONTRACT: cs.privValidator is not nil.
-func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.PartSet, blockRows *types.RowSet) {
+func (cs *State) createProposalBlock(proposer crypto.Address) (
+	block *types.Block,
+	blockParts *types.PartSet,
+	blockRows *types.RowSet,
+) {
 	if cs.privValidator == nil {
 		panic("entered createProposalBlock with privValidator being nil")
 	}
@@ -1208,9 +1214,9 @@ func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.Pa
 		cs.Logger.Error(fmt.Sprintf("enterPropose: %v", errPubKeyIsNotSet))
 		return
 	}
-	proposerAddr := cs.privValidatorPubKey.Address()
 
-	return cs.blockExec.CreateProposalBlock(cs.Height, cs.state, commit, proposerAddr)
+	b, rs := cs.blockExec.CreateProposalBlock(cs.Height, cs.state, commit, proposer)
+	return b, b.MakePartSet(types.BlockPartSizeBytes), rs
 }
 
 // Enter: `timeoutPropose` after entering Propose.
@@ -1367,7 +1373,6 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 			logger.Info("enterPrecommit: +2/3 prevoted for nil. Unlocking")
 			cs.LockedRound = -1
 			cs.LockedBlock = nil
-			cs.LockedBlockParts = nil
 			cs.LockedBlockRows = nil
 			if err := cs.eventBus.PublishEventUnlock(cs.RoundStateEvent()); err != nil {
 				cs.Logger.Error("Error publishing event unlock", "err", err)
@@ -1400,6 +1405,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		cs.LockedRound = round
 		cs.LockedBlock = cs.ProposalBlock
 		cs.LockedBlockParts = cs.ProposalBlockParts
+		cs.LockedBlockRows = cs.ProposalBlockRows
 		if err := cs.eventBus.PublishEventLock(cs.RoundStateEvent()); err != nil {
 			cs.Logger.Error("Error publishing event lock", "err", err)
 		}
@@ -1413,11 +1419,10 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	logger.Info("enterPrecommit: +2/3 prevotes for a block we don't have. Voting nil", "blockID", blockID)
 	cs.LockedRound = -1
 	cs.LockedBlock = nil
-	cs.LockedBlockParts = nil
-	if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
+	// TODO(Wondertan): Add ProposalBlockRows initialization after adding DAHeader to Vote
+	if !cs.LockedBlockParts.HasHeader(blockID.PartSetHeader) {
 		cs.ProposalBlock = nil
 		cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
-		cs.ProposalBlockRows = nil
 	}
 	if err := cs.eventBus.PublishEventUnlock(cs.RoundStateEvent()); err != nil {
 		cs.Logger.Error("Error publishing event unlock", "err", err)
@@ -1819,6 +1824,15 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	if cs.ProposalBlockParts == nil {
 		cs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader)
 	}
+	if cs.ProposalBlockRows == nil {
+		cs.ProposalBlockRows = types.NewRowSetFromHeader(proposal.DAHeader)
+	}
+	if cs.ProposalBlockRows.TotalSize() > int(cs.state.ConsensusParams.Block.MaxBytes) {
+		return fmt.Errorf("propasal for block exceeding maximum block size (%d > %d)",
+			cs.ProposalBlockRows.TotalSize(), cs.state.ConsensusParams.Block.MaxBytes,
+		)
+	}
+
 	cs.Logger.Info("Received proposal", "proposal", proposal)
 	return nil
 }
@@ -1826,8 +1840,8 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 // NOTE: block is not necessarily valid.
 // Asynchronously triggers either enterPrevote (before we timeout of propose) or tryFinalizeCommit,
 // once we have the full block.
-func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (added bool, err error) {
-	height, round, part := msg.Height, msg.Round, msg.Part
+func (cs *State) addProposalBlockRow(msg *BlockRowMessage, peerID p2p.ID) (added bool, err error) {
+	height, round, part := msg.Height, msg.Round, msg.Row
 
 	// Blocks might be reused, so round mismatch is OK
 	if cs.Height != height {
@@ -1836,45 +1850,65 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 	}
 
 	// We're not expecting a block part.
-	if cs.ProposalBlockParts == nil {
+	if cs.ProposalBlockRows == nil {
 		// NOTE: this can happen when we've gone to a higher round and
 		// then receive parts from the previous round - not necessarily a bad peer.
 		cs.Logger.Info("Received a block part when we're not expecting any",
-			"height", height, "round", round, "index", part.Index, "peer", peerID)
+			"height", height, "round", round, "index", "peer", peerID)
 		return false, nil
 	}
+	if cs.ProposalBlockRows.TotalSize() > int(cs.state.ConsensusParams.Block.MaxBytes) {
+		return false, fmt.Errorf("got row of a proposal block exceeding maximum block size (%d > %d)",
+			cs.ProposalBlockRows.TotalSize(), cs.state.ConsensusParams.Block.MaxBytes,
+		)
+	}
 
-	added, err = cs.ProposalBlockParts.AddPart(part)
+	added, err = cs.ProposalBlockRows.AddRow(part)
 	if err != nil {
 		return added, err
 	}
-	if cs.ProposalBlockParts.ByteSize() > cs.state.ConsensusParams.Block.MaxBytes {
-		return added, fmt.Errorf("total size of proposal block parts exceeds maximum block bytes (%d > %d)",
-			cs.ProposalBlockParts.ByteSize(), cs.state.ConsensusParams.Block.MaxBytes,
+	if added && cs.ProposalBlockRows.IsComplete() {
+		square, err := cs.ProposalBlockRows.Square()
+		if err != nil {
+			return added, err
+		}
+
+		data, err := types.DataFromSquare(square)
+		if err != nil {
+			return added, err
+		}
+
+		var commit *types.Commit
+		switch {
+		case cs.Height == cs.state.InitialHeight:
+			// We're creating a proposal for the first block.
+			// The commit is empty, but not nil.
+			commit = types.NewCommit(0, 0, types.BlockID{}, nil)
+		case cs.LastCommit.HasTwoThirdsMajority():
+			// Make the commit from LastCommit
+			commit = cs.LastCommit.MakeCommit()
+		default: // This shouldn't happen.
+			return added, fmt.Errorf("no commit for the previous block")
+		}
+
+		cs.ProposalBlock = cs.state.MakeBlock(
+			cs.Proposal.Height,
+			data.Txs,
+			data.Evidence.Evidence,
+			data.IntermediateStateRoots.RawRootsList,
+			data.Messages,
+			commit,
+			cs.Validators.GetProposer().Address,
 		)
-	}
-	if added && cs.ProposalBlockParts.IsComplete() {
-		bz, err := ioutil.ReadAll(cs.ProposalBlockParts.GetReader())
+
+		// TODO(Wondertan): This is unnecessary in general, but for now it writes needed fields
+		//  and specifically NumOriginalDataShares, which likely should be par of the proposal
+		cs.ProposalBlockRows, err = cs.ProposalBlock.RowSet(context.TODO(), mdutils.Mock())
 		if err != nil {
 			return added, err
 		}
+		cs.ProposalBlockParts = cs.ProposalBlock.MakePartSet(types.BlockPartSizeBytes)
 
-		var pbb = new(tmproto.Block)
-		err = proto.Unmarshal(bz, pbb)
-		if err != nil {
-			return added, err
-		}
-
-		block, err := types.BlockFromProto(pbb)
-		if err != nil {
-			return added, err
-		}
-
-		cs.ProposalBlock = block
-		cs.ProposalBlockRows, err = block.RowSet(context.TODO(), cs.dag)
-		if err != nil {
-			return false, err
-		}
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("Received complete proposal block", "height", cs.ProposalBlock.Height, "hash", cs.ProposalBlock.Hash())
 		if err := cs.eventBus.PublishEventCompleteProposal(cs.CompleteProposalEvent()); err != nil {
@@ -2081,8 +2115,8 @@ func (cs *State) addVote(
 						"proposal", cs.ProposalBlock.Hash(), "blockID", blockID.Hash)
 					// We're getting the wrong block.
 					cs.ProposalBlock = nil
-					cs.ProposalBlockRows = nil
 				}
+				// TODO(Wondertan): Add ProposalBlockRows initialization after adding DAHeader to Vote
 				if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 					cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
 				}
