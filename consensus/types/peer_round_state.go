@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/lazyledger/lazyledger-core/libs/bits"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 )
 
 //-----------------------------------------------------------------------------
@@ -21,9 +21,9 @@ type PeerRoundState struct {
 	StartTime time.Time `json:"start_time"`
 
 	// True if peer has proposal for this round
-	Proposal                   bool                `json:"proposal"`
-	ProposalBlockPartSetHeader types.PartSetHeader `json:"proposal_block_part_set_header"`
-	ProposalBlockParts         *bits.BitArray      `json:"proposal_block_parts"`
+	Proposal              bool                         `json:"proposal"`
+	ProposalBlockDAHeader *ipld.DataAvailabilityHeader `json:"proposal_block_part_set_header"`
+	ProposalBlockRows     *bits.BitArray               `json:"proposal_block_parts"`
 	// Proposal's POL round. -1 if none.
 	ProposalPOLRound int32 `json:"proposal_pol_round"`
 
@@ -58,7 +58,7 @@ func (prs PeerRoundState) StringIndented(indent string) string {
 %s  Catchup    %v (round %v)
 %s}`,
 		indent, prs.Height, prs.Round, prs.Step, prs.StartTime,
-		indent, prs.ProposalBlockPartSetHeader, prs.ProposalBlockParts,
+		indent, prs.ProposalBlockDAHeader, prs.ProposalBlockRows,
 		indent, prs.ProposalPOL, prs.ProposalPOLRound,
 		indent, prs.Prevotes,
 		indent, prs.Precommits,

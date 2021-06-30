@@ -10,6 +10,7 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/bits"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmcons "github.com/lazyledger/lazyledger-core/proto/tendermint/consensus"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	"github.com/lazyledger/lazyledger-core/types"
@@ -36,16 +37,20 @@ func MsgToProto(msg Message) (*tmcons.Message, error) {
 			},
 		}
 	case *NewValidBlockMessage:
-		pbPartSetHeader := msg.BlockPartSetHeader.ToProto()
-		pbBits := msg.BlockParts.ToProto()
+		dah, err := msg.BlockDAHeader.ToProto()
+		if err != nil {
+			return nil, err
+		}
+
+		pbBits := msg.BlockRows.ToProto()
 		pb = tmcons.Message{
 			Sum: &tmcons.Message_NewValidBlock{
 				NewValidBlock: &tmcons.NewValidBlock{
-					Height:             msg.Height,
-					Round:              msg.Round,
-					BlockPartSetHeader: pbPartSetHeader,
-					BlockParts:         pbBits,
-					IsCommit:           msg.IsCommit,
+					Height:     msg.Height,
+					Round:      msg.Round,
+					DaHeader:   dah,
+					BlockParts: pbBits,
+					IsCommit:   msg.IsCommit,
 				},
 			},
 		}
@@ -73,17 +78,17 @@ func MsgToProto(msg Message) (*tmcons.Message, error) {
 				},
 			},
 		}
-	case *BlockPartMessage:
-		parts, err := msg.Part.ToProto()
+	case *BlockRowMessage:
+		row, err := msg.Row.ToProto()
 		if err != nil {
 			return nil, fmt.Errorf("msg to proto error: %w", err)
 		}
 		pb = tmcons.Message{
-			Sum: &tmcons.Message_BlockPart{
-				BlockPart: &tmcons.BlockPart{
+			Sum: &tmcons.Message_BlockRow{
+				BlockRow: &tmcons.BlockRow{
 					Height: msg.Height,
 					Round:  msg.Round,
-					Part:   *parts,
+					Row:    row,
 				},
 			},
 		}
@@ -169,7 +174,7 @@ func MsgFromProto(msg *tmcons.Message) (Message, error) {
 			LastCommitRound:       msg.NewRoundStep.LastCommitRound,
 		}
 	case *tmcons.Message_NewValidBlock:
-		pbPartSetHeader, err := types.PartSetHeaderFromProto(&msg.NewValidBlock.BlockPartSetHeader)
+		dah, err := ipld.DataAvailabilityHeaderFromProto(msg.NewValidBlock.DaHeader)
 		if err != nil {
 			return nil, fmt.Errorf("parts header to proto error: %w", err)
 		}
@@ -181,11 +186,11 @@ func MsgFromProto(msg *tmcons.Message) (Message, error) {
 		}
 
 		pb = &NewValidBlockMessage{
-			Height:             msg.NewValidBlock.Height,
-			Round:              msg.NewValidBlock.Round,
-			BlockPartSetHeader: *pbPartSetHeader,
-			BlockParts:         pbBits,
-			IsCommit:           msg.NewValidBlock.IsCommit,
+			Height:        msg.NewValidBlock.Height,
+			Round:         msg.NewValidBlock.Round,
+			BlockDAHeader: dah,
+			BlockRows:     pbBits,
+			IsCommit:      msg.NewValidBlock.IsCommit,
 		}
 	case *tmcons.Message_Proposal:
 		pbP, err := types.ProposalFromProto(&msg.Proposal.Proposal)
@@ -207,15 +212,15 @@ func MsgFromProto(msg *tmcons.Message) (Message, error) {
 			ProposalPOLRound: msg.ProposalPol.ProposalPolRound,
 			ProposalPOL:      pbBits,
 		}
-	case *tmcons.Message_BlockPart:
-		parts, err := types.PartFromProto(&msg.BlockPart.Part)
+	case *tmcons.Message_BlockRow:
+		row, err := types.RowFromProto(msg.BlockRow.Row)
 		if err != nil {
-			return nil, fmt.Errorf("blockpart msg to proto error: %w", err)
+			return nil, fmt.Errorf("block row msg to proto error: %w", err)
 		}
-		pb = &BlockPartMessage{
-			Height: msg.BlockPart.Height,
-			Round:  msg.BlockPart.Round,
-			Part:   parts,
+		pb = &BlockRowMessage{
+			Height: msg.BlockRow.Height,
+			Round:  msg.BlockRow.Round,
+			Row:    row,
 		}
 	case *tmcons.Message_Vote:
 		vote, err := types.VoteFromProto(msg.Vote.Vote)

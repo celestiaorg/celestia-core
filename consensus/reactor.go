@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	mdutils "github.com/ipfs/go-merkledag/test"
 
 	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
 	"github.com/lazyledger/lazyledger-core/libs/bits"
@@ -16,10 +18,12 @@ import (
 	"github.com/lazyledger/lazyledger-core/libs/log"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
 	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmcons "github.com/lazyledger/lazyledger-core/proto/tendermint/consensus"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	sm "github.com/lazyledger/lazyledger-core/state"
 	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/lazyledger/lazyledger-core/types/consts"
 	tmtime "github.com/lazyledger/lazyledger-core/types/time"
 )
 
@@ -313,8 +317,8 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 			conR.conS.peerMsgQueue <- msgInfo{msg, src.ID()}
 		case *ProposalPOLMessage:
 			ps.ApplyProposalPOLMessage(msg)
-		case *BlockPartMessage:
-			ps.SetHasProposalBlockPart(msg.Height, msg.Round, int(msg.Part.Index))
+		case *BlockRowMessage:
+			ps.SetHasProposalBlockRow(msg.Height, msg.Round, msg.Row.Index)
 			conR.Metrics.BlockParts.With("peer_id", string(src.ID())).Add(1)
 			conR.conS.peerMsgQueue <- msgInfo{msg, src.ID()}
 		default:
@@ -434,11 +438,11 @@ func (conR *Reactor) broadcastNewRoundStepMessage(rs *cstypes.RoundState) {
 
 func (conR *Reactor) broadcastNewValidBlockMessage(rs *cstypes.RoundState) {
 	csMsg := &NewValidBlockMessage{
-		Height:             rs.Height,
-		Round:              rs.Round,
-		BlockPartSetHeader: rs.ProposalBlockParts.Header(),
-		BlockParts:         rs.ProposalBlockParts.BitArray(),
-		IsCommit:           rs.Step == cstypes.RoundStepCommit,
+		Height:        rs.Height,
+		Round:         rs.Round,
+		BlockDAHeader: rs.ProposalBlockRows.DAHeader,
+		BlockRows:     rs.ProposalBlockRows.BitArray(),
+		IsCommit:      rs.Step == cstypes.RoundStepCommit,
 	}
 	conR.Switch.Broadcast(StateChannel, MustEncode(csMsg))
 }
@@ -503,17 +507,16 @@ OUTER_LOOP:
 		prs := ps.GetRoundState()
 
 		// Send proposal Block parts?
-		if rs.ProposalBlockParts.HasHeader(prs.ProposalBlockPartSetHeader) {
-			if index, ok := rs.ProposalBlockParts.BitArray().Sub(prs.ProposalBlockParts.Copy()).PickRandom(); ok {
-				part := rs.ProposalBlockParts.GetPart(index)
-				msg := &BlockPartMessage{
+		if rs.ProposalBlockRows.HasHeader(prs.ProposalBlockDAHeader) {
+			if index, ok := rs.ProposalBlockRows.BitArray().Sub(prs.ProposalBlockRows.Copy()).PickRandom(); ok {
+				msg := &BlockRowMessage{
 					Height: rs.Height, // This tells peer that this part applies to us.
 					Round:  rs.Round,  // This tells peer that this part applies to us.
-					Part:   part,
+					Row:    rs.ProposalBlockRows.GetRow(index),
 				}
-				logger.Debug("Sending block part", "height", prs.Height, "round", prs.Round)
+				logger.Debug("Sending block row", "height", prs.Height, "round", prs.Round)
 				if peer.Send(DataChannel, MustEncode(msg)) {
-					ps.SetHasProposalBlockPart(prs.Height, prs.Round, index)
+					ps.SetHasProposalBlockRow(prs.Height, prs.Round, index)
 				}
 				continue OUTER_LOOP
 			}
@@ -524,14 +527,14 @@ OUTER_LOOP:
 			heightLogger := logger.With("height", prs.Height)
 
 			// if we never received the commit message from the peer, the block parts wont be initialized
-			if prs.ProposalBlockParts == nil {
+			if prs.ProposalBlockRows == nil {
 				blockMeta := conR.conS.blockStore.LoadBlockMeta(prs.Height)
 				if blockMeta == nil {
 					heightLogger.Error("Failed to load block meta",
 						"blockstoreBase", conR.conS.blockStore.Base(), "blockstoreHeight", conR.conS.blockStore.Height())
 					time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 				} else {
-					ps.InitProposalBlockParts(blockMeta.BlockID.PartSetHeader)
+					ps.InitProposalBlockRows(&blockMeta.DAHeader)
 				}
 				// continue the loop since prs is a copy and not effected by this initialization
 				continue OUTER_LOOP
@@ -589,39 +592,26 @@ OUTER_LOOP:
 func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundState,
 	prs *cstypes.PeerRoundState, ps *PeerState, peer p2p.Peer) {
 
-	if index, ok := prs.ProposalBlockParts.Not().PickRandom(); ok {
-		// Ensure that the peer's PartSetHeader is correct
-		blockMeta := conR.conS.blockStore.LoadBlockMeta(prs.Height)
-		if blockMeta == nil {
-			logger.Error("Failed to load block meta", "ourHeight", rs.Height,
-				"blockstoreBase", conR.conS.blockStore.Base(), "blockstoreHeight", conR.conS.blockStore.Height())
-			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
-			return
-		} else if !blockMeta.BlockID.PartSetHeader.Equals(prs.ProposalBlockPartSetHeader) {
-			logger.Info("Peer ProposalBlockPartSetHeader mismatch, sleeping",
-				"blockPartSetHeader", blockMeta.BlockID.PartSetHeader, "peerBlockPartSetHeader", prs.ProposalBlockPartSetHeader)
-			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
-			return
-		}
-		// Load the part
-		part := conR.conS.blockStore.LoadBlockPart(prs.Height, index)
-		if part == nil {
-			logger.Error("Could not load part", "index", index,
-				"blockPartSetHeader", blockMeta.BlockID.PartSetHeader, "peerBlockPartSetHeader", prs.ProposalBlockPartSetHeader)
+	if index, ok := prs.ProposalBlockRows.Not().PickRandom(); ok {
+		// TODO(Wondertan): Surely loading block from store every time can be optimized
+		b := conR.conS.blockStore.LoadBlock(prs.Height)
+		rs, err := b.RowSet(context.TODO(), mdutils.Mock())
+		if err != nil {
+			conR.Logger.Error("can't make RowSet", "err", err)
 			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 			return
 		}
 		// Send the part
-		msg := &BlockPartMessage{
+		msg := &BlockRowMessage{
 			Height: prs.Height, // Not our height, so it doesn't matter.
 			Round:  prs.Round,  // Not our height, so it doesn't matter.
-			Part:   part,
+			Row:    rs.GetRow(index),
 		}
-		logger.Debug("Sending block part for catchup", "round", prs.Round, "index", index)
+		logger.Debug("Sending block row for catchup", "round", prs.Round, "index", index)
 		if peer.Send(DataChannel, MustEncode(msg)) {
-			ps.SetHasProposalBlockPart(prs.Height, prs.Round, index)
+			ps.SetHasProposalBlockRow(prs.Height, prs.Round, index)
 		} else {
-			logger.Debug("Sending block part for catchup failed")
+			logger.Debug("Sending block row for catchup failed")
 		}
 		return
 	}
@@ -876,8 +866,8 @@ func (conR *Reactor) peerStatsRoutine() {
 				if numVotes := ps.RecordVote(); numVotes%votesToContributeToBecomeGoodPeer == 0 {
 					conR.Switch.MarkPeerAsGood(peer)
 				}
-			case *BlockPartMessage:
-				if numParts := ps.RecordBlockPart(); numParts%blocksToContributeToBecomeGoodPeer == 0 {
+			case *BlockRowMessage:
+				if numParts := ps.RecordBlockRow(); numParts%blocksToContributeToBecomeGoodPeer == 0 {
 					conR.Switch.MarkPeerAsGood(peer)
 				}
 			}
@@ -940,13 +930,13 @@ type PeerState struct {
 
 // peerStateStats holds internal statistics for a peer.
 type peerStateStats struct {
-	Votes      int `json:"votes"`
-	BlockParts int `json:"block_parts"`
+	Votes     int `json:"votes"`
+	BlockRows int `json:"block_rows"`
 }
 
 func (pss peerStateStats) String() string {
-	return fmt.Sprintf("peerStateStats{votes: %d, blockParts: %d}",
-		pss.Votes, pss.BlockParts)
+	return fmt.Sprintf("peerStateStats{votes: %d, blockRows: %d}",
+		pss.Votes, pss.BlockRows)
 }
 
 // NewPeerState returns a new PeerState for the given Peer
@@ -1012,32 +1002,32 @@ func (ps *PeerState) SetHasProposal(proposal *types.Proposal) {
 
 	ps.PRS.Proposal = true
 
-	// ps.PRS.ProposalBlockParts is set due to NewValidBlockMessage
-	if ps.PRS.ProposalBlockParts != nil {
+	// ps.PRS.ProposalBlockRows is set due to NewValidBlockMessage
+	if ps.PRS.ProposalBlockRows != nil {
 		return
 	}
 
-	ps.PRS.ProposalBlockPartSetHeader = proposal.BlockID.PartSetHeader
-	ps.PRS.ProposalBlockParts = bits.NewBitArray(int(proposal.BlockID.PartSetHeader.Total))
+	ps.PRS.ProposalBlockDAHeader = proposal.DAHeader
+	ps.PRS.ProposalBlockRows = bits.NewBitArray(proposal.DAHeader.Rows())
 	ps.PRS.ProposalPOLRound = proposal.POLRound
 	ps.PRS.ProposalPOL = nil // Nil until ProposalPOLMessage received.
 }
 
-// InitProposalBlockParts initializes the peer's proposal block parts header and bit array.
-func (ps *PeerState) InitProposalBlockParts(partSetHeader types.PartSetHeader) {
+// InitProposalBlockRows initializes the peer's proposal block parts header and bit array.
+func (ps *PeerState) InitProposalBlockRows(dah *ipld.DataAvailabilityHeader) {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 
-	if ps.PRS.ProposalBlockParts != nil {
+	if ps.PRS.ProposalBlockRows != nil {
 		return
 	}
 
-	ps.PRS.ProposalBlockPartSetHeader = partSetHeader
-	ps.PRS.ProposalBlockParts = bits.NewBitArray(int(partSetHeader.Total))
+	ps.PRS.ProposalBlockDAHeader = dah
+	ps.PRS.ProposalBlockRows = bits.NewBitArray(dah.Rows())
 }
 
-// SetHasProposalBlockPart sets the given block part index as known for the peer.
-func (ps *PeerState) SetHasProposalBlockPart(height int64, round int32, index int) {
+// SetHasProposalBlockRow sets the given block part index as known for the peer.
+func (ps *PeerState) SetHasProposalBlockRow(height int64, round int32, index int) {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 
@@ -1045,7 +1035,7 @@ func (ps *PeerState) SetHasProposalBlockPart(height int64, round int32, index in
 		return
 	}
 
-	ps.PRS.ProposalBlockParts.SetIndex(index, true)
+	ps.PRS.ProposalBlockRows.SetIndex(index, true)
 }
 
 // PickSendVote picks a vote and sends it to the peer.
@@ -1219,14 +1209,14 @@ func (ps *PeerState) VotesSent() int {
 	return ps.Stats.Votes
 }
 
-// RecordBlockPart increments internal block part related statistics for this peer.
+// RecordBlockRow increments internal block part related statistics for this peer.
 // It returns the total number of added block parts.
-func (ps *PeerState) RecordBlockPart() int {
+func (ps *PeerState) RecordBlockRow() int {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 
-	ps.Stats.BlockParts++
-	return ps.Stats.BlockParts
+	ps.Stats.BlockRows++
+	return ps.Stats.BlockRows
 }
 
 // BlockPartsSent returns the number of useful block parts the peer has sent us.
@@ -1234,7 +1224,7 @@ func (ps *PeerState) BlockPartsSent() int {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 
-	return ps.Stats.BlockParts
+	return ps.Stats.BlockRows
 }
 
 // SetHasVote sets the given vote as known by the peer
@@ -1283,8 +1273,8 @@ func (ps *PeerState) ApplyNewRoundStepMessage(msg *NewRoundStepMessage) {
 	ps.PRS.StartTime = startTime
 	if psHeight != msg.Height || psRound != msg.Round {
 		ps.PRS.Proposal = false
-		ps.PRS.ProposalBlockPartSetHeader = types.PartSetHeader{}
-		ps.PRS.ProposalBlockParts = nil
+		ps.PRS.ProposalBlockDAHeader = nil
+		ps.PRS.ProposalBlockRows = nil
 		ps.PRS.ProposalPOLRound = -1
 		ps.PRS.ProposalPOL = nil
 		// We'll update the BitArray capacity later.
@@ -1326,8 +1316,8 @@ func (ps *PeerState) ApplyNewValidBlockMessage(msg *NewValidBlockMessage) {
 		return
 	}
 
-	ps.PRS.ProposalBlockPartSetHeader = msg.BlockPartSetHeader
-	ps.PRS.ProposalBlockParts = msg.BlockParts
+	ps.PRS.ProposalBlockDAHeader = msg.BlockDAHeader
+	ps.PRS.ProposalBlockRows = msg.BlockRows
 }
 
 // ApplyProposalPOLMessage updates the peer state for the new proposal POL.
@@ -1413,7 +1403,7 @@ func init() {
 	tmjson.RegisterType(&NewValidBlockMessage{}, "tendermint/NewValidBlockMessage")
 	tmjson.RegisterType(&ProposalMessage{}, "tendermint/Proposal")
 	tmjson.RegisterType(&ProposalPOLMessage{}, "tendermint/ProposalPOL")
-	tmjson.RegisterType(&BlockPartMessage{}, "tendermint/BlockPart")
+	tmjson.RegisterType(&BlockRowMessage{}, "tendermint/BlockRow")
 	tmjson.RegisterType(&VoteMessage{}, "tendermint/Vote")
 	tmjson.RegisterType(&HasVoteMessage{}, "tendermint/HasVote")
 	tmjson.RegisterType(&VoteSetMaj23Message{}, "tendermint/VoteSetMaj23")
@@ -1494,11 +1484,11 @@ func (m *NewRoundStepMessage) String() string {
 // i.e., there is a Proposal for block B and 2/3+ prevotes for the block B in the round r.
 // In case the block is also committed, then IsCommit flag is set to true.
 type NewValidBlockMessage struct {
-	Height             int64
-	Round              int32
-	BlockPartSetHeader types.PartSetHeader
-	BlockParts         *bits.BitArray
-	IsCommit           bool
+	Height        int64
+	Round         int32
+	BlockDAHeader *ipld.DataAvailabilityHeader
+	BlockRows     *bits.BitArray
+	IsCommit      bool
 }
 
 // ValidateBasic performs basic validation.
@@ -1509,27 +1499,25 @@ func (m *NewValidBlockMessage) ValidateBasic() error {
 	if m.Round < 0 {
 		return errors.New("negative Round")
 	}
-	if err := m.BlockPartSetHeader.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong BlockPartSetHeader: %v", err)
+	if m.BlockRows.Size() == 0 {
+		return errors.New("empty BlockRows")
 	}
-	if m.BlockParts.Size() == 0 {
-		return errors.New("empty blockParts")
+	if m.BlockRows.Size() != m.BlockDAHeader.Rows() {
+		return fmt.Errorf("block rows bit array size %d not equal to BlockDAHeader.Rows %d",
+			m.BlockRows.Size(),
+			m.BlockDAHeader.Rows(),
+		)
 	}
-	if m.BlockParts.Size() != int(m.BlockPartSetHeader.Total) {
-		return fmt.Errorf("blockParts bit array size %d not equal to BlockPartSetHeader.Total %d",
-			m.BlockParts.Size(),
-			m.BlockPartSetHeader.Total)
-	}
-	if m.BlockParts.Size() > int(types.MaxBlockPartsCount) {
-		return fmt.Errorf("blockParts bit array is too big: %d, max: %d", m.BlockParts.Size(), types.MaxBlockPartsCount)
+	if m.BlockRows.Size() > consts.MaxSquareSize {
+		return fmt.Errorf("block rows bit array is too big: %d, max: %d", m.BlockRows.Size(), consts.MaxSquareSize)
 	}
 	return nil
 }
 
 // String returns a string representation.
 func (m *NewValidBlockMessage) String() string {
-	return fmt.Sprintf("[ValidBlockMessage H:%v R:%v BP:%v BA:%v IsCommit:%v]",
-		m.Height, m.Round, m.BlockPartSetHeader, m.BlockParts, m.IsCommit)
+	return fmt.Sprintf("[ValidBlockMessage H:%v R:%v BR:%v BA:%v IsCommit:%v]",
+		m.Height, m.Round, m.BlockDAHeader, m.BlockRows, m.IsCommit)
 }
 
 //-------------------------------------
@@ -1582,30 +1570,30 @@ func (m *ProposalPOLMessage) String() string {
 
 //-------------------------------------
 
-// BlockPartMessage is sent when gossipping a piece of the proposed block.
-type BlockPartMessage struct {
+// BlockRowMessage is sent when gossipping a piece of the proposed block.
+type BlockRowMessage struct {
 	Height int64
 	Round  int32
-	Part   *types.Part
+	Row    *types.Row
 }
 
 // ValidateBasic performs basic validation.
-func (m *BlockPartMessage) ValidateBasic() error {
+func (m *BlockRowMessage) ValidateBasic() error {
 	if m.Height < 0 {
 		return errors.New("negative Height")
 	}
 	if m.Round < 0 {
 		return errors.New("negative Round")
 	}
-	if err := m.Part.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong Part: %v", err)
+	if err := m.Row.ValidateBasic(); err != nil {
+		return fmt.Errorf("wrong Row: %v", err)
 	}
 	return nil
 }
 
 // String returns a string representation.
-func (m *BlockPartMessage) String() string {
-	return fmt.Sprintf("[BlockPart H:%v R:%v P:%v]", m.Height, m.Round, m.Part)
+func (m *BlockRowMessage) String() string {
+	return fmt.Sprintf("[BlockRow H:%v R:%v P:%v]", m.Height, m.Round, m.Row)
 }
 
 //-------------------------------------
