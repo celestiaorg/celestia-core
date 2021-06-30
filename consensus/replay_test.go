@@ -338,8 +338,6 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	sim.GenesisState, _ = sm.MakeGenesisState(genDoc)
 	sim.CleanupFunc = cleanup
 
-	partSize := types.BlockPartSizeBytes
-
 	newRoundCh := subscribe(css[0].eventBus, types.EventQueryNewRound)
 	proposalCh := subscribe(css[0].eventBus, types.EventQueryCompleteProposal)
 
@@ -368,8 +366,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	newValidatorTx1 := kvstore.MakeValSetChangeTx(valPubKey1ABCI, testMinPower)
 	err = assertMempool(css[0].txNotifier).CheckTx(newValidatorTx1, nil, mempl.TxInfo{})
 	assert.Nil(t, err)
-	propBlock, _, _ := css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
-	propBlockParts := propBlock.MakePartSet(partSize)
+	propBlock, propBlockParts, propBlockRows := css[0].createProposalBlock(vss[1].Address())
 	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
 	proposal := types.NewProposal(vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
@@ -381,7 +378,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	proposal.Signature = p.Signature
 
 	// set the proposal block
-	if err := css[0].SetProposalAndBlock(proposal, propBlock, propBlockParts, "some peer"); err != nil {
+	if err := css[0].SetProposalAndBlock(proposal, propBlock, propBlockRows, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 	ensureNewProposal(proposalCh, height, round)
@@ -399,8 +396,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	updateValidatorTx1 := kvstore.MakeValSetChangeTx(updatePubKey1ABCI, 25)
 	err = assertMempool(css[0].txNotifier).CheckTx(updateValidatorTx1, nil, mempl.TxInfo{})
 	assert.Nil(t, err)
-	propBlock, _, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
-	propBlockParts = propBlock.MakePartSet(partSize)
+	propBlock, propBlockParts, propBlockRows = css[0].createProposalBlock(vss[2].Address())
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
 	proposal = types.NewProposal(vss[2].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
@@ -412,7 +408,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	proposal.Signature = p.Signature
 
 	// set the proposal block
-	if err := css[0].SetProposalAndBlock(proposal, propBlock, propBlockParts, "some peer"); err != nil {
+	if err := css[0].SetProposalAndBlock(proposal, propBlock, propBlockRows, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 	ensureNewProposal(proposalCh, height, round)
@@ -437,8 +433,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	newValidatorTx3 := kvstore.MakeValSetChangeTx(newVal3ABCI, testMinPower)
 	err = assertMempool(css[0].txNotifier).CheckTx(newValidatorTx3, nil, mempl.TxInfo{})
 	assert.Nil(t, err)
-	propBlock, _, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
-	propBlockParts = propBlock.MakePartSet(partSize)
+	propBlock, propBlockParts, propBlockRows = css[0].createProposalBlock(vss[3].Address())
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 	newVss := make([]*validatorStub, nVals+1)
 	copy(newVss, vss[:nVals+1])
@@ -470,7 +465,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	proposal.Signature = p.Signature
 
 	// set the proposal block
-	if err := css[0].SetProposalAndBlock(proposal, propBlock, propBlockParts, "some peer"); err != nil {
+	if err := css[0].SetProposalAndBlock(proposal, propBlock, propBlockRows, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 	ensureNewProposal(proposalCh, height, round)
@@ -513,8 +508,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	removeValidatorTx3 := kvstore.MakeValSetChangeTx(newVal3ABCI, 0)
 	err = assertMempool(css[0].txNotifier).CheckTx(removeValidatorTx3, nil, mempl.TxInfo{})
 	assert.Nil(t, err)
-	propBlock, _, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
-	propBlockParts = propBlock.MakePartSet(partSize)
+	propBlock, propBlockParts, propBlockRows = css[0].createProposalBlock(vss[1].Address())
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 	newVss = make([]*validatorStub, nVals+3)
 	copy(newVss, vss[:nVals+3])
@@ -530,7 +524,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	proposal.Signature = p.Signature
 
 	// set the proposal block
-	if err := css[0].SetProposalAndBlock(proposal, propBlock, propBlockParts, "some peer"); err != nil {
+	if err := css[0].SetProposalAndBlock(proposal, propBlock, propBlockRows, "some peer"); err != nil {
 		t.Fatal(err)
 	}
 	ensureNewProposal(proposalCh, height, round)
@@ -681,7 +675,7 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 	} else { // test single node
 		testConfig := ResetConfig(fmt.Sprintf("%s_%v_s", t.Name(), mode))
 		defer func() { _ = os.RemoveAll(testConfig.RootDir) }()
-		walBody, err := walWithNBlocks(t, numBlocks)
+		walBody, gen, err := walWithNBlocks(t, numBlocks)
 		require.NoError(t, err)
 		walFile := tempWALWithData(walBody)
 		config.Consensus.SetWalFile(walFile)
@@ -698,7 +692,7 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 				t.Error(err)
 			}
 		})
-		chain, commits, err = makeBlockchainFromWAL(wal)
+		chain, commits, err = makeBlockchainFromWAL(wal, gen)
 		require.NoError(t, err)
 		pubKey, err := privVal.GetPubKey()
 		require.NoError(t, err)
@@ -1042,7 +1036,7 @@ func (app *badApp) Commit() abci.ResponseCommit {
 //--------------------------
 // utils for making blocks
 
-func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.Commit, error) {
+func makeBlockchainFromWAL(wal WAL, gen sm.State) ([]*types.Block, []*types.Commit, error) {
 	var height int64
 
 	// Search for height marker
@@ -1056,13 +1050,87 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.Commit, error) {
 	defer gr.Close()
 
 	// log.Notice("Build a blockchain by reading from the WAL")
+	blockStoreDB := memdb.NewDB()
+	stateDB := blockStoreDB
+	stateStore := sm.NewStore(stateDB)
+	err = stateStore.Save(gen)
+	if err != nil {
+		return nil, nil, err
+	}
+	proxy := proxy.NewAppConns(proxy.DefaultClientCreator("kvstore", ""))
+	err = proxy.Start()
+	if err != nil {
+		return nil, nil, err
+	}
+	exec := sm.NewBlockExecutor(
+		stateStore,
+		log.TestingLogger(),
+		proxy.Consensus(),
+		emptyMempool{},
+		sm.EmptyEvidencePool{},
+	)
 
 	var (
-		blocks          []*types.Block
-		commits         []*types.Commit
-		thisBlockParts  *types.PartSet
-		thisBlockCommit *types.Commit
+		blocks            []*types.Block
+		commits           []*types.Commit
+		thisBlockProposal *types.Proposal
+		thisBlockRows     *types.RowSet
+		thisBlockCommit   *types.Commit
+		thisVote          *types.Vote
+		thisState         = gen
 	)
+
+	processBlock := func() error {
+		square, err := thisBlockRows.Square()
+		if err != nil {
+			return err
+		}
+
+		data, err := types.DataFromSquare(square)
+		if err != nil {
+			return err
+		}
+
+		var lastCommit *types.Commit
+		if thisState.InitialHeight == height+1 {
+			lastCommit = types.NewCommit(0, 0, types.BlockID{}, nil)
+		} else {
+			lastCommit = commits[len(commits)-1]
+		}
+
+		block := thisState.MakeBlock(
+			thisBlockProposal.Height,
+			data.Txs,
+			data.Evidence.Evidence,
+			data.IntermediateStateRoots.RawRootsList,
+			data.Messages,
+			lastCommit,
+			thisVote.ValidatorAddress,
+		)
+
+		// TODO(Wondertan): Rework this
+		_, err = block.RowSet(context.TODO(), mdutils.Mock())
+		if err != nil {
+			return err
+		}
+
+		thisState, _, err = exec.ApplyBlock(
+			thisState,
+			types.BlockID{
+				Hash:          block.Hash(),
+				PartSetHeader: block.MakePartSet(types.BlockPartSizeBytes).Header(),
+			},
+			block,
+		)
+		if err != nil {
+			return err
+		}
+
+		blocks = append(blocks, block)
+		commits = append(commits, thisBlockCommit)
+		height++
+		return nil
+	}
 
 	dec := NewWALDecoder(gr)
 	for {
@@ -1081,70 +1149,29 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.Commit, error) {
 		switch p := piece.(type) {
 		case EndHeightMessage:
 			// if its not the first one, we have a full block
-			if thisBlockParts != nil {
-				var pbb = new(tmproto.Block)
-				bz, err := ioutil.ReadAll(thisBlockParts.GetReader())
+			if thisBlockRows != nil {
+				err := processBlock()
 				if err != nil {
-					panic(err)
+					return nil, nil, err
 				}
-				err = proto.Unmarshal(bz, pbb)
-				if err != nil {
-					panic(err)
-				}
-				block, err := types.BlockFromProto(pbb)
-				if err != nil {
-					panic(err)
-				}
-
-				if block.Height != height+1 {
-					panic(fmt.Sprintf("read bad block from wal. got height %d, expected %d", block.Height, height+1))
-				}
-				commitHeight := thisBlockCommit.Height
-				if commitHeight != height+1 {
-					panic(fmt.Sprintf("commit doesnt match. got height %d, expected %d", commitHeight, height+1))
-				}
-				blocks = append(blocks, block)
-				commits = append(commits, thisBlockCommit)
-				height++
 			}
-		case *types.PartSetHeader:
-			thisBlockParts = types.NewPartSetFromHeader(*p)
-		case *types.Part:
-			_, err := thisBlockParts.AddPart(p)
+		case *types.Proposal:
+			thisBlockProposal = p
+			thisBlockRows = types.NewRowSetFromHeader(p.DAHeader)
+		case *types.Row:
+			_, err := thisBlockRows.AddRow(p)
 			if err != nil {
 				return nil, nil, err
 			}
 		case *types.Vote:
 			if p.Type == tmproto.PrecommitType {
+				thisVote = p
 				thisBlockCommit = types.NewCommit(p.Height, p.Round,
 					p.BlockID, []types.CommitSig{p.CommitSig()})
 			}
 		}
 	}
-	// grab the last block too
-	bz, err := ioutil.ReadAll(thisBlockParts.GetReader())
-	if err != nil {
-		panic(err)
-	}
-	var pbb = new(tmproto.Block)
-	err = proto.Unmarshal(bz, pbb)
-	if err != nil {
-		panic(err)
-	}
-	block, err := types.BlockFromProto(pbb)
-	if err != nil {
-		panic(err)
-	}
-	if block.Height != height+1 {
-		panic(fmt.Sprintf("read bad block from wal. got height %d, expected %d", block.Height, height+1))
-	}
-	commitHeight := thisBlockCommit.Height
-	if commitHeight != height+1 {
-		panic(fmt.Sprintf("commit doesnt match. got height %d, expected %d", commitHeight, height+1))
-	}
-	blocks = append(blocks, block)
-	commits = append(commits, thisBlockCommit)
-	return blocks, commits, nil
+	return blocks, commits, processBlock()
 }
 
 func readPieceFromWAL(msg *TimedWALMessage) interface{} {
@@ -1153,9 +1180,9 @@ func readPieceFromWAL(msg *TimedWALMessage) interface{} {
 	case msgInfo:
 		switch msg := m.Msg.(type) {
 		case *ProposalMessage:
-			return &msg.Proposal.BlockID.PartSetHeader
-		case *BlockPartMessage:
-			return msg.Part
+			return msg.Proposal
+		case *BlockRowMessage:
+			return msg.Row
 		case *VoteMessage:
 			return msg.Vote
 		}

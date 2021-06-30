@@ -18,7 +18,6 @@ import (
 	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
 	cfg "github.com/lazyledger/lazyledger-core/config"
 	"github.com/lazyledger/lazyledger-core/consensus/types"
-	"github.com/lazyledger/lazyledger-core/crypto/merkle"
 	"github.com/lazyledger/lazyledger-core/ipfs"
 	"github.com/lazyledger/lazyledger-core/libs/autofile"
 	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
@@ -63,7 +62,7 @@ func TestWALTruncate(t *testing.T) {
 	// 60 block's size nearly 70K, greater than group's headBuf size(4096 * 10),
 	// when headBuf is full, truncate content will Flush to the file. at this
 	// time, RotateFile is called, truncate content exist in each file.
-	err = walGenerateNBlocks(t, wal.Group(), 60)
+	_, err = walGenerateNBlocks(t, wal.Group(), 60)
 	require.NoError(t, err)
 
 	time.Sleep(5 * time.Millisecond) // wait groupCheckDuration, make sure RotateFile run
@@ -132,17 +131,12 @@ func TestWALWrite(t *testing.T) {
 	})
 
 	// 1) Write returns an error if msg is too big
-	msg := &BlockPartMessage{
+	msg := &BlockRowMessage{
 		Height: 1,
 		Round:  1,
-		Part: &tmtypes.Part{
+		Row: &tmtypes.Row{
 			Index: 1,
-			Bytes: make([]byte, 1),
-			Proof: merkle.Proof{
-				Total:    1,
-				Index:    1,
-				LeafHash: make([]byte, maxMsgSizeBytes-30),
-			},
+			Data:  make([]byte, maxMsgSizeBytes),
 		},
 	}
 
@@ -155,7 +149,7 @@ func TestWALWrite(t *testing.T) {
 }
 
 func TestWALSearchForEndHeight(t *testing.T) {
-	walBody, err := walWithNBlocks(t, 6)
+	walBody, _, err := walWithNBlocks(t, 6)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +185,7 @@ func TestWALPeriodicSync(t *testing.T) {
 	wal.SetLogger(log.TestingLogger())
 
 	// Generate some data
-	err = walGenerateNBlocks(t, wal.Group(), 5)
+	_, err = walGenerateNBlocks(t, wal.Group(), 5)
 	require.NoError(t, err)
 
 	// We should have data in the buffer now
@@ -278,7 +272,7 @@ func BenchmarkWalDecode1GB(b *testing.B) {
 // persistent kvstore application and special consensus wal instance
 // (byteBufferWAL) and waits until numBlocks are created.
 // If the node fails to produce given numBlocks, it returns an error.
-func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
+func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (gen sm.State, err error) {
 	config := getConfig(t)
 
 	app := kvstore.NewPersistentKVStoreApplication(filepath.Join(config.DBDir(), "wal_generator"))
@@ -293,30 +287,31 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	privValidatorStateFile := config.PrivValidatorStateFile()
 	privValidator, err := privval.LoadOrGenFilePV(privValidatorKeyFile, privValidatorStateFile)
 	if err != nil {
-		return err
+		return sm.State{}, err
 	}
 	genDoc, err := tmtypes.GenesisDocFromFile(config.GenesisFile())
 	if err != nil {
-		return fmt.Errorf("failed to read genesis file: %w", err)
+		return sm.State{}, fmt.Errorf("failed to read genesis file: %w", err)
 	}
 	blockStoreDB := memdb.NewDB()
 	stateDB := blockStoreDB
 	stateStore := sm.NewStore(stateDB)
 	state, err := sm.MakeGenesisState(genDoc)
 	if err != nil {
-		return fmt.Errorf("failed to make genesis state: %w", err)
+		return sm.State{}, fmt.Errorf("failed to make genesis state: %w", err)
 	}
 	state.Version.Consensus.App = kvstore.ProtocolVersion
 	if err = stateStore.Save(state); err != nil {
 		t.Error(err)
 	}
+	gen = state.Copy()
 	dag := mdutils.Mock()
 	blockStore := store.MockBlockStore(blockStoreDB)
 
 	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(app))
 	proxyApp.SetLogger(logger.With("module", "proxy"))
 	if err := proxyApp.Start(); err != nil {
-		return fmt.Errorf("failed to start proxy app connections: %w", err)
+		return sm.State{}, fmt.Errorf("failed to start proxy app connections: %w", err)
 	}
 	t.Cleanup(func() {
 		if err := proxyApp.Stop(); err != nil {
@@ -327,7 +322,7 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	eventBus := tmtypes.NewEventBus()
 	eventBus.SetLogger(logger.With("module", "events"))
 	if err := eventBus.Start(); err != nil {
-		return fmt.Errorf("failed to start event bus: %w", err)
+		return sm.State{}, fmt.Errorf("failed to start event bus: %w", err)
 	}
 	t.Cleanup(func() {
 		if err := eventBus.Stop(); err != nil {
@@ -337,7 +332,6 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	mempool := emptyMempool{}
 	evpool := sm.EmptyEvidencePool{}
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
-	require.NoError(t, err)
 	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore,
 		mempool, dag, ipfs.MockRouting(), evpool)
 	consensusState.SetLogger(logger)
@@ -358,7 +352,7 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	consensusState.wal = wal
 
 	if err := consensusState.Start(); err != nil {
-		return fmt.Errorf("failed to start consensus state: %w", err)
+		return sm.State{}, fmt.Errorf("failed to start consensus state: %w", err)
 	}
 
 	select {
@@ -366,26 +360,30 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 		if err := consensusState.Stop(); err != nil {
 			t.Error(err)
 		}
-		return nil
+		return
 	case <-time.After(1 * time.Minute):
 		if err := consensusState.Stop(); err != nil {
 			t.Error(err)
 		}
-		return fmt.Errorf("waited too long for tendermint to produce %d blocks (grep logs for `wal_generator`)", numBlocks)
+		return sm.State{}, fmt.Errorf(
+			"waited too long for tendermint to produce %d blocks (grep logs for `wal_generator`)",
+			numBlocks,
+		)
 	}
 }
 
 // walWithNBlocks returns a WAL content with numBlocks.
-func walWithNBlocks(t *testing.T, numBlocks int) (data []byte, err error) {
+func walWithNBlocks(t *testing.T, numBlocks int) (data []byte, gen sm.State, err error) {
 	var b bytes.Buffer
 	wr := bufio.NewWriter(&b)
 
-	if err := walGenerateNBlocks(t, wr, numBlocks); err != nil {
-		return []byte{}, err
+	gen, err = walGenerateNBlocks(t, wr, numBlocks)
+	if err != nil {
+		return
 	}
 
 	wr.Flush()
-	return b.Bytes(), nil
+	return b.Bytes(), gen, nil
 }
 
 func randPort() int {
