@@ -57,6 +57,16 @@ func MakeDataHeader(eds *rsmt2d.ExtendedDataSquare) *DataAvailabilityHeader {
 	return dah
 }
 
+// Rows tells amount of rows committed to the DAHeader
+func (dah *DataAvailabilityHeader) Rows() int {
+	return len(dah.RowsRoots)
+}
+
+// Cols tells amount of columns committed to the DAHeader
+func (dah *DataAvailabilityHeader) Cols() int {
+	return len(dah.ColumnRoots)
+}
+
 type NmtRoots []namespace.IntervalDigest
 
 func (roots NmtRoots) Bytes() [][]byte {
@@ -88,6 +98,9 @@ func (dah *DataAvailabilityHeader) String() string {
 
 // Equals checks equality of two DAHeaders.
 func (dah *DataAvailabilityHeader) Equals(to *DataAvailabilityHeader) bool {
+	if dah == nil || to == nil {
+		return false
+	}
 	return bytes.Equal(dah.Hash(), to.Hash())
 }
 
