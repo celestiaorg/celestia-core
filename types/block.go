@@ -1612,8 +1612,14 @@ func (blockID BlockID) Equals(other BlockID) bool {
 }
 
 // Key returns a machine-readable string representation of the BlockID
-func (blockID BlockID) Key() string {
-	return string(blockID.Hash)
+func (blockID BlockID) Key(partSetHeader PartSetHeader) string {
+	pbph := partSetHeader.ToProto()
+	bz, err := pbph.Marshal()
+	if err != nil {
+		panic(err)
+	}
+
+	return string(blockID.Hash) + string(bz)
 }
 
 // ValidateBasic performs basic validation.
