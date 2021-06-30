@@ -487,12 +487,12 @@ func (m *CanonicalProposal) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x3a
 	}
-	n4, err4 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
-	if err4 != nil {
-		return 0, err4
+	n3, err3 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err3 != nil {
+		return 0, err3
 	}
-	i -= n4
-	i = encodeVarintCanonical(dAtA, i, uint64(n4))
+	i -= n3
+	i = encodeVarintCanonical(dAtA, i, uint64(n3))
 	i--
 	dAtA[i] = 0x32
 	if m.BlockID != nil {
@@ -571,12 +571,12 @@ func (m *CanonicalVote) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x32
 	}
-	n7, err7 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
-	if err7 != nil {
-		return 0, err7
+	n6, err6 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err6 != nil {
+		return 0, err6
 	}
-	i -= n7
-	i = encodeVarintCanonical(dAtA, i, uint64(n7))
+	i -= n6
+	i = encodeVarintCanonical(dAtA, i, uint64(n6))
 	i--
 	dAtA[i] = 0x2a
 	if m.BlockID != nil {

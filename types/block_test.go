@@ -223,21 +223,13 @@ func makePartSetHeader(partSetSize uint32, partSetHash []byte) PartSetHeader {
 	}
 }
 
-func makeBlockIDandPartSetHeader(hash []byte, partSetSize uint32, partSetHash []byte) (BlockID, PartSetHeader) {
-	var (
-		h   = make([]byte, tmhash.Size)
-		psH = make([]byte, tmhash.Size)
-	)
-	copy(h, hash)
+func makePartSetHeader(partSetSize uint32, partSetHash []byte) PartSetHeader {
+	psH := make([]byte, tmhash.Size)
 	copy(psH, partSetHash)
-	partSetHeader := PartSetHeader{
+	return PartSetHeader{
 		Total: partSetSize,
 		Hash:  psH,
 	}
-	return BlockID{
-		Hash:          h,
-		PartSetHeader: partSetHeader,
-	}, partSetHeader
 }
 
 func makeDAHeaderRandom() *DataAvailabilityHeader {
