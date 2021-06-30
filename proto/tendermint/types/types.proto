@@ -46,6 +46,11 @@ message Part {
   tendermint.crypto.Proof proof = 3 [(gogoproto.nullable) = false];
 }
 
+message Row {
+  uint32                  index = 1;
+  bytes                   data = 2;
+}
+
 // BlockID
 message BlockID {
   bytes         hash            = 1;

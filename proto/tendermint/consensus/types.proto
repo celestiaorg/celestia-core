@@ -23,7 +23,7 @@ message NewRoundStep {
 message NewValidBlock {
   int64                          height                = 1;
   int32                          round                 = 2;
-  tendermint.types.PartSetHeader block_part_set_header = 3 [(gogoproto.nullable) = false];
+  tendermint.types.DataAvailabilityHeader da_header = 3;
   tendermint.libs.bits.BitArray  block_parts           = 4;
   bool                           is_commit             = 5;
 }
@@ -40,11 +40,11 @@ message ProposalPOL {
   tendermint.libs.bits.BitArray proposal_pol       = 3 [(gogoproto.nullable) = false];
 }
 
-// BlockPart is sent when gossipping a piece of the proposed block.
-message BlockPart {
+// BlockRow is sent when gossipping a piece of the proposed block.
+message BlockRow {
   int64                 height = 1;
   int32                 round  = 2;
-  tendermint.types.Part part   = 3 [(gogoproto.nullable) = false];
+  tendermint.types.Row row   = 3;
 }
 
 // Vote is sent when voting for a proposal (or lack thereof).
@@ -83,7 +83,7 @@ message Message {
     NewValidBlock new_valid_block = 2;
     Proposal      proposal        = 3;
     ProposalPOL   proposal_pol    = 4;
-    BlockPart     block_part      = 5;
+    BlockRow      block_row      = 5;
     Vote          vote            = 6;
     HasVote       has_vote        = 7;
     VoteSetMaj23  vote_set_maj23  = 8;
