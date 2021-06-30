@@ -6,17 +6,13 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/lazyledger/rsmt2d"
-
 	"github.com/lazyledger/lazyledger-core/crypto/merkle"
 	"github.com/lazyledger/lazyledger-core/libs/bits"
 	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
 	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
 	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld"
 	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
 )
 
 var (
@@ -376,29 +372,4 @@ func (ps *PartSet) MarshalJSON() ([]byte, error) {
 		fmt.Sprintf("%d/%d", ps.Count(), ps.Total()),
 		ps.partsBitArray,
 	})
-}
-
-type RowSet struct {
-	DAHeader *ipld.DataAvailabilityHeader
-
-	rows     [][]byte
-	rowsHave *bits.BitArray
-}
-
-func NewRowSet(eds *rsmt2d.ExtendedDataSquare) *RowSet {
-	width := int(eds.Width() / 2)
-	rows := make([][]byte, width)
-	for i := 0; i < width; i++ {
-		row := eds.Row(uint(i))
-		rows[i] = make([]byte, 0, consts.ShareSize*width)
-		for j := 0; j < width; j++ {
-			rows[i] = append(rows[i], row[j]...)
-		}
-	}
-
-	return &RowSet{
-		DAHeader: ipld.MakeDataHeader(eds),
-		rows:     rows,
-		rowsHave: bits.NewBitArray(width),
-	}
 }
