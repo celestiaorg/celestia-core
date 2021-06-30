@@ -36,10 +36,10 @@ func exampleVote(t byte) *Vote {
 		Timestamp: stamp,
 		BlockID: BlockID{
 			Hash: tmhash.Sum([]byte("blockID_hash")),
-			PartSetHeader: PartSetHeader{
-				Total: 1000000,
-				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
-			},
+		},
+		PartSetHeader: PartSetHeader{
+			Total: 1000000,
+			Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
 		},
 		ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 		ValidatorIndex:   56789,
@@ -242,8 +242,9 @@ func TestVoteValidateBasic(t *testing.T) {
 		{"Good Vote", func(v *Vote) {}, false},
 		{"Negative Height", func(v *Vote) { v.Height = -1 }, true},
 		{"Negative Round", func(v *Vote) { v.Round = -1 }, true},
-		{"Invalid BlockID", func(v *Vote) {
-			v.BlockID = BlockID{[]byte{1, 2, 3}, PartSetHeader{111, []byte("blockparts")}}
+		{"Invalid BlockID and PartSetHeader", func(v *Vote) {
+			v.BlockID = BlockID{[]byte{1, 2, 3}}
+			v.PartSetHeader = PartSetHeader{111, []byte("blockparts")}
 		}, true},
 		{"Invalid Address", func(v *Vote) { v.ValidatorAddress = make([]byte, 1) }, true},
 		{"Invalid ValidatorIndex", func(v *Vote) { v.ValidatorIndex = -1 }, true},

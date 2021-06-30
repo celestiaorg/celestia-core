@@ -652,6 +652,13 @@ func (h *Header) Hash() tmbytes.HexBytes {
 		return nil
 	}
 
+	// todo(evan): double check that the partset header should still be included in the hash
+	pbpsh := h.LastPartSetHeader.ToProto()
+	bzpsh, err := pbpsh.Marshal()
+	if err != nil {
+		return nil
+	}
+
 	// todo(evan): include the last partsetheader in the hash
 	return merkle.HashFromByteSlices([][]byte{
 		hbz,
@@ -659,6 +666,7 @@ func (h *Header) Hash() tmbytes.HexBytes {
 		cdcEncode(h.Height),
 		pbt,
 		bzbi,
+		bzpsh,
 		cdcEncode(h.LastCommitHash),
 		cdcEncode(h.DataHash),
 		cdcEncode(h.NumOriginalDataShares),
@@ -875,6 +883,21 @@ func (cs CommitSig) BlockID(commitBlockID BlockID) BlockID {
 	return blockID
 }
 
+func (cs CommitSig) PartSetHeader(commitPSH PartSetHeader) PartSetHeader {
+	var psh PartSetHeader
+	switch cs.BlockIDFlag {
+	case BlockIDFlagAbsent:
+		psh = PartSetHeader{}
+	case BlockIDFlagCommit:
+		psh = commitPSH
+	case BlockIDFlagNil:
+		psh = PartSetHeader{}
+	default:
+		panic(fmt.Sprintf("Unknown BlockIDFlag: %v", cs.BlockIDFlag))
+	}
+	return psh
+}
+
 // ValidateBasic performs basic validation.
 func (cs CommitSig) ValidateBasic() error {
 	switch cs.BlockIDFlag {
@@ -1003,6 +1026,7 @@ func (commit *Commit) GetVote(valIdx int32) *Vote {
 		Height:           commit.Height,
 		Round:            commit.Round,
 		BlockID:          commitSig.BlockID(commit.BlockID),
+		PartSetHeader:    commitSig.PartSetHeader(commit.PartSetHeader),
 		Timestamp:        commitSig.Timestamp,
 		ValidatorAddress: commitSig.ValidatorAddress,
 		ValidatorIndex:   valIdx,
@@ -1578,25 +1602,17 @@ func (data *EvidenceData) splitIntoShares() NamespacedShares {
 
 // BlockID
 type BlockID struct {
-	Hash          tmbytes.HexBytes `json:"hash"`
-	PartSetHeader PartSetHeader    `json:"part_set_header"`
+	Hash tmbytes.HexBytes `json:"hash"`
 }
 
 // Equals returns true if the BlockID matches the given BlockID
 func (blockID BlockID) Equals(other BlockID) bool {
-	return bytes.Equal(blockID.Hash, other.Hash) &&
-		blockID.PartSetHeader.Equals(other.PartSetHeader)
+	return bytes.Equal(blockID.Hash, other.Hash)
 }
 
 // Key returns a machine-readable string representation of the BlockID
 func (blockID BlockID) Key() string {
-	pbph := blockID.PartSetHeader.ToProto()
-	bz, err := pbph.Marshal()
-	if err != nil {
-		panic(err)
-	}
-
-	return string(blockID.Hash) + string(bz)
+	return string(blockID.Hash)
 }
 
 // ValidateBasic performs basic validation.
@@ -1605,23 +1621,17 @@ func (blockID BlockID) ValidateBasic() error {
 	if err := ValidateHash(blockID.Hash); err != nil {
 		return fmt.Errorf("wrong Hash")
 	}
-	if err := blockID.PartSetHeader.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong PartSetHeader: %v", err)
-	}
 	return nil
 }
 
 // IsZero returns true if this is the BlockID of a nil block.
 func (blockID BlockID) IsZero() bool {
-	return len(blockID.Hash) == 0 &&
-		blockID.PartSetHeader.IsZero()
+	return len(blockID.Hash) == 0
 }
 
 // IsComplete returns true if this is a valid BlockID of a non-nil block.
 func (blockID BlockID) IsComplete() bool {
-	return len(blockID.Hash) == tmhash.Size &&
-		blockID.PartSetHeader.Total > 0 &&
-		len(blockID.PartSetHeader.Hash) == tmhash.Size
+	return len(blockID.Hash) == tmhash.Size
 }
 
 // String returns a human readable string representation of the BlockID.
@@ -1631,7 +1641,7 @@ func (blockID BlockID) IsComplete() bool {
 //
 // See PartSetHeader#String
 func (blockID BlockID) String() string {
-	return fmt.Sprintf(`%v:%v`, blockID.Hash, blockID.PartSetHeader)
+	return fmt.Sprintf(`%v`, blockID.Hash)
 }
 
 // ToProto converts BlockID to protobuf
@@ -1641,8 +1651,7 @@ func (blockID *BlockID) ToProto() tmproto.BlockID {
 	}
 
 	return tmproto.BlockID{
-		Hash:          blockID.Hash,
-		PartSetHeader: blockID.PartSetHeader.ToProto(),
+		Hash: blockID.Hash,
 	}
 }
 
@@ -1654,12 +1663,6 @@ func BlockIDFromProto(bID *tmproto.BlockID) (*BlockID, error) {
 	}
 
 	blockID := new(BlockID)
-	ph, err := PartSetHeaderFromProto(&bID.PartSetHeader)
-	if err != nil {
-		return nil, err
-	}
-
-	blockID.PartSetHeader = *ph
 	blockID.Hash = bID.Hash
 
 	return blockID, blockID.ValidateBasic()

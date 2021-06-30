@@ -65,13 +65,14 @@ type VoteSet struct {
 	signedMsgType tmproto.SignedMsgType
 	valSet        *ValidatorSet
 
-	mtx           tmsync.Mutex
-	votesBitArray *bits.BitArray
-	votes         []*Vote                // Primary votes to share
-	sum           int64                  // Sum of voting power for seen votes, discounting conflicts
-	maj23         *BlockID               // First 2/3 majority seen
-	votesByBlock  map[string]*blockVotes // string(blockHash|blockParts) -> blockVotes
-	peerMaj23s    map[P2PID]BlockID      // Maj23 for each peer
+	mtx                tmsync.Mutex
+	votesBitArray      *bits.BitArray
+	votes              []*Vote                // Primary votes to share
+	sum                int64                  // Sum of voting power for seen votes, discounting conflicts
+	maj23              *BlockID               // First 2/3 majority seen
+	maj23PartSetHeader *PartSetHeader         // First 2/3 majority seen partsetheader
+	votesByBlock       map[string]*blockVotes // string(blockHash|blockParts) -> blockVotes
+	peerMaj23s         map[P2PID]BlockID      // Maj23 for each peer
 }
 
 // Constructs a new VoteSet struct used to accumulate votes for given height/round.
@@ -289,6 +290,8 @@ func (voteSet *VoteSet) addVerifiedVote(
 		if voteSet.maj23 == nil {
 			maj23BlockID := vote.BlockID
 			voteSet.maj23 = &maj23BlockID
+			maj23PartSetHeader := vote.PartSetHeader
+			voteSet.maj23PartSetHeader = &maj23PartSetHeader
 			// And also copy votes over to voteSet.votes
 			for i, vote := range votesByBlock.votes {
 				if vote != nil {
@@ -598,7 +601,7 @@ func (voteSet *VoteSet) MakeCommit() *Commit {
 		commitSigs[i] = commitSig
 	}
 
-	return NewCommit(voteSet.GetHeight(), voteSet.GetRound(), *voteSet.maj23, commitSigs, voteSet.maj23.PartSetHeader)
+	return NewCommit(voteSet.GetHeight(), voteSet.GetRound(), *voteSet.maj23, commitSigs, *voteSet.maj23PartSetHeader)
 }
 
 //--------------------------------------------------------------------------------

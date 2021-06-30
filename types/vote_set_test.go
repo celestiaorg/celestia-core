@@ -35,7 +35,8 @@ func TestVoteSet_AddVote_Good(t *testing.T) {
 		Round:            round,
 		Type:             tmproto.PrevoteType,
 		Timestamp:        tmtime.Now(),
-		BlockID:          BlockID{nil, PartSetHeader{}},
+		BlockID:          BlockID{nil},
+		PartSetHeader:    PartSetHeader{},
 	}
 	_, err = signAddVote(val0, vote, voteSet)
 	require.NoError(t, err)
@@ -57,7 +58,8 @@ func TestVoteSet_AddVote_Bad(t *testing.T) {
 		Round:            round,
 		Timestamp:        tmtime.Now(),
 		Type:             tmproto.PrevoteType,
-		BlockID:          BlockID{nil, PartSetHeader{}},
+		BlockID:          BlockID{nil},
+		PartSetHeader:    PartSetHeader{},
 	}
 
 	// val0 votes for nil.
@@ -132,7 +134,8 @@ func TestVoteSet_2_3Majority(t *testing.T) {
 		Round:            round,
 		Type:             tmproto.PrevoteType,
 		Timestamp:        tmtime.Now(),
-		BlockID:          BlockID{nil, PartSetHeader{}},
+		BlockID:          BlockID{nil},
+		PartSetHeader:    PartSetHeader{},
 	}
 	// 6 out of 10 voted for nil.
 	for i := int32(0); i < 6; i++ {
@@ -186,7 +189,8 @@ func TestVoteSet_2_3MajorityRedux(t *testing.T) {
 		Round:            round,
 		Timestamp:        tmtime.Now(),
 		Type:             tmproto.PrevoteType,
-		BlockID:          BlockID{blockHash, blockPartSetHeader},
+		BlockID:          BlockID{blockHash},
+		PartSetHeader:    blockPartSetHeader,
 	}
 
 	// 66 out of 100 voted for nil.
@@ -265,7 +269,7 @@ func TestVoteSet_2_3MajorityRedux(t *testing.T) {
 		_, err = signAddVote(privValidators[70], vote, voteSet)
 		require.NoError(t, err)
 		blockID, ok = voteSet.TwoThirdsMajority()
-		assert.True(t, ok && blockID.Equals(BlockID{blockHash, blockPartSetHeader}),
+		assert.True(t, ok && blockID.Equals(BlockID{blockHash}),
 			"there should be 2/3 majority")
 	}
 }
@@ -283,7 +287,8 @@ func TestVoteSet_Conflicts(t *testing.T) {
 		Round:            round,
 		Timestamp:        tmtime.Now(),
 		Type:             tmproto.PrevoteType,
-		BlockID:          BlockID{nil, PartSetHeader{}},
+		BlockID:          BlockID{nil},
+		PartSetHeader:    PartSetHeader{},
 	}
 
 	val0, err := privValidators[0].GetPubKey()
@@ -308,7 +313,7 @@ func TestVoteSet_Conflicts(t *testing.T) {
 	}
 
 	// start tracking blockHash1
-	err = voteSet.SetPeerMaj23("peerA", BlockID{blockHash1, PartSetHeader{}})
+	err = voteSet.SetPeerMaj23("peerA", BlockID{blockHash1})
 	require.NoError(t, err)
 
 	// val0 votes again for blockHash1.
@@ -320,7 +325,7 @@ func TestVoteSet_Conflicts(t *testing.T) {
 	}
 
 	// attempt tracking blockHash2, should fail because already set for peerA.
-	err = voteSet.SetPeerMaj23("peerA", BlockID{blockHash2, PartSetHeader{}})
+	err = voteSet.SetPeerMaj23("peerA", BlockID{blockHash2})
 	require.Error(t, err)
 
 	// val0 votes again for blockHash1.
@@ -372,7 +377,7 @@ func TestVoteSet_Conflicts(t *testing.T) {
 	}
 
 	// now attempt tracking blockHash1
-	err = voteSet.SetPeerMaj23("peerB", BlockID{blockHash1, PartSetHeader{}})
+	err = voteSet.SetPeerMaj23("peerB", BlockID{blockHash1})
 	require.NoError(t, err)
 
 	// val2 votes for blockHash1.
@@ -411,7 +416,8 @@ func TestVoteSet_MakeCommit(t *testing.T) {
 		Round:            round,
 		Timestamp:        tmtime.Now(),
 		Type:             tmproto.PrecommitType,
-		BlockID:          BlockID{blockHash, blockPartSetHeader},
+		BlockID:          BlockID{blockHash},
+		PartSetHeader:    blockPartSetHeader,
 	}
 
 	// 6 out of 10 voted for some block.
@@ -529,6 +535,6 @@ func withBlockHash(vote *Vote, blockHash []byte) *Vote {
 // Convenience: Return new vote with different blockParts
 func withBlockPartSetHeader(vote *Vote, blockPartsHeader PartSetHeader) *Vote {
 	vote = vote.Copy()
-	vote.BlockID.PartSetHeader = blockPartsHeader
+	vote.PartSetHeader = blockPartsHeader
 	return vote
 }
