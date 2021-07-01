@@ -241,7 +241,7 @@ func TestNilDataAvailabilityHeaderHashDoesntCrash(t *testing.T) {
 func TestEmptyBlockData(t *testing.T) {
 	blockData := Data{}
 	shares, _ := blockData.ComputeShares()
-	assert.Equal(t, GenerateTailPaddingShares(consts.MinSquareSize, consts.ShareSize), shares)
+	assert.Equal(t, TailPaddingShares(1), shares)
 }
 
 func TestCommit(t *testing.T) {

@@ -110,10 +110,20 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 	return rawData, outerIndex, innerIndex, startIndex
 }
 
-func GenerateTailPaddingShares(n int, shareWidth int) NamespacedShares {
+// tail is filler for all tail padded shares
+// it is allocated once and used everywhere
+var tailPaddingShare = append(
+	append(make([]byte, 0, consts.ShareSize), consts.TailPaddingNamespaceID...),
+	bytes.Repeat([]byte{0}, consts.ShareSize-consts.NamespaceSize)...,
+)
+
+func TailPaddingShares(n int) NamespacedShares {
 	shares := make([]NamespacedShare, n)
 	for i := 0; i < n; i++ {
-		shares[i] = NamespacedShare{bytes.Repeat([]byte{0}, shareWidth), consts.TailPaddingNamespaceID}
+		shares[i] = NamespacedShare{
+			Share: tailPaddingShare,
+			ID:    consts.TailPaddingNamespaceID,
+		}
 	}
 	return shares
 }
