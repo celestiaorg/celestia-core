@@ -430,16 +430,16 @@ func (voteSet *VoteSet) HasAll() bool {
 
 // If there was a +2/3 majority for blockID, return blockID and true.
 // Else, return the empty BlockID{} and false.
-func (voteSet *VoteSet) TwoThirdsMajority() (blockID BlockID, ok bool) {
+func (voteSet *VoteSet) TwoThirdsMajority() (blockID BlockID, partSetHeader PartSetHeader, ok bool) {
 	if voteSet == nil {
-		return BlockID{}, false
+		return BlockID{}, PartSetHeader{}, false
 	}
 	voteSet.mtx.Lock()
 	defer voteSet.mtx.Unlock()
 	if voteSet.maj23 != nil {
-		return *voteSet.maj23, true
+		return *voteSet.maj23, *voteSet.maj23PartSetHeader, true
 	}
-	return BlockID{}, false
+	return BlockID{}, PartSetHeader{}, false
 }
 
 //--------------------------------------------------------------------------------

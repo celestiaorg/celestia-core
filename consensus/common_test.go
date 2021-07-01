@@ -108,7 +108,8 @@ func (vs *validatorStub) signVote(
 		Round:            vs.Round,
 		Timestamp:        tmtime.Now(),
 		Type:             voteType,
-		BlockID:          types.BlockID{Hash: hash, PartSetHeader: header},
+		BlockID:          types.BlockID{Hash: hash},
+		PartSetHeader:    header,
 	}
 	v := vote.ToProto()
 	err = vs.PrivValidator.SignVote(config.ChainID(), v)
@@ -205,7 +206,7 @@ func decideProposal(
 	}
 
 	// Make proposal
-	polRound, propBlockID := validRound, types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
+	polRound, propBlockID := validRound, types.BlockID{Hash: block.Hash()}
 	proposal = types.NewProposal(height, round, polRound, propBlockID, &block.DataAvailabilityHeader, blockParts.Header())
 	p, err := proposal.ToProto()
 	if err != nil {

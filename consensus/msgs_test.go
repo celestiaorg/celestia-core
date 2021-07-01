@@ -28,8 +28,7 @@ func TestMsgToProto(t *testing.T) {
 	}
 	pbPsh := psh.ToProto()
 	bi := types.BlockID{
-		Hash:          tmrand.Bytes(32),
-		PartSetHeader: psh,
+		Hash: tmrand.Bytes(32),
 	}
 	pbBi := bi.ToProto()
 	bits := bits.NewBitArray(1)
@@ -51,13 +50,14 @@ func TestMsgToProto(t *testing.T) {
 	roots, err := types.NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
 	require.NoError(t, err)
 	proposal := types.Proposal{
-		Type:      tmproto.ProposalType,
-		Height:    1,
-		Round:     1,
-		POLRound:  1,
-		BlockID:   bi,
-		Timestamp: time.Now(),
-		Signature: tmrand.Bytes(20),
+		Type:          tmproto.ProposalType,
+		Height:        1,
+		Round:         1,
+		POLRound:      1,
+		BlockID:       bi,
+		PartSetHeader: psh,
+		Timestamp:     time.Now(),
+		Signature:     tmrand.Bytes(20),
 		DAHeader: &types.DataAvailabilityHeader{
 			RowsRoots:   roots,
 			ColumnRoots: roots,
@@ -72,7 +72,7 @@ func TestMsgToProto(t *testing.T) {
 	val := types.NewValidator(pk, 100)
 
 	vote, err := types.MakeVote(
-		1, types.BlockID{}, &types.ValidatorSet{Proposer: val, Validators: []*types.Validator{val}},
+		1, types.BlockID{}, types.PartSetHeader{}, &types.ValidatorSet{Proposer: val, Validators: []*types.Validator{val}},
 		pv, "chainID", time.Now())
 	require.NoError(t, err)
 	pbVote := vote.ToProto()
@@ -162,17 +162,19 @@ func TestMsgToProto(t *testing.T) {
 			},
 		}, false},
 		{"successful VoteSetMaj23", &VoteSetMaj23Message{
-			Height:  1,
-			Round:   1,
-			Type:    1,
-			BlockID: bi,
+			Height:        1,
+			Round:         1,
+			Type:          1,
+			BlockID:       bi,
+			PartSetHeader: psh,
 		}, &tmcons.Message{
 			Sum: &tmcons.Message_VoteSetMaj23{
 				VoteSetMaj23: &tmcons.VoteSetMaj23{
-					Height:  1,
-					Round:   1,
-					Type:    1,
-					BlockID: pbBi,
+					Height:        1,
+					Round:         1,
+					Type:          1,
+					BlockID:       pbBi,
+					PartSetHeader: &pbPsh,
 				},
 			},
 		}, false},
@@ -333,8 +335,7 @@ func TestConsMsgsVectors(t *testing.T) {
 	pbPsh := psh.ToProto()
 
 	bi := types.BlockID{
-		Hash:          []byte("add_more_exclamation_marks_code-"),
-		PartSetHeader: psh,
+		Hash: []byte("add_more_exclamation_marks_code-"),
 	}
 	pbBi := bi.ToProto()
 	bits := bits.NewBitArray(1)
@@ -354,14 +355,15 @@ func TestConsMsgsVectors(t *testing.T) {
 	require.NoError(t, err)
 
 	proposal := types.Proposal{
-		Type:      tmproto.ProposalType,
-		Height:    1,
-		Round:     1,
-		POLRound:  1,
-		BlockID:   bi,
-		Timestamp: date,
-		Signature: []byte("add_more_exclamation"),
-		DAHeader:  &types.DataAvailabilityHeader{},
+		Type:          tmproto.ProposalType,
+		Height:        1,
+		Round:         1,
+		POLRound:      1,
+		BlockID:       bi,
+		Timestamp:     date,
+		Signature:     []byte("add_more_exclamation"),
+		DAHeader:      &types.DataAvailabilityHeader{},
+		PartSetHeader: psh,
 	}
 	pbProposal, err := proposal.ToProto()
 	require.NoError(t, err)

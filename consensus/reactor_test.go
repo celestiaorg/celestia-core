@@ -926,12 +926,13 @@ func TestVoteSetMaj23MessageValidateBasic(t *testing.T) {
 	)
 
 	validBlockID := types.BlockID{}
+	validPSH := types.PartSetHeader{}
 	invalidBlockID := types.BlockID{
 		Hash: bytes.HexBytes{},
-		PartSetHeader: types.PartSetHeader{
-			Total: 1,
-			Hash:  []byte{0},
-		},
+	}
+	invalidPSH := types.PartSetHeader{
+		Total: 1,
+		Hash:  []byte{0},
 	}
 
 	testCases := []struct { // nolint: maligned
@@ -941,12 +942,13 @@ func TestVoteSetMaj23MessageValidateBasic(t *testing.T) {
 		testName       string
 		messageType    tmproto.SignedMsgType
 		messageBlockID types.BlockID
+		messagePSH     types.PartSetHeader
 	}{
-		{false, 0, 0, "Valid Message", validSignedMsgType, validBlockID},
-		{true, -1, 0, "Invalid Message", validSignedMsgType, validBlockID},
-		{true, 0, -1, "Invalid Message", validSignedMsgType, validBlockID},
-		{true, 0, 0, "Invalid Message", invalidSignedMsgType, validBlockID},
-		{true, 0, 0, "Invalid Message", validSignedMsgType, invalidBlockID},
+		{false, 0, 0, "Valid Message", validSignedMsgType, validBlockID, validPSH},
+		{true, -1, 0, "Invalid Message", validSignedMsgType, validBlockID, validPSH},
+		{true, 0, -1, "Invalid Message", validSignedMsgType, validBlockID, validPSH},
+		{true, 0, 0, "Invalid Message", invalidSignedMsgType, validBlockID, validPSH},
+		{true, 0, 0, "Invalid Message", validSignedMsgType, invalidBlockID, invalidPSH},
 	}
 
 	for _, tc := range testCases {
@@ -975,10 +977,10 @@ func TestVoteSetBitsMessageValidateBasic(t *testing.T) {
 		{func(msg *VoteSetBitsMessage) {
 			msg.BlockID = types.BlockID{
 				Hash: bytes.HexBytes{},
-				PartSetHeader: types.PartSetHeader{
-					Total: 1,
-					Hash:  []byte{0},
-				},
+			}
+			msg.PartSetHeader = types.PartSetHeader{
+				Total: 1,
+				Hash:  []byte{0},
 			}
 		}, "wrong BlockID: wrong PartSetHeader: wrong Hash:"},
 		{func(msg *VoteSetBitsMessage) { msg.Votes = bits.NewBitArray(types.MaxVotesCount + 1) },
@@ -989,11 +991,12 @@ func TestVoteSetBitsMessageValidateBasic(t *testing.T) {
 		tc := tc
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
 			msg := &VoteSetBitsMessage{
-				Height:  1,
-				Round:   0,
-				Type:    0x01,
-				Votes:   bits.NewBitArray(1),
-				BlockID: types.BlockID{},
+				Height:        1,
+				Round:         0,
+				Type:          0x01,
+				Votes:         bits.NewBitArray(1),
+				BlockID:       types.BlockID{},
+				PartSetHeader: types.PartSetHeader{},
 			}
 
 			tc.malleateFn(msg)

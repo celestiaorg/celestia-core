@@ -249,6 +249,10 @@ func MsgFromProto(msg *tmcons.Message) (Message, error) {
 		if err != nil {
 			return nil, fmt.Errorf("block ID to proto error: %w", err)
 		}
+		psh, err := types.PartSetHeaderFromProto(msg.VoteSetBits.PartSetHeader)
+		if err != nil {
+			return nil, fmt.Errorf("part set header to proto error: %w", err)
+		}
 		bits := new(bits.BitArray)
 		err = bits.FromProto(&msg.VoteSetBits.Votes)
 		if err != nil {
@@ -256,11 +260,12 @@ func MsgFromProto(msg *tmcons.Message) (Message, error) {
 		}
 
 		pb = &VoteSetBitsMessage{
-			Height:  msg.VoteSetBits.Height,
-			Round:   msg.VoteSetBits.Round,
-			Type:    msg.VoteSetBits.Type,
-			BlockID: *bi,
-			Votes:   bits,
+			Height:        msg.VoteSetBits.Height,
+			Round:         msg.VoteSetBits.Round,
+			Type:          msg.VoteSetBits.Type,
+			BlockID:       *bi,
+			PartSetHeader: *psh,
+			Votes:         bits,
 		}
 	default:
 		return nil, fmt.Errorf("consensus: message not recognized: %T", msg)
