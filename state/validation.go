@@ -51,8 +51,8 @@ func validateBlock(state State, block *types.Block) error {
 
 	if !block.LastPartSetHeader.Equals(state.LastPartSetHeader) {
 		return fmt.Errorf("wrong Block.Header.LastPartSetHeader.  Expected %v, got %v",
-			state.LastBlockID,
-			block.LastBlockID,
+			state.LastPartSetHeader,
+			block.LastPartSetHeader,
 		)
 	}
 
