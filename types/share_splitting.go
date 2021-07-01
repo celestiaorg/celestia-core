@@ -112,7 +112,7 @@ func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) 
 
 // tail is filler for all tail padded shares
 // it is allocated once and used everywhere
-var tail = append(
+var tailPaddingShare = append(
 	append(make([]byte, 0, consts.ShareSize), consts.TailPaddingNamespaceID...),
 	bytes.Repeat([]byte{0}, consts.ShareSize-consts.NamespaceSize)...,
 )
@@ -121,7 +121,7 @@ func TailPaddingShares(n int) NamespacedShares {
 	shares := make([]NamespacedShare, n)
 	for i := 0; i < n; i++ {
 		shares[i] = NamespacedShare{
-			Share: tail,
+			Share: tailPaddingShare,
 			ID:    consts.TailPaddingNamespaceID,
 		}
 	}
