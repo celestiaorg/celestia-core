@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"fmt"
-	"runtime/debug"
 	"strings"
 
 	"strconv"
@@ -204,12 +203,6 @@ func (bs *BlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	blockMeta, err := types.BlockMetaFromProto(pbbm)
 	if err != nil {
 		panic(fmt.Errorf("error from proto blockMeta: %w", err))
-	}
-
-	// todo(evan) : delete
-	if blockMeta.PartSetHeader.IsZero() && height != 0 {
-		fmt.Println("partset is zero at a non zero height")
-		fmt.Println(string(debug.Stack()))
 	}
 
 	return blockMeta

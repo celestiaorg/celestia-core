@@ -175,10 +175,10 @@ func (vote *Vote) ValidateBasic() error {
 	if err := vote.BlockID.ValidateBasic(); err != nil {
 		return fmt.Errorf("wrong BlockID: %v", err)
 	}
-	// todo(evan): add back in
-	// if err := vote.PartSetHeader.ValidateBasic(); err != nil {
-	// 	return fmt.Errorf("wrong PartSetHeader: %v", err)
-	// }
+
+	if err := vote.PartSetHeader.ValidateBasic(); err != nil {
+		return fmt.Errorf("wrong PartSetHeader: %v", err)
+	}
 
 	// BlockID.ValidateBasic would not err if we for instance have an empty hash but a
 	// non-empty PartsSetHeader:
@@ -242,8 +242,6 @@ func VoteFromProto(pv *tmproto.Vote) (*Vote, error) {
 
 	psh, err := PartSetHeaderFromProto(pv.PartSetHeader)
 	if err != nil {
-		// todo(evan): clean up
-		fmt.Println("RETURNING ERROR WHILE CONVERTING TO PROTO", err)
 		return nil, err
 	}
 

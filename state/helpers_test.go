@@ -182,7 +182,6 @@ func makeHeaderPartsResponsesValPubKeyChange(
 			},
 		}
 	}
-	// todo(evan): types.PartSetHeader{} was returned here in the bid, make sure it doesn't have to be
 	return block.Header, types.BlockID{Hash: block.Hash()}, abciResponses
 }
 
@@ -206,7 +205,6 @@ func makeHeaderPartsResponsesValPowerChange(
 			},
 		}
 	}
-	// todo(evan): types.PartSetHeader{} was returned here in the bid, make sure it doesn't have to be
 	return block.Header, types.BlockID{Hash: block.Hash()}, abciResponses
 }
 
@@ -220,7 +218,6 @@ func makeHeaderPartsResponsesParams(
 		BeginBlock: &abci.ResponseBeginBlock{},
 		EndBlock:   &abci.ResponseEndBlock{ConsensusParamUpdates: types.TM2PB.ConsensusParams(&params)},
 	}
-	// todo(evan): types.PartSetHeader{} was returned here in the bid, make sure it doesn't have to be
 	return block.Header, types.BlockID{Hash: block.Hash()}, abciResponses
 }
 

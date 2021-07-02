@@ -1720,7 +1720,6 @@ func (m *VoteSetBitsMessage) ValidateBasic() error {
 	if err := m.BlockID.ValidateBasic(); err != nil {
 		return fmt.Errorf("wrong BlockID: %v", err)
 	}
-	// todo(evan): add this in
 	if err := m.PartSetHeader.ValidateBasic(); err != nil {
 		return fmt.Errorf("wrong PartSetHeader: %w", err)
 	}

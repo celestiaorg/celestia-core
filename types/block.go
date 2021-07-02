@@ -652,14 +652,12 @@ func (h *Header) Hash() tmbytes.HexBytes {
 		return nil
 	}
 
-	// todo(evan): double check that the partset header should still be included in the hash
 	pbpsh := h.LastPartSetHeader.ToProto()
 	bzpsh, err := pbpsh.Marshal()
 	if err != nil {
 		return nil
 	}
 
-	// todo(evan): include the last partsetheader in the hash
 	return merkle.HashFromByteSlices([][]byte{
 		hbz,
 		cdcEncode(h.ChainID),
