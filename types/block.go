@@ -1220,6 +1220,9 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 	}
 
 	psh, err := PartSetHeaderFromProto(cp.PartSetHeader)
+	if err != nil {
+		return nil, err
+	}
 
 	sigs := make([]CommitSig, len(cp.Signatures))
 	for i := range cp.Signatures {

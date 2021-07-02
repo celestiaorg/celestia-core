@@ -1097,7 +1097,9 @@ func TestStateLockPOLSafety2(t *testing.T) {
 
 	round++ // moving to the next round
 	// in round 2 we see the polkad block from round 0
-	newProp := types.NewProposal(height, round, 0, propBlockID0, &propBlock0.DataAvailabilityHeader, propBlockParts0.Header())
+	newProp := types.NewProposal(
+		height, round, 0, propBlockID0, &propBlock0.DataAvailabilityHeader, propBlockParts0.Header(),
+	)
 	p, err := newProp.ToProto()
 	require.NoError(t, err)
 	if err := vs3.SignProposal(config.ChainID(), p); err != nil {

@@ -36,7 +36,14 @@ type Proposal struct {
 
 // NewProposal returns a new Proposal.
 // If there is no POLRound, polRound should be -1.
-func NewProposal(height int64, round int32, polRound int32, blockID BlockID, daH *DataAvailabilityHeader, psh PartSetHeader) *Proposal {
+func NewProposal(
+	height int64,
+	round int32,
+	polRound int32,
+	blockID BlockID,
+	daH *DataAvailabilityHeader,
+	psh PartSetHeader,
+) *Proposal {
 	return &Proposal{
 		Type:          tmproto.ProposalType,
 		Height:        height,

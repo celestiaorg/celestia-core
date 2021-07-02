@@ -372,7 +372,9 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	propBlockParts := propBlock.MakePartSet(partSize)
 	blockID := types.BlockID{Hash: propBlock.Hash()}
 
-	proposal := types.NewProposal(vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader, propBlockParts.Header())
+	proposal := types.NewProposal(
+		vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader, propBlockParts.Header(),
+	)
 	p, err := proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[1].SignProposal(config.ChainID(), p); err != nil {
@@ -403,7 +405,9 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	propBlockParts = propBlock.MakePartSet(partSize)
 	blockID = types.BlockID{Hash: propBlock.Hash()}
 
-	proposal = types.NewProposal(vss[2].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader, propBlockParts.Header())
+	proposal = types.NewProposal(
+		vss[2].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader, propBlockParts.Header(),
+	)
 	p, err = proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[2].SignProposal(config.ChainID(), p); err != nil {

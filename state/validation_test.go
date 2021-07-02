@@ -72,7 +72,9 @@ func TestValidateBlockHeader(t *testing.T) {
 		{"Proposer invalid", func(block *types.Block) { block.ProposerAddress = []byte("wrong size") }},
 
 		{"first LastCommit contains signatures", func(block *types.Block) {
-			block.LastCommit = types.NewCommit(0, 0, types.BlockID{}, []types.CommitSig{types.NewCommitSigAbsent()}, types.PartSetHeader{})
+			block.LastCommit = types.NewCommit(
+				0, 0, types.BlockID{}, []types.CommitSig{types.NewCommitSigAbsent()}, types.PartSetHeader{},
+			)
 			block.LastCommitHash = block.LastCommit.Hash()
 		}},
 	}

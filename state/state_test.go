@@ -505,7 +505,14 @@ func TestProposerPriorityDoesNotGetResetToZero(t *testing.T) {
 
 	// this will cause the diff of priorities (77)
 	// to be larger than threshold == 2*totalVotingPower (22):
-	updatedState3, err := sm.UpdateState(updatedState2, blockID, types.PartSetHeader{}, &block.Header, abciResponses, validatorUpdates)
+	updatedState3, err := sm.UpdateState(
+		updatedState2,
+		blockID,
+		types.PartSetHeader{},
+		&block.Header,
+		abciResponses,
+		validatorUpdates,
+	)
 	assert.NoError(t, err)
 
 	require.Equal(t, len(updatedState3.NextValidators.Validators), 2)

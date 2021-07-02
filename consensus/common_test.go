@@ -600,7 +600,13 @@ func ensureNewUnlock(unlockCh <-chan tmpubsub.Message, height int64, round int32
 		"Timeout expired while waiting for NewUnlock event")
 }
 
-func ensureProposal(proposalCh <-chan tmpubsub.Message, height int64, round int32, propID types.BlockID, propPartSetHeader types.PartSetHeader) {
+func ensureProposal(
+	proposalCh <-chan tmpubsub.Message,
+	height int64,
+	round int32,
+	propID types.BlockID,
+	propPartSetHeader types.PartSetHeader,
+) {
 	select {
 	case <-time.After(ensureTimeout):
 		panic("Timeout expired while waiting for NewProposal event")

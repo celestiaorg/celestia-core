@@ -713,7 +713,8 @@ func TestValidatorSet_VerifyCommit_All(t *testing.T) {
 				[]CommitSig{vote.CommitSig(), {BlockIDFlag: BlockIDFlagAbsent}}, vote.PartSetHeader), true},
 
 		{"insufficient voting power: got 0, needed more than 666", chainID, vote.BlockID, vote.PartSetHeader, vote.Height,
-			NewCommit(vote.Height, vote.Round, vote.BlockID, []CommitSig{{BlockIDFlag: BlockIDFlagAbsent}}, vote.PartSetHeader), true,
+			NewCommit(vote.Height, vote.Round, vote.BlockID, []CommitSig{{BlockIDFlag: BlockIDFlagAbsent}},
+				vote.PartSetHeader), true,
 		},
 
 		{"wrong signature (#0)", chainID, vote.BlockID, vote.PartSetHeader, vote.Height,

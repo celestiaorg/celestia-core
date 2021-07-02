@@ -164,7 +164,15 @@ func TestVerifyLightClientAttack_Equivocation(t *testing.T) {
 
 	trustedBlockID := makeBlockID(trustedHeader.Hash())
 	trustedVoteSet := types.NewVoteSet(evidenceChainID, 10, 1, tmproto.SignedMsgType(2), conflictingVals)
-	trustedCommit, err := types.MakeCommit(trustedBlockID, psh, 10, 1, trustedVoteSet, conflictingPrivVals, defaultEvidenceTime)
+	trustedCommit, err := types.MakeCommit(
+		trustedBlockID,
+		psh,
+		10,
+		1,
+		trustedVoteSet,
+		conflictingPrivVals,
+		defaultEvidenceTime,
+	)
 	require.NoError(t, err)
 	trustedSignedHeader := &types.SignedHeader{
 		Header: trustedHeader,
@@ -250,7 +258,15 @@ func TestVerifyLightClientAttack_Amnesia(t *testing.T) {
 	trustedBlockID := makeBlockID(trustedHeader.Hash())
 	trustedPSH := makePartSetHeader(1000, []byte("partshash"))
 	trustedVoteSet := types.NewVoteSet(evidenceChainID, 10, 1, tmproto.SignedMsgType(2), conflictingVals)
-	trustedCommit, err := types.MakeCommit(trustedBlockID, trustedPSH, 10, 1, trustedVoteSet, conflictingPrivVals, defaultEvidenceTime)
+	trustedCommit, err := types.MakeCommit(
+		trustedBlockID,
+		trustedPSH,
+		10,
+		1,
+		trustedVoteSet,
+		conflictingPrivVals,
+		defaultEvidenceTime,
+	)
 	require.NoError(t, err)
 	trustedSignedHeader := &types.SignedHeader{
 		Header: trustedHeader,
