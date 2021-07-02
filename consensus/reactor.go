@@ -1721,9 +1721,9 @@ func (m *VoteSetBitsMessage) ValidateBasic() error {
 		return fmt.Errorf("wrong BlockID: %v", err)
 	}
 	// todo(evan): add this in
-	// if err := m.PartSetHeader.ValidateBasic(); err != nil {
-	// 	return fmt.Errorf("wrong PartSetHeader: %v")
-	// }
+	if err := m.PartSetHeader.ValidateBasic(); err != nil {
+		return fmt.Errorf("wrong PartSetHeader: %w", err)
+	}
 	// NOTE: Votes.Size() can be zero if the node does not have any
 	if m.Votes.Size() > types.MaxVotesCount {
 		return fmt.Errorf("votes bit array is too big: %d, max: %d", m.Votes.Size(), types.MaxVotesCount)

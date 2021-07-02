@@ -955,10 +955,11 @@ func TestVoteSetMaj23MessageValidateBasic(t *testing.T) {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
 			message := VoteSetMaj23Message{
-				Height:  tc.messageHeight,
-				Round:   tc.messageRound,
-				Type:    tc.messageType,
-				BlockID: tc.messageBlockID,
+				Height:        tc.messageHeight,
+				Round:         tc.messageRound,
+				Type:          tc.messageType,
+				BlockID:       tc.messageBlockID,
+				PartSetHeader: tc.messagePSH,
 			}
 
 			assert.Equal(t, tc.expectErr, message.ValidateBasic() != nil, "Validate Basic had an unexpected result")
@@ -982,7 +983,7 @@ func TestVoteSetBitsMessageValidateBasic(t *testing.T) {
 				Total: 1,
 				Hash:  []byte{0},
 			}
-		}, "wrong BlockID: wrong PartSetHeader: wrong Hash:"},
+		}, "wrong PartSetHeader: wrong Hash:"},
 		{func(msg *VoteSetBitsMessage) { msg.Votes = bits.NewBitArray(types.MaxVotesCount + 1) },
 			"votes bit array is too big: 10001, max: 10000"},
 	}
