@@ -56,7 +56,7 @@ func NewDuplicateVoteEvidence(vote1, vote2 *Vote, blockTime time.Time, valSet *V
 		return nil
 	}
 
-	if strings.Compare(vote1.BlockID.Key(vote1.PartSetHeader), vote2.BlockID.Key(vote2.PartSetHeader)) == -1 {
+	if strings.Compare(vote1.BlockID.Key(), vote2.BlockID.Key()) == -1 {
 		voteA = vote1
 		voteB = vote2
 	} else {
@@ -133,7 +133,7 @@ func (dve *DuplicateVoteEvidence) ValidateBasic() error {
 		return fmt.Errorf("invalid VoteB: %w", err)
 	}
 	// Enforce Votes are lexicographically sorted on blockID
-	if strings.Compare(dve.VoteA.BlockID.Key(dve.VoteA.PartSetHeader), dve.VoteB.BlockID.Key(dve.VoteB.PartSetHeader)) >= 0 {
+	if strings.Compare(dve.VoteA.BlockID.Key(), dve.VoteB.BlockID.Key()) >= 0 {
 		return errors.New("duplicate votes in invalid order")
 	}
 	return nil
