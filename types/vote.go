@@ -242,6 +242,7 @@ func VoteFromProto(pv *tmproto.Vote) (*Vote, error) {
 
 	psh, err := PartSetHeaderFromProto(pv.PartSetHeader)
 	if err != nil {
+		// todo(evan): clean up
 		fmt.Println("RETURNING ERROR WHILE CONVERTING TO PROTO", err)
 		return nil, err
 	}
