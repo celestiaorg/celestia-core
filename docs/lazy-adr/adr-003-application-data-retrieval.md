@@ -103,6 +103,7 @@ func RetrieveStateRelevantMessages(
 // namespace ID and included in the block with the DataAvailabilityHeader dah.
 func RetrieveMessages(
     ctx context.Context,
+    nID namespace.ID,
     dah *types.DataAvailabilityHeader,
     api coreiface.CoreAPI,
 ) (Messages, error) {
