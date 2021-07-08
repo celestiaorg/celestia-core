@@ -191,5 +191,5 @@ Proposed
   * Previously, parts were propagated with max size of 64KiB. Let's now take a Row of the largest 128x128 block in
     comparison. The actual data size in such a case for the Row would be 128x256(shares_per_row*share_size)=32KiB, which
     is exactly two times smaller than a Part.
-* Gossiped chunks are no more constant size. Instead, their size is proportional to the size of Block's data.
+* Gossiped chunks are no longer constant size. Instead, their size is proportional to the size of Block's data.
 * Another step back from original Tendermint's codebase
