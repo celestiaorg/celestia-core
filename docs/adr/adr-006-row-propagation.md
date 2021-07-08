@@ -91,7 +91,7 @@ func NewRow(idx int, row [][]byte) *Row
 //  ----
 //
 type RowSet interface {
-// NOTE: The RowSet is defined as an interface for simplicity. In practise it should be a struct with one and only
+// NOTE: The RowSet is defined as an interface for simplicity. In practice it should be a struct with one and only
 // implementation.
 
 // AddRow adds a Row to the set. It returns true with nil error in case Row was successfully added.
