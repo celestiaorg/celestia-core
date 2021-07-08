@@ -129,7 +129,7 @@ added `DAHeader`. Protobuf schema is updated accordingly.
 `Proposal` is extended with `NumOriginalDataShares`. This is an optimization that
 helps Validators to populate Header without counting original data shares themselves from a block received form a
 Proposer. Potentially, that introduce a vulnerability by which a Proposer can send wrong value, leaving the populated
-Header of Validators wrong. This part of decision is optional.
+Header of Validators wrong. This part of the decision is optional.
 
 ### `consenSUS`
 #### Reactor
