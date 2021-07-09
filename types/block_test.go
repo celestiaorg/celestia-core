@@ -142,9 +142,12 @@ func TestBlockMakePartSetWithEvidence(t *testing.T) {
 	ev := NewMockDuplicateVoteEvidenceWithValidator(h, time.Now(), vals[0], "block-test-chain")
 	evList := []Evidence{ev}
 
-	partSet := MakeBlock(h, []Tx{Tx("Hello World")}, evList, nil, Messages{}, commit).MakePartSet(512)
+	block := MakeBlock(h, []Tx{Tx("Hello World")}, evList, nil, Messages{}, commit)
+	_, err = block.RowSet(context.TODO(), mdutils.Mock())
+	require.NoError(t, err)
+	partSet := block.MakePartSet(512)
 	assert.NotNil(t, partSet)
-	assert.EqualValues(t, 4, partSet.Total())
+	assert.EqualValues(t, 5, partSet.Total())
 }
 
 func TestBlockHashesTo(t *testing.T) {
