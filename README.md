@@ -31,15 +31,6 @@ a more detailed overview what to expect from this repository.
 |-------------|------------------|
 | Go version  | Go1.15 or higher |
 
-### Install
-
-See the [install instructions](/docs/introduction/install.md).
-
-### Quick Start
-
-- [Single node](/docs/introduction/quick-start.md)
-- [Local cluster using docker-compose](/docs/networks/docker-compose.md)
-
 ## Contributing
 
 Before contributing to the project, please take a look at the [contributing guidelines](CONTRIBUTING.md)
