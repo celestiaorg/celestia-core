@@ -49,13 +49,6 @@ func validateBlock(state State, block *types.Block) error {
 		)
 	}
 
-	if !block.LastPartSetHeader.Equals(state.LastPartSetHeader) {
-		return fmt.Errorf("wrong Block.Header.LastPartSetHeader.  Expected %v, got %v",
-			state.LastPartSetHeader,
-			block.LastPartSetHeader,
-		)
-	}
-
 	// Validate app info
 	if !bytes.Equal(block.AppHash, state.AppHash) {
 		return fmt.Errorf("wrong Block.Header.AppHash.  Expected %X, got %v",

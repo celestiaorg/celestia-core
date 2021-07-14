@@ -256,7 +256,6 @@ func makeHeaderRandom() *Header {
 		Height:             int64(mrand.Uint32() + 1),
 		Time:               time.Now(),
 		LastBlockID:        makeBlockIDRandom(),
-		LastPartSetHeader:  makePartSetHeaderRandom(),
 		LastCommitHash:     crypto.CRandBytes(tmhash.Size),
 		DataHash:           crypto.CRandBytes(tmhash.Size),
 		ValidatorsHash:     crypto.CRandBytes(tmhash.Size),
