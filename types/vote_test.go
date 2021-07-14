@@ -294,3 +294,21 @@ func TestVoteProtobuf(t *testing.T) {
 		}
 	}
 }
+
+// TestDoNotSignOverPartSetHeader simply ensures that the partset header is not signed over while voting.
+func TestDoNotSignOverPartSetHeader(t *testing.T) {
+	pv := NewMockPV()
+	pubKey, err := pv.GetPubKey()
+	require.NoError(t, err)
+	blockID := randBlockID()
+	psh := randPartSetHeader()
+	currentTime := time.Now()
+	voteA := makeMockVote(1, 0, 0, pubKey.Address(), blockID, psh, currentTime).ToProto()
+	voteB := makeMockVote(1, 0, 0, pubKey.Address(), blockID, PartSetHeader{}, currentTime).ToProto()
+
+	pv.SignVote("test", voteA)
+	pv.SignVote("test", voteB)
+
+	require.Equal(t, voteA.Signature, voteB.Signature)
+
+}
