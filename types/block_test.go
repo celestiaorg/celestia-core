@@ -510,11 +510,11 @@ func TestBlockMaxDataBytes(t *testing.T) {
 	}{
 		0: {-10, 1, 0, true, 0},
 		1: {10, 1, 0, true, 0},
-		2: {851, 1, 0, true, 0},
-		3: {853, 1, 0, false, 0},
-		4: {854, 1, 0, false, 1},
-		5: {965, 2, 0, false, 1},
-		6: {1064, 2, 100, false, 0},
+		2: {808, 1, 0, true, 0},
+		3: {810, 1, 0, false, 0},
+		4: {811, 1, 0, false, 1},
+		5: {922, 2, 0, false, 1},
+		6: {1021, 2, 100, false, 0},
 	}
 
 	for i, tc := range testCases {
@@ -541,9 +541,9 @@ func TestBlockMaxDataBytesNoEvidence(t *testing.T) {
 	}{
 		0: {-10, 1, true, 0},
 		1: {10, 1, true, 0},
-		2: {851, 1, true, 0},
-		3: {853, 1, false, 0},
-		4: {854, 1, false, 1},
+		2: {808, 1, true, 0},
+		3: {810, 1, false, 0},
+		4: {811, 1, false, 1},
 	}
 
 	for i, tc := range testCases {
@@ -1038,18 +1038,6 @@ func TestHeader_ValidateBasic(t *testing.T) {
 				},
 			},
 			true, "wrong Hash",
-		},
-		{
-			"invalid block ID parts header hash",
-			Header{
-				Version: tmversion.Consensus{Block: version.BlockProtocol},
-				ChainID: string(make([]byte, MaxChainIDLen)),
-				Height:  1,
-				LastBlockID: BlockID{
-					Hash: make([]byte, tmhash.Size),
-				},
-			},
-			true, "wrong PartSetHeader",
 		},
 		{
 			"invalid last commit hash",
