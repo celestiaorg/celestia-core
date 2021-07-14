@@ -306,8 +306,10 @@ func TestDoNotSignOverPartSetHeader(t *testing.T) {
 	voteA := makeMockVote(1, 0, 0, pubKey.Address(), blockID, psh, currentTime).ToProto()
 	voteB := makeMockVote(1, 0, 0, pubKey.Address(), blockID, PartSetHeader{}, currentTime).ToProto()
 
-	pv.SignVote("test", voteA)
-	pv.SignVote("test", voteB)
+	err = pv.SignVote("test", voteA)
+	require.NoError(t, err)
+	err = pv.SignVote("test", voteB)
+	require.NoError(t, err)
 
 	require.Equal(t, voteA.Signature, voteB.Signature)
 
