@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	p2pmocks "github.com/lazyledger/lazyledger-core/p2p/mocks"
-	ssproto "github.com/lazyledger/lazyledger-core/proto/tendermint/statesync"
+	"github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/p2p"
+	p2pmocks "github.com/celestiaorg/celestia-core/p2p/mocks"
+	ssproto "github.com/celestiaorg/celestia-core/proto/tendermint/statesync"
 )
 
 var (

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
-	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
+	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
+	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	rpctest "github.com/celestiaorg/celestia-core/rpc/test"
 )
 
 func ExampleHTTP_simple() {

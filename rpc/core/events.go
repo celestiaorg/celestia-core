@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
-	tmquery "github.com/lazyledger/lazyledger-core/libs/pubsub/query"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	tmpubsub "github.com/celestiaorg/celestia-core/libs/pubsub"
+	tmquery "github.com/celestiaorg/celestia-core/libs/pubsub/query"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	rpctypes "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 const (

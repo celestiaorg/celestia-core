@@ -12,17 +12,17 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	"github.com/lazyledger/lazyledger-core/evidence"
-	"github.com/lazyledger/lazyledger-core/evidence/mocks"
-	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	sm "github.com/lazyledger/lazyledger-core/state"
-	"github.com/lazyledger/lazyledger-core/types"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	"github.com/celestiaorg/celestia-core/evidence"
+	"github.com/celestiaorg/celestia-core/evidence/mocks"
+	"github.com/celestiaorg/celestia-core/libs/db/memdb"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/p2p"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	sm "github.com/celestiaorg/celestia-core/state"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 var (

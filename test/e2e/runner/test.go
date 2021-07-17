@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
+	e2e "github.com/celestiaorg/celestia-core/test/e2e/pkg"
 )
 
 // Test runs test cases under tests/

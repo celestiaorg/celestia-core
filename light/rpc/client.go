@@ -9,15 +9,15 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/crypto/merkle"
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	service "github.com/lazyledger/lazyledger-core/libs/service"
-	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/crypto/merkle"
+	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	service "github.com/celestiaorg/celestia-core/libs/service"
+	rpcclient "github.com/celestiaorg/celestia-core/rpc/client"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	rpctypes "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 var errNegOrZeroHeight = errors.New("negative or zero height")

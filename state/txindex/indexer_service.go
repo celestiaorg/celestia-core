@@ -3,9 +3,9 @@ package txindex
 import (
 	"context"
 
-	"github.com/lazyledger/lazyledger-core/libs/service"
+	"github.com/celestiaorg/celestia-core/libs/service"
 
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 const (

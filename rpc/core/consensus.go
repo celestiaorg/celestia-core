@@ -1,11 +1,11 @@
 package core
 
 import (
-	cm "github.com/lazyledger/lazyledger-core/consensus"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	cm "github.com/celestiaorg/celestia-core/consensus"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	rpctypes "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // Validators gets the validator set at the given block height.

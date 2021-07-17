@@ -9,16 +9,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	"github.com/lazyledger/lazyledger-core/privval"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/rpc/client"
-	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	cryptoenc "github.com/celestiaorg/celestia-core/crypto/encoding"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	"github.com/celestiaorg/celestia-core/privval"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/rpc/client"
+	rpctest "github.com/celestiaorg/celestia-core/rpc/test"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // For some reason the empty node used in tests has a time of

@@ -8,11 +8,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmnet "github.com/celestiaorg/celestia-core/libs/net"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 var (

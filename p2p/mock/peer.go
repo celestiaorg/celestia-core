@@ -3,9 +3,9 @@ package mock
 import (
 	"net"
 
-	"github.com/lazyledger/lazyledger-core/libs/service"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	"github.com/lazyledger/lazyledger-core/p2p/conn"
+	"github.com/celestiaorg/celestia-core/libs/service"
+	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/p2p/conn"
 )
 
 type Peer struct {

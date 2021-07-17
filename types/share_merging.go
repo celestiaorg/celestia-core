@@ -5,10 +5,10 @@ import (
 	"encoding/binary"
 	"errors"
 
+	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types/consts"
 	"github.com/gogo/protobuf/proto"
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
 	"github.com/lazyledger/rsmt2d"
 )
 

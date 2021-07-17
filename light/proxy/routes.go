@@ -1,13 +1,13 @@
 package proxy
 
 import (
-	"github.com/lazyledger/lazyledger-core/libs/bytes"
-	lrpc "github.com/lazyledger/lazyledger-core/light/rpc"
-	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpcserver "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/libs/bytes"
+	lrpc "github.com/celestiaorg/celestia-core/light/rpc"
+	rpcclient "github.com/celestiaorg/celestia-core/rpc/client"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	rpcserver "github.com/celestiaorg/celestia-core/rpc/jsonrpc/server"
+	rpctypes "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {

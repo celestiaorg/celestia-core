@@ -6,13 +6,13 @@ import (
 	"reflect"
 	"time"
 
-	bc "github.com/lazyledger/lazyledger-core/blockchain"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	bcproto "github.com/lazyledger/lazyledger-core/proto/tendermint/blockchain"
-	sm "github.com/lazyledger/lazyledger-core/state"
-	"github.com/lazyledger/lazyledger-core/store"
-	"github.com/lazyledger/lazyledger-core/types"
+	bc "github.com/celestiaorg/celestia-core/blockchain"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/p2p"
+	bcproto "github.com/celestiaorg/celestia-core/proto/tendermint/blockchain"
+	sm "github.com/celestiaorg/celestia-core/state"
+	"github.com/celestiaorg/celestia-core/store"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 const (

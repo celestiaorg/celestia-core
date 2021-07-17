@@ -7,10 +7,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/proxy"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/proxy"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 func TestCacheRemove(t *testing.T) {

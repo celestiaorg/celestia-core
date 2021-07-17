@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lazyledger/lazyledger-core/crypto/merkle"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
+	"github.com/celestiaorg/celestia-core/crypto/merkle"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 // Tx is an arbitrary byte array.

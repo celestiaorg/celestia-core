@@ -1,8 +1,8 @@
 package crypto
 
 import (
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	"github.com/celestiaorg/celestia-core/libs/bytes"
 )
 
 const (

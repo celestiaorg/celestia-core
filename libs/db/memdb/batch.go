@@ -3,7 +3,7 @@ package memdb
 import (
 	"fmt"
 
-	lldb "github.com/lazyledger/lazyledger-core/libs/db"
+	lldb "github.com/celestiaorg/celestia-core/libs/db"
 )
 
 // memDBBatch operations

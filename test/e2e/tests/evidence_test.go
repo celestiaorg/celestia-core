@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
-	"github.com/lazyledger/lazyledger-core/types"
+	e2e "github.com/celestiaorg/celestia-core/test/e2e/pkg"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // assert that all nodes that have blocks at the height of a misbehavior has evidence

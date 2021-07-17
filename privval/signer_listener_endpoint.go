@@ -5,10 +5,10 @@ import (
 	"net"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/libs/service"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	privvalproto "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/libs/service"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	privvalproto "github.com/celestiaorg/celestia-core/proto/tendermint/privval"
 )
 
 // SignerListenerEndpointOption sets an optional parameter on the SignerListenerEndpoint.

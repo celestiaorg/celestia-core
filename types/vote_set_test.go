@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	tmtime "github.com/lazyledger/lazyledger-core/types/time"
+	"github.com/celestiaorg/celestia-core/crypto"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	tmtime "github.com/celestiaorg/celestia-core/types/time"
 )
 
 func TestVoteSet_AddVote_Good(t *testing.T) {

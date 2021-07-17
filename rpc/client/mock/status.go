@@ -3,8 +3,8 @@ package mock
 import (
 	"context"
 
-	"github.com/lazyledger/lazyledger-core/rpc/client"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
+	"github.com/celestiaorg/celestia-core/rpc/client"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
 )
 
 // StatusMock returns the result specified by the Call

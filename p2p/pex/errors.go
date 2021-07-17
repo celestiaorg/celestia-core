@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/celestiaorg/celestia-core/p2p"
 )
 
 type ErrAddrBookNonRoutable struct {

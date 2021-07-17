@@ -7,12 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/state/txindex"
-	"github.com/lazyledger/lazyledger-core/state/txindex/kv"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/libs/db/memdb"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/state/txindex"
+	"github.com/celestiaorg/celestia-core/state/txindex/kv"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 func TestIndexerServiceIndexesBlocks(t *testing.T) {

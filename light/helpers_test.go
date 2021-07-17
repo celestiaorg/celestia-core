@@ -3,14 +3,14 @@ package light_test
 import (
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
-	"github.com/lazyledger/lazyledger-core/types"
-	tmtime "github.com/lazyledger/lazyledger-core/types/time"
-	"github.com/lazyledger/lazyledger-core/version"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
+	"github.com/celestiaorg/celestia-core/types"
+	tmtime "github.com/celestiaorg/celestia-core/types/time"
+	"github.com/celestiaorg/celestia-core/version"
 )
 
 // privKeys is a helper type for testing.

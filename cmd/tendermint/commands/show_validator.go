@@ -5,9 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
-	"github.com/lazyledger/lazyledger-core/privval"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
+	"github.com/celestiaorg/celestia-core/privval"
 )
 
 // ShowValidatorCmd adds capabilities for showing the validator info.

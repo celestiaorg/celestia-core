@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 )
 
 var (

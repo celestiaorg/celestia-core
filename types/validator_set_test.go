@@ -14,11 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 
 func TestValidatorSetBasic(t *testing.T) {

@@ -3,8 +3,8 @@ package ipfs
 import (
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
 )
 
 // InitRepo initialize IPFS repository under the given path.

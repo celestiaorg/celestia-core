@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 )
 
 func TestBlockMeta_ToProto(t *testing.T) {

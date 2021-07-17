@@ -1,7 +1,7 @@
 package cmap
 
 import (
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 )
 
 // CMap is a goroutine-safe map

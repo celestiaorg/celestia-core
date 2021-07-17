@@ -4,7 +4,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
 )
 
 const (

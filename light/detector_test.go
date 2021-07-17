@@ -7,13 +7,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/light"
-	"github.com/lazyledger/lazyledger-core/light/provider"
-	mockp "github.com/lazyledger/lazyledger-core/light/provider/mock"
-	dbs "github.com/lazyledger/lazyledger-core/light/store/db"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/libs/db/memdb"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/light"
+	"github.com/celestiaorg/celestia-core/light/provider"
+	mockp "github.com/celestiaorg/celestia-core/light/provider/mock"
+	dbs "github.com/celestiaorg/celestia-core/light/store/db"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 func TestLightClientAttackEvidence_Lunatic(t *testing.T) {

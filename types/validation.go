@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	tmtime "github.com/lazyledger/lazyledger-core/types/time"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	tmtime "github.com/celestiaorg/celestia-core/types/time"
 )
 
 // ValidateTime does a basic time validation ensuring time does not drift too

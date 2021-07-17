@@ -7,9 +7,9 @@ import (
 	mrand "math/rand"
 	"strings"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	ce "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/crypto"
+	ce "github.com/celestiaorg/celestia-core/crypto/encoding"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 
 // Volatile state for each Validator

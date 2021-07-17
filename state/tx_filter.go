@@ -1,8 +1,8 @@
 package state
 
 import (
-	mempl "github.com/lazyledger/lazyledger-core/mempool"
-	"github.com/lazyledger/lazyledger-core/types"
+	mempl "github.com/celestiaorg/celestia-core/mempool"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // TxPreCheck returns a function to filter transactions before processing.

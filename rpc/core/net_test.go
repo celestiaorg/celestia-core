@@ -6,10 +6,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/p2p"
+	rpctypes "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 func TestUnsafeDialSeeds(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"reflect"
 
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
 )
 
 func argsToURLValues(args map[string]interface{}) (url.Values, error) {

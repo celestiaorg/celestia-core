@@ -12,17 +12,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/mempool/mock"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	"github.com/lazyledger/lazyledger-core/proxy"
-	sm "github.com/lazyledger/lazyledger-core/state"
-	"github.com/lazyledger/lazyledger-core/store"
-	"github.com/lazyledger/lazyledger-core/types"
-	tmtime "github.com/lazyledger/lazyledger-core/types/time"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/libs/db/memdb"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/mempool/mock"
+	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/proxy"
+	sm "github.com/celestiaorg/celestia-core/state"
+	"github.com/celestiaorg/celestia-core/store"
+	"github.com/celestiaorg/celestia-core/types"
+	tmtime "github.com/celestiaorg/celestia-core/types/time"
 )
 
 var config *cfg.Config

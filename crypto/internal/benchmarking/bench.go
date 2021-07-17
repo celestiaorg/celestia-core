@@ -4,7 +4,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto"
 )
 
 // The code in this file is adapted from agl/ed25519.

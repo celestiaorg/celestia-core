@@ -7,10 +7,10 @@ import (
 	"io/ioutil"
 	"testing"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
-	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/libs/db/badgerdb"
+	"github.com/celestiaorg/celestia-core/libs/pubsub/query"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 func BenchmarkTxSearch(b *testing.B) {

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/libs/json"
+	"github.com/celestiaorg/celestia-core/libs/json"
 )
 
 func TestMarshal(t *testing.T) {

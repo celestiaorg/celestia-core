@@ -3,8 +3,8 @@ package kvstore
 import (
 	mrand "math/rand"
 
-	"github.com/lazyledger/lazyledger-core/abci/types"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	"github.com/celestiaorg/celestia-core/abci/types"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 )
 
 // RandVal creates one random validator, with a key derived

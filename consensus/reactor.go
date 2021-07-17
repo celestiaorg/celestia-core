@@ -9,18 +9,18 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
-	"github.com/lazyledger/lazyledger-core/libs/bits"
-	tmevents "github.com/lazyledger/lazyledger-core/libs/events"
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	tmcons "github.com/lazyledger/lazyledger-core/proto/tendermint/consensus"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	sm "github.com/lazyledger/lazyledger-core/state"
-	"github.com/lazyledger/lazyledger-core/types"
-	tmtime "github.com/lazyledger/lazyledger-core/types/time"
+	cstypes "github.com/celestiaorg/celestia-core/consensus/types"
+	"github.com/celestiaorg/celestia-core/libs/bits"
+	tmevents "github.com/celestiaorg/celestia-core/libs/events"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	"github.com/celestiaorg/celestia-core/p2p"
+	tmcons "github.com/celestiaorg/celestia-core/proto/tendermint/consensus"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	sm "github.com/celestiaorg/celestia-core/state"
+	"github.com/celestiaorg/celestia-core/types"
+	tmtime "github.com/celestiaorg/celestia-core/types/time"
 )
 
 const (

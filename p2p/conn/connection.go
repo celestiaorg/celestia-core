@@ -14,14 +14,14 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	flow "github.com/lazyledger/lazyledger-core/libs/flowrate"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
-	"github.com/lazyledger/lazyledger-core/libs/service"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/libs/timer"
-	tmp2p "github.com/lazyledger/lazyledger-core/proto/tendermint/p2p"
+	flow "github.com/celestiaorg/celestia-core/libs/flowrate"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	"github.com/celestiaorg/celestia-core/libs/protoio"
+	"github.com/celestiaorg/celestia-core/libs/service"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	"github.com/celestiaorg/celestia-core/libs/timer"
+	tmp2p "github.com/celestiaorg/celestia-core/proto/tendermint/p2p"
 )
 
 const (

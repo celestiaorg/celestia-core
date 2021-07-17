@@ -10,12 +10,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/code"
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
-	mempl "github.com/lazyledger/lazyledger-core/mempool"
-	sm "github.com/lazyledger/lazyledger-core/state"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/abci/example/code"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/libs/db/memdb"
+	mempl "github.com/celestiaorg/celestia-core/mempool"
+	sm "github.com/celestiaorg/celestia-core/state"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // for testing

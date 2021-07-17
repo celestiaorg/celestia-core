@@ -6,10 +6,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	sm "github.com/lazyledger/lazyledger-core/state"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/libs/db/memdb"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	sm "github.com/celestiaorg/celestia-core/state"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 func TestTxFilter(t *testing.T) {

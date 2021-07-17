@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/code"
-	"github.com/lazyledger/lazyledger-core/abci/types"
-	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	dbb "github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	pc "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
+	"github.com/celestiaorg/celestia-core/abci/example/code"
+	"github.com/celestiaorg/celestia-core/abci/types"
+	cryptoenc "github.com/celestiaorg/celestia-core/crypto/encoding"
+	dbb "github.com/celestiaorg/celestia-core/libs/db/badgerdb"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	pc "github.com/celestiaorg/celestia-core/proto/tendermint/crypto"
 )
 
 const (

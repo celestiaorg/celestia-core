@@ -7,12 +7,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	ssproto "github.com/lazyledger/lazyledger-core/proto/tendermint/statesync"
-	proxymocks "github.com/lazyledger/lazyledger-core/proxy/mocks"
-	"github.com/lazyledger/lazyledger-core/statesync/mocks"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/p2p"
+	ssproto "github.com/celestiaorg/celestia-core/proto/tendermint/statesync"
+	proxymocks "github.com/celestiaorg/celestia-core/proxy/mocks"
+	"github.com/celestiaorg/celestia-core/statesync/mocks"
 )
 
 type reactorTestSuite struct {

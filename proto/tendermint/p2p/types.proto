@@ -1,7 +1,7 @@
 syntax = "proto3";
 package tendermint.p2p;
 
-option go_package = "github.com/lazyledger/lazyledger-core/proto/tendermint/p2p";
+option go_package = "github.com/celestiaorg/celestia-core/proto/tendermint/p2p";
 
 import "gogoproto/gogo.proto";
 

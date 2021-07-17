@@ -8,9 +8,9 @@ import (
 	"regexp"
 	"strings"
 
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	types "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 // HTTP + URI handler

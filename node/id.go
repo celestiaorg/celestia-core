@@ -3,7 +3,7 @@ package node
 import (
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto"
 )
 
 type ID struct {

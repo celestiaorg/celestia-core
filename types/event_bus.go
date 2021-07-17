@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
-	"github.com/lazyledger/lazyledger-core/libs/service"
+	"github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmpubsub "github.com/celestiaorg/celestia-core/libs/pubsub"
+	"github.com/celestiaorg/celestia-core/libs/service"
 )
 
 const defaultCapacity = 0

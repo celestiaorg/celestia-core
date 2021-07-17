@@ -11,13 +11,13 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	auto "github.com/lazyledger/lazyledger-core/libs/autofile"
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
-	"github.com/lazyledger/lazyledger-core/libs/service"
-	tmcons "github.com/lazyledger/lazyledger-core/proto/tendermint/consensus"
-	tmtime "github.com/lazyledger/lazyledger-core/types/time"
+	auto "github.com/celestiaorg/celestia-core/libs/autofile"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
+	"github.com/celestiaorg/celestia-core/libs/service"
+	tmcons "github.com/celestiaorg/celestia-core/proto/tendermint/consensus"
+	tmtime "github.com/celestiaorg/celestia-core/types/time"
 )
 
 const (

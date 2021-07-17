@@ -1,9 +1,9 @@
 package mock
 
 import (
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	"github.com/lazyledger/lazyledger-core/p2p/conn"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/p2p/conn"
 )
 
 type Reactor struct {

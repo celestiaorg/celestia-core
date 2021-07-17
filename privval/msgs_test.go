@@ -8,14 +8,14 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	cryptoproto "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
-	privproto "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	cryptoenc "github.com/celestiaorg/celestia-core/crypto/encoding"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	cryptoproto "github.com/celestiaorg/celestia-core/proto/tendermint/crypto"
+	privproto "github.com/celestiaorg/celestia-core/proto/tendermint/privval"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 var stamp = time.Date(2019, 10, 13, 16, 14, 44, 0, time.UTC)

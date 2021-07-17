@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
+	"github.com/celestiaorg/celestia-core/libs/pubsub/query"
 )
 
 func TestMatches(t *testing.T) {

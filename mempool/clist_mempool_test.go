@@ -17,14 +17,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/counter"
-	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	"github.com/lazyledger/lazyledger-core/proxy"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/abci/example/counter"
+	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	"github.com/celestiaorg/celestia-core/proxy"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // A cleanupFunc cleans up any config / test files created for a particular

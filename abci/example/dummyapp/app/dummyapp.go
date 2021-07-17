@@ -11,10 +11,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
-	"github.com/lazyledger/lazyledger-core/abci/types"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
+	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
+	"github.com/celestiaorg/celestia-core/abci/types"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 type Application struct {

@@ -1,10 +1,10 @@
 package store
 
 import (
-	"github.com/lazyledger/lazyledger-core/ipfs"
-	dbm "github.com/lazyledger/lazyledger-core/libs/db"
-	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
-	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/celestiaorg/celestia-core/ipfs"
+	dbm "github.com/celestiaorg/celestia-core/libs/db"
+	"github.com/celestiaorg/celestia-core/libs/db/memdb"
+	"github.com/celestiaorg/celestia-core/libs/log"
 )
 
 // MockBlockStore returns a mocked blockstore. a nil db will result in a new in memory db

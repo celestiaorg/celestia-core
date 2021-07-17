@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tmdb "github.com/lazyledger/lazyledger-core/libs/db"
-	"github.com/lazyledger/lazyledger-core/libs/db/internal/dbtest"
+	tmdb "github.com/celestiaorg/celestia-core/libs/db"
+	"github.com/celestiaorg/celestia-core/libs/db/internal/dbtest"
 )
 
 func TestBackendGetSetDelete(t *testing.T) {

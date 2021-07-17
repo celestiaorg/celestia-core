@@ -5,9 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	"github.com/lazyledger/lazyledger-core/privval"
-	"github.com/lazyledger/lazyledger-core/types"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	"github.com/celestiaorg/celestia-core/privval"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // GenValidatorCmd allows the generation of a keypair for a

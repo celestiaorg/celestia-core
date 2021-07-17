@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/lazyledger/lazyledger-core/libs/bytes"
-	tmstrings "github.com/lazyledger/lazyledger-core/libs/strings"
-	tmp2p "github.com/lazyledger/lazyledger-core/proto/tendermint/p2p"
-	"github.com/lazyledger/lazyledger-core/version"
+	"github.com/celestiaorg/celestia-core/libs/bytes"
+	tmstrings "github.com/celestiaorg/celestia-core/libs/strings"
+	tmp2p "github.com/celestiaorg/celestia-core/proto/tendermint/p2p"
+	"github.com/celestiaorg/celestia-core/version"
 )
 
 const (

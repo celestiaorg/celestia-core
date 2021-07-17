@@ -1,7 +1,7 @@
 syntax = "proto3";
 package tendermint.store;
 
-option go_package = "github.com/lazyledger/lazyledger-core/proto/tendermint/store";
+option go_package = "github.com/celestiaorg/celestia-core/proto/tendermint/store";
 
 message BlockStoreState {
   int64 base   = 1;

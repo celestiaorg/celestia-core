@@ -13,16 +13,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	"github.com/lazyledger/lazyledger-core/p2p/mock"
-	memproto "github.com/lazyledger/lazyledger-core/proto/tendermint/mempool"
-	"github.com/lazyledger/lazyledger-core/proxy"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/p2p/mock"
+	memproto "github.com/celestiaorg/celestia-core/proto/tendermint/mempool"
+	"github.com/celestiaorg/celestia-core/proxy"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 const (

@@ -6,7 +6,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
+	tmnet "github.com/celestiaorg/celestia-core/libs/net"
 )
 
 // Config is an gRPC server configuration.

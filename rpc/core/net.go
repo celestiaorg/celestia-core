@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lazyledger/lazyledger-core/p2p"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	"github.com/celestiaorg/celestia-core/p2p"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	rpctypes "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 // NetInfo returns network info.

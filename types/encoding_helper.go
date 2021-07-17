@@ -3,7 +3,7 @@ package types
 import (
 	gogotypes "github.com/gogo/protobuf/types"
 
-	"github.com/lazyledger/lazyledger-core/libs/bytes"
+	"github.com/celestiaorg/celestia-core/libs/bytes"
 )
 
 // cdcEncode returns nil if the input is nil, otherwise returns

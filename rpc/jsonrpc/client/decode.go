@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	types "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 func unmarshalResponseBytes(

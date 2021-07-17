@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/libs/bytes"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/libs/bytes"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 //-----------------------------------------------------------------------------

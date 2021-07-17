@@ -9,17 +9,17 @@ import (
 	"sync"
 	"sync/atomic"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	auto "github.com/lazyledger/lazyledger-core/libs/autofile"
-	"github.com/lazyledger/lazyledger-core/libs/clist"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	"github.com/lazyledger/lazyledger-core/proxy"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	auto "github.com/celestiaorg/celestia-core/libs/autofile"
+	"github.com/celestiaorg/celestia-core/libs/clist"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/proxy"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // TxKeySize is the size of the transaction key index

@@ -6,8 +6,8 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	bcproto "github.com/lazyledger/lazyledger-core/proto/tendermint/blockchain"
-	"github.com/lazyledger/lazyledger-core/types"
+	bcproto "github.com/celestiaorg/celestia-core/proto/tendermint/blockchain"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 const (

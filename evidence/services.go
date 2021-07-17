@@ -1,7 +1,7 @@
 package evidence
 
 import (
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 //go:generate mockery --case underscore --name BlockStore

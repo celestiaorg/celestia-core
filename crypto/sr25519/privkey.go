@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto"
 
 	schnorrkel "github.com/ChainSafe/go-schnorrkel"
 )

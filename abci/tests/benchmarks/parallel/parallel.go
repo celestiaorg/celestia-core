@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/lazyledger/lazyledger-core/abci/types"
-	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
+	"github.com/celestiaorg/celestia-core/abci/types"
+	tmnet "github.com/celestiaorg/celestia-core/libs/net"
 )
 
 func main() {

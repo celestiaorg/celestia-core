@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	e2e "github.com/celestiaorg/celestia-core/test/e2e/pkg"
 )
 
 var (

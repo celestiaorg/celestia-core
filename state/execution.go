@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"time"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	"github.com/lazyledger/lazyledger-core/libs/fail"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	mempl "github.com/lazyledger/lazyledger-core/mempool"
-	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/proxy"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	cryptoenc "github.com/celestiaorg/celestia-core/crypto/encoding"
+	"github.com/celestiaorg/celestia-core/libs/fail"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	mempl "github.com/celestiaorg/celestia-core/mempool"
+	tmstate "github.com/celestiaorg/celestia-core/proto/tendermint/state"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/proxy"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 //-----------------------------------------------------------------------------
@@ -111,7 +111,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// maybe the mempool actually should track things separately
 	// meaning that CheckTx should already do the mapping:
 	// Tx -> Txs, Message
-	// https://github.com/lazyledger/lazyledger-core/issues/77
+	// https://github.com/celestiaorg/celestia-core/issues/77
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
 	l := len(txs)
 	bzs := make([][]byte, l)

@@ -1,10 +1,10 @@
 package mock
 
 import (
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/clist"
-	mempl "github.com/lazyledger/lazyledger-core/mempool"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/libs/clist"
+	mempl "github.com/celestiaorg/celestia-core/mempool"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // Mempool is an empty implementation of a Mempool, useful for testing.

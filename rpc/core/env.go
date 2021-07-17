@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"time"
 
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/consensus"
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	mempl "github.com/lazyledger/lazyledger-core/mempool"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	"github.com/lazyledger/lazyledger-core/proxy"
-	sm "github.com/lazyledger/lazyledger-core/state"
-	"github.com/lazyledger/lazyledger-core/state/txindex"
-	"github.com/lazyledger/lazyledger-core/types"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/consensus"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	mempl "github.com/celestiaorg/celestia-core/mempool"
+	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/proxy"
+	sm "github.com/celestiaorg/celestia-core/state"
+	"github.com/celestiaorg/celestia-core/state/txindex"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 const (

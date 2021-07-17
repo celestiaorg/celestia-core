@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
-	rpcserver "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
+	rpcserver "github.com/celestiaorg/celestia-core/rpc/jsonrpc/server"
+	rpctypes "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 var routes = map[string]*rpcserver.RPCFunc{

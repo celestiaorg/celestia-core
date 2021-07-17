@@ -81,5 +81,5 @@
 //
 // Examples
 //
-// - [Tendermint](https://github.com/lazyledger/lazyledger-core/blob/master/rpc/core/routes.go)
+// - [Tendermint](https://github.com/celestiaorg/celestia-core/blob/master/rpc/core/routes.go)
 package jsonrpc

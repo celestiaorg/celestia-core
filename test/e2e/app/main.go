@@ -9,16 +9,16 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/lazyledger/lazyledger-core/ipfs"
-	tmflags "github.com/lazyledger/lazyledger-core/libs/cli/flags"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
-	"github.com/lazyledger/lazyledger-core/node"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	"github.com/lazyledger/lazyledger-core/privval"
-	"github.com/lazyledger/lazyledger-core/proxy"
+	"github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	"github.com/celestiaorg/celestia-core/ipfs"
+	tmflags "github.com/celestiaorg/celestia-core/libs/cli/flags"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmnet "github.com/celestiaorg/celestia-core/libs/net"
+	"github.com/celestiaorg/celestia-core/node"
+	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/privval"
+	"github.com/celestiaorg/celestia-core/proxy"
 )
 
 var logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))

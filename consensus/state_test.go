@@ -11,15 +11,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/counter"
-	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	p2pmock "github.com/lazyledger/lazyledger-core/p2p/mock"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/abci/example/counter"
+	cstypes "github.com/celestiaorg/celestia-core/consensus/types"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmpubsub "github.com/celestiaorg/celestia-core/libs/pubsub"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	p2pmock "github.com/celestiaorg/celestia-core/p2p/mock"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 /*

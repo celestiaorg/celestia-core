@@ -39,8 +39,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lazyledger/lazyledger-core/libs/service"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	"github.com/celestiaorg/celestia-core/libs/service"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 )
 
 type operation int

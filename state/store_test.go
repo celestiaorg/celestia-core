@@ -8,17 +8,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
-	"github.com/lazyledger/lazyledger-core/libs/db/memdb"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	sm "github.com/lazyledger/lazyledger-core/state"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	"github.com/celestiaorg/celestia-core/libs/db/badgerdb"
+	"github.com/celestiaorg/celestia-core/libs/db/memdb"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	tmstate "github.com/celestiaorg/celestia-core/proto/tendermint/state"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	sm "github.com/celestiaorg/celestia-core/state"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 func TestStoreLoadValidators(t *testing.T) {

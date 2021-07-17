@@ -11,8 +11,8 @@ import (
 	"net/url"
 	"strings"
 
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	types "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 const (

@@ -13,9 +13,9 @@ import (
 	"github.com/gorilla/websocket"
 	metrics "github.com/rcrowley/go-metrics"
 
-	"github.com/lazyledger/lazyledger-core/libs/service"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	"github.com/celestiaorg/celestia-core/libs/service"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	types "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 const (

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/celestiaorg/celestia-core/p2p"
 )
 
 func setupChunkQueue(t *testing.T) (*chunkQueue, func()) {

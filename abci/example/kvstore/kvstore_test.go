@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/code"
-	"github.com/lazyledger/lazyledger-core/abci/types"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/abci/example/code"
+	"github.com/celestiaorg/celestia-core/abci/types"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 
 const (

@@ -19,10 +19,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
+	"github.com/celestiaorg/celestia-core/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/types"
+	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 func TestDiscovery(t *testing.T) {

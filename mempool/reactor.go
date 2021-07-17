@@ -6,13 +6,13 @@ import (
 	"math"
 	"time"
 
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/libs/clist"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	protomem "github.com/lazyledger/lazyledger-core/proto/tendermint/mempool"
-	"github.com/lazyledger/lazyledger-core/types"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/libs/clist"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	"github.com/celestiaorg/celestia-core/p2p"
+	protomem "github.com/celestiaorg/celestia-core/proto/tendermint/mempool"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 const (

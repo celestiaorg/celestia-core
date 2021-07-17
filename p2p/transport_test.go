@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
-	"github.com/lazyledger/lazyledger-core/p2p/conn"
-	tmp2p "github.com/lazyledger/lazyledger-core/proto/tendermint/p2p"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	"github.com/celestiaorg/celestia-core/libs/protoio"
+	"github.com/celestiaorg/celestia-core/p2p/conn"
+	tmp2p "github.com/celestiaorg/celestia-core/proto/tendermint/p2p"
 )
 
 var defaultNodeName = "host_peer"

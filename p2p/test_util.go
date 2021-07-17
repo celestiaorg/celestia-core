@@ -6,13 +6,13 @@ import (
 	"net"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmnet "github.com/celestiaorg/celestia-core/libs/net"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 
-	"github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/p2p/conn"
+	"github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/p2p/conn"
 )
 
 const testCh = 0x01

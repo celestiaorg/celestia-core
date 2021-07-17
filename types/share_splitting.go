@@ -3,7 +3,7 @@ package types
 import (
 	"bytes"
 
-	"github.com/lazyledger/lazyledger-core/types/consts"
+	"github.com/celestiaorg/celestia-core/types/consts"
 	"github.com/lazyledger/nmt/namespace"
 )
 

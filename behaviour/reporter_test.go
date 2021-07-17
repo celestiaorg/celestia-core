@@ -4,8 +4,8 @@ import (
 	"sync"
 	"testing"
 
-	bh "github.com/lazyledger/lazyledger-core/behaviour"
-	"github.com/lazyledger/lazyledger-core/p2p"
+	bh "github.com/celestiaorg/celestia-core/behaviour"
+	"github.com/celestiaorg/celestia-core/p2p"
 )
 
 // TestMockReporter tests the MockReporter's ability to store reported

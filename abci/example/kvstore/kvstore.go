@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/code"
-	"github.com/lazyledger/lazyledger-core/abci/types"
-	dbm "github.com/lazyledger/lazyledger-core/libs/db"
-	memdb "github.com/lazyledger/lazyledger-core/libs/db/memdb"
-	"github.com/lazyledger/lazyledger-core/version"
+	"github.com/celestiaorg/celestia-core/abci/example/code"
+	"github.com/celestiaorg/celestia-core/abci/types"
+	dbm "github.com/celestiaorg/celestia-core/libs/db"
+	memdb "github.com/celestiaorg/celestia-core/libs/db/memdb"
+	"github.com/celestiaorg/celestia-core/version"
 )
 
 var (

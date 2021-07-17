@@ -1,11 +1,11 @@
 package proxy
 
 import (
-	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
-	"github.com/lazyledger/lazyledger-core/abci/example/counter"
-	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
-	"github.com/lazyledger/lazyledger-core/abci/types"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	abcicli "github.com/celestiaorg/celestia-core/abci/client"
+	"github.com/celestiaorg/celestia-core/abci/example/counter"
+	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
+	"github.com/celestiaorg/celestia-core/abci/types"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 )
 
 // ClientCreator creates new ABCI clients.

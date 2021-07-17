@@ -19,11 +19,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/p2p/conn"
+	"github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	"github.com/celestiaorg/celestia-core/p2p/conn"
 )
 
 var (

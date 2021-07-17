@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lazyledger/lazyledger-core/light/provider"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/light/provider"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 type Mock struct {

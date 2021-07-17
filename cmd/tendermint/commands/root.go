@@ -8,10 +8,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/libs/cli"
-	tmflags "github.com/lazyledger/lazyledger-core/libs/cli/flags"
-	"github.com/lazyledger/lazyledger-core/libs/log"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/libs/cli"
+	tmflags "github.com/celestiaorg/celestia-core/libs/cli/flags"
+	"github.com/celestiaorg/celestia-core/libs/log"
 )
 
 var (

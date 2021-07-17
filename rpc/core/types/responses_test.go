@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/celestiaorg/celestia-core/p2p"
 )
 
 func TestStatusIndexer(t *testing.T) {

@@ -3,7 +3,7 @@ package json_test
 import (
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/libs/json"
+	"github.com/celestiaorg/celestia-core/libs/json"
 )
 
 // Register Car, an instance of the Vehicle interface.

@@ -15,19 +15,19 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/lazyledger/lazyledger-core/crypto/merkle"
-	"github.com/lazyledger/lazyledger-core/ipfs"
-	dbm "github.com/lazyledger/lazyledger-core/libs/db"
-	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
-	"github.com/lazyledger/lazyledger-core/light"
-	lproxy "github.com/lazyledger/lazyledger-core/light/proxy"
-	lrpc "github.com/lazyledger/lazyledger-core/light/rpc"
-	dbs "github.com/lazyledger/lazyledger-core/light/store/db"
-	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
-	rpcserver "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server"
+	"github.com/celestiaorg/celestia-core/crypto/merkle"
+	"github.com/celestiaorg/celestia-core/ipfs"
+	dbm "github.com/celestiaorg/celestia-core/libs/db"
+	"github.com/celestiaorg/celestia-core/libs/db/badgerdb"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
+	"github.com/celestiaorg/celestia-core/light"
+	lproxy "github.com/celestiaorg/celestia-core/light/proxy"
+	lrpc "github.com/celestiaorg/celestia-core/light/rpc"
+	dbs "github.com/celestiaorg/celestia-core/light/store/db"
+	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
+	rpcserver "github.com/celestiaorg/celestia-core/rpc/jsonrpc/server"
 )
 
 // LightCmd represents the base command when called without any subcommands

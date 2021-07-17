@@ -7,7 +7,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/lazyledger/lazyledger-core/types/consts"
+	"github.com/celestiaorg/celestia-core/types/consts"
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"

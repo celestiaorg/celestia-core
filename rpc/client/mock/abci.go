@@ -3,12 +3,12 @@ package mock
 import (
 	"context"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/bytes"
-	"github.com/lazyledger/lazyledger-core/proxy"
-	"github.com/lazyledger/lazyledger-core/rpc/client"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/libs/bytes"
+	"github.com/celestiaorg/celestia-core/proxy"
+	"github.com/celestiaorg/celestia-core/rpc/client"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // ABCIApp will send all abci related request to the named app,

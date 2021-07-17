@@ -14,14 +14,14 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
 
-	"github.com/lazyledger/lazyledger-core/ipfs"
-	dbm "github.com/lazyledger/lazyledger-core/libs/db"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld"
-	tmstore "github.com/lazyledger/lazyledger-core/proto/tendermint/store"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/ipfs"
+	dbm "github.com/celestiaorg/celestia-core/libs/db"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	"github.com/celestiaorg/celestia-core/p2p/ipld"
+	tmstore "github.com/celestiaorg/celestia-core/proto/tendermint/store"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types"
 	"github.com/lazyledger/rsmt2d"
 )
 

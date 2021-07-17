@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	types "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 func testMux() *http.ServeMux {

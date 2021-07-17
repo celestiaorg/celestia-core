@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
+	"github.com/celestiaorg/celestia-core/libs/pubsub/query"
 )
 
 func TestEmptyQueryMatchesAnything(t *testing.T) {

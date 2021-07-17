@@ -1,7 +1,7 @@
 package behaviour
 
 import (
-	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/celestiaorg/celestia-core/p2p"
 )
 
 // PeerBehaviour is a struct describing a behaviour a peer performed.

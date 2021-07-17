@@ -3,11 +3,11 @@ package encoding
 import (
 	"fmt"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/lazyledger/lazyledger-core/crypto/secp256k1"
-	"github.com/lazyledger/lazyledger-core/libs/json"
-	pc "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	"github.com/celestiaorg/celestia-core/crypto/secp256k1"
+	"github.com/celestiaorg/celestia-core/libs/json"
+	pc "github.com/celestiaorg/celestia-core/proto/tendermint/crypto"
 )
 
 func init() {

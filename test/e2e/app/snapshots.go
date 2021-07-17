@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
 )
 
 const (

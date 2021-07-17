@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	"github.com/lazyledger/lazyledger-core/p2p/mock"
-	tmp2p "github.com/lazyledger/lazyledger-core/proto/tendermint/p2p"
+	"github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/p2p/mock"
+	tmp2p "github.com/celestiaorg/celestia-core/proto/tendermint/p2p"
 )
 
 var (

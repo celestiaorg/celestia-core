@@ -3,7 +3,7 @@ package merkle
 import (
 	"hash"
 
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
 )
 
 // TODO: make these have a large predefined capacity

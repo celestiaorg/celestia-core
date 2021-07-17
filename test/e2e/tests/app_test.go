@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
-	"github.com/lazyledger/lazyledger-core/types"
+	e2e "github.com/celestiaorg/celestia-core/test/e2e/pkg"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // Tests that any initial state given in genesis has made it into the app.

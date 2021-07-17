@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
+	e2e "github.com/celestiaorg/celestia-core/test/e2e/pkg"
 )
 
 // Cleanup removes the Docker Compose containers and testnet directory.

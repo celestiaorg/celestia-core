@@ -9,12 +9,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
-	"github.com/lazyledger/lazyledger-core/version"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
+	"github.com/celestiaorg/celestia-core/version"
 )
 
 var defaultVoteTime = time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)

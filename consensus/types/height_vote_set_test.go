@@ -5,12 +5,12 @@ import (
 	"os"
 	"testing"
 
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types"
-	tmtime "github.com/lazyledger/lazyledger-core/types/time"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types"
+	tmtime "github.com/celestiaorg/celestia-core/types/time"
 )
 
 var config *cfg.Config // NOTE: must be reset for each _test.go file

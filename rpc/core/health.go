@@ -1,8 +1,8 @@
 package core
 
 import (
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	rpctypes "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 // Health gets node health. Returns empty result (200 OK) on success, no

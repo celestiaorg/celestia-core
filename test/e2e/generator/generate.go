@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
-	"github.com/lazyledger/lazyledger-core/types"
+	e2e "github.com/celestiaorg/celestia-core/test/e2e/pkg"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 var (

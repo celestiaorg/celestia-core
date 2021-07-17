@@ -15,23 +15,23 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/libp2p/go-libp2p-core/routing"
 
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	cstypes "github.com/lazyledger/lazyledger-core/consensus/types"
-	"github.com/lazyledger/lazyledger-core/crypto"
-	tmevents "github.com/lazyledger/lazyledger-core/libs/events"
-	"github.com/lazyledger/lazyledger-core/libs/fail"
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
-	"github.com/lazyledger/lazyledger-core/libs/service"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	sm "github.com/lazyledger/lazyledger-core/state"
-	"github.com/lazyledger/lazyledger-core/types"
-	tmtime "github.com/lazyledger/lazyledger-core/types/time"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	cstypes "github.com/celestiaorg/celestia-core/consensus/types"
+	"github.com/celestiaorg/celestia-core/crypto"
+	tmevents "github.com/celestiaorg/celestia-core/libs/events"
+	"github.com/celestiaorg/celestia-core/libs/fail"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
+	"github.com/celestiaorg/celestia-core/libs/service"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/p2p/ipld"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	sm "github.com/celestiaorg/celestia-core/state"
+	"github.com/celestiaorg/celestia-core/types"
+	tmtime "github.com/celestiaorg/celestia-core/types/time"
 )
 
 //-----------------------------------------------------------------------------
@@ -1133,7 +1133,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		// For other validators much more time passes in between.
 		// In our case block interval times will likely be larger.
 		// And independent of this DHT providing will be made faster:
-		//  - https://github.com/lazyledger/lazyledger-core/issues/395
+		//  - https://github.com/celestiaorg/celestia-core/issues/395
 		//
 		// Furthermore, and independent of all of the above,
 		// the provide timeout could still be larger than just the time between
@@ -1950,7 +1950,7 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 			// 1) bad peer OR
 			// 2) not a bad peer? this can also err sometimes with "Unexpected step" OR
 			// 3) tmkms use with multiple validators connecting to a single tmkms instance
-			// 		(https://github.com/lazyledger/lazyledger-core/issues/3839).
+			// 		(https://github.com/celestiaorg/celestia-core/issues/3839).
 			cs.Logger.Info("Error attempting to add vote", "err", err)
 			return added, ErrAddingVote
 		}

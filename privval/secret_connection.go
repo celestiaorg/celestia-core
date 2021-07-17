@@ -21,13 +21,13 @@ import (
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/crypto/nacl/box"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	"github.com/lazyledger/lazyledger-core/libs/async"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	tmprivval "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	cryptoenc "github.com/celestiaorg/celestia-core/crypto/encoding"
+	"github.com/celestiaorg/celestia-core/libs/async"
+	"github.com/celestiaorg/celestia-core/libs/protoio"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	tmprivval "github.com/celestiaorg/celestia-core/proto/tendermint/privval"
 )
 
 // This code has been duplicated from p2p/conn prior to the P2P refactor.

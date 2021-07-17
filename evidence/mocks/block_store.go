@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	types "github.com/lazyledger/lazyledger-core/types"
+	types "github.com/celestiaorg/celestia-core/types"
 	mock "github.com/stretchr/testify/mock"
 )
 

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
-	"github.com/lazyledger/lazyledger-core/types/consts"
+	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	"github.com/celestiaorg/celestia-core/libs/protoio"
+	"github.com/celestiaorg/celestia-core/types/consts"
 	"github.com/lazyledger/nmt/namespace"
 	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"

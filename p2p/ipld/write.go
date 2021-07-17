@@ -14,11 +14,11 @@ import (
 	"github.com/libp2p/go-libp2p-core/routing"
 	kbucket "github.com/libp2p/go-libp2p-kbucket"
 
-	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/libs/sync"
+	"github.com/celestiaorg/celestia-core/p2p/ipld/wrapper"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // PutBlock posts and pins erasured block data to IPFS using the provided

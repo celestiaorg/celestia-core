@@ -12,11 +12,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/lazyledger/lazyledger-core/crypto/secp256k1"
-	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	"github.com/celestiaorg/celestia-core/crypto/secp256k1"
+	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 const (

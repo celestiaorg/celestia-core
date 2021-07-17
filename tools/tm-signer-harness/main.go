@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/privval"
-	"github.com/lazyledger/lazyledger-core/tools/tm-signer-harness/internal"
-	"github.com/lazyledger/lazyledger-core/version"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/privval"
+	"github.com/celestiaorg/celestia-core/tools/tm-signer-harness/internal"
+	"github.com/celestiaorg/celestia-core/version"
 )
 
 const (

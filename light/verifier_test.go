@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	"github.com/lazyledger/lazyledger-core/light"
-	"github.com/lazyledger/lazyledger-core/types"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	"github.com/celestiaorg/celestia-core/light"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 const (

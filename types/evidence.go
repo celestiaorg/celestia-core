@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/crypto/merkle"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/crypto/merkle"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 
 // Evidence represents any provable malicious activity by a validator.

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
 )
 
 func TestHash(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 )
 
 func TestLoadOrGenNodeKey(t *testing.T) {

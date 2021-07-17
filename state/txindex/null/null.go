@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
-	"github.com/lazyledger/lazyledger-core/state/txindex"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/libs/pubsub/query"
+	"github.com/celestiaorg/celestia-core/state/txindex"
 )
 
 var _ txindex.TxIndexer = (*TxIndex)(nil)

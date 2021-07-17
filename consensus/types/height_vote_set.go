@@ -6,11 +6,11 @@ import (
 	"strings"
 	"sync"
 
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	"github.com/lazyledger/lazyledger-core/p2p"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	"github.com/celestiaorg/celestia-core/p2p"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 type RoundVoteSet struct {

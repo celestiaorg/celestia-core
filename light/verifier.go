@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	"github.com/lazyledger/lazyledger-core/types"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 var (

@@ -6,7 +6,7 @@ import (
 	"github.com/lazyledger/nmt"
 	"github.com/lazyledger/rsmt2d"
 
-	"github.com/lazyledger/lazyledger-core/types/consts"
+	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 // Fulfills the rsmt2d.Tree interface and rsmt2d.TreeConstructorFn function
