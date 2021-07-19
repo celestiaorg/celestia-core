@@ -12,9 +12,9 @@ else
 VERSION := $(shell git describe)
 endif
 
-LD_FLAGS = -X github.com/lazyledger/lazyledger-core/version.TMCoreSemVer=$(VERSION)
+LD_FLAGS = -X github.com/celestaiorg/celestia-core/version.TMCoreSemVer=$(VERSION)
 BUILD_FLAGS = -mod=readonly -ldflags "$(LD_FLAGS)"
-HTTPS_GIT := https://github.com/lazyledger/lazyledger-core.git
+HTTPS_GIT := https://github.com/celestaiorg/celestia-core.git
 DOCKER_BUF := docker run -v $(shell pwd):/workspace --workdir /workspace bufbuild/buf
 CGO_ENABLED ?= 0
 
