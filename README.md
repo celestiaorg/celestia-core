@@ -4,9 +4,9 @@
 <img src="docs/celestia-logo.png">
 <!-- markdownlint-enable -->
 
-![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/celestaiorg/celestia-core)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/celestiaorg/celestia-core)
 [![Community](https://img.shields.io/badge/chat%20on-discord-orange?&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/YsnTPcSfWQ)
-[![license](https://img.shields.io/github/license/tendermint/tendermint.svg)](https://github.com/celestaiorg/celestia-core/blob/master/LICENSE)
+[![license](https://img.shields.io/github/license/tendermint/tendermint.svg)](https://github.com/celestiaorg/celestia-core/blob/master/LICENSE)
 
 Celestia Core will power the Celestia main chain by leveraging Tendermint.
 
@@ -22,7 +22,7 @@ to learn more about what we are building.
 ## Documentation
 
 The original [whitepaper](https://arxiv.org/abs/1905.09274) and the
-[specification](https://github.com/celstiaorg/celestia-specs) which we are currently wrapping up can give you
+[specification](https://github.com/celestiaorg/celestia-specs) which we are currently wrapping up can give you
 a more detailed overview what to expect from this repository.
 
 ### Minimum requirements
@@ -46,7 +46,7 @@ Learn more by reading the code and the
 
 ### Semantic Versioning
 
-LazyLedger Core uses [Semantic Versioning](http://semver.org/) to determine when and how the version changes.
+Celestia Core uses [Semantic Versioning](http://semver.org/) to determine when and how the version changes.
 According to SemVer, anything in the public API can change at any time before version 1.0.0
 
 ## Resources

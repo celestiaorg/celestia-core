@@ -63,7 +63,7 @@ func Embedded(init bool, cfg *Config, logger log.Logger) NodeProvider {
 		// It is essential that we create a fresh instance of ipfs node on
 		// each start as internally the node gets only stopped once per instance.
 		// At least in ipfs 0.7.0; see:
-		// https://github.com/lazyledger/go-ipfs/blob/dd295e45608560d2ada7d7c8a30f1eef3f4019bb/core/builder.go#L48-L57
+		// https://github.com/celestiaorg/go-ipfs/blob/dd295e45608560d2ada7d7c8a30f1eef3f4019bb/core/builder.go#L48-L57
 		node, err := core.NewNode(ctx, nodeOptions)
 		if err != nil {
 			_ = repo.Close()

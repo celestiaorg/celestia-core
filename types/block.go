@@ -51,8 +51,8 @@ const (
 // k × k matrix, which is then "extended" to a
 // 2k × 2k matrix applying multiple times Reed-Solomon encoding.
 // For details see Section 5.2: https://arxiv.org/abs/1809.09044
-// or the LazyLedger specification:
-// https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#availabledataheader
+// or the Celestia specification:
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#availabledataheader
 // Note that currently we list row and column roots in separate fields
 // (different from the spec).
 type DataAvailabilityHeader struct {
@@ -1186,7 +1186,7 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 
 // Data contains all the available Data of the block.
 // Data with reserved namespaces (Txs, IntermediateStateRoots, Evidence) and
-// LazyLedger application specific Messages.
+// Celestia application specific Messages.
 type Data struct {
 	// Txs that will be applied by state @ block.Height+1.
 	// NOTE: not all txs here are valid.  We're just agreeing on the order first.
@@ -1248,7 +1248,7 @@ func (msgs Messages) splitIntoShares() NamespacedShares {
 // returns them along with an amount of non-redundant shares.
 func (data *Data) ComputeShares() (NamespacedShares, int) {
 	// TODO(ismail): splitting into shares should depend on the block size and layout
-	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
+	// see: https://github.com/celestiaorg/celestia-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
 
 	// reserved shares:
 	txShares := data.Txs.splitIntoShares()

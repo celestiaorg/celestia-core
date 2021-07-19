@@ -2,7 +2,7 @@
 // The random data is generated via the PreprocessTxs abci method.
 //
 // The name is inspired by:
-// https://github.com/lazyledger/lazyledger-prototype/blob/2aeca6f55ad389b9d68034a0a7038f80a8d2982e/app_dummy.go#L7
+// https://github.com/celestiaorg/lazyledger-prototype/blob/2aeca6f55ad389b9d68034a0a7038f80a8d2982e/app_dummy.go#L7
 package dummy
 
 import (

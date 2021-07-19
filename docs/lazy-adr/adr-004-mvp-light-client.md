@@ -136,7 +136,7 @@ Every time the light client validates a retrieved light-block, it additionally s
 For a DAS light client it is important to use [sequential](https://github.com/tendermint/tendermint/blob/f366ae3c875a4f4f61f37f4b39383558ac5a58cc/light/client.go#L46-L53) verification and not [skipping](https://github.com/tendermint/tendermint/blob/f366ae3c875a4f4f61f37f4b39383558ac5a58cc/light/client.go#L55-L69) verification.
 Skipping verification only works under the assumption that 2/3+1 of voting power is honest.
 The whole point of doing DAS (and state fraud proofs) is to remove that assumption.
-See also this related issue in the LL specification: [#159](https://github.com/lazyledger/lazyledger-specs/issues/159).
+See also this related issue in the LL specification: [#159](https://github.com/celestiaorg/celestia-specs/issues/159).
 
 Independent of the existing implementation, there are three ways this could be implemented:
 1. the DAS light client only accepts a header as valid and trusts it after DAS succeeds (additionally to the tendermint verification), and it waits until DAS succeeds (or there was an error or timeout on the way)
@@ -274,7 +274,7 @@ Proposed
 
 - simple to implement and understand
 - familiar to tendermint / Cosmos devs
-- allows trying out the MVP without relying on the [lazyledger-app](https://github.com/lazyledger/lazyledger-app) (instead a simple abci app like a modified [KVStore](https://github.com/celestiaorg/celestia-core/blob/42e4e8b58ebc58ebd663c114d2bcd7ab045b1c55/abci/example/kvstore/README.md) app could be used to demo the DAS light client)
+- allows trying out the MVP without relying on the [celestia-app](https://github.com/celestiaorg/celestia-app) (instead a simple abci app like a modified [KVStore](https://github.com/celestiaorg/celestia-core/blob/42e4e8b58ebc58ebd663c114d2bcd7ab045b1c55/abci/example/kvstore/README.md) app could be used to demo the DAS light client)
 
 ### Negative
 

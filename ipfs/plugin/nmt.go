@@ -97,7 +97,7 @@ func sumSha256Namespace8Flagged(data []byte, _length int) ([]byte, error) {
 //
 // To determine the share and the namespace size the constants
 // types.ShareSize and consts.NamespaceSize are redefined here to avoid
-// lazyledger-core as a dependency.
+// celestia-core as a dependency.
 //
 // Note while this coredag.DagParser is implemented here so this plugin can be used from
 // the commandline, the ipld Nodes will rather be created together with the NMT

@@ -7,10 +7,10 @@ import (
 )
 
 // This contains all constants of:
-// https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#constants
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/consensus.md#constants
 const (
 	// ShareSize is the size of a share (in bytes).
-	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#constants
+	// see: https://github.com/celestiaorg/celestia-specs/blob/master/specs/consensus.md#constants
 	ShareSize = 256
 
 	// NamespaceSize is the namespace size in bytes.
@@ -38,8 +38,8 @@ const (
 
 var (
 	// See spec for further details on the types of available data
-	// https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#reserved-namespace-ids
-	// https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#availabledata
+	// https://github.com/celestiaorg/celestia-specs/blob/master/specs/consensus.md#reserved-namespace-ids
+	// https://github.com/celestiaorg/celestia-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#availabledata
 
 	// TxNamespaceID is the namespace reserved for transaction data
 	TxNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 1}
@@ -50,7 +50,7 @@ var (
 	EvidenceNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 3}
 	// MaxReservedNamespace is the lexicographically largest namespace that is
 	// reserved for protocol use. It is derived from NAMESPACE_ID_MAX_RESERVED
-	// https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#constants
+	// https://github.com/celestiaorg/celestia-specs/blob/master/specs/consensus.md#constants
 	MaxReservedNamespace = namespace.ID{0, 0, 0, 0, 0, 0, 0, 255}
 	// TailPaddingNamespaceID is the namespace ID for tail padding. All data
 	// with this namespace will be ignored

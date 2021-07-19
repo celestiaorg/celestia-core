@@ -17,7 +17,7 @@ import (
 const jsonDir = "./json"
 
 func TestVerify(t *testing.T) {
-	t.Skip("Tendermint's Model based tests for the light client need to be reworked to match LazyLedger types")
+	t.Skip("Tendermint's Model based tests for the light client need to be reworked to match Celestia types")
 
 	filenames := jsonFilenames(t)
 

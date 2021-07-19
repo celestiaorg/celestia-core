@@ -14,7 +14,7 @@ type Config struct {
 }
 
 // DefaultConfig returns a default config different from the default IPFS config.
-// This avoids conflicts with existing installations when running LazyLedger-core node
+// This avoids conflicts with existing installations when running Celestia-core node
 // locally for testing purposes.
 func DefaultConfig() *Config {
 	return &Config{

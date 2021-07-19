@@ -51,6 +51,6 @@ func DefaultClientCreator(app, dbDir string) ClientCreator {
 	case "noop":
 		return NewLocalClientCreator(types.NewBaseApplication())
 	default:
-		panic("RemoteClientCreator not implemented in lazyledger-core")
+		panic("RemoteClientCreator not implemented in celestia-core")
 	}
 }

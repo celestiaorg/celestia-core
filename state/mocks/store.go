@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	lazyledger_coretypes "github.com/celestiaorg/celestia-core/types"
+	celestia_coretypes "github.com/celestiaorg/celestia-core/types"
 	mock "github.com/stretchr/testify/mock"
 
 	state "github.com/celestiaorg/celestia-core/state"
@@ -98,18 +98,18 @@ func (_m *Store) LoadConsensusParams(_a0 int64) (types.ConsensusParams, error) {
 }
 
 // LoadFromDBOrGenesisDoc provides a mock function with given fields: _a0
-func (_m *Store) LoadFromDBOrGenesisDoc(_a0 *lazyledger_coretypes.GenesisDoc) (state.State, error) {
+func (_m *Store) LoadFromDBOrGenesisDoc(_a0 *celestia_coretypes.GenesisDoc) (state.State, error) {
 	ret := _m.Called(_a0)
 
 	var r0 state.State
-	if rf, ok := ret.Get(0).(func(*lazyledger_coretypes.GenesisDoc) state.State); ok {
+	if rf, ok := ret.Get(0).(func(*celestia_coretypes.GenesisDoc) state.State); ok {
 		r0 = rf(_a0)
 	} else {
 		r0 = ret.Get(0).(state.State)
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(*lazyledger_coretypes.GenesisDoc) error); ok {
+	if rf, ok := ret.Get(1).(func(*celestia_coretypes.GenesisDoc) error); ok {
 		r1 = rf(_a0)
 	} else {
 		r1 = ret.Error(1)
@@ -140,15 +140,15 @@ func (_m *Store) LoadFromDBOrGenesisFile(_a0 string) (state.State, error) {
 }
 
 // LoadValidators provides a mock function with given fields: _a0
-func (_m *Store) LoadValidators(_a0 int64) (*lazyledger_coretypes.ValidatorSet, error) {
+func (_m *Store) LoadValidators(_a0 int64) (*celestia_coretypes.ValidatorSet, error) {
 	ret := _m.Called(_a0)
 
-	var r0 *lazyledger_coretypes.ValidatorSet
-	if rf, ok := ret.Get(0).(func(int64) *lazyledger_coretypes.ValidatorSet); ok {
+	var r0 *celestia_coretypes.ValidatorSet
+	if rf, ok := ret.Get(0).(func(int64) *celestia_coretypes.ValidatorSet); ok {
 		r0 = rf(_a0)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*lazyledger_coretypes.ValidatorSet)
+			r0 = ret.Get(0).(*celestia_coretypes.ValidatorSet)
 		}
 	}
 
