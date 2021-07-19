@@ -26,7 +26,7 @@ The main data structure that enables above properties is called a Namespaced Mer
 A more formal description can be found the [specification](https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#namespace-merkle-tree).
 An implementation can be found in [this repository](https://github.com/lazyledger/nmt).
 
-This ADR basically describes version of the [`GetWithProof`](https://github.com/lazyledger/nmt/blob/ddcc72040149c115f83b2199eafabf3127ae12ac/nmt.go#L193-L196) of the NMT that leverages the fact that IPFS uses content addressing and that we have implemented an [IPLD plugin](https://github.com/lazyledger/lazyledger-core/tree/37502aac69d755c189df37642b87327772f4ac2a/p2p/ipld) for an NMT.
+This ADR basically describes version of the [`GetWithProof`](https://github.com/lazyledger/nmt/blob/ddcc72040149c115f83b2199eafabf3127ae12ac/nmt.go#L193-L196) of the NMT that leverages the fact that IPFS uses content addressing and that we have implemented an [IPLD plugin](https://github.com/celestiaorg/celestia-core/tree/37502aac69d755c189df37642b87327772f4ac2a/p2p/ipld) for an NMT.
 
 **Note**: The APIs defined here will be particularly relevant for Optimistic Rollup (full) nodes that want to download their Rollup's data (see [lazyledger/optimint#48](https://github.com/lazyledger/optimint/issues/48)).
 Another potential use-case of this API could be for so-called [light validator nodes](https://github.com/lazyledger/lazyledger-specs/blob/master/specs/node_types.md#node-type-definitions) that want to download and replay the state-relevant portion of the block data, i.e. transactions with [reserved namespace IDs](https://github.com/lazyledger/lazyledger-specs/blob/master/specs/consensus.md#reserved-namespace-ids).
@@ -56,7 +56,7 @@ This is pretty much what the [`ProveNamespace`](https://github.com/lazyledger/nm
 ## Detailed Design
 
 We define one function that returns all shares of a block belonging to a requested namespace and block (via the block's data availability header).
-See [`ComputeShares`](https://github.com/lazyledger/lazyledger-core/blob/1a08b430a8885654b6e020ac588b1080e999170c/types/block.go#L1371) for reference how encode the block data into namespace shares.
+See [`ComputeShares`](https://github.com/celestiaorg/celestia-core/blob/1a08b430a8885654b6e020ac588b1080e999170c/types/block.go#L1371) for reference how encode the block data into namespace shares.
 
 ```go
 // RetrieveShares returns all raw data (raw shares) of the passed-in
@@ -78,9 +78,9 @@ func RetrieveShares(
 
 Additionally, we define two functions that use the first one above to:
 1. return all the parsed (non-padding) data with [reserved namespace IDs](https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/consensus.md#reserved-namespace-ids): transactions, intermediate state roots, evidence.
-2. return all application specific blobs (shares) belonging to one namespace ID parsed as a slice of Messages ([specification](https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#message) and [code](https://github.com/lazyledger/lazyledger-core/blob/1a08b430a8885654b6e020ac588b1080e999170c/types/block.go#L1336)).
+2. return all application specific blobs (shares) belonging to one namespace ID parsed as a slice of Messages ([specification](https://github.com/lazyledger/lazyledger-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#message) and [code](https://github.com/celestiaorg/celestia-core/blob/1a08b430a8885654b6e020ac588b1080e999170c/types/block.go#L1336)).
 
-The latter two methods might require moving or exporting a few currently unexported functions that (currently) live in [share_merging.go](https://github.com/lazyledger/lazyledger-core/blob/1a08b430a8885654b6e020ac588b1080e999170c/types/share_merging.go#L57-L76) and could be implemented in a separate pull request.
+The latter two methods might require moving or exporting a few currently unexported functions that (currently) live in [share_merging.go](https://github.com/celestiaorg/celestia-core/blob/1a08b430a8885654b6e020ac588b1080e999170c/types/share_merging.go#L57-L76) and could be implemented in a separate pull request.
 
 ```go
 // RetrieveStateRelevantMessages returns all state-relevant transactions
@@ -123,7 +123,7 @@ We should document it properly and move it together with relevant parts from ADR
 
 ### Positive
 
-- easy to implement with the existing code (see [ADR 002](https://github.com/lazyledger/lazyledger-core/blob/47d6c965704e102ae877b2f4e10aeab782d9c648/docs/lazy-adr/adr-002-ipld-da-sampling.md#detailed-design))
+- easy to implement with the existing code (see [ADR 002](https://github.com/celestiaorg/celestia-core/blob/47d6c965704e102ae877b2f4e10aeab782d9c648/docs/lazy-adr/adr-002-ipld-da-sampling.md#detailed-design))
 - resilient data retrieval via a p2p network
 - dependence on a mature and well-tested code-base with a large and welcoming community
 

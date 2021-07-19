@@ -32,7 +32,7 @@ For this aspect, the existing implementation and specification should already be
 The exact arrangement of the data as described in this [rationale document](https://github.com/lazyledger/lazyledger-specs/blob/master/rationale/message_block_layout.md)
 in the specification can happen at app-side of the ABCI boundary.
 The latter was implemented in [lazyledger/lazyledger-app#21](https://github.com/lazyledger/lazyledger-app/pull/21)
-leveraging a new ABCI method, added in [#110](https://github.com/lazyledger/lazyledger-core/pull/110).
+leveraging a new ABCI method, added in [#110](https://github.com/celestiaorg/celestia-core/pull/110).
 This new method is a sub-set of the proposed ABCI changes aka [ABCI++](https://github.com/tendermint/spec/pull/254).
 
 Mustafa Al-Bassam (@musalbas) implemented a [prototype](https://github.com/lazyledger/lazyledger-prototype)
@@ -59,7 +59,7 @@ coreApi := coreapi.NewCoreAPI(node)
 The above mentioned IPLD methods operate on so called [ipld.Nodes].
 When computing the data root, we can pass in a [`NodeVisitor`](https://github.com/lazyledger/nmt/blob/b22170d6f23796a186c07e87e4ef9856282ffd1a/nmt.go#L22)
 into the Namespaced Merkle Tree library to create these (each inner- and leaf-node in the tree becomes an ipld node).
-As a peer that requests such an IPLD node, the LazyLedger IPLD plugin provides the [function](https://github.com/lazyledger/lazyledger-core/blob/ceb881a177b6a4a7e456c7c4ab1dd0eb2b263066/p2p/ipld/plugin/nodes/nodes.go#L175)
+As a peer that requests such an IPLD node, the LazyLedger IPLD plugin provides the [function](https://github.com/celestiaorg/celestia-core/blob/ceb881a177b6a4a7e456c7c4ab1dd0eb2b263066/p2p/ipld/plugin/nodes/nodes.go#L175)
 `NmtNodeParser` to transform the retrieved raw data back into an `ipld.Node`.
 
 A more high-level description on the changes required to rip out the current block gossiping routine,
@@ -246,8 +246,8 @@ Proposed
 
 ## References
 
-- https://github.com/lazyledger/lazyledger-core/issues/85
-- https://github.com/lazyledger/lazyledger-core/issues/167
+- https://github.com/celestiaorg/celestia-core/issues/85
+- https://github.com/celestiaorg/celestia-core/issues/167
 
 - https://docs.ipld.io/#nodes
 - https://arxiv.org/abs/1809.09044
@@ -255,11 +255,11 @@ Proposed
 - https://github.com/tendermint/spec/pull/254
 
 
-[#17]: https://github.com/lazyledger/lazyledger-core/pull/17
-[#19]: https://github.com/lazyledger/lazyledger-core/pull/19
-[#83]: https://github.com/lazyledger/lazyledger-core/pull/83
+[#17]: https://github.com/celestiaorg/celestia-core/pull/17
+[#19]: https://github.com/celestiaorg/celestia-core/pull/19
+[#83]: https://github.com/celestiaorg/celestia-core/pull/83
 
-[#152]: https://github.com/lazyledger/lazyledger-core/pull/152
+[#152]: https://github.com/celestiaorg/celestia-core/pull/152
 
 [lazyledger-specs#126]: https://github.com/lazyledger/lazyledger-specs/issues/126
 [lazyledger-specs#127]: https://github.com/lazyledger/lazyledger-specs/pulls/127
@@ -275,6 +275,6 @@ Proposed
 [rsmt2d]: https://github.com/lazyledger/rsmt2d
 
 
-[p2p]: https://github.com/lazyledger/lazyledger-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/p2p
-[p2p/ipld]: https://github.com/lazyledger/lazyledger-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/p2p/ipld
-[lazyledger-core/types]: https://github.com/lazyledger/lazyledger-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/types
+[p2p]: https://github.com/celestiaorg/celestia-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/p2p
+[p2p/ipld]: https://github.com/celestiaorg/celestia-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/p2p/ipld
+[lazyledger-core/types]: https://github.com/celestiaorg/celestia-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/types
