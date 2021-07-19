@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/celestiaorg/celestia-core/types/consts"
-	"github.com/lazyledger/nmt"
-	"github.com/lazyledger/rsmt2d"
+	"github.com/celestiaorg/nmt"
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/stretchr/testify/assert"
 )
 

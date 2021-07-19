@@ -13,7 +13,7 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 
 	"github.com/celestiaorg/celestia-core/types/consts"
-	"github.com/lazyledger/nmt"
+	"github.com/celestiaorg/nmt"
 	mh "github.com/multiformats/go-multihash"
 )
 

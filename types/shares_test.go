@@ -13,8 +13,8 @@ import (
 	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
 	"github.com/celestiaorg/celestia-core/libs/protoio"
 	"github.com/celestiaorg/celestia-core/types/consts"
-	"github.com/lazyledger/nmt/namespace"
-	"github.com/lazyledger/rsmt2d"
+	"github.com/celestiaorg/nmt/namespace"
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/celestiaorg/nmt/namespace"
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
-	"github.com/lazyledger/nmt/namespace"
-	"github.com/lazyledger/rsmt2d"
 
 	"github.com/celestiaorg/celestia-core/crypto"
 	"github.com/celestiaorg/celestia-core/crypto/merkle"

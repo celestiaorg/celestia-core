@@ -4,7 +4,7 @@ import (
 	"bytes"
 
 	"github.com/celestiaorg/celestia-core/types/consts"
-	"github.com/lazyledger/nmt/namespace"
+	"github.com/celestiaorg/nmt/namespace"
 )
 
 // appendToShares appends raw data as shares.

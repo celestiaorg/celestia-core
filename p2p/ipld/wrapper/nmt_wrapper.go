@@ -3,8 +3,8 @@ package wrapper
 import (
 	"fmt"
 
-	"github.com/lazyledger/nmt"
-	"github.com/lazyledger/rsmt2d"
+	"github.com/celestiaorg/nmt"
+	"github.com/celestiaorg/rsmt2d"
 
 	"github.com/celestiaorg/celestia-core/types/consts"
 )

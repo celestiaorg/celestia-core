@@ -3,7 +3,7 @@ package consts
 import (
 	"crypto/sha256"
 
-	"github.com/lazyledger/nmt/namespace"
+	"github.com/celestiaorg/nmt/namespace"
 )
 
 // This contains all constants of:

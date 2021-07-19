@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/celestiaorg/nmt/namespace"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
-	"github.com/lazyledger/nmt/namespace"
 
 	"github.com/celestiaorg/celestia-core/libs/log"
 	tmmath "github.com/celestiaorg/celestia-core/libs/math"

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/ipfs/go-bitswap"
 	"github.com/ipfs/go-bitswap/network"
 	"github.com/ipfs/go-blockservice"
@@ -13,7 +14,6 @@ import (
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
-	"github.com/lazyledger/rsmt2d"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/assert"

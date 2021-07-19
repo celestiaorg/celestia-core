@@ -22,7 +22,7 @@ import (
 	tmstore "github.com/celestiaorg/celestia-core/proto/tendermint/store"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types"
-	"github.com/lazyledger/rsmt2d"
+	"github.com/celestiaorg/rsmt2d"
 )
 
 /*

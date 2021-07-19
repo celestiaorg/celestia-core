@@ -8,8 +8,8 @@ import (
 	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types/consts"
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/gogo/protobuf/proto"
-	"github.com/lazyledger/rsmt2d"
 )
 
 // DataFromSquare extracts block data from an extended data square.

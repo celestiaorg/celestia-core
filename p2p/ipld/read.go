@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"math/rand"
 
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/lazyledger/rsmt2d"
 
 	"github.com/celestiaorg/celestia-core/ipfs/plugin"
 	"github.com/celestiaorg/celestia-core/p2p/ipld/wrapper"

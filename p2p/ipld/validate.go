@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/celestiaorg/nmt/namespace"
 	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/lazyledger/nmt/namespace"
 
 	"github.com/celestiaorg/celestia-core/types"
 )

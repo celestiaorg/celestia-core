@@ -7,10 +7,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/celestiaorg/nmt"
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/lazyledger/nmt"
-	"github.com/lazyledger/rsmt2d"
 	"github.com/libp2p/go-libp2p-core/routing"
 	kbucket "github.com/libp2p/go-libp2p-kbucket"
 

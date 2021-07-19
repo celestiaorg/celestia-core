@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/nmt/namespace"
 	mdutils "github.com/ipfs/go-merkledag/test"
-	"github.com/lazyledger/nmt/namespace"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 

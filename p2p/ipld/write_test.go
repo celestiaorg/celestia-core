@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/nmt"
 	mdutils "github.com/ipfs/go-merkledag/test"
-	"github.com/lazyledger/nmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
