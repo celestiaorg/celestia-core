@@ -58,7 +58,7 @@ func PutBlock(
 	for _, root := range eds.RowRoots() {
 		prov.Provide(plugin.MustCidFromNamespacedSha256(root))
 	}
-	for _, root := range eds.ColumnRoots() {
+	for _, root := range eds.ColRoots() {
 		prov.Provide(plugin.MustCidFromNamespacedSha256(root))
 	}
 	// commit the batch to ipfs

@@ -85,21 +85,6 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 				},
 			),
 		},
-		{
-			"Prove non existent leaf",
-			assert.PanicTestFunc(
-				func() {
-					size := 16
-					data := generateErasuredData(t, size, rsmt2d.NewRSGF8Codec())
-					n := NewErasuredNamespacedMerkleTree(uint64(size))
-					tree := n.Constructor()
-					for i, d := range data {
-						tree.Push(d, rsmt2d.SquareIndex{Axis: uint(0), Cell: uint(i)})
-					}
-					tree.Prove(size + 100)
-				},
-			),
-		},
 	}
 	for _, tc := range testCases {
 		tc := tc

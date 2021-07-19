@@ -89,7 +89,7 @@ func TestBlockRecovery(t *testing.T) {
 
 			// calculate roots using the first complete square
 			rowRoots := eds.RowRoots()
-			colRoots := eds.ColumnRoots()
+			colRoots := eds.ColRoots()
 
 			flat := flatten(eds)
 
@@ -163,7 +163,7 @@ func TestRetrieveBlockData(t *testing.T) {
 			require.NoError(t, err)
 
 			rawRowRoots := eds.RowRoots()
-			rawColRoots := eds.ColumnRoots()
+			rawColRoots := eds.ColRoots()
 			rowRoots := rootsToDigests(rawRowRoots)
 			colRoots := rootsToDigests(rawColRoots)
 

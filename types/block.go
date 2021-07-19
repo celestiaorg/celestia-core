@@ -241,7 +241,7 @@ func (b *Block) fillDataAvailabilityHeader() {
 
 	// generate the row and col roots using the EDS and nmt wrapper
 	rowRoots := extendedDataSquare.RowRoots()
-	colRoots := extendedDataSquare.ColumnRoots()
+	colRoots := extendedDataSquare.ColRoots()
 
 	b.DataAvailabilityHeader = DataAvailabilityHeader{
 		RowsRoots:   make([]namespace.IntervalDigest, extendedDataSquare.Width()),

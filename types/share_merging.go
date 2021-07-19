@@ -27,9 +27,9 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 	// iterate over each row index
 	for x := uint(0); x < originalWidth; x++ {
 		// iterate over each col index
-		for y := uint(0); y < originalWidth; y++ {
+		row := eds.Row(x)
+		for _, share := range row {
 			// sort the data of that share types via namespace
-			share := eds.Cell(x, y)
 			nid := share[:consts.NamespaceSize]
 			switch {
 			case bytes.Equal(consts.TxNamespaceID, nid):

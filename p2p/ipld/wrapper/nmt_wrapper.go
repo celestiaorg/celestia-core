@@ -67,20 +67,6 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex)
 	}
 }
 
-// Prove fulfills the rsmt.Tree interface by generating and returning a single
-// leaf proof using the underlying NamespacedMerkleTree. NOTE: panics if the
-// underlying NamespaceMerkleTree errors.
-func (w *ErasuredNamespacedMerkleTree) Prove(
-	idx int,
-) (merkleRoot []byte, proofSet [][]byte, proofIndex uint64, numLeaves uint64) {
-	proof, err := w.tree.Prove(idx)
-	if err != nil {
-		panic(err)
-	}
-	nodes := proof.Nodes()
-	return w.Root(), nodes, uint64(proof.Start()), uint64(len(nodes))
-}
-
 // Root fulfills the rsmt.Tree interface by generating and returning the
 // underlying NamespaceMerkleTree Root.
 func (w *ErasuredNamespacedMerkleTree) Root() []byte {
