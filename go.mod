@@ -21,7 +21,7 @@ require (
 	github.com/ipfs/go-block-format v0.0.2
 	github.com/ipfs/go-blockservice v0.1.4
 	github.com/ipfs/go-cid v0.0.7
-	github.com/ipfs/go-datastore v0.4.5
+	github.com/ipfs/go-datastore v0.4.6
 	github.com/ipfs/go-ipfs v0.8.0
 	github.com/ipfs/go-ipfs-api v0.2.0
 	github.com/ipfs/go-ipfs-blockstore v0.1.4
