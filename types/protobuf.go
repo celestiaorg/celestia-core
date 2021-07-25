@@ -33,13 +33,15 @@ var TM2PB = tm2pb{}
 type tm2pb struct{}
 
 func (tm2pb) Header(header *Header) tmproto.Header {
+	lpsh := header.LastPartSetHeader.ToProto()
 	return tmproto.Header{
 		Version: header.Version,
 		ChainID: header.ChainID,
 		Height:  header.Height,
 		Time:    header.Time,
 
-		LastBlockId: header.LastBlockID.ToProto(),
+		LastBlockId:       header.LastBlockID.ToProto(),
+		LastPartSetHeader: &lpsh,
 
 		LastCommitHash: header.LastCommitHash,
 		DataHash:       header.DataHash,
@@ -64,8 +66,7 @@ func (tm2pb) Validator(val *Validator) abci.Validator {
 
 func (tm2pb) BlockID(blockID BlockID) tmproto.BlockID {
 	return tmproto.BlockID{
-		Hash:          blockID.Hash,
-		PartSetHeader: TM2PB.PartSetHeader(blockID.PartSetHeader),
+		Hash: blockID.Hash,
 	}
 }
 

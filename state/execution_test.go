@@ -47,9 +47,10 @@ func TestApplyBlock(t *testing.T) {
 		mmock.Mempool{}, sm.EmptyEvidencePool{})
 
 	block := makeBlock(state, 1)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
+	blockID := types.BlockID{Hash: block.Hash()}
+	psh := block.MakePartSet(testPartSize).Header()
 
-	state, retainHeight, err := blockExec.ApplyBlock(state, blockID, block)
+	state, retainHeight, err := blockExec.ApplyBlock(state, blockID, psh, block)
 	require.Nil(t, err)
 	assert.EqualValues(t, retainHeight, 1)
 
@@ -71,7 +72,7 @@ func TestBeginBlockValidators(t *testing.T) {
 
 	prevHash := state.LastBlockID.Hash
 	prevParts := types.PartSetHeader{}
-	prevBlockID := types.BlockID{Hash: prevHash, PartSetHeader: prevParts}
+	prevBlockID := types.BlockID{Hash: prevHash}
 
 	var (
 		now        = tmtime.Now()
@@ -97,7 +98,7 @@ func TestBeginBlockValidators(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		lastCommit := types.NewCommit(1, 0, prevBlockID, tc.lastCommitSigs)
+		lastCommit := types.NewCommit(1, 0, prevBlockID, tc.lastCommitSigs, prevParts)
 
 		// block for height 2
 		block, _ := state.MakeBlock(2, makeTxs(2), nil, nil,
@@ -135,7 +136,7 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 
 	defaultEvidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 	privVal := privVals[state.Validators.Validators[0].Address.String()]
-	blockID := makeBlockID([]byte("headerhash"), 1000, []byte("partshash"))
+	blockID := makeBlockID([]byte("headerhash"))
 	header := &types.Header{
 		Version:            tmversion.Consensus{Block: version.BlockProtocol, App: 1},
 		ChainID:            state.ChainID,
@@ -156,16 +157,18 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	// we don't need to worry about validating the evidence as long as they pass validate basic
 	dve := types.NewMockDuplicateVoteEvidenceWithValidator(3, defaultEvidenceTime, privVal, state.ChainID)
 	dve.ValidatorPower = 1000
+	bID := makeBlockID(header.Hash())
+	psH := makePartSetHeader(100, []byte("partshash"))
 	lcae := &types.LightClientAttackEvidence{
 		ConflictingBlock: &types.LightBlock{
 			SignedHeader: &types.SignedHeader{
 				Header: header,
-				Commit: types.NewCommit(10, 0, makeBlockID(header.Hash(), 100, []byte("partshash")), []types.CommitSig{{
+				Commit: types.NewCommit(10, 0, bID, []types.CommitSig{{
 					BlockIDFlag:      types.BlockIDFlagNil,
 					ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 					Timestamp:        defaultEvidenceTime,
 					Signature:        crypto.CRandBytes(types.MaxSignatureSize),
-				}}),
+				}}, psH),
 			},
 			ValidatorSet: state.Validators,
 		},
@@ -205,9 +208,10 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	block := makeBlock(state, 1)
 	block.Evidence = types.EvidenceData{Evidence: ev}
 	block.Header.EvidenceHash = block.Evidence.Hash()
-	blockID = types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
+	blockID = types.BlockID{Hash: block.Hash()}
+	psh := block.MakePartSet(testPartSize).Header()
 
-	state, retainHeight, err := blockExec.ApplyBlock(state, blockID, block)
+	state, retainHeight, err := blockExec.ApplyBlock(state, blockID, psh, block)
 	require.Nil(t, err)
 	assert.EqualValues(t, retainHeight, 1)
 
@@ -380,7 +384,8 @@ func TestEndBlockValidatorUpdates(t *testing.T) {
 	require.NoError(t, err)
 
 	block := makeBlock(state, 1)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
+	blockID := types.BlockID{Hash: block.Hash()}
+	psh := block.MakePartSet(testPartSize).Header()
 
 	pubkey := ed25519.GenPrivKey().PubKey()
 	pk, err := cryptoenc.PubKeyToProto(pubkey)
@@ -389,7 +394,7 @@ func TestEndBlockValidatorUpdates(t *testing.T) {
 		{PubKey: pk, Power: 10},
 	}
 
-	state, _, err = blockExec.ApplyBlock(state, blockID, block)
+	state, _, err = blockExec.ApplyBlock(state, blockID, psh, block)
 	require.Nil(t, err)
 	// test new validator was added to NextValidators
 	if assert.Equal(t, state.Validators.Size()+1, state.NextValidators.Size()) {
@@ -436,7 +441,8 @@ func TestEndBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 	)
 
 	block := makeBlock(state, 1)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
+	blockID := types.BlockID{Hash: block.Hash()}
+	psh := block.MakePartSet(testPartSize).Header()
 
 	vp, err := cryptoenc.PubKeyToProto(state.Validators.Validators[0].PubKey)
 	require.NoError(t, err)
@@ -445,23 +451,26 @@ func TestEndBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 		{PubKey: vp, Power: 0},
 	}
 
-	assert.NotPanics(t, func() { state, _, err = blockExec.ApplyBlock(state, blockID, block) })
+	assert.NotPanics(t, func() { state, _, err = blockExec.ApplyBlock(state, blockID, psh, block) })
 	assert.NotNil(t, err)
 	assert.NotEmpty(t, state.NextValidators.Validators)
 }
 
-func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {
+func makeBlockID(hash []byte) types.BlockID {
 	var (
-		h   = make([]byte, tmhash.Size)
-		psH = make([]byte, tmhash.Size)
+		h = make([]byte, tmhash.Size)
 	)
 	copy(h, hash)
-	copy(psH, partSetHash)
 	return types.BlockID{
 		Hash: h,
-		PartSetHeader: types.PartSetHeader{
-			Total: partSetSize,
-			Hash:  psH,
-		},
+	}
+}
+
+func makePartSetHeader(partSetSize uint32, partSetHash []byte) types.PartSetHeader {
+	var psH = make([]byte, tmhash.Size)
+	copy(psH, partSetHash)
+	return types.PartSetHeader{
+		Total: partSetSize,
+		Hash:  psH,
 	}
 }

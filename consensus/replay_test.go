@@ -370,9 +370,11 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ := css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts := propBlock.MakePartSet(partSize)
-	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
+	blockID := types.BlockID{Hash: propBlock.Hash()}
 
-	proposal := types.NewProposal(vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal := types.NewProposal(
+		vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader, propBlockParts.Header(),
+	)
 	p, err := proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[1].SignProposal(config.ChainID(), p); err != nil {
@@ -401,9 +403,11 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts = propBlock.MakePartSet(partSize)
-	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
+	blockID = types.BlockID{Hash: propBlock.Hash()}
 
-	proposal = types.NewProposal(vss[2].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal = types.NewProposal(
+		vss[2].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader, propBlockParts.Header(),
+	)
 	p, err = proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[2].SignProposal(config.ChainID(), p); err != nil {
@@ -439,7 +443,8 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts = propBlock.MakePartSet(partSize)
-	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
+	blockID = types.BlockID{Hash: propBlock.Hash()}
+	psh := propBlockParts.Header()
 	newVss := make([]*validatorStub, nVals+1)
 	copy(newVss, vss[:nVals+1])
 	sort.Sort(ValidatorStubsByPower(newVss))
@@ -461,7 +466,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 
 	selfIndex := valIndexFn(0)
 
-	proposal = types.NewProposal(vss[3].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal = types.NewProposal(vss[3].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader, psh)
 	p, err = proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[3].SignProposal(config.ChainID(), p); err != nil {
@@ -515,13 +520,14 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _ = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts = propBlock.MakePartSet(partSize)
-	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
+	blockID = types.BlockID{Hash: propBlock.Hash()}
+	psh = propBlockParts.Header()
 	newVss = make([]*validatorStub, nVals+3)
 	copy(newVss, vss[:nVals+3])
 	sort.Sort(ValidatorStubsByPower(newVss))
 
 	selfIndex = valIndexFn(0)
-	proposal = types.NewProposal(vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	proposal = types.NewProposal(vss[1].Height, round, -1, blockID, &propBlock.DataAvailabilityHeader, psh)
 	p, err = proposal.ToProto()
 	require.NoError(t, err)
 	if err := vss[1].SignProposal(config.ChainID(), p); err != nil {
@@ -791,8 +797,9 @@ func applyBlock(stateStore sm.Store, st sm.State, blk *types.Block, proxyApp pro
 	testPartSize := types.BlockPartSizeBytes
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 
-	blkID := types.BlockID{Hash: blk.Hash(), PartSetHeader: blk.MakePartSet(testPartSize).Header()}
-	newState, _, err := blockExec.ApplyBlock(st, blkID, blk)
+	blkID := types.BlockID{Hash: blk.Hash()}
+	psh := blk.MakePartSet(testPartSize).Header()
+	newState, _, err := blockExec.ApplyBlock(st, blkID, psh, blk)
 	if err != nil {
 		panic(err)
 	}
@@ -989,17 +996,18 @@ func makeBlocks(n int, state *sm.State, privVal types.PrivValidator) []*types.Bl
 func makeBlock(state sm.State, lastBlock *types.Block, lastBlockMeta *types.BlockMeta,
 	privVal types.PrivValidator, height int64) (*types.Block, *types.PartSet) {
 
-	lastCommit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
+	lastCommit := types.NewCommit(height-1, 0, types.BlockID{}, nil, types.PartSetHeader{})
 	if height > 1 {
 		vote, _ := types.MakeVote(
 			lastBlock.Header.Height,
 			lastBlockMeta.BlockID,
+			lastBlockMeta.PartSetHeader,
 			state.Validators,
 			privVal,
 			lastBlock.Header.ChainID,
 			time.Now())
 		lastCommit = types.NewCommit(vote.Height, vote.Round,
-			lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()})
+			lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()}, lastBlockMeta.PartSetHeader)
 	}
 
 	return state.MakeBlock(
@@ -1113,7 +1121,7 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.Commit, error) {
 		case *types.Vote:
 			if p.Type == tmproto.PrecommitType {
 				thisBlockCommit = types.NewCommit(p.Height, p.Round,
-					p.BlockID, []types.CommitSig{p.CommitSig()})
+					p.BlockID, []types.CommitSig{p.CommitSig()}, p.PartSetHeader)
 			}
 		}
 	}
@@ -1149,7 +1157,7 @@ func readPieceFromWAL(msg *TimedWALMessage) interface{} {
 	case msgInfo:
 		switch msg := m.Msg.(type) {
 		case *ProposalMessage:
-			return &msg.Proposal.BlockID.PartSetHeader
+			return &msg.Proposal.PartSetHeader
 		case *BlockPartMessage:
 			return msg.Part
 		case *VoteMessage:
@@ -1208,8 +1216,9 @@ func (bs *mockBlockStore) LoadBlockByHash(ctx context.Context, hash []byte) (*ty
 func (bs *mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	block := bs.chain[height-1]
 	return &types.BlockMeta{
-		BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(types.BlockPartSizeBytes).Header()},
-		Header:  block.Header,
+		BlockID:       types.BlockID{Hash: block.Hash()},
+		PartSetHeader: block.MakePartSet(types.BlockPartSizeBytes).Header(),
+		Header:        block.Header,
 	}
 }
 func (bs *mockBlockStore) LoadBlockPart(height int64, index int) *types.Part { return nil }

@@ -49,6 +49,13 @@ func validateBlock(state State, block *types.Block) error {
 		)
 	}
 
+	if !block.LastPartSetHeader.Equals(state.LastPartSetHeader) {
+		return fmt.Errorf("wrong Block.Header.LastPartSetHeader.  Expected %v, got %v",
+			state.LastPartSetHeader,
+			block.LastPartSetHeader,
+		)
+	}
+
 	// Validate app info
 	if !bytes.Equal(block.AppHash, state.AppHash) {
 		return fmt.Errorf("wrong Block.Header.AppHash.  Expected %X, got %v",
@@ -90,7 +97,7 @@ func validateBlock(state State, block *types.Block) error {
 	} else {
 		// LastCommit.Signatures length is checked in VerifyCommit.
 		if err := state.LastValidators.VerifyCommit(
-			state.ChainID, state.LastBlockID, block.Height-1, block.LastCommit); err != nil {
+			state.ChainID, state.LastBlockID, state.LastPartSetHeader, block.Height-1, block.LastCommit); err != nil {
 			return err
 		}
 	}

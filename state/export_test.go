@@ -26,11 +26,12 @@ const ValSetCheckpointInterval = valSetCheckpointInterval
 func UpdateState(
 	state State,
 	blockID types.BlockID,
+	partSetHeader types.PartSetHeader,
 	header *types.Header,
 	abciResponses *tmstate.ABCIResponses,
 	validatorUpdates []*types.Validator,
 ) (State, error) {
-	return updateState(state, blockID, header, abciResponses, validatorUpdates)
+	return updateState(state, blockID, partSetHeader, header, abciResponses, validatorUpdates)
 }
 
 // ValidateValidatorUpdates is an alias for validateValidatorUpdates exported

@@ -208,8 +208,9 @@ func TestStateBadProposal(t *testing.T) {
 	stateHash[0] = (stateHash[0] + 1) % 255
 	propBlock.AppHash = stateHash
 	propBlockParts := propBlock.MakePartSet(partSize)
-	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
-	proposal := types.NewProposal(vs2.Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	blockID := types.BlockID{Hash: propBlock.Hash()}
+	psh := propBlockParts.Header()
+	proposal := types.NewProposal(vs2.Height, round, -1, blockID, &propBlock.DataAvailabilityHeader, psh)
 	p, err := proposal.ToProto()
 	require.NoError(t, err)
 	if err := vs2.SignProposal(config.ChainID(), p); err != nil {
@@ -227,7 +228,7 @@ func TestStateBadProposal(t *testing.T) {
 	startTestRound(cs1, height, round)
 
 	// wait for proposal
-	ensureProposal(proposalCh, height, round, blockID)
+	ensureProposal(proposalCh, height, round, blockID, psh)
 
 	// wait for prevote
 	ensurePrevote(voteCh, height, round)
@@ -264,8 +265,8 @@ func TestStateOversizedBlock(t *testing.T) {
 	incrementRound(vss[1:]...)
 
 	propBlockParts := propBlock.MakePartSet(partSize)
-	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
-	proposal := types.NewProposal(height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
+	blockID := types.BlockID{Hash: propBlock.Hash()}
+	proposal := types.NewProposal(height, round, -1, blockID, &propBlock.DataAvailabilityHeader, propBlockParts.Header())
 	p, err := proposal.ToProto()
 	require.NoError(t, err)
 	if err := vs2.SignProposal(config.ChainID(), p); err != nil {
@@ -1053,7 +1054,7 @@ func TestStateLockPOLSafety2(t *testing.T) {
 	_, propBlock0 := decideProposal(cs1, vss[0], height, round)
 	propBlockHash0 := propBlock0.Hash()
 	propBlockParts0 := propBlock0.MakePartSet(partSize)
-	propBlockID0 := types.BlockID{Hash: propBlockHash0, PartSetHeader: propBlockParts0.Header()}
+	propBlockID0 := types.BlockID{Hash: propBlockHash0}
 
 	// the others sign a polka but we don't see it
 	prevotes := signVotes(tmproto.PrevoteType, propBlockHash0, propBlockParts0.Header(), vs2, vs3, vs4)
@@ -1096,7 +1097,9 @@ func TestStateLockPOLSafety2(t *testing.T) {
 
 	round++ // moving to the next round
 	// in round 2 we see the polkad block from round 0
-	newProp := types.NewProposal(height, round, 0, propBlockID0, &propBlock0.DataAvailabilityHeader)
+	newProp := types.NewProposal(
+		height, round, 0, propBlockID0, &propBlock0.DataAvailabilityHeader, propBlockParts0.Header(),
+	)
 	p, err := newProp.ToProto()
 	require.NoError(t, err)
 	if err := vs3.SignProposal(config.ChainID(), p); err != nil {

@@ -137,10 +137,11 @@ func TestDataAvailabilityHeaderRewriteBug(t *testing.T) {
 
 	messages := types.MessagesFromProto(pbmessages)
 	lastID := makeBlockIDRandom()
+	lastPSH := makePartSetHeaderRandom()
 	h := int64(3)
 
 	voteSet, _, vals := randVoteSet(h-1, 1, tmproto.PrecommitType, 10, 1)
-	commit, err := types.MakeCommit(lastID, h-1, 1, voteSet, vals, time.Now())
+	commit, err := types.MakeCommit(lastID, lastPSH, h-1, 1, voteSet, vals, time.Now())
 	assert.NoError(t, err)
 	block := types.MakeBlock(1, processedTxs, nil, nil, messages, commit)
 	block.Hash()
@@ -178,10 +179,15 @@ func makeBlockIDRandom() types.BlockID {
 	mrand.Read(partSetHash)
 	return types.BlockID{
 		Hash: blockHash,
-		PartSetHeader: types.PartSetHeader{
-			Total: 123,
-			Hash:  partSetHash,
-		},
+	}
+}
+
+func makePartSetHeaderRandom() types.PartSetHeader {
+	partSetHash := make([]byte, tmhash.Size)
+	mrand.Read(partSetHash)
+	return types.PartSetHeader{
+		Total: 123,
+		Hash:  partSetHash,
 	}
 }
 

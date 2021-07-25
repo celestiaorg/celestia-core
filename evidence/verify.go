@@ -138,7 +138,7 @@ func VerifyLightClientAttack(e *types.LightClientAttackEvidence, commonHeader, t
 		}
 		// ensure that 2/3 of the validator set did vote for this block
 		if err := e.ConflictingBlock.ValidatorSet.VerifyCommitLight(trustedHeader.ChainID, e.ConflictingBlock.Commit.BlockID,
-			e.ConflictingBlock.Height, e.ConflictingBlock.Commit); err != nil {
+			e.ConflictingBlock.Commit.PartSetHeader, e.ConflictingBlock.Height, e.ConflictingBlock.Commit); err != nil {
 			return fmt.Errorf("invalid commit from conflicting block: %w", err)
 		}
 	}
@@ -186,11 +186,12 @@ func VerifyDuplicateVote(e *types.DuplicateVoteEvidence, chainID string, valSet 
 		)
 	}
 
-	// BlockIDs must be different
-	if e.VoteA.BlockID.Equals(e.VoteB.BlockID) {
+	// BlockIDs or PartSetHeaders must be different
+	if e.VoteA.BlockID.Equals(e.VoteB.BlockID) && e.VoteA.PartSetHeader.Equals(e.VoteB.PartSetHeader) {
 		return fmt.Errorf(
-			"block IDs are the same (%v) - not a real duplicate vote",
+			"block IDs and PartSetHeaders are the same (%v, %v) - not a real duplicate vote",
 			e.VoteA.BlockID,
+			e.VoteA.PartSetHeader,
 		)
 	}
 
