@@ -52,7 +52,7 @@ func TestDiscovery(t *testing.T) {
 
 func TestWriteDiscoveryReadData(t *testing.T) {
 	logger := log.TestingLogger()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
 
 	dags, dhts := dagNet(ctx, t, 5)
