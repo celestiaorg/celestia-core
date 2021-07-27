@@ -280,11 +280,11 @@ func (cli *socketClient) ApplySnapshotChunkAsync(req types.RequestApplySnapshotC
 	return cli.queueRequest(types.ToRequestApplySnapshotChunk(req))
 }
 
-func (cli *socketClient) PreprocessTxsAsync(ctx context.Context, req types.RequestPreprocessTxs) *ReqRes {
-	return cli.queueRequest(types.ToRequestPreprocessTxs(req))
+func (cli *socketClient) PrepareProposalAsync(
+	req types.RequestPrepareProposal,
+) (*ReqRes, error) {
+	return cli.queueRequest(types.ToRequestPrepareProposal(req))
 }
-
-//----------------------------------------
 
 func (cli *socketClient) FlushSync() error {
 	reqRes := cli.queueRequest(types.ToRequestFlush())
@@ -432,6 +432,18 @@ func (cli *socketClient) PreprocessTxsSync(
 	return reqres.Response.GetPreprocessTxs(), nil
 }
 
+func (cli *socketClient) PrepareProposalSync(
+	ctx context.Context,
+	req types.RequestPrepareProposal,
+) (*types.ResponsePrepareProposal, error) {
+
+	reqres, err := cli.queueRequestAndFlushSync(ctx, types.ToRequestPrepareProposal(req))
+	if err != nil {
+		return nil, err
+	}
+	return reqres.Response.GetPrepareProposal(), nil
+}
+
 //----------------------------------------
 
 func (cli *socketClient) queueRequest(req *types.Request) *ReqRes {
@@ -507,8 +519,8 @@ func resMatchesReq(req *types.Request, res *types.Response) (ok bool) {
 		_, ok = res.Value.(*types.Response_ListSnapshots)
 	case *types.Request_OfferSnapshot:
 		_, ok = res.Value.(*types.Response_OfferSnapshot)
-	case *types.Request_PreprocessTxs:
-		_, ok = res.Value.(*types.Response_PreprocessTxs)
+	case *types.Request_PrepareProposal:
+		_, ok = res.Value.(*types.Response_PrepareProposal)
 	}
 	return ok
 }

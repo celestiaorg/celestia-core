@@ -4,6 +4,7 @@ import (
 	types "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/service"
 	tmsync "github.com/tendermint/tendermint/libs/sync"
+	"golang.org/x/net/context"
 )
 
 var _ Client = (*localClient)(nil)
@@ -218,6 +219,20 @@ func (app *localClient) PreprocessTxsAsync(req types.RequestPreprocessTxs) (*Req
 	), nil
 }
 
+func (app *localClient) PrepareProposalAsync(
+	ctx context.Context,
+	req types.RequestPrepareProposal,
+) (*ReqRes, error) {
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+
+	res := app.Application.PrepareProposal(req)
+	return app.callback(
+		types.ToRequestPrepareProposal(req),
+		types.ToResponsePrepareProposal(res),
+	), nil
+}
+
 //-------------------------------------------------------
 
 func (app *localClient) FlushSync() error {
@@ -334,13 +349,14 @@ func (app *localClient) ApplySnapshotChunkSync(
 	return &res, nil
 }
 
-func (app *localClient) PreprocessTxsSync(
-	req types.RequestPreprocessTxs,
-) (*types.ResponsePreprocessTxs, error) {
+func (app *localClient) PrepareProposalSync(
+	req types.RequestPrepareProposal,
+) (*types.ResponsePrepareProposal, error) {
+
 	app.mtx.Lock()
 	defer app.mtx.Unlock()
 
-	res := app.Application.PreprocessTxs(req)
+	res := app.Application.PrepareProposal(req)
 	return &res, nil
 }
 

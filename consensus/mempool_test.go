@@ -257,7 +257,7 @@ func (app *CounterApplication) Commit() abci.ResponseCommit {
 	return abci.ResponseCommit{Data: hash}
 }
 
-func (app *CounterApplication) PreprocessTxs(
-	req abci.RequestPreprocessTxs) abci.ResponsePreprocessTxs {
-	return abci.ResponsePreprocessTxs{Txs: req.Txs}
+func (app *CounterApplication) PrepareProposal(
+	req abci.RequestPrepareProposal) abci.ResponsePrepareProposal {
+	return abci.ResponsePrepareProposal{BlockData: req.BlockData} //nolint:gosimple
 }

@@ -254,10 +254,9 @@ func (app *Application) ApplySnapshotChunk(req abci.RequestApplySnapshotChunk) a
 	return abci.ResponseApplySnapshotChunk{Result: abci.ResponseApplySnapshotChunk_ACCEPT}
 }
 
-// PreprocessTxs implements ABCI
-func (app *Application) PreprocessTxs(
-	req abci.RequestPreprocessTxs) abci.ResponsePreprocessTxs {
-	return abci.ResponsePreprocessTxs{Txs: req.Txs}
+func (app *Application) PrepareProposal(
+	req abci.RequestPrepareProposal) abci.ResponsePrepareProposal {
+	return abci.ResponsePrepareProposal{BlockData: req.BlockData} //nolint:gosimple
 }
 
 // validatorUpdates generates a validator set update.

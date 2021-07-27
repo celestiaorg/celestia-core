@@ -159,9 +159,9 @@ func ToRequestApplySnapshotChunk(req RequestApplySnapshotChunk) *Request {
 	}
 }
 
-func ToRequestPreprocessTxs(res RequestPreprocessTxs) *Request {
+func ToRequestPrepareProposal(req RequestPrepareProposal) *Request {
 	return &Request{
-		Value: &Request_PreprocessTxs{&res},
+		Value: &Request_PrepareProposal{&req},
 	}
 }
 
@@ -263,8 +263,8 @@ func ToResponseApplySnapshotChunk(res ResponseApplySnapshotChunk) *Response {
 	}
 }
 
-func ToResponsePreprocessTx(res ResponsePreprocessTxs) *Response {
+func ToResponsePrepareProposal(res ResponsePrepareProposal) *Response {
 	return &Response{
-		Value: &Response_PreprocessTxs{&res},
+		Value: &Response_PrepareProposal{&res},
 	}
 }

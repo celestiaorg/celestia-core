@@ -311,6 +311,27 @@ func (cli *grpcClient) PreprocessTxsAsync(params types.RequestPreprocessTxs) *Re
 	return cli.finishAsyncCall(req, &types.Response{Value: &types.Response_PreprocessTxs{PreprocessTxs: res}})
 }
 
+func (cli *grpcClient) PrepareProposalAsync(
+	ctx context.Context,
+	params types.RequestPrepareProposal,
+) (*ReqRes, error) {
+
+	req := types.ToRequestPrepareProposal(params)
+	res, err := cli.client.PrepareProposal(ctx, req.GetPrepareProposal(), grpc.WaitForReady(true))
+	if err != nil {
+		return nil, err
+	}
+	return cli.finishAsyncCall(
+		ctx,
+		req,
+		&types.Response{
+			Value: &types.Response_PrepareProposal{
+				PrepareProposal: res,
+			},
+		},
+	)
+}
+
 // finishAsyncCall creates a ReqRes for an async call, and immediately populates it
 // with the response. We don't complete it until it's been ordered via the channel.
 func (cli *grpcClient) finishAsyncCall(req *types.Request, res *types.Response) *ReqRes {
@@ -427,9 +448,13 @@ func (cli *grpcClient) ApplySnapshotChunkSync(
 	return cli.finishSyncCall(reqres).GetApplySnapshotChunk(), cli.Error()
 }
 
-func (cli *grpcClient) PreprocessTxsSync(
-	params types.RequestPreprocessTxs,
-) (*types.ResponsePreprocessTxs, error) {
-	reqres := cli.PreprocessTxsAsync(params)
-	return reqres.Response.GetPreprocessTxs(), cli.Error()
+func (cli *grpcClient) PrepareProposalSync(
+	params types.RequestPrepareProposal,
+) (*types.ResponsePrepareProposal, error) {
+
+	reqres, err := cli.PrepareProposalAsync(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	return cli.finishSyncCall(reqres).GetPrepareProposal(), cli.Error()
 }

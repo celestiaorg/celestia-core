@@ -36,7 +36,7 @@ message Request {
     RequestOfferSnapshot      offer_snapshot       = 13;
     RequestLoadSnapshotChunk  load_snapshot_chunk  = 14;
     RequestApplySnapshotChunk apply_snapshot_chunk = 15;
-    RequestPreprocessTxs      preprocess_txs       = 16;
+    RequestPrepareProposal    prepare_proposal     = 16;
   }
 }
 
@@ -126,8 +126,13 @@ message RequestApplySnapshotChunk {
   string sender = 3;
 }
 
-message RequestPreprocessTxs {
-  repeated bytes txs = 1;
+message RequestPrepareProposal {
+  // block_data is an array of transactions that will be included in a block,
+  // sent to the app for possible modifications.
+  // applications can not exceed the size of the data passed to it.
+  repeated bytes block_data = 1;
+  // If an application decides to populate block_data with extra information, they can not exceed this value.
+  int64 block_data_size = 2;
 }
 
 //----------------------------------------
@@ -151,7 +156,7 @@ message Response {
     ResponseOfferSnapshot      offer_snapshot       = 14;
     ResponseLoadSnapshotChunk  load_snapshot_chunk  = 15;
     ResponseApplySnapshotChunk apply_snapshot_chunk = 16;
-    ResponsePreprocessTxs      preprocess_txs       = 17;
+    ResponsePrepareProposal    prepare_proposal     = 17;
   }
 }
 
@@ -282,9 +287,8 @@ message ResponseApplySnapshotChunk {
   }
 }
 
-message ResponsePreprocessTxs {
-  repeated bytes            txs      = 1;
-  tendermint.types.Messages messages = 2;
+message ResponsePrepareProposal {
+  repeated bytes block_data = 1;
 }
 
 //----------------------------------------
@@ -416,5 +420,5 @@ service ABCIApplication {
   rpc OfferSnapshot(RequestOfferSnapshot) returns (ResponseOfferSnapshot);
   rpc LoadSnapshotChunk(RequestLoadSnapshotChunk) returns (ResponseLoadSnapshotChunk);
   rpc ApplySnapshotChunk(RequestApplySnapshotChunk) returns (ResponseApplySnapshotChunk);
-  rpc PreprocessTxs(RequestPreprocessTxs) returns (ResponsePreprocessTxs);
+  rpc PrepareProposal(RequestPrepareProposal) returns (ResponsePrepareProposal);
 }

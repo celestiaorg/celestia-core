@@ -91,6 +91,8 @@ func (blockExec *BlockExecutor) SetEventBus(eventBus types.BlockEventPublisher) 
 // and txs from the mempool. The max bytes must be big enough to fit the commit.
 // Up to 1/10th of the block space is allcoated for maximum sized evidence.
 // The rest is given to txs, up to the max gas.
+//
+// Contract: application will not return more bytes than are sent over the wire.
 func (blockExec *BlockExecutor) CreateProposalBlock(
 	height int64,
 	state State, commit *types.Commit,
@@ -118,40 +120,35 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		bzs[i] = txs[i]
 	}
 
-	// TODO(ismail):
-	//  1. get those intermediate state roots & messages either from the
-	//     mempool or from the abci-app
-	//  1.1 at this point we should now the square / block size:
-	//      https://github.com/celestiaorg/celestia-specs/blob/53e5f350838f1e0785ad670704bf91dac2f4f5a3/specs/block_proposer.md#deciding-on-a-block-size
-	//      Here, we instead assume a fixed (max) square size instead.
-	//  2. feed them into MakeBlock below:
-	processedBlockTxs, err := blockExec.proxyApp.PreprocessTxsSync(abci.RequestPreprocessTxs{Txs: bzs})
+	preparedProposal, err := blockExec.proxyApp.PrepareProposalSync(
+		abci.RequestPrepareProposal{BlockData: txs.ToSliceOfBytes(), BlockDataSize: maxDataBytes},
+	)
 	if err != nil {
-		// The App MUST ensure that only valid (and hence 'processable')
-		// Tx enter the mempool. Hence, at this point, we can't have any non-processable
-		// transaction causing an error. Also, the App can simply skip any Tx that could cause any
-		// kind of trouble.
+		// The App MUST ensure that only valid (and hence 'processable') transactions
+		// enter the mempool. Hence, at this point, we can't have any non-processable
+		// transaction causing an error.
+		//
+		// Also, the App can simply skip any transaction that could cause any kind of trouble.
 		// Either way, we can not recover in a meaningful way, unless we skip proposing
-		// this block, repair what caused the error and try again.
-		// Hence we panic on purpose for now.
+		// this block, repair what caused the error and try again. Hence, we panic on
+		// purpose for now.
 		panic(err)
 	}
+	newTxs := preparedProposal.GetBlockData()
+	var txSize int
+	for _, tx := range newTxs {
+		txSize += len(tx)
 
-	ppt := processedBlockTxs.GetTxs()
-
-	pbmessages := processedBlockTxs.GetMessages()
-
-	lp := len(ppt)
-	processedTxs := make(types.Txs, lp)
-	if lp > 0 {
-		for i := 0; i < l; i++ {
-			processedTxs[i] = ppt[i]
+		if maxDataBytes < int64(txSize) {
+			panic("block data exceeds max amount of allowed bytes")
 		}
 	}
 
-	messages := types.MessagesFromProto(pbmessages)
+	// todo(evan) unmarshal block data and return transactions or simply change prepareprop to pass block data
 
-	return state.MakeBlock(height, processedTxs, evidence, nil, messages.MessagesList, commit, proposerAddr)
+	modifiedTxs := types.ToTxs(preparedProposal.GetBlockData())
+
+	return state.MakeBlock(height, modifiedTxs, evidence, nil, nil, commit, proposerAddr)
 }
 
 // ValidateBlock validates the given block against the given state.
