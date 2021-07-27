@@ -32,7 +32,7 @@ const (
 	// MaxHeaderBytes is a maximum header size.
 	// NOTE: Because app hash can be of arbitrary size, the header is therefore not
 	// capped in size and thus this number should be seen as a soft max
-	MaxHeaderBytes int64 = 637
+	MaxHeaderBytes int64 = 594
 
 	// MaxOverheadForBlock - maximum overhead to encode a block (up to
 	// MaxBlockSizeBytes in size) not including it's parts except Data.
@@ -513,8 +513,7 @@ type Header struct {
 	Time    time.Time           `json:"time"`
 
 	// prev block info
-	LastBlockID       BlockID       `json:"last_block_id"`
-	LastPartSetHeader PartSetHeader `json:"last_part_set_header"`
+	LastBlockID BlockID `json:"last_block_id"`
 
 	// hashes of block data
 	LastCommitHash tmbytes.HexBytes `json:"last_commit_hash"` // commit from validators from the last block
@@ -544,7 +543,6 @@ func (h *Header) Populate(
 	chainID string,
 	timestamp time.Time,
 	lastBlockID BlockID,
-	lastPartSetHeader PartSetHeader,
 	valHash, nextValHash []byte,
 	consensusHash, appHash, lastResultsHash []byte,
 	proposerAddress Address,
@@ -552,7 +550,6 @@ func (h *Header) Populate(
 	h.Version = version
 	h.ChainID = chainID
 	h.Time = timestamp
-	h.LastPartSetHeader = lastPartSetHeader
 	h.LastBlockID = lastBlockID
 	h.ValidatorsHash = valHash
 	h.NextValidatorsHash = nextValHash
@@ -582,10 +579,6 @@ func (h Header) ValidateBasic() error {
 
 	if err := h.LastBlockID.ValidateBasic(); err != nil {
 		return fmt.Errorf("wrong LastBlockID: %w", err)
-	}
-
-	if err := h.LastPartSetHeader.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong PartSetHeader: %w", err)
 	}
 
 	if err := ValidateHash(h.LastCommitHash); err != nil {
@@ -652,19 +645,12 @@ func (h *Header) Hash() tmbytes.HexBytes {
 		return nil
 	}
 
-	pbpsh := h.LastPartSetHeader.ToProto()
-	bzpsh, err := pbpsh.Marshal()
-	if err != nil {
-		return nil
-	}
-
 	return merkle.HashFromByteSlices([][]byte{
 		hbz,
 		cdcEncode(h.ChainID),
 		cdcEncode(h.Height),
 		pbt,
 		bzbi,
-		bzpsh,
 		cdcEncode(h.LastCommitHash),
 		cdcEncode(h.DataHash),
 		cdcEncode(h.NumOriginalDataShares),
@@ -689,7 +675,6 @@ func (h *Header) StringIndented(indent string) string {
 %s  Height:         %v
 %s  Time:           %v
 %s  LastBlockID:    %v
-%s  LastPartSetHeader: %v
 %s  LastCommit:     %v
 %s  Data:           %v
 %s  Validators:     %v
@@ -705,7 +690,6 @@ func (h *Header) StringIndented(indent string) string {
 		indent, h.Height,
 		indent, h.Time,
 		indent, h.LastBlockID,
-		indent, h.LastPartSetHeader,
 		indent, h.LastCommitHash,
 		indent, h.DataHash,
 		indent, h.ValidatorsHash,
@@ -724,15 +708,12 @@ func (h *Header) ToProto() *tmproto.Header {
 		return nil
 	}
 
-	ppsh := h.LastPartSetHeader.ToProto()
-
 	return &tmproto.Header{
 		Version:               h.Version,
 		ChainID:               h.ChainID,
 		Height:                h.Height,
 		Time:                  h.Time,
 		LastBlockId:           h.LastBlockID.ToProto(),
-		LastPartSetHeader:     &ppsh,
 		ValidatorsHash:        h.ValidatorsHash,
 		NextValidatorsHash:    h.NextValidatorsHash,
 		ConsensusHash:         h.ConsensusHash,
@@ -760,18 +741,12 @@ func HeaderFromProto(ph *tmproto.Header) (Header, error) {
 		return Header{}, err
 	}
 
-	lpsh, err := PartSetHeaderFromProto(ph.LastPartSetHeader)
-	if err != nil {
-		return Header{}, err
-	}
-
 	h.Version = ph.Version
 	h.ChainID = ph.ChainID
 	h.Height = ph.Height
 	h.Time = ph.Time
 	h.Height = ph.Height
 	h.LastBlockID = *bi
-	h.LastPartSetHeader = *lpsh
 	h.ValidatorsHash = ph.ValidatorsHash
 	h.NextValidatorsHash = ph.NextValidatorsHash
 	h.ConsensusHash = ph.ConsensusHash

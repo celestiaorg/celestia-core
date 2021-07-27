@@ -33,15 +33,13 @@ var TM2PB = tm2pb{}
 type tm2pb struct{}
 
 func (tm2pb) Header(header *Header) tmproto.Header {
-	lpsh := header.LastPartSetHeader.ToProto()
 	return tmproto.Header{
 		Version: header.Version,
 		ChainID: header.ChainID,
 		Height:  header.Height,
 		Time:    header.Time,
 
-		LastBlockId:       header.LastBlockID.ToProto(),
-		LastPartSetHeader: &lpsh,
+		LastBlockId: header.LastBlockID.ToProto(),
 
 		LastCommitHash: header.LastCommitHash,
 		DataHash:       header.DataHash,

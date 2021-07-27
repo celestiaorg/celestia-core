@@ -442,7 +442,6 @@ func makeHeaderRandom(height int64) *types.Header {
 		Height:             height,
 		Time:               defaultEvidenceTime,
 		LastBlockID:        makeBlockID([]byte("headerhash")),
-		LastPartSetHeader:  makePartSetHeader(1000, []byte("partshash")),
 		LastCommitHash:     crypto.CRandBytes(tmhash.Size),
 		DataHash:           crypto.CRandBytes(tmhash.Size),
 		ValidatorsHash:     crypto.CRandBytes(tmhash.Size),
