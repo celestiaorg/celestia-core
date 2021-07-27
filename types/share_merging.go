@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"fmt"
 
 	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
@@ -31,9 +30,7 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 		row := eds.Row(x)
 		originalWidth := eds.Width() / 2
 
-		for i, share := range row[:originalWidth] {
-			fmt.Println(x, i)
-			fmt.Println(share[:25])
+		for _, share := range row[:originalWidth] {
 			// sort the data of that share types via namespace
 			nid := share[:consts.NamespaceSize]
 			switch {
