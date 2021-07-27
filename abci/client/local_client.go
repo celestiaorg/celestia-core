@@ -222,14 +222,14 @@ func (app *localClient) ApplySnapshotChunk(
 	return &res, nil
 }
 
-func (app *localClient) PreprocessTxsSync(
+func (app *localClient) PrepareProposal(
 	ctx context.Context,
-	req types.RequestPreprocessTxs,
-) (*types.ResponsePreprocessTxs, error) {
+	req types.RequestPrepareProposal) (*types.ResponsePrepareProposal, error) {
+
 	app.mtx.Lock()
 	defer app.mtx.Unlock()
 
-	res := app.Application.PreprocessTxs(req)
+	res := app.Application.PrepareProposal(req)
 	return &res, nil
 }
 

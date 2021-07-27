@@ -146,21 +146,21 @@ func (_m *AppConnConsensus) InitChain(_a0 context.Context, _a1 types.RequestInit
 	return r0, r1
 }
 
-// PreprocessTxsSync provides a mock function with given fields: _a0, _a1
-func (_m *AppConnConsensus) PreprocessTxsSync(_a0 context.Context, _a1 types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error) {
+// PrepareProposal provides a mock function with given fields: _a0, _a1
+func (_m *AppConnConsensus) PrepareProposal(_a0 context.Context, _a1 types.RequestPrepareProposal) (*types.ResponsePrepareProposal, error) {
 	ret := _m.Called(_a0, _a1)
 
-	var r0 *types.ResponsePreprocessTxs
-	if rf, ok := ret.Get(0).(func(context.Context, types.RequestPreprocessTxs) *types.ResponsePreprocessTxs); ok {
+	var r0 *types.ResponsePrepareProposal
+	if rf, ok := ret.Get(0).(func(context.Context, types.RequestPrepareProposal) *types.ResponsePrepareProposal); ok {
 		r0 = rf(_a0, _a1)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*types.ResponsePreprocessTxs)
+			r0 = ret.Get(0).(*types.ResponsePrepareProposal)
 		}
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, types.RequestPreprocessTxs) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, types.RequestPrepareProposal) error); ok {
 		r1 = rf(_a0, _a1)
 	} else {
 		r1 = ret.Error(1)

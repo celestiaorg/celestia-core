@@ -369,14 +369,10 @@ func (cli *grpcClient) ApplySnapshotChunk(
 	return cli.client.ApplySnapshotChunk(ctx, req.GetApplySnapshotChunk(), grpc.WaitForReady(true))
 }
 
-func (cli *grpcClient) PreprocessTxsSync(
+func (cli *grpcClient) PrepareProposal(
 	ctx context.Context,
-	params types.RequestPreprocessTxs,
-) (*types.ResponsePreprocessTxs, error) {
+	params types.RequestPrepareProposal) (*types.ResponsePrepareProposal, error) {
 
-	reqres, err := cli.PreprocessTxsAsync(ctx, params)
-	if err != nil {
-		return nil, err
-	}
-	return reqres.Response.GetPreprocessTxs(), cli.Error()
+	req := types.ToRequestPrepareProposal(params)
+	return cli.client.PrepareProposal(ctx, req.GetPrepareProposal(), grpc.WaitForReady(true))
 }

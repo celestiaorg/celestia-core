@@ -99,6 +99,8 @@ func (blockExec *BlockExecutor) SetEventBus(eventBus types.BlockEventPublisher) 
 // and txs from the mempool. The max bytes must be big enough to fit the commit.
 // Up to 1/10th of the block space is allcoated for maximum sized evidence.
 // The rest is given to txs, up to the max gas.
+//
+// Contract: application will not return more bytes than are sent over the wire.
 func (blockExec *BlockExecutor) CreateProposalBlock(
 	height int64,
 	state State, commit *types.Commit,
@@ -159,7 +161,34 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	messages := types.MessagesFromProto(pbmessages)
 
-	return state.MakeBlock(height, processedTxs, evidence, nil, messages.MessagesList, commit, proposerAddr)
+	preparedProposal, err := blockExec.proxyApp.PrepareProposal(
+		context.Background(),
+		abci.RequestPrepareProposal{BlockData: txs.ToSliceOfBytes(), BlockDataSize: maxDataBytes},
+	)
+	if err != nil {
+		// The App MUST ensure that only valid (and hence 'processable') transactions
+		// enter the mempool. Hence, at this point, we can't have any non-processable
+		// transaction causing an error.
+		//
+		// Also, the App can simply skip any transaction that could cause any kind of trouble.
+		// Either way, we can not recover in a meaningful way, unless we skip proposing
+		// this block, repair what caused the error and try again. Hence, we panic on
+		// purpose for now.
+		panic(err)
+	}
+	newTxs := preparedProposal.GetBlockData()
+	var txSize int
+	for _, tx := range newTxs {
+		txSize += len(tx)
+
+		if maxDataBytes < int64(txSize) {
+			panic("block data exceeds max amount of allowed bytes")
+		}
+	}
+
+	modifiedTxs := types.ToTxs(preparedProposal.GetBlockData())
+
+	return state.MakeBlock(height, modifiedTxs, commit, evidence, proposerAddr)
 }
 
 // ValidateBlock validates the given block against the given state.

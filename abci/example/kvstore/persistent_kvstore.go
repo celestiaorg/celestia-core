@@ -166,9 +166,13 @@ func (app *PersistentKVStoreApplication) ApplySnapshotChunk(
 	return types.ResponseApplySnapshotChunk{Result: types.ResponseApplySnapshotChunk_ABORT}
 }
 
-func (app *PersistentKVStoreApplication) PreprocessTxs(
-	req types.RequestPreprocessTxs) types.ResponsePreprocessTxs {
-	return types.ResponsePreprocessTxs{Txs: req.Txs}
+func (app *PersistentKVStoreApplication) PrepareProposal(
+	req types.RequestPrepareProposal) types.ResponsePrepareProposal {
+	if len(req.BlockData) >= 1 {
+		req.BlockData[1] = []byte("modified tx")
+	}
+
+	return types.ResponsePrepareProposal{BlockData: req.BlockData}
 }
 
 //---------------------------------------------
