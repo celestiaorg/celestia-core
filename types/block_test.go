@@ -223,15 +223,6 @@ func makePartSetHeader(partSetSize uint32, partSetHash []byte) PartSetHeader {
 	}
 }
 
-func makePartSetHeader(partSetSize uint32, partSetHash []byte) PartSetHeader {
-	psH := make([]byte, tmhash.Size)
-	copy(psH, partSetHash)
-	return PartSetHeader{
-		Total: partSetSize,
-		Hash:  psH,
-	}
-}
-
 func makeDAHeaderRandom() *DataAvailabilityHeader {
 	rows, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
 	clns, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
