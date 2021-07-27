@@ -222,10 +222,10 @@ func (th *TestHarness) TestSignProposal() error {
 		POLRound: -1,
 		BlockID: types.BlockID{
 			Hash: hash,
-			PartSetHeader: types.PartSetHeader{
-				Hash:  hash,
-				Total: 1000000,
-			},
+		},
+		PartSetHeader: types.PartSetHeader{
+			Hash:  hash,
+			Total: 1000000,
 		},
 		Timestamp: time.Now(),
 		DAHeader:  &types.DataAvailabilityHeader{},
@@ -273,10 +273,10 @@ func (th *TestHarness) TestSignVote() error {
 			Round:  0,
 			BlockID: types.BlockID{
 				Hash: hash,
-				PartSetHeader: types.PartSetHeader{
-					Hash:  hash,
-					Total: 1000000,
-				},
+			},
+			PartSetHeader: types.PartSetHeader{
+				Hash:  hash,
+				Total: 1000000,
 			},
 			ValidatorIndex:   0,
 			ValidatorAddress: tmhash.SumTruncated([]byte("addr")),

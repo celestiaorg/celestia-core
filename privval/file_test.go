@@ -58,8 +58,8 @@ func TestResetValidator(t *testing.T) {
 	height, round := int64(10), int32(1)
 	voteType := tmproto.PrevoteType
 	randBytes := tmrand.Bytes(tmhash.Size)
-	blockID := types.BlockID{Hash: randBytes, PartSetHeader: types.PartSetHeader{}}
-	vote := newVote(privVal.Key.Address, 0, height, round, voteType, blockID)
+	blockID := types.BlockID{Hash: randBytes}
+	vote := newVote(privVal.Key.Address, 0, height, round, voteType, blockID, types.PartSetHeader{})
 	err = privVal.SignVote("mychainid", vote.ToProto())
 	assert.NoError(t, err, "expected no error signing vote")
 
@@ -174,16 +174,16 @@ func TestSignVote(t *testing.T) {
 	randbytes := tmrand.Bytes(tmhash.Size)
 	randbytes2 := tmrand.Bytes(tmhash.Size)
 
-	block1 := types.BlockID{Hash: randbytes,
-		PartSetHeader: types.PartSetHeader{Total: 5, Hash: randbytes}}
-	block2 := types.BlockID{Hash: randbytes2,
-		PartSetHeader: types.PartSetHeader{Total: 10, Hash: randbytes2}}
+	block1 := types.BlockID{Hash: randbytes}
+	psh1 := types.PartSetHeader{Total: 5, Hash: randbytes}
+	block2 := types.BlockID{Hash: randbytes2}
+	psh2 := types.PartSetHeader{Total: 10, Hash: randbytes2}
 
 	height, round := int64(10), int32(1)
 	voteType := tmproto.PrevoteType
 
 	// sign a vote for first time
-	vote := newVote(privVal.Key.Address, 0, height, round, voteType, block1)
+	vote := newVote(privVal.Key.Address, 0, height, round, voteType, block1, psh1)
 	v := vote.ToProto()
 	err = privVal.SignVote("mychainid", v)
 	assert.NoError(err, "expected no error signing vote")
@@ -194,10 +194,10 @@ func TestSignVote(t *testing.T) {
 
 	// now try some bad votes
 	cases := []*types.Vote{
-		newVote(privVal.Key.Address, 0, height, round-1, voteType, block1),   // round regression
-		newVote(privVal.Key.Address, 0, height-1, round, voteType, block1),   // height regression
-		newVote(privVal.Key.Address, 0, height-2, round+4, voteType, block1), // height regression and different round
-		newVote(privVal.Key.Address, 0, height, round, voteType, block2),     // different block
+		newVote(privVal.Key.Address, 0, height, round-1, voteType, block1, psh1),   // round regression
+		newVote(privVal.Key.Address, 0, height-1, round, voteType, block1, psh1),   // height regression
+		newVote(privVal.Key.Address, 0, height-2, round+4, voteType, block1, psh1), // height regression and different round
+		newVote(privVal.Key.Address, 0, height, round, voteType, block2, psh2),     // different block
 	}
 
 	for _, c := range cases {
@@ -228,14 +228,14 @@ func TestSignProposal(t *testing.T) {
 	randbytes := tmrand.Bytes(tmhash.Size)
 	randbytes2 := tmrand.Bytes(tmhash.Size)
 
-	block1 := types.BlockID{Hash: randbytes,
-		PartSetHeader: types.PartSetHeader{Total: 5, Hash: randbytes}}
-	block2 := types.BlockID{Hash: randbytes2,
-		PartSetHeader: types.PartSetHeader{Total: 10, Hash: randbytes2}}
+	block1 := types.BlockID{Hash: randbytes}
+	psh1 := types.PartSetHeader{Total: 5, Hash: randbytes}
+	block2 := types.BlockID{Hash: randbytes2}
+	psh2 := types.PartSetHeader{Total: 10, Hash: randbytes2}
 	height, round := int64(10), int32(1)
 
 	// sign a proposal for first time
-	proposal := newProposal(height, round, block1)
+	proposal := newProposal(height, round, block1, psh1)
 	pbp, err := proposal.ToProto()
 	require.NoError(t, err)
 	err = privVal.SignProposal("mychainid", pbp)
@@ -247,10 +247,10 @@ func TestSignProposal(t *testing.T) {
 
 	// now try some bad Proposals
 	cases := []*types.Proposal{
-		newProposal(height, round-1, block1),   // round regression
-		newProposal(height-1, round, block1),   // height regression
-		newProposal(height-2, round+4, block1), // height regression and different round
-		newProposal(height, round, block2),     // different block
+		newProposal(height, round-1, block1, psh1),   // round regression
+		newProposal(height-1, round, block1, psh1),   // height regression
+		newProposal(height-2, round+4, block1, psh1), // height regression and different round
+		newProposal(height, round, block2, psh2),     // different block
 	}
 
 	for _, c := range cases {
@@ -277,13 +277,14 @@ func TestDifferByTimestamp(t *testing.T) {
 	privVal, err := GenFilePV(tempKeyFile.Name(), tempStateFile.Name(), "")
 	require.NoError(t, err)
 	randbytes := tmrand.Bytes(tmhash.Size)
-	block1 := types.BlockID{Hash: randbytes, PartSetHeader: types.PartSetHeader{Total: 5, Hash: randbytes}}
+	block1 := types.BlockID{Hash: randbytes}
+	psh1 := types.PartSetHeader{Total: 5, Hash: randbytes}
 	height, round := int64(10), int32(1)
 	chainID := "mychainid"
 
 	// test proposal
 	{
-		proposal := newProposal(height, round, block1)
+		proposal := newProposal(height, round, block1, psh1)
 		pb, err := proposal.ToProto()
 		require.NoError(t, err)
 		err = privVal.SignProposal(chainID, pb)
@@ -308,8 +309,8 @@ func TestDifferByTimestamp(t *testing.T) {
 	// test vote
 	{
 		voteType := tmproto.PrevoteType
-		blockID := types.BlockID{Hash: randbytes, PartSetHeader: types.PartSetHeader{}}
-		vote := newVote(privVal.Key.Address, 0, height, round, voteType, blockID)
+		blockID := types.BlockID{Hash: randbytes}
+		vote := newVote(privVal.Key.Address, 0, height, round, voteType, blockID, types.PartSetHeader{})
 		v := vote.ToProto()
 		err := privVal.SignVote("mychainid", v)
 		assert.NoError(t, err, "expected no error signing vote")
@@ -332,7 +333,7 @@ func TestDifferByTimestamp(t *testing.T) {
 }
 
 func newVote(addr types.Address, idx int32, height int64, round int32,
-	typ tmproto.SignedMsgType, blockID types.BlockID) *types.Vote {
+	typ tmproto.SignedMsgType, blockID types.BlockID, psh types.PartSetHeader) *types.Vote {
 	return &types.Vote{
 		ValidatorAddress: addr,
 		ValidatorIndex:   idx,
@@ -341,15 +342,17 @@ func newVote(addr types.Address, idx int32, height int64, round int32,
 		Type:             typ,
 		Timestamp:        tmtime.Now(),
 		BlockID:          blockID,
+		PartSetHeader:    psh,
 	}
 }
 
-func newProposal(height int64, round int32, blockID types.BlockID) *types.Proposal {
+func newProposal(height int64, round int32, blockID types.BlockID, psh types.PartSetHeader) *types.Proposal {
 	return &types.Proposal{
-		Height:    height,
-		Round:     round,
-		BlockID:   blockID,
-		Timestamp: tmtime.Now(),
-		DAHeader:  &types.DataAvailabilityHeader{},
+		Height:        height,
+		Round:         round,
+		BlockID:       blockID,
+		Timestamp:     tmtime.Now(),
+		DAHeader:      &types.DataAvailabilityHeader{},
+		PartSetHeader: psh,
 	}
 }

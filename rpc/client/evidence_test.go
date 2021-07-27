@@ -62,10 +62,10 @@ func makeEvidences(
 		Timestamp:        defaultTestTime,
 		BlockID: types.BlockID{
 			Hash: tmhash.Sum(tmrand.Bytes(tmhash.Size)),
-			PartSetHeader: types.PartSetHeader{
-				Total: 1000,
-				Hash:  tmhash.Sum([]byte("partset")),
-			},
+		},
+		PartSetHeader: types.PartSetHeader{
+			Total: 1000,
+			Hash:  tmhash.Sum([]byte("partset")),
 		},
 	}
 

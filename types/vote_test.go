@@ -36,10 +36,10 @@ func exampleVote(t byte) *Vote {
 		Timestamp: stamp,
 		BlockID: BlockID{
 			Hash: tmhash.Sum([]byte("blockID_hash")),
-			PartSetHeader: PartSetHeader{
-				Total: 1000000,
-				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
-			},
+		},
+		PartSetHeader: PartSetHeader{
+			Total: 1000000,
+			Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
 		},
 		ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 		ValidatorIndex:   56789,
@@ -67,13 +67,13 @@ func TestVoteSignBytesTestVectors(t *testing.T) {
 		0: {
 			"", &Vote{},
 			// NOTE: Height and Round are skipped here. This case needs to be considered while parsing.
-			[]byte{0xd, 0x2a, 0xb, 0x8, 0x80, 0x92, 0xb8, 0xc3, 0x98, 0xfe, 0xff, 0xff, 0xff, 0x1},
+			[]byte{0xf, 0x2a, 0xb, 0x8, 0x80, 0x92, 0xb8, 0xc3, 0x98, 0xfe, 0xff, 0xff, 0xff, 0x1, 0x3a, 0x0},
 		},
 		// with proper (fixed size) height and round (PreCommit):
 		1: {
 			"", &Vote{Height: 1, Round: 1, Type: tmproto.PrecommitType},
 			[]byte{
-				0x21,                                   // length
+				0x23,                                   // length
 				0x8,                                    // (field_number << 3) | wire_type
 				0x2,                                    // PrecommitType
 				0x11,                                   // (field_number << 3) | wire_type
@@ -82,13 +82,13 @@ func TestVoteSignBytesTestVectors(t *testing.T) {
 				0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, // round
 				0x2a, // (field_number << 3) | wire_type
 				// remaining fields (timestamp):
-				0xb, 0x8, 0x80, 0x92, 0xb8, 0xc3, 0x98, 0xfe, 0xff, 0xff, 0xff, 0x1},
+				0xb, 0x8, 0x80, 0x92, 0xb8, 0xc3, 0x98, 0xfe, 0xff, 0xff, 0xff, 0x1, 0x3a, 0x0},
 		},
 		// with proper (fixed size) height and round (PreVote):
 		2: {
 			"", &Vote{Height: 1, Round: 1, Type: tmproto.PrevoteType},
 			[]byte{
-				0x21,                                   // length
+				0x23,                                   // length
 				0x8,                                    // (field_number << 3) | wire_type
 				0x1,                                    // PrevoteType
 				0x11,                                   // (field_number << 3) | wire_type
@@ -97,25 +97,25 @@ func TestVoteSignBytesTestVectors(t *testing.T) {
 				0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, // round
 				0x2a, // (field_number << 3) | wire_type
 				// remaining fields (timestamp):
-				0xb, 0x8, 0x80, 0x92, 0xb8, 0xc3, 0x98, 0xfe, 0xff, 0xff, 0xff, 0x1},
+				0xb, 0x8, 0x80, 0x92, 0xb8, 0xc3, 0x98, 0xfe, 0xff, 0xff, 0xff, 0x1, 0x3a, 0x0},
 		},
 		3: {
 			"", &Vote{Height: 1, Round: 1},
 			[]byte{
-				0x1f,                                   // length
+				0x21,                                   // length
 				0x11,                                   // (field_number << 3) | wire_type
 				0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, // height
 				0x19,                                   // (field_number << 3) | wire_type
 				0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, // round
 				// remaining fields (timestamp):
 				0x2a,
-				0xb, 0x8, 0x80, 0x92, 0xb8, 0xc3, 0x98, 0xfe, 0xff, 0xff, 0xff, 0x1},
+				0xb, 0x8, 0x80, 0x92, 0xb8, 0xc3, 0x98, 0xfe, 0xff, 0xff, 0xff, 0x1, 0x3a, 0x0},
 		},
 		// containing non-empty chain_id:
 		4: {
 			"test_chain_id", &Vote{Height: 1, Round: 1},
 			[]byte{
-				0x2e,                                   // length
+				0x30,                                   // length
 				0x11,                                   // (field_number << 3) | wire_type
 				0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, // height
 				0x19,                                   // (field_number << 3) | wire_type
@@ -125,7 +125,7 @@ func TestVoteSignBytesTestVectors(t *testing.T) {
 				0xb, 0x8, 0x80, 0x92, 0xb8, 0xc3, 0x98, 0xfe, 0xff, 0xff, 0xff, 0x1, // timestamp
 				// (field_number << 3) | wire_type
 				0x32,
-				0xd, 0x74, 0x65, 0x73, 0x74, 0x5f, 0x63, 0x68, 0x61, 0x69, 0x6e, 0x5f, 0x69, 0x64}, // chainID
+				0xd, 0x74, 0x65, 0x73, 0x74, 0x5f, 0x63, 0x68, 0x61, 0x69, 0x6e, 0x5f, 0x69, 0x64, 0x3a, 0x0}, // chainID
 		},
 	}
 	for i, tc := range tests {
@@ -137,8 +137,8 @@ func TestVoteSignBytesTestVectors(t *testing.T) {
 }
 
 func TestVoteProposalNotEq(t *testing.T) {
-	cv := CanonicalizeVote("", &tmproto.Vote{Height: 1, Round: 1})
-	p := CanonicalizeProposal("", &tmproto.Proposal{Height: 1, Round: 1})
+	cv := CanonicalizeVote("", &tmproto.Vote{Height: 1, Round: 1, PartSetHeader: &tmproto.PartSetHeader{}})
+	p := CanonicalizeProposal("", &tmproto.Proposal{Height: 1, Round: 1, PartSetHeader: &tmproto.PartSetHeader{}})
 	vb, err := proto.Marshal(&cv)
 	require.NoError(t, err)
 	pb, err := proto.Marshal(&p)
@@ -242,8 +242,9 @@ func TestVoteValidateBasic(t *testing.T) {
 		{"Good Vote", func(v *Vote) {}, false},
 		{"Negative Height", func(v *Vote) { v.Height = -1 }, true},
 		{"Negative Round", func(v *Vote) { v.Round = -1 }, true},
-		{"Invalid BlockID", func(v *Vote) {
-			v.BlockID = BlockID{[]byte{1, 2, 3}, PartSetHeader{111, []byte("blockparts")}}
+		{"Invalid BlockID and PartSetHeader", func(v *Vote) {
+			v.BlockID = BlockID{[]byte{1, 2, 3}}
+			v.PartSetHeader = PartSetHeader{111, []byte("blockparts")}
 		}, true},
 		{"Invalid Address", func(v *Vote) { v.ValidatorAddress = make([]byte, 1) }, true},
 		{"Invalid ValidatorIndex", func(v *Vote) { v.ValidatorIndex = -1 }, true},
