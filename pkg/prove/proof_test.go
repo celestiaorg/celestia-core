@@ -137,7 +137,7 @@ func Test_genOrigRowShares(t *testing.T) {
 		Messages: generateRandomlySizedMessages(10, 1500),
 	}
 
-	allShares, _, _ := typicalBlockData.ComputeShares(64)
+	allShares, _, _ := typicalBlockData.ComputeShares(8)
 	rawShares := allShares.RawShares()
 
 	genShares := genOrigRowShares(typicalBlockData, 8, 0, 7)

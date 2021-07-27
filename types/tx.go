@@ -183,6 +183,15 @@ func ToTxs(txs [][]byte) Txs {
 	return txBzs
 }
 
+// ToSliceOfBytes converts a Txs to slice of byte slices.
+func (txs Txs) ToSliceOfBytes() [][]byte {
+	txBzs := make([][]byte, len(txs))
+	for i := 0; i < len(txs); i++ {
+		txBzs[i] = txs[i]
+	}
+	return txBzs
+}
+
 // UnwrapMalleatedTx attempts to unmarshal the provided transaction into a malleated
 // transaction wrapper, if this an be done, then it returns true. A malleated
 // transaction is a normal transaction that has been derived (malleated) from a
