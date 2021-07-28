@@ -6,7 +6,7 @@
 
 ## Context
 
-Block propagation is currently done by splitting the block into arbitrary chunks and gossiping them to validators via a gossip routine. While this does not have downsides it does not meet the needs of the lazy-ledger chain. The celestia chain requires blocks to be encoded in a different way and for the proposer to not propagate the chunks to peers.
+Block propagation is currently done by splitting the block into arbitrary chunks and gossiping them to validators via a gossip routine. While this does not have downsides it does not meet the needs of the Celestia chain. The celestia chain requires blocks to be encoded in a different way and for the proposer to not propagate the chunks to peers.
 
 Celestia wants validators to pull the block from a IPFS network. What does this mean? As I touched on earlier the proposer pushes the block to the network, this in turn means that each validator downloads and reconstructs the block each time to verify it. Instead Celestia will encode and split up the block via erasure codes, stored locally in the nodes IPFS daemon. After the proposer has sent the block to IPFS and received the CIDs it will include them into the proposal. This proposal will be gossiped to other validators, once a validator receives the proposal it will begin requesting the CIDs included in the proposal.
 

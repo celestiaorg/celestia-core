@@ -9,7 +9,7 @@
 This ADR builds on top of [ADR 002](adr-002-ipld-da-sampling.md) and will use the implemented APIs described there.
 The reader should familiarize themselves at least with the high-level concepts the as well as in the [specs](https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#2d-reed-solomon-encoding-scheme).
 
-The academic Lazyledger [paper](https://arxiv.org/abs/1905.09274) describes the motivation and context for this API.
+The academic [paper](https://arxiv.org/abs/1905.09274) describes the motivation and context for this API.
 The main motivation can be quoted from section 3.3 of that paper:
 
 > (Property1) **Application message retrieval partitioning.** Client nodes must be able to download all of the messages relevant to the applications they use [...], without needing to downloading any messages for other applications.
@@ -123,7 +123,7 @@ We should document it properly and move it together with relevant parts from ADR
 
 ### Positive
 
-- easy to implement with the existing code (see [ADR 002](https://github.com/celestiaorg/celestia-core/blob/47d6c965704e102ae877b2f4e10aeab782d9c648/docs/lazy-adr/adr-002-ipld-da-sampling.md#detailed-design))
+- easy to implement with the existing code (see [ADR 002](https://github.com/celestiaorg/celestia-core/blob/47d6c965704e102ae877b2f4e10aeab782d9c648/docs/adr/adr-002-ipld-da-sampling.md#detailed-design))
 - resilient data retrieval via a p2p network
 - dependence on a mature and well-tested code-base with a large and welcoming community
 
