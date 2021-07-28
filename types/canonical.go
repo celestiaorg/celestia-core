@@ -56,15 +56,13 @@ func CanonicalizeProposal(chainID string, proposal *tmproto.Proposal) tmproto.Ca
 // CanonicalizeVote transforms the given Vote to a CanonicalVote, which does
 // not contain ValidatorIndex and ValidatorAddress fields.
 func CanonicalizeVote(chainID string, vote *tmproto.Vote) tmproto.CanonicalVote {
-	cppsh := CanonicalizePartSetHeader(*vote.PartSetHeader)
 	return tmproto.CanonicalVote{
-		Type:          vote.Type,
-		Height:        vote.Height,       // encoded as sfixed64
-		Round:         int64(vote.Round), // encoded as sfixed64
-		BlockID:       CanonicalizeBlockID(vote.BlockID),
-		Timestamp:     vote.Timestamp,
-		ChainID:       chainID,
-		PartSetHeader: &cppsh,
+		Type:      vote.Type,
+		Height:    vote.Height,       // encoded as sfixed64
+		Round:     int64(vote.Round), // encoded as sfixed64
+		BlockID:   CanonicalizeBlockID(vote.BlockID),
+		Timestamp: vote.Timestamp,
+		ChainID:   chainID,
 	}
 }
 
