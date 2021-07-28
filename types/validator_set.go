@@ -659,6 +659,7 @@ func (vals *ValidatorSet) UpdateWithChangeSet(changes []*Validator) error {
 // application that depends on the LastCommitInfo sent in BeginBlock, which
 // includes which validators signed. For instance, Gaia incentivizes proposers
 // with a bonus for including more than +2/3 of the signatures.
+// todo(evan): remove the partsetheader from verify commit
 func (vals *ValidatorSet) VerifyCommit(chainID string, blockID BlockID,
 	partSetHeader PartSetHeader, height int64, commit *Commit) error {
 	if commit == nil {
@@ -678,10 +679,7 @@ func (vals *ValidatorSet) VerifyCommit(chainID string, blockID BlockID,
 			blockID, commit.BlockID)
 	}
 
-	if !partSetHeader.Equals(commit.PartSetHeader) {
-		return fmt.Errorf("invalid commit -- wrong Part Set eader: want %v, got %v",
-			partSetHeader, commit.PartSetHeader)
-	}
+	// todo(evan): point out that the PSH is no longer verified
 
 	talliedVotingPower := int64(0)
 	votingPowerNeeded := vals.TotalVotingPower() * 2 / 3
@@ -739,10 +737,6 @@ func (vals *ValidatorSet) VerifyCommitLight(chainID string, blockID BlockID,
 	if !blockID.Equals(commit.BlockID) {
 		return fmt.Errorf("invalid commit -- wrong block ID: want %v, got %v",
 			blockID, commit.BlockID)
-	}
-	if !partSetHeader.Equals(commit.PartSetHeader) {
-		return fmt.Errorf("invalid commit -- wrong PartSetHeader: want %v, got %v",
-			partSetHeader, commit.PartSetHeader)
 	}
 
 	talliedVotingPower := int64(0)

@@ -452,6 +452,7 @@ func validateValidatorUpdates(abciUpdates []abci.ValidatorUpdate,
 	return nil
 }
 
+// todo(evan): remove psh from args
 // updateState returns a new State updated according to the header and responses.
 func updateState(
 	state State,
@@ -507,7 +508,6 @@ func updateState(
 		InitialHeight:                    state.InitialHeight,
 		LastBlockHeight:                  header.Height,
 		LastBlockID:                      blockID,
-		LastPartSetHeader:                partSetHeader,
 		LastBlockTime:                    header.Time,
 		NextValidators:                   nValSet,
 		Validators:                       state.NextValidators.Copy(),

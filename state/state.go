@@ -54,10 +54,10 @@ type State struct {
 	InitialHeight int64 // should be 1, not 0, when starting from height 1
 
 	// LastBlockHeight=0 at genesis (ie. block(H=0) does not exist)
-	LastBlockHeight   int64
-	LastBlockID       types.BlockID
-	LastPartSetHeader types.PartSetHeader
-	LastBlockTime     time.Time
+	LastBlockHeight int64
+	LastBlockID     types.BlockID
+
+	LastBlockTime time.Time
 
 	// LastValidators is used to validate block.LastCommit.
 	// Validators are persisted to the database separately every time they change,
@@ -90,10 +90,9 @@ func (state State) Copy() State {
 		ChainID:       state.ChainID,
 		InitialHeight: state.InitialHeight,
 
-		LastBlockHeight:   state.LastBlockHeight,
-		LastBlockID:       state.LastBlockID,
-		LastPartSetHeader: state.LastPartSetHeader,
-		LastBlockTime:     state.LastBlockTime,
+		LastBlockHeight: state.LastBlockHeight,
+		LastBlockID:     state.LastBlockID,
+		LastBlockTime:   state.LastBlockTime,
 
 		NextValidators:              state.NextValidators.Copy(),
 		Validators:                  state.Validators.Copy(),
@@ -134,6 +133,7 @@ func (state State) IsEmpty() bool {
 	return state.Validators == nil // XXX can't compare to Empty
 }
 
+// todo(evan): remove the psh from the state proto
 // ToProto takes the local state type and returns the equivalent proto type
 func (state *State) ToProto() (*tmstate.State, error) {
 	if state == nil {
@@ -148,8 +148,6 @@ func (state *State) ToProto() (*tmstate.State, error) {
 	sm.LastBlockHeight = state.LastBlockHeight
 
 	sm.LastBlockID = state.LastBlockID.ToProto()
-	lpsh := state.LastPartSetHeader.ToProto()
-	sm.LastPartSetHeader = &lpsh
 	sm.LastBlockTime = state.LastBlockTime
 	vals, err := state.Validators.ToProto()
 	if err != nil {
@@ -197,12 +195,6 @@ func StateFromProto(pb *tmstate.State) (*State, error) { //nolint:golint
 		return nil, err
 	}
 	state.LastBlockID = *bi
-
-	lpsh, err := types.PartSetHeaderFromProto(pb.LastPartSetHeader)
-	if err != nil {
-		return nil, err
-	}
-	state.LastPartSetHeader = *lpsh
 
 	state.LastBlockHeight = pb.LastBlockHeight
 	state.LastBlockTime = pb.LastBlockTime
@@ -353,10 +345,9 @@ func MakeGenesisState(genDoc *types.GenesisDoc) (State, error) {
 		ChainID:       genDoc.ChainID,
 		InitialHeight: genDoc.InitialHeight,
 
-		LastBlockHeight:   0,
-		LastBlockID:       types.BlockID{},
-		LastPartSetHeader: types.PartSetHeader{},
-		LastBlockTime:     genDoc.GenesisTime,
+		LastBlockHeight: 0,
+		LastBlockID:     types.BlockID{},
+		LastBlockTime:   genDoc.GenesisTime,
 
 		NextValidators:              nextValidatorSet,
 		Validators:                  validatorSet,
