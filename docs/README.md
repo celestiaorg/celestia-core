@@ -16,7 +16,7 @@ Reading these will give you a lot of background and context on Tendermint which 
 
 As mentioned above, celestia-core aims to be more focused on the Celestia use-case than vanilla Tendermint.
 Moving forward we might provide a clear overview on the changes we incorporated.
-For now, we refer to the Celestia specific [ADRs](./celestia-adr) in this repository as well as to the Celestia specification:
+For now, we refer to the Celestia specific [ADRs](./adr) in this repository as well as to the Celestia specification:
 
- - [celestia-adr](./celestia-adr)
+ - [celestia-adr](./adr)
  - [celestia-specs](https://github.com/celestiaorg/celestia-specs)

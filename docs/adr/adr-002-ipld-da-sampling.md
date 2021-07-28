@@ -63,7 +63,7 @@ As a peer that requests such an IPLD node, the Celestia IPLD plugin provides the
 `NmtNodeParser` to transform the retrieved raw data back into an `ipld.Node`.
 
 A more high-level description on the changes required to rip out the current block gossiping routine,
-including changes to block storage-, RPC-layer, and potential changes to reactors is either handled in [LAZY ADR 001](./adr-001-block-propagation.md),
+including changes to block storage-, RPC-layer, and potential changes to reactors is either handled in [ADR 001](./adr-001-block-propagation.md),
 and/or in a few smaller, separate followup ADRs.
 
 ## Alternative Approaches
@@ -212,14 +212,14 @@ As fully integrating Data Available proofs into tendermint, is a rather larger c
 following packages (not mentioning the implementation work that was already done):
 
 1. Flesh out the changes in the consensus messages ([celestia-specs#126], [celestia-specs#127])
-2. Flesh out the changes that would be necessary to replace the current block gossiping ([LAZY ADR 001](./adr-001-block-propagation.md))
+2. Flesh out the changes that would be necessary to replace the current block gossiping ([ADR 001](./adr-001-block-propagation.md))
 3. Add the possibility of storing and retrieving block data (samples or whole block) to celestia-core (this ADR and related PRs).
 4. Integrate above API (3.) as an addition into celestia-core without directly replacing the tendermint counterparts (block gossip etc).
 5. Rip out each component that will be redundant with above integration in one or even several smaller PRs:
-    - block gossiping (see LAZY ADR 001)
-    - modify block store (see LAZY ADR 001)
+    - block gossiping (see ADR 001)
+    - modify block store (see ADR 001)
     - make downloading full Blocks optional (flag/config)
-    - route some RPC requests to IPFS (see LAZY ADR 001)
+    - route some RPC requests to IPFS (see ADR 001)
 
 
 ## Status

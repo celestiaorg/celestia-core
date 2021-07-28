@@ -53,11 +53,11 @@ According to SemVer, anything in the public API can change at any time before ve
 
 ### Celestia (formerly LazyLedger)
 
-- [LazyLedger Ethereum research post](https://ethresear.ch/t/a-data-availability-blockchain-with-sub-linear-full-block-validation/5503)
-- [LazyLedger academic paper](https://arxiv.org/abs/1905.09274)
+- [Ethereum research post](https://ethresear.ch/t/a-data-availability-blockchain-with-sub-linear-full-block-validation/5503)
+- [Academic paper](https://arxiv.org/abs/1905.09274)
 - [Blog](https://blog.celestia.org)
 - [Project web site](https://celestia.org)
-- [Academic LazyLedger prototype](https://github.com/celestiaorg/lazyledger-prototype)
+- [Academic prototype](https://github.com/celestiaorg/lazyledger-prototype)
 - [Follow Celestia on Twitter](https://twitter.com/CelestiaOrg)
 
 ### Tendermint Core
