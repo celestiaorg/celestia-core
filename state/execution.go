@@ -220,7 +220,7 @@ func (blockExec *BlockExecutor) ApplyBlock(
 	}
 
 	// Update the state with the block and responses.
-	state, err = updateState(state, blockID, partSetHeader, &block.Header, abciResponses, validatorUpdates)
+	state, err = updateState(state, blockID, &block.Header, abciResponses, validatorUpdates)
 	if err != nil {
 		return state, 0, fmt.Errorf("commit failed for application: %v", err)
 	}
@@ -452,12 +452,10 @@ func validateValidatorUpdates(abciUpdates []abci.ValidatorUpdate,
 	return nil
 }
 
-// todo(evan): remove psh from args
 // updateState returns a new State updated according to the header and responses.
 func updateState(
 	state State,
 	blockID types.BlockID,
-	partSetHeader types.PartSetHeader,
 	header *types.Header,
 	abciResponses *tmstate.ABCIResponses,
 	validatorUpdates []*types.Validator,

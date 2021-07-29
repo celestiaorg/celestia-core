@@ -275,7 +275,6 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 				return
 			}
 			// Peer claims to have a maj23 for some BlockID at H,R,S,
-			// todo(evan): remove the psh placeholder
 			err := votes.SetPeerMaj23(msg.Round, msg.Type, ps.peer.ID(), msg.BlockID)
 			if err != nil {
 				conR.Switch.StopPeerForError(src, err)

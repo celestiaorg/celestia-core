@@ -631,7 +631,7 @@ func TestCommitToVoteSetWithVotesForNilBlock(t *testing.T) {
 		if tc.valid {
 			commit := voteSet.MakeCommit() // panics without > 2/3 valid votes
 			assert.NotNil(t, commit)
-			err := valSet.VerifyCommit(voteSet.ChainID(), blockID, psh, height-1, commit)
+			err := valSet.VerifyCommit(voteSet.ChainID(), blockID, height-1, commit)
 			assert.Nil(t, err)
 		} else {
 			assert.Panics(t, func() { voteSet.MakeCommit() })

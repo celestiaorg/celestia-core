@@ -89,9 +89,8 @@ func validateBlock(state State, block *types.Block) error {
 		}
 	} else {
 		// LastCommit.Signatures length is checked in VerifyCommit.
-		// todo(evan): remove psh from args
 		if err := state.LastValidators.VerifyCommit(
-			state.ChainID, state.LastBlockID, types.PartSetHeader{}, block.Height-1, block.LastCommit); err != nil {
+			state.ChainID, state.LastBlockID, block.Height-1, block.LastCommit); err != nil {
 			return err
 		}
 	}

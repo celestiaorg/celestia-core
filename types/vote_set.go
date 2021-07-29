@@ -430,7 +430,6 @@ func (voteSet *VoteSet) HasAll() bool {
 
 // If there was a +2/3 majority for blockID, return blockID and true.
 // Else, return the empty BlockID{} and false.
-// todo(evan): don't return the psh
 func (voteSet *VoteSet) TwoThirdsMajority() (blockID BlockID, partSetHeader PartSetHeader, ok bool) {
 	if voteSet == nil {
 		return BlockID{}, PartSetHeader{}, false

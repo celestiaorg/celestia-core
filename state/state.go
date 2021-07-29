@@ -133,7 +133,6 @@ func (state State) IsEmpty() bool {
 	return state.Validators == nil // XXX can't compare to Empty
 }
 
-// todo(evan): remove the psh from the state proto
 // ToProto takes the local state type and returns the equivalent proto type
 func (state *State) ToProto() (*tmstate.State, error) {
 	if state == nil {
