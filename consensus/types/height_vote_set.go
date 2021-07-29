@@ -187,7 +187,6 @@ func (hvs *HeightVoteSet) SetPeerMaj23(
 	voteType tmproto.SignedMsgType,
 	peerID p2p.ID,
 	blockID types.BlockID,
-	partSetHeader types.PartSetHeader,
 ) error {
 	hvs.mtx.Lock()
 	defer hvs.mtx.Unlock()
@@ -198,7 +197,7 @@ func (hvs *HeightVoteSet) SetPeerMaj23(
 	if voteSet == nil {
 		return nil // something we don't know about yet
 	}
-	return voteSet.SetPeerMaj23(types.P2PID(peerID), blockID, partSetHeader)
+	return voteSet.SetPeerMaj23(types.P2PID(peerID), blockID)
 }
 
 //---------------------------------------------------------
