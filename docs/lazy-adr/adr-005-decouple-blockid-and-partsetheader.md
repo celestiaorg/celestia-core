@@ -18,11 +18,11 @@ While we build other better designs to experiment with, we will continue to impl
 
 ## Detailed Design
 
-- [X] Decouple the BlockID and the PartSetHeader
+- [X] Decouple the BlockID and the PartSetHeader [#441](https://github.com/celestiaorg/lazyledger-core/pull/441)
 - [ ] Remove the BlockID from every possible struct other than the `Proposal`
-  - [X] Stop signing over the `PartSetHeader` while voting 
-  - [X] Remove the `PartSetHeader` from the Header
-  - [X] Remove the `PartSetHeader` from VoteSetBits, VoteSetMaj23, and `state.State`
+  - [X] Stop signing over the `PartSetHeader` while voting [#457](https://github.com/celestiaorg/lazyledger-core/pull/457)
+  - [X] Remove the `PartSetHeader` from the Header [#457](https://github.com/celestiaorg/lazyledger-core/pull/457)
+  - [X] Remove the `PartSetHeader` from VoteSetBits, VoteSetMaj23, and `state.State` [#479](https://github.com/celestiaorg/lazyledger-core/pull/479)
   - [ ] Remove the `PartSetHeader` from other structs
 
 
@@ -42,8 +42,8 @@ While we build other better designs to experiment with, we will continue to impl
 
 ## References
 
-Alternative ADR #434
-Alternative implementation #427 and #443
-Comment that summarizes decision https://github.com/celestiaorg/lazyledger-core/pull/434#issuecomment-869158788
+Alternative ADR [#434](https://github.com/celestiaorg/lazyledger-core/pull/434)  
+Alternative implementation [#427](https://github.com/celestiaorg/lazyledger-core/pull/427) and [#443](https://github.com/celestiaorg/lazyledger-core/pull/443)  
+[Comment](https://github.com/celestiaorg/lazyledger-core/pull/434#issuecomment-869158788) that summarizes decision
 
 
