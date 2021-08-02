@@ -28,7 +28,7 @@ While we build other better designs to experiment with, we will continue to impl
 
 ## Status
 
-{Accepted}
+Proposed
 
 ### Positive
 
