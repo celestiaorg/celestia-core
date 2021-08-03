@@ -6,7 +6,7 @@
 
 ## Context
 
-Celestia has multiple commits to the block data via the 'DataHash' and the 'PartSetHeader' in the 'BlockID'. As stated in the [#184](https://github.com/celestiaorg/lazyledger-core/issues/184), we no longer need the 'PartSetHeader' for this additional commitment to the block’s data. However, in the short-medium term, we are still planning on using the 'PartSetHeader' to be used for block propagation during consensus. This means that we will remove the 'PartSetHeader' from as many places as possible, but keep it in the 'Proposal' struct.
+Celestia has multiple commits to the block data via the `DataHash` and the `PartSetHeader` in the `BlockID`. As stated in the [#184](https://github.com/celestiaorg/lazyledger-core/issues/184), we no longer need the `PartSetHeader` for this additional commitment to the block’s data. However, we are still planning to use the `PartSetHeader` for block propagation during consensus in the short-medium term. This means that we will remove the `PartSetHeader` from as many places as possible, but keep it in the `Proposal` struct.
 
 ## Alternative Approaches
 
@@ -45,5 +45,4 @@ Proposed
 Alternative ADR [#434](https://github.com/celestiaorg/lazyledger-core/pull/434)  
 Alternative implementation [#427](https://github.com/celestiaorg/lazyledger-core/pull/427) and [#443](https://github.com/celestiaorg/lazyledger-core/pull/443)  
 [Comment](https://github.com/celestiaorg/lazyledger-core/pull/434#issuecomment-869158788) that summarizes decision
-
 
