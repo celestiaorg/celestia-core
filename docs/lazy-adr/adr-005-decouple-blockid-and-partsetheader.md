@@ -23,7 +23,7 @@ While we build other better designs to experiment with, we will continue to impl
   - [X] Stop signing over the `PartSetHeader` while voting [#457](https://github.com/celestiaorg/lazyledger-core/pull/457)
   - [X] Remove the 'PartSetHeader' from the Header [#457](https://github.com/celestiaorg/lazyledger-core/pull/457)
   - [X] Remove the 'PartSetHeader' from VoteSetBits, VoteSetMaj23, and 'state.State' [#479](https://github.com/celestiaorg/lazyledger-core/pull/479)
-  - [ ] Remove the 'PartSetHeader' from other structs
+  - [ ] Remove the `PartSetHeader` from other structs
 
 
 ## Status
