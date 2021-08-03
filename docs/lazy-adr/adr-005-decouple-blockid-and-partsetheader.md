@@ -1,4 +1,4 @@
-# ADR 005: Decouple the 'PartSetHeader' from the 'BlockID'
+# ADR 005: Decouple the PartSetHeader from the BlockID
 
 ## Changelog
 
