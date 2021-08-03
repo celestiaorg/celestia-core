@@ -10,7 +10,7 @@ Celestia has multiple commits to the block data via the `DataHash` and the `Part
 
 ## Alternative Approaches
 
-It’s worth noting that there are proposed changes to remove the 'PartSetHeader' entirely, and instead use the already existing commitment to block data, the 'DataAvailabilityHeader', to propagate blocks in parallel during consensus. Discussions regarding the detailed differences entailed in each approach are documented in that ADR’s PR. The current direction that is described in this ADR is significantly more conservative in its approach, but it is not strictly an alternative to other designs. This is because other designs would also require removal of the 'PartSethHeader', which is a project in and of itself due to the 'BlockID' widespread usage throughout tendermint and the bugs that pop up when attempting to remove it. 
+It’s worth noting that there are proposed changes to remove the `PartSetHeader` entirely, and instead use the already existing commitment to block data, the `DataAvailabilityHeader`, to propagate blocks in parallel during consensus. Discussions regarding the detailed differences entailed in each approach are documented in that ADR’s PR. The current direction that is described in this ADR is significantly more conservative in its approach, but it is not strictly an alternative to other designs. This is because other designs would also require removal of the `PartSethHeader`, which is a project in and of itself due to the `BlockID` widespread usage throughout tendermint and the bugs that pop up when attempting to remove it. 
 
 ## Decision
 
@@ -45,4 +45,3 @@ Proposed
 Alternative ADR [#434](https://github.com/celestiaorg/lazyledger-core/pull/434)  
 Alternative implementation [#427](https://github.com/celestiaorg/lazyledger-core/pull/427) and [#443](https://github.com/celestiaorg/lazyledger-core/pull/443)  
 [Comment](https://github.com/celestiaorg/lazyledger-core/pull/434#issuecomment-869158788) that summarizes decision
-
