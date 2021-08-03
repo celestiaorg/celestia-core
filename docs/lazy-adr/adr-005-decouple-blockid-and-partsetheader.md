@@ -14,7 +14,7 @@ It’s worth noting that there are proposed changes to remove the `PartSetHeader
 
 ## Decision
 
-While we build other better designs to experiment with, we will continue to implement the design specified here as it is not orthogonol. https://github.com/celestiaorg/lazyledger-core/pull/434#issuecomment-869158788
+While we build other better designs to experiment with, we will continue to implement the design specified here as it is not orthogonal. https://github.com/celestiaorg/lazyledger-core/pull/434#issuecomment-869158788
 
 ## Detailed Design
 
