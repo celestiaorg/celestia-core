@@ -28,7 +28,6 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 	for x := uint(0); x < originalWidth; x++ {
 		// iterate over each share in the original data square
 		row := eds.Row(x)
-		originalWidth := eds.Width() / 2
 
 		for _, share := range row[:originalWidth] {
 			// sort the data of that share types via namespace
