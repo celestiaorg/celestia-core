@@ -56,7 +56,7 @@ type State struct {
 	// LastBlockHeight=0 at genesis (ie. block(H=0) does not exist)
 	LastBlockHeight int64
 	LastBlockID     types.BlockID
-	LastBlockTime time.Time
+	LastBlockTime   time.Time
 
 	// LastValidators is used to validate block.LastCommit.
 	// Validators are persisted to the database separately every time they change,
