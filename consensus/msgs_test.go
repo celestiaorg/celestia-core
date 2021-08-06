@@ -162,38 +162,34 @@ func TestMsgToProto(t *testing.T) {
 			},
 		}, false},
 		{"successful VoteSetMaj23", &VoteSetMaj23Message{
-			Height:        1,
-			Round:         1,
-			Type:          1,
-			BlockID:       bi,
-			PartSetHeader: psh,
+			Height:  1,
+			Round:   1,
+			Type:    1,
+			BlockID: bi,
 		}, &tmcons.Message{
 			Sum: &tmcons.Message_VoteSetMaj23{
 				VoteSetMaj23: &tmcons.VoteSetMaj23{
-					Height:        1,
-					Round:         1,
-					Type:          1,
-					BlockID:       pbBi,
-					PartSetHeader: &pbPsh,
+					Height:  1,
+					Round:   1,
+					Type:    1,
+					BlockID: pbBi,
 				},
 			},
 		}, false},
 		{"successful VoteSetBits", &VoteSetBitsMessage{
-			Height:        1,
-			Round:         1,
-			Type:          1,
-			BlockID:       bi,
-			PartSetHeader: psh,
-			Votes:         bits,
+			Height:  1,
+			Round:   1,
+			Type:    1,
+			BlockID: bi,
+			Votes:   bits,
 		}, &tmcons.Message{
 			Sum: &tmcons.Message_VoteSetBits{
 				VoteSetBits: &tmcons.VoteSetBits{
-					Height:        1,
-					Round:         1,
-					Type:          1,
-					BlockID:       pbBi,
-					PartSetHeader: &pbPsh,
-					Votes:         *pbBits,
+					Height:  1,
+					Round:   1,
+					Type:    1,
+					BlockID: pbBi,
+					Votes:   *pbBits,
 				},
 			},
 		}, false},
@@ -424,11 +420,11 @@ func TestConsMsgsVectors(t *testing.T) {
 				Type: tmproto.PrevoteType, Index: math.MaxInt32}}},
 			"3a1808ffffffffffffffff7f10ffffffff07180120ffffffff07"},
 		{"VoteSetMaj23", &tmcons.Message{Sum: &tmcons.Message_VoteSetMaj23{
-			VoteSetMaj23: &tmcons.VoteSetMaj23{Height: 1, Round: 1, Type: tmproto.PrevoteType, BlockID: pbBi, PartSetHeader: &pbPsh}}},
-			"425008011001180122220a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d2a24080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d"},
+			VoteSetMaj23: &tmcons.VoteSetMaj23{Height: 1, Round: 1, Type: tmproto.PrevoteType, BlockID: pbBi}}},
+			"422a08011001180122220a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d"},
 		{"VoteSetBits", &tmcons.Message{Sum: &tmcons.Message_VoteSetBits{
-			VoteSetBits: &tmcons.VoteSetBits{Height: 1, Round: 1, Type: tmproto.PrevoteType, BlockID: pbBi, PartSetHeader: &pbPsh, Votes: *pbBits}}},
-			"4a5708011001180122220a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d2a24080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d32050801120100"},
+			VoteSetBits: &tmcons.VoteSetBits{Height: 1, Round: 1, Type: tmproto.PrevoteType, BlockID: pbBi, Votes: *pbBits}}},
+			"4a3108011001180122220a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d2a050801120100"},
 	}
 
 	for _, tc := range testCases {
