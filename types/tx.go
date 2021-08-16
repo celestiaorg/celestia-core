@@ -80,7 +80,7 @@ func (txs Txs) Proof(i int) TxProof {
 	}
 }
 
-func (txs Txs) splitIntoShares() NamespacedShares {
+func (txs Txs) SplitIntoShares() NamespacedShares {
 	rawDatas := make([][]byte, len(txs))
 	for i, tx := range txs {
 		rawData, err := tx.MarshalDelimited()

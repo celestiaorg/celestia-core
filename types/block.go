@@ -1251,7 +1251,7 @@ type IntermediateStateRoots struct {
 	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
 }
 
-func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
+func (roots IntermediateStateRoots) SplitIntoShares() NamespacedShares {
 	rawDatas := make([][]byte, 0, len(roots.RawRootsList))
 	for _, root := range roots.RawRootsList {
 		rawData, err := root.MarshalDelimited()
@@ -1264,7 +1264,7 @@ func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
 	return shares
 }
 
-func (msgs Messages) splitIntoShares() NamespacedShares {
+func (msgs Messages) SplitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	for _, m := range msgs.MessagesList {
 		rawData, err := m.MarshalDelimited()
@@ -1283,12 +1283,12 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	// see: https://github.com/celestiaorg/celestia-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
 
 	// reserved shares:
-	txShares := data.Txs.splitIntoShares()
-	intermRootsShares := data.IntermediateStateRoots.splitIntoShares()
-	evidenceShares := data.Evidence.splitIntoShares()
+	txShares := data.Txs.SplitIntoShares()
+	intermRootsShares := data.IntermediateStateRoots.SplitIntoShares()
+	evidenceShares := data.Evidence.SplitIntoShares()
 
 	// application data shares from messages:
-	msgShares := data.Messages.splitIntoShares()
+	msgShares := data.Messages.SplitIntoShares()
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 
 	// find the number of shares needed to create a square that has a power of
@@ -1557,7 +1557,7 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
 	return nil
 }
 
-func (data *EvidenceData) splitIntoShares() NamespacedShares {
+func (data *EvidenceData) SplitIntoShares() NamespacedShares {
 	rawDatas := make([][]byte, 0, len(data.Evidence))
 	for _, ev := range data.Evidence {
 		pev, err := EvidenceToProto(ev)
