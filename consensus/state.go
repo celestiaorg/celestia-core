@@ -27,7 +27,6 @@ import (
 	"github.com/celestiaorg/celestia-core/libs/service"
 	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 	"github.com/celestiaorg/celestia-core/p2p"
-	"github.com/celestiaorg/celestia-core/p2p/ipld"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	sm "github.com/celestiaorg/celestia-core/state"
 	"github.com/celestiaorg/celestia-core/types"
@@ -1958,7 +1957,7 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 			// 1) bad peer OR
 			// 2) not a bad peer? this can also err sometimes with "Unexpected step" OR
 			// 3) tmkms use with multiple validators connecting to a single tmkms instance
-			// 		(https://github.com/celestiaorg/celestia-core/issues/3839).
+			// 		(https://github.com/tendermint/tendermint/issues/3839).
 			cs.Logger.Info("Error attempting to add vote", "err", err)
 			return added, ErrAddingVote
 		}
