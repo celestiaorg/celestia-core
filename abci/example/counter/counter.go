@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/code"
-	"github.com/lazyledger/lazyledger-core/abci/types"
+	"github.com/celestiaorg/celestia-core/abci/example/code"
+	"github.com/celestiaorg/celestia-core/abci/types"
 )
 
 type Application struct {

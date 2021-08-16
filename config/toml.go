@@ -9,7 +9,7 @@ import (
 	"strings"
 	"text/template"
 
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
 )
 
 // DefaultDirPerm is the default permissions used when creating directories.

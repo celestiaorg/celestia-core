@@ -7,9 +7,9 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/lazyledger/lazyledger-core/types/consts"
-	"github.com/lazyledger/nmt"
-	"github.com/lazyledger/rsmt2d"
+	"github.com/celestiaorg/celestia-core/types/consts"
+	"github.com/celestiaorg/nmt"
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -82,21 +82,6 @@ func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
 					for i := len(data) - 1; i > 0; i-- {
 						tree.Push(data[i], rsmt2d.SquareIndex{Axis: uint(0), Cell: uint(i)})
 					}
-				},
-			),
-		},
-		{
-			"Prove non existent leaf",
-			assert.PanicTestFunc(
-				func() {
-					size := 16
-					data := generateErasuredData(t, size, rsmt2d.NewRSGF8Codec())
-					n := NewErasuredNamespacedMerkleTree(uint64(size))
-					tree := n.Constructor()
-					for i, d := range data {
-						tree.Push(d, rsmt2d.SquareIndex{Axis: uint(0), Cell: uint(i)})
-					}
-					tree.Prove(size + 100)
 				},
 			),
 		},

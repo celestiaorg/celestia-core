@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 
 const (

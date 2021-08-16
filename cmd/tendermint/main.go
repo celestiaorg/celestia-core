@@ -4,11 +4,11 @@ import (
 	"os"
 	"path/filepath"
 
-	cmd "github.com/lazyledger/lazyledger-core/cmd/tendermint/commands"
-	"github.com/lazyledger/lazyledger-core/cmd/tendermint/commands/debug"
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/libs/cli"
-	nm "github.com/lazyledger/lazyledger-core/node"
+	cmd "github.com/celestiaorg/celestia-core/cmd/tendermint/commands"
+	"github.com/celestiaorg/celestia-core/cmd/tendermint/commands/debug"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/libs/cli"
+	nm "github.com/celestiaorg/celestia-core/node"
 )
 
 func main() {

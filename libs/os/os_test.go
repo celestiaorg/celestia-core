@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
 )
 
 func TestCopyFile(t *testing.T) {

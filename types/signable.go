@@ -1,8 +1,8 @@
 package types
 
 import (
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
 )
 
 var (

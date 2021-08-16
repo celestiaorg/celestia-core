@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // Waiter is informed of current height, decided whether to quit early

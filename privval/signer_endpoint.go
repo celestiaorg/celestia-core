@@ -5,10 +5,10 @@ import (
 	"net"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
-	"github.com/lazyledger/lazyledger-core/libs/service"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	privvalproto "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
+	"github.com/celestiaorg/celestia-core/libs/protoio"
+	"github.com/celestiaorg/celestia-core/libs/service"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	privvalproto "github.com/celestiaorg/celestia-core/proto/tendermint/privval"
 )
 
 const (

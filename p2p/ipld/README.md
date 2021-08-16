@@ -1,4 +1,4 @@
-# LazyLedger ipld-plugin
+# Celestia ipld-plugin
 
 ## Installation
 

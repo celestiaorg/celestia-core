@@ -6,9 +6,9 @@
 
 ## Context
 
-Block propagation is currently done by splitting the block into arbitrary chunks and gossiping them to validators via a gossip routine. While this does not have downsides it does not meet the needs of the lazy-ledger chain. The lazyledger chain requires blocks to be encoded in a different way and for the proposer to not propagate the chunks to peers.
+Block propagation is currently done by splitting the block into arbitrary chunks and gossiping them to validators via a gossip routine. While this does not have downsides it does not meet the needs of the Celestia chain. The celestia chain requires blocks to be encoded in a different way and for the proposer to not propagate the chunks to peers.
 
-Lazyledger wants validators to pull the block from a IPFS network. What does this mean? As I touched on earlier the proposer pushes the block to the network, this in turn means that each validator downloads and reconstructs the block each time to verify it. Instead Lazyledger will encode and split up the block via erasure codes, stored locally in the nodes IPFS daemon. After the proposer has sent the block to IPFS and received the CIDs it will include them into the proposal. This proposal will be gossiped to other validators, once a validator receives the proposal it will begin requesting the CIDs included in the proposal.
+Celestia wants validators to pull the block from a IPFS network. What does this mean? As I touched on earlier the proposer pushes the block to the network, this in turn means that each validator downloads and reconstructs the block each time to verify it. Instead Celestia will encode and split up the block via erasure codes, stored locally in the nodes IPFS daemon. After the proposer has sent the block to IPFS and received the CIDs it will include them into the proposal. This proposal will be gossiped to other validators, once a validator receives the proposal it will begin requesting the CIDs included in the proposal.
 
 There are two forms of a validator, one that downloads the block and one that samples it. What does sampling mean? Sampling is the act of checking that a portion or entire block is available for download.
 
@@ -20,7 +20,7 @@ The proposed design is as follows.
 
 The proposal and vote types have a BlockID, this will be replaced with a header hash. The proposal will contain add fields.
 
-The current proposal will be updated to include required fields. The entirety of the message will be reworked at a later date. To see the extent of the needed changes you can visit the [spec repo](https://github.com/lazyledger/lazyledger-specs/blob/master/specs/proto/consensus.proto#L19)
+The current proposal will be updated to include required fields. The entirety of the message will be reworked at a later date. To see the extent of the needed changes you can visit the [spec repo](https://github.com/celestiaorg/celestia-specs/blob/master/specs/proto/consensus.proto#L19)
 
 ```proto
 message Proposal {
@@ -67,11 +67,11 @@ message Vote {
 }
 ```
 
-See [specs](https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#vote) for more details on the vote.
+See [specs](https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#vote) for more details on the vote.
 
 ### Disk Storage
 
-Currently Lazyledger-core stores all blocks in its store. Going forward only the headers of the blocks within the unbonding period will be stored. This will drastically reduce the amount of storage required by a lazyledger-core node. After the unbonding period all headers will have the option of being pruned.
+Currently celestia-core stores all blocks in its store. Going forward only the headers of the blocks within the unbonding period will be stored. This will drastically reduce the amount of storage required by a celestia-core node. After the unbonding period all headers will have the option of being pruned.
 
 Proposed amendment to `BlockStore` interface
 
@@ -98,7 +98,7 @@ Along side these changes the rpc layer will need to change. Instead of querying 
 
 Example:
 
-When a user requests a block from the LL node, the request will be set to the IPLD plugin. If the IPLD does not have the requested block, it will make a request to the lazyledger IPFS network for the required CIDs. If the full node does not have the DAheader they will not be able to request the block data.
+When a user requests a block from the LL node, the request will be set to the IPLD plugin. If the IPLD does not have the requested block, it will make a request to the celestia IPFS network for the required CIDs. If the full node does not have the DAheader they will not be able to request the block data.
 
 ![user request flow](./assets/user-request.png)
 
@@ -113,7 +113,7 @@ Proposed
 
 - Minimal breakage to public interface
 - Only store the block in a single place (IPFS)
-- Reduce the public interface of the storage within LazyLedger.
+- Reduce the public interface of the storage within Celestia.
 
 ### Negative
 

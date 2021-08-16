@@ -1,12 +1,12 @@
 package consensus
 
 import (
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/clist"
-	mempl "github.com/lazyledger/lazyledger-core/mempool"
-	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
-	"github.com/lazyledger/lazyledger-core/proxy"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/libs/clist"
+	mempl "github.com/celestiaorg/celestia-core/mempool"
+	tmstate "github.com/celestiaorg/celestia-core/proto/tendermint/state"
+	"github.com/celestiaorg/celestia-core/proxy"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 //-----------------------------------------------------------------------------

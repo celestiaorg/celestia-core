@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	tmtime "github.com/lazyledger/lazyledger-core/types/time"
+	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	"github.com/celestiaorg/celestia-core/libs/protoio"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	tmtime "github.com/celestiaorg/celestia-core/types/time"
 )
 
 var (

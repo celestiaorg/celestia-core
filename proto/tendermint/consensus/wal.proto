@@ -1,7 +1,7 @@
 syntax = "proto3";
 package tendermint.consensus;
 
-option go_package = "github.com/lazyledger/lazyledger-core/proto/tendermint/consensus";
+option go_package = "github.com/celestiaorg/celestia-core/proto/tendermint/consensus";
 
 import "gogoproto/gogo.proto";
 import "tendermint/consensus/types.proto";

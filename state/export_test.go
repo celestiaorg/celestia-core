@@ -1,11 +1,11 @@
 package state
 
 import (
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	dbm "github.com/lazyledger/lazyledger-core/libs/db"
-	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	dbm "github.com/celestiaorg/celestia-core/libs/db"
+	tmstate "github.com/celestiaorg/celestia-core/proto/tendermint/state"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 //

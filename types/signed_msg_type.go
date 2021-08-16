@@ -1,6 +1,6 @@
 package types
 
-import tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+import tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 
 // IsVoteTypeValid returns true if t is a valid vote type.
 func IsVoteTypeValid(t tmproto.SignedMsgType) bool {

@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
-	tmquery "github.com/lazyledger/lazyledger-core/libs/pubsub/query"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	tmpubsub "github.com/celestiaorg/celestia-core/libs/pubsub"
+	tmquery "github.com/celestiaorg/celestia-core/libs/pubsub/query"
 )
 
 func TestEventBusPublishEventTx(t *testing.T) {

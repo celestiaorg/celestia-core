@@ -12,9 +12,9 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	types "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 var wsCallTimeout = 5 * time.Second

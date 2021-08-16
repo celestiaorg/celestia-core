@@ -14,9 +14,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	cfg "github.com/lazyledger/lazyledger-core/config"
-	"github.com/lazyledger/lazyledger-core/libs/cli"
-	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
+	cfg "github.com/celestiaorg/celestia-core/config"
+	"github.com/celestiaorg/celestia-core/libs/cli"
+	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
 )
 
 var killCmd = &cobra.Command{

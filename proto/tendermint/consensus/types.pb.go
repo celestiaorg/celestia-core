@@ -5,10 +5,10 @@ package consensus
 
 import (
 	fmt "fmt"
+	bits "github.com/celestiaorg/celestia-core/proto/tendermint/libs/bits"
+	types "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
-	bits "github.com/lazyledger/lazyledger-core/proto/tendermint/libs/bits"
-	types "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
 	io "io"
 	math "math"
 	math_bits "math/bits"

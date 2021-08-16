@@ -3,7 +3,7 @@ package p2p
 import (
 	"net"
 
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 )
 
 // IPeerSet has a (immutable) subset of the methods of PeerSet.

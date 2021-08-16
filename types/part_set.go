@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/lazyledger/lazyledger-core/crypto/merkle"
-	"github.com/lazyledger/lazyledger-core/libs/bits"
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/crypto/merkle"
+	"github.com/celestiaorg/celestia-core/libs/bits"
+	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 
 var (

@@ -7,8 +7,8 @@ import (
 
 	"context"
 
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	coregrpc "github.com/lazyledger/lazyledger-core/rpc/grpc"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	coregrpc "github.com/celestiaorg/celestia-core/rpc/grpc"
 )
 
 var grpcAddr = "tcp://localhost:36656"

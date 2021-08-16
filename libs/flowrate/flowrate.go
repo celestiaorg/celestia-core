@@ -10,7 +10,7 @@ import (
 	"math"
 	"time"
 
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 )
 
 // Monitor monitors and limits the transfer rate of a data stream.

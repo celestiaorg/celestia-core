@@ -3,10 +3,10 @@ package types
 import (
 	"fmt"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
-	tmquery "github.com/lazyledger/lazyledger-core/libs/pubsub/query"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	tmpubsub "github.com/celestiaorg/celestia-core/libs/pubsub"
+	tmquery "github.com/celestiaorg/celestia-core/libs/pubsub/query"
 )
 
 // Reserved event types (alphabetically sorted).

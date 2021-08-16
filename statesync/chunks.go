@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/p2p"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	"github.com/celestiaorg/celestia-core/p2p"
 )
 
 // errDone is returned by chunkQueue.Next() when all chunks have been returned.

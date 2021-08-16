@@ -8,7 +8,7 @@ import (
 	"github.com/dgraph-io/badger/v3"
 	"github.com/dgraph-io/badger/v3/options"
 
-	"github.com/lazyledger/lazyledger-core/libs/db"
+	"github.com/celestiaorg/celestia-core/libs/db"
 )
 
 // NewDB creates a Badger key-value store backed to the

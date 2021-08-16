@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
+	rpctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	e2e "github.com/celestiaorg/celestia-core/test/e2e/pkg"
 )
 
 // Perturbs a running testnet.

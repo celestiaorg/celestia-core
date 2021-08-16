@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/celestiaorg/celestia-core/libs/log"
 )
 
 type Capabilities struct {

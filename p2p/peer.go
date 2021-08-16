@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/libs/cmap"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/libs/service"
+	"github.com/celestiaorg/celestia-core/libs/cmap"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/libs/service"
 
-	tmconn "github.com/lazyledger/lazyledger-core/p2p/conn"
+	tmconn "github.com/celestiaorg/celestia-core/p2p/conn"
 )
 
 // PeerID is a unique peer ID, generally expressed in hex form.

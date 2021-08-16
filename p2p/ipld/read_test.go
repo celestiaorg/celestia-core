@@ -11,20 +11,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/nmt"
+	"github.com/celestiaorg/nmt/namespace"
+	"github.com/celestiaorg/rsmt2d"
 	format "github.com/ipfs/go-ipld-format"
 	mdutils "github.com/ipfs/go-merkledag/test"
-	"github.com/lazyledger/nmt"
-	"github.com/lazyledger/nmt/namespace"
-	"github.com/lazyledger/rsmt2d"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/ipfs"
-	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
-	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
+	"github.com/celestiaorg/celestia-core/ipfs"
+	"github.com/celestiaorg/celestia-core/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/p2p/ipld/wrapper"
+	"github.com/celestiaorg/celestia-core/types"
+	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 func TestGetLeafData(t *testing.T) {
@@ -89,7 +89,7 @@ func TestBlockRecovery(t *testing.T) {
 
 			// calculate roots using the first complete square
 			rowRoots := eds.RowRoots()
-			colRoots := eds.ColumnRoots()
+			colRoots := eds.ColRoots()
 
 			flat := flatten(eds)
 
@@ -163,7 +163,7 @@ func TestRetrieveBlockData(t *testing.T) {
 			require.NoError(t, err)
 
 			rawRowRoots := eds.RowRoots()
-			rawColRoots := eds.ColumnRoots()
+			rawColRoots := eds.ColRoots()
 			rowRoots := rootsToDigests(rawRowRoots)
 			colRoots := rootsToDigests(rawColRoots)
 

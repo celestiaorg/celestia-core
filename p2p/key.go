@@ -4,10 +4,10 @@ import (
 	"encoding/hex"
 	"io/ioutil"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
 )
 
 // ID is a hex-encoded crypto.Address

@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"sort"
 
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	tmquery "github.com/lazyledger/lazyledger-core/libs/pubsub/query"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
-	"github.com/lazyledger/lazyledger-core/state/txindex/null"
-	"github.com/lazyledger/lazyledger-core/types"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	tmquery "github.com/celestiaorg/celestia-core/libs/pubsub/query"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	rpctypes "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
+	"github.com/celestiaorg/celestia-core/state/txindex/null"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // Tx allows you to query the transaction results. `nil` could mean the

@@ -14,9 +14,9 @@ import (
 	"os"
 	"strings"
 
-	cs "github.com/lazyledger/lazyledger-core/consensus"
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	"github.com/lazyledger/lazyledger-core/types"
+	cs "github.com/celestiaorg/celestia-core/consensus"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 func main() {

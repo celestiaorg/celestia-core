@@ -4,11 +4,11 @@ import (
 	crand "crypto/rand"
 	"math/big"
 
+	"github.com/celestiaorg/nmt/namespace"
 	"github.com/ipfs/go-cid"
-	"github.com/lazyledger/nmt/namespace"
 
-	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // Sample is a point in 2D space over square.

@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 )
 
 func createTestGroupWithHeadSizeLimit(t *testing.T, headSizeLimit int64) *Group {

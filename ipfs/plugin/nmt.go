@@ -12,8 +12,8 @@ import (
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 
-	"github.com/lazyledger/lazyledger-core/types/consts"
-	"github.com/lazyledger/nmt"
+	"github.com/celestiaorg/celestia-core/types/consts"
+	"github.com/celestiaorg/nmt"
 	mh "github.com/multiformats/go-multihash"
 )
 
@@ -97,7 +97,7 @@ func sumSha256Namespace8Flagged(data []byte, _length int) ([]byte, error) {
 //
 // To determine the share and the namespace size the constants
 // types.ShareSize and consts.NamespaceSize are redefined here to avoid
-// lazyledger-core as a dependency.
+// celestia-core as a dependency.
 //
 // Note while this coredag.DagParser is implemented here so this plugin can be used from
 // the commandline, the ipld Nodes will rather be created together with the NMT
@@ -137,7 +137,7 @@ type nmtNodeCollector struct {
 
 func newNodeCollector() *nmtNodeCollector {
 	// The extendedRowOrColumnSize is hardcode this here to avoid importing:
-	// https://github.com/lazyledger/lazyledger-core/blob/585566317e519bbb6d35d149b7e856c4c1e8657c/types/consts.go#L23
+	// https://github.com/celestiaorg/celestia-core/blob/585566317e519bbb6d35d149b7e856c4c1e8657c/types/consts.go#L23
 	const extendedRowOrColumnSize = 2 * 128
 	return &nmtNodeCollector{nodes: make([]ipld.Node, 0, extendedRowOrColumnSize)}
 }

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	tmflags "github.com/lazyledger/lazyledger-core/libs/cli/flags"
-	"github.com/lazyledger/lazyledger-core/libs/log"
+	tmflags "github.com/celestiaorg/celestia-core/libs/cli/flags"
+	"github.com/celestiaorg/celestia-core/libs/log"
 )
 
 const (

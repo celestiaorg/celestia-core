@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lazyledger/lazyledger-core/libs/bits"
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/libs/bits"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 
 const (

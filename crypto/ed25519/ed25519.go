@@ -9,9 +9,9 @@ import (
 
 	"github.com/hdevalence/ed25519consensus"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
 )
 
 //-------------------------------------

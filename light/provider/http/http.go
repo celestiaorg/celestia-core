@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/light/provider"
-	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
-	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/light/provider"
+	rpcclient "github.com/celestiaorg/celestia-core/rpc/client"
+	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // This is very brittle, see: https://github.com/tendermint/tendermint/issues/4740

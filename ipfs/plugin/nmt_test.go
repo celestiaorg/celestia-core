@@ -13,8 +13,8 @@ import (
 	"github.com/ipfs/go-verifcid"
 	mh "github.com/multiformats/go-multihash"
 
-	"github.com/lazyledger/nmt"
-	"github.com/lazyledger/rsmt2d"
+	"github.com/celestiaorg/nmt"
+	"github.com/celestiaorg/rsmt2d"
 )
 
 func TestMultihasherIsRegistered(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	auto "github.com/lazyledger/lazyledger-core/libs/autofile"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	auto "github.com/celestiaorg/celestia-core/libs/autofile"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
 )
 
 const Version = "0.0.1"

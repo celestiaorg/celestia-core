@@ -11,11 +11,11 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	dbm "github.com/lazyledger/lazyledger-core/libs/db"
-	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
-	"github.com/lazyledger/lazyledger-core/state/txindex"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	dbm "github.com/celestiaorg/celestia-core/libs/db"
+	"github.com/celestiaorg/celestia-core/libs/pubsub/query"
+	"github.com/celestiaorg/celestia-core/state/txindex"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 const (

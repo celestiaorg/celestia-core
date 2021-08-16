@@ -7,9 +7,9 @@ import (
 	"fmt"
 	mrand "math/rand"
 
-	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
-	"github.com/lazyledger/lazyledger-core/abci/types"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	abcicli "github.com/celestiaorg/celestia-core/abci/client"
+	"github.com/celestiaorg/celestia-core/abci/types"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 )
 
 var ctx = context.Background()

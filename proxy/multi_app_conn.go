@@ -5,9 +5,9 @@ import (
 	"os"
 	"syscall"
 
-	abcicli "github.com/lazyledger/lazyledger-core/abci/client"
-	tmlog "github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/libs/service"
+	abcicli "github.com/celestiaorg/celestia-core/abci/client"
+	tmlog "github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/libs/service"
 )
 
 const (

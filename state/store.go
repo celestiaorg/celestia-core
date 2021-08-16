@@ -6,19 +6,19 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	dbm "github.com/lazyledger/lazyledger-core/libs/db"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
-	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	dbm "github.com/celestiaorg/celestia-core/libs/db"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
+	tmstate "github.com/celestiaorg/celestia-core/proto/tendermint/state"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 const (
 	// persist validators every valSetCheckpointInterval blocks to avoid
 	// LoadValidators taking too much time.
-	// https://github.com/lazyledger/lazyledger-core/pull/3438
+	// https://github.com/celestiaorg/celestia-core/pull/3438
 	// 100000 results in ~ 100ms to get 100 validators (see BenchmarkLoadValidators)
 	valSetCheckpointInterval = 100000
 )
@@ -217,7 +217,7 @@ func (store dbStore) Bootstrap(state State) error {
 // e.g. `LastHeightChanged` must remain. The state at to must also exist.
 //
 // The from parameter is necessary since we can't do a key scan in a performant way due to the key
-// encoding not preserving ordering: https://github.com/lazyledger/lazyledger-core/issues/4567
+// encoding not preserving ordering: https://github.com/celestiaorg/celestia-core/issues/4567
 // This will cause some old states to be left behind when doing incremental partial prunes,
 // specifically older checkpoints and LastHeightChanged targets.
 func (store dbStore) PruneStates(from int64, to int64) error {

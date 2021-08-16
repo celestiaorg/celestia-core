@@ -1,8 +1,8 @@
 package types
 
 import (
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/crypto/merkle"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/crypto/merkle"
 )
 
 // ABCIResults wraps the deliver tx results to return a proof.

@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	tmcrypto "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	tmcrypto "github.com/celestiaorg/celestia-core/proto/tendermint/crypto"
 )
 
 const ProofOpValue = "simple:v"

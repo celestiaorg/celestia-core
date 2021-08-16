@@ -23,10 +23,10 @@ implementation.
 import (
 	"context"
 
-	"github.com/lazyledger/lazyledger-core/libs/bytes"
-	"github.com/lazyledger/lazyledger-core/libs/service"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/libs/bytes"
+	"github.com/celestiaorg/celestia-core/libs/service"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 //go:generate mockery --case underscore --name Client

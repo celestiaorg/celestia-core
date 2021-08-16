@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/btree"
 
-	lldb "github.com/lazyledger/lazyledger-core/libs/db"
+	lldb "github.com/celestiaorg/celestia-core/libs/db"
 )
 
 const (

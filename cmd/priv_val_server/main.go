@@ -5,12 +5,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmnet "github.com/celestiaorg/celestia-core/libs/net"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
 
-	"github.com/lazyledger/lazyledger-core/privval"
+	"github.com/celestiaorg/celestia-core/privval"
 )
 
 func main() {

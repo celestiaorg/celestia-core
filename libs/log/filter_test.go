@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/celestiaorg/celestia-core/libs/log"
 )
 
 func TestVariousLevels(t *testing.T) {

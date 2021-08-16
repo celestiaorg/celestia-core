@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
-	"github.com/lazyledger/lazyledger-core/proxy"
+	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
+	"github.com/celestiaorg/celestia-core/proxy"
 )
 
 func BenchmarkReap(b *testing.B) {

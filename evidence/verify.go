@@ -7,8 +7,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/light"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/light"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // verify verifies the evidence fully by checking:

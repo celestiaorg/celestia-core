@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	tmprotobits "github.com/lazyledger/lazyledger-core/proto/tendermint/libs/bits"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	tmprotobits "github.com/celestiaorg/celestia-core/proto/tendermint/libs/bits"
 )
 
 // BitArray is a thread-safe implementation of a bit array.

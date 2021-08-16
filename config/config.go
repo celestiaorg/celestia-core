@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/ipfs"
+	"github.com/celestiaorg/celestia-core/ipfs"
 )
 
 const (

@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 )
 
 /* AutoFile usage

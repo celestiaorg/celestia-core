@@ -9,17 +9,17 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/lazyledger/lazyledger-core/crypto/secp256k1"
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	tmos "github.com/lazyledger/lazyledger-core/libs/os"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
-	"github.com/lazyledger/lazyledger-core/libs/tempfile"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types"
-	tmtime "github.com/lazyledger/lazyledger-core/types/time"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	"github.com/celestiaorg/celestia-core/crypto/secp256k1"
+	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	tmos "github.com/celestiaorg/celestia-core/libs/os"
+	"github.com/celestiaorg/celestia-core/libs/protoio"
+	"github.com/celestiaorg/celestia-core/libs/tempfile"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types"
+	tmtime "github.com/celestiaorg/celestia-core/types/time"
 )
 
 // TODO: type ?

@@ -3,10 +3,10 @@ package wrapper
 import (
 	"fmt"
 
-	"github.com/lazyledger/nmt"
-	"github.com/lazyledger/rsmt2d"
+	"github.com/celestiaorg/nmt"
+	"github.com/celestiaorg/rsmt2d"
 
-	"github.com/lazyledger/lazyledger-core/types/consts"
+	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 // Fulfills the rsmt2d.Tree interface and rsmt2d.TreeConstructorFn function
@@ -65,20 +65,6 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex)
 	if err != nil {
 		panic(err)
 	}
-}
-
-// Prove fulfills the rsmt.Tree interface by generating and returning a single
-// leaf proof using the underlying NamespacedMerkleTree. NOTE: panics if the
-// underlying NamespaceMerkleTree errors.
-func (w *ErasuredNamespacedMerkleTree) Prove(
-	idx int,
-) (merkleRoot []byte, proofSet [][]byte, proofIndex uint64, numLeaves uint64) {
-	proof, err := w.tree.Prove(idx)
-	if err != nil {
-		panic(err)
-	}
-	nodes := proof.Nodes()
-	return w.Root(), nodes, uint64(proof.Start()), uint64(len(nodes))
 }
 
 // Root fulfills the rsmt.Tree interface by generating and returning the

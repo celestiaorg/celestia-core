@@ -3,10 +3,10 @@ package core
 import (
 	"fmt"
 
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpctypes "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	rpctypes "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // BlockchainInfo gets block headers for minHeight <= height <= maxHeight.
@@ -151,8 +151,8 @@ func DataAvailabilityHeader(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.Re
 
 	// TODO: store DAHeader to avoid loading the full block each time
 	// depends on either:
-	// - https://github.com/lazyledger/lazyledger-core/pull/312, or
-	// - https://github.com/lazyledger/lazyledger-core/pull/218
+	// - https://github.com/celestiaorg/celestia-core/pull/312, or
+	// - https://github.com/celestiaorg/celestia-core/pull/218
 	block, err := env.BlockStore.LoadBlock(ctx.Context(), height)
 	if err != nil {
 		return &ctypes.ResultDataAvailabilityHeader{

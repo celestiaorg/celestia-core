@@ -5,12 +5,12 @@ package types
 
 import (
 	fmt "fmt"
+	crypto "github.com/celestiaorg/celestia-core/proto/tendermint/crypto"
+	version "github.com/celestiaorg/celestia-core/proto/tendermint/version"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	_ "github.com/gogo/protobuf/types"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
-	crypto "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
-	version "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
 	io "io"
 	math "math"
 	math_bits "math/bits"
@@ -916,8 +916,8 @@ func (m *Message) GetData() []byte {
 // k × k matrix, which is then "extended" to a
 // 2k × 2k matrix applying multiple times Reed-Solomon encoding.
 // For details see Section 5.2: https://arxiv.org/abs/1809.09044
-// or the LazyLedger specification:
-// https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#availabledataheader
+// or the Celestia specification:
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#availabledataheader
 // Note that currently we list row and column roots in separate fields
 // (different from the spec).
 type DataAvailabilityHeader struct {

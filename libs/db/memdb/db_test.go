@@ -3,7 +3,7 @@ package memdb
 import (
 	"testing"
 
-	"github.com/lazyledger/lazyledger-core/libs/db/internal/dbtest"
+	"github.com/celestiaorg/celestia-core/libs/db/internal/dbtest"
 )
 
 func BenchmarkMemDBRangeScans1M(b *testing.B) {

@@ -8,9 +8,9 @@ import (
 	"math"
 	"time"
 
-	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
-	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
-	"github.com/lazyledger/lazyledger-core/types"
+	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
+	e2e "github.com/celestiaorg/celestia-core/test/e2e/pkg"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // Load generates transactions against the network until the given

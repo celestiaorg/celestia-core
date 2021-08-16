@@ -5,11 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 
+	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types/consts"
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/gogo/protobuf/proto"
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
-	"github.com/lazyledger/rsmt2d"
 )
 
 // DataFromSquare extracts block data from an extended data square.
@@ -26,10 +26,11 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 
 	// iterate over each row index
 	for x := uint(0); x < originalWidth; x++ {
-		// iterate over each col index
-		for y := uint(0); y < originalWidth; y++ {
+		// iterate over each share in the original data square
+		row := eds.Row(x)
+
+		for _, share := range row[:originalWidth] {
 			// sort the data of that share types via namespace
-			share := eds.Cell(x, y)
 			nid := share[:consts.NamespaceSize]
 			switch {
 			case bytes.Equal(consts.TxNamespaceID, nid):

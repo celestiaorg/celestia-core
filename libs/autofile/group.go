@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/libs/service"
+	"github.com/celestiaorg/celestia-core/libs/service"
 )
 
 const (

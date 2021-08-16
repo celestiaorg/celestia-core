@@ -3,7 +3,7 @@ package types
 import (
 	"encoding/binary"
 
-	"github.com/lazyledger/nmt/namespace"
+	"github.com/celestiaorg/nmt/namespace"
 )
 
 // Share contains the raw share data without the corresponding namespace.

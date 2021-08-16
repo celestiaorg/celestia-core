@@ -19,11 +19,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	"github.com/lazyledger/lazyledger-core/crypto/sr25519"
-	"github.com/lazyledger/lazyledger-core/libs/async"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	"github.com/celestiaorg/celestia-core/crypto/sr25519"
+	"github.com/celestiaorg/celestia-core/libs/async"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 )
 
 // Run go test -update from within this module

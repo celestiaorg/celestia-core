@@ -7,17 +7,17 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/celestiaorg/nmt/namespace"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
-	"github.com/lazyledger/nmt/namespace"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/light/provider"
-	"github.com/lazyledger/lazyledger-core/light/store"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	"github.com/celestiaorg/celestia-core/light/provider"
+	"github.com/celestiaorg/celestia-core/light/store"
+	"github.com/celestiaorg/celestia-core/p2p/ipld"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 type mode byte
@@ -687,7 +687,7 @@ func (c *Client) verifySequential(
 		if c.verificationMode == dataAvailabilitySampling {
 			start := time.Now()
 			// TODO: decide how to handle this case:
-			// https://github.com/lazyledger/lazyledger-core/issues/319
+			// https://github.com/celestiaorg/celestia-core/issues/319
 			numRows := len(interimBlock.DataAvailabilityHeader.RowsRoots)
 			numSamples := min(c.numSamples, uint32(numRows*numRows))
 			c.logger.Info("Starting Data Availability sampling",

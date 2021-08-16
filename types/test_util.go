@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 
 func MakeCommit(blockID BlockID, partSetHeader PartSetHeader, height int64, round int32,

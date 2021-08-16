@@ -3,7 +3,7 @@ package pex
 import (
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/p2p"
+	"github.com/celestiaorg/celestia-core/p2p"
 )
 
 // knownAddress tracks information about a known network address

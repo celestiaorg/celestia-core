@@ -7,16 +7,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/libs/bytes"
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
-	"github.com/lazyledger/lazyledger-core/libs/service"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	jsonrpcclient "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/client"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/libs/bytes"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmpubsub "github.com/celestiaorg/celestia-core/libs/pubsub"
+	"github.com/celestiaorg/celestia-core/libs/service"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	rpcclient "github.com/celestiaorg/celestia-core/rpc/client"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	jsonrpcclient "github.com/celestiaorg/celestia-core/rpc/jsonrpc/client"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 /*

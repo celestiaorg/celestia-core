@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
-	core_grpc "github.com/lazyledger/lazyledger-core/rpc/grpc"
-	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
+	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
+	core_grpc "github.com/celestiaorg/celestia-core/rpc/grpc"
+	rpctest "github.com/celestiaorg/celestia-core/rpc/test"
 )
 
 func TestMain(m *testing.M) {

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/crypto"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // RetrySignerClient wraps SignerClient adding retry for each operation (except

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/ed25519"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 
 // PrivValidator defines the functionality of a local Tendermint validator

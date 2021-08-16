@@ -6,19 +6,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/nmt"
 	mdutils "github.com/ipfs/go-merkledag/test"
-	"github.com/lazyledger/nmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	"github.com/lazyledger/lazyledger-core/ipfs"
-	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	"github.com/celestiaorg/celestia-core/ipfs"
+	"github.com/celestiaorg/celestia-core/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types"
+	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 func TestPutBlock(t *testing.T) {

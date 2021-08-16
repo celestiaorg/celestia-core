@@ -5,8 +5,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	tmnet "github.com/lazyledger/lazyledger-core/libs/net"
+	"github.com/celestiaorg/celestia-core/crypto"
+	tmnet "github.com/celestiaorg/celestia-core/libs/net"
 )
 
 // Socket errors.

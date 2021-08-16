@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/celestiaorg/nmt/namespace"
 	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/lazyledger/nmt/namespace"
 
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // ValidationTimeout specifies timeout for DA validation during which data have to be found on the network,
 // otherwise ErrValidationFailed is thrown.
-// TODO: github.com/lazyledger/lazyledger-core/issues/280
+// TODO: github.com/celestiaorg/celestia-core/issues/280
 const ValidationTimeout = 10 * time.Minute
 
 // ErrValidationFailed is returned whenever DA validation fails

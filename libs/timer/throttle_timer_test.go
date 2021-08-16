@@ -8,7 +8,7 @@ import (
 
 	asrt "github.com/stretchr/testify/assert"
 
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 )
 
 type thCounter struct {

@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	abcimocks "github.com/lazyledger/lazyledger-core/abci/client/mocks"
-	"github.com/lazyledger/lazyledger-core/proxy/mocks"
+	abcimocks "github.com/celestiaorg/celestia-core/abci/client/mocks"
+	"github.com/celestiaorg/celestia-core/proxy/mocks"
 )
 
 func TestAppConns_Start_Stop(t *testing.T) {

@@ -47,7 +47,7 @@
 >
 > - Will these changes require a breaking (major) release?
 >
-> - Does this change require coordination with the LazyLedger fork of the SDK or lazyledger-app?
+> - Does this change require coordination with the Celestia fork of the SDK or celestia-app?
 
 ## Status
 

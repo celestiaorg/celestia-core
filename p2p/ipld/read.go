@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"math/rand"
 
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/lazyledger/rsmt2d"
 
-	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
-	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
+	"github.com/celestiaorg/celestia-core/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/p2p/ipld/wrapper"
+	"github.com/celestiaorg/celestia-core/types"
+	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 const baseErrorMsg = "failure to retrieve block data:"

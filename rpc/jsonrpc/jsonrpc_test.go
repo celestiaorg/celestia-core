@@ -17,11 +17,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	client "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/client"
-	server "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server"
-	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	client "github.com/celestiaorg/celestia-core/rpc/jsonrpc/client"
+	server "github.com/celestiaorg/celestia-core/rpc/jsonrpc/server"
+	types "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 // Client and Server should work over tcp or unix sockets

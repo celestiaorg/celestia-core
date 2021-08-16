@@ -7,15 +7,15 @@ import (
 	"io/ioutil"
 	"time"
 
+	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
 	"github.com/gogo/protobuf/proto"
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
 
-	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
-	"github.com/lazyledger/lazyledger-core/types"
-	tmtime "github.com/lazyledger/lazyledger-core/types/time"
-	"github.com/lazyledger/lazyledger-core/version"
+	tmstate "github.com/celestiaorg/celestia-core/proto/tendermint/state"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
+	"github.com/celestiaorg/celestia-core/types"
+	tmtime "github.com/celestiaorg/celestia-core/types/time"
+	"github.com/celestiaorg/celestia-core/version"
 )
 
 // database keys

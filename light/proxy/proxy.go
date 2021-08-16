@@ -6,10 +6,10 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmpubsub "github.com/lazyledger/lazyledger-core/libs/pubsub"
-	lrpc "github.com/lazyledger/lazyledger-core/light/rpc"
-	rpcserver "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/server"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmpubsub "github.com/celestiaorg/celestia-core/libs/pubsub"
+	lrpc "github.com/celestiaorg/celestia-core/light/rpc"
+	rpcserver "github.com/celestiaorg/celestia-core/rpc/jsonrpc/server"
 )
 
 // A Proxy defines parameters for running an HTTP server proxy.

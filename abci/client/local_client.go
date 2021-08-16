@@ -3,9 +3,9 @@ package abcicli
 import (
 	"context"
 
-	types "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/service"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
+	types "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/libs/service"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 )
 
 // NOTE: use defer to unlock mutex because Application might panic (e.g., in

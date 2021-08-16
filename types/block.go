@@ -8,24 +8,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/celestiaorg/nmt/namespace"
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
-	"github.com/lazyledger/nmt/namespace"
-	"github.com/lazyledger/rsmt2d"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/merkle"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	"github.com/lazyledger/lazyledger-core/libs/bits"
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	"github.com/lazyledger/lazyledger-core/p2p/ipld/wrapper"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	tmversion "github.com/lazyledger/lazyledger-core/proto/tendermint/version"
-	"github.com/lazyledger/lazyledger-core/types/consts"
-	"github.com/lazyledger/lazyledger-core/version"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/merkle"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	"github.com/celestiaorg/celestia-core/libs/bits"
+	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	"github.com/celestiaorg/celestia-core/libs/protoio"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	"github.com/celestiaorg/celestia-core/p2p/ipld/wrapper"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
+	"github.com/celestiaorg/celestia-core/types/consts"
+	"github.com/celestiaorg/celestia-core/version"
 )
 
 const (
@@ -51,8 +51,8 @@ const (
 // k × k matrix, which is then "extended" to a
 // 2k × 2k matrix applying multiple times Reed-Solomon encoding.
 // For details see Section 5.2: https://arxiv.org/abs/1809.09044
-// or the LazyLedger specification:
-// https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#availabledataheader
+// or the Celestia specification:
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#availabledataheader
 // Note that currently we list row and column roots in separate fields
 // (different from the spec).
 type DataAvailabilityHeader struct {
@@ -241,7 +241,7 @@ func (b *Block) fillDataAvailabilityHeader() {
 
 	// generate the row and col roots using the EDS and nmt wrapper
 	rowRoots := extendedDataSquare.RowRoots()
-	colRoots := extendedDataSquare.ColumnRoots()
+	colRoots := extendedDataSquare.ColRoots()
 
 	b.DataAvailabilityHeader = DataAvailabilityHeader{
 		RowsRoots:   make([]namespace.IntervalDigest, extendedDataSquare.Width()),
@@ -1218,7 +1218,7 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 
 // Data contains all the available Data of the block.
 // Data with reserved namespaces (Txs, IntermediateStateRoots, Evidence) and
-// LazyLedger application specific Messages.
+// Celestia application specific Messages.
 type Data struct {
 	// Txs that will be applied by state @ block.Height+1.
 	// NOTE: not all txs here are valid.  We're just agreeing on the order first.
@@ -1280,7 +1280,7 @@ func (msgs Messages) splitIntoShares() NamespacedShares {
 // returns them along with an amount of non-redundant shares.
 func (data *Data) ComputeShares() (NamespacedShares, int) {
 	// TODO(ismail): splitting into shares should depend on the block size and layout
-	// see: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
+	// see: https://github.com/celestiaorg/celestia-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
 
 	// reserved shares:
 	txShares := data.Txs.splitIntoShares()

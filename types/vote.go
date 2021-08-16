@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/crypto"
+	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	"github.com/celestiaorg/celestia-core/libs/protoio"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 
 const (

@@ -3,7 +3,7 @@ package state
 import (
 	"context"
 
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 //------------------------------------------------------

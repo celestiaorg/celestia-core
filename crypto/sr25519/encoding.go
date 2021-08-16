@@ -1,8 +1,8 @@
 package sr25519
 
 import (
-	"github.com/lazyledger/lazyledger-core/crypto"
-	tmjson "github.com/lazyledger/lazyledger-core/libs/json"
+	"github.com/celestiaorg/celestia-core/crypto"
+	tmjson "github.com/celestiaorg/celestia-core/libs/json"
 )
 
 var _ crypto.PrivKey = PrivKey{}

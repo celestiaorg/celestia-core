@@ -2,7 +2,7 @@
 // The random data is generated via the PreprocessTxs abci method.
 //
 // The name is inspired by:
-// https://github.com/lazyledger/lazyledger-prototype/blob/2aeca6f55ad389b9d68034a0a7038f80a8d2982e/app_dummy.go#L7
+// https://github.com/celestiaorg/lazyledger-prototype/blob/2aeca6f55ad389b9d68034a0a7038f80a8d2982e/app_dummy.go#L7
 package dummy
 
 import (
@@ -11,10 +11,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
-	"github.com/lazyledger/lazyledger-core/abci/types"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
+	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
+	"github.com/celestiaorg/celestia-core/abci/types"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 type Application struct {

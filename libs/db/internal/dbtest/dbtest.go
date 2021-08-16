@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	lldb "github.com/lazyledger/lazyledger-core/libs/db"
+	lldb "github.com/celestiaorg/celestia-core/libs/db"
 )
 
 //----------------------------------------

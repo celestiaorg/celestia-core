@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 )
 
 func TestWriteFileAtomic(t *testing.T) {

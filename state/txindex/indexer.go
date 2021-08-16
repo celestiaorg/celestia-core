@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/libs/pubsub/query"
 )
 
 // TxIndexer interface defines methods to index and search transactions.

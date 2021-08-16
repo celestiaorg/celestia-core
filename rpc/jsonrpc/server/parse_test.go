@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/lazyledger/lazyledger-core/libs/bytes"
-	types "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/types"
+	"github.com/celestiaorg/celestia-core/libs/bytes"
+	types "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 func TestParseJSONMap(t *testing.T) {

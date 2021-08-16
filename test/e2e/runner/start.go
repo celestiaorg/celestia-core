@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	e2e "github.com/lazyledger/lazyledger-core/test/e2e/pkg"
+	e2e "github.com/celestiaorg/celestia-core/test/e2e/pkg"
 )
 
 func Start(testnet *e2e.Testnet) error {

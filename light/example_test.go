@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
-	"github.com/lazyledger/lazyledger-core/libs/db/badgerdb"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/light"
-	"github.com/lazyledger/lazyledger-core/light/provider"
-	httpp "github.com/lazyledger/lazyledger-core/light/provider/http"
-	dbs "github.com/lazyledger/lazyledger-core/light/store/db"
-	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
+	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
+	"github.com/celestiaorg/celestia-core/libs/db/badgerdb"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/light"
+	"github.com/celestiaorg/celestia-core/light/provider"
+	httpp "github.com/celestiaorg/celestia-core/light/provider/http"
+	dbs "github.com/celestiaorg/celestia-core/light/store/db"
+	rpctest "github.com/celestiaorg/celestia-core/rpc/test"
 )
 
 // Automatically getting new headers and verifying them.

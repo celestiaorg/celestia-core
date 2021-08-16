@@ -7,7 +7,7 @@
 ## Context
 
 In Tendermint's block gossiping each peer gossips random parts of block data to peers.
-For LazyLedger, we need nodes (from light-clients to validators) to be able to sample row-/column-chunks of the erasure coded
+For Celestia, we need nodes (from light-clients to validators) to be able to sample row-/column-chunks of the erasure coded
 block (aka the extended data square) from the network.
 This is necessary for Data Availability proofs.
 
@@ -17,25 +17,25 @@ A high-level, implementation-independent formalization of above mentioned sampli
 [_Fraud and Data Availability Proofs: Detecting Invalid Blocks in Light Clients_](https://fc21.ifca.ai/papers/83.pdf).
 
 For the time being, besides the academic paper, no other formalization or specification of the protocol exists.
-Currently, the LazyLedger specification itself only describes the [erasure coding](https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#erasure-coding)
+Currently, the Celestia specification itself only describes the [erasure coding](https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#erasure-coding)
 and how to construct the extended data square from the block data.
 
 This ADR:
 - describes the high-level requirements
-- defines the API that and how it can be used by different components of LazyLedger (block gossiping, block sync, DA proofs)
+- defines the API that and how it can be used by different components of Celestia (block gossiping, block sync, DA proofs)
 - documents decision on how to implement this.
 
 
-The core data structures and the erasure coding of the block are already implemented in lazyledger-core ([#17], [#19], [#83]).
-While there are no ADRs for these changes, we can refer to the LazyLedger specification in this case.
+The core data structures and the erasure coding of the block are already implemented in celestia-core ([#17], [#19], [#83]).
+While there are no ADRs for these changes, we can refer to the Celestia specification in this case.
 For this aspect, the existing implementation and specification should already be on par for the most part.
-The exact arrangement of the data as described in this [rationale document](https://github.com/lazyledger/lazyledger-specs/blob/master/rationale/message_block_layout.md)
+The exact arrangement of the data as described in this [rationale document](https://github.com/celestiaorg/celestia-specs/blob/master/rationale/message_block_layout.md)
 in the specification can happen at app-side of the ABCI boundary.
-The latter was implemented in [lazyledger/lazyledger-app#21](https://github.com/lazyledger/lazyledger-app/pull/21)
-leveraging a new ABCI method, added in [#110](https://github.com/lazyledger/lazyledger-core/pull/110).
+The latter was implemented in [celestiaorg/celestia-app#21](https://github.com/celestiaorg/celestia-app/pull/21)
+leveraging a new ABCI method, added in [#110](https://github.com/celestiaorg/celestia-core/pull/110).
 This new method is a sub-set of the proposed ABCI changes aka [ABCI++](https://github.com/tendermint/spec/pull/254).
 
-Mustafa Al-Bassam (@musalbas) implemented a [prototype](https://github.com/lazyledger/lazyledger-prototype)
+Mustafa Al-Bassam (@musalbas) implemented a [prototype](https://github.com/celestiaorg/celestia-prototype)
 whose main purpose is to realistically analyse the protocol.
 Although the prototype does not make any network requests and only operates locally, it can partly serve as a reference implementation.
 It uses the [rsmt2d] library.
@@ -57,13 +57,13 @@ coreApi := coreapi.NewCoreAPI(node)
 ```
 
 The above mentioned IPLD methods operate on so called [ipld.Nodes].
-When computing the data root, we can pass in a [`NodeVisitor`](https://github.com/lazyledger/nmt/blob/b22170d6f23796a186c07e87e4ef9856282ffd1a/nmt.go#L22)
+When computing the data root, we can pass in a [`NodeVisitor`](https://github.com/celestia/nmt/blob/b22170d6f23796a186c07e87e4ef9856282ffd1a/nmt.go#L22)
 into the Namespaced Merkle Tree library to create these (each inner- and leaf-node in the tree becomes an ipld node).
-As a peer that requests such an IPLD node, the LazyLedger IPLD plugin provides the [function](https://github.com/lazyledger/lazyledger-core/blob/ceb881a177b6a4a7e456c7c4ab1dd0eb2b263066/p2p/ipld/plugin/nodes/nodes.go#L175)
+As a peer that requests such an IPLD node, the Celestia IPLD plugin provides the [function](https://github.com/celestiaorg/celestia-core/blob/ceb881a177b6a4a7e456c7c4ab1dd0eb2b263066/p2p/ipld/plugin/nodes/nodes.go#L175)
 `NmtNodeParser` to transform the retrieved raw data back into an `ipld.Node`.
 
 A more high-level description on the changes required to rip out the current block gossiping routine,
-including changes to block storage-, RPC-layer, and potential changes to reactors is either handled in [LAZY ADR 001](./adr-001-block-propagation.md),
+including changes to block storage-, RPC-layer, and potential changes to reactors is either handled in [ADR 001](./adr-001-block-propagation.md),
 and/or in a few smaller, separate followup ADRs.
 
 ## Alternative Approaches
@@ -117,13 +117,13 @@ It handles the actual network requests to the IPFS network and operates on IPFS/
 directly and hence should live under [p2p/ipld].
 To a some extent this part of the stack already exists.
 
-Second, a high-level API that can "live" closer to the actual types, e.g., in a sub-package in [lazyledger-core/types]
+Second, a high-level API that can "live" closer to the actual types, e.g., in a sub-package in [celestia-core/types]
 or in a new sub-package `da`.
 
 We first describe the high-level library here and describe functions in
 more detail inline with their godoc comments below.
 
-### API that operates on lazyledger-core types
+### API that operates on celestia-core types
 
 As mentioned above this part of the library has knowledge of the core types (and hence depends on them).
 It does not deal with IPFS internals.
@@ -199,7 +199,7 @@ func GetLeafData(
 ### A Note on IPFS/IPLD
 
 In IPFS all data is _content addressed_ which basically means the data is identified by its hash.
-Particularly, in the LazyLedger case, the root CID identifies the Namespaced Merkle tree including all its contents (inner and leaf nodes).
+Particularly, in the Celestia case, the root CID identifies the Namespaced Merkle tree including all its contents (inner and leaf nodes).
 This means that if a `GetLeafData` request succeeds, the retrieved leaf data is in fact the leaf data in the tree.
 We do not need to additionally verify Merkle proofs per leaf as this will essentially be done via IPFS on each layer while
 resolving and getting to the leaf data.
@@ -211,15 +211,15 @@ resolving and getting to the leaf data.
 As fully integrating Data Available proofs into tendermint, is a rather larger change we break up the work into the
 following packages (not mentioning the implementation work that was already done):
 
-1. Flesh out the changes in the consensus messages ([lazyledger-specs#126], [lazyledger-specs#127])
-2. Flesh out the changes that would be necessary to replace the current block gossiping ([LAZY ADR 001](./adr-001-block-propagation.md))
-3. Add the possibility of storing and retrieving block data (samples or whole block) to lazyledger-core (this ADR and related PRs).
-4. Integrate above API (3.) as an addition into lazyledger-core without directly replacing the tendermint counterparts (block gossip etc).
+1. Flesh out the changes in the consensus messages ([celestia-specs#126], [celestia-specs#127])
+2. Flesh out the changes that would be necessary to replace the current block gossiping ([ADR 001](./adr-001-block-propagation.md))
+3. Add the possibility of storing and retrieving block data (samples or whole block) to celestia-core (this ADR and related PRs).
+4. Integrate above API (3.) as an addition into celestia-core without directly replacing the tendermint counterparts (block gossip etc).
 5. Rip out each component that will be redundant with above integration in one or even several smaller PRs:
-    - block gossiping (see LAZY ADR 001)
-    - modify block store (see LAZY ADR 001)
+    - block gossiping (see ADR 001)
+    - modify block store (see ADR 001)
     - make downloading full Blocks optional (flag/config)
-    - route some RPC requests to IPFS (see LAZY ADR 001)
+    - route some RPC requests to IPFS (see ADR 001)
 
 
 ## Status
@@ -238,16 +238,16 @@ Proposed
 ### Negative
 
 - latency
-- being connected to the public IPFS network might be overkill if peers should in fact only care about a subset that participates in the LazyLedger protocol
+- being connected to the public IPFS network might be overkill if peers should in fact only care about a subset that participates in the Celestia protocol
 - dependency on a large code-base with lots of features and options of which we only need a small subset of
 
 ### Neutral
-- two different p2p layers exist in lazyledger-core
+- two different p2p layers exist in celestia-core
 
 ## References
 
-- https://github.com/lazyledger/lazyledger-core/issues/85
-- https://github.com/lazyledger/lazyledger-core/issues/167
+- https://github.com/celestiaorg/celestia-core/issues/85
+- https://github.com/celestiaorg/celestia-core/issues/167
 
 - https://docs.ipld.io/#nodes
 - https://arxiv.org/abs/1809.09044
@@ -255,26 +255,26 @@ Proposed
 - https://github.com/tendermint/spec/pull/254
 
 
-[#17]: https://github.com/lazyledger/lazyledger-core/pull/17
-[#19]: https://github.com/lazyledger/lazyledger-core/pull/19
-[#83]: https://github.com/lazyledger/lazyledger-core/pull/83
+[#17]: https://github.com/celestiaorg/celestia-core/pull/17
+[#19]: https://github.com/celestiaorg/celestia-core/pull/19
+[#83]: https://github.com/celestiaorg/celestia-core/pull/83
 
-[#152]: https://github.com/lazyledger/lazyledger-core/pull/152
+[#152]: https://github.com/celestiaorg/celestia-core/pull/152
 
-[lazyledger-specs#126]: https://github.com/lazyledger/lazyledger-specs/issues/126
-[lazyledger-specs#127]: https://github.com/lazyledger/lazyledger-specs/pulls/127
-[Header]: https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#header
+[celestia-specs#126]: https://github.com/celestiaorg/celestia-specs/issues/126
+[celestia-specs#127]: https://github.com/celestiaorg/celestia-specs/pulls/127
+[Header]: https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#header
 
 [go-ipfs documentation]: https://github.com/ipfs/go-ipfs/tree/master/docs/examples/go-ipfs-as-a-library#use-go-ipfs-as-a-library-to-spawn-a-node-and-add-a-file
-[ipld experiments]: https://github.com/lazyledger/ipld-plugin-experiments
+[ipld experiments]: https://github.com/celestia/ipld-plugin-experiments
 [ipld.Nodes]: https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/format.go#L22-L45
 [graph-sync]: https://github.com/ipld/specs/blob/master/block-layer/graphsync/graphsync.md
 [IPLD selectors]: https://github.com/ipld/specs/blob/master/selectors/selectors.md
 [ipld-prime]: https://github.com/ipld/go-ipld-prime
 
-[rsmt2d]: https://github.com/lazyledger/rsmt2d
+[rsmt2d]: https://github.com/celestia/rsmt2d
 
 
-[p2p]: https://github.com/lazyledger/lazyledger-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/p2p
-[p2p/ipld]: https://github.com/lazyledger/lazyledger-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/p2p/ipld
-[lazyledger-core/types]: https://github.com/lazyledger/lazyledger-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/types
+[p2p]: https://github.com/celestiaorg/celestia-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/p2p
+[p2p/ipld]: https://github.com/celestiaorg/celestia-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/p2p/ipld
+[celestia-core/types]: https://github.com/celestiaorg/celestia-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/types

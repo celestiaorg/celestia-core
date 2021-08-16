@@ -8,13 +8,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	"github.com/lazyledger/lazyledger-core/crypto/tmhash"
-	tmrand "github.com/lazyledger/lazyledger-core/libs/rand"
-	cryptoproto "github.com/lazyledger/lazyledger-core/proto/tendermint/crypto"
-	privvalproto "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	cryptoproto "github.com/celestiaorg/celestia-core/proto/tendermint/crypto"
+	privvalproto "github.com/celestiaorg/celestia-core/proto/tendermint/privval"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 type signerTestCase struct {

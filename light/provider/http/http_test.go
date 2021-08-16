@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/abci/example/kvstore"
-	"github.com/lazyledger/lazyledger-core/light/provider"
-	lighthttp "github.com/lazyledger/lazyledger-core/light/provider/http"
-	rpcclient "github.com/lazyledger/lazyledger-core/rpc/client"
-	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
-	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
+	"github.com/celestiaorg/celestia-core/light/provider"
+	lighthttp "github.com/celestiaorg/celestia-core/light/provider/http"
+	rpcclient "github.com/celestiaorg/celestia-core/rpc/client"
+	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
+	rpctest "github.com/celestiaorg/celestia-core/rpc/test"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 func TestNewProvider(t *testing.T) {

@@ -6,10 +6,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
+	"github.com/celestiaorg/celestia-core/libs/log"
 
-	"github.com/lazyledger/lazyledger-core/libs/pubsub"
-	"github.com/lazyledger/lazyledger-core/libs/pubsub/query"
+	"github.com/celestiaorg/celestia-core/libs/pubsub"
+	"github.com/celestiaorg/celestia-core/libs/pubsub/query"
 )
 
 func TestExample(t *testing.T) {

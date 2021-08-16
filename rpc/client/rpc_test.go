@@ -13,17 +13,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	tmmath "github.com/lazyledger/lazyledger-core/libs/math"
-	mempl "github.com/lazyledger/lazyledger-core/mempool"
-	"github.com/lazyledger/lazyledger-core/rpc/client"
-	rpchttp "github.com/lazyledger/lazyledger-core/rpc/client/http"
-	rpclocal "github.com/lazyledger/lazyledger-core/rpc/client/local"
-	ctypes "github.com/lazyledger/lazyledger-core/rpc/core/types"
-	rpcclient "github.com/lazyledger/lazyledger-core/rpc/jsonrpc/client"
-	rpctest "github.com/lazyledger/lazyledger-core/rpc/test"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	mempl "github.com/celestiaorg/celestia-core/mempool"
+	"github.com/celestiaorg/celestia-core/rpc/client"
+	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
+	rpclocal "github.com/celestiaorg/celestia-core/rpc/client/local"
+	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
+	rpcclient "github.com/celestiaorg/celestia-core/rpc/jsonrpc/client"
+	rpctest "github.com/celestiaorg/celestia-core/rpc/test"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 var (

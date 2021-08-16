@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/crypto"
-	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	privvalproto "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/crypto"
+	cryptoenc "github.com/celestiaorg/celestia-core/crypto/encoding"
+	privvalproto "github.com/celestiaorg/celestia-core/proto/tendermint/privval"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // SignerClient implements PrivValidator.

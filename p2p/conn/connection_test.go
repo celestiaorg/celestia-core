@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
-	tmp2p "github.com/lazyledger/lazyledger-core/proto/tendermint/p2p"
-	"github.com/lazyledger/lazyledger-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/libs/protoio"
+	tmp2p "github.com/celestiaorg/celestia-core/proto/tendermint/p2p"
+	"github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 
 const maxPingPongPacketSize = 1024 // bytes

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lazyledger/lazyledger-core/light/provider"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/light/provider"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // The detector component of the light client detect and handles attacks on the light client.

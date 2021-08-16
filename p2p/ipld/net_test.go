@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/ipfs/go-bitswap"
 	"github.com/ipfs/go-bitswap/network"
 	"github.com/ipfs/go-blockservice"
@@ -13,16 +14,15 @@ import (
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
-	"github.com/lazyledger/rsmt2d"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lazyledger/lazyledger-core/ipfs/plugin"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	"github.com/lazyledger/lazyledger-core/types"
-	"github.com/lazyledger/lazyledger-core/types/consts"
+	"github.com/celestiaorg/celestia-core/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/types"
+	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 func TestDiscovery(t *testing.T) {
@@ -52,7 +52,7 @@ func TestDiscovery(t *testing.T) {
 
 func TestWriteDiscoveryReadData(t *testing.T) {
 	logger := log.TestingLogger()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
 
 	dags, dhts := dagNet(ctx, t, 5)

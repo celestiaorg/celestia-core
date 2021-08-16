@@ -3,10 +3,10 @@ package privval
 import (
 	"io"
 
-	"github.com/lazyledger/lazyledger-core/libs/service"
-	tmsync "github.com/lazyledger/lazyledger-core/libs/sync"
-	privvalproto "github.com/lazyledger/lazyledger-core/proto/tendermint/privval"
-	"github.com/lazyledger/lazyledger-core/types"
+	"github.com/celestiaorg/celestia-core/libs/service"
+	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	privvalproto "github.com/celestiaorg/celestia-core/proto/tendermint/privval"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // ValidationRequestHandlerFunc handles different remoteSigner requests

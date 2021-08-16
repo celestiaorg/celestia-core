@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"time"
 
-	abci "github.com/lazyledger/lazyledger-core/abci/types"
-	cryptoenc "github.com/lazyledger/lazyledger-core/crypto/encoding"
-	"github.com/lazyledger/lazyledger-core/libs/fail"
-	"github.com/lazyledger/lazyledger-core/libs/log"
-	mempl "github.com/lazyledger/lazyledger-core/mempool"
-	tmstate "github.com/lazyledger/lazyledger-core/proto/tendermint/state"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/lazyledger-core/proxy"
-	"github.com/lazyledger/lazyledger-core/types"
+	abci "github.com/celestiaorg/celestia-core/abci/types"
+	cryptoenc "github.com/celestiaorg/celestia-core/crypto/encoding"
+	"github.com/celestiaorg/celestia-core/libs/fail"
+	"github.com/celestiaorg/celestia-core/libs/log"
+	mempl "github.com/celestiaorg/celestia-core/mempool"
+	tmstate "github.com/celestiaorg/celestia-core/proto/tendermint/state"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/proxy"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 //-----------------------------------------------------------------------------
@@ -111,7 +111,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// maybe the mempool actually should track things separately
 	// meaning that CheckTx should already do the mapping:
 	// Tx -> Txs, Message
-	// https://github.com/lazyledger/lazyledger-core/issues/77
+	// https://github.com/celestiaorg/celestia-core/issues/77
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
 	l := len(txs)
 	bzs := make([][]byte, l)
@@ -123,7 +123,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	//  1. get those intermediate state roots & messages either from the
 	//     mempool or from the abci-app
 	//  1.1 at this point we should now the square / block size:
-	//      https://github.com/lazyledger/lazyledger-specs/blob/53e5f350838f1e0785ad670704bf91dac2f4f5a3/specs/block_proposer.md#deciding-on-a-block-size
+	//      https://github.com/celestiaorg/celestia-specs/blob/53e5f350838f1e0785ad670704bf91dac2f4f5a3/specs/block_proposer.md#deciding-on-a-block-size
 	//      Here, we instead assume a fixed (max) square size instead.
 	//  2. feed them into MakeBlock below:
 	processedBlockTxs, err := blockExec.proxyApp.PreprocessTxsSync(
