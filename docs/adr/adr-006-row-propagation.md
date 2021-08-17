@@ -25,6 +25,12 @@ consensus with `PartSetHeader` and another for the world outside the consensus w
 #### Pros
 * Less work
 
+### Others
+* get rid of the PartsHeader from BlockID without changing block propagation at all (that is what Evan was doing in parallel)
+* change block propagation to fixed-sized chunks but based on the ODS instead of how Parts are built currently (for this we have empirical evidence of how it performs in practice)
+* send the block as a whole (only works with smaller blocks)
+* block propagation-based on the header+Tx IDs and requesting the Tx/Messages that are missing from the local mempool of a node
+
 #### Cons
 * Pulls two data commitments to Celestia's specs
 * Brings ambiguity to data integrity verification
