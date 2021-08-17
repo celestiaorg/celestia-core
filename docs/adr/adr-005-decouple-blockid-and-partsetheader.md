@@ -45,4 +45,3 @@ Proposed
 Alternative ADR [#434](https://github.com/celestiaorg/lazyledger-core/pull/434)  
 Alternative implementation [#427](https://github.com/celestiaorg/lazyledger-core/pull/427) and [#443](https://github.com/celestiaorg/lazyledger-core/pull/443)  
 [Comment](https://github.com/celestiaorg/lazyledger-core/pull/434#issuecomment-869158788) that summarizes decision
-diff --git a/docs/lazy-adr/adr-005-decouple-blockid-and-partsetheader.md b/docs/lazy-adr/adr-005-decouple-blockid-and-partsetheader.md
