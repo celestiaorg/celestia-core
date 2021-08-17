@@ -1,15 +1,11 @@
 package types
 
 import (
-	// it is ok to use math/rand here: we do not need a cryptographically secure random
-	// number generator here and we can run the tests a bit faster
-	stdbytes "bytes"
 	"encoding/hex"
 	"math"
 	mrand "math/rand"
 	"os"
 	"reflect"
-	"sort"
 	"testing"
 	"time"
 
@@ -1364,33 +1360,4 @@ func TestNextHighestPowerOf2(t *testing.T) {
 		res := nextHighestPowerOf2(tt.input)
 		assert.Equal(t, tt.expected, res)
 	}
-}
-
-// this code is copy pasted from the plugin, and should likely be exported in the plugin instead
-func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byte {
-	data := make([][]byte, total)
-	for i := 0; i < total; i++ {
-		nid := make([]byte, nidSize)
-		_, err := mrand.Read(nid)
-		if err != nil {
-			panic(err)
-		}
-		data[i] = nid
-	}
-
-	sortByteArrays(data)
-	for i := 0; i < total; i++ {
-		d := make([]byte, leafSize)
-		_, err := mrand.Read(d)
-		if err != nil {
-			panic(err)
-		}
-		data[i] = append(data[i], d...)
-	}
-
-	return data
-}
-
-func sortByteArrays(src [][]byte) {
-	sort.Slice(src, func(i, j int) bool { return stdbytes.Compare(src[i], src[j]) < 0 })
 }

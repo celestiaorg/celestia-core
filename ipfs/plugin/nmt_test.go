@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
-	"math/rand"
-	"sort"
 	"strings"
 	"testing"
 
@@ -13,6 +11,7 @@ import (
 	"github.com/ipfs/go-verifcid"
 	mh "github.com/multiformats/go-multihash"
 
+	"github.com/celestiaorg/celestia-core/testutils"
 	"github.com/celestiaorg/nmt"
 	"github.com/celestiaorg/rsmt2d"
 )
@@ -34,8 +33,8 @@ func TestDataSquareRowOrColumnRawInputParserCidEqNmtRoot(t *testing.T) {
 		name     string
 		leafData [][]byte
 	}{
-		{"16 leaves", generateRandNamespacedRawData(16, namespaceSize, shareSize)},
-		{"32 leaves", generateRandNamespacedRawData(32, namespaceSize, shareSize)},
+		{"16 leaves", testutils.GenerateRandNamespacedRawData(16, namespaceSize, shareSize)},
+		{"32 leaves", testutils.GenerateRandNamespacedRawData(32, namespaceSize, shareSize)},
 		{"extended row", generateExtendedRow(t)},
 	}
 	for _, tt := range tests {
@@ -68,8 +67,8 @@ func TestNodeCollector(t *testing.T) {
 		name     string
 		leafData [][]byte
 	}{
-		{"16 leaves", generateRandNamespacedRawData(16, namespaceSize, shareSize)},
-		{"32 leaves", generateRandNamespacedRawData(32, namespaceSize, shareSize)},
+		{"16 leaves", testutils.GenerateRandNamespacedRawData(16, namespaceSize, shareSize)},
+		{"32 leaves", testutils.GenerateRandNamespacedRawData(32, namespaceSize, shareSize)},
 		{"extended row", generateExtendedRow(t)},
 	}
 	for _, tt := range tests {
@@ -134,7 +133,7 @@ func TestDagPutWithPlugin(t *testing.T) {
 	t.Log("Warning: running this test writes to your local IPFS block store!")
 
 	const numLeaves = 32
-	data := generateRandNamespacedRawData(numLeaves, namespaceSize, shareSize)
+	data := testutils.GenerateRandNamespacedRawData(numLeaves, namespaceSize, shareSize)
 	buf := createByteBufFromRawData(t, data)
 	printFirst := 10
 	t.Logf("first leaf, nid: %x, data: %x...", data[0][:namespaceSize], data[0][namespaceSize:namespaceSize+printFirst])
@@ -178,7 +177,7 @@ func TestDagPutWithPlugin(t *testing.T) {
 }
 
 func generateExtendedRow(t *testing.T) [][]byte {
-	origData := generateRandNamespacedRawData(16, namespaceSize, shareSize)
+	origData := testutils.GenerateRandNamespacedRawData(16, namespaceSize, shareSize)
 	origDataWithoutNamespaces := make([][]byte, 16)
 	for i, share := range origData {
 		origDataWithoutNamespaces[i] = share[namespaceSize:]
@@ -225,25 +224,4 @@ func createByteBufFromRawData(t *testing.T, leafData [][]byte) *bytes.Buffer {
 		}
 	}
 	return buf
-}
-
-func generateRandNamespacedRawData(total int, nidSize int, leafSize int) [][]byte {
-	data := make([][]byte, total)
-	for i := 0; i < total; i++ {
-		nid := make([]byte, nidSize)
-		rand.Read(nid)
-		data[i] = nid
-	}
-	sortByteArrays(data)
-	for i := 0; i < total; i++ {
-		d := make([]byte, leafSize)
-		rand.Read(d)
-		data[i] = append(data[i], d...)
-	}
-
-	return data
-}
-
-func sortByteArrays(src [][]byte) {
-	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
 }

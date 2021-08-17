@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -18,8 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type splitter interface {
-	splitIntoShares() NamespacedShares
+type Splitter interface {
+	SplitIntoShares() NamespacedShares
 }
 
 func TestMakeShares(t *testing.T) {
@@ -54,31 +55,36 @@ func TestMakeShares(t *testing.T) {
 	}
 
 	type args struct {
-		data splitter
+		data Splitter
 	}
 	tests := []struct {
 		name string
 		args args
 		want NamespacedShares
 	}{
-		{"evidence",
-			args{
+		{
+			name: "evidence",
+			args: args{
 				data: &EvidenceData{
 					Evidence: []Evidence{testEvidence},
 				},
-			}, NamespacedShares{NamespacedShare{
-				Share: append(
-					append(reservedEvidenceNamespaceID, byte(0)),
-					testEvidenceBytes[:consts.TxShareSize]...,
-				),
-				ID: reservedEvidenceNamespaceID,
-			}, NamespacedShare{
-				Share: append(
-					append(reservedEvidenceNamespaceID, byte(0)),
-					zeroPadIfNecessary(testEvidenceBytes[consts.TxShareSize:], consts.TxShareSize)...,
-				),
-				ID: reservedEvidenceNamespaceID,
-			}},
+			},
+			want: NamespacedShares{
+				NamespacedShare{
+					Share: append(
+						append(reservedEvidenceNamespaceID, byte(0)),
+						testEvidenceBytes[:consts.TxShareSize]...,
+					),
+					ID: reservedEvidenceNamespaceID,
+				},
+				NamespacedShare{
+					Share: append(
+						append(reservedEvidenceNamespaceID, byte(0)),
+						zeroPadIfNecessary(testEvidenceBytes[consts.TxShareSize:], consts.TxShareSize)...,
+					),
+					ID: reservedEvidenceNamespaceID,
+				},
+			},
 		},
 		{"small LL Tx",
 			args{
@@ -161,7 +167,7 @@ func TestMakeShares(t *testing.T) {
 		tt := tt // stupid scopelint :-/
 		i := i
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.args.data.splitIntoShares()
+			got := tt.args.data.SplitIntoShares()
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("%v: makeShares() = \n%+v\nwant\n%+v\n", i, got, tt.want)
 			}
@@ -237,7 +243,6 @@ func TestDataFromSquare(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// generate random data
 			data := generateRandomBlockData(
-				t,
 				tc.txCount,
 				tc.isrCount,
 				tc.evdCount,
@@ -321,7 +326,7 @@ func Test_processContiguousShares(t *testing.T) {
 		t.Run(fmt.Sprintf("%s idendically sized ", tc.name), func(t *testing.T) {
 			txs := generateRandomContiguousShares(tc.txCount, tc.txSize)
 
-			shares := txs.splitIntoShares()
+			shares := txs.SplitIntoShares()
 
 			parsedTxs, err := processContiguousShares(shares.RawShares())
 			if err != nil {
@@ -338,7 +343,7 @@ func Test_processContiguousShares(t *testing.T) {
 		t.Run(fmt.Sprintf("%s randomly sized", tc.name), func(t *testing.T) {
 			txs := generateRandomlySizedContiguousShares(tc.txCount, tc.txSize)
 
-			shares := txs.splitIntoShares()
+			shares := txs.SplitIntoShares()
 
 			parsedTxs, err := processContiguousShares(shares.RawShares())
 			if err != nil {
@@ -402,7 +407,7 @@ func Test_parseMsgShares(t *testing.T) {
 			}
 			msgs := Messages{MessagesList: rawmsgs}
 
-			shares := msgs.splitIntoShares()
+			shares := msgs.SplitIntoShares()
 
 			parsedMsgs, err := parseMsgShares(shares.RawShares())
 			if err != nil {
@@ -419,7 +424,7 @@ func Test_parseMsgShares(t *testing.T) {
 		// run the same tests using randomly sized messages with caps of tc.msgSize
 		t.Run(fmt.Sprintf("%s randomly sized", tc.name), func(t *testing.T) {
 			msgs := generateRandomlySizedMessages(tc.msgCount, tc.msgSize)
-			shares := msgs.splitIntoShares()
+			shares := msgs.SplitIntoShares()
 
 			parsedMsgs, err := parseMsgShares(shares.RawShares())
 			if err != nil {
@@ -452,11 +457,11 @@ func Test_parseDelimiter(t *testing.T) {
 }
 
 // generateRandomBlockData returns randomly generated block data for testing purposes
-func generateRandomBlockData(t *testing.T, txCount, isrCount, evdCount, msgCount, maxSize int) Data {
+func generateRandomBlockData(txCount, isrCount, evdCount, msgCount, maxSize int) Data {
 	var out Data
 	out.Txs = generateRandomlySizedContiguousShares(txCount, maxSize)
 	out.IntermediateStateRoots = generateRandomISR(isrCount)
-	out.Evidence = generateIdenticalEvidence(t, evdCount)
+	out.Evidence = generateIdenticalEvidence(evdCount)
 	out.Messages = generateRandomlySizedMessages(msgCount, maxSize)
 	return out
 }
@@ -481,7 +486,7 @@ func generateRandomContiguousShares(count, size int) Txs {
 		if err != nil {
 			panic(err)
 		}
-		txs[i] = Tx(tx)
+		txs[i] = tx
 	}
 	return txs
 }
@@ -494,13 +499,13 @@ func generateRandomISR(count int) IntermediateStateRoots {
 	return IntermediateStateRoots{RawRootsList: roots}
 }
 
-func generateIdenticalEvidence(t *testing.T, count int) EvidenceData {
+func generateIdenticalEvidence(count int) EvidenceData {
 	evidence := make([]Evidence, count)
 	for i := 0; i < count; i++ {
 		ev := NewMockDuplicateVoteEvidence(math.MaxInt64, time.Now(), "chainID")
 		evidence[i] = ev
 	}
-	return EvidenceData{Evidence: EvidenceList(evidence)}
+	return EvidenceData{Evidence: evidence}
 }
 
 func generateRandomlySizedMessages(count, maxMsgSize int) Messages {
@@ -527,7 +532,7 @@ func generateRandomMessage(size int) Message {
 }
 
 func generateRandomNamespacedShares(count, msgSize int) NamespacedShares {
-	shares := generateRandNamespacedRawData(count, consts.NamespaceSize, msgSize)
+	shares := generateRandNamespacedRawData(uint32(count), consts.NamespaceSize, uint32(msgSize))
 	msgs := make([]Message, count)
 	for i, s := range shares {
 		msgs[i] = Message{
@@ -535,5 +540,26 @@ func generateRandomNamespacedShares(count, msgSize int) NamespacedShares {
 			NamespaceID: s[:consts.NamespaceSize],
 		}
 	}
-	return Messages{MessagesList: msgs}.splitIntoShares()
+	return Messages{MessagesList: msgs}.SplitIntoShares()
+}
+
+func generateRandNamespacedRawData(total, nidSize, leafSize uint32) [][]byte {
+	data := make([][]byte, total)
+	for i := uint32(0); i < total; i++ {
+		nid := make([]byte, nidSize)
+		rand.Read(nid)
+		data[i] = nid
+	}
+	sortByteArrays(data)
+	for i := uint32(0); i < total; i++ {
+		d := make([]byte, leafSize)
+		rand.Read(d)
+		data[i] = append(data[i], d...)
+	}
+
+	return data
+}
+
+func sortByteArrays(src [][]byte) {
+	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
 }
