@@ -27,7 +27,6 @@ import (
 	"github.com/celestiaorg/celestia-core/libs/service"
 	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 	"github.com/celestiaorg/celestia-core/p2p"
-	"github.com/celestiaorg/celestia-core/p2p/ipld"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	sm "github.com/celestiaorg/celestia-core/state"
 	"github.com/celestiaorg/celestia-core/types"
@@ -154,10 +153,6 @@ type State struct {
 
 	// for reporting metrics
 	metrics *Metrics
-
-	// context of the recent proposed block
-	proposalCtx    context.Context
-	proposalCancel context.CancelFunc
 }
 
 // StateOption sets an optional parameter on the State.
@@ -1127,41 +1122,6 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	} else if !cs.replayMode {
 		cs.Logger.Error("enterPropose: Error signing proposal", "height", height, "round", round, "err", err)
 	}
-
-	// cancel ctx for previous proposal block to ensure block putting/providing does not queues up
-	if cs.proposalCancel != nil {
-		// FIXME(ismail): below commented out cancel tries to prevent block putting
-		// and providing no to queue up endlessly.
-		// But in a real network proposers should have enough time in between.
-		// And even if not, queuing up to a problematic extent will take a lot of time:
-		// Even on the Cosmos Hub the largest validator only proposes every 15 blocks.
-		// With an average block time of roughly 7.5 seconds this means almost
-		// two minutes between two different proposals by the same validator.
-		// For other validators much more time passes in between.
-		// In our case block interval times will likely be larger.
-		// And independent of this DHT providing will be made faster:
-		//  - https://github.com/celestiaorg/celestia-core/issues/395
-		//
-		// Furthermore, and independent of all of the above,
-		// the provide timeout could still be larger than just the time between
-		// two consecutive proposals.
-		//
-		cs.proposalCancel()
-	}
-	cs.proposalCtx, cs.proposalCancel = context.WithCancel(context.TODO())
-	go func(ctx context.Context) {
-		cs.Logger.Info("Putting Block to IPFS", "height", block.Height)
-		err = ipld.PutBlock(ctx, cs.dag, block, cs.croute, cs.Logger)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				cs.Logger.Error("Putting Block didn't finish in time and was terminated", "height", block.Height)
-				return
-			}
-			cs.Logger.Error("Failed to put Block to IPFS", "err", err, "height", block.Height)
-			return
-		}
-		cs.Logger.Info("Finished putting block to IPFS", "height", block.Height)
-	}(cs.proposalCtx)
 }
 
 // Returns true if the proposal block is complete &&
@@ -1958,7 +1918,7 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 			// 1) bad peer OR
 			// 2) not a bad peer? this can also err sometimes with "Unexpected step" OR
 			// 3) tmkms use with multiple validators connecting to a single tmkms instance
-			// 		(https://github.com/celestiaorg/celestia-core/issues/3839).
+			// 		(https://github.com/tendermint/tendermint/issues/3839).
 			cs.Logger.Info("Error attempting to add vote", "err", err)
 			return added, ErrAddingVote
 		}
