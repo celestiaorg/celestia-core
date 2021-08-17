@@ -12,16 +12,19 @@ import (
 	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
-// GenerateRandomBlockData returns randomly generated block data for testing purposes
+// GenerateRandomBlockData returns randomly generated block data for testing purposes.
 func GenerateRandomBlockData(txCount, isrCount, evdCount, msgCount, maxSize int) types.Data {
 	var out types.Data
 	out.Txs = GenerateRandomlySizedContiguousShares(txCount, maxSize)
-	out.IntermediateStateRoots = generateRandomISR(isrCount)
-	out.Evidence = generateIdenticalEvidence(evdCount)
+	out.IntermediateStateRoots = GenerateRandomISR(isrCount)
+	out.Evidence = GenerateIdenticalEvidence(evdCount)
 	out.Messages = GenerateRandomlySizedMessages(msgCount, maxSize)
 	return out
 }
 
+// GenerateRandomlySizedContiguousShares returns a given amount of randomly
+// sized (up to the given maximum size) transactions that can be included in
+// dummy block data.
 func GenerateRandomlySizedContiguousShares(count, max int) types.Txs {
 	txs := make(types.Txs, count)
 	for i := 0; i < count; i++ {
@@ -31,12 +34,12 @@ func GenerateRandomlySizedContiguousShares(count, max int) types.Txs {
 		if size == 0 {
 			size = 1
 		}
-		txs[i] = GenerateRandomContiguousShares(1, size)[0]
+		txs[i] = generateRandomContiguousShares(1, size)[0]
 	}
 	return txs
 }
 
-func GenerateRandomContiguousShares(count, size int) types.Txs {
+func generateRandomContiguousShares(count, size int) types.Txs {
 	txs := make(types.Txs, count)
 	for i := 0; i < count; i++ {
 		tx := make([]byte, size)
@@ -50,15 +53,19 @@ func GenerateRandomContiguousShares(count, size int) types.Txs {
 	return txs
 }
 
-func generateRandomISR(count int) types.IntermediateStateRoots {
+// GenerateRandomISR returns a given amount of randomly generated intermediate
+// state roots that can be included in dummy block data.
+func GenerateRandomISR(count int) types.IntermediateStateRoots {
 	roots := make([]tmbytes.HexBytes, count)
 	for i := 0; i < count; i++ {
-		roots[i] = tmbytes.HexBytes(GenerateRandomContiguousShares(1, 32)[0])
+		roots[i] = tmbytes.HexBytes(generateRandomContiguousShares(1, 32)[0])
 	}
 	return types.IntermediateStateRoots{RawRootsList: roots}
 }
 
-func generateIdenticalEvidence(count int) types.EvidenceData {
+// GenerateIdenticalEvidence returns a given amount of vote evidence data that
+// can be included in dummy block data.
+func GenerateIdenticalEvidence(count int) types.EvidenceData {
 	evidence := make([]types.Evidence, count)
 	for i := 0; i < count; i++ {
 		ev := types.NewMockDuplicateVoteEvidence(math.MaxInt64, time.Now(), "chainID")
@@ -67,11 +74,13 @@ func generateIdenticalEvidence(count int) types.EvidenceData {
 	return types.EvidenceData{Evidence: evidence}
 }
 
+// GenerateRandomlySizedMessages returns a given amount of Messages up to the given maximum
+// message size that can be included in dummy block data.
 func GenerateRandomlySizedMessages(count, maxMsgSize int) types.Messages {
 	msgs := make([]types.Message, count)
 	for i := 0; i < count; i++ {
 		//nolint
-		msgs[i] = GenerateRandomMessage(rand.Intn(maxMsgSize))
+		msgs[i] = generateRandomMessage(rand.Intn(maxMsgSize))
 	}
 
 	// this is just to let us use assert.Equal
@@ -82,8 +91,8 @@ func GenerateRandomlySizedMessages(count, maxMsgSize int) types.Messages {
 	return types.Messages{MessagesList: msgs}
 }
 
-func GenerateRandomMessage(size int) types.Message {
-	share := GenerateRandomNamespacedShares(1, size)[0]
+func generateRandomMessage(size int) types.Message {
+	share := generateRandomNamespacedShares(1, size)[0]
 	msg := types.Message{
 		NamespaceID: share.NamespaceID(),
 		Data:        share.Data(),
@@ -91,7 +100,7 @@ func GenerateRandomMessage(size int) types.Message {
 	return msg
 }
 
-func GenerateRandomNamespacedShares(count, msgSize int) types.NamespacedShares {
+func generateRandomNamespacedShares(count, msgSize int) types.NamespacedShares {
 	shares := generateRandNamespacedRawData(uint32(count), consts.NamespaceSize, uint32(msgSize))
 	msgs := make([]types.Message, count)
 	for i, s := range shares {
