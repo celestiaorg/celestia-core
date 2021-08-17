@@ -13,19 +13,32 @@ import (
 )
 
 // GenerateRandomBlockData returns randomly generated block data for testing purposes.
-func GenerateRandomBlockData(txCount, isrCount, evdCount, msgCount, maxSize int) types.Data {
+func GenerateRandomBlockData(txCount, isrCount, evdCount, msgCount, maxSize int) (types.Data, error) {
 	var out types.Data
-	out.Txs = GenerateRandomlySizedContiguousShares(txCount, maxSize)
-	out.IntermediateStateRoots = GenerateRandomISR(isrCount)
+	// generate random txs
+	txs, err := GenerateRandomlySizedContiguousShares(txCount, maxSize)
+	if err != nil {
+		return types.Data{}, err
+	}
+	out.Txs = txs
+	// generate random intermediate state roots
+	isr, err := GenerateRandomISR(isrCount)
+	if err != nil {
+		return types.Data{}, err
+	}
+	out.IntermediateStateRoots = isr
+	// generate random evidence
 	out.Evidence = GenerateIdenticalEvidence(evdCount)
+	// generate random messages
 	out.Messages = GenerateRandomlySizedMessages(msgCount, maxSize)
-	return out
+
+	return out, nil
 }
 
 // GenerateRandomlySizedContiguousShares returns a given amount of randomly
 // sized (up to the given maximum size) transactions that can be included in
 // dummy block data.
-func GenerateRandomlySizedContiguousShares(count, max int) types.Txs {
+func GenerateRandomlySizedContiguousShares(count, max int) (types.Txs, error) {
 	txs := make(types.Txs, count)
 	for i := 0; i < count; i++ {
 		//nolint
@@ -34,33 +47,41 @@ func GenerateRandomlySizedContiguousShares(count, max int) types.Txs {
 		if size == 0 {
 			size = 1
 		}
-		txs[i] = generateRandomContiguousShares(1, size)[0]
+		tx, err := generateRandomContiguousShares(1, size)
+		if err != nil {
+			return nil, err
+		}
+		txs[i] = tx[0]
 	}
-	return txs
+	return txs, nil
 }
 
-func generateRandomContiguousShares(count, size int) types.Txs {
+func generateRandomContiguousShares(count, size int) (types.Txs, error) {
 	txs := make(types.Txs, count)
 	for i := 0; i < count; i++ {
 		tx := make([]byte, size)
 		//nolint
 		_, err := rand.Read(tx)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 		txs[i] = tx
 	}
-	return txs
+	return txs, nil
 }
 
 // GenerateRandomISR returns a given amount of randomly generated intermediate
 // state roots that can be included in dummy block data.
-func GenerateRandomISR(count int) types.IntermediateStateRoots {
+func GenerateRandomISR(count int) (types.IntermediateStateRoots, error) {
 	roots := make([]tmbytes.HexBytes, count)
 	for i := 0; i < count; i++ {
-		roots[i] = tmbytes.HexBytes(generateRandomContiguousShares(1, 32)[0])
+		shares, err := generateRandomContiguousShares(1, 32)
+		if err != nil {
+			return types.IntermediateStateRoots{}, err
+		}
+		roots[i] = tmbytes.HexBytes(shares[0])
 	}
-	return types.IntermediateStateRoots{RawRootsList: roots}
+	return types.IntermediateStateRoots{RawRootsList: roots}, nil
 }
 
 // GenerateIdenticalEvidence returns a given amount of vote evidence data that
@@ -101,7 +122,7 @@ func generateRandomMessage(size int) types.Message {
 }
 
 func generateRandomNamespacedShares(count, msgSize int) types.NamespacedShares {
-	shares := generateRandNamespacedRawData(uint32(count), consts.NamespaceSize, uint32(msgSize))
+	shares := GenerateRandNamespacedRawData(uint32(count), consts.NamespaceSize, uint32(msgSize))
 	msgs := make([]types.Message, count)
 	for i, s := range shares {
 		msgs[i] = types.Message{
@@ -112,7 +133,8 @@ func generateRandomNamespacedShares(count, msgSize int) types.NamespacedShares {
 	return types.Messages{MessagesList: msgs}.SplitIntoShares()
 }
 
-func generateRandNamespacedRawData(total, nidSize, leafSize uint32) [][]byte {
+// GenerateRandNamespacedRawData returns random namespaced raw data for testing purposes.
+func GenerateRandNamespacedRawData(total, nidSize, leafSize uint32) [][]byte {
 	data := make([][]byte, total)
 	for i := uint32(0); i < total; i++ {
 		nid := make([]byte, nidSize)
