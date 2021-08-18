@@ -140,12 +140,12 @@ message Message {
 // k × k matrix, which is then "extended" to a
 // 2k × 2k matrix applying multiple times Reed-Solomon encoding.
 // For details see Section 5.2: https://arxiv.org/abs/1809.09044
-// or the Celestia specification:
-// https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#availabledataheader
+// or the LazyLedger specification:
+// https://github.com/lazyledger/lazyledger-specs/blob/master/specs/data_structures.md#availabledataheader
 // Note that currently we list row and column roots in separate fields
 // (different from the spec).
 message DataAvailabilityHeader {
-  // RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
+  // RowRoot_j = root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
   repeated bytes row_roots = 1;
   // ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
   repeated bytes column_roots = 2;
@@ -224,4 +224,249 @@ message TxProof {
   bytes                   root_hash = 1;
   bytes                   data      = 2;
   tendermint.crypto.Proof proof     = 3;
+}
+
+// Protobuf definitions for the contents of state elements
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#account
+// AccountStatus
+enum AccountStatus {
+    None = 0;
+    DelegationBonded = 1;
+    DelegationUnbonding = 2;
+    ValidatorQueued = 3;
+    ValidatorBonded = 4;
+    ValidatorUnbonding = 5;
+    ValidatorUnbonded = 6;
+}
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#periodentry
+message PeriodEntry {
+  // Rewards per unit of voting power accumulated so far, in 1u
+  uint64 rewardRate = 1;
+}
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#decimal
+message Decimal {
+  // Rational numerator
+  uint64 numerator = 1;
+  // Rational denominator
+  uint64 denominator = 2;
+}
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#messagepaid
+message MessagePaid {
+  // Share index (in row-major order) of first share paid for (inclusive)
+  uint64 start = 1;
+  // Share index (in row-major order) of last share paid for (inclusive)
+  uint64 finish = 2;
+  // Next transaction ID in the list
+  // 32-byte hash
+  bytes next = 3;
+}
+
+// Protobuf definitions for the state elements
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#account
+message Account {
+  // Coin balance
+  uint64 balance = 1;
+  // Account nonce. Every outgoing transaction from this account increments the nonce.
+  uint64 nonce = 2;
+  // Validator or delegation status of this account
+  AccountStatus status = 3;
+}
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#delegation
+message Delegation {
+  // The validator being delegating to
+  // 32-bytes
+  bytes validator = 1;
+  // Delegated stake, in 4u
+  uint64 stakedBalance = 2;
+  // Entry when delegation began
+  PeriodEntry beginEntry = 3;
+   // Entry when delegation ended (i.e. began unbonding)
+  PeriodEntry endEntry = 4;
+   // Block height delegation began unbonding
+  int64 unbondingHeight = 5;
+}
+
+// // https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#validator
+// message ConsensusValidator {
+//   // Validator's commission rewards, in 1u
+//   uint64 commissionRewards = 1;
+//   // Commission rate
+//   Decimal commissionRate = 2;
+//   // Number of accounts delegating to the validator
+//   uint32 delegatedCount = 3;
+//   // Total voting power as staked balance + delegated stake, in 4u
+//   uint64 votingPower = 4;
+//   // Rewards collected so far this period, in 1u
+//   uint64 pendingRewards = 5;
+//   // Latest entry, used for calculating reward distribution
+//   PeriodEntry latestEntry = 6;
+//   // Block height validator began unbonding
+//   int64 unbondingHeight = 7;
+//   // If this validator has been slashed or not
+//   bool isSlashed = 8;
+//   // Rate at which this validator has been slashed
+//   // slashRate should be zero if isSlashed is false.
+//   Decimal slashRate = 9;
+//   // Next validator in the queue. Zero if this validator is not in the queue
+//   // 32-bytes
+//   bytes next = 10;
+// }
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#activevalidatorcount
+message ActiveValidatorCount {
+  // Number of active validators
+  uint32 numValidators = 1;
+}
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#activevotingpower
+message ActiveVotingPower {
+  // Active voting power
+  uint64 votingPower = 1;
+}
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#proposerblockreward
+message ProposerBlockReward {
+  // Total block reward (subsidy + fees) in current block so far. Reset each block
+  uint64 reward = 1;
+}
+
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#proposerinitialvotingpower
+message ProposerInitialVotingPower {
+  // Voting power of the proposer at the start of each block. Set each block
+  uint64 votingPower = 1;
+}
+
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#validatorqueuehead
+message ValidatorQueueHead {
+  // Address of inactive validator at the head of the validator queue
+  // 32-bytes
+  bytes head = 1;
+}
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#messagepaidhead
+message MessagePaidHead {
+  // Transaction hash at the head of the list (has the smallest start index)
+  // 32-byte hash
+  bytes head = 1;
+}
+
+//Protobuf definitions for the contents of fraud proofs
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#namespacemerkletreeinclusionproof
+message NamespaceMerkleTreeInclusionProof {
+  // sibling hash values, ordered starting from the leaf's neighbor
+  // array of 32-byte hashes
+  repeated bytes siblingValues = 1;
+  // sibling min namespace IDs
+  // array of NAMESPACE_ID_BYTES-bytes
+  repeated bytes siblingMins = 2;
+  // sibling max namespace IDs
+  // array of NAMESPACE_ID_BYTES-bytes
+  repeated bytes siblingMaxes = 3;
+}
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#sparsemerkletreeinclusionproof
+message SparseMerkleTreeInclusionProof {
+  // depth of the leaf node, must be <= 256
+  // The root node is at depth 0.
+  uint32 depth = 1;
+  // sibling hash values, ordered starting from the leaf's neighbor
+  // array of 32-byte hashes
+  repeated bytes siblings = 2;
+  // bitfield of explicitly included sibling hashes
+  // 32-byte
+  bytes includedSiblings = 3;
+}
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#share
+message Share {
+  // namespace ID of the share
+  // NAMESPACE_ID_BYTES-bytes
+  bytes namespaceID = 1;
+  // raw share data
+  // SHARE_SIZE-bytes
+  bytes rawData = 2;
+}
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#stateelement
+message StateElement {
+  // key of the state element
+  // 32-bytes
+  bytes key = 1;
+  // key of the state element
+  // value can be of different types depending on the state element.
+  // There exists a unique protobuf for different state elements.
+  oneof value {
+    Account account = 2;
+    Delegation delegation = 3;
+    Validator validator = 4;
+    ActiveValidatorCount activeValidatorCount = 5;
+    ActiveVotingPower activeVotingPower = 6;
+    ProposerBlockReward proposerBlockReward = 7;
+    ProposerInitialVotingPower proposerInitialVotingPower = 8;
+    ValidatorQueueHead validatorQueueHead = 9;
+    MessagePaid messagePaid = 10;
+    MessagePaidHead messagePaidHead = 11;
+  }
+}
+
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#shareproof
+message ShareProof {
+  // the share
+  Share share = 1;
+  // the Merkle proof of the share in the offending row or column root
+  NamespaceMerkleTreeInclusionProof proof = 2;
+  // a Boolean indicating if the Merkle proof is from a row root or column root; false if it is a row root
+  bool isCol = 3;
+  // the index of the share in the offending row or column
+  uint64 position = 4;
+}
+
+//Protobuf definitions for the fraud proofs
+
+// ANCHOR: BadEncodingFraudProof
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#badencodingfraudproof
+message BadEncodingFraudProof {
+  // height of the block with the offending row or column
+  int64 height = 1;
+  // the available shares in the offending row or column and their Merkle proofs
+  // array of ShareProofs
+  repeated ShareProof shareProofs = 2;
+  // a Boolean indicating if it is an offending row or column; false if it is a row
+  bool isCol = 3;
+  // the index of the offending row or column in the square
+  uint64 position = 4;
+}
+// ANCHOR_END: BadEncodingFraudProof
+
+// ANCHOR: StateFraudProof
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#statefraudproof
+message StateFraudProof {
+  // height of the block with the intermediate state roots
+  // Subtracting one from height gives the height of the block with the transactions.
+  int64 height = 1;
+  // shares containing the transactions and their Merkle proofs
+  // isCol within the ShareProof must be false.
+  // array of ShareProofs
+  repeated ShareProof transactionShareProofs = 2;
+  // shares containing the intermediate state roots and their Merkle proofs
+  // isCol within the ShareProof must be false.
+  // array of ShareProofs
+  repeated ShareProof isrShareProofs = 3;
+  // index for connecting the WrappedIntermediateStateRoot and WrappedTransaction after shares are parsed
+  uint64 index = 4;
+  // state elements that were changed by the transactions
+  // array of StateElements
+  repeated StateElement intermediateStateElements = 5;
+  // sparse Merkle tree inclusion proofs for the state elements
+  // array of SparseMerkleTreeInclusionProofs
+  repeated SparseMerkleTreeInclusionProof stateInclusionProofs = 6;
 }
