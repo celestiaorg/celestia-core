@@ -2,7 +2,8 @@
 
 ## Changelog
 * 24.06.2021 - Initial description
-* 07.07.2021 - More important datails were added
+* 07.07.2021 - More important details were added
+* 18.08.2021 - Mention alternative approaches briefly
 
 ## Context
 It's a long story of relations between Celestia, Tendermint, and consensus block gossiping. Celestia's team discussed
