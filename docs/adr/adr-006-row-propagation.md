@@ -26,7 +26,7 @@ consensus with `PartSetHeader` and another for the world outside the consensus w
 * Less work
 
 ### Others
-* get rid of the PartsHeader from BlockID without changing block propagation at all (that is what Evan was doing in parallel)
+* get rid of the PartsHeader from BlockID without changing block propagation at all (see [ADR 005](https://github.com/celestiaorg/celestia-core/blob/58a3901827afbf97852d807de34a2b66f93e0eb6/docs/lazy-adr/adr-005-decouple-blockid-and-partsetheader.md#adr-005-decouple-the-partsetheader-from-the-blockid))
 * change block propagation to fixed-sized chunks but based on the ODS instead of how Parts are built currently (for this we have empirical evidence of how it performs in practice)
 * send the block as a whole (only works with smaller blocks)
 * block propagation-based on the header+Tx IDs and requesting the Tx/Messages that are missing from the local mempool of a node
