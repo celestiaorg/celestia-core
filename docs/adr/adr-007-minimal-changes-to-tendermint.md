@@ -175,6 +175,7 @@ Pending review
 ### Positive
  - Pulling changes from upstream is streamlined
  - Separation of functionality will help us iterate faster
+ - Creates a great opportunity for reconsidering past design choices without fully starting from scratch
  - Prepare for future designs
  - Don’t have to have two p2p stacks in a single repo
 ### Negative
