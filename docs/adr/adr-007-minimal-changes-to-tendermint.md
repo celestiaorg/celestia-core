@@ -180,7 +180,7 @@ Pending review
  - Don’t have to have two p2p stacks in a single repo
 ### Negative
  - Perform some computation multiple times
- - Run multiple nodes instead of a single node
+ - Running multiple nodes instead of a single node is less convenient for node operators (but only in the case the full celestia-node wants to participate in the consensus protocol)
 
 
 ## References
