@@ -125,7 +125,7 @@ We could perform a similar treatment to the `splitIntoShares` methods and their 
 
 Beyond refactoring and some minor additions, we will also have to remove and revert quite a few changes to get to the minimum desired changes specified above. 
 
-Changes that will need to be reverted
+### Changes that will need to be reverted
 
 #### IPLD Plugin 
  - Introduction (https://github.com/celestiaorg/celestia-core/pull/144)
