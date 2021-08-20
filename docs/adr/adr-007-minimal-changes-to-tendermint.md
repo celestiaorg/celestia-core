@@ -42,18 +42,10 @@ Treat tendermint more as a "black box".
 #### Remove iavl as a dependency
  - remove iavl as a dependency (https://github.com/celestiaorg/celestia-core/pull/129)
 
-#### Adding the `DataAvailabilityHeader`
+#### Using the `DataAvailabilityHeader` (imported from other repo) to calculate the DataHash
  - Update core types (https://github.com/celestiaorg/celestia-core/pull/17)
-   - In proto/tendermint/types/types.proto
-   - In types/block.go 
-   - Also change the `ToProto` and `FromProto`
-   - types/block_test.go
    - Replace the `Data.Hash()` with `DAH.Hash()`
-   - Delete the `Data.Hash()` method
-   - Replace vacant hashes with the DAH hash
-   - Change ValidateBasic for Block to use DAH hash (see comment for adding the DAH to `Block`
    - Use DAH to fill DataHash when filling the header
-   - Adding the DAH to `Block`
    - Fill the DAH when making a block to generate the data hash
 
 #### Add availableDataOriginalSharesUsed to the header
@@ -157,15 +149,13 @@ Beyond refactoring and some minor additions, we will also have to remove and rev
  - Refactor node provider (https://github.com/celestiaorg/celestia-core/pull/400)
  - DAS in light client workaround (https://github.com/celestiaorg/celestia-core/pull/413)
 
-
-
 #### BlockID and PartSetHeader
   - Decouple ParSetHeader from BlockID (https://github.com/celestiaorg/celestia-core/pull/441)
   - Stop Signing over the PartSetHeader (https://github.com/celestiaorg/celestia-core/pull/457)
   - We still don’t want to sign over the PartSetHeader, but we will not be able to use the same  mechanism used in the linked PR, as that way requires decoupling of the PSH from the BlockID
   - Remove PSH from some consensus messages (https://github.com/celestiaorg/celestia-core/pull/479)
 
-This ADR overrides ADR 005 Decouple BlockID and the PartSetHeader. The PartSetHeader and the BlockID will mostly remain the same. This will make pulling changes from upstream much easier
+Note: This ADR overrides ADR 005 Decouple BlockID and the PartSetHeader. The PartSetHeader and the BlockID will mostly remain the same. This will make pulling changes from upstream much easier
 
 ## Status
 
