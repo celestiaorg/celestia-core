@@ -67,7 +67,7 @@ Treat tendermint more as a "black box".
 
 #### Filling the DAH using share merging and splitting
 - Compute Shares (not merged) (https://github.com/celestiaorg/celestia-core/pull/60)
-  - part II (not merged) ((https://github.com/celestiaorg/celestia-core/pull/63)
+  - part II (not merged) (https://github.com/celestiaorg/celestia-core/pull/63)
   - while this was not merged, we will need some function to compute the shares that make up the block data
 - Share Splitting (https://github.com/celestiaorg/celestia-core/pull/246)
    - Serialize each constituent of block data
