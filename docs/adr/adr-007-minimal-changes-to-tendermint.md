@@ -11,7 +11,7 @@ Necessary changes to tendermint
 
 ## Decision
 
-Treat tendermint more as a "black box" 
+Treat tendermint more as a "black box".
 
 ## Detailed Design
 
