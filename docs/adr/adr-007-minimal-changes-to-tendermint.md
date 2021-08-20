@@ -7,13 +7,14 @@
 ## Context
 
 Currently our fork of tendermint includes changes to how to erasure block data, minor changes to the header to commit to that data, additions to serve data availability sampling, along with some miscellaneous modification to adhere to the spec. Instead of incorporating all of these changes into our fork of tendermint, we will only make the strictly necessary changes and the other services and their code to the new celestia-node repo. Notably, we will also refactor some of the remaining necessary changes to be more isolated from the rest of the tendermint codebase. Both of these strategies should significantly streamline pulling updates from upstream, and allow us to iterate faster since most changes will be isolated to celestia-node. 
-Necessary changes to tendermint
 
 ## Decision
 
 Treat tendermint more as a "black box".
 
 ## Detailed Design
+
+### Necessary changes to tendermint
 
 #### Changing the repo import names to celestiaorg
  - Rebrand (https://github.com/celestiaorg/celestia-core/pull/476)
@@ -85,26 +86,26 @@ Treat tendermint more as a "black box".
   - Parse each reserved type
   - Parse remaining messages
 
-Add the wrapper around nmt to erasure namespaces
+#### Add the wrapper around nmt to erasure namespaces
  - Implement rsmt tree wrapper for nmt (https://github.com/celestiaorg/celestia-core/pull/238)
 
-Add PreprocessTxs to ABCI
+#### Add PreprocessTxs to ABCI
  - Add PreprocessTxs method to ABCI (https://github.com/celestiaorg/celestia-core/pull/110)
  - Add method to ABCI interface
  - Create sync and async versions
  - Add sync version the the CreateProposalBlock method of BlockExecutor
 
-Fill the DAH while making the block
+#### Fill the DAH while making the block
  - Basic DA functionality (https://github.com/celestiaorg/celestia-core/pull/83)
 
-Only produce blocks on some interval
+#### Only produce blocks on some interval
  - Control block times (https://github.com/tendermint/tendermint/issues/5911)
 
-Stop signing over the PartSetHeader 
+#### Stop signing over the PartSetHeader 
  - Replace canonical blockID with just a hash in the CononicalVote
  - Replace the LastBlockID in the header with just a hash
 
-Optionally remove some unused code
+#### Optionally remove some unused code
  - Removing misc unsued code (https://github.com/celestiaorg/celestia-core/pull/208)
  - Remove docs deployment (https://github.com/celestiaorg/celestia-core/pull/134)
  - Start deleting docs (https://github.com/celestiaorg/celestia-core/pull/209)
@@ -112,7 +113,7 @@ Optionally remove some unused code
  - Delete blockchain 2 until further notice (https://github.com/celestiaorg/celestia-core/pull/309)
  - We don’t need to support using out of process apps
 
-Nice to Haves
+#### Nice to Haves
  - More efficient hashing (https://github.com/celestiaorg/celestia-core/pull/351)
 
 We should also take this opportunity to refactor as many additions to tendermint into their own package as possible. This will hopefully make updating to future versions of tendermint easier. For example, when we fill the data availability header, instead of using a method on `Block`, it could be handled by a function that takes `types.Data` as input and returns the DAH, the number of shares used in the square, along with the obligatory error.
