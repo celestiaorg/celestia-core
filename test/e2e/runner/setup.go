@@ -21,8 +21,8 @@ import (
 
 	"github.com/celestiaorg/celestia-core/config"
 	"github.com/celestiaorg/celestia-core/crypto/ed25519"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	"github.com/celestiaorg/celestia-core/privval"
 	e2e "github.com/celestiaorg/celestia-core/test/e2e/pkg"
 	"github.com/celestiaorg/celestia-core/types"

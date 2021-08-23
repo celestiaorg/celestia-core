@@ -14,10 +14,10 @@ import (
 	"github.com/libp2p/go-libp2p-core/routing"
 	kbucket "github.com/libp2p/go-libp2p-kbucket"
 
-	"github.com/celestiaorg/celestia-core/ipfs/plugin"
 	"github.com/celestiaorg/celestia-core/libs/log"
 	"github.com/celestiaorg/celestia-core/libs/sync"
-	"github.com/celestiaorg/celestia-core/p2p/ipld/wrapper"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipld/wrapper"
 	"github.com/celestiaorg/celestia-core/types"
 )
 

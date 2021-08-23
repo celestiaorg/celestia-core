@@ -9,8 +9,8 @@ import (
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 
-	"github.com/celestiaorg/celestia-core/ipfs/plugin"
-	"github.com/celestiaorg/celestia-core/p2p/ipld/wrapper"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipld/wrapper"
 	"github.com/celestiaorg/celestia-core/types"
 	"github.com/celestiaorg/celestia-core/types/consts"
 )

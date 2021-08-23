@@ -16,7 +16,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/celestiaorg/celestia-core/crypto/merkle"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	dbm "github.com/celestiaorg/celestia-core/libs/db"
 	"github.com/celestiaorg/celestia-core/libs/db/badgerdb"
 	"github.com/celestiaorg/celestia-core/libs/log"
@@ -26,6 +25,7 @@ import (
 	lproxy "github.com/celestiaorg/celestia-core/light/proxy"
 	lrpc "github.com/celestiaorg/celestia-core/light/rpc"
 	dbs "github.com/celestiaorg/celestia-core/light/store/db"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
 	rpcserver "github.com/celestiaorg/celestia-core/rpc/jsonrpc/server"
 )

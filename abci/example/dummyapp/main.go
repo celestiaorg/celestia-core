@@ -10,11 +10,11 @@ import (
 	cmd "github.com/celestiaorg/celestia-core/cmd/tendermint/commands"
 	"github.com/celestiaorg/celestia-core/cmd/tendermint/commands/debug"
 	cfg "github.com/celestiaorg/celestia-core/config"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	"github.com/celestiaorg/celestia-core/libs/cli"
 	"github.com/celestiaorg/celestia-core/libs/log"
 	"github.com/celestiaorg/celestia-core/node"
 	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	"github.com/celestiaorg/celestia-core/privval"
 	"github.com/celestiaorg/celestia-core/proxy"
 )

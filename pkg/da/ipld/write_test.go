@@ -13,9 +13,9 @@ import (
 
 	abci "github.com/celestiaorg/celestia-core/abci/types"
 	"github.com/celestiaorg/celestia-core/crypto/tmhash"
-	"github.com/celestiaorg/celestia-core/ipfs"
-	"github.com/celestiaorg/celestia-core/ipfs/plugin"
 	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipfs/plugin"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types"
 	"github.com/celestiaorg/celestia-core/types/consts"

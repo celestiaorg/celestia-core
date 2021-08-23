@@ -14,11 +14,11 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
 
-	"github.com/celestiaorg/celestia-core/ipfs"
 	dbm "github.com/celestiaorg/celestia-core/libs/db"
 	"github.com/celestiaorg/celestia-core/libs/log"
 	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
-	"github.com/celestiaorg/celestia-core/p2p/ipld"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipld"
 	tmstore "github.com/celestiaorg/celestia-core/proto/tendermint/store"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types"

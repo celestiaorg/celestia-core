@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/celestiaorg/celestia-core/ipfs"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 )
 
 const (

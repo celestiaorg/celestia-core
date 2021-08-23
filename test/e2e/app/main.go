@@ -11,12 +11,12 @@ import (
 
 	"github.com/celestiaorg/celestia-core/config"
 	"github.com/celestiaorg/celestia-core/crypto/ed25519"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	tmflags "github.com/celestiaorg/celestia-core/libs/cli/flags"
 	"github.com/celestiaorg/celestia-core/libs/log"
 	tmnet "github.com/celestiaorg/celestia-core/libs/net"
 	"github.com/celestiaorg/celestia-core/node"
 	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	"github.com/celestiaorg/celestia-core/privval"
 	"github.com/celestiaorg/celestia-core/proxy"
 )
