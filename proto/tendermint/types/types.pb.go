@@ -466,11 +466,18 @@ func (m *Data) GetTxs() [][]byte {
 	return nil
 }
 
-func (m *Data) GetIntermediateStateRoots() IntermediateStateRoots {
-	if m != nil {
-		return m.IntermediateStateRoots
-	}
-	return IntermediateStateRoots{}
+// Vote represents a prevote, precommit, or commit vote from validators for
+// consensus.
+type Vote struct {
+	Type             SignedMsgType  `protobuf:"varint,1,opt,name=type,proto3,enum=tendermint.types.SignedMsgType" json:"type,omitempty"`
+	Height           int64          `protobuf:"varint,2,opt,name=height,proto3" json:"height,omitempty"`
+	Round            int32          `protobuf:"varint,3,opt,name=round,proto3" json:"round,omitempty"`
+	BlockID          BlockID        `protobuf:"bytes,4,opt,name=block_id,json=blockId,proto3" json:"block_id"`
+	Timestamp        time.Time      `protobuf:"bytes,5,opt,name=timestamp,proto3,stdtime" json:"timestamp"`
+	ValidatorAddress []byte         `protobuf:"bytes,6,opt,name=validator_address,json=validatorAddress,proto3" json:"validator_address,omitempty"`
+	ValidatorIndex   int32          `protobuf:"varint,7,opt,name=validator_index,json=validatorIndex,proto3" json:"validator_index,omitempty"`
+	Signature        []byte         `protobuf:"bytes,8,opt,name=signature,proto3" json:"signature,omitempty"`
+	VoteExtension    *VoteExtension `protobuf:"bytes,9,opt,name=vote_extension,json=voteExtension,proto3" json:"vote_extension,omitempty"`
 }
 
 func (m *Data) GetEvidence() EvidenceList {
@@ -585,6 +592,112 @@ func (m *Vote) GetSignature() []byte {
 	return nil
 }
 
+func (m *Vote) GetVoteExtension() *VoteExtension {
+	if m != nil {
+		return m.VoteExtension
+	}
+	return nil
+}
+
+// VoteExtension is app-defined additional information to the validator votes.
+type VoteExtension struct {
+	AppDataToSign             []byte `protobuf:"bytes,1,opt,name=app_data_to_sign,json=appDataToSign,proto3" json:"app_data_to_sign,omitempty"`
+	AppDataSelfAuthenticating []byte `protobuf:"bytes,2,opt,name=app_data_self_authenticating,json=appDataSelfAuthenticating,proto3" json:"app_data_self_authenticating,omitempty"`
+}
+
+func (m *VoteExtension) Reset()         { *m = VoteExtension{} }
+func (m *VoteExtension) String() string { return proto.CompactTextString(m) }
+func (*VoteExtension) ProtoMessage()    {}
+func (*VoteExtension) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d3a6e55e2345de56, []int{6}
+}
+func (m *VoteExtension) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *VoteExtension) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_VoteExtension.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *VoteExtension) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_VoteExtension.Merge(m, src)
+}
+func (m *VoteExtension) XXX_Size() int {
+	return m.Size()
+}
+func (m *VoteExtension) XXX_DiscardUnknown() {
+	xxx_messageInfo_VoteExtension.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_VoteExtension proto.InternalMessageInfo
+
+func (m *VoteExtension) GetAppDataToSign() []byte {
+	if m != nil {
+		return m.AppDataToSign
+	}
+	return nil
+}
+
+func (m *VoteExtension) GetAppDataSelfAuthenticating() []byte {
+	if m != nil {
+		return m.AppDataSelfAuthenticating
+	}
+	return nil
+}
+
+// VoteExtensionToSign is a subset of VoteExtension that is signed by the validators private key.
+// VoteExtensionToSign is extracted from an existing VoteExtension.
+type VoteExtensionToSign struct {
+	AppDataToSign []byte `protobuf:"bytes,1,opt,name=app_data_to_sign,json=appDataToSign,proto3" json:"app_data_to_sign,omitempty"`
+}
+
+func (m *VoteExtensionToSign) Reset()         { *m = VoteExtensionToSign{} }
+func (m *VoteExtensionToSign) String() string { return proto.CompactTextString(m) }
+func (*VoteExtensionToSign) ProtoMessage()    {}
+func (*VoteExtensionToSign) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d3a6e55e2345de56, []int{7}
+}
+func (m *VoteExtensionToSign) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *VoteExtensionToSign) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_VoteExtensionToSign.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *VoteExtensionToSign) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_VoteExtensionToSign.Merge(m, src)
+}
+func (m *VoteExtensionToSign) XXX_Size() int {
+	return m.Size()
+}
+func (m *VoteExtensionToSign) XXX_DiscardUnknown() {
+	xxx_messageInfo_VoteExtensionToSign.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_VoteExtensionToSign proto.InternalMessageInfo
+
+func (m *VoteExtensionToSign) GetAppDataToSign() []byte {
+	if m != nil {
+		return m.AppDataToSign
+	}
+	return nil
+}
+
 // Commit contains the evidence that a block was committed by a set of
 // validators.
 type Commit struct {
@@ -594,11 +707,11 @@ type Commit struct {
 	Signatures []CommitSig `protobuf:"bytes,4,rep,name=signatures,proto3" json:"signatures"`
 }
 
-func (m *LightClientAttackEvidence) Reset()         { *m = LightClientAttackEvidence{} }
-func (m *LightClientAttackEvidence) String() string { return proto.CompactTextString(m) }
-func (*LightClientAttackEvidence) ProtoMessage()    {}
-func (*LightClientAttackEvidence) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d3a6e55e2345de56, []int{6}
+func (m *Commit) Reset()         { *m = Commit{} }
+func (m *Commit) String() string { return proto.CompactTextString(m) }
+func (*Commit) ProtoMessage()    {}
+func (*Commit) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d3a6e55e2345de56, []int{8}
 }
 func (m *LightClientAttackEvidence) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -655,25 +768,20 @@ func (m *LightClientAttackEvidence) GetTotalVotingPower() int64 {
 	return 0
 }
 
-func (m *LightClientAttackEvidence) GetTimestamp() time.Time {
-	if m != nil {
-		return m.Timestamp
-	}
-	return time.Time{}
+// CommitSig is a part of the Vote included in a Commit.
+type CommitSig struct {
+	BlockIdFlag      BlockIDFlag          `protobuf:"varint,1,opt,name=block_id_flag,json=blockIdFlag,proto3,enum=tendermint.types.BlockIDFlag" json:"block_id_flag,omitempty"`
+	ValidatorAddress []byte               `protobuf:"bytes,2,opt,name=validator_address,json=validatorAddress,proto3" json:"validator_address,omitempty"`
+	Timestamp        time.Time            `protobuf:"bytes,3,opt,name=timestamp,proto3,stdtime" json:"timestamp"`
+	Signature        []byte               `protobuf:"bytes,4,opt,name=signature,proto3" json:"signature,omitempty"`
+	VoteExtension    *VoteExtensionToSign `protobuf:"bytes,5,opt,name=vote_extension,json=voteExtension,proto3" json:"vote_extension,omitempty"`
 }
 
-type Evidence struct {
-	// Types that are valid to be assigned to Sum:
-	//	*Evidence_DuplicateVoteEvidence
-	//	*Evidence_LightClientAttackEvidence
-	Sum isEvidence_Sum `protobuf_oneof:"sum"`
-}
-
-func (m *Evidence) Reset()         { *m = Evidence{} }
-func (m *Evidence) String() string { return proto.CompactTextString(m) }
-func (*Evidence) ProtoMessage()    {}
-func (*Evidence) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d3a6e55e2345de56, []int{7}
+func (m *CommitSig) Reset()         { *m = CommitSig{} }
+func (m *CommitSig) String() string { return proto.CompactTextString(m) }
+func (*CommitSig) ProtoMessage()    {}
+func (*CommitSig) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d3a6e55e2345de56, []int{9}
 }
 func (m *Evidence) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -739,24 +847,28 @@ func (m *Evidence) GetLightClientAttackEvidence() *LightClientAttackEvidence {
 	return nil
 }
 
-// XXX_OneofWrappers is for the internal use of the proto package.
-func (*Evidence) XXX_OneofWrappers() []interface{} {
-	return []interface{}{
-		(*Evidence_DuplicateVoteEvidence)(nil),
-		(*Evidence_LightClientAttackEvidence)(nil),
+func (m *CommitSig) GetVoteExtension() *VoteExtensionToSign {
+	if m != nil {
+		return m.VoteExtension
 	}
+	return nil
 }
 
-// EvidenceData contains any evidence of malicious wrong-doing by validators
-type EvidenceList struct {
-	Evidence []Evidence `protobuf:"bytes,1,rep,name=evidence,proto3" json:"evidence"`
+type Proposal struct {
+	Type      SignedMsgType `protobuf:"varint,1,opt,name=type,proto3,enum=tendermint.types.SignedMsgType" json:"type,omitempty"`
+	Height    int64         `protobuf:"varint,2,opt,name=height,proto3" json:"height,omitempty"`
+	Round     int32         `protobuf:"varint,3,opt,name=round,proto3" json:"round,omitempty"`
+	PolRound  int32         `protobuf:"varint,4,opt,name=pol_round,json=polRound,proto3" json:"pol_round,omitempty"`
+	BlockID   BlockID       `protobuf:"bytes,5,opt,name=block_id,json=blockId,proto3" json:"block_id"`
+	Timestamp time.Time     `protobuf:"bytes,6,opt,name=timestamp,proto3,stdtime" json:"timestamp"`
+	Signature []byte        `protobuf:"bytes,7,opt,name=signature,proto3" json:"signature,omitempty"`
 }
 
-func (m *EvidenceList) Reset()         { *m = EvidenceList{} }
-func (m *EvidenceList) String() string { return proto.CompactTextString(m) }
-func (*EvidenceList) ProtoMessage()    {}
-func (*EvidenceList) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d3a6e55e2345de56, []int{8}
+func (m *Proposal) Reset()         { *m = Proposal{} }
+func (m *Proposal) String() string { return proto.CompactTextString(m) }
+func (*Proposal) ProtoMessage()    {}
+func (*Proposal) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d3a6e55e2345de56, []int{10}
 }
 func (m *EvidenceList) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -840,11 +952,11 @@ type Messages struct {
 	MessagesList []*Message `protobuf:"bytes,1,rep,name=messages_list,json=messagesList,proto3" json:"messages_list,omitempty"`
 }
 
-func (m *Messages) Reset()         { *m = Messages{} }
-func (m *Messages) String() string { return proto.CompactTextString(m) }
-func (*Messages) ProtoMessage()    {}
-func (*Messages) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d3a6e55e2345de56, []int{10}
+func (m *SignedHeader) Reset()         { *m = SignedHeader{} }
+func (m *SignedHeader) String() string { return proto.CompactTextString(m) }
+func (*SignedHeader) ProtoMessage()    {}
+func (*SignedHeader) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d3a6e55e2345de56, []int{11}
 }
 func (m *Messages) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -885,11 +997,11 @@ type Message struct {
 	Data        []byte `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
 }
 
-func (m *Message) Reset()         { *m = Message{} }
-func (m *Message) String() string { return proto.CompactTextString(m) }
-func (*Message) ProtoMessage()    {}
-func (*Message) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d3a6e55e2345de56, []int{11}
+func (m *LightBlock) Reset()         { *m = LightBlock{} }
+func (m *LightBlock) String() string { return proto.CompactTextString(m) }
+func (*LightBlock) ProtoMessage()    {}
+func (*LightBlock) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d3a6e55e2345de56, []int{12}
 }
 func (m *Message) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -932,28 +1044,18 @@ func (m *Message) GetData() []byte {
 	return nil
 }
 
-// DataAvailabilityHeader contains the row and column roots of the erasure
-// coded version of the data in Block.Data.
-// Therefor the original Block.Data is arranged in a
-// k × k matrix, which is then "extended" to a
-// 2k × 2k matrix applying multiple times Reed-Solomon encoding.
-// For details see Section 5.2: https://arxiv.org/abs/1809.09044
-// or the Celestia specification:
-// https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#availabledataheader
-// Note that currently we list row and column roots in separate fields
-// (different from the spec).
-type DataAvailabilityHeader struct {
-	// RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
-	RowRoots [][]byte `protobuf:"bytes,1,rep,name=row_roots,json=rowRoots,proto3" json:"row_roots,omitempty"`
-	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
-	ColumnRoots [][]byte `protobuf:"bytes,2,rep,name=column_roots,json=columnRoots,proto3" json:"column_roots,omitempty"`
+type BlockMeta struct {
+	BlockID   BlockID `protobuf:"bytes,1,opt,name=block_id,json=blockId,proto3" json:"block_id"`
+	BlockSize int64   `protobuf:"varint,2,opt,name=block_size,json=blockSize,proto3" json:"block_size,omitempty"`
+	Header    Header  `protobuf:"bytes,3,opt,name=header,proto3" json:"header"`
+	NumTxs    int64   `protobuf:"varint,4,opt,name=num_txs,json=numTxs,proto3" json:"num_txs,omitempty"`
 }
 
-func (m *DataAvailabilityHeader) Reset()         { *m = DataAvailabilityHeader{} }
-func (m *DataAvailabilityHeader) String() string { return proto.CompactTextString(m) }
-func (*DataAvailabilityHeader) ProtoMessage()    {}
-func (*DataAvailabilityHeader) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d3a6e55e2345de56, []int{12}
+func (m *BlockMeta) Reset()         { *m = BlockMeta{} }
+func (m *BlockMeta) String() string { return proto.CompactTextString(m) }
+func (*BlockMeta) ProtoMessage()    {}
+func (*BlockMeta) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d3a6e55e2345de56, []int{13}
 }
 func (m *DataAvailabilityHeader) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1004,11 +1106,11 @@ type TxProof struct {
 	Proof    *crypto.Proof `protobuf:"bytes,3,opt,name=proof,proto3" json:"proof,omitempty"`
 }
 
-func (m *Vote) Reset()         { *m = Vote{} }
-func (m *Vote) String() string { return proto.CompactTextString(m) }
-func (*Vote) ProtoMessage()    {}
-func (*Vote) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d3a6e55e2345de56, []int{13}
+func (m *TxProof) Reset()         { *m = TxProof{} }
+func (m *TxProof) String() string { return proto.CompactTextString(m) }
+func (*TxProof) ProtoMessage()    {}
+func (*TxProof) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d3a6e55e2345de56, []int{14}
 }
 func (m *Vote) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1055,14 +1157,122 @@ func (m *Vote) GetRound() int32 {
 	if m != nil {
 		return m.Round
 	}
-	return 0
+	return nil
 }
 
-func (m *Vote) GetBlockID() BlockID {
-	if m != nil {
-		return m.BlockID
-	}
-	return BlockID{}
+func init() {
+	proto.RegisterEnum("tendermint.types.BlockIDFlag", BlockIDFlag_name, BlockIDFlag_value)
+	proto.RegisterEnum("tendermint.types.SignedMsgType", SignedMsgType_name, SignedMsgType_value)
+	proto.RegisterType((*PartSetHeader)(nil), "tendermint.types.PartSetHeader")
+	proto.RegisterType((*Part)(nil), "tendermint.types.Part")
+	proto.RegisterType((*BlockID)(nil), "tendermint.types.BlockID")
+	proto.RegisterType((*Header)(nil), "tendermint.types.Header")
+	proto.RegisterType((*Data)(nil), "tendermint.types.Data")
+	proto.RegisterType((*Vote)(nil), "tendermint.types.Vote")
+	proto.RegisterType((*VoteExtension)(nil), "tendermint.types.VoteExtension")
+	proto.RegisterType((*VoteExtensionToSign)(nil), "tendermint.types.VoteExtensionToSign")
+	proto.RegisterType((*Commit)(nil), "tendermint.types.Commit")
+	proto.RegisterType((*CommitSig)(nil), "tendermint.types.CommitSig")
+	proto.RegisterType((*Proposal)(nil), "tendermint.types.Proposal")
+	proto.RegisterType((*SignedHeader)(nil), "tendermint.types.SignedHeader")
+	proto.RegisterType((*LightBlock)(nil), "tendermint.types.LightBlock")
+	proto.RegisterType((*BlockMeta)(nil), "tendermint.types.BlockMeta")
+	proto.RegisterType((*TxProof)(nil), "tendermint.types.TxProof")
+}
+
+func init() { proto.RegisterFile("tendermint/types/types.proto", fileDescriptor_d3a6e55e2345de56) }
+
+var fileDescriptor_d3a6e55e2345de56 = []byte{
+	// 1423 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xbc, 0x57, 0x4f, 0x6f, 0xdb, 0x64,
+	0x18, 0xaf, 0x13, 0xb7, 0x49, 0x9e, 0xc4, 0x6d, 0xfa, 0xd2, 0x6d, 0x69, 0xb6, 0xa6, 0x91, 0xd1,
+	0x58, 0x37, 0x50, 0x3a, 0x3a, 0xc4, 0x9f, 0x03, 0xa0, 0x24, 0xcd, 0xb6, 0x68, 0x6d, 0x1a, 0x9c,
+	0x6c, 0x08, 0x2e, 0x96, 0x93, 0xbc, 0x4d, 0xcc, 0x1c, 0xdb, 0xb2, 0xdf, 0x94, 0x76, 0x9f, 0x00,
+	0xf5, 0xb4, 0x13, 0xb7, 0x9e, 0xe0, 0x80, 0xc4, 0x05, 0x89, 0x2f, 0x80, 0x38, 0xed, 0xb8, 0x1b,
+	0x9c, 0x06, 0xea, 0x24, 0x3e, 0x07, 0x7a, 0xff, 0xc4, 0xb1, 0x9b, 0x86, 0x4d, 0xd5, 0xc4, 0x25,
+	0xf2, 0xfb, 0x3c, 0xbf, 0xe7, 0xff, 0xcf, 0x8f, 0xdf, 0xc0, 0x35, 0x82, 0xed, 0x1e, 0xf6, 0x86,
+	0xa6, 0x4d, 0x36, 0xc9, 0x91, 0x8b, 0x7d, 0xfe, 0x5b, 0x72, 0x3d, 0x87, 0x38, 0x28, 0x3b, 0xd1,
+	0x96, 0x98, 0x3c, 0xbf, 0xd2, 0x77, 0xfa, 0x0e, 0x53, 0x6e, 0xd2, 0x27, 0x8e, 0xcb, 0xaf, 0xf7,
+	0x1d, 0xa7, 0x6f, 0xe1, 0x4d, 0x76, 0xea, 0x8c, 0xf6, 0x37, 0x89, 0x39, 0xc4, 0x3e, 0x31, 0x86,
+	0xae, 0x00, 0xac, 0x85, 0xc2, 0x74, 0xbd, 0x23, 0x97, 0x38, 0x14, 0xeb, 0xec, 0x0b, 0x75, 0x21,
+	0xa4, 0x3e, 0xc0, 0x9e, 0x6f, 0x3a, 0x76, 0x38, 0x8f, 0x7c, 0x71, 0x2a, 0xcb, 0x03, 0xc3, 0x32,
+	0x7b, 0x06, 0x71, 0x3c, 0x8e, 0x50, 0x3f, 0x01, 0xa5, 0x69, 0x78, 0xa4, 0x85, 0xc9, 0x7d, 0x6c,
+	0xf4, 0xb0, 0x87, 0x56, 0x60, 0x9e, 0x38, 0xc4, 0xb0, 0x72, 0x52, 0x51, 0xda, 0x50, 0x34, 0x7e,
+	0x40, 0x08, 0xe4, 0x81, 0xe1, 0x0f, 0x72, 0xb1, 0xa2, 0xb4, 0x91, 0xd1, 0xd8, 0xb3, 0x3a, 0x00,
+	0x99, 0x9a, 0x52, 0x0b, 0xd3, 0xee, 0xe1, 0xc3, 0xb1, 0x05, 0x3b, 0x50, 0x69, 0xe7, 0x88, 0x60,
+	0x5f, 0x98, 0xf0, 0x03, 0xfa, 0x00, 0xe6, 0x59, 0xfe, 0xb9, 0x78, 0x51, 0xda, 0x48, 0x6f, 0xe5,
+	0x4a, 0xa1, 0x46, 0xf1, 0xfa, 0x4a, 0x4d, 0xaa, 0xaf, 0xc8, 0xcf, 0x5e, 0xac, 0xcf, 0x69, 0x1c,
+	0xac, 0x5a, 0x90, 0xa8, 0x58, 0x4e, 0xf7, 0x71, 0x7d, 0x3b, 0x48, 0x44, 0x9a, 0x24, 0x82, 0x76,
+	0x61, 0xc9, 0x35, 0x3c, 0xa2, 0xfb, 0x98, 0xe8, 0x03, 0x56, 0x05, 0x0b, 0x9a, 0xde, 0x5a, 0x2f,
+	0x9d, 0x9d, 0x43, 0x29, 0x52, 0xac, 0x88, 0xa2, 0xb8, 0x61, 0xa1, 0xfa, 0x8f, 0x0c, 0x0b, 0xa2,
+	0x19, 0x9f, 0x42, 0x42, 0xb4, 0x95, 0x05, 0x4c, 0x6f, 0xad, 0x85, 0x3d, 0x0a, 0x55, 0xa9, 0xea,
+	0xd8, 0x3e, 0xb6, 0xfd, 0x91, 0x2f, 0xfc, 0x8d, 0x6d, 0xd0, 0x3b, 0x90, 0xec, 0x0e, 0x0c, 0xd3,
+	0xd6, 0xcd, 0x1e, 0xcb, 0x28, 0x55, 0x49, 0x9f, 0xbe, 0x58, 0x4f, 0x54, 0xa9, 0xac, 0xbe, 0xad,
+	0x25, 0x98, 0xb2, 0xde, 0x43, 0x97, 0x61, 0x61, 0x80, 0xcd, 0xfe, 0x80, 0xb0, 0xb6, 0xc4, 0x35,
+	0x71, 0x42, 0x1f, 0x83, 0x4c, 0x09, 0x91, 0x93, 0x59, 0xec, 0x7c, 0x89, 0xb3, 0xa5, 0x34, 0x66,
+	0x4b, 0xa9, 0x3d, 0x66, 0x4b, 0x25, 0x49, 0x03, 0x3f, 0xfd, 0x6b, 0x5d, 0xd2, 0x98, 0x05, 0xaa,
+	0x82, 0x62, 0x19, 0x3e, 0xd1, 0x3b, 0xb4, 0x6d, 0x34, 0xfc, 0x3c, 0x73, 0xb1, 0x3a, 0xdd, 0x10,
+	0xd1, 0x58, 0x91, 0x7a, 0x9a, 0x5a, 0x71, 0x51, 0x0f, 0x6d, 0x40, 0x96, 0x39, 0xe9, 0x3a, 0xc3,
+	0xa1, 0x49, 0x74, 0xd6, 0xf7, 0x05, 0xd6, 0xf7, 0x45, 0x2a, 0xaf, 0x32, 0xf1, 0x7d, 0x3a, 0x81,
+	0xab, 0x90, 0xea, 0x19, 0xc4, 0xe0, 0x90, 0x04, 0x83, 0x24, 0xa9, 0x80, 0x29, 0x6f, 0xc0, 0x52,
+	0xc0, 0x3a, 0x9f, 0x43, 0x92, 0xdc, 0xcb, 0x44, 0xcc, 0x80, 0xb7, 0x61, 0xc5, 0xc6, 0x87, 0x44,
+	0x3f, 0x8b, 0x4e, 0x31, 0x34, 0xa2, 0xba, 0x47, 0x51, 0x8b, 0xeb, 0xb0, 0xd8, 0x1d, 0x37, 0x9f,
+	0x63, 0x81, 0x61, 0x95, 0x40, 0xca, 0x60, 0xab, 0x90, 0x34, 0x5c, 0x97, 0x03, 0xd2, 0x0c, 0x90,
+	0x30, 0x5c, 0x97, 0xa9, 0x6e, 0xc1, 0x32, 0xab, 0xd1, 0xc3, 0xfe, 0xc8, 0x22, 0xc2, 0x49, 0x86,
+	0x61, 0x96, 0xa8, 0x42, 0xe3, 0x72, 0x86, 0x7d, 0x1b, 0x14, 0x7c, 0x60, 0xf6, 0xb0, 0xdd, 0xc5,
+	0x1c, 0xa7, 0x30, 0x5c, 0x66, 0x2c, 0x64, 0xa0, 0x9b, 0x90, 0x75, 0x3d, 0xc7, 0x75, 0x7c, 0xec,
+	0xe9, 0x46, 0xaf, 0xe7, 0x61, 0xdf, 0xcf, 0x2d, 0x72, 0x7f, 0x63, 0x79, 0x99, 0x8b, 0xd5, 0x1c,
+	0xc8, 0xdb, 0x06, 0x31, 0x50, 0x16, 0xe2, 0xe4, 0xd0, 0xcf, 0x49, 0xc5, 0xf8, 0x46, 0x46, 0xa3,
+	0x8f, 0xea, 0x2f, 0x71, 0x90, 0x1f, 0x39, 0x04, 0xa3, 0x3b, 0x20, 0xd3, 0x31, 0x31, 0xf6, 0x2d,
+	0x9e, 0xc7, 0xe7, 0x96, 0xd9, 0xb7, 0x71, 0x6f, 0xd7, 0xef, 0xb7, 0x8f, 0x5c, 0xac, 0x31, 0x70,
+	0x88, 0x4e, 0xb1, 0x08, 0x9d, 0x56, 0x60, 0xde, 0x73, 0x46, 0x76, 0x8f, 0xb1, 0x6c, 0x5e, 0xe3,
+	0x07, 0x54, 0x83, 0x64, 0xc0, 0x12, 0xf9, 0x55, 0x2c, 0x59, 0xa2, 0x2c, 0xa1, 0x1c, 0x16, 0x02,
+	0x2d, 0xd1, 0x11, 0x64, 0xa9, 0x40, 0x2a, 0x58, 0x5e, 0x82, 0x6d, 0xaf, 0x47, 0xd8, 0x89, 0x19,
+	0x7a, 0x17, 0x96, 0x83, 0xd9, 0x07, 0xcd, 0xe3, 0x8c, 0xcb, 0x06, 0x0a, 0xd1, 0xbd, 0x08, 0xad,
+	0x74, 0xbe, 0x80, 0x12, 0xac, 0xae, 0x09, 0xad, 0xea, 0x6c, 0x13, 0x5d, 0x83, 0x94, 0x6f, 0xf6,
+	0x6d, 0x83, 0x8c, 0x3c, 0x2c, 0x98, 0x37, 0x11, 0xa0, 0xbb, 0xb0, 0x78, 0xe0, 0x10, 0xac, 0xe3,
+	0x43, 0x82, 0x6d, 0xf6, 0xa6, 0xa7, 0x66, 0xed, 0x0e, 0x3a, 0x91, 0xda, 0x18, 0xa6, 0x29, 0x07,
+	0xe1, 0xa3, 0x7a, 0x04, 0x4a, 0x44, 0x8f, 0x6e, 0x40, 0x96, 0x92, 0x8e, 0xbd, 0x17, 0xc4, 0xd1,
+	0x69, 0x44, 0xb1, 0xb5, 0x14, 0xc3, 0x75, 0xe9, 0xe0, 0xdb, 0x0e, 0x9d, 0x1e, 0xfa, 0x1c, 0xae,
+	0x05, 0x40, 0x1f, 0x5b, 0xfb, 0xba, 0x31, 0x22, 0x03, 0x6c, 0x13, 0xb3, 0x6b, 0x10, 0xd3, 0xee,
+	0x8b, 0x05, 0xba, 0x2a, 0x8c, 0x5a, 0xd8, 0xda, 0x2f, 0x47, 0x00, 0xea, 0x67, 0xf0, 0x56, 0x24,
+	0xb4, 0xf0, 0xfb, 0xba, 0x09, 0xa8, 0xbf, 0x49, 0xb0, 0xc0, 0x5f, 0xe6, 0x10, 0x75, 0xa4, 0xf3,
+	0xa9, 0x13, 0x9b, 0x45, 0x9d, 0xf8, 0xc5, 0xa9, 0x53, 0x06, 0x08, 0xe6, 0xe1, 0xe7, 0xe4, 0x62,
+	0x7c, 0x23, 0xbd, 0x75, 0x75, 0xda, 0x11, 0x4f, 0xb1, 0x65, 0xf6, 0xc5, 0xae, 0x0a, 0x19, 0xa9,
+	0x3f, 0xc7, 0x20, 0x15, 0xe8, 0x51, 0x19, 0x94, 0x71, 0x5e, 0xfa, 0xbe, 0x65, 0xf4, 0xc5, 0xeb,
+	0xb3, 0x36, 0x33, 0xb9, 0xbb, 0x96, 0xd1, 0xd7, 0xd2, 0x22, 0x1f, 0x7a, 0x38, 0x9f, 0x8a, 0xb1,
+	0x19, 0x54, 0x8c, 0x70, 0x3f, 0x7e, 0x31, 0xee, 0x47, 0x58, 0x2a, 0x9f, 0x65, 0xe9, 0xce, 0x14,
+	0x4b, 0xf9, 0x2b, 0x76, 0xfd, 0x15, 0x2c, 0xe5, 0x13, 0x3e, 0xcb, 0xd5, 0x5f, 0x63, 0x90, 0x6c,
+	0xb2, 0x65, 0x64, 0x58, 0xff, 0xc7, 0x8a, 0xb9, 0x0a, 0x29, 0xd7, 0xb1, 0x74, 0xae, 0x91, 0x99,
+	0x26, 0xe9, 0x3a, 0x96, 0x36, 0x45, 0xa2, 0xf9, 0x37, 0xb4, 0x7f, 0x16, 0xde, 0xc0, 0x0c, 0x12,
+	0x67, 0x66, 0xa0, 0x7a, 0x90, 0xe1, 0xad, 0x10, 0x97, 0x83, 0xdb, 0xb4, 0x07, 0xec, 0xb6, 0x21,
+	0x4d, 0x5f, 0x66, 0x78, 0xda, 0x1c, 0xa9, 0x09, 0x1c, 0xb5, 0xe0, 0xdf, 0x52, 0x71, 0x3f, 0xc9,
+	0xcd, 0x22, 0xb9, 0x26, 0x70, 0xea, 0xf7, 0x12, 0xc0, 0x0e, 0xed, 0x2c, 0xab, 0x97, 0x7e, 0xd6,
+	0x7d, 0x96, 0x82, 0x1e, 0x89, 0x5c, 0x98, 0x35, 0x34, 0x11, 0x3f, 0xe3, 0x87, 0xf3, 0xae, 0x82,
+	0x32, 0xa1, 0xb6, 0x8f, 0xc7, 0xc9, 0x9c, 0xe3, 0x24, 0xf8, 0xda, 0xb6, 0x30, 0xd1, 0x32, 0x07,
+	0xa1, 0x93, 0xfa, 0xbb, 0x04, 0x29, 0x96, 0xd3, 0x2e, 0x26, 0x46, 0x64, 0x86, 0xd2, 0xc5, 0x67,
+	0xb8, 0x06, 0xc0, 0xdd, 0xf8, 0xe6, 0x13, 0x2c, 0x98, 0x95, 0x62, 0x92, 0x96, 0xf9, 0x04, 0xa3,
+	0x0f, 0x83, 0x86, 0xc7, 0xff, 0xbb, 0xe1, 0x62, 0x41, 0x8c, 0xdb, 0x7e, 0x05, 0x12, 0xf6, 0x68,
+	0xa8, 0xd3, 0x6f, 0xac, 0xcc, 0xd9, 0x6a, 0x8f, 0x86, 0xed, 0x43, 0x5f, 0xfd, 0x06, 0x12, 0xed,
+	0x43, 0x76, 0xdf, 0xa4, 0x14, 0xf5, 0x1c, 0x47, 0x5c, 0x72, 0xf8, 0x96, 0x4c, 0x52, 0x01, 0xfb,
+	0xa6, 0x23, 0x90, 0xe9, 0x16, 0x1d, 0xdf, 0x7e, 0xe9, 0x33, 0x2a, 0xbd, 0xe6, 0x4d, 0x56, 0xdc,
+	0x61, 0x6f, 0xfd, 0x21, 0x41, 0x3a, 0xb4, 0x6d, 0xd0, 0xfb, 0x70, 0xa9, 0xb2, 0xb3, 0x57, 0x7d,
+	0xa0, 0xd7, 0xb7, 0xf5, 0xbb, 0x3b, 0xe5, 0x7b, 0xfa, 0xc3, 0xc6, 0x83, 0xc6, 0xde, 0x97, 0x8d,
+	0xec, 0x5c, 0xfe, 0xf2, 0xf1, 0x49, 0x11, 0x85, 0xb0, 0x0f, 0xed, 0xc7, 0xb6, 0xf3, 0xad, 0x8d,
+	0x36, 0x61, 0x25, 0x6a, 0x52, 0xae, 0xb4, 0x6a, 0x8d, 0x76, 0x56, 0xca, 0x5f, 0x3a, 0x3e, 0x29,
+	0x2e, 0x87, 0x2c, 0xca, 0x1d, 0x1f, 0xdb, 0x64, 0xda, 0xa0, 0xba, 0xb7, 0xbb, 0x5b, 0x6f, 0x67,
+	0x63, 0x53, 0x06, 0x62, 0xfd, 0xdf, 0x84, 0xe5, 0xa8, 0x41, 0xa3, 0xbe, 0x93, 0x8d, 0xe7, 0xd1,
+	0xf1, 0x49, 0x71, 0x31, 0x84, 0x6e, 0x98, 0x56, 0x3e, 0xf9, 0xdd, 0x0f, 0x85, 0xb9, 0x9f, 0x7e,
+	0x2c, 0x48, 0xb4, 0x32, 0x25, 0xb2, 0x23, 0xd0, 0x7b, 0x70, 0xa5, 0x55, 0xbf, 0xd7, 0xa8, 0x6d,
+	0xeb, 0xbb, 0xad, 0x7b, 0x7a, 0xfb, 0xab, 0x66, 0x2d, 0x54, 0xdd, 0xd2, 0xf1, 0x49, 0x31, 0x2d,
+	0x4a, 0x9a, 0x85, 0x6e, 0x6a, 0xb5, 0x47, 0x7b, 0xed, 0x5a, 0x56, 0xe2, 0xe8, 0xa6, 0x87, 0xe9,
+	0x02, 0x63, 0xe8, 0xdb, 0xb0, 0x7a, 0x0e, 0x3a, 0x28, 0x6c, 0xf9, 0xf8, 0xa4, 0xa8, 0x34, 0x3d,
+	0xcc, 0xdf, 0x1f, 0x66, 0x51, 0x82, 0xdc, 0xb4, 0xc5, 0x5e, 0x73, 0xaf, 0x55, 0xde, 0xc9, 0x16,
+	0xf3, 0xd9, 0xe3, 0x93, 0x62, 0x66, 0xbc, 0x0c, 0x29, 0x7e, 0x52, 0x59, 0xe5, 0x8b, 0x67, 0xa7,
+	0x05, 0xe9, 0xf9, 0x69, 0x41, 0xfa, 0xfb, 0xb4, 0x20, 0x3d, 0x7d, 0x59, 0x98, 0x7b, 0xfe, 0xb2,
+	0x30, 0xf7, 0xe7, 0xcb, 0xc2, 0xdc, 0xd7, 0x1f, 0xf5, 0x4d, 0x32, 0x18, 0x75, 0x4a, 0x5d, 0x67,
+	0xb8, 0x19, 0xfe, 0x8f, 0x35, 0x79, 0xe4, 0xff, 0xf5, 0xce, 0xfe, 0xff, 0xea, 0x2c, 0x30, 0xf9,
+	0x9d, 0x7f, 0x03, 0x00, 0x00, 0xff, 0xff, 0x38, 0xfc, 0x14, 0xb1, 0x40, 0x0e, 0x00, 0x00,
 }
 
 func (m *Vote) GetTimestamp() time.Time {
@@ -1288,9 +1498,57 @@ func (m *Proposal) GetHeight() int64 {
 	return 0
 }
 
-func (m *Proposal) GetRound() int32 {
-	if m != nil {
-		return m.Round
+func (m *Vote) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.VoteExtension != nil {
+		{
+			size, err := m.VoteExtension.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintTypes(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x4a
+	}
+	if len(m.Signature) > 0 {
+		i -= len(m.Signature)
+		copy(dAtA[i:], m.Signature)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.Signature)))
+		i--
+		dAtA[i] = 0x42
+	}
+	if m.ValidatorIndex != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.ValidatorIndex))
+		i--
+		dAtA[i] = 0x38
+	}
+	if len(m.ValidatorAddress) > 0 {
+		i -= len(m.ValidatorAddress)
+		copy(dAtA[i:], m.ValidatorAddress)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.ValidatorAddress)))
+		i--
+		dAtA[i] = 0x32
+	}
+	n7, err7 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err7 != nil {
+		return 0, err7
+	}
+	i -= n7
+	i = encodeVarintTypes(dAtA, i, uint64(n7))
+	i--
+	dAtA[i] = 0x2a
+	{
+		size, err := m.BlockID.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintTypes(dAtA, i, uint64(size))
 	}
 	return 0
 }
@@ -1316,9 +1574,79 @@ func (m *Proposal) GetTimestamp() time.Time {
 	return time.Time{}
 }
 
-func (m *Proposal) GetSignature() []byte {
-	if m != nil {
-		return m.Signature
+func (m *VoteExtension) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *VoteExtension) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *VoteExtension) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.AppDataSelfAuthenticating) > 0 {
+		i -= len(m.AppDataSelfAuthenticating)
+		copy(dAtA[i:], m.AppDataSelfAuthenticating)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.AppDataSelfAuthenticating)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.AppDataToSign) > 0 {
+		i -= len(m.AppDataToSign)
+		copy(dAtA[i:], m.AppDataToSign)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.AppDataToSign)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *VoteExtensionToSign) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *VoteExtensionToSign) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *VoteExtensionToSign) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.AppDataToSign) > 0 {
+		i -= len(m.AppDataToSign)
+		copy(dAtA[i:], m.AppDataToSign)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.AppDataToSign)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Commit) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
 	}
 	return nil
 }
@@ -1380,25 +1708,44 @@ type LightBlock struct {
 	ValidatorSet *ValidatorSet `protobuf:"bytes,2,opt,name=validator_set,json=validatorSet,proto3" json:"validator_set,omitempty"`
 }
 
-func (m *LightBlock) Reset()         { *m = LightBlock{} }
-func (m *LightBlock) String() string { return proto.CompactTextString(m) }
-func (*LightBlock) ProtoMessage()    {}
-func (*LightBlock) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d3a6e55e2345de56, []int{18}
-}
-func (m *LightBlock) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *LightBlock) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_LightBlock.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
+func (m *CommitSig) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.VoteExtension != nil {
+		{
+			size, err := m.VoteExtension.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintTypes(dAtA, i, uint64(size))
 		}
-		return b[:n], nil
+		i--
+		dAtA[i] = 0x2a
+	}
+	if len(m.Signature) > 0 {
+		i -= len(m.Signature)
+		copy(dAtA[i:], m.Signature)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.Signature)))
+		i--
+		dAtA[i] = 0x22
+	}
+	n11, err11 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err11 != nil {
+		return 0, err11
+	}
+	i -= n11
+	i = encodeVarintTypes(dAtA, i, uint64(n11))
+	i--
+	dAtA[i] = 0x1a
+	if len(m.ValidatorAddress) > 0 {
+		i -= len(m.ValidatorAddress)
+		copy(dAtA[i:], m.ValidatorAddress)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.ValidatorAddress)))
+		i--
+		dAtA[i] = 0x12
 	}
 }
 func (m *LightBlock) XXX_Merge(src proto.Message) {
@@ -1471,52 +1818,16 @@ func (m *BlockMeta) GetBlockID() BlockID {
 	if m != nil {
 		return m.BlockID
 	}
-	return BlockID{}
-}
-
-func (m *BlockMeta) GetBlockSize() int64 {
-	if m != nil {
-		return m.BlockSize
+	n12, err12 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err12 != nil {
+		return 0, err12
 	}
-	return 0
-}
-
-func (m *BlockMeta) GetHeader() Header {
-	if m != nil {
-		return m.Header
-	}
-	return Header{}
-}
-
-func (m *BlockMeta) GetNumTxs() int64 {
-	if m != nil {
-		return m.NumTxs
-	}
-	return 0
-}
-
-// TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
-type TxProof struct {
-	RootHash []byte        `protobuf:"bytes,1,opt,name=root_hash,json=rootHash,proto3" json:"root_hash,omitempty"`
-	Data     []byte        `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
-	Proof    *crypto.Proof `protobuf:"bytes,3,opt,name=proof,proto3" json:"proof,omitempty"`
-}
-
-func (m *TxProof) Reset()         { *m = TxProof{} }
-func (m *TxProof) String() string { return proto.CompactTextString(m) }
-func (*TxProof) ProtoMessage()    {}
-func (*TxProof) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d3a6e55e2345de56, []int{20}
-}
-func (m *TxProof) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *TxProof) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_TxProof.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
+	i -= n12
+	i = encodeVarintTypes(dAtA, i, uint64(n12))
+	i--
+	dAtA[i] = 0x32
+	{
+		size, err := m.BlockID.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return nil, err
 		}
@@ -2258,7 +2569,41 @@ func (m *IntermediateStateRoots) Marshal() (dAtA []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
-	return dAtA[:n], nil
+	if m.VoteExtension != nil {
+		l = m.VoteExtension.Size()
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	return n
+}
+
+func (m *VoteExtension) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.AppDataToSign)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	l = len(m.AppDataSelfAuthenticating)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	return n
+}
+
+func (m *VoteExtensionToSign) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.AppDataToSign)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	return n
 }
 
 func (m *IntermediateStateRoots) MarshalTo(dAtA []byte) (int, error) {
@@ -2290,7 +2635,21 @@ func (m *Messages) Marshal() (dAtA []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
-	return dAtA[:n], nil
+	l = len(m.ValidatorAddress)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp)
+	n += 1 + l + sovTypes(uint64(l))
+	l = len(m.Signature)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	if m.VoteExtension != nil {
+		l = m.VoteExtension.Size()
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	return n
 }
 
 func (m *Messages) MarshalTo(dAtA []byte) (int, error) {
@@ -5609,6 +5968,244 @@ func (m *Vote) Unmarshal(dAtA []byte) error {
 				m.Signature = []byte{}
 			}
 			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field VoteExtension", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.VoteExtension == nil {
+				m.VoteExtension = &VoteExtension{}
+			}
+			if err := m.VoteExtension.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *VoteExtension) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: VoteExtension: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: VoteExtension: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AppDataToSign", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AppDataToSign = append(m.AppDataToSign[:0], dAtA[iNdEx:postIndex]...)
+			if m.AppDataToSign == nil {
+				m.AppDataToSign = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AppDataSelfAuthenticating", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AppDataSelfAuthenticating = append(m.AppDataSelfAuthenticating[:0], dAtA[iNdEx:postIndex]...)
+			if m.AppDataSelfAuthenticating == nil {
+				m.AppDataSelfAuthenticating = []byte{}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *VoteExtensionToSign) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: VoteExtensionToSign: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: VoteExtensionToSign: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AppDataToSign", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AppDataToSign = append(m.AppDataToSign[:0], dAtA[iNdEx:postIndex]...)
+			if m.AppDataToSign == nil {
+				m.AppDataToSign = []byte{}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])
@@ -5932,6 +6529,42 @@ func (m *CommitSig) Unmarshal(dAtA []byte) error {
 			m.Signature = append(m.Signature[:0], dAtA[iNdEx:postIndex]...)
 			if m.Signature == nil {
 				m.Signature = []byte{}
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field VoteExtension", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.VoteExtension == nil {
+				m.VoteExtension = &VoteExtensionToSign{}
+			}
+			if err := m.VoteExtension.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
 			}
 			iNdEx = postIndex
 		default:
