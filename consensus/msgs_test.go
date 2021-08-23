@@ -28,7 +28,8 @@ func TestMsgToProto(t *testing.T) {
 	}
 	pbPsh := psh.ToProto()
 	bi := types.BlockID{
-		Hash: tmrand.Bytes(32),
+		Hash:          tmrand.Bytes(32),
+		PartSetHeader: psh,
 	}
 	pbBi := bi.ToProto()
 	bits := bits.NewBitArray(1)
@@ -50,14 +51,13 @@ func TestMsgToProto(t *testing.T) {
 	roots, err := types.NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
 	require.NoError(t, err)
 	proposal := types.Proposal{
-		Type:          tmproto.ProposalType,
-		Height:        1,
-		Round:         1,
-		POLRound:      1,
-		BlockID:       bi,
-		PartSetHeader: psh,
-		Timestamp:     time.Now(),
-		Signature:     tmrand.Bytes(20),
+		Type:      tmproto.ProposalType,
+		Height:    1,
+		Round:     1,
+		POLRound:  1,
+		BlockID:   bi,
+		Timestamp: time.Now(),
+		Signature: tmrand.Bytes(20),
 		DAHeader: &types.DataAvailabilityHeader{
 			RowsRoots:   roots,
 			ColumnRoots: roots,
@@ -72,7 +72,7 @@ func TestMsgToProto(t *testing.T) {
 	val := types.NewValidator(pk, 100)
 
 	vote, err := types.MakeVote(
-		1, types.BlockID{}, types.PartSetHeader{}, &types.ValidatorSet{Proposer: val, Validators: []*types.Validator{val}},
+		1, types.BlockID{}, &types.ValidatorSet{Proposer: val, Validators: []*types.Validator{val}},
 		pv, "chainID", time.Now())
 	require.NoError(t, err)
 	pbVote := vote.ToProto()
@@ -162,38 +162,34 @@ func TestMsgToProto(t *testing.T) {
 			},
 		}, false},
 		{"successful VoteSetMaj23", &VoteSetMaj23Message{
-			Height:        1,
-			Round:         1,
-			Type:          1,
-			BlockID:       bi,
-			PartSetHeader: psh,
+			Height:  1,
+			Round:   1,
+			Type:    1,
+			BlockID: bi,
 		}, &tmcons.Message{
 			Sum: &tmcons.Message_VoteSetMaj23{
 				VoteSetMaj23: &tmcons.VoteSetMaj23{
-					Height:        1,
-					Round:         1,
-					Type:          1,
-					BlockID:       pbBi,
-					PartSetHeader: &pbPsh,
+					Height:  1,
+					Round:   1,
+					Type:    1,
+					BlockID: pbBi,
 				},
 			},
 		}, false},
 		{"successful VoteSetBits", &VoteSetBitsMessage{
-			Height:        1,
-			Round:         1,
-			Type:          1,
-			BlockID:       bi,
-			PartSetHeader: psh,
-			Votes:         bits,
+			Height:  1,
+			Round:   1,
+			Type:    1,
+			BlockID: bi,
+			Votes:   bits,
 		}, &tmcons.Message{
 			Sum: &tmcons.Message_VoteSetBits{
 				VoteSetBits: &tmcons.VoteSetBits{
-					Height:        1,
-					Round:         1,
-					Type:          1,
-					BlockID:       pbBi,
-					PartSetHeader: &pbPsh,
-					Votes:         *pbBits,
+					Height:  1,
+					Round:   1,
+					Type:    1,
+					BlockID: pbBi,
+					Votes:   *pbBits,
 				},
 			},
 		}, false},
@@ -337,7 +333,8 @@ func TestConsMsgsVectors(t *testing.T) {
 	pbPsh := psh.ToProto()
 
 	bi := types.BlockID{
-		Hash: []byte("add_more_exclamation_marks_code-"),
+		Hash:          []byte("add_more_exclamation_marks_code-"),
+		PartSetHeader: psh,
 	}
 	pbBi := bi.ToProto()
 	bits := bits.NewBitArray(1)
@@ -357,15 +354,14 @@ func TestConsMsgsVectors(t *testing.T) {
 	require.NoError(t, err)
 
 	proposal := types.Proposal{
-		Type:          tmproto.ProposalType,
-		Height:        1,
-		Round:         1,
-		POLRound:      1,
-		BlockID:       bi,
-		Timestamp:     date,
-		Signature:     []byte("add_more_exclamation"),
-		DAHeader:      &types.DataAvailabilityHeader{},
-		PartSetHeader: psh,
+		Type:      tmproto.ProposalType,
+		Height:    1,
+		Round:     1,
+		POLRound:  1,
+		BlockID:   bi,
+		Timestamp: date,
+		Signature: []byte("add_more_exclamation"),
+		DAHeader:  &types.DataAvailabilityHeader{},
 	}
 	pbProposal, err := proposal.ToProto()
 	require.NoError(t, err)
@@ -378,7 +374,6 @@ func TestConsMsgsVectors(t *testing.T) {
 		Timestamp:        date,
 		Type:             tmproto.PrecommitType,
 		BlockID:          bi,
-		PartSetHeader:    psh,
 	}
 	vpb := v.ToProto()
 
@@ -406,7 +401,7 @@ func TestConsMsgsVectors(t *testing.T) {
 				Height: 1, Round: 1, BlockPartSetHeader: pbPsh, BlockParts: pbBits, IsCommit: false}}},
 			"1231080110011a24080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d22050801120100"},
 		{"Proposal", &tmcons.Message{Sum: &tmcons.Message_Proposal{Proposal: &tmcons.Proposal{Proposal: *pbProposal}}},
-			"1a740a7208201001180120012a220a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d320608c0b89fdc053a146164645f6d6f72655f6578636c616d6174696f6e42004a24080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d"},
+			"1a740a7208201001180120012a480a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d1224080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d320608c0b89fdc053a146164645f6d6f72655f6578636c616d6174696f6e4200"},
 		{"ProposalPol", &tmcons.Message{Sum: &tmcons.Message_ProposalPol{
 			ProposalPol: &tmcons.ProposalPOL{Height: 1, ProposalPolRound: 1}}},
 			"2206080110011a00"},
@@ -415,7 +410,7 @@ func TestConsMsgsVectors(t *testing.T) {
 			"2a36080110011a3008011204746573741a26080110011a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d"},
 		{"Vote", &tmcons.Message{Sum: &tmcons.Message_Vote{
 			Vote: &tmcons.Vote{Vote: vpb}}},
-			"32700a6e0802100122220a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d2a0608c0b89fdc0532146164645f6d6f72655f6578636c616d6174696f6e38014a24080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d"},
+			"32700a6e0802100122480a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d1224080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d2a0608c0b89fdc0532146164645f6d6f72655f6578636c616d6174696f6e3801"},
 		{"HasVote", &tmcons.Message{Sum: &tmcons.Message_HasVote{
 			HasVote: &tmcons.HasVote{Height: 1, Round: 1, Type: tmproto.PrevoteType, Index: 1}}},
 			"3a080801100118012001"},
@@ -424,11 +419,11 @@ func TestConsMsgsVectors(t *testing.T) {
 				Type: tmproto.PrevoteType, Index: math.MaxInt32}}},
 			"3a1808ffffffffffffffff7f10ffffffff07180120ffffffff07"},
 		{"VoteSetMaj23", &tmcons.Message{Sum: &tmcons.Message_VoteSetMaj23{
-			VoteSetMaj23: &tmcons.VoteSetMaj23{Height: 1, Round: 1, Type: tmproto.PrevoteType, BlockID: pbBi, PartSetHeader: &pbPsh}}},
-			"425008011001180122220a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d2a24080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d"},
+			VoteSetMaj23: &tmcons.VoteSetMaj23{Height: 1, Round: 1, Type: tmproto.PrevoteType, BlockID: pbBi}}},
+			"425008011001180122480a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d1224080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d"},
 		{"VoteSetBits", &tmcons.Message{Sum: &tmcons.Message_VoteSetBits{
-			VoteSetBits: &tmcons.VoteSetBits{Height: 1, Round: 1, Type: tmproto.PrevoteType, BlockID: pbBi, PartSetHeader: &pbPsh, Votes: *pbBits}}},
-			"4a5708011001180122220a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d2a24080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d32050801120100"},
+			VoteSetBits: &tmcons.VoteSetBits{Height: 1, Round: 1, Type: tmproto.PrevoteType, BlockID: pbBi, Votes: *pbBits}}},
+			"4a5708011001180122480a206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d1224080112206164645f6d6f72655f6578636c616d6174696f6e5f6d61726b735f636f64652d2a050801120100"},
 	}
 
 	for _, tc := range testCases {

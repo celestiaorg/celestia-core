@@ -150,17 +150,17 @@ func (hvs *HeightVoteSet) Precommits(round int32) *types.VoteSet {
 
 // Last round and blockID that has +2/3 prevotes for a particular block or nil.
 // Returns -1 if no such round exists.
-func (hvs *HeightVoteSet) POLInfo() (polRound int32, polBlockID types.BlockID, polPSH types.PartSetHeader) {
+func (hvs *HeightVoteSet) POLInfo() (polRound int32, polBlockID types.BlockID) {
 	hvs.mtx.Lock()
 	defer hvs.mtx.Unlock()
 	for r := hvs.round; r >= 0; r-- {
 		rvs := hvs.getVoteSet(r, tmproto.PrevoteType)
-		polBlockID, polPSH, ok := rvs.TwoThirdsMajority()
+		polBlockID, ok := rvs.TwoThirdsMajority()
 		if ok {
-			return r, polBlockID, polPSH
+			return r, polBlockID
 		}
 	}
-	return -1, types.BlockID{}, types.PartSetHeader{}
+	return -1, types.BlockID{}
 }
 
 func (hvs *HeightVoteSet) getVoteSet(round int32, voteType tmproto.SignedMsgType) *types.VoteSet {
@@ -186,9 +186,7 @@ func (hvs *HeightVoteSet) SetPeerMaj23(
 	round int32,
 	voteType tmproto.SignedMsgType,
 	peerID p2p.ID,
-	blockID types.BlockID,
-	partSetHeader types.PartSetHeader,
-) error {
+	blockID types.BlockID) error {
 	hvs.mtx.Lock()
 	defer hvs.mtx.Unlock()
 	if !types.IsVoteTypeValid(voteType) {
@@ -198,7 +196,7 @@ func (hvs *HeightVoteSet) SetPeerMaj23(
 	if voteSet == nil {
 		return nil // something we don't know about yet
 	}
-	return voteSet.SetPeerMaj23(types.P2PID(peerID), blockID, partSetHeader)
+	return voteSet.SetPeerMaj23(types.P2PID(peerID), blockID)
 }
 
 //---------------------------------------------------------

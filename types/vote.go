@@ -56,7 +56,6 @@ type Vote struct {
 	ValidatorAddress Address               `json:"validator_address"`
 	ValidatorIndex   int32                 `json:"validator_index"`
 	Signature        []byte                `json:"signature"`
-	PartSetHeader    PartSetHeader         `json:"part_set_header"`
 }
 
 // CommitSig converts the Vote to a CommitSig.
@@ -176,10 +175,6 @@ func (vote *Vote) ValidateBasic() error {
 		return fmt.Errorf("wrong BlockID: %v", err)
 	}
 
-	if err := vote.PartSetHeader.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong PartSetHeader: %v", err)
-	}
-
 	// BlockID.ValidateBasic would not err if we for instance have an empty hash but a
 	// non-empty PartsSetHeader:
 	if !vote.BlockID.IsZero() && !vote.BlockID.IsComplete() {
@@ -213,8 +208,6 @@ func (vote *Vote) ToProto() *tmproto.Vote {
 		return nil
 	}
 
-	psh := vote.PartSetHeader.ToProto()
-
 	return &tmproto.Vote{
 		Type:             vote.Type,
 		Height:           vote.Height,
@@ -224,7 +217,6 @@ func (vote *Vote) ToProto() *tmproto.Vote {
 		ValidatorAddress: vote.ValidatorAddress,
 		ValidatorIndex:   vote.ValidatorIndex,
 		Signature:        vote.Signature,
-		PartSetHeader:    &psh,
 	}
 }
 
@@ -240,11 +232,6 @@ func VoteFromProto(pv *tmproto.Vote) (*Vote, error) {
 		return nil, err
 	}
 
-	psh, err := PartSetHeaderFromProto(pv.PartSetHeader)
-	if err != nil {
-		return nil, err
-	}
-
 	vote := new(Vote)
 	vote.Type = pv.Type
 	vote.Height = pv.Height
@@ -254,7 +241,6 @@ func VoteFromProto(pv *tmproto.Vote) (*Vote, error) {
 	vote.ValidatorAddress = pv.ValidatorAddress
 	vote.ValidatorIndex = pv.ValidatorIndex
 	vote.Signature = pv.Signature
-	vote.PartSetHeader = *psh
 
 	return vote, vote.ValidateBasic()
 }

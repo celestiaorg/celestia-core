@@ -177,10 +177,7 @@ func (blockExec *BlockExecutor) ValidateBlock(state State, block *types.Block) e
 // from outside this package to process and commit an entire block.
 // It takes a blockID to avoid recomputing the parts hash.
 func (blockExec *BlockExecutor) ApplyBlock(
-	state State,
-	blockID types.BlockID,
-	partSetHeader types.PartSetHeader,
-	block *types.Block,
+	state State, blockID types.BlockID, block *types.Block,
 ) (State, int64, error) {
 
 	if err := validateBlock(state, block); err != nil {
@@ -220,7 +217,7 @@ func (blockExec *BlockExecutor) ApplyBlock(
 	}
 
 	// Update the state with the block and responses.
-	state, err = updateState(state, blockID, partSetHeader, &block.Header, abciResponses, validatorUpdates)
+	state, err = updateState(state, blockID, &block.Header, abciResponses, validatorUpdates)
 	if err != nil {
 		return state, 0, fmt.Errorf("commit failed for application: %v", err)
 	}
@@ -456,7 +453,6 @@ func validateValidatorUpdates(abciUpdates []abci.ValidatorUpdate,
 func updateState(
 	state State,
 	blockID types.BlockID,
-	partSetHeader types.PartSetHeader,
 	header *types.Header,
 	abciResponses *tmstate.ABCIResponses,
 	validatorUpdates []*types.Validator,
@@ -507,7 +503,6 @@ func updateState(
 		InitialHeight:                    state.InitialHeight,
 		LastBlockHeight:                  header.Height,
 		LastBlockID:                      blockID,
-		LastPartSetHeader:                partSetHeader,
 		LastBlockTime:                    header.Time,
 		NextValidators:                   nValSet,
 		Validators:                       state.NextValidators.Copy(),

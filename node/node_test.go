@@ -320,7 +320,7 @@ func TestCreateProposalBlock(t *testing.T) {
 		evidencePool,
 	)
 
-	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil, types.PartSetHeader{})
+	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
 	block, _ := blockExec.CreateProposalBlock(
 		height,
 		state, commit,
@@ -389,7 +389,7 @@ func TestMaxTxsProposalBlockSize(t *testing.T) {
 		sm.EmptyEvidencePool{},
 	)
 
-	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil, types.PartSetHeader{})
+	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
 	block, _ := blockExec.CreateProposalBlock(
 		height,
 		state, commit,
@@ -458,16 +458,15 @@ func TestMaxProposalBlockSize(t *testing.T) {
 
 	blockID := types.BlockID{
 		Hash: tmhash.Sum([]byte("blockID_hash")),
-	}
-	psh := types.PartSetHeader{
-		Total: math.MaxInt32,
-		Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
+		PartSetHeader: types.PartSetHeader{
+			Total: math.MaxInt32,
+			Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
+		},
 	}
 
 	timestamp := time.Date(math.MaxInt64, 0, 0, 0, 0, 0, math.MaxInt64, time.UTC)
 	// change state in order to produce the largest accepted header
 	state.LastBlockID = blockID
-	state.LastPartSetHeader = psh
 	state.LastBlockHeight = math.MaxInt64 - 1
 	state.LastBlockTime = timestamp
 	state.LastResultsHash = tmhash.Sum([]byte("last_results_hash"))
@@ -488,10 +487,9 @@ func TestMaxProposalBlockSize(t *testing.T) {
 	}
 
 	commit := &types.Commit{
-		Height:        math.MaxInt64,
-		Round:         math.MaxInt32,
-		BlockID:       blockID,
-		PartSetHeader: psh,
+		Height:  math.MaxInt64,
+		Round:   math.MaxInt32,
+		BlockID: blockID,
 	}
 
 	// add maximum amount of signatures to a single commit
