@@ -6,13 +6,21 @@
 
 ## Context
 
-Currently our fork of tendermint includes changes to how to erasure block data, minor changes to the header to commit to that data, additions to serve data availability sampling, along with some miscellaneous modification to adhere to the spec. Instead of incorporating all of these changes into our fork of tendermint, we will only make the strictly necessary changes and the other services and their code to the new celestia-node repo. Notably, we will also refactor some of the remaining necessary changes to be more isolated from the rest of the tendermint codebase. Both of these strategies should significantly streamline pulling updates from upstream, and allow us to iterate faster since most changes will be isolated to celestia-node. 
+Currently, our fork of tendermint includes changes to how to erasure block data, minor changes to the header to commit to that data, additions to serve data availability sampling, along with some miscellaneous modification to adhere to the spec. Instead of incorporating all of these changes into our fork of tendermint, we will only make the strictly necessary changes and the other services and their code to the new celestia-node repo. Notably, we will also refactor some of the remaining necessary changes to be more isolated from the rest of the tendermint codebase. Both of these strategies should significantly streamline pulling updates from upstream, and allow us to iterate faster since most changes will be isolated to celestia-node.
 
 ## Decision
 
 Treat tendermint more as a "black box".
 
 ## Detailed Design
+
+### Overview
+
+We keep the bare-minimum changes to tendermint in our fork, celestia-core. Where necessary and possible we augment the tendermint node in a separate process, via celestia-node, which communicates with the tendermint node via RPC. All data availability sampling logic, including all Celestia-specific networking logic not already provided by tendermint, is moved into celestia node:
+
+![](./img/core-node-relation.png)
+
+The detailed design of celestia-node will be defined in the repository itself.
 
 ### Necessary changes to tendermint
 
@@ -23,7 +31,7 @@ Treat tendermint more as a "black box".
  - update github templates (https://github.com/celestiaorg/celestia-core/pull/405)
  - update README.md (https://github.com/celestiaorg/celestia-core/pull/10)
 
-#### Adding the extra types of block data 
+#### Adding the extra types of block data
  - Update core data types (https://github.com/celestiaorg/celestia-core/pull/17)
    - Create the Message/Messages types
    - Proto and the tendermint version
@@ -42,7 +50,10 @@ Treat tendermint more as a "black box".
 #### Remove iavl as a dependency
  - remove iavl as a dependency (https://github.com/celestiaorg/celestia-core/pull/129)
 
-#### Using the `DataAvailabilityHeader` (imported from other repo) to calculate the DataHash
+#### Using the `DataAvailabilityHeader` to calculate the DataHash
+
+The `DataAvailabilityHeader` struct will be used by celestia-core as well as by the celestia-node. It might make sense to (eventually) move the struct together with all the DA-related code into a separate repository and go-module. @Wondertan explored this as part of [#427](https://github.com/celestiaorg/celestia-core/pull/427#issue-674512464). This way all client implementations can depend on that module without running into circular dependencies. Hence, we only describe how to hash the block data here:
+
  - Update core types (https://github.com/celestiaorg/celestia-core/pull/17)
    - Replace the `Data.Hash()` with `DAH.Hash()`
    - Use DAH to fill DataHash when filling the header
@@ -93,7 +104,7 @@ Treat tendermint more as a "black box".
 #### Only produce blocks on some interval
  - Control block times (https://github.com/tendermint/tendermint/issues/5911)
 
-#### Stop signing over the PartSetHeader 
+#### Stop signing over the PartSetHeader
  - Replace canonical blockID with just a hash in the CononicalVote
  - Replace the LastBlockID in the header with just a hash
 
@@ -116,11 +127,11 @@ FillDataAvailabilityHeader(data types.Data) (types.DataAvailabilityHeader, numOr
 
 We could perform a similar treatment to the `splitIntoShares` methods and their helper method `ComputeShares`. Instead of performing the share splitting logic in those methods, we could keep it in a different package and instead call the equivalent function to compute the shares.
 
-Beyond refactoring and some minor additions, we will also have to remove and revert quite a few changes to get to the minimum desired changes specified above. 
+Beyond refactoring and some minor additions, we will also have to remove and revert quite a few changes to get to the minimum desired changes specified above.
 
 ### Changes that will need to be reverted
 
-#### IPLD Plugin 
+#### IPLD Plugin
  - Introduction (https://github.com/celestiaorg/celestia-core/pull/144)
  - Initial integration (https://github.com/celestiaorg/celestia-core/pull/152)
  - Custom Multihash (https://github.com/celestiaorg/celestia-core/pull/155)
