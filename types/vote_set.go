@@ -309,7 +309,7 @@ func (voteSet *VoteSet) addVerifiedVote(
 // this can cause memory issues.
 // TODO: implement ability to remove peers too
 // NOTE: VoteSet must not be nil
-func (voteSet *VoteSet) SetPeerMaj23(peerID P2PID, blockID BlockID) error {
+func (voteSet *VoteSet) SetPeerMaj23(peerID P2PID, blockID BlockID, partSetHeader PartSetHeader) error {
 	if voteSet == nil {
 		panic("SetPeerMaj23() on nil VoteSet")
 	}
@@ -354,7 +354,7 @@ func (voteSet *VoteSet) BitArray() *bits.BitArray {
 	return voteSet.votesBitArray.Copy()
 }
 
-func (voteSet *VoteSet) BitArrayByBlockID(blockID BlockID) *bits.BitArray {
+func (voteSet *VoteSet) BitArrayByBlockID(blockID BlockID, partSetHeader PartSetHeader) *bits.BitArray {
 	if voteSet == nil {
 		return nil
 	}

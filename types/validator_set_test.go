@@ -724,7 +724,7 @@ func TestValidatorSet_VerifyCommit_All(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.description, func(t *testing.T) {
-			err := vset.VerifyCommit(tc.chainID, tc.blockID, tc.height, tc.commit)
+			err := vset.VerifyCommit(tc.chainID, tc.blockID, tc.partSetHeader, tc.height, tc.commit)
 			if tc.expErr {
 				if assert.Error(t, err, "VerifyCommit") {
 					assert.Contains(t, err.Error(), tc.description, "VerifyCommit")
@@ -765,7 +765,7 @@ func TestValidatorSet_VerifyCommit_CheckAllSignatures(t *testing.T) {
 	vote.Signature = v.Signature
 	commit.Signatures[3] = vote.CommitSig()
 
-	err = valSet.VerifyCommit(chainID, blockID, h, commit)
+	err = valSet.VerifyCommit(chainID, blockID, psh, h, commit)
 	if assert.Error(t, err) {
 		assert.Contains(t, err.Error(), "wrong signature (#3)")
 	}

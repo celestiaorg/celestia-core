@@ -275,7 +275,7 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 				return
 			}
 			// Peer claims to have a maj23 for some BlockID at H,R,S,
-			err := votes.SetPeerMaj23(msg.Round, msg.Type, ps.peer.ID(), msg.BlockID)
+			err := votes.SetPeerMaj23(msg.Round, msg.Type, ps.peer.ID(), msg.BlockID, msg.PartSetHeader)
 			if err != nil {
 				conR.Switch.StopPeerForError(src, err)
 				return
@@ -285,18 +285,19 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 			var ourVotes *bits.BitArray
 			switch msg.Type {
 			case tmproto.PrevoteType:
-				ourVotes = votes.Prevotes(msg.Round).BitArrayByBlockID(msg.BlockID)
+				ourVotes = votes.Prevotes(msg.Round).BitArrayByBlockID(msg.BlockID, msg.PartSetHeader)
 			case tmproto.PrecommitType:
-				ourVotes = votes.Precommits(msg.Round).BitArrayByBlockID(msg.BlockID)
+				ourVotes = votes.Precommits(msg.Round).BitArrayByBlockID(msg.BlockID, msg.PartSetHeader)
 			default:
 				panic("Bad VoteSetBitsMessage field Type. Forgot to add a check in ValidateBasic?")
 			}
 			src.TrySend(VoteSetBitsChannel, MustEncode(&VoteSetBitsMessage{
-				Height:  msg.Height,
-				Round:   msg.Round,
-				Type:    msg.Type,
-				BlockID: msg.BlockID,
-				Votes:   ourVotes,
+				Height:        msg.Height,
+				Round:         msg.Round,
+				Type:          msg.Type,
+				BlockID:       msg.BlockID,
+				PartSetHeader: msg.PartSetHeader,
+				Votes:         ourVotes,
 			}))
 		default:
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -359,9 +360,9 @@ func (conR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 				var ourVotes *bits.BitArray
 				switch msg.Type {
 				case tmproto.PrevoteType:
-					ourVotes = votes.Prevotes(msg.Round).BitArrayByBlockID(msg.BlockID)
+					ourVotes = votes.Prevotes(msg.Round).BitArrayByBlockID(msg.BlockID, msg.PartSetHeader)
 				case tmproto.PrecommitType:
-					ourVotes = votes.Precommits(msg.Round).BitArrayByBlockID(msg.BlockID)
+					ourVotes = votes.Precommits(msg.Round).BitArrayByBlockID(msg.BlockID, msg.PartSetHeader)
 				default:
 					panic("Bad VoteSetBitsMessage field Type. Forgot to add a check in ValidateBasic?")
 				}
@@ -778,12 +779,13 @@ OUTER_LOOP:
 			rs := conR.conS.GetRoundState()
 			prs := ps.GetRoundState()
 			if rs.Height == prs.Height {
-				if maj23, _, ok := rs.Votes.Prevotes(prs.Round).TwoThirdsMajority(); ok {
+				if maj23, maj23PSH, ok := rs.Votes.Prevotes(prs.Round).TwoThirdsMajority(); ok {
 					peer.TrySend(StateChannel, MustEncode(&VoteSetMaj23Message{
-						Height:  prs.Height,
-						Round:   prs.Round,
-						Type:    tmproto.PrevoteType,
-						BlockID: maj23,
+						Height:        prs.Height,
+						Round:         prs.Round,
+						Type:          tmproto.PrevoteType,
+						BlockID:       maj23,
+						PartSetHeader: maj23PSH,
 					}))
 					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
 				}
@@ -795,12 +797,13 @@ OUTER_LOOP:
 			rs := conR.conS.GetRoundState()
 			prs := ps.GetRoundState()
 			if rs.Height == prs.Height {
-				if maj23, _, ok := rs.Votes.Precommits(prs.Round).TwoThirdsMajority(); ok {
+				if maj23, maj23PSH, ok := rs.Votes.Precommits(prs.Round).TwoThirdsMajority(); ok {
 					peer.TrySend(StateChannel, MustEncode(&VoteSetMaj23Message{
-						Height:  prs.Height,
-						Round:   prs.Round,
-						Type:    tmproto.PrecommitType,
-						BlockID: maj23,
+						Height:        prs.Height,
+						Round:         prs.Round,
+						Type:          tmproto.PrecommitType,
+						BlockID:       maj23,
+						PartSetHeader: maj23PSH,
 					}))
 					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
 				}
@@ -812,12 +815,13 @@ OUTER_LOOP:
 			rs := conR.conS.GetRoundState()
 			prs := ps.GetRoundState()
 			if rs.Height == prs.Height && prs.ProposalPOLRound >= 0 {
-				if maj23, _, ok := rs.Votes.Prevotes(prs.ProposalPOLRound).TwoThirdsMajority(); ok {
+				if maj23, maj23PSH, ok := rs.Votes.Prevotes(prs.ProposalPOLRound).TwoThirdsMajority(); ok {
 					peer.TrySend(StateChannel, MustEncode(&VoteSetMaj23Message{
-						Height:  prs.Height,
-						Round:   prs.ProposalPOLRound,
-						Type:    tmproto.PrevoteType,
-						BlockID: maj23,
+						Height:        prs.Height,
+						Round:         prs.ProposalPOLRound,
+						Type:          tmproto.PrevoteType,
+						BlockID:       maj23,
+						PartSetHeader: maj23PSH,
 					}))
 					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
 				}
@@ -1661,10 +1665,11 @@ func (m *HasVoteMessage) String() string {
 
 // VoteSetMaj23Message is sent to indicate that a given BlockID has seen +2/3 votes.
 type VoteSetMaj23Message struct {
-	Height  int64
-	Round   int32
-	Type    tmproto.SignedMsgType
-	BlockID types.BlockID
+	Height        int64
+	Round         int32
+	Type          tmproto.SignedMsgType
+	BlockID       types.BlockID
+	PartSetHeader types.PartSetHeader
 }
 
 // ValidateBasic performs basic validation.
@@ -1681,6 +1686,9 @@ func (m *VoteSetMaj23Message) ValidateBasic() error {
 	if err := m.BlockID.ValidateBasic(); err != nil {
 		return fmt.Errorf("wrong BlockID: %w", err)
 	}
+	if err := m.PartSetHeader.ValidateBasic(); err != nil {
+		return fmt.Errorf("wrong PartSetHeader: %w", err)
+	}
 	return nil
 }
 
@@ -1693,11 +1701,12 @@ func (m *VoteSetMaj23Message) String() string {
 
 // VoteSetBitsMessage is sent to communicate the bit-array of votes seen for the BlockID.
 type VoteSetBitsMessage struct {
-	Height  int64
-	Round   int32
-	Type    tmproto.SignedMsgType
-	BlockID types.BlockID
-	Votes   *bits.BitArray
+	Height        int64
+	Round         int32
+	Type          tmproto.SignedMsgType
+	BlockID       types.BlockID
+	PartSetHeader types.PartSetHeader
+	Votes         *bits.BitArray
 }
 
 // ValidateBasic performs basic validation.
@@ -1710,6 +1719,9 @@ func (m *VoteSetBitsMessage) ValidateBasic() error {
 	}
 	if err := m.BlockID.ValidateBasic(); err != nil {
 		return fmt.Errorf("wrong BlockID: %v", err)
+	}
+	if err := m.PartSetHeader.ValidateBasic(); err != nil {
+		return fmt.Errorf("wrong PartSetHeader: %w", err)
 	}
 	// NOTE: Votes.Size() can be zero if the node does not have any
 	if m.Votes.Size() > types.MaxVotesCount {

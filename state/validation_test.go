@@ -142,7 +142,7 @@ func TestValidateBlockCommit(t *testing.T) {
 			wrongHeightVote, err := types.MakeVote(
 				height,
 				state.LastBlockID,
-				types.PartSetHeader{},
+				state.LastPartSetHeader,
 				state.Validators,
 				privVals[proposerAddr.String()],
 				chainID,
@@ -154,7 +154,7 @@ func TestValidateBlockCommit(t *testing.T) {
 				wrongHeightVote.Round,
 				state.LastBlockID,
 				[]types.CommitSig{wrongHeightVote.CommitSig()},
-				types.PartSetHeader{},
+				state.LastPartSetHeader,
 			)
 			block, _ := state.MakeBlock(height, makeTxs(height), nil, nil, types.Messages{}, wrongHeightCommit, proposerAddr)
 			err = blockExec.ValidateBlock(state, block)

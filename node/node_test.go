@@ -467,6 +467,7 @@ func TestMaxProposalBlockSize(t *testing.T) {
 	timestamp := time.Date(math.MaxInt64, 0, 0, 0, 0, 0, math.MaxInt64, time.UTC)
 	// change state in order to produce the largest accepted header
 	state.LastBlockID = blockID
+	state.LastPartSetHeader = psh
 	state.LastBlockHeight = math.MaxInt64 - 1
 	state.LastBlockTime = timestamp
 	state.LastResultsHash = tmhash.Sum([]byte("last_results_hash"))
