@@ -8,8 +8,8 @@ import (
 	"time"
 
 	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	"github.com/celestiaorg/celestia-core/pkg/consts"
 	"github.com/celestiaorg/celestia-core/types"
-	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 // GenerateRandomBlockData returns randomly generated block data for testing purposes.

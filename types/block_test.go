@@ -19,9 +19,9 @@ import (
 	"github.com/celestiaorg/celestia-core/libs/bits"
 	"github.com/celestiaorg/celestia-core/libs/bytes"
 	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	"github.com/celestiaorg/celestia-core/pkg/consts"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
-	"github.com/celestiaorg/celestia-core/types/consts"
 	tmtime "github.com/celestiaorg/celestia-core/types/time"
 	"github.com/celestiaorg/celestia-core/version"
 )

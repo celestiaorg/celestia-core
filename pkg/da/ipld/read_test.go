@@ -20,11 +20,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/celestiaorg/celestia-core/pkg/consts"
 	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	"github.com/celestiaorg/celestia-core/pkg/da/ipfs/plugin"
 	"github.com/celestiaorg/celestia-core/pkg/da/ipld/wrapper"
 	"github.com/celestiaorg/celestia-core/types"
-	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 func TestGetLeafData(t *testing.T) {

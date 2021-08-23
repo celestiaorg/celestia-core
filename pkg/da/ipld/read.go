@@ -9,10 +9,10 @@ import (
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 
+	"github.com/celestiaorg/celestia-core/pkg/consts"
 	"github.com/celestiaorg/celestia-core/pkg/da/ipfs/plugin"
 	"github.com/celestiaorg/celestia-core/pkg/da/ipld/wrapper"
 	"github.com/celestiaorg/celestia-core/types"
-	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 const baseErrorMsg = "failure to retrieve block data:"

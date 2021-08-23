@@ -8,8 +8,8 @@ import (
 	"github.com/celestiaorg/celestia-core/crypto/merkle"
 	"github.com/celestiaorg/celestia-core/crypto/tmhash"
 	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	"github.com/celestiaorg/celestia-core/pkg/consts"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
-	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 // Tx is an arbitrary byte array.
