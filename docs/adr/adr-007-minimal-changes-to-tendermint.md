@@ -154,7 +154,7 @@ availability header, instead of using a method on `Block`, it could be handled b
 input and returns the DAH, the number of shares used in the square, along with the obligatory error.
 
 ```go
-FillDataAvailabilityHeader(data types.Data) (types.DataAvailabilityHeader, numOrigDataShares, error)
+func FillDataAvailabilityHeader(data types.Data) (types.DataAvailabilityHeader, numOrigDataShares, error)
 ```
 
 We could perform a similar treatment to the `splitIntoShares` methods and their helper method `ComputeShares`. Instead
@@ -211,7 +211,7 @@ remain the same. This will make pulling changes from upstream much easier
 
 ## Status
 
-Pending review
+Accepted
 
 ## Consequences
 
