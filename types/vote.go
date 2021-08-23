@@ -180,10 +180,6 @@ func (vote *Vote) ValidateBasic() error {
 		return fmt.Errorf("wrong PartSetHeader: %v", err)
 	}
 
-	if err := vote.PartSetHeader.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong PartSetHeader: %v", err)
-	}
-
 	// BlockID.ValidateBasic would not err if we for instance have an empty hash but a
 	// non-empty PartsSetHeader:
 	if !vote.BlockID.IsZero() && !vote.BlockID.IsComplete() {

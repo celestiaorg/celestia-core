@@ -268,7 +268,7 @@ func (state State) MakeBlock(
 	// Fill rest of header with state data.
 	block.Header.Populate(
 		state.Version.Consensus, state.ChainID,
-		timestamp, state.LastBlockID,
+		timestamp, state.LastBlockID, state.LastPartSetHeader,
 		state.Validators.Hash(), state.NextValidators.Hash(),
 		types.HashConsensusParams(state.ConsensusParams), state.AppHash, state.LastResultsHash,
 		proposerAddress,
