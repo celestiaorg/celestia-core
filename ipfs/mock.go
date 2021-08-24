@@ -3,9 +3,6 @@ package ipfs
 import (
 	"context"
 
-	ds "github.com/ipfs/go-datastore"
-	ds_sync "github.com/ipfs/go-datastore/sync"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	nilrouting "github.com/ipfs/go-ipfs-routing/none"
 	"github.com/ipfs/go-ipfs/core"
 	coremock "github.com/ipfs/go-ipfs/core/mock"
@@ -45,8 +42,4 @@ func MockNode() (*core.IpfsNode, error) {
 func MockRouting() routing.Routing {
 	croute, _ := nilrouting.ConstructNilRouting(context.TODO(), nil, nil, nil)
 	return croute
-}
-
-func MockBlockStore() blockstore.Blockstore {
-	return blockstore.NewBlockstore(ds_sync.MutexWrap(ds.NewMapDatastore()))
 }

@@ -1,8 +1,6 @@
 package state
 
 import (
-	"context"
-
 	"github.com/celestiaorg/celestia-core/types"
 )
 
@@ -22,13 +20,13 @@ type BlockStore interface {
 
 	LoadBaseMeta() *types.BlockMeta
 	LoadBlockMeta(height int64) *types.BlockMeta
-	LoadBlock(ctx context.Context, height int64) (*types.Block, error)
+	LoadBlock(height int64) *types.Block
 
-	SaveBlock(ctx context.Context, block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) error
+	SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit)
 
 	PruneBlocks(height int64) (uint64, error)
 
-	LoadBlockByHash(ctx context.Context, hash []byte) (*types.Block, error)
+	LoadBlockByHash(hash []byte) *types.Block
 	LoadBlockPart(height int64, index int) *types.Part
 
 	LoadBlockCommit(height int64) *types.Commit

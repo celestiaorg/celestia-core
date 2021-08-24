@@ -311,7 +311,7 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 		t.Error(err)
 	}
 	dag := mdutils.Mock()
-	blockStore := store.MockBlockStore(blockStoreDB)
+	blockStore := store.NewBlockStore(blockStoreDB, dag)
 
 	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(app))
 	proxyApp.SetLogger(logger.With("module", "proxy"))

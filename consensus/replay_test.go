@@ -79,6 +79,7 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		privValidator,
 		kvstore.NewApplication(),
 		blockDB,
+		mdutils.Mock(),
 	)
 	cs.SetLogger(logger)
 
@@ -173,6 +174,7 @@ LOOP:
 			privValidator,
 			kvstore.NewApplication(),
 			blockDB,
+			mdutils.Mock(),
 		)
 		cs.SetLogger(logger)
 
@@ -546,9 +548,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	sim.Chain = make([]*types.Block, 0)
 	sim.Commits = make([]*types.Commit, 0)
 	for i := 1; i <= numBlocks; i++ {
-		blck, err := css[0].blockStore.LoadBlock(context.TODO(), int64(i))
-		require.NoError(t, err)
-		sim.Chain = append(sim.Chain, blck)
+		sim.Chain = append(sim.Chain, css[0].blockStore.LoadBlock(int64(i)))
 		sim.Commits = append(sim.Commits, css[0].blockStore.LoadBlockCommit(int64(i)))
 	}
 }
@@ -1195,15 +1195,13 @@ func newMockBlockStore(config *cfg.Config, params tmproto.ConsensusParams) *mock
 	return &mockBlockStore{config, params, nil, nil, 0, mdutils.Mock()}
 }
 
-func (bs *mockBlockStore) Height() int64                  { return int64(len(bs.chain)) }
-func (bs *mockBlockStore) Base() int64                    { return bs.base }
-func (bs *mockBlockStore) Size() int64                    { return bs.Height() - bs.Base() + 1 }
-func (bs *mockBlockStore) LoadBaseMeta() *types.BlockMeta { return bs.LoadBlockMeta(bs.base) }
-func (bs *mockBlockStore) LoadBlock(ctx context.Context, height int64) (*types.Block, error) {
-	return bs.chain[height-1], nil
-}
-func (bs *mockBlockStore) LoadBlockByHash(ctx context.Context, hash []byte) (*types.Block, error) {
-	return bs.chain[int64(len(bs.chain))-1], nil
+func (bs *mockBlockStore) Height() int64                       { return int64(len(bs.chain)) }
+func (bs *mockBlockStore) Base() int64                         { return bs.base }
+func (bs *mockBlockStore) Size() int64                         { return bs.Height() - bs.Base() + 1 }
+func (bs *mockBlockStore) LoadBaseMeta() *types.BlockMeta      { return bs.LoadBlockMeta(bs.base) }
+func (bs *mockBlockStore) LoadBlock(height int64) *types.Block { return bs.chain[height-1] }
+func (bs *mockBlockStore) LoadBlockByHash(hash []byte) *types.Block {
+	return bs.chain[int64(len(bs.chain))-1]
 }
 func (bs *mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	block := bs.chain[height-1]
@@ -1213,13 +1211,7 @@ func (bs *mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	}
 }
 func (bs *mockBlockStore) LoadBlockPart(height int64, index int) *types.Part { return nil }
-func (bs *mockBlockStore) SaveBlock(
-	ctx context.Context,
-	block *types.Block,
-	blockParts *types.PartSet,
-	seenCommit *types.Commit,
-) error {
-	return nil
+func (bs *mockBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 }
 func (bs *mockBlockStore) LoadBlockCommit(height int64) *types.Commit {
 	return bs.commits[height-1]

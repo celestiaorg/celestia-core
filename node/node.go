@@ -690,7 +690,7 @@ func NewNode(config *cfg.Config,
 		return nil, err
 	}
 
-	blockStore := store.NewBlockStore(blockStoreDB, ipfsNode.Blockstore, logger)
+	blockStore := store.NewBlockStore(blockStoreDB, ipfsNode.DAG)
 
 	// Create the handshaker, which calls RequestInfo, sets the AppVersion on the state,
 	// and replays any blocks as necessary to sync tendermint with the app.
