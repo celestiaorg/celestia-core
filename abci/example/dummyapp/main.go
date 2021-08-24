@@ -78,7 +78,7 @@ func main() {
 }
 
 // DummyNode implements NodeProvider.
-func DummyNode(config *cfg.Config, provider ipfs.NodeProvider, logger log.Logger) (*node.Node, error) {
+func DummyNode(config *cfg.Config, logger log.Logger) (*node.Node, error) {
 	if err := ipfs.InitRepo(config.IPFS.Path(), logger); err != nil {
 		return nil, fmt.Errorf("failed to initialize IPFS repo at path %s: %v", config.IPFS.Path(), err)
 	}
@@ -103,7 +103,6 @@ func DummyNode(config *cfg.Config, provider ipfs.NodeProvider, logger log.Logger
 		proxy.NewLocalClientCreator(app),
 		node.DefaultGenesisDocProviderFunc(config),
 		node.DefaultDBProvider,
-		provider,
 		node.DefaultMetricsProvider(config.Instrumentation),
 		logger,
 	)

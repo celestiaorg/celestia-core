@@ -10,7 +10,6 @@ import (
 
 	abci "github.com/celestiaorg/celestia-core/abci/types"
 	cfg "github.com/celestiaorg/celestia-core/config"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	"github.com/celestiaorg/celestia-core/libs/log"
 	tmnet "github.com/celestiaorg/celestia-core/libs/net"
 	nm "github.com/celestiaorg/celestia-core/node"
@@ -176,7 +175,6 @@ func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 	node, err := nm.NewNode(config, pv, nodeKey, papp,
 		nm.DefaultGenesisDocProviderFunc(config),
 		nm.InMemDBProvider,
-		ipfs.Mock(),
 		nm.DefaultMetricsProvider(config.Instrumentation),
 		logger,
 	)

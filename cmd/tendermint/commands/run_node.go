@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	cfg "github.com/celestiaorg/celestia-core/config"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	tmos "github.com/celestiaorg/celestia-core/libs/os"
 	nm "github.com/celestiaorg/celestia-core/node"
 )
@@ -123,7 +122,6 @@ func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
 
 			n, err := nodeProvider(
 				config,
-				ipfs.Embedded(initIPFS, config.IPFS, logger),
 				logger,
 			)
 			if err != nil {
