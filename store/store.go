@@ -9,7 +9,6 @@ import (
 
 	dbm "github.com/celestiaorg/celestia-core/libs/db"
 	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
-	"github.com/celestiaorg/celestia-core/p2p/ipld"
 	tmstore "github.com/celestiaorg/celestia-core/proto/tendermint/store"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types"
