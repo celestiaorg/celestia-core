@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	format "github.com/ipfs/go-ipld-format"
-	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -79,7 +77,6 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 		privValidator,
 		kvstore.NewApplication(),
 		blockDB,
-		mdutils.Mock(),
 	)
 	cs.SetLogger(logger)
 
@@ -132,7 +129,8 @@ func TestWALCrash(t *testing.T) {
 		heightToStop int64
 	}{
 		{"empty block",
-			func(stateDB dbm.DB, cs *State, ctx context.Context) {},
+			func(stateDB dbm.DB, cs *State, ctx context.Context) {
+			},
 			1},
 		{"many non-empty blocks",
 			func(stateDB dbm.DB, cs *State, ctx context.Context) {
@@ -174,7 +172,6 @@ LOOP:
 			privValidator,
 			kvstore.NewApplication(),
 			blockDB,
-			mdutils.Mock(),
 		)
 		cs.SetLogger(logger)
 
@@ -1182,17 +1179,16 @@ func stateAndStore(
 // mock block store
 
 type mockBlockStore struct {
-	config     *cfg.Config
-	params     tmproto.ConsensusParams
-	chain      []*types.Block
-	commits    []*types.Commit
-	base       int64
-	ipfsDagAPI format.DAGService
+	config  *cfg.Config
+	params  tmproto.ConsensusParams
+	chain   []*types.Block
+	commits []*types.Commit
+	base    int64
 }
 
 // TODO: NewBlockStore(db.NewMemDB) ...
 func newMockBlockStore(config *cfg.Config, params tmproto.ConsensusParams) *mockBlockStore {
-	return &mockBlockStore{config, params, nil, nil, 0, mdutils.Mock()}
+	return &mockBlockStore{config, params, nil, nil, 0}
 }
 
 func (bs *mockBlockStore) Height() int64                       { return int64(len(bs.chain)) }

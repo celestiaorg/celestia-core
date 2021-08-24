@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"github.com/gogo/protobuf/proto"
-	ipld "github.com/ipfs/go-ipld-format"
 
 	dbm "github.com/celestiaorg/celestia-core/libs/db"
 	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
@@ -42,19 +41,16 @@ type BlockStore struct {
 	mtx    tmsync.RWMutex
 	base   int64
 	height int64
-
-	ipfsDagAPI ipld.DAGService
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB, dagAPI ipld.DAGService) *BlockStore {
+func NewBlockStore(db dbm.DB) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	return &BlockStore{
-		base:       bs.Base,
-		height:     bs.Height,
-		db:         db,
-		ipfsDagAPI: dagAPI,
+		base:   bs.Base,
+		height: bs.Height,
+		db:     db,
 	}
 }
 

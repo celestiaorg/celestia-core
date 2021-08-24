@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -23,7 +22,6 @@ import (
 	cstypes "github.com/celestiaorg/celestia-core/consensus/types"
 	cryptoenc "github.com/celestiaorg/celestia-core/crypto/encoding"
 	"github.com/celestiaorg/celestia-core/crypto/tmhash"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	"github.com/celestiaorg/celestia-core/libs/bits"
 	"github.com/celestiaorg/celestia-core/libs/bytes"
 	"github.com/celestiaorg/celestia-core/libs/db/memdb"
@@ -156,8 +154,7 @@ func TestReactorWithEvidence(t *testing.T) {
 		// css[i] = newStateWithConfig(thisConfig, state, privVals[i], app)
 
 		blockDB := memdb.NewDB()
-		dag := mdutils.Mock()
-		blockStore := store.NewBlockStore(blockDB, dag)
+		blockStore := store.NewBlockStore(blockDB)
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)
@@ -186,7 +183,7 @@ func TestReactorWithEvidence(t *testing.T) {
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore,
-			mempool, dag, ipfs.MockRouting(), evpool2)
+			mempool, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
 
@@ -673,7 +670,7 @@ func timeoutWaitGroup(t *testing.T, n int, f func(int), css []*State) {
 
 	// we're running many nodes in-process, possibly in in a virtual machine,
 	// and spewing debug messages - making a block could take a while,
-	timeout := time.Minute * 8
+	timeout := time.Minute * 4
 
 	select {
 	case <-done:

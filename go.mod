@@ -30,7 +30,7 @@ require (
 	github.com/ipfs/go-ipfs-config v0.11.0
 	github.com/ipfs/go-ipfs-routing v0.1.0
 	github.com/ipfs/go-ipld-format v0.2.0
-	github.com/ipfs/go-merkledag v0.3.2
+	github.com/ipfs/go-merkledag v0.3.2 // indirect
 	github.com/ipfs/go-path v0.0.9 // indirect
 	github.com/ipfs/go-verifcid v0.0.1
 	github.com/ipfs/interface-go-ipfs-core v0.4.0

@@ -9,14 +9,12 @@ import (
 	"testing"
 	"time"
 
-	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	abcicli "github.com/celestiaorg/celestia-core/abci/client"
 	abci "github.com/celestiaorg/celestia-core/abci/types"
 	"github.com/celestiaorg/celestia-core/evidence"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	"github.com/celestiaorg/celestia-core/libs/db/memdb"
 	"github.com/celestiaorg/celestia-core/libs/log"
 	"github.com/celestiaorg/celestia-core/libs/service"
@@ -57,8 +55,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
 		blockDB := memdb.NewDB()
-		dag := mdutils.Mock()
-		blockStore := store.NewBlockStore(blockDB, dag)
+		blockStore := store.NewBlockStore(blockDB)
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)
@@ -81,7 +78,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore,
-			mempool, dag, ipfs.MockRouting(), evpool)
+			mempool, evpool)
 		cs.SetLogger(cs.Logger)
 		// set private validator
 		pv := privVals[i]

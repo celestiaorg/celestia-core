@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // nolint: gosec // securely exposed on separate, optional port
@@ -215,8 +214,6 @@ type Node struct {
 	txIndexer         txindex.TxIndexer
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
-
-	ipfsClose io.Closer
 }
 
 func createAndStartProxyAppConns(clientCreator proxy.ClientCreator, logger log.Logger) (proxy.AppConns, error) {
@@ -369,8 +366,7 @@ func createBlockchainReactor(config *cfg.Config,
 	return bcReactor, nil
 }
 
-func createConsensusReactor(
-	config *cfg.Config,
+func createConsensusReactor(config *cfg.Config,
 	state sm.State,
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
@@ -390,8 +386,6 @@ func createConsensusReactor(
 		blockExec,
 		blockStore,
 		mempool,
-		dag,
-		croute,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
 	)
@@ -690,7 +684,7 @@ func NewNode(config *cfg.Config,
 		return nil, err
 	}
 
-	blockStore := store.NewBlockStore(blockStoreDB, ipfsNode.DAG)
+	blockStore := store.NewBlockStore(blockStoreDB)
 
 	// Create the handshaker, which calls RequestInfo, sets the AppVersion on the state,
 	// and replays any blocks as necessary to sync tendermint with the app.
@@ -852,7 +846,6 @@ func NewNode(config *cfg.Config,
 		txIndexer:        txIndexer,
 		indexerService:   indexerService,
 		eventBus:         eventBus,
-		ipfsClose:        ipfsNode,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
@@ -995,10 +988,6 @@ func (n *Node) OnStop() {
 			// Error from closing listeners, or context timeout:
 			n.Logger.Error("Prometheus HTTP server Shutdown", "err", err)
 		}
-	}
-
-	if err := n.ipfsClose.Close(); err != nil {
-		n.Logger.Error("ipfsClose.Close()", err)
 	}
 }
 
@@ -1402,8 +1391,8 @@ func createAndStartPrivValidatorSocketClient(
 	}
 
 	const (
-		retries = 50 // 50 * 200ms = 10s total
-		timeout = 200 * time.Millisecond
+		retries = 50 // 50 * 100ms = 5s total
+		timeout = 100 * time.Millisecond
 	)
 	pvscWithRetries := privval.NewRetrySignerClient(pvsc, retries, timeout)
 

@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/term"
-	format "github.com/ipfs/go-ipld-format"
-	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/require"
 
 	abcicli "github.com/celestiaorg/celestia-core/abci/client"
@@ -24,7 +22,6 @@ import (
 	abci "github.com/celestiaorg/celestia-core/abci/types"
 	cfg "github.com/celestiaorg/celestia-core/config"
 	cstypes "github.com/celestiaorg/celestia-core/consensus/types"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
 	dbm "github.com/celestiaorg/celestia-core/libs/db"
 	"github.com/celestiaorg/celestia-core/libs/db/memdb"
@@ -54,7 +51,7 @@ type cleanupFunc func()
 var (
 	config                *cfg.Config // NOTE: must be reset for each _test.go file
 	consensusReplayConfig *cfg.Config
-	ensureTimeout         = 4 * time.Second
+	ensureTimeout         = 2 * time.Second
 )
 
 func ensureDir(dir string, mode os.FileMode) {
@@ -354,9 +351,9 @@ func subscribeToVoter(cs *State, addr []byte) <-chan tmpubsub.Message {
 //-------------------------------------------------------------------------------
 // consensus states
 
-func newState(state sm.State, pv types.PrivValidator, app abci.Application, ipfsDagAPI format.DAGService) *State {
+func newState(state sm.State, pv types.PrivValidator, app abci.Application) *State {
 	config := cfg.ResetTestRoot("consensus_state_test")
-	return newStateWithConfig(config, state, pv, app, ipfsDagAPI)
+	return newStateWithConfig(config, state, pv, app)
 }
 
 func newStateWithConfig(
@@ -364,10 +361,9 @@ func newStateWithConfig(
 	state sm.State,
 	pv types.PrivValidator,
 	app abci.Application,
-	ipfsDagAPI format.DAGService,
 ) *State {
 	blockDB := memdb.NewDB()
-	return newStateWithConfigAndBlockStore(thisConfig, state, pv, app, blockDB, ipfsDagAPI)
+	return newStateWithConfigAndBlockStore(thisConfig, state, pv, app, blockDB)
 }
 
 func newStateWithConfigAndBlockStore(
@@ -376,10 +372,9 @@ func newStateWithConfigAndBlockStore(
 	pv types.PrivValidator,
 	app abci.Application,
 	blockDB dbm.DB,
-	dag format.DAGService,
 ) *State {
 	// Get BlockStore
-	blockStore := store.NewBlockStore(blockDB, dag)
+	blockStore := store.NewBlockStore(blockDB)
 
 	// one for mempool, one for consensus
 	mtx := new(tmsync.Mutex)
@@ -403,7 +398,7 @@ func newStateWithConfigAndBlockStore(
 	}
 
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, dag, ipfs.MockRouting(), evpool)
+	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool)
 	cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 	cs.SetPrivValidator(pv)
 
@@ -435,7 +430,7 @@ func randState(nValidators int) (*State, []*validatorStub) {
 
 	vss := make([]*validatorStub, nValidators)
 
-	cs := newState(state, privVals[0], counter.NewApplication(true), mdutils.Mock())
+	cs := newState(state, privVals[0], counter.NewApplication(true))
 
 	for i := 0; i < nValidators; i++ {
 		vss[i] = newValidatorStub(privVals[i], int32(i))
@@ -708,7 +703,7 @@ func randConsensusNet(
 		vals := types.TM2PB.ValidatorUpdates(state.Validators)
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
-		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB, mdutils.Mock())
+		css[i] = newStateWithConfigAndBlockStore(thisConfig, state, privVals[i], app, stateDB)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
 	}
@@ -771,7 +766,7 @@ func randConsensusNetWithPeers(
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 		// sm.SaveState(stateDB,state)	//height 1's validatorsInfo already saved in LoadStateFromDBOrGenesisDoc above
 
-		css[i] = newStateWithConfig(thisConfig, state, privVal, app, mdutils.Mock())
+		css[i] = newStateWithConfig(thisConfig, state, privVal, app)
 		css[i].SetTimeoutTicker(tickerFunc())
 		css[i].SetLogger(logger.With("validator", i, "module", "consensus"))
 	}

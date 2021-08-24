@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -19,7 +18,6 @@ import (
 	cfg "github.com/celestiaorg/celestia-core/config"
 	"github.com/celestiaorg/celestia-core/consensus/types"
 	"github.com/celestiaorg/celestia-core/crypto/merkle"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	"github.com/celestiaorg/celestia-core/libs/autofile"
 	"github.com/celestiaorg/celestia-core/libs/db/memdb"
 	"github.com/celestiaorg/celestia-core/libs/log"
@@ -66,7 +64,7 @@ func TestWALTruncate(t *testing.T) {
 	err = walGenerateNBlocks(t, wal.Group(), 60)
 	require.NoError(t, err)
 
-	time.Sleep(5 * time.Millisecond) // wait groupCheckDuration, make sure RotateFile run
+	time.Sleep(1 * time.Millisecond) // wait groupCheckDuration, make sure RotateFile run
 
 	if err := wal.FlushAndSync(); err != nil {
 		t.Error(err)
@@ -310,8 +308,8 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	if err = stateStore.Save(state); err != nil {
 		t.Error(err)
 	}
-	dag := mdutils.Mock()
-	blockStore := store.NewBlockStore(blockStoreDB, dag)
+
+	blockStore := store.NewBlockStore(blockStoreDB)
 
 	proxyApp := proxy.NewAppConns(proxy.NewLocalClientCreator(app))
 	proxyApp.SetLogger(logger.With("module", "proxy"))
@@ -339,7 +337,7 @@ func walGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 	require.NoError(t, err)
 	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore,
-		mempool, dag, ipfs.MockRouting(), evpool)
+		mempool, evpool)
 	consensusState.SetLogger(logger)
 	consensusState.SetEventBus(eventBus)
 	if privValidator != nil && privValidator != (*privval.FilePV)(nil) {
