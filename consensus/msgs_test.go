@@ -11,14 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/celestiaorg/celestia-core/crypto/merkle"
-	"github.com/celestiaorg/celestia-core/crypto/tmhash"
 	"github.com/celestiaorg/celestia-core/libs/bits"
 	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 	"github.com/celestiaorg/celestia-core/p2p"
 	tmcons "github.com/celestiaorg/celestia-core/proto/tendermint/consensus"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types"
-	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 func TestMsgToProto(t *testing.T) {
@@ -48,8 +46,6 @@ func TestMsgToProto(t *testing.T) {
 	pbParts, err := parts.ToProto()
 	require.NoError(t, err)
 
-	roots, err := types.NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
-	require.NoError(t, err)
 	proposal := types.Proposal{
 		Type:      tmproto.ProposalType,
 		Height:    1,
@@ -58,10 +54,6 @@ func TestMsgToProto(t *testing.T) {
 		BlockID:   bi,
 		Timestamp: time.Now(),
 		Signature: tmrand.Bytes(20),
-		DAHeader: &types.DataAvailabilityHeader{
-			RowsRoots:   roots,
-			ColumnRoots: roots,
-		},
 	}
 	pbProposal, err := proposal.ToProto()
 	require.NoError(t, err)
@@ -361,7 +353,6 @@ func TestConsMsgsVectors(t *testing.T) {
 		BlockID:   bi,
 		Timestamp: date,
 		Signature: []byte("add_more_exclamation"),
-		DAHeader:  &types.DataAvailabilityHeader{},
 	}
 	pbProposal, err := proposal.ToProto()
 	require.NoError(t, err)

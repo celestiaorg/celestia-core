@@ -54,7 +54,6 @@ func exampleProposal() *types.Proposal {
 				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
 			},
 		},
-		DAHeader: &types.DataAvailabilityHeader{},
 	}
 }
 

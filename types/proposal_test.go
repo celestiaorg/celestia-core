@@ -21,9 +21,6 @@ var (
 )
 
 func init() {
-	rows, _ := NmtRootsFromBytes([][]byte{[]byte("HeHasBeenElected--June_15_2020_amino_was_removed")})
-	clmns, _ := NmtRootsFromBytes([][]byte{[]byte("HeHasBeenElected--June_15_2020_amino_was_removed")})
-
 	var stamp, err = time.Parse(TimeFormat, "2018-02-11T07:09:22.765Z")
 	if err != nil {
 		panic(err)
@@ -35,10 +32,6 @@ func init() {
 			PartSetHeader: PartSetHeader{Total: 111, Hash: []byte("--June_15_2020_amino_was_removed")}},
 		POLRound:  -1,
 		Timestamp: stamp,
-		DAHeader: &DataAvailabilityHeader{
-			RowsRoots:   rows,
-			ColumnRoots: clmns,
-		},
 	}
 	pbp, err = testProposal.ToProto()
 	if err != nil {
@@ -72,7 +65,6 @@ func TestProposalVerifySignature(t *testing.T) {
 	prop := NewProposal(
 		4, 2, 2,
 		BlockID{tmrand.Bytes(tmhash.Size), PartSetHeader{777, tmrand.Bytes(tmhash.Size)}},
-		makeDAHeaderRandom(),
 	)
 	p, err := prop.ToProto()
 	require.NoError(t, err)
@@ -159,12 +151,11 @@ func TestProposalValidateBasic(t *testing.T) {
 		}, true},
 	}
 	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), math.MaxInt32, tmhash.Sum([]byte("partshash")))
-	dah := makeDAHeaderRandom()
 
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
-			prop := NewProposal(4, 2, 2, blockID, dah)
+			prop := NewProposal(4, 2, 2, blockID)
 			p, err := prop.ToProto()
 			require.NoError(t, err)
 			err = privVal.SignProposal("test_chain_id", p)
@@ -182,10 +173,9 @@ func TestProposalProtoBuf(t *testing.T) {
 		2,
 		3,
 		makeBlockID([]byte("hash"), 2, []byte("part_set_hash")),
-		makeDAHeaderRandom(),
 	)
 	proposal.Signature = []byte("sig")
-	proposal2 := NewProposal(1, 2, 3, BlockID{}, &DataAvailabilityHeader{})
+	proposal2 := NewProposal(1, 2, 3, BlockID{})
 
 	testCases := []struct {
 		msg     string
@@ -194,7 +184,7 @@ func TestProposalProtoBuf(t *testing.T) {
 	}{
 		{"success", proposal, true},
 		{"success", proposal2, false}, // blockID cannot be empty
-		{"empty proposal failure validatebasic", &Proposal{DAHeader: &DataAvailabilityHeader{}}, false},
+		{"empty proposal failure validatebasic", &Proposal{}, false},
 		{"nil proposal", nil, false},
 	}
 	for _, tc := range testCases {

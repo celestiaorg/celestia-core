@@ -350,6 +350,5 @@ func newProposal(height int64, round int32, blockID types.BlockID) *types.Propos
 		Round:     round,
 		BlockID:   blockID,
 		Timestamp: tmtime.Now(),
-		DAHeader:  &types.DataAvailabilityHeader{},
 	}
 }
