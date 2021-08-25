@@ -9,12 +9,30 @@ import (
 	"github.com/celestiaorg/rsmt2d"
 )
 
+type BadEncodingFraudProof struct {
+		// height of the block with the offending row or column
+		Height int64
+		// the available shares in the offending row or column and their Merkle proofs
+		// array of ShareProofs
+		ShareProofs []*ShareProof
+		// a Boolean indicating if it is an offending row or column; false if it is a row
+		IsCol bool
+		// the index of the offending row or column in the square
+		Position uint64
 
-func VerifyBadEncodingFraudProof(proof tmproto.BadEncodingFraudProof) (bool, error) {
+func (befp *BadEncodingFraudProof) ToProto() (*tmproto.BadEncodingFraudProof, error) {
+}
 
-	// get the block
-	//TODO
-	
+func BadEncodingFraudProofFromProto(befpp *tmproto.BadEncodingFraudProof) (befp *BadEncodingFraudProof, err error) {
+}
+
+func (befp *BadEncodingFraudProof) ValidateBasic() error {
+}
+
+// Do the same thing for shareProof
+
+func VerifyBadEncodingFraudProof(proof tmproto.BadEncodingFraudProof, dataAvailabilityHeader tmproto.DataAvailabilityHeader) (bool, error) {
+
 	// parse the bad encoding fraud proof
 	isColForProof := proof.GetIsCol()
 	height := proof.GetHeight()
@@ -26,15 +44,12 @@ func VerifyBadEncodingFraudProof(proof tmproto.BadEncodingFraudProof) (bool, err
 		return errors.New("Number of shares provided is incorrect.")
 	}
 
-	// get the dataRoot within the header
-	dataRoot := block.GetHeader().GetDataHash()
-
 	// get the row or column root challenged by the fraud proof within the DA header
-	dataAvailabilityHeader := block.GetDataAvailabilityHeader()
 	axisRoot := nil
 	if isColForProof {
 		columnRoots := dataAvailabilityHeader.GetColumnRoots()
-		if (position < len(columnRoots)) && (0 <= position) {
+		// position is uint64, thus always nonnegative
+		if position < len(columnRoots) {
 			axisRoot = columnRoots[position] 
 		}
 		else {
@@ -43,7 +58,8 @@ func VerifyBadEncodingFraudProof(proof tmproto.BadEncodingFraudProof) (bool, err
 	}
 	else {
 		rowRoots := dataAvailabilityHeader.GetRowRoots()
-		if (position < len(rowRoots)) && (0 <= position) {
+		// position is uint64, thus always nonnegative
+		if position < len(rowRoots) {
 			axisRoot = rowRoots[position] 
 		}
 		else {
@@ -53,7 +69,6 @@ func VerifyBadEncodingFraudProof(proof tmproto.BadEncodingFraudProof) (bool, err
 
 	// new namespacedMerkleTree for calculating the new root
 	namespacedMerkleTree := nmt.New(tmhash.New())
-	err := nil
 
 	for shareProof:= range shareProofs {
 		share := shareProof.GetShare()
@@ -69,10 +84,10 @@ func VerifyBadEncodingFraudProof(proof tmproto.BadEncodingFraudProof) (bool, err
 			return errors.New("Root in the data availability header does not commit to the share.")
 		}
 
-		// push shares to the new namespacedMerkleTree
+		// extend the shares and push them to the new namespacedMerkleTree
+		// TODO
 
-		// we need to ensure that data is extended before the loop ends.
-		err = namespacedMerkleTree.push(share)
+		err := namespacedMerkleTree.push(share)
 		if err != nil {
 			return err
 		}
@@ -93,4 +108,8 @@ func VerifyBadEncodingFraudProof(proof tmproto.BadEncodingFraudProof) (bool, err
 func CreateBadEncodingFraudProof(block tmproto.Block) (tmproto.BadEncodingFraudProof, error) {
 
 	//TODO
+	// Is there a code to check each row or column for correct/incorrect encoding?
+	// If an incorrect encoding is detected for a row or column, 
+	//	(i) set block height isCol and position accordingly, 
+	//	(ii) calculate NMT proofs for AVAILABLE_DATA_ORIGINAL_SQUARE_MAX of the shares, create shareProofs.
 }

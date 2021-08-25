@@ -5,11 +5,11 @@ import (
 )
 
 const (
-	bad_encoding               = iota
-	correct_block              = iota
-	incorrect_number_of_shares = iota
-	position_out_of_bound      = iota
-	non_committed_shares       = iota
+	Bad_encoding               = iota
+	Correct_block              = iota
+	Incorrect_number_of_shares = iota
+	Position_out_of_bound      = iota
+	Non_committed_shares       = iota
 )
 
 func CreateBadEncodingFraudProofWithError(block tmproto.Block, err int) tmproto.BadEncodingFraudProof {
@@ -17,20 +17,20 @@ func CreateBadEncodingFraudProofWithError(block tmproto.Block, err int) tmproto.
 	proof := CreateBadEncodingFraudProof(block)
 
 	switch err {
-	case bad_encoding:
+	case Bad_encoding:
 		// BadEncodingFraudProof for a block with bad encoding
 
-	case correct_block:
+	case Correct_block:
 		// BadEncodingFraudProof for a correct block
 
-	case incorrect_number_of_shares:
+	case Incorrect_number_of_shares:
 		// BadEncodingFraudProof with insufficient or too many shares
 		proof.Get
 
-	case position_out_of_bound:
+	case Position_out_of_bound:
 		// BadEncodingFraudProof with position out of bound
 
-	case non_committed_shares:
+	case Non_committed_shares:
 		// BadEncodingFraudProof with shares such that the calculate root does not commit to the shares
 
 	default:
