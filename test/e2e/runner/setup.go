@@ -21,7 +21,6 @@ import (
 
 	"github.com/celestiaorg/celestia-core/config"
 	"github.com/celestiaorg/celestia-core/crypto/ed25519"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	"github.com/celestiaorg/celestia-core/p2p"
 	"github.com/celestiaorg/celestia-core/privval"
 	e2e "github.com/celestiaorg/celestia-core/test/e2e/pkg"
@@ -115,10 +114,6 @@ func Setup(testnet *e2e.Testnet) error {
 			filepath.Join(nodeDir, PrivvalDummyKeyFile),
 			filepath.Join(nodeDir, PrivvalDummyStateFile),
 		)).Save()
-		err = ipfs.InitRepo(cfg.IPFS.RepoPath, logger)
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil

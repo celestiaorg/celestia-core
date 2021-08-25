@@ -10,7 +10,6 @@ import (
 	cmd "github.com/celestiaorg/celestia-core/cmd/tendermint/commands"
 	"github.com/celestiaorg/celestia-core/cmd/tendermint/commands/debug"
 	cfg "github.com/celestiaorg/celestia-core/config"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	"github.com/celestiaorg/celestia-core/libs/cli"
 	"github.com/celestiaorg/celestia-core/libs/log"
 	"github.com/celestiaorg/celestia-core/node"
@@ -79,10 +78,6 @@ func main() {
 
 // DummyNode implements NodeProvider.
 func DummyNode(config *cfg.Config, logger log.Logger) (*node.Node, error) {
-	if err := ipfs.InitRepo(config.IPFS.Path(), logger); err != nil {
-		return nil, fmt.Errorf("failed to initialize IPFS repo at path %s: %v", config.IPFS.Path(), err)
-	}
-
 	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load or gen node key %s: %w", config.NodeKeyFile(), err)

@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 
 	cfg "github.com/celestiaorg/celestia-core/config"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	tmos "github.com/celestiaorg/celestia-core/libs/os"
 	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 	"github.com/celestiaorg/celestia-core/p2p"
@@ -99,6 +98,5 @@ func initFilesWithConfig(config *cfg.Config) error {
 		logger.Info("Generated genesis file", "path", genFile)
 	}
 
-	// TODO(ismail): add counter part in ResetAllCmd
-	return ipfs.InitRepo(config.IPFS.Path(), logger)
+	return nil
 }
