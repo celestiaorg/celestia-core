@@ -8,8 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/celestiaorg/celestia-core/ipfs"
 )
 
 const (
@@ -1002,10 +1000,6 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		MaxOpenConnections:   3,
 		Namespace:            "tendermint",
 	}
-}
-
-func TetsIpfsConfig() *ipfs.Config {
-	return ipfs.DefaultConfig()
 }
 
 // TestInstrumentationConfig returns a default configuration for metrics

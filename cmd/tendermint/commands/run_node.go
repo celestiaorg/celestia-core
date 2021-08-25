@@ -16,7 +16,6 @@ import (
 
 var (
 	genesisHash []byte
-	initIPFS    bool
 )
 
 // AddNodeFlags exposes some common configuration options on the command-line
