@@ -25,7 +25,8 @@ func CanonicalizeBlockID(bid tmproto.BlockID) *tmproto.CanonicalBlockID {
 		cbid = nil
 	} else {
 		cbid = &tmproto.CanonicalBlockID{
-			Hash: bid.Hash,
+			Hash:          bid.Hash,
+			PartSetHeader: CanonicalizePartSetHeader(bid.PartSetHeader),
 		}
 	}
 
@@ -39,17 +40,15 @@ func CanonicalizePartSetHeader(psh tmproto.PartSetHeader) tmproto.CanonicalPartS
 
 // CanonicalizeVote transforms the given Proposal to a CanonicalProposal.
 func CanonicalizeProposal(chainID string, proposal *tmproto.Proposal) tmproto.CanonicalProposal {
-	cppsh := CanonicalizePartSetHeader(*proposal.PartSetHeader)
 	return tmproto.CanonicalProposal{
-		Type:          tmproto.ProposalType,
-		Height:        proposal.Height,       // encoded as sfixed64
-		Round:         int64(proposal.Round), // encoded as sfixed64
-		POLRound:      int64(proposal.PolRound),
-		BlockID:       CanonicalizeBlockID(proposal.BlockID),
-		Timestamp:     proposal.Timestamp,
-		ChainID:       chainID,
-		DAHeader:      proposal.DAHeader,
-		PartSetHeader: &cppsh,
+		Type:      tmproto.ProposalType,
+		Height:    proposal.Height,       // encoded as sfixed64
+		Round:     int64(proposal.Round), // encoded as sfixed64
+		POLRound:  int64(proposal.PolRound),
+		BlockID:   CanonicalizeBlockID(proposal.BlockID),
+		Timestamp: proposal.Timestamp,
+		ChainID:   chainID,
+		DAHeader:  proposal.DAHeader,
 	}
 }
 

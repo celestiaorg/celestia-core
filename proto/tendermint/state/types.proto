@@ -42,7 +42,7 @@ message State {
 
   // immutable
   string chain_id       = 2 [(gogoproto.customname) = "ChainID"];
-  int64  initial_height = 15;
+  int64  initial_height = 14;
 
   // LastBlockHeight=0 at genesis (ie. block(H=0) does not exist)
   int64                    last_block_height = 3;

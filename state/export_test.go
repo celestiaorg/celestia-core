@@ -26,7 +26,6 @@ const ValSetCheckpointInterval = valSetCheckpointInterval
 func UpdateState(
 	state State,
 	blockID types.BlockID,
-	partSetHeader types.PartSetHeader,
 	header *types.Header,
 	abciResponses *tmstate.ABCIResponses,
 	validatorUpdates []*types.Validator,

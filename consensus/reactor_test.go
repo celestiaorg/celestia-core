@@ -927,7 +927,11 @@ func TestVoteSetMaj23MessageValidateBasic(t *testing.T) {
 
 	validBlockID := types.BlockID{}
 	invalidBlockID := types.BlockID{
-		Hash: bytes.HexBytes("invalid"),
+		Hash: bytes.HexBytes{},
+		PartSetHeader: types.PartSetHeader{
+			Total: 1,
+			Hash:  []byte{0},
+		},
 	}
 
 	testCases := []struct { // nolint: maligned
@@ -968,6 +972,15 @@ func TestVoteSetBitsMessageValidateBasic(t *testing.T) {
 		{func(msg *VoteSetBitsMessage) {}, ""},
 		{func(msg *VoteSetBitsMessage) { msg.Height = -1 }, "negative Height"},
 		{func(msg *VoteSetBitsMessage) { msg.Type = 0x03 }, "invalid Type"},
+		{func(msg *VoteSetBitsMessage) {
+			msg.BlockID = types.BlockID{
+				Hash: bytes.HexBytes{},
+				PartSetHeader: types.PartSetHeader{
+					Total: 1,
+					Hash:  []byte{0},
+				},
+			}
+		}, "wrong BlockID: wrong PartSetHeader: wrong Hash:"},
 		{func(msg *VoteSetBitsMessage) { msg.Votes = bits.NewBitArray(types.MaxVotesCount + 1) },
 			"votes bit array is too big: 10001, max: 10000"},
 	}

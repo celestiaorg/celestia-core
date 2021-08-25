@@ -37,24 +37,23 @@ func makeAndCommitGoodBlock(
 	proposerAddr []byte,
 	blockExec *sm.BlockExecutor,
 	privVals map[string]types.PrivValidator,
-	evidence []types.Evidence,
-) (sm.State, types.BlockID, types.PartSetHeader, *types.Commit, error) {
+	evidence []types.Evidence) (sm.State, types.BlockID, *types.Commit, error) {
 	// A good block passes
-	state, blockID, psh, err := makeAndApplyGoodBlock(state, height, lastCommit, proposerAddr, blockExec, evidence)
+	state, blockID, err := makeAndApplyGoodBlock(state, height, lastCommit, proposerAddr, blockExec, evidence)
 	if err != nil {
-		return state, types.BlockID{}, types.PartSetHeader{}, nil, err
+		return state, types.BlockID{}, nil, err
 	}
 
 	// Simulate a lastCommit for this block from all validators for the next height
-	commit, err := makeValidCommit(height, blockID, psh, state.Validators, privVals)
+	commit, err := makeValidCommit(height, blockID, state.Validators, privVals)
 	if err != nil {
-		return state, types.BlockID{}, types.PartSetHeader{}, nil, err
+		return state, types.BlockID{}, nil, err
 	}
-	return state, blockID, psh, commit, nil
+	return state, blockID, commit, nil
 }
 
 func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commit, proposerAddr []byte,
-	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, types.BlockID, types.PartSetHeader, error) {
+	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, types.BlockID, error) {
 	block, _ := state.MakeBlock(
 		height,
 		makeTxs(height),
@@ -65,34 +64,33 @@ func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commi
 		proposerAddr,
 	)
 	if err := blockExec.ValidateBlock(state, block); err != nil {
-		return state, types.BlockID{}, types.PartSetHeader{}, err
+		return state, types.BlockID{}, err
 	}
-	blockID := types.BlockID{Hash: block.Hash()}
-	psh := types.PartSetHeader{Total: 3, Hash: tmrand.Bytes(32)}
-	state, _, err := blockExec.ApplyBlock(state, blockID, psh, block)
+	blockID := types.BlockID{Hash: block.Hash(),
+		PartSetHeader: types.PartSetHeader{Total: 3, Hash: tmrand.Bytes(32)}}
+	state, _, err := blockExec.ApplyBlock(state, blockID, block)
 	if err != nil {
-		return state, types.BlockID{}, types.PartSetHeader{}, err
+		return state, types.BlockID{}, err
 	}
-	return state, blockID, psh, nil
+	return state, blockID, nil
 }
 
 func makeValidCommit(
 	height int64,
 	blockID types.BlockID,
-	partSetHeader types.PartSetHeader,
 	vals *types.ValidatorSet,
 	privVals map[string]types.PrivValidator,
 ) (*types.Commit, error) {
 	sigs := make([]types.CommitSig, 0)
 	for i := 0; i < vals.Size(); i++ {
 		_, val := vals.GetByIndex(int32(i))
-		vote, err := types.MakeVote(height, blockID, partSetHeader, vals, privVals[val.Address.String()], chainID, time.Now())
+		vote, err := types.MakeVote(height, blockID, vals, privVals[val.Address.String()], chainID, time.Now())
 		if err != nil {
 			return nil, err
 		}
 		sigs = append(sigs, vote.CommitSig())
 	}
-	return types.NewCommit(height, 0, blockID, sigs, partSetHeader), nil
+	return types.NewCommit(height, 0, blockID, sigs), nil
 }
 
 // make some bogus txs
@@ -182,7 +180,8 @@ func makeHeaderPartsResponsesValPubKeyChange(
 			},
 		}
 	}
-	return block.Header, types.BlockID{Hash: block.Hash()}, abciResponses
+
+	return block.Header, types.BlockID{Hash: block.Hash(), PartSetHeader: types.PartSetHeader{}}, abciResponses
 }
 
 func makeHeaderPartsResponsesValPowerChange(
@@ -205,7 +204,8 @@ func makeHeaderPartsResponsesValPowerChange(
 			},
 		}
 	}
-	return block.Header, types.BlockID{Hash: block.Hash()}, abciResponses
+
+	return block.Header, types.BlockID{Hash: block.Hash(), PartSetHeader: types.PartSetHeader{}}, abciResponses
 }
 
 func makeHeaderPartsResponsesParams(
@@ -218,7 +218,7 @@ func makeHeaderPartsResponsesParams(
 		BeginBlock: &abci.ResponseBeginBlock{},
 		EndBlock:   &abci.ResponseEndBlock{ConsensusParamUpdates: types.TM2PB.ConsensusParams(&params)},
 	}
-	return block.Header, types.BlockID{Hash: block.Hash()}, abciResponses
+	return block.Header, types.BlockID{Hash: block.Hash(), PartSetHeader: types.PartSetHeader{}}, abciResponses
 }
 
 func randomGenesisDoc() *types.GenesisDoc {

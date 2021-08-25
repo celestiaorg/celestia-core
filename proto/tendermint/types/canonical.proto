@@ -9,6 +9,7 @@ import "google/protobuf/timestamp.proto";
 
 message CanonicalBlockID {
   bytes                  hash            = 1;
+  CanonicalPartSetHeader part_set_header = 2 [(gogoproto.nullable) = false];
 }
 
 message CanonicalPartSetHeader {
@@ -25,7 +26,6 @@ message CanonicalProposal {
   google.protobuf.Timestamp timestamp = 6 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   string                    chain_id  = 7 [(gogoproto.customname) = "ChainID"];
   DataAvailabilityHeader   da_header = 8 [(gogoproto.customname) = "DAHeader"];
-  CanonicalPartSetHeader part_set_header = 9; 
 }
 
 message CanonicalVote {
