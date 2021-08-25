@@ -1,7 +1,6 @@
 package evidence_test
 
 import (
-	"context"
 	"os"
 	"testing"
 	"time"
@@ -396,7 +395,7 @@ func initializeValidatorState(privVal types.PrivValidator, height int64) sm.Stor
 // initializeBlockStore creates a block storage and populates it w/ a dummy
 // block at +height+.
 func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.BlockStore {
-	blockStore := store.MockBlockStore(db)
+	blockStore := store.NewBlockStore(db)
 
 	for i := int64(1); i <= state.LastBlockHeight; i++ {
 		lastCommit := makeCommit(i-1, valAddr)
@@ -408,10 +407,7 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.Bloc
 		partSet := block.MakePartSet(parts)
 
 		seenCommit := makeCommit(i, valAddr)
-		err := blockStore.SaveBlock(context.TODO(), block, partSet, seenCommit)
-		if err != nil {
-			panic(err)
-		}
+		blockStore.SaveBlock(block, partSet, seenCommit)
 	}
 
 	return blockStore

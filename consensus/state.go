@@ -2,7 +2,6 @@ package consensus
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -12,8 +11,6 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	format "github.com/ipfs/go-ipld-format"
-	"github.com/libp2p/go-libp2p-core/routing"
 
 	cfg "github.com/celestiaorg/celestia-core/config"
 	cstypes "github.com/celestiaorg/celestia-core/consensus/types"
@@ -95,9 +92,6 @@ type State struct {
 	// store blocks and commits
 	blockStore sm.BlockStore
 
-	dag    format.DAGService
-	croute routing.ContentRouting
-
 	// create and execute blocks
 	blockExec *sm.BlockExecutor
 
@@ -165,8 +159,6 @@ func NewState(
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
 	txNotifier txNotifier,
-	dag format.DAGService,
-	croute routing.ContentRouting,
 	evpool evidencePool,
 	options ...StateOption,
 ) *State {
@@ -174,8 +166,6 @@ func NewState(
 		config:           config,
 		blockExec:        blockExec,
 		blockStore:       blockStore,
-		dag:              dag,
-		croute:           croute,
 		txNotifier:       txNotifier,
 		peerMsgQueue:     make(chan msgInfo, msgQueueSize),
 		internalMsgQueue: make(chan msgInfo, msgQueueSize),
@@ -1545,10 +1535,7 @@ func (cs *State) finalizeCommit(height int64) {
 		// but may differ from the LastCommit included in the next block
 		precommits := cs.Votes.Precommits(cs.CommitRound)
 		seenCommit := precommits.MakeCommit()
-		err := cs.blockStore.SaveBlock(context.TODO(), block, blockParts, seenCommit)
-		if err != nil {
-			panic(err)
-		}
+		cs.blockStore.SaveBlock(block, blockParts, seenCommit)
 	} else {
 		// Happens during replay if we already saved the block but didn't commit
 		cs.Logger.Info("Calling finalizeCommit on already stored block", "height", block.Height)

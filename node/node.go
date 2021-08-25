@@ -5,15 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // nolint: gosec // securely exposed on separate, optional port
 	"strings"
 	"time"
 
-	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -24,7 +21,6 @@ import (
 	cs "github.com/celestiaorg/celestia-core/consensus"
 	"github.com/celestiaorg/celestia-core/crypto"
 	"github.com/celestiaorg/celestia-core/evidence"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	dbm "github.com/celestiaorg/celestia-core/libs/db"
 	"github.com/celestiaorg/celestia-core/libs/db/badgerdb"
 	tmjson "github.com/celestiaorg/celestia-core/libs/json"
@@ -87,12 +83,12 @@ func DefaultGenesisDocProviderFunc(config *cfg.Config) GenesisDocProvider {
 }
 
 // Provider takes a config and a logger and returns a ready to go Node.
-type Provider func(*cfg.Config, ipfs.NodeProvider, log.Logger) (*Node, error)
+type Provider func(*cfg.Config, log.Logger) (*Node, error)
 
 // DefaultNewNode returns a Tendermint node with default settings for the
 // PrivValidator, ClientCreator, GenesisDoc, and DBProvider.
 // It implements NodeProvider.
-func DefaultNewNode(config *cfg.Config, ipfs ipfs.NodeProvider, logger log.Logger) (*Node, error) {
+func DefaultNewNode(config *cfg.Config, logger log.Logger) (*Node, error) {
 	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 	if err != nil {
 		return nil, fmt.Errorf("failed to load or gen node key %s: %w", config.NodeKeyFile(), err)
@@ -109,7 +105,6 @@ func DefaultNewNode(config *cfg.Config, ipfs ipfs.NodeProvider, logger log.Logge
 		proxy.DefaultClientCreator(config.ProxyApp, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
 		DefaultDBProvider,
-		ipfs,
 		DefaultMetricsProvider(config.Instrumentation),
 		logger,
 	)
@@ -215,8 +210,6 @@ type Node struct {
 	txIndexer         txindex.TxIndexer
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
-
-	ipfsClose io.Closer
 }
 
 func createAndStartProxyAppConns(clientCreator proxy.ClientCreator, logger log.Logger) (proxy.AppConns, error) {
@@ -369,8 +362,7 @@ func createBlockchainReactor(config *cfg.Config,
 	return bcReactor, nil
 }
 
-func createConsensusReactor(
-	config *cfg.Config,
+func createConsensusReactor(config *cfg.Config,
 	state sm.State,
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
@@ -380,8 +372,6 @@ func createConsensusReactor(
 	csMetrics *cs.Metrics,
 	waitSync bool,
 	eventBus *types.EventBus,
-	dag ipld.DAGService,
-	croute routing.ContentRouting,
 	consensusLogger log.Logger) (*cs.Reactor, *cs.State) {
 
 	consensusState := cs.NewState(
@@ -390,8 +380,6 @@ func createConsensusReactor(
 		blockExec,
 		blockStore,
 		mempool,
-		dag,
-		croute,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
 	)
@@ -620,7 +608,6 @@ func NewNode(config *cfg.Config,
 	clientCreator proxy.ClientCreator,
 	genesisDocProvider GenesisDocProvider,
 	dbProvider DBProvider,
-	ipfsProvider ipfs.NodeProvider,
 	metricsProvider MetricsProvider,
 	logger log.Logger,
 	options ...Option) (*Node, error) {
@@ -685,12 +672,7 @@ func NewNode(config *cfg.Config,
 		return nil, err
 	}
 
-	ipfsNode, err := ipfsProvider()
-	if err != nil {
-		return nil, err
-	}
-
-	blockStore := store.NewBlockStore(blockStoreDB, ipfsNode.Blockstore, logger)
+	blockStore := store.NewBlockStore(blockStoreDB)
 
 	// Create the handshaker, which calls RequestInfo, sets the AppVersion on the state,
 	// and replays any blocks as necessary to sync tendermint with the app.
@@ -751,7 +733,7 @@ func NewNode(config *cfg.Config,
 	}
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, ipfsNode.DAG, ipfsNode.Routing, consensusLogger,
+		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger,
 	)
 
 	// Set up state sync reactor, and schedule a sync if requested.
@@ -852,7 +834,6 @@ func NewNode(config *cfg.Config,
 		txIndexer:        txIndexer,
 		indexerService:   indexerService,
 		eventBus:         eventBus,
-		ipfsClose:        ipfsNode,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
@@ -995,10 +976,6 @@ func (n *Node) OnStop() {
 			// Error from closing listeners, or context timeout:
 			n.Logger.Error("Prometheus HTTP server Shutdown", "err", err)
 		}
-	}
-
-	if err := n.ipfsClose.Close(); err != nil {
-		n.Logger.Error("ipfsClose.Close()", err)
 	}
 }
 
@@ -1402,8 +1379,8 @@ func createAndStartPrivValidatorSocketClient(
 	}
 
 	const (
-		retries = 50 // 50 * 200ms = 10s total
-		timeout = 200 * time.Millisecond
+		retries = 50 // 50 * 100ms = 5s total
+		timeout = 100 * time.Millisecond
 	)
 	pvscWithRetries := privval.NewRetrySignerClient(pvsc, retries, timeout)
 
