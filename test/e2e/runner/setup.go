@@ -85,8 +85,7 @@ func Setup(testnet *e2e.Testnet) error {
 		if err != nil {
 			return err
 		}
-		// todo(evan): the path should be a constant
-		cfg.IPFS.RepoPath = filepath.Join(nodeDir, ".ipfs")
+
 		config.WriteConfigFile(filepath.Join(nodeDir, "config", "config.toml"), cfg) // panics
 
 		appCfg, err := MakeAppConfig(node)

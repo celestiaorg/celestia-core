@@ -67,8 +67,6 @@ type Config struct {
 	Consensus       *ConsensusConfig       `mapstructure:"consensus"`
 	TxIndex         *TxIndexConfig         `mapstructure:"tx-index"`
 	Instrumentation *InstrumentationConfig `mapstructure:"instrumentation"`
-	// Options for IPFS service
-	IPFS *ipfs.Config `mapstructure:"ipfs"`
 }
 
 // DefaultConfig returns a default configuration for a Tendermint node
@@ -83,7 +81,6 @@ func DefaultConfig() *Config {
 		Consensus:       DefaultConsensusConfig(),
 		TxIndex:         DefaultTxIndexConfig(),
 		Instrumentation: DefaultInstrumentationConfig(),
-		IPFS:            ipfs.DefaultConfig(),
 	}
 }
 
@@ -99,7 +96,6 @@ func TestConfig() *Config {
 		Consensus:       TestConsensusConfig(),
 		TxIndex:         TestTxIndexConfig(),
 		Instrumentation: TestInstrumentationConfig(),
-		IPFS:            TetsIpfsConfig(),
 	}
 }
 
@@ -110,7 +106,6 @@ func (cfg *Config) SetRoot(root string) *Config {
 	cfg.P2P.RootDir = root
 	cfg.Mempool.RootDir = root
 	cfg.Consensus.RootDir = root
-	cfg.IPFS.RootDir = root
 	return cfg
 }
 
