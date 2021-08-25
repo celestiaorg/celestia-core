@@ -55,8 +55,7 @@ func TestMsgToProto(t *testing.T) {
 		Timestamp: time.Now(),
 		Signature: tmrand.Bytes(20),
 	}
-	pbProposal, err := proposal.ToProto()
-	require.NoError(t, err)
+	pbProposal := proposal.ToProto()
 
 	pv := types.NewMockPV()
 	pk, err := pv.GetPubKey()
@@ -354,8 +353,7 @@ func TestConsMsgsVectors(t *testing.T) {
 		Timestamp: date,
 		Signature: []byte("add_more_exclamation"),
 	}
-	pbProposal, err := proposal.ToProto()
-	require.NoError(t, err)
+	pbProposal := proposal.ToProto()
 
 	v := &types.Vote{
 		ValidatorAddress: []byte("add_more_exclamation"),

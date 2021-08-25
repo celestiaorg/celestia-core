@@ -372,8 +372,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
 	proposal := types.NewProposal(vss[1].Height, round, -1, blockID)
-	p, err := proposal.ToProto()
-	require.NoError(t, err)
+	p := proposal.ToProto()
 	if err := vss[1].SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal("failed to sign bad proposal", err)
 	}
@@ -403,8 +402,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
 	proposal = types.NewProposal(vss[2].Height, round, -1, blockID)
-	p, err = proposal.ToProto()
-	require.NoError(t, err)
+	p = proposal.ToProto()
 	if err := vss[2].SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal("failed to sign bad proposal", err)
 	}
@@ -461,8 +459,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	selfIndex := valIndexFn(0)
 
 	proposal = types.NewProposal(vss[3].Height, round, -1, blockID)
-	p, err = proposal.ToProto()
-	require.NoError(t, err)
+	p = proposal.ToProto()
 	if err := vss[3].SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal("failed to sign bad proposal", err)
 	}
@@ -521,8 +518,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 
 	selfIndex = valIndexFn(0)
 	proposal = types.NewProposal(vss[1].Height, round, -1, blockID)
-	p, err = proposal.ToProto()
-	require.NoError(t, err)
+	p = proposal.ToProto()
 	if err := vss[1].SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal("failed to sign bad proposal", err)
 	}

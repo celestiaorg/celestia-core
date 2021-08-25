@@ -69,8 +69,7 @@ func TestPrivvalVectors(t *testing.T) {
 
 	// Generate a simple proposal
 	proposal := exampleProposal()
-	proposalpb, err := proposal.ToProto()
-	require.NoError(t, err)
+	proposalpb := proposal.ToProto()
 
 	// Create a Reuseable remote error
 	remoteError := &privproto.RemoteSignerError{Code: 1, Description: "it's a error"}

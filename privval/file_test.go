@@ -236,8 +236,7 @@ func TestSignProposal(t *testing.T) {
 
 	// sign a proposal for first time
 	proposal := newProposal(height, round, block1)
-	pbp, err := proposal.ToProto()
-	require.NoError(t, err)
+	pbp := proposal.ToProto()
 	err = privVal.SignProposal("mychainid", pbp)
 	assert.NoError(err, "expected no error signing proposal")
 
@@ -254,8 +253,7 @@ func TestSignProposal(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		p, err := c.ToProto()
-		require.NoError(t, err)
+		p := c.ToProto()
 		err = privVal.SignProposal("mychainid", p)
 		assert.Error(err, "expected error on signing conflicting proposal")
 	}
@@ -284,8 +282,7 @@ func TestDifferByTimestamp(t *testing.T) {
 	// test proposal
 	{
 		proposal := newProposal(height, round, block1)
-		pb, err := proposal.ToProto()
-		require.NoError(t, err)
+		pb := proposal.ToProto()
 		err = privVal.SignProposal(chainID, pb)
 		assert.NoError(t, err, "expected no error signing proposal")
 		signBytes := types.ProposalSignBytes(chainID, pb)

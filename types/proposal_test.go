@@ -33,10 +33,7 @@ func init() {
 		POLRound:  -1,
 		Timestamp: stamp,
 	}
-	pbp, err = testProposal.ToProto()
-	if err != nil {
-		panic(err)
-	}
+	pbp = testProposal.ToProto()
 }
 
 func TestProposalSignable(t *testing.T) {
@@ -66,8 +63,7 @@ func TestProposalVerifySignature(t *testing.T) {
 		4, 2, 2,
 		BlockID{tmrand.Bytes(tmhash.Size), PartSetHeader{777, tmrand.Bytes(tmhash.Size)}},
 	)
-	p, err := prop.ToProto()
-	require.NoError(t, err)
+	p := prop.ToProto()
 	signBytes := ProposalSignBytes("test_chain_id", p)
 
 	// sign it
@@ -81,8 +77,7 @@ func TestProposalVerifySignature(t *testing.T) {
 
 	// serialize, deserialize and verify again....
 	newProp := new(tmproto.Proposal)
-	pb, err := prop.ToProto()
-	require.NoError(t, err)
+	pb := prop.ToProto()
 
 	bs, err := proto.Marshal(pb)
 	require.NoError(t, err)
@@ -156,9 +151,8 @@ func TestProposalValidateBasic(t *testing.T) {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
 			prop := NewProposal(4, 2, 2, blockID)
-			p, err := prop.ToProto()
-			require.NoError(t, err)
-			err = privVal.SignProposal("test_chain_id", p)
+			p := prop.ToProto()
+			err := privVal.SignProposal("test_chain_id", p)
 			prop.Signature = p.Signature
 			require.NoError(t, err)
 			tc.malleateProposal(prop)
@@ -188,8 +182,7 @@ func TestProposalProtoBuf(t *testing.T) {
 		{"nil proposal", nil, false},
 	}
 	for _, tc := range testCases {
-		protoProposal, err := tc.p1.ToProto()
-		require.NoError(t, err)
+		protoProposal := tc.p1.ToProto()
 		p, err := ProposalFromProto(protoProposal)
 		if tc.expPass {
 			require.NoError(t, err)

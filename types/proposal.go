@@ -118,9 +118,9 @@ func ProposalSignBytes(chainID string, p *tmproto.Proposal) []byte {
 }
 
 // ToProto converts Proposal to protobuf
-func (p *Proposal) ToProto() (*tmproto.Proposal, error) {
+func (p *Proposal) ToProto() *tmproto.Proposal {
 	if p == nil {
-		return &tmproto.Proposal{}, nil
+		return &tmproto.Proposal{}
 	}
 
 	pb := new(tmproto.Proposal)
@@ -131,7 +131,7 @@ func (p *Proposal) ToProto() (*tmproto.Proposal, error) {
 	pb.PolRound = p.POLRound
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
-	return pb, nil
+	return pb
 }
 
 // ProposalFromProto sets a protobuf Proposal to the given pointer.
