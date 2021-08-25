@@ -194,7 +194,6 @@ message Proposal {
   google.protobuf.Timestamp timestamp = 6
       [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   bytes signature = 7;
-  DataAvailabilityHeader    da_header = 8 [(gogoproto.customname) = "DAHeader"];
 }
 
 message SignedHeader {

@@ -228,12 +228,8 @@ func (th *TestHarness) TestSignProposal() error {
 			},
 		},
 		Timestamp: time.Now(),
-		DAHeader:  &types.DataAvailabilityHeader{},
 	}
-	p, err := prop.ToProto()
-	if err != nil {
-		return err
-	}
+	p := prop.ToProto()
 	propBytes := types.ProposalSignBytes(th.chainID, p)
 	if err := th.signerClient.SignProposal(th.chainID, p); err != nil {
 		th.logger.Error("FAILED: Signing of proposal", "err", err)

@@ -1084,12 +1084,8 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 	// Make proposal
 	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID, &block.DataAvailabilityHeader)
-	p, err := proposal.ToProto()
-	if err != nil {
-		cs.Logger.Error(fmt.Sprintf("can't serialize proposal: %s", err.Error()))
-		return
-	}
+	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID)
+	p := proposal.ToProto()
 
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
 		proposal.Signature = p.Signature
@@ -1739,10 +1735,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		return ErrInvalidProposalPOLRound
 	}
 
-	p, err := proposal.ToProto()
-	if err != nil {
-		return err
-	}
+	p := proposal.ToProto()
 
 	// Verify signature
 	if !cs.Validators.GetProposer().PubKey.VerifySignature(

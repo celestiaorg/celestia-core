@@ -208,9 +208,8 @@ func TestStateBadProposal(t *testing.T) {
 	propBlock.AppHash = stateHash
 	propBlockParts := propBlock.MakePartSet(partSize)
 	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
-	proposal := types.NewProposal(vs2.Height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
-	p, err := proposal.ToProto()
-	require.NoError(t, err)
+	proposal := types.NewProposal(vs2.Height, round, -1, blockID)
+	p := proposal.ToProto()
 	if err := vs2.SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal("failed to sign bad proposal", err)
 	}
@@ -264,9 +263,8 @@ func TestStateOversizedBlock(t *testing.T) {
 
 	propBlockParts := propBlock.MakePartSet(partSize)
 	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
-	proposal := types.NewProposal(height, round, -1, blockID, &propBlock.DataAvailabilityHeader)
-	p, err := proposal.ToProto()
-	require.NoError(t, err)
+	proposal := types.NewProposal(height, round, -1, blockID)
+	p := proposal.ToProto()
 	if err := vs2.SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal("failed to sign bad proposal", err)
 	}
@@ -1095,9 +1093,8 @@ func TestStateLockPOLSafety2(t *testing.T) {
 
 	round++ // moving to the next round
 	// in round 2 we see the polkad block from round 0
-	newProp := types.NewProposal(height, round, 0, propBlockID0, &propBlock0.DataAvailabilityHeader)
-	p, err := newProp.ToProto()
-	require.NoError(t, err)
+	newProp := types.NewProposal(height, round, 0, propBlockID0)
+	p := newProp.ToProto()
 	if err := vs3.SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal(err)
 	}
