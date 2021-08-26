@@ -37,10 +37,7 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 
 	var proof types.TxProof
 	if prove {
-		block, err := env.BlockStore.LoadBlock(ctx.Context(), height)
-		if err != nil {
-			return nil, err
-		}
+		block := env.BlockStore.LoadBlock(height)
 		proof = block.Data.Txs.Proof(int(index)) // XXX: overflow on 32-bit machines
 	}
 
@@ -110,10 +107,7 @@ func TxSearch(ctx *rpctypes.Context, query string, prove bool, pagePtr, perPageP
 
 		var proof types.TxProof
 		if prove {
-			block, err := env.BlockStore.LoadBlock(ctx.Context(), r.Height)
-			if err != nil {
-				return nil, err
-			}
+			block := env.BlockStore.LoadBlock(r.Height)
 			proof = block.Data.Txs.Proof(int(r.Index)) // XXX: overflow on 32-bit machines
 		}
 

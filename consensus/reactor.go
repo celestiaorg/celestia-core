@@ -531,7 +531,7 @@ OUTER_LOOP:
 						"blockstoreBase", conR.conS.blockStore.Base(), "blockstoreHeight", conR.conS.blockStore.Height())
 					time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 				} else {
-					ps.InitProposalBlockParts(blockMeta.PartSetHeader)
+					ps.InitProposalBlockParts(blockMeta.BlockID.PartSetHeader)
 				}
 				// continue the loop since prs is a copy and not effected by this initialization
 				continue OUTER_LOOP
@@ -597,9 +597,9 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 				"blockstoreBase", conR.conS.blockStore.Base(), "blockstoreHeight", conR.conS.blockStore.Height())
 			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 			return
-		} else if !blockMeta.PartSetHeader.Equals(prs.ProposalBlockPartSetHeader) {
+		} else if !blockMeta.BlockID.PartSetHeader.Equals(prs.ProposalBlockPartSetHeader) {
 			logger.Info("Peer ProposalBlockPartSetHeader mismatch, sleeping",
-				"blockPartSetHeader", blockMeta.PartSetHeader, "peerBlockPartSetHeader", prs.ProposalBlockPartSetHeader)
+				"blockPartSetHeader", blockMeta.BlockID.PartSetHeader, "peerBlockPartSetHeader", prs.ProposalBlockPartSetHeader)
 			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 			return
 		}
@@ -607,7 +607,7 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 		part := conR.conS.blockStore.LoadBlockPart(prs.Height, index)
 		if part == nil {
 			logger.Error("Could not load part", "index", index,
-				"blockPartSetHeader", blockMeta.PartSetHeader, "peerBlockPartSetHeader", prs.ProposalBlockPartSetHeader)
+				"blockPartSetHeader", blockMeta.BlockID.PartSetHeader, "peerBlockPartSetHeader", prs.ProposalBlockPartSetHeader)
 			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 			return
 		}
@@ -778,7 +778,7 @@ OUTER_LOOP:
 			rs := conR.conS.GetRoundState()
 			prs := ps.GetRoundState()
 			if rs.Height == prs.Height {
-				if maj23, _, ok := rs.Votes.Prevotes(prs.Round).TwoThirdsMajority(); ok {
+				if maj23, ok := rs.Votes.Prevotes(prs.Round).TwoThirdsMajority(); ok {
 					peer.TrySend(StateChannel, MustEncode(&VoteSetMaj23Message{
 						Height:  prs.Height,
 						Round:   prs.Round,
@@ -795,7 +795,7 @@ OUTER_LOOP:
 			rs := conR.conS.GetRoundState()
 			prs := ps.GetRoundState()
 			if rs.Height == prs.Height {
-				if maj23, _, ok := rs.Votes.Precommits(prs.Round).TwoThirdsMajority(); ok {
+				if maj23, ok := rs.Votes.Precommits(prs.Round).TwoThirdsMajority(); ok {
 					peer.TrySend(StateChannel, MustEncode(&VoteSetMaj23Message{
 						Height:  prs.Height,
 						Round:   prs.Round,
@@ -812,7 +812,7 @@ OUTER_LOOP:
 			rs := conR.conS.GetRoundState()
 			prs := ps.GetRoundState()
 			if rs.Height == prs.Height && prs.ProposalPOLRound >= 0 {
-				if maj23, _, ok := rs.Votes.Prevotes(prs.ProposalPOLRound).TwoThirdsMajority(); ok {
+				if maj23, ok := rs.Votes.Prevotes(prs.ProposalPOLRound).TwoThirdsMajority(); ok {
 					peer.TrySend(StateChannel, MustEncode(&VoteSetMaj23Message{
 						Height:  prs.Height,
 						Round:   prs.ProposalPOLRound,
@@ -1017,8 +1017,8 @@ func (ps *PeerState) SetHasProposal(proposal *types.Proposal) {
 		return
 	}
 
-	ps.PRS.ProposalBlockPartSetHeader = proposal.PartSetHeader
-	ps.PRS.ProposalBlockParts = bits.NewBitArray(int(proposal.PartSetHeader.Total))
+	ps.PRS.ProposalBlockPartSetHeader = proposal.BlockID.PartSetHeader
+	ps.PRS.ProposalBlockParts = bits.NewBitArray(int(proposal.BlockID.PartSetHeader.Total))
 	ps.PRS.ProposalPOLRound = proposal.POLRound
 	ps.PRS.ProposalPOL = nil // Nil until ProposalPOLMessage received.
 }
@@ -1679,7 +1679,7 @@ func (m *VoteSetMaj23Message) ValidateBasic() error {
 		return errors.New("invalid Type")
 	}
 	if err := m.BlockID.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong BlockID: %w", err)
+		return fmt.Errorf("wrong BlockID: %v", err)
 	}
 	return nil
 }

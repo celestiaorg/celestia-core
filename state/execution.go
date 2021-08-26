@@ -177,10 +177,7 @@ func (blockExec *BlockExecutor) ValidateBlock(state State, block *types.Block) e
 // from outside this package to process and commit an entire block.
 // It takes a blockID to avoid recomputing the parts hash.
 func (blockExec *BlockExecutor) ApplyBlock(
-	state State,
-	blockID types.BlockID,
-	partSetHeader types.PartSetHeader,
-	block *types.Block,
+	state State, blockID types.BlockID, block *types.Block,
 ) (State, int64, error) {
 
 	if err := validateBlock(state, block); err != nil {

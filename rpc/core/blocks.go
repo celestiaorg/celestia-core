@@ -89,10 +89,7 @@ func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error)
 		return nil, err
 	}
 
-	block, err := env.BlockStore.LoadBlock(ctx.Context(), height)
-	if err != nil {
-		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: block}, err
-	}
+	block := env.BlockStore.LoadBlock(height)
 	blockMeta := env.BlockStore.LoadBlockMeta(height)
 	if blockMeta == nil {
 		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: block}, nil
@@ -103,10 +100,7 @@ func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error)
 // BlockByHash gets block by hash.
 // More: https://docs.tendermint.com/master/rpc/#/Info/block_by_hash
 func BlockByHash(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error) {
-	block, err := env.BlockStore.LoadBlockByHash(ctx.Context(), hash)
-	if err != nil {
-		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: nil}, err
-	}
+	block := env.BlockStore.LoadBlockByHash(hash)
 	if block == nil {
 		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: nil}, nil
 	}
@@ -151,14 +145,9 @@ func DataAvailabilityHeader(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.Re
 
 	// TODO: store DAHeader to avoid loading the full block each time
 	// depends on either:
-	// - https://github.com/celestiaorg/celestia-core/pull/312, or
-	// - https://github.com/celestiaorg/celestia-core/pull/218
-	block, err := env.BlockStore.LoadBlock(ctx.Context(), height)
-	if err != nil {
-		return &ctypes.ResultDataAvailabilityHeader{
-			DataAvailabilityHeader: types.DataAvailabilityHeader{},
-		}, err
-	}
+	// - https://github.com/lazyledger/lazyledger-core/pull/312, or
+	// - https://github.com/lazyledger/lazyledger-core/pull/218
+	block := env.BlockStore.LoadBlock(height)
 	_ = block.Hash()
 	dah := block.DataAvailabilityHeader
 	return &ctypes.ResultDataAvailabilityHeader{

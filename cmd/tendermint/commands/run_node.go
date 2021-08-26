@@ -17,7 +17,6 @@ import (
 
 var (
 	genesisHash []byte
-	initIPFS    bool
 )
 
 // AddNodeFlags exposes some common configuration options on the command-line
@@ -91,22 +90,6 @@ func AddNodeFlags(cmd *cobra.Command) {
 		config.DBPath,
 		"database directory")
 
-	cmd.Flags().String(
-		"ipfs.repo-path",
-		config.IPFS.RepoPath,
-		"custom IPFS repository path. Defaults to `.{RootDir}/ipfs`",
-	)
-	cmd.Flags().Bool(
-		"ipfs.serve-api",
-		config.IPFS.ServeAPI,
-		"set this to expose IPFS API(useful for debugging)",
-	)
-	cmd.Flags().BoolVar(
-		&initIPFS,
-		"ipfs.init",
-		false,
-		"set this to initialize repository for embedded IPFS node. Flag is ignored if repo is already initialized",
-	)
 }
 
 // NewRunNodeCmd returns the command that allows the CLI to start a node.
@@ -123,7 +106,6 @@ func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
 
 			n, err := nodeProvider(
 				config,
-				ipfs.Embedded(initIPFS, config.IPFS, logger),
 				logger,
 			)
 			if err != nil {

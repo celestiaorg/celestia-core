@@ -11,17 +11,15 @@ import (
 
 func TestBlockMeta_ToProto(t *testing.T) {
 	h := makeRandHeader()
-	bi := BlockID{Hash: h.Hash()}
-	psh := PartSetHeader{Total: 123, Hash: tmrand.Bytes(tmhash.Size)}
+	bi := BlockID{Hash: h.Hash(), PartSetHeader: PartSetHeader{Total: 123, Hash: tmrand.Bytes(tmhash.Size)}}
 	dah := makeDAHeaderRandom()
 
 	bm := &BlockMeta{
-		BlockID:       bi,
-		PartSetHeader: psh,
-		BlockSize:     200,
-		Header:        h,
-		NumTxs:        0,
-		DAHeader:      *dah,
+		BlockID:   bi,
+		BlockSize: 200,
+		Header:    h,
+		NumTxs:    0,
+		DAHeader:  *dah,
 	}
 
 	tests := []struct {
@@ -53,18 +51,17 @@ func TestBlockMeta_ToProto(t *testing.T) {
 
 func TestBlockMeta_ValidateBasic(t *testing.T) {
 	h := makeRandHeader()
-	bi := BlockID{Hash: h.Hash()}
-	psh := PartSetHeader{Total: 123, Hash: tmrand.Bytes(tmhash.Size)}
-	bi2 := BlockID{Hash: tmrand.Bytes(tmhash.Size)}
-	bi3 := BlockID{Hash: []byte("incorrect hash")}
-	psh3 := PartSetHeader{Total: 123, Hash: []byte("incorrect hash")}
+	bi := BlockID{Hash: h.Hash(), PartSetHeader: PartSetHeader{Total: 123, Hash: tmrand.Bytes(tmhash.Size)}}
+	bi2 := BlockID{Hash: tmrand.Bytes(tmhash.Size),
+		PartSetHeader: PartSetHeader{Total: 123, Hash: tmrand.Bytes(tmhash.Size)}}
+	bi3 := BlockID{Hash: []byte("incorrect hash"),
+		PartSetHeader: PartSetHeader{Total: 123, Hash: []byte("incorrect hash")}}
 
 	bm := &BlockMeta{
-		BlockID:       bi,
-		PartSetHeader: psh,
-		BlockSize:     200,
-		Header:        h,
-		NumTxs:        0,
+		BlockID:   bi,
+		BlockSize: 200,
+		Header:    h,
+		NumTxs:    0,
 	}
 
 	bm2 := &BlockMeta{
@@ -75,11 +72,10 @@ func TestBlockMeta_ValidateBasic(t *testing.T) {
 	}
 
 	bm3 := &BlockMeta{
-		BlockID:       bi3,
-		PartSetHeader: psh3,
-		BlockSize:     200,
-		Header:        h,
-		NumTxs:        0,
+		BlockID:   bi3,
+		BlockSize: 200,
+		Header:    h,
+		NumTxs:    0,
 	}
 
 	tests := []struct {

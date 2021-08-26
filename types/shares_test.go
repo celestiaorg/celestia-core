@@ -27,11 +27,10 @@ func TestMakeShares(t *testing.T) {
 	reservedTxNamespaceID := append(bytes.Repeat([]byte{0}, 7), 1)
 	reservedEvidenceNamespaceID := append(bytes.Repeat([]byte{0}, 7), 3)
 	val := NewMockPV()
-	blockID := makeBlockID([]byte("blockhash"))
-	psh := makePartSetHeader(1000, []byte("partshash"))
-	blockID2 := makeBlockID([]byte("blockhash2"))
-	vote1 := makeVote(t, val, "chainID", 0, 10, 2, 1, blockID, psh, defaultVoteTime)
-	vote2 := makeVote(t, val, "chainID", 0, 10, 2, 1, blockID2, psh, defaultVoteTime)
+	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
+	blockID2 := makeBlockID([]byte("blockhash2"), 1000, []byte("partshash"))
+	vote1 := makeVote(t, val, "chainID", 0, 10, 2, 1, blockID, defaultVoteTime)
+	vote2 := makeVote(t, val, "chainID", 0, 10, 2, 1, blockID2, defaultVoteTime)
 	testEvidence := &DuplicateVoteEvidence{
 		VoteA: vote1,
 		VoteB: vote2,

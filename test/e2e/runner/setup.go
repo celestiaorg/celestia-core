@@ -86,8 +86,7 @@ func Setup(testnet *e2e.Testnet) error {
 		if err != nil {
 			return err
 		}
-		// todo(evan): the path should be a constant
-		cfg.IPFS.RepoPath = filepath.Join(nodeDir, ".ipfs")
+
 		config.WriteConfigFile(filepath.Join(nodeDir, "config", "config.toml"), cfg) // panics
 
 		appCfg, err := MakeAppConfig(node)
@@ -115,10 +114,6 @@ func Setup(testnet *e2e.Testnet) error {
 			filepath.Join(nodeDir, PrivvalDummyKeyFile),
 			filepath.Join(nodeDir, PrivvalDummyStateFile),
 		)).Save()
-		err = ipfs.InitRepo(cfg.IPFS.RepoPath, logger)
-		if err != nil {
-			return err
-		}
 	}
 
 	return nil

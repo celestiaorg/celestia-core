@@ -19,7 +19,6 @@ import (
 	sm "github.com/celestiaorg/celestia-core/state"
 	"github.com/celestiaorg/celestia-core/store"
 	"github.com/celestiaorg/celestia-core/types"
-	mdutils "github.com/ipfs/go-merkledag/test"
 )
 
 const (
@@ -131,7 +130,7 @@ func (pb *playback) replayReset(count int, newStepSub types.Subscription) error 
 	pb.cs.Wait()
 
 	newCS := NewState(pb.cs.config, pb.genesisState.Copy(), pb.cs.blockExec,
-		pb.cs.blockStore, pb.cs.txNotifier, mdutils.Mock(), ipfs.MockRouting(), pb.cs.evpool)
+		pb.cs.blockStore, pb.cs.txNotifier, pb.cs.evpool)
 	newCS.SetEventBus(pb.cs.eventBus)
 	newCS.startForReplay()
 
@@ -290,8 +289,7 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 	if err != nil {
 		tmos.Exit(err.Error())
 	}
-	dag := mdutils.Mock()
-	blockStore := store.MockBlockStore(blockStoreDB)
+	blockStore := store.NewBlockStore(blockStoreDB)
 
 	// Get State
 	stateDB, err := badgerdb.NewDB("state", config.DBDir())
@@ -332,7 +330,7 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 
 	consensusState := NewState(csConfig, state.Copy(), blockExec,
-		blockStore, mempool, dag, ipfs.MockRouting(), evpool)
+		blockStore, mempool, evpool)
 	consensusState.SetEventBus(eventBus)
 	return consensusState
 }

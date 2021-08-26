@@ -99,6 +99,5 @@ func initFilesWithConfig(config *cfg.Config) error {
 		logger.Info("Generated genesis file", "path", genFile)
 	}
 
-	// TODO(ismail): add counter part in ResetAllCmd
-	return ipfs.InitRepo(config.IPFS.Path(), logger)
+	return nil
 }

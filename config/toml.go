@@ -430,15 +430,6 @@ max-open-connections = {{ .Instrumentation.MaxOpenConnections }}
 
 # Instrumentation namespace
 namespace = "{{ .Instrumentation.Namespace }}"
-
-#######################################################
-###       IPFS Configuration Options                ###
-#######################################################
-[ipfs]
-
-# IPFS related configuration
-repo-path = "{{ .IPFS.RepoPath}}"
-serve-api = "{{ .IPFS.ServeAPI}}"
 `
 
 /****** these are for test settings ***********/

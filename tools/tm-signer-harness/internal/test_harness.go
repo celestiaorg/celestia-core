@@ -222,18 +222,14 @@ func (th *TestHarness) TestSignProposal() error {
 		POLRound: -1,
 		BlockID: types.BlockID{
 			Hash: hash,
-		},
-		PartSetHeader: types.PartSetHeader{
-			Hash:  hash,
-			Total: 1000000,
+			PartSetHeader: types.PartSetHeader{
+				Hash:  hash,
+				Total: 1000000,
+			},
 		},
 		Timestamp: time.Now(),
-		DAHeader:  &types.DataAvailabilityHeader{},
 	}
-	p, err := prop.ToProto()
-	if err != nil {
-		return err
-	}
+	p := prop.ToProto()
 	propBytes := types.ProposalSignBytes(th.chainID, p)
 	if err := th.signerClient.SignProposal(th.chainID, p); err != nil {
 		th.logger.Error("FAILED: Signing of proposal", "err", err)
@@ -273,10 +269,10 @@ func (th *TestHarness) TestSignVote() error {
 			Round:  0,
 			BlockID: types.BlockID{
 				Hash: hash,
-			},
-			PartSetHeader: types.PartSetHeader{
-				Hash:  hash,
-				Total: 1000000,
+				PartSetHeader: types.PartSetHeader{
+					Hash:  hash,
+					Total: 1000000,
+				},
 			},
 			ValidatorIndex:   0,
 			ValidatorAddress: tmhash.SumTruncated([]byte("addr")),

@@ -9,9 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-blockservice"
-	offline "github.com/ipfs/go-ipfs-exchange-offline"
-	"github.com/ipfs/go-merkledag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -59,9 +56,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		app.InitChain(abci.RequestInitChain{Validators: vals})
 
 		blockDB := memdb.NewDB()
-		bs := ipfs.MockBlockStore()
-		dag := merkledag.NewDAGService(blockservice.New(bs, offline.Exchange(bs)))
-		blockStore := store.NewBlockStore(blockDB, bs, log.TestingLogger())
+		blockStore := store.NewBlockStore(blockDB)
 
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)
@@ -84,7 +79,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore,
-			mempool, dag, ipfs.MockRouting(), evpool)
+			mempool, evpool)
 		cs.SetLogger(cs.Logger)
 		// set private validator
 		pv := privVals[i]
@@ -385,12 +380,9 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 
 	// Create a new proposal block from state/txs from the mempool.
 	block1, blockParts1 := cs.createProposalBlock()
-	polRound, propBlockID := cs.ValidRound, types.BlockID{Hash: block1.Hash()}
-	proposal1 := types.NewProposal(
-		height, round, polRound, propBlockID, &block1.DataAvailabilityHeader, blockParts1.Header(),
-	)
-	p1, err := proposal1.ToProto()
-	require.NoError(t, err)
+	polRound, propBlockID := cs.ValidRound, types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
+	proposal1 := types.NewProposal(height, round, polRound, propBlockID)
+	p1 := proposal1.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p1); err != nil {
 		t.Error(err)
 	}
@@ -402,12 +394,9 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 
 	// Create a new proposal block from state/txs from the mempool.
 	block2, blockParts2 := cs.createProposalBlock()
-	polRound, propBlockID = cs.ValidRound, types.BlockID{Hash: block2.Hash()}
-	proposal2 := types.NewProposal(
-		height, round, polRound, propBlockID, &block2.DataAvailabilityHeader, blockParts2.Header(),
-	)
-	p2, err := proposal2.ToProto()
-	require.NoError(t, err)
+	polRound, propBlockID = cs.ValidRound, types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
+	proposal2 := types.NewProposal(height, round, polRound, propBlockID)
+	p2 := proposal2.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p2); err != nil {
 		t.Error(err)
 	}

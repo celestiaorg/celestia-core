@@ -549,11 +549,11 @@ func NewMockDuplicateVoteEvidenceWithValidator(height int64, time time.Time,
 	pv PrivValidator, chainID string) *DuplicateVoteEvidence {
 	pubKey, _ := pv.GetPubKey()
 	val := NewValidator(pubKey, 10)
-	voteA := makeMockVote(height, 0, 0, pubKey.Address(), randBlockID(), randPartSetHeader(), time)
+	voteA := makeMockVote(height, 0, 0, pubKey.Address(), randBlockID(), time)
 	vA := voteA.ToProto()
 	_ = pv.SignVote(chainID, vA)
 	voteA.Signature = vA.Signature
-	voteB := makeMockVote(height, 0, 0, pubKey.Address(), randBlockID(), randPartSetHeader(), time)
+	voteB := makeMockVote(height, 0, 0, pubKey.Address(), randBlockID(), time)
 	vB := voteB.ToProto()
 	_ = pv.SignVote(chainID, vB)
 	voteB.Signature = vB.Signature
@@ -561,13 +561,12 @@ func NewMockDuplicateVoteEvidenceWithValidator(height int64, time time.Time,
 }
 
 func makeMockVote(height int64, round, index int32, addr Address,
-	blockID BlockID, psh PartSetHeader, time time.Time) *Vote {
+	blockID BlockID, time time.Time) *Vote {
 	return &Vote{
 		Type:             tmproto.SignedMsgType(2),
 		Height:           height,
 		Round:            round,
 		BlockID:          blockID,
-		PartSetHeader:    psh,
 		Timestamp:        time,
 		ValidatorAddress: addr,
 		ValidatorIndex:   index,
@@ -577,12 +576,9 @@ func makeMockVote(height int64, round, index int32, addr Address,
 func randBlockID() BlockID {
 	return BlockID{
 		Hash: tmrand.Bytes(tmhash.Size),
-	}
-}
-
-func randPartSetHeader() PartSetHeader {
-	return PartSetHeader{
-		Total: 1,
-		Hash:  tmrand.Bytes(tmhash.Size),
+		PartSetHeader: PartSetHeader{
+			Total: 1,
+			Hash:  tmrand.Bytes(tmhash.Size),
+		},
 	}
 }

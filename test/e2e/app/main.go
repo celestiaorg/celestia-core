@@ -104,7 +104,6 @@ func startNode(cfg *Config) error {
 		proxy.NewLocalClientCreator(app),
 		node.DefaultGenesisDocProviderFunc(tmcfg),
 		node.DefaultDBProvider,
-		ipfs.Embedded(true, ipfs.DefaultConfig(), nodeLogger),
 		node.DefaultMetricsProvider(tmcfg.Instrumentation),
 		nodeLogger,
 	)
