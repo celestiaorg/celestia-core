@@ -7,7 +7,7 @@ import (
 	"github.com/celestiaorg/nmt/namespace"
 	"github.com/ipfs/go-cid"
 
-	"github.com/celestiaorg/celestia-core/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipfs/plugin"
 	"github.com/celestiaorg/celestia-core/types"
 )
 

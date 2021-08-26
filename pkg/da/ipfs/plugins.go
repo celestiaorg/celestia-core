@@ -7,7 +7,7 @@ import (
 
 	"github.com/ipfs/go-ipfs/plugin/loader"
 
-	"github.com/celestiaorg/celestia-core/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipfs/plugin"
 )
 
 // pluginsOnce ensures that plugins are loaded/injected only once in a runtime.

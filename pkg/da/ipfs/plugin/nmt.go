@@ -12,7 +12,7 @@ import (
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 
-	"github.com/celestiaorg/celestia-core/types/consts"
+	"github.com/celestiaorg/celestia-core/pkg/consts"
 	"github.com/celestiaorg/nmt"
 	mh "github.com/multiformats/go-multihash"
 )

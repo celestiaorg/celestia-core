@@ -16,7 +16,7 @@ import (
 	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 	"github.com/celestiaorg/celestia-core/light/provider"
 	"github.com/celestiaorg/celestia-core/light/store"
-	"github.com/celestiaorg/celestia-core/p2p/ipld"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipld"
 	"github.com/celestiaorg/celestia-core/types"
 )
 

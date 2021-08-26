@@ -3,7 +3,7 @@ package types
 import (
 	"bytes"
 
-	"github.com/celestiaorg/celestia-core/types/consts"
+	"github.com/celestiaorg/celestia-core/pkg/consts"
 	"github.com/celestiaorg/nmt/namespace"
 )
 

@@ -13,8 +13,8 @@ import (
 
 	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
 	"github.com/celestiaorg/celestia-core/abci/types"
+	"github.com/celestiaorg/celestia-core/pkg/consts"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
-	"github.com/celestiaorg/celestia-core/types/consts"
 )
 
 type Application struct {

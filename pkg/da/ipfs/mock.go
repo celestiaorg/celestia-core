@@ -9,7 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/routing"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 
-	"github.com/celestiaorg/celestia-core/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipfs/plugin"
 )
 
 // Mock provides simple mock IPFS API useful for testing
