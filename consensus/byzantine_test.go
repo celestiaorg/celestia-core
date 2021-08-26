@@ -21,7 +21,6 @@ import (
 	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 	mempl "github.com/celestiaorg/celestia-core/mempool"
 	"github.com/celestiaorg/celestia-core/p2p"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	sm "github.com/celestiaorg/celestia-core/state"
 	"github.com/celestiaorg/celestia-core/store"

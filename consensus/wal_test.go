@@ -21,7 +21,6 @@ import (
 	"github.com/celestiaorg/celestia-core/libs/autofile"
 	"github.com/celestiaorg/celestia-core/libs/db/memdb"
 	"github.com/celestiaorg/celestia-core/libs/log"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	"github.com/celestiaorg/celestia-core/privval"
 	"github.com/celestiaorg/celestia-core/proxy"
 	sm "github.com/celestiaorg/celestia-core/state"

@@ -12,7 +12,6 @@ import (
 	cfg "github.com/celestiaorg/celestia-core/config"
 	tmos "github.com/celestiaorg/celestia-core/libs/os"
 	nm "github.com/celestiaorg/celestia-core/node"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 )
 
 var (

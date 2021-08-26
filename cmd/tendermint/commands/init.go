@@ -9,7 +9,6 @@ import (
 	tmos "github.com/celestiaorg/celestia-core/libs/os"
 	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 	"github.com/celestiaorg/celestia-core/p2p"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	"github.com/celestiaorg/celestia-core/privval"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types"

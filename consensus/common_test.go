@@ -31,7 +31,6 @@ import (
 	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 	mempl "github.com/celestiaorg/celestia-core/mempool"
 	"github.com/celestiaorg/celestia-core/p2p"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	"github.com/celestiaorg/celestia-core/privval"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	sm "github.com/celestiaorg/celestia-core/state"

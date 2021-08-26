@@ -14,7 +14,6 @@ import (
 	"github.com/celestiaorg/celestia-core/libs/db/badgerdb"
 	"github.com/celestiaorg/celestia-core/libs/log"
 	tmos "github.com/celestiaorg/celestia-core/libs/os"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	"github.com/celestiaorg/celestia-core/proxy"
 	sm "github.com/celestiaorg/celestia-core/state"
 	"github.com/celestiaorg/celestia-core/store"

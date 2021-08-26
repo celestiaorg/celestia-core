@@ -30,7 +30,6 @@ import (
 	mempl "github.com/celestiaorg/celestia-core/mempool"
 	"github.com/celestiaorg/celestia-core/p2p"
 	p2pmock "github.com/celestiaorg/celestia-core/p2p/mock"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	sm "github.com/celestiaorg/celestia-core/state"
 	statemocks "github.com/celestiaorg/celestia-core/state/mocks"

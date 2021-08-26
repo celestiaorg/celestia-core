@@ -14,7 +14,6 @@ import (
 	"github.com/celestiaorg/celestia-core/libs/bits"
 	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 	"github.com/celestiaorg/celestia-core/p2p"
-	"github.com/celestiaorg/celestia-core/pkg/consts"
 	tmcons "github.com/celestiaorg/celestia-core/proto/tendermint/consensus"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types"

@@ -14,7 +14,6 @@ import (
 	tmnet "github.com/celestiaorg/celestia-core/libs/net"
 	nm "github.com/celestiaorg/celestia-core/node"
 	"github.com/celestiaorg/celestia-core/p2p"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	"github.com/celestiaorg/celestia-core/privval"
 	"github.com/celestiaorg/celestia-core/proxy"
 	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"

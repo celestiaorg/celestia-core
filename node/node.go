@@ -31,7 +31,6 @@ import (
 	mempl "github.com/celestiaorg/celestia-core/mempool"
 	"github.com/celestiaorg/celestia-core/p2p"
 	"github.com/celestiaorg/celestia-core/p2p/pex"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	"github.com/celestiaorg/celestia-core/privval"
 	"github.com/celestiaorg/celestia-core/proxy"
 	rpccore "github.com/celestiaorg/celestia-core/rpc/core"
