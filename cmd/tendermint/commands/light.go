@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,7 +24,6 @@ import (
 	lproxy "github.com/celestiaorg/celestia-core/light/proxy"
 	lrpc "github.com/celestiaorg/celestia-core/light/rpc"
 	dbs "github.com/celestiaorg/celestia-core/light/store/db"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
 	rpcserver "github.com/celestiaorg/celestia-core/rpc/jsonrpc/server"
 )
@@ -178,18 +176,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		}),
 	}
 
-	var ipfsCloser io.Closer
 	switch {
-	case daSampling:
-		cfg := ipfs.DefaultConfig()
-		cfg.RootDir = dir
-		cfg.ServeAPI = true
-		// TODO(ismail): share badger instance
-		ipfsNode, err := ipfs.Embedded(true, cfg, logger)()
-		if err != nil {
-			return fmt.Errorf("could not start ipfs API: %w", err)
-		}
-		options = append(options, light.DataAvailabilitySampling(numSamples, ipfsNode.DAG))
 	case sequential:
 		options = append(options, light.SequentialVerification())
 	default:
@@ -250,9 +237,6 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	// Stop upon receiving SIGTERM or CTRL-C.
 	tmos.TrapSignal(logger, func() {
 		p.Listener.Close()
-		if ipfsCloser != nil {
-			ipfsCloser.Close()
-		}
 	})
 
 	logger.Info("Starting proxy...", "laddr", listenAddr)

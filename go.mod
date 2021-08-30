@@ -27,20 +27,16 @@ require (
 	github.com/ipfs/go-ipfs v0.8.0
 	github.com/ipfs/go-ipfs-api v0.2.0
 	github.com/ipfs/go-ipfs-blockstore v0.1.4
-	github.com/ipfs/go-ipfs-config v0.11.0
 	github.com/ipfs/go-ipfs-routing v0.1.0
 	github.com/ipfs/go-ipld-format v0.2.0
-	github.com/ipfs/go-merkledag v0.3.2 // indirect
-	github.com/ipfs/go-path v0.0.9 // indirect
+	github.com/ipfs/go-merkledag v0.3.2
 	github.com/ipfs/go-verifcid v0.0.1
-	github.com/ipfs/interface-go-ipfs-core v0.4.0
 	github.com/libp2p/go-buffer-pool v0.0.2
-	github.com/libp2p/go-libp2p v0.12.0
-	github.com/libp2p/go-libp2p-core v0.7.0
+	github.com/libp2p/go-libp2p v0.13.0
+	github.com/libp2p/go-libp2p-core v0.8.0
 	github.com/libp2p/go-libp2p-kad-dht v0.11.1
 	github.com/libp2p/go-libp2p-kbucket v0.4.7
 	github.com/minio/highwayhash v1.0.1
-	github.com/multiformats/go-multiaddr v0.3.1
 	github.com/multiformats/go-multihash v0.0.14
 	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect
 	github.com/pkg/errors v0.9.1
@@ -58,8 +54,5 @@ require (
 	google.golang.org/grpc v1.39.0
 )
 
-replace (
-	github.com/ipfs/go-ipfs => github.com/celestiaorg/go-ipfs v0.8.0-lazypatch
-	// adding an extra replace statement here enforces usage of our fork of go-cerifcid
-	github.com/ipfs/go-verifcid => github.com/celestiaorg/go-verifcid v0.0.1-lazypatch
-)
+// adding an extra replace statement here enforces usage of our fork of go-cerifcid
+replace github.com/ipfs/go-verifcid => github.com/celestiaorg/go-verifcid v0.0.1-lazypatch

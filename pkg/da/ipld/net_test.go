@@ -21,7 +21,7 @@ import (
 
 	"github.com/celestiaorg/celestia-core/libs/log"
 	"github.com/celestiaorg/celestia-core/pkg/consts"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipld/plugin"
 	"github.com/celestiaorg/celestia-core/types"
 )
 

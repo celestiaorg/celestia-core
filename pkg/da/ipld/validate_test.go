@@ -12,7 +12,6 @@ import (
 
 	"github.com/celestiaorg/celestia-core/libs/log"
 	"github.com/celestiaorg/celestia-core/pkg/consts"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
 	"github.com/celestiaorg/celestia-core/types"
 )
 
@@ -36,7 +35,7 @@ func TestValidateAvailability(t *testing.T) {
 	block.Hash()
 
 	dag := mdutils.Mock()
-	err := PutBlock(ctx, dag, block, ipfs.MockRouting(), log.TestingLogger())
+	err := PutBlock(ctx, dag, block, MockRouting(), log.TestingLogger())
 	require.NoError(t, err)
 
 	calls := 0

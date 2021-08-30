@@ -15,8 +15,7 @@ import (
 	"github.com/celestiaorg/celestia-core/crypto/tmhash"
 	"github.com/celestiaorg/celestia-core/libs/log"
 	"github.com/celestiaorg/celestia-core/pkg/consts"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipld/plugin"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types"
 )
@@ -24,7 +23,7 @@ import (
 func TestPutBlock(t *testing.T) {
 	logger := log.TestingLogger()
 	dag := mdutils.Mock()
-	croute := ipfs.MockRouting()
+	croute := MockRouting()
 
 	maxOriginalSquareSize := consts.MaxSquareSize / 2
 	maxShareCount := maxOriginalSquareSize * maxOriginalSquareSize
@@ -111,7 +110,7 @@ func toMessageSlice(msgs [][]byte) []*tmproto.Message {
 func TestDataAvailabilityHeaderRewriteBug(t *testing.T) {
 	logger := log.TestingLogger()
 	dag := mdutils.Mock()
-	croute := ipfs.MockRouting()
+	croute := MockRouting()
 
 	txs := types.Txs{}
 	l := len(txs)

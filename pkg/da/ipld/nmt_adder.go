@@ -6,7 +6,7 @@ import (
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipld/plugin"
 )
 
 // NmtNodeAdder adds ipld.Nodes to the underlying ipld.Batch if it is inserted

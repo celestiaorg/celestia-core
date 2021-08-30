@@ -21,8 +21,7 @@ import (
 
 	"github.com/celestiaorg/celestia-core/libs/log"
 	"github.com/celestiaorg/celestia-core/pkg/consts"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipfs/plugin"
+	"github.com/celestiaorg/celestia-core/pkg/da/ipld/plugin"
 	"github.com/celestiaorg/celestia-core/pkg/da/ipld/wrapper"
 	"github.com/celestiaorg/celestia-core/types"
 )
@@ -141,7 +140,7 @@ func TestRetrieveBlockData(t *testing.T) {
 		t.Run(fmt.Sprintf("%s size %d", tc.name, tc.squareSize), func(t *testing.T) {
 			ctx := context.Background()
 			dag := mdutils.Mock()
-			croute := ipfs.MockRouting()
+			croute := MockRouting()
 
 			blockData := generateRandomBlockData(tc.squareSize*tc.squareSize, consts.MsgShareSize-2)
 			block := &types.Block{
