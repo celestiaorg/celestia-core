@@ -292,31 +292,31 @@ message Delegation {
   int64 unbondingHeight = 5;
 }
 
-// // https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#validator
-// message ConsensusValidator {
-//   // Validator's commission rewards, in 1u
-//   uint64 commissionRewards = 1;
-//   // Commission rate
-//   Decimal commissionRate = 2;
-//   // Number of accounts delegating to the validator
-//   uint32 delegatedCount = 3;
-//   // Total voting power as staked balance + delegated stake, in 4u
-//   uint64 votingPower = 4;
-//   // Rewards collected so far this period, in 1u
-//   uint64 pendingRewards = 5;
-//   // Latest entry, used for calculating reward distribution
-//   PeriodEntry latestEntry = 6;
-//   // Block height validator began unbonding
-//   int64 unbondingHeight = 7;
-//   // If this validator has been slashed or not
-//   bool isSlashed = 8;
-//   // Rate at which this validator has been slashed
-//   // slashRate should be zero if isSlashed is false.
-//   Decimal slashRate = 9;
-//   // Next validator in the queue. Zero if this validator is not in the queue
-//   // 32-bytes
-//   bytes next = 10;
-// }
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#validator
+message StateValidator {
+   // Validator's commission rewards, in 1u
+   uint64 commissionRewards = 1;
+   // Commission rate
+   Decimal commissionRate = 2;
+   // Number of accounts delegating to the validator
+   uint32 delegatedCount = 3;
+   // Total voting power as staked balance + delegated stake, in 4u
+   uint64 votingPower = 4;
+   // Rewards collected so far this period, in 1u
+   uint64 pendingRewards = 5;
+   // Latest entry, used for calculating reward distribution
+   PeriodEntry latestEntry = 6;
+   // Block height validator began unbonding
+   int64 unbondingHeight = 7;
+   // If this validator has been slashed or not
+   bool isSlashed = 8;
+   // Rate at which this validator has been slashed
+   // slashRate should be zero if isSlashed is false.
+   Decimal slashRate = 9;
+   // Next validator in the queue. Zero if this validator is not in the queue
+   // 32-bytes
+   bytes next = 10;
+}
 
 // https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#activevalidatorcount
 message ActiveValidatorCount {
@@ -407,7 +407,7 @@ message StateElement {
   oneof value {
     Account account = 2;
     Delegation delegation = 3;
-    Validator validator = 4;
+    StateValidator stateValidator = 4;
     ActiveValidatorCount activeValidatorCount = 5;
     ActiveVotingPower activeVotingPower = 6;
     ProposerBlockReward proposerBlockReward = 7;

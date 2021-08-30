@@ -29,7 +29,7 @@ func TestBadEncodingFraudProof(t *testing.T) {
 	// TODO: template for table driven test for befp
 	tests := []test{
 		{
-			name: "block with bad encoding",
+			name: "Block with bad encoding",
 			input: BadEncodingFraudProof{
 				Height:      10,
 				ShareProofs: []tmproto.ShareProof{},
@@ -50,6 +50,50 @@ func TestBadEncodingFraudProof(t *testing.T) {
 			output: false,
 			err:    nil,
 		},
+		{
+			name: "Incorrect number of shares",
+			input: BadEncodingFraudProof{
+				Height:      10,
+				ShareProofs: []tmproto.ShareProof{},
+				IsCol:       true,
+				Position:    12,
+			},
+			output: false,
+			err:    nil, // How do we denote the error type?
+		},
+		{
+			name: "Position out of bound",
+			input: BadEncodingFraudProof{
+				Height:      10,
+				ShareProofs: []tmproto.ShareProof{},
+				IsCol:       true,
+				Position:    12,
+			},
+			output: false,
+			err:    nil,
+		},
+		{
+			name: "Non committed shares",
+			input: BadEncodingFraudProof{
+				Height:      10,
+				ShareProofs: []tmproto.ShareProof{},
+				IsCol:       true,
+				Position:    12,
+			},
+			output: false,
+			err:    nil,
+		},
+		{
+			name: "Default",
+			input: BadEncodingFraudProof{
+				Height:      10,
+				ShareProofs: []tmproto.ShareProof{},
+				IsCol:       true,
+				Position:    12,
+			},
+			output: false,
+			err:    nil,
+		},
 	}
 
 	for _, tt := range tests {
@@ -58,32 +102,3 @@ func TestBadEncodingFraudProof(t *testing.T) {
 		require.Equal(t, tt.err, err)
 	}
 }
-
-// TODO: don't export and
-// func CreateBadEncodingFraudProofWithError(block tmproto.Block, err int) tmproto.BadEncodingFraudProof {
-
-// 	proof := CreateBadEncodingFraudProof(block)
-
-// 	switch err {
-// 	case Bad_encoding:
-// 		// BadEncodingFraudProof for a block with bad encoding
-
-// 	case Correct_block:
-// 		// BadEncodingFraudProof for a correct block
-
-// 	case Incorrect_number_of_shares:
-// 		// BadEncodingFraudProof with insufficient or too many shares
-// 		proof.Get
-
-// 	case Position_out_of_bound:
-// 		// BadEncodingFraudProof with position out of bound
-
-// 	case Non_committed_shares:
-// 		// BadEncodingFraudProof with shares such that the calculate root does not commit to the shares
-
-// 	default:
-// 		return CreateBadEncodingFraudProof(block)
-// 	}
-
-// 	return tmproto.bad
-// }
