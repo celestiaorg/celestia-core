@@ -194,7 +194,7 @@ type BaseConfig struct { //nolint: maligned
 	FilterPeers bool `mapstructure:"filter-peers"` // false
 
 	// DBBackend is solely to preserve compatibility with the sdk, it is deprecated
-	DBBackend string
+	DBBackend string `mapstructure:"db-backend"` // false
 }
 
 // DefaultBaseConfig returns a default base configuration for a Tendermint node
@@ -211,6 +211,7 @@ func DefaultBaseConfig() BaseConfig {
 		FastSyncMode:       true,
 		FilterPeers:        false,
 		DBPath:             "data",
+		DBBackend:          "badger-db",
 	}
 }
 
