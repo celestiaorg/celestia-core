@@ -674,13 +674,6 @@ func (c *Client) verifySequential(
 	return c.detectDivergence(ctx, trace, now)
 }
 
-func min(a, b uint32) int {
-	if a < b {
-		return int(a)
-	}
-	return int(b)
-}
-
 // see VerifyHeader
 //
 // verifySkipping finds the middle light block between a trusted and new light block,
