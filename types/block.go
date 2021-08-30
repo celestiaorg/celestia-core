@@ -22,7 +22,7 @@ import (
 	"github.com/celestiaorg/celestia-core/libs/protoio"
 	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 	"github.com/celestiaorg/celestia-core/pkg/consts"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipld/wrapper"
+	"github.com/celestiaorg/celestia-core/pkg/wrapper"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
 	"github.com/celestiaorg/celestia-core/version"
