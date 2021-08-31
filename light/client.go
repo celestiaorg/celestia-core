@@ -7,16 +7,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/celestiaorg/nmt/namespace"
-	format "github.com/ipfs/go-ipld-format"
-	"github.com/ipfs/go-merkledag"
-
 	"github.com/celestiaorg/celestia-core/libs/log"
 	tmmath "github.com/celestiaorg/celestia-core/libs/math"
 	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 	"github.com/celestiaorg/celestia-core/light/provider"
 	"github.com/celestiaorg/celestia-core/light/store"
-	"github.com/celestiaorg/celestia-core/pkg/da/ipld"
 	"github.com/celestiaorg/celestia-core/types"
 )
 
@@ -67,15 +62,6 @@ func SkippingVerification(trustLevel tmmath.Fraction) Option {
 	return func(c *Client) {
 		c.verificationMode = skipping
 		c.trustLevel = trustLevel
-	}
-}
-
-func DataAvailabilitySampling(numSamples uint32, dag format.DAGService) Option {
-	return func(c *Client) {
-		c.verificationMode = dataAvailabilitySampling
-		c.numSamples = numSamples
-		c.dag = dag
-		c.sessionDAG = merkledag.NewSession(context.TODO(), dag)
 	}
 }
 
@@ -131,7 +117,6 @@ type Client struct {
 	trustingPeriod   time.Duration // see TrustOptions.Period
 	verificationMode mode
 	trustLevel       tmmath.Fraction
-	numSamples       uint32
 	maxRetryAttempts uint16 // see MaxRetryAttempts option
 	maxClockDrift    time.Duration
 
@@ -155,9 +140,6 @@ type Client struct {
 	quit chan struct{}
 
 	logger log.Logger
-
-	dag        format.DAGService
-	sessionDAG format.NodeGetter
 }
 
 // NewClient returns a new light client. It returns an error if it fails to
@@ -244,12 +226,6 @@ func NewClientFromTrustedStore(
 	// Validate trust level.
 	if err := ValidateTrustLevel(c.trustLevel); err != nil {
 		return nil, err
-	}
-
-	if c.verificationMode == dataAvailabilitySampling {
-		if err := ValidateNumSamples(c.numSamples); err != nil {
-			return nil, err
-		}
 	}
 
 	if err := c.restoreTrustedLightBlock(); err != nil {
@@ -683,35 +659,6 @@ func (c *Client) verifySequential(
 			}
 		}
 
-		// 2.1) Verify that the data behind the block data is actually available.
-		if c.verificationMode == dataAvailabilitySampling {
-			start := time.Now()
-			// TODO: decide how to handle this case:
-			// https://github.com/celestiaorg/celestia-core/issues/319
-			numRows := len(interimBlock.DataAvailabilityHeader.RowsRoots)
-			numSamples := min(c.numSamples, uint32(numRows*numRows))
-			c.logger.Info("Starting Data Availability sampling",
-				"height", height,
-				"numSamples", numSamples,
-				"squareWidth", numRows)
-
-			err = ipld.ValidateAvailability(
-				ctx,
-				c.dag,
-				interimBlock.DataAvailabilityHeader,
-				numSamples,
-				func(data namespace.PrefixedData8) {}, // noop
-			)
-			if err != nil {
-				return fmt.Errorf("data availability sampling failed; ipld.ValidateAvailability: %w", err)
-			}
-			elapsed := time.Since(start)
-			c.logger.Info("Successfully finished DAS sampling",
-				"height", height,
-				"numSamples", numSamples,
-				"elapsed time", elapsed)
-		}
-
 		// 3) Update verifiedBlock
 		verifiedBlock = interimBlock
 
@@ -725,13 +672,6 @@ func (c *Client) verifySequential(
 	// CORRECTNESS ASSUMPTION: there's at least 1 correct full node
 	// (primary or one of the witnesses).
 	return c.detectDivergence(ctx, trace, now)
-}
-
-func min(a, b uint32) int {
-	if a < b {
-		return int(a)
-	}
-	return int(b)
 }
 
 // see VerifyHeader
@@ -1039,12 +979,7 @@ func (c *Client) lightBlockFromPrimary(ctx context.Context, height int64) (*type
 		l   *types.LightBlock
 		err error
 	)
-	switch c.verificationMode {
-	case dataAvailabilitySampling:
-		l, err = c.primary.DASLightBlock(ctx, height)
-	default:
-		l, err = c.primary.LightBlock(ctx, height)
-	}
+	l, err = c.primary.LightBlock(ctx, height)
 	c.providerMutex.Unlock()
 	if err != nil {
 		c.logger.Debug("Error on light block request from primary", "error", err, "primary", c.primary)
