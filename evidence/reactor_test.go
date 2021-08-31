@@ -130,7 +130,7 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 	pools[0].Update(state, evList)
 	require.EqualValues(t, uint32(0), pools[0].Size())
 
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	peer := reactors[0].Switch.Peers().List()[0]
 	ps := peerState{height - 2}
@@ -141,7 +141,7 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 	peer.Set(types.PeerStateKey, ps)
 
 	// wait to see that no evidence comes through
-	time.Sleep(600 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
 	// the second pool should not have received any evidence because it has already been committed
 	assert.Equal(t, uint32(0), pools[1].Size(), "second reactor should not have received evidence")
@@ -157,7 +157,7 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 	}
 
 	// wait to see that only one evidence is sent
-	time.Sleep(600 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
 	// the second pool should only have received the first evidence because it is behind
 	peerEv, _ := pools[1].PendingEvidence(10000)
@@ -178,9 +178,9 @@ func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 	peer.Set(types.PeerStateKey, ps)
 
 	// wait to see that only two evidence is sent
-	time.Sleep(1800 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
-	peerEv, _ = pools[1].PendingEvidence(2000)
+	peerEv, _ = pools[1].PendingEvidence(1000)
 	assert.EqualValues(t, []types.Evidence{evList[0], evList[1]}, peerEv)
 }
 
@@ -319,10 +319,10 @@ func exampleVote(t byte) *types.Vote {
 		Timestamp: stamp,
 		BlockID: types.BlockID{
 			Hash: tmhash.Sum([]byte("blockID_hash")),
-		},
-		PartSetHeader: types.PartSetHeader{
-			Total: 1000000,
-			Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
+			PartSetHeader: types.PartSetHeader{
+				Total: 1000000,
+				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
+			},
 		},
 		ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 		ValidatorIndex:   56789,
@@ -351,7 +351,7 @@ func TestEvidenceVectors(t *testing.T) {
 		evidenceList []types.Evidence
 		expBytes     string
 	}{
-		{"DuplicateVoteEvidence", []types.Evidence{dupl}, "0a85020a82020a7908021003180222220a208b01023386c371778ecb6368573e539afc3cc860ec3a2f614e54fe5652f4fc802a0b08b1d381d20510809dca6f32146af1f4111082efb388211bc72c55bcd61e9ac3d538d5bb034a2608c0843d122072db3d959635dff1bb567bedaa70573392c5159666a3f8caf11e413aac52207a127908011003180222220a208b01023386c371778ecb6368573e539afc3cc860ec3a2f614e54fe5652f4fc802a0b08b1d381d20510809dca6f32146af1f4111082efb388211bc72c55bcd61e9ac3d538d5bb034a2608c0843d122072db3d959635dff1bb567bedaa70573392c5159666a3f8caf11e413aac52207a180a200a2a060880dbaae105"},
+		{"DuplicateVoteEvidence", []types.Evidence{dupl}, "0a85020a82020a79080210031802224a0a208b01023386c371778ecb6368573e539afc3cc860ec3a2f614e54fe5652f4fc80122608c0843d122072db3d959635dff1bb567bedaa70573392c5159666a3f8caf11e413aac52207a2a0b08b1d381d20510809dca6f32146af1f4111082efb388211bc72c55bcd61e9ac3d538d5bb031279080110031802224a0a208b01023386c371778ecb6368573e539afc3cc860ec3a2f614e54fe5652f4fc80122608c0843d122072db3d959635dff1bb567bedaa70573392c5159666a3f8caf11e413aac52207a2a0b08b1d381d20510809dca6f32146af1f4111082efb388211bc72c55bcd61e9ac3d538d5bb03180a200a2a060880dbaae105"},
 	}
 
 	for _, tc := range testCases {

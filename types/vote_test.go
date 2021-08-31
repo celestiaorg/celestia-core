@@ -36,10 +36,10 @@ func exampleVote(t byte) *Vote {
 		Timestamp: stamp,
 		BlockID: BlockID{
 			Hash: tmhash.Sum([]byte("blockID_hash")),
-		},
-		PartSetHeader: PartSetHeader{
-			Total: 1000000,
-			Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
+			PartSetHeader: PartSetHeader{
+				Total: 1000000,
+				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
+			},
 		},
 		ValidatorAddress: crypto.AddressHash([]byte("validator_address")),
 		ValidatorIndex:   56789,
@@ -137,8 +137,8 @@ func TestVoteSignBytesTestVectors(t *testing.T) {
 }
 
 func TestVoteProposalNotEq(t *testing.T) {
-	cv := CanonicalizeVote("", &tmproto.Vote{Height: 1, Round: 1, PartSetHeader: &tmproto.PartSetHeader{}})
-	p := CanonicalizeProposal("", &tmproto.Proposal{Height: 1, Round: 1, PartSetHeader: &tmproto.PartSetHeader{}})
+	cv := CanonicalizeVote("", &tmproto.Vote{Height: 1, Round: 1})
+	p := CanonicalizeProposal("", &tmproto.Proposal{Height: 1, Round: 1})
 	vb, err := proto.Marshal(&cv)
 	require.NoError(t, err)
 	pb, err := proto.Marshal(&p)
@@ -242,9 +242,8 @@ func TestVoteValidateBasic(t *testing.T) {
 		{"Good Vote", func(v *Vote) {}, false},
 		{"Negative Height", func(v *Vote) { v.Height = -1 }, true},
 		{"Negative Round", func(v *Vote) { v.Round = -1 }, true},
-		{"Invalid BlockID and PartSetHeader", func(v *Vote) {
-			v.BlockID = BlockID{[]byte{1, 2, 3}}
-			v.PartSetHeader = PartSetHeader{111, []byte("blockparts")}
+		{"Invalid BlockID", func(v *Vote) {
+			v.BlockID = BlockID{[]byte{1, 2, 3}, PartSetHeader{111, []byte("blockparts")}}
 		}, true},
 		{"Invalid Address", func(v *Vote) { v.ValidatorAddress = make([]byte, 1) }, true},
 		{"Invalid ValidatorIndex", func(v *Vote) { v.ValidatorIndex = -1 }, true},
@@ -293,24 +292,4 @@ func TestVoteProtobuf(t *testing.T) {
 			require.Error(t, err)
 		}
 	}
-}
-
-// TestDoNotSignOverPartSetHeader simply ensures that the partset header is not signed over while voting.
-func TestDoNotSignOverPartSetHeader(t *testing.T) {
-	pv := NewMockPV()
-	pubKey, err := pv.GetPubKey()
-	require.NoError(t, err)
-	blockID := randBlockID()
-	psh := randPartSetHeader()
-	currentTime := time.Now()
-	voteA := makeMockVote(1, 0, 0, pubKey.Address(), blockID, psh, currentTime).ToProto()
-	voteB := makeMockVote(1, 0, 0, pubKey.Address(), blockID, PartSetHeader{}, currentTime).ToProto()
-
-	err = pv.SignVote("test", voteA)
-	require.NoError(t, err)
-	err = pv.SignVote("test", voteB)
-	require.NoError(t, err)
-
-	require.Equal(t, voteA.Signature, voteB.Signature)
-
 }

@@ -1,7 +1,6 @@
 package evidence_test
 
 import (
-	"context"
 	"os"
 	"testing"
 	"time"
@@ -240,10 +239,9 @@ func TestCheckEvidenceWithLightClientAttack(t *testing.T) {
 
 	// for simplicity we are simulating a duplicate vote attack where all the validators in the
 	// conflictingVals set voted twice
-	blockID := makeBlockID(conflictingHeader.Hash())
-	psh := makePartSetHeader(1000, []byte("partshash"))
+	blockID := makeBlockID(conflictingHeader.Hash(), 1000, []byte("partshash"))
 	voteSet := types.NewVoteSet(evidenceChainID, height, 1, tmproto.SignedMsgType(2), conflictingVals)
-	commit, err := types.MakeCommit(blockID, psh, height, 1, voteSet, conflictingPrivVals, defaultEvidenceTime)
+	commit, err := types.MakeCommit(blockID, height, 1, voteSet, conflictingPrivVals, defaultEvidenceTime)
 	require.NoError(t, err)
 	ev := &types.LightClientAttackEvidence{
 		ConflictingBlock: &types.LightBlock{
@@ -259,9 +257,9 @@ func TestCheckEvidenceWithLightClientAttack(t *testing.T) {
 		Timestamp:           defaultEvidenceTime,
 	}
 
-	trustedBlockID := makeBlockID(trustedHeader.Hash())
+	trustedBlockID := makeBlockID(trustedHeader.Hash(), 1000, []byte("partshash"))
 	trustedVoteSet := types.NewVoteSet(evidenceChainID, height, 1, tmproto.SignedMsgType(2), conflictingVals)
-	trustedCommit, err := types.MakeCommit(trustedBlockID, psh, height, 1, trustedVoteSet, conflictingPrivVals,
+	trustedCommit, err := types.MakeCommit(trustedBlockID, height, 1, trustedVoteSet, conflictingPrivVals,
 		defaultEvidenceTime)
 	require.NoError(t, err)
 
@@ -397,7 +395,7 @@ func initializeValidatorState(privVal types.PrivValidator, height int64) sm.Stor
 // initializeBlockStore creates a block storage and populates it w/ a dummy
 // block at +height+.
 func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.BlockStore {
-	blockStore := store.MockBlockStore(db)
+	blockStore := store.NewBlockStore(db)
 
 	for i := int64(1); i <= state.LastBlockHeight; i++ {
 		lastCommit := makeCommit(i-1, valAddr)
@@ -409,10 +407,7 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.Bloc
 		partSet := block.MakePartSet(parts)
 
 		seenCommit := makeCommit(i, valAddr)
-		err := blockStore.SaveBlock(context.TODO(), block, partSet, seenCommit)
-		if err != nil {
-			panic(err)
-		}
+		blockStore.SaveBlock(block, partSet, seenCommit)
 	}
 
 	return blockStore
@@ -425,7 +420,7 @@ func makeCommit(height int64, valAddr []byte) *types.Commit {
 		Timestamp:        defaultEvidenceTime,
 		Signature:        []byte("Signature"),
 	}}
-	return types.NewCommit(height, 0, types.BlockID{}, commitSigs, types.PartSetHeader{})
+	return types.NewCommit(height, 0, types.BlockID{}, commitSigs)
 }
 
 func defaultTestPool(height int64) (*evidence.Pool, types.MockPV) {

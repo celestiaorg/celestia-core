@@ -21,10 +21,10 @@ import (
 	tmmath "github.com/celestiaorg/celestia-core/libs/math"
 	"github.com/celestiaorg/celestia-core/libs/protoio"
 	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
-	"github.com/celestiaorg/celestia-core/p2p/ipld/wrapper"
+	"github.com/celestiaorg/celestia-core/pkg/consts"
+	"github.com/celestiaorg/celestia-core/pkg/wrapper"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
-	"github.com/celestiaorg/celestia-core/types/consts"
 	"github.com/celestiaorg/celestia-core/version"
 )
 
@@ -32,7 +32,7 @@ const (
 	// MaxHeaderBytes is a maximum header size.
 	// NOTE: Because app hash can be of arbitrary size, the header is therefore not
 	// capped in size and thus this number should be seen as a soft max
-	MaxHeaderBytes int64 = 594
+	MaxHeaderBytes int64 = 636
 
 	// MaxOverheadForBlock - maximum overhead to encode a block (up to
 	// MaxBlockSizeBytes in size) not including it's parts except Data.
@@ -539,10 +539,8 @@ type Header struct {
 // Populate the Header with state-derived data.
 // Call this after MakeBlock to complete the Header.
 func (h *Header) Populate(
-	version tmversion.Consensus,
-	chainID string,
-	timestamp time.Time,
-	lastBlockID BlockID,
+	version tmversion.Consensus, chainID string,
+	timestamp time.Time, lastBlockID BlockID,
 	valHash, nextValHash []byte,
 	consensusHash, appHash, lastResultsHash []byte,
 	proposerAddress Address,
@@ -644,7 +642,6 @@ func (h *Header) Hash() tmbytes.HexBytes {
 	if err != nil {
 		return nil
 	}
-
 	return merkle.HashFromByteSlices([][]byte{
 		hbz,
 		cdcEncode(h.ChainID),
@@ -856,21 +853,6 @@ func (cs CommitSig) BlockID(commitBlockID BlockID) BlockID {
 	return blockID
 }
 
-func (cs CommitSig) PartSetHeader(commitPSH PartSetHeader) PartSetHeader {
-	var psh PartSetHeader
-	switch cs.BlockIDFlag {
-	case BlockIDFlagAbsent:
-		psh = PartSetHeader{}
-	case BlockIDFlagCommit:
-		psh = commitPSH
-	case BlockIDFlagNil:
-		psh = PartSetHeader{}
-	default:
-		panic(fmt.Sprintf("Unknown BlockIDFlag: %v", cs.BlockIDFlag))
-	}
-	return psh
-}
-
 // ValidateBasic performs basic validation.
 func (cs CommitSig) ValidateBasic() error {
 	switch cs.BlockIDFlag {
@@ -946,12 +928,11 @@ type Commit struct {
 	// ValidatorSet order.
 	// Any peer with a block can gossip signatures by index with a peer without
 	// recalculating the active ValidatorSet.
-	Height        int64         `json:"height"`
-	Round         int32         `json:"round"`
-	BlockID       BlockID       `json:"block_id"`
-	Signatures    []CommitSig   `json:"signatures"`
-	HeaderHash    []byte        `json:"header_hash"`
-	PartSetHeader PartSetHeader `json:"part_set_header"`
+	Height     int64       `json:"height"`
+	Round      int32       `json:"round"`
+	BlockID    BlockID     `json:"block_id"`
+	Signatures []CommitSig `json:"signatures"`
+	HeaderHash []byte      `json:"header_hash"`
 
 	// Memoized in first call to corresponding method.
 	// NOTE: can't memoize in constructor because constructor isn't used for
@@ -961,14 +942,13 @@ type Commit struct {
 }
 
 // NewCommit returns a new Commit.
-func NewCommit(height int64, round int32, blockID BlockID, commitSigs []CommitSig, psh PartSetHeader) *Commit {
+func NewCommit(height int64, round int32, blockID BlockID, commitSigs []CommitSig) *Commit {
 	return &Commit{
-		Height:        height,
-		Round:         round,
-		BlockID:       blockID,
-		Signatures:    commitSigs,
-		HeaderHash:    blockID.Hash,
-		PartSetHeader: psh,
+		Height:     height,
+		Round:      round,
+		BlockID:    blockID,
+		Signatures: commitSigs,
+		HeaderHash: blockID.Hash,
 	}
 }
 
@@ -999,7 +979,6 @@ func (commit *Commit) GetVote(valIdx int32) *Vote {
 		Height:           commit.Height,
 		Round:            commit.Round,
 		BlockID:          commitSig.BlockID(commit.BlockID),
-		PartSetHeader:    commitSig.PartSetHeader(commit.PartSetHeader),
 		Timestamp:        commitSig.Timestamp,
 		ValidatorAddress: commitSig.ValidatorAddress,
 		ValidatorIndex:   valIdx,
@@ -1139,14 +1118,12 @@ func (commit *Commit) StringIndented(indent string) string {
 %s  Height:     %d
 %s  Round:      %d
 %s  BlockID:    %v
-%s  PartSetHeader: %v
 %s  Signatures:
 %s    %v
 %s}#%v`,
 		indent, commit.Height,
 		indent, commit.Round,
 		indent, commit.BlockID,
-		indent, commit.PartSetHeader,
 		indent,
 		indent, strings.Join(commitSigStrings, "\n"+indent+"    "),
 		indent, commit.hash)
@@ -1165,13 +1142,10 @@ func (commit *Commit) ToProto() *tmproto.Commit {
 	}
 	c.Signatures = sigs
 
-	ppsh := commit.PartSetHeader.ToProto()
-
 	c.Height = commit.Height
 	c.Round = commit.Round
 	c.BlockID = commit.BlockID.ToProto()
 	c.HeaderHash = commit.HeaderHash
-	c.PartSetHeader = &ppsh
 
 	return c
 }
@@ -1192,11 +1166,6 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 		return nil, err
 	}
 
-	psh, err := PartSetHeaderFromProto(cp.PartSetHeader)
-	if err != nil {
-		return nil, err
-	}
-
 	sigs := make([]CommitSig, len(cp.Signatures))
 	for i := range cp.Signatures {
 		if err := sigs[i].FromProto(cp.Signatures[i]); err != nil {
@@ -1209,7 +1178,6 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 	commit.Round = cp.Round
 	commit.BlockID = *bi
 	commit.HeaderHash = cp.HeaderHash
-	commit.PartSetHeader = *psh
 
 	return commit, commit.ValidateBasic()
 }
@@ -1251,7 +1219,7 @@ type IntermediateStateRoots struct {
 	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
 }
 
-func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
+func (roots IntermediateStateRoots) SplitIntoShares() NamespacedShares {
 	rawDatas := make([][]byte, 0, len(roots.RawRootsList))
 	for _, root := range roots.RawRootsList {
 		rawData, err := root.MarshalDelimited()
@@ -1264,7 +1232,7 @@ func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
 	return shares
 }
 
-func (msgs Messages) splitIntoShares() NamespacedShares {
+func (msgs Messages) SplitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	for _, m := range msgs.MessagesList {
 		rawData, err := m.MarshalDelimited()
@@ -1283,12 +1251,12 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	// see: https://github.com/celestiaorg/celestia-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
 
 	// reserved shares:
-	txShares := data.Txs.splitIntoShares()
-	intermRootsShares := data.IntermediateStateRoots.splitIntoShares()
-	evidenceShares := data.Evidence.splitIntoShares()
+	txShares := data.Txs.SplitIntoShares()
+	intermRootsShares := data.IntermediateStateRoots.SplitIntoShares()
+	evidenceShares := data.Evidence.SplitIntoShares()
 
 	// application data shares from messages:
-	msgShares := data.Messages.splitIntoShares()
+	msgShares := data.Messages.SplitIntoShares()
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 
 	// find the number of shares needed to create a square that has a power of
@@ -1557,7 +1525,7 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
 	return nil
 }
 
-func (data *EvidenceData) splitIntoShares() NamespacedShares {
+func (data *EvidenceData) SplitIntoShares() NamespacedShares {
 	rawDatas := make([][]byte, 0, len(data.Evidence))
 	for _, ev := range data.Evidence {
 		pev, err := EvidenceToProto(ev)
@@ -1578,17 +1546,25 @@ func (data *EvidenceData) splitIntoShares() NamespacedShares {
 
 // BlockID
 type BlockID struct {
-	Hash tmbytes.HexBytes `json:"hash"`
+	Hash          tmbytes.HexBytes `json:"hash"`
+	PartSetHeader PartSetHeader    `json:"part_set_header"`
 }
 
 // Equals returns true if the BlockID matches the given BlockID
 func (blockID BlockID) Equals(other BlockID) bool {
-	return bytes.Equal(blockID.Hash, other.Hash)
+	return bytes.Equal(blockID.Hash, other.Hash) &&
+		blockID.PartSetHeader.Equals(other.PartSetHeader)
 }
 
 // Key returns a machine-readable string representation of the BlockID
 func (blockID BlockID) Key() string {
-	return string(blockID.Hash)
+	pbph := blockID.PartSetHeader.ToProto()
+	bz, err := pbph.Marshal()
+	if err != nil {
+		panic(err)
+	}
+
+	return string(blockID.Hash) + string(bz)
 }
 
 // ValidateBasic performs basic validation.
@@ -1597,17 +1573,23 @@ func (blockID BlockID) ValidateBasic() error {
 	if err := ValidateHash(blockID.Hash); err != nil {
 		return fmt.Errorf("wrong Hash")
 	}
+	if err := blockID.PartSetHeader.ValidateBasic(); err != nil {
+		return fmt.Errorf("wrong PartSetHeader: %v", err)
+	}
 	return nil
 }
 
 // IsZero returns true if this is the BlockID of a nil block.
 func (blockID BlockID) IsZero() bool {
-	return len(blockID.Hash) == 0
+	return len(blockID.Hash) == 0 &&
+		blockID.PartSetHeader.IsZero()
 }
 
 // IsComplete returns true if this is a valid BlockID of a non-nil block.
 func (blockID BlockID) IsComplete() bool {
-	return len(blockID.Hash) == tmhash.Size
+	return len(blockID.Hash) == tmhash.Size &&
+		blockID.PartSetHeader.Total > 0 &&
+		len(blockID.PartSetHeader.Hash) == tmhash.Size
 }
 
 // String returns a human readable string representation of the BlockID.
@@ -1617,7 +1599,7 @@ func (blockID BlockID) IsComplete() bool {
 //
 // See PartSetHeader#String
 func (blockID BlockID) String() string {
-	return fmt.Sprintf(`%v`, blockID.Hash)
+	return fmt.Sprintf(`%v:%v`, blockID.Hash, blockID.PartSetHeader)
 }
 
 // ToProto converts BlockID to protobuf
@@ -1627,7 +1609,8 @@ func (blockID *BlockID) ToProto() tmproto.BlockID {
 	}
 
 	return tmproto.BlockID{
-		Hash: blockID.Hash,
+		Hash:          blockID.Hash,
+		PartSetHeader: blockID.PartSetHeader.ToProto(),
 	}
 }
 
@@ -1639,6 +1622,12 @@ func BlockIDFromProto(bID *tmproto.BlockID) (*BlockID, error) {
 	}
 
 	blockID := new(BlockID)
+	ph, err := PartSetHeaderFromProto(&bID.PartSetHeader)
+	if err != nil {
+		return nil, err
+	}
+
+	blockID.PartSetHeader = *ph
 	blockID.Hash = bID.Hash
 
 	return blockID, blockID.ValidateBasic()

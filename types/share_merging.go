@@ -6,8 +6,8 @@ import (
 	"errors"
 
 	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
+	"github.com/celestiaorg/celestia-core/pkg/consts"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
-	"github.com/celestiaorg/celestia-core/types/consts"
 	"github.com/celestiaorg/rsmt2d"
 	"github.com/gogo/protobuf/proto"
 )

@@ -1,7 +1,6 @@
 package v0
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"time"
@@ -179,10 +178,7 @@ func (bcR *BlockchainReactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 func (bcR *BlockchainReactor) respondToPeer(msg *bcproto.BlockRequest,
 	src p2p.Peer) (queued bool) {
 
-	block, err := bcR.store.LoadBlock(context.TODO(), msg.Height)
-	if err != nil {
-		panic(err)
-	}
+	block := bcR.store.LoadBlock(msg.Height)
 	if block != nil {
 		bl, err := block.ToProto()
 		if err != nil {
@@ -389,14 +385,14 @@ FOR_LOOP:
 			var (
 				firstParts         = first.MakePartSet(types.BlockPartSizeBytes)
 				firstPartSetHeader = firstParts.Header()
-				firstID            = types.BlockID{Hash: first.Hash()}
+				firstID            = types.BlockID{Hash: first.Hash(), PartSetHeader: firstPartSetHeader}
 			)
 
 			// Finally, verify the first block using the second's commit
 			// NOTE: we can probably make this more efficient, but note that calling
 			// first.Hash() doesn't verify the tx contents, so MakePartSet() is
 			// currently necessary.
-			err := state.Validators.VerifyCommitLight(chainID, firstID, firstPartSetHeader, first.Height, second.LastCommit)
+			err := state.Validators.VerifyCommitLight(chainID, firstID, first.Height, second.LastCommit)
 			if err != nil {
 				err = fmt.Errorf("invalid last commit: %w", err)
 				bcR.Logger.Error(err.Error(),
@@ -422,15 +418,12 @@ FOR_LOOP:
 				bcR.pool.PopRequest()
 
 				// TODO: batch saves so we dont persist to disk every block
-				err := bcR.store.SaveBlock(context.TODO(), first, firstParts, second.LastCommit)
-				if err != nil {
-					// an error is only returned if something with the local IPFS blockstore is seriously wrong
-					panic(err)
-				}
+				bcR.store.SaveBlock(first, firstParts, second.LastCommit)
 
 				// TODO: same thing for app - but we would need a way to get the hash
 				// without persisting the state.
-				state, _, err = bcR.blockExec.ApplyBlock(state, firstID, firstPartSetHeader, first)
+				var err error
+				state, _, err = bcR.blockExec.ApplyBlock(state, firstID, first)
 				if err != nil {
 					// TODO This is bad, are we zombie?
 					panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))

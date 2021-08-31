@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -23,7 +22,6 @@ import (
 	cstypes "github.com/celestiaorg/celestia-core/consensus/types"
 	cryptoenc "github.com/celestiaorg/celestia-core/crypto/encoding"
 	"github.com/celestiaorg/celestia-core/crypto/tmhash"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	"github.com/celestiaorg/celestia-core/libs/bits"
 	"github.com/celestiaorg/celestia-core/libs/bytes"
 	"github.com/celestiaorg/celestia-core/libs/db/memdb"
@@ -155,8 +153,9 @@ func TestReactorWithEvidence(t *testing.T) {
 		// duplicate code from:
 		// css[i] = newStateWithConfig(thisConfig, state, privVals[i], app)
 
-		dag := mdutils.Mock()
-		blockStore := store.MockBlockStore(nil)
+		blockDB := memdb.NewDB()
+		blockStore := store.NewBlockStore(blockDB)
+
 		// one for mempool, one for consensus
 		mtx := new(tmsync.Mutex)
 		proxyAppConnMem := abcicli.NewLocalClient(mtx, app)
@@ -184,7 +183,7 @@ func TestReactorWithEvidence(t *testing.T) {
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore,
-			mempool, dag, ipfs.MockRouting(), evpool2)
+			mempool, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
 
@@ -671,7 +670,7 @@ func timeoutWaitGroup(t *testing.T, n int, f func(int), css []*State) {
 
 	// we're running many nodes in-process, possibly in in a virtual machine,
 	// and spewing debug messages - making a block could take a while,
-	timeout := time.Minute * 8
+	timeout := time.Minute * 4
 
 	select {
 	case <-done:
@@ -927,7 +926,11 @@ func TestVoteSetMaj23MessageValidateBasic(t *testing.T) {
 
 	validBlockID := types.BlockID{}
 	invalidBlockID := types.BlockID{
-		Hash: bytes.HexBytes("invalid"),
+		Hash: bytes.HexBytes{},
+		PartSetHeader: types.PartSetHeader{
+			Total: 1,
+			Hash:  []byte{0},
+		},
 	}
 
 	testCases := []struct { // nolint: maligned
@@ -968,6 +971,15 @@ func TestVoteSetBitsMessageValidateBasic(t *testing.T) {
 		{func(msg *VoteSetBitsMessage) {}, ""},
 		{func(msg *VoteSetBitsMessage) { msg.Height = -1 }, "negative Height"},
 		{func(msg *VoteSetBitsMessage) { msg.Type = 0x03 }, "invalid Type"},
+		{func(msg *VoteSetBitsMessage) {
+			msg.BlockID = types.BlockID{
+				Hash: bytes.HexBytes{},
+				PartSetHeader: types.PartSetHeader{
+					Total: 1,
+					Hash:  []byte{0},
+				},
+			}
+		}, "wrong BlockID: wrong PartSetHeader: wrong Hash:"},
 		{func(msg *VoteSetBitsMessage) { msg.Votes = bits.NewBitArray(types.MaxVotesCount + 1) },
 			"votes bit array is too big: 10001, max: 10000"},
 	}

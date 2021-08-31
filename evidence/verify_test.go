@@ -39,10 +39,9 @@ func TestVerifyLightClientAttack_Lunatic(t *testing.T) {
 	conflictingHeader.ValidatorsHash = conflictingVals.Hash()
 
 	// we are simulating a lunatic light client attack
-	blockID := makeBlockID(conflictingHeader.Hash())
-	psh := makePartSetHeader(1000, []byte("partshash"))
+	blockID := makeBlockID(conflictingHeader.Hash(), 1000, []byte("partshash"))
 	voteSet := types.NewVoteSet(evidenceChainID, 10, 1, tmproto.SignedMsgType(2), conflictingVals)
-	commit, err := types.MakeCommit(blockID, psh, 10, 1, voteSet, conflictingPrivVals, defaultEvidenceTime)
+	commit, err := types.MakeCommit(blockID, 10, 1, voteSet, conflictingPrivVals, defaultEvidenceTime)
 	require.NoError(t, err)
 	ev := &types.LightClientAttackEvidence{
 		ConflictingBlock: &types.LightBlock{
@@ -62,10 +61,10 @@ func TestVerifyLightClientAttack_Lunatic(t *testing.T) {
 		Header: commonHeader,
 		Commit: &types.Commit{},
 	}
-	trustedBlockID := makeBlockID(trustedHeader.Hash())
+	trustedBlockID := makeBlockID(trustedHeader.Hash(), 1000, []byte("partshash"))
 	vals, privVals := types.RandValidatorSet(3, 8)
 	trustedVoteSet := types.NewVoteSet(evidenceChainID, 10, 1, tmproto.SignedMsgType(2), vals)
-	trustedCommit, err := types.MakeCommit(trustedBlockID, psh, 10, 1, trustedVoteSet, privVals, defaultEvidenceTime)
+	trustedCommit, err := types.MakeCommit(trustedBlockID, 10, 1, trustedVoteSet, privVals, defaultEvidenceTime)
 	require.NoError(t, err)
 	trustedSignedHeader := &types.SignedHeader{
 		Header: trustedHeader,
@@ -143,10 +142,9 @@ func TestVerifyLightClientAttack_Equivocation(t *testing.T) {
 
 	// we are simulating a duplicate vote attack where all the validators in the conflictingVals set
 	// except the last validator vote twice
-	blockID := makeBlockID(conflictingHeader.Hash())
-	psh := makePartSetHeader(1000, []byte("partshash"))
+	blockID := makeBlockID(conflictingHeader.Hash(), 1000, []byte("partshash"))
 	voteSet := types.NewVoteSet(evidenceChainID, 10, 1, tmproto.SignedMsgType(2), conflictingVals)
-	commit, err := types.MakeCommit(blockID, psh, 10, 1, voteSet, conflictingPrivVals[:4], defaultEvidenceTime)
+	commit, err := types.MakeCommit(blockID, 10, 1, voteSet, conflictingPrivVals[:4], defaultEvidenceTime)
 	require.NoError(t, err)
 	ev := &types.LightClientAttackEvidence{
 		ConflictingBlock: &types.LightBlock{
@@ -162,17 +160,9 @@ func TestVerifyLightClientAttack_Equivocation(t *testing.T) {
 		Timestamp:           defaultEvidenceTime,
 	}
 
-	trustedBlockID := makeBlockID(trustedHeader.Hash())
+	trustedBlockID := makeBlockID(trustedHeader.Hash(), 1000, []byte("partshash"))
 	trustedVoteSet := types.NewVoteSet(evidenceChainID, 10, 1, tmproto.SignedMsgType(2), conflictingVals)
-	trustedCommit, err := types.MakeCommit(
-		trustedBlockID,
-		psh,
-		10,
-		1,
-		trustedVoteSet,
-		conflictingPrivVals,
-		defaultEvidenceTime,
-	)
+	trustedCommit, err := types.MakeCommit(trustedBlockID, 10, 1, trustedVoteSet, conflictingPrivVals, defaultEvidenceTime)
 	require.NoError(t, err)
 	trustedSignedHeader := &types.SignedHeader{
 		Header: trustedHeader,
@@ -236,10 +226,9 @@ func TestVerifyLightClientAttack_Amnesia(t *testing.T) {
 
 	// we are simulating an amnesia attack where all the validators in the conflictingVals set
 	// except the last validator vote twice. However this time the commits are of different rounds.
-	blockID := makeBlockID(conflictingHeader.Hash())
-	psh := makePartSetHeader(1000, []byte("partshash"))
+	blockID := makeBlockID(conflictingHeader.Hash(), 1000, []byte("partshash"))
 	voteSet := types.NewVoteSet(evidenceChainID, 10, 0, tmproto.SignedMsgType(2), conflictingVals)
-	commit, err := types.MakeCommit(blockID, psh, 10, 0, voteSet, conflictingPrivVals, defaultEvidenceTime)
+	commit, err := types.MakeCommit(blockID, 10, 0, voteSet, conflictingPrivVals, defaultEvidenceTime)
 	require.NoError(t, err)
 	ev := &types.LightClientAttackEvidence{
 		ConflictingBlock: &types.LightBlock{
@@ -255,18 +244,9 @@ func TestVerifyLightClientAttack_Amnesia(t *testing.T) {
 		Timestamp:           defaultEvidenceTime,
 	}
 
-	trustedBlockID := makeBlockID(trustedHeader.Hash())
-	trustedPSH := makePartSetHeader(1000, []byte("partshash"))
+	trustedBlockID := makeBlockID(trustedHeader.Hash(), 1000, []byte("partshash"))
 	trustedVoteSet := types.NewVoteSet(evidenceChainID, 10, 1, tmproto.SignedMsgType(2), conflictingVals)
-	trustedCommit, err := types.MakeCommit(
-		trustedBlockID,
-		trustedPSH,
-		10,
-		1,
-		trustedVoteSet,
-		conflictingPrivVals,
-		defaultEvidenceTime,
-	)
+	trustedCommit, err := types.MakeCommit(trustedBlockID, 10, 1, trustedVoteSet, conflictingPrivVals, defaultEvidenceTime)
 	require.NoError(t, err)
 	trustedSignedHeader := &types.SignedHeader{
 		Header: trustedHeader,
@@ -318,22 +298,18 @@ func TestVerifyDuplicateVoteEvidence(t *testing.T) {
 	val2 := types.NewMockPV()
 	valSet := types.NewValidatorSet([]*types.Validator{val.ExtractIntoValidator(1)})
 
-	blockID := makeBlockID([]byte("blockhash"))
-	psh := makePartSetHeader(1000, []byte("partshash"))
-	blockID2 := makeBlockID([]byte("blockhash2"))
-	psh2 := makePartSetHeader(1000, []byte("partshash"))
-	blockID3 := makeBlockID([]byte("blockhash"))
-	psh3 := makePartSetHeader(10000, []byte("partshash"))
-	blockID4 := makeBlockID([]byte("blockhash"))
-	psh4 := makePartSetHeader(10000, []byte("partshash2"))
+	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
+	blockID2 := makeBlockID([]byte("blockhash2"), 1000, []byte("partshash"))
+	blockID3 := makeBlockID([]byte("blockhash"), 10000, []byte("partshash"))
+	blockID4 := makeBlockID([]byte("blockhash"), 10000, []byte("partshash2"))
 
 	const chainID = "mychain"
 
-	vote1 := makeVote(t, val, chainID, 0, 10, 2, 1, blockID, psh, defaultEvidenceTime)
+	vote1 := makeVote(t, val, chainID, 0, 10, 2, 1, blockID, defaultEvidenceTime)
 	v1 := vote1.ToProto()
 	err := val.SignVote(chainID, v1)
 	require.NoError(t, err)
-	badVote := makeVote(t, val, chainID, 0, 10, 2, 1, blockID, psh, defaultEvidenceTime)
+	badVote := makeVote(t, val, chainID, 0, 10, 2, 1, blockID, defaultEvidenceTime)
 	bv := badVote.ToProto()
 	err = val2.SignVote(chainID, bv)
 	require.NoError(t, err)
@@ -342,17 +318,17 @@ func TestVerifyDuplicateVoteEvidence(t *testing.T) {
 	badVote.Signature = bv.Signature
 
 	cases := []voteData{
-		{vote1, makeVote(t, val, chainID, 0, 10, 2, 1, blockID2, psh2, defaultEvidenceTime), true}, // different block ids
-		{vote1, makeVote(t, val, chainID, 0, 10, 2, 1, blockID3, psh3, defaultEvidenceTime), true},
-		{vote1, makeVote(t, val, chainID, 0, 10, 2, 1, blockID4, psh4, defaultEvidenceTime), true},
-		{vote1, makeVote(t, val, chainID, 0, 10, 2, 1, blockID, psh, defaultEvidenceTime), false},      // wrong block id
-		{vote1, makeVote(t, val, "mychain2", 0, 10, 2, 1, blockID2, psh2, defaultEvidenceTime), false}, // wrong chain id
-		{vote1, makeVote(t, val, chainID, 0, 11, 2, 1, blockID2, psh2, defaultEvidenceTime), false},    // wrong height
-		{vote1, makeVote(t, val, chainID, 0, 10, 3, 1, blockID2, psh2, defaultEvidenceTime), false},    // wrong round
-		{vote1, makeVote(t, val, chainID, 0, 10, 2, 2, blockID2, psh2, defaultEvidenceTime), false},    // wrong step
-		{vote1, makeVote(t, val2, chainID, 0, 10, 2, 1, blockID2, psh2, defaultEvidenceTime), false},   // wrong validator
+		{vote1, makeVote(t, val, chainID, 0, 10, 2, 1, blockID2, defaultEvidenceTime), true}, // different block ids
+		{vote1, makeVote(t, val, chainID, 0, 10, 2, 1, blockID3, defaultEvidenceTime), true},
+		{vote1, makeVote(t, val, chainID, 0, 10, 2, 1, blockID4, defaultEvidenceTime), true},
+		{vote1, makeVote(t, val, chainID, 0, 10, 2, 1, blockID, defaultEvidenceTime), false},     // wrong block id
+		{vote1, makeVote(t, val, "mychain2", 0, 10, 2, 1, blockID2, defaultEvidenceTime), false}, // wrong chain id
+		{vote1, makeVote(t, val, chainID, 0, 11, 2, 1, blockID2, defaultEvidenceTime), false},    // wrong height
+		{vote1, makeVote(t, val, chainID, 0, 10, 3, 1, blockID2, defaultEvidenceTime), false},    // wrong round
+		{vote1, makeVote(t, val, chainID, 0, 10, 2, 2, blockID2, defaultEvidenceTime), false},    // wrong step
+		{vote1, makeVote(t, val2, chainID, 0, 10, 2, 1, blockID2, defaultEvidenceTime), false},   // wrong validator
 		// a different vote time doesn't matter
-		{vote1, makeVote(t, val, chainID, 0, 10, 2, 1, blockID2, psh2, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)), true},
+		{vote1, makeVote(t, val, chainID, 0, 10, 2, 1, blockID2, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)), true},
 		{vote1, badVote, false}, // signed by wrong key
 	}
 
@@ -412,7 +388,7 @@ func TestVerifyDuplicateVoteEvidence(t *testing.T) {
 
 func makeVote(
 	t *testing.T, val types.PrivValidator, chainID string, valIndex int32, height int64,
-	round int32, step int, blockID types.BlockID, psh types.PartSetHeader, time time.Time) *types.Vote {
+	round int32, step int, blockID types.BlockID, time time.Time) *types.Vote {
 	pubKey, err := val.GetPubKey()
 	require.NoError(t, err)
 	v := &types.Vote{
@@ -422,7 +398,6 @@ func makeVote(
 		Round:            round,
 		Type:             tmproto.SignedMsgType(step),
 		BlockID:          blockID,
-		PartSetHeader:    psh,
 		Timestamp:        time,
 	}
 
@@ -441,7 +416,7 @@ func makeHeaderRandom(height int64) *types.Header {
 		ChainID:            evidenceChainID,
 		Height:             height,
 		Time:               defaultEvidenceTime,
-		LastBlockID:        makeBlockID([]byte("headerhash")),
+		LastBlockID:        makeBlockID([]byte("headerhash"), 1000, []byte("partshash")),
 		LastCommitHash:     crypto.CRandBytes(tmhash.Size),
 		DataHash:           crypto.CRandBytes(tmhash.Size),
 		ValidatorsHash:     crypto.CRandBytes(tmhash.Size),
@@ -454,24 +429,18 @@ func makeHeaderRandom(height int64) *types.Header {
 	}
 }
 
-func makeBlockID(hash []byte) types.BlockID {
+func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {
 	var (
-		h = make([]byte, tmhash.Size)
-	)
-	copy(h, hash)
-	return types.BlockID{
-		Hash: h,
-	}
-}
-
-func makePartSetHeader(partSetSize uint32, partSetHash []byte) types.PartSetHeader {
-	var (
+		h   = make([]byte, tmhash.Size)
 		psH = make([]byte, tmhash.Size)
 	)
+	copy(h, hash)
 	copy(psH, partSetHash)
-	return types.PartSetHeader{
-		Total: partSetSize,
-		Hash:  psH,
+	return types.BlockID{
+		Hash: h,
+		PartSetHeader: types.PartSetHeader{
+			Total: partSetSize,
+			Hash:  psH,
+		},
 	}
-
 }
