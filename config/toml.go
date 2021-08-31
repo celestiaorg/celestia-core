@@ -96,6 +96,10 @@ fast-sync = {{ .BaseConfig.FastSyncMode }}
 # Database directory
 db-dir = "{{ js .BaseConfig.DBPath }}"
 
+# Database backend: badgerdb
+# we only use badgerdb, but maintain the option in the config because the cosmos-sdk expects it
+db-backend = "{{ .BaseConfig.DBBackend }}"
+
 # Output level for logging, including package level options
 log-level = "{{ .BaseConfig.LogLevel }}"
 
