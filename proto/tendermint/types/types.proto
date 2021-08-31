@@ -432,7 +432,7 @@ message ShareProof {
 // https://github.com/celestiaorg/celestia-specs/blob/master/specs/networking.md#badencodingfraudproof
 message BadEncodingFraudProof {
   // height of the block with the offending row or column
-  uint64 height = 1;
+  int64 height = 1;
   // the available shares in the offending row or column and their Merkle proofs
   // array of ShareProofs
   repeated ShareProof shareProofs = 2;
