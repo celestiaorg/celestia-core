@@ -57,32 +57,11 @@ const (
 // (different from the spec).
 type DataAvailabilityHeader struct {
 	// RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
-	RowsRoots NmtRoots `json:"row_roots"`
+	RowsRoots [][]byte `json:"row_roots"`
 	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
-	ColumnRoots NmtRoots `json:"column_roots"`
+	ColumnRoots [][]byte `json:"column_roots"`
 	// cached result of Hash() not to be recomputed
 	hash []byte
-}
-
-type NmtRoots []namespace.IntervalDigest
-
-func (roots NmtRoots) Bytes() [][]byte {
-	res := make([][]byte, len(roots))
-	for i := 0; i < len(roots); i++ {
-		res[i] = roots[i].Bytes()
-	}
-	return res
-}
-
-func NmtRootsFromBytes(in [][]byte) (roots NmtRoots, err error) {
-	roots = make([]namespace.IntervalDigest, len(in))
-	for i := 0; i < len(in); i++ {
-		roots[i], err = namespace.IntervalDigestFromBytes(consts.NamespaceSize, in[i])
-		if err != nil {
-			return roots, err
-		}
-	}
-	return
 }
 
 // String returns hex representation of merkle hash of the DAHeader.
@@ -111,10 +90,10 @@ func (dah *DataAvailabilityHeader) Hash() []byte {
 	rowsCount := len(dah.RowsRoots)
 	slices := make([][]byte, colsCount+rowsCount)
 	for i, rowRoot := range dah.RowsRoots {
-		slices[i] = rowRoot.Bytes()
+		slices[i] = rowRoot
 	}
 	for i, colRoot := range dah.ColumnRoots {
-		slices[i+colsCount] = colRoot.Bytes()
+		slices[i+colsCount] = colRoot
 	}
 	// The single data root is computed using a simple binary merkle tree.
 	// Effectively being root(rowRoots || columnRoots):
@@ -128,8 +107,8 @@ func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, e
 	}
 
 	dahp := new(tmproto.DataAvailabilityHeader)
-	dahp.RowRoots = dah.RowsRoots.Bytes()
-	dahp.ColumnRoots = dah.ColumnRoots.Bytes()
+	dahp.RowRoots = dah.RowsRoots
+	dahp.ColumnRoots = dah.ColumnRoots
 	return dahp, nil
 }
 
@@ -139,15 +118,8 @@ func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (dah 
 	}
 
 	dah = new(DataAvailabilityHeader)
-	dah.RowsRoots, err = NmtRootsFromBytes(dahp.RowRoots)
-	if err != nil {
-		return
-	}
-
-	dah.ColumnRoots, err = NmtRootsFromBytes(dahp.ColumnRoots)
-	if err != nil {
-		return
-	}
+	dah.RowsRoots = dahp.RowRoots
+	dah.ColumnRoots = dahp.ColumnRoots
 
 	return
 }
@@ -240,28 +212,8 @@ func (b *Block) fillDataAvailabilityHeader() {
 	}
 
 	// generate the row and col roots using the EDS and nmt wrapper
-	rowRoots := extendedDataSquare.RowRoots()
-	colRoots := extendedDataSquare.ColRoots()
-
-	b.DataAvailabilityHeader = DataAvailabilityHeader{
-		RowsRoots:   make([]namespace.IntervalDigest, extendedDataSquare.Width()),
-		ColumnRoots: make([]namespace.IntervalDigest, extendedDataSquare.Width()),
-	}
-
-	// todo(evan): remove interval digests
-	// convert the roots to interval digests
-	for i := 0; i < len(rowRoots); i++ {
-		rowRoot, err := namespace.IntervalDigestFromBytes(consts.NamespaceSize, rowRoots[i])
-		if err != nil {
-			panic(err)
-		}
-		colRoot, err := namespace.IntervalDigestFromBytes(consts.NamespaceSize, colRoots[i])
-		if err != nil {
-			panic(err)
-		}
-		b.DataAvailabilityHeader.RowsRoots[i] = rowRoot
-		b.DataAvailabilityHeader.ColumnRoots[i] = colRoot
-	}
+	b.DataAvailabilityHeader.RowsRoots = extendedDataSquare.RowRoots()
+	b.DataAvailabilityHeader.ColumnRoots = extendedDataSquare.ColRoots()
 
 	// return the root hash of DA Header
 	b.DataHash = b.DataAvailabilityHeader.Hash()
