@@ -124,6 +124,65 @@ func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (dah 
 	return
 }
 
+// ValidateBasic runs stateless checks on the DataAvailabilityHeader. Calls Hash() if not already called
+func (dah *DataAvailabilityHeader) ValidateBasic() error {
+	if dah == nil {
+		return errors.New("nil data availability header is not valid")
+	}
+	const minDAHSize = 2
+	if len(dah.ColumnRoots) < minDAHSize || len(dah.RowsRoots) < minDAHSize {
+		return fmt.Errorf(
+			"Minimum valid DataAvailabilityHeader has at least %d row and column roots",
+			minDAHSize,
+		)
+	}
+	if len(dah.ColumnRoots) != len(dah.RowsRoots) {
+		return fmt.Errorf(
+			"unequal number of row and column roots: row %d col %d",
+			len(dah.RowsRoots),
+			len(dah.ColumnRoots),
+		)
+	}
+	if err := ValidateHash(dah.hash); err != nil {
+		return fmt.Errorf("wrong hash: %v", err)
+	}
+
+	return nil
+}
+
+func (dah *DataAvailabilityHeader) IsZero() bool {
+	if dah == nil {
+		return true
+	}
+	return len(dah.ColumnRoots) == 0 || len(dah.RowsRoots) == 0
+}
+
+// MinDataAvailabilityHeader returns a hard coded copy of a data availability
+// header from empty block data
+func MinDataAvailabilityHeader() *DataAvailabilityHeader {
+	firstRoot := []byte{
+		255, 255, 255, 255, 255, 255, 255, 254, 255, 255, 255, 255, 255, 255, 255, 254, 102, 154, 168, 240,
+		216, 82, 33, 160, 91, 111, 9, 23, 136, 77, 48, 97, 106, 108, 125, 83, 48, 165, 100, 10, 8, 160, 77,
+		204, 91, 9, 47, 79,
+	}
+
+	secondRoot := []byte{
+		255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 41, 52, 55, 243,
+		182, 165, 97, 30, 37, 201, 13, 90, 68, 184, 76, 196, 179, 114, 12, 219, 166, 133, 83, 222, 254,
+		139, 113, 154, 241, 245, 195, 149,
+	}
+
+	dah := &DataAvailabilityHeader{
+		RowsRoots:   [][]byte{firstRoot, secondRoot},
+		ColumnRoots: [][]byte{firstRoot, secondRoot},
+		hash: []byte{
+			4, 122, 211, 141, 172, 30, 22, 215, 241, 73, 77, 225, 174, 40, 53, 252, 106, 158, 117, 238,
+			88, 77, 86, 66, 235, 146, 121, 62, 161, 36, 160, 111,
+		},
+	}
+	return dah
+}
+
 // Block defines the atomic unit of a Tendermint blockchain.
 type Block struct {
 	mtx tmsync.Mutex

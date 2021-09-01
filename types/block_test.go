@@ -240,6 +240,18 @@ func TestEmptyBlockData(t *testing.T) {
 	assert.Equal(t, TailPaddingShares(1), shares)
 }
 
+func Test_emptyDataAvailabilityHeader(t *testing.T) {
+	blockData := Data{}
+	block := Block{
+		Data:       blockData,
+		LastCommit: &Commit{},
+	}
+	block.fillDataAvailabilityHeader()
+	assert.Equal(t, &block.DataAvailabilityHeader, MinDataAvailabilityHeader())
+}
+
+// TODO(evan): test validate basic for the DataAvailabilityHeader
+
 func TestCommit(t *testing.T) {
 	lastID := makeBlockIDRandom()
 	h := int64(3)
