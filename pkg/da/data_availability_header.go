@@ -138,7 +138,7 @@ func DataAvailabilityHeaderFromProto(dahp *daproto.DataAvailabilityHeader) (dah 
 	return dah, dah.ValidateBasic()
 }
 
-// ValidateBasic runs stateless checks on the DataAvailabilityHeader. Calls Hash() if not already called
+// ValidateBasic runs stateless checks on the DataAvailabilityHeader.
 func (dah *DataAvailabilityHeader) ValidateBasic() error {
 	if dah == nil {
 		return errors.New("nil data availability header is not valid")
