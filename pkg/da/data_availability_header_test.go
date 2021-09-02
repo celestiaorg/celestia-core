@@ -119,7 +119,7 @@ func TestDataAvailabilityHeaderProtoConversion(t *testing.T) {
 		resDah, err := DataAvailabilityHeaderFromProto(pdah)
 		require.NoError(t, err)
 		resDah.Hash() // calc the hash to make the comparisons fair
-		require.Equal(t, tt.dah, resDah, tt.name)
+		require.Equal(t, tt.dah, *resDah, tt.name)
 	}
 
 }
@@ -167,13 +167,13 @@ func Test_DAHValidateBasic(t *testing.T) {
 			name:      "too big dah",
 			dah:       tooBigDah,
 			expectErr: true,
-			errStr:    "Maximum valid DataAvailabilityHeader has at most",
+			errStr:    "maximum valid DataAvailabilityHeader has at most",
 		},
 		{
 			name:      "too small dah",
 			dah:       tooSmallDah,
 			expectErr: true,
-			errStr:    "Minimum valid DataAvailabilityHeader has at least",
+			errStr:    "minimum valid DataAvailabilityHeader has at least",
 		},
 		{
 			name:      "bash hash",

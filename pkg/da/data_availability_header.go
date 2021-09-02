@@ -152,7 +152,7 @@ func (dah *DataAvailabilityHeader) ValidateBasic() error {
 	if len(dah.ColumnRoots) > maxDAHSize || len(dah.RowsRoots) > maxDAHSize {
 		return fmt.Errorf(
 			"maximum valid DataAvailabilityHeader has at most %d row and column roots",
-			minDAHSize,
+			maxDAHSize,
 		)
 	}
 	if len(dah.ColumnRoots) != len(dah.RowsRoots) {
