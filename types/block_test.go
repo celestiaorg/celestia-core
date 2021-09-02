@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/hex"
+	"fmt"
 	"math"
 	mrand "math/rand"
 	"os"
@@ -225,14 +226,29 @@ func TestNilHeaderHashDoesntCrash(t *testing.T) {
 	assert.Equal(t, nilBytes, []byte((new(Header)).Hash()))
 }
 
-func TestEmptyBlockData(t *testing.T) {
+func TestEmptyBlockDataAvailabilityHeader(t *testing.T) {
 	blockData := Data{}
 	shares, _ := blockData.ComputeShares()
 	assert.Equal(t, TailPaddingShares(1), shares)
+	block := Block{
+		Data:       blockData,
+		LastCommit: &Commit{},
+	}
+	block.fillDataAvailabilityHeader()
+	require.Equal(t, block.DataAvailabilityHeader, da.MinDataAvailabilityHeader())
 }
 
-// TODO(evan): test validate basic for the DataAvailabilityHeader
-// TODO(evan): move test empty dah over to the da package
+func TestBS(t *testing.T) {
+	data := Data{}
+	shares, _ := data.ComputeShares()
+	rawShares := shares.RawShares()
+	for _, share := range rawShares {
+		fmt.Println(share)
+	}
+	require.Equal(t, rawShares[0], tailPaddingShare)
+	fmt.Println()
+}
+
 func TestCommit(t *testing.T) {
 	lastID := makeBlockIDRandom()
 	h := int64(3)
