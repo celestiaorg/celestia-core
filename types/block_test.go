@@ -20,7 +20,6 @@ import (
 	"github.com/celestiaorg/celestia-core/libs/bits"
 	"github.com/celestiaorg/celestia-core/libs/bytes"
 	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
-	"github.com/celestiaorg/celestia-core/pkg/consts"
 	"github.com/celestiaorg/celestia-core/pkg/da"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
@@ -207,15 +206,6 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
 			Total: partSetSize,
 			Hash:  psH,
 		},
-	}
-}
-
-func makeDAHeaderRandom() *da.DataAvailabilityHeader {
-	rows := [][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)}
-	clns := [][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)}
-	return &da.DataAvailabilityHeader{
-		RowsRoots:   rows,
-		ColumnRoots: clns,
 	}
 }
 
