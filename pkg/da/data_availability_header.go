@@ -7,7 +7,10 @@ import (
 
 	"github.com/celestiaorg/celestia-core/crypto/merkle"
 	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	"github.com/celestiaorg/celestia-core/pkg/consts"
+	"github.com/celestiaorg/celestia-core/pkg/wrapper"
 	daproto "github.com/celestiaorg/celestia-core/proto/tendermint/da"
+	"github.com/celestiaorg/rsmt2d"
 )
 
 // DataAvailabilityHeader (DAHeader) contains the row and column roots of the erasure
@@ -27,6 +30,39 @@ type DataAvailabilityHeader struct {
 	ColumnRoots [][]byte `json:"column_roots"`
 	// cached result of Hash() not to be recomputed
 	hash []byte
+}
+
+// NewDataAvailabilityHeader generates a DataAvailability header using the provided square size and shares
+func NewDataAvailabilityHeader(squareSize uint64, shares [][]byte) (DataAvailabilityHeader, error) {
+	// Check that square size is with range
+	if squareSize < consts.MinSquareSize || squareSize > consts.MaxSquareSize {
+		return DataAvailabilityHeader{}, fmt.Errorf(
+			"invalid square size: min %d max %d provided %d",
+			consts.MinSquareSize,
+			consts.MaxSquareSize,
+			squareSize,
+		)
+	}
+
+	tree := wrapper.NewErasuredNamespacedMerkleTree(squareSize)
+
+	// TODO(ismail): for better efficiency and a larger number shares
+	// we should switch to the rsmt2d.LeopardFF16 codec:
+	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), tree.Constructor)
+	if err != nil {
+		return DataAvailabilityHeader{}, err
+	}
+
+	// generate the row and col roots using the EDS
+	dah := DataAvailabilityHeader{
+		RowsRoots:   extendedDataSquare.RowRoots(),
+		ColumnRoots: extendedDataSquare.ColRoots(),
+	}
+
+	// generate the hash of the data using the new roots
+	dah.Hash()
+
+	return dah, nil
 }
 
 // String returns hex representation of merkle hash of the DAHeader.
@@ -86,7 +122,7 @@ func DataAvailabilityHeaderFromProto(dahp *daproto.DataAvailabilityHeader) (dah 
 	dah.RowsRoots = dahp.RowRoots
 	dah.ColumnRoots = dahp.ColumnRoots
 
-	return
+	return dah, dah.ValidateBasic()
 }
 
 // ValidateBasic runs stateless checks on the DataAvailabilityHeader. Calls Hash() if not already called
@@ -108,7 +144,7 @@ func (dah *DataAvailabilityHeader) ValidateBasic() error {
 			len(dah.ColumnRoots),
 		)
 	}
-	if err := ValidateHash(dah.hash); err != nil {
+	if err := validateHash(dah.hash); err != nil {
 		return fmt.Errorf("wrong hash: %v", err)
 	}
 
@@ -122,35 +158,9 @@ func (dah *DataAvailabilityHeader) IsZero() bool {
 	return len(dah.ColumnRoots) == 0 || len(dah.RowsRoots) == 0
 }
 
-// MinDataAvailabilityHeader returns a hard coded copy of a data availability
-// header from empty block data
-func MinDataAvailabilityHeader() *DataAvailabilityHeader {
-	firstRoot := []byte{
-		255, 255, 255, 255, 255, 255, 255, 254, 255, 255, 255, 255, 255, 255, 255, 254, 102, 154, 168, 240,
-		216, 82, 33, 160, 91, 111, 9, 23, 136, 77, 48, 97, 106, 108, 125, 83, 48, 165, 100, 10, 8, 160, 77,
-		204, 91, 9, 47, 79,
-	}
-
-	secondRoot := []byte{
-		255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 41, 52, 55, 243,
-		182, 165, 97, 30, 37, 201, 13, 90, 68, 184, 76, 196, 179, 114, 12, 219, 166, 133, 83, 222, 254,
-		139, 113, 154, 241, 245, 195, 149,
-	}
-
-	dah := &DataAvailabilityHeader{
-		RowsRoots:   [][]byte{firstRoot, secondRoot},
-		ColumnRoots: [][]byte{firstRoot, secondRoot},
-		hash: []byte{
-			4, 122, 211, 141, 172, 30, 22, 215, 241, 73, 77, 225, 174, 40, 53, 252, 106, 158, 117, 238,
-			88, 77, 86, 66, 235, 146, 121, 62, 161, 36, 160, 111,
-		},
-	}
-	return dah
-}
-
-// ValidateHash returns an error if the hash is not empty, but its
-// size != tmhash.Size.
-func ValidateHash(h []byte) error {
+// validateHash returns an error if the hash is not empty, but its
+// size != tmhash.Size. copy pasted from `types` package as to not import
+func validateHash(h []byte) error {
 	if len(h) > 0 && len(h) != tmhash.Size {
 		return fmt.Errorf("expected size to be %d bytes, got %d bytes",
 			tmhash.Size,
