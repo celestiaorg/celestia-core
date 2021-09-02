@@ -13,6 +13,11 @@ import (
 	"github.com/celestiaorg/rsmt2d"
 )
 
+const (
+	maxDAHSize = consts.MaxSquareSize * 2
+	minDAHSize = consts.MinSquareSize * 2
+)
+
 // DataAvailabilityHeader (DAHeader) contains the row and column roots of the erasure
 // coded version of the data in Block.Data.
 // Therefor the original Block.Data is arranged in a
@@ -41,6 +46,14 @@ func NewDataAvailabilityHeader(squareSize uint64, shares [][]byte) (DataAvailabi
 			consts.MinSquareSize,
 			consts.MaxSquareSize,
 			squareSize,
+		)
+	}
+	// check that valid number of shares have been provided
+	if squareSize*squareSize != uint64(len(shares)) {
+		return DataAvailabilityHeader{}, fmt.Errorf(
+			"must provide valid number of shares for square size: got %d wanted %d",
+			len(shares),
+			squareSize*squareSize,
 		)
 	}
 
@@ -130,10 +143,15 @@ func (dah *DataAvailabilityHeader) ValidateBasic() error {
 	if dah == nil {
 		return errors.New("nil data availability header is not valid")
 	}
-	const minDAHSize = 2
 	if len(dah.ColumnRoots) < minDAHSize || len(dah.RowsRoots) < minDAHSize {
 		return fmt.Errorf(
 			"Minimum valid DataAvailabilityHeader has at least %d row and column roots",
+			minDAHSize,
+		)
+	}
+	if len(dah.ColumnRoots) > maxDAHSize || len(dah.RowsRoots) > maxDAHSize {
+		return fmt.Errorf(
+			"Maximum valid DataAvailabilityHeader has at most %d row and column roots",
 			minDAHSize,
 		)
 	}
@@ -156,6 +174,30 @@ func (dah *DataAvailabilityHeader) IsZero() bool {
 		return true
 	}
 	return len(dah.ColumnRoots) == 0 || len(dah.RowsRoots) == 0
+}
+
+// tail is filler for all tail padded shares
+// it is allocated once and used everywhere
+var tailPaddingShare = append(
+	append(make([]byte, 0, consts.ShareSize), consts.TailPaddingNamespaceID...),
+	bytes.Repeat([]byte{0}, consts.ShareSize-consts.NamespaceSize)...,
+)
+
+// MinDataAvailabilityHeader returns the minimum valid data availability header.
+// It is equal to the data availability header for an empty block
+func MinDataAvailabilityHeader() DataAvailabilityHeader {
+	shares := make([][]byte, consts.MinSharecount)
+	for i := 0; i < consts.MinSharecount; i++ {
+		shares[i] = tailPaddingShare
+	}
+	dah, err := NewDataAvailabilityHeader(
+		consts.MinSquareSize,
+		shares,
+	)
+	if err != nil {
+		panic(err)
+	}
+	return dah
 }
 
 // validateHash returns an error if the hash is not empty, but its

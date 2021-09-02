@@ -7,19 +7,20 @@ import (
 
 	"github.com/celestiaorg/celestia-core/crypto/tmhash"
 	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	"github.com/celestiaorg/celestia-core/pkg/da"
 )
 
 func TestBlockMeta_ToProto(t *testing.T) {
 	h := makeRandHeader()
 	bi := BlockID{Hash: h.Hash(), PartSetHeader: PartSetHeader{Total: 123, Hash: tmrand.Bytes(tmhash.Size)}}
-	dah := makeDAHeaderRandom()
+	dah := da.MinDataAvailabilityHeader()
 
 	bm := &BlockMeta{
 		BlockID:   bi,
 		BlockSize: 200,
 		Header:    h,
 		NumTxs:    0,
-		DAHeader:  *dah,
+		DAHeader:  dah,
 	}
 
 	tests := []struct {
@@ -41,6 +42,7 @@ func TestBlockMeta_ToProto(t *testing.T) {
 
 			if !tt.expErr {
 				require.NoError(t, err, tt.testName)
+				bm.DAHeader.Hash() // regenerate the hash so comparison is fair
 				require.Equal(t, tt.bm, bm, tt.testName)
 			} else {
 				require.Error(t, err, tt.testName)

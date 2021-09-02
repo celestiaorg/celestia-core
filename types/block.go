@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/celestiaorg/nmt/namespace"
-	"github.com/celestiaorg/rsmt2d"
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 
@@ -23,7 +22,6 @@ import (
 	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 	"github.com/celestiaorg/celestia-core/pkg/consts"
 	"github.com/celestiaorg/celestia-core/pkg/da"
-	"github.com/celestiaorg/celestia-core/pkg/wrapper"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
 	"github.com/celestiaorg/celestia-core/version"
@@ -123,19 +121,13 @@ func (b *Block) fillDataAvailabilityHeader() {
 	shares := namespacedShares.RawShares()
 
 	// create the nmt wrapper to generate row and col commitments
-	squareSize := uint32(math.Sqrt(float64(len(shares))))
-	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(squareSize))
-
-	// TODO(ismail): for better efficiency and a larger number shares
-	// we should switch to the rsmt2d.LeopardFF16 codec:
-	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), tree.Constructor)
+	squareSize := uint64(math.Sqrt(float64(len(shares))))
+	dah, err := da.NewDataAvailabilityHeader(squareSize, shares)
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
 	}
 
-	// generate the row and col roots using the EDS and nmt wrapper
-	b.DataAvailabilityHeader.RowsRoots = extendedDataSquare.RowRoots()
-	b.DataAvailabilityHeader.ColumnRoots = extendedDataSquare.ColRoots()
+	b.DataAvailabilityHeader = dah
 
 	// return the root hash of DA Header
 	b.DataHash = b.DataAvailabilityHeader.Hash()
