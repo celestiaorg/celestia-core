@@ -5,7 +5,10 @@ import (
 	"errors"
 	"types/consts"
 
+	"github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	tmhash "github.com/celestiaorg/lazyledger-core/crypto/tmhash"
+	"github.com/celestiaorg/rsmt2d"
+	"github.com/lazyledger/nmt"
 	tmproto "github.com/proto/tendermint/types"
 )
 
@@ -267,8 +270,9 @@ func (befp *BadEncodingFraudProof) ValidateBasic() error {
 			return err
 		}
 	}
+	const maxPosition = 2*consts.MaxSquareSize - 1
 	// check if the position is within  2*MaxSquareSize
-	if befp > 2*consts.MaxSquareSize {
+	if befp > maxPosition {
 		return errors.New("Position is out of bound.")
 	}
 	return nil
@@ -276,62 +280,72 @@ func (befp *BadEncodingFraudProof) ValidateBasic() error {
 
 // Functionality to obtain DataAvailabilityHeader from block height has to be implemented
 func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah DataAvailabilityHeader) (bool, error) {
-
 	// get the row or column root challenged by the fraud proof within the DA header
 	axisRoot := dah.ColumnRoots[0]
 	if befp.IsCol {
 		// position is uint64, thus always nonnegative
-		if int(befp.Position) < len(dah.ColumnRoots) {
-			axisRoot = dah.ColumnRoots[befp.Position]
-		} else {
+		if int(befp.Position) >= len(dah.ColumnRoots) {
 			return false, errors.New("Position out of bounds in the badencodingfraudproof.")
 		}
+		axisRoot = dah.ColumnRoots[befp.Position]
 	} else {
 		// position is uint64, thus always nonnegative
-		if int(befp.Position) < len(dah.RowRoots) {
-			axisRoot = dah.RowRoots[befp.Position]
-		} else {
+		if int(befp.Position) >= len(dah.RowRoots) {
 			return false, errors.New("Position out of bounds in the badencodingfraudproof.")
 		}
+		axisRoot = dah.RowRoots[befp.Position]
 	}
 
 	// new namespacedMerkleTree for calculating the new root
-	// namespacedMerkleTree := nmt.New(tmhash.New())
+	rawShares := make([][]byte, len(befp.ShareProofs))
+	for i, shareProof := range befp.ShareProofs {
 
-	// for _, shareProof := range befp.ShareProofs {
+		// verify that dataRoot commits to the share using the proof, isCol and position
+		// https://github.com/celestiaorg/nmt/blob/02cdbfdb328211a7e5d5eb2f42e15b72348265d8/proof.go#L207
+		// TODO
+		if !shareProof.Proof.VerifyInclusion(tmhash.New(), shareProof.Share.NamespaceID, shareProof.Share.RawData, axisRoot) {
+			return false, errors.New("Root in the data availability header does not commit to the share.")
+		}
 
-	// verify that dataRoot commits to the share using the proof, isCol and position
-	// https://github.com/celestiaorg/nmt/blob/02cdbfdb328211a7e5d5eb2f42e15b72348265d8/proof.go#L207
-	// TODO
-	// if !shareProof.Proof.VerifyInclusion(tmhash.New(), shareProof.Share.NamespaceID, shareProof.Share.RawData, axisRoot) {
-	//	return false, errors.New("Root in the data availability header does not commit to the share.")
-	// }
+		// extract raw data
+		rawShares[i] = shareProof.Share.RawData
+	}
 
-	// extend the shares and push them to the new namespacedMerkleTree
-	// https://github.com/celestiaorg/rsmt2d/blob/2aa7e42d2fda53c542b7a602d3023f675ba9051e/extendeddatacrossword.go#L278
-	// TODO
+	// extend the shares to create the real axis root
+	codec := rsmt2d.NewRSGF8Codec()
+	erasureShares, err := codec.Encode(rawShares)
+	if err != nil {
+		return false, err
+	}
 
-	// err := namespacedMerkleTree.Push(shareProof.Share)
-	// if err != nil {
-	//	return false, err
-	// }
-	// }
+	// create a tree to generate the real axis root
+	tree := nmt.New(tmhash.New)
+	for _, share := range erasureShares {
+		err := tree.Push(share)
+		if err != nil {
+			return false, err
+		}
+	}
 
 	// calculate the real axisRoot
-	// realAxisRoot := namespacedMerkleTree.Root().GetByte()
-	realAxisRoot := axisRoot
+	realAxisRoot := tree.Root().GetByte()
 
 	// compare the real axisRoot with the given axisRoot above
-	if bytes.Compare(realAxisRoot, axisRoot) != 0 {
+	if bytes.Compare(realAxisRoot, axisRoot) == 0 {
 		return false, errors.New("There is no bad encoding!")
-	} else {
-		return true, nil
 	}
+
 	return true, nil
 }
 
-// TODO: use local types
-func CreateBadEncodingFraudProof(block tmproto.Block) (tmproto.BadEncodingFraudProof, error) {
+// Note: this function will only be called by celestia-nodes, as a block with bad encoding should be rejected.
+func CreateBadEncodingFraudProof(block types.Block, dah types.DataAvailabilityHeader) (tmproto.BadEncodingFraudProof, error) {
+	squareSize := uint64(len(dah.ColumnRoots))
+	// unflatten the data
+
+	// extend the origianl data
+
+	// find the first difference between the flattend
 
 	//TODO
 	// Is there a code to check each row or column for correct/incorrect encoding?

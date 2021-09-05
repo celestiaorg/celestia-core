@@ -240,6 +240,7 @@ func (b *Block) fillDataAvailabilityHeader() {
 	}
 
 	// generate the row and col roots using the EDS and nmt wrapper
+	// TODO(evan): refactor this function so that when we check for a bad encoding we use these
 	rowRoots := extendedDataSquare.RowRoots()
 	colRoots := extendedDataSquare.ColRoots()
 
