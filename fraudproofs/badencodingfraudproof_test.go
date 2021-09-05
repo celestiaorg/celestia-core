@@ -3,26 +3,17 @@ package fraudproofs
 import (
 	"testing"
 
-	"github.com/celestiaorg/celestia-core/types"
 	tmproto "github.com/proto/tendermint/types"
 	"github.com/stretchr/testify/require"
 )
 
 type BadEncodingError int
 
-const (
-	BadEncoding BadEncodingError = 0 + iota
-	CorrectBlock
-	Incorrect_number_of_shares
-	Position_out_of_bound
-	Non_committed_shares
-)
-
 func TestBadEncodingFraudProof(t *testing.T) {
 	type test struct {
 		name   string
 		input  BadEncodingFraudProof
-		dah    types.DataAvailabilityHeader
+		dah    DataAvailabilityHeader
 		output bool
 		err    error
 	}
