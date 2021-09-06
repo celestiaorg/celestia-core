@@ -3,62 +3,86 @@ package fraudproofs
 import (
 	"bytes"
 	"errors"
-	"types/consts"
+	"pkg/consts"
 
-	"github.com/celestiaorg/celestia-core/proto/tendermint/types"
-	tmhash "github.com/celestiaorg/lazyledger-core/crypto/tmhash"
+	tmhash "github.com/celestiaorg/celestia-core/crypto/tmhash"
+	"github.com/celestiaorg/celestia-core/pkg/wrapper"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/celestiaorg/celestia-core/types"
+	"github.com/celestiaorg/nmt"
 	"github.com/celestiaorg/rsmt2d"
-	"github.com/lazyledger/nmt"
-	tmproto "github.com/proto/tendermint/types"
 )
 
-// Should check types inside ValidateBasic?
-// Line 301 and on... Verify function for a single share and its proof is undefined.
-// How do we denote the error type?
+// We decided to use the proto definition for the DataAvailabilityHeader
+// type DataAvailabilityHeader struct {
+// 	// RowRoot_j = root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
+// 	RowRoots [][]byte
+// 	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
+// 	ColumnRoots [][]byte
+// }
 
-type DataAvailabilityHeader struct {
-	// RowRoot_j = root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
-	RowRoots [][]byte
-	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
-	ColumnRoots [][]byte
-}
+// func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, error) {
+// 	if dah == nil {
+// 		return nil, errors.New("DataAvailabilityHeader is nil.")
+// 	}
+// 	dahp := new(tmproto.DataAvailabilityHeader)
+// 	dahp.RowRoots = dah.RowRoots
+// 	dahp.ColumnRoots = dah.ColumnRoots
+// 	return dahp, nil
+// }
 
-func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, error) {
-	if dah == nil {
-		return nil, errors.New("DataAvailabilityHeader is nil.")
-	}
-	dahp := new(tmproto.DataAvailabilityHeader)
-	dahp.RowRoots = dah.RowRoots
-	dahp.ColumnRoots = dah.ColumnRoots
-	return dahp, nil
-}
+// func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (*DataAvailabilityHeader, error) {
+// 	if dahp == nil {
+// 		return nil, errors.New("DataAvailabilityHeader from proto is nil.")
+// 	}
+// 	dah := new(DataAvailabilityHeader)
+// 	dah.RowRoots = dahp.RowRoots
+// 	dah.ColumnRoots = dahp.ColumnRoots
+// 	return dah, dah.ValidateBasic()
+// }
 
-func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (*DataAvailabilityHeader, error) {
-	if dahp == nil {
-		return nil, errors.New("DataAvailabilityHeader from proto is nil.")
-	}
-	dah := new(DataAvailabilityHeader)
-	dah.RowRoots = dahp.RowRoots
-	dah.ColumnRoots = dahp.ColumnRoots
-	return dah, dah.ValidateBasic()
-}
+// func (dah *DataAvailabilityHeader) ValidateBasic() error {
+// 	// check if the number of row roots is positive
+// 	if len(dah.RowRoots) <= 0 {
+// 		return errors.New("Non positive number of row roots.")
+// 	}
+// 	// check if the number of column roots is positive
+// 	if len(dah.ColumnRoots) <= 0 {
+// 		return errors.New("Non positive number of column roots.")
+// 	}
+// 	// check if the row roots and column roots have correct byte size
+// 	for _, rowRoot := range dah.RowRoots {
+// 		if len(rowRoot) != tmhash.Size {
+// 			return errors.New("Number of hash bytes is incorrect.")
+// 		}
+// 	}
+// 	for _, columnRoot := range dah.ColumnRoots {
+// 		if len(columnRoot) != tmhash.Size {
+// 			return errors.New("Number of hash bytes is incorrect.")
+// 		}
+// 	}
+// 	return nil
+// }
 
-func (dah *DataAvailabilityHeader) ValidateBasic() error {
+func (dahp *tmproto.DataAvailabilityHeader) ValidateBasic() error {
+	// get row and column roots
+	rowRoots := dahp.GetRowRoots()
+	columnRoots := dahp.GetColumnRoots()
 	// check if the number of row roots is positive
-	if len(dah.RowRoots) <= 0 {
+	if len(rowRoots) <= 0 {
 		return errors.New("Non positive number of row roots.")
 	}
 	// check if the number of column roots is positive
-	if len(dah.ColumnRoots) <= 0 {
+	if len(columnRoots) <= 0 {
 		return errors.New("Non positive number of column roots.")
 	}
 	// check if the row roots and column roots have correct byte size
-	for _, rowRoot := range dah.RowRoots {
+	for _, rowRoot := range rowRoots {
 		if len(rowRoot) != tmhash.Size {
 			return errors.New("Number of hash bytes is incorrect.")
 		}
 	}
-	for _, columnRoot := range dah.ColumnRoots {
+	for _, columnRoot := range columnRoots {
 		if len(columnRoot) != tmhash.Size {
 			return errors.New("Number of hash bytes is incorrect.")
 		}
@@ -207,11 +231,9 @@ func ShareProofFromProto(spp *tmproto.ShareProof) (*ShareProof, error) {
 func (sp *ShareProof) ValidateBasic() error {
 	if err := sp.Share.ValidateBasic(); err != nil {
 		return err
-		// return errors.New("Error in share: %w", err)
 	}
 	if err := sp.Proof.ValidateBasic(); err != nil {
 		return err
-		// return errors.New("Error in proof: %w", err)
 	}
 	// check if the position is within  2*MaxSquareSize
 	if sp.Position > 2*consts.MaxSquareSize {
@@ -225,7 +247,7 @@ type BadEncodingFraudProof struct {
 	Height int64
 	// the available shares in the offending row or column and their Merkle proofs
 	// array of ShareProofs
-	ShareProofs []*ShareProof // TODO: remove pointer here
+	ShareProofs []ShareProof
 	// a Boolean indicating if it is an offending row or column; false if it is a row
 	IsCol bool
 	// the index of the offending row or column in the square
@@ -279,7 +301,12 @@ func (befp *BadEncodingFraudProof) ValidateBasic() error {
 }
 
 // Functionality to obtain DataAvailabilityHeader from block height has to be implemented
-func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah DataAvailabilityHeader) (bool, error) {
+func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *tmproto.DataAvailabilityHeader) (bool, error) {
+	// check if tmproto.DataAvailabilityHeader has the correct structure
+	if err := dah.ValidateBasic(); err != nil {
+		return err
+	}
+
 	// get the row or column root challenged by the fraud proof within the DA header
 	axisRoot := dah.ColumnRoots[0]
 	if befp.IsCol {
@@ -328,7 +355,7 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah DataAvailabilit
 	}
 
 	// calculate the real axisRoot
-	realAxisRoot := tree.Root().GetByte()
+	realAxisRoot := tree.Root().Digest
 
 	// compare the real axisRoot with the given axisRoot above
 	if bytes.Compare(realAxisRoot, axisRoot) == 0 {
@@ -339,18 +366,78 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah DataAvailabilit
 }
 
 // Note: this function will only be called by celestia-nodes, as a block with bad encoding should be rejected.
-func CreateBadEncodingFraudProof(block types.Block, dah types.DataAvailabilityHeader) (tmproto.BadEncodingFraudProof, error) {
-	squareSize := uint64(len(dah.ColumnRoots))
+func CreateBadEncodingFraudProof(block types.Block, dah *tmproto.DataAvailabilityHeader) (*tmproto.BadEncodingFraudProof, error) {
+
 	// unflatten the data
+	namespacedShares, _ := block.Data.ComputeShares()
+	shares := namespacedShares.RawShares()
 
-	// extend the origianl data
+	// extend the original data
+	squareSize := len(dah.GetColumnRoots()) / 2 // how should this be calculated?
+	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(squareSize))
+	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), tree.Constructor)
+	if err != nil {
+		return nil, err
+	}
 
-	// find the first difference between the flattend
+	// generate the row and col roots of the extended data square
+	rowRoots := extendedDataSquare.RowRoots()
+	colRoots := extendedDataSquare.ColRoots()
 
-	//TODO
-	// Is there a code to check each row or column for correct/incorrect encoding?
-	// If an incorrect encoding is detected for a row or column,
-	//	(i) set block height isCol and position accordingly,
-	//	(ii) calculate NMT proofs for AVAILABLE_DATA_ORIGINAL_SQUARE_MAX of the shares, create shareProofs.
-	return nil, nil
+	// find the first difference between the data availability headers
+	originalRowRoots := dah.GetRowRoots()
+	for i, rowRoot := range rowRoots {
+		// first difference at row i
+		if bytes.Compare(rowRoot, originalRowRoots[i]) != 0 {
+			// create bad encoding fraud proof
+			shareProofs := make([squareSize]ShareProof) //turn squareSize into const
+			for j, rowElement := range extendedDataSquare.Row(uint(i))[0 : squareSize-1] {
+				shareProof := ShareProof{
+					Share:    nil, // How to find the share from the rowElement?
+					Proof:    nil, // We need a create NamespacedMerkleTreeInclusionProof function here
+					IsCol:    false,
+					Position: uint64(i),
+				}
+				shareProofs[j] = shareProof
+			}
+			proof := BadEncodingFraudProof{
+				Height:      block.Height,
+				ShareProofs: shareProofs,
+				IsCol:       false,
+				Position:    uint64(i),
+			}
+			proofProto, err := proof.ToProto()
+			return proofProto, err
+		}
+	}
+
+	originalColumnRoots := dah.GetColumnRoots()
+	for i, colRoot := range colRoots {
+		if bytes.Compare(colRoot, originalColumnRoots[i]) != 0 {
+			// create bad encoding fraud proof
+			shareProofs := make([squareSize]ShareProof)
+			for j, colElement := range extendedDataSquare.Col(uint(i))[0:squareSize] {
+				shareProof := ShareProof{
+					Share:    nil, // How to find the share from the colElement?
+					Proof:    nil, // We need a create NamespacedMerkleTreeInclusionProof function here
+					IsCol:    true,
+					Position: uint64(i),
+				}
+				shareProofs[j] = shareProof
+			}
+			proof := BadEncodingFraudProof{
+				Height:      block.Height,
+				ShareProofs: shareProofs,
+				IsCol:       true,
+				Position:    uint64(i),
+			}
+			proofProto, err := proof.ToProto()
+			return proofProto, err
+		}
+	}
+	return nil, errors.New("There is no bad encoding.")
 }
+
+//TODO: Implement funcs for verify and create NamespaceMerkleTreeInclusionProof
+//TODO: Complete the create func above. In particular, the problem around how to use rowElement.
+//TODO: Issue with the * above.

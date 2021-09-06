@@ -18,6 +18,8 @@ func TestBadEncodingFraudProof(t *testing.T) {
 		err    error
 	}
 	// TODO: template for table driven test for befp
+	// Call CreateBadEncodingFraudProof below to get shareProofs.
+	// CreateBadEncodingFraudProof(block types.Block, dah *tmproto.DataAvailabilityHeader)
 	tests := []test{
 		{
 			name: "Block with bad encoding",
