@@ -7,7 +7,7 @@ require (
 	github.com/ChainSafe/go-schnorrkel v0.0.0-20200405005733-88cbf1b4c40d
 	github.com/btcsuite/btcd v0.22.0-beta
 	github.com/btcsuite/btcutil v1.0.3-0.20201208143702-a53e38424cce
-	github.com/celestiaorg/nmt 18299f5e8c1226cff0ac21c376e9bfe65fd692b7
+	github.com/celestiaorg/nmt v0.5.1-0.20210907202050-18299f5e8c12
 	github.com/celestiaorg/rsmt2d v0.3.0
 	github.com/dgraph-io/badger/v3 v3.2011.1
 	github.com/fortytw2/leaktest v1.3.0

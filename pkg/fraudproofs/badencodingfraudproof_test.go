@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/celestiaorg/celestia-core/pkg/consts"
+	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types"
-	tmproto "github.com/proto/tendermint/types"
 	"github.com/stretchr/testify/require"
 )
 
