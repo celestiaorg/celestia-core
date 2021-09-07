@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	mdutils "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -208,11 +207,9 @@ func TestStateBadProposal(t *testing.T) {
 	stateHash[0] = (stateHash[0] + 1) % 255
 	propBlock.AppHash = stateHash
 	propBlockParts := propBlock.MakePartSet(partSize)
-	blockID := types.BlockID{Hash: propBlock.Hash()}
-	psh := propBlockParts.Header()
-	proposal := types.NewProposal(vs2.Height, round, -1, blockID, &propBlock.DataAvailabilityHeader, psh)
-	p, err := proposal.ToProto()
-	require.NoError(t, err)
+	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
+	proposal := types.NewProposal(vs2.Height, round, -1, blockID)
+	p := proposal.ToProto()
 	if err := vs2.SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal("failed to sign bad proposal", err)
 	}
@@ -228,7 +225,7 @@ func TestStateBadProposal(t *testing.T) {
 	startTestRound(cs1, height, round)
 
 	// wait for proposal
-	ensureProposal(proposalCh, height, round, blockID, psh)
+	ensureProposal(proposalCh, height, round, blockID)
 
 	// wait for prevote
 	ensurePrevote(voteCh, height, round)
@@ -265,10 +262,9 @@ func TestStateOversizedBlock(t *testing.T) {
 	incrementRound(vss[1:]...)
 
 	propBlockParts := propBlock.MakePartSet(partSize)
-	blockID := types.BlockID{Hash: propBlock.Hash()}
-	proposal := types.NewProposal(height, round, -1, blockID, &propBlock.DataAvailabilityHeader, propBlockParts.Header())
-	p, err := proposal.ToProto()
-	require.NoError(t, err)
+	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
+	proposal := types.NewProposal(height, round, -1, blockID)
+	p := proposal.ToProto()
 	if err := vs2.SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal("failed to sign bad proposal", err)
 	}
@@ -641,7 +637,7 @@ func TestStateLockPOLRelock(t *testing.T) {
 	signAddVotes(cs1, tmproto.PrecommitType, nil, types.PartSetHeader{}, vs2, vs3, vs4)
 
 	// before we timeout to the new round set the new proposal
-	cs2 := newState(cs1.state, vs2, counter.NewApplication(true), mdutils.Mock())
+	cs2 := newState(cs1.state, vs2, counter.NewApplication(true))
 	prop, propBlock := decideProposal(cs2, vs2, vs2.Height, vs2.Round+1)
 	if prop == nil || propBlock == nil {
 		t.Fatal("Failed to create proposal block with vs2")
@@ -827,7 +823,7 @@ func TestStateLockPOLUnlockOnUnknownBlock(t *testing.T) {
 	signAddVotes(cs1, tmproto.PrecommitType, nil, types.PartSetHeader{}, vs2, vs3, vs4)
 
 	// before we timeout to the new round set the new proposal
-	cs2 := newState(cs1.state, vs2, counter.NewApplication(true), mdutils.Mock())
+	cs2 := newState(cs1.state, vs2, counter.NewApplication(true))
 	prop, propBlock := decideProposal(cs2, vs2, vs2.Height, vs2.Round+1)
 	if prop == nil || propBlock == nil {
 		t.Fatal("Failed to create proposal block with vs2")
@@ -871,7 +867,7 @@ func TestStateLockPOLUnlockOnUnknownBlock(t *testing.T) {
 	signAddVotes(cs1, tmproto.PrecommitType, nil, types.PartSetHeader{}, vs2, vs3, vs4)
 
 	// before we timeout to the new round set the new proposal
-	cs3 := newState(cs1.state, vs3, counter.NewApplication(true), mdutils.Mock())
+	cs3 := newState(cs1.state, vs3, counter.NewApplication(true))
 	prop, propBlock = decideProposal(cs3, vs3, vs3.Height, vs3.Round+1)
 	if prop == nil || propBlock == nil {
 		t.Fatal("Failed to create proposal block with vs2")
@@ -1054,7 +1050,7 @@ func TestStateLockPOLSafety2(t *testing.T) {
 	_, propBlock0 := decideProposal(cs1, vss[0], height, round)
 	propBlockHash0 := propBlock0.Hash()
 	propBlockParts0 := propBlock0.MakePartSet(partSize)
-	propBlockID0 := types.BlockID{Hash: propBlockHash0}
+	propBlockID0 := types.BlockID{Hash: propBlockHash0, PartSetHeader: propBlockParts0.Header()}
 
 	// the others sign a polka but we don't see it
 	prevotes := signVotes(tmproto.PrevoteType, propBlockHash0, propBlockParts0.Header(), vs2, vs3, vs4)
@@ -1097,11 +1093,8 @@ func TestStateLockPOLSafety2(t *testing.T) {
 
 	round++ // moving to the next round
 	// in round 2 we see the polkad block from round 0
-	newProp := types.NewProposal(
-		height, round, 0, propBlockID0, &propBlock0.DataAvailabilityHeader, propBlockParts0.Header(),
-	)
-	p, err := newProp.ToProto()
-	require.NoError(t, err)
+	newProp := types.NewProposal(height, round, 0, propBlockID0)
+	p := newProp.ToProto()
 	if err := vs3.SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal(err)
 	}

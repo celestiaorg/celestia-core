@@ -119,24 +119,20 @@ func TestSignerProposal(t *testing.T) {
 		ts := time.Now()
 		hash := tmrand.Bytes(tmhash.Size)
 		have := &types.Proposal{
-			Type:          tmproto.ProposalType,
-			Height:        1,
-			Round:         2,
-			POLRound:      2,
-			BlockID:       types.BlockID{Hash: hash},
-			PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2},
-			Timestamp:     ts,
-			DAHeader:      &types.DataAvailabilityHeader{},
+			Type:      tmproto.ProposalType,
+			Height:    1,
+			Round:     2,
+			POLRound:  2,
+			BlockID:   types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
+			Timestamp: ts,
 		}
 		want := &types.Proposal{
-			Type:          tmproto.ProposalType,
-			Height:        1,
-			Round:         2,
-			POLRound:      2,
-			BlockID:       types.BlockID{Hash: hash},
-			PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2},
-			Timestamp:     ts,
-			DAHeader:      &types.DataAvailabilityHeader{},
+			Type:      tmproto.ProposalType,
+			Height:    1,
+			Round:     2,
+			POLRound:  2,
+			BlockID:   types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
+			Timestamp: ts,
 		}
 
 		tc := tc
@@ -151,13 +147,11 @@ func TestSignerProposal(t *testing.T) {
 			}
 		})
 
-		p, err := want.ToProto()
-		require.NoError(t, err)
-		err = tc.mockPV.SignProposal(tc.chainID, p)
+		p := want.ToProto()
+		err := tc.mockPV.SignProposal(tc.chainID, p)
 		require.NoError(t, err)
 
-		p, err = have.ToProto()
-		require.NoError(t, err)
+		p = have.ToProto()
 		err = tc.signerClient.SignProposal(tc.chainID, p)
 		require.NoError(t, err)
 
@@ -174,8 +168,7 @@ func TestSignerVote(t *testing.T) {
 			Type:             tmproto.PrecommitType,
 			Height:           1,
 			Round:            2,
-			BlockID:          types.BlockID{Hash: hash},
-			PartSetHeader:    types.PartSetHeader{Hash: hash, Total: 2},
+			BlockID:          types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp:        ts,
 			ValidatorAddress: valAddr,
 			ValidatorIndex:   1,
@@ -185,8 +178,7 @@ func TestSignerVote(t *testing.T) {
 			Type:             tmproto.PrecommitType,
 			Height:           1,
 			Round:            2,
-			BlockID:          types.BlockID{Hash: hash},
-			PartSetHeader:    types.PartSetHeader{Hash: hash, Total: 2},
+			BlockID:          types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp:        ts,
 			ValidatorAddress: valAddr,
 			ValidatorIndex:   1,
@@ -220,8 +212,7 @@ func TestSignerVoteResetDeadline(t *testing.T) {
 			Type:             tmproto.PrecommitType,
 			Height:           1,
 			Round:            2,
-			BlockID:          types.BlockID{Hash: hash},
-			PartSetHeader:    types.PartSetHeader{Hash: hash, Total: 2},
+			BlockID:          types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp:        ts,
 			ValidatorAddress: valAddr,
 			ValidatorIndex:   1,
@@ -231,8 +222,7 @@ func TestSignerVoteResetDeadline(t *testing.T) {
 			Type:             tmproto.PrecommitType,
 			Height:           1,
 			Round:            2,
-			BlockID:          types.BlockID{Hash: hash},
-			PartSetHeader:    types.PartSetHeader{Hash: hash, Total: 2},
+			BlockID:          types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp:        ts,
 			ValidatorAddress: valAddr,
 			ValidatorIndex:   1,
@@ -276,8 +266,7 @@ func TestSignerVoteKeepAlive(t *testing.T) {
 			Type:             tmproto.PrecommitType,
 			Height:           1,
 			Round:            2,
-			BlockID:          types.BlockID{Hash: hash},
-			PartSetHeader:    types.PartSetHeader{Hash: hash, Total: 2},
+			BlockID:          types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp:        ts,
 			ValidatorAddress: valAddr,
 			ValidatorIndex:   1,
@@ -287,8 +276,7 @@ func TestSignerVoteKeepAlive(t *testing.T) {
 			Type:             tmproto.PrecommitType,
 			Height:           1,
 			Round:            2,
-			BlockID:          types.BlockID{Hash: hash},
-			PartSetHeader:    types.PartSetHeader{Hash: hash, Total: 2},
+			BlockID:          types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp:        ts,
 			ValidatorAddress: valAddr,
 			ValidatorIndex:   1,
@@ -343,29 +331,24 @@ func TestSignerSignProposalErrors(t *testing.T) {
 		ts := time.Now()
 		hash := tmrand.Bytes(tmhash.Size)
 		proposal := &types.Proposal{
-			Type:          tmproto.ProposalType,
-			Height:        1,
-			Round:         2,
-			POLRound:      2,
-			BlockID:       types.BlockID{Hash: hash},
-			PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2},
-			Timestamp:     ts,
-			Signature:     []byte("signature"),
-			DAHeader:      &types.DataAvailabilityHeader{},
+			Type:      tmproto.ProposalType,
+			Height:    1,
+			Round:     2,
+			POLRound:  2,
+			BlockID:   types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
+			Timestamp: ts,
+			Signature: []byte("signature"),
 		}
 
-		p, err := proposal.ToProto()
-		require.NoError(t, err)
-		err = tc.signerClient.SignProposal(tc.chainID, p)
+		p := proposal.ToProto()
+		err := tc.signerClient.SignProposal(tc.chainID, p)
 		require.Equal(t, err.(*RemoteSignerError).Description, types.ErroringMockPVErr.Error())
 
-		p, err = proposal.ToProto()
-		require.NoError(t, err)
+		p = proposal.ToProto()
 		err = tc.mockPV.SignProposal(tc.chainID, p)
 		require.Error(t, err)
 
-		p, err = proposal.ToProto()
-		require.NoError(t, err)
+		p = proposal.ToProto()
 		err = tc.signerClient.SignProposal(tc.chainID, p)
 		require.Error(t, err)
 	}
@@ -380,8 +363,7 @@ func TestSignerSignVoteErrors(t *testing.T) {
 			Type:             tmproto.PrecommitType,
 			Height:           1,
 			Round:            2,
-			BlockID:          types.BlockID{Hash: hash},
-			PartSetHeader:    types.PartSetHeader{Hash: hash, Total: 2},
+			BlockID:          types.BlockID{Hash: hash, PartSetHeader: types.PartSetHeader{Hash: hash, Total: 2}},
 			Timestamp:        ts,
 			ValidatorAddress: valAddr,
 			ValidatorIndex:   1,

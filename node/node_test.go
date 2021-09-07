@@ -19,7 +19,6 @@ import (
 	"github.com/celestiaorg/celestia-core/crypto/ed25519"
 	"github.com/celestiaorg/celestia-core/crypto/tmhash"
 	"github.com/celestiaorg/celestia-core/evidence"
-	"github.com/celestiaorg/celestia-core/ipfs"
 	dbm "github.com/celestiaorg/celestia-core/libs/db"
 	"github.com/celestiaorg/celestia-core/libs/db/memdb"
 	"github.com/celestiaorg/celestia-core/libs/log"
@@ -52,7 +51,6 @@ func defaultNewTestNode(config *cfg.Config, logger log.Logger) (*Node, error) {
 		proxy.DefaultClientCreator(config.ProxyApp, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
 		InMemDBProvider,
-		ipfs.Mock(),
 		DefaultMetricsProvider(config.Instrumentation),
 		logger,
 	)
@@ -218,7 +216,7 @@ func TestNodeSetPrivValIPC(t *testing.T) {
 		log.TestingLogger(),
 		dialer,
 	)
-	privval.SignerDialerEndpointTimeoutReadWrite(400 * time.Millisecond)(dialerEndpoint)
+	privval.SignerDialerEndpointTimeoutReadWrite(100 * time.Millisecond)(dialerEndpoint)
 
 	pvsc := privval.NewSignerServer(
 		dialerEndpoint,
@@ -283,7 +281,7 @@ func TestCreateProposalBlock(t *testing.T) {
 
 	// Make EvidencePool
 	evidenceDB := memdb.NewDB()
-	blockStore := store.MockBlockStore(nil)
+	blockStore := store.NewBlockStore(memdb.NewDB())
 	evidencePool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 	require.NoError(t, err)
 	evidencePool.SetLogger(logger)
@@ -320,7 +318,7 @@ func TestCreateProposalBlock(t *testing.T) {
 		evidencePool,
 	)
 
-	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil, types.PartSetHeader{})
+	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
 	block, _ := blockExec.CreateProposalBlock(
 		height,
 		state, commit,
@@ -389,7 +387,7 @@ func TestMaxTxsProposalBlockSize(t *testing.T) {
 		sm.EmptyEvidencePool{},
 	)
 
-	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil, types.PartSetHeader{})
+	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
 	block, _ := blockExec.CreateProposalBlock(
 		height,
 		state, commit,
@@ -458,10 +456,10 @@ func TestMaxProposalBlockSize(t *testing.T) {
 
 	blockID := types.BlockID{
 		Hash: tmhash.Sum([]byte("blockID_hash")),
-	}
-	psh := types.PartSetHeader{
-		Total: math.MaxInt32,
-		Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
+		PartSetHeader: types.PartSetHeader{
+			Total: math.MaxInt32,
+			Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
+		},
 	}
 
 	timestamp := time.Date(math.MaxInt64, 0, 0, 0, 0, 0, math.MaxInt64, time.UTC)
@@ -487,10 +485,9 @@ func TestMaxProposalBlockSize(t *testing.T) {
 	}
 
 	commit := &types.Commit{
-		Height:        math.MaxInt64,
-		Round:         math.MaxInt32,
-		BlockID:       blockID,
-		PartSetHeader: psh,
+		Height:  math.MaxInt64,
+		Round:   math.MaxInt32,
+		BlockID: blockID,
 	}
 
 	// add maximum amount of signatures to a single commit
@@ -540,7 +537,6 @@ func TestNodeNewNodeCustomReactors(t *testing.T) {
 		proxy.DefaultClientCreator(config.ProxyApp, config.DBDir()),
 		DefaultGenesisDocProviderFunc(config),
 		InMemDBProvider,
-		ipfs.Mock(),
 		DefaultMetricsProvider(config.Instrumentation),
 		log.TestingLogger(),
 		CustomReactors(map[string]p2p.Reactor{"FOO": cr, "BLOCKCHAIN": customBlockchainReactor}),

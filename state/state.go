@@ -193,7 +193,6 @@ func StateFromProto(pb *tmstate.State) (*State, error) { //nolint:golint
 		return nil, err
 	}
 	state.LastBlockID = *bi
-
 	state.LastBlockHeight = pb.LastBlockHeight
 	state.LastBlockTime = pb.LastBlockTime
 

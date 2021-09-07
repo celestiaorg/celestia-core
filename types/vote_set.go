@@ -65,14 +65,13 @@ type VoteSet struct {
 	signedMsgType tmproto.SignedMsgType
 	valSet        *ValidatorSet
 
-	mtx                tmsync.Mutex
-	votesBitArray      *bits.BitArray
-	votes              []*Vote                // Primary votes to share
-	sum                int64                  // Sum of voting power for seen votes, discounting conflicts
-	maj23              *BlockID               // First 2/3 majority seen
-	maj23PartSetHeader *PartSetHeader         // First 2/3 majority seen partsetheader
-	votesByBlock       map[string]*blockVotes // string(blockHash|blockParts) -> blockVotes
-	peerMaj23s         map[P2PID]BlockID      // Maj23 for each peer
+	mtx           tmsync.Mutex
+	votesBitArray *bits.BitArray
+	votes         []*Vote                // Primary votes to share
+	sum           int64                  // Sum of voting power for seen votes, discounting conflicts
+	maj23         *BlockID               // First 2/3 majority seen
+	votesByBlock  map[string]*blockVotes // string(blockHash|blockParts) -> blockVotes
+	peerMaj23s    map[P2PID]BlockID      // Maj23 for each peer
 }
 
 // Constructs a new VoteSet struct used to accumulate votes for given height/round.
@@ -290,8 +289,6 @@ func (voteSet *VoteSet) addVerifiedVote(
 		if voteSet.maj23 == nil {
 			maj23BlockID := vote.BlockID
 			voteSet.maj23 = &maj23BlockID
-			maj23PartSetHeader := vote.PartSetHeader
-			voteSet.maj23PartSetHeader = &maj23PartSetHeader
 			// And also copy votes over to voteSet.votes
 			for i, vote := range votesByBlock.votes {
 				if vote != nil {
@@ -430,16 +427,16 @@ func (voteSet *VoteSet) HasAll() bool {
 
 // If there was a +2/3 majority for blockID, return blockID and true.
 // Else, return the empty BlockID{} and false.
-func (voteSet *VoteSet) TwoThirdsMajority() (blockID BlockID, partSetHeader PartSetHeader, ok bool) {
+func (voteSet *VoteSet) TwoThirdsMajority() (blockID BlockID, ok bool) {
 	if voteSet == nil {
-		return BlockID{}, PartSetHeader{}, false
+		return BlockID{}, false
 	}
 	voteSet.mtx.Lock()
 	defer voteSet.mtx.Unlock()
 	if voteSet.maj23 != nil {
-		return *voteSet.maj23, *voteSet.maj23PartSetHeader, true
+		return *voteSet.maj23, true
 	}
-	return BlockID{}, PartSetHeader{}, false
+	return BlockID{}, false
 }
 
 //--------------------------------------------------------------------------------
@@ -601,7 +598,7 @@ func (voteSet *VoteSet) MakeCommit() *Commit {
 		commitSigs[i] = commitSig
 	}
 
-	return NewCommit(voteSet.GetHeight(), voteSet.GetRound(), *voteSet.maj23, commitSigs, *voteSet.maj23PartSetHeader)
+	return NewCommit(voteSet.GetHeight(), voteSet.GetRound(), *voteSet.maj23, commitSigs)
 }
 
 //--------------------------------------------------------------------------------
