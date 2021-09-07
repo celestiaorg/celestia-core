@@ -2,10 +2,12 @@ package fraudproofs
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"pkg/consts"
 
 	tmhash "github.com/celestiaorg/celestia-core/crypto/tmhash"
+	"github.com/celestiaorg/celestia-core/pkg/consts"
 	"github.com/celestiaorg/celestia-core/pkg/wrapper"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types"
@@ -113,6 +115,18 @@ func (nmtip *NamespaceMerkleTreeInclusionProof) ToProto() (*tmproto.NamespaceMer
 	return nmtipp, nil
 }
 
+// TODO(EVAN): stop using hack
+func ToProto(nmtip *nmt.NamespaceMerkleTreeInclusionProof) (*tmproto.NamespaceMerkleTreeInclusionProof, error) {
+	if nmtip == nil {
+		return nil, errors.New("NamespaceMerkleTreeInclusionProof is nil.")
+	}
+	nmtipp := new(tmproto.NamespaceMerkleTreeInclusionProof)
+	nmtipp.SiblingValues = nmtip.SiblingValues
+	nmtipp.SiblingMins = nmtip.SiblingMins
+	nmtipp.SiblingMaxes = nmtip.SiblingMaxes
+	return nmtipp, nil
+}
+
 func NamespaceMerkleTreeInclusionProofFromProto(nmtipp *tmproto.NamespaceMerkleTreeInclusionProof) (*NamespaceMerkleTreeInclusionProof, error) {
 	if nmtipp == nil {
 		return nil, errors.New("NamespaceMerkleTreeInclusionProof from proto is nil.")
@@ -197,7 +211,7 @@ type ShareProof struct {
 	// the share
 	Share *Share
 	// the Merkle proof of the share in the offending row or column root
-	Proof *NamespaceMerkleTreeInclusionProof
+	Proof *nmt.NamespaceMerkleTreeInclusionProof
 	// a Boolean indicating if the Merkle proof is from a row root or column root; false if it is a row root
 	IsCol bool
 	// the index of the share in the offending row or column
@@ -208,9 +222,18 @@ func (sp *ShareProof) ToProto() (*tmproto.ShareProof, error) {
 	if sp == nil {
 		return nil, errors.New("ShareProof is nil.")
 	}
+	pshare, err := sp.Share.ToProto()
+	if err != nil {
+		return nil, err
+	}
+	pproof, err := sp.Proof.ToProto()
+	if err != nil {
+		return nil, err
+	}
+
 	spp := new(tmproto.ShareProof)
-	spp.Share = sp.Share
-	spp.Proof = sp.Proof
+	spp.Share = pshare
+	spp.Proof = pproof
 	spp.IsCol = sp.IsCol
 	spp.Position = sp.Position
 	return spp, nil
@@ -301,12 +324,7 @@ func (befp *BadEncodingFraudProof) ValidateBasic() error {
 }
 
 // Functionality to obtain DataAvailabilityHeader from block height has to be implemented
-func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *tmproto.DataAvailabilityHeader) (bool, error) {
-	// check if tmproto.DataAvailabilityHeader has the correct structure
-	if err := dah.ValidateBasic(); err != nil {
-		return err
-	}
-
+func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *types.DataAvailabilityHeader) (bool, error) {
 	// get the row or column root challenged by the fraud proof within the DA header
 	axisRoot := dah.ColumnRoots[0]
 	if befp.IsCol {
@@ -317,10 +335,10 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *tmproto.DataAv
 		axisRoot = dah.ColumnRoots[befp.Position]
 	} else {
 		// position is uint64, thus always nonnegative
-		if int(befp.Position) >= len(dah.RowRoots) {
+		if int(befp.Position) >= len(dah.RowsRoots) {
 			return false, errors.New("Position out of bounds in the badencodingfraudproof.")
 		}
-		axisRoot = dah.RowRoots[befp.Position]
+		axisRoot = dah.RowsRoots[befp.Position]
 	}
 
 	// new namespacedMerkleTree for calculating the new root
@@ -328,12 +346,14 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *tmproto.DataAv
 	for i, shareProof := range befp.ShareProofs {
 
 		// verify that dataRoot commits to the share using the proof, isCol and position
-		// https://github.com/celestiaorg/nmt/blob/02cdbfdb328211a7e5d5eb2f42e15b72348265d8/proof.go#L207
-		// TODO
-		if !shareProof.Proof.VerifyInclusion(tmhash.New(), shareProof.Share.NamespaceID, shareProof.Share.RawData, axisRoot) {
-			return false, errors.New("Root in the data availability header does not commit to the share.")
+		hasher := nmt.NewNmtHasher(sha256.New(), uint8(consts.NamespaceSize), false)
+		valid, err := nmt.VerifyInclusion(axisRoot, hasher, *shareProof.Proof, shareProof.Share.RawData)
+		if err != nil {
+			return false, err
 		}
-
+		if !valid {
+			return false, errors.New("share does not belong in the data square")
+		}
 		// extract raw data
 		rawShares[i] = shareProof.Share.RawData
 	}
@@ -346,7 +366,7 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *tmproto.DataAv
 	}
 
 	// create a tree to generate the real axis root
-	tree := nmt.New(tmhash.New)
+	tree := nmt.New(sha256.New())
 	for _, share := range erasureShares {
 		err := tree.Push(share)
 		if err != nil {
@@ -358,43 +378,63 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *tmproto.DataAv
 	realAxisRoot := tree.Root().Digest
 
 	// compare the real axisRoot with the given axisRoot above
-	if bytes.Compare(realAxisRoot, axisRoot) == 0 {
+	if bytes.Compare(realAxisRoot, axisRoot.Digest) == 0 {
 		return false, errors.New("There is no bad encoding!")
 	}
 
 	return true, nil
 }
 
-// Note: this function will only be called by celestia-nodes, as a block with bad encoding should be rejected.
-func CreateBadEncodingFraudProof(block types.Block, dah *tmproto.DataAvailabilityHeader) (*tmproto.BadEncodingFraudProof, error) {
+// TODO(EVAN): complete once the DAH refactor PR is merged.
+// func CheckForBadEncoding(block types.Block) types.DataAvailabilityHeader {
+// generate new DAH
+// compare to the data hash
+// return the header if correct
+// }
 
-	// unflatten the data
+// Note: this function will only be called by celestia-nodes, as a block with bad encoding should be rejected.
+// TODO(evan): split this functionality into two distinct fucntions
+func CheckAndCreateBadEncodingFraudProof(block types.Block, dah *types.DataAvailabilityHeader) (BadEncodingFraudProof, error) {
 	namespacedShares, _ := block.Data.ComputeShares()
 	shares := namespacedShares.RawShares()
 
 	// extend the original data
-	squareSize := len(dah.GetColumnRoots()) / 2 // how should this be calculated?
-	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(squareSize))
+	origSquareSize := len(dah.ColumnRoots) / 2
+	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(origSquareSize))
 	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), tree.Constructor)
 	if err != nil {
-		return nil, err
+		return BadEncodingFraudProof{}, err
 	}
 
 	// generate the row and col roots of the extended data square
 	rowRoots := extendedDataSquare.RowRoots()
-	colRoots := extendedDataSquare.ColRoots()
+	// colRoots := extendedDataSquare.ColRoots()
 
 	// find the first difference between the data availability headers
-	originalRowRoots := dah.GetRowRoots()
+	originalRowRoots := dah.RowsRoots
 	for i, rowRoot := range rowRoots {
 		// first difference at row i
-		if bytes.Compare(rowRoot, originalRowRoots[i]) != 0 {
+		if bytes.Compare(rowRoot, originalRowRoots[i].Bytes()) != 0 {
+			// create another nmt tree so that we can access inner nodes
+			newTree := wrapper.NewErasuredNamespacedMerkleTree(uint64(origSquareSize))
+			for j, share := range extendedDataSquare.Row(uint(i)) {
+				newTree.Push(share, rsmt2d.SquareIndex{Axis: uint(i), Cell: uint(j)})
+			}
 			// create bad encoding fraud proof
-			shareProofs := make([squareSize]ShareProof) //turn squareSize into const
-			for j, rowElement := range extendedDataSquare.Row(uint(i))[0 : squareSize-1] {
+			shareProofs := make([]ShareProof, origSquareSize)
+			for j, rowElement := range extendedDataSquare.Row(uint(i))[0:origSquareSize] {
+				share := Share{
+					NamespaceID: rowElement[:consts.NamespaceSize],
+					RawData:     rowElement[consts.NamespaceSize:],
+				}
+				merkleProof, err := newTree.CreateInclusionProof(j)
+				if err != nil {
+					return BadEncodingFraudProof{}, err
+				}
+				// there's no way to generate a proof while also adding the namespace to the data
 				shareProof := ShareProof{
-					Share:    nil, // How to find the share from the rowElement?
-					Proof:    nil, // We need a create NamespacedMerkleTreeInclusionProof function here
+					Share:    &share,       // How to find the share from the rowElement?
+					Proof:    &merkleProof, // We need a create NamespacedMerkleTreeInclusionProof function here
 					IsCol:    false,
 					Position: uint64(i),
 				}
@@ -406,36 +446,35 @@ func CreateBadEncodingFraudProof(block types.Block, dah *tmproto.DataAvailabilit
 				IsCol:       false,
 				Position:    uint64(i),
 			}
-			proofProto, err := proof.ToProto()
-			return proofProto, err
+			return proof, err
 		}
 	}
 
-	originalColumnRoots := dah.GetColumnRoots()
-	for i, colRoot := range colRoots {
-		if bytes.Compare(colRoot, originalColumnRoots[i]) != 0 {
-			// create bad encoding fraud proof
-			shareProofs := make([squareSize]ShareProof)
-			for j, colElement := range extendedDataSquare.Col(uint(i))[0:squareSize] {
-				shareProof := ShareProof{
-					Share:    nil, // How to find the share from the colElement?
-					Proof:    nil, // We need a create NamespacedMerkleTreeInclusionProof function here
-					IsCol:    true,
-					Position: uint64(i),
-				}
-				shareProofs[j] = shareProof
-			}
-			proof := BadEncodingFraudProof{
-				Height:      block.Height,
-				ShareProofs: shareProofs,
-				IsCol:       true,
-				Position:    uint64(i),
-			}
-			proofProto, err := proof.ToProto()
-			return proofProto, err
-		}
-	}
-	return nil, errors.New("There is no bad encoding.")
+	// originalColumnRoots := dah.GetColumnRoots()
+	// for i, colRoot := range colRoots {
+	// 	if bytes.Compare(colRoot, originalColumnRoots[i]) != 0 {
+	// 		// create bad encoding fraud proof
+	// 		shareProofs := make([origSquareSize]ShareProof)
+	// 		for j, colElement := range extendedDataSquare.Col(uint(i))[0:origSquareSize] {
+	// 			shareProof := ShareProof{
+	// 				Share:    nil, // How to find the share from the colElement?
+	// 				Proof:    nil, // We need a create NamespacedMerkleTreeInclusionProof function here
+	// 				IsCol:    true,
+	// 				Position: uint64(i),
+	// 			}
+	// 			shareProofs[j] = shareProof
+	// 		}
+	// 		proof := BadEncodingFraudProof{
+	// 			Height:      block.Height,
+	// 			ShareProofs: shareProofs,
+	// 			IsCol:       true,
+	// 			Position:    uint64(i),
+	// 		}
+	// 		proofProto, err := proof.ToProto()
+	// 		return proofProto, err
+	// 	}
+	// }
+	return BadEncodingFraudProof{}, errors.New("There is no bad encoding.")
 }
 
 //TODO: Implement funcs for verify and create NamespaceMerkleTreeInclusionProof
