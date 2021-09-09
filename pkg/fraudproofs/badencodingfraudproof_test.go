@@ -2,6 +2,7 @@ package fraudproofs
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"math/rand"
 	"sort"
@@ -20,7 +21,7 @@ import (
 
 type BadEncodingError int
 
-func TestBadEncodingFraudProof(t *testing.T) error {
+func TestBadEncodingFraudProof(t *testing.T) {
 	type test struct {
 		name        string
 		input       BadEncodingFraudProof
@@ -30,9 +31,7 @@ func TestBadEncodingFraudProof(t *testing.T) error {
 	}
 
 	err, dah, dahWithBadEncoding, fraudProof := ValidBadEncodingFraudProof2()
-	if err != nil {
-		return err
-	}
+	require.NoError(t, err)
 
 	fraudProofPositionOOB := BadEncodingFraudProof{
 		Height:      fraudProof.Height,
@@ -92,11 +91,12 @@ func TestBadEncodingFraudProof(t *testing.T) error {
 		res, err := VerifyBadEncodingFraudProof(tt.input, &tt.dah)
 		require.Equal(t, tt.output, res)
 		if tt.expectedErr != "" {
+			require.Error(t, err)
 			require.Contains(t, err.Error(), tt.expectedErr)
+			continue
 		}
+		require.NoError(t, err)
 	}
-
-	return nil
 }
 
 // func erasureExtendSquareWithBadEncoding(eds rsmt2d.ExtendedDataSquare, codec rsmt2d.Codec) error {
@@ -221,15 +221,27 @@ func ValidBadEncodingFraudProof2() (error, types.DataAvailabilityHeader, types.D
 	txCount := 5
 	isrCount := 5
 	evdCount := 1
-	msgCount := 25
+	msgCount := 0
 	maxSize := 36
 	blockData := generateRandomBlockData(txCount, isrCount, evdCount, msgCount, maxSize)
 
 	namespacedShares, _ := blockData.ComputeShares()
+
+	for i, share := range namespacedShares {
+		fmt.Println(i, share.Share[:8])
+	}
+
 	shares := namespacedShares.RawShares()
 
+	for i, share := range shares {
+		fmt.Println(i, share[:8])
+	}
+
 	// extend the original data with bad encoding
-	origSquareSize := maxSize
+	origSquareSize := uint32(math.Sqrt(float64(len(shares))))
+
+	fmt.Print
+
 	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(origSquareSize))
 
 	// extend the original data
@@ -470,6 +482,7 @@ func generateRandomNamespacedShares(count, msgSize int) types.NamespacedShares {
 			NamespaceID: s[:consts.NamespaceSize],
 		}
 	}
+
 	return types.Messages{MessagesList: msgs}.SplitIntoShares()
 }
 

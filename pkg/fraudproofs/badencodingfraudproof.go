@@ -105,13 +105,12 @@ func (share *Share) ToProto() (*tmproto.Share, error) {
 	return sharep, nil
 }
 
-func ShareFromProto(sharep *tmproto.Share) (*Share, error) {
+func ShareFromProto(sharep *tmproto.Share) (Share, error) {
 	if sharep == nil {
-		return nil, errors.New("Share from proto is nil.")
+		return Share{}, errors.New("Share from proto is nil.")
 	}
-	share := new(Share)
-	share.NamespaceID = sharep.NamespaceID
-	share.RawData = sharep.RawData
+
+	share := Share{NamespaceID: sharep.NamespaceID, RawData: sharep.RawData}
 	return share, share.ValidateBasic()
 }
 
@@ -132,9 +131,9 @@ func (share *Share) ValidateBasic() error {
 
 type ShareProof struct {
 	// the share
-	Share *Share
+	Share Share
 	// the Merkle proof of the share in the offending row or column root
-	Proof *nmt.Proof
+	Proof nmt.Proof
 	// a Boolean indicating if the Merkle proof is from a row root or column root; false if it is a row root
 	IsCol bool
 	// the index of the share in the offending row or column
@@ -149,14 +148,11 @@ func (sp *ShareProof) ToProto() (*tmproto.ShareProof, error) {
 	if err != nil {
 		return nil, err
 	}
-	pproof, err := ToProto(sp.Proof) // tied to the hacky definition of ToProto above
-	if err != nil {
-		return nil, err
-	}
+	pproof := NmtInclusionProofToProto(sp.Proof) // tied to the hacky definition of ToProto above
 
 	spp := new(tmproto.ShareProof)
 	spp.Share = pshare
-	spp.Proof = pproof
+	spp.Proof = &pproof
 	spp.IsCol = sp.IsCol
 	spp.Position = sp.Position
 	return spp, nil
@@ -170,10 +166,7 @@ func ShareProofFromProto(spp *tmproto.ShareProof) (*ShareProof, error) {
 	if err != nil {
 		return nil, err
 	}
-	proof, err := NamespaceMerkleTreeInclusionProofFromProto(spp.Proof)
-	if err != nil {
-		return nil, err
-	}
+	proof := NmtInclusionProofFromProto(*spp.Proof)
 
 	sp := new(ShareProof)
 	sp.Share = share
@@ -185,9 +178,6 @@ func ShareProofFromProto(spp *tmproto.ShareProof) (*ShareProof, error) {
 
 func (sp *ShareProof) ValidateBasic() error {
 	if err := sp.Share.ValidateBasic(); err != nil {
-		return err
-	}
-	if err := sp.Proof.ValidateBasic(); err != nil {
 		return err
 	}
 	// if the position is within  2*MaxSquareSize
@@ -209,48 +199,48 @@ type BadEncodingFraudProof struct {
 	Position uint64
 }
 
-func (befp *BadEncodingFraudProof) ToProto() (*tmproto.BadEncodingFraudProof, error) {
-	if befp == nil {
-		return nil, errors.New("BadEncodingFraudProof is nil.")
-	}
-	shareProofsProto := make([]*tmproto.ShareProof, len(befp.ShareProofs))
-	for i, shareProof := range befp.ShareProofs {
-		shareProofProto, err := shareProof.ToProto()
-		if err != nil {
-			return nil, err
-		}
-		shareProofsProto[i] = shareProofProto
-	}
+// func (befp *BadEncodingFraudProof) ToProto() (*tmproto.BadEncodingFraudProof, error) {
+// 	if befp == nil {
+// 		return nil, errors.New("BadEncodingFraudProof is nil.")
+// 	}
+// 	shareProofsProto := make([]*tmproto.ShareProof, len(befp.ShareProofs))
+// 	for i, shareProof := range befp.ShareProofs {
+// 		shareProofProto, err := shareProof.ToProto()
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		shareProofsProto[i] = shareProofProto
+// 	}
 
-	befpp := new(tmproto.BadEncodingFraudProof)
-	befpp.Height = befp.Height
-	befpp.ShareProofs = shareProofsProto
-	befpp.IsCol = befp.IsCol
-	befpp.Position = befp.Position
-	return befpp, nil
-}
+// 	befpp := new(tmproto.BadEncodingFraudProof)
+// 	befpp.Height = befp.Height
+// 	befpp.ShareProofs = shareProofsProto
+// 	befpp.IsCol = befp.IsCol
+// 	befpp.Position = befp.Position
+// 	return befpp, nil
+// }
 
-func BadEncodingFraudProofFromProto(befpp *tmproto.BadEncodingFraudProof) (*BadEncodingFraudProof, error) {
-	if befpp == nil {
-		return nil, errors.New("BadEncodingFraudProof from proto is nil.")
-	}
+// func BadEncodingFraudProofFromProto(befpp *tmproto.BadEncodingFraudProof) (*BadEncodingFraudProof, error) {
+// 	if befpp == nil {
+// 		return nil, errors.New("BadEncodingFraudProof from proto is nil.")
+// 	}
 
-	shareProofs := make([]*ShareProof, len(befpp.ShareProofs))
-	for i, shareProofProto := range befpp.ShareProofs {
-		shareProof, err := ShareProofFromProto(shareProofProto)
-		if err != nil {
-			return nil, err
-		}
-		shareProofs[i] = shareProof
-	}
+// 	shareProofs := make([]*ShareProof, len(befpp.ShareProofs))
+// 	for i, shareProofProto := range befpp.ShareProofs {
+// 		shareProof, err := ShareProofFromProto(shareProofProto)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		shareProofs[i] = shareProof
+// 	}
 
-	befp := new(BadEncodingFraudProof)
-	befp.Height = befpp.Height
-	befp.ShareProofs = shareProofs
-	befp.IsCol = befpp.IsCol
-	befp.Position = befpp.Position
-	return befp, nil
-}
+// 	befp := new(BadEncodingFraudProof)
+// 	befp.Height = befpp.Height
+// 	befp.ShareProofs = shareProofs
+// 	befp.IsCol = befpp.IsCol
+// 	befp.Position = befpp.Position
+// 	return befp, nil
+// }
 
 func (befp *BadEncodingFraudProof) ValidateBasic() error {
 	// block height cannot be a negative number
@@ -295,13 +285,8 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *types.DataAvai
 	// new namespacedMerkleTree for calculating the new root
 	rawShares := make([][]byte, len(befp.ShareProofs))
 	for i, shareProof := range befp.ShareProofs {
-
 		// verify that dataRoot commits to the share using the proof, isCol and position
-		hasher := nmt.NewNmtHasher(sha256.New(), consts.NamespaceSize, false)
-		valid, err := nmt.VerifyInclusion(axisRoot, hasher, *shareProof.Proof, shareProof.Share.RawData)
-		if err != nil {
-			return false, err
-		}
+		valid := shareProof.Proof.VerifyInclusion(sha256.New(), shareProof.Share.NamespaceID, shareProof.Share.RawData, axisRoot)
 		if !valid {
 			return false, errors.New("share does not belong in the data square")
 		}
@@ -336,6 +321,7 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *types.DataAvai
 	return true, nil
 }
 
+// squareSize is original square size
 func CreateBadEncodingFraud(height int64, squareSize, position uint64, shares [][]byte, isCol bool) (BadEncodingFraudProof, error) {
 	newTree := wrapper.NewErasuredNamespacedMerkleTree(squareSize)
 	for j, share := range shares {
@@ -354,8 +340,8 @@ func CreateBadEncodingFraud(height int64, squareSize, position uint64, shares []
 		}
 		// there's no way to generate a proof while also adding the namespace to the data
 		shareProof := ShareProof{
-			Share:    &share,
-			Proof:    &merkleProof,
+			Share:    share,
+			Proof:    merkleProof,
 			IsCol:    false,
 			Position: uint64(position),
 		}
@@ -374,7 +360,7 @@ func CreateBadEncodingFraud(height int64, squareSize, position uint64, shares []
 // TODO(EVAN): complete once the DAH refactor PR is merged.
 // Note: this function will only be called by celestia-nodes, as a block with bad encoding should be rejected.
 // TODO(evan): split this functionality into two distinct fucntions
-func CheckAndCreateBadEncodingFraudProof(block types.Block, dah *types.DataAvailabilityHeader) (BadEncodingFraudProof, error) {
+func CheckAndCreateBadEncodingFraudProof(block *types.Block, dah *types.DataAvailabilityHeader) (BadEncodingFraudProof, error) {
 	namespacedShares, _ := block.Data.ComputeShares() // revert this later
 	shares := namespacedShares.RawShares()
 
@@ -413,8 +399,8 @@ func CheckAndCreateBadEncodingFraudProof(block types.Block, dah *types.DataAvail
 				}
 				// there's no way to generate a proof while also adding the namespace to the data
 				shareProof := ShareProof{
-					Share:    &share,
-					Proof:    &merkleProof,
+					Share:    share,
+					Proof:    merkleProof,
 					IsCol:    false,
 					Position: uint64(i),
 				}
@@ -429,9 +415,11 @@ func CheckAndCreateBadEncodingFraudProof(block types.Block, dah *types.DataAvail
 			return proof, err
 		}
 	}
-
-	return BadEncodingFraudProof{}, errors.New("There is no bad encoding.")
+	return BadEncodingFraudProof{}, nil
 }
+
+// 	return BadEncodingFraudProof{}, errors.New("There is no bad encoding.")
+// }
 
 /*
 In order to make code useful, I think that we are going to have to write some other code to help

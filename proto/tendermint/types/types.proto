@@ -8,6 +8,7 @@ import "google/protobuf/timestamp.proto";
 import "tendermint/crypto/proof.proto";
 import "tendermint/version/types.proto";
 import "tendermint/types/validator.proto";
+import "tendermint/nmt/proof.proto";
 
 // BlockIdFlag indicates which BlcokID the signature is for
 enum BlockIDFlag {
@@ -419,7 +420,7 @@ message ShareProof {
   // the share
   Share share = 1;
   // the Merkle proof of the share in the offending row or column root
-  NamespaceMerkleTreeInclusionProof proof = 2;
+  tendermint.nmt.Proof proof = 2;
   // a Boolean indicating if the Merkle proof is from a row root or column root; false if it is a row root
   bool isCol = 3;
   // the index of the share in the offending row or column

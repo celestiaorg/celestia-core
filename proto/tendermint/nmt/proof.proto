@@ -1,0 +1,13 @@
+syntax = "proto3";
+package tendermint.nmt;
+
+option go_package = "github.com/celestiaorg/celestia-core/proto/tendermint/nmt";
+
+
+message Proof {
+  int32 start = 1;
+  int32 end = 2;
+  repeated bytes nodes = 3;
+  bytes leaf_hash = 4;
+}
+
