@@ -240,8 +240,6 @@ func ValidBadEncodingFraudProof2() (error, types.DataAvailabilityHeader, types.D
 	// extend the original data with bad encoding
 	origSquareSize := uint32(math.Sqrt(float64(len(shares))))
 
-	fmt.Print
-
 	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(origSquareSize))
 
 	// extend the original data
