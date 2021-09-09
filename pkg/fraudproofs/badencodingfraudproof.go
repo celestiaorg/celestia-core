@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"errors"
-	"pkg/consts"
+
+	// "pkg/consts" // This is not defined.
 
 	tmhash "github.com/celestiaorg/celestia-core/crypto/tmhash"
 	"github.com/celestiaorg/celestia-core/pkg/consts"
@@ -66,10 +67,10 @@ import (
 // 	return nil
 // }
 
-func (dahp *tmproto.DataAvailabilityHeader) ValidateBasic() error {
+func ValidateBasic(dahp *types.DataAvailabilityHeader) error {
 	// get row and column roots
-	rowRoots := dahp.GetRowRoots()
-	columnRoots := dahp.GetColumnRoots()
+	rowRoots := dahp.RowsRoots
+	columnRoots := dahp.ColumnRoots
 	// check if the number of row roots is positive
 	if len(rowRoots) <= 0 {
 		return errors.New("Non positive number of row roots.")
@@ -80,13 +81,25 @@ func (dahp *tmproto.DataAvailabilityHeader) ValidateBasic() error {
 	}
 	// check if the row roots and column roots have correct byte size
 	for _, rowRoot := range rowRoots {
-		if len(rowRoot) != tmhash.Size {
-			return errors.New("Number of hash bytes is incorrect.")
+		if len(rowRoot.Digest) != tmhash.Size {
+			return errors.New("Number of digest bytes is incorrect.")
+		}
+		if len(rowRoot.Min) != consts.NamespaceSize {
+			return errors.New("Number of min namespace ID bytes is incorrect.")
+		}
+		if len(rowRoot.Max) != consts.NamespaceSize {
+			return errors.New("Number of max namespace ID bytes is incorrect.")
 		}
 	}
 	for _, columnRoot := range columnRoots {
-		if len(columnRoot) != tmhash.Size {
-			return errors.New("Number of hash bytes is incorrect.")
+		if len(columnRoot.Digest) != tmhash.Size {
+			return errors.New("Number of digest bytes is incorrect.")
+		}
+		if len(columnRoot.Min) != consts.NamespaceSize {
+			return errors.New("Number of min namespace ID bytes is incorrect.")
+		}
+		if len(columnRoot.Max) != consts.NamespaceSize {
+			return errors.New("Number of max namespace ID bytes is incorrect.")
 		}
 	}
 	return nil
@@ -127,11 +140,11 @@ func ToProto(nmtip *nmt.NamespaceMerkleTreeInclusionProof) (*tmproto.NamespaceMe
 	return nmtipp, nil
 }
 
-func NamespaceMerkleTreeInclusionProofFromProto(nmtipp *tmproto.NamespaceMerkleTreeInclusionProof) (*NamespaceMerkleTreeInclusionProof, error) {
+func NamespaceMerkleTreeInclusionProofFromProto(nmtipp *tmproto.NamespaceMerkleTreeInclusionProof) (*nmt.NamespaceMerkleTreeInclusionProof, error) {
 	if nmtipp == nil {
 		return nil, errors.New("NamespaceMerkleTreeInclusionProof from proto is nil.")
 	}
-	nmtip := new(NamespaceMerkleTreeInclusionProof)
+	nmtip := new(nmt.NamespaceMerkleTreeInclusionProof)
 	nmtip.SiblingValues = nmtipp.SiblingValues
 	nmtip.SiblingMins = nmtipp.SiblingMins
 	nmtip.SiblingMaxes = nmtipp.SiblingMaxes
@@ -226,7 +239,7 @@ func (sp *ShareProof) ToProto() (*tmproto.ShareProof, error) {
 	if err != nil {
 		return nil, err
 	}
-	pproof, err := sp.Proof.ToProto()
+	pproof, err := ToProto(sp.Proof) // tied to the hacky definition of ToProto above
 	if err != nil {
 		return nil, err
 	}
@@ -243,9 +256,18 @@ func ShareProofFromProto(spp *tmproto.ShareProof) (*ShareProof, error) {
 	if spp == nil {
 		return nil, errors.New("ShareProof from proto is nil.")
 	}
+	share, err := ShareFromProto(spp.Share)
+	if err != nil {
+		return nil, err
+	}
+	proof, err := NamespaceMerkleTreeInclusionProofFromProto(spp.Proof)
+	if err != nil {
+		return nil, err
+	}
+
 	sp := new(ShareProof)
-	sp.Share = spp.Share
-	sp.Proof = spp.Proof
+	sp.Share = share
+	sp.Proof = proof
 	sp.IsCol = spp.IsCol
 	sp.Position = spp.Position
 	return sp, sp.ValidateBasic()
@@ -270,7 +292,7 @@ type BadEncodingFraudProof struct {
 	Height int64
 	// the available shares in the offending row or column and their Merkle proofs
 	// array of ShareProofs
-	ShareProofs []ShareProof
+	ShareProofs []*ShareProof
 	// a Boolean indicating if it is an offending row or column; false if it is a row
 	IsCol bool
 	// the index of the offending row or column in the square
@@ -281,9 +303,18 @@ func (befp *BadEncodingFraudProof) ToProto() (*tmproto.BadEncodingFraudProof, er
 	if befp == nil {
 		return nil, errors.New("BadEncodingFraudProof is nil.")
 	}
+	shareProofsProto := make([]*tmproto.ShareProof, len(befp.ShareProofs))
+	for i, shareProof := range befp.ShareProofs {
+		shareProofProto, err := shareProof.ToProto()
+		if err != nil {
+			return nil, err
+		}
+		shareProofsProto[i] = shareProofProto
+	}
+
 	befpp := new(tmproto.BadEncodingFraudProof)
 	befpp.Height = befp.Height
-	befpp.ShareProofs = befp.ShareProofs
+	befpp.ShareProofs = shareProofsProto
 	befpp.IsCol = befp.IsCol
 	befpp.Position = befp.Position
 	return befpp, nil
@@ -293,12 +324,22 @@ func BadEncodingFraudProofFromProto(befpp *tmproto.BadEncodingFraudProof) (*BadE
 	if befpp == nil {
 		return nil, errors.New("BadEncodingFraudProof from proto is nil.")
 	}
+
+	shareProofs := make([]*ShareProof, len(befpp.ShareProofs))
+	for i, shareProofProto := range befpp.ShareProofs {
+		shareProof, err := ShareProofFromProto(shareProofProto)
+		if err != nil {
+			return nil, err
+		}
+		shareProofs[i] = shareProof
+	}
+
 	befp := new(BadEncodingFraudProof)
 	befp.Height = befpp.Height
-	befp.ShareProofs = befpp.ShareProofs
+	befp.ShareProofs = shareProofs
 	befp.IsCol = befpp.IsCol
 	befp.Position = befpp.Position
-	return befpp, nil
+	return befp, nil
 }
 
 func (befp *BadEncodingFraudProof) ValidateBasic() error {
@@ -317,7 +358,7 @@ func (befp *BadEncodingFraudProof) ValidateBasic() error {
 	}
 	const maxPosition = 2*consts.MaxSquareSize - 1
 	// check if the position is within  2*MaxSquareSize
-	if befp > maxPosition {
+	if befp.Position > maxPosition {
 		return errors.New("Position is out of bound.")
 	}
 	return nil
@@ -346,7 +387,7 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *types.DataAvai
 	for i, shareProof := range befp.ShareProofs {
 
 		// verify that dataRoot commits to the share using the proof, isCol and position
-		hasher := nmt.NewNmtHasher(sha256.New(), uint8(consts.NamespaceSize), false)
+		hasher := nmt.NewNmtHasher(sha256.New(), consts.NamespaceSize, false)
 		valid, err := nmt.VerifyInclusion(axisRoot, hasher, *shareProof.Proof, shareProof.Share.RawData)
 		if err != nil {
 			return false, err
@@ -394,8 +435,10 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *types.DataAvai
 
 // Note: this function will only be called by celestia-nodes, as a block with bad encoding should be rejected.
 // TODO(evan): split this functionality into two distinct fucntions
-func CheckAndCreateBadEncodingFraudProof(block types.Block, dah *types.DataAvailabilityHeader) (BadEncodingFraudProof, error) {
-	namespacedShares, _ := block.Data.ComputeShares()
+//func CheckAndCreateBadEncodingFraudProof(block types.Block, dah *types.DataAvailabilityHeader) (BadEncodingFraudProof, error) { // revert this later
+func CheckAndCreateBadEncodingFraudProof(data types.Data, dah *types.DataAvailabilityHeader) (BadEncodingFraudProof, error) {
+	// namespacedShares, _ := block.Data.ComputeShares() // revert this later
+	namespacedShares, _ := data.ComputeShares()
 	shares := namespacedShares.RawShares()
 
 	// extend the original data
@@ -421,7 +464,7 @@ func CheckAndCreateBadEncodingFraudProof(block types.Block, dah *types.DataAvail
 				newTree.Push(share, rsmt2d.SquareIndex{Axis: uint(i), Cell: uint(j)})
 			}
 			// create bad encoding fraud proof
-			shareProofs := make([]ShareProof, origSquareSize)
+			shareProofs := make([]*ShareProof, origSquareSize)
 			for j, rowElement := range extendedDataSquare.Row(uint(i))[0:origSquareSize] {
 				share := Share{
 					NamespaceID: rowElement[:consts.NamespaceSize],
@@ -433,15 +476,16 @@ func CheckAndCreateBadEncodingFraudProof(block types.Block, dah *types.DataAvail
 				}
 				// there's no way to generate a proof while also adding the namespace to the data
 				shareProof := ShareProof{
-					Share:    &share,       // How to find the share from the rowElement?
-					Proof:    &merkleProof, // We need a create NamespacedMerkleTreeInclusionProof function here
+					Share:    &share,
+					Proof:    &merkleProof,
 					IsCol:    false,
 					Position: uint64(i),
 				}
-				shareProofs[j] = shareProof
+				shareProofs[j] = &shareProof
 			}
 			proof := BadEncodingFraudProof{
-				Height:      block.Height,
+				// Height:      block.Height, // revert this later
+				Height:      1,
 				ShareProofs: shareProofs,
 				IsCol:       false,
 				Position:    uint64(i),
@@ -450,30 +494,6 @@ func CheckAndCreateBadEncodingFraudProof(block types.Block, dah *types.DataAvail
 		}
 	}
 
-	// originalColumnRoots := dah.GetColumnRoots()
-	// for i, colRoot := range colRoots {
-	// 	if bytes.Compare(colRoot, originalColumnRoots[i]) != 0 {
-	// 		// create bad encoding fraud proof
-	// 		shareProofs := make([origSquareSize]ShareProof)
-	// 		for j, colElement := range extendedDataSquare.Col(uint(i))[0:origSquareSize] {
-	// 			shareProof := ShareProof{
-	// 				Share:    nil, // How to find the share from the colElement?
-	// 				Proof:    nil, // We need a create NamespacedMerkleTreeInclusionProof function here
-	// 				IsCol:    true,
-	// 				Position: uint64(i),
-	// 			}
-	// 			shareProofs[j] = shareProof
-	// 		}
-	// 		proof := BadEncodingFraudProof{
-	// 			Height:      block.Height,
-	// 			ShareProofs: shareProofs,
-	// 			IsCol:       true,
-	// 			Position:    uint64(i),
-	// 		}
-	// 		proofProto, err := proof.ToProto()
-	// 		return proofProto, err
-	// 	}
-	// }
 	return BadEncodingFraudProof{}, errors.New("There is no bad encoding.")
 }
 
