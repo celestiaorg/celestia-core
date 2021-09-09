@@ -141,56 +141,56 @@ type ShareProof struct {
 	Position uint64
 }
 
-// func (sp *ShareProof) ToProto() (*tmproto.ShareProof, error) {
-// 	if sp == nil {
-// 		return nil, errors.New("ShareProof is nil.")
-// 	}
-// 	pshare, err := sp.Share.ToProto()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	pproof, err := ToProto(sp.Proof) // tied to the hacky definition of ToProto above
-// 	if err != nil {
-// 		return nil, err
-// 	}
+func (sp *ShareProof) ToProto() (*tmproto.ShareProof, error) {
+	if sp == nil {
+		return nil, errors.New("ShareProof is nil.")
+	}
+	pshare, err := sp.Share.ToProto()
+	if err != nil {
+		return nil, err
+	}
+	pproof, err := ToProto(sp.Proof) // tied to the hacky definition of ToProto above
+	if err != nil {
+		return nil, err
+	}
 
-// 	spp := new(tmproto.ShareProof)
-// 	spp.Share = pshare
-// 	spp.Proof = pproof
-// 	spp.IsCol = sp.IsCol
-// 	spp.Position = sp.Position
-// 	return spp, nil
-// }
+	spp := new(tmproto.ShareProof)
+	spp.Share = pshare
+	spp.Proof = pproof
+	spp.IsCol = sp.IsCol
+	spp.Position = sp.Position
+	return spp, nil
+}
 
-// func ShareProofFromProto(spp *tmproto.ShareProof) (*ShareProof, error) {
-// 	if spp == nil {
-// 		return nil, errors.New("ShareProof from proto is nil.")
-// 	}
-// 	share, err := ShareFromProto(spp.Share)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	proof, err := NamespaceMerkleTreeInclusionProofFromProto(spp.Proof)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+func ShareProofFromProto(spp *tmproto.ShareProof) (*ShareProof, error) {
+	if spp == nil {
+		return nil, errors.New("ShareProof from proto is nil.")
+	}
+	share, err := ShareFromProto(spp.Share)
+	if err != nil {
+		return nil, err
+	}
+	proof, err := NamespaceMerkleTreeInclusionProofFromProto(spp.Proof)
+	if err != nil {
+		return nil, err
+	}
 
-// 	sp := new(ShareProof)
-// 	sp.Share = share
-// 	sp.Proof = proof
-// 	sp.IsCol = spp.IsCol
-// 	sp.Position = spp.Position
-// 	return sp, sp.ValidateBasic()
-// }
+	sp := new(ShareProof)
+	sp.Share = share
+	sp.Proof = proof
+	sp.IsCol = spp.IsCol
+	sp.Position = spp.Position
+	return sp, sp.ValidateBasic()
+}
 
 func (sp *ShareProof) ValidateBasic() error {
 	if err := sp.Share.ValidateBasic(); err != nil {
 		return err
 	}
-	// if err := sp.Proof.ValidateBasic(); err != nil {
-	// 	return err
-	// }
-	// check if the position is within  2*MaxSquareSize
+	if err := sp.Proof.ValidateBasic(); err != nil {
+		return err
+	}
+	// if the position is within  2*MaxSquareSize
 	if sp.Position > 2*consts.MaxSquareSize {
 		return errors.New("Position is out of bound.")
 	}
@@ -372,17 +372,10 @@ func CreateBadEncodingFraud(height int64, squareSize, position uint64, shares []
 }
 
 // TODO(EVAN): complete once the DAH refactor PR is merged.
-// func CheckForBadEncoding(block types.Block) types.DataAvailabilityHeader {
-// generate new DAH
-// compare to the data hash
-// return the header if correct
-// }
 // Note: this function will only be called by celestia-nodes, as a block with bad encoding should be rejected.
 // TODO(evan): split this functionality into two distinct fucntions
-//func CheckAndCreateBadEncodingFraudProof(block types.Block, dah *types.DataAvailabilityHeader) (BadEncodingFraudProof, error) { // revert this later
-func CheckAndCreateBadEncodingFraudProof(data types.Data, dah *types.DataAvailabilityHeader) (BadEncodingFraudProof, error) {
-	// namespacedShares, _ := block.Data.ComputeShares() // revert this later
-	namespacedShares, _ := data.ComputeShares()
+func CheckAndCreateBadEncodingFraudProof(block types.Block, dah *types.DataAvailabilityHeader) (BadEncodingFraudProof, error) {
+	namespacedShares, _ := block.Data.ComputeShares() // revert this later
 	shares := namespacedShares.RawShares()
 
 	// extend the original data
@@ -428,8 +421,7 @@ func CheckAndCreateBadEncodingFraudProof(data types.Data, dah *types.DataAvailab
 				shareProofs[j] = &shareProof
 			}
 			proof := BadEncodingFraudProof{
-				// Height:      block.Height, // revert this later
-				Height:      1,
+				Height:      block.Height,
 				ShareProofs: shareProofs,
 				IsCol:       false,
 				Position:    uint64(i),
@@ -440,10 +432,6 @@ func CheckAndCreateBadEncodingFraudProof(data types.Data, dah *types.DataAvailab
 
 	return BadEncodingFraudProof{}, errors.New("There is no bad encoding.")
 }
-
-//TODO: Implement funcs for verify and create NamespaceMerkleTreeInclusionProof
-//TODO: Complete the create func above. In particular, the problem around how to use rowElement.
-//TODO: Issue with the * above.
 
 /*
 In order to make code useful, I think that we are going to have to write some other code to help
