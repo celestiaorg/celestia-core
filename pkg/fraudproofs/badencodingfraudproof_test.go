@@ -295,9 +295,9 @@ func TestBadEncodingFraudProof(t *testing.T) error {
 // 	ds.colRoots = colRoots
 // }
 
-func (eds *rsmt2d.ExtendedDataSquare) erasureExtendSquareWithBadEncoding(codec rsmt2d.Codec) error {
-	eds.originalDataWidth = eds.width
-	if err := eds.extendSquare(eds.width, bytes.Repeat([]byte{0}, int(eds.chunkSize))); err != nil {
+func erasureExtendSquareWithBadEncoding(eds rsmt2d.ExtendedDataSquare, codec rsmt2d.Codec) error {
+	width := eds.Width()
+	if err := eds.extendSquare(width, bytes.Repeat([]byte{0}, int(eds.chunkSize))); err != nil {
 		return err
 	}
 
@@ -580,6 +580,24 @@ func generateRandNamespacedRawData(total, nidSize, leafSize uint32) [][]byte {
 	}
 
 	return data
+}
+
+// note: index should point to erasured data
+func generateBadEncodedTree(shares [][]byte, index int) (*wrapper.ErasuredNamespacedMerkleTree, error) {
+	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(len(shares)))
+	codec := consts.DefaultCodec()
+	extendedShares, err := codec.Encode(shares)
+	if err != nil {
+		return nil, err
+	}
+	// pick a random erasured share
+	extendedShares[index] = append(append(
+		make([]byte, 0, consts.ShareSize+consts.NamespaceSize), consts.ParitySharesNamespaceID...),
+		bytes.Repeat([]byte{1}, consts.ShareSize)...)
+	for i, share := range extendedShares {
+		tree.Push(share, rsmt2d.SquareIndex{Axis: 0, Cell: uint(i)})
+	}
+	return &tree, nil
 }
 
 func sortByteArrays(src [][]byte) {

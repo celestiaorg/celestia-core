@@ -7,7 +7,6 @@ import (
 
 	// "pkg/consts" // This is not defined.
 
-	tmhash "github.com/celestiaorg/celestia-core/crypto/tmhash"
 	"github.com/celestiaorg/celestia-core/pkg/consts"
 	"github.com/celestiaorg/celestia-core/pkg/wrapper"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
@@ -16,165 +15,76 @@ import (
 	"github.com/celestiaorg/rsmt2d"
 )
 
-// We decided to use the proto definition for the DataAvailabilityHeader
-// type DataAvailabilityHeader struct {
-// 	// RowRoot_j = root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
-// 	RowRoots [][]byte
-// 	// ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
-// 	ColumnRoots [][]byte
+// type NamespaceMerkleTreeInclusionProof struct {
+// 	// sibling hash values, ordered starting from the leaf's neighbor
+// 	// array of 32-byte hashes
+// 	SiblingValues [][]byte
+// 	// sibling min namespace IDs
+// 	// array of NAMESPACE_ID_BYTES-bytes
+// 	SiblingMins [][]byte
+// 	// sibling max namespace IDs
+// 	// array of NAMESPACE_ID_BYTES-bytes
+// 	SiblingMaxes [][]byte
 // }
 
-// func (dah *DataAvailabilityHeader) ToProto() (*tmproto.DataAvailabilityHeader, error) {
-// 	if dah == nil {
-// 		return nil, errors.New("DataAvailabilityHeader is nil.")
+// func (nmtip *NamespaceMerkleTreeInclusionProof) ToProto() (*tmproto.NamespaceMerkleTreeInclusionProof, error) {
+// 	if nmtip == nil {
+// 		return nil, errors.New("NamespaceMerkleTreeInclusionProof is nil.")
 // 	}
-// 	dahp := new(tmproto.DataAvailabilityHeader)
-// 	dahp.RowRoots = dah.RowRoots
-// 	dahp.ColumnRoots = dah.ColumnRoots
-// 	return dahp, nil
+// 	nmtipp := new(tmproto.NamespaceMerkleTreeInclusionProof)
+// 	nmtipp.SiblingValues = nmtip.SiblingValues
+// 	nmtipp.SiblingMins = nmtip.SiblingMins
+// 	nmtipp.SiblingMaxes = nmtip.SiblingMaxes
+// 	return nmtipp, nil
 // }
 
-// func DataAvailabilityHeaderFromProto(dahp *tmproto.DataAvailabilityHeader) (*DataAvailabilityHeader, error) {
-// 	if dahp == nil {
-// 		return nil, errors.New("DataAvailabilityHeader from proto is nil.")
+// // TODO(EVAN): stop using hack
+// func ToProto(nmtip *nmt.NamespaceMerkleTreeInclusionProof) (*tmproto.NamespaceMerkleTreeInclusionProof, error) {
+// 	if nmtip == nil {
+// 		return nil, errors.New("NamespaceMerkleTreeInclusionProof is nil.")
 // 	}
-// 	dah := new(DataAvailabilityHeader)
-// 	dah.RowRoots = dahp.RowRoots
-// 	dah.ColumnRoots = dahp.ColumnRoots
-// 	return dah, dah.ValidateBasic()
+// 	nmtipp := new(tmproto.NamespaceMerkleTreeInclusionProof)
+// 	nmtipp.SiblingValues = nmtip.SiblingValues
+// 	nmtipp.SiblingMins = nmtip.SiblingMins
+// 	nmtipp.SiblingMaxes = nmtip.SiblingMaxes
+// 	return nmtipp, nil
 // }
 
-// func (dah *DataAvailabilityHeader) ValidateBasic() error {
-// 	// check if the number of row roots is positive
-// 	if len(dah.RowRoots) <= 0 {
-// 		return errors.New("Non positive number of row roots.")
+// func NamespaceMerkleTreeInclusionProofFromProto(nmtipp *tmproto.NamespaceMerkleTreeInclusionProof) (*nmt.NamespaceMerkleTreeInclusionProof, error) {
+// 	if nmtipp == nil {
+// 		return nil, errors.New("NamespaceMerkleTreeInclusionProof from proto is nil.")
 // 	}
-// 	// check if the number of column roots is positive
-// 	if len(dah.ColumnRoots) <= 0 {
-// 		return errors.New("Non positive number of column roots.")
+// 	nmtip := new(nmt.NamespaceMerkleTreeInclusionProof)
+// 	nmtip.SiblingValues = nmtipp.SiblingValues
+// 	nmtip.SiblingMins = nmtipp.SiblingMins
+// 	nmtip.SiblingMaxes = nmtipp.SiblingMaxes
+// 	return nmtip, nmtip.ValidateBasic()
+// }
+
+// func (nmtip *NamespaceMerkleTreeInclusionProof) ValidateBasic() error {
+// 	// check if number of values and min/max namespaced provided by the proof match in numbers
+// 	if len(nmtip.SiblingValues) != len(nmtip.SiblingMins) || len(nmtip.SiblingValues) != len(nmtip.SiblingMaxes) {
+// 		return errors.New("Numbers of SiblingValues, SiblingMins and SiblingMaxes do not match.")
 // 	}
-// 	// check if the row roots and column roots have correct byte size
-// 	for _, rowRoot := range dah.RowRoots {
-// 		if len(rowRoot) != tmhash.Size {
+// 	// check if the hash values have the correct byte size
+// 	for _, siblingValue := range nmtip.SiblingValues {
+// 		if len(siblingValue) != tmhash.Size {
 // 			return errors.New("Number of hash bytes is incorrect.")
 // 		}
 // 	}
-// 	for _, columnRoot := range dah.ColumnRoots {
-// 		if len(columnRoot) != tmhash.Size {
-// 			return errors.New("Number of hash bytes is incorrect.")
+// 	// check if the namespaceIDs have the correct sizes
+// 	for _, siblingMin := range nmtip.SiblingMins {
+// 		if len(siblingMin) != consts.NamespaceSize {
+// 			return errors.New("Number of namespace bytes is incorrect.")
+// 		}
+// 	}
+// 	for _, siblingMax := range nmtip.SiblingMaxes {
+// 		if len(siblingMax) != consts.NamespaceSize {
+// 			return errors.New("Number of namespace bytes is incorrect.")
 // 		}
 // 	}
 // 	return nil
 // }
-
-func ValidateBasic(dahp *types.DataAvailabilityHeader) error {
-	// get row and column roots
-	rowRoots := dahp.RowsRoots
-	columnRoots := dahp.ColumnRoots
-	// check if the number of row roots is positive
-	if len(rowRoots) <= 0 {
-		return errors.New("Non positive number of row roots.")
-	}
-	// check if the number of column roots is positive
-	if len(columnRoots) <= 0 {
-		return errors.New("Non positive number of column roots.")
-	}
-	// check if the row roots and column roots have correct byte size
-	for _, rowRoot := range rowRoots {
-		if len(rowRoot.Digest) != tmhash.Size {
-			return errors.New("Number of digest bytes is incorrect.")
-		}
-		if len(rowRoot.Min) != consts.NamespaceSize {
-			return errors.New("Number of min namespace ID bytes is incorrect.")
-		}
-		if len(rowRoot.Max) != consts.NamespaceSize {
-			return errors.New("Number of max namespace ID bytes is incorrect.")
-		}
-	}
-	for _, columnRoot := range columnRoots {
-		if len(columnRoot.Digest) != tmhash.Size {
-			return errors.New("Number of digest bytes is incorrect.")
-		}
-		if len(columnRoot.Min) != consts.NamespaceSize {
-			return errors.New("Number of min namespace ID bytes is incorrect.")
-		}
-		if len(columnRoot.Max) != consts.NamespaceSize {
-			return errors.New("Number of max namespace ID bytes is incorrect.")
-		}
-	}
-	return nil
-}
-
-type NamespaceMerkleTreeInclusionProof struct {
-	// sibling hash values, ordered starting from the leaf's neighbor
-	// array of 32-byte hashes
-	SiblingValues [][]byte
-	// sibling min namespace IDs
-	// array of NAMESPACE_ID_BYTES-bytes
-	SiblingMins [][]byte
-	// sibling max namespace IDs
-	// array of NAMESPACE_ID_BYTES-bytes
-	SiblingMaxes [][]byte
-}
-
-func (nmtip *NamespaceMerkleTreeInclusionProof) ToProto() (*tmproto.NamespaceMerkleTreeInclusionProof, error) {
-	if nmtip == nil {
-		return nil, errors.New("NamespaceMerkleTreeInclusionProof is nil.")
-	}
-	nmtipp := new(tmproto.NamespaceMerkleTreeInclusionProof)
-	nmtipp.SiblingValues = nmtip.SiblingValues
-	nmtipp.SiblingMins = nmtip.SiblingMins
-	nmtipp.SiblingMaxes = nmtip.SiblingMaxes
-	return nmtipp, nil
-}
-
-// TODO(EVAN): stop using hack
-func ToProto(nmtip *nmt.NamespaceMerkleTreeInclusionProof) (*tmproto.NamespaceMerkleTreeInclusionProof, error) {
-	if nmtip == nil {
-		return nil, errors.New("NamespaceMerkleTreeInclusionProof is nil.")
-	}
-	nmtipp := new(tmproto.NamespaceMerkleTreeInclusionProof)
-	nmtipp.SiblingValues = nmtip.SiblingValues
-	nmtipp.SiblingMins = nmtip.SiblingMins
-	nmtipp.SiblingMaxes = nmtip.SiblingMaxes
-	return nmtipp, nil
-}
-
-func NamespaceMerkleTreeInclusionProofFromProto(nmtipp *tmproto.NamespaceMerkleTreeInclusionProof) (*nmt.NamespaceMerkleTreeInclusionProof, error) {
-	if nmtipp == nil {
-		return nil, errors.New("NamespaceMerkleTreeInclusionProof from proto is nil.")
-	}
-	nmtip := new(nmt.NamespaceMerkleTreeInclusionProof)
-	nmtip.SiblingValues = nmtipp.SiblingValues
-	nmtip.SiblingMins = nmtipp.SiblingMins
-	nmtip.SiblingMaxes = nmtipp.SiblingMaxes
-	return nmtip, nmtip.ValidateBasic()
-}
-
-func (nmtip *NamespaceMerkleTreeInclusionProof) ValidateBasic() error {
-	// check if number of values and min/max namespaced provided by the proof match in numbers
-	if len(nmtip.SiblingValues) != len(nmtip.SiblingMins) || len(nmtip.SiblingValues) != len(nmtip.SiblingMaxes) {
-		return errors.New("Numbers of SiblingValues, SiblingMins and SiblingMaxes do not match.")
-	}
-	// check if the hash values have the correct byte size
-	for _, siblingValue := range nmtip.SiblingValues {
-		if len(siblingValue) != tmhash.Size {
-			return errors.New("Number of hash bytes is incorrect.")
-		}
-	}
-	// check if the namespaceIDs have the correct sizes
-	for _, siblingMin := range nmtip.SiblingMins {
-		if len(siblingMin) != consts.NamespaceSize {
-			return errors.New("Number of namespace bytes is incorrect.")
-		}
-	}
-	for _, siblingMax := range nmtip.SiblingMaxes {
-		if len(siblingMax) != consts.NamespaceSize {
-			return errors.New("Number of namespace bytes is incorrect.")
-		}
-	}
-	return nil
-}
 
 type Share struct {
 	// namespace ID of the share
@@ -224,62 +134,62 @@ type ShareProof struct {
 	// the share
 	Share *Share
 	// the Merkle proof of the share in the offending row or column root
-	Proof *nmt.NamespaceMerkleTreeInclusionProof
+	Proof *nmt.Proof
 	// a Boolean indicating if the Merkle proof is from a row root or column root; false if it is a row root
 	IsCol bool
 	// the index of the share in the offending row or column
 	Position uint64
 }
 
-func (sp *ShareProof) ToProto() (*tmproto.ShareProof, error) {
-	if sp == nil {
-		return nil, errors.New("ShareProof is nil.")
-	}
-	pshare, err := sp.Share.ToProto()
-	if err != nil {
-		return nil, err
-	}
-	pproof, err := ToProto(sp.Proof) // tied to the hacky definition of ToProto above
-	if err != nil {
-		return nil, err
-	}
+// func (sp *ShareProof) ToProto() (*tmproto.ShareProof, error) {
+// 	if sp == nil {
+// 		return nil, errors.New("ShareProof is nil.")
+// 	}
+// 	pshare, err := sp.Share.ToProto()
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	pproof, err := ToProto(sp.Proof) // tied to the hacky definition of ToProto above
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	spp := new(tmproto.ShareProof)
-	spp.Share = pshare
-	spp.Proof = pproof
-	spp.IsCol = sp.IsCol
-	spp.Position = sp.Position
-	return spp, nil
-}
+// 	spp := new(tmproto.ShareProof)
+// 	spp.Share = pshare
+// 	spp.Proof = pproof
+// 	spp.IsCol = sp.IsCol
+// 	spp.Position = sp.Position
+// 	return spp, nil
+// }
 
-func ShareProofFromProto(spp *tmproto.ShareProof) (*ShareProof, error) {
-	if spp == nil {
-		return nil, errors.New("ShareProof from proto is nil.")
-	}
-	share, err := ShareFromProto(spp.Share)
-	if err != nil {
-		return nil, err
-	}
-	proof, err := NamespaceMerkleTreeInclusionProofFromProto(spp.Proof)
-	if err != nil {
-		return nil, err
-	}
+// func ShareProofFromProto(spp *tmproto.ShareProof) (*ShareProof, error) {
+// 	if spp == nil {
+// 		return nil, errors.New("ShareProof from proto is nil.")
+// 	}
+// 	share, err := ShareFromProto(spp.Share)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	proof, err := NamespaceMerkleTreeInclusionProofFromProto(spp.Proof)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	sp := new(ShareProof)
-	sp.Share = share
-	sp.Proof = proof
-	sp.IsCol = spp.IsCol
-	sp.Position = spp.Position
-	return sp, sp.ValidateBasic()
-}
+// 	sp := new(ShareProof)
+// 	sp.Share = share
+// 	sp.Proof = proof
+// 	sp.IsCol = spp.IsCol
+// 	sp.Position = spp.Position
+// 	return sp, sp.ValidateBasic()
+// }
 
 func (sp *ShareProof) ValidateBasic() error {
 	if err := sp.Share.ValidateBasic(); err != nil {
 		return err
 	}
-	if err := sp.Proof.ValidateBasic(); err != nil {
-		return err
-	}
+	// if err := sp.Proof.ValidateBasic(); err != nil {
+	// 	return err
+	// }
 	// check if the position is within  2*MaxSquareSize
 	if sp.Position > 2*consts.MaxSquareSize {
 		return errors.New("Position is out of bound.")
@@ -426,13 +336,47 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *types.DataAvai
 	return true, nil
 }
 
+func CreateBadEncodingFraud(height int64, squareSize, position uint64, shares [][]byte, isCol bool) (BadEncodingFraudProof, error) {
+	newTree := wrapper.NewErasuredNamespacedMerkleTree(squareSize)
+	for j, share := range shares {
+		newTree.Push(share, rsmt2d.SquareIndex{Axis: uint(position), Cell: uint(j)})
+	}
+	// create bad encoding fraud proof
+	shareProofs := make([]*ShareProof, squareSize)
+	for j, rowElement := range shares {
+		share := Share{
+			NamespaceID: rowElement[:consts.NamespaceSize],
+			RawData:     rowElement[consts.NamespaceSize:],
+		}
+		merkleProof, err := newTree.CreateInclusionProof(j)
+		if err != nil {
+			return BadEncodingFraudProof{}, err
+		}
+		// there's no way to generate a proof while also adding the namespace to the data
+		shareProof := ShareProof{
+			Share:    &share,
+			Proof:    &merkleProof,
+			IsCol:    false,
+			Position: uint64(position),
+		}
+		shareProofs[j] = &shareProof
+	}
+	proof := BadEncodingFraudProof{
+		// Height:      block.Height, // revert this later
+		Height:      1,
+		ShareProofs: shareProofs,
+		IsCol:       false,
+		Position:    uint64(position),
+	}
+	return proof, nil
+}
+
 // TODO(EVAN): complete once the DAH refactor PR is merged.
 // func CheckForBadEncoding(block types.Block) types.DataAvailabilityHeader {
 // generate new DAH
 // compare to the data hash
 // return the header if correct
 // }
-
 // Note: this function will only be called by celestia-nodes, as a block with bad encoding should be rejected.
 // TODO(evan): split this functionality into two distinct fucntions
 //func CheckAndCreateBadEncodingFraudProof(block types.Block, dah *types.DataAvailabilityHeader) (BadEncodingFraudProof, error) { // revert this later
@@ -500,3 +444,15 @@ func CheckAndCreateBadEncodingFraudProof(data types.Data, dah *types.DataAvailab
 //TODO: Implement funcs for verify and create NamespaceMerkleTreeInclusionProof
 //TODO: Complete the create func above. In particular, the problem around how to use rowElement.
 //TODO: Issue with the * above.
+
+/*
+In order to make code useful, I think that we are going to have to write some other code to help
+
+mainly, have a way to essentially generate a row of erasure data and namespace it properly using the plugin
+ - this will allow us to only create a fraud proof instead of checking for the entire thing
+
+Use the normal inclusion proofs instead of the ones in the spec
+
+don't make the protobuf version of the nmt.Proof
+
+*/
