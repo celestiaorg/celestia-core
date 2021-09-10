@@ -122,9 +122,9 @@ func sortByteArrays(src [][]byte) {
 
 func ValidBadEncodingFraudProof() (error, types.DataAvailabilityHeader, types.DataAvailabilityHeader, BadEncodingFraudProof) {
 
-	txCount := 5
-	isrCount := 5
-	evdCount := 1
+	txCount := 4
+	isrCount := 0
+	evdCount := 0
 	msgCount := 0
 	maxSize := 36
 	blockData := generateRandomBlockData(txCount, isrCount, evdCount, msgCount, maxSize)
