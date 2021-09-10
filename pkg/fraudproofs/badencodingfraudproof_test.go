@@ -37,7 +37,7 @@ func TestBadEncodingFraudProof(t *testing.T) {
 		Height:      fraudProof.Height,
 		ShareProofs: fraudProof.ShareProofs,
 		IsCol:       fraudProof.IsCol,
-		Position:    uint64(len(fraudProof.ShareProofs) * 2),
+		Position:    uint64(len(fraudProof.ShareProofs)*2 + 1),
 	}
 
 	tests := []test{
