@@ -30,7 +30,7 @@ func TestBadEncodingFraudProof(t *testing.T) {
 		expectedErr string
 	}
 
-	err, dah, dahWithBadEncoding, fraudProof := ValidBadEncodingFraudProof2()
+	err, dah, dahWithBadEncoding, fraudProof := ValidBadEncodingFraudProof()
 	require.NoError(t, err)
 
 	fraudProofPositionOOB := BadEncodingFraudProof{
@@ -44,14 +44,14 @@ func TestBadEncodingFraudProof(t *testing.T) {
 		{
 			name:        "Block with bad encoding",
 			input:       fraudProof,
-			dah:         dah,
+			dah:         dahWithBadEncoding,
 			output:      true,
 			expectedErr: "",
 		},
 		{
 			name:        "BadEncodingFraudProof for a correct block",
 			input:       fraudProof,
-			dah:         dahWithBadEncoding,
+			dah:         dah,
 			output:      false,
 			expectedErr: "There is no bad encoding!",
 		},
@@ -99,124 +99,28 @@ func TestBadEncodingFraudProof(t *testing.T) {
 	}
 }
 
-// func erasureExtendSquareWithBadEncoding(eds rsmt2d.ExtendedDataSquare, codec rsmt2d.Codec) error {
-// 	width := eds.Width()
-// 	if err := eds.extendSquare(width, bytes.Repeat([]byte{0}, int(eds.chunkSize))); err != nil {
-// 		return err
-// 	}
-
-// 	var shares [][]byte
-// 	var err error
-
-// 	// Extend original square horizontally and vertically
-// 	//  ------- -------
-// 	// |       |       |
-// 	// |   O → |   E   |
-// 	// |   ↓   |       |
-// 	//  ------- -------
-// 	// |       |
-// 	// |   E   |
-// 	// |       |
-// 	//  -------
-// 	for i := uint(0); i < eds.originalDataWidth; i++ {
-// 		// Extend horizontally
-// 		shares, err = codec.Encode(eds.rowSlice(i, 0, eds.originalDataWidth))
-// 		if err != nil {
-// 			return err
-// 		}
-// 		if err := eds.setRowSlice(i, eds.originalDataWidth, shares[len(shares)-int(eds.originalDataWidth):]); err != nil {
-// 			return err
-// 		}
-
-// 		// Extend vertically
-// 		shares, err = codec.Encode(eds.colSlice(0, i, eds.originalDataWidth))
-
-// 		// Introduce bad encoding
-// 		// ----------------------------------------------------
-// 		incorrectShare := make([]byte, len(shares[0]))
-// 		incorrectShare[0:consts.NamespaceSize] = consts.ParitySharesNamespaceID
-// 		incorrectShare[consts.NamespaceSize:] = byte(0)
-// 		shares[len(shares)-1] = incorrectShare
-// 		// ----------------------------------------------------
-
-// 		if err != nil {
-// 			return err
-// 		}
-// 		if err := eds.setColSlice(eds.originalDataWidth, i, shares[len(shares)-int(eds.originalDataWidth):]); err != nil {
-// 			return err
-// 		}
-// 	}
-
-// 	// Extend extended square horizontally
-// 	//  ------- -------
-// 	// |       |       |
-// 	// |   O   |   E   |
-// 	// |       |       |
-// 	//  ------- -------
-// 	// |       |       |
-// 	// |   E → |   E   |
-// 	// |       |       |
-// 	//  ------- -------
-// 	for i := eds.originalDataWidth; i < eds.width; i++ {
-// 		// Extend horizontally
-// 		shares, err = codec.Encode(eds.rowSlice(i, 0, eds.originalDataWidth))
-// 		if err != nil {
-// 			return err
-// 		}
-// 		if err := eds.setRowSlice(i, eds.originalDataWidth, shares[len(shares)-int(eds.originalDataWidth):]); err != nil {
-// 			return err
-// 		}
-// 	}
-
-// 	return nil
-// }
-
-// // ComputeExtendedDataSquareWithBadEncoding computes an extended data square with bad encoding.
-// func ComputeExtendedDataSquareWithBadEncoding(
-// 	data [][]byte,
-// 	codec rsmt2d.Codec,
-// 	treeCreatorFn rsmt2d.TreeConstructorFn,
-// ) (*rsmt2d.ExtendedDataSquare, error) {
-// 	if len(data) > codec.maxChunks() {
-// 		return nil, errors.New("number of chunks exceeds the maximum")
-// 	}
-
-// 	ds, err := rsmt2d.newDataSquare(data, treeCreatorFn)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	eds := rsmt2d.ExtendedDataSquare{dataSquare: ds}
-// 	err = eds.erasureExtendSquareWithBadEncoding(codec)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return &eds, nil
-// }
-
-func generateBadEncodedTree(shares [][]byte, index int) (*wrapper.ErasuredNamespacedMerkleTree, error) {
+func generateBadEncodedTree(shares [][]byte, index int) (*wrapper.ErasuredNamespacedMerkleTree, [][]byte, error) {
 	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(len(shares)))
 	codec := consts.DefaultCodec()
 	extendedShares, err := codec.Encode(shares)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	// pick a random erasured share
+	// pick the erasured share at the given index
 	extendedShares[index] = append(append(
 		make([]byte, 0, consts.ShareSize+consts.NamespaceSize), consts.ParitySharesNamespaceID...),
 		bytes.Repeat([]byte{1}, consts.ShareSize)...)
 	for i, share := range extendedShares {
 		tree.Push(share, rsmt2d.SquareIndex{Axis: 0, Cell: uint(i)})
 	}
-	return &tree, nil
+	return &tree, extendedShares, nil
 }
 
 func sortByteArrays(src [][]byte) {
 	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
 }
 
-func ValidBadEncodingFraudProof2() (error, types.DataAvailabilityHeader, types.DataAvailabilityHeader, BadEncodingFraudProof) {
+func ValidBadEncodingFraudProof() (error, types.DataAvailabilityHeader, types.DataAvailabilityHeader, BadEncodingFraudProof) {
 
 	txCount := 5
 	isrCount := 5
@@ -226,16 +130,7 @@ func ValidBadEncodingFraudProof2() (error, types.DataAvailabilityHeader, types.D
 	blockData := generateRandomBlockData(txCount, isrCount, evdCount, msgCount, maxSize)
 
 	namespacedShares, _ := blockData.ComputeShares()
-
-	for i, share := range namespacedShares {
-		fmt.Println(i, share.Share[:8])
-	}
-
 	shares := namespacedShares.RawShares()
-
-	for i, share := range shares {
-		fmt.Println(i, share[:8])
-	}
 
 	// extend the original data with bad encoding
 	origSquareSize := uint32(math.Sqrt(float64(len(shares))))
@@ -280,7 +175,7 @@ func ValidBadEncodingFraudProof2() (error, types.DataAvailabilityHeader, types.D
 	isCol := false
 
 	sharesToCorrupt := extendedDataSquare.Row(uint(position))[0:origSquareSize]
-	treeForRow, err := generateBadEncodedTree(sharesToCorrupt, int(position))
+	treeForRow, corruptedShares, err := generateBadEncodedTree(sharesToCorrupt, int(origSquareSize)*2-1)
 	if err != nil {
 		return err, types.DataAvailabilityHeader{}, types.DataAvailabilityHeader{}, BadEncodingFraudProof{}
 	}
@@ -302,14 +197,20 @@ func ValidBadEncodingFraudProof2() (error, types.DataAvailabilityHeader, types.D
 	}
 	dahWithBadEncoding.RowsRoots[position] = rootDigest
 
-	fraudProof, err := CreateBadEncodingFraud(height, uint64(origSquareSize), position, shares, isCol)
+	// For debugging; delete later
+	// -------------------------
+	fmt.Println("This is the axisRoot corresponding to the uncorrupted row: ", dah.RowsRoots[position])
+	fmt.Println("This is the axisRoot corresponding to the corrupted row: ", rootDigest)
+	// -------------------------
+
+	fraudProof, err := CreateBadEncodingFraudProof(height, uint64(origSquareSize), position, corruptedShares, isCol)
 	if err != nil {
 		return err, types.DataAvailabilityHeader{}, types.DataAvailabilityHeader{}, BadEncodingFraudProof{}
 	}
 	return nil, dah, dahWithBadEncoding, fraudProof
 }
 
-// func ValidBadEncodingFraudProof1() (error, types.DataAvailabilityHeader, types.DataAvailabilityHeader, BadEncodingFraudProof) {
+// func ValidBadEncodingFraudProof() (error, types.DataAvailabilityHeader, types.DataAvailabilityHeader, BadEncodingFraudProof) {
 // 	txCount := 5
 // 	isrCount := 5
 // 	evdCount := 1

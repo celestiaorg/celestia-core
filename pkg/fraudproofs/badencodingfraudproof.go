@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"errors"
+	"fmt"
+
+	"github.com/celestiaorg/nmt/namespace"
 
 	// "pkg/consts" // This is not defined.
 
@@ -148,8 +151,7 @@ func (sp *ShareProof) ToProto() (*tmproto.ShareProof, error) {
 	if err != nil {
 		return nil, err
 	}
-	pproof := NmtInclusionProofToProto(sp.Proof) // tied to the hacky definition of ToProto above
-
+	pproof := NmtInclusionProofToProto(sp.Proof)
 	spp := new(tmproto.ShareProof)
 	spp.Share = pshare
 	spp.Proof = &pproof
@@ -282,12 +284,21 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *types.DataAvai
 		axisRoot = dah.RowsRoots[befp.Position]
 	}
 
+	// For debugging; delete later
+	// -------------------------
+	fmt.Println("axisRoot should match the axisRoot corresponding to the corrupted row: ", axisRoot)
+	// -------------------------
+
 	// new namespacedMerkleTree for calculating the new root
 	rawShares := make([][]byte, len(befp.ShareProofs))
 	for i, shareProof := range befp.ShareProofs {
 		// verify that dataRoot commits to the share using the proof, isCol and position
 		valid := shareProof.Proof.VerifyInclusion(sha256.New(), shareProof.Share.NamespaceID, shareProof.Share.RawData, axisRoot)
 		if !valid {
+			// For debugging; delete later
+			// -------------------------
+			fmt.Println("Failed index: ", i)
+			// -------------------------
 			return false, errors.New("share does not belong in the data square")
 		}
 		// extract raw data
@@ -295,26 +306,33 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *types.DataAvai
 	}
 
 	// extend the shares to create the real axis root
-	codec := rsmt2d.NewRSGF8Codec()
+	codec := consts.DefaultCodec()
 	erasureShares, err := codec.Encode(rawShares)
 	if err != nil {
 		return false, err
 	}
 
 	// create a tree to generate the real axis root
-	tree := nmt.New(sha256.New())
-	for _, share := range erasureShares {
-		err := tree.Push(share)
-		if err != nil {
-			return false, err
-		}
+	tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(len(erasureShares)))
+	for i, share := range erasureShares {
+		tree.Push(share, rsmt2d.SquareIndex{Axis: 0, Cell: uint(i)})
 	}
 
 	// calculate the real axisRoot
-	realAxisRoot := tree.Root().Digest
+	root := tree.Root()
+	realAxisRoot := namespace.IntervalDigest{
+		Min:    root[0:consts.NamespaceSize],
+		Max:    root[consts.NamespaceSize : consts.NamespaceSize*2],
+		Digest: root[consts.NamespaceSize*2:],
+	}
+
+	// For debugging; delete later
+	// -------------------------
+	fmt.Println("realAxisRoot should match the axisRoot corresponding to the uncorrupted row: ", realAxisRoot)
+	// -------------------------
 
 	// compare the real axisRoot with the given axisRoot above
-	if bytes.Compare(realAxisRoot, axisRoot.Digest) == 0 {
+	if bytes.Compare(realAxisRoot.Digest, axisRoot.Digest) == 0 {
 		return false, errors.New("There is no bad encoding!")
 	}
 
@@ -322,36 +340,49 @@ func VerifyBadEncodingFraudProof(befp BadEncodingFraudProof, dah *types.DataAvai
 }
 
 // squareSize is original square size
-func CreateBadEncodingFraud(height int64, squareSize, position uint64, shares [][]byte, isCol bool) (BadEncodingFraudProof, error) {
-	newTree := wrapper.NewErasuredNamespacedMerkleTree(squareSize)
+func CreateBadEncodingFraudProof(height int64, squareSize, position uint64, shares [][]byte, isCol bool) (BadEncodingFraudProof, error) {
+	newTree := wrapper.NewErasuredNamespacedMerkleTree(squareSize * 2)
 	for j, share := range shares {
 		newTree.Push(share, rsmt2d.SquareIndex{Axis: uint(position), Cell: uint(j)})
 	}
+
+	// For debugging; delete later
+	// -------------------------
+	root := newTree.Root()
+	rootDigest := namespace.IntervalDigest{
+		Min:    root[0:consts.NamespaceSize],
+		Max:    root[consts.NamespaceSize : consts.NamespaceSize*2],
+		Digest: root[consts.NamespaceSize*2:],
+	}
+	fmt.Println("This should be the same as axisRoot corresponding to the corrupted shares: ", rootDigest)
+	// --------------------------
+
 	// create bad encoding fraud proof
 	shareProofs := make([]*ShareProof, squareSize)
 	for j, rowElement := range shares {
-		share := Share{
-			NamespaceID: rowElement[:consts.NamespaceSize],
-			RawData:     rowElement[consts.NamespaceSize:],
+		if j < int(squareSize) {
+			share := Share{
+				NamespaceID: rowElement[:consts.NamespaceSize],
+				RawData:     rowElement[consts.NamespaceSize:],
+			}
+			merkleProof, err := newTree.CreateInclusionProof(j)
+			if err != nil {
+				return BadEncodingFraudProof{}, err
+			}
+			// there's no way to generate a proof while also adding the namespace to the data
+			shareProof := ShareProof{
+				Share:    share,
+				Proof:    merkleProof,
+				IsCol:    false,
+				Position: uint64(position),
+			}
+			shareProofs[j] = &shareProof
 		}
-		merkleProof, err := newTree.CreateInclusionProof(j)
-		if err != nil {
-			return BadEncodingFraudProof{}, err
-		}
-		// there's no way to generate a proof while also adding the namespace to the data
-		shareProof := ShareProof{
-			Share:    share,
-			Proof:    merkleProof,
-			IsCol:    false,
-			Position: uint64(position),
-		}
-		shareProofs[j] = &shareProof
 	}
 	proof := BadEncodingFraudProof{
-		// Height:      block.Height, // revert this later
-		Height:      1,
+		Height:      height,
 		ShareProofs: shareProofs,
-		IsCol:       false,
+		IsCol:       isCol,
 		Position:    uint64(position),
 	}
 	return proof, nil
@@ -412,14 +443,11 @@ func CheckAndCreateBadEncodingFraudProof(block *types.Block, dah *types.DataAvai
 				IsCol:       false,
 				Position:    uint64(i),
 			}
-			return proof, err
+			return proof, nil
 		}
 	}
-	return BadEncodingFraudProof{}, nil
+	return BadEncodingFraudProof{}, errors.New("There is no bad encoding.")
 }
-
-// 	return BadEncodingFraudProof{}, errors.New("There is no bad encoding.")
-// }
 
 /*
 In order to make code useful, I think that we are going to have to write some other code to help
