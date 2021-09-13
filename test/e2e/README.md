@@ -23,7 +23,7 @@ The above should hold for any arbitrary, valid network configuration, and that c
 
 A testnet configuration is specified as a TOML testnet manifest (see below). The testnet runner uses the manifest to configure a set of Docker containers and start them in some order. The manifests can be written manually (to test specific configurations) or generated randomly by the testnet generator (to test a wide range of configuration permutations).
 
-When running a testnet, the runner will first start the Docker nodes in some sequence, submit random transactions, and wait for the nodes to come online and the first blocks to be produced. This may involve e.g. waiting for nodes to fast sync and/or state sync. If specified, it will then run any misbehaviors (e.g. double-signing) and perturbations (e.g. killing or disconnecting nodes). It then waits for the testnet to stabilize, with all nodes online and having reached the latest height.
+When running a testnet, the runner will first start the Docker nodes in some sequence, submit random transactions, and wait for the nodes to come online and the first blocks to be produced. This may involve e.g. waiting for nodes to block sync and/or state sync. If specified, it will then run any misbehaviors (e.g. double-signing) and perturbations (e.g. killing or disconnecting nodes). It then waits for the testnet to stabilize, with all nodes online and having reached the latest height.
 
 Once the testnet stabilizes, a set of Go end-to-end tests are run against the live testnet to verify network invariants (for example that blocks are identical across nodes). These use the RPC client to interact with the network, and should consider the entire network as a black box (i.e. it should not test any network or node internals, only externally visible behavior via RPC). The tests may use the `testNode()` helper to run parallel tests against each individual testnet node, and/or inspect the full blockchain history via `fetchBlockChain()`.
 
@@ -70,9 +70,11 @@ The test runner has the following stages, which can also be executed explicitly 
 
 * `cleanup`: removes configuration files and Docker containers/networks.
 
+Auxiliary commands:
+
 * `logs`: outputs all node logs.
 
-* `tail`: tails (follows) node logs until cancelled.
+* `tail`: tails (follows) node logs until canceled.
 
 ## Tests
 
@@ -102,11 +104,36 @@ func init() {
 
 ### Debugging Failures
 
-If a command or test fails, the runner simply exits with an error message and non-zero status code. The testnet is left running with data in the testnet directory, and can be inspected with e.g. `docker ps`, `docker logs`, or `./build/runner -f <manifest> logs` or `tail`. To shut down and remove the testnet, run `./build/runner -f <manifest> cleanup`.
+If a command or test fails, the runner simply exits with an error message and
+non-zero status code. The testnet is left running with data in the testnet
+directory, and can be inspected with e.g. `docker ps`, `docker logs`, or
+`./build/runner -f <manifest> logs` or `tail`. To shut down and remove the
+testnet, run `./build/runner -f <manifest> cleanup`.
+
+If the standard `log_level` is not detailed enough (e.g. you want "debug" level
+logging for certain modules), you can change it in the manifest file.
+
+Each node exposes a [pprof](https://golang.org/pkg/runtime/pprof/) server. To
+find out the local port, run `docker port <NODENAME> 6060 | awk -F: '{print
+$2}'`. Then you may perform any queries supported by the pprof tool. Julia
+Evans has a [great
+post](https://jvns.ca/blog/2017/09/24/profiling-go-with-pprof/) on this
+subject.
+
+```bash
+export PORT=$(docker port full01 6060 | awk -F: '{print $2}')
+
+go tool pprof http://localhost:$PORT/debug/pprof/goroutine
+go tool pprof http://localhost:$PORT/debug/pprof/heap
+go tool pprof http://localhost:$PORT/debug/pprof/threadcreate
+go tool pprof http://localhost:$PORT/debug/pprof/block
+go tool pprof http://localhost:$PORT/debug/pprof/mutex
+```
 
 ## Enabling IPv6
 
-Docker does not enable IPv6 by default. To do so, enter the following in `daemon.json` (or in the Docker for Mac UI under Preferences → Docker Engine):
+Docker does not enable IPv6 by default. To do so, enter the following in
+`daemon.json` (or in the Docker for Mac UI under Preferences → Docker Engine):
 
 ```json
 {
@@ -114,3 +141,11 @@ Docker does not enable IPv6 by default. To do so, enter the following in `daemon
   "fixed-cidr-v6": "2001:db8:1::/64"
 }
 ```
+
+## Benchmarking testnets
+
+It is also possible to run a simple benchmark on a testnet. This is done through the `benchmark` command. This manages the entire process: setting up the environment, starting the test net, waiting for a considerable amount of blocks to be used (currently 100), and then returning the following metrics from the sample of the blockchain:
+
+- Average time to produce a block
+- Standard deviation of producing a block
+- Minimum and maximum time to produce a block

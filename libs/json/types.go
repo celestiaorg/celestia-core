@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
-	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	tmsync "github.com/celestiaorg/celestia-core/internal/libs/sync"
 )
 
 var (

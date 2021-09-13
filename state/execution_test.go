@@ -14,22 +14,22 @@ import (
 	"github.com/celestiaorg/celestia-core/crypto/ed25519"
 	cryptoenc "github.com/celestiaorg/celestia-core/crypto/encoding"
 	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	mmock "github.com/celestiaorg/celestia-core/internal/mempool/mock"
+	"github.com/celestiaorg/celestia-core/libs/db"
 	"github.com/celestiaorg/celestia-core/libs/log"
-	mmock "github.com/celestiaorg/celestia-core/mempool/mock"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
-	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
+	tmtime "github.com/celestiaorg/celestia-core/libs/time"
 	"github.com/celestiaorg/celestia-core/proxy"
 	sm "github.com/celestiaorg/celestia-core/state"
 	"github.com/celestiaorg/celestia-core/state/mocks"
+	sf "github.com/celestiaorg/celestia-core/state/test/factory"
+	"github.com/celestiaorg/celestia-core/store"
 	"github.com/celestiaorg/celestia-core/types"
-	tmtime "github.com/celestiaorg/celestia-core/types/time"
 	"github.com/celestiaorg/celestia-core/version"
 )
 
 var (
 	chainID             = "execution_chain"
 	testPartSize uint32 = 65536
-	nTxsPerBlock        = 10
 )
 
 func TestApplyBlock(t *testing.T) {
@@ -42,16 +42,15 @@ func TestApplyBlock(t *testing.T) {
 
 	state, stateDB, _ := makeState(1, 1)
 	stateStore := sm.NewStore(stateDB)
-
+	blockStore := store.NewBlockStore(dbm.NewMemDB())
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
-		mmock.Mempool{}, sm.EmptyEvidencePool{})
+		mmock.Mempool{}, sm.EmptyEvidencePool{}, blockStore)
 
-	block := makeBlock(state, 1)
+	block := sf.MakeBlock(state, 1, new(types.Commit))
 	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
 
-	state, retainHeight, err := blockExec.ApplyBlock(state, blockID, block)
+	state, err = blockExec.ApplyBlock(state, blockID, block)
 	require.Nil(t, err)
-	assert.EqualValues(t, retainHeight, 1)
 
 	// TODO check state and mempool
 	assert.EqualValues(t, 1, state.Version.Consensus.App, "App version wasn't updated")
@@ -103,7 +102,7 @@ func TestBeginBlockValidators(t *testing.T) {
 		block, _ := state.MakeBlock(2, makeTxs(2), nil, nil,
 			types.Messages{}, lastCommit, state.Validators.GetProposer().Address)
 
-		_, err = sm.ExecCommitBlock(proxyApp.Consensus(), block, log.TestingLogger(), stateStore, 1)
+		_, err = sm.ExecCommitBlock(nil, proxyApp.Consensus(), block, log.TestingLogger(), stateStore, 1, state)
 		require.Nil(t, err, tc.desc)
 
 		// -> app receives a list of validators with a bool indicating if they signed
@@ -137,7 +136,7 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	privVal := privVals[state.Validators.Validators[0].Address.String()]
 	blockID := makeBlockID([]byte("headerhash"), 1000, []byte("partshash"))
 	header := &types.Header{
-		Version:            tmversion.Consensus{Block: version.BlockProtocol, App: 1},
+		Version:            version.Consensus{Block: version.BlockProtocol, App: 1},
 		ChainID:            state.ChainID,
 		Height:             10,
 		Time:               defaultEvidenceTime,
@@ -199,17 +198,18 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	evpool.On("Update", mock.AnythingOfType("state.State"), mock.AnythingOfType("types.EvidenceList")).Return()
 	evpool.On("CheckEvidence", mock.AnythingOfType("types.EvidenceList")).Return(nil)
 
-	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
-		mmock.Mempool{}, evpool)
+	blockStore := store.NewBlockStore(dbm.NewMemDB())
 
-	block := makeBlock(state, 1)
+	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
+		mmock.Mempool{}, evpool, blockStore)
+
+	block := sf.MakeBlock(state, 1, new(types.Commit))
 	block.Evidence = types.EvidenceData{Evidence: ev}
 	block.Header.EvidenceHash = block.Evidence.Hash()
 	blockID = types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
 
-	state, retainHeight, err := blockExec.ApplyBlock(state, blockID, block)
+	_, err = blockExec.ApplyBlock(state, blockID, block)
 	require.Nil(t, err)
-	assert.EqualValues(t, retainHeight, 1)
 
 	// TODO check state and mempool
 	assert.Equal(t, abciEv, app.ByzantineValidators)
@@ -223,13 +223,13 @@ func TestValidateValidatorUpdates(t *testing.T) {
 	pk2, err := cryptoenc.PubKeyToProto(pubkey2)
 	assert.NoError(t, err)
 
-	defaultValidatorParams := tmproto.ValidatorParams{PubKeyTypes: []string{types.ABCIPubKeyTypeEd25519}}
+	defaultValidatorParams := types.ValidatorParams{PubKeyTypes: []string{types.ABCIPubKeyTypeEd25519}}
 
 	testCases := []struct {
 		name string
 
 		abciUpdates     []abci.ValidatorUpdate
-		validatorParams tmproto.ValidatorParams
+		validatorParams types.ValidatorParams
 
 		shouldErr bool
 	}{
@@ -356,6 +356,7 @@ func TestEndBlockValidatorUpdates(t *testing.T) {
 
 	state, stateDB, _ := makeState(1, 1)
 	stateStore := sm.NewStore(stateDB)
+	blockStore := store.NewBlockStore(dbm.NewMemDB())
 
 	blockExec := sm.NewBlockExecutor(
 		stateStore,
@@ -363,6 +364,7 @@ func TestEndBlockValidatorUpdates(t *testing.T) {
 		proxyApp.Consensus(),
 		mmock.Mempool{},
 		sm.EmptyEvidencePool{},
+		blockStore,
 	)
 
 	eventBus := types.NewEventBus()
@@ -379,7 +381,7 @@ func TestEndBlockValidatorUpdates(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	block := makeBlock(state, 1)
+	block := sf.MakeBlock(state, 1, new(types.Commit))
 	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
 
 	pubkey := ed25519.GenPrivKey().PubKey()
@@ -389,7 +391,7 @@ func TestEndBlockValidatorUpdates(t *testing.T) {
 		{PubKey: pk, Power: 10},
 	}
 
-	state, _, err = blockExec.ApplyBlock(state, blockID, block)
+	state, err = blockExec.ApplyBlock(state, blockID, block)
 	require.Nil(t, err)
 	// test new validator was added to NextValidators
 	if assert.Equal(t, state.Validators.Size()+1, state.NextValidators.Size()) {
@@ -408,8 +410,8 @@ func TestEndBlockValidatorUpdates(t *testing.T) {
 			assert.Equal(t, pubkey, event.ValidatorUpdates[0].PubKey)
 			assert.EqualValues(t, 10, event.ValidatorUpdates[0].VotingPower)
 		}
-	case <-updatesSub.Cancelled():
-		t.Fatalf("updatesSub was cancelled (reason: %v)", updatesSub.Err())
+	case <-updatesSub.Canceled():
+		t.Fatalf("updatesSub was canceled (reason: %v)", updatesSub.Err())
 	case <-time.After(1 * time.Second):
 		t.Fatal("Did not receive EventValidatorSetUpdates within 1 sec.")
 	}
@@ -427,15 +429,17 @@ func TestEndBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 
 	state, stateDB, _ := makeState(1, 1)
 	stateStore := sm.NewStore(stateDB)
+	blockStore := store.NewBlockStore(dbm.NewMemDB())
 	blockExec := sm.NewBlockExecutor(
 		stateStore,
 		log.TestingLogger(),
 		proxyApp.Consensus(),
 		mmock.Mempool{},
 		sm.EmptyEvidencePool{},
+		blockStore,
 	)
 
-	block := makeBlock(state, 1)
+	block := sf.MakeBlock(state, 1, new(types.Commit))
 	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
 
 	vp, err := cryptoenc.PubKeyToProto(state.Validators.Validators[0].PubKey)
@@ -445,7 +449,7 @@ func TestEndBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 		{PubKey: vp, Power: 0},
 	}
 
-	assert.NotPanics(t, func() { state, _, err = blockExec.ApplyBlock(state, blockID, block) })
+	assert.NotPanics(t, func() { state, err = blockExec.ApplyBlock(state, blockID, block) })
 	assert.NotNil(t, err)
 	assert.NotEmpty(t, state.NextValidators.Validators)
 }

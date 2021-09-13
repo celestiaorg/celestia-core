@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -13,11 +14,9 @@ import (
 	cfg "github.com/celestiaorg/celestia-core/config"
 	"github.com/celestiaorg/celestia-core/libs/bytes"
 	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
-	"github.com/celestiaorg/celestia-core/p2p"
+	tmtime "github.com/celestiaorg/celestia-core/libs/time"
 	"github.com/celestiaorg/celestia-core/privval"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types"
-	tmtime "github.com/celestiaorg/celestia-core/types/time"
 )
 
 var (
@@ -105,7 +104,8 @@ func testnetFiles(cmd *cobra.Command, args []string) error {
 		)
 	}
 
-	config := cfg.DefaultConfig()
+	// set mode to validator for testnet
+	config := cfg.DefaultValidatorConfig()
 
 	// overwrite default config if set and valid
 	if configFile != "" {
@@ -143,11 +143,17 @@ func testnetFiles(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		pvKeyFile := filepath.Join(nodeDir, config.BaseConfig.PrivValidatorKey)
-		pvStateFile := filepath.Join(nodeDir, config.BaseConfig.PrivValidatorState)
-		pv := privval.LoadFilePV(pvKeyFile, pvStateFile)
+		pvKeyFile := filepath.Join(nodeDir, config.PrivValidator.Key)
+		pvStateFile := filepath.Join(nodeDir, config.PrivValidator.State)
+		pv, err := privval.LoadFilePV(pvKeyFile, pvStateFile)
+		if err != nil {
+			return err
+		}
 
-		pubKey, err := pv.GetPubKey()
+		ctx, cancel := context.WithTimeout(context.TODO(), ctxTimeout)
+		defer cancel()
+
+		pubKey, err := pv.GetPubKey(ctx)
 		if err != nil {
 			return fmt.Errorf("can't get pubkey: %w", err)
 		}
@@ -189,7 +195,7 @@ func testnetFiles(cmd *cobra.Command, args []string) error {
 		ConsensusParams: types.DefaultConsensusParams(),
 	}
 	if keyType == "secp256k1" {
-		genDoc.ConsensusParams.Validator = tmproto.ValidatorParams{
+		genDoc.ConsensusParams.Validator = types.ValidatorParams{
 			PubKeyTypes: []string{types.ABCIPubKeyTypeSecp256k1},
 		}
 	}
@@ -205,11 +211,11 @@ func testnetFiles(cmd *cobra.Command, args []string) error {
 
 	// Gather persistent peer addresses.
 	var (
-		persistentPeers string
+		persistentPeers = make([]string, 0)
 		err             error
 	)
 	if populatePersistentPeers {
-		persistentPeers, err = persistentPeersString(config)
+		persistentPeers, err = persistentPeersArray(config)
 		if err != nil {
 			_ = os.RemoveAll(outputDir)
 			return err
@@ -223,11 +229,18 @@ func testnetFiles(cmd *cobra.Command, args []string) error {
 		config.P2P.AddrBookStrict = false
 		config.P2P.AllowDuplicateIP = true
 		if populatePersistentPeers {
-			config.P2P.PersistentPeers = persistentPeers
+			persistentPeersWithoutSelf := make([]string, 0)
+			for j := 0; j < len(persistentPeers); j++ {
+				if j == i {
+					continue
+				}
+				persistentPeersWithoutSelf = append(persistentPeersWithoutSelf, persistentPeers[j])
+			}
+			config.P2P.PersistentPeers = strings.Join(persistentPeersWithoutSelf, ",")
 		}
 		config.Moniker = moniker(i)
 
-		cfg.WriteConfigFile(filepath.Join(nodeDir, "config", "config.toml"), config)
+		cfg.WriteConfigFile(nodeDir, config)
 	}
 
 	fmt.Printf("Successfully initialized %v node directories\n", nValidators+nNonValidators)
@@ -254,18 +267,19 @@ func hostnameOrIP(i int) string {
 	return ip.String()
 }
 
-func persistentPeersString(config *cfg.Config) (string, error) {
-	persistentPeers := make([]string, nValidators+nNonValidators)
+// get an array of persistent peers
+func persistentPeersArray(config *cfg.Config) ([]string, error) {
+	peers := make([]string, nValidators+nNonValidators)
 	for i := 0; i < nValidators+nNonValidators; i++ {
 		nodeDir := filepath.Join(outputDir, fmt.Sprintf("%s%d", nodeDirPrefix, i))
 		config.SetRoot(nodeDir)
-		nodeKey, err := p2p.LoadNodeKey(config.NodeKeyFile())
+		nodeKey, err := config.LoadNodeKeyID()
 		if err != nil {
-			return "", err
+			return []string{}, err
 		}
-		persistentPeers[i] = p2p.IDAddressString(nodeKey.ID, fmt.Sprintf("%s:%d", hostnameOrIP(i), p2pPort))
+		peers[i] = nodeKey.AddressString(fmt.Sprintf("%s:%d", hostnameOrIP(i), p2pPort))
 	}
-	return strings.Join(persistentPeers, ","), nil
+	return peers, nil
 }
 
 func moniker(i int) string {

@@ -41,30 +41,27 @@ func EnsureRoot(rootDir string) {
 	if err := tmos.EnsureDir(filepath.Join(rootDir, defaultDataDir), DefaultDirPerm); err != nil {
 		panic(err.Error())
 	}
-
-	configFilePath := filepath.Join(rootDir, defaultConfigFilePath)
-
-	// Write default config file if missing.
-	if !tmos.FileExists(configFilePath) {
-		writeDefaultConfigFile(configFilePath)
-	}
-}
-
-// XXX: this func should probably be called by cmd/tendermint/commands/init.go
-// alongside the writing of the genesis.json and priv_validator.json
-func writeDefaultConfigFile(configFilePath string) {
-	WriteConfigFile(configFilePath, DefaultConfig())
 }
 
 // WriteConfigFile renders config using the template and writes it to configFilePath.
-func WriteConfigFile(configFilePath string, config *Config) {
+// This function is called by cmd/tendermint/commands/init.go
+func WriteConfigFile(rootDir string, config *Config) {
 	var buffer bytes.Buffer
 
 	if err := configTemplate.Execute(&buffer, config); err != nil {
 		panic(err)
 	}
 
+	configFilePath := filepath.Join(rootDir, defaultConfigFilePath)
+
 	mustWriteFile(configFilePath, buffer.Bytes(), 0644)
+}
+
+func writeDefaultConfigFileIfNone(rootDir string) {
+	configFilePath := filepath.Join(rootDir, defaultConfigFilePath)
+	if !tmos.FileExists(configFilePath) {
+		WriteConfigFile(rootDir, DefaultConfig())
+	}
 }
 
 // Note: any changes to the comments/variables/mapstructure
@@ -87,6 +84,18 @@ proxy-app = "{{ .BaseConfig.ProxyApp }}"
 
 # A custom human readable name for this node
 moniker = "{{ .BaseConfig.Moniker }}"
+
+# Mode of Node: full | validator | seed
+# * validator node
+#   - all reactors
+#   - with priv_validator_key.json, priv_validator_state.json
+# * full node
+#   - all reactors
+#   - No priv_validator_key.json, priv_validator_state.json
+# * seed node
+#   - only P2P, PEX Reactor
+#   - No priv_validator_key.json, priv_validator_state.json
+mode = "{{ .BaseConfig.Mode }}"
 
 # If this node is many blocks behind the tip of the chain, FastSync
 # allows them to catchup quickly by downloading blocks in parallel
@@ -111,22 +120,39 @@ log-format = "{{ .BaseConfig.LogFormat }}"
 # Path to the JSON file containing the initial validator set and other meta data
 genesis-file = "{{ js .BaseConfig.Genesis }}"
 
-# Path to the JSON file containing the private key to use as a validator in the consensus protocol
-priv-validator-key-file = "{{ js .BaseConfig.PrivValidatorKey }}"
-
-# Path to the JSON file containing the last sign state of a validator
-priv-validator-state-file = "{{ js .BaseConfig.PrivValidatorState }}"
-
-# TCP or UNIX socket address for Tendermint to listen on for
-# connections from an external PrivValidator process
-priv-validator-laddr = "{{ .BaseConfig.PrivValidatorListenAddr }}"
-
 # Path to the JSON file containing the private key to use for node authentication in the p2p protocol
 node-key-file = "{{ js .BaseConfig.NodeKey }}"
 
 # If true, query the ABCI app on connecting to a new peer
 # so the app can decide if we should keep the connection or not
 filter-peers = {{ .BaseConfig.FilterPeers }}
+
+
+#######################################################
+###       Priv Validator Configuration              ###
+#######################################################
+[priv-validator]
+
+# Path to the JSON file containing the private key to use as a validator in the consensus protocol
+key-file = "{{ js .PrivValidator.Key }}"
+
+# Path to the JSON file containing the last sign state of a validator
+state-file = "{{ js .PrivValidator.State }}"
+
+# TCP or UNIX socket address for Tendermint to listen on for
+# connections from an external PrivValidator process
+# when the listenAddr is prefixed with grpc instead of tcp it will use the gRPC Client
+laddr = "{{ .PrivValidator.ListenAddr }}"
+
+# Client certificate generated while creating needed files for secure connection.
+# If a remote validator address is provided but no certificate, the connection will be insecure
+client-certificate-file = "{{ js .PrivValidator.ClientCertificate }}"
+
+# Client key generated while creating certificates for secure connection
+validator-client-key-file = "{{ js .PrivValidator.ClientKey }}"
+
+# Path Root Certificate Authority used to sign both client and server certificates
+certificate-authority = "{{ js .PrivValidator.RootCA }}"
 
 
 #######################################################################
@@ -154,6 +180,7 @@ cors-allowed-headers = [{{ range .RPC.CORSAllowedHeaders }}{{ printf "%q, " . }}
 
 # TCP or UNIX socket address for the gRPC server to listen on
 # NOTE: This server only supports /broadcast_tx_commit
+# Deprecated gRPC  in the RPC layer of Tendermint will be deprecated in 0.36.
 grpc-laddr = "{{ .RPC.GRPCListenAddress }}"
 
 # Maximum number of simultaneous connections.
@@ -163,6 +190,7 @@ grpc-laddr = "{{ .RPC.GRPCListenAddress }}"
 # 0 - unlimited.
 # Should be < {ulimit -Sn} - {MaxNumInboundPeers} - {MaxNumOutboundPeers} - {N of wal, db and other open files}
 # 1024 - 40 - 10 - 50 = 924 = ~900
+# Deprecated gRPC  in the RPC layer of Tendermint will be deprecated in 0.36.
 grpc-max-open-connections = {{ .RPC.GRPCMaxOpenConnections }}
 
 # Activate unsafe RPC commands like /dial-seeds and /unsafe-flush-mempool
@@ -200,7 +228,7 @@ max-body-bytes = {{ .RPC.MaxBodyBytes }}
 max-header-bytes = {{ .RPC.MaxHeaderBytes }}
 
 # The path to a file containing certificate that is used to create the HTTPS server.
-# Migth be either absolute path or path related to tendermint's config directory.
+# Might be either absolute path or path related to Tendermint's config directory.
 # If the certificate is signed by a certificate authority,
 # the certFile should be the concatenation of the server's certificate, any intermediates,
 # and the CA's certificate.
@@ -209,7 +237,7 @@ max-header-bytes = {{ .RPC.MaxHeaderBytes }}
 tls-cert-file = "{{ .RPC.TLSCertFile }}"
 
 # The path to a file containing matching private key that is used to create the HTTPS server.
-# Migth be either absolute path or path related to tendermint's config directory.
+# Might be either absolute path or path related to Tendermint's config directory.
 # NOTE: both tls-cert-file and tls-key-file must be present for Tendermint to create HTTPS server.
 # Otherwise, HTTP server is run.
 tls-key-file = "{{ .RPC.TLSKeyFile }}"
@@ -222,17 +250,33 @@ pprof-laddr = "{{ .RPC.PprofListenAddress }}"
 #######################################################
 [p2p]
 
+# Enable the legacy p2p layer.
+use-legacy = {{ .P2P.UseLegacy }}
+
+# Select the p2p internal queue
+queue-type = "{{ .P2P.QueueType }}"
+
 # Address to listen for incoming connections
 laddr = "{{ .P2P.ListenAddress }}"
 
 # Address to advertise to peers for them to dial
 # If empty, will use the same port as the laddr,
 # and will introspect on the listener or use UPnP
-# to figure out the address.
+# to figure out the address. ip and port are required
+# example: 159.89.10.97:26656
 external-address = "{{ .P2P.ExternalAddress }}"
 
 # Comma separated list of seed nodes to connect to
+# We only use these if we can’t connect to peers in the addrbook
+# NOTE: not used by the new PEX reactor. Please use BootstrapPeers instead.
+# TODO: Remove once p2p refactor is complete
+# ref: https:#github.com/tendermint/tendermint/issues/5670
 seeds = "{{ .P2P.Seeds }}"
+
+# Comma separated list of peers to be added to the peer store
+# on startup. Either BootstrapPeers or PersistentPeers are
+# needed for peer discovery
+bootstrap-peers = "{{ .P2P.BootstrapPeers }}"
 
 # Comma separated list of nodes to keep persistent connections to
 persistent-peers = "{{ .P2P.PersistentPeers }}"
@@ -241,6 +285,7 @@ persistent-peers = "{{ .P2P.PersistentPeers }}"
 upnp = {{ .P2P.UPNP }}
 
 # Path to address book
+# TODO: Remove once p2p refactor is complete in favor of peer store.
 addr-book-file = "{{ js .P2P.AddrBook }}"
 
 # Set true for strict address routability rules
@@ -248,12 +293,26 @@ addr-book-file = "{{ js .P2P.AddrBook }}"
 addr-book-strict = {{ .P2P.AddrBookStrict }}
 
 # Maximum number of inbound peers
+#
+# TODO: Remove once p2p refactor is complete in favor of MaxConnections.
+# ref: https://github.com/tendermint/tendermint/issues/5670
 max-num-inbound-peers = {{ .P2P.MaxNumInboundPeers }}
 
 # Maximum number of outbound peers to connect to, excluding persistent peers
+#
+# TODO: Remove once p2p refactor is complete in favor of MaxConnections.
+# ref: https://github.com/tendermint/tendermint/issues/5670
 max-num-outbound-peers = {{ .P2P.MaxNumOutboundPeers }}
 
+# Maximum number of connections (inbound and outbound).
+max-connections = {{ .P2P.MaxConnections }}
+
+# Rate limits the number of incoming connection attempts per IP address.
+max-incoming-connection-attempts = {{ .P2P.MaxIncomingConnectionAttempts }}
+
 # List of node IDs, to which a connection will be (re)established ignoring any existing limits
+# TODO: Remove once p2p refactor is complete.
+# ref: https://github.com/tendermint/tendermint/issues/5670
 unconditional-peer-ids = "{{ .P2P.UnconditionalPeerIDs }}"
 
 # Maximum pause when redialing a persistent peer (if zero, exponential backoff is used)
@@ -274,13 +333,8 @@ recv-rate = {{ .P2P.RecvRate }}
 # Set true to enable the peer-exchange reactor
 pex = {{ .P2P.PexReactor }}
 
-# Seed mode, in which node constantly crawls the network and looks for
-# peers. If another node asks it for addresses, it responds and disconnects.
-#
-# Does not work if the peer-exchange reactor is disabled.
-seed-mode = {{ .P2P.SeedMode }}
-
 # Comma separated list of peer IDs to keep private (will not be gossiped to other peers)
+# Warning: IPs will be exposed at /net_info, for more information https://github.com/tendermint/tendermint/issues/3055
 private-peer-ids = "{{ .P2P.PrivatePeerIDs }}"
 
 # Toggle to disable guard against peers connecting from the same ip.
@@ -291,13 +345,17 @@ handshake-timeout = "{{ .P2P.HandshakeTimeout }}"
 dial-timeout = "{{ .P2P.DialTimeout }}"
 
 #######################################################
-###          Mempool Configurattion Option          ###
+###          Mempool Configuration Option          ###
 #######################################################
 [mempool]
 
+# Mempool version to use:
+#   1) "v0" - The legacy non-prioritized mempool reactor.
+#   2) "v1" (default) - The prioritized mempool reactor.
+version = "{{ .Mempool.Version }}"
+
 recheck = {{ .Mempool.Recheck }}
 broadcast = {{ .Mempool.Broadcast }}
-wal-dir = "{{ js .Mempool.WalPath }}"
 
 # Maximum number of transactions in the mempool
 size = {{ .Mempool.Size }}
@@ -310,13 +368,35 @@ max-txs-bytes = {{ .Mempool.MaxTxsBytes }}
 # Size of the cache (used to filter transactions we saw earlier) in transactions
 cache-size = {{ .Mempool.CacheSize }}
 
+# Do not remove invalid transactions from the cache (default: false)
+# Set to true if it's not possible for any invalid transaction to become valid
+# again in the future.
+keep-invalid-txs-in-cache = {{ .Mempool.KeepInvalidTxsInCache }}
+
 # Maximum size of a single transaction.
 # NOTE: the max size of a tx transmitted over the network is {max-tx-bytes}.
 max-tx-bytes = {{ .Mempool.MaxTxBytes }}
 
 # Maximum size of a batch of transactions to send to a peer
 # Including space needed by encoding (one varint per transaction).
+# XXX: Unused due to https://github.com/tendermint/tendermint/issues/5796
 max-batch-bytes = {{ .Mempool.MaxBatchBytes }}
+
+# ttl-duration, if non-zero, defines the maximum amount of time a transaction
+# can exist for in the mempool.
+#
+# Note, if ttl-num-blocks is also defined, a transaction will be removed if it
+# has existed in the mempool at least ttl-num-blocks number of blocks or if it's
+# insertion time into the mempool is beyond ttl-duration.
+ttl-duration = "{{ .Mempool.TTLDuration }}"
+
+# ttl-num-blocks, if non-zero, defines the maximum number of blocks a transaction
+# can exist for in the mempool.
+#
+# Note, if ttl-duration is also defined, a transaction will be removed if it
+# has existed in the mempool at least ttl-num-blocks number of blocks or if
+# it's insertion time into the mempool is beyond ttl-duration.
+ttl-num-blocks = {{ .Mempool.TTLNumBlocks }}
 
 #######################################################
 ###         State Sync Configuration Options        ###
@@ -329,32 +409,48 @@ max-batch-bytes = {{ .Mempool.MaxBatchBytes }}
 # starting from the height of the snapshot.
 enable = {{ .StateSync.Enable }}
 
-# RPC servers (comma-separated) for light client verification of the synced state machine and
-# retrieval of state data for node bootstrapping. Also needs a trusted height and corresponding
-# header hash obtained from a trusted source, and a period during which validators can be trusted.
-#
-# For Cosmos SDK-based chains, trust-period should usually be about 2/3 of the unbonding time (~2
-# weeks) during which they can be financially punished (slashed) for misbehavior.
+# State sync uses light client verification to verify state. This can be done either through the
+# P2P layer or RPC layer. Set this to true to use the P2P layer. If false (default), RPC layer
+# will be used.
+use-p2p = {{ .StateSync.UseP2P }}
+
+# If using RPC, at least two addresses need to be provided. They should be compatible with net.Dial,
+# for example: "host.example.com:2125"
 rpc-servers = "{{ StringsJoin .StateSync.RPCServers "," }}"
+
+# The hash and height of a trusted block. Must be within the trust-period.
 trust-height = {{ .StateSync.TrustHeight }}
 trust-hash = "{{ .StateSync.TrustHash }}"
+
+# The trust period should be set so that Tendermint can detect and gossip misbehavior before 
+# it is considered expired. For chains based on the Cosmos SDK, one day less than the unbonding 
+# period should suffice.
 trust-period = "{{ .StateSync.TrustPeriod }}"
 
 # Time to spend discovering snapshots before initiating a restore.
 discovery-time = "{{ .StateSync.DiscoveryTime }}"
 
-# Temporary directory for state sync snapshot chunks, defaults to the OS tempdir (typically /tmp).
-# Will create a new, randomly named directory within, and remove it when done.
+# Temporary directory for state sync snapshot chunks, defaults to os.TempDir().
+# The synchronizer will create a new, randomly named directory within this directory
+# and remove it when the sync is complete.
 temp-dir = "{{ .StateSync.TempDir }}"
 
+# The timeout duration before re-requesting a chunk, possibly from a different
+# peer (default: 15 seconds).
+chunk-request-timeout = "{{ .StateSync.ChunkRequestTimeout }}"
+
+# The number of concurrent chunk and block fetchers to run (default: 4).
+fetchers = "{{ .StateSync.Fetchers }}"
+
 #######################################################
-###       Fast Sync Configuration Connections       ###
+###       Block Sync Configuration Connections       ###
 #######################################################
 [fastsync]
 
-# Fast Sync version to use:
-#   1) "v0" (default) - the legacy fast sync implementation
-version = "{{ .FastSync.Version }}"
+# Block Sync version to use:
+#   1) "v0" (default) - the legacy block sync implementation
+#   2) "v2" - DEPRECATED, please use v0
+version = "{{ .BlockSync.Version }}"
 
 #######################################################
 ###         Consensus Configuration Options         ###
@@ -402,7 +498,8 @@ peer-query-maj23-sleep-duration = "{{ .Consensus.PeerQueryMaj23SleepDuration }}"
 #######################################################
 [tx-index]
 
-# What indexer to use for transactions
+# The backend database list to back the indexer.
+# If list contains null, meaning no indexer service will be used.
 #
 # The application will set which txs to index. In some cases a node operator will be able
 # to decide which txs to index based on configuration set in the application.
@@ -411,7 +508,12 @@ peer-query-maj23-sleep-duration = "{{ .Consensus.PeerQueryMaj23SleepDuration }}"
 #   1) "null"
 #   2) "kv" (default) - the simplest possible indexer, backed by key-value storage (defaults to levelDB; see DBBackend).
 # 		- When "kv" is chosen "tx.height" and "tx.hash" will always be indexed.
-indexer = "{{ .TxIndex.Indexer }}"
+#   3) "psql" - the indexer services backed by PostgreSQL.
+indexer = [{{ range $i, $e := .TxIndex.Indexer }}{{if $i}}, {{end}}{{ printf "%q" $e}}{{end}}]
+
+# The PostgreSQL connection configuration, the connection format:
+#   postgresql://<user>:<password>@<host>:<port>/<db>?<opts>
+psql-conn = "{{ .TxIndex.PsqlConn }}"
 
 #######################################################
 ###       Instrumentation Configuration Options     ###
@@ -456,16 +558,13 @@ func ResetTestRootWithChainID(testName string, chainID string) *Config {
 		panic(err)
 	}
 
-	baseConfig := DefaultBaseConfig()
-	configFilePath := filepath.Join(rootDir, defaultConfigFilePath)
-	genesisFilePath := filepath.Join(rootDir, baseConfig.Genesis)
-	privKeyFilePath := filepath.Join(rootDir, baseConfig.PrivValidatorKey)
-	privStateFilePath := filepath.Join(rootDir, baseConfig.PrivValidatorState)
+	conf := DefaultConfig()
+	genesisFilePath := filepath.Join(rootDir, conf.Genesis)
+	privKeyFilePath := filepath.Join(rootDir, conf.PrivValidator.Key)
+	privStateFilePath := filepath.Join(rootDir, conf.PrivValidator.State)
 
 	// Write default config file if missing.
-	if !tmos.FileExists(configFilePath) {
-		writeDefaultConfigFile(configFilePath)
-	}
+	writeDefaultConfigFileIfNone(rootDir)
 	if !tmos.FileExists(genesisFilePath) {
 		if chainID == "" {
 			chainID = "tendermint_test"

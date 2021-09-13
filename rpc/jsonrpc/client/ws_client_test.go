@@ -12,8 +12,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 
+	tmsync "github.com/celestiaorg/celestia-core/internal/libs/sync"
 	"github.com/celestiaorg/celestia-core/libs/log"
-	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 	types "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 

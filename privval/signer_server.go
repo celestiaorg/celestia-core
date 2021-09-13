@@ -1,16 +1,18 @@
 package privval
 
 import (
+	"context"
 	"io"
 
+	tmsync "github.com/celestiaorg/celestia-core/internal/libs/sync"
 	"github.com/celestiaorg/celestia-core/libs/service"
-	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 	privvalproto "github.com/celestiaorg/celestia-core/proto/tendermint/privval"
 	"github.com/celestiaorg/celestia-core/types"
 )
 
 // ValidationRequestHandlerFunc handles different remoteSigner requests
 type ValidationRequestHandlerFunc func(
+	ctx context.Context,
 	privVal types.PrivValidator,
 	requestMessage privvalproto.Message,
 	chainID string) (privvalproto.Message, error)
@@ -76,7 +78,7 @@ func (ss *SignerServer) servicePendingRequest() {
 		// limit the scope of the lock
 		ss.handlerMtx.Lock()
 		defer ss.handlerMtx.Unlock()
-		res, err = ss.validationRequestHandler(ss.privVal, req, ss.chainID)
+		res, err = ss.validationRequestHandler(context.TODO(), ss.privVal, req, ss.chainID) // todo
 		if err != nil {
 			// only log the error; we'll reply with an error in res
 			ss.Logger.Error("SignerServer: handleMessage", "err", err)

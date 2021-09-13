@@ -14,7 +14,7 @@ import (
 	"os"
 	"strings"
 
-	cs "github.com/celestiaorg/celestia-core/consensus"
+	cs "github.com/celestiaorg/celestia-core/internal/consensus"
 	tmjson "github.com/celestiaorg/celestia-core/libs/json"
 	"github.com/celestiaorg/celestia-core/types"
 )

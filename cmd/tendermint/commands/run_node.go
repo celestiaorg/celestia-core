@@ -11,7 +11,6 @@ import (
 
 	cfg "github.com/celestiaorg/celestia-core/config"
 	tmos "github.com/celestiaorg/celestia-core/libs/os"
-	nm "github.com/celestiaorg/celestia-core/node"
 )
 
 var (
@@ -24,10 +23,13 @@ func AddNodeFlags(cmd *cobra.Command) {
 	// bind flags
 	cmd.Flags().String("moniker", config.Moniker, "node name")
 
+	// mode flags
+	cmd.Flags().String("mode", config.Mode, "node mode (full | validator | seed)")
+
 	// priv val flags
 	cmd.Flags().String(
 		"priv-validator-laddr",
-		config.PrivValidatorListenAddr,
+		config.PrivValidator.ListenAddr,
 		"socket address to listen on for connections from external priv-validator process")
 
 	// node flags
@@ -46,9 +48,8 @@ func AddNodeFlags(cmd *cobra.Command) {
 		"proxy-app",
 		config.ProxyApp,
 		"proxy app address, or one of: 'kvstore',"+
-			" 'persistent_kvstore',"+
-			" 'counter',"+
-			" 'counter_serial' or 'noop' for local testing.")
+			" 'persistent_kvstore' or 'noop' for local testing.")
+	cmd.Flags().String("abci", config.ABCI, "specify abci transport (socket | grpc)")
 
 	// rpc flags
 	cmd.Flags().String("rpc.laddr", config.RPC.ListenAddress, "RPC listen address. Port required")
@@ -70,7 +71,6 @@ func AddNodeFlags(cmd *cobra.Command) {
 		config.P2P.UnconditionalPeerIDs, "comma-delimited IDs of unconditional peers")
 	cmd.Flags().Bool("p2p.upnp", config.P2P.UPNP, "enable/disable UPNP port forwarding")
 	cmd.Flags().Bool("p2p.pex", config.P2P.PexReactor, "enable/disable Peer-Exchange")
-	cmd.Flags().Bool("p2p.seed-mode", config.P2P.SeedMode, "enable/disable seed mode")
 	cmd.Flags().String("p2p.private-peer-ids", config.P2P.PrivatePeerIDs, "comma-delimited private peer IDs")
 
 	// consensus flags
@@ -83,7 +83,10 @@ func AddNodeFlags(cmd *cobra.Command) {
 		config.Consensus.CreateEmptyBlocksInterval.String(),
 		"the possible interval between empty blocks")
 
-	// db flags
+	addDBFlags(cmd)
+}
+
+func addDBFlags(cmd *cobra.Command) {
 	cmd.Flags().String(
 		"db-dir",
 		config.DBPath,
@@ -93,7 +96,7 @@ func AddNodeFlags(cmd *cobra.Command) {
 
 // NewRunNodeCmd returns the command that allows the CLI to start a node.
 // It can be used with a custom PrivValidator and in-process ABCI application.
-func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
+func NewRunNodeCmd(nodeProvider cfg.ServiceProvider) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "start",
 		Aliases: []string{"node", "run"},
@@ -115,7 +118,7 @@ func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
 				return fmt.Errorf("failed to start node: %w", err)
 			}
 
-			logger.Info("Started node", "nodeInfo", n.Switch().NodeInfo())
+			logger.Info("started node", "node", n.String())
 
 			// Stop upon receiving SIGTERM or CTRL-C.
 			tmos.TrapSignal(logger, func() {

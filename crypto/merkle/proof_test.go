@@ -176,6 +176,7 @@ func TestVoteProtobuf(t *testing.T) {
 		[]byte("watermelon"),
 		[]byte("kiwi"),
 	})
+
 	testCases := []struct {
 		testName string
 		v1       *Proof

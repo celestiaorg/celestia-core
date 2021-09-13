@@ -2,14 +2,26 @@ package coretypes
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	abci "github.com/celestiaorg/celestia-core/abci/types"
 	"github.com/celestiaorg/celestia-core/crypto"
 	"github.com/celestiaorg/celestia-core/libs/bytes"
-	"github.com/celestiaorg/celestia-core/p2p"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types"
+)
+
+// List of standardized errors used across RPC
+var (
+	ErrZeroOrNegativePerPage  = errors.New("zero or negative per_page")
+	ErrPageOutOfRange         = errors.New("page should be within range")
+	ErrZeroOrNegativeHeight   = errors.New("height must be greater than zero")
+	ErrHeightExceedsChainHead = errors.New("height must be less than or equal to the head of the node's blockchain")
+	ErrHeightNotAvailable     = errors.New("height is not available")
+	// ErrInvalidRequest is used as a wrapper to cover more specific cases where the user has
+	// made an invalid request
+	ErrInvalidRequest = errors.New("invalid request")
 )
 
 // List of blocks
@@ -21,6 +33,16 @@ type ResultBlockchainInfo struct {
 // Genesis file
 type ResultGenesis struct {
 	Genesis *types.GenesisDoc `json:"genesis"`
+}
+
+// ResultGenesisChunk is the output format for the chunked/paginated
+// interface. These chunks are produced by converting the genesis
+// document to JSON and then splitting the resulting payload into
+// 16 megabyte blocks and then base64 encoding each block.
+type ResultGenesisChunk struct {
+	ChunkNumber int    `json:"chunk"`
+	TotalChunks int    `json:"total"`
+	Data        string `json:"data"`
 }
 
 // Single block (with meta)
@@ -43,10 +65,11 @@ type ResultDataAvailabilityHeader struct {
 type ResultBlockResults struct {
 	Height                int64                     `json:"height"`
 	TxsResults            []*abci.ResponseDeliverTx `json:"txs_results"`
+	TotalGasUsed          int64                     `json:"total_gas_used"`
 	BeginBlockEvents      []abci.Event              `json:"begin_block_events"`
 	EndBlockEvents        []abci.Event              `json:"end_block_events"`
 	ValidatorUpdates      []abci.ValidatorUpdate    `json:"validator_updates"`
-	ConsensusParamUpdates *abci.ConsensusParams     `json:"consensus_param_updates"`
+	ConsensusParamUpdates *tmproto.ConsensusParams  `json:"consensus_param_updates"`
 }
 
 // NewResultCommit is a helper to initialize the ResultCommit with
@@ -75,7 +98,12 @@ type SyncInfo struct {
 	EarliestBlockHeight int64          `json:"earliest_block_height"`
 	EarliestBlockTime   time.Time      `json:"earliest_block_time"`
 
+	MaxPeerBlockHeight int64 `json:"max_peer_block_height"`
+
 	CatchingUp bool `json:"catching_up"`
+
+	TotalSyncedTime time.Duration `json:"total_synced_time"`
+	RemainingTime   time.Duration `json:"remaining_time"`
 }
 
 // Info about the node's validator
@@ -87,9 +115,9 @@ type ValidatorInfo struct {
 
 // Node Status
 type ResultStatus struct {
-	NodeInfo      p2p.DefaultNodeInfo `json:"node_info"`
-	SyncInfo      SyncInfo            `json:"sync_info"`
-	ValidatorInfo ValidatorInfo       `json:"validator_info"`
+	NodeInfo      types.NodeInfo `json:"node_info"`
+	SyncInfo      SyncInfo       `json:"sync_info"`
+	ValidatorInfo ValidatorInfo  `json:"validator_info"`
 }
 
 // Is TxIndexing enabled
@@ -120,10 +148,8 @@ type ResultDialPeers struct {
 
 // A peer
 type Peer struct {
-	NodeInfo         p2p.DefaultNodeInfo  `json:"node_info"`
-	IsOutbound       bool                 `json:"is_outbound"`
-	ConnectionStatus p2p.ConnectionStatus `json:"connection_status"`
-	RemoteIP         string               `json:"remote_ip"`
+	ID  types.NodeID `json:"node_id"`
+	URL string       `json:"url"`
 }
 
 // Validators for a height.
@@ -138,8 +164,8 @@ type ResultValidators struct {
 
 // ConsensusParams for given height
 type ResultConsensusParams struct {
-	BlockHeight     int64                   `json:"block_height"`
-	ConsensusParams tmproto.ConsensusParams `json:"consensus_params"`
+	BlockHeight     int64                 `json:"block_height"`
+	ConsensusParams types.ConsensusParams `json:"consensus_params"`
 }
 
 // Info about the consensus state.
@@ -162,10 +188,11 @@ type ResultConsensusState struct {
 
 // CheckTx result
 type ResultBroadcastTx struct {
-	Code      uint32         `json:"code"`
-	Data      bytes.HexBytes `json:"data"`
-	Log       string         `json:"log"`
-	Codespace string         `json:"codespace"`
+	Code         uint32         `json:"code"`
+	Data         bytes.HexBytes `json:"data"`
+	Log          string         `json:"log"`
+	Codespace    string         `json:"codespace"`
+	MempoolError string         `json:"mempool_error"`
 
 	Hash bytes.HexBytes `json:"hash"`
 }
@@ -197,6 +224,12 @@ type ResultTx struct {
 type ResultTxSearch struct {
 	Txs        []*ResultTx `json:"txs"`
 	TotalCount int         `json:"total_count"`
+}
+
+// ResultBlockSearch defines the RPC response type for a block search by events.
+type ResultBlockSearch struct {
+	Blocks     []*ResultBlock `json:"blocks"`
+	TotalCount int            `json:"total_count"`
 }
 
 // List of mempool txs
@@ -233,7 +266,8 @@ type (
 
 // Event data from a subscription
 type ResultEvent struct {
-	Query  string              `json:"query"`
-	Data   types.TMEventData   `json:"data"`
-	Events map[string][]string `json:"events"`
+	SubscriptionID string            `json:"subscription_id"`
+	Query          string            `json:"query"`
+	Data           types.TMEventData `json:"data"`
+	Events         []abci.Event      `json:"events"`
 }

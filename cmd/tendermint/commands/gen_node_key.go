@@ -6,21 +6,19 @@ import (
 	"github.com/spf13/cobra"
 
 	tmjson "github.com/celestiaorg/celestia-core/libs/json"
-	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 // GenNodeKeyCmd allows the generation of a node key. It prints JSON-encoded
 // NodeKey to the standard output.
 var GenNodeKeyCmd = &cobra.Command{
-	Use:     "gen-node-key",
-	Aliases: []string{"gen_node_key"},
-	Short:   "Generate a new node key",
-	RunE:    genNodeKey,
-	PreRun:  deprecateSnakeCase,
+	Use:   "gen-node-key",
+	Short: "Generate a new node key",
+	RunE:  genNodeKey,
 }
 
 func genNodeKey(cmd *cobra.Command, args []string) error {
-	nodeKey := p2p.GenNodeKey()
+	nodeKey := types.GenNodeKey()
 
 	bz, err := tmjson.Marshal(nodeKey)
 	if err != nil {

@@ -483,7 +483,7 @@ func MakeBlock(
 	lastCommit *Commit) *Block {
 	block := &Block{
 		Header: Header{
-			Version: tmversion.Consensus{Block: version.BlockProtocol, App: 0},
+			Version: version.Consensus{Block: version.BlockProtocol, App: 0},
 			Height:  height,
 		},
 		Data: Data{
@@ -507,10 +507,10 @@ func MakeBlock(
 // - https://github.com/tendermint/spec/blob/master/spec/blockchain/blockchain.md
 type Header struct {
 	// basic block info
-	Version tmversion.Consensus `json:"version"`
-	ChainID string              `json:"chain_id"`
-	Height  int64               `json:"height"`
-	Time    time.Time           `json:"time"`
+	Version version.Consensus `json:"version"`
+	ChainID string            `json:"chain_id"`
+	Height  int64             `json:"height"`
+	Time    time.Time         `json:"time"`
 
 	// prev block info
 	LastBlockID BlockID `json:"last_block_id"`
@@ -529,6 +529,7 @@ type Header struct {
 	ConsensusHash      tmbytes.HexBytes `json:"consensus_hash"`       // consensus params for current block
 	AppHash            tmbytes.HexBytes `json:"app_hash"`             // state after txs from the previous block
 	// root hash of all results from the txs from the previous block
+	// see `deterministicResponseDeliverTx` to understand which parts of a tx is hashed into here
 	LastResultsHash tmbytes.HexBytes `json:"last_results_hash"`
 
 	// consensus info
@@ -539,7 +540,7 @@ type Header struct {
 // Populate the Header with state-derived data.
 // Call this after MakeBlock to complete the Header.
 func (h *Header) Populate(
-	version tmversion.Consensus, chainID string,
+	version version.Consensus, chainID string,
 	timestamp time.Time, lastBlockID BlockID,
 	valHash, nextValHash []byte,
 	consensusHash, appHash, lastResultsHash []byte,
@@ -627,7 +628,8 @@ func (h *Header) Hash() tmbytes.HexBytes {
 	if h == nil || len(h.ValidatorsHash) == 0 {
 		return nil
 	}
-	hbz, err := h.Version.Marshal()
+	hpb := h.Version.ToProto()
+	hbz, err := hpb.Marshal()
 	if err != nil {
 		return nil
 	}
@@ -738,7 +740,7 @@ func HeaderFromProto(ph *tmproto.Header) (Header, error) {
 		return Header{}, err
 	}
 
-	h.Version = ph.Version
+	h.Version = version.Consensus{Block: ph.Version.Block, App: ph.Version.App}
 	h.ChainID = ph.ChainID
 	h.Height = ph.Height
 	h.Time = ph.Time
@@ -1547,7 +1549,7 @@ func (data *EvidenceData) SplitIntoShares() NamespacedShares {
 // BlockID
 type BlockID struct {
 	Hash          tmbytes.HexBytes `json:"hash"`
-	PartSetHeader PartSetHeader    `json:"part_set_header"`
+	PartSetHeader PartSetHeader    `json:"parts"`
 }
 
 // Equals returns true if the BlockID matches the given BlockID
@@ -1564,17 +1566,17 @@ func (blockID BlockID) Key() string {
 		panic(err)
 	}
 
-	return string(blockID.Hash) + string(bz)
+	return fmt.Sprint(string(blockID.Hash), string(bz))
 }
 
 // ValidateBasic performs basic validation.
 func (blockID BlockID) ValidateBasic() error {
 	// Hash can be empty in case of POLBlockID in Proposal.
 	if err := ValidateHash(blockID.Hash); err != nil {
-		return fmt.Errorf("wrong Hash")
+		return fmt.Errorf("wrong Hash: %w", err)
 	}
 	if err := blockID.PartSetHeader.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong PartSetHeader: %v", err)
+		return fmt.Errorf("wrong PartSetHeader: %w", err)
 	}
 	return nil
 }

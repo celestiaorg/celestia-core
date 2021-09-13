@@ -9,6 +9,9 @@ import (
 )
 
 func Start(testnet *e2e.Testnet) error {
+	if len(testnet.Nodes) == 0 {
+		return fmt.Errorf("no nodes in testnet")
+	}
 
 	// Nodes are already sorted by name. Sort them by name then startAt,
 	// which gives the overall order startAt, mode, name.
@@ -25,12 +28,11 @@ func Start(testnet *e2e.Testnet) error {
 		}
 		return false
 	})
+
 	sort.SliceStable(nodeQueue, func(i, j int) bool {
 		return nodeQueue[i].StartAt < nodeQueue[j].StartAt
 	})
-	if len(nodeQueue) == 0 {
-		return fmt.Errorf("no nodes in testnet")
-	}
+
 	if nodeQueue[0].StartAt > 0 {
 		return fmt.Errorf("no initial nodes in testnet")
 	}
@@ -43,42 +45,59 @@ func Start(testnet *e2e.Testnet) error {
 		if err := execCompose(testnet.Dir, "up", "-d", node.Name); err != nil {
 			return err
 		}
-		if _, err := waitForNode(node, 0, 15*time.Second); err != nil {
+		if _, err := waitForNode(node, 0, time.Minute); err != nil {
 			return err
 		}
+		node.HasStarted = true
 		logger.Info(fmt.Sprintf("Node %v up on http://127.0.0.1:%v", node.Name, node.ProxyPort))
 	}
 
+	networkHeight := testnet.InitialHeight
+
 	// Wait for initial height
-	logger.Info(fmt.Sprintf("Waiting for initial height %v...", testnet.InitialHeight))
-	block, blockID, err := waitForHeight(testnet, testnet.InitialHeight)
+	logger.Info("Waiting for initial height",
+		"height", networkHeight,
+		"nodes", len(testnet.Nodes)-len(nodeQueue),
+		"pending", len(nodeQueue))
+
+	block, blockID, err := waitForHeight(testnet, networkHeight)
 	if err != nil {
 		return err
 	}
 
-	// Update any state sync nodes with a trusted height and hash
 	for _, node := range nodeQueue {
-		if node.StateSync {
+		if node.StartAt > networkHeight {
+			// if we're starting a node that's ahead of
+			// the last known height of the network, then
+			// we should make sure that the rest of the
+			// network has reached at least the height
+			// that this node will start at before we
+			// start the node.
+
+			networkHeight = node.StartAt
+
+			block, blockID, err = waitForHeight(testnet, networkHeight)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Update any state sync nodes with a trusted height and hash
+		if node.StateSync != e2e.StateSyncDisabled || node.Mode == e2e.ModeLight {
 			err = UpdateConfigStateSync(node, block.Height, blockID.Hash.Bytes())
 			if err != nil {
 				return err
 			}
 		}
-	}
 
-	// Start up remaining nodes
-	for _, node := range nodeQueue {
-		logger.Info(fmt.Sprintf("Starting node %v at height %v...", node.Name, node.StartAt))
-		if _, _, err := waitForHeight(testnet, node.StartAt); err != nil {
-			return err
-		}
 		if err := execCompose(testnet.Dir, "up", "-d", node.Name); err != nil {
 			return err
 		}
-		status, err := waitForNode(node, node.StartAt, 3*time.Minute)
+		status, err := waitForNode(node, node.StartAt, 8*time.Minute)
 		if err != nil {
 			return err
 		}
+		node.HasStarted = true
 		logger.Info(fmt.Sprintf("Node %v up on http://127.0.0.1:%v at height %v",
 			node.Name, node.ProxyPort, status.SyncInfo.LatestBlockHeight))
 	}

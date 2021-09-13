@@ -4,17 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	abci "github.com/celestiaorg/celestia-core/abci/types"
 	cfg "github.com/celestiaorg/celestia-core/config"
 	"github.com/celestiaorg/celestia-core/libs/log"
 	tmnet "github.com/celestiaorg/celestia-core/libs/net"
+	"github.com/celestiaorg/celestia-core/libs/service"
 	nm "github.com/celestiaorg/celestia-core/node"
-	"github.com/celestiaorg/celestia-core/p2p"
-	"github.com/celestiaorg/celestia-core/privval"
 	"github.com/celestiaorg/celestia-core/proxy"
 	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
 	core_grpc "github.com/celestiaorg/celestia-core/rpc/grpc"
@@ -24,27 +21,18 @@ import (
 // Options helps with specifying some parameters for our RPC testing for greater
 // control.
 type Options struct {
-	suppressStdout  bool
-	recreateConfig  bool
-	loadIpfsPlugins bool
+	suppressStdout bool
 }
 
-var globalConfig *cfg.Config
-var defaultOptions = Options{
-	suppressStdout:  false,
-	recreateConfig:  false,
-	loadIpfsPlugins: true,
-}
-
-func waitForRPC() {
-	laddr := GetConfig().RPC.ListenAddress
+func waitForRPC(ctx context.Context, conf *cfg.Config) {
+	laddr := conf.RPC.ListenAddress
 	client, err := rpcclient.New(laddr)
 	if err != nil {
 		panic(err)
 	}
 	result := new(ctypes.ResultStatus)
 	for {
-		_, err := client.Call(context.Background(), "status", map[string]interface{}{}, result)
+		_, err := client.Call(ctx, "status", map[string]interface{}{}, result)
 		if err == nil {
 			return
 		}
@@ -54,26 +42,14 @@ func waitForRPC() {
 	}
 }
 
-func waitForGRPC() {
-	client := GetGRPCClient()
+func waitForGRPC(ctx context.Context, conf *cfg.Config) {
+	client := GetGRPCClient(conf)
 	for {
-		_, err := client.Ping(context.Background(), &core_grpc.RequestPing{})
+		_, err := client.Ping(ctx, &core_grpc.RequestPing{})
 		if err == nil {
 			return
 		}
 	}
-}
-
-// f**ing long, but unique for each test
-func makePathname() string {
-	// get path
-	p, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	// fmt.Println(p)
-	sep := string(filepath.Separator)
-	return strings.ReplaceAll(p, sep, "_")
 }
 
 func randPort() int {
@@ -90,9 +66,8 @@ func makeAddrs() (string, string, string) {
 		fmt.Sprintf("tcp://127.0.0.1:%d", randPort())
 }
 
-func createConfig() *cfg.Config {
-	pathname := makePathname()
-	c := cfg.ResetTestRoot(pathname)
+func CreateConfig(testName string) *cfg.Config {
+	c := cfg.ResetTestRoot(testName)
 
 	// and we use random ports to run in parallel
 	tm, rpc, grpc := makeAddrs()
@@ -103,85 +78,55 @@ func createConfig() *cfg.Config {
 	return c
 }
 
-// GetConfig returns a config for the test cases as a singleton
-func GetConfig(forceCreate ...bool) *cfg.Config {
-	if globalConfig == nil || (len(forceCreate) > 0 && forceCreate[0]) {
-		globalConfig = createConfig()
-	}
-	return globalConfig
-}
-
-func GetGRPCClient() core_grpc.BroadcastAPIClient {
-	grpcAddr := globalConfig.RPC.GRPCListenAddress
+func GetGRPCClient(conf *cfg.Config) core_grpc.BroadcastAPIClient {
+	grpcAddr := conf.RPC.GRPCListenAddress
 	return core_grpc.StartGRPCClient(grpcAddr)
 }
 
-// StartTendermint starts a test tendermint server in a go routine and returns when it is initialized
-func StartTendermint(app abci.Application, opts ...func(*Options)) *nm.Node {
-	nodeOpts := defaultOptions
+type ServiceCloser func(context.Context) error
+
+func StartTendermint(ctx context.Context,
+	conf *cfg.Config,
+	app abci.Application,
+	opts ...func(*Options)) (service.Service, ServiceCloser, error) {
+
+	nodeOpts := &Options{}
 	for _, opt := range opts {
-		opt(&nodeOpts)
+		opt(nodeOpts)
 	}
-	node := NewTendermint(app, &nodeOpts)
-	err := node.Start()
+	var logger log.Logger
+	if nodeOpts.suppressStdout {
+		logger = log.NewNopLogger()
+	} else {
+		logger = log.MustNewDefaultLogger(log.LogFormatPlain, log.LogLevelInfo, false)
+	}
+	papp := proxy.NewLocalClientCreator(app)
+	node, err := nm.New(conf, logger, papp, nil)
 	if err != nil {
-		panic(err)
+		return nil, func(_ context.Context) error { return nil }, err
+	}
+
+	err = node.Start()
+	if err != nil {
+		return nil, func(_ context.Context) error { return nil }, err
 	}
 
 	// wait for rpc
-	waitForRPC()
-	waitForGRPC()
+	waitForRPC(ctx, conf)
+	waitForGRPC(ctx, conf)
 
 	if !nodeOpts.suppressStdout {
 		fmt.Println("Tendermint running!")
 	}
 
-	return node
-}
-
-// StopTendermint stops a test tendermint server, waits until it's stopped and
-// cleans up test/config files.
-func StopTendermint(node *nm.Node) {
-	if err := node.Stop(); err != nil {
-		node.Logger.Error("Error when tryint to stop node", "err", err)
-	}
-	node.Wait()
-	os.RemoveAll(node.Config().RootDir)
-}
-
-// NewTendermint creates a new tendermint server and sleeps forever
-func NewTendermint(app abci.Application, opts *Options) *nm.Node {
-	// Create & start node
-	config := GetConfig(opts.recreateConfig)
-	var logger log.Logger
-	if opts.suppressStdout {
-		logger = log.NewNopLogger()
-	} else {
-		logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
-		logger = log.NewFilter(logger, log.AllowError())
-	}
-	pvKeyFile := config.PrivValidatorKeyFile()
-	pvKeyStateFile := config.PrivValidatorStateFile()
-	pv, err := privval.LoadOrGenFilePV(pvKeyFile, pvKeyStateFile)
-	if err != nil {
-		panic(err)
-	}
-	papp := proxy.NewLocalClientCreator(app)
-	nodeKey, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
-	if err != nil {
-		panic(err)
-	}
-
-	node, err := nm.NewNode(config, pv, nodeKey, papp,
-		nm.DefaultGenesisDocProviderFunc(config),
-		nm.InMemDBProvider,
-		nm.DefaultMetricsProvider(config.Instrumentation),
-		logger,
-	)
-	if err != nil {
-		panic(err)
-	}
-	return node
+	return node, func(ctx context.Context) error {
+		if err := node.Stop(); err != nil {
+			logger.Error("Error when trying to stop node", "err", err)
+		}
+		node.Wait()
+		os.RemoveAll(conf.RootDir)
+		return nil
+	}, nil
 }
 
 // SuppressStdout is an option that tries to make sure the RPC test Tendermint

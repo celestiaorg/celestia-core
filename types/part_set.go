@@ -7,11 +7,11 @@ import (
 	"io"
 
 	"github.com/celestiaorg/celestia-core/crypto/merkle"
+	tmsync "github.com/celestiaorg/celestia-core/internal/libs/sync"
 	"github.com/celestiaorg/celestia-core/libs/bits"
 	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
 	tmjson "github.com/celestiaorg/celestia-core/libs/json"
 	tmmath "github.com/celestiaorg/celestia-core/libs/math"
-	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 

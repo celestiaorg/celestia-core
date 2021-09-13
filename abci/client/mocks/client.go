@@ -842,3 +842,8 @@ func (_m *Client) String() string {
 
 	return r0
 }
+
+// Wait provides a mock function with given fields:
+func (_m *Client) Wait() {
+	_m.Called()
+}

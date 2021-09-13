@@ -3,13 +3,15 @@ package light_test
 import (
 	"time"
 
+	"github.com/stretchr/testify/mock"
+
 	"github.com/celestiaorg/celestia-core/crypto"
 	"github.com/celestiaorg/celestia-core/crypto/ed25519"
 	"github.com/celestiaorg/celestia-core/crypto/tmhash"
+	tmtime "github.com/celestiaorg/celestia-core/libs/time"
+	provider_mocks "github.com/celestiaorg/celestia-core/light/provider/mocks"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
-	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
 	"github.com/celestiaorg/celestia-core/types"
-	tmtime "github.com/celestiaorg/celestia-core/types/time"
 	"github.com/celestiaorg/celestia-core/version"
 )
 
@@ -125,7 +127,7 @@ func genHeader(chainID string, height int64, bTime time.Time, txs types.Txs,
 	valset, nextValset *types.ValidatorSet, appHash, consHash, resHash []byte) *types.Header {
 
 	return &types.Header{
-		Version: tmversion.Consensus{Block: version.BlockProtocol, App: 0},
+		Version: version.Consensus{Block: version.BlockProtocol, App: 0},
 		ChainID: chainID,
 		Height:  height,
 		Time:    bTime,
@@ -170,12 +172,12 @@ func (pkz privKeys) ChangeKeys(delta int) privKeys {
 	return newKeys.Extend(delta)
 }
 
-// Generates the header and validator set to create a full entire mock node with blocks to height (
-// blockSize) and with variation in validator sets. BlockIntervals are in per minute.
+// genLightBlocksWithKeys generates the header and validator set to create
+// blocks to height. BlockIntervals are in per minute.
 // NOTE: Expected to have a large validator set size ~ 100 validators.
-func genMockNodeWithKeys(
+func genLightBlocksWithKeys(
 	chainID string,
-	blockSize int64,
+	numBlocks int64,
 	valSize int,
 	valVariation float32,
 	bTime time.Time) (
@@ -184,9 +186,9 @@ func genMockNodeWithKeys(
 	map[int64]privKeys) {
 
 	var (
-		headers         = make(map[int64]*types.SignedHeader, blockSize)
-		valset          = make(map[int64]*types.ValidatorSet, blockSize+1)
-		keymap          = make(map[int64]privKeys, blockSize+1)
+		headers         = make(map[int64]*types.SignedHeader, numBlocks)
+		valset          = make(map[int64]*types.ValidatorSet, numBlocks+1)
+		keymap          = make(map[int64]privKeys, numBlocks+1)
 		keys            = genPrivKeys(valSize)
 		totalVariation  = valVariation
 		valVariationInt int
@@ -208,7 +210,7 @@ func genMockNodeWithKeys(
 	valset[1] = keys.ToValidators(2, 0)
 	keys = newKeys
 
-	for height := int64(2); height <= blockSize; height++ {
+	for height := int64(2); height <= numBlocks; height++ {
 		totalVariation += valVariation
 		valVariationInt = int(totalVariation)
 		totalVariation = -float32(valVariationInt)
@@ -227,17 +229,14 @@ func genMockNodeWithKeys(
 	return headers, valset, keymap
 }
 
-func genMockNode(
-	chainID string,
-	blockSize int64,
-	valSize int,
-	valVariation float32,
-	bTime time.Time) (
-	string,
-	map[int64]*types.SignedHeader,
-	map[int64]*types.ValidatorSet) {
-	headers, valset, _ := genMockNodeWithKeys(chainID, blockSize, valSize, valVariation, bTime)
-	return chainID, headers, valset
+func mockNodeFromHeadersAndVals(headers map[int64]*types.SignedHeader,
+	vals map[int64]*types.ValidatorSet) *provider_mocks.Provider {
+	mockNode := &provider_mocks.Provider{}
+	for i, header := range headers {
+		lb := &types.LightBlock{SignedHeader: header, ValidatorSet: vals[i]}
+		mockNode.On("LightBlock", mock.Anything, i).Return(lb, nil)
+	}
+	return mockNode
 }
 
 func hash(s string) []byte {

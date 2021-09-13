@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/types"
 )
 
 func TestStatusIndexer(t *testing.T) {
@@ -15,17 +15,17 @@ func TestStatusIndexer(t *testing.T) {
 	status = &ResultStatus{}
 	assert.False(t, status.TxIndexEnabled())
 
-	status.NodeInfo = p2p.DefaultNodeInfo{}
+	status.NodeInfo = types.NodeInfo{}
 	assert.False(t, status.TxIndexEnabled())
 
 	cases := []struct {
 		expected bool
-		other    p2p.DefaultNodeInfoOther
+		other    types.NodeInfoOther
 	}{
-		{false, p2p.DefaultNodeInfoOther{}},
-		{false, p2p.DefaultNodeInfoOther{TxIndex: "aa"}},
-		{false, p2p.DefaultNodeInfoOther{TxIndex: "off"}},
-		{true, p2p.DefaultNodeInfoOther{TxIndex: "on"}},
+		{false, types.NodeInfoOther{}},
+		{false, types.NodeInfoOther{TxIndex: "aa"}},
+		{false, types.NodeInfoOther{TxIndex: "off"}},
+		{true, types.NodeInfoOther{TxIndex: "on"}},
 	}
 
 	for _, tc := range cases {

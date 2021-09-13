@@ -18,13 +18,14 @@ import (
 const (
 	defaultAcceptRetries    = 100
 	defaultBindAddr         = "tcp://127.0.0.1:0"
-	defaultTMHome           = "~/.tendermint"
 	defaultAcceptDeadline   = 1
 	defaultConnDeadline     = 3
 	defaultExtractKeyOutput = "./signing.key"
 )
 
-var logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
+var defaultTMHome string
+
+var logger = log.MustNewDefaultLogger(log.LogFormatPlain, log.LogLevelInfo, false)
 
 // Command line flags
 var (
@@ -58,6 +59,14 @@ Available Commands:
 
 Use "tm-signer-harness help <command>" for more information about that command.`)
 		fmt.Println("")
+	}
+
+	hd, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println("The UserHomeDir is not defined, setting the default TM Home PATH to \"~/.tendermint\"")
+		defaultTMHome = "~/.tendermint"
+	} else {
+		defaultTMHome = fmt.Sprintf("%s/.tendermint", hd)
 	}
 
 	runCmd = flag.NewFlagSet("run", flag.ExitOnError)
@@ -134,7 +143,11 @@ func runTestHarness(acceptRetries int, bindAddr, tmhome string) {
 func extractKey(tmhome, outputPath string) {
 	keyFile := filepath.Join(internal.ExpandPath(tmhome), "config", "priv_validator_key.json")
 	stateFile := filepath.Join(internal.ExpandPath(tmhome), "data", "priv_validator_state.json")
-	fpv := privval.LoadFilePV(keyFile, stateFile)
+	fpv, err := privval.LoadFilePV(keyFile, stateFile)
+	if err != nil {
+		logger.Error("Can't load file pv", "err", err)
+		os.Exit(1)
+	}
 	pkb := []byte(fpv.Key.PrivKey.(ed25519.PrivKey))
 	if err := ioutil.WriteFile(internal.ExpandPath(outputPath), pkb[:32], 0600); err != nil {
 		logger.Info("Failed to write private key", "output", outputPath, "err", err)
@@ -152,8 +165,6 @@ func main() {
 		rootCmd.Usage()
 		os.Exit(0)
 	}
-
-	logger = log.NewFilter(logger, log.AllowInfo())
 
 	switch rootCmd.Arg(0) {
 	case "help":
@@ -181,7 +192,7 @@ func main() {
 		}
 		extractKey(flagTMHome, flagKeyOutputPath)
 	case "version":
-		fmt.Println(version.TMCoreSemVer)
+		fmt.Println(version.TMVersion)
 	default:
 		fmt.Printf("Unrecognized command: %s\n", flag.Arg(0))
 		os.Exit(1)

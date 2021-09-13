@@ -1,7 +1,7 @@
 package state
 
 import (
-	mempl "github.com/celestiaorg/celestia-core/mempool"
+	mempl "github.com/celestiaorg/celestia-core/internal/mempool"
 	"github.com/celestiaorg/celestia-core/types"
 )
 

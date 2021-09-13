@@ -30,6 +30,8 @@ func TestEnsureRoot(t *testing.T) {
 	// create root dir
 	EnsureRoot(tmpDir)
 
+	WriteConfigFile(tmpDir, DefaultConfig())
+
 	// make sure config is set properly
 	data, err := ioutil.ReadFile(filepath.Join(tmpDir, defaultConfigFilePath))
 	require.Nil(err)
@@ -61,7 +63,8 @@ func TestEnsureTestRoot(t *testing.T) {
 
 	// TODO: make sure the cfg returned and testconfig are the same!
 	baseConfig := DefaultBaseConfig()
-	ensureFiles(t, rootDir, defaultDataDir, baseConfig.Genesis, baseConfig.PrivValidatorKey, baseConfig.PrivValidatorState)
+	pvConfig := DefaultPrivValidatorConfig()
+	ensureFiles(t, rootDir, defaultDataDir, baseConfig.Genesis, pvConfig.Key, pvConfig.State)
 }
 
 func checkConfig(configFile string) bool {
@@ -71,7 +74,7 @@ func checkConfig(configFile string) bool {
 	var elems = []string{
 		"moniker",
 		"seeds",
-		"proxy_app",
+		"proxy-app",
 		"fast_sync",
 		"create_empty_blocks",
 		"peer",

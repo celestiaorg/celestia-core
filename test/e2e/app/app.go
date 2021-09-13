@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/celestiaorg/celestia-core/abci/example/code"
 	abci "github.com/celestiaorg/celestia-core/abci/types"
@@ -38,7 +38,7 @@ func NewApplication(cfg *Config) (*Application, error) {
 		return nil, err
 	}
 	return &Application{
-		logger:    log.NewTMLogger(log.NewSyncWriter(os.Stdout)),
+		logger:    log.MustNewDefaultLogger(log.LogFormatPlain, log.LogLevelInfo, false),
 		state:     state,
 		snapshots: snapshots,
 		cfg:       cfg,
@@ -98,12 +98,29 @@ func (app *Application) DeliverTx(req abci.RequestDeliverTx) abci.ResponseDelive
 
 // EndBlock implements ABCI.
 func (app *Application) EndBlock(req abci.RequestEndBlock) abci.ResponseEndBlock {
-	var err error
-	resp := abci.ResponseEndBlock{}
-	if resp.ValidatorUpdates, err = app.validatorUpdates(uint64(req.Height)); err != nil {
+	valUpdates, err := app.validatorUpdates(uint64(req.Height))
+	if err != nil {
 		panic(err)
 	}
-	return resp
+
+	return abci.ResponseEndBlock{
+		ValidatorUpdates: valUpdates,
+		Events: []abci.Event{
+			{
+				Type: "val_updates",
+				Attributes: []abci.EventAttribute{
+					{
+						Key:   "size",
+						Value: strconv.Itoa(valUpdates.Len()),
+					},
+					{
+						Key:   "height",
+						Value: strconv.Itoa(int(req.Height)),
+					},
+				},
+			},
+		},
+	}
 }
 
 // Commit implements ABCI.

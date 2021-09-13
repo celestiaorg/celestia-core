@@ -30,10 +30,10 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 // ConsensusParams contains consensus critical parameters that determine the
 // validity of blocks.
 type ConsensusParams struct {
-	Block     BlockParams     `protobuf:"bytes,1,opt,name=block,proto3" json:"block"`
-	Evidence  EvidenceParams  `protobuf:"bytes,2,opt,name=evidence,proto3" json:"evidence"`
-	Validator ValidatorParams `protobuf:"bytes,3,opt,name=validator,proto3" json:"validator"`
-	Version   VersionParams   `protobuf:"bytes,4,opt,name=version,proto3" json:"version"`
+	Block     *BlockParams     `protobuf:"bytes,1,opt,name=block,proto3" json:"block,omitempty"`
+	Evidence  *EvidenceParams  `protobuf:"bytes,2,opt,name=evidence,proto3" json:"evidence,omitempty"`
+	Validator *ValidatorParams `protobuf:"bytes,3,opt,name=validator,proto3" json:"validator,omitempty"`
+	Version   *VersionParams   `protobuf:"bytes,4,opt,name=version,proto3" json:"version,omitempty"`
 }
 
 func (m *ConsensusParams) Reset()         { *m = ConsensusParams{} }
@@ -69,32 +69,32 @@ func (m *ConsensusParams) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_ConsensusParams proto.InternalMessageInfo
 
-func (m *ConsensusParams) GetBlock() BlockParams {
+func (m *ConsensusParams) GetBlock() *BlockParams {
 	if m != nil {
 		return m.Block
 	}
-	return BlockParams{}
+	return nil
 }
 
-func (m *ConsensusParams) GetEvidence() EvidenceParams {
+func (m *ConsensusParams) GetEvidence() *EvidenceParams {
 	if m != nil {
 		return m.Evidence
 	}
-	return EvidenceParams{}
+	return nil
 }
 
-func (m *ConsensusParams) GetValidator() ValidatorParams {
+func (m *ConsensusParams) GetValidator() *ValidatorParams {
 	if m != nil {
 		return m.Validator
 	}
-	return ValidatorParams{}
+	return nil
 }
 
-func (m *ConsensusParams) GetVersion() VersionParams {
+func (m *ConsensusParams) GetVersion() *VersionParams {
 	if m != nil {
 		return m.Version
 	}
-	return VersionParams{}
+	return nil
 }
 
 // BlockParams contains limits on the block size.
@@ -105,11 +105,6 @@ type BlockParams struct {
 	// Max gas per block.
 	// Note: must be greater or equal to -1
 	MaxGas int64 `protobuf:"varint,2,opt,name=max_gas,json=maxGas,proto3" json:"max_gas,omitempty"`
-	// Minimum time increment between consecutive blocks (in milliseconds) If the
-	// block header timestamp is ahead of the system clock, decrease this value.
-	//
-	// Not exposed to the application.
-	TimeIotaMs int64 `protobuf:"varint,3,opt,name=time_iota_ms,json=timeIotaMs,proto3" json:"time_iota_ms,omitempty"`
 }
 
 func (m *BlockParams) Reset()         { *m = BlockParams{} }
@@ -155,13 +150,6 @@ func (m *BlockParams) GetMaxBytes() int64 {
 func (m *BlockParams) GetMaxGas() int64 {
 	if m != nil {
 		return m.MaxGas
-	}
-	return 0
-}
-
-func (m *BlockParams) GetTimeIotaMs() int64 {
-	if m != nil {
-		return m.TimeIotaMs
 	}
 	return 0
 }
@@ -454,16 +442,16 @@ func (this *ConsensusParams) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
-	if !this.Block.Equal(&that1.Block) {
+	if !this.Block.Equal(that1.Block) {
 		return false
 	}
-	if !this.Evidence.Equal(&that1.Evidence) {
+	if !this.Evidence.Equal(that1.Evidence) {
 		return false
 	}
-	if !this.Validator.Equal(&that1.Validator) {
+	if !this.Validator.Equal(that1.Validator) {
 		return false
 	}
-	if !this.Version.Equal(&that1.Version) {
+	if !this.Version.Equal(that1.Version) {
 		return false
 	}
 	return true
@@ -491,9 +479,6 @@ func (this *BlockParams) Equal(that interface{}) bool {
 		return false
 	}
 	if this.MaxGas != that1.MaxGas {
-		return false
-	}
-	if this.TimeIotaMs != that1.TimeIotaMs {
 		return false
 	}
 	return true
@@ -628,46 +613,54 @@ func (m *ConsensusParams) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	{
-		size, err := m.Version.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
+	if m.Version != nil {
+		{
+			size, err := m.Version.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintParams(dAtA, i, uint64(size))
 		}
-		i -= size
-		i = encodeVarintParams(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x22
 	}
-	i--
-	dAtA[i] = 0x22
-	{
-		size, err := m.Validator.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
+	if m.Validator != nil {
+		{
+			size, err := m.Validator.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintParams(dAtA, i, uint64(size))
 		}
-		i -= size
-		i = encodeVarintParams(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
 	}
-	i--
-	dAtA[i] = 0x1a
-	{
-		size, err := m.Evidence.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
+	if m.Evidence != nil {
+		{
+			size, err := m.Evidence.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintParams(dAtA, i, uint64(size))
 		}
-		i -= size
-		i = encodeVarintParams(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
 	}
-	i--
-	dAtA[i] = 0x12
-	{
-		size, err := m.Block.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
+	if m.Block != nil {
+		{
+			size, err := m.Block.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintParams(dAtA, i, uint64(size))
 		}
-		i -= size
-		i = encodeVarintParams(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
 	}
-	i--
-	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
 }
 
@@ -691,11 +684,6 @@ func (m *BlockParams) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.TimeIotaMs != 0 {
-		i = encodeVarintParams(dAtA, i, uint64(m.TimeIotaMs))
-		i--
-		dAtA[i] = 0x18
-	}
 	if m.MaxGas != 0 {
 		i = encodeVarintParams(dAtA, i, uint64(m.MaxGas))
 		i--
@@ -854,112 +842,28 @@ func encodeVarintParams(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
-func NewPopulatedValidatorParams(r randyParams, easy bool) *ValidatorParams {
-	this := &ValidatorParams{}
-	v1 := r.Intn(10)
-	this.PubKeyTypes = make([]string, v1)
-	for i := 0; i < v1; i++ {
-		this.PubKeyTypes[i] = string(randStringParams(r))
-	}
-	if !easy && r.Intn(10) != 0 {
-	}
-	return this
-}
-
-func NewPopulatedVersionParams(r randyParams, easy bool) *VersionParams {
-	this := &VersionParams{}
-	this.AppVersion = uint64(uint64(r.Uint32()))
-	if !easy && r.Intn(10) != 0 {
-	}
-	return this
-}
-
-type randyParams interface {
-	Float32() float32
-	Float64() float64
-	Int63() int64
-	Int31() int32
-	Uint32() uint32
-	Intn(n int) int
-}
-
-func randUTF8RuneParams(r randyParams) rune {
-	ru := r.Intn(62)
-	if ru < 10 {
-		return rune(ru + 48)
-	} else if ru < 36 {
-		return rune(ru + 55)
-	}
-	return rune(ru + 61)
-}
-func randStringParams(r randyParams) string {
-	v2 := r.Intn(100)
-	tmps := make([]rune, v2)
-	for i := 0; i < v2; i++ {
-		tmps[i] = randUTF8RuneParams(r)
-	}
-	return string(tmps)
-}
-func randUnrecognizedParams(r randyParams, maxFieldNumber int) (dAtA []byte) {
-	l := r.Intn(5)
-	for i := 0; i < l; i++ {
-		wire := r.Intn(4)
-		if wire == 3 {
-			wire = 5
-		}
-		fieldNumber := maxFieldNumber + r.Intn(100)
-		dAtA = randFieldParams(dAtA, r, fieldNumber, wire)
-	}
-	return dAtA
-}
-func randFieldParams(dAtA []byte, r randyParams, fieldNumber int, wire int) []byte {
-	key := uint32(fieldNumber)<<3 | uint32(wire)
-	switch wire {
-	case 0:
-		dAtA = encodeVarintPopulateParams(dAtA, uint64(key))
-		v3 := r.Int63()
-		if r.Intn(2) == 0 {
-			v3 *= -1
-		}
-		dAtA = encodeVarintPopulateParams(dAtA, uint64(v3))
-	case 1:
-		dAtA = encodeVarintPopulateParams(dAtA, uint64(key))
-		dAtA = append(dAtA, byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)))
-	case 2:
-		dAtA = encodeVarintPopulateParams(dAtA, uint64(key))
-		ll := r.Intn(100)
-		dAtA = encodeVarintPopulateParams(dAtA, uint64(ll))
-		for j := 0; j < ll; j++ {
-			dAtA = append(dAtA, byte(r.Intn(256)))
-		}
-	default:
-		dAtA = encodeVarintPopulateParams(dAtA, uint64(key))
-		dAtA = append(dAtA, byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)), byte(r.Intn(256)))
-	}
-	return dAtA
-}
-func encodeVarintPopulateParams(dAtA []byte, v uint64) []byte {
-	for v >= 1<<7 {
-		dAtA = append(dAtA, uint8(uint64(v)&0x7f|0x80))
-		v >>= 7
-	}
-	dAtA = append(dAtA, uint8(v))
-	return dAtA
-}
 func (m *ConsensusParams) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	l = m.Block.Size()
-	n += 1 + l + sovParams(uint64(l))
-	l = m.Evidence.Size()
-	n += 1 + l + sovParams(uint64(l))
-	l = m.Validator.Size()
-	n += 1 + l + sovParams(uint64(l))
-	l = m.Version.Size()
-	n += 1 + l + sovParams(uint64(l))
+	if m.Block != nil {
+		l = m.Block.Size()
+		n += 1 + l + sovParams(uint64(l))
+	}
+	if m.Evidence != nil {
+		l = m.Evidence.Size()
+		n += 1 + l + sovParams(uint64(l))
+	}
+	if m.Validator != nil {
+		l = m.Validator.Size()
+		n += 1 + l + sovParams(uint64(l))
+	}
+	if m.Version != nil {
+		l = m.Version.Size()
+		n += 1 + l + sovParams(uint64(l))
+	}
 	return n
 }
 
@@ -974,9 +878,6 @@ func (m *BlockParams) Size() (n int) {
 	}
 	if m.MaxGas != 0 {
 		n += 1 + sovParams(uint64(m.MaxGas))
-	}
-	if m.TimeIotaMs != 0 {
-		n += 1 + sovParams(uint64(m.TimeIotaMs))
 	}
 	return n
 }
@@ -1104,6 +1005,9 @@ func (m *ConsensusParams) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
+			if m.Block == nil {
+				m.Block = &BlockParams{}
+			}
 			if err := m.Block.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -1136,6 +1040,9 @@ func (m *ConsensusParams) Unmarshal(dAtA []byte) error {
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
+			}
+			if m.Evidence == nil {
+				m.Evidence = &EvidenceParams{}
 			}
 			if err := m.Evidence.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -1170,6 +1077,9 @@ func (m *ConsensusParams) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
+			if m.Validator == nil {
+				m.Validator = &ValidatorParams{}
+			}
 			if err := m.Validator.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -1203,6 +1113,9 @@ func (m *ConsensusParams) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
+			if m.Version == nil {
+				m.Version = &VersionParams{}
+			}
 			if err := m.Version.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -1213,10 +1126,7 @@ func (m *ConsensusParams) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthParams
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthParams
 			}
 			if (iNdEx + skippy) > l {
@@ -1298,35 +1208,13 @@ func (m *BlockParams) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TimeIotaMs", wireType)
-			}
-			m.TimeIotaMs = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowParams
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.TimeIotaMs |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipParams(dAtA[iNdEx:])
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthParams
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthParams
 			}
 			if (iNdEx + skippy) > l {
@@ -1447,10 +1335,7 @@ func (m *EvidenceParams) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthParams
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthParams
 			}
 			if (iNdEx + skippy) > l {
@@ -1532,10 +1417,7 @@ func (m *ValidatorParams) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthParams
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthParams
 			}
 			if (iNdEx + skippy) > l {
@@ -1604,10 +1486,7 @@ func (m *VersionParams) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthParams
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthParams
 			}
 			if (iNdEx + skippy) > l {
@@ -1695,10 +1574,7 @@ func (m *HashedParams) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if skippy < 0 {
-				return ErrInvalidLengthParams
-			}
-			if (iNdEx + skippy) < 0 {
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
 				return ErrInvalidLengthParams
 			}
 			if (iNdEx + skippy) > l {

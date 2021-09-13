@@ -5,31 +5,43 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/internal/p2p"
 	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
 	rpctypes "github.com/celestiaorg/celestia-core/rpc/jsonrpc/types"
 )
 
 // NetInfo returns network info.
 // More: https://docs.tendermint.com/master/rpc/#/Info/net_info
-func NetInfo(ctx *rpctypes.Context) (*ctypes.ResultNetInfo, error) {
-	peersList := env.P2PPeers.Peers().List()
-	peers := make([]ctypes.Peer, 0, len(peersList))
-	for _, peer := range peersList {
-		nodeInfo, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
-		if !ok {
-			return nil, fmt.Errorf("peer.NodeInfo() is not DefaultNodeInfo")
+func (env *Environment) NetInfo(ctx *rpctypes.Context) (*ctypes.ResultNetInfo, error) {
+	var peers []ctypes.Peer
+
+	switch {
+	case env.P2PPeers != nil:
+		peersList := env.P2PPeers.Peers().List()
+		peers = make([]ctypes.Peer, 0, len(peersList))
+		for _, peer := range peersList {
+			peers = append(peers, ctypes.Peer{
+				ID:  peer.ID(),
+				URL: peer.SocketAddr().String(),
+			})
 		}
-		peers = append(peers, ctypes.Peer{
-			NodeInfo:         nodeInfo,
-			IsOutbound:       peer.IsOutbound(),
-			ConnectionStatus: peer.Status(),
-			RemoteIP:         peer.RemoteIP().String(),
-		})
+	case env.PeerManager != nil:
+		peerList := env.PeerManager.Peers()
+		for _, peer := range peerList {
+			addrs := env.PeerManager.Addresses(peer)
+			if len(addrs) == 0 {
+				continue
+			}
+
+			peers = append(peers, ctypes.Peer{
+				ID:  peer,
+				URL: addrs[0].String(),
+			})
+		}
+	default:
+		return nil, errors.New("peer management system does not support NetInfo responses")
 	}
-	// TODO: Should we include PersistentPeers and Seeds in here?
-	// PRO: useful info
-	// CON: privacy
+
 	return &ctypes.ResultNetInfo{
 		Listening: env.P2PTransport.IsListening(),
 		Listeners: env.P2PTransport.Listeners(),
@@ -39,9 +51,13 @@ func NetInfo(ctx *rpctypes.Context) (*ctypes.ResultNetInfo, error) {
 }
 
 // UnsafeDialSeeds dials the given seeds (comma-separated id@IP:PORT).
-func UnsafeDialSeeds(ctx *rpctypes.Context, seeds []string) (*ctypes.ResultDialSeeds, error) {
+func (env *Environment) UnsafeDialSeeds(ctx *rpctypes.Context, seeds []string) (*ctypes.ResultDialSeeds, error) {
+	if env.P2PPeers == nil {
+		return nil, errors.New("peer management system does not support this operation")
+	}
+
 	if len(seeds) == 0 {
-		return &ctypes.ResultDialSeeds{}, errors.New("no seeds provided")
+		return &ctypes.ResultDialSeeds{}, fmt.Errorf("%w: no seeds provided", ctypes.ErrInvalidRequest)
 	}
 	env.Logger.Info("DialSeeds", "seeds", seeds)
 	if err := env.P2PPeers.DialPeersAsync(seeds); err != nil {
@@ -52,10 +68,17 @@ func UnsafeDialSeeds(ctx *rpctypes.Context, seeds []string) (*ctypes.ResultDialS
 
 // UnsafeDialPeers dials the given peers (comma-separated id@IP:PORT),
 // optionally making them persistent.
-func UnsafeDialPeers(ctx *rpctypes.Context, peers []string, persistent, unconditional, private bool) (
-	*ctypes.ResultDialPeers, error) {
+func (env *Environment) UnsafeDialPeers(
+	ctx *rpctypes.Context,
+	peers []string,
+	persistent, unconditional, private bool) (*ctypes.ResultDialPeers, error) {
+
+	if env.P2PPeers == nil {
+		return nil, errors.New("peer management system does not support this operation")
+	}
+
 	if len(peers) == 0 {
-		return &ctypes.ResultDialPeers{}, errors.New("no peers provided")
+		return &ctypes.ResultDialPeers{}, fmt.Errorf("%w: no peers provided", ctypes.ErrInvalidRequest)
 	}
 
 	ids, err := getIDs(peers)
@@ -93,8 +116,34 @@ func UnsafeDialPeers(ctx *rpctypes.Context, peers []string, persistent, uncondit
 
 // Genesis returns genesis file.
 // More: https://docs.tendermint.com/master/rpc/#/Info/genesis
-func Genesis(ctx *rpctypes.Context) (*ctypes.ResultGenesis, error) {
+func (env *Environment) Genesis(ctx *rpctypes.Context) (*ctypes.ResultGenesis, error) {
+	if len(env.genChunks) > 1 {
+		return nil, errors.New("genesis response is large, please use the genesis_chunked API instead")
+	}
+
 	return &ctypes.ResultGenesis{Genesis: env.GenDoc}, nil
+}
+
+func (env *Environment) GenesisChunked(ctx *rpctypes.Context, chunk uint) (*ctypes.ResultGenesisChunk, error) {
+	if env.genChunks == nil {
+		return nil, fmt.Errorf("service configuration error, genesis chunks are not initialized")
+	}
+
+	if len(env.genChunks) == 0 {
+		return nil, fmt.Errorf("service configuration error, there are no chunks")
+	}
+
+	id := int(chunk)
+
+	if id > len(env.genChunks)-1 {
+		return nil, fmt.Errorf("there are %d chunks, %d is invalid", len(env.genChunks)-1, id)
+	}
+
+	return &ctypes.ResultGenesisChunk{
+		TotalChunks: len(env.genChunks),
+		ChunkNumber: id,
+		Data:        env.genChunks[id],
+	}, nil
 }
 
 func getIDs(peers []string) ([]string, error) {

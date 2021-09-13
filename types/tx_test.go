@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	ctest "github.com/celestiaorg/celestia-core/internal/libs/test"
 	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
-	ctest "github.com/celestiaorg/celestia-core/libs/test"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 

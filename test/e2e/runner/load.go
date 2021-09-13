@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/ring"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -13,9 +14,10 @@ import (
 	"github.com/celestiaorg/celestia-core/types"
 )
 
-// Load generates transactions against the network until the given
-// context is cancelled.
-func Load(ctx context.Context, testnet *e2e.Testnet) error {
+// Load generates transactions against the network until the given context is
+// canceled. A multiplier of greater than one can be supplied if load needs to
+// be generated beyond a minimum amount.
+func Load(ctx context.Context, testnet *e2e.Testnet, multiplier int) error {
 	// Since transactions are executed across all nodes in the network, we need
 	// to reduce transaction load for larger networks to avoid using too much
 	// CPU. This gives high-throughput small networks and low-throughput large ones.
@@ -37,7 +39,7 @@ func Load(ctx context.Context, testnet *e2e.Testnet) error {
 	logger.Info(fmt.Sprintf("Starting transaction load (%v workers)...", concurrency))
 	started := time.Now()
 
-	go loadGenerate(ctx, chTx)
+	go loadGenerate(ctx, chTx, multiplier, testnet.TxSize)
 
 	for w := 0; w < concurrency; w++ {
 		go loadProcess(ctx, testnet, chTx, chSuccess)
@@ -64,14 +66,14 @@ func Load(ctx context.Context, testnet *e2e.Testnet) error {
 	}
 }
 
-// loadGenerate generates jobs until the context is cancelled
-func loadGenerate(ctx context.Context, chTx chan<- types.Tx) {
+// loadGenerate generates jobs until the context is canceled
+func loadGenerate(ctx context.Context, chTx chan<- types.Tx, multiplier int, size int64) {
 	for i := 0; i < math.MaxInt64; i++ {
-		// We keep generating the same 1000 keys over and over, with different values.
+		// We keep generating the same 100 keys over and over, with different values.
 		// This gives a reasonable load without putting too much data in the app.
-		id := i % 1000
+		id := i % 100
 
-		bz := make([]byte, 2048) // 4kb hex-encoded
+		bz := make([]byte, size)
 		_, err := rand.Read(bz)
 		if err != nil {
 			panic(fmt.Sprintf("Failed to read random bytes: %v", err))
@@ -80,7 +82,9 @@ func loadGenerate(ctx context.Context, chTx chan<- types.Tx) {
 
 		select {
 		case chTx <- tx:
-			time.Sleep(10 * time.Millisecond)
+			sqrtSize := int(math.Sqrt(float64(size)))
+			time.Sleep(10 * time.Millisecond * time.Duration(sqrtSize/multiplier))
+
 		case <-ctx.Done():
 			close(chTx)
 			return
@@ -90,25 +94,64 @@ func loadGenerate(ctx context.Context, chTx chan<- types.Tx) {
 
 // loadProcess processes transactions
 func loadProcess(ctx context.Context, testnet *e2e.Testnet, chTx <-chan types.Tx, chSuccess chan<- types.Tx) {
-	// Each worker gets its own client to each node, which allows for some
-	// concurrency while still bounding it.
-	clients := map[string]*rpchttp.HTTP{}
+	// Each worker gets its own client to each usable node, which
+	// allows for some concurrency while still bounding it.
+	clients := make([]*rpchttp.HTTP, 0, len(testnet.Nodes))
 
-	var err error
-	for tx := range chTx {
-		node := testnet.RandomNode()
-		client, ok := clients[node.Name]
-		if !ok {
-			client, err = node.Client()
-			if err != nil {
-				continue
-			}
-			clients[node.Name] = client
+	for idx := range testnet.Nodes {
+		// Construct a list of usable nodes for the creating
+		// load. Don't send load through seed nodes because
+		// they do not provide the RPC endpoints required to
+		// broadcast transaction.
+		if testnet.Nodes[idx].Mode == e2e.ModeSeed {
+			continue
 		}
-		_, err = client.BroadcastTxCommit(ctx, tx)
+
+		client, err := testnet.Nodes[idx].Client()
 		if err != nil {
 			continue
 		}
-		chSuccess <- tx
+
+		clients = append(clients, client)
+	}
+
+	if len(clients) == 0 {
+		panic("no clients to process load")
+	}
+
+	// Put the clients in a ring so they can be used in a
+	// round-robin fashion.
+	clientRing := ring.New(len(clients))
+	for idx := range clients {
+		clientRing.Value = clients[idx]
+		clientRing = clientRing.Next()
+	}
+
+	var err error
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case tx := <-chTx:
+			clientRing = clientRing.Next()
+			client := clientRing.Value.(*rpchttp.HTTP)
+
+			if _, err := client.Health(ctx); err != nil {
+				continue
+			}
+
+			if _, err = client.BroadcastTxSync(ctx, tx); err != nil {
+				continue
+			}
+
+			select {
+			case chSuccess <- tx:
+				continue
+			case <-ctx.Done():
+				return
+			}
+
+		}
 	}
 }

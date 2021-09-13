@@ -14,8 +14,8 @@ import (
 	"time"
 
 	gogotypes "github.com/gogo/protobuf/types"
-	"github.com/gtank/merlin"
 	pool "github.com/libp2p/go-buffer-pool"
+	"github.com/oasisprotocol/curve25519-voi/primitives/merlin"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/hkdf"
@@ -24,9 +24,9 @@ import (
 	"github.com/celestiaorg/celestia-core/crypto"
 	"github.com/celestiaorg/celestia-core/crypto/ed25519"
 	cryptoenc "github.com/celestiaorg/celestia-core/crypto/encoding"
+	"github.com/celestiaorg/celestia-core/internal/libs/protoio"
+	tmsync "github.com/celestiaorg/celestia-core/internal/libs/sync"
 	"github.com/celestiaorg/celestia-core/libs/async"
-	"github.com/celestiaorg/celestia-core/libs/protoio"
-	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 	tmprivval "github.com/celestiaorg/celestia-core/proto/tendermint/privval"
 )
 
@@ -42,15 +42,15 @@ const (
 	aeadSizeOverhead = 16 // overhead of poly 1305 authentication tag
 	aeadKeySize      = chacha20poly1305.KeySize
 	aeadNonceSize    = chacha20poly1305.NonceSize
+
+	labelEphemeralLowerPublicKey = "EPHEMERAL_LOWER_PUBLIC_KEY"
+	labelEphemeralUpperPublicKey = "EPHEMERAL_UPPER_PUBLIC_KEY"
+	labelDHSecret                = "DH_SECRET"
+	labelSecretConnectionMac     = "SECRET_CONNECTION_MAC"
 )
 
 var (
 	ErrSmallOrderRemotePubKey = errors.New("detected low order point from remote peer")
-
-	labelEphemeralLowerPublicKey = []byte("EPHEMERAL_LOWER_PUBLIC_KEY")
-	labelEphemeralUpperPublicKey = []byte("EPHEMERAL_UPPER_PUBLIC_KEY")
-	labelDHSecret                = []byte("DH_SECRET")
-	labelSecretConnectionMac     = []byte("SECRET_CONNECTION_MAC")
 
 	secretConnKeyAndChallengeGen = []byte("TENDERMINT_SECRET_CONNECTION_KEY_AND_CHALLENGE_GEN")
 )
@@ -136,9 +136,7 @@ func MakeSecretConnection(conn io.ReadWriteCloser, locPrivKey crypto.PrivKey) (*
 
 	const challengeSize = 32
 	var challenge [challengeSize]byte
-	challengeSlice := transcript.ExtractBytes(labelSecretConnectionMac, challengeSize)
-
-	copy(challenge[:], challengeSlice[0:challengeSize])
+	transcript.ExtractBytes(challenge[:], labelSecretConnectionMac)
 
 	sendAead, err := chacha20poly1305.New(sendSecret[:])
 	if err != nil {
@@ -316,7 +314,7 @@ func shareEphPubKey(conn io.ReadWriter, locEphPub *[32]byte) (remEphPub *[32]byt
 		},
 		func(_ int) (val interface{}, abort bool, err error) {
 			var bytes gogotypes.BytesValue
-			err = protoio.NewDelimitedReader(conn, 1024*1024).ReadMsg(&bytes)
+			_, err = protoio.NewDelimitedReader(conn, 1024*1024).ReadMsg(&bytes)
 			if err != nil {
 				return nil, true, err // abort
 			}
@@ -422,7 +420,7 @@ func shareAuthSignature(sc io.ReadWriter, pubKey crypto.PubKey, signature []byte
 		},
 		func(_ int) (val interface{}, abort bool, err error) {
 			var pba tmprivval.AuthSigMessage
-			err = protoio.NewDelimitedReader(sc, 1024*1024).ReadMsg(&pba)
+			_, err = protoio.NewDelimitedReader(sc, 1024*1024).ReadMsg(&pba)
 			if err != nil {
 				return nil, true, err // abort
 			}

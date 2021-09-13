@@ -9,10 +9,10 @@ import (
 	"runtime"
 
 	"github.com/celestiaorg/celestia-core/abci/types"
+	tmsync "github.com/celestiaorg/celestia-core/internal/libs/sync"
 	tmlog "github.com/celestiaorg/celestia-core/libs/log"
 	tmnet "github.com/celestiaorg/celestia-core/libs/net"
 	"github.com/celestiaorg/celestia-core/libs/service"
-	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
 )
 
 // var maxNumberConnections = 2

@@ -29,7 +29,7 @@ func TestEventBusPublishEventTx(t *testing.T) {
 	result := abci.ResponseDeliverTx{
 		Data: []byte("bar"),
 		Events: []abci.Event{
-			{Type: "testType", Attributes: []abci.EventAttribute{{Key: []byte("baz"), Value: []byte("1")}}},
+			{Type: "testType", Attributes: []abci.EventAttribute{{Key: "baz", Value: "1"}}},
 		},
 	}
 
@@ -77,12 +77,12 @@ func TestEventBusPublishEventNewBlock(t *testing.T) {
 	block := MakeBlock(0, []Tx{}, []Evidence{}, nil, Messages{}, nil)
 	resultBeginBlock := abci.ResponseBeginBlock{
 		Events: []abci.Event{
-			{Type: "testType", Attributes: []abci.EventAttribute{{Key: []byte("baz"), Value: []byte("1")}}},
+			{Type: "testType", Attributes: []abci.EventAttribute{{Key: "baz", Value: "1"}}},
 		},
 	}
 	resultEndBlock := abci.ResponseEndBlock{
 		Events: []abci.Event{
-			{Type: "testType", Attributes: []abci.EventAttribute{{Key: []byte("foz"), Value: []byte("2")}}},
+			{Type: "testType", Attributes: []abci.EventAttribute{{Key: "foz", Value: "2"}}},
 		},
 	}
 
@@ -96,6 +96,7 @@ func TestEventBusPublishEventNewBlock(t *testing.T) {
 		msg := <-blocksSub.Out()
 		edt := msg.Data().(EventDataNewBlock)
 		assert.Equal(t, block, edt.Block)
+		assert.Equal(t, blockID, edt.BlockID)
 		assert.Equal(t, resultBeginBlock, edt.ResultBeginBlock)
 		assert.Equal(t, resultEndBlock, edt.ResultEndBlock)
 		close(done)
@@ -103,6 +104,7 @@ func TestEventBusPublishEventNewBlock(t *testing.T) {
 
 	err = eventBus.PublishEventNewBlock(EventDataNewBlock{
 		Block:            block,
+		BlockID:          blockID,
 		ResultBeginBlock: resultBeginBlock,
 		ResultEndBlock:   resultEndBlock,
 	})
@@ -132,25 +134,25 @@ func TestEventBusPublishEventTxDuplicateKeys(t *testing.T) {
 			{
 				Type: "transfer",
 				Attributes: []abci.EventAttribute{
-					{Key: []byte("sender"), Value: []byte("foo")},
-					{Key: []byte("recipient"), Value: []byte("bar")},
-					{Key: []byte("amount"), Value: []byte("5")},
+					{Key: "sender", Value: "foo"},
+					{Key: "recipient", Value: "bar"},
+					{Key: "amount", Value: "5"},
 				},
 			},
 			{
 				Type: "transfer",
 				Attributes: []abci.EventAttribute{
-					{Key: []byte("sender"), Value: []byte("baz")},
-					{Key: []byte("recipient"), Value: []byte("cat")},
-					{Key: []byte("amount"), Value: []byte("13")},
+					{Key: "sender", Value: "baz"},
+					{Key: "recipient", Value: "cat"},
+					{Key: "amount", Value: "13"},
 				},
 			},
 			{
 				Type: "withdraw.rewards",
 				Attributes: []abci.EventAttribute{
-					{Key: []byte("address"), Value: []byte("bar")},
-					{Key: []byte("source"), Value: []byte("iceman")},
-					{Key: []byte("amount"), Value: []byte("33")},
+					{Key: "address", Value: "bar"},
+					{Key: "source", Value: "iceman"},
+					{Key: "amount", Value: "33"},
 				},
 			},
 		},
@@ -236,12 +238,12 @@ func TestEventBusPublishEventNewBlockHeader(t *testing.T) {
 	block := MakeBlock(0, []Tx{}, []Evidence{}, nil, Messages{}, nil)
 	resultBeginBlock := abci.ResponseBeginBlock{
 		Events: []abci.Event{
-			{Type: "testType", Attributes: []abci.EventAttribute{{Key: []byte("baz"), Value: []byte("1")}}},
+			{Type: "testType", Attributes: []abci.EventAttribute{{Key: "baz", Value: "1"}}},
 		},
 	}
 	resultEndBlock := abci.ResponseEndBlock{
 		Events: []abci.Event{
-			{Type: "testType", Attributes: []abci.EventAttribute{{Key: []byte("foz"), Value: []byte("2")}}},
+			{Type: "testType", Attributes: []abci.EventAttribute{{Key: "foz", Value: "2"}}},
 		},
 	}
 
@@ -339,7 +341,7 @@ func TestEventBusPublish(t *testing.T) {
 		}
 	}()
 
-	err = eventBus.Publish(EventNewBlockHeader, EventDataNewBlockHeader{})
+	err = eventBus.Publish(EventNewBlockHeaderValue, EventDataNewBlockHeader{})
 	require.NoError(t, err)
 	err = eventBus.PublishEventNewBlock(EventDataNewBlock{})
 	require.NoError(t, err)
@@ -366,6 +368,10 @@ func TestEventBusPublish(t *testing.T) {
 	err = eventBus.PublishEventLock(EventDataRoundState{})
 	require.NoError(t, err)
 	err = eventBus.PublishEventValidatorSetUpdates(EventDataValidatorSetUpdates{})
+	require.NoError(t, err)
+	err = eventBus.PublishEventBlockSyncStatus(EventDataBlockSyncStatus{})
+	require.NoError(t, err)
+	err = eventBus.PublishEventStateSyncStatus(EventDataStateSyncStatus{})
 	require.NoError(t, err)
 
 	select {
@@ -437,23 +443,23 @@ func benchmarkEventBus(numClients int, randQueries bool, randEvents bool, b *tes
 			for {
 				select {
 				case <-sub.Out():
-				case <-sub.Cancelled():
+				case <-sub.Canceled():
 					return
 				}
 			}
 		}()
 	}
 
-	eventType := EventNewBlock
+	eventValue := EventNewBlockValue
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if randEvents {
-			eventType = randEvent()
+			eventValue = randEventValue()
 		}
 
-		err := eventBus.Publish(eventType, EventDataString("Gamora"))
+		err := eventBus.Publish(eventValue, EventDataString("Gamora"))
 		if err != nil {
 			b.Error(err)
 		}
@@ -461,20 +467,24 @@ func benchmarkEventBus(numClients int, randQueries bool, randEvents bool, b *tes
 }
 
 var events = []string{
-	EventNewBlock,
-	EventNewBlockHeader,
-	EventNewRound,
-	EventNewRoundStep,
-	EventTimeoutPropose,
-	EventCompleteProposal,
-	EventPolka,
-	EventUnlock,
-	EventLock,
-	EventRelock,
-	EventTimeoutWait,
-	EventVote}
+	EventNewBlockValue,
+	EventNewBlockHeaderValue,
+	EventNewRoundValue,
+	EventNewRoundStepValue,
+	EventTimeoutProposeValue,
+	EventCompleteProposalValue,
+	EventPolkaValue,
+	EventUnlockValue,
+	EventLockValue,
+	EventRelockValue,
+	EventTimeoutWaitValue,
+	EventVoteValue,
+	EventBlockSyncStatusValue,
+	EventStateSyncStatusValue,
+}
 
-func randEvent() string {
+func randEventValue() string {
+
 	return events[mrand.Intn(len(events))]
 }
 
@@ -490,7 +500,10 @@ var queries = []tmpubsub.Query{
 	EventQueryLock,
 	EventQueryRelock,
 	EventQueryTimeoutWait,
-	EventQueryVote}
+	EventQueryVote,
+	EventQueryBlockSyncStatus,
+	EventQueryStateSyncStatus,
+}
 
 func randQuery() tmpubsub.Query {
 	return queries[mrand.Intn(len(queries))]

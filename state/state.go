@@ -7,34 +7,52 @@ import (
 	"io/ioutil"
 	"time"
 
-	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
 	"github.com/gogo/protobuf/proto"
 
+	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
 	tmstate "github.com/celestiaorg/celestia-core/proto/tendermint/state"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
 	"github.com/celestiaorg/celestia-core/types"
-	tmtime "github.com/celestiaorg/celestia-core/types/time"
 	"github.com/celestiaorg/celestia-core/version"
 )
 
-// database keys
-var (
-	stateKey = []byte("stateKey")
-)
-
 //-----------------------------------------------------------------------------
+
+type Version struct {
+	Consensus version.Consensus ` json:"consensus"`
+	Software  string            ` json:"software"`
+}
 
 // InitStateVersion sets the Consensus.Block and Software versions,
 // but leaves the Consensus.App version blank.
 // The Consensus.App version will be set during the Handshake, once
 // we hear from the app what protocol version it is running.
-var InitStateVersion = tmstate.Version{
-	Consensus: tmversion.Consensus{
+var InitStateVersion = Version{
+	Consensus: version.Consensus{
 		Block: version.BlockProtocol,
 		App:   0,
 	},
-	Software: version.TMCoreSemVer,
+	Software: version.TMVersion,
+}
+
+func (v *Version) ToProto() tmstate.Version {
+	return tmstate.Version{
+		Consensus: tmversion.Consensus{
+			Block: v.Consensus.Block,
+			App:   v.Consensus.App,
+		},
+		Software: v.Software,
+	}
+}
+
+func VersionFromProto(v tmstate.Version) Version {
+	return Version{
+		Consensus: version.Consensus{
+			Block: v.Consensus.Block,
+			App:   v.Consensus.App,
+		},
+		Software: v.Software,
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -44,10 +62,10 @@ var InitStateVersion = tmstate.Version{
 // including the last validator set and the consensus params.
 // All fields are exposed so the struct can be easily serialized,
 // but none of them should be mutated directly.
-// Instead, use state.Copy() or state.NextState(...).
+// Instead, use state.Copy() or updateState(...).
 // NOTE: not goroutine-safe.
 type State struct {
-	Version tmstate.Version
+	Version Version
 
 	// immutable
 	ChainID       string
@@ -71,7 +89,7 @@ type State struct {
 
 	// Consensus parameters used for validating blocks.
 	// Changes returned by EndBlock and updated after Commit.
-	ConsensusParams                  tmproto.ConsensusParams
+	ConsensusParams                  types.ConsensusParams
 	LastHeightConsensusParamsChanged int64
 
 	// Merkle root of the results from executing prev block
@@ -140,7 +158,7 @@ func (state *State) ToProto() (*tmstate.State, error) {
 
 	sm := new(tmstate.State)
 
-	sm.Version = state.Version
+	sm.Version = state.Version.ToProto()
 	sm.ChainID = state.ChainID
 	sm.InitialHeight = state.InitialHeight
 	sm.LastBlockHeight = state.LastBlockHeight
@@ -168,7 +186,7 @@ func (state *State) ToProto() (*tmstate.State, error) {
 	}
 
 	sm.LastHeightValidatorsChanged = state.LastHeightValidatorsChanged
-	sm.ConsensusParams = state.ConsensusParams
+	sm.ConsensusParams = state.ConsensusParams.ToProto()
 	sm.LastHeightConsensusParamsChanged = state.LastHeightConsensusParamsChanged
 	sm.LastResultsHash = state.LastResultsHash
 	sm.AppHash = state.AppHash
@@ -184,7 +202,7 @@ func StateFromProto(pb *tmstate.State) (*State, error) { //nolint:golint
 
 	state := new(State)
 
-	state.Version = pb.Version
+	state.Version = VersionFromProto(pb.Version)
 	state.ChainID = pb.ChainID
 	state.InitialHeight = pb.InitialHeight
 
@@ -219,7 +237,7 @@ func StateFromProto(pb *tmstate.State) (*State, error) { //nolint:golint
 	}
 
 	state.LastHeightValidatorsChanged = pb.LastHeightValidatorsChanged
-	state.ConsensusParams = pb.ConsensusParams
+	state.ConsensusParams = types.ConsensusParamsFromProto(pb.ConsensusParams)
 	state.LastHeightConsensusParamsChanged = pb.LastHeightConsensusParamsChanged
 	state.LastResultsHash = pb.LastResultsHash
 	state.AppHash = pb.AppHash
@@ -259,7 +277,7 @@ func (state State) MakeBlock(
 		state.Version.Consensus, state.ChainID,
 		timestamp, state.LastBlockID,
 		state.Validators.Hash(), state.NextValidators.Hash(),
-		types.HashConsensusParams(state.ConsensusParams), state.AppHash, state.LastResultsHash,
+		state.ConsensusParams.HashConsensusParams(), state.AppHash, state.LastResultsHash,
 		proposerAddress,
 	)
 
@@ -271,7 +289,7 @@ func (state State) MakeBlock(
 // the votes sent by honest processes, i.e., a faulty processes can not arbitrarily increase or decrease the
 // computed value.
 func MedianTime(commit *types.Commit, validators *types.ValidatorSet) time.Time {
-	weightedTimes := make([]*tmtime.WeightedTime, len(commit.Signatures))
+	weightedTimes := make([]*weightedTime, len(commit.Signatures))
 	totalVotingPower := int64(0)
 
 	for i, commitSig := range commit.Signatures {
@@ -282,11 +300,11 @@ func MedianTime(commit *types.Commit, validators *types.ValidatorSet) time.Time 
 		// If there's no condition, TestValidateBlockCommit panics; not needed normally.
 		if validator != nil {
 			totalVotingPower += validator.VotingPower
-			weightedTimes[i] = tmtime.NewWeightedTime(commitSig.Timestamp, validator.VotingPower)
+			weightedTimes[i] = newWeightedTime(commitSig.Timestamp, validator.VotingPower)
 		}
 	}
 
-	return tmtime.WeightedMedian(weightedTimes, totalVotingPower)
+	return weightedMedian(weightedTimes, totalVotingPower)
 }
 
 //------------------------------------------------------------------------
@@ -321,11 +339,11 @@ func MakeGenesisDocFromFile(genDocFile string) (*types.GenesisDoc, error) {
 func MakeGenesisState(genDoc *types.GenesisDoc) (State, error) {
 	err := genDoc.ValidateAndComplete()
 	if err != nil {
-		return State{}, fmt.Errorf("error in genesis file: %v", err)
+		return State{}, fmt.Errorf("error in genesis doc: %w", err)
 	}
 
 	var validatorSet, nextValidatorSet *types.ValidatorSet
-	if genDoc.Validators == nil {
+	if genDoc.Validators == nil || len(genDoc.Validators) == 0 {
 		validatorSet = types.NewValidatorSet(nil)
 		nextValidatorSet = types.NewValidatorSet(nil)
 	} else {

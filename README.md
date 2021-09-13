@@ -29,7 +29,7 @@ a more detailed overview what to expect from this repository.
 
 | Requirement | Notes            |
 |-------------|------------------|
-| Go version  | Go1.15 or higher |
+| Go version  | Go1.16 or higher |
 
 ## Contributing
 

@@ -1,12 +1,16 @@
 package proxy
 
 import (
+	"fmt"
+	"io"
+
 	abcicli "github.com/celestiaorg/celestia-core/abci/client"
-	"github.com/celestiaorg/celestia-core/abci/example/counter"
 	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
 	"github.com/celestiaorg/celestia-core/abci/types"
-	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	tmsync "github.com/celestiaorg/celestia-core/internal/libs/sync"
 )
+
+//go:generate ../scripts/mockery_generate.sh ClientCreator
 
 // ClientCreator creates new ABCI clients.
 type ClientCreator interface {
@@ -18,7 +22,7 @@ type ClientCreator interface {
 // local proxy uses a mutex on an in-proc app
 
 type localClientCreator struct {
-	mtx *tmsync.Mutex
+	mtx *tmsync.RWMutex
 	app types.Application
 }
 
@@ -26,7 +30,7 @@ type localClientCreator struct {
 // which will be running locally.
 func NewLocalClientCreator(app types.Application) ClientCreator {
 	return &localClientCreator{
-		mtx: new(tmsync.Mutex),
+		mtx: new(tmsync.RWMutex),
 		app: app,
 	}
 }
@@ -36,21 +40,26 @@ func (l *localClientCreator) NewABCIClient() (abcicli.Client, error) {
 }
 
 // DefaultClientCreator returns a default ClientCreator, which will create a
-// local client if app is one of: 'counter', 'counter_serial', 'kvstore',
+// local client if addr is one of: 'kvstore',
 // 'persistent_kvstore' or 'noop', otherwise - a remote client.
-func DefaultClientCreator(app, dbDir string) ClientCreator {
-	switch app {
-	case "counter":
-		return NewLocalClientCreator(counter.NewApplication(false))
-	case "counter_serial":
-		return NewLocalClientCreator(counter.NewApplication(true))
+//
+// The Closer is a noop except for persistent_kvstore applications,
+// which will clean up the store.
+func DefaultClientCreator(addr, transport, dbDir string) (ClientCreator, io.Closer) {
+	switch addr {
 	case "kvstore":
-		return NewLocalClientCreator(kvstore.NewApplication())
+		return NewLocalClientCreator(kvstore.NewApplication()), noopCloser{}
 	case "persistent_kvstore":
-		return NewLocalClientCreator(kvstore.NewPersistentKVStoreApplication(dbDir))
+		app := kvstore.NewPersistentKVStoreApplication(dbDir)
+		return NewLocalClientCreator(app), app
 	case "noop":
-		return NewLocalClientCreator(types.NewBaseApplication())
+		return NewLocalClientCreator(types.NewBaseApplication()), noopCloser{}
 	default:
-		panic("RemoteClientCreator not implemented in celestia-core")
+		mustConnect := false // loop retrying
+		return NewRemoteClientCreator(addr, transport, mustConnect), noopCloser{}
 	}
 }
+
+type noopCloser struct{}
+
+func (noopCloser) Close() error { return nil }

@@ -67,7 +67,7 @@ func hashFromByteSlices(sha hash.Hash, items [][]byte) []byte {
 func HashFromByteSlicesIterative(input [][]byte) []byte {
 	sha := sha256.New()
 	items := make([][]byte, len(input))
-
+	sha := sha256.New()
 	for i, leaf := range input {
 		items[i] = leafHashOpt(sha, leaf)
 	}

@@ -17,7 +17,6 @@ import (
 	"github.com/celestiaorg/celestia-core/privval"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/rpc/client"
-	rpctest "github.com/celestiaorg/celestia-core/rpc/test"
 	"github.com/celestiaorg/celestia-core/types"
 )
 
@@ -30,7 +29,7 @@ var defaultTestTime = time.Date(2018, 10, 10, 8, 20, 13, 695936996, time.UTC)
 func newEvidence(t *testing.T, val *privval.FilePV,
 	vote *types.Vote, vote2 *types.Vote,
 	chainID string) *types.DuplicateVoteEvidence {
-
+	t.Helper()
 	var err error
 
 	v := vote.ToProto()
@@ -45,7 +44,9 @@ func newEvidence(t *testing.T, val *privval.FilePV,
 	validator := types.NewValidator(val.Key.PubKey, 10)
 	valSet := types.NewValidatorSet([]*types.Validator{validator})
 
-	return types.NewDuplicateVoteEvidence(vote, vote2, defaultTestTime, valSet)
+	ev, err := types.NewDuplicateVoteEvidence(vote, vote2, defaultTestTime, valSet)
+	require.NoError(t, err)
+	return ev
 }
 
 func makeEvidences(
@@ -113,29 +114,34 @@ func makeEvidences(
 }
 
 func TestBroadcastEvidence_DuplicateVoteEvidence(t *testing.T) {
-	var (
-		config  = rpctest.GetConfig()
-		chainID = config.ChainID()
-	)
-	pv, err := privval.LoadOrGenFilePV(config.PrivValidatorKeyFile(), config.PrivValidatorStateFile())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	n, config := NodeSuite(t)
+	chainID := config.ChainID()
+
+	pv, err := privval.LoadOrGenFilePV(config.PrivValidator.KeyFile(), config.PrivValidator.StateFile())
 	require.NoError(t, err)
 
-	for i, c := range GetClients() {
+	for i, c := range GetClients(t, n, config) {
 		correct, fakes := makeEvidences(t, pv, chainID)
 		t.Logf("client %d", i)
 
-		result, err := c.BroadcastEvidence(context.Background(), correct)
+		// make sure that the node has produced enough blocks
+		waitForBlock(ctx, t, c, 2)
+
+		result, err := c.BroadcastEvidence(ctx, correct)
 		require.NoError(t, err, "BroadcastEvidence(%s) failed", correct)
 		assert.Equal(t, correct.Hash(), result.Hash, "expected result hash to match evidence hash")
 
-		status, err := c.Status(context.Background())
+		status, err := c.Status(ctx)
 		require.NoError(t, err)
 		err = client.WaitForHeight(c, status.SyncInfo.LatestBlockHeight+2, nil)
 		require.NoError(t, err)
 
 		ed25519pub := pv.Key.PubKey.(ed25519.PubKey)
 		rawpub := ed25519pub.Bytes()
-		result2, err := c.ABCIQuery(context.Background(), "/val", rawpub)
+		result2, err := c.ABCIQuery(ctx, "/val", rawpub)
 		require.NoError(t, err)
 		qres := result2.Response
 		require.True(t, qres.IsOK())
@@ -151,15 +157,34 @@ func TestBroadcastEvidence_DuplicateVoteEvidence(t *testing.T) {
 		require.Equal(t, int64(9), v.Power, "Stored Power not equal with expected, value %v", string(qres.Value))
 
 		for _, fake := range fakes {
-			_, err := c.BroadcastEvidence(context.Background(), fake)
+			_, err := c.BroadcastEvidence(ctx, fake)
 			require.Error(t, err, "BroadcastEvidence(%s) succeeded, but the evidence was fake", fake)
 		}
 	}
 }
 
 func TestBroadcastEmptyEvidence(t *testing.T) {
-	for _, c := range GetClients() {
+	n, conf := NodeSuite(t)
+	for _, c := range GetClients(t, n, conf) {
 		_, err := c.BroadcastEvidence(context.Background(), nil)
 		assert.Error(t, err)
+	}
+}
+
+func waitForBlock(ctx context.Context, t *testing.T, c client.Client, height int64) {
+	timer := time.NewTimer(0 * time.Millisecond)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			status, err := c.Status(ctx)
+			require.NoError(t, err)
+			if status.SyncInfo.LatestBlockHeight >= height {
+				return
+			}
+			timer.Reset(200 * time.Millisecond)
+		}
 	}
 }

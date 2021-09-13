@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -12,7 +13,7 @@ import (
 )
 
 var (
-	logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
+	logger = log.MustNewDefaultLogger(log.LogFormatPlain, log.LogLevelInfo, false)
 )
 
 func main() {
@@ -59,10 +60,7 @@ func NewCLI() *CLI {
 			ctx, loadCancel := context.WithCancel(context.Background())
 			defer loadCancel()
 			go func() {
-				err := Load(ctx, cli.testnet)
-				if err != nil {
-					logger.Error(fmt.Sprintf("Transaction load failed: %v", err.Error()))
-				}
+				err := Load(ctx, cli.testnet, 1)
 				chLoadResult <- err
 			}()
 
@@ -70,14 +68,6 @@ func NewCLI() *CLI {
 				return err
 			}
 
-			if lastMisbehavior := cli.testnet.LastMisbehaviorHeight(); lastMisbehavior > 0 {
-				// wait for misbehaviors before starting perturbations. We do a separate
-				// wait for another 5 blocks, since the last misbehavior height may be
-				// in the past depending on network startup ordering.
-				if err := WaitUntil(cli.testnet, lastMisbehavior); err != nil {
-					return err
-				}
-			}
 			if err := Wait(cli.testnet, 5); err != nil { // allow some txs to go through
 				return err
 			}
@@ -91,9 +81,18 @@ func NewCLI() *CLI {
 				}
 			}
 
+			if cli.testnet.Evidence > 0 {
+				if err := InjectEvidence(cli.testnet, cli.testnet.Evidence); err != nil {
+					return err
+				}
+				if err := Wait(cli.testnet, 5); err != nil { // ensure chain progress
+					return err
+				}
+			}
+
 			loadCancel()
 			if err := <-chLoadResult; err != nil {
-				return err
+				return fmt.Errorf("transaction load failed: %w", err)
 			}
 			if err := Wait(cli.testnet, 5); err != nil { // wait for network to settle before tests
 				return err
@@ -115,6 +114,11 @@ func NewCLI() *CLI {
 
 	cli.root.Flags().BoolVarP(&cli.preserve, "preserve", "p", false,
 		"Preserves the running of the test net after tests are completed")
+
+	cli.root.SetHelpCommand(&cobra.Command{
+		Use:    "no-help",
+		Hidden: true,
+	})
 
 	cli.root.AddCommand(&cobra.Command{
 		Use:   "setup",
@@ -165,10 +169,56 @@ func NewCLI() *CLI {
 	})
 
 	cli.root.AddCommand(&cobra.Command{
-		Use:   "load",
-		Short: "Generates transaction load until the command is cancelled",
+		Use:   "pause",
+		Short: "Pauses the Docker testnet",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return Load(context.Background(), cli.testnet)
+			logger.Info("Pausing testnet")
+			return execCompose(cli.testnet.Dir, "pause")
+		},
+	})
+
+	cli.root.AddCommand(&cobra.Command{
+		Use:   "resume",
+		Short: "Resumes the Docker testnet",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			logger.Info("Resuming testnet")
+			return execCompose(cli.testnet.Dir, "unpause")
+		},
+	})
+
+	cli.root.AddCommand(&cobra.Command{
+		Use:   "load [multiplier]",
+		Args:  cobra.MaximumNArgs(1),
+		Short: "Generates transaction load until the command is canceled",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			m := 1
+
+			if len(args) == 1 {
+				m, err = strconv.Atoi(args[0])
+				if err != nil {
+					return err
+				}
+			}
+
+			return Load(context.Background(), cli.testnet, m)
+		},
+	})
+
+	cli.root.AddCommand(&cobra.Command{
+		Use:   "evidence [amount]",
+		Args:  cobra.MaximumNArgs(1),
+		Short: "Generates and broadcasts evidence to a random node",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			amount := 1
+
+			if len(args) == 1 {
+				amount, err = strconv.Atoi(args[0])
+				if err != nil {
+					return err
+				}
+			}
+
+			return InjectEvidence(cli.testnet, amount)
 		},
 	})
 
@@ -189,18 +239,78 @@ func NewCLI() *CLI {
 	})
 
 	cli.root.AddCommand(&cobra.Command{
-		Use:   "logs",
-		Short: "Shows the testnet logs",
+		Use:     "logs [node]",
+		Short:   "Shows the testnet or a specefic node's logs",
+		Example: "runner logs validator03",
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return execComposeVerbose(cli.testnet.Dir, "logs")
+			return execComposeVerbose(cli.testnet.Dir, append([]string{"logs", "--no-color"}, args...)...)
 		},
 	})
 
 	cli.root.AddCommand(&cobra.Command{
-		Use:   "tail",
-		Short: "Tails the testnet logs",
+		Use:   "tail [node]",
+		Short: "Tails the testnet or a specific node's logs",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 {
+				return execComposeVerbose(cli.testnet.Dir, "logs", "--follow", args[0])
+			}
 			return execComposeVerbose(cli.testnet.Dir, "logs", "--follow")
+		},
+	})
+
+	cli.root.AddCommand(&cobra.Command{
+		Use:   "benchmark",
+		Short: "Benchmarks testnet",
+		Long: `Benchmarks the following metrics:
+	Mean Block Interval
+	Standard Deviation
+	Min Block Interval
+	Max Block Interval
+over a 100 block sampling period.
+		
+Does not run any perbutations.
+		`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := Cleanup(cli.testnet); err != nil {
+				return err
+			}
+			if err := Setup(cli.testnet); err != nil {
+				return err
+			}
+
+			chLoadResult := make(chan error)
+			ctx, loadCancel := context.WithCancel(context.Background())
+			defer loadCancel()
+			go func() {
+				err := Load(ctx, cli.testnet, 1)
+				chLoadResult <- err
+			}()
+
+			if err := Start(cli.testnet); err != nil {
+				return err
+			}
+
+			if err := Wait(cli.testnet, 5); err != nil { // allow some txs to go through
+				return err
+			}
+
+			// we benchmark performance over the next 100 blocks
+			if err := Benchmark(cli.testnet, 100); err != nil {
+				return err
+			}
+
+			loadCancel()
+			if err := <-chLoadResult; err != nil {
+				return err
+			}
+
+			if err := Cleanup(cli.testnet); err != nil {
+				return err
+			}
+
+			return nil
 		},
 	})
 

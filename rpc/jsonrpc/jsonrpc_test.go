@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log/term"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -58,11 +57,11 @@ type ResultEchoDataBytes struct {
 
 // Define some routes
 var Routes = map[string]*server.RPCFunc{
-	"echo":            server.NewRPCFunc(EchoResult, "arg"),
+	"echo":            server.NewRPCFunc(EchoResult, "arg", false),
 	"echo_ws":         server.NewWSRPCFunc(EchoWSResult, "arg"),
-	"echo_bytes":      server.NewRPCFunc(EchoBytesResult, "arg"),
-	"echo_data_bytes": server.NewRPCFunc(EchoDataBytesResult, "arg"),
-	"echo_int":        server.NewRPCFunc(EchoIntResult, "arg"),
+	"echo_bytes":      server.NewRPCFunc(EchoBytesResult, "arg", false),
+	"echo_data_bytes": server.NewRPCFunc(EchoDataBytesResult, "arg", false),
+	"echo_int":        server.NewRPCFunc(EchoIntResult, "arg", false),
 }
 
 func EchoResult(ctx *types.Context, v string) (*ResultEcho, error) {
@@ -91,22 +90,9 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-var colorFn = func(keyvals ...interface{}) term.FgBgColor {
-	for i := 0; i < len(keyvals)-1; i += 2 {
-		if keyvals[i] == "socket" {
-			if keyvals[i+1] == "tcp" {
-				return term.FgBgColor{Fg: term.DarkBlue}
-			} else if keyvals[i+1] == "unix" {
-				return term.FgBgColor{Fg: term.DarkCyan}
-			}
-		}
-	}
-	return term.FgBgColor{}
-}
-
 // launch unix and tcp servers
 func setup() {
-	logger := log.NewTMLoggerWithColorFn(log.NewSyncWriter(os.Stdout), colorFn)
+	logger := log.MustNewDefaultLogger(log.LogFormatPlain, log.LogLevelInfo, false)
 
 	cmd := exec.Command("rm", "-f", unixSocket)
 	err := cmd.Start()
@@ -124,7 +110,7 @@ func setup() {
 	wm.SetLogger(tcpLogger)
 	mux.HandleFunc(websocketEndpoint, wm.WebsocketHandler)
 	config := server.DefaultConfig()
-	listener1, err := server.Listen(tcpAddr, config)
+	listener1, err := server.Listen(tcpAddr, config.MaxOpenConnections)
 	if err != nil {
 		panic(err)
 	}
@@ -140,7 +126,7 @@ func setup() {
 	wm = server.NewWebsocketManager(Routes)
 	wm.SetLogger(unixLogger)
 	mux2.HandleFunc(websocketEndpoint, wm.WebsocketHandler)
-	listener2, err := server.Listen(unixAddr, config)
+	listener2, err := server.Listen(unixAddr, config.MaxOpenConnections)
 	if err != nil {
 		panic(err)
 	}

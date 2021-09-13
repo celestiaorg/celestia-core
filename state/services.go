@@ -9,6 +9,8 @@ import (
 // NOTE: Interfaces used by RPC must be thread safe!
 //------------------------------------------------------
 
+//go:generate ../scripts/mockery_generate.sh BlockStore
+
 //------------------------------------------------------
 // blockstore
 
@@ -30,13 +32,13 @@ type BlockStore interface {
 	LoadBlockPart(height int64, index int) *types.Part
 
 	LoadBlockCommit(height int64) *types.Commit
-	LoadSeenCommit(height int64) *types.Commit
+	LoadSeenCommit() *types.Commit
 }
 
 //-----------------------------------------------------------------------------
 // evidence pool
 
-//go:generate mockery --case underscore --name EvidencePool
+//go:generate ../scripts/mockery_generate.sh EvidencePool
 
 // EvidencePool defines the EvidencePool interface used by State.
 type EvidencePool interface {
@@ -53,9 +55,7 @@ type EmptyEvidencePool struct{}
 func (EmptyEvidencePool) PendingEvidence(maxBytes int64) (ev []types.Evidence, size int64) {
 	return nil, 0
 }
-func (EmptyEvidencePool) AddEvidence(types.Evidence) error              { return nil }
-func (EmptyEvidencePool) Update(State, types.EvidenceList)              {}
-func (EmptyEvidencePool) CheckEvidence(evList types.EvidenceList) error { return nil }
-func (EmptyEvidencePool) AddEvidenceFromConsensus(evidence types.Evidence) error {
-	return nil
-}
+func (EmptyEvidencePool) AddEvidence(types.Evidence) error                { return nil }
+func (EmptyEvidencePool) Update(State, types.EvidenceList)                {}
+func (EmptyEvidencePool) CheckEvidence(evList types.EvidenceList) error   { return nil }
+func (EmptyEvidencePool) ReportConflictingVotes(voteA, voteB *types.Vote) {}

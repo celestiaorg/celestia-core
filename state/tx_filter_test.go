@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/celestia-core/libs/db/memdb"
 	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
 	sm "github.com/celestiaorg/celestia-core/state"
 	"github.com/celestiaorg/celestia-core/types"
@@ -29,9 +28,7 @@ func TestTxFilter(t *testing.T) {
 	}
 
 	for i, tc := range testCases {
-		stateDB := memdb.NewDB()
-		stateStore := sm.NewStore(stateDB)
-		state, err := stateStore.LoadFromDBOrGenesisDoc(genDoc)
+		state, err := sm.MakeGenesisState(genDoc)
 		require.NoError(t, err)
 
 		f := sm.TxPreCheck(state)

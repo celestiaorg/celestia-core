@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/celestiaorg/celestia-core/crypto"
+	"github.com/celestiaorg/celestia-core/internal/libs/protoio"
 	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
-	"github.com/celestiaorg/celestia-core/libs/protoio"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 

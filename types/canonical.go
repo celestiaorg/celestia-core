@@ -3,8 +3,8 @@ package types
 import (
 	"time"
 
+	tmtime "github.com/celestiaorg/celestia-core/libs/time"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
-	tmtime "github.com/celestiaorg/celestia-core/types/time"
 )
 
 // Canonical* wraps the structs in types for amino encoding them for use in SignBytes / the Signable interface.

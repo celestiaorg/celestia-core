@@ -8,7 +8,9 @@ import (
 
 	"github.com/celestiaorg/celestia-core/libs/log"
 	tmpubsub "github.com/celestiaorg/celestia-core/libs/pubsub"
+	"github.com/celestiaorg/celestia-core/light"
 	lrpc "github.com/celestiaorg/celestia-core/light/rpc"
+	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
 	rpcserver "github.com/celestiaorg/celestia-core/rpc/jsonrpc/server"
 )
 
@@ -19,6 +21,28 @@ type Proxy struct {
 	Client   *lrpc.Client
 	Logger   log.Logger
 	Listener net.Listener
+}
+
+// NewProxy creates the struct used to run an HTTP server for serving light
+// client rpc requests.
+func NewProxy(
+	lightClient *light.Client,
+	listenAddr, providerAddr string,
+	config *rpcserver.Config,
+	logger log.Logger,
+	opts ...lrpc.Option,
+) (*Proxy, error) {
+	rpcClient, err := rpchttp.NewWithTimeout(providerAddr, config.WriteTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create http client for %s: %w", providerAddr, err)
+	}
+
+	return &Proxy{
+		Addr:   listenAddr,
+		Config: config,
+		Client: lrpc.NewClient(rpcClient, lightClient, opts...),
+		Logger: logger,
+	}, nil
 }
 
 // ListenAndServe configures the rpcserver.WebsocketManager, sets up the RPC
@@ -89,7 +113,7 @@ func (p *Proxy) listen() (net.Listener, *http.ServeMux, error) {
 	}
 
 	// 4) Start listening for new connections.
-	listener, err := rpcserver.Listen(p.Addr, p.Config)
+	listener, err := rpcserver.Listen(p.Addr, p.Config.MaxOpenConnections)
 	if err != nil {
 		return nil, mux, err
 	}
