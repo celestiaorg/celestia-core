@@ -2,7 +2,6 @@ package types
 
 import (
 	"encoding/hex"
-	"fmt"
 	"math"
 	mrand "math/rand"
 	"os"
@@ -226,17 +225,6 @@ func TestEmptyBlockDataAvailabilityHeader(t *testing.T) {
 	}
 	block.fillDataAvailabilityHeader()
 	require.Equal(t, block.DataAvailabilityHeader, da.MinDataAvailabilityHeader())
-}
-
-func TestBS(t *testing.T) {
-	data := Data{}
-	shares, _ := data.ComputeShares()
-	rawShares := shares.RawShares()
-	for _, share := range rawShares {
-		fmt.Println(share)
-	}
-	require.Equal(t, rawShares[0], tailPaddingShare)
-	fmt.Println()
 }
 
 func TestCommit(t *testing.T) {
