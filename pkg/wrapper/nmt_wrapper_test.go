@@ -42,7 +42,7 @@ func TestRootErasuredNamespacedMerkleTree(t *testing.T) {
 	data := generateRandNamespacedRawData(size, consts.NamespaceSize, consts.MsgShareSize)
 	n := NewErasuredNamespacedMerkleTree(uint64(size))
 	tree := n.Constructor()
-	nmtTree := nmt.New(sha256.New)
+	nmtTree := nmt.New(sha256.New())
 
 	for i, d := range data {
 		tree.Push(d, rsmt2d.SquareIndex{Axis: uint(0), Cell: uint(i)})
@@ -52,7 +52,7 @@ func TestRootErasuredNamespacedMerkleTree(t *testing.T) {
 		}
 	}
 
-	assert.NotEqual(t, nmtTree.Root().Bytes(), tree.Root())
+	assert.NotEqual(t, nmtTree.Root(), tree.Root())
 }
 
 func TestErasureNamespacedMerkleTreePanics(t *testing.T) {
