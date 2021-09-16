@@ -1111,7 +1111,8 @@ func (msgs Messages) SplitIntoShares() NamespacedShares {
 }
 
 // ComputeShares splits block data into shares of an original data square and
-// returns them along with an amount of non-redundant shares.
+// returns them along with an amount of non-redundant shares. The shares
+// returned are padded to complete a square size that is a power of two
 func (data *Data) ComputeShares() (NamespacedShares, int) {
 	// TODO(ismail): splitting into shares should depend on the block size and layout
 	// see: https://github.com/celestiaorg/celestia-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
