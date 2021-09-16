@@ -1029,7 +1029,7 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 //  - the set of transactions included in the block
 //  - intermediate state roots computed from the Tx of the previous block
 //  - Evidence included in the block
-//  - LazyLedger (namespaced) messages included in the block
+//  - Celestia (namespaced) messages included in the block
 type Data struct {
 
 	// Txs that will be applied by state @ block.Height+1.

@@ -5,10 +5,10 @@ import (
 	"encoding/binary"
 	"errors"
 
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/gogo/protobuf/proto"
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	tmproto "github.com/lazyledger/lazyledger-core/proto/tendermint/types"
-	"github.com/lazyledger/rsmt2d"
+	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 // DataFromSquare extracts block data from an extended data square.

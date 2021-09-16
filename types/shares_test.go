@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	tmbytes "github.com/lazyledger/lazyledger-core/libs/bytes"
-	"github.com/lazyledger/lazyledger-core/libs/protoio"
-	"github.com/lazyledger/nmt/namespace"
-	"github.com/lazyledger/rsmt2d"
+	"github.com/celestiaorg/nmt/namespace"
+	"github.com/celestiaorg/rsmt2d"
 	"github.com/stretchr/testify/assert"
+	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	"github.com/tendermint/tendermint/libs/protoio"
 )
 
 type splitter interface {
