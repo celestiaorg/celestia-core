@@ -1,0 +1,19 @@
+syntax = "proto3";
+package tendermint.types;
+
+option go_package = "github.com/tendermint/tendermint/proto/tendermint/types";
+
+import "tendermint/types/evidence.proto";
+  
+  message IntermediateStateRoots {
+    repeated bytes raw_roots_list = 1;
+  }
+  
+  message Messages {
+    repeated Message messages_list = 1;
+  }
+  
+  message Message {
+    bytes namespace_id = 1;
+    bytes data         = 2;
+  }
