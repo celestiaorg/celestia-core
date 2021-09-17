@@ -5,16 +5,17 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/celestiaorg/celestia-core/pkg/da"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 )
 
 // BlockMeta contains meta information.
 type BlockMeta struct {
-	BlockID   BlockID                `json:"block_id"`
-	BlockSize int                    `json:"block_size"`
-	Header    Header                 `json:"header"`
-	NumTxs    int                    `json:"num_txs"`
-	DAHeader  DataAvailabilityHeader `json:"da_header"`
+	BlockID   BlockID                   `json:"block_id"`
+	BlockSize int                       `json:"block_size"`
+	Header    Header                    `json:"header"`
+	NumTxs    int                       `json:"num_txs"`
+	DAHeader  da.DataAvailabilityHeader `json:"da_header"`
 }
 
 // NewBlockMeta returns a new BlockMeta.
@@ -65,7 +66,7 @@ func BlockMetaFromProto(pb *tmproto.BlockMeta) (*BlockMeta, error) {
 		return nil, err
 	}
 
-	dah, err := DataAvailabilityHeaderFromProto(pb.DaHeader)
+	dah, err := da.DataAvailabilityHeaderFromProto(pb.DaHeader)
 	if err != nil {
 		return nil, err
 	}

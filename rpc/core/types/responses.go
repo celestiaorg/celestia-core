@@ -8,6 +8,7 @@ import (
 	"github.com/celestiaorg/celestia-core/crypto"
 	"github.com/celestiaorg/celestia-core/libs/bytes"
 	"github.com/celestiaorg/celestia-core/p2p"
+	"github.com/celestiaorg/celestia-core/pkg/da"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/celestia-core/types"
 )
@@ -36,7 +37,7 @@ type ResultCommit struct {
 }
 
 type ResultDataAvailabilityHeader struct {
-	types.DataAvailabilityHeader `json:"data_availability_header"`
+	da.DataAvailabilityHeader `json:"data_availability_header"`
 }
 
 // ABCI results from a block

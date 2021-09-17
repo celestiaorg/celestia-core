@@ -8,6 +8,7 @@ import "google/protobuf/timestamp.proto";
 import "tendermint/crypto/proof.proto";
 import "tendermint/version/types.proto";
 import "tendermint/types/validator.proto";
+import "tendermint/da/data_availability_header.proto";
 
 // BlockIdFlag indicates which BlcokID the signature is for
 enum BlockIDFlag {
@@ -135,23 +136,6 @@ message Message {
   bytes data         = 2;
 }
 
-// DataAvailabilityHeader contains the row and column roots of the erasure
-// coded version of the data in Block.Data.
-// Therefor the original Block.Data is arranged in a
-// k × k matrix, which is then "extended" to a
-// 2k × 2k matrix applying multiple times Reed-Solomon encoding.
-// For details see Section 5.2: https://arxiv.org/abs/1809.09044
-// or the Celestia specification:
-// https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#availabledataheader
-// Note that currently we list row and column roots in separate fields
-// (different from the spec).
-message DataAvailabilityHeader {
-  // RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
-  repeated bytes row_roots = 1;
-  // ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
-  repeated bytes column_roots = 2;
-}
-
 // Vote represents a prevote, precommit, or commit vote from validators for
 // consensus.
 message Vote {
@@ -204,7 +188,7 @@ message SignedHeader {
 message LightBlock {
   SignedHeader                  signed_header = 1;
   tendermint.types.ValidatorSet validator_set = 2;
-  DataAvailabilityHeader    da_header = 3 [(gogoproto.customname) = "DAHeader"];
+  tendermint.da.DataAvailabilityHeader    da_header = 3 [(gogoproto.customname) = "DAHeader"];
 }
 
 message BlockMeta {
@@ -212,7 +196,7 @@ message BlockMeta {
   int64   block_size = 2;
   Header  header     = 3 [(gogoproto.nullable) = false];
   int64   num_txs    = 4;
-  DataAvailabilityHeader da_header = 5;
+  tendermint.da.DataAvailabilityHeader da_header = 5;
 }
 
 // TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.

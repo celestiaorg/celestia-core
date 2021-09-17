@@ -20,6 +20,7 @@ import (
 	"github.com/celestiaorg/celestia-core/libs/db/memdb"
 	"github.com/celestiaorg/celestia-core/libs/log"
 	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	"github.com/celestiaorg/celestia-core/pkg/da"
 	tmstore "github.com/celestiaorg/celestia-core/proto/tendermint/store"
 	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
 	sm "github.com/celestiaorg/celestia-core/state"
@@ -538,10 +539,12 @@ func TestLoadBlockMeta(t *testing.T) {
 	require.NotNil(t, panicErr, "expecting a non-nil panic")
 	require.Contains(t, panicErr.Error(), "unmarshal to tmproto.BlockMeta")
 
+	dah := da.MinDataAvailabilityHeader()
 	// 3. A good blockMeta serialized and saved to the DB should be retrievable
 	meta := &types.BlockMeta{Header: types.Header{
 		Version: tmversion.Consensus{
-			Block: version.BlockProtocol, App: 0}, Height: 1, ProposerAddress: tmrand.Bytes(crypto.AddressSize)}}
+			Block: version.BlockProtocol, App: 0}, Height: 1, ProposerAddress: tmrand.Bytes(crypto.AddressSize)},
+		DAHeader: dah}
 	pbm, err := meta.ToProto()
 	require.NoError(t, err)
 	err = db.Set(calcBlockMetaKey(height), mustEncode(pbm))

@@ -19,7 +19,7 @@ import (
 	"github.com/celestiaorg/celestia-core/libs/bits"
 	"github.com/celestiaorg/celestia-core/libs/bytes"
 	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
-	"github.com/celestiaorg/celestia-core/pkg/consts"
+	"github.com/celestiaorg/celestia-core/pkg/da"
 	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
 	tmtime "github.com/celestiaorg/celestia-core/types/time"
@@ -208,36 +208,23 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
 	}
 }
 
-func makeDAHeaderRandom() *DataAvailabilityHeader {
-	rows, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
-	clns, _ := NmtRootsFromBytes([][]byte{tmrand.Bytes(2*consts.NamespaceSize + tmhash.Size)})
-	return &DataAvailabilityHeader{
-		RowsRoots:   rows,
-		ColumnRoots: clns,
-	}
-}
-
 var nilBytes []byte
-
-// This follows RFC-6962, i.e. `echo -n '' | sha256sum`
-var emptyBytes = []byte{0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8,
-	0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b,
-	0x78, 0x52, 0xb8, 0x55}
 
 func TestNilHeaderHashDoesntCrash(t *testing.T) {
 	assert.Equal(t, nilBytes, []byte((*Header)(nil).Hash()))
 	assert.Equal(t, nilBytes, []byte((new(Header)).Hash()))
 }
 
-func TestNilDataAvailabilityHeaderHashDoesntCrash(t *testing.T) {
-	assert.Equal(t, emptyBytes, (*DataAvailabilityHeader)(nil).Hash())
-	assert.Equal(t, emptyBytes, new(DataAvailabilityHeader).Hash())
-}
-
-func TestEmptyBlockData(t *testing.T) {
+func TestEmptyBlockDataAvailabilityHeader(t *testing.T) {
 	blockData := Data{}
 	shares, _ := blockData.ComputeShares()
 	assert.Equal(t, TailPaddingShares(1), shares)
+	block := Block{
+		Data:       blockData,
+		LastCommit: &Commit{},
+	}
+	block.fillDataAvailabilityHeader()
+	require.Equal(t, block.DataAvailabilityHeader, da.MinDataAvailabilityHeader())
 }
 
 func TestCommit(t *testing.T) {
