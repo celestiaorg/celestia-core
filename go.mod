@@ -8,6 +8,7 @@ require (
 	github.com/adlio/schema v1.1.13
 	github.com/btcsuite/btcd v0.22.0-beta
 	github.com/btcsuite/btcutil v1.0.3-0.20201208143702-a53e38424cce
+	github.com/celestiaorg/nmt v0.7.0
 	github.com/fortytw2/leaktest v1.3.0
 	github.com/go-kit/kit v0.11.0
 	github.com/gogo/protobuf v1.3.2
