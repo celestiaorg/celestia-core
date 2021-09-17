@@ -24,6 +24,7 @@ import (
 	"github.com/tendermint/tendermint/libs/bytes"
 	tmrand "github.com/tendermint/tendermint/libs/rand"
 	tmtime "github.com/tendermint/tendermint/libs/time"
+	"github.com/tendermint/tendermint/pkg/da"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
 	"github.com/tendermint/tendermint/version"
@@ -213,11 +214,6 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
 
 var nilBytes []byte
 
-// This follows RFC-6962, i.e. `echo -n '' | sha256sum`
-var emptyBytes = []byte{0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8,
-	0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b,
-	0x78, 0x52, 0xb8, 0x55}
-
 func TestNilHeaderHashDoesntCrash(t *testing.T) {
 	assert.Equal(t, nilBytes, []byte((*Header)(nil).Hash()))
 	assert.Equal(t, nilBytes, []byte((new(Header)).Hash()))
@@ -226,6 +222,18 @@ func TestNilHeaderHashDoesntCrash(t *testing.T) {
 func TestNilDataHashDoesntCrash(t *testing.T) {
 	assert.Equal(t, emptyBytes, []byte((*Data)(nil).Hash()))
 	assert.Equal(t, emptyBytes, []byte(new(Data).Hash()))
+}
+
+func TestEmptyBlockDataAvailabilityHeader(t *testing.T) {
+	blockData := Data{}
+	shares, _ := blockData.ComputeShares()
+	assert.Equal(t, TailPaddingShares(1), shares)
+	block := Block{
+		Data:       blockData,
+		LastCommit: &Commit{},
+	}
+	block.fillDataAvailabilityHeader()
+	require.Equal(t, block.DataAvailabilityHeader, da.MinDataAvailabilityHeader())
 }
 
 func TestCommit(t *testing.T) {

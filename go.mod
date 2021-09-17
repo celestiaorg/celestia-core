@@ -8,9 +8,12 @@ require (
 	github.com/adlio/schema v1.3.0
 	github.com/btcsuite/btcd v0.22.0-beta
 	github.com/btcsuite/btcutil v1.0.3-0.20201208143702-a53e38424cce
+	github.com/celestiaorg/nmt v0.7.0
+	github.com/celestiaorg/rsmt2d v0.3.0
 	github.com/creachadair/atomicfile v0.2.5
 	github.com/creachadair/taskgroup v0.3.2
 	github.com/creachadair/tomledit v0.0.18
+	github.com/dgraph-io/ristretto v0.0.4-0.20210122082011-bb5d392ed82d // indirect
 	github.com/facebookgo/ensure v0.0.0-20160127193407-b4ab57deab51 // indirect
 	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
 	github.com/facebookgo/subset v0.0.0-20150612182917-8dac2c3c4870 // indirect
@@ -46,6 +49,5 @@ require (
 	golang.org/x/net v0.0.0-20220412020605-290c469a71a5
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	google.golang.org/grpc v1.46.0
-	gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b // indirect
 	pgregory.net/rapid v0.4.7
 )

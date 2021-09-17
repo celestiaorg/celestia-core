@@ -8,6 +8,7 @@ import "google/protobuf/timestamp.proto";
 import "tendermint/crypto/proof.proto";
 import "tendermint/version/types.proto";
 import "tendermint/types/validator.proto";
+import "tendermint/da/data_availability_header.proto";
 
 // BlockIdFlag indicates which BlcokID the signature is for
 enum BlockIDFlag {
@@ -86,7 +87,52 @@ message Data {
   // Txs that will be applied by state @ block.Height+1.
   // NOTE: not all txs here are valid.  We're just agreeing on the order first.
   // This means that block.AppHash does not include these txs.
-  repeated bytes txs = 1;
+  repeated bytes         txs                      = 1;
+  IntermediateStateRoots intermediate_state_roots = 2 [(gogoproto.nullable) = false];
+  EvidenceList           evidence                 = 3 [(gogoproto.nullable) = false];
+  Messages               messages                 = 4 [(gogoproto.nullable) = false];
+}
+
+message Evidence {
+  oneof sum {
+    DuplicateVoteEvidence     duplicate_vote_evidence      = 1;
+    LightClientAttackEvidence light_client_attack_evidence = 2;
+  }
+}
+
+// DuplicateVoteEvidence contains evidence of a validator signed two conflicting votes.
+message DuplicateVoteEvidence {
+  tendermint.types.Vote     vote_a             = 1;
+  tendermint.types.Vote     vote_b             = 2;
+  int64                     total_voting_power = 3;
+  int64                     validator_power    = 4;
+  google.protobuf.Timestamp timestamp          = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+}
+
+// LightClientAttackEvidence contains evidence of a set of validators attempting to mislead a light client.
+message LightClientAttackEvidence {
+  tendermint.types.LightBlock conflicting_block            = 1;
+  int64                       common_height                = 2;
+  repeated tendermint.types.Validator byzantine_validators = 3;
+  int64                               total_voting_power   = 4;
+  google.protobuf.Timestamp           timestamp            = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+}
+
+message EvidenceList {
+  repeated Evidence evidence = 1 [(gogoproto.nullable) = false];
+}
+
+message IntermediateStateRoots {
+  repeated bytes raw_roots_list = 1;
+}
+
+message Messages {
+  repeated Message messages_list = 1;
+}
+
+message Message {
+  bytes namespace_id = 1;
+  bytes data         = 2;
 }
 
 // Vote represents a prevote, precommit, or commit vote from validators for
@@ -140,6 +186,7 @@ message SignedHeader {
 message LightBlock {
   SignedHeader                  signed_header = 1;
   tendermint.types.ValidatorSet validator_set = 2;
+  tendermint.da.DataAvailabilityHeader    da_header = 3 [(gogoproto.customname) = "DAHeader"];
 }
 
 message BlockMeta {
@@ -147,6 +194,7 @@ message BlockMeta {
   int64   block_size = 2;
   Header  header     = 3 [(gogoproto.nullable) = false];
   int64   num_txs    = 4;
+  tendermint.da.DataAvailabilityHeader da_header = 5;
 }
 
 // TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.

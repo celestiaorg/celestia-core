@@ -8,6 +8,7 @@ import (
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/libs/bytes"
+	"github.com/tendermint/tendermint/pkg/da"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/types"
 )
@@ -60,6 +61,10 @@ type ResultHeader struct {
 type ResultCommit struct {
 	types.SignedHeader `json:"signed_header"`
 	CanonicalCommit    bool `json:"canonical"`
+}
+
+type ResultDataAvailabilityHeader struct {
+	da.DataAvailabilityHeader `json:"data_availability_header"`
 }
 
 // ABCI results from a block

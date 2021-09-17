@@ -19,6 +19,7 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	tmrand "github.com/tendermint/tendermint/libs/rand"
 	tmtime "github.com/tendermint/tendermint/libs/time"
+	"github.com/tendermint/tendermint/pkg/da"
 	"github.com/tendermint/tendermint/types"
 	"github.com/tendermint/tendermint/version"
 )
@@ -454,12 +455,15 @@ func TestLoadBlockMeta(t *testing.T) {
 	require.NotNil(t, panicErr, "expecting a non-nil panic")
 	require.Contains(t, panicErr.Error(), "unmarshal to tmproto.BlockMeta")
 
+	dah := da.MinDataAvailabilityHeader()
 	// 3. A good blockMeta serialized and saved to the DB should be retrievable
 	meta := &types.BlockMeta{Header: types.Header{
-		Version: version.Consensus{
-			Block: version.BlockProtocol, App: 0}, Height: 1, ProposerAddress: tmrand.Bytes(crypto.AddressSize)}}
-	pbm := meta.ToProto()
-	err = db.Set(blockMetaKey(height), mustEncode(pbm))
+		Version: tmversion.Consensus{
+			Block: version.BlockProtocol, App: 0}, Height: 1, ProposerAddress: tmrand.Bytes(crypto.AddressSize)},
+		DAHeader: dah}
+	pbm, err := meta.ToProto()
+	require.NoError(t, err)
+	err = db.Set(calcBlockMetaKey(height), mustEncode(pbm))
 	require.NoError(t, err)
 	gotMeta, _, panicErr := doFn(loadMeta)
 	require.Nil(t, panicErr, "an existent and proper block should not panic")

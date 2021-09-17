@@ -7,17 +7,20 @@ import (
 
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	tmrand "github.com/tendermint/tendermint/libs/rand"
+	"github.com/tendermint/tendermint/pkg/da"
 )
 
 func TestBlockMeta_ToProto(t *testing.T) {
 	h := MakeRandHeader()
 	bi := BlockID{Hash: h.Hash(), PartSetHeader: PartSetHeader{Total: 123, Hash: tmrand.Bytes(tmhash.Size)}}
+	dah := da.MinDataAvailabilityHeader()
 
 	bm := &BlockMeta{
 		BlockID:   bi,
 		BlockSize: 200,
 		Header:    h,
 		NumTxs:    0,
+		DAHeader:  dah,
 	}
 
 	tests := []struct {
@@ -38,6 +41,7 @@ func TestBlockMeta_ToProto(t *testing.T) {
 
 			if !tt.expErr {
 				require.NoError(t, err, tt.testName)
+				bm.DAHeader.Hash() // regenerate the hash so comparison is fair
 				require.Equal(t, tt.bm, bm, tt.testName)
 			} else {
 				require.Error(t, err, tt.testName)

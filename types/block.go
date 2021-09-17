@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
+	"github.com/celestiaorg/nmt/namespace"
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 
@@ -17,6 +19,8 @@ import (
 	"github.com/tendermint/tendermint/libs/bits"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	tmmath "github.com/tendermint/tendermint/libs/math"
+	"github.com/tendermint/tendermint/pkg/consts"
+	"github.com/tendermint/tendermint/pkg/da"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/version"
 )
@@ -42,10 +46,10 @@ const (
 type Block struct {
 	mtx tmsync.Mutex
 
-	Header     `json:"header"`
-	Data       `json:"data"`
-	Evidence   EvidenceData `json:"evidence"`
-	LastCommit *Commit      `json:"last_commit"`
+	Header                 `json:"header"`
+	Data                   `json:"data"`
+	DataAvailabilityHeader da.DataAvailabilityHeader `json:"availability_header"`
+	LastCommit             *Commit                   `json:"last_commit"`
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data.
@@ -100,11 +104,32 @@ func (b *Block) fillHeader() {
 		b.LastCommitHash = b.LastCommit.Hash()
 	}
 	if b.DataHash == nil {
-		b.DataHash = b.Data.Hash()
+		b.fillDataAvailabilityHeader()
 	}
 	if b.EvidenceHash == nil {
 		b.EvidenceHash = b.Evidence.Hash()
 	}
+}
+
+// TODO: Move out from 'types' package
+// fillDataAvailabilityHeader fills in any remaining DataAvailabilityHeader fields
+// that are a function of the block data.
+func (b *Block) fillDataAvailabilityHeader() {
+	namespacedShares, dataSharesLen := b.Data.ComputeShares()
+	shares := namespacedShares.RawShares()
+
+	// create the nmt wrapper to generate row and col commitments
+	squareSize := uint64(math.Sqrt(float64(len(shares))))
+	dah, err := da.NewDataAvailabilityHeader(squareSize, shares)
+	if err != nil {
+		panic(fmt.Sprintf("unexpected error: %v", err))
+	}
+
+	b.DataAvailabilityHeader = dah
+
+	// return the root hash of DA Header
+	b.DataHash = b.DataAvailabilityHeader.Hash()
+	b.NumOriginalDataShares = uint64(dataSharesLen)
 }
 
 // Hash computes and returns the block hash.
@@ -248,6 +273,11 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 		return nil, err
 	}
 
+	dah, err := da.DataAvailabilityHeaderFromProto(bp.DataAvailabilityHeader)
+	if err != nil {
+		return nil, err
+	}
+	b.DataAvailabilityHeader = *dah
 	if bp.LastCommit != nil {
 		lc, err := CommitFromProto(bp.LastCommit)
 		if err != nil {
@@ -1005,8 +1035,131 @@ type Data struct {
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
 
-	// Volatile
-	hash tmbytes.HexBytes
+	// Intermediate state roots of the Txs included in block.Height
+	// and executed by state state @ block.Height+1.
+	//
+	// TODO: replace with a dedicated type `IntermediateStateRoot`
+	// as soon as we settle on the format / sparse Merkle tree etc
+	IntermediateStateRoots IntermediateStateRoots `json:"intermediate_roots"`
+
+	Evidence EvidenceData `json:"evidence"`
+
+	// The messages included in this block.
+	// TODO: how do messages end up here? (abci) app <-> ll-core?
+	// A simple approach could be: include them in the Tx above and
+	// have a mechanism to split them out somehow? Probably better to include
+	// them only when necessary (before proposing the block) as messages do not
+	// really need to be processed by tendermint
+	Messages Messages `json:"msgs"`
+}
+
+type Messages struct {
+	MessagesList []Message `json:"msgs"`
+}
+
+type IntermediateStateRoots struct {
+	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
+}
+
+func (roots IntermediateStateRoots) SplitIntoShares() NamespacedShares {
+	rawDatas := make([][]byte, 0, len(roots.RawRootsList))
+	for _, root := range roots.RawRootsList {
+		rawData, err := root.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("app returned intermediate state root that can not be encoded %#v", root))
+		}
+		rawDatas = append(rawDatas, rawData)
+	}
+	shares := splitContiguous(consts.IntermediateStateRootsNamespaceID, rawDatas)
+	return shares
+}
+
+func (msgs Messages) SplitIntoShares() NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, m := range msgs.MessagesList {
+		rawData, err := m.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
+		}
+		shares = appendToShares(shares, m.NamespaceID, rawData)
+	}
+	return shares
+}
+
+// ComputeShares splits block data into shares of an original data square and
+// returns them along with an amount of non-redundant shares. The shares
+// returned are padded to complete a square size that is a power of two
+func (data *Data) ComputeShares() (NamespacedShares, int) {
+	// TODO(ismail): splitting into shares should depend on the block size and layout
+	// see: https://github.com/celestiaorg/celestia-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
+
+	// reserved shares:
+	txShares := data.Txs.SplitIntoShares()
+	intermRootsShares := data.IntermediateStateRoots.SplitIntoShares()
+	evidenceShares := data.Evidence.SplitIntoShares()
+
+	// application data shares from messages:
+	msgShares := data.Messages.SplitIntoShares()
+	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
+
+	// find the number of shares needed to create a square that has a power of
+	// two width
+	wantLen := paddedLen(curLen)
+
+	// ensure that the min square size is used
+	if wantLen < consts.MinSharecount {
+		wantLen = consts.MinSharecount
+	}
+
+	tailShares := TailPaddingShares(wantLen - curLen)
+
+	return append(append(append(append(
+		txShares,
+		intermRootsShares...),
+		evidenceShares...),
+		msgShares...),
+		tailShares...), curLen
+}
+
+// paddedLen calculates the number of shares needed to make a power of 2 square
+// given the current number of shares
+func paddedLen(length int) int {
+	width := uint32(math.Ceil(math.Sqrt(float64(length))))
+	width = nextHighestPowerOf2(width)
+	return int(width * width)
+}
+
+// nextPowerOf2 returns the next highest power of 2 unless the input is a power
+// of two, in which case it returns the input
+func nextHighestPowerOf2(v uint32) uint32 {
+	if v == 0 {
+		return 0
+	}
+
+	// find the next highest power using bit mashing
+	v--
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+	v++
+
+	// return the next highest power
+	return v
+}
+
+type Message struct {
+	// NamespaceID defines the namespace of this message, i.e. the
+	// namespace it will use in the namespaced Merkle tree.
+	//
+	// TODO: spec out constrains and
+	// introduce dedicated type instead of just []byte
+	NamespaceID namespace.ID
+
+	// Data is the actual data contained in the message
+	// (e.g. a block of a virtual sidechain).
+	Data []byte
 }
 
 // Hash returns the hash of the data

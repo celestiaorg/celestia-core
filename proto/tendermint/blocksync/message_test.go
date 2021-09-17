@@ -102,7 +102,7 @@ func TestBlockchainMessageVectors(t *testing.T) {
 			BlockRequest: &bcproto.BlockRequest{Height: math.MaxInt64}}},
 			"0a0a08ffffffffffffffff7f"},
 		{"BlockResponseMessage", &bcproto.Message{Sum: &bcproto.Message_BlockResponse{
-			BlockResponse: &bcproto.BlockResponse{Block: bpb}}}, "1a700a6e0a5b0a02080b1803220b088092b8c398feffffff012a0212003a20c4da88e876062aa1543400d50d0eaa0dac88096057949cfb7bca7f3a48c04bf96a20e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855120d0a0b48656c6c6f20576f726c641a00"},
+			BlockResponse: &bcproto.BlockResponse{Block: bpb}}}, "1ac2020abf020a5d0a02080b1803220b088092b8c398feffffff012a02120038014220269ece38583f42aaf53fdd3abe1f570ab9b0d08284d080900966040a29df504c7220e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85512130a0b48656c6c6f20576f726c6412001a0022001ac8010a3000000000000000010000000000000001163ff985bddcd0016e2535fc0e156f482c7df36c7a0c0cabc026d9d45d7a81d60a30ffffffffffffffffffffffffffffffffaf204cfc430a1f342d321b95c49392843e165ee721c5cf151bed7f5bab67f408123000000000000000010000000000000001163ff985bddcd0016e2535fc0e156f482c7df36c7a0c0cabc026d9d45d7a81d61230ffffffffffffffffffffffffffffffffaf204cfc430a1f342d321b95c49392843e165ee721c5cf151bed7f5bab67f408"},
 		{"NoBlockResponseMessage", &bcproto.Message{Sum: &bcproto.Message_NoBlockResponse{
 			NoBlockResponse: &bcproto.NoBlockResponse{Height: 1}}}, "12020801"},
 		{"NoBlockResponseMessage", &bcproto.Message{Sum: &bcproto.Message_NoBlockResponse{
