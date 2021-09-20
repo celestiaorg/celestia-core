@@ -213,11 +213,6 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
 
 var nilBytes []byte
 
-// This follows RFC-6962, i.e. `echo -n '' | sha256sum`
-var emptyBytes = []byte{0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8,
-	0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b,
-	0x78, 0x52, 0xb8, 0x55}
-
 func TestNilHeaderHashDoesntCrash(t *testing.T) {
 	assert.Equal(t, nilBytes, []byte((*Header)(nil).Hash()))
 	assert.Equal(t, nilBytes, []byte((new(Header)).Hash()))
@@ -687,7 +682,10 @@ func TestBlockProtoBuf(t *testing.T) {
 }
 
 func TestDataProtoBuf(t *testing.T) {
-	data := &Data{Txs: Txs{Tx([]byte{1}), Tx([]byte{2}), Tx([]byte{3})}, Evidence: EvidenceData{Evidence: EvidenceList([]Evidence{})}}
+	data := &Data{
+		Txs:      Txs{Tx([]byte{1}), Tx([]byte{2}), Tx([]byte{3})},
+		Evidence: EvidenceData{Evidence: EvidenceList([]Evidence{})},
+	}
 	data2 := &Data{Txs: Txs{}, Evidence: EvidenceData{Evidence: EvidenceList([]Evidence{})}}
 	testCases := []struct {
 		msg     string

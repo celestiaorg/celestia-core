@@ -22,10 +22,6 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-const (
-	nTxsPerBlock = 10
-)
-
 type paramsChangeTestCase struct {
 	height int64
 	params types.ConsensusParams

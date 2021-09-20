@@ -100,7 +100,15 @@ func TestBeginBlockValidators(t *testing.T) {
 		lastCommit := types.NewCommit(1, 0, prevBlockID, tc.lastCommitSigs)
 
 		// block for height 2
-		block, _ := state.MakeBlock(2, factory.MakeTenTxs(2), nil, nil, nil, lastCommit, state.Validators.GetProposer().Address)
+		block, _ := state.MakeBlock(
+			2,
+			factory.MakeTenTxs(2),
+			nil,
+			nil,
+			nil,
+			lastCommit,
+			state.Validators.GetProposer().Address,
+		)
 
 		_, err = sm.ExecCommitBlock(nil, proxyApp.Consensus(), block, log.TestingLogger(), stateStore, 1, state)
 		require.Nil(t, err, tc.desc)
