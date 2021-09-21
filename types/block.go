@@ -15,11 +15,11 @@ import (
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
-	"github.com/tendermint/tendermint/internal/libs/protoio"
-	tmsync "github.com/tendermint/tendermint/internal/libs/sync"
 	"github.com/tendermint/tendermint/libs/bits"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	tmmath "github.com/tendermint/tendermint/libs/math"
+	"github.com/tendermint/tendermint/libs/protoio"
+	tmsync "github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/pkg/consts"
 	"github.com/tendermint/tendermint/pkg/da"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
@@ -110,27 +110,6 @@ func (b *Block) fillHeader() {
 	if b.EvidenceHash == nil {
 		b.EvidenceHash = b.Evidence.Hash()
 	}
-}
-
-// TODO: Move out from 'types' package
-// fillDataAvailabilityHeader fills in any remaining DataAvailabilityHeader fields
-// that are a function of the block data.
-func (b *Block) fillDataAvailabilityHeader() {
-	namespacedShares, dataSharesLen := b.Data.ComputeShares()
-	shares := namespacedShares.RawShares()
-
-	// create the nmt wrapper to generate row and col commitments
-	squareSize := uint64(math.Sqrt(float64(len(shares))))
-	dah, err := da.NewDataAvailabilityHeader(squareSize, shares)
-	if err != nil {
-		panic(fmt.Sprintf("unexpected error: %v", err))
-	}
-
-	b.DataAvailabilityHeader = dah
-
-	// return the root hash of DA Header
-	b.DataHash = b.DataAvailabilityHeader.Hash()
-	b.NumOriginalDataShares = uint64(dataSharesLen)
 }
 
 // Hash computes and returns the block hash.
@@ -1052,6 +1031,34 @@ type Data struct {
 	// them only when necessary (before proposing the block) as messages do not
 	// really need to be processed by tendermint
 	Messages Messages `json:"msgs"`
+
+	// Volatile
+	hash tmbytes.HexBytes
+}
+
+// Hash returns the hash of the data
+func (data *Data) Hash() tmbytes.HexBytes {
+	if data.hash != nil {
+		return data.hash
+	}
+
+	// compute the data availability header
+	// todo(evan): add the non redundant shares back into the header
+	shares, _ := data.ComputeShares()
+	rawShares := shares.RawShares()
+
+	squareSize := uint64(math.Sqrt(float64(len(shares))))
+
+	eds, err := da.ExtendShares(squareSize, rawShares)
+	if err != nil {
+		panic(err)
+	}
+
+	dah := da.NewDataAvailabilityHeader(eds)
+
+	data.hash = dah.Hash()
+
+	return data.hash
 }
 
 // ComputeShares splits block data into shares of an original data square and
