@@ -107,7 +107,12 @@ func TestValidateBlockHeader(t *testing.T) {
 	}
 
 	nextHeight := validationTestsStopHeight
-	block := sf.MakeBlock(state, nextHeight, lastCommit)
+	block, _ := state.MakeBlock(
+		nextHeight,
+		factory.MakeTenTxs(nextHeight), nil, nil, nil,
+		lastCommit,
+		state.Validators.GetProposer().Address,
+	)
 	state.InitialHeight = nextHeight + 1
 	err := blockExec.ValidateBlock(state, block)
 	require.Error(t, err, "expected an error when state is ahead of block")
@@ -158,7 +163,7 @@ func TestValidateBlockCommit(t *testing.T) {
 				state.LastBlockID,
 				[]types.CommitSig{wrongHeightVote.CommitSig()},
 			)
-			block := sf.MakeBlock(state, height, wrongHeightCommit)
+			block, _ := state.MakeBlock(height, factory.MakeTenTxs(height), nil, nil, nil, wrongHeightCommit, proposerAddr)
 			err = blockExec.ValidateBlock(state, block)
 			_, isErrInvalidCommitHeight := err.(types.ErrInvalidCommitHeight)
 			require.True(t, isErrInvalidCommitHeight, "expected ErrInvalidCommitHeight at height %d but got: %v", height, err)
@@ -166,7 +171,7 @@ func TestValidateBlockCommit(t *testing.T) {
 			/*
 				#2589: test len(block.LastCommit.Signatures) == state.LastValidators.Size()
 			*/
-			block = sf.MakeBlock(state, height, wrongSigsCommit)
+			block, _ = state.MakeBlock(height, factory.MakeTenTxs(height), nil, nil, nil, wrongSigsCommit, proposerAddr)
 			err = blockExec.ValidateBlock(state, block)
 			_, isErrInvalidCommitSignatures := err.(types.ErrInvalidCommitSignatures)
 			require.True(t, isErrInvalidCommitSignatures,
@@ -278,7 +283,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 				evidence = append(evidence, newEv)
 				currentBytes += int64(len(newEv.Bytes()))
 			}
-			block, _ := state.MakeBlock(height, factory.MakeTenTxs(height), lastCommit, evidence, proposerAddr)
+			block, _ := state.MakeBlock(height, factory.MakeTenTxs(height), evidence, nil, nil, lastCommit, proposerAddr)
 			err := blockExec.ValidateBlock(state, block)
 			if assert.Error(t, err) {
 				_, ok := err.(*types.ErrEvidenceOverflow)

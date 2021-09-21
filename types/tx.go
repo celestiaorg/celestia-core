@@ -8,6 +8,7 @@ import (
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	"github.com/tendermint/tendermint/pkg/consts"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
@@ -77,6 +78,18 @@ func (txs Txs) Proof(i int) TxProof {
 		Data:     txs[i],
 		Proof:    *proofs[i],
 	}
+}
+
+func (txs Txs) splitIntoShares(shareSize int) NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, tx := range txs {
+		rawData, err := tx.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("included Tx in mem-pool that can not be encoded %v", tx))
+		}
+		shares = appendToShares(shares, consts.TxNamespaceID, rawData, shareSize)
+	}
+	return shares
 }
 
 // TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
