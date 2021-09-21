@@ -75,11 +75,10 @@ func TestNewDataAvailabilityHeader(t *testing.T) {
 
 func TestExtendShares(t *testing.T) {
 	type test struct {
-		name         string
-		expectedHash []byte
-		expectedErr  bool
-		squareSize   uint64
-		shares       [][]byte
+		name        string
+		expectedErr bool
+		squareSize  uint64
+		shares      [][]byte
 	}
 
 	tests := []test{
