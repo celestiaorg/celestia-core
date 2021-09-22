@@ -1077,6 +1077,10 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	msgShares := data.Messages.SplitIntoShares()
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
 
+	if curLen > consts.MaxShareCount {
+		panic(fmt.Sprintf("Block data exceeds the max square size. Number of shares required: %d\n", curLen))
+	}
+
 	// find the number of shares needed to create a square that has a power of
 	// two width
 	wantLen := paddedLen(curLen)
