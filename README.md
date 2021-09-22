@@ -67,5 +67,5 @@ According to SemVer, anything in the public API can change at any time before ve
 For more information on Tendermint Core and pointers to documentation for Tendermint visit
 this [repository](https://github.com/tendermint/tendermint).
 
-### Careers
+## Careers
 We are hiring Go engineers! Join us in building the future of blockchain scaling and interoperability. [Apply here](https://angel.co/company/celestialabs/jobs).
