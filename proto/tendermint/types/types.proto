@@ -87,6 +87,7 @@ message Data {
   // NOTE: not all txs here are valid.  We're just agreeing on the order first.
   // This means that block.AppHash does not include these txs.
   repeated bytes txs = 1;
+
   IntermediateStateRoots intermediate_state_roots = 2 [(gogoproto.nullable) = false];
   EvidenceList evidence    = 3 [(gogoproto.nullable) = false];
   Messages messages        = 4 [(gogoproto.nullable) = false];
@@ -132,7 +133,7 @@ message Messages {
 
 message Message {
   bytes namespace_id = 1;
-  bytes data = 2;
+  bytes data         = 2;
 }
 
 // DataAvailabilityHeader contains the row and column roots of the erasure
