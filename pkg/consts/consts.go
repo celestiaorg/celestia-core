@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 
 	"github.com/celestiaorg/nmt/namespace"
+	"github.com/celestiaorg/rsmt2d"
 )
 
 // This contains all constants of:
@@ -61,4 +62,9 @@ var (
 
 	// NewBaseHashFunc change accordingly if another hash.Hash should be used as a base hasher in the NMT:
 	NewBaseHashFunc = sha256.New
+
+	// DefaultCodec is the default codec creator used for data erasure
+	// TODO(ismail): for better efficiency and a larger number shares
+	// we should switch to the rsmt2d.LeopardFF16 codec:
+	DefaultCodec = rsmt2d.NewRSGF8Codec
 )
