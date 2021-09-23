@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -1107,7 +1108,12 @@ func (msgs Messages) SplitIntoShares() NamespacedShares {
 		}
 		shares = appendToShares(shares, m.NamespaceID, rawData)
 	}
+	sortNamespacedShares(shares)
 	return shares
+}
+
+func sortNamespacedShares(src []NamespacedShare) {
+	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i].Data(), src[j].Data()) < 0 })
 }
 
 // ComputeShares splits block data into shares of an original data square and
