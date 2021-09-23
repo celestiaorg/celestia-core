@@ -1101,6 +1101,7 @@ func (roots IntermediateStateRoots) SplitIntoShares() NamespacedShares {
 
 func (msgs Messages) SplitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
+	msgs.sortMessages()
 	for _, m := range msgs.MessagesList {
 		rawData, err := m.MarshalDelimited()
 		if err != nil {
@@ -1108,12 +1109,13 @@ func (msgs Messages) SplitIntoShares() NamespacedShares {
 		}
 		shares = appendToShares(shares, m.NamespaceID, rawData)
 	}
-	sortNamespacedShares(shares)
 	return shares
 }
 
-func sortNamespacedShares(src []NamespacedShare) {
-	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i].Data(), src[j].Data()) < 0 })
+func (msgs *Messages) sortMessages() {
+	sort.Slice(msgs.MessagesList, func(i, j int) bool {
+		return bytes.Compare(msgs.MessagesList[i].NamespaceID, msgs.MessagesList[j].NamespaceID) < 0
+	})
 }
 
 // ComputeShares splits block data into shares of an original data square and
