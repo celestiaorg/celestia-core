@@ -166,6 +166,7 @@ func setup(
 		stateProvider,
 		rts.snapshotOutCh,
 		rts.chunkOutCh,
+		rts.snapshotChannel.Done(),
 		"",
 	)
 
@@ -518,7 +519,9 @@ func TestReactor_StateProviderP2P(t *testing.T) {
 	rts.reactor.cfg.UseP2P = true
 	rts.reactor.cfg.TrustHeight = 1
 	rts.reactor.cfg.TrustHash = fmt.Sprintf("%X", chain[1].Hash())
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	rts.reactor.mtx.Lock()
 	err := rts.reactor.initStateProvider(ctx, factory.DefaultTestChainID, 1)
 	rts.reactor.mtx.Unlock()

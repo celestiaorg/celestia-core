@@ -63,8 +63,14 @@ type syncer struct {
 	fetchers      int32
 	retryTimeout  time.Duration
 
-	mtx    tmsync.RWMutex
-	chunks *chunkQueue
+	mtx     tmsync.RWMutex
+	chunks  *chunkQueue
+	metrics *Metrics
+
+	avgChunkTime             int64
+	lastSyncedSnapshotHeight int64
+	processingSnapshot       *snapshot
+	closeCh                  <-chan struct{}
 }
 
 // newSyncer creates a new syncer.
@@ -74,7 +80,9 @@ func newSyncer(
 	conn proxy.AppConnSnapshot,
 	connQuery proxy.AppConnQuery,
 	stateProvider StateProvider,
-	snapshotCh, chunkCh chan<- p2p.Envelope,
+	snapshotCh chan<- p2p.Envelope,
+	chunkCh chan<- p2p.Envelope,
+	closeCh <-chan struct{},
 	tempDir string,
 ) *syncer {
 	return &syncer{
@@ -88,6 +96,8 @@ func newSyncer(
 		tempDir:       tempDir,
 		fetchers:      cfg.Fetchers,
 		retryTimeout:  cfg.ChunkRequestTimeout,
+		metrics:       metrics,
+		closeCh:       closeCh,
 	}
 }
 
@@ -131,9 +141,15 @@ func (s *syncer) AddSnapshot(peerID types.NodeID, snapshot *snapshot) (bool, err
 // single request to discover snapshots, later we may want to do retries and stuff.
 func (s *syncer) AddPeer(peerID types.NodeID) {
 	s.logger.Debug("Requesting snapshots from peer", "peer", peerID)
-	s.snapshotCh <- p2p.Envelope{
+
+	msg := p2p.Envelope{
 		To:      peerID,
 		Message: &ssproto.SnapshotsRequest{},
+	}
+
+	select {
+	case <-s.closeCh:
+	case s.snapshotCh <- msg:
 	}
 }
 
@@ -455,6 +471,8 @@ func (s *syncer) fetchChunks(ctx context.Context, snapshot *snapshot, chunks *ch
 				select {
 				case <-ctx.Done():
 					return
+				case <-s.closeCh:
+					return
 				case <-time.After(2 * time.Second):
 					continue
 				}
@@ -481,6 +499,8 @@ func (s *syncer) fetchChunks(ctx context.Context, snapshot *snapshot, chunks *ch
 
 		case <-ctx.Done():
 			return
+		case <-s.closeCh:
+			return
 		}
 
 		ticker.Stop()
@@ -504,13 +524,18 @@ func (s *syncer) requestChunk(snapshot *snapshot, chunk uint32) {
 		"peer", peer,
 	)
 
-	s.chunkCh <- p2p.Envelope{
+	msg := p2p.Envelope{
 		To: peer,
 		Message: &ssproto.ChunkRequest{
 			Height: snapshot.Height,
 			Format: snapshot.Format,
 			Index:  chunk,
 		},
+	}
+
+	select {
+	case s.chunkCh <- msg:
+	case <-s.closeCh:
 	}
 }
 
