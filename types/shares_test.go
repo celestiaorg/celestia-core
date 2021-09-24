@@ -12,11 +12,12 @@ import (
 	"time"
 
 	"github.com/celestiaorg/nmt/namespace"
-	"github.com/celestiaorg/rsmt2d"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/internal/libs/protoio"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/pkg/consts"
+	"github.com/tendermint/tendermint/pkg/da"
 )
 
 type Splitter interface {
@@ -252,10 +253,9 @@ func TestDataFromSquare(t *testing.T) {
 			shares, _ := data.ComputeShares()
 			rawShares := shares.RawShares()
 
-			eds, err := rsmt2d.ComputeExtendedDataSquare(rawShares, consts.DefaultCodec(), rsmt2d.NewDefaultTree)
-			if err != nil {
-				t.Error(err)
-			}
+			squareSize := uint64(math.Sqrt(float64(len(shares))))
+			eds, err := da.ExtendShares(squareSize, rawShares)
+			require.NoError(t, err)
 
 			res, err := DataFromSquare(eds)
 			if err != nil {
