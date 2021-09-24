@@ -105,9 +105,21 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// Fetch a limited amount of valid txs
 	maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
 
+	// TODO(ismail): reaping the mempool has to happen in relation to a max
+	// allowed square size instead of (only) Gas / bytes
+	// maybe the mempool actually should track things separately
+	// meaning that CheckTx should already do the mapping:
+	// Tx -> Txs, Message
+	// https://github.com/tendermint/tendermint/issues/77
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
-
-	return state.MakeBlock(height, txs, commit, evidence, proposerAddr)
+	// TODO(ismail):
+	//  1. get those intermediate state roots & messages either from the
+	//     mempool or from the abci-app
+	//  1.1 at this point we should now the square / block size:
+	//      https://github.com/celestiaorg/celestia-specs/blob/53e5f350838f1e0785ad670704bf91dac2f4f5a3/specs/block_proposer.md#deciding-on-a-block-size
+	//      Here, we instead assume a fixed (max) square size instead.
+	//  2. feed them into MakeBlock below:
+	return state.MakeBlock(height, txs, evidence, nil, nil, commit, proposerAddr)
 }
 
 // ValidateBlock validates the given block against the given state.

@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/celestiaorg/nmt/namespace"
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
+	"github.com/tendermint/tendermint/pkg/consts"
 
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/merkle"
@@ -16,6 +18,7 @@ import (
 	"github.com/tendermint/tendermint/libs/bits"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	tmmath "github.com/tendermint/tendermint/libs/math"
+	"github.com/tendermint/tendermint/libs/protoio"
 	tmsync "github.com/tendermint/tendermint/libs/sync"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
@@ -45,8 +48,7 @@ type Block struct {
 
 	Header     `json:"header"`
 	Data       `json:"data"`
-	Evidence   EvidenceData `json:"evidence"`
-	LastCommit *Commit      `json:"last_commit"`
+	LastCommit *Commit `json:"last_commit"`
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data.
@@ -117,6 +119,73 @@ func (b *Block) fillHeader() {
 		b.EvidenceHash = b.Evidence.Hash()
 	}
 }
+
+// // fillDataAvailabilityHeader fills in any remaining DataAvailabilityHeader fields
+// // that are a function of the block data.
+// func (b *Block) fillDataAvailabilityHeader() {
+// 	namespacedShares := b.Data.computeShares()
+// 	shares := namespacedShares.RawShares()
+// 	if len(shares) == 0 {
+// 		// no shares -> no row/colum roots -> hash(empty)
+// 		b.DataHash = b.DataAvailabilityHeader.Hash()
+// 		return
+// 	}
+// 	// TODO(ismail): for better efficiency and a larger number shares
+// 	// we should switch to the rsmt2d.LeopardFF16 codec:
+// 	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.RSGF8)
+// 	if err != nil {
+// 		panic(fmt.Sprintf("unexpected error: %v", err))
+// 	}
+// 	// compute roots:
+// 	squareWidth := extendedDataSquare.Width()
+// 	originalDataWidth := squareWidth / 2
+// 	b.DataAvailabilityHeader = DataAvailabilityHeader{
+// 		RowsRoots:   make([]namespace.IntervalDigest, squareWidth),
+// 		ColumnRoots: make([]namespace.IntervalDigest, squareWidth),
+// 	}
+
+// 	// compute row and column roots:
+// 	// TODO(ismail): refactor this to use rsmt2d lib directly instead
+// 	// depends on https://github.com/celestiaorg/rsmt2d/issues/8
+// 	for outerIdx := uint(0); outerIdx < squareWidth; outerIdx++ {
+// 		rowTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
+// 		colTree := nmt.New(newBaseHashFunc(), nmt.NamespaceIDSize(NamespaceSize))
+// 		for innerIdx := uint(0); innerIdx < squareWidth; innerIdx++ {
+// 			if outerIdx < originalDataWidth && innerIdx < originalDataWidth {
+// 				mustPush(rowTree, namespacedShares[outerIdx*originalDataWidth+innerIdx])
+// 				mustPush(colTree, namespacedShares[innerIdx*originalDataWidth+outerIdx])
+// 			} else {
+// 				rowData := extendedDataSquare.Row(outerIdx)
+// 				colData := extendedDataSquare.Column(outerIdx)
+
+// 				parityCellFromRow := rowData[innerIdx]
+// 				parityCellFromCol := colData[innerIdx]
+// 				// FIXME(ismail): do not hardcode usage of PrefixedData8 here:
+// 				mustPush(rowTree, namespace.PrefixedData8(
+// 					append(ParitySharesNamespaceID, parityCellFromRow...),
+// 				))
+// 				mustPush(colTree, namespace.PrefixedData8(
+// 					append(ParitySharesNamespaceID, parityCellFromCol...),
+// 				))
+// 			}
+// 		}
+// 		b.DataAvailabilityHeader.RowsRoots[outerIdx] = rowTree.Root()
+// 		b.DataAvailabilityHeader.ColumnRoots[outerIdx] = colTree.Root()
+// 	}
+
+// 	b.DataHash = b.DataAvailabilityHeader.Hash()
+// }
+
+// func mustPush(rowTree *nmt.NamespacedMerkleTree, namespacedShare namespace.Data) {
+// 	if err := rowTree.Push(namespacedShare); err != nil {
+// 		panic(
+// 			fmt.Sprintf("invalid data; could not push share to tree: %#v, err: %v",
+// 				namespacedShare,
+// 				err,
+// 			),
+// 		)
+// 	}
+// }
 
 // Hash computes and returns the block hash.
 // If the block is incomplete, block hash is nil for safety.
@@ -232,7 +301,7 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 	if err != nil {
 		return nil, err
 	}
-	pb.Evidence = *protoEvidence
+	pb.Data.Evidence = *protoEvidence
 
 	return pb, nil
 }
@@ -255,7 +324,7 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 		return nil, err
 	}
 	b.Data = data
-	if err := b.Evidence.FromProto(&bp.Evidence); err != nil {
+	if err := b.Evidence.FromProto(&bp.Data.Evidence); err != nil {
 		return nil, err
 	}
 
@@ -313,6 +382,30 @@ func MaxDataBytesNoEvidence(maxBytes int64, valsCount int) int64 {
 	}
 
 	return maxDataBytes
+}
+
+// MakeBlock returns a new block with an empty header, except what can be
+// computed from itself.
+// It populates the same set of fields validated by ValidateBasic.
+func MakeBlock(
+	height int64,
+	txs []Tx, evidence []Evidence, intermediateStateRoots []tmbytes.HexBytes, messages []Message,
+	lastCommit *Commit) *Block {
+	block := &Block{
+		Header: Header{
+			Version: tmversion.Consensus{Block: version.BlockProtocol, App: 0},
+			Height:  height,
+		},
+		Data: Data{
+			Txs:                    txs,
+			IntermediateStateRoots: IntermediateStateRoots{RawRootsList: intermediateStateRoots},
+			Evidence:               EvidenceData{Evidence: evidence},
+			Messages:               Messages{MessagesList: messages},
+		},
+		LastCommit: lastCommit,
+	}
+	block.fillHeader()
+	return block
 }
 
 //-----------------------------------------------------------------------------
@@ -988,13 +1081,31 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 
 //-----------------------------------------------------------------------------
 
-// Data contains the set of transactions included in the block
+// Data contains all the available Data of the block.
+// Data with reserved namespaces (Txs, IntermediateStateRoots, Evidence) and
+// Celestia application specific Messages.
 type Data struct {
-
 	// Txs that will be applied by state @ block.Height+1.
 	// NOTE: not all txs here are valid.  We're just agreeing on the order first.
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
+
+	// Intermediate state roots of the Txs included in block.Height
+	// and executed by state state @ block.Height+1.
+	//
+	// TODO: replace with a dedicated type `IntermediateStateRoot`
+	// as soon as we settle on the format / sparse Merkle tree etc
+	IntermediateStateRoots IntermediateStateRoots `json:"intermediate_roots"`
+
+	Evidence EvidenceData `json:"evidence"`
+
+	// The messages included in this block.
+	// TODO: how do messages end up here? (abci) app <-> ll-core?
+	// A simple approach could be: include them in the Tx above and
+	// have a mechanism to split them out somehow? Probably better to include
+	// them only when necessary (before proposing the block) as messages do not
+	// really need to be processed by tendermint
+	Messages Messages `json:"msgs"`
 
 	// Volatile
 	hash tmbytes.HexBytes
@@ -1009,6 +1120,51 @@ func (data *Data) Hash() tmbytes.HexBytes {
 		data.hash = data.Txs.Hash() // NOTE: leaves of merkle tree are TxIDs
 	}
 	return data.hash
+}
+
+type Messages struct {
+	MessagesList []Message `json:"msgs"`
+}
+
+type IntermediateStateRoots struct {
+	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
+}
+
+func (roots IntermediateStateRoots) splitIntoShares() NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, root := range roots.RawRootsList {
+		rawData, err := root.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("app returned intermediate state root that can not be encoded %#v", root))
+		}
+		shares = appendToShares(shares, consts.IntermediateStateRootsNamespaceID, rawData)
+	}
+	return shares
+}
+
+func (msgs Messages) splitIntoShares() NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, m := range msgs.MessagesList {
+		rawData, err := m.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
+		}
+		shares = appendToShares(shares, m.NamespaceID, rawData)
+	}
+	return shares
+}
+
+type Message struct {
+	// NamespaceID defines the namespace of this message, i.e. the
+	// namespace it will use in the namespaced Merkle tree.
+	//
+	// TODO: spec out constrains and
+	// introduce dedicated type instead of just []byte
+	NamespaceID namespace.ID
+
+	// Data is the actual data contained in the message
+	// (e.g. a block of a virtual sidechain).
+	Data []byte
 }
 
 // StringIndented returns an indented string representation of the transactions.
@@ -1026,9 +1182,8 @@ func (data *Data) StringIndented(indent string) string {
 	}
 	return fmt.Sprintf(`Data{
 %s  %v
-%s}#%v`,
-		indent, strings.Join(txStrings, "\n"+indent+"  "),
-		indent, data.hash)
+}`,
+		indent, strings.Join(txStrings, "\n"+indent+"  "))
 }
 
 // ToProto converts Data to protobuf
@@ -1042,6 +1197,21 @@ func (data *Data) ToProto() tmproto.Data {
 		}
 		tp.Txs = txBzs
 	}
+	rawRoots := data.IntermediateStateRoots.RawRootsList
+	if len(rawRoots) > 0 {
+		roots := make([][]byte, len(rawRoots))
+		for i := range rawRoots {
+			roots[i] = rawRoots[i]
+		}
+		tp.IntermediateStateRoots.RawRootsList = roots
+	}
+	// TODO(evan): copy missing pieces from previous work
+	pevd, err := data.Evidence.ToProto()
+	if err != nil {
+		// TODO(evan): fix
+		panic(err)
+	}
+	tp.Evidence = *pevd
 
 	return *tp
 }
@@ -1062,6 +1232,34 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		data.Txs = txBzs
 	} else {
 		data.Txs = Txs{}
+	}
+
+	if len(dp.Messages.MessagesList) > 0 {
+		msgs := make([]Message, len(dp.Messages.MessagesList))
+		for i, m := range dp.Messages.MessagesList {
+			msgs[i] = Message{NamespaceID: m.NamespaceId, Data: m.Data}
+		}
+		data.Messages = Messages{MessagesList: msgs}
+	} else {
+		data.Messages = Messages{}
+	}
+	if len(dp.IntermediateStateRoots.RawRootsList) > 0 {
+		roots := make([]tmbytes.HexBytes, len(dp.IntermediateStateRoots.RawRootsList))
+		for i, r := range dp.IntermediateStateRoots.RawRootsList {
+			roots[i] = r
+		}
+		data.IntermediateStateRoots = IntermediateStateRoots{RawRootsList: roots}
+	} else {
+		data.IntermediateStateRoots = IntermediateStateRoots{}
+	}
+
+	evdData := new(EvidenceData)
+	err := evdData.FromProto(&dp.Evidence)
+	if err != nil {
+		return Data{}, err
+	}
+	if evdData != nil {
+		data.Evidence = *evdData
 	}
 
 	return *data, nil
@@ -1156,6 +1354,32 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
 	data.byteSize = int64(eviData.Size())
 
 	return nil
+}
+
+func (data *EvidenceData) splitIntoShares() NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, ev := range data.Evidence {
+		var rawData []byte
+		var err error
+		switch cev := ev.(type) {
+		case *DuplicateVoteEvidence:
+			rawData, err = protoio.MarshalDelimited(cev.ToProto())
+		case *LightClientAttackEvidence:
+			pcev, iErr := cev.ToProto()
+			if iErr != nil {
+				err = iErr
+				break
+			}
+			rawData, err = protoio.MarshalDelimited(pcev)
+		default:
+			panic(fmt.Sprintf("unknown evidence included in evidence pool (don't know how to encode this) %#v", ev))
+		}
+		if err != nil {
+			panic(fmt.Sprintf("evidence included in evidence pool that can not be encoded %#v, err: %v", ev, err))
+		}
+		shares = appendToShares(shares, consts.EvidenceNamespaceID, rawData)
+	}
+	return shares
 }
 
 //--------------------------------------------------------------------------------

@@ -8,6 +8,7 @@ require (
 	github.com/Workiva/go-datastructures v1.0.52
 	github.com/btcsuite/btcd v0.21.0-beta
 	github.com/btcsuite/btcutil v1.0.2
+	github.com/celestiaorg/nmt v0.7.0
 	github.com/confio/ics23/go v0.6.3
 	github.com/cosmos/iavl v0.15.3
 	github.com/fortytw2/leaktest v1.3.0
