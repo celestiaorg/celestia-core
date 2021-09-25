@@ -614,6 +614,52 @@ func (_m *Client) QuerySync(_a0 types.RequestQuery) (*types.ResponseQuery, error
 	return r0, r1
 }
 
+// PreprocessTxsAsync provides a mock function with given fields: _a0, _a1
+func (_m *Client) PreprocessTxsAsync(_a0 types.RequestPreprocessTxs) (*abcicli.ReqRes, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *abcicli.ReqRes
+	if rf, ok := ret.Get(0).(func(types.RequestPreprocessTxs) *abcicli.ReqRes); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*abcicli.ReqRes)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(types.RequestPreprocessTxs) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// PreprocessTxsSync provides a mock function with given fields: _a0
+func (_m *Client) PreprocessTxsSync(_a0 types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *types.ResponsePreprocessTxs
+	if rf, ok := ret.Get(0).(func(types.RequestPreprocessTxs) *types.ResponsePreprocessTxs); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.ResponsePreprocessTxs)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(types.RequestPreprocessTxs) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // Quit provides a mock function with given fields:
 func (_m *Client) Quit() <-chan struct{} {
 	ret := _m.Called()
