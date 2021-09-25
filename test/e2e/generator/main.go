@@ -37,19 +37,13 @@ func NewCLI() *CLI {
 		SilenceUsage:  true,
 		SilenceErrors: true, // we'll output them ourselves in Run()
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dir, err := cmd.Flags().GetString("dir")
-			if err != nil {
-				return err
-			}
-			groups, err := cmd.Flags().GetInt("groups")
-			if err != nil {
-				return err
-			}
+			var opts Options
+			var err error
+
 			p2pMode, err := cmd.Flags().GetString("p2p")
 			if err != nil {
 				return err
 			}
-			var opts Options
 			switch mode := P2PMode(p2pMode); mode {
 			case NewP2PMode, LegacyP2PMode, HybridP2PMode, MixedP2PMode:
 				opts = Options{P2P: mode}
@@ -65,11 +59,16 @@ func NewCLI() *CLI {
 		},
 	}
 
-	cli.root.PersistentFlags().StringP("dir", "d", "", "Output directory for manifests")
+	cli.root.PersistentFlags().StringVarP(&cli.opts.Directory, "dir", "d", "", "Output directory for manifests")
 	_ = cli.root.MarkPersistentFlagRequired("dir")
-	cli.root.PersistentFlags().IntP("groups", "g", 0, "Number of groups")
+	cli.root.Flags().BoolVarP(&cli.opts.Reverse, "reverse", "r", false, "Reverse sort order")
+	cli.root.PersistentFlags().IntVarP(&cli.opts.NumGroups, "groups", "g", 0, "Number of groups")
 	cli.root.PersistentFlags().StringP("p2p", "p", string(MixedP2PMode),
 		"P2P typology to be generated [\"new\", \"legacy\", \"hybrid\" or \"mixed\" ]")
+	cli.root.PersistentFlags().IntVarP(&cli.opts.MinNetworkSize, "min-size", "", 1,
+		"Minimum network size (nodes)")
+	cli.root.PersistentFlags().IntVarP(&cli.opts.MaxNetworkSize, "max-size", "", 0,
+		"Maxmum network size (nodes), 0 is unlimited")
 
 	return cli
 }
@@ -85,10 +84,22 @@ func (cli *CLI) generate(dir string, groups int, opts Options) error {
 	if err != nil {
 		return err
 	}
-	if groups <= 0 {
-		for i, manifest := range manifests {
-			err = manifest.Save(filepath.Join(dir, fmt.Sprintf("gen-%04d.toml", i)))
-			if err != nil {
+
+	switch {
+	case cli.opts.NumGroups <= 0:
+		e2e.SortManifests(manifests, cli.opts.Reverse)
+
+		if err := e2e.WriteManifests(filepath.Join(cli.opts.Directory, "gen"), manifests); err != nil {
+			return err
+		}
+	default:
+		groupManifests := e2e.SplitGroups(cli.opts.NumGroups, manifests)
+
+		for idx, gm := range groupManifests {
+			e2e.SortManifests(gm, cli.opts.Reverse)
+
+			prefix := filepath.Join(cli.opts.Directory, fmt.Sprintf("gen-group%02d", idx))
+			if err := e2e.WriteManifests(prefix, gm); err != nil {
 				return err
 			}
 		}
