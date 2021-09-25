@@ -458,7 +458,7 @@ func TestLoadBlockMeta(t *testing.T) {
 	dah := da.MinDataAvailabilityHeader()
 	// 3. A good blockMeta serialized and saved to the DB should be retrievable
 	meta := &types.BlockMeta{Header: types.Header{
-		Version: tmversion.Consensus{
+		Version: version.Consensus{
 			Block: version.BlockProtocol, App: 0}, Height: 1, ProposerAddress: tmrand.Bytes(crypto.AddressSize)},
 		DAHeader: dah}
 	pbm, err := meta.ToProto()

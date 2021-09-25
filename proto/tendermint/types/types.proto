@@ -194,7 +194,6 @@ message BlockMeta {
   int64   block_size = 2;
   Header  header     = 3 [(gogoproto.nullable) = false];
   int64   num_txs    = 4;
-  tendermint.da.DataAvailabilityHeader da_header = 5;
 }
 
 // TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.

@@ -5,17 +5,15 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/tendermint/tendermint/pkg/da"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 // BlockMeta contains meta information.
 type BlockMeta struct {
-	BlockID   BlockID                   `json:"block_id"`
-	BlockSize int                       `json:"block_size"`
-	Header    Header                    `json:"header"`
-	NumTxs    int                       `json:"num_txs"`
-	DAHeader  da.DataAvailabilityHeader `json:"da_header"`
+	BlockID   BlockID `json:"block_id"`
+	BlockSize int     `json:"block_size"`
+	Header    Header  `json:"header"`
+	NumTxs    int     `json:"num_txs"`
 }
 
 // NewBlockMeta returns a new BlockMeta.
@@ -55,11 +53,6 @@ func BlockMetaFromProto(pb *tmproto.BlockMeta) (*BlockMeta, error) {
 	}
 
 	h, err := HeaderFromProto(&pb.Header)
-	if err != nil {
-		return nil, err
-	}
-
-	dah, err := da.DataAvailabilityHeaderFromProto(pb.DaHeader)
 	if err != nil {
 		return nil, err
 	}
