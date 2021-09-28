@@ -142,7 +142,7 @@ func sBlockRespEv(current, expected string, peerID p2p.ID, height int64, prevBlo
 		data: bReactorEventData{
 			peerID: peerID,
 			height: height,
-			block:  types.MakeBlock(height, txs, nil, nil),
+			block:  types.MakeBlock(height, txs, nil, nil, nil, nil),
 			length: 100},
 		wantState:     expected,
 		wantNewBlocks: append(prevBlocks, height),
@@ -159,7 +159,7 @@ func sBlockRespEvErrored(current, expected string,
 		data: bReactorEventData{
 			peerID: peerID,
 			height: height,
-			block:  types.MakeBlock(height, txs, nil, nil),
+			block:  types.MakeBlock(height, txs, nil, nil, nil, nil),
 			length: 100},
 		wantState:        expected,
 		wantErr:          wantErr,

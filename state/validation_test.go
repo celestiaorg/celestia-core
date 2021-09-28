@@ -16,6 +16,7 @@ import (
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/state/mocks"
+	"github.com/tendermint/tendermint/test/factory"
 	"github.com/tendermint/tendermint/types"
 	tmtime "github.com/tendermint/tendermint/types/time"
 )
@@ -78,7 +79,7 @@ func TestValidateBlockHeader(t *testing.T) {
 			Invalid blocks don't pass
 		*/
 		for _, tc := range testCases {
-			block, _ := state.MakeBlock(height, makeTxs(height), lastCommit, nil, proposerAddr)
+			block, _ := state.MakeBlock(height, makeTxs(height), nil, nil, nil, lastCommit, proposerAddr)
 			tc.malleateBlock(block)
 			err := blockExec.ValidateBlock(state, block)
 			require.Error(t, err, tc.name)
@@ -91,6 +92,18 @@ func TestValidateBlockHeader(t *testing.T) {
 		state, _, lastCommit, err = makeAndCommitGoodBlock(state, height, lastCommit, proposerAddr, blockExec, privVals, nil)
 		require.NoError(t, err, "height %d", height)
 	}
+
+	nextHeight := validationTestsStopHeight
+	block, _ := state.MakeBlock(
+		nextHeight,
+		factory.MakeTenTxs(nextHeight), nil, nil, nil,
+		lastCommit,
+		state.Validators.GetProposer().Address,
+	)
+	state.InitialHeight = nextHeight + 1
+	err := blockExec.ValidateBlock(state, block)
+	require.Error(t, err, "expected an error when state is ahead of block")
+	assert.Contains(t, err.Error(), "lower than initial height")
 }
 
 func TestValidateBlockCommit(t *testing.T) {
@@ -133,7 +146,7 @@ func TestValidateBlockCommit(t *testing.T) {
 				state.LastBlockID,
 				[]types.CommitSig{wrongHeightVote.CommitSig()},
 			)
-			block, _ := state.MakeBlock(height, makeTxs(height), wrongHeightCommit, nil, proposerAddr)
+			block, _ := state.MakeBlock(height, factory.MakeTenTxs(height), nil, nil, nil, wrongHeightCommit, proposerAddr)
 			err = blockExec.ValidateBlock(state, block)
 			_, isErrInvalidCommitHeight := err.(types.ErrInvalidCommitHeight)
 			require.True(t, isErrInvalidCommitHeight, "expected ErrInvalidCommitHeight at height %d but got: %v", height, err)
@@ -141,7 +154,7 @@ func TestValidateBlockCommit(t *testing.T) {
 			/*
 				#2589: test len(block.LastCommit.Signatures) == state.LastValidators.Size()
 			*/
-			block, _ = state.MakeBlock(height, makeTxs(height), wrongSigsCommit, nil, proposerAddr)
+			block, _ = state.MakeBlock(height, factory.MakeTenTxs(height), nil, nil, nil, wrongSigsCommit, proposerAddr)
 			err = blockExec.ValidateBlock(state, block)
 			_, isErrInvalidCommitSignatures := err.(types.ErrInvalidCommitSignatures)
 			require.True(t, isErrInvalidCommitSignatures,
@@ -248,7 +261,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 				evidence = append(evidence, newEv)
 				currentBytes += int64(len(newEv.Bytes()))
 			}
-			block, _ := state.MakeBlock(height, makeTxs(height), lastCommit, evidence, proposerAddr)
+			block, _ := state.MakeBlock(height, factory.MakeTenTxs(height), evidence, nil, nil, lastCommit, proposerAddr)
 			err := blockExec.ValidateBlock(state, block)
 			if assert.Error(t, err) {
 				_, ok := err.(*types.ErrEvidenceOverflow)

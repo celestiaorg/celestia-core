@@ -1,13 +1,28 @@
 package bytes
 
 import (
+	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
 
 // HexBytes enables HEX-encoding for json/encoding.
 type HexBytes []byte
+
+var (
+	_ json.Marshaler   = HexBytes{}
+	_ json.Unmarshaler = &HexBytes{}
+)
+
+func (bz HexBytes) MarshalDelimited() ([]byte, error) {
+	lenBuf := make([]byte, binary.MaxVarintLen64)
+	length := uint64(len(bz))
+	n := binary.PutUvarint(lenBuf, length)
+
+	return append(lenBuf[:n], bz...), nil
+}
 
 // Marshal needed for protobuf compatibility
 func (bz HexBytes) Marshal() ([]byte, error) {

@@ -20,6 +20,8 @@ type AppConnConsensus interface {
 	DeliverTxAsync(types.RequestDeliverTx) *abcicli.ReqRes
 	EndBlockSync(types.RequestEndBlock) (*types.ResponseEndBlock, error)
 	CommitSync() (*types.ResponseCommit, error)
+
+	PreprocessTxsSync(types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error)
 }
 
 type AppConnMempool interface {
@@ -91,6 +93,12 @@ func (app *appConnConsensus) EndBlockSync(req types.RequestEndBlock) (*types.Res
 
 func (app *appConnConsensus) CommitSync() (*types.ResponseCommit, error) {
 	return app.appConn.CommitSync()
+}
+
+func (app *appConnConsensus) PreprocessTxsSync(
+	req types.RequestPreprocessTxs,
+) (*types.ResponsePreprocessTxs, error) {
+	return app.appConn.PreprocessTxsSync(req)
 }
 
 //------------------------------------------------

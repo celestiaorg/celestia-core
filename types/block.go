@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
+	"github.com/celestiaorg/nmt/namespace"
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
+	"github.com/tendermint/tendermint/pkg/consts"
 
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/merkle"
@@ -16,7 +19,9 @@ import (
 	"github.com/tendermint/tendermint/libs/bits"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	tmmath "github.com/tendermint/tendermint/libs/math"
+	"github.com/tendermint/tendermint/libs/protoio"
 	tmsync "github.com/tendermint/tendermint/libs/sync"
+	"github.com/tendermint/tendermint/pkg/da"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
 	"github.com/tendermint/tendermint/version"
@@ -45,8 +50,7 @@ type Block struct {
 
 	Header     `json:"header"`
 	Data       `json:"data"`
-	Evidence   EvidenceData `json:"evidence"`
-	LastCommit *Commit      `json:"last_commit"`
+	LastCommit *Commit `json:"last_commit"`
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data.
@@ -232,7 +236,7 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 	if err != nil {
 		return nil, err
 	}
-	pb.Evidence = *protoEvidence
+	pb.Data.Evidence = *protoEvidence
 
 	return pb, nil
 }
@@ -255,7 +259,7 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 		return nil, err
 	}
 	b.Data = data
-	if err := b.Evidence.FromProto(&bp.Evidence); err != nil {
+	if err := b.Evidence.FromProto(&bp.Data.Evidence); err != nil {
 		return nil, err
 	}
 
@@ -313,6 +317,30 @@ func MaxDataBytesNoEvidence(maxBytes int64, valsCount int) int64 {
 	}
 
 	return maxDataBytes
+}
+
+// MakeBlock returns a new block with an empty header, except what can be
+// computed from itself.
+// It populates the same set of fields validated by ValidateBasic.
+func MakeBlock(
+	height int64,
+	txs []Tx, evidence []Evidence, intermediateStateRoots []tmbytes.HexBytes, messages []Message,
+	lastCommit *Commit) *Block {
+	block := &Block{
+		Header: Header{
+			Version: tmversion.Consensus{Block: version.BlockProtocol, App: 0},
+			Height:  height,
+		},
+		Data: Data{
+			Txs:                    txs,
+			IntermediateStateRoots: IntermediateStateRoots{RawRootsList: intermediateStateRoots},
+			Evidence:               EvidenceData{Evidence: evidence},
+			Messages:               Messages{MessagesList: messages},
+		},
+		LastCommit: lastCommit,
+	}
+	block.fillHeader()
+	return block
 }
 
 //-----------------------------------------------------------------------------
@@ -988,13 +1016,31 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 
 //-----------------------------------------------------------------------------
 
-// Data contains the set of transactions included in the block
+// Data contains all the available Data of the block.
+// Data with reserved namespaces (Txs, IntermediateStateRoots, Evidence) and
+// Celestia application specific Messages.
 type Data struct {
-
 	// Txs that will be applied by state @ block.Height+1.
 	// NOTE: not all txs here are valid.  We're just agreeing on the order first.
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
+
+	// Intermediate state roots of the Txs included in block.Height
+	// and executed by state state @ block.Height+1.
+	//
+	// TODO: replace with a dedicated type `IntermediateStateRoot`
+	// as soon as we settle on the format / sparse Merkle tree etc
+	IntermediateStateRoots IntermediateStateRoots `json:"intermediate_roots"`
+
+	Evidence EvidenceData `json:"evidence"`
+
+	// The messages included in this block.
+	// TODO: how do messages end up here? (abci) app <-> ll-core?
+	// A simple approach could be: include them in the Tx above and
+	// have a mechanism to split them out somehow? Probably better to include
+	// them only when necessary (before proposing the block) as messages do not
+	// really need to be processed by tendermint
+	Messages Messages `json:"msgs"`
 
 	// Volatile
 	hash tmbytes.HexBytes
@@ -1002,13 +1048,168 @@ type Data struct {
 
 // Hash returns the hash of the data
 func (data *Data) Hash() tmbytes.HexBytes {
-	if data == nil {
-		return (Txs{}).Hash()
+	if data.hash != nil {
+		return data.hash
 	}
-	if data.hash == nil {
-		data.hash = data.Txs.Hash() // NOTE: leaves of merkle tree are TxIDs
+
+	// compute the data availability header
+	// todo(evan): add the non redundant shares back into the header
+	shares, _ := data.ComputeShares()
+	rawShares := shares.RawShares()
+
+	squareSize := uint64(math.Sqrt(float64(len(shares))))
+
+	eds, err := da.ExtendShares(squareSize, rawShares)
+	if err != nil {
+		panic(err)
 	}
+
+	dah := da.NewDataAvailabilityHeader(eds)
+
+	data.hash = dah.Hash()
+
 	return data.hash
+}
+
+// ComputeShares splits block data into shares of an original data square and
+// returns them along with an amount of non-redundant shares. The shares
+// returned are padded to complete a square size that is a power of two
+func (data *Data) ComputeShares() (NamespacedShares, int) {
+	// TODO(ismail): splitting into shares should depend on the block size and layout
+	// see: https://github.com/celestiaorg/celestia-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
+
+	// reserved shares:
+	txShares := data.Txs.SplitIntoShares()
+	intermRootsShares := data.IntermediateStateRoots.SplitIntoShares()
+	evidenceShares := data.Evidence.SplitIntoShares()
+
+	// application data shares from messages:
+	msgShares := data.Messages.SplitIntoShares()
+	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
+
+	if curLen > consts.MaxShareCount {
+		panic(fmt.Sprintf("Block data exceeds the max square size. Number of shares required: %d\n", curLen))
+	}
+
+	// find the number of shares needed to create a square that has a power of
+	// two width
+	wantLen := paddedLen(curLen)
+
+	// ensure that the min square size is used
+	if wantLen < consts.MinSharecount {
+		wantLen = consts.MinSharecount
+	}
+
+	tailShares := TailPaddingShares(wantLen - curLen)
+
+	return append(append(append(append(
+		txShares,
+		intermRootsShares...),
+		evidenceShares...),
+		msgShares...),
+		tailShares...), curLen
+}
+
+// paddedLen calculates the number of shares needed to make a power of 2 square
+// given the current number of shares
+func paddedLen(length int) int {
+	width := uint32(math.Ceil(math.Sqrt(float64(length))))
+	width = nextHighestPowerOf2(width)
+	return int(width * width)
+}
+
+// nextPowerOf2 returns the next highest power of 2 unless the input is a power
+// of two, in which case it returns the input
+func nextHighestPowerOf2(v uint32) uint32 {
+	if v == 0 {
+		return 0
+	}
+
+	// find the next highest power using bit mashing
+	v--
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+	v++
+
+	// return the next highest power
+	return v
+}
+
+type Messages struct {
+	MessagesList []Message `json:"msgs"`
+}
+
+type IntermediateStateRoots struct {
+	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
+}
+
+func (roots IntermediateStateRoots) SplitIntoShares() NamespacedShares {
+	rawDatas := make([][]byte, 0, len(roots.RawRootsList))
+	for _, root := range roots.RawRootsList {
+		rawData, err := root.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("app returned intermediate state root that can not be encoded %#v", root))
+		}
+		rawDatas = append(rawDatas, rawData)
+	}
+	shares := splitContiguous(consts.IntermediateStateRootsNamespaceID, rawDatas)
+	return shares
+}
+
+func (msgs Messages) SplitIntoShares() NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	for _, m := range msgs.MessagesList {
+		rawData, err := m.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
+		}
+		shares = appendToShares(shares, m.NamespaceID, rawData)
+	}
+	return shares
+}
+
+type Message struct {
+	// NamespaceID defines the namespace of this message, i.e. the
+	// namespace it will use in the namespaced Merkle tree.
+	//
+	// TODO: spec out constrains and
+	// introduce dedicated type instead of just []byte
+	NamespaceID namespace.ID
+
+	// Data is the actual data contained in the message
+	// (e.g. a block of a virtual sidechain).
+	Data []byte
+}
+
+var (
+	MessageEmpty  = Message{}
+	MessagesEmpty = Messages{}
+)
+
+func MessageFromProto(p *tmproto.Message) Message {
+	if p == nil {
+		return MessageEmpty
+	}
+	return Message{
+		NamespaceID: p.NamespaceId,
+		Data:        p.Data,
+	}
+}
+
+func MessagesFromProto(p *tmproto.Messages) Messages {
+	if p == nil {
+		return MessagesEmpty
+	}
+
+	msgs := make([]Message, 0, len(p.MessagesList))
+
+	for i := 0; i < len(p.MessagesList); i++ {
+		msgs = append(msgs, MessageFromProto(p.MessagesList[i]))
+	}
+	return Messages{MessagesList: msgs}
 }
 
 // StringIndented returns an indented string representation of the transactions.
@@ -1026,9 +1227,8 @@ func (data *Data) StringIndented(indent string) string {
 	}
 	return fmt.Sprintf(`Data{
 %s  %v
-%s}#%v`,
-		indent, strings.Join(txStrings, "\n"+indent+"  "),
-		indent, data.hash)
+}`,
+		indent, strings.Join(txStrings, "\n"+indent+"  "))
 }
 
 // ToProto converts Data to protobuf
@@ -1042,6 +1242,22 @@ func (data *Data) ToProto() tmproto.Data {
 		}
 		tp.Txs = txBzs
 	}
+
+	rawRoots := data.IntermediateStateRoots.RawRootsList
+	if len(rawRoots) > 0 {
+		roots := make([][]byte, len(rawRoots))
+		for i := range rawRoots {
+			roots[i] = rawRoots[i]
+		}
+		tp.IntermediateStateRoots.RawRootsList = roots
+	}
+	// TODO(evan): copy missing pieces from previous work
+	pevd, err := data.Evidence.ToProto()
+	if err != nil {
+		// TODO(evan): fix
+		panic(err)
+	}
+	tp.Evidence = *pevd
 
 	return *tp
 }
@@ -1062,6 +1278,34 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		data.Txs = txBzs
 	} else {
 		data.Txs = Txs{}
+	}
+
+	if len(dp.Messages.MessagesList) > 0 {
+		msgs := make([]Message, len(dp.Messages.MessagesList))
+		for i, m := range dp.Messages.MessagesList {
+			msgs[i] = Message{NamespaceID: m.NamespaceId, Data: m.Data}
+		}
+		data.Messages = Messages{MessagesList: msgs}
+	} else {
+		data.Messages = Messages{}
+	}
+	if len(dp.IntermediateStateRoots.RawRootsList) > 0 {
+		roots := make([]tmbytes.HexBytes, len(dp.IntermediateStateRoots.RawRootsList))
+		for i, r := range dp.IntermediateStateRoots.RawRootsList {
+			roots[i] = r
+		}
+		data.IntermediateStateRoots = IntermediateStateRoots{RawRootsList: roots}
+	} else {
+		data.IntermediateStateRoots = IntermediateStateRoots{}
+	}
+
+	evdData := new(EvidenceData)
+	err := evdData.FromProto(&dp.Evidence)
+	if err != nil {
+		return Data{}, err
+	}
+	if evdData != nil {
+		data.Evidence = *evdData
 	}
 
 	return *data, nil
@@ -1156,6 +1400,23 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
 	data.byteSize = int64(eviData.Size())
 
 	return nil
+}
+
+func (data *EvidenceData) SplitIntoShares() NamespacedShares {
+	rawDatas := make([][]byte, 0, len(data.Evidence))
+	for _, ev := range data.Evidence {
+		pev, err := EvidenceToProto(ev)
+		if err != nil {
+			panic("failure to convert evidence to equivalent proto type")
+		}
+		rawData, err := protoio.MarshalDelimited(pev)
+		if err != nil {
+			panic(err)
+		}
+		rawDatas = append(rawDatas, rawData)
+	}
+	shares := splitContiguous(consts.EvidenceNamespaceID, rawDatas)
+	return shares
 }
 
 //--------------------------------------------------------------------------------

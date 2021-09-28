@@ -36,6 +36,7 @@ message Request {
     RequestOfferSnapshot      offer_snapshot       = 13;
     RequestLoadSnapshotChunk  load_snapshot_chunk  = 14;
     RequestApplySnapshotChunk apply_snapshot_chunk = 15;
+    RequestPreprocessTxs      preprocess_txs       = 16;
   }
 }
 
@@ -125,6 +126,10 @@ message RequestApplySnapshotChunk {
   string sender = 3;
 }
 
+message RequestPreprocessTxs {
+  repeated bytes txs = 1;
+}
+
 //----------------------------------------
 // Response types
 
@@ -146,6 +151,7 @@ message Response {
     ResponseOfferSnapshot      offer_snapshot       = 14;
     ResponseLoadSnapshotChunk  load_snapshot_chunk  = 15;
     ResponseApplySnapshotChunk apply_snapshot_chunk = 16;
+    ResponsePreprocessTxs      preprocess_txs       = 17;
   }
 }
 
@@ -276,6 +282,11 @@ message ResponseApplySnapshotChunk {
   }
 }
 
+message ResponsePreprocessTxs {
+  repeated bytes            txs      = 1;
+  tendermint.types.Messages messages = 2;
+}
+
 //----------------------------------------
 // Misc.
 
@@ -404,4 +415,5 @@ service ABCIApplication {
   rpc OfferSnapshot(RequestOfferSnapshot) returns (ResponseOfferSnapshot);
   rpc LoadSnapshotChunk(RequestLoadSnapshotChunk) returns (ResponseLoadSnapshotChunk);
   rpc ApplySnapshotChunk(RequestApplySnapshotChunk) returns (ResponseApplySnapshotChunk);
+  rpc PreprocessTxs(RequestPreprocessTxs) returns (ResponsePreprocessTxs);
 }

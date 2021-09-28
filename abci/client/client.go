@@ -14,6 +14,8 @@ const (
 	echoRetryIntervalSeconds = 1
 )
 
+//go:generate ../../scripts/mockery_generate.sh Client
+
 // Client defines an interface for an ABCI client.
 // All `Async` methods return a `ReqRes` object.
 // All `Sync` methods return the appropriate protobuf ResponseXxx struct and an error.
@@ -56,6 +58,7 @@ type Client interface {
 	OfferSnapshotSync(types.RequestOfferSnapshot) (*types.ResponseOfferSnapshot, error)
 	LoadSnapshotChunkSync(types.RequestLoadSnapshotChunk) (*types.ResponseLoadSnapshotChunk, error)
 	ApplySnapshotChunkSync(types.RequestApplySnapshotChunk) (*types.ResponseApplySnapshotChunk, error)
+	PreprocessTxsSync(types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error)
 }
 
 //----------------------------------------
