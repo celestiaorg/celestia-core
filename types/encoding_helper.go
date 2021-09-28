@@ -3,7 +3,7 @@ package types
 import (
 	gogotypes "github.com/gogo/protobuf/types"
 
-	"github.com/celestiaorg/celestia-core/libs/bytes"
+	"github.com/tendermint/tendermint/libs/bytes"
 )
 
 // cdcEncode returns nil if the input is nil, otherwise returns
@@ -22,15 +22,6 @@ func cdcEncode(item interface{}) []byte {
 			return bz
 		case int64:
 			i := gogotypes.Int64Value{
-				Value: item,
-			}
-			bz, err := i.Marshal()
-			if err != nil {
-				return nil
-			}
-			return bz
-		case uint64:
-			i := gogotypes.UInt64Value{
 				Value: item,
 			}
 			bz, err := i.Marshal()

@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"reflect"
 
-	tmjson "github.com/celestiaorg/celestia-core/libs/json"
+	tmjson "github.com/tendermint/tendermint/libs/json"
 )
 
 func argsToURLValues(args map[string]interface{}) (url.Values, error) {

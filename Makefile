@@ -12,9 +12,9 @@ else
 VERSION := $(shell git describe)
 endif
 
-LD_FLAGS = -X github.com/celestiaorg/celestia-core/version.TMCoreSemVer=$(VERSION)
+LD_FLAGS = -X github.com/tendermint/tendermint/version.TMVersion=$(VERSION)
 BUILD_FLAGS = -mod=readonly -ldflags "$(LD_FLAGS)"
-HTTPS_GIT := https://github.com/celestiaorg/celestia-core.git
+HTTPS_GIT := https://github.com/tendermint/tendermint.git
 DOCKER_BUF := docker run -v $(shell pwd):/workspace --workdir /workspace bufbuild/buf
 CGO_ENABLED ?= 0
 
@@ -58,12 +58,10 @@ LD_FLAGS += $(LDFLAGS)
 all: check build test install
 .PHONY: all
 
-# The below include contains the tools.
-include tools/Makefile
 include test/Makefile
 
 ###############################################################################
-###                                Build Tendermint                        ###
+###                                Build Tendermint                         ###
 ###############################################################################
 
 build: $(BUILDDIR)/
@@ -85,18 +83,10 @@ proto-all: proto-gen proto-lint proto-check-breaking
 .PHONY: proto-all
 
 proto-gen:
-	## If you get the following error,
-	## "error while loading shared libraries: libprotobuf.so.14: cannot open shared object file: No such file or directory"
-	## See https://stackoverflow.com/a/25518702
-	## Note the $< here is substituted for the %.proto
-	## Note the $@ here is substituted for the %.pb.go
-	@sh scripts/protocgen.sh
-.PHONY: proto-gen
-
-proto-gen-docker:
+	@docker pull -q tendermintdev/docker-build-proto
 	@echo "Generating Protobuf files"
 	@docker run -v $(shell pwd):/workspace --workdir /workspace tendermintdev/docker-build-proto sh ./scripts/protocgen.sh
-.PHONY: proto-gen-docker
+.PHONY: proto-gen
 
 proto-lint:
 	@$(DOCKER_BUF) check lint --error-format=json
@@ -114,6 +104,39 @@ proto-check-breaking:
 proto-check-breaking-ci:
 	@$(DOCKER_BUF) check breaking --against-input $(HTTPS_GIT)#branch=master
 .PHONY: proto-check-breaking-ci
+
+###############################################################################
+###                              Build ABCI                                 ###
+###############################################################################
+
+build_abci:
+	@go build -mod=readonly -i ./abci/cmd/...
+.PHONY: build_abci
+
+install_abci:
+	@go install -mod=readonly ./abci/cmd/...
+.PHONY: install_abci
+
+###############################################################################
+###                           	Privval Server                              ###
+###############################################################################
+
+build_privval_server:
+	@go build -mod=readonly -o $(BUILDDIR)/ -i ./cmd/priv_val_server/...
+.PHONY: build_privval_server
+
+generate_test_cert:
+	# generate self signing ceritificate authority
+	@certstrap init --common-name "root CA" --expires "20 years"
+	# generate server cerificate
+	@certstrap request-cert -cn server -ip 127.0.0.1
+	# self-sign server cerificate with rootCA
+	@certstrap sign server --CA "root CA" 
+	# generate client cerificate
+	@certstrap request-cert -cn client -ip 127.0.0.1
+	# self-sign client cerificate with rootCA
+	@certstrap sign client --CA "root CA" 
+.PHONY: generate_test_cert
 
 ###############################################################################
 ###                              Distribution                               ###
@@ -179,7 +202,7 @@ format:
 
 lint:
 	@echo "--> Running linter"
-	@golangci-lint run
+	go run github.com/golangci/golangci-lint/cmd/golangci-lint run
 .PHONY: lint
 
 DESTINATION = ./index.html.md
@@ -208,12 +231,21 @@ build-docker: build-linux
 	rm -rf DOCKER/tendermint
 .PHONY: build-docker
 
+
+###############################################################################
+###                       Mocks 											###
+###############################################################################
+
+mockery:
+	go generate -run="./scripts/mockery_generate.sh" ./...
+.PHONY: mockery
+
 ###############################################################################
 ###                       Local testnet using docker                        ###
 ###############################################################################
 
 # Build linux binary on other platforms
-build-linux: tools
+build-linux:
 	GOOS=linux GOARCH=amd64 $(MAKE) build
 .PHONY: build-linux
 

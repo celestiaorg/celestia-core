@@ -55,7 +55,7 @@
 // Define some routes
 //
 //   var Routes = map[string]*rpcserver.RPCFunc{
-//	    "status": rpcserver.NewRPCFunc(Status, "arg"),
+//	    "status": rpcserver.NewRPCFunc(Status, "arg", false),
 //   }
 //
 // An rpc function:
@@ -81,5 +81,5 @@
 //
 // Examples
 //
-// - [Tendermint](https://github.com/celestiaorg/celestia-core/blob/master/rpc/core/routes.go)
+// - [Tendermint](https://github.com/tendermint/tendermint/blob/master/rpc/core/routes.go)
 package jsonrpc

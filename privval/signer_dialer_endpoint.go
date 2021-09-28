@@ -3,8 +3,8 @@ package privval
 import (
 	"time"
 
-	"github.com/celestiaorg/celestia-core/libs/log"
-	"github.com/celestiaorg/celestia-core/libs/service"
+	"github.com/tendermint/tendermint/libs/log"
+	"github.com/tendermint/tendermint/libs/service"
 )
 
 const (

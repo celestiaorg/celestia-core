@@ -8,11 +8,10 @@ import (
 	"io/ioutil"
 	"time"
 
-	"github.com/celestiaorg/celestia-core/crypto"
-	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
-	tmjson "github.com/celestiaorg/celestia-core/libs/json"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
-	tmtime "github.com/celestiaorg/celestia-core/types/time"
+	"github.com/tendermint/tendermint/crypto"
+	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	tmjson "github.com/tendermint/tendermint/libs/json"
+	tmtime "github.com/tendermint/tendermint/libs/time"
 )
 
 const (
@@ -36,13 +35,13 @@ type GenesisValidator struct {
 
 // GenesisDoc defines the initial conditions for a tendermint blockchain, in particular its validator set.
 type GenesisDoc struct {
-	GenesisTime     time.Time                `json:"genesis_time"`
-	ChainID         string                   `json:"chain_id"`
-	InitialHeight   int64                    `json:"initial_height"`
-	ConsensusParams *tmproto.ConsensusParams `json:"consensus_params,omitempty"`
-	Validators      []GenesisValidator       `json:"validators,omitempty"`
-	AppHash         tmbytes.HexBytes         `json:"app_hash"`
-	AppState        json.RawMessage          `json:"app_state,omitempty"`
+	GenesisTime     time.Time          `json:"genesis_time"`
+	ChainID         string             `json:"chain_id"`
+	InitialHeight   int64              `json:"initial_height"`
+	ConsensusParams *ConsensusParams   `json:"consensus_params,omitempty"`
+	Validators      []GenesisValidator `json:"validators,omitempty"`
+	AppHash         tmbytes.HexBytes   `json:"app_hash"`
+	AppState        json.RawMessage    `json:"app_state,omitempty"`
 }
 
 // SaveAs is a utility method for saving GenensisDoc as a JSON file.
@@ -83,7 +82,7 @@ func (genDoc *GenesisDoc) ValidateAndComplete() error {
 
 	if genDoc.ConsensusParams == nil {
 		genDoc.ConsensusParams = DefaultConsensusParams()
-	} else if err := ValidateConsensusParams(*genDoc.ConsensusParams); err != nil {
+	} else if err := genDoc.ConsensusParams.ValidateConsensusParams(); err != nil {
 		return err
 	}
 

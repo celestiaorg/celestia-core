@@ -3,8 +3,8 @@ package types
 import (
 	"bytes"
 
-	"github.com/celestiaorg/celestia-core/pkg/consts"
 	"github.com/celestiaorg/nmt/namespace"
+	"github.com/tendermint/tendermint/pkg/consts"
 )
 
 // appendToShares appends raw data as shares.

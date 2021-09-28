@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/celestiaorg/celestia-core/crypto/merkle"
-	"github.com/celestiaorg/celestia-core/libs/bits"
-	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
-	tmjson "github.com/celestiaorg/celestia-core/libs/json"
-	tmmath "github.com/celestiaorg/celestia-core/libs/math"
-	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/tendermint/tendermint/crypto/merkle"
+	tmsync "github.com/tendermint/tendermint/internal/libs/sync"
+	"github.com/tendermint/tendermint/libs/bits"
+	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	tmjson "github.com/tendermint/tendermint/libs/json"
+	tmmath "github.com/tendermint/tendermint/libs/math"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 var (

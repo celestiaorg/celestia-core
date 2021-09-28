@@ -5,19 +5,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	tmjson "github.com/celestiaorg/celestia-core/libs/json"
-	"github.com/celestiaorg/celestia-core/privval"
-	"github.com/celestiaorg/celestia-core/types"
+	tmjson "github.com/tendermint/tendermint/libs/json"
+	"github.com/tendermint/tendermint/privval"
+	"github.com/tendermint/tendermint/types"
 )
 
 // GenValidatorCmd allows the generation of a keypair for a
 // validator.
 var GenValidatorCmd = &cobra.Command{
-	Use:     "gen-validator",
-	Aliases: []string{"gen_validator"},
-	Short:   "Generate new validator keypair",
-	RunE:    genValidator,
-	PreRun:  deprecateSnakeCase,
+	Use:   "gen-validator",
+	Short: "Generate new validator keypair",
+	RunE:  genValidator,
 }
 
 func init() {

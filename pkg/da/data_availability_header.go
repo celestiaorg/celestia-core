@@ -5,17 +5,17 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/celestiaorg/celestia-core/crypto/merkle"
-	"github.com/celestiaorg/celestia-core/crypto/tmhash"
-	"github.com/celestiaorg/celestia-core/pkg/consts"
-	"github.com/celestiaorg/celestia-core/pkg/wrapper"
-	daproto "github.com/celestiaorg/celestia-core/proto/tendermint/da"
 	"github.com/celestiaorg/rsmt2d"
+	"github.com/tendermint/tendermint/crypto/merkle"
+	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/tendermint/tendermint/pkg/consts"
+	"github.com/tendermint/tendermint/pkg/wrapper"
+	daproto "github.com/tendermint/tendermint/proto/tendermint/da"
 )
 
 const (
-	maxDAHSize = consts.MaxSquareSize * 2
-	minDAHSize = consts.MinSquareSize * 2
+	maxExtendedSquareWidth = consts.MaxSquareSize * 2
+	minExtendedSquareWidth = consts.MinSquareSize * 2
 )
 
 // DataAvailabilityHeader (DAHeader) contains the row and column roots of the erasure
@@ -38,10 +38,23 @@ type DataAvailabilityHeader struct {
 }
 
 // NewDataAvailabilityHeader generates a DataAvailability header using the provided square size and shares
-func NewDataAvailabilityHeader(squareSize uint64, shares [][]byte) (DataAvailabilityHeader, error) {
+func NewDataAvailabilityHeader(eds *rsmt2d.ExtendedDataSquare) DataAvailabilityHeader {
+	// generate the row and col roots using the EDS
+	dah := DataAvailabilityHeader{
+		RowsRoots:   eds.RowRoots(),
+		ColumnRoots: eds.ColRoots(),
+	}
+
+	// generate the hash of the data using the new roots
+	dah.Hash()
+
+	return dah
+}
+
+func ExtendShares(squareSize uint64, shares [][]byte) (*rsmt2d.ExtendedDataSquare, error) {
 	// Check that square size is with range
 	if squareSize < consts.MinSquareSize || squareSize > consts.MaxSquareSize {
-		return DataAvailabilityHeader{}, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"invalid square size: min %d max %d provided %d",
 			consts.MinSquareSize,
 			consts.MaxSquareSize,
@@ -50,32 +63,14 @@ func NewDataAvailabilityHeader(squareSize uint64, shares [][]byte) (DataAvailabi
 	}
 	// check that valid number of shares have been provided
 	if squareSize*squareSize != uint64(len(shares)) {
-		return DataAvailabilityHeader{}, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"must provide valid number of shares for square size: got %d wanted %d",
 			len(shares),
 			squareSize*squareSize,
 		)
 	}
-
 	tree := wrapper.NewErasuredNamespacedMerkleTree(squareSize)
-
-	// TODO(ismail): for better efficiency and a larger number shares
-	// we should switch to the rsmt2d.LeopardFF16 codec:
-	extendedDataSquare, err := rsmt2d.ComputeExtendedDataSquare(shares, rsmt2d.NewRSGF8Codec(), tree.Constructor)
-	if err != nil {
-		return DataAvailabilityHeader{}, err
-	}
-
-	// generate the row and col roots using the EDS
-	dah := DataAvailabilityHeader{
-		RowsRoots:   extendedDataSquare.RowRoots(),
-		ColumnRoots: extendedDataSquare.ColRoots(),
-	}
-
-	// generate the hash of the data using the new roots
-	dah.Hash()
-
-	return dah, nil
+	return rsmt2d.ComputeExtendedDataSquare(shares, consts.DefaultCodec(), tree.Constructor)
 }
 
 // String returns hex representation of merkle hash of the DAHeader.
@@ -143,16 +138,16 @@ func (dah *DataAvailabilityHeader) ValidateBasic() error {
 	if dah == nil {
 		return errors.New("nil data availability header is not valid")
 	}
-	if len(dah.ColumnRoots) < minDAHSize || len(dah.RowsRoots) < minDAHSize {
+	if len(dah.ColumnRoots) < minExtendedSquareWidth || len(dah.RowsRoots) < minExtendedSquareWidth {
 		return fmt.Errorf(
 			"minimum valid DataAvailabilityHeader has at least %d row and column roots",
-			minDAHSize,
+			minExtendedSquareWidth,
 		)
 	}
-	if len(dah.ColumnRoots) > maxDAHSize || len(dah.RowsRoots) > maxDAHSize {
+	if len(dah.ColumnRoots) > maxExtendedSquareWidth || len(dah.RowsRoots) > maxExtendedSquareWidth {
 		return fmt.Errorf(
 			"maximum valid DataAvailabilityHeader has at most %d row and column roots",
-			maxDAHSize,
+			maxExtendedSquareWidth,
 		)
 	}
 	if len(dah.ColumnRoots) != len(dah.RowsRoots) {
@@ -190,13 +185,11 @@ func MinDataAvailabilityHeader() DataAvailabilityHeader {
 	for i := 0; i < consts.MinSharecount; i++ {
 		shares[i] = tailPaddingShare
 	}
-	dah, err := NewDataAvailabilityHeader(
-		consts.MinSquareSize,
-		shares,
-	)
+	eds, err := ExtendShares(consts.MinSquareSize, shares)
 	if err != nil {
 		panic(err)
 	}
+	dah := NewDataAvailabilityHeader(eds)
 	return dah
 }
 

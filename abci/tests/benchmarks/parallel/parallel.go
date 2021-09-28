@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/celestiaorg/celestia-core/abci/types"
-	tmnet "github.com/celestiaorg/celestia-core/libs/net"
+	"github.com/tendermint/tendermint/abci/types"
+	tmnet "github.com/tendermint/tendermint/libs/net"
 )
 
 func main() {

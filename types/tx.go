@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/celestiaorg/celestia-core/crypto/merkle"
-	"github.com/celestiaorg/celestia-core/crypto/tmhash"
-	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
-	"github.com/celestiaorg/celestia-core/pkg/consts"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/tendermint/tendermint/crypto/merkle"
+	"github.com/tendermint/tendermint/crypto/tmhash"
+	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	"github.com/tendermint/tendermint/pkg/consts"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 // Tx is an arbitrary byte array.

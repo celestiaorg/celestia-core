@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/celestiaorg/celestia-core/crypto/tmhash"
-	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/tendermint/tendermint/crypto/tmhash"
+	tmrand "github.com/tendermint/tendermint/libs/rand"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 func TestCanonicalizeBlockID(t *testing.T) {

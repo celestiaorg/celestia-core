@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tmcrypto "github.com/celestiaorg/celestia-core/proto/tendermint/crypto"
+	tmcrypto "github.com/tendermint/tendermint/proto/tendermint/crypto"
 )
 
 const ProofOpDomino = "test:domino"
@@ -176,6 +176,7 @@ func TestVoteProtobuf(t *testing.T) {
 		[]byte("watermelon"),
 		[]byte("kiwi"),
 	})
+
 	testCases := []struct {
 		testName string
 		v1       *Proof

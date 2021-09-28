@@ -12,19 +12,17 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"text/template"
 	"time"
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/celestiaorg/celestia-core/config"
-	"github.com/celestiaorg/celestia-core/crypto/ed25519"
-	"github.com/celestiaorg/celestia-core/p2p"
-	"github.com/celestiaorg/celestia-core/privval"
-	e2e "github.com/celestiaorg/celestia-core/test/e2e/pkg"
-	"github.com/celestiaorg/celestia-core/types"
+	"github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/crypto/ed25519"
+	"github.com/tendermint/tendermint/privval"
+	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
+	"github.com/tendermint/tendermint/types"
 )
 
 const (
@@ -32,6 +30,7 @@ const (
 	AppAddressUNIX = "unix:///var/run/app.sock"
 
 	PrivvalAddressTCP     = "tcp://0.0.0.0:27559"
+	PrivvalAddressGRPC    = "grpc://0.0.0.0:27559"
 	PrivvalAddressUNIX    = "unix:///var/run/privval.sock"
 	PrivvalKeyFile        = "config/priv_validator_key.json"
 	PrivvalStateFile      = "data/priv_validator_state.json"
@@ -64,29 +63,28 @@ func Setup(testnet *e2e.Testnet) error {
 
 	for _, node := range testnet.Nodes {
 		nodeDir := filepath.Join(testnet.Dir, node.Name)
+
 		dirs := []string{
 			filepath.Join(nodeDir, "config"),
 			filepath.Join(nodeDir, "data"),
 			filepath.Join(nodeDir, "data", "app"),
 		}
 		for _, dir := range dirs {
+			// light clients don't need an app directory
+			if node.Mode == e2e.ModeLight && strings.Contains(dir, "app") {
+				continue
+			}
 			err := os.MkdirAll(dir, 0755)
 			if err != nil {
 				return err
 			}
 		}
 
-		err = genesis.SaveAs(filepath.Join(nodeDir, "config", "genesis.json"))
-		if err != nil {
-			return err
-		}
-
 		cfg, err := MakeConfig(node)
 		if err != nil {
 			return err
 		}
-
-		config.WriteConfigFile(filepath.Join(nodeDir, "config", "config.toml"), cfg) // panics
+		config.WriteConfigFile(nodeDir, cfg) // panics
 
 		appCfg, err := MakeAppConfig(node)
 		if err != nil {
@@ -97,7 +95,17 @@ func Setup(testnet *e2e.Testnet) error {
 			return err
 		}
 
-		err = (&p2p.NodeKey{PrivKey: node.NodeKey}).SaveAs(filepath.Join(nodeDir, "config", "node_key.json"))
+		if node.Mode == e2e.ModeLight {
+			// stop early if a light client
+			continue
+		}
+
+		err = genesis.SaveAs(filepath.Join(nodeDir, "config", "genesis.json"))
+		if err != nil {
+			return err
+		}
+
+		err = (&types.NodeKey{PrivKey: node.NodeKey}).SaveAs(filepath.Join(nodeDir, "config", "node_key.json"))
 		if err != nil {
 			return err
 		}
@@ -122,24 +130,8 @@ func Setup(testnet *e2e.Testnet) error {
 func MakeDockerCompose(testnet *e2e.Testnet) ([]byte, error) {
 	// Must use version 2 Docker Compose format, to support IPv6.
 	tmpl, err := template.New("docker-compose").Funcs(template.FuncMap{
-		"startCommands": func(misbehaviors map[int64]string, logLevel string) string {
-			command := "start"
-
-			// FIXME: Temporarily disable behaviors until maverick is redesigned
-			// misbehaviorString := ""
-			// for height, misbehavior := range misbehaviors {
-			// 	// after the first behavior set, a comma must be prepended
-			// 	if misbehaviorString != "" {
-			// 		misbehaviorString += ","
-			// 	}
-			// 	heightString := strconv.Itoa(int(height))
-			// 	misbehaviorString += misbehavior + "," + heightString
-			// }
-
-			// if misbehaviorString != "" {
-			// 	command += " --misbehaviors " + misbehaviorString
-			// }
-			return command
+		"addUint32": func(x, y uint32) uint32 {
+			return x + y
 		},
 	}).Parse(`version: '2.4'
 
@@ -165,14 +157,15 @@ services:
     image: tendermint/e2e-node
 {{- if eq .ABCIProtocol "builtin" }}
     entrypoint: /usr/bin/entrypoint-builtin
-{{- end }}
-{{- if ne .ABCIProtocol "builtin"}}
-    command: {{ startCommands .Misbehaviors .LogLevel }}
+{{- else if .LogLevel }}
+    command: start --log-level {{ .LogLevel }}
 {{- end }}
     init: true
     ports:
     - 26656
+    - {{ if .ProxyPort }}{{ addUint32 .ProxyPort 1000 }}:{{ end }}26660
     - {{ if .ProxyPort }}{{ .ProxyPort }}:{{ end }}26657
+    - 6060
     volumes:
     - ./{{ .Name }}:/tendermint
     networks:
@@ -206,6 +199,8 @@ func MakeGenesis(testnet *e2e.Testnet) (types.GenesisDoc, error) {
 	default:
 		return genesis, errors.New("unsupported KeyType")
 	}
+	genesis.ConsensusParams.Evidence.MaxAgeNumBlocks = e2e.EvidenceAgeHeight
+	genesis.ConsensusParams.Evidence.MaxAgeDuration = e2e.EvidenceAgeTime
 	for validator, power := range testnet.Validators {
 		genesis.Validators = append(genesis.Validators, types.GenesisValidator{
 			Name:    validator.Name,
@@ -234,16 +229,34 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg := config.DefaultConfig()
 	cfg.Moniker = node.Name
 	cfg.ProxyApp = AppAddressTCP
+
+	if node.LogLevel != "" {
+		cfg.LogLevel = node.LogLevel
+	}
+
 	cfg.RPC.ListenAddress = "tcp://0.0.0.0:26657"
+	cfg.RPC.PprofListenAddress = ":6060"
 	cfg.P2P.ExternalAddress = fmt.Sprintf("tcp://%v", node.AddressP2P(false))
 	cfg.P2P.AddrBookStrict = false
+	cfg.P2P.UseLegacy = node.UseLegacyP2P
+	cfg.P2P.QueueType = node.QueueType
+	cfg.DBBackend = node.Database
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
+	if node.Mode != e2e.ModeLight {
+		cfg.Mode = string(node.Mode)
+	}
 
 	switch node.ABCIProtocol {
-	case e2e.ProtocolUNIX, e2e.ProtocolTCP, e2e.ProtocolGRPC:
-		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
+	case e2e.ProtocolUNIX:
+		cfg.ProxyApp = AppAddressUNIX
+	case e2e.ProtocolTCP:
+		cfg.ProxyApp = AppAddressTCP
+	case e2e.ProtocolGRPC:
+		cfg.ProxyApp = AppAddressTCP
+		cfg.ABCI = "grpc"
 	case e2e.ProtocolBuiltin:
 		cfg.ProxyApp = ""
+		cfg.ABCI = ""
 	default:
 		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
 	}
@@ -252,39 +265,48 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	// it's actually needed (e.g. for remote KMS or non-validators). We set up a dummy
 	// key here by default, and use the real key for actual validators that should use
 	// the file privval.
-	cfg.PrivValidatorListenAddr = ""
-	cfg.PrivValidatorKey = PrivvalDummyKeyFile
-	cfg.PrivValidatorState = PrivvalDummyStateFile
+	cfg.PrivValidator.ListenAddr = ""
+	cfg.PrivValidator.Key = PrivvalDummyKeyFile
+	cfg.PrivValidator.State = PrivvalDummyStateFile
 
 	switch node.Mode {
 	case e2e.ModeValidator:
 		switch node.PrivvalProtocol {
 		case e2e.ProtocolFile:
-			cfg.PrivValidatorKey = PrivvalKeyFile
-			cfg.PrivValidatorState = PrivvalStateFile
+			cfg.PrivValidator.Key = PrivvalKeyFile
+			cfg.PrivValidator.State = PrivvalStateFile
 		case e2e.ProtocolUNIX:
-			cfg.PrivValidatorListenAddr = PrivvalAddressUNIX
+			cfg.PrivValidator.ListenAddr = PrivvalAddressUNIX
 		case e2e.ProtocolTCP:
-			cfg.PrivValidatorListenAddr = PrivvalAddressTCP
+			cfg.PrivValidator.ListenAddr = PrivvalAddressTCP
+		case e2e.ProtocolGRPC:
+			cfg.PrivValidator.ListenAddr = PrivvalAddressGRPC
 		default:
 			return nil, fmt.Errorf("invalid privval protocol setting %q", node.PrivvalProtocol)
 		}
 	case e2e.ModeSeed:
-		cfg.P2P.SeedMode = true
 		cfg.P2P.PexReactor = true
-	case e2e.ModeFull:
+	case e2e.ModeFull, e2e.ModeLight:
 		// Don't need to do anything, since we're using a dummy privval key by default.
 	default:
 		return nil, fmt.Errorf("unexpected mode %q", node.Mode)
 	}
 
-	if node.FastSync == "" {
-		cfg.FastSyncMode = false
-	} else {
-		cfg.FastSync.Version = node.FastSync
+	if node.Mempool != "" {
+		cfg.Mempool.Version = node.Mempool
 	}
 
-	if node.StateSync {
+	if node.BlockSync == "" {
+		cfg.BlockSync.Enable = false
+	} else {
+		cfg.BlockSync.Version = node.BlockSync
+	}
+
+	switch node.StateSync {
+	case e2e.StateSyncP2P:
+		cfg.StateSync.Enable = true
+		cfg.StateSync.UseP2P = true
+	case e2e.StateSyncRPC:
 		cfg.StateSync.Enable = true
 		cfg.StateSync.RPCServers = []string{}
 		for _, peer := range node.Testnet.ArchiveNodes() {
@@ -293,6 +315,7 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 			}
 			cfg.StateSync.RPCServers = append(cfg.StateSync.RPCServers, peer.AddressRPC())
 		}
+
 		if len(cfg.StateSync.RPCServers) < 2 {
 			return nil, errors.New("unable to find 2 suitable state sync RPC servers")
 		}
@@ -305,6 +328,7 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 		}
 		cfg.P2P.Seeds += seed.AddressP2P(true)
 	}
+
 	cfg.P2P.PersistentPeers = ""
 	for _, peer := range node.PersistentPeers {
 		if len(cfg.P2P.PersistentPeers) > 0 {
@@ -312,6 +336,8 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 		}
 		cfg.P2P.PersistentPeers += peer.AddressP2P(true)
 	}
+
+	cfg.Instrumentation.Prometheus = true
 
 	return cfg, nil
 }
@@ -322,15 +348,23 @@ func MakeAppConfig(node *e2e.Node) ([]byte, error) {
 		"chain_id":          node.Testnet.Name,
 		"dir":               "data/app",
 		"listen":            AppAddressUNIX,
-		"protocol":          "builtin",
+		"mode":              node.Mode,
+		"proxy_port":        node.ProxyPort,
+		"protocol":          "socket",
 		"persist_interval":  node.PersistInterval,
 		"snapshot_interval": node.SnapshotInterval,
 		"retain_blocks":     node.RetainBlocks,
 		"key_type":          node.PrivvalKey.Type(),
+		"use_legacy_p2p":    node.UseLegacyP2P,
 	}
 	switch node.ABCIProtocol {
-	case e2e.ProtocolUNIX, e2e.ProtocolTCP, e2e.ProtocolGRPC:
-		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
+	case e2e.ProtocolUNIX:
+		cfg["listen"] = AppAddressUNIX
+	case e2e.ProtocolTCP:
+		cfg["listen"] = AppAddressTCP
+	case e2e.ProtocolGRPC:
+		cfg["listen"] = AppAddressTCP
+		cfg["protocol"] = "grpc"
 	case e2e.ProtocolBuiltin:
 		delete(cfg, "listen")
 		cfg["protocol"] = "builtin"
@@ -348,15 +382,14 @@ func MakeAppConfig(node *e2e.Node) ([]byte, error) {
 			cfg["privval_server"] = PrivvalAddressUNIX
 			cfg["privval_key"] = PrivvalKeyFile
 			cfg["privval_state"] = PrivvalStateFile
+		case e2e.ProtocolGRPC:
+			cfg["privval_server"] = PrivvalAddressGRPC
+			cfg["privval_key"] = PrivvalKeyFile
+			cfg["privval_state"] = PrivvalStateFile
 		default:
 			return nil, fmt.Errorf("unexpected privval protocol setting %q", node.PrivvalProtocol)
 		}
 	}
-	misbehaviors := make(map[string]string)
-	for height, misbehavior := range node.Misbehaviors {
-		misbehaviors[strconv.Itoa(int(height))] = misbehavior
-	}
-	cfg["misbehaviors"] = misbehaviors
 
 	if len(node.Testnet.ValidatorUpdates) > 0 {
 		validatorUpdates := map[string]map[string]int64{}

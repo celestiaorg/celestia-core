@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/celestiaorg/celestia-core/crypto/ed25519"
-	"github.com/celestiaorg/celestia-core/libs/log"
-	tmnet "github.com/celestiaorg/celestia-core/libs/net"
+	"github.com/tendermint/tendermint/crypto/ed25519"
+	"github.com/tendermint/tendermint/libs/log"
+	tmnet "github.com/tendermint/tendermint/libs/net"
 )
 
 // IsConnTimeout returns a boolean indicating whether the error is known to

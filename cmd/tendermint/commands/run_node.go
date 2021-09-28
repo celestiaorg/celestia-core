@@ -3,15 +3,16 @@ package commands
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/spf13/cobra"
 
-	cfg "github.com/celestiaorg/celestia-core/config"
-	tmos "github.com/celestiaorg/celestia-core/libs/os"
-	nm "github.com/celestiaorg/celestia-core/node"
+	cfg "github.com/tendermint/tendermint/config"
+	tmos "github.com/tendermint/tendermint/libs/os"
 )
 
 var (
@@ -24,14 +25,32 @@ func AddNodeFlags(cmd *cobra.Command) {
 	// bind flags
 	cmd.Flags().String("moniker", config.Moniker, "node name")
 
+	// mode flags
+	cmd.Flags().String("mode", config.Mode, "node mode (full | validator | seed)")
+
 	// priv val flags
 	cmd.Flags().String(
 		"priv-validator-laddr",
-		config.PrivValidatorListenAddr,
+		config.PrivValidator.ListenAddr,
 		"socket address to listen on for connections from external priv-validator process")
 
 	// node flags
-	cmd.Flags().Bool("fast-sync", config.FastSyncMode, "fast blockchain syncing")
+	cmd.Flags().Bool("blocksync.enable", config.BlockSync.Enable, "enable fast blockchain syncing")
+
+	// TODO (https://github.com/tendermint/tendermint/issues/6908): remove this check after the v0.35 release cycle
+	// This check was added to give users an upgrade prompt to use the new flag for syncing.
+	//
+	// The pflag package does not have a native way to print a depcrecation warning
+	// and return an error. This logic was added to print a deprecation message to the user
+	// and then crash if the user attempts to use the old --fast-sync flag.
+	fs := flag.NewFlagSet("", flag.ExitOnError)
+	fs.Func("fast-sync", "deprecated",
+		func(string) error {
+			return errors.New("--fast-sync has been deprecated, please use --blocksync.enable")
+		})
+	cmd.Flags().AddGoFlagSet(fs)
+
+	cmd.Flags().MarkHidden("fast-sync") //nolint:errcheck
 	cmd.Flags().BytesHexVar(
 		&genesisHash,
 		"genesis-hash",
@@ -46,9 +65,8 @@ func AddNodeFlags(cmd *cobra.Command) {
 		"proxy-app",
 		config.ProxyApp,
 		"proxy app address, or one of: 'kvstore',"+
-			" 'persistent_kvstore',"+
-			" 'counter',"+
-			" 'counter_serial' or 'noop' for local testing.")
+			" 'persistent_kvstore', 'e2e' or 'noop' for local testing.")
+	cmd.Flags().String("abci", config.ABCI, "specify abci transport (socket | grpc)")
 
 	// rpc flags
 	cmd.Flags().String("rpc.laddr", config.RPC.ListenAddress, "RPC listen address. Port required")
@@ -70,7 +88,6 @@ func AddNodeFlags(cmd *cobra.Command) {
 		config.P2P.UnconditionalPeerIDs, "comma-delimited IDs of unconditional peers")
 	cmd.Flags().Bool("p2p.upnp", config.P2P.UPNP, "enable/disable UPNP port forwarding")
 	cmd.Flags().Bool("p2p.pex", config.P2P.PexReactor, "enable/disable Peer-Exchange")
-	cmd.Flags().Bool("p2p.seed-mode", config.P2P.SeedMode, "enable/disable seed mode")
 	cmd.Flags().String("p2p.private-peer-ids", config.P2P.PrivatePeerIDs, "comma-delimited private peer IDs")
 
 	// consensus flags
@@ -83,17 +100,23 @@ func AddNodeFlags(cmd *cobra.Command) {
 		config.Consensus.CreateEmptyBlocksInterval.String(),
 		"the possible interval between empty blocks")
 
-	// db flags
+	addDBFlags(cmd)
+}
+
+func addDBFlags(cmd *cobra.Command) {
+	cmd.Flags().String(
+		"db-backend",
+		config.DBBackend,
+		"database backend: goleveldb | cleveldb | boltdb | rocksdb | badgerdb")
 	cmd.Flags().String(
 		"db-dir",
 		config.DBPath,
 		"database directory")
-
 }
 
 // NewRunNodeCmd returns the command that allows the CLI to start a node.
 // It can be used with a custom PrivValidator and in-process ABCI application.
-func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
+func NewRunNodeCmd(nodeProvider cfg.ServiceProvider) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "start",
 		Aliases: []string{"node", "run"},
@@ -103,10 +126,7 @@ func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
 				return err
 			}
 
-			n, err := nodeProvider(
-				config,
-				logger,
-			)
+			n, err := nodeProvider(config, logger)
 			if err != nil {
 				return fmt.Errorf("failed to create node: %w", err)
 			}
@@ -115,7 +135,7 @@ func NewRunNodeCmd(nodeProvider nm.Provider) *cobra.Command {
 				return fmt.Errorf("failed to start node: %w", err)
 			}
 
-			logger.Info("Started node", "nodeInfo", n.Switch().NodeInfo())
+			logger.Info("started node", "node", n.String())
 
 			// Stop upon receiving SIGTERM or CTRL-C.
 			tmos.TrapSignal(logger, func() {
@@ -155,7 +175,7 @@ func checkGenesisHash(config *cfg.Config) error {
 	// Compare with the flag.
 	if !bytes.Equal(genesisHash, actualHash) {
 		return fmt.Errorf(
-			"--genesis_hash=%X does not match %s hash: %X",
+			"--genesis-hash=%X does not match %s hash: %X",
 			genesisHash, config.GenesisFile(), actualHash)
 	}
 

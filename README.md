@@ -5,10 +5,8 @@
 <!-- markdownlint-enable -->
 
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/celestiaorg/celestia-core)
+[![Community](https://img.shields.io/badge/chat%20on-discord-orange?&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/YsnTPcSfWQ)
 [![license](https://img.shields.io/github/license/tendermint/tendermint.svg)](https://github.com/celestiaorg/celestia-core/blob/master/LICENSE)
-[![Community](https://img.shields.io/discord/638338779505229824?color=7389D8&label=chat%20on%20discord&logo=6A7EC2)](https://discord.gg/YsnTPcSfWQ)
-[![Community](https://img.shields.io/discourse/topics?label=forum&server=https%3A%2F%2Fforum.celestia.org%2F)](https://forum.celestia.org/)
-[![Community](https://img.shields.io/twitter/follow/CelestiaOrg?style=social)](https://twitter.com/CelestiaOrg)
 
 Celestia Core will power the Celestia main chain by leveraging Tendermint.
 
@@ -66,6 +64,3 @@ According to SemVer, anything in the public API can change at any time before ve
 
 For more information on Tendermint Core and pointers to documentation for Tendermint visit
 this [repository](https://github.com/tendermint/tendermint).
-
-## Careers
-We are hiring Go engineers! Join us in building the future of blockchain scaling and interoperability. [Apply here](https://angel.co/company/celestialabs/jobs).

@@ -11,6 +11,7 @@ import (
 func HashFromByteSlices(items [][]byte) []byte {
 	return hashFromByteSlices(sha256.New(), items)
 }
+
 func hashFromByteSlices(sha hash.Hash, items [][]byte) []byte {
 	switch len(items) {
 	case 0:
@@ -65,11 +66,10 @@ func hashFromByteSlices(sha hash.Hash, items [][]byte) []byte {
 // read, it might not be worthwhile to switch to a less intuitive
 // implementation for so little benefit.
 func HashFromByteSlicesIterative(input [][]byte) []byte {
-	sha := sha256.New()
 	items := make([][]byte, len(input))
-
+	sha := sha256.New()
 	for i, leaf := range input {
-		items[i] = leafHashOpt(sha, leaf)
+		items[i] = leafHash(leaf)
 	}
 
 	size := len(items)

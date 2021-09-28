@@ -1,22 +1,33 @@
-# Tendermint and Celestia
+---
+title: Tendermint Core Documentation
+description: Tendermint Core is a blockchain application platform.
+footer:
+  newsletter: false
+---
 
-celestia-core is not meant to be used as a general purpose framework.
-Instead, its main purpose is to provide certain components (mainly consensus but also a p2p layer for Tx gossiping) for the Celestia main chain.
-Hence, we do not provide any extensive documentation here.
+# Tendermint
 
-Instead of keeping a copy of the Tendermint documentation, we refer to the existing extensive and maintained documentation and specification:
+Welcome to the Tendermint Core documentation!
 
- - https://docs.tendermint.com/
- - https://github.com/tendermint/tendermint/tree/master/docs/
- - https://github.com/tendermint/spec
+Tendermint Core is a blockchain application platform; it provides the equivalent
+of a web-server, database, and supporting libraries for blockchain applications
+written in any programming language. Like a web-server serving web applications,
+Tendermint serves blockchain applications.
 
-Reading these will give you a lot of background and context on Tendermint which will also help you understand how celestia-core and [celestia-app](https://github.com/celestiaorg/celestia-app) interact with each other.
+More formally, Tendermint Core performs Byzantine Fault Tolerant (BFT)
+State Machine Replication (SMR) for arbitrary deterministic, finite state machines.
+For more background, see [What is
+Tendermint?](introduction/what-is-tendermint.md).
 
-# Celestia
+To get started quickly with an example application, see the [quick start guide](introduction/quick-start.md).
 
-As mentioned above, celestia-core aims to be more focused on the Celestia use-case than vanilla Tendermint.
-Moving forward we might provide a clear overview on the changes we incorporated.
-For now, we refer to the Celestia specific [ADRs](./adr) in this repository as well as to the Celestia specification:
+To learn about application development on Tendermint, see the [Application Blockchain Interface](https://github.com/tendermint/spec/tree/master/spec/abci).
 
- - [celestia-adr](./adr)
- - [celestia-specs](https://github.com/celestiaorg/celestia-specs)
+For more details on using Tendermint, see the respective documentation for
+[Tendermint Core](tendermint-core/), [benchmarking and monitoring](tools/), and [network deployments](networks/).
+
+To find out about the Tendermint ecosystem you can go [here](https://github.com/tendermint/awesome#ecosystem). If you are a project that is using Tendermint you are welcome to make a PR to add your project to the list.
+
+## Contribute
+
+To contribute to the documentation, see [this file](https://github.com/tendermint/tendermint/blob/master/docs/DOCS_README.md) for details of the build process and considerations when making changes.

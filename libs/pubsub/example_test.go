@@ -6,17 +6,18 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/celestia-core/libs/log"
-
-	"github.com/celestiaorg/celestia-core/libs/pubsub"
-	"github.com/celestiaorg/celestia-core/libs/pubsub/query"
+	abci "github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/libs/log"
+	"github.com/tendermint/tendermint/libs/pubsub"
+	"github.com/tendermint/tendermint/libs/pubsub/query"
 )
 
 func TestExample(t *testing.T) {
 	s := pubsub.NewServer()
 	s.SetLogger(log.TestingLogger())
-	err := s.Start()
-	require.NoError(t, err)
+
+	require.NoError(t, s.Start())
+
 	t.Cleanup(func() {
 		if err := s.Stop(); err != nil {
 			t.Error(err)
@@ -24,9 +25,18 @@ func TestExample(t *testing.T) {
 	})
 
 	ctx := context.Background()
+
 	subscription, err := s.Subscribe(ctx, "example-client", query.MustParse("abci.account.name='John'"))
 	require.NoError(t, err)
-	err = s.PublishWithEvents(ctx, "Tombstone", map[string][]string{"abci.account.name": {"John"}})
+
+	events := []abci.Event{
+		{
+			Type:       "abci.account",
+			Attributes: []abci.EventAttribute{{Key: "name", Value: "John"}},
+		},
+	}
+	err = s.PublishWithEvents(ctx, "Tombstone", events)
 	require.NoError(t, err)
+
 	assertReceive(t, "Tombstone", subscription.Out())
 }

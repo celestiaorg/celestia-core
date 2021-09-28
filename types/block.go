@@ -13,26 +13,25 @@ import (
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 
-	"github.com/celestiaorg/celestia-core/crypto"
-	"github.com/celestiaorg/celestia-core/crypto/merkle"
-	"github.com/celestiaorg/celestia-core/crypto/tmhash"
-	"github.com/celestiaorg/celestia-core/libs/bits"
-	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
-	tmmath "github.com/celestiaorg/celestia-core/libs/math"
-	"github.com/celestiaorg/celestia-core/libs/protoio"
-	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
-	"github.com/celestiaorg/celestia-core/pkg/consts"
-	"github.com/celestiaorg/celestia-core/pkg/da"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
-	tmversion "github.com/celestiaorg/celestia-core/proto/tendermint/version"
-	"github.com/celestiaorg/celestia-core/version"
+	"github.com/tendermint/tendermint/crypto"
+	"github.com/tendermint/tendermint/crypto/merkle"
+	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/tendermint/tendermint/internal/libs/protoio"
+	tmsync "github.com/tendermint/tendermint/internal/libs/sync"
+	"github.com/tendermint/tendermint/libs/bits"
+	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	tmmath "github.com/tendermint/tendermint/libs/math"
+	"github.com/tendermint/tendermint/pkg/consts"
+	"github.com/tendermint/tendermint/pkg/da"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	"github.com/tendermint/tendermint/version"
 )
 
 const (
 	// MaxHeaderBytes is a maximum header size.
 	// NOTE: Because app hash can be of arbitrary size, the header is therefore not
 	// capped in size and thus this number should be seen as a soft max
-	MaxHeaderBytes int64 = 636
+	MaxHeaderBytes int64 = 626
 
 	// MaxOverheadForBlock - maximum overhead to encode a block (up to
 	// MaxBlockSizeBytes in size) not including it's parts except Data.
@@ -49,10 +48,9 @@ const (
 type Block struct {
 	mtx tmsync.Mutex
 
-	Header                 `json:"header"`
-	Data                   `json:"data"`
-	DataAvailabilityHeader da.DataAvailabilityHeader `json:"availability_header"`
-	LastCommit             *Commit                   `json:"last_commit"`
+	Header     `json:"header"`
+	Data       `json:"data"`
+	LastCommit *Commit `json:"last_commit"`
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data.
@@ -83,7 +81,7 @@ func (b *Block) ValidateBasic() error {
 	}
 
 	// NOTE: b.Data.Txs may be nil, but b.Data.Hash() still works fine.
-	if w, g := b.DataAvailabilityHeader.Hash(), b.DataHash; !bytes.Equal(w, g) {
+	if w, g := b.Data.Hash(), b.DataHash; !bytes.Equal(w, g) {
 		return fmt.Errorf("wrong Header.DataHash. Expected %X, got %X", w, g)
 	}
 
@@ -107,32 +105,11 @@ func (b *Block) fillHeader() {
 		b.LastCommitHash = b.LastCommit.Hash()
 	}
 	if b.DataHash == nil {
-		b.fillDataAvailabilityHeader()
+		b.DataHash = b.Data.Hash()
 	}
 	if b.EvidenceHash == nil {
 		b.EvidenceHash = b.Evidence.Hash()
 	}
-}
-
-// TODO: Move out from 'types' package
-// fillDataAvailabilityHeader fills in any remaining DataAvailabilityHeader fields
-// that are a function of the block data.
-func (b *Block) fillDataAvailabilityHeader() {
-	namespacedShares, dataSharesLen := b.Data.ComputeShares()
-	shares := namespacedShares.RawShares()
-
-	// create the nmt wrapper to generate row and col commitments
-	squareSize := uint64(math.Sqrt(float64(len(shares))))
-	dah, err := da.NewDataAvailabilityHeader(squareSize, shares)
-	if err != nil {
-		panic(fmt.Sprintf("unexpected error: %v", err))
-	}
-
-	b.DataAvailabilityHeader = dah
-
-	// return the root hash of DA Header
-	b.DataHash = b.DataAvailabilityHeader.Hash()
-	b.NumOriginalDataShares = uint64(dataSharesLen)
 }
 
 // Hash computes and returns the block hash.
@@ -240,21 +217,17 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 	}
 
 	pb := new(tmproto.Block)
-	protoEvidence, err := b.Evidence.ToProto()
-	if err != nil {
-		return nil, err
-	}
-
-	pdah, err := b.DataAvailabilityHeader.ToProto()
-	if err != nil {
-		return nil, err
-	}
 
 	pb.Header = *b.Header.ToProto()
 	pb.LastCommit = b.LastCommit.ToProto()
 	pb.Data = b.Data.ToProto()
+
+	protoEvidence, err := b.Evidence.ToProto()
+	if err != nil {
+		return nil, err
+	}
 	pb.Data.Evidence = *protoEvidence
-	pb.DataAvailabilityHeader = pdah
+
 	return pb, nil
 }
 
@@ -280,11 +253,6 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 		return nil, err
 	}
 
-	dah, err := da.DataAvailabilityHeaderFromProto(bp.DataAvailabilityHeader)
-	if err != nil {
-		return nil, err
-	}
-	b.DataAvailabilityHeader = *dah
 	if bp.LastCommit != nil {
 		lc, err := CommitFromProto(bp.LastCommit)
 		if err != nil {
@@ -346,18 +314,18 @@ func MaxDataBytesNoEvidence(maxBytes int64, valsCount int) int64 {
 // It populates the same set of fields validated by ValidateBasic.
 func MakeBlock(
 	height int64,
-	txs []Tx, evidence []Evidence, intermediateStateRoots []tmbytes.HexBytes, messages Messages,
+	txs []Tx, evidence []Evidence, intermediateStateRoots []tmbytes.HexBytes, messages []Message,
 	lastCommit *Commit) *Block {
 	block := &Block{
 		Header: Header{
-			Version: tmversion.Consensus{Block: version.BlockProtocol, App: 0},
+			Version: version.Consensus{Block: version.BlockProtocol, App: 0},
 			Height:  height,
 		},
 		Data: Data{
 			Txs:                    txs,
 			IntermediateStateRoots: IntermediateStateRoots{RawRootsList: intermediateStateRoots},
 			Evidence:               EvidenceData{Evidence: evidence},
-			Messages:               messages,
+			Messages:               Messages{MessagesList: messages},
 		},
 		LastCommit: lastCommit,
 	}
@@ -374,21 +342,17 @@ func MakeBlock(
 // - https://github.com/tendermint/spec/blob/master/spec/blockchain/blockchain.md
 type Header struct {
 	// basic block info
-	Version tmversion.Consensus `json:"version"`
-	ChainID string              `json:"chain_id"`
-	Height  int64               `json:"height"`
-	Time    time.Time           `json:"time"`
+	Version version.Consensus `json:"version"`
+	ChainID string            `json:"chain_id"`
+	Height  int64             `json:"height"`
+	Time    time.Time         `json:"time"`
 
 	// prev block info
 	LastBlockID BlockID `json:"last_block_id"`
 
 	// hashes of block data
 	LastCommitHash tmbytes.HexBytes `json:"last_commit_hash"` // commit from validators from the last block
-	// DataHash = root((rowRoot_1 || rowRoot_2 || ... ||rowRoot_2k || columnRoot1 || columnRoot2 || ... || columnRoot2k))
-	// Block.DataAvailabilityHeader for stores (row|column)Root_i // TODO ...
-	DataHash tmbytes.HexBytes `json:"data_hash"` // transactions
-	// amount of data shares within a Block #specs:availableDataOriginalSharesUsed
-	NumOriginalDataShares uint64 `json:"data_shares"`
+	DataHash       tmbytes.HexBytes `json:"data_hash"`        // transactions
 
 	// hashes from the app output from the prev block
 	ValidatorsHash     tmbytes.HexBytes `json:"validators_hash"`      // validators for the current block
@@ -396,6 +360,7 @@ type Header struct {
 	ConsensusHash      tmbytes.HexBytes `json:"consensus_hash"`       // consensus params for current block
 	AppHash            tmbytes.HexBytes `json:"app_hash"`             // state after txs from the previous block
 	// root hash of all results from the txs from the previous block
+	// see `deterministicResponseDeliverTx` to understand which parts of a tx is hashed into here
 	LastResultsHash tmbytes.HexBytes `json:"last_results_hash"`
 
 	// consensus info
@@ -406,7 +371,7 @@ type Header struct {
 // Populate the Header with state-derived data.
 // Call this after MakeBlock to complete the Header.
 func (h *Header) Populate(
-	version tmversion.Consensus, chainID string,
+	version version.Consensus, chainID string,
 	timestamp time.Time, lastBlockID BlockID,
 	valHash, nextValHash []byte,
 	consensusHash, appHash, lastResultsHash []byte,
@@ -494,7 +459,8 @@ func (h *Header) Hash() tmbytes.HexBytes {
 	if h == nil || len(h.ValidatorsHash) == 0 {
 		return nil
 	}
-	hbz, err := h.Version.Marshal()
+	hpb := h.Version.ToProto()
+	hbz, err := hpb.Marshal()
 	if err != nil {
 		return nil
 	}
@@ -517,7 +483,6 @@ func (h *Header) Hash() tmbytes.HexBytes {
 		bzbi,
 		cdcEncode(h.LastCommitHash),
 		cdcEncode(h.DataHash),
-		cdcEncode(h.NumOriginalDataShares),
 		cdcEncode(h.ValidatorsHash),
 		cdcEncode(h.NextValidatorsHash),
 		cdcEncode(h.ConsensusHash),
@@ -573,21 +538,20 @@ func (h *Header) ToProto() *tmproto.Header {
 	}
 
 	return &tmproto.Header{
-		Version:               h.Version,
-		ChainID:               h.ChainID,
-		Height:                h.Height,
-		Time:                  h.Time,
-		LastBlockId:           h.LastBlockID.ToProto(),
-		ValidatorsHash:        h.ValidatorsHash,
-		NextValidatorsHash:    h.NextValidatorsHash,
-		ConsensusHash:         h.ConsensusHash,
-		AppHash:               h.AppHash,
-		DataHash:              h.DataHash,
-		NumOriginalDataShares: h.NumOriginalDataShares,
-		EvidenceHash:          h.EvidenceHash,
-		LastResultsHash:       h.LastResultsHash,
-		LastCommitHash:        h.LastCommitHash,
-		ProposerAddress:       h.ProposerAddress,
+		Version:            h.Version.ToProto(),
+		ChainID:            h.ChainID,
+		Height:             h.Height,
+		Time:               h.Time,
+		LastBlockId:        h.LastBlockID.ToProto(),
+		ValidatorsHash:     h.ValidatorsHash,
+		NextValidatorsHash: h.NextValidatorsHash,
+		ConsensusHash:      h.ConsensusHash,
+		AppHash:            h.AppHash,
+		DataHash:           h.DataHash,
+		EvidenceHash:       h.EvidenceHash,
+		LastResultsHash:    h.LastResultsHash,
+		LastCommitHash:     h.LastCommitHash,
+		ProposerAddress:    h.ProposerAddress,
 	}
 }
 
@@ -605,7 +569,7 @@ func HeaderFromProto(ph *tmproto.Header) (Header, error) {
 		return Header{}, err
 	}
 
-	h.Version = ph.Version
+	h.Version = version.Consensus{Block: ph.Version.Block, App: ph.Version.App}
 	h.ChainID = ph.ChainID
 	h.Height = ph.Height
 	h.Time = ph.Time
@@ -616,7 +580,6 @@ func HeaderFromProto(ph *tmproto.Header) (Header, error) {
 	h.ConsensusHash = ph.ConsensusHash
 	h.AppHash = ph.AppHash
 	h.DataHash = ph.DataHash
-	h.NumOriginalDataShares = ph.NumOriginalDataShares
 	h.EvidenceHash = ph.EvidenceHash
 	h.LastResultsHash = ph.LastResultsHash
 	h.LastCommitHash = ph.LastCommitHash
@@ -799,7 +762,6 @@ type Commit struct {
 	Round      int32       `json:"round"`
 	BlockID    BlockID     `json:"block_id"`
 	Signatures []CommitSig `json:"signatures"`
-	HeaderHash []byte      `json:"header_hash"`
 
 	// Memoized in first call to corresponding method.
 	// NOTE: can't memoize in constructor because constructor isn't used for
@@ -815,7 +777,6 @@ func NewCommit(height int64, round int32, blockID BlockID, commitSigs []CommitSi
 		Round:      round,
 		BlockID:    blockID,
 		Signatures: commitSigs,
-		HeaderHash: blockID.Hash,
 	}
 }
 
@@ -932,9 +893,6 @@ func (commit *Commit) ValidateBasic() error {
 	}
 
 	if commit.Height >= 1 {
-		if len(commit.HeaderHash) != 32 {
-			return fmt.Errorf("incorrect hash length, len: %d expected 32", len(commit.HeaderHash))
-		}
 		if commit.BlockID.IsZero() {
 			return errors.New("commit cannot be for nil block")
 		}
@@ -1012,7 +970,6 @@ func (commit *Commit) ToProto() *tmproto.Commit {
 	c.Height = commit.Height
 	c.Round = commit.Round
 	c.BlockID = commit.BlockID.ToProto()
-	c.HeaderHash = commit.HeaderHash
 
 	return c
 }
@@ -1044,7 +1001,6 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 	commit.Height = cp.Height
 	commit.Round = cp.Round
 	commit.BlockID = *bi
-	commit.HeaderHash = cp.HeaderHash
 
 	return commit, commit.ValidateBasic()
 }
@@ -1076,46 +1032,34 @@ type Data struct {
 	// them only when necessary (before proposing the block) as messages do not
 	// really need to be processed by tendermint
 	Messages Messages `json:"msgs"`
+
+	// Volatile
+	hash tmbytes.HexBytes
 }
 
-type Messages struct {
-	MessagesList []Message `json:"msgs"`
-}
-
-type IntermediateStateRoots struct {
-	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
-}
-
-func (roots IntermediateStateRoots) SplitIntoShares() NamespacedShares {
-	rawDatas := make([][]byte, 0, len(roots.RawRootsList))
-	for _, root := range roots.RawRootsList {
-		rawData, err := root.MarshalDelimited()
-		if err != nil {
-			panic(fmt.Sprintf("app returned intermediate state root that can not be encoded %#v", root))
-		}
-		rawDatas = append(rawDatas, rawData)
+// Hash returns the hash of the data
+func (data *Data) Hash() tmbytes.HexBytes {
+	if data.hash != nil {
+		return data.hash
 	}
-	shares := splitContiguous(consts.IntermediateStateRootsNamespaceID, rawDatas)
-	return shares
-}
 
-func (msgs Messages) SplitIntoShares() NamespacedShares {
-	shares := make([]NamespacedShare, 0)
-	msgs.sortMessages()
-	for _, m := range msgs.MessagesList {
-		rawData, err := m.MarshalDelimited()
-		if err != nil {
-			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
-		}
-		shares = appendToShares(shares, m.NamespaceID, rawData)
+	// compute the data availability header
+	// todo(evan): add the non redundant shares back into the header
+	shares, _ := data.ComputeShares()
+	rawShares := shares.RawShares()
+
+	squareSize := uint64(math.Sqrt(float64(len(shares))))
+
+	eds, err := da.ExtendShares(squareSize, rawShares)
+	if err != nil {
+		panic(err)
 	}
-	return shares
-}
 
-func (msgs *Messages) sortMessages() {
-	sort.Slice(msgs.MessagesList, func(i, j int) bool {
-		return bytes.Compare(msgs.MessagesList[i].NamespaceID, msgs.MessagesList[j].NamespaceID) < 0
-	})
+	dah := da.NewDataAvailabilityHeader(eds)
+
+	data.hash = dah.Hash()
+
+	return data.hash
 }
 
 // ComputeShares splits block data into shares of an original data square and
@@ -1133,6 +1077,10 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 	// application data shares from messages:
 	msgShares := data.Messages.SplitIntoShares()
 	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
+
+	if curLen > consts.MaxShareCount {
+		panic(fmt.Sprintf("Block data exceeds the max square size. Number of shares required: %d\n", curLen))
+	}
 
 	// find the number of shares needed to create a square that has a power of
 	// two width
@@ -1179,6 +1127,46 @@ func nextHighestPowerOf2(v uint32) uint32 {
 
 	// return the next highest power
 	return v
+}
+
+type Messages struct {
+	MessagesList []Message `json:"msgs"`
+}
+
+type IntermediateStateRoots struct {
+	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
+}
+
+func (roots IntermediateStateRoots) SplitIntoShares() NamespacedShares {
+	rawDatas := make([][]byte, 0, len(roots.RawRootsList))
+	for _, root := range roots.RawRootsList {
+		rawData, err := root.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("app returned intermediate state root that can not be encoded %#v", root))
+		}
+		rawDatas = append(rawDatas, rawData)
+	}
+	shares := splitContiguous(consts.IntermediateStateRootsNamespaceID, rawDatas)
+	return shares
+}
+
+func (msgs Messages) SplitIntoShares() NamespacedShares {
+	shares := make([]NamespacedShare, 0)
+	msgs.sortMessages()
+	for _, m := range msgs.MessagesList {
+		rawData, err := m.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
+		}
+		shares = appendToShares(shares, m.NamespaceID, rawData)
+	}
+	return shares
+}
+
+func (msgs *Messages) sortMessages() {
+	sort.Slice(msgs.MessagesList, func(i, j int) bool {
+		return bytes.Compare(msgs.MessagesList[i].NamespaceID, msgs.MessagesList[j].NamespaceID) < 0
+	})
 }
 
 type Message struct {
@@ -1261,10 +1249,13 @@ func (data *Data) ToProto() tmproto.Data {
 		}
 		tp.IntermediateStateRoots.RawRootsList = roots
 	}
-	// TODO(ismail): fill in messages too
-
-	// TODO(ismail): handle evidence here instead of the block
-	// for the sake of consistency
+	// TODO(evan): copy missing pieces from previous work
+	pevd, err := data.Evidence.ToProto()
+	if err != nil {
+		// TODO(evan): fix
+		panic(err)
+	}
+	tp.Evidence = *pevd
 
 	return *tp
 }
@@ -1304,6 +1295,15 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		data.IntermediateStateRoots = IntermediateStateRoots{RawRootsList: roots}
 	} else {
 		data.IntermediateStateRoots = IntermediateStateRoots{}
+	}
+
+	evdData := new(EvidenceData)
+	err := evdData.FromProto(&dp.Evidence)
+	if err != nil {
+		return Data{}, err
+	}
+	if evdData != nil {
+		data.Evidence = *evdData
 	}
 
 	return *data, nil
@@ -1422,7 +1422,7 @@ func (data *EvidenceData) SplitIntoShares() NamespacedShares {
 // BlockID
 type BlockID struct {
 	Hash          tmbytes.HexBytes `json:"hash"`
-	PartSetHeader PartSetHeader    `json:"part_set_header"`
+	PartSetHeader PartSetHeader    `json:"parts"`
 }
 
 // Equals returns true if the BlockID matches the given BlockID
@@ -1439,17 +1439,17 @@ func (blockID BlockID) Key() string {
 		panic(err)
 	}
 
-	return string(blockID.Hash) + string(bz)
+	return fmt.Sprint(string(blockID.Hash), string(bz))
 }
 
 // ValidateBasic performs basic validation.
 func (blockID BlockID) ValidateBasic() error {
 	// Hash can be empty in case of POLBlockID in Proposal.
 	if err := ValidateHash(blockID.Hash); err != nil {
-		return fmt.Errorf("wrong Hash")
+		return fmt.Errorf("wrong Hash: %w", err)
 	}
 	if err := blockID.PartSetHeader.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong PartSetHeader: %v", err)
+		return fmt.Errorf("wrong PartSetHeader: %w", err)
 	}
 	return nil
 }

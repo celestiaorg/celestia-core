@@ -6,23 +6,31 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
-	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
-	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
-	rpctest "github.com/celestiaorg/celestia-core/rpc/test"
+	"github.com/tendermint/tendermint/abci/example/kvstore"
+	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
+	"github.com/tendermint/tendermint/rpc/coretypes"
+	rpctest "github.com/tendermint/tendermint/rpc/test"
 )
 
 func ExampleHTTP_simple() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Start a tendermint node (and kvstore) in the background to test against
 	app := kvstore.NewApplication()
-	node := rpctest.StartTendermint(app, rpctest.SuppressStdout, rpctest.RecreateConfig, rpctest.DoNotLoadIpfsPlugins)
-	defer rpctest.StopTendermint(node)
+	conf := rpctest.CreateConfig("ExampleHTTP_simple")
 
-	// Create our RPC client
-	rpcAddr := rpctest.GetConfig().RPC.ListenAddress
-	c, err := rpchttp.New(rpcAddr, "/websocket")
+	_, closer, err := rpctest.StartTendermint(ctx, conf, app, rpctest.SuppressStdout)
 	if err != nil {
 		log.Fatal(err) //nolint:gocritic
+	}
+	defer func() { _ = closer(ctx) }()
+
+	// Create our RPC client
+	rpcAddr := conf.RPC.ListenAddress
+	c, err := rpchttp.New(rpcAddr)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	// Create a transaction
@@ -66,18 +74,24 @@ func ExampleHTTP_simple() {
 }
 
 func ExampleHTTP_batching() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Start a tendermint node (and kvstore) in the background to test against
 	app := kvstore.NewApplication()
-	node := rpctest.StartTendermint(app, rpctest.SuppressStdout, rpctest.RecreateConfig, rpctest.DoNotLoadIpfsPlugins)
+	conf := rpctest.CreateConfig("ExampleHTTP_batching")
 
-	// Create our RPC client
-	rpcAddr := rpctest.GetConfig().RPC.ListenAddress
-	c, err := rpchttp.New(rpcAddr, "/websocket")
+	_, closer, err := rpctest.StartTendermint(ctx, conf, app, rpctest.SuppressStdout)
+	if err != nil {
+		log.Fatal(err) //nolint:gocritic
+	}
+	defer func() { _ = closer(ctx) }()
+
+	rpcAddr := conf.RPC.ListenAddress
+	c, err := rpchttp.New(rpcAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	defer rpctest.StopTendermint(node)
 
 	// Create our two transactions
 	k1 := []byte("firstName")
@@ -98,7 +112,7 @@ func ExampleHTTP_batching() {
 		// Broadcast the transaction and wait for it to commit (rather use
 		// c.BroadcastTxSync though in production).
 		if _, err := batch.BroadcastTxCommit(context.Background(), tx); err != nil {
-			log.Fatal(err) //nolint:gocritic
+			log.Fatal(err)
 		}
 	}
 
@@ -124,7 +138,7 @@ func ExampleHTTP_batching() {
 	// Each result in the returned list is the deserialized result of each
 	// respective ABCIQuery response
 	for _, result := range results {
-		qr, ok := result.(*ctypes.ResultABCIQuery)
+		qr, ok := result.(*coretypes.ResultABCIQuery)
 		if !ok {
 			log.Fatal("invalid result type from ABCIQuery request")
 		}

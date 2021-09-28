@@ -5,8 +5,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/celestiaorg/celestia-core/crypto"
-	tmnet "github.com/celestiaorg/celestia-core/libs/net"
+	"github.com/tendermint/tendermint/crypto"
+	tmnet "github.com/tendermint/tendermint/libs/net"
 )
 
 // Socket errors.

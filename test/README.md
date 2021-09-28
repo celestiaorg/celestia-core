@@ -10,7 +10,11 @@ and run the following tests in docker containers:
     - includes test coverage
 - app tests
     - kvstore app over socket
-    - counter app over socket
-    - counter app over grpc
 - persistence tests
     - crash tendermint at each of many predefined points, restart, and ensure it syncs properly with the app
+
+## Fuzzing
+
+[Fuzzing](https://en.wikipedia.org/wiki/Fuzzing) of various system inputs.
+
+See `./fuzz/README.md` for more details.

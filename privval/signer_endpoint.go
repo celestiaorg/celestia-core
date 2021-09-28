@@ -5,10 +5,10 @@ import (
 	"net"
 	"time"
 
-	"github.com/celestiaorg/celestia-core/libs/protoio"
-	"github.com/celestiaorg/celestia-core/libs/service"
-	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
-	privvalproto "github.com/celestiaorg/celestia-core/proto/tendermint/privval"
+	"github.com/tendermint/tendermint/internal/libs/protoio"
+	tmsync "github.com/tendermint/tendermint/internal/libs/sync"
+	"github.com/tendermint/tendermint/libs/service"
+	privvalproto "github.com/tendermint/tendermint/proto/tendermint/privval"
 )
 
 const (
@@ -96,7 +96,7 @@ func (se *signerEndpoint) ReadMessage() (msg privvalproto.Message, err error) {
 	}
 	const maxRemoteSignerMsgSize = 1024 * 10
 	protoReader := protoio.NewDelimitedReader(se.conn, maxRemoteSignerMsgSize)
-	err = protoReader.ReadMsg(&msg)
+	_, err = protoReader.ReadMsg(&msg)
 	if _, ok := err.(timeoutError); ok {
 		if err != nil {
 			err = fmt.Errorf("%v: %w", err, ErrReadTimeout)

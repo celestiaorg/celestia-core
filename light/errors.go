@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/celestiaorg/celestia-core/types"
+	"github.com/tendermint/tendermint/types"
 )
 
 // ErrOldHeaderExpired means the old (trusted) header has expired according to
@@ -100,3 +100,7 @@ type errBadWitness struct {
 func (e errBadWitness) Error() string {
 	return fmt.Sprintf("Witness %d returned error: %s", e.WitnessIndex, e.Reason.Error())
 }
+
+var errNoDivergence = errors.New(
+	"sanity check failed: no divergence between the original trace and the provider's new trace",
+)

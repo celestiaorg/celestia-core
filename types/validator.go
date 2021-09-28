@@ -4,12 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	mrand "math/rand"
 	"strings"
 
-	"github.com/celestiaorg/celestia-core/crypto"
-	ce "github.com/celestiaorg/celestia-core/crypto/encoding"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/tendermint/tendermint/crypto"
+	"github.com/tendermint/tendermint/crypto/encoding"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 // Volatile state for each Validator
@@ -115,7 +114,7 @@ func ValidatorListString(vals []*Validator) string {
 // as its redundant with the pubkey. This also excludes ProposerPriority
 // which changes every round.
 func (v *Validator) Bytes() []byte {
-	pk, err := ce.PubKeyToProto(v.PubKey)
+	pk, err := encoding.PubKeyToProto(v.PubKey)
 	if err != nil {
 		panic(err)
 	}
@@ -138,7 +137,7 @@ func (v *Validator) ToProto() (*tmproto.Validator, error) {
 		return nil, errors.New("nil validator")
 	}
 
-	pk, err := ce.PubKeyToProto(v.PubKey)
+	pk, err := encoding.PubKeyToProto(v.PubKey)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +159,7 @@ func ValidatorFromProto(vp *tmproto.Validator) (*Validator, error) {
 		return nil, errors.New("nil validator")
 	}
 
-	pk, err := ce.PubKeyFromProto(vp.PubKey)
+	pk, err := encoding.PubKeyFromProto(vp.PubKey)
 	if err != nil {
 		return nil, err
 	}
@@ -171,24 +170,4 @@ func ValidatorFromProto(vp *tmproto.Validator) (*Validator, error) {
 	v.ProposerPriority = vp.GetProposerPriority()
 
 	return v, nil
-}
-
-//----------------------------------------
-// RandValidator
-
-// RandValidator returns a randomized validator, useful for testing.
-// UNSTABLE
-func RandValidator(randPower bool, minPower int64) (*Validator, PrivValidator) {
-	privVal := NewMockPV()
-	votePower := minPower
-	if randPower {
-		// nolint:gosec // G404: Use of weak random number generator
-		votePower += int64(mrand.Uint32())
-	}
-	pubKey, err := privVal.GetPubKey()
-	if err != nil {
-		panic(fmt.Errorf("could not retrieve pubkey %w", err))
-	}
-	val := NewValidator(pubKey, votePower)
-	return val, privVal
 }

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/celestiaorg/celestia-core/crypto/ed25519"
+	"github.com/tendermint/tendermint/crypto/ed25519"
 )
 
 //-------------------------------------------

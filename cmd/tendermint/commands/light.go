@@ -1,31 +1,26 @@
 package commands
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
+	dbm "github.com/tendermint/tm-db"
 
-	"github.com/celestiaorg/celestia-core/crypto/merkle"
-	dbm "github.com/celestiaorg/celestia-core/libs/db"
-	"github.com/celestiaorg/celestia-core/libs/db/badgerdb"
-	"github.com/celestiaorg/celestia-core/libs/log"
-	tmmath "github.com/celestiaorg/celestia-core/libs/math"
-	tmos "github.com/celestiaorg/celestia-core/libs/os"
-	"github.com/celestiaorg/celestia-core/light"
-	lproxy "github.com/celestiaorg/celestia-core/light/proxy"
-	lrpc "github.com/celestiaorg/celestia-core/light/rpc"
-	dbs "github.com/celestiaorg/celestia-core/light/store/db"
-	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
-	rpcserver "github.com/celestiaorg/celestia-core/rpc/jsonrpc/server"
+	"github.com/tendermint/tendermint/libs/log"
+	tmmath "github.com/tendermint/tendermint/libs/math"
+	tmos "github.com/tendermint/tendermint/libs/os"
+	"github.com/tendermint/tendermint/light"
+	lproxy "github.com/tendermint/tendermint/light/proxy"
+	lrpc "github.com/tendermint/tendermint/light/rpc"
+	dbs "github.com/tendermint/tendermint/light/store/db"
+	rpcserver "github.com/tendermint/tendermint/rpc/jsonrpc/server"
 )
 
 // LightCmd represents the base command when called without any subcommands
@@ -64,15 +59,14 @@ var (
 	dir                string
 	maxOpenConnections int
 
-	daSampling     bool
-	numSamples     uint32
 	sequential     bool
 	trustingPeriod time.Duration
 	trustedHeight  int64
 	trustedHash    []byte
 	trustLevelStr  string
 
-	verbose bool
+	logLevel  string
+	logFormat string
 
 	primaryKey   = []byte("primary")
 	witnessesKey = []byte("witnesses")
@@ -96,30 +90,21 @@ func init() {
 		"trusting period that headers can be verified within. Should be significantly less than the unbonding period")
 	LightCmd.Flags().Int64Var(&trustedHeight, "height", 1, "Trusted header's height")
 	LightCmd.Flags().BytesHexVar(&trustedHash, "hash", []byte{}, "Trusted header's hash")
-	LightCmd.Flags().BoolVar(&verbose, "verbose", false, "Verbose output")
+	LightCmd.Flags().StringVar(&logLevel, "log-level", log.LogLevelInfo, "The logging level (debug|info|warn|error|fatal)")
+	LightCmd.Flags().StringVar(&logFormat, "log-format", log.LogFormatPlain, "The logging format (text|json)")
 	LightCmd.Flags().StringVar(&trustLevelStr, "trust-level", "1/3",
 		"trust level. Must be between 1/3 and 3/3",
 	)
 	LightCmd.Flags().BoolVar(&sequential, "sequential", false,
 		"sequential verification. Verify all headers sequentially as opposed to using skipping verification",
 	)
-	LightCmd.Flags().BoolVar(&daSampling, "da-sampling", false,
-		"data availability sampling. Verify each header's data availability via sampling",
-	)
-	LightCmd.Flags().Uint32Var(&numSamples, "num-samples", 15,
-		"Number of data availability samples until block data deemed available.")
 }
 
 func runProxy(cmd *cobra.Command, args []string) error {
-	// Initialise logger.
-	logger := log.NewTMLogger(log.NewSyncWriter(os.Stdout))
-	var option log.Option
-	if verbose {
-		option, _ = log.AllowLevel("debug")
-	} else {
-		option, _ = log.AllowLevel("info")
+	logger, err := log.NewDefaultLogger(logFormat, logLevel, false)
+	if err != nil {
+		return err
 	}
-	logger = log.NewFilter(logger, option)
 
 	chainID = args[0]
 	logger.Info("Creating client...", "chainID", chainID)
@@ -129,10 +114,12 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		witnessesAddrs = strings.Split(witnessAddrsJoined, ",")
 	}
 
-	db, err := badgerdb.NewDB("light-client-db", dir)
+	lightDB, err := dbm.NewGoLevelDB("light-client-db", dir)
 	if err != nil {
 		return fmt.Errorf("can't create a db: %w", err)
 	}
+	// create a prefixed db on the chainID
+	db := dbm.NewPrefixDB(lightDB, []byte(chainID))
 
 	if primaryAddr == "" { // check to see if we can start from an existing state
 		var err error
@@ -156,65 +143,31 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("can't parse trust level: %w", err)
 	}
 
-	options := []light.Option{
-		light.Logger(logger),
-		light.ConfirmationFunction(func(action string) bool {
-			fmt.Println(action)
-			scanner := bufio.NewScanner(os.Stdin)
-			for {
-				scanner.Scan()
-				response := scanner.Text()
-				switch response {
-				case "y", "Y":
-					return true
-				case "n", "N":
-					return false
-				default:
-					fmt.Println("please input 'Y' or 'n' and press ENTER")
-				}
-			}
-		}),
-	}
+	options := []light.Option{light.Logger(logger)}
 
-	switch {
-	case sequential:
+	if sequential {
 		options = append(options, light.SequentialVerification())
-	default:
+	} else {
 		options = append(options, light.SkippingVerification(trustLevel))
 	}
 
-	var c *light.Client
-	if trustedHeight > 0 && len(trustedHash) > 0 { // fresh installation
-		c, err = light.NewHTTPClient(
-			context.Background(),
-			chainID,
-			light.TrustOptions{
-				Period: trustingPeriod,
-				Height: trustedHeight,
-				Hash:   trustedHash,
-			},
-			primaryAddr,
-			witnessesAddrs,
-			dbs.New(db, chainID),
-			options...,
-		)
-	} else { // continue from latest state
-		c, err = light.NewHTTPClientFromTrustedStore(
-			chainID,
-			trustingPeriod,
-			primaryAddr,
-			witnessesAddrs,
-			dbs.New(db, chainID),
-			options...,
-		)
-	}
+	// Initiate the light client. If the trusted store already has blocks in it, this
+	// will be used else we use the trusted options.
+	c, err := light.NewHTTPClient(
+		context.Background(),
+		chainID,
+		light.TrustOptions{
+			Period: trustingPeriod,
+			Height: trustedHeight,
+			Hash:   trustedHash,
+		},
+		primaryAddr,
+		witnessesAddrs,
+		dbs.New(db),
+		options...,
+	)
 	if err != nil {
 		return err
-	}
-
-	rpcClient, err := rpchttp.New(primaryAddr, "/websocket")
-	if err != nil {
-		return fmt.Errorf("http client for %s: %w", primaryAddr, err)
 	}
 
 	cfg := rpcserver.DefaultConfig()
@@ -228,12 +181,11 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		cfg.WriteTimeout = config.RPC.TimeoutBroadcastTxCommit + 1*time.Second
 	}
 
-	p := lproxy.Proxy{
-		Addr:   listenAddr,
-		Config: cfg,
-		Client: lrpc.NewClient(rpcClient, c, lrpc.KeyPathFn(defaultMerkleKeyPathFn())),
-		Logger: logger,
+	p, err := lproxy.NewProxy(c, listenAddr, primaryAddr, cfg, logger, lrpc.KeyPathFn(lrpc.DefaultMerkleKeyPathFn()))
+	if err != nil {
+		return err
 	}
+
 	// Stop upon receiving SIGTERM or CTRL-C.
 	tmos.TrapSignal(logger, func() {
 		p.Listener.Close()
@@ -271,22 +223,4 @@ func saveProviders(db dbm.DB, primaryAddr, witnessesAddrs string) error {
 		return fmt.Errorf("failed to save witness providers: %w", err)
 	}
 	return nil
-}
-
-func defaultMerkleKeyPathFn() lrpc.KeyPathFunc {
-	// regexp for extracting store name from /abci_query path
-	storeNameRegexp := regexp.MustCompile(`\/store\/(.+)\/key`)
-
-	return func(path string, key []byte) (merkle.KeyPath, error) {
-		matches := storeNameRegexp.FindStringSubmatch(path)
-		if len(matches) != 2 {
-			return nil, fmt.Errorf("can't find store name in %s using %s", path, storeNameRegexp)
-		}
-		storeName := matches[1]
-
-		kp := merkle.KeyPath{}
-		kp = kp.AppendKey([]byte(storeName), merkle.KeyEncodingURL)
-		kp = kp.AppendKey(key, merkle.KeyEncodingURL)
-		return kp, nil
-	}
 }

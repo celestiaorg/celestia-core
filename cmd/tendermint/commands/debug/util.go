@@ -9,8 +9,8 @@ import (
 	"path"
 	"path/filepath"
 
-	cfg "github.com/celestiaorg/celestia-core/config"
-	rpchttp "github.com/celestiaorg/celestia-core/rpc/client/http"
+	"github.com/tendermint/tendermint/config"
+	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
 )
 
 // dumpStatus gets node status state dump from the Tendermint RPC and writes it
@@ -48,7 +48,7 @@ func dumpConsensusState(rpc *rpchttp.HTTP, dir, filename string) error {
 
 // copyWAL copies the Tendermint node's WAL file. It returns an error if the
 // WAL file cannot be read or copied.
-func copyWAL(conf *cfg.Config, dir string) error {
+func copyWAL(conf *config.Config, dir string) error {
 	walPath := conf.Consensus.WalFile()
 	walFile := filepath.Base(walPath)
 

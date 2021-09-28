@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
-	tmprotobits "github.com/celestiaorg/celestia-core/proto/tendermint/libs/bits"
+	tmrand "github.com/tendermint/tendermint/libs/rand"
+	tmprotobits "github.com/tendermint/tendermint/proto/tendermint/libs/bits"
 )
 
 func randBitArray(bits int) (*BitArray, []byte) {
@@ -299,7 +299,7 @@ func TestBitArrayFromProto(t *testing.T) {
 		expErr bool
 	}{
 		0: {nil, &BitArray{}, false},
-		1: {&tmprotobits.BitArray{}, &BitArray{}, false},
+		1: {&tmprotobits.BitArray{}, &BitArray{Elems: []uint64{}}, false},
 
 		2: {&tmprotobits.BitArray{Bits: 1, Elems: make([]uint64, 1)}, &BitArray{Bits: 1, Elems: make([]uint64, 1)}, false},
 

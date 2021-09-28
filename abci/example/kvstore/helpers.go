@@ -3,8 +3,8 @@ package kvstore
 import (
 	mrand "math/rand"
 
-	"github.com/celestiaorg/celestia-core/abci/types"
-	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
+	"github.com/tendermint/tendermint/abci/types"
+	tmrand "github.com/tendermint/tendermint/libs/rand"
 )
 
 // RandVal creates one random validator, with a key derived

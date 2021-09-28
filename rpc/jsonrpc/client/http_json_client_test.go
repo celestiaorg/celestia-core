@@ -34,3 +34,81 @@ func TestHTTPClientMakeHTTPDialer(t *testing.T) {
 		require.NotNil(t, addr)
 	}
 }
+
+func Test_parsedURL(t *testing.T) {
+	type test struct {
+		url                  string
+		expectedURL          string
+		expectedHostWithPath string
+		expectedDialAddress  string
+	}
+
+	tests := map[string]test{
+		"unix endpoint": {
+			url:                  "unix:///tmp/test",
+			expectedURL:          "unix://.tmp.test",
+			expectedHostWithPath: "/tmp/test",
+			expectedDialAddress:  "/tmp/test",
+		},
+
+		"http endpoint": {
+			url:                  "https://example.com",
+			expectedURL:          "https://example.com",
+			expectedHostWithPath: "example.com",
+			expectedDialAddress:  "example.com",
+		},
+
+		"http endpoint with port": {
+			url:                  "https://example.com:8080",
+			expectedURL:          "https://example.com:8080",
+			expectedHostWithPath: "example.com:8080",
+			expectedDialAddress:  "example.com:8080",
+		},
+
+		"http path routed endpoint": {
+			url:                  "https://example.com:8080/rpc",
+			expectedURL:          "https://example.com:8080/rpc",
+			expectedHostWithPath: "example.com:8080/rpc",
+			expectedDialAddress:  "example.com:8080",
+		},
+	}
+
+	for name, tt := range tests {
+		tt := tt // suppressing linter
+		t.Run(name, func(t *testing.T) {
+			parsed, err := newParsedURL(tt.url)
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedDialAddress, parsed.GetDialAddress())
+			require.Equal(t, tt.expectedURL, parsed.GetTrimmedURL())
+			require.Equal(t, tt.expectedHostWithPath, parsed.GetHostWithPath())
+		})
+	}
+}
+
+func TestMakeHTTPDialerURL(t *testing.T) {
+	remotes := []string{"https://foo-bar.com", "http://foo-bar.com"}
+
+	for _, remote := range remotes {
+		u, err := newParsedURL(remote)
+		require.NoError(t, err)
+		dialFn, err := makeHTTPDialer(remote)
+		require.Nil(t, err)
+
+		addr, err := dialFn(u.Scheme, u.GetHostWithPath())
+		require.NoError(t, err)
+		require.NotNil(t, addr)
+	}
+
+	errorURLs := []string{"tcp://foo-bar.com", "ftp://foo-bar.com"}
+
+	for _, errorURL := range errorURLs {
+		u, err := newParsedURL(errorURL)
+		require.NoError(t, err)
+		dialFn, err := makeHTTPDialer(errorURL)
+		require.Nil(t, err)
+
+		addr, err := dialFn(u.Scheme, u.GetHostWithPath())
+		require.Error(t, err)
+		require.Nil(t, addr)
+	}
+}

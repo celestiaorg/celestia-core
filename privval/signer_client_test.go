@@ -1,6 +1,7 @@
 package privval
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -8,13 +9,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/celestia-core/crypto"
-	"github.com/celestiaorg/celestia-core/crypto/tmhash"
-	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
-	cryptoproto "github.com/celestiaorg/celestia-core/proto/tendermint/crypto"
-	privvalproto "github.com/celestiaorg/celestia-core/proto/tendermint/privval"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
-	"github.com/celestiaorg/celestia-core/types"
+	"github.com/tendermint/tendermint/crypto"
+	"github.com/tendermint/tendermint/crypto/tmhash"
+	tmrand "github.com/tendermint/tendermint/libs/rand"
+	cryptoproto "github.com/tendermint/tendermint/proto/tendermint/crypto"
+	privvalproto "github.com/tendermint/tendermint/proto/tendermint/privval"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	"github.com/tendermint/tendermint/types"
 )
 
 type signerTestCase struct {
@@ -97,16 +98,16 @@ func TestSignerGetPubKey(t *testing.T) {
 			}
 		})
 
-		pubKey, err := tc.signerClient.GetPubKey()
+		pubKey, err := tc.signerClient.GetPubKey(context.Background())
 		require.NoError(t, err)
-		expectedPubKey, err := tc.mockPV.GetPubKey()
+		expectedPubKey, err := tc.mockPV.GetPubKey(context.Background())
 		require.NoError(t, err)
 
 		assert.Equal(t, expectedPubKey, pubKey)
 
-		pubKey, err = tc.signerClient.GetPubKey()
+		pubKey, err = tc.signerClient.GetPubKey(context.Background())
 		require.NoError(t, err)
-		expectedpk, err := tc.mockPV.GetPubKey()
+		expectedpk, err := tc.mockPV.GetPubKey(context.Background())
 		require.NoError(t, err)
 		expectedAddr := expectedpk.Address()
 
@@ -147,13 +148,8 @@ func TestSignerProposal(t *testing.T) {
 			}
 		})
 
-		p := want.ToProto()
-		err := tc.mockPV.SignProposal(tc.chainID, p)
-		require.NoError(t, err)
-
-		p = have.ToProto()
-		err = tc.signerClient.SignProposal(tc.chainID, p)
-		require.NoError(t, err)
+		require.NoError(t, tc.mockPV.SignProposal(context.Background(), tc.chainID, want.ToProto()))
+		require.NoError(t, tc.signerClient.SignProposal(context.Background(), tc.chainID, have.ToProto()))
 
 		assert.Equal(t, want.Signature, have.Signature)
 	}
@@ -196,8 +192,8 @@ func TestSignerVote(t *testing.T) {
 			}
 		})
 
-		require.NoError(t, tc.mockPV.SignVote(tc.chainID, want.ToProto()))
-		require.NoError(t, tc.signerClient.SignVote(tc.chainID, have.ToProto()))
+		require.NoError(t, tc.mockPV.SignVote(context.Background(), tc.chainID, want.ToProto()))
+		require.NoError(t, tc.signerClient.SignVote(context.Background(), tc.chainID, have.ToProto()))
 
 		assert.Equal(t, want.Signature, have.Signature)
 	}
@@ -242,8 +238,8 @@ func TestSignerVoteResetDeadline(t *testing.T) {
 
 		time.Sleep(testTimeoutReadWrite2o3)
 
-		require.NoError(t, tc.mockPV.SignVote(tc.chainID, want.ToProto()))
-		require.NoError(t, tc.signerClient.SignVote(tc.chainID, have.ToProto()))
+		require.NoError(t, tc.mockPV.SignVote(context.Background(), tc.chainID, want.ToProto()))
+		require.NoError(t, tc.signerClient.SignVote(context.Background(), tc.chainID, have.ToProto()))
 		assert.Equal(t, want.Signature, have.Signature)
 
 		// TODO(jleni): Clarify what is actually being tested
@@ -251,8 +247,8 @@ func TestSignerVoteResetDeadline(t *testing.T) {
 		// This would exceed the deadline if it was not extended by the previous message
 		time.Sleep(testTimeoutReadWrite2o3)
 
-		require.NoError(t, tc.mockPV.SignVote(tc.chainID, want.ToProto()))
-		require.NoError(t, tc.signerClient.SignVote(tc.chainID, have.ToProto()))
+		require.NoError(t, tc.mockPV.SignVote(context.Background(), tc.chainID, want.ToProto()))
+		require.NoError(t, tc.signerClient.SignVote(context.Background(), tc.chainID, have.ToProto()))
 		assert.Equal(t, want.Signature, have.Signature)
 	}
 }
@@ -303,8 +299,8 @@ func TestSignerVoteKeepAlive(t *testing.T) {
 		time.Sleep(testTimeoutReadWrite * 3)
 		tc.signerServer.Logger.Debug("TEST: Forced Wait DONE---------------------------------------------")
 
-		require.NoError(t, tc.mockPV.SignVote(tc.chainID, want.ToProto()))
-		require.NoError(t, tc.signerClient.SignVote(tc.chainID, have.ToProto()))
+		require.NoError(t, tc.mockPV.SignVote(context.Background(), tc.chainID, want.ToProto()))
+		require.NoError(t, tc.signerClient.SignVote(context.Background(), tc.chainID, have.ToProto()))
 
 		assert.Equal(t, want.Signature, have.Signature)
 	}
@@ -340,16 +336,13 @@ func TestSignerSignProposalErrors(t *testing.T) {
 			Signature: []byte("signature"),
 		}
 
-		p := proposal.ToProto()
-		err := tc.signerClient.SignProposal(tc.chainID, p)
+		err := tc.signerClient.SignProposal(context.Background(), tc.chainID, proposal.ToProto())
 		require.Equal(t, err.(*RemoteSignerError).Description, types.ErroringMockPVErr.Error())
 
-		p = proposal.ToProto()
-		err = tc.mockPV.SignProposal(tc.chainID, p)
+		err = tc.mockPV.SignProposal(context.Background(), tc.chainID, proposal.ToProto())
 		require.Error(t, err)
 
-		p = proposal.ToProto()
-		err = tc.signerClient.SignProposal(tc.chainID, p)
+		err = tc.signerClient.SignProposal(context.Background(), tc.chainID, proposal.ToProto())
 		require.Error(t, err)
 	}
 }
@@ -386,18 +379,18 @@ func TestSignerSignVoteErrors(t *testing.T) {
 			}
 		})
 
-		err := tc.signerClient.SignVote(tc.chainID, vote.ToProto())
+		err := tc.signerClient.SignVote(context.Background(), tc.chainID, vote.ToProto())
 		require.Equal(t, err.(*RemoteSignerError).Description, types.ErroringMockPVErr.Error())
 
-		err = tc.mockPV.SignVote(tc.chainID, vote.ToProto())
+		err = tc.mockPV.SignVote(context.Background(), tc.chainID, vote.ToProto())
 		require.Error(t, err)
 
-		err = tc.signerClient.SignVote(tc.chainID, vote.ToProto())
+		err = tc.signerClient.SignVote(context.Background(), tc.chainID, vote.ToProto())
 		require.Error(t, err)
 	}
 }
 
-func brokenHandler(privVal types.PrivValidator, request privvalproto.Message,
+func brokenHandler(ctx context.Context, privVal types.PrivValidator, request privvalproto.Message,
 	chainID string) (privvalproto.Message, error) {
 	var res privvalproto.Message
 	var err error
@@ -441,7 +434,7 @@ func TestSignerUnexpectedResponse(t *testing.T) {
 		ts := time.Now()
 		want := &types.Vote{Timestamp: ts, Type: tmproto.PrecommitType}
 
-		e := tc.signerClient.SignVote(tc.chainID, want.ToProto())
+		e := tc.signerClient.SignVote(context.Background(), tc.chainID, want.ToProto())
 		assert.EqualError(t, e, "empty response")
 	}
 }

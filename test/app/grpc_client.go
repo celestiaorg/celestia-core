@@ -7,8 +7,8 @@ import (
 
 	"context"
 
-	tmjson "github.com/celestiaorg/celestia-core/libs/json"
-	coregrpc "github.com/celestiaorg/celestia-core/rpc/grpc"
+	tmjson "github.com/tendermint/tendermint/libs/json"
+	coregrpc "github.com/tendermint/tendermint/rpc/grpc"
 )
 
 var grpcAddr = "tcp://localhost:36656"

@@ -1,4 +1,3 @@
-// nolint:unused
 package mbt
 
 import (
@@ -9,16 +8,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	tmjson "github.com/celestiaorg/celestia-core/libs/json"
-	"github.com/celestiaorg/celestia-core/light"
-	"github.com/celestiaorg/celestia-core/types"
+	tmjson "github.com/tendermint/tendermint/libs/json"
+	"github.com/tendermint/tendermint/light"
+	"github.com/tendermint/tendermint/types"
 )
 
 const jsonDir = "./json"
 
 func TestVerify(t *testing.T) {
-	t.Skip("Tendermint's Model based tests for the light client need to be reworked to match Celestia types")
-
 	filenames := jsonFilenames(t)
 
 	for _, filename := range filenames {

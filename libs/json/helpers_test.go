@@ -3,7 +3,7 @@ package json_test
 import (
 	"time"
 
-	"github.com/celestiaorg/celestia-core/libs/json"
+	"github.com/tendermint/tendermint/libs/json"
 )
 
 // Register Car, an instance of the Vehicle interface.

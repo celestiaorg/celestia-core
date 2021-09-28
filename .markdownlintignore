@@ -3,5 +3,4 @@ CHANGELOG.md
 docs/architecture/*
 crypto/secp256k1/**
 scripts/*
-README.md
 .github

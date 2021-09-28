@@ -1,8 +1,8 @@
 package types
 
 import (
-	"github.com/celestiaorg/celestia-core/crypto/ed25519"
-	tmmath "github.com/celestiaorg/celestia-core/libs/math"
+	"github.com/tendermint/tendermint/crypto/ed25519"
+	tmmath "github.com/tendermint/tendermint/libs/math"
 )
 
 var (
@@ -17,7 +17,7 @@ var (
 // SignBytes returns the bytes to be signed
 // NOTE: chainIDs are part of the SignBytes but not
 // necessarily the object themselves.
-// NOTE: Expected to panic if there is an error marshalling.
+// NOTE: Expected to panic if there is an error marshaling.
 type Signable interface {
 	SignBytes(chainID string) []byte
 }

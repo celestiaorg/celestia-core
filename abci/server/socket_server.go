@@ -8,11 +8,11 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/celestiaorg/celestia-core/abci/types"
-	tmlog "github.com/celestiaorg/celestia-core/libs/log"
-	tmnet "github.com/celestiaorg/celestia-core/libs/net"
-	"github.com/celestiaorg/celestia-core/libs/service"
-	tmsync "github.com/celestiaorg/celestia-core/libs/sync"
+	"github.com/tendermint/tendermint/abci/types"
+	tmsync "github.com/tendermint/tendermint/internal/libs/sync"
+	tmlog "github.com/tendermint/tendermint/libs/log"
+	tmnet "github.com/tendermint/tendermint/libs/net"
+	"github.com/tendermint/tendermint/libs/service"
 )
 
 // var maxNumberConnections = 2
@@ -243,22 +243,15 @@ func (s *SocketServer) handleRequest(req *types.Request, responses chan<- *types
 
 // Pull responses from 'responses' and write them to conn.
 func (s *SocketServer) handleResponses(closeConn chan error, conn io.Writer, responses <-chan *types.Response) {
-	var count int
-	var bufWriter = bufio.NewWriter(conn)
-	for {
-		var res = <-responses
-		err := types.WriteMessage(res, bufWriter)
-		if err != nil {
+	bw := bufio.NewWriter(conn)
+	for res := range responses {
+		if err := types.WriteMessage(res, bw); err != nil {
 			closeConn <- fmt.Errorf("error writing message: %w", err)
 			return
 		}
-		if _, ok := res.Value.(*types.Response_Flush); ok {
-			err = bufWriter.Flush()
-			if err != nil {
-				closeConn <- fmt.Errorf("error flushing write buffer: %w", err)
-				return
-			}
+		if err := bw.Flush(); err != nil {
+			closeConn <- fmt.Errorf("error flushing write buffer: %w", err)
+			return
 		}
-		count++
 	}
 }

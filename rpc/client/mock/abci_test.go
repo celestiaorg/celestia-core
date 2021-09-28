@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/celestia-core/abci/example/kvstore"
-	abci "github.com/celestiaorg/celestia-core/abci/types"
-	"github.com/celestiaorg/celestia-core/libs/bytes"
-	"github.com/celestiaorg/celestia-core/rpc/client"
-	"github.com/celestiaorg/celestia-core/rpc/client/mock"
-	ctypes "github.com/celestiaorg/celestia-core/rpc/core/types"
-	"github.com/celestiaorg/celestia-core/types"
+	"github.com/tendermint/tendermint/abci/example/kvstore"
+	abci "github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/libs/bytes"
+	"github.com/tendermint/tendermint/rpc/client"
+	"github.com/tendermint/tendermint/rpc/client/mock"
+	"github.com/tendermint/tendermint/rpc/coretypes"
+	"github.com/tendermint/tendermint/types"
 )
 
 func TestABCIMock(t *testing.T) {
@@ -36,7 +36,7 @@ func TestABCIMock(t *testing.T) {
 		// Broadcast commit depends on call
 		BroadcastCommit: mock.Call{
 			Args: goodTx,
-			Response: &ctypes.ResultBroadcastTxCommit{
+			Response: &coretypes.ResultBroadcastTxCommit{
 				CheckTx:   abci.ResponseCheckTx{Data: bytes.HexBytes("stand")},
 				DeliverTx: abci.ResponseDeliverTx{Data: bytes.HexBytes("deliver")},
 			},
@@ -112,7 +112,7 @@ func TestABCIRecorder(t *testing.T) {
 	assert.Nil(info.Error)
 	assert.Nil(info.Args)
 	require.NotNil(info.Response)
-	ir, ok := info.Response.(*ctypes.ResultABCIInfo)
+	ir, ok := info.Response.(*coretypes.ResultABCIInfo)
 	require.True(ok)
 	assert.Equal("data", ir.Response.Data)
 	assert.Equal("v0.9.9", ir.Response.Version)

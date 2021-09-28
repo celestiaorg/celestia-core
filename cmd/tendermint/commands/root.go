@@ -2,21 +2,19 @@ package commands
 
 import (
 	"fmt"
-	"os"
-	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	cfg "github.com/celestiaorg/celestia-core/config"
-	"github.com/celestiaorg/celestia-core/libs/cli"
-	tmflags "github.com/celestiaorg/celestia-core/libs/cli/flags"
-	"github.com/celestiaorg/celestia-core/libs/log"
+	cfg "github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/libs/log"
 )
 
 var (
-	config = cfg.DefaultConfig()
-	logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
+	config     = cfg.DefaultConfig()
+	logger     = log.MustNewDefaultLogger(log.LogFormatPlain, log.LogLevelInfo, false)
+	ctxTimeout = 4 * time.Second
 )
 
 func init() {
@@ -51,28 +49,18 @@ var RootCmd = &cobra.Command{
 		if cmd.Name() == VersionCmd.Name() {
 			return nil
 		}
+
 		config, err = ParseConfig()
 		if err != nil {
 			return err
 		}
-		if config.LogFormat == cfg.LogFormatJSON {
-			logger = log.NewTMJSONLogger(log.NewSyncWriter(os.Stdout))
-		}
-		logger, err = tmflags.ParseLogLevel(config.LogLevel, logger, cfg.DefaultLogLevel())
+
+		logger, err = log.NewDefaultLogger(config.LogFormat, config.LogLevel, false)
 		if err != nil {
 			return err
 		}
-		if viper.GetBool(cli.TraceFlag) {
-			logger = log.NewTracingLogger(logger)
-		}
+
 		logger = logger.With("module", "main")
 		return nil
 	},
-}
-
-// deprecateSnakeCase is a util function for 0.34.1. Should be removed in 0.35
-func deprecateSnakeCase(cmd *cobra.Command, args []string) {
-	if strings.Contains(cmd.CalledAs(), "_") {
-		fmt.Println("Deprecated: snake_case commands will be replaced by hyphen-case commands in the next major release")
-	}
 }

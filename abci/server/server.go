@@ -1,16 +1,18 @@
 /*
 Package server is used to start a new ABCI server.
+
 It contains two server implementation:
  * gRPC server
  * socket server
+
 */
 package server
 
 import (
 	"fmt"
 
-	"github.com/celestiaorg/celestia-core/abci/types"
-	"github.com/celestiaorg/celestia-core/libs/service"
+	"github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/libs/service"
 )
 
 func NewServer(protoAddr, transport string, app types.Application) (service.Service, error) {

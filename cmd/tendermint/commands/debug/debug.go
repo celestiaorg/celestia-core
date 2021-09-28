@@ -1,11 +1,9 @@
 package debug
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 
-	"github.com/celestiaorg/celestia-core/libs/log"
+	"github.com/tendermint/tendermint/libs/log"
 )
 
 var (
@@ -17,7 +15,7 @@ var (
 	flagProfAddr    = "pprof-laddr"
 	flagFrequency   = "frequency"
 
-	logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
+	logger = log.MustNewDefaultLogger(log.LogFormatPlain, log.LogLevelInfo, false)
 )
 
 // DebugCmd defines the root command containing subcommands that assist in

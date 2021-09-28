@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/celestiaorg/celestia-core/crypto/tmhash"
-	tmcrypto "github.com/celestiaorg/celestia-core/proto/tendermint/crypto"
+	"github.com/tendermint/tendermint/crypto/tmhash"
+	tmcrypto "github.com/tendermint/tendermint/proto/tendermint/crypto"
 )
 
 const (
@@ -204,7 +204,10 @@ func (spn *ProofNode) FlattenAunts() [][]byte {
 		case spn.Right != nil:
 			innerHashes = append(innerHashes, spn.Right.Hash)
 		default:
-			break
+			// FIXME(fromberger): Per the documentation above, exactly one of
+			// these fields should be set. If that is true, this should probably
+			// be a panic since it violates the invariant. If not, when can it
+			// be OK to have no siblings? Does this occur at the leaves?
 		}
 		spn = spn.Parent
 	}

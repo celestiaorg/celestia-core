@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"math"
 	"testing"
 	"time"
@@ -9,10 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/celestiaorg/celestia-core/crypto/tmhash"
-	"github.com/celestiaorg/celestia-core/libs/protoio"
-	tmrand "github.com/celestiaorg/celestia-core/libs/rand"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/tendermint/tendermint/internal/libs/protoio"
+	tmrand "github.com/tendermint/tendermint/libs/rand"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 var (
@@ -56,18 +57,17 @@ func TestProposalString(t *testing.T) {
 
 func TestProposalVerifySignature(t *testing.T) {
 	privVal := NewMockPV()
-	pubKey, err := privVal.GetPubKey()
+	pubKey, err := privVal.GetPubKey(context.Background())
 	require.NoError(t, err)
 
 	prop := NewProposal(
 		4, 2, 2,
-		BlockID{tmrand.Bytes(tmhash.Size), PartSetHeader{777, tmrand.Bytes(tmhash.Size)}},
-	)
+		BlockID{tmrand.Bytes(tmhash.Size), PartSetHeader{777, tmrand.Bytes(tmhash.Size)}})
 	p := prop.ToProto()
 	signBytes := ProposalSignBytes("test_chain_id", p)
 
 	// sign it
-	err = privVal.SignProposal("test_chain_id", p)
+	err = privVal.SignProposal(context.Background(), "test_chain_id", p)
 	require.NoError(t, err)
 	prop.Signature = p.Signature
 
@@ -104,7 +104,7 @@ func BenchmarkProposalWriteSignBytes(b *testing.B) {
 func BenchmarkProposalSign(b *testing.B) {
 	privVal := NewMockPV()
 	for i := 0; i < b.N; i++ {
-		err := privVal.SignProposal("test_chain_id", pbp)
+		err := privVal.SignProposal(context.Background(), "test_chain_id", pbp)
 		if err != nil {
 			b.Error(err)
 		}
@@ -113,9 +113,9 @@ func BenchmarkProposalSign(b *testing.B) {
 
 func BenchmarkProposalVerifySignature(b *testing.B) {
 	privVal := NewMockPV()
-	err := privVal.SignProposal("test_chain_id", pbp)
+	err := privVal.SignProposal(context.Background(), "test_chain_id", pbp)
 	require.NoError(b, err)
-	pubKey, err := privVal.GetPubKey()
+	pubKey, err := privVal.GetPubKey(context.Background())
 	require.NoError(b, err)
 
 	for i := 0; i < b.N; i++ {
@@ -124,6 +124,7 @@ func BenchmarkProposalVerifySignature(b *testing.B) {
 }
 
 func TestProposalValidateBasic(t *testing.T) {
+
 	privVal := NewMockPV()
 	testCases := []struct {
 		testName         string
@@ -150,9 +151,11 @@ func TestProposalValidateBasic(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
-			prop := NewProposal(4, 2, 2, blockID)
+			prop := NewProposal(
+				4, 2, 2,
+				blockID)
 			p := prop.ToProto()
-			err := privVal.SignProposal("test_chain_id", p)
+			err := privVal.SignProposal(context.Background(), "test_chain_id", p)
 			prop.Signature = p.Signature
 			require.NoError(t, err)
 			tc.malleateProposal(prop)
@@ -162,12 +165,7 @@ func TestProposalValidateBasic(t *testing.T) {
 }
 
 func TestProposalProtoBuf(t *testing.T) {
-	proposal := NewProposal(
-		1,
-		2,
-		3,
-		makeBlockID([]byte("hash"), 2, []byte("part_set_hash")),
-	)
+	proposal := NewProposal(1, 2, 3, makeBlockID([]byte("hash"), 2, []byte("part_set_hash")))
 	proposal.Signature = []byte("sig")
 	proposal2 := NewProposal(1, 2, 3, BlockID{})
 
@@ -177,12 +175,13 @@ func TestProposalProtoBuf(t *testing.T) {
 		expPass bool
 	}{
 		{"success", proposal, true},
-		{"success", proposal2, false}, // blockID cannot be empty
+		{"success", proposal2, false}, // blcokID cannot be empty
 		{"empty proposal failure validatebasic", &Proposal{}, false},
 		{"nil proposal", nil, false},
 	}
 	for _, tc := range testCases {
 		protoProposal := tc.p1.ToProto()
+
 		p, err := ProposalFromProto(protoProposal)
 		if tc.expPass {
 			require.NoError(t, err)

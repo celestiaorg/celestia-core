@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/celestiaorg/celestia-core/pkg/consts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tendermint/tendermint/pkg/consts"
 )
 
 func TestNilDataAvailabilityHeaderHashDoesntCrash(t *testing.T) {
@@ -37,15 +37,13 @@ func TestNewDataAvailabilityHeader(t *testing.T) {
 	type test struct {
 		name         string
 		expectedHash []byte
-		expectedErr  bool
 		squareSize   uint64
 		shares       [][]byte
 	}
 
 	tests := []test{
 		{
-			name:        "typical",
-			expectedErr: false,
+			name: "typical",
 			expectedHash: []byte{
 				0xfe, 0x9c, 0x6b, 0xd8, 0xe5, 0x7c, 0xd1, 0x5d, 0x1f, 0xd6, 0x55, 0x7e, 0x87, 0x7d, 0xd9, 0x7d,
 				0xdb, 0xf2, 0x66, 0xfa, 0x60, 0x24, 0x2d, 0xb3, 0xa0, 0x9c, 0x4f, 0x4e, 0x5b, 0x2a, 0x2c, 0x2a,
@@ -54,8 +52,7 @@ func TestNewDataAvailabilityHeader(t *testing.T) {
 			shares:     generateShares(4, 1),
 		},
 		{
-			name:        "max square size",
-			expectedErr: false,
+			name: "max square size",
 			expectedHash: []byte{
 				0xe2, 0x87, 0x23, 0xd0, 0x2d, 0x54, 0x25, 0x5f, 0x79, 0x43, 0x8e, 0xfb, 0xb7, 0xe8, 0xfa, 0xf5,
 				0xbf, 0x93, 0x50, 0xb3, 0x64, 0xd0, 0x4f, 0xa7, 0x7b, 0xb1, 0x83, 0x3b, 0x8, 0xba, 0xd3, 0xa4,
@@ -63,6 +60,28 @@ func TestNewDataAvailabilityHeader(t *testing.T) {
 			squareSize: consts.MaxSquareSize,
 			shares:     generateShares(consts.MaxSquareSize*consts.MaxSquareSize, 99),
 		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		eds, err := ExtendShares(tt.squareSize, tt.shares)
+		require.NoError(t, err)
+		resdah := NewDataAvailabilityHeader(eds)
+		require.Equal(t, tt.squareSize*2, uint64(len(resdah.ColumnRoots)), tt.name)
+		require.Equal(t, tt.squareSize*2, uint64(len(resdah.RowsRoots)), tt.name)
+		require.Equal(t, tt.expectedHash, resdah.hash, tt.name)
+	}
+}
+
+func TestExtendShares(t *testing.T) {
+	type test struct {
+		name        string
+		expectedErr bool
+		squareSize  uint64
+		shares      [][]byte
+	}
+
+	tests := []test{
 		{
 			name:        "too large square size",
 			expectedErr: true,
@@ -79,15 +98,13 @@ func TestNewDataAvailabilityHeader(t *testing.T) {
 
 	for _, tt := range tests {
 		tt := tt
-		resdah, err := NewDataAvailabilityHeader(tt.squareSize, tt.shares)
+		eds, err := ExtendShares(tt.squareSize, tt.shares)
 		if tt.expectedErr {
 			require.NotNil(t, err)
 			continue
 		}
 		require.NoError(t, err)
-		require.Equal(t, tt.squareSize*2, uint64(len(resdah.ColumnRoots)), tt.name)
-		require.Equal(t, tt.squareSize*2, uint64(len(resdah.RowsRoots)), tt.name)
-		require.Equal(t, tt.expectedHash, resdah.hash, tt.name)
+		require.Equal(t, tt.squareSize*2, eds.Width(), tt.name)
 	}
 }
 
@@ -98,8 +115,9 @@ func TestDataAvailabilityHeaderProtoConversion(t *testing.T) {
 	}
 
 	shares := generateShares(consts.MaxSquareSize*consts.MaxSquareSize, 1)
-	bigdah, err := NewDataAvailabilityHeader(consts.MaxSquareSize, shares)
+	eds, err := ExtendShares(consts.MaxSquareSize, shares)
 	require.NoError(t, err)
+	bigdah := NewDataAvailabilityHeader(eds)
 
 	tests := []test{
 		{
@@ -133,8 +151,10 @@ func Test_DAHValidateBasic(t *testing.T) {
 	}
 
 	shares := generateShares(consts.MaxSquareSize*consts.MaxSquareSize, 1)
-	bigdah, err := NewDataAvailabilityHeader(consts.MaxSquareSize, shares)
+	eds, err := ExtendShares(consts.MaxSquareSize, shares)
 	require.NoError(t, err)
+	bigdah := NewDataAvailabilityHeader(eds)
+
 	// make a mutant dah that has too many roots
 	var tooBigDah DataAvailabilityHeader
 	tooBigDah.ColumnRoots = make([][]byte, consts.MaxSquareSize*consts.MaxSquareSize)

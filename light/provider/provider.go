@@ -3,8 +3,10 @@ package provider
 import (
 	"context"
 
-	"github.com/celestiaorg/celestia-core/types"
+	"github.com/tendermint/tendermint/types"
 )
+
+//go:generate ../../scripts/mockery_generate.sh Provider
 
 // Provider provides information for the light client to sync (verification
 // happens in the client).

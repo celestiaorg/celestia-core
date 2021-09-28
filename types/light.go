@@ -5,19 +5,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/celestiaorg/celestia-core/pkg/da"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
-// LightBlock is a SignedHeader and a ValidatorSet
-// and optionally a DataAvailabilityHeader (for DAS light clients).
-// It is the basis of the light client.
+// LightBlock is a SignedHeader and a ValidatorSet.
+// It is the basis of the light client
 type LightBlock struct {
 	*SignedHeader `json:"signed_header"`
 	ValidatorSet  *ValidatorSet `json:"validator_set"`
-
-	// DataAvailabilityHeader is only populated for DAS light clients for others it can be nil.
-	DataAvailabilityHeader *da.DataAvailabilityHeader `json:"data_availability_header"`
 }
 
 // ValidateBasic checks that the data is correct and consistent
@@ -154,7 +149,7 @@ func (sh SignedHeader) ValidateBasic(chainID string) error {
 	if sh.Commit.Height != sh.Height {
 		return fmt.Errorf("header and commit height mismatch: %d vs %d", sh.Height, sh.Commit.Height)
 	}
-	if hhash, chash := sh.Hash(), sh.Commit.BlockID.Hash; !bytes.Equal(hhash, chash) {
+	if hhash, chash := sh.Header.Hash(), sh.Commit.BlockID.Hash; !bytes.Equal(hhash, chash) {
 		return fmt.Errorf("commit signs block %X, header is block %X", chash, hhash)
 	}
 

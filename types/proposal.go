@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
-	"github.com/celestiaorg/celestia-core/libs/protoio"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
-	tmtime "github.com/celestiaorg/celestia-core/types/time"
+	"github.com/tendermint/tendermint/internal/libs/protoio"
+	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	tmtime "github.com/tendermint/tendermint/libs/time"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 var (
@@ -84,10 +84,10 @@ func (p *Proposal) ValidateBasic() error {
 // 1. height
 // 2. round
 // 3. block ID
-// 4. DAHeader
-// 5. POL round
-// 6. first 6 bytes of signature
-// 7. timestamp
+// 4. POL round
+// 5. first 6 bytes of signature
+// 6. timestamp
+//
 // See BlockID#String.
 func (p *Proposal) String() string {
 	return fmt.Sprintf("Proposal{%v/%v (%v, %v) %X @ %s}",
@@ -122,8 +122,8 @@ func (p *Proposal) ToProto() *tmproto.Proposal {
 	if p == nil {
 		return &tmproto.Proposal{}
 	}
-
 	pb := new(tmproto.Proposal)
+
 	pb.BlockID = p.BlockID.ToProto()
 	pb.Type = p.Type
 	pb.Height = p.Height
@@ -131,10 +131,11 @@ func (p *Proposal) ToProto() *tmproto.Proposal {
 	pb.PolRound = p.POLRound
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
+
 	return pb
 }
 
-// ProposalFromProto sets a protobuf Proposal to the given pointer.
+// FromProto sets a protobuf Proposal to the given pointer.
 // It returns an error if the proposal is invalid.
 func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 	if pp == nil {

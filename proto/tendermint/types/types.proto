@@ -1,14 +1,13 @@
 syntax = "proto3";
 package tendermint.types;
 
-option go_package = "github.com/celestiaorg/celestia-core/proto/tendermint/types";
+option go_package = "github.com/tendermint/tendermint/proto/tendermint/types";
 
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "tendermint/crypto/proof.proto";
 import "tendermint/version/types.proto";
 import "tendermint/types/validator.proto";
-import "tendermint/da/data_availability_header.proto";
 
 // BlockIdFlag indicates which BlcokID the signature is for
 enum BlockIDFlag {
@@ -68,19 +67,18 @@ message Header {
 
   // hashes of block data
   bytes last_commit_hash = 6;  // commit from validators from the last block
-  uint64 num_original_data_shares = 7;  // number of shares used in the original data square
-  bytes data_hash        = 8;  // transactions
+  bytes data_hash        = 7;  // transactions
 
   // hashes from the app output from the prev block
-  bytes validators_hash      = 9;   // validators for the current block
-  bytes next_validators_hash = 10;   // validators for the next block
-  bytes consensus_hash       = 11;  // consensus params for current block
-  bytes app_hash             = 12;  // state after txs from the previous block
-  bytes last_results_hash    = 13;  // root hash of all results from the txs from the previous block
+  bytes validators_hash      = 8;   // validators for the current block
+  bytes next_validators_hash = 9;   // validators for the next block
+  bytes consensus_hash       = 10;  // consensus params for current block
+  bytes app_hash             = 11;  // state after txs from the previous block
+  bytes last_results_hash    = 12;  // root hash of all results from the txs from the previous block
 
   // consensus info
-  bytes evidence_hash    = 14;  // evidence included in the block
-  bytes proposer_address = 15;  // original proposer of the block
+  bytes evidence_hash    = 13;  // evidence included in the block
+  bytes proposer_address = 14;  // original proposer of the block
 }
 
 // Data contains the set of transactions included in the block
@@ -88,17 +86,11 @@ message Data {
   // Txs that will be applied by state @ block.Height+1.
   // NOTE: not all txs here are valid.  We're just agreeing on the order first.
   // This means that block.AppHash does not include these txs.
-  repeated bytes         txs                      = 1;
-  IntermediateStateRoots intermediate_state_roots = 2 [(gogoproto.nullable) = false];
-  EvidenceList           evidence                 = 3 [(gogoproto.nullable) = false];
-  Messages               messages                 = 4 [(gogoproto.nullable) = false];
-}
+  repeated bytes txs = 1;
 
-message Evidence {
-  oneof sum {
-    DuplicateVoteEvidence     duplicate_vote_evidence      = 1;
-    LightClientAttackEvidence light_client_attack_evidence = 2;
-  }
+  IntermediateStateRoots intermediate_state_roots = 2 [(gogoproto.nullable) = false];
+  EvidenceList evidence    = 3 [(gogoproto.nullable) = false];
+  Messages messages        = 4 [(gogoproto.nullable) = false];
 }
 
 // DuplicateVoteEvidence contains evidence of a validator signed two conflicting votes.
@@ -119,6 +111,14 @@ message LightClientAttackEvidence {
   google.protobuf.Timestamp           timestamp            = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
 }
 
+message Evidence {
+  oneof sum {
+    DuplicateVoteEvidence     duplicate_vote_evidence      = 1;
+    LightClientAttackEvidence light_client_attack_evidence = 2;
+  }
+}
+
+// EvidenceData contains any evidence of malicious wrong-doing by validators
 message EvidenceList {
   repeated Evidence evidence = 1 [(gogoproto.nullable) = false];
 }
@@ -134,6 +134,23 @@ message Messages {
 message Message {
   bytes namespace_id = 1;
   bytes data         = 2;
+}
+
+// DataAvailabilityHeader contains the row and column roots of the erasure
+// coded version of the data in Block.Data.
+// Therefor the original Block.Data is arranged in a
+// k × k matrix, which is then "extended" to a
+// 2k × 2k matrix applying multiple times Reed-Solomon encoding.
+// For details see Section 5.2: https://arxiv.org/abs/1809.09044
+// or the Celestia specification:
+// https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#availabledataheader
+// Note that currently we list row and column roots in separate fields
+// (different from the spec).
+message DataAvailabilityHeader {
+  // RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
+  repeated bytes row_roots = 1;
+  // ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
+  repeated bytes column_roots = 2;
 }
 
 // Vote represents a prevote, precommit, or commit vote from validators for
@@ -153,11 +170,10 @@ message Vote {
 
 // Commit contains the evidence that a block was committed by a set of validators.
 message Commit {
-  int64              height      = 1;
-  int32              round       = 2;
-  BlockID            block_id    = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
-  repeated CommitSig signatures  = 4 [(gogoproto.nullable) = false];
-  bytes              header_hash = 5;
+  int64              height     = 1;
+  int32              round      = 2;
+  BlockID            block_id   = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
+  repeated CommitSig signatures = 4 [(gogoproto.nullable) = false];
 }
 
 // CommitSig is a part of the Vote included in a Commit.
@@ -188,7 +204,6 @@ message SignedHeader {
 message LightBlock {
   SignedHeader                  signed_header = 1;
   tendermint.types.ValidatorSet validator_set = 2;
-  tendermint.da.DataAvailabilityHeader    da_header = 3 [(gogoproto.customname) = "DAHeader"];
 }
 
 message BlockMeta {
@@ -196,7 +211,6 @@ message BlockMeta {
   int64   block_size = 2;
   Header  header     = 3 [(gogoproto.nullable) = false];
   int64   num_txs    = 4;
-  tendermint.da.DataAvailabilityHeader da_header = 5;
 }
 
 // TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.

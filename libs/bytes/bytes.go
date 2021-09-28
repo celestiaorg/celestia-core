@@ -9,13 +9,21 @@ import (
 	"strings"
 )
 
-// The main purpose of HexBytes is to enable HEX-encoding for json/encoding.
+// HexBytes enables HEX-encoding for json/encoding.
 type HexBytes []byte
 
 var (
 	_ json.Marshaler   = HexBytes{}
 	_ json.Unmarshaler = &HexBytes{}
 )
+
+func (bz HexBytes) MarshalDelimited() ([]byte, error) {
+	lenBuf := make([]byte, binary.MaxVarintLen64)
+	length := uint64(len(bz))
+	n := binary.PutUvarint(lenBuf, length)
+
+	return append(lenBuf[:n], bz...), nil
+}
 
 // Marshal needed for protobuf compatibility
 func (bz HexBytes) Marshal() ([]byte, error) {
@@ -28,23 +36,22 @@ func (bz *HexBytes) Unmarshal(data []byte) error {
 	return nil
 }
 
-func (bz HexBytes) MarshalDelimited() ([]byte, error) {
-	lenBuf := make([]byte, binary.MaxVarintLen64)
-	length := uint64(len(bz))
-	n := binary.PutUvarint(lenBuf, length)
-
-	return append(lenBuf[:n], bz...), nil
-}
-
-// MarshalJSON implements the json.Marshaler interface. The hex bytes is a
-// quoted hexadecimal encoded string.
+// MarshalJSON implements the json.Marshaler interface. The encoding is a JSON
+// quoted string of hexadecimal digits.
 func (bz HexBytes) MarshalJSON() ([]byte, error) {
-	s := strings.ToUpper(hex.EncodeToString(bz))
-	jbz := make([]byte, len(s)+2)
-	jbz[0] = '"'
-	copy(jbz[1:], s)
-	jbz[len(jbz)-1] = '"'
-	return jbz, nil
+	size := hex.EncodedLen(len(bz)) + 2 // +2 for quotation marks
+	buf := make([]byte, size)
+	hex.Encode(buf[1:], []byte(bz))
+	buf[0] = '"'
+	buf[size-1] = '"'
+
+	// Ensure letter digits are capitalized.
+	for i := 1; i < size-1; i++ {
+		if buf[i] >= 'a' && buf[i] <= 'f' {
+			buf[i] = 'A' + (buf[i] - 'a')
+		}
+	}
+	return buf, nil
 }
 
 // UnmarshalJSON implements the json.Umarshaler interface.
@@ -67,7 +74,7 @@ func (bz *HexBytes) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Allow it to fulfill various interfaces in light-client, etc...
+// Bytes fulfills various interfaces in light-client, etc...
 func (bz HexBytes) Bytes() []byte {
 	return bz
 }
@@ -76,6 +83,9 @@ func (bz HexBytes) String() string {
 	return strings.ToUpper(hex.EncodeToString(bz))
 }
 
+// Format writes either address of 0th element in a slice in base 16 notation,
+// with leading 0x (%p), or casts HexBytes to bytes and writes as hexadecimal
+// string to s.
 func (bz HexBytes) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'p':

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 
 	"github.com/celestiaorg/nmt/namespace"
+	"github.com/celestiaorg/rsmt2d"
 )
 
 // This contains all constants of:
@@ -29,10 +30,16 @@ const (
 	// Corresponds to AVAILABLE_DATA_ORIGINAL_SQUARE_MAX in the spec.
 	// 128*128*256 = 4 Megabytes
 	// TODO(ismail): settle on a proper max square
+	// if the square size is larger than this, the block producer will panic
 	MaxSquareSize = 128
+	// MaxShareCount is the maximum number of shares allowed in the original data square.
+	// if there are more shares than this, the block producer will panic.
+	MaxShareCount = MaxSquareSize * MaxSquareSize
 
-	// MinSquareSize depicts the smallest original square width.
+	// MinSquareSize depicts the smallest original square width. A square size smaller than this will
+	// cause block producer to panic
 	MinSquareSize = 1
+	// MinshareCount is the minimum shares required in an original data square.
 	MinSharecount = MinSquareSize * MinSquareSize
 )
 
@@ -61,4 +68,9 @@ var (
 
 	// NewBaseHashFunc change accordingly if another hash.Hash should be used as a base hasher in the NMT:
 	NewBaseHashFunc = sha256.New
+
+	// DefaultCodec is the default codec creator used for data erasure
+	// TODO(ismail): for better efficiency and a larger number shares
+	// we should switch to the rsmt2d.LeopardFF16 codec:
+	DefaultCodec = rsmt2d.NewRSGF8Codec
 )

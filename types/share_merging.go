@@ -5,11 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 
-	tmbytes "github.com/celestiaorg/celestia-core/libs/bytes"
-	"github.com/celestiaorg/celestia-core/pkg/consts"
-	tmproto "github.com/celestiaorg/celestia-core/proto/tendermint/types"
 	"github.com/celestiaorg/rsmt2d"
 	"github.com/gogo/protobuf/proto"
+	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	"github.com/tendermint/tendermint/pkg/consts"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 // DataFromSquare extracts block data from an extended data square.
@@ -151,7 +151,7 @@ func parseEvd(shares [][]byte) (EvidenceData, error) {
 func parseMsgs(shares [][]byte) (Messages, error) {
 	msgList, err := parseMsgShares(shares)
 	if err != nil {
-		return MessagesEmpty, err
+		return Messages{}, err
 	}
 
 	return Messages{
@@ -300,7 +300,7 @@ func nextMsg(
 		return next, nextNid, cursor, msgLen, msg, err
 	}
 	// this code is unreachable but the compiler doesn't know that
-	return nil, nil, 0, 0, MessageEmpty, nil
+	return nil, nil, 0, 0, Message{}, nil
 }
 
 // parseDelimiter finds and returns the length delimiter of the message provided
