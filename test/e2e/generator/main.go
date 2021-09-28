@@ -3,7 +3,6 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tendermint/tendermint/libs/log"
+	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 )
 
 const (
@@ -26,6 +26,7 @@ func main() {
 // CLI is the Cobra-based command-line interface.
 type CLI struct {
 	root *cobra.Command
+	opts Options
 }
 
 // NewCLI sets up the CLI.
@@ -46,16 +47,12 @@ func NewCLI() *CLI {
 			}
 			switch mode := P2PMode(p2pMode); mode {
 			case NewP2PMode, LegacyP2PMode, HybridP2PMode, MixedP2PMode:
-				opts = Options{P2P: mode}
+				opts.P2P = mode
 			default:
 				return fmt.Errorf("p2p mode must be either new, legacy, hybrid or mixed got %s", p2pMode)
 			}
 
-			if groups == 0 {
-				opts.Sorted = true
-			}
-
-			return cli.generate(dir, groups, opts)
+			return cli.generate()
 		},
 	}
 
@@ -74,13 +71,13 @@ func NewCLI() *CLI {
 }
 
 // generate generates manifests in a directory.
-func (cli *CLI) generate(dir string, groups int, opts Options) error {
-	err := os.MkdirAll(dir, 0755)
+func (cli *CLI) generate() error {
+	err := os.MkdirAll(cli.opts.Directory, 0755)
 	if err != nil {
 		return err
 	}
 
-	manifests, err := Generate(rand.New(rand.NewSource(randomSeed)), opts)
+	manifests, err := Generate(rand.New(rand.NewSource(randomSeed)), cli.opts)
 	if err != nil {
 		return err
 	}
@@ -103,18 +100,8 @@ func (cli *CLI) generate(dir string, groups int, opts Options) error {
 				return err
 			}
 		}
-	} else {
-		groupSize := int(math.Ceil(float64(len(manifests)) / float64(groups)))
-		for g := 0; g < groups; g++ {
-			for i := 0; i < groupSize && g*groupSize+i < len(manifests); i++ {
-				manifest := manifests[g*groupSize+i]
-				err = manifest.Save(filepath.Join(dir, fmt.Sprintf("gen-group%02d-%04d.toml", g, i)))
-				if err != nil {
-					return err
-				}
-			}
-		}
 	}
+
 	return nil
 }
 

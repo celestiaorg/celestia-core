@@ -150,6 +150,11 @@ type ManifestNode struct {
 	UseLegacyP2P bool `toml:"use_legacy_p2p"`
 }
 
+// Stateless reports whether m is a node that does not own state, including light and seed nodes.
+func (m ManifestNode) Stateless() bool {
+	return m.Mode == string(ModeLight) || m.Mode == string(ModeSeed)
+}
+
 // Save saves the testnet manifest to a file.
 func (m Manifest) Save(file string) error {
 	f, err := os.Create(file)
@@ -178,7 +183,18 @@ func LoadManifest(file string) (Manifest, error) {
 // complex networks before the less complex networks.
 func SortManifests(manifests []Manifest, reverse bool) {
 	sort.SliceStable(manifests, func(i, j int) bool {
-		left, right := manifests[i], manifests[j]
+		// sort based on a point-based comparison between two
+		// manifests.
+		var (
+			left  = manifests[i]
+			right = manifests[j]
+		)
+
+		// scores start with 100 points for each node. The
+		// number of nodes in a network is the most important
+		// factor in the complexity of the test.
+		leftScore := len(left.Nodes) * 100
+		rightScore := len(right.Nodes) * 100
 
 		// add two points for every node perturbation, and one
 		// point for every node that starts after genesis.
@@ -227,23 +243,23 @@ func SplitGroups(groups int, manifests []Manifest) [][]Manifest {
 	groupSize := (len(manifests) + groups - 1) / groups
 	splitManifests := make([][]Manifest, 0, groups)
 
-		if left.Evidence < right.Evidence {
-			return true
+	for i := 0; i < len(manifests); i += groupSize {
+		grp := make([]Manifest, groupSize)
+		n := copy(grp, manifests[i:])
+		splitManifests = append(splitManifests, grp[:n])
+	}
+
+	return splitManifests
+}
+
+// WriteManifests writes a collection of manifests into files with the
+// specified path prefix.
+func WriteManifests(prefix string, manifests []Manifest) error {
+	for i, manifest := range manifests {
+		if err := manifest.Save(fmt.Sprintf("%s-%04d.toml", prefix, i)); err != nil {
+			return err
 		}
+	}
 
-		var (
-			leftPerturb  int
-			rightPerturb int
-		)
-
-		for _, n := range left.Nodes {
-			leftPerturb += len(n.Perturb)
-		}
-		for _, n := range right.Nodes {
-			rightPerturb += len(n.Perturb)
-		}
-
-		return leftPerturb < rightPerturb
-
-	})
+	return nil
 }

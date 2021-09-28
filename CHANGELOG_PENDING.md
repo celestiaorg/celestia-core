@@ -1,10 +1,12 @@
 # Unreleased Changes
 
+Friendly reminder: We have a [bug bounty program](https://hackerone.com/cosmos).
+
 ## vX.X
 
-Special thanks to external contributors on this release:
+Month, DD, YYYY
 
-Friendly reminder: We have a [bug bounty program](https://hackerone.com/tendermint).
+Special thanks to external contributors on this release:
 
 ### BREAKING CHANGES
 
@@ -25,4 +27,3 @@ Friendly reminder: We have a [bug bounty program](https://hackerone.com/tendermi
 ### IMPROVEMENTS
 
 ### BUG FIXES
-

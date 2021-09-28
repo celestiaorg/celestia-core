@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"time"
 
-	proto "github.com/gogo/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 
-	bc "github.com/tendermint/tendermint/internal/blocksync"
+	"github.com/tendermint/tendermint/internal/blocksync"
 	"github.com/tendermint/tendermint/internal/blocksync/v2/internal/behavior"
-	cons "github.com/tendermint/tendermint/internal/consensus"
+	"github.com/tendermint/tendermint/internal/consensus"
 	tmsync "github.com/tendermint/tendermint/internal/libs/sync"
 	"github.com/tendermint/tendermint/internal/p2p"
+	"github.com/tendermint/tendermint/internal/state"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/sync"
 	bcproto "github.com/tendermint/tendermint/proto/tendermint/blocksync"
-	"github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -61,7 +61,7 @@ type blockApplier interface {
 
 // XXX: unify naming in this package around tmState
 func newReactor(state state.State, store blockStore, reporter behavior.Reporter,
-	blockApplier blockApplier, blockSync bool, metrics *cons.Metrics) *BlockchainReactor {
+	blockApplier blockApplier, blockSync bool, metrics *consensus.Metrics) *BlockchainReactor {
 	initHeight := state.LastBlockHeight + 1
 	if initHeight == 1 {
 		initHeight = state.InitialHeight
@@ -91,7 +91,7 @@ func NewBlockchainReactor(
 	blockApplier blockApplier,
 	store blockStore,
 	blockSync bool,
-	metrics *cons.Metrics) *BlockchainReactor {
+	metrics *consensus.Metrics) *BlockchainReactor {
 	reporter := behavior.NewMockReporter()
 	return newReactor(state, store, reporter, blockApplier, blockSync, metrics)
 }
@@ -605,7 +605,7 @@ func (r *BlockchainReactor) GetChannels() []*p2p.ChannelDescriptor {
 			Priority:            5,
 			SendQueueCapacity:   2000,
 			RecvBufferCapacity:  1024,
-			RecvMessageCapacity: bc.MaxMsgSize,
+			RecvMessageCapacity: blocksync.MaxMsgSize,
 		},
 	}
 }
