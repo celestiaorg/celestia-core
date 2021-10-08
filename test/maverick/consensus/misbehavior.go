@@ -289,14 +289,14 @@ func defaultReceivePrevote(cs *State, vote *types.Vote) {
 
 		// Update Valid* if we can.
 		// NOTE: our proposal block may be nil or not what received a polka..
-		if len(blockID.Hash) != 0 && (cs.ValidRound < vote.Round) && (vote.Round == cs.Round) {
+		if len(blockID.Hash) != 0 && (cs.TwoThirdPrevoteRound < vote.Round) && (vote.Round == cs.Round) {
 
 			if cs.ProposalBlock.HashesTo(blockID.Hash) {
 				cs.Logger.Info(
-					"Updating ValidBlock because of POL.", "validRound", cs.ValidRound, "POLRound", vote.Round)
-				cs.ValidRound = vote.Round
-				cs.ValidBlock = cs.ProposalBlock
-				cs.ValidBlockParts = cs.ProposalBlockParts
+					"Updating ValidBlock because of POL.", "validRound", cs.TwoThirdPrevoteRound, "POLRound", vote.Round)
+				cs.TwoThirdPrevoteRound = vote.Round
+				cs.TwoThirdPrevoteBlock = cs.ProposalBlock
+				cs.TwoThirdPrevoteBlockParts = cs.ProposalBlockParts
 			} else {
 				cs.Logger.Info(
 					"valid block we do not know about; set ProposalBlock=nil",

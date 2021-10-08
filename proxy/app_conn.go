@@ -22,6 +22,7 @@ type AppConnConsensus interface {
 	CommitSync() (*types.ResponseCommit, error)
 
 	PrepareProposalSync(types.RequestPrepareProposal) (*types.ResponsePrepareProposal, error)
+	ProcessProposalSync(types.RequestProcessProposal) (*types.ResponseProcessProposal, error)
 }
 
 type AppConnMempool interface {
@@ -99,6 +100,12 @@ func (app *appConnConsensus) PrepareProposalSync(
 	req types.RequestPrepareProposal,
 ) (*types.ResponsePrepareProposal, error) {
 	return app.appConn.PrepareProposalSync(req)
+}
+
+func (app *appConnConsensus) ProcessProposalSync(
+	req types.RequestProcessProposal,
+) (*types.ResponseProcessProposal, error) {
+	return app.appConn.ProcessProposalSync(req)
 }
 
 //------------------------------------------------

@@ -6,7 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/context"
+	"context"
+
 	"google.golang.org/grpc"
 
 	"github.com/tendermint/tendermint/abci/types"
@@ -321,6 +322,26 @@ func (cli *grpcClient) PrepareProposalAsync(
 	)
 }
 
+func (cli *grpcClient) ProcessProposalAsync(
+	params types.RequestProcessProposal,
+) *ReqRes {
+
+	req := types.ToRequestProcessProposal(params)
+	res, err := cli.client.ProcessProposal(context.Background(), req.GetProcessProposal(), grpc.WaitForReady(true))
+	if err != nil {
+		return nil
+	}
+
+	return cli.finishAsyncCall(
+		req,
+		&types.Response{
+			Value: &types.Response_ProcessProposal{
+				ProcessProposal: res,
+			},
+		},
+	)
+}
+
 // finishAsyncCall creates a ReqRes for an async call, and immediately populates it
 // with the response. We don't complete it until it's been ordered via the channel.
 func (cli *grpcClient) finishAsyncCall(req *types.Request, res *types.Response) *ReqRes {
@@ -443,4 +464,11 @@ func (cli *grpcClient) PrepareProposalSync(
 
 	reqres := cli.PrepareProposalAsync(params)
 	return cli.finishSyncCall(reqres).GetPrepareProposal(), cli.Error()
+}
+
+func (cli *grpcClient) ProcessProposalSync(
+	params types.RequestProcessProposal,
+) (*types.ResponseProcessProposal, error) {
+	reqres := cli.ProcessProposalAsync(params)
+	return cli.finishSyncCall(reqres).GetProcessProposal(), cli.Error()
 }
