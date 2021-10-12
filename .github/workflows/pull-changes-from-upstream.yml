@@ -11,7 +11,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Reset the default branch with upstream changes
         run: |
-          git remote add upstream https://github.com/tendermint/tendmerint.git
+          git remote add upstream https://github.com/tendermint/tendermint.git
           git fetch upstream master:upstream-master
           git reset --hard upstream-master
       - name: Create Pull Request
@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Reset the default branch with upstream changes
         run: |
-          git remote add upstream https://github.com/tendermint/tendmerint.git
+          git remote add upstream https://github.com/tendermint/tendermint.git
           git fetch upstream v0.34.x:upstream-release-v0.34.x
           git reset --hard upstream-release-v0.34.x
       - name: Create Pull Request
