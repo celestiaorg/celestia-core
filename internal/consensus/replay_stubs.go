@@ -24,6 +24,7 @@ func (emptyMempool) Size() int { return 0 }
 func (emptyMempool) CheckTx(_ context.Context, _ types.Tx, _ func(*abci.Response), _ mempool.TxInfo) error {
 	return nil
 }
+func (emptyMempool) RemoveTxByKey(txKey types.TxKey) error   { return nil }
 func (emptyMempool) ReapMaxBytesMaxGas(_, _ int64) types.Txs { return types.Txs{} }
 func (emptyMempool) ReapMaxTxs(n int) types.Txs              { return types.Txs{} }
 func (emptyMempool) Update(
@@ -63,7 +64,7 @@ func newMockProxyApp(appHash []byte, abciResponses *tmstate.ABCIResponses) proxy
 	if err != nil {
 		panic(err)
 	}
-	return proxy.NewAppConnConsensus(cli)
+	return proxy.NewAppConnConsensus(cli, proxy.NopMetrics())
 }
 
 type mockProxyApp struct {
