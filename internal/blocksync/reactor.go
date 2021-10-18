@@ -1,4 +1,4 @@
-package v0
+package blocksync
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tendermint/tendermint/internal/blocksync"
 	"github.com/tendermint/tendermint/internal/consensus"
 	"github.com/tendermint/tendermint/internal/p2p"
 	sm "github.com/tendermint/tendermint/internal/state"
@@ -18,30 +17,7 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-var (
-	_ service.Service = (*Reactor)(nil)
-
-	// ChannelShims contains a map of ChannelDescriptorShim objects, where each
-	// object wraps a reference to a legacy p2p ChannelDescriptor and the corresponding
-	// p2p proto.Message the new p2p Channel is responsible for handling.
-	//
-	//
-	// TODO: Remove once p2p refactor is complete.
-	// ref: https://github.com/tendermint/tendermint/issues/5670
-	ChannelShims = map[p2p.ChannelID]*p2p.ChannelDescriptorShim{
-		BlockSyncChannel: {
-			MsgType: new(bcproto.Message),
-			Descriptor: &p2p.ChannelDescriptor{
-				ID:                  byte(BlockSyncChannel),
-				Priority:            5,
-				SendQueueCapacity:   1000,
-				RecvBufferCapacity:  1024,
-				RecvMessageCapacity: blocksync.MaxMsgSize,
-				MaxSendBytes:        100,
-			},
-		},
-	}
-)
+var _ service.Service = (*Reactor)(nil)
 
 const (
 	// BlockSyncChannel is a channel for blocks and status updates
@@ -58,6 +34,17 @@ const (
 	// switch to consensus after this duration of inactivity
 	syncTimeout = 60 * time.Second
 )
+
+func GetChannelDescriptor() *p2p.ChannelDescriptor {
+	return &p2p.ChannelDescriptor{
+		ID:                  BlockSyncChannel,
+		MessageType:         new(bcproto.Message),
+		Priority:            5,
+		SendQueueCapacity:   1000,
+		RecvBufferCapacity:  1024,
+		RecvMessageCapacity: MaxMsgSize,
+	}
+}
 
 type consensusReactor interface {
 	// For when we switch from block sync reactor to the consensus
@@ -169,6 +156,8 @@ func (r *Reactor) OnStart() error {
 		if err := r.pool.Start(); err != nil {
 			return err
 		}
+		r.poolWG.Add(1)
+		go r.requestRoutine()
 
 		r.poolWG.Add(1)
 		go r.poolRoutine(false)
@@ -385,6 +374,9 @@ func (r *Reactor) SwitchToBlockSync(state sm.State) error {
 	r.syncStartTime = time.Now()
 
 	r.poolWG.Add(1)
+	go r.requestRoutine()
+
+	r.poolWG.Add(1)
 	go r.poolRoutine(true)
 
 	return nil
@@ -394,7 +386,6 @@ func (r *Reactor) requestRoutine() {
 	statusUpdateTicker := time.NewTicker(statusUpdateIntervalSeconds * time.Second)
 	defer statusUpdateTicker.Stop()
 
-	r.poolWG.Add(1)
 	defer r.poolWG.Done()
 
 	for {
@@ -454,8 +445,6 @@ func (r *Reactor) poolRoutine(stateSynced bool) {
 
 	defer trySyncTicker.Stop()
 	defer switchToConsensusTicker.Stop()
-
-	go r.requestRoutine()
 
 	defer r.poolWG.Done()
 
@@ -604,6 +593,8 @@ FOR_LOOP:
 			continue FOR_LOOP
 
 		case <-r.closeCh:
+			break FOR_LOOP
+		case <-r.pool.Quit():
 			break FOR_LOOP
 		}
 	}

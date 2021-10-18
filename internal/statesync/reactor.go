@@ -28,60 +28,6 @@ import (
 var (
 	_ service.Service = (*Reactor)(nil)
 	_ p2p.Wrapper     = (*ssproto.Message)(nil)
-
-	// ChannelShims contains a map of ChannelDescriptorShim objects, where each
-	// object wraps a reference to a legacy p2p ChannelDescriptor and the corresponding
-	// p2p proto.Message the new p2p Channel is responsible for handling.
-	//
-	//
-	// TODO: Remove once p2p refactor is complete.
-	// ref: https://github.com/tendermint/tendermint/issues/5670
-	ChannelShims = map[p2p.ChannelID]*p2p.ChannelDescriptorShim{
-		SnapshotChannel: {
-			MsgType: new(ssproto.Message),
-			Descriptor: &p2p.ChannelDescriptor{
-				ID:                  byte(SnapshotChannel),
-				Priority:            6,
-				SendQueueCapacity:   10,
-				RecvMessageCapacity: snapshotMsgSize,
-				RecvBufferCapacity:  128,
-				MaxSendBytes:        400,
-			},
-		},
-		ChunkChannel: {
-			MsgType: new(ssproto.Message),
-			Descriptor: &p2p.ChannelDescriptor{
-				ID:                  byte(ChunkChannel),
-				Priority:            3,
-				SendQueueCapacity:   4,
-				RecvMessageCapacity: chunkMsgSize,
-				RecvBufferCapacity:  128,
-				MaxSendBytes:        400,
-			},
-		},
-		LightBlockChannel: {
-			MsgType: new(ssproto.Message),
-			Descriptor: &p2p.ChannelDescriptor{
-				ID:                  byte(LightBlockChannel),
-				Priority:            5,
-				SendQueueCapacity:   10,
-				RecvMessageCapacity: lightBlockMsgSize,
-				RecvBufferCapacity:  128,
-				MaxSendBytes:        400,
-			},
-		},
-		ParamsChannel: {
-			MsgType: new(ssproto.Message),
-			Descriptor: &p2p.ChannelDescriptor{
-				ID:                  byte(ParamsChannel),
-				Priority:            2,
-				SendQueueCapacity:   10,
-				RecvMessageCapacity: paramMsgSize,
-				RecvBufferCapacity:  128,
-				MaxSendBytes:        400,
-			},
-		},
-	}
 )
 
 const (
@@ -124,6 +70,45 @@ const (
 	// the backfill process aborts
 	maxLightBlockRequestRetries = 20
 )
+
+func GetChannelDescriptors() []*p2p.ChannelDescriptor {
+	return []*p2p.ChannelDescriptor{
+		{
+
+			ID:                  SnapshotChannel,
+			MessageType:         new(ssproto.Message),
+			Priority:            6,
+			SendQueueCapacity:   10,
+			RecvMessageCapacity: snapshotMsgSize,
+			RecvBufferCapacity:  128,
+		},
+		{
+			ID:                  ChunkChannel,
+			Priority:            3,
+			MessageType:         new(ssproto.Message),
+			SendQueueCapacity:   4,
+			RecvMessageCapacity: chunkMsgSize,
+			RecvBufferCapacity:  128,
+		},
+		{
+			ID:                  LightBlockChannel,
+			MessageType:         new(ssproto.Message),
+			Priority:            5,
+			SendQueueCapacity:   10,
+			RecvMessageCapacity: lightBlockMsgSize,
+			RecvBufferCapacity:  128,
+		},
+		{
+			ID:                  ParamsChannel,
+			MessageType:         new(ssproto.Message),
+			Priority:            2,
+			SendQueueCapacity:   10,
+			RecvMessageCapacity: paramMsgSize,
+			RecvBufferCapacity:  128,
+		},
+	}
+
+}
 
 // Metricer defines an interface used for the rpc sync info query, please see statesync.metrics
 // for the details.
@@ -254,11 +239,11 @@ func (r *Reactor) OnStop() {
 	// Wait for all p2p Channels to be closed before returning. This ensures we
 	// can easily reason about synchronization of all p2p Channels and ensure no
 	// panics will occur.
+	<-r.peerUpdates.Done()
 	<-r.snapshotCh.Done()
 	<-r.chunkCh.Done()
 	<-r.blockCh.Done()
 	<-r.paramsCh.Done()
-	<-r.peerUpdates.Done()
 }
 
 // Sync runs a state sync, fetching snapshots and providing chunks to the
@@ -280,6 +265,7 @@ func (r *Reactor) Sync(ctx context.Context) (sm.State, error) {
 	}
 
 	if err := r.initStateProvider(ctx, r.chainID, r.initialHeight); err != nil {
+		r.mtx.Unlock()
 		return sm.State{}, err
 	}
 
@@ -508,7 +494,7 @@ func (r *Reactor) backfill(
 			}
 
 			trustedBlockID = resp.block.LastBlockID
-			queue.success(resp.block.Height)
+			queue.success()
 			r.Logger.Info("backfill: verified and stored light block", "height", resp.block.Height)
 
 			lastValidatorSet = resp.block.ValidatorSet
@@ -733,7 +719,7 @@ func (r *Reactor) handleLightBlockMessage(envelope p2p.Envelope) error {
 		}
 
 	case *ssproto.LightBlockResponse:
-		var height int64 = 0
+		var height int64
 		if msg.LightBlock != nil {
 			height = msg.LightBlock.SignedHeader.Header.Height
 		}
@@ -778,7 +764,8 @@ func (r *Reactor) handleParamsMessage(envelope p2p.Envelope) error {
 		if sp, ok := r.stateProvider.(*stateProviderP2P); ok {
 			select {
 			case sp.paramsRecvCh <- cp:
-			default:
+			case <-time.After(time.Second):
+				return errors.New("failed to send consensus params, stateprovider not ready for response")
 			}
 		} else {
 			r.Logger.Debug("received unexpected params response; using RPC state provider", "peer", envelope.From)
@@ -889,17 +876,20 @@ func (r *Reactor) processPeerUpdate(peerUpdate p2p.PeerUpdate) {
 	}
 
 	r.mtx.Lock()
+	defer r.mtx.Unlock()
 	if r.syncer == nil {
-		r.mtx.Unlock()
 		return
 	}
-	defer r.mtx.Unlock()
 
 	switch peerUpdate.Status {
 	case p2p.PeerStatusUp:
 		newProvider := NewBlockProvider(peerUpdate.NodeID, r.chainID, r.dispatcher)
 		r.providers[peerUpdate.NodeID] = newProvider
-		r.syncer.AddPeer(peerUpdate.NodeID)
+		err := r.syncer.AddPeer(peerUpdate.NodeID)
+		if err != nil {
+			r.Logger.Error("error adding peer to syncer", "error", err)
+			return
+		}
 		if sp, ok := r.stateProvider.(*stateProviderP2P); ok {
 			// we do this in a separate routine to not block whilst waiting for the light client to finish
 			// whatever call it's currently executing
@@ -1013,9 +1003,11 @@ func (r *Reactor) waitForEnoughPeers(ctx context.Context, numPeers int) error {
 		iter++
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("operation canceled while waiting for peers after %s", time.Since(startAt))
+			return fmt.Errorf("operation canceled while waiting for peers after %.2fs [%d/%d]",
+				time.Since(startAt).Seconds(), r.peers.Len(), numPeers)
 		case <-r.closeCh:
-			return fmt.Errorf("shutdown while waiting for peers after %s", time.Since(startAt))
+			return fmt.Errorf("shutdown while waiting for peers after %.2fs [%d/%d]",
+				time.Since(startAt).Seconds(), r.peers.Len(), numPeers)
 		case <-t.C:
 			continue
 		case <-logT.C:
