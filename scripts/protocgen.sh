@@ -9,7 +9,7 @@ if [[ VERS -ne master ]]; then
 fi
 
 # Edit this line to clone your branch, if you are modifying protobuf files
-curl -qL "https://github.com/tendermint/spec/${URL_PATH}${VERS}.tar.gz" | tar -xjf - spec-"$VERS"/proto/
+curl -qL "https://github.com/celestiaorg/spec/${URL_PATH}${VERS}.tar.gz" | tar -xjf - spec-"$VERS"/proto/
 
 cp -r ./spec-"$VERS"/proto/tendermint/** ./proto/tendermint
 
@@ -30,7 +30,6 @@ rm -rf ./proto/tendermint/p2p/conn.proto
 rm -rf ./proto/tendermint/p2p/pex.proto
 rm -rf ./proto/tendermint/statesync/types.proto
 rm -rf ./proto/tendermint/types/block.proto
-rm -rf ./proto/tendermint/types/evidence.proto
 rm -rf ./proto/tendermint/types/params.proto
 rm -rf ./proto/tendermint/types/types.proto
 rm -rf ./proto/tendermint/types/validator.proto
