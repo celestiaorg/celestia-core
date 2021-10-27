@@ -40,7 +40,11 @@ func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 }
 
 func makeStateAndBlockStore(logger log.Logger) (sm.State, *BlockStore, cleanupFunc) {
-	cfg := config.ResetTestRoot("blockchain_reactor_test")
+	cfg, err := config.ResetTestRoot("blockchain_reactor_test")
+	if err != nil {
+		panic(err)
+	}
+
 	blockDB := dbm.NewMemDB()
 	state, err := sm.MakeGenesisStateFromFile(cfg.GenesisFile())
 	if err != nil {
@@ -286,7 +290,9 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 }
 
 func TestLoadBaseMeta(t *testing.T) {
-	cfg := config.ResetTestRoot("blockchain_reactor_test")
+	cfg, err := config.ResetTestRoot("blockchain_reactor_test")
+	require.NoError(t, err)
+
 	defer os.RemoveAll(cfg.RootDir)
 	state, err := sm.MakeGenesisStateFromFile(cfg.GenesisFile())
 	require.NoError(t, err)
@@ -342,7 +348,9 @@ func TestLoadBlockPart(t *testing.T) {
 }
 
 func TestPruneBlocks(t *testing.T) {
-	cfg := config.ResetTestRoot("blockchain_reactor_test")
+	cfg, err := config.ResetTestRoot("blockchain_reactor_test")
+	require.NoError(t, err)
+
 	defer os.RemoveAll(cfg.RootDir)
 	state, err := sm.MakeGenesisStateFromFile(cfg.GenesisFile())
 	require.NoError(t, err)
