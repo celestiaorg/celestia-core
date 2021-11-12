@@ -57,22 +57,22 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 	}
 
 	// pass the raw share data to their respective parsers
-	txs, err := parseTxs(sortedTxShares)
+	txs, err := ParseTxs(sortedTxShares)
 	if err != nil {
 		return Data{}, err
 	}
 
-	isrs, err := parseISRs(sortedISRShares)
+	isrs, err := ParseISRs(sortedISRShares)
 	if err != nil {
 		return Data{}, err
 	}
 
-	evd, err := parseEvd(sortedEvdShares)
+	evd, err := ParseEvd(sortedEvdShares)
 	if err != nil {
 		return Data{}, err
 	}
 
-	msgs, err := parseMsgs(sortedMsgShares)
+	msgs, err := ParseMsgs(sortedMsgShares)
 	if err != nil {
 		return Data{}, err
 	}
@@ -85,8 +85,8 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 	}, nil
 }
 
-// parseTxs collects all of the transactions from the shares provided
-func parseTxs(shares [][]byte) (Txs, error) {
+// ParseTxs collects all of the transactions from the shares provided
+func ParseTxs(shares [][]byte) (Txs, error) {
 	// parse the sharse
 	rawTxs, err := processContiguousShares(shares)
 	if err != nil {
@@ -102,8 +102,8 @@ func parseTxs(shares [][]byte) (Txs, error) {
 	return txs, nil
 }
 
-// parseISRs collects all the intermediate state roots from the shares provided
-func parseISRs(shares [][]byte) (IntermediateStateRoots, error) {
+// ParseISRs collects all the intermediate state roots from the shares provided
+func ParseISRs(shares [][]byte) (IntermediateStateRoots, error) {
 	rawISRs, err := processContiguousShares(shares)
 	if err != nil {
 		return IntermediateStateRoots{}, err
@@ -117,8 +117,8 @@ func parseISRs(shares [][]byte) (IntermediateStateRoots, error) {
 	return IntermediateStateRoots{RawRootsList: ISRs}, nil
 }
 
-// parseEvd collects all evidence from the shares provided.
-func parseEvd(shares [][]byte) (EvidenceData, error) {
+// ParseEvd collects all evidence from the shares provided.
+func ParseEvd(shares [][]byte) (EvidenceData, error) {
 	// the raw data returned does not have length delimiters or namespaces and
 	// is ready to be unmarshaled
 	rawEvd, err := processContiguousShares(shares)
@@ -147,8 +147,8 @@ func parseEvd(shares [][]byte) (EvidenceData, error) {
 	return EvidenceData{Evidence: evdList}, nil
 }
 
-// parseMsgs collects all messages from the shares provided
-func parseMsgs(shares [][]byte) (Messages, error) {
+// ParseMsgs collects all messages from the shares provided
+func ParseMsgs(shares [][]byte) (Messages, error) {
 	msgList, err := parseMsgShares(shares)
 	if err != nil {
 		return Messages{}, err
