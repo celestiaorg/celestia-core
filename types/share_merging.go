@@ -147,7 +147,7 @@ func ParseEvd(shares [][]byte) (EvidenceData, error) {
 	return EvidenceData{Evidence: evdList}, nil
 }
 
-// parseMsgs collects all messages from the shares provided
+// ParseMsgs collects all messages from the shares provided
 func ParseMsgs(shares [][]byte) (Messages, error) {
 	msgList, err := parseMsgShares(shares)
 	if err != nil {
