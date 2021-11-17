@@ -577,29 +577,6 @@ func TestCommitToVoteSetWithVotesForNilBlock(t *testing.T) {
 	}
 }
 
-func TestDataProto(t *testing.T) {
-
-	// create some block and compare data hashes
-	block := MakeBlock(1, []Tx{
-		stdbytes.Repeat([]byte{1, 2, 3, 4}, 400),
-	}, nil, nil,
-		[]Message{
-			{NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8}, Data: stdbytes.Repeat([]byte{1, 2, 3, 4, 5, 6, 7, 8}, 20)},
-		},
-		&Commit{})
-	block.ProposerAddress = stdbytes.Repeat([]byte{1}, 20)
-	firstHash := block.Data.Hash()
-
-	pbb, err := block.ToProto()
-
-	secondBlock, err := BlockFromProto(pbb)
-	require.NoError(t, err)
-
-	secondHash := secondBlock.Data.Hash()
-
-	assert.Equal(t, firstHash, secondHash)
-}
-
 func TestBlockIDValidateBasic(t *testing.T) {
 	validBlockID := BlockID{
 		Hash: bytes.HexBytes{},
