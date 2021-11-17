@@ -6,14 +6,12 @@ import (
 	stdbytes "bytes"
 	"crypto/rand"
 	"encoding/hex"
-	"io/ioutil"
 	"math"
 	"os"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -577,36 +575,6 @@ func TestCommitToVoteSetWithVotesForNilBlock(t *testing.T) {
 			assert.Panics(t, func() { voteSet.MakeCommit() })
 		}
 	}
-}
-
-func TestBlockDataSerialization(t *testing.T) {
-	// create some block and compare data hashes
-	block := MakeBlock(1, []Tx{
-		stdbytes.Repeat([]byte{1, 2, 3, 4}, 400),
-	}, nil, nil, nil, &Commit{})
-	block.ProposerAddress = stdbytes.Repeat([]byte{1}, 20)
-	firstHash := block.Data.Hash()
-
-	ps := block.MakePartSet(BlockPartSizeBytes)
-
-	bz, err := ioutil.ReadAll(ps.GetReader())
-	require.NoError(t, err)
-
-	var pbb = new(tmproto.Block)
-	err = proto.Unmarshal(bz, pbb)
-	require.NoError(t, err)
-
-	secondBlock, err := BlockFromProto(pbb)
-	require.NoError(t, err)
-
-	// go from parts to the whole block again
-
-	secondHash := secondBlock.Data.Hash()
-
-	assert.Equal(t, firstHash, secondHash)
-
-	// comeback from proto and compare the hashes.
-	// what actually needs to be tested in converting to block parts and then back again
 }
 
 func TestDataProto(t *testing.T) {
