@@ -84,12 +84,8 @@ func (b *Block) ValidateBasic() error {
 	}
 
 	// NOTE: b.Data.Txs may be nil, but b.Data.Hash() still works fine.
-	if !bytes.Equal(b.DataHash, b.Data.Hash()) {
-		return fmt.Errorf(
-			"wrong Header.DataHash. Expected %v, got %v",
-			b.Data.Hash(),
-			b.DataHash,
-		)
+	if w, g := b.Data.Hash(), b.DataHash; !bytes.Equal(w, g) {
+		return fmt.Errorf("wrong Header.DataHash. Expected %X, got %X", w, g)
 	}
 
 	// NOTE: b.Evidence.Evidence may be nil, but we're just looping.
@@ -1251,13 +1247,23 @@ func (data *Data) ToProto() tmproto.Data {
 		}
 		tp.IntermediateStateRoots.RawRootsList = roots
 	}
-	// TODO(evan): copy missing pieces from previous work
+
 	pevd, err := data.Evidence.ToProto()
 	if err != nil {
 		// TODO(evan): fix
 		panic(err)
 	}
 	tp.Evidence = *pevd
+
+	// need to add messages
+	protoMsgs := make([]*tmproto.Message, len(data.Messages.MessagesList))
+	for i, msg := range data.Messages.MessagesList {
+		protoMsgs[i] = &tmproto.Message{
+			NamespaceId: msg.NamespaceID,
+			Data:        msg.Data,
+		}
+	}
+	tp.Messages = tmproto.Messages{MessagesList: protoMsgs}
 
 	return *tp
 }
