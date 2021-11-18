@@ -166,7 +166,7 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 // transaction is a normal transaction that has been derived from a different
 // parent transaction. The returned hash is that of the parent transaction,
 // which allows us to remove the parent transaction from the mempool
-func DecodeChildTx(tx Tx) (hash []byte, unwrapped []byte, has bool) {
+func DecodeChildTx(tx Tx) (hash []byte, unwrapped Tx, has bool) {
 	// attempt to unmarshal into a a child transaction
 	var childTx tmproto.ChildTx
 	err := proto.Unmarshal(tx, &childTx)
