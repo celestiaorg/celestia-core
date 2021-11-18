@@ -605,14 +605,12 @@ func (mem *CListMempool) Update(
 		// https://github.com/tendermint/tendermint/issues/3322.
 		if e, ok := mem.txsMap.Load(TxKey(tx)); ok {
 			mem.removeTx(tx, e.(*clist.CElement), false)
-		} else {
 			// see if the transaction is a child transaction of a some parent
 			// transaction that exists in the mempool
-			if parentHash, _, isChild := types.DecodeChildTx(tx); isChild {
-				var parentKey [TxKeySize]byte
-				copy(parentKey[:], parentHash)
-				mem.RemoveTxByKey(parentKey, false)
-			}
+		} else if parentHash, _, isChild := types.DecodeChildTx(tx); isChild {
+			var parentKey [TxKeySize]byte
+			copy(parentKey[:], parentHash)
+			mem.RemoveTxByKey(parentKey, false)
 		}
 	}
 

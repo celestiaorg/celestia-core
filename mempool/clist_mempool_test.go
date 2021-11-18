@@ -215,7 +215,7 @@ func TestMempoolUpdate(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// 4. Removes a parent transaction after recieving a child transaction in the update
+	// 4. Removes a parent transaction after receiving a child transaction in the update
 	{
 		mempool.Flush()
 		parentTx := []byte{1, 2, 3, 4}
