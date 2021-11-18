@@ -1255,7 +1255,6 @@ func (data *Data) ToProto() tmproto.Data {
 	}
 	tp.Evidence = *pevd
 
-	// need to add messages
 	protoMsgs := make([]*tmproto.Message, len(data.Messages.MessagesList))
 	for i, msg := range data.Messages.MessagesList {
 		protoMsgs[i] = &tmproto.Message{
