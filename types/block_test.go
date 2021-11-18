@@ -3,6 +3,7 @@ package types
 import (
 	// it is ok to use math/rand here: we do not need a cryptographically secure random
 	// number generator here and we can run the tests a bit faster
+	stdbytes "bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"math"
@@ -662,32 +663,44 @@ func TestBlockProtoBuf(t *testing.T) {
 	}
 }
 
-func TestDataProtoBuf(t *testing.T) {
-	data := &Data{
-		Txs:      Txs{Tx([]byte{1}), Tx([]byte{2}), Tx([]byte{3})},
-		Evidence: EvidenceData{Evidence: EvidenceList([]Evidence{})},
+func TestBlockDataProtobuf(t *testing.T) {
+	type test struct {
+		name string
+		txs  Txs
+		isrs IntermediateStateRoots
+		evd  EvidenceData
+		msgs []Message
 	}
-	data2 := &Data{Txs: Txs{}, Evidence: EvidenceData{Evidence: EvidenceList([]Evidence{})}}
-	testCases := []struct {
-		msg     string
-		data1   *Data
-		expPass bool
-	}{
-		{"success", data, true},
-		{"success data2", data2, true},
+	tests := []test{
+		{
+			name: "only txs", txs: Txs([]Tx{stdbytes.Repeat([]byte{1}, 200)}),
+		},
+		{
+			name: "everything",
+			txs:  Txs([]Tx{stdbytes.Repeat([]byte{1}, 200)}),
+			isrs: IntermediateStateRoots{[]bytes.HexBytes{stdbytes.Repeat([]byte{1}, 32)}},
+			evd:  EvidenceData{Evidence: EvidenceList([]Evidence{})},
+			msgs: []Message{
+				{
+					NamespaceID: []byte{8, 7, 6, 5, 4, 3, 2, 1},
+					Data:        stdbytes.Repeat([]byte{3, 2, 1, 0}, 100),
+				},
+				{
+					NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
+					Data:        stdbytes.Repeat([]byte{1, 2, 3}, 100),
+				},
+			},
+		},
 	}
-	for _, tc := range testCases {
-		firstHash := tc.data1.Hash()
-		protoData := tc.data1.ToProto()
-		d, err := DataFromProto(&protoData)
-		if tc.expPass {
-			require.NoError(t, err, tc.msg)
-			secondHash := d.Hash()
-			require.EqualValues(t, tc.data1, &d, tc.msg)
-			require.Equal(t, firstHash, secondHash)
-		} else {
-			require.Error(t, err, tc.msg)
-		}
+
+	for _, tt := range tests {
+		d := Data{Txs: tt.txs, IntermediateStateRoots: tt.isrs, Evidence: tt.evd, Messages: Messages{MessagesList: tt.msgs}}
+		firstHash := d.Hash()
+		pd := d.ToProto()
+		d2, err := DataFromProto(&pd)
+		require.NoError(t, err)
+		secondHash := d2.Hash()
+		assert.Equal(t, firstHash, secondHash, tt.name)
 	}
 }
 
