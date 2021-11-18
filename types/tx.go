@@ -175,3 +175,14 @@ func DecodeChildTx(tx Tx) (hash []byte, unwrapped Tx, has bool) {
 	}
 	return childTx.ParentTxHash, childTx.Tx, true
 }
+
+// WrapChildTx creates a wrapped Tx that includes the parent transaction's hash
+// so that it can be easily removed from the mempool. note: must be unwrapped to
+// be a viable sdk.Tx
+func WrapChildTx(parentHash []byte, child Tx) (Tx, error) {
+	wTx := tmproto.ChildTx{
+		ParentTxHash: parentHash,
+		Tx:           child,
+	}
+	return proto.Marshal(&wTx)
+}

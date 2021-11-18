@@ -214,6 +214,29 @@ func TestMempoolUpdate(t *testing.T) {
 		err = mempool.CheckTx([]byte{0x03}, nil, TxInfo{})
 		require.NoError(t, err)
 	}
+
+	// 4. Removes a parent transaction after recieving a child transaction in the update
+	{
+		mempool.Flush()
+		parentTx := []byte{1, 2, 3, 4}
+		childTx := []byte{1, 2}
+		parentHash := sha256.Sum256(parentTx)
+
+		// create the wrapped child transaction
+		wTx, err := types.WrapChildTx(parentHash[:], childTx)
+		require.NoError(t, err)
+
+		// add the parent transaction to the mempool
+		err = mempool.CheckTx(parentTx, nil, TxInfo{})
+		require.NoError(t, err)
+
+		// remove the parent from the mempool using the wrapped child tx
+		err = mempool.Update(1, []types.Tx{wTx}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+		require.NoError(t, err)
+
+		assert.Zero(t, mempool.Size())
+
+	}
 }
 
 func TestMempool_KeepInvalidTxsInCache(t *testing.T) {
