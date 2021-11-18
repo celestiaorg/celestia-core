@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
@@ -158,4 +159,19 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 	data := Data{Txs: txs}
 	pdData := data.ToProto()
 	return int64(pdData.Size())
+}
+
+// DecodeChildTx attempts to unmarshal the provided transaction into a child
+// transaction wrapper, if this an be done, then it returns true. A child
+// transaction is a normal transaction that has been derived from a different
+// parent transaction. The returned hash is that of the parent transaction,
+// which allows us to remove the parent transaction from the mempool
+func DecodeChildTx(tx Tx) (hash []byte, unwrapped []byte, has bool) {
+	// attempt to unmarshal into a a child transaction
+	var childTx tmproto.ChildTx
+	err := proto.Unmarshal(tx, &childTx)
+	if err != nil {
+		return nil, nil, false
+	}
+	return childTx.ParentTxHash, childTx.Tx, true
 }
