@@ -545,6 +545,9 @@ func TestCommitToVoteSetWithVotesForNilBlock(t *testing.T) {
 		round  = 0
 	)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	type commitVoteTest struct {
 		blockIDs      []BlockID
 		numVotes      []int // must sum to numValidators
@@ -562,7 +565,7 @@ func TestCommitToVoteSetWithVotesForNilBlock(t *testing.T) {
 		vi := int32(0)
 		for n := range tc.blockIDs {
 			for i := 0; i < tc.numVotes[n]; i++ {
-				pubKey, err := vals[vi].GetPubKey(context.Background())
+				pubKey, err := vals[vi].GetPubKey(ctx)
 				require.NoError(t, err)
 				vote := &Vote{
 					ValidatorAddress: pubKey.Address(),

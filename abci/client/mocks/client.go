@@ -7,8 +7,6 @@ import (
 
 	abciclient "github.com/tendermint/tendermint/abci/client"
 
-	log "github.com/tendermint/tendermint/libs/log"
-
 	mock "github.com/stretchr/testify/mock"
 
 	types "github.com/tendermint/tendermint/abci/types"
@@ -636,85 +634,6 @@ func (_m *Client) OfferSnapshotSync(_a0 context.Context, _a1 types.RequestOfferS
 	return r0, r1
 }
 
-// OnReset provides a mock function with given fields:
-func (_m *Client) OnReset() error {
-	ret := _m.Called()
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func() error); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// OnStart provides a mock function with given fields:
-func (_m *Client) OnStart() error {
-	ret := _m.Called()
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func() error); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// OnStop provides a mock function with given fields:
-func (_m *Client) OnStop() {
-	_m.Called()
-}
-
-// PreprocessTxsAsync provides a mock function with given fields: _a0, _a1
-func (_m *Client) PreprocessTxsAsync(_a0 context.Context, _a1 types.RequestPreprocessTxs) (*abciclient.ReqRes, error) {
-	ret := _m.Called(_a0, _a1)
-
-	var r0 *abciclient.ReqRes
-	if rf, ok := ret.Get(0).(func(context.Context, types.RequestPreprocessTxs) *abciclient.ReqRes); ok {
-		r0 = rf(_a0, _a1)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*abciclient.ReqRes)
-		}
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, types.RequestPreprocessTxs) error); ok {
-		r1 = rf(_a0, _a1)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// PreprocessTxsSync provides a mock function with given fields: _a0, _a1
-func (_m *Client) PreprocessTxsSync(_a0 context.Context, _a1 types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error) {
-	ret := _m.Called(_a0, _a1)
-
-	var r0 *types.ResponsePreprocessTxs
-	if rf, ok := ret.Get(0).(func(context.Context, types.RequestPreprocessTxs) *types.ResponsePreprocessTxs); ok {
-		r0 = rf(_a0, _a1)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*types.ResponsePreprocessTxs)
-		}
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, types.RequestPreprocessTxs) error); ok {
-		r1 = rf(_a0, _a1)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
 // QueryAsync provides a mock function with given fields: _a0, _a1
 func (_m *Client) QueryAsync(_a0 context.Context, _a1 types.RequestQuery) (*abciclient.ReqRes, error) {
 	ret := _m.Called(_a0, _a1)
@@ -777,51 +696,18 @@ func (_m *Client) Quit() <-chan struct{} {
 	return r0
 }
 
-// Reset provides a mock function with given fields:
-func (_m *Client) Reset() error {
-	ret := _m.Called()
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func() error); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// SetLogger provides a mock function with given fields: _a0
-func (_m *Client) SetLogger(_a0 log.Logger) {
-	_m.Called(_a0)
-}
-
 // SetResponseCallback provides a mock function with given fields: _a0
 func (_m *Client) SetResponseCallback(_a0 abciclient.Callback) {
 	_m.Called(_a0)
 }
 
-// Start provides a mock function with given fields:
-func (_m *Client) Start() error {
-	ret := _m.Called()
+// Start provides a mock function with given fields: _a0
+func (_m *Client) Start(_a0 context.Context) error {
+	ret := _m.Called(_a0)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func() error); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// Stop provides a mock function with given fields:
-func (_m *Client) Stop() error {
-	ret := _m.Called()
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func() error); ok {
-		r0 = rf()
+	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
+		r0 = rf(_a0)
 	} else {
 		r0 = ret.Error(0)
 	}
