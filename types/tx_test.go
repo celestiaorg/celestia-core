@@ -185,6 +185,8 @@ func TestDecodeChildTx(t *testing.T) {
 	childTx, err := WrapChildTx(pHash[:], rawBlock)
 	require.NoError(t, err)
 
-	_, _, ok = DecodeChildTx(childTx)
+	unwrappedHash, unwrapped, ok := DecodeChildTx(childTx)
 	require.True(t, ok)
+	assert.Equal(t, 32, len(unwrappedHash))
+	require.Equal(t, rawBlock, []byte(unwrapped))
 }

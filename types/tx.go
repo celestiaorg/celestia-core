@@ -177,7 +177,7 @@ func DecodeChildTx(tx Tx) (hash []byte, unwrapped Tx, has bool) {
 	if err != nil {
 		return nil, nil, false
 	}
-	// this check isn't fool proof
+	// this check isn't fool proof but it should work most of the time
 	if len(childTx.ParentTxHash) != sha256.Size {
 		return nil, nil, false
 	}
