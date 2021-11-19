@@ -303,7 +303,7 @@ message ResponseProcessProposal {
   repeated bytes evidence = 2;
 
   enum Result {
-    UNKNOWN       = 0;  // Unknown result, treat as ACCEPT by default
+    UNKNOWN       = 0;  // Unknown result, invalidate
     ACCEPT        = 1;  // proposal verified, vote on the proposal
     REJECT        = 2;  // proposal invalidated
   }
