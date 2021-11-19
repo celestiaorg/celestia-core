@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -148,4 +149,42 @@ func assertBadProof(t *testing.T, root []byte, bad []byte, good TxProof) {
 			}
 		}
 	}
+}
+
+func TestDecodeChildTx(t *testing.T) {
+	tx := Tx{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0}
+	_, _, ok := DecodeChildTx(tx)
+	require.False(t, ok)
+
+	randomBlock := MakeBlock(
+		1,
+		[]Tx{tx},
+		nil,
+		nil,
+		[]Message{
+			{
+				NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
+				Data:        []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+			},
+		},
+		&Commit{},
+	)
+
+	protoB, err := randomBlock.ToProto()
+	require.NoError(t, err)
+
+	rawBlock, err := protoB.Marshal()
+	require.NoError(t, err)
+
+	// due to protobuf not actually requiring type compatability
+	// we need to make sure that there is some check
+	_, _, ok = DecodeChildTx(rawBlock)
+	require.False(t, ok)
+
+	pHash := sha256.Sum256(rawBlock)
+	childTx, err := WrapChildTx(pHash[:], rawBlock)
+	require.NoError(t, err)
+
+	_, _, ok = DecodeChildTx(childTx)
+	require.True(t, ok)
 }

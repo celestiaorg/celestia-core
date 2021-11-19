@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 
@@ -165,12 +166,19 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 // transaction wrapper, if this an be done, then it returns true. A child
 // transaction is a normal transaction that has been derived from a different
 // parent transaction. The returned hash is that of the parent transaction,
-// which allows us to remove the parent transaction from the mempool
+// which allows us to remove the parent transaction from the mempool. NOTE:
+// protobuf sometimes does not through an error if the transaction passed is not
+// a tmproto.ChildTx, since the schema for PayForMessage is kept in the app, we
+// cannot perform further checks without creating an import cycle.
 func DecodeChildTx(tx Tx) (hash []byte, unwrapped Tx, has bool) {
 	// attempt to unmarshal into a a child transaction
 	var childTx tmproto.ChildTx
 	err := proto.Unmarshal(tx, &childTx)
 	if err != nil {
+		return nil, nil, false
+	}
+	// this check isn't fool proof
+	if len(childTx.ParentTxHash) != sha256.Size {
 		return nil, nil, false
 	}
 	return childTx.ParentTxHash, childTx.Tx, true
