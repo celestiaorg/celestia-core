@@ -176,7 +176,7 @@ func TestDecodeChildTx(t *testing.T) {
 	rawBlock, err := protoB.Marshal()
 	require.NoError(t, err)
 
-	// due to protobuf not actually requiring type compatability
+	// due to protobuf not actually requiring type compatibility
 	// we need to make sure that there is some check
 	_, _, ok = DecodeChildTx(rawBlock)
 	require.False(t, ok)
