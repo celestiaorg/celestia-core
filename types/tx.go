@@ -2,7 +2,6 @@ package types
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 
@@ -177,8 +176,11 @@ func DecodeChildTx(tx Tx) (hash []byte, unwrapped Tx, has bool) {
 	if err != nil {
 		return nil, nil, false
 	}
-	// this check isn't fool proof but it should work most of the time
-	if len(childTx.ParentTxHash) != sha256.Size {
+	// this check will fail to catch unwanted types should those unmarshalled
+	// types happen to have a hash sized slice of bytes in the same field number
+	// as ParentTxHash. TODO(evan): either fix this, or better yet use a different
+	// mechanism
+	if len(childTx.ParentTxHash) != tmhash.Size {
 		return nil, nil, false
 	}
 	return childTx.ParentTxHash, childTx.Tx, true
