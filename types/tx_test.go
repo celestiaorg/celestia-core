@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -148,4 +149,48 @@ func assertBadProof(t *testing.T, root []byte, bad []byte, good TxProof) {
 			}
 		}
 	}
+}
+
+func TestDecodeChildTx(t *testing.T) {
+	// perform a simple test for being unable to decode a non
+	// child transaction
+	tx := Tx{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0}
+	_, _, ok := DecodeChildTx(tx)
+	require.False(t, ok)
+
+	// create a proto message that used to be decoded when it shouldn't have
+	randomBlock := MakeBlock(
+		1,
+		[]Tx{tx},
+		nil,
+		nil,
+		[]Message{
+			{
+				NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
+				Data:        []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+			},
+		},
+		&Commit{},
+	)
+
+	protoB, err := randomBlock.ToProto()
+	require.NoError(t, err)
+
+	rawBlock, err := protoB.Marshal()
+	require.NoError(t, err)
+
+	// due to protobuf not actually requiring type compatibility
+	// we need to make sure that there is some check
+	_, _, ok = DecodeChildTx(rawBlock)
+	require.False(t, ok)
+
+	pHash := sha256.Sum256(rawBlock)
+	childTx, err := WrapChildTx(pHash[:], rawBlock)
+	require.NoError(t, err)
+
+	// finally, ensure that the unwrapped bytes are identical to the input
+	unwrappedHash, unwrapped, ok := DecodeChildTx(childTx)
+	require.True(t, ok)
+	assert.Equal(t, 32, len(unwrappedHash))
+	require.Equal(t, rawBlock, []byte(unwrapped))
 }
