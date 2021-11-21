@@ -105,7 +105,7 @@ func (b *Block) fillHeader() {
 		b.LastCommitHash = b.LastCommit.Hash()
 	}
 	if b.DataHash == nil {
-		b.fillDataAvailabilityHeader()
+		b.DataHash = b.Data.Hash()
 	}
 	if b.EvidenceHash == nil {
 		b.EvidenceHash = b.Evidence.Hash()
@@ -243,9 +243,6 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 		return nil, err
 	}
 	b.Data = data
-	if err := b.Evidence.FromProto(&bp.Evidence); err != nil {
-		return nil, err
-	}
 
 	dah, err := da.DataAvailabilityHeaderFromProto(bp.DataAvailabilityHeader)
 	if err != nil {
