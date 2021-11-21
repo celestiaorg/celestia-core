@@ -167,7 +167,7 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 // transaction is a normal transaction that has been derived from a different
 // parent transaction. The returned hash is that of the parent transaction,
 // which allows us to remove the parent transaction from the mempool. NOTE:
-// protobuf sometimes does not through an error if the transaction passed is not
+// protobuf sometimes does not throw an error if the transaction passed is not
 // a tmproto.ChildTx, since the schema for PayForMessage is kept in the app, we
 // cannot perform further checks without creating an import cycle.
 func DecodeChildTx(tx Tx) (hash []byte, unwrapped Tx, has bool) {
