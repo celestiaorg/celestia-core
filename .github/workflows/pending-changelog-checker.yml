@@ -15,7 +15,7 @@ jobs:
       - name: Changelog check
         uses: celestiaorg/changelog-checker@v1
         with:
-          fileName: CHANGELOG_PENDING.md
+          fileName: CELESTIA_CHANGELOG.md
           checkNotification: Simple
           noChangeLogLabel: no_changelog
         env:
