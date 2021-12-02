@@ -80,7 +80,7 @@ func DefaultConfig(dir string) *Config {
 
 // NewApplication creates the application.
 func NewApplication(cfg *Config) (*Application, error) {
-	state, err := NewState(filepath.Join(cfg.Dir, "state.json"), cfg.PersistInterval)
+	state, err := NewState(cfg.Dir, cfg.PersistInterval)
 	if err != nil {
 		return nil, err
 	}
@@ -267,10 +267,8 @@ func (app *Application) ApplySnapshotChunk(req abci.RequestApplySnapshotChunk) a
 	return abci.ResponseApplySnapshotChunk{Result: abci.ResponseApplySnapshotChunk_ACCEPT}
 }
 
-// PreprocessTxs implements ABCI
-func (app *Application) PreprocessTxs(
-	req abci.RequestPreprocessTxs) abci.ResponsePreprocessTxs {
-	return abci.ResponsePreprocessTxs{Txs: req.Txs}
+func (app *Application) Rollback() error {
+	return app.state.Rollback()
 }
 
 // validatorUpdates generates a validator set update.
