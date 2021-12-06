@@ -1,5 +1,8 @@
 # Celestia Specific Changelog
 
+## Unreleased Changes
+- Add .github/workflows/pending-changelog-checker.yml to enforce updating this file (`CELESTIA_CHANGELOG.md`) on commits to `master` branch. 
+
 ## v0.1
 
 ### BREAKING CHANGES

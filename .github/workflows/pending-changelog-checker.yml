@@ -1,0 +1,23 @@
+name: "Pending Changelog Checker"
+
+on:
+  pull_request:
+    types: [assigned, opened, synchronize, reopened, labeled, unlabeled]
+    branches:
+      - master
+      - release/**
+
+jobs:
+  changelog-checker:
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: "Checkout source code"
+        uses: "actions/checkout@v2"
+      - name: Changelog check
+        uses: celestiaorg/changelog-checker@v1
+        with:
+          fileName: CELESTIA_CHANGELOG.md
+          checkNotification: Simple
+          noChangeLogLabel: no_changelog
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
