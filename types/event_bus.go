@@ -179,12 +179,9 @@ func (b *EventBus) PublishEventTx(data EventDataTx) error {
 
 	var txHash []byte
 	if parentHash, childTx, isChildTx := DecodeChildTx(data.Tx); isChildTx {
-		fmt.Println("found child tx, using parent hash for event")
 		txHash = parentHash
 		data.Tx = childTx
-		txHash = Tx(data.Tx).Hash()
 	} else {
-		fmt.Println("found normal tx, not using parent hash")
 		txHash = Tx(data.Tx).Hash()
 	}
 
