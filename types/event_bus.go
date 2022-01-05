@@ -178,7 +178,7 @@ func (b *EventBus) PublishEventTx(data EventDataTx) error {
 	ctx := context.Background()
 
 	var txHash []byte
-	if parentHash, childTx, isChildTx := DecodeChildTx(data.Tx); isChildTx {
+	if parentHash, childTx, isChildTx := UnwrapChildTx(data.Tx); isChildTx {
 		txHash = parentHash
 		data.Tx = childTx
 	} else {

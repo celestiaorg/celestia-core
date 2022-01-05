@@ -607,7 +607,7 @@ func (mem *CListMempool) Update(
 			mem.removeTx(tx, e.(*clist.CElement), false)
 			// see if the transaction is a child transaction of a some parent
 			// transaction that exists in the mempool
-		} else if parentHash, _, isChild := types.DecodeChildTx(tx); isChild {
+		} else if parentHash, _, isChild := types.UnwrapChildTx(tx); isChild {
 			var parentKey [TxKeySize]byte
 			copy(parentKey[:], parentHash)
 			mem.RemoveTxByKey(parentKey, false)
