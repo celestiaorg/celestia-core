@@ -161,39 +161,39 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 	return int64(pdData.Size())
 }
 
-// UnwrapChildTx attempts to unmarshal the provided transaction into a child
-// transaction wrapper, if this an be done, then it returns true. A child
+// UnwrapMalleatedTx attempts to unmarshal the provided transaction into a malleated
+// transaction wrapper, if this an be done, then it returns true. A malleated
 // transaction is a normal transaction that has been derived (malleated) from a
-// different parent transaction. The returned hash is that of the parent
-// transaction, which allows us to remove the parent transaction from the
+// different original transaction. The returned hash is that of the original
+// transaction, which allows us to remove the original transaction from the
 // mempool. NOTE: protobuf sometimes does not throw an error if the transaction
-// passed is not a tmproto.ChildTx, since the schema for PayForMessage is kept
+// passed is not a tmproto.MalleatedTx, since the schema for PayForMessage is kept
 // in the app, we cannot perform further checks without creating an import
 // cycle.
-func UnwrapChildTx(tx Tx) (parentHash []byte, unwrapped Tx, isChild bool) {
-	// attempt to unmarshal into a a child transaction
-	var childTx tmproto.ChildTx
-	err := proto.Unmarshal(tx, &childTx)
+func UnwrapMalleatedTx(tx Tx) (originalHash []byte, unwrapped Tx, isMalleated bool) {
+	// attempt to unmarshal into a a malleated transaction
+	var malleatedTx tmproto.MalleatedTx
+	err := proto.Unmarshal(tx, &malleatedTx)
 	if err != nil {
 		return nil, nil, false
 	}
 	// this check will fail to catch unwanted types should those unmarshalled
 	// types happen to have a hash sized slice of bytes in the same field number
-	// as ParentTxHash. TODO(evan): either fix this, or better yet use a different
+	// as originalTxHash. TODO(evan): either fix this, or better yet use a different
 	// mechanism
-	if len(childTx.ParentTxHash) != tmhash.Size {
+	if len(malleatedTx.OriginalTxHash) != tmhash.Size {
 		return nil, nil, false
 	}
-	return childTx.ParentTxHash, childTx.Tx, true
+	return malleatedTx.OriginalTxHash, malleatedTx.Tx, true
 }
 
-// WrapChildTx creates a wrapped Tx that includes the parent transaction's hash
+// WrapMalleatedTx creates a wrapped Tx that includes the original transaction's hash
 // so that it can be easily removed from the mempool. note: must be unwrapped to
 // be a viable sdk.Tx
-func WrapChildTx(parentHash []byte, child Tx) (Tx, error) {
-	wTx := tmproto.ChildTx{
-		ParentTxHash: parentHash,
-		Tx:           child,
+func WrapMalleatedTx(originalHash []byte, malleated Tx) (Tx, error) {
+	wTx := tmproto.MalleatedTx{
+		OriginalTxHash: originalHash,
+		Tx:             malleated,
 	}
 	return proto.Marshal(&wTx)
 }

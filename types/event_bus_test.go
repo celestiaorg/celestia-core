@@ -76,8 +76,8 @@ func TestEventBusPublishEventMalleatedTx(t *testing.T) {
 	})
 
 	tx := Tx("foo")
-	childTx := Tx("foo-malleated")
-	wrappedChildTx, err := WrapChildTx(tx.Hash(), childTx)
+	malleatedTx := Tx("foo-malleated")
+	wrappedMalleatedTx, err := WrapMalleatedTx(tx.Hash(), malleatedTx)
 	require.NoError(t, err)
 
 	result := abci.ResponseDeliverTx{
@@ -98,7 +98,7 @@ func TestEventBusPublishEventMalleatedTx(t *testing.T) {
 		edt := msg.Data().(EventDataTx)
 		assert.Equal(t, int64(1), edt.Height)
 		assert.Equal(t, uint32(0), edt.Index)
-		assert.EqualValues(t, childTx, edt.Tx)
+		assert.EqualValues(t, malleatedTx, edt.Tx)
 		assert.Equal(t, result, edt.Result)
 		close(done)
 	}()
@@ -106,7 +106,7 @@ func TestEventBusPublishEventMalleatedTx(t *testing.T) {
 	err = eventBus.PublishEventTx(EventDataTx{abci.TxResult{
 		Height: 1,
 		Index:  0,
-		Tx:     wrappedChildTx,
+		Tx:     wrappedMalleatedTx,
 		Result: result,
 	}})
 	assert.NoError(t, err)

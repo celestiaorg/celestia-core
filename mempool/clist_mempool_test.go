@@ -215,22 +215,22 @@ func TestMempoolUpdate(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// 4. Removes a parent transaction after receiving a child transaction in the update
+	// 4. Removes a original transaction after receiving a malleated transaction in the update
 	{
 		mempool.Flush()
-		parentTx := []byte{1, 2, 3, 4}
-		childTx := []byte{1, 2}
-		parentHash := sha256.Sum256(parentTx)
+		originalTx := []byte{1, 2, 3, 4}
+		malleated := []byte{1, 2}
+		originalHash := sha256.Sum256(originalTx)
 
-		// create the wrapped child transaction
-		wTx, err := types.WrapChildTx(parentHash[:], childTx)
+		// create the wrapped malleated transaction
+		wTx, err := types.WrapMalleatedTx(originalHash[:], malleated)
 		require.NoError(t, err)
 
-		// add the parent transaction to the mempool
-		err = mempool.CheckTx(parentTx, nil, TxInfo{})
+		// add the original transaction to the mempool
+		err = mempool.CheckTx(originalTx, nil, TxInfo{})
 		require.NoError(t, err)
 
-		// remove the parent from the mempool using the wrapped child tx
+		// remove the original from the mempool using the wrapped malleated tx
 		err = mempool.Update(1, []types.Tx{wTx}, abciResponses(1, abci.CodeTypeOK), nil, nil)
 		require.NoError(t, err)
 
