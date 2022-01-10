@@ -146,28 +146,21 @@ func TestEventBusPublishEventNewBlock(t *testing.T) {
 	blocksSub, err := eventBus.Subscribe(context.Background(), "test", tmquery.MustParse(query))
 	require.NoError(t, err)
 
-	done := make(chan struct{})
-	go func() {
-		msg := <-blocksSub.Out()
-		edt := msg.Data().(EventDataNewBlock)
-		assert.Equal(t, block, edt.Block)
-		assert.Equal(t, resultBeginBlock, edt.ResultBeginBlock)
-		assert.Equal(t, resultEndBlock, edt.ResultEndBlock)
-		close(done)
-	}()
-
 	err = eventBus.PublishEventNewBlock(EventDataNewBlock{
 		Block:            block,
 		ResultBeginBlock: resultBeginBlock,
 		ResultEndBlock:   resultEndBlock,
 	})
-	assert.NoError(t, err)
 
-	select {
-	case <-done:
-	case <-time.After(1 * time.Second):
-		t.Fatal("did not receive a block after 1 sec.")
-	}
+	done := make(chan struct{})
+	// go func() {
+	msg := <-blocksSub.Out()
+	edt := msg.Data().(EventDataNewBlock)
+	assert.Equal(t, block, edt.Block)
+	assert.Equal(t, resultBeginBlock, edt.ResultBeginBlock)
+	assert.Equal(t, resultEndBlock, edt.ResultEndBlock)
+	close(done)
+	assert.NoError(t, err)
 }
 
 func TestEventBusPublishEventTxDuplicateKeys(t *testing.T) {
