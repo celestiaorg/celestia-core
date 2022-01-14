@@ -5,9 +5,11 @@ set -eo pipefail
 
 git clone https://github.com/celestiaorg/spec
 
-cp -r spec/proto/tendermint proto/tendermint
+cp -r spec/proto/tendermint proto
 
 buf generate --path proto/tendermint
+
+mv ./proto/tendermint/abci/types.pb.go ./abci/types
 
 find proto/tendermint/ -name "*.proto" -exec rm -rf {} \;
 
