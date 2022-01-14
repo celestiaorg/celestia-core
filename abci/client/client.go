@@ -130,6 +130,7 @@ func (r *ReqRes) InvokeCallback() {
 	if r.cb != nil {
 		r.cb(r.Response)
 	}
+
 }
 
 // GetCallback returns the configured callback of the ReqRes object which may be
