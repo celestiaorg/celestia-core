@@ -1,7 +1,8 @@
 # Celestia Specific Changelog
 
 ## Unreleased Changes
-- Add .github/workflows/pending-changelog-checker.yml to enforce updating this file (`CELESTIA_CHANGELOG.md`) on commits to `master` branch. 
+- Add .github/workflows/pending-changelog-checker.yml to enforce updating this file (`CELESTIA_CHANGELOG.md`) on commits to `master` branch.
+- [proto: moves proto files to](https://github.com/celestiaorg/celestia-core/pull/608) [spec](https://github.com/celestiaorg/spec) @sweexordious
 
 ## v0.1
 
@@ -13,7 +14,7 @@
 - Data Hash
     - [types] \#246 Spec compliant share splitting
     - [types] \#261 Spec compliant merge shares
-    - [types] \#83 Transactions, intermediate state roots, evidence, and messages are now included in the block data. 
+    - [types] \#83 Transactions, intermediate state roots, evidence, and messages are now included in the block data.
     - [da] \#83 and \#539 Introduction of the `DataAvailabilityHeader` and block data erasure
     - [types] \#539 the data hash now commits to the erasured block data instead of only the raw transactions
 
