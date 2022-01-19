@@ -181,6 +181,8 @@ func (b *EventBus) PublishEventTx(data EventDataTx) error {
 	var txHash []byte
 	if len(data.OriginalHash) == tmhash.Size {
 		txHash = data.OriginalHash
+	} else {
+		txHash = Tx(data.Tx).Hash()
 	}
 
 	events := b.validateAndStringifyEvents(data.Result.Events, b.Logger.With("tx", data.Tx))
