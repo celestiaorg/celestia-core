@@ -74,13 +74,11 @@ func TestMalleatedTxIndex(t *testing.T) {
 	}
 	originalTx1 := types.Tx([]byte("ORIGINAL_TX"))
 	malleatedTx1 := types.Tx([]byte("MALLEATED_TX"))
-	wrappedTx, err := types.WrapMalleatedTx(originalTx1.Hash(), malleatedTx1)
-	require.NoError(t, err)
 
 	tests := []test{
 		// we expect to get the malleated tx returned when searching using the original hash
 		{
-			tx:           wrappedTx,
+			tx:           malleatedTx1,
 			originalHash: originalTx1.Hash(),
 			expectedTx:   malleatedTx1,
 		},
@@ -98,6 +96,7 @@ func TestMalleatedTxIndex(t *testing.T) {
 				Data: []byte{0},
 				Code: abci.CodeTypeOK, Log: "", Events: nil,
 			},
+			OriginalHash: tt.originalHash,
 		}
 		batch := txindex.NewBatch(1)
 		if err := batch.Add(txResult); err != nil {
