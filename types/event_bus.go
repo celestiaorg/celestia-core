@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/log"
 	tmpubsub "github.com/tendermint/tendermint/libs/pubsub"
 	"github.com/tendermint/tendermint/libs/service"
@@ -178,11 +179,8 @@ func (b *EventBus) PublishEventTx(data EventDataTx) error {
 	ctx := context.Background()
 
 	var txHash []byte
-	if originalHash, malleated, ismalleated := UnwrapMalleatedTx(data.Tx); ismalleated {
-		txHash = originalHash
-		data.Tx = malleated
-	} else {
-		txHash = Tx(data.Tx).Hash()
+	if len(data.OriginalHash) == tmhash.Size {
+		txHash = data.OriginalHash
 	}
 
 	events := b.validateAndStringifyEvents(data.Result.Events, b.Logger.With("tx", data.Tx))
