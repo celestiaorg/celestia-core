@@ -69,7 +69,10 @@ func (txi *TxIndex) AddBatch(b *txindex.Batch) error {
 	defer storeBatch.Close()
 
 	for _, result := range b.Ops {
-		txi.indexResult(storeBatch, result)
+		err := txi.indexResult(storeBatch, result)
+		if err != nil {
+			return err
+		}
 	}
 
 	return storeBatch.WriteSync()
@@ -83,7 +86,10 @@ func (txi *TxIndex) Index(result *abci.TxResult) error {
 	b := txi.store.NewBatch()
 	defer b.Close()
 
-	txi.indexResult(b, result)
+	err := txi.indexResult(b, result)
+	if err != nil {
+		return err
+	}
 
 	return b.WriteSync()
 }
