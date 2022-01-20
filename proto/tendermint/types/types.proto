@@ -89,8 +89,8 @@ message Data {
   repeated bytes txs = 1;
 
   IntermediateStateRoots intermediate_state_roots = 2 [(gogoproto.nullable) = false];
-  EvidenceList evidence    = 3 [(gogoproto.nullable) = false];
-  Messages messages        = 4 [(gogoproto.nullable) = false];
+  EvidenceList           evidence                 = 3 [(gogoproto.nullable) = false];
+  Messages               messages                 = 4 [(gogoproto.nullable) = false];
 }
 
 // DuplicateVoteEvidence contains evidence of a validator signed two conflicting votes.
@@ -170,10 +170,10 @@ message Vote {
 
 // Commit contains the evidence that a block was committed by a set of validators.
 message Commit {
-  int64                         height     = 1;
-  int32                         round      = 2;
-  BlockID                       block_id   = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
-  repeated CommitSig            signatures = 4 [(gogoproto.nullable) = false];
+  int64              height     = 1;
+  int32              round      = 2;
+  BlockID            block_id   = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
+  repeated CommitSig signatures = 4 [(gogoproto.nullable) = false];
 }
 
 // CommitSig is a part of the Vote included in a Commit.
@@ -225,5 +225,5 @@ message TxProof {
 // transactions
 message MalleatedTx {
   bytes original_tx_hash = 1;
-  bytes tx = 2;
+  bytes tx               = 2;
 }
