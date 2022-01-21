@@ -40,8 +40,10 @@ const (
 	// Uvarint length of MaxBlockSizeBytes: 4 bytes
 	// 2 fields (2 embedded):               2 bytes
 	// Uvarint length of Data.Txs:          4 bytes
-	// Data.Txs field:                      1 byte
-	MaxOverheadForBlock int64 = 11
+	// Data fields:                         6 bytes
+	// Hash in Data                        32 bytes
+	// OriginalSquareSize in Data           8 bytes
+	MaxOverheadForBlock int64 = 56
 )
 
 // Block defines the atomic unit of a Tendermint blockchain.

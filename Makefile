@@ -4,6 +4,9 @@ BUILDDIR ?= $(CURDIR)/build
 
 BUILD_TAGS?=tendermint
 
+IMAGE := ghcr.io/tendermint/docker-build-proto:latest
+DOCKER_PROTO_BUILDER := docker run -v $(shell pwd):/workspace --workdir /workspace $(IMAGE)
+
 # If building a release, please checkout the version tag to get the correct version setting
 ifneq ($(shell git symbolic-ref -q --short HEAD),)
 VERSION := unreleased-$(shell git symbolic-ref -q --short HEAD)-$(shell git rev-parse HEAD)
@@ -80,7 +83,7 @@ $(BUILDDIR)/:
 ###                                Protobuf                                 ###
 ###############################################################################
 
-proto-all: proto-gen proto-lint proto-check-breaking
+proto-all: proto-lint proto-check-breaking
 .PHONY: proto-all
 
 proto-gen:

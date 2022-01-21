@@ -3,6 +3,7 @@ package v0
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	mrand "math/rand"
@@ -226,24 +227,24 @@ func TestMempoolUpdate(t *testing.T) {
 
 	// 4. Removes a parent transaction after receiving a child transaction in the update
 	{
-		mempool.Flush()
-		parentTx := []byte{1, 2, 3, 4}
-		childTx := []byte{1, 2}
-		parentHash := sha256.Sum256(parentTx)
+		mp.Flush()
+		originalTx := []byte{1, 2, 3, 4}
+		malleatedTx := []byte{1, 2}
+		originalHash := sha256.Sum256(originalTx)
 
 		// create the wrapped child transaction
-		wTx, err := types.WrapChildTx(parentHash[:], childTx)
+		wTx, err := types.WrapMalleatedTx(originalHash[:], malleatedTx)
 		require.NoError(t, err)
 
 		// add the parent transaction to the mempool
-		err = mempool.CheckTx(parentTx, nil, TxInfo{})
+		err = mp.CheckTx(context.Background(), originalTx, nil, mempool.TxInfo{})
 		require.NoError(t, err)
 
 		// remove the parent from the mempool using the wrapped child tx
-		err = mempool.Update(1, []types.Tx{wTx}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+		err = mp.Update(1, []types.Tx{wTx}, abciResponses(1, abci.CodeTypeOK), nil, nil)
 		require.NoError(t, err)
 
-		assert.Zero(t, mempool.Size())
+		assert.Zero(t, mp.Size())
 
 	}
 }

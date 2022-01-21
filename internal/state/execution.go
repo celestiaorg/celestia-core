@@ -544,11 +544,22 @@ func fireEvents(
 	}
 
 	for i, tx := range block.Data.Txs {
+		var txHash []byte
+		var rawTx []byte
+		if originalHash, malleatedTx, ismalleated := types.UnwrapMalleatedTx(tx); ismalleated {
+			txHash = originalHash
+			rawTx = malleatedTx
+		} else {
+			txHash = tx.Hash()
+			rawTx = tx
+		}
+
 		if err := eventBus.PublishEventTx(types.EventDataTx{TxResult: abci.TxResult{
-			Height: block.Height,
-			Index:  uint32(i),
-			Tx:     tx,
-			Result: *(abciResponses.DeliverTxs[i]),
+			Height:       block.Height,
+			Index:        uint32(i),
+			Tx:           rawTx,
+			Result:       *(abciResponses.DeliverTxs[i]),
+			OriginalHash: txHash,
 		}}); err != nil {
 			logger.Error("failed publishing event TX", "err", err)
 		}

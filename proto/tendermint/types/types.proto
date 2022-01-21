@@ -201,9 +201,10 @@ message TxProof {
   tendermint.crypto.Proof proof     = 3;
 }
 
-// ChildTx wraps a transaction that was derived from a parent transaction. This
-// allows for removal of the parent transaction from the mempool.
-message ChildTx {
-  bytes parent_tx_hash = 1;
-  bytes tx = 2;
+// MalleatedTx wraps a transaction that was derived from a different original
+// transaction. This allows for tendermint to track malleated and original
+// transactions
+message MalleatedTx {
+  bytes original_tx_hash = 1;
+  bytes tx               = 2;
 }
