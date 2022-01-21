@@ -12,6 +12,7 @@ import (
 	dbm "github.com/tendermint/tm-db"
 
 	abci "github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/pubsub/query"
 	"github.com/tendermint/tendermint/state/indexer"
 	"github.com/tendermint/tendermint/state/txindex"
@@ -69,26 +70,7 @@ func (txi *TxIndex) AddBatch(b *txindex.Batch) error {
 	defer storeBatch.Close()
 
 	for _, result := range b.Ops {
-		hash := types.Tx(result.Tx).Hash()
-
-		// index tx by events
-		err := txi.indexEvents(result, hash, storeBatch)
-		if err != nil {
-			return err
-		}
-
-		// index by height (always)
-		err = storeBatch.Set(keyForHeight(result), hash)
-		if err != nil {
-			return err
-		}
-
-		rawBytes, err := proto.Marshal(result)
-		if err != nil {
-			return err
-		}
-		// index by hash (always)
-		err = storeBatch.Set(hash, rawBytes)
+		err := txi.indexResult(storeBatch, result)
 		if err != nil {
 			return err
 		}
@@ -105,26 +87,7 @@ func (txi *TxIndex) Index(result *abci.TxResult) error {
 	b := txi.store.NewBatch()
 	defer b.Close()
 
-	hash := types.Tx(result.Tx).Hash()
-
-	// index tx by events
-	err := txi.indexEvents(result, hash, b)
-	if err != nil {
-		return err
-	}
-
-	// index by height (always)
-	err = b.Set(keyForHeight(result), hash)
-	if err != nil {
-		return err
-	}
-
-	rawBytes, err := proto.Marshal(result)
-	if err != nil {
-		return err
-	}
-	// index by hash (always)
-	err = b.Set(hash, rawBytes)
+	err := txi.indexResult(b, result)
 	if err != nil {
 		return err
 	}
@@ -155,6 +118,39 @@ func (txi *TxIndex) indexEvents(result *abci.TxResult, hash []byte, store dbm.Ba
 		}
 	}
 
+	return nil
+}
+
+func (txi *TxIndex) indexResult(batch dbm.Batch, result *abci.TxResult) error {
+	var hash []byte
+	if len(result.OriginalHash) == tmhash.Size {
+		hash = result.OriginalHash
+	} else {
+		hash = types.Tx(result.Tx).Hash()
+	}
+
+	rawBytes, err := proto.Marshal(result)
+	if err != nil {
+		return err
+	}
+
+	// index tx by events
+	err = txi.indexEvents(result, hash, batch)
+	if err != nil {
+		return err
+	}
+
+	// index by height (always)
+	err = batch.Set(keyForHeight(result), hash)
+	if err != nil {
+		return err
+	}
+
+	// index by hash (always)
+	err = batch.Set(hash, rawBytes)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -228,7 +228,7 @@ message ResponseDeliverTx {
   int64          gas_wanted = 5 [json_name = "gas_wanted"];
   int64          gas_used   = 6 [json_name = "gas_used"];
   repeated Event events     = 7
-      [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"]; // nondeterministic
+      [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];  // nondeterministic
   string codespace = 8;
 }
 
@@ -334,10 +334,11 @@ message EventAttribute {
 //
 // One usage is indexing transaction results.
 message TxResult {
-  int64             height = 1;
-  uint32            index  = 2;
-  bytes             tx     = 3;
-  ResponseDeliverTx result = 4 [(gogoproto.nullable) = false];
+  int64             height        = 1;
+  uint32            index         = 2;
+  bytes             tx            = 3;
+  ResponseDeliverTx result        = 4 [(gogoproto.nullable) = false];
+  bytes             original_hash = 5;
 }
 
 //----------------------------------------

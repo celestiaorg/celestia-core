@@ -3,6 +3,9 @@ OUTPUT?=build/tendermint
 
 BUILD_TAGS?=tendermint
 
+IMAGE := ghcr.io/tendermint/docker-build-proto:latest
+DOCKER_PROTO_BUILDER := docker run -v $(shell pwd):/workspace --workdir /workspace $(IMAGE)
+
 # If building a release, please checkout the version tag to get the correct version setting
 ifneq ($(shell git symbolic-ref -q --short HEAD),)
 VERSION := unreleased-$(shell git symbolic-ref -q --short HEAD)-$(shell git rev-parse HEAD)
@@ -13,7 +16,6 @@ endif
 LD_FLAGS = -X github.com/tendermint/tendermint/version.TMCoreSemVer=$(VERSION)
 BUILD_FLAGS = -mod=readonly -ldflags "$(LD_FLAGS)"
 HTTPS_GIT := https://github.com/tendermint/tendermint.git
-DOCKER_BUF := docker run -v $(shell pwd):/workspace --workdir /workspace bufbuild/buf
 CGO_ENABLED ?= 0
 
 # handle nostrip
@@ -74,30 +76,29 @@ install:
 ###                                Protobuf                                 ###
 ###############################################################################
 
-proto-all: proto-gen proto-lint proto-check-breaking
+proto-all: proto-lint proto-check-breaking
 .PHONY: proto-all
 
 proto-gen:
-	@docker pull -q tendermintdev/docker-build-proto
 	@echo "Generating Protobuf files"
-	@docker run -v $(shell pwd):/workspace --workdir /workspace tendermintdev/docker-build-proto sh ./scripts/protocgen.sh
+	@$(DOCKER_PROTO_BUILDER) buf generate --template=./buf.gen.yaml --config ./buf.yaml
 .PHONY: proto-gen
 
 proto-lint:
-	@$(DOCKER_BUF) check lint --error-format=json
+	@$(DOCKER_PROTO_BUILDER) buf lint --error-format=json --config ./buf.yaml
 .PHONY: proto-lint
 
 proto-format:
 	@echo "Formatting Protobuf files"
-	docker run -v $(shell pwd):/workspace --workdir /workspace tendermintdev/docker-build-proto find ./ -not -path "./third_party/*" -name *.proto -exec clang-format -i {} \;
+	@$(DOCKER_PROTO_BUILDER) find . -name '*.proto' -path "./proto/*" -exec clang-format -i {} \;
 .PHONY: proto-format
 
 proto-check-breaking:
-	@$(DOCKER_BUF) check breaking --against-input .git#branch=master
+	@$(DOCKER_PROTO_BUILDER) buf breaking --against .git --config ./buf.yaml
 .PHONY: proto-check-breaking
 
 proto-check-breaking-ci:
-	@$(DOCKER_BUF) check breaking --against-input $(HTTPS_GIT)#branch=master
+	@$(DOCKER_PROTO_BUILDER) buf breaking --against $(HTTPS_GIT) --config ./buf.yaml
 .PHONY: proto-check-breaking-ci
 
 ###############################################################################

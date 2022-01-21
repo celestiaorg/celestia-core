@@ -98,7 +98,7 @@ func (BaseApplication) ApplySnapshotChunk(req RequestApplySnapshotChunk) Respons
 }
 
 func (BaseApplication) PreprocessTxs(req RequestPreprocessTxs) ResponsePreprocessTxs {
-	return ResponsePreprocessTxs{}
+	return ResponsePreprocessTxs{Txs: req.Txs}
 }
 
 //-------------------------------------------------------

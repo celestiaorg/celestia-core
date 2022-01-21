@@ -14,8 +14,8 @@ option go_package = "github.com/tendermint/tendermint/proto/tendermint/da";
 // Note that currently we list row and column roots in separate fields
 // (different from the spec).
 message DataAvailabilityHeader {
-    // RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
-    repeated bytes row_roots = 1;
-    // ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
-    repeated bytes column_roots = 2;
-  }
+  // RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
+  repeated bytes row_roots = 1;
+  // ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
+  repeated bytes column_roots = 2;
+}
