@@ -72,3 +72,7 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex)
 func (w *ErasuredNamespacedMerkleTree) Root() []byte {
 	return w.tree.Root()
 }
+
+func (w *ErasuredNamespacedMerkleTree) Prove(ind int) (nmt.Proof, error) {
+	return w.tree.Prove(ind)
+}

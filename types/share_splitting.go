@@ -27,7 +27,7 @@ func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) 
 
 // splitMessage breaks the data in a message into the minimum number of
 // namespaced shares
-func splitMessage(rawData []byte, nid namespace.ID) []NamespacedShare {
+func splitMessage(rawData []byte, nid namespace.ID) NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	firstRawShare := append(append(
 		make([]byte, 0, consts.ShareSize),
