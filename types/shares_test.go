@@ -209,7 +209,7 @@ func Test_appendToSharesOverwrite(t *testing.T) {
 	copy(extraCopy, newShare.Share[:consts.MsgShareSize])
 
 	// use appendToShares to add our new share
-	appendToShares(shares, newShare.ID, newShare.Share)
+	AppendToShares(shares, newShare.ID, newShare.Share)
 
 	// check if the original share data has been overwritten.
 	assert.Equal(t, extraCopy, []byte(newShare.Share[:consts.MsgShareSize]))

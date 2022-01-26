@@ -9,7 +9,7 @@ import (
 
 // appendToShares appends raw data as shares.
 // Used for messages.
-func appendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) []NamespacedShare {
+func AppendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) []NamespacedShare {
 	if len(rawData) <= consts.MsgShareSize {
 		rawShare := append(append(
 			make([]byte, 0, len(nid)+len(rawData)),
