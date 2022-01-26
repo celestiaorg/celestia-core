@@ -16,7 +16,7 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-func TestProveTxInclusion(t *testing.T) {
+func TestTxInclusion(t *testing.T) {
 	txCount := 100
 	typicalBlockData := types.Data{
 		Txs:      generateRandomlySizedContiguousShares(txCount, 200),
@@ -29,7 +29,7 @@ func TestProveTxInclusion(t *testing.T) {
 	squareSize := uint64(math.Sqrt(float64(len(shares))))
 
 	for i := 0; i < txCount; i++ {
-		txProof, err := ProveTxInclusion(consts.DefaultCodec(), typicalBlockData, int(squareSize), i)
+		txProof, err := TxInclusion(consts.DefaultCodec(), typicalBlockData, int(squareSize), i)
 		require.NoError(t, err)
 		assert.True(t, txProof.VerifyProof())
 	}
