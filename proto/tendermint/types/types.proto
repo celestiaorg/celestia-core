@@ -91,6 +91,7 @@ message Data {
   IntermediateStateRoots intermediate_state_roots = 2 [(gogoproto.nullable) = false];
   EvidenceList           evidence                 = 3 [(gogoproto.nullable) = false];
   Messages               messages                 = 4 [(gogoproto.nullable) = false];
+  uint64                 original_square_size     = 5;
 }
 
 // DuplicateVoteEvidence contains evidence of a validator signed two conflicting votes.
@@ -215,9 +216,9 @@ message BlockMeta {
 
 // TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
 message TxProof {
-  bytes                   root_hash = 1;
-  bytes                   data      = 2;
-  tendermint.crypto.Proof proof     = 3;
+  repeated bytes    row_roots = 1;
+  repeated bytes    data      = 2;
+  repeated NMTProof proofs    = 3;
 }
 
 // MalleatedTx wraps a transaction that was derived from a different original
