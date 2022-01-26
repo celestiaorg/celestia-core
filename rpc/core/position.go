@@ -21,10 +21,9 @@ const (
 // It is possible that a transaction spans more than one row. In that case, we
 // have to return two proofs.
 func ProveTxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex int) ([]nmt.Proof, error) {
-	squareSize := origSquareSize * 2
 	startPos, endPos := txSharePosition(data.Txs, txIndex)
-	startRow := startPos / squareSize
-	endRow := endPos / squareSize
+	startRow := startPos / origSquareSize
+	endRow := endPos / origSquareSize
 
 	if (endPos - startPos) > 1 {
 		return nil, errors.New("transaction spanned more than two shares, this is not yet supported")
@@ -32,7 +31,7 @@ func ProveTxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txInd
 
 	rowShares := genRowShares(consts.DefaultCodec(), data, origSquareSize, startRow, endRow)
 
-	var proofs []nmt.Proof
+	var proofs []nmt.Proof //nolint:prealloc // rarely will this contain more than a single proof
 	for i, row := range rowShares {
 		// create an nmt to use to generate a proof
 		tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(origSquareSize))
@@ -48,10 +47,11 @@ func ProveTxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txInd
 
 		var pos int
 		if i == 0 {
-			pos = startPos - (startRow * squareSize)
+			pos = startPos - (startRow * origSquareSize)
 		} else {
-			pos = endPos - (endRow * squareSize)
+			pos = endPos - (endRow * origSquareSize)
 		}
+
 		proof, err := tree.Prove(pos)
 		if err != nil {
 			return nil, err

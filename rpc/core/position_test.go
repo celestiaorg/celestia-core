@@ -36,7 +36,7 @@ func TestProveTxInclusion(t *testing.T) {
 
 	dah := da.NewDataAvailabilityHeader(eds)
 
-	for i := 0; i < 1; i++ {
+	for i := 0; i < txCount; i++ {
 		proofs, err := ProveTxInclusion(consts.DefaultCodec(), typicalBlockData, int(squareSize), i)
 		require.NoError(t, err)
 		txPosStart, txPosEnd := txSharePosition(typicalBlockData.Txs, i)
@@ -47,6 +47,7 @@ func TestProveTxInclusion(t *testing.T) {
 			} else {
 				pos = txPosEnd
 			}
+
 			assert.True(t, proof.VerifyInclusion(
 				consts.NewBaseHashFunc(),
 				consts.TxNamespaceID,
@@ -137,7 +138,7 @@ func Test_genRowShares(t *testing.T) {
 		typicalBlockData,
 		originalSquareSize,
 		0,
-		int(originalSquareSize)-1,
+		originalSquareSize-1,
 	)
 
 	for i := uint(0); i < uint(originalSquareSize); i++ {
@@ -253,12 +254,4 @@ func generateRandNamespacedRawData(total, nidSize, leafSize uint32) [][]byte {
 
 func sortByteArrays(src [][]byte) {
 	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
-}
-
-func flatten(in [][][]byte) [][]byte {
-	out := [][]byte{}
-	for _, row := range in {
-		out = append(out, row...)
-	}
-	return out
 }
