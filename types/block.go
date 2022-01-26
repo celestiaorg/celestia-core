@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -1157,14 +1158,21 @@ func (roots IntermediateStateRoots) SplitIntoShares() NamespacedShares {
 
 func (msgs Messages) SplitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
+	msgs.sortMessages()
 	for _, m := range msgs.MessagesList {
 		rawData, err := m.MarshalDelimited()
 		if err != nil {
 			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
 		}
-		shares = appendToShares(shares, m.NamespaceID, rawData)
+		shares = AppendToShares(shares, m.NamespaceID, rawData)
 	}
 	return shares
+}
+
+func (msgs *Messages) sortMessages() {
+	sort.Slice(msgs.MessagesList, func(i, j int) bool {
+		return bytes.Compare(msgs.MessagesList[i].NamespaceID, msgs.MessagesList[j].NamespaceID) < 0
+	})
 }
 
 type Message struct {
