@@ -1,4 +1,4 @@
-package core
+package prove
 
 import (
 	"encoding/binary"
