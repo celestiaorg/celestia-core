@@ -1040,8 +1040,8 @@ type Data struct {
 	Messages Messages `json:"msgs"`
 
 	// OriginalSquareSize is the size of the square after splitting all the block data
-	// into shares. The erasure data is discarded after generation, keeping this
-	// value avoid unnecessarily regenerating all of the shares when returning
+	// into shares. The erasure data is discarded after generation, and keeping this
+	// value avoids unnecessarily regenerating all of the shares when returning
 	// proofs that some element was included in the block
 	OriginalSquareSize uint64 `json:"square_size"`
 
