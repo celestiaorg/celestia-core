@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/celestiaorg/nmt"
 	"github.com/celestiaorg/rsmt2d"
+	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/pkg/consts"
 	"github.com/tendermint/tendermint/pkg/wrapper"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -20,18 +21,20 @@ const (
 // of a data square, and then using those shares to creates nmt inclusion proofs
 // It is possible that a transaction spans more than one row. In that case, we
 // have to return two proofs.
-func ProveTxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex int) ([]nmt.Proof, error) {
+func ProveTxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex int) (types.TxProof, error) {
 	startPos, endPos := txSharePosition(data.Txs, txIndex)
 	startRow := startPos / origSquareSize
 	endRow := endPos / origSquareSize
 
 	if (endPos - startPos) > 1 {
-		return nil, errors.New("transaction spanned more than two shares, this is not yet supported")
+		return types.TxProof{}, errors.New("transaction spanned more than two shares, this is not yet supported")
 	}
 
 	rowShares := genRowShares(consts.DefaultCodec(), data, origSquareSize, startRow, endRow)
 
-	var proofs []nmt.Proof //nolint:prealloc // rarely will this contain more than a single proof
+	var proofs []*tmproto.NMTProof  //nolint:prealloc // rarely will this contain more than a single proof
+	var shares [][]byte             //nolint:prealloc // rarely will this contain more than a single share
+	var rowRoots []tmbytes.HexBytes //nolint:prealloc // rarely will this contain more than a single root
 	for i, row := range rowShares {
 		// create an nmt to use to generate a proof
 		tree := wrapper.NewErasuredNamespacedMerkleTree(uint64(origSquareSize))
@@ -52,14 +55,30 @@ func ProveTxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txInd
 			pos = endPos - (endRow * origSquareSize)
 		}
 
+		shares = append(shares, row[pos])
+
 		proof, err := tree.Prove(pos)
 		if err != nil {
-			return nil, err
+			return types.TxProof{}, err
 		}
-		proofs = append(proofs, proof)
+
+		proofs = append(proofs, &tmproto.NMTProof{
+			Start:    int32(proof.Start()),
+			End:      int32(proof.End()),
+			Nodes:    proof.Nodes(),
+			LeafHash: proof.LeafHash(),
+		})
+
+		// we don't store the data availability header anywhere, so we
+		// regenerate the roots to each row
+		rowRoots = append(rowRoots, tree.Root())
 	}
 
-	return proofs, nil
+	return types.TxProof{
+		RowRoots: rowRoots,
+		Data:     shares,
+		Proofs:   proofs,
+	}, nil
 }
 
 // txSharePosition returns the share that a given transaction is included in.

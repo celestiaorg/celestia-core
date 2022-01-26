@@ -7,6 +7,7 @@ import (
 
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
+	"github.com/tendermint/tendermint/pkg/consts"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 	"github.com/tendermint/tendermint/state/txindex/null"
@@ -38,7 +39,10 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 	var proof types.TxProof
 	if prove {
 		block := env.BlockStore.LoadBlock(height)
-		proof = block.Data.Txs.Proof(int(index)) // XXX: overflow on 32-bit machines
+		proof, err = ProveTxInclusion(consts.DefaultCodec(), block.Data, int(block.Data.OriginalSquareSize), int(r.Index))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &ctypes.ResultTx{
@@ -116,7 +120,10 @@ func TxSearch(
 		var proof types.TxProof
 		if prove {
 			block := env.BlockStore.LoadBlock(r.Height)
-			proof = block.Data.Txs.Proof(int(r.Index)) // XXX: overflow on 32-bit machines
+			proof, err = ProveTxInclusion(consts.DefaultCodec(), block.Data, int(block.Data.OriginalSquareSize), int(r.Index))
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		apiResults = append(apiResults, &ctypes.ResultTx{
