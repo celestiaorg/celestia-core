@@ -25,36 +25,13 @@ func TestProveTxInclusion(t *testing.T) {
 
 	// compute the data availability header
 	shares, _ := typicalBlockData.ComputeShares()
-	rawShares := shares.RawShares()
 
 	squareSize := uint64(math.Sqrt(float64(len(shares))))
 
-	eds, err := da.ExtendShares(squareSize, rawShares)
-	if err != nil {
-		panic(err)
-	}
-
-	dah := da.NewDataAvailabilityHeader(eds)
-
 	for i := 0; i < txCount; i++ {
-		proofs, err := ProveTxInclusion(consts.DefaultCodec(), typicalBlockData, int(squareSize), i)
+		txProof, err := ProveTxInclusion(consts.DefaultCodec(), typicalBlockData, int(squareSize), i)
 		require.NoError(t, err)
-		txPosStart, txPosEnd := txSharePosition(typicalBlockData.Txs, i)
-		for j, proof := range proofs {
-			var pos int
-			if j == 0 {
-				pos = txPosStart
-			} else {
-				pos = txPosEnd
-			}
-
-			assert.True(t, proof.VerifyInclusion(
-				consts.NewBaseHashFunc(),
-				consts.TxNamespaceID,
-				shares[pos].Data(),
-				dah.RowsRoots[pos/int(squareSize)],
-			), i)
-		}
+		assert.True(t, txProof.VerifyProof())
 	}
 }
 
