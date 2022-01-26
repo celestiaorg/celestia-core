@@ -275,6 +275,8 @@ func TestDataFromSquare(t *testing.T) {
 			data.Evidence = EvidenceData{}
 			res.Evidence = EvidenceData{}
 
+			res.OriginalSquareSize = data.OriginalSquareSize
+
 			assert.Equal(t, data, res)
 		})
 	}
@@ -518,7 +520,9 @@ func generateRandomlySizedMessages(count, maxMsgSize int) Messages {
 		msgs = nil
 	}
 
-	return Messages{MessagesList: msgs}
+	messages := Messages{MessagesList: msgs}
+	messages.sortMessages()
+	return messages
 }
 
 func generateRandomMessage(size int) Message {
