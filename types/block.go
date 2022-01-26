@@ -1332,6 +1332,7 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 	if evdData != nil {
 		data.Evidence = *evdData
 	}
+	data.OriginalSquareSize = dp.OriginalSquareSize
 
 	return *data, nil
 }
