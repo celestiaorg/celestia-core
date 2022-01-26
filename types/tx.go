@@ -100,7 +100,7 @@ func (tp TxProof) Validate() error {
 			return errors.New("proof total must be positive")
 		}
 		valid := tp.VerifyProof()
-		if valid != true {
+		if !valid {
 			return errors.New("proof is not internally consistent")
 		}
 	}

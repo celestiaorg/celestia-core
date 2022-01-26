@@ -18,11 +18,6 @@ func makeTxs(cnt, size int) Txs {
 	return txs
 }
 
-func randInt(low, high int) int {
-	off := tmrand.Int() % (high - low)
-	return low + off
-}
-
 func TestTxIndex(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		txs := makeTxs(15, 60)
