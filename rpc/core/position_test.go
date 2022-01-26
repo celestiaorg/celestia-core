@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,15 +20,12 @@ func TestProveTxInclusion(t *testing.T) {
 	txCount := 100
 	typicalBlockData := types.Data{
 		Txs:      generateRandomlySizedContiguousShares(txCount, 200),
-		Messages: generateRandomlySizedMessages(10, 1500),
+		Messages: generateRandomlySizedMessages(10, 150),
 	}
 
 	// compute the data availability header
-	// todo(evan): add the non redundant shares back into the header
 	shares, _ := typicalBlockData.ComputeShares()
 	rawShares := shares.RawShares()
-
-	sortByteArrays(rawShares)
 
 	squareSize := uint64(math.Sqrt(float64(len(shares))))
 
@@ -40,17 +36,23 @@ func TestProveTxInclusion(t *testing.T) {
 
 	dah := da.NewDataAvailabilityHeader(eds)
 
-	for i := 0; i < txCount; i++ {
+	for i := 0; i < 1; i++ {
 		proofs, err := ProveTxInclusion(consts.DefaultCodec(), typicalBlockData, int(squareSize), i)
 		require.NoError(t, err)
+		txPosStart, txPosEnd := txSharePosition(typicalBlockData.Txs, i)
 		for j, proof := range proofs {
-			proof.VerifyInclusion(
+			var pos int
+			if j == 0 {
+				pos = txPosStart
+			} else {
+				pos = txPosEnd
+			}
+			assert.True(t, proof.VerifyInclusion(
 				consts.NewBaseHashFunc(),
 				consts.TxNamespaceID,
-				typicalBlockData.Txs[i],
-				dah.RowsRoots[0],
-			)
-			fmt.Println("j", j)
+				shares[pos].Data(),
+				dah.RowsRoots[pos/int(squareSize)],
+			), i)
 		}
 	}
 }
@@ -68,7 +70,7 @@ func TestTxSharePosition(t *testing.T) {
 		},
 		{
 			name: "many small tx",
-			txs:  generateRandomlySizedContiguousShares(44, 100),
+			txs:  generateRandomlySizedContiguousShares(444, 100),
 		},
 		{
 			name: "one small tx",
@@ -87,8 +89,6 @@ func TestTxSharePosition(t *testing.T) {
 	type startEndPoints struct {
 		start, end int
 	}
-
-	rand.Seed(time.Now().UTC().UnixNano())
 
 	for _, tt := range tests {
 		positions := make([]startEndPoints, len(tt.txs))
@@ -116,24 +116,53 @@ func TestTxSharePosition(t *testing.T) {
 	}
 }
 
-func Test_generateRowShares(t *testing.T) {
+func Test_genRowShares(t *testing.T) {
 	typicalBlockData := types.Data{
-		Txs:      generateRandomlySizedContiguousShares(100, 200),
+		Txs:      generateRandomlySizedContiguousShares(120, 200),
+		Messages: generateRandomlySizedMessages(10, 1000),
+	}
+
+	allShares, _ := typicalBlockData.ComputeShares()
+	rawShares := allShares.RawShares()
+
+	originalSquareSize := int(math.Sqrt(float64(len(rawShares))))
+
+	eds, err := da.ExtendShares(uint64(originalSquareSize), rawShares)
+	require.NoError(t, err)
+
+	eds.ColRoots()
+
+	rowShares := genRowShares(
+		consts.DefaultCodec(),
+		typicalBlockData,
+		originalSquareSize,
+		0,
+		int(originalSquareSize)-1,
+	)
+
+	for i := uint(0); i < uint(originalSquareSize); i++ {
+		row := eds.Row(i)
+		assert.Equal(t, row, rowShares[i], fmt.Sprintf("row %d", i))
+		// also test fetching individual rows
+		secondSet := genRowShares(consts.DefaultCodec(), typicalBlockData, originalSquareSize, int(i), int(i))
+		assert.Equal(t, row, secondSet[0], fmt.Sprintf("row %d", i))
+	}
+}
+
+func Test_genOrigRowShares(t *testing.T) {
+	txCount := 100
+	typicalBlockData := types.Data{
+		Txs:      generateRandomlySizedContiguousShares(txCount, 200),
 		Messages: generateRandomlySizedMessages(10, 1500),
 	}
 
 	allShares, _ := typicalBlockData.ComputeShares()
 	rawShares := allShares.RawShares()
-	squareSize := int(math.Sqrt(float64(len(rawShares))))
 
-	firstRow := generateRowShares(typicalBlockData, squareSize, 0, squareSize/2)
-	assert.Equal(t, rawShares[:squareSize-1], firstRow)
+	genShares := genOrigRowShares(typicalBlockData, 8, 0, 7)
 
-	secondRow := generateRowShares(typicalBlockData, squareSize, squareSize+1, squareSize+2)
-	assert.Equal(t, rawShares[squareSize:(squareSize*2)-1], secondRow)
-
-	firstAndSecondRow := generateRowShares(typicalBlockData, squareSize, squareSize-2, squareSize+1)
-	assert.Equal(t, rawShares[:(squareSize*2)-1], firstAndSecondRow)
+	require.Equal(t, len(allShares), len(genShares))
+	assert.Equal(t, rawShares, genShares)
 }
 
 func joinByteSlices(s ...[]byte) string {
@@ -224,4 +253,12 @@ func generateRandNamespacedRawData(total, nidSize, leafSize uint32) [][]byte {
 
 func sortByteArrays(src [][]byte) {
 	sort.Slice(src, func(i, j int) bool { return bytes.Compare(src[i], src[j]) < 0 })
+}
+
+func flatten(in [][][]byte) [][]byte {
+	out := [][]byte{}
+	for _, row := range in {
+		out = append(out, row...)
+	}
+	return out
 }
