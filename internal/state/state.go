@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	tmtime "github.com/tendermint/tendermint/libs/time"
 
 	tmstate "github.com/tendermint/tendermint/proto/tendermint/state"
 	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
@@ -266,18 +266,10 @@ func (state State) MakeBlock(
 	// Build base block with block data.
 	block := types.MakeBlock(height, txs, evidence, intermediateStateRoots, messages, commit)
 
-	// Set time.
-	var timestamp time.Time
-	if height == state.InitialHeight {
-		timestamp = state.LastBlockTime // genesis time
-	} else {
-		timestamp = time.Now()
-	}
-
 	// Fill rest of header with state data.
 	block.Header.Populate(
 		state.Version.Consensus, state.ChainID,
-		timestamp, state.LastBlockID,
+		tmtime.Now(), state.LastBlockID,
 		state.Validators.Hash(), state.NextValidators.Hash(),
 		state.ConsensusParams.HashConsensusParams(), state.AppHash, state.LastResultsHash,
 		proposerAddress,
