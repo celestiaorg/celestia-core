@@ -71,7 +71,8 @@ func TestTxSharePosition(t *testing.T) {
 	for _, tt := range tests {
 		positions := make([]startEndPoints, len(tt.txs))
 		for i := 0; i < len(tt.txs); i++ {
-			start, end := txSharePosition(tt.txs, i)
+			start, end, err := txSharePosition(tt.txs, i)
+			require.NoError(t, err)
 			positions[i] = startEndPoints{start: start, end: end}
 		}
 

@@ -18,7 +18,10 @@ import (
 // It is possible that a transaction spans more than one row. In that case, we
 // have to return two proofs.
 func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex int) (types.TxProof, error) {
-	startPos, endPos := txSharePosition(data.Txs, txIndex)
+	startPos, endPos, err := txSharePosition(data.Txs, txIndex)
+	if err != nil {
+		return types.TxProof{}, err
+	}
 	startRow := startPos / origSquareSize
 	endRow := endPos / origSquareSize
 
@@ -79,9 +82,9 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex in
 
 // txSharePosition returns the share that a given transaction is included in.
 // returns -1 if index is greater than that of the provided txs.
-func txSharePosition(txs types.Txs, txIndex int) (startSharePos, endSharePos int) {
+func txSharePosition(txs types.Txs, txIndex int) (startSharePos, endSharePos int, err error) {
 	if txIndex >= len(txs) {
-		return -1, -1
+		return startSharePos, endSharePos, errors.New("transaction index is greater than the number of txs")
 	}
 
 	totalLen := 0
@@ -95,7 +98,7 @@ func txSharePosition(txs types.Txs, txIndex int) (startSharePos, endSharePos int
 	startSharePos = (totalLen) / consts.TxShareSize
 	endSharePos = (totalLen + txLen + delimLen(txLen)) / consts.TxShareSize
 
-	return startSharePos, endSharePos
+	return startSharePos, endSharePos, nil
 }
 
 func delimLen(txLen int) int {
