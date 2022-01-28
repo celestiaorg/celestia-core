@@ -111,19 +111,21 @@ func Test_genRowShares(t *testing.T) {
 
 	eds.ColRoots()
 
-	rowShares := genRowShares(
+	rowShares, err := genRowShares(
 		consts.DefaultCodec(),
 		typicalBlockData,
 		originalSquareSize,
 		0,
 		originalSquareSize-1,
 	)
+	require.NoError(t, err)
 
 	for i := uint(0); i < uint(originalSquareSize); i++ {
 		row := eds.Row(i)
 		assert.Equal(t, row, rowShares[i], fmt.Sprintf("row %d", i))
 		// also test fetching individual rows
-		secondSet := genRowShares(consts.DefaultCodec(), typicalBlockData, originalSquareSize, int(i), int(i))
+		secondSet, err := genRowShares(consts.DefaultCodec(), typicalBlockData, originalSquareSize, int(i), int(i))
+		require.NoError(t, err)
 		assert.Equal(t, row, secondSet[0], fmt.Sprintf("row %d", i))
 	}
 }

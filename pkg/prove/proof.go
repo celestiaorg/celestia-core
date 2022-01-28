@@ -29,7 +29,10 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex in
 		return types.TxProof{}, errors.New("transaction spanned more than two shares, this is not yet supported")
 	}
 
-	rowShares := genRowShares(consts.DefaultCodec(), data, origSquareSize, startRow, endRow)
+	rowShares, err := genRowShares(consts.DefaultCodec(), data, origSquareSize, startRow, endRow)
+	if err != nil {
+		return types.TxProof{}, err
+	}
 
 	var proofs []*tmproto.NMTProof  //nolint:prealloc // rarely will this contain more than a single proof
 	var shares [][]byte             //nolint:prealloc // rarely will this contain more than a single share
@@ -107,9 +110,9 @@ func delimLen(txLen int) int {
 }
 
 // genRowShares progessively generates data square rows from block data
-func genRowShares(codec rsmt2d.Codec, data types.Data, origSquareSize, startRow, endRow int) [][][]byte {
+func genRowShares(codec rsmt2d.Codec, data types.Data, origSquareSize, startRow, endRow int) ([][][]byte, error) {
 	if endRow > origSquareSize {
-		panic("cannot generate row shares past the original square size")
+		return nil, errors.New("cannot generate row shares past the original square size")
 	}
 	origRowShares := splitIntoRows(
 		origSquareSize,
@@ -130,7 +133,7 @@ func genRowShares(codec rsmt2d.Codec, data types.Data, origSquareSize, startRow,
 		)
 	}
 
-	return encodedRowShares
+	return encodedRowShares, nil
 }
 
 // genOrigRowShares progressively generates data square rows for the original
