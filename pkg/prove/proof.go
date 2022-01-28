@@ -13,10 +13,6 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-const (
-	usableShareSize = consts.ShareSize - consts.NamespaceSize - consts.ShareReservedBytes
-)
-
 // TxInclusion uses the provided block data to progressively generate rows
 // of a data square, and then using those shares to creates nmt inclusion proofs
 // It is possible that a transaction spans more than one row. In that case, we
@@ -96,8 +92,8 @@ func txSharePosition(txs types.Txs, txIndex int) (startSharePos, endSharePos int
 
 	txLen := len(txs[txIndex])
 
-	startSharePos = (totalLen) / usableShareSize
-	endSharePos = (totalLen + txLen + delimLen(txLen)) / usableShareSize
+	startSharePos = (totalLen) / consts.TxShareSize
+	endSharePos = (totalLen + txLen + delimLen(txLen)) / consts.TxShareSize
 
 	return startSharePos, endSharePos
 }
