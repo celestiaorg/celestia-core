@@ -18,16 +18,19 @@ import (
 // It is possible that a transaction spans more than one row. In that case, we
 // have to return two proofs.
 func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex uint) (types.TxProof, error) {
+	// calculate the index of the shares that contian the tx
 	startPos, endPos, err := txSharePosition(data.Txs, txIndex)
 	if err != nil {
 		return types.TxProof{}, err
 	}
-	startRow := startPos / origSquareSize
-	endRow := endPos / origSquareSize
-
 	if (endPos - startPos) > 1 {
 		return types.TxProof{}, errors.New("transaction spanned more than two shares, this is not yet supported")
 	}
+
+	// use the index of the shares and the square size to determine the row that
+	// contains the tx we need to prove
+	startRow := startPos / origSquareSize
+	endRow := endPos / origSquareSize
 
 	rowShares, err := genRowShares(codec, data, origSquareSize, startRow, endRow)
 	if err != nil {
