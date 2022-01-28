@@ -30,7 +30,7 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex in
 		return types.TxProof{}, errors.New("transaction spanned more than two shares, this is not yet supported")
 	}
 
-	rowShares := genRowShares(consts.DefaultCodec(), data, origSquareSize, startRow, endRow)
+	rowShares := genRowShares(codec, data, origSquareSize, startRow, endRow)
 
 	var proofs []*tmproto.NMTProof  //nolint:prealloc // rarely will this contain more than a single proof
 	var shares [][]byte             //nolint:prealloc // rarely will this contain more than a single share
