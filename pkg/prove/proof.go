@@ -29,7 +29,7 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex ui
 		return types.TxProof{}, errors.New("transaction spanned more than two shares, this is not yet supported")
 	}
 
-	rowShares, err := genRowShares(consts.DefaultCodec(), data, origSquareSize, startRow, endRow)
+	rowShares, err := genRowShares(codec, data, origSquareSize, startRow, endRow)
 	if err != nil {
 		return types.TxProof{}, err
 	}
