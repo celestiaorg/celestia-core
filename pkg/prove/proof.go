@@ -17,7 +17,7 @@ import (
 // of a data square, and then using those shares to creates nmt inclusion proofs
 // It is possible that a transaction spans more than one row. In that case, we
 // have to return two proofs.
-func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex int) (types.TxProof, error) {
+func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex uint) (types.TxProof, error) {
 	startPos, endPos, err := txSharePosition(data.Txs, txIndex)
 	if err != nil {
 		return types.TxProof{}, err
@@ -50,7 +50,7 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex in
 			)
 		}
 
-		var pos int
+		var pos uint
 		if i == 0 {
 			pos = startPos - (startRow * origSquareSize)
 		} else {
@@ -59,7 +59,7 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex in
 
 		shares = append(shares, row[pos])
 
-		proof, err := tree.Prove(pos)
+		proof, err := tree.Prove(int(pos))
 		if err != nil {
 			return types.TxProof{}, err
 		}
@@ -85,21 +85,21 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex in
 
 // txSharePosition returns the share that a given transaction is included in.
 // returns -1 if index is greater than that of the provided txs.
-func txSharePosition(txs types.Txs, txIndex int) (startSharePos, endSharePos int, err error) {
-	if txIndex >= len(txs) {
+func txSharePosition(txs types.Txs, txIndex uint) (startSharePos, endSharePos uint, err error) {
+	if txIndex >= uint(len(txs)) {
 		return startSharePos, endSharePos, errors.New("transaction index is greater than the number of txs")
 	}
 
 	totalLen := 0
-	for i := 0; i < txIndex; i++ {
+	for i := uint(0); i < txIndex; i++ {
 		txLen := len(txs[i])
 		totalLen += (delimLen(txLen) + txLen)
 	}
 
 	txLen := len(txs[txIndex])
 
-	startSharePos = (totalLen) / consts.TxShareSize
-	endSharePos = (totalLen + txLen + delimLen(txLen)) / consts.TxShareSize
+	startSharePos = uint((totalLen) / consts.TxShareSize)
+	endSharePos = uint((totalLen + txLen + delimLen(txLen)) / consts.TxShareSize)
 
 	return startSharePos, endSharePos, nil
 }
@@ -110,7 +110,7 @@ func delimLen(txLen int) int {
 }
 
 // genRowShares progessively generates data square rows from block data
-func genRowShares(codec rsmt2d.Codec, data types.Data, origSquareSize, startRow, endRow int) ([][][]byte, error) {
+func genRowShares(codec rsmt2d.Codec, data types.Data, origSquareSize, startRow, endRow uint) ([][][]byte, error) {
 	if endRow > origSquareSize {
 		return nil, errors.New("cannot generate row shares past the original square size")
 	}
@@ -139,23 +139,23 @@ func genRowShares(codec rsmt2d.Codec, data types.Data, origSquareSize, startRow,
 // genOrigRowShares progressively generates data square rows for the original
 // data square, meaning the rows only half the full square length, as there is
 // not erasure data
-func genOrigRowShares(data types.Data, originalSquareSize, startRow, endRow int) [][]byte {
+func genOrigRowShares(data types.Data, originalSquareSize, startRow, endRow uint) [][]byte {
 	wantLen := (endRow + 1) * originalSquareSize
 	startPos := startRow * originalSquareSize
 
 	shares := data.Txs.SplitIntoShares()
 	// return if we have enough shares
-	if len(shares) >= wantLen {
+	if uint(len(shares)) >= wantLen {
 		return shares[startPos:wantLen].RawShares()
 	}
 
 	shares = append(shares, data.IntermediateStateRoots.SplitIntoShares()...)
-	if len(shares) >= wantLen {
+	if uint(len(shares)) >= wantLen {
 		return shares[startPos:wantLen].RawShares()
 	}
 
 	shares = append(shares, data.Evidence.SplitIntoShares()...)
-	if len(shares) >= wantLen {
+	if uint(len(shares)) >= wantLen {
 		return shares[startPos:wantLen].RawShares()
 	}
 
@@ -167,22 +167,22 @@ func genOrigRowShares(data types.Data, originalSquareSize, startRow, endRow int)
 		shares = types.AppendToShares(shares, m.NamespaceID, rawData)
 
 		// return if we have enough shares
-		if len(shares) >= wantLen {
+		if uint(len(shares)) >= wantLen {
 			return shares[startPos:wantLen].RawShares()
 		}
 	}
 
-	tailShares := types.TailPaddingShares(wantLen - len(shares))
+	tailShares := types.TailPaddingShares(int(wantLen) - len(shares))
 	shares = append(shares, tailShares...)
 
 	return shares[startPos:wantLen].RawShares()
 }
 
 // splitIntoRows splits shares into rows of a particular square size
-func splitIntoRows(origSquareSize int, shares [][]byte) [][][]byte {
-	rowCount := len(shares) / origSquareSize
+func splitIntoRows(origSquareSize uint, shares [][]byte) [][][]byte {
+	rowCount := uint(len(shares)) / origSquareSize
 	rows := make([][][]byte, rowCount)
-	for i := 0; i < rowCount; i++ {
+	for i := uint(0); i < rowCount; i++ {
 		rows[i] = shares[i*origSquareSize : (i+1)*origSquareSize]
 	}
 	return rows

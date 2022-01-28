@@ -26,10 +26,10 @@ func TestTxInclusion(t *testing.T) {
 	// compute the data availability header
 	shares, _ := typicalBlockData.ComputeShares()
 
-	squareSize := uint64(math.Sqrt(float64(len(shares))))
+	squareSize := uint(math.Sqrt(float64(len(shares))))
 
 	for i := 0; i < txCount; i++ {
-		txProof, err := TxInclusion(consts.DefaultCodec(), typicalBlockData, int(squareSize), i)
+		txProof, err := TxInclusion(consts.DefaultCodec(), typicalBlockData, squareSize, uint(i))
 		require.NoError(t, err)
 		assert.True(t, txProof.VerifyProof())
 	}
@@ -65,13 +65,13 @@ func TestTxSharePosition(t *testing.T) {
 	}
 
 	type startEndPoints struct {
-		start, end int
+		start, end uint
 	}
 
 	for _, tt := range tests {
 		positions := make([]startEndPoints, len(tt.txs))
 		for i := 0; i < len(tt.txs); i++ {
-			start, end, err := txSharePosition(tt.txs, i)
+			start, end, err := txSharePosition(tt.txs, uint(i))
 			require.NoError(t, err)
 			positions[i] = startEndPoints{start: start, end: end}
 		}
@@ -104,7 +104,7 @@ func Test_genRowShares(t *testing.T) {
 	allShares, _ := typicalBlockData.ComputeShares()
 	rawShares := allShares.RawShares()
 
-	originalSquareSize := int(math.Sqrt(float64(len(rawShares))))
+	originalSquareSize := uint(math.Sqrt(float64(len(rawShares))))
 
 	eds, err := da.ExtendShares(uint64(originalSquareSize), rawShares)
 	require.NoError(t, err)
@@ -124,7 +124,7 @@ func Test_genRowShares(t *testing.T) {
 		row := eds.Row(i)
 		assert.Equal(t, row, rowShares[i], fmt.Sprintf("row %d", i))
 		// also test fetching individual rows
-		secondSet, err := genRowShares(consts.DefaultCodec(), typicalBlockData, originalSquareSize, int(i), int(i))
+		secondSet, err := genRowShares(consts.DefaultCodec(), typicalBlockData, originalSquareSize, i, i)
 		require.NoError(t, err)
 		assert.Equal(t, row, secondSet[0], fmt.Sprintf("row %d", i))
 	}
