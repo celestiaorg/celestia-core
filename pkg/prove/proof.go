@@ -20,7 +20,7 @@ const (
 // TxInclusion uses the provided block data to progressively generate rows
 // of a data square, and then using those shares to creates nmt inclusion proofs
 // It is possible that a transaction spans more than one row. In that case, we
-// have to return two proofs.
+// have to return more than one proof.
 func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex int) (types.TxProof, error) {
 	startPos, endPos := txSharePosition(data.Txs, txIndex)
 	startRow := startPos / origSquareSize
