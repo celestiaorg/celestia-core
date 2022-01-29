@@ -120,7 +120,7 @@ func Test_genRowShares(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	for i := uint(0); i < uint(originalSquareSize); i++ {
+	for i := uint(0); i < originalSquareSize; i++ {
 		row := eds.Row(i)
 		assert.Equal(t, row, rowShares[i], fmt.Sprintf("row %d", i))
 		// also test fetching individual rows

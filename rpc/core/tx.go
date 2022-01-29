@@ -40,7 +40,12 @@ func Tx(ctx *rpctypes.Context, hash []byte, proveTx bool) (*ctypes.ResultTx, err
 	var txProof types.TxProof
 	if proveTx {
 		block := env.BlockStore.LoadBlock(height)
-		txProof, err = prove.TxInclusion(consts.DefaultCodec(), block.Data, uint(block.Data.OriginalSquareSize), uint(r.Index))
+		txProof, err = prove.TxInclusion(
+			consts.DefaultCodec(),
+			block.Data,
+			uint(block.Data.OriginalSquareSize),
+			uint(r.Index),
+		)
 		if err != nil {
 			return nil, err
 		}

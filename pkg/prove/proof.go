@@ -18,7 +18,7 @@ import (
 // It is possible that a transaction spans more than one row. In that case, we
 // have to return two proofs.
 func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex uint) (types.TxProof, error) {
-	// calculate the index of the shares that contian the tx
+	// calculate the index of the shares that contain the tx
 	startPos, endPos, err := txSharePosition(data.Txs, txIndex)
 	if err != nil {
 		return types.TxProof{}, err
