@@ -7,7 +7,6 @@ import (
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/libs/bytes"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/p2p"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/types"
@@ -57,7 +56,7 @@ type ResultBlockResults struct {
 }
 
 type ResultDataCommitment struct {
-	DataCommitment tmbytes.HexBytes `json:"data_commitment"`
+	DataCommitment bytes.HexBytes `json:"data_commitment"`
 }
 
 // NewResultCommit is a helper to initialize the ResultCommit with
