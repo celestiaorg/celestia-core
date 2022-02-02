@@ -457,6 +457,20 @@ func (c *baseRPCClient) Commit(ctx context.Context, height *int64) (*ctypes.Resu
 	return result, nil
 }
 
+func (c *baseRPCClient) DataCommitment(ctx context.Context, query string) (*ctypes.ResultDataCommitment, error) {
+	result := new(ctypes.ResultDataCommitment)
+	params := map[string]interface{}{
+		"query": query,
+	}
+
+	_, err := c.caller.Call(ctx, "data_commitment", params, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 func (c *baseRPCClient) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
 	result := new(ctypes.ResultTx)
 	params := map[string]interface{}{

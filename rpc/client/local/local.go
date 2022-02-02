@@ -173,6 +173,10 @@ func (c *Local) Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit
 	return core.Commit(c.ctx, height)
 }
 
+func (c *Local) DataCommitment(_ context.Context, query string) (*ctypes.ResultDataCommitment, error) {
+	return core.DataCommitment(c.ctx, query)
+}
+
 func (c *Local) Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error) {
 	return core.Validators(c.ctx, height, page, perPage)
 }

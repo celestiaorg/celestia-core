@@ -28,6 +28,7 @@ func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {
 		"block_by_hash":        rpcserver.NewRPCFunc(makeBlockByHashFunc(c), "hash"),
 		"block_results":        rpcserver.NewRPCFunc(makeBlockResultsFunc(c), "height"),
 		"commit":               rpcserver.NewRPCFunc(makeCommitFunc(c), "height"),
+		"data_commitment":      rpcserver.NewRPCFunc(makeDataCommitmentFunc(c), "query"),
 		"tx":                   rpcserver.NewRPCFunc(makeTxFunc(c), "hash,prove"),
 		"tx_search":            rpcserver.NewRPCFunc(makeTxSearchFunc(c), "query,prove,page,per_page,order_by"),
 		"block_search":         rpcserver.NewRPCFunc(makeBlockSearchFunc(c), "query,page,per_page,order_by"),
@@ -130,6 +131,20 @@ type rpcCommitFunc func(ctx *rpctypes.Context, height *int64) (*ctypes.ResultCom
 func makeCommitFunc(c *lrpc.Client) rpcCommitFunc {
 	return func(ctx *rpctypes.Context, height *int64) (*ctypes.ResultCommit, error) {
 		return c.Commit(ctx.Context(), height)
+	}
+}
+
+type rpcDataCommitmentFunc func(
+	ctx *rpctypes.Context,
+	query string,
+) (*ctypes.ResultDataCommitment, error)
+
+func makeDataCommitmentFunc(c *lrpc.Client) rpcDataCommitmentFunc {
+	return func(
+		ctx *rpctypes.Context,
+		query string,
+	) (*ctypes.ResultDataCommitment, error) {
+		return c.DataCommitment(ctx.Context(), query)
 	}
 }
 

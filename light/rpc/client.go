@@ -454,6 +454,10 @@ func (c *Client) Commit(ctx context.Context, height *int64) (*ctypes.ResultCommi
 	}, nil
 }
 
+func (c *Client) DataCommitment(ctx context.Context, query string) (*ctypes.ResultDataCommitment, error) {
+	return c.next.DataCommitment(ctx, query)
+}
+
 // Tx calls rpcclient#Tx method and then verifies the proof if such was
 // requested.
 func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
