@@ -1109,6 +1109,15 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 		tailShares...), curLen
 }
 
+// DataFromPreparedProposal parsed the data returned from the app after calling
+// the PrepareProposal ABCI method
+// TODO: actually implement
+func DataFromPreparedProposal(processedData [][]byte) (Data, error) {
+	return Data{
+		Txs: ToTxs(processedData),
+	}, nil
+}
+
 // paddedLen calculates the number of shares needed to make a power of 2 square
 // given the current number of shares
 func paddedLen(length int) int {

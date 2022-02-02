@@ -116,51 +116,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// Fetch a limited amount of valid txs
 	maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
 
-	// TODO(ismail): reaping the mempool has to happen in relation to a max
-	// allowed square size instead of (only) Gas / bytes
-	// maybe the mempool actually should track things separately
-	// meaning that CheckTx should already do the mapping:
-	// Tx -> Txs, Message
-	// https://github.com/tendermint/tendermint/issues/77
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
-	l := len(txs)
-	bzs := make([][]byte, l)
-	for i := 0; i < l; i++ {
-		bzs[i] = txs[i]
-	}
-
-	// TODO(ismail):
-	//  1. get those intermediate state roots & messages either from the
-	//     mempool or from the abci-app
-	//  1.1 at this point we should now the square / block size:
-	//      https://github.com/celestiaorg/celestia-specs/blob/53e5f350838f1e0785ad670704bf91dac2f4f5a3/specs/block_proposer.md#deciding-on-a-block-size
-	//      Here, we instead assume a fixed (max) square size instead.
-	//  2. feed them into MakeBlock below:
-	processedBlockTxs, err := blockExec.proxyApp.PreprocessTxsSync(context.TODO(), abci.RequestPreprocessTxs{Txs: bzs})
-	if err != nil {
-		// The App MUST ensure that only valid (and hence 'processable')
-		// Tx enter the mempool. Hence, at this point, we can't have any non-processable
-		// transaction causing an error. Also, the App can simply skip any Tx that could cause any
-		// kind of trouble.
-		// Either way, we can not recover in a meaningful way, unless we skip proposing
-		// this block, repair what caused the error and try again.
-		// Hence we panic on purpose for now.
-		panic(err)
-	}
-
-	ppt := processedBlockTxs.GetTxs()
-
-	pbmessages := processedBlockTxs.GetMessages()
-
-	lp := len(ppt)
-	processedTxs := make(types.Txs, lp)
-	if lp > 0 {
-		for i := 0; i < l; i++ {
-			processedTxs[i] = ppt[i]
-		}
-	}
-
-	messages := types.MessagesFromProto(pbmessages)
 
 	preparedProposal, err := blockExec.proxyApp.PrepareProposal(
 		context.Background(),
@@ -191,9 +147,20 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		}
 	}
 
-	modifiedTxs := types.ToTxs(preparedProposal.GetBlockData())
+	modifiedData, err := types.DataFromPreparedProposal(preparedProposal.GetBlockData())
+	if err != nil {
+		return nil, nil, err
+	}
 
-	return state.MakeBlock(height, modifiedTxs, commit, evidence, proposerAddr)
+	return state.MakeBlock(
+		height,
+		modifiedData.Txs,
+		evidence,
+		modifiedData.IntermediateStateRoots,
+		modifiedData.Messages.MessagesList,
+		commit,
+		proposerAddr,
+	)
 }
 
 // ValidateBlock validates the given block against the given state.
