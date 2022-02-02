@@ -57,7 +57,7 @@ type ResultBlockResults struct {
 }
 
 type ResultDataCommitment struct {
-	DataCommitment tmbytes.HexBytes `json:"data_hash"`
+	DataCommitment tmbytes.HexBytes `json:"data_commitment"`
 }
 
 // NewResultCommit is a helper to initialize the ResultCommit with
