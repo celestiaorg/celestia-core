@@ -485,8 +485,8 @@ func TestTx(t *testing.T) {
 
 				// time to verify the proof
 				proof := ptx.Proof
-				if tc.prove && assert.EqualValues(t, tx, proof.Data) {
-					assert.NoError(t, proof.Proof.Verify(proof.RootHash, txHash))
+				if tc.prove && assert.True(t, proof.IncludesTx(ptx.Tx), i) {
+					assert.True(t, proof.VerifyProof(), i)
 				}
 			}
 		}
@@ -544,10 +544,9 @@ func TestTxSearch(t *testing.T) {
 		assert.EqualValues(t, find.Hash, ptx.Hash)
 
 		// time to verify the proof
-		if assert.EqualValues(t, find.Tx, ptx.Proof.Data) {
-			assert.NoError(t, ptx.Proof.Proof.Verify(ptx.Proof.RootHash, find.Hash))
+		if assert.True(t, ptx.Proof.IncludesTx(find.Tx)) {
+			assert.True(t, ptx.Proof.VerifyProof())
 		}
-
 		// query by height
 		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height=%d", find.Height), true, nil, nil, "asc")
 		require.Nil(t, err)

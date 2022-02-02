@@ -196,7 +196,7 @@ func (ss *shareStack) resolve() ([][]byte, error) {
 func (ss *shareStack) peel(share []byte, delimited bool) (err error) {
 	if delimited {
 		var txLen uint64
-		share, txLen, err = parseDelimiter(share)
+		share, txLen, err = ParseDelimiter(share)
 		if err != nil {
 			return err
 		}
@@ -243,7 +243,7 @@ func parseMsgShares(shares [][]byte) ([]Message, error) {
 	nid := shares[0][:consts.NamespaceSize]
 	currentShare := shares[0][consts.NamespaceSize:]
 	// find and remove the msg len delimiter
-	currentShare, msgLen, err := parseDelimiter(currentShare)
+	currentShare, msgLen, err := ParseDelimiter(currentShare)
 	if err != nil {
 		return nil, err
 	}
@@ -296,16 +296,16 @@ func nextMsg(
 		}
 
 		nextNid := shares[cursor][:consts.NamespaceSize]
-		next, msgLen, err := parseDelimiter(shares[cursor][consts.NamespaceSize:])
+		next, msgLen, err := ParseDelimiter(shares[cursor][consts.NamespaceSize:])
 		return next, nextNid, cursor, msgLen, msg, err
 	}
 	// this code is unreachable but the compiler doesn't know that
 	return nil, nil, 0, 0, Message{}, nil
 }
 
-// parseDelimiter finds and returns the length delimiter of the message provided
+// ParseDelimiter finds and returns the length delimiter of the message provided
 // while also removing the delimiter bytes from the input
-func parseDelimiter(input []byte) ([]byte, uint64, error) {
+func ParseDelimiter(input []byte) ([]byte, uint64, error) {
 	if len(input) == 0 {
 		return input, 0, nil
 	}

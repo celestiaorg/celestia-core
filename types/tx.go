@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/celestiaorg/nmt"
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
@@ -63,24 +64,6 @@ func (txs Txs) IndexByHash(hash []byte) int {
 	return -1
 }
 
-// Proof returns a simple merkle proof for this node.
-// Panics if i < 0 or i >= len(txs)
-// TODO: optimize this!
-func (txs Txs) Proof(i int) TxProof {
-	l := len(txs)
-	bzs := make([][]byte, l)
-	for i := 0; i < l; i++ {
-		bzs[i] = txs[i].Hash()
-	}
-	root, proofs := merkle.ProofsFromByteSlices(bzs)
-
-	return TxProof{
-		RootHash: root,
-		Data:     txs[i],
-		Proof:    *proofs[i],
-	}
-}
-
 func (txs Txs) SplitIntoShares() NamespacedShares {
 	rawDatas := make([][]byte, len(txs))
 	for i, tx := range txs {
@@ -96,58 +79,83 @@ func (txs Txs) SplitIntoShares() NamespacedShares {
 
 // TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
 type TxProof struct {
-	RootHash tmbytes.HexBytes `json:"root_hash"`
-	Data     Tx               `json:"data"`
-	Proof    merkle.Proof     `json:"proof"`
-}
-
-// Leaf returns the hash(tx), which is the leaf in the merkle tree which this proof refers to.
-func (tp TxProof) Leaf() []byte {
-	return tp.Data.Hash()
+	RowRoots []tmbytes.HexBytes  `json:"root_hash"`
+	Data     [][]byte            `json:"data"`
+	Proofs   []*tmproto.NMTProof `json:"proof"`
 }
 
 // Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
 // and if the proof is internally consistent. Otherwise, it returns a sensible error.
-func (tp TxProof) Validate(dataHash []byte) error {
-	if !bytes.Equal(dataHash, tp.RootHash) {
-		return errors.New("proof matches different data hash")
+func (tp TxProof) Validate() error {
+	if len(tp.RowRoots) != len(tp.Proofs) || len(tp.Data) != len(tp.Proofs) {
+		return errors.New(
+			"invalid number of proofs, row roots, or data. they all must be the same to verify the proof",
+		)
 	}
-	if tp.Proof.Index < 0 {
-		return errors.New("proof index cannot be negative")
+	for _, proof := range tp.Proofs {
+		if proof.Start < 0 {
+			return errors.New("proof index cannot be negative")
+		}
+		if (proof.End - proof.Start) <= 0 {
+			return errors.New("proof total must be positive")
+		}
+		valid := tp.VerifyProof()
+		if !valid {
+			return errors.New("proof is not internally consistent")
+		}
 	}
-	if tp.Proof.Total <= 0 {
-		return errors.New("proof total must be positive")
-	}
-	valid := tp.Proof.Verify(tp.RootHash, tp.Leaf())
-	if valid != nil {
-		return errors.New("proof is not internally consistent")
-	}
+
 	return nil
 }
 
+func (tp *TxProof) VerifyProof() bool {
+	for i, proof := range tp.Proofs {
+		nmtProof := nmt.NewInclusionProof(
+			int(proof.Start),
+			int(proof.End),
+			proof.Nodes,
+			true,
+		)
+		valid := nmtProof.VerifyInclusion(
+			consts.NewBaseHashFunc(),
+			consts.TxNamespaceID,
+			tp.Data[i],
+			tp.RowRoots[i],
+		)
+		if !valid {
+			return false
+		}
+	}
+	return true
+}
+
+func (tp *TxProof) IncludesTx(tx Tx) bool {
+	return bytes.Contains(bytes.Join(tp.Data, []byte{}), tx)
+}
+
 func (tp TxProof) ToProto() tmproto.TxProof {
-
-	pbProof := tp.Proof.ToProto()
-
+	rowRoots := make([][]byte, len(tp.RowRoots))
+	for i, root := range tp.RowRoots {
+		rowRoots[i] = root.Bytes()
+	}
 	pbtp := tmproto.TxProof{
-		RootHash: tp.RootHash,
+		RowRoots: rowRoots,
 		Data:     tp.Data,
-		Proof:    pbProof,
+		Proofs:   tp.Proofs,
 	}
 
 	return pbtp
 }
+
 func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
-
-	pbProof, err := merkle.ProofFromProto(pb.Proof)
-	if err != nil {
-		return TxProof{}, err
+	rowRoots := make([]tmbytes.HexBytes, len(pb.RowRoots))
+	for i, root := range pb.RowRoots {
+		rowRoots[i] = tmbytes.HexBytes(root)
 	}
-
 	pbtp := TxProof{
-		RootHash: pb.RootHash,
+		RowRoots: rowRoots,
 		Data:     pb.Data,
-		Proof:    *pbProof,
+		Proofs:   pb.Proofs,
 	}
 
 	return pbtp, nil

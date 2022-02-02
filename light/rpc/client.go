@@ -468,13 +468,18 @@ func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Resul
 	}
 
 	// Update the light client if we're behind.
-	l, err := c.updateLightClientIfNeededTo(ctx, &res.Height)
+	_, err = c.updateLightClientIfNeededTo(ctx, &res.Height)
 	if err != nil {
 		return nil, err
 	}
 
+	valid := res.Proof.VerifyProof()
+	if !valid {
+		err = errors.New("proof for transaction inclusion could not be verified")
+	}
+
 	// Validate the proof.
-	return res, res.Proof.Validate(l.DataHash)
+	return res, err
 }
 
 func (c *Client) TxSearch(

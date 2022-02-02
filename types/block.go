@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -1038,6 +1039,12 @@ type Data struct {
 	// really need to be processed by tendermint
 	Messages Messages `json:"msgs"`
 
+	// OriginalSquareSize is the size of the square after splitting all the block data
+	// into shares. The erasure data is discarded after generation, and keeping this
+	// value avoids unnecessarily regenerating all of the shares when returning
+	// proofs that some element was included in the block
+	OriginalSquareSize uint64 `json:"square_size"`
+
 	// Volatile
 	hash tmbytes.HexBytes
 }
@@ -1053,9 +1060,7 @@ func (data *Data) Hash() tmbytes.HexBytes {
 	shares, _ := data.ComputeShares()
 	rawShares := shares.RawShares()
 
-	squareSize := uint64(math.Sqrt(float64(len(shares))))
-
-	eds, err := da.ExtendShares(squareSize, rawShares)
+	eds, err := da.ExtendShares(data.OriginalSquareSize, rawShares)
 	if err != nil {
 		panic(err)
 	}
@@ -1069,7 +1074,8 @@ func (data *Data) Hash() tmbytes.HexBytes {
 
 // ComputeShares splits block data into shares of an original data square and
 // returns them along with an amount of non-redundant shares. The shares
-// returned are padded to complete a square size that is a power of two
+// returned are padded to complete a square size that is a power of two. The
+// size of the square is computed and recorded in data
 func (data *Data) ComputeShares() (NamespacedShares, int) {
 	// TODO(ismail): splitting into shares should depend on the block size and layout
 	// see: https://github.com/celestiaorg/celestia-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
@@ -1098,12 +1104,18 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 
 	tailShares := TailPaddingShares(wantLen - curLen)
 
-	return append(append(append(append(
+	shares := append(append(append(append(
 		txShares,
 		intermRootsShares...),
 		evidenceShares...),
 		msgShares...),
-		tailShares...), curLen
+		tailShares...)
+
+	squareSize := uint64(math.Sqrt(float64(len(shares))))
+
+	data.OriginalSquareSize = squareSize
+
+	return shares, curLen
 }
 
 // paddedLen calculates the number of shares needed to make a power of 2 square
@@ -1157,14 +1169,21 @@ func (roots IntermediateStateRoots) SplitIntoShares() NamespacedShares {
 
 func (msgs Messages) SplitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
+	msgs.sortMessages()
 	for _, m := range msgs.MessagesList {
 		rawData, err := m.MarshalDelimited()
 		if err != nil {
 			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
 		}
-		shares = appendToShares(shares, m.NamespaceID, rawData)
+		shares = AppendToShares(shares, m.NamespaceID, rawData)
 	}
 	return shares
+}
+
+func (msgs *Messages) sortMessages() {
+	sort.Slice(msgs.MessagesList, func(i, j int) bool {
+		return bytes.Compare(msgs.MessagesList[i].NamespaceID, msgs.MessagesList[j].NamespaceID) < 0
+	})
 }
 
 type Message struct {
@@ -1263,6 +1282,7 @@ func (data *Data) ToProto() tmproto.Data {
 		}
 	}
 	tp.Messages = tmproto.Messages{MessagesList: protoMsgs}
+	tp.OriginalSquareSize = data.OriginalSquareSize
 
 	return *tp
 }
@@ -1312,6 +1332,7 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 	if evdData != nil {
 		data.Evidence = *evdData
 	}
+	data.OriginalSquareSize = dp.OriginalSquareSize
 
 	return *data, nil
 }

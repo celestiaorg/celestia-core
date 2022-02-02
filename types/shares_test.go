@@ -209,7 +209,7 @@ func Test_appendToSharesOverwrite(t *testing.T) {
 	copy(extraCopy, newShare.Share[:consts.MsgShareSize])
 
 	// use appendToShares to add our new share
-	appendToShares(shares, newShare.ID, newShare.Share)
+	AppendToShares(shares, newShare.ID, newShare.Share)
 
 	// check if the original share data has been overwritten.
 	assert.Equal(t, extraCopy, []byte(newShare.Share[:consts.MsgShareSize]))
@@ -274,6 +274,8 @@ func TestDataFromSquare(t *testing.T) {
 			// compare the original to the result w/o the evidence
 			data.Evidence = EvidenceData{}
 			res.Evidence = EvidenceData{}
+
+			res.OriginalSquareSize = data.OriginalSquareSize
 
 			assert.Equal(t, data, res)
 		})
@@ -446,7 +448,7 @@ func Test_parseDelimiter(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		res, txLen, err := parseDelimiter(input)
+		res, txLen, err := ParseDelimiter(input)
 		if err != nil {
 			panic(err)
 		}
@@ -518,7 +520,9 @@ func generateRandomlySizedMessages(count, maxMsgSize int) Messages {
 		msgs = nil
 	}
 
-	return Messages{MessagesList: msgs}
+	messages := Messages{MessagesList: msgs}
+	messages.sortMessages()
+	return messages
 }
 
 func generateRandomMessage(size int) Message {
