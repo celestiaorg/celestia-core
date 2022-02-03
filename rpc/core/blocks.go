@@ -239,6 +239,7 @@ func blocksByQuery(ctx *rpctypes.Context, query string) ([]int64, error) {
 }
 
 // sortBlocks takes a list of block heights and sorts them according to the order: "asc" or "desc".
+// If `orderBy` is blank, then it is considered descending.
 func sortBlocks(results []int64, orderBy string) error {
 	switch orderBy {
 	case "desc", "":
