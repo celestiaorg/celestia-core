@@ -134,7 +134,7 @@ func Commit(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCommit, erro
 }
 
 // DataCommitment collects the data roots over a provided ordered range of blocks,
-// and then creates a new merkle root of those data roots.
+// and then creates a new Merkle root of those data roots.
 func DataCommitment(ctx *rpctypes.Context, query string) (*ctypes.ResultDataCommitment, error) {
 	results, err := blocksByQuery(ctx, query)
 	if err != nil {
@@ -240,6 +240,7 @@ func blocksByQuery(ctx *rpctypes.Context, query string) ([]int64, error) {
 }
 
 // sortBlocks takes a list of block heights and sorts them according to the order: "asc" or "desc".
+// If `orderBy` is blank, then it is considered descending.
 func sortBlocks(results []int64, orderBy string) error {
 	switch orderBy {
 	case "desc", "":
