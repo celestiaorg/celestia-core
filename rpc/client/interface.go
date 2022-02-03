@@ -69,8 +69,6 @@ type SignClient interface {
 	BlockResults(ctx context.Context, height *int64) (*ctypes.ResultBlockResults, error)
 	Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit, error)
 
-	// DataCommitment collects the data roots over a provided ordered range of blocks,
-	// and then creates a new merkle root of those data roots.
 	DataCommitment(ctx context.Context, query string) (*ctypes.ResultDataCommitment, error)
 
 	Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error)
