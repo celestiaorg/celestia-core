@@ -141,8 +141,13 @@ func DataCommitment(ctx *rpctypes.Context, query string) (*ctypes.ResultDataComm
 		return nil, err
 	}
 
-	blocks := fetchBlocks(results, len(results), 0)
-	root := hashDataRoots(blocks)
+	err = sortBlocks(results, "asc")
+	if err != nil {
+		return nil, err
+	}
+
+	blockResults := fetchBlocks(results, len(results), 0)
+	root := hashDataRoots(blockResults)
 
 	// Create data commitment
 	return &ctypes.ResultDataCommitment{DataCommitment: root}, nil
@@ -151,8 +156,8 @@ func DataCommitment(ctx *rpctypes.Context, query string) (*ctypes.ResultDataComm
 // hashDataRoots hashes a list of blocks data hashes and returns their merkle root.
 func hashDataRoots(blocks []*ctypes.ResultBlock) []byte {
 	dataRoots := make([][]byte, 0, len(blocks))
-	for index, block := range blocks {
-		dataRoots[index] = block.Block.DataHash
+	for _, block := range blocks {
+		dataRoots = append(dataRoots, block.Block.DataHash)
 	}
 	root := merkle.HashFromByteSlices(dataRoots)
 	return root
