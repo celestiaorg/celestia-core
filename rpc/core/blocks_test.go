@@ -133,6 +133,7 @@ func TestDataCommitmentResults(t *testing.T) {
 
 	beginQuery := 10
 	endQuery := 15
+	mockedQuery := fmt.Sprintf("block.height >= %d AND block.height <= %d", beginQuery, endQuery)
 	env.BlockIndexer = mockBlockIndexer{
 		height:          height,
 		beginQueryBlock: beginQuery,
@@ -146,7 +147,7 @@ func TestDataCommitmentResults(t *testing.T) {
 	}
 	expectedCommitment := merkle.HashFromByteSlices(dataRoots)
 
-	actualCommitment, err := DataCommitment(&rpctypes.Context{}, "block.height >= 10 AND block.height <= 15")
+	actualCommitment, err := DataCommitment(&rpctypes.Context{}, mockedQuery)
 	if err != nil {
 		assert.Error(t, err, "couldn't generate the needed data commitment.")
 	}
@@ -161,17 +162,10 @@ type mockBlockStore struct {
 	blocks []*types.Block
 }
 
-func (mockBlockStore) Base() int64                                 { return 1 }
-func (store mockBlockStore) Height() int64                         { return store.height }
-func (store mockBlockStore) Size() int64                           { return store.height }
-func (mockBlockStore) LoadBaseMeta() *types.BlockMeta              { return nil }
-func (mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta { return nil }
-func (store mockBlockStore) LoadBlock(height int64) *types.Block {
-	if height > store.height {
-		return nil
-	}
-	return store.blocks[height]
-}
+func (mockBlockStore) Base() int64                                       { return 1 }
+func (store mockBlockStore) Height() int64                               { return store.height }
+func (store mockBlockStore) Size() int64                                 { return store.height }
+func (mockBlockStore) LoadBaseMeta() *types.BlockMeta                    { return nil }
 func (mockBlockStore) LoadBlockByHash(hash []byte) *types.Block          { return nil }
 func (mockBlockStore) LoadBlockPart(height int64, index int) *types.Part { return nil }
 func (mockBlockStore) LoadBlockCommit(height int64) *types.Commit        { return nil }
@@ -180,11 +174,29 @@ func (mockBlockStore) PruneBlocks(height int64) (uint64, error)          { retur
 func (mockBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 }
 
+func (store mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
+	if height > store.height {
+		return nil
+	}
+	block := store.blocks[height]
+	return &types.BlockMeta{
+		BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(types.BlockPartSizeBytes).Header()},
+		Header:  block.Header,
+	}
+}
+
+func (store mockBlockStore) LoadBlock(height int64) *types.Block {
+	if height > store.height {
+		return nil
+	}
+	return store.blocks[height]
+}
+
 // mockBlockIndexer used to mock the set of indexed blocks and return a predefined one.
 type mockBlockIndexer struct {
 	height          int64
-	beginQueryBlock int
-	endQueryBlock   int
+	beginQueryBlock int // used not to have to parse any query
+	endQueryBlock   int // used not to have to parse any query
 }
 
 func (indexer mockBlockIndexer) Has(height int64) (bool, error)            { return true, nil }
