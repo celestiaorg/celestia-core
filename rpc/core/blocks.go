@@ -3,9 +3,10 @@ package core
 import (
 	"errors"
 	"fmt"
+	"sort"
+
 	"github.com/tendermint/tendermint/crypto/merkle"
 	blockidxnull "github.com/tendermint/tendermint/state/indexer/block/null"
-	"sort"
 
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
