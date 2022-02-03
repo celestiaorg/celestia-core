@@ -6,17 +6,19 @@ set -euo pipefail
 # of the spec repository, run it with the $VERS environment variable set to the
 # desired branch name or commit hash from the spec repo.
 
-: ${VERS:=master}
+: ${VERS:=evan/abci++-celestia}
 
 echo "fetching proto files"
 
 # Get shortened ref of commit
 REF=$(curl -H "Accept: application/vnd.github.v3.sha" -qL \
-  "https://api.github.com/repos/tendermint/spec/commits/${VERS}" \
+  "https://api.github.com/repos/celestiaorg/spec/commits/${VERS}" \
   | cut -c -7)
 
-readonly OUTDIR="tendermint-spec-${REF}"
-curl -qL "https://api.github.com/repos/tendermint/spec/tarball/${REF}" | tar -xzf - ${OUTDIR}/
+readonly OUTDIR="celestiaorg-spec-${REF}"
+mkdir ${OUTDIR}
+echo OUTDIR
+curl -qL "https://api.github.com/repos/celestiaorg/spec/tarball/${REF}" | tar -xzf - ${OUTDIR}/
 
 cp -r ${OUTDIR}/proto/tendermint/* ./proto/tendermint
 cp -r ${OUTDIR}/third_party/** ./third_party
