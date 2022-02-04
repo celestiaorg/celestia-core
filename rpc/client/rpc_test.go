@@ -765,6 +765,34 @@ func TestTxSearch(t *testing.T) {
 	}
 }
 
+func TestDataCommitment(t *testing.T) {
+	_, conf := NodeSuite(t)
+	c := getHTTPClient(t, conf)
+
+	// first we broadcast a few tx
+	expectedHeight := int64(3)
+	var bres *coretypes.ResultBroadcastTxCommit
+	var err error
+	for i := int64(0); i < expectedHeight; i++ {
+		_, _, tx := MakeTxKV()
+		bres, err = c.BroadcastTxCommit(context.Background(), tx)
+		require.Nil(t, err, "%+v when submitting tx %d", err, i)
+	}
+
+	// check if height >= 3
+	actualHeight := bres.Height
+	require.LessOrEqual(t, expectedHeight, actualHeight, "couldn't create enough blocks for testing the commitment.")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// check if data commitment is not nil.
+	// Checking if the commitment is correct is done in `core/blocks_test.go`.
+	dataCommitment, err := c.DataCommitment(ctx, fmt.Sprintf("block.height <= %d", expectedHeight))
+	require.NotNil(t, dataCommitment, "data commitment shouldn't be nul.")
+	require.Nil(t, err, "%+v when creating data commitment.", err)
+}
+
 func TestBatchedJSONRPCCalls(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

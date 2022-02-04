@@ -1,16 +1,22 @@
 package core
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tendermint/tendermint/crypto/merkle"
+	tmrand "github.com/tendermint/tendermint/libs/rand"
+	"github.com/tendermint/tendermint/types"
 	dbm "github.com/tendermint/tm-db"
 
 	abci "github.com/tendermint/tendermint/abci/types"
 	sm "github.com/tendermint/tendermint/internal/state"
+	"github.com/tendermint/tendermint/internal/state/indexer"
 	"github.com/tendermint/tendermint/internal/state/mocks"
 	tmstate "github.com/tendermint/tendermint/proto/tendermint/state"
 	"github.com/tendermint/tendermint/rpc/coretypes"
@@ -116,5 +122,75 @@ func TestBlockResults(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tc.wantRes, res)
 		}
+	}
+}
+
+func TestDataCommitmentResults(t *testing.T) {
+	env := &Environment{}
+	heights := []int64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+
+	blocks := randomBlocks(int64(len(heights)))
+	mockstore := &mocks.BlockStore{}
+	for i, height := range heights {
+		mockstore.On("LoadBlock", height).Return(blocks[i])
+		mockstore.On("LoadBlockMeta", height).Return(types.NewBlockMeta(blocks[i], nil))
+	}
+
+	mockEVS := mocks.EventSink{}
+	mockEVS.On("SearchBlockEvents", mock.Anything, mock.Anything).Return(heights[1:3], nil)
+	mockEVS.On("Type").Return(indexer.KV)
+
+	env.EventSinks = append(env.EventSinks, &mockEVS)
+	env.BlockStore = mockstore
+
+	testCases := []struct {
+		beginQuery int
+		endQuery   int
+		expectPass bool
+	}{
+		{1, 2, true},
+		// {10, 9, false}, // TODO: mock errors?
+		// {0, 1000, false},
+	}
+
+	for _, tc := range testCases {
+		mockedQuery := fmt.Sprintf("block.height >= %d AND block.height <= %d", tc.beginQuery, tc.endQuery)
+
+		actualCommitment, err := env.DataCommitment(&rpctypes.Context{}, mockedQuery)
+		if tc.expectPass {
+			require.Nil(t, err, "should generate the needed data commitment.")
+
+			size := tc.endQuery - tc.beginQuery + 1
+			dataRoots := make([][]byte, size)
+			for i := 0; i < size; i++ {
+				dataRoots[i] = blocks[tc.beginQuery+i].DataHash
+			}
+			expectedCommitment := merkle.HashFromByteSlices(dataRoots)
+
+			if !bytes.Equal(expectedCommitment, actualCommitment.DataCommitment) {
+				t.Error("expected data commitment and actual data commitment doesn't match.")
+			}
+		} else {
+			assert.Error(t, err)
+		}
+	}
+}
+
+// randomBlocks generates a set of random blocks up to the provided height.
+func randomBlocks(height int64) []*types.Block {
+	blocks := make([]*types.Block, height)
+	for i := int64(0); i < height; i++ {
+		blocks[i] = randomBlock(i)
+	}
+	return blocks
+}
+
+// randomBlock generates a Block with a certain height and random data hash.
+func randomBlock(height int64) *types.Block {
+	return &types.Block{
+		Header: types.Header{
+			Height:   height,
+			DataHash: tmrand.Bytes(32),
+		},
 	}
 }

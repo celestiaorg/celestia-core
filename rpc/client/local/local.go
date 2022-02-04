@@ -186,6 +186,10 @@ func (c *Local) HeaderByHash(ctx context.Context, hash bytes.HexBytes) (*coretyp
 	return c.env.HeaderByHash(c.ctx, hash)
 }
 
+func (c *Local) DataCommitment(_ context.Context, query string) (*coretypes.ResultDataCommitment, error) {
+	return c.env.DataCommitment(c.ctx, query)
+}
+
 func (c *Local) Commit(ctx context.Context, height *int64) (*coretypes.ResultCommit, error) {
 	return c.env.Commit(c.ctx, height)
 }

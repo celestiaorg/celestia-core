@@ -81,6 +81,7 @@ type SignClient interface {
 	Header(ctx context.Context, height *int64) (*coretypes.ResultHeader, error)
 	HeaderByHash(ctx context.Context, hash bytes.HexBytes) (*coretypes.ResultHeader, error)
 	Commit(ctx context.Context, height *int64) (*coretypes.ResultCommit, error)
+	DataCommitment(ctx context.Context, query string) (*coretypes.ResultDataCommitment, error)
 	Validators(ctx context.Context, height *int64, page, perPage *int) (*coretypes.ResultValidators, error)
 	Tx(ctx context.Context, hash bytes.HexBytes, prove bool) (*coretypes.ResultTx, error)
 

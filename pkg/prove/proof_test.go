@@ -24,7 +24,7 @@ func TestTxInclusion(t *testing.T) {
 	}
 
 	// compute the data availability header
-	shares, _ := typicalBlockData.ComputeShares()
+	shares, _, _ := typicalBlockData.ComputeShares(64)
 
 	squareSize := uint(math.Sqrt(float64(len(shares))))
 
@@ -101,7 +101,7 @@ func Test_genRowShares(t *testing.T) {
 		Messages: generateRandomlySizedMessages(10, 1000),
 	}
 
-	allShares, _ := typicalBlockData.ComputeShares()
+	allShares, _, _ := typicalBlockData.ComputeShares(64)
 	rawShares := allShares.RawShares()
 
 	originalSquareSize := uint(math.Sqrt(float64(len(rawShares))))
@@ -137,7 +137,7 @@ func Test_genOrigRowShares(t *testing.T) {
 		Messages: generateRandomlySizedMessages(10, 1500),
 	}
 
-	allShares, _ := typicalBlockData.ComputeShares()
+	allShares, _, _ := typicalBlockData.ComputeShares(64)
 	rawShares := allShares.RawShares()
 
 	genShares := genOrigRowShares(typicalBlockData, 8, 0, 7)

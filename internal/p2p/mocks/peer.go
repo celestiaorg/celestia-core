@@ -10,6 +10,8 @@ import (
 
 	net "net"
 
+	testing "testing"
+
 	types "github.com/tendermint/tendermint/types"
 )
 
@@ -331,4 +333,14 @@ func (_m *Peer) TrySend(_a0 byte, _a1 []byte) bool {
 // Wait provides a mock function with given fields:
 func (_m *Peer) Wait() {
 	_m.Called()
+}
+
+// NewPeer creates a new instance of Peer. It also registers the testing.TB interface on the mock and a cleanup function to assert the mocks expectations.
+func NewPeer(t testing.TB) *Peer {
+	mock := &Peer{}
+	mock.Mock.Test(t)
+
+	t.Cleanup(func() { mock.AssertExpectations(t) })
+
+	return mock
 }
