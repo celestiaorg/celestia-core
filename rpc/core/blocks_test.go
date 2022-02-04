@@ -131,29 +131,41 @@ func TestDataCommitmentResults(t *testing.T) {
 	}
 	env.BlockStore = blockStore
 
-	beginQuery := 10
-	endQuery := 15
-	mockedQuery := fmt.Sprintf("block.height >= %d AND block.height <= %d", beginQuery, endQuery)
-	env.BlockIndexer = mockBlockIndexer{
-		height:          height,
-		beginQueryBlock: beginQuery,
-		endQueryBlock:   endQuery,
+	testCases := []struct {
+		beginQuery int
+		endQuery   int
+		expectPass bool
+	}{
+		{10, 15, true},
+		{10, 9, false},
+		{0, 1000, false},
 	}
 
-	size := endQuery - beginQuery + 1
-	dataRoots := make([][]byte, size)
-	for i := 0; i < size; i++ {
-		dataRoots[i] = blocks[beginQuery+i].DataHash
-	}
-	expectedCommitment := merkle.HashFromByteSlices(dataRoots)
+	for _, tc := range testCases {
+		mockedQuery := fmt.Sprintf("block.height >= %d AND block.height <= %d", tc.beginQuery, tc.endQuery)
+		env.BlockIndexer = mockBlockIndexer{
+			height:          height,
+			beginQueryBlock: tc.beginQuery,
+			endQueryBlock:   tc.endQuery,
+		}
 
-	actualCommitment, err := DataCommitment(&rpctypes.Context{}, mockedQuery)
-	if err != nil {
-		assert.Error(t, err, "couldn't generate the needed data commitment.")
-	}
+		actualCommitment, err := DataCommitment(&rpctypes.Context{}, mockedQuery)
+		if tc.expectPass {
+			require.Nil(t, err, "should generate the needed data commitment.")
 
-	if !bytes.Equal(expectedCommitment, actualCommitment.DataCommitment.Bytes()) {
-		assert.Error(t, nil, "expected data commitment and actual data commitment doesn't match.")
+			size := tc.endQuery - tc.beginQuery + 1
+			dataRoots := make([][]byte, size)
+			for i := 0; i < size; i++ {
+				dataRoots[i] = blocks[tc.beginQuery+i].DataHash
+			}
+			expectedCommitment := merkle.HashFromByteSlices(dataRoots)
+
+			if !bytes.Equal(expectedCommitment, actualCommitment.DataCommitment) {
+				assert.Error(t, nil, "expected data commitment and actual data commitment doesn't match.")
+			}
+		} else {
+			require.NotNil(t, err, "couldn't generate the needed data commitment.")
+		}
 	}
 }
 
