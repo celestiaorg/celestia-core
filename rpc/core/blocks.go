@@ -136,25 +136,25 @@ func Commit(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCommit, erro
 // DataCommitment collects the data roots over a provided ordered range of blocks,
 // and then creates a new Merkle root of those data roots.
 func DataCommitment(ctx *rpctypes.Context, query string) (*ctypes.ResultDataCommitment, error) {
-	results, err := blocksByQuery(ctx, query)
+	heights, err := heightsByQuery(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 
 	// limit of queried blocks
 	limit := 1000
-	if len(results) > limit {
+	if len(heights) > limit {
 		return nil, fmt.Errorf("the query exceeds the limit of allowed blocks %d", limit)
-	} else if len(results) == 0 {
+	} else if len(heights) == 0 {
 		return nil, fmt.Errorf("cannot create the data commitments for an empty set of blocks")
 	}
 
-	err = sortBlocks(results, "asc")
+	err = sortBlocks(heights, "asc")
 	if err != nil {
 		return nil, err
 	}
 
-	blockResults := fetchBlocks(results, len(results), 0)
+	blockResults := fetchBlocks(heights, len(heights), 0)
 	root := hashDataRoots(blockResults)
 
 	// Create data commitment
@@ -208,7 +208,7 @@ func BlockSearch(
 	orderBy string,
 ) (*ctypes.ResultBlockSearch, error) {
 
-	results, err := blocksByQuery(ctx, query)
+	results, err := heightsByQuery(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -236,8 +236,8 @@ func BlockSearch(
 	return &ctypes.ResultBlockSearch{Blocks: apiResults, TotalCount: totalCount}, nil
 }
 
-// blocksByQuery queries for blocks and returns the whole result list.
-func blocksByQuery(ctx *rpctypes.Context, query string) ([]int64, error) {
+// heightsByQuery returns a list of heights corresponding to the provided query.
+func heightsByQuery(ctx *rpctypes.Context, query string) ([]int64, error) {
 	// skip if block indexing is disabled
 	if _, ok := env.BlockIndexer.(*blockidxnull.BlockerIndexer); ok {
 		return nil, errors.New("block indexing is disabled")
