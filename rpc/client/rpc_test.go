@@ -631,9 +631,9 @@ func TestTxSearch(t *testing.T) {
 }
 
 func TestDataCommitment(t *testing.T) {
-	// first we broadcast 3 tx
 	c := getHTTPClient()
 
+	// first we broadcast a few tx
 	expectedHeight := int64(3)
 	var bres *ctypes.ResultBroadcastTxCommit
 	var err error
