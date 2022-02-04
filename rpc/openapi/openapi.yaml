@@ -1071,7 +1071,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /data_commitment:
+    get:
+      summary: Generates a data commitment for a range of blocks
+      description: |
+        Generates a data commitment over an ordered list of blocks matching the query.
 
+        See /subscribe for the query syntax.
+      operationId: data_commitment
+      parameters:
+        - in: query
+          name: query
+          description: Query
+          required: true
+          schema:
+            type: string
+            example: "block.height > 1000"
+      tags:
+        - Info
+      responses:
+        "200":
+          description: Hex representation of the data commitment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataCommitmentResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /tx:
     get:
       summary: Get transactions by hash
@@ -2404,6 +2434,28 @@ components:
             total_count:
               type: string
               example: "2"
+          type: object
+
+    DataCommitmentResponse:
+      type: object
+      required:
+        - "jsonrpc"
+        - "id"
+        - "result"
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id:
+          type: integer
+          example: 0
+        result:
+          required:
+            - "dataCommitment"
+          properties:
+            dataCommitment:
+              type: string
+              example: "D70952032620CC4E2737EB8AC379806359D8E0B17B0488F627997A0B043ABDED"
           type: object
 
     TxResponse:
