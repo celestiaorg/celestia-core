@@ -141,6 +141,14 @@ func DataCommitment(ctx *rpctypes.Context, query string) (*ctypes.ResultDataComm
 		return nil, err
 	}
 
+	// limit of queried blocks
+	limit := 1000
+	if len(results) > limit {
+		return nil, fmt.Errorf("the query exceeds the limit of allowed blocks %d", limit)
+	} else if len(results) == 0 {
+		return nil, fmt.Errorf("cannot create the data commitments for an empty set of blocks")
+	}
+
 	err = sortBlocks(results, "asc")
 	if err != nil {
 		return nil, err
