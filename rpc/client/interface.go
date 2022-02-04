@@ -68,6 +68,9 @@ type SignClient interface {
 	BlockByHash(ctx context.Context, hash []byte) (*ctypes.ResultBlock, error)
 	BlockResults(ctx context.Context, height *int64) (*ctypes.ResultBlockResults, error)
 	Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit, error)
+
+	DataCommitment(ctx context.Context, query string) (*ctypes.ResultDataCommitment, error)
+
 	Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error)
 	Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error)
 

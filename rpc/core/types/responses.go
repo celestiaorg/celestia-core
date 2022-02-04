@@ -55,6 +55,10 @@ type ResultBlockResults struct {
 	ConsensusParamUpdates *abci.ConsensusParams     `json:"consensus_param_updates"`
 }
 
+type ResultDataCommitment struct {
+	DataCommitment bytes.HexBytes `json:"data_commitment"`
+}
+
 // NewResultCommit is a helper to initialize the ResultCommit with
 // the embedded struct
 func NewResultCommit(header *types.Header, commit *types.Commit,

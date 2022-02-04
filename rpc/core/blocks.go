@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/tendermint/tendermint/crypto/merkle"
+	blockidxnull "github.com/tendermint/tendermint/state/indexer/block/null"
+
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
+	"github.com/tendermint/tendermint/pkg/consts"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
-	blockidxnull "github.com/tendermint/tendermint/state/indexer/block/null"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -131,6 +134,42 @@ func Commit(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCommit, erro
 	return ctypes.NewResultCommit(&header, commit, true), nil
 }
 
+// DataCommitment collects the data roots over a provided ordered range of blocks,
+// and then creates a new Merkle root of those data roots.
+func DataCommitment(ctx *rpctypes.Context, query string) (*ctypes.ResultDataCommitment, error) {
+	heights, err := heightsByQuery(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(heights) > consts.DataCommitmentBlocksLimit {
+		return nil, fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
+	} else if len(heights) == 0 {
+		return nil, fmt.Errorf("cannot create the data commitments for an empty set of blocks")
+	}
+
+	err = sortBlocks(heights, "asc")
+	if err != nil {
+		return nil, err
+	}
+
+	blockResults := fetchBlocks(heights, len(heights), 0)
+	root := hashDataRoots(blockResults)
+
+	// Create data commitment
+	return &ctypes.ResultDataCommitment{DataCommitment: root}, nil
+}
+
+// hashDataRoots hashes a list of blocks data hashes and returns their merkle root.
+func hashDataRoots(blocks []*ctypes.ResultBlock) []byte {
+	dataRoots := make([][]byte, 0, len(blocks))
+	for _, block := range blocks {
+		dataRoots = append(dataRoots, block.Block.DataHash)
+	}
+	root := merkle.HashFromByteSlices(dataRoots)
+	return root
+}
+
 // BlockResults gets ABCIResults at a given height.
 // If no height is provided, it will fetch results for the latest block.
 //
@@ -168,31 +207,15 @@ func BlockSearch(
 	orderBy string,
 ) (*ctypes.ResultBlockSearch, error) {
 
-	// skip if block indexing is disabled
-	if _, ok := env.BlockIndexer.(*blockidxnull.BlockerIndexer); ok {
-		return nil, errors.New("block indexing is disabled")
-	}
-
-	q, err := tmquery.New(query)
-	if err != nil {
-		return nil, err
-	}
-
-	results, err := env.BlockIndexer.Search(ctx.Context(), q)
+	results, err := heightsByQuery(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 
 	// sort results (must be done before pagination)
-	switch orderBy {
-	case "desc", "":
-		sort.Slice(results, func(i, j int) bool { return results[i] > results[j] })
-
-	case "asc":
-		sort.Slice(results, func(i, j int) bool { return results[i] < results[j] })
-
-	default:
-		return nil, errors.New("expected order_by to be either `asc` or `desc` or empty")
+	err = sortBlocks(results, orderBy)
+	if err != nil {
+		return nil, err
 	}
 
 	// paginate results
@@ -207,6 +230,45 @@ func BlockSearch(
 	skipCount := validateSkipCount(page, perPage)
 	pageSize := tmmath.MinInt(perPage, totalCount-skipCount)
 
+	apiResults := fetchBlocks(results, pageSize, skipCount)
+
+	return &ctypes.ResultBlockSearch{Blocks: apiResults, TotalCount: totalCount}, nil
+}
+
+// heightsByQuery returns a list of heights corresponding to the provided query.
+func heightsByQuery(ctx *rpctypes.Context, query string) ([]int64, error) {
+	// skip if block indexing is disabled
+	if _, ok := env.BlockIndexer.(*blockidxnull.BlockerIndexer); ok {
+		return nil, errors.New("block indexing is disabled")
+	}
+
+	q, err := tmquery.New(query)
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := env.BlockIndexer.Search(ctx.Context(), q)
+	return results, err
+}
+
+// sortBlocks takes a list of block heights and sorts them according to the order: "asc" or "desc".
+// If `orderBy` is blank, then it is considered descending.
+func sortBlocks(results []int64, orderBy string) error {
+	switch orderBy {
+	case "desc", "":
+		sort.Slice(results, func(i, j int) bool { return results[i] > results[j] })
+
+	case "asc":
+		sort.Slice(results, func(i, j int) bool { return results[i] < results[j] })
+
+	default:
+		return errors.New("expected order_by to be either `asc` or `desc` or empty")
+	}
+	return nil
+}
+
+// fetchBlocks takes a list of block heights and fetches them.
+func fetchBlocks(results []int64, pageSize int, skipCount int) []*ctypes.ResultBlock {
 	apiResults := make([]*ctypes.ResultBlock, 0, pageSize)
 	for i := skipCount; i < skipCount+pageSize; i++ {
 		block := env.BlockStore.LoadBlock(results[i])
@@ -220,6 +282,5 @@ func BlockSearch(
 			}
 		}
 	}
-
-	return &ctypes.ResultBlockSearch{Blocks: apiResults, TotalCount: totalCount}, nil
+	return apiResults
 }
