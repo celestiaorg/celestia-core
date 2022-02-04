@@ -10,6 +10,7 @@ import (
 
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
+	"github.com/tendermint/tendermint/pkg/consts"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 	"github.com/tendermint/tendermint/types"
@@ -141,10 +142,8 @@ func DataCommitment(ctx *rpctypes.Context, query string) (*ctypes.ResultDataComm
 		return nil, err
 	}
 
-	// limit of queried blocks
-	limit := 1000
-	if len(heights) > limit {
-		return nil, fmt.Errorf("the query exceeds the limit of allowed blocks %d", limit)
+	if len(heights) > consts.DataCommitmentBlocksLimit {
+		return nil, fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
 	} else if len(heights) == 0 {
 		return nil, fmt.Errorf("cannot create the data commitments for an empty set of blocks")
 	}

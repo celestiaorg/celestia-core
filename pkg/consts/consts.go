@@ -73,4 +73,7 @@ var (
 	// TODO(ismail): for better efficiency and a larger number shares
 	// we should switch to the rsmt2d.LeopardFF16 codec:
 	DefaultCodec = rsmt2d.NewRSGF8Codec
+
+	// DataCommitmentBlocksLimit is the limit to the number of blocks we can generate a data commitment for.
+	DataCommitmentBlocksLimit = 1000
 )
