@@ -10,6 +10,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	tmtime "github.com/tendermint/tendermint/libs/time"
 
+	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	tmstate "github.com/tendermint/tendermint/proto/tendermint/state"
 	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
 	"github.com/tendermint/tendermint/types"

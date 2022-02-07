@@ -6,7 +6,7 @@ set -euo pipefail
 # of the spec repository, run it with the $VERS environment variable set to the
 # desired branch name or commit hash from the spec repo.
 
-: ${VERS:=evan/abci++_tmp}
+: ${VERS:="evan/reset-to-upstream-master"}
 
 echo "fetching proto files"
 

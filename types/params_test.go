@@ -230,6 +230,9 @@ func TestConsensusParamsHash(t *testing.T) {
 }
 
 func TestConsensusParamsUpdate(t *testing.T) {
+	prec := time.Second * 2
+	msgDelay := time.Second * 4
+
 	testCases := []struct {
 		intialParams  ConsensusParams
 		updates       *tmproto.ConsensusParams
@@ -244,10 +247,11 @@ func TestConsensusParamsUpdate(t *testing.T) {
 		{
 			// update synchrony params
 			intialParams: makeParams(makeParamsArgs{evidenceAge: 3, precision: time.Second, messageDelay: 3 * time.Second}),
+
 			updates: &tmproto.ConsensusParams{
 				Synchrony: &tmproto.SynchronyParams{
-					Precision:    time.Second * 2,
-					MessageDelay: time.Second * 4,
+					Precision:    &prec,
+					MessageDelay: &msgDelay,
 				},
 			},
 			updatedParams: makeParams(makeParamsArgs{evidenceAge: 3, precision: 2 * time.Second, messageDelay: 4 * time.Second}),

@@ -72,7 +72,7 @@ func makeAndApplyGoodBlock(
 	evidence []types.Evidence,
 ) (sm.State, types.BlockID) {
 	t.Helper()
-	block, _, err := state.MakeBlock(height, factory.MakeTenTxs(height), lastCommit, evidence, proposerAddr)
+	block, _, err := state.MakeBlock(height, factory.MakeTenTxs(height), evidence, nil, nil, lastCommit, proposerAddr)
 	require.NoError(t, err)
 
 	require.NoError(t, blockExec.ValidateBlock(state, block))

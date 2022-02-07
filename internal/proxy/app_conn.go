@@ -143,13 +143,6 @@ func (app *appConnConsensus) Commit(ctx context.Context) (*types.ResponseCommit,
 	return app.appConn.Commit(ctx)
 }
 
-func (app *appConnConsensus) PreprocessTxsSync(
-	ctx context.Context,
-	req types.RequestPreprocessTxs,
-) (*types.ResponsePreprocessTxs, error) {
-	return app.appConn.PreprocessTxsSync(ctx, req)
-}
-
 //------------------------------------------------
 // Implements AppConnMempool (subset of abciclient.Client)
 

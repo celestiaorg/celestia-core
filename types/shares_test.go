@@ -30,8 +30,8 @@ func TestMakeShares(t *testing.T) {
 	val := NewMockPV()
 	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
 	blockID2 := makeBlockID([]byte("blockhash2"), 1000, []byte("partshash"))
-	vote1 := makeVote(t, val, "chainID", 0, 10, 2, 1, blockID, defaultVoteTime)
-	vote2 := makeVote(t, val, "chainID", 0, 10, 2, 1, blockID2, defaultVoteTime)
+	vote1 := makeVote(context.TODO(), t, val, "chainID", 0, 10, 2, 1, blockID, defaultVoteTime)
+	vote2 := makeVote(context.TODO(), t, val, "chainID", 0, 10, 2, 1, blockID2, defaultVoteTime)
 	testEvidence := &DuplicateVoteEvidence{
 		VoteA: vote1,
 		VoteB: vote2,
@@ -501,7 +501,10 @@ func generateRandomISR(count int) IntermediateStateRoots {
 func generateIdenticalEvidence(count int) EvidenceData {
 	evidence := make([]Evidence, count)
 	for i := 0; i < count; i++ {
-		ev := NewMockDuplicateVoteEvidence(math.MaxInt64, time.Now(), "chainID")
+		ev, err := NewMockDuplicateVoteEvidence(context.TODO(), math.MaxInt64, time.Now(), "chainID")
+		if err != nil {
+			panic(err)
+		}
 		evidence[i] = ev
 	}
 	return EvidenceData{Evidence: evidence}

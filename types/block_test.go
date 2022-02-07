@@ -136,7 +136,7 @@ func TestBlockMakePartSet(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, bps)
 
-	partSet, err := MakeBlock(int64(3), []Tx{Tx("Hello World")}, nil, nil).MakePartSet(1024)
+	partSet, err := MakeBlock(int64(3), []Tx{Tx("Hello World")}, nil, nil, nil, nil).MakePartSet(1024)
 	require.NoError(t, err)
 	assert.NotNil(t, partSet)
 	assert.EqualValues(t, 1, partSet.Total())
@@ -162,7 +162,7 @@ func TestBlockMakePartSetWithEvidence(t *testing.T) {
 	require.NoError(t, err)
 	evList := []Evidence{ev}
 
-	partSet, err := MakeBlock(h, []Tx{Tx("Hello World")}, commit, evList).MakePartSet(512)
+	partSet, err := MakeBlock(h, []Tx{Tx("Hello World")}, evList, nil, nil, commit).MakePartSet(512)
 	require.NoError(t, err)
 
 	assert.NotNil(t, partSet)
@@ -680,15 +680,16 @@ func TestBlockProtoBuf(t *testing.T) {
 	defer cancel()
 
 	h := mrand.Int63()
-	c1 := randCommit(time.Now())
+	c1 := randCommit(ctx, t, time.Now())
 	b1 := MakeBlock(h, []Tx{Tx([]byte{1})}, []Evidence{}, nil, nil, &Commit{Signatures: []CommitSig{}})
 	b1.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
 
 	evidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 	evi, err := NewMockDuplicateVoteEvidence(ctx, h, evidenceTime, "block-test-chain")
 	require.NoError(t, err)
-	b2.Evidence = EvidenceData{Evidence: EvidenceList{evi}}
-	b2.EvidenceHash = b2.Evidence.Hash()
+	b2 := MakeBlock(h, []Tx{Tx([]byte{1})}, EvidenceList{evi}, nil, nil, &Commit{Signatures: []CommitSig{}})
+	b2.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
+	// b2.EvidenceHash = b2.Evidence.Hash()
 
 	b3 := MakeBlock(h, []Tx{}, []Evidence{}, nil, nil, c1)
 	b3.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
@@ -713,8 +714,10 @@ func TestBlockProtoBuf(t *testing.T) {
 
 		block, err := BlockFromProto(pb)
 		if tc.expPass2 {
-			require.NoError(t, err, tc.msg)
-			require.EqualValues(t, tc.b1.Header, block.Header, tc.msg)
+			block.Data.Evidence.byteSize = tc.b1.Evidence.byteSize
+			assert.NoError(t, err, tc.msg)
+			tc.b1.Hash()
+			assert.EqualValues(t, tc.b1.Header, block.Header, tc.msg)
 			require.EqualValues(t, tc.b1.Data, block.Data, tc.msg) // todo
 			require.EqualValues(t, tc.b1.Evidence.Evidence, block.Evidence.Evidence, tc.msg)
 			require.EqualValues(t, *tc.b1.LastCommit, *block.LastCommit, tc.msg)

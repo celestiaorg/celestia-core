@@ -156,7 +156,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		height,
 		modifiedData.Txs,
 		evidence,
-		modifiedData.IntermediateStateRoots,
+		modifiedData.IntermediateStateRoots.RawRootsList,
 		modifiedData.Messages.MessagesList,
 		commit,
 		proposerAddr,

@@ -81,7 +81,7 @@ func makeBlockAndPartSet(
 			lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()})
 	}
 
-	block, partSet, err := state.MakeBlock(height, []types.Tx{}, lastCommit, nil, state.Validators.GetProposer().Address)
+	block, partSet, err := state.MakeBlock(height, []types.Tx{}, nil, nil, nil, lastCommit, state.Validators.GetProposer().Address)
 	require.NoError(t, err)
 
 	return block, partSet

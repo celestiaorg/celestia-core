@@ -2,6 +2,7 @@ package types
 
 import (
 	"context"
+	fmt "fmt"
 )
 
 // Application is an interface that enables any finite, deterministic state machine
@@ -211,4 +212,11 @@ func (app *GRPCApplication) PrepareProposal(
 	ctx context.Context, req *RequestPrepareProposal) (*ResponsePrepareProposal, error) {
 	res := app.app.PrepareProposal(*req)
 	return &res, nil
+}
+
+func (app *GRPCApplication) ProcessProposal(
+	ctx context.Context, req *RequestProcessProposal) (*ResponseProcessProposal, error) {
+	fmt.Println("ProcessProposal not implemented yet.")
+	// res := app.app.ProcessProposal(*req)
+	return nil, nil
 }

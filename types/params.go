@@ -268,8 +268,8 @@ func (params ConsensusParams) UpdateConsensusParams(params2 *tmproto.ConsensusPa
 		res.Version.AppVersion = params2.Version.AppVersion
 	}
 	if params2.Synchrony != nil {
-		res.Synchrony.Precision = params2.Synchrony.Precision
-		res.Synchrony.MessageDelay = params2.Synchrony.MessageDelay
+		res.Synchrony.Precision = *params2.Synchrony.Precision
+		res.Synchrony.MessageDelay = *params2.Synchrony.MessageDelay
 	}
 	return res
 }
@@ -292,8 +292,8 @@ func (params *ConsensusParams) ToProto() tmproto.ConsensusParams {
 			AppVersion: params.Version.AppVersion,
 		},
 		Synchrony: &tmproto.SynchronyParams{
-			MessageDelay: params.Synchrony.MessageDelay,
-			Precision:    params.Synchrony.Precision,
+			MessageDelay: &params.Synchrony.MessageDelay,
+			Precision:    &params.Synchrony.Precision,
 		},
 	}
 }
@@ -316,8 +316,8 @@ func ConsensusParamsFromProto(pbParams tmproto.ConsensusParams) ConsensusParams 
 			AppVersion: pbParams.Version.AppVersion,
 		},
 		Synchrony: SynchronyParams{
-			MessageDelay: pbParams.Synchrony.MessageDelay,
-			Precision:    pbParams.Synchrony.Precision,
+			MessageDelay: *pbParams.Synchrony.MessageDelay,
+			Precision:    *pbParams.Synchrony.Precision,
 		},
 	}
 }
