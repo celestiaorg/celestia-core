@@ -245,9 +245,7 @@ func (r *Reactor) handlePexMessage(ctx context.Context, envelope *p2p.Envelope) 
 		pexAddresses := make([]protop2p.PexAddress, len(nodeAddresses))
 		for idx, addr := range nodeAddresses {
 			pexAddresses[idx] = protop2p.PexAddress{
-				ID:   string(addr.NodeID),
-				IP:   addr.Hostname,
-				Port: uint32(addr.Port),
+				URL: addr.String(),
 			}
 		}
 		if err := r.pexCh.Send(ctx, p2p.Envelope{
@@ -273,10 +271,10 @@ func (r *Reactor) handlePexMessage(ctx context.Context, envelope *p2p.Envelope) 
 		}
 
 		for _, pexAddress := range msg.Addresses {
-			var peerAddress p2p.NodeAddress
-			peerAddress.NodeID = types.NodeID(pexAddress.ID)
-			peerAddress.Hostname = pexAddress.IP
-			peerAddress.Port = uint16(pexAddress.Port)
+			peerAddress, err := p2p.ParseNodeAddress(pexAddress.URL)
+			if err != nil {
+				continue
+			}
 			added, err := r.peerManager.Add(peerAddress)
 			if err != nil {
 				logger.Error("failed to add PEX address", "address", peerAddress, "err", err)

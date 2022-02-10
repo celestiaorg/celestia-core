@@ -226,7 +226,7 @@ func TestNodeAddress_Resolve(t *testing.T) {
 		},
 		{
 			p2p.NodeAddress{Protocol: "tcp", Hostname: "localhost", Port: 80, Path: "/path"},
-			p2p.Endpoint{Protocol: "tcp", IP: net.IPv6loopback, Port: 80, Path: "/path"}, // not sure what this test is trying to do or why it is expected to work?
+			p2p.Endpoint{Protocol: "tcp", IP: net.IPv6loopback, Port: 80, Path: "/path"},
 			true,
 		},
 		{
@@ -276,7 +276,7 @@ func TestNodeAddress_Resolve(t *testing.T) {
 		{p2p.NodeAddress{Protocol: "memory", Path: string(id)}, p2p.Endpoint{}, false},
 		{p2p.NodeAddress{Protocol: "tcp", Hostname: "💥"}, p2p.Endpoint{}, false},
 	}
-	for i, tc := range testcases {
+	for _, tc := range testcases {
 		tc := tc
 		t.Run(tc.address.String(), func(t *testing.T) {
 			ctx, cancel := context.WithCancel(bctx)
@@ -287,7 +287,7 @@ func TestNodeAddress_Resolve(t *testing.T) {
 				require.Error(t, err)
 				return
 			}
-			require.Contains(t, endpoints, tc.expect, i)
+			require.Contains(t, endpoints, tc.expect)
 		})
 	}
 }
