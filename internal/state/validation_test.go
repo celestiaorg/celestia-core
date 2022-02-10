@@ -288,6 +288,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 				currentBytes += int64(len(newEv.Bytes()))
 			}
 			block, _, err := state.MakeBlock(height, testfactory.MakeTenTxs(height), evidence, nil, nil, lastCommit, proposerAddr)
+			assert.NoError(t, err)
 			err = blockExec.ValidateBlock(state, block)
 			if assert.Error(t, err) {
 				_, ok := err.(*types.ErrEvidenceOverflow)
