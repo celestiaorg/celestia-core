@@ -276,7 +276,7 @@ func TestNodeAddress_Resolve(t *testing.T) {
 		{p2p.NodeAddress{Protocol: "memory", Path: string(id)}, p2p.Endpoint{}, false},
 		{p2p.NodeAddress{Protocol: "tcp", Hostname: "💥"}, p2p.Endpoint{}, false},
 	}
-	for _, tc := range testcases {
+	for i, tc := range testcases {
 		tc := tc
 		t.Run(tc.address.String(), func(t *testing.T) {
 			ctx, cancel := context.WithCancel(bctx)
@@ -287,7 +287,7 @@ func TestNodeAddress_Resolve(t *testing.T) {
 				require.Error(t, err)
 				return
 			}
-			require.Contains(t, endpoints, tc.expect)
+			require.Contains(t, endpoints, tc.expect, i)
 		})
 	}
 }

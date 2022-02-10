@@ -123,7 +123,6 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		abci.RequestPrepareProposal{
 			BlockData:     txs.ToSliceOfBytes(),
 			BlockDataSize: maxDataBytes,
-			Votes:         types.VotesToProto(votes),
 		},
 	)
 	if err != nil {
