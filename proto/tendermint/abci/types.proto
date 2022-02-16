@@ -131,14 +131,14 @@ message RequestPrepareProposal {
   // block_data is an array of transactions that will be included in a block,
   // sent to the app for possible modifications.
   // applications can not exceed the size of the data passed to it.
-  repeated bytes block_data = 1;
+  tendermint.types.Data block_data = 1;
   // If an application decides to populate block_data with extra information, they can not exceed this value.
   int64 block_data_size = 2;
 }
 
 message RequestProcessProposal {
   tendermint.types.Header header = 1 [(gogoproto.nullable) = false];
-  repeated bytes txs = 2;
+  tendermint.types.Data block_data = 2;
 }
 
 //----------------------------------------
@@ -295,7 +295,7 @@ message ResponseApplySnapshotChunk {
 }
 
 message ResponsePrepareProposal {
-  repeated bytes block_data = 1;
+  tendermint.types.Data block_data = 1;
 }
 
 message ResponseProcessProposal {

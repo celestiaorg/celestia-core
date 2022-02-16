@@ -104,6 +104,13 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	evidence, evSize := blockExec.evpool.PendingEvidence(state.ConsensusParams.Evidence.MaxBytes)
 
+	evdData := types.EvidenceData{Evidence: evidence}
+	pevdData, err := evdData.ToProto()
+	if err != nil {
+		// todo(evan): see if we can get rid of this panic
+		panic(err)
+	}
+
 	// Fetch a limited amount of valid txs
 	maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
 
@@ -121,7 +128,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	}
 
 	preparedProposal, err := blockExec.proxyApp.PrepareProposalSync(
-		abci.RequestPrepareProposal{BlockData: txs.ToSliceOfBytes(), BlockDataSize: maxDataBytes},
+		abci.RequestPrepareProposal{BlockData: &tmproto.Data{Txs: txs.ToSliceOfBytes(), Evidence: *pevdData}, BlockDataSize: maxDataBytes},
 	)
 	if err != nil {
 		// The App MUST ensure that only valid (and hence 'processable') transactions
@@ -134,9 +141,9 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		// purpose for now.
 		panic(err)
 	}
-	newTxs := preparedProposal.GetBlockData()
+	rawNewData := preparedProposal.GetBlockData()
 	var txSize int
-	for _, tx := range newTxs {
+	for _, tx := range rawNewData.GetTxs() {
 		txSize += len(tx)
 
 		if maxDataBytes < int64(txSize) {
@@ -144,19 +151,30 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		}
 	}
 
-	// todo(evan) unmarshal block data and return transactions or simply change prepareprop to pass block data
+	newData, err := types.DataFromProto(rawNewData)
+	if err != nil {
+		// todo(evan): see if we can get rid of this panic
+		panic(err)
+	}
 
-	modifiedTxs := types.ToTxs(preparedProposal.GetBlockData())
-
-	return state.MakeBlock(height, modifiedTxs, evidence, nil, nil, commit, proposerAddr)
+	return state.MakeBlock(
+		height,
+		newData.Txs,
+		newData.Evidence.Evidence,
+		newData.IntermediateStateRoots.RawRootsList,
+		newData.Messages.MessagesList,
+		commit,
+		proposerAddr,
+	)
 }
 
 func (blockExec *BlockExecutor) ProcessProposal(
 	block *types.Block,
 ) (bool, error) {
+	pData := block.Data.ToProto()
 	req := abci.RequestProcessProposal{
-		Txs:    block.Data.Txs.ToSliceOfBytes(),
-		Header: *block.Header.ToProto(),
+		BlockData: &pData,
+		Header:    *block.Header.ToProto(),
 	}
 
 	resp, err := blockExec.proxyApp.ProcessProposalSync(req)
