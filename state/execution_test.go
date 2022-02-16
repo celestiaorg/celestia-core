@@ -21,12 +21,11 @@ import (
 	"github.com/tendermint/tendermint/proxy"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/state/mocks"
-	"github.com/tendermint/tendermint/store"
+	sf "github.com/tendermint/tendermint/state/test/factory"
 	"github.com/tendermint/tendermint/test/factory"
 	"github.com/tendermint/tendermint/types"
 	tmtime "github.com/tendermint/tendermint/types/time"
 	"github.com/tendermint/tendermint/version"
-	dbm "github.com/tendermint/tm-db"
 )
 
 var (
@@ -238,10 +237,8 @@ func TestProcessProposal(t *testing.T) {
 		state, stateDB, _ := makeState(1, height)
 		stateStore := sm.NewStore(stateDB)
 
-		blockStore := store.NewBlockStore(dbm.NewMemDB())
-
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
-			mmock.Mempool{}, sm.EmptyEvidencePool{}, blockStore)
+			mmock.Mempool{}, sm.EmptyEvidencePool{})
 
 		block := sf.MakeBlock(state, int64(height), new(types.Commit))
 		block.Txs = txs
