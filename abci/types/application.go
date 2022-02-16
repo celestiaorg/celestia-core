@@ -8,7 +8,7 @@ import (
 // to be driven by a blockchain-based replication engine via the ABCI.
 // All methods take a RequestXxx argument and return a ResponseXxx argument,
 // except CheckTx/DeliverTx, which take `tx []byte`, and `Commit`, which takes nothing.
-// nolint:lll // ignore for interface
+// ignore for interface
 type Application interface {
 	// Info/Query Connection
 	Info(RequestInfo) ResponseInfo                // Return application info

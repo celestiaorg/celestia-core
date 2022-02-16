@@ -128,7 +128,9 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	}
 
 	preparedProposal, err := blockExec.proxyApp.PrepareProposalSync(
-		abci.RequestPrepareProposal{BlockData: &tmproto.Data{Txs: txs.ToSliceOfBytes(), Evidence: *pevdData}, BlockDataSize: maxDataBytes},
+		abci.RequestPrepareProposal{
+			BlockData:     &tmproto.Data{Txs: txs.ToSliceOfBytes(), Evidence: *pevdData},
+			BlockDataSize: maxDataBytes},
 	)
 	if err != nil {
 		// The App MUST ensure that only valid (and hence 'processable') transactions

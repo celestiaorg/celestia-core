@@ -2079,7 +2079,13 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			// NOTE: our proposal block may be nil or not what received a polka..
 			if len(blockID.Hash) != 0 && (cs.TwoThirdPrevoteRound < vote.Round) && (vote.Round == cs.Round) {
 				if cs.ProposalBlock.HashesTo(blockID.Hash) {
-					cs.Logger.Debug("updating valid block because of POL", "valid_round", cs.TwoThirdPrevoteRound, "pol_round", vote.Round)
+					cs.Logger.Debug(
+						"updating valid block because of POL",
+						"valid_round",
+						cs.TwoThirdPrevoteRound,
+						"pol_round",
+						vote.Round,
+					)
 					cs.TwoThirdPrevoteRound = vote.Round
 					cs.TwoThirdPrevoteBlock = cs.ProposalBlock
 					cs.TwoThirdPrevoteBlockParts = cs.ProposalBlockParts
