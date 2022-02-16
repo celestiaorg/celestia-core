@@ -265,9 +265,6 @@ type Request_LoadSnapshotChunk struct {
 type Request_ApplySnapshotChunk struct {
 	ApplySnapshotChunk *RequestApplySnapshotChunk `protobuf:"bytes,15,opt,name=apply_snapshot_chunk,json=applySnapshotChunk,proto3,oneof" json:"apply_snapshot_chunk,omitempty"`
 }
-type Request_PreprocessTxs struct {
-	PreprocessTxs *RequestPreprocessTxs `protobuf:"bytes,16,opt,name=preprocess_txs,json=preprocessTxs,proto3,oneof" json:"preprocess_txs,omitempty"`
-}
 type Request_PrepareProposal struct {
 	PrepareProposal *RequestPrepareProposal `protobuf:"bytes,15,opt,name=prepare_proposal,json=prepareProposal,proto3,oneof" json:"prepare_proposal,omitempty"`
 }
@@ -1394,9 +1391,6 @@ type Response_LoadSnapshotChunk struct {
 }
 type Response_ApplySnapshotChunk struct {
 	ApplySnapshotChunk *ResponseApplySnapshotChunk `protobuf:"bytes,16,opt,name=apply_snapshot_chunk,json=applySnapshotChunk,proto3,oneof" json:"apply_snapshot_chunk,omitempty"`
-}
-type Response_PreprocessTxs struct {
-	PreprocessTxs *ResponsePreprocessTxs `protobuf:"bytes,17,opt,name=preprocess_txs,json=preprocessTxs,proto3,oneof" json:"preprocess_txs,omitempty"`
 }
 type Response_PrepareProposal struct {
 	PrepareProposal *ResponsePrepareProposal `protobuf:"bytes,16,opt,name=prepare_proposal,json=prepareProposal,proto3,oneof" json:"prepare_proposal,omitempty"`

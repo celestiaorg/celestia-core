@@ -15,7 +15,6 @@ import (
 	"github.com/tendermint/tendermint/libs/service"
 	tmsync "github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/libs/timer"
-	"golang.org/x/net/context"
 )
 
 const (
@@ -282,7 +281,7 @@ func (cli *socketClient) ApplySnapshotChunkAsync(req types.RequestApplySnapshotC
 
 func (cli *socketClient) PrepareProposalAsync(
 	req types.RequestPrepareProposal,
-) (*ReqRes, error) {
+) *ReqRes {
 	return cli.queueRequest(types.ToRequestPrepareProposal(req))
 }
 
@@ -422,25 +421,11 @@ func (cli *socketClient) ApplySnapshotChunkSync(
 	return reqres.Response.GetApplySnapshotChunk(), cli.Error()
 }
 
-func (cli *socketClient) PreprocessTxsSync(
-	req types.RequestPreprocessTxs,
-) (*types.ResponsePreprocessTxs, error) {
-	reqres := cli.queueRequest(types.ToRequestPreprocessTxs(req))
-	if err := cli.FlushSync(); err != nil {
-		return nil, err
-	}
-	return reqres.Response.GetPreprocessTxs(), nil
-}
-
 func (cli *socketClient) PrepareProposalSync(
-	ctx context.Context,
 	req types.RequestPrepareProposal,
 ) (*types.ResponsePrepareProposal, error) {
 
-	reqres, err := cli.queueRequestAndFlushSync(ctx, types.ToRequestPrepareProposal(req))
-	if err != nil {
-		return nil, err
-	}
+	reqres := cli.queueRequest(types.ToRequestPrepareProposal(req))
 	return reqres.Response.GetPrepareProposal(), nil
 }
 

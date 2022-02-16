@@ -4,7 +4,6 @@ import (
 	types "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/service"
 	tmsync "github.com/tendermint/tendermint/libs/sync"
-	"golang.org/x/net/context"
 )
 
 var _ Client = (*localClient)(nil)
@@ -208,21 +207,9 @@ func (app *localClient) ApplySnapshotChunkAsync(req types.RequestApplySnapshotCh
 	)
 }
 
-func (app *localClient) PreprocessTxsAsync(req types.RequestPreprocessTxs) (*ReqRes, error) {
-	app.mtx.Lock()
-	defer app.mtx.Unlock()
-
-	res := app.Application.PreprocessTxs(req)
-	return app.callback(
-		types.ToRequestPreprocessTxs(req),
-		types.ToResponsePreprocessTx(res),
-	), nil
-}
-
 func (app *localClient) PrepareProposalAsync(
-	ctx context.Context,
 	req types.RequestPrepareProposal,
-) (*ReqRes, error) {
+) *ReqRes {
 	app.mtx.Lock()
 	defer app.mtx.Unlock()
 
@@ -230,7 +217,7 @@ func (app *localClient) PrepareProposalAsync(
 	return app.callback(
 		types.ToRequestPrepareProposal(req),
 		types.ToResponsePrepareProposal(res),
-	), nil
+	)
 }
 
 //-------------------------------------------------------

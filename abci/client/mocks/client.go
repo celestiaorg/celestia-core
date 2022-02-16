@@ -575,36 +575,13 @@ func (_m *Client) OnStop() {
 	_m.Called()
 }
 
-// PrepareProposalAsync provides a mock function with given fields: _a0, _a1
-func (_m *Client) PrepareProposalAsync(_a1 types.RequestPrepareProposal) (*abcicli.ReqRes, error) {
-	ret := _m.Called(_a0, _a1)
-
-	var r0 *abcicli.ReqRes
-	if rf, ok := ret.Get(0).(func(context.Context, types.RequestPrepareProposal) *abcicli.ReqRes); ok {
-		r0 = rf(_a0, _a1)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*abcicli.ReqRes)
-		}
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, types.RequestPrepareProposal) error); ok {
-		r1 = rf(_a0, _a1)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// PrepareProposalSync provides a mock function with given fields: _a0, _a1
-func (_m *Client) PrepareProposalSync(_a1 types.RequestPrepareProposal) (*types.ResponsePrepareProposal) {
-	ret := _m.Called(_a0, _a1)
+// PrepareProposalSync provides a mock function with given fields: _a0
+func (_m *Client) PrepareProposalSync(_a0 types.RequestPrepareProposal) (*types.ResponsePrepareProposal, error) {
+	ret := _m.Called(_a0)
 
 	var r0 *types.ResponsePrepareProposal
-	if rf, ok := ret.Get(0).(func(context.Context, types.RequestPrepareProposal) *types.ResponsePrepareProposal); ok {
-		r0 = rf(_a0, _a1)
+	if rf, ok := ret.Get(0).(func(types.RequestPrepareProposal) *types.ResponsePrepareProposal); ok {
+		r0 = rf(_a0)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.ResponsePrepareProposal)
@@ -612,30 +589,7 @@ func (_m *Client) PrepareProposalSync(_a1 types.RequestPrepareProposal) (*types.
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, types.RequestPrepareProposal) error); ok {
-		r1 = rf(_a0, _a1)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// QueryAsync provides a mock function with given fields: _a0, _a1
-func (_m *Client) QueryAsync(_a1 types.RequestQuery) (*abcicli.ReqRes) {
-	ret := _m.Called(_a0, _a1)
-
-	var r0 *types.ResponsePreprocessTxs
-	if rf, ok := ret.Get(0).(func(types.RequestPreprocessTxs) *types.ResponsePreprocessTxs); ok {
-		r0 = rf(_a0)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*types.ResponsePreprocessTxs)
-		}
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(types.RequestPreprocessTxs) error); ok {
+	if rf, ok := ret.Get(1).(func(types.RequestPrepareProposal) error); ok {
 		r1 = rf(_a0)
 	} else {
 		r1 = ret.Error(1)

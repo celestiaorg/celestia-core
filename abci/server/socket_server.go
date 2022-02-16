@@ -239,9 +239,6 @@ func (s *SocketServer) handleRequest(req *types.Request, responses chan<- *types
 	case *types.Request_ApplySnapshotChunk:
 		res := s.app.ApplySnapshotChunk(*r.ApplySnapshotChunk)
 		responses <- types.ToResponseApplySnapshotChunk(res)
-	case *types.Request_PreprocessTxs:
-		res := s.app.PreprocessTxs(*r.PreprocessTxs)
-		responses <- types.ToResponsePreprocessTx(res)
 	default:
 		responses <- types.ToResponseException("Unknown request")
 	}

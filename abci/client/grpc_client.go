@@ -302,27 +302,16 @@ func (cli *grpcClient) ApplySnapshotChunkAsync(params types.RequestApplySnapshot
 	return cli.finishAsyncCall(req, &types.Response{Value: &types.Response_ApplySnapshotChunk{ApplySnapshotChunk: res}})
 }
 
-func (cli *grpcClient) PreprocessTxsAsync(params types.RequestPreprocessTxs) *ReqRes {
-	req := types.ToRequestPreprocessTxs(params)
-	res, err := cli.client.PreprocessTxs(context.Background(), req.GetPreprocessTxs(), grpc.WaitForReady(true))
-	if err != nil {
-		cli.StopForError(err)
-	}
-	return cli.finishAsyncCall(req, &types.Response{Value: &types.Response_PreprocessTxs{PreprocessTxs: res}})
-}
-
 func (cli *grpcClient) PrepareProposalAsync(
-	ctx context.Context,
 	params types.RequestPrepareProposal,
-) (*ReqRes, error) {
+) *ReqRes {
 
 	req := types.ToRequestPrepareProposal(params)
-	res, err := cli.client.PrepareProposal(ctx, req.GetPrepareProposal(), grpc.WaitForReady(true))
+	res, err := cli.client.PrepareProposal(context.Background(), req.GetPrepareProposal(), grpc.WaitForReady(true))
 	if err != nil {
-		return nil, err
+		return nil
 	}
 	return cli.finishAsyncCall(
-		ctx,
 		req,
 		&types.Response{
 			Value: &types.Response_PrepareProposal{
@@ -452,9 +441,6 @@ func (cli *grpcClient) PrepareProposalSync(
 	params types.RequestPrepareProposal,
 ) (*types.ResponsePrepareProposal, error) {
 
-	reqres, err := cli.PrepareProposalAsync(ctx, params)
-	if err != nil {
-		return nil, err
-	}
+	reqres := cli.PrepareProposalAsync(params)
 	return cli.finishSyncCall(reqres).GetPrepareProposal(), cli.Error()
 }
