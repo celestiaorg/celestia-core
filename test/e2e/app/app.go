@@ -259,6 +259,11 @@ func (app *Application) PrepareProposal(
 	return abci.ResponsePrepareProposal{BlockData: req.BlockData}
 }
 
+func (app *Application) ProcessProposal(
+	req abci.RequestProcessProposal) abci.ResponseProcessProposal {
+	return abci.ResponseProcessProposal{Result: abci.ResponseProcessProposal_ACCEPT}
+}
+
 // validatorUpdates generates a validator set update.
 func (app *Application) validatorUpdates(height uint64) (abci.ValidatorUpdates, error) {
 	updates := app.cfg.ValidatorUpdates[fmt.Sprintf("%v", height)]
