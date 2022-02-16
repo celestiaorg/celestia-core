@@ -176,3 +176,9 @@ func (app *Application) PrepareProposal(req types.RequestPrepareProposal) types.
 		BlockData: req.BlockData,
 	}
 }
+
+func (app *Application) ProcessProposal(req types.RequestProcessProposal) types.ResponseProcessProposal {
+	return types.ResponseProcessProposal{
+		Result: types.ResponseProcessProposal_ACCEPT,
+	}
+}
