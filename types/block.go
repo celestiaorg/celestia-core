@@ -1202,8 +1202,11 @@ func (roots IntermediateStateRoots) SplitIntoShares() NamespacedShares {
 		}
 		rawDatas = append(rawDatas, rawData)
 	}
-	shares := splitContiguous(consts.IntermediateStateRootsNamespaceID, rawDatas)
-	return shares
+	w := NewContiguousShareWriter(consts.IntermediateStateRootsNamespaceID)
+	for _, isr := range rawDatas {
+		w.Write(isr)
+	}
+	return w.Export()
 }
 
 func (msgs Messages) SplitIntoShares() NamespacedShares {
@@ -1476,8 +1479,11 @@ func (data *EvidenceData) SplitIntoShares() NamespacedShares {
 		}
 		rawDatas = append(rawDatas, rawData)
 	}
-	shares := splitContiguous(consts.EvidenceNamespaceID, rawDatas)
-	return shares
+	w := NewContiguousShareWriter(consts.EvidenceNamespaceID)
+	for _, evd := range rawDatas {
+		w.Write(evd)
+	}
+	return w.Export()
 }
 
 //--------------------------------------------------------------------------------

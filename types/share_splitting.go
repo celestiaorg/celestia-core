@@ -102,46 +102,55 @@ func splitMessage(rawData []byte, nid namespace.ID) NamespacedShares {
 	return shares
 }
 
-// splitContiguous splits multiple raw data contiguously as shares.
-// Used for transactions, intermediate state roots, and evidence.
-func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
-	shares := make([]NamespacedShare, 0)
-	// Index into the outer slice of rawDatas
-	outerIndex := 0
-	// Index into the inner slice of rawDatas
-	innerIndex := 0
-	for outerIndex < len(rawDatas) {
-		var rawData []byte
-		startIndex := 0
-		rawData, outerIndex, innerIndex, startIndex = getNextChunk(rawDatas, outerIndex, innerIndex, consts.TxShareSize)
-		rawShare := append(append(append(
-			make([]byte, 0, len(nid)+1+len(rawData)),
-			nid...),
-			byte(startIndex)),
-			rawData...)
-		paddedShare := zeroPadIfNecessary(rawShare, consts.ShareSize)
-		share := NamespacedShare{paddedShare, nid}
-		shares = append(shares, share)
-	}
-	return shares
+type ContiguousShareWriter struct {
+	shares       []NamespacedShare
+	pendingShare NamespacedShare
+	namespace    namespace.ID
 }
 
-// getNextChunk gets the next chunk for contiguous shares
-// Precondition: none of the slices in rawDatas is zero-length
-// This precondition should always hold at this point since zero-length txs are simply invalid.
-func getNextChunk(rawDatas [][]byte, outerIndex int, innerIndex int, width int) ([]byte, int, int, int) {
-	rawData := make([]byte, 0, width)
-	startIndex := 0
-	firstBytesToFetch := 0
+func NewContiguousShareWriter(ns namespace.ID) *ContiguousShareWriter {
+	pendingShare := NamespacedShare{ID: ns}
+	pendingShare.Share = append(pendingShare.Share, ns...)
+	return &ContiguousShareWriter{pendingShare: pendingShare, namespace: ns}
+}
 
-	curIndex := 0
-	for curIndex < width && outerIndex < len(rawDatas) {
-		bytesToFetch := min(len(rawDatas[outerIndex])-innerIndex, width-curIndex)
-		if bytesToFetch == 0 {
-			panic("zero-length contiguous share data is invalid")
+// Write adds the delimited data to the underlying contiguous shares
+func (csw *ContiguousShareWriter) Write(rawData []byte) {
+	// if this is the first time writeing to a pending share, we must add the
+	// reserved bytes
+	if len(csw.pendingShare.Share) == consts.NamespaceSize {
+		csw.pendingShare.Share = append(csw.pendingShare.Share, 0)
+	}
+
+	txCursor := len(rawData)
+	for txCursor != 0 {
+		// find the len left in the pending share
+		pendingLeft := consts.ShareSize - len(csw.pendingShare.Share)
+
+		// if we can simply add the tx to the share without creating a new
+		// pending share, do so and return
+		if len(rawData) <= pendingLeft {
+			csw.pendingShare.Share = append(csw.pendingShare.Share, rawData...)
+			break
 		}
-		if curIndex == 0 {
-			firstBytesToFetch = bytesToFetch
+
+		// if we can only add a portion of the transaction to the pending share,
+		// then we add it and add the pending share to the finalized shares.
+		chunk := rawData[:pendingLeft]
+		csw.pendingShare.Share = append(csw.pendingShare.Share, chunk...)
+		csw.stackPending()
+
+		// update the cursor
+		rawData = rawData[pendingLeft:]
+		txCursor = len(rawData)
+
+		// add the share reserved bytes to the new pending share
+		pendingCursor := len(rawData) + consts.NamespaceSize + consts.ShareReservedBytes
+		var reservedByte byte
+		if pendingCursor >= consts.ShareSize {
+			reservedByte = byte(0)
+		} else {
+			reservedByte = byte(pendingCursor)
 		}
 
 		csw.pendingShare.Share = append(csw.pendingShare.Share, reservedByte)

@@ -73,8 +73,13 @@ func (txs Txs) SplitIntoShares() NamespacedShares {
 		}
 		rawDatas[i] = rawData
 	}
-	shares := splitContiguous(consts.TxNamespaceID, rawDatas)
-	return shares
+
+	w := NewContiguousShareWriter(consts.TxNamespaceID)
+	for _, tx := range rawDatas {
+		w.Write(tx)
+	}
+
+	return w.Export()
 }
 
 // ToSliceOfBytes converts a Txs to slice of byte slices.
