@@ -14,6 +14,7 @@ import (
 	"github.com/celestiaorg/nmt/namespace"
 	"github.com/celestiaorg/rsmt2d"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/libs/protoio"
 	"github.com/tendermint/tendermint/pkg/consts"
@@ -78,7 +79,7 @@ func TestMakeShares(t *testing.T) {
 				},
 				NamespacedShare{
 					Share: append(
-						append(reservedEvidenceNamespaceID, byte(0)),
+						append(reservedEvidenceNamespaceID, byte(140)),
 						zeroPadIfNecessary(testEvidenceBytes[consts.TxShareSize:], consts.TxShareSize)...,
 					),
 					ID: reservedEvidenceNamespaceID,
@@ -113,7 +114,7 @@ func TestMakeShares(t *testing.T) {
 				},
 				NamespacedShare{
 					Share: append(
-						append(reservedTxNamespaceID, byte(0)),
+						append(reservedTxNamespaceID, byte(164)),
 						zeroPadIfNecessary(largeTxLenDelimited[consts.TxShareSize:], consts.TxShareSize)...,
 					),
 					ID: reservedTxNamespaceID,
@@ -285,7 +286,7 @@ func TestDataFromSquare(t *testing.T) {
 func TestFuzz_DataFromSquare(t *testing.T) {
 	t.Skip()
 	// run random shares through processContiguousShares for a minute
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
 	for {
 		select {
@@ -439,6 +440,23 @@ func Test_parseMsgShares(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestContigShareWriter(t *testing.T) {
+	// note that this test is mainly for debugging purposes, the main round trip
+	// tests occur in TestDataFromSquare and Test_processContiguousShares
+	w := NewContiguousShareWriter(consts.TxNamespaceID)
+	txs := generateRandomContiguousShares(33, 200)
+	for _, tx := range txs {
+		rawTx, _ := tx.MarshalDelimited()
+		w.Write(rawTx)
+	}
+	resShares := w.Export()
+	rawResTxs, err := processContiguousShares(resShares.RawShares())
+	resTxs := ToTxs(rawResTxs)
+	require.NoError(t, err)
+
+	assert.Equal(t, txs, resTxs)
 }
 
 func Test_parseDelimiter(t *testing.T) {
