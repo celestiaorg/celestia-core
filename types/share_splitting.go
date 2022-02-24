@@ -23,7 +23,6 @@ func (msw *MessageShareWriter) Write(namespace namespace.ID, msg Message) {
 		panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", msg))
 	}
 	msw.shares = AppendToShares(msw.shares, msg.NamespaceID, rawMsg)
-	return
 }
 
 // Export finalizes and returns the underlying contiguous shares
@@ -138,8 +137,6 @@ func (csw *ContiguousShareWriter) Write(rawData []byte) {
 	if len(csw.pendingShare.Share) == consts.ShareSize {
 		csw.stackPending()
 	}
-
-	return
 }
 
 // stackPending will add the pending share to accumlated shares provided that it is long enough
