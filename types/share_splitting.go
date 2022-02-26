@@ -3,13 +3,18 @@ package types
 import (
 	"bytes"
 	"fmt"
+	"sort"
 
 	"github.com/celestiaorg/nmt/namespace"
 	"github.com/tendermint/tendermint/pkg/consts"
 )
 
+// MessageShareWriter lazily merges messages into shares that will eventually be
+// included in a data square. It also has methods to help progressively count
+// how many shares the messages written take up.
 type MessageShareWriter struct {
-	shares []NamespacedShare
+	shares [][]NamespacedShare
+	count  int
 }
 
 func NewMessageShareWriter() *MessageShareWriter {
@@ -22,17 +27,33 @@ func (msw *MessageShareWriter) Write(msg Message) {
 	if err != nil {
 		panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", msg))
 	}
-	msw.shares = AppendToShares(msw.shares, msg.NamespaceID, rawMsg)
+	newShares := make([]NamespacedShare, 0)
+	newShares = AppendToShares(newShares, msg.NamespaceID, rawMsg)
+	msw.shares = append(msw.shares, newShares)
+	msw.count += len(newShares)
 }
 
 // Export finalizes and returns the underlying contiguous shares
 func (msw *MessageShareWriter) Export() NamespacedShares {
-	return msw.shares
+	msw.sortMsgs()
+	shares := make([]NamespacedShare, msw.count)
+	for i, messageShares := range msw.shares {
+		for j, share := range messageShares {
+			shares[i+j] = share
+		}
+	}
+	return shares
+}
+
+func (msw *MessageShareWriter) sortMsgs() {
+	sort.Slice(msw.shares, func(i, j int) bool {
+		return bytes.Compare(msw.shares[i][0].ID, msw.shares[j][0].ID) < 0
+	})
 }
 
 // Count returns the current number of shares that will be made if exporting
 func (msw *MessageShareWriter) Count() int {
-	return len(msw.shares)
+	return msw.count
 }
 
 // appendToShares appends raw data as shares.
