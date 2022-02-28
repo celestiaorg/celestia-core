@@ -1154,6 +1154,19 @@ type IntermediateStateRoots struct {
 	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
 }
 
+func IntermediateStateRootsFromProto(pISRs tmproto.IntermediateStateRoots) IntermediateStateRoots {
+	if len(pISRs.RawRootsList) == 0 {
+		return IntermediateStateRoots{}
+	}
+	roots := make([]tmbytes.HexBytes, len(pISRs.RawRootsList))
+	if len(pISRs.RawRootsList) > 0 {
+		for i, r := range pISRs.RawRootsList {
+			roots[i] = r
+		}
+	}
+	return IntermediateStateRoots{RawRootsList: roots}
+}
+
 func (roots IntermediateStateRoots) SplitIntoShares() NamespacedShares {
 	rawDatas := make([][]byte, 0, len(roots.RawRootsList))
 	for _, root := range roots.RawRootsList {
@@ -1284,11 +1297,15 @@ func (data *Data) ToProto() tmproto.Data {
 	tp.Messages = tmproto.Messages{MessagesList: protoMsgs}
 	tp.OriginalSquareSize = data.OriginalSquareSize
 
+	// this will calculate the data root if not already done, which is an
+	// expensive operation
+	tp.Hash = data.Hash()
+
 	return *tp
 }
 
 // DataFromProto takes a protobuf representation of Data &
-// returns the native type.
+// returns the native type. If no hash is stored in the protobuf
 func DataFromProto(dp *tmproto.Data) (Data, error) {
 	if dp == nil {
 		return Data{}, errors.New("nil data")
@@ -1314,15 +1331,8 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 	} else {
 		data.Messages = Messages{}
 	}
-	if len(dp.IntermediateStateRoots.RawRootsList) > 0 {
-		roots := make([]tmbytes.HexBytes, len(dp.IntermediateStateRoots.RawRootsList))
-		for i, r := range dp.IntermediateStateRoots.RawRootsList {
-			roots[i] = r
-		}
-		data.IntermediateStateRoots = IntermediateStateRoots{RawRootsList: roots}
-	} else {
-		data.IntermediateStateRoots = IntermediateStateRoots{}
-	}
+
+	data.IntermediateStateRoots = IntermediateStateRootsFromProto(dp.IntermediateStateRoots)
 
 	evdData := new(EvidenceData)
 	err := evdData.FromProto(&dp.Evidence)
@@ -1333,6 +1343,7 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		data.Evidence = *evdData
 	}
 	data.OriginalSquareSize = dp.OriginalSquareSize
+	data.hash = dp.Hash
 
 	return *data, nil
 }
