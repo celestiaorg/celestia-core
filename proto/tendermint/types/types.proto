@@ -92,6 +92,7 @@ message Data {
   EvidenceList           evidence                 = 3 [(gogoproto.nullable) = false];
   Messages               messages                 = 4 [(gogoproto.nullable) = false];
   uint64                 original_square_size     = 5;
+  bytes                  hash                     = 6;
 }
 
 // DuplicateVoteEvidence contains evidence of a validator signed two conflicting votes.

@@ -37,9 +37,11 @@ func (msw *MessageShareWriter) Write(msg Message) {
 func (msw *MessageShareWriter) Export() NamespacedShares {
 	msw.sortMsgs()
 	shares := make([]NamespacedShare, msw.count)
-	for i, messageShares := range msw.shares {
-		for j, share := range messageShares {
-			shares[i+j] = share
+	cursor := 0
+	for _, messageShares := range msw.shares {
+		for _, share := range messageShares {
+			shares[cursor] = share
+			cursor++
 		}
 	}
 	return shares
@@ -185,13 +187,9 @@ func (csw *ContiguousShareWriter) Export() NamespacedShares {
 }
 
 // Count returns the current number of shares that will be made if exporting
-func (csw *ContiguousShareWriter) Count() int {
-	c := len(csw.shares)
-	// count the pending share if it has anything in it
-	if len(csw.pendingShare.Share) > consts.NamespaceSize {
-		c++
-	}
-	return c
+func (csw *ContiguousShareWriter) Count() (count, availableBytes int) {
+	availableBytes = consts.TxShareSize - (len(csw.pendingShare.Share) - consts.NamespaceSize)
+	return len(csw.shares), availableBytes
 }
 
 // tail is filler for all tail padded shares
