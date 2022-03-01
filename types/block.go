@@ -1300,9 +1300,7 @@ func (data *Data) ToProto() tmproto.Data {
 	tp.Messages = tmproto.Messages{MessagesList: protoMsgs}
 	tp.OriginalSquareSize = data.OriginalSquareSize
 
-	// this will calculate the data root if not already done, which is an
-	// expensive operation
-	tp.Hash = data.Hash()
+	tp.Hash = data.hash
 
 	return *tp
 }
