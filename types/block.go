@@ -1057,7 +1057,11 @@ func (data *Data) Hash() tmbytes.HexBytes {
 
 	// compute the data availability header
 	// todo(evan): add the non redundant shares back into the header
-	shares, _ := data.ComputeShares()
+	shares, _, err := data.ComputeShares(data.OriginalSquareSize)
+	if err != nil {
+		// todo(evan): see if we can get rid of this panic
+		panic(err)
+	}
 	rawShares := shares.RawShares()
 
 	eds, err := da.ExtendShares(data.OriginalSquareSize, rawShares)
@@ -1073,12 +1077,17 @@ func (data *Data) Hash() tmbytes.HexBytes {
 }
 
 // ComputeShares splits block data into shares of an original data square and
-// returns them along with an amount of non-redundant shares. The shares
-// returned are padded to complete a square size that is a power of two. The
-// size of the square is computed and recorded in data
-func (data *Data) ComputeShares() (NamespacedShares, int) {
+// returns them along with an amount of non-redundant shares. If a square size
+// of 0 is passed, the shares returned are padded to complete a square size that
+// is a power of two. The size of the square is computed and recorded in data
+func (data *Data) ComputeShares(squareSize uint64) (NamespacedShares, int, error) {
 	// TODO(ismail): splitting into shares should depend on the block size and layout
 	// see: https://github.com/celestiaorg/celestia-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
+	if squareSize != 0 {
+		if !powerOf2(squareSize) {
+			return nil, 0, errors.New("square size is not a power of two")
+		}
+	}
 
 	// reserved shares:
 	txShares := data.Txs.SplitIntoShares()
@@ -1095,7 +1104,14 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 
 	// find the number of shares needed to create a square that has a power of
 	// two width
-	wantLen := paddedLen(curLen)
+	wantLen := int(squareSize * squareSize)
+	if squareSize == 0 {
+		wantLen = paddedLen(curLen)
+	}
+
+	if wantLen < curLen {
+		return nil, 0, errors.New("square size too small to fit block data")
+	}
 
 	// ensure that the min square size is used
 	if wantLen < consts.MinSharecount {
@@ -1111,11 +1127,13 @@ func (data *Data) ComputeShares() (NamespacedShares, int) {
 		msgShares...),
 		tailShares...)
 
-	squareSize := uint64(math.Sqrt(float64(len(shares))))
+	if squareSize == 0 {
+		squareSize = uint64(math.Sqrt(float64(wantLen)))
+	}
 
 	data.OriginalSquareSize = squareSize
 
-	return shares, curLen
+	return shares, curLen, nil
 }
 
 // paddedLen calculates the number of shares needed to make a power of 2 square
@@ -1144,6 +1162,15 @@ func nextHighestPowerOf2(v uint32) uint32 {
 
 	// return the next highest power
 	return v
+}
+
+// powerOf2 checks if number is power of 2
+func powerOf2(v uint64) bool {
+	if v&(v-1) == 0 && v != 0 {
+		return true
+	} else {
+		return false
+	}
 }
 
 type Messages struct {
