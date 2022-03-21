@@ -1,4 +1,4 @@
-name: Lint
+name: Linter
 on:
   push:
     branches:
@@ -33,3 +33,8 @@ jobs:
           VALIDATE_MD: true
           VALIDATE_OPENAPI: true
           VALIDATE_YAML: true
+
+      - name: Check that all ADRs are linked in README
+        working-directory: ./docs/architecture
+        run: |
+          find .  -regex '\./adr-[0-9][0-9][0-9].*.md$' -type f | xargs -I '{}' bash -c "grep -q {} README.md && true || (echo 'Missing ADR in README.md: {}'; (exit 1))"
