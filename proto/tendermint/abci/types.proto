@@ -37,7 +37,7 @@ message Request {
     RequestLoadSnapshotChunk  load_snapshot_chunk  = 14;
     RequestApplySnapshotChunk apply_snapshot_chunk = 15;
     RequestPrepareProposal    prepare_proposal     = 16;
-    RequestProcessProposal     process_proposal     = 17;
+    RequestProcessProposal    process_proposal     = 17;
   }
 }
 
