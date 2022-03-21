@@ -65,7 +65,9 @@ Note the context/background should be written in the present tense.
 - [ADR-059: Evidence-Composition-and-Lifecycle](./adr-059-evidence-composition-and-lifecycle.md)
 - [ADR-062: P2P-Architecture](./adr-062-p2p-architecture.md)
 - [ADR-063: Privval-gRPC](./adr-063-privval-grpc.md)
+- [ADR-064: Batch-Verification](./adr-064-batch-verification.md)
 - [ADR-066-E2E-Testing](./adr-066-e2e-testing.md)
+
 ### Accepted
 
 - [ADR-006: Trust-Metric](./adr-006-trust-metric.md)
@@ -95,8 +97,14 @@ Note the context/background should be written in the present tense.
 - [ADR-037: Deliver-Block](./adr-037-deliver-block.md)
 - [ADR-038: Non-Zero-Start-Height](./adr-038-non-zero-start-height.md)
 - [ADR-041: Proposer-Selection-via-ABCI](./adr-041-proposer-selection-via-abci.md)
+- [ADR-042: State-Sync](./adr-042-state-sync.md)
 - [ADR-045: ABCI-Evidence](./adr-045-abci-evidence.md)
+- [ADR-050: Improved-Trusted-Peering](./adr-050-improved-trusted-peering.md)
 - [ADR-057: RPC](./adr-057-RPC.md)
-- [ADR-069: Node Initialization](./adr-069-flexible-node-initialization.md)
-- [ADR-071: Proposer-Based Timestamps](adr-071-proposer-based-timestamps.md)
+- [ADR-069: Flexible-Node-Initialization](./adr-069-flexible-node-intitalization.md)
+- [ADR-071: Proposer-Based-Timestamps](./adr-071-proposer-based-timestamps.md)
 - [ADR-072: Restore Requests for Comments](./adr-072-request-for-comments.md)
+
+### Draft
+- [ADR-036: Empty-Blocks-ABCI](./adr-036-empty-blocks-abci.md)
+- [ADR-040: Blockchain-Reactor-Refactor](./adr-040-blockchain-reactor-refactor.md)
