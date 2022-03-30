@@ -21,7 +21,8 @@ type AppConnConsensus interface {
 	EndBlockSync(types.RequestEndBlock) (*types.ResponseEndBlock, error)
 	CommitSync() (*types.ResponseCommit, error)
 
-	PreprocessTxsSync(types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error)
+	PrepareProposalSync(types.RequestPrepareProposal) (*types.ResponsePrepareProposal, error)
+	ProcessProposalSync(types.RequestProcessProposal) (*types.ResponseProcessProposal, error)
 }
 
 type AppConnMempool interface {
@@ -95,10 +96,16 @@ func (app *appConnConsensus) CommitSync() (*types.ResponseCommit, error) {
 	return app.appConn.CommitSync()
 }
 
-func (app *appConnConsensus) PreprocessTxsSync(
-	req types.RequestPreprocessTxs,
-) (*types.ResponsePreprocessTxs, error) {
-	return app.appConn.PreprocessTxsSync(req)
+func (app *appConnConsensus) PrepareProposalSync(
+	req types.RequestPrepareProposal,
+) (*types.ResponsePrepareProposal, error) {
+	return app.appConn.PrepareProposalSync(req)
+}
+
+func (app *appConnConsensus) ProcessProposalSync(
+	req types.RequestProcessProposal,
+) (*types.ResponseProcessProposal, error) {
+	return app.appConn.ProcessProposalSync(req)
 }
 
 //------------------------------------------------

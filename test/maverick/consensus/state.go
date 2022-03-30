@@ -905,9 +905,9 @@ func (cs *State) updateToState(state sm.State) {
 	cs.LockedRound = -1
 	cs.LockedBlock = nil
 	cs.LockedBlockParts = nil
-	cs.ValidRound = -1
-	cs.ValidBlock = nil
-	cs.ValidBlockParts = nil
+	cs.TwoThirdPrevoteRound = -1
+	cs.TwoThirdPrevoteBlock = nil
+	cs.TwoThirdPrevoteBlockParts = nil
 	cs.Votes = cstypes.NewHeightVoteSet(state.ChainID, height, validators)
 	cs.CommitRound = -1
 	cs.LastValidators = state.LastValidators
@@ -1186,9 +1186,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	var blockParts *types.PartSet
 
 	// Decide on block
-	if cs.ValidBlock != nil {
+	if cs.TwoThirdPrevoteBlock != nil {
 		// If there is valid block, choose that.
-		block, blockParts = cs.ValidBlock, cs.ValidBlockParts
+		block, blockParts = cs.TwoThirdPrevoteBlock, cs.TwoThirdPrevoteBlockParts
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		block, blockParts = cs.createProposalBlock()
@@ -1205,7 +1205,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 	// Make proposal
 	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal := types.NewProposal(height, round, cs.ValidRound, propBlockID)
+	proposal := types.NewProposal(height, round, cs.TwoThirdPrevoteRound, propBlockID)
 	p := proposal.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
 		proposal.Signature = p.Signature
@@ -1714,13 +1714,13 @@ func (cs *State) addProposalBlockPart(msg *tmcon.BlockPartMessage, peerID p2p.ID
 		// Update Valid* if we can.
 		prevotes := cs.Votes.Prevotes(cs.Round)
 		blockID, hasTwoThirds := prevotes.TwoThirdsMajority()
-		if hasTwoThirds && !blockID.IsZero() && (cs.ValidRound < cs.Round) {
+		if hasTwoThirds && !blockID.IsZero() && (cs.TwoThirdPrevoteRound < cs.Round) {
 			if cs.ProposalBlock.HashesTo(blockID.Hash) {
 				cs.Logger.Info("Updating valid block to new proposal block",
 					"valid-round", cs.Round, "valid-block-hash", cs.ProposalBlock.Hash())
-				cs.ValidRound = cs.Round
-				cs.ValidBlock = cs.ProposalBlock
-				cs.ValidBlockParts = cs.ProposalBlockParts
+				cs.TwoThirdPrevoteRound = cs.Round
+				cs.TwoThirdPrevoteBlock = cs.ProposalBlock
+				cs.TwoThirdPrevoteBlockParts = cs.ProposalBlockParts
 			}
 			// TODO: In case there is +2/3 majority in Prevotes set for some
 			// block and cs.ProposalBlock contains different block, either

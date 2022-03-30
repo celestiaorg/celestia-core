@@ -6,7 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/context"
+	"context"
+
 	"google.golang.org/grpc"
 
 	"github.com/tendermint/tendermint/abci/types"
@@ -302,13 +303,43 @@ func (cli *grpcClient) ApplySnapshotChunkAsync(params types.RequestApplySnapshot
 	return cli.finishAsyncCall(req, &types.Response{Value: &types.Response_ApplySnapshotChunk{ApplySnapshotChunk: res}})
 }
 
-func (cli *grpcClient) PreprocessTxsAsync(params types.RequestPreprocessTxs) *ReqRes {
-	req := types.ToRequestPreprocessTxs(params)
-	res, err := cli.client.PreprocessTxs(context.Background(), req.GetPreprocessTxs(), grpc.WaitForReady(true))
+func (cli *grpcClient) PrepareProposalAsync(
+	params types.RequestPrepareProposal,
+) *ReqRes {
+
+	req := types.ToRequestPrepareProposal(params)
+	res, err := cli.client.PrepareProposal(context.Background(), req.GetPrepareProposal(), grpc.WaitForReady(true))
 	if err != nil {
-		cli.StopForError(err)
+		return nil
 	}
-	return cli.finishAsyncCall(req, &types.Response{Value: &types.Response_PreprocessTxs{PreprocessTxs: res}})
+	return cli.finishAsyncCall(
+		req,
+		&types.Response{
+			Value: &types.Response_PrepareProposal{
+				PrepareProposal: res,
+			},
+		},
+	)
+}
+
+func (cli *grpcClient) ProcessProposalAsync(
+	params types.RequestProcessProposal,
+) *ReqRes {
+
+	req := types.ToRequestProcessProposal(params)
+	res, err := cli.client.ProcessProposal(context.Background(), req.GetProcessProposal(), grpc.WaitForReady(true))
+	if err != nil {
+		return nil
+	}
+
+	return cli.finishAsyncCall(
+		req,
+		&types.Response{
+			Value: &types.Response_ProcessProposal{
+				ProcessProposal: res,
+			},
+		},
+	)
 }
 
 // finishAsyncCall creates a ReqRes for an async call, and immediately populates it
@@ -427,9 +458,17 @@ func (cli *grpcClient) ApplySnapshotChunkSync(
 	return cli.finishSyncCall(reqres).GetApplySnapshotChunk(), cli.Error()
 }
 
-func (cli *grpcClient) PreprocessTxsSync(
-	params types.RequestPreprocessTxs,
-) (*types.ResponsePreprocessTxs, error) {
-	reqres := cli.PreprocessTxsAsync(params)
-	return reqres.Response.GetPreprocessTxs(), cli.Error()
+func (cli *grpcClient) PrepareProposalSync(
+	params types.RequestPrepareProposal,
+) (*types.ResponsePrepareProposal, error) {
+
+	reqres := cli.PrepareProposalAsync(params)
+	return cli.finishSyncCall(reqres).GetPrepareProposal(), cli.Error()
+}
+
+func (cli *grpcClient) ProcessProposalSync(
+	params types.RequestProcessProposal,
+) (*types.ResponseProcessProposal, error) {
+	reqres := cli.ProcessProposalAsync(params)
+	return cli.finishSyncCall(reqres).GetProcessProposal(), cli.Error()
 }

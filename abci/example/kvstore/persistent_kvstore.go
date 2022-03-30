@@ -170,9 +170,19 @@ func (app *PersistentKVStoreApplication) ApplySnapshotChunk(
 	return types.ResponseApplySnapshotChunk{Result: types.ResponseApplySnapshotChunk_ABORT}
 }
 
-func (app *PersistentKVStoreApplication) PreprocessTxs(
-	req types.RequestPreprocessTxs) types.ResponsePreprocessTxs {
-	return types.ResponsePreprocessTxs{Txs: req.Txs}
+func (app *PersistentKVStoreApplication) PrepareProposal(
+	req types.RequestPrepareProposal) types.ResponsePrepareProposal {
+	return types.ResponsePrepareProposal{BlockData: req.BlockData}
+}
+
+func (app *PersistentKVStoreApplication) ProcessProposal(
+	req types.RequestProcessProposal) types.ResponseProcessProposal {
+	for _, tx := range req.BlockData.Txs {
+		if len(tx) == 0 {
+			return types.ResponseProcessProposal{Result: types.ResponseProcessProposal_REJECT}
+		}
+	}
+	return types.ResponseProcessProposal{Result: types.ResponseProcessProposal_ACCEPT}
 }
 
 //---------------------------------------------

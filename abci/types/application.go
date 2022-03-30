@@ -8,7 +8,6 @@ import (
 // to be driven by a blockchain-based replication engine via the ABCI.
 // All methods take a RequestXxx argument and return a ResponseXxx argument,
 // except CheckTx/DeliverTx, which take `tx []byte`, and `Commit`, which takes nothing.
-// nolint:lll // ignore for interface
 type Application interface {
 	// Info/Query Connection
 	Info(RequestInfo) ResponseInfo                // Return application info
@@ -19,12 +18,13 @@ type Application interface {
 	CheckTx(RequestCheckTx) ResponseCheckTx // Validate a tx for the mempool
 
 	// Consensus Connection
-	InitChain(RequestInitChain) ResponseInitChain             // Initialize blockchain w validators/other info from TendermintCore
-	BeginBlock(RequestBeginBlock) ResponseBeginBlock          // Signals the beginning of a block
-	DeliverTx(RequestDeliverTx) ResponseDeliverTx             // Deliver a tx for full processing
-	EndBlock(RequestEndBlock) ResponseEndBlock                // Signals the end of a block, returns changes to the validator set
-	Commit() ResponseCommit                                   // Commit the state and return the application Merkle root hash
-	PreprocessTxs(RequestPreprocessTxs) ResponsePreprocessTxs // State machine preprocessing of txs
+	InitChain(RequestInitChain) ResponseInitChain // Initialize blockchain w validators/other info from TendermintCore
+	PrepareProposal(RequestPrepareProposal) ResponsePrepareProposal
+	ProcessProposal(RequestProcessProposal) ResponseProcessProposal
+	BeginBlock(RequestBeginBlock) ResponseBeginBlock // Signals the beginning of a block
+	DeliverTx(RequestDeliverTx) ResponseDeliverTx    // Deliver a tx for full processing
+	EndBlock(RequestEndBlock) ResponseEndBlock       // Signals the end of a block, returns changes to the validator set
+	Commit() ResponseCommit                          // Commit the state and return the application Merkle root hash
 
 	// State Sync Connection
 	ListSnapshots(RequestListSnapshots) ResponseListSnapshots                // List available snapshots
@@ -97,8 +97,12 @@ func (BaseApplication) ApplySnapshotChunk(req RequestApplySnapshotChunk) Respons
 	return ResponseApplySnapshotChunk{}
 }
 
-func (BaseApplication) PreprocessTxs(req RequestPreprocessTxs) ResponsePreprocessTxs {
-	return ResponsePreprocessTxs{Txs: req.Txs}
+func (BaseApplication) PrepareProposal(req RequestPrepareProposal) ResponsePrepareProposal {
+	return ResponsePrepareProposal{BlockData: req.BlockData}
+}
+
+func (BaseApplication) ProcessProposal(req RequestProcessProposal) ResponseProcessProposal {
+	return ResponseProcessProposal{Result: ResponseProcessProposal_ACCEPT}
 }
 
 //-------------------------------------------------------
@@ -189,8 +193,14 @@ func (app *GRPCApplication) ApplySnapshotChunk(
 	return &res, nil
 }
 
-func (app *GRPCApplication) PreprocessTxs(
-	ctx context.Context, req *RequestPreprocessTxs) (*ResponsePreprocessTxs, error) {
-	res := app.app.PreprocessTxs(*req)
+func (app *GRPCApplication) PrepareProposal(
+	ctx context.Context, req *RequestPrepareProposal) (*ResponsePrepareProposal, error) {
+	res := app.app.PrepareProposal(*req)
+	return &res, nil
+}
+
+func (app *GRPCApplication) ProcessProposal(
+	ctx context.Context, req *RequestProcessProposal) (*ResponseProcessProposal, error) {
+	res := app.app.ProcessProposal(*req)
 	return &res, nil
 }
