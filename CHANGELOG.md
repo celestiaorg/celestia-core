@@ -2,6 +2,24 @@
 
 Friendly reminder, we have a [bug bounty program](https://hackerone.com/cosmos).
 
+## v0.34.15
+
+This release introduces new ABCI methods from ABCI++ to accomodate new functionality in celestia-app. There are also several additions that allow for tracking of malleated transactions after they are confirmed, along with ability to return proof that transactions were included in a block.
+
+### FEATURES
+
+- [\#582](https://github.com/celestiaorg/celestia-core/pull/582) Add ability to remove malletaad transactions from the mempool
+- [\#607](https://github.com/celestiaorg/celestia-core/pull/607) Track malleated tx events
+- [\#612](https://github.com/celestiaorg/celestia-core/pull/612) Index malleated transactions properly
+- [\#615](https://github.com/celestiaorg/celestia-core/pull/615) Create nmt inclusion proofs for transactions in a given block
+- [\#625](https://github.com/celestiaorg/celestia-core/pull/625) Add an RPC endpoint for DataCommitment
+- [\#631](https://github.com/celestiaorg/celestia-core/pull/631) Add Prepare and Process Proposal ABCI++ methods
+
+### BUG FIXES
+
+- [\#583](https://github.com/celestiaorg/celestia-core/pull/583) Protobuf decode tx patch
+- [\#580](https://github.com/celestiaorg/celestia-core/pull/580) Add messages when converting to protobuf version of block data
+  
 ## v0.34.14
 
 This release backports the `rollback` feature to allow recovery in the event of an incorrect app hash.
