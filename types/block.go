@@ -1168,9 +1168,8 @@ func nextHighestPowerOf2(v uint32) uint32 {
 func powerOf2(v uint64) bool {
 	if v&(v-1) == 0 && v != 0 {
 		return true
-	} else {
-		return false
 	}
+	return false
 }
 
 type Messages struct {
