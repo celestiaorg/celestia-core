@@ -67,5 +67,4 @@ linters-settings:
     ignore-words:
       - behaviour
 
-run:
-  go: '1.17'
+
