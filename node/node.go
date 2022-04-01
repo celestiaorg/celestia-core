@@ -1046,11 +1046,8 @@ func (n *Node) ConfigureRPC() error {
 
 		Config: *n.config.RPC,
 	})
-	if err := rpccore.InitGenesisChunks(); err != nil {
-		return err
-	}
 
-	return nil
+	return rpccore.InitGenesisChunks()
 }
 
 func (n *Node) startRPC() ([]net.Listener, error) {
@@ -1395,11 +1392,8 @@ func saveGenesisDoc(db dbm.DB, genDoc *types.GenesisDoc) error {
 	if err != nil {
 		return fmt.Errorf("failed to save genesis doc due to marshaling error: %w", err)
 	}
-	if err := db.SetSync(genesisDocKey, b); err != nil {
-		return err
-	}
 
-	return nil
+	return db.SetSync(genesisDocKey, b)
 }
 
 func createAndStartPrivValidatorSocketClient(

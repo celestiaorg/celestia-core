@@ -264,11 +264,7 @@ Does not run any perbutations.
 				return err
 			}
 
-			if err := Cleanup(cli.testnet); err != nil {
-				return err
-			}
-
-			return nil
+			return Cleanup(cli.testnet)
 		},
 	})
 
