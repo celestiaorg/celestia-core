@@ -183,6 +183,8 @@ func (csw *ContiguousShareWriter) Export() NamespacedShares {
 		csw.pendingShare.Share = zeroPadIfNecessary(csw.pendingShare.Share, consts.ShareSize)
 		csw.shares = append(csw.shares, csw.pendingShare)
 	}
+	return csw.shares
+}
 
 // Count returns the current number of shares that will be made if exporting
 func (csw *ContiguousShareWriter) Count() (count, availableBytes int) {
