@@ -76,3 +76,8 @@ func (w *ErasuredNamespacedMerkleTree) Root() []byte {
 func (w *ErasuredNamespacedMerkleTree) Prove(ind int) (nmt.Proof, error) {
 	return w.tree.Prove(ind)
 }
+
+// Tree returns the underlying NamespacedMerkleTree
+func (w *ErasuredNamespacedMerkleTree) Tree() *nmt.NamespacedMerkleTree {
+	return w.tree
+}
