@@ -36,7 +36,7 @@ Special thanks to external contributors on this release:
 - [mempool, rpc] \#7041  Add removeTx operation to the RPC layer. (@tychoish)
 
 ### IMPROVEMENTS
- - [wrapper] [#671](https://github.com/celestiaorg/celestia-core/pull/671) Add `Tree()` method to get the underlying nmt tree from wrapper. (@vgonkivs)
+
 ### BUG FIXES
 
 - fix: assignment copies lock value in `BitArray.UnmarshalJSON()` (@lklimek)
