@@ -108,6 +108,21 @@ func TestExtendedDataSquare(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestErasuredNamespacedMerkleTree(t *testing.T) {
+	// check that the Tree() returns exact underlying nmt tree
+	size := 8
+	data := generateRandNamespacedRawData(size, consts.NamespaceSize, consts.MsgShareSize)
+	n := NewErasuredNamespacedMerkleTree(uint64(size))
+	tree := n.Constructor()
+
+	for i, d := range data {
+		tree.Push(d, rsmt2d.SquareIndex{Axis: uint(0), Cell: uint(i)})
+	}
+
+	assert.Equal(t, n.Tree(), n.tree)
+	assert.Equal(t, n.Tree().Root(), n.tree.Root())
+}
+
 // generateErasuredData produces a slice that is twice as long as it erasures
 // the data
 func generateErasuredData(t *testing.T, numLeaves int, codec rsmt2d.Codec) [][]byte {
