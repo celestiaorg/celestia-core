@@ -109,7 +109,7 @@ type ContiguousShareWriter struct {
 }
 
 func NewContiguousShareWriter(ns namespace.ID) *ContiguousShareWriter {
-	pendingShare := NamespacedShare{ID: ns}
+	pendingShare := NamespacedShare{ID: ns, Share: make([]byte, 0, consts.ShareSize)}
 	pendingShare.Share = append(pendingShare.Share, ns...)
 	return &ContiguousShareWriter{pendingShare: pendingShare, namespace: ns}
 }
