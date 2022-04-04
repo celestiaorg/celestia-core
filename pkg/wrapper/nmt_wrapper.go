@@ -73,6 +73,12 @@ func (w *ErasuredNamespacedMerkleTree) Root() []byte {
 	return w.tree.Root()
 }
 
+// Prove returns the nmt proof for a given leaf of index ind
 func (w *ErasuredNamespacedMerkleTree) Prove(ind int) (nmt.Proof, error) {
 	return w.tree.Prove(ind)
+}
+
+// Tree returns the underlying NamespacedMerkleTree
+func (w *ErasuredNamespacedMerkleTree) Tree() *nmt.NamespacedMerkleTree {
+	return w.tree
 }
