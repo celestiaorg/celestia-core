@@ -72,3 +72,8 @@ func (w *ErasuredNamespacedMerkleTree) Push(data []byte, idx rsmt2d.SquareIndex)
 func (w *ErasuredNamespacedMerkleTree) Root() []byte {
 	return w.tree.Root()
 }
+
+// Tree returns the underlying NamespacedMerkleTree
+func (w *ErasuredNamespacedMerkleTree) Tree() *nmt.NamespacedMerkleTree {
+	return w.tree
+}

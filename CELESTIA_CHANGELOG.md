@@ -3,6 +3,7 @@
 ## Unreleased Changes
 - Add .github/workflows/pending-changelog-checker.yml to enforce updating this file (`CELESTIA_CHANGELOG.md`) on commits to `master` branch.
 - [proto: moves proto files to](https://github.com/celestiaorg/celestia-core/pull/608) [spec](https://github.com/celestiaorg/spec) @sweexordious
+- [nmt_wrapper: extend nmt wrapper with tree method](https://github.com/celestiaorg/celestia-core/pull/671) @vgonkivs
 
 ## v0.1
 
