@@ -116,7 +116,7 @@ func NewContiguousShareWriter(ns namespace.ID) *ContiguousShareWriter {
 
 // Write adds the delimited data to the underlying contiguous shares
 func (csw *ContiguousShareWriter) Write(rawData []byte) {
-	// if this is the first time writeing to a pending share, we must add the
+	// if this is the first time writing to a pending share, we must add the
 	// reserved bytes
 	if len(csw.pendingShare.Share) == consts.NamespaceSize {
 		csw.pendingShare.Share = append(csw.pendingShare.Share, 0)
