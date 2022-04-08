@@ -183,6 +183,22 @@ func (csw *ContiguousShareWriter) Export() NamespacedShares {
 		csw.pendingShare.Share = zeroPadIfNecessary(csw.pendingShare.Share, consts.ShareSize)
 		csw.shares = append(csw.shares, csw.pendingShare)
 	}
+	// force the last share to have a reserve byte of zero
+	if len(csw.shares) == 0 {
+		return csw.shares
+	}
+	lastShare := csw.shares[len(csw.shares)-1]
+	rawLastShare := lastShare.Data()
+
+	for i := 0; i < consts.ShareReservedBytes; i++ {
+		rawLastShare[consts.NamespaceSize+i] = byte(0)
+	}
+
+	newLastShare := NamespacedShare{
+		Share: rawLastShare,
+		ID:    lastShare.NamespaceID(),
+	}
+	csw.shares[len(csw.shares)-1] = newLastShare
 	return csw.shares
 }
 

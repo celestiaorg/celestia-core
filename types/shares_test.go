@@ -79,7 +79,7 @@ func TestMakeShares(t *testing.T) {
 				},
 				NamespacedShare{
 					Share: append(
-						append(reservedEvidenceNamespaceID, byte(140)),
+						append(reservedEvidenceNamespaceID, byte(0)),
 						zeroPadIfNecessary(testEvidenceBytes[consts.TxShareSize:], consts.TxShareSize)...,
 					),
 					ID: reservedEvidenceNamespaceID,
@@ -114,7 +114,7 @@ func TestMakeShares(t *testing.T) {
 				},
 				NamespacedShare{
 					Share: append(
-						append(reservedTxNamespaceID, byte(164)),
+						append(reservedTxNamespaceID, byte(0)),
 						zeroPadIfNecessary(largeTxLenDelimited[consts.TxShareSize:], consts.TxShareSize)...,
 					),
 					ID: reservedTxNamespaceID,
@@ -137,7 +137,7 @@ func TestMakeShares(t *testing.T) {
 					Share: append(
 						append(
 							reservedTxNamespaceID,
-							byte(len(largeTxLenDelimited)-consts.TxShareSize+consts.NamespaceSize+consts.ShareReservedBytes),
+							byte(0),
 						),
 						zeroPadIfNecessary(
 							append(largeTxLenDelimited[consts.TxShareSize:], smolTxLenDelimited...),
