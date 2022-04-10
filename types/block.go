@@ -1081,8 +1081,6 @@ func (data *Data) Hash() tmbytes.HexBytes {
 // of 0 is passed, the shares returned are padded to complete a square size that
 // is a power of two. The size of the square is computed and recorded in data
 func (data *Data) ComputeShares(squareSize uint64) (NamespacedShares, int, error) {
-	// TODO(ismail): splitting into shares should depend on the block size and layout
-	// see: https://github.com/celestiaorg/celestia-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
 	if squareSize != 0 {
 		if !powerOf2(squareSize) {
 			return nil, 0, errors.New("square size is not a power of two")
