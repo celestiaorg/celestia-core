@@ -1,4 +1,3 @@
-//go:build deadlock
 // +build deadlock
 
 package sync

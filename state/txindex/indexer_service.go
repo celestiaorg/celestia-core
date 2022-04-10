@@ -40,7 +40,7 @@ func NewIndexerService(
 // and indexing them by events.
 func (is *IndexerService) OnStart() error {
 	// Use SubscribeUnbuffered here to ensure both subscriptions does not get
-	// canceled due to not pulling messages fast enough. Cause this might
+	// cancelled due to not pulling messages fast enough. Cause this might
 	// sometimes happen when there are no other subscribers.
 	blockHeadersSub, err := is.eventBus.SubscribeUnbuffered(
 		context.Background(),

@@ -58,7 +58,7 @@ func (bz *HexBytes) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Bytes fulfills various interfaces in light-client, etc...
+// Bytes fulfils various interfaces in light-client, etc...
 func (bz HexBytes) Bytes() []byte {
 	return bz
 }

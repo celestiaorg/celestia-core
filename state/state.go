@@ -176,8 +176,8 @@ func (state *State) ToProto() (*tmstate.State, error) {
 	return sm, nil
 }
 
-// FromProto takes a state proto message & returns the local state type
-func FromProto(pb *tmstate.State) (*State, error) { //nolint:golint
+// StateFromProto takes a state proto message & returns the local state type
+func StateFromProto(pb *tmstate.State) (*State, error) { //nolint:golint
 	if pb == nil {
 		return nil, errors.New("nil State")
 	}
