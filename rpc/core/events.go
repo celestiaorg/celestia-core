@@ -41,6 +41,9 @@ func Subscribe(ctx *rpctypes.Context, query string) (*ctypes.ResultSubscribe, er
 	if err != nil {
 		return nil, err
 	}
+	if sub == nil {
+		return nil, fmt.Errorf("env.EventBus.Subscribe() returned nil")
+	}
 
 	// Capture the current ID, since it can change in the future.
 	subscriptionID := ctx.JSONReq.ID
