@@ -42,7 +42,7 @@ func Subscribe(ctx *rpctypes.Context, query string) (*ctypes.ResultSubscribe, er
 		return nil, err
 	}
 	if sub == nil {
-		return nil, fmt.Errorf("env.EventBus.Subscribed() returned nil")
+		return nil, fmt.Errorf("env.EventBus.Subscribe() returned nil")
 	}
 
 	// Capture the current ID, since it can change in the future.
