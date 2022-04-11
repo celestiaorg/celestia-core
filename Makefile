@@ -55,7 +55,7 @@ endif
 # allow users to pass additional flags via the conventional LDFLAGS variable
 LD_FLAGS += $(LDFLAGS)
 
-all: check build test install
+all: build test install
 .PHONY: all
 
 include tests.mk
