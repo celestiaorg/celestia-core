@@ -38,7 +38,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	const prevoteHeight = int64(2)
 	testName := "consensus_byzantine_test"
 	tickerFunc := newMockTickerFunc(true)
-	appFunc := newCounter
+	appFunc := newKVStore
 
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30)
 	css := make([]*State, nValidators)
@@ -281,7 +281,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 	N := 4
 	logger := consensusLogger().With("test", "byzantine")
-	app := newCounter
+	app := newKVStore
 	css, cleanup := randConsensusNet(N, "consensus_byzantine_test", newMockTickerFunc(false), app)
 	defer cleanup()
 
