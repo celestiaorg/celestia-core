@@ -11,7 +11,7 @@ require (
 	github.com/adlio/schema v1.1.13
 	github.com/btcsuite/btcd v0.21.0-beta
 	github.com/btcsuite/btcutil v1.0.2
-	github.com/celestiaorg/nmt v0.7.0
+	github.com/celestiaorg/nmt v0.8.0
 	github.com/celestiaorg/rsmt2d v0.3.1
 	github.com/fortytw2/leaktest v1.3.0
 	github.com/go-kit/kit v0.10.0
