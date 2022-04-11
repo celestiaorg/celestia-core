@@ -20,8 +20,5 @@ updates:
       interval: daily
       time: "11:00"
     open-pull-requests-limit: 10
-    reviewers:
-      - melekes
-      - tessr
     labels:
       - T:dependencies
