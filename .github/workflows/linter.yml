@@ -2,13 +2,12 @@ name: Linter
 on:
   push:
     branches:
-      - master
+      - v[0-9]+.[0-9]+.x-celestia
     paths:
       - "**.md"
       - "**.yml"
       - "**.yaml"
   pull_request:
-    branches: [master]
     paths:
       - "**.md"
 
