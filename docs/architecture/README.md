@@ -100,11 +100,14 @@ Note the context/background should be written in the present tense.
 - [ADR-042: State-Sync](./adr-042-state-sync.md)
 - [ADR-045: ABCI-Evidence](./adr-045-abci-evidence.md)
 - [ADR-050: Improved-Trusted-Peering](./adr-050-improved-trusted-peering.md)
+- [ADR 056: Proving amnesia attacks](adr-056-proving-amnesia-attacks.md)
 - [ADR-057: RPC](./adr-057-RPC.md)
 - [ADR-069: Flexible-Node-Initialization](./adr-069-flexible-node-intitalization.md)
 - [ADR-071: Proposer-Based-Timestamps](./adr-071-proposer-based-timestamps.md)
 - [ADR-072: Restore Requests for Comments](./adr-072-request-for-comments.md)
 
 ### Draft
+- [ADR 028: LibP2P Integration](./adr-028-libp2p.md)
+- [ADR 031: Changelog Structure](./adr-031-changelog.md)
 - [ADR-036: Empty-Blocks-ABCI](./adr-036-empty-blocks-abci.md)
 - [ADR-040: Blockchain-Reactor-Refactor](./adr-040-blockchain-reactor-refactor.md)
