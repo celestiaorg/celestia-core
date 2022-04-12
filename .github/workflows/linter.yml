@@ -10,6 +10,8 @@ on:
   pull_request:
     paths:
       - "**.md"
+      - "**.yml"
+      - "**.yaml"
 
 jobs:
   build:
