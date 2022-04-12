@@ -156,7 +156,10 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	newData, err := types.DataFromProto(rawNewData)
 	if err != nil {
 		// todo(evan): see if we can get rid of this panic
-		panic(err)
+		// panic(fmt.Sprintf("failure to decode block data: %s", err.Error()))
+		newData = types.Data{
+			Txs: []types.Tx{},
+		}
 	}
 
 	return state.MakeBlock(
@@ -182,6 +185,10 @@ func (blockExec *BlockExecutor) ProcessProposal(
 	resp, err := blockExec.proxyApp.ProcessProposalSync(req)
 	if err != nil {
 		return false, ErrInvalidBlock(err)
+	}
+
+	if resp == nil {
+		return true, nil
 	}
 
 	return resp.IsOK(), nil
