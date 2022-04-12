@@ -23,7 +23,7 @@ jobs:
         env:
           LINTER_RULES_PATH: .
           VALIDATE_ALL_CODEBASE: true
-          DEFAULT_BRANCH: master
+          DEFAULT_BRANCH: v0.34.x-celestia
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALIDATE_MD: true
           MARKDOWN_CONFIG_FILE: .markdownlint.yml
