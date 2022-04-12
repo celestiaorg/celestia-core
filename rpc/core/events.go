@@ -48,7 +48,7 @@ func Subscribe(ctx *rpctypes.Context, query string) (*ctypes.ResultSubscribe, er
 	// Capture the current ID, since it can change in the future.
 	subscriptionID := ctx.JSONReq.ID
 	go func() {
-		for {
+		for sub != nil {
 			select {
 			case msg := <-sub.Out():
 				var (
