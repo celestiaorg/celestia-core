@@ -10,6 +10,8 @@ on:
   pull_request:
     paths:
       - "**.md"
+      - "**.yml"
+      - "**.yaml"
 
 jobs:
   build:
@@ -18,12 +20,15 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
+        with:
+          # Full git history is needed to get a proper list of changed files within `super-linter`
+          fetch-depth: 0
       - name: Lint Code Base
-        uses: docker://github/super-linter:v3
+        uses: docker://github/super-linter:v4
         env:
           LINTER_RULES_PATH: .
           VALIDATE_ALL_CODEBASE: true
-          DEFAULT_BRANCH: master
+          DEFAULT_BRANCH: v0.34.x-celestia
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALIDATE_MD: true
           MARKDOWN_CONFIG_FILE: .markdownlint.yml
