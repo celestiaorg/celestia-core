@@ -1330,7 +1330,7 @@ func (data *Data) ToProto() tmproto.Data {
 }
 
 // DataFromProto takes a protobuf representation of Data &
-// returns the native type. If no hash is stored in the protobuf
+// returns the native type.
 func DataFromProto(dp *tmproto.Data) (Data, error) {
 	if dp == nil {
 		return Data{}, errors.New("nil data")
