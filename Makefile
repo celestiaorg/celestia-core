@@ -15,7 +15,7 @@ endif
 
 LD_FLAGS = -X github.com/tendermint/tendermint/version.TMCoreSemVer=$(VERSION)
 BUILD_FLAGS = -mod=readonly -ldflags "$(LD_FLAGS)"
-HTTPS_GIT := https://github.com/tendermint/tendermint.git
+HTTPS_GIT := https://github.com/celestiaorg/celestia-core.git
 CGO_ENABLED ?= 0
 
 # handle nostrip
