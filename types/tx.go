@@ -85,7 +85,7 @@ func (txs Txs) SplitIntoShares() NamespacedShares {
 // ToSliceOfBytes converts a Txs to slice of byte slices.
 //
 // NOTE: This method should become obsolete once Txs is switched to [][]byte.
-// ref: #2603
+// ref: #2603 https://github.com/tendermint/tendermint/issues/2603
 func (txs Txs) ToSliceOfBytes() [][]byte {
 	txBzs := make([][]byte, len(txs))
 	for i := 0; i < len(txs); i++ {
