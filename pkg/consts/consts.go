@@ -52,9 +52,12 @@ var (
 	TxNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 1}
 	// IntermediateStateRootsNamespaceID is the namespace reserved for
 	// intermediate state root data
-	IntermediateStateRootsNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 2}
+	// TODO(liamsi): code commented out but kept intentionally.
+	// IntermediateStateRootsNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 2}
+
 	// EvidenceNamespaceID is the namespace reserved for evidence
 	EvidenceNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 3}
+
 	// MaxReservedNamespace is the lexicographically largest namespace that is
 	// reserved for protocol use. It is derived from NAMESPACE_ID_MAX_RESERVED
 	// https://github.com/celestiaorg/celestia-specs/blob/master/specs/consensus.md#constants
@@ -62,7 +65,6 @@ var (
 	// TailPaddingNamespaceID is the namespace ID for tail padding. All data
 	// with this namespace will be ignored
 	TailPaddingNamespaceID = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE}
-
 	// ParitySharesNamespaceID indicates that share contains erasure data
 	ParitySharesNamespaceID = namespace.ID{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 

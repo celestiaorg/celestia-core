@@ -152,11 +152,6 @@ func genOrigRowShares(data types.Data, originalSquareSize, startRow, endRow uint
 		return shares[startPos:wantLen].RawShares()
 	}
 
-	shares = append(shares, data.IntermediateStateRoots.SplitIntoShares()...)
-	if uint(len(shares)) >= wantLen {
-		return shares[startPos:wantLen].RawShares()
-	}
-
 	shares = append(shares, data.Evidence.SplitIntoShares()...)
 	if uint(len(shares)) >= wantLen {
 		return shares[startPos:wantLen].RawShares()

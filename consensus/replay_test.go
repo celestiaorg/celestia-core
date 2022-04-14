@@ -990,7 +990,7 @@ func makeBlock(state sm.State, lastBlock *types.Block, lastBlockMeta *types.Bloc
 			lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()})
 	}
 
-	return state.MakeBlock(height, []types.Tx{}, nil, nil, nil, lastCommit, state.Validators.GetProposer().Address)
+	return state.MakeBlock(height, []types.Tx{}, nil, nil, lastCommit, state.Validators.GetProposer().Address)
 }
 
 type badApp struct {

@@ -7,7 +7,6 @@ import (
 
 	"github.com/celestiaorg/rsmt2d"
 	"github.com/gogo/protobuf/proto"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/pkg/consts"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
@@ -19,7 +18,6 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 	// sort block data shares by namespace
 	var (
 		sortedTxShares  [][]byte
-		sortedISRShares [][]byte
 		sortedEvdShares [][]byte
 		sortedMsgShares [][]byte
 	)
@@ -35,9 +33,6 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 			switch {
 			case bytes.Equal(consts.TxNamespaceID, nid):
 				sortedTxShares = append(sortedTxShares, share)
-
-			case bytes.Equal(consts.IntermediateStateRootsNamespaceID, nid):
-				sortedISRShares = append(sortedISRShares, share)
 
 			case bytes.Equal(consts.EvidenceNamespaceID, nid):
 				sortedEvdShares = append(sortedEvdShares, share)
@@ -62,11 +57,6 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 		return Data{}, err
 	}
 
-	isrs, err := ParseISRs(sortedISRShares)
-	if err != nil {
-		return Data{}, err
-	}
-
 	evd, err := ParseEvd(sortedEvdShares)
 	if err != nil {
 		return Data{}, err
@@ -78,10 +68,9 @@ func DataFromSquare(eds *rsmt2d.ExtendedDataSquare) (Data, error) {
 	}
 
 	return Data{
-		Txs:                    txs,
-		IntermediateStateRoots: isrs,
-		Evidence:               evd,
-		Messages:               msgs,
+		Txs:      txs,
+		Evidence: evd,
+		Messages: msgs,
 	}, nil
 }
 
@@ -100,21 +89,6 @@ func ParseTxs(shares [][]byte) (Txs, error) {
 	}
 
 	return txs, nil
-}
-
-// ParseISRs collects all the intermediate state roots from the shares provided
-func ParseISRs(shares [][]byte) (IntermediateStateRoots, error) {
-	rawISRs, err := processContiguousShares(shares)
-	if err != nil {
-		return IntermediateStateRoots{}, err
-	}
-
-	ISRs := make([]tmbytes.HexBytes, len(rawISRs))
-	for i := 0; i < len(ISRs); i++ {
-		ISRs[i] = rawISRs[i]
-	}
-
-	return IntermediateStateRoots{RawRootsList: ISRs}, nil
 }
 
 // ParseEvd collects all evidence from the shares provided.
