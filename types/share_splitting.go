@@ -52,7 +52,7 @@ func splitMessage(rawData []byte, nid namespace.ID) NamespacedShares {
 }
 
 // splitContiguous splits multiple raw data contiguously as shares.
-// Used for transactions, intermediate state roots, and evidence.
+// Used for transactions, and evidence.
 func splitContiguous(nid namespace.ID, rawDatas [][]byte) []NamespacedShare {
 	shares := make([]NamespacedShare, 0)
 	// Index into the outer slice of rawDatas

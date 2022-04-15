@@ -88,7 +88,7 @@ message Data {
   // This means that block.AppHash does not include these txs.
   repeated bytes txs = 1;
 
-  IntermediateStateRoots intermediate_state_roots = 2 [(gogoproto.nullable) = false];
+  // field number 2 is reserved for intermediate state roots
   EvidenceList           evidence                 = 3 [(gogoproto.nullable) = false];
   Messages               messages                 = 4 [(gogoproto.nullable) = false];
   uint64                 original_square_size     = 5;
@@ -122,10 +122,6 @@ message Evidence {
 // EvidenceData contains any evidence of malicious wrong-doing by validators
 message EvidenceList {
   repeated Evidence evidence = 1 [(gogoproto.nullable) = false];
-}
-
-message IntermediateStateRoots {
-  repeated bytes raw_roots_list = 1;
 }
 
 message Messages {

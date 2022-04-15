@@ -14,7 +14,6 @@ import (
 	"github.com/celestiaorg/nmt/namespace"
 	"github.com/celestiaorg/rsmt2d"
 	"github.com/stretchr/testify/assert"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/libs/protoio"
 	"github.com/tendermint/tendermint/pkg/consts"
 )
@@ -219,21 +218,19 @@ func TestDataFromSquare(t *testing.T) {
 	type test struct {
 		name     string
 		txCount  int
-		isrCount int
 		evdCount int
 		msgCount int
 		maxSize  int // max size of each tx or msg
 	}
 
 	tests := []test{
-		{"one of each random small size", 1, 1, 1, 1, 40},
-		{"one of each random large size", 1, 1, 1, 1, 400},
-		{"many of each random large size", 10, 10, 10, 10, 40},
-		{"many of each random large size", 10, 10, 10, 10, 400},
-		{"only transactions", 10, 0, 0, 0, 400},
-		{"only intermediate state roots", 0, 10, 0, 0, 400},
-		{"only evidence", 0, 0, 10, 0, 400},
-		{"only messages", 0, 0, 0, 10, 400},
+		{"one of each random small size", 1, 1, 1, 40},
+		{"one of each random large size", 1, 1, 1, 400},
+		{"many of each random large size", 10, 10, 10, 40},
+		{"many of each random large size", 10, 10, 10, 400},
+		{"only transactions", 10, 0, 0, 400},
+		{"only evidence", 0, 10, 0, 400},
+		{"only messages", 0, 0, 10, 400},
 	}
 
 	for _, tc := range tests {
@@ -243,7 +240,6 @@ func TestDataFromSquare(t *testing.T) {
 			// generate random data
 			data := generateRandomBlockData(
 				tc.txCount,
-				tc.isrCount,
 				tc.evdCount,
 				tc.msgCount,
 				tc.maxSize,
@@ -458,10 +454,9 @@ func Test_parseDelimiter(t *testing.T) {
 }
 
 // generateRandomBlockData returns randomly generated block data for testing purposes
-func generateRandomBlockData(txCount, isrCount, evdCount, msgCount, maxSize int) Data {
+func generateRandomBlockData(txCount, evdCount, msgCount, maxSize int) Data {
 	var out Data
 	out.Txs = generateRandomlySizedContiguousShares(txCount, maxSize)
-	out.IntermediateStateRoots = generateRandomISR(isrCount)
 	out.Evidence = generateIdenticalEvidence(evdCount)
 	out.Messages = generateRandomlySizedMessages(msgCount, maxSize)
 	return out
@@ -490,14 +485,6 @@ func generateRandomContiguousShares(count, size int) Txs {
 		txs[i] = tx
 	}
 	return txs
-}
-
-func generateRandomISR(count int) IntermediateStateRoots {
-	roots := make([]tmbytes.HexBytes, count)
-	for i := 0; i < count; i++ {
-		roots[i] = tmbytes.HexBytes(generateRandomContiguousShares(1, 32)[0])
-	}
-	return IntermediateStateRoots{RawRootsList: roots}
 }
 
 func generateIdenticalEvidence(count int) EvidenceData {
