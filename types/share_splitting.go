@@ -102,12 +102,17 @@ func splitMessage(rawData []byte, nid namespace.ID) NamespacedShares {
 	return shares
 }
 
+// ContiguousShareWriter will write raw data contiguously across a progressively
+// increasing set of shares. It is used to lazily split block data such as transactions
+// into shares.
 type ContiguousShareWriter struct {
 	shares       []NamespacedShare
 	pendingShare NamespacedShare
 	namespace    namespace.ID
 }
 
+// NewContiguousShareWriter returns a ContigousShareWriter using the provided
+// namespace.
 func NewContiguousShareWriter(ns namespace.ID) *ContiguousShareWriter {
 	pendingShare := NamespacedShare{ID: ns, Share: make([]byte, 0, consts.ShareSize)}
 	pendingShare.Share = append(pendingShare.Share, ns...)
