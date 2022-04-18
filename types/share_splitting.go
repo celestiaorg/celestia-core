@@ -153,6 +153,8 @@ func (csw *ContiguousShareWriter) Write(rawData []byte) {
 		pendingCursor := len(rawData) + consts.NamespaceSize + consts.ShareReservedBytes
 		var reservedByte byte
 		if pendingCursor >= consts.ShareSize {
+			// the share reserve byte is zero when some contiguously written
+			// data takes up the entire share
 			reservedByte = byte(0)
 		} else {
 			reservedByte = byte(pendingCursor)
@@ -196,6 +198,10 @@ func (csw *ContiguousShareWriter) Export() NamespacedShares {
 	rawLastShare := lastShare.Data()
 
 	for i := 0; i < consts.ShareReservedBytes; i++ {
+		// here we force the last share reserved byte to be zero to avoid any
+		// confusion for light clients parsing these shares, as the rest of the
+		// data after transaction is padding. See
+		// https://github.com/celestiaorg/celestia-specs/blob/master/src/specs/data_structures.md#share
 		rawLastShare[consts.NamespaceSize+i] = byte(0)
 	}
 
