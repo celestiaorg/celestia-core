@@ -321,7 +321,7 @@ func MaxDataBytesNoEvidence(maxBytes int64, valsCount int) int64 {
 // It populates the same set of fields validated by ValidateBasic.
 func MakeBlock(
 	height int64,
-	txs []Tx, evidence []Evidence, intermediateStateRoots []tmbytes.HexBytes, messages []Message,
+	txs []Tx, evidence []Evidence, messages []Message,
 	lastCommit *Commit) *Block {
 	block := &Block{
 		Header: Header{
@@ -329,10 +329,9 @@ func MakeBlock(
 			Height:  height,
 		},
 		Data: Data{
-			Txs:                    txs,
-			IntermediateStateRoots: IntermediateStateRoots{RawRootsList: intermediateStateRoots},
-			Evidence:               EvidenceData{Evidence: evidence},
-			Messages:               Messages{MessagesList: messages},
+			Txs:      txs,
+			Evidence: EvidenceData{Evidence: evidence},
+			Messages: Messages{MessagesList: messages},
 		},
 		LastCommit: lastCommit,
 	}
@@ -1022,13 +1021,6 @@ type Data struct {
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
 
-	// Intermediate state roots of the Txs included in block.Height
-	// and executed by state state @ block.Height+1.
-	//
-	// TODO: replace with a dedicated type `IntermediateStateRoot`
-	// as soon as we settle on the format / sparse Merkle tree etc
-	IntermediateStateRoots IntermediateStateRoots `json:"intermediate_roots"`
-
 	Evidence EvidenceData `json:"evidence"`
 
 	// The messages included in this block.
@@ -1089,12 +1081,11 @@ func (data *Data) ComputeShares(squareSize uint64) (NamespacedShares, int, error
 
 	// reserved shares:
 	txShares := data.Txs.SplitIntoShares()
-	intermRootsShares := data.IntermediateStateRoots.SplitIntoShares()
 	evidenceShares := data.Evidence.SplitIntoShares()
 
 	// application data shares from messages:
 	msgShares := data.Messages.SplitIntoShares()
-	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
+	curLen := len(txShares) + len(evidenceShares) + len(msgShares)
 
 	if curLen > consts.MaxShareCount {
 		panic(fmt.Sprintf("Block data exceeds the max square size. Number of shares required: %d\n", curLen))
@@ -1118,9 +1109,8 @@ func (data *Data) ComputeShares(squareSize uint64) (NamespacedShares, int, error
 
 	tailShares := TailPaddingShares(wantLen - curLen)
 
-	shares := append(append(append(append(
+	shares := append(append(append(
 		txShares,
-		intermRootsShares...),
 		evidenceShares...),
 		msgShares...),
 		tailShares...)
@@ -1172,39 +1162,6 @@ func powerOf2(v uint64) bool {
 
 type Messages struct {
 	MessagesList []Message `json:"msgs"`
-}
-
-type IntermediateStateRoots struct {
-	RawRootsList []tmbytes.HexBytes `json:"intermediate_roots"`
-}
-
-func IntermediateStateRootsFromProto(pISRs tmproto.IntermediateStateRoots) IntermediateStateRoots {
-	if len(pISRs.RawRootsList) == 0 {
-		return IntermediateStateRoots{}
-	}
-	roots := make([]tmbytes.HexBytes, len(pISRs.RawRootsList))
-	if len(pISRs.RawRootsList) > 0 {
-		for i, r := range pISRs.RawRootsList {
-			roots[i] = r
-		}
-	}
-	return IntermediateStateRoots{RawRootsList: roots}
-}
-
-func (roots IntermediateStateRoots) SplitIntoShares() NamespacedShares {
-	rawDatas := make([][]byte, 0, len(roots.RawRootsList))
-	for _, root := range roots.RawRootsList {
-		rawData, err := root.MarshalDelimited()
-		if err != nil {
-			panic(fmt.Sprintf("app returned intermediate state root that can not be encoded %#v", root))
-		}
-		rawDatas = append(rawDatas, rawData)
-	}
-	w := NewContiguousShareWriter(consts.IntermediateStateRootsNamespaceID)
-	for _, isr := range rawDatas {
-		w.Write(isr)
-	}
-	return w.Export()
 }
 
 func (msgs Messages) SplitIntoShares() NamespacedShares {
@@ -1298,15 +1255,6 @@ func (data *Data) ToProto() tmproto.Data {
 		tp.Txs = txBzs
 	}
 
-	rawRoots := data.IntermediateStateRoots.RawRootsList
-	if len(rawRoots) > 0 {
-		roots := make([][]byte, len(rawRoots))
-		for i := range rawRoots {
-			roots[i] = rawRoots[i]
-		}
-		tp.IntermediateStateRoots.RawRootsList = roots
-	}
-
 	pevd, err := data.Evidence.ToProto()
 	if err != nil {
 		// TODO(evan): fix
@@ -1356,8 +1304,6 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 	} else {
 		data.Messages = Messages{}
 	}
-
-	data.IntermediateStateRoots = IntermediateStateRootsFromProto(dp.IntermediateStateRoots)
 
 	evdData := new(EvidenceData)
 	err := evdData.FromProto(&dp.Evidence)

@@ -107,7 +107,6 @@ func TestBeginBlockValidators(t *testing.T) {
 			factory.MakeTenTxs(2),
 			nil,
 			nil,
-			nil,
 			lastCommit,
 			state.Validators.GetProposer().Address,
 		)

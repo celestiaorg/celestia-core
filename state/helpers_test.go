@@ -60,7 +60,6 @@ func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commi
 		factory.MakeTenTxs(height),
 		evidence,
 		nil,
-		nil,
 		lastCommit,
 		proposerAddr,
 	)
@@ -144,7 +143,7 @@ func makeBlock(state sm.State, height int64) *types.Block {
 	block, _ := state.MakeBlock(
 		height,
 		makeTxs(state.LastBlockHeight),
-		nil, nil, nil,
+		nil, nil,
 		new(types.Commit),
 		state.Validators.GetProposer().Address,
 	)

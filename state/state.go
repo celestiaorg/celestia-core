@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-
 	tmstate "github.com/tendermint/tendermint/proto/tendermint/state"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
@@ -237,14 +235,13 @@ func (state State) MakeBlock(
 	height int64,
 	txs []types.Tx,
 	evidence []types.Evidence,
-	intermediateStateRoots []tmbytes.HexBytes,
 	messages []types.Message,
 	commit *types.Commit,
 	proposerAddress []byte,
 ) (*types.Block, *types.PartSet) {
 
 	// Build base block with block data.
-	block := types.MakeBlock(height, txs, evidence, intermediateStateRoots, messages, commit)
+	block := types.MakeBlock(height, txs, evidence, messages, commit)
 
 	// Set time.
 	var timestamp time.Time

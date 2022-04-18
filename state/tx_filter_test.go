@@ -26,7 +26,7 @@ func TestTxFilter(t *testing.T) {
 		isErr bool
 	}{
 		{types.Tx(tmrand.Bytes(2149)), false},
-		{types.Tx(tmrand.Bytes(2150)), true},
+		{types.Tx(tmrand.Bytes(2152)), true},
 		{types.Tx(tmrand.Bytes(3000)), true},
 	}
 

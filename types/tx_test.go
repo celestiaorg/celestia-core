@@ -56,7 +56,6 @@ func TestUnwrapMalleatedTx(t *testing.T) {
 		1,
 		[]Tx{tx},
 		nil,
-		nil,
 		[]Message{
 			{
 				NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
