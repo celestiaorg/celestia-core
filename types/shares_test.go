@@ -283,7 +283,7 @@ func TestDataFromSquare(t *testing.T) {
 func TestFuzz_DataFromSquare(t *testing.T) {
 	t.Skip()
 	// run random shares through processContiguousShares for a minute
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	for {
 		select {
