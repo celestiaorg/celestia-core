@@ -64,6 +64,8 @@ include tests.mk
 ###                                Build Tendermint                        ###
 ###############################################################################
 
+
+
 build:
 	CGO_ENABLED=$(CGO_ENABLED) go build $(BUILD_FLAGS) -tags '$(BUILD_TAGS)' -o $(OUTPUT) ./cmd/tendermint/
 .PHONY: build
