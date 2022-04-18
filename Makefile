@@ -16,7 +16,7 @@ endif
 LD_FLAGS = -X github.com/tendermint/tendermint/version.TMCoreSemVer=$(VERSION)
 BUILD_FLAGS = -mod=readonly -ldflags "$(LD_FLAGS)"
 HTTPS_GIT := https://github.com/celestiaorg/celestia-core.git
-CGO_ENABLED ?= 1
+CGO_ENABLED ?= 0
 
 # handle nostrip
 ifeq (,$(findstring nostrip,$(TENDERMINT_BUILD_OPTIONS)))
@@ -63,6 +63,8 @@ include tests.mk
 ###############################################################################
 ###                                Build Tendermint                        ###
 ###############################################################################
+
+
 
 build:
 	CGO_ENABLED=$(CGO_ENABLED) go build $(BUILD_FLAGS) -tags '$(BUILD_TAGS)' -o $(OUTPUT) ./cmd/tendermint/
