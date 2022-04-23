@@ -183,7 +183,7 @@ func (csw *ContiguousShareWriter) stackPending() {
 	}
 }
 
-// Export finalizes and returns the underlying contiguous shares
+// Export finalizes and returns the underlying contiguous shares.
 func (csw *ContiguousShareWriter) Export() NamespacedShares {
 	// add the pending share to the current shares before returning
 	if len(csw.pendingShare.Share) > consts.NamespaceSize {
