@@ -21,7 +21,7 @@ func NewMessageShareWriter() *MessageShareWriter {
 	return &MessageShareWriter{}
 }
 
-// Write adds the delimited data to the underlying contiguous shares
+// Write adds the delimited data to the underlying contiguous shares.
 func (msw *MessageShareWriter) Write(msg Message) {
 	rawMsg, err := msg.MarshalDelimited()
 	if err != nil {
