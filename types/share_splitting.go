@@ -53,7 +53,7 @@ func (msw *MessageShareWriter) sortMsgs() {
 	})
 }
 
-// Count returns the current number of shares that will be made if exporting
+// Count returns the current number of shares that will be made if exporting.
 func (msw *MessageShareWriter) Count() int {
 	return msw.count
 }
