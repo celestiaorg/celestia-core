@@ -33,7 +33,7 @@ func (msw *MessageShareWriter) Write(msg Message) {
 	msw.count += len(newShares)
 }
 
-// Export finalizes and returns the underlying contiguous shares
+// Export finalizes and returns the underlying contiguous shares.
 func (msw *MessageShareWriter) Export() NamespacedShares {
 	msw.sortMsgs()
 	shares := make([]NamespacedShare, msw.count)
