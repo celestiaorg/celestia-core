@@ -213,7 +213,7 @@ func (csw *ContiguousShareWriter) Export() NamespacedShares {
 	return csw.shares
 }
 
-// Count returns the current number of shares that will be made if exporting
+// Count returns the current number of shares that will be made if exporting.
 func (csw *ContiguousShareWriter) Count() (count, availableBytes int) {
 	availableBytes = consts.TxShareSize - (len(csw.pendingShare.Share) - consts.NamespaceSize)
 	return len(csw.shares), availableBytes
