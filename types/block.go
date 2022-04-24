@@ -1070,8 +1070,9 @@ func (data *Data) Hash() tmbytes.HexBytes {
 
 // ComputeShares splits block data into shares of an original data square and
 // returns them along with an amount of non-redundant shares. If a square size
-// of 0 is passed, then the minimum square size of 1 is used. The passed square
-// size is stored in the local instance of the struct.
+// of 0 is passed, then it is determined based on how many shares are needed to
+// fill the square for the underlying block data. The square size is stored in
+// the local instance of the struct.
 func (data *Data) ComputeShares(squareSize uint64) (NamespacedShares, int, error) {
 	if squareSize != 0 {
 		if !powerOf2(squareSize) {
