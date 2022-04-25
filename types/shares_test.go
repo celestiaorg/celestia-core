@@ -14,6 +14,7 @@ import (
 	"github.com/celestiaorg/nmt/namespace"
 	"github.com/celestiaorg/rsmt2d"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/libs/protoio"
 	"github.com/tendermint/tendermint/pkg/consts"
 )
@@ -135,7 +136,7 @@ func TestMakeShares(t *testing.T) {
 					Share: append(
 						append(
 							reservedTxNamespaceID,
-							byte(len(largeTxLenDelimited)-consts.TxShareSize+consts.NamespaceSize+consts.ShareReservedBytes),
+							byte(0),
 						),
 						zeroPadIfNecessary(
 							append(largeTxLenDelimited[consts.TxShareSize:], smolTxLenDelimited...),
@@ -245,7 +246,8 @@ func TestDataFromSquare(t *testing.T) {
 				tc.maxSize,
 			)
 
-			shares, _ := data.ComputeShares()
+			shares, _, err := data.ComputeShares(0)
+			require.NoError(t, err)
 			rawShares := shares.RawShares()
 
 			eds, err := rsmt2d.ComputeExtendedDataSquare(rawShares, consts.DefaultCodec(), rsmt2d.NewDefaultTree)
@@ -435,6 +437,23 @@ func Test_parseMsgShares(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestContigShareWriter(t *testing.T) {
+	// note that this test is mainly for debugging purposes, the main round trip
+	// tests occur in TestDataFromSquare and Test_processContiguousShares
+	w := NewContiguousShareWriter(consts.TxNamespaceID)
+	txs := generateRandomContiguousShares(33, 200)
+	for _, tx := range txs {
+		rawTx, _ := tx.MarshalDelimited()
+		w.Write(rawTx)
+	}
+	resShares := w.Export()
+	rawResTxs, err := processContiguousShares(resShares.RawShares())
+	resTxs := ToTxs(rawResTxs)
+	require.NoError(t, err)
+
+	assert.Equal(t, txs, resTxs)
 }
 
 func Test_parseDelimiter(t *testing.T) {
