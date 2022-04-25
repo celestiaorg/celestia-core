@@ -222,12 +222,6 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 	pb.LastCommit = b.LastCommit.ToProto()
 	pb.Data = b.Data.ToProto()
 
-	protoEvidence, err := b.Evidence.ToProto()
-	if err != nil {
-		return nil, err
-	}
-	pb.Evidence = *protoEvidence
-
 	return pb, nil
 }
 
@@ -324,9 +318,10 @@ func MakeBlock(height int64, txs []Tx, lastCommit *Commit, evidence []Evidence) 
 			Height:  height,
 		},
 		Data: Data{
-			Txs: txs,
+			Txs:      txs,
+			Evidence: EvidenceData{Evidence: evidence},
 		},
-		Evidence:   EvidenceData{Evidence: evidence},
+
 		LastCommit: lastCommit,
 	}
 	block.fillHeader()
@@ -1157,69 +1152,6 @@ func (msgs Messages) SplitIntoShares() NamespacedShares {
 	return shares
 }
 
-// ComputeShares splits block data into shares of an original data square and
-// returns them along with an amount of non-redundant shares. The shares
-// returned are padded to complete a square size that is a power of two
-func (data *Data) ComputeShares() (NamespacedShares, int) {
-	// TODO(ismail): splitting into shares should depend on the block size and layout
-	// see: https://github.com/celestiaorg/celestia-specs/blob/master/specs/block_proposer.md#laying-out-transactions-and-messages
-
-	// reserved shares:
-	txShares := data.Txs.SplitIntoShares()
-	intermRootsShares := data.IntermediateStateRoots.SplitIntoShares()
-	evidenceShares := data.Evidence.SplitIntoShares()
-
-	// application data shares from messages:
-	msgShares := data.Messages.SplitIntoShares()
-	curLen := len(txShares) + len(intermRootsShares) + len(evidenceShares) + len(msgShares)
-
-	// find the number of shares needed to create a square that has a power of
-	// two width
-	wantLen := paddedLen(curLen)
-
-	// ensure that the min square size is used
-	if wantLen < consts.MinSharecount {
-		wantLen = consts.MinSharecount
-	}
-
-	tailShares := TailPaddingShares(wantLen - curLen)
-
-	return append(append(append(append(
-		txShares,
-		intermRootsShares...),
-		evidenceShares...),
-		msgShares...),
-		tailShares...), curLen
-}
-
-// paddedLen calculates the number of shares needed to make a power of 2 square
-// given the current number of shares
-func paddedLen(length int) int {
-	width := uint32(math.Ceil(math.Sqrt(float64(length))))
-	width = nextHighestPowerOf2(width)
-	return int(width * width)
-}
-
-// nextPowerOf2 returns the next highest power of 2 unless the input is a power
-// of two, in which case it returns the input
-func nextHighestPowerOf2(v uint32) uint32 {
-	if v == 0 {
-		return 0
-	}
-
-	// find the next highest power using bit mashing
-	v--
-	v |= v >> 1
-	v |= v >> 2
-	v |= v >> 4
-	v |= v >> 8
-	v |= v >> 16
-	v++
-
-	// return the next highest power
-	return v
-}
-
 type Message struct {
 	// NamespaceID defines the namespace of this message, i.e. the
 	// namespace it will use in the namespaced Merkle tree.
@@ -1231,17 +1163,6 @@ type Message struct {
 	// Data is the actual data contained in the message
 	// (e.g. a block of a virtual sidechain).
 	Data []byte
-}
-
-// Hash returns the hash of the data
-func (data *Data) Hash() tmbytes.HexBytes {
-	if data == nil {
-		return (Txs{}).Hash()
-	}
-	if data.hash == nil {
-		data.hash = data.Txs.Hash() // NOTE: leaves of merkle tree are TxIDs
-	}
-	return data.hash
 }
 
 // StringIndented returns an indented string representation of the transactions.
@@ -1276,6 +1197,22 @@ func (data *Data) ToProto() tmproto.Data {
 		tp.Txs = txBzs
 	}
 
+	pevd, err := data.Evidence.ToProto()
+	if err != nil {
+		// TODO(evan): fix
+		panic(err)
+	}
+	tp.Evidence = *pevd
+
+	protoMsgs := make([]*tmproto.Message, len(data.Messages.MessagesList))
+	for i, msg := range data.Messages.MessagesList {
+		protoMsgs[i] = &tmproto.Message{
+			NamespaceId: msg.NamespaceID,
+			Data:        msg.Data,
+		}
+	}
+	tp.Messages = tmproto.Messages{MessagesList: protoMsgs}
+
 	return *tp
 }
 
@@ -1295,6 +1232,25 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		data.Txs = txBzs
 	} else {
 		data.Txs = Txs{}
+	}
+
+	if len(dp.Messages.MessagesList) > 0 {
+		msgs := make([]Message, len(dp.Messages.MessagesList))
+		for i, m := range dp.Messages.MessagesList {
+			msgs[i] = Message{NamespaceID: m.NamespaceId, Data: m.Data}
+		}
+		data.Messages = Messages{MessagesList: msgs}
+	} else {
+		data.Messages = Messages{}
+	}
+
+	evdData := new(EvidenceData)
+	err := evdData.FromProto(&dp.Evidence)
+	if err != nil {
+		return Data{}, err
+	}
+	if evdData != nil {
+		data.Evidence = *evdData
 	}
 
 	return *data, nil
