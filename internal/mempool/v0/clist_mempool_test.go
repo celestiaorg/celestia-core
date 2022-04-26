@@ -131,11 +131,11 @@ func TestReapMaxBytesMaxGas(t *testing.T) {
 		{20, 0, -1, 0},
 		{20, 0, 10, 0},
 		{20, 10, 10, 0},
-		{20, 24, 10, 1},
+		{20, 28, 10, 1}, // account for overhead in Data{}
 		{20, 240, 5, 5},
-		{20, 240, -1, 10},
-		{20, 240, 10, 10},
-		{20, 240, 15, 10},
+		{20, 280, -1, 10},
+		{20, 280, 10, 10},
+		{20, 280, 15, 10},
 		{20, 20000, -1, 20},
 		{20, 20000, 5, 5},
 		{20, 20000, 30, 20},
@@ -170,14 +170,14 @@ func TestMempoolFilters(t *testing.T) {
 	}{
 		{10, nopPreFilter, nopPostFilter, 10},
 		{10, mempool.PreCheckMaxBytes(10), nopPostFilter, 0},
-		{10, mempool.PreCheckMaxBytes(22), nopPostFilter, 10},
+		{10, mempool.PreCheckMaxBytes(28), nopPostFilter, 10},
 		{10, nopPreFilter, mempool.PostCheckMaxGas(-1), 10},
 		{10, nopPreFilter, mempool.PostCheckMaxGas(0), 0},
 		{10, nopPreFilter, mempool.PostCheckMaxGas(1), 10},
 		{10, nopPreFilter, mempool.PostCheckMaxGas(3000), 10},
 		{10, mempool.PreCheckMaxBytes(10), mempool.PostCheckMaxGas(20), 0},
 		{10, mempool.PreCheckMaxBytes(30), mempool.PostCheckMaxGas(20), 10},
-		{10, mempool.PreCheckMaxBytes(22), mempool.PostCheckMaxGas(1), 10},
+		{10, mempool.PreCheckMaxBytes(28), mempool.PostCheckMaxGas(1), 10},
 		{10, mempool.PreCheckMaxBytes(22), mempool.PostCheckMaxGas(0), 0},
 	}
 	for tcIndex, tt := range tests {
