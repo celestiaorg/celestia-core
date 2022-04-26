@@ -47,10 +47,9 @@ const (
 type Block struct {
 	mtx sync.Mutex
 
-	Header                 `json:"header"`
-	Data                   `json:"data"`
-	DataAvailabilityHeader da.DataAvailabilityHeader `json:"availability_header"`
-	LastCommit             *Commit                   `json:"last_commit"`
+	Header     `json:"header"`
+	Data       `json:"data"`
+	LastCommit *Commit `json:"last_commit"`
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data.
@@ -244,11 +243,6 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 	}
 	b.Data = data
 
-	dah, err := da.DataAvailabilityHeaderFromProto(bp.DataAvailabilityHeader)
-	if err != nil {
-		return nil, err
-	}
-	b.DataAvailabilityHeader = *dah
 	if bp.LastCommit != nil {
 		lc, err := CommitFromProto(bp.LastCommit)
 		if err != nil {
