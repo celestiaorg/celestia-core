@@ -11,6 +11,8 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
+	testing "testing"
+
 	types "github.com/tendermint/tendermint/abci/types"
 )
 
@@ -715,52 +717,6 @@ func (_m *Client) QuerySync(_a0 context.Context, _a1 types.RequestQuery) (*types
 	return r0, r1
 }
 
-// PreprocessTxsAsync provides a mock function with given fields: _a0, _a1
-func (_m *Client) PreprocessTxsAsync(_a0 types.RequestPreprocessTxs) (*abcicli.ReqRes, error) {
-	ret := _m.Called(_a0)
-
-	var r0 *abcicli.ReqRes
-	if rf, ok := ret.Get(0).(func(types.RequestPreprocessTxs) *abcicli.ReqRes); ok {
-		r0 = rf(_a0)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*abcicli.ReqRes)
-		}
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(types.RequestPreprocessTxs) error); ok {
-		r1 = rf(_a0)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// PreprocessTxsSync provides a mock function with given fields: _a0
-func (_m *Client) PreprocessTxsSync(_a0 types.RequestPreprocessTxs) (*types.ResponsePreprocessTxs, error) {
-	ret := _m.Called(_a0)
-
-	var r0 *types.ResponsePreprocessTxs
-	if rf, ok := ret.Get(0).(func(types.RequestPreprocessTxs) *types.ResponsePreprocessTxs); ok {
-		r0 = rf(_a0)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*types.ResponsePreprocessTxs)
-		}
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(types.RequestPreprocessTxs) error); ok {
-		r1 = rf(_a0)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
 // Quit provides a mock function with given fields:
 func (_m *Client) Quit() <-chan struct{} {
 	ret := _m.Called()
@@ -846,4 +802,14 @@ func (_m *Client) String() string {
 // Wait provides a mock function with given fields:
 func (_m *Client) Wait() {
 	_m.Called()
+}
+
+// NewClient creates a new instance of Client. It also registers the testing.TB interface on the mock and a cleanup function to assert the mocks expectations.
+func NewClient(t testing.TB) *Client {
+	mock := &Client{}
+	mock.Mock.Test(t)
+
+	t.Cleanup(func() { mock.AssertExpectations(t) })
+
+	return mock
 }
