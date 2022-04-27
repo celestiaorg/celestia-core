@@ -213,19 +213,9 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) BlockID {
 
 var nilBytes []byte
 
-// This follows RFC-6962, i.e. `echo -n '' | sha256sum`
-var emptyBytes = []byte{0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8,
-	0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b,
-	0x78, 0x52, 0xb8, 0x55}
-
 func TestNilHeaderHashDoesntCrash(t *testing.T) {
 	assert.Equal(t, nilBytes, []byte((*Header)(nil).Hash()))
 	assert.Equal(t, nilBytes, []byte((new(Header)).Hash()))
-}
-
-func TestNilDataHashDoesntCrash(t *testing.T) {
-	assert.Equal(t, emptyBytes, []byte((*Data)(nil).Hash()))
-	assert.Equal(t, emptyBytes, []byte(new(Data).Hash()))
 }
 
 func TestCommit(t *testing.T) {
@@ -649,12 +639,11 @@ func TestBlockProtoBuf(t *testing.T) {
 	b1 := MakeBlock(h, []Tx{Tx([]byte{1})}, &Commit{Signatures: []CommitSig{}}, []Evidence{})
 	b1.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
 
-	b2 := MakeBlock(h, []Tx{Tx([]byte{1})}, c1, []Evidence{})
-	b2.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
 	evidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 	evi := NewMockDuplicateVoteEvidence(h, evidenceTime, "block-test-chain")
-	b2.Evidence = EvidenceData{Evidence: EvidenceList{evi}}
-	b2.EvidenceHash = b2.Evidence.Hash()
+	b2 := MakeBlock(h, []Tx{Tx([]byte{1})}, c1, []Evidence{evi})
+	b2.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
+	b2.Data.Evidence.ByteSize()
 
 	b3 := MakeBlock(h, []Tx{}, c1, []Evidence{})
 	b3.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
@@ -691,8 +680,14 @@ func TestBlockProtoBuf(t *testing.T) {
 }
 
 func TestDataProtoBuf(t *testing.T) {
-	data := &Data{Txs: Txs{Tx([]byte{1}), Tx([]byte{2}), Tx([]byte{3})}}
-	data2 := &Data{Txs: Txs{}}
+	data := &Data{
+		Txs:      Txs{Tx([]byte{1}), Tx([]byte{2}), Tx([]byte{3})},
+		Evidence: EvidenceData{Evidence: EvidenceList{}},
+	}
+	data2 := &Data{
+		Txs:      Txs{},
+		Evidence: EvidenceData{Evidence: EvidenceList{}},
+	}
 	testCases := []struct {
 		msg     string
 		data1   *Data
