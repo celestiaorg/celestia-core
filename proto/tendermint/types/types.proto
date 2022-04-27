@@ -200,3 +200,10 @@ message TxProof {
   bytes                   data      = 2;
   tendermint.crypto.Proof proof     = 3;
 }
+
+// ChildTx wraps a transaction that was derived from a parent transaction. This
+// allows for removal of the parent transaction from the mempool.
+message ChildTx {
+  bytes parent_tx_hash = 1;
+  bytes tx = 2;
+}

@@ -41,6 +41,7 @@ func MakeBlock(state sm.State, height int64, c *types.Commit) *types.Block {
 		factory.MakeTenTxs(state.LastBlockHeight),
 		c,
 		nil,
+		nil,
 		state.Validators.GetProposer().Address,
 	)
 	return block
@@ -61,5 +62,5 @@ func makeBlockAndPartSet(state sm.State, lastBlock *types.Block, lastBlockMeta *
 			lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()})
 	}
 
-	return state.MakeBlock(height, []types.Tx{}, lastCommit, nil, state.Validators.GetProposer().Address)
+	return state.MakeBlock(height, []types.Tx{}, lastCommit, nil, nil, state.Validators.GetProposer().Address)
 }

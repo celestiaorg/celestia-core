@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
@@ -173,4 +174,30 @@ func ToTxs(txs [][]byte) Txs {
 		txBzs[i] = txs[i]
 	}
 	return txBzs
+}
+
+// DecodeChildTx attempts to unmarshal the provided transaction into a child
+// transaction wrapper, if this an be done, then it returns true. A child
+// transaction is a normal transaction that has been derived from a different
+// parent transaction. The returned hash is that of the parent transaction,
+// which allows us to remove the parent transaction from the mempool
+func DecodeChildTx(tx Tx) (hash []byte, unwrapped Tx, has bool) {
+	// attempt to unmarshal into a a child transaction
+	var childTx tmproto.ChildTx
+	err := proto.Unmarshal(tx, &childTx)
+	if err != nil {
+		return nil, nil, false
+	}
+	return childTx.ParentTxHash, childTx.Tx, true
+}
+
+// WrapChildTx creates a wrapped Tx that includes the parent transaction's hash
+// so that it can be easily removed from the mempool. note: must be unwrapped to
+// be a viable sdk.Tx
+func WrapChildTx(parentHash []byte, child Tx) (Tx, error) {
+	wTx := tmproto.ChildTx{
+		ParentTxHash: parentHash,
+		Tx:           child,
+	}
+	return proto.Marshal(&wTx)
 }
