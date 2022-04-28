@@ -9,6 +9,8 @@ import (
 	"github.com/tendermint/tendermint/libs/bytes"
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
+	"github.com/tendermint/tendermint/pkg/consts"
+	"github.com/tendermint/tendermint/pkg/prove"
 	"github.com/tendermint/tendermint/rpc/coretypes"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 	"github.com/tendermint/tendermint/types"
@@ -18,7 +20,7 @@ import (
 // transaction is in the mempool, invalidated, or was not sent in the first
 // place.
 // More: https://docs.tendermint.com/master/rpc/#/Info/tx
-func (env *Environment) Tx(ctx *rpctypes.Context, hash bytes.HexBytes, prove bool) (*coretypes.ResultTx, error) {
+func (env *Environment) Tx(ctx *rpctypes.Context, hash bytes.HexBytes, proveTx bool) (*coretypes.ResultTx, error) {
 	// if index is disabled, return error
 
 	// N.B. The hash parameter is HexBytes so that the reflective parameter
@@ -39,10 +41,18 @@ func (env *Environment) Tx(ctx *rpctypes.Context, hash bytes.HexBytes, prove boo
 			height := r.Height
 			index := r.Index
 
-			var proof types.TxProof
-			if prove {
+			var txProof types.TxProof
+			if proveTx {
 				block := env.BlockStore.LoadBlock(height)
-				proof = block.Data.Txs.Proof(int(index)) // XXX: overflow on 32-bit machines
+				txProof, err = prove.TxInclusion(
+					consts.DefaultCodec(),
+					block.Data,
+					uint(block.Data.OriginalSquareSize),
+					uint(r.Index),
+				)
+				if err != nil {
+					return nil, err
+				}
 			}
 
 			return &coretypes.ResultTx{
@@ -51,7 +61,7 @@ func (env *Environment) Tx(ctx *rpctypes.Context, hash bytes.HexBytes, prove boo
 				Index:    index,
 				TxResult: r.Result,
 				Tx:       r.Tx,
-				Proof:    proof,
+				Proof:    txProof,
 			}, nil
 		}
 	}
@@ -65,7 +75,7 @@ func (env *Environment) Tx(ctx *rpctypes.Context, hash bytes.HexBytes, prove boo
 func (env *Environment) TxSearch(
 	ctx *rpctypes.Context,
 	query string,
-	prove bool,
+	proveTx bool,
 	pagePtr, perPagePtr *int,
 	orderBy string,
 ) (*coretypes.ResultTxSearch, error) {
@@ -125,9 +135,12 @@ func (env *Environment) TxSearch(
 				r := results[i]
 
 				var proof types.TxProof
-				if prove {
+				if proveTx {
 					block := env.BlockStore.LoadBlock(r.Height)
-					proof = block.Data.Txs.Proof(int(r.Index)) // XXX: overflow on 32-bit machines
+					proof, err = prove.TxInclusion(consts.DefaultCodec(), block.Data, uint(block.Data.OriginalSquareSize), uint(r.Index))
+					if err != nil {
+						return nil, err
+					}
 				}
 
 				apiResults = append(apiResults, &coretypes.ResultTx{
