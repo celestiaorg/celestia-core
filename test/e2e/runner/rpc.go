@@ -138,7 +138,7 @@ func waitForNode(ctx context.Context, node *e2e.Node, height int64) (*rpctypes.R
 		return nil, err
 	}
 
-	timer := time.NewTimer(0)
+	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 
 	var (
@@ -171,7 +171,7 @@ func waitForNode(ctx context.Context, node *e2e.Node, height int64) (*rpctypes.R
 				return nil, err
 			case err == nil && status.SyncInfo.LatestBlockHeight >= height:
 				return status, nil
-			case counter%500 == 0:
+			case counter%1000 == 0:
 				switch {
 				case err != nil:
 					lastFailed = true
@@ -190,7 +190,7 @@ func waitForNode(ctx context.Context, node *e2e.Node, height int64) (*rpctypes.R
 					)
 				}
 			}
-			timer.Reset(250 * time.Millisecond)
+			timer.Reset(350 * time.Millisecond)
 		}
 	}
 }
