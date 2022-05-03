@@ -9,6 +9,7 @@ import (
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	"github.com/tendermint/tendermint/pkg/consts"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
@@ -122,6 +123,7 @@ func (tp TxProof) ToProto() tmproto.TxProof {
 
 	return pbtp
 }
+
 func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
 
 	pbProof, err := merkle.ProofFromProto(pb.Proof)
@@ -138,10 +140,37 @@ func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
 	return pbtp, nil
 }
 
+func (txs Txs) SplitIntoShares() NamespacedShares {
+	rawDatas := make([][]byte, len(txs))
+	for i, tx := range txs {
+		rawData, err := tx.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("included Tx in mem-pool that can not be encoded %v", tx))
+		}
+		rawDatas[i] = rawData
+	}
+
+	w := NewContiguousShareWriter(consts.TxNamespaceID)
+	for _, tx := range rawDatas {
+		w.Write(tx)
+	}
+
+	return w.Export()
+}
+
 // ComputeProtoSizeForTxs wraps the transactions in tmproto.Data{} and calculates the size.
 // https://developers.google.com/protocol-buffers/docs/encoding
 func ComputeProtoSizeForTxs(txs []Tx) int64 {
 	data := Data{Txs: txs}
 	pdData := data.ToProto()
 	return int64(pdData.Size())
+}
+
+// ToTxs converts a raw slice of byte slices into a Txs type.
+func ToTxs(txs [][]byte) Txs {
+	txBzs := make(Txs, len(txs))
+	for i := 0; i < len(txs); i++ {
+		txBzs[i] = txs[i]
+	}
+	return txBzs
 }
