@@ -44,8 +44,7 @@ type Block struct {
 
 	Header     `json:"header"`
 	Data       `json:"data"`
-	Evidence   EvidenceData `json:"evidence"`
-	LastCommit *Commit      `json:"last_commit"`
+	LastCommit *Commit `json:"last_commit"`
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data.
@@ -217,12 +216,6 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 	pb.LastCommit = b.LastCommit.ToProto()
 	pb.Data = b.Data.ToProto()
 
-	protoEvidence, err := b.Evidence.ToProto()
-	if err != nil {
-		return nil, err
-	}
-	pb.Evidence = *protoEvidence
-
 	return pb, nil
 }
 
@@ -244,9 +237,6 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 		return nil, err
 	}
 	b.Data = data
-	if err := b.Evidence.FromProto(&bp.Evidence); err != nil {
-		return nil, err
-	}
 
 	if bp.LastCommit != nil {
 		lc, err := CommitFromProto(bp.LastCommit)
@@ -314,9 +304,9 @@ func MakeBlock(height int64, txs []Tx, lastCommit *Commit, evidence []Evidence) 
 			Height:  height,
 		},
 		Data: Data{
-			Txs: txs,
+			Txs:      txs,
+			Evidence: EvidenceData{Evidence: evidence},
 		},
-		Evidence:   EvidenceData{Evidence: evidence},
 		LastCommit: lastCommit,
 	}
 	block.fillHeader()
@@ -997,13 +987,30 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 
 //-----------------------------------------------------------------------------
 
-// Data contains the set of transactions included in the block
+// Data contains all the available Data of the block.
+// Data with reserved namespaces (Txs, IntermediateStateRoots, Evidence) and
+// Celestia application specific Messages.
 type Data struct {
-
 	// Txs that will be applied by state @ block.Height+1.
 	// NOTE: not all txs here are valid.  We're just agreeing on the order first.
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
+
+	Evidence EvidenceData `json:"evidence"`
+
+	// The messages included in this block.
+	// TODO: how do messages end up here? (abci) app <-> ll-core?
+	// A simple approach could be: include them in the Tx above and
+	// have a mechanism to split them out somehow? Probably better to include
+	// them only when necessary (before proposing the block) as messages do not
+	// really need to be processed by tendermint
+	Messages Messages `json:"msgs"`
+
+	// OriginalSquareSize is the size of the square after splitting all the block data
+	// into shares. The erasure data is discarded after generation, and keeping this
+	// value avoids unnecessarily regenerating all of the shares when returning
+	// proofs that some element was included in the block
+	OriginalSquareSize uint64 `json:"square_size"`
 
 	// Volatile
 	hash tmbytes.HexBytes
@@ -1052,6 +1059,25 @@ func (data *Data) ToProto() tmproto.Data {
 		tp.Txs = txBzs
 	}
 
+	pevd, err := data.Evidence.ToProto()
+	if err != nil {
+		// TODO(evan): fix
+		panic(err)
+	}
+	tp.Evidence = *pevd
+
+	protoMsgs := make([]*tmproto.Message, len(data.Messages.MessagesList))
+	for i, msg := range data.Messages.MessagesList {
+		protoMsgs[i] = &tmproto.Message{
+			NamespaceId: msg.NamespaceID,
+			Data:        msg.Data,
+		}
+	}
+	tp.Messages = tmproto.Messages{MessagesList: protoMsgs}
+	tp.OriginalSquareSize = data.OriginalSquareSize
+
+	tp.Hash = data.hash
+
 	return *tp
 }
 
@@ -1072,6 +1098,27 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 	} else {
 		data.Txs = Txs{}
 	}
+
+	if len(dp.Messages.MessagesList) > 0 {
+		msgs := make([]Message, len(dp.Messages.MessagesList))
+		for i, m := range dp.Messages.MessagesList {
+			msgs[i] = Message{NamespaceID: m.NamespaceId, Data: m.Data}
+		}
+		data.Messages = Messages{MessagesList: msgs}
+	} else {
+		data.Messages = Messages{}
+	}
+
+	evdData := new(EvidenceData)
+	err := evdData.FromProto(&dp.Evidence)
+	if err != nil {
+		return Data{}, err
+	}
+	if evdData != nil {
+		data.Evidence = *evdData
+	}
+	data.OriginalSquareSize = dp.OriginalSquareSize
+	data.hash = dp.Hash
 
 	return *data, nil
 }
