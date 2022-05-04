@@ -41,9 +41,13 @@ const (
 	// 2 fields (2 embedded):               2 bytes
 	// Uvarint length of Data.Txs:          4 bytes
 	// Data fields:                         6 bytes
+	MaxOverheadForBlock int64 = 16
+
+	// MinimumDataBytes is the numbers of bytes that will be taken up by empty
+	// block data
 	// Hash in Data                        32 bytes
 	// OriginalSquareSize in Data           8 bytes
-	MaxOverheadForBlock int64 = 56
+	MinimumDataBytes int64 = 40
 )
 
 // Block defines the atomic unit of a Tendermint blockchain.
@@ -265,6 +269,7 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 func MaxDataBytes(maxBytes, evidenceBytes int64, valsCount int) int64 {
 	maxDataBytes := maxBytes -
 		MaxOverheadForBlock -
+		MinimumDataBytes -
 		MaxHeaderBytes -
 		MaxCommitBytes(valsCount) -
 		evidenceBytes
@@ -288,6 +293,7 @@ func MaxDataBytes(maxBytes, evidenceBytes int64, valsCount int) int64 {
 func MaxDataBytesNoEvidence(maxBytes int64, valsCount int) int64 {
 	maxDataBytes := maxBytes -
 		MaxOverheadForBlock -
+		MinimumDataBytes -
 		MaxHeaderBytes -
 		MaxCommitBytes(valsCount)
 
