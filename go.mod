@@ -10,7 +10,7 @@ require (
 	github.com/btcsuite/btcutil v1.0.3-0.20201208143702-a53e38424cce
 	github.com/celestiaorg/nmt v0.8.0
 	github.com/celestiaorg/rsmt2d v0.5.0
-	github.com/creachadair/atomicfile v0.2.5
+	github.com/creachadair/atomicfile v0.2.6
 	github.com/creachadair/taskgroup v0.3.2
 	github.com/creachadair/tomledit v0.0.19
 	github.com/facebookgo/ensure v0.0.0-20160127193407-b4ab57deab51 // indirect
