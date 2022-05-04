@@ -2,8 +2,8 @@
 
 ## Changelog
 
-- 20-08-2021: Initial Description
-- 03-05-2022: Update pointing to ADR 008
+- 2021-08-20: Initial Description
+- 2022-05-03: Update pointing to ADR 008
 
 ## Context
 
