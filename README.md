@@ -6,7 +6,7 @@
 
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/celestiaorg/celestia-core)
 [![Community](https://img.shields.io/badge/chat%20on-discord-orange?&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/YsnTPcSfWQ)
-[![license](https://img.shields.io/github/license/tendermint/tendermint.svg)](https://github.com/celestiaorg/celestia-core/blob/master/LICENSE)
+[![license](https://img.shields.io/github/license/tendermint/tendermint.svg)](https://github.com/celestiaorg/celestia-core/blob/v0.35.x-celestia/LICENSE)
 
 Celestia Core will power the Celestia main chain by leveraging Tendermint.
 
