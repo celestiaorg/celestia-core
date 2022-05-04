@@ -17,13 +17,13 @@ type Application interface {
 	CheckTx(RequestCheckTx) ResponseCheckTx // Validate a tx for the mempool
 
 	// Consensus Connection
-	InitChain(RequestInitChain) ResponseInitChain // Initialize blockchain w validators/other info from TendermintCore
-	PrepareProposal(RequestPrepareProposal) ResponsePrepareProposal
-	BeginBlock(RequestBeginBlock) ResponseBeginBlock // Signals the beginning of a block
-	DeliverTx(RequestDeliverTx) ResponseDeliverTx    // Deliver a tx for full processing
-	EndBlock(RequestEndBlock) ResponseEndBlock       // Signals the end of a block, returns changes to the validator set
-	Commit() ResponseCommit                          // Commit the state and return the application Merkle root hash
-	ProcessProposal(RequestProcessProposal) ResponseProcessProposal
+	InitChain(RequestInitChain) ResponseInitChain                   // Initialize blockchain w validators/other info from TendermintCore
+	PrepareProposal(RequestPrepareProposal) ResponsePrepareProposal // Passes the block data to the application for modification before proposing
+	BeginBlock(RequestBeginBlock) ResponseBeginBlock                // Signals the beginning of a block
+	DeliverTx(RequestDeliverTx) ResponseDeliverTx                   // Deliver a tx for full processing
+	EndBlock(RequestEndBlock) ResponseEndBlock                      // Signals the end of a block, returns changes to the validator set
+	Commit() ResponseCommit                                         // Commit the state and return the application Merkle root hash
+	ProcessProposal(RequestProcessProposal) ResponseProcessProposal // Inspects the proposed block before voting on it during consensus
 
 	// State Sync Connection
 	ListSnapshots(RequestListSnapshots) ResponseListSnapshots                // List available snapshots
