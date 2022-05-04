@@ -17,7 +17,7 @@ LD_FLAGS = -X github.com/tendermint/tendermint/version.TMVersion=$(VERSION)
 BUILD_FLAGS = -mod=readonly -ldflags "$(LD_FLAGS)"
 HTTPS_GIT := https://github.com/tendermint/tendermint.git
 BUILD_IMAGE := ghcr.io/tendermint/docker-build-proto
-BASE_BRANCH := v0.35.x
+BASE_BRANCH := v0.35.x-celestia
 DOCKER_PROTO := docker run -v $(shell pwd):/workspace --workdir /workspace $(BUILD_IMAGE)
 CGO_ENABLED ?= 0
 
@@ -82,7 +82,7 @@ $(BUILDDIR)/:
 ###                                Protobuf                                 ###
 ###############################################################################
 
-proto-all: proto-lint proto-check-breaking
+proto-all: proto-gen proto-lint proto-check-breaking
 .PHONY: proto-all
 
 proto-gen:
