@@ -28,7 +28,7 @@ jobs:
         uses: docker://github/super-linter:v4
         env:
           VALIDATE_ALL_CODEBASE: true
-          DEFAULT_BRANCH: v0.34.x-celestia
+          DEFAULT_BRANCH: v0.35.x-celestia
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALIDATE_MD: true
           VALIDATE_OPENAPI: true
