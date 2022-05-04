@@ -172,10 +172,6 @@ func (app *PersistentKVStoreApplication) ApplySnapshotChunk(
 
 func (app *PersistentKVStoreApplication) PrepareProposal(
 	req types.RequestPrepareProposal) types.ResponsePrepareProposal {
-	// if len(req.BlockData.Txs) >= 1 {
-	// 	req.BlockData.Txs[0] = []byte("modified tx")
-	// }
-
 	return types.ResponsePrepareProposal{BlockData: req.BlockData}
 }
 
