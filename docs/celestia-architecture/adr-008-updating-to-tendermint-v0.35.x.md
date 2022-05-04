@@ -2,7 +2,7 @@
 
 ## Changelog
 
-- 03-05-2022: Initial document describing changes to tendermint v0.35.x
+- 2022-05-03: Initial document describing changes to tendermint v0.35.x
 
 ## Context
 
