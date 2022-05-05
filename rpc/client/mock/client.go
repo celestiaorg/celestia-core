@@ -165,6 +165,10 @@ func (c Client) Commit(ctx context.Context, height *int64) (*coretypes.ResultCom
 	return c.env.Commit(&rpctypes.Context{}, height)
 }
 
+func (c Client) DataCommitment(ctx context.Context, query string) (*coretypes.ResultDataCommitment, error) {
+	return c.env.DataCommitment(&rpctypes.Context{}, query)
+}
+
 func (c Client) Validators(ctx context.Context, height *int64, page, perPage *int) (*coretypes.ResultValidators, error) {
 	return c.env.Validators(&rpctypes.Context{}, height, page, perPage)
 }

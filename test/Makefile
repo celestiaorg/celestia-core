@@ -5,6 +5,8 @@
 
 BINDIR ?= $(GOPATH)/bin
 
+PACKAGES=$(shell go list ./...)
+
 ## required to be run first by most tests
 build_docker_test_image:
 	docker build -t tester -f ./test/docker/Dockerfile .

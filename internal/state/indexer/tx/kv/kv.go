@@ -12,6 +12,7 @@ import (
 	dbm "github.com/tendermint/tm-db"
 
 	abci "github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 	indexer "github.com/tendermint/tendermint/internal/state/indexer"
 	"github.com/tendermint/tendermint/libs/pubsub/query"
 	"github.com/tendermint/tendermint/libs/pubsub/query/syntax"
@@ -68,7 +69,12 @@ func (txi *TxIndex) Index(results []*abci.TxResult) error {
 	defer b.Close()
 
 	for _, result := range results {
-		hash := types.Tx(result.Tx).Hash()
+		var hash []byte
+		if len(result.OriginalHash) == tmhash.Size {
+			hash = result.OriginalHash
+		} else {
+			hash = types.Tx(result.Tx).Hash()
+		}
 
 		// index tx by events
 		err := txi.indexEvents(result, hash, b)

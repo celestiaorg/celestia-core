@@ -7,6 +7,8 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
+	testing "testing"
+
 	types "github.com/tendermint/tendermint/abci/types"
 )
 
@@ -119,4 +121,14 @@ func (_m *AppConnSnapshot) OfferSnapshotSync(_a0 context.Context, _a1 types.Requ
 	}
 
 	return r0, r1
+}
+
+// NewAppConnSnapshot creates a new instance of AppConnSnapshot. It also registers the testing.TB interface on the mock and a cleanup function to assert the mocks expectations.
+func NewAppConnSnapshot(t testing.TB) *AppConnSnapshot {
+	mock := &AppConnSnapshot{}
+	mock.Mock.Test(t)
+
+	t.Cleanup(func() { mock.AssertExpectations(t) })
+
+	return mock
 }

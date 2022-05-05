@@ -12,6 +12,8 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
+	testing "testing"
+
 	types "github.com/tendermint/tendermint/types"
 )
 
@@ -381,6 +383,29 @@ func (_m *Client) ConsensusState(_a0 context.Context) (*coretypes.ResultConsensu
 	var r1 error
 	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
 		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// DataCommitment provides a mock function with given fields: ctx, query
+func (_m *Client) DataCommitment(ctx context.Context, query string) (*coretypes.ResultDataCommitment, error) {
+	ret := _m.Called(ctx, query)
+
+	var r0 *coretypes.ResultDataCommitment
+	if rf, ok := ret.Get(0).(func(context.Context, string) *coretypes.ResultDataCommitment); ok {
+		r0 = rf(ctx, query)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*coretypes.ResultDataCommitment)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, query)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -799,4 +824,14 @@ func (_m *Client) Validators(ctx context.Context, height *int64, page *int, perP
 	}
 
 	return r0, r1
+}
+
+// NewClient creates a new instance of Client. It also registers the testing.TB interface on the mock and a cleanup function to assert the mocks expectations.
+func NewClient(t testing.TB) *Client {
+	mock := &Client{}
+	mock.Mock.Test(t)
+
+	t.Cleanup(func() { mock.AssertExpectations(t) })
+
+	return mock
 }

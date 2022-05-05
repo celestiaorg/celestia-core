@@ -3,6 +3,7 @@ package v0
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	mrand "math/rand"
@@ -130,11 +131,11 @@ func TestReapMaxBytesMaxGas(t *testing.T) {
 		{20, 0, -1, 0},
 		{20, 0, 10, 0},
 		{20, 10, 10, 0},
-		{20, 24, 10, 1},
+		{20, 28, 10, 1},
 		{20, 240, 5, 5},
-		{20, 240, -1, 10},
-		{20, 240, 10, 10},
-		{20, 240, 15, 10},
+		{20, 280, -1, 10},
+		{20, 280, 10, 10},
+		{20, 280, 15, 10},
 		{20, 20000, -1, 20},
 		{20, 20000, 5, 5},
 		{20, 20000, 30, 20},
@@ -169,14 +170,14 @@ func TestMempoolFilters(t *testing.T) {
 	}{
 		{10, nopPreFilter, nopPostFilter, 10},
 		{10, mempool.PreCheckMaxBytes(10), nopPostFilter, 0},
-		{10, mempool.PreCheckMaxBytes(22), nopPostFilter, 10},
+		{10, mempool.PreCheckMaxBytes(28), nopPostFilter, 10},
 		{10, nopPreFilter, mempool.PostCheckMaxGas(-1), 10},
 		{10, nopPreFilter, mempool.PostCheckMaxGas(0), 0},
 		{10, nopPreFilter, mempool.PostCheckMaxGas(1), 10},
 		{10, nopPreFilter, mempool.PostCheckMaxGas(3000), 10},
 		{10, mempool.PreCheckMaxBytes(10), mempool.PostCheckMaxGas(20), 0},
 		{10, mempool.PreCheckMaxBytes(30), mempool.PostCheckMaxGas(20), 10},
-		{10, mempool.PreCheckMaxBytes(22), mempool.PostCheckMaxGas(1), 10},
+		{10, mempool.PreCheckMaxBytes(28), mempool.PostCheckMaxGas(1), 10},
 		{10, mempool.PreCheckMaxBytes(22), mempool.PostCheckMaxGas(0), 0},
 	}
 	for tcIndex, tt := range tests {
@@ -222,6 +223,29 @@ func TestMempoolUpdate(t *testing.T) {
 
 		err = mp.CheckTx(context.Background(), []byte{0x03}, nil, mempool.TxInfo{})
 		require.NoError(t, err)
+	}
+
+	// 4. Removes a parent transaction after receiving a child transaction in the update
+	{
+		mp.Flush()
+		originalTx := []byte{1, 2, 3, 4}
+		malleatedTx := []byte{1, 2}
+		originalHash := sha256.Sum256(originalTx)
+
+		// create the wrapped child transaction
+		wTx, err := types.WrapMalleatedTx(originalHash[:], malleatedTx)
+		require.NoError(t, err)
+
+		// add the parent transaction to the mempool
+		err = mp.CheckTx(context.Background(), originalTx, nil, mempool.TxInfo{})
+		require.NoError(t, err)
+
+		// remove the parent from the mempool using the wrapped child tx
+		err = mp.Update(1, []types.Tx{wTx}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+		require.NoError(t, err)
+
+		assert.Zero(t, mp.Size())
+
 	}
 }
 
