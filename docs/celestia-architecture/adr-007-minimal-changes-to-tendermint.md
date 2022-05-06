@@ -2,7 +2,8 @@
 
 ## Changelog
 
-- 20-08-2021: Initial Description
+- 2021-08-20: Initial Description
+- 2022-05-03: Update pointing to ADR 008
 
 ## Context
 
@@ -13,6 +14,8 @@ necessary changes and the other services and their code to the new celestia-node
 some of the remaining necessary changes to be more isolated from the rest of the tendermint codebase. Both of these
 strategies should significantly streamline pulling updates from upstream, and allow us to iterate faster since most
 changes will be isolated to celestia-node.
+
+Update: many of the changes described below have since been minimized or removed. Please see ADR 008 for a summarized list of changes. Notably, we removed intermediate state roots, adopted two new methods from ABCI++ instead of PreprocessTxs, and are still signing over the PartSetHeader. 
 
 ## Decision
 
@@ -27,7 +30,7 @@ tendermint node in a separate process, via celestia-node, which communicates wit
 availability sampling logic, including all Celestia-specific networking logic not already provided by tendermint, is
 moved into celestia node:
 
-![](./img/core-node-relation.png)
+![core node relation](./img/core-node-relation.png)
 
 The detailed design of celestia-node will be defined in the repository itself.
 
