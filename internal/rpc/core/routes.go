@@ -29,6 +29,7 @@ func (env *Environment) GetRoutes() RoutesMap {
 		"block_by_hash":        rpc.NewRPCFunc(env.BlockByHash, "hash", true),
 		"block_results":        rpc.NewRPCFunc(env.BlockResults, "height", true),
 		"commit":               rpc.NewRPCFunc(env.Commit, "height", true),
+		"data_commitment":      rpc.NewRPCFunc(env.DataCommitment, "query", true),
 		"check_tx":             rpc.NewRPCFunc(env.CheckTx, "tx", true),
 		"remove_tx":            rpc.NewRPCFunc(env.RemoveTx, "txkey", false),
 		"tx":                   rpc.NewRPCFunc(env.Tx, "hash,prove", true),

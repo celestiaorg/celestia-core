@@ -19,6 +19,8 @@ type AppConnConsensus interface {
 	Error() error
 
 	InitChainSync(context.Context, types.RequestInitChain) (*types.ResponseInitChain, error)
+	PrepareProposalSync(context.Context, types.RequestPrepareProposal) (*types.ResponsePrepareProposal, error)
+	ProcessProposalSync(context.Context, types.RequestProcessProposal) (*types.ResponseProcessProposal, error)
 
 	BeginBlockSync(context.Context, types.RequestBeginBlock) (*types.ResponseBeginBlock, error)
 	DeliverTxAsync(context.Context, types.RequestDeliverTx) (*abciclient.ReqRes, error)
@@ -83,6 +85,20 @@ func (app *appConnConsensus) InitChainSync(
 ) (*types.ResponseInitChain, error) {
 	defer addTimeSample(app.metrics.MethodTiming.With("method", "init_chain", "type", "sync"))()
 	return app.appConn.InitChainSync(ctx, req)
+}
+
+func (app *appConnConsensus) PrepareProposalSync(
+	ctx context.Context,
+	req types.RequestPrepareProposal,
+) (*types.ResponsePrepareProposal, error) {
+	return app.appConn.PrepareProposalSync(ctx, req)
+}
+
+func (app *appConnConsensus) ProcessProposalSync(
+	ctx context.Context,
+	req types.RequestProcessProposal,
+) (*types.ResponseProcessProposal, error) {
+	return app.appConn.ProcessProposalSync(ctx, req)
 }
 
 func (app *appConnConsensus) BeginBlockSync(

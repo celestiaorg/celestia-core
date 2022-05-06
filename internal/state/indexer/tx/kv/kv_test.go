@@ -65,6 +65,49 @@ func TestTxIndex(t *testing.T) {
 	assert.True(t, proto.Equal(txResult2, loadedTxResult2))
 }
 
+func TestMalleatedTxIndex(t *testing.T) {
+	type test struct {
+		tx           types.Tx
+		originalHash []byte
+		expectedTx   []byte
+	}
+	originalTx1 := types.Tx([]byte("ORIGINAL_TX"))
+	malleatedTx1 := types.Tx([]byte("MALLEATED_TX"))
+
+	tests := []test{
+		// we expect to get the malleated tx returned when searching using the original hash
+		{
+			tx:           malleatedTx1,
+			originalHash: originalTx1.Hash(),
+			expectedTx:   malleatedTx1,
+		},
+	}
+
+	indexer := NewTxIndex(dbm.NewMemDB())
+
+	for i, tt := range tests {
+
+		txResult := &abci.TxResult{
+			Height: int64(i),
+			Index:  0,
+			Tx:     tt.tx,
+			Result: abci.ResponseDeliverTx{
+				Data: []byte{0},
+				Code: abci.CodeTypeOK, Log: "", Events: nil,
+			},
+			OriginalHash: tt.originalHash,
+		}
+
+		err := indexer.Index([]*abci.TxResult{txResult})
+		require.NoError(t, err)
+
+		loadedTxResult, err := indexer.Get(tt.originalHash)
+		require.NoError(t, err)
+		require.NotNil(t, loadedTxResult)
+		assert.Equal(t, tt.expectedTx, loadedTxResult.Tx)
+	}
+}
+
 func TestTxSearch(t *testing.T) {
 	indexer := NewTxIndex(dbm.NewMemDB())
 

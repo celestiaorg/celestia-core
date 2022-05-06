@@ -109,7 +109,7 @@ func Start(ctx context.Context, testnet *e2e.Testnet) error {
 			return err
 		}
 
-		wctx, wcancel := context.WithTimeout(ctx, 8*time.Minute)
+		wctx, wcancel := context.WithTimeout(ctx, 12*time.Minute)
 		status, err := waitForNode(wctx, node, node.StartAt)
 		if err != nil {
 			wcancel()

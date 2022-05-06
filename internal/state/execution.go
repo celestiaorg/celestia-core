@@ -13,6 +13,7 @@ import (
 	"github.com/tendermint/tendermint/internal/proxy"
 	"github.com/tendermint/tendermint/libs/log"
 	tmstate "github.com/tendermint/tendermint/proto/tendermint/state"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -99,6 +100,8 @@ func (blockExec *BlockExecutor) SetEventBus(eventBus types.BlockEventPublisher) 
 // and txs from the mempool. The max bytes must be big enough to fit the commit.
 // Up to 1/10th of the block space is allcoated for maximum sized evidence.
 // The rest is given to txs, up to the max gas.
+//
+// Contract: application will not return more bytes than are sent over the wire.
 func (blockExec *BlockExecutor) CreateProposalBlock(
 	height int64,
 	state State, commit *types.Commit,
@@ -110,12 +113,87 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	evidence, evSize := blockExec.evpool.PendingEvidence(state.ConsensusParams.Evidence.MaxBytes)
 
+	evdData := types.EvidenceData{Evidence: evidence}
+	pevdData, err := evdData.ToProto()
+	if err != nil {
+		// todo(evan): see if we can get rid of this panic
+		panic(err)
+	}
+
 	// Fetch a limited amount of valid txs
 	maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
 
+	// TODO(ismail): reaping the mempool has to happen in relation to a max
+	// allowed square size instead of (only) Gas / bytes
+	// maybe the mempool actually should track things separately
+	// meaning that CheckTx should already do the mapping:
+	// Tx -> Txs, Message
+	// https://github.com/tendermint/tendermint/issues/77
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
+	l := len(txs)
+	bzs := make([][]byte, l)
+	for i := 0; i < l; i++ {
+		bzs[i] = txs[i]
+	}
 
-	return state.MakeBlock(height, txs, commit, evidence, proposerAddr)
+	preparedProposal, err := blockExec.proxyApp.PrepareProposalSync(
+		context.TODO(),
+		abci.RequestPrepareProposal{
+			BlockData:     &tmproto.Data{Txs: txs.ToSliceOfBytes(), Evidence: *pevdData},
+			BlockDataSize: maxDataBytes},
+	)
+	if err != nil {
+		// The App MUST ensure that only valid (and hence 'processable') transactions
+		// enter the mempool. Hence, at this point, we can't have any non-processable
+		// transaction causing an error.
+		//
+		// Also, the App can simply skip any transaction that could cause any kind of trouble.
+		// Either way, we can not recover in a meaningful way, unless we skip proposing
+		// this block, repair what caused the error and try again. Hence, we panic on
+		// purpose for now.
+		panic(err)
+	}
+	rawNewData := preparedProposal.GetBlockData()
+	var txSize int
+	for _, tx := range rawNewData.GetTxs() {
+		txSize += len(tx)
+
+		if maxDataBytes < int64(txSize) {
+			panic("block data exceeds max amount of allowed bytes")
+		}
+	}
+
+	newData, err := types.DataFromProto(rawNewData)
+	if err != nil {
+		// todo(evan): see if we can get rid of this panic
+		panic(err)
+	}
+
+	return state.MakeBlock(
+		height,
+		newData.Txs,
+		commit,
+		newData.Evidence.Evidence,
+		newData.Messages.MessagesList,
+		proposerAddr,
+	)
+}
+
+func (blockExec *BlockExecutor) ProcessProposal(
+	block *types.Block,
+) (bool, error) {
+	ctx := context.Background()
+	req := abci.RequestProcessProposal{
+		Txs:    block.Data.Txs.ToSliceOfBytes(),
+		Header: *block.Header.ToProto(),
+	}
+
+	resp, err := blockExec.proxyApp.ProcessProposalSync(ctx, req)
+	if err != nil {
+		return false, ErrInvalidBlock(err)
+	}
+
+	return resp.IsOK(), nil
 }
 
 // ValidateBlock validates the given block against the given state.
@@ -544,11 +622,22 @@ func fireEvents(
 	}
 
 	for i, tx := range block.Data.Txs {
+		var txHash []byte
+		var rawTx []byte
+		if originalHash, malleatedTx, ismalleated := types.UnwrapMalleatedTx(tx); ismalleated {
+			txHash = originalHash
+			rawTx = malleatedTx
+		} else {
+			txHash = tx.Hash()
+			rawTx = tx
+		}
+
 		if err := eventBus.PublishEventTx(types.EventDataTx{TxResult: abci.TxResult{
-			Height: block.Height,
-			Index:  uint32(i),
-			Tx:     tx,
-			Result: *(abciResponses.DeliverTxs[i]),
+			Height:       block.Height,
+			Index:        uint32(i),
+			Tx:           rawTx,
+			Result:       *(abciResponses.DeliverTxs[i]),
+			OriginalHash: txHash,
 		}}); err != nil {
 			logger.Error("failed publishing event TX", "err", err)
 		}

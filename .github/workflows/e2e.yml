@@ -12,7 +12,7 @@ on:
 jobs:
   e2e-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/setup-go@v3
         with:

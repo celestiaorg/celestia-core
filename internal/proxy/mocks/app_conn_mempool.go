@@ -9,6 +9,8 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
+	testing "testing"
+
 	types "github.com/tendermint/tendermint/abci/types"
 )
 
@@ -117,4 +119,14 @@ func (_m *AppConnMempool) FlushSync(_a0 context.Context) error {
 // SetResponseCallback provides a mock function with given fields: _a0
 func (_m *AppConnMempool) SetResponseCallback(_a0 abciclient.Callback) {
 	_m.Called(_a0)
+}
+
+// NewAppConnMempool creates a new instance of AppConnMempool. It also registers the testing.TB interface on the mock and a cleanup function to assert the mocks expectations.
+func NewAppConnMempool(t testing.TB) *AppConnMempool {
+	mock := &AppConnMempool{}
+	mock.Mock.Test(t)
+
+	t.Cleanup(func() { mock.AssertExpectations(t) })
+
+	return mock
 }

@@ -4,6 +4,8 @@ BUILDDIR ?= $(CURDIR)/build
 
 BUILD_TAGS?=tendermint
 
+IMAGE := ghcr.io/tendermint/docker-build-proto:latest
+
 # If building a release, please checkout the version tag to get the correct version setting
 ifneq ($(shell git symbolic-ref -q --short HEAD),)
 VERSION := unreleased-$(shell git symbolic-ref -q --short HEAD)-$(shell git rev-parse HEAD)
@@ -15,7 +17,7 @@ LD_FLAGS = -X github.com/tendermint/tendermint/version.TMVersion=$(VERSION)
 BUILD_FLAGS = -mod=readonly -ldflags "$(LD_FLAGS)"
 HTTPS_GIT := https://github.com/tendermint/tendermint.git
 BUILD_IMAGE := ghcr.io/tendermint/docker-build-proto
-BASE_BRANCH := v0.35.x
+BASE_BRANCH := v0.35.x-celestia
 DOCKER_PROTO := docker run -v $(shell pwd):/workspace --workdir /workspace $(BUILD_IMAGE)
 CGO_ENABLED ?= 0
 

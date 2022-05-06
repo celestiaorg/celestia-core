@@ -64,6 +64,58 @@ func TestEventBusPublishEventTx(t *testing.T) {
 	}
 }
 
+func TestEventBusPublishEventMalleatedTx(t *testing.T) {
+	eventBus := NewEventBus()
+	err := eventBus.Start()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := eventBus.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	tx := Tx("foo")
+	malleatedTx := Tx("foo-malleated")
+
+	result := abci.ResponseDeliverTx{
+		Data: []byte("bar"),
+		Events: []abci.Event{
+			{Type: "testType", Attributes: []abci.EventAttribute{{Key: "baz", Value: "1"}}},
+		},
+	}
+
+	// PublishEventTx adds 3 composite keys, so the query below should work
+	query := fmt.Sprintf("tm.event='Tx' AND tx.height=1 AND tx.hash='%X' AND testType.baz=1", tx.Hash())
+	txsSub, err := eventBus.Subscribe(context.Background(), "test", tmquery.MustCompile(query))
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		msg := <-txsSub.Out()
+		edt := msg.Data().(EventDataTx)
+		assert.Equal(t, int64(1), edt.Height)
+		assert.Equal(t, uint32(0), edt.Index)
+		assert.EqualValues(t, malleatedTx, edt.Tx)
+		assert.Equal(t, result, edt.Result)
+		close(done)
+	}()
+
+	err = eventBus.PublishEventTx(EventDataTx{abci.TxResult{
+		Height:       1,
+		Index:        0,
+		Tx:           malleatedTx,
+		Result:       result,
+		OriginalHash: tx.Hash(),
+	}})
+	assert.NoError(t, err)
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("did not receive a transaction after 1 sec.")
+	}
+}
+
 func TestEventBusPublishEventNewBlock(t *testing.T) {
 	eventBus := NewEventBus()
 	err := eventBus.Start()
@@ -74,7 +126,7 @@ func TestEventBusPublishEventNewBlock(t *testing.T) {
 		}
 	})
 
-	block := MakeBlock(0, []Tx{}, nil, []Evidence{})
+	block := MakeBlock(0, []Tx{}, []Evidence{}, nil, nil)
 	blockID := BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(BlockPartSizeBytes).Header()}
 	resultBeginBlock := abci.ResponseBeginBlock{
 		Events: []abci.Event{
@@ -236,7 +288,7 @@ func TestEventBusPublishEventNewBlockHeader(t *testing.T) {
 		}
 	})
 
-	block := MakeBlock(0, []Tx{}, nil, []Evidence{})
+	block := MakeBlock(0, []Tx{}, []Evidence{}, nil, nil)
 	resultBeginBlock := abci.ResponseBeginBlock{
 		Events: []abci.Event{
 			{Type: "testType", Attributes: []abci.EventAttribute{{Key: "baz", Value: "1"}}},

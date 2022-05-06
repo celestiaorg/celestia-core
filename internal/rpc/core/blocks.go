@@ -1,13 +1,16 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
+	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/internal/state/indexer"
 	"github.com/tendermint/tendermint/libs/bytes"
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
+	"github.com/tendermint/tendermint/pkg/consts"
 	"github.com/tendermint/tendermint/rpc/coretypes"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 	"github.com/tendermint/tendermint/types"
@@ -189,6 +192,55 @@ func (env *Environment) Commit(ctx *rpctypes.Context, heightPtr *int64) (*corety
 	return coretypes.NewResultCommit(&header, commit, true), nil
 }
 
+// DataCommitment collects the data roots over a provided ordered range of blocks,
+// and then creates a new Merkle root of those data roots.
+func (env *Environment) DataCommitment(ctx *rpctypes.Context, query string) (*coretypes.ResultDataCommitment, error) {
+	heights, err := searchBlocks(ctx, env, query)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(heights) > consts.DataCommitmentBlocksLimit {
+		return nil, fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
+	} else if len(heights) == 0 {
+		return nil, fmt.Errorf("cannot create the data commitments for an empty set of blocks")
+	}
+
+	err = sortBlocks(heights, "asc")
+	if err != nil {
+		return nil, err
+	}
+
+	if len(heights) > consts.DataCommitmentBlocksLimit {
+		return nil, fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
+	}
+
+	if len(heights) == 0 {
+		return nil, fmt.Errorf("cannot create the data commitments for an empty set of blocks")
+	}
+
+	err = sortBlocks(heights, "asc")
+	if err != nil {
+		return nil, err
+	}
+
+	blockResults := fetchBlocks(env, heights, len(heights), 0)
+	root := hashDataRoots(blockResults)
+
+	// Create data commitment
+	return &coretypes.ResultDataCommitment{DataCommitment: root}, nil
+}
+
+// hashDataRoots hashes a list of blocks data hashes and returns their merkle root.
+func hashDataRoots(blocks []*coretypes.ResultBlock) []byte {
+	dataRoots := make([][]byte, 0, len(blocks))
+	for _, block := range blocks {
+		dataRoots = append(dataRoots, block.Block.DataHash)
+	}
+	root := merkle.HashFromByteSlices(dataRoots)
+	return root
+}
+
 // BlockResults gets ABCIResults at a given height.
 // If no height is provided, it will fetch results for the latest block.
 //
@@ -232,6 +284,34 @@ func (env *Environment) BlockSearch(
 	orderBy string,
 ) (*coretypes.ResultBlockSearch, error) {
 
+	results, err := searchBlocks(ctx, env, query)
+	if err != nil {
+		return nil, err
+	}
+
+	err = sortBlocks(results, orderBy)
+	if err != nil {
+		return nil, err
+	}
+
+	// paginate results
+	totalCount := len(results)
+	perPage := env.validatePerPage(perPagePtr)
+
+	page, err := validatePage(pagePtr, perPage, totalCount)
+	if err != nil {
+		return nil, err
+	}
+
+	skipCount := validateSkipCount(page, perPage)
+	pageSize := tmmath.MinInt(perPage, totalCount-skipCount)
+
+	apiResults := fetchBlocks(env, results, pageSize, skipCount)
+
+	return &coretypes.ResultBlockSearch{Blocks: apiResults, TotalCount: totalCount}, nil
+}
+
+func searchBlocks(ctx *rpctypes.Context, env *Environment, query string) ([]int64, error) {
 	if !indexer.KVSinkEnabled(env.EventSinks) {
 		return nil, fmt.Errorf("block searching is disabled due to no kvEventSink")
 	}
@@ -248,12 +328,12 @@ func (env *Environment) BlockSearch(
 		}
 	}
 
-	results, err := kvsink.SearchBlockEvents(ctx.Context(), q)
-	if err != nil {
-		return nil, err
-	}
+	return kvsink.SearchBlockEvents(ctx.Context(), q)
+}
 
-	// sort results (must be done before pagination)
+// sortBlocks takes a list of block heights and sorts them according to the order: "asc" or "desc".
+// If `orderBy` is blank, then it is considered descending.
+func sortBlocks(results []int64, orderBy string) error {
 	switch orderBy {
 	case "desc", "":
 		sort.Slice(results, func(i, j int) bool { return results[i] > results[j] })
@@ -262,21 +342,13 @@ func (env *Environment) BlockSearch(
 		sort.Slice(results, func(i, j int) bool { return results[i] < results[j] })
 
 	default:
-		return nil, fmt.Errorf("expected order_by to be either `asc` or `desc` or empty: %w", coretypes.ErrInvalidRequest)
+		return errors.New("expected order_by to be either `asc` or `desc` or empty")
 	}
+	return nil
+}
 
-	// paginate results
-	totalCount := len(results)
-	perPage := env.validatePerPage(perPagePtr)
-
-	page, err := validatePage(pagePtr, perPage, totalCount)
-	if err != nil {
-		return nil, err
-	}
-
-	skipCount := validateSkipCount(page, perPage)
-	pageSize := tmmath.MinInt(perPage, totalCount-skipCount)
-
+// fetchBlocks takes a list of block heights and fetches them.
+func fetchBlocks(env *Environment, results []int64, pageSize int, skipCount int) []*coretypes.ResultBlock {
 	apiResults := make([]*coretypes.ResultBlock, 0, pageSize)
 	for i := skipCount; i < skipCount+pageSize; i++ {
 		block := env.BlockStore.LoadBlock(results[i])
@@ -290,6 +362,5 @@ func (env *Environment) BlockSearch(
 			}
 		}
 	}
-
-	return &coretypes.ResultBlockSearch{Blocks: apiResults, TotalCount: totalCount}, nil
+	return apiResults
 }

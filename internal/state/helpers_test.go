@@ -58,7 +58,7 @@ func makeAndCommitGoodBlock(
 
 func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commit, proposerAddr []byte,
 	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, types.BlockID, error) {
-	block, _ := state.MakeBlock(height, factory.MakeTenTxs(height), lastCommit, evidence, proposerAddr)
+	block, _ := state.MakeBlock(height, factory.MakeTenTxs(height), lastCommit, evidence, nil, proposerAddr)
 	if err := blockExec.ValidateBlock(state, block); err != nil {
 		return state, types.BlockID{}, err
 	}
@@ -303,4 +303,13 @@ func (app *testApp) Commit() abci.ResponseCommit {
 
 func (app *testApp) Query(reqQuery abci.RequestQuery) (resQuery abci.ResponseQuery) {
 	return
+}
+
+func (app *testApp) ProcessProposal(req abci.RequestProcessProposal) abci.ResponseProcessProposal {
+	for _, tx := range req.Txs {
+		if len(tx) == 0 {
+			return abci.ResponseProcessProposal{Result: abci.ResponseProcessProposal_REJECT}
+		}
+	}
+	return abci.ResponseProcessProposal{Result: abci.ResponseProcessProposal_ACCEPT}
 }

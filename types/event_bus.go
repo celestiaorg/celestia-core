@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/log"
 	tmpubsub "github.com/tendermint/tendermint/libs/pubsub"
 	"github.com/tendermint/tendermint/libs/service"
@@ -172,13 +173,20 @@ func (b *EventBus) PublishEventTx(data EventDataTx) error {
 	// add Tendermint-reserved events
 	events = append(events, EventTx)
 
+	var txHash []byte
+	if len(data.OriginalHash) == tmhash.Size {
+		txHash = data.OriginalHash
+	} else {
+		txHash = Tx(data.Tx).Hash()
+	}
+
 	tokens := strings.Split(TxHashKey, ".")
 	events = append(events, types.Event{
 		Type: tokens[0],
 		Attributes: []types.EventAttribute{
 			{
 				Key:   tokens[1],
-				Value: fmt.Sprintf("%X", Tx(data.Tx).Hash()),
+				Value: fmt.Sprintf("%X", txHash),
 			},
 		},
 	})

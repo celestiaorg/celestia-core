@@ -6,9 +6,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/celestiaorg/nmt"
+	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	"github.com/tendermint/tendermint/pkg/consts"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
@@ -61,81 +64,106 @@ func (txs Txs) IndexByHash(hash []byte) int {
 	return -1
 }
 
-// Proof returns a simple merkle proof for this node.
-// Panics if i < 0 or i >= len(txs)
-// TODO: optimize this!
-func (txs Txs) Proof(i int) TxProof {
-	l := len(txs)
-	bzs := make([][]byte, l)
-	for i := 0; i < l; i++ {
-		bzs[i] = txs[i].Hash()
-	}
-	root, proofs := merkle.ProofsFromByteSlices(bzs)
-
-	return TxProof{
-		RootHash: root,
-		Data:     txs[i],
-		Proof:    *proofs[i],
-	}
-}
-
 // TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
 type TxProof struct {
-	RootHash tmbytes.HexBytes `json:"root_hash"`
-	Data     Tx               `json:"data"`
-	Proof    merkle.Proof     `json:"proof"`
-}
-
-// Leaf returns the hash(tx), which is the leaf in the merkle tree which this proof refers to.
-func (tp TxProof) Leaf() []byte {
-	return tp.Data.Hash()
+	RowRoots []tmbytes.HexBytes  `json:"root_hash"`
+	Data     [][]byte            `json:"data"`
+	Proofs   []*tmproto.NMTProof `json:"proof"`
 }
 
 // Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
 // and if the proof is internally consistent. Otherwise, it returns a sensible error.
-func (tp TxProof) Validate(dataHash []byte) error {
-	if !bytes.Equal(dataHash, tp.RootHash) {
-		return errors.New("proof matches different data hash")
+func (tp TxProof) Validate() error {
+	if len(tp.RowRoots) != len(tp.Proofs) || len(tp.Data) != len(tp.Proofs) {
+		return errors.New(
+			"invalid number of proofs, row roots, or data. they all must be the same to verify the proof",
+		)
 	}
-	if tp.Proof.Index < 0 {
-		return errors.New("proof index cannot be negative")
+	for _, proof := range tp.Proofs {
+		if proof.Start < 0 {
+			return errors.New("proof index cannot be negative")
+		}
+		if (proof.End - proof.Start) <= 0 {
+			return errors.New("proof total must be positive")
+		}
+		valid := tp.VerifyProof()
+		if !valid {
+			return errors.New("proof is not internally consistent")
+		}
 	}
-	if tp.Proof.Total <= 0 {
-		return errors.New("proof total must be positive")
-	}
-	valid := tp.Proof.Verify(tp.RootHash, tp.Leaf())
-	if valid != nil {
-		return errors.New("proof is not internally consistent")
-	}
+
 	return nil
 }
 
+func (tp *TxProof) VerifyProof() bool {
+	for i, proof := range tp.Proofs {
+		nmtProof := nmt.NewInclusionProof(
+			int(proof.Start),
+			int(proof.End),
+			proof.Nodes,
+			true,
+		)
+		valid := nmtProof.VerifyInclusion(
+			consts.NewBaseHashFunc(),
+			consts.TxNamespaceID,
+			tp.Data[i],
+			tp.RowRoots[i],
+		)
+		if !valid {
+			return false
+		}
+	}
+	return true
+}
+
+func (tp *TxProof) IncludesTx(tx Tx) bool {
+	return bytes.Contains(bytes.Join(tp.Data, []byte{}), tx)
+}
+
 func (tp TxProof) ToProto() tmproto.TxProof {
-
-	pbProof := tp.Proof.ToProto()
-
+	rowRoots := make([][]byte, len(tp.RowRoots))
+	for i, root := range tp.RowRoots {
+		rowRoots[i] = root.Bytes()
+	}
 	pbtp := tmproto.TxProof{
-		RootHash: tp.RootHash,
+		RowRoots: rowRoots,
 		Data:     tp.Data,
-		Proof:    pbProof,
+		Proofs:   tp.Proofs,
 	}
 
 	return pbtp
 }
+
 func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
-
-	pbProof, err := merkle.ProofFromProto(pb.Proof)
-	if err != nil {
-		return TxProof{}, err
+	rowRoots := make([]tmbytes.HexBytes, len(pb.RowRoots))
+	for i, root := range pb.RowRoots {
+		rowRoots[i] = tmbytes.HexBytes(root)
 	}
-
 	pbtp := TxProof{
-		RootHash: pb.RootHash,
+		RowRoots: rowRoots,
 		Data:     pb.Data,
-		Proof:    *pbProof,
+		Proofs:   pb.Proofs,
 	}
 
 	return pbtp, nil
+}
+
+func (txs Txs) SplitIntoShares() NamespacedShares {
+	rawDatas := make([][]byte, len(txs))
+	for i, tx := range txs {
+		rawData, err := tx.MarshalDelimited()
+		if err != nil {
+			panic(fmt.Sprintf("included Tx in mem-pool that can not be encoded %v", tx))
+		}
+		rawDatas[i] = rawData
+	}
+
+	w := NewContiguousShareWriter(consts.TxNamespaceID)
+	for _, tx := range rawDatas {
+		w.Write(tx)
+	}
+
+	return w.Export()
 }
 
 // ComputeProtoSizeForTxs wraps the transactions in tmproto.Data{} and calculates the size.
@@ -144,4 +172,59 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 	data := Data{Txs: txs}
 	pdData := data.ToProto()
 	return int64(pdData.Size())
+}
+
+// ToTxs converts a raw slice of byte slices into a Txs type.
+func ToTxs(txs [][]byte) Txs {
+	txBzs := make(Txs, len(txs))
+	for i := 0; i < len(txs); i++ {
+		txBzs[i] = txs[i]
+	}
+	return txBzs
+}
+
+// ToSliceOfBytes converts a Txs to slice of byte slices.
+func (txs Txs) ToSliceOfBytes() [][]byte {
+	txBzs := make([][]byte, len(txs))
+	for i := 0; i < len(txs); i++ {
+		txBzs[i] = txs[i]
+	}
+	return txBzs
+}
+
+// UnwrapMalleatedTx attempts to unmarshal the provided transaction into a malleated
+// transaction wrapper, if this an be done, then it returns true. A malleated
+// transaction is a normal transaction that has been derived (malleated) from a
+// different original transaction. The returned hash is that of the original
+// transaction, which allows us to remove the original transaction from the
+// mempool. NOTE: protobuf sometimes does not throw an error if the transaction
+// passed is not a tmproto.MalleatedTx, since the schema for PayForMessage is kept
+// in the app, we cannot perform further checks without creating an import
+// cycle.
+func UnwrapMalleatedTx(tx Tx) (originalHash []byte, unwrapped Tx, isMalleated bool) {
+	// attempt to unmarshal into a a malleated transaction
+	var malleatedTx tmproto.MalleatedTx
+	err := proto.Unmarshal(tx, &malleatedTx)
+	if err != nil {
+		return nil, nil, false
+	}
+	// this check will fail to catch unwanted types should those unmarshalled
+	// types happen to have a hash sized slice of bytes in the same field number
+	// as originalTxHash. TODO(evan): either fix this, or better yet use a different
+	// mechanism
+	if len(malleatedTx.OriginalTxHash) != tmhash.Size {
+		return nil, nil, false
+	}
+	return malleatedTx.OriginalTxHash, malleatedTx.Tx, true
+}
+
+// WrapMalleatedTx creates a wrapped Tx that includes the original transaction's hash
+// so that it can be easily removed from the mempool. note: must be unwrapped to
+// be a viable sdk.Tx
+func WrapMalleatedTx(originalHash []byte, malleated Tx) (Tx, error) {
+	wTx := tmproto.MalleatedTx{
+		OriginalTxHash: originalHash,
+		Tx:             malleated,
+	}
+	return proto.Marshal(&wTx)
 }

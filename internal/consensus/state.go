@@ -1346,6 +1346,19 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		return
 	}
 
+	stateMachineValidBlock, err := cs.blockExec.ProcessProposal(cs.ProposalBlock)
+	if err != nil {
+		cs.Logger.Error("state machine returned an error when trying to process proposal block", "err", err)
+	}
+
+	// Vote nil if application invalidated the block
+	if !stateMachineValidBlock {
+		// Consensus says we must vote nil
+		logger.Error("prevote step: consensus deems this block to be mustVoteNil", "err", err)
+		cs.signAddVote(tmproto.PrevoteType, nil, types.PartSetHeader{})
+		return
+	}
+
 	// Prevote cs.ProposalBlock
 	// NOTE: the proposal signature is validated when it is received,
 	// and the proposal block parts are validated as they are received (against the merkle hash in the proposal)

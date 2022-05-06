@@ -3,8 +3,11 @@
 package mocks
 
 import (
+	testing "testing"
+
 	mock "github.com/stretchr/testify/mock"
 	state "github.com/tendermint/tendermint/internal/state"
+
 	types "github.com/tendermint/tendermint/types"
 )
 
@@ -67,4 +70,14 @@ func (_m *EvidencePool) PendingEvidence(maxBytes int64) ([]types.Evidence, int64
 // Update provides a mock function with given fields: _a0, _a1
 func (_m *EvidencePool) Update(_a0 state.State, _a1 types.EvidenceList) {
 	_m.Called(_a0, _a1)
+}
+
+// NewEvidencePool creates a new instance of EvidencePool. It also registers the testing.TB interface on the mock and a cleanup function to assert the mocks expectations.
+func NewEvidencePool(t testing.TB) *EvidencePool {
+	mock := &EvidencePool{}
+	mock.Mock.Test(t)
+
+	t.Cleanup(func() { mock.AssertExpectations(t) })
+
+	return mock
 }

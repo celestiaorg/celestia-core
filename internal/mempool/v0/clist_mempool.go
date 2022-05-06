@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"crypto/sha256"
+
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/internal/libs/clist"
@@ -626,6 +628,15 @@ func (mem *CListMempool) Update(
 		// https://github.com/tendermint/tendermint/issues/3322.
 		if e, ok := mem.txsMap.Load(tx.Key()); ok {
 			mem.removeTx(tx, e.(*clist.CElement), false)
+			// see if the transaction is a child transaction of a some parent
+			// transaction that exists in the mempool
+		} else if originalHash, _, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
+			var origianlKey [sha256.Size]byte
+			copy(origianlKey[:], originalHash)
+			err := mem.RemoveTxByKey(origianlKey)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
