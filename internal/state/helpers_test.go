@@ -306,7 +306,7 @@ func (app *testApp) Query(reqQuery abci.RequestQuery) (resQuery abci.ResponseQue
 }
 
 func (app *testApp) ProcessProposal(req abci.RequestProcessProposal) abci.ResponseProcessProposal {
-	for _, tx := range req.Txs {
+	for _, tx := range req.BlockData.Txs {
 		if len(tx) == 0 {
 			return abci.ResponseProcessProposal{Result: abci.ResponseProcessProposal_REJECT}
 		}
