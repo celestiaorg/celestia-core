@@ -3,6 +3,7 @@ package v1
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"reflect"
@@ -461,6 +462,12 @@ func (txmp *TxMempool) Update(
 		// remove the committed transaction from the transaction store and indexes
 		if wtx := txmp.txStore.GetTxByHash(tx.Key()); wtx != nil {
 			txmp.removeTx(wtx, false)
+		} else if originalHash, _, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
+			var origianlKey [sha256.Size]byte
+			copy(origianlKey[:], originalHash)
+			if wtx := txmp.txStore.GetTxByHash(origianlKey); wtx != nil {
+				txmp.removeTx(wtx, false)
+			}
 		}
 	}
 
