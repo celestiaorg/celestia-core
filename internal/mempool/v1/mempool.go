@@ -463,8 +463,8 @@ func (txmp *TxMempool) Update(
 		if wtx := txmp.txStore.GetTxByHash(tx.Key()); wtx != nil {
 			txmp.removeTx(wtx, false)
 		} else if originalHash, _, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
-			var origianlKey [sha256.Size]byte
-			copy(origianlKey[:], originalHash)
+			var originalKey [sha256.Size]byte
+			copy(originalKey[:], originalHash)
 			if wtx := txmp.txStore.GetTxByHash(origianlKey); wtx != nil {
 				txmp.removeTx(wtx, false)
 			}
