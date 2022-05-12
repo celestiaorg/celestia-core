@@ -631,9 +631,9 @@ func (mem *CListMempool) Update(
 			// see if the transaction is a child transaction of a some parent
 			// transaction that exists in the mempool
 		} else if originalHash, _, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
-			var origianlKey [sha256.Size]byte
-			copy(origianlKey[:], originalHash)
-			err := mem.RemoveTxByKey(origianlKey)
+			var originalKey [sha256.Size]byte
+			copy(originalKey[:], originalHash)
+			err := mem.RemoveTxByKey(originalKey)
 			if err != nil {
 				return err
 			}
