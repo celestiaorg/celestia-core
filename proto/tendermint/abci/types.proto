@@ -36,7 +36,7 @@ message Request {
     RequestLoadSnapshotChunk  load_snapshot_chunk  = 13;
     RequestApplySnapshotChunk apply_snapshot_chunk = 14;
     RequestPrepareProposal    prepare_proposal     = 15;
-    RequestProcessProposal     process_proposal     = 16;
+    RequestProcessProposal    process_proposal     = 16;
   }
 }
 
@@ -129,8 +129,8 @@ message RequestPrepareProposal {
 }
 
 message RequestProcessProposal {
-  tendermint.types.Header header = 1 [(gogoproto.nullable) = false];
-  repeated bytes txs = 2;
+  tendermint.types.Header header     = 1 [(gogoproto.nullable) = false];
+  tendermint.types.Data   block_data = 2;
 }
 
 //----------------------------------------
@@ -154,7 +154,7 @@ message Response {
     ResponseLoadSnapshotChunk  load_snapshot_chunk  = 14;
     ResponseApplySnapshotChunk apply_snapshot_chunk = 15;
     ResponsePrepareProposal    prepare_proposal     = 16;
-    ResponseProcessProposal     process_proposal     = 17;
+    ResponseProcessProposal    process_proposal     = 17;
   }
 }
 
@@ -285,13 +285,13 @@ message ResponsePrepareProposal {
 }
 
 message ResponseProcessProposal {
-  Result result = 1;
+  Result         result   = 1;
   repeated bytes evidence = 2;
 
   enum Result {
-    UNKNOWN       = 0;  // Unknown result, invalidate
-    ACCEPT        = 1;  // proposal verified, vote on the proposal
-    REJECT        = 2;  // proposal invalidated
+    UNKNOWN = 0;  // Unknown result, invalidate
+    ACCEPT  = 1;  // proposal verified, vote on the proposal
+    REJECT  = 2;  // proposal invalidated
   }
 }
 

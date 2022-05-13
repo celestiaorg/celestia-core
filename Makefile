@@ -15,7 +15,7 @@ endif
 
 LD_FLAGS = -X github.com/tendermint/tendermint/version.TMVersion=$(VERSION)
 BUILD_FLAGS = -mod=readonly -ldflags "$(LD_FLAGS)"
-HTTPS_GIT := https://github.com/tendermint/tendermint.git
+HTTPS_GIT := https://github.com/celestiaorg/celestia-core.git
 BUILD_IMAGE := ghcr.io/tendermint/docker-build-proto
 BASE_BRANCH := v0.35.x-celestia
 DOCKER_PROTO := docker run -v $(shell pwd):/workspace --workdir /workspace $(BUILD_IMAGE)

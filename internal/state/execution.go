@@ -183,9 +183,10 @@ func (blockExec *BlockExecutor) ProcessProposal(
 	block *types.Block,
 ) (bool, error) {
 	ctx := context.Background()
+	data := block.Data.ToProto()
 	req := abci.RequestProcessProposal{
-		Txs:    block.Data.Txs.ToSliceOfBytes(),
-		Header: *block.Header.ToProto(),
+		BlockData: &data,
+		Header:    *block.Header.ToProto(),
 	}
 
 	resp, err := blockExec.proxyApp.ProcessProposalSync(ctx, req)

@@ -137,13 +137,14 @@ func Test_genOrigRowShares(t *testing.T) {
 		Messages: generateRandomlySizedMessages(10, 1500),
 	}
 
-	allShares, _, _ := typicalBlockData.ComputeShares(8)
+	allShares, _, err := typicalBlockData.ComputeShares(16)
+	require.NoError(t, err)
 	rawShares := allShares.RawShares()
 
-	genShares := genOrigRowShares(typicalBlockData, 8, 0, 7)
+	genShares := genOrigRowShares(typicalBlockData, 16, 0, 15)
 
-	require.Equal(t, len(allShares), len(genShares))
-	assert.Equal(t, rawShares, genShares)
+	require.Equal(t, len(allShares), len(genShares), typicalBlockData)
+	require.Equal(t, rawShares, genShares)
 }
 
 func joinByteSlices(s ...[]byte) string {
