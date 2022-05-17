@@ -456,6 +456,41 @@ func TestContigShareWriter(t *testing.T) {
 	assert.Equal(t, txs, resTxs)
 }
 
+func TestSplitMessage(t *testing.T) {
+	type test struct {
+		data               []byte
+		expectedShareCount int
+	}
+
+	tests := []test{
+		{
+			bytes.Repeat([]byte{1}, consts.MsgShareSize),
+			1,
+		},
+		{
+			bytes.Repeat([]byte{1}, consts.MsgShareSize+1),
+			2,
+		},
+		{
+			bytes.Repeat([]byte{1, 2, 3}, 100),
+			2,
+		},
+		{
+			bytes.Repeat([]byte{1, 2}, 100),
+			1,
+		},
+		{
+			bytes.Repeat([]byte{1, 2}, 1000),
+			9,
+		},
+	}
+
+	for _, tt := range tests {
+		shares := splitMessage(tt.data, namespace.ID{1, 2, 3, 4, 5, 6, 7, 8})
+		assert.Equal(t, tt.expectedShareCount, len(shares))
+	}
+}
+
 func Test_parseDelimiter(t *testing.T) {
 	for i := uint64(0); i < 100; i++ {
 		tx := generateRandomContiguousShares(1, int(i))[0]

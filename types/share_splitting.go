@@ -61,43 +61,32 @@ func (msw *MessageShareWriter) Count() int {
 // appendToShares appends raw data as shares.
 // Used for messages.
 func AppendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) []NamespacedShare {
-	if len(rawData) <= consts.MsgShareSize {
-		rawShare := append(append(
-			make([]byte, 0, len(nid)+len(rawData)),
-			nid...),
-			rawData...,
-		)
-		paddedShare := zeroPadIfNecessary(rawShare, consts.ShareSize)
-		share := NamespacedShare{paddedShare, nid}
-		shares = append(shares, share)
-	} else { // len(rawData) > MsgShareSize
-		shares = append(shares, splitMessage(rawData, nid)...)
-	}
+	shares = append(shares, splitMessage(rawData, nid)...)
 	return shares
 }
 
-// splitMessage breaks the data in a message into the minimum number of
-// namespaced shares
 func splitMessage(rawData []byte, nid namespace.ID) NamespacedShares {
-	shares := make([]NamespacedShare, 0)
-	firstRawShare := append(append(
-		make([]byte, 0, consts.ShareSize),
-		nid...),
-		rawData[:consts.MsgShareSize]...,
-	)
-	shares = append(shares, NamespacedShare{firstRawShare, nid})
-	rawData = rawData[consts.MsgShareSize:]
-	for len(rawData) > 0 {
-		shareSizeOrLen := min(consts.MsgShareSize, len(rawData))
+	dataSize := len(rawData)
+	count := (dataSize / consts.MsgShareSize)
+	if dataSize%consts.MsgShareSize != 0 {
+		count++
+	}
+	shares := make([]NamespacedShare, count)
+	cursor := 0
+	for i := 0; i < count; i++ {
+		end := cursor + consts.MsgShareSize
+		if end > dataSize {
+			end = dataSize
+		}
 		rawShare := append(append(
 			make([]byte, 0, consts.ShareSize),
 			nid...),
-			rawData[:shareSizeOrLen]...,
+			rawData[cursor:end]...,
 		)
 		paddedShare := zeroPadIfNecessary(rawShare, consts.ShareSize)
 		share := NamespacedShare{paddedShare, nid}
-		shares = append(shares, share)
-		rawData = rawData[shareSizeOrLen:]
+		shares[i] = share
+		cursor = end
 	}
 	return shares
 }
