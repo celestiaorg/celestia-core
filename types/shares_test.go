@@ -483,6 +483,10 @@ func TestSplitMessage(t *testing.T) {
 			bytes.Repeat([]byte{1, 2}, 1000),
 			9,
 		},
+		{
+			[]byte{},
+			0,
+		},
 	}
 
 	for _, tt := range tests {
