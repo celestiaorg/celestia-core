@@ -82,7 +82,7 @@ func splitMessage(rawData []byte, nid namespace.ID) NamespacedShares {
 		end := cursor + consts.MsgShareSize
 		// ensure that we do not index out of bounds. this condition can only be
 		// hit once, because count is determined by dividing the total size by
-		// the MsgShare size, and the cursor is being incremented by
+		// the MsgShareSize, and the cursor is being incremented by
 		// MsgShareSize
 		if end > dataSize {
 			end = dataSize
