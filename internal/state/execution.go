@@ -171,10 +171,8 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	return state.MakeBlock(
 		height,
-		newData.Txs,
+		newData,
 		commit,
-		newData.Evidence.Evidence,
-		newData.Messages.MessagesList,
 		proposerAddr,
 	)
 }

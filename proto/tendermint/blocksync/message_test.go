@@ -8,6 +8,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/require"
 
+	sf "github.com/tendermint/tendermint/internal/state/test/factory"
 	bcproto "github.com/tendermint/tendermint/proto/tendermint/blocksync"
 	"github.com/tendermint/tendermint/types"
 )
@@ -85,7 +86,7 @@ func TestStatusResponse_Validate(t *testing.T) {
 }
 
 func TestBlockchainMessageVectors(t *testing.T) {
-	block := types.MakeBlock(int64(3), []types.Tx{types.Tx("Hello World")}, nil, nil, nil)
+	block := types.MakeBlock(int64(3), sf.MakeDataFromTxs([]types.Tx{types.Tx("Hello World")}), nil)
 	block.Version.Block = 11 // overwrite updated protocol version
 
 	bpb, err := block.ToProto()

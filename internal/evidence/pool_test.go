@@ -202,7 +202,7 @@ func TestEvidencePoolUpdate(t *testing.T) {
 		evidenceChainID,
 	)
 	lastCommit := makeCommit(height, val.PrivKey.PubKey().Address())
-	block := types.MakeBlock(height+1, []types.Tx{}, []types.Evidence{ev}, nil, lastCommit)
+	block := types.MakeBlock(height+1, sf.MakeData([]types.Tx{}, []types.Evidence{ev}, nil), lastCommit)
 
 	// update state (partially)
 	state.LastBlockHeight = height + 1
