@@ -16,7 +16,6 @@ import (
 	memmock "github.com/tendermint/tendermint/internal/mempool/mock"
 	sm "github.com/tendermint/tendermint/internal/state"
 	"github.com/tendermint/tendermint/internal/state/mocks"
-	sf "github.com/tendermint/tendermint/internal/state/test/factory"
 	statefactory "github.com/tendermint/tendermint/internal/state/test/factory"
 	"github.com/tendermint/tendermint/internal/store"
 	testfactory "github.com/tendermint/tendermint/internal/test/factory"
@@ -279,7 +278,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 				evidence = append(evidence, newEv)
 				currentBytes += int64(len(newEv.Bytes()))
 			}
-			block, _ := state.MakeBlock(height, sf.MakeData(testfactory.MakeTenTxs(height), evidence, nil), lastCommit, proposerAddr)
+			block, _ := state.MakeBlock(height, statefactory.MakeData(testfactory.MakeTenTxs(height), evidence, nil), lastCommit, proposerAddr)
 			err := blockExec.ValidateBlock(state, block)
 			if assert.Error(t, err) {
 				_, ok := err.(*types.ErrEvidenceOverflow)
