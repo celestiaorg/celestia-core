@@ -226,13 +226,6 @@ func TailPaddingShares(n int) NamespacedShares {
 	return shares
 }
 
-func min(a, b int) int {
-	if a <= b {
-		return a
-	}
-	return b
-}
-
 func zeroPadIfNecessary(share []byte, width int) []byte {
 	oldLen := len(share)
 	if oldLen < width {
