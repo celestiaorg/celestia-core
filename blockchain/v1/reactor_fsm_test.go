@@ -11,6 +11,7 @@ import (
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/p2p"
+	"github.com/tendermint/tendermint/state/test/factory"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -142,7 +143,7 @@ func sBlockRespEv(current, expected string, peerID p2p.ID, height int64, prevBlo
 		data: bReactorEventData{
 			peerID: peerID,
 			height: height,
-			block:  types.MakeBlock(height, txs, nil, nil, nil),
+			block:  types.MakeBlock(height, factory.MakeDataFromTxs(txs), nil),
 			length: 100},
 		wantState:     expected,
 		wantNewBlocks: append(prevBlocks, height),
@@ -159,7 +160,7 @@ func sBlockRespEvErrored(current, expected string,
 		data: bReactorEventData{
 			peerID: peerID,
 			height: height,
-			block:  types.MakeBlock(height, txs, nil, nil, nil),
+			block:  types.MakeBlock(height, factory.MakeDataFromTxs(txs), nil),
 			length: 100},
 		wantState:        expected,
 		wantErr:          wantErr,

@@ -321,18 +321,14 @@ func MaxDataBytesNoEvidence(maxBytes int64, valsCount int) int64 {
 // It populates the same set of fields validated by ValidateBasic.
 func MakeBlock(
 	height int64,
-	txs []Tx, evidence []Evidence, messages []Message,
+	data Data,
 	lastCommit *Commit) *Block {
 	block := &Block{
 		Header: Header{
 			Version: tmversion.Consensus{Block: version.BlockProtocol, App: 0},
 			Height:  height,
 		},
-		Data: Data{
-			Txs:      txs,
-			Evidence: EvidenceData{Evidence: evidence},
-			Messages: Messages{MessagesList: messages},
-		},
+		Data:       data,
 		LastCommit: lastCommit,
 	}
 	block.fillHeader()
