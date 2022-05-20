@@ -38,13 +38,29 @@ func MakeBlocks(n int, state *sm.State, privVal types.PrivValidator) []*types.Bl
 func MakeBlock(state sm.State, height int64, c *types.Commit) *types.Block {
 	block, _ := state.MakeBlock(
 		height,
-		factory.MakeTenTxs(state.LastBlockHeight),
+		MakeData(factory.MakeTenTxs(state.LastBlockHeight), nil, nil),
 		c,
-		nil,
-		nil,
 		state.Validators.GetProposer().Address,
 	)
 	return block
+}
+
+func MakeData(txs []types.Tx, evd []types.Evidence, msgs []types.Message) types.Data {
+	return types.Data{
+		Txs: txs,
+		Evidence: types.EvidenceData{
+			Evidence: evd,
+		},
+		Messages: types.Messages{
+			MessagesList: msgs,
+		},
+	}
+}
+
+func MakeDataFromTxs(txs []types.Tx) types.Data {
+	return types.Data{
+		Txs: txs,
+	}
 }
 
 func makeBlockAndPartSet(state sm.State, lastBlock *types.Block, lastBlockMeta *types.BlockMeta,
@@ -62,5 +78,5 @@ func makeBlockAndPartSet(state sm.State, lastBlock *types.Block, lastBlockMeta *
 			lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()})
 	}
 
-	return state.MakeBlock(height, []types.Tx{}, lastCommit, nil, nil, state.Validators.GetProposer().Address)
+	return state.MakeBlock(height, MakeDataFromTxs([]types.Tx{}), lastCommit, state.Validators.GetProposer().Address)
 }

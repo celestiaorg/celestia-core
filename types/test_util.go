@@ -45,3 +45,15 @@ func signAddVote(privVal PrivValidator, vote *Vote, voteSet *VoteSet) (signed bo
 	vote.Signature = v.Signature
 	return voteSet.AddVote(vote)
 }
+
+func makeData(txs []Tx, evd []Evidence, msgs []Message) Data {
+	return Data{
+		Txs: txs,
+		Evidence: EvidenceData{
+			Evidence: evd,
+		},
+		Messages: Messages{
+			MessagesList: msgs,
+		},
+	}
+}
