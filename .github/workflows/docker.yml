@@ -1,5 +1,5 @@
 name: Build Docker
-# Rebuilds the tendermint docker image on every push to default branch.
+# Rebuilds the tendermint docker image on every push to default branch and creation of tags.
 on:
   push:
     branches:
