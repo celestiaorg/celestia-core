@@ -1,7 +1,6 @@
 name: Build Docker
 # Rebuilds the tendermint docker image on every push to default branch and creation of tags.
 on:
-  pull_request:
   push:
     branches:
       - v[0-9]+.[0-9]+.x-celestia
