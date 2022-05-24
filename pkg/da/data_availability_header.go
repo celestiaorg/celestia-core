@@ -181,16 +181,22 @@ var tailPaddingShare = append(
 // MinDataAvailabilityHeader returns the minimum valid data availability header.
 // It is equal to the data availability header for an empty block
 func MinDataAvailabilityHeader() DataAvailabilityHeader {
-	shares := make([][]byte, consts.MinSharecount)
-	for i := 0; i < consts.MinSharecount; i++ {
-		shares[i] = tailPaddingShare
-	}
+	shares := GenerateEmptyShares(consts.MinSharecount)
 	eds, err := ExtendShares(consts.MinSquareSize, shares)
 	if err != nil {
 		panic(err)
 	}
 	dah := NewDataAvailabilityHeader(eds)
 	return dah
+}
+
+// GenerateEmptyShares generate an array of empty shares
+func GenerateEmptyShares(size int) [][]byte {
+	shares := make([][]byte, size)
+	for i := 0; i < size; i++ {
+		shares[i] = tailPaddingShare
+	}
+	return shares
 }
 
 // validateHash returns an error if the hash is not empty, but its
