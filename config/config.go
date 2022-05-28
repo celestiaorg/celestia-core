@@ -572,7 +572,7 @@ func DefaultRPCConfig() *RPCConfig {
 		MaxSubscriptionClients:    100,
 		MaxSubscriptionsPerClient: 5,
 		SubscriptionBufferSize:    defaultSubscriptionBufferSize,
-		TimeoutBroadcastTxCommit:  10 * time.Second,
+		TimeoutBroadcastTxCommit:  35 * time.Second,
 		WebSocketWriteBufferSize:  defaultSubscriptionBufferSize,
 
 		MaxBodyBytes:   int64(1000000), // 1MB
@@ -771,9 +771,9 @@ func DefaultP2PConfig() *P2PConfig {
 		UPNP:                          false,
 		AddrBook:                      defaultAddrBookPath,
 		AddrBookStrict:                true,
-		MaxNumInboundPeers:            40,
-		MaxNumOutboundPeers:           10,
-		MaxConnections:                64,
+		MaxNumInboundPeers:            120,
+		MaxNumOutboundPeers:           30,
+		MaxConnections:                150,
 		MaxIncomingConnectionAttempts: 100,
 		PersistentPeersMaxDialPeriod:  0 * time.Second,
 		FlushThrottleTimeout:          100 * time.Millisecond,
@@ -791,7 +791,7 @@ func DefaultP2PConfig() *P2PConfig {
 		DialTimeout:             3 * time.Second,
 		TestDialFail:            false,
 		QueueType:               "priority",
-		UseLegacy:               false,
+		UseLegacy:               true,
 	}
 }
 
@@ -899,9 +899,9 @@ func DefaultMempoolConfig() *MempoolConfig {
 		Size:         5000,
 		MaxTxsBytes:  1024 * 1024 * 1024, // 1GB
 		CacheSize:    10000,
-		MaxTxBytes:   1024 * 1024, // 1MB
+		MaxTxBytes:   1024 * 1024 * 3, // 3MB
 		TTLDuration:  0 * time.Second,
-		TTLNumBlocks: 0,
+		TTLNumBlocks: 15,
 	}
 }
 
@@ -1148,7 +1148,7 @@ func DefaultConsensusConfig() *ConsensusConfig {
 		TimeoutPrevoteDelta:         500 * time.Millisecond,
 		TimeoutPrecommit:            1000 * time.Millisecond,
 		TimeoutPrecommitDelta:       500 * time.Millisecond,
-		TimeoutCommit:               1000 * time.Millisecond,
+		TimeoutCommit:               25000 * time.Millisecond,
 		SkipTimeoutCommit:           false,
 		CreateEmptyBlocks:           true,
 		CreateEmptyBlocksInterval:   0 * time.Second,
