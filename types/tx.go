@@ -96,6 +96,7 @@ func (tp TxProof) Validate() error {
 }
 
 func (tp *TxProof) VerifyProof() bool {
+	cursor := int32(0)
 	for i, proof := range tp.Proofs {
 		nmtProof := nmt.NewInclusionProof(
 			int(proof.Start),
@@ -103,16 +104,17 @@ func (tp *TxProof) VerifyProof() bool {
 			proof.Nodes,
 			true,
 		)
-		fmt.Println("______ start, end, lnodes", proof.Start, proof.End, len(proof.Nodes))
+		sharesUsed := proof.End - proof.Start
 		valid := nmtProof.VerifyInclusion(
 			consts.NewBaseHashFunc(),
 			consts.TxNamespaceID,
-			tp.Data[i],
+			tp.Data[cursor:sharesUsed],
 			tp.RowRoots[i],
 		)
 		if !valid {
 			return false
 		}
+		cursor += sharesUsed
 	}
 	return true
 }

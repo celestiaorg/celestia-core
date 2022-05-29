@@ -18,7 +18,6 @@ import (
 // It is possible that a transaction spans more than one row. In that case, we
 // have to return two proofs.
 func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex uint) (types.TxProof, error) {
-	fmt.Println("ss", data.OriginalSquareSize)
 	// calculate the index of the shares that contain the tx
 	startPos, endPos, err := txSharePosition(data.Txs, txIndex)
 	if err != nil {
@@ -64,8 +63,6 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex ui
 		if i != (len(rowShares) - 1) {
 			endLeafPos = origSquareSize - 1
 		}
-		fmt.Println("share pos", startPos, endPos, startRow, endRow)
-		fmt.Println("leafs", startLeafPos, endLeafPos)
 
 		shares = append(shares, row[startLeafPos:endLeafPos+1]...)
 
@@ -73,8 +70,6 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex ui
 		if err != nil {
 			return types.TxProof{}, err
 		}
-
-		fmt.Println("---------------", proof.Start(), proof.End(), len(proof.Nodes()))
 
 		proofs = append(proofs, &tmproto.NMTProof{
 			Start:    int32(proof.Start()),
