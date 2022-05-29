@@ -18,19 +18,19 @@ import (
 // It is possible that a transaction spans more than one row. In that case, we
 // have to return two proofs.
 func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex uint) (types.TxProof, error) {
+	fmt.Println("ss", data.OriginalSquareSize)
 	// calculate the index of the shares that contain the tx
 	startPos, endPos, err := txSharePosition(data.Txs, txIndex)
 	if err != nil {
 		return types.TxProof{}, err
-	}
-	if (endPos - startPos) > 1 {
-		return types.TxProof{}, errors.New("transaction spanned more than two shares, this is not yet supported")
 	}
 
 	// use the index of the shares and the square size to determine the row that
 	// contains the tx we need to prove
 	startRow := startPos / origSquareSize
 	endRow := endPos / origSquareSize
+	startLeaf := startPos % origSquareSize
+	endLeaf := endPos % origSquareSize
 
 	rowShares, err := genRowShares(codec, data, origSquareSize, startRow, endRow)
 	if err != nil {
@@ -53,19 +53,28 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex ui
 			)
 		}
 
-		var pos uint
-		if i == 0 {
-			pos = startPos - (startRow * origSquareSize)
-		} else {
-			pos = endPos - (endRow * origSquareSize)
+		startLeafPos := startLeaf
+		endLeafPos := endLeaf
+
+		// if this is not the first row, then start with the first leaf
+		if i > 0 {
+			startLeafPos = 0
 		}
+		// if this is not the last row, then select for the rest of the row
+		if i != (len(rowShares) - 1) {
+			endLeafPos = origSquareSize - 1
+		}
+		fmt.Println("share pos", startPos, endPos, startRow, endRow)
+		fmt.Println("leafs", startLeafPos, endLeafPos)
 
-		shares = append(shares, row[pos])
+		shares = append(shares, row[startLeafPos:endLeafPos+1]...)
 
-		proof, err := tree.Prove(int(pos))
+		proof, err := tree.Tree().ProveRange(int(startLeafPos), int(endLeafPos+1))
 		if err != nil {
 			return types.TxProof{}, err
 		}
+
+		fmt.Println("---------------", proof.Start(), proof.End(), len(proof.Nodes()))
 
 		proofs = append(proofs, &tmproto.NMTProof{
 			Start:    int32(proof.Start()),
@@ -87,7 +96,7 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, origSquareSize, txIndex ui
 }
 
 // txSharePosition returns the share that a given transaction is included in.
-// returns -1 if index is greater than that of the provided txs.
+// returns and error if index is greater than that of the provided txs.
 func txSharePosition(txs types.Txs, txIndex uint) (startSharePos, endSharePos uint, err error) {
 	if txIndex >= uint(len(txs)) {
 		return startSharePos, endSharePos, errors.New("transaction index is greater than the number of txs")

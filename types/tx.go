@@ -103,6 +103,7 @@ func (tp *TxProof) VerifyProof() bool {
 			proof.Nodes,
 			true,
 		)
+		fmt.Println("______ start, end, lnodes", proof.Start, proof.End, len(proof.Nodes))
 		valid := nmtProof.VerifyInclusion(
 			consts.NewBaseHashFunc(),
 			consts.TxNamespaceID,
