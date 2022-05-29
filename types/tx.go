@@ -108,7 +108,7 @@ func (tp *TxProof) VerifyProof() bool {
 		valid := nmtProof.VerifyInclusion(
 			consts.NewBaseHashFunc(),
 			consts.TxNamespaceID,
-			tp.Data[cursor:sharesUsed],
+			tp.Data[cursor:sharesUsed+cursor],
 			tp.RowRoots[i],
 		)
 		if !valid {

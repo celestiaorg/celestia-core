@@ -19,7 +19,7 @@ import (
 func TestTxInclusion(t *testing.T) {
 	txCount := 100
 	typicalBlockData := types.Data{
-		Txs:      generateRandomlySizedContiguousShares(txCount, 200),
+		Txs:      generateRandomlySizedContiguousShares(txCount, 1000),
 		Messages: generateRandomlySizedMessages(10, 150),
 	}
 
