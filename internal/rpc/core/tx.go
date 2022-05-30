@@ -47,8 +47,7 @@ func (env *Environment) Tx(ctx *rpctypes.Context, hash bytes.HexBytes, proveTx b
 				txProof, err = prove.TxInclusion(
 					consts.DefaultCodec(),
 					block.Data,
-					uint(block.Data.OriginalSquareSize),
-					uint(r.Index),
+					uint64(r.Index),
 				)
 				if err != nil {
 					return nil, err
@@ -137,7 +136,7 @@ func (env *Environment) TxSearch(
 				var proof types.TxProof
 				if proveTx {
 					block := env.BlockStore.LoadBlock(r.Height)
-					proof, err = prove.TxInclusion(consts.DefaultCodec(), block.Data, uint(block.Data.OriginalSquareSize), uint(r.Index))
+					proof, err = prove.TxInclusion(consts.DefaultCodec(), block.Data, uint64(r.Index))
 					if err != nil {
 						return nil, err
 					}
