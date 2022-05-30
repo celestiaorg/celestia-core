@@ -527,7 +527,7 @@ func generateRandomlySizedMessages(count, maxMsgSize int) Messages {
 	}
 
 	messages := Messages{MessagesList: msgs}
-	messages.sortMessages()
+	messages.SortMessages()
 	return messages
 }
 
