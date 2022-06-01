@@ -1167,7 +1167,7 @@ type Messages struct {
 
 func (msgs Messages) SplitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
-	msgs.sortMessages()
+	msgs.SortMessages()
 	for _, m := range msgs.MessagesList {
 		rawData, err := m.MarshalDelimited()
 		if err != nil {
@@ -1178,7 +1178,7 @@ func (msgs Messages) SplitIntoShares() NamespacedShares {
 	return shares
 }
 
-func (msgs *Messages) sortMessages() {
+func (msgs *Messages) SortMessages() {
 	sort.Slice(msgs.MessagesList, func(i, j int) bool {
 		return bytes.Compare(msgs.MessagesList[i].NamespaceID, msgs.MessagesList[j].NamespaceID) < 0
 	})
