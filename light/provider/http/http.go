@@ -18,8 +18,8 @@ import (
 )
 
 var defaultOptions = Options{
-	MaxRetryAttempts:    5,
-	Timeout:             5 * time.Second,
+	MaxRetryAttempts:    7,
+	Timeout:             7 * time.Second,
 	NoBlockThreshold:    5,
 	NoResponseThreshold: 5,
 }
