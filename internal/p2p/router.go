@@ -54,6 +54,7 @@ type Envelope struct {
 type PeerError struct {
 	NodeID types.NodeID
 	Err    error
+	Fatal  bool
 }
 
 // Channel is a bidirectional channel to exchange Protobuf messages with peers,
@@ -507,10 +508,20 @@ func (r *Router) routeChannel(
 				return
 			}
 
-			r.logger.Error("peer error, evicting", "peer", peerError.NodeID, "err", peerError.Err)
-
-			r.peerManager.Errored(peerError.NodeID, peerError.Err)
-
+			shouldEvict := peerError.Fatal || r.peerManager.HasMaxPeerCapacity()
+			r.logger.Error("peer error",
+				"peer", peerError.NodeID,
+				"err", peerError.Err,
+				"evicting", shouldEvict,
+			)
+			if shouldEvict {
+				r.peerManager.Errored(peerError.NodeID, peerError.Err)
+			} else {
+				r.peerManager.processPeerEvent(PeerUpdate{
+					NodeID: peerError.NodeID,
+					Status: PeerStatusBad,
+				})
+			}
 		case <-r.stopCh:
 			return
 		}
@@ -824,6 +835,15 @@ func (r *Router) handshakePeer(
 	if err = peerInfo.Validate(); err != nil {
 		return peerInfo, peerKey, fmt.Errorf("invalid handshake NodeInfo: %w", err)
 	}
+
+	if peerInfo.Network != r.nodeInfo.Network {
+		if err := r.peerManager.store.Delete(peerInfo.NodeID); err != nil {
+			return peerInfo, peerKey, fmt.Errorf("problem removing peer from store from incorrect network [%s]: %w", peerInfo.Network, err)
+		}
+
+		return peerInfo, peerKey, fmt.Errorf("connected to peer from wrong network, %q, removed from peer store", peerInfo.Network)
+	}
+
 	if types.NodeIDFromPubKey(peerKey) != peerInfo.NodeID {
 		return peerInfo, peerKey, fmt.Errorf("peer's public key did not match its node ID %q (expected %q)",
 			peerInfo.NodeID, types.NodeIDFromPubKey(peerKey))
@@ -832,6 +852,7 @@ func (r *Router) handshakePeer(
 		return peerInfo, peerKey, fmt.Errorf("expected to connect with peer %q, got %q",
 			expectID, peerInfo.NodeID)
 	}
+
 	if err := r.nodeInfo.CompatibleWith(peerInfo); err != nil {
 		return peerInfo, peerKey, ErrRejected{
 			err:            err,

@@ -240,7 +240,6 @@ func createMempoolReactor(
 		reactor := mempoolv0.NewReactor(
 			logger,
 			cfg.Mempool,
-			peerManager,
 			mp,
 			channels[mempool.MempoolChannel],
 			peerUpdates,
@@ -266,7 +265,6 @@ func createMempoolReactor(
 		reactor := mempoolv1.NewReactor(
 			logger,
 			cfg.Mempool,
-			peerManager,
 			mp,
 			channels[mempool.MempoolChannel],
 			peerUpdates,
@@ -494,11 +492,13 @@ func createPeerManager(
 		privatePeerIDs[types.NodeID(id)] = struct{}{}
 	}
 
+	const maxUpgradeConns = uint16(4)
+
 	options := p2p.PeerManagerOptions{
 		SelfAddress:            selfAddr,
 		MaxConnected:           maxConns,
-		MaxConnectedUpgrade:    4,
-		MaxPeers:               1000,
+		MaxConnectedUpgrade:    maxUpgradeConns,
+		MaxPeers:               maxUpgradeConns + 2*maxConns,
 		MinRetryTime:           250 * time.Millisecond,
 		MaxRetryTime:           30 * time.Minute,
 		MaxRetryTimePersistent: 5 * time.Minute,
