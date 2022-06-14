@@ -67,4 +67,4 @@ this [repository](https://github.com/tendermint/tendermint).
 
 ## Careers
 
-We are hiring Go engineers! Join us in building the future of blockchain scaling and interoperability. [Apply here](https://angel.co/company/celestialabs/jobs).
+We are hiring Go engineers! Join us in building the future of blockchain scaling and interoperability. [Apply here]([https://angel.co/company/celestialabs/jobs](https://jobs.lever.co/celestia)).
