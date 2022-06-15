@@ -492,7 +492,7 @@ func createPeerManager(
 		privatePeerIDs[types.NodeID(id)] = struct{}{}
 	}
 
-	const maxUpgradeConns = uint16(4)
+	const maxUpgradeConns = 4
 
 	options := p2p.PeerManagerOptions{
 		SelfAddress:            selfAddr,
