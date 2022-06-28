@@ -1926,7 +1926,7 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 	// Update Valid* if we can.
 	prevotes := cs.Votes.Prevotes(cs.Round)
 	blockID, hasTwoThirds := prevotes.TwoThirdsMajority()
-	if hasTwoThirds && !blockID.IsZero() && (cs.ValidRound < cs.Round) {
+	if hasTwoThirds && !blockID.IsZero() && (cs.TwoThirdPrevoteRound < cs.Round) {
 		if cs.ProposalBlock.HashesTo(blockID.Hash) {
 			cs.Logger.Debug(
 				"updating valid block to new proposal block",
@@ -1934,9 +1934,9 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 				"valid_block_hash", log.NewLazyBlockHash(cs.ProposalBlock),
 			)
 
-			cs.ValidRound = cs.Round
-			cs.ValidBlock = cs.ProposalBlock
-			cs.ValidBlockParts = cs.ProposalBlockParts
+			cs.TwoThirdPrevoteRound = cs.Round
+			cs.TwoThirdPrevoteBlock = cs.ProposalBlock
+			cs.TwoThirdPrevoteBlockParts = cs.ProposalBlockParts
 		}
 		// TODO: In case there is +2/3 majority in Prevotes set for some
 		// block and cs.ProposalBlock contains different block, either

@@ -187,7 +187,7 @@ func TestMempoolFilters(t *testing.T) {
 	}{
 		{10, nopPreFilter, nopPostFilter, 10},
 		{10, mempool.PreCheckMaxBytes(10), nopPostFilter, 0},
-		{10, mempool.PreCheckMaxBytes(22), nopPostFilter, 10},
+		{10, mempool.PreCheckMaxBytes(26), nopPostFilter, 10},
 		{10, nopPreFilter, mempool.PostCheckMaxGas(-1), 10},
 		{10, nopPreFilter, mempool.PostCheckMaxGas(0), 0},
 		{10, nopPreFilter, mempool.PostCheckMaxGas(1), 10},

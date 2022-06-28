@@ -126,7 +126,7 @@ proto-check-breaking: check-proto-deps
 .PHONY: proto-check-breaking
 
 proto-check-breaking-ci:
-	@go run github.com/bufbuild/buf/cmd/buf breaking --against $(HTTPS_GIT)#branch=v0.34.x
+	@go run github.com/bufbuild/buf/cmd/buf breaking --against $(HTTPS_GIT)#branch=v0.34.x-celestia
 .PHONY: proto-check-breaking-ci
 
 ###############################################################################

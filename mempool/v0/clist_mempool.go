@@ -534,7 +534,8 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 
 		txs = append(txs, memTx.tx)
 
-		dataSize := types.ComputeProtoSizeForTxs([]types.Tx{memTx.tx})
+		// we subtract 4 here to account for extra bytes we add to the additional data fields
+		dataSize := types.ComputeProtoSizeForTxs([]types.Tx{memTx.tx}) - 4
 
 		// Check total size requirement
 		if maxBytes > -1 && runningSize+dataSize > maxBytes {
@@ -616,9 +617,12 @@ func (mem *CListMempool) Update(
 			// see if the transaction is a malleated transaction of a some parent
 			// transaction that exists in the mempool
 		} else if parentHash, _, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
-			var parentKey [TxKeySize]byte
+			var parentKey [types.TxKeySize]byte
 			copy(parentKey[:], parentHash)
-			mem.RemoveTxByKey(parentKey, false)
+			err := mem.RemoveTxByKey(parentKey)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
