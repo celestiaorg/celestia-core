@@ -122,8 +122,13 @@ func (_m *Transport) String() string {
 	return r0
 }
 
-// NewTransport creates a new instance of Transport. It also registers the testing.TB interface on the mock and a cleanup function to assert the mocks expectations.
-func NewTransport(t testing.TB) *Transport {
+type NewTransportT interface {
+	mock.TestingT
+	Cleanup(func())
+}
+
+// NewTransport creates a new instance of Transport. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
+func NewTransport(t NewTransportT) *Transport {
 	mock := &Transport{}
 	mock.Mock.Test(t)
 
