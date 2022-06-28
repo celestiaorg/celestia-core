@@ -32,6 +32,20 @@ func (_m *Store) Bootstrap(_a0 state.State) error {
 	return r0
 }
 
+// Close provides a mock function with given fields:
+func (_m *Store) Close() error {
+	ret := _m.Called()
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func() error); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // Load provides a mock function with given fields:
 func (_m *Store) Load() (state.State, error) {
 	ret := _m.Called()
@@ -202,4 +216,19 @@ func (_m *Store) SaveABCIResponses(_a0 int64, _a1 *tendermintstate.ABCIResponses
 	}
 
 	return r0
+}
+
+type NewStoreT interface {
+	mock.TestingT
+	Cleanup(func())
+}
+
+// NewStore creates a new instance of Store. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
+func NewStore(t NewStoreT) *Store {
+	mock := &Store{}
+	mock.Mock.Test(t)
+
+	t.Cleanup(func() { mock.AssertExpectations(t) })
+
+	return mock
 }

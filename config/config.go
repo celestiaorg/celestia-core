@@ -23,6 +23,11 @@ const (
 
 	// DefaultLogLevel defines a default log level as INFO.
 	DefaultLogLevel = "info"
+
+	// Mempool versions. V1 is prioritized mempool, v0 is regular mempool.
+	// Default is v0.
+	MempoolV0 = "v0"
+	MempoolV1 = "v1"
 )
 
 // NOTE: Most of the structs & relevant comments + the
@@ -52,6 +57,9 @@ var (
 
 	defaultNodeKeyPath  = filepath.Join(defaultConfigDir, defaultNodeKeyName)
 	defaultAddrBookPath = filepath.Join(defaultConfigDir, defaultAddrBookName)
+
+	minSubscriptionBufferSize     = 100
+	defaultSubscriptionBufferSize = 200
 )
 
 // Config defines the top level configuration for a Tendermint node
@@ -342,6 +350,29 @@ type RPCConfig struct {
 	// to the estimated maximum number of broadcast_tx_commit calls per block.
 	MaxSubscriptionsPerClient int `mapstructure:"max_subscriptions_per_client"`
 
+	// The number of events that can be buffered per subscription before
+	// returning `ErrOutOfCapacity`.
+	SubscriptionBufferSize int `mapstructure:"experimental_subscription_buffer_size"`
+
+	// The maximum number of responses that can be buffered per WebSocket
+	// client. If clients cannot read from the WebSocket endpoint fast enough,
+	// they will be disconnected, so increasing this parameter may reduce the
+	// chances of them being disconnected (but will cause the node to use more
+	// memory).
+	//
+	// Must be at least the same as `SubscriptionBufferSize`, otherwise
+	// connections may be dropped unnecessarily.
+	WebSocketWriteBufferSize int `mapstructure:"experimental_websocket_write_buffer_size"`
+
+	// If a WebSocket client cannot read fast enough, at present we may
+	// silently drop events instead of generating an error or disconnecting the
+	// client.
+	//
+	// Enabling this parameter will cause the WebSocket connection to be closed
+	// instead if it cannot read fast enough, allowing for greater
+	// predictability in subscription behaviour.
+	CloseOnSlowClient bool `mapstructure:"experimental_close_on_slow_client"`
+
 	// How long to wait for a tx to be committed during /broadcast_tx_commit
 	// WARNING: Using a value larger than 10s will result in increasing the
 	// global HTTP write timeout, which applies to all connections and endpoints.
@@ -391,7 +422,9 @@ func DefaultRPCConfig() *RPCConfig {
 
 		MaxSubscriptionClients:    100,
 		MaxSubscriptionsPerClient: 5,
+		SubscriptionBufferSize:    defaultSubscriptionBufferSize,
 		TimeoutBroadcastTxCommit:  10 * time.Second,
+		WebSocketWriteBufferSize:  defaultSubscriptionBufferSize,
 
 		MaxBodyBytes:   int64(1000000), // 1MB
 		MaxHeaderBytes: 1 << 20,        // same as the net/http default
@@ -424,6 +457,18 @@ func (cfg *RPCConfig) ValidateBasic() error {
 	}
 	if cfg.MaxSubscriptionsPerClient < 0 {
 		return errors.New("max_subscriptions_per_client can't be negative")
+	}
+	if cfg.SubscriptionBufferSize < minSubscriptionBufferSize {
+		return fmt.Errorf(
+			"experimental_subscription_buffer_size must be >= %d",
+			minSubscriptionBufferSize,
+		)
+	}
+	if cfg.WebSocketWriteBufferSize < cfg.SubscriptionBufferSize {
+		return fmt.Errorf(
+			"experimental_websocket_write_buffer_size must be >= experimental_subscription_buffer_size (%d)",
+			cfg.SubscriptionBufferSize,
+		)
 	}
 	if cfg.TimeoutBroadcastTxCommit < 0 {
 		return errors.New("timeout_broadcast_tx_commit can't be negative")
@@ -636,6 +681,13 @@ func DefaultFuzzConnConfig() *FuzzConnConfig {
 
 // MempoolConfig defines the configuration options for the Tendermint mempool
 type MempoolConfig struct {
+	// Mempool version to use:
+	//  1) "v0" - (default) FIFO mempool.
+	//  2) "v1" - prioritized mempool.
+	// WARNING: There's a known memory leak with the prioritized mempool
+	// that the team are working on. Read more here:
+	// https://github.com/tendermint/tendermint/issues/8775
+	Version   string `mapstructure:"version"`
 	RootDir   string `mapstructure:"home"`
 	Recheck   bool   `mapstructure:"recheck"`
 	Broadcast bool   `mapstructure:"broadcast"`
@@ -659,20 +711,39 @@ type MempoolConfig struct {
 	// Including space needed by encoding (one varint per transaction).
 	// XXX: Unused due to https://github.com/tendermint/tendermint/issues/5796
 	MaxBatchBytes int `mapstructure:"max_batch_bytes"`
+
+	// TTLDuration, if non-zero, defines the maximum amount of time a transaction
+	// can exist for in the mempool.
+	//
+	// Note, if TTLNumBlocks is also defined, a transaction will be removed if it
+	// has existed in the mempool at least TTLNumBlocks number of blocks or if it's
+	// insertion time into the mempool is beyond TTLDuration.
+	TTLDuration time.Duration `mapstructure:"ttl-duration"`
+
+	// TTLNumBlocks, if non-zero, defines the maximum number of blocks a transaction
+	// can exist for in the mempool.
+	//
+	// Note, if TTLDuration is also defined, a transaction will be removed if it
+	// has existed in the mempool at least TTLNumBlocks number of blocks or if
+	// it's insertion time into the mempool is beyond TTLDuration.
+	TTLNumBlocks int64 `mapstructure:"ttl-num-blocks"`
 }
 
 // DefaultMempoolConfig returns a default configuration for the Tendermint mempool
 func DefaultMempoolConfig() *MempoolConfig {
 	return &MempoolConfig{
+		Version:   MempoolV0,
 		Recheck:   true,
 		Broadcast: true,
 		WalPath:   "",
 		// Each signature verification takes .5ms, Size reduced until we implement
 		// ABCI Recheck
-		Size:        5000,
-		MaxTxsBytes: 1024 * 1024 * 1024, // 1GB
-		CacheSize:   10000,
-		MaxTxBytes:  1024 * 1024, // 1MB
+		Size:         5000,
+		MaxTxsBytes:  1024 * 1024 * 1024, // 1GB
+		CacheSize:    10000,
+		MaxTxBytes:   1024 * 1024, // 1MB
+		TTLDuration:  0 * time.Second,
+		TTLNumBlocks: 0,
 	}
 }
 

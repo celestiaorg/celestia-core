@@ -67,7 +67,6 @@ func (cli *grpcClient) OnStart() error {
 			cli.mtx.Lock()
 			defer cli.mtx.Unlock()
 
-			reqres.SetDone()
 			reqres.Done()
 
 			// Notify client listener if set
@@ -76,9 +75,7 @@ func (cli *grpcClient) OnStart() error {
 			}
 
 			// Notify reqRes listener if set
-			if cb := reqres.GetCallback(); cb != nil {
-				cb(reqres.Response)
-			}
+			reqres.InvokeCallback()
 		}
 		for reqres := range cli.chReqRes {
 			if reqres != nil {
@@ -91,6 +88,7 @@ func (cli *grpcClient) OnStart() error {
 
 RETRY_LOOP:
 	for {
+		//nolint:staticcheck // SA1019 Existing use of deprecated but supported dial option.
 		conn, err := grpc.Dial(cli.addr, grpc.WithInsecure(), grpc.WithContextDialer(dialerFunc))
 		if err != nil {
 			if cli.mustConnect {

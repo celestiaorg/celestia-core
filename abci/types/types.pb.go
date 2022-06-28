@@ -2155,6 +2155,11 @@ type ResponseCheckTx struct {
 	GasUsed   int64   `protobuf:"varint,6,opt,name=gas_used,proto3" json:"gas_used,omitempty"`
 	Events    []Event `protobuf:"bytes,7,rep,name=events,proto3" json:"events,omitempty"`
 	Codespace string  `protobuf:"bytes,8,opt,name=codespace,proto3" json:"codespace,omitempty"`
+	Sender    string  `protobuf:"bytes,9,opt,name=sender,proto3" json:"sender,omitempty"`
+	Priority  int64   `protobuf:"varint,10,opt,name=priority,proto3" json:"priority,omitempty"`
+	// mempool_error is set by Tendermint.
+	// ABCI applictions creating a ResponseCheckTX should not set mempool_error.
+	MempoolError string `protobuf:"bytes,11,opt,name=mempool_error,json=mempoolError,proto3" json:"mempool_error,omitempty"`
 }
 
 func (m *ResponseCheckTx) Reset()         { *m = ResponseCheckTx{} }
@@ -2242,6 +2247,27 @@ func (m *ResponseCheckTx) GetEvents() []Event {
 func (m *ResponseCheckTx) GetCodespace() string {
 	if m != nil {
 		return m.Codespace
+	}
+	return ""
+}
+
+func (m *ResponseCheckTx) GetSender() string {
+	if m != nil {
+		return m.Sender
+	}
+	return ""
+}
+
+func (m *ResponseCheckTx) GetPriority() int64 {
+	if m != nil {
+		return m.Priority
+	}
+	return 0
+}
+
+func (m *ResponseCheckTx) GetMempoolError() string {
+	if m != nil {
+		return m.MempoolError
 	}
 	return ""
 }
@@ -6195,6 +6221,25 @@ func (m *ResponseCheckTx) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.MempoolError) > 0 {
+		i -= len(m.MempoolError)
+		copy(dAtA[i:], m.MempoolError)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.MempoolError)))
+		i--
+		dAtA[i] = 0x5a
+	}
+	if m.Priority != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.Priority))
+		i--
+		dAtA[i] = 0x50
+	}
+	if len(m.Sender) > 0 {
+		i -= len(m.Sender)
+		copy(dAtA[i:], m.Sender)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.Sender)))
+		i--
+		dAtA[i] = 0x4a
+	}
 	if len(m.Codespace) > 0 {
 		i -= len(m.Codespace)
 		copy(dAtA[i:], m.Codespace)
@@ -8105,6 +8150,17 @@ func (m *ResponseCheckTx) Size() (n int) {
 		}
 	}
 	l = len(m.Codespace)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	l = len(m.Sender)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	if m.Priority != 0 {
+		n += 1 + sovTypes(uint64(m.Priority))
+	}
+	l = len(m.MempoolError)
 	if l > 0 {
 		n += 1 + l + sovTypes(uint64(l))
 	}
@@ -13045,6 +13101,89 @@ func (m *ResponseCheckTx) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Codespace = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Sender", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Sender = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Priority", wireType)
+			}
+			m.Priority = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Priority |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MempoolError", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MempoolError = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

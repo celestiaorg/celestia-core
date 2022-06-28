@@ -19,10 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v2
-        with:
-          # Full git history is needed to get a proper list of changed files within `super-linter`
-          fetch-depth: 0
+        uses: actions/checkout@v3
       - name: Lint Code Base
         uses: docker://github/super-linter:v4
         env:
@@ -31,8 +28,7 @@ jobs:
           DEFAULT_BRANCH: v0.34.x-celestia
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALIDATE_MD: true
-          MARKDOWN_CONFIG_FILE: .markdownlint.yml
-          VALIDATE_OPAENAPI: true
+          VALIDATE_OPENAPI: true
           VALIDATE_YAML: true
 
       - name: Check that all ADRs are linked in README

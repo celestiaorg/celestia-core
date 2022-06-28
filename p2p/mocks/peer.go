@@ -329,3 +329,18 @@ func (_m *Peer) TrySend(_a0 byte, _a1 []byte) bool {
 
 	return r0
 }
+
+type NewPeerT interface {
+	mock.TestingT
+	Cleanup(func())
+}
+
+// NewPeer creates a new instance of Peer. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
+func NewPeer(t NewPeerT) *Peer {
+	mock := &Peer{}
+	mock.Mock.Test(t)
+
+	t.Cleanup(func() { mock.AssertExpectations(t) })
+
+	return mock
+}
