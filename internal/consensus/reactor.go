@@ -35,9 +35,9 @@ var (
 			Descriptor: &p2p.ChannelDescriptor{
 				ID:                  byte(StateChannel),
 				Priority:            8,
-				SendQueueCapacity:   64,
+				SendQueueCapacity:   10064,
 				RecvMessageCapacity: maxMsgSize,
-				RecvBufferCapacity:  128,
+				RecvBufferCapacity:  10028,
 				MaxSendBytes:        12000,
 			},
 		},
@@ -49,8 +49,8 @@ var (
 				// until next height or round.
 				ID:                  byte(DataChannel),
 				Priority:            12,
-				SendQueueCapacity:   64,
-				RecvBufferCapacity:  512,
+				SendQueueCapacity:   10064,
+				RecvBufferCapacity:  10512,
 				RecvMessageCapacity: maxMsgSize,
 				MaxSendBytes:        40000,
 			},
@@ -60,10 +60,10 @@ var (
 			Descriptor: &p2p.ChannelDescriptor{
 				ID:                  byte(VoteChannel),
 				Priority:            10,
-				SendQueueCapacity:   64,
-				RecvBufferCapacity:  128,
+				SendQueueCapacity:   10064,
+				RecvBufferCapacity:  10028,
 				RecvMessageCapacity: maxMsgSize,
-				MaxSendBytes:        150,
+				MaxSendBytes:        1000,
 			},
 		},
 		VoteSetBitsChannel: {
@@ -71,8 +71,8 @@ var (
 			Descriptor: &p2p.ChannelDescriptor{
 				ID:                  byte(VoteSetBitsChannel),
 				Priority:            5,
-				SendQueueCapacity:   8,
-				RecvBufferCapacity:  128,
+				SendQueueCapacity:   1008,
+				RecvBufferCapacity:  10028,
 				RecvMessageCapacity: maxMsgSize,
 				MaxSendBytes:        50,
 			},
