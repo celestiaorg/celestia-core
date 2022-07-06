@@ -29,9 +29,12 @@ Note the context/background should be written in the present tense.
 
 To start a new ADR, you can use this template: [adr-template.md](./adr-template.md)
 
-### Table of Contents:
+## Table of Contents
 
 - [ADR 001: Erasure Coding Block Propagation](./adr-001-block-propagation.md)
 - [ADR 002: Sampling erasure coded Block chunks](./adr-002-ipld-da-sampling.md)
 - [ADR 003: Retrieving Application messages](./adr-003-application-data-retrieval.md)
 - [ADR 004: Data Availability Sampling Light Client](./adr-004-mvp-light-client.md)
+- [ADR 005: Decouple the PartSetHeader from the BlockID](./adr-005-decouple-blockid-and-partsetheader.md)
+- [ADR 006: Consensus Block Gossiping with Rows](./adr-006-row-propoagation.md)
+- [ADR 007: From Ukraine, with Love](./adr-007-minimal-changes-to-tendermint.md)

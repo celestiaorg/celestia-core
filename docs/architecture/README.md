@@ -86,7 +86,6 @@ Note the context/background should be written in the present tense.
 - [ADR-029: Check-Tx-Consensus](./adr-029-check-tx-consensus.md)
 - [ADR-058: Event-Hashing](./adr-058-event-hashing.md)
 
-
 ### Proposed
 
 - [ADR-007: Trust-Metric-Usage](./adr-007-trust-metric-usage.md)
@@ -106,5 +105,6 @@ Note the context/background should be written in the present tense.
 - [ADR-072: Restore Requests for Comments](./adr-072-request-for-comments.md)
 
 ### Draft
+
 - [ADR-036: Empty-Blocks-ABCI](./adr-036-empty-blocks-abci.md)
 - [ADR-040: Blockchain-Reactor-Refactor](./adr-040-blockchain-reactor-refactor.md)
