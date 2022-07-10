@@ -60,3 +60,4 @@ To start a new ADR, you can use this template: [adr-template.md](./adr-template.
 - [ADR 005: Decouple BlockID and PartSetHeader](./adr-005-decouple-blockid-and-partsetheader.md)
 - [ADR 006: Row Propagation](./adr-006-row-propagation.md)
 - [ADR 007: Minimal Changes to Tendermint](./adr-007-minimal-changes-to-tendermint.md)
+- [ADR 008: Updating to Tendermint v0.35.x](./adr-008-updating-to-tendermint-v0.35.x.md)
