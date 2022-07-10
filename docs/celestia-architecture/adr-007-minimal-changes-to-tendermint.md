@@ -30,7 +30,7 @@ tendermint node in a separate process, via celestia-node, which communicates wit
 availability sampling logic, including all Celestia-specific networking logic not already provided by tendermint, is
 moved into celestia node:
 
-![core node relation](./img/core-node-relation.png)
+![core node relation](./img/core-node-relation.jpg)
 
 The detailed design of celestia-node will be defined in the repository itself.
 

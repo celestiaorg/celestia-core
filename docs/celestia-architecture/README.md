@@ -12,9 +12,9 @@ Hence, we do not provide any extensive documentation here.
 
 Instead of keeping a copy of the Tendermint documentation, we refer to the existing extensive and maintained documentation and specification:
 
-- https://docs.tendermint.com/
-- https://github.com/tendermint/tendermint/tree/master/docs/
-- https://github.com/tendermint/spec
+- <https://docs.tendermint.com/>
+- <https://github.com/tendermint/tendermint/tree/master/docs/>
+- <https://github.com/tendermint/spec>
 
 Reading these will give you a lot of background and context on Tendermint which will also help you understand how celestia-core and [celestia-app](https://github.com/celestiaorg/celestia-app) interact with each other.
 
@@ -22,9 +22,9 @@ Reading these will give you a lot of background and context on Tendermint which 
 
 As mentioned above, celestia-core aims to be more focused on the Celestia use-case than vanilla Tendermint.
 Moving forward we might provide a clear overview on the changes we incorporated.
-For now, we refer to the Celestia specific [ADRs](./adr) in this repository as well as to the Celestia specification:
+For now, we refer to the Celestia specific ADRs in this repository as well as to the Celestia specification:
 
-- [celestia-specs](https://github.com/celestiaorg/celestia-specs)****
+- [celestia-specs](https://github.com/celestiaorg/celestia-specs)
 
 ## Architecture Decision Records (ADR)
 
@@ -57,6 +57,7 @@ To start a new ADR, you can use this template: [adr-template.md](./adr-template.
 - [ADR 002: Sampling erasure coded Block chunks](./adr-002-ipld-da-sampling.md)
 - [ADR 003: Retrieving Application messages](./adr-003-application-data-retrieval.md)
 - [ADR 004: Data Availability Sampling Light Client](./adr-004-mvp-light-client.md)
-- [ADR 005: Decouple BlockID and PartSetHeader](./adr-005-decouple-blockid-and-partsetheader)
-- [ADR 006: Row Propagation](./adr-006-row-propagation)
-- [ADR 007: Minimal Changes to Tendermint](./adr-007-minimal-changes-to-tendermint)
+- [ADR 005: Decouple BlockID and PartSetHeader](./adr-005-decouple-blockid-and-partsetheader.md)
+- [ADR 006: Row Propagation](./adr-006-row-propagation.md)
+- [ADR 007: Minimal Changes to Tendermint](./adr-007-minimal-changes-to-tendermint.md)
+- [ADR 008: Updating to Tendermint v0.35.x](./adr-008-updating-to-tendermint-v0.35.x.md)
