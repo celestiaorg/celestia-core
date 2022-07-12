@@ -265,8 +265,10 @@ func (txmp *TxMempool) CheckTx(
 	// transaction is already present in the cache, i.e. false is returned, then we
 	// check if we've seen this transaction and error if we have.
 	if !txmp.cache.Push(tx) {
-		txmp.txStore.GetOrSetPeerByTxHash(txHash, txInfo.SenderID)
-		return types.ErrTxInCache
+		if _, loaded := txmp.txStore.GetOrSetPeerByTxHash(txHash, txInfo.SenderID); loaded {
+			return types.ErrTxInCache
+		}
+		return nil
 	}
 
 	if ctx == nil {

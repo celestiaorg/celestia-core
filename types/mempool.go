@@ -6,8 +6,8 @@ import (
 	"fmt"
 )
 
-// ErrTxInCache is returned to the client if we saw tx earlier
-var ErrTxInCache = errors.New("tx already exists in cache")
+// ErrTxInCache is returned to the client if we saw tx earlier from the same peer
+var ErrTxInCache = errors.New("tx seen from the same peer")
 
 // TxKey is the fixed length array key used as an index.
 type TxKey [sha256.Size]byte
