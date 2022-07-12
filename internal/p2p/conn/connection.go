@@ -39,7 +39,7 @@ const (
 	// TODO: remove values present in config
 	defaultFlushThrottle = 100 * time.Millisecond
 
-	defaultSendQueueCapacity   = 1
+	defaultSendQueueCapacity   = 1000
 	defaultRecvBufferCapacity  = 4096
 	defaultRecvMessageCapacity = 22020096      // 21MB
 	defaultSendRate            = int64(512000) // 500KB/s
@@ -831,7 +831,7 @@ func (ch *Channel) loadSendQueueSize() (size int) {
 // Goroutine-safe
 // Use only as a heuristic.
 func (ch *Channel) canSend() bool {
-	return ch.loadSendQueueSize() < defaultSendQueueCapacity
+	return ch.loadSendQueueSize() < ch.desc.SendQueueCapacity
 }
 
 // Returns true if any PacketMsgs are pending to be sent.

@@ -112,12 +112,12 @@ func TestWDRRQueue_EqualWeights(t *testing.T) {
 
 func TestWDRRQueue_DecreasingWeights(t *testing.T) {
 	chDescs := []ChannelDescriptor{
-		{ID: 0x01, Priority: 18, MaxSendBytes: 4},
-		{ID: 0x02, Priority: 10, MaxSendBytes: 4},
-		{ID: 0x03, Priority: 2, MaxSendBytes: 4},
-		{ID: 0x04, Priority: 1, MaxSendBytes: 4},
-		{ID: 0x05, Priority: 1, MaxSendBytes: 4},
-		{ID: 0x06, Priority: 1, MaxSendBytes: 4},
+		{ID: 0x01, Priority: 18, MaxSendBytes: 4, SendQueueCapacity: 1},
+		{ID: 0x02, Priority: 10, MaxSendBytes: 4, SendQueueCapacity: 1},
+		{ID: 0x03, Priority: 2, MaxSendBytes: 4, SendQueueCapacity: 1},
+		{ID: 0x04, Priority: 1, MaxSendBytes: 4, SendQueueCapacity: 1},
+		{ID: 0x05, Priority: 1, MaxSendBytes: 4, SendQueueCapacity: 1},
+		{ID: 0x06, Priority: 1, MaxSendBytes: 4, SendQueueCapacity: 1},
 	}
 
 	peerQueue := newWDRRScheduler(log.NewNopLogger(), NopMetrics(), chDescs, 0, 0, 500)
@@ -128,7 +128,7 @@ func TestWDRRQueue_DecreasingWeights(t *testing.T) {
 	successRates := make(map[ChannelID]float64)
 
 	for _, chDesc := range chDescs {
-		total := 1000
+		total := 100000
 		totalMsgs[ChannelID(chDesc.ID)] = total
 
 		go func(cID ChannelID, n int) {
@@ -144,7 +144,7 @@ func TestWDRRQueue_DecreasingWeights(t *testing.T) {
 	closer := tmsync.NewCloser()
 
 	go func() {
-		timout := 20 * time.Second
+		timout := time.Second
 		ticker := time.NewTicker(timout)
 		defer ticker.Stop()
 
