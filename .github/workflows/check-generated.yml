@@ -26,8 +26,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          readonly MOCKERY=2.12.3  # N.B. no leading "v"
-          curl -sL "https://github.com/vektra/mockery/releases/download/v${MOCKERY}/mockery_${MOCKERY}_Linux_x86_64.tar.gz" | tar -C /usr/local/bin -xzf -
+          go install github.com/vektra/mockery/v2@latest
           make mockery 2>/dev/null
 
           if ! git diff --stat --exit-code ; then
@@ -60,7 +59,7 @@ jobs:
           export PATH="${PATH}:${tools}/bin"
           export GOBIN="${tools}/bin"
 
-          go install github.com/bufbuild/buf/cmd/buf
+          go install github.com/bufbuild/buf/cmd/buf@latest
           go install github.com/gogo/protobuf/protoc-gen-gogofaster@latest
 
           make proto-gen
