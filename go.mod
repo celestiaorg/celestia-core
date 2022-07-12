@@ -21,7 +21,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/gtank/merlin v0.1.1
 	github.com/lib/pq v1.10.6
-	github.com/libp2p/go-buffer-pool v0.0.2
+	github.com/libp2p/go-buffer-pool v0.1.0
 	github.com/minio/highwayhash v1.0.2
 	github.com/ory/dockertest v3.3.5+incompatible
 	github.com/pkg/errors v0.9.1
@@ -32,8 +32,8 @@ require (
 	github.com/snikch/goodman v0.0.0-20171125024755-10e37e294daa
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/viper v1.12.0
-	github.com/stretchr/testify v1.7.4
-	github.com/tendermint/tm-db v0.6.4
+	github.com/stretchr/testify v1.8.0
+	github.com/tendermint/tm-db v0.6.6
 	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e
 	golang.org/x/net v0.0.0-20220617184016-355a448f1bc9
 	google.golang.org/grpc v1.47.0
@@ -44,7 +44,7 @@ require (
 	github.com/bufbuild/buf v1.6.0
 	github.com/golangci/golangci-lint v1.46.2
 	github.com/syndtr/goleveldb v1.0.1-0.20200815110645-5c35d600f0ca
-	github.com/vektra/mockery/v2 v2.13.1
+	github.com/vektra/mockery/v2 v2.14.0
 )
 
 require (
