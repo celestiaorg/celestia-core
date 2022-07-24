@@ -11,8 +11,6 @@ jobs:
     timeout-minutes: 4
     steps:
       - uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
       - name: lint
         run: make proto-lint
   proto-breakage:
@@ -20,7 +18,5 @@ jobs:
     timeout-minutes: 4
     steps:
       - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
       - name: check-breakage
         run: make proto-check-breaking-ci

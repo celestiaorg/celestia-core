@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-check-mocks:
+  check-mocks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-go@v3
