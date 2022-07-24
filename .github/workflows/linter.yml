@@ -2,12 +2,13 @@ name: Linter
 on:
   push:
     branches:
-      - v[0-9]+.[0-9]+.x-celestia
+      - master
     paths:
       - "**.md"
       - "**.yml"
       - "**.yaml"
   pull_request:
+  branches: [master]
     paths:
       - "**.md"
       - "**.yml"
@@ -25,7 +26,7 @@ jobs:
         env:
           LINTER_RULES_PATH: .
           VALIDATE_ALL_CODEBASE: true
-          DEFAULT_BRANCH: v0.34.x-celestia
+          DEFAULT_BRANCH: master
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALIDATE_MD: true
           VALIDATE_OPENAPI: true

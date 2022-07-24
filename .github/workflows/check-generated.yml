@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  check-mocks:
+check-mocks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-go@v3
@@ -25,10 +25,9 @@ jobs:
       - name: "Check generated mocks"
         run: |
           set -euo pipefail
-
-          go install github.com/vektra/mockery/v2@latest
+          readonly MOCKERY=2.12.3  # N.B. no leading "v"
+          curl -sL "https://github.com/vektra/mockery/releases/download/v${MOCKERY}/mockery_${MOCKERY}_Linux_x86_64.tar.gz" | tar -C /usr/local/bin -xzf -
           make mockery 2>/dev/null
-
           if ! git diff --stat --exit-code ; then
             echo ">> ERROR:"
             echo ">>"
