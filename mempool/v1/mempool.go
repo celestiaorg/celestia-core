@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"runtime"
 	"sort"
@@ -410,7 +411,13 @@ func (txmp *TxMempool) Update(
 		}
 
 		// Regardless of success, remove the transaction from the mempool.
-		_ = txmp.removeTxByKey(tx.Key())
+		if err := txmp.removeTxByKey(tx.Key()); err != nil {
+			if originalHash, _, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
+				var originalKey [sha256.Size]byte
+				copy(originalKey[:], originalHash)
+				txmp.removeTxByKey(types.TxKey(originalKey))
+			}
+		}
 	}
 
 	txmp.purgeExpiredTxs(blockHeight)
