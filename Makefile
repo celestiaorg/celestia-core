@@ -78,29 +78,46 @@ install:
 ###                                Protobuf                                 ###
 ###############################################################################
 
-proto-all: proto-lint proto-check-breaking
-.PHONY: proto-all
+check-proto-deps:
+ifeq (,$(shell which protoc-gen-gogofaster))
+	@go install github.com/gogo/protobuf/protoc-gen-gogofaster@latest
+endif
+.PHONY: check-proto-deps
 
-proto-gen:
+check-proto-format-deps:
+ifeq (,$(shell which clang-format))
+	$(error "clang-format is required for Protobuf formatting. See instructions for your platform on how to install it.")
+endif
+.PHONY: check-proto-format-deps
+
+proto-gen: check-proto-deps
 	@echo "Generating Protobuf files"
-	@$(DOCKER_PROTO_BUILDER) buf generate --template=./buf.gen.yaml --config ./buf.yaml
+	@go run github.com/bufbuild/buf/cmd/buf generate
+	@mv ./proto/tendermint/abci/types.pb.go ./abci/types/
 .PHONY: proto-gen
 
-proto-lint:
-	@$(DOCKER_PROTO_BUILDER) buf lint --error-format=json --config ./buf.yaml
+# These targets are provided for convenience and are intended for local
+# execution only.
+proto-lint: check-proto-deps
+	@echo "Linting Protobuf files"
+	@go run github.com/bufbuild/buf/cmd/buf lint
 .PHONY: proto-lint
 
-proto-format:
+proto-format: check-proto-format-deps
 	@echo "Formatting Protobuf files"
-	@$(DOCKER_PROTO_BUILDER) find . -name '*.proto' -path "./proto/*" -exec clang-format -i {} \;
+	@find . -name '*.proto' -path "./proto/*" -exec clang-format -i {} \;
 .PHONY: proto-format
 
-proto-check-breaking:
-	@$(DOCKER_PROTO_BUILDER) buf breaking --against .git --config ./buf.yaml
+proto-check-breaking: check-proto-deps
+	@echo "Checking for breaking changes in Protobuf files against local branch"
+	@echo "Note: This is only useful if your changes have not yet been committed."
+	@echo "      Otherwise read up on buf's \"breaking\" command usage:"
+	@echo "      https://docs.buf.build/breaking/usage"
+	@go run github.com/bufbuild/buf/cmd/buf breaking --against ".git"
 .PHONY: proto-check-breaking
 
 proto-check-breaking-ci:
-	@$(DOCKER_PROTO_BUILDER) buf breaking --against $(HTTPS_GIT) --config ./buf.yaml
+	@go run github.com/bufbuild/buf/cmd/buf breaking --against $(HTTPS_GIT)#branch=v0.34.x-celestia
 .PHONY: proto-check-breaking-ci
 
 ###############################################################################
@@ -197,12 +214,12 @@ DESTINATION = ./index.html.md
 ###############################################################################
 
 build-docs:
-	cd docs && \
-	while read p; do \
-		(git checkout $${p} . && npm install && VUEPRESS_BASE="/$${p}/" npm run build) ; \
-		mkdir -p ~/output/$${p} ; \
-		cp -r .vuepress/dist/* ~/output/$${p}/ ; \
-		cp ~/output/$${p}/index.html ~/output ; \
+	@cd docs && \
+	while read -r branch path_prefix; do \
+		(git checkout $${branch} && npm ci && VUEPRESS_BASE="/$${path_prefix}/" npm run build) ; \
+		mkdir -p ~/output/$${path_prefix} ; \
+		cp -r .vuepress/dist/* ~/output/$${path_prefix}/ ; \
+		cp ~/output/$${path_prefix}/index.html ~/output ; \
 	done < versions ;
 .PHONY: build-docs
 

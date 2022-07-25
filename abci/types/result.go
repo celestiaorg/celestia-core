@@ -57,7 +57,7 @@ func (r ResponseProcessProposal) IsErr() bool {
 }
 
 //---------------------------------------------------------------------------
-// override JSON marshalling so we emit defaults (ie. disable omitempty)
+// override JSON marshaling so we emit defaults (ie. disable omitempty)
 
 var (
 	jsonpbMarshaller = jsonpb.Marshaler{
