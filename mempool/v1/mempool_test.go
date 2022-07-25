@@ -2,6 +2,7 @@ package v1
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -651,4 +652,31 @@ func TestTxMempool_CheckTxPostCheckError(t *testing.T) {
 			require.NoError(t, txmp.CheckTx(tx, callback, mempool.TxInfo{SenderID: 0}))
 		})
 	}
+}
+
+func TestMalleatedTxRemoval(t *testing.T) {
+	txmp := setup(t, 500)
+	originalTx := []byte{1, 2, 3, 4}
+	malleatedTx := []byte{1, 2}
+	originalHash := sha256.Sum256(originalTx)
+
+	// create the wrapped child transaction
+	wTx, err := types.WrapMalleatedTx(originalHash[:], malleatedTx)
+	require.NoError(t, err)
+
+	// add the parent transaction to the mempool
+	err = txmp.CheckTx(originalTx, nil, mempool.TxInfo{})
+	require.NoError(t, err)
+
+	// remove the parent from the mempool using the wrapped child tx
+	err = txmp.Update(1, []types.Tx{wTx}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+	require.NoError(t, err)
+}
+
+func abciResponses(n int, code uint32) []*abci.ResponseDeliverTx {
+	responses := make([]*abci.ResponseDeliverTx, 0, n)
+	for i := 0; i < n; i++ {
+		responses = append(responses, &abci.ResponseDeliverTx{Code: code})
+	}
+	return responses
 }
