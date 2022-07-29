@@ -224,6 +224,7 @@ message TxProof {
 message MalleatedTx {
   bytes original_tx_hash = 1;
   bytes tx               = 2;
+  uint32 share_index     = 3;
 }
 
 // Proof represents proof of a namespace.ID in an NMT.

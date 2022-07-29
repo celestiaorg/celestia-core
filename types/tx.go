@@ -240,10 +240,11 @@ func UnwrapMalleatedTx(tx Tx) (originalHash []byte, unwrapped Tx, isMalleated bo
 // WrapMalleatedTx creates a wrapped Tx that includes the original transaction's hash
 // so that it can be easily removed from the mempool. note: must be unwrapped to
 // be a viable sdk.Tx
-func WrapMalleatedTx(originalHash []byte, malleated Tx) (Tx, error) {
+func WrapMalleatedTx(originalHash []byte, shareIndex uint32, malleated Tx) (Tx, error) {
 	wTx := tmproto.MalleatedTx{
 		OriginalTxHash: originalHash,
 		Tx:             malleated,
+		ShareIndex:     shareIndex,
 	}
 	return proto.Marshal(&wTx)
 }

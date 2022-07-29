@@ -85,7 +85,7 @@ func TestUnwrapMalleatedTx(t *testing.T) {
 	require.False(t, ok)
 
 	pHash := sha256.Sum256(rawBlock)
-	MalleatedTx, err := WrapMalleatedTx(pHash[:], rawBlock)
+	MalleatedTx, err := WrapMalleatedTx(pHash[:], 0, rawBlock)
 	require.NoError(t, err)
 
 	// finally, ensure that the unwrapped bytes are identical to the input
