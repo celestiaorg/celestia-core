@@ -31,6 +31,7 @@ import (
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
 	sm "github.com/tendermint/tendermint/state"
+	"github.com/tendermint/tendermint/state/test/factory"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -990,7 +991,12 @@ func makeBlock(state sm.State, lastBlock *types.Block, lastBlockMeta *types.Bloc
 			lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()})
 	}
 
-	return state.MakeBlock(height, []types.Tx{}, nil, nil, lastCommit, state.Validators.GetProposer().Address)
+	return state.MakeBlock(
+		height,
+		factory.MakeDataFromTxs([]types.Tx{}),
+		lastCommit,
+		state.Validators.GetProposer().Address,
+	)
 }
 
 type badApp struct {

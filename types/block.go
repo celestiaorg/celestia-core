@@ -321,18 +321,14 @@ func MaxDataBytesNoEvidence(maxBytes int64, valsCount int) int64 {
 // It populates the same set of fields validated by ValidateBasic.
 func MakeBlock(
 	height int64,
-	txs []Tx, evidence []Evidence, messages []Message,
+	data Data,
 	lastCommit *Commit) *Block {
 	block := &Block{
 		Header: Header{
 			Version: tmversion.Consensus{Block: version.BlockProtocol, App: 0},
 			Height:  height,
 		},
-		Data: Data{
-			Txs:      txs,
-			Evidence: EvidenceData{Evidence: evidence},
-			Messages: Messages{MessagesList: messages},
-		},
+		Data:       data,
 		LastCommit: lastCommit,
 	}
 	block.fillHeader()
@@ -1167,7 +1163,7 @@ type Messages struct {
 
 func (msgs Messages) SplitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
-	msgs.sortMessages()
+	msgs.SortMessages()
 	for _, m := range msgs.MessagesList {
 		rawData, err := m.MarshalDelimited()
 		if err != nil {
@@ -1178,7 +1174,7 @@ func (msgs Messages) SplitIntoShares() NamespacedShares {
 	return shares
 }
 
-func (msgs *Messages) sortMessages() {
+func (msgs *Messages) SortMessages() {
 	sort.Slice(msgs.MessagesList, func(i, j int) bool {
 		return bytes.Compare(msgs.MessagesList[i].NamespaceID, msgs.MessagesList[j].NamespaceID) < 0
 	})

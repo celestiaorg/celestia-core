@@ -51,17 +51,25 @@ func TestUnwrapMalleatedTx(t *testing.T) {
 	_, _, ok := UnwrapMalleatedTx(tx)
 	require.False(t, ok)
 
+	data := Data{
+		Txs: []Tx{tx},
+		Evidence: EvidenceData{
+			Evidence: nil,
+		},
+		Messages: Messages{
+			MessagesList: []Message{
+				{
+					NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
+					Data:        []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				},
+			},
+		},
+	}
+
 	// create a proto message that used to be decoded when it shouldn't have
 	randomBlock := MakeBlock(
 		1,
-		[]Tx{tx},
-		nil,
-		[]Message{
-			{
-				NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
-				Data:        []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
-			},
-		},
+		data,
 		&Commit{},
 	)
 

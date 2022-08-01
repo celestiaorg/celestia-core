@@ -78,3 +78,15 @@ func MakeVote(
 
 	return vote, nil
 }
+
+func makeData(txs []Tx, evd []Evidence, msgs []Message) Data {
+	return Data{
+		Txs: txs,
+		Evidence: EvidenceData{
+			Evidence: evd,
+		},
+		Messages: Messages{
+			MessagesList: msgs,
+		},
+	}
+}

@@ -3,7 +3,6 @@ package prove
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"math/rand"
 	"sort"
 	"strings"
@@ -11,28 +10,67 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	tmrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/pkg/consts"
 	"github.com/tendermint/tendermint/pkg/da"
 	"github.com/tendermint/tendermint/types"
 )
 
 func TestTxInclusion(t *testing.T) {
-	txCount := 100
 	typicalBlockData := types.Data{
-		Txs:      generateRandomlySizedContiguousShares(txCount, 200),
-		Messages: generateRandomlySizedMessages(10, 150),
+		Txs:                generateRandomlySizedContiguousShares(100, 500),
+		Messages:           generateRandomlySizedMessages(40, 16000),
+		OriginalSquareSize: 64,
+	}
+	lotsOfTxsNoMessages := types.Data{
+		Txs:                generateRandomlySizedContiguousShares(1000, 500),
+		OriginalSquareSize: 64,
+	}
+	overlappingSquareSize := 16
+	overlappingRowsBlockData := types.Data{
+		Txs: types.ToTxs(
+			[][]byte{
+				tmrand.Bytes(consts.TxShareSize*overlappingSquareSize + 1),
+				tmrand.Bytes(10000),
+			},
+		),
+		OriginalSquareSize: uint64(overlappingSquareSize),
+	}
+	overlappingRowsBlockDataWithMessages := types.Data{
+		Txs: types.ToTxs(
+			[][]byte{
+				tmrand.Bytes(consts.TxShareSize*overlappingSquareSize + 1),
+				tmrand.Bytes(10000),
+			},
+		),
+		Messages:           generateRandomlySizedMessages(8, 400),
+		OriginalSquareSize: uint64(overlappingSquareSize),
 	}
 
-	// compute the data availability header
-	shares, _, err := typicalBlockData.ComputeShares(0)
-	require.NoError(t, err)
+	type test struct {
+		data types.Data
+	}
+	tests := []test{
+		{
+			typicalBlockData,
+		},
+		{
+			lotsOfTxsNoMessages,
+		},
+		{
+			overlappingRowsBlockData,
+		},
+		{
+			overlappingRowsBlockDataWithMessages,
+		},
+	}
 
-	squareSize := uint(math.Sqrt(float64(len(shares))))
-
-	for i := 0; i < txCount; i++ {
-		txProof, err := TxInclusion(consts.DefaultCodec(), typicalBlockData, squareSize, uint(i))
-		require.NoError(t, err)
-		assert.True(t, txProof.VerifyProof())
+	for _, tt := range tests {
+		for i := 0; i < len(tt.data.Txs); i++ {
+			txProof, err := TxInclusion(consts.DefaultCodec(), tt.data, uint64(i))
+			require.NoError(t, err)
+			assert.True(t, txProof.VerifyProof())
+		}
 	}
 }
 
@@ -66,13 +104,13 @@ func TestTxSharePosition(t *testing.T) {
 	}
 
 	type startEndPoints struct {
-		start, end uint
+		start, end uint64
 	}
 
 	for _, tt := range tests {
 		positions := make([]startEndPoints, len(tt.txs))
 		for i := 0; i < len(tt.txs); i++ {
-			start, end, err := txSharePosition(tt.txs, uint(i))
+			start, end, err := txSharePosition(tt.txs, uint64(i))
 			require.NoError(t, err)
 			positions[i] = startEndPoints{start: start, end: end}
 		}
@@ -97,37 +135,35 @@ func TestTxSharePosition(t *testing.T) {
 }
 
 func Test_genRowShares(t *testing.T) {
+	squareSize := uint64(16)
 	typicalBlockData := types.Data{
-		Txs:      generateRandomlySizedContiguousShares(120, 200),
-		Messages: generateRandomlySizedMessages(10, 1000),
+		Txs:                generateRandomlySizedContiguousShares(10, 200),
+		Messages:           generateRandomlySizedMessages(20, 1000),
+		OriginalSquareSize: squareSize,
 	}
 
-	// compute the data availability header
-	allShares, _, err := typicalBlockData.ComputeShares(0)
-	require.NoError(t, err)
-	rawShares := allShares.RawShares()
-
-	originalSquareSize := uint(math.Sqrt(float64(len(rawShares))))
-
-	eds, err := da.ExtendShares(uint64(originalSquareSize), rawShares)
-	require.NoError(t, err)
-
-	eds.ColRoots()
-
+	// note: we should be able to compute row shares from raw data
+	// this quickly tests this by computing the row shares before
+	// computing the shares in the normal way.
 	rowShares, err := genRowShares(
 		consts.DefaultCodec(),
 		typicalBlockData,
-		originalSquareSize,
 		0,
-		originalSquareSize-1,
+		squareSize,
 	)
 	require.NoError(t, err)
 
-	for i := uint(0); i < originalSquareSize; i++ {
-		row := eds.Row(i)
+	allShares, _, _ := typicalBlockData.ComputeShares(squareSize)
+	rawShares := allShares.RawShares()
+
+	eds, err := da.ExtendShares(squareSize, rawShares)
+	require.NoError(t, err)
+
+	for i := uint64(0); i < squareSize; i++ {
+		row := eds.Row(uint(i))
 		assert.Equal(t, row, rowShares[i], fmt.Sprintf("row %d", i))
 		// also test fetching individual rows
-		secondSet, err := genRowShares(consts.DefaultCodec(), typicalBlockData, originalSquareSize, i, i)
+		secondSet, err := genRowShares(consts.DefaultCodec(), typicalBlockData, i, i)
 		require.NoError(t, err)
 		assert.Equal(t, row, secondSet[0], fmt.Sprintf("row %d", i))
 	}
@@ -135,17 +171,18 @@ func Test_genRowShares(t *testing.T) {
 
 func Test_genOrigRowShares(t *testing.T) {
 	txCount := 100
+	squareSize := uint64(16)
 	typicalBlockData := types.Data{
-		Txs:      generateRandomlySizedContiguousShares(txCount, 200),
-		Messages: generateRandomlySizedMessages(10, 1500),
+		Txs:                generateRandomlySizedContiguousShares(txCount, 200),
+		Messages:           generateRandomlySizedMessages(10, 1500),
+		OriginalSquareSize: squareSize,
 	}
 
-	// compute the data availability header
-	allShares, _, err := typicalBlockData.ComputeShares(0)
+	allShares, _, err := typicalBlockData.ComputeShares(squareSize)
 	require.NoError(t, err)
 	rawShares := allShares.RawShares()
 
-	genShares := genOrigRowShares(typicalBlockData, 8, 0, 7)
+	genShares := genOrigRowShares(typicalBlockData, 0, 15)
 
 	require.Equal(t, len(allShares), len(genShares))
 	assert.Equal(t, rawShares, genShares)
@@ -196,7 +233,9 @@ func generateRandomlySizedMessages(count, maxMsgSize int) types.Messages {
 		msgs = nil
 	}
 
-	return types.Messages{MessagesList: msgs}
+	messages := types.Messages{MessagesList: msgs}
+	messages.SortMessages()
+	return messages
 }
 
 func generateRandomMessage(size int) types.Message {

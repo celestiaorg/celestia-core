@@ -20,6 +20,7 @@ import (
 	"github.com/tendermint/tendermint/proxy"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/store"
+	"github.com/tendermint/tendermint/test/factory"
 	"github.com/tendermint/tendermint/types"
 	tmtime "github.com/tendermint/tendermint/types/time"
 )
@@ -289,7 +290,12 @@ func makeTxs(height int64) (txs []types.Tx) {
 }
 
 func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Block {
-	block, _ := state.MakeBlock(height, makeTxs(height), nil, nil, lastCommit, state.Validators.GetProposer().Address)
+	block, _ := state.MakeBlock(
+		height,
+		factory.MakeData(makeTxs(height), nil, nil),
+		lastCommit,
+		state.Validators.GetProposer().Address,
+	)
 	return block
 }
 

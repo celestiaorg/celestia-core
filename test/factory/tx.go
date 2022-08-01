@@ -14,3 +14,15 @@ func MakeTxs(height int64, num int) (txs []types.Tx) {
 func MakeTenTxs(height int64) (txs []types.Tx) {
 	return MakeTxs(height, 10)
 }
+
+func MakeData(txs []types.Tx, evd []types.Evidence, msgs []types.Message) types.Data {
+	return types.Data{
+		Txs: txs,
+		Evidence: types.EvidenceData{
+			Evidence: evd,
+		},
+		Messages: types.Messages{
+			MessagesList: msgs,
+		},
+	}
+}
