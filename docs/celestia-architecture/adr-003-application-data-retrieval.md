@@ -29,7 +29,7 @@ An implementation can be found in [this repository](https://github.com/celestiao
 This ADR basically describes version of the [`GetWithProof`](https://github.com/celestiaorg/nmt/blob/ddcc72040149c115f83b2199eafabf3127ae12ac/nmt.go#L193-L196) of the NMT that leverages the fact that IPFS uses content addressing and that we have implemented an [IPLD plugin](https://github.com/celestiaorg/celestia-core/tree/37502aac69d755c189df37642b87327772f4ac2a/p2p/ipld) for an NMT.
 
 **Note**: The APIs defined here will be particularly relevant for Optimistic Rollup (full) nodes that want to download their Rollup's data (see [celestiaorg/optimint#48](https://github.com/celestiaorg/optimint/issues/48)).
-Another potential use-case of this API could be for so-called [light validator nodes](https://github.com/celestiaorg/celestia-specs/blob/master/src/specs/node_types.md#node-type-definitions) that want to download and replay the state-relevant portion of the block data, i.e. transactions with [reserved namespace IDs](https://github.com/celestiaorg/celestia-specs/blob/master/specs/consensus.md#reserved-namespace-ids).
+Another potential use-case of this API could be for so-called [light validator nodes](https://github.com/celestiaorg/celestia-specs/blob/master/src/specs/node_types.md#node-type-definitions) that want to download and replay the state-relevant portion of the block data, i.e. transactions with [reserved namespace IDs](https://github.com/celestiaorg/celestia-specs/blob/master/src/specs/consensus.md#reserved-namespace-ids).
 
 ## Alternative Approaches
 
