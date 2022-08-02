@@ -208,5 +208,6 @@ func validateHash(h []byte) error {
 			len(h),
 		)
 	}
+
 	return nil
 }
