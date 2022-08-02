@@ -17,6 +17,8 @@ const (
 type Metrics struct {
 	// Time between BeginBlock and EndBlock.
 	BlockProcessingTime metrics.Histogram
+	// Count of times a block was rejected via ProcessProposal
+	ProcessProposalRejected metrics.Counter
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -35,12 +37,19 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Help:      "Time between BeginBlock and EndBlock in ms.",
 			Buckets:   stdprometheus.LinearBuckets(1, 10, 10),
 		}, labels).With(labelsAndValues...),
+		ProcessProposalRejected: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "process_proposal_rejected",
+			Help:      "Count of times a block was rejected via ProcessProposal",
+		}, labels).With(labelsAndValues...),
 	}
 }
 
 // NopMetrics returns no-op Metrics.
 func NopMetrics() *Metrics {
 	return &Metrics{
-		BlockProcessingTime: discard.NewHistogram(),
+		BlockProcessingTime:     discard.NewHistogram(),
+		ProcessProposalRejected: discard.NewCounter(),
 	}
 }

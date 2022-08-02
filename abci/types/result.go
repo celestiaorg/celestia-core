@@ -61,6 +61,11 @@ func (r ResponseProcessProposal) IsErr() bool {
 	return r.Result != ResponseProcessProposal_ACCEPT
 }
 
+// IsRejected returns true if this ResponseProcessProposal was rejected
+func (r ResponseProcessProposal) IsRejected() bool {
+	return r.Result == ResponseProcessProposal_REJECT
+}
+
 //---------------------------------------------------------------------------
 // override JSON marshaling so we emit defaults (ie. disable omitempty)
 

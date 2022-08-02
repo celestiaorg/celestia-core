@@ -188,6 +188,11 @@ func (blockExec *BlockExecutor) ProcessProposal(
 	}
 
 	resp, err := blockExec.proxyApp.ProcessProposalSync(ctx, req)
+
+	if resp.IsRejected() {
+		blockExec.metrics.ProcessProposalRejected.Add(1)
+	}
+
 	if err != nil {
 		return false, ErrInvalidBlock(err)
 	}
