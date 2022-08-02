@@ -17,7 +17,7 @@ A high-level, implementation-independent formalization of above mentioned sampli
 [_Fraud and Data Availability Proofs: Detecting Invalid Blocks in Light Clients_](https://fc21.ifca.ai/papers/83.pdf).
 
 For the time being, besides the academic paper, no other formalization or specification of the protocol exists.
-Currently, the Celestia specification itself only describes the [erasure coding](https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#erasure-coding)
+Currently, the Celestia specification itself only describes the [erasure coding](https://github.com/celestiaorg/celestia-specs/blob/master/src/specs/data_structures.md#erasure-coding)
 and how to construct the extended data square from the block data.
 
 This ADR:
@@ -263,7 +263,7 @@ Proposed
 
 [celestia-specs#126]: https://github.com/celestiaorg/celestia-specs/issues/126
 [celestia-specs#127]: https://github.com/celestiaorg/celestia-specs/pulls/127
-[Header]: https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#header
+[Header]: https://github.com/celestiaorg/celestia-specs/blob/master/src/specs/data_structures.md#header
 
 [go-ipfs documentation]: https://github.com/ipfs/go-ipfs/tree/master/docs/examples/go-ipfs-as-a-library#use-go-ipfs-as-a-library-to-spawn-a-node-and-add-a-file
 [ipld experiments]: https://github.com/celestia/ipld-plugin-experiments

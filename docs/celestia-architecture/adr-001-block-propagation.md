@@ -20,7 +20,7 @@ The proposed design is as follows.
 
 The proposal and vote types have a BlockID, this will be replaced with a header hash. The proposal will contain add fields.
 
-The current proposal will be updated to include required fields. The entirety of the message will be reworked at a later date. To see the extent of the needed changes you can visit the [spec repo](https://github.com/celestiaorg/celestia-specs/blob/master/specs/proto/consensus.proto#L19)
+The current proposal will be updated to include required fields. The entirety of the message will be reworked at a later date. To see the extent of the needed changes you can visit the [spec repo](https://github.com/celestiaorg/celestia-specs/blob/master/src/specs/proto/consensus.proto#L19)
 
 ```proto
 message Proposal {
@@ -67,7 +67,7 @@ message Vote {
 }
 ```
 
-See [specs](https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#vote) for more details on the vote.
+See [specs](https://github.com/celestiaorg/celestia-specs/blob/master/src/specs/data_structures.md#vote) for more details on the vote.
 
 ### Disk Storage
 
