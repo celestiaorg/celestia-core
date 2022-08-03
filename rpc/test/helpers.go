@@ -27,7 +27,7 @@ import (
 type Options struct {
 	suppressStdout bool
 	recreateConfig bool
-	specificConfig *cfg.Config
+	SpecificConfig *cfg.Config
 }
 
 var globalConfig *cfg.Config
