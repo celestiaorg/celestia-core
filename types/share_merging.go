@@ -235,6 +235,9 @@ func parseMsgShares(shares [][]byte) ([]Message, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := msg.ValidateBasic(); err != nil {
+			return nil, err
+		}
 		if msg.Data != nil {
 			msgs = append(msgs, msg)
 		}

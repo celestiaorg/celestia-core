@@ -23,6 +23,9 @@ func NewMessageShareWriter() *MessageShareWriter {
 
 // Write adds the delimited data to the underlying contiguous shares.
 func (msw *MessageShareWriter) Write(msg Message) {
+	if err := msg.ValidateBasic(); err != nil {
+		panic(err)
+	}
 	rawMsg, err := msg.MarshalDelimited()
 	if err != nil {
 		panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", msg))

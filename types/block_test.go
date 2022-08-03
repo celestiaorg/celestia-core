@@ -16,12 +16,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/celestiaorg/nmt/namespace"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/bytes"
 	tmrand "github.com/tendermint/tendermint/libs/rand"
+	"github.com/tendermint/tendermint/pkg/consts"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
 	tmtime "github.com/tendermint/tendermint/types/time"
@@ -699,6 +701,69 @@ func TestBlockDataProtobuf(t *testing.T) {
 		require.NoError(t, err)
 		secondHash := d2.Hash()
 		assert.Equal(t, firstHash, secondHash, tt.name)
+	}
+}
+
+func TestMessageNamespaceBlockDataProtobuf(t *testing.T) {
+	type test struct {
+		name     string
+		msgs     []Message
+		expError bool
+	}
+	tests := []test{
+		{
+			name: "msg with transaction namespace id",
+			msgs: []Message{
+				{
+					NamespaceID: consts.TxNamespaceID,
+					Data:        stdbytes.Repeat([]byte{3, 2, 1, 0}, 100),
+				},
+			},
+			expError: true,
+		},
+		{
+			name: "msg with evidence namespace id",
+			msgs: []Message{
+				{
+					NamespaceID: consts.EvidenceNamespaceID,
+					Data:        stdbytes.Repeat([]byte{3, 2, 1, 0}, 100),
+				},
+			},
+			expError: true,
+		},
+		{
+			name: "msg with reserved namespace id",
+			msgs: []Message{
+				{
+					NamespaceID: namespace.ID{0, 0, 0, 0, 0, 0, 0, 200},
+					Data:        stdbytes.Repeat([]byte{3, 2, 1, 0}, 100),
+				},
+			},
+			expError: true,
+		},
+		{
+			name: "msg with correct namespace id",
+			msgs: []Message{
+				{
+					NamespaceID: []byte{8, 7, 6, 5, 4, 3, 2, 1},
+					Data:        stdbytes.Repeat([]byte{3, 2, 1, 0}, 100),
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		d := Data{Txs: []Tx{}, Evidence: EvidenceData{}, Messages: Messages{MessagesList: tt.msgs}}
+		if tt.expError {
+			require.Panics(t, func() { d.ToProto() })
+		} else {
+			pd := d.ToProto()
+			d2, err := DataFromProto(&pd)
+			require.NoError(t, err)
+			firstHash := d.Hash()
+			secondHash := d2.Hash()
+			assert.Equal(t, firstHash, secondHash, tt.name)
+		}
 	}
 }
 

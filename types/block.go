@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -1261,6 +1262,9 @@ func (data *Data) ToProto() tmproto.Data {
 
 	protoMsgs := make([]*tmproto.Message, len(data.Messages.MessagesList))
 	for i, msg := range data.Messages.MessagesList {
+		if err := msg.ValidateBasic(); err != nil {
+			panic(err)
+		}
 		protoMsgs[i] = &tmproto.Message{
 			NamespaceId: msg.NamespaceID,
 			Data:        msg.Data,
@@ -1295,7 +1299,11 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 	if len(dp.Messages.MessagesList) > 0 {
 		msgs := make([]Message, len(dp.Messages.MessagesList))
 		for i, m := range dp.Messages.MessagesList {
-			msgs[i] = Message{NamespaceID: m.NamespaceId, Data: m.Data}
+			msg := Message{NamespaceID: m.NamespaceId, Data: m.Data}
+			if err := msg.ValidateBasic(); err != nil {
+				return Data{}, err
+			}
+			msgs[i] = msg
 		}
 		data.Messages = Messages{MessagesList: msgs}
 	} else {
@@ -1314,6 +1322,17 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 	data.hash = dp.Hash
 
 	return *data, nil
+}
+
+// ValidateBasic performs basic validation.
+func (msg Message) ValidateBasic() error {
+	if msg.NamespaceID == nil {
+		return fmt.Errorf("nil namespace id")
+	}
+	if bytes.Compare(msg.NamespaceID, consts.MaxReservedNamespace) < 1 {
+		return fmt.Errorf("message using reserved namespace id %d", binary.BigEndian.Uint64(msg.NamespaceID))
+	}
+	return nil
 }
 
 //-----------------------------------------------------------------------------

@@ -280,6 +280,51 @@ func TestDataFromSquare(t *testing.T) {
 	}
 }
 
+func TestParseMessagesWithReservedNamespaces(t *testing.T) {
+	type test struct {
+		name      string
+		namespace namespace.ID
+		expError  bool
+	}
+
+	tests := []test{
+		{"transaction namespace id for message", consts.TxNamespaceID, true},
+		{"evidence namespace id for message", consts.EvidenceNamespaceID, true},
+		{"namespace id 200 for message", namespace.ID{0, 0, 0, 0, 0, 0, 0, 200}, true},
+		{"correct namespace id for message", namespace.ID{0, 0, 0, 0, 0, 1, 2, 3}, false},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			// generate random data
+			var data Data
+			data.Txs = generateRandomlySizedContiguousShares(1, 40)
+			data.Evidence = generateIdenticalEvidence(1)
+
+			// random message
+			share := generateRandomNamespacedShares(1, 30)[0]
+			msg := Message{
+				NamespaceID: tc.namespace,
+				Data:        share.Data(),
+			}
+			data.Messages = Messages{MessagesList: []Message{msg}}
+
+			shares, _, err := data.ComputeShares(0)
+			require.NoError(t, err)
+			rawShares := shares.RawShares()
+
+			_, err = ParseMsgs(rawShares)
+			if tc.expError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestFuzz_DataFromSquare(t *testing.T) {
 	t.Skip()
 	// run random shares through processContiguousShares for a minute
