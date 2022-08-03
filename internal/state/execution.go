@@ -194,8 +194,7 @@ func (blockExec *BlockExecutor) ProcessProposal(
 	}
 
 	if resp.IsRejected() {
-		proposerAddress := block.ProposerAddress.String()
-		blockExec.metrics.ProcessProposalRejected.With("proposerAddress", proposerAddress).Add(1)
+		blockExec.metrics.ProcessProposalRejected.Add(1)
 	}
 
 	return resp.IsOK(), nil
