@@ -153,8 +153,8 @@ func StopTendermint(node *nm.Node) {
 func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 	// Create & start node
 	config := GetConfig(opts.recreateConfig)
-	if opts.specificConfig != nil {
-		config = opts.specificConfig
+	if opts.SpecificConfig != nil {
+		config = opts.SpecificConfig
 	}
 	var logger log.Logger
 	if opts.suppressStdout {
