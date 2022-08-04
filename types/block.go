@@ -1326,11 +1326,26 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 
 // ValidateBasic performs basic validation.
 func (msg Message) ValidateBasic() error {
-	if msg.NamespaceID == nil {
+	if err := ValidateMessageNamespaceID(msg.NamespaceID); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ValidateMessageNamespaceID created in a separate function so that it can be used
+// also on messages in proto format.
+func ValidateMessageNamespaceID(n namespace.ID) error {
+	if n == nil {
 		return fmt.Errorf("nil namespace id")
 	}
-	if bytes.Compare(msg.NamespaceID, consts.MaxReservedNamespace) < 1 {
-		return fmt.Errorf("message using reserved namespace id %d", binary.BigEndian.Uint64(msg.NamespaceID))
+	if bytes.Compare(n, consts.MaxReservedNamespace) < 1 {
+		return fmt.Errorf("message using reserved namespace id %d", binary.BigEndian.Uint64(n))
+	}
+	if bytes.Compare(n, consts.TailPaddingNamespaceID) < 1 {
+		return fmt.Errorf("message using tail padding namespace id %d", binary.BigEndian.Uint64(n))
+	}
+	if bytes.Compare(n, consts.ParitySharesNamespaceID) < 1 {
+		return fmt.Errorf("message using parity shares namespace id %d", binary.BigEndian.Uint64(n))
 	}
 	return nil
 }
