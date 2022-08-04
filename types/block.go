@@ -1341,10 +1341,10 @@ func ValidateMessageNamespaceID(n namespace.ID) error {
 	if bytes.Compare(n, consts.MaxReservedNamespace) < 1 {
 		return fmt.Errorf("message using reserved namespace id %d", binary.BigEndian.Uint64(n))
 	}
-	if bytes.Compare(n, consts.TailPaddingNamespaceID) < 1 {
+	if bytes.Compare(n, consts.TailPaddingNamespaceID) == 0 {
 		return fmt.Errorf("message using tail padding namespace id %d", binary.BigEndian.Uint64(n))
 	}
-	if bytes.Compare(n, consts.ParitySharesNamespaceID) < 1 {
+	if bytes.Compare(n, consts.ParitySharesNamespaceID) == 0 {
 		return fmt.Errorf("message using parity shares namespace id %d", binary.BigEndian.Uint64(n))
 	}
 	return nil
