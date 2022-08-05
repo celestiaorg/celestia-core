@@ -442,14 +442,20 @@ func TestParsePaddedMsg(t *testing.T) {
 	msgWr := NewMessageShareWriter()
 	randomSmallMsg := generateRandomMessage(100)
 	randomLargeMsg := generateRandomMessage(10000)
-	msgWr.Write(randomSmallMsg)
+	msgs := Messages{
+		MessagesList: []Message{
+			randomSmallMsg,
+			randomLargeMsg,
+		},
+	}
+	msgs.SortMessages()
+	msgWr.Write(msgs.MessagesList[0])
 	msgWr.WriteNamespacedPaddedShares(4)
-	msgWr.Write(randomLargeMsg)
+	msgWr.Write(msgs.MessagesList[1])
 	msgWr.WriteNamespacedPaddedShares(10)
-	msgs, err := parseMsgShares(msgWr.Export().RawShares())
+	pmsgs, err := parseMsgShares(msgWr.Export().RawShares())
 	require.NoError(t, err)
-	assert.Equal(t, randomSmallMsg, msgs[0])
-	assert.Equal(t, randomLargeMsg, msgs[1])
+	require.Equal(t, msgs.MessagesList, pmsgs)
 }
 
 func TestContigShareWriter(t *testing.T) {
