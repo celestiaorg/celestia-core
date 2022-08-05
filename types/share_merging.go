@@ -212,69 +212,63 @@ func parseMsgShares(shares [][]byte) ([]Message, error) {
 	if len(shares) == 0 {
 		return nil, nil
 	}
+	// msgs returned
+	msgs := []Message{}
+	// current msg len
+	msgLen := 0
+	// current msg
+	currentMsg := Message{}
+	// the current share contains the start of a new message
+	newMessage := true
+	// the len in bytes of the current chunk of data that will eventually become
+	// a message. This is identical to len(currentMsg.Data) + consts.MsgShareSize
+	// but we cache it here for readability
+	dataLen := 0
 
-	// set the first nid and current share
-	nid := shares[0][:consts.NamespaceSize]
-	currentShare := shares[0][consts.NamespaceSize:]
-	// find and remove the msg len delimiter
-	currentShare, msgLen, err := ParseDelimiter(currentShare)
-	if err != nil {
-		return nil, err
+	saveLatestMessage := func() {
+		msgs = append(msgs, currentMsg)
+		dataLen = 0
+		newMessage = true
 	}
-
-	var msgs []Message
-	for cursor := uint64(0); cursor < uint64(len(shares)); {
-		var msg Message
-		currentShare, nid, cursor, msgLen, msg, err = nextMsg(
-			shares,
-			currentShare,
-			nid,
-			cursor,
-			msgLen,
-		)
-		if err != nil {
-			return nil, err
-		}
-		if msg.Data != nil {
-			msgs = append(msgs, msg)
+	// iterate through all the shares and parse out each msg
+	for i := 0; i < len(shares); i++ {
+		dataLen = len(currentMsg.Data) + consts.MsgShareSize
+		switch {
+		case newMessage:
+			nextMsgChunk, nextMsgLen, err := ParseDelimiter(shares[i][consts.NamespaceSize:])
+			if err != nil {
+				return nil, err
+			}
+			// the current share is namespaced padding so we ignore it
+			if nextMsgLen == 0 {
+				continue
+			}
+			msgLen = int(nextMsgLen)
+			nid := shares[i][:consts.NamespaceSize]
+			currentMsg = Message{
+				NamespaceID: nid,
+				Data:        nextMsgChunk,
+			}
+			// the current share contains the entire msg so we save it and
+			// progress
+			if msgLen <= len(nextMsgChunk) {
+				currentMsg.Data = currentMsg.Data[:msgLen]
+				saveLatestMessage()
+				continue
+			}
+			newMessage = false
+		// this entire share contains a chunk of message that we need to save
+		case msgLen > dataLen:
+			currentMsg.Data = append(currentMsg.Data, shares[i][consts.NamespaceSize:]...)
+		// this share contains the last chunk of data needed to complete the
+		// message
+		case msgLen <= dataLen:
+			remaining := msgLen - len(currentMsg.Data) + consts.NamespaceSize
+			currentMsg.Data = append(currentMsg.Data, shares[i][consts.NamespaceSize:remaining]...)
+			saveLatestMessage()
 		}
 	}
-
 	return msgs, nil
-}
-
-func nextMsg(
-	shares [][]byte,
-	current,
-	nid []byte,
-	cursor,
-	msgLen uint64,
-) ([]byte, []byte, uint64, uint64, Message, error) {
-	switch {
-	// the message uses all of the current share data and at least some of the
-	// next share
-	case msgLen > uint64(len(current)):
-		// add the next share to the current one and try again
-		cursor++
-		current = append(current, shares[cursor][consts.NamespaceSize:]...)
-		return nextMsg(shares, current, nid, cursor, msgLen)
-
-	// the msg we're looking for is contained in the current share
-	case msgLen <= uint64(len(current)):
-		msg := Message{nid, current[:msgLen]}
-		cursor++
-
-		// call it a day if the work is done
-		if cursor >= uint64(len(shares)) {
-			return nil, nil, cursor, 0, msg, nil
-		}
-
-		nextNid := shares[cursor][:consts.NamespaceSize]
-		next, msgLen, err := ParseDelimiter(shares[cursor][consts.NamespaceSize:])
-		return next, nextNid, cursor, msgLen, msg, err
-	}
-	// this code is unreachable but the compiler doesn't know that
-	return nil, nil, 0, 0, Message{}, nil
 }
 
 // ParseDelimiter finds and returns the length delimiter of the message provided
@@ -293,6 +287,33 @@ func ParseDelimiter(input []byte) ([]byte, uint64, error) {
 
 	// read the length of the message
 	r := bytes.NewBuffer(delimiter)
+	msgLen, err := binary.ReadUvarint(r)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// calculate the number of bytes used by the delimiter
+	lenBuf := make([]byte, binary.MaxVarintLen64)
+	n := binary.PutUvarint(lenBuf, msgLen)
+
+	// return the input without the length delimiter
+	return input[n:], msgLen, nil
+}
+
+func parseMsgDelim(input []byte) ([]byte, uint64, error) {
+	if len(input) == 0 {
+		return input, 0, nil
+	}
+
+	l := binary.MaxVarintLen64
+	if len(input) < binary.MaxVarintLen64 {
+		l = len(input)
+	}
+
+	// delimiter := zeroPadIfNecessary(input[:l], binary.MaxVarintLen64)
+
+	// read the length of the message
+	r := bytes.NewBuffer(input[:l])
 	msgLen, err := binary.ReadUvarint(r)
 	if err != nil {
 		return nil, 0, err

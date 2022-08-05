@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/libs/protoio"
+	tmrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/pkg/consts"
 )
 
@@ -387,17 +388,16 @@ func Test_parseMsgShares(t *testing.T) {
 	// each test is ran twice, once using msgSize as an exact size, and again
 	// using it as a cap for randomly sized leaves
 	tests := []test{
-		{"single small msg", 1, 1},
-		{"many small msgs", 4, 10},
+		{"single small msg", 100, 1},
+		{"many small msgs", 100, 10},
 		{"single big msg", 1000, 1},
 		{"many big msgs", 1000, 10},
 		{"single exact size msg", exactMsgShareSize, 1},
-		{"many exact size msgs", exactMsgShareSize, 10},
+		{"many exact size msgs", consts.MsgShareSize, 10},
 	}
 
 	for _, tc := range tests {
 		tc := tc
-
 		// run the tests with identically sized messagses
 		t.Run(fmt.Sprintf("%s idendically sized ", tc.name), func(t *testing.T) {
 			rawmsgs := make([]Message, tc.msgCount)
@@ -407,7 +407,6 @@ func Test_parseMsgShares(t *testing.T) {
 			msgs := Messages{MessagesList: rawmsgs}
 
 			shares := msgs.SplitIntoShares()
-
 			parsedMsgs, err := parseMsgShares(shares.RawShares())
 			if err != nil {
 				t.Error(err)
@@ -437,6 +436,20 @@ func Test_parseMsgShares(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParsePaddedMsg(t *testing.T) {
+	msgWr := NewMessageShareWriter()
+	randomSmallMsg := generateRandomMessage(100)
+	randomLargeMsg := generateRandomMessage(10000)
+	msgWr.Write(randomSmallMsg)
+	msgWr.WriteNamespacedPaddedShares(4)
+	msgWr.Write(randomLargeMsg)
+	msgWr.WriteNamespacedPaddedShares(10)
+	msgs, err := parseMsgShares(msgWr.Export().RawShares())
+	require.NoError(t, err)
+	assert.Equal(t, randomSmallMsg, msgs[0])
+	assert.Equal(t, randomLargeMsg, msgs[1])
 }
 
 func TestContigShareWriter(t *testing.T) {
@@ -519,6 +532,9 @@ func generateRandomlySizedMessages(count, maxMsgSize int) Messages {
 	msgs := make([]Message, count)
 	for i := 0; i < count; i++ {
 		msgs[i] = generateRandomMessage(rand.Intn(maxMsgSize))
+		if len(msgs[i].Data) == 0 {
+			i--
+		}
 	}
 
 	// this is just to let us use assert.Equal
@@ -532,10 +548,9 @@ func generateRandomlySizedMessages(count, maxMsgSize int) Messages {
 }
 
 func generateRandomMessage(size int) Message {
-	share := generateRandomNamespacedShares(1, size)[0]
 	msg := Message{
-		NamespaceID: share.NamespaceID(),
-		Data:        share.Data(),
+		NamespaceID: tmrand.Bytes(consts.NamespaceSize),
+		Data:        tmrand.Bytes(size),
 	}
 	return msg
 }

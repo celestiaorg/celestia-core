@@ -33,6 +33,21 @@ func (msw *MessageShareWriter) Write(msg Message) {
 	msw.count += len(newShares)
 }
 
+// WriteNamespacedPaddedShares adds empty shares using the namespace of the last written share.
+// This is useful to follow the message layout rules. It assumes that at least
+// one share has already been written, if not it panics.
+func (msw *MessageShareWriter) WriteNamespacedPaddedShares(count int) {
+	if len(msw.shares) == 0 {
+		panic("Cannot write empty namespaced shares on an empty MessageShareWriter")
+	}
+	if count == 0 {
+		return
+	}
+	lastMessage := msw.shares[len(msw.shares)-1]
+	msw.shares = append(msw.shares, namespacedPaddedShares(lastMessage[0].ID, count))
+	msw.count += count
+}
+
 // Export finalizes and returns the underlying contiguous shares.
 func (msw *MessageShareWriter) Export() NamespacedShares {
 	msw.sortMsgs()
@@ -47,8 +62,10 @@ func (msw *MessageShareWriter) Export() NamespacedShares {
 	return shares
 }
 
+// note: as an optimization we can probably get rid of this if we just add
+// checks each time we write.
 func (msw *MessageShareWriter) sortMsgs() {
-	sort.Slice(msw.shares, func(i, j int) bool {
+	sort.SliceStable(msw.shares, func(i, j int) bool {
 		return bytes.Compare(msw.shares[i][0].ID, msw.shares[j][0].ID) < 0
 	})
 }
@@ -233,6 +250,20 @@ func TailPaddingShares(n int) NamespacedShares {
 			Share: tailPaddingShare,
 			ID:    consts.TailPaddingNamespaceID,
 		}
+	}
+	return shares
+}
+
+func namespacedPaddedShares(ns []byte, count int) []NamespacedShare {
+	shares := make([]NamespacedShare, count)
+	for i := 0; i < count; i++ {
+		shares[i] = NamespacedShare{
+			Share: append(append(
+				make([]byte, 0, consts.ShareSize), ns...),
+				make([]byte, consts.MsgShareSize)...),
+			ID: ns,
+		}
+
 	}
 	return shares
 }
