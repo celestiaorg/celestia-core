@@ -220,21 +220,20 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 // passed is not a tmproto.MalleatedTx, since the schema for PayForMessage is kept
 // in the app, we cannot perform further checks without creating an import
 // cycle.
-func UnwrapMalleatedTx(tx Tx) (originalHash []byte, unwrapped Tx, isMalleated bool) {
+func UnwrapMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool) {
 	// attempt to unmarshal into a a malleated transaction
-	var malleatedTx tmproto.MalleatedTx
 	err := proto.Unmarshal(tx, &malleatedTx)
 	if err != nil {
-		return nil, nil, false
+		return malleatedTx, false
 	}
 	// this check will fail to catch unwanted types should those unmarshalled
 	// types happen to have a hash sized slice of bytes in the same field number
 	// as originalTxHash. TODO(evan): either fix this, or better yet use a different
 	// mechanism
 	if len(malleatedTx.OriginalTxHash) != tmhash.Size {
-		return nil, nil, false
+		return malleatedTx, false
 	}
-	return malleatedTx.OriginalTxHash, malleatedTx.Tx, true
+	return malleatedTx, true
 }
 
 // WrapMalleatedTx creates a wrapped Tx that includes the original transaction's hash

@@ -412,9 +412,9 @@ func (txmp *TxMempool) Update(
 
 		// Regardless of success, remove the transaction from the mempool.
 		if err := txmp.removeTxByKey(tx.Key()); err != nil {
-			if originalHash, _, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
+			if malleatedTx, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
 				var originalKey [sha256.Size]byte
-				copy(originalKey[:], originalHash)
+				copy(originalKey[:], malleatedTx.OriginalTxHash)
 				_ = txmp.removeTxByKey(types.TxKey(originalKey))
 			}
 		}
