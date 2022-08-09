@@ -2,7 +2,6 @@ package state_test
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -263,46 +262,50 @@ func TestProcessProposal(t *testing.T) {
 }
 
 func TestProcessProposalRejectedMetric(t *testing.T) {
-	type testCase struct {
-		name                             string
-		block                            *types.Block
-		wantProcessProposalRejectedCount int
-	}
+	server := httptest.NewServer(promhttp.Handler())
+	defer server.Close()
 
+	getPrometheusOutput := func() string {
+		resp, err := http.Get(server.URL)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		buf, _ := ioutil.ReadAll(resp.Body)
+		return string(buf)
+	}
 	metrics := state.PrometheusMetrics(namespace)
 	state, stateDB, _ := makeState(1, height)
 
 	accptedBlock := makeAcceptedBlock(state, height)
 	rejectedBlock := makeRejectedBlock(state, height)
 
+	type testCase struct {
+		name                             string
+		block                            *types.Block
+		wantProcessProposalRejectedCount int
+	}
 	tests := []testCase{
-		// HACKHACK since Prometheus metrics are registered globally, these tests cases are ordering dependent.
-		// In other words, since the counter metric type is monotonically increasing, the expected metric count is cumulative of previous tests.
+		// HACKHACK since Prometheus metrics are registered globally, these
+		// tests cases are ordering dependent. In other words, since the counter
+		// metric type is monotonically increasing, the expected metric count of
+		// a test case is the cumulative sum of the metric count in previous
+		// test cases.
 		{"accepted block has a metric count of 0", accptedBlock, 0},
 		{"rejected block has a metric count of 1", rejectedBlock, 1},
 	}
 
 	for _, test := range tests {
-		got := getProcessProposalRejected(t, test.block, stateDB, metrics)
+		blockExec := makeBlockExec(t, test.block, stateDB, metrics)
+
+		blockExec.ProcessProposal(test.block)
+		prometheusOutput := getPrometheusOutput()
+		got := getProcessProposalRejectedCount(t, prometheusOutput)
+
 		require.Equal(t, got, test.wantProcessProposalRejectedCount)
 	}
 }
 
-func getProcessProposalRejected(t *testing.T, block *types.Block, stateDB db.DB, metrics *sm.Metrics) (count int) {
-	server := httptest.NewServer(promhttp.Handler())
-	defer server.Close()
-
-	getPrometheusMetrics := func() string {
-		resp, err := http.Get(server.URL)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		buf, _ := ioutil.ReadAll(resp.Body)
-		metrics := string(buf)
-		fmt.Printf("metrics\n%s", metrics)
-		return metrics
-	}
-
+func makeBlockExec(t *testing.T, block *types.Block, stateDB db.DB, metrics *sm.Metrics) (blockExec *sm.BlockExecutor) {
 	app := &testApp{}
 	cc := proxy.NewLocalClientCreator(app)
 	proxyApp := proxy.NewAppConns(cc)
@@ -310,17 +313,12 @@ func getProcessProposalRejected(t *testing.T, block *types.Block, stateDB db.DB,
 	require.Nil(t, err)
 	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
-	blockExec := sm.NewBlockExecutor(sm.NewStore(stateDB), log.TestingLogger(), proxyApp.Consensus(), mmock.Mempool{}, sm.EmptyEvidencePool{}, sm.BlockExecutorWithMetrics(metrics))
-	_, err = blockExec.ProcessProposal(block)
-	require.Nil(t, err)
-
-	prometheusMetrics := getPrometheusMetrics()
-	return getProcessProposalRejectedCount(t, prometheusMetrics)
+	return sm.NewBlockExecutor(sm.NewStore(stateDB), log.TestingLogger(), proxyApp.Consensus(), mmock.Mempool{}, sm.EmptyEvidencePool{}, sm.BlockExecutorWithMetrics(metrics))
 }
 
-func getProcessProposalRejectedCount(t *testing.T, metrics string) (count int) {
+func getProcessProposalRejectedCount(t *testing.T, prometheusOutput string) (count int) {
 	metricName := strings.Join([]string{namespace, state.MetricsSubsystem, "process_proposal_rejected"}, "_")
-	lines := strings.Split(metrics, "\n")
+	lines := strings.Split(prometheusOutput, "\n")
 
 	for _, line := range lines {
 		if strings.HasPrefix(line, metricName) {
@@ -330,6 +328,7 @@ func getProcessProposalRejectedCount(t *testing.T, metrics string) (count int) {
 			return count
 		}
 	}
+
 	return 0
 }
 
