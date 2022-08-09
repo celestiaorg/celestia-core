@@ -2,9 +2,16 @@ package state_test
 
 import (
 	"context"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -19,6 +26,7 @@ import (
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
 	"github.com/tendermint/tendermint/proxy"
+	"github.com/tendermint/tendermint/state"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/state/mocks"
 	sf "github.com/tendermint/tendermint/state/test/factory"
@@ -32,6 +40,7 @@ var (
 	chainID             = "execution_chain"
 	testPartSize uint32 = 65536
 	nTxsPerBlock        = 10
+	namespace           = "namespace"
 )
 
 func TestApplyBlock(t *testing.T) {
@@ -249,6 +258,71 @@ func TestProcessProposal(t *testing.T) {
 	badTxs := factory.MakeTenTxs(int64(height))
 	badTxs[0] = types.Tx{}
 	runTest(badTxs, false)
+}
+
+func TestProcessProposalIncrementsCounterOnRejected(t *testing.T) {
+	got := getProcessProposalRejected(t)
+	want := 1
+	require.Equal(t, got, want)
+}
+
+func getProcessProposalRejected(t *testing.T) int {
+	server := httptest.NewServer(promhttp.Handler())
+	defer server.Close()
+
+	getPrometheusMetrics := func() string {
+		resp, err := http.Get(server.URL)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		buf, _ := ioutil.ReadAll(resp.Body)
+		metrics := string(buf)
+		fmt.Printf("metrics\n%s", metrics)
+		return metrics
+	}
+
+	metrics := state.PrometheusMetrics(namespace)
+
+	//
+	height := 1
+	app := &testApp{}
+	cc := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(cc)
+	err := proxyApp.Start()
+	require.Nil(t, err)
+	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
+
+	state, stateDB, _ := makeState(1, height)
+	stateStore := sm.NewStore(stateDB)
+
+	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
+		mmock.Mempool{}, sm.EmptyEvidencePool{}, sm.BlockExecutorWithMetrics(metrics))
+
+	block := sf.MakeBlock(state, int64(height), new(types.Commit))
+	badTxs := factory.MakeTenTxs(int64(height))
+	badTxs[0] = types.Tx{}
+	block.Txs = badTxs
+	acceptBlock, err := blockExec.ProcessProposal(block)
+	require.Nil(t, err)
+	require.Equal(t, false, acceptBlock)
+
+	prometheusMetrics := getPrometheusMetrics()
+	return getProcessProposalRejectedCount(t, prometheusMetrics)
+}
+
+func getProcessProposalRejectedCount(t *testing.T, metrics string) (count int) {
+	metricName := strings.Join([]string{namespace, state.MetricsSubsystem, "process_proposal_rejected"}, "_")
+	lines := strings.Split(metrics, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, metricName) {
+			parts := strings.Split(line, " ")
+			fmt.Printf("parts: %v\n", parts)
+			count, err := strconv.Atoi(parts[1])
+			require.Nil(t, err)
+			return count
+		}
+	}
+	return 0
 }
 
 func TestValidateValidatorUpdates(t *testing.T) {
