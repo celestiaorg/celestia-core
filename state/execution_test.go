@@ -25,7 +25,6 @@ import (
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
 	"github.com/tendermint/tendermint/proxy"
-	"github.com/tendermint/tendermint/state"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/state/mocks"
 	sf "github.com/tendermint/tendermint/state/test/factory"
@@ -273,7 +272,7 @@ func TestProcessProposalRejectedMetric(t *testing.T) {
 		buf, _ := ioutil.ReadAll(resp.Body)
 		return string(buf)
 	}
-	metrics := state.PrometheusMetrics(namespace)
+	metrics := sm.PrometheusMetrics(namespace)
 	state, stateDB, _ := makeState(1, height)
 
 	accptedBlock := makeAcceptedBlock(state, height)
@@ -290,34 +289,49 @@ func TestProcessProposalRejectedMetric(t *testing.T) {
 		// metric type is monotonically increasing, the expected metric count of
 		// a test case is the cumulative sum of the metric count in previous
 		// test cases.
-		{"accepted block has a metric count of 0", accptedBlock, 0},
-		{"rejected block has a metric count of 1", rejectedBlock, 1},
+		{"accepted block has a process proposal rejected count of 0", accptedBlock, 0},
+		{"rejected block has a process proposal rejected count of 1", rejectedBlock, 1},
 	}
 
 	for _, test := range tests {
-		blockExec := makeBlockExec(t, test.block, stateDB, metrics)
+		blockExec := makeBlockExec(t, test.name, test.block, stateDB, metrics)
 
-		blockExec.ProcessProposal(test.block)
+		_, err := blockExec.ProcessProposal(test.block)
+		require.Nil(t, err, test.name)
+
 		prometheusOutput := getPrometheusOutput()
 		got := getProcessProposalRejectedCount(t, prometheusOutput)
 
-		require.Equal(t, got, test.wantProcessProposalRejectedCount)
+		require.Equal(t, got, test.wantProcessProposalRejectedCount, test.name)
 	}
 }
 
-func makeBlockExec(t *testing.T, block *types.Block, stateDB db.DB, metrics *sm.Metrics) (blockExec *sm.BlockExecutor) {
+func makeBlockExec(t *testing.T, testName string, block *types.Block, stateDB db.DB,
+	metrics *sm.Metrics) (blockExec *sm.BlockExecutor) {
 	app := &testApp{}
-	cc := proxy.NewLocalClientCreator(app)
-	proxyApp := proxy.NewAppConns(cc)
-	err := proxyApp.Start()
-	require.Nil(t, err)
-	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
+	clientCreator := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(clientCreator)
 
-	return sm.NewBlockExecutor(sm.NewStore(stateDB), log.TestingLogger(), proxyApp.Consensus(), mmock.Mempool{}, sm.EmptyEvidencePool{}, sm.BlockExecutorWithMetrics(metrics))
+	err := proxyApp.Start()
+	require.Nil(t, err, testName)
+
+	defer func() {
+		err := proxyApp.Stop()
+		require.Nil(t, err, testName)
+	}()
+
+	return sm.NewBlockExecutor(
+		sm.NewStore(stateDB),
+		log.TestingLogger(),
+		proxyApp.Consensus(),
+		mmock.Mempool{},
+		sm.EmptyEvidencePool{},
+		sm.BlockExecutorWithMetrics(metrics),
+	)
 }
 
 func getProcessProposalRejectedCount(t *testing.T, prometheusOutput string) (count int) {
-	metricName := strings.Join([]string{namespace, state.MetricsSubsystem, "process_proposal_rejected"}, "_")
+	metricName := strings.Join([]string{namespace, sm.MetricsSubsystem, "process_proposal_rejected"}, "_")
 	lines := strings.Split(prometheusOutput, "\n")
 
 	for _, line := range lines {
