@@ -1285,6 +1285,7 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	if !stateMachineValidBlock {
 		// Consensus says we must vote nil
 		logger.Error("prevote step: consensus deems this block to be mustVoteNil", "err", err)
+		logger.Debug("invalid state machine block", "proposerAddress", cs.ProposalBlock.ProposerAddress)
 		cs.signAddVote(tmproto.PrevoteType, nil, types.PartSetHeader{})
 		return
 	}
