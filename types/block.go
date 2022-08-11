@@ -1180,6 +1180,13 @@ func (msgs *Messages) SortMessages() {
 	})
 }
 
+// IsSorted returns whether the messages are sorted by namespace id
+func (msgs *Messages) IsSorted() bool {
+	return sort.SliceIsSorted(msgs.MessagesList, func(i, j int) bool {
+		return bytes.Compare(msgs.MessagesList[i].NamespaceID, msgs.MessagesList[j].NamespaceID) < 0
+	})
+}
+
 type Message struct {
 	// NamespaceID defines the namespace of this message, i.e. the
 	// namespace it will use in the namespaced Merkle tree.

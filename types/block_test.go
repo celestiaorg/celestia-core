@@ -860,3 +860,33 @@ func TestBlockIDEquals(t *testing.T) {
 	assert.True(t, blockIDEmpty.Equals(blockIDEmpty))
 	assert.False(t, blockIDEmpty.Equals(blockIDDifferent))
 }
+
+func TestMessagesIsSortedReturnsTrueForSortedMessages(t *testing.T) {
+	sortedMessages := Messages{MessagesList: []Message{
+		{
+			NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
+			Data:        stdbytes.Repeat([]byte{1, 2, 3}, 100),
+		},
+		{
+			NamespaceID: []byte{8, 7, 6, 5, 4, 3, 2, 1},
+			Data:        stdbytes.Repeat([]byte{3, 2, 1, 0}, 100),
+		},
+	}}
+
+	assert.True(t, sortedMessages.IsSorted())
+}
+
+func TestMessagesIsSortedReturnsFalseForUnsortedMessages(t *testing.T) {
+	sortedMessages := Messages{MessagesList: []Message{
+		{
+			NamespaceID: []byte{8, 7, 6, 5, 4, 3, 2, 1},
+			Data:        stdbytes.Repeat([]byte{3, 2, 1, 0}, 100),
+		},
+		{
+			NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
+			Data:        stdbytes.Repeat([]byte{1, 2, 3}, 100),
+		},
+	}}
+
+	assert.False(t, sortedMessages.IsSorted())
+}
