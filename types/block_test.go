@@ -876,6 +876,21 @@ func TestMessagesIsSortedReturnsTrueForSortedMessages(t *testing.T) {
 	assert.True(t, sortedMessages.IsSorted())
 }
 
+func TestMessagesIsSortedReturnsTrueForMessagesWithSameNamespace(t *testing.T) {
+	sortedMessages := Messages{MessagesList: []Message{
+		{
+			NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
+			Data:        stdbytes.Repeat([]byte{1, 1, 1}, 100),
+		},
+		{
+			NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
+			Data:        stdbytes.Repeat([]byte{2, 2, 2}, 100),
+		},
+	}}
+
+	assert.True(t, sortedMessages.IsSorted())
+}
+
 func TestMessagesIsSortedReturnsFalseForUnsortedMessages(t *testing.T) {
 	sortedMessages := Messages{MessagesList: []Message{
 		{
