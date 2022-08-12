@@ -1161,6 +1161,21 @@ type Messages struct {
 	MessagesList []Message `json:"msgs"`
 }
 
+// ByNamespace implements sort.Interface for Message
+type ByNamespace []Message
+
+func (s ByNamespace) Len() int {
+	return len(s)
+}
+
+func (s ByNamespace) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s ByNamespace) Less(i, j int) bool {
+	return bytes.Compare(s[i].NamespaceID, s[j].NamespaceID) < 0
+}
+
 func (msgs Messages) SplitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	msgs.SortMessages()
@@ -1174,17 +1189,14 @@ func (msgs Messages) SplitIntoShares() NamespacedShares {
 	return shares
 }
 
+// SortMessages sorts messages by ascending namespace id
 func (msgs *Messages) SortMessages() {
-	sort.Slice(msgs.MessagesList, func(i, j int) bool {
-		return bytes.Compare(msgs.MessagesList[i].NamespaceID, msgs.MessagesList[j].NamespaceID) < 0
-	})
+	sort.Sort(ByNamespace(msgs.MessagesList))
 }
 
 // IsSorted returns whether the messages are sorted by namespace id
 func (msgs *Messages) IsSorted() bool {
-	return sort.SliceIsSorted(msgs.MessagesList, func(i, j int) bool {
-		return bytes.Compare(msgs.MessagesList[i].NamespaceID, msgs.MessagesList[j].NamespaceID) < 0
-	})
+	return sort.IsSorted(ByNamespace(msgs.MessagesList))
 }
 
 type Message struct {
