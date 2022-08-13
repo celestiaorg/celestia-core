@@ -27,6 +27,8 @@ import (
 type Options struct {
 	suppressStdout bool
 	recreateConfig bool
+	// SpecificConfig will replace the global config if not nil
+	SpecificConfig *cfg.Config
 }
 
 var globalConfig *cfg.Config
@@ -151,7 +153,11 @@ func StopTendermint(node *nm.Node) {
 // NewTendermint creates a new tendermint server and sleeps forever
 func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 	// Create & start node
+	if opts.SpecificConfig != nil {
+		globalConfig = opts.SpecificConfig
+	}
 	config := GetConfig(opts.recreateConfig)
+
 	var logger log.Logger
 	if opts.suppressStdout {
 		logger = log.NewNopLogger()

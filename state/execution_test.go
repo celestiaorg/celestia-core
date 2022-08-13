@@ -2,9 +2,15 @@ package state_test
 
 import (
 	"context"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -26,12 +32,15 @@ import (
 	"github.com/tendermint/tendermint/types"
 	tmtime "github.com/tendermint/tendermint/types/time"
 	"github.com/tendermint/tendermint/version"
+	db "github.com/tendermint/tm-db"
 )
 
 var (
 	chainID             = "execution_chain"
 	testPartSize uint32 = 65536
 	nTxsPerBlock        = 10
+	namespace           = "namespace"
+	height              = 1
 )
 
 func TestApplyBlock(t *testing.T) {
@@ -249,6 +258,92 @@ func TestProcessProposal(t *testing.T) {
 	badTxs := factory.MakeTenTxs(int64(height))
 	badTxs[0] = types.Tx{}
 	runTest(badTxs, false)
+}
+
+func TestProcessProposalRejectedMetric(t *testing.T) {
+	server := httptest.NewServer(promhttp.Handler())
+	defer server.Close()
+
+	getPrometheusOutput := func() string {
+		resp, err := http.Get(server.URL)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		buf, _ := ioutil.ReadAll(resp.Body)
+		return string(buf)
+	}
+	metrics := sm.PrometheusMetrics(namespace)
+	state, stateDB, _ := makeState(1, height)
+
+	accptedBlock := makeAcceptedBlock(state, height)
+	rejectedBlock := makeRejectedBlock(state, height)
+
+	type testCase struct {
+		name                             string
+		block                            *types.Block
+		wantProcessProposalRejectedCount int
+	}
+	tests := []testCase{
+		// HACKHACK since Prometheus metrics are registered globally, these
+		// tests cases are ordering dependent. In other words, since the counter
+		// metric type is monotonically increasing, the expected metric count of
+		// a test case is the cumulative sum of the metric count in previous
+		// test cases.
+		{"accepted block has a process proposal rejected count of 0", accptedBlock, 0},
+		{"rejected block has a process proposal rejected count of 1", rejectedBlock, 1},
+	}
+
+	for _, test := range tests {
+		blockExec := makeBlockExec(t, test.name, test.block, stateDB, metrics)
+
+		_, err := blockExec.ProcessProposal(test.block)
+		require.Nil(t, err, test.name)
+
+		prometheusOutput := getPrometheusOutput()
+		got := getProcessProposalRejectedCount(t, prometheusOutput)
+
+		require.Equal(t, got, test.wantProcessProposalRejectedCount, test.name)
+	}
+}
+
+func makeBlockExec(t *testing.T, testName string, block *types.Block, stateDB db.DB,
+	metrics *sm.Metrics) (blockExec *sm.BlockExecutor) {
+	app := &testApp{}
+	clientCreator := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(clientCreator)
+
+	err := proxyApp.Start()
+	require.Nil(t, err, testName)
+
+	defer func() {
+		err := proxyApp.Stop()
+		require.Nil(t, err, testName)
+	}()
+
+	return sm.NewBlockExecutor(
+		sm.NewStore(stateDB),
+		log.TestingLogger(),
+		proxyApp.Consensus(),
+		mmock.Mempool{},
+		sm.EmptyEvidencePool{},
+		sm.BlockExecutorWithMetrics(metrics),
+	)
+}
+
+func getProcessProposalRejectedCount(t *testing.T, prometheusOutput string) (count int) {
+	metricName := strings.Join([]string{namespace, sm.MetricsSubsystem, "process_proposal_rejected"}, "_")
+	lines := strings.Split(prometheusOutput, "\n")
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, metricName) {
+			parts := strings.Split(line, " ")
+			count, err := strconv.Atoi(parts[1])
+			require.Nil(t, err)
+			return count
+		}
+	}
+
+	return 0
 }
 
 func TestValidateValidatorUpdates(t *testing.T) {
@@ -500,4 +595,17 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.Bloc
 			Hash:  psH,
 		},
 	}
+}
+
+func makeAcceptedBlock(state sm.State, height int) (block *types.Block) {
+	block = sf.MakeBlock(state, int64(height), new(types.Commit))
+	goodTxs := factory.MakeTenTxs(int64(height))
+	block.Txs = goodTxs
+	return block
+}
+
+func makeRejectedBlock(state sm.State, height int) (block *types.Block) {
+	block = makeAcceptedBlock(state, height)
+	block.Txs[0] = types.Tx{}
+	return block
 }
