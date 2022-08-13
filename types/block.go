@@ -1173,6 +1173,11 @@ func (s ByNamespace) Swap(i, j int) {
 }
 
 func (s ByNamespace) Less(i, j int) bool {
+	// The following comparison is `<` and not `<=` because bytes.Compare returns 0 for if a == b.
+	// We want this comparison to return `false` if a == b because:
+	// If both Less(i, j) and Less(j, i) are false,
+	// then the elements at index i and j are considered equal.
+	// See https://pkg.go.dev/sort#Interface
 	return bytes.Compare(s[i].NamespaceID, s[j].NamespaceID) < 0
 }
 
