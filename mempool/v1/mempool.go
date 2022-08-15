@@ -408,7 +408,7 @@ func (txmp *TxMempool) Update(
 		if err := txmp.removeTxByKey(originalKey); err != nil {
 			if originalHash, _, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
 				copy(originalKey[:], originalHash)
-				_ = txmp.removeTxByKey(types.TxKey(originalKey))
+				_ = txmp.removeTxByKey(originalKey)
 			}
 		}
 
