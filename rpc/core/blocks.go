@@ -172,7 +172,13 @@ func ValidateDataCommitmentSortedHeights(heights []int64) error {
 			heights[len(heights)-1],
 			env.BlockStore.Height(),
 		)
-	} else if has, err := env.BlockIndexer.Has(heights[len(heights)-1]); err != nil || !has {
+	}
+
+	has, err := env.BlockIndexer.Has(heights[len(heights)-1])
+	if err != nil {
+		return err
+	}
+	if !has {
 		return fmt.Errorf(
 			"last block height %d is still not indexed",
 			heights[len(heights)-1],
