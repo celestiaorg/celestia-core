@@ -693,11 +693,13 @@ func TestBlockDataProtobuf(t *testing.T) {
 
 	for _, tt := range tests {
 		d := Data{Txs: tt.txs, Evidence: tt.evd, Messages: Messages{MessagesList: tt.msgs}}
-		firstHash := d.Hash()
+		firstHash, err1 := d.Hash()
+		assert.Nil(t, err1)
 		pd := d.ToProto()
 		d2, err := DataFromProto(&pd)
 		require.NoError(t, err)
-		secondHash := d2.Hash()
+		secondHash, err2 := d2.Hash()
+		assert.Nil(t, err2)
 		assert.Equal(t, firstHash, secondHash, tt.name)
 	}
 }
