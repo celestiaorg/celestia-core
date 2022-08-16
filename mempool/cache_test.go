@@ -33,12 +33,8 @@ func TestCacheRemove(t *testing.T) {
 
 	txs, err := populate(cache, numTxs)
 	require.NoError(t, err)
-
-	for i := 0; i < numTxs; i++ {
-		// make sure its added to both the linked list and the map
-		require.Equal(t, i+1, len(cache.cacheMap))
-		require.Equal(t, i+1, cache.list.Len())
-	}
+	require.Equal(t, numTxs, len(cache.cacheMap))
+	require.Equal(t, numTxs, cache.list.Len())
 
 	for i := 0; i < numTxs; i++ {
 		cache.Remove(txs[i])
@@ -54,12 +50,8 @@ func TestCacheRemoveByKey(t *testing.T) {
 
 	txs, err := populate(cache, numTxs)
 	require.NoError(t, err)
-
-	for i := 0; i < numTxs; i++ {
-		// make sure its added to both the linked list and the map
-		require.Equal(t, i+1, len(cache.cacheMap))
-		require.Equal(t, i+1, cache.list.Len())
-	}
+	require.Equal(t, numTxs, len(cache.cacheMap))
+	require.Equal(t, numTxs, cache.list.Len())
 
 	for i := 0; i < numTxs; i++ {
 		cache.RemoveTxByKey(types.Tx(txs[i]).Key())
