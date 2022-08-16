@@ -86,7 +86,7 @@ func (b *Block) ValidateBasic() error {
 
 	// NOTE: b.Data.Txs may be nil, but b.Data.Hash() still works fine.
 	if w, err := b.Data.Hash(); err != nil {
-		return fmt.Errorf("square size for the block data to be hashed over: %v", err)
+		return fmt.Errorf("square size for the block data to be hashed over is not a power of 2: %v", err)
 	} else {
 		if g := b.DataHash; !bytes.Equal(w, g) {
 			return fmt.Errorf("wrong Header.DataHash. Expected %X, got %X", w, g)
