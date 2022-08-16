@@ -85,8 +85,12 @@ func (b *Block) ValidateBasic() error {
 	}
 
 	// NOTE: b.Data.Txs may be nil, but b.Data.Hash() still works fine.
-	if w, g := b.Data.Hash(), b.DataHash; !bytes.Equal(w, g) {
-		return fmt.Errorf("wrong Header.DataHash. Expected %X, got %X", w, g)
+	if w, err := b.Data.Hash(); err != nil {
+		return fmt.Errorf("square size for the block data to be hashed over: %v", err)
+	} else {
+		if g := b.DataHash; !bytes.Equal(w, g) {
+			return fmt.Errorf("wrong Header.DataHash. Expected %X, got %X", w, g)
+		}
 	}
 
 	// NOTE: b.Evidence.Evidence may be nil, but we're just looping.
@@ -106,21 +110,29 @@ func (b *Block) ValidateBasic() error {
 	return nil
 }
 
-// fillHeader fills in any remaining header fields that are a function of the block data
-func (b *Block) fillHeader() {
+// fillHeader fills in any remaining header fields that are a function of the block data.
+// Returns an error if square size for the block data to be hashed over is invalid,
+// that is, not a power of 2
+func (b *Block) fillHeader() error {
+	var err error
 	if b.LastCommitHash == nil {
 		b.LastCommitHash = b.LastCommit.Hash()
 	}
 	if b.DataHash == nil {
-		b.DataHash = b.Data.Hash()
+		b.DataHash, err = b.Data.Hash()
+		if err != nil {
+			return err
+		}
 	}
 	if b.EvidenceHash == nil {
 		b.EvidenceHash = b.Evidence.Hash()
 	}
+	return nil
 }
 
 // Hash computes and returns the block hash.
 // If the block is incomplete, block hash is nil for safety.
+// Block hash can also be nil if `fillHeader` fails
 func (b *Block) Hash() tmbytes.HexBytes {
 	if b == nil {
 		return nil
@@ -131,7 +143,9 @@ func (b *Block) Hash() tmbytes.HexBytes {
 	if b.LastCommit == nil {
 		return nil
 	}
-	b.fillHeader()
+	if err := b.fillHeader(); err != nil {
+		return nil
+	}
 	return b.Header.Hash()
 }
 
@@ -331,7 +345,9 @@ func MakeBlock(
 		Data:       data,
 		LastCommit: lastCommit,
 	}
-	block.fillHeader()
+	if err := block.fillHeader(); err != nil {
+		return nil
+	}
 	return block
 }
 
@@ -1038,30 +1054,29 @@ type Data struct {
 }
 
 // Hash returns the hash of the data
-func (data *Data) Hash() tmbytes.HexBytes {
+func (data *Data) Hash() (tmbytes.HexBytes, error) {
 	if data.hash != nil {
-		return data.hash
+		return data.hash, nil
 	}
 
 	// compute the data availability header
 	// todo(evan): add the non redundant shares back into the header
 	shares, _, err := data.ComputeShares(data.OriginalSquareSize)
 	if err != nil {
-		// todo(evan): see if we can get rid of this panic
-		panic(err)
+		return nil, err
 	}
 	rawShares := shares.RawShares()
 
 	eds, err := da.ExtendShares(data.OriginalSquareSize, rawShares)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	dah := da.NewDataAvailabilityHeader(eds)
 
 	data.hash = dah.Hash()
 
-	return data.hash
+	return data.hash, nil
 }
 
 // ComputeShares splits block data into shares of an original data square and
