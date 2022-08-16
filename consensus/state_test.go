@@ -250,9 +250,11 @@ func TestStateOversizedBlock(t *testing.T) {
 	timeoutProposeCh := subscribe(cs1.eventBus, types.EventQueryTimeoutPropose)
 	voteCh := subscribe(cs1.eventBus, types.EventQueryVote)
 
+	var err error
 	propBlock, _ := cs1.createProposalBlock()
 	propBlock.Data.Txs = []types.Tx{tmrand.Bytes(2001)}
-	propBlock.Header.DataHash = propBlock.Data.Hash()
+	propBlock.Header.DataHash, err = propBlock.Data.Hash()
+	assert.Nil(t, err)
 
 	// make the second validator the proposer by incrementing round
 	round++
