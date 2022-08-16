@@ -27,6 +27,7 @@ var errNegOrZeroHeight = errors.New("negative or zero height")
 type KeyPathFunc func(path string, key []byte) (merkle.KeyPath, error)
 
 // LightClient is an interface that contains functionality needed by Client from the light client.
+//
 //go:generate mockery --case underscore --name LightClient
 type LightClient interface {
 	ChainID() string
@@ -454,8 +455,8 @@ func (c *Client) Commit(ctx context.Context, height *int64) (*ctypes.ResultCommi
 	}, nil
 }
 
-func (c *Client) DataCommitment(ctx context.Context, query string) (*ctypes.ResultDataCommitment, error) {
-	return c.next.DataCommitment(ctx, query)
+func (c *Client) DataCommitment(ctx context.Context, beginBlock uint64, endBlock uint64) (*ctypes.ResultDataCommitment, error) {
+	return c.next.DataCommitment(ctx, beginBlock, endBlock)
 }
 
 // Tx calls rpcclient#Tx method and then verifies the proof if such was
