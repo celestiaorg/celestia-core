@@ -142,13 +142,12 @@ func DataCommitment(ctx *rpctypes.Context, query string) (*ctypes.ResultDataComm
 		return nil, err
 	}
 
-	if len(heights) > consts.DataCommitmentBlocksLimit {
-		return nil, fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
-	} else if len(heights) == 0 {
-		return nil, fmt.Errorf("cannot create the data commitments for an empty set of blocks")
+	err = sortBlocks(heights, "asc")
+	if err != nil {
+		return nil, err
 	}
 
-	err = sortBlocks(heights, "asc")
+	err = ValidateDataCommitmentSortedHeights(heights)
 	if err != nil {
 		return nil, err
 	}
@@ -158,6 +157,29 @@ func DataCommitment(ctx *rpctypes.Context, query string) (*ctypes.ResultDataComm
 
 	// Create data commitment
 	return &ctypes.ResultDataCommitment{DataCommitment: root}, nil
+}
+
+// ValidateDataCommitmentSortedHeights runs basic checks on the asc sorted list of heights
+// that will be used subsequently in generating data commitments over the defined set of heights.
+func ValidateDataCommitmentSortedHeights(heights []int64) error {
+	if len(heights) > consts.DataCommitmentBlocksLimit {
+		return fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
+	} else if len(heights) == 0 {
+		return fmt.Errorf("cannot create the data commitments for an empty set of blocks")
+	} else if heights[len(heights)-1] > env.BlockStore.Height() {
+		return fmt.Errorf(
+			"last block height %d is higher than current chain height %d",
+			heights[len(heights)-1],
+			env.BlockStore.Height(),
+		)
+	} else if has, err := env.BlockIndexer.Has(heights[len(heights)-1]); err != nil || !has {
+		return fmt.Errorf(
+			"last block height %d is still not indexed",
+			heights[len(heights)-1],
+		)
+	}
+
+	return nil
 }
 
 // hashDataRoots hashes a list of blocks data hashes and returns their merkle root.
