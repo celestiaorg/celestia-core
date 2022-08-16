@@ -401,7 +401,7 @@ func (txmp *TxMempool) Update(
 
 	for i, tx := range blockTxs {
 		// The tx hash corresponding to the originating transaction. Set to the
-		// current tx hash initially, but can can change in case of a malleated tx.
+		// current tx hash initially, but can change in case of a malleated tx.
 		originalKey := tx.Key()
 
 		// Regardless of outcome, remove the transaction from the mempool.
