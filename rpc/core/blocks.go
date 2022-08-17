@@ -137,7 +137,7 @@ func Commit(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCommit, erro
 // DataCommitment collects the data roots over a provided ordered range of blocks,
 // and then creates a new Merkle root of those data roots.
 func DataCommitment(ctx *rpctypes.Context, beginBlock uint64, endBlock uint64) (*ctypes.ResultDataCommitment, error) {
-	err := ValidateDataCommitmentRange(beginBlock, endBlock)
+	err := validateDataCommitmentRange(beginBlock, endBlock)
 	if err != nil {
 		return nil, err
 	}
@@ -148,6 +148,8 @@ func DataCommitment(ctx *rpctypes.Context, beginBlock uint64, endBlock uint64) (
 	return &ctypes.ResultDataCommitment{DataCommitment: root}, nil
 }
 
+// generateHeightsList takes a begin and end block, then generates a list of heights
+// containing the elements of the range [beginBlock, endBlock].
 func generateHeightsList(beginBlock uint64, endBlock uint64) []int64 {
 	heights := make([]int64, endBlock-beginBlock+1)
 	for i := beginBlock; i <= endBlock; i++ {
@@ -156,9 +158,9 @@ func generateHeightsList(beginBlock uint64, endBlock uint64) []int64 {
 	return heights
 }
 
-// ValidateDataCommitmentRange runs basic checks on the asc sorted list of heights
+// validateDataCommitmentRange runs basic checks on the asc sorted list of heights
 // that will be used subsequently in generating data commitments over the defined set of heights.
-func ValidateDataCommitmentRange(beginBlock uint64, endBlock uint64) error {
+func validateDataCommitmentRange(beginBlock uint64, endBlock uint64) error {
 	heightsRange := endBlock - beginBlock + 1
 	if heightsRange > uint64(consts.DataCommitmentBlocksLimit) {
 		return fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
