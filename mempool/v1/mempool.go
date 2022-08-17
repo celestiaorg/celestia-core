@@ -406,8 +406,8 @@ func (txmp *TxMempool) Update(
 
 		// Regardless of outcome, remove the transaction from the mempool.
 		if err := txmp.removeTxByKey(originalKey); err != nil {
-			if originalHash, _, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
-				copy(originalKey[:], originalHash)
+			if malleatedTx, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
+				copy(originalKey[:], malleatedTx.OriginalTxHash)
 				_ = txmp.removeTxByKey(originalKey)
 			}
 		}
