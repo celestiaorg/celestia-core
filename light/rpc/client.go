@@ -455,7 +455,11 @@ func (c *Client) Commit(ctx context.Context, height *int64) (*ctypes.ResultCommi
 	}, nil
 }
 
-func (c *Client) DataCommitment(ctx context.Context, beginBlock uint64, endBlock uint64) (*ctypes.ResultDataCommitment, error) {
+func (c *Client) DataCommitment(
+	ctx context.Context,
+	beginBlock uint64,
+	endBlock uint64,
+) (*ctypes.ResultDataCommitment, error) {
 	return c.next.DataCommitment(ctx, beginBlock, endBlock)
 }
 

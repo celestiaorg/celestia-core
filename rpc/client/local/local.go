@@ -173,7 +173,11 @@ func (c *Local) Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit
 	return core.Commit(c.ctx, height)
 }
 
-func (c *Local) DataCommitment(_ context.Context, beginBlock uint64, endBlock uint64) (*ctypes.ResultDataCommitment, error) {
+func (c *Local) DataCommitment(
+	_ context.Context,
+	beginBlock uint64,
+	endBlock uint64,
+) (*ctypes.ResultDataCommitment, error) {
 	return core.DataCommitment(c.ctx, beginBlock, endBlock)
 }
 

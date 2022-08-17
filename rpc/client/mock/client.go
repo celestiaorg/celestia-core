@@ -169,7 +169,11 @@ func (c Client) Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit
 	return core.Commit(&rpctypes.Context{}, height)
 }
 
-func (c Client) DataCommitment(ctx context.Context, beginBlock uint64, endBlock uint64) (*ctypes.ResultDataCommitment, error) {
+func (c Client) DataCommitment(
+	ctx context.Context,
+	beginBlock uint64,
+	endBlock uint64,
+) (*ctypes.ResultDataCommitment, error) {
 	return core.DataCommitment(&rpctypes.Context{}, beginBlock, endBlock)
 }
 
