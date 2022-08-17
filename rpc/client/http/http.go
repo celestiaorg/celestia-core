@@ -51,10 +51,10 @@ Example:
 		}
 		defer c.Stop()
 
-	res, err := c.Status()
-	if err != nil {
-		// handle error
-	}
+		res, err := c.Status()
+		if err != nil {
+			// handle error
+		}
 
 	// handle result
 */
