@@ -44,12 +44,12 @@ Example:
 			// handle error
 		}
 
-	// call Start/Stop if you're subscribing to events
-	err = c.Start()
-	if err != nil {
-		// handle error
-	}
-	defer c.Stop()
+		// call Start/Stop if you're subscribing to events
+		err = c.Start()
+		if err != nil {
+			// handle error
+		}
+		defer c.Stop()
 
 	res, err := c.Status()
 	if err != nil {
