@@ -56,7 +56,7 @@ Example:
 			// handle error
 		}
 
-	// handle result
+		// handle result
 */
 type HTTP struct {
 	remote string
