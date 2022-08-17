@@ -181,6 +181,10 @@ func (blockExec *BlockExecutor) ProcessProposal(
 		return false, ErrInvalidBlock(err)
 	}
 
+	if resp.IsRejected() {
+		blockExec.metrics.ProcessProposalRejected.Add(1)
+	}
+
 	return resp.IsOK(), nil
 }
 

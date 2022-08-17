@@ -23,6 +23,9 @@ type TxCache interface {
 	// Remove removes the given raw transaction from the cache.
 	Remove(tx types.Tx)
 
+	// RemoveTxByKey removes a given transaction hash from the cache.
+	RemoveTxByKey(key types.TxKey)
+
 	// Has reports whether tx is present in the cache. Checking for presence is
 	// not treated as an access of the value.
 	Has(tx types.Tx) bool
@@ -89,10 +92,14 @@ func (c *LRUTxCache) Push(tx types.Tx) bool {
 }
 
 func (c *LRUTxCache) Remove(tx types.Tx) {
+	key := tx.Key()
+	c.RemoveTxByKey(key)
+}
+
+func (c *LRUTxCache) RemoveTxByKey(key types.TxKey) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	key := tx.Key()
 	e := c.cacheMap[key]
 	delete(c.cacheMap, key)
 
@@ -114,7 +121,8 @@ type NopTxCache struct{}
 
 var _ TxCache = (*NopTxCache)(nil)
 
-func (NopTxCache) Reset()             {}
-func (NopTxCache) Push(types.Tx) bool { return true }
-func (NopTxCache) Remove(types.Tx)    {}
-func (NopTxCache) Has(types.Tx) bool  { return false }
+func (NopTxCache) Reset()                        {}
+func (NopTxCache) Push(types.Tx) bool            { return true }
+func (NopTxCache) Remove(types.Tx)               {}
+func (NopTxCache) RemoveTxByKey(key types.TxKey) {}
+func (NopTxCache) Has(types.Tx) bool             { return false }

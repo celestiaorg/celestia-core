@@ -1161,6 +1161,26 @@ type Messages struct {
 	MessagesList []Message `json:"msgs"`
 }
 
+// ByNamespace implements sort.Interface for Message
+type ByNamespace []Message
+
+func (s ByNamespace) Len() int {
+	return len(s)
+}
+
+func (s ByNamespace) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s ByNamespace) Less(i, j int) bool {
+	// The following comparison is `<` and not `<=` because bytes.Compare returns 0 for if a == b.
+	// We want this comparison to return `false` if a == b because:
+	// If both Less(i, j) and Less(j, i) are false,
+	// then the elements at index i and j are considered equal.
+	// See https://pkg.go.dev/sort#Interface
+	return bytes.Compare(s[i].NamespaceID, s[j].NamespaceID) < 0
+}
+
 func (msgs Messages) SplitIntoShares() NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	msgs.SortMessages()
@@ -1174,10 +1194,14 @@ func (msgs Messages) SplitIntoShares() NamespacedShares {
 	return shares
 }
 
+// SortMessages sorts messages by ascending namespace id
 func (msgs *Messages) SortMessages() {
-	sort.Slice(msgs.MessagesList, func(i, j int) bool {
-		return bytes.Compare(msgs.MessagesList[i].NamespaceID, msgs.MessagesList[j].NamespaceID) < 0
-	})
+	sort.Sort(ByNamespace(msgs.MessagesList))
+}
+
+// IsSorted returns whether the messages are sorted by namespace id
+func (msgs *Messages) IsSorted() bool {
+	return sort.IsSorted(ByNamespace(msgs.MessagesList))
 }
 
 type Message struct {

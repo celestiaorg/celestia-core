@@ -26,8 +26,6 @@ const (
 // For details see Section 5.2: https://arxiv.org/abs/1809.09044
 // or the Celestia specification:
 // https://github.com/celestiaorg/celestia-specs/blob/master/src/specs/data_structures.md#availabledataheader
-// Note that currently we list row and column roots in separate fields
-// (different from the spec).
 type DataAvailabilityHeader struct {
 	// RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
 	RowsRoots [][]byte `json:"row_roots"`
