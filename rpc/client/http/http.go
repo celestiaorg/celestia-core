@@ -457,10 +457,15 @@ func (c *baseRPCClient) Commit(ctx context.Context, height *int64) (*ctypes.Resu
 	return result, nil
 }
 
-func (c *baseRPCClient) DataCommitment(ctx context.Context, query string) (*ctypes.ResultDataCommitment, error) {
+func (c *baseRPCClient) DataCommitment(
+	ctx context.Context,
+	beginBlock uint64,
+	endBlock uint64,
+) (*ctypes.ResultDataCommitment, error) {
 	result := new(ctypes.ResultDataCommitment)
 	params := map[string]interface{}{
-		"query": query,
+		"beginBlock": beginBlock,
+		"endBlock":   endBlock,
 	}
 
 	_, err := c.caller.Call(ctx, "data_commitment", params, result)

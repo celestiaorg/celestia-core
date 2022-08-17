@@ -136,28 +136,59 @@ func Commit(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCommit, erro
 
 // DataCommitment collects the data roots over a provided ordered range of blocks,
 // and then creates a new Merkle root of those data roots.
-func DataCommitment(ctx *rpctypes.Context, query string) (*ctypes.ResultDataCommitment, error) {
-	heights, err := heightsByQuery(ctx, query)
+func DataCommitment(ctx *rpctypes.Context, beginBlock uint64, endBlock uint64) (*ctypes.ResultDataCommitment, error) {
+	err := validateDataCommitmentRange(beginBlock, endBlock)
 	if err != nil {
 		return nil, err
 	}
-
-	if len(heights) > consts.DataCommitmentBlocksLimit {
-		return nil, fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
-	} else if len(heights) == 0 {
-		return nil, fmt.Errorf("cannot create the data commitments for an empty set of blocks")
-	}
-
-	err = sortBlocks(heights, "asc")
-	if err != nil {
-		return nil, err
-	}
-
+	heights := generateHeightsList(beginBlock, endBlock)
 	blockResults := fetchBlocks(heights, len(heights), 0)
 	root := hashDataRoots(blockResults)
-
 	// Create data commitment
 	return &ctypes.ResultDataCommitment{DataCommitment: root}, nil
+}
+
+// generateHeightsList takes a begin and end block, then generates a list of heights
+// containing the elements of the range [beginBlock, endBlock].
+func generateHeightsList(beginBlock uint64, endBlock uint64) []int64 {
+	heights := make([]int64, endBlock-beginBlock+1)
+	for i := beginBlock; i <= endBlock; i++ {
+		heights[i-beginBlock] = int64(i)
+	}
+	return heights
+}
+
+// validateDataCommitmentRange runs basic checks on the asc sorted list of heights
+// that will be used subsequently in generating data commitments over the defined set of heights.
+func validateDataCommitmentRange(beginBlock uint64, endBlock uint64) error {
+	heightsRange := endBlock - beginBlock + 1
+	if heightsRange > uint64(consts.DataCommitmentBlocksLimit) {
+		return fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
+	}
+	if heightsRange == 0 {
+		return fmt.Errorf("cannot create the data commitments for an empty set of blocks")
+	}
+	if beginBlock > endBlock {
+		return fmt.Errorf("end block is smaller than begin block")
+	}
+	if endBlock > uint64(env.BlockStore.Height()) {
+		return fmt.Errorf(
+			"end block %d is higher than current chain height %d",
+			endBlock,
+			env.BlockStore.Height(),
+		)
+	}
+	has, err := env.BlockIndexer.Has(int64(endBlock))
+	if err != nil {
+		return err
+	}
+	if !has {
+		return fmt.Errorf(
+			"end block %d is still not indexed",
+			endBlock,
+		)
+	}
+	return nil
 }
 
 // hashDataRoots hashes a list of blocks data hashes and returns their merkle root.

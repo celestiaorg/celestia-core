@@ -122,7 +122,7 @@ func TestBlockResults(t *testing.T) {
 
 func TestDataCommitmentResults(t *testing.T) {
 	env = &Environment{}
-	height := int64(100)
+	height := int64(2826)
 
 	blocks := randomBlocks(height)
 	blockStore := mockBlockStore{
@@ -137,19 +137,20 @@ func TestDataCommitmentResults(t *testing.T) {
 		expectPass bool
 	}{
 		{10, 15, true},
+		{2727, 2828, false},
 		{10, 9, false},
 		{0, 1000, false},
+		{10, 8, false},
 	}
 
 	for _, tc := range testCases {
-		mockedQuery := fmt.Sprintf("block.height >= %d AND block.height <= %d", tc.beginQuery, tc.endQuery)
 		env.BlockIndexer = mockBlockIndexer{
 			height:          height,
 			beginQueryBlock: tc.beginQuery,
 			endQueryBlock:   tc.endQuery,
 		}
 
-		actualCommitment, err := DataCommitment(&rpctypes.Context{}, mockedQuery)
+		actualCommitment, err := DataCommitment(&rpctypes.Context{}, uint64(tc.beginQuery), uint64(tc.endQuery))
 		if tc.expectPass {
 			require.Nil(t, err, "should generate the needed data commitment.")
 

@@ -28,7 +28,7 @@ func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {
 		"block_by_hash":        rpcserver.NewRPCFunc(makeBlockByHashFunc(c), "hash"),
 		"block_results":        rpcserver.NewRPCFunc(makeBlockResultsFunc(c), "height"),
 		"commit":               rpcserver.NewRPCFunc(makeCommitFunc(c), "height"),
-		"data_commitment":      rpcserver.NewRPCFunc(makeDataCommitmentFunc(c), "query"),
+		"data_commitment":      rpcserver.NewRPCFunc(makeDataCommitmentFunc(c), "beginBlock,endBlock"),
 		"tx":                   rpcserver.NewRPCFunc(makeTxFunc(c), "hash,prove"),
 		"tx_search":            rpcserver.NewRPCFunc(makeTxSearchFunc(c), "query,prove,page,per_page,order_by"),
 		"block_search":         rpcserver.NewRPCFunc(makeBlockSearchFunc(c), "query,page,per_page,order_by"),
@@ -136,15 +136,17 @@ func makeCommitFunc(c *lrpc.Client) rpcCommitFunc {
 
 type rpcDataCommitmentFunc func(
 	ctx *rpctypes.Context,
-	query string,
+	beginBlock uint64,
+	endBlock uint64,
 ) (*ctypes.ResultDataCommitment, error)
 
 func makeDataCommitmentFunc(c *lrpc.Client) rpcDataCommitmentFunc {
 	return func(
 		ctx *rpctypes.Context,
-		query string,
+		beginBlock uint64,
+		endBlock uint64,
 	) (*ctypes.ResultDataCommitment, error) {
-		return c.DataCommitment(ctx.Context(), query)
+		return c.DataCommitment(ctx.Context(), beginBlock, endBlock)
 	}
 }
 
