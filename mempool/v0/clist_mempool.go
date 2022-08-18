@@ -616,9 +616,9 @@ func (mem *CListMempool) Update(
 			mem.removeTx(tx, e.(*clist.CElement), false)
 			// see if the transaction is a malleated transaction of a some parent
 			// transaction that exists in the mempool
-		} else if parentHash, _, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
+		} else if malleatedTx, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
 			var parentKey [types.TxKeySize]byte
-			copy(parentKey[:], parentHash)
+			copy(parentKey[:], malleatedTx.OriginalTxHash)
 			err := mem.RemoveTxByKey(parentKey)
 			if err != nil {
 				return err

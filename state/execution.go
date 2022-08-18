@@ -584,9 +584,9 @@ func fireEvents(
 	for i, tx := range block.Data.Txs {
 		var txHash []byte
 		var rawTx []byte
-		if originalHash, malleatedTx, ismalleated := types.UnwrapMalleatedTx(tx); ismalleated {
-			txHash = originalHash
-			rawTx = malleatedTx
+		if malleatedTx, ismalleated := types.UnwrapMalleatedTx(tx); ismalleated {
+			txHash = malleatedTx.OriginalTxHash
+			rawTx = malleatedTx.Tx
 		} else {
 			txHash = tx.Hash()
 			rawTx = tx

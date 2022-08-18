@@ -48,7 +48,7 @@ func TestUnwrapMalleatedTx(t *testing.T) {
 	// perform a simple test for being unable to decode a non
 	// malleated transaction
 	tx := Tx{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0}
-	_, _, ok := UnwrapMalleatedTx(tx)
+	_, ok := UnwrapMalleatedTx(tx)
 	require.False(t, ok)
 
 	data := Data{
@@ -81,16 +81,16 @@ func TestUnwrapMalleatedTx(t *testing.T) {
 
 	// due to protobuf not actually requiring type compatibility
 	// we need to make sure that there is some check
-	_, _, ok = UnwrapMalleatedTx(rawBlock)
+	_, ok = UnwrapMalleatedTx(rawBlock)
 	require.False(t, ok)
 
 	pHash := sha256.Sum256(rawBlock)
-	MalleatedTx, err := WrapMalleatedTx(pHash[:], rawBlock)
+	MalleatedTx, err := WrapMalleatedTx(pHash[:], 0, rawBlock)
 	require.NoError(t, err)
 
 	// finally, ensure that the unwrapped bytes are identical to the input
-	unwrappedHash, unwrapped, ok := UnwrapMalleatedTx(MalleatedTx)
+	malleated, ok := UnwrapMalleatedTx(MalleatedTx)
 	require.True(t, ok)
-	assert.Equal(t, 32, len(unwrappedHash))
-	require.Equal(t, rawBlock, []byte(unwrapped))
+	assert.Equal(t, 32, len(malleated.OriginalTxHash))
+	require.Equal(t, rawBlock, malleated.Tx)
 }
