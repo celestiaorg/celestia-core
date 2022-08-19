@@ -19,11 +19,14 @@ const (
 
 	// ShareReservedBytes is the reserved bytes for contiguous appends.
 	ShareReservedBytes = 1
+	// InfoReservedBytes is the number of reserved bytes for information.
+	// InfoReservedBytes is only applicable to message shares.
+	InfoReservedBytes = 1
 
 	// TxShareSize is the number of bytes usable for tx/evidence/ISR shares.
 	TxShareSize = ShareSize - NamespaceSize - ShareReservedBytes
 	// MsgShareSize is the number of bytes usable for message shares.
-	MsgShareSize = ShareSize - NamespaceSize
+	MsgShareSize = ShareSize - NamespaceSize - InfoReservedBytes
 
 	// MaxSquareSize is the maximum number of
 	// rows/columns of the original data shares in square layout.
