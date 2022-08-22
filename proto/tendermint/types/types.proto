@@ -130,8 +130,9 @@ message Messages {
 }
 
 message Message {
-  bytes namespace_id = 1;
-  bytes data         = 2;
+  bytes namespace_id     = 1;
+  bytes data             = 2;
+  uint32 version         = 3;
 }
 
 // DataAvailabilityHeader contains the row and column roots of the erasure
