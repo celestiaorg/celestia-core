@@ -15,6 +15,11 @@ type NamespacedShare struct {
 	ID namespace.ID
 }
 
+type MessageShare struct {
+	NamespacedShare
+	Info byte
+}
+
 func (n NamespacedShare) NamespaceID() namespace.ID {
 	return n.ID
 }
@@ -24,7 +29,7 @@ func (n NamespacedShare) Data() []byte {
 }
 
 // NamespacedShares is just a list of NamespacedShare elements.
-// It can be used to extract the raw raw shares.
+// It can be used to extract the raw shares.
 type NamespacedShares []NamespacedShare
 
 // RawShares returns the raw shares that can be fed into the erasure coding

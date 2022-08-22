@@ -1189,7 +1189,7 @@ func (msgs Messages) SplitIntoShares() NamespacedShares {
 		if err != nil {
 			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
 		}
-		shares = AppendToShares(shares, m.NamespaceID, rawData)
+		shares = AppendToShares(shares, m.NamespaceID, m.Version, rawData)
 	}
 	return shares
 }
@@ -1215,6 +1215,10 @@ type Message struct {
 	// Data is the actual data contained in the message
 	// (e.g. a block of a virtual sidechain).
 	Data []byte
+
+	// Version defines the the message format specification version of this
+	// message. Version is a number between 0 and 127 (inclusive).
+	Version uint8
 }
 
 var (
@@ -1226,9 +1230,14 @@ func MessageFromProto(p *tmproto.Message) Message {
 	if p == nil {
 		return MessageEmpty
 	}
+	if p.Version > 127 {
+		// TODO (throw an error here)
+		return MessageEmpty
+	}
 	return Message{
 		NamespaceID: p.NamespaceId,
 		Data:        p.Data,
+		Version:     uint8(p.Version),
 	}
 }
 
@@ -1288,6 +1297,7 @@ func (data *Data) ToProto() tmproto.Data {
 		protoMsgs[i] = &tmproto.Message{
 			NamespaceId: msg.NamespaceID,
 			Data:        msg.Data,
+			Version:     uint32(msg.Version),
 		}
 	}
 	tp.Messages = tmproto.Messages{MessagesList: protoMsgs}
@@ -1319,7 +1329,7 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 	if len(dp.Messages.MessagesList) > 0 {
 		msgs := make([]Message, len(dp.Messages.MessagesList))
 		for i, m := range dp.Messages.MessagesList {
-			msgs[i] = Message{NamespaceID: m.NamespaceId, Data: m.Data}
+			msgs[i] = Message{NamespaceID: m.NamespaceId, Data: m.Data, Version: uint8(m.Version)}
 		}
 		data.Messages = Messages{MessagesList: msgs}
 	} else {

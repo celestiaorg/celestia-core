@@ -13,12 +13,12 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-// TxInclusion uses the provided block data to progressively generate rows
-// of a data square, and then using those shares to creates nmt inclusion proofs
-// It is possible that a transaction spans more than one row. In that case, we
-// have to return two proofs.
+// TxInclusion uses the provided block data to progressively generate rows of a
+// data square, and then uses those shares to creates nmt inclusion proofs. It
+// is possible that a transaction spans more than one row. In that case, we have
+// to return two proofs.
 func TxInclusion(codec rsmt2d.Codec, data types.Data, txIndex uint64) (types.TxProof, error) {
-	// calculate the index of the shares that contain the tx
+	// calculate the positions of the shares that contain this tx
 	startPos, endPos, err := txSharePosition(data.Txs, txIndex)
 	if err != nil {
 		return types.TxProof{}, err
@@ -90,8 +90,9 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, txIndex uint64) (types.TxP
 	}, nil
 }
 
-// txSharePosition returns the share that a given transaction is included in.
-// returns an error if index is greater than that of the provided txs.
+// txSharePosition returns the start and end positions for the shares that
+// include the given transaction. Returns an error if txIndex is greater than
+// the number of transactions.
 func txSharePosition(txs types.Txs, txIndex uint64) (startSharePos, endSharePos uint64, err error) {
 	if txIndex >= uint64(len(txs)) {
 		return startSharePos, endSharePos, errors.New("transaction index is greater than the number of txs")
@@ -144,8 +145,8 @@ func genRowShares(codec rsmt2d.Codec, data types.Data, startRow, endRow uint64) 
 }
 
 // genOrigRowShares progressively generates data square rows for the original
-// data square, meaning the rows only half the full square length, as there is
-// not erasure data
+// data square, meaning the rows only fill half the full square length, as there
+// is no erasure data.
 func genOrigRowShares(data types.Data, startRow, endRow uint64) [][]byte {
 	wantLen := (endRow + 1) * data.OriginalSquareSize
 	startPos := startRow * data.OriginalSquareSize
@@ -168,7 +169,7 @@ func genOrigRowShares(data types.Data, startRow, endRow uint64) [][]byte {
 		if err != nil {
 			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
 		}
-		shares = types.AppendToShares(shares, m.NamespaceID, rawData)
+		shares = types.AppendToShares(shares, m.NamespaceID, m.Version, rawData)
 
 		// return if we have enough shares
 		if uint64(len(shares)) >= wantLen {

@@ -28,7 +28,7 @@ func (msw *MessageShareWriter) Write(msg Message) {
 		panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", msg))
 	}
 	newShares := make([]NamespacedShare, 0)
-	newShares = AppendToShares(newShares, msg.NamespaceID, rawMsg)
+	newShares = AppendToShares(newShares, msg.NamespaceID, msg.Version, rawMsg)
 	msw.shares = append(msw.shares, newShares)
 	msw.count += len(newShares)
 }
@@ -58,27 +58,33 @@ func (msw *MessageShareWriter) Count() int {
 	return msw.count
 }
 
-// appendToShares appends raw data as shares.
-// Used for messages.
-func AppendToShares(shares []NamespacedShare, nid namespace.ID, rawData []byte) []NamespacedShare {
+// AppendToShares appends raw data as shares. Used for messages.
+func AppendToShares(shares []NamespacedShare, nid namespace.ID, version uint8, rawData []byte) []NamespacedShare {
 	if len(rawData) <= consts.MsgShareSize {
-		rawShare := append(append(
-			make([]byte, 0, len(nid)+len(rawData)),
+		isMessageStart := true
+		infoReservedByte, err := NewInfoReservedByte(version, isMessageStart)
+		if err != nil {
+			// TODO (propogate this error?)
+			panic(err)
+		}
+		rawShare := append(append(append(
+			make([]byte, 0, len(nid)+consts.InfoReservedBytes+len(rawData)),
 			nid...),
+			byte(infoReservedByte)),
 			rawData...,
 		)
 		paddedShare := zeroPadIfNecessary(rawShare, consts.ShareSize)
 		share := NamespacedShare{paddedShare, nid}
 		shares = append(shares, share)
 	} else { // len(rawData) > MsgShareSize
-		shares = append(shares, splitMessage(rawData, nid)...)
+		shares = append(shares, splitMessage(rawData, nid, version)...)
 	}
 	return shares
 }
 
 // splitMessage breaks the data in a message into the minimum number of
 // namespaced shares
-func splitMessage(rawData []byte, nid namespace.ID) NamespacedShares {
+func splitMessage(rawData []byte, nid namespace.ID, version uint8) NamespacedShares {
 	shares := make([]NamespacedShare, 0)
 	firstRawShare := append(append(
 		make([]byte, 0, consts.ShareSize),
