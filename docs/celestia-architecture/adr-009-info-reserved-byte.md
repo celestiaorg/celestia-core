@@ -46,7 +46,7 @@ Rationale:
 1. Add `Version` to [`MsgWirePayForData`](https://github.com/celestiaorg/celestia-app/blob/main/proto/payment/tx.proto#L19)
 1. Add `Version` to [`MsgPayForData`](https://github.com/celestiaorg/celestia-app/blob/main/proto/payment/tx.proto#L44)
 
-**NOTE**: Protobuf does not support the byte type (see [Scalar Value Types](https://developers.google.com/protocol-buffers/docs/proto3#scalar)) so a `uint32` will be used for `Version`. Since `Version` is constrained to 2^7 bits (0 to 127 inclusive), a `Version` outside the supported range (i.e. 128) will seriealize / deserialize correctly but be considered invalid by the application.
+**NOTE**: Protobuf does not support the byte type (see [Scalar Value Types](https://developers.google.com/protocol-buffers/docs/proto3#scalar)) so a `uint32` will be used for `Version`. Since `Version` is constrained to 2^7 bits (0 to 127 inclusive), a `Version` outside the supported range (i.e. 128) will seriealize / deserialize correctly but be considered invalid by the application. Adding this field increases the size of the message by one byte + protobuf overhead.
 
 ### Constants
 
@@ -111,7 +111,9 @@ This proposal reduces the number of bytes a message share can use for data by on
 
 ### Neutral
 
-This proposal limits the number of future message share format versions to 127 (2^7). If 127 versions is larger than required, the message share format spec can be updated (in a subsequent version) to reserve fewer bits for the version in order to use some bits for other purposes.
+If 127 versions is larger than required, the message share format spec can be updated (in a subsequent version) to reserve fewer bits for the version in order to use some bits for other purposes.
+
+If 127 versions is smaller than required, the message share format spec can be updated (in a subsequent version) to occupy multiple bytes for the version. For example if the 7 bits are `1111111` then read the second byte.
 
 ## References
 
