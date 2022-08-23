@@ -93,7 +93,16 @@ func (i InfoReservedByte) IsMessageStart() bool {
 
 1. Add `Version uint8` to [`Message`](https://github.com/rootulp/celestia-core/blob/master/types/block.go#L1172)
 
-// TODO
+### Logic
+
+#### celestia-core
+
+1. Account for the new `InfoReservedByte` in `./types/share_splitting.go` and `./types/share_merging.go`.
+    - **NOTE**: These files are subject to be deleted soon. See <https://github.com/celestiaorg/celestia-core/issues/842>
+
+#### celestia-app
+
+1. Account for the new `InfoReservedByte` in `./pkg/shares/split_message_shares.go` and `./pkg/shares/merge_message_shares.go`. There is an in-progress refactor of the relevant files. See <https://github.com/celestiaorg/celestia-app/pull/637>
 
 ## Status
 
