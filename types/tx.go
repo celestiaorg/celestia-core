@@ -77,24 +77,6 @@ func (txs Txs) IndexByHash(hash []byte) int {
 	return -1
 }
 
-func (txs Txs) SplitIntoShares() NamespacedShares {
-	rawDatas := make([][]byte, len(txs))
-	for i, tx := range txs {
-		rawData, err := tx.MarshalDelimited()
-		if err != nil {
-			panic(fmt.Sprintf("included Tx in mem-pool that can not be encoded %v", tx))
-		}
-		rawDatas[i] = rawData
-	}
-
-	w := NewContiguousShareWriter(consts.TxNamespaceID)
-	for _, tx := range rawDatas {
-		w.Write(tx)
-	}
-
-	return w.Export()
-}
-
 // ToSliceOfBytes converts a Txs to slice of byte slices.
 //
 // NOTE: This method should become obsolete once Txs is switched to [][]byte.
