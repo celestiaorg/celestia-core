@@ -29,5 +29,4 @@ jobs:
           version: v1.45
           args: --timeout 10m
           github-token: ${{ secrets.github_token }}
-          skip-go-installation: true
         if: env.GIT_DIFF
