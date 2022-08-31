@@ -25,6 +25,9 @@ const (
 	// delimeter in a compact share (transactions, ISRs, evidence).
 	ShareReservedBytes = 1
 
+	// ShareVersion is the current version of the share format
+	ShareVersion = uint8(0)
+
 	// TxShareSize is the number of bytes usable for data in a compact share
 	// (transactions, ISRs, evidence).
 	TxShareSize = ShareSize - NamespaceSize - ShareInfoBytes - ShareReservedBytes
