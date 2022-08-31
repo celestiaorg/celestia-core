@@ -17,13 +17,20 @@ const (
 	// NamespaceSize is the namespace size in bytes.
 	NamespaceSize = 8
 
-	// ShareReservedBytes is the reserved bytes for contiguous appends.
+	// ShareInfoBytes is the number of bytes reserved for information. This info
+	// byte contains the share version and a message start idicator.
+	ShareInfoBytes = 1
+
+	// ShareReservedBytes is the number of bytes reserved for the length
+	// delimeter in a compact share (transactions, ISRs, evidence).
 	ShareReservedBytes = 1
 
-	// TxShareSize is the number of bytes usable for tx/evidence/ISR shares.
-	TxShareSize = ShareSize - NamespaceSize - ShareReservedBytes
-	// MsgShareSize is the number of bytes usable for message shares.
-	MsgShareSize = ShareSize - NamespaceSize
+	// TxShareSize is the number of bytes usable for data in a compact share
+	// (transactions, ISRs, evidence).
+	TxShareSize = ShareSize - NamespaceSize - ShareInfoBytes - ShareReservedBytes
+	// MsgShareSize is the number of bytes usable for data in a sparse share
+	// (messages) share.
+	MsgShareSize = ShareSize - NamespaceSize - ShareInfoBytes
 
 	// MaxSquareSize is the maximum number of
 	// rows/columns of the original data shares in square layout.
