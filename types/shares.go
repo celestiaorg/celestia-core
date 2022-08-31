@@ -37,6 +37,8 @@ func (ns NamespacedShares) RawShares() [][]byte {
 	return res
 }
 
+// MarshalDelimited prepends the transaction with the length of the transaction
+// in bytes encoded as a varint.
 func (tx Tx) MarshalDelimited() ([]byte, error) {
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	length := uint64(len(tx))
