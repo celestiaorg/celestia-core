@@ -21,18 +21,18 @@ const (
 	// byte contains the share version and a message start idicator.
 	ShareInfoBytes = 1
 
-	// ShareReservedBytes is the number of bytes reserved for the length
-	// delimeter in a compact share (transactions, ISRs, evidence).
+	// ShareReservedBytes is the number of bytes reserved for the location of
+	// the first unit (transaction, ISR, evidence) in a compact share.
 	ShareReservedBytes = 1
 
 	// ShareVersion is the current version of the share format
 	ShareVersion = uint8(0)
 
-	// TxShareSize is the number of bytes usable for data in a compact share
-	// (transactions, ISRs, evidence).
+	// TxShareSize is the number of bytes usable for data in a compact
+	// (i.e. transactions, ISRs, evidence) share.
 	TxShareSize = ShareSize - NamespaceSize - ShareInfoBytes - ShareReservedBytes
-	// MsgShareSize is the number of bytes usable for data in a sparse share
-	// (messages) share.
+	// MsgShareSize is the number of bytes usable for data in a sparse (i.e.
+	// message) share.
 	MsgShareSize = ShareSize - NamespaceSize - ShareInfoBytes
 
 	// MaxSquareSize is the maximum number of
