@@ -13,10 +13,12 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-// TxInclusion uses the provided block data to progressively generate rows
-// of a data square, and then using those shares to creates nmt inclusion proofs
-// It is possible that a transaction spans more than one row. In that case, we
-// have to return two proofs.
+// TxInclusion returns a proof that can be used to verify txIndex was included
+// in the provided block data. It uses the provided block data to progressively
+// generate rows of a data square. Then it uses the shares in these rows to
+// creates nmt inclusion proofs. It is possible that a transaction spans more
+// than one row, in which case the TxProof returned by this function will
+// contain multiple proofs.
 func TxInclusion(codec rsmt2d.Codec, data types.Data, txIndex uint64) (types.TxProof, error) {
 	// calculate the index of the shares that contain the tx
 	startPos, endPos, err := txSharePosition(data.Txs, txIndex)
@@ -24,8 +26,8 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, txIndex uint64) (types.TxP
 		return types.TxProof{}, err
 	}
 
-	// use the index of the shares and the square size to determine the row that
-	// contains the tx we need to prove
+	// use the index of the shares and the square size to determine the row(s)
+	// that contains the tx we need to prove
 	startRow := startPos / data.OriginalSquareSize
 	endRow := endPos / data.OriginalSquareSize
 	startLeaf := startPos % data.OriginalSquareSize
@@ -36,7 +38,8 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, txIndex uint64) (types.TxP
 		return types.TxProof{}, err
 	}
 
-	var proofs []*tmproto.NMTProof  //nolint:prealloc // rarely will this contain more than a single proof
+	var proofs []*tmproto.NMTProof //nolint:prealloc // rarely will this contain more than a single proof
+	// the comment below seems inaccurate because messages can span multiple shares
 	var shares [][]byte             //nolint:prealloc // rarely will this contain more than a single share
 	var rowRoots []tmbytes.HexBytes //nolint:prealloc // rarely will this contain more than a single root
 	for i, row := range rowShares {
@@ -59,6 +62,7 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, txIndex uint64) (types.TxP
 		if i > 0 {
 			startLeafPos = 0
 		}
+		// Question: why select for the rest of the row?
 		// if this is not the last row, then select for the rest of the row
 		if i != (len(rowShares) - 1) {
 			endLeafPos = data.OriginalSquareSize - 1
@@ -79,7 +83,7 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, txIndex uint64) (types.TxP
 		})
 
 		// we don't store the data availability header anywhere, so we
-		// regenerate the roots to each row
+		// regenerate the roots to every row that contains data for this txIndex
 		rowRoots = append(rowRoots, tree.Root())
 	}
 
@@ -90,8 +94,9 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, txIndex uint64) (types.TxP
 	}, nil
 }
 
-// txSharePosition returns the share that a given transaction is included in.
-// returns an error if index is greater than that of the provided txs.
+// txSharePosition returns the start and end positions for shares that contain
+// the provided txIndex. returns an error if txIndex is greater than that of the
+// provided txs.
 func txSharePosition(txs types.Txs, txIndex uint64) (startSharePos, endSharePos uint64, err error) {
 	if txIndex >= uint64(len(txs)) {
 		return startSharePos, endSharePos, errors.New("transaction index is greater than the number of txs")
