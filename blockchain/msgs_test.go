@@ -98,7 +98,7 @@ func TestBlockchainMessageVectors(t *testing.T) {
 			BlockRequest: &bcproto.BlockRequest{Height: math.MaxInt64}}},
 			"0a0a08ffffffffffffffff7f"},
 		{"BlockResponseMessage", &bcproto.Message{Sum: &bcproto.Message_BlockResponse{
-			BlockResponse: &bcproto.BlockResponse{Block: bpb}}}, "1a97010a94010a5b0a02080b1803220b088092b8c398feffffff012a0212003a20269ece38583f42aaf53fdd3abe1f570ab9b0d08284d080900966040a29df504c6a20e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85512350a0b48656c6c6f20576f726c641a00220028013220269ece38583f42aaf53fdd3abe1f570ab9b0d08284d080900966040a29df504c"},
+			BlockResponse: &bcproto.BlockResponse{Block: bpb}}}, "1a500a4e0a390a02080b1803220b088092b8c398feffffff012a0212006a20e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85512110a0b48656c6c6f20576f726c641a002200"},
 		{"NoBlockResponseMessage", &bcproto.Message{Sum: &bcproto.Message_NoBlockResponse{
 			NoBlockResponse: &bcproto.NoBlockResponse{Height: 1}}}, "12020801"},
 		{"NoBlockResponseMessage", &bcproto.Message{Sum: &bcproto.Message_NoBlockResponse{
