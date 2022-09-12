@@ -78,13 +78,6 @@ func TestBlockValidateBasic(t *testing.T) {
 			blk.LastCommit.hash = nil // clear hash or change wont be noticed
 		}, true},
 		{"Remove LastCommitHash", func(blk *Block) { blk.LastCommitHash = []byte("something else") }, true},
-		{"Tampered Data", func(blk *Block) {
-			blk.Data.Txs[0] = Tx("something else")
-			blk.DataHash = nil // clear hash or change wont be noticed
-		}, true},
-		{"Tampered DataHash", func(blk *Block) {
-			blk.DataHash = tmrand.Bytes(len(blk.DataHash))
-		}, true},
 		{"Tampered EvidenceHash", func(blk *Block) {
 			blk.EvidenceHash = []byte("something else")
 		}, true},
