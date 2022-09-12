@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -1026,40 +1025,17 @@ type Data struct {
 	hash tmbytes.HexBytes
 }
 
-// paddedLen calculates the number of shares needed to make a power of 2 square
-// given the current number of shares
-func paddedLen(length int) int {
-	width := uint32(math.Ceil(math.Sqrt(float64(length))))
-	width = nextHighestPowerOf2(width)
-	return int(width * width)
-}
-
-// nextPowerOf2 returns the next highest power of 2 unless the input is a power
-// of two, in which case it returns the input
-func nextHighestPowerOf2(v uint32) uint32 {
-	if v == 0 {
-		return 0
+// Hash returns the hash of the data
+func (data *Data) Hash() tmbytes.HexBytes {
+	if data == nil {
+		return (Txs{}).Hash()
+	}
+	if data.hash == nil {
+		data.hash = data.Txs.Hash() // NOTE: leaves of merkle tree are TxIDs
 	}
 
-	// find the next highest power using bit mashing
-	v--
-	v |= v >> 1
-	v |= v >> 2
-	v |= v >> 4
-	v |= v >> 8
-	v |= v >> 16
-	v++
-
-	// return the next highest power
-	return v
-}
-
-// powerOf2 checks if number is power of 2
-func powerOf2(v uint64) bool {
-	if v&(v-1) == 0 && v != 0 {
-		return true
-	}
-	return false
+	// data.hash should be set by celestia-app in PrepareProposal
+	return data.hash
 }
 
 type Messages struct {
