@@ -1025,7 +1025,10 @@ type Data struct {
 	hash tmbytes.HexBytes
 }
 
-// Hash returns the hash of the data
+// Hash returns the hash of the data. `data.hash` is expected to be set by
+// PrepareProposal in celestia-app. However, this function falls back to
+// calculating `data.hash` as vanilla tendermint would in order to satisfy unit
+// and e2e tests.
 func (data *Data) Hash() tmbytes.HexBytes {
 	if data == nil {
 		return (Txs{}).Hash()
@@ -1034,7 +1037,8 @@ func (data *Data) Hash() tmbytes.HexBytes {
 		data.hash = data.Txs.Hash() // NOTE: leaves of merkle tree are TxIDs
 	}
 
-	// data.hash should be set by celestia-app in PrepareProposal
+	// this is the expected behavior where `data.hash` was set by celestia-app
+	// in PrepareProposal
 	return data.hash
 }
 
