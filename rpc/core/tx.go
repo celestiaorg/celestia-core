@@ -7,8 +7,6 @@ import (
 
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
-	"github.com/tendermint/tendermint/pkg/consts"
-	"github.com/tendermint/tendermint/pkg/prove"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 	"github.com/tendermint/tendermint/state/txindex/null"
@@ -19,7 +17,7 @@ import (
 // transaction is in the mempool, invalidated, or was not sent in the first
 // place.
 // More: https://docs.tendermint.com/master/rpc/#/Info/tx
-func Tx(ctx *rpctypes.Context, hash []byte, proveTx bool) (*ctypes.ResultTx, error) {
+func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
 	// if index is disabled, return error
 	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
 		return nil, fmt.Errorf("transaction indexing is disabled")
@@ -37,26 +35,13 @@ func Tx(ctx *rpctypes.Context, hash []byte, proveTx bool) (*ctypes.ResultTx, err
 	height := r.Height
 	index := r.Index
 
-	var txProof types.TxProof
-	if proveTx {
-		block := env.BlockStore.LoadBlock(height)
-		txProof, err = prove.TxInclusion(
-			consts.DefaultCodec(),
-			block.Data,
-			uint64(r.Index),
-		)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return &ctypes.ResultTx{
 		Hash:     hash,
 		Height:   height,
 		Index:    index,
 		TxResult: r.Result,
 		Tx:       r.Tx,
-		Proof:    txProof,
+		Proof:    types.TxProof{}, // transaction inclusion proofs are no longer supported by this endpoint
 	}, nil
 }
 
@@ -66,7 +51,7 @@ func Tx(ctx *rpctypes.Context, hash []byte, proveTx bool) (*ctypes.ResultTx, err
 func TxSearch(
 	ctx *rpctypes.Context,
 	query string,
-	proveTx bool,
+	prove bool,
 	pagePtr, perPagePtr *int,
 	orderBy string,
 ) (*ctypes.ResultTxSearch, error) {
@@ -124,22 +109,13 @@ func TxSearch(
 	for i := skipCount; i < skipCount+pageSize; i++ {
 		r := results[i]
 
-		var proof types.TxProof
-		if proveTx {
-			block := env.BlockStore.LoadBlock(r.Height)
-			proof, err = prove.TxInclusion(consts.DefaultCodec(), block.Data, uint64(r.Index))
-			if err != nil {
-				return nil, err
-			}
-		}
-
 		apiResults = append(apiResults, &ctypes.ResultTx{
 			Hash:     types.Tx(r.Tx).Hash(),
 			Height:   r.Height,
 			Index:    r.Index,
 			TxResult: r.Result,
 			Tx:       r.Tx,
-			Proof:    proof,
+			Proof:    types.TxProof{}, // transaction inclusion proofs are no longer supported by this endpoint
 		})
 	}
 

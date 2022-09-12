@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/celestiaorg/nmt/namespace"
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
-	"github.com/tendermint/tendermint/pkg/consts"
 
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/merkle"
@@ -20,9 +18,7 @@ import (
 	"github.com/tendermint/tendermint/libs/bits"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	tmmath "github.com/tendermint/tendermint/libs/math"
-	"github.com/tendermint/tendermint/libs/protoio"
 	tmsync "github.com/tendermint/tendermint/libs/sync"
-	"github.com/tendermint/tendermint/pkg/da"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
 	"github.com/tendermint/tendermint/version"
@@ -84,11 +80,6 @@ func (b *Block) ValidateBasic() error {
 		)
 	}
 
-	// NOTE: b.Data.Txs may be nil, but b.Data.Hash() still works fine.
-	if w, g := b.Data.Hash(), b.DataHash; !bytes.Equal(w, g) {
-		return fmt.Errorf("wrong Header.DataHash. Expected %X, got %X", w, g)
-	}
-
 	// NOTE: b.Evidence.Evidence may be nil, but we're just looping.
 	for i, ev := range b.Evidence.Evidence {
 		if err := ev.ValidateBasic(); err != nil {
@@ -110,9 +101,6 @@ func (b *Block) ValidateBasic() error {
 func (b *Block) fillHeader() {
 	if b.LastCommitHash == nil {
 		b.LastCommitHash = b.LastCommit.Hash()
-	}
-	if b.DataHash == nil {
-		b.DataHash = b.Data.Hash()
 	}
 	if b.EvidenceHash == nil {
 		b.EvidenceHash = b.Evidence.Hash()
@@ -1039,122 +1027,15 @@ type Data struct {
 
 // Hash returns the hash of the data
 func (data *Data) Hash() tmbytes.HexBytes {
-	if data.hash != nil {
-		return data.hash
+	if data == nil {
+		return (Txs{}).Hash()
+	}
+	if data.hash == nil {
+		data.hash = data.Txs.Hash() // NOTE: leaves of merkle tree are TxIDs
 	}
 
-	// compute the data availability header
-	// todo(evan): add the non redundant shares back into the header
-	shares, _, err := data.ComputeShares(data.OriginalSquareSize)
-	if err != nil {
-		// todo(evan): see if we can get rid of this panic
-		panic(err)
-	}
-	rawShares := shares.RawShares()
-
-	eds, err := da.ExtendShares(data.OriginalSquareSize, rawShares)
-	if err != nil {
-		panic(err)
-	}
-
-	dah := da.NewDataAvailabilityHeader(eds)
-
-	data.hash = dah.Hash()
-
+	// data.hash should be set by celestia-app in PrepareProposal
 	return data.hash
-}
-
-// ComputeShares splits block data into shares of an original data square and
-// returns them along with an amount of non-redundant shares. If a square size
-// of 0 is passed, then it is determined based on how many shares are needed to
-// fill the square for the underlying block data. The square size is stored in
-// the local instance of the struct.
-func (data *Data) ComputeShares(squareSize uint64) (NamespacedShares, int, error) {
-	if squareSize != 0 {
-		if !powerOf2(squareSize) {
-			return nil, 0, errors.New("square size is not a power of two")
-		}
-	}
-
-	// reserved shares:
-	txShares := data.Txs.SplitIntoShares()
-	evidenceShares := data.Evidence.SplitIntoShares()
-
-	// application data shares from messages:
-	msgShares := data.Messages.SplitIntoShares()
-	curLen := len(txShares) + len(evidenceShares) + len(msgShares)
-
-	if curLen > consts.MaxShareCount {
-		panic(fmt.Sprintf("Block data exceeds the max square size. Number of shares required: %d\n", curLen))
-	}
-
-	// find the number of shares needed to create a square that has a power of
-	// two width
-	wantLen := int(squareSize * squareSize)
-	if squareSize == 0 {
-		wantLen = paddedLen(curLen)
-	}
-
-	if wantLen < curLen {
-		return nil, 0, errors.New("square size too small to fit block data")
-	}
-
-	// ensure that the min square size is used
-	if wantLen < consts.MinSharecount {
-		wantLen = consts.MinSharecount
-	}
-
-	tailShares := TailPaddingShares(wantLen - curLen)
-
-	shares := append(append(append(
-		txShares,
-		evidenceShares...),
-		msgShares...),
-		tailShares...)
-
-	if squareSize == 0 {
-		squareSize = uint64(math.Sqrt(float64(wantLen)))
-	}
-
-	data.OriginalSquareSize = squareSize
-
-	return shares, curLen, nil
-}
-
-// paddedLen calculates the number of shares needed to make a power of 2 square
-// given the current number of shares
-func paddedLen(length int) int {
-	width := uint32(math.Ceil(math.Sqrt(float64(length))))
-	width = nextHighestPowerOf2(width)
-	return int(width * width)
-}
-
-// nextPowerOf2 returns the next highest power of 2 unless the input is a power
-// of two, in which case it returns the input
-func nextHighestPowerOf2(v uint32) uint32 {
-	if v == 0 {
-		return 0
-	}
-
-	// find the next highest power using bit mashing
-	v--
-	v |= v >> 1
-	v |= v >> 2
-	v |= v >> 4
-	v |= v >> 8
-	v |= v >> 16
-	v++
-
-	// return the next highest power
-	return v
-}
-
-// powerOf2 checks if number is power of 2
-func powerOf2(v uint64) bool {
-	if v&(v-1) == 0 && v != 0 {
-		return true
-	}
-	return false
 }
 
 type Messages struct {
@@ -1179,19 +1060,6 @@ func (s ByNamespace) Less(i, j int) bool {
 	// then the elements at index i and j are considered equal.
 	// See https://pkg.go.dev/sort#Interface
 	return bytes.Compare(s[i].NamespaceID, s[j].NamespaceID) < 0
-}
-
-func (msgs Messages) SplitIntoShares() NamespacedShares {
-	shares := make([]NamespacedShare, 0)
-	msgs.SortMessages()
-	for _, m := range msgs.MessagesList {
-		rawData, err := m.MarshalDelimited()
-		if err != nil {
-			panic(fmt.Sprintf("app accepted a Message that can not be encoded %#v", m))
-		}
-		shares = AppendToShares(shares, m.NamespaceID, rawData)
-	}
-	return shares
 }
 
 // SortMessages sorts messages by ascending namespace id
@@ -1429,26 +1297,6 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
 	data.byteSize = int64(eviData.Size())
 
 	return nil
-}
-
-func (data *EvidenceData) SplitIntoShares() NamespacedShares {
-	rawDatas := make([][]byte, 0, len(data.Evidence))
-	for _, ev := range data.Evidence {
-		pev, err := EvidenceToProto(ev)
-		if err != nil {
-			panic("failure to convert evidence to equivalent proto type")
-		}
-		rawData, err := protoio.MarshalDelimited(pev)
-		if err != nil {
-			panic(err)
-		}
-		rawDatas = append(rawDatas, rawData)
-	}
-	w := NewContiguousShareWriter(consts.EvidenceNamespaceID)
-	for _, evd := range rawDatas {
-		w.Write(evd)
-	}
-	return w.Export()
 }
 
 //--------------------------------------------------------------------------------
