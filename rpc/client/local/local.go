@@ -185,19 +185,18 @@ func (c *Local) Validators(ctx context.Context, height *int64, page, perPage *in
 	return core.Validators(c.ctx, height, page, perPage)
 }
 
-func (c *Local) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
-	return core.Tx(c.ctx, hash, prove)
+func (c *Local) Tx(ctx context.Context, hash []byte) (*ctypes.ResultTx, error) {
+	return core.Tx(c.ctx, hash)
 }
 
 func (c *Local) TxSearch(
 	_ context.Context,
 	query string,
-	prove bool,
 	page,
 	perPage *int,
 	orderBy string,
 ) (*ctypes.ResultTxSearch, error) {
-	return core.TxSearch(c.ctx, query, prove, page, perPage, orderBy)
+	return core.TxSearch(c.ctx, query, page, perPage, orderBy)
 }
 
 func (c *Local) BlockSearch(
