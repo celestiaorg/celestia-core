@@ -59,7 +59,6 @@ func TestValidateBlockHeader(t *testing.T) {
 
 		{"LastBlockID wrong", func(block *types.Block) { block.LastBlockID.PartSetHeader.Total += 10 }},
 		{"LastCommitHash wrong", func(block *types.Block) { block.LastCommitHash = wrongHash }},
-		{"DataHash wrong", func(block *types.Block) { block.DataHash = wrongHash }},
 
 		{"ValidatorsHash wrong", func(block *types.Block) { block.ValidatorsHash = wrongHash }},
 		{"NextValidatorsHash wrong", func(block *types.Block) { block.NextValidatorsHash = wrongHash }},
