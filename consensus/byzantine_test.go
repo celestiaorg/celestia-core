@@ -459,11 +459,13 @@ func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *State, sw *p2p.Switch) {
 	// byzantine user should create two proposals and try to split the vote.
 	// Avoid sending on internalMsgQueue and running consensus state.
+	block1Hash := []byte{1}
+	block2Hash := []byte{2}
 
 	// Create a new proposal block from state/txs from the mempool.
-	block1, blockParts1 := cs.createProposalBlock()
+	_, blockParts1 := cs.createProposalBlock()
 	polRound := cs.TwoThirdPrevoteRound
-	propBlockID := types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
+	propBlockID := types.BlockID{Hash: block1Hash, PartSetHeader: blockParts1.Header()}
 	proposal1 := types.NewProposal(height, round, polRound, propBlockID)
 	p1 := proposal1.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p1); err != nil {
@@ -476,9 +478,9 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	deliverTxsRange(cs, 0, 1)
 
 	// Create a new proposal block from state/txs from the mempool.
-	block2, blockParts2 := cs.createProposalBlock()
+	_, blockParts2 := cs.createProposalBlock()
 	polRound = cs.TwoThirdPrevoteRound
-	propBlockID = types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
+	propBlockID = types.BlockID{Hash: block2Hash, PartSetHeader: blockParts2.Header()}
 	proposal2 := types.NewProposal(height, round, polRound, propBlockID)
 	p2 := proposal2.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p2); err != nil {
@@ -486,9 +488,6 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	}
 
 	proposal2.Signature = p2.Signature
-
-	block1Hash := block1.Hash()
-	block2Hash := block2.Hash()
 
 	// broadcast conflicting proposals/block parts to peers
 	peers := sw.Peers().List()
