@@ -16,7 +16,7 @@ import (
 // TxInclusion returns a proof that can be used to verify txIndex was included
 // in the provided block data. It uses the provided block data to progressively
 // generate rows of a data square. Then it uses the shares in these rows to
-// creates nmt inclusion proofs. It is possible that a transaction spans more
+// create nmt inclusion proofs. It is possible that a transaction spans more
 // than one row, in which case the TxProof returned by this function will
 // contain multiple proofs.
 func TxInclusion(codec rsmt2d.Codec, data types.Data, txIndex uint64) (types.TxProof, error) {
@@ -95,8 +95,8 @@ func TxInclusion(codec rsmt2d.Codec, data types.Data, txIndex uint64) (types.TxP
 }
 
 // txSharePosition returns the start and end positions for shares that contain
-// the provided txIndex. returns an error if txIndex is greater than that of the
-// provided txs.
+// the provided txIndex. Returns an error if txIndex is greater than the length
+// of the provided txs.
 func txSharePosition(txs types.Txs, txIndex uint64) (startSharePos, endSharePos uint64, err error) {
 	if txIndex >= uint64(len(txs)) {
 		return startSharePos, endSharePos, errors.New("transaction index is greater than the number of txs")
