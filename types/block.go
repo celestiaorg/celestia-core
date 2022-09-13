@@ -98,10 +98,15 @@ func (b *Block) ValidateBasic() error {
 	return nil
 }
 
-// fillHeader fills in any remaining header fields that are a function of the block data
+// fillHeader fills in any remaining header fields that are a function of the
+// block data NOTE: we expect celestia-app to populate the block DataHash but we
+// populate it here (in celestia-core) to not break existing tests in this repo.
 func (b *Block) fillHeader() {
 	if b.LastCommitHash == nil {
 		b.LastCommitHash = b.LastCommit.Hash()
+	}
+	if b.DataHash == nil {
+		b.DataHash = b.Data.Hash()
 	}
 	if b.EvidenceHash == nil {
 		b.EvidenceHash = b.Evidence.Hash()
