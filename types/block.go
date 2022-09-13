@@ -50,9 +50,10 @@ type Block struct {
 	LastCommit *Commit `json:"last_commit"`
 }
 
-// ValidateBasic performs basic validation that doesn't involve state data.
-// It checks the internal consistency of the block.
-// Further validation is done using state#ValidateBlock.
+// ValidateBasic performs basic validation that doesn't involve state data. It
+// checks the internal consistency of the block. Further validation is done
+// using state#ValidateBlock. celestia-app's ProcessProposal checks that the
+// block's DataHash matches the hash of the data availability header.
 func (b *Block) ValidateBasic() error {
 	if b == nil {
 		return errors.New("nil block")
@@ -97,10 +98,15 @@ func (b *Block) ValidateBasic() error {
 	return nil
 }
 
-// fillHeader fills in any remaining header fields that are a function of the block data
+// fillHeader fills in any remaining header fields that are a function of the
+// block data NOTE: we expect celestia-app to populate the block DataHash but we
+// populate it here (in celestia-core) to not break existing tests in this repo.
 func (b *Block) fillHeader() {
 	if b.LastCommitHash == nil {
 		b.LastCommitHash = b.LastCommit.Hash()
+	}
+	if b.DataHash == nil {
+		b.DataHash = b.Data.Hash()
 	}
 	if b.EvidenceHash == nil {
 		b.EvidenceHash = b.Evidence.Hash()
@@ -1025,7 +1031,10 @@ type Data struct {
 	hash tmbytes.HexBytes
 }
 
-// Hash returns the hash of the data
+// Hash returns the hash of the data. `data.hash` is expected to be set by
+// PrepareProposal in celestia-app. However, this function falls back to
+// calculating `data.hash` as vanilla tendermint would in order to satisfy unit
+// and e2e tests.
 func (data *Data) Hash() tmbytes.HexBytes {
 	if data == nil {
 		return (Txs{}).Hash()
@@ -1034,7 +1043,8 @@ func (data *Data) Hash() tmbytes.HexBytes {
 		data.hash = data.Txs.Hash() // NOTE: leaves of merkle tree are TxIDs
 	}
 
-	// data.hash should be set by celestia-app in PrepareProposal
+	// this is the expected behavior where `data.hash` was set by celestia-app
+	// in PrepareProposal
 	return data.hash
 }
 
