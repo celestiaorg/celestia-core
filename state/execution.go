@@ -129,7 +129,8 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	preparedProposal, err := blockExec.proxyApp.PrepareProposalSync(
 		abci.RequestPrepareProposal{
-			BlockData:     &tmproto.Data{Txs: txs.ToSliceOfBytes(), Evidence: *pevdData},
+			// Hash will be set by celestia-app's PrepareProposal
+			BlockData:     &tmproto.Data{Txs: txs.ToSliceOfBytes(), Evidence: *pevdData, Hash: nil},
 			BlockDataSize: maxDataBytes},
 	)
 	if err != nil {
