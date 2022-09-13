@@ -50,9 +50,10 @@ type Block struct {
 	LastCommit *Commit `json:"last_commit"`
 }
 
-// ValidateBasic performs basic validation that doesn't involve state data.
-// It checks the internal consistency of the block.
-// Further validation is done using state#ValidateBlock.
+// ValidateBasic performs basic validation that doesn't involve state data. It
+// checks the internal consistency of the block. Further validation is done
+// using state#ValidateBlock. celestia-app's ProcessProposal checks that the
+// block's DataHash matches the hash of the data availability header.
 func (b *Block) ValidateBasic() error {
 	if b == nil {
 		return errors.New("nil block")
