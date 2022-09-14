@@ -42,6 +42,8 @@ const (
 	// MinshareCount is the minimum shares required in an original data square.
 	MinSharecount = MinSquareSize * MinSquareSize
 
+	// TxInclusionProofQueryPath is the path used to query the application for a
+	// tx inclusion proof via the ABCI Query method.
 	TxInclusionProofQueryPath = "custom/txInclusionProof/%d"
 )
 
