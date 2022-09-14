@@ -42,7 +42,7 @@ const (
 	// MinshareCount is the minimum shares required in an original data square.
 	MinSharecount = MinSquareSize * MinSquareSize
 
-	TxInclusionProofQueryPath = "custom/tx-inclusion-proof/%d"
+	TxInclusionProofQueryPath = "custom/txInclusionProof/%d"
 )
 
 var (
