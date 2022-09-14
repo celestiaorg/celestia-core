@@ -8,6 +8,7 @@ import (
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
+	"github.com/tendermint/tendermint/pkg/consts"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
@@ -15,8 +16,6 @@ import (
 	"github.com/tendermint/tendermint/state/txindex/null"
 	"github.com/tendermint/tendermint/types"
 )
-
-const txInclusionProofQueryPath = "custom/tx-inclusion-proof/%d"
 
 // Tx allows you to query the transaction results. `nil` could mean the
 // transaction is in the mempool, invalidated, or was not sent in the first
@@ -158,7 +157,7 @@ func proveTx(height int64, index uint32) (types.TxProof, error) {
 	}
 	res, err := env.ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
 		Data: rawBlock,
-		Path: fmt.Sprintf(txInclusionProofQueryPath, index),
+		Path: fmt.Sprintf(consts.TxInclusionProofQueryPath, index),
 	})
 	if err != nil {
 		return txProof, err
