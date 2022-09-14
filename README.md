@@ -50,7 +50,11 @@ This repo intends on preserving the minimal possible diff with [tendermint/tende
 - **not specific to Celestia**: consider making the contribution upstream in Tendermint
 
 1. [Install Go](https://go.dev/doc/install) 1.17+
-1. Clone this repo
+2. Fork this repo
+3. Clone your fork
+4. Find an issue to work on (see [good first issues](https://github.com/celestiaorg/celestia-core/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)) 
+5. Work on a change in a branch on your fork
+6. When your change is ready, push your branch and create a PR that targets this repo
 
 ### Helpful Commands
 
