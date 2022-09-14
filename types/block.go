@@ -1021,11 +1021,11 @@ type Data struct {
 	// really need to be processed by tendermint
 	Messages Messages `json:"msgs"`
 
-	// OriginalSquareSize is the size of the square after splitting all the block data
+	// SquareSize is the size of the square after splitting all the block data
 	// into shares. The erasure data is discarded after generation, and keeping this
 	// value avoids unnecessarily regenerating all of the shares when returning
 	// proofs that some element was included in the block
-	OriginalSquareSize uint64 `json:"square_size"`
+	SquareSize uint64 `json:"square_size"`
 
 	// Volatile
 	hash tmbytes.HexBytes
@@ -1169,7 +1169,7 @@ func (data *Data) ToProto() tmproto.Data {
 		}
 	}
 	tp.Messages = tmproto.Messages{MessagesList: protoMsgs}
-	tp.OriginalSquareSize = data.OriginalSquareSize
+	tp.SquareSize = data.SquareSize
 
 	tp.Hash = data.hash
 
@@ -1212,7 +1212,7 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 	if evdData != nil {
 		data.Evidence = *evdData
 	}
-	data.OriginalSquareSize = dp.OriginalSquareSize
+	data.SquareSize = dp.SquareSize
 	data.hash = dp.Hash
 
 	return *data, nil

@@ -422,10 +422,10 @@ type Data struct {
 	// This means that block.AppHash does not include these txs.
 	Txs [][]byte `protobuf:"bytes,1,rep,name=txs,proto3" json:"txs,omitempty"`
 	// field number 2 is reserved for intermediate state roots
-	Evidence           EvidenceList `protobuf:"bytes,3,opt,name=evidence,proto3" json:"evidence"`
-	Messages           Messages     `protobuf:"bytes,4,opt,name=messages,proto3" json:"messages"`
-	OriginalSquareSize uint64       `protobuf:"varint,5,opt,name=original_square_size,json=originalSquareSize,proto3" json:"original_square_size,omitempty"`
-	Hash               []byte       `protobuf:"bytes,6,opt,name=hash,proto3" json:"hash,omitempty"`
+	Evidence   EvidenceList `protobuf:"bytes,3,opt,name=evidence,proto3" json:"evidence"`
+	Messages   Messages     `protobuf:"bytes,4,opt,name=messages,proto3" json:"messages"`
+	SquareSize uint64       `protobuf:"varint,5,opt,name=original_square_size,json=squareSize,proto3" json:"square_size,omitempty"`
+	Hash       []byte       `protobuf:"bytes,6,opt,name=hash,proto3" json:"hash,omitempty"`
 }
 
 func (m *Data) Reset()         { *m = Data{} }
@@ -484,7 +484,7 @@ func (m *Data) GetMessages() Messages {
 
 func (m *Data) GetOriginalSquareSize() uint64 {
 	if m != nil {
-		return m.OriginalSquareSize
+		return m.SquareSize
 	}
 	return 0
 }
@@ -2074,8 +2074,8 @@ func (m *Data) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x32
 	}
-	if m.OriginalSquareSize != 0 {
-		i = encodeVarintTypes(dAtA, i, uint64(m.OriginalSquareSize))
+	if m.SquareSize != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.SquareSize))
 		i--
 		dAtA[i] = 0x28
 	}
@@ -3146,8 +3146,8 @@ func (m *Data) Size() (n int) {
 	n += 1 + l + sovTypes(uint64(l))
 	l = m.Messages.Size()
 	n += 1 + l + sovTypes(uint64(l))
-	if m.OriginalSquareSize != 0 {
-		n += 1 + sovTypes(uint64(m.OriginalSquareSize))
+	if m.SquareSize != 0 {
+		n += 1 + sovTypes(uint64(m.SquareSize))
 	}
 	l = len(m.Hash)
 	if l > 0 {
@@ -4543,7 +4543,7 @@ func (m *Data) Unmarshal(dAtA []byte) error {
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field OriginalSquareSize", wireType)
 			}
-			m.OriginalSquareSize = 0
+			m.SquareSize = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowTypes
@@ -4553,7 +4553,7 @@ func (m *Data) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.OriginalSquareSize |= uint64(b&0x7F) << shift
+				m.SquareSize |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
