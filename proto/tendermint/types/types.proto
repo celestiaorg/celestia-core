@@ -91,7 +91,7 @@ message Data {
   // field number 2 is reserved for intermediate state roots
   EvidenceList           evidence                 = 3 [(gogoproto.nullable) = false];
   Messages               messages                 = 4 [(gogoproto.nullable) = false];
-  uint64                 original_square_size     = 5;
+  uint64                 square_size     = 5;
   bytes                  hash                     = 6;
 }
 
