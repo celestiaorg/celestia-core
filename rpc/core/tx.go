@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"sort"
 
+	abcitypes "github.com/tendermint/tendermint/abci/types"
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
+	"github.com/tendermint/tendermint/pkg/consts"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
+	"github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/state/txindex/null"
 	"github.com/tendermint/tendermint/types"
 )
@@ -19,7 +23,7 @@ import (
 // NOTE: proveTx isn't respected but is left in the function signature to
 // conform to the endpoint exposed by Tendermint
 // More: https://docs.tendermint.com/master/rpc/#/Info/tx
-func Tx(ctx *rpctypes.Context, hash []byte, proveTx bool) (*ctypes.ResultTx, error) {
+func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
 	// if index is disabled, return error
 	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
 		return nil, fmt.Errorf("transaction indexing is disabled")
@@ -37,13 +41,21 @@ func Tx(ctx *rpctypes.Context, hash []byte, proveTx bool) (*ctypes.ResultTx, err
 	height := r.Height
 	index := r.Index
 
+	var txProof types.TxProof
+	if prove {
+		txProof, err = proveTx(height, index)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &ctypes.ResultTx{
 		Hash:     hash,
 		Height:   height,
 		Index:    index,
 		TxResult: r.Result,
 		Tx:       r.Tx,
-		Proof:    types.TxProof{}, // transaction inclusion proofs are not currently supported by this endpoint
+		Proof:    txProof,
 	}, nil
 }
 
@@ -55,7 +67,7 @@ func Tx(ctx *rpctypes.Context, hash []byte, proveTx bool) (*ctypes.ResultTx, err
 func TxSearch(
 	ctx *rpctypes.Context,
 	query string,
-	proveTx bool,
+	prove bool,
 	pagePtr, perPagePtr *int,
 	orderBy string,
 ) (*ctypes.ResultTxSearch, error) {
@@ -113,15 +125,69 @@ func TxSearch(
 	for i := skipCount; i < skipCount+pageSize; i++ {
 		r := results[i]
 
+		var txProof types.TxProof
+		if prove {
+			txProof, err = proveTx(r.Height, r.Index)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		apiResults = append(apiResults, &ctypes.ResultTx{
 			Hash:     types.Tx(r.Tx).Hash(),
 			Height:   r.Height,
 			Index:    r.Index,
 			TxResult: r.Result,
 			Tx:       r.Tx,
-			Proof:    types.TxProof{}, // transaction inclusion proofs are not currently supported by this endpoint
+			Proof:    txProof,
 		})
 	}
 
 	return &ctypes.ResultTxSearch{Txs: apiResults, TotalCount: totalCount}, nil
+}
+
+func proveTx(height int64, index uint32) (types.TxProof, error) {
+	var (
+		pTxProof tmproto.TxProof
+		txProof  types.TxProof
+	)
+	rawBlock, err := loadRawBlock(env.BlockStore, height)
+	if err != nil {
+		return txProof, err
+	}
+	res, err := env.ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
+		Data: rawBlock,
+		Path: fmt.Sprintf(consts.TxInclusionProofQueryPath, index),
+	})
+	if err != nil {
+		return txProof, err
+	}
+	err = pTxProof.Unmarshal(res.Value)
+	if err != nil {
+		return txProof, err
+	}
+	txProof, err = types.TxProofFromProto(pTxProof)
+	if err != nil {
+		return txProof, err
+	}
+	return txProof, nil
+}
+
+func loadRawBlock(bs state.BlockStore, height int64) ([]byte, error) {
+	var blockMeta = bs.LoadBlockMeta(height)
+	if blockMeta == nil {
+		return nil, fmt.Errorf("no block found for height %d", height)
+	}
+
+	buf := []byte{}
+	for i := 0; i < int(blockMeta.BlockID.PartSetHeader.Total); i++ {
+		part := bs.LoadBlockPart(height, i)
+		// If the part is missing (e.g. since it has been deleted after we
+		// loaded the block meta) we consider the whole block to be missing.
+		if part == nil {
+			return nil, fmt.Errorf("missing block part at height %d part %d", height, i)
+		}
+		buf = append(buf, part.Bytes...)
+	}
+	return buf, nil
 }
