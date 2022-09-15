@@ -1085,9 +1085,6 @@ func (msgs *Messages) IsSorted() bool {
 type Message struct {
 	// NamespaceID defines the namespace of this message, i.e. the
 	// namespace it will use in the namespaced Merkle tree.
-	//
-	// TODO: spec out constrains and
-	// introduce dedicated type instead of just []byte
 	NamespaceID namespace.ID
 
 	// Data is the actual data contained in the message
