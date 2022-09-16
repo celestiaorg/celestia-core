@@ -89,10 +89,10 @@ message Data {
   repeated bytes txs = 1;
 
   // field number 2 is reserved for intermediate state roots
-  EvidenceList           evidence                 = 3 [(gogoproto.nullable) = false];
-  Messages               messages                 = 4 [(gogoproto.nullable) = false];
-  uint64                 original_square_size     = 5;
-  bytes                  hash                     = 6;
+  EvidenceList evidence    = 3 [(gogoproto.nullable) = false];
+  Messages     messages    = 4 [(gogoproto.nullable) = false];
+  uint64       square_size = 5;
+  bytes        hash        = 6;
 }
 
 // DuplicateVoteEvidence contains evidence of a validator signed two conflicting votes.
@@ -222,9 +222,9 @@ message TxProof {
 // transaction. This allows for tendermint to track malleated and original
 // transactions
 message MalleatedTx {
-  bytes original_tx_hash = 1;
-  bytes tx               = 2;
-  uint32 share_index     = 3;
+  bytes  original_tx_hash = 1;
+  bytes  tx               = 2;
+  uint32 share_index      = 3;
 }
 
 // Proof represents proof of a namespace.ID in an NMT.
