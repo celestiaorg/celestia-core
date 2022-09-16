@@ -68,7 +68,10 @@ make install
 # Run tests
 make test
 
-# Generate protobuf files
+# If you modified any protobuf definitions in a `*.proto` file then
+# you may need to lint, format, and generate updated `*.pb.go` files
+make proto-lint
+make proto-format
 make proto-gen
 ```
 
