@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/base64"
 	"fmt"
+	"sync"
 	"time"
 
 	cfg "github.com/tendermint/tendermint/config"
@@ -35,13 +36,19 @@ const (
 
 var (
 	// set by Node
-	env *Environment
+	env     *Environment
+	envOnce sync.Once
 )
 
-// SetEnvironment sets up the given Environment.
-// It will race if multiple Node call SetEnvironment.
+// SetEnvironment sets up the given Environment. The env global var that this
+// function modifies is protected by a sync.Once, so multiple calls within the
+// same process will not be effective.
 func SetEnvironment(e *Environment) {
-	env = e
+	envOnce.Do(
+		func() {
+			env = e
+		},
+	)
 }
 
 //----------------------------------------------
@@ -69,7 +76,7 @@ type peers interface {
 	Peers() p2p.IPeerSet
 }
 
-//----------------------------------------------
+// ----------------------------------------------
 // Environment contains objects and interfaces used by the RPC. It is expected
 // to be setup once during startup.
 type Environment struct {
