@@ -36,19 +36,17 @@ const (
 
 var (
 	// set by Node
-	env     *Environment
-	envOnce sync.Once
+	mut = &sync.Mutex{}
+	env *Environment
 )
 
 // SetEnvironment sets up the given Environment. The env global var that this
 // function modifies is protected by a sync.Once, so multiple calls within the
 // same process will not be effective.
 func SetEnvironment(e *Environment) {
-	envOnce.Do(
-		func() {
-			env = e
-		},
-	)
+	mut.Lock()
+	defer mut.Unlock()
+	env = e
 }
 
 //----------------------------------------------
