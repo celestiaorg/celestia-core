@@ -155,7 +155,7 @@ func (dah *DataAvailabilityHeader) ValidateBasic() error {
 			len(dah.ColumnRoots),
 		)
 	}
-	if err := validateHash(dah.hash); err != nil {
+	if err := validateHash(dah.Hash()); err != nil {
 		return fmt.Errorf("wrong hash: %v", err)
 	}
 
