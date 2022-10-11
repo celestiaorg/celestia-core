@@ -77,7 +77,7 @@ make proto-gen
 
 ## Branches
 
-The canonincal branches in this repo are based on Tendermint releases. For example: [`v0.34.x-celestia`](https://github.com/celestiaorg/celestia-core/tree/v0.34.x-celestia) is based on the Tendermint `v0.34.x` release branch and contains Celestia-specific changes.
+The canonical branches in this repo are based on Tendermint releases. For example: [`v0.34.x-celestia`](https://github.com/celestiaorg/celestia-core/tree/v0.34.x-celestia) is based on the Tendermint `v0.34.x` release branch and contains Celestia-specific changes.
 
 ## Versioning
 
