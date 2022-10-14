@@ -64,6 +64,7 @@ func BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcas
 func BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTxCommit, error) {
 	subscriber := ctx.RemoteAddr()
 
+	//nolint:lll
 	if GetEnvironment().EventBus.NumClients() >= GetEnvironment().Config.MaxSubscriptionClients {
 		return nil, fmt.Errorf("max_subscription_clients %d reached", GetEnvironment().Config.MaxSubscriptionClients)
 	} else if GetEnvironment().EventBus.NumClientSubscriptions(subscriber) >= GetEnvironment().Config.MaxSubscriptionsPerClient {
