@@ -13,7 +13,7 @@ import (
 // NetInfo returns network info.
 // More: https://docs.tendermint.com/master/rpc/#/Info/net_info
 func NetInfo(ctx *rpctypes.Context) (*ctypes.ResultNetInfo, error) {
-	peersList := env.P2PPeers.Peers().List()
+	peersList := GetEnvironment().P2PPeers.Peers().List()
 	peers := make([]ctypes.Peer, 0, len(peersList))
 	for _, peer := range peersList {
 		nodeInfo, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
@@ -31,8 +31,8 @@ func NetInfo(ctx *rpctypes.Context) (*ctypes.ResultNetInfo, error) {
 	// PRO: useful info
 	// CON: privacy
 	return &ctypes.ResultNetInfo{
-		Listening: env.P2PTransport.IsListening(),
-		Listeners: env.P2PTransport.Listeners(),
+		Listening: GetEnvironment().P2PTransport.IsListening(),
+		Listeners: GetEnvironment().P2PTransport.Listeners(),
 		NPeers:    len(peers),
 		Peers:     peers,
 	}, nil
@@ -43,8 +43,8 @@ func UnsafeDialSeeds(ctx *rpctypes.Context, seeds []string) (*ctypes.ResultDialS
 	if len(seeds) == 0 {
 		return &ctypes.ResultDialSeeds{}, errors.New("no seeds provided")
 	}
-	env.Logger.Info("DialSeeds", "seeds", seeds)
-	if err := env.P2PPeers.DialPeersAsync(seeds); err != nil {
+	GetEnvironment().Logger.Info("DialSeeds", "seeds", seeds)
+	if err := GetEnvironment().P2PPeers.DialPeersAsync(seeds); err != nil {
 		return &ctypes.ResultDialSeeds{}, err
 	}
 	return &ctypes.ResultDialSeeds{Log: "Dialing seeds in progress. See /net_info for details"}, nil
@@ -63,28 +63,28 @@ func UnsafeDialPeers(ctx *rpctypes.Context, peers []string, persistent, uncondit
 		return &ctypes.ResultDialPeers{}, err
 	}
 
-	env.Logger.Info("DialPeers", "peers", peers, "persistent",
+	GetEnvironment().Logger.Info("DialPeers", "peers", peers, "persistent",
 		persistent, "unconditional", unconditional, "private", private)
 
 	if persistent {
-		if err := env.P2PPeers.AddPersistentPeers(peers); err != nil {
+		if err := GetEnvironment().P2PPeers.AddPersistentPeers(peers); err != nil {
 			return &ctypes.ResultDialPeers{}, err
 		}
 	}
 
 	if private {
-		if err := env.P2PPeers.AddPrivatePeerIDs(ids); err != nil {
+		if err := GetEnvironment().P2PPeers.AddPrivatePeerIDs(ids); err != nil {
 			return &ctypes.ResultDialPeers{}, err
 		}
 	}
 
 	if unconditional {
-		if err := env.P2PPeers.AddUnconditionalPeerIDs(ids); err != nil {
+		if err := GetEnvironment().P2PPeers.AddUnconditionalPeerIDs(ids); err != nil {
 			return &ctypes.ResultDialPeers{}, err
 		}
 	}
 
-	if err := env.P2PPeers.DialPeersAsync(peers); err != nil {
+	if err := GetEnvironment().P2PPeers.DialPeersAsync(peers); err != nil {
 		return &ctypes.ResultDialPeers{}, err
 	}
 
@@ -94,32 +94,32 @@ func UnsafeDialPeers(ctx *rpctypes.Context, peers []string, persistent, uncondit
 // Genesis returns genesis file.
 // More: https://docs.tendermint.com/master/rpc/#/Info/genesis
 func Genesis(ctx *rpctypes.Context) (*ctypes.ResultGenesis, error) {
-	if len(env.genChunks) > 1 {
+	if len(GetEnvironment().genChunks) > 1 {
 		return nil, errors.New("genesis response is large, please use the genesis_chunked API instead")
 	}
 
-	return &ctypes.ResultGenesis{Genesis: env.GenDoc}, nil
+	return &ctypes.ResultGenesis{Genesis: GetEnvironment().GenDoc}, nil
 }
 
 func GenesisChunked(ctx *rpctypes.Context, chunk uint) (*ctypes.ResultGenesisChunk, error) {
-	if env.genChunks == nil {
+	if GetEnvironment().genChunks == nil {
 		return nil, fmt.Errorf("service configuration error, genesis chunks are not initialized")
 	}
 
-	if len(env.genChunks) == 0 {
+	if len(GetEnvironment().genChunks) == 0 {
 		return nil, fmt.Errorf("service configuration error, there are no chunks")
 	}
 
 	id := int(chunk)
 
-	if id > len(env.genChunks)-1 {
-		return nil, fmt.Errorf("there are %d chunks, %d is invalid", len(env.genChunks)-1, id)
+	if id > len(GetEnvironment().genChunks)-1 {
+		return nil, fmt.Errorf("there are %d chunks, %d is invalid", len(GetEnvironment().genChunks)-1, id)
 	}
 
 	return &ctypes.ResultGenesisChunk{
-		TotalChunks: len(env.genChunks),
+		TotalChunks: len(GetEnvironment().genChunks),
 		ChunkNumber: id,
-		Data:        env.genChunks[id],
+		Data:        GetEnvironment().genChunks[id],
 	}, nil
 }
 

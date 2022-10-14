@@ -36,17 +36,23 @@ const (
 
 var (
 	// set by Node
-	mut = &sync.Mutex{}
-	env *Environment
+	mut       = &sync.Mutex{}
+	globalEnv *Environment
 )
 
-// SetEnvironment sets up the given Environment. The env global var that this
-// function modifies is protected by a sync.Once, so multiple calls within the
+// SetEnvironment sets the global environment to e. The globalEnv var that this
+// function modifies is protected by a sync.Once so multiple calls within the
 // same process will not be effective.
 func SetEnvironment(e *Environment) {
 	mut.Lock()
 	defer mut.Unlock()
-	env = e
+	globalEnv = e
+}
+
+func GetEnvironment() *Environment {
+	mut.Lock()
+	defer mut.Unlock()
+	return globalEnv
 }
 
 //----------------------------------------------
@@ -147,15 +153,15 @@ func validatePerPage(perPagePtr *int) int {
 // InitGenesisChunks configures the environment and should be called on service
 // startup.
 func InitGenesisChunks() error {
-	if env.genChunks != nil {
+	if GetEnvironment().genChunks != nil {
 		return nil
 	}
 
-	if env.GenDoc == nil {
+	if GetEnvironment().GenDoc == nil {
 		return nil
 	}
 
-	data, err := tmjson.Marshal(env.GenDoc)
+	data, err := tmjson.Marshal(GetEnvironment().GenDoc)
 	if err != nil {
 		return err
 	}
@@ -167,7 +173,9 @@ func InitGenesisChunks() error {
 			end = len(data)
 		}
 
-		env.genChunks = append(env.genChunks, base64.StdEncoding.EncodeToString(data[i:end]))
+		mut.Lock()
+		defer mut.Unlock()
+		globalEnv.genChunks = append(globalEnv.genChunks, base64.StdEncoding.EncodeToString(data[i:end]))
 	}
 
 	return nil
@@ -193,7 +201,7 @@ func getHeight(latestHeight int64, heightPtr *int64) (int64, error) {
 			return 0, fmt.Errorf("height %d must be less than or equal to the current blockchain height %d",
 				height, latestHeight)
 		}
-		base := env.BlockStore.Base()
+		base := GetEnvironment().BlockStore.Base()
 		if height < base {
 			return 0, fmt.Errorf("height %d is not available, lowest height is %d",
 				height, base)
@@ -204,9 +212,9 @@ func getHeight(latestHeight int64, heightPtr *int64) (int64, error) {
 }
 
 func latestUncommittedHeight() int64 {
-	nodeIsSyncing := env.ConsensusReactor.WaitSync()
+	nodeIsSyncing := GetEnvironment().ConsensusReactor.WaitSync()
 	if nodeIsSyncing {
-		return env.BlockStore.Height()
+		return GetEnvironment().BlockStore.Height()
 	}
-	return env.BlockStore.Height() + 1
+	return GetEnvironment().BlockStore.Height() + 1
 }

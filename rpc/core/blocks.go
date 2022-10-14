@@ -24,24 +24,24 @@ func BlockchainInfo(ctx *rpctypes.Context, minHeight, maxHeight int64) (*ctypes.
 	const limit int64 = 20
 	var err error
 	minHeight, maxHeight, err = filterMinMax(
-		env.BlockStore.Base(),
-		env.BlockStore.Height(),
+		GetEnvironment().BlockStore.Base(),
+		GetEnvironment().BlockStore.Height(),
 		minHeight,
 		maxHeight,
 		limit)
 	if err != nil {
 		return nil, err
 	}
-	env.Logger.Debug("BlockchainInfoHandler", "maxHeight", maxHeight, "minHeight", minHeight)
+	GetEnvironment().Logger.Debug("BlockchainInfoHandler", "maxHeight", maxHeight, "minHeight", minHeight)
 
 	blockMetas := []*types.BlockMeta{}
 	for height := maxHeight; height >= minHeight; height-- {
-		blockMeta := env.BlockStore.LoadBlockMeta(height)
+		blockMeta := GetEnvironment().BlockStore.LoadBlockMeta(height)
 		blockMetas = append(blockMetas, blockMeta)
 	}
 
 	return &ctypes.ResultBlockchainInfo{
-		LastHeight: env.BlockStore.Height(),
+		LastHeight: GetEnvironment().BlockStore.Height(),
 		BlockMetas: blockMetas}, nil
 }
 
@@ -82,13 +82,13 @@ func filterMinMax(base, height, min, max, limit int64) (int64, int64, error) {
 // If no height is provided, it will fetch the latest block.
 // More: https://docs.tendermint.com/master/rpc/#/Info/block
 func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error) {
-	height, err := getHeight(env.BlockStore.Height(), heightPtr)
+	height, err := getHeight(GetEnvironment().BlockStore.Height(), heightPtr)
 	if err != nil {
 		return nil, err
 	}
 
-	block := env.BlockStore.LoadBlock(height)
-	blockMeta := env.BlockStore.LoadBlockMeta(height)
+	block := GetEnvironment().BlockStore.LoadBlock(height)
+	blockMeta := GetEnvironment().BlockStore.LoadBlockMeta(height)
 	if blockMeta == nil {
 		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: block}, nil
 	}
@@ -98,12 +98,12 @@ func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error)
 // BlockByHash gets block by hash.
 // More: https://docs.tendermint.com/master/rpc/#/Info/block_by_hash
 func BlockByHash(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error) {
-	block := env.BlockStore.LoadBlockByHash(hash)
+	block := GetEnvironment().BlockStore.LoadBlockByHash(hash)
 	if block == nil {
 		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: nil}, nil
 	}
 	// If block is not nil, then blockMeta can't be nil.
-	blockMeta := env.BlockStore.LoadBlockMeta(block.Height)
+	blockMeta := GetEnvironment().BlockStore.LoadBlockMeta(block.Height)
 	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
 }
 
@@ -111,12 +111,12 @@ func BlockByHash(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error
 // If no height is provided, it will fetch the commit for the latest block.
 // More: https://docs.tendermint.com/master/rpc/#/Info/commit
 func Commit(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCommit, error) {
-	height, err := getHeight(env.BlockStore.Height(), heightPtr)
+	height, err := getHeight(GetEnvironment().BlockStore.Height(), heightPtr)
 	if err != nil {
 		return nil, err
 	}
 
-	blockMeta := env.BlockStore.LoadBlockMeta(height)
+	blockMeta := GetEnvironment().BlockStore.LoadBlockMeta(height)
 	if blockMeta == nil {
 		return nil, nil
 	}
@@ -124,13 +124,13 @@ func Commit(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCommit, erro
 
 	// If the next block has not been committed yet,
 	// use a non-canonical commit
-	if height == env.BlockStore.Height() {
-		commit := env.BlockStore.LoadSeenCommit(height)
+	if height == GetEnvironment().BlockStore.Height() {
+		commit := GetEnvironment().BlockStore.LoadSeenCommit(height)
 		return ctypes.NewResultCommit(&header, commit, false), nil
 	}
 
 	// Return the canonical commit (comes from the block at height+1)
-	commit := env.BlockStore.LoadBlockCommit(height)
+	commit := GetEnvironment().BlockStore.LoadBlockCommit(height)
 	return ctypes.NewResultCommit(&header, commit, true), nil
 }
 
@@ -171,14 +171,14 @@ func validateDataCommitmentRange(beginBlock uint64, endBlock uint64) error {
 	if beginBlock > endBlock {
 		return fmt.Errorf("end block is smaller than begin block")
 	}
-	if endBlock > uint64(env.BlockStore.Height()) {
+	if endBlock > uint64(GetEnvironment().BlockStore.Height()) {
 		return fmt.Errorf(
 			"end block %d is higher than current chain height %d",
 			endBlock,
-			env.BlockStore.Height(),
+			GetEnvironment().BlockStore.Height(),
 		)
 	}
-	has, err := env.BlockIndexer.Has(int64(endBlock))
+	has, err := GetEnvironment().BlockIndexer.Has(int64(endBlock))
 	if err != nil {
 		return err
 	}
@@ -209,12 +209,12 @@ func hashDataRoots(blocks []*ctypes.ResultBlock) []byte {
 // getBlock(h).Txs[5]
 // More: https://docs.tendermint.com/master/rpc/#/Info/block_results
 func BlockResults(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlockResults, error) {
-	height, err := getHeight(env.BlockStore.Height(), heightPtr)
+	height, err := getHeight(GetEnvironment().BlockStore.Height(), heightPtr)
 	if err != nil {
 		return nil, err
 	}
 
-	results, err := env.StateStore.LoadABCIResponses(height)
+	results, err := GetEnvironment().StateStore.LoadABCIResponses(height)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +269,7 @@ func BlockSearch(
 // heightsByQuery returns a list of heights corresponding to the provided query.
 func heightsByQuery(ctx *rpctypes.Context, query string) ([]int64, error) {
 	// skip if block indexing is disabled
-	if _, ok := env.BlockIndexer.(*blockidxnull.BlockerIndexer); ok {
+	if _, ok := GetEnvironment().BlockIndexer.(*blockidxnull.BlockerIndexer); ok {
 		return nil, errors.New("block indexing is disabled")
 	}
 
@@ -278,7 +278,7 @@ func heightsByQuery(ctx *rpctypes.Context, query string) ([]int64, error) {
 		return nil, err
 	}
 
-	results, err := env.BlockIndexer.Search(ctx.Context(), q)
+	results, err := GetEnvironment().BlockIndexer.Search(ctx.Context(), q)
 	return results, err
 }
 
@@ -302,9 +302,9 @@ func sortBlocks(results []int64, orderBy string) error {
 func fetchBlocks(results []int64, pageSize int, skipCount int) []*ctypes.ResultBlock {
 	apiResults := make([]*ctypes.ResultBlock, 0, pageSize)
 	for i := skipCount; i < skipCount+pageSize; i++ {
-		block := env.BlockStore.LoadBlock(results[i])
+		block := GetEnvironment().BlockStore.LoadBlock(results[i])
 		if block != nil {
-			blockMeta := env.BlockStore.LoadBlockMeta(block.Height)
+			blockMeta := GetEnvironment().BlockStore.LoadBlockMeta(block.Height)
 			if blockMeta != nil {
 				apiResults = append(apiResults, &ctypes.ResultBlock{
 					Block:   block,
