@@ -194,7 +194,9 @@ func (mem *CListMempool) TxsWaitChan() <-chan struct{} {
 
 // It blocks if we're waiting on Update() or Reap().
 // cb: A callback from the CheckTx command.
-//     It gets called from another goroutine.
+//
+//	It gets called from another goroutine.
+//
 // CONTRACT: Either cb will get called, or err returned.
 //
 // Safe for concurrent use by multiple goroutines.
@@ -240,6 +242,7 @@ func (mem *CListMempool) CheckTx(
 		// (eg. after committing a block, txs are removed from mempool but not cache),
 		// so we only record the sender for txs still in the mempool.
 		if e, ok := mem.txsMap.Load(tx.Key()); ok {
+			mem.metrics.AlreadySeenTxs.Add(1)
 			memTx := e.(*clist.CElement).Value.(*mempoolTx)
 			memTx.senders.LoadOrStore(txInfo.SenderID, true)
 			// TODO: consider punishing peer for dups,
@@ -310,7 +313,7 @@ func (mem *CListMempool) reqResCb(
 }
 
 // Called from:
-//  - resCbFirstTime (lock not held) if tx is valid
+//   - resCbFirstTime (lock not held) if tx is valid
 func (mem *CListMempool) addTx(memTx *mempoolTx) {
 	e := mem.txs.PushBack(memTx)
 	mem.txsMap.Store(memTx.tx.Key(), e)
@@ -319,8 +322,8 @@ func (mem *CListMempool) addTx(memTx *mempoolTx) {
 }
 
 // Called from:
-//  - Update (lock held) if tx was committed
-// 	- resCbRecheck (lock not held) if tx was invalidated
+//   - Update (lock held) if tx was committed
+//   - resCbRecheck (lock not held) if tx was invalidated
 func (mem *CListMempool) removeTx(tx types.Tx, elem *clist.CElement, removeFromCache bool) {
 	mem.txs.Remove(elem)
 	elem.DetachPrev()
@@ -593,6 +596,7 @@ func (mem *CListMempool) Update(
 		mem.postCheck = postCheck
 	}
 
+	mem.metrics.SuccessfulTxs.Add(float64(len(txs)))
 	for i, tx := range txs {
 		if deliverTxResponses[i].Code == abci.CodeTypeOK {
 			// Add valid committed tx to the cache (if missing).
