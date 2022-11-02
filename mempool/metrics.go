@@ -39,6 +39,10 @@ type Metrics struct {
 
 	// Number of times transactions are rechecked in the mempool.
 	RecheckTimes metrics.Counter
+
+	// TxAvailability tracks upon receiving a block, how many of the transactions
+	// did the mempool already have as a percentage between 0 and 1.
+	TxAvailability metrics.Histogram
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -92,17 +96,37 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "recheck_times",
 			Help:      "Number of times transactions are rechecked in the mempool.",
 		}, labels).With(labelsAndValues...),
+
+		TxAvailability: prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "tx_availability",
+			Help:      "Transaction sizes in bytes.",
+			Buckets:   AsymptoticBuckets(0, 1, 8),
+		}, labels).With(labelsAndValues...),
 	}
+}
+
+// AsymptoticBuckets starts at start and asyptotically approaches end by a factor of 2
+// i.e. if start = 0 and end = 1 -> 0, 0.5, 0.75, 0.875 etc.
+func AsymptoticBuckets(start, end float64, count int) []float64 {
+	buckets := make([]float64, count)
+	buckets[0] = start
+	for i := 1; i < count; i++ {
+		buckets[i] = (buckets[i-1] + end) / 2
+	}
+	return buckets
 }
 
 // NopMetrics returns no-op Metrics.
 func NopMetrics() *Metrics {
 	return &Metrics{
-		Size:         discard.NewGauge(),
-		TxSizeBytes:  discard.NewHistogram(),
-		FailedTxs:    discard.NewCounter(),
-		RejectedTxs:  discard.NewCounter(),
-		EvictedTxs:   discard.NewCounter(),
-		RecheckTimes: discard.NewCounter(),
+		Size:           discard.NewGauge(),
+		TxSizeBytes:    discard.NewHistogram(),
+		FailedTxs:      discard.NewCounter(),
+		RejectedTxs:    discard.NewCounter(),
+		EvictedTxs:     discard.NewCounter(),
+		RecheckTimes:   discard.NewCounter(),
+		TxAvailability: discard.NewHistogram(),
 	}
 }

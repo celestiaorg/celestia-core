@@ -30,11 +30,12 @@ func (Mempool) Update(
 ) error {
 	return nil
 }
-func (Mempool) Flush()                        {}
-func (Mempool) FlushAppConn() error           { return nil }
-func (Mempool) TxsAvailable() <-chan struct{} { return make(chan struct{}) }
-func (Mempool) EnableTxsAvailable()           {}
-func (Mempool) SizeBytes() int64              { return 0 }
+func (Mempool) ObserveTxAvailability(types.Txs) {}
+func (Mempool) Flush()                          {}
+func (Mempool) FlushAppConn() error             { return nil }
+func (Mempool) TxsAvailable() <-chan struct{}   { return make(chan struct{}) }
+func (Mempool) EnableTxsAvailable()             {}
+func (Mempool) SizeBytes() int64                { return 0 }
 
 func (Mempool) TxsFront() *clist.CElement    { return nil }
 func (Mempool) TxsWaitChan() <-chan struct{} { return nil }

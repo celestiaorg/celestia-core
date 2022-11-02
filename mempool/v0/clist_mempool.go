@@ -194,7 +194,9 @@ func (mem *CListMempool) TxsWaitChan() <-chan struct{} {
 
 // It blocks if we're waiting on Update() or Reap().
 // cb: A callback from the CheckTx command.
-//     It gets called from another goroutine.
+//
+//	It gets called from another goroutine.
+//
 // CONTRACT: Either cb will get called, or err returned.
 //
 // Safe for concurrent use by multiple goroutines.
@@ -310,7 +312,7 @@ func (mem *CListMempool) reqResCb(
 }
 
 // Called from:
-//  - resCbFirstTime (lock not held) if tx is valid
+//   - resCbFirstTime (lock not held) if tx is valid
 func (mem *CListMempool) addTx(memTx *mempoolTx) {
 	e := mem.txs.PushBack(memTx)
 	mem.txsMap.Store(memTx.tx.Key(), e)
@@ -319,8 +321,8 @@ func (mem *CListMempool) addTx(memTx *mempoolTx) {
 }
 
 // Called from:
-//  - Update (lock held) if tx was committed
-// 	- resCbRecheck (lock not held) if tx was invalidated
+//   - Update (lock held) if tx was committed
+//   - resCbRecheck (lock not held) if tx was invalidated
 func (mem *CListMempool) removeTx(tx types.Tx, elem *clist.CElement, removeFromCache bool) {
 	mem.txs.Remove(elem)
 	elem.DetachPrev()
@@ -644,6 +646,19 @@ func (mem *CListMempool) Update(
 	mem.metrics.Size.Set(float64(mem.Size()))
 
 	return nil
+}
+
+// ObserveTxAvailability simply records, as a percentage, the amount of txs passed as the argument
+// which are already present in the mempool
+func (mem *CListMempool) ObserveTxAvailability(txs types.Txs) {
+	var count float64 = 0
+	for _, tx := range txs {
+		_, ok := mem.txsMap.Load(tx.Key())
+		if ok {
+			count++
+		}
+	}
+	mem.metrics.TxAvailability.Observe(count / float64(len(txs)))
 }
 
 func (mem *CListMempool) recheckTxs() {

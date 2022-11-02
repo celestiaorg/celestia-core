@@ -96,6 +96,13 @@ type Mempool interface {
 
 	// SizeBytes returns the total size of all txs in the mempool.
 	SizeBytes() int64
+
+	// NOTE: For test purposes only.
+	//
+	// ObserveTxAvailability is triggered whenever a node receives a complete new block
+	// It is used to measure how many of the transactions as a percentage the mempool
+	// already has.
+	ObserveTxAvailability(txs types.Txs)
 }
 
 // PreCheckFunc is an optional filter executed before CheckTx and rejects

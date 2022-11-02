@@ -1528,6 +1528,8 @@ func (n *fakeTxNotifier) Notify() {
 	n.ch <- struct{}{}
 }
 
+func (n *fakeTxNotifier) ObserveTxAvailability(txs types.Txs) {}
+
 // 2 vals precommit votes for a block but node times out waiting for the third. Move to next round
 // and third precommit arrives which leads to the commit of that header and the correct
 // start of the next round

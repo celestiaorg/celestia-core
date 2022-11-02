@@ -38,6 +38,7 @@ func (emptyMempool) Update(
 ) error {
 	return nil
 }
+func (emptyMempool) ObserveTxAvailability(txs types.Txs) {}
 func (emptyMempool) Flush()                        {}
 func (emptyMempool) FlushAppConn() error           { return nil }
 func (emptyMempool) TxsAvailable() <-chan struct{} { return make(chan struct{}) }

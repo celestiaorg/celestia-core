@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/creachadair/taskgroup"
+
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/clist"
@@ -437,6 +438,21 @@ func (txmp *TxMempool) Update(
 		}
 	}
 	return nil
+}
+
+// ObserveTxAvailability simply records, as a percentage, the amount of txs passed as the argument
+// which are already present in the mempool
+func (txmp *TxMempool) ObserveTxAvailability(txs types.Txs) {
+	txmp.mtx.RLock()
+	defer txmp.mtx.RUnlock()
+	var count float64 = 0
+	for _, tx := range txs {
+		_, ok := txmp.txByKey[tx.Key()]
+		if ok {
+			count++
+		}
+	}
+	txmp.metrics.TxAvailability.Observe(count / float64(len(txs)))
 }
 
 // addNewTransaction handles the ABCI CheckTx response for the first time a

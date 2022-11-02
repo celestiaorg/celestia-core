@@ -63,6 +63,7 @@ func (ti *timeoutInfo) String() string {
 // interface to the mempool
 type txNotifier interface {
 	TxsAvailable() <-chan struct{}
+	ObserveTxAvailability(txs types.Txs)
 }
 
 // interface to the evidence pool
@@ -1918,6 +1919,10 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		if err := cs.eventBus.PublishEventCompleteProposal(cs.CompleteProposalEvent()); err != nil {
 			cs.Logger.Error("failed publishing event complete proposal", "err", err)
 		}
+
+		// NOTE: for testing purposes only
+		// monitor how many txs in the block were already available in the nodes mempool
+		go cs.txNotifier.ObserveTxAvailability(block.Data.Txs)
 	}
 	return added, nil
 }
