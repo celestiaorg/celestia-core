@@ -510,6 +510,40 @@ func (c *baseRPCClient) Tx(ctx context.Context, hash []byte, prove bool) (*ctype
 	return result, nil
 }
 
+func (c *baseRPCClient) ProveShares(
+	ctx context.Context,
+	height uint64,
+	startShare uint64,
+	endShare uint64,
+) (types.SharesProof, error) {
+	result := new(types.SharesProof)
+	params := map[string]interface{}{
+		"height":     height,
+		"startShare": startShare,
+		"endShare":   endShare,
+	}
+	_, err := c.caller.Call(ctx, "prove_shares", params, result)
+	if err != nil {
+		return types.SharesProof{}, err
+	}
+	return *result, nil
+}
+
+func (c *baseRPCClient) TxShares(
+	ctx context.Context,
+	hash []byte,
+) (*types.TxShares, error) {
+	result := new(types.TxShares)
+	params := map[string]interface{}{
+		"hash": hash,
+	}
+	_, err := c.caller.Call(ctx, "tx_shares", params, result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (c *baseRPCClient) TxSearch(
 	ctx context.Context,
 	query string,

@@ -105,6 +105,22 @@ type TxProof struct {
 	Proofs   []*tmproto.NMTProof `json:"proof"`
 }
 
+// TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
+type TxShares struct {
+	StartingShare uint64 `json:"starting_share"`
+	EndShare      uint64 `json:"end_share"`
+}
+
+// SharesProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
+type SharesProof struct {
+	RowRoots []tmbytes.HexBytes  `json:"root_hash"`
+	Data     [][]byte            `json:"data"`
+	Proofs   []*tmproto.NMTProof `json:"proof"`
+	// NamespaceID needs to be specified as it will be used when verifying proofs.
+	// A wrong NamespaceID will result in an invalid proof.
+	NamespaceID []byte `json:"namespace_id"`
+}
+
 // Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
 // and if the proof is internally consistent. Otherwise, it returns a sensible error.
 func (tp TxProof) Validate() error {
@@ -153,19 +169,16 @@ func (tp *TxProof) VerifyProof() bool {
 	return true
 }
 
-func (tp *TxProof) IncludesTx(tx Tx) bool {
-	return bytes.Contains(bytes.Join(tp.Data, []byte{}), tx)
-}
-
-func (tp TxProof) ToProto() tmproto.TxProof {
-	rowRoots := make([][]byte, len(tp.RowRoots))
-	for i, root := range tp.RowRoots {
+func (sp SharesProof) ToProto() tmproto.SharesProof {
+	rowRoots := make([][]byte, len(sp.RowRoots))
+	for i, root := range sp.RowRoots {
 		rowRoots[i] = root.Bytes()
 	}
-	pbtp := tmproto.TxProof{
-		RowRoots: rowRoots,
-		Data:     tp.Data,
-		Proofs:   tp.Proofs,
+	pbtp := tmproto.SharesProof{
+		RowRoots:    rowRoots,
+		Data:        sp.Data,
+		Proofs:      sp.Proofs,
+		NamespaceId: sp.NamespaceID,
 	}
 
 	return pbtp
@@ -183,6 +196,20 @@ func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
 	}
 
 	return pbtp, nil
+}
+
+func SharesFromProto(pb tmproto.SharesProof) (SharesProof, error) {
+	rowRoots := make([]tmbytes.HexBytes, len(pb.RowRoots))
+	for i, root := range pb.RowRoots {
+		rowRoots[i] = root
+	}
+
+	return SharesProof{
+		RowRoots:    rowRoots,
+		Data:        pb.Data,
+		Proofs:      pb.Proofs,
+		NamespaceID: pb.NamespaceId,
+	}, nil
 }
 
 // ComputeProtoSizeForTxs wraps the transactions in tmproto.Data{} and calculates the size.
@@ -229,3 +256,146 @@ func WrapMalleatedTx(originalHash []byte, shareIndex uint32, malleated Tx) (Tx, 
 	}
 	return proto.Marshal(&wTx)
 }
+
+// Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
+// and if the proof is internally consistent. Otherwise, it returns a sensible error.
+func (sp SharesProof) Validate() error {
+	if len(sp.RowRoots) != len(sp.Proofs) || len(sp.Data) != len(sp.Proofs) {
+		return errors.New(
+			"invalid number of proofs, row roots, or data. they all must be the same to verify the proof",
+		)
+	}
+	for _, proof := range sp.Proofs {
+		if proof.Start < 0 {
+			return errors.New("proof index cannot be negative")
+		}
+		if (proof.End - proof.Start) <= 0 {
+			return errors.New("proof total must be positive")
+		}
+		valid := sp.VerifyProof()
+		if !valid {
+			return errors.New("proof is not internally consistent")
+		}
+	}
+
+	return nil
+}
+
+func (sp *SharesProof) VerifyProof() bool {
+	cursor := int32(0)
+	for i, proof := range sp.Proofs {
+		nmtProof := nmt.NewInclusionProof(
+			int(proof.Start),
+			int(proof.End),
+			proof.Nodes,
+			true,
+		)
+		sharesUsed := proof.End - proof.Start
+		valid := nmtProof.VerifyInclusion(
+			consts.NewBaseHashFunc(),
+			sp.NamespaceID,
+			sp.Data[cursor:sharesUsed+cursor],
+			sp.RowRoots[i],
+		)
+		if !valid {
+			return false
+		}
+		cursor += sharesUsed
+	}
+	return true
+}
+
+func (tp *TxProof) IncludesTx(tx Tx) bool {
+	return bytes.Contains(bytes.Join(tp.Data, []byte{}), tx)
+}
+
+func (tp TxProof) ToProto() tmproto.TxProof {
+	rowRoots := make([][]byte, len(tp.RowRoots))
+	for i, root := range tp.RowRoots {
+		rowRoots[i] = root.Bytes()
+	}
+	pbtp := tmproto.TxProof{
+		RowRoots: rowRoots,
+		Data:     tp.Data,
+		Proofs:   tp.Proofs,
+	}
+
+	return pbtp
+}
+
+//// SharesProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
+//type RowsProof struct {
+//	Rows        [][]byte        `json:"data"`
+//	Proofs      []*merkle.Proof `json:"proof"`
+//	Root        []byte          `json:"root"`
+//	StartingRow int             `json:"starting_row"`
+//	EndingRow   int             `json:"ending_row"`
+//}
+//
+//// Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
+//// and if the proof is internally consistent. Otherwise, it returns a sensible error.
+//func (rp RowsProof) Validate() error {
+//	if len(sp.RowRoots) != len(sp.Proofs) || len(sp.Data) != len(sp.Proofs) {
+//		return errors.New(
+//			"invalid number of proofs, row roots, or data. they all must be the same to verify the proof",
+//		)
+//	}
+//	for _, proof := range sp.Proofs {
+//		if proof.Start < 0 {
+//			return errors.New("proof index cannot be negative")
+//		}
+//		if (proof.End - proof.Start) <= 0 {
+//			return errors.New("proof total must be positive")
+//		}
+//		valid := sp.VerifyProof()
+//		if !valid {
+//			return errors.New("proof is not internally consistent")
+//		}
+//	}
+//
+//	return nil
+//}
+//
+//func (rp *RowsProof) VerifyProof() bool {
+//	for _, proof := range rp.Proofs {
+//		proof.Verify()
+//	}
+//	cursor := int32(0)
+//	nmtProof := nmt.NewInclusionProof(
+//		int(rp.StartingRow),
+//		int(rp.EndingRow),
+//		rp.Proof.Nodes,
+//		true,
+//	)
+//	sharesUsed := proof.End - proof.Start
+//	valid := nmtProof.VerifyInclusion(
+//		consts.NewBaseHashFunc(),
+//		rp.NamespaceID,
+//		rp.Data[cursor:sharesUsed+cursor],
+//		rp.RowRoots[i],
+//	)
+//	if !valid {
+//		return false
+//	}
+//	cursor += sharesUsed
+//
+//	return true
+//}
+//
+//func (tp *TxProof) IncludesTx(tx Tx) bool {
+//	return bytes.Contains(bytes.Join(tp.Data, []byte{}), tx)
+//}
+//
+//func (tp TxProof) ToProto() tmproto.TxProof {
+//	rowRoots := make([][]byte, len(tp.RowRoots))
+//	for i, root := range tp.RowRoots {
+//		rowRoots[i] = root.Bytes()
+//	}
+//	pbtp := tmproto.TxProof{
+//		RowRoots: rowRoots,
+//		Data:     tp.Data,
+//		Proofs:   tp.Proofs,
+//	}
+//
+//	return pbtp
+//}

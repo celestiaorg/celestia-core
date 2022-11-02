@@ -499,6 +499,28 @@ func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Resul
 	return res, err
 }
 
+// Tx calls rpcclient#Tx method and then verifies the proof if such was
+// requested.
+func (c *Client) ProveShares(
+	ctx context.Context,
+	height uint64,
+	startShare uint64,
+	endShare uint64,
+) (types.SharesProof, error) {
+	res, err := c.next.ProveShares(ctx, height, startShare, endShare)
+	return res, err
+}
+
+// Tx calls rpcclient#Tx method and then verifies the proof if such was
+// requested.
+func (c *Client) TxShares(
+	ctx context.Context,
+	hash []byte,
+) (*types.TxShares, error) {
+	res, err := c.next.TxShares(ctx, hash)
+	return res, err
+}
+
 func (c *Client) TxSearch(
 	ctx context.Context,
 	query string,

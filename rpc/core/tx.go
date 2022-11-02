@@ -57,6 +57,31 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 	}, nil
 }
 
+func TxShares(ctx *rpctypes.Context, hash []byte) (*types.TxShares, error) {
+	// if index is disabled, return error
+	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
+		return nil, fmt.Errorf("transaction indexing is disabled")
+	}
+
+	r, err := env.TxIndexer.Get(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	if r == nil {
+		return nil, fmt.Errorf("tx (%X) not found", hash)
+	}
+
+	height := r.Height
+	index := r.Index
+
+	shares, err := txShares(height, index)
+	if err != nil {
+		return nil, err
+	}
+	return shares, nil
+}
+
 // TxSearch allows you to query for multiple transactions results. It returns a
 // list of transactions (maximum ?per_page entries) and the total count.
 // NOTE: proveTx isn't respected but is left in the function signature to
@@ -169,6 +194,66 @@ func proveTx(height int64, index uint32) (types.TxProof, error) {
 		return txProof, err
 	}
 	return txProof, nil
+}
+
+func txShares(height int64, index uint32) (*types.TxShares, error) {
+	var pTxShares tmproto.TxShares
+	rawBlock, err := loadRawBlock(env.BlockStore, height)
+	if err != nil {
+		return nil, err
+	}
+	res, err := env.ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
+		Data: rawBlock,
+		Path: fmt.Sprintf(consts.TxSharesQueryPath, index),
+	})
+	if err != nil {
+		return nil, err
+	}
+	err = pTxShares.Unmarshal(res.Value)
+	if err != nil {
+		return nil, err
+	}
+	return &types.TxShares{
+		StartingShare: pTxShares.StartingShare,
+		EndShare:      pTxShares.EndShare,
+	}, nil
+}
+
+func ProveSharesWithCtx(
+	ctx *rpctypes.Context,
+	height int64,
+	startShare uint64,
+	endShare uint64,
+) (types.SharesProof, error) {
+	return ProveShares(height, startShare, endShare)
+}
+
+// TODO change TxProof to ShareProof
+func ProveShares(height int64, startShare uint64, endShare uint64) (types.SharesProof, error) {
+	var (
+		pSharesProof tmproto.SharesProof
+		sharesProof  types.SharesProof
+	)
+	rawBlock, err := loadRawBlock(env.BlockStore, height)
+	if err != nil {
+		return sharesProof, err
+	}
+	res, err := env.ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
+		Data: rawBlock,
+		Path: fmt.Sprintf(consts.ShareInclusionProofQueryPath, startShare, endShare),
+	})
+	if err != nil {
+		return sharesProof, err
+	}
+	err = pSharesProof.Unmarshal(res.Value)
+	if err != nil {
+		return sharesProof, err
+	}
+	sharesProof, err = types.SharesFromProto(pSharesProof)
+	if err != nil {
+		return sharesProof, err
+	}
+	return sharesProof, nil
 }
 
 func loadRawBlock(bs state.BlockStore, height int64) ([]byte, error) {

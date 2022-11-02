@@ -10,7 +10,9 @@ const (
 	// TxInclusionProofQueryPath is the path used to query the application for a
 	// tx inclusion proof via the ABCI Query method. The desired transaction
 	// index must be formatted into the path.
-	TxInclusionProofQueryPath = "custom/txInclusionProof/%d"
+	TxInclusionProofQueryPath    = "custom/txInclusionProof/%d"
+	TxSharesQueryPath            = "custom/txShares/%d"
+	ShareInclusionProofQueryPath = "custom/shareInclusionProof/%d/%d"
 )
 
 var (

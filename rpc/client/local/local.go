@@ -198,6 +198,19 @@ func (c *Local) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Result
 	return core.Tx(c.ctx, hash, prove)
 }
 
+func (c *Local) TxShares(ctx context.Context, hash []byte) (*types.TxShares, error) {
+	return core.TxShares(c.ctx, hash)
+}
+
+func (c *Local) ProveShares(
+	ctx context.Context,
+	height uint64,
+	startShare uint64,
+	endShare uint64,
+) (types.SharesProof, error) {
+	return core.ProveShares(int64(height), startShare, endShare)
+}
+
 func (c *Local) TxSearch(
 	_ context.Context,
 	query string,

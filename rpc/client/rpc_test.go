@@ -487,6 +487,55 @@ func TestTx(t *testing.T) {
 	}
 }
 
+// Good for nothing
+func TestProveShares(t *testing.T) {
+	// first we broadcast a tx
+	c := getHTTPClient()
+	_, _, tx := MakeTxKV()
+	_, err := c.BroadcastTxCommit(context.Background(), tx)
+	require.Nil(t, err, "%+v", err)
+
+	//txHeight := bres.Height
+	//txHash := bres.Hash
+
+	anotherTxHash := types.Tx("a different tx").Hash()
+
+	cases := []struct {
+		valid bool
+		prove bool
+		hash  []byte
+	}{
+		// only valid if correct hash provided
+		//{true, false, txHash},
+		//{true, true, txHash},
+		{false, false, anotherTxHash},
+		{false, true, anotherTxHash},
+		{false, false, nil},
+		{false, true, nil},
+	}
+
+	for i, c := range GetClients() {
+		for j, _ := range cases {
+			t.Logf("client %d, case %d", i, j)
+
+			// now we query for the tx.
+			// since there's only one tx, we know index=0.
+			_, _ = c.ProveShares(context.Background(), 1, 2, 4)
+			//
+			//if !tc.valid {
+			//	require.NotNil(t, err)
+			//} else {
+			//	require.Nil(t, err, "%+v", err)
+			//	assert.EqualValues(t, txHeight, ptx.Height)
+			//	assert.EqualValues(t, tx, ptx.Tx)
+			//	assert.Zero(t, ptx.Index)
+			//	assert.True(t, ptx.TxResult.IsOK())
+			//	assert.EqualValues(t, txHash, ptx.Hash)
+			//}
+		}
+	}
+}
+
 func TestTxSearchWithTimeout(t *testing.T) {
 	// Get a client with a time-out of 10 secs.
 	timeoutClient := getHTTPClientWithTimeout(10)
