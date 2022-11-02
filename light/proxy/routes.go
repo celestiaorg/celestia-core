@@ -18,26 +18,27 @@ func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {
 		"unsubscribe_all": rpcserver.NewWSRPCFunc(c.UnsubscribeAllWS, ""),
 
 		// info API
-		"health":               rpcserver.NewRPCFunc(makeHealthFunc(c), ""),
-		"status":               rpcserver.NewRPCFunc(makeStatusFunc(c), ""),
-		"net_info":             rpcserver.NewRPCFunc(makeNetInfoFunc(c), ""),
-		"blockchain":           rpcserver.NewRPCFunc(makeBlockchainInfoFunc(c), "minHeight,maxHeight"),
-		"genesis":              rpcserver.NewRPCFunc(makeGenesisFunc(c), ""),
-		"genesis_chunked":      rpcserver.NewRPCFunc(makeGenesisChunkedFunc(c), ""),
-		"block":                rpcserver.NewRPCFunc(makeBlockFunc(c), "height"),
-		"block_by_hash":        rpcserver.NewRPCFunc(makeBlockByHashFunc(c), "hash"),
-		"block_results":        rpcserver.NewRPCFunc(makeBlockResultsFunc(c), "height"),
-		"commit":               rpcserver.NewRPCFunc(makeCommitFunc(c), "height"),
-		"data_commitment":      rpcserver.NewRPCFunc(makeDataCommitmentFunc(c), "beginBlock,endBlock"),
-		"tx":                   rpcserver.NewRPCFunc(makeTxFunc(c), "hash,prove"),
-		"tx_search":            rpcserver.NewRPCFunc(makeTxSearchFunc(c), "query,prove,page,per_page,order_by"),
-		"block_search":         rpcserver.NewRPCFunc(makeBlockSearchFunc(c), "query,page,per_page,order_by"),
-		"validators":           rpcserver.NewRPCFunc(makeValidatorsFunc(c), "height,page,per_page"),
-		"dump_consensus_state": rpcserver.NewRPCFunc(makeDumpConsensusStateFunc(c), ""),
-		"consensus_state":      rpcserver.NewRPCFunc(makeConsensusStateFunc(c), ""),
-		"consensus_params":     rpcserver.NewRPCFunc(makeConsensusParamsFunc(c), "height"),
-		"unconfirmed_txs":      rpcserver.NewRPCFunc(makeUnconfirmedTxsFunc(c), "limit"),
-		"num_unconfirmed_txs":  rpcserver.NewRPCFunc(makeNumUnconfirmedTxsFunc(c), ""),
+		"health":                    rpcserver.NewRPCFunc(makeHealthFunc(c), ""),
+		"status":                    rpcserver.NewRPCFunc(makeStatusFunc(c), ""),
+		"net_info":                  rpcserver.NewRPCFunc(makeNetInfoFunc(c), ""),
+		"blockchain":                rpcserver.NewRPCFunc(makeBlockchainInfoFunc(c), "minHeight,maxHeight"),
+		"genesis":                   rpcserver.NewRPCFunc(makeGenesisFunc(c), ""),
+		"genesis_chunked":           rpcserver.NewRPCFunc(makeGenesisChunkedFunc(c), ""),
+		"block":                     rpcserver.NewRPCFunc(makeBlockFunc(c), "height"),
+		"block_by_hash":             rpcserver.NewRPCFunc(makeBlockByHashFunc(c), "hash"),
+		"block_results":             rpcserver.NewRPCFunc(makeBlockResultsFunc(c), "height"),
+		"commit":                    rpcserver.NewRPCFunc(makeCommitFunc(c), "height"),
+		"data_commitment":           rpcserver.NewRPCFunc(makeDataCommitmentFunc(c), "beginBlock,endBlock"),
+		"data_root_inclusion_proof": rpcserver.NewRPCFunc(makeDataRootInclusionProofFunc(c), "height,beginBlock,endBlock"),
+		"tx":                        rpcserver.NewRPCFunc(makeTxFunc(c), "hash,prove"),
+		"tx_search":                 rpcserver.NewRPCFunc(makeTxSearchFunc(c), "query,prove,page,per_page,order_by"),
+		"block_search":              rpcserver.NewRPCFunc(makeBlockSearchFunc(c), "query,page,per_page,order_by"),
+		"validators":                rpcserver.NewRPCFunc(makeValidatorsFunc(c), "height,page,per_page"),
+		"dump_consensus_state":      rpcserver.NewRPCFunc(makeDumpConsensusStateFunc(c), ""),
+		"consensus_state":           rpcserver.NewRPCFunc(makeConsensusStateFunc(c), ""),
+		"consensus_params":          rpcserver.NewRPCFunc(makeConsensusParamsFunc(c), "height"),
+		"unconfirmed_txs":           rpcserver.NewRPCFunc(makeUnconfirmedTxsFunc(c), "limit"),
+		"num_unconfirmed_txs":       rpcserver.NewRPCFunc(makeNumUnconfirmedTxsFunc(c), ""),
 
 		// tx broadcast API
 		"broadcast_tx_commit": rpcserver.NewRPCFunc(makeBroadcastTxCommitFunc(c), "tx"),
@@ -140,6 +141,13 @@ type rpcDataCommitmentFunc func(
 	endBlock uint64,
 ) (*ctypes.ResultDataCommitment, error)
 
+type rpcDataRootInclusionProofFunc func(
+	ctx *rpctypes.Context,
+	height uint64,
+	beginBlock uint64,
+	endBlock uint64,
+) (*ctypes.ResultDataRootInclusionProof, error)
+
 func makeDataCommitmentFunc(c *lrpc.Client) rpcDataCommitmentFunc {
 	return func(
 		ctx *rpctypes.Context,
@@ -147,6 +155,17 @@ func makeDataCommitmentFunc(c *lrpc.Client) rpcDataCommitmentFunc {
 		endBlock uint64,
 	) (*ctypes.ResultDataCommitment, error) {
 		return c.DataCommitment(ctx.Context(), beginBlock, endBlock)
+	}
+}
+
+func makeDataRootInclusionProofFunc(c *lrpc.Client) rpcDataRootInclusionProofFunc {
+	return func(
+		ctx *rpctypes.Context,
+		height uint64,
+		beginBlock uint64,
+		endBlock uint64,
+	) (*ctypes.ResultDataRootInclusionProof, error) {
+		return c.DataRootInclusionProof(ctx.Context(), height, beginBlock, endBlock)
 	}
 }
 

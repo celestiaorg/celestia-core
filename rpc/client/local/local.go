@@ -181,6 +181,15 @@ func (c *Local) DataCommitment(
 	return core.DataCommitment(c.ctx, beginBlock, endBlock)
 }
 
+func (c *Local) DataRootInclusionProof(
+	_ context.Context,
+	height uint64,
+	beginBlock uint64,
+	endBlock uint64,
+) (*ctypes.ResultDataRootInclusionProof, error) {
+	return core.DataRootInclusionProof(c.ctx, int64(height), beginBlock, endBlock)
+}
+
 func (c *Local) Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error) {
 	return core.Validators(c.ctx, height, page, perPage)
 }

@@ -476,6 +476,27 @@ func (c *baseRPCClient) DataCommitment(
 	return result, nil
 }
 
+func (c *baseRPCClient) DataRootInclusionProof(
+	ctx context.Context,
+	height uint64,
+	beginBlock uint64,
+	endBlock uint64,
+) (*ctypes.ResultDataRootInclusionProof, error) {
+	result := new(ctypes.ResultDataRootInclusionProof)
+	params := map[string]interface{}{
+		"height":     height,
+		"beginBlock": beginBlock,
+		"endBlock":   endBlock,
+	}
+
+	_, err := c.caller.Call(ctx, "data_root_inclusion_proof", params, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 func (c *baseRPCClient) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
 	result := new(ctypes.ResultTx)
 	params := map[string]interface{}{

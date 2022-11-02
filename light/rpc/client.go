@@ -462,6 +462,15 @@ func (c *Client) DataCommitment(
 	return c.next.DataCommitment(ctx, beginBlock, endBlock)
 }
 
+func (c *Client) DataRootInclusionProof(
+	ctx context.Context,
+	height uint64,
+	beginBlock uint64,
+	endBlock uint64,
+) (*ctypes.ResultDataRootInclusionProof, error) {
+	return c.next.DataRootInclusionProof(ctx, height, beginBlock, endBlock)
+}
+
 // Tx calls rpcclient#Tx method and then verifies the proof if such was
 // requested.
 func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {

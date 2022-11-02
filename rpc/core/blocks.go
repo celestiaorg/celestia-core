@@ -148,6 +148,25 @@ func DataCommitment(ctx *rpctypes.Context, beginBlock uint64, endBlock uint64) (
 	return &ctypes.ResultDataCommitment{DataCommitment: root}, nil
 }
 
+// DataRootInclusionProof creates an inclusion proof of the data root of block
+// height `height` in the set of blocks defined by `begin_block` and `end_block`.
+func DataRootInclusionProof(
+	ctx *rpctypes.Context,
+	height int64,
+	beginBlock uint64,
+	endBlock uint64,
+) (*ctypes.ResultDataRootInclusionProof, error) {
+	err := validateDataRootInclusionProofRequest(uint64(height), beginBlock, endBlock)
+	if err != nil {
+		return nil, err
+	}
+	heights := generateHeightsList(beginBlock, endBlock)
+	blockResults := fetchBlocks(heights, len(heights), 0)
+	proof := proveDataRoots(blockResults, height)
+	// Create data commitment
+	return &ctypes.ResultDataRootInclusionProof{Proof: *proof}, nil
+}
+
 // generateHeightsList takes a begin and end block, then generates a list of heights
 // containing the elements of the range [beginBlock, endBlock].
 func generateHeightsList(beginBlock uint64, endBlock uint64) []int64 {
@@ -191,6 +210,24 @@ func validateDataCommitmentRange(beginBlock uint64, endBlock uint64) error {
 	return nil
 }
 
+// validateDataRootInclusionProofRequest validates the request to generate a data root
+// inclusion proof.
+func validateDataRootInclusionProofRequest(height uint64, beginBlock uint64, endBlock uint64) error {
+	err := validateDataCommitmentRange(beginBlock, endBlock)
+	if err != nil {
+		return err
+	}
+	if height < beginBlock || height > endBlock {
+		return fmt.Errorf(
+			"height %d should be in the interval begin_block %d end_block %d",
+			height,
+			beginBlock,
+			endBlock,
+		)
+	}
+	return nil
+}
+
 // hashDataRoots hashes a list of blocks data hashes and returns their merkle root.
 func hashDataRoots(blocks []*ctypes.ResultBlock) []byte {
 	dataRoots := make([][]byte, 0, len(blocks))
@@ -199,6 +236,16 @@ func hashDataRoots(blocks []*ctypes.ResultBlock) []byte {
 	}
 	root := merkle.HashFromByteSlices(dataRoots)
 	return root
+}
+
+// proveDataRoots returns the merkle inclusion proof for a height.
+func proveDataRoots(blocks []*ctypes.ResultBlock, height int64) *merkle.Proof {
+	dataRoots := make([][]byte, 0, len(blocks))
+	for _, block := range blocks {
+		dataRoots = append(dataRoots, block.Block.DataHash)
+	}
+	_, proofs := merkle.ProofsFromByteSlices(dataRoots)
+	return proofs[height-blocks[0].Block.Height]
 }
 
 // BlockResults gets ABCIResults at a given height.
