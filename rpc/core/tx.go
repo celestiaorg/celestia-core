@@ -228,6 +228,15 @@ func ProveSharesWithCtx(
 	return ProveShares(height, startShare, endShare)
 }
 
+func ProveRowsWithCtx(
+	ctx *rpctypes.Context,
+	height int64,
+	startingRow uint32,
+	endingRow uint32,
+) (types.RowsProof, error) {
+	return ProveRows(height, startingRow, endingRow)
+}
+
 // TODO change TxProof to ShareProof
 func ProveShares(height int64, startShare uint64, endShare uint64) (types.SharesProof, error) {
 	var (
@@ -254,6 +263,34 @@ func ProveShares(height int64, startShare uint64, endShare uint64) (types.Shares
 		return sharesProof, err
 	}
 	return sharesProof, nil
+}
+
+// TODO change TxProof to ShareProof
+func ProveRows(height int64, startingRow, endingRow uint32) (types.RowsProof, error) {
+	var (
+		pRowsProof tmproto.RowsProof
+		rowsProof  types.RowsProof
+	)
+	rawBlock, err := loadRawBlock(env.BlockStore, height)
+	if err != nil {
+		return rowsProof, err
+	}
+	res, err := env.ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
+		Data: rawBlock,
+		Path: fmt.Sprintf(consts.RowsInclusionProofQueryPath, startingRow, endingRow),
+	})
+	if err != nil {
+		return rowsProof, err
+	}
+	err = pRowsProof.Unmarshal(res.Value)
+	if err != nil {
+		return rowsProof, err
+	}
+	rowsProof, err = types.RowsFromProto(pRowsProof)
+	if err != nil {
+		return rowsProof, err
+	}
+	return rowsProof, nil
 }
 
 func loadRawBlock(bs state.BlockStore, height int64) ([]byte, error) {

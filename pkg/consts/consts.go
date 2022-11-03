@@ -13,6 +13,7 @@ const (
 	TxInclusionProofQueryPath    = "custom/txInclusionProof/%d"
 	TxSharesQueryPath            = "custom/txShares/%d"
 	ShareInclusionProofQueryPath = "custom/shareInclusionProof/%d/%d"
+	RowsInclusionProofQueryPath  = "custom/rowsInclusionProof/%d/%d"
 )
 
 var (

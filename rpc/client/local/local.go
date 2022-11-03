@@ -211,6 +211,15 @@ func (c *Local) ProveShares(
 	return core.ProveShares(int64(height), startShare, endShare)
 }
 
+func (c *Local) ProveRows(
+	ctx context.Context,
+	height uint64,
+	startingRow uint32,
+	endingRow uint32,
+) (types.RowsProof, error) {
+	return core.ProveRows(int64(height), startingRow, endingRow)
+}
+
 func (c *Local) TxSearch(
 	_ context.Context,
 	query string,

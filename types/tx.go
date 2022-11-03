@@ -212,6 +212,31 @@ func SharesFromProto(pb tmproto.SharesProof) (SharesProof, error) {
 	}, nil
 }
 
+func RowsFromProto(rp tmproto.RowsProof) (RowsProof, error) {
+	rowRoots := make([]tmbytes.HexBytes, len(rp.RowRoots))
+	for i, root := range rp.RowRoots {
+		rowRoots[i] = root
+	}
+
+	proofs := make([]*merkle.Proof, len(rp.Proofs))
+	for i, proof := range rp.Proofs {
+		proofs[i] = &merkle.Proof{
+			Total:    proof.Total,
+			Index:    proof.Index,
+			LeafHash: proof.LeafHash,
+			Aunts:    proof.Aunts,
+		}
+	}
+
+	return RowsProof{
+		RowRoots:    rowRoots,
+		Proofs:      proofs,
+		Root:        rp.Root,
+		StartingRow: rp.StartRow,
+		EndingRow:   rp.EndRow,
+	}, nil
+}
+
 // ComputeProtoSizeForTxs wraps the transactions in tmproto.Data{} and calculates the size.
 // https://developers.google.com/protocol-buffers/docs/encoding
 func ComputeProtoSizeForTxs(txs []Tx) int64 {
@@ -323,79 +348,60 @@ func (tp TxProof) ToProto() tmproto.TxProof {
 	return pbtp
 }
 
-//// SharesProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
-//type RowsProof struct {
-//	Rows        [][]byte        `json:"data"`
-//	Proofs      []*merkle.Proof `json:"proof"`
-//	Root        []byte          `json:"root"`
-//	StartingRow int             `json:"starting_row"`
-//	EndingRow   int             `json:"ending_row"`
-//}
-//
-//// Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
-//// and if the proof is internally consistent. Otherwise, it returns a sensible error.
-//func (rp RowsProof) Validate() error {
-//	if len(sp.RowRoots) != len(sp.Proofs) || len(sp.Data) != len(sp.Proofs) {
-//		return errors.New(
-//			"invalid number of proofs, row roots, or data. they all must be the same to verify the proof",
-//		)
-//	}
-//	for _, proof := range sp.Proofs {
-//		if proof.Start < 0 {
-//			return errors.New("proof index cannot be negative")
-//		}
-//		if (proof.End - proof.Start) <= 0 {
-//			return errors.New("proof total must be positive")
-//		}
-//		valid := sp.VerifyProof()
-//		if !valid {
-//			return errors.New("proof is not internally consistent")
-//		}
-//	}
-//
-//	return nil
-//}
-//
-//func (rp *RowsProof) VerifyProof() bool {
-//	for _, proof := range rp.Proofs {
-//		proof.Verify()
-//	}
-//	cursor := int32(0)
-//	nmtProof := nmt.NewInclusionProof(
-//		int(rp.StartingRow),
-//		int(rp.EndingRow),
-//		rp.Proof.Nodes,
-//		true,
-//	)
-//	sharesUsed := proof.End - proof.Start
-//	valid := nmtProof.VerifyInclusion(
-//		consts.NewBaseHashFunc(),
-//		rp.NamespaceID,
-//		rp.Data[cursor:sharesUsed+cursor],
-//		rp.RowRoots[i],
-//	)
-//	if !valid {
-//		return false
-//	}
-//	cursor += sharesUsed
-//
-//	return true
-//}
-//
+// SharesProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
+type RowsProof struct {
+	RowRoots    []tmbytes.HexBytes `json:"data"`
+	Proofs      []*merkle.Proof    `json:"proof"`
+	Root        []byte             `json:"root"`
+	StartingRow uint32             `json:"starting_row"`
+	EndingRow   uint32             `json:"ending_row"`
+}
+
+// Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
+// and if the proof is internally consistent. Otherwise, it returns a sensible error.
+func (rp RowsProof) Validate() error {
+	if int(rp.EndingRow-rp.StartingRow+1) != len(rp.RowRoots) {
+		return errors.New(
+			"invalid number of row roots, or rows range. they all must be the same to verify the proof",
+		)
+	}
+	if !rp.VerifyProof() {
+		return errors.New("proofs verification failed")
+	}
+
+	return nil
+}
+
+func (rp RowsProof) VerifyProof() bool {
+	for _, proof := range rp.Proofs {
+		err := proof.Verify(rp.Root, proof.LeafHash)
+		if err != nil {
+			return false
+		}
+	}
+	return true
+}
+
 //func (tp *TxProof) IncludesTx(tx Tx) bool {
 //	return bytes.Contains(bytes.Join(tp.Data, []byte{}), tx)
 //}
-//
-//func (tp TxProof) ToProto() tmproto.TxProof {
-//	rowRoots := make([][]byte, len(tp.RowRoots))
-//	for i, root := range tp.RowRoots {
-//		rowRoots[i] = root.Bytes()
-//	}
-//	pbtp := tmproto.TxProof{
-//		RowRoots: rowRoots,
-//		Data:     tp.Data,
-//		Proofs:   tp.Proofs,
-//	}
-//
-//	return pbtp
-//}
+
+func (rp RowsProof) ToProto() tmproto.RowsProof {
+	rowRoots := make([][]byte, len(rp.RowRoots))
+	for i, root := range rp.RowRoots {
+		rowRoots[i] = root
+	}
+	proofs := make([]*crypto.Proof, len(rp.Proofs))
+	for i, proof := range rp.Proofs {
+		proofs[i] = proof.ToProto()
+	}
+	pbtp := tmproto.RowsProof{
+		RowRoots: rowRoots,
+		Proofs:   proofs,
+		Root:     rp.Root,
+		StartRow: rp.StartingRow, // TODO same name Starting/Start
+		EndRow:   rp.EndingRow,
+	}
+
+	return pbtp
+}

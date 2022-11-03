@@ -29,6 +29,7 @@ var Routes = map[string]*rpc.RPCFunc{
 	"tx":                        rpc.NewRPCFunc(Tx, "hash,prove"),
 	"tx_shares":                 rpc.NewRPCFunc(TxShares, "hash"),
 	"prove_shares":              rpc.NewRPCFunc(ProveSharesWithCtx, "height,startShare,endShare"),
+	"prove_rows":                rpc.NewRPCFunc(ProveRowsWithCtx, "height,startingRow,endingRow"),
 	"data_root_inclusion_proof": rpc.NewRPCFunc(DataRootInclusionProof, "height,beginBlock,endBlock"),
 	"tx_search":                 rpc.NewRPCFunc(TxSearch, "query,prove,page,per_page,order_by"),
 	"block_search":              rpc.NewRPCFunc(BlockSearch, "query,page,per_page,order_by"),

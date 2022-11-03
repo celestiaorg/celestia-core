@@ -513,6 +513,18 @@ func (c *Client) ProveShares(
 
 // Tx calls rpcclient#Tx method and then verifies the proof if such was
 // requested.
+func (c *Client) ProveRows(
+	ctx context.Context,
+	height uint64,
+	startingRow uint32,
+	endingRow uint32,
+) (types.RowsProof, error) {
+	res, err := c.next.ProveRows(ctx, height, startingRow, endingRow)
+	return res, err
+}
+
+// Tx calls rpcclient#Tx method and then verifies the proof if such was
+// requested.
 func (c *Client) TxShares(
 	ctx context.Context,
 	hash []byte,

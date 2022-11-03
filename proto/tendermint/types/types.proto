@@ -232,13 +232,14 @@ message SharesProof {
   bytes             namespace_id = 4;
 }
 
-//// TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
-// message RowsProof {
-//   repeated bytes    data   = 1;
-//   repeated NMTProof proofs = 2;
-//   uint32 start_row =3;
-//   uint32 end_row = 4;
-// }
+// TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
+message RowsProof {
+  repeated bytes row_roots                   = 1;
+  repeated tendermint.crypto.Proof proofs    = 2;
+  bytes                            root      = 3;
+  uint32                           start_row = 4;
+  uint32                           end_row   = 5;
+}
 
 // MalleatedTx wraps a transaction that was derived from a different original
 // transaction. This allows for tendermint to track malleated and original

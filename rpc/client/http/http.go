@@ -529,6 +529,25 @@ func (c *baseRPCClient) ProveShares(
 	return *result, nil
 }
 
+func (c *baseRPCClient) ProveRows(
+	ctx context.Context,
+	height uint64,
+	startingRow uint32,
+	endingRow uint32,
+) (types.RowsProof, error) {
+	result := new(types.RowsProof)
+	params := map[string]interface{}{
+		"height":      height,
+		"startingRow": startingRow,
+		"endingRow":   endingRow,
+	}
+	_, err := c.caller.Call(ctx, "prove_rows", params, result)
+	if err != nil {
+		return types.RowsProof{}, err
+	}
+	return *result, nil
+}
+
 func (c *baseRPCClient) TxShares(
 	ctx context.Context,
 	hash []byte,
