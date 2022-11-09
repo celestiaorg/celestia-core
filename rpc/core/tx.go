@@ -264,7 +264,7 @@ func ProveShares(
 }
 
 // ProveRows creates a merkle proof for a set of rows to the data root.
-func ProveRows(
+func ProveRows( //nolint:dupl
 	_ *rpctypes.Context,
 	height int64,
 	startingRow, endingRow uint32,
@@ -302,7 +302,7 @@ func ProveRows(
 
 // ProveRowsByShares creates a merkle proof for a set of rows, defined by a set of shares,
 // to the data root.
-func ProveRowsByShares(
+func ProveRowsByShares( //nolint:dupl
 	_ *rpctypes.Context,
 	height int64,
 	startingShare, endingShare uint32,

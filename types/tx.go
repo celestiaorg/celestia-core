@@ -187,7 +187,7 @@ func (sp SharesProof) ToProto() tmproto.SharesProof {
 func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
 	rowRoots := make([]tmbytes.HexBytes, len(pb.RowRoots))
 	for i, root := range pb.RowRoots {
-		rowRoots[i] = tmbytes.HexBytes(root)
+		rowRoots[i] = root
 	}
 	pbtp := TxProof{
 		RowRoots: rowRoots,
