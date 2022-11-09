@@ -1506,7 +1506,7 @@ func (m *TxProof) GetProofs() []*NMTProof {
 	return nil
 }
 
-// TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
+// TxShares represents a set of shares, which will be used to generate NMT proofs.
 type TxShares struct {
 	StartingShare uint64 `protobuf:"varint,1,opt,name=starting_share,json=startingShare,proto3" json:"starting_share,omitempty"`
 	EndShare      uint64 `protobuf:"varint,2,opt,name=end_share,json=endShare,proto3" json:"end_share,omitempty"`
@@ -1559,7 +1559,7 @@ func (m *TxShares) GetEndShare() uint64 {
 	return 0
 }
 
-// TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
+// SharesProof represents an NMT proof for a set of shares to a set of rows.
 type SharesProof struct {
 	RowRoots    [][]byte    `protobuf:"bytes,1,rep,name=row_roots,json=rowRoots,proto3" json:"row_roots,omitempty"`
 	Data        [][]byte    `protobuf:"bytes,2,rep,name=data,proto3" json:"data,omitempty"`
@@ -1628,7 +1628,7 @@ func (m *SharesProof) GetNamespaceId() []byte {
 	return nil
 }
 
-// TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
+// RowsProof represents a Merkle proof for a set of rows to the data root.
 type RowsProof struct {
 	RowRoots [][]byte        `protobuf:"bytes,1,rep,name=row_roots,json=rowRoots,proto3" json:"row_roots,omitempty"`
 	Proofs   []*crypto.Proof `protobuf:"bytes,2,rep,name=proofs,proto3" json:"proofs,omitempty"`

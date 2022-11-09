@@ -105,13 +105,13 @@ type TxProof struct {
 	Proofs   []*tmproto.NMTProof `json:"proof"`
 }
 
-// TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
+// TxShares represents a set of shares, which will be used to generate NMT proofs.
 type TxShares struct {
 	StartingShare uint64 `json:"starting_share"`
 	EndShare      uint64 `json:"end_share"`
 }
 
-// SharesProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
+// SharesProof represents an NMT proof for a set of shares to a set of rows.
 type SharesProof struct {
 	RowRoots []tmbytes.HexBytes  `json:"root_hash"`
 	Data     [][]byte            `json:"data"`
@@ -348,7 +348,7 @@ func (tp TxProof) ToProto() tmproto.TxProof {
 	return pbtp
 }
 
-// SharesProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
+// RowsProof represents a Merkle proof for a set of rows to the data root.
 type RowsProof struct {
 	RowRoots    []tmbytes.HexBytes `json:"data"`
 	Proofs      []*merkle.Proof    `json:"proof"`
