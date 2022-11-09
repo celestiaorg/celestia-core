@@ -388,10 +388,6 @@ func (rp RowsProof) VerifyProof() bool {
 	return true
 }
 
-//func (tp *TxProof) IncludesTx(tx Tx) bool {
-//	return bytes.Contains(bytes.Join(tp.Data, []byte{}), tx)
-//}
-
 func (rp RowsProof) ToProto() tmproto.RowsProof {
 	rowRoots := make([][]byte, len(rp.RowRoots))
 	for i, root := range rp.RowRoots {
