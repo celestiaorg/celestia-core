@@ -213,18 +213,23 @@ func SharesFromProto(pb tmproto.SharesProof) (SharesProof, error) {
 }
 
 func RowsFromProto(rp tmproto.RowsProof) (RowsProof, error) {
-	rowRoots := make([]tmbytes.HexBytes, len(rp.RowRoots))
-	for i, root := range rp.RowRoots {
-		rowRoots[i] = root
+	if len(rp.RowRoots) != len(rp.Proofs) {
+		return RowsProof{}, fmt.Errorf(
+			"invalid number of proofs %d for the number of rows %d",
+			len(rp.Proofs),
+			len(rp.RowRoots),
+		)
 	}
 
+	rowRoots := make([]tmbytes.HexBytes, len(rp.RowRoots))
 	proofs := make([]*merkle.Proof, len(rp.Proofs))
-	for i, proof := range rp.Proofs {
+	for i := 0; i < len(rp.RowRoots); i++ {
+		rowRoots[i] = rp.RowRoots[i]
 		proofs[i] = &merkle.Proof{
-			Total:    proof.Total,
-			Index:    proof.Index,
-			LeafHash: proof.LeafHash,
-			Aunts:    proof.Aunts,
+			Total:    rp.Proofs[i].Total,
+			Index:    rp.Proofs[i].Index,
+			LeafHash: rp.Proofs[i].LeafHash,
+			Aunts:    rp.Proofs[i].Aunts,
 		}
 	}
 
@@ -233,7 +238,8 @@ func RowsFromProto(rp tmproto.RowsProof) (RowsProof, error) {
 		Proofs:      proofs,
 		Root:        rp.Root,
 		StartingRow: rp.StartRow,
-		EndingRow:   rp.EndRow,
+		// TODO  investigate if starting and ending rows are needed
+		EndingRow: rp.EndRow,
 	}, nil
 }
 
