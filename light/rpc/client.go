@@ -27,6 +27,7 @@ var errNegOrZeroHeight = errors.New("negative or zero height")
 type KeyPathFunc func(path string, key []byte) (merkle.KeyPath, error)
 
 // LightClient is an interface that contains functionality needed by Client from the light client.
+//
 //go:generate mockery --case underscore --name LightClient
 type LightClient interface {
 	ChainID() string
@@ -462,6 +463,9 @@ func (c *Client) DataCommitment(
 	return c.next.DataCommitment(ctx, beginBlock, endBlock)
 }
 
+// DataRootInclusionProof calls rpcclient#DataRootInclusionProof method and returns
+// a merkle proof for the data root of block height `height` to the set of blocks
+// defined by `beginBlock` and `endBlock`.
 func (c *Client) DataRootInclusionProof(
 	ctx context.Context,
 	height uint64,
@@ -499,8 +503,8 @@ func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Resul
 	return res, err
 }
 
-// Tx calls rpcclient#Tx method and then verifies the proof if such was
-// requested.
+// ProveShares calls rpcclient#ProveShares method and returns an NMT proof for a set
+// of shares, defined by `startShare` and `endShare`, to a set of rows.
 func (c *Client) ProveShares(
 	ctx context.Context,
 	height uint64,
@@ -511,8 +515,8 @@ func (c *Client) ProveShares(
 	return res, err
 }
 
-// Tx calls rpcclient#Tx method and then verifies the proof if such was
-// requested.
+// ProveRows calls rpcclient#ProveRows method and returns a merkle proof for a set of
+// rows defined by `startingRow` and `endingRow`.
 func (c *Client) ProveRows(
 	ctx context.Context,
 	height uint64,
@@ -523,8 +527,20 @@ func (c *Client) ProveRows(
 	return res, err
 }
 
-// Tx calls rpcclient#Tx method and then verifies the proof if such was
-// requested.
+// ProveRowsByShares calls rpcclient#ProveRowsByShares and returns a merkle proof
+// for a set of rows, defined by a set of shares, to the data root.
+func (c *Client) ProveRowsByShares(
+	ctx context.Context,
+	height uint64,
+	startingShares uint32,
+	endingShares uint32,
+) (types.RowsProof, error) {
+	res, err := c.next.ProveRowsByShares(ctx, height, startingShares, endingShares)
+	return res, err
+}
+
+// TxShares calls rpcclient#TxShares method and returns the shares that contain
+// the transaction/message? referenced by hash `hash`.
 func (c *Client) TxShares(
 	ctx context.Context,
 	hash []byte,

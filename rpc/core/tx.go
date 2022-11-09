@@ -57,7 +57,7 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 	}, nil
 }
 
-func TxShares(ctx *rpctypes.Context, hash []byte) (*types.TxShares, error) {
+func TxShares(_ *rpctypes.Context, hash []byte) (*types.TxShares, error) {
 	// if index is disabled, return error
 	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
 		return nil, fmt.Errorf("transaction indexing is disabled")
@@ -196,6 +196,7 @@ func proveTx(height int64, index uint32) (types.TxProof, error) {
 	return txProof, nil
 }
 
+// txShares returns the set of shares where the transaction/message? live in the square.
 func txShares(height int64, index uint32) (*types.TxShares, error) {
 	var pTxShares tmproto.TxShares
 	rawBlock, err := loadRawBlock(env.BlockStore, height)
@@ -209,6 +210,11 @@ func txShares(height int64, index uint32) (*types.TxShares, error) {
 	if err != nil {
 		return nil, err
 	}
+	if res.Value == nil && res.Log != "" {
+		// we can make the assumption that for custom queries, if the value is nil
+		// and some logs have been emitted, then an error happened.
+		return nil, errors.New(res.Log)
+	}
 	err = pTxShares.Unmarshal(res.Value)
 	if err != nil {
 		return nil, err
@@ -219,26 +225,13 @@ func txShares(height int64, index uint32) (*types.TxShares, error) {
 	}, nil
 }
 
-func ProveSharesWithCtx(
-	ctx *rpctypes.Context,
+// ProveShares creates an NMT proof for a set of shares to a set of rows.
+func ProveShares(
+	_ *rpctypes.Context,
 	height int64,
 	startShare uint64,
 	endShare uint64,
 ) (types.SharesProof, error) {
-	return ProveShares(height, startShare, endShare)
-}
-
-func ProveRowsWithCtx(
-	ctx *rpctypes.Context,
-	height int64,
-	startingRow uint32,
-	endingRow uint32,
-) (types.RowsProof, error) {
-	return ProveRows(height, startingRow, endingRow)
-}
-
-// TODO change TxProof to ShareProof
-func ProveShares(height int64, startShare uint64, endShare uint64) (types.SharesProof, error) {
 	var (
 		pSharesProof tmproto.SharesProof
 		sharesProof  types.SharesProof
@@ -254,6 +247,11 @@ func ProveShares(height int64, startShare uint64, endShare uint64) (types.Shares
 	if err != nil {
 		return sharesProof, err
 	}
+	if res.Value == nil && res.Log != "" {
+		// we can make the assumption that for custom queries, if the value is nil
+		// and some logs have been emitted, then an error happened.
+		return types.SharesProof{}, errors.New(res.Log)
+	}
 	err = pSharesProof.Unmarshal(res.Value)
 	if err != nil {
 		return sharesProof, err
@@ -265,8 +263,12 @@ func ProveShares(height int64, startShare uint64, endShare uint64) (types.Shares
 	return sharesProof, nil
 }
 
-// TODO change TxProof to ShareProof
-func ProveRows(height int64, startingRow, endingRow uint32) (types.RowsProof, error) {
+// ProveRows creates a merkle proof for a set of rows to the data root.
+func ProveRows(
+	_ *rpctypes.Context,
+	height int64,
+	startingRow, endingRow uint32,
+) (types.RowsProof, error) {
 	var (
 		pRowsProof tmproto.RowsProof
 		rowsProof  types.RowsProof
@@ -281,6 +283,49 @@ func ProveRows(height int64, startingRow, endingRow uint32) (types.RowsProof, er
 	})
 	if err != nil {
 		return rowsProof, err
+	}
+	if res.Value == nil && res.Log != "" {
+		// we can make the assumption that for custom queries, if the value is nil
+		// and some logs have been emitted, then an error happened.
+		return types.RowsProof{}, errors.New(res.Log)
+	}
+	err = pRowsProof.Unmarshal(res.Value)
+	if err != nil {
+		return rowsProof, err
+	}
+	rowsProof, err = types.RowsFromProto(pRowsProof)
+	if err != nil {
+		return rowsProof, err
+	}
+	return rowsProof, nil
+}
+
+// ProveRowsByShares creates a merkle proof for a set of rows, defined by a set of shares,
+// to the data root.
+func ProveRowsByShares(
+	_ *rpctypes.Context,
+	height int64,
+	startingShare, endingShare uint32,
+) (types.RowsProof, error) {
+	var (
+		pRowsProof tmproto.RowsProof
+		rowsProof  types.RowsProof
+	)
+	rawBlock, err := loadRawBlock(env.BlockStore, height)
+	if err != nil {
+		return rowsProof, err
+	}
+	res, err := env.ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
+		Data: rawBlock,
+		Path: fmt.Sprintf(consts.RowsInclusionProofBySharesQueryPath, startingShare, endingShare),
+	})
+	if err != nil {
+		return rowsProof, err
+	}
+	if res.Value == nil && res.Log != "" {
+		// we can make the assumption that for custom queries, if the value is nil
+		// and some logs have been emitted, then an error happened.
+		return types.RowsProof{}, errors.New(res.Log)
 	}
 	err = pRowsProof.Unmarshal(res.Value)
 	if err != nil {

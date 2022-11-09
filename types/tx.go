@@ -5,13 +5,13 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-
 	"github.com/celestiaorg/nmt"
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/pkg/consts"
+	"github.com/tendermint/tendermint/proto/tendermint/crypto"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
@@ -145,7 +145,7 @@ func (tp TxProof) Validate() error {
 	return nil
 }
 
-func (tp *TxProof) VerifyProof() bool {
+func (tp TxProof) VerifyProof() bool {
 	cursor := int32(0)
 	for i, proof := range tp.Proofs {
 		nmtProof := nmt.NewInclusionProof(
@@ -306,7 +306,7 @@ func (sp SharesProof) Validate() error {
 	return nil
 }
 
-func (sp *SharesProof) VerifyProof() bool {
+func (sp SharesProof) VerifyProof() bool {
 	cursor := int32(0)
 	for i, proof := range sp.Proofs {
 		nmtProof := nmt.NewInclusionProof(
@@ -330,7 +330,7 @@ func (sp *SharesProof) VerifyProof() bool {
 	return true
 }
 
-func (tp *TxProof) IncludesTx(tx Tx) bool {
+func (tp TxProof) IncludesTx(tx Tx) bool {
 	return bytes.Contains(bytes.Join(tp.Data, []byte{}), tx)
 }
 
