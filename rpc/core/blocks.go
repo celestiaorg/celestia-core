@@ -163,7 +163,6 @@ func DataRootInclusionProof(
 	heights := generateHeightsList(beginBlock, endBlock)
 	blockResults := fetchBlocks(heights, len(heights), 0)
 	proof := proveDataRoots(blockResults, height)
-	// Create data commitment
 	return &ctypes.ResultDataRootInclusionProof{Proof: *proof}, nil
 }
 
