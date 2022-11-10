@@ -582,6 +582,23 @@ func (c *baseRPCClient) TxShares(
 	return result, nil
 }
 
+// MsgShares returns the shares of the message in the transaction
+// referenced by hash `hash`.
+func (c *baseRPCClient) MsgShares(
+	ctx context.Context,
+	hash []byte,
+) (*types.SharesRange, error) {
+	result := new(types.SharesRange)
+	params := map[string]interface{}{
+		"hash": hash,
+	}
+	_, err := c.caller.Call(ctx, "msg_shares", params, result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (c *baseRPCClient) TxSearch(
 	ctx context.Context,
 	query string,

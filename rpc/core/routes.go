@@ -28,6 +28,7 @@ var Routes = map[string]*rpc.RPCFunc{
 	"check_tx":                  rpc.NewRPCFunc(CheckTx, "tx"),
 	"tx":                        rpc.NewRPCFunc(Tx, "hash,prove"),
 	"tx_shares":                 rpc.NewRPCFunc(TxShares, "hash"),
+	"msg_shares":                rpc.NewRPCFunc(MsgShares, "hash"),
 	"prove_shares":              rpc.NewRPCFunc(ProveShares, "height,startShare,endShare"),
 	"prove_rows":                rpc.NewRPCFunc(ProveRows, "height,startingRow,endingRow"),
 	"prove_rows_by_shares":      rpc.NewRPCFunc(ProveRowsByShares, "height,startingShare,endingShare"),

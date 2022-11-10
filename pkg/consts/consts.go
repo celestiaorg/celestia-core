@@ -14,6 +14,9 @@ const (
 	// TxSharesQueryPath is the path used to query the application for the shares range
 	// where the transaction live via the ABCI query method.
 	TxSharesQueryPath = "custom/txShares/%d"
+	// MessageSharesQueryPath is the path used to query the application for the shares range
+	// where the message of a transaction live via the ABCI query method.
+	MessageSharesQueryPath = "custom/msgShares/%d"
 	// ShareInclusionProofQueryPath is the path used to query the application for the
 	// shares to rows NMT inclusion proof via the ABCI query method.
 	ShareInclusionProofQueryPath = "custom/shareInclusionProof/%d/%d"

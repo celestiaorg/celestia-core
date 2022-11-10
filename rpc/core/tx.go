@@ -82,6 +82,31 @@ func TxShares(_ *rpctypes.Context, hash []byte) (*types.SharesRange, error) {
 	return shares, nil
 }
 
+func MsgShares(_ *rpctypes.Context, hash []byte) (*types.SharesRange, error) {
+	// if index is disabled, return error
+	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
+		return nil, fmt.Errorf("transaction indexing is disabled")
+	}
+
+	r, err := env.TxIndexer.Get(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	if r == nil {
+		return nil, fmt.Errorf("tx (%X) not found", hash)
+	}
+
+	height := r.Height
+	index := r.Index
+
+	shares, err := msgShares(height, index)
+	if err != nil {
+		return nil, err
+	}
+	return shares, nil
+}
+
 // TxSearch allows you to query for multiple transactions results. It returns a
 // list of transactions (maximum ?per_page entries) and the total count.
 // NOTE: proveTx isn't respected but is left in the function signature to
@@ -196,7 +221,7 @@ func proveTx(height int64, index uint32) (types.TxProof, error) {
 	return txProof, nil
 }
 
-// txShares returns the set of shares where the transaction/message? live in the square.
+// txShares returns the set of shares where the transaction live in the square.
 func txShares(height int64, index uint32) (*types.SharesRange, error) {
 	var pTxShares tmproto.SharesRange
 	rawBlock, err := loadRawBlock(env.BlockStore, height)
@@ -261,6 +286,35 @@ func ProveShares(
 		return sharesProof, err
 	}
 	return sharesProof, nil
+}
+
+// msgShares returns the set of shares where the message live in the square.
+func msgShares(height int64, index uint32) (*types.SharesRange, error) {
+	var pTxShares tmproto.SharesRange
+	rawBlock, err := loadRawBlock(env.BlockStore, height)
+	if err != nil {
+		return nil, err
+	}
+	res, err := env.ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
+		Data: rawBlock,
+		Path: fmt.Sprintf(consts.MessageSharesQueryPath, index),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if res.Value == nil && res.Log != "" {
+		// we can make the assumption that for custom queries, if the value is nil
+		// and some logs have been emitted, then an error happened.
+		return nil, errors.New(res.Log)
+	}
+	err = pTxShares.Unmarshal(res.Value)
+	if err != nil {
+		return nil, err
+	}
+	return &types.SharesRange{
+		StartingShare: pTxShares.StartingShare,
+		EndShare:      pTxShares.EndShare,
+	}, nil
 }
 
 // ProveRows creates a merkle proof for a set of rows to the data root.

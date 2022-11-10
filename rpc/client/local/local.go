@@ -202,6 +202,10 @@ func (c *Local) TxShares(ctx context.Context, hash []byte) (*types.SharesRange, 
 	return core.TxShares(c.ctx, hash)
 }
 
+func (c *Local) MsgShares(ctx context.Context, hash []byte) (*types.SharesRange, error) {
+	return core.MsgShares(c.ctx, hash)
+}
+
 func (c *Local) ProveShares(
 	ctx context.Context,
 	height uint64,

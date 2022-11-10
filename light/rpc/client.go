@@ -540,8 +540,18 @@ func (c *Client) ProveRowsByShares(
 }
 
 // TxShares calls rpcclient#TxShares method and returns the shares that contain
-// the transaction/message? referenced by hash `hash`.
+// the transaction referenced by hash `hash`.
 func (c *Client) TxShares(
+	ctx context.Context,
+	hash []byte,
+) (*types.SharesRange, error) {
+	res, err := c.next.TxShares(ctx, hash)
+	return res, err
+}
+
+// MsgShares calls rpcclient#MsgShares method and returns the shares that contain
+// the message in the transaction referenced by hash `hash`.
+func (c *Client) MsgShares(
 	ctx context.Context,
 	hash []byte,
 ) (*types.SharesRange, error) {
