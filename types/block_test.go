@@ -658,10 +658,10 @@ func TestBlockProtoBuf(t *testing.T) {
 
 func TestBlockDataProtobuf(t *testing.T) {
 	type test struct {
-		name string
-		txs  Txs
-		evd  EvidenceData
-		msgs []Message
+		name  string
+		txs   Txs
+		evd   EvidenceData
+		blobs []Blob
 	}
 	tests := []test{
 		{
@@ -671,7 +671,7 @@ func TestBlockDataProtobuf(t *testing.T) {
 			name: "everything",
 			txs:  Txs([]Tx{stdbytes.Repeat([]byte{1}, 200)}),
 			evd:  EvidenceData{Evidence: EvidenceList([]Evidence{})},
-			msgs: []Message{
+			blobs: []Blob{
 				{
 					NamespaceID: []byte{8, 7, 6, 5, 4, 3, 2, 1},
 					Data:        stdbytes.Repeat([]byte{3, 2, 1, 0}, 100),
@@ -685,7 +685,7 @@ func TestBlockDataProtobuf(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		d := Data{Txs: tt.txs, Evidence: tt.evd, Messages: Messages{MessagesList: tt.msgs}}
+		d := Data{Txs: tt.txs, Evidence: tt.evd, Blobs: tt.blobs}
 		firstHash := d.Hash()
 		pd := d.ToProto()
 		d2, err := DataFromProto(&pd)
@@ -855,7 +855,7 @@ func TestBlockIDEquals(t *testing.T) {
 }
 
 func TestMessagesIsSorted(t *testing.T) {
-	sortedMessages := Messages{MessagesList: []Message{
+	sortedBlobs := []Blob{
 		{
 			NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
 			Data:        stdbytes.Repeat([]byte{1}, 100),
@@ -864,8 +864,8 @@ func TestMessagesIsSorted(t *testing.T) {
 			NamespaceID: []byte{8, 7, 6, 5, 4, 3, 2, 1},
 			Data:        stdbytes.Repeat([]byte{2}, 100),
 		},
-	}}
-	sameNamespaceMessages := Messages{MessagesList: []Message{
+	}
+	sameNamespacedBlobs := []Blob{
 		{
 			NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
 			Data:        stdbytes.Repeat([]byte{1}, 100),
@@ -874,8 +874,8 @@ func TestMessagesIsSorted(t *testing.T) {
 			NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
 			Data:        stdbytes.Repeat([]byte{2}, 100),
 		},
-	}}
-	unsortedMessages := Messages{MessagesList: []Message{
+	}
+	unsortedBlobs := []Blob{
 		{
 			NamespaceID: []byte{8, 7, 6, 5, 4, 3, 2, 1},
 			Data:        stdbytes.Repeat([]byte{1}, 100),
@@ -884,23 +884,24 @@ func TestMessagesIsSorted(t *testing.T) {
 			NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
 			Data:        stdbytes.Repeat([]byte{2}, 100),
 		},
-	}}
+	}
 
 	type testCase struct {
 		descripton string
-		messages   Messages
+		blobs      []Blob
 		want       bool
 	}
 
 	tests := []testCase{
-		{"sorted messages", sortedMessages, true},
-		{"same namespace messages", sameNamespaceMessages, true},
-		{"unsorted messages", unsortedMessages, false},
+		{"sorted messages", sortedBlobs, true},
+		{"same namespace messages", sameNamespacedBlobs, true},
+		{"unsorted messages", unsortedBlobs, false},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.descripton, func(t *testing.T) {
-			assert.Equal(t, tc.want, tc.messages.IsSorted())
+			bs := Blobs(tc.blobs)
+			assert.Equal(t, tc.want, bs.IsSorted())
 		})
 	}
 }
