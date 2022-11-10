@@ -106,8 +106,8 @@ type TxProof struct {
 	Proofs   []*tmproto.NMTProof `json:"proof"`
 }
 
-// TxShares represents a set of shares, which will be used to generate NMT proofs.
-type TxShares struct {
+// SharesRange represents a range of shares, which will be used to generate NMT proofs.
+type SharesRange struct {
 	StartingShare uint64 `json:"starting_share"`
 	EndShare      uint64 `json:"end_share"`
 }

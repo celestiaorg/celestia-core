@@ -57,7 +57,7 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 	}, nil
 }
 
-func TxShares(_ *rpctypes.Context, hash []byte) (*types.TxShares, error) {
+func TxShares(_ *rpctypes.Context, hash []byte) (*types.SharesRange, error) {
 	// if index is disabled, return error
 	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
 		return nil, fmt.Errorf("transaction indexing is disabled")
@@ -197,8 +197,8 @@ func proveTx(height int64, index uint32) (types.TxProof, error) {
 }
 
 // txShares returns the set of shares where the transaction/message? live in the square.
-func txShares(height int64, index uint32) (*types.TxShares, error) {
-	var pTxShares tmproto.TxShares
+func txShares(height int64, index uint32) (*types.SharesRange, error) {
+	var pTxShares tmproto.SharesRange
 	rawBlock, err := loadRawBlock(env.BlockStore, height)
 	if err != nil {
 		return nil, err
@@ -219,7 +219,7 @@ func txShares(height int64, index uint32) (*types.TxShares, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &types.TxShares{
+	return &types.SharesRange{
 		StartingShare: pTxShares.StartingShare,
 		EndShare:      pTxShares.EndShare,
 	}, nil

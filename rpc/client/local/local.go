@@ -198,7 +198,7 @@ func (c *Local) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Result
 	return core.Tx(c.ctx, hash, prove)
 }
 
-func (c *Local) TxShares(ctx context.Context, hash []byte) (*types.TxShares, error) {
+func (c *Local) TxShares(ctx context.Context, hash []byte) (*types.SharesRange, error) {
 	return core.TxShares(c.ctx, hash)
 }
 

@@ -570,8 +570,8 @@ func (c *baseRPCClient) ProveRowsByShares(
 func (c *baseRPCClient) TxShares(
 	ctx context.Context,
 	hash []byte,
-) (*types.TxShares, error) {
-	result := new(types.TxShares)
+) (*types.SharesRange, error) {
+	result := new(types.SharesRange)
 	params := map[string]interface{}{
 		"hash": hash,
 	}

@@ -544,7 +544,7 @@ func (c *Client) ProveRowsByShares(
 func (c *Client) TxShares(
 	ctx context.Context,
 	hash []byte,
-) (*types.TxShares, error) {
+) (*types.SharesRange, error) {
 	res, err := c.next.TxShares(ctx, hash)
 	return res, err
 }
