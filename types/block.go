@@ -1047,7 +1047,7 @@ func (data *Data) Hash() tmbytes.HexBytes {
 	return data.hash
 }
 
-// ByNamespace implements sort.Interface for Message
+// ByNamespace implements sort.Interface for Blob
 type Blobs []Blob
 
 func (b Blobs) Len() int {
