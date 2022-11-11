@@ -1013,12 +1013,11 @@ type Data struct {
 
 	Evidence EvidenceData `json:"evidence"`
 
-	// The messages included in this block.
-	// TODO: how do messages end up here? (abci) app <-> ll-core?
-	// A simple approach could be: include them in the Tx above and
-	// have a mechanism to split them out somehow? Probably better to include
-	// them only when necessary (before proposing the block) as messages do not
-	// really need to be processed by tendermint
+	// The messages included in this block. TODO: how do messages end up here?
+	// (abci) app <-> ll-core? A simple approach could be: include them in the
+	// Tx above and have a mechanism to split them out somehow? Probably better
+	// to include them only when necessary (before proposing the block) as blobs
+	// do not really need to be processed by tendermint
 	Blobs []Blob `json:"blobs"`
 
 	// SquareSize is the size of the square after splitting all the block data
