@@ -1013,13 +1013,12 @@ type Data struct {
 
 	Evidence EvidenceData `json:"evidence"`
 
-	// The messages included in this block.
-	// TODO: how do messages end up here? (abci) app <-> ll-core?
-	// A simple approach could be: include them in the Tx above and
-	// have a mechanism to split them out somehow? Probably better to include
-	// them only when necessary (before proposing the block) as messages do not
-	// really need to be processed by tendermint
-	Messages Messages `json:"msgs"`
+	// The messages included in this block. TODO: how do messages end up here?
+	// (abci) app <-> ll-core? A simple approach could be: include them in the
+	// Tx above and have a mechanism to split them out somehow? Probably better
+	// to include them only when necessary (before proposing the block) as blobs
+	// do not really need to be processed by tendermint
+	Blobs []Blob `json:"blobs"`
 
 	// SquareSize is the size of the square after splitting all the block data
 	// into shares. The erasure data is discarded after generation, and keeping this
@@ -1048,41 +1047,37 @@ func (data *Data) Hash() tmbytes.HexBytes {
 	return data.hash
 }
 
-type Messages struct {
-	MessagesList []Message `json:"msgs"`
+// ByNamespace implements sort.Interface for Blob
+type Blobs []Blob
+
+func (b Blobs) Len() int {
+	return len(b)
 }
 
-// ByNamespace implements sort.Interface for Message
-type ByNamespace []Message
-
-func (s ByNamespace) Len() int {
-	return len(s)
+func (b Blobs) Swap(i, j int) {
+	b[i], b[j] = b[j], b[i]
 }
 
-func (s ByNamespace) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-func (s ByNamespace) Less(i, j int) bool {
+func (b Blobs) Less(i, j int) bool {
 	// The following comparison is `<` and not `<=` because bytes.Compare returns 0 for if a == b.
 	// We want this comparison to return `false` if a == b because:
 	// If both Less(i, j) and Less(j, i) are false,
 	// then the elements at index i and j are considered equal.
 	// See https://pkg.go.dev/sort#Interface
-	return bytes.Compare(s[i].NamespaceID, s[j].NamespaceID) < 0
+	return bytes.Compare(b[i].NamespaceID, b[j].NamespaceID) < 0
 }
 
 // SortMessages sorts messages by ascending namespace id
-func (msgs *Messages) SortMessages() {
-	sort.Sort(ByNamespace(msgs.MessagesList))
+func (b *Blobs) SortMessages() {
+	sort.Sort(b)
 }
 
 // IsSorted returns whether the messages are sorted by namespace id
-func (msgs *Messages) IsSorted() bool {
-	return sort.IsSorted(ByNamespace(msgs.MessagesList))
+func (b *Blobs) IsSorted() bool {
+	return sort.IsSorted(b)
 }
 
-type Message struct {
+type Blob struct {
 	// NamespaceID defines the namespace of this message, i.e. the
 	// namespace it will use in the namespaced Merkle tree.
 	NamespaceID namespace.ID
@@ -1092,32 +1087,27 @@ type Message struct {
 	Data []byte
 }
 
-var (
-	MessageEmpty  = Message{}
-	MessagesEmpty = Messages{}
-)
-
-func MessageFromProto(p *tmproto.Message) Message {
+func BlobFromProto(p *tmproto.Blob) Blob {
 	if p == nil {
-		return MessageEmpty
+		return Blob{}
 	}
-	return Message{
+	return Blob{
 		NamespaceID: p.NamespaceId,
 		Data:        p.Data,
 	}
 }
 
-func MessagesFromProto(p *tmproto.Messages) Messages {
+func BlobsFromProto(p []*tmproto.Blob) []Blob {
 	if p == nil {
-		return MessagesEmpty
+		return []Blob{}
 	}
 
-	msgs := make([]Message, 0, len(p.MessagesList))
+	blobs := make([]Blob, 0, len(p))
 
-	for i := 0; i < len(p.MessagesList); i++ {
-		msgs = append(msgs, MessageFromProto(p.MessagesList[i]))
+	for i := 0; i < len(p); i++ {
+		blobs = append(blobs, BlobFromProto(p[i]))
 	}
-	return Messages{MessagesList: msgs}
+	return blobs
 }
 
 // StringIndented returns an indented string representation of the transactions.
@@ -1158,14 +1148,14 @@ func (data *Data) ToProto() tmproto.Data {
 	}
 	tp.Evidence = *pevd
 
-	protoMsgs := make([]*tmproto.Message, len(data.Messages.MessagesList))
-	for i, msg := range data.Messages.MessagesList {
-		protoMsgs[i] = &tmproto.Message{
-			NamespaceId: msg.NamespaceID,
-			Data:        msg.Data,
+	protoBlobs := make([]tmproto.Blob, len(data.Blobs))
+	for i, b := range data.Blobs {
+		protoBlobs[i] = tmproto.Blob{
+			NamespaceId: b.NamespaceID,
+			Data:        b.Data,
 		}
 	}
-	tp.Messages = tmproto.Messages{MessagesList: protoMsgs}
+	tp.Blobs = protoBlobs
 	tp.SquareSize = data.SquareSize
 
 	tp.Hash = data.hash
@@ -1191,14 +1181,14 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		data.Txs = Txs{}
 	}
 
-	if len(dp.Messages.MessagesList) > 0 {
-		msgs := make([]Message, len(dp.Messages.MessagesList))
-		for i, m := range dp.Messages.MessagesList {
-			msgs[i] = Message{NamespaceID: m.NamespaceId, Data: m.Data}
+	if len(dp.Blobs) > 0 {
+		blobs := make([]Blob, len(dp.Blobs))
+		for i, m := range dp.Blobs {
+			blobs[i] = Blob{NamespaceID: m.NamespaceId, Data: m.Data}
 		}
-		data.Messages = Messages{MessagesList: msgs}
+		data.Blobs = blobs
 	} else {
-		data.Messages = Messages{}
+		data.Blobs = []Blob{}
 	}
 
 	evdData := new(EvidenceData)
