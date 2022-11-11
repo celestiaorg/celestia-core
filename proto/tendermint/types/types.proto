@@ -125,7 +125,8 @@ message EvidenceList {
   repeated Evidence evidence = 1 [(gogoproto.nullable) = false];
 }
 
-// Blob defines an indivisible chunk of data that is posted on chain.
+// Blob defines a chunk of data that is attributed to a namespace and under
+// usual circumstances, ends up published on-chain.
 message Blob {
   bytes namespace_id = 1;
   bytes data         = 2;

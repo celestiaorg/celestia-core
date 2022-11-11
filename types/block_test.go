@@ -893,9 +893,9 @@ func TestMessagesIsSorted(t *testing.T) {
 	}
 
 	tests := []testCase{
-		{"sorted messages", sortedBlobs, true},
-		{"same namespace messages", sameNamespacedBlobs, true},
-		{"unsorted messages", unsortedBlobs, false},
+		{"sorted blobs", sortedBlobs, true},
+		{"same namespace blobs", sameNamespacedBlobs, true},
+		{"unsorted blobs", unsortedBlobs, false},
 	}
 
 	for _, tc := range tests {
