@@ -253,7 +253,7 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 }
 
 // UnwrapMalleatedTx attempts to unmarshal the provided transaction into a malleated
-// transaction wrapper, if this an be done, then it returns true. A malleated
+// transaction wrapper, if this can be done, then it returns true. A malleated
 // transaction is a normal transaction that has been derived (malleated) from a
 // different original transaction. The returned hash is that of the original
 // transaction, which allows us to remove the original transaction from the

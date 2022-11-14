@@ -350,7 +350,7 @@ func TestTxMempool_ReapMaxBytesMaxGas(t *testing.T) {
 	ensurePrioritized(reapedTxs)
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5690), txmp.SizeBytes())
-	require.Len(t, reapedTxs, 23)
+	require.Len(t, reapedTxs, 24)
 }
 
 func TestTxMempool_ReapMaxTxs(t *testing.T) {

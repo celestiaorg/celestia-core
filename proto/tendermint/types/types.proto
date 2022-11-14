@@ -89,10 +89,10 @@ message Data {
   repeated bytes txs = 1;
 
   // field number 2 is reserved for intermediate state roots
-  EvidenceList evidence    = 3 [(gogoproto.nullable) = false];
-  Messages     messages    = 4 [(gogoproto.nullable) = false];
-  uint64       square_size = 5;
-  bytes        hash        = 6;
+  EvidenceList  evidence    = 3 [(gogoproto.nullable) = false];
+  repeated Blob blobs       = 4 [(gogoproto.nullable) = false];
+  uint64        square_size = 5;
+  bytes         hash        = 6;
 }
 
 // DuplicateVoteEvidence contains evidence of a validator signed two conflicting votes.
@@ -125,11 +125,9 @@ message EvidenceList {
   repeated Evidence evidence = 1 [(gogoproto.nullable) = false];
 }
 
-message Messages {
-  repeated Message messages_list = 1;
-}
-
-message Message {
+// Blob defines a chunk of data that is attributed to a namespace and under
+// usual circumstances, ends up published on-chain.
+message Blob {
   bytes namespace_id = 1;
   bytes data         = 2;
 }
