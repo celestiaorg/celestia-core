@@ -63,40 +63,41 @@ func BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcas
 // More: https://docs.tendermint.com/master/rpc/#/Tx/broadcast_tx_commit
 func BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTxCommit, error) {
 	subscriber := ctx.RemoteAddr()
+	env := GetEnvironment()
 
 	//nolint:lll
-	if GetEnvironment().EventBus.NumClients() >= GetEnvironment().Config.MaxSubscriptionClients {
-		return nil, fmt.Errorf("max_subscription_clients %d reached", GetEnvironment().Config.MaxSubscriptionClients)
-	} else if GetEnvironment().EventBus.NumClientSubscriptions(subscriber) >= GetEnvironment().Config.MaxSubscriptionsPerClient {
-		return nil, fmt.Errorf("max_subscriptions_per_client %d reached", GetEnvironment().Config.MaxSubscriptionsPerClient)
+	if env.EventBus.NumClients() >= env.Config.MaxSubscriptionClients {
+		return nil, fmt.Errorf("max_subscription_clients %d reached", env.Config.MaxSubscriptionClients)
+	} else if env.EventBus.NumClientSubscriptions(subscriber) >= env.Config.MaxSubscriptionsPerClient {
+		return nil, fmt.Errorf("max_subscriptions_per_client %d reached", env.Config.MaxSubscriptionsPerClient)
 	}
 
 	// Subscribe to tx being committed in block.
 	subCtx, cancel := context.WithTimeout(ctx.Context(), SubscribeTimeout)
 	defer cancel()
 	q := types.EventQueryTxFor(tx)
-	deliverTxSub, err := GetEnvironment().EventBus.Subscribe(subCtx, subscriber, q)
+	deliverTxSub, err := env.EventBus.Subscribe(subCtx, subscriber, q)
 	if err != nil {
 		err = fmt.Errorf("failed to subscribe to tx: %w", err)
-		GetEnvironment().Logger.Error("Error on broadcast_tx_commit", "err", err)
+		env.Logger.Error("Error on broadcast_tx_commit", "err", err)
 		return nil, err
 	}
 	defer func() {
-		if err := GetEnvironment().EventBus.Unsubscribe(context.Background(), subscriber, q); err != nil {
-			GetEnvironment().Logger.Error("Error unsubscribing from eventBus", "err", err)
+		if err := env.EventBus.Unsubscribe(context.Background(), subscriber, q); err != nil {
+			env.Logger.Error("Error unsubscribing from eventBus", "err", err)
 		}
 	}()
 
 	// Broadcast tx and wait for CheckTx result
 	checkTxResCh := make(chan *abci.Response, 1)
-	err = GetEnvironment().Mempool.CheckTx(tx, func(res *abci.Response) {
+	err = env.Mempool.CheckTx(tx, func(res *abci.Response) {
 		select {
 		case <-ctx.Context().Done():
 		case checkTxResCh <- res:
 		}
 	}, mempl.TxInfo{})
 	if err != nil {
-		GetEnvironment().Logger.Error("Error on broadcastTxCommit", "err", err)
+		env.Logger.Error("Error on broadcastTxCommit", "err", err)
 		return nil, fmt.Errorf("error on broadcastTxCommit: %v", err)
 	}
 	select {
@@ -130,15 +131,15 @@ func BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadc
 				reason = deliverTxSub.Err().Error()
 			}
 			err = fmt.Errorf("deliverTxSub was cancelled (reason: %s)", reason)
-			GetEnvironment().Logger.Error("Error on broadcastTxCommit", "err", err)
+			env.Logger.Error("Error on broadcastTxCommit", "err", err)
 			return &ctypes.ResultBroadcastTxCommit{
 				CheckTx:   *checkTxRes,
 				DeliverTx: abci.ResponseDeliverTx{},
 				Hash:      tx.Hash(),
 			}, err
-		case <-time.After(GetEnvironment().Config.TimeoutBroadcastTxCommit):
+		case <-time.After(env.Config.TimeoutBroadcastTxCommit):
 			err = errors.New("timed out waiting for tx to be included in a block")
-			GetEnvironment().Logger.Error("Error on broadcastTxCommit", "err", err)
+			env.Logger.Error("Error on broadcastTxCommit", "err", err)
 			return &ctypes.ResultBroadcastTxCommit{
 				CheckTx:   *checkTxRes,
 				DeliverTx: abci.ResponseDeliverTx{},
@@ -154,22 +155,24 @@ func BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadc
 func UnconfirmedTxs(ctx *rpctypes.Context, limitPtr *int) (*ctypes.ResultUnconfirmedTxs, error) {
 	// reuse per_page validator
 	limit := validatePerPage(limitPtr)
+	env := GetEnvironment()
 
-	txs := GetEnvironment().Mempool.ReapMaxTxs(limit)
+	txs := env.Mempool.ReapMaxTxs(limit)
 	return &ctypes.ResultUnconfirmedTxs{
 		Count:      len(txs),
-		Total:      GetEnvironment().Mempool.Size(),
-		TotalBytes: GetEnvironment().Mempool.SizeBytes(),
+		Total:      env.Mempool.Size(),
+		TotalBytes: env.Mempool.SizeBytes(),
 		Txs:        txs}, nil
 }
 
 // NumUnconfirmedTxs gets number of unconfirmed transactions.
 // More: https://docs.tendermint.com/master/rpc/#/Info/num_unconfirmed_txs
 func NumUnconfirmedTxs(ctx *rpctypes.Context) (*ctypes.ResultUnconfirmedTxs, error) {
+	env := GetEnvironment()
 	return &ctypes.ResultUnconfirmedTxs{
-		Count:      GetEnvironment().Mempool.Size(),
-		Total:      GetEnvironment().Mempool.Size(),
-		TotalBytes: GetEnvironment().Mempool.SizeBytes()}, nil
+		Count:      env.Mempool.Size(),
+		Total:      env.Mempool.Size(),
+		TotalBytes: env.Mempool.SizeBytes()}, nil
 }
 
 // CheckTx checks the transaction without executing it. The transaction won't

@@ -22,12 +22,13 @@ import (
 // place.
 // More: https://docs.tendermint.com/v0.34/rpc/#/Info/tx
 func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
+	env := GetEnvironment()
 	// if index is disabled, return error
-	if _, ok := GetEnvironment().TxIndexer.(*null.TxIndex); ok {
+	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
 		return nil, fmt.Errorf("transaction indexing is disabled")
 	}
 
-	r, err := GetEnvironment().TxIndexer.Get(hash)
+	r, err := env.TxIndexer.Get(hash)
 	if err != nil {
 		return nil, err
 	}
@@ -70,8 +71,9 @@ func TxSearch(
 	orderBy string,
 ) (*ctypes.ResultTxSearch, error) {
 
+	env := GetEnvironment()
 	// if index is disabled, return error
-	if _, ok := GetEnvironment().TxIndexer.(*null.TxIndex); ok {
+	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
 		return nil, errors.New("transaction indexing is disabled")
 	} else if len(query) > maxQueryLength {
 		return nil, errors.New("maximum query length exceeded")
@@ -82,7 +84,7 @@ func TxSearch(
 		return nil, err
 	}
 
-	results, err := GetEnvironment().TxIndexer.Search(ctx.Context(), q)
+	results, err := env.TxIndexer.Search(ctx.Context(), q)
 	if err != nil {
 		return nil, err
 	}
@@ -149,11 +151,12 @@ func proveTx(height int64, index uint32) (types.TxProof, error) {
 		pTxProof tmproto.TxProof
 		txProof  types.TxProof
 	)
-	rawBlock, err := loadRawBlock(GetEnvironment().BlockStore, height)
+	env := GetEnvironment()
+	rawBlock, err := loadRawBlock(env.BlockStore, height)
 	if err != nil {
 		return txProof, err
 	}
-	res, err := GetEnvironment().ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
+	res, err := env.ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
 		Data: rawBlock,
 		Path: fmt.Sprintf(consts.TxInclusionProofQueryPath, index),
 	})

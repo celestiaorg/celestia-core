@@ -21,7 +21,8 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 		earliestBlockTimeNano int64
 	)
 
-	if earliestBlockMeta := GetEnvironment().BlockStore.LoadBaseMeta(); earliestBlockMeta != nil {
+	env := GetEnvironment()
+	if earliestBlockMeta := env.BlockStore.LoadBaseMeta(); earliestBlockMeta != nil {
 		earliestBlockHeight = earliestBlockMeta.Header.Height
 		earliestAppHash = earliestBlockMeta.Header.AppHash
 		earliestBlockHash = earliestBlockMeta.BlockID.Hash
@@ -33,11 +34,11 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 		latestAppHash       tmbytes.HexBytes
 		latestBlockTimeNano int64
 
-		latestHeight = GetEnvironment().BlockStore.Height()
+		latestHeight = env.BlockStore.Height()
 	)
 
 	if latestHeight != 0 {
-		if latestBlockMeta := GetEnvironment().BlockStore.LoadBlockMeta(latestHeight); latestBlockMeta != nil {
+		if latestBlockMeta := env.BlockStore.LoadBlockMeta(latestHeight); latestBlockMeta != nil {
 			latestBlockHash = latestBlockMeta.BlockID.Hash
 			latestAppHash = latestBlockMeta.Header.AppHash
 			latestBlockTimeNano = latestBlockMeta.Header.Time.UnixNano()
@@ -52,7 +53,7 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 	}
 
 	result := &ctypes.ResultStatus{
-		NodeInfo: GetEnvironment().P2PTransport.NodeInfo().(p2p.DefaultNodeInfo),
+		NodeInfo: env.P2PTransport.NodeInfo().(p2p.DefaultNodeInfo),
 		SyncInfo: ctypes.SyncInfo{
 			LatestBlockHash:     latestBlockHash,
 			LatestAppHash:       latestAppHash,
@@ -62,11 +63,11 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 			EarliestAppHash:     earliestAppHash,
 			EarliestBlockHeight: earliestBlockHeight,
 			EarliestBlockTime:   time.Unix(0, earliestBlockTimeNano),
-			CatchingUp:          GetEnvironment().ConsensusReactor.WaitSync(),
+			CatchingUp:          env.ConsensusReactor.WaitSync(),
 		},
 		ValidatorInfo: ctypes.ValidatorInfo{
-			Address:     GetEnvironment().PubKey.Address(),
-			PubKey:      GetEnvironment().PubKey,
+			Address:     env.PubKey.Address(),
+			PubKey:      env.PubKey,
 			VotingPower: votingPower,
 		},
 	}
@@ -75,11 +76,12 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 }
 
 func validatorAtHeight(h int64) *types.Validator {
-	vals, err := GetEnvironment().StateStore.LoadValidators(h)
+	env := GetEnvironment()
+	vals, err := env.StateStore.LoadValidators(h)
 	if err != nil {
 		return nil
 	}
-	privValAddress := GetEnvironment().PubKey.Address()
+	privValAddress := env.PubKey.Address()
 	_, val := vals.GetByAddress(privValAddress)
 	return val
 }

@@ -22,9 +22,10 @@ func TestUnsafeDialSeeds(t *testing.T) {
 			t.Error(err)
 		}
 	})
+	env := GetEnvironment()
 
-	GetEnvironment().Logger = log.TestingLogger()
-	GetEnvironment().P2PPeers = sw
+	env.Logger = log.TestingLogger()
+	env.P2PPeers = sw
 
 	testCases := []struct {
 		seeds []string
@@ -62,8 +63,9 @@ func TestUnsafeDialPeers(t *testing.T) {
 		}
 	})
 
-	GetEnvironment().Logger = log.TestingLogger()
-	GetEnvironment().P2PPeers = sw
+	env := GetEnvironment()
+	env.Logger = log.TestingLogger()
+	env.P2PPeers = sw
 
 	testCases := []struct {
 		peers                               []string

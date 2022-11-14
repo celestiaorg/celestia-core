@@ -212,9 +212,10 @@ func getHeight(latestHeight int64, heightPtr *int64) (int64, error) {
 }
 
 func latestUncommittedHeight() int64 {
-	nodeIsSyncing := GetEnvironment().ConsensusReactor.WaitSync()
+	env := GetEnvironment()
+	nodeIsSyncing := env.ConsensusReactor.WaitSync()
 	if nodeIsSyncing {
-		return GetEnvironment().BlockStore.Height()
+		return env.BlockStore.Height()
 	}
-	return GetEnvironment().BlockStore.Height() + 1
+	return env.BlockStore.Height() + 1
 }
