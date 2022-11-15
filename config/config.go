@@ -741,9 +741,9 @@ func DefaultMempoolConfig() *MempoolConfig {
 		Size:         5000,
 		MaxTxsBytes:  1024 * 1024 * 1024, // 1GB
 		CacheSize:    10000,
-		MaxTxBytes:   1024 * 1024, // 1MB
+		MaxTxBytes:   2 * 1024 * 1024, // 2 MiB
 		TTLDuration:  0 * time.Second,
-		TTLNumBlocks: 0,
+		TTLNumBlocks: 10,
 	}
 }
 
