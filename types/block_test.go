@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -900,8 +901,8 @@ func TestMessagesIsSorted(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.descripton, func(t *testing.T) {
-			bs := Blobs(tc.blobs)
-			assert.Equal(t, tc.want, bs.IsSorted())
+			bs := tc.blobs
+			assert.Equal(t, tc.want, sort.IsSorted(BlobsByNamespace(bs)))
 		})
 	}
 }
