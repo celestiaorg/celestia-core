@@ -780,7 +780,8 @@ func (m *EvidenceList) GetEvidence() []Evidence {
 	return nil
 }
 
-// Blob defines an indivisible chunk of data that is posted on chain.
+// Blob defines a chunk of data that is attributed to a namespace and under
+// usual circumstances, ends up published on-chain.
 type Blob struct {
 	NamespaceId []byte `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	Data        []byte `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
