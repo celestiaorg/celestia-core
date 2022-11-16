@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -1047,34 +1046,24 @@ func (data *Data) Hash() tmbytes.HexBytes {
 	return data.hash
 }
 
-// ByNamespace implements sort.Interface for Blob
-type Blobs []Blob
+// BlobsByNamespace implements sort.Interface for Blob
+type BlobsByNamespace []Blob
 
-func (b Blobs) Len() int {
+func (b BlobsByNamespace) Len() int {
 	return len(b)
 }
 
-func (b Blobs) Swap(i, j int) {
+func (b BlobsByNamespace) Swap(i, j int) {
 	b[i], b[j] = b[j], b[i]
 }
 
-func (b Blobs) Less(i, j int) bool {
+func (b BlobsByNamespace) Less(i, j int) bool {
 	// The following comparison is `<` and not `<=` because bytes.Compare returns 0 for if a == b.
 	// We want this comparison to return `false` if a == b because:
 	// If both Less(i, j) and Less(j, i) are false,
 	// then the elements at index i and j are considered equal.
 	// See https://pkg.go.dev/sort#Interface
 	return bytes.Compare(b[i].NamespaceID, b[j].NamespaceID) < 0
-}
-
-// SortMessages sorts messages by ascending namespace id
-func (b *Blobs) SortMessages() {
-	sort.Sort(b)
-}
-
-// IsSorted returns whether the messages are sorted by namespace id
-func (b *Blobs) IsSorted() bool {
-	return sort.IsSorted(b)
 }
 
 type Blob struct {
