@@ -22,7 +22,7 @@ func Validators(ctx *rpctypes.Context, heightPtr *int64, pagePtr, perPagePtr *in
 		return nil, err
 	}
 
-	validators, err := env.StateStore.LoadValidators(height)
+	validators, err := GetEnvironment().StateStore.LoadValidators(height)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func Validators(ctx *rpctypes.Context, heightPtr *int64, pagePtr, perPagePtr *in
 // More: https://docs.tendermint.com/master/rpc/#/Info/dump_consensus_state
 func DumpConsensusState(ctx *rpctypes.Context) (*ctypes.ResultDumpConsensusState, error) {
 	// Get Peer consensus states.
-	peers := env.P2PPeers.Peers().List()
+	peers := GetEnvironment().P2PPeers.Peers().List()
 	peerStates := make([]ctypes.PeerStateInfo, len(peers))
 	for i, peer := range peers {
 		peerState, ok := peer.Get(types.PeerStateKey).(*cm.PeerState)
@@ -69,7 +69,7 @@ func DumpConsensusState(ctx *rpctypes.Context) (*ctypes.ResultDumpConsensusState
 		}
 	}
 	// Get self round state.
-	roundState, err := env.ConsensusState.GetRoundStateJSON()
+	roundState, err := GetEnvironment().ConsensusState.GetRoundStateJSON()
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func DumpConsensusState(ctx *rpctypes.Context) (*ctypes.ResultDumpConsensusState
 // More: https://docs.tendermint.com/master/rpc/#/Info/consensus_state
 func ConsensusState(ctx *rpctypes.Context) (*ctypes.ResultConsensusState, error) {
 	// Get self round state.
-	bz, err := env.ConsensusState.GetRoundStateSimpleJSON()
+	bz, err := GetEnvironment().ConsensusState.GetRoundStateSimpleJSON()
 	return &ctypes.ResultConsensusState{RoundState: bz}, err
 }
 
@@ -98,7 +98,7 @@ func ConsensusParams(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCon
 		return nil, err
 	}
 
-	consensusParams, err := env.StateStore.LoadConsensusParams(height)
+	consensusParams, err := GetEnvironment().StateStore.LoadConsensusParams(height)
 	if err != nil {
 		return nil, err
 	}
