@@ -23,7 +23,6 @@ import (
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/bytes"
 	tmrand "github.com/tendermint/tendermint/libs/rand"
-	"github.com/tendermint/tendermint/proto/tendermint/types"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
 	tmtime "github.com/tendermint/tendermint/types/time"
@@ -920,7 +919,7 @@ func TestDataToProto(t *testing.T) {
 			input: &Data{Txs: []Tx{}, Evidence: EvidenceData{}, Blobs: []Blob{}, SquareSize: 0},
 			want: tmproto.Data{
 				Txs:        [][]uint8(nil),
-				Evidence:   types.EvidenceList{Evidence: []tmproto.Evidence{}},
+				Evidence:   tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
 				Blobs:      []tmproto.Blob{},
 				SquareSize: 0x0,
 				Hash:       []uint8(nil),
