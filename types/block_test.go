@@ -918,7 +918,13 @@ func TestDataToProto(t *testing.T) {
 		{
 			name:  "empty data",
 			input: &Data{Txs: []Tx{}, Evidence: EvidenceData{}, Blobs: []Blob{}, SquareSize: 0},
-			want:  tmproto.Data{Txs: [][]uint8(nil), Evidence: types.EvidenceList{Evidence: []types.Evidence{}}, Blobs: []types.Blob{}, SquareSize: 0x0, Hash: []uint8(nil)},
+			want: tmproto.Data{
+				Txs:        [][]uint8(nil),
+				Evidence:   types.EvidenceList{Evidence: []tmproto.Evidence{}},
+				Blobs:      []tmproto.Blob{},
+				SquareSize: 0x0,
+				Hash:       []uint8(nil),
+			},
 		},
 		{
 			name: "one blob",
@@ -936,8 +942,8 @@ func TestDataToProto(t *testing.T) {
 			},
 			want: tmproto.Data{
 				Txs:      [][]uint8(nil),
-				Evidence: types.EvidenceList{Evidence: []types.Evidence{}},
-				Blobs: []types.Blob{
+				Evidence: tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
+				Blobs: []tmproto.Blob{
 					{
 						NamespaceId:  []uint8{1, 2, 3, 4, 5, 6, 7, 8},
 						Data:         []uint8{1},
@@ -965,16 +971,27 @@ func TestDataFromProto(t *testing.T) {
 	}
 	testCases := []testCase{
 		{
-			name:  "empty data",
-			input: &tmproto.Data{Txs: [][]uint8(nil), Evidence: types.EvidenceList{Evidence: []types.Evidence{}}, Blobs: []types.Blob{}, SquareSize: 0x0, Hash: []uint8(nil)},
-			want:  Data{Txs: []Tx{}, Evidence: EvidenceData{Evidence: EvidenceList{}}, Blobs: []Blob{}, SquareSize: 0},
+			name: "empty data",
+			input: &tmproto.Data{
+				Txs:        [][]uint8(nil),
+				Evidence:   tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
+				Blobs:      []tmproto.Blob{},
+				SquareSize: 0x0,
+				Hash:       []uint8(nil),
+			},
+			want: Data{
+				Txs:        []Tx{},
+				Evidence:   EvidenceData{Evidence: EvidenceList{}},
+				Blobs:      []Blob{},
+				SquareSize: 0,
+			},
 		},
 		{
 			name: "one blob",
 			input: &tmproto.Data{
 				Txs:      [][]uint8(nil),
-				Evidence: types.EvidenceList{Evidence: []types.Evidence{}},
-				Blobs: []types.Blob{
+				Evidence: tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
+				Blobs: []tmproto.Blob{
 					{
 						NamespaceId:  []uint8{1, 2, 3, 4, 5, 6, 7, 8},
 						Data:         []uint8{1},
@@ -1000,8 +1017,8 @@ func TestDataFromProto(t *testing.T) {
 			name: "one blob with too large of a share version",
 			input: &tmproto.Data{
 				Txs:      [][]uint8(nil),
-				Evidence: types.EvidenceList{Evidence: []types.Evidence{}},
-				Blobs: []types.Blob{
+				Evidence: tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
+				Blobs: []tmproto.Blob{
 					{
 						NamespaceId:  []uint8{1, 2, 3, 4, 5, 6, 7, 8},
 						Data:         []uint8{1},
