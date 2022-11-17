@@ -781,7 +781,7 @@ func (m *EvidenceList) GetEvidence() []Evidence {
 }
 
 // Blob (named after binary large object) is a chunk of data submitted by a user
-// to be published on the Celestia blockchain. The data of a Blob is published
+// to be published to the Celestia blockchain. The data of a Blob is published
 // to a namespace_id and is encoded into shares based on the format specified by
 // share_version.
 type Blob struct {
