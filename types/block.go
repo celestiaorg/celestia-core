@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -1013,11 +1012,7 @@ type Data struct {
 
 	Evidence EvidenceData `json:"evidence"`
 
-	// The messages included in this block. TODO: how do messages end up here?
-	// (abci) app <-> ll-core? A simple approach could be: include them in the
-	// Tx above and have a mechanism to split them out somehow? Probably better
-	// to include them only when necessary (before proposing the block) as blobs
-	// do not really need to be processed by tendermint
+	// The blobs included in this block.
 	Blobs []Blob `json:"blobs"`
 
 	// SquareSize is the size of the square after splitting all the block data
@@ -1047,34 +1042,24 @@ func (data *Data) Hash() tmbytes.HexBytes {
 	return data.hash
 }
 
-// ByNamespace implements sort.Interface for Blob
-type Blobs []Blob
+// BlobsByNamespace implements sort.Interface for Blob
+type BlobsByNamespace []Blob
 
-func (b Blobs) Len() int {
+func (b BlobsByNamespace) Len() int {
 	return len(b)
 }
 
-func (b Blobs) Swap(i, j int) {
+func (b BlobsByNamespace) Swap(i, j int) {
 	b[i], b[j] = b[j], b[i]
 }
 
-func (b Blobs) Less(i, j int) bool {
+func (b BlobsByNamespace) Less(i, j int) bool {
 	// The following comparison is `<` and not `<=` because bytes.Compare returns 0 for if a == b.
 	// We want this comparison to return `false` if a == b because:
 	// If both Less(i, j) and Less(j, i) are false,
 	// then the elements at index i and j are considered equal.
 	// See https://pkg.go.dev/sort#Interface
 	return bytes.Compare(b[i].NamespaceID, b[j].NamespaceID) < 0
-}
-
-// SortMessages sorts messages by ascending namespace id
-func (b *Blobs) SortMessages() {
-	sort.Sort(b)
-}
-
-// IsSorted returns whether the messages are sorted by namespace id
-func (b *Blobs) IsSorted() bool {
-	return sort.IsSorted(b)
 }
 
 type Blob struct {

@@ -22,6 +22,7 @@ import (
 // place.
 // More: https://docs.tendermint.com/v0.34/rpc/#/Info/tx
 func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
+	env := GetEnvironment()
 	// if index is disabled, return error
 	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
 		return nil, fmt.Errorf("transaction indexing is disabled")
@@ -120,6 +121,7 @@ func TxSearch(
 	orderBy string,
 ) (*ctypes.ResultTxSearch, error) {
 
+	env := GetEnvironment()
 	// if index is disabled, return error
 	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
 		return nil, errors.New("transaction indexing is disabled")
@@ -199,6 +201,7 @@ func proveTx(height int64, index uint32) (types.TxProof, error) {
 		pTxProof tmproto.TxProof
 		txProof  types.TxProof
 	)
+	env := GetEnvironment()
 	rawBlock, err := loadRawBlock(env.BlockStore, height)
 	if err != nil {
 		return txProof, err

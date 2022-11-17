@@ -23,6 +23,7 @@ func BlockchainInfo(ctx *rpctypes.Context, minHeight, maxHeight int64) (*ctypes.
 	// maximum 20 block metas
 	const limit int64 = 20
 	var err error
+	env := GetEnvironment()
 	minHeight, maxHeight, err = filterMinMax(
 		env.BlockStore.Base(),
 		env.BlockStore.Height(),
@@ -82,13 +83,13 @@ func filterMinMax(base, height, min, max, limit int64) (int64, int64, error) {
 // If no height is provided, it will fetch the latest block.
 // More: https://docs.tendermint.com/master/rpc/#/Info/block
 func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error) {
-	height, err := getHeight(env.BlockStore.Height(), heightPtr)
+	height, err := getHeight(GetEnvironment().BlockStore.Height(), heightPtr)
 	if err != nil {
 		return nil, err
 	}
 
-	block := env.BlockStore.LoadBlock(height)
-	blockMeta := env.BlockStore.LoadBlockMeta(height)
+	block := GetEnvironment().BlockStore.LoadBlock(height)
+	blockMeta := GetEnvironment().BlockStore.LoadBlockMeta(height)
 	if blockMeta == nil {
 		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: block}, nil
 	}
@@ -98,6 +99,7 @@ func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error)
 // BlockByHash gets block by hash.
 // More: https://docs.tendermint.com/master/rpc/#/Info/block_by_hash
 func BlockByHash(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error) {
+	env := GetEnvironment()
 	block := env.BlockStore.LoadBlockByHash(hash)
 	if block == nil {
 		return &ctypes.ResultBlock{BlockID: types.BlockID{}, Block: nil}, nil
@@ -111,6 +113,7 @@ func BlockByHash(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error
 // If no height is provided, it will fetch the commit for the latest block.
 // More: https://docs.tendermint.com/master/rpc/#/Info/commit
 func Commit(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCommit, error) {
+	env := GetEnvironment()
 	height, err := getHeight(env.BlockStore.Height(), heightPtr)
 	if err != nil {
 		return nil, err
@@ -179,6 +182,7 @@ func generateHeightsList(beginBlock uint64, endBlock uint64) []int64 {
 // validateDataCommitmentRange runs basic checks on the asc sorted list of heights
 // that will be used subsequently in generating data commitments over the defined set of heights.
 func validateDataCommitmentRange(beginBlock uint64, endBlock uint64) error {
+	env := GetEnvironment()
 	heightsRange := endBlock - beginBlock + 1
 	if heightsRange > uint64(consts.DataCommitmentBlocksLimit) {
 		return fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
@@ -255,6 +259,7 @@ func proveDataRoots(blocks []*ctypes.ResultBlock, height int64) *merkle.Proof {
 // getBlock(h).Txs[5]
 // More: https://docs.tendermint.com/master/rpc/#/Info/block_results
 func BlockResults(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlockResults, error) {
+	env := GetEnvironment()
 	height, err := getHeight(env.BlockStore.Height(), heightPtr)
 	if err != nil {
 		return nil, err
@@ -314,6 +319,7 @@ func BlockSearch(
 
 // heightsByQuery returns a list of heights corresponding to the provided query.
 func heightsByQuery(ctx *rpctypes.Context, query string) ([]int64, error) {
+	env := GetEnvironment()
 	// skip if block indexing is disabled
 	if _, ok := env.BlockIndexer.(*blockidxnull.BlockerIndexer); ok {
 		return nil, errors.New("block indexing is disabled")
@@ -346,6 +352,7 @@ func sortBlocks(results []int64, orderBy string) error {
 
 // fetchBlocks takes a list of block heights and fetches them.
 func fetchBlocks(results []int64, pageSize int, skipCount int) []*ctypes.ResultBlock {
+	env := GetEnvironment()
 	apiResults := make([]*ctypes.ResultBlock, 0, pageSize)
 	for i := skipCount; i < skipCount+pageSize; i++ {
 		block := env.BlockStore.LoadBlock(results[i])

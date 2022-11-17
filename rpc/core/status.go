@@ -21,6 +21,7 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 		earliestBlockTimeNano int64
 	)
 
+	env := GetEnvironment()
 	if earliestBlockMeta := env.BlockStore.LoadBaseMeta(); earliestBlockMeta != nil {
 		earliestBlockHeight = earliestBlockMeta.Header.Height
 		earliestAppHash = earliestBlockMeta.Header.AppHash
@@ -75,6 +76,7 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 }
 
 func validatorAtHeight(h int64) *types.Validator {
+	env := GetEnvironment()
 	vals, err := env.StateStore.LoadValidators(h)
 	if err != nil {
 		return nil
