@@ -1173,18 +1173,14 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		data.Txs = Txs{}
 	}
 
-	if len(dp.Blobs) > 0 {
-		blobs := make([]Blob, len(dp.Blobs))
-		for i, m := range dp.Blobs {
-			if m.ShareVersion > math.MaxUint8 {
-				return Data{}, fmt.Errorf("share version %d is too large", m.ShareVersion)
-			}
-			blobs[i] = Blob{NamespaceID: m.NamespaceId, Data: m.Data, ShareVersion: uint8(m.ShareVersion)}
+	blobs := make([]Blob, len(dp.Blobs))
+	for i, m := range dp.Blobs {
+		if m.ShareVersion > math.MaxUint8 {
+			return Data{}, fmt.Errorf("share version %d is too large", m.ShareVersion)
 		}
-		data.Blobs = blobs
-	} else {
-		data.Blobs = []Blob{}
+		blobs[i] = Blob{NamespaceID: m.NamespaceId, Data: m.Data, ShareVersion: uint8(m.ShareVersion)}
 	}
+	data.Blobs = blobs
 
 	evdData := new(EvidenceData)
 	err := evdData.FromProto(&dp.Evidence)
