@@ -967,6 +967,44 @@ func TestDataProto(t *testing.T) {
 			},
 		},
 		{
+			name: "two blobs",
+			proto: &tmproto.Data{
+				Txs:      [][]uint8(nil),
+				Evidence: tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
+				Blobs: []tmproto.Blob{
+					{
+						NamespaceId:  []uint8{1, 1, 1, 1, 1, 1, 1, 1},
+						Data:         []uint8{1},
+						ShareVersion: 0x1,
+					},
+					{
+						NamespaceId:  []uint8{2, 2, 2, 2, 2, 2, 2, 2},
+						Data:         []uint8{2},
+						ShareVersion: 0x2,
+					},
+				},
+				SquareSize: 0x0,
+				Hash:       []uint8(nil),
+			},
+			data: Data{
+				Txs:      []Tx{},
+				Evidence: EvidenceData{Evidence: EvidenceList{}},
+				Blobs: []Blob{
+					{
+						NamespaceID:  []byte{1, 1, 1, 1, 1, 1, 1, 1},
+						Data:         []byte{1},
+						ShareVersion: 1,
+					},
+					{
+						NamespaceID:  []byte{2, 2, 2, 2, 2, 2, 2, 2},
+						Data:         []byte{2},
+						ShareVersion: 2,
+					},
+				},
+				SquareSize: 0,
+			},
+		},
+		{
 			name: "one blob with too large of a share version",
 			proto: &tmproto.Data{
 				Txs:      [][]uint8(nil),
