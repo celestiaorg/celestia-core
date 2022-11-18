@@ -917,6 +917,12 @@ func TestDataProto(t *testing.T) {
 	}
 	testCases := []testCase{
 		{
+			name:    "nil proto",
+			proto:   nil,
+			data:    Data{},
+			wantErr: true,
+		},
+		{
 			name: "empty data",
 			proto: &tmproto.Data{
 				Txs:        [][]uint8(nil),
