@@ -173,7 +173,7 @@ func TestDataCommitmentResults(t *testing.T) {
 }
 
 func TestDataRootInclusionProofResults(t *testing.T) {
-	env = &Environment{}
+	env := &Environment{}
 	height := int64(2826)
 
 	blocks := randomBlocks(height)
