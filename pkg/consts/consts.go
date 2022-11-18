@@ -12,7 +12,7 @@ const (
 	// index must be formatted into the path.
 	TxInclusionProofQueryPath = "custom/txInclusionProof/%d"
 	// ShareInclusionProofQueryPath is the path used to query the application for the
-	// shares to rows NMT inclusion proof via the ABCI query method.
+	// shares to data root inclusion proofs via the ABCI query method.
 	ShareInclusionProofQueryPath = "custom/shareInclusionProof/%d/%d"
 )
 
