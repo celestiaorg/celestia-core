@@ -288,8 +288,8 @@ func WrapMalleatedTx(originalHash []byte, shareIndex uint32, malleated Tx) (Tx, 
 	return proto.Marshal(&wTx)
 }
 
-// Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
-// and if the proof is internally consistent. Otherwise, it returns a sensible error.
+// Validate verifies the proof. It returns nil if the proof is valid.
+// Otherwise, it returns a sensible error.
 func (sp SharesProof) Validate() error {
 	numberOfSharesInProofs := int32(0)
 	for _, proof := range sp.SharesProofs {
@@ -366,8 +366,8 @@ func (tp TxProof) ToProto() tmproto.TxProof {
 	return pbtp
 }
 
-// Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
-// and if the proof is internally consistent. Otherwise, it returns a sensible error.
+// Validate verifies the proof. It returns nil if the proof is valid.
+// Otherwise, it returns a sensible error.
 func (rp RowsProof) Validate() error {
 	if int(rp.EndRow-rp.StartRow+1) != len(rp.RowsRoots) {
 		return errors.New(
