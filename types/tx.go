@@ -106,20 +106,27 @@ type TxProof struct {
 	Proofs   []*tmproto.NMTProof `json:"proof"`
 }
 
-// SharesRange represents a range of shares, which will be used to generate NMT proofs.
-type SharesRange struct {
-	StartingShare uint64 `json:"starting_share"`
-	EndShare      uint64 `json:"end_share"`
+// RowsProof represents a Merkle proof for a set of rows to the data root.
+type RowsProof struct {
+	RowsRoots []tmbytes.HexBytes `json:"row_root"`
+	Proofs    []*merkle.Proof    `json:"proof"`
+	Root      []byte             `json:"root"`
+	StartRow  uint32             `json:"starting_row"`
+	EndRow    uint32             `json:"ending_row"`
 }
 
 // SharesProof represents an NMT proof for a set of shares to a set of rows.
 type SharesProof struct {
-	RowRoots []tmbytes.HexBytes  `json:"root_hash"`
-	Data     [][]byte            `json:"data"`
-	Proofs   []*tmproto.NMTProof `json:"proof"`
+	// Data raw shares that are proven.
+	Data [][]byte `json:"data"`
+	// SharesProofs proofs to the shares. Can contain multiple proofs if the shares
+	// span on multiple rows.
+	SharesProofs []*tmproto.NMTProof `json:"proof"`
 	// NamespaceID needs to be specified as it will be used when verifying proofs.
 	// A wrong NamespaceID will result in an invalid proof.
 	NamespaceID []byte `json:"namespace_id"`
+	// RowsProof binary merkle proofs of the rows to the data root.
+	RowsProof RowsProof `json:"rows_proof"`
 }
 
 // Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
@@ -171,15 +178,23 @@ func (tp TxProof) VerifyProof() bool {
 }
 
 func (sp SharesProof) ToProto() tmproto.SharesProof {
-	rowRoots := make([][]byte, len(sp.RowRoots))
-	for i, root := range sp.RowRoots {
-		rowRoots[i] = root.Bytes()
+	rowsRoots := make([][]byte, len(sp.RowsProof.RowsRoots))
+	rowsProofs := make([]*crypto.Proof, len(sp.RowsProof.Proofs))
+	for i := range sp.RowsProof.RowsRoots {
+		rowsRoots[i] = sp.RowsProof.RowsRoots[i].Bytes()
+		rowsProofs[i] = sp.RowsProof.Proofs[i].ToProto()
 	}
 	pbtp := tmproto.SharesProof{
-		RowRoots:    rowRoots,
 		Data:        sp.Data,
-		Proofs:      sp.Proofs,
+		SharesProof: sp.SharesProofs,
 		NamespaceId: sp.NamespaceID,
+		RowsProof: &tmproto.RowsProof{
+			RowsRoots: rowsRoots,
+			Proofs:    rowsProofs,
+			Root:      sp.RowsProof.Root,
+			StartRow:  sp.RowsProof.StartRow,
+			EndRow:    sp.RowsProof.EndRow,
+		},
 	}
 
 	return pbtp
@@ -199,17 +214,32 @@ func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
 	return pbtp, nil
 }
 
+// SharesFromProto creates the SharesProof from a proto message.
+// Expects the proof to be pre-validated.
 func SharesFromProto(pb tmproto.SharesProof) (SharesProof, error) {
-	rowRoots := make([]tmbytes.HexBytes, len(pb.RowRoots))
-	for i, root := range pb.RowRoots {
-		rowRoots[i] = root
+	rowsRoots := make([]tmbytes.HexBytes, len(pb.RowsProof.RowsRoots))
+	rowsProofs := make([]*merkle.Proof, len(pb.RowsProof.Proofs))
+	for i := range pb.RowsProof.Proofs {
+		rowsRoots[i] = pb.RowsProof.RowsRoots[i]
+		rowsProofs[i] = &merkle.Proof{
+			Total:    pb.RowsProof.Proofs[i].Total,
+			Index:    pb.RowsProof.Proofs[i].Index,
+			LeafHash: pb.RowsProof.Proofs[i].LeafHash,
+			Aunts:    pb.RowsProof.Proofs[i].Aunts,
+		}
 	}
 
 	return SharesProof{
-		RowRoots:    rowRoots,
-		Data:        pb.Data,
-		Proofs:      pb.Proofs,
-		NamespaceID: pb.NamespaceId,
+		RowsProof: RowsProof{
+			RowsRoots: rowsRoots,
+			Proofs:    rowsProofs,
+			Root:      pb.RowsProof.Root,
+			StartRow:  pb.RowsProof.StartRow,
+			EndRow:    pb.RowsProof.EndRow,
+		},
+		Data:         pb.Data,
+		SharesProofs: pb.SharesProof,
+		NamespaceID:  pb.NamespaceId,
 	}, nil
 }
 
@@ -261,12 +291,20 @@ func WrapMalleatedTx(originalHash []byte, shareIndex uint32, malleated Tx) (Tx, 
 // Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
 // and if the proof is internally consistent. Otherwise, it returns a sensible error.
 func (sp SharesProof) Validate() error {
-	if len(sp.RowRoots) != len(sp.Proofs) || len(sp.Data) != len(sp.Proofs) {
+	numberOfSharesInProofs := int32(0)
+	for _, proof := range sp.SharesProofs {
+		// the range is not inclusive from the left.
+		numberOfSharesInProofs += proof.End - proof.Start
+	}
+
+	if len(sp.RowsProof.RowsRoots) != len(sp.SharesProofs) ||
+		int32(len(sp.Data)) != numberOfSharesInProofs {
 		return errors.New(
 			"invalid number of proofs, row roots, or data. they all must be the same to verify the proof",
 		)
 	}
-	for _, proof := range sp.Proofs {
+
+	for _, proof := range sp.SharesProofs {
 		if proof.Start < 0 {
 			return errors.New("proof index cannot be negative")
 		}
@@ -279,12 +317,16 @@ func (sp SharesProof) Validate() error {
 		}
 	}
 
+	if err := sp.RowsProof.Validate(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func (sp SharesProof) VerifyProof() bool {
 	cursor := int32(0)
-	for i, proof := range sp.Proofs {
+	for i, proof := range sp.SharesProofs {
 		nmtProof := nmt.NewInclusionProof(
 			int(proof.Start),
 			int(proof.End),
@@ -296,7 +338,7 @@ func (sp SharesProof) VerifyProof() bool {
 			consts.NewBaseHashFunc(),
 			sp.NamespaceID,
 			sp.Data[cursor:sharesUsed+cursor],
-			sp.RowRoots[i],
+			sp.RowsProof.RowsRoots[i],
 		)
 		if !valid {
 			return false
@@ -324,21 +366,17 @@ func (tp TxProof) ToProto() tmproto.TxProof {
 	return pbtp
 }
 
-// RowsProof represents a Merkle proof for a set of rows to the data root.
-type RowsProof struct {
-	RowRoots    []tmbytes.HexBytes `json:"data"`
-	Proofs      []*merkle.Proof    `json:"proof"`
-	Root        []byte             `json:"root"`
-	StartingRow uint32             `json:"starting_row"`
-	EndingRow   uint32             `json:"ending_row"`
-}
-
 // Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
 // and if the proof is internally consistent. Otherwise, it returns a sensible error.
 func (rp RowsProof) Validate() error {
-	if int(rp.EndingRow-rp.StartingRow+1) != len(rp.RowRoots) {
+	if int(rp.EndRow-rp.StartRow+1) != len(rp.RowsRoots) {
 		return errors.New(
 			"invalid number of row roots, or rows range. they all must be the same to verify the proof",
+		)
+	}
+	if len(rp.Proofs) != len(rp.RowsRoots) {
+		return errors.New(
+			"invalid number of row roots, or proofs. they all must be the same to verify the proof",
 		)
 	}
 	if !rp.VerifyProof() {
@@ -349,8 +387,8 @@ func (rp RowsProof) Validate() error {
 }
 
 func (rp RowsProof) VerifyProof() bool {
-	for _, proof := range rp.Proofs {
-		err := proof.Verify(rp.Root, proof.LeafHash)
+	for i, proof := range rp.Proofs {
+		err := proof.Verify(rp.Root, rp.RowsRoots[i])
 		if err != nil {
 			return false
 		}
