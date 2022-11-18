@@ -907,78 +907,25 @@ func TestMessagesIsSorted(t *testing.T) {
 	}
 }
 
-func TestDataToProto(t *testing.T) {
-	type testCase struct {
-		name  string
-		input *Data
-		want  tmproto.Data
-	}
-	testCases := []testCase{
-		{
-			name:  "empty data",
-			input: &Data{Txs: []Tx{}, Evidence: EvidenceData{}, Blobs: []Blob{}, SquareSize: 0},
-			want: tmproto.Data{
-				Txs:        [][]uint8(nil),
-				Evidence:   tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
-				Blobs:      []tmproto.Blob{},
-				SquareSize: 0x0,
-				Hash:       []uint8(nil),
-			},
-		},
-		{
-			name: "one blob",
-			input: &Data{
-				Txs:      []Tx{},
-				Evidence: EvidenceData{},
-				Blobs: []Blob{
-					{
-						NamespaceID:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
-						Data:         []byte{1},
-						ShareVersion: 0,
-					},
-				},
-				SquareSize: 0,
-			},
-			want: tmproto.Data{
-				Txs:      [][]uint8(nil),
-				Evidence: tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
-				Blobs: []tmproto.Blob{
-					{
-						NamespaceId:  []uint8{1, 2, 3, 4, 5, 6, 7, 8},
-						Data:         []uint8{1},
-						ShareVersion: 0x0,
-					},
-				},
-				SquareSize: 0x0, Hash: []uint8(nil),
-			},
-		},
-	}
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := tc.input.ToProto()
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
-func TestDataFromProto(t *testing.T) {
+// TestDataProto tests DataFromProto and Data.ToProto
+func TestDataProto(t *testing.T) {
 	type testCase struct {
 		name    string
-		input   *tmproto.Data
-		want    Data
+		proto   *tmproto.Data
+		data    Data
 		wantErr bool
 	}
 	testCases := []testCase{
 		{
 			name: "empty data",
-			input: &tmproto.Data{
+			proto: &tmproto.Data{
 				Txs:        [][]uint8(nil),
 				Evidence:   tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
 				Blobs:      []tmproto.Blob{},
 				SquareSize: 0x0,
 				Hash:       []uint8(nil),
 			},
-			want: Data{
+			data: Data{
 				Txs:        []Tx{},
 				Evidence:   EvidenceData{Evidence: EvidenceList{}},
 				Blobs:      []Blob{},
@@ -987,7 +934,7 @@ func TestDataFromProto(t *testing.T) {
 		},
 		{
 			name: "one blob",
-			input: &tmproto.Data{
+			proto: &tmproto.Data{
 				Txs:      [][]uint8(nil),
 				Evidence: tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
 				Blobs: []tmproto.Blob{
@@ -999,7 +946,7 @@ func TestDataFromProto(t *testing.T) {
 				},
 				SquareSize: 0x0, Hash: []uint8(nil),
 			},
-			want: Data{
+			data: Data{
 				Txs:      []Tx{},
 				Evidence: EvidenceData{Evidence: EvidenceList{}},
 				Blobs: []Blob{
@@ -1014,7 +961,7 @@ func TestDataFromProto(t *testing.T) {
 		},
 		{
 			name: "one blob with too large of a share version",
-			input: &tmproto.Data{
+			proto: &tmproto.Data{
 				Txs:      [][]uint8(nil),
 				Evidence: tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
 				Blobs: []tmproto.Blob{
@@ -1026,19 +973,22 @@ func TestDataFromProto(t *testing.T) {
 				},
 				SquareSize: 0x0, Hash: []uint8(nil),
 			},
-			want:    Data{},
+			data:    Data{},
 			wantErr: true,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := DataFromProto(tc.input)
+			got, err := DataFromProto(tc.proto)
 			if tc.wantErr {
 				assert.Error(t, err)
 				return
 			}
-			assert.Equal(t, tc.want, got)
+			assert.Equal(t, tc.data, got)
+
+			proto := tc.data.ToProto()
+			assert.Equal(t, tc.proto, &proto)
 		})
 	}
 }
