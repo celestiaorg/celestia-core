@@ -174,7 +174,11 @@ func TestDataCommitmentResults(t *testing.T) {
 
 func TestDataRootInclusionProofResults(t *testing.T) {
 	env := &Environment{}
+	env.StateStore = sm.NewStore(dbm.NewMemDB())
+
 	height := int64(2826)
+	env.BlockStore = mockBlockStore{height: height}
+	SetEnvironment(env)
 
 	blocks := randomBlocks(height)
 	blockStore := mockBlockStore{
