@@ -906,3 +906,135 @@ func TestMessagesIsSorted(t *testing.T) {
 		})
 	}
 }
+
+// TestDataProto tests DataFromProto and Data.ToProto
+func TestDataProto(t *testing.T) {
+	type testCase struct {
+		name    string
+		proto   *tmproto.Data
+		data    Data
+		wantErr bool
+	}
+	testCases := []testCase{
+		{
+			name:    "nil proto",
+			proto:   nil,
+			data:    Data{},
+			wantErr: true,
+		},
+		{
+			name: "empty data",
+			proto: &tmproto.Data{
+				Txs:        [][]uint8(nil),
+				Evidence:   tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
+				Blobs:      []tmproto.Blob{},
+				SquareSize: 0x0,
+				Hash:       []uint8(nil),
+			},
+			data: Data{
+				Txs:        []Tx{},
+				Evidence:   EvidenceData{Evidence: EvidenceList{}},
+				Blobs:      []Blob{},
+				SquareSize: 0,
+			},
+		},
+		{
+			name: "one blob",
+			proto: &tmproto.Data{
+				Txs:      [][]uint8(nil),
+				Evidence: tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
+				Blobs: []tmproto.Blob{
+					{
+						NamespaceId:  []uint8{1, 2, 3, 4, 5, 6, 7, 8},
+						Data:         []uint8{1},
+						ShareVersion: 0x0,
+					},
+				},
+				SquareSize: 0x0,
+				Hash:       []uint8(nil),
+			},
+			data: Data{
+				Txs:      []Tx{},
+				Evidence: EvidenceData{Evidence: EvidenceList{}},
+				Blobs: []Blob{
+					{
+						NamespaceID:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
+						Data:         []byte{1},
+						ShareVersion: 0,
+					},
+				},
+				SquareSize: 0,
+			},
+		},
+		{
+			name: "two blobs",
+			proto: &tmproto.Data{
+				Txs:      [][]uint8(nil),
+				Evidence: tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
+				Blobs: []tmproto.Blob{
+					{
+						NamespaceId:  []uint8{1, 1, 1, 1, 1, 1, 1, 1},
+						Data:         []uint8{1},
+						ShareVersion: 0x1,
+					},
+					{
+						NamespaceId:  []uint8{2, 2, 2, 2, 2, 2, 2, 2},
+						Data:         []uint8{2},
+						ShareVersion: 0x2,
+					},
+				},
+				SquareSize: 0x0,
+				Hash:       []uint8(nil),
+			},
+			data: Data{
+				Txs:      []Tx{},
+				Evidence: EvidenceData{Evidence: EvidenceList{}},
+				Blobs: []Blob{
+					{
+						NamespaceID:  []byte{1, 1, 1, 1, 1, 1, 1, 1},
+						Data:         []byte{1},
+						ShareVersion: 1,
+					},
+					{
+						NamespaceID:  []byte{2, 2, 2, 2, 2, 2, 2, 2},
+						Data:         []byte{2},
+						ShareVersion: 2,
+					},
+				},
+				SquareSize: 0,
+			},
+		},
+		{
+			name: "one blob with too large of a share version",
+			proto: &tmproto.Data{
+				Txs:      [][]uint8(nil),
+				Evidence: tmproto.EvidenceList{Evidence: []tmproto.Evidence{}},
+				Blobs: []tmproto.Blob{
+					{
+						NamespaceId:  []uint8{1, 2, 3, 4, 5, 6, 7, 8},
+						Data:         []uint8{1},
+						ShareVersion: 257, // does not fit in a uint8
+					},
+				},
+				SquareSize: 0x0,
+				Hash:       []uint8(nil),
+			},
+			data:    Data{},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := DataFromProto(tc.proto)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.Equal(t, tc.data, got)
+
+			proto := tc.data.ToProto()
+			assert.Equal(t, tc.proto, &proto)
+		})
+	}
+}

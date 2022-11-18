@@ -125,11 +125,14 @@ message EvidenceList {
   repeated Evidence evidence = 1 [(gogoproto.nullable) = false];
 }
 
-// Blob defines a chunk of data that is attributed to a namespace and under
-// usual circumstances, ends up published on-chain.
+// Blob (named after binary large object) is a chunk of data submitted by a user
+// to be published to the Celestia blockchain. The data of a Blob is published
+// to a namespace_id and is encoded into shares based on the format specified by
+// share_version.
 message Blob {
-  bytes namespace_id = 1;
-  bytes data         = 2;
+  bytes namespace_id           = 1;
+  bytes data                   = 2;
+  uint32 share_version         = 3;
 }
 
 // DataAvailabilityHeader contains the row and column roots of the erasure
