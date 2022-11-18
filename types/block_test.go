@@ -944,7 +944,8 @@ func TestDataProto(t *testing.T) {
 						ShareVersion: 0x0,
 					},
 				},
-				SquareSize: 0x0, Hash: []uint8(nil),
+				SquareSize: 0x0,
+				Hash:       []uint8(nil),
 			},
 			data: Data{
 				Txs:      []Tx{},
@@ -971,7 +972,8 @@ func TestDataProto(t *testing.T) {
 						ShareVersion: 257, // does not fit in a uint8
 					},
 				},
-				SquareSize: 0x0, Hash: []uint8(nil),
+				SquareSize: 0x0,
+				Hash:       []uint8(nil),
 			},
 			data:    Data{},
 			wantErr: true,
