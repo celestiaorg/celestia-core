@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -1063,13 +1064,17 @@ func (b BlobsByNamespace) Less(i, j int) bool {
 }
 
 type Blob struct {
-	// NamespaceID defines the namespace of this message, i.e. the
+	// NamespaceID defines the namespace of this blob, i.e. the
 	// namespace it will use in the namespaced Merkle tree.
 	NamespaceID namespace.ID
 
 	// Data is the actual data contained in the message
 	// (e.g. a block of a virtual sidechain).
 	Data []byte
+
+	// ShareVersion is the version of the share format that this blob should use
+	// when encoded into shares.
+	ShareVersion uint8
 }
 
 func BlobFromProto(p *tmproto.Blob) Blob {
@@ -1077,8 +1082,9 @@ func BlobFromProto(p *tmproto.Blob) Blob {
 		return Blob{}
 	}
 	return Blob{
-		NamespaceID: p.NamespaceId,
-		Data:        p.Data,
+		NamespaceID:  p.NamespaceId,
+		Data:         p.Data,
+		ShareVersion: uint8(p.ShareVersion),
 	}
 }
 
@@ -1136,8 +1142,9 @@ func (data *Data) ToProto() tmproto.Data {
 	protoBlobs := make([]tmproto.Blob, len(data.Blobs))
 	for i, b := range data.Blobs {
 		protoBlobs[i] = tmproto.Blob{
-			NamespaceId: b.NamespaceID,
-			Data:        b.Data,
+			NamespaceId:  b.NamespaceID,
+			Data:         b.Data,
+			ShareVersion: uint32(b.ShareVersion),
 		}
 	}
 	tp.Blobs = protoBlobs
@@ -1166,15 +1173,14 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		data.Txs = Txs{}
 	}
 
-	if len(dp.Blobs) > 0 {
-		blobs := make([]Blob, len(dp.Blobs))
-		for i, m := range dp.Blobs {
-			blobs[i] = Blob{NamespaceID: m.NamespaceId, Data: m.Data}
+	blobs := make([]Blob, len(dp.Blobs))
+	for i, m := range dp.Blobs {
+		if m.ShareVersion > math.MaxUint8 {
+			return Data{}, fmt.Errorf("share version %d is too large", m.ShareVersion)
 		}
-		data.Blobs = blobs
-	} else {
-		data.Blobs = []Blob{}
+		blobs[i] = Blob{NamespaceID: m.NamespaceId, Data: m.Data, ShareVersion: uint8(m.ShareVersion)}
 	}
+	data.Blobs = blobs
 
 	evdData := new(EvidenceData)
 	err := evdData.FromProto(&dp.Evidence)
