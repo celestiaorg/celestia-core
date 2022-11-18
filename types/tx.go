@@ -115,7 +115,7 @@ type RowsProof struct {
 	EndRow    uint32             `json:"ending_row"`
 }
 
-// SharesProof represents an NMT proof for a set of shares to a set of rows.
+// SharesProof represents an NMT proof for a set of shares to the data root.
 type SharesProof struct {
 	// Data raw shares that are proven.
 	Data [][]byte `json:"data"`
