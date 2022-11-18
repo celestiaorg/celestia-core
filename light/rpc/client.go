@@ -504,7 +504,8 @@ func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Resul
 }
 
 // ProveShares calls rpcclient#ProveShares method and returns an NMT proof for a set
-// of shares, defined by `startShare` and `endShare`, to a set of rows.
+// of shares, defined by `startShare` and `endShare`, to the corresponding rows.
+// Then, a binary merkle inclusion proof from the latter rows to the data root.
 func (c *Client) ProveShares(
 	ctx context.Context,
 	height uint64,
