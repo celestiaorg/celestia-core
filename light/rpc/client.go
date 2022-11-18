@@ -515,50 +515,6 @@ func (c *Client) ProveShares(
 	return res, err
 }
 
-// ProveRows calls rpcclient#ProveRows method and returns a merkle proof for a set of
-// rows defined by `startingRow` and `endingRow`.
-func (c *Client) ProveRows(
-	ctx context.Context,
-	height uint64,
-	startingRow uint32,
-	endingRow uint32,
-) (types.RowsProof, error) {
-	res, err := c.next.ProveRows(ctx, height, startingRow, endingRow)
-	return res, err
-}
-
-// ProveRowsByShares calls rpcclient#ProveRowsByShares and returns a merkle proof
-// for a set of rows, defined by a set of shares, to the data root.
-func (c *Client) ProveRowsByShares(
-	ctx context.Context,
-	height uint64,
-	startingShares uint32,
-	endingShares uint32,
-) (types.RowsProof, error) {
-	res, err := c.next.ProveRowsByShares(ctx, height, startingShares, endingShares)
-	return res, err
-}
-
-// TxShares calls rpcclient#TxShares method and returns the shares that contain
-// the transaction referenced by hash `hash`.
-func (c *Client) TxShares(
-	ctx context.Context,
-	hash []byte,
-) (*types.SharesRange, error) {
-	res, err := c.next.TxShares(ctx, hash)
-	return res, err
-}
-
-// MsgShares calls rpcclient#MsgShares method and returns the shares that contain
-// the message in the transaction referenced by hash `hash`.
-func (c *Client) MsgShares(
-	ctx context.Context,
-	hash []byte,
-) (*types.SharesRange, error) {
-	res, err := c.next.TxShares(ctx, hash)
-	return res, err
-}
-
 func (c *Client) TxSearch(
 	ctx context.Context,
 	query string,

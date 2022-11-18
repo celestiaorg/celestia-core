@@ -81,10 +81,6 @@ type SignClient interface {
 	Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error)
 
 	ProveShares(_ context.Context, height uint64, startShare uint64, endShare uint64) (types.SharesProof, error)
-	ProveRows(_ context.Context, height uint64, startingRow uint32, endingRow uint32) (types.RowsProof, error)
-	ProveRowsByShares(_ context.Context, height uint64, startingShare uint32, endingShare uint32) (types.RowsProof, error)
-	TxShares(_ context.Context, hash []byte) (*types.SharesRange, error)
-	MsgShares(_ context.Context, hash []byte) (*types.SharesRange, error)
 
 	// TxSearch defines a method to search for a paginated set of transactions by
 	// DeliverTx event search criteria.

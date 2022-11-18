@@ -213,37 +213,6 @@ func SharesFromProto(pb tmproto.SharesProof) (SharesProof, error) {
 	}, nil
 }
 
-func RowsFromProto(rp tmproto.RowsProof) (RowsProof, error) {
-	if len(rp.RowRoots) != len(rp.Proofs) {
-		return RowsProof{}, fmt.Errorf(
-			"invalid number of proofs %d for the number of rows %d",
-			len(rp.Proofs),
-			len(rp.RowRoots),
-		)
-	}
-
-	rowRoots := make([]tmbytes.HexBytes, len(rp.RowRoots))
-	proofs := make([]*merkle.Proof, len(rp.Proofs))
-	for i := 0; i < len(rp.RowRoots); i++ {
-		rowRoots[i] = rp.RowRoots[i]
-		proofs[i] = &merkle.Proof{
-			Total:    rp.Proofs[i].Total,
-			Index:    rp.Proofs[i].Index,
-			LeafHash: rp.Proofs[i].LeafHash,
-			Aunts:    rp.Proofs[i].Aunts,
-		}
-	}
-
-	return RowsProof{
-		RowRoots:    rowRoots,
-		Proofs:      proofs,
-		Root:        rp.Root,
-		StartingRow: rp.StartRow,
-		// TODO  investigate if starting and ending rows are needed
-		EndingRow: rp.EndRow,
-	}, nil
-}
-
 // ComputeProtoSizeForTxs wraps the transactions in tmproto.Data{} and calculates the size.
 // https://developers.google.com/protocol-buffers/docs/encoding
 func ComputeProtoSizeForTxs(txs []Tx) int64 {
@@ -387,24 +356,4 @@ func (rp RowsProof) VerifyProof() bool {
 		}
 	}
 	return true
-}
-
-func (rp RowsProof) ToProto() tmproto.RowsProof {
-	rowRoots := make([][]byte, len(rp.RowRoots))
-	for i, root := range rp.RowRoots {
-		rowRoots[i] = root
-	}
-	proofs := make([]*crypto.Proof, len(rp.Proofs))
-	for i, proof := range rp.Proofs {
-		proofs[i] = proof.ToProto()
-	}
-	pbtp := tmproto.RowsProof{
-		RowRoots: rowRoots,
-		Proofs:   proofs,
-		Root:     rp.Root,
-		StartRow: rp.StartingRow, // TODO same name Starting/Start
-		EndRow:   rp.EndingRow,
-	}
-
-	return pbtp
 }

@@ -11,23 +11,9 @@ const (
 	// tx inclusion proof via the ABCI Query method. The desired transaction
 	// index must be formatted into the path.
 	TxInclusionProofQueryPath = "custom/txInclusionProof/%d"
-	// TxSharesQueryPath is the path used to query the application for the shares range
-	// where the transaction live via the ABCI query method.
-	TxSharesQueryPath = "custom/txShares/%d"
-	// MessageSharesQueryPath is the path used to query the application for the shares range
-	// where the message of a transaction live via the ABCI query method.
-	MessageSharesQueryPath = "custom/msgShares/%d"
 	// ShareInclusionProofQueryPath is the path used to query the application for the
 	// shares to rows NMT inclusion proof via the ABCI query method.
 	ShareInclusionProofQueryPath = "custom/shareInclusionProof/%d/%d"
-	// RowsInclusionProofQueryPath is the path used to query the application for the
-	// rows, defined by start row and end row, to data root merkle inclusion proof via
-	// the ABCI query method.
-	RowsInclusionProofQueryPath = "custom/rowsInclusionProof/%d/%d"
-	// RowsInclusionProofBySharesQueryPath is the path used to query the application for the
-	// rows, defined by a set of shares, to data root merkle inclusion proof via
-	// the ABCI query method.
-	RowsInclusionProofBySharesQueryPath = "custom/rowsInclusionProofByShares/%d/%d"
 )
 
 var (

@@ -198,14 +198,6 @@ func (c *Local) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Result
 	return core.Tx(c.ctx, hash, prove)
 }
 
-func (c *Local) TxShares(ctx context.Context, hash []byte) (*types.SharesRange, error) {
-	return core.TxShares(c.ctx, hash)
-}
-
-func (c *Local) MsgShares(ctx context.Context, hash []byte) (*types.SharesRange, error) {
-	return core.MsgShares(c.ctx, hash)
-}
-
 func (c *Local) ProveShares(
 	ctx context.Context,
 	height uint64,
@@ -213,24 +205,6 @@ func (c *Local) ProveShares(
 	endShare uint64,
 ) (types.SharesProof, error) {
 	return core.ProveShares(c.ctx, int64(height), startShare, endShare)
-}
-
-func (c *Local) ProveRows(
-	ctx context.Context,
-	height uint64,
-	startingRow uint32,
-	endingRow uint32,
-) (types.RowsProof, error) {
-	return core.ProveRows(c.ctx, int64(height), startingRow, endingRow)
-}
-
-func (c *Local) ProveRowsByShares(
-	ctx context.Context,
-	height uint64,
-	startingShare uint32,
-	endingShare uint32,
-) (types.RowsProof, error) {
-	return core.ProveRowsByShares(c.ctx, int64(height), startingShare, endingShare)
 }
 
 func (c *Local) TxSearch(
