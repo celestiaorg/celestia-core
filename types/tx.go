@@ -214,9 +214,9 @@ func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
 	return pbtp, nil
 }
 
-// SharesFromProto creates the SharesProof from a proto message.
+// SharesProofFromProto creates the SharesProof from a proto message.
 // Expects the proof to be pre-validated.
-func SharesFromProto(pb tmproto.SharesProof) (SharesProof, error) {
+func SharesProofFromProto(pb tmproto.SharesProof) (SharesProof, error) {
 	rowsRoots := make([]tmbytes.HexBytes, len(pb.RowsProof.RowsRoots))
 	rowsProofs := make([]*merkle.Proof, len(pb.RowsProof.Proofs))
 	for i := range pb.RowsProof.Proofs {

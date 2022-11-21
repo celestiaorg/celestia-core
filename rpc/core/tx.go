@@ -206,7 +206,7 @@ func ProveShares(
 	if err != nil {
 		return sharesProof, err
 	}
-	sharesProof, err = types.SharesFromProto(pSharesProof)
+	sharesProof, err = types.SharesProofFromProto(pSharesProof)
 	if err != nil {
 		return sharesProof, err
 	}
