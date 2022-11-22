@@ -12,7 +12,6 @@ import (
 	dbm "github.com/tendermint/tm-db"
 
 	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/pubsub/query"
 	"github.com/tendermint/tendermint/state/indexer"
 	"github.com/tendermint/tendermint/state/txindex"
@@ -122,12 +121,7 @@ func (txi *TxIndex) indexEvents(result *abci.TxResult, hash []byte, store dbm.Ba
 }
 
 func (txi *TxIndex) indexResult(batch dbm.Batch, result *abci.TxResult) error {
-	var hash []byte
-	if len(result.OriginalHash) == tmhash.Size {
-		hash = result.OriginalHash
-	} else {
-		hash = types.Tx(result.Tx).Hash()
-	}
+	hash := types.Tx(result.Tx).Hash()
 
 	rawBytes, err := proto.Marshal(result)
 	if err != nil {
