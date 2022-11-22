@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	tmrand "github.com/tendermint/tendermint/libs/rand"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 func makeTxs(cnt, size int) Txs {
@@ -88,4 +89,23 @@ func TestUnwrapMalleatedTx(t *testing.T) {
 	malleated, ok := UnwrapMalleatedTx(MalleatedTx)
 	require.True(t, ok)
 	require.Equal(t, rawBlock, malleated.Tx)
+}
+
+func TestWrapUnwrapBlobTx(t *testing.T) {
+	tx := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+	blob := tmproto.Blob{
+		NamespaceId:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		Data:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		ShareVersion: 0,
+	}
+
+	bTx, err := WrapBlobTx(tx, &blob)
+	require.NoError(t, err)
+
+	resTx, isBlob := UnwrapBlobTx(bTx)
+	require.True(t, isBlob)
+
+	assert.Equal(t, tx, resTx.Tx)
+	require.Len(t, resTx.Blobs, 1)
+	assert.Equal(t, blob, *resTx.Blobs[0])
 }

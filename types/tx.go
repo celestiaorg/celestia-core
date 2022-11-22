@@ -193,15 +193,14 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 	return int64(pdData.Size())
 }
 
-// UnwrapMalleatedTx attempts to unmarshal the provided transaction into a malleated
-// transaction wrapper, if this can be done, then it returns true. A malleated
-// transaction is a normal transaction that has been derived (malleated) from a
-// different original transaction. The returned hash is that of the original
-// transaction, which allows us to remove the original transaction from the
-// mempool. NOTE: protobuf sometimes does not throw an error if the transaction
-// passed is not a tmproto.MalleatedTx, since the schema for PayForMessage is kept
-// in the app, we cannot perform further checks without creating an import
-// cycle.
+// UnwrapMalleatedTx attempts to unmarshal the provided transaction into a
+// malleated transaction wrapper, if this can be done, then it returns true. A
+// malleated transaction is a normal transaction that has been wrapped with meta
+// data.
+//
+// NOTE: protobuf sometimes does not throw an error if the transaction passed is
+// not a tmproto.MalleatedTx, since the schema for PayForMessage is kept in the
+// app, we cannot perform further checks without creating an import cycle.
 func UnwrapMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool) {
 	// attempt to unmarshal into a a malleated transaction
 	err := proto.Unmarshal(tx, &malleatedTx)
@@ -211,13 +210,37 @@ func UnwrapMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool
 	return malleatedTx, true
 }
 
-// WrapMalleatedTx creates a wrapped Tx that includes the original transaction's hash
-// so that it can be easily removed from the mempool. note: must be unwrapped to
-// be a viable sdk.Tx
+// WrapMalleatedTx creates a wrapped Tx that includes the original transaction
+// and the share index of the start of its blob.
+//
+// NOTE: must be unwrapped to be a viable sdk.Tx
 func WrapMalleatedTx(shareIndex uint32, malleated Tx) (Tx, error) {
 	wTx := tmproto.MalleatedTx{
 		Tx:         malleated,
 		ShareIndex: shareIndex,
 	}
 	return proto.Marshal(&wTx)
+}
+
+// UnwrapBlobTx attempts to unmarshal a transaction into blob transaction. If an
+// error is thrown, false is returned.
+func UnwrapBlobTx(tx Tx) (bTx tmproto.BlobTx, isBlob bool) {
+	err := bTx.Unmarshal(tx)
+	if err != nil {
+		return tmproto.BlobTx{}, false
+	}
+	return bTx, true
+}
+
+// WrapBlobTx creates a BlobTx using a normal transaction and some number of
+// blobs.
+//
+// NOTE: Any checks on the blobs or the transaction must be performed in the
+// application
+func WrapBlobTx(tx []byte, blobs ...*tmproto.Blob) (Tx, error) {
+	bTx := tmproto.BlobTx{
+		Tx:    tx,
+		Blobs: blobs,
+	}
+	return bTx.Marshal()
 }
