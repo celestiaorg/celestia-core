@@ -73,21 +73,25 @@ func TestMalleatedTxIndex(t *testing.T) {
 		expectedTx   []byte
 	}
 	originalTx1 := types.Tx([]byte("ORIGINAL_TX"))
-	malleatedTx1 := types.Tx([]byte("MALLEATED_TX"))
+	malleatedTx1, err := types.WrapMalleatedTx(100, originalTx1)
+	require.NoError(t, err)
 
 	tests := []test{
 		// we expect to get the malleated tx returned when searching using the original hash
 		{
 			tx:           malleatedTx1,
 			originalHash: originalTx1.Hash(),
-			expectedTx:   malleatedTx1,
+			expectedTx:   originalTx1,
 		},
 	}
 
 	indexer := NewTxIndex(db.NewMemDB())
 
 	for i, tt := range tests {
-
+		malleatedTx, isMalleated := types.UnwrapMalleatedTx(tt.tx)
+		if isMalleated {
+			tt.tx = malleatedTx.Tx
+		}
 		txResult := &abci.TxResult{
 			Height: int64(i),
 			Index:  0,
