@@ -366,7 +366,6 @@ message TxResult {
   uint32            index         = 2;
   bytes             tx            = 3;
   ResponseDeliverTx result        = 4 [(gogoproto.nullable) = false];
-  bytes             original_hash = 5;
 }
 
 //----------------------------------------

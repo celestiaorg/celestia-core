@@ -76,7 +76,7 @@ func TestEventBusPublishEventMalleatedTx(t *testing.T) {
 	})
 
 	tx := Tx("foo")
-	malleatedTx := Tx("foo-malleated")
+	require.NoError(t, err)
 
 	result := abci.ResponseDeliverTx{
 		Data: []byte("bar"),
@@ -96,17 +96,16 @@ func TestEventBusPublishEventMalleatedTx(t *testing.T) {
 		edt := msg.Data().(EventDataTx)
 		assert.Equal(t, int64(1), edt.Height)
 		assert.Equal(t, uint32(0), edt.Index)
-		assert.EqualValues(t, malleatedTx, edt.Tx)
+		assert.EqualValues(t, tx, edt.Tx)
 		assert.Equal(t, result, edt.Result)
 		close(done)
 	}()
 
 	err = eventBus.PublishEventTx(EventDataTx{abci.TxResult{
-		Height:       1,
-		Index:        0,
-		Tx:           malleatedTx,
-		Result:       result,
-		OriginalHash: tx.Hash(),
+		Height: 1,
+		Index:  0,
+		Tx:     tx,
+		Result: result,
 	}})
 	assert.NoError(t, err)
 
