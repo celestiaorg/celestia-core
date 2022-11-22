@@ -207,6 +207,9 @@ func UnwrapMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool
 	if err != nil {
 		return malleatedTx, false
 	}
+	if malleatedTx.TypeId != consts.ProtoMalleatedTxTypeID {
+		return malleatedTx, false
+	}
 	return malleatedTx, true
 }
 
@@ -218,6 +221,7 @@ func WrapMalleatedTx(shareIndex uint32, malleated Tx) (Tx, error) {
 	wTx := tmproto.MalleatedTx{
 		Tx:         malleated,
 		ShareIndex: shareIndex,
+		TypeId:     consts.ProtoMalleatedTxTypeID,
 	}
 	return proto.Marshal(&wTx)
 }
@@ -229,6 +233,18 @@ func UnwrapBlobTx(tx Tx) (bTx tmproto.BlobTx, isBlob bool) {
 	if err != nil {
 		return tmproto.BlobTx{}, false
 	}
+	// perform some quick basic checks to prevent false positives
+	if bTx.TypeId != consts.ProtoBlobTxTypeID {
+		return bTx, false
+	}
+	if len(bTx.Blobs) == 0 {
+		return bTx, false
+	}
+	for _, b := range bTx.Blobs {
+		if len(b.NamespaceId) != int(consts.TxNamespaceID.Size()) {
+			return bTx, false
+		}
+	}
 	return bTx, true
 }
 
@@ -239,8 +255,9 @@ func UnwrapBlobTx(tx Tx) (bTx tmproto.BlobTx, isBlob bool) {
 // application
 func WrapBlobTx(tx []byte, blobs ...*tmproto.Blob) (Tx, error) {
 	bTx := tmproto.BlobTx{
-		Tx:    tx,
-		Blobs: blobs,
+		Tx:     tx,
+		Blobs:  blobs,
+		TypeId: consts.ProtoBlobTxTypeID,
 	}
 	return bTx.Marshal()
 }

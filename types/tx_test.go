@@ -109,3 +109,10 @@ func TestWrapUnwrapBlobTx(t *testing.T) {
 	require.Len(t, resTx.Blobs, 1)
 	assert.Equal(t, blob, *resTx.Blobs[0])
 }
+
+// todo: add fuzzing
+func TestUnwrapBlobTxFalsePositive(t *testing.T) {
+	tx := []byte("sender-193-0=D16B687628035716B1DA53BE1491A1B3D4CEA3AB=1025")
+	_, isBlob := UnwrapBlobTx(tx)
+	require.False(t, isBlob)
+}

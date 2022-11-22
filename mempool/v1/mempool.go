@@ -421,7 +421,6 @@ func (txmp *TxMempool) Update(
 		if deliverTxResponses[i].Code == abci.CodeTypeOK {
 			_ = txmp.cache.Push(tx.Key())
 		} else if !txmp.config.KeepInvalidTxsInCache {
-			fmt.Println("removing from cache update", tx.Key())
 			txmp.cache.RemoveTxByKey(tx.Key())
 		}
 
