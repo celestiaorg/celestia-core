@@ -21,6 +21,7 @@ import (
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
 )
@@ -669,6 +670,40 @@ func TestMalleatedTxRemoval(t *testing.T) {
 	// remove the parent from the mempool using the wrapped child tx
 	err = txmp.Update(1, []types.Tx{wTx}, abciResponses(1, abci.CodeTypeOK), nil, nil)
 	require.NoError(t, err)
+}
+
+func TestBlobTxRemoval(t *testing.T) {
+	txmp := setup(t, 500)
+	originalTx := []byte{1, 2, 3, 4}
+	malleatedTx, err := types.WrapMalleatedTx(100, originalTx)
+	require.NoError(t, err)
+	b := tmproto.Blob{
+		NamespaceId:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		Data:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		ShareVersion: 0,
+	}
+
+	// create the wrapped child transaction
+	bTx, err := types.WrapBlobTx(originalTx, &b)
+	require.NoError(t, err)
+
+	// add the parent transaction to the mempool
+	err = txmp.CheckTx(bTx, nil, mempool.TxInfo{})
+	require.NoError(t, err)
+	// make sure that we're not adding the blob transaction to the hash
+	require.False(t, txmp.cache.Has(bTx))
+
+	// remove the parent from the mempool using the malleated tx (tx w/ added metadata)
+	err = txmp.Update(1, []types.Tx{malleatedTx}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+	require.NoError(t, err)
+
+	// ensure that the tx was actually removed
+	_, has := txmp.txByKey[types.Tx(originalTx).Key()]
+	require.False(t, has)
+
+	// ensure that we aren't accidentally storing it using a different hash
+	require.Equal(t, 0, txmp.Size())
+	require.Equal(t, int64(0), txmp.SizeBytes())
 }
 
 func abciResponses(n int, code uint32) []*abci.ResponseDeliverTx {

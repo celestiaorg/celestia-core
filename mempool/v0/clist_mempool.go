@@ -236,7 +236,13 @@ func (mem *CListMempool) CheckTx(
 		return err
 	}
 
-	if !mem.cache.Push(tx) { // if the transaction already exists in the cache
+	originalTx := tx
+	bTx, isBlob := types.UnwrapBlobTx(tx)
+	if isBlob {
+		tx = bTx.Tx
+	}
+
+	if !mem.cache.Push(tx.Key()) { // if the transaction already exists in the cache
 		// Record a new sender for a tx we've already seen.
 		// Note it's possible a tx is still in the cache but no longer in the mempool
 		// (eg. after committing a block, txs are removed from mempool but not cache),
@@ -251,8 +257,9 @@ func (mem *CListMempool) CheckTx(
 		return mempool.ErrTxInCache
 	}
 
-	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx})
-	reqRes.SetCallback(mem.reqResCb(tx, txInfo.SenderID, txInfo.SenderP2PID, cb))
+	// we send the originaltx (which includes any potential blobs) to be checked by the application
+	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: originalTx})
+	reqRes.SetCallback(mem.reqResCb(originalTx, txInfo.SenderID, txInfo.SenderP2PID, cb))
 
 	return nil
 }
@@ -315,7 +322,8 @@ func (mem *CListMempool) reqResCb(
 //   - resCbFirstTime (lock not held) if tx is valid
 func (mem *CListMempool) addTx(memTx *mempoolTx) {
 	e := mem.txs.PushBack(memTx)
-	mem.txsMap.Store(memTx.tx.Key(), e)
+
+	mem.txsMap.Store(memTx.key, e)
 	atomic.AddInt64(&mem.txsBytes, int64(len(memTx.tx)))
 	mem.metrics.TxSizeBytes.Observe(float64(len(memTx.tx)))
 }
@@ -326,11 +334,17 @@ func (mem *CListMempool) addTx(memTx *mempoolTx) {
 func (mem *CListMempool) removeTx(tx types.Tx, elem *clist.CElement, removeFromCache bool) {
 	mem.txs.Remove(elem)
 	elem.DetachPrev()
+	txLen := len(tx)
+	e, ok := mem.txsMap.Load(tx.Key())
+	if ok {
+		memTx := e.(*clist.CElement).Value.(*mempoolTx)
+		txLen = len(memTx.tx)
+	}
 	mem.txsMap.Delete(tx.Key())
-	atomic.AddInt64(&mem.txsBytes, int64(-len(tx)))
+	atomic.AddInt64(&mem.txsBytes, int64(-txLen))
 
 	if removeFromCache {
-		mem.cache.Remove(tx)
+		mem.cache.RemoveTxByKey(tx.Key())
 	}
 }
 
@@ -386,15 +400,22 @@ func (mem *CListMempool) resCbFirstTime(
 			// limits.
 			if err := mem.isFull(len(tx)); err != nil {
 				// remove from cache (mempool might have a space later)
-				mem.cache.Remove(tx)
+				mem.cache.RemoveTxByKey(types.Tx(tx).Key())
 				mem.logger.Error(err.Error())
 				return
+			}
+
+			bTx, isBlob := types.UnwrapBlobTx(tx)
+			key := types.Tx(tx).Key()
+			if isBlob {
+				key = types.Tx(bTx.Tx).Key()
 			}
 
 			memTx := &mempoolTx{
 				height:    mem.height,
 				gasWanted: r.CheckTx.GasWanted,
 				tx:        tx,
+				key:       key,
 			}
 			memTx.senders.Store(peerID, true)
 			mem.addTx(memTx)
@@ -419,7 +440,7 @@ func (mem *CListMempool) resCbFirstTime(
 
 			if !mem.config.KeepInvalidTxsInCache {
 				// remove from cache (it might be good later)
-				mem.cache.Remove(tx)
+				mem.cache.RemoveTxByKey(types.Tx(tx).Key())
 			}
 		}
 
@@ -604,10 +625,10 @@ func (mem *CListMempool) Update(
 
 		if deliverTxResponses[i].Code == abci.CodeTypeOK {
 			// Add valid committed tx to the cache (if missing).
-			_ = mem.cache.Push(tx)
+			_ = mem.cache.Push(tx.Key())
 		} else if !mem.config.KeepInvalidTxsInCache {
 			// Allow invalid transactions to be resubmitted.
-			mem.cache.Remove(tx)
+			mem.cache.RemoveTxByKey(tx.Key())
 		}
 
 		// Remove committed tx from the mempool.
@@ -673,6 +694,7 @@ type mempoolTx struct {
 	height    int64    // height that this tx had been validated in
 	gasWanted int64    // amount of gas this tx states it will require
 	tx        types.Tx //
+	key       types.TxKey
 
 	// ids of peers who've sent us this tx (as a map for quick lookups).
 	// senders: PeerID -> bool

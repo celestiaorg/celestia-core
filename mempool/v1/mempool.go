@@ -178,6 +178,15 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 	// During the initial phase of CheckTx, we do not need to modify any state.
 	// A transaction will not actually be added to the mempool until it survives
 	// a call to the ABCI CheckTx method and size constraint checks.
+
+	// check if the transaction contains blobs. If so, replace the transaction
+	// with the wrapped one
+	bTx, isBlob := types.UnwrapBlobTx(tx)
+	originalTx := tx
+	if isBlob {
+		tx = bTx.Tx
+	}
+
 	height, err := func() (int64, error) {
 		txmp.mtx.RLock()
 		defer txmp.mtx.RUnlock()
@@ -202,7 +211,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		txKey := tx.Key()
 
 		// Check for the transaction in the cache.
-		if !txmp.cache.Push(tx) {
+		if !txmp.cache.Push(txKey) {
 			// If the cached transaction is also in the pool, record its sender.
 			if elt, ok := txmp.txByKey[txKey]; ok {
 				w := elt.Value.(*WrappedTx)
@@ -219,11 +228,11 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 	// Invoke an ABCI CheckTx for this transaction.
 	rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{Tx: tx})
 	if err != nil {
-		txmp.cache.Remove(tx)
+		txmp.cache.RemoveTxByKey(tx.Key())
 		return err
 	}
 	wtx := &WrappedTx{
-		tx:        tx,
+		tx:        originalTx,
 		hash:      tx.Key(),
 		timestamp: time.Now().UTC(),
 		height:    height,
@@ -265,7 +274,7 @@ func (txmp *TxMempool) removeTxByKey(key types.TxKey) error {
 // The caller must hold txmp.mtx exclusively.
 func (txmp *TxMempool) removeTxByElement(elt *clist.CElement) {
 	w := elt.Value.(*WrappedTx)
-	delete(txmp.txByKey, w.tx.Key())
+	delete(txmp.txByKey, w.hash)
 	delete(txmp.txBySender, w.sender)
 	txmp.txs.Remove(elt)
 	elt.DetachPrev()
@@ -410,9 +419,10 @@ func (txmp *TxMempool) Update(
 		// already present).  Transactions that failed to commit are removed from
 		// the cache unless the operator has explicitly requested we keep them.
 		if deliverTxResponses[i].Code == abci.CodeTypeOK {
-			_ = txmp.cache.Push(tx)
+			_ = txmp.cache.Push(tx.Key())
 		} else if !txmp.config.KeepInvalidTxsInCache {
-			txmp.cache.Remove(tx)
+			fmt.Println("removing from cache update", tx.Key())
+			txmp.cache.RemoveTxByKey(tx.Key())
 		}
 
 		// Regardless of success, remove the transaction from the mempool.
@@ -462,7 +472,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		txmp.logger.Info(
 			"rejected bad transaction",
 			"priority", wtx.Priority(),
-			"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
+			"tx", fmt.Sprintf("%X", wtx.hash),
 			"peer_id", wtx.peers,
 			"code", checkTxRes.Code,
 			"post_check_err", err,
@@ -473,7 +483,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
 		if !txmp.config.KeepInvalidTxsInCache {
-			txmp.cache.Remove(wtx.tx)
+			txmp.cache.RemoveTxByKey(wtx.hash)
 		}
 
 		// If there was a post-check error, record its text in the result for
@@ -496,12 +506,12 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			w := elt.Value.(*WrappedTx)
 			txmp.logger.Debug(
 				"rejected valid incoming transaction; tx already exists for sender",
-				"tx", fmt.Sprintf("%X", w.tx.Hash()),
+				"tx", fmt.Sprintf("%X", w.hash),
 				"sender", sender,
 			)
 			checkTxRes.MempoolError =
 				fmt.Sprintf("rejected valid incoming transaction; tx already exists for sender %q (%X)",
-					sender, w.tx.Hash())
+					sender, w.hash)
 			txmp.metrics.RejectedTxs.Add(1)
 			return
 		}
@@ -528,21 +538,21 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		// those candidates is not enough to make room for the new transaction,
 		// drop the new one.
 		if len(victims) == 0 || victimBytes < wtx.Size() {
-			txmp.cache.Remove(wtx.tx)
+			txmp.cache.RemoveTxByKey(wtx.hash)
 			txmp.logger.Error(
 				"rejected valid incoming transaction; mempool is full",
-				"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
+				"tx", fmt.Sprintf("%X", wtx.hash),
 				"err", err.Error(),
 			)
 			checkTxRes.MempoolError =
 				fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
-					wtx.tx.Hash())
+					wtx.hash)
 			txmp.metrics.RejectedTxs.Add(1)
 			return
 		}
 
 		txmp.logger.Debug("evicting lower-priority transactions",
-			"new_tx", fmt.Sprintf("%X", wtx.tx.Hash()),
+			"new_tx", fmt.Sprintf("%X", wtx.hash),
 			"new_priority", priority,
 		)
 
@@ -564,11 +574,11 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 
 			txmp.logger.Debug(
 				"evicted valid existing transaction; mempool full",
-				"old_tx", fmt.Sprintf("%X", w.tx.Hash()),
+				"old_tx", fmt.Sprintf("%X", w.hash),
 				"old_priority", w.priority,
 			)
 			txmp.removeTxByElement(vic)
-			txmp.cache.Remove(w.tx)
+			txmp.cache.RemoveTxByKey(w.hash)
 			txmp.metrics.EvictedTxs.Add(1)
 
 			// We may not need to evict all the eligible transactions.  Bail out
@@ -590,7 +600,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 	txmp.logger.Debug(
 		"inserted new valid transaction",
 		"priority", wtx.Priority(),
-		"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
+		"tx", fmt.Sprintf("%X", wtx.hash),
 		"height", txmp.height,
 		"num_txs", txmp.Size(),
 	)
@@ -641,14 +651,14 @@ func (txmp *TxMempool) handleRecheckResult(tx types.Tx, checkTxRes *abci.Respons
 	txmp.logger.Debug(
 		"existing transaction no longer valid; failed re-CheckTx callback",
 		"priority", wtx.Priority(),
-		"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
+		"tx", fmt.Sprintf("%X", wtx.hash),
 		"err", err,
 		"code", checkTxRes.Code,
 	)
 	txmp.removeTxByElement(elt)
 	txmp.metrics.FailedTxs.Add(1)
 	if !txmp.config.KeepInvalidTxsInCache {
-		txmp.cache.Remove(wtx.tx)
+		txmp.cache.RemoveTxByKey(wtx.hash)
 	}
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 }
@@ -690,7 +700,7 @@ func (txmp *TxMempool) recheckTransactions() {
 				})
 				if err != nil {
 					txmp.logger.Error("failed to execute CheckTx during recheck",
-						"err", err, "hash", fmt.Sprintf("%x", wtx.tx.Hash()))
+						"err", err, "hash", fmt.Sprintf("%x", wtx.hash))
 				} else {
 					txmp.handleRecheckResult(wtx.tx, rsp)
 				}
@@ -746,11 +756,11 @@ func (txmp *TxMempool) purgeExpiredTxs(blockHeight int64) {
 		w := cur.Value.(*WrappedTx)
 		if txmp.config.TTLNumBlocks > 0 && (blockHeight-w.height) > txmp.config.TTLNumBlocks {
 			txmp.removeTxByElement(cur)
-			txmp.cache.Remove(w.tx)
+			txmp.cache.RemoveTxByKey(w.hash)
 			txmp.metrics.EvictedTxs.Add(1)
 		} else if txmp.config.TTLDuration > 0 && now.Sub(w.timestamp) > txmp.config.TTLDuration {
 			txmp.removeTxByElement(cur)
-			txmp.cache.Remove(w.tx)
+			txmp.cache.RemoveTxByKey(w.hash)
 			txmp.metrics.EvictedTxs.Add(1)
 		}
 		cur = next

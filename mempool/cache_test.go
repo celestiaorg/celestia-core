@@ -21,7 +21,7 @@ func populate(cache TxCache, numTxs int) ([][]byte, error) {
 		}
 
 		txs[i] = txBytes
-		cache.Push(txBytes)
+		cache.Push(types.Tx(txBytes).Key())
 	}
 
 	return txs, nil

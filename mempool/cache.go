@@ -16,12 +16,9 @@ type TxCache interface {
 	// Reset resets the cache to an empty state.
 	Reset()
 
-	// Push adds the given raw transaction to the cache and returns true if it was
+	// Push adds the txKey to the cache and returns true if it was
 	// newly added. Otherwise, it returns false.
-	Push(tx types.Tx) bool
-
-	// Remove removes the given raw transaction from the cache.
-	Remove(tx types.Tx)
+	Push(txKey types.TxKey) bool
 
 	// RemoveTxByKey removes a given transaction hash from the cache.
 	RemoveTxByKey(key types.TxKey)
@@ -64,13 +61,11 @@ func (c *LRUTxCache) Reset() {
 	c.list.Init()
 }
 
-func (c *LRUTxCache) Push(tx types.Tx) bool {
+func (c *LRUTxCache) Push(txKey types.TxKey) bool {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	key := tx.Key()
-
-	moved, ok := c.cacheMap[key]
+	moved, ok := c.cacheMap[txKey]
 	if ok {
 		c.list.MoveToBack(moved)
 		return false
@@ -85,8 +80,8 @@ func (c *LRUTxCache) Push(tx types.Tx) bool {
 		}
 	}
 
-	e := c.list.PushBack(key)
-	c.cacheMap[key] = e
+	e := c.list.PushBack(txKey)
+	c.cacheMap[txKey] = e
 
 	return true
 }
@@ -122,7 +117,7 @@ type NopTxCache struct{}
 var _ TxCache = (*NopTxCache)(nil)
 
 func (NopTxCache) Reset()                        {}
-func (NopTxCache) Push(types.Tx) bool            { return true }
+func (NopTxCache) Push(types.TxKey) bool         { return true }
 func (NopTxCache) Remove(types.Tx)               {}
 func (NopTxCache) RemoveTxByKey(key types.TxKey) {}
 func (NopTxCache) Has(types.Tx) bool             { return false }
