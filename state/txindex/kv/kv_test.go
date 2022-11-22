@@ -96,7 +96,6 @@ func TestMalleatedTxIndex(t *testing.T) {
 				Data: []byte{0},
 				Code: abci.CodeTypeOK, Log: "", Events: nil,
 			},
-			OriginalHash: tt.originalHash,
 		}
 		batch := txindex.NewBatch(1)
 		if err := batch.Add(txResult); err != nil {

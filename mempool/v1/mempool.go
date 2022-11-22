@@ -401,15 +401,9 @@ func (txmp *TxMempool) Update(
 
 	for i, tx := range blockTxs {
 		// The tx hash corresponding to the originating transaction. Set to the
-		// current tx hash initially, but can change in case of a malleated tx.
-		originalKey := tx.Key()
-
-		// Regardless of outcome, remove the transaction from the mempool.
-		if err := txmp.removeTxByKey(originalKey); err != nil {
-			if malleatedTx, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
-				copy(originalKey[:], malleatedTx.OriginalTxHash)
-				_ = txmp.removeTxByKey(originalKey)
-			}
+		// current tx.
+		if malleatedTx, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
+			tx = malleatedTx.Tx
 		}
 
 		// Add successful committed transactions to the cache (if they are not
@@ -418,8 +412,11 @@ func (txmp *TxMempool) Update(
 		if deliverTxResponses[i].Code == abci.CodeTypeOK {
 			_ = txmp.cache.Push(tx)
 		} else if !txmp.config.KeepInvalidTxsInCache {
-			txmp.cache.RemoveTxByKey(originalKey)
+			txmp.cache.Remove(tx)
 		}
+
+		// Regardless of success, remove the transaction from the mempool.
+		_ = txmp.removeTxByKey(tx.Key())
 	}
 
 	txmp.purgeExpiredTxs(blockHeight)

@@ -130,9 +130,9 @@ message EvidenceList {
 // to a namespace_id and is encoded into shares based on the format specified by
 // share_version.
 message Blob {
-  bytes namespace_id           = 1;
-  bytes data                   = 2;
-  uint32 share_version         = 3;
+  bytes  namespace_id  = 1;
+  bytes  data          = 2;
+  uint32 share_version = 3;
 }
 
 // DataAvailabilityHeader contains the row and column roots of the erasure
@@ -223,9 +223,16 @@ message TxProof {
 // transaction. This allows for tendermint to track malleated and original
 // transactions
 message MalleatedTx {
-  bytes  original_tx_hash = 1;
-  bytes  tx               = 2;
-  uint32 share_index      = 3;
+  bytes  tx          = 35;
+  uint32 share_index = 36;
+}
+
+// BlobTx wraps an encoded sdk.Tx with a second field to contain a blob of data.
+// The raw bytes of the blob are not signed over, instead we verify the blob
+// using the MsgPayForBlob that is signed over in the encoded sdk.Tx.
+message BlobTx {
+  bytes         tx    = 33;  // we use arbitrarily large field numbers here to reduce the probability of field collisions in protobuf
+  repeated Blob blobs = 34;
 }
 
 // Proof represents proof of a namespace.ID in an NMT.

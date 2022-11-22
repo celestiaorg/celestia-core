@@ -208,24 +208,16 @@ func UnwrapMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool
 	if err != nil {
 		return malleatedTx, false
 	}
-	// this check will fail to catch unwanted types should those unmarshalled
-	// types happen to have a hash sized slice of bytes in the same field number
-	// as originalTxHash. TODO(evan): either fix this, or better yet use a different
-	// mechanism
-	if len(malleatedTx.OriginalTxHash) != tmhash.Size {
-		return malleatedTx, false
-	}
 	return malleatedTx, true
 }
 
 // WrapMalleatedTx creates a wrapped Tx that includes the original transaction's hash
 // so that it can be easily removed from the mempool. note: must be unwrapped to
 // be a viable sdk.Tx
-func WrapMalleatedTx(originalHash []byte, shareIndex uint32, malleated Tx) (Tx, error) {
+func WrapMalleatedTx(shareIndex uint32, malleated Tx) (Tx, error) {
 	wTx := tmproto.MalleatedTx{
-		OriginalTxHash: originalHash,
-		Tx:             malleated,
-		ShareIndex:     shareIndex,
+		Tx:         malleated,
+		ShareIndex: shareIndex,
 	}
 	return proto.Marshal(&wTx)
 }

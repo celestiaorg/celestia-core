@@ -1,7 +1,6 @@
 package types
 
 import (
-	"crypto/sha256"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -82,13 +81,11 @@ func TestUnwrapMalleatedTx(t *testing.T) {
 	_, ok = UnwrapMalleatedTx(rawBlock)
 	require.False(t, ok)
 
-	pHash := sha256.Sum256(rawBlock)
-	MalleatedTx, err := WrapMalleatedTx(pHash[:], 0, rawBlock)
+	MalleatedTx, err := WrapMalleatedTx(0, rawBlock)
 	require.NoError(t, err)
 
 	// finally, ensure that the unwrapped bytes are identical to the input
 	malleated, ok := UnwrapMalleatedTx(MalleatedTx)
 	require.True(t, ok)
-	assert.Equal(t, 32, len(malleated.OriginalTxHash))
 	require.Equal(t, rawBlock, malleated.Tx)
 }

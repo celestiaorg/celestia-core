@@ -2,7 +2,6 @@ package v1
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -658,10 +657,9 @@ func TestMalleatedTxRemoval(t *testing.T) {
 	txmp := setup(t, 500)
 	originalTx := []byte{1, 2, 3, 4}
 	malleatedTx := []byte{1, 2}
-	originalHash := sha256.Sum256(originalTx)
 
 	// create the wrapped child transaction
-	wTx, err := types.WrapMalleatedTx(originalHash[:], 0, malleatedTx)
+	wTx, err := types.WrapMalleatedTx(0, malleatedTx)
 	require.NoError(t, err)
 
 	// add the parent transaction to the mempool
