@@ -217,9 +217,9 @@ func UnwrapMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool
 // and the share index of the start of its blob.
 //
 // NOTE: must be unwrapped to be a viable sdk.Tx
-func WrapMalleatedTx(shareIndex uint32, malleated Tx) (Tx, error) {
+func WrapMalleatedTx(shareIndex uint32, tx Tx) (Tx, error) {
 	wTx := tmproto.MalleatedTx{
-		Tx:         malleated,
+		Tx:         tx,
 		ShareIndex: shareIndex,
 		TypeId:     consts.ProtoMalleatedTxTypeID,
 	}
