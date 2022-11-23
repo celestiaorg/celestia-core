@@ -257,7 +257,7 @@ func (mem *CListMempool) CheckTx(
 		return mempool.ErrTxInCache
 	}
 
-	// we send the originaltx (which includes any potential blobs) to be checked by the application
+	// we send the originalTx (which includes any potential blobs) to be checked by the application
 	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: originalTx})
 	reqRes.SetCallback(mem.reqResCb(originalTx, txInfo.SenderID, txInfo.SenderP2PID, cb))
 

@@ -194,12 +194,12 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 }
 
 // UnwrapMalleatedTx attempts to unmarshal the provided transaction into a
-// malleated transaction wrapper, if this can be done, then it returns true. A
-// malleated transaction is a normal transaction that has been wrapped with meta
-// data.
+// malleated transaction. It returns true if the provided transaction is a
+// malleated transaction. A malleated transaction is a transaction that contains
+// a MsgPayForBlob that has been wrapped with a share index.
 //
 // NOTE: protobuf sometimes does not throw an error if the transaction passed is
-// not a tmproto.MalleatedTx, since the schema for PayForMessage is kept in the
+// not a tmproto.MalleatedTx, since the schema for PayForBlob is kept in the
 // app, we cannot perform further checks without creating an import cycle.
 func UnwrapMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool) {
 	// attempt to unmarshal into a a malleated transaction

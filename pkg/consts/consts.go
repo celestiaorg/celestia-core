@@ -16,7 +16,7 @@ const (
 	// decoding binaries that are not actually BlobTxs.
 	ProtoBlobTxTypeID = "BLOB"
 
-	// ProtoBlobTxTypeID is included in each encoded MalleatedTx to help prevent
+	// ProtoMalleatedTxTypeID is included in each encoded MalleatedTx to help prevent
 	// decoding binaries that are not actually MalleatedTxs.
 	ProtoMalleatedTxTypeID = "MLTD"
 )

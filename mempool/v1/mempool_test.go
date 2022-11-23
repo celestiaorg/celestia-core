@@ -659,7 +659,7 @@ func TestMalleatedTxRemoval(t *testing.T) {
 	originalTx := []byte{1, 2, 3, 4}
 	malleatedTx := []byte{1, 2}
 
-	// create the wrapped child transaction
+	// create the wrapped transaction
 	wTx, err := types.WrapMalleatedTx(0, malleatedTx)
 	require.NoError(t, err)
 
