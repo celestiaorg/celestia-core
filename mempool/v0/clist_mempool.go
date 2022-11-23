@@ -617,8 +617,8 @@ func (mem *CListMempool) Update(
 	}
 
 	for i, tx := range txs {
-		// The tx hash corresponding to the originating transaction. Set to the
-		// current tx.
+		// check to see if the transaction has been malleated, if so, we need to
+		// remove the metadata that wraps the tx by unwrapping it
 		if malleatedTx, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
 			tx = malleatedTx.Tx
 		}
