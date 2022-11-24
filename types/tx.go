@@ -288,7 +288,8 @@ func WrapMalleatedTx(originalHash []byte, shareIndex uint32, malleated Tx) (Tx, 
 	return proto.Marshal(&wTx)
 }
 
-// Validate verifies the proof. It returns nil if the proof is valid.
+// Validate runs basic validations on the proof then verifies if it is consistent.
+// It returns nil if the proof is valid.
 // Otherwise, it returns a sensible error.
 func (sp SharesProof) Validate() error {
 	numberOfSharesInProofs := int32(0)
