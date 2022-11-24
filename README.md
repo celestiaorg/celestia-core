@@ -10,7 +10,6 @@
 celestia-core is a fork of [tendermint/tendermint](https://github.com/tendermint/tendermint) with the following changes:
 
 1. Early adoption of the ABCI++ methods: `PrepareProposal` and `ProcessProposal` because they haven't yet landed in a Tendermint release.
-1. Modifications to how `DataHash` in the block header is determined. In Tendermint, `DataHash` is based on the transactions included in a block. In celestia-core, `DataHash` was modified to include the Merkle root of the row and column roots of the erasure coded data square. See [ADR 008](https://github.com/celestiaorg/celestia-core/blob/v0.34.x-celestia/docs/celestia-architecture/adr-008-updating-to-tendermint-v0.35.x.md?plain=1#L20) for the motivation or [./pkg/da/data_availability_header.go](./pkg/da/data_availability_header.go) for the implementation.
 
 See [./docs/celestia-architecture](./docs/celestia-architecture/) for architecture decision records (ADRs) on Celestia modifications.
 
