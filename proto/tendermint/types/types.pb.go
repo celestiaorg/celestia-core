@@ -1536,9 +1536,9 @@ func (m *MalleatedTx) GetTypeId() string {
 	return ""
 }
 
-// BlobTx wraps an encoded sdk.Tx with a second field to contain a blob of data.
-// The raw bytes of the blob are not signed over, instead we verify the blob
-// using the MsgPayForBlob that is signed over in the encoded sdk.Tx.
+// BlobTx wraps an encoded sdk.Tx with a second field to contain blobs of data.
+// The raw bytes of the blobs are not signed over, instead we verify each blob
+// using the relevant MsgPayForBlobs that is signed over in the encoded sdk.Tx.
 type BlobTx struct {
 	Tx     []byte  `protobuf:"bytes,1,opt,name=tx,proto3" json:"tx,omitempty"`
 	Blobs  []*Blob `protobuf:"bytes,2,rep,name=blobs,proto3" json:"blobs,omitempty"`
