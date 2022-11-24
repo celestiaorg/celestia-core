@@ -312,10 +312,11 @@ func (sp SharesProof) Validate() error {
 		if (proof.End - proof.Start) <= 0 {
 			return errors.New("proof total must be positive")
 		}
-		valid := sp.VerifyProof()
-		if !valid {
-			return errors.New("proof is not internally consistent")
-		}
+	}
+
+	valid := sp.VerifyProof()
+	if !valid {
+		return errors.New("proof is not internally consistent")
 	}
 
 	if err := sp.RowsProof.Validate(); err != nil {
