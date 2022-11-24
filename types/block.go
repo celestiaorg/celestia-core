@@ -1004,7 +1004,7 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 
 // Data contains all the available Data of the block.
 // Data with reserved namespaces (Txs, IntermediateStateRoots, Evidence) and
-// Celestia application specific Messages.
+// Celestia application specific Blobs.
 type Data struct {
 	// Txs that will be applied by state @ block.Height+1.
 	// NOTE: not all txs here are valid.  We're just agreeing on the order first.
@@ -1068,7 +1068,7 @@ type Blob struct {
 	// namespace it will use in the namespaced Merkle tree.
 	NamespaceID namespace.ID
 
-	// Data is the actual data contained in the message
+	// Data is the actual data of the blob.
 	// (e.g. a block of a virtual sidechain).
 	Data []byte
 

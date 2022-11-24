@@ -855,7 +855,7 @@ func TestBlockIDEquals(t *testing.T) {
 	assert.False(t, blockIDEmpty.Equals(blockIDDifferent))
 }
 
-func TestMessagesIsSorted(t *testing.T) {
+func TestBlobsByNamespaceIsSorted(t *testing.T) {
 	sortedBlobs := []Blob{
 		{
 			NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
