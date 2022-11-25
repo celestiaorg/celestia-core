@@ -1475,15 +1475,14 @@ func (m *TxProof) GetProofs() []*NMTProof {
 
 // SharesProof represents an NMT proof for a set of shares to the data root.
 type SharesProof struct {
-	// data raw shares that are proven.
+	// data are the raw shares that are proven.
 	Data [][]byte `protobuf:"bytes,1,rep,name=data,proto3" json:"data,omitempty"`
 	// shares_proof NMT proofs for the raw shares. Could be more than one
 	// if the shares span more than one row.
 	SharesProof []*NMTProof `protobuf:"bytes,2,rep,name=shares_proof,json=sharesProof,proto3" json:"shares_proof,omitempty"`
 	// namespace_id namespaceID of the shares.
 	NamespaceId []byte `protobuf:"bytes,3,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
-	// rows_proof binary merkle proofs, to the data root, of the rows
-	// containing the raw shares.
+	// rows_proof are binary Merkle proofs of the rows containing the raw shares to the data root.
 	RowsProof *RowsProof `protobuf:"bytes,4,opt,name=rows_proof,json=rowsProof,proto3" json:"rows_proof,omitempty"`
 }
 
