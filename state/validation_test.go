@@ -88,7 +88,7 @@ func TestValidateBlockHeader(t *testing.T) {
 			A good block passes
 		*/
 		var err error
-		state, _, lastCommit, err = makeAndCommitGoodBlock(state, height, lastCommit, proposerAddr, blockExec, privVals)
+		state, _, lastCommit, err = makeAndCommitGoodBlock(state, height, lastCommit, proposerAddr, blockExec, privVals, nil)
 		require.NoError(t, err, "height %d", height)
 	}
 
@@ -188,6 +188,7 @@ func TestValidateBlockCommit(t *testing.T) {
 			proposerAddr,
 			blockExec,
 			privVals,
+			nil,
 		)
 		require.NoError(t, err, "height %d", height)
 
@@ -239,6 +240,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 
 	state, stateDB, privVals := makeState(4, 1)
 	stateStore := sm.NewStore(stateDB)
+	defaultEvidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	evpool := &mocks.EvidencePool{}
 	evpool.On("CheckEvidence", mock.AnythingOfType("types.EvidenceList")).Return(nil)
@@ -276,7 +278,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 				height,
 				factory.MakeData(factory.MakeTenTxs(height), nil),
 				lastCommit,
-				nil,
+				evidence,
 				proposerAddr,
 			)
 			err := blockExec.ValidateBlock(state, block)
@@ -284,6 +286,22 @@ func TestValidateBlockEvidence(t *testing.T) {
 				_, ok := err.(*types.ErrEvidenceOverflow)
 				require.True(t, ok, "expected error to be of type ErrEvidenceOverflow at height %d but got %v", height, err)
 			}
+		}
+
+		/*
+			A good block with several pieces of good evidence passes
+		*/
+		evidence := make([]types.Evidence, 0)
+		var currentBytes int64
+		// precisely the amount of allowed evidence
+		for {
+			newEv := types.NewMockDuplicateVoteEvidenceWithValidator(height, defaultEvidenceTime,
+				privVals[proposerAddr.String()], chainID)
+			currentBytes += int64(len(newEv.Bytes()))
+			if currentBytes >= maxBytesEvidence {
+				break
+			}
+			evidence = append(evidence, newEv)
 		}
 
 		var err error
@@ -294,6 +312,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 			proposerAddr,
 			blockExec,
 			privVals,
+			evidence,
 		)
 		require.NoError(t, err, "height %d", height)
 	}
