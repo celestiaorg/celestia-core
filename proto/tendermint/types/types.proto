@@ -221,7 +221,7 @@ message TxProof {
 
 // SharesProof represents an NMT proof for a set of shares to the data root.
 message SharesProof {
-  // data raw shares that are proven.
+  // data are the raw shares that are proven.
   repeated bytes data = 1;
   // shares_proof NMT proofs for the raw shares. Could be more than one
   // if the shares span more than one row.
