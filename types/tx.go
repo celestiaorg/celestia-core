@@ -291,6 +291,7 @@ func WrapMalleatedTx(originalHash []byte, shareIndex uint32, malleated Tx) (Tx, 
 // Validate runs basic validations on the proof then verifies if it is consistent.
 // It returns nil if the proof is valid.
 // Otherwise, it returns a sensible error.
+// Note: these proofs are tested on the app side.
 func (sp SharesProof) Validate() error {
 	numberOfSharesInProofs := int32(0)
 	for _, proof := range sp.SharesProofs {
