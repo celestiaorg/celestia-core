@@ -228,8 +228,7 @@ message SharesProof {
   repeated NMTProof shares_proof = 2;
   // namespace_id namespaceID of the shares.
   bytes namespace_id = 3;
-  // rows_proof binary merkle proofs, to the data root, of the rows
-  // containing the raw shares.
+  // rows_proof are binary Merkle proofs of the rows containing the raw shares to the data root.
   RowsProof rows_proof = 4;
 }
 
