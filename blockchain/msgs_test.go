@@ -81,7 +81,7 @@ func TestBcStatusResponseMessageValidateBasic(t *testing.T) {
 
 // nolint:lll // ignore line length in tests
 func TestBlockchainMessageVectors(t *testing.T) {
-	block := types.MakeBlock(int64(3), factory.MakeData([]types.Tx{types.Tx("Hello World")}, nil, nil), nil)
+	block := types.MakeBlock(int64(3), factory.MakeData([]types.Tx{types.Tx("Hello World")}, nil), nil, nil)
 	block.Version.Block = 11 // overwrite updated protocol version
 
 	bpb, err := block.ToProto()

@@ -104,13 +104,6 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	evidence, evSize := blockExec.evpool.PendingEvidence(state.ConsensusParams.Evidence.MaxBytes)
 
-	evdData := types.EvidenceData{Evidence: evidence}
-	pevdData, err := evdData.ToProto()
-	if err != nil {
-		// todo(evan): see if we can get rid of this panic
-		panic(err)
-	}
-
 	// Fetch a limited amount of valid txs
 	maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
 
@@ -129,7 +122,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	preparedProposal, err := blockExec.proxyApp.PrepareProposalSync(
 		abci.RequestPrepareProposal{
-			BlockData:     &tmproto.Data{Txs: txs.ToSliceOfBytes(), Evidence: *pevdData},
+			BlockData:     &tmproto.Data{Txs: txs.ToSliceOfBytes()},
 			BlockDataSize: maxDataBytes},
 	)
 	if err != nil {
@@ -163,6 +156,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		height,
 		newData,
 		commit,
+		evidence,
 		proposerAddr,
 	)
 }
