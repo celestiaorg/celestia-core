@@ -20,4 +20,6 @@
 
 ### IMPROVEMENTS
 
+- [consensus] \#9760 Save peer LastCommit correctly to achieve 50% reduction in gossiped precommits. (@williambanfield)
+
 ### BUG FIXES
