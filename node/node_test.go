@@ -313,9 +313,7 @@ func TestCreateProposalBlock(t *testing.T) {
 
 	// check that the part set does not exceed the maximum block size
 	partSet := block.MakePartSet(partSize)
-	// TODO(ismail): properly fix this test
-	// https://github.com/tendermint/tendermint/issues/77
-	assert.Less(t, partSet.ByteSize(), int64(maxBytes)*2)
+	assert.Less(t, partSet.ByteSize(), int64(maxBytes))
 
 	partSetFromHeader := types.NewPartSetFromHeader(partSet.Header())
 	for partSetFromHeader.Count() < partSetFromHeader.Total() {
