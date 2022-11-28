@@ -114,11 +114,6 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// Tx -> Txs, Message
 	// https://github.com/tendermint/tendermint/issues/77
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
-	l := len(txs)
-	bzs := make([][]byte, l)
-	for i := 0; i < l; i++ {
-		bzs[i] = txs[i]
-	}
 
 	preparedProposal, err := blockExec.proxyApp.PrepareProposalSync(
 		abci.RequestPrepareProposal{
@@ -137,11 +132,11 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		panic(err)
 	}
 	rawNewData := preparedProposal.GetBlockData()
-	var txSize int
+	var blockDataSize int
 	for _, tx := range rawNewData.GetTxs() {
-		txSize += len(tx)
+		blockDataSize += len(tx)
 
-		if maxDataBytes < int64(txSize) {
+		if maxDataBytes < int64(blockDataSize) {
 			panic("block data exceeds max amount of allowed bytes")
 		}
 	}
