@@ -557,8 +557,7 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 
 		txs = append(txs, memTx.tx)
 
-		// we subtract 4 here to account for extra bytes we add to the additional data fields
-		dataSize := types.ComputeProtoSizeForTxs([]types.Tx{memTx.tx}) - 4
+		dataSize := types.ComputeProtoSizeForTxs([]types.Tx{memTx.tx})
 
 		// Check total size requirement
 		if maxBytes > -1 && runningSize+dataSize > maxBytes {

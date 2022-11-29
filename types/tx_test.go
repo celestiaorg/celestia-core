@@ -53,9 +53,6 @@ func TestUnwrapMalleatedTx(t *testing.T) {
 
 	data := Data{
 		Txs: []Tx{tx},
-		Evidence: EvidenceData{
-			Evidence: nil,
-		},
 		Blobs: []Blob{
 			{
 				NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
@@ -69,6 +66,7 @@ func TestUnwrapMalleatedTx(t *testing.T) {
 		1,
 		data,
 		&Commit{},
+		[]Evidence{},
 	)
 
 	protoB, err := randomBlock.ToProto()
