@@ -194,7 +194,9 @@ func (mem *CListMempool) TxsWaitChan() <-chan struct{} {
 
 // It blocks if we're waiting on Update() or Reap().
 // cb: A callback from the CheckTx command.
-//     It gets called from another goroutine.
+//
+//	It gets called from another goroutine.
+//
 // CONTRACT: Either cb will get called, or err returned.
 //
 // Safe for concurrent use by multiple goroutines.
@@ -310,7 +312,7 @@ func (mem *CListMempool) reqResCb(
 }
 
 // Called from:
-//  - resCbFirstTime (lock not held) if tx is valid
+//   - resCbFirstTime (lock not held) if tx is valid
 func (mem *CListMempool) addTx(memTx *mempoolTx) {
 	e := mem.txs.PushBack(memTx)
 	mem.txsMap.Store(memTx.tx.Key(), e)
@@ -319,8 +321,8 @@ func (mem *CListMempool) addTx(memTx *mempoolTx) {
 }
 
 // Called from:
-//  - Update (lock held) if tx was committed
-// 	- resCbRecheck (lock not held) if tx was invalidated
+//   - Update (lock held) if tx was committed
+//   - resCbRecheck (lock not held) if tx was invalidated
 func (mem *CListMempool) removeTx(tx types.Tx, elem *clist.CElement, removeFromCache bool) {
 	mem.txs.Remove(elem)
 	elem.DetachPrev()
@@ -534,8 +536,7 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 
 		txs = append(txs, memTx.tx)
 
-		// we subtract 4 here to account for extra bytes we add to the additional data fields
-		dataSize := types.ComputeProtoSizeForTxs([]types.Tx{memTx.tx}) - 4
+		dataSize := types.ComputeProtoSizeForTxs([]types.Tx{memTx.tx})
 
 		// Check total size requirement
 		if maxBytes > -1 && runningSize+dataSize > maxBytes {
