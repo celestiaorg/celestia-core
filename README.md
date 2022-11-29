@@ -10,6 +10,8 @@
 celestia-core is a fork of [tendermint/tendermint](https://github.com/tendermint/tendermint) with the following changes:
 
 1. Early adoption of the ABCI++ methods: `PrepareProposal` and `ProcessProposal` because they haven't yet landed in a Tendermint release.
+1. Modifications to how `DataHash` in the block header is determined. In Tendermint, `DataHash` is based on the transactions included in a block. In Celestia, block data (including transactions) are erasure coded into a data square to enable data availability sampling. In order for the header to contain a commitment to this data square, `DataHash` was modified to be the Merkle root of the row and column roots of the erasure coded data square. See [ADR 008](https://github.com/celestiaorg/celestia-core/blob/v0.34.x-celestia/docs/celestia-architecture/adr-008-updating-to-tendermint-v0.35.x.md?plain=1#L20) for the motivation or [celestia-app/pkg/da/data_availability_header.go](https://github.com/celestiaorg/celestia-app/blob/2f89956b22c4c3cfdec19b3b8601095af6f69804/pkg/da/data_availability_header.go) for the implementation. Note on the implementation: celestia-app computes the hash in prepare_proposal and returns it to Tendermint via [`blockData.Hash`](https://github.com/celestiaorg/celestia-app/blob/5bbdac2d3f46662a34b2111602b8f964d6e6fba5/app/prepare_proposal.go#L78) so a modification to celestia-core isn't strictly necessary but [comments](https://github.com/celestiaorg/celestia-core/blob/2ec23f804691afc196d0104616e6c880d4c1ca41/types/block.go#L1041-L1042) were added.
+
 
 See [./docs/celestia-architecture](./docs/celestia-architecture/) for architecture decision records (ADRs) on Celestia modifications.
 
@@ -51,7 +53,7 @@ This repo intends on preserving the minimal possible diff with [tendermint/tende
 1. [Install Go](https://go.dev/doc/install) 1.17+
 2. Fork this repo
 3. Clone your fork
-4. Find an issue to work on (see [good first issues](https://github.com/celestiaorg/celestia-core/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)) 
+4. Find an issue to work on (see [good first issues](https://github.com/celestiaorg/celestia-core/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22))
 5. Work on a change in a branch on your fork
 6. When your change is ready, push your branch and create a PR that targets this repo
 
