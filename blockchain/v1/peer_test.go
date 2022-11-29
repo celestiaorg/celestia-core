@@ -277,5 +277,5 @@ func checkByStoppingPeerTimer(t *testing.T, peer *BpPeer, running bool) {
 }
 
 func makeSmallBlock(height int) *types.Block {
-	return types.MakeBlock(int64(height), factory.MakeDataFromTxs([]types.Tx{types.Tx("foo")}), nil)
+	return types.MakeBlock(int64(height), factory.MakeDataFromTxs([]types.Tx{types.Tx("foo")}), nil, nil)
 }

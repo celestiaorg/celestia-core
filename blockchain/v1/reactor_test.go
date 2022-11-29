@@ -361,6 +361,7 @@ func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Bl
 		height,
 		factory.MakeDataFromTxs(makeTxs(height)),
 		lastCommit,
+		nil,
 		state.Validators.GetProposer().Address,
 	)
 	return block

@@ -47,7 +47,8 @@ type Block struct {
 
 	Header     `json:"header"`
 	Data       `json:"data"`
-	LastCommit *Commit `json:"last_commit"`
+	Evidence   EvidenceData `json:"evidence"`
+	LastCommit *Commit      `json:"last_commit"`
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data. It
@@ -227,7 +228,7 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 	if err != nil {
 		return nil, err
 	}
-	pb.Data.Evidence = *protoEvidence
+	pb.Evidence = *protoEvidence
 
 	return pb, nil
 }
@@ -250,7 +251,7 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 		return nil, err
 	}
 	b.Data = data
-	if err := b.Evidence.FromProto(&bp.Data.Evidence); err != nil {
+	if err := b.Evidence.FromProto(&bp.Evidence); err != nil {
 		return nil, err
 	}
 
@@ -316,13 +317,15 @@ func MaxDataBytesNoEvidence(maxBytes int64, valsCount int) int64 {
 func MakeBlock(
 	height int64,
 	data Data,
-	lastCommit *Commit) *Block {
+	lastCommit *Commit,
+	evidence []Evidence) *Block {
 	block := &Block{
 		Header: Header{
 			Version: tmversion.Consensus{Block: version.BlockProtocol, App: 0},
 			Height:  height,
 		},
 		Data:       data,
+		Evidence:   EvidenceData{Evidence: evidence},
 		LastCommit: lastCommit,
 	}
 	block.fillHeader()
@@ -1011,8 +1014,6 @@ type Data struct {
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
 
-	Evidence EvidenceData `json:"evidence"`
-
 	// The blobs included in this block.
 	Blobs []Blob `json:"blobs"`
 
@@ -1132,13 +1133,6 @@ func (data *Data) ToProto() tmproto.Data {
 		tp.Txs = txBzs
 	}
 
-	pevd, err := data.Evidence.ToProto()
-	if err != nil {
-		// TODO(evan): fix
-		panic(err)
-	}
-	tp.Evidence = *pevd
-
 	protoBlobs := make([]tmproto.Blob, len(data.Blobs))
 	for i, b := range data.Blobs {
 		protoBlobs[i] = tmproto.Blob{
@@ -1181,15 +1175,6 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		blobs[i] = Blob{NamespaceID: m.NamespaceId, Data: m.Data, ShareVersion: uint8(m.ShareVersion)}
 	}
 	data.Blobs = blobs
-
-	evdData := new(EvidenceData)
-	err := evdData.FromProto(&dp.Evidence)
-	if err != nil {
-		return Data{}, err
-	}
-	if evdData != nil {
-		data.Evidence = *evdData
-	}
 	data.SquareSize = dp.SquareSize
 	data.hash = dp.Hash
 
