@@ -287,6 +287,7 @@ func WrapMalleatedTx(originalHash []byte, shareIndex uint32, malleated Tx) (Tx, 
 
 // Validate runs basic validations on the proof then verifies if it is consistent.
 // It returns nil if the proof is valid.
+// The `root` is  the block data root that the shares, to be proven, belong to.
 // Otherwise, it returns a sensible error.
 // Note: these proofs are tested on the app side.
 func (sp SharesProof) Validate(root []byte) error {
