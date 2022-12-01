@@ -180,7 +180,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 	// a call to the ABCI CheckTx method and size constraint checks.
 
 	// check if the transaction contains blobs. If so, replace the transaction
-	// with the wrapped one
+	// with the unwrapped one
 	bTx, isBlob := types.UnwrapBlobTx(tx)
 	originalTx := tx
 	if isBlob {
