@@ -110,7 +110,6 @@ type TxProof struct {
 type RowsProof struct {
 	RowsRoots []tmbytes.HexBytes `json:"row_root"`
 	Proofs    []*merkle.Proof    `json:"proof"`
-	Root      []byte             `json:"root"`
 	StartRow  uint32             `json:"starting_row"`
 	EndRow    uint32             `json:"ending_row"`
 }
@@ -191,7 +190,6 @@ func (sp SharesProof) ToProto() tmproto.SharesProof {
 		RowsProof: &tmproto.RowsProof{
 			RowsRoots: rowsRoots,
 			Proofs:    rowsProofs,
-			Root:      sp.RowsProof.Root,
 			StartRow:  sp.RowsProof.StartRow,
 			EndRow:    sp.RowsProof.EndRow,
 		},
@@ -233,7 +231,6 @@ func SharesProofFromProto(pb tmproto.SharesProof) (SharesProof, error) {
 		RowsProof: RowsProof{
 			RowsRoots: rowsRoots,
 			Proofs:    rowsProofs,
-			Root:      pb.RowsProof.Root,
 			StartRow:  pb.RowsProof.StartRow,
 			EndRow:    pb.RowsProof.EndRow,
 		},
@@ -292,7 +289,7 @@ func WrapMalleatedTx(originalHash []byte, shareIndex uint32, malleated Tx) (Tx, 
 // It returns nil if the proof is valid.
 // Otherwise, it returns a sensible error.
 // Note: these proofs are tested on the app side.
-func (sp SharesProof) Validate() error {
+func (sp SharesProof) Validate(root []byte) error {
 	numberOfSharesInProofs := int32(0)
 	for _, proof := range sp.SharesProofs {
 		// the range is not inclusive from the left.
@@ -320,7 +317,7 @@ func (sp SharesProof) Validate() error {
 		return errors.New("proof is not internally consistent")
 	}
 
-	if err := sp.RowsProof.Validate(); err != nil {
+	if err := sp.RowsProof.Validate(root); err != nil {
 		return err
 	}
 
@@ -371,7 +368,7 @@ func (tp TxProof) ToProto() tmproto.TxProof {
 
 // Validate verifies the proof. It returns nil if the proof is valid.
 // Otherwise, it returns a sensible error.
-func (rp RowsProof) Validate() error {
+func (rp RowsProof) Validate(root []byte) error {
 	if int(rp.EndRow-rp.StartRow+1) != len(rp.RowsRoots) {
 		return errors.New(
 			"invalid number of row roots, or rows range. they all must be the same to verify the proof",
@@ -382,16 +379,16 @@ func (rp RowsProof) Validate() error {
 			"invalid number of row roots, or proofs. they all must be the same to verify the proof",
 		)
 	}
-	if !rp.VerifyProof() {
+	if !rp.VerifyProof(root) {
 		return errors.New("proofs verification failed")
 	}
 
 	return nil
 }
 
-func (rp RowsProof) VerifyProof() bool {
+func (rp RowsProof) VerifyProof(root []byte) bool {
 	for i, proof := range rp.Proofs {
-		err := proof.Verify(rp.Root, rp.RowsRoots[i])
+		err := proof.Verify(root, rp.RowsRoots[i])
 		if err != nil {
 			return false
 		}
