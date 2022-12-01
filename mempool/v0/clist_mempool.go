@@ -237,7 +237,7 @@ func (mem *CListMempool) CheckTx(
 	}
 
 	originalTx := tx
-	bTx, isBlob := types.UnwrapBlobTx(tx)
+	bTx, isBlob := types.UnmarshalBlobTx(tx)
 	if isBlob {
 		tx = bTx.Tx
 	}
@@ -405,7 +405,7 @@ func (mem *CListMempool) resCbFirstTime(
 				return
 			}
 
-			bTx, isBlob := types.UnwrapBlobTx(tx)
+			bTx, isBlob := types.UnmarshalBlobTx(tx)
 			key := types.Tx(tx).Key()
 			if isBlob {
 				key = types.Tx(bTx.Tx).Key()

@@ -181,7 +181,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 
 	// check if the transaction contains blobs. If so, replace the transaction
 	// with the unwrapped one
-	bTx, isBlob := types.UnwrapBlobTx(tx)
+	bTx, isBlob := types.UnmarshalBlobTx(tx)
 	originalTx := tx
 	if isBlob {
 		tx = bTx.Tx
