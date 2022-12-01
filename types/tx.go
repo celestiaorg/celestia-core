@@ -226,9 +226,9 @@ func WrapMalleatedTx(shareIndex uint32, tx Tx) (Tx, error) {
 	return proto.Marshal(&wTx)
 }
 
-// UnwrapBlobTx attempts to unmarshal a transaction into blob transaction. If an
+// UnmarshalBlobTx attempts to unmarshal a transaction into blob transaction. If an
 // error is thrown, false is returned.
-func UnwrapBlobTx(tx Tx) (bTx tmproto.BlobTx, isBlob bool) {
+func UnmarshalBlobTx(tx Tx) (bTx tmproto.BlobTx, isBlob bool) {
 	err := bTx.Unmarshal(tx)
 	if err != nil {
 		return tmproto.BlobTx{}, false

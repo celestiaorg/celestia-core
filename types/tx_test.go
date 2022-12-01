@@ -89,7 +89,7 @@ func TestUnwrapMalleatedTx(t *testing.T) {
 	require.Equal(t, rawBlock, malleated.Tx)
 }
 
-func TestWrapUnwrapBlobTx(t *testing.T) {
+func TestWrapUnmarshalBlobTx(t *testing.T) {
 	tx := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 	blob := tmproto.Blob{
 		NamespaceId:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
@@ -100,7 +100,7 @@ func TestWrapUnwrapBlobTx(t *testing.T) {
 	bTx, err := WrapBlobTx(tx, &blob)
 	require.NoError(t, err)
 
-	resTx, isBlob := UnwrapBlobTx(bTx)
+	resTx, isBlob := UnmarshalBlobTx(bTx)
 	require.True(t, isBlob)
 
 	assert.Equal(t, tx, resTx.Tx)
@@ -109,8 +109,8 @@ func TestWrapUnwrapBlobTx(t *testing.T) {
 }
 
 // todo: add fuzzing
-func TestUnwrapBlobTxFalsePositive(t *testing.T) {
+func TestUnmarshalBlobTxFalsePositive(t *testing.T) {
 	tx := []byte("sender-193-0=D16B687628035716B1DA53BE1491A1B3D4CEA3AB=1025")
-	_, isBlob := UnwrapBlobTx(tx)
+	_, isBlob := UnmarshalBlobTx(tx)
 	require.False(t, isBlob)
 }
