@@ -89,40 +89,10 @@ message Data {
   repeated bytes txs = 1;
 
   // field number 2 is reserved for intermediate state roots
-  EvidenceList  evidence    = 3 [(gogoproto.nullable) = false];
+  // field number 3 was previously used for evidence
   repeated Blob blobs       = 4 [(gogoproto.nullable) = false];
   uint64        square_size = 5;
   bytes         hash        = 6;
-}
-
-// DuplicateVoteEvidence contains evidence of a validator signed two conflicting votes.
-message DuplicateVoteEvidence {
-  tendermint.types.Vote     vote_a             = 1;
-  tendermint.types.Vote     vote_b             = 2;
-  int64                     total_voting_power = 3;
-  int64                     validator_power    = 4;
-  google.protobuf.Timestamp timestamp          = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-}
-
-// LightClientAttackEvidence contains evidence of a set of validators attempting to mislead a light client.
-message LightClientAttackEvidence {
-  tendermint.types.LightBlock conflicting_block            = 1;
-  int64                       common_height                = 2;
-  repeated tendermint.types.Validator byzantine_validators = 3;
-  int64                               total_voting_power   = 4;
-  google.protobuf.Timestamp           timestamp            = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-}
-
-message Evidence {
-  oneof sum {
-    DuplicateVoteEvidence     duplicate_vote_evidence      = 1;
-    LightClientAttackEvidence light_client_attack_evidence = 2;
-  }
-}
-
-// EvidenceData contains any evidence of malicious wrong-doing by validators
-message EvidenceList {
-  repeated Evidence evidence = 1 [(gogoproto.nullable) = false];
 }
 
 // Blob (named after binary large object) is a chunk of data submitted by a user

@@ -127,7 +127,7 @@ func TestEventBusPublishEventNewBlock(t *testing.T) {
 		}
 	})
 
-	block := MakeBlock(0, makeData([]Tx{}, []Evidence{}, nil), nil)
+	block := MakeBlock(0, makeData([]Tx{}, nil), nil, []Evidence{})
 	// blockID := BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(BlockPartSizeBytes).Header()}
 	resultBeginBlock := abci.ResponseBeginBlock{
 		Events: []abci.Event{
@@ -280,7 +280,7 @@ func TestEventBusPublishEventNewBlockHeader(t *testing.T) {
 		}
 	})
 
-	block := MakeBlock(0, makeData([]Tx{}, []Evidence{}, nil), nil)
+	block := MakeBlock(0, makeData([]Tx{}, nil), nil, []Evidence{})
 	resultBeginBlock := abci.ResponseBeginBlock{
 		Events: []abci.Event{
 			{Type: "testType", Attributes: []abci.EventAttribute{{Key: []byte("baz"), Value: []byte("1")}}},
