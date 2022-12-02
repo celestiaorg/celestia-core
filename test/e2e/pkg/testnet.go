@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/crypto/secp256k1"
@@ -305,7 +306,7 @@ func (n Node) Validate(testnet Testnet) error {
 
 	}
 	switch n.Mempool {
-	case "", "v0", "v1":
+	case "", config.MempoolV0, config.MempoolV1, config.MempoolV2:
 	default:
 		return fmt.Errorf("invalid mempool version %q", n.Mempool)
 	}
