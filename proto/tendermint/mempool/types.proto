@@ -7,8 +7,13 @@ message Txs {
   repeated bytes txs = 1;
 }
 
+message SeenTx {
+  bytes tx_key = 1;
+}
+
 message Message {
   oneof sum {
-    Txs txs = 1;
+    Txs   txs    = 1;
+    SeenTx seen_tx = 2;
   }
 }
