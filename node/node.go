@@ -30,6 +30,7 @@ import (
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/light"
 	mempl "github.com/tendermint/tendermint/mempool"
+	mempoolv2 "github.com/tendermint/tendermint/mempool/cat"
 	mempoolv0 "github.com/tendermint/tendermint/mempool/v0"
 	mempoolv1 "github.com/tendermint/tendermint/mempool/v1"
 	"github.com/tendermint/tendermint/p2p"
@@ -373,6 +374,26 @@ func createMempoolAndMempoolReactor(
 ) (mempl.Mempool, p2p.Reactor) {
 
 	switch config.Mempool.Version {
+	case cfg.MempoolV2:
+		mp := mempoolv2.NewTxMempool(
+			logger,
+			config.Mempool,
+			proxyApp.Mempool(),
+			state.LastBlockHeight,
+			mempoolv2.WithMetrics(memplMetrics),
+			mempoolv2.WithPreCheck(sm.TxPreCheck(state)),
+			mempoolv2.WithPostCheck(sm.TxPostCheck(state)),
+		)
+
+		reactor := mempoolv2.NewReactor(
+			config.Mempool,
+			mp,
+		)
+		if config.Consensus.WaitForTxs() {
+			mp.EnableTxsAvailable()
+		}
+
+		return mp, reactor
 	case cfg.MempoolV1:
 		mp := mempoolv1.NewTxMempool(
 			logger,

@@ -28,6 +28,7 @@ const (
 	// Default is v0.
 	MempoolV0 = "v0"
 	MempoolV1 = "v1"
+	MempoolV2 = "v2"
 )
 
 // NOTE: Most of the structs & relevant comments + the
@@ -684,9 +685,7 @@ type MempoolConfig struct {
 	// Mempool version to use:
 	//  1) "v0" - (default) FIFO mempool.
 	//  2) "v1" - prioritized mempool.
-	// WARNING: There's a known memory leak with the prioritized mempool
-	// that the team are working on. Read more here:
-	// https://github.com/tendermint/tendermint/issues/8775
+	//  3) "v2" - content addressable transaction pool
 	Version   string `mapstructure:"version"`
 	RootDir   string `mapstructure:"home"`
 	Recheck   bool   `mapstructure:"recheck"`
@@ -732,7 +731,7 @@ type MempoolConfig struct {
 // DefaultMempoolConfig returns a default configuration for the Tendermint mempool
 func DefaultMempoolConfig() *MempoolConfig {
 	return &MempoolConfig{
-		Version:   MempoolV0,
+		Version:   MempoolV2,
 		Recheck:   true,
 		Broadcast: true,
 		WalPath:   "",
