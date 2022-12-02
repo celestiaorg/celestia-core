@@ -226,7 +226,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 	}
 
 	// Invoke an ABCI CheckTx for this transaction.
-	rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{Tx: tx})
+	rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{Tx: originalTx})
 	if err != nil {
 		txmp.cache.RemoveTxByKey(tx.Key())
 		return err
