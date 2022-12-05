@@ -172,7 +172,7 @@ func (app *PersistentKVStoreApplication) ApplySnapshotChunk(
 
 func (app *PersistentKVStoreApplication) PrepareProposal(
 	req types.RequestPrepareProposal) types.ResponsePrepareProposal {
-	return types.ResponsePrepareProposal{BlockData: req.BlockData}
+	return app.app.PrepareProposal(req)
 }
 
 func (app *PersistentKVStoreApplication) ProcessProposal(
