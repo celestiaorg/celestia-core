@@ -51,11 +51,6 @@ func (r ResponseProcessProposal) IsOK() bool {
 	return r.Result == ResponseProcessProposal_ACCEPT
 }
 
-// IsErr returns true if Code is something other than OK.
-func (r ResponseProcessProposal) IsErr() bool {
-	return r.Result != ResponseProcessProposal_ACCEPT
-}
-
 // IsRejected returns true if this ResponseProcessProposal was rejected
 func (r ResponseProcessProposal) IsRejected() bool {
 	return r.Result == ResponseProcessProposal_REJECT
