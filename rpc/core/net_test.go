@@ -22,6 +22,7 @@ func TestUnsafeDialSeeds(t *testing.T) {
 			t.Error(err)
 		}
 	})
+	env := GetEnvironment()
 
 	env.Logger = log.TestingLogger()
 	env.P2PPeers = sw
@@ -62,6 +63,7 @@ func TestUnsafeDialPeers(t *testing.T) {
 		}
 	})
 
+	env := GetEnvironment()
 	env.Logger = log.TestingLogger()
 	env.P2PPeers = sw
 

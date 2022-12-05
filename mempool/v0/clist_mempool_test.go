@@ -149,7 +149,7 @@ func TestReapMaxBytesMaxGas(t *testing.T) {
 		{20, 0, -1, 0},
 		{20, 0, 10, 0},
 		{20, 10, 10, 0},
-		{20, 28, 10, 1}, // account for overhead in Data{}
+		{20, 24, 10, 1},
 		{20, 240, 5, 5},
 		{20, 240, -1, 10},
 		{20, 240, 10, 10},

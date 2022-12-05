@@ -13,6 +13,7 @@ import (
 // NetInfo returns network info.
 // More: https://docs.tendermint.com/master/rpc/#/Info/net_info
 func NetInfo(ctx *rpctypes.Context) (*ctypes.ResultNetInfo, error) {
+	env := GetEnvironment()
 	peersList := env.P2PPeers.Peers().List()
 	peers := make([]ctypes.Peer, 0, len(peersList))
 	for _, peer := range peersList {
@@ -43,6 +44,7 @@ func UnsafeDialSeeds(ctx *rpctypes.Context, seeds []string) (*ctypes.ResultDialS
 	if len(seeds) == 0 {
 		return &ctypes.ResultDialSeeds{}, errors.New("no seeds provided")
 	}
+	env := GetEnvironment()
 	env.Logger.Info("DialSeeds", "seeds", seeds)
 	if err := env.P2PPeers.DialPeersAsync(seeds); err != nil {
 		return &ctypes.ResultDialSeeds{}, err
@@ -63,6 +65,7 @@ func UnsafeDialPeers(ctx *rpctypes.Context, peers []string, persistent, uncondit
 		return &ctypes.ResultDialPeers{}, err
 	}
 
+	env := GetEnvironment()
 	env.Logger.Info("DialPeers", "peers", peers, "persistent",
 		persistent, "unconditional", unconditional, "private", private)
 
@@ -94,6 +97,7 @@ func UnsafeDialPeers(ctx *rpctypes.Context, peers []string, persistent, uncondit
 // Genesis returns genesis file.
 // More: https://docs.tendermint.com/master/rpc/#/Info/genesis
 func Genesis(ctx *rpctypes.Context) (*ctypes.ResultGenesis, error) {
+	env := GetEnvironment()
 	if len(env.genChunks) > 1 {
 		return nil, errors.New("genesis response is large, please use the genesis_chunked API instead")
 	}
@@ -102,6 +106,7 @@ func Genesis(ctx *rpctypes.Context) (*ctypes.ResultGenesis, error) {
 }
 
 func GenesisChunked(ctx *rpctypes.Context, chunk uint) (*ctypes.ResultGenesisChunk, error) {
+	env := GetEnvironment()
 	if env.genChunks == nil {
 		return nil, fmt.Errorf("service configuration error, genesis chunks are not initialized")
 	}
