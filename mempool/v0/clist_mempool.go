@@ -240,6 +240,7 @@ func (mem *CListMempool) CheckTx(
 		// (eg. after committing a block, txs are removed from mempool but not cache),
 		// so we only record the sender for txs still in the mempool.
 		if e, ok := mem.txsMap.Load(tx.Key()); ok {
+			mem.metrics.AlreadySeenTxs.Add(1)
 			memTx := e.(*clist.CElement).Value.(*mempoolTx)
 			memTx.senders.LoadOrStore(txInfo.SenderID, true)
 			// TODO: consider punishing peer for dups,
@@ -593,6 +594,7 @@ func (mem *CListMempool) Update(
 		mem.postCheck = postCheck
 	}
 
+	mem.metrics.SuccessfulTxs.Add(float64(len(txs)))
 	for i, tx := range txs {
 		if deliverTxResponses[i].Code == abci.CodeTypeOK {
 			// Add valid committed tx to the cache (if missing).
