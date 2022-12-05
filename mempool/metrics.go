@@ -22,8 +22,8 @@ type Metrics struct {
 	// Histogram of transaction sizes, in bytes.
 	TxSizeBytes metrics.Histogram
 
-	// Number of failed transactions. These were marked invalid by the application
-	// in either check tx or recheck tx
+	// FailedTxs defines the number of failed transactions. These were marked
+	// invalid by the application in either CheckTx or RecheckTx.
 	FailedTxs metrics.Counter
 
 	// RejectedTxs defines the number of rejected transactions. These are
@@ -38,15 +38,16 @@ type Metrics struct {
 	// CheckTx.
 	EvictedTxs metrics.Counter
 
-	// The amount of transactions that successfully make it into a block.
+	// SuccessfulTxs defines the number of transactions that successfully made
+	// it into a block.
 	SuccessfulTxs metrics.Counter
 
 	// Number of times transactions are rechecked in the mempool.
 	RecheckTimes metrics.Counter
 
-	// The amount of transactions to enter a mempool which are already present
-	// in the mempool. This is a good indicator of the degree of duplication
-	// in message gossiping.
+	// AlreadySeenTxs defines the number of transactions that entered the
+	// mempool which were already present in the mempool. This is a good
+	// indicator of the degree of duplication in message gossiping.
 	AlreadySeenTxs metrics.Counter
 }
 
@@ -99,7 +100,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "successful_txs",
-			Help:      "Number of times transactions successfully make it into a block.",
+			Help:      "Number of transactions that successfully made it into a block.",
 		}, labels).With(labelsAndValues...),
 
 		RecheckTimes: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
@@ -113,7 +114,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "already_seen_txs",
-			Help:      "Number of times transactions that try to enter a mempool but already exist.",
+			Help:      "Number of transactions that entered the mempool but were already present in the mempool.",
 		}, labels).With(labelsAndValues...),
 	}
 }
