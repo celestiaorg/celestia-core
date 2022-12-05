@@ -39,24 +39,24 @@ the example for more details.
 
 Example:
 
-		c, err := New("http://192.168.1.10:26657", "/websocket")
-		if err != nil {
-			// handle error
-		}
+	c, err := New("http://192.168.1.10:26657", "/websocket")
+	if err != nil {
+		// handle error
+	}
 
-		// call Start/Stop if you're subscribing to events
-		err = c.Start()
-		if err != nil {
-			// handle error
-		}
-		defer c.Stop()
+	// call Start/Stop if you're subscribing to events
+	err = c.Start()
+	if err != nil {
+		// handle error
+	}
+	defer c.Stop()
 
-		res, err := c.Status()
-		if err != nil {
-			// handle error
-		}
+	res, err := c.Status()
+	if err != nil {
+		// handle error
+	}
 
-		// handle result
+	// handle result
 */
 type HTTP struct {
 	remote string
@@ -459,13 +459,13 @@ func (c *baseRPCClient) Commit(ctx context.Context, height *int64) (*ctypes.Resu
 
 func (c *baseRPCClient) DataCommitment(
 	ctx context.Context,
-	beginBlock uint64,
-	endBlock uint64,
+	minHeight int64,
+	maxHeight int64,
 ) (*ctypes.ResultDataCommitment, error) {
 	result := new(ctypes.ResultDataCommitment)
 	params := map[string]interface{}{
-		"beginBlock": beginBlock,
-		"endBlock":   endBlock,
+		"minHeight": minHeight,
+		"maxHeight": maxHeight,
 	}
 
 	_, err := c.caller.Call(ctx, "data_commitment", params, result)

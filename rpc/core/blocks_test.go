@@ -152,7 +152,7 @@ func TestDataCommitmentResults(t *testing.T) {
 		}
 		SetEnvironment(env)
 
-		actualCommitment, err := DataCommitment(&rpctypes.Context{}, uint64(tc.beginQuery), uint64(tc.endQuery))
+		actualCommitment, err := DataCommitment(&rpctypes.Context{}, int64(tc.beginQuery), int64(tc.endQuery))
 		if tc.expectPass {
 			require.Nil(t, err, "should generate the needed data commitment.")
 

@@ -171,10 +171,10 @@ func (c Client) Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit
 
 func (c Client) DataCommitment(
 	ctx context.Context,
-	beginBlock uint64,
-	endBlock uint64,
+	minHeight int64,
+	maxHeight int64,
 ) (*ctypes.ResultDataCommitment, error) {
-	return core.DataCommitment(&rpctypes.Context{}, beginBlock, endBlock)
+	return core.DataCommitment(&rpctypes.Context{}, minHeight, maxHeight)
 }
 
 func (c Client) Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error) {

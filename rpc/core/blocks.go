@@ -139,12 +139,12 @@ func Commit(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCommit, erro
 
 // DataCommitment collects the data roots over a provided ordered range of blocks,
 // and then creates a new Merkle root of those data roots.
-func DataCommitment(ctx *rpctypes.Context, beginBlock uint64, endBlock uint64) (*ctypes.ResultDataCommitment, error) {
-	err := validateDataCommitmentRange(beginBlock, endBlock)
+func DataCommitment(ctx *rpctypes.Context, minHeight int64, maxHeight int64) (*ctypes.ResultDataCommitment, error) {
+	err := validateDataCommitmentRange(minHeight, maxHeight)
 	if err != nil {
 		return nil, err
 	}
-	heights := generateHeightsList(beginBlock, endBlock)
+	heights := generateHeightsList(minHeight, maxHeight)
 	blockResults := fetchBlocks(heights, len(heights), 0)
 	root := hashDataRoots(blockResults)
 	// Create data commitment
@@ -153,43 +153,43 @@ func DataCommitment(ctx *rpctypes.Context, beginBlock uint64, endBlock uint64) (
 
 // generateHeightsList takes a begin and end block, then generates a list of heights
 // containing the elements of the range [beginBlock, endBlock].
-func generateHeightsList(beginBlock uint64, endBlock uint64) []int64 {
-	heights := make([]int64, endBlock-beginBlock+1)
-	for i := beginBlock; i <= endBlock; i++ {
-		heights[i-beginBlock] = int64(i)
+func generateHeightsList(minHeight int64, maxHeight int64) []int64 {
+	heights := make([]int64, maxHeight-minHeight+1)
+	for i := minHeight; i <= maxHeight; i++ {
+		heights[i-minHeight] = i
 	}
 	return heights
 }
 
 // validateDataCommitmentRange runs basic checks on the asc sorted list of heights
 // that will be used subsequently in generating data commitments over the defined set of heights.
-func validateDataCommitmentRange(beginBlock uint64, endBlock uint64) error {
+func validateDataCommitmentRange(minHeight int64, maxHeight int64) error {
 	env := GetEnvironment()
-	heightsRange := endBlock - beginBlock + 1
-	if heightsRange > uint64(consts.DataCommitmentBlocksLimit) {
+	heightsRange := maxHeight - minHeight + 1
+	if heightsRange > int64(consts.DataCommitmentBlocksLimit) {
 		return fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
 	}
 	if heightsRange == 0 {
 		return fmt.Errorf("cannot create the data commitments for an empty set of blocks")
 	}
-	if beginBlock > endBlock {
+	if minHeight > maxHeight {
 		return fmt.Errorf("end block is smaller than begin block")
 	}
-	if endBlock > uint64(env.BlockStore.Height()) {
+	if maxHeight > env.BlockStore.Height() {
 		return fmt.Errorf(
 			"end block %d is higher than current chain height %d",
-			endBlock,
+			maxHeight,
 			env.BlockStore.Height(),
 		)
 	}
-	has, err := env.BlockIndexer.Has(int64(endBlock))
+	has, err := env.BlockIndexer.Has(maxHeight)
 	if err != nil {
 		return err
 	}
 	if !has {
 		return fmt.Errorf(
 			"end block %d is still not indexed",
-			endBlock,
+			maxHeight,
 		)
 	}
 	return nil

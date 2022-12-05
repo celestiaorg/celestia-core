@@ -136,17 +136,17 @@ func makeCommitFunc(c *lrpc.Client) rpcCommitFunc {
 
 type rpcDataCommitmentFunc func(
 	ctx *rpctypes.Context,
-	beginBlock uint64,
-	endBlock uint64,
+	minHeight int64,
+	maxHeight int64,
 ) (*ctypes.ResultDataCommitment, error)
 
 func makeDataCommitmentFunc(c *lrpc.Client) rpcDataCommitmentFunc {
 	return func(
 		ctx *rpctypes.Context,
-		beginBlock uint64,
-		endBlock uint64,
+		minHeight int64,
+		maxHeight int64,
 	) (*ctypes.ResultDataCommitment, error) {
-		return c.DataCommitment(ctx.Context(), beginBlock, endBlock)
+		return c.DataCommitment(ctx.Context(), minHeight, maxHeight)
 	}
 }
 

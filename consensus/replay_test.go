@@ -291,7 +291,7 @@ func (w *crashingWAL) Start() error { return w.next.Start() }
 func (w *crashingWAL) Stop() error  { return w.next.Stop() }
 func (w *crashingWAL) Wait()        { w.next.Wait() }
 
-//------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------
 type testSim struct {
 	GenesisState sm.State
 	Config       *cfg.Config
@@ -993,7 +993,7 @@ func makeBlock(state sm.State, lastBlock *types.Block, lastBlockMeta *types.Bloc
 
 	return state.MakeBlock(
 		height,
-		factory.MakeDataFromTxs([]types.Tx{}),
+		factory.MakeData([]types.Tx{}, nil, nil),
 		lastCommit,
 		state.Validators.GetProposer().Address,
 	)
