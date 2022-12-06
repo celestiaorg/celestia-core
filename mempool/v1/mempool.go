@@ -205,6 +205,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		if !txmp.cache.Push(tx) {
 			// If the cached transaction is also in the pool, record its sender.
 			if elt, ok := txmp.txByKey[txKey]; ok {
+				txmp.metrics.AlreadySeenTxs.Add(1)
 				w := elt.Value.(*WrappedTx)
 				w.SetPeer(txInfo.SenderID)
 			}
@@ -399,6 +400,7 @@ func (txmp *TxMempool) Update(
 		txmp.postCheck = newPostFn
 	}
 
+	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
 	for i, tx := range blockTxs {
 		// The tx hash corresponding to the originating transaction. Set to the
 		// current tx hash initially, but can change in case of a malleated tx.

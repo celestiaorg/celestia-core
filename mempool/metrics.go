@@ -22,7 +22,8 @@ type Metrics struct {
 	// Histogram of transaction sizes, in bytes.
 	TxSizeBytes metrics.Histogram
 
-	// Number of failed transactions.
+	// FailedTxs defines the number of failed transactions. These were marked
+	// invalid by the application in either CheckTx or RecheckTx.
 	FailedTxs metrics.Counter
 
 	// RejectedTxs defines the number of rejected transactions. These are
@@ -37,8 +38,17 @@ type Metrics struct {
 	// CheckTx.
 	EvictedTxs metrics.Counter
 
+	// SuccessfulTxs defines the number of transactions that successfully made
+	// it into a block.
+	SuccessfulTxs metrics.Counter
+
 	// Number of times transactions are rechecked in the mempool.
 	RecheckTimes metrics.Counter
+
+	// AlreadySeenTxs defines the number of transactions that entered the
+	// mempool which were already present in the mempool. This is a good
+	// indicator of the degree of duplication in message gossiping.
+	AlreadySeenTxs metrics.Counter
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -86,11 +96,25 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Help:      "Number of evicted transactions.",
 		}, labels).With(labelsAndValues...),
 
+		SuccessfulTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "successful_txs",
+			Help:      "Number of transactions that successfully made it into a block.",
+		}, labels).With(labelsAndValues...),
+
 		RecheckTimes: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "recheck_times",
 			Help:      "Number of times transactions are rechecked in the mempool.",
+		}, labels).With(labelsAndValues...),
+
+		AlreadySeenTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "already_seen_txs",
+			Help:      "Number of transactions that entered the mempool but were already present in the mempool.",
 		}, labels).With(labelsAndValues...),
 	}
 }
@@ -98,11 +122,13 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 // NopMetrics returns no-op Metrics.
 func NopMetrics() *Metrics {
 	return &Metrics{
-		Size:         discard.NewGauge(),
-		TxSizeBytes:  discard.NewHistogram(),
-		FailedTxs:    discard.NewCounter(),
-		RejectedTxs:  discard.NewCounter(),
-		EvictedTxs:   discard.NewCounter(),
-		RecheckTimes: discard.NewCounter(),
+		Size:           discard.NewGauge(),
+		TxSizeBytes:    discard.NewHistogram(),
+		FailedTxs:      discard.NewCounter(),
+		RejectedTxs:    discard.NewCounter(),
+		EvictedTxs:     discard.NewCounter(),
+		SuccessfulTxs:  discard.NewCounter(),
+		RecheckTimes:   discard.NewCounter(),
+		AlreadySeenTxs: discard.NewCounter(),
 	}
 }
