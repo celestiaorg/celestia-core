@@ -433,7 +433,7 @@ func TestBlockPoolAddBlock(t *testing.T) {
 				map[int64]tPBlocks{10: {"P1", false}}),
 			args: args{
 				peerID:    "P2",
-				block:     types.MakeBlock(int64(10), factory.MakeData(txs, nil, nil), nil),
+				block:     types.MakeBlock(int64(10), factory.MakeData(txs, nil), nil, nil),
 				blockSize: 100,
 			},
 			poolWanted: makeBlockPool(testBcR, 10,
@@ -447,7 +447,7 @@ func TestBlockPoolAddBlock(t *testing.T) {
 				map[int64]tPBlocks{10: {"P1", false}}),
 			args: args{
 				peerID:    "P1",
-				block:     types.MakeBlock(int64(10), factory.MakeData(txs, nil, nil), nil),
+				block:     types.MakeBlock(int64(10), factory.MakeData(txs, nil), nil, nil),
 				blockSize: 100,
 			},
 			poolWanted: makeBlockPool(testBcR, 10,
