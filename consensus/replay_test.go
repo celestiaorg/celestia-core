@@ -993,7 +993,7 @@ func makeBlock(state sm.State, lastBlock *types.Block, lastBlockMeta *types.Bloc
 
 	return state.MakeBlock(
 		height,
-		factory.MakeDataFromTxs([]types.Tx{}),
+		factory.MakeData([]types.Tx{}, nil),
 		lastCommit,
 		nil,
 		state.Validators.GetProposer().Address,

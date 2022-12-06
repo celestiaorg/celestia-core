@@ -178,10 +178,5 @@ func (app *Application) PrepareProposal(req types.RequestPrepareProposal) types.
 }
 
 func (app *Application) ProcessProposal(req types.RequestProcessProposal) types.ResponseProcessProposal {
-	for _, tx := range req.BlockData.Txs {
-		if len(tx) == 0 {
-			return types.ResponseProcessProposal{Result: types.ResponseProcessProposal_REJECT}
-		}
-	}
 	return types.ResponseProcessProposal{Result: types.ResponseProcessProposal_ACCEPT}
 }
