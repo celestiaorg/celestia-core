@@ -28,23 +28,28 @@ type (
 	TxKey [TxKeySize]byte
 )
 
-// Hash computes the TMHASH hash of the wire encoded transaction.
+// Hash computes the TMHASH hash of the wire encoded transaction. It attempts to
+// unwrap the transaction if it is a MalleatedTx or a BlobTx.
 func (tx Tx) Hash() []byte {
-	return tmhash.Sum(unwrapTx(tx))
-}
-
-func (tx Tx) Key() TxKey {
-	return sha256.Sum256(unwrapTx(tx))
-}
-
-func unwrapTx(tx Tx) Tx {
 	if malleatedTx, isMalleated := UnwrapMalleatedTx(tx); isMalleated {
-		return malleatedTx.Tx
+		return tmhash.Sum(malleatedTx.Tx)
 	}
 	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
-		return blobTx.Tx
+		return tmhash.Sum(blobTx.Tx)
 	}
-	return tx
+	return tmhash.Sum(tx)
+}
+
+// Key returns the sha256 hash of the wire encoded transaction. It attempts to
+// unwrap the transaction if it is a BlobTx or a MalleatedTx.
+func (tx Tx) Key() TxKey {
+	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
+		return sha256.Sum256(blobTx.Tx)
+	}
+	if malleatedTx, isMalleated := UnwrapMalleatedTx(tx); isMalleated {
+		return sha256.Sum256(malleatedTx.Tx)
+	}
+	return sha256.Sum256(tx)
 }
 
 // String returns the hex-encoded transaction as a string.
