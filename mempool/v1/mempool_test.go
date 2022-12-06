@@ -659,7 +659,7 @@ func TestMalleatedTxRemoval(t *testing.T) {
 	malleatedTx := []byte{1, 2}
 
 	// create the wrapped transaction
-	wTx, err := types.WrapMalleatedTx(0, malleatedTx)
+	wTx, err := types.MarshalMalleatedTx(0, malleatedTx)
 	require.NoError(t, err)
 
 	// add the parent transaction to the mempool

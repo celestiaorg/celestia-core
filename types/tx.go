@@ -31,7 +31,7 @@ type (
 // Hash computes the TMHASH hash of the wire encoded transaction. It attempts to
 // unwrap the transaction if it is a MalleatedTx or a BlobTx.
 func (tx Tx) Hash() []byte {
-	if malleatedTx, isMalleated := UnwrapMalleatedTx(tx); isMalleated {
+	if malleatedTx, isMalleated := UnmarshalMalleatedTx(tx); isMalleated {
 		return tmhash.Sum(malleatedTx.Tx)
 	}
 	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
@@ -46,7 +46,7 @@ func (tx Tx) Key() TxKey {
 	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
 		return sha256.Sum256(blobTx.Tx)
 	}
-	if malleatedTx, isMalleated := UnwrapMalleatedTx(tx); isMalleated {
+	if malleatedTx, isMalleated := UnmarshalMalleatedTx(tx); isMalleated {
 		return sha256.Sum256(malleatedTx.Tx)
 	}
 	return sha256.Sum256(tx)
@@ -208,7 +208,7 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 	return int64(pdData.Size())
 }
 
-// UnwrapMalleatedTx attempts to unmarshal the provided transaction into a
+// UnmarshalMalleatedTx attempts to unmarshal the provided transaction into a
 // malleated transaction. It returns true if the provided transaction is a
 // malleated transaction. A malleated transaction is a transaction that contains
 // a MsgPayForBlob that has been wrapped with a share index.
@@ -217,7 +217,7 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 // not a tmproto.MalleatedTx, since the protobuf definition for MsgPayForBlob is
 // kept in the app, we cannot perform further checks without creating an import
 // cycle.
-func UnwrapMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool) {
+func UnmarshalMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool) {
 	// attempt to unmarshal into a a malleated transaction
 	err := proto.Unmarshal(tx, &malleatedTx)
 	if err != nil {
@@ -229,11 +229,11 @@ func UnwrapMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool
 	return malleatedTx, true
 }
 
-// WrapMalleatedTx creates a wrapped Tx that includes the original transaction
+// MarshalMalleatedTx creates a wrapped Tx that includes the original transaction
 // and the share index of the start of its blob.
 //
 // NOTE: must be unwrapped to be a viable sdk.Tx
-func WrapMalleatedTx(shareIndex uint32, tx Tx) (Tx, error) {
+func MarshalMalleatedTx(shareIndex uint32, tx Tx) (Tx, error) {
 	wTx := tmproto.MalleatedTx{
 		Tx:         tx,
 		ShareIndex: shareIndex,
@@ -264,12 +264,12 @@ func UnmarshalBlobTx(tx Tx) (bTx tmproto.BlobTx, isBlob bool) {
 	return bTx, true
 }
 
-// WrapBlobTx creates a BlobTx using a normal transaction and some number of
+// MarshalBlobTx creates a BlobTx using a normal transaction and some number of
 // blobs.
 //
 // NOTE: Any checks on the blobs or the transaction must be performed in the
 // application
-func WrapBlobTx(tx []byte, blobs ...*tmproto.Blob) (Tx, error) {
+func MarshalBlobTx(tx []byte, blobs ...*tmproto.Blob) (Tx, error) {
 	bTx := tmproto.BlobTx{
 		Tx:     tx,
 		Blobs:  blobs,

@@ -44,11 +44,11 @@ func TestTxIndexByHash(t *testing.T) {
 	}
 }
 
-func TestUnwrapMalleatedTx(t *testing.T) {
+func TestUnmarshalMalleatedTx(t *testing.T) {
 	// perform a simple test for being unable to decode a non
 	// malleated transaction
 	tx := Tx{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0}
-	_, ok := UnwrapMalleatedTx(tx)
+	_, ok := UnmarshalMalleatedTx(tx)
 	require.False(t, ok)
 
 	data := Data{
@@ -77,14 +77,14 @@ func TestUnwrapMalleatedTx(t *testing.T) {
 
 	// due to protobuf not actually requiring type compatibility
 	// we need to make sure that there is some check
-	_, ok = UnwrapMalleatedTx(rawBlock)
+	_, ok = UnmarshalMalleatedTx(rawBlock)
 	require.False(t, ok)
 
-	MalleatedTx, err := WrapMalleatedTx(0, rawBlock)
+	MalleatedTx, err := MarshalMalleatedTx(0, rawBlock)
 	require.NoError(t, err)
 
 	// finally, ensure that the unwrapped bytes are identical to the input
-	malleated, ok := UnwrapMalleatedTx(MalleatedTx)
+	malleated, ok := UnmarshalMalleatedTx(MalleatedTx)
 	require.True(t, ok)
 	require.Equal(t, rawBlock, malleated.Tx)
 }
@@ -97,7 +97,7 @@ func TestWrapUnmarshalBlobTx(t *testing.T) {
 		ShareVersion: 0,
 	}
 
-	bTx, err := WrapBlobTx(tx, &blob)
+	bTx, err := MarshalBlobTx(tx, &blob)
 	require.NoError(t, err)
 
 	resTx, isBlob := UnmarshalBlobTx(bTx)

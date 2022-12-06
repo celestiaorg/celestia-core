@@ -692,7 +692,7 @@ func TestRemoveBlobTx(t *testing.T) {
 	defer cleanup()
 
 	originalTx := []byte{1, 2, 3, 4}
-	malleatedTx, err := types.WrapMalleatedTx(100, originalTx)
+	malleatedTx, err := types.MarshalMalleatedTx(100, originalTx)
 	require.NoError(t, err)
 
 	// create the blobTx
@@ -701,7 +701,7 @@ func TestRemoveBlobTx(t *testing.T) {
 		Data:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 		ShareVersion: 0,
 	}
-	bTx, err := types.WrapBlobTx(originalTx, &b)
+	bTx, err := types.MarshalBlobTx(originalTx, &b)
 	require.NoError(t, err)
 
 	err = mp.CheckTx(bTx, nil, mempool.TxInfo{})
