@@ -209,8 +209,9 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 // a MsgPayForBlob that has been wrapped with a share index.
 //
 // NOTE: protobuf sometimes does not throw an error if the transaction passed is
-// not a tmproto.MalleatedTx, since the schema for PayForBlob is kept in the
-// app, we cannot perform further checks without creating an import cycle.
+// not a tmproto.MalleatedTx, since the protobuf definition for MsgPayForBlob is
+// kept in the app, we cannot perform further checks without creating an import
+// cycle.
 func UnwrapMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool) {
 	// attempt to unmarshal into a a malleated transaction
 	err := proto.Unmarshal(tx, &malleatedTx)
