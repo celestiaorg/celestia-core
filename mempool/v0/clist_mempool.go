@@ -236,12 +236,6 @@ func (mem *CListMempool) CheckTx(
 		return err
 	}
 
-	originalTx := tx
-	bTx, isBlob := types.UnmarshalBlobTx(tx)
-	if isBlob {
-		tx = bTx.Tx
-	}
-
 	if !mem.cache.Push(tx.Key()) { // if the transaction already exists in the cache
 		// Record a new sender for a tx we've already seen.
 		// Note it's possible a tx is still in the cache but no longer in the mempool
@@ -258,8 +252,8 @@ func (mem *CListMempool) CheckTx(
 	}
 
 	// we send the originalTx (which includes any potential blobs) to be checked by the application
-	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: originalTx})
-	reqRes.SetCallback(mem.reqResCb(originalTx, txInfo.SenderID, txInfo.SenderP2PID, cb))
+	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx})
+	reqRes.SetCallback(mem.reqResCb(tx, txInfo.SenderID, txInfo.SenderP2PID, cb))
 
 	return nil
 }
@@ -405,17 +399,11 @@ func (mem *CListMempool) resCbFirstTime(
 				return
 			}
 
-			bTx, isBlob := types.UnmarshalBlobTx(tx)
-			key := types.Tx(tx).Key()
-			if isBlob {
-				key = types.Tx(bTx.Tx).Key()
-			}
-
 			memTx := &mempoolTx{
 				height:    mem.height,
 				gasWanted: r.CheckTx.GasWanted,
 				tx:        tx,
-				key:       key,
+				key:       types.Tx(tx).Key(),
 			}
 			memTx.senders.Store(peerID, true)
 			mem.addTx(memTx)
@@ -616,12 +604,6 @@ func (mem *CListMempool) Update(
 	}
 
 	for i, tx := range txs {
-		// check to see if the transaction has been malleated, if so, we need to
-		// remove the metadata that wraps the tx by unwrapping it
-		if malleatedTx, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
-			tx = malleatedTx.Tx
-		}
-
 		if deliverTxResponses[i].Code == abci.CodeTypeOK {
 			// Add valid committed tx to the cache (if missing).
 			_ = mem.cache.Push(tx.Key())

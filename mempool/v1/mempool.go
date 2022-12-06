@@ -179,14 +179,6 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 	// A transaction will not actually be added to the mempool until it survives
 	// a call to the ABCI CheckTx method and size constraint checks.
 
-	// check if the transaction contains blobs. If so, replace the transaction
-	// with the unwrapped one
-	bTx, isBlob := types.UnmarshalBlobTx(tx)
-	originalTx := tx
-	if isBlob {
-		tx = bTx.Tx
-	}
-
 	height, err := func() (int64, error) {
 		txmp.mtx.RLock()
 		defer txmp.mtx.RUnlock()
@@ -226,13 +218,13 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 	}
 
 	// Invoke an ABCI CheckTx for this transaction.
-	rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{Tx: originalTx})
+	rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{Tx: tx})
 	if err != nil {
 		txmp.cache.RemoveTxByKey(tx.Key())
 		return err
 	}
 	wtx := &WrappedTx{
-		tx:        originalTx,
+		tx:        tx,
 		hash:      tx.Key(),
 		timestamp: time.Now().UTC(),
 		height:    height,
@@ -409,12 +401,6 @@ func (txmp *TxMempool) Update(
 	}
 
 	for i, tx := range blockTxs {
-		// check to see if the transaction has been malleated, if so, we need to
-		// remove the metadata that wraps the tx by unwrapping it
-		if malleatedTx, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
-			tx = malleatedTx.Tx
-		}
-
 		// Add successful committed transactions to the cache (if they are not
 		// already present).  Transactions that failed to commit are removed from
 		// the cache unless the operator has explicitly requested we keep them.

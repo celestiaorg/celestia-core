@@ -694,13 +694,13 @@ func TestRemoveBlobTx(t *testing.T) {
 	originalTx := []byte{1, 2, 3, 4}
 	malleatedTx, err := types.WrapMalleatedTx(100, originalTx)
 	require.NoError(t, err)
+
+	// create the blobTx
 	b := tmproto.Blob{
 		NamespaceId:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
 		Data:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 		ShareVersion: 0,
 	}
-
-	// create the blobTx
 	bTx, err := types.WrapBlobTx(originalTx, &b)
 	require.NoError(t, err)
 
