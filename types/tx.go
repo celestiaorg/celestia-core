@@ -28,12 +28,27 @@ type (
 	TxKey [TxKeySize]byte
 )
 
-// Hash computes the TMHASH hash of the wire encoded transaction.
+// Hash computes the TMHASH hash of the wire encoded transaction. It attempts to
+// unwrap the transaction if it is a MalleatedTx or a BlobTx.
 func (tx Tx) Hash() []byte {
+	if malleatedTx, isMalleated := UnmarshalMalleatedTx(tx); isMalleated {
+		return tmhash.Sum(malleatedTx.Tx)
+	}
+	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
+		return tmhash.Sum(blobTx.Tx)
+	}
 	return tmhash.Sum(tx)
 }
 
+// Key returns the sha256 hash of the wire encoded transaction. It attempts to
+// unwrap the transaction if it is a BlobTx or a MalleatedTx.
 func (tx Tx) Key() TxKey {
+	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
+		return sha256.Sum256(blobTx.Tx)
+	}
+	if malleatedTx, isMalleated := UnmarshalMalleatedTx(tx); isMalleated {
+		return sha256.Sum256(malleatedTx.Tx)
+	}
 	return sha256.Sum256(tx)
 }
 
@@ -193,39 +208,72 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 	return int64(pdData.Size())
 }
 
-// UnwrapMalleatedTx attempts to unmarshal the provided transaction into a malleated
-// transaction wrapper, if this can be done, then it returns true. A malleated
-// transaction is a normal transaction that has been derived (malleated) from a
-// different original transaction. The returned hash is that of the original
-// transaction, which allows us to remove the original transaction from the
-// mempool. NOTE: protobuf sometimes does not throw an error if the transaction
-// passed is not a tmproto.MalleatedTx, since the schema for PayForMessage is kept
-// in the app, we cannot perform further checks without creating an import
+// UnmarshalMalleatedTx attempts to unmarshal the provided transaction into a
+// malleated transaction. It returns true if the provided transaction is a
+// malleated transaction. A malleated transaction is a transaction that contains
+// a MsgPayForBlob that has been wrapped with a share index.
+//
+// NOTE: protobuf sometimes does not throw an error if the transaction passed is
+// not a tmproto.MalleatedTx, since the protobuf definition for MsgPayForBlob is
+// kept in the app, we cannot perform further checks without creating an import
 // cycle.
-func UnwrapMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool) {
+func UnmarshalMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool) {
 	// attempt to unmarshal into a a malleated transaction
 	err := proto.Unmarshal(tx, &malleatedTx)
 	if err != nil {
 		return malleatedTx, false
 	}
-	// this check will fail to catch unwanted types should those unmarshalled
-	// types happen to have a hash sized slice of bytes in the same field number
-	// as originalTxHash. TODO(evan): either fix this, or better yet use a different
-	// mechanism
-	if len(malleatedTx.OriginalTxHash) != tmhash.Size {
+	if malleatedTx.TypeId != consts.ProtoMalleatedTxTypeID {
 		return malleatedTx, false
 	}
 	return malleatedTx, true
 }
 
-// WrapMalleatedTx creates a wrapped Tx that includes the original transaction's hash
-// so that it can be easily removed from the mempool. note: must be unwrapped to
-// be a viable sdk.Tx
-func WrapMalleatedTx(originalHash []byte, shareIndex uint32, malleated Tx) (Tx, error) {
+// MarshalMalleatedTx creates a wrapped Tx that includes the original transaction
+// and the share index of the start of its blob.
+//
+// NOTE: must be unwrapped to be a viable sdk.Tx
+func MarshalMalleatedTx(shareIndex uint32, tx Tx) (Tx, error) {
 	wTx := tmproto.MalleatedTx{
-		OriginalTxHash: originalHash,
-		Tx:             malleated,
-		ShareIndex:     shareIndex,
+		Tx:         tx,
+		ShareIndex: shareIndex,
+		TypeId:     consts.ProtoMalleatedTxTypeID,
 	}
 	return proto.Marshal(&wTx)
+}
+
+// UnmarshalBlobTx attempts to unmarshal a transaction into blob transaction. If an
+// error is thrown, false is returned.
+func UnmarshalBlobTx(tx Tx) (bTx tmproto.BlobTx, isBlob bool) {
+	err := bTx.Unmarshal(tx)
+	if err != nil {
+		return tmproto.BlobTx{}, false
+	}
+	// perform some quick basic checks to prevent false positives
+	if bTx.TypeId != consts.ProtoBlobTxTypeID {
+		return bTx, false
+	}
+	if len(bTx.Blobs) == 0 {
+		return bTx, false
+	}
+	for _, b := range bTx.Blobs {
+		if len(b.NamespaceId) != int(consts.TxNamespaceID.Size()) {
+			return bTx, false
+		}
+	}
+	return bTx, true
+}
+
+// MarshalBlobTx creates a BlobTx using a normal transaction and some number of
+// blobs.
+//
+// NOTE: Any checks on the blobs or the transaction must be performed in the
+// application
+func MarshalBlobTx(tx []byte, blobs ...*tmproto.Blob) (Tx, error) {
+	bTx := tmproto.BlobTx{
+		Tx:     tx,
+		Blobs:  blobs,
+		TypeId: consts.ProtoBlobTxTypeID,
+	}
+	return bTx.Marshal()
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/log"
 	tmpubsub "github.com/tendermint/tendermint/libs/pubsub"
 	"github.com/tendermint/tendermint/libs/service"
@@ -178,18 +177,11 @@ func (b *EventBus) PublishEventTx(data EventDataTx) error {
 	// no explicit deadline for publishing events
 	ctx := context.Background()
 
-	var txHash []byte
-	if len(data.OriginalHash) == tmhash.Size {
-		txHash = data.OriginalHash
-	} else {
-		txHash = Tx(data.Tx).Hash()
-	}
-
 	events := b.validateAndStringifyEvents(data.Result.Events, b.Logger.With("tx", data.Tx))
 
 	// add predefined compositeKeys
 	events[EventTypeKey] = append(events[EventTypeKey], EventTx)
-	events[TxHashKey] = append(events[TxHashKey], fmt.Sprintf("%X", txHash))
+	events[TxHashKey] = append(events[TxHashKey], fmt.Sprintf("%X", Tx(data.Tx).Hash()))
 	events[TxHeightKey] = append(events[TxHeightKey], fmt.Sprintf("%d", data.Height))
 
 	return b.pubsub.PublishWithEvents(ctx, data, events)
@@ -235,7 +227,7 @@ func (b *EventBus) PublishEventValidatorSetUpdates(data EventDataValidatorSetUpd
 	return b.Publish(EventValidatorSetUpdates, data)
 }
 
-//-----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 type NopEventBus struct{}
 
 func (NopEventBus) Subscribe(
