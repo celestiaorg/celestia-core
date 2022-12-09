@@ -29,10 +29,10 @@ type (
 )
 
 // Hash computes the TMHASH hash of the wire encoded transaction. It attempts to
-// unwrap the transaction if it is a MalleatedTx or a BlobTx.
+// unwrap the transaction if it is a IndexWrapper or a BlobTx.
 func (tx Tx) Hash() []byte {
-	if malleatedTx, isMalleated := UnmarshalMalleatedTx(tx); isMalleated {
-		return tmhash.Sum(malleatedTx.Tx)
+	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
+		return tmhash.Sum(indexWrapper.Tx)
 	}
 	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
 		return tmhash.Sum(blobTx.Tx)
@@ -41,13 +41,13 @@ func (tx Tx) Hash() []byte {
 }
 
 // Key returns the sha256 hash of the wire encoded transaction. It attempts to
-// unwrap the transaction if it is a BlobTx or a MalleatedTx.
+// unwrap the transaction if it is a BlobTx or a IndexWrapper.
 func (tx Tx) Key() TxKey {
 	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
 		return sha256.Sum256(blobTx.Tx)
 	}
-	if malleatedTx, isMalleated := UnmarshalMalleatedTx(tx); isMalleated {
-		return sha256.Sum256(malleatedTx.Tx)
+	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
+		return sha256.Sum256(indexWrapper.Tx)
 	}
 	return sha256.Sum256(tx)
 }
@@ -208,36 +208,36 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 	return int64(pdData.Size())
 }
 
-// UnmarshalMalleatedTx attempts to unmarshal the provided transaction into a
-// malleated transaction. It returns true if the provided transaction is a
-// malleated transaction. A malleated transaction is a transaction that contains
+// UnmarshalIndexWrapper attempts to unmarshal the provided transaction into an
+// IndexWrapper transaction. It returns true if the provided transaction is an
+// IndexWrapper transaction. An IndexWrapper transaction is a transaction that contains
 // a MsgPayForBlob that has been wrapped with a share index.
 //
 // NOTE: protobuf sometimes does not throw an error if the transaction passed is
-// not a tmproto.MalleatedTx, since the protobuf definition for MsgPayForBlob is
+// not a tmproto.IndexWrapper, since the protobuf definition for MsgPayForBlob is
 // kept in the app, we cannot perform further checks without creating an import
 // cycle.
-func UnmarshalMalleatedTx(tx Tx) (malleatedTx tmproto.MalleatedTx, isMalleated bool) {
-	// attempt to unmarshal into a a malleated transaction
-	err := proto.Unmarshal(tx, &malleatedTx)
+func UnmarshalIndexWrapper(tx Tx) (indexWrapper tmproto.IndexWrapper, isIndexWrapper bool) {
+	// attempt to unmarshal into an IndexWrapper transaction
+	err := proto.Unmarshal(tx, &indexWrapper)
 	if err != nil {
-		return malleatedTx, false
+		return indexWrapper, false
 	}
-	if malleatedTx.TypeId != consts.ProtoMalleatedTxTypeID {
-		return malleatedTx, false
+	if indexWrapper.TypeId != consts.ProtoIndexWrapperTypeID {
+		return indexWrapper, false
 	}
-	return malleatedTx, true
+	return indexWrapper, true
 }
 
-// MarshalMalleatedTx creates a wrapped Tx that includes the original transaction
+// MarshalIndexWrapper creates a wrapped Tx that includes the original transaction
 // and the share index of the start of its blob.
 //
 // NOTE: must be unwrapped to be a viable sdk.Tx
-func MarshalMalleatedTx(shareIndex uint32, tx Tx) (Tx, error) {
-	wTx := tmproto.MalleatedTx{
+func MarshalIndexWrapper(shareIndex uint32, tx Tx) (Tx, error) {
+	wTx := tmproto.IndexWrapper{
 		Tx:         tx,
 		ShareIndex: shareIndex,
-		TypeId:     consts.ProtoMalleatedTxTypeID,
+		TypeId:     consts.ProtoIndexWrapperTypeID,
 	}
 	return proto.Marshal(&wTx)
 }

@@ -189,10 +189,9 @@ message TxProof {
   repeated NMTProof proofs    = 3;
 }
 
-// MalleatedTx wraps a transaction that was derived from a different original
-// transaction. This allows for tendermint to track malleated and original
-// transactions
-message MalleatedTx {
+// IndexWrapper adds index metadata to a transaction. This is used to track
+// transactions that pay for blobs, and where the blobs start in the square.
+message IndexWrapper {
   bytes  tx          = 1;
   uint32 share_index = 2;
   string type_id     = 3;

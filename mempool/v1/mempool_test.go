@@ -659,7 +659,7 @@ func TestRemoveBlobTx(t *testing.T) {
 	txmp := setup(t, 500)
 
 	originalTx := []byte{1, 2, 3, 4}
-	malleatedTx, err := types.MarshalMalleatedTx(100, originalTx)
+	indexWrapper, err := types.MarshalIndexWrapper(100, originalTx)
 	require.NoError(t, err)
 
 	// create the blobTx
@@ -674,7 +674,7 @@ func TestRemoveBlobTx(t *testing.T) {
 	err = txmp.CheckTx(bTx, nil, mempool.TxInfo{})
 	require.NoError(t, err)
 
-	err = txmp.Update(1, []types.Tx{malleatedTx}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+	err = txmp.Update(1, []types.Tx{indexWrapper}, abciResponses(1, abci.CodeTypeOK), nil, nil)
 	require.NoError(t, err)
 	assert.EqualValues(t, 0, txmp.Size())
 	assert.EqualValues(t, 0, txmp.SizeBytes())

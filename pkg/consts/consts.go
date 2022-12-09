@@ -16,9 +16,9 @@ const (
 	// decoding binaries that are not actually BlobTxs.
 	ProtoBlobTxTypeID = "BLOB"
 
-	// ProtoMalleatedTxTypeID is included in each encoded MalleatedTx to help prevent
-	// decoding binaries that are not actually MalleatedTxs.
-	ProtoMalleatedTxTypeID = "MLTD"
+	// ProtoIndexWrapperTypeID is included in each encoded IndexWrapper to help prevent
+	// decoding binaries that are not actually IndexWrappers.
+	ProtoIndexWrapperTypeID = "INDX"
 )
 
 var (
