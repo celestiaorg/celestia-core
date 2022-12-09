@@ -70,7 +70,7 @@ func TestWrappedTxIndex(t *testing.T) {
 	indexer := NewTxIndex(db.NewMemDB())
 
 	tx := types.Tx("HELLO WORLD")
-	wrappedTx, err := types.MarshalMalleatedTx(11, tx)
+	wrappedTx, err := types.MarshalIndexWrapper(11, tx)
 	require.NoError(t, err)
 	txResult := &abci.TxResult{
 		Height: 1,

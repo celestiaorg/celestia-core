@@ -65,7 +65,7 @@ func TestEventBusPublishEventTx(t *testing.T) {
 	}
 }
 
-func TestEventBusPublishEventMalleatedTx(t *testing.T) {
+func TestEventBusPublishEventIndexWrapper(t *testing.T) {
 	eventBus := NewEventBus()
 	err := eventBus.Start()
 	require.NoError(t, err)
