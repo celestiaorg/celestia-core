@@ -31,6 +31,7 @@ import (
 	mempl "github.com/tendermint/tendermint/mempool"
 	mempoolv0 "github.com/tendermint/tendermint/mempool/v0"
 	mempoolv1 "github.com/tendermint/tendermint/mempool/v1"
+	mempoolv2 "github.com/tendermint/tendermint/mempool/cat"
 	"github.com/tendermint/tendermint/p2p"
 	p2pmock "github.com/tendermint/tendermint/p2p/mock"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
@@ -179,6 +180,16 @@ func TestReactorWithEvidence(t *testing.T) {
 				mempoolv1.WithMetrics(memplMetrics),
 				mempoolv1.WithPreCheck(sm.TxPreCheck(state)),
 				mempoolv1.WithPostCheck(sm.TxPostCheck(state)),
+			)
+			case cfg.MempoolV2:
+			mempool = mempoolv2.NewTxPool(
+				logger,
+				config.Mempool,
+				proxyAppConnConMem,
+				state.LastBlockHeight,
+				mempoolv2.WithMetrics(memplMetrics),
+				mempoolv2.WithPreCheck(sm.TxPreCheck(state)),
+				mempoolv2.WithPostCheck(sm.TxPostCheck(state)),
 			)
 		}
 		if thisConfig.Consensus.WaitForTxs() {

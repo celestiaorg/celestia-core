@@ -23,6 +23,7 @@ import (
 	mempl "github.com/tendermint/tendermint/mempool"
 	mempoolv0 "github.com/tendermint/tendermint/mempool/v0"
 	mempoolv1 "github.com/tendermint/tendermint/mempool/v1"
+	mempoolv2 "github.com/tendermint/tendermint/mempool/cat"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/conn"
 	p2pmock "github.com/tendermint/tendermint/p2p/mock"
@@ -264,6 +265,16 @@ func TestCreateProposalBlock(t *testing.T) {
 			mempoolv1.WithPreCheck(sm.TxPreCheck(state)),
 			mempoolv1.WithPostCheck(sm.TxPostCheck(state)),
 		)
+	case cfg.MempoolV2:
+		mempool = mempoolv2.NewTxPool(
+			logger,
+			config.Mempool,
+			proxyApp.Mempool(),
+			state.LastBlockHeight,
+			mempoolv2.WithMetrics(memplMetrics),
+			mempoolv2.WithPreCheck(sm.TxPreCheck(state)),
+			mempoolv2.WithPostCheck(sm.TxPostCheck(state)),
+		)
 	}
 
 	// Make EvidencePool
@@ -368,6 +379,16 @@ func TestMaxProposalBlockSize(t *testing.T) {
 			mempoolv1.WithPreCheck(sm.TxPreCheck(state)),
 			mempoolv1.WithPostCheck(sm.TxPostCheck(state)),
 		)
+	case cfg.MempoolV2:
+		mempool = mempoolv2.NewTxPool(
+			logger,
+			config.Mempool,
+			proxyApp.Mempool(),
+			state.LastBlockHeight,
+			mempoolv2.WithMetrics(memplMetrics),
+			mempoolv2.WithPreCheck(sm.TxPreCheck(state)),
+			mempoolv2.WithPostCheck(sm.TxPostCheck(state)),
+		)
 	}
 
 	// fill the mempool with one txs just below the maximum size
@@ -409,7 +430,7 @@ func TestNodeNewNodeCustomReactors(t *testing.T) {
 	cr := p2pmock.NewReactor()
 	cr.Channels = []*conn.ChannelDescriptor{
 		{
-			ID:                  byte(0x31),
+			ID:                  byte(0x32),
 			Priority:            5,
 			SendQueueCapacity:   100,
 			RecvMessageCapacity: 100,
