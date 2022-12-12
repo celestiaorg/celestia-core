@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
 	"github.com/tendermint/tendermint/mempool"
 )
 
-func BenchmarkTxMempool_CheckTx(b *testing.B) {
+func BenchmarkTxPool_CheckTx(b *testing.B) {
 	txmp := setup(b, 10000)
+	txmp.config.Size = b.N
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	b.ResetTimer()
@@ -24,7 +24,7 @@ func BenchmarkTxMempool_CheckTx(b *testing.B) {
 		require.NoError(b, err)
 
 		priority := int64(rng.Intn(9999-1000) + 1000)
-		tx := []byte(fmt.Sprintf("%X=%d", prefix, priority))
+		tx := []byte(fmt.Sprintf("sender%d=%X=%d", n, prefix, priority))
 		b.StartTimer()
 
 		require.NoError(b, txmp.CheckTx(tx, nil, mempool.TxInfo{}))

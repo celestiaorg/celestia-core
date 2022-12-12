@@ -9,11 +9,18 @@ message Txs {
 
 message SeenTx {
   bytes tx_key = 1;
+  // the nodeID of the peer that sent the transaction
+  optional string from = 2;
+}
+
+message WantTx {
+  bytes tx_key = 1;
 }
 
 message Message {
   oneof sum {
-    Txs   txs    = 1;
+    Txs    txs     = 1;
     SeenTx seen_tx = 2;
+    WantTx want_tx = 3;
   }
 }

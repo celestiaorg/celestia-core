@@ -57,6 +57,15 @@ func (tx Tx) String() string {
 	return fmt.Sprintf("Tx{%X}", []byte(tx))
 }
 
+func TxKeyFromBytes(bytes []byte) (TxKey, error) {
+	if len(bytes) != TxKeySize {
+		return TxKey{}, fmt.Errorf("incorrect tx key size. Expected %d bytes, got %d", TxKeySize, len(bytes))
+	}
+	var key TxKey
+	copy(key[:], bytes)
+	return key, nil
+}
+
 // Txs is a slice of Tx.
 type Txs []Tx
 

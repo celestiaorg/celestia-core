@@ -97,7 +97,7 @@ type EvictedTxInfo struct {
 	priority    int64
 	gasWanted   int64
 	sender      string
-	peers       map[uint16]bool
+	size        int64
 }
 
 type EvictedTxCache struct {
@@ -120,7 +120,13 @@ func (c *EvictedTxCache) Has(txKey types.TxKey) bool {
 	return exists
 }
 
-func (c *EvictedTxCache) Push(wtx *WrappedTx) {
+func (c *EvictedTxCache) Get(txKey types.TxKey) *EvictedTxInfo {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	return c.cache[txKey]
+}
+
+func (c *EvictedTxCache) Push(wtx *wrappedTx) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	c.cache[wtx.key] = &EvictedTxInfo{
@@ -128,7 +134,7 @@ func (c *EvictedTxCache) Push(wtx *WrappedTx) {
 		priority:    wtx.priority,
 		gasWanted:   wtx.gasWanted,
 		sender:      wtx.sender,
-		peers:       wtx.peers,
+		size:        wtx.size(),
 	}
 	// if cache too large, remove the oldest entry
 	if len(c.cache) > c.size {
@@ -166,12 +172,17 @@ func (c *EvictedTxCache) Prune(limit time.Time) {
 	}
 }
 
+func (c *EvictedTxCache) Reset() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.cache = make(map[types.TxKey]*EvictedTxInfo)
+}
+
 // seenTxSet records transactions that have been
 // seen by other peers but not yet by us
 type SeenTxSet struct {
-	mtx  tmsync.Mutex
-	size int
-	set  map[types.TxKey]timestampedPeerSet
+	mtx tmsync.Mutex
+	set map[types.TxKey]timestampedPeerSet
 }
 
 type timestampedPeerSet struct {
@@ -179,14 +190,16 @@ type timestampedPeerSet struct {
 	time  time.Time
 }
 
-func NewSeenTxSet(size int) *SeenTxSet {
+func NewSeenTxSet() *SeenTxSet {
 	return &SeenTxSet{
-		size: size,
-		set:  make(map[types.TxKey]timestampedPeerSet),
+		set: make(map[types.TxKey]timestampedPeerSet),
 	}
 }
 
 func (s *SeenTxSet) Add(txKey types.TxKey, peer uint16) {
+	if peer == 0 {
+		return
+	}
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	seenSet, exists := s.set[txKey]
@@ -195,36 +208,49 @@ func (s *SeenTxSet) Add(txKey types.TxKey, peer uint16) {
 			peers: map[uint16]bool{peer: true},
 			time:  time.Now().UTC(),
 		}
-		s.constrainSize()
 	} else {
 		seenSet.peers[peer] = true
 	}
 }
 
-func (s *SeenTxSet) constrainSize() {
-	if len(s.set) > s.size {
-		var (
-			oldestTxKey types.TxKey
-			oldestTime  time.Time
-		)
-		for key, set := range s.set {
-			if oldestTime.IsZero() || set.time.Before(oldestTime) {
-				oldestTxKey = key
-				oldestTime = set.time
-			}
+func (s *SeenTxSet) Pop(txKey types.TxKey) uint16 {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	seenSet, exists := s.set[txKey]
+	if !exists {
+		return 0
+	} else {
+		for peer := range seenSet.peers {
+			delete(seenSet.peers, peer)
+			return peer
 		}
-		delete(s.set, oldestTxKey)
+		return 0
 	}
 }
 
-func (s *SeenTxSet) Pop(txKey types.TxKey) map[uint16]bool {
+func (s *SeenTxSet) Remove(txKey types.TxKey) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	delete(s.set, txKey)
+}
+
+func (s *SeenTxSet) Prune(limit time.Time) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	for key, seenSet := range s.set {
+		if seenSet.time.Before(limit) {
+			delete(s.set, key)
+		}
+	}
+}
+
+func (s *SeenTxSet) Get(txKey types.TxKey) map[uint16]bool {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	seenSet, exists := s.set[txKey]
 	if !exists {
 		return nil
 	} else {
-		delete(s.set, txKey)
 		return seenSet.peers
 	}
 }
@@ -234,4 +260,10 @@ func (s *SeenTxSet) Len() int {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	return len(s.set)
+}
+
+func (s *SeenTxSet) Reset() {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.set = make(map[types.TxKey]timestampedPeerSet)
 }
