@@ -678,7 +678,6 @@ func TestConcurrentlyAddingTx(t *testing.T) {
 	errCount := 0
 	expErr := errors.New("tx already added")
 	for err := range errCh {
-		fmt.Println("received error")
 		if err != nil {
 			require.Equal(t, expErr, err)
 			errCount++

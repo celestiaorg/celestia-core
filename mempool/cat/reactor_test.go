@@ -102,9 +102,9 @@ func TestReactorSendSeenTxOnConnection(t *testing.T) {
 	peer := &mocks.Peer{}
 	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
 	peer.On("ID").Return(nodeKey.ID())
-	peer.On("SendEnvelope", mempool.MempoolChannel, msgBytes1).Return(true)
-	peer.On("SendEnvelope", mempool.MempoolChannel, msgBytes2).Return(true)
-	peer.On("SendEnvelope", mempool.MempoolChannel, mock.AnythingOfType("[]byte")).Maybe()
+	peer.On("Send", mempool.MempoolChannel, msgBytes1).Return(true)
+	peer.On("Send", mempool.MempoolChannel, msgBytes2).Return(true)
+	peer.On("Send", mempool.MempoolChannel, mock.AnythingOfType("[]byte")).Maybe()
 
 	pool.CheckTx(tx1, nil, mempool.TxInfo{})
 	pool.CheckTx(tx2, nil, mempool.TxInfo{})
