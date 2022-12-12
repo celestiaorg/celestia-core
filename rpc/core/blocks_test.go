@@ -85,14 +85,14 @@ func TestBlockResults(t *testing.T) {
 		BeginBlock: &abci.ResponseBeginBlock{},
 	}
 
-	env = &Environment{}
-	env.StateStore = sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
+	globalEnv = &Environment{}
+	globalEnv.StateStore = sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
 		DiscardABCIResponses: false,
 	})
-	err := env.StateStore.SaveABCIResponses(100, results)
+	err := globalEnv.StateStore.SaveABCIResponses(100, results)
 	require.NoError(t, err)
-	env.BlockStore = mockBlockStore{height: 100}
-	SetEnvironment(env)
+	globalEnv.BlockStore = mockBlockStore{height: 100}
+	SetEnvironment(globalEnv)
 
 	testCases := []struct {
 		height  int64

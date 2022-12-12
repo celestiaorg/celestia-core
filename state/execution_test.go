@@ -248,7 +248,9 @@ func TestProcessProposal(t *testing.T) {
 		defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
 		state, stateDB, _ := makeState(1, height)
-		stateStore := sm.NewStore(stateDB)
+		stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+			DiscardABCIResponses: false,
+		})
 
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
 			mmock.Mempool{}, sm.EmptyEvidencePool{})
@@ -328,7 +330,9 @@ func makeBlockExec(t *testing.T, testName string, block *types.Block, stateDB db
 	}()
 
 	return sm.NewBlockExecutor(
-		sm.NewStore(stateDB),
+		sm.NewStore(stateDB, sm.StoreOptions{
+			DiscardABCIResponses: false,
+		}),
 		log.TestingLogger(),
 		proxyApp.Consensus(),
 		mmock.Mempool{},
