@@ -52,7 +52,9 @@ func TestApplyBlock(t *testing.T) {
 	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
 	state, stateDB, _ := makeState(1, 1)
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
 		mmock.Mempool{}, sm.EmptyEvidencePool{})
@@ -78,7 +80,9 @@ func TestBeginBlockValidators(t *testing.T) {
 	defer proxyApp.Stop() //nolint:errcheck // no need to check error again
 
 	state, stateDB, _ := makeState(2, 2)
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 
 	prevHash := state.LastBlockID.Hash
 	prevParts := types.PartSetHeader{}
@@ -147,7 +151,9 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
 	state, stateDB, privVals := makeState(1, 1)
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 
 	defaultEvidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 	privVal := privVals[state.Validators.Validators[0].Address.String()]
@@ -242,7 +248,9 @@ func TestProcessProposal(t *testing.T) {
 		defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
 		state, stateDB, _ := makeState(1, height)
-		stateStore := sm.NewStore(stateDB)
+		stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+			DiscardABCIResponses: false,
+		})
 
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
 			mmock.Mempool{}, sm.EmptyEvidencePool{})
@@ -322,7 +330,9 @@ func makeBlockExec(t *testing.T, testName string, block *types.Block, stateDB db
 	}()
 
 	return sm.NewBlockExecutor(
-		sm.NewStore(stateDB),
+		sm.NewStore(stateDB, sm.StoreOptions{
+			DiscardABCIResponses: false,
+		}),
 		log.TestingLogger(),
 		proxyApp.Consensus(),
 		mmock.Mempool{},
@@ -487,7 +497,9 @@ func TestEndBlockValidatorUpdates(t *testing.T) {
 	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
 	state, stateDB, _ := makeState(1, 1)
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 
 	blockExec := sm.NewBlockExecutor(
 		stateStore,
@@ -558,7 +570,9 @@ func TestEndBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
 	state, stateDB, _ := makeState(1, 1)
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 	blockExec := sm.NewBlockExecutor(
 		stateStore,
 		log.TestingLogger(),

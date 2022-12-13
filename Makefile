@@ -74,6 +74,15 @@ install:
 	CGO_ENABLED=$(CGO_ENABLED) go install $(BUILD_FLAGS) -tags $(BUILD_TAGS) ./cmd/tendermint
 .PHONY: install
 
+
+###############################################################################
+###                                Mocks                                    ###
+###############################################################################
+
+mockery:
+	go generate -run="./scripts/mockery_generate.sh" ./...
+.PHONY: mockery
+
 ###############################################################################
 ###                                Protobuf                                 ###
 ###############################################################################
@@ -131,14 +140,6 @@ build_abci:
 install_abci:
 	@go install -mod=readonly ./abci/cmd/...
 .PHONY: install_abci
-
-###############################################################################
-###                               Mocks                                     ###
-###############################################################################
-
-mockery:
-	go generate -run="./scripts/mockery_generate.sh" ./...
-.PHONY: mockery
 
 ###############################################################################
 ###                              Distribution                               ###
@@ -204,7 +205,7 @@ format:
 
 lint:
 	@echo "--> Running linter"
-	@golangci-lint run
+	@go run github.com/golangci/golangci-lint/cmd/golangci-lint run
 .PHONY: lint
 
 DESTINATION = ./index.html.md

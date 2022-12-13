@@ -53,7 +53,7 @@ import (
 	tmtime "github.com/tendermint/tendermint/types/time"
 	"github.com/tendermint/tendermint/version"
 
-	_ "net/http/pprof" // nolint: gosec // securely exposed on separate, optional port
+	_ "net/http/pprof" //nolint: gosec // securely exposed on separate, optional port
 
 	_ "github.com/lib/pq" // provide the psql db driver
 )
@@ -68,6 +68,8 @@ type DBContext struct {
 
 // DBProvider takes a DBContext and returns an instantiated DB.
 type DBProvider func(*DBContext) (dbm.DB, error)
+
+const readHeaderTimeout = 10 * time.Second
 
 // DefaultDBProvider returns a database using the DBBackend and DBDir
 // specified in the ctx.Config.
@@ -144,12 +146,12 @@ type fastSyncReactor interface {
 // WARNING: using any name from the below list of the existing reactors will
 // result in replacing it with the custom one.
 //
-//  - MEMPOOL
-//  - BLOCKCHAIN
-//  - CONSENSUS
-//  - EVIDENCE
-//  - PEX
-//  - STATESYNC
+//   - MEMPOOL
+//   - BLOCKCHAIN
+//   - CONSENSUS
+//   - EVIDENCE
+//   - PEX
+//   - STATESYNC
 func CustomReactors(reactors map[string]p2p.Reactor) Option {
 	return func(n *Node) {
 		for name, reactor := range reactors {
@@ -271,7 +273,6 @@ func createAndStartIndexerService(
 	eventBus *types.EventBus,
 	logger log.Logger,
 ) (*txindex.IndexerService, txindex.TxIndexer, indexer.BlockIndexer, error) {
-
 	var (
 		txIndexer    txindex.TxIndexer
 		blockIndexer indexer.BlockIndexer
@@ -303,7 +304,7 @@ func createAndStartIndexerService(
 		blockIndexer = &blockidxnull.BlockerIndexer{}
 	}
 
-	indexerService := txindex.NewIndexerService(txIndexer, blockIndexer, eventBus)
+	indexerService := txindex.NewIndexerService(txIndexer, blockIndexer, eventBus, false)
 	indexerService.SetLogger(logger.With("module", "txindex"))
 
 	if err := indexerService.Start(); err != nil {
@@ -320,8 +321,8 @@ func doHandshake(
 	genDoc *types.GenesisDoc,
 	eventBus types.BlockEventPublisher,
 	proxyApp proxy.AppConns,
-	consensusLogger log.Logger) error {
-
+	consensusLogger log.Logger,
+) error {
 	handshaker := cs.NewHandshaker(stateStore, state, blockStore, genDoc)
 	handshaker.SetLogger(consensusLogger)
 	handshaker.SetEventBus(eventBus)
@@ -371,7 +372,6 @@ func createMempoolAndMempoolReactor(
 	memplMetrics *mempl.Metrics,
 	logger log.Logger,
 ) (mempl.Mempool, p2p.Reactor) {
-
 	switch config.Mempool.Version {
 	case cfg.MempoolV1:
 		mp := mempoolv1.NewTxMempool(
@@ -422,14 +422,16 @@ func createMempoolAndMempoolReactor(
 }
 
 func createEvidenceReactor(config *cfg.Config, dbProvider DBProvider,
-	stateDB dbm.DB, blockStore *store.BlockStore, logger log.Logger) (*evidence.Reactor, *evidence.Pool, error) {
-
+	stateDB dbm.DB, blockStore *store.BlockStore, logger log.Logger,
+) (*evidence.Reactor, *evidence.Pool, error) {
 	evidenceDB, err := dbProvider(&DBContext{"evidence", config})
 	if err != nil {
 		return nil, nil, err
 	}
 	evidenceLogger := logger.With("module", "evidence")
-	evidencePool, err := evidence.NewPool(evidenceDB, sm.NewStore(stateDB), blockStore)
+	evidencePool, err := evidence.NewPool(evidenceDB, sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: config.Storage.DiscardABCIResponses,
+	}), blockStore)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -443,8 +445,8 @@ func createBlockchainReactor(config *cfg.Config,
 	blockExec *sm.BlockExecutor,
 	blockStore *store.BlockStore,
 	fastSync bool,
-	logger log.Logger) (bcReactor p2p.Reactor, err error) {
-
+	logger log.Logger,
+) (bcReactor p2p.Reactor, err error) {
 	switch config.FastSync.Version {
 	case "v0":
 		bcReactor = bcv0.NewBlockchainReactor(state.Copy(), blockExec, blockStore, fastSync)
@@ -470,8 +472,8 @@ func createConsensusReactor(config *cfg.Config,
 	csMetrics *cs.Metrics,
 	waitSync bool,
 	eventBus *types.EventBus,
-	consensusLogger log.Logger) (*cs.Reactor, *cs.State) {
-
+	consensusLogger log.Logger,
+) (*cs.Reactor, *cs.State) {
 	consensusState := cs.NewState(
 		config.Consensus,
 		state.Copy(),
@@ -573,8 +575,8 @@ func createSwitch(config *cfg.Config,
 	evidenceReactor *evidence.Reactor,
 	nodeInfo p2p.NodeInfo,
 	nodeKey *p2p.NodeKey,
-	p2pLogger log.Logger) *p2p.Switch {
-
+	p2pLogger log.Logger,
+) *p2p.Switch {
 	sw := p2p.NewSwitch(
 		config.P2P,
 		transport,
@@ -596,8 +598,8 @@ func createSwitch(config *cfg.Config,
 }
 
 func createAddrBookAndSetOnSwitch(config *cfg.Config, sw *p2p.Switch,
-	p2pLogger log.Logger, nodeKey *p2p.NodeKey) (pex.AddrBook, error) {
-
+	p2pLogger log.Logger, nodeKey *p2p.NodeKey,
+) (pex.AddrBook, error) {
 	addrBook := pex.NewAddrBook(config.P2P.AddrBookFile(), config.P2P.AddrBookStrict)
 	addrBook.SetLogger(p2pLogger.With("book", config.P2P.AddrBookFile()))
 
@@ -623,8 +625,8 @@ func createAddrBookAndSetOnSwitch(config *cfg.Config, sw *p2p.Switch,
 }
 
 func createPEXReactorAndAddToSwitch(addrBook pex.AddrBook, config *cfg.Config,
-	sw *p2p.Switch, logger log.Logger) *pex.Reactor {
-
+	sw *p2p.Switch, logger log.Logger,
+) *pex.Reactor {
 	// TODO persistent peers ? so we can have their DNS addrs saved
 	pexReactor := pex.NewReactor(addrBook,
 		&pex.ReactorConfig{
@@ -646,7 +648,8 @@ func createPEXReactorAndAddToSwitch(addrBook pex.AddrBook, config *cfg.Config,
 // startStateSync starts an asynchronous state sync process, then switches to fast sync mode.
 func startStateSync(ssR *statesync.Reactor, bcR fastSyncReactor, conR *cs.Reactor,
 	stateProvider statesync.StateProvider, config *cfg.StateSyncConfig, fastSync bool,
-	stateStore sm.Store, blockStore *store.BlockStore, state sm.State) error {
+	stateStore sm.Store, blockStore *store.BlockStore, state sm.State,
+) error {
 	ssR.Logger.Info("Starting state sync")
 
 	if stateProvider == nil {
@@ -708,14 +711,16 @@ func NewNode(config *cfg.Config,
 	dbProvider DBProvider,
 	metricsProvider MetricsProvider,
 	logger log.Logger,
-	options ...Option) (*Node, error) {
-
+	options ...Option,
+) (*Node, error) {
 	blockStore, stateDB, err := initDBs(config, dbProvider)
 	if err != nil {
 		return nil, err
 	}
 
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: config.Storage.DiscardABCIResponses,
+	})
 
 	state, genDoc, err := LoadStateFromDBOrGenesisDocProvider(stateDB, genesisDocProvider)
 	if err != nil {
@@ -889,6 +894,7 @@ func NewNode(config *cfg.Config,
 	if config.RPC.PprofListenAddress != "" {
 		go func() {
 			logger.Info("Starting pprof server", "laddr", config.RPC.PprofListenAddress)
+			//nolint:gosec,nolintlint // G114: Use of net/http serve function that has no support for setting timeouts
 			logger.Error("pprof server error", "err", http.ListenAndServe(config.RPC.PprofListenAddress, nil))
 		}()
 	}
@@ -1203,7 +1209,6 @@ func (n *Node) startRPC() ([]net.Listener, error) {
 	}
 
 	return listeners, nil
-
 }
 
 // startPrometheusServer starts a Prometheus HTTP server, listening for metrics
@@ -1217,6 +1222,7 @@ func (n *Node) startPrometheusServer(addr string) *http.Server {
 				promhttp.HandlerOpts{MaxRequestsInFlight: n.config.Instrumentation.MaxOpenConnections},
 			),
 		),
+		ReadHeaderTimeout: readHeaderTimeout,
 	}
 	go func() {
 		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
@@ -1375,9 +1381,7 @@ func makeNodeInfo(
 
 //------------------------------------------------------------------------------
 
-var (
-	genesisDocKey = []byte("genesisDoc")
-)
+var genesisDocKey = []byte("genesisDoc")
 
 // LoadStateFromDBOrGenesisDocProvider attempts to load the state from the
 // database, or creates one using the given genesisDocProvider. On success this also
@@ -1399,7 +1403,9 @@ func LoadStateFromDBOrGenesisDocProvider(
 			return sm.State{}, nil, err
 		}
 	}
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 	state, err := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 	if err != nil {
 		return sm.State{}, nil, err

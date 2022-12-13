@@ -82,6 +82,11 @@ func (txi *TxIndex) AddBatch(b *txindex.Batch) error {
 // that indexed from the tx's events is a composite of the event type and the
 // respective attribute's key delimited by a "." (eg. "account.number").
 // Any event with an empty type is not indexed.
+//
+// If a transaction is indexed with the same hash as a previous transaction, it will
+// be overwritten unless the tx result was NOT OK and the prior result was OK i.e.
+// more transactions that successfully executed overwrite transactions that failed
+// or successful yet older transactions.
 func (txi *TxIndex) Index(result *abci.TxResult) error {
 	b := txi.store.NewBatch()
 	defer b.Close()
@@ -126,6 +131,19 @@ func (txi *TxIndex) indexResult(batch dbm.Batch, result *abci.TxResult) error {
 	rawBytes, err := proto.Marshal(result)
 	if err != nil {
 		return err
+	}
+
+	if !result.Result.IsOK() {
+		oldResult, err := txi.Get(hash)
+		if err != nil {
+			return err
+		}
+
+		// if the new transaction failed and it's already indexed in an older block and was successful
+		// we skip it as we want users to get the older successful transaction when they query.
+		if oldResult != nil && oldResult.Result.Code == abci.CodeTypeOK {
+			return nil
+		}
 	}
 
 	// index tx by events
