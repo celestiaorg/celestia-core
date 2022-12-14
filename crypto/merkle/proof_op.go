@@ -142,6 +142,10 @@ func (prt *ProofRuntime) VerifyValue(proof *tmcrypto.ProofOps, root []byte, keyp
 	return prt.Verify(proof, root, keypath, [][]byte{value})
 }
 
+func (prt *ProofRuntime) VerifyValueKeys(proof *tmcrypto.ProofOps, root []byte, keys [][]byte, value []byte) (err error) {
+	return prt.VerifyKeys(proof, root, keys, [][]byte{value})
+}
+
 // TODO In the long run we'll need a method of classifcation of ops,
 // whether existence or absence or perhaps a third?
 func (prt *ProofRuntime) VerifyAbsence(proof *tmcrypto.ProofOps, root []byte, keypath string) (err error) {
@@ -154,6 +158,14 @@ func (prt *ProofRuntime) Verify(proof *tmcrypto.ProofOps, root []byte, keypath s
 		return fmt.Errorf("decoding proof: %w", err)
 	}
 	return poz.Verify(root, keypath, args)
+}
+
+func (prt *ProofRuntime) VerifyKeys(proof *tmcrypto.ProofOps, root []byte, keys [][]byte, args [][]byte) (err error) {
+	poz, err := prt.DecodeProof(proof)
+	if err != nil {
+		return fmt.Errorf("decoding proof: %w", err)
+	}
+	return poz.VerifyKeys(root, keys, args)
 }
 
 // DefaultProofRuntime only knows about value proofs.
