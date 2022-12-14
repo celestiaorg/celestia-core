@@ -68,6 +68,33 @@ func (poz ProofOperators) Verify(root []byte, keypath string, args [][]byte) (er
 	return nil
 }
 
+func (poz ProofOperators) VerifyKeys(root []byte, keys [][]byte, args [][]byte) (err error) {
+	for i, op := range poz {
+		key := op.GetKey()
+		if len(key) != 0 {
+			if len(keys) == 0 {
+				return fmt.Errorf("key path has insufficient # of parts: expected no more keys but got %+v", string(key))
+			}
+			lastKey := keys[len(keys)-1]
+			if !bytes.Equal(lastKey, key) {
+				return fmt.Errorf("key mismatch on operation #%d: expected %+v but got %+v", i, string(lastKey), string(key))
+			}
+			keys = keys[:len(keys)-1]
+		}
+		args, err = op.Run(args)
+		if err != nil {
+			return
+		}
+	}
+	if !bytes.Equal(root, args[0]) {
+		return fmt.Errorf("calculated root hash is invalid: expected %X but got %X", root, args[0])
+	}
+	if len(keys) != 0 {
+		return errors.New("keypath not consumed all")
+	}
+	return nil
+}
+
 //----------------------------------------
 // ProofRuntime - main entrypoint
 
