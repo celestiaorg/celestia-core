@@ -12,7 +12,7 @@ import (
 
 // Status returns Tendermint status including node info, pubkey, latest block
 // hash, app hash, block height and time.
-// More: https://docs.tendermint.com/master/rpc/#/Info/status
+// More: https://docs.tendermint.com/v0.34/rpc/#/Info/status
 func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 	var (
 		earliestBlockHeight   int64
@@ -21,6 +21,7 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 		earliestBlockTimeNano int64
 	)
 
+	env := GetEnvironment()
 	if earliestBlockMeta := env.BlockStore.LoadBaseMeta(); earliestBlockMeta != nil {
 		earliestBlockHeight = earliestBlockMeta.Header.Height
 		earliestAppHash = earliestBlockMeta.Header.AppHash
@@ -75,6 +76,7 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 }
 
 func validatorAtHeight(h int64) *types.Validator {
+	env := GetEnvironment()
 	vals, err := env.StateStore.LoadValidators(h)
 	if err != nil {
 		return nil

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"sort"
+	"math"
 	"strings"
 	"time"
 
@@ -47,7 +47,8 @@ type Block struct {
 
 	Header     `json:"header"`
 	Data       `json:"data"`
-	LastCommit *Commit `json:"last_commit"`
+	Evidence   EvidenceData `json:"evidence"`
+	LastCommit *Commit      `json:"last_commit"`
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data. It
@@ -227,7 +228,7 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 	if err != nil {
 		return nil, err
 	}
-	pb.Data.Evidence = *protoEvidence
+	pb.Evidence = *protoEvidence
 
 	return pb, nil
 }
@@ -250,7 +251,7 @@ func BlockFromProto(bp *tmproto.Block) (*Block, error) {
 		return nil, err
 	}
 	b.Data = data
-	if err := b.Evidence.FromProto(&bp.Data.Evidence); err != nil {
+	if err := b.Evidence.FromProto(&bp.Evidence); err != nil {
 		return nil, err
 	}
 
@@ -316,13 +317,15 @@ func MaxDataBytesNoEvidence(maxBytes int64, valsCount int) int64 {
 func MakeBlock(
 	height int64,
 	data Data,
-	lastCommit *Commit) *Block {
+	lastCommit *Commit,
+	evidence []Evidence) *Block {
 	block := &Block{
 		Header: Header{
 			Version: tmversion.Consensus{Block: version.BlockProtocol, App: 0},
 			Height:  height,
 		},
 		Data:       data,
+		Evidence:   EvidenceData{Evidence: evidence},
 		LastCommit: lastCommit,
 	}
 	block.fillHeader()
@@ -335,7 +338,7 @@ func MakeBlock(
 // NOTE: changes to the Header should be duplicated in:
 // - header.Hash()
 // - abci.Header
-// - https://github.com/tendermint/spec/blob/master/spec/blockchain/blockchain.md
+// - https://github.com/tendermint/tendermint/blob/v0.34.x/spec/blockchain/blockchain.md
 type Header struct {
 	// basic block info
 	Version tmversion.Consensus `json:"version"`
@@ -1004,28 +1007,21 @@ func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
 
 // Data contains all the available Data of the block.
 // Data with reserved namespaces (Txs, IntermediateStateRoots, Evidence) and
-// Celestia application specific Messages.
+// Celestia application specific Blobs.
 type Data struct {
 	// Txs that will be applied by state @ block.Height+1.
 	// NOTE: not all txs here are valid.  We're just agreeing on the order first.
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
 
-	Evidence EvidenceData `json:"evidence"`
+	// The blobs included in this block.
+	Blobs []Blob `json:"blobs"`
 
-	// The messages included in this block.
-	// TODO: how do messages end up here? (abci) app <-> ll-core?
-	// A simple approach could be: include them in the Tx above and
-	// have a mechanism to split them out somehow? Probably better to include
-	// them only when necessary (before proposing the block) as messages do not
-	// really need to be processed by tendermint
-	Messages Messages `json:"msgs"`
-
-	// OriginalSquareSize is the size of the square after splitting all the block data
+	// SquareSize is the size of the square after splitting all the block data
 	// into shares. The erasure data is discarded after generation, and keeping this
 	// value avoids unnecessarily regenerating all of the shares when returning
 	// proofs that some element was included in the block
-	OriginalSquareSize uint64 `json:"square_size"`
+	SquareSize uint64 `json:"square_size"`
 
 	// Volatile
 	hash tmbytes.HexBytes
@@ -1048,79 +1044,62 @@ func (data *Data) Hash() tmbytes.HexBytes {
 	return data.hash
 }
 
-type Messages struct {
-	MessagesList []Message `json:"msgs"`
+// BlobsByNamespace implements sort.Interface for Blob
+type BlobsByNamespace []Blob
+
+func (b BlobsByNamespace) Len() int {
+	return len(b)
 }
 
-// ByNamespace implements sort.Interface for Message
-type ByNamespace []Message
-
-func (s ByNamespace) Len() int {
-	return len(s)
+func (b BlobsByNamespace) Swap(i, j int) {
+	b[i], b[j] = b[j], b[i]
 }
 
-func (s ByNamespace) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-func (s ByNamespace) Less(i, j int) bool {
+func (b BlobsByNamespace) Less(i, j int) bool {
 	// The following comparison is `<` and not `<=` because bytes.Compare returns 0 for if a == b.
 	// We want this comparison to return `false` if a == b because:
 	// If both Less(i, j) and Less(j, i) are false,
 	// then the elements at index i and j are considered equal.
 	// See https://pkg.go.dev/sort#Interface
-	return bytes.Compare(s[i].NamespaceID, s[j].NamespaceID) < 0
+	return bytes.Compare(b[i].NamespaceID, b[j].NamespaceID) < 0
 }
 
-// SortMessages sorts messages by ascending namespace id
-func (msgs *Messages) SortMessages() {
-	sort.Sort(ByNamespace(msgs.MessagesList))
-}
-
-// IsSorted returns whether the messages are sorted by namespace id
-func (msgs *Messages) IsSorted() bool {
-	return sort.IsSorted(ByNamespace(msgs.MessagesList))
-}
-
-type Message struct {
-	// NamespaceID defines the namespace of this message, i.e. the
+type Blob struct {
+	// NamespaceID defines the namespace of this blob, i.e. the
 	// namespace it will use in the namespaced Merkle tree.
-	//
-	// TODO: spec out constrains and
-	// introduce dedicated type instead of just []byte
 	NamespaceID namespace.ID
 
-	// Data is the actual data contained in the message
+	// Data is the actual data of the blob.
 	// (e.g. a block of a virtual sidechain).
 	Data []byte
+
+	// ShareVersion is the version of the share format that this blob should use
+	// when encoded into shares.
+	ShareVersion uint8
 }
 
-var (
-	MessageEmpty  = Message{}
-	MessagesEmpty = Messages{}
-)
-
-func MessageFromProto(p *tmproto.Message) Message {
+func BlobFromProto(p *tmproto.Blob) Blob {
 	if p == nil {
-		return MessageEmpty
+		return Blob{}
 	}
-	return Message{
-		NamespaceID: p.NamespaceId,
-		Data:        p.Data,
+	return Blob{
+		NamespaceID:  p.NamespaceId,
+		Data:         p.Data,
+		ShareVersion: uint8(p.ShareVersion),
 	}
 }
 
-func MessagesFromProto(p *tmproto.Messages) Messages {
+func BlobsFromProto(p []*tmproto.Blob) []Blob {
 	if p == nil {
-		return MessagesEmpty
+		return []Blob{}
 	}
 
-	msgs := make([]Message, 0, len(p.MessagesList))
+	blobs := make([]Blob, 0, len(p))
 
-	for i := 0; i < len(p.MessagesList); i++ {
-		msgs = append(msgs, MessageFromProto(p.MessagesList[i]))
+	for i := 0; i < len(p); i++ {
+		blobs = append(blobs, BlobFromProto(p[i]))
 	}
-	return Messages{MessagesList: msgs}
+	return blobs
 }
 
 // StringIndented returns an indented string representation of the transactions.
@@ -1154,22 +1133,16 @@ func (data *Data) ToProto() tmproto.Data {
 		tp.Txs = txBzs
 	}
 
-	pevd, err := data.Evidence.ToProto()
-	if err != nil {
-		// TODO(evan): fix
-		panic(err)
-	}
-	tp.Evidence = *pevd
-
-	protoMsgs := make([]*tmproto.Message, len(data.Messages.MessagesList))
-	for i, msg := range data.Messages.MessagesList {
-		protoMsgs[i] = &tmproto.Message{
-			NamespaceId: msg.NamespaceID,
-			Data:        msg.Data,
+	protoBlobs := make([]tmproto.Blob, len(data.Blobs))
+	for i, b := range data.Blobs {
+		protoBlobs[i] = tmproto.Blob{
+			NamespaceId:  b.NamespaceID,
+			Data:         b.Data,
+			ShareVersion: uint32(b.ShareVersion),
 		}
 	}
-	tp.Messages = tmproto.Messages{MessagesList: protoMsgs}
-	tp.OriginalSquareSize = data.OriginalSquareSize
+	tp.Blobs = protoBlobs
+	tp.SquareSize = data.SquareSize
 
 	tp.Hash = data.hash
 
@@ -1194,25 +1167,15 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		data.Txs = Txs{}
 	}
 
-	if len(dp.Messages.MessagesList) > 0 {
-		msgs := make([]Message, len(dp.Messages.MessagesList))
-		for i, m := range dp.Messages.MessagesList {
-			msgs[i] = Message{NamespaceID: m.NamespaceId, Data: m.Data}
+	blobs := make([]Blob, len(dp.Blobs))
+	for i, m := range dp.Blobs {
+		if m.ShareVersion > math.MaxUint8 {
+			return Data{}, fmt.Errorf("share version %d is too large", m.ShareVersion)
 		}
-		data.Messages = Messages{MessagesList: msgs}
-	} else {
-		data.Messages = Messages{}
+		blobs[i] = Blob{NamespaceID: m.NamespaceId, Data: m.Data, ShareVersion: uint8(m.ShareVersion)}
 	}
-
-	evdData := new(EvidenceData)
-	err := evdData.FromProto(&dp.Evidence)
-	if err != nil {
-		return Data{}, err
-	}
-	if evdData != nil {
-		data.Evidence = *evdData
-	}
-	data.OriginalSquareSize = dp.OriginalSquareSize
+	data.Blobs = blobs
+	data.SquareSize = dp.SquareSize
 	data.hash = dp.Hash
 
 	return *data, nil

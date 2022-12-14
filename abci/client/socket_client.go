@@ -432,6 +432,9 @@ func (cli *socketClient) PrepareProposalSync(
 ) (*types.ResponsePrepareProposal, error) {
 
 	reqres := cli.queueRequest(types.ToRequestPrepareProposal(req))
+	if err := cli.FlushSync(); err != nil {
+		return nil, err
+	}
 	return reqres.Response.GetPrepareProposal(), nil
 }
 
@@ -440,7 +443,9 @@ func (cli *socketClient) ProcessProposalSync(
 ) (*types.ResponseProcessProposal, error) {
 
 	reqres := cli.queueRequest(types.ToRequestProcessProposal(req))
-
+	if err := cli.FlushSync(); err != nil {
+		return nil, err
+	}
 	return reqres.Response.GetProcessProposal(), nil
 }
 

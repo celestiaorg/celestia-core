@@ -235,7 +235,9 @@ func TestCreateProposalBlock(t *testing.T) {
 
 	var height int64 = 1
 	state, stateDB, privVals := state(1, height)
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 	maxBytes := 16384
 	var partSize uint32 = 256
 	maxEvidenceBytes := int64(maxBytes / 2)
@@ -313,9 +315,7 @@ func TestCreateProposalBlock(t *testing.T) {
 
 	// check that the part set does not exceed the maximum block size
 	partSet := block.MakePartSet(partSize)
-	// TODO(ismail): properly fix this test
-	// https://github.com/tendermint/tendermint/issues/77
-	assert.Less(t, partSet.ByteSize(), int64(maxBytes)*2)
+	assert.Less(t, partSet.ByteSize(), int64(maxBytes))
 
 	partSetFromHeader := types.NewPartSetFromHeader(partSet.Header())
 	for partSetFromHeader.Count() < partSetFromHeader.Total() {
@@ -342,7 +342,9 @@ func TestMaxProposalBlockSize(t *testing.T) {
 
 	var height int64 = 1
 	state, stateDB, _ := state(1, height)
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 	var maxBytes int64 = 16384
 	var partSize uint32 = 256
 	state.ConsensusParams.Block.MaxBytes = maxBytes
@@ -372,7 +374,7 @@ func TestMaxProposalBlockSize(t *testing.T) {
 
 	// fill the mempool with one txs just below the maximum size
 	txLength := int(types.MaxDataBytesNoEvidence(maxBytes, 1))
-	tx := tmrand.Bytes(txLength - 4 - 5) // to account for the varint
+	tx := tmrand.Bytes(txLength - 4)
 	err = mempool.CheckTx(tx, nil, mempl.TxInfo{})
 	assert.NoError(t, err)
 
@@ -393,9 +395,7 @@ func TestMaxProposalBlockSize(t *testing.T) {
 
 	pb, err := block.ToProto()
 	require.NoError(t, err)
-	// TODO(ismail): fix this test properly
-	// https://github.com/tendermint/tendermint/issues/77
-	assert.Less(t, int64(pb.Size()), maxBytes*2)
+	assert.Less(t, int64(pb.Size()), maxBytes)
 
 	// check that the part set does not exceed the maximum block size
 	partSet := block.MakePartSet(partSize)
@@ -468,7 +468,9 @@ func state(nVals int, height int64) (sm.State, dbm.DB, []types.PrivValidator) {
 
 	// save validators to db for 2 heights
 	stateDB := dbm.NewMemDB()
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 	if err := stateStore.Save(s); err != nil {
 		panic(err)
 	}

@@ -89,49 +89,20 @@ message Data {
   repeated bytes txs = 1;
 
   // field number 2 is reserved for intermediate state roots
-  EvidenceList           evidence                 = 3 [(gogoproto.nullable) = false];
-  Messages               messages                 = 4 [(gogoproto.nullable) = false];
-  uint64                 original_square_size     = 5;
-  bytes                  hash                     = 6;
+  // field number 3 was previously used for evidence
+  repeated Blob blobs       = 4 [(gogoproto.nullable) = false];
+  uint64        square_size = 5;
+  bytes         hash        = 6;
 }
 
-// DuplicateVoteEvidence contains evidence of a validator signed two conflicting votes.
-message DuplicateVoteEvidence {
-  tendermint.types.Vote     vote_a             = 1;
-  tendermint.types.Vote     vote_b             = 2;
-  int64                     total_voting_power = 3;
-  int64                     validator_power    = 4;
-  google.protobuf.Timestamp timestamp          = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-}
-
-// LightClientAttackEvidence contains evidence of a set of validators attempting to mislead a light client.
-message LightClientAttackEvidence {
-  tendermint.types.LightBlock conflicting_block            = 1;
-  int64                       common_height                = 2;
-  repeated tendermint.types.Validator byzantine_validators = 3;
-  int64                               total_voting_power   = 4;
-  google.protobuf.Timestamp           timestamp            = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-}
-
-message Evidence {
-  oneof sum {
-    DuplicateVoteEvidence     duplicate_vote_evidence      = 1;
-    LightClientAttackEvidence light_client_attack_evidence = 2;
-  }
-}
-
-// EvidenceData contains any evidence of malicious wrong-doing by validators
-message EvidenceList {
-  repeated Evidence evidence = 1 [(gogoproto.nullable) = false];
-}
-
-message Messages {
-  repeated Message messages_list = 1;
-}
-
-message Message {
-  bytes namespace_id = 1;
-  bytes data         = 2;
+// Blob (named after binary large object) is a chunk of data submitted by a user
+// to be published to the Celestia blockchain. The data of a Blob is published
+// to a namespace_id and is encoded into shares based on the format specified by
+// share_version.
+message Blob {
+  bytes  namespace_id  = 1;
+  bytes  data          = 2;
+  uint32 share_version = 3;
 }
 
 // DataAvailabilityHeader contains the row and column roots of the erasure
@@ -218,13 +189,21 @@ message TxProof {
   repeated NMTProof proofs    = 3;
 }
 
-// MalleatedTx wraps a transaction that was derived from a different original
-// transaction. This allows for tendermint to track malleated and original
-// transactions
-message MalleatedTx {
-  bytes original_tx_hash = 1;
-  bytes tx               = 2;
-  uint32 share_index     = 3;
+// IndexWrapper adds index metadata to a transaction. This is used to track
+// transactions that pay for blobs, and where the blobs start in the square.
+message IndexWrapper {
+  bytes  tx          = 1;
+  uint32 share_index = 2;
+  string type_id     = 3;
+}
+
+// BlobTx wraps an encoded sdk.Tx with a second field to contain blobs of data.
+// The raw bytes of the blobs are not signed over, instead we verify each blob
+// using the relevant MsgPayForBlobs that is signed over in the encoded sdk.Tx.
+message BlobTx {
+  bytes         tx      = 1;
+  repeated Blob blobs   = 2;
+  string        type_id = 3;
 }
 
 // Proof represents proof of a namespace.ID in an NMT.

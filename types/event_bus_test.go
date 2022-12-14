@@ -65,7 +65,7 @@ func TestEventBusPublishEventTx(t *testing.T) {
 	}
 }
 
-func TestEventBusPublishEventMalleatedTx(t *testing.T) {
+func TestEventBusPublishEventIndexWrapper(t *testing.T) {
 	eventBus := NewEventBus()
 	err := eventBus.Start()
 	require.NoError(t, err)
@@ -76,7 +76,7 @@ func TestEventBusPublishEventMalleatedTx(t *testing.T) {
 	})
 
 	tx := Tx("foo")
-	malleatedTx := Tx("foo-malleated")
+	require.NoError(t, err)
 
 	result := abci.ResponseDeliverTx{
 		Data: []byte("bar"),
@@ -96,17 +96,16 @@ func TestEventBusPublishEventMalleatedTx(t *testing.T) {
 		edt := msg.Data().(EventDataTx)
 		assert.Equal(t, int64(1), edt.Height)
 		assert.Equal(t, uint32(0), edt.Index)
-		assert.EqualValues(t, malleatedTx, edt.Tx)
+		assert.EqualValues(t, tx, edt.Tx)
 		assert.Equal(t, result, edt.Result)
 		close(done)
 	}()
 
 	err = eventBus.PublishEventTx(EventDataTx{abci.TxResult{
-		Height:       1,
-		Index:        0,
-		Tx:           malleatedTx,
-		Result:       result,
-		OriginalHash: tx.Hash(),
+		Height: 1,
+		Index:  0,
+		Tx:     tx,
+		Result: result,
 	}})
 	assert.NoError(t, err)
 
@@ -127,7 +126,7 @@ func TestEventBusPublishEventNewBlock(t *testing.T) {
 		}
 	})
 
-	block := MakeBlock(0, makeData([]Tx{}, []Evidence{}, nil), nil)
+	block := MakeBlock(0, makeData([]Tx{}, nil), nil, []Evidence{})
 	// blockID := BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(BlockPartSizeBytes).Header()}
 	resultBeginBlock := abci.ResponseBeginBlock{
 		Events: []abci.Event{
@@ -280,7 +279,7 @@ func TestEventBusPublishEventNewBlockHeader(t *testing.T) {
 		}
 	})
 
-	block := MakeBlock(0, makeData([]Tx{}, []Evidence{}, nil), nil)
+	block := MakeBlock(0, makeData([]Tx{}, nil), nil, []Evidence{})
 	resultBeginBlock := abci.ResponseBeginBlock{
 		Events: []abci.Event{
 			{Type: "testType", Attributes: []abci.EventAttribute{{Key: []byte("baz"), Value: []byte("1")}}},

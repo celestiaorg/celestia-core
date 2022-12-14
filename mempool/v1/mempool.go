@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/creachadair/taskgroup"
+
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/clist"
@@ -205,6 +206,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		if !txmp.cache.Push(tx) {
 			// If the cached transaction is also in the pool, record its sender.
 			if elt, ok := txmp.txByKey[txKey]; ok {
+				txmp.metrics.AlreadySeenTxs.Add(1)
 				w := elt.Value.(*WrappedTx)
 				w.SetPeer(txInfo.SenderID)
 			}
@@ -399,27 +401,19 @@ func (txmp *TxMempool) Update(
 		txmp.postCheck = newPostFn
 	}
 
+	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
 	for i, tx := range blockTxs {
-		// The tx hash corresponding to the originating transaction. Set to the
-		// current tx hash initially, but can change in case of a malleated tx.
-		originalKey := tx.Key()
-
-		// Regardless of outcome, remove the transaction from the mempool.
-		if err := txmp.removeTxByKey(originalKey); err != nil {
-			if malleatedTx, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
-				copy(originalKey[:], malleatedTx.OriginalTxHash)
-				_ = txmp.removeTxByKey(originalKey)
-			}
-		}
-
 		// Add successful committed transactions to the cache (if they are not
 		// already present).  Transactions that failed to commit are removed from
 		// the cache unless the operator has explicitly requested we keep them.
 		if deliverTxResponses[i].Code == abci.CodeTypeOK {
 			_ = txmp.cache.Push(tx)
 		} else if !txmp.config.KeepInvalidTxsInCache {
-			txmp.cache.RemoveTxByKey(originalKey)
+			txmp.cache.Remove(tx)
 		}
+
+		// Regardless of success, remove the transaction from the mempool.
+		_ = txmp.removeTxByKey(tx.Key())
 	}
 
 	txmp.purgeExpiredTxs(blockHeight)

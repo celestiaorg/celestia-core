@@ -19,9 +19,10 @@ const (
 )
 
 // Subscribe for events via WebSocket.
-// More: https://docs.tendermint.com/master/rpc/#/Websocket/subscribe
+// More: https://docs.tendermint.com/v0.34/rpc/#/Websocket/subscribe
 func Subscribe(ctx *rpctypes.Context, query string) (*ctypes.ResultSubscribe, error) {
 	addr := ctx.RemoteAddr()
+	env := GetEnvironment()
 
 	if env.EventBus.NumClients() >= env.Config.MaxSubscriptionClients {
 		return nil, fmt.Errorf("max_subscription_clients %d reached", env.Config.MaxSubscriptionClients)
@@ -105,9 +106,10 @@ func Subscribe(ctx *rpctypes.Context, query string) (*ctypes.ResultSubscribe, er
 }
 
 // Unsubscribe from events via WebSocket.
-// More: https://docs.tendermint.com/master/rpc/#/Websocket/unsubscribe
+// More: https://docs.tendermint.com/v0.34/rpc/#/Websocket/unsubscribe
 func Unsubscribe(ctx *rpctypes.Context, query string) (*ctypes.ResultUnsubscribe, error) {
 	addr := ctx.RemoteAddr()
+	env := GetEnvironment()
 	env.Logger.Info("Unsubscribe from query", "remote", addr, "query", query)
 	q, err := tmquery.New(query)
 	if err != nil {
@@ -121,9 +123,10 @@ func Unsubscribe(ctx *rpctypes.Context, query string) (*ctypes.ResultUnsubscribe
 }
 
 // UnsubscribeAll from all events via WebSocket.
-// More: https://docs.tendermint.com/master/rpc/#/Websocket/unsubscribe_all
+// More: https://docs.tendermint.com/v0.34/rpc/#/Websocket/unsubscribe_all
 func UnsubscribeAll(ctx *rpctypes.Context) (*ctypes.ResultUnsubscribe, error) {
 	addr := ctx.RemoteAddr()
+	env := GetEnvironment()
 	env.Logger.Info("Unsubscribe from all", "remote", addr)
 	err := env.EventBus.UnsubscribeAll(context.Background(), addr)
 	if err != nil {

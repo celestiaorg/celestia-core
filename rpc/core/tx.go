@@ -20,10 +20,9 @@ import (
 // Tx allows you to query the transaction results. `nil` could mean the
 // transaction is in the mempool, invalidated, or was not sent in the first
 // place.
-// NOTE: proveTx isn't respected but is left in the function signature to
-// conform to the endpoint exposed by Tendermint
-// More: https://docs.tendermint.com/master/rpc/#/Info/tx
+// More: https://docs.tendermint.com/v0.34/rpc/#/Info/tx
 func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
+	env := GetEnvironment()
 	// if index is disabled, return error
 	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
 		return nil, fmt.Errorf("transaction indexing is disabled")
@@ -63,7 +62,7 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 // list of transactions (maximum ?per_page entries) and the total count.
 // NOTE: proveTx isn't respected but is left in the function signature to
 // conform to the endpoint exposed by Tendermint
-// More: https://docs.tendermint.com/master/rpc/#/Info/tx_search
+// More: https://docs.tendermint.com/v0.34/rpc/#/Info/tx_search
 func TxSearch(
 	ctx *rpctypes.Context,
 	query string,
@@ -72,6 +71,7 @@ func TxSearch(
 	orderBy string,
 ) (*ctypes.ResultTxSearch, error) {
 
+	env := GetEnvironment()
 	// if index is disabled, return error
 	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
 		return nil, errors.New("transaction indexing is disabled")
@@ -151,6 +151,7 @@ func proveTx(height int64, index uint32) (types.TxProof, error) {
 		pTxProof tmproto.TxProof
 		txProof  types.TxProof
 	)
+	env := GetEnvironment()
 	rawBlock, err := loadRawBlock(env.BlockStore, height)
 	if err != nil {
 		return txProof, err

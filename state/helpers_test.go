@@ -57,8 +57,9 @@ func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commi
 	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, types.BlockID, error) {
 	block, _ := state.MakeBlock(
 		height,
-		factory.MakeData(factory.MakeTenTxs(height), evidence, nil),
+		factory.MakeData(factory.MakeTenTxs(height), nil),
 		lastCommit,
+		evidence,
 		proposerAddr,
 	)
 	if err := blockExec.ValidateBlock(state, block); err != nil {
@@ -121,7 +122,9 @@ func makeState(nVals, height int) (sm.State, dbm.DB, map[string]types.PrivValida
 	})
 
 	stateDB := dbm.NewMemDB()
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 	if err := stateStore.Save(s); err != nil {
 		panic(err)
 	}
@@ -140,8 +143,9 @@ func makeState(nVals, height int) (sm.State, dbm.DB, map[string]types.PrivValida
 func makeBlock(state sm.State, height int64) *types.Block {
 	block, _ := state.MakeBlock(
 		height,
-		factory.MakeData(makeTxs(state.LastBlockHeight), nil, nil),
+		factory.MakeData(makeTxs(state.LastBlockHeight), nil),
 		new(types.Commit),
+		nil,
 		state.Validators.GetProposer().Address,
 	)
 	return block

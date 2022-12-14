@@ -29,7 +29,9 @@ func TestValidateBlockHeader(t *testing.T) {
 	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
 	state, stateDB, privVals := makeState(3, 1)
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 	blockExec := sm.NewBlockExecutor(
 		stateStore,
 		log.TestingLogger(),
@@ -78,7 +80,7 @@ func TestValidateBlockHeader(t *testing.T) {
 			Invalid blocks don't pass
 		*/
 		for _, tc := range testCases {
-			block, _ := state.MakeBlock(height, factory.MakeData(makeTxs(height), nil, nil), lastCommit, proposerAddr)
+			block, _ := state.MakeBlock(height, factory.MakeData(makeTxs(height), nil), lastCommit, nil, proposerAddr)
 			tc.malleateBlock(block)
 			err := blockExec.ValidateBlock(state, block)
 			require.Error(t, err, tc.name)
@@ -95,8 +97,9 @@ func TestValidateBlockHeader(t *testing.T) {
 	nextHeight := validationTestsStopHeight
 	block, _ := state.MakeBlock(
 		nextHeight,
-		factory.MakeData(factory.MakeTenTxs(nextHeight), nil, nil),
+		factory.MakeData(factory.MakeTenTxs(nextHeight), nil),
 		lastCommit,
+		nil,
 		state.Validators.GetProposer().Address,
 	)
 	state.InitialHeight = nextHeight + 1
@@ -111,7 +114,9 @@ func TestValidateBlockCommit(t *testing.T) {
 	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
 	state, stateDB, privVals := makeState(1, 1)
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 	blockExec := sm.NewBlockExecutor(
 		stateStore,
 		log.TestingLogger(),
@@ -147,8 +152,9 @@ func TestValidateBlockCommit(t *testing.T) {
 			)
 			block, _ := state.MakeBlock(
 				height,
-				factory.MakeData(factory.MakeTenTxs(height), nil, nil),
+				factory.MakeData(factory.MakeTenTxs(height), nil),
 				wrongHeightCommit,
+				nil,
 				proposerAddr,
 			)
 			err = blockExec.ValidateBlock(state, block)
@@ -160,8 +166,9 @@ func TestValidateBlockCommit(t *testing.T) {
 			*/
 			block, _ = state.MakeBlock(
 				height,
-				factory.MakeData(factory.MakeTenTxs(height), nil, nil),
+				factory.MakeData(factory.MakeTenTxs(height), nil),
 				wrongSigsCommit,
+				nil,
 				proposerAddr,
 			)
 			err = blockExec.ValidateBlock(state, block)
@@ -229,13 +236,16 @@ func TestValidateBlockCommit(t *testing.T) {
 	}
 }
 
+// TODO potentially delete
 func TestValidateBlockEvidence(t *testing.T) {
 	proxyApp := newTestApp()
 	require.NoError(t, proxyApp.Start())
 	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
 	state, stateDB, privVals := makeState(4, 1)
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 	defaultEvidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	evpool := &mocks.EvidencePool{}
@@ -272,8 +282,9 @@ func TestValidateBlockEvidence(t *testing.T) {
 			}
 			block, _ := state.MakeBlock(
 				height,
-				factory.MakeData(factory.MakeTenTxs(height), evidence, nil),
+				factory.MakeData(factory.MakeTenTxs(height), nil),
 				lastCommit,
+				evidence,
 				proposerAddr,
 			)
 			err := blockExec.ValidateBlock(state, block)

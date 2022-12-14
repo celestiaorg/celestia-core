@@ -104,13 +104,6 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	evidence, evSize := blockExec.evpool.PendingEvidence(state.ConsensusParams.Evidence.MaxBytes)
 
-	evdData := types.EvidenceData{Evidence: evidence}
-	pevdData, err := evdData.ToProto()
-	if err != nil {
-		// todo(evan): see if we can get rid of this panic
-		panic(err)
-	}
-
 	// Fetch a limited amount of valid txs
 	maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
 
@@ -121,15 +114,10 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// Tx -> Txs, Message
 	// https://github.com/tendermint/tendermint/issues/77
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
-	l := len(txs)
-	bzs := make([][]byte, l)
-	for i := 0; i < l; i++ {
-		bzs[i] = txs[i]
-	}
 
 	preparedProposal, err := blockExec.proxyApp.PrepareProposalSync(
 		abci.RequestPrepareProposal{
-			BlockData:     &tmproto.Data{Txs: txs.ToSliceOfBytes(), Evidence: *pevdData},
+			BlockData:     &tmproto.Data{Txs: txs.ToSliceOfBytes()},
 			BlockDataSize: maxDataBytes},
 	)
 	if err != nil {
@@ -144,11 +132,11 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		panic(err)
 	}
 	rawNewData := preparedProposal.GetBlockData()
-	var txSize int
+	var blockDataSize int
 	for _, tx := range rawNewData.GetTxs() {
-		txSize += len(tx)
+		blockDataSize += len(tx)
 
-		if maxDataBytes < int64(txSize) {
+		if maxDataBytes < int64(blockDataSize) {
 			panic("block data exceeds max amount of allowed bytes")
 		}
 	}
@@ -163,6 +151,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		height,
 		newData,
 		commit,
+		evidence,
 		proposerAddr,
 	)
 }
@@ -582,22 +571,11 @@ func fireEvents(
 	}
 
 	for i, tx := range block.Data.Txs {
-		var txHash []byte
-		var rawTx []byte
-		if malleatedTx, ismalleated := types.UnwrapMalleatedTx(tx); ismalleated {
-			txHash = malleatedTx.OriginalTxHash
-			rawTx = malleatedTx.Tx
-		} else {
-			txHash = tx.Hash()
-			rawTx = tx
-		}
-
 		if err := eventBus.PublishEventTx(types.EventDataTx{TxResult: abci.TxResult{
-			Height:       block.Height,
-			Index:        uint32(i),
-			Tx:           rawTx,
-			Result:       *(abciResponses.DeliverTxs[i]),
-			OriginalHash: txHash,
+			Height: block.Height,
+			Index:  uint32(i),
+			Tx:     tx,
+			Result: *(abciResponses.DeliverTxs[i]),
 		}}); err != nil {
 			logger.Error("failed publishing event TX", "err", err)
 		}

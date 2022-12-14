@@ -193,7 +193,7 @@ func TestEvidencePoolUpdate(t *testing.T) {
 	ev := types.NewMockDuplicateVoteEvidenceWithValidator(height, defaultEvidenceTime.Add(21*time.Minute),
 		val, evidenceChainID)
 	lastCommit := makeCommit(height, val.PrivKey.PubKey().Address())
-	block := types.MakeBlock(height+1, factory.MakeData([]types.Tx{}, []types.Evidence{ev}, nil), lastCommit)
+	block := types.MakeBlock(height+1, factory.MakeData([]types.Tx{}, nil), lastCommit, []types.Evidence{ev})
 
 	// update state (partially)
 	state.LastBlockHeight = height + 1
@@ -350,7 +350,9 @@ func TestRecoverPendingEvidence(t *testing.T) {
 
 func initializeStateFromValidatorSet(valSet *types.ValidatorSet, height int64) sm.Store {
 	stateDB := dbm.NewMemDB()
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 	state := sm.State{
 		ChainID:                     evidenceChainID,
 		InitialHeight:               1,
@@ -405,7 +407,7 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) *store.Bloc
 
 	for i := int64(1); i <= state.LastBlockHeight; i++ {
 		lastCommit := makeCommit(i-1, valAddr)
-		block, _ := state.MakeBlock(i, factory.MakeData([]types.Tx{}, nil, nil), lastCommit,
+		block, _ := state.MakeBlock(i, factory.MakeData([]types.Tx{}, nil), lastCommit, nil,
 			state.Validators.GetProposer().Address)
 		block.Header.Time = defaultEvidenceTime.Add(time.Duration(i) * time.Minute)
 		block.Header.Version = tmversion.Consensus{Block: version.BlockProtocol, App: 1}

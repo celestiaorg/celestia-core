@@ -85,11 +85,14 @@ func TestBlockResults(t *testing.T) {
 		BeginBlock: &abci.ResponseBeginBlock{},
 	}
 
-	env = &Environment{}
-	env.StateStore = sm.NewStore(dbm.NewMemDB())
-	err := env.StateStore.SaveABCIResponses(100, results)
+	globalEnv = &Environment{}
+	globalEnv.StateStore = sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	err := globalEnv.StateStore.SaveABCIResponses(100, results)
 	require.NoError(t, err)
-	env.BlockStore = mockBlockStore{height: 100}
+	globalEnv.BlockStore = mockBlockStore{height: 100}
+	SetEnvironment(globalEnv)
 
 	testCases := []struct {
 		height  int64
@@ -121,7 +124,7 @@ func TestBlockResults(t *testing.T) {
 }
 
 func TestDataCommitmentResults(t *testing.T) {
-	env = &Environment{}
+	env := &Environment{}
 	height := int64(2826)
 
 	blocks := randomBlocks(height)
@@ -149,6 +152,7 @@ func TestDataCommitmentResults(t *testing.T) {
 			beginQueryBlock: tc.beginQuery,
 			endQueryBlock:   tc.endQuery,
 		}
+		SetEnvironment(env)
 
 		actualCommitment, err := DataCommitment(&rpctypes.Context{}, uint64(tc.beginQuery), uint64(tc.endQuery))
 		if tc.expectPass {

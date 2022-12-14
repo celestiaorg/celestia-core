@@ -2,7 +2,6 @@ package v1
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -14,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/tendermint/tendermint/abci/example/code"
@@ -22,6 +22,7 @@ import (
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
 )
@@ -342,7 +343,7 @@ func TestTxMempool_ReapMaxBytesMaxGas(t *testing.T) {
 	ensurePrioritized(reapedTxs)
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5690), txmp.SizeBytes())
-	require.GreaterOrEqual(t, len(reapedTxs), 15)
+	require.GreaterOrEqual(t, len(reapedTxs), 16)
 
 	// Reap by both transaction bytes and gas, where the size yields 31 reaped
 	// transactions and the gas limit reaps 25 transactions.
@@ -350,7 +351,7 @@ func TestTxMempool_ReapMaxBytesMaxGas(t *testing.T) {
 	ensurePrioritized(reapedTxs)
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5690), txmp.SizeBytes())
-	require.Len(t, reapedTxs, 23)
+	require.Len(t, reapedTxs, 25)
 }
 
 func TestTxMempool_ReapMaxTxs(t *testing.T) {
@@ -654,23 +655,29 @@ func TestTxMempool_CheckTxPostCheckError(t *testing.T) {
 	}
 }
 
-func TestMalleatedTxRemoval(t *testing.T) {
+func TestRemoveBlobTx(t *testing.T) {
 	txmp := setup(t, 500)
+
 	originalTx := []byte{1, 2, 3, 4}
-	malleatedTx := []byte{1, 2}
-	originalHash := sha256.Sum256(originalTx)
-
-	// create the wrapped child transaction
-	wTx, err := types.WrapMalleatedTx(originalHash[:], 0, malleatedTx)
+	indexWrapper, err := types.MarshalIndexWrapper(100, originalTx)
 	require.NoError(t, err)
 
-	// add the parent transaction to the mempool
-	err = txmp.CheckTx(originalTx, nil, mempool.TxInfo{})
+	// create the blobTx
+	b := tmproto.Blob{
+		NamespaceId:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		Data:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		ShareVersion: 0,
+	}
+	bTx, err := types.MarshalBlobTx(originalTx, &b)
 	require.NoError(t, err)
 
-	// remove the parent from the mempool using the wrapped child tx
-	err = txmp.Update(1, []types.Tx{wTx}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+	err = txmp.CheckTx(bTx, nil, mempool.TxInfo{})
 	require.NoError(t, err)
+
+	err = txmp.Update(1, []types.Tx{indexWrapper}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+	require.NoError(t, err)
+	assert.EqualValues(t, 0, txmp.Size())
+	assert.EqualValues(t, 0, txmp.SizeBytes())
 }
 
 func abciResponses(n int, code uint32) []*abci.ResponseDeliverTx {

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool/mock"
 	"github.com/tendermint/tendermint/p2p"
+	bcproto "github.com/tendermint/tendermint/proto/tendermint/blockchain"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
 	sm "github.com/tendermint/tendermint/state"
@@ -103,7 +105,9 @@ func newBlockchainReactor(
 
 	blockDB := dbm.NewMemDB()
 	stateDB := dbm.NewMemDB()
-	stateStore := sm.NewStore(stateDB)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 	blockStore := store.NewBlockStore(blockDB)
 
 	state, err := stateStore.LoadFromDBOrGenesisDoc(genDoc)
@@ -116,7 +120,9 @@ func newBlockchainReactor(
 	// pool.height is determined from the store.
 	fastSync := true
 	db := dbm.NewMemDB()
-	stateStore = sm.NewStore(db)
+	stateStore = sm.NewStore(db, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
 		mock.Mempool{}, sm.EmptyEvidencePool{})
 	if err = stateStore.Save(state); err != nil {
@@ -346,6 +352,25 @@ outerFor:
 	assert.True(t, lastReactorPair.bcR.Switch.Peers().Size() < len(reactorPairs)-1)
 }
 
+func TestLegacyReactorReceiveBasic(t *testing.T) {
+	config = cfg.ResetTestRoot("blockchain_reactor_test")
+	defer os.RemoveAll(config.RootDir)
+	genDoc, privVals := randGenesisDoc(1, false, 30)
+	reactor := newBlockchainReactor(t, log.TestingLogger(), genDoc, privVals, 10)
+	peer := p2p.CreateRandomPeer(false)
+
+	reactor.InitPeer(peer)
+	reactor.AddPeer(peer)
+	m := &bcproto.StatusRequest{}
+	wm := m.Wrap()
+	msg, err := proto.Marshal(wm)
+	assert.NoError(t, err)
+
+	assert.NotPanics(t, func() {
+		reactor.Receive(BlockchainChannel, peer, msg)
+	})
+}
+
 //----------------------------------------------
 // utility funcs
 
@@ -359,8 +384,9 @@ func makeTxs(height int64) (txs []types.Tx) {
 func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Block {
 	block, _ := state.MakeBlock(
 		height,
-		factory.MakeDataFromTxs(makeTxs(height)),
+		factory.MakeData(makeTxs(height), nil),
 		lastCommit,
+		nil,
 		state.Validators.GetProposer().Address,
 	)
 	return block
