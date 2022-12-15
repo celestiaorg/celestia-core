@@ -3,6 +3,7 @@ package v1
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -117,7 +118,22 @@ func (memR *Reactor) OnStart() error {
 	if !memR.config.Broadcast {
 		memR.Logger.Info("Tx broadcasting is disabled")
 	}
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		for {
+			select {
+			case <-memR.Quit():
+				return
+			case <-ticker.C:
+				memR.dumpMetrics()
+			}
+		}
+	}()
 	return nil
+}
+
+func (memR *Reactor) dumpMetrics() {
+	memR.mempool.jsonMetrics.Save()
 }
 
 // GetChannels implements Reactor by returning the list of channels for this
@@ -269,6 +285,8 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			if !success {
 				time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
 				continue
+			} else {
+				atomic.AddUint64(&memR.mempool.jsonMetrics.SentTransactionBytes, uint64(len(memTx.tx)))
 			}
 		}
 

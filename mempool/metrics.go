@@ -1,10 +1,16 @@
 package mempool
 
 import (
+	"encoding/json"
+	"path/filepath"
+	"time"
+
 	"github.com/go-kit/kit/metrics"
 	"github.com/go-kit/kit/metrics/discard"
 	"github.com/go-kit/kit/metrics/prometheus"
 	stdprometheus "github.com/prometheus/client_golang/prometheus"
+
+	"github.com/tendermint/tendermint/libs/os"
 )
 
 const (
@@ -25,12 +31,6 @@ type Metrics struct {
 	// FailedTxs defines the number of failed transactions. These were marked
 	// invalid by the application in either CheckTx or RecheckTx.
 	FailedTxs metrics.Counter
-
-	// RejectedTxs defines the number of rejected transactions. These are
-	// transactions that passed CheckTx but failed to make it into the mempool
-	// due to resource limits, e.g. mempool is full and no lower priority
-	// transactions exist in the mempool.
-	RejectedTxs metrics.Counter
 
 	// EvictedTxs defines the number of evicted transactions. These are valid
 	// transactions that passed CheckTx and existed in the mempool but were later
@@ -82,13 +82,6 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Help:      "Number of failed transactions.",
 		}, labels).With(labelsAndValues...),
 
-		RejectedTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: MetricsSubsystem,
-			Name:      "rejected_txs",
-			Help:      "Number of rejected transactions.",
-		}, labels).With(labelsAndValues...),
-
 		EvictedTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
@@ -125,10 +118,40 @@ func NopMetrics() *Metrics {
 		Size:           discard.NewGauge(),
 		TxSizeBytes:    discard.NewHistogram(),
 		FailedTxs:      discard.NewCounter(),
-		RejectedTxs:    discard.NewCounter(),
 		EvictedTxs:     discard.NewCounter(),
 		SuccessfulTxs:  discard.NewCounter(),
 		RecheckTimes:   discard.NewCounter(),
 		AlreadySeenTxs: discard.NewCounter(),
 	}
+}
+
+type JSONMetrics struct {
+	filepath             string
+	StartedAt            time.Time
+	EndedAt              time.Time
+	FailedTxs            uint64
+	EvictedTxs           uint64
+	SuccessfulTxs        uint64
+	AlreadySeenTxs       uint64
+	SentTransactionBytes uint64
+	SentStateBytes       uint64
+	ReceivedTxBytes      uint64
+	ReceivedStateBytes   uint64
+}
+
+func NewJSONMetrics(rootDir string) *JSONMetrics {
+	path := filepath.Join(rootDir, "data", "mempool_metrics.json")
+	return &JSONMetrics{
+		filepath:  path,
+		StartedAt: time.Now().UTC(),
+	}
+}
+
+func (m *JSONMetrics) Save() {
+	m.EndedAt = time.Now().UTC()
+	content, err := json.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	os.MustWriteFile(m.filepath, content, 0644)
 }
