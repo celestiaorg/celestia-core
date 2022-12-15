@@ -2,6 +2,7 @@ package cat
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -117,7 +118,22 @@ func (memR *Reactor) OnStart() error {
 			}
 		}
 	}()
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		for {
+			select {
+			case <-memR.Quit():
+				return
+			case <-ticker.C:
+				memR.dumpMetrics()
+			}
+		}
+	}()
 	return nil
+}
+
+func (memR *Reactor) dumpMetrics() {
+	memR.mempool.jsonMetrics.Save()
 }
 
 // GetChannels implements Reactor by returning the list of channels for this
@@ -169,6 +185,12 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 // ReceiveEnvelope implements Reactor.
 // It adds any received transactions to the mempool.
 func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
+	switch chID {
+	case mempool.MempoolChannel:
+		atomic.AddUint64(&memR.mempool.jsonMetrics.ReceivedTxBytes, uint64(len(msgBytes)))
+	case MempoolStateChannel:
+		atomic.AddUint64(&memR.mempool.jsonMetrics.ReceivedStateBytes, uint64(len(msgBytes)))
+	}
 	m := &protomem.Message{}
 	err := proto.Unmarshal(msgBytes, m)
 	if err != nil {
@@ -176,10 +198,10 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 	}
 
 	if chID != MempoolStateChannel && chID != mempool.MempoolChannel {
-		memR.Logger.Error("Unsupported channel ID", "chId", chID)
+		memR.Logger.Error("unsupported channel ID", "chId", chID)
 		return
 	}
-	memR.Logger.Debug("Receive", "src", peer, "chId", chID, "msg", fmt.Sprintf("%T", m.Sum))
+	memR.Logger.Debug("received Mempool Message", "src", peer, "chId", chID, "msg", fmt.Sprintf("%T", m.Sum))
 
 	switch msg := m.Sum.(type) {
 
@@ -340,7 +362,7 @@ type PeerState interface {
 // broadcastSeenTx broadcasts a SeenTx message to all peers unless we
 // know they have already seen the transaction
 func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, fromPeer string) {
-	memR.Logger.Debug("broadcasting seen tx", "tx_key", txKey)
+	memR.Logger.Debug("broadcasting seen tx to all peers", "tx_key", txKey)
 	alreadySeenTx := memR.mempool.seenByPeersSet.Get(txKey)
 	msg := &protomem.Message{
 		Sum: &protomem.Message_SeenTx{
@@ -359,7 +381,8 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, fromPeer string) {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
 			// in which case we just skip sending the transaction
-			if p.GetHeight() < memR.mempool.Height()-10 {
+			if p.GetHeight() < memR.mempool.Height()-20 {
+				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx")
 				continue
 			}
 		}
@@ -368,14 +391,16 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, fromPeer string) {
 			continue
 		}
 
-		peer.Send(MempoolStateChannel, bz)
+		if peer.Send(MempoolStateChannel, bz) {
+			atomic.AddUint64(&memR.mempool.jsonMetrics.SentStateBytes, uint64(len(bz)))
+		}
 	}
 }
 
 // broadcastNewTx broadcast new transaction to all peers. We assume
 // that they have not already seen this transaction
 func (memR *Reactor) broadcastNewTx(tx *wrappedTx) {
-	memR.Logger.Debug("broadcasting new tx to all caught up peers")
+	memR.Logger.Info("broadcasting new tx to all caught up peers", "tx_key", tx.key)
 	msg := &protomem.Message{
 		Sum: &protomem.Message_Txs{
 			Txs: &protomem.Txs{
@@ -393,12 +418,14 @@ func (memR *Reactor) broadcastNewTx(tx *wrappedTx) {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
 			// in which case we just skip sending the transaction
-			if p.GetHeight() < tx.height-10 {
+			if p.GetHeight() < tx.height-20 {
+				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx")
 				continue
 			}
 		}
 
 		if peer.Send(mempool.MempoolChannel, bz) {
+			atomic.AddUint64(&memR.mempool.jsonMetrics.SentTransactionBytes, uint64(len(bz)))
 			memR.mempool.PeerHasTx(memR.ids.GetIDForPeer(peer.ID()), tx.key)
 		}
 	}
@@ -407,7 +434,7 @@ func (memR *Reactor) broadcastNewTx(tx *wrappedTx) {
 // requestTx requests a transaction from a peer and tracks it,
 // requesting it from another peer if the first peer does not respond.
 func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
-	memR.Logger.Debug("requesting tx", "txKey", txKey, "peerID", peer.ID())
+	memR.Logger.Info("requesting tx", "txKey", txKey, "peerID", peer.ID())
 	msg := &protomem.Message{
 		Sum: &protomem.Message_WantTx{
 			WantTx: &protomem.WantTx{TxKey: txKey[:]},
@@ -420,6 +447,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 
 	success := peer.Send(MempoolStateChannel, bz)
 	if success {
+		atomic.AddUint64(&memR.mempool.jsonMetrics.SentStateBytes, uint64(len(bz)))
 		requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)
 		if !requested {
 			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
@@ -459,6 +487,8 @@ func (memR *Reactor) sendAllTxKeys(peer p2p.Peer) {
 			panic(err)
 		}
 
-		peer.Send(MempoolStateChannel, bz)
+		if peer.Send(MempoolStateChannel, bz) {
+			atomic.AddUint64(&memR.mempool.jsonMetrics.SentStateBytes, uint64(len(bz)))
+		}
 	}
 }

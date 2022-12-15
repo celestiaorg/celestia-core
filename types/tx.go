@@ -42,6 +42,10 @@ func (tx Tx) String() string {
 	return fmt.Sprintf("Tx{%X}", []byte(tx))
 }
 
+func (key TxKey) String() string {
+	return fmt.Sprintf("TxKey{%X}", key[:])
+}
+
 func TxKeyFromBytes(bytes []byte) (TxKey, error) {
 	if len(bytes) != TxKeySize {
 		return TxKey{}, fmt.Errorf("incorrect tx key size. Expected %d bytes, got %d", TxKeySize, len(bytes))

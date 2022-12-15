@@ -30,9 +30,9 @@ import (
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/light"
 	mempl "github.com/tendermint/tendermint/mempool"
+	mempoolv2 "github.com/tendermint/tendermint/mempool/cat"
 	mempoolv0 "github.com/tendermint/tendermint/mempool/v0"
 	mempoolv1 "github.com/tendermint/tendermint/mempool/v1"
-	mempoolv2 "github.com/tendermint/tendermint/mempool/cat"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/pex"
 	"github.com/tendermint/tendermint/privval"
@@ -145,12 +145,12 @@ type fastSyncReactor interface {
 // WARNING: using any name from the below list of the existing reactors will
 // result in replacing it with the custom one.
 //
-//  - MEMPOOL
-//  - BLOCKCHAIN
-//  - CONSENSUS
-//  - EVIDENCE
-//  - PEX
-//  - STATESYNC
+//   - MEMPOOL
+//   - BLOCKCHAIN
+//   - CONSENSUS
+//   - EVIDENCE
+//   - PEX
+//   - STATESYNC
 func CustomReactors(reactors map[string]p2p.Reactor) Option {
 	return func(n *Node) {
 		for name, reactor := range reactors {
@@ -372,6 +372,7 @@ func createMempoolAndMempoolReactor(
 	memplMetrics *mempl.Metrics,
 	logger log.Logger,
 ) (mempl.Mempool, p2p.Reactor) {
+	logger = logger.With("module", "mempool")
 
 	switch config.Mempool.Version {
 	case cfg.MempoolV2:
@@ -399,6 +400,7 @@ func createMempoolAndMempoolReactor(
 		if config.Consensus.WaitForTxs() {
 			mp.EnableTxsAvailable()
 		}
+		reactor.SetLogger(logger)
 
 		return mp, reactor
 	case cfg.MempoolV1:
@@ -419,6 +421,7 @@ func createMempoolAndMempoolReactor(
 		if config.Consensus.WaitForTxs() {
 			mp.EnableTxsAvailable()
 		}
+		reactor.SetLogger(logger)
 
 		return mp, reactor
 
@@ -441,6 +444,7 @@ func createMempoolAndMempoolReactor(
 		if config.Consensus.WaitForTxs() {
 			mp.EnableTxsAvailable()
 		}
+		reactor.SetLogger(logger)
 
 		return mp, reactor
 
@@ -1387,6 +1391,10 @@ func makeNodeInfo(
 
 	if config.P2P.PexReactor {
 		nodeInfo.Channels = append(nodeInfo.Channels, pex.PexChannel)
+	}
+
+	if config.Mempool.Version == cfg.MempoolV2 {
+		nodeInfo.Channels = append(nodeInfo.Channels, mempoolv2.MempoolStateChannel)
 	}
 
 	lAddr := config.P2P.ExternalAddress

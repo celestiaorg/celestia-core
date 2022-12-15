@@ -3,6 +3,7 @@ package v1
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	cfg "github.com/tendermint/tendermint/config"
@@ -115,7 +116,22 @@ func (memR *Reactor) OnStart() error {
 	if !memR.config.Broadcast {
 		memR.Logger.Info("Tx broadcasting is disabled")
 	}
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		for {
+			select {
+			case <-memR.Quit():
+				return
+			case <-ticker.C:
+				memR.dumpMetrics()
+			}
+		}
+	}()
 	return nil
+}
+
+func (memR *Reactor) dumpMetrics() {
+	memR.mempool.jsonMetrics.Save()
 }
 
 // GetChannels implements Reactor by returning the list of channels for this
@@ -154,6 +170,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 // Receive implements Reactor.
 // It adds any received transactions to the mempool.
 func (memR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
+	atomic.AddUint64(&memR.mempool.jsonMetrics.ReceivedTxBytes, uint64(len(msgBytes)))
 	msg, err := memR.decodeMsg(msgBytes)
 	if err != nil {
 		memR.Logger.Error("Error decoding message", "src", src, "chId", chID, "err", err)
@@ -248,6 +265,8 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			if !success {
 				time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
 				continue
+			} else {
+				atomic.AddUint64(&memR.mempool.jsonMetrics.SentTransactionBytes, uint64(len(bz)))
 			}
 		}
 

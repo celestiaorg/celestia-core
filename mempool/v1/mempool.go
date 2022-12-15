@@ -38,6 +38,7 @@ type TxMempool struct {
 	config       *config.MempoolConfig
 	proxyAppConn proxy.AppConnMempool
 	metrics      *mempool.Metrics
+	jsonMetrics  *mempool.JSONMetrics
 	cache        mempool.TxCache // seen transactions
 
 	// Atomically-updated fields
@@ -71,6 +72,7 @@ func NewTxMempool(
 		config:       cfg,
 		proxyAppConn: proxyAppConn,
 		metrics:      mempool.NopMetrics(),
+		jsonMetrics:  mempool.NewJSONMetrics(cfg.RootDir),
 		cache:        mempool.NopTxCache{},
 		txs:          clist.New(),
 		mtx:          new(sync.RWMutex),
@@ -190,6 +192,8 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		// If a precheck hook is defined, call it before invoking the application.
 		if txmp.preCheck != nil {
 			if err := txmp.preCheck(tx); err != nil {
+				txmp.metrics.FailedTxs.Add(1)
+				atomic.AddUint64(&txmp.jsonMetrics.FailedTxs, 1)
 				return 0, mempool.ErrPreCheck{Reason: err}
 			}
 		}
@@ -206,6 +210,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 			// If the cached transaction is also in the pool, record its sender.
 			if elt, ok := txmp.txByKey[txKey]; ok {
 				txmp.metrics.AlreadySeenTxs.Add(1)
+				atomic.AddUint64(&txmp.jsonMetrics.AlreadySeenTxs, 1)
 				w := elt.Value.(*WrappedTx)
 				w.SetPeer(txInfo.SenderID)
 			}
@@ -401,6 +406,7 @@ func (txmp *TxMempool) Update(
 	}
 
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
+	atomic.AddUint64(&txmp.jsonMetrics.SuccessfulTxs, uint64(len(blockTxs)))
 	for i, tx := range blockTxs {
 		// The tx hash corresponding to the originating transaction. Set to the
 		// current tx hash initially, but can change in case of a malleated tx.
@@ -474,6 +480,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		)
 
 		txmp.metrics.FailedTxs.Add(1)
+		atomic.AddUint64(&txmp.jsonMetrics.FailedTxs, 1)
 
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
@@ -507,7 +514,6 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			checkTxRes.MempoolError =
 				fmt.Sprintf("rejected valid incoming transaction; tx already exists for sender %q (%X)",
 					sender, w.tx.Hash())
-			txmp.metrics.RejectedTxs.Add(1)
 			return
 		}
 	}
@@ -542,7 +548,8 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			checkTxRes.MempoolError =
 				fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
 					wtx.tx.Hash())
-			txmp.metrics.RejectedTxs.Add(1)
+			txmp.metrics.EvictedTxs.Add(1)
+			atomic.AddUint64(&txmp.jsonMetrics.EvictedTxs, 1)
 			return
 		}
 
@@ -575,6 +582,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			txmp.removeTxByElement(vic)
 			txmp.cache.Remove(w.tx)
 			txmp.metrics.EvictedTxs.Add(1)
+			atomic.AddUint64(&txmp.jsonMetrics.EvictedTxs, 1)
 
 			// We may not need to evict all the eligible transactions.  Bail out
 			// early if we have made enough room.
@@ -652,6 +660,7 @@ func (txmp *TxMempool) handleRecheckResult(tx types.Tx, checkTxRes *abci.Respons
 	)
 	txmp.removeTxByElement(elt)
 	txmp.metrics.FailedTxs.Add(1)
+	atomic.AddUint64(&txmp.jsonMetrics.FailedTxs, 1)
 	if !txmp.config.KeepInvalidTxsInCache {
 		txmp.cache.Remove(wtx.tx)
 	}
@@ -753,10 +762,12 @@ func (txmp *TxMempool) purgeExpiredTxs(blockHeight int64) {
 			txmp.removeTxByElement(cur)
 			txmp.cache.Remove(w.tx)
 			txmp.metrics.EvictedTxs.Add(1)
+			atomic.AddUint64(&txmp.jsonMetrics.EvictedTxs, 1)
 		} else if txmp.config.TTLDuration > 0 && now.Sub(w.timestamp) > txmp.config.TTLDuration {
 			txmp.removeTxByElement(cur)
 			txmp.cache.Remove(w.tx)
 			txmp.metrics.EvictedTxs.Add(1)
+			atomic.AddUint64(&txmp.jsonMetrics.EvictedTxs, 1)
 		}
 		cur = next
 	}

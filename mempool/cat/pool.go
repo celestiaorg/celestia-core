@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/creachadair/taskgroup"
@@ -45,6 +46,7 @@ type TxPool struct {
 	config       *config.MempoolConfig
 	proxyAppConn proxy.AppConnMempool
 	metrics      *mempool.Metrics
+	jsonMetrics  *mempool.JSONMetrics
 
 	// These fields are not synchronized. They are modified in `Update` which should never
 	// be called concurrently.
@@ -85,6 +87,7 @@ func NewTxPool(
 		config:           cfg,
 		proxyAppConn:     proxyAppConn,
 		metrics:          mempool.NopMetrics(),
+		jsonMetrics:      mempool.NewJSONMetrics(cfg.RootDir),
 		rejectedTxCache:  NewLRUTxCache(cfg.CacheSize),
 		evictedTxs:       NewEvictedTxCache(evictedTxCacheSize),
 		seenByPeersSet:   NewSeenTxSet(),
@@ -281,6 +284,8 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	}
 
 	if txmp.Has(key) {
+		txmp.metrics.AlreadySeenTxs.Add(1)
+		atomic.AddUint64(&txmp.jsonMetrics.AlreadySeenTxs, 1)
 		// The peer has sent us a transaction that we have already seen
 		return nil, ErrTxInMempool
 	}
@@ -296,6 +301,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
+		atomic.AddUint64(&txmp.jsonMetrics.FailedTxs, 1)
 		return nil, mempool.ErrPreCheck{Reason: err}
 	}
 
@@ -311,6 +317,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	}
 	if rsp.Code != abci.CodeTypeOK {
 		txmp.metrics.FailedTxs.Add(1)
+		atomic.AddUint64(&txmp.jsonMetrics.FailedTxs, 1)
 		return rsp, fmt.Errorf("application rejected transaction with code %d", rsp.Code)
 	}
 
@@ -323,6 +330,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
 		txmp.metrics.FailedTxs.Add(1)
+		atomic.AddUint64(&txmp.jsonMetrics.FailedTxs, 1)
 		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
 	}
 
@@ -471,6 +479,8 @@ func (txmp *TxPool) Update(
 		txmp.seenByPeersSet.Remove(key)
 		// don't allow committed transactions to be committed again
 		txmp.rejectedTxCache.Push(key)
+		txmp.metrics.SuccessfulTxs.Add(1)
+		atomic.AddUint64(&txmp.jsonMetrics.SuccessfulTxs, 1)
 	}
 
 	txmp.purgeExpiredTxs(blockHeight)
@@ -516,7 +526,8 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 		// those candidates is not enough to make room for the new transaction,
 		// drop the new one.
 		if len(victims) == 0 || victimBytes < wtx.size() {
-			txmp.metrics.RejectedTxs.Add(1)
+			txmp.metrics.EvictedTxs.Add(1)
+			atomic.AddUint64(&txmp.jsonMetrics.EvictedTxs, 1)
 			txmp.evictedTxs.Push(wtx)
 			checkTxRes.MempoolError =
 				fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
@@ -573,6 +584,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 func (txmp *TxPool) evictTx(wtx *wrappedTx) {
 	txmp.store.remove(wtx.key)
 	txmp.metrics.EvictedTxs.Add(1)
+	atomic.AddUint64(&txmp.jsonMetrics.EvictedTxs, 1)
 	txmp.evictedTxs.Push(wtx)
 	txmp.logger.Debug(
 		"evicted valid existing transaction; mempool full",
@@ -611,6 +623,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 	)
 	txmp.store.remove(wtx.key)
 	txmp.metrics.FailedTxs.Add(1)
+	atomic.AddUint64(&txmp.jsonMetrics.FailedTxs, 1)
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 }
 
@@ -698,7 +711,9 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 		expirationAge = time.Time{}
 	}
 
-	txmp.store.purgeExpiredTxs(expirationHeight, expirationAge)
+	numExpired := txmp.store.purgeExpiredTxs(expirationHeight, expirationAge)
+	txmp.metrics.EvictedTxs.Add(float64(numExpired))
+	atomic.AddUint64(&txmp.jsonMetrics.EvictedTxs, uint64(numExpired))
 
 	// purge old evicted and seen transactions
 	if txmp.config.TTLDuration == 0 {
