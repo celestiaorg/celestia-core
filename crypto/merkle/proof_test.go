@@ -155,46 +155,46 @@ func TestProofOperatorsFromKeys(t *testing.T) {
 	// Good
 	popz := ProofOperators([]ProofOperator{op1, op2, op3, op4})
 	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys1, [][]byte{bz("INPUT1")})
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// BAD INPUT
 	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys1, [][]byte{bz("INPUT1_WRONG")})
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	// BAD KEY 1
 	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys2, [][]byte{bz("INPUT1")})
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	// BAD KEY 2
 	err = popz.VerifyFromKeys(bz("OUTPUT4"), badkeys1, [][]byte{bz("INPUT1")})
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	// BAD KEY 5
 	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys3, [][]byte{bz("INPUT1")})
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	// BAD OUTPUT 1
 	err = popz.VerifyFromKeys(bz("OUTPUT4_WRONG"), keys1, [][]byte{bz("INPUT1")})
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	// BAD OUTPUT 2
 	err = popz.VerifyFromKeys(bz(""), keys1, [][]byte{bz("INPUT1")})
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	// BAD POPZ 1
 	popz = []ProofOperator{op1, op2, op4}
 	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys1, [][]byte{bz("INPUT1")})
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	// BAD POPZ 2
 	popz = []ProofOperator{op4, op3, op2, op1}
 	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys1, [][]byte{bz("INPUT1")})
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	// BAD POPZ 3
 	popz = []ProofOperator{}
 	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys1, [][]byte{bz("INPUT1")})
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 }
 
 func bz(s string) []byte {
