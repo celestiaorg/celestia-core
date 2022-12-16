@@ -133,6 +133,70 @@ func TestProofOperators(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
+func TestProofOperatorsFromKeys(t *testing.T) {
+	var err error
+
+	// ProofRuntime setup
+	// TODO test this somehow.
+
+	// ProofOperators setup
+	op1 := NewDominoOp("KEY1", "INPUT1", "INPUT2")
+	op2 := NewDominoOp("KEY%2", "INPUT2", "INPUT3")
+	op3 := NewDominoOp("", "INPUT3", "INPUT4")
+	op4 := NewDominoOp("KEY/4", "INPUT4", "OUTPUT4")
+
+	// add characters to the keys that would otherwise result in bad keypath if
+	// processed
+	keys1 := [][]byte{bz("KEY/4"), bz("KEY%2"), bz("KEY1")}
+	badkeys1 := [][]byte{bz("WrongKey"), bz("KEY%2"), bz("KEY1")}
+	keys2 := [][]byte{bz("KEY3"), bz("KEY%2"), bz("KEY1")}
+	keys3 := [][]byte{bz("KEY2"), bz("KEY1")}
+
+	// Good
+	popz := ProofOperators([]ProofOperator{op1, op2, op3, op4})
+	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys1, [][]byte{bz("INPUT1")})
+	assert.NoError(t, err)
+
+	// BAD INPUT
+	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys1, [][]byte{bz("INPUT1_WRONG")})
+	assert.Error(t, err)
+
+	// BAD KEY 1
+	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys2, [][]byte{bz("INPUT1")})
+	assert.Error(t, err)
+
+	// BAD KEY 2
+	err = popz.VerifyFromKeys(bz("OUTPUT4"), badkeys1, [][]byte{bz("INPUT1")})
+	assert.Error(t, err)
+
+	// BAD KEY 5
+	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys3, [][]byte{bz("INPUT1")})
+	assert.Error(t, err)
+
+	// BAD OUTPUT 1
+	err = popz.VerifyFromKeys(bz("OUTPUT4_WRONG"), keys1, [][]byte{bz("INPUT1")})
+	assert.Error(t, err)
+
+	// BAD OUTPUT 2
+	err = popz.VerifyFromKeys(bz(""), keys1, [][]byte{bz("INPUT1")})
+	assert.Error(t, err)
+
+	// BAD POPZ 1
+	popz = []ProofOperator{op1, op2, op4}
+	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys1, [][]byte{bz("INPUT1")})
+	assert.Error(t, err)
+
+	// BAD POPZ 2
+	popz = []ProofOperator{op4, op3, op2, op1}
+	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys1, [][]byte{bz("INPUT1")})
+	assert.Error(t, err)
+
+	// BAD POPZ 3
+	popz = []ProofOperator{}
+	err = popz.VerifyFromKeys(bz("OUTPUT4"), keys1, [][]byte{bz("INPUT1")})
+	assert.Error(t, err)
+}
+
 func bz(s string) []byte {
 	return []byte(s)
 }
