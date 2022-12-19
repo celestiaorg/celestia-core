@@ -19,7 +19,7 @@ import (
 const (
 	// default duration to wait before considering a peer non-responsive
 	// and searching for the tx from a new peer
-	defaultGossipDelay = 100 * time.Millisecond
+	defaultGossipDelay = 150 * time.Millisecond
 
 	// Content Addressable Tx Pool gossips state based messages (SeenTx and WantTx) on a separate channel
 	// for cross compatibility
@@ -235,7 +235,7 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 				// We assume if we hadn't requested it, that this is the original recipient of
 				// the transaction and we should notify others in our SeenTx that is broadcasted
 				// to them
-				from = string(peer.ID())
+				from = string(txInfo.SenderP2PID)
 				memR.Logger.Debug("received new trasaction", "from", from, "txKey", key)
 			}
 			_, err = memR.mempool.TryAddNewTx(ntx, key, txInfo)
@@ -362,8 +362,7 @@ type PeerState interface {
 // broadcastSeenTx broadcasts a SeenTx message to all peers unless we
 // know they have already seen the transaction
 func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, fromPeer string) {
-	memR.Logger.Debug("broadcasting seen tx to all peers", "tx_key", txKey)
-	alreadySeenTx := memR.mempool.seenByPeersSet.Get(txKey)
+	memR.Logger.Debug("broadcasting seen tx to all peers", "tx_key", txKey.String())
 	msg := &protomem.Message{
 		Sum: &protomem.Message_SeenTx{
 			SeenTx: &protomem.SeenTx{
@@ -376,8 +375,8 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, fromPeer string) {
 	if err != nil {
 		panic(err)
 	}
-	for _, peer := range memR.ids.GetAll() {
-		if p, ok := peer.(PeerState); ok {
+	for id, peer := range memR.ids.GetAll() {
+		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
 			// in which case we just skip sending the transaction
@@ -386,8 +385,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, fromPeer string) {
 				continue
 			}
 		}
-		peerID := memR.ids.GetIDForPeer(peer.ID())
-		if _, ok := alreadySeenTx[peerID]; ok {
+		if memR.mempool.seenByPeersSet.Has(txKey, id) {
 			continue
 		}
 
@@ -397,8 +395,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, fromPeer string) {
 	}
 }
 
-// broadcastNewTx broadcast new transaction to all peers. We assume
-// that they have not already seen this transaction
+// broadcastNewTx broadcast new transaction to all peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(tx *wrappedTx) {
 	memR.Logger.Info("broadcasting new tx to all caught up peers", "tx_key", tx.key)
 	msg := &protomem.Message{
@@ -413,8 +410,8 @@ func (memR *Reactor) broadcastNewTx(tx *wrappedTx) {
 		panic(err)
 	}
 
-	for _, peer := range memR.Switch.Peers().List() {
-		if p, ok := peer.(PeerState); ok {
+	for id, peer := range memR.ids.GetAll() {
+		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
 			// in which case we just skip sending the transaction
@@ -424,9 +421,13 @@ func (memR *Reactor) broadcastNewTx(tx *wrappedTx) {
 			}
 		}
 
+		if memR.mempool.seenByPeersSet.Has(tx.key, id) {
+			continue
+		}
+
 		if peer.Send(mempool.MempoolChannel, bz) {
 			atomic.AddUint64(&memR.mempool.jsonMetrics.SentTransactionBytes, uint64(len(bz)))
-			memR.mempool.PeerHasTx(memR.ids.GetIDForPeer(peer.ID()), tx.key)
+			memR.mempool.PeerHasTx(id, tx.key)
 		}
 	}
 }

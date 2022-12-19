@@ -244,14 +244,30 @@ func (s *SeenTxSet) Prune(limit time.Time) {
 	}
 }
 
-func (s *SeenTxSet) Get(txKey types.TxKey) map[uint16]bool {
+func (s *SeenTxSet) Has(txKey types.TxKey, peer uint16) bool {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	seenSet, exists := s.set[txKey]
+	if !exists {
+		return false
+	} else {
+		return seenSet.peers[peer]
+	}
+}
+
+func (s *SeenTxSet) Get(txKey types.TxKey) map[uint16]struct{} {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	seenSet, exists := s.set[txKey]
 	if !exists {
 		return nil
 	} else {
-		return seenSet.peers
+		// make a copy to avoi
+		peers := make(map[uint16]struct{}, len(seenSet.peers))
+		for peer := range seenSet.peers {
+			peers[peer] = struct{}{}
+		}
+		return peers
 	}
 }
 
