@@ -74,6 +74,17 @@ func (ids *mempoolIDs) GetPeer(id uint16) p2p.Peer {
 	return ids.activeIDs[id]
 }
 
+func (ids *mempoolIDs) GetAll() []p2p.Peer {
+	ids.mtx.RLock()
+	defer ids.mtx.RUnlock()
+
+	peers := make([]p2p.Peer, 0, len(ids.activeIDs))
+	for _, peer := range ids.activeIDs {
+		peers = append(peers, peer)
+	}
+	return peers
+}
+
 func newMempoolIDs() *mempoolIDs {
 	return &mempoolIDs{
 		peerMap:   make(map[p2p.ID]uint16),
