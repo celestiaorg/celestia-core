@@ -376,7 +376,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, fromPeer string) {
 	if err != nil {
 		panic(err)
 	}
-	for _, peer := range memR.Switch.Peers().List() {
+	for _, peer := range memR.ids.GetAll() {
 		if p, ok := peer.(PeerState); ok {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
@@ -434,7 +434,11 @@ func (memR *Reactor) broadcastNewTx(tx *wrappedTx) {
 // requestTx requests a transaction from a peer and tracks it,
 // requesting it from another peer if the first peer does not respond.
 func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
-	memR.Logger.Info("requesting tx", "txKey", txKey, "peerID", peer.ID())
+	if peer == nil {
+		// we have disconnected from the peer
+		return
+	}
+	memR.Logger.Debug("requesting tx", "txKey", txKey, "peerID", peer.ID())
 	msg := &protomem.Message{
 		Sum: &protomem.Message_WantTx{
 			WantTx: &protomem.WantTx{TxKey: txKey[:]},
@@ -463,11 +467,16 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	if peerID == 0 {
 		// No other peer has the transaction we are looking for.
 		// We give up 🤷‍♂️
-		memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
+		memR.Logger.Info("no other peer has the tx we are looking for", "txKey", txKey)
 		return
 	}
 	peer := memR.ids.GetPeer(peerID)
-	memR.requestTx(txKey, peer)
+	if peer == nil {
+		// we disconnected from that peer, retry again until we exhaust the list
+		memR.findNewPeerToRequestTx(txKey)
+	} else {
+		memR.requestTx(txKey, peer)
+	}
 }
 
 // sendAllTxKeys loops through all txs currently in the mempool and iteratively
