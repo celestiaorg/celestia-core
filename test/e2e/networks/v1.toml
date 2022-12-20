@@ -1,0 +1,31 @@
+[node.validator01]
+mempool_version = "v1"
+
+[node.validator02]
+mempool_version = "v1"
+
+[node.validator03]
+mempool_version = "v1"
+
+[node.validator04]
+mempool_version = "v1"
+
+[node.validator05]
+mempool_version = "v1"
+
+[node.validator06]
+mempool_version = "v1"
+
+[node.validator07]
+mempool_version = "v1"
+
+[node.validator08]
+mempool_version = "v1"
+
+[node.validator09]
+mempool_version = "v1"
+
+[node.validator10]
+mempool_version = "v1"
+
+

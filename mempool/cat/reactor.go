@@ -19,7 +19,7 @@ import (
 const (
 	// default duration to wait before considering a peer non-responsive
 	// and searching for the tx from a new peer
-	defaultGossipDelay = 150 * time.Millisecond
+	defaultGossipDelay = 200 * time.Millisecond
 
 	// Content Addressable Tx Pool gossips state based messages (SeenTx and WantTx) on a separate channel
 	// for cross compatibility
@@ -266,7 +266,8 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 			memR.Switch.StopPeerForError(peer, err)
 			return
 		}
-		memR.mempool.PeerHasTx(memR.ids.GetIDForPeer(peer.ID()), txKey)
+		peerID := memR.ids.GetIDForPeer(peer.ID())
+		memR.mempool.PeerHasTx(peerID, txKey)
 		// Check if we don't already have the transaction and that it was recently rejected
 		if !memR.mempool.Has(txKey) && !memR.mempool.IsRejectedTx(txKey) {
 			// If we are already requesting that tx, then we don't need to go any further.
@@ -295,10 +296,10 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 				// send us the transaction. We set a timeout in case this is not true.
 				time.AfterFunc(memR.opts.MaxGossipDelay, func() {
 					// If we still don't have the transaction after the timeout, we find a new peer to request the tx
-					if !memR.mempool.Has(txKey) {
+					if !memR.mempool.Has(txKey) || !memR.mempool.IsRejectedTx(txKey) {
 						memR.Logger.Debug("timed out waiting for original sender, requesting tx from another peer...")
 						// NOTE: During this period, the peer may, for some reason have disconnected from us.
-						if memR.ids.GetIDForPeer(peer.ID()) == 0 {
+						if memR.ids.GetPeer(peerID) == nil {
 							// Get the first peer from the set
 							memR.findNewPeerToRequestTx(txKey)
 						} else {
@@ -306,7 +307,6 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 							// the transaction from them
 							memR.requestTx(txKey, peer)
 						}
-
 					}
 				})
 			} else {
@@ -343,8 +343,12 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 			}
 
 			if peer.Send(mempool.MempoolChannel, bz) {
+				atomic.AddUint64(&memR.mempool.jsonMetrics.SentTransactionBytes, uint64(len(bz)))
 				memR.mempool.PeerHasTx(peerID, txKey)
 			}
+		}
+		if !has {
+			atomic.AddUint64(&memR.mempool.jsonMetrics.FailedResponses, 1)
 		}
 
 	default:
@@ -453,6 +457,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 	success := peer.Send(MempoolStateChannel, bz)
 	if success {
 		atomic.AddUint64(&memR.mempool.jsonMetrics.SentStateBytes, uint64(len(bz)))
+		atomic.AddUint64(&memR.mempool.jsonMetrics.RequestedTxs, 1)
 		requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)
 		if !requested {
 			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
@@ -468,6 +473,7 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	if peerID == 0 {
 		// No other peer has the transaction we are looking for.
 		// We give up 🤷‍♂️
+		atomic.AddUint64(&memR.mempool.jsonMetrics.LostTxs, 1)
 		memR.Logger.Info("no other peer has the tx we are looking for", "txKey", txKey)
 		return
 	}
@@ -476,6 +482,7 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		// we disconnected from that peer, retry again until we exhaust the list
 		memR.findNewPeerToRequestTx(txKey)
 	} else {
+		atomic.AddUint64(&memR.mempool.jsonMetrics.RerequestedTxs, 1)
 		memR.requestTx(txKey, peer)
 	}
 }

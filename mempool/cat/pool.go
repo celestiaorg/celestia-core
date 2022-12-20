@@ -474,11 +474,12 @@ func (txmp *TxPool) Update(
 			_ = txmp.store.remove(key)
 		}
 
-		_ = txmp.store.remove(key)
-		_ = txmp.evictedTxs.Pop(key)
-		txmp.seenByPeersSet.Remove(key)
 		// don't allow committed transactions to be committed again
 		txmp.rejectedTxCache.Push(key)
+		// remove the tx from all other references
+		_ = txmp.store.remove(key)
+		_ = txmp.evictedTxs.Pop(key)
+		txmp.seenByPeersSet.RemoveKey(key)
 		txmp.metrics.SuccessfulTxs.Add(1)
 		atomic.AddUint64(&txmp.jsonMetrics.SuccessfulTxs, 1)
 	}
