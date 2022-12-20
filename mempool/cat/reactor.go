@@ -171,14 +171,20 @@ func (memR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
 func (memR *Reactor) AddPeer(peer p2p.Peer) {
 	if !memR.opts.ListenOnly {
 		if memR.mempool.Size() > 0 {
-			memR.sendAllTxKeys(peer)
+			peerID := memR.ids.GetIDForPeer(peer.ID())
+			memR.sendAllTxKeys(peer, peerID)
 		}
 	}
 }
 
 // RemovePeer implements Reactor.
 func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
-	memR.ids.Reclaim(peer.ID())
+	peerID := memR.ids.Reclaim(peer.ID())
+	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
+	for key := range outboundRequests {
+		atomic.AddUint64(&memR.mempool.jsonMetrics.RerequestedTxs, 1)
+		memR.findNewPeerToRequestTx(key)
+	}
 	// broadcast routine checks if peer is gone and returns
 }
 
@@ -296,7 +302,7 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 				// send us the transaction. We set a timeout in case this is not true.
 				time.AfterFunc(memR.opts.MaxGossipDelay, func() {
 					// If we still don't have the transaction after the timeout, we find a new peer to request the tx
-					if !memR.mempool.Has(txKey) || !memR.mempool.IsRejectedTx(txKey) {
+					if !memR.mempool.Has(txKey) && !memR.mempool.IsRejectedTx(txKey) {
 						memR.Logger.Debug("timed out waiting for original sender, requesting tx from another peer...")
 						// NOTE: During this period, the peer may, for some reason have disconnected from us.
 						if memR.ids.GetPeer(peerID) == nil {
@@ -469,10 +475,19 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 // request a transaction from.
 func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	// pop the next peer in the list of remaining peers that have seen the tx
-	peerID := memR.mempool.seenByPeersSet.Pop(txKey)
+	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
+	var peerID uint16
+	for possiblePeer := range seenMap {
+		if !memR.requests.From(possiblePeer).Includes(txKey) {
+			peerID = possiblePeer
+			break
+		}
+	}
+
 	if peerID == 0 {
-		// No other peer has the transaction we are looking for.
-		// We give up 🤷‍♂️
+		// No other free peer has the transaction we are looking for.
+		// We give up 🤷‍♂️ and hope either a peer responds late or the tx
+		// is gossiped again
 		atomic.AddUint64(&memR.mempool.jsonMetrics.LostTxs, 1)
 		memR.Logger.Info("no other peer has the tx we are looking for", "txKey", txKey)
 		return
@@ -490,10 +505,14 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 // sendAllTxKeys loops through all txs currently in the mempool and iteratively
 // sends a `SeenTx` message to the peer. This is added to a queue and will block
 // when the queue becomes full.
-func (memR *Reactor) sendAllTxKeys(peer p2p.Peer) {
-	memR.Logger.Debug("sending all seen txs to peer", "peerID", peer.ID())
+func (memR *Reactor) sendAllTxKeys(peer p2p.Peer, peerID uint16) {
+	memR.Logger.Debug("sending all seen txs to peer", "peerID", peerID)
 	txKeys := memR.mempool.store.getAllKeys()
 	for _, txKey := range txKeys {
+		if memR.mempool.seenByPeersSet.Has(txKey, peerID) {
+			continue
+		}
+
 		msg := &protomem.Message{
 			Sum: &protomem.Message_SeenTx{
 				SeenTx: &protomem.SeenTx{TxKey: txKey[:]},

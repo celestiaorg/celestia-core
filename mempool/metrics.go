@@ -133,6 +133,7 @@ type JSONMetrics struct {
 	EvictedTxs           uint64
 	SuccessfulTxs        uint64
 	AlreadySeenTxs       uint64
+	AlreadyRejectedTxs   uint64
 	RequestedTxs         uint64
 	RerequestedTxs       uint64
 	LostTxs			  	 uint64

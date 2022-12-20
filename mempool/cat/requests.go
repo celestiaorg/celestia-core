@@ -42,6 +42,9 @@ func newRequestScheduler(responseTime, globalTimeout time.Duration) *requestSche
 }
 
 func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key types.TxKey)) bool {
+	if peer == 0 {
+		return false
+	}
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
@@ -97,6 +100,18 @@ func (r *requestScheduler) From(peer uint16) RequestSet {
 	if !ok {
 		return RequestSet{}
 	}
+	return requestSet
+}
+
+func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) RequestSet {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	requestSet, ok := r.requestsByPeer[peer]
+	if !ok {
+		return RequestSet{}
+	}
+	delete(r.requestsByPeer, peer)
 	return requestSet
 }
 

@@ -274,6 +274,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	if txmp.IsRejectedTx(key) {
 		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
 		// be non-deterministic, we don't punish the peer but instead just ignore the msg
+		atomic.AddUint64(&txmp.jsonMetrics.AlreadyRejectedTxs, 1)
 		return nil, ErrTxAlreadyRejected
 	}
 

@@ -44,7 +44,7 @@ func (ids *mempoolIDs) nextPeerID() uint16 {
 }
 
 // Reclaim returns the ID reserved for the peer back to unused pool.
-func (ids *mempoolIDs) Reclaim(peerID p2p.ID) {
+func (ids *mempoolIDs) Reclaim(peerID p2p.ID) uint16 {
 	ids.mtx.Lock()
 	defer ids.mtx.Unlock()
 
@@ -52,7 +52,9 @@ func (ids *mempoolIDs) Reclaim(peerID p2p.ID) {
 	if ok {
 		delete(ids.activeIDs, removedID)
 		delete(ids.peerMap, peerID)
+		return removedID
 	}
+	return 0
 }
 
 // GetForPeer returns an ID reserved for the peer.
