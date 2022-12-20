@@ -62,6 +62,8 @@ type Testnet struct {
 	Nodes            []*Node
 	KeyType          string
 	ABCIProtocol     string
+	MaxInboundConnections  int
+	MaxOutboundConnections int
 }
 
 // Node represents a Tendermint node in a testnet.
@@ -126,6 +128,8 @@ func LoadTestnet(file string) (*Testnet, error) {
 		ValidatorUpdates: map[int64]map[*Node]int64{},
 		Nodes:            []*Node{},
 		ABCIProtocol:     manifest.ABCIProtocol,
+		MaxInboundConnections:  manifest.MaxInboundConnections,
+		MaxOutboundConnections: manifest.MaxOutboundConnections,
 	}
 	if len(manifest.KeyType) != 0 {
 		testnet.KeyType = manifest.KeyType
@@ -278,6 +282,12 @@ func (t Testnet) Validate() error {
 	}
 	if len(t.Nodes) == 0 {
 		return errors.New("network has no nodes")
+	}
+	if t.MaxInboundConnections < 0 {
+		return errors.New("MaxInboundConnections must not be negative")
+	}
+	if t.MaxOutboundConnections < 0 {
+		return errors.New("MaxOutboundConnections must not be negative")
 	}
 	for _, node := range t.Nodes {
 		if err := node.Validate(t); err != nil {
