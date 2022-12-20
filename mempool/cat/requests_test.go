@@ -73,3 +73,8 @@ func TestRequestSchedulerNonResponsivePeer(t *testing.T) {
 		return len(requests.From(peerA)) == 0
 	}, 20*time.Millisecond, 5*time.Millisecond)
 }
+
+func TestEmptyRequestSet(t *testing.T) {
+	empty := RequestSet{}
+	require.False(t, empty.Includes(types.Tx("tx").Key()))
+}
