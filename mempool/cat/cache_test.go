@@ -32,7 +32,7 @@ func TestSeenTxSet(t *testing.T) {
 	seenSet.Add(tx2Key, peer1)
 	seenSet.Add(tx3Key, peer1)
 	require.Equal(t, 3, seenSet.Len())
-	seenSet.Remove(tx2Key)
+	seenSet.RemoveKey(tx2Key)
 	require.Equal(t, 2, seenSet.Len())
 	require.Zero(t, seenSet.Pop(tx2Key))
 	require.Equal(t, peer1, seenSet.Pop(tx3Key))
