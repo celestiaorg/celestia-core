@@ -132,6 +132,11 @@ func (memR *Reactor) OnStart() error {
 	return nil
 }
 
+func (memR *Reactor) OnStop() {
+	// stop all the timers tracking outbound requests
+	memR.requests.Close()
+}
+
 func (memR *Reactor) dumpMetrics() {
 	memR.mempool.jsonMetrics.Save()
 }
@@ -231,7 +236,7 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 			key := ntx.Key()
 			from := ""
 			// If we requested the transaction we mark it as received.
-			if memR.requests.From(peerID).Includes(key) {
+			if memR.requests.Has(peerID, key) {
 				memR.requests.MarkReceived(peerID, key)
 				memR.Logger.Debug("received a response for a requested transaction", "peerID", peer.ID(), "txKey", key)
 			} else {
@@ -245,7 +250,7 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 				memR.Logger.Debug("received new trasaction", "from", from, "txKey", key)
 			}
 			_, err = memR.mempool.TryAddNewTx(ntx, key, txInfo)
-			if err != nil {
+			if err != nil && err != ErrTxInMempool {
 				memR.Logger.Info("Could not add tx", "txKey", key, "err", err)
 				return
 			}
@@ -277,14 +282,14 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 		// Check if we don't already have the transaction and that it was recently rejected
 		if !memR.mempool.Has(txKey) && !memR.mempool.IsRejectedTx(txKey) {
 			// If we are already requesting that tx, then we don't need to go any further.
-			if memR.requests.ForTx(txKey) {
+			if memR.requests.ForTx(txKey) != 0 {
 				memR.Logger.Debug("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
 				return
 			}
 
 			// If it was a low-priority transaction and we don't have capacity, then ignore.
 			if memR.mempool.WasRecentlyEvicted(txKey) {
-				if memR.mempool.CanFitEvictedTx(txKey) {
+				if !memR.mempool.CanFitEvictedTx(txKey) {
 					return
 				}
 			}
@@ -395,6 +400,8 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, fromPeer string) {
 				continue
 			}
 		}
+		// no need to send a seen tx message to a peer that already
+		// has that tx.
 		if memR.mempool.seenByPeersSet.Has(txKey, id) {
 			continue
 		}
@@ -478,7 +485,7 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
 	var peerID uint16
 	for possiblePeer := range seenMap {
-		if !memR.requests.From(possiblePeer).Includes(txKey) {
+		if !memR.requests.Has(possiblePeer, txKey) {
 			peerID = possiblePeer
 			break
 		}

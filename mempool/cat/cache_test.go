@@ -28,7 +28,7 @@ func TestSeenTxSet(t *testing.T) {
 	seenSet.Add(tx1Key, peer2)
 	peers := seenSet.Get(tx1Key)
 	require.NotNil(t, peers)
-	require.Equal(t, map[uint16]bool{peer1: true, peer2: true}, peers)
+	require.Equal(t, map[uint16]struct{}{peer1: {}, peer2: {}}, peers)
 	seenSet.Add(tx2Key, peer1)
 	seenSet.Add(tx3Key, peer1)
 	require.Equal(t, 3, seenSet.Len())
