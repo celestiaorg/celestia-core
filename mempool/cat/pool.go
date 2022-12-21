@@ -182,9 +182,9 @@ func (txmp *TxPool) WasRecentlyEvicted(txKey types.TxKey) bool {
 func (txmp *TxPool) CanFitEvictedTx(txKey types.TxKey) bool {
 	info := txmp.evictedTxs.Get(txKey)
 	if info == nil {
-		return true
+		return false
 	}
-	return !txmp.canAddTx(info.size)
+	return txmp.canAddTx(info.size)
 }
 
 func (txmp *TxPool) TryReinsertEvictedTx(txKey types.TxKey, tx types.Tx, peer uint16) error {
@@ -233,9 +233,9 @@ func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo mempool
 }
 
 func (txmp *TxPool) next() <-chan types.TxKey {
+	txmp.broadcastMtx.Lock()
+	defer txmp.broadcastMtx.Unlock()
 	if len(txmp.txsToBeBroadcast) != 0 {
-		txmp.broadcastMtx.Lock()
-		defer txmp.broadcastMtx.Unlock()
 		ch := make(chan types.TxKey, 1)
 		for key := range txmp.txsToBeBroadcast {
 			delete(txmp.txsToBeBroadcast, key)
@@ -295,7 +295,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	if !txmp.store.reserve(key) {
 		txmp.logger.Debug("mempool already attempting to verify and add transaction", "txKey", fmt.Sprintf("%X", key))
 		txmp.PeerHasTx(txInfo.SenderID, key)
-		return nil, errors.New("tx already added")
+		return nil, ErrTxInMempool
 	}
 	defer txmp.store.release(key)
 
@@ -317,6 +317,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 		return rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
+		txmp.rejectedTxCache.Push(key)
 		txmp.metrics.FailedTxs.Add(1)
 		atomic.AddUint64(&txmp.jsonMetrics.FailedTxs, 1)
 		return rsp, fmt.Errorf("application rejected transaction with code %d", rsp.Code)
@@ -330,6 +331,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	// Perform the post check
 	err = txmp.postCheck(wtx.tx, rsp)
 	if err != nil {
+		txmp.rejectedTxCache.Push(key)
 		txmp.metrics.FailedTxs.Add(1)
 		atomic.AddUint64(&txmp.jsonMetrics.FailedTxs, 1)
 		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
@@ -347,7 +349,11 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 // mempool. It reports an error if no such transaction exists. This operation
 // does not remove the transaction from the rejectedTxCache.
 func (txmp *TxPool) RemoveTxByKey(txKey types.TxKey) error {
-	txmp.store.remove(txKey)
+	txmp.rejectedTxCache.Push(txKey)
+	_ = txmp.evictedTxs.Pop(txKey)
+	_ = txmp.store.remove(txKey)
+	txmp.seenByPeersSet.RemoveKey(txKey)
+	txmp.metrics.EvictedTxs.Add(1)
 	return nil
 }
 
@@ -356,10 +362,12 @@ func (txmp *TxPool) RemoveTxByKey(txKey types.TxKey) error {
 func (txmp *TxPool) Flush() {
 	// Remove all the transactions in the list explicitly, so that the sizes
 	// and indexes get updated properly.
-	txmp.store = newStore()
+	size := txmp.Size()
+	txmp.store.reset()
 	txmp.seenByPeersSet.Reset()
 	txmp.evictedTxs.Reset()
 	txmp.rejectedTxCache.Reset()
+	txmp.metrics.EvictedTxs.Add(float64(size))
 }
 
 // PeerHasTx marks that the transaction has been seen by a peer.
@@ -535,11 +543,11 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 				fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
 					wtx.key)
 			return fmt.Errorf("rejected valid incoming transaction; mempool is full (%X). Size: (%d:%d)",
-				wtx.key, txmp.Size(), txmp.SizeBytes())
+				wtx.key.String(), txmp.Size(), txmp.SizeBytes())
 		}
 
 		txmp.logger.Debug("evicting lower-priority transactions",
-			"new_tx", fmt.Sprintf("%X", wtx.key),
+			"new_tx", wtx.key.String(),
 			"new_priority", wtx.priority,
 		)
 
@@ -624,6 +632,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 		"code", checkTxRes.Code,
 	)
 	txmp.store.remove(wtx.key)
+	txmp.rejectedTxCache.Push(wtx.key)
 	txmp.metrics.FailedTxs.Add(1)
 	atomic.AddUint64(&txmp.jsonMetrics.FailedTxs, 1)
 	txmp.metrics.Size.Set(float64(txmp.Size()))

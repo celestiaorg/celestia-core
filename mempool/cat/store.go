@@ -149,3 +149,10 @@ func (s *store) purgeExpiredTxs(expirationHeight int64, expirationAge time.Time)
 	}
 	return counter
 }
+
+func (s *store) reset() {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.bytes = 0
+	s.txs = make(map[types.TxKey]*wrappedTx)
+}

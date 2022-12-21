@@ -294,6 +294,12 @@ func TestTxPool_Eviction(t *testing.T) {
 	require.False(t, txExists("key10=0123456789abcdef=11"))
 	mustCheckTx(t, txmp, "key3=0002=10")
 	require.True(t, txExists("key3=0002=10"))
+
+	// remove a high priority tx and check if there is
+	// space for the previously evicted tx
+	require.NoError(t, txmp.RemoveTxByKey(types.Tx("key8=0007=20").Key()))
+	require.False(t, txExists("key8=0007=20"))
+	require.True(t, txmp.CanFitEvictedTx(types.Tx("key9=0008=9").Key()))
 }
 
 func TestTxPool_Flush(t *testing.T) {
@@ -641,11 +647,11 @@ func TestConcurrentlyAddingTx(t *testing.T) {
 	wg := &sync.WaitGroup{}
 	for i := 0; i < numTxs; i++ {
 		wg.Add(1)
-		go func() {
+		go func(sender uint16) {
 			defer wg.Done()
-			_, err := txmp.TryAddNewTx(tx, tx.Key(), mempool.TxInfo{SenderID: uint16(i + 1)})
+			_, err := txmp.TryAddNewTx(tx, tx.Key(), mempool.TxInfo{SenderID: sender})
 			errCh <- err
-		}()
+		}(uint16(i + 1))
 	}
 	go func() {
 		wg.Wait()

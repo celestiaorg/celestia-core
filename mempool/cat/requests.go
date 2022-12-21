@@ -25,18 +25,20 @@ type requestScheduler struct {
 
 	// requestsByPeer is a lookup table of requests by peer.
 	// Multiple tranasctions can be requested by a single peer at one
-	requestsByPeer map[uint16]RequestSet
+	requestsByPeer map[uint16]requestSet
 
 	// requestsByTx is a lookup table for requested txs.
 	// There can only be one request per tx.
 	requestsByTx map[types.TxKey]uint16
 }
 
+type requestSet map[types.TxKey]*time.Timer
+
 func newRequestScheduler(responseTime, globalTimeout time.Duration) *requestScheduler {
 	return &requestScheduler{
 		responseTime:   responseTime,
 		globalTimeout:  globalTimeout,
-		requestsByPeer: make(map[uint16]RequestSet),
+		requestsByPeer: make(map[uint16]requestSet),
 		requestsByTx:   make(map[types.TxKey]uint16),
 	}
 }
@@ -76,7 +78,7 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 		})
 	})
 	if _, ok := r.requestsByPeer[peer]; !ok {
-		r.requestsByPeer[peer] = RequestSet{key: timer}
+		r.requestsByPeer[peer] = requestSet{key: timer}
 	} else {
 		r.requestsByPeer[peer][key] = timer
 	}
@@ -84,35 +86,38 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 	return true
 }
 
-func (r *requestScheduler) ForTx(key types.TxKey) bool {
+func (r *requestScheduler) ForTx(key types.TxKey) uint16 {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	_, ok := r.requestsByTx[key]
+	return r.requestsByTx[key]
+}
+
+func (r *requestScheduler) Has(peer uint16, key types.TxKey) bool {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	requestSet, ok := r.requestsByPeer[peer]
+	if !ok {
+		return false
+	}
+	_, ok = requestSet[key]
 	return ok
 }
 
-func (r *requestScheduler) From(peer uint16) RequestSet {
+func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) requestSet {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	requestSet, ok := r.requestsByPeer[peer]
+	requests, ok := r.requestsByPeer[peer]
 	if !ok {
-		return RequestSet{}
+		return requestSet{}
 	}
-	return requestSet
-}
-
-func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) RequestSet {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-
-	requestSet, ok := r.requestsByPeer[peer]
-	if !ok {
-		return RequestSet{}
+	for _, timer := range requests {
+		timer.Stop()
 	}
 	delete(r.requestsByPeer, peer)
-	return requestSet
+	return requests
 }
 
 func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey) bool {
@@ -134,9 +139,15 @@ func (r *requestScheduler) MarkReceived(peer uint16, key types.TxKey) bool {
 	return true
 }
 
-type RequestSet map[types.TxKey]*time.Timer
+// Close stops all timers and clears all requests.
+// Add should never be called after `Close`.
+func (r *requestScheduler) Close() {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
 
-func (rs RequestSet) Includes(key types.TxKey) bool {
-	_, ok := rs[key]
-	return ok
+	for _, requestSet := range r.requestsByPeer {
+		for _, timer := range requestSet {
+			timer.Stop()
+		}
+	}
 }
