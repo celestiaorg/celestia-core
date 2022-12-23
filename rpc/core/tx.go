@@ -127,10 +127,11 @@ func TxSearch(
 
 		var txProof types.TxProof
 		if prove {
-			txProof, err = proveTx(r.Height, r.Index)
-			if err != nil {
-				return nil, err
-			}
+			return nil, errors.New("transaction inclusion proofs are not yet supported")
+			// txProof, err = proveTx(r.Height, r.Index)
+			// if err != nil {
+			// 	return nil, err
+			// }
 		}
 
 		apiResults = append(apiResults, &ctypes.ResultTx{
