@@ -288,11 +288,11 @@ func UnmarshalIndexWrapper(tx Tx) (indexWrapper tmproto.IndexWrapper, isIndexWra
 // and the share index of the start of its blob.
 //
 // NOTE: must be unwrapped to be a viable sdk.Tx
-func MarshalIndexWrapper(shareIndex uint32, tx Tx) (Tx, error) {
+func MarshalIndexWrapper(tx Tx, shareIndexes ...uint32) (Tx, error) {
 	wTx := tmproto.IndexWrapper{
-		Tx:         tx,
-		ShareIndex: shareIndex,
-		TypeId:     consts.ProtoIndexWrapperTypeID,
+		Tx:           tx,
+		ShareIndexes: shareIndexes,
+		TypeId:       consts.ProtoIndexWrapperTypeID,
 	}
 	return proto.Marshal(&wTx)
 }
