@@ -172,16 +172,11 @@ func (app *PersistentKVStoreApplication) ApplySnapshotChunk(
 
 func (app *PersistentKVStoreApplication) PrepareProposal(
 	req types.RequestPrepareProposal) types.ResponsePrepareProposal {
-	return types.ResponsePrepareProposal{BlockData: req.BlockData}
+	return app.app.PrepareProposal(req)
 }
 
 func (app *PersistentKVStoreApplication) ProcessProposal(
 	req types.RequestProcessProposal) types.ResponseProcessProposal {
-	for _, tx := range req.BlockData.Txs {
-		if len(tx) == 0 {
-			return types.ResponseProcessProposal{Result: types.ResponseProcessProposal_REJECT}
-		}
-	}
 	return types.ResponseProcessProposal{Result: types.ResponseProcessProposal_ACCEPT}
 }
 

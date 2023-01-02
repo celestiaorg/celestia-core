@@ -3,7 +3,6 @@ package kv
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -66,49 +65,33 @@ func TestTxIndex(t *testing.T) {
 	assert.True(t, proto.Equal(txResult2, loadedTxResult2))
 }
 
-func TestMalleatedTxIndex(t *testing.T) {
-	type test struct {
-		tx           types.Tx
-		originalHash []byte
-		expectedTx   []byte
-	}
-	originalTx1 := types.Tx([]byte("ORIGINAL_TX"))
-	malleatedTx1 := types.Tx([]byte("MALLEATED_TX"))
-
-	tests := []test{
-		// we expect to get the malleated tx returned when searching using the original hash
-		{
-			tx:           malleatedTx1,
-			originalHash: originalTx1.Hash(),
-			expectedTx:   malleatedTx1,
-		},
-	}
-
+func TestWrappedTxIndex(t *testing.T) {
 	indexer := NewTxIndex(db.NewMemDB())
 
-	for i, tt := range tests {
-
-		txResult := &abci.TxResult{
-			Height: int64(i),
-			Index:  0,
-			Tx:     tt.tx,
-			Result: abci.ResponseDeliverTx{
-				Data: []byte{0},
-				Code: abci.CodeTypeOK, Log: "", Events: nil,
-			},
-			OriginalHash: tt.originalHash,
-		}
-		batch := txindex.NewBatch(1)
-		if err := batch.Add(txResult); err != nil {
-			t.Error(err)
-		}
-		err := indexer.AddBatch(batch)
-		require.NoError(t, err)
-
-		loadedTxResult, err := indexer.Get(tt.originalHash)
-		require.NoError(t, err)
-		assert.Equal(t, tt.expectedTx, loadedTxResult.Tx)
+	tx := types.Tx("HELLO WORLD")
+	wrappedTx, err := types.MarshalIndexWrapper(11, tx)
+	require.NoError(t, err)
+	txResult := &abci.TxResult{
+		Height: 1,
+		Index:  0,
+		Tx:     wrappedTx,
+		Result: abci.ResponseDeliverTx{
+			Data: []byte{0},
+			Code: abci.CodeTypeOK, Log: "", Events: nil,
+		},
 	}
+	hash := tx.Hash()
+
+	batch := txindex.NewBatch(1)
+	if err := batch.Add(txResult); err != nil {
+		t.Error(err)
+	}
+	err = indexer.AddBatch(batch)
+	require.NoError(t, err)
+
+	loadedTxResult, err := indexer.Get(hash)
+	require.NoError(t, err)
+	assert.True(t, proto.Equal(txResult, loadedTxResult))
 }
 
 func TestTxSearch(t *testing.T) {
@@ -304,6 +287,103 @@ func TestTxSearchOneTxWithMultipleSameTagsButDifferentValues(t *testing.T) {
 	}
 }
 
+func TestTxIndexDuplicatePreviouslySuccessful(t *testing.T) {
+	mockTx := types.Tx("MOCK_TX_HASH")
+
+	testCases := []struct {
+		name         string
+		tx1          *abci.TxResult
+		tx2          *abci.TxResult
+		expOverwrite bool // do we expect the second tx to overwrite the first tx
+	}{
+		{
+			"don't overwrite as a non-zero code was returned and the previous tx was successful",
+			&abci.TxResult{
+				Height: 1,
+				Index:  0,
+				Tx:     mockTx,
+				Result: abci.ResponseDeliverTx{
+					Code: abci.CodeTypeOK,
+				},
+			},
+			&abci.TxResult{
+				Height: 2,
+				Index:  0,
+				Tx:     mockTx,
+				Result: abci.ResponseDeliverTx{
+					Code: abci.CodeTypeOK + 1,
+				},
+			},
+			false,
+		},
+		{
+			"overwrite as the previous tx was also unsuccessful",
+			&abci.TxResult{
+				Height: 1,
+				Index:  0,
+				Tx:     mockTx,
+				Result: abci.ResponseDeliverTx{
+					Code: abci.CodeTypeOK + 1,
+				},
+			},
+			&abci.TxResult{
+				Height: 2,
+				Index:  0,
+				Tx:     mockTx,
+				Result: abci.ResponseDeliverTx{
+					Code: abci.CodeTypeOK + 1,
+				},
+			},
+			true,
+		},
+		{
+			"overwrite as the most recent tx was successful",
+			&abci.TxResult{
+				Height: 1,
+				Index:  0,
+				Tx:     mockTx,
+				Result: abci.ResponseDeliverTx{
+					Code: abci.CodeTypeOK,
+				},
+			},
+			&abci.TxResult{
+				Height: 2,
+				Index:  0,
+				Tx:     mockTx,
+				Result: abci.ResponseDeliverTx{
+					Code: abci.CodeTypeOK,
+				},
+			},
+			true,
+		},
+	}
+
+	hash := mockTx.Hash()
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			indexer := NewTxIndex(db.NewMemDB())
+
+			// index the first tx
+			err := indexer.Index(tc.tx1)
+			require.NoError(t, err)
+
+			// index the same tx with different results
+			err = indexer.Index(tc.tx2)
+			require.NoError(t, err)
+
+			res, err := indexer.Get(hash)
+			require.NoError(t, err)
+
+			if tc.expOverwrite {
+				require.Equal(t, tc.tx2, res)
+			} else {
+				require.Equal(t, tc.tx1, res)
+			}
+		})
+	}
+}
+
 func TestTxSearchMultipleTxs(t *testing.T) {
 	indexer := NewTxIndex(db.NewMemDB())
 
@@ -374,7 +454,7 @@ func txResultWithEvents(events []abci.Event) *abci.TxResult {
 }
 
 func benchmarkTxIndex(txsCount int64, b *testing.B) {
-	dir, err := ioutil.TempDir("", "tx_index_db")
+	dir, err := os.MkdirTemp("", "tx_index_db")
 	require.NoError(b, err)
 	defer os.RemoveAll(dir)
 

@@ -100,9 +100,9 @@ message Data {
 // to a namespace_id and is encoded into shares based on the format specified by
 // share_version.
 message Blob {
-  bytes namespace_id           = 1;
-  bytes data                   = 2;
-  uint32 share_version         = 3;
+  bytes  namespace_id  = 1;
+  bytes  data          = 2;
+  uint32 share_version = 3;
 }
 
 // DataAvailabilityHeader contains the row and column roots of the erasure
@@ -189,6 +189,23 @@ message TxProof {
   repeated NMTProof proofs    = 3;
 }
 
+// IndexWrapper adds index metadata to a transaction. This is used to track
+// transactions that pay for blobs, and where the blobs start in the square.
+message IndexWrapper {
+  bytes  tx          = 1;
+  uint32 share_index = 2;
+  string type_id     = 3;
+}
+
+// BlobTx wraps an encoded sdk.Tx with a second field to contain blobs of data.
+// The raw bytes of the blobs are not signed over, instead we verify each blob
+// using the relevant MsgPayForBlobs that is signed over in the encoded sdk.Tx.
+message BlobTx {
+  bytes         tx      = 1;
+  repeated Blob blobs   = 2;
+  string        type_id = 3;
+}
+
 // SharesProof represents an NMT proof for a set of shares to the data root.
 message SharesProof {
   // data are the raw shares that are proven.
@@ -209,15 +226,6 @@ message RowsProof {
   bytes                            root      = 3;
   uint32                           start_row = 4;
   uint32                           end_row   = 5;
-}
-
-// MalleatedTx wraps a transaction that was derived from a different original
-// transaction. This allows for tendermint to track malleated and original
-// transactions
-message MalleatedTx {
-  bytes  original_tx_hash = 1;
-  bytes  tx               = 2;
-  uint32 share_index      = 3;
 }
 
 // Proof represents proof of a namespace.ID in an NMT.

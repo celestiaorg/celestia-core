@@ -242,6 +242,7 @@ func (mem *CListMempool) CheckTx(
 		// (eg. after committing a block, txs are removed from mempool but not cache),
 		// so we only record the sender for txs still in the mempool.
 		if e, ok := mem.txsMap.Load(tx.Key()); ok {
+			mem.metrics.AlreadySeenTxs.Add(1)
 			memTx := e.(*clist.CElement).Value.(*mempoolTx)
 			memTx.senders.LoadOrStore(txInfo.SenderID, true)
 			// TODO: consider punishing peer for dups,
@@ -327,6 +328,9 @@ func (mem *CListMempool) removeTx(tx types.Tx, elem *clist.CElement, removeFromC
 	mem.txs.Remove(elem)
 	elem.DetachPrev()
 	mem.txsMap.Delete(tx.Key())
+	if memtx, ok := elem.Value.(*mempoolTx); ok {
+		tx = memtx.tx
+	}
 	atomic.AddInt64(&mem.txsBytes, int64(-len(tx)))
 
 	if removeFromCache {
@@ -594,6 +598,7 @@ func (mem *CListMempool) Update(
 		mem.postCheck = postCheck
 	}
 
+	mem.metrics.SuccessfulTxs.Add(float64(len(txs)))
 	for i, tx := range txs {
 		if deliverTxResponses[i].Code == abci.CodeTypeOK {
 			// Add valid committed tx to the cache (if missing).
@@ -615,15 +620,6 @@ func (mem *CListMempool) Update(
 		// https://github.com/tendermint/tendermint/issues/3322.
 		if e, ok := mem.txsMap.Load(tx.Key()); ok {
 			mem.removeTx(tx, e.(*clist.CElement), false)
-			// see if the transaction is a malleated transaction of a some parent
-			// transaction that exists in the mempool
-		} else if malleatedTx, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
-			var parentKey [types.TxKeySize]byte
-			copy(parentKey[:], malleatedTx.OriginalTxHash)
-			err := mem.RemoveTxByKey(parentKey)
-			if err != nil {
-				return err
-			}
 		}
 	}
 

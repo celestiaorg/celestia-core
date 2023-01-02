@@ -62,7 +62,7 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 // list of transactions (maximum ?per_page entries) and the total count.
 // NOTE: proveTx isn't respected but is left in the function signature to
 // conform to the endpoint exposed by Tendermint
-// More: https://docs.tendermint.com/master/rpc/#/Info/tx_search
+// More: https://docs.tendermint.com/v0.34/rpc/#/Info/tx_search
 func TxSearch(
 	ctx *rpctypes.Context,
 	query string,
@@ -127,10 +127,11 @@ func TxSearch(
 
 		var txProof types.TxProof
 		if prove {
-			txProof, err = proveTx(r.Height, r.Index)
-			if err != nil {
-				return nil, err
-			}
+			return nil, errors.New("transaction inclusion proofs are not yet supported")
+			// txProof, err = proveTx(r.Height, r.Index)
+			// if err != nil {
+			// 	return nil, err
+			// }
 		}
 
 		apiResults = append(apiResults, &ctypes.ResultTx{

@@ -68,6 +68,36 @@ func (poz ProofOperators) Verify(root []byte, keypath string, args [][]byte) (er
 	return nil
 }
 
+// VerifyFromKeys performs the same verification logic as the normal Verify
+// method, except it does not perform any processing on the keypath. This is
+// useful when using keys that have split or escape points as a part of the key.
+func (poz ProofOperators) VerifyFromKeys(root []byte, keys [][]byte, args [][]byte) (err error) {
+	for i, op := range poz {
+		key := op.GetKey()
+		if len(key) != 0 {
+			if len(keys) == 0 {
+				return fmt.Errorf("key path has insufficient # of parts: expected no more keys but got %+v", string(key))
+			}
+			lastKey := keys[len(keys)-1]
+			if !bytes.Equal(lastKey, key) {
+				return fmt.Errorf("key mismatch on operation #%d: expected %+v but got %+v", i, string(lastKey), string(key))
+			}
+			keys = keys[:len(keys)-1]
+		}
+		args, err = op.Run(args)
+		if err != nil {
+			return
+		}
+	}
+	if !bytes.Equal(root, args[0]) {
+		return fmt.Errorf("calculated root hash is invalid: expected %X but got %X", root, args[0])
+	}
+	if len(keys) != 0 {
+		return fmt.Errorf("keypath not consumed all: %s", string(bytes.Join(keys, []byte("/"))))
+	}
+	return nil
+}
+
 //----------------------------------------
 // ProofRuntime - main entrypoint
 
@@ -115,6 +145,10 @@ func (prt *ProofRuntime) VerifyValue(proof *tmcrypto.ProofOps, root []byte, keyp
 	return prt.Verify(proof, root, keypath, [][]byte{value})
 }
 
+func (prt *ProofRuntime) VerifyValueFromKeys(proof *tmcrypto.ProofOps, root []byte, keys [][]byte, value []byte) (err error) {
+	return prt.VerifyFromKeys(proof, root, keys, [][]byte{value})
+}
+
 // TODO In the long run we'll need a method of classifcation of ops,
 // whether existence or absence or perhaps a third?
 func (prt *ProofRuntime) VerifyAbsence(proof *tmcrypto.ProofOps, root []byte, keypath string) (err error) {
@@ -127,6 +161,17 @@ func (prt *ProofRuntime) Verify(proof *tmcrypto.ProofOps, root []byte, keypath s
 		return fmt.Errorf("decoding proof: %w", err)
 	}
 	return poz.Verify(root, keypath, args)
+}
+
+// VerifyFromKeys performs the same verification logic as the normal Verify
+// method, except it does not perform any processing on the keypath. This is
+// useful when using keys that have split or escape points as a part of the key.
+func (prt *ProofRuntime) VerifyFromKeys(proof *tmcrypto.ProofOps, root []byte, keys [][]byte, args [][]byte) (err error) {
+	poz, err := prt.DecodeProof(proof)
+	if err != nil {
+		return fmt.Errorf("decoding proof: %w", err)
+	}
+	return poz.VerifyFromKeys(root, keys, args)
 }
 
 // DefaultProofRuntime only knows about value proofs.

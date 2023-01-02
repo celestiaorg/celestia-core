@@ -308,7 +308,7 @@ func (cli *grpcClient) PrepareProposalAsync(
 	req := types.ToRequestPrepareProposal(params)
 	res, err := cli.client.PrepareProposal(context.Background(), req.GetPrepareProposal(), grpc.WaitForReady(true))
 	if err != nil {
-		return nil
+		cli.StopForError(err)
 	}
 	return cli.finishAsyncCall(
 		req,

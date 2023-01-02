@@ -55,12 +55,6 @@ func MakeData(txs []types.Tx, blobs []types.Blob) types.Data {
 	}
 }
 
-func MakeDataFromTxs(txs []types.Tx) types.Data {
-	return types.Data{
-		Txs: txs,
-	}
-}
-
 func makeBlockAndPartSet(state sm.State, lastBlock *types.Block, lastBlockMeta *types.BlockMeta,
 	privVal types.PrivValidator, height int64) (*types.Block, *types.PartSet) {
 
@@ -76,7 +70,7 @@ func makeBlockAndPartSet(state sm.State, lastBlock *types.Block, lastBlockMeta *
 			lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()})
 	}
 
-	return state.MakeBlock(height, MakeDataFromTxs([]types.Tx{}), lastCommit, nil, state.Validators.GetProposer().Address)
+	return state.MakeBlock(height, MakeData([]types.Tx{}, nil), lastCommit, nil, state.Validators.GetProposer().Address)
 }
 
 func MakeVote(
