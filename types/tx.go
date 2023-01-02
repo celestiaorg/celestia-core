@@ -116,7 +116,7 @@ type RowsProof struct {
 
 // SharesProof represents an NMT proof for a set of shares to the data root.
 type SharesProof struct {
-	// Data raw shares that are proven.
+	// Data are the raw shares that are being proven.
 	Data [][]byte `json:"data"`
 	// SharesProofs proofs to the shares. Can contain multiple proofs if the shares
 	// span on multiple rows.
