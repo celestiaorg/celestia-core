@@ -192,9 +192,9 @@ message TxProof {
 // IndexWrapper adds index metadata to a transaction. This is used to track
 // transactions that pay for blobs, and where the blobs start in the square.
 message IndexWrapper {
-  bytes  tx          = 1;
-  uint32 share_index = 2;
-  string type_id     = 3;
+  bytes           tx            = 1;
+  repeated uint32 share_indexes = 2;
+  string          type_id       = 3;
 }
 
 // BlobTx wraps an encoded sdk.Tx with a second field to contain blobs of data.
