@@ -185,12 +185,13 @@ func (memR *Reactor) AddPeer(peer p2p.Peer) {
 // RemovePeer implements Reactor.
 func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	peerID := memR.ids.Reclaim(peer.ID())
+	// remove and rerequest all pending outbound requests to that peer since we know
+	// we won't receive any responses from them.
 	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
 	for key := range outboundRequests {
 		atomic.AddUint64(&memR.mempool.jsonMetrics.RerequestedTxs, 1)
 		memR.findNewPeerToRequestTx(key)
 	}
-	// broadcast routine checks if peer is gone and returns
 }
 
 // ReceiveEnvelope implements Reactor.
@@ -481,7 +482,13 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 // findNewPeerToSendTx finds a new peer that has already seen the transaction to
 // request a transaction from.
 func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
+	// ensure that we are connected to peers
+	if memR.ids.Len() == 0 {
+		return
+	}
+
 	// pop the next peer in the list of remaining peers that have seen the tx
+	// and does not already have an outbound request for that tx
 	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
 	var peerID uint16
 	for possiblePeer := range seenMap {
