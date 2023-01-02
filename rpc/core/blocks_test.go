@@ -189,8 +189,8 @@ func TestDataRootInclusionProofResults(t *testing.T) {
 
 	testCases := []struct {
 		height     int
-		beginQuery int
-		endQuery   int
+		firstQuery int
+		lastQuery  int
 		expectPass bool
 	}{
 		{8, 10, 15, false},
@@ -203,27 +203,27 @@ func TestDataRootInclusionProofResults(t *testing.T) {
 	for _, tc := range testCases {
 		env.BlockIndexer = mockBlockIndexer{
 			height:          height,
-			beginQueryBlock: tc.beginQuery,
-			endQueryBlock:   tc.endQuery,
+			beginQueryBlock: tc.firstQuery,
+			endQueryBlock:   tc.lastQuery,
 		}
 
 		proof, err := DataRootInclusionProof(
 			&rpctypes.Context{},
 			int64(tc.height),
-			uint64(tc.beginQuery),
-			uint64(tc.endQuery),
+			uint64(tc.firstQuery),
+			uint64(tc.lastQuery),
 		)
 		if tc.expectPass {
 			require.Nil(t, err, "should generate block height data root inclusion proof.")
 
-			size := tc.endQuery - tc.beginQuery + 1
+			size := tc.lastQuery - tc.firstQuery + 1
 			dataRoots := make([][]byte, size)
 			for i := 0; i < size; i++ {
-				dataRoots[i] = blocks[tc.beginQuery+i].DataHash
+				dataRoots[i] = blocks[tc.firstQuery+i].DataHash
 			}
 			commitment := merkle.HashFromByteSlices(dataRoots)
 
-			err = proof.Proof.Verify(commitment, dataRoots[tc.height-tc.beginQuery])
+			err = proof.Proof.Verify(commitment, dataRoots[tc.height-tc.firstQuery])
 			require.NoError(t, err)
 		} else {
 			require.NotNil(t, err, "shouldn't be able to generate proof.")
