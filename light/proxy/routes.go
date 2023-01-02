@@ -29,7 +29,7 @@ func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {
 		"block_results":             rpcserver.NewRPCFunc(makeBlockResultsFunc(c), "height"),
 		"commit":                    rpcserver.NewRPCFunc(makeCommitFunc(c), "height"),
 		"data_commitment":           rpcserver.NewRPCFunc(makeDataCommitmentFunc(c), "beginBlock,endBlock"),
-		"data_root_inclusion_proof": rpcserver.NewRPCFunc(makeDataRootInclusionProofFunc(c), "height,beginBlock,endBlock"),
+		"data_root_inclusion_proof": rpcserver.NewRPCFunc(makeDataRootInclusionProofFunc(c), "height,firstBlock,lastBlock"),
 		"tx":                        rpcserver.NewRPCFunc(makeTxFunc(c), "hash,prove"),
 		"tx_search":                 rpcserver.NewRPCFunc(makeTxSearchFunc(c), "query,prove,page,per_page,order_by"),
 		"block_search":              rpcserver.NewRPCFunc(makeBlockSearchFunc(c), "query,page,per_page,order_by"),
@@ -144,8 +144,8 @@ type rpcDataCommitmentFunc func(
 type rpcDataRootInclusionProofFunc func(
 	ctx *rpctypes.Context,
 	height uint64,
-	beginBlock uint64,
-	endBlock uint64,
+	firstBlock uint64,
+	lastBlock uint64,
 ) (*ctypes.ResultDataRootInclusionProof, error)
 
 func makeDataCommitmentFunc(c *lrpc.Client) rpcDataCommitmentFunc {
@@ -162,10 +162,10 @@ func makeDataRootInclusionProofFunc(c *lrpc.Client) rpcDataRootInclusionProofFun
 	return func(
 		ctx *rpctypes.Context,
 		height uint64,
-		beginBlock uint64,
-		endBlock uint64,
+		firstBlock uint64,
+		lastBlock uint64,
 	) (*ctypes.ResultDataRootInclusionProof, error) {
-		return c.DataRootInclusionProof(ctx.Context(), height, beginBlock, endBlock)
+		return c.DataRootInclusionProof(ctx.Context(), height, firstBlock, lastBlock)
 	}
 }
 

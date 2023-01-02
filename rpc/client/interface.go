@@ -73,8 +73,8 @@ type SignClient interface {
 	DataRootInclusionProof(
 		ctx context.Context,
 		height uint64,
-		beginBlock uint64,
-		endBlock uint64,
+		firstBlock uint64,
+		lastBlock uint64,
 	) (*ctypes.ResultDataRootInclusionProof, error)
 
 	Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error)

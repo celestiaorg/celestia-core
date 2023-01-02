@@ -465,14 +465,14 @@ func (c *Client) DataCommitment(
 
 // DataRootInclusionProof calls rpcclient#DataRootInclusionProof method and returns
 // a merkle proof for the data root of block height `height` to the set of blocks
-// defined by `beginBlock` and `endBlock`.
+// defined by `firstBlock` and `lastBlock`.
 func (c *Client) DataRootInclusionProof(
 	ctx context.Context,
 	height uint64,
-	beginBlock uint64,
-	endBlock uint64,
+	firstBlock uint64,
+	lastBlock uint64,
 ) (*ctypes.ResultDataRootInclusionProof, error) {
-	return c.next.DataRootInclusionProof(ctx, height, beginBlock, endBlock)
+	return c.next.DataRootInclusionProof(ctx, height, firstBlock, lastBlock)
 }
 
 // Tx calls rpcclient#Tx method and then verifies the proof if such was

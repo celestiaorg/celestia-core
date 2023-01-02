@@ -152,18 +152,18 @@ func DataCommitment(ctx *rpctypes.Context, beginBlock uint64, endBlock uint64) (
 }
 
 // DataRootInclusionProof creates an inclusion proof of the data root of block
-// height `height` in the set of blocks defined by `begin_block` and `end_block`.
+// height `height` in the set of blocks defined by `first_block` and `last_block`.
 func DataRootInclusionProof(
 	ctx *rpctypes.Context,
 	height int64,
-	beginBlock uint64,
-	endBlock uint64,
+	firstBlock uint64,
+	lastBlock uint64,
 ) (*ctypes.ResultDataRootInclusionProof, error) {
-	err := validateDataRootInclusionProofRequest(uint64(height), beginBlock, endBlock)
+	err := validateDataRootInclusionProofRequest(uint64(height), firstBlock, lastBlock)
 	if err != nil {
 		return nil, err
 	}
-	heights := generateHeightsList(beginBlock, endBlock)
+	heights := generateHeightsList(firstBlock, lastBlock)
 	blockResults := fetchBlocks(heights, len(heights), 0)
 	proof := proveDataRoots(blockResults, height)
 	return &ctypes.ResultDataRootInclusionProof{Proof: *proof}, nil
@@ -215,17 +215,17 @@ func validateDataCommitmentRange(beginBlock uint64, endBlock uint64) error {
 
 // validateDataRootInclusionProofRequest validates the request to generate a data root
 // inclusion proof.
-func validateDataRootInclusionProofRequest(height uint64, beginBlock uint64, endBlock uint64) error {
-	err := validateDataCommitmentRange(beginBlock, endBlock)
+func validateDataRootInclusionProofRequest(height uint64, firstBlock uint64, lastBlock uint64) error {
+	err := validateDataCommitmentRange(firstBlock, lastBlock)
 	if err != nil {
 		return err
 	}
-	if height < beginBlock || height > endBlock {
+	if height < firstBlock || height > lastBlock {
 		return fmt.Errorf(
-			"height %d should be in the interval begin_block %d end_block %d",
+			"height %d should be in the interval first_block %d last_block %d",
 			height,
-			beginBlock,
-			endBlock,
+			firstBlock,
+			lastBlock,
 		)
 	}
 	return nil
