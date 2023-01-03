@@ -272,7 +272,7 @@ Proposed
 [IPLD selectors]: https://github.com/ipld/specs/blob/master/selectors/selectors.md
 [ipld-prime]: https://github.com/ipld/go-ipld-prime
 
-[rsmt2d]: https://github.com/celestia/rsmt2d
+[rsmt2d]: https://github.com/celestiaorg/rsmt2d
 
 
 [p2p]: https://github.com/celestiaorg/celestia-core/tree/0eccfb24e2aa1bb9c4428e20dd7828c93f300e60/p2p
