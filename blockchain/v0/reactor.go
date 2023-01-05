@@ -366,12 +366,15 @@ FOR_LOOP:
 			err := state.Validators.VerifyCommitLight(
 				chainID, firstID, first.Height, second.LastCommit)
 
-			var stateMachineValid bool
 			if err == nil {
-				// We need to check that the `Data` in the block is valid. As we don't check it elsewhere and only
-				// the application can tell us if it is valid or not, we need to ask the application to check it via
-				// ProcessProposal. If we don't do this step a malicious node could fabricate an alternative set of 
-				// transactions that would cause a different app hash and thus cause this node to panic.
+				var stateMachineValid bool
+				// Block sync doesn't check that the `Data` in a block is valid.
+				// Since celestia-core can't determine if the `Data` in a block
+				// is valid, the next line asks celestia-app to check if the
+				// block is valid via ProcessProposal. If this step wasn't
+				// performed, a malicious node could fabricate an alternative
+				// set of transactions that would cause a different app hash and
+				// thus cause this node to panic.
 				stateMachineValid, err = bcR.blockExec.ProcessProposal(first)
 				if !stateMachineValid {
 					err = fmt.Errorf("application has rejected syncing block (%X) at height %d", first.Hash(), first.Height)
