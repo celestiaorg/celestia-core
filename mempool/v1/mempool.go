@@ -407,6 +407,8 @@ func (txmp *TxMempool) Update(
 
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
 	atomic.AddUint64(&txmp.jsonMetrics.SuccessfulTxs, uint64(len(blockTxs)))
+	atomic.AddUint64(&txmp.jsonMetrics.SuccessfulBytes, uint64(blockTxs.Size()))
+	atomic.AddUint64(&txmp.jsonMetrics.Blocks, 1)
 	for i, tx := range blockTxs {
 		// The tx hash corresponding to the originating transaction. Set to the
 		// current tx hash initially, but can change in case of a malleated tx.

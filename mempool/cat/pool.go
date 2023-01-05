@@ -475,6 +475,10 @@ func (txmp *TxPool) Update(
 		txmp.postCheck = newPostFn
 	}
 
+	atomic.AddUint64(&txmp.jsonMetrics.SuccessfulTxs, uint64(len(blockTxs)))
+	atomic.AddUint64(&txmp.jsonMetrics.Blocks, 1)
+	atomic.AddUint64(&txmp.jsonMetrics.SuccessfulBytes, uint64(blockTxs.Size()))
+	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
 	for _, tx := range blockTxs {
 		// Regardless of success, remove the transaction from the mempool.
 		key := tx.Key()
@@ -489,8 +493,6 @@ func (txmp *TxPool) Update(
 		_ = txmp.store.remove(key)
 		_ = txmp.evictedTxs.Pop(key)
 		txmp.seenByPeersSet.RemoveKey(key)
-		txmp.metrics.SuccessfulTxs.Add(1)
-		atomic.AddUint64(&txmp.jsonMetrics.SuccessfulTxs, 1)
 	}
 
 	txmp.purgeExpiredTxs(blockHeight)

@@ -129,14 +129,16 @@ type JSONMetrics struct {
 	filepath             string
 	StartedAt            time.Time
 	EndedAt              time.Time
+	Blocks               uint64
 	FailedTxs            uint64
 	EvictedTxs           uint64
 	SuccessfulTxs        uint64
+	SuccessfulBytes      uint64
 	AlreadySeenTxs       uint64
 	AlreadyRejectedTxs   uint64
 	RequestedTxs         uint64
 	RerequestedTxs       uint64
-	LostTxs			  	 uint64
+	LostTxs              uint64
 	FailedResponses      uint64
 	SentTransactionBytes uint64
 	SentStateBytes       uint64

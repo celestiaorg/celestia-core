@@ -57,8 +57,9 @@ type CListMempool struct {
 	// This reduces the pressure on the proxyApp.
 	cache mempool.TxCache
 
-	logger  log.Logger
-	metrics *mempool.Metrics
+	logger      log.Logger
+	metrics     *mempool.Metrics
+	jsonMetrics *mempool.JSONMetrics
 }
 
 var _ mempool.Mempool = &CListMempool{}
@@ -243,6 +244,7 @@ func (mem *CListMempool) CheckTx(
 		// so we only record the sender for txs still in the mempool.
 		if e, ok := mem.txsMap.Load(tx.Key()); ok {
 			mem.metrics.AlreadySeenTxs.Add(1)
+			atomic.AddUint64(&mem.jsonMetrics.AlreadySeenTxs, 1)
 			memTx := e.(*clist.CElement).Value.(*mempoolTx)
 			memTx.senders.LoadOrStore(txInfo.SenderID, true)
 			// TODO: consider punishing peer for dups,
@@ -417,6 +419,7 @@ func (mem *CListMempool) resCbFirstTime(
 				"err", postCheckErr,
 			)
 			mem.metrics.FailedTxs.Add(1)
+			atomic.AddUint64(&mem.jsonMetrics.FailedTxs, 1)
 
 			if !mem.config.KeepInvalidTxsInCache {
 				// remove from cache (it might be good later)
@@ -597,6 +600,9 @@ func (mem *CListMempool) Update(
 	}
 
 	mem.metrics.SuccessfulTxs.Add(float64(len(txs)))
+	atomic.AddUint64(&mem.jsonMetrics.SuccessfulTxs, uint64(len(txs)))
+	atomic.AddUint64(&mem.jsonMetrics.SuccessfulBytes, uint64(txs.Size()))
+	atomic.AddUint64(&mem.jsonMetrics.Blocks, 1)
 	for i, tx := range txs {
 		if deliverTxResponses[i].Code == abci.CodeTypeOK {
 			// Add valid committed tx to the cache (if missing).

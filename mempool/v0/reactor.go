@@ -3,6 +3,7 @@ package v0
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	cfg "github.com/tendermint/tendermint/config"
@@ -155,6 +156,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 // Receive implements Reactor.
 // It adds any received transactions to the mempool.
 func (memR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
+	atomic.AddUint64(&memR.mempool.jsonMetrics.ReceivedTxBytes, uint64(len(msgBytes)))
 	msg, err := memR.decodeMsg(msgBytes)
 	if err != nil {
 		memR.Logger.Error("Error decoding message", "src", src, "chId", chID, "err", err)
@@ -249,6 +251,8 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			if !success {
 				time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
 				continue
+			} else {
+				atomic.AddUint64(&memR.mempool.jsonMetrics.SentTransactionBytes, uint64(len(bz)))
 			}
 		}
 

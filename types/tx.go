@@ -90,6 +90,14 @@ func (txs Txs) IndexByHash(hash []byte) int {
 	return -1
 }
 
+func (txs Txs) Size() int { 
+	size := 0
+	for _, tx := range txs {
+		size += len(tx)
+	}
+	return size
+}
+
 // ToSliceOfBytes converts a Txs to slice of byte slices.
 //
 // NOTE: This method should become obsolete once Txs is switched to [][]byte.
