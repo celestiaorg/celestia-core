@@ -50,17 +50,17 @@ const (
 
 // Testnet represents a single testnet.
 type Testnet struct {
-	Name             string
-	File             string
-	Dir              string
-	IP               *net.IPNet
-	InitialHeight    int64
-	InitialState     map[string]string
-	Validators       map[*Node]int64
-	ValidatorUpdates map[int64]map[*Node]int64
-	Nodes            []*Node
-	KeyType          string
-	ABCIProtocol     string
+	Name                   string
+	File                   string
+	Dir                    string
+	IP                     *net.IPNet
+	InitialHeight          int64
+	InitialState           map[string]string
+	Validators             map[*Node]int64
+	ValidatorUpdates       map[int64]map[*Node]int64
+	Nodes                  []*Node
+	KeyType                string
+	ABCIProtocol           string
 	MaxInboundConnections  int
 	MaxOutboundConnections int
 }
@@ -105,16 +105,16 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 	}
 
 	testnet := &Testnet{
-		Name:             filepath.Base(dir),
-		File:             fname,
-		Dir:              dir,
-		IP:               ipNet,
-		InitialHeight:    1,
-		InitialState:     manifest.InitialState,
-		Validators:       map[*Node]int64{},
-		ValidatorUpdates: map[int64]map[*Node]int64{},
-		Nodes:            []*Node{},
-		ABCIProtocol:     manifest.ABCIProtocol,
+		Name:                   filepath.Base(dir),
+		File:                   fname,
+		Dir:                    dir,
+		IP:                     ipNet,
+		InitialHeight:          1,
+		InitialState:           manifest.InitialState,
+		Validators:             map[*Node]int64{},
+		ValidatorUpdates:       map[int64]map[*Node]int64{},
+		Nodes:                  []*Node{},
+		ABCIProtocol:           manifest.ABCIProtocol,
 		MaxInboundConnections:  manifest.MaxInboundConnections,
 		MaxOutboundConnections: manifest.MaxOutboundConnections,
 	}

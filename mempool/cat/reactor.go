@@ -1,6 +1,7 @@
 package cat
 
 import (
+	"context"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -306,7 +307,9 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 				// We are connected to the peer that originally sent the transaction so we
 				// assume there's a high probability that the original sender will also
 				// send us the transaction. We set a timeout in case this is not true.
-				time.AfterFunc(memR.opts.MaxGossipDelay, func() {
+				timer := time.NewTimer(memR.opts.MaxGossipDelay)
+				select {
+				case <-timer.C:
 					// If we still don't have the transaction after the timeout, we find a new peer to request the tx
 					if !memR.mempool.Has(txKey) && !memR.mempool.IsRejectedTx(txKey) {
 						memR.Logger.Debug("timed out waiting for original sender, requesting tx from another peer...")
@@ -320,7 +323,9 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 							memR.requestTx(txKey, peer)
 						}
 					}
-				})
+				case <-memR.Quit():
+					return
+				}
 			} else {
 				// We are not connected to the peer that originally sent the transaction or
 				// the sender learned of the transaction through another peer.
@@ -368,6 +373,23 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 		memR.Switch.StopPeerForError(peer, fmt.Errorf("mempool cannot handle message of type: %T", msg))
 		return
 	}
+}
+
+func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, compactData [][]byte) ([][]byte, error) {
+	txs := make([][]byte, len(compactData))
+	for i, key := range compactData {
+		txKey, err := types.TxKeyFromBytes(key)
+		if err != nil {
+			return nil, fmt.Errorf("incorrect compact blocks format: %w", err)
+		}
+		wtx := memR.mempool.store.get(txKey)
+		if wtx != nil {
+			txs[i] = wtx.tx
+		}
+
+	}
+	return txs, nil
+
 }
 
 // PeerState describes the state of a peer.

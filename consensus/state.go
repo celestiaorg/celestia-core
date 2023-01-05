@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -65,6 +66,10 @@ type txNotifier interface {
 	TxsAvailable() <-chan struct{}
 }
 
+type TxFetcher interface {
+	FetchTxsFromKeys(context.Context, [][]byte) ([][]byte, error)
+}
+
 // interface to the evidence pool
 type evidencePool interface {
 	// reports conflicting votes to the evidence pool to be processed into evidence
@@ -90,6 +95,8 @@ type State struct {
 
 	// notify us if txs are available
 	txNotifier txNotifier
+	// fetch txs based on tx keys. Used for compact blocks.
+	txFetcher TxFetcher
 
 	// add evidence to the pool
 	// when it's detected
@@ -152,6 +159,7 @@ func NewState(
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
 	txNotifier txNotifier,
+	txFetcher TxFetcher,
 	evpool evidencePool,
 	options ...StateOption,
 ) *State {
@@ -170,6 +178,11 @@ func NewState(
 		evpool:           evpool,
 		evsw:             tmevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
+		txFetcher:        txFetcher,
+	}
+
+	if !config.CompactBlocks {
+		txFetcher = &noopTxFetcher{}
 	}
 
 	// set function defaults (may be overwritten before calling Start)
@@ -797,8 +810,6 @@ func (cs *State) receiveRoutine(maxSteps int) {
 
 // state transitions on complete-proposal, 2/3-any, 2/3-one
 func (cs *State) handleMsg(mi msgInfo) {
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
 	var (
 		added bool
 		err   error
@@ -816,35 +827,10 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
 		added, err = cs.addProposalBlockPart(msg, peerID)
 
-		// We unlock here to yield to any routines that need to read the the RoundState.
-		// Previously, this code held the lock from the point at which the final block
-		// part was received until the block executed against the application.
-		// This prevented the reactor from being able to retrieve the most updated
-		// version of the RoundState. The reactor needs the updated RoundState to
-		// gossip the now completed block.
-		//
-		// This code can be further improved by either always operating on a copy
-		// of RoundState and only locking when switching out State's copy of
-		// RoundState with the updated copy or by emitting RoundState events in
-		// more places for routines depending on it to listen for.
-		cs.mtx.Unlock()
+		cs.tryReconstructBlock()
 
-		cs.mtx.Lock()
-		if added && cs.ProposalBlockParts.IsComplete() {
-			cs.handleCompleteProposal(msg.Height)
-		}
 		if added {
 			cs.statsMsgQueue <- mi
-		}
-
-		if err != nil && msg.Round != cs.Round {
-			cs.Logger.Debug(
-				"received block part from wrong round",
-				"height", cs.Height,
-				"cs_round", cs.Round,
-				"block_round", msg.Round,
-			)
-			err = nil
 		}
 
 	case *VoteMessage:
@@ -1819,6 +1805,8 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 //-----------------------------------------------------------------------------
 
 func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
 	// Already have one
 	// TODO: possibly catch double proposals
 	if cs.Proposal != nil {
@@ -1870,7 +1858,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 	}
 
 	// We're not expecting a block part.
-	if cs.ProposalBlockParts == nil {
+	if cs.ProposalBlockParts == nil || cs.Proposal == nil {
 		// NOTE: this can happen when we've gone to a higher round and
 		// then receive parts from the previous round - not necessarily a bad peer.
 		cs.Logger.Debug(
@@ -1892,33 +1880,74 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 			cs.ProposalBlockParts.ByteSize(), cs.state.ConsensusParams.Block.MaxBytes,
 		)
 	}
-	if added && cs.ProposalBlockParts.IsComplete() {
-		bz, err := io.ReadAll(cs.ProposalBlockParts.GetReader())
+	return added, nil
+}
+
+// tryReconstructBlock should be called after a new block part is added. If all data has been gathered,
+// this function reconstructs the block. If compact blocks are enabled, this also means calling the mempool
+// to retrieve the transactions for the block given the tags.
+func (cs *State) tryReconstructBlock() error {
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
+	if cs.ProposalBlockParts == nil || !cs.ProposalBlockParts.IsComplete() {
+		return nil
+	}
+
+	bz, err := io.ReadAll(cs.ProposalBlockParts.GetReader())
+	if err != nil {
+		return err
+	}
+
+	pbb := new(tmproto.Block)
+	err = proto.Unmarshal(bz, pbb)
+	if err != nil {
+		return err
+	}
+
+	block, err := types.BlockFromProto(pbb)
+	if err != nil {
+		return err
+	}
+
+	if cs.Proposal.Type == tmproto.CompactProposalType {
+		round := cs.Round
+		// Yield the lock while we fetch the transactions from the mempool so that votes
+		// and other operations can be processed.
+		cs.mtx.Unlock()
+		// Set a timeout on the context which matches the proposal timeout. If the mempool is
+		// unable to acquire all transactions we will abort and timeout, thus prevoting nil
+		ctx, cancel := context.WithTimeout(context.Background(), cs.config.Propose(round))
+		defer cancel()
+		txs, err := cs.txFetcher.FetchTxsFromKeys(ctx, block.Data.Txs.ToSliceOfBytes())
 		if err != nil {
-			return added, err
+			return err
 		}
-
-		pbb := new(tmproto.Block)
-		err = proto.Unmarshal(bz, pbb)
-		if err != nil {
-			return added, err
-		}
-
-		block, err := types.BlockFromProto(pbb)
-		if err != nil {
-			return added, err
-		}
-
-		cs.ProposalBlock = block
-
-		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
-		cs.Logger.Info("received complete proposal block", "height", cs.ProposalBlock.Height, "hash", cs.ProposalBlock.Hash())
-
-		if err := cs.eventBus.PublishEventCompleteProposal(cs.CompleteProposalEvent()); err != nil {
-			cs.Logger.Error("failed publishing event complete proposal", "err", err)
+		block.Data.Txs = types.ToTxs(txs)
+		cs.mtx.Lock()
+		// Some time may have passed in waiting for the mempool to fetch all the transactions. It is
+		// unlikely that the round has changed, because we set a timeout on the context, but
+		// we should check defensively that the block we are reconstructing is still the one
+		// that matches the proposal.
+		if cs.Proposal == nil || !bytes.Equal(cs.Proposal.BlockID.Hash, block.Hash()) {
+			cs.Logger.Info("moved on to the next round before reconstructing block", "round", round)
+			return nil
 		}
 	}
-	return added, nil
+
+	// set the block
+	cs.ProposalBlock = block
+
+	// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
+	cs.Logger.Info("received complete proposal block", "height", cs.ProposalBlock.Height, "hash", cs.ProposalBlock.Hash())
+
+	if err := cs.eventBus.PublishEventCompleteProposal(cs.CompleteProposalEvent()); err != nil {
+		cs.Logger.Error("failed publishing event complete proposal", "err", err)
+	}
+
+	// handle the new block advancing to the next step
+	cs.handleCompleteProposal(block.Height)
+
+	return nil
 }
 
 func (cs *State) handleCompleteProposal(blockHeight int64) {
@@ -1958,6 +1987,8 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 
 // Attempt to add the vote. if its a duplicate signature, dupeout the validator
 func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
 	added, err := cs.addVote(vote, peerID)
 	if err != nil {
 		// If the vote height is off, we'll just ignore it,
@@ -2393,4 +2424,10 @@ func repairWalFile(src, dst string) error {
 	}
 
 	return nil
+}
+
+type noopTxFetcher struct{}
+
+func (noop *noopTxFetcher) FetchTxsFromKeys(context.Context, [][]byte) ([][]byte, error) {
+	return nil, errors.New("tx fetcher not implemented")
 }

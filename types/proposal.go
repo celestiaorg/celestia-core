@@ -45,9 +45,22 @@ func NewProposal(height int64, round int32, polRound int32, blockID BlockID) *Pr
 	}
 }
 
+// NewCompactProposal returns a new Proposal of the compact type.
+// If there is no POLRound, polRound should be -1.
+func NewCompactProposal(height int64, round int32, polRound int32, blockID BlockID) *Proposal {
+	return &Proposal{
+		Type:      tmproto.CompactProposalType,
+		Height:    height,
+		Round:     round,
+		BlockID:   blockID,
+		POLRound:  polRound,
+		Timestamp: tmtime.Now(),
+	}
+}
+
 // ValidateBasic performs basic validation.
 func (p *Proposal) ValidateBasic() error {
-	if p.Type != tmproto.ProposalType {
+	if p.Type != tmproto.ProposalType && p.Type != tmproto.CompactProposalType {
 		return errors.New("invalid Type")
 	}
 	if p.Height < 0 {

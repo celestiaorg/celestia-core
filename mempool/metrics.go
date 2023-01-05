@@ -136,7 +136,7 @@ type JSONMetrics struct {
 	AlreadyRejectedTxs   uint64
 	RequestedTxs         uint64
 	RerequestedTxs       uint64
-	LostTxs			  	 uint64
+	LostTxs              uint64
 	FailedResponses      uint64
 	SentTransactionBytes uint64
 	SentStateBytes       uint64

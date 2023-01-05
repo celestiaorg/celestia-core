@@ -481,6 +481,11 @@ create_empty_blocks_interval = "{{ .Consensus.CreateEmptyBlocksInterval }}"
 peer_gossip_sleep_duration = "{{ .Consensus.PeerGossipSleepDuration }}"
 peer_query_maj23_sleep_duration = "{{ .Consensus.PeerQueryMaj23SleepDuration }}"
 
+# Use content-addressable transactions to create and propagate compact blocks instead
+# of re-broadcasting the entire transactions again.
+# Must have the v2 content addressable mempool enabled.
+compact_blocks = "{{ .Consensus.CompactBlocks }}"
+
 #######################################################
 ###         Storage Configuration Options           ###
 #######################################################

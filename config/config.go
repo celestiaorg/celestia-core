@@ -149,6 +149,9 @@ func (cfg *Config) ValidateBasic() error {
 	if err := cfg.Instrumentation.ValidateBasic(); err != nil {
 		return fmt.Errorf("error in [instrumentation] section: %w", err)
 	}
+	if cfg.Consensus.CompactBlocks && cfg.Mempool.Version != MempoolV2 {
+		return fmt.Errorf("mempool must be v2 for compact blocks")
+	}
 	return nil
 }
 
@@ -948,6 +951,11 @@ type ConsensusConfig struct {
 	PeerQueryMaj23SleepDuration time.Duration `mapstructure:"peer_query_maj23_sleep_duration"`
 
 	DoubleSignCheckHeight int64 `mapstructure:"double_sign_check_height"`
+
+	// Use content-addressable transactions to create and propagate compact blocks instead
+	// of re-broadcasting the entire transactions again.
+	// Must have the v2 content addressable mempool enabled.
+	CompactBlocks bool `mapstructure:"compact_blocks"`
 }
 
 // DefaultConsensusConfig returns a default configuration for the consensus service
@@ -967,6 +975,7 @@ func DefaultConsensusConfig() *ConsensusConfig {
 		PeerGossipSleepDuration:     100 * time.Millisecond,
 		PeerQueryMaj23SleepDuration: 2000 * time.Millisecond,
 		DoubleSignCheckHeight:       int64(0),
+		CompactBlocks:               false,
 	}
 }
 

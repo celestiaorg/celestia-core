@@ -478,10 +478,6 @@ func (txmp *TxPool) Update(
 	for _, tx := range blockTxs {
 		// Regardless of success, remove the transaction from the mempool.
 		key := tx.Key()
-		if malleatedTx, isMalleated := types.UnwrapMalleatedTx(tx); isMalleated {
-			copy(key[:], malleatedTx.OriginalTxHash)
-			_ = txmp.store.remove(key)
-		}
 
 		// don't allow committed transactions to be committed again
 		txmp.rejectedTxCache.Push(key)

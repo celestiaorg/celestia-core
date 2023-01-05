@@ -56,7 +56,7 @@ type Manifest struct {
 	// builtin will build a complete Tendermint node into the application and
 	// launch it instead of launching a separate Tendermint process.
 	ABCIProtocol string `toml:"abci_protocol"`
-	
+
 	// MaxInboundConnections and MaxOutboundConnection are the maximum number
 	// of connections a node has. This can be used to throttle the degree of
 	// connectivity of the network. If not specified, the default is taken
