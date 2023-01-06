@@ -85,6 +85,7 @@ func NewCListMempool(
 		recheckEnd:    nil,
 		logger:        log.NewNopLogger(),
 		metrics:       mempool.NopMetrics(),
+		jsonMetrics:   mempool.NewJSONMetrics(cfg.RootDir),
 	}
 
 	if cfg.CacheSize > 0 {

@@ -2,13 +2,13 @@ max_inbound_connections = 5
 max_outbound_connections = 3
 
 [node.validator01]
-mempool_version = "v2"
+mempool_version = "v0"
 
 [node.validator02]
-mempool_version = "v2"
+mempool_version = "v0"
 
 [node.validator03]
-mempool_version = "v2"
+mempool_version = "v0"
 
 [node.validator04]
 mempool_version = "v2"
