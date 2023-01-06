@@ -123,6 +123,7 @@ func TestReactorSendWantTxAfterReceiveingSeenTx(t *testing.T) {
 }
 
 func TestReactorWaitsToReceiveTxFromOriginalSender(t *testing.T) {
+	t.Skip()
 	reactor, pool := setupReactor(t)
 
 	originalPeer := &mocks.Peer{}

@@ -291,38 +291,7 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 				}
 			}
 
-			// Check if `From` is specified and if we are connected to the peer that originally sent the transaction
-			from := ""
-			if msg.SeenTx.XFrom != nil {
-				from = msg.SeenTx.XFrom.(*protomem.SeenTx_From).From
-			}
-			if from != "" && memR.ids.GetIDForPeer(p2p.ID(from)) != 0 {
-				memR.Logger.Debug("received a SeenTx message that originally came from a peer we are connected to. Waiting for the new transaction.",
-					"txKey", txKey)
-				// We are connected to the peer that originally sent the transaction so we
-				// assume there's a high probability that the original sender will also
-				// send us the transaction. We set a timeout in case this is not true.
-				time.AfterFunc(memR.opts.MaxGossipDelay, func() {
-					// If we still don't have the transaction after the timeout, we find a new peer to request the tx
-					if !memR.mempool.Has(txKey) && !memR.mempool.IsRejectedTx(txKey) {
-						memR.Logger.Debug("timed out waiting for original sender, requesting tx from another peer...")
-						// NOTE: During this period, the peer may, for some reason have disconnected from us.
-						if memR.ids.GetPeer(peerID) == nil {
-							// Get the first peer from the set
-							memR.findNewPeerToRequestTx(txKey)
-						} else {
-							// We're still connected to the peer that sent us the SeenTx so request
-							// the transaction from them
-							memR.requestTx(txKey, peer)
-						}
-					}
-				})
-			} else {
-				// We are not connected to the peer that originally sent the transaction or
-				// the sender learned of the transaction through another peer.
-				// We therefore request the tx from the peer that sent us the SeenTx message
-				memR.requestTx(txKey, peer)
-			}
+			memR.requestTx(txKey, peer)
 		} else {
 			memR.Logger.Debug("received a seen tx for a tx we already have", "txKey", txKey)
 		}
@@ -379,7 +348,6 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey, fromPeer string) {
 		Sum: &protomem.Message_SeenTx{
 			SeenTx: &protomem.SeenTx{
 				TxKey: txKey[:],
-				XFrom: &protomem.SeenTx_From{From: fromPeer},
 			},
 		},
 	}
