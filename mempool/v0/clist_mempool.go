@@ -227,6 +227,8 @@ func (mem *CListMempool) CheckTx(
 
 	if mem.preCheck != nil {
 		if err := mem.preCheck(tx); err != nil {
+			atomic.AddUint64(&mem.jsonMetrics.FailedTxs, 1)
+			mem.metrics.FailedTxs.Add(1)
 			return mempool.ErrPreCheck{
 				Reason: err,
 			}
@@ -483,6 +485,8 @@ func (mem *CListMempool) resCbRecheck(req *abci.Request, res *abci.Response) {
 			mem.logger.Debug("tx is no longer valid", "tx", types.Tx(tx).Hash(), "res", r, "err", postCheckErr)
 			// NOTE: we remove tx from the cache because it might be good later
 			mem.removeTx(tx, mem.recheckCursor, !mem.config.KeepInvalidTxsInCache)
+			atomic.AddUint64(&mem.jsonMetrics.FailedTxs, 1)
+			mem.metrics.FailedTxs.Add(1)
 		}
 		if mem.recheckCursor == mem.recheckEnd {
 			mem.recheckCursor = nil

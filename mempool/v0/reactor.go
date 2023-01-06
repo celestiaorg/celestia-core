@@ -117,6 +117,17 @@ func (memR *Reactor) OnStart() error {
 	if !memR.config.Broadcast {
 		memR.Logger.Info("Tx broadcasting is disabled")
 	}
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		for {
+			select {
+			case <-memR.Quit():
+				return
+			case <-ticker.C:
+				memR.mempool.jsonMetrics.Save()
+			}
+		}
+	}()
 	return nil
 }
 

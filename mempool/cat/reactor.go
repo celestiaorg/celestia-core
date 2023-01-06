@@ -125,7 +125,7 @@ func (memR *Reactor) OnStart() error {
 			case <-memR.Quit():
 				return
 			case <-ticker.C:
-				memR.dumpMetrics()
+				memR.mempool.jsonMetrics.Save()
 			}
 		}
 	}()
@@ -135,10 +135,6 @@ func (memR *Reactor) OnStart() error {
 func (memR *Reactor) OnStop() {
 	// stop all the timers tracking outbound requests
 	memR.requests.Close()
-}
-
-func (memR *Reactor) dumpMetrics() {
-	memR.mempool.jsonMetrics.Save()
 }
 
 // GetChannels implements Reactor by returning the list of channels for this

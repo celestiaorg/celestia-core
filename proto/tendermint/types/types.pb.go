@@ -652,6 +652,7 @@ func (m *LightClientAttackEvidence) GetTimestamp() time.Time {
 
 type Evidence struct {
 	// Types that are valid to be assigned to Sum:
+	//
 	//	*Evidence_DuplicateVoteEvidence
 	//	*Evidence_LightClientAttackEvidence
 	Sum isEvidence_Sum `protobuf_oneof:"sum"`
