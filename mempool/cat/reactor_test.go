@@ -128,6 +128,7 @@ func TestReactorWaitsToReceiveTxFromOriginalSender(t *testing.T) {
 	originalPeer := &mocks.Peer{}
 	nodeKey2 := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
 	originalPeer.On("ID").Return(nodeKey2.ID())
+	originalPeer.On("Get", types.PeerStateKey).Return(nil)
 
 	tx := newDefaultTx("hello")
 	key := tx.Key()
@@ -151,14 +152,21 @@ func TestReactorWaitsToReceiveTxFromOriginalSender(t *testing.T) {
 	peer := &mocks.Peer{}
 	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
 	peer.On("ID").Return(nodeKey.ID())
+	peer.On("Get", types.PeerStateKey).Return(nil)
 
 	reactor.InitPeer(peer)
 	reactor.InitPeer(originalPeer)
-	pool.CheckTx(tx, nil, mempool.TxInfo{})
+
 	reactor.Receive(MempoolStateChannel, peer, seenMsgBytes)
 
-	reactor.Receive(mempool.MempoolChannel, peer, txMsgBytes)
+	// pause for a period and then send the node the original transaction
+	time.Sleep(100 * time.Millisecond)
+	reactor.Receive(mempool.MempoolChannel, originalPeer, txMsgBytes)
 
+	// assert the node has the transaction
+	wtx := pool.store.get(key)
+	require.NotNil(t, wtx)
+	// this asserts that the node did not send any messaged to any of the peers
 	peer.AssertExpectations(t)
 	originalPeer.AssertExpectations(t)
 }
