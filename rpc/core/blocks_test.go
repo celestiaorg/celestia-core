@@ -159,11 +159,13 @@ func TestDataCommitmentResults(t *testing.T) {
 			require.Nil(t, err, "should generate the needed data commitment.")
 
 			size := tc.endQuery - tc.beginQuery + 1
-			dataRoots := make([][]byte, size)
+			dataRootEncodedTuples := make([][]byte, size)
 			for i := 0; i < size; i++ {
-				dataRoots[i] = blocks[tc.beginQuery+i].DataHash
+				encodedTuple, err := EncodeDataRootTuple(uint64(blocks[tc.beginQuery+i].Height), *(*[32]byte)(blocks[tc.beginQuery+i].DataHash))
+				require.NoError(t, err)
+				dataRootEncodedTuples[i] = encodedTuple
 			}
-			expectedCommitment := merkle.HashFromByteSlices(dataRoots)
+			expectedCommitment := merkle.HashFromByteSlices(dataRootEncodedTuples)
 
 			if !bytes.Equal(expectedCommitment, actualCommitment.DataCommitment) {
 				assert.Error(t, nil, "expected data commitment and actual data commitment doesn't match.")

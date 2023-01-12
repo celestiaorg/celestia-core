@@ -3,11 +3,13 @@ package core
 import (
 	"errors"
 	"fmt"
+	"math/big"
 	"sort"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
 	blockidxnull "github.com/tendermint/tendermint/state/indexer/block/null"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
 	"github.com/tendermint/tendermint/pkg/consts"
@@ -146,9 +148,67 @@ func DataCommitment(ctx *rpctypes.Context, beginBlock uint64, endBlock uint64) (
 	}
 	heights := generateHeightsList(beginBlock, endBlock)
 	blockResults := fetchBlocks(heights, len(heights), 0)
-	root := hashDataRoots(blockResults)
+	root, err := hashDataRootTuples(blockResults)
+	if err != nil {
+		return nil, err
+	}
 	// Create data commitment
 	return &ctypes.ResultDataCommitment{DataCommitment: root}, nil
+}
+
+// EncodeDataRootTuple takes a height and a data root and returns the equivalent of
+// `abi.encode(...)` in Ethereum.
+// The encoded type is a DataRootTuple, which has the following ABI:
+// ```
+//
+//	{
+//	  "components": [
+//	    {
+//	      "internalType": "uint256",
+//	      "name": "height",
+//	      "type": "uint256"
+//	    },
+//	    {
+//	      "internalType": "bytes32",
+//	      "name": "dataRoot",
+//	      "type": "bytes32"
+//	    }
+//	  ],
+//	  "internalType": "structDataRootTuple",
+//	  "name": "_tuple",
+//	  "type": "tuple"
+//	},
+//
+// ```
+// For more information, refer to:
+// https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
+func EncodeDataRootTuple(height uint64, dataRoot [32]byte) ([]byte, error) {
+	dataRootTupleStruct, err := abi.NewType(
+		"tuple",
+		"structDataRootTuple",
+		[]abi.ArgumentMarshaling{
+			{Name: "height", Type: "uint256"},
+			{Name: "dataRoot", Type: "bytes32"},
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	args := abi.Arguments{{Type: dataRootTupleStruct, Name: "tuple"}}
+	tuple := struct {
+		Height   *big.Int
+		DataRoot [32]byte
+	}{
+		Height:   big.NewInt(int64(height)),
+		DataRoot: dataRoot,
+	}
+	packed, err := args.Pack(&tuple)
+	if err != nil {
+		return nil, err
+	}
+
+	return packed, nil
 }
 
 // generateHeightsList takes a begin and end block, then generates a list of heights
@@ -195,14 +255,18 @@ func validateDataCommitmentRange(beginBlock uint64, endBlock uint64) error {
 	return nil
 }
 
-// hashDataRoots hashes a list of blocks data hashes and returns their merkle root.
-func hashDataRoots(blocks []*ctypes.ResultBlock) []byte {
-	dataRoots := make([][]byte, 0, len(blocks))
+// hashDataRootTuples hashes a list of blocks data root tuples, i.e. height and data root, and returns their merkle root.
+func hashDataRootTuples(blocks []*ctypes.ResultBlock) ([]byte, error) {
+	dataRootEncodedTuples := make([][]byte, 0, len(blocks))
 	for _, block := range blocks {
-		dataRoots = append(dataRoots, block.Block.DataHash)
+		encodedTuple, err := EncodeDataRootTuple(uint64(block.Block.Height), *(*[32]byte)(block.Block.DataHash))
+		if err != nil {
+			return nil, err
+		}
+		dataRootEncodedTuples = append(dataRootEncodedTuples, encodedTuple)
 	}
-	root := merkle.HashFromByteSlices(dataRoots)
-	return root
+	root := merkle.HashFromByteSlices(dataRootEncodedTuples)
+	return root, nil
 }
 
 // BlockResults gets ABCIResults at a given height.
