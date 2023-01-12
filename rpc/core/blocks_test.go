@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"testing"
 
@@ -121,6 +122,28 @@ func TestBlockResults(t *testing.T) {
 			assert.Equal(t, tc.wantRes, res)
 		}
 	}
+}
+
+func TestEncodeDataRootTuple(t *testing.T) {
+	height := uint64(2)
+	dataRoot, err := hex.DecodeString("82dc1607d84557d3579ce602a45f5872e821c36dbda7ec926dfa17ebc8d5c013")
+	require.NoError(t, err)
+
+	expectedEncoding, err := hex.DecodeString(
+		// hex representation of height padded to 32 bytes
+		"0000000000000000000000000000000000000000000000000000000000000002" +
+			// data root
+			"82dc1607d84557d3579ce602a45f5872e821c36dbda7ec926dfa17ebc8d5c013")
+	require.NoError(t, err)
+	require.NotNil(t, expectedEncoding)
+
+	actualEncoding, err := EncodeDataRootTuple(height, *(*[32]byte)(dataRoot))
+	require.NoError(t, err)
+	require.NotNil(t, actualEncoding)
+
+	// Check that the length of packed data is correct
+	assert.Equal(t, len(actualEncoding), 64)
+	assert.Equal(t, expectedEncoding, actualEncoding)
 }
 
 func TestDataCommitmentResults(t *testing.T) {
