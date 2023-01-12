@@ -1,16 +1,10 @@
 package mempool
 
 import (
-	"encoding/json"
-	"path/filepath"
-	"time"
-
 	"github.com/go-kit/kit/metrics"
 	"github.com/go-kit/kit/metrics/discard"
 	"github.com/go-kit/kit/metrics/prometheus"
 	stdprometheus "github.com/prometheus/client_golang/prometheus"
-
-	"github.com/tendermint/tendermint/libs/os"
 )
 
 const (
@@ -49,6 +43,14 @@ type Metrics struct {
 	// mempool which were already present in the mempool. This is a good
 	// indicator of the degree of duplication in message gossiping.
 	AlreadySeenTxs metrics.Counter
+
+	// RequestedTxs defines the number of times that the node requested a
+	// tx to a peer
+	RequestedTxs metrics.Counter
+
+	// RerequestedTxs defines the number of times that a requested tx
+	// never received a response in time and a new request was made.
+	RerequestedTxs metrics.Counter
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -109,6 +111,20 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "already_seen_txs",
 			Help:      "Number of transactions that entered the mempool but were already present in the mempool.",
 		}, labels).With(labelsAndValues...),
+
+		RequestedTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "requested_txs",
+			Help:      "Number of initial requests for a transaction",
+		}, labels).With(labelsAndValues...),
+
+		RerequestedTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "rerequested_txs",
+			Help:      "Number of times a transaction was requested again after a previous request timed out",
+		}, labels).With(labelsAndValues...),
 	}
 }
 
@@ -122,41 +138,7 @@ func NopMetrics() *Metrics {
 		SuccessfulTxs:  discard.NewCounter(),
 		RecheckTimes:   discard.NewCounter(),
 		AlreadySeenTxs: discard.NewCounter(),
+		RequestedTxs:   discard.NewCounter(),
+		RerequestedTxs: discard.NewCounter(),
 	}
-}
-
-type JSONMetrics struct {
-	filepath             string
-	StartedAt            time.Time
-	EndedAt              time.Time
-	FailedTxs            uint64
-	EvictedTxs           uint64
-	SuccessfulTxs        uint64
-	AlreadySeenTxs       uint64
-	AlreadyRejectedTxs   uint64
-	RequestedTxs         uint64
-	RerequestedTxs       uint64
-	LostTxs			  	 uint64
-	FailedResponses      uint64
-	SentTransactionBytes uint64
-	SentStateBytes       uint64
-	ReceivedTxBytes      uint64
-	ReceivedStateBytes   uint64
-}
-
-func NewJSONMetrics(rootDir string) *JSONMetrics {
-	path := filepath.Join(rootDir, "data", "mempool_metrics.json")
-	return &JSONMetrics{
-		filepath:  path,
-		StartedAt: time.Now().UTC(),
-	}
-}
-
-func (m *JSONMetrics) Save() {
-	m.EndedAt = time.Now().UTC()
-	content, err := json.Marshal(m)
-	if err != nil {
-		panic(err)
-	}
-	os.MustWriteFile(m.filepath, content, 0644)
 }
