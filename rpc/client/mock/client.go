@@ -177,6 +177,15 @@ func (c Client) DataCommitment(
 	return core.DataCommitment(&rpctypes.Context{}, beginBlock, endBlock)
 }
 
+func (c Client) DataRootInclusionProof(
+	ctx context.Context,
+	height uint64,
+	firstBlock uint64,
+	lastBlock uint64,
+) (*ctypes.ResultDataRootInclusionProof, error) {
+	return core.DataRootInclusionProof(&rpctypes.Context{}, int64(height), firstBlock, lastBlock)
+}
+
 func (c Client) Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error) {
 	return core.Validators(&rpctypes.Context{}, height, page, perPage)
 }

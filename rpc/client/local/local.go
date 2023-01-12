@@ -181,12 +181,30 @@ func (c *Local) DataCommitment(
 	return core.DataCommitment(c.ctx, beginBlock, endBlock)
 }
 
+func (c *Local) DataRootInclusionProof(
+	_ context.Context,
+	height uint64,
+	firstBlock uint64,
+	lastBlock uint64,
+) (*ctypes.ResultDataRootInclusionProof, error) {
+	return core.DataRootInclusionProof(c.ctx, int64(height), firstBlock, lastBlock)
+}
+
 func (c *Local) Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error) {
 	return core.Validators(c.ctx, height, page, perPage)
 }
 
 func (c *Local) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error) {
 	return core.Tx(c.ctx, hash, prove)
+}
+
+func (c *Local) ProveShares(
+	ctx context.Context,
+	height uint64,
+	startShare uint64,
+	endShare uint64,
+) (types.SharesProof, error) {
+	return core.ProveShares(c.ctx, int64(height), startShare, endShare)
 }
 
 func (c *Local) TxSearch(
