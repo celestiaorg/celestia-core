@@ -60,40 +60,6 @@ func TestReactorBroadcastTxsMessage(t *testing.T) {
 	waitForTxsOnReactors(t, transactions, reactors)
 }
 
-func TestReactorSendSeenTxOnConnection(t *testing.T) {
-	reactor, pool := setupReactor(t)
-
-	tx1 := newDefaultTx("hello")
-	key1 := tx1.Key()
-	msg1 := &protomem.Message{
-		Sum: &protomem.Message_SeenTx{SeenTx: &protomem.SeenTx{TxKey: key1[:]}},
-	}
-	msg1Bytes, err := msg1.Marshal()
-	require.NoError(t, err)
-
-	tx2 := newDefaultTx("world")
-	key2 := tx2.Key()
-	msg2 := &protomem.Message{
-		Sum: &protomem.Message_SeenTx{SeenTx: &protomem.SeenTx{TxKey: key2[:]}},
-	}
-	msg2Bytes, err := msg2.Marshal()
-	require.NoError(t, err)
-
-	peer := &mocks.Peer{}
-	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
-	peer.On("ID").Return(nodeKey.ID())
-	peer.On("Send", MempoolStateChannel, msg1Bytes).Return(true)
-	peer.On("Send", MempoolStateChannel, msg2Bytes).Return(true)
-
-	pool.CheckTx(tx1, nil, mempool.TxInfo{})
-	pool.CheckTx(tx2, nil, mempool.TxInfo{})
-
-	reactor.InitPeer(peer)
-	reactor.AddPeer(peer)
-
-	peer.AssertExpectations(t)
-}
-
 func TestReactorSendWantTxAfterReceiveingSeenTx(t *testing.T) {
 	reactor, _ := setupReactor(t)
 
@@ -111,9 +77,7 @@ func TestReactorSendWantTxAfterReceiveingSeenTx(t *testing.T) {
 	msgWantB, err := msgWant.Marshal()
 	require.NoError(t, err)
 
-	peer := &mocks.Peer{}
-	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
-	peer.On("ID").Return(nodeKey.ID())
+	peer := genPeer()
 	peer.On("Send", MempoolStateChannel, msgWantB).Return(true)
 
 	reactor.InitPeer(peer)
@@ -122,105 +86,70 @@ func TestReactorSendWantTxAfterReceiveingSeenTx(t *testing.T) {
 	peer.AssertExpectations(t)
 }
 
-func TestReactorWaitsToReceiveTxFromOriginalSender(t *testing.T) {
+func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	reactor, pool := setupReactor(t)
-
-	originalPeer := &mocks.Peer{}
-	nodeKey2 := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
-	originalPeer.On("ID").Return(nodeKey2.ID())
 
 	tx := newDefaultTx("hello")
 	key := tx.Key()
-	seenMsg := &protomem.Message{
-		Sum: &protomem.Message_SeenTx{
-			SeenTx: &protomem.SeenTx{
-				TxKey: key[:],
-				XFrom: &protomem.SeenTx_From{From: string(nodeKey2.ID())},
-			},
-		},
+	txEnvelope := p2p.Envelope{
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
+		ChannelID: mempool.MempoolChannel,
 	}
-	seenMsgBytes, err := seenMsg.Marshal()
+
+	msgWant := &protomem.Message{
+		Sum: &protomem.Message_WantTx{WantTx: &protomem.WantTx{TxKey: key[:]}},
+	}
+	msgWantB, err := msgWant.Marshal()
 	require.NoError(t, err)
 
+	peer := genPeer()
+	peer.On("SendEnvelope", txEnvelope).Return(true)
+
+	// add the transaction to the nodes pool. It's not connected to
+	// any peers so it shouldn't broadcast anything yet
+	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
+
+	// Add the peer
+	reactor.InitPeer(peer)
+	// The peer sends a want msg for this tx
+	reactor.Receive(MempoolStateChannel, peer, msgWantB)
+
+	// Should send the tx to the peer in response
+	peer.AssertExpectations(t)
+
+	// pool should have marked the peer as having seen the tx
+	peerID := reactor.ids.GetIDForPeer(peer.ID())
+	require.True(t, pool.seenByPeersSet.Has(key, peerID))
+}
+
+func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
+	reactor, _ := setupReactor(t)
+
+	tx := newDefaultTx("hello")
+	key := tx.Key()
 	txMsg := &protomem.Message{
 		Sum: &protomem.Message_Txs{Txs: &protomem.Txs{Txs: [][]byte{tx}}},
 	}
 	txMsgBytes, err := txMsg.Marshal()
 	require.NoError(t, err)
 
-	peer := &mocks.Peer{}
-	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
-	peer.On("ID").Return(nodeKey.ID())
-
-	reactor.InitPeer(peer)
-	reactor.InitPeer(originalPeer)
-	pool.CheckTx(tx, nil, mempool.TxInfo{})
-	reactor.Receive(MempoolStateChannel, peer, seenMsgBytes)
-
-	reactor.Receive(mempool.MempoolChannel, peer, txMsgBytes)
-
-	peer.AssertExpectations(t)
-	originalPeer.AssertExpectations(t)
-}
-
-func TestReactorEventuallySendsWantMsgAfterReceivingSeenTx(t *testing.T) {
-	reactor, _ := setupReactor(t)
-
-	originalPeer := &mocks.Peer{}
-	nodeKey2 := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
-	originalPeer.On("ID").Return(nodeKey2.ID())
-
-	tx := newDefaultTx("hello")
-	key := tx.Key()
 	seenMsg := &protomem.Message{
 		Sum: &protomem.Message_SeenTx{SeenTx: &protomem.SeenTx{TxKey: key[:]}},
 	}
 	seenMsgBytes, err := seenMsg.Marshal()
 	require.NoError(t, err)
 
-	wantMsg := &protomem.Message{
-		Sum: &protomem.Message_WantTx{WantTx: &protomem.WantTx{TxKey: key[:]}},
-	}
-	wantMsgBytes, err := wantMsg.Marshal()
-	require.NoError(t, err)
+	peers := genPeers(2)
+	// only peer 1 should receive the seen tx message as peer 0 broadcasted
+	// the transaction in the first place
+	peers[1].On("Send", MempoolStateChannel, seenMsgBytes).Return(true)
 
-	peer := &mocks.Peer{}
-	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
-	peer.On("ID").Return(nodeKey.ID())
-	peer.On("Send", MempoolStateChannel, wantMsgBytes).Return(true)
+	reactor.InitPeer(peers[0])
+	reactor.InitPeer(peers[1])
+	reactor.Receive(mempool.MempoolChannel, peers[0], txMsgBytes)
 
-	reactor.InitPeer(peer)
-	reactor.InitPeer(originalPeer)
-	reactor.Receive(MempoolStateChannel, peer, seenMsgBytes)
-
-	peer.AssertExpectations(t)
-}
-
-// This is a bit of a hacky test because broadcasting SeenTxs requires
-// access to the entire `Switch` so we basically need to do a full integration
-// test. In this test, we have three nodes.
-// node A receives a tx pushed to them via node B
-// node A sends a seenTx to node C (and not node B)
-// node C is connected to node B so waits but eventually requests the tx from node A
-// node A provides the tx to node C and marks both peers as having seen the tx
-func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
-	reactors := makeAndConnectReactors(t, cfg.TestConfig(), 3)
-	peers := reactors[0].Switch.Peers().List()
-
-	tx := newDefaultTx("hello")
-	key := tx.Key()
-	txMsg := &protomem.Message{
-		Sum: &protomem.Message_Txs{Txs: &protomem.Txs{Txs: [][]byte{tx}}},
-	}
-	txMsgBytes, err := txMsg.Marshal()
-	require.NoError(t, err)
-
-	reactors[0].Receive(mempool.MempoolChannel, peers[0], txMsgBytes)
-
-	require.Eventually(t, func() bool {
-		peerSet := reactors[0].mempool.seenByPeersSet.Get(key)
-		return len(peerSet) == 2
-	}, 5*time.Second, 100*time.Millisecond)
+	peers[0].AssertExpectations(t)
+	peers[1].AssertExpectations(t)
 }
 
 func TestMempoolVectors(t *testing.T) {
@@ -304,7 +233,6 @@ func makeAndConnectReactors(t *testing.T, config *cfg.Config, n int) []*Reactor 
 	switches := p2p.MakeConnectedSwitches(config.P2P, n, func(i int, s *p2p.Switch) *p2p.Switch {
 		s.AddReactor("MEMPOOL", reactors[i])
 		return s
-
 	}, p2p.Connect2Switches)
 
 	t.Cleanup(func() {
@@ -393,4 +321,21 @@ func waitForTxsOnReactor(t *testing.T, txs types.Txs, reactor *Reactor, reactorI
 		require.Equal(t, tx, reapedTxs[i],
 			"txs at index %d on reactor %d don't match: %x vs %x", i, reactorIndex, tx, reapedTxs[i])
 	}
+}
+
+func genPeers(n int) []*mocks.Peer {
+	peers := make([]*mocks.Peer, n)
+	for i := 0; i < n; i++ {
+		peers[i] = genPeer()
+	}
+	return peers
+
+}
+
+func genPeer() *mocks.Peer {
+	peer := &mocks.Peer{}
+	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
+	peer.On("ID").Return(nodeKey.ID())
+	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
+	return peer
 }

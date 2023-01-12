@@ -262,7 +262,6 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 // If it passes `CheckTx`, the new transaction is added to the mempool solong as it has
 // sufficient priority and space else if evicted it will return an error
 func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
-
 	// First check any of the caches to see if we can conclude early. We may have already seen and processed
 	// the transaction if:
 	// - We are conencted to legacy nodes which simply flood the network
@@ -467,6 +466,7 @@ func (txmp *TxPool) Update(
 		txmp.postCheck = newPostFn
 	}
 
+	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
 	for _, tx := range blockTxs {
 		// Regardless of success, remove the transaction from the mempool.
 		key := tx.Key()
@@ -477,7 +477,6 @@ func (txmp *TxPool) Update(
 		_ = txmp.store.remove(key)
 		_ = txmp.evictedTxs.Pop(key)
 		txmp.seenByPeersSet.RemoveKey(key)
-		txmp.metrics.SuccessfulTxs.Add(1)
 	}
 
 	txmp.purgeExpiredTxs(blockHeight)
@@ -525,9 +524,8 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 		if len(victims) == 0 || victimBytes < wtx.size() {
 			txmp.metrics.EvictedTxs.Add(1)
 			txmp.evictedTxs.Push(wtx)
-			checkTxRes.MempoolError =
-				fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
-					wtx.key)
+			checkTxRes.MempoolError = fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
+				wtx.key)
 			return fmt.Errorf("rejected valid incoming transaction; mempool is full (%X). Size: (%d:%d)",
 				wtx.key.String(), txmp.Size(), txmp.SizeBytes())
 		}
