@@ -71,7 +71,7 @@ type TxPool struct {
 	txsToBeBroadcast map[types.TxKey]struct{}
 }
 
-// NewTxPool constructs a new, empty priority mempool at the specified
+// NewTxPool constructs a new, empty content addressable txpool at the specified
 // initial height and using the given config and options.
 func NewTxPool(
 	logger log.Logger,
@@ -122,11 +122,13 @@ func WithMetrics(metrics *mempool.Metrics) TxPoolOption {
 	return func(txmp *TxPool) { txmp.metrics = metrics }
 }
 
-// Lock is a noop method. All ABCI calls are serialized.
-func (txmp *TxPool) Lock() {}
+// Lock is a noop as ABCI calls are serialized
+func (txmp *TxPool) Lock() {
+}
 
-// Unlock is a noop method. All ABCI calls are serialized.
-func (txmp *TxPool) Unlock() {}
+// Unlock is a noop as ABCI calls are serialized
+func (txmp *TxPool) Unlock() {
+}
 
 // Size returns the number of valid transactions in the mempool. It is
 // thread-safe.
@@ -184,10 +186,11 @@ func (txmp *TxPool) CanFitEvictedTx(txKey types.TxKey) bool {
 	return txmp.canAddTx(info.size)
 }
 
-func (txmp *TxPool) TryReinsertEvictedTx(txKey types.TxKey, tx types.Tx, peer uint16) error {
+// TryReinsertEvictedTx attempts to reinsert an evicted tx into the mempool.
+func (txmp *TxPool) TryReinsertEvictedTx(txKey types.TxKey, tx types.Tx, peer uint16) (*abci.ResponseCheckTx, error) {
 	info := txmp.evictedTxs.Pop(txKey)
 	if info == nil {
-		return nil
+		return nil, fmt.Errorf("evicted tx %v no longer in cache. Please try again", txKey)
 	}
 	txmp.logger.Debug("attempting to reinsert evicted tx", "txKey", fmt.Sprintf("%X", txKey))
 	wtx := newWrappedTx(
@@ -199,7 +202,10 @@ func (txmp *TxPool) TryReinsertEvictedTx(txKey types.TxKey, tx types.Tx, peer ui
 		Sender:    info.sender,
 		GasWanted: info.gasWanted,
 	}
-	return txmp.addNewTransaction(wtx, checkTxResp)
+	if err := txmp.addNewTransaction(wtx, checkTxResp); err != nil {
+		return nil, err
+	}
+	return checkTxResp, nil
 }
 
 // CheckTx adds the given transaction to the mempool if it fits and passes the
@@ -218,17 +224,20 @@ func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo mempool
 	if err != nil {
 		return err
 	}
+	defer func() {
+		// call the callback if it is set
+		if cb != nil {
+			cb(&abci.Response{Value: &abci.Response_CheckTx{CheckTx: rsp}})
+		}
+	}()
 
 	// push to the broadcast queue that a new transaction is ready
 	txmp.markToBeBroadcast(key)
-
-	// call the callback if it is set
-	if cb != nil {
-		cb(&abci.Response{Value: &abci.Response_CheckTx{CheckTx: rsp}})
-	}
 	return nil
 }
 
+// next is used by the reactor to get the next transaction to broadcast
+// to all other peers.
 func (txmp *TxPool) next() <-chan types.TxKey {
 	txmp.broadcastMtx.Lock()
 	defer txmp.broadcastMtx.Unlock()
@@ -243,6 +252,9 @@ func (txmp *TxPool) next() <-chan types.TxKey {
 	return txmp.broadcastCh
 }
 
+// markToBeBroadcast marks a transaction to be broadcasted to peers.
+// This should never block so we use a map to create an unbounded queue
+// of transactions that need to be gossiped.
 func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 	if !txmp.config.Broadcast {
 		return
@@ -259,24 +271,24 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 
 // TryAddNewTx attempts to add a tx that has not already been seen before. It first marks it as seen
 // to avoid races with the same tx. It then call `CheckTx` so that the application can validate it.
-// If it passes `CheckTx`, the new transaction is added to the mempool solong as it has
+// If it passes `CheckTx`, the new transaction is added to the mempool as long as it has
 // sufficient priority and space else if evicted it will return an error
 func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
 	// First check any of the caches to see if we can conclude early. We may have already seen and processed
 	// the transaction if:
-	// - We are conencted to legacy nodes which simply flood the network
+	// - We are connected to legacy nodes which simply flood the network
 	// - If a client submits a transaction to multiple nodes (via RPC)
 	// - We send multiple requests and the first peer eventually responds after the second peer has already
 	if txmp.IsRejectedTx(key) {
 		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
-		// be non-deterministic, we don't punish the peer but instead just ignore the msg
+		// be non-deterministic, we don't punish the peer but instead just ignore the tx
 		return nil, ErrTxAlreadyRejected
 	}
 
 	if txmp.WasRecentlyEvicted(key) {
 		// the transaction was recently evicted. If true, we attempt to re-add it to the mempool
 		// skipping check tx.
-		return nil, txmp.TryReinsertEvictedTx(key, tx, txInfo.SenderID)
+		return txmp.TryReinsertEvictedTx(key, tx, txInfo.SenderID)
 	}
 
 	if txmp.Has(key) {
@@ -312,7 +324,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	if rsp.Code != abci.CodeTypeOK {
 		txmp.rejectedTxCache.Push(key)
 		txmp.metrics.FailedTxs.Add(1)
-		return rsp, fmt.Errorf("application rejected transaction with code %d", rsp.Code)
+		return rsp, fmt.Errorf("application rejected transaction with code %d and log %s", rsp.Code, rsp.Log)
 	}
 
 	// Create wrapped tx
@@ -337,15 +349,22 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 }
 
 // RemoveTxByKey removes the transaction with the specified key from the
-// mempool. It reports an error if no such transaction exists. This operation
-// does not remove the transaction from the rejectedTxCache.
+// mempool. It adds it to the rejectedTxCache so it will not be added again
 func (txmp *TxPool) RemoveTxByKey(txKey types.TxKey) error {
+	txmp.removeTxByKey(txKey)
+	txmp.metrics.EvictedTxs.Add(1)
+	return nil
+}
+
+func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
 	txmp.rejectedTxCache.Push(txKey)
 	_ = txmp.evictedTxs.Pop(txKey)
 	_ = txmp.store.remove(txKey)
 	txmp.seenByPeersSet.RemoveKey(txKey)
 	txmp.metrics.EvictedTxs.Add(1)
-	return nil
+	txmp.broadcastMtx.Lock()
+	defer txmp.broadcastMtx.Unlock()
+	txmp.txsToBeBroadcast = make(map[types.TxKey]struct{})
 }
 
 // Flush purges the contents of the mempool and the cache, leaving both empty.
@@ -359,12 +378,12 @@ func (txmp *TxPool) Flush() {
 	txmp.evictedTxs.Reset()
 	txmp.rejectedTxCache.Reset()
 	txmp.metrics.EvictedTxs.Add(float64(size))
+	txmp.broadcastMtx.Lock()
+	defer txmp.broadcastMtx.Unlock()
+	txmp.txsToBeBroadcast = make(map[types.TxKey]struct{})
 }
 
 // PeerHasTx marks that the transaction has been seen by a peer.
-// It returns true if the mempool has the transaction and has recorded the
-// peer and false if the mempool has not yet seen the transaction that the
-// peer has
 func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 	txmp.logger.Debug("peer has tx", "peer", peer, "txKey", fmt.Sprintf("%X", txKey))
 	txmp.seenByPeersSet.Add(txKey, peer)
@@ -386,8 +405,8 @@ func (txmp *TxPool) allEntriesSorted() []*wrappedTx {
 
 // ReapMaxBytesMaxGas returns a slice of valid transactions that fit within the
 // size and gas constraints. The results are ordered by nonincreasing priority,
-// with ties broken by increasing order of arrival.  Reaping transactions does
-// not remove them from the mempool.add
+// with ties broken by increasing order of arrival. Reaping transactions does
+// not remove them from the mempool
 //
 // If maxBytes < 0, no limit is set on the total size in bytes.
 // If maxGas < 0, no limit is set on the total gas cost.
@@ -469,14 +488,7 @@ func (txmp *TxPool) Update(
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
 	for _, tx := range blockTxs {
 		// Regardless of success, remove the transaction from the mempool.
-		key := tx.Key()
-
-		// don't allow committed transactions to be committed again
-		txmp.rejectedTxCache.Push(key)
-		// remove the tx from all other references
-		_ = txmp.store.remove(key)
-		_ = txmp.evictedTxs.Pop(key)
-		txmp.seenByPeersSet.RemoveKey(key)
+		txmp.removeTxByKey(tx.Key())
 	}
 
 	txmp.purgeExpiredTxs(blockHeight)

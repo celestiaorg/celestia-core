@@ -235,12 +235,9 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// mark that peer as having the transaction. Then we proceed with the following logic:
 	//
 	// 1. If we have the transaction, we do nothing.
-	// 2. If we don't have the transaction, we check if the original sender is a peer we are
-	// connected to. The original recipients of a transaction will immediately broadcast it
-	// to everyone so if we haven't received it yet we will likely receive it soon. Therefore,
-	// we set a timer to check after a certain amount of time if we still don't have the transaction.
-	// 3. If we're not connected to the original sender, or we exceed the timeout without
-	// receiving the transaction we request it from this peer.
+	// 2. If we don't yet have the tx but have an outgoing request for it, we do nothing.
+	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
+	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {

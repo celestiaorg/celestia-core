@@ -53,13 +53,13 @@ func TestCacheRemove(t *testing.T) {
 		cache.Push(txs[i])
 
 		// make sure its added to both the linked list and the map
-		require.Equal(t, i+1, cache.GetList().Len())
+		require.Equal(t, i+1, cache.list.Len())
 	}
 
 	for i := 0; i < numTxs; i++ {
 		cache.Remove(txs[i])
 		// make sure its removed from both the map and the linked list
-		require.Equal(t, numTxs-(i+1), cache.GetList().Len())
+		require.Equal(t, numTxs-(i+1), cache.list.Len())
 	}
 }
 

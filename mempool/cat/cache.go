@@ -25,12 +25,6 @@ func NewLRUTxCache(cacheSize int) *LRUTxCache {
 	}
 }
 
-// GetList returns the underlying linked-list that backs the LRU cache. Note,
-// this should be used for testing purposes only!
-func (c *LRUTxCache) GetList() *list.List {
-	return c.list
-}
-
 func (c *LRUTxCache) Reset() {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
@@ -178,7 +172,7 @@ func (c *EvictedTxCache) Reset() {
 	c.cache = make(map[types.TxKey]*EvictedTxInfo)
 }
 
-// seenTxSet records transactions that have been
+// SeenTxSet records transactions that have been
 // seen by other peers but not yet by us
 type SeenTxSet struct {
 	mtx tmsync.Mutex
@@ -275,7 +269,7 @@ func (s *SeenTxSet) Get(txKey types.TxKey) map[uint16]struct{} {
 	if !exists {
 		return nil
 	} else {
-		// make a copy to avoi
+		// make a copy of the struct to avoid concurrency issues
 		peers := make(map[uint16]struct{}, len(seenSet.peers))
 		for peer := range seenSet.peers {
 			peers[peer] = struct{}{}

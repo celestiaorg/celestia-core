@@ -61,7 +61,7 @@ func (ids *mempoolIDs) Reclaim(peerID p2p.ID) uint16 {
 	return 0
 }
 
-// GetForPeer returns an ID reserved for the peer.
+// GetIDForPeer returns the shorthand ID reserved for the peer.
 func (ids *mempoolIDs) GetIDForPeer(peerID p2p.ID) uint16 {
 	ids.mtx.RLock()
 	defer ids.mtx.RUnlock()
@@ -73,6 +73,7 @@ func (ids *mempoolIDs) GetIDForPeer(peerID p2p.ID) uint16 {
 	return id
 }
 
+// GetPeer returns the peer for the given shorthand ID.
 func (ids *mempoolIDs) GetPeer(id uint16) p2p.Peer {
 	ids.mtx.RLock()
 	defer ids.mtx.RUnlock()
@@ -80,10 +81,12 @@ func (ids *mempoolIDs) GetPeer(id uint16) p2p.Peer {
 	return ids.activeIDs[id]
 }
 
+// GetAll returns all active peers.
 func (ids *mempoolIDs) GetAll() map[uint16]p2p.Peer {
 	ids.mtx.RLock()
 	defer ids.mtx.RUnlock()
 
+	// make a copy of the map.
 	peers := make(map[uint16]p2p.Peer, len(ids.activeIDs))
 	for id, peer := range ids.activeIDs {
 		peers[id] = peer
@@ -91,6 +94,7 @@ func (ids *mempoolIDs) GetAll() map[uint16]p2p.Peer {
 	return peers
 }
 
+// Len returns the number of active peers.
 func (ids *mempoolIDs) Len() int {
 	ids.mtx.RLock()
 	defer ids.mtx.RUnlock()
