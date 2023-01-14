@@ -21,6 +21,7 @@ var Routes = map[string]*rpc.RPCFunc{
 	"genesis":                   rpc.NewRPCFunc(Genesis, "", rpc.Cacheable()),
 	"genesis_chunked":           rpc.NewRPCFunc(GenesisChunked, "chunk", rpc.Cacheable()),
 	"block":                     rpc.NewRPCFunc(Block, "height", rpc.Cacheable("height")),
+	"signed_block":              rpc.NewRPCFunc(SignedBlock, "height", rpc.Cacheable("height")),
 	"block_by_hash":             rpc.NewRPCFunc(BlockByHash, "hash", rpc.Cacheable()),
 	"block_results":             rpc.NewRPCFunc(BlockResults, "height", rpc.Cacheable("height")),
 	"commit":                    rpc.NewRPCFunc(Commit, "height", rpc.Cacheable("height")),

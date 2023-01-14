@@ -18,6 +18,7 @@ const (
 	// All of this data can be fetched through the rpc.
 	EventNewBlock            = "NewBlock"
 	EventNewBlockHeader      = "NewBlockHeader"
+	EventSignedBlock         = "NewSignedBlock"
 	EventNewEvidence         = "NewEvidence"
 	EventTx                  = "Tx"
 	EventValidatorSetUpdates = "ValidatorSetUpdates"
@@ -47,6 +48,7 @@ type TMEventData interface {
 
 func init() {
 	tmjson.RegisterType(EventDataNewBlock{}, "tendermint/event/NewBlock")
+	tmjson.RegisterType(EventDataSignedBlock{}, "tendermint/event/NewSignedBlock")
 	tmjson.RegisterType(EventDataNewBlockHeader{}, "tendermint/event/NewBlockHeader")
 	tmjson.RegisterType(EventDataNewEvidence{}, "tendermint/event/NewEvidence")
 	tmjson.RegisterType(EventDataTx{}, "tendermint/event/Tx")
@@ -66,6 +68,15 @@ type EventDataNewBlock struct {
 
 	ResultBeginBlock abci.ResponseBeginBlock `json:"result_begin_block"`
 	ResultEndBlock   abci.ResponseEndBlock   `json:"result_end_block"`
+}
+
+// EventDataSignedBlock contains all the information needed to verify
+// the data committed in a block.
+type EventDataSignedBlock struct {
+	Header       Header       `json:"header"`
+	Commit       Commit       `json:"commit"`
+	ValidatorSet ValidatorSet `json:"validator_set"`
+	Data         Data         `json:"data"`
 }
 
 type EventDataNewBlockHeader struct {
@@ -172,6 +183,7 @@ func QueryForEvent(eventType string) tmpubsub.Query {
 // BlockEventPublisher publishes all block related events
 type BlockEventPublisher interface {
 	PublishEventNewBlock(block EventDataNewBlock) error
+	PublishEventNewSignedBlock(event EventDataSignedBlock) error
 	PublishEventNewBlockHeader(header EventDataNewBlockHeader) error
 	PublishEventNewEvidence(evidence EventDataNewEvidence) error
 	PublishEventTx(EventDataTx) error
