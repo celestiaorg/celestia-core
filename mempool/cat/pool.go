@@ -46,12 +46,11 @@ type TxPool struct {
 	proxyAppConn proxy.AppConnMempool
 	metrics      *mempool.Metrics
 
-	// These fields are not synchronized. They are modified in `Update` which should never
-	// be called concurrently.
+	updateMtx            sync.Mutex
 	notifiedTxsAvailable bool
 	txsAvailable         chan struct{} // one value sent per height when mempool is not empty
-	preCheck             mempool.PreCheckFunc
-	postCheck            mempool.PostCheckFunc
+	preCheckFn           mempool.PreCheckFunc
+	postCheckFn          mempool.PostCheckFunc
 	height               int64 // the latest height passed to Update
 
 	// Thread-safe cache of rejected transactions for quick look-up
@@ -89,8 +88,8 @@ func NewTxPool(
 		evictedTxs:       NewEvictedTxCache(evictedTxCacheSize),
 		seenByPeersSet:   NewSeenTxSet(),
 		height:           height,
-		preCheck:         func(_ types.Tx) error { return nil },
-		postCheck:        func(_ types.Tx, _ *abci.ResponseCheckTx) error { return nil },
+		preCheckFn:       func(_ types.Tx) error { return nil },
+		postCheckFn:      func(_ types.Tx, _ *abci.ResponseCheckTx) error { return nil },
 		store:            newStore(),
 		broadcastCh:      make(chan types.TxKey, 1),
 		txsToBeBroadcast: make(map[types.TxKey]struct{}),
@@ -107,14 +106,14 @@ func NewTxPool(
 // returns an error. This is executed before CheckTx. It only applies to the
 // first created block. After that, Update() overwrites the existing value.
 func WithPreCheck(f mempool.PreCheckFunc) TxPoolOption {
-	return func(txmp *TxPool) { txmp.preCheck = f }
+	return func(txmp *TxPool) { txmp.preCheckFn = f }
 }
 
 // WithPostCheck sets a filter for the mempool to reject a transaction if
 // f(tx, resp) returns an error. This is executed after CheckTx. It only applies
 // to the first created block. After that, Update overwrites the existing value.
 func WithPostCheck(f mempool.PostCheckFunc) TxPoolOption {
-	return func(txmp *TxPool) { txmp.postCheck = f }
+	return func(txmp *TxPool) { txmp.postCheckFn = f }
 }
 
 // WithMetrics sets the mempool's metrics collector.
@@ -156,7 +155,11 @@ func (txmp *TxPool) EnableTxsAvailable() {
 // when transactions are available in the mempool. It is thread-safe.
 func (txmp *TxPool) TxsAvailable() <-chan struct{} { return txmp.txsAvailable }
 
-func (txmp *TxPool) Height() int64 { return txmp.height }
+func (txmp *TxPool) Height() int64 {
+	txmp.updateMtx.Lock()
+	defer txmp.updateMtx.Unlock()
+	return txmp.height
+}
 
 func (txmp *TxPool) Has(txKey types.TxKey) bool {
 	return txmp.store.has(txKey)
@@ -194,7 +197,7 @@ func (txmp *TxPool) TryReinsertEvictedTx(txKey types.TxKey, tx types.Tx, peer ui
 	}
 	txmp.logger.Debug("attempting to reinsert evicted tx", "txKey", fmt.Sprintf("%X", txKey))
 	wtx := newWrappedTx(
-		tx, txKey, txmp.height, info.gasWanted, info.priority, info.sender,
+		tx, txKey, txmp.Height(), info.gasWanted, info.priority, info.sender,
 	)
 	checkTxResp := &abci.ResponseCheckTx{
 		Code:      abci.CodeTypeOK,
@@ -278,7 +281,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	// the transaction if:
 	// - We are connected to nodes running v0 or v1 which simply flood the network
 	// - If a client submits a transaction to multiple nodes (via RPC)
-	// - We send multiple requests and the first peer eventually responds after the second peer has already
+	// - We send multiple requests and the first peer eventually responds after the second peer has already provided the tx
 	if txmp.IsRejectedTx(key) {
 		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
 		// be non-deterministic, we don't punish the peer but instead just ignore the tx
@@ -329,7 +332,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 
 	// Create wrapped tx
 	wtx := newWrappedTx(
-		tx, key, txmp.height, rsp.GasWanted, rsp.Priority, rsp.Sender,
+		tx, key, txmp.Height(), rsp.GasWanted, rsp.Priority, rsp.Sender,
 	)
 
 	// Perform the post check
@@ -475,15 +478,17 @@ func (txmp *TxPool) Update(
 	}
 	txmp.logger.Debug("updating mempool", "height", blockHeight, "txs", len(blockTxs))
 
+	txmp.updateMtx.Lock()
 	txmp.height = blockHeight
 	txmp.notifiedTxsAvailable = false
 
 	if newPreFn != nil {
-		txmp.preCheck = newPreFn
+		txmp.preCheckFn = newPreFn
 	}
 	if newPostFn != nil {
-		txmp.postCheck = newPostFn
+		txmp.postCheckFn = newPostFn
 	}
+	txmp.updateMtx.Unlock()
 
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
 	for _, tx := range blockTxs {
@@ -580,7 +585,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 		"inserted new valid transaction",
 		"priority", wtx.priority,
 		"tx", fmt.Sprintf("%X", wtx.key),
-		"height", txmp.height,
+		"height", wtx.height,
 		"num_txs", txmp.Size(),
 	)
 	txmp.notifyTxsAvailable()
@@ -608,10 +613,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 	txmp.metrics.RecheckTimes.Add(1)
 
 	// If a postcheck hook is defined, call it before checking the result.
-	var err error
-	if txmp.postCheck != nil {
-		err = txmp.postCheck(wtx.tx, checkTxRes)
-	}
+	err := txmp.postCheck(wtx.tx, checkTxRes)
 
 	if checkTxRes.Code == abci.CodeTypeOK && err == nil {
 		// Note that we do not update the transaction with any of the values returned in
@@ -645,7 +647,7 @@ func (txmp *TxPool) recheckTransactions() {
 	txmp.logger.Debug(
 		"executing re-CheckTx for all remaining transactions",
 		"num_txs", txmp.Size(),
-		"height", txmp.height,
+		"height", txmp.Height(),
 	)
 
 	// Collect transactions currently in the mempool requiring recheck.
@@ -742,4 +744,22 @@ func (txmp *TxPool) notifyTxsAvailable() {
 		default:
 		}
 	}
+}
+
+func (txmp *TxPool) preCheck(tx types.Tx) error {
+	txmp.updateMtx.Lock()
+	defer txmp.updateMtx.Unlock()
+	if txmp.preCheckFn != nil {
+		return txmp.preCheckFn(tx)
+	}
+	return nil
+}
+
+func (txmp *TxPool) postCheck(tx types.Tx, res *abci.ResponseCheckTx) error {
+	txmp.updateMtx.Lock()
+	defer txmp.updateMtx.Unlock()
+	if txmp.postCheckFn != nil {
+		return txmp.postCheckFn(tx, res)
+	}
+	return nil
 }
