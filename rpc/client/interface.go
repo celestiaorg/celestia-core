@@ -69,7 +69,7 @@ type SignClient interface {
 	BlockResults(ctx context.Context, height *int64) (*ctypes.ResultBlockResults, error)
 	Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit, error)
 
-	DataCommitment(ctx context.Context, beginBlock uint64, endBlock uint64) (*ctypes.ResultDataCommitment, error)
+	DataCommitment(ctx context.Context, firstBlock uint64, lastBlock uint64) (*ctypes.ResultDataCommitment, error)
 	DataRootInclusionProof(
 		ctx context.Context,
 		height uint64,

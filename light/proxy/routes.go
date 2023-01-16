@@ -28,7 +28,7 @@ func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {
 		"block_by_hash":             rpcserver.NewRPCFunc(makeBlockByHashFunc(c), "hash", rpcserver.Cacheable()),
 		"block_results":             rpcserver.NewRPCFunc(makeBlockResultsFunc(c), "height", rpcserver.Cacheable("height")),
 		"commit":                    rpcserver.NewRPCFunc(makeCommitFunc(c), "height", rpcserver.Cacheable("height")),
-		"data_commitment":           rpcserver.NewRPCFunc(makeDataCommitmentFunc(c), "beginBlock,endBlock"),
+		"data_commitment":           rpcserver.NewRPCFunc(makeDataCommitmentFunc(c), "firstBlock,lastBlock"),
 		"data_root_inclusion_proof": rpcserver.NewRPCFunc(makeDataRootInclusionProofFunc(c), "height,firstBlock,lastBlock"),
 		"tx":                        rpcserver.NewRPCFunc(makeTxFunc(c), "hash,prove", rpcserver.Cacheable()),
 		"tx_search":                 rpcserver.NewRPCFunc(makeTxSearchFunc(c), "query,prove,page,per_page,order_by"),
@@ -137,8 +137,8 @@ func makeCommitFunc(c *lrpc.Client) rpcCommitFunc {
 
 type rpcDataCommitmentFunc func(
 	ctx *rpctypes.Context,
-	beginBlock uint64,
-	endBlock uint64,
+	firstBlock uint64,
+	lastBlock uint64,
 ) (*ctypes.ResultDataCommitment, error)
 
 type rpcDataRootInclusionProofFunc func(
@@ -151,10 +151,10 @@ type rpcDataRootInclusionProofFunc func(
 func makeDataCommitmentFunc(c *lrpc.Client) rpcDataCommitmentFunc {
 	return func(
 		ctx *rpctypes.Context,
-		beginBlock uint64,
-		endBlock uint64,
+		firstBlock uint64,
+		lastBlock uint64,
 	) (*ctypes.ResultDataCommitment, error) {
-		return c.DataCommitment(ctx.Context(), beginBlock, endBlock)
+		return c.DataCommitment(ctx.Context(), firstBlock, lastBlock)
 	}
 }
 
