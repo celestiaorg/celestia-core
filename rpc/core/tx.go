@@ -175,6 +175,45 @@ func proveTx(height int64, index uint32) (types.TxProof, error) {
 	return txProof, nil
 }
 
+// ProveShares creates an NMT proof for a set of shares to a set of rows.
+func ProveShares(
+	_ *rpctypes.Context,
+	height int64,
+	startShare uint64,
+	endShare uint64,
+) (types.SharesProof, error) {
+	var (
+		pSharesProof tmproto.SharesProof
+		sharesProof  types.SharesProof
+	)
+	env := GetEnvironment()
+	rawBlock, err := loadRawBlock(env.BlockStore, height)
+	if err != nil {
+		return sharesProof, err
+	}
+	res, err := env.ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
+		Data: rawBlock,
+		Path: fmt.Sprintf(consts.ShareInclusionProofQueryPath, startShare, endShare),
+	})
+	if err != nil {
+		return sharesProof, err
+	}
+	if res.Value == nil && res.Log != "" {
+		// we can make the assumption that for custom queries, if the value is nil
+		// and some logs have been emitted, then an error happened.
+		return types.SharesProof{}, errors.New(res.Log)
+	}
+	err = pSharesProof.Unmarshal(res.Value)
+	if err != nil {
+		return sharesProof, err
+	}
+	sharesProof, err = types.SharesProofFromProto(pSharesProof)
+	if err != nil {
+		return sharesProof, err
+	}
+	return sharesProof, nil
+}
+
 func loadRawBlock(bs state.BlockStore, height int64) ([]byte, error) {
 	var blockMeta = bs.LoadBlockMeta(height)
 	if blockMeta == nil {
