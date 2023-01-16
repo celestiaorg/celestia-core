@@ -3,6 +3,7 @@ package cat
 import (
 	"fmt"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -107,4 +108,76 @@ func TestEvictedTxCache(t *testing.T) {
 	cache.Prune(time.Now().UTC().Add(1 * time.Second))
 	require.False(t, cache.Has(tx2.Key()))
 	require.False(t, cache.Has(tx3.Key()))
+}
+
+func TestSeenTxSetConcurrency(t *testing.T) {
+	seenSet := NewSeenTxSet()
+
+	const (
+		concurrency = 10
+		numTx       = 100
+	)
+
+	wg := sync.WaitGroup{}
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(peer uint16) {
+			defer wg.Done()
+			for i := 0; i < numTx; i++ {
+				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
+				seenSet.Add(tx.Key(), peer)
+			}
+		}(uint16(i%2))
+	}
+	time.Sleep(time.Millisecond)
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(peer uint16) {
+			for i := 0; i < numTx; i++ {
+				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
+				seenSet.Has(tx.Key(), peer)
+			}
+		}(uint16(i%2))
+	}
+	time.Sleep(time.Millisecond)
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(peer uint16) {
+			for i := numTx-1; i >= 0; i-- {
+				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
+				seenSet.RemoveKey(tx.Key())
+			}
+		}(uint16(i%2))
+	}
+	wg.Wait()
+}
+
+func TestLRUTxCacheConcurrency(t *testing.T) {
+	cache := NewLRUTxCache(100)
+
+	const (
+		concurrency = 10
+		numTx       = 100
+	)
+
+	wg := sync.WaitGroup{}
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < numTx; i++ {
+				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
+				cache.Push(tx.Key())
+			}
+			for i := 0; i < numTx; i++ {
+				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
+				cache.Has(tx.Key())
+			}
+			for i := numTx-1; i >= 0; i-- {
+				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
+				cache.Remove(tx.Key())
+			}
+		}()
+	}
+	wg.Wait()
 }
