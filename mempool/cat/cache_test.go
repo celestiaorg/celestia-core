@@ -1,6 +1,7 @@
 package cat
 
 import (
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -38,7 +39,7 @@ func TestSeenTxSet(t *testing.T) {
 	require.Equal(t, peer1, seenSet.Pop(tx3Key))
 }
 
-func TestCacheRemove(t *testing.T) {
+func TestLRUTxCacheRemove(t *testing.T) {
 	cache := NewLRUTxCache(100)
 	numTxs := 10
 
@@ -60,6 +61,17 @@ func TestCacheRemove(t *testing.T) {
 		cache.Remove(txs[i])
 		// make sure its removed from both the map and the linked list
 		require.Equal(t, numTxs-(i+1), cache.list.Len())
+	}
+}
+
+func TestLRUTxCacheSize(t *testing.T) {
+	const size = 10
+	cache := NewLRUTxCache(size)
+
+	for i := 0; i < size*2; i++ {
+		tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
+		cache.Push(tx.Key())
+		require.Less(t, cache.list.Len(), size+1)
 	}
 }
 
@@ -90,6 +102,7 @@ func TestEvictedTxCache(t *testing.T) {
 	cache.Push(wtx2)
 	time.Sleep(1 * time.Millisecond)
 	cache.Push(wtx3)
+	// cache should have reached limit and thus evicted the oldest tx
 	require.False(t, cache.Has(tx1.Key()))
 	cache.Prune(time.Now().UTC().Add(1 * time.Second))
 	require.False(t, cache.Has(tx2.Key()))

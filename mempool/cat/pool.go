@@ -276,7 +276,7 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
 	// First check any of the caches to see if we can conclude early. We may have already seen and processed
 	// the transaction if:
-	// - We are connected to legacy nodes which simply flood the network
+	// - We are connected to nodes running v0 or v1 which simply flood the network
 	// - If a client submits a transaction to multiple nodes (via RPC)
 	// - We send multiple requests and the first peer eventually responds after the second peer has already
 	if txmp.IsRejectedTx(key) {
