@@ -199,6 +199,74 @@ func TestDataCommitmentResults(t *testing.T) {
 	}
 }
 
+func TestDataRootInclusionProofResults(t *testing.T) {
+	env := &Environment{}
+	env.StateStore = sm.NewStore(
+		dbm.NewMemDB(), sm.StoreOptions{
+			DiscardABCIResponses: false,
+		},
+	)
+
+	height := int64(2826)
+	env.BlockStore = mockBlockStore{height: height}
+	SetEnvironment(env)
+
+	blocks := randomBlocks(height)
+	blockStore := mockBlockStore{
+		height: height,
+		blocks: blocks,
+	}
+	env.BlockStore = blockStore
+
+	testCases := []struct {
+		height     int
+		firstQuery int
+		lastQuery  int
+		expectPass bool
+	}{
+		{8, 10, 15, false},
+		{10, 10, 15, true},
+		{13, 10, 15, true},
+		{15, 10, 15, true},
+		{17, 10, 15, false},
+	}
+
+	for _, tc := range testCases {
+		env.BlockIndexer = mockBlockIndexer{
+			height:          height,
+			beginQueryBlock: tc.firstQuery,
+			endQueryBlock:   tc.lastQuery,
+		}
+
+		proof, err := DataRootInclusionProof(
+			&rpctypes.Context{},
+			int64(tc.height),
+			uint64(tc.firstQuery),
+			uint64(tc.lastQuery),
+		)
+		if tc.expectPass {
+			require.Nil(t, err, "should generate block height data root inclusion proof.")
+
+			size := tc.lastQuery - tc.firstQuery + 1
+			dataRootEncodedTuples := make([][]byte, size)
+			for i := 0; i < size; i++ {
+				encodedTuple, err := EncodeDataRootTuple(
+					uint64(blocks[tc.firstQuery+i].Height),
+					*(*[32]byte)(blocks[tc.firstQuery+i].DataHash),
+				)
+				require.NoError(t, err)
+				dataRootEncodedTuples[i] = encodedTuple
+			}
+			commitment := merkle.HashFromByteSlices(dataRootEncodedTuples)
+
+			err = proof.Proof.Verify(commitment, dataRootEncodedTuples[tc.height-tc.firstQuery])
+			require.NoError(t, err)
+		} else {
+			require.NotNil(t, err, "shouldn't be able to generate proof.")
+		}
+	}
+}
+
 type mockBlockStore struct {
 	height int64
 	blocks []*types.Block

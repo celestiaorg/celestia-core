@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/tendermint/tendermint/crypto/merkle"
+
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/libs/bytes"
@@ -57,6 +59,10 @@ type ResultBlockResults struct {
 
 type ResultDataCommitment struct {
 	DataCommitment bytes.HexBytes `json:"data_commitment"`
+}
+
+type ResultDataRootInclusionProof struct {
+	Proof merkle.Proof `json:"proof"`
 }
 
 // NewResultCommit is a helper to initialize the ResultCommit with

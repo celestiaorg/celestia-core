@@ -206,6 +206,28 @@ message BlobTx {
   string        type_id = 3;
 }
 
+// SharesProof represents an NMT proof for a set of shares to the data root.
+message SharesProof {
+  // data are the raw shares that are proven.
+  repeated bytes data = 1;
+  // shares_proof NMT proofs for the raw shares. Could be more than one
+  // if the shares span more than one row.
+  repeated NMTProof shares_proof = 2;
+  // namespace_id namespaceID of the shares.
+  bytes namespace_id = 3;
+  // rows_proof are binary Merkle proofs of the rows containing the raw shares to the data root.
+  RowsProof rows_proof = 4;
+}
+
+// RowsProof represents a Merkle proof for a set of rows to the data root.
+message RowsProof {
+  repeated bytes rows_roots                  = 1;
+  repeated tendermint.crypto.Proof proofs    = 2;
+  bytes                            root      = 3;
+  uint32                           start_row = 4;
+  uint32                           end_row   = 5;
+}
+
 // Proof represents proof of a namespace.ID in an NMT.
 // In case this proof proves the absence of a namespace.ID
 // in a tree it also contains the leaf hashes of the range

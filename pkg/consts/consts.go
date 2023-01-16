@@ -12,6 +12,10 @@ const (
 	// index must be formatted into the path.
 	TxInclusionProofQueryPath = "custom/txInclusionProof/%d"
 
+	// ShareInclusionProofQueryPath is the path used to query the application for the
+	// shares to data root inclusion proofs via the ABCI query method.
+	ShareInclusionProofQueryPath = "custom/shareInclusionProof/%d/%d"
+
 	// ProtoBlobTxTypeID is included in each encoded BlobTx to help prevent
 	// decoding binaries that are not actually BlobTxs.
 	ProtoBlobTxTypeID = "BLOB"
