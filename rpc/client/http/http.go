@@ -459,13 +459,13 @@ func (c *baseRPCClient) Commit(ctx context.Context, height *int64) (*ctypes.Resu
 
 func (c *baseRPCClient) DataCommitment(
 	ctx context.Context,
-	beginBlock uint64,
-	endBlock uint64,
+	firstBlock uint64,
+	lastBlock uint64,
 ) (*ctypes.ResultDataCommitment, error) {
 	result := new(ctypes.ResultDataCommitment)
 	params := map[string]interface{}{
-		"beginBlock": beginBlock,
-		"endBlock":   endBlock,
+		"firstBlock": firstBlock,
+		"lastBlock":  lastBlock,
 	}
 
 	_, err := c.caller.Call(ctx, "data_commitment", params, result)
