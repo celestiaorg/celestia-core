@@ -133,6 +133,7 @@ func TestSeenTxSetConcurrency(t *testing.T) {
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func(peer uint16) {
+			defer wg.Done()
 			for i := 0; i < numTx; i++ {
 				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
 				seenSet.Has(tx.Key(), peer)
@@ -143,6 +144,7 @@ func TestSeenTxSetConcurrency(t *testing.T) {
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func(peer uint16) {
+			defer wg.Done()
 			for i := numTx-1; i >= 0; i-- {
 				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
 				seenSet.RemoveKey(tx.Key())
