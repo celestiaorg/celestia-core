@@ -56,6 +56,13 @@ type Manifest struct {
 	// builtin will build a complete Tendermint node into the application and
 	// launch it instead of launching a separate Tendermint process.
 	ABCIProtocol string `toml:"abci_protocol"`
+
+	// MaxInboundConnections and MaxOutboundConnection are the maximum number
+	// of connections a node has. This can be used to throttle the degree of
+	// connectivity of the network. If not specified, the default is taken
+	// from config/config.go
+	MaxInboundConnections  int `toml:"max_inbound_connections"`
+	MaxOutboundConnections int `toml:"max_outbound_connections"`
 }
 
 // ManifestNode represents a node in a testnet manifest.
@@ -92,8 +99,8 @@ type ManifestNode struct {
 	// Defaults to disabled.
 	FastSync string `toml:"fast_sync"`
 
-	// Mempool specifies which version of mempool to use. Either "v0" or "v1"
-	// This defaults to v0.
+	// Mempool specifies which version of mempool to use. Either "v0" or "v1", or "v2"
+	// (cat). This defaults to v2.
 	Mempool string `toml:"mempool_version"`
 
 	// StateSync enables state sync. The runner automatically configures trusted

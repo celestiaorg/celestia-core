@@ -23,6 +23,7 @@ import (
 	mempl "github.com/tendermint/tendermint/mempool"
 
 	cfg "github.com/tendermint/tendermint/config"
+	mempoolv2 "github.com/tendermint/tendermint/mempool/cat"
 	mempoolv0 "github.com/tendermint/tendermint/mempool/v0"
 	mempoolv1 "github.com/tendermint/tendermint/mempool/v1"
 	"github.com/tendermint/tendermint/p2p"
@@ -87,6 +88,15 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 				state.LastBlockHeight,
 				mempoolv1.WithPreCheck(sm.TxPreCheck(state)),
 				mempoolv1.WithPostCheck(sm.TxPostCheck(state)),
+			)
+		case cfg.MempoolV2:
+			mempool = mempoolv2.NewTxPool(
+				logger,
+				config.Mempool,
+				proxyAppConnConMem,
+				state.LastBlockHeight,
+				mempoolv2.WithPreCheck(sm.TxPreCheck(state)),
+				mempoolv2.WithPostCheck(sm.TxPostCheck(state)),
 			)
 		}
 
