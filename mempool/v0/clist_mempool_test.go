@@ -692,7 +692,7 @@ func TestRemoveBlobTx(t *testing.T) {
 	defer cleanup()
 
 	originalTx := []byte{1, 2, 3, 4}
-	indexWrapper, err := types.MarshalIndexWrapper(100, originalTx)
+	indexWrapper, err := types.MarshalIndexWrapper(originalTx, 100)
 	require.NoError(t, err)
 
 	// create the blobTx

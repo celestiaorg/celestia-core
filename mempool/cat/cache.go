@@ -10,37 +10,34 @@ import (
 
 // LRUTxCache maintains a thread-safe LRU cache of raw transactions. The cache
 // only stores the hash of the raw transaction.
+// NOTE: This has been copied from mempool/cache with the main diffence of using
+// tx keys instead of raw transactions.
 type LRUTxCache struct {
+	staticSize int
+
 	mtx      tmsync.Mutex
-	size     int
 	cacheMap map[types.TxKey]*list.Element
 	list     *list.List
 }
 
 func NewLRUTxCache(cacheSize int) *LRUTxCache {
 	return &LRUTxCache{
-		size:     cacheSize,
-		cacheMap: make(map[types.TxKey]*list.Element, cacheSize),
-		list:     list.New(),
+		staticSize: cacheSize,
+		cacheMap:   make(map[types.TxKey]*list.Element, cacheSize),
+		list:       list.New(),
 	}
-}
-
-// GetList returns the underlying linked-list that backs the LRU cache. Note,
-// this should be used for testing purposes only!
-func (c *LRUTxCache) GetList() *list.List {
-	return c.list
 }
 
 func (c *LRUTxCache) Reset() {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	c.cacheMap = make(map[types.TxKey]*list.Element, c.size)
+	c.cacheMap = make(map[types.TxKey]*list.Element, c.staticSize)
 	c.list.Init()
 }
 
 func (c *LRUTxCache) Push(txKey types.TxKey) bool {
-	if c.size == 0 {
+	if c.staticSize == 0 {
 		return true
 	}
 
@@ -53,7 +50,7 @@ func (c *LRUTxCache) Push(txKey types.TxKey) bool {
 		return false
 	}
 
-	if c.list.Len() >= c.size {
+	if c.list.Len() >= c.staticSize {
 		front := c.list.Front()
 		if front != nil {
 			frontKey := front.Value.(types.TxKey)
@@ -81,7 +78,7 @@ func (c *LRUTxCache) Remove(txKey types.TxKey) {
 }
 
 func (c *LRUTxCache) Has(txKey types.TxKey) bool {
-	if c.size == 0 {
+	if c.staticSize == 0 {
 		return false
 	}
 
@@ -101,15 +98,16 @@ type EvictedTxInfo struct {
 }
 
 type EvictedTxCache struct {
+	staticSize int
+
 	mtx   tmsync.Mutex
-	size  int
 	cache map[types.TxKey]*EvictedTxInfo
 }
 
 func NewEvictedTxCache(size int) *EvictedTxCache {
 	return &EvictedTxCache{
-		size:  size,
-		cache: make(map[types.TxKey]*EvictedTxInfo),
+		staticSize: size,
+		cache:      make(map[types.TxKey]*EvictedTxInfo),
 	}
 }
 
@@ -137,7 +135,7 @@ func (c *EvictedTxCache) Push(wtx *wrappedTx) {
 		size:        wtx.size(),
 	}
 	// if cache too large, remove the oldest entry
-	if len(c.cache) > c.size {
+	if len(c.cache) > c.staticSize {
 		oldestTxKey := wtx.key
 		oldestTxTime := time.Now().UTC()
 		for key, info := range c.cache {
@@ -156,10 +154,9 @@ func (c *EvictedTxCache) Pop(txKey types.TxKey) *EvictedTxInfo {
 	info, exists := c.cache[txKey]
 	if !exists {
 		return nil
-	} else {
-		delete(c.cache, txKey)
-		return info
 	}
+	delete(c.cache, txKey)
+	return info
 }
 
 func (c *EvictedTxCache) Prune(limit time.Time) {
@@ -178,7 +175,7 @@ func (c *EvictedTxCache) Reset() {
 	c.cache = make(map[types.TxKey]*EvictedTxInfo)
 }
 
-// seenTxSet records transactions that have been
+// SeenTxSet records transactions that have been
 // seen by other peers but not yet by us
 type SeenTxSet struct {
 	mtx tmsync.Mutex
@@ -217,15 +214,13 @@ func (s *SeenTxSet) Pop(txKey types.TxKey) uint16 {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	seenSet, exists := s.set[txKey]
-	if !exists {
-		return 0
-	} else {
+	if exists {
 		for peer := range seenSet.peers {
 			delete(seenSet.peers, peer)
 			return peer
 		}
-		return 0
 	}
+	return 0
 }
 
 func (s *SeenTxSet) RemoveKey(txKey types.TxKey) {
@@ -263,9 +258,8 @@ func (s *SeenTxSet) Has(txKey types.TxKey, peer uint16) bool {
 	seenSet, exists := s.set[txKey]
 	if !exists {
 		return false
-	} else {
-		return seenSet.peers[peer]
 	}
+	return seenSet.peers[peer]
 }
 
 func (s *SeenTxSet) Get(txKey types.TxKey) map[uint16]struct{} {
@@ -274,14 +268,13 @@ func (s *SeenTxSet) Get(txKey types.TxKey) map[uint16]struct{} {
 	seenSet, exists := s.set[txKey]
 	if !exists {
 		return nil
-	} else {
-		// make a copy to avoi
-		peers := make(map[uint16]struct{}, len(seenSet.peers))
-		for peer := range seenSet.peers {
-			peers[peer] = struct{}{}
-		}
-		return peers
 	}
+	// make a copy of the struct to avoid concurrency issues
+	peers := make(map[uint16]struct{}, len(seenSet.peers))
+	for peer := range seenSet.peers {
+		peers[peer] = struct{}{}
+	}
+	return peers
 }
 
 // Len returns the amount of cached items. Mostly used for testing.

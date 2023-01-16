@@ -80,7 +80,7 @@ func TestUnmarshalIndexWrapper(t *testing.T) {
 	_, ok = UnmarshalIndexWrapper(rawBlock)
 	require.False(t, ok)
 
-	IndexWrapper, err := MarshalIndexWrapper(0, rawBlock)
+	IndexWrapper, err := MarshalIndexWrapper(rawBlock, 0)
 	require.NoError(t, err)
 
 	// finally, ensure that the unwrapped bytes are identical to the input
@@ -113,4 +113,14 @@ func TestUnmarshalBlobTxFalsePositive(t *testing.T) {
 	tx := []byte("sender-193-0=D16B687628035716B1DA53BE1491A1B3D4CEA3AB=1025")
 	_, isBlob := UnmarshalBlobTx(tx)
 	require.False(t, isBlob)
+}
+
+func TestTxKeyFromBytes(t *testing.T) {
+	tx := Tx("hello")
+	key := tx.Key()
+	key2, err := TxKeyFromBytes(key[:])
+	require.NoError(t, err)
+	require.Equal(t, key, key2)
+	_, err = TxKeyFromBytes([]byte("foo"))
+	require.Error(t, err)
 }

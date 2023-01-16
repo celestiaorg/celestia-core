@@ -459,16 +459,37 @@ func (c *baseRPCClient) Commit(ctx context.Context, height *int64) (*ctypes.Resu
 
 func (c *baseRPCClient) DataCommitment(
 	ctx context.Context,
-	beginBlock uint64,
-	endBlock uint64,
+	firstBlock uint64,
+	lastBlock uint64,
 ) (*ctypes.ResultDataCommitment, error) {
 	result := new(ctypes.ResultDataCommitment)
 	params := map[string]interface{}{
-		"beginBlock": beginBlock,
-		"endBlock":   endBlock,
+		"firstBlock": firstBlock,
+		"lastBlock":  lastBlock,
 	}
 
 	_, err := c.caller.Call(ctx, "data_commitment", params, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (c *baseRPCClient) DataRootInclusionProof(
+	ctx context.Context,
+	height uint64,
+	firstBlock uint64,
+	lastBlock uint64,
+) (*ctypes.ResultDataRootInclusionProof, error) {
+	result := new(ctypes.ResultDataRootInclusionProof)
+	params := map[string]interface{}{
+		"height":     height,
+		"firstBlock": firstBlock,
+		"lastBlock":  lastBlock,
+	}
+
+	_, err := c.caller.Call(ctx, "data_root_inclusion_proof", params, result)
 	if err != nil {
 		return nil, err
 	}
@@ -487,6 +508,25 @@ func (c *baseRPCClient) Tx(ctx context.Context, hash []byte, prove bool) (*ctype
 		return nil, err
 	}
 	return result, nil
+}
+
+func (c *baseRPCClient) ProveShares(
+	ctx context.Context,
+	height uint64,
+	startShare uint64,
+	endShare uint64,
+) (types.SharesProof, error) {
+	result := new(types.SharesProof)
+	params := map[string]interface{}{
+		"height":     height,
+		"startShare": startShare,
+		"endShare":   endShare,
+	}
+	_, err := c.caller.Call(ctx, "prove_shares", params, result)
+	if err != nil {
+		return types.SharesProof{}, err
+	}
+	return *result, nil
 }
 
 func (c *baseRPCClient) TxSearch(

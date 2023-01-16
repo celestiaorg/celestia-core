@@ -193,9 +193,9 @@ message TxProof {
 // IndexWrapper adds index metadata to a transaction. This is used to track
 // transactions that pay for blobs, and where the blobs start in the square.
 message IndexWrapper {
-  bytes  tx          = 1;
-  uint32 share_index = 2;
-  string type_id     = 3;
+  bytes           tx            = 1;
+  repeated uint32 share_indexes = 2;
+  string          type_id       = 3;
 }
 
 // BlobTx wraps an encoded sdk.Tx with a second field to contain blobs of data.
@@ -205,6 +205,28 @@ message BlobTx {
   bytes         tx      = 1;
   repeated Blob blobs   = 2;
   string        type_id = 3;
+}
+
+// SharesProof represents an NMT proof for a set of shares to the data root.
+message SharesProof {
+  // data are the raw shares that are proven.
+  repeated bytes data = 1;
+  // shares_proof NMT proofs for the raw shares. Could be more than one
+  // if the shares span more than one row.
+  repeated NMTProof shares_proof = 2;
+  // namespace_id namespaceID of the shares.
+  bytes namespace_id = 3;
+  // rows_proof are binary Merkle proofs of the rows containing the raw shares to the data root.
+  RowsProof rows_proof = 4;
+}
+
+// RowsProof represents a Merkle proof for a set of rows to the data root.
+message RowsProof {
+  repeated bytes rows_roots                  = 1;
+  repeated tendermint.crypto.Proof proofs    = 2;
+  bytes                            root      = 3;
+  uint32                           start_row = 4;
+  uint32                           end_row   = 5;
 }
 
 // Proof represents proof of a namespace.ID in an NMT.

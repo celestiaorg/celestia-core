@@ -58,6 +58,7 @@ retain_blocks = 3
 perturb = ["kill"]
 
 [node.validator04]
+mempool_version = "v1"
 persistent_peers = ["validator01"]
 database = "rocksdb"
 abci_protocol = "builtin"
