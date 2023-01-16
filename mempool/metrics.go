@@ -26,12 +26,6 @@ type Metrics struct {
 	// invalid by the application in either CheckTx or RecheckTx.
 	FailedTxs metrics.Counter
 
-	// RejectedTxs defines the number of rejected transactions. These are
-	// transactions that passed CheckTx but failed to make it into the mempool
-	// due to resource limits, e.g. mempool is full and no lower priority
-	// transactions exist in the mempool.
-	RejectedTxs metrics.Counter
-
 	// EvictedTxs defines the number of evicted transactions. These are valid
 	// transactions that passed CheckTx and existed in the mempool but were later
 	// evicted to make room for higher priority valid transactions that passed
@@ -49,6 +43,14 @@ type Metrics struct {
 	// mempool which were already present in the mempool. This is a good
 	// indicator of the degree of duplication in message gossiping.
 	AlreadySeenTxs metrics.Counter
+
+	// RequestedTxs defines the number of times that the node requested a
+	// tx to a peer
+	RequestedTxs metrics.Counter
+
+	// RerequestedTxs defines the number of times that a requested tx
+	// never received a response in time and a new request was made.
+	RerequestedTxs metrics.Counter
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -82,13 +84,6 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Help:      "Number of failed transactions.",
 		}, labels).With(labelsAndValues...),
 
-		RejectedTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: MetricsSubsystem,
-			Name:      "rejected_txs",
-			Help:      "Number of rejected transactions.",
-		}, labels).With(labelsAndValues...),
-
 		EvictedTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
@@ -116,6 +111,20 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "already_seen_txs",
 			Help:      "Number of transactions that entered the mempool but were already present in the mempool.",
 		}, labels).With(labelsAndValues...),
+
+		RequestedTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "requested_txs",
+			Help:      "Number of initial requests for a transaction",
+		}, labels).With(labelsAndValues...),
+
+		RerequestedTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "rerequested_txs",
+			Help:      "Number of times a transaction was requested again after a previous request timed out",
+		}, labels).With(labelsAndValues...),
 	}
 }
 
@@ -125,10 +134,11 @@ func NopMetrics() *Metrics {
 		Size:           discard.NewGauge(),
 		TxSizeBytes:    discard.NewHistogram(),
 		FailedTxs:      discard.NewCounter(),
-		RejectedTxs:    discard.NewCounter(),
 		EvictedTxs:     discard.NewCounter(),
 		SuccessfulTxs:  discard.NewCounter(),
 		RecheckTimes:   discard.NewCounter(),
 		AlreadySeenTxs: discard.NewCounter(),
+		RequestedTxs:   discard.NewCounter(),
+		RerequestedTxs: discard.NewCounter(),
 	}
 }

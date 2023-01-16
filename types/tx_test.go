@@ -114,3 +114,13 @@ func TestUnmarshalBlobTxFalsePositive(t *testing.T) {
 	_, isBlob := UnmarshalBlobTx(tx)
 	require.False(t, isBlob)
 }
+
+func TestTxKeyFromBytes(t *testing.T) {
+	tx := Tx("hello")
+	key := tx.Key()
+	key2, err := TxKeyFromBytes(key[:])
+	require.NoError(t, err)
+	require.Equal(t, key, key2)
+	_, err = TxKeyFromBytes([]byte("foo"))
+	require.Error(t, err)
+}
