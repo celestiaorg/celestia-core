@@ -1,7 +1,6 @@
 package cat
 
 import (
-	"context"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -373,23 +372,6 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 		memR.Switch.StopPeerForError(peer, fmt.Errorf("mempool cannot handle message of type: %T", msg))
 		return
 	}
-}
-
-func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, compactData [][]byte) ([][]byte, error) {
-	txs := make([][]byte, len(compactData))
-	for i, key := range compactData {
-		txKey, err := types.TxKeyFromBytes(key)
-		if err != nil {
-			return nil, fmt.Errorf("incorrect compact blocks format: %w", err)
-		}
-		wtx := memR.mempool.store.get(txKey)
-		if wtx != nil {
-			txs[i] = wtx.tx
-		}
-
-	}
-	return txs, nil
-
 }
 
 // PeerState describes the state of a peer.

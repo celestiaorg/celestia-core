@@ -67,7 +67,7 @@ type txNotifier interface {
 }
 
 type TxFetcher interface {
-	FetchTxsFromKeys(context.Context, [][]byte) ([][]byte, error)
+	FetchTxsFromKeys(context.Context, int64, int32, [][]byte) ([][]byte, error)
 }
 
 // interface to the evidence pool
@@ -1918,7 +1918,7 @@ func (cs *State) tryReconstructBlock() error {
 		// unable to acquire all transactions we will abort and timeout, thus prevoting nil
 		ctx, cancel := context.WithTimeout(context.Background(), cs.config.Propose(round))
 		defer cancel()
-		txs, err := cs.txFetcher.FetchTxsFromKeys(ctx, block.Data.Txs.ToSliceOfBytes())
+		txs, err := cs.txFetcher.FetchTxsFromKeys(ctx, block.Height, round, block.Data.Txs.ToSliceOfBytes())
 		if err != nil {
 			return err
 		}
@@ -2428,6 +2428,6 @@ func repairWalFile(src, dst string) error {
 
 type noopTxFetcher struct{}
 
-func (noop *noopTxFetcher) FetchTxsFromKeys(context.Context, [][]byte) ([][]byte, error) {
+func (noop *noopTxFetcher) FetchTxsFromKeys(context.Context, int64, int32, [][]byte) ([][]byte, error) {
 	return nil, errors.New("tx fetcher not implemented")
 }

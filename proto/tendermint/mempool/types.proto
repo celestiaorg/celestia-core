@@ -17,6 +17,12 @@ message WantTx {
   bytes tx_key = 1;
 }
 
+message HasBlockTxs {
+  int64 height = 1;
+  int32 round = 2;
+  bytes has_bit_array = 3;
+}
+
 message Message {
   oneof sum {
     Txs    txs     = 1;
