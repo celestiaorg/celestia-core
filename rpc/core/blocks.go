@@ -178,17 +178,47 @@ func DataRootInclusionProof(
 }
 
 // Pad bytes to given length
-func padBytes(byt []byte, length int) []byte {
+func padBytes(byt []byte, length int) ([]byte, error) {
 	l := len(byt)
+	if l > length {
+		return nil, fmt.Errorf(
+			"cannot pad bytes because length of bytes array: %d is greater than given length: %d",
+			l,
+			length,
+		)
+	}
 	if l == length {
-		return byt
+		return byt, nil
 	}
 	tmp := make([]byte, length)
 	copy(tmp[length-l:], byt)
-	return tmp
+	return tmp, nil
 }
 
 // EncodeDataRootTuple takes a height and a data root and returns the equivalent of
+// `abi.encode(...)` in Ethereum.
+// The encoded type is a DataRootTuple, which has the following ABI:
+// ```
+//
+//	{
+//	  "components": [
+//	    {
+//	      "internalType": "uint256",
+//	      "name": "height",
+//	      "type": "uint256"
+//	    },
+//	    {
+//	      "internalType": "bytes32",
+//	      "name": "dataRoot",
+//	      "type": "bytes32"
+//	    }
+//	  ],
+//	  "internalType": "structDataRootTuple",
+//	  "name": "_tuple",
+//	  "type": "tuple"
+//	},
+//
+// ```
 // padding the hex representation of the height to 32 bytes and concatenating the data root to it
 // For more information, refer to:
 // https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
@@ -198,10 +228,17 @@ func EncodeDataRootTuple(height uint64, dataRoot [32]byte) ([]byte, error) {
 	if len(hexRepresentation)%2 == 1 {
 		hexRepresentation = "0" + hexRepresentation
 	}
-	hexBytes, _ := hex.DecodeString(hexRepresentation)
+	hexBytes, hexErr := hex.DecodeString(hexRepresentation)
+	if hexErr != nil {
+		return nil, hexErr
+	}
+	paddedBytes, padErr := padBytes(hexBytes, 32)
+	if padErr != nil {
+		return nil, padErr
+	}
 
 	dataSlice := dataRoot[:]
-	return append(padBytes(hexBytes, 32), dataSlice...), nil
+	return append(paddedBytes, dataSlice...), nil
 }
 
 // generateHeightsList takes a begin and end block, then generates a list of heights
