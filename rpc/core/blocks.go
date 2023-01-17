@@ -177,7 +177,7 @@ func DataRootInclusionProof(
 	return &ctypes.ResultDataRootInclusionProof{Proof: *proof}, nil
 }
 
-// Pad bytes to given length
+// padBytes Pad bytes to given length
 func padBytes(byt []byte, length int) ([]byte, error) {
 	l := len(byt)
 	if l > length {
