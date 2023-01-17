@@ -141,12 +141,12 @@ func Commit(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCommit, erro
 
 // DataCommitment collects the data roots over a provided ordered range of blocks,
 // and then creates a new Merkle root of those data roots.
-func DataCommitment(ctx *rpctypes.Context, beginBlock uint64, endBlock uint64) (*ctypes.ResultDataCommitment, error) {
-	err := validateDataCommitmentRange(beginBlock, endBlock)
+func DataCommitment(ctx *rpctypes.Context, firstBlock uint64, lastBlock uint64) (*ctypes.ResultDataCommitment, error) {
+	err := validateDataCommitmentRange(firstBlock, lastBlock)
 	if err != nil {
 		return nil, err
 	}
-	heights := generateHeightsList(beginBlock, endBlock)
+	heights := generateHeightsList(firstBlock, lastBlock)
 	blockResults := fetchBlocks(heights, len(heights), 0)
 	root, err := hashDataRootTuples(blockResults)
 	if err != nil {
@@ -216,33 +216,33 @@ func generateHeightsList(beginBlock uint64, endBlock uint64) []int64 {
 
 // validateDataCommitmentRange runs basic checks on the asc sorted list of heights
 // that will be used subsequently in generating data commitments over the defined set of heights.
-func validateDataCommitmentRange(beginBlock uint64, endBlock uint64) error {
+func validateDataCommitmentRange(firstBlock uint64, lastBlock uint64) error {
 	env := GetEnvironment()
-	heightsRange := endBlock - beginBlock + 1
+	heightsRange := lastBlock - firstBlock + 1
 	if heightsRange > uint64(consts.DataCommitmentBlocksLimit) {
 		return fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
 	}
 	if heightsRange == 0 {
 		return fmt.Errorf("cannot create the data commitments for an empty set of blocks")
 	}
-	if beginBlock > endBlock {
-		return fmt.Errorf("end block is smaller than begin block")
+	if firstBlock > lastBlock {
+		return fmt.Errorf("last block is smaller than first block")
 	}
-	if endBlock > uint64(env.BlockStore.Height()) {
+	if lastBlock > uint64(env.BlockStore.Height()) {
 		return fmt.Errorf(
-			"end block %d is higher than current chain height %d",
-			endBlock,
+			"last block %d is higher than current chain height %d",
+			lastBlock,
 			env.BlockStore.Height(),
 		)
 	}
-	has, err := env.BlockIndexer.Has(int64(endBlock))
+	has, err := env.BlockIndexer.Has(int64(lastBlock))
 	if err != nil {
 		return err
 	}
 	if !has {
 		return fmt.Errorf(
-			"end block %d is still not indexed",
-			endBlock,
+			"last block %d is still not indexed",
+			lastBlock,
 		)
 	}
 	return nil
