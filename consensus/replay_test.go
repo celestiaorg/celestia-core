@@ -793,7 +793,7 @@ func applyBlock(stateStore sm.Store, st sm.State, blk *types.Block, proxyApp pro
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 
 	blkID := types.BlockID{Hash: blk.Hash(), PartSetHeader: blk.MakePartSet(testPartSize).Header()}
-	newState, _, err := blockExec.ApplyBlock(st, blkID, blk)
+	newState, _, err := blockExec.ApplyBlock(st, blkID, blk, nil)
 	if err != nil {
 		panic(err)
 	}

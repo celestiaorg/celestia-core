@@ -98,6 +98,35 @@ func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error)
 	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
 }
 
+// SignedBlock fetches the set of transactions at a specified height and all the relevant
+// data to verify the transactions (i.e. using light client verification).
+func SignedBlock(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultSignedBlock, error) {
+	height, err := getHeight(GetEnvironment().BlockStore.Height(), heightPtr)
+	if err != nil {
+		return nil, err
+	}
+
+	block := GetEnvironment().BlockStore.LoadBlock(height)
+	if block == nil {
+		return nil, errors.New("block not found")
+	}
+	seenCommit := GetEnvironment().BlockStore.LoadSeenCommit(height)
+	if seenCommit == nil {
+		return nil, errors.New("seen commit not found")
+	}
+	validatorSet, err := GetEnvironment().StateStore.LoadValidators(height)
+	if validatorSet == nil || err != nil {
+		return nil, err
+	}
+
+	return &ctypes.ResultSignedBlock{
+		Header:       block.Header,
+		Commit:       *seenCommit,
+		ValidatorSet: *validatorSet,
+		Data:         block.Data,
+	}, nil
+}
+
 // BlockByHash gets block by hash.
 // More: https://docs.tendermint.com/v0.34/rpc/#/Info/block_by_hash
 func BlockByHash(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error) {
