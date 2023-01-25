@@ -6,13 +6,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/celestiaorg/nmt"
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/pkg/consts"
-	"github.com/tendermint/tendermint/proto/tendermint/crypto"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
@@ -199,80 +197,6 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 	return int64(pdData.Size())
 }
 
-// TODO: move RowsProof and SharesProof to a new file
-
-// RowsProof represents a Merkle proof for a set of rows to the data root.
-type RowsProof struct {
-	RowsRoots []tmbytes.HexBytes `json:"row_root"`
-	Proofs    []*merkle.Proof    `json:"proof"`
-	StartRow  uint32             `json:"starting_row"`
-	EndRow    uint32             `json:"ending_row"`
-}
-
-// SharesProof represents an NMT proof for a set of shares to the data root.
-type SharesProof struct {
-	// Data are the raw shares that are being proven.
-	Data [][]byte `json:"data"`
-	// SharesProofs proofs to the shares. Can contain multiple proofs if the shares
-	// span on multiple rows.
-	SharesProofs []*tmproto.NMTProof `json:"proof"`
-	// NamespaceID needs to be specified as it will be used when verifying proofs.
-	// A wrong NamespaceID will result in an invalid proof.
-	NamespaceID []byte `json:"namespace_id"`
-	// RowsProof binary merkle proofs of the rows to the data root.
-	RowsProof RowsProof `json:"rows_proof"`
-}
-
-func (sp SharesProof) ToProto() tmproto.SharesProof {
-	rowsRoots := make([][]byte, len(sp.RowsProof.RowsRoots))
-	rowsProofs := make([]*crypto.Proof, len(sp.RowsProof.Proofs))
-	for i := range sp.RowsProof.RowsRoots {
-		rowsRoots[i] = sp.RowsProof.RowsRoots[i].Bytes()
-		rowsProofs[i] = sp.RowsProof.Proofs[i].ToProto()
-	}
-	pbtp := tmproto.SharesProof{
-		Data:        sp.Data,
-		SharesProof: sp.SharesProofs,
-		NamespaceId: sp.NamespaceID,
-		RowsProof: &tmproto.RowsProof{
-			RowsRoots: rowsRoots,
-			Proofs:    rowsProofs,
-			StartRow:  sp.RowsProof.StartRow,
-			EndRow:    sp.RowsProof.EndRow,
-		},
-	}
-
-	return pbtp
-}
-
-// SharesProofFromProto creates the SharesProof from a proto message.
-// Expects the proof to be pre-validated.
-func SharesProofFromProto(pb tmproto.SharesProof) (SharesProof, error) {
-	rowsRoots := make([]tmbytes.HexBytes, len(pb.RowsProof.RowsRoots))
-	rowsProofs := make([]*merkle.Proof, len(pb.RowsProof.Proofs))
-	for i := range pb.RowsProof.Proofs {
-		rowsRoots[i] = pb.RowsProof.RowsRoots[i]
-		rowsProofs[i] = &merkle.Proof{
-			Total:    pb.RowsProof.Proofs[i].Total,
-			Index:    pb.RowsProof.Proofs[i].Index,
-			LeafHash: pb.RowsProof.Proofs[i].LeafHash,
-			Aunts:    pb.RowsProof.Proofs[i].Aunts,
-		}
-	}
-
-	return SharesProof{
-		RowsProof: RowsProof{
-			RowsRoots: rowsRoots,
-			Proofs:    rowsProofs,
-			StartRow:  pb.RowsProof.StartRow,
-			EndRow:    pb.RowsProof.EndRow,
-		},
-		Data:         pb.Data,
-		SharesProofs: pb.SharesProof,
-		NamespaceID:  pb.NamespaceId,
-	}, nil
-}
-
 // UnmarshalIndexWrapper attempts to unmarshal the provided transaction into an
 // IndexWrapper transaction. It returns true if the provided transaction is an
 // IndexWrapper transaction. An IndexWrapper transaction is a transaction that contains
@@ -341,97 +265,4 @@ func MarshalBlobTx(tx []byte, blobs ...*tmproto.Blob) (Tx, error) {
 		TypeId: consts.ProtoBlobTxTypeID,
 	}
 	return bTx.Marshal()
-}
-
-// Validate runs basic validations on the proof then verifies if it is consistent.
-// It returns nil if the proof is valid. Otherwise, it returns a sensible error.
-// The `root` is  the block data root that the shares to be proven belong to.
-// Note: these proofs are tested on the app side.
-func (sp SharesProof) Validate(root []byte) error {
-	numberOfSharesInProofs := int32(0)
-	for _, proof := range sp.SharesProofs {
-		// the range is not inclusive from the left.
-		numberOfSharesInProofs += proof.End - proof.Start
-	}
-
-	if len(sp.RowsProof.RowsRoots) != len(sp.SharesProofs) ||
-		int32(len(sp.Data)) != numberOfSharesInProofs {
-		return errors.New(
-			"invalid number of proofs, row roots, or data. they all must be the same to verify the proof",
-		)
-	}
-
-	for _, proof := range sp.SharesProofs {
-		if proof.Start < 0 {
-			return errors.New("proof index cannot be negative")
-		}
-		if (proof.End - proof.Start) <= 0 {
-			return errors.New("proof total must be positive")
-		}
-	}
-
-	valid := sp.VerifyProof()
-	if !valid {
-		return errors.New("proof is not internally consistent")
-	}
-
-	if err := sp.RowsProof.Validate(root); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (sp SharesProof) VerifyProof() bool {
-	cursor := int32(0)
-	for i, proof := range sp.SharesProofs {
-		nmtProof := nmt.NewInclusionProof(
-			int(proof.Start),
-			int(proof.End),
-			proof.Nodes,
-			true,
-		)
-		sharesUsed := proof.End - proof.Start
-		valid := nmtProof.VerifyInclusion(
-			consts.NewBaseHashFunc(),
-			sp.NamespaceID,
-			sp.Data[cursor:sharesUsed+cursor],
-			sp.RowsProof.RowsRoots[i],
-		)
-		if !valid {
-			return false
-		}
-		cursor += sharesUsed
-	}
-	return true
-}
-
-// Validate verifies the proof. It returns nil if the proof is valid.
-// Otherwise, it returns a sensible error.
-func (rp RowsProof) Validate(root []byte) error {
-	if int(rp.EndRow-rp.StartRow+1) != len(rp.RowsRoots) {
-		return errors.New(
-			"invalid number of row roots, or rows range. they all must be the same to verify the proof",
-		)
-	}
-	if len(rp.Proofs) != len(rp.RowsRoots) {
-		return errors.New(
-			"invalid number of row roots, or proofs. they all must be the same to verify the proof",
-		)
-	}
-	if !rp.VerifyProof(root) {
-		return errors.New("proofs verification failed")
-	}
-
-	return nil
-}
-
-func (rp RowsProof) VerifyProof(root []byte) bool {
-	for i, proof := range rp.Proofs {
-		err := proof.Verify(root, rp.RowsRoots[i])
-		if err != nil {
-			return false
-		}
-	}
-	return true
 }

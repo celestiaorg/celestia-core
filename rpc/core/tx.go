@@ -181,10 +181,10 @@ func ProveShares(
 	height int64,
 	startShare uint64,
 	endShare uint64,
-) (types.SharesProof, error) {
+) (types.ShareProof, error) {
 	var (
-		pSharesProof tmproto.SharesProof
-		sharesProof  types.SharesProof
+		pSharesProof tmproto.ShareProof
+		sharesProof  types.ShareProof
 	)
 	env := GetEnvironment()
 	rawBlock, err := loadRawBlock(env.BlockStore, height)
@@ -201,13 +201,13 @@ func ProveShares(
 	if res.Value == nil && res.Log != "" {
 		// we can make the assumption that for custom queries, if the value is nil
 		// and some logs have been emitted, then an error happened.
-		return types.SharesProof{}, errors.New(res.Log)
+		return types.ShareProof{}, errors.New(res.Log)
 	}
 	err = pSharesProof.Unmarshal(res.Value)
 	if err != nil {
 		return sharesProof, err
 	}
-	sharesProof, err = types.SharesProofFromProto(pSharesProof)
+	sharesProof, err = types.ShareProofFromProto(pSharesProof)
 	if err != nil {
 		return sharesProof, err
 	}
