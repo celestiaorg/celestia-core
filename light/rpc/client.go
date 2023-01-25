@@ -535,18 +535,13 @@ func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Resul
 	}
 
 	// Update the light client if we're behind.
-	_, err = c.updateLightClientIfNeededTo(ctx, &res.Height)
+	l, err := c.updateLightClientIfNeededTo(ctx, &res.Height)
 	if err != nil {
 		return nil, err
 	}
 
-	valid := res.Proof.VerifyProof()
-	if !valid {
-		err = errors.New("proof for transaction inclusion could not be verified")
-	}
-
 	// Validate the proof.
-	return res, err
+	return res, res.Proof.Validate(l.DataHash)
 }
 
 // ProveShares calls rpcclient#ProveShares method and returns an NMT proof for a set

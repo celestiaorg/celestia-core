@@ -114,12 +114,92 @@ func ToTxs(txs [][]byte) Txs {
 	return txBzs
 }
 
+// Proof returns a simple merkle proof for this node.
+// Panics if i < 0 or i >= len(txs)
+// TODO: optimize this!
+func (txs Txs) Proof(i int) TxProof {
+	l := len(txs)
+	bzs := make([][]byte, l)
+	for i := 0; i < l; i++ {
+		bzs[i] = txs[i].Hash()
+	}
+	root, proofs := merkle.ProofsFromByteSlices(bzs)
+
+	return TxProof{
+		RootHash: root,
+		Data:     txs[i],
+		Proof:    *proofs[i],
+	}
+}
+
 // TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
 type TxProof struct {
-	RowRoots []tmbytes.HexBytes  `json:"root_hash"`
-	Data     [][]byte            `json:"data"`
-	Proofs   []*tmproto.NMTProof `json:"proof"`
+	RootHash tmbytes.HexBytes `json:"root_hash"`
+	Data     Tx               `json:"data"`
+	Proof    merkle.Proof     `json:"proof"`
 }
+
+// Leaf returns the hash(tx), which is the leaf in the merkle tree which this proof refers to.
+func (tp TxProof) Leaf() []byte {
+	return tp.Data.Hash()
+}
+
+// Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
+// and if the proof is internally consistent. Otherwise, it returns a sensible error.
+func (tp TxProof) Validate(dataHash []byte) error {
+	if !bytes.Equal(dataHash, tp.RootHash) {
+		return errors.New("proof matches different data hash")
+	}
+	if tp.Proof.Index < 0 {
+		return errors.New("proof index cannot be negative")
+	}
+	if tp.Proof.Total <= 0 {
+		return errors.New("proof total must be positive")
+	}
+	valid := tp.Proof.Verify(tp.RootHash, tp.Leaf())
+	if valid != nil {
+		return errors.New("proof is not internally consistent")
+	}
+	return nil
+}
+
+func (tp TxProof) ToProto() tmproto.TxProof {
+
+	pbProof := tp.Proof.ToProto()
+
+	pbtp := tmproto.TxProof{
+		RootHash: tp.RootHash,
+		Data:     tp.Data,
+		Proof:    pbProof,
+	}
+
+	return pbtp
+}
+func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
+
+	pbProof, err := merkle.ProofFromProto(pb.Proof)
+	if err != nil {
+		return TxProof{}, err
+	}
+
+	pbtp := TxProof{
+		RootHash: pb.RootHash,
+		Data:     pb.Data,
+		Proof:    *pbProof,
+	}
+
+	return pbtp, nil
+}
+
+// ComputeProtoSizeForTxs wraps the transactions in tmproto.Data{} and calculates the size.
+// https://developers.google.com/protocol-buffers/docs/encoding
+func ComputeProtoSizeForTxs(txs []Tx) int64 {
+	data := Data{Txs: txs}
+	pdData := data.ToProto()
+	return int64(pdData.Size())
+}
+
+// TODO: move RowsProof and SharesProof to a new file
 
 // RowsProof represents a Merkle proof for a set of rows to the data root.
 type RowsProof struct {
@@ -143,54 +223,6 @@ type SharesProof struct {
 	RowsProof RowsProof `json:"rows_proof"`
 }
 
-// Validate verifies the proof. It returns nil if the RootHash matches the dataHash argument,
-// and if the proof is internally consistent. Otherwise, it returns a sensible error.
-func (tp TxProof) Validate() error {
-	if len(tp.RowRoots) != len(tp.Proofs) || len(tp.Data) != len(tp.Proofs) {
-		return errors.New(
-			"invalid number of proofs, row roots, or data. they all must be the same to verify the proof",
-		)
-	}
-	for _, proof := range tp.Proofs {
-		if proof.Start < 0 {
-			return errors.New("proof index cannot be negative")
-		}
-		if (proof.End - proof.Start) <= 0 {
-			return errors.New("proof total must be positive")
-		}
-		valid := tp.VerifyProof()
-		if !valid {
-			return errors.New("proof is not internally consistent")
-		}
-	}
-
-	return nil
-}
-
-func (tp TxProof) VerifyProof() bool {
-	cursor := int32(0)
-	for i, proof := range tp.Proofs {
-		nmtProof := nmt.NewInclusionProof(
-			int(proof.Start),
-			int(proof.End),
-			proof.Nodes,
-			true,
-		)
-		sharesUsed := proof.End - proof.Start
-		valid := nmtProof.VerifyInclusion(
-			consts.NewBaseHashFunc(),
-			consts.TxNamespaceID,
-			tp.Data[cursor:sharesUsed+cursor],
-			tp.RowRoots[i],
-		)
-		if !valid {
-			return false
-		}
-		cursor += sharesUsed
-	}
-	return true
-}
-
 func (sp SharesProof) ToProto() tmproto.SharesProof {
 	rowsRoots := make([][]byte, len(sp.RowsProof.RowsRoots))
 	rowsProofs := make([]*crypto.Proof, len(sp.RowsProof.Proofs))
@@ -211,20 +243,6 @@ func (sp SharesProof) ToProto() tmproto.SharesProof {
 	}
 
 	return pbtp
-}
-
-func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
-	rowRoots := make([]tmbytes.HexBytes, len(pb.RowRoots))
-	for i, root := range pb.RowRoots {
-		rowRoots[i] = root
-	}
-	pbtp := TxProof{
-		RowRoots: rowRoots,
-		Data:     pb.Data,
-		Proofs:   pb.Proofs,
-	}
-
-	return pbtp, nil
 }
 
 // SharesProofFromProto creates the SharesProof from a proto message.
@@ -253,14 +271,6 @@ func SharesProofFromProto(pb tmproto.SharesProof) (SharesProof, error) {
 		SharesProofs: pb.SharesProof,
 		NamespaceID:  pb.NamespaceId,
 	}, nil
-}
-
-// ComputeProtoSizeForTxs wraps the transactions in tmproto.Data{} and calculates the size.
-// https://developers.google.com/protocol-buffers/docs/encoding
-func ComputeProtoSizeForTxs(txs []Tx) int64 {
-	data := Data{Txs: txs}
-	pdData := data.ToProto()
-	return int64(pdData.Size())
 }
 
 // UnmarshalIndexWrapper attempts to unmarshal the provided transaction into an
@@ -394,24 +404,6 @@ func (sp SharesProof) VerifyProof() bool {
 		cursor += sharesUsed
 	}
 	return true
-}
-
-func (tp TxProof) IncludesTx(tx Tx) bool {
-	return bytes.Contains(bytes.Join(tp.Data, []byte{}), tx)
-}
-
-func (tp TxProof) ToProto() tmproto.TxProof {
-	rowRoots := make([][]byte, len(tp.RowRoots))
-	for i, root := range tp.RowRoots {
-		rowRoots[i] = root.Bytes()
-	}
-	pbtp := tmproto.TxProof{
-		RowRoots: rowRoots,
-		Data:     tp.Data,
-		Proofs:   tp.Proofs,
-	}
-
-	return pbtp
 }
 
 // Validate verifies the proof. It returns nil if the proof is valid.
