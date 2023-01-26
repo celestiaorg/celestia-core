@@ -8,13 +8,13 @@ import (
 	"github.com/tendermint/tendermint/p2p"
 )
 
-const firstPeerID = 1
+const firstPeerID = mempool.UnknownPeerID + 1
 
-// mempoolIDs is a thread-safe map of peer IDs to short IDs used for tracking what peers have sent what
-// NOTE: taken from mempool/v1/reactor.go
+// mempoolIDs is a thread-safe map of peer IDs to shorter uint16 IDs used by the Reactor for tracking peer
+// messages and peer state such as what transactions peers have seen
 type mempoolIDs struct {
 	mtx       tmsync.RWMutex
-	peerMap   map[p2p.ID]uint16
+	peerMap   map[p2p.ID]uint16   // quick lookup table for peer ID to short ID
 	nextID    uint16              // assumes that a node will never have over 65536 active peers
 	activeIDs map[uint16]p2p.Peer // used to check if a given peerID key is used, the value doesn't matter
 }

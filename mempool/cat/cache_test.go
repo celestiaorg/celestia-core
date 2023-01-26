@@ -127,7 +127,7 @@ func TestSeenTxSetConcurrency(t *testing.T) {
 				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
 				seenSet.Add(tx.Key(), peer)
 			}
-		}(uint16(i%2))
+		}(uint16(i % 2))
 	}
 	time.Sleep(time.Millisecond)
 	for i := 0; i < concurrency; i++ {
@@ -138,18 +138,18 @@ func TestSeenTxSetConcurrency(t *testing.T) {
 				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
 				seenSet.Has(tx.Key(), peer)
 			}
-		}(uint16(i%2))
+		}(uint16(i % 2))
 	}
 	time.Sleep(time.Millisecond)
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func(peer uint16) {
 			defer wg.Done()
-			for i := numTx-1; i >= 0; i-- {
+			for i := numTx - 1; i >= 0; i-- {
 				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
 				seenSet.RemoveKey(tx.Key())
 			}
-		}(uint16(i%2))
+		}(uint16(i % 2))
 	}
 	wg.Wait()
 }
@@ -175,7 +175,7 @@ func TestLRUTxCacheConcurrency(t *testing.T) {
 				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
 				cache.Has(tx.Key())
 			}
-			for i := numTx-1; i >= 0; i-- {
+			for i := numTx - 1; i >= 0; i-- {
 				tx := types.Tx([]byte(fmt.Sprintf("tx%d", i)))
 				cache.Remove(tx.Key())
 			}
