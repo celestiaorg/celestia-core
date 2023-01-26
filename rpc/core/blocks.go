@@ -1,15 +1,15 @@
 package core
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/big"
 	"sort"
+	"strconv"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
 	blockidxnull "github.com/tendermint/tendermint/state/indexer/block/null"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
 	"github.com/tendermint/tendermint/pkg/consts"
@@ -98,6 +98,35 @@ func Block(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultBlock, error)
 	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
 }
 
+// SignedBlock fetches the set of transactions at a specified height and all the relevant
+// data to verify the transactions (i.e. using light client verification).
+func SignedBlock(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultSignedBlock, error) {
+	height, err := getHeight(GetEnvironment().BlockStore.Height(), heightPtr)
+	if err != nil {
+		return nil, err
+	}
+
+	block := GetEnvironment().BlockStore.LoadBlock(height)
+	if block == nil {
+		return nil, errors.New("block not found")
+	}
+	seenCommit := GetEnvironment().BlockStore.LoadSeenCommit(height)
+	if seenCommit == nil {
+		return nil, errors.New("seen commit not found")
+	}
+	validatorSet, err := GetEnvironment().StateStore.LoadValidators(height)
+	if validatorSet == nil || err != nil {
+		return nil, err
+	}
+
+	return &ctypes.ResultSignedBlock{
+		Header:       block.Header,
+		Commit:       *seenCommit,
+		ValidatorSet: *validatorSet,
+		Data:         block.Data,
+	}, nil
+}
+
 // BlockByHash gets block by hash.
 // More: https://docs.tendermint.com/v0.34/rpc/#/Info/block_by_hash
 func BlockByHash(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error) {
@@ -177,6 +206,24 @@ func DataRootInclusionProof(
 	return &ctypes.ResultDataRootInclusionProof{Proof: *proof}, nil
 }
 
+// padBytes Pad bytes to given length
+func padBytes(byt []byte, length int) ([]byte, error) {
+	l := len(byt)
+	if l > length {
+		return nil, fmt.Errorf(
+			"cannot pad bytes because length of bytes array: %d is greater than given length: %d",
+			l,
+			length,
+		)
+	}
+	if l == length {
+		return byt, nil
+	}
+	tmp := make([]byte, length)
+	copy(tmp[length-l:], byt)
+	return tmp, nil
+}
+
 // EncodeDataRootTuple takes a height and a data root and returns the equivalent of
 // `abi.encode(...)` in Ethereum.
 // The encoded type is a DataRootTuple, which has the following ABI:
@@ -201,35 +248,26 @@ func DataRootInclusionProof(
 //	},
 //
 // ```
+// padding the hex representation of the height to 32 bytes and concatenating the data root to it
 // For more information, refer to:
 // https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
 func EncodeDataRootTuple(height uint64, dataRoot [32]byte) ([]byte, error) {
-	dataRootTupleStruct, err := abi.NewType(
-		"tuple",
-		"structDataRootTuple",
-		[]abi.ArgumentMarshaling{
-			{Name: "height", Type: "uint256"},
-			{Name: "dataRoot", Type: "bytes32"},
-		},
-	)
-	if err != nil {
-		return nil, err
+	hexRepresentation := strconv.FormatUint(height, 16)
+	// Make sure hex representation has even length
+	if len(hexRepresentation)%2 == 1 {
+		hexRepresentation = "0" + hexRepresentation
+	}
+	hexBytes, hexErr := hex.DecodeString(hexRepresentation)
+	if hexErr != nil {
+		return nil, hexErr
+	}
+	paddedBytes, padErr := padBytes(hexBytes, 32)
+	if padErr != nil {
+		return nil, padErr
 	}
 
-	args := abi.Arguments{{Type: dataRootTupleStruct, Name: "tuple"}}
-	tuple := struct {
-		Height   *big.Int
-		DataRoot [32]byte
-	}{
-		Height:   big.NewInt(int64(height)),
-		DataRoot: dataRoot,
-	}
-	packed, err := args.Pack(&tuple)
-	if err != nil {
-		return nil, err
-	}
-
-	return packed, nil
+	dataSlice := dataRoot[:]
+	return append(paddedBytes, dataSlice...), nil
 }
 
 // generateHeightsList takes a begin and end block, then generates a list of heights
