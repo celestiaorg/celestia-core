@@ -70,7 +70,7 @@ type mockBlockApplier struct{}
 
 // XXX: Add whitelist/blacklist?
 func (mba *mockBlockApplier) ApplyBlock(
-	state sm.State, blockID types.BlockID, block *types.Block,
+	state sm.State, blockID types.BlockID, block *types.Block, seenCommit *types.Commit,
 ) (sm.State, int64, error) {
 	state.LastBlockHeight++
 	return state, 0, nil
@@ -572,7 +572,7 @@ func newReactorStore(
 		thisParts := thisBlock.MakePartSet(types.BlockPartSizeBytes)
 		blockID := types.BlockID{Hash: thisBlock.Hash(), PartSetHeader: thisParts.Header()}
 
-		state, _, err = blockExec.ApplyBlock(state, blockID, thisBlock)
+		state, _, err = blockExec.ApplyBlock(state, blockID, thisBlock, lastCommit)
 		if err != nil {
 			panic(fmt.Errorf("error apply block: %w", err))
 		}

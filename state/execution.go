@@ -196,7 +196,10 @@ func (blockExec *BlockExecutor) ValidateBlock(state State, block *types.Block) e
 // from outside this package to process and commit an entire block.
 // It takes a blockID to avoid recomputing the parts hash.
 func (blockExec *BlockExecutor) ApplyBlock(
-	state State, blockID types.BlockID, block *types.Block,
+	state State,
+	blockID types.BlockID,
+	block *types.Block,
+	commit *types.Commit,
 ) (State, int64, error) {
 
 	if err := validateBlock(state, block); err != nil {
@@ -264,7 +267,7 @@ func (blockExec *BlockExecutor) ApplyBlock(
 
 	// Events are fired after everything else.
 	// NOTE: if we crash between Commit and Save, events wont be fired during replay
-	fireEvents(blockExec.logger, blockExec.eventBus, block, abciResponses, validatorUpdates)
+	fireEvents(blockExec.logger, blockExec.eventBus, block, abciResponses, validatorUpdates, state.Validators, commit)
 
 	return state, retainHeight, nil
 }
@@ -541,6 +544,8 @@ func fireEvents(
 	block *types.Block,
 	abciResponses *tmstate.ABCIResponses,
 	validatorUpdates []*types.Validator,
+	currentValidatorSet *types.ValidatorSet,
+	seenCommit *types.Commit,
 ) {
 	if err := eventBus.PublishEventNewBlock(types.EventDataNewBlock{
 		Block:            block,
@@ -548,6 +553,18 @@ func fireEvents(
 		ResultEndBlock:   *abciResponses.EndBlock,
 	}); err != nil {
 		logger.Error("failed publishing new block", "err", err)
+	}
+
+	if seenCommit != nil {
+		err := eventBus.PublishEventNewSignedBlock(types.EventDataSignedBlock{
+			Header:       block.Header,
+			Commit:       *seenCommit,
+			ValidatorSet: *currentValidatorSet,
+			Data:         block.Data,
+		})
+		if err != nil {
+			logger.Error("failed publishing new signed block", "err", err)
+		}
 	}
 
 	if err := eventBus.PublishEventNewBlockHeader(types.EventDataNewBlockHeader{

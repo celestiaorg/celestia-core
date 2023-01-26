@@ -25,6 +25,7 @@ func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {
 		"genesis":                   rpcserver.NewRPCFunc(makeGenesisFunc(c), "", rpcserver.Cacheable()),
 		"genesis_chunked":           rpcserver.NewRPCFunc(makeGenesisChunkedFunc(c), "", rpcserver.Cacheable()),
 		"block":                     rpcserver.NewRPCFunc(makeBlockFunc(c), "height", rpcserver.Cacheable("height")),
+		"signed_block":              rpcserver.NewRPCFunc(makeSignedBlockFunc(c), "height", rpcserver.Cacheable("height")),
 		"block_by_hash":             rpcserver.NewRPCFunc(makeBlockByHashFunc(c), "hash", rpcserver.Cacheable()),
 		"block_results":             rpcserver.NewRPCFunc(makeBlockResultsFunc(c), "height", rpcserver.Cacheable("height")),
 		"commit":                    rpcserver.NewRPCFunc(makeCommitFunc(c), "height", rpcserver.Cacheable("height")),
@@ -108,6 +109,14 @@ type rpcBlockFunc func(ctx *rpctypes.Context, height *int64) (*ctypes.ResultBloc
 func makeBlockFunc(c *lrpc.Client) rpcBlockFunc {
 	return func(ctx *rpctypes.Context, height *int64) (*ctypes.ResultBlock, error) {
 		return c.Block(ctx.Context(), height)
+	}
+}
+
+type rpcSignedBlockFunc func(ctx *rpctypes.Context, height *int64) (*ctypes.ResultSignedBlock, error)
+
+func makeSignedBlockFunc(c *lrpc.Client) rpcSignedBlockFunc {
+	return func(ctx *rpctypes.Context, height *int64) (*ctypes.ResultSignedBlock, error) {
+		return c.SignedBlock(ctx.Context(), height)
 	}
 }
 
