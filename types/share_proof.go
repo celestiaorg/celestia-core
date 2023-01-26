@@ -2,6 +2,7 @@ package types
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/celestiaorg/nmt"
 	"github.com/tendermint/tendermint/crypto/merkle"
@@ -27,6 +28,7 @@ type ShareProof struct {
 }
 
 func (sp ShareProof) ToProto() tmproto.ShareProof {
+	// TODO consider extracting a ToProto function for RowProof
 	rowRoots := make([][]byte, len(sp.RowProof.RowRoots))
 	rowProofs := make([]*crypto.Proof, len(sp.RowProof.Proofs))
 	for i := range sp.RowProof.RowRoots {
@@ -51,6 +53,7 @@ func (sp ShareProof) ToProto() tmproto.ShareProof {
 // ShareProofFromProto creates a ShareProof from a proto message.
 // Expects the proof to be pre-validated.
 func ShareProofFromProto(pb tmproto.ShareProof) (ShareProof, error) {
+	// TODO consider extracting a RowProofFromProto function
 	rowRoots := make([]tmbytes.HexBytes, len(pb.RowProof.RowRoots))
 	rowProofs := make([]*merkle.Proof, len(pb.RowProof.Proofs))
 	for i := range pb.RowProof.Proofs {
@@ -87,13 +90,12 @@ func (sp ShareProof) Validate(root []byte) error {
 		numberOfSharesInProofs += proof.End - proof.Start
 	}
 
-	if len(sp.RowProof.RowRoots) != len(sp.ShareProofs) ||
-		int32(len(sp.Data)) != numberOfSharesInProofs {
-		return errors.New(
-			// TODO this should be two separate error messages. The number of
-			// row roots does not need to match the number of shares
-			"invalid number of proofs, row roots, or data. they all must be the same to verify the proof",
-		)
+	if len(sp.ShareProofs) != len(sp.RowProof.RowRoots) {
+		return fmt.Errorf("the number of share proofs %d must equal the number of row roots %d", len(sp.ShareProofs), len(sp.RowProof.RowRoots))
+
+	}
+	if len(sp.Data) != int(numberOfSharesInProofs) {
+		return fmt.Errorf("the number of shares %d must equal the number of shares in share proofs %d", len(sp.Data), numberOfSharesInProofs)
 	}
 
 	for _, proof := range sp.ShareProofs {
@@ -105,13 +107,12 @@ func (sp ShareProof) Validate(root []byte) error {
 		}
 	}
 
-	valid := sp.VerifyProof()
-	if !valid {
-		return errors.New("proof is not internally consistent")
-	}
-
 	if err := sp.RowProof.Validate(root); err != nil {
 		return err
+	}
+
+	if ok := sp.VerifyProof(); !ok {
+		return errors.New("share proof failed to verify")
 	}
 
 	return nil
