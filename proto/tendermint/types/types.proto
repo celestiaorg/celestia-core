@@ -105,23 +105,6 @@ message Blob {
   uint32 share_version = 3;
 }
 
-// DataAvailabilityHeader contains the row and column roots of the erasure
-// coded version of the data in Block.Data.
-// Therefor the original Block.Data is arranged in a
-// k × k matrix, which is then "extended" to a
-// 2k × 2k matrix applying multiple times Reed-Solomon encoding.
-// For details see Section 5.2: https://arxiv.org/abs/1809.09044
-// or the Celestia specification:
-// https://github.com/celestiaorg/celestia-specs/blob/master/specs/data_structures.md#availabledataheader
-// Note that currently we list row and column roots in separate fields
-// (different from the spec).
-message DataAvailabilityHeader {
-  // RowRoot_j 	= root((M_{j,1} || M_{j,2} || ... || M_{j,2k} ))
-  repeated bytes row_roots = 1;
-  // ColumnRoot_j = root((M_{1,j} || M_{2,j} || ... || M_{2k,j} ))
-  repeated bytes column_roots = 2;
-}
-
 // Vote represents a prevote, precommit, or commit vote from validators for
 // consensus.
 message Vote {
