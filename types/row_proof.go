@@ -6,6 +6,7 @@ import (
 
 	"github.com/tendermint/tendermint/crypto/merkle"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 // RowProof is a Merkle proof that a set of rows exist in a Merkle tree with a
@@ -48,4 +49,28 @@ func (rp RowProof) VerifyProof(root []byte) bool {
 		}
 	}
 	return true
+}
+
+func RowProofFromProto(p *tmproto.RowProof) RowProof {
+	if p == nil {
+		return RowProof{}
+	}
+	rowRoots := make([]tmbytes.HexBytes, len(p.RowRoots))
+	rowProofs := make([]*merkle.Proof, len(p.Proofs))
+	for i := range p.Proofs {
+		rowRoots[i] = p.RowRoots[i]
+		rowProofs[i] = &merkle.Proof{
+			Total:    p.Proofs[i].Total,
+			Index:    p.Proofs[i].Index,
+			LeafHash: p.Proofs[i].LeafHash,
+			Aunts:    p.Proofs[i].Aunts,
+		}
+	}
+
+	return RowProof{
+		RowRoots: rowRoots,
+		Proofs:   rowProofs,
+		StartRow: p.StartRow,
+		EndRow:   p.EndRow,
+	}
 }

@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	"github.com/celestiaorg/nmt"
-	"github.com/tendermint/tendermint/crypto/merkle"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/pkg/consts"
 	"github.com/tendermint/tendermint/proto/tendermint/crypto"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
@@ -53,26 +51,8 @@ func (sp ShareProof) ToProto() tmproto.ShareProof {
 // ShareProofFromProto creates a ShareProof from a proto message.
 // Expects the proof to be pre-validated.
 func ShareProofFromProto(pb tmproto.ShareProof) (ShareProof, error) {
-	// TODO consider extracting a RowProofFromProto function
-	rowRoots := make([]tmbytes.HexBytes, len(pb.RowProof.RowRoots))
-	rowProofs := make([]*merkle.Proof, len(pb.RowProof.Proofs))
-	for i := range pb.RowProof.Proofs {
-		rowRoots[i] = pb.RowProof.RowRoots[i]
-		rowProofs[i] = &merkle.Proof{
-			Total:    pb.RowProof.Proofs[i].Total,
-			Index:    pb.RowProof.Proofs[i].Index,
-			LeafHash: pb.RowProof.Proofs[i].LeafHash,
-			Aunts:    pb.RowProof.Proofs[i].Aunts,
-		}
-	}
-
 	return ShareProof{
-		RowProof: RowProof{
-			RowRoots: rowRoots,
-			Proofs:   rowProofs,
-			StartRow: pb.RowProof.StartRow,
-			EndRow:   pb.RowProof.EndRow,
-		},
+		RowProof:    RowProofFromProto(pb.RowProof),
 		Data:        pb.Data,
 		ShareProofs: pb.ShareProofs,
 		NamespaceID: pb.NamespaceId,
