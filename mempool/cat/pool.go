@@ -18,8 +18,13 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+// enforce compile-time satisfaction of the Mempool interface
 var _ mempool.Mempool = (*TxPool)(nil)
 
+// Amount of evicted txs to cache. This is low enough so that in patches
+// of high tx throughput, the txpool will be able to quickly recover txs
+// that evicted but not large enough that continual excessive tx load won't
+// take up needless memory.
 const evictedTxCacheSize = 200
 
 var (
@@ -367,7 +372,7 @@ func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
 	txmp.metrics.EvictedTxs.Add(1)
 	txmp.broadcastMtx.Lock()
 	defer txmp.broadcastMtx.Unlock()
-	txmp.txsToBeBroadcast = make(map[types.TxKey]struct{})
+	delete(txmp.txsToBeBroadcast, txKey)
 }
 
 // Flush purges the contents of the mempool and the cache, leaving both empty.
@@ -383,6 +388,11 @@ func (txmp *TxPool) Flush() {
 	txmp.metrics.EvictedTxs.Add(float64(size))
 	txmp.broadcastMtx.Lock()
 	defer txmp.broadcastMtx.Unlock()
+	// drain the broadcast channel
+	select {
+	case _ = <-txmp.broadcastCh:
+	default:
+	}
 	txmp.txsToBeBroadcast = make(map[types.TxKey]struct{})
 }
 
@@ -564,14 +574,14 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 		})
 
 		// Evict as many of the victims as necessary to make room.
-		var evictedBytes int64
+		availableBytes := txmp.availableBytes()
 		for _, tx := range victims {
 			txmp.evictTx(tx)
 
 			// We may not need to evict all the eligible transactions.  Bail out
 			// early if we have made enough room.
-			evictedBytes += tx.size()
-			if evictedBytes >= wtx.size() {
+			availableBytes += tx.size()
+			if availableBytes >= wtx.size() {
 				break
 			}
 		}
@@ -681,6 +691,11 @@ func (txmp *TxPool) recheckTransactions() {
 		_ = g.Wait()
 		txmp.notifyTxsAvailable()
 	}()
+}
+
+// availableBytes returns the number of bytes available in the mempool.
+func (txmp *TxPool) availableBytes() int64 {
+  return txmp.config.MaxTxsBytes - txmp.SizeBytes()
 }
 
 // canAddTx returns an error if we cannot insert the provided *wrappedTx into

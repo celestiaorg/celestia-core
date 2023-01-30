@@ -15,9 +15,11 @@ import (
 type LRUTxCache struct {
 	staticSize int
 
-	mtx      tmsync.Mutex
+	mtx tmsync.Mutex
+	// cacheMap is used as a quick look up table
 	cacheMap map[types.TxKey]*list.Element
-	list     *list.List
+	// list is a doubly linked list used to capture the FIFO nature of the cache
+	list *list.List
 }
 
 func NewLRUTxCache(cacheSize int) *LRUTxCache {
@@ -66,6 +68,10 @@ func (c *LRUTxCache) Push(txKey types.TxKey) bool {
 }
 
 func (c *LRUTxCache) Remove(txKey types.TxKey) {
+	if c.staticSize == 0 {
+		return
+	}
+
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -107,7 +113,7 @@ type EvictedTxCache struct {
 func NewEvictedTxCache(size int) *EvictedTxCache {
 	return &EvictedTxCache{
 		staticSize: size,
-		cache:      make(map[types.TxKey]*EvictedTxInfo),
+		cache:      make(map[types.TxKey]*EvictedTxInfo, size+1),
 	}
 }
 
@@ -183,7 +189,7 @@ type SeenTxSet struct {
 }
 
 type timestampedPeerSet struct {
-	peers map[uint16]bool
+	peers map[uint16]struct{}
 	time  time.Time
 }
 
@@ -202,11 +208,11 @@ func (s *SeenTxSet) Add(txKey types.TxKey, peer uint16) {
 	seenSet, exists := s.set[txKey]
 	if !exists {
 		s.set[txKey] = timestampedPeerSet{
-			peers: map[uint16]bool{peer: true},
+			peers: map[uint16]struct{}{peer: struct{}{}},
 			time:  time.Now().UTC(),
 		}
 	} else {
-		seenSet.peers[peer] = true
+		seenSet.peers[peer] = struct{}{}
 	}
 }
 
@@ -259,7 +265,8 @@ func (s *SeenTxSet) Has(txKey types.TxKey, peer uint16) bool {
 	if !exists {
 		return false
 	}
-	return seenSet.peers[peer]
+	_, has := seenSet.peers[peer]
+	return has
 }
 
 func (s *SeenTxSet) Get(txKey types.TxKey) map[uint16]struct{} {
