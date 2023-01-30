@@ -24,9 +24,6 @@ const (
 	// Content Addressable Tx Pool gossips state based messages (SeenTx and WantTx) on a separate channel
 	// for cross compatibility
 	MempoolStateChannel = byte(0x31)
-
-	// tx_key + node_id + buffer (for proto encoding)
-	maxStateChannelSize = tmhash.Size + 10
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -130,9 +127,17 @@ func (memR *Reactor) OnStop() {
 // reactor.
 func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	largestTx := make([]byte, memR.opts.MaxTxSize)
-	batchMsg := protomem.Message{
+	txMsg := protomem.Message{
 		Sum: &protomem.Message_Txs{
 			Txs: &protomem.Txs{Txs: [][]byte{largestTx}},
+		},
+	}
+
+	stateMsg := protomem.Message{
+		Sum: &protomem.Message_SeenTx{
+			SeenTx: &protomem.SeenTx{
+				TxKey: make([]byte, tmhash.Size),
+			},
 		},
 	}
 
@@ -140,13 +145,13 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  mempool.MempoolChannel,
 			Priority:            6,
-			RecvMessageCapacity: batchMsg.Size(),
+			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 		{
 			ID:                  MempoolStateChannel,
 			Priority:            5,
-			RecvMessageCapacity: maxStateChannelSize,
+			RecvMessageCapacity: stateMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 	}

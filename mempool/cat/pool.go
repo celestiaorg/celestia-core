@@ -695,7 +695,7 @@ func (txmp *TxPool) recheckTransactions() {
 
 // availableBytes returns the number of bytes available in the mempool.
 func (txmp *TxPool) availableBytes() int64 {
-  return txmp.config.MaxTxsBytes - txmp.SizeBytes()
+	return txmp.config.MaxTxsBytes - txmp.SizeBytes()
 }
 
 // canAddTx returns an error if we cannot insert the provided *wrappedTx into
