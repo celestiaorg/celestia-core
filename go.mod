@@ -54,6 +54,8 @@ require (
 	google.golang.org/protobuf v1.28.2-0.20220831092852-f930b1dc76e8
 )
 
+require github.com/klauspost/cpuid/v2 v2.0.4 // indirect
+
 require (
 	4d63.com/gochecknoglobals v0.1.0 // indirect
 	github.com/Abirdcfly/dupword v0.0.7 // indirect
@@ -179,6 +181,7 @@ require (
 	github.com/mbilski/exhaustivestruct v1.2.0 // indirect
 	github.com/mgechev/revive v1.2.4 // indirect
 	github.com/mimoo/StrobeGo v0.0.0-20210601165009-122bf33a46e0 // indirect
+	github.com/minio/sha256-simd v1.0.0
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/buildkit v0.10.4 // indirect
