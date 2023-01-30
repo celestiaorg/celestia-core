@@ -165,11 +165,21 @@ message BlockMeta {
   int64   num_txs    = 4;
 }
 
-// TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
+// TxProof represents a Merkle proof of the presence of a transaction in the
+// Merkle tree.
+//
+// Note: TxProof is not used in celestia-core because of modifications to the
+// data root. In a normal Cosmos chain, the data root is the root of a Merkle
+// tree of transactions in the block. However, in Celestia the data root is the
+// root of the row and column roots in the extended data square. See
+// https://github.com/celestiaorg/celestia-app/blob/852a229f11f0f269021b36f7621609f432bb858b/pkg/da/data_availability_header.go
+// for more details. Therefore, TxProof isn't sufficient to prove the existence
+// of a transaction in a Celestia block and ShareProof was defined instead. See
+// ShareProof for more details.
 message TxProof {
-  repeated bytes    row_roots = 1;
-  repeated bytes    data      = 2;
-  repeated NMTProof proofs    = 3;
+  bytes                   root_hash = 1;
+  bytes                   data      = 2;
+  tendermint.crypto.Proof proof     = 3;
 }
 
 // IndexWrapper adds index metadata to a transaction. This is used to track
@@ -189,36 +199,33 @@ message BlobTx {
   string        type_id = 3;
 }
 
-// SharesProof represents an NMT proof for a set of shares to the data root.
-message SharesProof {
-  // data are the raw shares that are proven.
+// ShareProof is an NMT proof that a set of shares exist in a set of rows and a
+// Merkle proof that those rows exist in a Merkle tree with a given data root.
+message ShareProof {
   repeated bytes data = 1;
-  // shares_proof NMT proofs for the raw shares. Could be more than one
-  // if the shares span more than one row.
-  repeated NMTProof shares_proof = 2;
-  // namespace_id namespaceID of the shares.
+  repeated NMTProof share_proofs = 2;
   bytes namespace_id = 3;
-  // rows_proof are binary Merkle proofs of the rows containing the raw shares to the data root.
-  RowsProof rows_proof = 4;
+  RowProof row_proof = 4;
 }
 
-// RowsProof represents a Merkle proof for a set of rows to the data root.
-message RowsProof {
-  repeated bytes rows_roots                  = 1;
+// RowProof is a Merkle proof that a set of rows exist in a Merkle tree with a
+// given data root.
+message RowProof {
+  repeated bytes row_roots                  = 1;
   repeated tendermint.crypto.Proof proofs    = 2;
   bytes                            root      = 3;
   uint32                           start_row = 4;
   uint32                           end_row   = 5;
 }
 
-// Proof represents proof of a namespace.ID in an NMT.
+// NMTProof is a proof of a namespace.ID in an NMT.
 // In case this proof proves the absence of a namespace.ID
 // in a tree it also contains the leaf hashes of the range
 // where that namespace would be.
 message NMTProof {
-  // start index of this proof.
+  // Start index of this proof.
   int32 start = 1;
-  // end index of this proof.
+  // End index of this proof.
   int32 end = 2;
   // Nodes that together with the corresponding leaf values can be used to
   // recompute the root and verify this proof. Nodes should consist of the max
