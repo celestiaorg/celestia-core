@@ -1057,7 +1057,17 @@ func (m *BlockMeta) GetNumTxs() int64 {
 	return 0
 }
 
-// TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
+// TxProof represents a Merkle proof of the presence of a transaction in the
+// Merkle tree.
+//
+// Note: TxProof is not used in celestia-core because of modifications to the
+// data root. In a normal Cosmos chain, the data root is the root of a Merkle
+// tree of transactions in the block. However, in Celestia the data root is the
+// root of the row and column roots in the extended data square. See
+// https://github.com/celestiaorg/celestia-app/blob/852a229f11f0f269021b36f7621609f432bb858b/pkg/da/data_availability_header.go
+// for more details. Therefore, TxProof isn't sufficient to prove the existence
+// of a transaction in a Celestia block and ShareProof was defined instead. See
+// ShareProof for more details.
 type TxProof struct {
 	RootHash []byte        `protobuf:"bytes,1,opt,name=root_hash,json=rootHash,proto3" json:"root_hash,omitempty"`
 	Data     []byte        `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
