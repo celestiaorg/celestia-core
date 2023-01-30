@@ -1,9 +1,8 @@
 package consts
 
 import (
-	"crypto/sha256"
-
 	"github.com/celestiaorg/nmt/namespace"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 )
 
 const (
@@ -34,7 +33,7 @@ var (
 	TxNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 1}
 
 	// NewBaseHashFunc change accordingly if another hash.Hash should be used as a base hasher in the NMT:
-	NewBaseHashFunc = sha256.New
+	NewBaseHashFunc = tmhash.New
 
 	// DataCommitmentBlocksLimit is the limit to the number of blocks we can generate a data commitment for.
 	DataCommitmentBlocksLimit = 1000
