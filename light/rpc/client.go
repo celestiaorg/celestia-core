@@ -539,7 +539,6 @@ func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Resul
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("data hash %v", l.DataHash)
 
 	// Validate the proof.
 	return res, res.Proof.Validate(l.DataHash)
