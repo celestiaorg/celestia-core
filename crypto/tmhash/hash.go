@@ -18,8 +18,12 @@ func New() hash.Hash {
 
 // Sum returns the SHA256 of the bz.
 func Sum(bz []byte) []byte {
-	h := sha256.Sum256(bz)
+	h := Sum256(bz)
 	return h[:]
+}
+
+func Sum256(bz []byte) [Size]byte {
+	return sha256.Sum256(bz)
 }
 
 //-------------------------------------------------------------

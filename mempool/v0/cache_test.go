@@ -1,13 +1,13 @@
 package v0
 
 import (
-	"crypto/sha256"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/tendermint/tendermint/abci/example/kvstore"
 	abci "github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
@@ -61,7 +61,7 @@ func TestCacheAfterUpdate(t *testing.T) {
 				"cache larger than expected on testcase %d", tcIndex)
 
 			nodeVal := node.Value.(types.TxKey)
-			expectedBz := sha256.Sum256([]byte{byte(tc.txsInCache[len(tc.txsInCache)-counter-1])})
+			expectedBz := tmhash.Sum256([]byte{byte(tc.txsInCache[len(tc.txsInCache)-counter-1])})
 			// Reference for reading the errors:
 			// >>> sha256('\x00').hexdigest()
 			// '6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d'

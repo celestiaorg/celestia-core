@@ -1,12 +1,12 @@
 package mempool
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math"
 
 	abci "github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -146,7 +146,7 @@ func PostCheckMaxGas(maxGas int64) PostCheckFunc {
 var ErrTxInCache = errors.New("tx already exists in cache")
 
 // TxKey is the fixed length array key used as an index.
-type TxKey [sha256.Size]byte
+type TxKey [tmhash.Size]byte
 
 // ErrTxTooLarge defines an error when a transaction is too big to be sent in a
 // message to other peers.

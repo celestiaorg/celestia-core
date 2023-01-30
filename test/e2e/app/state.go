@@ -1,7 +1,6 @@
 package app
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+
+	"github.com/tendermint/tendermint/crypto/tmhash"
 )
 
 const (
@@ -180,7 +181,7 @@ func hashItems(items map[string]string) []byte {
 	}
 	sort.Strings(keys)
 
-	hasher := sha256.New()
+	hasher := tmhash.New()
 	for _, key := range keys {
 		_, _ = hasher.Write([]byte(key))
 		_, _ = hasher.Write([]byte{0})

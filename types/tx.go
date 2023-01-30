@@ -2,7 +2,6 @@ package types
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 
@@ -15,7 +14,7 @@ import (
 )
 
 // TxKeySize is the size of the transaction key index
-const TxKeySize = sha256.Size
+const TxKeySize = tmhash.Size
 
 type (
 	// Tx is an arbitrary byte array.
@@ -43,12 +42,12 @@ func (tx Tx) Hash() []byte {
 // unwrap the transaction if it is a BlobTx or a IndexWrapper.
 func (tx Tx) Key() TxKey {
 	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
-		return sha256.Sum256(blobTx.Tx)
+		return tmhash.Sum256(blobTx.Tx)
 	}
 	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
-		return sha256.Sum256(indexWrapper.Tx)
+		return tmhash.Sum256(indexWrapper.Tx)
 	}
-	return sha256.Sum256(tx)
+	return tmhash.Sum256(tx)
 }
 
 // String returns the hex-encoded transaction as a string.

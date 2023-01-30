@@ -2,7 +2,6 @@ package secp256k1
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"crypto/subtle"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 	"golang.org/x/crypto/ripemd160" //nolint: staticcheck // necessary for Bitcoin address format
 
 	"github.com/tendermint/tendermint/crypto"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 	tmjson "github.com/tendermint/tendermint/libs/json"
 )
 
@@ -104,7 +104,7 @@ var one = new(big.Int).SetInt64(1)
 // NOTE: secret should be the output of a KDF like bcrypt,
 // if it's derived from user input.
 func GenPrivKeySecp256k1(secret []byte) PrivKey {
-	secHash := sha256.Sum256(secret)
+	secHash := tmhash.Sum256(secret)
 	// to guarantee that we have a valid field element, we use the approach of:
 	// "Suite B Implementer’s Guide to FIPS 186-3", A.2.1
 	// https://apps.nsa.gov/iaarchive/library/ia-guidance/ia-solutions-for-classified/algorithm-guidance/suite-b-implementers-guide-to-fips-186-3-ecdsa.cfm
@@ -162,7 +162,7 @@ func (pubKey PubKey) Address() crypto.Address {
 	if len(pubKey) != PubKeySize {
 		panic("length of pubkey is incorrect")
 	}
-	hasherSHA256 := sha256.New()
+	hasherSHA256 := tmhash.New()
 	_, _ = hasherSHA256.Write(pubKey) // does not error
 	sha := hasherSHA256.Sum(nil)
 

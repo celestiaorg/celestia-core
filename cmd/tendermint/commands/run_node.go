@@ -2,7 +2,6 @@ package commands
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	cfg "github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 	tmos "github.com/tendermint/tendermint/libs/os"
 	nm "github.com/tendermint/tendermint/node"
 )
@@ -147,7 +147,7 @@ func checkGenesisHash(config *cfg.Config) error {
 		return fmt.Errorf("can't open genesis file: %w", err)
 	}
 	defer f.Close()
-	h := sha256.New()
+	h := tmhash.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return fmt.Errorf("error when hashing genesis file: %w", err)
 	}
