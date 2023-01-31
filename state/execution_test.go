@@ -115,9 +115,9 @@ func TestBeginBlockValidators(t *testing.T) {
 		lastCommit := types.NewCommit(1, 0, prevBlockID, tc.lastCommitSigs)
 
 		// block for height 2
-		block, _ := state.MakeBlock(
+		block := state.MakeBlock(
 			2,
-			factory.MakeData(factory.MakeTenTxs(2), nil),
+			factory.MakeData(factory.MakeTenTxs(2)),
 			lastCommit,
 			nil,
 			state.Validators.GetProposer().Address,

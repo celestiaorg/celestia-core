@@ -1,5 +1,11 @@
+compact_blocks = true
+
 [node.validator01]
 [node.validator02]
 [node.validator03]
 [node.validator04]
+
+[node.validator05]
+start_at = 10
+fast_sync = "v0"
 

@@ -31,8 +31,7 @@ enum SignedMsgType {
   SIGNED_MSG_TYPE_PRECOMMIT = 2 [(gogoproto.enumvalue_customname) = "PrecommitType"];
 
   // Proposals
-  SIGNED_MSG_TYPE_PROPOSAL         = 32 [(gogoproto.enumvalue_customname) = "ProposalType"];
-  SIGNED_MSG_TYPE_COMPACT_PROPOSAL = 33 [(gogoproto.enumvalue_customname) = "CompactProposalType"];
+  SIGNED_MSG_TYPE_PROPOSAL = 32 [(gogoproto.enumvalue_customname) = "ProposalType"];
 }
 
 // PartsetHeader
@@ -89,11 +88,11 @@ message Data {
   // This means that block.AppHash does not include these txs.
   repeated bytes txs = 1;
 
-  // field number 2 is reserved for intermediate state roots
-  // field number 3 was previously used for evidence
-  repeated Blob blobs       = 4 [(gogoproto.nullable) = false];
-  uint64        square_size = 5;
-  bytes         hash        = 6;
+  reserved 2;  // was previously used for intermediate state roots
+  reserved 3;  // was previously used for evidence
+  reserved 4;  // was previously used for blobs
+  uint64 square_size = 5;
+  bytes  hash        = 6;
 }
 
 // Blob (named after binary large object) is a chunk of data submitted by a user
@@ -163,7 +162,8 @@ message Proposal {
   BlockID                   block_id  = 5 [(gogoproto.customname) = "BlockID", (gogoproto.nullable) = false];
   google.protobuf.Timestamp timestamp = 6
       [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  bytes signature = 7;
+  bytes         signature           = 7;
+  PartSetHeader compact_block_parts = 8 [(gogoproto.nullable) = false];
 }
 
 message SignedHeader {

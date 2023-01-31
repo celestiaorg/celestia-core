@@ -216,6 +216,11 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 		cfg.Mempool.Version = node.Mempool
 	}
 
+	if node.Testnet.CompactBlocks {
+		cfg.Consensus.CompactBlocks = true
+		cfg.Mempool.Version = config.MempoolV2
+	}
+
 	if node.FastSync == "" {
 		cfg.FastSyncMode = false
 	} else {

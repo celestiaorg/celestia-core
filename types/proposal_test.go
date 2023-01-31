@@ -163,6 +163,14 @@ func TestProposalValidateBasic(t *testing.T) {
 	}
 }
 
+func TestProposalCompact(t *testing.T) {
+	prop := NewProposal(
+		4, 2, 2,
+		BlockID{tmrand.Bytes(tmhash.Size), PartSetHeader{777, tmrand.Bytes(tmhash.Size)}})
+	prop.Compact(PartSetHeader{12, tmrand.Bytes(tmhash.Size)})
+	require.True(t, prop.IsCompact())
+}
+
 func TestProposalProtoBuf(t *testing.T) {
 	proposal := NewProposal(1, 2, 3, makeBlockID([]byte("hash"), 2, []byte("part_set_hash")))
 	proposal.Signature = []byte("sig")

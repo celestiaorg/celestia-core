@@ -619,7 +619,8 @@ func createSwitch(config *cfg.Config,
 		p2p.WithMetrics(p2pMetrics),
 		p2p.SwitchPeerFilters(peerFilters...),
 	)
-	sw.SetLogger(p2pLogger)
+	// TODO: (@cmwaters) re-enable p2p logger
+	// sw.SetLogger(p2pLogger)
 	sw.AddReactor("MEMPOOL", mempoolReactor)
 	sw.AddReactor("BLOCKCHAIN", bcReactor)
 	sw.AddReactor("CONSENSUS", consensusReactor)

@@ -10,18 +10,18 @@ import (
 )
 
 func TestBitArray(t *testing.T) {
-	sizes := []uint64{7, 8, 9, 63, 64, 65}
+	sizes := []int{7, 8, 9, 63, 64, 65}
 
 	for _, size := range sizes {
 		t.Run(fmt.Sprintf("size%d", size), func(t *testing.T) {
 			bitArray := cat.NewBitArray(size)
-			setValues := make(map[uint64]struct{})
-			for i := 0; i < int(size); i++ {
-				index := uint64(rand.Intn(int(size)))
+			setValues := make(map[int]struct{})
+			for i := 0; i < size; i++ {
+				index := rand.Intn(int(size))
 				bitArray.Set(index)
 				setValues[index] = struct{}{}
 			}
-			for i := uint64(0); i < size; i++ {
+			for i := 0; i < size; i++ {
 				if _, ok := setValues[i]; ok {
 					require.True(t, bitArray.Get(i))
 				} else {
@@ -34,4 +34,15 @@ func TestBitArray(t *testing.T) {
 			require.Equal(t, newArray, bitArray)
 		})
 	}
+}
+
+func TestBitArrayWrongSize(t *testing.T) {
+	_, err := cat.NewBitArrayFromBytes(9, []byte{0x01})
+	require.Error(t, err)
+
+	_, err = cat.NewBitArrayFromBytes(8, []byte{0x01, 0x01})
+	require.Error(t, err)
+
+	_, err = cat.NewBitArrayFromBytes(17, []byte{0x01, 0x01})
+	require.Error(t, err)
 }

@@ -79,12 +79,8 @@ func MakeVote(
 	return vote, nil
 }
 
-func makeData(txs []Tx, blobs []Blob) Data {
-	if blobs == nil {
-		blobs = []Blob{}
-	}
+func makeData(txs []Tx) Data {
 	return Data{
-		Txs:   txs,
-		Blobs: blobs,
+		Txs: txs,
 	}
 }

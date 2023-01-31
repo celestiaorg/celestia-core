@@ -4,6 +4,7 @@
 ipv6 = true
 initial_height = 1000
 initial_state = { initial01 = "a", initial02 = "b", initial03 = "c" }
+compact_blocks = true 
 
 [validators]
 validator01 = 100
@@ -58,7 +59,6 @@ retain_blocks = 3
 perturb = ["kill"]
 
 [node.validator04]
-mempool_version = "v1"
 persistent_peers = ["validator01"]
 database = "rocksdb"
 abci_protocol = "builtin"

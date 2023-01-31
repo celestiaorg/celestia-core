@@ -8,8 +8,25 @@ import "tendermint/types/types.proto";
 import "tendermint/types/evidence.proto";
 
 message Block {
-  Header                        header      = 1 [(gogoproto.nullable) = false];
-  Data                          data        = 2 [(gogoproto.nullable) = false];
-  tendermint.types.EvidenceList evidence    = 3 [(gogoproto.nullable) = false];
-  Commit                        last_commit = 4;
+  Header       header      = 1 [(gogoproto.nullable) = false];
+  Data         data        = 2 [(gogoproto.nullable) = false];
+  EvidenceList evidence    = 3 [(gogoproto.nullable) = false];
+  Commit       last_commit = 4;
+}
+
+// CompactBlock is an alternative representation of a block which replaces
+// the set of transactions with a matching ordered set of tags, deterministic
+// hashes of the content, that can be used with a mechanism to fetch and
+// reconstruct the full block.
+message CompactBlock {
+  Header       header       = 1 [(gogoproto.nullable) = false];
+  CompactData  compact_data = 2 [(gogoproto.nullable) = false];
+  EvidenceList evidence     = 3 [(gogoproto.nullable) = false];
+  Commit       last_commit  = 4;
+}
+
+message CompactData {
+  repeated bytes tx_tags     = 1;
+  uint64         square_size = 5;
+  bytes          hash        = 6;
 }

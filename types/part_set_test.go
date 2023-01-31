@@ -154,12 +154,8 @@ func TestParSetHeaderProtoBuf(t *testing.T) {
 	for _, tc := range testCases {
 		protoBlockID := tc.ps1.ToProto()
 
-		psh, err := PartSetHeaderFromProto(&protoBlockID)
-		if tc.expPass {
-			require.Equal(t, tc.ps1, psh, tc.msg)
-		} else {
-			require.Error(t, err, tc.msg)
-		}
+		psh := PartSetHeaderFromProto(protoBlockID)
+		require.Equal(t, tc.ps1, psh, tc.msg)
 	}
 }
 

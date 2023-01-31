@@ -24,7 +24,6 @@ func TestStoreSimple(t *testing.T) {
 	require.False(t, store.remove(key))
 	require.Zero(t, store.size())
 	require.Zero(t, store.totalBytes())
-	require.Empty(t, store.getAllKeys())
 	require.Empty(t, store.getAllTxs())
 
 	// add a tx
@@ -140,10 +139,6 @@ func TestStoreGetTxs(t *testing.T) {
 	txs := store.getAllTxs()
 	require.Equal(t, numTxs, len(txs))
 
-	// get txs by keys
-	keys := store.getAllKeys()
-	require.Equal(t, numTxs, len(keys))
-
 	// get txs below a certain priority
 	txs, bz := store.getTxsBelowPriority(int64(numTxs / 2))
 	require.Equal(t, numTxs/2, len(txs))
@@ -175,4 +170,22 @@ func TestStoreExpiredTxs(t *testing.T) {
 
 	store.purgeExpiredTxs(int64(0), time.Now().Add(time.Second))
 	require.Empty(t, store.getAllTxs())
+}
+
+func TestStoreCommitTxs(t *testing.T) {
+	store := newStore()
+	tx := types.Tx("tx1")
+	key := tx.Key()
+	wtx := newWrappedTx(tx, key, 1, 1, 1, "")
+
+	require.False(t, store.commit(key))
+	require.True(t, store.set(wtx))
+	require.True(t, store.has(key))
+	require.Nil(t, store.getCommitted(key))
+	require.True(t, store.commit(key))
+	require.False(t, store.has(key))
+	require.NotNil(t, store.getCommitted(key))
+	store.clearCommittedTxs()
+	require.Nil(t, store.getCommitted(key))
+	require.False(t, store.has(key))
 }

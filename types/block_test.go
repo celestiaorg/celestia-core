@@ -46,7 +46,7 @@ func TestBlockAddEvidence(t *testing.T) {
 	ev := NewMockDuplicateVoteEvidenceWithValidator(h, time.Now(), vals[0], "block-test-chain")
 	evList := []Evidence{ev}
 
-	block := MakeBlock(h, makeData(txs, nil), commit, evList)
+	block := MakeBlock(h, makeData(txs), commit, evList)
 	require.NotNil(t, block)
 	require.Equal(t, 1, len(block.Evidence.Evidence))
 	require.NotNil(t, block.EvidenceHash)
@@ -90,7 +90,7 @@ func TestBlockValidateBasic(t *testing.T) {
 		tc := tc
 		i := i
 		t.Run(tc.testName, func(t *testing.T) {
-			block := MakeBlock(h, makeData(txs, nil), commit, evList)
+			block := MakeBlock(h, makeData(txs), commit, evList)
 			block.ProposerAddress = valSet.GetProposer().Address
 			tc.malleateBlock(block)
 			err = block.ValidateBasic()
@@ -101,13 +101,13 @@ func TestBlockValidateBasic(t *testing.T) {
 
 func TestBlockHash(t *testing.T) {
 	assert.Nil(t, (*Block)(nil).Hash())
-	assert.Nil(t, MakeBlock(int64(3), makeData([]Tx{Tx("Hello World")}, nil), nil, nil).Hash())
+	assert.Nil(t, MakeBlock(int64(3), makeData([]Tx{Tx("Hello World")}), nil, nil).Hash())
 }
 
 func TestBlockMakePartSet(t *testing.T) {
 	assert.Nil(t, (*Block)(nil).MakePartSet(2))
 
-	partSet := MakeBlock(int64(3), makeData([]Tx{Tx("Hello World")}, nil), nil, nil).MakePartSet(1024)
+	partSet := MakeBlock(int64(3), makeData([]Tx{Tx("Hello World")}), nil, nil).MakePartSet(1024)
 	assert.NotNil(t, partSet)
 	assert.EqualValues(t, 1, partSet.Total())
 }
@@ -125,7 +125,7 @@ func TestBlockMakePartSetWithEvidence(t *testing.T) {
 	ev := NewMockDuplicateVoteEvidenceWithValidator(h, time.Now(), vals[0], "block-test-chain")
 	evList := []Evidence{ev}
 
-	partSet := MakeBlock(h, makeData([]Tx{Tx("Hello World")}, nil), commit, evList).MakePartSet(512)
+	partSet := MakeBlock(h, makeData([]Tx{Tx("Hello World")}), commit, evList).MakePartSet(512)
 	assert.NotNil(t, partSet)
 	assert.EqualValues(t, 4, partSet.Total())
 }
@@ -142,7 +142,7 @@ func TestBlockHashesTo(t *testing.T) {
 	ev := NewMockDuplicateVoteEvidenceWithValidator(h, time.Now(), vals[0], "block-test-chain")
 	evList := []Evidence{ev}
 
-	block := MakeBlock(h, makeData([]Tx{Tx("Hello World")}, nil), commit, evList)
+	block := MakeBlock(h, makeData([]Tx{Tx("Hello World")}), commit, evList)
 	block.ValidatorsHash = valSet.Hash()
 	assert.False(t, block.HashesTo([]byte{}))
 	assert.False(t, block.HashesTo([]byte("something else")))
@@ -150,7 +150,7 @@ func TestBlockHashesTo(t *testing.T) {
 }
 
 func TestBlockSize(t *testing.T) {
-	size := MakeBlock(int64(3), makeData([]Tx{Tx("Hello World")}, nil), nil, nil).Size()
+	size := MakeBlock(int64(3), makeData([]Tx{Tx("Hello World")}), nil, nil).Size()
 	if size <= 0 {
 		t.Fatal("Size of the block is zero or negative")
 	}
@@ -161,7 +161,7 @@ func TestBlockString(t *testing.T) {
 	assert.Equal(t, "nil-Block", (*Block)(nil).StringIndented(""))
 	assert.Equal(t, "nil-Block", (*Block)(nil).StringShort())
 
-	block := MakeBlock(int64(3), makeData([]Tx{Tx("Hello World")}, nil), nil, nil)
+	block := MakeBlock(int64(3), makeData([]Tx{Tx("Hello World")}), nil, nil)
 	assert.NotEqual(t, "nil-Block", block.String())
 	assert.NotEqual(t, "nil-Block", block.StringIndented(""))
 	assert.NotEqual(t, "nil-Block", block.StringShort())
@@ -619,16 +619,16 @@ func TestBlockIDValidateBasic(t *testing.T) {
 func TestBlockProtoBuf(t *testing.T) {
 	h := tmrand.Int63()
 	c1 := randCommit(time.Now())
-	b1 := MakeBlock(h, makeData([]Tx{Tx([]byte{1})}, nil), &Commit{Signatures: []CommitSig{}}, []Evidence{})
+	b1 := MakeBlock(h, makeData([]Tx{Tx([]byte{1})}), &Commit{Signatures: []CommitSig{}}, []Evidence{})
 	b1.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
 
 	evidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
 	evi := NewMockDuplicateVoteEvidence(h, evidenceTime, "block-test-chain")
-	b2 := MakeBlock(h, makeData([]Tx{Tx([]byte{1})}, nil), c1, []Evidence{evi})
+	b2 := MakeBlock(h, makeData([]Tx{Tx([]byte{1})}), c1, []Evidence{evi})
 	b2.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
 	b2.Evidence.ByteSize()
 
-	b3 := MakeBlock(h, makeData([]Tx{}, nil), c1, []Evidence{})
+	b3 := MakeBlock(h, makeData([]Tx{}), c1, []Evidence{})
 	b3.ProposerAddress = tmrand.Bytes(crypto.AddressSize)
 	testCases := []struct {
 		msg      string
@@ -664,9 +664,8 @@ func TestBlockProtoBuf(t *testing.T) {
 
 func TestBlockDataProtobuf(t *testing.T) {
 	type test struct {
-		name  string
-		txs   Txs
-		blobs []Blob
+		name string
+		txs  Txs
 	}
 	tests := []test{
 		{
@@ -675,21 +674,11 @@ func TestBlockDataProtobuf(t *testing.T) {
 		{
 			name: "everything",
 			txs:  Txs([]Tx{stdbytes.Repeat([]byte{1}, 200)}),
-			blobs: []Blob{
-				{
-					NamespaceID: []byte{8, 7, 6, 5, 4, 3, 2, 1},
-					Data:        stdbytes.Repeat([]byte{3, 2, 1, 0}, 100),
-				},
-				{
-					NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
-					Data:        stdbytes.Repeat([]byte{1, 2, 3}, 100),
-				},
-			},
 		},
 	}
 
 	for _, tt := range tests {
-		d := Data{Txs: tt.txs, Blobs: tt.blobs}
+		d := Data{Txs: tt.txs}
 		firstHash := d.Hash()
 		pd := d.ToProto()
 		d2, err := DataFromProto(&pd)
@@ -929,89 +918,42 @@ func TestDataProto(t *testing.T) {
 			name: "empty data",
 			proto: &tmproto.Data{
 				Txs:        [][]uint8(nil),
-				Blobs:      []tmproto.Blob{},
 				SquareSize: 0x0,
 				Hash:       []uint8(nil),
 			},
 			data: Data{
 				Txs:        []Tx{},
-				Blobs:      []Blob{},
 				SquareSize: 0,
 			},
 		},
 		{
 			name: "one blob",
 			proto: &tmproto.Data{
-				Txs: [][]uint8(nil),
-				Blobs: []tmproto.Blob{
-					{
-						NamespaceId:  []uint8{1, 2, 3, 4, 5, 6, 7, 8},
-						Data:         []uint8{1},
-						ShareVersion: 0x0,
-					},
-				},
+				Txs:        [][]uint8(nil),
 				SquareSize: 0x0,
 				Hash:       []uint8(nil),
 			},
 			data: Data{
-				Txs: []Tx{},
-				Blobs: []Blob{
-					{
-						NamespaceID:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
-						Data:         []byte{1},
-						ShareVersion: 0,
-					},
-				},
+				Txs:        []Tx{},
 				SquareSize: 0,
 			},
 		},
 		{
 			name: "two blobs",
 			proto: &tmproto.Data{
-				Txs: [][]uint8(nil),
-				Blobs: []tmproto.Blob{
-					{
-						NamespaceId:  []uint8{1, 1, 1, 1, 1, 1, 1, 1},
-						Data:         []uint8{1},
-						ShareVersion: 0x1,
-					},
-					{
-						NamespaceId:  []uint8{2, 2, 2, 2, 2, 2, 2, 2},
-						Data:         []uint8{2},
-						ShareVersion: 0x2,
-					},
-				},
+				Txs:        [][]uint8(nil),
 				SquareSize: 0x0,
 				Hash:       []uint8(nil),
 			},
 			data: Data{
-				Txs: []Tx{},
-				Blobs: []Blob{
-					{
-						NamespaceID:  []byte{1, 1, 1, 1, 1, 1, 1, 1},
-						Data:         []byte{1},
-						ShareVersion: 1,
-					},
-					{
-						NamespaceID:  []byte{2, 2, 2, 2, 2, 2, 2, 2},
-						Data:         []byte{2},
-						ShareVersion: 2,
-					},
-				},
+				Txs:        []Tx{},
 				SquareSize: 0,
 			},
 		},
 		{
 			name: "one blob with too large of a share version",
 			proto: &tmproto.Data{
-				Txs: [][]uint8(nil),
-				Blobs: []tmproto.Blob{
-					{
-						NamespaceId:  []uint8{1, 2, 3, 4, 5, 6, 7, 8},
-						Data:         []uint8{1},
-						ShareVersion: 257, // does not fit in a uint8
-					},
-				},
+				Txs:        [][]uint8(nil),
 				SquareSize: 0x0,
 				Hash:       []uint8(nil),
 			},

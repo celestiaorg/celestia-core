@@ -9,8 +9,6 @@ message Txs {
 
 message SeenTx {
   bytes tx_key = 1;
-  // the nodeID of the peer that sent the transaction
-  optional string from = 2;
 }
 
 message WantTx {
@@ -18,15 +16,15 @@ message WantTx {
 }
 
 message HasBlockTxs {
-  int64 height = 1;
-  int32 round = 2;
-  bytes has_bit_array = 3;
+  bytes block_id      = 1;
+  bytes has_bit_array = 2;
 }
 
 message Message {
   oneof sum {
-    Txs    txs     = 1;
-    SeenTx seen_tx = 2;
-    WantTx want_tx = 3;
+    Txs         txs           = 1;
+    SeenTx      seen_tx       = 2;
+    WantTx      want_tx       = 3;
+    HasBlockTxs has_block_txs = 4;
   }
 }

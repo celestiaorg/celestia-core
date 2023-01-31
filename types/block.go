@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -1014,9 +1013,6 @@ type Data struct {
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
 
-	// The blobs included in this block.
-	Blobs []Blob `json:"blobs"`
-
 	// SquareSize is the size of the square after splitting all the block data
 	// into shares. The erasure data is discarded after generation, and keeping this
 	// value avoids unnecessarily regenerating all of the shares when returning
@@ -1133,17 +1129,7 @@ func (data *Data) ToProto() tmproto.Data {
 		tp.Txs = txBzs
 	}
 
-	protoBlobs := make([]tmproto.Blob, len(data.Blobs))
-	for i, b := range data.Blobs {
-		protoBlobs[i] = tmproto.Blob{
-			NamespaceId:  b.NamespaceID,
-			Data:         b.Data,
-			ShareVersion: uint32(b.ShareVersion),
-		}
-	}
-	tp.Blobs = protoBlobs
 	tp.SquareSize = data.SquareSize
-
 	tp.Hash = data.hash
 
 	return *tp
@@ -1167,14 +1153,6 @@ func DataFromProto(dp *tmproto.Data) (Data, error) {
 		data.Txs = Txs{}
 	}
 
-	blobs := make([]Blob, len(dp.Blobs))
-	for i, m := range dp.Blobs {
-		if m.ShareVersion > math.MaxUint8 {
-			return Data{}, fmt.Errorf("share version %d is too large", m.ShareVersion)
-		}
-		blobs[i] = Blob{NamespaceID: m.NamespaceId, Data: m.Data, ShareVersion: uint8(m.ShareVersion)}
-	}
-	data.Blobs = blobs
 	data.SquareSize = dp.SquareSize
 	data.hash = dp.Hash
 
@@ -1280,6 +1258,10 @@ type BlockID struct {
 	PartSetHeader PartSetHeader    `json:"parts"`
 }
 
+func NilBlockID() BlockID {
+	return BlockID{}
+}
+
 // Equals returns true if the BlockID matches the given BlockID
 func (blockID BlockID) Equals(other BlockID) bool {
 	return bytes.Equal(blockID.Hash, other.Hash) &&
@@ -1352,12 +1334,7 @@ func BlockIDFromProto(bID *tmproto.BlockID) (*BlockID, error) {
 	}
 
 	blockID := new(BlockID)
-	ph, err := PartSetHeaderFromProto(&bID.PartSetHeader)
-	if err != nil {
-		return nil, err
-	}
-
-	blockID.PartSetHeader = *ph
+	blockID.PartSetHeader = PartSetHeaderFromProto(bID.PartSetHeader)
 	blockID.Hash = bID.Hash
 
 	return blockID, blockID.ValidateBasic()

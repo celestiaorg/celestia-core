@@ -23,44 +23,47 @@ var (
 // a so-called Proof-of-Lock (POL) round, as noted in the POLRound.
 // If POLRound >= 0, then BlockID corresponds to the block that is locked in POLRound.
 type Proposal struct {
-	Type      tmproto.SignedMsgType
-	Height    int64     `json:"height"`
-	Round     int32     `json:"round"`     // there can not be greater than 2_147_483_647 rounds
-	POLRound  int32     `json:"pol_round"` // -1 if null.
-	BlockID   BlockID   `json:"block_id"`
-	Timestamp time.Time `json:"timestamp"`
-	Signature []byte    `json:"signature"`
+	Type              tmproto.SignedMsgType
+	Height            int64         `json:"height"`
+	Round             int32         `json:"round"`     // there can not be greater than 2_147_483_647 rounds
+	POLRound          int32         `json:"pol_round"` // -1 if null.
+	BlockID           BlockID       `json:"block_id"`
+	Timestamp         time.Time     `json:"timestamp"`
+	Signature         []byte        `json:"signature"`
+	CompactBlockParts PartSetHeader `json:"compact_block_parts"`
 }
 
 // NewProposal returns a new Proposal.
 // If there is no POLRound, polRound should be -1.
 func NewProposal(height int64, round int32, polRound int32, blockID BlockID) *Proposal {
 	return &Proposal{
-		Type:      tmproto.ProposalType,
-		Height:    height,
-		Round:     round,
-		BlockID:   blockID,
-		POLRound:  polRound,
-		Timestamp: tmtime.Now(),
+		Type:              tmproto.ProposalType,
+		Height:            height,
+		Round:             round,
+		BlockID:           blockID,
+		POLRound:          polRound,
+		Timestamp:         tmtime.Now(),
+		CompactBlockParts: PartSetHeader{},
 	}
 }
 
-// NewCompactProposal returns a new Proposal of the compact type.
-// If there is no POLRound, polRound should be -1.
-func NewCompactProposal(height int64, round int32, polRound int32, blockID BlockID) *Proposal {
-	return &Proposal{
-		Type:      tmproto.CompactProposalType,
-		Height:    height,
-		Round:     round,
-		BlockID:   blockID,
-		POLRound:  polRound,
-		Timestamp: tmtime.Now(),
+// Compact returns a version of the Proposal with a part set header for
+// reading a compact block.
+func (p *Proposal) Compact(compactBlockParts PartSetHeader) *Proposal {
+	p.CompactBlockParts = compactBlockParts
+	return p
+}
+
+func (p *Proposal) IsCompact() bool {
+	if p == nil {
+		return false
 	}
+	return !p.CompactBlockParts.IsZero()
 }
 
 // ValidateBasic performs basic validation.
 func (p *Proposal) ValidateBasic() error {
-	if p.Type != tmproto.ProposalType && p.Type != tmproto.CompactProposalType {
+	if p.Type != tmproto.ProposalType {
 		return errors.New("invalid Type")
 	}
 	if p.Height < 0 {
@@ -78,6 +81,10 @@ func (p *Proposal) ValidateBasic() error {
 	// ValidateBasic above would pass even if the BlockID was empty:
 	if !p.BlockID.IsComplete() {
 		return fmt.Errorf("expected a complete, non-empty BlockID, got: %v", p.BlockID)
+	}
+
+	if err := p.CompactBlockParts.ValidateBasic(); err != nil {
+		return fmt.Errorf("wrong CompactBlockParts: %v", err)
 	}
 
 	// NOTE: Timestamp validation is subtle and handled elsewhere.
@@ -103,13 +110,19 @@ func (p *Proposal) ValidateBasic() error {
 //
 // See BlockID#String.
 func (p *Proposal) String() string {
-	return fmt.Sprintf("Proposal{%v/%v (%v, %v) %X @ %s}",
+	partSet := "F" + p.BlockID.PartSetHeader.String()
+	if p.IsCompact() {
+		partSet = "C" + p.CompactBlockParts.String()
+	}
+	return fmt.Sprintf("Proposal{%v/%v (%v, %v) %X @ %s - %s}",
 		p.Height,
 		p.Round,
 		p.BlockID,
 		p.POLRound,
 		tmbytes.Fingerprint(p.Signature),
-		CanonicalTime(p.Timestamp))
+		CanonicalTime(p.Timestamp),
+		partSet,
+	)
 }
 
 // ProposalSignBytes returns the proto-encoding of the canonicalized Proposal,
@@ -119,14 +132,25 @@ func (p *Proposal) String() string {
 // for backwards-compatibility with the Amino encoding, due to e.g. hardware
 // devices that rely on this encoding.
 //
+// The Proposal can be marshalled into two types: One with the compact block part set header
+// and one without. The one without ensures backwards compatibility with versions of the
+// software that don't support compact blocks
+//
 // See CanonicalizeProposal
 func ProposalSignBytes(chainID string, p *tmproto.Proposal) []byte {
-	pb := CanonicalizeProposal(chainID, p)
+	if p.CompactBlockParts.Total == 0 {
+		pb := CanonicalizeProposal(chainID, p)
+		bz, err := protoio.MarshalDelimited(&pb)
+		if err != nil {
+			panic(err)
+		}
+		return bz
+	}
+	pb := CanonicalizeCompactProposal(chainID, p)
 	bz, err := protoio.MarshalDelimited(&pb)
 	if err != nil {
 		panic(err)
 	}
-
 	return bz
 }
 
@@ -144,6 +168,9 @@ func (p *Proposal) ToProto() *tmproto.Proposal {
 	pb.PolRound = p.POLRound
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
+	if !p.CompactBlockParts.IsZero() {
+		pb.CompactBlockParts = p.CompactBlockParts.ToProto()
+	}
 
 	return pb
 }
@@ -169,6 +196,7 @@ func ProposalFromProto(pp *tmproto.Proposal) (*Proposal, error) {
 	p.POLRound = pp.PolRound
 	p.Timestamp = pp.Timestamp
 	p.Signature = pp.Signature
+	p.CompactBlockParts = PartSetHeaderFromProto(pp.CompactBlockParts)
 
 	return p, p.ValidateBasic()
 }

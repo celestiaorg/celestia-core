@@ -173,6 +173,14 @@ func (txmp *TxPool) Get(txKey types.TxKey) (types.Tx, bool) {
 	return types.Tx{}, false
 }
 
+func (txmp *TxPool) GetCommitted(txKey types.TxKey) (types.Tx, bool) {
+	wtx := txmp.store.getCommitted(txKey)
+	if wtx != nil {
+		return wtx.tx, true
+	}
+	return types.Tx{}, false
+}
+
 func (txmp *TxPool) IsRejectedTx(txKey types.TxKey) bool {
 	return txmp.rejectedTxCache.Has(txKey)
 }
@@ -364,10 +372,9 @@ func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
 	_ = txmp.evictedTxs.Pop(txKey)
 	_ = txmp.store.remove(txKey)
 	txmp.seenByPeersSet.RemoveKey(txKey)
-	txmp.metrics.EvictedTxs.Add(1)
 	txmp.broadcastMtx.Lock()
 	defer txmp.broadcastMtx.Unlock()
-	txmp.txsToBeBroadcast = make(map[types.TxKey]struct{})
+	delete(txmp.txsToBeBroadcast, txKey)
 }
 
 // Flush purges the contents of the mempool and the cache, leaving both empty.
@@ -490,11 +497,16 @@ func (txmp *TxPool) Update(
 	}
 	txmp.updateMtx.Unlock()
 
-	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
+	// permanently remove all committed transactions from the height before
+	txmp.store.clearCommittedTxs()
+
+	// mark all transactions in the block as committed
 	for _, tx := range blockTxs {
-		// Regardless of success, remove the transaction from the mempool.
-		txmp.removeTxByKey(tx.Key())
+		key := tx.Key()
+		txmp.store.commit(key)
+		txmp.removeTxByKey(key)
 	}
+	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
 
 	txmp.purgeExpiredTxs(blockHeight)
 

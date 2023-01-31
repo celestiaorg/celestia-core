@@ -9,15 +9,17 @@ import (
 
 // simple, thread-safe in memory store for transactions
 type store struct {
-	mtx   sync.RWMutex
-	bytes int64
-	txs   map[types.TxKey]*wrappedTx
+	mtx                 sync.RWMutex
+	bytes               int64
+	txs                 map[types.TxKey]*wrappedTx
+	committedTxs        map[types.TxKey]*wrappedTx
 }
 
 func newStore() *store {
 	return &store{
-		bytes: 0,
-		txs:   make(map[types.TxKey]*wrappedTx),
+		bytes:        0,
+		txs:          make(map[types.TxKey]*wrappedTx),
+		committedTxs: make(map[types.TxKey]*wrappedTx),
 	}
 }
 
@@ -46,6 +48,30 @@ func (s *store) has(txKey types.TxKey) bool {
 	defer s.mtx.RUnlock()
 	_, has := s.txs[txKey]
 	return has
+}
+
+func (s *store) getCommitted(txKey types.TxKey) *wrappedTx {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	return s.committedTxs[txKey]
+}
+
+func (s *store) commit(txKey types.TxKey) bool {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	wtx, has := s.txs[txKey]
+	if !has {
+		return false
+	}
+	s.committedTxs[txKey] = wtx
+	delete(s.txs, txKey)
+	return true
+}
+
+func (s *store) clearCommittedTxs() {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.committedTxs = make(map[types.TxKey]*wrappedTx)
 }
 
 func (s *store) remove(txKey types.TxKey) bool {
@@ -96,28 +122,20 @@ func (s *store) totalBytes() int64 {
 	return s.bytes
 }
 
-func (s *store) getAllKeys() []types.TxKey {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-	keys := make([]types.TxKey, len(s.txs))
-	idx := 0
-	for key := range s.txs {
-		keys[idx] = key
-		idx++
-	}
-	return keys
-}
-
 func (s *store) getAllTxs() []*wrappedTx {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 	txs := make([]*wrappedTx, len(s.txs))
 	idx := 0
 	for _, tx := range s.txs {
+		// don't get txs already committed
+		if _, ok := s.committedTxs[tx.key]; ok {
+			continue
+		}
 		txs[idx] = tx
 		idx++
 	}
-	return txs
+	return txs[:idx]
 }
 
 func (s *store) getTxsBelowPriority(priority int64) ([]*wrappedTx, int64) {
@@ -126,6 +144,10 @@ func (s *store) getTxsBelowPriority(priority int64) ([]*wrappedTx, int64) {
 	txs := make([]*wrappedTx, 0, len(s.txs))
 	bytes := int64(0)
 	for _, tx := range s.txs {
+		// don't get txs already committed
+		if _, ok := s.committedTxs[tx.key]; ok {
+			continue
+		}
 		if tx.priority < priority {
 			txs = append(txs, tx)
 			bytes += tx.size()
@@ -155,4 +177,5 @@ func (s *store) reset() {
 	defer s.mtx.Unlock()
 	s.bytes = 0
 	s.txs = make(map[types.TxKey]*wrappedTx)
+	s.committedTxs = make(map[types.TxKey]*wrappedTx)
 }

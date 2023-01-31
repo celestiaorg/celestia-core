@@ -569,7 +569,28 @@ OUTER_LOOP:
 		prs := ps.GetRoundState()
 
 		// Send proposal Block parts?
-		if rs.ProposalBlockParts.HasHeader(prs.ProposalBlockPartSetHeader) {
+		if rs.ProposalCompactBlockParts.HasHeader(prs.ProposalBlockPartSetHeader) {
+			if index, ok := rs.ProposalCompactBlockParts.BitArray().Sub(prs.ProposalBlockParts.Copy()).PickRandom(); ok {
+				part := rs.ProposalCompactBlockParts.GetPart(index)
+				parts, err := part.ToProto()
+				if err != nil {
+					panic(err)
+				}
+				logger.Debug("Sending compact block part", "height", prs.Height, "round", prs.Round)
+				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					ChannelID: DataChannel,
+					Message: &tmcons.BlockPart{
+						Height:      rs.Height, // This tells peer that this part applies to us.
+						Round:       rs.Round,  // This tells peer that this part applies to us.
+						Part:        *parts,
+						CompactForm: true,
+					},
+				}, logger) {
+					ps.SetHasProposalBlockPart(prs.Height, prs.Round, index)
+				}
+				continue OUTER_LOOP
+			}
+		} else if rs.ProposalBlockParts.HasHeader(prs.ProposalBlockPartSetHeader) {
 			if index, ok := rs.ProposalBlockParts.BitArray().Sub(prs.ProposalBlockParts.Copy()).PickRandom(); ok {
 				part := rs.ProposalBlockParts.GetPart(index)
 				parts, err := part.ToProto()
@@ -580,9 +601,10 @@ OUTER_LOOP:
 				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 					ChannelID: DataChannel,
 					Message: &tmcons.BlockPart{
-						Height: rs.Height, // This tells peer that this part applies to us.
-						Round:  rs.Round,  // This tells peer that this part applies to us.
-						Part:   *parts,
+						Height:      rs.Height, // This tells peer that this part applies to us.
+						Round:       rs.Round,  // This tells peer that this part applies to us.
+						Part:        *parts,
+						CompactForm: false,
 					},
 				}, logger) {
 					ps.SetHasProposalBlockPart(prs.Height, prs.Round, index)
@@ -630,7 +652,7 @@ OUTER_LOOP:
 		if rs.Proposal != nil && !prs.Proposal {
 			// Proposal: share the proposal metadata with peer.
 			{
-				logger.Debug("Sending proposal", "height", prs.Height, "round", prs.Round)
+				logger.Info("Sending proposal", "height", prs.Height, "round", prs.Round)
 				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 					ChannelID: DataChannel,
 					Message:   &tmcons.Proposal{Proposal: *rs.Proposal.ToProto()},
@@ -1113,8 +1135,13 @@ func (ps *PeerState) SetHasProposal(proposal *types.Proposal) {
 		return
 	}
 
-	ps.PRS.ProposalBlockPartSetHeader = proposal.BlockID.PartSetHeader
-	ps.PRS.ProposalBlockParts = bits.NewBitArray(int(proposal.BlockID.PartSetHeader.Total))
+	if proposal.IsCompact() {
+		ps.PRS.ProposalBlockPartSetHeader = proposal.CompactBlockParts
+		ps.PRS.ProposalBlockParts = bits.NewBitArray(int(proposal.CompactBlockParts.Total))
+	} else {
+		ps.PRS.ProposalBlockPartSetHeader = proposal.BlockID.PartSetHeader
+		ps.PRS.ProposalBlockParts = bits.NewBitArray(int(proposal.BlockID.PartSetHeader.Total))
+	}
 	ps.PRS.ProposalPOLRound = proposal.POLRound
 	ps.PRS.ProposalPOL = nil // Nil until ProposalPOLMessage received.
 }
@@ -1676,9 +1703,10 @@ func (m *ProposalPOLMessage) String() string {
 
 // BlockPartMessage is sent when gossipping a piece of the proposed block.
 type BlockPartMessage struct {
-	Height int64
-	Round  int32
-	Part   *types.Part
+	Height      int64
+	Round       int32
+	Part        *types.Part
+	CompactForm bool
 }
 
 // ValidateBasic performs basic validation.
@@ -1697,6 +1725,9 @@ func (m *BlockPartMessage) ValidateBasic() error {
 
 // String returns a string representation.
 func (m *BlockPartMessage) String() string {
+	if m.CompactForm {
+		return fmt.Sprintf("[CompactBlockPart H:%v R:%v P:%v]", m.Height, m.Round, m.Part)
+	}
 	return fmt.Sprintf("[BlockPart H:%v R:%v P:%v]", m.Height, m.Round, m.Part)
 }
 

@@ -80,7 +80,7 @@ func TestValidateBlockHeader(t *testing.T) {
 			Invalid blocks don't pass
 		*/
 		for _, tc := range testCases {
-			block, _ := state.MakeBlock(height, factory.MakeData(makeTxs(height), nil), lastCommit, nil, proposerAddr)
+			block := state.MakeBlock(height, factory.MakeData(makeTxs(height)), lastCommit, nil, proposerAddr)
 			tc.malleateBlock(block)
 			err := blockExec.ValidateBlock(state, block)
 			require.Error(t, err, tc.name)
@@ -95,9 +95,9 @@ func TestValidateBlockHeader(t *testing.T) {
 	}
 
 	nextHeight := validationTestsStopHeight
-	block, _ := state.MakeBlock(
+	block := state.MakeBlock(
 		nextHeight,
-		factory.MakeData(factory.MakeTenTxs(nextHeight), nil),
+		factory.MakeData(factory.MakeTenTxs(nextHeight)),
 		lastCommit,
 		nil,
 		state.Validators.GetProposer().Address,
@@ -150,9 +150,9 @@ func TestValidateBlockCommit(t *testing.T) {
 				state.LastBlockID,
 				[]types.CommitSig{wrongHeightVote.CommitSig()},
 			)
-			block, _ := state.MakeBlock(
+			block := state.MakeBlock(
 				height,
-				factory.MakeData(factory.MakeTenTxs(height), nil),
+				factory.MakeData(factory.MakeTenTxs(height)),
 				wrongHeightCommit,
 				nil,
 				proposerAddr,
@@ -164,9 +164,9 @@ func TestValidateBlockCommit(t *testing.T) {
 			/*
 				#2589: test len(block.LastCommit.Signatures) == state.LastValidators.Size()
 			*/
-			block, _ = state.MakeBlock(
+			block = state.MakeBlock(
 				height,
-				factory.MakeData(factory.MakeTenTxs(height), nil),
+				factory.MakeData(factory.MakeTenTxs(height)),
 				wrongSigsCommit,
 				nil,
 				proposerAddr,
@@ -280,9 +280,9 @@ func TestValidateBlockEvidence(t *testing.T) {
 				evidence = append(evidence, newEv)
 				currentBytes += int64(len(newEv.Bytes()))
 			}
-			block, _ := state.MakeBlock(
+			block := state.MakeBlock(
 				height,
-				factory.MakeData(factory.MakeTenTxs(height), nil),
+				factory.MakeData(factory.MakeTenTxs(height)),
 				lastCommit,
 				evidence,
 				proposerAddr,

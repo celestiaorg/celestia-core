@@ -63,6 +63,9 @@ func (key TxKey) String() string {
 }
 
 func TxKeyFromBytes(bytes []byte) (TxKey, error) {
+	if bytes == nil {
+		return TxKey{}, errors.New("tx key has nil bytes")
+	}
 	if len(bytes) != TxKeySize {
 		return TxKey{}, fmt.Errorf("incorrect tx key size. Expected %d bytes, got %d", TxKeySize, len(bytes))
 	}

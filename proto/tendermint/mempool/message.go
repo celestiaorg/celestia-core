@@ -11,6 +11,7 @@ var (
 	_ p2p.Wrapper   = &Txs{}
 	_ p2p.Wrapper   = &SeenTx{}
 	_ p2p.Wrapper   = &WantTx{}
+	_ p2p.Wrapper   = &HasBlockTxs{}
 	_ p2p.Unwrapper = &Message{}
 )
 
@@ -35,6 +36,13 @@ func (m *WantTx) Wrap() proto.Message {
 	return mm
 }
 
+// Wrap implements the p2p Wrapper interface and wraps a mempool want tx message.
+func (m *HasBlockTxs) Wrap() proto.Message {
+	mm := &Message{}
+	mm.Sum = &Message_HasBlockTxs{HasBlockTxs: m}
+	return mm
+}
+
 // Unwrap implements the p2p Wrapper interface and unwraps a wrapped mempool
 // message.
 func (m *Message) Unwrap() (proto.Message, error) {
@@ -47,6 +55,9 @@ func (m *Message) Unwrap() (proto.Message, error) {
 
 	case *Message_WantTx:
 		return m.GetWantTx(), nil
+
+	case *Message_HasBlockTxs:
+		return m.GetHasBlockTxs(), nil
 
 	default:
 		return nil, fmt.Errorf("unknown message: %T", msg)

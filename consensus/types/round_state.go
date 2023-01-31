@@ -71,18 +71,20 @@ type RoundState struct {
 	StartTime time.Time     `json:"start_time"`
 
 	// Subjective time when +2/3 precommits for Block at Round were found
-	CommitTime         time.Time           `json:"commit_time"`
-	Validators         *types.ValidatorSet `json:"validators"`
-	Proposal           *types.Proposal     `json:"proposal"`
-	ProposalBlock      *types.Block        `json:"proposal_block"`
-	ProposalBlockParts *types.PartSet      `json:"proposal_block_parts"`
-	LockedRound        int32               `json:"locked_round"`
-	LockedBlock        *types.Block        `json:"locked_block"`
-	LockedBlockParts   *types.PartSet      `json:"locked_block_parts"`
+	CommitTime                time.Time           `json:"commit_time"`
+	Validators                *types.ValidatorSet `json:"validators"`
+	Proposal                  *types.Proposal     `json:"proposal"`
+	ProposalBlock             *types.Block        `json:"proposal_block"`
+	ProposalBlockParts        *types.PartSet      `json:"proposal_block_parts"`
+	ProposalCompactBlockParts *types.PartSet      `json:"proposal_compact_block_parts"`
+	LockedRound               int32               `json:"locked_round"`
+	LockedBlock               *types.Block        `json:"locked_block"`
+	LockedBlockParts          *types.PartSet      `json:"locked_block_parts"`
 
 	// Last known round with POL for non-nil valid block.
-	TwoThirdPrevoteRound int32        `json:"valid_round"`
-	TwoThirdPrevoteBlock *types.Block `json:"valid_block"` // Last known block of POL mentioned above.
+	TwoThirdPrevoteRound   int32          `json:"valid_round"`
+	TwoThirdPrevoteBlock   *types.Block   `json:"valid_block"` // Last known block of POL mentioned above.
+	TwoThirdPrevoteBlockID *types.BlockID `json:"valid_block_id"`
 
 	// Last known block parts of POL mentioned above.
 	TwoThirdPrevoteBlockParts *types.PartSet      `json:"valid_block_parts"`

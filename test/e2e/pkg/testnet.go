@@ -63,6 +63,7 @@ type Testnet struct {
 	ABCIProtocol           string
 	MaxInboundConnections  int
 	MaxOutboundConnections int
+	CompactBlocks          bool
 }
 
 // Node represents a Tendermint node in a testnet.

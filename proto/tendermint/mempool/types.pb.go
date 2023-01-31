@@ -68,10 +68,6 @@ func (m *Txs) GetTxs() [][]byte {
 
 type SeenTx struct {
 	TxKey []byte `protobuf:"bytes,1,opt,name=tx_key,json=txKey,proto3" json:"tx_key,omitempty"`
-	// Types that are valid to be assigned to XFrom:
-	//
-	//	*SeenTx_From
-	XFrom isSeenTx_XFrom `protobuf_oneof:"_from"`
 }
 
 func (m *SeenTx) Reset()         { *m = SeenTx{} }
@@ -107,44 +103,11 @@ func (m *SeenTx) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_SeenTx proto.InternalMessageInfo
 
-type isSeenTx_XFrom interface {
-	isSeenTx_XFrom()
-	MarshalTo([]byte) (int, error)
-	Size() int
-}
-
-type SeenTx_From struct {
-	From string `protobuf:"bytes,2,opt,name=from,proto3,oneof" json:"from,omitempty"`
-}
-
-func (*SeenTx_From) isSeenTx_XFrom() {}
-
-func (m *SeenTx) GetXFrom() isSeenTx_XFrom {
-	if m != nil {
-		return m.XFrom
-	}
-	return nil
-}
-
 func (m *SeenTx) GetTxKey() []byte {
 	if m != nil {
 		return m.TxKey
 	}
 	return nil
-}
-
-func (m *SeenTx) GetFrom() string {
-	if x, ok := m.GetXFrom().(*SeenTx_From); ok {
-		return x.From
-	}
-	return ""
-}
-
-// XXX_OneofWrappers is for the internal use of the proto package.
-func (*SeenTx) XXX_OneofWrappers() []interface{} {
-	return []interface{}{
-		(*SeenTx_From)(nil),
-	}
 }
 
 type WantTx struct {
@@ -192,9 +155,8 @@ func (m *WantTx) GetTxKey() []byte {
 }
 
 type HasBlockTxs struct {
-	Height      int64  `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
-	Round       int32  `protobuf:"varint,2,opt,name=round,proto3" json:"round,omitempty"`
-	HasBitArray []byte `protobuf:"bytes,3,opt,name=has_bit_array,json=hasBitArray,proto3" json:"has_bit_array,omitempty"`
+	BlockId     []byte `protobuf:"bytes,1,opt,name=block_id,json=blockId,proto3" json:"block_id,omitempty"`
+	HasBitArray []byte `protobuf:"bytes,2,opt,name=has_bit_array,json=hasBitArray,proto3" json:"has_bit_array,omitempty"`
 }
 
 func (m *HasBlockTxs) Reset()         { *m = HasBlockTxs{} }
@@ -230,18 +192,11 @@ func (m *HasBlockTxs) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_HasBlockTxs proto.InternalMessageInfo
 
-func (m *HasBlockTxs) GetHeight() int64 {
+func (m *HasBlockTxs) GetBlockId() []byte {
 	if m != nil {
-		return m.Height
+		return m.BlockId
 	}
-	return 0
-}
-
-func (m *HasBlockTxs) GetRound() int32 {
-	if m != nil {
-		return m.Round
-	}
-	return 0
+	return nil
 }
 
 func (m *HasBlockTxs) GetHasBitArray() []byte {
@@ -257,6 +212,7 @@ type Message struct {
 	//	*Message_Txs
 	//	*Message_SeenTx
 	//	*Message_WantTx
+	//	*Message_HasBlockTxs
 	Sum isMessage_Sum `protobuf_oneof:"sum"`
 }
 
@@ -308,10 +264,14 @@ type Message_SeenTx struct {
 type Message_WantTx struct {
 	WantTx *WantTx `protobuf:"bytes,3,opt,name=want_tx,json=wantTx,proto3,oneof" json:"want_tx,omitempty"`
 }
+type Message_HasBlockTxs struct {
+	HasBlockTxs *HasBlockTxs `protobuf:"bytes,4,opt,name=has_block_txs,json=hasBlockTxs,proto3,oneof" json:"has_block_txs,omitempty"`
+}
 
-func (*Message_Txs) isMessage_Sum()    {}
-func (*Message_SeenTx) isMessage_Sum() {}
-func (*Message_WantTx) isMessage_Sum() {}
+func (*Message_Txs) isMessage_Sum()         {}
+func (*Message_SeenTx) isMessage_Sum()      {}
+func (*Message_WantTx) isMessage_Sum()      {}
+func (*Message_HasBlockTxs) isMessage_Sum() {}
 
 func (m *Message) GetSum() isMessage_Sum {
 	if m != nil {
@@ -341,12 +301,20 @@ func (m *Message) GetWantTx() *WantTx {
 	return nil
 }
 
+func (m *Message) GetHasBlockTxs() *HasBlockTxs {
+	if x, ok := m.GetSum().(*Message_HasBlockTxs); ok {
+		return x.HasBlockTxs
+	}
+	return nil
+}
+
 // XXX_OneofWrappers is for the internal use of the proto package.
 func (*Message) XXX_OneofWrappers() []interface{} {
 	return []interface{}{
 		(*Message_Txs)(nil),
 		(*Message_SeenTx)(nil),
 		(*Message_WantTx)(nil),
+		(*Message_HasBlockTxs)(nil),
 	}
 }
 
@@ -361,30 +329,29 @@ func init() {
 func init() { proto.RegisterFile("tendermint/mempool/types.proto", fileDescriptor_2af51926fdbcbc05) }
 
 var fileDescriptor_2af51926fdbcbc05 = []byte{
-	// 361 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x52, 0xc1, 0x4a, 0xc3, 0x40,
-	0x10, 0xcd, 0x1a, 0x93, 0xe0, 0xa4, 0x82, 0x2c, 0x6a, 0x83, 0x87, 0x58, 0x72, 0x0a, 0x08, 0x09,
-	0x54, 0x7a, 0xf0, 0xd8, 0x9c, 0x02, 0xe2, 0x25, 0x2d, 0x08, 0x5e, 0xc2, 0xb6, 0x5d, 0x9b, 0xd0,
-	0x26, 0x5b, 0xb2, 0x5b, 0x9a, 0xfc, 0x81, 0x47, 0xff, 0xc3, 0x1f, 0xf1, 0xd8, 0xa3, 0x47, 0x69,
-	0x7f, 0x44, 0xb2, 0xa9, 0x58, 0xa8, 0xbd, 0xbd, 0xb7, 0x6f, 0xdf, 0xcc, 0xce, 0x9b, 0x05, 0x5b,
-	0xd0, 0x7c, 0x42, 0x8b, 0x2c, 0xcd, 0x85, 0x9f, 0xd1, 0x6c, 0xc1, 0xd8, 0xdc, 0x17, 0xd5, 0x82,
-	0x72, 0x6f, 0x51, 0x30, 0xc1, 0x30, 0xfe, 0xd3, 0xbd, 0x9d, 0xee, 0xb4, 0x41, 0x1d, 0x96, 0x1c,
-	0x5f, 0x80, 0x2a, 0x4a, 0x6e, 0xa1, 0x8e, 0xea, 0xb6, 0xa2, 0x1a, 0x3a, 0x7d, 0xd0, 0x07, 0x94,
-	0xe6, 0xc3, 0x12, 0x5f, 0x81, 0x2e, 0xca, 0x78, 0x46, 0x2b, 0x0b, 0x75, 0x90, 0xdb, 0x8a, 0x34,
-	0x51, 0x3e, 0xd2, 0x0a, 0xb7, 0xe1, 0xf4, 0xb5, 0x60, 0x99, 0x75, 0xd2, 0x41, 0xee, 0x59, 0xa8,
-	0x44, 0x92, 0xbd, 0x21, 0x14, 0x18, 0xa0, 0xc5, 0x35, 0x76, 0x6e, 0x41, 0x7f, 0x26, 0xb9, 0x38,
-	0x5a, 0xc2, 0x89, 0xc1, 0x0c, 0x09, 0x0f, 0xe6, 0x6c, 0x3c, 0xab, 0x1f, 0x71, 0x0d, 0x7a, 0x42,
-	0xd3, 0x69, 0x22, 0xe4, 0x2d, 0x35, 0xda, 0x31, 0x7c, 0x09, 0x5a, 0xc1, 0x96, 0xf9, 0x44, 0xb6,
-	0xd2, 0xa2, 0x86, 0x60, 0x07, 0xce, 0x13, 0xc2, 0xe3, 0x51, 0x2a, 0x62, 0x52, 0x14, 0xa4, 0xb2,
-	0x54, 0x59, 0xda, 0x4c, 0x08, 0x0f, 0x52, 0xd1, 0xaf, 0x8f, 0x9c, 0x0f, 0x04, 0xc6, 0x13, 0xe5,
-	0x9c, 0x4c, 0x29, 0xbe, 0xfb, 0x1d, 0x11, 0xb9, 0x66, 0xb7, 0xed, 0x1d, 0x66, 0xe1, 0x0d, 0x4b,
-	0x1e, 0x2a, 0x72, 0x7a, 0xdc, 0x03, 0x83, 0x53, 0x9a, 0xc7, 0xa2, 0x94, 0x4d, 0xcd, 0xee, 0xcd,
-	0x7f, 0x86, 0x26, 0xa0, 0x50, 0x89, 0x74, 0xde, 0x44, 0xd5, 0x03, 0x63, 0x45, 0x72, 0x51, 0xdb,
-	0xd4, 0xe3, 0xb6, 0x26, 0x94, 0xda, 0xb6, 0x92, 0x28, 0xd0, 0x40, 0xe5, 0xcb, 0x2c, 0x18, 0x7c,
-	0x6e, 0x6c, 0xb4, 0xde, 0xd8, 0xe8, 0x7b, 0x63, 0xa3, 0xf7, 0xad, 0xad, 0xac, 0xb7, 0xb6, 0xf2,
-	0xb5, 0xb5, 0x95, 0x97, 0x87, 0x69, 0x2a, 0x92, 0xe5, 0xc8, 0x1b, 0xb3, 0xcc, 0xdf, 0x5b, 0xf2,
-	0x1e, 0x94, 0x1b, 0xf6, 0x0f, 0x3f, 0xc0, 0x48, 0x97, 0xca, 0xfd, 0x4f, 0x00, 0x00, 0x00, 0xff,
-	0xff, 0x6e, 0xfa, 0x1e, 0x2d, 0x1d, 0x02, 0x00, 0x00,
+	// 349 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x92, 0x41, 0x6b, 0xea, 0x40,
+	0x10, 0xc7, 0xb3, 0x2f, 0xcf, 0xe4, 0xb1, 0xf1, 0xc1, 0x63, 0xe1, 0xa1, 0xed, 0x61, 0x95, 0x9c,
+	0x84, 0x42, 0x02, 0x16, 0x0f, 0x3d, 0x36, 0x50, 0x48, 0x69, 0x7b, 0x51, 0xa1, 0xd0, 0x4b, 0xd8,
+	0xe8, 0xa2, 0x41, 0x93, 0x48, 0x76, 0xc4, 0xcd, 0xb7, 0xe8, 0xc7, 0xea, 0xd1, 0x63, 0x8f, 0x45,
+	0xbf, 0x41, 0x3f, 0x41, 0xd9, 0x4d, 0x4a, 0x05, 0xf5, 0x36, 0xb3, 0xff, 0xf9, 0xef, 0xce, 0x6f,
+	0x66, 0x31, 0x05, 0x9e, 0x4d, 0x79, 0x91, 0x26, 0x19, 0xf8, 0x29, 0x4f, 0x57, 0x79, 0xbe, 0xf4,
+	0xa1, 0x5c, 0x71, 0xe1, 0xad, 0x8a, 0x1c, 0x72, 0x42, 0x7e, 0x74, 0xaf, 0xd6, 0xdd, 0x16, 0x36,
+	0xc7, 0x52, 0x90, 0x7f, 0xd8, 0x04, 0x29, 0xda, 0xa8, 0x6b, 0xf6, 0x9a, 0x43, 0x15, 0xba, 0x1d,
+	0x6c, 0x8d, 0x38, 0xcf, 0xc6, 0x92, 0xfc, 0xc7, 0x16, 0xc8, 0x68, 0xc1, 0xcb, 0x36, 0xea, 0xa2,
+	0x5e, 0x73, 0xd8, 0x00, 0xf9, 0xc0, 0x4b, 0x55, 0xf0, 0xcc, 0x32, 0x38, 0x5f, 0xf0, 0x88, 0x9d,
+	0x90, 0x89, 0x60, 0x99, 0x4f, 0x16, 0xea, 0x89, 0x0b, 0xfc, 0x27, 0x56, 0x71, 0x94, 0x4c, 0xeb,
+	0x3a, 0x5b, 0xe7, 0xf7, 0x53, 0xe2, 0xe2, 0xbf, 0x73, 0x26, 0xa2, 0x38, 0x81, 0x88, 0x15, 0x05,
+	0x2b, 0xdb, 0xbf, 0xb4, 0xee, 0xcc, 0x99, 0x08, 0x12, 0xb8, 0x55, 0x47, 0xee, 0x27, 0xc2, 0xf6,
+	0x13, 0x17, 0x82, 0xcd, 0x38, 0xb9, 0xfa, 0xee, 0x16, 0xf5, 0x9c, 0x7e, 0xcb, 0x3b, 0xc6, 0xf2,
+	0xc6, 0x52, 0x84, 0x86, 0x06, 0x21, 0x03, 0x6c, 0x0b, 0xce, 0xb3, 0x08, 0xa4, 0xbe, 0xd6, 0xe9,
+	0x5f, 0x9e, 0x32, 0x54, 0xac, 0xa1, 0x31, 0xb4, 0x44, 0x45, 0x3d, 0xc0, 0xf6, 0x86, 0x65, 0xa0,
+	0x6c, 0xe6, 0x79, 0x5b, 0x35, 0x01, 0x65, 0xdb, 0x54, 0xb3, 0xb8, 0xab, 0x51, 0x34, 0xa9, 0x6a,
+	0xf2, 0xb7, 0x36, 0x77, 0x4e, 0x99, 0x0f, 0xa6, 0x13, 0x1a, 0x15, 0x6d, 0x9d, 0x06, 0x0d, 0x6c,
+	0x8a, 0x75, 0x1a, 0x8c, 0xde, 0x76, 0x14, 0x6d, 0x77, 0x14, 0x7d, 0xec, 0x28, 0x7a, 0xdd, 0x53,
+	0x63, 0xbb, 0xa7, 0xc6, 0xfb, 0x9e, 0x1a, 0x2f, 0x37, 0xb3, 0x04, 0xe6, 0xeb, 0xd8, 0x9b, 0xe4,
+	0xa9, 0x7f, 0xb0, 0xf6, 0x83, 0x50, 0xef, 0xdc, 0x3f, 0xfe, 0x12, 0xb1, 0xa5, 0x95, 0xeb, 0xaf,
+	0x00, 0x00, 0x00, 0xff, 0xff, 0xa6, 0xa0, 0xb1, 0x9d, 0x2f, 0x02, 0x00, 0x00,
 }
 
 func (m *Txs) Marshal() (dAtA []byte, err error) {
@@ -439,15 +406,6 @@ func (m *SeenTx) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XFrom != nil {
-		{
-			size := m.XFrom.Size()
-			i -= size
-			if _, err := m.XFrom.MarshalTo(dAtA[i:]); err != nil {
-				return 0, err
-			}
-		}
-	}
 	if len(m.TxKey) > 0 {
 		i -= len(m.TxKey)
 		copy(dAtA[i:], m.TxKey)
@@ -458,20 +416,6 @@ func (m *SeenTx) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *SeenTx_From) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *SeenTx_From) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i -= len(m.From)
-	copy(dAtA[i:], m.From)
-	i = encodeVarintTypes(dAtA, i, uint64(len(m.From)))
-	i--
-	dAtA[i] = 0x12
-	return len(dAtA) - i, nil
-}
 func (m *WantTx) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -527,17 +471,14 @@ func (m *HasBlockTxs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.HasBitArray)
 		i = encodeVarintTypes(dAtA, i, uint64(len(m.HasBitArray)))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x12
 	}
-	if m.Round != 0 {
-		i = encodeVarintTypes(dAtA, i, uint64(m.Round))
+	if len(m.BlockId) > 0 {
+		i -= len(m.BlockId)
+		copy(dAtA[i:], m.BlockId)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.BlockId)))
 		i--
-		dAtA[i] = 0x10
-	}
-	if m.Height != 0 {
-		i = encodeVarintTypes(dAtA, i, uint64(m.Height))
-		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -637,6 +578,27 @@ func (m *Message_WantTx) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Message_HasBlockTxs) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Message_HasBlockTxs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.HasBlockTxs != nil {
+		{
+			size, err := m.HasBlockTxs.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintTypes(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x22
+	}
+	return len(dAtA) - i, nil
+}
 func encodeVarintTypes(dAtA []byte, offset int, v uint64) int {
 	offset -= sovTypes(v)
 	base := offset
@@ -673,22 +635,9 @@ func (m *SeenTx) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovTypes(uint64(l))
 	}
-	if m.XFrom != nil {
-		n += m.XFrom.Size()
-	}
 	return n
 }
 
-func (m *SeenTx_From) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.From)
-	n += 1 + l + sovTypes(uint64(l))
-	return n
-}
 func (m *WantTx) Size() (n int) {
 	if m == nil {
 		return 0
@@ -708,11 +657,9 @@ func (m *HasBlockTxs) Size() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Height != 0 {
-		n += 1 + sovTypes(uint64(m.Height))
-	}
-	if m.Round != 0 {
-		n += 1 + sovTypes(uint64(m.Round))
+	l = len(m.BlockId)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
 	}
 	l = len(m.HasBitArray)
 	if l > 0 {
@@ -765,6 +712,18 @@ func (m *Message_WantTx) Size() (n int) {
 	_ = l
 	if m.WantTx != nil {
 		l = m.WantTx.Size()
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	return n
+}
+func (m *Message_HasBlockTxs) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.HasBlockTxs != nil {
+		l = m.HasBlockTxs.Size()
 		n += 1 + l + sovTypes(uint64(l))
 	}
 	return n
@@ -921,38 +880,6 @@ func (m *SeenTx) Unmarshal(dAtA []byte) error {
 				m.TxKey = []byte{}
 			}
 			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field From", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthTypes
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.XFrom = &SeenTx_From{string(dAtA[iNdEx:postIndex])}
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])
@@ -1088,10 +1015,10 @@ func (m *HasBlockTxs) Unmarshal(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Height", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BlockId", wireType)
 			}
-			m.Height = 0
+			var byteLen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowTypes
@@ -1101,31 +1028,27 @@ func (m *HasBlockTxs) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Height |= int64(b&0x7F) << shift
+				byteLen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.BlockId = append(m.BlockId[:0], dAtA[iNdEx:postIndex]...)
+			if m.BlockId == nil {
+				m.BlockId = []byte{}
+			}
+			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Round", wireType)
-			}
-			m.Round = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Round |= int32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field HasBitArray", wireType)
 			}
@@ -1313,6 +1236,41 @@ func (m *Message) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			m.Sum = &Message_WantTx{v}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HasBlockTxs", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &HasBlockTxs{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Sum = &Message_HasBlockTxs{v}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

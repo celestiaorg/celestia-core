@@ -471,9 +471,9 @@ func makeTxs(height int64) (txs []types.Tx) {
 }
 
 func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Block {
-	block, _ := state.MakeBlock(
+	block := state.MakeBlock(
 		height,
-		factory.MakeData(makeTxs(height), nil),
+		factory.MakeData(makeTxs(height)),
 		lastCommit,
 		nil,
 		state.Validators.GetProposer().Address,

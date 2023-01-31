@@ -1,10 +1,16 @@
 package mempool
 
 import (
+	"encoding/json"
+	"fmt"
+	"path/filepath"
+	"time"
+
 	"github.com/go-kit/kit/metrics"
 	"github.com/go-kit/kit/metrics/discard"
 	"github.com/go-kit/kit/metrics/prometheus"
 	stdprometheus "github.com/prometheus/client_golang/prometheus"
+	"github.com/tendermint/tendermint/libs/os"
 )
 
 const (
@@ -141,4 +147,34 @@ func NopMetrics() *Metrics {
 		RequestedTxs:   discard.NewCounter(),
 		RerequestedTxs: discard.NewCounter(),
 	}
+}
+
+type JSONMetrics struct {
+	dir string
+	interval int
+	StartTime time.Time
+	EndTime time.Time
+	Blocks uint64
+	TransactionsRequested uint64
+	
+	
+}
+
+func NewJSONMetrics(dir string) *JSONMetrics {
+	return &JSONMetrics{
+		dir: dir,
+		StartTime: time.Now().UTC(),
+	}
+}
+
+func (m *JSONMetrics) Save() {
+	m.EndTime = time.Now().UTC()
+	content, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	path := filepath.Join(m.dir, fmt.Sprintf("metrics_%d.json", m.interval))
+	os.MustWriteFile(path, content, 0644)
+	m.StartTime = m.EndTime
+	m.interval++
 }

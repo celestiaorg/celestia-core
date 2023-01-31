@@ -42,9 +42,10 @@ message ProposalPOL {
 
 // BlockPart is sent when gossipping a piece of the proposed block.
 message BlockPart {
-  int64                 height = 1;
-  int32                 round  = 2;
-  tendermint.types.Part part   = 3 [(gogoproto.nullable) = false];
+  int64                 height       = 1;
+  int32                 round        = 2;
+  tendermint.types.Part part         = 3 [(gogoproto.nullable) = false];
+  bool                  compact_form = 4;
 }
 
 // Vote is sent when voting for a proposal (or lack thereof).

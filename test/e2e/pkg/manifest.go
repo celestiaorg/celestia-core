@@ -63,6 +63,10 @@ type Manifest struct {
 	// from config/config.go
 	MaxInboundConnections  int `toml:"max_inbound_connections"`
 	MaxOutboundConnections int `toml:"max_outbound_connections"`
+
+	// CompactBlocks dictates whether the node will use compact blocks. If
+	// set to true v2 mempool will automatically be used.
+	CompactBlocks bool `toml:"compact_blocks"`
 }
 
 // ManifestNode represents a node in a testnet manifest.

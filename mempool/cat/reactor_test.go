@@ -96,11 +96,7 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 		ChannelID: mempool.MempoolChannel,
 	}
 
-	msgWant := &protomem.Message{
-		Sum: &protomem.Message_WantTx{WantTx: &protomem.WantTx{TxKey: key[:]}},
-	}
-	msgWantB, err := msgWant.Marshal()
-	require.NoError(t, err)
+	msgWant := genMsgWant(t, key)
 
 	peer := genPeer()
 	peer.On("SendEnvelope", txEnvelope).Return(true)
@@ -112,7 +108,7 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	// Add the peer
 	reactor.InitPeer(peer)
 	// The peer sends a want msg for this tx
-	reactor.Receive(MempoolStateChannel, peer, msgWantB)
+	reactor.Receive(MempoolStateChannel, peer, msgWant)
 
 	// Should send the tx to the peer in response
 	peer.AssertExpectations(t)
@@ -217,6 +213,7 @@ func setupReactor(t *testing.T) (*Reactor, *TxPool) {
 	t.Cleanup(cleanup)
 	reactor, err := NewReactor(pool, &ReactorOptions{})
 	require.NoError(t, err)
+	reactor.SetLogger(log.TestingLogger())
 	return reactor, pool
 }
 
@@ -338,4 +335,13 @@ func genPeer() *mocks.Peer {
 	peer.On("ID").Return(nodeKey.ID())
 	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
 	return peer
+}
+
+func genMsgWant(t *testing.T, key types.TxKey) []byte {
+	msgWant := &protomem.Message{
+		Sum: &protomem.Message_WantTx{WantTx: &protomem.WantTx{TxKey: key[:]}},
+	}
+	bz, err := msgWant.Marshal()
+	require.NoError(t, err)
+	return bz
 }
