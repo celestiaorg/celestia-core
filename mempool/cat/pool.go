@@ -332,7 +332,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 	if rsp.Code != abci.CodeTypeOK {
 		txmp.rejectedTxCache.Push(key)
 		txmp.metrics.FailedTxs.Add(1)
-		return rsp, fmt.Errorf("application rejected transaction with code %d and log %s", rsp.Code, rsp.Log)
+		return rsp, fmt.Errorf("application rejected transaction with code %d (Log: %s)", rsp.Code, rsp.Log)
 	}
 
 	// Create wrapped tx
@@ -695,7 +695,7 @@ func (txmp *TxPool) recheckTransactions() {
 
 // availableBytes returns the number of bytes available in the mempool.
 func (txmp *TxPool) availableBytes() int64 {
-  return txmp.config.MaxTxsBytes - txmp.SizeBytes()
+	return txmp.config.MaxTxsBytes - txmp.SizeBytes()
 }
 
 // canAddTx returns an error if we cannot insert the provided *wrappedTx into

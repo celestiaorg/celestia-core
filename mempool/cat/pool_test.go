@@ -20,6 +20,7 @@ import (
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
 )
@@ -637,6 +638,54 @@ func TestTxPool_CheckTxPostCheckError(t *testing.T) {
 			require.True(t, errors.Is(err, testCase.err))
 		})
 	}
+}
+
+func TestRemoveBlobTx(t *testing.T) {
+	app := kvstore.NewApplication()
+	cc := proxy.NewLocalClientCreator(app)
+
+	cfg := config.TestMempoolConfig()
+	cfg.CacheSize = 100
+
+	appConnMem, err := cc.NewABCIClient()
+	require.NoError(t, err)
+	require.NoError(t, appConnMem.Start())
+
+	t.Cleanup(func() {
+		os.RemoveAll(cfg.RootDir)
+		require.NoError(t, appConnMem.Stop())
+	})
+
+	txmp := NewTxPool(log.TestingLogger(), cfg, appConnMem, 1)
+
+	originalTx := []byte{1, 2, 3, 4}
+	indexWrapper, err := types.MarshalIndexWrapper(originalTx, 100)
+	require.NoError(t, err)
+
+	// create the blobTx
+	b := tmproto.Blob{
+		NamespaceId:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		Data:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		ShareVersion: 0,
+	}
+	bTx, err := types.MarshalBlobTx(originalTx, &b)
+	require.NoError(t, err)
+
+	err = txmp.CheckTx(bTx, nil, mempool.TxInfo{})
+	require.NoError(t, err)
+
+	err = txmp.Update(1, []types.Tx{indexWrapper}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, txmp.Size())
+	require.EqualValues(t, 0, txmp.SizeBytes())
+}
+
+func abciResponses(n int, code uint32) []*abci.ResponseDeliverTx {
+	responses := make([]*abci.ResponseDeliverTx, 0, n)
+	for i := 0; i < n; i++ {
+		responses = append(responses, &abci.ResponseDeliverTx{Code: code})
+	}
+	return responses
 }
 
 func TestConcurrentlyAddingTx(t *testing.T) {
