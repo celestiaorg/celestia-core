@@ -513,7 +513,7 @@ func TestTxSearch(t *testing.T) {
 
 	// since we're not using an isolated test server, we'll have lingering transactions
 	// from other tests as well
-	result, err := c.TxSearch(context.Background(), "tx.height >= 0", false, nil, nil, "asc")
+	result, err := c.TxSearch(context.Background(), "tx.height >= 0", true, nil, nil, "asc")
 	require.NoError(t, err)
 	txCount := len(result.Txs)
 
@@ -525,7 +525,7 @@ func TestTxSearch(t *testing.T) {
 		t.Logf("client %d", i)
 
 		// now we query for the tx.
-		result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.hash='%v'", find.Hash), false, nil, nil, "asc")
+		result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.hash='%v'", find.Hash), true, nil, nil, "asc")
 		require.Nil(t, err)
 		require.Len(t, result.Txs, 1)
 		require.Equal(t, find.Hash, result.Txs[0].Hash)
@@ -538,7 +538,7 @@ func TestTxSearch(t *testing.T) {
 		assert.EqualValues(t, find.Hash, ptx.Hash)
 
 		// query by height
-		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height=%d", find.Height), false, nil, nil, "asc")
+		result, err = c.TxSearch(context.Background(), fmt.Sprintf("tx.height=%d", find.Height), true, nil, nil, "asc")
 		require.Nil(t, err)
 		require.Len(t, result.Txs, 1)
 
@@ -564,13 +564,13 @@ func TestTxSearch(t *testing.T) {
 
 		// query using a compositeKey (see kvstore application) and height
 		result, err = c.TxSearch(context.Background(),
-			"app.creator='Cosmoshi Netowoko' AND tx.height<10000", false, nil, nil, "asc")
+			"app.creator='Cosmoshi Netowoko' AND tx.height<10000", true, nil, nil, "asc")
 		require.Nil(t, err)
 		require.Greater(t, len(result.Txs), 0, "expected a lot of transactions")
 
 		// query a non existing tx with page 1 and txsPerPage 1
 		perPage := 1
-		result, err = c.TxSearch(context.Background(), "app.creator='Cosmoshi Neetowoko'", false, nil, &perPage, "asc")
+		result, err = c.TxSearch(context.Background(), "app.creator='Cosmoshi Neetowoko'", true, nil, &perPage, "asc")
 		require.Nil(t, err)
 		require.Len(t, result.Txs, 0)
 
