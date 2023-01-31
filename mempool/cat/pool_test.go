@@ -276,7 +276,7 @@ func TestTxPool_Eviction(t *testing.T) {
 	// Now the lowest-priority tx is 5, so that should be the next to go.
 	mustCheckTx(t, txmp, "key9=0008=9")
 	require.True(t, txExists("key9=0008=9"))
-	require.False(t, txExists("k3y2=0001=5"))
+	require.False(t, txExists("key2=0001=5"))
 
 	// Add a transaction that requires eviction of multiple lower-priority
 	// entries, in order to fit the size of the element.
@@ -366,7 +366,8 @@ func TestTxPool_ReapMaxBytesMaxGas(t *testing.T) {
 	ensurePrioritized(reapedTxs)
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5690), txmp.SizeBytes())
-	require.GreaterOrEqual(t, len(reapedTxs), 16)
+	// each tx is 57 bytes, 20 * 57 = 1140 + overhead for proto encoding
+	require.Equal(t, len(reapedTxs), 20)
 
 	// Reap by both transaction bytes and gas, where the size yields 31 reaped
 	// transactions and the gas limit reaps 25 transactions.
