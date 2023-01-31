@@ -39,11 +39,19 @@ type TxPoolOption func(*TxPool)
 // set priority values on transactions in the CheckTx response. When selecting
 // transactions to include in a block, higher-priority transactions are chosen
 // first.  When evicting transactions from the mempool for size constraints,
-// lower-priority transactions are evicted sooner.
+// lower-priority transactions are evicted first. Transactions themselves are
+// unordered (A map is used). They can be broadcast in an order different from 
+// the order to which transactions are entered. There is no guarantee when CheckTx
+// passes that a transaction has been successfully broadcast to any of its peers.
 //
-// Within the txpool, transactions are ordered by time of arrival, and are
-// gossiped to the rest of the network based on that order (gossip order does
-// not take priority into account).
+// A TTL can be set to remove transactions after a period of time or a number
+// of heights.
+//
+// A cache of rejectedTxs can be set in the mempool config. Transactions that
+// are rejected because of `CheckTx` or other validity checks will be instantly
+// rejected if they are seen again. Committed transactions are also added to
+// this cache. This serves somewhat as replay protection but applications should 
+// implement something more comprehensive
 type TxPool struct {
 	// Immutable fields
 	logger       log.Logger
@@ -127,12 +135,10 @@ func WithMetrics(metrics *mempool.Metrics) TxPoolOption {
 }
 
 // Lock is a noop as ABCI calls are serialized
-func (txmp *TxPool) Lock() {
-}
+func (txmp *TxPool) Lock() {}
 
 // Unlock is a noop as ABCI calls are serialized
-func (txmp *TxPool) Unlock() {
-}
+func (txmp *TxPool) Unlock() {}
 
 // Size returns the number of valid transactions in the mempool. It is
 // thread-safe.
