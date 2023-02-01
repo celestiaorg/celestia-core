@@ -183,9 +183,7 @@ func TestStoreCommitTxs(t *testing.T) {
 	require.True(t, store.has(key))
 	require.Nil(t, store.getCommitted(key))
 	require.True(t, store.commit(key))
-	require.False(t, store.has(key))
 	require.NotNil(t, store.getCommitted(key))
 	store.clearCommittedTxs()
 	require.Nil(t, store.getCommitted(key))
-	require.False(t, store.has(key))
 }

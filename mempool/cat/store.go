@@ -64,7 +64,6 @@ func (s *store) commit(txKey types.TxKey) bool {
 		return false
 	}
 	s.committedTxs[txKey] = wtx
-	delete(s.txs, txKey)
 	return true
 }
 
