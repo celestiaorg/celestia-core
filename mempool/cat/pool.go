@@ -3,6 +3,7 @@ package cat
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
+	tmos "github.com/tendermint/tendermint/libs/os"
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
@@ -45,6 +47,7 @@ type TxPool struct {
 	config       *config.MempoolConfig
 	proxyAppConn proxy.AppConnMempool
 	metrics      *mempool.Metrics
+	jsonMetrics  *mempool.JSONMetrics
 
 	updateMtx            sync.Mutex
 	notifiedTxsAvailable bool
@@ -79,6 +82,12 @@ func NewTxPool(
 	height int64,
 	options ...TxPoolOption,
 ) *TxPool {
+	// set up the directory for tracking metrics
+	path := filepath.Join(cfg.RootDir, "data", "mempool")
+	if err := tmos.EnsureDir(path, 0700); err != nil {
+		panic(err)
+	}
+
 	txmp := &TxPool{
 		logger:           logger,
 		config:           cfg,
@@ -93,6 +102,7 @@ func NewTxPool(
 		store:            newStore(),
 		broadcastCh:      make(chan types.TxKey, 1),
 		txsToBeBroadcast: make(map[types.TxKey]struct{}),
+		jsonMetrics:      mempool.NewJSONMetrics(path),
 	}
 
 	for _, opt := range options {
@@ -507,6 +517,7 @@ func (txmp *TxPool) Update(
 		txmp.removeTxByKey(key)
 	}
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
+	txmp.jsonMetrics.Blocks++
 
 	txmp.purgeExpiredTxs(blockHeight)
 

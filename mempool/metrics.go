@@ -150,20 +150,24 @@ func NopMetrics() *Metrics {
 }
 
 type JSONMetrics struct {
-	dir string
-	interval int
-	StartTime time.Time
-	EndTime time.Time
-	Blocks uint64
-	TransactionsRequested uint64
-	
-	
+	dir                 string
+	interval            int
+	StartTime           time.Time
+	EndTime             time.Time
+	Blocks              uint64
+	Transactions        []uint64
+	TransactionsMissing []uint64
+	// measured in ms
+	TimeTakenFetchingTxs []uint64
 }
 
 func NewJSONMetrics(dir string) *JSONMetrics {
 	return &JSONMetrics{
-		dir: dir,
-		StartTime: time.Now().UTC(),
+		dir:                  dir,
+		StartTime:            time.Now().UTC(),
+		Transactions:         make([]uint64, 0),
+		TransactionsMissing:  make([]uint64, 0),
+		TimeTakenFetchingTxs: make([]uint64, 0),
 	}
 }
 
@@ -177,4 +181,12 @@ func (m *JSONMetrics) Save() {
 	os.MustWriteFile(path, content, 0644)
 	m.StartTime = m.EndTime
 	m.interval++
+	m.reset()
+}
+
+func (m *JSONMetrics) reset() {
+	m.Blocks = 0
+	m.Transactions = make([]uint64, 0)
+	m.TransactionsMissing = make([]uint64, 0)
+	m.TimeTakenFetchingTxs = make([]uint64, 0)
 }

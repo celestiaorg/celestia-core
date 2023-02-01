@@ -258,19 +258,23 @@ func NopMetrics() *Metrics {
 }
 
 type JSONMetrics struct {
-	dir string
-	interval int
-	StartTime time.Time
-	EndTime time.Time
-	Blocks uint64
-	SentDataBytes uint64
-	ReceivedDataBytes uint64
-	
+	dir                  string
+	interval             int
+	StartTime            time.Time
+	EndTime              time.Time
+	Blocks               uint64
+	Rounds               uint64
+	SentConsensusBytes   uint64
+	SentCompactBlocks    uint64
+	SentCompactBytes     uint64
+	CompactBlockFailures uint64
+	SentBlockParts       uint64
+	SentBlockPartsBytes  uint64
 }
 
 func NewJSONMetrics(dir string) *JSONMetrics {
 	return &JSONMetrics{
-		dir: dir,
+		dir:       dir,
 		StartTime: time.Now().UTC(),
 	}
 }
@@ -285,4 +289,16 @@ func (m *JSONMetrics) Save() {
 	os.MustWriteFile(path, content, 0644)
 	m.StartTime = m.EndTime
 	m.interval++
+	m.reset()
+}
+
+func (m *JSONMetrics) reset() {
+	m.Blocks = 0
+	m.Rounds = 0
+	m.SentConsensusBytes = 0
+	m.SentBlockParts = 0
+	m.SentBlockPartsBytes = 0
+	m.SentCompactBlocks = 0
+	m.SentCompactBytes = 0
+	m.CompactBlockFailures = 0
 }

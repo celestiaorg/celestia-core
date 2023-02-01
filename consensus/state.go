@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"sort"
 	"time"
@@ -149,7 +150,8 @@ type State struct {
 	evsw tmevents.EventSwitch
 
 	// for reporting metrics
-	metrics *Metrics
+	metrics     *Metrics
+	jsonMetrics *JSONMetrics
 }
 
 // StateOption sets an optional parameter on the State.
@@ -166,6 +168,11 @@ func NewState(
 	evpool evidencePool,
 	options ...StateOption,
 ) *State {
+	path := filepath.Join(config.RootDir, "data", "consensus")
+	if err := tmos.EnsureDir(path, 0700); err != nil {
+		panic(err)
+	}
+
 	cs := &State{
 		config:           config,
 		blockExec:        blockExec,
@@ -181,6 +188,7 @@ func NewState(
 		evpool:           evpool,
 		evsw:             tmevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
+		jsonMetrics:      NewJSONMetrics(path),
 		txFetcher:        txFetcher,
 	}
 
@@ -1017,6 +1025,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	}
 
 	cs.metrics.Rounds.Set(float64(round))
+	cs.jsonMetrics.Rounds++
 
 	// Wait for txs to be available in the mempool
 	// before we enterPropose in round 0. If the last block changed the app hash,
@@ -1621,6 +1630,7 @@ func (cs *State) tryFinalizeCommit(height int64) {
 // Increment height and goto cstypes.RoundStepNewHeight
 func (cs *State) finalizeCommit(height int64) {
 	logger := cs.Logger.With("height", height)
+	cs.jsonMetrics.Blocks++
 
 	if cs.Height != height || cs.Step != cstypes.RoundStepCommit {
 		logger.Debug(
@@ -2005,6 +2015,7 @@ func (cs *State) tryReconstructBlock() error {
 		cs.mtx.Lock()
 		if err != nil {
 			cs.Logger.Error("failed to fetch transactions for compact block", "err", err)
+			cs.jsonMetrics.CompactBlockFailures++
 			return err
 		}
 		// Some time may have passed in waiting for the mempool to fetch all the transactions. It is

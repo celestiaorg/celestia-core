@@ -120,6 +120,17 @@ func (memR *Reactor) OnStart() error {
 			}
 		}
 	}()
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		for {
+			select {
+			case <-ticker.C:
+				memR.mempool.jsonMetrics.Save()
+			case <-memR.Quit():
+				return
+			}
+		}
+	}()
 	return nil
 }
 
@@ -269,7 +280,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		tx, has := memR.mempool.Get(txKey)
 		if !has {
 			// The peer may be requesting a transaction that belongs to the block we've just committed
-			// we keep committed txs for one height in this case. 
+			// we keep committed txs for one height in this case.
 			tx, has = memR.mempool.GetCommitted(txKey)
 		}
 		if has && !memR.opts.ListenOnly {

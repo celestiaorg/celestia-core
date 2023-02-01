@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	protomem "github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"github.com/tendermint/tendermint/types"
@@ -21,6 +22,8 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 		// we already have a request for this block
 		return request.WaitForBlock(ctx)
 	}
+
+	memR.mempool.jsonMetrics.Transactions = append(memR.mempool.jsonMetrics.Transactions, uint64(len(compactData)))
 
 	txs := make([][]byte, len(compactData))
 	missingKeys := make(map[int]types.TxKey, len(compactData))
@@ -42,12 +45,15 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 	}
 	memR.Logger.Info("fetching transactions from peers", "blockID", blockID, "numTxs", len(txs), "numMissing", len(missingKeys))
 
+	memR.mempool.jsonMetrics.TransactionsMissing = append(memR.mempool.jsonMetrics.TransactionsMissing, uint64(len(missingKeys)))
+
 	// broadcast what transactions in that block
 	// we have.
 	memR.broadcastHasBlockTxs(blockID, hasBitArray)
 
 	// Check if we got lucky and already had all the transactions.
 	if len(missingKeys) == 0 {
+		memR.mempool.jsonMetrics.TimeTakenFetchingTxs = append(memR.mempool.jsonMetrics.TimeTakenFetchingTxs, 0)
 		return txs, nil
 	}
 
@@ -58,6 +64,13 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 		missingKeys,
 		txs,
 	)
+	defer func() {
+		timeTaken := request.TimeTaken()
+		if timeTaken == 0 {
+			return
+		}
+		memR.mempool.jsonMetrics.TimeTakenFetchingTxs = append(memR.mempool.jsonMetrics.TimeTakenFetchingTxs, timeTaken)
+	}()
 
 	// check if there were any pending block messages from peers that we can now process
 	if pending, ok := memR.blockFetcher.PopPendingBitArrays(blockID); ok {
@@ -272,6 +285,10 @@ type blockRequest struct {
 	missingKeys        map[string]int
 	// the txs in the block
 	txs [][]byte
+
+	// used for metrics
+	startTime time.Time
+	endTime   time.Time
 }
 
 func NewBlockRequest(
@@ -289,6 +306,7 @@ func NewBlockRequest(
 		missingKeys:        mk,
 		txs:                txs,
 		doneCh:             make(chan struct{}),
+		startTime:          time.Now().UTC(),
 	}
 }
 
@@ -304,6 +322,7 @@ func (br *blockRequest) WaitForBlock(ctx context.Context) ([][]byte, error) {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-br.doneCh:
+			br.endTime = time.Now().UTC()
 			return br.txs, nil
 		}
 	}
@@ -354,6 +373,13 @@ func (br *blockRequest) IsDone() bool {
 	br.mtx.Lock()
 	defer br.mtx.Unlock()
 	return len(br.missingKeys) == 0
+}
+
+func (br *blockRequest) TimeTaken() uint64 {
+	if br.endTime.IsZero() {
+		return 0
+	}
+	return uint64(br.endTime.Sub(br.startTime).Milliseconds())
 }
 
 type txAndKey struct {

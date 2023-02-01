@@ -9,10 +9,10 @@ import (
 
 // simple, thread-safe in memory store for transactions
 type store struct {
-	mtx                 sync.RWMutex
-	bytes               int64
-	txs                 map[types.TxKey]*wrappedTx
-	committedTxs        map[types.TxKey]*wrappedTx
+	mtx          sync.RWMutex
+	bytes        int64
+	txs          map[types.TxKey]*wrappedTx
+	committedTxs map[types.TxKey]*wrappedTx
 }
 
 func newStore() *store {
