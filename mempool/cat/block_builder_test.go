@@ -3,6 +3,7 @@ package cat
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -155,37 +156,6 @@ func TestBlockFetcherSimple(t *testing.T) {
 	require.Len(t, bf.requests, 0)
 }
 
-func TestBlockFetcherPendingBitArrays(t *testing.T) {
-	bf := NewBlockFetcher()
-	blockID := []byte("blockID")
-
-	ba := NewBitArray(2)
-	ba.Set(0)
-	ba.Set(1)
-	_, exists := bf.GetRequest(blockID)
-	require.False(t, exists)
-
-	pending, ok := bf.PopPendingBitArrays(blockID)
-	require.False(t, ok)
-	require.Nil(t, pending)
-
-	// two peers report the same bit array
-	bf.AddPendingBitArray(blockID, ba.Bytes(), 1, 1)
-	bf.AddPendingBitArray(blockID, ba.Bytes(), 2, 1)
-
-	pending, ok = bf.PopPendingBitArrays(blockID)
-	require.True(t, ok)
-	require.Len(t, pending, 2)
-	require.Equal(t, pending[1], ba.Bytes())
-
-	bf.AddPendingBitArray(blockID, ba.Bytes(), 3, 1)
-
-	require.Len(t, bf.pending, 1)
-	bf.PruneOldRequests(1)
-	require.Len(t, bf.pending, 0)
-	require.Len(t, bf.pendingHeight, 0)
-}
-
 func TestBlockFetcherConcurrentRequests(t *testing.T) {
 	var (
 		bf                  = NewBlockFetcher()
@@ -265,8 +235,7 @@ func TestFetchTxsFromKeys(t *testing.T) {
 	keys := make([][]byte, numTxs)
 	peer := genPeer()
 	blockID := tmhash.Sum([]byte("blockID"))
-	bitArray := NewBitArray(numTxs)
-	peerBitArray := NewBitArray(numTxs)
+	wg := sync.WaitGroup{}
 	for i := 0; i < numTxs; i++ {
 		tx := newDefaultTx(fmt.Sprintf("tx%d", i))
 		txs[i] = tx
@@ -278,50 +247,29 @@ func TestFetchTxsFromKeys(t *testing.T) {
 			t.Log("adding tx to mempool", i)
 			err := pool.CheckTx(tx, nil, mempool.TxInfo{})
 			require.NoError(t, err)
-			bitArray.Set(i)
-			if i%6 == 0 {
-				peerBitArray.Set(i)
-			}
 		} else {
-			// the rest of the transactions we expect the node to request
-			// from the only peer it is connected to
-			peer.On("Send", MempoolStateChannel, genMsgWant(t, key)).Return(func(chID byte, msg []byte) bool {
-				t.Log("received request for tx", "tx_index", i)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				time.Sleep(time.Duration(rand.Int63n(100)) * time.Millisecond)
 				reactor.ReceiveEnvelope(p2p.Envelope{
 					Src:       peer,
 					Message:   &memproto.Txs{Txs: [][]byte{tx}},
 					ChannelID: mempool.MempoolChannel,
 				})
-				return true
-			})
-			peerBitArray.Set(i)
+			}()
 		}
 	}
-	hasBlockTxsMsg, err := (&memproto.Message{
-		Sum: &memproto.Message_HasBlockTxs{
-			HasBlockTxs: &memproto.HasBlockTxs{
-				BlockId:     blockID,
-				HasBitArray: bitArray.Bytes(),
-			},
-		},
-	}).Marshal()
-	require.NoError(t, err)
-	peer.On("Send", MempoolStateChannel, hasBlockTxsMsg).Return(func(chID byte, hasBlockTxsMsg []byte) bool {
-		// only after the node has sent the hasTxMsg from it's peer does the peer
-		// broadcast what messages it has.
-		t.Log("sending has block tx message to node")
-		reactor.ReceiveEnvelope(p2p.Envelope{
-			Src: peer,
-			Message: &memproto.HasBlockTxs{
-				BlockId:     blockID,
-				HasBitArray: peerBitArray.Bytes(),
-			},
-			ChannelID: MempoolStateChannel,
-		})
-		return true
-	})
 
 	reactor.InitPeer(peer)
+
+	go func() {
+		reactor.ReceiveEnvelope(p2p.Envelope{
+			Src:       peer,
+			Message:   &memproto.Txs{Txs: txs},
+			ChannelID: mempool.MempoolChannel,
+		})
+	}()
 
 	resultTxs, err := reactor.FetchTxsFromKeys(ctx, blockID, keys)
 	require.NoError(t, err)
@@ -332,5 +280,5 @@ func TestFetchTxsFromKeys(t *testing.T) {
 	repeatResult, err := reactor.FetchTxsFromKeys(ctx, blockID, keys)
 	require.NoError(t, err)
 	require.Equal(t, resultTxs, repeatResult)
-	peer.AssertExpectations(t)
+	wg.Wait()
 }

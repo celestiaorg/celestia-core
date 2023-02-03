@@ -15,16 +15,10 @@ message WantTx {
   bytes tx_key = 1;
 }
 
-message HasBlockTxs {
-  bytes block_id      = 1;
-  bytes has_bit_array = 2;
-}
-
 message Message {
   oneof sum {
-    Txs         txs           = 1;
-    SeenTx      seen_tx       = 2;
-    WantTx      want_tx       = 3;
-    HasBlockTxs has_block_txs = 4;
+    Txs    txs     = 1;
+    SeenTx seen_tx = 2;
+    WantTx want_tx = 3;
   }
 }

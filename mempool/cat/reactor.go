@@ -25,8 +25,7 @@ const (
 	MempoolStateChannel = byte(0x31)
 
 	// wantTx and seenTx = 32 + protobuf overhead
-	// hasblockTx = 32 + numTxs/8 + protobuf overhead. For 10000txs = 1300 bytes
-	maxStateChannelSize = 1300
+	maxStateChannelSize = 40
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -292,30 +291,6 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			}, memR.Logger) {
 				memR.mempool.PeerHasTx(peerID, txKey)
 			}
-		}
-
-	case *protomem.HasBlockTxs:
-		if err := types.ValidateHash(msg.BlockId); err != nil {
-			memR.Logger.Error("peer sent HasBlockTxs with invalid block ID", "err", err)
-			memR.Switch.StopPeerForError(e.Src, err)
-			return
-		}
-
-		if request, ok := memR.blockFetcher.GetRequest(msg.BlockId); ok {
-			txKeys, err := request.GetMissingKeys(msg.HasBitArray)
-			if err != nil {
-				memR.Logger.Error("peer sent invalid HasBlockTxs message", "err", err)
-				memR.Switch.StopPeerForError(e.Src, err)
-				return
-			}
-
-			peerID := memR.ids.GetIDForPeer(e.Src.ID())
-			for _, txKey := range txKeys {
-				memR.processSeenTx(e.Src, peerID, txKey)
-			}
-		} else {
-			peerID := memR.ids.GetIDForPeer(e.Src.ID())
-			memR.blockFetcher.AddPendingBitArray(msg.BlockId, msg.HasBitArray, peerID, memR.mempool.Height())
 		}
 
 	default:

@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	protomem "github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -47,10 +46,6 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 
 	memR.mempool.jsonMetrics.TransactionsMissing = append(memR.mempool.jsonMetrics.TransactionsMissing, uint64(len(missingKeys)))
 
-	// broadcast what transactions in that block
-	// we have.
-	memR.broadcastHasBlockTxs(blockID, hasBitArray)
-
 	// Check if we got lucky and already had all the transactions.
 	if len(missingKeys) == 0 {
 		memR.mempool.jsonMetrics.TimeTakenFetchingTxs = append(memR.mempool.jsonMetrics.TimeTakenFetchingTxs, 0)
@@ -71,26 +66,6 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 		}
 		memR.mempool.jsonMetrics.TimeTakenFetchingTxs = append(memR.mempool.jsonMetrics.TimeTakenFetchingTxs, timeTaken)
 	}()
-
-	// check if there were any pending block messages from peers that we can now process
-	if pending, ok := memR.blockFetcher.PopPendingBitArrays(blockID); ok {
-		for peerID, bitArray := range pending {
-			peer := memR.ids.GetPeer(peerID)
-			if peer == nil {
-				// we are no longer connected to the peer
-				// that provided this bit array so we ignore.
-				continue
-			}
-			txKeys, err := request.GetMissingKeys(bitArray)
-			if err != nil {
-				memR.Logger.Error("peer sent us invalid bit array", "peer", peerID, "err", err)
-				memR.Switch.StopPeerForError(peer, err)
-			}
-			for _, txKey := range txKeys {
-				memR.processSeenTx(peer, peerID, txKey)
-			}
-		}
-	}
 
 	// Wait for the reactor to retrieve and post all transactions.
 	return request.WaitForBlock(ctx)
@@ -130,35 +105,9 @@ func (memR *Reactor) FetchKeysFromTxs(ctx context.Context, blockID []byte, txs [
 			memR.mempool.store.set(wtx)
 		}
 	}
-	// As the proposer we have all the transactions so we gossip a HasBlockTxs message
-	// with a full bit array (all 1's) indicating such.
-	memR.broadcastHasBlockTxs(blockID, NewFullBitArray(len(txs)))
 
 	// return the keys back to the consensus engine
 	return keys, nil
-}
-
-// broadcastHasBlockTxs send a HasBlockTxs message to all peers to let them know
-// which txs in the block we have. Other peers will do the same so we know who
-// to fetch what transactions from.
-func (memR *Reactor) broadcastHasBlockTxs(blockID []byte, bitArray *BitArray) {
-	msg := &protomem.Message{
-		Sum: &protomem.Message_HasBlockTxs{
-			HasBlockTxs: &protomem.HasBlockTxs{
-				BlockId:     blockID,
-				HasBitArray: bitArray.Bytes(),
-			},
-		},
-	}
-	bz, err := msg.Marshal()
-	if err != nil {
-		panic(err)
-	}
-
-	memR.Logger.Info("broadcasting HasBlockTxs message to all connected peers", "bitArray", bitArray.Bytes())
-	for _, peer := range memR.ids.GetAll() {
-		peer.Send(MempoolStateChannel, bz)
-	}
 }
 
 type blockFetcher struct {
@@ -180,9 +129,7 @@ type blockFetcher struct {
 // NewBlockFetcher returns a new blockFetcher for managing block requests
 func NewBlockFetcher() *blockFetcher {
 	return &blockFetcher{
-		requests:      make(map[string]*blockRequest),
-		pending:       make(map[string]map[uint16][]byte),
-		pendingHeight: make(map[string]int64),
+		requests: make(map[string]*blockRequest),
 	}
 }
 
@@ -190,14 +137,6 @@ func (bf *blockFetcher) GetRequest(blockID []byte) (*blockRequest, bool) {
 	bf.mtx.Lock()
 	defer bf.mtx.Unlock()
 	request, ok := bf.requests[string(blockID)]
-	return request, ok
-}
-
-func (bf *blockFetcher) PopPendingBitArrays(blockID []byte) (map[uint16][]byte, bool) {
-	bf.mtx.Lock()
-	defer bf.mtx.Unlock()
-	request, ok := bf.pending[string(blockID)]
-	delete(bf.pending, string(blockID))
 	return request, ok
 }
 
@@ -243,33 +182,6 @@ func (bf *blockFetcher) PruneOldRequests(height int64) {
 			delete(bf.pending, blockID)
 			delete(bf.pendingHeight, blockID)
 		}
-	}
-}
-
-// AddPendingBitArray persists a bit array from a peer for a block that we
-// don't yet know about. We record the height so we can remove it after
-// a while. If the block is eventually requested we then begin to
-// process these bit arrays.
-func (bf *blockFetcher) AddPendingBitArray(
-	blockID, bitArray []byte,
-	peerID uint16, height int64,
-) {
-	bf.mtx.Lock()
-	defer bf.mtx.Unlock()
-	// it's possible that the block request arrived in
-	// between checking and calling `AddPendingBitArray`.
-	// This should be rare and in that case we just ignore.
-	if bf.requests[string(blockID)] != nil {
-		return
-	}
-	peerInfo, ok := bf.pending[string(blockID)]
-	if !ok {
-		bf.pending[string(blockID)] = map[uint16][]byte{
-			peerID: bitArray,
-		}
-		bf.pendingHeight[string(blockID)] = height
-	} else {
-		peerInfo[peerID] = bitArray
 	}
 }
 
