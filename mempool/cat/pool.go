@@ -18,8 +18,13 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+// enforce compile-time satisfaction of the Mempool interface
 var _ mempool.Mempool = (*TxPool)(nil)
 
+// Amount of evicted txs to cache. This is low enough so that in patches
+// of high tx throughput, the txpool will be able to quickly recover txs
+// that evicted but not large enough that continual excessive tx load won't
+// take up needless memory.
 const evictedTxCacheSize = 200
 
 var (
@@ -34,11 +39,19 @@ type TxPoolOption func(*TxPool)
 // set priority values on transactions in the CheckTx response. When selecting
 // transactions to include in a block, higher-priority transactions are chosen
 // first.  When evicting transactions from the mempool for size constraints,
-// lower-priority transactions are evicted sooner.
+// lower-priority transactions are evicted first. Transactions themselves are
+// unordered (A map is used). They can be broadcast in an order different from 
+// the order to which transactions are entered. There is no guarantee when CheckTx
+// passes that a transaction has been successfully broadcast to any of its peers.
 //
-// Within the txpool, transactions are ordered by time of arrival, and are
-// gossiped to the rest of the network based on that order (gossip order does
-// not take priority into account).
+// A TTL can be set to remove transactions after a period of time or a number
+// of heights.
+//
+// A cache of rejectedTxs can be set in the mempool config. Transactions that
+// are rejected because of `CheckTx` or other validity checks will be instantly
+// rejected if they are seen again. Committed transactions are also added to
+// this cache. This serves somewhat as replay protection but applications should 
+// implement something more comprehensive
 type TxPool struct {
 	// Immutable fields
 	logger       log.Logger
@@ -120,12 +133,10 @@ func WithMetrics(metrics *mempool.Metrics) TxPoolOption {
 }
 
 // Lock is a noop as ABCI calls are serialized
-func (txmp *TxPool) Lock() {
-}
+func (txmp *TxPool) Lock() {}
 
 // Unlock is a noop as ABCI calls are serialized
-func (txmp *TxPool) Unlock() {
-}
+func (txmp *TxPool) Unlock() {}
 
 // Size returns the number of valid transactions in the mempool. It is
 // thread-safe.
@@ -298,7 +309,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 			txmp.rejectedTxCache.Push(key)
 		}
 		txmp.metrics.FailedTxs.Add(1)
-		return rsp, fmt.Errorf("application rejected transaction with code %d (Log:  %s)", rsp.Code, rsp.Log)
+		return rsp, fmt.Errorf("application rejected transaction with code %d (Log: %s)", rsp.Code, rsp.Log)
 	}
 
 	// Create wrapped tx
@@ -530,14 +541,14 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 		})
 
 		// Evict as many of the victims as necessary to make room.
-		var evictedBytes int64
+		availableBytes := txmp.availableBytes()
 		for _, tx := range victims {
 			txmp.evictTx(tx)
 
 			// We may not need to evict all the eligible transactions.  Bail out
 			// early if we have made enough room.
-			evictedBytes += tx.size()
-			if evictedBytes >= wtx.size() {
+			availableBytes += tx.size()
+			if availableBytes >= wtx.size() {
 				break
 			}
 		}
@@ -648,6 +659,11 @@ func (txmp *TxPool) recheckTransactions() {
 		_ = g.Wait()
 		txmp.notifyTxsAvailable()
 	}()
+}
+
+// availableBytes returns the number of bytes available in the mempool.
+func (txmp *TxPool) availableBytes() int64 {
+	return txmp.config.MaxTxsBytes - txmp.SizeBytes()
 }
 
 // canAddTx returns an error if we cannot insert the provided *wrappedTx into

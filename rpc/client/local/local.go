@@ -161,6 +161,10 @@ func (c *Local) Block(ctx context.Context, height *int64) (*ctypes.ResultBlock, 
 	return core.Block(c.ctx, height)
 }
 
+func (c *Local) SignedBlock(ctx context.Context, height *int64) (*ctypes.ResultSignedBlock, error) {
+	return core.SignedBlock(c.ctx, height)
+}
+
 func (c *Local) BlockByHash(ctx context.Context, hash []byte) (*ctypes.ResultBlock, error) {
 	return core.BlockByHash(c.ctx, hash)
 }
@@ -203,7 +207,7 @@ func (c *Local) ProveShares(
 	height uint64,
 	startShare uint64,
 	endShare uint64,
-) (types.SharesProof, error) {
+) (types.ShareProof, error) {
 	return core.ProveShares(c.ctx, int64(height), startShare, endShare)
 }
 

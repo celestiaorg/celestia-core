@@ -343,6 +343,52 @@ func (c *Client) Block(ctx context.Context, height *int64) (*ctypes.ResultBlock,
 	return res, nil
 }
 
+// SignedBlock calls rpcclient#SignedBlock and then verifies the result.
+func (c *Client) SignedBlock(ctx context.Context, height *int64) (*ctypes.ResultSignedBlock, error) {
+	res, err := c.next.SignedBlock(ctx, height)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate res.
+	if err := res.Header.ValidateBasic(); err != nil {
+		return nil, err
+	}
+	if height != nil && res.Header.Height != *height {
+		return nil, fmt.Errorf("incorrect height returned. Expected %d, got %d", *height, res.Header.Height)
+	}
+	if err := res.Commit.ValidateBasic(); err != nil {
+		return nil, err
+	}
+	if err := res.ValidatorSet.ValidateBasic(); err != nil {
+		return nil, err
+	}
+
+	// NOTE: this will re-request the header and commit from the primary. Ideally, you'd just
+	// fetch the data from the primary and use the light client to verify it.
+	l, err := c.updateLightClientIfNeededTo(ctx, &res.Header.Height)
+	if err != nil {
+		return nil, err
+	}
+
+	if bmH, bH := l.Header.Hash(), res.Header.Hash(); !bytes.Equal(bmH, bH) {
+		return nil, fmt.Errorf("light client header %X does not match with response header %X",
+			bmH, bH)
+	}
+
+	if bmH, bH := l.Header.DataHash, res.Data.Hash(); !bytes.Equal(bmH, bH) {
+		return nil, fmt.Errorf("light client data hash %X does not match with response data %X",
+			bmH, bH)
+	}
+
+	return &ctypes.ResultSignedBlock{
+		Header:       res.Header,
+		Commit:       *l.Commit,
+		ValidatorSet: *l.ValidatorSet,
+		Data:         res.Data,
+	}, nil
+}
+
 // BlockByHash calls rpcclient#BlockByHash and then verifies the result.
 func (c *Client) BlockByHash(ctx context.Context, hash []byte) (*ctypes.ResultBlock, error) {
 	res, err := c.next.BlockByHash(ctx, hash)
@@ -489,18 +535,13 @@ func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Resul
 	}
 
 	// Update the light client if we're behind.
-	_, err = c.updateLightClientIfNeededTo(ctx, &res.Height)
+	l, err := c.updateLightClientIfNeededTo(ctx, &res.Height)
 	if err != nil {
 		return nil, err
 	}
 
-	valid := res.Proof.VerifyProof()
-	if !valid {
-		err = errors.New("proof for transaction inclusion could not be verified")
-	}
-
 	// Validate the proof.
-	return res, err
+	return res, res.Proof.Validate(l.DataHash)
 }
 
 // ProveShares calls rpcclient#ProveShares method and returns an NMT proof for a set
@@ -511,7 +552,7 @@ func (c *Client) ProveShares(
 	height uint64,
 	startShare uint64,
 	endShare uint64,
-) (types.SharesProof, error) {
+) (types.ShareProof, error) {
 	res, err := c.next.ProveShares(ctx, height, startShare, endShare)
 	return res, err
 }

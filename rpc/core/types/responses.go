@@ -41,6 +41,14 @@ type ResultBlock struct {
 	Block   *types.Block  `json:"block"`
 }
 
+// Single block with all data for validation
+type ResultSignedBlock struct {
+	Header       types.Header       `json:"header"`
+	Commit       types.Commit       `json:"commit"`
+	Data         types.Data         `json:"data"`
+	ValidatorSet types.ValidatorSet `json:"validator_set"`
+}
+
 // Commit and Header
 type ResultCommit struct {
 	types.SignedHeader `json:"signed_header"`
@@ -206,7 +214,7 @@ type ResultTx struct {
 	Index    uint32                 `json:"index"`
 	TxResult abci.ResponseDeliverTx `json:"tx_result"`
 	Tx       types.Tx               `json:"tx"`
-	Proof    types.TxProof          `json:"proof,omitempty"`
+	Proof    types.ShareProof       `json:"proof,omitempty"`
 }
 
 // Result of searching for txs

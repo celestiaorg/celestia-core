@@ -416,6 +416,19 @@ func (c *baseRPCClient) Block(ctx context.Context, height *int64) (*ctypes.Resul
 	return result, nil
 }
 
+func (c *baseRPCClient) SignedBlock(ctx context.Context, height *int64) (*ctypes.ResultSignedBlock, error) {
+	result := new(ctypes.ResultSignedBlock)
+	params := make(map[string]interface{})
+	if height != nil {
+		params["height"] = height
+	}
+	_, err := c.caller.Call(ctx, "signed_block", params, result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (c *baseRPCClient) BlockByHash(ctx context.Context, hash []byte) (*ctypes.ResultBlock, error) {
 	result := new(ctypes.ResultBlock)
 	params := map[string]interface{}{
@@ -515,8 +528,8 @@ func (c *baseRPCClient) ProveShares(
 	height uint64,
 	startShare uint64,
 	endShare uint64,
-) (types.SharesProof, error) {
-	result := new(types.SharesProof)
+) (types.ShareProof, error) {
+	result := new(types.ShareProof)
 	params := map[string]interface{}{
 		"height":     height,
 		"startShare": startShare,
@@ -524,7 +537,7 @@ func (c *baseRPCClient) ProveShares(
 	}
 	_, err := c.caller.Call(ctx, "prove_shares", params, result)
 	if err != nil {
-		return types.SharesProof{}, err
+		return types.ShareProof{}, err
 	}
 	return *result, nil
 }
