@@ -2,6 +2,7 @@ package cat
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -217,11 +218,7 @@ func TestTxPool_Eviction(t *testing.T) {
 	txmp.config.Size = 5
 	txmp.config.MaxTxsBytes = 60
 	txExists := func(spec string) bool {
-		return txmp.store.has(types.Tx(spec).Key())
-	}
-
-	txEvicted := func(spec string) bool {
-		return txmp.evictedTxs.Has(types.Tx(spec).Key())
+		return txmp.Has(types.Tx(spec).Key())
 	}
 
 	// A transaction bigger than the mempool should be rejected even when there
@@ -244,7 +241,6 @@ func TestTxPool_Eviction(t *testing.T) {
 	mustCheckTx(t, txmp, "key1=0000=25")
 	require.True(t, txExists("key1=0000=25"))
 	require.False(t, txExists(bigTx))
-	require.True(t, txEvicted(bigTx))
 	require.Equal(t, int64(len("key1=0000=25")), txmp.SizeBytes())
 
 	// Now fill up the rest of the slots with other transactions.
@@ -258,8 +254,6 @@ func TestTxPool_Eviction(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mempool is full")
 	require.False(t, txExists("key6=0005=1"))
-	// transactions instantly evicted should still be cached
-	require.True(t, txEvicted("key6=0005=1"))
 
 	// A new transaction with higher priority should evict key5, which is the
 	// newest of the two transactions with lowest priority.
@@ -299,7 +293,6 @@ func TestTxPool_Eviction(t *testing.T) {
 	// space for the previously evicted tx
 	require.NoError(t, txmp.RemoveTxByKey(types.Tx("key8=0007=20").Key()))
 	require.False(t, txExists("key8=0007=20"))
-	require.True(t, txmp.CanFitEvictedTx(types.Tx("key9=0008=9").Key()))
 }
 
 func TestTxPool_Flush(t *testing.T) {
@@ -638,7 +631,7 @@ func TestTxPool_CheckTxPostCheckError(t *testing.T) {
 	}
 }
 
-func TestConcurrentlyAddingTx(t *testing.T) {
+func TestTxPool_ConcurrentlyAddingTx(t *testing.T) {
 	txmp := setup(t, 500)
 	tx := types.Tx("sender=0000=1")
 
@@ -666,4 +659,33 @@ func TestConcurrentlyAddingTx(t *testing.T) {
 		}
 	}
 	require.Equal(t, numTxs-1, errCount)
+}
+
+func TestTxPool_BroadcastQueue(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	txmp := setup(t, 1)
+	txs := 10
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < txs; i++ {
+			select {
+			case <-ctx.Done():
+				t.Fatalf("failed to receive all txs (got %d/%d)", i+1, txs)
+			case tx := <-txmp.next():
+				require.Equal(t, tx, newDefaultTx(fmt.Sprintf("%d", i)))
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+
+	for i := 0; i < txs; i++ {
+		tx := newDefaultTx(fmt.Sprintf("%d", i))
+		txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0})
+	}
+
+	wg.Wait()
 }
