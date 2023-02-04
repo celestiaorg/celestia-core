@@ -9,7 +9,7 @@ import (
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 )
 
-func TestValidate(t *testing.T) {
+func TestRowProofValidate(t *testing.T) {
 	type testCase struct {
 		name    string
 		rp      RowProof
@@ -18,7 +18,7 @@ func TestValidate(t *testing.T) {
 	}
 	testCases := []testCase{
 		{
-			name:    "empty",
+			name:    "empty row proof returns error",
 			rp:      RowProof{},
 			root:    root,
 			wantErr: true,
@@ -42,15 +42,15 @@ func TestValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "row proof for one row with correct root returns no error",
+			name:    "valid row proof returns no error",
 			rp:      validRowProof(),
 			root:    root,
 			wantErr: false,
 		},
 		{
-			name:    "row proof for one row with incorrect root returns error",
+			name:    "valid row proof with incorrect root returns error",
 			rp:      validRowProof(),
-			root:    bytes.Repeat([]byte{0}, 32),
+			root:    incorrectRoot,
 			wantErr: true,
 		},
 	}
@@ -68,6 +68,8 @@ func TestValidate(t *testing.T) {
 
 // root is the root hash of the Merkle tree used in validRowProof
 var root = []uint8{253, 198, 13, 57, 11, 53, 213, 208, 65, 121, 189, 176, 31, 118, 252, 172, 25, 222, 154, 99, 108, 7, 73, 79, 246, 24, 250, 89, 1, 210, 104, 214}
+
+var incorrectRoot = bytes.Repeat([]byte{0}, 32)
 
 // validRowProof returns a row proof for one row. This test data copied from
 // ceelestia-app's pkg/proof/proof_test.go TestNewShareInclusionProof: "1
