@@ -2,6 +2,7 @@ package cat
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -20,6 +21,7 @@ import (
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
 )
@@ -217,11 +219,7 @@ func TestTxPool_Eviction(t *testing.T) {
 	txmp.config.Size = 5
 	txmp.config.MaxTxsBytes = 60
 	txExists := func(spec string) bool {
-		return txmp.store.has(types.Tx(spec).Key())
-	}
-
-	txEvicted := func(spec string) bool {
-		return txmp.evictedTxs.Has(types.Tx(spec).Key())
+		return txmp.Has(types.Tx(spec).Key())
 	}
 
 	// A transaction bigger than the mempool should be rejected even when there
@@ -244,7 +242,6 @@ func TestTxPool_Eviction(t *testing.T) {
 	mustCheckTx(t, txmp, "key1=0000=25")
 	require.True(t, txExists("key1=0000=25"))
 	require.False(t, txExists(bigTx))
-	require.True(t, txEvicted(bigTx))
 	require.Equal(t, int64(len("key1=0000=25")), txmp.SizeBytes())
 
 	// Now fill up the rest of the slots with other transactions.
@@ -258,8 +255,6 @@ func TestTxPool_Eviction(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mempool is full")
 	require.False(t, txExists("key6=0005=1"))
-	// transactions instantly evicted should still be cached
-	require.True(t, txEvicted("key6=0005=1"))
 
 	// A new transaction with higher priority should evict key5, which is the
 	// newest of the two transactions with lowest priority.
@@ -276,7 +271,7 @@ func TestTxPool_Eviction(t *testing.T) {
 	// Now the lowest-priority tx is 5, so that should be the next to go.
 	mustCheckTx(t, txmp, "key9=0008=9")
 	require.True(t, txExists("key9=0008=9"))
-	require.False(t, txExists("k3y2=0001=5"))
+	require.False(t, txExists("key2=0001=5"))
 
 	// Add a transaction that requires eviction of multiple lower-priority
 	// entries, in order to fit the size of the element.
@@ -299,7 +294,6 @@ func TestTxPool_Eviction(t *testing.T) {
 	// space for the previously evicted tx
 	require.NoError(t, txmp.RemoveTxByKey(types.Tx("key8=0007=20").Key()))
 	require.False(t, txExists("key8=0007=20"))
-	require.True(t, txmp.CanFitEvictedTx(types.Tx("key9=0008=9").Key()))
 }
 
 func TestTxPool_Flush(t *testing.T) {
@@ -366,7 +360,8 @@ func TestTxPool_ReapMaxBytesMaxGas(t *testing.T) {
 	ensurePrioritized(reapedTxs)
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5690), txmp.SizeBytes())
-	require.GreaterOrEqual(t, len(reapedTxs), 16)
+	// each tx is 57 bytes, 20 * 57 = 1140 + overhead for proto encoding
+	require.Equal(t, len(reapedTxs), 20)
 
 	// Reap by both transaction bytes and gas, where the size yields 31 reaped
 	// transactions and the gas limit reaps 25 transactions.
@@ -638,7 +633,55 @@ func TestTxPool_CheckTxPostCheckError(t *testing.T) {
 	}
 }
 
-func TestConcurrentlyAddingTx(t *testing.T) {
+func TestTxPool_RemoveBlobTx(t *testing.T) {
+	app := kvstore.NewApplication()
+	cc := proxy.NewLocalClientCreator(app)
+
+	cfg := config.TestMempoolConfig()
+	cfg.CacheSize = 100
+
+	appConnMem, err := cc.NewABCIClient()
+	require.NoError(t, err)
+	require.NoError(t, appConnMem.Start())
+
+	t.Cleanup(func() {
+		os.RemoveAll(cfg.RootDir)
+		require.NoError(t, appConnMem.Stop())
+	})
+
+	txmp := NewTxPool(log.TestingLogger(), cfg, appConnMem, 1)
+
+	originalTx := []byte{1, 2, 3, 4}
+	indexWrapper, err := types.MarshalIndexWrapper(originalTx, 100)
+	require.NoError(t, err)
+
+	// create the blobTx
+	b := tmproto.Blob{
+		NamespaceId:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		Data:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		ShareVersion: 0,
+	}
+	bTx, err := types.MarshalBlobTx(originalTx, &b)
+	require.NoError(t, err)
+
+	err = txmp.CheckTx(bTx, nil, mempool.TxInfo{})
+	require.NoError(t, err)
+
+	err = txmp.Update(1, []types.Tx{indexWrapper}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, txmp.Size())
+	require.EqualValues(t, 0, txmp.SizeBytes())
+}
+
+func abciResponses(n int, code uint32) []*abci.ResponseDeliverTx {
+	responses := make([]*abci.ResponseDeliverTx, 0, n)
+	for i := 0; i < n; i++ {
+		responses = append(responses, &abci.ResponseDeliverTx{Code: code})
+	}
+	return responses
+}
+
+func TestTxPool_ConcurrentlyAddingTx(t *testing.T) {
 	txmp := setup(t, 500)
 	tx := types.Tx("sender=0000=1")
 
@@ -666,4 +709,33 @@ func TestConcurrentlyAddingTx(t *testing.T) {
 		}
 	}
 	require.Equal(t, numTxs-1, errCount)
+}
+
+func TestTxPool_BroadcastQueue(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	txmp := setup(t, 1)
+	txs := 10
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < txs; i++ {
+			select {
+			case <-ctx.Done():
+				t.Fatalf("failed to receive all txs (got %d/%d)", i+1, txs)
+			case tx := <-txmp.next():
+				require.Equal(t, tx, newDefaultTx(fmt.Sprintf("%d", i)))
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+
+	for i := 0; i < txs; i++ {
+		tx := newDefaultTx(fmt.Sprintf("%d", i))
+		txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0})
+	}
+
+	wg.Wait()
 }

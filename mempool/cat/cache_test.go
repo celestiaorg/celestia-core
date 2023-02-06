@@ -76,40 +76,6 @@ func TestLRUTxCacheSize(t *testing.T) {
 	}
 }
 
-func TestEvictedTxCache(t *testing.T) {
-	var (
-		tx1  = types.Tx("tx1")
-		tx2  = types.Tx("tx2")
-		tx3  = types.Tx("tx3")
-		wtx1 = newWrappedTx(
-			tx1, tx1.Key(), 10, 1, 5, "",
-		)
-		wtx2 = newWrappedTx(
-			tx2, tx2.Key(), 10, 1, 5, "",
-		)
-		wtx3 = newWrappedTx(
-			tx3, tx3.Key(), 10, 1, 5, "",
-		)
-	)
-
-	cache := NewEvictedTxCache(2)
-	require.False(t, cache.Has(tx1.Key()))
-	require.Nil(t, cache.Pop(tx1.Key()))
-	cache.Push(wtx1)
-	require.True(t, cache.Has(tx1.Key()))
-	require.NotNil(t, cache.Pop(tx1.Key()))
-	cache.Push(wtx1)
-	time.Sleep(1 * time.Millisecond)
-	cache.Push(wtx2)
-	time.Sleep(1 * time.Millisecond)
-	cache.Push(wtx3)
-	// cache should have reached limit and thus evicted the oldest tx
-	require.False(t, cache.Has(tx1.Key()))
-	cache.Prune(time.Now().UTC().Add(1 * time.Second))
-	require.False(t, cache.Has(tx2.Key()))
-	require.False(t, cache.Has(tx3.Key()))
-}
-
 func TestSeenTxSetConcurrency(t *testing.T) {
 	seenSet := NewSeenTxSet()
 
