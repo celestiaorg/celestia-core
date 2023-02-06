@@ -24,6 +24,10 @@ const (
 	// Content Addressable Tx Pool gossips state based messages (SeenTx and WantTx) on a separate channel
 	// for cross compatibility
 	MempoolStateChannel = byte(0x31)
+
+	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
+	// the node received the tx
+	peerHeightDiff = 10
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -105,13 +109,8 @@ func (memR *Reactor) OnStart() error {
 
 			// listen in for any newly verified tx via RFC, then immediately
 			// broadcasts it to all connected peers.
-			case nextTxKey := <-memR.mempool.next():
-				wtx := memR.mempool.store.get(nextTxKey)
-				// tx may have been removed after it was added to the broadcast queue
-				// thus we just skip over it
-				if wtx != nil {
-					memR.broadcastNewTx(wtx)
-				}
+			case nextTx := <-memR.mempool.next():
+				memR.broadcastNewTx(nextTx)
 			}
 		}
 	}()
@@ -260,13 +259,6 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				return
 			}
 
-			// If it was a low-priority transaction and we don't have capacity, then ignore.
-			if memR.mempool.WasRecentlyEvicted(txKey) {
-				if !memR.mempool.CanFitEvictedTx(txKey) {
-					return
-				}
-			}
-
 			// We don't have the transaction, nor are we requesting it so we send the node
 			// a want msg
 			memR.requestTx(txKey, e.Src)
@@ -332,7 +324,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
 			// in which case we just skip sending the transaction
-			if p.GetHeight() < memR.mempool.Height()-20 {
+			if p.GetHeight() < memR.mempool.Height()-1 {
 				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx")
 				continue
 			}
@@ -348,12 +340,11 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 }
 
 // broadcastNewTx broadcast new transaction to all peers unless we are already sure they have seen the tx.
-func (memR *Reactor) broadcastNewTx(tx *wrappedTx) {
-	memR.Logger.Info("broadcasting new tx to all caught up peers", "tx_key", tx.key)
+func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 	msg := &protomem.Message{
 		Sum: &protomem.Message_Txs{
 			Txs: &protomem.Txs{
-				Txs: [][]byte{tx.tx},
+				Txs: [][]byte{wtx.tx},
 			},
 		},
 	}
@@ -367,18 +358,18 @@ func (memR *Reactor) broadcastNewTx(tx *wrappedTx) {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
 			// in which case we just skip sending the transaction
-			if p.GetHeight() < tx.height-20 {
+			if p.GetHeight() < wtx.height-peerHeightDiff {
 				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx")
 				continue
 			}
 		}
 
-		if memR.mempool.seenByPeersSet.Has(tx.key, id) {
+		if memR.mempool.seenByPeersSet.Has(wtx.key, id) {
 			continue
 		}
 
 		if peer.Send(mempool.MempoolChannel, bz) {
-			memR.mempool.PeerHasTx(id, tx.key)
+			memR.mempool.PeerHasTx(id, wtx.key)
 		}
 	}
 }
