@@ -734,7 +734,7 @@ func TestTxPool_BroadcastQueue(t *testing.T) {
 
 	for i := 0; i < txs; i++ {
 		tx := newDefaultTx(fmt.Sprintf("%d", i))
-		txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0})
+		require.NoError(t, txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0}))
 	}
 
 	wg.Wait()

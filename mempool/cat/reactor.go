@@ -95,7 +95,7 @@ func (memR *Reactor) SetLogger(l log.Logger) {
 	memR.Logger = l
 }
 
-// OnStart implements p2p.BaseReactor.
+// OnStart implements Service.
 func (memR *Reactor) OnStart() error {
 	if memR.opts.ListenOnly {
 		memR.Logger.Info("Tx broadcasting is disabled")
@@ -117,6 +117,7 @@ func (memR *Reactor) OnStart() error {
 	return nil
 }
 
+// OnStop implements Service
 func (memR *Reactor) OnStop() {
 	// stop all the timers tracking outbound requests
 	memR.requests.Close()
