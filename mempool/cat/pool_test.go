@@ -725,8 +725,8 @@ func TestTxPool_BroadcastQueue(t *testing.T) {
 			select {
 			case <-ctx.Done():
 				t.Fatalf("failed to receive all txs (got %d/%d)", i+1, txs)
-			case tx := <-txmp.next():
-				require.Equal(t, tx, newDefaultTx(fmt.Sprintf("%d", i)))
+			case wtx := <-txmp.next():
+				require.Equal(t, wtx.tx, newDefaultTx(fmt.Sprintf("%d", i)))
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
