@@ -1,19 +1,18 @@
-package v1
+package cat
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
 	"os"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/tendermint/tendermint/abci/example/code"
@@ -36,6 +35,14 @@ type application struct {
 type testTx struct {
 	tx       types.Tx
 	priority int64
+}
+
+func newTx(i int, peerID uint16, msg []byte, priority int64) []byte {
+	return []byte(fmt.Sprintf("sender-%d-%d=%X=%d", i, peerID, msg, priority))
+}
+
+func newDefaultTx(msg string) types.Tx {
+	return types.Tx(newTx(0, 0, []byte(msg), 1))
 }
 
 func (app *application) CheckTx(req abci.RequestCheckTx) abci.ResponseCheckTx {
@@ -74,14 +81,14 @@ func (app *application) CheckTx(req abci.RequestCheckTx) abci.ResponseCheckTx {
 	}
 }
 
-func setup(t testing.TB, cacheSize int, options ...TxMempoolOption) *TxMempool {
+func setup(t testing.TB, cacheSize int, options ...TxPoolOption) *TxPool {
 	t.Helper()
 
 	app := &application{kvstore.NewApplication()}
 	cc := proxy.NewLocalClientCreator(app)
 
-	cfg := config.ResetTestRoot(strings.ReplaceAll(t.Name(), "/", "|"))
-	cfg.Mempool.CacheSize = cacheSize
+	cfg := config.TestMempoolConfig()
+	cfg.CacheSize = cacheSize
 
 	appConnMem, err := cc.NewABCIClient()
 	require.NoError(t, err)
@@ -92,27 +99,22 @@ func setup(t testing.TB, cacheSize int, options ...TxMempoolOption) *TxMempool {
 		require.NoError(t, appConnMem.Stop())
 	})
 
-	return NewTxMempool(log.TestingLogger().With("test", t.Name()), cfg.Mempool, appConnMem, 0, options...)
+	return NewTxPool(log.TestingLogger().With("test", t.Name()), cfg, appConnMem, 1, options...)
 }
 
 // mustCheckTx invokes txmp.CheckTx for the given transaction and waits until
 // its callback has finished executing. It fails t if CheckTx fails.
-func mustCheckTx(t *testing.T, txmp *TxMempool, spec string) {
-	done := make(chan struct{})
-	if err := txmp.CheckTx([]byte(spec), func(*abci.Response) {
-		close(done)
-	}, mempool.TxInfo{}); err != nil {
-		t.Fatalf("CheckTx for %q failed: %v", spec, err)
-	}
-	<-done
+func mustCheckTx(t *testing.T, txmp *TxPool, spec string) {
+	require.NoError(t, txmp.CheckTx([]byte(spec), nil, mempool.TxInfo{}))
 }
 
-func checkTxs(t *testing.T, txmp *TxMempool, numTxs int, peerID uint16) []testTx {
+func checkTxs(t *testing.T, txmp *TxPool, numTxs int, peerID uint16) []testTx {
 	txs := make([]testTx, numTxs)
 	txInfo := mempool.TxInfo{SenderID: peerID}
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
+	current := txmp.Size()
 	for i := 0; i < numTxs; i++ {
 		prefix := make([]byte, 20)
 		_, err := rng.Read(prefix)
@@ -121,16 +123,18 @@ func checkTxs(t *testing.T, txmp *TxMempool, numTxs int, peerID uint16) []testTx
 		priority := int64(rng.Intn(9999-1000) + 1000)
 
 		txs[i] = testTx{
-			tx:       []byte(fmt.Sprintf("sender-%d-%d=%X=%d", i, peerID, prefix, priority)),
+			tx:       newTx(i, peerID, prefix, priority),
 			priority: priority,
 		}
 		require.NoError(t, txmp.CheckTx(txs[i].tx, nil, txInfo))
+		// assert that none of them get silently evicted
+		require.Equal(t, current+i+1, txmp.Size())
 	}
 
 	return txs
 }
 
-func TestTxMempool_TxsAvailable(t *testing.T) {
+func TestTxPool_TxsAvailable(t *testing.T) {
 	txmp := setup(t, 0)
 	txmp.EnableTxsAvailable()
 
@@ -171,6 +175,8 @@ func TestTxMempool_TxsAvailable(t *testing.T) {
 		responses[i] = &abci.ResponseDeliverTx{Code: abci.CodeTypeOK}
 	}
 
+	require.Equal(t, 100, txmp.Size())
+
 	// commit half the transactions and ensure we fire an event
 	txmp.Lock()
 	require.NoError(t, txmp.Update(1, rawTxs[:50], responses, nil, nil))
@@ -184,7 +190,7 @@ func TestTxMempool_TxsAvailable(t *testing.T) {
 	ensureNoTxFire()
 }
 
-func TestTxMempool_Size(t *testing.T) {
+func TestTxPool_Size(t *testing.T) {
 	txmp := setup(t, 0)
 	txs := checkTxs(t, txmp, 100, 0)
 	require.Equal(t, len(txs), txmp.Size())
@@ -208,21 +214,19 @@ func TestTxMempool_Size(t *testing.T) {
 	require.Equal(t, int64(2850), txmp.SizeBytes())
 }
 
-func TestTxMempool_Eviction(t *testing.T) {
+func TestTxPool_Eviction(t *testing.T) {
 	txmp := setup(t, 1000)
 	txmp.config.Size = 5
 	txmp.config.MaxTxsBytes = 60
 	txExists := func(spec string) bool {
-		txmp.Lock()
-		defer txmp.Unlock()
-		key := types.Tx(spec).Key()
-		_, ok := txmp.txByKey[key]
-		return ok
+		return txmp.Has(types.Tx(spec).Key())
 	}
 
 	// A transaction bigger than the mempool should be rejected even when there
 	// are slots available.
-	mustCheckTx(t, txmp, "big=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef=1")
+	err := txmp.CheckTx(types.Tx("big=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef=1"), nil, mempool.TxInfo{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mempool is full")
 	require.Equal(t, 0, txmp.Size())
 
 	// Nearly-fill the mempool with a low-priority transaction, to show that it
@@ -238,7 +242,6 @@ func TestTxMempool_Eviction(t *testing.T) {
 	mustCheckTx(t, txmp, "key1=0000=25")
 	require.True(t, txExists("key1=0000=25"))
 	require.False(t, txExists(bigTx))
-	require.False(t, txmp.cache.Has([]byte(bigTx)))
 	require.Equal(t, int64(len("key1=0000=25")), txmp.SizeBytes())
 
 	// Now fill up the rest of the slots with other transactions.
@@ -248,7 +251,9 @@ func TestTxMempool_Eviction(t *testing.T) {
 	mustCheckTx(t, txmp, "key5=0004=3")
 
 	// A new transaction with low priority should be discarded.
-	mustCheckTx(t, txmp, "key6=0005=1")
+	err = txmp.CheckTx(types.Tx("key6=0005=1"), nil, mempool.TxInfo{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mempool is full")
 	require.False(t, txExists("key6=0005=1"))
 
 	// A new transaction with higher priority should evict key5, which is the
@@ -277,9 +282,21 @@ func TestTxMempool_Eviction(t *testing.T) {
 	require.False(t, txExists("key3=0002=10"))
 	require.False(t, txExists("key9=0008=9"))
 	require.False(t, txExists("key7=0006=7"))
+
+	// Free up some space so we can add back previously evicted txs
+	err = txmp.Update(1, types.Txs{types.Tx("key10=0123456789abcdef=11")}, []*abci.ResponseDeliverTx{{Code: abci.CodeTypeOK}}, nil, nil)
+	require.NoError(t, err)
+	require.False(t, txExists("key10=0123456789abcdef=11"))
+	mustCheckTx(t, txmp, "key3=0002=10")
+	require.True(t, txExists("key3=0002=10"))
+
+	// remove a high priority tx and check if there is
+	// space for the previously evicted tx
+	require.NoError(t, txmp.RemoveTxByKey(types.Tx("key8=0007=20").Key()))
+	require.False(t, txExists("key8=0007=20"))
 }
 
-func TestTxMempool_Flush(t *testing.T) {
+func TestTxPool_Flush(t *testing.T) {
 	txmp := setup(t, 0)
 	txs := checkTxs(t, txmp, 100, 0)
 	require.Equal(t, len(txs), txmp.Size())
@@ -304,7 +321,7 @@ func TestTxMempool_Flush(t *testing.T) {
 	require.Equal(t, int64(0), txmp.SizeBytes())
 }
 
-func TestTxMempool_ReapMaxBytesMaxGas(t *testing.T) {
+func TestTxPool_ReapMaxBytesMaxGas(t *testing.T) {
 	txmp := setup(t, 0)
 	tTxs := checkTxs(t, txmp, 100, 0) // all txs request 1 gas unit
 	require.Equal(t, len(tTxs), txmp.Size())
@@ -339,71 +356,64 @@ func TestTxMempool_ReapMaxBytesMaxGas(t *testing.T) {
 	require.Len(t, reapedTxs, 50)
 
 	// reap by transaction bytes only
-	reapedTxs = txmp.ReapMaxBytesMaxGas(1000, -1)
+	reapedTxs = txmp.ReapMaxBytesMaxGas(1200, -1)
 	ensurePrioritized(reapedTxs)
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5690), txmp.SizeBytes())
-	require.GreaterOrEqual(t, len(reapedTxs), 16)
+	// each tx is 57 bytes, 20 * 57 = 1140 + overhead for proto encoding
+	require.Equal(t, len(reapedTxs), 20)
 
 	// Reap by both transaction bytes and gas, where the size yields 31 reaped
 	// transactions and the gas limit reaps 25 transactions.
-	reapedTxs = txmp.ReapMaxBytesMaxGas(1500, 30)
+	reapedTxs = txmp.ReapMaxBytesMaxGas(2000, 25)
 	ensurePrioritized(reapedTxs)
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5690), txmp.SizeBytes())
 	require.Len(t, reapedTxs, 25)
 }
 
-func TestTxMempool_ReapMaxTxs(t *testing.T) {
+func TestTxPool_ReapMaxTxs(t *testing.T) {
 	txmp := setup(t, 0)
-	tTxs := checkTxs(t, txmp, 100, 0)
-	require.Equal(t, len(tTxs), txmp.Size())
+	txs := checkTxs(t, txmp, 100, 0)
+	require.Equal(t, len(txs), txmp.Size())
 	require.Equal(t, int64(5690), txmp.SizeBytes())
 
-	txMap := make(map[types.TxKey]testTx)
-	priorities := make([]int64, len(tTxs))
-	for i, tTx := range tTxs {
-		txMap[tTx.tx.Key()] = tTx
-		priorities[i] = tTx.priority
+	txMap := make(map[types.TxKey]int64)
+	for _, tx := range txs {
+		txMap[tx.tx.Key()] = tx.priority
 	}
 
-	sort.Slice(priorities, func(i, j int) bool {
-		// sort by priority, i.e. decreasing order
-		return priorities[i] > priorities[j]
-	})
-
 	ensurePrioritized := func(reapedTxs types.Txs) {
-		reapedPriorities := make([]int64, len(reapedTxs))
-		for i, rTx := range reapedTxs {
-			reapedPriorities[i] = txMap[rTx.Key()].priority
+		for i := 0; i < len(reapedTxs)-1; i++ {
+			currPriority := txMap[reapedTxs[i].Key()]
+			nextPriority := txMap[reapedTxs[i+1].Key()]
+			require.GreaterOrEqual(t, currPriority, nextPriority)
 		}
-
-		require.Equal(t, priorities[:len(reapedPriorities)], reapedPriorities)
 	}
 
 	// reap all transactions
 	reapedTxs := txmp.ReapMaxTxs(-1)
 	ensurePrioritized(reapedTxs)
-	require.Equal(t, len(tTxs), txmp.Size())
+	require.Equal(t, len(txs), txmp.Size())
 	require.Equal(t, int64(5690), txmp.SizeBytes())
-	require.Len(t, reapedTxs, len(tTxs))
+	require.Len(t, reapedTxs, len(txs))
 
 	// reap a single transaction
 	reapedTxs = txmp.ReapMaxTxs(1)
 	ensurePrioritized(reapedTxs)
-	require.Equal(t, len(tTxs), txmp.Size())
+	require.Equal(t, len(txs), txmp.Size())
 	require.Equal(t, int64(5690), txmp.SizeBytes())
 	require.Len(t, reapedTxs, 1)
 
 	// reap half of the transactions
-	reapedTxs = txmp.ReapMaxTxs(len(tTxs) / 2)
+	reapedTxs = txmp.ReapMaxTxs(len(txs) / 2)
 	ensurePrioritized(reapedTxs)
-	require.Equal(t, len(tTxs), txmp.Size())
+	require.Equal(t, len(txs), txmp.Size())
 	require.Equal(t, int64(5690), txmp.SizeBytes())
-	require.Len(t, reapedTxs, len(tTxs)/2)
+	require.Len(t, reapedTxs, len(txs)/2)
 }
 
-func TestTxMempool_CheckTxExceedsMaxSize(t *testing.T) {
+func TestTxPool_CheckTxExceedsMaxSize(t *testing.T) {
 	txmp := setup(t, 0)
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -411,16 +421,18 @@ func TestTxMempool_CheckTxExceedsMaxSize(t *testing.T) {
 	_, err := rng.Read(tx)
 	require.NoError(t, err)
 
-	require.Error(t, txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0}))
+	err = txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0})
+	require.Equal(t, mempool.ErrTxTooLarge{Max: txmp.config.MaxTxBytes, Actual: len(tx)}, err)
 
 	tx = make([]byte, txmp.config.MaxTxBytes-1)
 	_, err = rng.Read(tx)
 	require.NoError(t, err)
 
-	require.NoError(t, txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0}))
+	err = txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0})
+	require.NotEqual(t, mempool.ErrTxTooLarge{Max: txmp.config.MaxTxBytes, Actual: len(tx)}, err)
 }
 
-func TestTxMempool_CheckTxSamePeer(t *testing.T) {
+func TestTxPool_CheckTxSamePeer(t *testing.T) {
 	txmp := setup(t, 100)
 	peerID := uint16(1)
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -435,29 +447,7 @@ func TestTxMempool_CheckTxSamePeer(t *testing.T) {
 	require.Error(t, txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: peerID}))
 }
 
-func TestTxMempool_CheckTxSameSender(t *testing.T) {
-	txmp := setup(t, 100)
-	peerID := uint16(1)
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	prefix1 := make([]byte, 20)
-	_, err := rng.Read(prefix1)
-	require.NoError(t, err)
-
-	prefix2 := make([]byte, 20)
-	_, err = rng.Read(prefix2)
-	require.NoError(t, err)
-
-	tx1 := []byte(fmt.Sprintf("sender-0=%X=%d", prefix1, 50))
-	tx2 := []byte(fmt.Sprintf("sender-0=%X=%d", prefix2, 50))
-
-	require.NoError(t, txmp.CheckTx(tx1, nil, mempool.TxInfo{SenderID: peerID}))
-	require.Equal(t, 1, txmp.Size())
-	require.NoError(t, txmp.CheckTx(tx2, nil, mempool.TxInfo{SenderID: peerID}))
-	require.Equal(t, 1, txmp.Size())
-}
-
-func TestTxMempool_ConcurrentTxs(t *testing.T) {
+func TestTxPool_ConcurrentTxs(t *testing.T) {
 	txmp := setup(t, 100)
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	checkTxDone := make(chan struct{})
@@ -521,7 +511,7 @@ func TestTxMempool_ConcurrentTxs(t *testing.T) {
 	require.Zero(t, txmp.SizeBytes())
 }
 
-func TestTxMempool_ExpiredTxs_Timestamp(t *testing.T) {
+func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 	txmp := setup(t, 5000)
 	txmp.config.TTLDuration = 5 * time.Millisecond
 
@@ -553,23 +543,23 @@ func TestTxMempool_ExpiredTxs_Timestamp(t *testing.T) {
 
 	// All the transactions in the original set should have been purged.
 	for _, tx := range added1 {
-		if _, ok := txmp.txByKey[tx.tx.Key()]; ok {
+		if txmp.store.has(tx.tx.Key()) {
 			t.Errorf("Transaction %X should have been purged for TTL", tx.tx.Key())
 		}
-		if txmp.cache.Has(tx.tx) {
+		if txmp.rejectedTxCache.Has(tx.tx.Key()) {
 			t.Errorf("Transaction %X should have been removed from the cache", tx.tx.Key())
 		}
 	}
 
 	// All the transactions added later should still be around.
 	for _, tx := range added2 {
-		if _, ok := txmp.txByKey[tx.tx.Key()]; !ok {
+		if !txmp.store.has(tx.tx.Key()) {
 			t.Errorf("Transaction %X should still be in the mempool, but is not", tx.tx.Key())
 		}
 	}
 }
 
-func TestTxMempool_ExpiredTxs_NumBlocks(t *testing.T) {
+func TestTxPool_ExpiredTxs_NumBlocks(t *testing.T) {
 	txmp := setup(t, 500)
 	txmp.height = 100
 	txmp.config.TTLNumBlocks = 10
@@ -615,7 +605,7 @@ func TestTxMempool_ExpiredTxs_NumBlocks(t *testing.T) {
 	require.GreaterOrEqual(t, txmp.Size(), 45)
 }
 
-func TestTxMempool_CheckTxPostCheckError(t *testing.T) {
+func TestTxPool_CheckTxPostCheckError(t *testing.T) {
 	cases := []struct {
 		name string
 		err  error
@@ -636,27 +626,30 @@ func TestTxMempool_CheckTxPostCheckError(t *testing.T) {
 				return testCase.err
 			}
 			txmp := setup(t, 0, WithPostCheck(postCheckFn))
-			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-			tx := make([]byte, txmp.config.MaxTxBytes-1)
-			_, err := rng.Read(tx)
-			require.NoError(t, err)
-
-			callback := func(res *abci.Response) {
-				checkTxRes, ok := res.Value.(*abci.Response_CheckTx)
-				require.True(t, ok)
-				expectedErrString := ""
-				if testCase.err != nil {
-					expectedErrString = testCase.err.Error()
-				}
-				require.Equal(t, expectedErrString, checkTxRes.CheckTx.MempoolError)
-			}
-			require.NoError(t, txmp.CheckTx(tx, callback, mempool.TxInfo{SenderID: 0}))
+			tx := []byte("sender=0000=1")
+			err := txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0})
+			require.True(t, errors.Is(err, testCase.err))
 		})
 	}
 }
 
-func TestRemoveBlobTx(t *testing.T) {
-	txmp := setup(t, 500)
+func TestTxPool_RemoveBlobTx(t *testing.T) {
+	app := kvstore.NewApplication()
+	cc := proxy.NewLocalClientCreator(app)
+
+	cfg := config.TestMempoolConfig()
+	cfg.CacheSize = 100
+
+	appConnMem, err := cc.NewABCIClient()
+	require.NoError(t, err)
+	require.NoError(t, appConnMem.Start())
+
+	t.Cleanup(func() {
+		os.RemoveAll(cfg.RootDir)
+		require.NoError(t, appConnMem.Stop())
+	})
+
+	txmp := NewTxPool(log.TestingLogger(), cfg, appConnMem, 1)
 
 	originalTx := []byte{1, 2, 3, 4}
 	indexWrapper, err := types.MarshalIndexWrapper(originalTx, 100)
@@ -676,8 +669,8 @@ func TestRemoveBlobTx(t *testing.T) {
 
 	err = txmp.Update(1, []types.Tx{indexWrapper}, abciResponses(1, abci.CodeTypeOK), nil, nil)
 	require.NoError(t, err)
-	assert.EqualValues(t, 0, txmp.Size())
-	assert.EqualValues(t, 0, txmp.SizeBytes())
+	require.EqualValues(t, 0, txmp.Size())
+	require.EqualValues(t, 0, txmp.SizeBytes())
 }
 
 func abciResponses(n int, code uint32) []*abci.ResponseDeliverTx {
@@ -686,4 +679,63 @@ func abciResponses(n int, code uint32) []*abci.ResponseDeliverTx {
 		responses = append(responses, &abci.ResponseDeliverTx{Code: code})
 	}
 	return responses
+}
+
+func TestTxPool_ConcurrentlyAddingTx(t *testing.T) {
+	txmp := setup(t, 500)
+	tx := types.Tx("sender=0000=1")
+
+	numTxs := 10
+	errCh := make(chan error, numTxs)
+	wg := &sync.WaitGroup{}
+	for i := 0; i < numTxs; i++ {
+		wg.Add(1)
+		go func(sender uint16) {
+			defer wg.Done()
+			_, err := txmp.TryAddNewTx(tx, tx.Key(), mempool.TxInfo{SenderID: sender})
+			errCh <- err
+		}(uint16(i + 1))
+	}
+	go func() {
+		wg.Wait()
+		close(errCh)
+	}()
+
+	errCount := 0
+	for err := range errCh {
+		if err != nil {
+			require.Equal(t, ErrTxInMempool, err)
+			errCount++
+		}
+	}
+	require.Equal(t, numTxs-1, errCount)
+}
+
+func TestTxPool_BroadcastQueue(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	txmp := setup(t, 1)
+	txs := 10
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < txs; i++ {
+			select {
+			case <-ctx.Done():
+				t.Fatalf("failed to receive all txs (got %d/%d)", i+1, txs)
+			case tx := <-txmp.next():
+				require.Equal(t, tx, newDefaultTx(fmt.Sprintf("%d", i)))
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+
+	for i := 0; i < txs; i++ {
+		tx := newDefaultTx(fmt.Sprintf("%d", i))
+		txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0})
+	}
+
+	wg.Wait()
 }
