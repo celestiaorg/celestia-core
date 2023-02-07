@@ -1059,7 +1059,7 @@ func (cfg *ConsensusConfig) ValidateBasic() error {
 		return errors.New("timeout_precommit_delta can't be negative")
 	}
 	if cfg.TargetRoundDuration < 0 {
-		return errors.New("timeout_commit can't be negative")
+		return errors.New("target round duration can't be negative")
 	}
 	if cfg.CreateEmptyBlocksInterval < 0 {
 		return errors.New("create_empty_blocks_interval can't be negative")
