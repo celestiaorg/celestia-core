@@ -163,7 +163,8 @@ func (memR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
 	return peer
 }
 
-// RemovePeer implements Reactor.
+// RemovePeer implements Reactor. For all current outbound requests to this
+// peer it will find a new peer to rerequest the same transactions.
 func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	peerID := memR.ids.Reclaim(peer.ID())
 	// remove and rerequest all pending outbound requests to that peer since we know
@@ -253,19 +254,20 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		memR.mempool.PeerHasTx(peerID, txKey)
 		// Check if we don't already have the transaction and that it was recently rejected
-		if !memR.mempool.Has(txKey) && !memR.mempool.IsRejectedTx(txKey) {
-			// If we are already requesting that tx, then we don't need to go any further.
-			if memR.requests.ForTx(txKey) != 0 {
-				memR.Logger.Debug("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
-				return
-			}
-
-			// We don't have the transaction, nor are we requesting it so we send the node
-			// a want msg
-			memR.requestTx(txKey, e.Src)
-		} else {
+		if memR.mempool.Has(txKey) || !memR.mempool.IsRejectedTx(txKey) {
 			memR.Logger.Debug("received a seen tx for a tx we already have", "txKey", txKey)
+			return
 		}
+
+		// If we are already requesting that tx, then we don't need to go any further.
+		if memR.requests.ForTx(txKey) != 0 {
+			memR.Logger.Debug("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
+			return
+		}
+
+		// We don't have the transaction, nor are we requesting it so we send the node
+		// a want msg
+		memR.requestTx(txKey, e.Src)
 
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
@@ -325,7 +327,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
 			// in which case we just skip sending the transaction
-			if p.GetHeight() < memR.mempool.Height()-1 {
+			if p.GetHeight() < memR.mempool.Height()-peerHeightDiff {
 				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx")
 				continue
 			}
