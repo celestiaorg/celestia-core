@@ -1014,7 +1014,7 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 
 // Commit returns the amount of time to wait for straggler votes after receiving
 // +2/3 precommits for a single block (ie. a commit). This has been modified
-// from upstream tendermint to by dynamic, where we account for the amount of
+// from upstream tendermint to be dynamic, where we account for the amount of
 // time already taken in a round.
 func (cfg *ConsensusConfig) Commit(t time.Time, elapsed time.Duration) time.Time {
 	remaining := cfg.TargetRoundDuration - elapsed
