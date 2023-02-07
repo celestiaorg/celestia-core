@@ -932,7 +932,7 @@ type ConsensusConfig struct {
 	// height (this gives us a chance to receive some more precommits, even
 	// though we already have +2/3).
 	// NOTE: when modifying, make sure to update time_iota_ms genesis parameter
-	TimeoutCommit time.Duration `mapstructure:"timeout_commit"`
+	TargetRoundDuration time.Duration `mapstructure:"target_round_duration"`
 
 	// Make progress as soon as we have all the precommits (as if TimeoutCommit = 0)
 	SkipTimeoutCommit bool `mapstructure:"skip_timeout_commit"`
@@ -958,7 +958,7 @@ func DefaultConsensusConfig() *ConsensusConfig {
 		TimeoutPrevoteDelta:         500 * time.Millisecond,
 		TimeoutPrecommit:            1000 * time.Millisecond,
 		TimeoutPrecommitDelta:       500 * time.Millisecond,
-		TimeoutCommit:               1000 * time.Millisecond,
+		TargetRoundDuration:         5000 * time.Millisecond,
 		SkipTimeoutCommit:           false,
 		CreateEmptyBlocks:           true,
 		CreateEmptyBlocksInterval:   0 * time.Second,
@@ -978,7 +978,7 @@ func TestConsensusConfig() *ConsensusConfig {
 	cfg.TimeoutPrecommit = 10 * time.Millisecond
 	cfg.TimeoutPrecommitDelta = 1 * time.Millisecond
 	// NOTE: when modifying, make sure to update time_iota_ms (testGenesisFmt) in toml.go
-	cfg.TimeoutCommit = 10 * time.Millisecond
+	cfg.TargetRoundDuration = 70 * time.Millisecond
 	cfg.SkipTimeoutCommit = true
 	cfg.PeerGossipSleepDuration = 5 * time.Millisecond
 	cfg.PeerQueryMaj23SleepDuration = 250 * time.Millisecond
@@ -1012,10 +1012,16 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 	) * time.Nanosecond
 }
 
-// Commit returns the amount of time to wait for straggler votes after receiving +2/3 precommits
-// for a single block (ie. a commit).
-func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
-	return t.Add(cfg.TimeoutCommit)
+// Commit returns the amount of time to wait for straggler votes after receiving
+// +2/3 precommits for a single block (ie. a commit). This has been modified
+// from upstream tendermint to by dynamic, where we account for the amount of
+// time already taken in a round.
+func (cfg *ConsensusConfig) Commit(t time.Time, elapsed time.Duration) time.Time {
+	remaining := cfg.TargetRoundDuration - elapsed
+	if remaining < time.Millisecond*1 {
+		remaining = time.Millisecond * 1
+	}
+	return t.Add(remaining)
 }
 
 // WalFile returns the full path to the write-ahead log file
@@ -1052,7 +1058,7 @@ func (cfg *ConsensusConfig) ValidateBasic() error {
 	if cfg.TimeoutPrecommitDelta < 0 {
 		return errors.New("timeout_precommit_delta can't be negative")
 	}
-	if cfg.TimeoutCommit < 0 {
+	if cfg.TargetRoundDuration < 0 {
 		return errors.New("timeout_commit can't be negative")
 	}
 	if cfg.CreateEmptyBlocksInterval < 0 {
