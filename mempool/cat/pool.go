@@ -21,12 +21,6 @@ import (
 // enforce compile-time satisfaction of the Mempool interface
 var _ mempool.Mempool = (*TxPool)(nil)
 
-// Amount of evicted txs to cache. This is low enough so that in patches
-// of high tx throughput, the txpool will be able to quickly recover txs
-// that evicted but not large enough that continual excessive tx load won't
-// take up needless memory.
-const evictedTxCacheSize = 200
-
 var (
 	ErrTxInMempool       = errors.New("tx already exists in mempool")
 	ErrTxAlreadyRejected = errors.New("tx was previously rejected")

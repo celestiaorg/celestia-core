@@ -686,8 +686,8 @@ func DefaultFuzzConnConfig() *FuzzConnConfig {
 // MempoolConfig defines the configuration options for the Tendermint mempool
 type MempoolConfig struct {
 	// Mempool version to use:
-	//  1) "v0" - (default) FIFO mempool.
-	//  2) "v1" - prioritized mempool.
+	//  1) "v0" - FIFO mempool.
+	//  2) "v1" - (default) prioritized mempool.
 	//  3) "v2" - content addressable transaction pool
 	Version   string `mapstructure:"version"`
 	RootDir   string `mapstructure:"home"`
@@ -734,7 +734,7 @@ type MempoolConfig struct {
 // DefaultMempoolConfig returns a default configuration for the Tendermint mempool
 func DefaultMempoolConfig() *MempoolConfig {
 	return &MempoolConfig{
-		Version:   MempoolV2,
+		Version:   MempoolV1,
 		Recheck:   true,
 		Broadcast: true,
 		WalPath:   "",
