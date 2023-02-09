@@ -1,6 +1,8 @@
 package e2e_test
 
 import (
+	"bytes"
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -90,6 +92,28 @@ func TestBlock_Range(t *testing.T) {
 		for h := node.Testnet.InitialHeight; h < first; h++ {
 			_, err := client.Block(ctx, &(h))
 			require.Error(t, err)
+		}
+	})
+}
+
+func TestBlock_SignedData(t *testing.T) {
+	testNode(t, func(t *testing.T, node e2e.Node) {
+		client, err := node.Client()
+		require.NoError(t, err)
+
+		resp, err := client.SignedBlock(context.Background(), nil)
+		require.NoError(t, err)
+		require.Equal(t, resp.Header.Height, resp.Commit.Height)
+
+		err = resp.ValidatorSet.VerifyCommit(resp.Header.ChainID, resp.Commit.BlockID, resp.Header.Height, &resp.Commit)
+		require.NoError(t, err)
+
+		if !bytes.Equal(resp.Commit.BlockID.Hash, resp.Header.Hash()) {
+			t.Fatal("commit is for a different block")
+		}
+
+		if !bytes.Equal(resp.Header.DataHash, resp.Data.Hash()) {
+			t.Fatal("data does not match header	data hash")
 		}
 	})
 }

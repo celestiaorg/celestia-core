@@ -25,8 +25,9 @@ const (
 	// for cross compatibility
 	MempoolStateChannel = byte(0x31)
 
-	// tx_key + node_id + buffer (for proto encoding)
-	maxStateChannelSize = tmhash.Size + 10
+	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
+	// the node received the tx
+	peerHeightDiff = 10
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -94,7 +95,7 @@ func (memR *Reactor) SetLogger(l log.Logger) {
 	memR.Logger = l
 }
 
-// OnStart implements p2p.BaseReactor.
+// OnStart implements Service.
 func (memR *Reactor) OnStart() error {
 	if memR.opts.ListenOnly {
 		memR.Logger.Info("Tx broadcasting is disabled")
@@ -108,19 +109,15 @@ func (memR *Reactor) OnStart() error {
 
 			// listen in for any newly verified tx via RFC, then immediately
 			// broadcasts it to all connected peers.
-			case nextTxKey := <-memR.mempool.next():
-				wtx := memR.mempool.store.get(nextTxKey)
-				// tx may have been removed after it was added to the broadcast queue
-				// thus we just skip over it
-				if wtx != nil {
-					memR.broadcastNewTx(wtx)
-				}
+			case nextTx := <-memR.mempool.next():
+				memR.broadcastNewTx(nextTx)
 			}
 		}
 	}()
 	return nil
 }
 
+// OnStop implements Service
 func (memR *Reactor) OnStop() {
 	// stop all the timers tracking outbound requests
 	memR.requests.Close()
@@ -130,9 +127,17 @@ func (memR *Reactor) OnStop() {
 // reactor.
 func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	largestTx := make([]byte, memR.opts.MaxTxSize)
-	batchMsg := protomem.Message{
+	txMsg := protomem.Message{
 		Sum: &protomem.Message_Txs{
 			Txs: &protomem.Txs{Txs: [][]byte{largestTx}},
+		},
+	}
+
+	stateMsg := protomem.Message{
+		Sum: &protomem.Message_SeenTx{
+			SeenTx: &protomem.SeenTx{
+				TxKey: make([]byte, tmhash.Size),
+			},
 		},
 	}
 
@@ -140,13 +145,13 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  mempool.MempoolChannel,
 			Priority:            6,
-			RecvMessageCapacity: batchMsg.Size(),
+			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 		{
 			ID:                  MempoolStateChannel,
 			Priority:            5,
-			RecvMessageCapacity: maxStateChannelSize,
+			RecvMessageCapacity: stateMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 	}
@@ -158,7 +163,8 @@ func (memR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
 	return peer
 }
 
-// RemovePeer implements Reactor.
+// RemovePeer implements Reactor. For all current outbound requests to this
+// peer it will find a new peer to rerequest the same transactions.
 func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	peerID := memR.ids.Reclaim(peer.ID())
 	// remove and rerequest all pending outbound requests to that peer since we know
@@ -248,26 +254,20 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		memR.mempool.PeerHasTx(peerID, txKey)
 		// Check if we don't already have the transaction and that it was recently rejected
-		if !memR.mempool.Has(txKey) && !memR.mempool.IsRejectedTx(txKey) {
-			// If we are already requesting that tx, then we don't need to go any further.
-			if memR.requests.ForTx(txKey) != 0 {
-				memR.Logger.Debug("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
-				return
-			}
-
-			// If it was a low-priority transaction and we don't have capacity, then ignore.
-			if memR.mempool.WasRecentlyEvicted(txKey) {
-				if !memR.mempool.CanFitEvictedTx(txKey) {
-					return
-				}
-			}
-
-			// We don't have the transaction, nor are we requesting it so we send the node
-			// a want msg
-			memR.requestTx(txKey, e.Src)
-		} else {
+		if memR.mempool.Has(txKey) || memR.mempool.IsRejectedTx(txKey) {
 			memR.Logger.Debug("received a seen tx for a tx we already have", "txKey", txKey)
+			return
 		}
+
+		// If we are already requesting that tx, then we don't need to go any further.
+		if memR.requests.ForTx(txKey) != 0 {
+			memR.Logger.Debug("received a SeenTx message for a transaction we are already requesting", "txKey", txKey)
+			return
+		}
+
+		// We don't have the transaction, nor are we requesting it so we send the node
+		// a want msg
+		memR.requestTx(txKey, e.Src)
 
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
@@ -327,7 +327,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
 			// in which case we just skip sending the transaction
-			if p.GetHeight() < memR.mempool.Height()-20 {
+			if p.GetHeight() < memR.mempool.Height()-peerHeightDiff {
 				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx")
 				continue
 			}
@@ -343,12 +343,11 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 }
 
 // broadcastNewTx broadcast new transaction to all peers unless we are already sure they have seen the tx.
-func (memR *Reactor) broadcastNewTx(tx *wrappedTx) {
-	memR.Logger.Info("broadcasting new tx to all caught up peers", "tx_key", tx.key)
+func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 	msg := &protomem.Message{
 		Sum: &protomem.Message_Txs{
 			Txs: &protomem.Txs{
-				Txs: [][]byte{tx.tx},
+				Txs: [][]byte{wtx.tx},
 			},
 		},
 	}
@@ -362,18 +361,18 @@ func (memR *Reactor) broadcastNewTx(tx *wrappedTx) {
 			// make sure peer isn't too far behind. This can happen
 			// if the peer is blocksyncing still and catching up
 			// in which case we just skip sending the transaction
-			if p.GetHeight() < tx.height-20 {
+			if p.GetHeight() < wtx.height-peerHeightDiff {
 				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx")
 				continue
 			}
 		}
 
-		if memR.mempool.seenByPeersSet.Has(tx.key, id) {
+		if memR.mempool.seenByPeersSet.Has(wtx.key, id) {
 			continue
 		}
 
 		if peer.Send(mempool.MempoolChannel, bz) {
-			memR.mempool.PeerHasTx(id, tx.key)
+			memR.mempool.PeerHasTx(id, wtx.key)
 		}
 	}
 }

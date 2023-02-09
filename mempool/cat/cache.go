@@ -15,9 +15,11 @@ import (
 type LRUTxCache struct {
 	staticSize int
 
-	mtx      tmsync.Mutex
+	mtx tmsync.Mutex
+	// cacheMap is used as a quick look up table
 	cacheMap map[types.TxKey]*list.Element
-	list     *list.List
+	// list is a doubly linked list used to capture the FIFO nature of the cache
+	list *list.List
 }
 
 func NewLRUTxCache(cacheSize int) *LRUTxCache {
@@ -66,6 +68,10 @@ func (c *LRUTxCache) Push(txKey types.TxKey) bool {
 }
 
 func (c *LRUTxCache) Remove(txKey types.TxKey) {
+	if c.staticSize == 0 {
+		return
+	}
+
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -89,92 +95,6 @@ func (c *LRUTxCache) Has(txKey types.TxKey) bool {
 	return ok
 }
 
-type EvictedTxInfo struct {
-	timeEvicted time.Time
-	priority    int64
-	gasWanted   int64
-	sender      string
-	size        int64
-}
-
-type EvictedTxCache struct {
-	staticSize int
-
-	mtx   tmsync.Mutex
-	cache map[types.TxKey]*EvictedTxInfo
-}
-
-func NewEvictedTxCache(size int) *EvictedTxCache {
-	return &EvictedTxCache{
-		staticSize: size,
-		cache:      make(map[types.TxKey]*EvictedTxInfo),
-	}
-}
-
-func (c *EvictedTxCache) Has(txKey types.TxKey) bool {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-	_, exists := c.cache[txKey]
-	return exists
-}
-
-func (c *EvictedTxCache) Get(txKey types.TxKey) *EvictedTxInfo {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-	return c.cache[txKey]
-}
-
-func (c *EvictedTxCache) Push(wtx *wrappedTx) {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-	c.cache[wtx.key] = &EvictedTxInfo{
-		timeEvicted: time.Now().UTC(),
-		priority:    wtx.priority,
-		gasWanted:   wtx.gasWanted,
-		sender:      wtx.sender,
-		size:        wtx.size(),
-	}
-	// if cache too large, remove the oldest entry
-	if len(c.cache) > c.staticSize {
-		oldestTxKey := wtx.key
-		oldestTxTime := time.Now().UTC()
-		for key, info := range c.cache {
-			if info.timeEvicted.Before(oldestTxTime) {
-				oldestTxTime = info.timeEvicted
-				oldestTxKey = key
-			}
-		}
-		delete(c.cache, oldestTxKey)
-	}
-}
-
-func (c *EvictedTxCache) Pop(txKey types.TxKey) *EvictedTxInfo {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-	info, exists := c.cache[txKey]
-	if !exists {
-		return nil
-	}
-	delete(c.cache, txKey)
-	return info
-}
-
-func (c *EvictedTxCache) Prune(limit time.Time) {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-	for key, info := range c.cache {
-		if info.timeEvicted.Before(limit) {
-			delete(c.cache, key)
-		}
-	}
-}
-
-func (c *EvictedTxCache) Reset() {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-	c.cache = make(map[types.TxKey]*EvictedTxInfo)
-}
-
 // SeenTxSet records transactions that have been
 // seen by other peers but not yet by us
 type SeenTxSet struct {
@@ -183,7 +103,7 @@ type SeenTxSet struct {
 }
 
 type timestampedPeerSet struct {
-	peers map[uint16]bool
+	peers map[uint16]struct{}
 	time  time.Time
 }
 
@@ -202,11 +122,11 @@ func (s *SeenTxSet) Add(txKey types.TxKey, peer uint16) {
 	seenSet, exists := s.set[txKey]
 	if !exists {
 		s.set[txKey] = timestampedPeerSet{
-			peers: map[uint16]bool{peer: true},
+			peers: map[uint16]struct{}{peer: struct{}{}},
 			time:  time.Now().UTC(),
 		}
 	} else {
-		seenSet.peers[peer] = true
+		seenSet.peers[peer] = struct{}{}
 	}
 }
 
@@ -259,7 +179,8 @@ func (s *SeenTxSet) Has(txKey types.TxKey, peer uint16) bool {
 	if !exists {
 		return false
 	}
-	return seenSet.peers[peer]
+	_, has := seenSet.peers[peer]
+	return has
 }
 
 func (s *SeenTxSet) Get(txKey types.TxKey) map[uint16]struct{} {

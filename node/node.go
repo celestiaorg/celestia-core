@@ -746,6 +746,10 @@ func NewNode(config *cfg.Config,
 	logger log.Logger,
 	options ...Option,
 ) (*Node, error) {
+	if err := config.ValidateBasic(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
 	blockStore, stateDB, err := initDBs(config, dbProvider)
 	if err != nil {
 		return nil, err

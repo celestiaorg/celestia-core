@@ -9,8 +9,6 @@ message Txs {
 
 message SeenTx {
   bytes tx_key = 1;
-  // the nodeID of the peer that sent the transaction
-  optional string from = 2;
 }
 
 message WantTx {
