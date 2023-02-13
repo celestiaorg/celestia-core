@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/crypto/secp256k1"
@@ -49,17 +50,19 @@ const (
 
 // Testnet represents a single testnet.
 type Testnet struct {
-	Name             string
-	File             string
-	Dir              string
-	IP               *net.IPNet
-	InitialHeight    int64
-	InitialState     map[string]string
-	Validators       map[*Node]int64
-	ValidatorUpdates map[int64]map[*Node]int64
-	Nodes            []*Node
-	KeyType          string
-	ABCIProtocol     string
+	Name                   string
+	File                   string
+	Dir                    string
+	IP                     *net.IPNet
+	InitialHeight          int64
+	InitialState           map[string]string
+	Validators             map[*Node]int64
+	ValidatorUpdates       map[int64]map[*Node]int64
+	Nodes                  []*Node
+	KeyType                string
+	ABCIProtocol           string
+	MaxInboundConnections  int
+	MaxOutboundConnections int
 }
 
 // Node represents a Tendermint node in a testnet.
@@ -102,16 +105,18 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 	}
 
 	testnet := &Testnet{
-		Name:             filepath.Base(dir),
-		File:             fname,
-		Dir:              dir,
-		IP:               ipNet,
-		InitialHeight:    1,
-		InitialState:     manifest.InitialState,
-		Validators:       map[*Node]int64{},
-		ValidatorUpdates: map[int64]map[*Node]int64{},
-		Nodes:            []*Node{},
-		ABCIProtocol:     manifest.ABCIProtocol,
+		Name:                   filepath.Base(dir),
+		File:                   fname,
+		Dir:                    dir,
+		IP:                     ipNet,
+		InitialHeight:          1,
+		InitialState:           manifest.InitialState,
+		Validators:             map[*Node]int64{},
+		ValidatorUpdates:       map[int64]map[*Node]int64{},
+		Nodes:                  []*Node{},
+		ABCIProtocol:           manifest.ABCIProtocol,
+		MaxInboundConnections:  manifest.MaxInboundConnections,
+		MaxOutboundConnections: manifest.MaxOutboundConnections,
 	}
 	if len(manifest.KeyType) != 0 {
 		testnet.KeyType = manifest.KeyType
@@ -269,6 +274,12 @@ func (t Testnet) Validate() error {
 	if len(t.Nodes) == 0 {
 		return errors.New("network has no nodes")
 	}
+	if t.MaxInboundConnections < 0 {
+		return errors.New("MaxInboundConnections must not be negative")
+	}
+	if t.MaxOutboundConnections < 0 {
+		return errors.New("MaxOutboundConnections must not be negative")
+	}
 	for _, node := range t.Nodes {
 		if err := node.Validate(t); err != nil {
 			return fmt.Errorf("invalid node %q: %w", node.Name, err)
@@ -305,7 +316,7 @@ func (n Node) Validate(testnet Testnet) error {
 
 	}
 	switch n.Mempool {
-	case "", "v0", "v1":
+	case "", config.MempoolV0, config.MempoolV1, config.MempoolV2:
 	default:
 		return fmt.Errorf("invalid mempool version %q", n.Mempool)
 	}

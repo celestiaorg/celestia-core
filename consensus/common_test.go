@@ -29,6 +29,7 @@ import (
 	tmpubsub "github.com/tendermint/tendermint/libs/pubsub"
 	tmsync "github.com/tendermint/tendermint/libs/sync"
 	mempl "github.com/tendermint/tendermint/mempool"
+	mempoolv2 "github.com/tendermint/tendermint/mempool/cat"
 	mempoolv0 "github.com/tendermint/tendermint/mempool/v0"
 	mempoolv1 "github.com/tendermint/tendermint/mempool/v1"
 	"github.com/tendermint/tendermint/p2p"
@@ -418,6 +419,17 @@ func newStateWithConfigAndBlockStore(
 			mempoolv1.WithPreCheck(sm.TxPreCheck(state)),
 			mempoolv1.WithPostCheck(sm.TxPostCheck(state)),
 		)
+	case cfg.MempoolV2:
+		logger := consensusLogger()
+		mempool = mempoolv2.NewTxPool(
+			logger,
+			config.Mempool,
+			proxyAppConnConMem,
+			state.LastBlockHeight,
+			mempoolv2.WithMetrics(memplMetrics),
+			mempoolv2.WithPreCheck(sm.TxPreCheck(state)),
+			mempoolv2.WithPostCheck(sm.TxPostCheck(state)),
+		)
 	}
 	if thisConfig.Consensus.WaitForTxs() {
 		mempool.EnableTxsAvailable()
@@ -706,7 +718,10 @@ func consensusLogger() log.Logger {
 	return log.TestingLoggerWithColorFn(func(keyvals ...interface{}) term.FgBgColor {
 		for i := 0; i < len(keyvals)-1; i += 2 {
 			if keyvals[i] == "validator" {
-				return term.FgBgColor{Fg: term.Color(uint8(keyvals[i+1].(int) + 1))}
+				index, ok := keyvals[i+1].(int)
+				if ok {
+					return term.FgBgColor{Fg: term.Color(uint8(index + 1))}
+				}
 			}
 		}
 		return term.FgBgColor{}
