@@ -928,7 +928,7 @@ type ConsensusConfig struct {
 	TimeoutPrecommit time.Duration `mapstructure:"timeout_precommit"`
 	// How much the timeout_precommit increases with each round
 	TimeoutPrecommitDelta time.Duration `mapstructure:"timeout_precommit_delta"`
-	// The TargetHeigtDuration is used to determine how long we wait after a
+	// TargetHeigtDuration is used to determine how long we wait after a
 	// block is committed. If this time is shorter than the actual time to reach
 	// consensus for that height, then we do not wait at all.
 	TargetHeightDuration time.Duration `mapstructure:"target_round_duration"`
