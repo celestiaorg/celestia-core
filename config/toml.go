@@ -461,7 +461,7 @@ timeout_precommit_delta = "{{ .Consensus.TimeoutPrecommitDelta }}"
 # How long we wait after committing a block, before starting on the new
 # height (this gives us a chance to receive some more precommits, even
 # though we already have +2/3).
-target_round_duration = "{{ .Consensus.TargetRoundDuration }}"
+target_round_duration = "{{ .Consensus.TargetHeightDuration }}"
 
 # How many blocks to look back to check existence of the node's consensus votes before joining consensus
 # When non-zero, the node will panic upon restart
