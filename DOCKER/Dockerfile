@@ -1,5 +1,9 @@
-# stage 1 Generate Tendermint Binary
-FROM golang:1.18-alpine as builder
+# Use a build arg to ensure that both stages use the same,
+# hopefully current, go version.
+ARG GOLANG_BASE_IMAGE=golang:1.19-alpine
+
+# stage 1 Generate CometBFT Binary
+FROM --platform=$BUILDPLATFORM $GOLANG_BASE_IMAGE as builder
 RUN apk update && \
     apk upgrade && \
     apk --no-cache add make
