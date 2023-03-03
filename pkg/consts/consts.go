@@ -31,7 +31,7 @@ var (
 	// https://github.com/celestiaorg/celestia-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#availabledata
 
 	// TxNamespaceID is the namespace reserved for transaction data
-	TxNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 1}
+	TxNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 
 	// NewBaseHashFunc change accordingly if another hash.Hash should be used as a base hasher in the NMT:
 	NewBaseHashFunc = sha256.New
