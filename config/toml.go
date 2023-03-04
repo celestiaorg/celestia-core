@@ -548,11 +548,14 @@ url = "{{ .EventCollector.URL }}"
 # The influxdb token to use for remote event collection.
 token = "{{ .EventCollector.Token }}"
 
-#The influxdb bucket to use for remote event collection.
+# The influxdb bucket to use for remote event collection.
 bucket = "{{ .EventCollector.Bucket }}"
 
-#The influxdb org to use for event remote collection.
+# The influxdb org to use for event remote collection.
 org = "{{ .EventCollector.Org }}"
+
+# The size of the batches that are sent to the database.
+batch_size = {{ .EventCollector.BatchSize }}
 `
 
 /****** these are for test settings ***********/
