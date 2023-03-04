@@ -24,10 +24,15 @@ import (
 	"github.com/tendermint/tendermint/libs/service"
 	tmsync "github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
+	"github.com/tendermint/tendermint/pkg/remote"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
 	tmtime "github.com/tendermint/tendermint/types/time"
+)
+
+const (
+	consensusTable = "consensus"
 )
 
 // Consensus sentinel errors
@@ -140,6 +145,8 @@ type State struct {
 
 	// for reporting metrics
 	metrics *Metrics
+
+	eventCollector *remote.Client
 }
 
 // StateOption sets an optional parameter on the State.
@@ -170,6 +177,7 @@ func NewState(
 		evpool:           evpool,
 		evsw:             tmevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
+		eventCollector:   &remote.Client{},
 	}
 
 	// set function defaults (may be overwritten before calling Start)
@@ -209,6 +217,11 @@ func (cs *State) SetEventBus(b *types.EventBus) {
 // StateMetrics sets the metrics.
 func StateMetrics(metrics *Metrics) StateOption {
 	return func(cs *State) { cs.metrics = metrics }
+}
+
+// StateEventCollector sets the remote event collector.
+func StateEventCollector(ec *remote.Client) StateOption {
+	return func(cs *State) { cs.eventCollector = ec }
 }
 
 // String returns a string.
@@ -685,6 +698,12 @@ func (cs *State) newStep() {
 	}
 
 	cs.nSteps++
+
+	cs.eventCollector.WritePoint(consensusTable, map[string]interface{}{
+		"height": rs.Height,
+		"round":  rs.Round,
+		"step":   rs.Step,
+	})
 
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {

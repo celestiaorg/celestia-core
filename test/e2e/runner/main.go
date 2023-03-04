@@ -15,6 +15,11 @@ import (
 	"github.com/tendermint/tendermint/test/e2e/pkg/infra/docker"
 )
 
+const (
+	FlagInfluxDBURL   = "influxdb-url"
+	FlagInfluxDBToken = "influxdb-token"
+)
+
 var (
 	logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 )
@@ -76,6 +81,19 @@ func NewCLI() *CLI {
 				}
 			default:
 				return fmt.Errorf("unknown infrastructure type '%s'", inft)
+			}
+
+			iurl, err := cmd.Flags().GetString(FlagInfluxDBURL)
+			if err != nil {
+				return err
+			}
+			itoken, err := cmd.Flags().GetString(FlagInfluxDBToken)
+			if err != nil {
+				return err
+			}
+			if ifd.InfluxDBURL == "" {
+				ifd.InfluxDBURL = iurl
+				ifd.InfluxDBToken = itoken
 			}
 
 			testnet, err := e2e.LoadTestnet(m, file, ifd)
@@ -159,6 +177,10 @@ func NewCLI() *CLI {
 	cli.root.PersistentFlags().StringP("infrastructure-type", "", "docker", "Backing infrastructure used to run the testnet. Either 'digital-ocean' or 'docker'")
 
 	cli.root.PersistentFlags().StringP("infrastructure-data", "", "", "path to the json file containing the infrastructure data. Only used if the 'infrastructure-type' is set to a value other than 'docker'")
+
+	cli.root.PersistentFlags().StringP(FlagInfluxDBURL, "", "", "URL of the InfluxDB instance to use for arbitrary data collection. If not specified, data will not be collected")
+
+	cli.root.PersistentFlags().StringP(FlagInfluxDBToken, "", "", "Token to use when writing to the InfluxDB instance. Must be specified if 'influxdb-url' is specified")
 
 	cli.root.Flags().BoolVarP(&cli.preserve, "preserve", "p", false,
 		"Preserves the running of the test net after tests are completed")

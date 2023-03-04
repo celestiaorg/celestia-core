@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/tendermint/tendermint/pkg/remote"
 )
 
 const (
@@ -69,15 +71,16 @@ type Config struct {
 	BaseConfig `mapstructure:",squash"`
 
 	// Options for services
-	RPC             *RPCConfig             `mapstructure:"rpc"`
-	P2P             *P2PConfig             `mapstructure:"p2p"`
-	Mempool         *MempoolConfig         `mapstructure:"mempool"`
-	StateSync       *StateSyncConfig       `mapstructure:"statesync"`
-	FastSync        *FastSyncConfig        `mapstructure:"fastsync"`
-	Consensus       *ConsensusConfig       `mapstructure:"consensus"`
-	Storage         *StorageConfig         `mapstructure:"storage"`
-	TxIndex         *TxIndexConfig         `mapstructure:"tx_index"`
-	Instrumentation *InstrumentationConfig `mapstructure:"instrumentation"`
+	RPC             *RPCConfig                   `mapstructure:"rpc"`
+	P2P             *P2PConfig                   `mapstructure:"p2p"`
+	Mempool         *MempoolConfig               `mapstructure:"mempool"`
+	StateSync       *StateSyncConfig             `mapstructure:"statesync"`
+	FastSync        *FastSyncConfig              `mapstructure:"fastsync"`
+	Consensus       *ConsensusConfig             `mapstructure:"consensus"`
+	Storage         *StorageConfig               `mapstructure:"storage"`
+	TxIndex         *TxIndexConfig               `mapstructure:"tx_index"`
+	Instrumentation *InstrumentationConfig       `mapstructure:"instrumentation"`
+	EventCollector  *remote.EventCollectorConfig `mapstructure:"event_collector"`
 }
 
 // DefaultConfig returns a default configuration for a Tendermint node
@@ -93,6 +96,7 @@ func DefaultConfig() *Config {
 		Storage:         DefaultStorageConfig(),
 		TxIndex:         DefaultTxIndexConfig(),
 		Instrumentation: DefaultInstrumentationConfig(),
+		EventCollector:  remote.DefaultEventCollectorConfig(),
 	}
 }
 
