@@ -65,7 +65,7 @@ type Client struct {
 // Stop closes the influxdb client.
 func (c *Client) Stop() {
 	c.cancel()
-	if c.Client != nil {
+	if c.Client == nil {
 		return
 	}
 	writeAPI := c.Client.WriteAPI(c.Org, c.Bucket)
