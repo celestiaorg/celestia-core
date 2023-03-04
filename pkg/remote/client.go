@@ -64,10 +64,13 @@ type Client struct {
 
 // Stop closes the influxdb client.
 func (c *Client) Stop() {
+	c.cancel()
+	if c.Client != nil {
+		return
+	}
 	writeAPI := c.Client.WriteAPI(c.Org, c.Bucket)
 	writeAPI.Flush()
 	c.Client.Close()
-	c.cancel()
 }
 
 // NewClient creates a new influxdb client using the provided config. If there
@@ -84,7 +87,7 @@ func NewClient(cfg *EventCollectorConfig, logger log.Logger, chainID, nodeID str
 		chainID:              chainID,
 		nodeID:               nodeID,
 	}
-	if cfg.URL == "" {
+	if cfg == nil || cfg.URL == "" {
 		return cli, nil
 	}
 	cli.Client = influxdb2.NewClientWithOptions(

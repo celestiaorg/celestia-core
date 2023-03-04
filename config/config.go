@@ -113,6 +113,7 @@ func TestConfig() *Config {
 		Storage:         TestStorageConfig(),
 		TxIndex:         TestTxIndexConfig(),
 		Instrumentation: TestInstrumentationConfig(),
+		EventCollector:  remote.DefaultEventCollectorConfig(),
 	}
 }
 
