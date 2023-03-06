@@ -23,17 +23,13 @@ const (
 	// ProtoIndexWrapperTypeID is included in each encoded IndexWrapper to help prevent
 	// decoding binaries that are not actually IndexWrappers.
 	ProtoIndexWrapperTypeID = "INDX"
+
+	// NamespaceSize is the size of a namespace ID in bytes.
+	NamespaceSize = 32
 )
 
 var (
-	// NamespaceSize is the size of a namespace ID in bytes. This constant
-	// should match celestia-app's NamespaceSize and is copied here to avoid an
-	// import cycle.
-	NamespaceSize = 32
-
-	// TxNamespaceID is the namespace reserved for transaction data. This
-	// constant should match celestia-app's TxNamespaceID and is copied here to
-	// avoid an import cycle.
+	// TxNamespaceID is the namespace reserved for transaction data.
 	TxNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 
 	// NewBaseHashFunc change accordingly if another hash.Hash should be used as a base hasher in the NMT:
