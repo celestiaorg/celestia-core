@@ -99,7 +99,7 @@ func DefaultConfig() *Config {
 // TestConfig returns a configuration that can be used for testing
 func TestConfig() *Config {
 	return &Config{
-		BaseConfig:      TestBaseConfig(),
+		BaseConfig:      TestBaseConfig("tendermint_test"),
 		RPC:             TestRPCConfig(),
 		P2P:             TestP2PConfig(),
 		Mempool:         TestMempoolConfig(),
@@ -250,9 +250,9 @@ func DefaultBaseConfig() BaseConfig {
 }
 
 // TestBaseConfig returns a base configuration for testing a Tendermint node
-func TestBaseConfig() BaseConfig {
+func TestBaseConfig(chainID string) BaseConfig {
 	cfg := DefaultBaseConfig()
-	cfg.chainID = "tendermint_test"
+	cfg.chainID = chainID
 	cfg.ProxyApp = "kvstore"
 	cfg.FastSyncMode = false
 	cfg.DBBackend = "memdb"
