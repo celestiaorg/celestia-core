@@ -61,6 +61,8 @@ var (
 
 	minSubscriptionBufferSize     = 100
 	defaultSubscriptionBufferSize = 200
+
+	defaultChainID = "tendermint_test"
 )
 
 // Config defines the top level configuration for a Tendermint node
@@ -99,7 +101,7 @@ func DefaultConfig() *Config {
 // TestConfig returns a configuration that can be used for testing
 func TestConfig() *Config {
 	return &Config{
-		BaseConfig:      TestBaseConfig("tendermint_test"),
+		BaseConfig:      TestBaseConfig(defaultChainID),
 		RPC:             TestRPCConfig(),
 		P2P:             TestP2PConfig(),
 		Mempool:         TestMempoolConfig(),

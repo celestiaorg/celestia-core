@@ -55,7 +55,7 @@ func TestTLSConfiguration(t *testing.T) {
 }
 
 func TestBaseConfigValidateBasic(t *testing.T) {
-	cfg := TestBaseConfig("tendermint_test")
+	cfg := TestBaseConfig(defaultChainID)
 	assert.NoError(t, cfg.ValidateBasic())
 
 	// tamper with log format
