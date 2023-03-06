@@ -26,11 +26,14 @@ const (
 )
 
 var (
-	// See spec for further details on the types of available data
-	// https://github.com/celestiaorg/celestia-specs/blob/master/src/specs/consensus.md#reserved-namespace-ids
-	// https://github.com/celestiaorg/celestia-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#availabledata
+	// NamespaceSize is the size of a namespace ID in bytes. This constant
+	// should match celestia-app's NamespaceSize and is copied here to avoid an
+	// import cycle.
+	NamespaceSize = 32
 
-	// TxNamespaceID is the namespace reserved for transaction data
+	// TxNamespaceID is the namespace reserved for transaction data. This
+	// constant should match celestia-app's TxNamespaceID and is copied here to
+	// avoid an import cycle.
 	TxNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 
 	// NewBaseHashFunc change accordingly if another hash.Hash should be used as a base hasher in the NMT:
