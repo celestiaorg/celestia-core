@@ -1,6 +1,7 @@
 package v0
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 	tmrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/mempool"
+	"github.com/tendermint/tendermint/pkg/consts"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
@@ -684,6 +686,7 @@ func TestMempoolRemoteAppConcurrency(t *testing.T) {
 func TestRemoveBlobTx(t *testing.T) {
 	app := kvstore.NewApplication()
 	cc := proxy.NewLocalClientCreator(app)
+	namespaceOne := bytes.Repeat([]byte{1}, consts.NamespaceSize)
 
 	cfg := config.ResetTestRoot("mempool_test")
 
@@ -697,7 +700,7 @@ func TestRemoveBlobTx(t *testing.T) {
 
 	// create the blobTx
 	b := tmproto.Blob{
-		NamespaceId:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		NamespaceId:  namespaceOne,
 		Data:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 		ShareVersion: 0,
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool"
+	"github.com/tendermint/tendermint/pkg/consts"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
@@ -657,6 +658,7 @@ func TestTxMempool_CheckTxPostCheckError(t *testing.T) {
 
 func TestRemoveBlobTx(t *testing.T) {
 	txmp := setup(t, 500)
+	namespaceOne := bytes.Repeat([]byte{1}, consts.NamespaceSize)
 
 	originalTx := []byte{1, 2, 3, 4}
 	indexWrapper, err := types.MarshalIndexWrapper(originalTx, 100)
@@ -664,7 +666,7 @@ func TestRemoveBlobTx(t *testing.T) {
 
 	// create the blobTx
 	b := tmproto.Blob{
-		NamespaceId:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		NamespaceId:  namespaceOne,
 		Data:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 		ShareVersion: 0,
 	}
