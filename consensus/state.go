@@ -219,8 +219,8 @@ func StateMetrics(metrics *Metrics) StateOption {
 	return func(cs *State) { cs.metrics = metrics }
 }
 
-// StateEventCollector sets the remote event collector.
-func StateEventCollector(ec *remote.Client) StateOption {
+// SetEventCollector sets the remote event collector.
+func SetEventCollector(ec *remote.Client) StateOption {
 	return func(cs *State) { cs.eventCollector = ec }
 }
 
