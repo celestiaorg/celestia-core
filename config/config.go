@@ -931,7 +931,7 @@ type ConsensusConfig struct {
 	// TargetHeigtDuration is used to determine how long we wait after a
 	// block is committed. If this time is shorter than the actual time to reach
 	// consensus for that height, then we do not wait at all.
-	TargetHeightDuration time.Duration `mapstructure:"target_round_duration"`
+	TargetHeightDuration time.Duration `mapstructure:"target_height_duration"`
 
 	// Make progress as soon as we have all the precommits (as if TimeoutCommit = 0)
 	SkipTimeoutCommit bool `mapstructure:"skip_timeout_commit"`
@@ -1051,7 +1051,7 @@ func (cfg *ConsensusConfig) ValidateBasic() error {
 		return errors.New("timeout_precommit_delta can't be negative")
 	}
 	if cfg.TargetHeightDuration < 0 {
-		return errors.New("target_round_duration can't be negative")
+		return errors.New("target_height_duration can't be negative")
 	}
 	if cfg.CreateEmptyBlocksInterval < 0 {
 		return errors.New("create_empty_blocks_interval can't be negative")
