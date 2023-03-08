@@ -1,12 +1,14 @@
 package types
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	tmrand "github.com/tendermint/tendermint/libs/rand"
+	"github.com/tendermint/tendermint/pkg/consts"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
@@ -91,8 +93,9 @@ func TestUnmarshalIndexWrapper(t *testing.T) {
 
 func TestUnmarshalBlobTx(t *testing.T) {
 	tx := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+	namespaceOne := bytes.Repeat([]byte{1}, consts.NamespaceSize)
 	blob := tmproto.Blob{
-		NamespaceId:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		NamespaceId:  namespaceOne,
 		Data:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 		ShareVersion: 0,
 	}
