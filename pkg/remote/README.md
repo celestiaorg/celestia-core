@@ -9,9 +9,9 @@ the WritePoint method should be used for most cases, as it enforces the schema.
 
 ## Usage and Schema
 
-To use this package, first create a new client using the NewClient function,
+To use this package, first create a new client using the `NewClient` function,
 then pass that client to the relevant components that need to push events. After
-that, you can use the WritePoint method to push events to influxdb. In the below
+that, you can use the `WritePoint` method to push events to influxdb. In the below
 example, we're pushing a point in the consensus reactor to measure exactly when
 each step of consensus is reached for each node.
 
