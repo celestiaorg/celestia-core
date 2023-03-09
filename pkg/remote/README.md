@@ -16,11 +16,11 @@ example, we're pushing a point in the consensus reactor to measure exactly when
 each step of consensus is reached for each node.
 
 ```go
-cs.eventCollector.WritePoint("consensus", map[string]interface{}{
-        "height": rs.Height,
-        "round":  rs.Round,
-        "step":   rs.Step,
-    })
+if cs.eventCollector.IsCollecting() {
+		cs.eventCollector.WritePoint("consensus", map[string]interface{}{
+			"roundData": []interface{}{rs.Height, rs.Round, rs.Step},
+		})
+}
 ```
 
 Using this method enforces the typical schema, where we are tagging (aka
@@ -41,7 +41,7 @@ from(bucket: "e2e")
   |> range(start: -1h)
   |> filter(
     fn: (r) => r["_measurement"] == "consensus"
-      and r.chain_id == "ci"
+      and r.chain_id == "ci-YREG8X"
       and r.node_id == "0b529c309608172a29c49979394734260b42acfb"
     )
 ```

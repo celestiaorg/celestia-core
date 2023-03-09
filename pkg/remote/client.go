@@ -30,11 +30,33 @@ type EventCollectorConfig struct {
 	BatchSize int `mapstructure:"batch_size"`
 }
 
+// ValidateBasic performs basic validation on the config.
+func (c *EventCollectorConfig) ValidateBasic() error {
+	// if there is not URL configured, then we do not need to validate the rest
+	// of the config because we are not connecting.
+	if c.URL == "" {
+		return nil
+	}
+	if c.Token == "" {
+		return fmt.Errorf("token is required")
+	}
+	if c.Org == "" {
+		return fmt.Errorf("org is required")
+	}
+	if c.Bucket == "" {
+		return fmt.Errorf("bucket is required")
+	}
+	if c.BatchSize <= 0 {
+		return fmt.Errorf("batch size must be greater than 0")
+	}
+	return nil
+}
+
 // DefaultEventCollectorConfig returns the default configuration.
 func DefaultEventCollectorConfig() *EventCollectorConfig {
 	return &EventCollectorConfig{
 		URL:       "",
-		Org:       "core/app",
+		Org:       "celestia",
 		Bucket:    "e2e",
 		BatchSize: 10,
 	}
@@ -125,13 +147,18 @@ func (c *Client) logErrors(logger log.Logger) {
 	}
 }
 
+// IsCollecting returns true if the client is collecting events.
+func (c *Client) IsCollecting() bool {
+	return c.Client != nil
+}
+
 // WritePoint async writes a point to influxdb. To enforce the schema, it
 // automatically adds the chain_id and node_id tags, along with setting the
 // timestamp to the current time. If the underlying client is nil, it does
 // nothing. The "table" arg is used as the influxdb "measurement" for the point.
 // If other tags are needed, use WriteCustomPoint.
 func (c *Client) WritePoint(table string, fields map[string]interface{}) {
-	if c.Client == nil {
+	if !c.IsCollecting() {
 		return
 	}
 	writeAPI := c.Client.WriteAPI(c.Org, c.Bucket)
