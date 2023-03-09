@@ -699,12 +699,6 @@ func (cs *State) newStep() {
 
 	cs.nSteps++
 
-	cs.eventCollector.WritePoint(consensusTable, map[string]interface{}{
-		"height": rs.Height,
-		"round":  rs.Round,
-		"step":   rs.Step,
-	})
-
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {
 		if err := cs.eventBus.PublishEventNewRoundStep(rs); err != nil {
