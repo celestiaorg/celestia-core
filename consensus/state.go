@@ -694,7 +694,7 @@ func (cs *State) updateToState(state sm.State) {
 	cs.LockedBlockParts = nil
 	cs.TwoThirdPrevoteRound = -1
 	cs.TwoThirdPrevoteBlock = nil
-	cs.TwoThirdPrevoteBlockID = nil
+	cs.TwoThirdPrevoteCompactBlockParts = nil
 	cs.TwoThirdPrevoteBlockParts = nil
 	cs.Votes = cstypes.NewHeightVoteSet(state.ChainID, height, validators)
 	cs.CommitRound = -1
@@ -1139,9 +1139,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		// Regardless of whether this node has compact blocks enabled or not, the node must
 		// follow the exact same format as the proposal it is locked on
 		block, blockParts = cs.TwoThirdPrevoteBlock, cs.TwoThirdPrevoteBlockParts
-		propBlockID = *cs.TwoThirdPrevoteBlockID
-		proposal = types.NewProposal(height, round, cs.TwoThirdPrevoteRound, propBlockID)
-		if !propBlockID.PartSetHeader.Equals(blockParts.Header()) {
+		proposal = types.NewProposal(height, round, cs.TwoThirdPrevoteRound, types.BlockID{block.Hash(), blockParts.Header()})
+		if cs.TwoThirdPrevoteCompactBlockParts != nil {
+			blockParts = cs.TwoThirdPrevoteCompactBlockParts
 			proposal.Compact(blockParts.Header())
 		}
 	} else {
@@ -1170,7 +1170,11 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			// append that to the proposal. For compact blocks, we also keep the normal
 			// block parts set around for nodes catching up.
 			blockParts = types.MakePartSetFromCompactBlock(cb, types.BlockPartSizeBytes)
+			cs.Logger.Info("constructing compact block")
 			proposal.Compact(blockParts.Header())
+			if !proposal.IsCompact() {
+				panic("wtf")
+			}
 		}
 
 	}
@@ -1193,7 +1197,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.Height, cs.Round, part, proposal.IsCompact()}, ""})
 		}
 
-		cs.Logger.Debug("signed proposal", "height", height, "round", round, "proposal", proposal)
+		cs.Logger.Info("signed proposal", "height", height, "round", round, "proposal", proposal, "compact", proposal.IsCompact(), "compact_config", cs.config.CompactBlocks)
 	} else if !cs.replayMode {
 		cs.Logger.Error("propose step; failed signing proposal", "height", height, "round", round, "err", err)
 	}
@@ -1994,7 +1998,7 @@ func (cs *State) tryReconstructBlock() error {
 			return err
 		}
 
-		blockID := cs.Proposal.BlockID
+		partSetHeaderHash := cs.ProposalCompactBlockParts.Header().Hash
 		compactBlock := new(tmproto.CompactBlock)
 		err = proto.Unmarshal(bz, compactBlock)
 		if err != nil {
@@ -2008,7 +2012,7 @@ func (cs *State) tryReconstructBlock() error {
 		// unable to acquire all transactions we will abort and timeout, thus prevoting nil
 		ctx, cancel := context.WithTimeout(context.Background(), cs.config.Propose(round))
 		defer cancel()
-		txs, err := cs.txFetcher.FetchTxsFromKeys(ctx, blockID.Hash, compactBlock.CompactData.TxTags)
+		txs, err := cs.txFetcher.FetchTxsFromKeys(ctx, partSetHeaderHash, compactBlock.CompactData.TxTags)
 		if err == nil {
 			block, err = types.AssembleBlock(compactBlock, txs)
 		}
@@ -2022,7 +2026,7 @@ func (cs *State) tryReconstructBlock() error {
 		// unlikely that the round has changed, because we set a timeout on the context, but
 		// we should check defensively that the block we are reconstructing is still the one
 		// that matches the proposal.
-		if cs.Proposal == nil || !bytes.Equal(cs.Proposal.BlockID.Hash, blockID.Hash) {
+		if cs.Proposal == nil || !bytes.Equal(cs.Proposal.BlockID.PartSetHeader.Hash, partSetHeaderHash) {
 			cs.Logger.Info("moved on to the next round before reconstructing block", "round", round)
 			return nil
 		}
@@ -2065,8 +2069,10 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 
 			cs.TwoThirdPrevoteRound = cs.Round
 			cs.TwoThirdPrevoteBlock = cs.ProposalBlock
-			cs.TwoThirdPrevoteBlockID = &blockID
 			cs.TwoThirdPrevoteBlockParts = cs.ProposalBlockParts
+			if cs.Proposal.IsCompact() {
+				cs.TwoThirdPrevoteCompactBlockParts = cs.ProposalCompactBlockParts
+			}
 		}
 		// TODO: In case there is +2/3 majority in Prevotes set for some
 		// block and cs.ProposalBlock contains different block, either
@@ -2239,8 +2245,10 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 					)
 					cs.TwoThirdPrevoteRound = vote.Round
 					cs.TwoThirdPrevoteBlock = cs.ProposalBlock
-					cs.TwoThirdPrevoteBlockID = &blockID
 					cs.TwoThirdPrevoteBlockParts = cs.ProposalBlockParts
+					if cs.Proposal.IsCompact() {
+						cs.TwoThirdPrevoteCompactBlockParts = cs.ProposalCompactBlockParts
+					}
 				} else {
 					cs.Logger.Debug(
 						"valid block we do not know about; set ProposalBlock=nil",

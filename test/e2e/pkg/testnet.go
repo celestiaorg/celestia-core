@@ -118,6 +118,7 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 		ABCIProtocol:           manifest.ABCIProtocol,
 		MaxInboundConnections:  manifest.MaxInboundConnections,
 		MaxOutboundConnections: manifest.MaxOutboundConnections,
+		CompactBlocks:          manifest.CompactBlocks,
 	}
 	if len(manifest.KeyType) != 0 {
 		testnet.KeyType = manifest.KeyType

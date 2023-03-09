@@ -282,6 +282,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			}
 			ps.ApplyNewRoundStepMessage(msg)
 		case *NewValidBlockMessage:
+			conR.conS.Logger.Info("received new valid block message")
 			ps.ApplyNewValidBlockMessage(msg)
 		case *HasVoteMessage:
 			ps.ApplyHasVoteMessage(msg)
@@ -480,6 +481,7 @@ func (conR *Reactor) broadcastNewRoundStepMessage(rs *cstypes.RoundState) {
 }
 
 func (conR *Reactor) broadcastNewValidBlockMessage(rs *cstypes.RoundState) {
+	conR.conS.Logger.Info("broadcasting new valid block message")
 	psh := rs.ProposalBlockParts.Header()
 	csMsg := &tmcons.NewValidBlock{
 		Height:             rs.Height,
@@ -598,14 +600,14 @@ OUTER_LOOP:
 					Part:        *parts,
 					CompactForm: true,
 				}
-				logger.Debug("Sending compact block part", "height", prs.Height, "round", prs.Round)
+				logger.Info("Sending compact block part", "height", prs.Height, "round", prs.Round)
 				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 					ChannelID: DataChannel,
 					Message:   msg,
 				}, logger) {
 					ps.SetHasProposalBlockPart(prs.Height, prs.Round, index)
 					conR.conS.jsonMetrics.SentCompactBlocks++
-					conR.conS.jsonMetrics.SentBlockPartsBytes += uint64(msg.Size())
+					conR.conS.jsonMetrics.SentCompactBytes += uint64(msg.Size())
 					conR.conS.jsonMetrics.SentConsensusBytes += uint64(msg.Size())
 				}
 				continue OUTER_LOOP
@@ -623,7 +625,7 @@ OUTER_LOOP:
 					Part:        *parts,
 					CompactForm: false,
 				}
-				logger.Debug("Sending block part", "height", prs.Height, "round", prs.Round)
+				logger.Info("Sending block part", "height", prs.Height, "round", prs.Round)
 				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 					ChannelID: DataChannel,
 					Message:   msg,
