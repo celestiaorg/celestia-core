@@ -10,14 +10,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tendermint/tendermint/libs/log"
+	"github.com/tendermint/tendermint/pkg/remote"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 	"github.com/tendermint/tendermint/test/e2e/pkg/infra"
 	"github.com/tendermint/tendermint/test/e2e/pkg/infra/docker"
-)
-
-const (
-	FlagInfluxDBURL   = "influxdb-url"
-	FlagInfluxDBToken = "influxdb-token"
 )
 
 var (
@@ -83,11 +79,11 @@ func NewCLI() *CLI {
 				return fmt.Errorf("unknown infrastructure type '%s'", inft)
 			}
 
-			iurl, err := cmd.Flags().GetString(FlagInfluxDBURL)
+			iurl, err := cmd.Flags().GetString(remote.FlagInfluxDBURL)
 			if err != nil {
 				return err
 			}
-			itoken, err := cmd.Flags().GetString(FlagInfluxDBToken)
+			itoken, err := cmd.Flags().GetString(remote.FlagInfluxDBToken)
 			if err != nil {
 				return err
 			}
@@ -178,9 +174,9 @@ func NewCLI() *CLI {
 
 	cli.root.PersistentFlags().StringP("infrastructure-data", "", "", "path to the json file containing the infrastructure data. Only used if the 'infrastructure-type' is set to a value other than 'docker'")
 
-	cli.root.PersistentFlags().StringP(FlagInfluxDBURL, "", "", "URL of the InfluxDB instance to use for arbitrary data collection. If not specified, data will not be collected")
+	cli.root.PersistentFlags().String(remote.FlagInfluxDBURL, "", remote.FlagInfluxDBURLDescription)
 
-	cli.root.PersistentFlags().StringP(FlagInfluxDBToken, "", "", "Token to use when writing to the InfluxDB instance. Must be specified if 'influxdb-url' is specified")
+	cli.root.PersistentFlags().String(remote.FlagInfluxDBToken, "", remote.FlagInfluxDBTokenDescription)
 
 	cli.root.Flags().BoolVarP(&cli.preserve, "preserve", "p", false,
 		"Preserves the running of the test net after tests are completed")
