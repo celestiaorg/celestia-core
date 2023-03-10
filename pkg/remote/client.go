@@ -19,15 +19,15 @@ const (
 // collecting events.
 type EventCollectorConfig struct {
 	// URL is the influxdb url.
-	URL string `mapstructure:"url"`
+	URL string `mapstructure:"infura_url"`
 	// Token is the influxdb token.
-	Token string `mapstructure:"token"`
+	Token string `mapstructure:"infura_token"`
 	// Org is the influxdb organization.
-	Org string `mapstructure:"org"`
+	Org string `mapstructure:"infura_org"`
 	// Bucket is the influxdb bucket.
-	Bucket string `mapstructure:"bucket"`
+	Bucket string `mapstructure:"infura_bucket"`
 	// BatchSize is the number of points to write in a single batch.
-	BatchSize int `mapstructure:"batch_size"`
+	BatchSize int `mapstructure:"infura_batch_size"`
 }
 
 // ValidateBasic performs basic validation on the config.

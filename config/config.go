@@ -71,16 +71,15 @@ type Config struct {
 	BaseConfig `mapstructure:",squash"`
 
 	// Options for services
-	RPC             *RPCConfig                   `mapstructure:"rpc"`
-	P2P             *P2PConfig                   `mapstructure:"p2p"`
-	Mempool         *MempoolConfig               `mapstructure:"mempool"`
-	StateSync       *StateSyncConfig             `mapstructure:"statesync"`
-	FastSync        *FastSyncConfig              `mapstructure:"fastsync"`
-	Consensus       *ConsensusConfig             `mapstructure:"consensus"`
-	Storage         *StorageConfig               `mapstructure:"storage"`
-	TxIndex         *TxIndexConfig               `mapstructure:"tx_index"`
-	Instrumentation *InstrumentationConfig       `mapstructure:"instrumentation"`
-	EventCollector  *remote.EventCollectorConfig `mapstructure:"event_collector"`
+	RPC             *RPCConfig             `mapstructure:"rpc"`
+	P2P             *P2PConfig             `mapstructure:"p2p"`
+	Mempool         *MempoolConfig         `mapstructure:"mempool"`
+	StateSync       *StateSyncConfig       `mapstructure:"statesync"`
+	FastSync        *FastSyncConfig        `mapstructure:"fastsync"`
+	Consensus       *ConsensusConfig       `mapstructure:"consensus"`
+	Storage         *StorageConfig         `mapstructure:"storage"`
+	TxIndex         *TxIndexConfig         `mapstructure:"tx_index"`
+	Instrumentation *InstrumentationConfig `mapstructure:"instrumentation"`
 }
 
 // DefaultConfig returns a default configuration for a Tendermint node
@@ -96,7 +95,6 @@ func DefaultConfig() *Config {
 		Storage:         DefaultStorageConfig(),
 		TxIndex:         DefaultTxIndexConfig(),
 		Instrumentation: DefaultInstrumentationConfig(),
-		EventCollector:  remote.DefaultEventCollectorConfig(),
 	}
 }
 
@@ -113,7 +111,6 @@ func TestConfig() *Config {
 		Storage:         TestStorageConfig(),
 		TxIndex:         TestTxIndexConfig(),
 		Instrumentation: TestInstrumentationConfig(),
-		EventCollector:  remote.DefaultEventCollectorConfig(),
 	}
 }
 
@@ -1166,6 +1163,8 @@ type InstrumentationConfig struct {
 
 	// Instrumentation namespace.
 	Namespace string `mapstructure:"namespace"`
+
+	*remote.EventCollectorConfig
 }
 
 // DefaultInstrumentationConfig returns a default configuration for metrics
@@ -1176,6 +1175,7 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		PrometheusListenAddr: ":26660",
 		MaxOpenConnections:   3,
 		Namespace:            "tendermint",
+		EventCollectorConfig: remote.DefaultEventCollectorConfig(),
 	}
 }
 

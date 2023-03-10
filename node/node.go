@@ -839,7 +839,12 @@ func NewNode(config *cfg.Config,
 	// create an optional influxdb client to send arbitary data to a remote
 	// influxdb server. This is used to collect trace data from many different nodes
 	// in a network.
-	influxdbClient, err := remote.NewClient(config.EventCollector, logger, genDoc.ChainID, string(nodeKey.ID()))
+	influxdbClient, err := remote.NewClient(
+		config.Instrumentation.EventCollectorConfig,
+		logger,
+		genDoc.ChainID,
+		string(nodeKey.ID()),
+	)
 	if err != nil {
 		return nil, err
 	}
