@@ -95,8 +95,17 @@ func AddNodeFlags(cmd *cobra.Command) {
 		config.DBPath,
 		"database directory")
 
-	cmd.PersistentFlags().String(remote.FlagInfluxDBURL, config.EventCollector.URL, remote.FlagInfluxDBURLDescription)
-	cmd.PersistentFlags().String(remote.FlagInfluxDBToken, config.EventCollector.Token, remote.FlagInfluxDBTokenDescription)
+	cmd.PersistentFlags().String(
+		remote.FlagInfluxDBURL,
+		config.Instrumentation.EventCollectorConfig.URL,
+		remote.FlagInfluxDBURLDescription,
+	)
+
+	cmd.PersistentFlags().String(
+		remote.FlagInfluxDBToken,
+		config.Instrumentation.EventCollectorConfig.Token,
+		remote.FlagInfluxDBTokenDescription,
+	)
 
 }
 

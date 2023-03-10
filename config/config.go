@@ -151,9 +151,6 @@ func (cfg *Config) ValidateBasic() error {
 	if err := cfg.Instrumentation.ValidateBasic(); err != nil {
 		return fmt.Errorf("error in [instrumentation] section: %w", err)
 	}
-	if err := cfg.EventCollector.ValidateBasic(); err != nil {
-		return fmt.Errorf("error in [event_collector] section: %w", err)
-	}
 	return nil
 }
 
@@ -1191,7 +1188,7 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.MaxOpenConnections < 0 {
 		return errors.New("max_open_connections can't be negative")
 	}
-	return nil
+	return cfg.EventCollectorConfig.ValidateBasic()
 }
 
 //-----------------------------------------------------------------------------
