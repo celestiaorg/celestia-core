@@ -538,19 +538,19 @@ namespace = "{{ .Instrumentation.Namespace }}"
 
 # The URL of the influxdb instance to use for remote event 
 # collection. If empty, remote event collection is disabled.
-infura_url = "{{ .Instrumentation.EventCollectorConfig.URL }}"
+influx_url = "{{ .Instrumentation.InfluxURL }}"
 
 # The influxdb token to use for remote event collection.
-infura_token = "{{ .Instrumentation.EventCollectorConfig.Token }}"
+influx_token = "{{ .Instrumentation.InfluxToken }}"
 
 # The influxdb bucket to use for remote event collection.
-infura_bucket = "{{ .Instrumentation.EventCollectorConfig.Bucket }}"
+influx_bucket = "{{ .Instrumentation.InfluxBucket }}"
 
 # The influxdb org to use for event remote collection.
-infura_org = "{{ .Instrumentation.EventCollectorConfig.Org }}"
+influx_org = "{{ .Instrumentation.InfluxOrg }}"
 
 # The size of the batches that are sent to the database.
-infura_batch_size = {{ .EventCollectorConfig.BatchSize }}
+influx_batch_size = {{ .Instrumentation.InfluxBatchSize }}
 `
 
 /****** these are for test settings ***********/

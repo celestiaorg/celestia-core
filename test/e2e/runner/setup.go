@@ -168,10 +168,10 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.DBBackend = node.Database
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
 
-	cfg.Instrumentation.EventCollectorConfig.Org = "celestia"
-	cfg.Instrumentation.EventCollectorConfig.Bucket = "e2e"
-	cfg.Instrumentation.EventCollectorConfig.URL = node.InfluxDBURL
-	cfg.Instrumentation.EventCollectorConfig.Token = node.InfluxDBToken
+	cfg.Instrumentation.InfluxOrg = "celestia"
+	cfg.Instrumentation.InfluxBucket = "e2e"
+	cfg.Instrumentation.InfluxURL = node.InfluxDBURL
+	cfg.Instrumentation.InfluxToken = node.InfluxDBToken
 
 	switch node.ABCIProtocol {
 	case e2e.ProtocolUNIX:

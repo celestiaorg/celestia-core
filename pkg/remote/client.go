@@ -7,6 +7,7 @@ import (
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
+	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
 )
 
@@ -19,42 +20,20 @@ const (
 // collecting events.
 type EventCollectorConfig struct {
 	// URL is the influxdb url.
-	URL string `mapstructure:"infura_url"`
+	URL string `mapstructure:"influx_url"`
 	// Token is the influxdb token.
-	Token string `mapstructure:"infura_token"`
+	Token string `mapstructure:"influx_token"`
 	// Org is the influxdb organization.
-	Org string `mapstructure:"infura_org"`
+	Org string `mapstructure:"influx_org"`
 	// Bucket is the influxdb bucket.
-	Bucket string `mapstructure:"infura_bucket"`
+	Bucket string `mapstructure:"influx_bucket"`
 	// BatchSize is the number of points to write in a single batch.
-	BatchSize int `mapstructure:"infura_batch_size"`
-}
-
-// ValidateBasic performs basic validation on the config.
-func (c *EventCollectorConfig) ValidateBasic() error {
-	// if there is not URL configured, then we do not need to validate the rest
-	// of the config because we are not connecting.
-	if c.URL == "" {
-		return nil
-	}
-	if c.Token == "" {
-		return fmt.Errorf("token is required")
-	}
-	if c.Org == "" {
-		return fmt.Errorf("org is required")
-	}
-	if c.Bucket == "" {
-		return fmt.Errorf("bucket is required")
-	}
-	if c.BatchSize <= 0 {
-		return fmt.Errorf("batch size must be greater than 0")
-	}
-	return nil
+	BatchSize int `mapstructure:"influx_batch_size"`
 }
 
 // DefaultEventCollectorConfig returns the default configuration.
-func DefaultEventCollectorConfig() *EventCollectorConfig {
-	return &EventCollectorConfig{
+func DefaultEventCollectorConfig() EventCollectorConfig {
+	return EventCollectorConfig{
 		URL:       "",
 		Org:       "celestia",
 		Bucket:    "e2e",
@@ -71,7 +50,7 @@ func DefaultEventCollectorConfig() *EventCollectorConfig {
 type Client struct {
 	ctx    context.Context
 	cancel context.CancelFunc
-	*EventCollectorConfig
+	cfg    *config.InstrumentationConfig
 
 	// chainID is added as a tag all points
 	chainID string
@@ -90,7 +69,7 @@ func (c *Client) Stop() {
 	if c.Client == nil {
 		return
 	}
-	writeAPI := c.Client.WriteAPI(c.Org, c.Bucket)
+	writeAPI := c.Client.WriteAPI(c.cfg.InfluxOrg, c.cfg.InfluxBucket)
 	writeAPI.Flush()
 	c.Client.Close()
 }
@@ -99,24 +78,24 @@ func (c *Client) Stop() {
 // is no URL configured, then the underlying client will be nil, and each
 // attempt to write a point will do nothing. The provided chainID and nodeID are
 // used to tag all points.
-func NewClient(cfg *EventCollectorConfig, logger log.Logger, chainID, nodeID string) (*Client, error) {
+func NewClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, nodeID string) (*Client, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cli := &Client{
-		EventCollectorConfig: cfg,
-		Client:               nil,
-		ctx:                  ctx,
-		cancel:               cancel,
-		chainID:              chainID,
-		nodeID:               nodeID,
+		cfg:     cfg,
+		Client:  nil,
+		ctx:     ctx,
+		cancel:  cancel,
+		chainID: chainID,
+		nodeID:  nodeID,
 	}
-	if cfg == nil || cfg.URL == "" {
+	if cfg == nil || cfg.InfluxURL == "" {
 		return cli, nil
 	}
 	cli.Client = influxdb2.NewClientWithOptions(
-		cfg.URL,
-		cfg.Token,
+		cfg.InfluxURL,
+		cfg.InfluxToken,
 		influxdb2.DefaultOptions().
-			SetBatchSize(uint(cfg.BatchSize)),
+			SetBatchSize(uint(cfg.InfluxBatchSize)),
 	)
 	ctx, cancel = context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -127,16 +106,16 @@ func NewClient(cfg *EventCollectorConfig, logger log.Logger, chainID, nodeID str
 	}
 	if !alive {
 		logger.Error("influxdb is not alive")
-		return nil, fmt.Errorf("failure to ping configured influxdb: %s", cfg.URL)
+		return nil, fmt.Errorf("failure to ping configured influxdb: %s", cfg.InfluxURL)
 	}
-	logger.Info("connected to influxdb", "url", cfg.URL)
+	logger.Info("connected to influxdb", "url", cfg.InfluxURL)
 	go cli.logErrors(logger)
 	return cli, nil
 }
 
 // logErrors empties the writeAPI error channel and logs any errors.
 func (c *Client) logErrors(logger log.Logger) {
-	writeAPI := c.Client.WriteAPI(c.Org, c.Bucket)
+	writeAPI := c.Client.WriteAPI(c.cfg.InfluxOrg, c.cfg.InfluxBucket)
 	for {
 		select {
 		case err := <-writeAPI.Errors():
@@ -161,7 +140,7 @@ func (c *Client) WritePoint(table string, fields map[string]interface{}) {
 	if !c.IsCollecting() {
 		return
 	}
-	writeAPI := c.Client.WriteAPI(c.Org, c.Bucket)
+	writeAPI := c.Client.WriteAPI(c.cfg.InfluxOrg, c.cfg.InfluxBucket)
 	tags := map[string]string{
 		NodeIDTag:  c.nodeID,
 		ChainIDTag: c.chainID,

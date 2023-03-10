@@ -840,7 +840,7 @@ func NewNode(config *cfg.Config,
 	// influxdb server. This is used to collect trace data from many different nodes
 	// in a network.
 	influxdbClient, err := remote.NewClient(
-		config.Instrumentation.EventCollectorConfig,
+		config.Instrumentation,
 		logger,
 		genDoc.ChainID,
 		string(nodeKey.ID()),
