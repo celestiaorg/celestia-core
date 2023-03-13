@@ -23,6 +23,7 @@ import (
 	cs "github.com/tendermint/tendermint/consensus"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/evidence"
+	"github.com/tendermint/tendermint/pkg/trace"
 
 	tmjson "github.com/tendermint/tendermint/libs/json"
 	"github.com/tendermint/tendermint/libs/log"
@@ -231,6 +232,7 @@ type Node struct {
 	blockIndexer      indexer.BlockIndexer
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
+	influxDBClient    *trace.Client
 }
 
 func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
@@ -506,6 +508,7 @@ func createConsensusReactor(config *cfg.Config,
 	waitSync bool,
 	eventBus *types.EventBus,
 	consensusLogger log.Logger,
+	evCollector *trace.Client,
 ) (*cs.Reactor, *cs.State) {
 	consensusState := cs.NewState(
 		config.Consensus,
@@ -515,6 +518,7 @@ func createConsensusReactor(config *cfg.Config,
 		mempool,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
+		cs.SetEventCollector(evCollector),
 	)
 	consensusState.SetLogger(consensusLogger)
 	if privValidator != nil {
@@ -832,6 +836,19 @@ func NewNode(config *cfg.Config,
 
 	csMetrics, p2pMetrics, memplMetrics, smMetrics := metricsProvider(genDoc.ChainID)
 
+	// create an optional influxdb client to send arbitary data to a remote
+	// influxdb server. This is used to collect trace data from many different nodes
+	// in a network.
+	influxdbClient, err := trace.NewClient(
+		config.Instrumentation,
+		logger,
+		genDoc.ChainID,
+		string(nodeKey.ID()),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	// Make MempoolReactor
 	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger)
 
@@ -866,7 +883,7 @@ func NewNode(config *cfg.Config,
 	}
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger,
+		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger, influxdbClient,
 	)
 
 	// Set up state sync reactor, and schedule a sync if requested.
@@ -964,6 +981,7 @@ func NewNode(config *cfg.Config,
 		indexerService:   indexerService,
 		blockIndexer:     blockIndexer,
 		eventBus:         eventBus,
+		influxDBClient:   influxdbClient,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
@@ -1085,15 +1103,21 @@ func (n *Node) OnStop() {
 			n.Logger.Error("Prometheus HTTP server Shutdown", "err", err)
 		}
 	}
+
 	if n.blockStore != nil {
 		if err := n.blockStore.Close(); err != nil {
 			n.Logger.Error("problem closing blockstore", "err", err)
 		}
 	}
+
 	if n.stateStore != nil {
 		if err := n.stateStore.Close(); err != nil {
 			n.Logger.Error("problem closing statestore", "err", err)
 		}
+	}
+
+	if n.influxDBClient != nil {
+		n.influxDBClient.Stop()
 	}
 }
 

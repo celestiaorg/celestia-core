@@ -168,6 +168,11 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.DBBackend = node.Database
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
 
+	cfg.Instrumentation.InfluxOrg = "celestia"
+	cfg.Instrumentation.InfluxBucket = "e2e"
+	cfg.Instrumentation.InfluxURL = node.InfluxDBURL
+	cfg.Instrumentation.InfluxToken = node.InfluxDBToken
+
 	switch node.ABCIProtocol {
 	case e2e.ProtocolUNIX:
 		cfg.ProxyApp = AppAddressUNIX

@@ -24,6 +24,7 @@ import (
 	"github.com/tendermint/tendermint/libs/service"
 	tmsync "github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
+	"github.com/tendermint/tendermint/pkg/trace"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
@@ -140,6 +141,8 @@ type State struct {
 
 	// for reporting metrics
 	metrics *Metrics
+
+	eventCollector *trace.Client
 }
 
 // StateOption sets an optional parameter on the State.
@@ -170,6 +173,7 @@ func NewState(
 		evpool:           evpool,
 		evsw:             tmevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
+		eventCollector:   &trace.Client{},
 	}
 
 	// set function defaults (may be overwritten before calling Start)
@@ -209,6 +213,11 @@ func (cs *State) SetEventBus(b *types.EventBus) {
 // StateMetrics sets the metrics.
 func StateMetrics(metrics *Metrics) StateOption {
 	return func(cs *State) { cs.metrics = metrics }
+}
+
+// SetEventCollector sets the remote event collector.
+func SetEventCollector(ec *trace.Client) StateOption {
+	return func(cs *State) { cs.eventCollector = ec }
 }
 
 // String returns a string.

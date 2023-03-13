@@ -535,6 +535,22 @@ max_open_connections = {{ .Instrumentation.MaxOpenConnections }}
 
 # Instrumentation namespace
 namespace = "{{ .Instrumentation.Namespace }}"
+
+# The URL of the influxdb instance to use for remote event 
+# collection. If empty, remote event collection is disabled.
+influx_url = "{{ .Instrumentation.InfluxURL }}"
+
+# The influxdb token to use for remote event collection.
+influx_token = "{{ .Instrumentation.InfluxToken }}"
+
+# The influxdb bucket to use for remote event collection.
+influx_bucket = "{{ .Instrumentation.InfluxBucket }}"
+
+# The influxdb org to use for event remote collection.
+influx_org = "{{ .Instrumentation.InfluxOrg }}"
+
+# The size of the batches that are sent to the database.
+influx_batch_size = {{ .Instrumentation.InfluxBatchSize }}
 `
 
 /****** these are for test settings ***********/
