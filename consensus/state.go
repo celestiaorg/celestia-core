@@ -31,10 +31,6 @@ import (
 	tmtime "github.com/tendermint/tendermint/types/time"
 )
 
-const (
-	consensusTable = "consensus"
-)
-
 // Consensus sentinel errors
 var (
 	ErrInvalidProposalSignature   = errors.New("error invalid proposal signature")
