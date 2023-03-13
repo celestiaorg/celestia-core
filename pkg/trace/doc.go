@@ -1,3 +1,4 @@
+/*
 # trace: push arbitrary trace level data to an influxdb instance
 
 This package has code to create a client that can be used to push events to an
@@ -16,11 +17,13 @@ example, we're pushing a point in the consensus reactor to measure exactly when
 each step of consensus is reached for each node.
 
 ```go
-if cs.eventCollector.IsCollecting() {
-		cs.eventCollector.WritePoint("consensus", map[string]interface{}{
-			"roundData": []interface{}{rs.Height, rs.Round, rs.Step},
-		})
-}
+
+	if cs.eventCollector.IsCollecting() {
+			cs.eventCollector.WritePoint("consensus", map[string]interface{}{
+				"roundData": []interface{}{rs.Height, rs.Round, rs.Step},
+			})
+	}
+
 ```
 
 Using this method enforces the typical schema, where we are tagging (aka
@@ -38,14 +41,15 @@ node.
 
 ```flux
 from(bucket: "e2e")
-  |> range(start: -1h)
-  |> filter(
-    fn: (r) => r["_measurement"] == "consensus"
-      and r.chain_id == "ci-YREG8X"
-      and r.node_id == "0b529c309608172a29c49979394734260b42acfb"
-    )
-```
 
+	|> range(start: -1h)
+	|> filter(
+	  fn: (r) => r["_measurement"] == "consensus"
+	    and r.chain_id == "ci-YREG8X"
+	    and r.node_id == "0b529c309608172a29c49979394734260b42acfb"
+	  )
+
+```
 
 ### Running a node with remote tracing on
 
@@ -62,7 +66,7 @@ configure in the config.toml
 
 ...
 
-# The URL of the influxdb instance to use for remote event 
+# The URL of the influxdb instance to use for remote event
 # collection. If empty, remote event collection is disabled.
 influx_url = "http://your-influx-ip:8086/"
 
@@ -79,7 +83,7 @@ influx_org = "celestia"
 influx_batch_size = 20
 ```
 
-or 
+or
 ```sh
 celestia-appd start --influxdb-url=http://your-influx-ip:8086/ --influxdb-token="your-token"
 ```
@@ -93,3 +97,5 @@ the cli.
 cd test/e2e
 make && ./build/runner -f ./networks/ci.toml --influxdb-url=http://your-influx-ip:8086/ --influxdb-token="your-token"
 ```
+*/
+package trace
