@@ -101,11 +101,9 @@ func NewClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, no
 	defer cancel()
 	alive, err := cli.Client.Ping(ctx)
 	if err != nil {
-		logger.Error(err.Error())
 		return nil, err
 	}
 	if !alive {
-		logger.Error("influxdb is not alive")
 		return nil, fmt.Errorf("failure to ping configured influxdb: %s", cfg.InfluxURL)
 	}
 	logger.Info("connected to influxdb", "url", cfg.InfluxURL)
