@@ -6,10 +6,10 @@ import (
 	"sort"
 
 	abcitypes "github.com/tendermint/tendermint/abci/types"
-	tmmath "github.com/tendermint/tendermint/libs/math"
-	tmquery "github.com/tendermint/tendermint/libs/pubsub/query"
+	cmtmath "github.com/tendermint/tendermint/libs/math"
+	cmtquery "github.com/tendermint/tendermint/libs/pubsub/query"
 	"github.com/tendermint/tendermint/pkg/consts"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 	"github.com/tendermint/tendermint/state"
@@ -79,7 +79,7 @@ func TxSearch(
 		return nil, errors.New("maximum query length exceeded")
 	}
 
-	q, err := tmquery.New(query)
+	q, err := cmtquery.New(query)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +119,7 @@ func TxSearch(
 	}
 
 	skipCount := validateSkipCount(page, perPage)
-	pageSize := tmmath.MinInt(perPage, totalCount-skipCount)
+	pageSize := cmtmath.MinInt(perPage, totalCount-skipCount)
 
 	apiResults := make([]*ctypes.ResultTx, 0, pageSize)
 	for i := skipCount; i < skipCount+pageSize; i++ {
@@ -148,7 +148,7 @@ func TxSearch(
 
 func proveTx(height int64, index uint32) (types.ShareProof, error) {
 	var (
-		pShareProof tmproto.ShareProof
+		pShareProof cmtproto.ShareProof
 		shareProof  types.ShareProof
 	)
 	env := GetEnvironment()
@@ -182,7 +182,7 @@ func ProveShares(
 	endShare uint64,
 ) (types.ShareProof, error) {
 	var (
-		pShareProof tmproto.ShareProof
+		pShareProof cmtproto.ShareProof
 		shareProof  types.ShareProof
 	)
 	env := GetEnvironment()
@@ -230,4 +230,26 @@ func loadRawBlock(bs state.BlockStore, height int64) ([]byte, error) {
 		buf = append(buf, part.Bytes...)
 	}
 	return buf, nil
+}
+
+// TxSearchMatchEvents allows you to query for multiple transactions results and match the
+// query attributes to a common event. It returns a
+// list of transactions (maximum ?per_page entries) and the total count.
+// More: https://docs.cometbft.com/v0.34/rpc/#/Info/tx_search
+func TxSearchMatchEvents(
+	ctx *rpctypes.Context,
+	query string,
+	prove bool,
+	pagePtr, perPagePtr *int,
+	orderBy string,
+	matchEvents bool,
+) (*ctypes.ResultTxSearch, error) {
+
+	if matchEvents {
+		query = "match.events = 1 AND " + query
+	} else {
+		query = "match.events = 0 AND " + query
+	}
+	return TxSearch(ctx, query, prove, pagePtr, perPagePtr, orderBy)
+
 }

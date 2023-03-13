@@ -22,6 +22,12 @@ import (
 const (
 	randomSeed     int64  = 2308084734268
 	proxyPortFirst uint32 = 5701
+
+	defaultBatchSize   = 2
+	defaultConnections = 1
+	defaultTxSizeBytes = 1024
+
+	localVersion = "cometbft/e2e-node:local-version"
 )
 
 type (
@@ -46,6 +52,7 @@ const (
 	PerturbationKill       Perturbation = "kill"
 	PerturbationPause      Perturbation = "pause"
 	PerturbationRestart    Perturbation = "restart"
+	PerturbationUpgrade    Perturbation = "upgrade"
 )
 
 // Testnet represents a single testnet.
@@ -60,14 +67,20 @@ type Testnet struct {
 	ValidatorUpdates       map[int64]map[*Node]int64
 	Nodes                  []*Node
 	KeyType                string
-	ABCIProtocol           string
+	Evidence               int
 	MaxInboundConnections  int
 	MaxOutboundConnections int
+	LoadTxSizeBytes        int
+	LoadTxBatchSize        int
+	LoadTxConnections      int
+	ABCIProtocol           string
+	UpgradeVersion         string
 }
 
-// Node represents a Tendermint node in a testnet.
+// Node represents a CometBFT node in a testnet.
 type Node struct {
 	Name             string
+	Version          string
 	Testnet          *Testnet
 	Mode             Mode
 	PrivvalKey       crypto.PrivKey
@@ -88,6 +101,9 @@ type Node struct {
 	PersistentPeers  []*Node
 	Perturbations    []Perturbation
 	Misbehaviors     map[int64]string
+
+	// SendNoLoad determines if the e2e test should send load to this node.
+	SendNoLoad bool
 }
 
 // LoadTestnet loads a testnet from a manifest file, using the filename to
@@ -114,9 +130,13 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 		Validators:             map[*Node]int64{},
 		ValidatorUpdates:       map[int64]map[*Node]int64{},
 		Nodes:                  []*Node{},
-		ABCIProtocol:           manifest.ABCIProtocol,
+		LoadTxSizeBytes:        manifest.LoadTxSizeBytes,
+		LoadTxBatchSize:        manifest.LoadTxBatchSize,
+		LoadTxConnections:      manifest.LoadTxConnections,
 		MaxInboundConnections:  manifest.MaxInboundConnections,
 		MaxOutboundConnections: manifest.MaxOutboundConnections,
+		ABCIProtocol:           manifest.ABCIProtocol,
+		UpgradeVersion:         manifest.UpgradeVersion,
 	}
 	if len(manifest.KeyType) != 0 {
 		testnet.KeyType = manifest.KeyType
@@ -126,6 +146,18 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 	}
 	if testnet.ABCIProtocol == "" {
 		testnet.ABCIProtocol = string(ProtocolBuiltin)
+	}
+	if testnet.UpgradeVersion == "" {
+		testnet.UpgradeVersion = localVersion
+	}
+	if testnet.LoadTxConnections == 0 {
+		testnet.LoadTxConnections = defaultConnections
+	}
+	if testnet.LoadTxBatchSize == 0 {
+		testnet.LoadTxBatchSize = defaultBatchSize
+	}
+	if testnet.LoadTxSizeBytes == 0 {
+		testnet.LoadTxSizeBytes = defaultTxSizeBytes
 	}
 
 	// Set up nodes, in alphabetical order (IPs and ports get same order).
@@ -139,10 +171,16 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 		nodeManifest := manifest.Nodes[name]
 		ind, ok := ifd.Instances[name]
 		if !ok {
-			return nil, fmt.Errorf("information for node '%s' missing from infrastucture data", name)
+			return nil, fmt.Errorf("information for node '%s' missing from infrastructure data", name)
 		}
+		v := nodeManifest.Version
+		if v == "" {
+			v = localVersion
+		}
+
 		node := &Node{
 			Name:             name,
+			Version:          v,
 			Testnet:          testnet,
 			PrivvalKey:       keyGen.Generate(manifest.KeyType),
 			NodeKey:          keyGen.Generate("ed25519"),
@@ -161,6 +199,7 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 			RetainBlocks:     nodeManifest.RetainBlocks,
 			Perturbations:    []Perturbation{},
 			Misbehaviors:     make(map[int64]string),
+			SendNoLoad:       nodeManifest.SendNoLoad,
 		}
 		if node.StartAt == testnet.InitialHeight {
 			node.StartAt = 0 // normalize to 0 for initial nodes, since code expects this
@@ -356,8 +395,14 @@ func (n Node) Validate(testnet Testnet) error {
 		return errors.New("snapshot_interval must be less than er equal to retain_blocks")
 	}
 
+	var upgradeFound bool
 	for _, perturbation := range n.Perturbations {
 		switch perturbation {
+		case PerturbationUpgrade:
+			if upgradeFound {
+				return fmt.Errorf("'upgrade' perturbation can appear at most once per node")
+			}
+			upgradeFound = true
 		case PerturbationDisconnect, PerturbationKill, PerturbationPause, PerturbationRestart:
 		default:
 			return fmt.Errorf("invalid perturbation %q", perturbation)

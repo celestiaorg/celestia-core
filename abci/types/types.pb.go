@@ -1379,6 +1379,7 @@ func (m *RequestProcessProposal) GetBlockData() *types1.Data {
 
 type Response struct {
 	// Types that are valid to be assigned to Value:
+	//
 	//	*Response_Exception
 	//	*Response_Echo
 	//	*Response_Flush
@@ -2157,7 +2158,7 @@ type ResponseCheckTx struct {
 	Codespace string  `protobuf:"bytes,8,opt,name=codespace,proto3" json:"codespace,omitempty"`
 	Sender    string  `protobuf:"bytes,9,opt,name=sender,proto3" json:"sender,omitempty"`
 	Priority  int64   `protobuf:"varint,10,opt,name=priority,proto3" json:"priority,omitempty"`
-	// mempool_error is set by Tendermint.
+	// mempool_error is set by CometBFT.
 	// ABCI applictions creating a ResponseCheckTX should not set mempool_error.
 	MempoolError string `protobuf:"bytes,11,opt,name=mempool_error,json=mempoolError,proto3" json:"mempool_error,omitempty"`
 }

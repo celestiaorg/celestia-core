@@ -3,7 +3,7 @@ package mempool
 import (
 	"container/list"
 
-	tmsync "github.com/tendermint/tendermint/libs/sync"
+	cmtsync "github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -23,9 +23,6 @@ type TxCache interface {
 	// Remove removes the given raw transaction from the cache.
 	Remove(tx types.Tx)
 
-	// RemoveTxByKey removes a given transaction hash from the cache.
-	RemoveTxByKey(key types.TxKey)
-
 	// Has reports whether tx is present in the cache. Checking for presence is
 	// not treated as an access of the value.
 	Has(tx types.Tx) bool
@@ -36,7 +33,7 @@ var _ TxCache = (*LRUTxCache)(nil)
 // LRUTxCache maintains a thread-safe LRU cache of raw transactions. The cache
 // only stores the hash of the raw transaction.
 type LRUTxCache struct {
-	mtx      tmsync.Mutex
+	mtx      cmtsync.Mutex
 	size     int
 	cacheMap map[types.TxKey]*list.Element
 	list     *list.List
@@ -121,8 +118,7 @@ type NopTxCache struct{}
 
 var _ TxCache = (*NopTxCache)(nil)
 
-func (NopTxCache) Reset()                        {}
-func (NopTxCache) Push(types.Tx) bool            { return true }
-func (NopTxCache) Remove(types.Tx)               {}
-func (NopTxCache) RemoveTxByKey(key types.TxKey) {}
-func (NopTxCache) Has(types.Tx) bool             { return false }
+func (NopTxCache) Reset()             {}
+func (NopTxCache) Push(types.Tx) bool { return true }
+func (NopTxCache) Remove(types.Tx)    {}
+func (NopTxCache) Has(types.Tx) bool  { return false }

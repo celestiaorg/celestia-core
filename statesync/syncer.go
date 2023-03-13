@@ -10,7 +10,7 @@ import (
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
+	cmtsync "github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/light"
 	"github.com/tendermint/tendermint/p2p"
 	ssproto "github.com/tendermint/tendermint/proto/tendermint/statesync"
@@ -60,7 +60,7 @@ type syncer struct {
 	chunkFetchers int32
 	retryTimeout  time.Duration
 
-	mtx    tmsync.RWMutex
+	mtx    cmtsync.RWMutex
 	chunks *chunkQueue
 }
 
@@ -284,7 +284,7 @@ func (s *syncer) Sync(snapshot *snapshot, chunks *chunkQueue) (sm.State, *types.
 	// Optimistically build new state, so we don't discover any light client failures at the end.
 	state, err := s.stateProvider.State(pctx, snapshot.Height)
 	if err != nil {
-		s.logger.Info("failed to fetch and verify tendermint state", "err", err)
+		s.logger.Info("failed to fetch and verify CometBFT state", "err", err)
 		if err == light.ErrNoWitnesses {
 			return sm.State{}, nil, err
 		}
