@@ -1,4 +1,4 @@
-package remote
+package trace
 
 const (
 	FlagInfluxDBURL              = "influxdb-url"

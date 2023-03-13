@@ -23,7 +23,7 @@ import (
 	cs "github.com/tendermint/tendermint/consensus"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/evidence"
-	"github.com/tendermint/tendermint/pkg/remote"
+	"github.com/tendermint/tendermint/pkg/trace"
 
 	tmjson "github.com/tendermint/tendermint/libs/json"
 	"github.com/tendermint/tendermint/libs/log"
@@ -232,7 +232,7 @@ type Node struct {
 	blockIndexer      indexer.BlockIndexer
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
-	influxDBClient    *remote.Client
+	influxDBClient    *trace.Client
 }
 
 func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
@@ -508,7 +508,7 @@ func createConsensusReactor(config *cfg.Config,
 	waitSync bool,
 	eventBus *types.EventBus,
 	consensusLogger log.Logger,
-	evCollector *remote.Client,
+	evCollector *trace.Client,
 ) (*cs.Reactor, *cs.State) {
 	consensusState := cs.NewState(
 		config.Consensus,
@@ -839,7 +839,7 @@ func NewNode(config *cfg.Config,
 	// create an optional influxdb client to send arbitary data to a remote
 	// influxdb server. This is used to collect trace data from many different nodes
 	// in a network.
-	influxdbClient, err := remote.NewClient(
+	influxdbClient, err := trace.NewClient(
 		config.Instrumentation,
 		logger,
 		genDoc.ChainID,

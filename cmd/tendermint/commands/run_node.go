@@ -12,7 +12,7 @@ import (
 	cfg "github.com/tendermint/tendermint/config"
 	tmos "github.com/tendermint/tendermint/libs/os"
 	nm "github.com/tendermint/tendermint/node"
-	"github.com/tendermint/tendermint/pkg/remote"
+	"github.com/tendermint/tendermint/pkg/trace"
 )
 
 var (
@@ -96,15 +96,15 @@ func AddNodeFlags(cmd *cobra.Command) {
 		"database directory")
 
 	cmd.PersistentFlags().String(
-		remote.FlagInfluxDBURL,
+		trace.FlagInfluxDBURL,
 		config.Instrumentation.InfluxURL,
-		remote.FlagInfluxDBURLDescription,
+		trace.FlagInfluxDBURLDescription,
 	)
 
 	cmd.PersistentFlags().String(
-		remote.FlagInfluxDBToken,
+		trace.FlagInfluxDBToken,
 		config.Instrumentation.InfluxToken,
-		remote.FlagInfluxDBTokenDescription,
+		trace.FlagInfluxDBTokenDescription,
 	)
 
 }
