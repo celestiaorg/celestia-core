@@ -15,6 +15,7 @@ import (
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/crypto/secp256k1"
+	tmrand "github.com/tendermint/tendermint/libs/rand"
 	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
 	mcs "github.com/tendermint/tendermint/test/maverick/consensus"
 )
@@ -101,9 +102,9 @@ type Node struct {
 	PersistentPeers  []*Node
 	Perturbations    []Perturbation
 	Misbehaviors     map[int64]string
-
-	// SendNoLoad determines if the e2e test should send load to this node.
 	SendNoLoad bool
+	InfluxDBURL      string
+	InfluxDBToken    string
 }
 
 // LoadTestnet loads a testnet from a manifest file, using the filename to
@@ -121,7 +122,7 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 	}
 
 	testnet := &Testnet{
-		Name:                   filepath.Base(dir),
+		Name:                   filepath.Base(dir) + "-" + tmrand.Str(6),
 		File:                   fname,
 		Dir:                    dir,
 		IP:                     ipNet,
@@ -200,6 +201,8 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 			Perturbations:    []Perturbation{},
 			Misbehaviors:     make(map[int64]string),
 			SendNoLoad:       nodeManifest.SendNoLoad,
+			InfluxDBURL:      ifd.InfluxDBURL,
+			InfluxDBToken:    ifd.InfluxDBToken,
 		}
 		if node.StartAt == testnet.InitialHeight {
 			node.StartAt = 0 // normalize to 0 for initial nodes, since code expects this

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tendermint/tendermint/libs/log"
+	"github.com/tendermint/tendermint/pkg/trace"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 	"github.com/tendermint/tendermint/test/e2e/pkg/infra"
 	"github.com/tendermint/tendermint/test/e2e/pkg/infra/docker"
@@ -75,6 +76,19 @@ func NewCLI() *CLI {
 				}
 			default:
 				return fmt.Errorf("unknown infrastructure type '%s'", inft)
+			}
+
+			iurl, err := cmd.Flags().GetString(trace.FlagInfluxDBURL)
+			if err != nil {
+				return err
+			}
+			itoken, err := cmd.Flags().GetString(trace.FlagInfluxDBToken)
+			if err != nil {
+				return err
+			}
+			if ifd.InfluxDBURL == "" {
+				ifd.InfluxDBURL = iurl
+				ifd.InfluxDBToken = itoken
 			}
 
 			testnet, err := e2e.LoadTestnet(m, file, ifd)
@@ -158,6 +172,10 @@ func NewCLI() *CLI {
 	cli.root.PersistentFlags().StringP("infrastructure-type", "", "docker", "Backing infrastructure used to run the testnet. Either 'digital-ocean' or 'docker'")
 
 	cli.root.PersistentFlags().StringP("infrastructure-data", "", "", "path to the json file containing the infrastructure data. Only used if the 'infrastructure-type' is set to a value other than 'docker'")
+
+	cli.root.PersistentFlags().String(trace.FlagInfluxDBURL, "", trace.FlagInfluxDBURLDescription)
+
+	cli.root.PersistentFlags().String(trace.FlagInfluxDBToken, "", trace.FlagInfluxDBTokenDescription)
 
 	cli.root.Flags().BoolVarP(&cli.preserve, "preserve", "p", false,
 		"Preserves the running of the test net after tests are completed")

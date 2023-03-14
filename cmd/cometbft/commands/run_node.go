@@ -12,6 +12,7 @@ import (
 	cfg "github.com/tendermint/tendermint/config"
 	cmtos "github.com/tendermint/tendermint/libs/os"
 	nm "github.com/tendermint/tendermint/node"
+	"github.com/tendermint/tendermint/pkg/trace"
 )
 
 var (
@@ -93,6 +94,19 @@ func AddNodeFlags(cmd *cobra.Command) {
 		"db_dir",
 		config.DBPath,
 		"database directory")
+
+	cmd.PersistentFlags().String(
+		trace.FlagInfluxDBURL,
+		config.Instrumentation.InfluxURL,
+		trace.FlagInfluxDBURLDescription,
+	)
+
+	cmd.PersistentFlags().String(
+		trace.FlagInfluxDBToken,
+		config.Instrumentation.InfluxToken,
+		trace.FlagInfluxDBTokenDescription,
+	)
+
 }
 
 // NewRunNodeCmd returns the command that allows the CLI to start a node.

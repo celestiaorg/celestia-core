@@ -1174,6 +1174,21 @@ type InstrumentationConfig struct {
 
 	// Instrumentation namespace.
 	Namespace string `mapstructure:"namespace"`
+
+	// InfluxURL is the influxdb url.
+	InfluxURL string `mapstructure:"influx_url"`
+
+	// InfluxToken is the influxdb token.
+	InfluxToken string `mapstructure:"influx_token"`
+
+	// InfluxOrg is the influxdb organization.
+	InfluxOrg string `mapstructure:"influx_org"`
+
+	// InfluxBucket is the influxdb bucket.
+	InfluxBucket string `mapstructure:"influx_bucket"`
+
+	// InfluxBatchSize is the number of points to write in a single batch.
+	InfluxBatchSize int `mapstructure:"influx_batch_size"`
 }
 
 // DefaultInstrumentationConfig returns a default configuration for metrics
@@ -1184,6 +1199,10 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		PrometheusListenAddr: ":26660",
 		MaxOpenConnections:   3,
 		Namespace:            "cometbft",
+		InfluxURL:            "",
+		InfluxOrg:            "celestia",
+		InfluxBucket:         "e2e",
+		InfluxBatchSize:      20,
 	}
 }
 
@@ -1198,6 +1217,23 @@ func TestInstrumentationConfig() *InstrumentationConfig {
 func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.MaxOpenConnections < 0 {
 		return errors.New("max_open_connections can't be negative")
+	}
+	// if there is not InfluxURL configured, then we do not need to validate the rest
+	// of the config because we are not connecting.
+	if cfg.InfluxURL == "" {
+		return nil
+	}
+	if cfg.InfluxToken == "" {
+		return fmt.Errorf("token is required")
+	}
+	if cfg.InfluxOrg == "" {
+		return fmt.Errorf("org is required")
+	}
+	if cfg.InfluxBucket == "" {
+		return fmt.Errorf("bucket is required")
+	}
+	if cfg.InfluxBatchSize <= 0 {
+		return fmt.Errorf("batch size must be greater than 0")
 	}
 	return nil
 }
