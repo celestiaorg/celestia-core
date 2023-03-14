@@ -24,13 +24,19 @@ const (
 	// decoding binaries that are not actually IndexWrappers.
 	ProtoIndexWrapperTypeID = "INDX"
 
-	// NamespaceSize is the size of a namespace ID in bytes.
-	NamespaceSize = 32
+	// NamespaveVersionSize is the size of a namespace version in bytes.
+	NamespaceVersionSize = 1
+
+	// NamespaceIDSize is the size of a namespace ID in bytes.
+	NamespaceIDSize = 32
+
+	// NamespaceSize is the size of a namespace in bytes.
+	NamespaceSize = NamespaceIDSize + NamespaceVersionSize
 )
 
 var (
 	// TxNamespaceID is the namespace reserved for transaction data.
-	TxNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+	TxNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 
 	// NewBaseHashFunc change accordingly if another hash.Hash should be used as a base hasher in the NMT:
 	NewBaseHashFunc = sha256.New

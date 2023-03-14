@@ -97,12 +97,13 @@ message Data {
 
 // Blob (named after binary large object) is a chunk of data submitted by a user
 // to be published to the Celestia blockchain. The data of a Blob is published
-// to a namespace_id and is encoded into shares based on the format specified by
+// to a namespace and is encoded into shares based on the format specified by
 // share_version.
 message Blob {
   bytes  namespace_id  = 1;
   bytes  data          = 2;
   uint32 share_version = 3;
+  uint32 namespace_version = 4;
 }
 
 // Vote represents a prevote, precommit, or commit vote from validators for
@@ -206,6 +207,7 @@ message ShareProof {
   repeated NMTProof share_proofs = 2;
   bytes namespace_id = 3;
   RowProof row_proof = 4;
+  uint32 namespace_version = 5;
 }
 
 // RowProof is a Merkle proof that a set of rows exist in a Merkle tree with a

@@ -259,7 +259,7 @@ func UnmarshalBlobTx(tx Tx) (bTx tmproto.BlobTx, isBlob bool) {
 		return bTx, false
 	}
 	for _, b := range bTx.Blobs {
-		if len(b.NamespaceId) != consts.NamespaceSize {
+		if len(b.NamespaceId) != consts.NamespaceIDSize {
 			return bTx, false
 		}
 	}

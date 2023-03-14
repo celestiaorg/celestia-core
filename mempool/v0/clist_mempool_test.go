@@ -686,7 +686,7 @@ func TestMempoolRemoteAppConcurrency(t *testing.T) {
 func TestRemoveBlobTx(t *testing.T) {
 	app := kvstore.NewApplication()
 	cc := proxy.NewLocalClientCreator(app)
-	namespaceOne := bytes.Repeat([]byte{1}, consts.NamespaceSize)
+	namespaceOne := bytes.Repeat([]byte{1}, consts.NamespaceIDSize)
 
 	cfg := config.ResetTestRoot("mempool_test")
 
@@ -700,9 +700,10 @@ func TestRemoveBlobTx(t *testing.T) {
 
 	// create the blobTx
 	b := tmproto.Blob{
-		NamespaceId:  namespaceOne,
-		Data:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-		ShareVersion: 0,
+		NamespaceId:      namespaceOne,
+		Data:             []byte{1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		ShareVersion:     0,
+		NamespaceVersion: 0,
 	}
 	bTx, err := types.MarshalBlobTx(originalTx, &b)
 	require.NoError(t, err)
