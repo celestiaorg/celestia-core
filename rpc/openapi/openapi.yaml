@@ -2548,6 +2548,7 @@ components:
             DataCommitment:
               type: string
               example: "D70952032620CC4E2737EB8AC379806359D8E0B17B0488F627997A0B043ABDED"
+              description: the commitment is hex encoded
           type: object
 
     DataRootInclusionProofResponse:
@@ -2583,12 +2584,14 @@ components:
                 leaf_hash:
                   type: string
                   example: "eoJxKCzF3m72Xiwb/Q43vJ37/2Sx8sfNS9JKJohlsYI="
+                  description: the leaf hash is base64 encoded
                 aunts:
                   type: array
                   items:
                     type: string
                   example:
                     - "eWb+HG/eMmukrQj4vNGyFYb3nKQncAWacq4HF5eFzDY="
+                  description: the aunts are base64 encoded
               type: object
           type: object
 
