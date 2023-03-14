@@ -343,8 +343,9 @@ dial_timeout = "{{ .P2P.DialTimeout }}"
 [mempool]
 
 # Mempool version to use:
-#   1) "v0" - (default) FIFO mempool.
-#   2) "v1" - prioritized mempool.
+#   1) "v0" - FIFO mempool.
+#   2) "v1" - (default) prioritized mempool.
+#   3) "v2" - content addressable transaction pool
 version = "{{ .Mempool.Version }}"
 
 # Recheck (default: true) defines whether CometBFT should recheck the

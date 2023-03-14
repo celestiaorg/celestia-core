@@ -191,6 +191,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		// If a precheck hook is defined, call it before invoking the application.
 		if txmp.preCheck != nil {
 			if err := txmp.preCheck(tx); err != nil {
+				txmp.metrics.FailedTxs.Add(1)
 				return 0, mempool.ErrPreCheck{Reason: err}
 			}
 		}
@@ -206,6 +207,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		if !txmp.cache.Push(tx) {
 			// If the cached transaction is also in the pool, record its sender.
 			if elt, ok := txmp.txByKey[txKey]; ok {
+				txmp.metrics.AlreadySeenTxs.Add(1)
 				w := elt.Value.(*WrappedTx)
 				w.SetPeer(txInfo.SenderID)
 			}

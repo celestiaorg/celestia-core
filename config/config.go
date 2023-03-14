@@ -686,8 +686,9 @@ func DefaultFuzzConnConfig() *FuzzConnConfig {
 // MempoolConfig defines the configuration options for the CometBFT mempool
 type MempoolConfig struct {
 	// Mempool version to use:
-	//  1) "v0" - (default) FIFO mempool.
-	//  2) "v1" - prioritized mempool.
+	//  1) "v0" - FIFO mempool.
+	//  2) "v1" - (default) prioritized mempool.
+	//  3) "v2" - content addressable transaction pool
 	Version string `mapstructure:"version"`
 	// RootDir is the root directory for all data. This should be configured via
 	// the $CMTHOME env variable or --home cmd flag rather than overriding this

@@ -102,7 +102,7 @@ type Node struct {
 	PersistentPeers  []*Node
 	Perturbations    []Perturbation
 	Misbehaviors     map[int64]string
-	SendNoLoad bool
+	SendNoLoad       bool
 	InfluxDBURL      string
 	InfluxDBToken    string
 }

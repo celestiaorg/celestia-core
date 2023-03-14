@@ -33,27 +33,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  release-success:
-    needs: release
-    if: ${{ success() }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Notify Slack upon release
-        uses: slackapi/slack-github-action@v1.23.0
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
-          RELEASE_URL: "${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
-        with:
-          payload: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": ":rocket: New CometBFT release: <${{ env.RELEASE_URL }}|${{ github.ref_name }}>"
-                  }
-                }
-              ]
-            }
