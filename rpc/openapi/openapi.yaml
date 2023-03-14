@@ -1108,7 +1108,7 @@ paths:
       parameters:
         - in: query
           name: first_block
-          description: "the first block of the range of block"
+          description: "the first block of the range of blocks"
           required: true
           schema:
             type: integer
@@ -1116,7 +1116,7 @@ paths:
             example: 1
         - in: query
           name: last_block
-          description: "the last block of the range of block"
+          description: "the last block of the range of blocks"
           required: true
           schema:
             type: integer
@@ -1155,7 +1155,7 @@ paths:
             example: 5
         - in: query
           name: first_block
-          description: "the first block of the range of block"
+          description: "the first block of the range of blocks"
           required: true
           schema:
             type: integer
@@ -1163,7 +1163,7 @@ paths:
             example: 1
         - in: query
           name: last_block
-          description: "the last block of the range of block"
+          description: "the last block of the range of blocks"
           required: true
           schema:
             type: integer
