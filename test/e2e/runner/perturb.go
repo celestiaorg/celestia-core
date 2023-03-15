@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/tendermint/tendermint/libs/log"
@@ -27,6 +28,9 @@ func Perturb(testnet *e2e.Testnet) error {
 // after recovering.
 func PerturbNode(node *e2e.Node, perturbation e2e.Perturbation) (*rpctypes.ResultStatus, error) {
 	testnet := node.Testnet
+	baseDir := filepath.Base(testnet.Dir)
+	testnetName := fmt.Sprintf("%s_%s", baseDir, testnet.Name)
+
 	out, err := execComposeOutput(testnet.Dir, "ps", "-q", node.Name)
 	if err != nil {
 		return nil, err
@@ -44,11 +48,11 @@ func PerturbNode(node *e2e.Node, perturbation e2e.Perturbation) (*rpctypes.Resul
 	switch perturbation {
 	case e2e.PerturbationDisconnect:
 		logger.Info("perturb node", "msg", log.NewLazySprintf("Disconnecting node %v...", node.Name))
-		if err := execDocker("network", "disconnect", testnet.Name+"_"+testnet.Name, name); err != nil {
+		if err := execDocker("network", "disconnect", testnetName, name); err != nil {
 			return nil, err
 		}
 		time.Sleep(10 * time.Second)
-		if err := execDocker("network", "connect", testnet.Name+"_"+testnet.Name, name); err != nil {
+		if err := execDocker("network", "connect", testnetName, name); err != nil {
 			return nil, err
 		}
 
