@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
 	"github.com/tendermint/tendermint/libs/log"
+	"github.com/tendermint/tendermint/pkg/trace"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 	"github.com/tendermint/tendermint/test/e2e/pkg/infra"
 	"github.com/tendermint/tendermint/test/e2e/pkg/infra/docker"
@@ -78,6 +78,19 @@ func NewCLI() *CLI {
 				return fmt.Errorf("unknown infrastructure type '%s'", inft)
 			}
 
+			iurl, err := cmd.Flags().GetString(trace.FlagInfluxDBURL)
+			if err != nil {
+				return err
+			}
+			itoken, err := cmd.Flags().GetString(trace.FlagInfluxDBToken)
+			if err != nil {
+				return err
+			}
+			if ifd.InfluxDBURL == "" {
+				ifd.InfluxDBURL = iurl
+				ifd.InfluxDBToken = itoken
+			}
+
 			testnet, err := e2e.LoadTestnet(m, file, ifd)
 			if err != nil {
 				return fmt.Errorf("loading testnet: %s", err)
@@ -102,7 +115,7 @@ func NewCLI() *CLI {
 			ctx, loadCancel := context.WithCancel(context.Background())
 			defer loadCancel()
 			go func() {
-				err := Load(ctx, cli.testnet, 1)
+				err := Load(ctx, cli.testnet)
 				if err != nil {
 					logger.Error(fmt.Sprintf("Transaction load failed: %v", err.Error()))
 				}
@@ -160,6 +173,10 @@ func NewCLI() *CLI {
 
 	cli.root.PersistentFlags().StringP("infrastructure-data", "", "", "path to the json file containing the infrastructure data. Only used if the 'infrastructure-type' is set to a value other than 'docker'")
 
+	cli.root.PersistentFlags().String(trace.FlagInfluxDBURL, "", trace.FlagInfluxDBURLDescription)
+
+	cli.root.PersistentFlags().String(trace.FlagInfluxDBToken, "", trace.FlagInfluxDBTokenDescription)
+
 	cli.root.Flags().BoolVarP(&cli.preserve, "preserve", "p", false,
 		"Preserves the running of the test net after tests are completed")
 
@@ -212,20 +229,10 @@ func NewCLI() *CLI {
 	})
 
 	cli.root.AddCommand(&cobra.Command{
-		Use:   "load [multiplier]",
-		Args:  cobra.MaximumNArgs(1),
+		Use:   "load",
 		Short: "Generates transaction load until the command is canceled",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			m := 1
-
-			if len(args) == 1 {
-				m, err = strconv.Atoi(args[0])
-				if err != nil {
-					return err
-				}
-			}
-
-			return Load(context.Background(), cli.testnet, m)
+			return Load(context.Background(), cli.testnet)
 		},
 	})
 
@@ -271,7 +278,7 @@ func NewCLI() *CLI {
 	Max Block Interval
 over a 100 block sampling period.
 		
-Does not run any perbutations.
+Does not run any perturbations.
 		`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := Cleanup(cli.testnet); err != nil {
@@ -285,9 +292,9 @@ Does not run any perbutations.
 			ctx, loadCancel := context.WithCancel(context.Background())
 			defer loadCancel()
 			go func() {
-				err := Load(ctx, cli.testnet, 1)
+				err := Load(ctx, cli.testnet)
 				if err != nil {
-					logger.Error(fmt.Sprintf("Transaction load failed: %v", err.Error()))
+					logger.Error(fmt.Sprintf("Transaction load errored: %v", err.Error()))
 				}
 				chLoadResult <- err
 			}()

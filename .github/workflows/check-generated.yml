@@ -13,24 +13,22 @@ permissions:
   contents: read
 
 jobs:
-  # Disabled mock checks because they were manually modified in v0.34.23 to adhere to the new Peer interface.
-  # This should be resolved in v0.37.x and we can reactivate this then. 
-  #
+  # Mocks have been disabled. See https://github.com/celestiaorg/celestia-core/pull/917
   # check-mocks:
   #   runs-on: ubuntu-latest
   #   steps:
   #     - uses: actions/setup-go@v3
   #       with:
-  #         go-version: '1.18'
+  #         go-version: "1.19"
 
   #     - uses: actions/checkout@v3
 
   #     - name: "Check generated mocks"
   #       run: |
   #         set -euo pipefail
-  #         readonly MOCKERY=2.14.0  # N.B. no leading "v"
-  #         curl -sL "https://github.com/vektra/mockery/releases/download/v${MOCKERY}/mockery_${MOCKERY}_Linux_x86_64.tar.gz" | tar -C /usr/local/bin -xzf -
-  #         make mockery 2>/dev/null
+
+  #         make mockery
+
   #         if ! git diff --stat --exit-code ; then
   #           echo ">> ERROR:"
   #           echo ">>"
@@ -45,7 +43,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: '1.18'
+          go-version: '1.19'
 
       - uses: actions/checkout@v3
         with:
@@ -55,22 +53,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Install buf and gogo tools, so that differences that arise from
-          # toolchain differences are also caught.
-          readonly tools="$(mktemp -d)"
-          export PATH="${PATH}:${tools}/bin"
-          export GOBIN="${tools}/bin"
-
-          go install github.com/bufbuild/buf/cmd/buf@latest
-          go install github.com/gogo/protobuf/protoc-gen-gogofaster@latest
-
           make proto-gen
-
           if ! git diff --stat --exit-code ; then
             echo ">> ERROR:"
             echo ">>"
             echo ">> Protobuf generated code requires update (either tools or .proto files may have changed)."
             echo ">> Ensure your tools are up-to-date, re-run 'make proto-gen' and update this PR."
             echo ">>"
+            git diff
             exit 1
           fi

@@ -191,6 +191,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		// If a precheck hook is defined, call it before invoking the application.
 		if txmp.preCheck != nil {
 			if err := txmp.preCheck(tx); err != nil {
+				txmp.metrics.FailedTxs.Add(1)
 				return 0, mempool.ErrPreCheck{Reason: err}
 			}
 		}
@@ -456,7 +457,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 	}
 
 	if err != nil || checkTxRes.Code != abci.CodeTypeOK {
-		txmp.logger.Info(
+		txmp.logger.Debug(
 			"rejected bad transaction",
 			"priority", wtx.Priority(),
 			"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
@@ -499,7 +500,6 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			checkTxRes.MempoolError =
 				fmt.Sprintf("rejected valid incoming transaction; tx already exists for sender %q (%X)",
 					sender, w.tx.Hash())
-			txmp.metrics.RejectedTxs.Add(1)
 			return
 		}
 	}
@@ -534,7 +534,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			checkTxRes.MempoolError =
 				fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
 					wtx.tx.Hash())
-			txmp.metrics.RejectedTxs.Add(1)
+			txmp.metrics.EvictedTxs.Add(1)
 			return
 		}
 

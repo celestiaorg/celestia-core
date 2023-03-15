@@ -10,10 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/tendermint/tm-db"
+	dbm "github.com/cometbft/cometbft-db"
 
 	"github.com/tendermint/tendermint/abci/example/code"
 	abci "github.com/tendermint/tendermint/abci/types"
+	cfg "github.com/tendermint/tendermint/config"
 	mempl "github.com/tendermint/tendermint/mempool"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
@@ -136,6 +137,8 @@ func TestMempoolTxConcurrentWithCommit(t *testing.T) {
 
 func TestMempoolRmBadTx(t *testing.T) {
 	state, privVals := randGenesisState(1, false, 10)
+	config = ResetConfig("consensus_mempool_rm_bad_tx")
+	config.Mempool.Version = cfg.MempoolV2
 	app := NewCounterApplication()
 	blockDB := dbm.NewMemDB()
 	stateStore := sm.NewStore(blockDB, sm.StoreOptions{DiscardABCIResponses: false})
@@ -154,22 +157,12 @@ func TestMempoolRmBadTx(t *testing.T) {
 	assert.True(t, len(resCommit.Data) > 0)
 
 	emptyMempoolCh := make(chan struct{})
-	checkTxRespCh := make(chan struct{})
 	go func() {
 		// Try to send the tx through the mempool.
 		// CheckTx should not err, but the app should return a bad abci code
 		// and the tx should get removed from the pool
-		err := assertMempool(cs.txNotifier).CheckTx(txBytes, func(r *abci.Response) {
-			if r.GetCheckTx().Code != code.CodeTypeBadNonce {
-				t.Errorf("expected checktx to return bad nonce, got %v", r)
-				return
-			}
-			checkTxRespCh <- struct{}{}
-		}, mempl.TxInfo{})
-		if err != nil {
-			t.Errorf("error after CheckTx: %v", err)
-			return
-		}
+		err := assertMempool(cs.txNotifier).CheckTx(txBytes, nil, mempl.TxInfo{})
+		require.Error(t, err)
 
 		// check for the tx
 		for {
@@ -182,18 +175,8 @@ func TestMempoolRmBadTx(t *testing.T) {
 		}
 	}()
 
-	// Wait until the tx returns
-	ticker := time.After(time.Second * 5)
-	select {
-	case <-checkTxRespCh:
-		// success
-	case <-ticker:
-		t.Errorf("timed out waiting for tx to return")
-		return
-	}
-
 	// Wait until the tx is removed
-	ticker = time.After(time.Second * 5)
+	ticker := time.After(time.Second * 5)
 	select {
 	case <-emptyMempoolCh:
 		// success
@@ -232,10 +215,20 @@ func (app *CounterApplication) DeliverTx(req abci.RequestDeliverTx) abci.Respons
 
 func (app *CounterApplication) CheckTx(req abci.RequestCheckTx) abci.ResponseCheckTx {
 	txValue := txAsUint64(req.Tx)
+	if req.Type == abci.CheckTxType_Recheck {
+		if txValue >= uint64(app.txCount) {
+			return abci.ResponseCheckTx{Code: code.CodeTypeOK}
+		}
+		return abci.ResponseCheckTx{
+			Code: code.CodeTypeBadNonce,
+			Log:  fmt.Sprintf("Invalid nonce. Expected %v, got %v", app.mempoolTxCount, txValue),
+		}
+	}
 	if txValue != uint64(app.mempoolTxCount) {
 		return abci.ResponseCheckTx{
 			Code: code.CodeTypeBadNonce,
-			Log:  fmt.Sprintf("Invalid nonce. Expected %v, got %v", app.mempoolTxCount, txValue)}
+			Log:  fmt.Sprintf("Invalid nonce. Expected %v, got %v", app.mempoolTxCount, txValue),
+		}
 	}
 	app.mempoolTxCount++
 	return abci.ResponseCheckTx{Code: code.CodeTypeOK}
@@ -248,7 +241,9 @@ func txAsUint64(tx []byte) uint64 {
 }
 
 func (app *CounterApplication) Commit() abci.ResponseCommit {
-	app.mempoolTxCount = app.txCount
+	if app.mempoolTxCount < app.txCount {
+		app.mempoolTxCount = app.txCount
+	}
 	if app.txCount == 0 {
 		return abci.ResponseCommit{}
 	}

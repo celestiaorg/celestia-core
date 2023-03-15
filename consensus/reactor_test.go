@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/tendermint/tm-db"
+	dbm "github.com/cometbft/cometbft-db"
 
 	abcicli "github.com/tendermint/tendermint/abci/client"
 	"github.com/tendermint/tendermint/abci/example/kvstore"
@@ -28,14 +28,15 @@ import (
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/libs/log"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
+	cmtsync "github.com/tendermint/tendermint/libs/sync"
 	mempl "github.com/tendermint/tendermint/mempool"
+	mempoolv2 "github.com/tendermint/tendermint/mempool/cat"
 	mempoolv0 "github.com/tendermint/tendermint/mempool/v0"
 	mempoolv1 "github.com/tendermint/tendermint/mempool/v1"
 	"github.com/tendermint/tendermint/p2p"
 	p2pmock "github.com/tendermint/tendermint/p2p/mock"
-	tmcons "github.com/tendermint/tendermint/proto/tendermint/consensus"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	cmtcons "github.com/tendermint/tendermint/proto/tendermint/consensus"
+	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	sm "github.com/tendermint/tendermint/state"
 	statemocks "github.com/tendermint/tendermint/state/mocks"
 	"github.com/tendermint/tendermint/store"
@@ -56,7 +57,7 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 	blocksSubs := make([]types.Subscription, 0)
 	eventBuses := make([]*types.EventBus, n)
 	for i := 0; i < n; i++ {
-		/*logger, err := tmflags.ParseLogLevel("consensus:info,*:error", logger, "info")
+		/*logger, err := cmtflags.ParseLogLevel("consensus:info,*:error", logger, "info")
 		if err != nil {	t.Fatal(err)}*/
 		reactors[i] = NewReactor(css[i], true) // so we dont start the consensus states
 		reactors[i].SetLogger(css[i].Logger)
@@ -158,7 +159,7 @@ func TestReactorWithEvidence(t *testing.T) {
 		blockDB := dbm.NewMemDB()
 		blockStore := store.NewBlockStore(blockDB)
 
-		mtx := new(tmsync.Mutex)
+		mtx := new(cmtsync.Mutex)
 		memplMetrics := mempl.NopMetrics()
 		// one for mempool, one for consensus
 		proxyAppConnCon := abcicli.NewLocalClient(mtx, app)
@@ -183,6 +184,16 @@ func TestReactorWithEvidence(t *testing.T) {
 				mempoolv1.WithMetrics(memplMetrics),
 				mempoolv1.WithPreCheck(sm.TxPreCheck(state)),
 				mempoolv1.WithPostCheck(sm.TxPostCheck(state)),
+			)
+		case cfg.MempoolV2:
+			mempool = mempoolv2.NewTxPool(
+				logger,
+				config.Mempool,
+				proxyAppConnConMem,
+				state.LastBlockHeight,
+				mempoolv2.WithMetrics(memplMetrics),
+				mempoolv2.WithPreCheck(sm.TxPreCheck(state)),
+				mempoolv2.WithPostCheck(sm.TxPostCheck(state)),
 			)
 		}
 		if thisConfig.Consensus.WaitForTxs() {
@@ -275,8 +286,8 @@ func TestLegacyReactorReceiveBasicIfAddPeerHasntBeenCalledYet(t *testing.T) {
 		reactor.ReceiveEnvelope(p2p.Envelope{
 			ChannelID: StateChannel,
 			Src:       peer,
-			Message: &tmcons.HasVote{Height: 1,
-				Round: 1, Index: 1, Type: tmproto.PrevoteType},
+			Message: &cmtcons.HasVote{Height: 1,
+				Round: 1, Index: 1, Type: cmtproto.PrevoteType},
 		})
 		reactor.AddPeer(peer)
 	})
@@ -295,11 +306,11 @@ func TestLegacyReactorReceiveBasic(t *testing.T) {
 	)
 
 	reactor.InitPeer(peer)
-	v := &tmcons.HasVote{
+	v := &cmtcons.HasVote{
 		Height: 1,
 		Round:  1,
 		Index:  1,
-		Type:   tmproto.PrevoteType,
+		Type:   cmtproto.PrevoteType,
 	}
 	w := v.Wrap()
 	msg, err := proto.Marshal(w)
@@ -330,8 +341,8 @@ func TestReactorReceivePanicsIfInitPeerHasntBeenCalledYet(t *testing.T) {
 		reactor.ReceiveEnvelope(p2p.Envelope{
 			ChannelID: StateChannel,
 			Src:       peer,
-			Message: &tmcons.HasVote{Height: 1,
-				Round: 1, Index: 1, Type: tmproto.PrevoteType},
+			Message: &cmtcons.HasVote{Height: 1,
+				Round: 1, Index: 1, Type: cmtproto.PrevoteType},
 		})
 	})
 }
@@ -913,8 +924,8 @@ func TestBlockPartMessageValidateBasic(t *testing.T) {
 
 func TestHasVoteMessageValidateBasic(t *testing.T) {
 	const (
-		validSignedMsgType   tmproto.SignedMsgType = 0x01
-		invalidSignedMsgType tmproto.SignedMsgType = 0x03
+		validSignedMsgType   cmtproto.SignedMsgType = 0x01
+		invalidSignedMsgType cmtproto.SignedMsgType = 0x03
 	)
 
 	testCases := []struct { //nolint: maligned
@@ -923,7 +934,7 @@ func TestHasVoteMessageValidateBasic(t *testing.T) {
 		messageIndex  int32
 		messageHeight int64
 		testName      string
-		messageType   tmproto.SignedMsgType
+		messageType   cmtproto.SignedMsgType
 	}{
 		{false, 0, 0, 0, "Valid Message", validSignedMsgType},
 		{true, -1, 0, 0, "Invalid Message", validSignedMsgType},
@@ -949,8 +960,8 @@ func TestHasVoteMessageValidateBasic(t *testing.T) {
 
 func TestVoteSetMaj23MessageValidateBasic(t *testing.T) {
 	const (
-		validSignedMsgType   tmproto.SignedMsgType = 0x01
-		invalidSignedMsgType tmproto.SignedMsgType = 0x03
+		validSignedMsgType   cmtproto.SignedMsgType = 0x01
+		invalidSignedMsgType cmtproto.SignedMsgType = 0x03
 	)
 
 	validBlockID := types.BlockID{}
@@ -967,7 +978,7 @@ func TestVoteSetMaj23MessageValidateBasic(t *testing.T) {
 		messageRound   int32
 		messageHeight  int64
 		testName       string
-		messageType    tmproto.SignedMsgType
+		messageType    cmtproto.SignedMsgType
 		messageBlockID types.BlockID
 	}{
 		{false, 0, 0, "Valid Message", validSignedMsgType, validBlockID},

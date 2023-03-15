@@ -38,10 +38,6 @@ linters-settings:
     max-blank-identifiers: 3
   golint:
     min-confidence: 0
-  misspell:
-    locale: US
-    ignore-words:
-      - behaviour
   maligned:
     suggest-new: true
 

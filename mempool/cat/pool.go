@@ -21,12 +21,6 @@ import (
 // enforce compile-time satisfaction of the Mempool interface
 var _ mempool.Mempool = (*TxPool)(nil)
 
-// Amount of evicted txs to cache. This is low enough so that in patches
-// of high tx throughput, the txpool will be able to quickly recover txs
-// that evicted but not large enough that continual excessive tx load won't
-// take up needless memory.
-const evictedTxCacheSize = 200
-
 var (
 	ErrTxInMempool       = errors.New("tx already exists in mempool")
 	ErrTxAlreadyRejected = errors.New("tx was previously rejected")
@@ -40,7 +34,7 @@ type TxPoolOption func(*TxPool)
 // transactions to include in a block, higher-priority transactions are chosen
 // first.  When evicting transactions from the mempool for size constraints,
 // lower-priority transactions are evicted first. Transactions themselves are
-// unordered (A map is used). They can be broadcast in an order different from 
+// unordered (A map is used). They can be broadcast in an order different from
 // the order to which transactions are entered. There is no guarantee when CheckTx
 // passes that a transaction has been successfully broadcast to any of its peers.
 //
@@ -50,7 +44,7 @@ type TxPoolOption func(*TxPool)
 // A cache of rejectedTxs can be set in the mempool config. Transactions that
 // are rejected because of `CheckTx` or other validity checks will be instantly
 // rejected if they are seen again. Committed transactions are also added to
-// this cache. This serves somewhat as replay protection but applications should 
+// this cache. This serves somewhat as replay protection but applications should
 // implement something more comprehensive
 type TxPool struct {
 	// Immutable fields
@@ -77,7 +71,7 @@ type TxPool struct {
 
 	// broadcastCh is an unbuffered channel of new transactions that need to
 	// be broadcasted to peers. Only populated if `broadcast` in the config is enabled
-	broadcastCh      chan types.Tx
+	broadcastCh      chan *wrappedTx
 	broadcastMtx     sync.Mutex
 	txsToBeBroadcast []types.TxKey
 }
@@ -102,7 +96,7 @@ func NewTxPool(
 		preCheckFn:       func(_ types.Tx) error { return nil },
 		postCheckFn:      func(_ types.Tx, _ *abci.ResponseCheckTx) error { return nil },
 		store:            newStore(),
-		broadcastCh:      make(chan types.Tx),
+		broadcastCh:      make(chan *wrappedTx),
 		txsToBeBroadcast: make([]types.TxKey, 0),
 	}
 
@@ -216,25 +210,24 @@ func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo mempool
 	}()
 
 	// push to the broadcast queue that a new transaction is ready
-	txmp.markToBeBroadcast(key, tx)
+	txmp.markToBeBroadcast(key)
 	return nil
 }
 
 // next is used by the reactor to get the next transaction to broadcast
 // to all other peers.
-func (txmp *TxPool) next() <-chan types.Tx {
+func (txmp *TxPool) next() <-chan *wrappedTx {
 	txmp.broadcastMtx.Lock()
 	defer txmp.broadcastMtx.Unlock()
 	for len(txmp.txsToBeBroadcast) != 0 {
-		ch := make(chan types.Tx, 1)
+		ch := make(chan *wrappedTx, 1)
 		key := txmp.txsToBeBroadcast[0]
 		txmp.txsToBeBroadcast = txmp.txsToBeBroadcast[1:]
-		tx, exists := txmp.Get(key)
-		if !exists {
-
+		wtx := txmp.store.get(key)
+		if wtx == nil {
 			continue
 		}
-		ch <- tx
+		ch <- wtx
 		return ch
 	}
 
@@ -244,13 +237,18 @@ func (txmp *TxPool) next() <-chan types.Tx {
 // markToBeBroadcast marks a transaction to be broadcasted to peers.
 // This should never block so we use a map to create an unbounded queue
 // of transactions that need to be gossiped.
-func (txmp *TxPool) markToBeBroadcast(key types.TxKey, tx types.Tx) {
+func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 	if !txmp.config.Broadcast {
 		return
 	}
 
+	wtx := txmp.store.get(key)
+	if wtx == nil {
+		return
+	}
+
 	select {
-	case txmp.broadcastCh <- tx:
+	case txmp.broadcastCh <- wtx:
 	default:
 		txmp.broadcastMtx.Lock()
 		defer txmp.broadcastMtx.Unlock()

@@ -1,11 +1,11 @@
 openapi: 3.0.0
 info:
-  title: Tendermint RPC
+  title: CometBFT RPC
   contact:
-    name: Tendermint RPC
-    url: https://github.com/tendermint/tendermint/issues/new/choose
+    name: CometBFT RPC
+    url: https://github.com/cometbft/cometbft/issues/new/choose
   description: |
-    Tendermint supports the following RPC protocols:
+    CometBFT supports the following RPC protocols:
 
     * URI over HTTP
     * JSONRPC over HTTP
@@ -14,7 +14,7 @@ info:
     ## Configuration
 
     RPC can be configured by tuning parameters under `[rpc]` table in the
-    `$TMHOME/config/config.toml` file or by using the `--rpc.X` command-line
+    `$CMTHOME/config/config.toml` file or by using the `--rpc.X` command-line
     flags.
 
     Default rpc listen address is `tcp://0.0.0.0:26657`.
@@ -54,12 +54,12 @@ info:
   version: "v0.34"
   license:
     name: Apache 2.0
-    url: https://github.com/tendermint/tendermint/blob/main/LICENSE
+    url: https://github.com/cometbft/cometbft/blob/v0.34.x/LICENSE
 servers:
   - url: https://rpc.cosmos.network
-    description: Cosmos mainnet node to interact with the Tendermint RPC
+    description: Cosmos mainnet node to interact with the CometBFT RPC
   - url: http://localhost:26657
-    description: Interact with the Tendermint RPC locally on your device
+    description: Interact with the CometBFT RPC locally on your device
 tags:
   - name: Websocket
     description: Subscribe/unsubscribe are reserved for websocket events.
@@ -83,7 +83,7 @@ paths:
       description: |
         If you want to be sure that the transaction is included in a block, you can
         subscribe for the result using JSONRPC via a websocket. See
-        https://docs.tendermint.com/v0.34/app-dev/subscribing-to-events-via-websocket.html
+        https://docs.cometbft.com/v0.34/core/subscription.html
         If you haven't received anything after a couple of blocks, resend it. If the
         same happens again, send it to some other node. A few reasons why it could
         happen:
@@ -95,7 +95,7 @@ paths:
 
 
         Please refer to
-        https://docs.tendermint.com/v0.34/tendermint-core/using-tendermint.html#formatting
+        https://docs.cometbft.com/v0.34/core/using-cometbft.html#formatting
         for formatting/encoding rules.
       parameters:
         - in: query
@@ -127,7 +127,7 @@ paths:
       description: |
         If you want to be sure that the transaction is included in a block, you can
         subscribe for the result using JSONRPC via a websocket. See
-        https://docs.tendermint.com/v0.34/app-dev/subscribing-to-events-via-websocket.html
+        https://docs.cometbft.com/v0.34/core/subscription.html
         If you haven't received anything after a couple of blocks, resend it. If the
         same happens again, send it to some other node. A few reasons why it could
         happen:
@@ -139,7 +139,7 @@ paths:
         3. node can be offline
 
         Please refer to
-        https://docs.tendermint.com/v0.34/tendermint-core/using-tendermint.html#formatting
+        https://docs.cometbft.com/v0.34/core/using-cometbft.html#formatting
         for formatting/encoding rules.
       parameters:
         - in: query
@@ -172,7 +172,7 @@ paths:
         IMPORTANT: use only for testing and development. In production, use
         BroadcastTxSync or BroadcastTxAsync. You can subscribe for the transaction
         result using JSONRPC via a websocket. See
-        https://docs.tendermint.com/v0.34/app-dev/subscribing-to-events-via-websocket.html
+        https://docs.cometbft.com/v0.34/core/subscription.html
 
         CONTRACT: only returns error if mempool.CheckTx() errs or if we timeout
         waiting for tx to commit.
@@ -181,7 +181,7 @@ paths:
         will contain a non-OK ABCI code.
 
         Please refer to
-        https://docs.tendermint.com/v0.34/tendermint-core/using-tendermint.html#formatting
+        https://docs.cometbft.com/v0.34/core/using-cometbft.html#formatting
         for formatting/encoding rules.
       parameters:
         - in: query
@@ -214,7 +214,7 @@ paths:
         The transaction won't be added to the mempool.
 
         Please refer to
-        https://docs.tendermint.com/v0.34/tendermint-core/using-tendermint.html#formatting
+        https://docs.cometbft.com/v0.34/core/using-cometbft.html#formatting
         for formatting/encoding rules.
 
         Upon success, the `Cache-Control` header will be set with the default
@@ -261,13 +261,13 @@ paths:
               tm.event = 'Tx' AND tx.height = 5   # all txs of the fifth block
               tx.height = 5                       # all txs of the fifth block
 
-        Tendermint provides a few predefined keys: tm.event, tx.hash and tx.height.
+        CometBFT provides a few predefined keys: tm.event, tx.hash and tx.height.
         Note for transactions, you can define additional keys by providing events with
         DeliverTx response.
 
         import (
-            abci "github.com/tendermint/tendermint/abci/types"
-            "github.com/tendermint/tendermint/libs/pubsub/query"
+            abci "github.com/cometbft/cometbft/abci/types"
+            "github.com/cometbft/cometbft/libs/pubsub/query"
         )
 
         abci.ResponseDeliverTx{
@@ -334,14 +334,14 @@ paths:
         query.MustParse("tm.event = 'Tx' AND rewards.withdraw.source = 'W'")
 
         See list of all possible events here
-        https://godoc.org/github.com/tendermint/tendermint/types#pkg-constants
+        https://godoc.org/github.com/cometbft/cometbft/types#pkg-constants
 
         For complete query syntax, check out
-        https://godoc.org/github.com/tendermint/tendermint/libs/pubsub/query.
+        https://godoc.org/github.com/cometbft/cometbft/libs/pubsub/query.
 
         ```go
-        import rpchttp "github.com/tendermint/rpc/client/http"
-        import "github.com/tendermint/tendermint/types"
+        import rpchttp "github.com/cometbft/rpc/client/http"
+        import "github.com/cometbft/cometbft/types"
 
         client := rpchttp.New("tcp:0.0.0.0:26657", "/websocket")
         err := client.Start()
@@ -364,7 +364,7 @@ paths:
         }()
         ```
 
-        NOTE: if you're not reading events fast enough, Tendermint might
+        NOTE: if you're not reading events fast enough, CometBFT might
         terminate the subscription.
       parameters:
         - in: query
@@ -487,7 +487,7 @@ paths:
       tags:
         - Info
       description: |
-        Get Tendermint status including node info, pubkey, latest block hash, app hash, block height and time.
+        Get CometBFT status including node info, pubkey, latest block hash, app hash, block height and time.
       responses:
         "200":
           description: Status of the node
@@ -541,7 +541,7 @@ paths:
             items:
               type: string
               example:
-                ["f9baeaa15fedf5e1ef7448dd60f46c01f1a9e9c4@1.2.3.4:26656"]
+                "f9baeaa15fedf5e1ef7448dd60f46c01f1a9e9c4@1.2.3.4:26656"
       responses:
         "200":
           description: Dialing seeds in progress. See /net_info for details
@@ -592,7 +592,9 @@ paths:
             items:
               type: string
               example:
-                ["f9baeaa15fedf5e1ef7448dd60f46c01f1a9e9c4@1.2.3.4:26656"]
+                "f9baeaa15fedf5e1ef7448dd60f46c01f1a9e9c4@1.2.3.4:26656"
+            example:
+              ["f9baeaa15fedf5e1ef7448dd60f46c01f1a9e9c4@1.2.3.4:26656", "f9baeaa15fedf5e1ef7448dd60f46c01f1a9e9c4@1.2.3.5:26656"]
       responses:
         "200":
           description: Dialing seeds in progress. See /net_info for details
@@ -849,6 +851,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /genesis_chunked:
+    get:
+      summary: Get Genesis in multiple chunks
+      operationId: genesis_chunked
+      tags:
+        - Info
+      description: |
+        Get genesis document in multiple chunks to make it easier to iterate
+        through larger genesis structures. Each chunk is produced by converting
+        the genesis document to JSON and then splitting the resulting payload
+        into 16MB blocks, and then Base64-encoding each block.
+
+        Upon success, the `Cache-Control` header will be set with the default
+        maximum age.
+      parameters:
+        - in: query
+          name: chunk
+          description: Sequence number of the chunk to download.
+          schema:
+            type: integer
+            default: 0
+            example: 1
+      responses:
+        "200":
+          description: Genesis chunk response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenesisChunkedResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /dump_consensus_state:
     get:
       summary: Get consensus state
@@ -864,7 +901,7 @@ paths:
           description: |
             Complete consensus state.
 
-            See https://pkg.go.dev/github.com/tendermint/tendermint/types?tab=doc#Vote.String for Vote string description.
+            See https://pkg.go.dev/github.com/cometbft/cometbft/types?tab=doc#Vote.String for Vote string description.
           content:
             application/json:
               schema:
@@ -1029,6 +1066,14 @@ paths:
             type: string
             default: "asc"
             example: "asc"
+        - in: query
+          name: match_events
+          description: Match attributes in query within events, in addition to the height & txhash
+          required: false
+          schema:
+            type: boolean
+            default: false
+            example: true
       tags:
         - Info
       responses:
@@ -1084,6 +1129,14 @@ paths:
             type: string
             default: "desc"
             example: "asc"
+        - in: query
+          name: match_events
+          description: Match attributes in query within events, in addition to the height
+          required: false
+          schema:
+            type: boolean
+            default: false
+            example: true
       tags:
         - Info
       responses:
@@ -1103,18 +1156,27 @@ paths:
     get:
       summary: Generates a data commitment for a range of blocks
       description: |
-        Generates a data commitment over an ordered list of blocks matching the query.
+        Generates a data commitment over an ordered list of blocks matching the provided range.
 
-        See /subscribe for the query syntax.
+        The provided block range is inclusive on both sides.
       operationId: data_commitment
       parameters:
         - in: query
-          name: query
-          description: Query
+          name: first_block
+          description: "the first block of the range of blocks"
           required: true
           schema:
-            type: string
-            example: "block.height > 1000"
+            type: integer
+            default: 1
+            example: 1
+        - in: query
+          name: last_block
+          description: "the last block of the range of blocks"
+          required: true
+          schema:
+            type: integer
+            default: 100
+            example: 100
       tags:
         - Info
       responses:
@@ -1124,6 +1186,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DataCommitmentResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /data_root_inclusion_proof:
+    get:
+      summary: Creates a merkle proof for a data root
+      description: |
+        Generates a merkle proof for a data root defined by a height to the range of
+        blocks defined by first and last block.
+
+        The provided block range is inclusive on both sides.
+      operationId: data_root_inclusion_proof
+      parameters:
+        - in: query
+          name: height
+          description: "the height of the block to prove"
+          required: true
+          schema:
+            type: integer
+            default: 5
+            example: 5
+        - in: query
+          name: first_block
+          description: "the first block of the range of blocks"
+          required: true
+          schema:
+            type: integer
+            default: 1
+            example: 1
+        - in: query
+          name: last_block
+          description: "the last block of the range of blocks"
+          required: true
+          schema:
+            type: integer
+            default: 100
+            example: 100
+      tags:
+        - Info
+      responses:
+        "200":
+          description: merkle proof of the height to the data commitment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataRootInclusionProofResponse"
         "500":
           description: Error
           content:
@@ -1943,6 +2054,35 @@ components:
                   properties: {}
                   type: object
 
+    GenesisChunkedResponse:
+      type: object
+      required:
+        - "jsonrpc"
+        - "id"
+        - "result"
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id:
+          type: integer
+          example: 0
+        result:
+          required:
+            - "chunk"
+            - "total"
+            - "data"
+          properties:
+            chunk:
+              type: integer
+              example: 0
+            total:
+              type: integer
+              example: 1
+            data:
+              type: string
+              example: "Z2VuZXNpcwo="
+
     DumpConsensusResponse:
       type: object
       required:
@@ -2485,11 +2625,56 @@ components:
           example: 0
         result:
           required:
-            - "dataCommitment"
+            - "DataCommitment"
           properties:
-            dataCommitment:
+            DataCommitment:
               type: string
               example: "D70952032620CC4E2737EB8AC379806359D8E0B17B0488F627997A0B043ABDED"
+              description: the commitment is hex encoded
+          type: object
+
+    DataRootInclusionProofResponse:
+      type: object
+      required:
+        - "jsonrpc"
+        - "id"
+        - "result"
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id:
+          type: integer
+          example: 0
+        result:
+          required:
+            - "Proof"
+          properties:
+            Proof:
+              required:
+                - "total"
+                - "index"
+                - "leaf_hash"
+                - "aunts"
+              properties:
+                total:
+                  type: string
+                  example: "2"
+                index:
+                  type: string
+                  example: "0"
+                leaf_hash:
+                  type: string
+                  example: "eoJxKCzF3m72Xiwb/Q43vJ37/2Sx8sfNS9JKJohlsYI="
+                  description: the leaf hash is base64 encoded
+                aunts:
+                  type: array
+                  items:
+                    type: string
+                  example:
+                    - "eWb+HG/eMmukrQj4vNGyFYb3nKQncAWacq4HF5eFzDY="
+                  description: the aunts are base64 encoded
+              type: object
           type: object
 
     TxResponse:
@@ -2912,7 +3097,7 @@ components:
               example:
                 - "ed25519"
 
-    # Events in tendermint
+    # Events in CometBFT
     Event:
       type: object
       properties:
@@ -3015,4 +3200,31 @@ components:
             hash:
               type: string
               example: "38D4B26B5B725C4F13571EFE022C030390E4C33C8CF6F88EDD142EA769642DBD"
+          type: object
+
+    BlockSearchResponse:
+      type: object
+      required:
+        - "jsonrpc"
+        - "id"
+        - "result"
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id:
+          type: integer
+          example: 0
+        result:
+          required:
+            - "blocks"
+            - "total_count"
+          properties:
+            blocks:
+              type: array
+              items:
+                $ref: "#/components/schemas/BlockComplete"
+            total_count:
+              type: integer
+              example: 2
           type: object

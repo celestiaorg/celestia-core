@@ -9,9 +9,9 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
+	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/pkg/consts"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 // TxKeySize is the size of the transaction key index
@@ -58,6 +58,15 @@ func (tx Tx) String() string {
 
 func (key TxKey) String() string {
 	return fmt.Sprintf("TxKey{%X}", key[:])
+}
+
+func TxKeyFromBytes(bytes []byte) (TxKey, error) {
+	if len(bytes) != TxKeySize {
+		return TxKey{}, fmt.Errorf("incorrect tx key size. Expected %d bytes, got %d", TxKeySize, len(bytes))
+	}
+	var key TxKey
+	copy(key[:], bytes)
+	return key, nil
 }
 
 // Txs is a slice of Tx.
@@ -136,9 +145,9 @@ func (txs Txs) Proof(i int) TxProof {
 
 // TxProof represents a Merkle proof of the presence of a transaction in the Merkle tree.
 type TxProof struct {
-	RootHash tmbytes.HexBytes `json:"root_hash"`
-	Data     Tx               `json:"data"`
-	Proof    merkle.Proof     `json:"proof"`
+	RootHash cmtbytes.HexBytes `json:"root_hash"`
+	Data     Tx                `json:"data"`
+	Proof    merkle.Proof      `json:"proof"`
 }
 
 // Leaf returns the hash(tx), which is the leaf in the merkle tree which this proof refers to.
@@ -165,11 +174,11 @@ func (tp TxProof) Validate(dataHash []byte) error {
 	return nil
 }
 
-func (tp TxProof) ToProto() tmproto.TxProof {
+func (tp TxProof) ToProto() cmtproto.TxProof {
 
 	pbProof := tp.Proof.ToProto()
 
-	pbtp := tmproto.TxProof{
+	pbtp := cmtproto.TxProof{
 		RootHash: tp.RootHash,
 		Data:     tp.Data,
 		Proof:    pbProof,
@@ -177,7 +186,7 @@ func (tp TxProof) ToProto() tmproto.TxProof {
 
 	return pbtp
 }
-func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
+func TxProofFromProto(pb cmtproto.TxProof) (TxProof, error) {
 
 	pbProof, err := merkle.ProofFromProto(pb.Proof)
 	if err != nil {
@@ -193,7 +202,7 @@ func TxProofFromProto(pb tmproto.TxProof) (TxProof, error) {
 	return pbtp, nil
 }
 
-// ComputeProtoSizeForTxs wraps the transactions in tmproto.Data{} and calculates the size.
+// ComputeProtoSizeForTxs wraps the transactions in cmtproto.Data{} and calculates the size.
 // https://developers.google.com/protocol-buffers/docs/encoding
 func ComputeProtoSizeForTxs(txs []Tx) int64 {
 	data := Data{Txs: txs}
@@ -210,7 +219,7 @@ func ComputeProtoSizeForTxs(txs []Tx) int64 {
 // not a tmproto.IndexWrapper, since the protobuf definition for MsgPayForBlob is
 // kept in the app, we cannot perform further checks without creating an import
 // cycle.
-func UnmarshalIndexWrapper(tx Tx) (indexWrapper tmproto.IndexWrapper, isIndexWrapper bool) {
+func UnmarshalIndexWrapper(tx Tx) (indexWrapper cmtproto.IndexWrapper, isIndexWrapper bool) {
 	// attempt to unmarshal into an IndexWrapper transaction
 	err := proto.Unmarshal(tx, &indexWrapper)
 	if err != nil {
@@ -227,7 +236,7 @@ func UnmarshalIndexWrapper(tx Tx) (indexWrapper tmproto.IndexWrapper, isIndexWra
 //
 // NOTE: must be unwrapped to be a viable sdk.Tx
 func MarshalIndexWrapper(tx Tx, shareIndexes ...uint32) (Tx, error) {
-	wTx := tmproto.IndexWrapper{
+	wTx := cmtproto.IndexWrapper{
 		Tx:           tx,
 		ShareIndexes: shareIndexes,
 		TypeId:       consts.ProtoIndexWrapperTypeID,
@@ -237,10 +246,10 @@ func MarshalIndexWrapper(tx Tx, shareIndexes ...uint32) (Tx, error) {
 
 // UnmarshalBlobTx attempts to unmarshal a transaction into blob transaction. If an
 // error is thrown, false is returned.
-func UnmarshalBlobTx(tx Tx) (bTx tmproto.BlobTx, isBlob bool) {
+func UnmarshalBlobTx(tx Tx) (bTx cmtproto.BlobTx, isBlob bool) {
 	err := bTx.Unmarshal(tx)
 	if err != nil {
-		return tmproto.BlobTx{}, false
+		return cmtproto.BlobTx{}, false
 	}
 	// perform some quick basic checks to prevent false positives
 	if bTx.TypeId != consts.ProtoBlobTxTypeID {
@@ -262,8 +271,8 @@ func UnmarshalBlobTx(tx Tx) (bTx tmproto.BlobTx, isBlob bool) {
 //
 // NOTE: Any checks on the blobs or the transaction must be performed in the
 // application
-func MarshalBlobTx(tx []byte, blobs ...*tmproto.Blob) (Tx, error) {
-	bTx := tmproto.BlobTx{
+func MarshalBlobTx(tx []byte, blobs ...*cmtproto.Blob) (Tx, error) {
+	bTx := cmtproto.BlobTx{
 		Tx:     tx,
 		Blobs:  blobs,
 		TypeId: consts.ProtoBlobTxTypeID,

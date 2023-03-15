@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	abci "github.com/tendermint/tendermint/abci/types"
-	tmjson "github.com/tendermint/tendermint/libs/json"
+	cmtjson "github.com/tendermint/tendermint/libs/json"
 	"github.com/tendermint/tendermint/libs/log"
-	tmmath "github.com/tendermint/tendermint/libs/math"
+	cmtmath "github.com/tendermint/tendermint/libs/math"
 	mempl "github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/rpc/client"
 	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
@@ -208,7 +208,7 @@ func TestGenesisChunked(t *testing.T) {
 		doc := []byte(strings.Join(decoded, ""))
 
 		var out types.GenesisDoc
-		require.NoError(t, tmjson.Unmarshal(doc, &out),
+		require.NoError(t, cmtjson.Unmarshal(doc, &out),
 			"first: %+v, doc: %s", first, string(doc))
 	}
 }
@@ -501,6 +501,27 @@ func TestTxSearchWithTimeout(t *testing.T) {
 	require.Greater(t, len(result.Txs), 0, "expected a lot of transactions")
 }
 
+// This test does nothing if we do not call app.SetGenBlockEvents() within main_test.go
+// It will nevertheless pass as there are no events being generated.
+func TestBlockSearch(t *testing.T) {
+	c := getHTTPClient()
+
+	// first we broadcast a few txs
+	for i := 0; i < 10; i++ {
+		_, _, tx := MakeTxKV()
+
+		_, err := c.BroadcastTxCommit(context.Background(), tx)
+		require.NoError(t, err)
+	}
+	require.NoError(t, client.WaitForHeight(c, 5, nil))
+	// This cannot test match_events as it calls the client BlockSearch function directly
+	// It is the RPC request handler that processes the match_event
+	result, err := c.BlockSearch(context.Background(), "begin_event.foo = 100 AND begin_event.bar = 300", nil, nil, "asc")
+	require.NoError(t, err)
+	blockCount := len(result.Blocks)
+	require.Equal(t, blockCount, 0)
+
+}
 func TestTxSearch(t *testing.T) {
 	c := getHTTPClient()
 
@@ -521,8 +542,7 @@ func TestTxSearch(t *testing.T) {
 	find := result.Txs[len(result.Txs)-1]
 	anotherTxHash := types.Tx("a different tx").Hash()
 
-	for i, c := range GetClients() {
-		t.Logf("client %d", i)
+	for _, c := range GetClients() {
 
 		// now we query for the tx.
 		result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.hash='%v'", find.Hash), true, nil, nil, "asc")
@@ -596,16 +616,17 @@ func TestTxSearch(t *testing.T) {
 			pages     = int(math.Ceil(float64(txCount) / float64(perPage)))
 		)
 
+		totalTx := 0
 		for page := 1; page <= pages; page++ {
 			page := page
-			result, err := c.TxSearch(context.Background(), "tx.height >= 1", false, &page, &perPage, "asc")
+			result, err := c.TxSearch(context.Background(), "tx.height >= 1", true, &page, &perPage, "asc")
 			require.NoError(t, err)
 			if page < pages {
 				require.Len(t, result.Txs, perPage)
 			} else {
 				require.LessOrEqual(t, len(result.Txs), perPage)
 			}
-			require.Equal(t, txCount, result.TotalCount)
+			totalTx = totalTx + len(result.Txs)
 			for _, tx := range result.Txs {
 				require.False(t, seen[tx.Height],
 					"Found duplicate height %v in page %v", tx.Height, page)
@@ -615,6 +636,7 @@ func TestTxSearch(t *testing.T) {
 				maxHeight = tx.Height
 			}
 		}
+		require.Equal(t, txCount, totalTx)
 		require.Len(t, seen, txCount)
 	}
 }
@@ -669,7 +691,7 @@ func testBatchedJSONRPCCalls(t *testing.T, c *rpchttp.HTTP) {
 	bresult2, ok := bresults[1].(*ctypes.ResultBroadcastTxCommit)
 	require.True(t, ok)
 	require.Equal(t, *bresult2, *r2)
-	apph := tmmath.MaxInt64(bresult1.Height, bresult2.Height) + 1
+	apph := cmtmath.MaxInt64(bresult1.Height, bresult2.Height) + 1
 
 	err = client.WaitForHeight(c, apph, nil)
 	require.NoError(t, err)

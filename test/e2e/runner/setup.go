@@ -42,13 +42,11 @@ const (
 func Setup(testnet *e2e.Testnet, infp infra.Provider) error {
 	logger.Info("setup", "msg", log.NewLazySprintf("Generating testnet files in %q", testnet.Dir))
 
-	err := os.MkdirAll(testnet.Dir, os.ModePerm)
-	if err != nil {
+	if err := os.MkdirAll(testnet.Dir, os.ModePerm); err != nil {
 		return err
 	}
 
-	err = infp.Setup()
-	if err != nil {
+	if err := infp.Setup(); err != nil {
 		return err
 	}
 
@@ -112,7 +110,7 @@ func Setup(testnet *e2e.Testnet, infp infra.Provider) error {
 			filepath.Join(nodeDir, PrivvalStateFile),
 		)).Save()
 
-		// Set up a dummy validator. Tendermint requires a file PV even when not used, so we
+		// Set up a dummy validator. CometBFT requires a file PV even when not used, so we
 		// give it a dummy such that it will fail if it actually tries to use it.
 		(privval.NewFilePV(ed25519.GenPrivKey(),
 			filepath.Join(nodeDir, PrivvalDummyKeyFile),
@@ -141,7 +139,7 @@ func MakeGenesis(testnet *e2e.Testnet) (types.GenesisDoc, error) {
 			Power:   power,
 		})
 	}
-	// The validator set will be sorted internally by Tendermint ranked by power,
+	// The validator set will be sorted internally by CometBFT ranked by power,
 	// but we sort it here as well so that all genesis files are identical.
 	sort.Slice(genesis.Validators, func(i, j int) bool {
 		return strings.Compare(genesis.Validators[i].Name, genesis.Validators[j].Name) == -1
@@ -156,7 +154,7 @@ func MakeGenesis(testnet *e2e.Testnet) (types.GenesisDoc, error) {
 	return genesis, genesis.ValidateAndComplete()
 }
 
-// MakeConfig generates a Tendermint config for a node.
+// MakeConfig generates a CometBFT config for a node.
 func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg := config.DefaultConfig()
 	cfg.Moniker = node.Name
@@ -167,6 +165,11 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.P2P.AddrBookStrict = false
 	cfg.DBBackend = node.Database
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
+
+	cfg.Instrumentation.InfluxOrg = "celestia"
+	cfg.Instrumentation.InfluxBucket = "e2e"
+	cfg.Instrumentation.InfluxURL = node.InfluxDBURL
+	cfg.Instrumentation.InfluxToken = node.InfluxDBToken
 
 	switch node.ABCIProtocol {
 	case e2e.ProtocolUNIX:
@@ -183,7 +186,7 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
 	}
 
-	// Tendermint errors if it does not have a privval key set up, regardless of whether
+	// CometBFT errors if it does not have a privval key set up, regardless of whether
 	// it's actually needed (e.g. for remote KMS or non-validators). We set up a dummy
 	// key here by default, and use the real key for actual validators that should use
 	// the file privval.
@@ -249,6 +252,12 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 			cfg.P2P.PersistentPeers += ","
 		}
 		cfg.P2P.PersistentPeers += peer.AddressP2P(true)
+	}
+	if node.Testnet.MaxInboundConnections != 0 {
+		cfg.P2P.MaxNumInboundPeers = node.Testnet.MaxInboundConnections
+	}
+	if node.Testnet.MaxOutboundConnections != 0 {
+		cfg.P2P.MaxNumOutboundPeers = node.Testnet.MaxOutboundConnections
 	}
 	return cfg, nil
 }

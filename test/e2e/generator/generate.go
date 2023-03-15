@@ -1,26 +1,35 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/tendermint/tendermint/libs/math"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
+	"github.com/tendermint/tendermint/version"
 )
 
 var (
 	// testnetCombinations defines global testnet options, where we generate a
 	// separate testnet for each combination (Cartesian product) of options.
 	testnetCombinations = map[string][]interface{}{
-		"topology":      {"single", "quad", "large"},
+		"topology":      {"single", "quad", "large_connected", "large_partially_connected"},
 		"initialHeight": {0, 1000},
 		"initialState": {
 			map[string]string{},
 			map[string]string{"initial01": "a", "initial02": "b", "initial03": "c"},
 		},
 		"validators": {"genesis", "initchain"},
+	}
+	nodeVersions = weightedChoice{
+		"": 2,
 	}
 
 	// The following specify randomly chosen values for testnet nodes.
@@ -32,7 +41,7 @@ var (
 	// FIXME: v2 disabled due to flake
 	nodeFastSyncs         = uniformChoice{"v0"} // "v2"
 	nodeStateSyncs        = uniformChoice{false, true}
-	nodeMempools          = uniformChoice{"v0", "v1"}
+	nodeMempools          = uniformChoice{"v0", "v1", "v2"}
 	nodePersistIntervals  = uniformChoice{0, 1, 5}
 	nodeSnapshotIntervals = uniformChoice{0, 3}
 	nodeRetainBlocks      = uniformChoice{0, 1, 5}
@@ -41,21 +50,66 @@ var (
 		"pause":      0.1,
 		"kill":       0.1,
 		"restart":    0.1,
+		"upgrade":    0.3,
 	}
 	nodeMisbehaviors = weightedChoice{
-		// FIXME: evidence disabled due to node panicing when not
+		// FIXME: evidence disabled due to node panicking when not
 		// having sufficient block history to process evidence.
 		// https://github.com/tendermint/tendermint/issues/5617
 		// misbehaviorOption{"double-prevote"}: 1,
 		misbehaviorOption{}: 9,
 	}
+	lightNodePerturbations = probSetChoice{
+		"upgrade": 0.3,
+	}
 )
 
+type generateConfig struct {
+	randSource   *rand.Rand
+	outputDir    string
+	multiVersion string
+}
+
 // Generate generates random testnets using the given RNG.
-func Generate(r *rand.Rand) ([]e2e.Manifest, error) {
+func Generate(cfg *generateConfig) ([]e2e.Manifest, error) {
+	upgradeVersion := ""
+
+	if cfg.multiVersion != "" {
+		var err error
+		nodeVersions, upgradeVersion, err = parseWeightedVersions(cfg.multiVersion)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := nodeVersions["local"]; ok {
+			nodeVersions[""] = nodeVersions["local"]
+			delete(nodeVersions, "local")
+			if upgradeVersion == "local" {
+				upgradeVersion = ""
+			}
+		}
+		if _, ok := nodeVersions["latest"]; ok {
+			latestVersion, err := gitRepoLatestReleaseVersion(cfg.outputDir)
+			if err != nil {
+				return nil, err
+			}
+			nodeVersions[latestVersion] = nodeVersions["latest"]
+			delete(nodeVersions, "latest")
+			if upgradeVersion == "latest" {
+				upgradeVersion = latestVersion
+			}
+		}
+	}
+	fmt.Println("Generating testnet with weighted versions:")
+	for ver, wt := range nodeVersions {
+		if ver == "" {
+			fmt.Printf("- local: %d\n", wt)
+		} else {
+			fmt.Printf("- %s: %d\n", ver, wt)
+		}
+	}
 	manifests := []e2e.Manifest{}
 	for _, opt := range combinations(testnetCombinations) {
-		manifest, err := generateTestnet(r, opt)
+		manifest, err := generateTestnet(cfg.randSource, opt, upgradeVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -65,7 +119,7 @@ func Generate(r *rand.Rand) ([]e2e.Manifest, error) {
 }
 
 // generateTestnet generates a single testnet with the given options.
-func generateTestnet(r *rand.Rand, opt map[string]interface{}) (e2e.Manifest, error) {
+func generateTestnet(r *rand.Rand, opt map[string]interface{}, upgradeVersion string) (e2e.Manifest, error) {
 	manifest := e2e.Manifest{
 		IPv6:             ipv6.Choose(r).(bool),
 		ABCIProtocol:     nodeABCIProtocols.Choose(r).(string),
@@ -74,6 +128,7 @@ func generateTestnet(r *rand.Rand, opt map[string]interface{}) (e2e.Manifest, er
 		Validators:       &map[string]int64{},
 		ValidatorUpdates: map[string]map[string]int64{},
 		Nodes:            map[string]*e2e.ManifestNode{},
+		UpgradeVersion:   upgradeVersion,
 	}
 
 	var numSeeds, numValidators, numFulls, numLightClients int
@@ -82,7 +137,7 @@ func generateTestnet(r *rand.Rand, opt map[string]interface{}) (e2e.Manifest, er
 		numValidators = 1
 	case "quad":
 		numValidators = 4
-	case "large":
+	case "large_connected", "large-partially_connected":
 		// FIXME Networks are kept small since large ones use too much CPU.
 		numSeeds = r.Intn(2)
 		numLightClients = r.Intn(3)
@@ -90,6 +145,15 @@ func generateTestnet(r *rand.Rand, opt map[string]interface{}) (e2e.Manifest, er
 		numFulls = r.Intn(4)
 	default:
 		return manifest, fmt.Errorf("unknown topology %q", opt["topology"])
+	}
+
+	if opt["typologoy"].(string) == "large_partially_connected" {
+		// currently this is at max 11 and minimum 4
+		totalPossibleConnections := numSeeds + numValidators + numFulls - 1
+		// this value should be between 3 and 2
+		manifest.MaxOutboundConnections = math.MaxInt(totalPossibleConnections/3, 2)
+		// this value should be between 5 and 2
+		manifest.MaxInboundConnections = math.MaxInt(totalPossibleConnections/2, 2)
 	}
 
 	// First we generate seed nodes, starting at the initial height.
@@ -206,6 +270,7 @@ func generateNode(
 	r *rand.Rand, mode e2e.Mode, startAt int64, initialHeight int64, forceArchive bool,
 ) *e2e.ManifestNode {
 	node := e2e.ManifestNode{
+		Version:          nodeVersions.Choose(r).(string),
 		Mode:             string(mode),
 		StartAt:          startAt,
 		Database:         nodeDatabases.Choose(r).(string),
@@ -264,10 +329,12 @@ func generateNode(
 func generateLightNode(r *rand.Rand, startAt int64, providers []string) *e2e.ManifestNode {
 	return &e2e.ManifestNode{
 		Mode:            string(e2e.ModeLight),
+		Version:         nodeVersions.Choose(r).(string),
 		StartAt:         startAt,
 		Database:        nodeDatabases.Choose(r).(string),
 		PersistInterval: ptrUint64(0),
 		PersistentPeers: providers,
+		Perturb:         lightNodePerturbations.Choose(r),
 	}
 }
 
@@ -286,4 +353,114 @@ func (m misbehaviorOption) atHeight(height int64) map[string]string {
 	}
 	misbehaviorMap[strconv.Itoa(int(height))] = m.misbehavior
 	return misbehaviorMap
+}
+
+// Parses strings like "v0.34.21:1,v0.34.22:2" to represent two versions
+// ("v0.34.21" and "v0.34.22") with weights of 1 and 2 respectively.
+// Versions may be specified as cometbft/e2e-node:v0.34.27-alpha.1:1 or
+// ghcr.io/informalsystems/tendermint:v0.34.26:1.
+// If only the tag and weight are specified, cometbft/e2e-node is assumed.
+// Also returns the last version in the list, which will be used for updates.
+func parseWeightedVersions(s string) (weightedChoice, string, error) {
+	wc := make(weightedChoice)
+	lv := ""
+	wvs := strings.Split(strings.TrimSpace(s), ",")
+	for _, wv := range wvs {
+		parts := strings.Split(strings.TrimSpace(wv), ":")
+		var ver string
+		if len(parts) == 2 {
+			ver = strings.TrimSpace(strings.Join([]string{"cometbft/e2e-node", parts[0]}, ":"))
+		} else if len(parts) == 3 {
+			ver = strings.TrimSpace(strings.Join([]string{parts[0], parts[1]}, ":"))
+		} else {
+			return nil, "", fmt.Errorf("unexpected weight:version combination: %s", wv)
+		}
+
+		wt, err := strconv.Atoi(strings.TrimSpace(parts[len(parts)-1]))
+		if err != nil {
+			return nil, "", fmt.Errorf("unexpected weight \"%s\": %w", parts[1], err)
+		}
+
+		if wt < 1 {
+			return nil, "", errors.New("version weights must be >= 1")
+		}
+		wc[ver] = uint(wt)
+		lv = ver
+	}
+	return wc, lv, nil
+}
+
+// Extracts the latest release version from the given Git repository. Uses the
+// current version of CometBFT to establish the "major" version
+// currently in use.
+func gitRepoLatestReleaseVersion(gitRepoDir string) (string, error) {
+	opts := &git.PlainOpenOptions{
+		DetectDotGit: true,
+	}
+	r, err := git.PlainOpenWithOptions(gitRepoDir, opts)
+	if err != nil {
+		return "", err
+	}
+	tags := make([]string, 0)
+	tagObjs, err := r.TagObjects()
+	if err != nil {
+		return "", err
+	}
+	err = tagObjs.ForEach(func(tagObj *object.Tag) error {
+		tags = append(tags, tagObj.Name)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return findLatestReleaseTag(version.TMCoreSemVer, tags)
+}
+
+func findLatestReleaseTag(baseVer string, tags []string) (string, error) {
+	baseSemVer, err := semver.NewVersion(strings.Split(baseVer, "-")[0])
+	if err != nil {
+		return "", fmt.Errorf("failed to parse base version \"%s\": %w", baseVer, err)
+	}
+	compVer := fmt.Sprintf("%d.%d", baseSemVer.Major(), baseSemVer.Minor())
+	// Build our version comparison string
+	// See https://github.com/Masterminds/semver#caret-range-comparisons-major for details
+	compStr := "^ " + compVer
+	verCon, err := semver.NewConstraint(compStr)
+	if err != nil {
+		return "", err
+	}
+	var latestVer *semver.Version
+	for _, tag := range tags {
+		if !strings.HasPrefix(tag, "v") {
+			continue
+		}
+		curVer, err := semver.NewVersion(tag)
+		// Skip tags that are not valid semantic versions
+		if err != nil {
+			continue
+		}
+		// Skip pre-releases
+		if len(curVer.Prerelease()) != 0 {
+			continue
+		}
+		// Skip versions that don't match our constraints
+		if !verCon.Check(curVer) {
+			continue
+		}
+		if latestVer == nil || curVer.GreaterThan(latestVer) {
+			latestVer = curVer
+		}
+	}
+	// No relevant latest version (will cause the generator to only use the tip
+	// of the current branch)
+	if latestVer == nil {
+		return "", nil
+	}
+	// Ensure the version string has a "v" prefix, because all CometBFT E2E
+	// node Docker images' versions have a "v" prefix.
+	vs := latestVer.String()
+	if !strings.HasPrefix(vs, "v") {
+		return "v" + vs, nil
+	}
+	return vs, nil
 }
