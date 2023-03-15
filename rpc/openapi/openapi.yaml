@@ -1103,18 +1103,27 @@ paths:
     get:
       summary: Generates a data commitment for a range of blocks
       description: |
-        Generates a data commitment over an ordered list of blocks matching the query.
+        Generates a data commitment over an ordered list of blocks matching the provided range.
 
-        See /subscribe for the query syntax.
+        The provided block range is inclusive on both sides.
       operationId: data_commitment
       parameters:
         - in: query
-          name: query
-          description: Query
+          name: first_block
+          description: "the first block of the range of blocks"
           required: true
           schema:
-            type: string
-            example: "block.height > 1000"
+            type: integer
+            default: 1
+            example: 1
+        - in: query
+          name: last_block
+          description: "the last block of the range of blocks"
+          required: true
+          schema:
+            type: integer
+            default: 100
+            example: 100
       tags:
         - Info
       responses:
@@ -1124,6 +1133,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DataCommitmentResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /data_root_inclusion_proof:
+    get:
+      summary: Creates a merkle proof for a data root
+      description: |
+        Generates a merkle proof for a data root defined by a height to the range of
+        blocks defined by first and last block.
+
+        The provided block range is inclusive on both sides.
+      operationId: data_root_inclusion_proof
+      parameters:
+        - in: query
+          name: height
+          description: "the height of the block to prove"
+          required: true
+          schema:
+            type: integer
+            default: 5
+            example: 5
+        - in: query
+          name: first_block
+          description: "the first block of the range of blocks"
+          required: true
+          schema:
+            type: integer
+            default: 1
+            example: 1
+        - in: query
+          name: last_block
+          description: "the last block of the range of blocks"
+          required: true
+          schema:
+            type: integer
+            default: 100
+            example: 100
+      tags:
+        - Info
+      responses:
+        "200":
+          description: merkle proof of the height to the data commitment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataRootInclusionProofResponse"
         "500":
           description: Error
           content:
@@ -2485,11 +2543,56 @@ components:
           example: 0
         result:
           required:
-            - "dataCommitment"
+            - "DataCommitment"
           properties:
-            dataCommitment:
+            DataCommitment:
               type: string
               example: "D70952032620CC4E2737EB8AC379806359D8E0B17B0488F627997A0B043ABDED"
+              description: the commitment is hex encoded
+          type: object
+
+    DataRootInclusionProofResponse:
+      type: object
+      required:
+        - "jsonrpc"
+        - "id"
+        - "result"
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id:
+          type: integer
+          example: 0
+        result:
+          required:
+            - "Proof"
+          properties:
+            Proof:
+              required:
+                - "total"
+                - "index"
+                - "leaf_hash"
+                - "aunts"
+              properties:
+                total:
+                  type: string
+                  example: "2"
+                index:
+                  type: string
+                  example: "0"
+                leaf_hash:
+                  type: string
+                  example: "eoJxKCzF3m72Xiwb/Q43vJ37/2Sx8sfNS9JKJohlsYI="
+                  description: the leaf hash is base64 encoded
+                aunts:
+                  type: array
+                  items:
+                    type: string
+                  example:
+                    - "eWb+HG/eMmukrQj4vNGyFYb3nKQncAWacq4HF5eFzDY="
+                  description: the aunts are base64 encoded
+              type: object
           type: object
 
     TxResponse:
