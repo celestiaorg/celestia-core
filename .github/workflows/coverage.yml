@@ -3,7 +3,7 @@ on:
   pull_request:
   push:
     branches:
-      - v0.34.x
+      - v0.34.x-celestia
 
 jobs:
   split-test-files:
