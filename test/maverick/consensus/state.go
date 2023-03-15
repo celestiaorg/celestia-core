@@ -900,7 +900,7 @@ func (cs *State) updateToState(state sm.State) {
 		// to be gathered for the first block.
 		// And alternative solution that relies on clocks:
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
-		cs.StartTime = cs.config.NextStartTime(tmtime.Now())
+		cs.StartTime = cs.config.NextStartTime(cmttime.Now())
 	} else {
 		cs.StartTime = cs.config.NextStartTime(cs.StartTime)
 	}
