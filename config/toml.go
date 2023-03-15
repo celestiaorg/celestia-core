@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	tmos "github.com/tendermint/tendermint/libs/os"
+	cmtos "github.com/tendermint/tendermint/libs/os"
 )
 
 // DefaultDirPerm is the default permissions used when creating directories.
@@ -31,25 +31,25 @@ func init() {
 // EnsureRoot creates the root, config, and data directories if they don't exist,
 // and panics if it fails.
 func EnsureRoot(rootDir string) {
-	if err := tmos.EnsureDir(rootDir, DefaultDirPerm); err != nil {
+	if err := cmtos.EnsureDir(rootDir, DefaultDirPerm); err != nil {
 		panic(err.Error())
 	}
-	if err := tmos.EnsureDir(filepath.Join(rootDir, defaultConfigDir), DefaultDirPerm); err != nil {
+	if err := cmtos.EnsureDir(filepath.Join(rootDir, defaultConfigDir), DefaultDirPerm); err != nil {
 		panic(err.Error())
 	}
-	if err := tmos.EnsureDir(filepath.Join(rootDir, defaultDataDir), DefaultDirPerm); err != nil {
+	if err := cmtos.EnsureDir(filepath.Join(rootDir, defaultDataDir), DefaultDirPerm); err != nil {
 		panic(err.Error())
 	}
 
 	configFilePath := filepath.Join(rootDir, defaultConfigFilePath)
 
 	// Write default config file if missing.
-	if !tmos.FileExists(configFilePath) {
+	if !cmtos.FileExists(configFilePath) {
 		writeDefaultConfigFile(configFilePath)
 	}
 }
 
-// XXX: this func should probably be called by cmd/tendermint/commands/init.go
+// XXX: this func should probably be called by cmd/cometbft/commands/init.go
 // alongside the writing of the genesis.json and priv_validator.json
 func writeDefaultConfigFile(configFilePath string) {
 	WriteConfigFile(configFilePath, DefaultConfig())
@@ -63,7 +63,7 @@ func WriteConfigFile(configFilePath string, config *Config) {
 		panic(err)
 	}
 
-	tmos.MustWriteFile(configFilePath, buffer.Bytes(), 0o644)
+	cmtos.MustWriteFile(configFilePath, buffer.Bytes(), 0o644)
 }
 
 // Note: any changes to the comments/variables/mapstructure
@@ -73,7 +73,7 @@ const defaultConfigTemplate = `# This is a TOML config file.
 
 # NOTE: Any path below can be absolute (e.g. "/var/myawesomeapp/data") or
 # relative to the home directory (e.g. "data"). The home directory is
-# "$HOME/.tendermint" by default, but could be changed via $TMHOME env variable
+# "$HOME/.cometbft" by default, but could be changed via $CMTHOME env variable
 # or --home cmd flag.
 
 #######################################################################
@@ -81,7 +81,7 @@ const defaultConfigTemplate = `# This is a TOML config file.
 #######################################################################
 
 # TCP or UNIX socket address of the ABCI application,
-# or the name of an ABCI application compiled in with the Tendermint binary
+# or the name of an ABCI application compiled in with the CometBFT binary
 proxy_app = "{{ .BaseConfig.ProxyApp }}"
 
 # A custom human readable name for this node
@@ -133,7 +133,7 @@ priv_validator_key_file = "{{ js .BaseConfig.PrivValidatorKey }}"
 # Path to the JSON file containing the last sign state of a validator
 priv_validator_state_file = "{{ js .BaseConfig.PrivValidatorState }}"
 
-# TCP or UNIX socket address for Tendermint to listen on for
+# TCP or UNIX socket address for CometBFT to listen on for
 # connections from an external PrivValidator process
 priv_validator_laddr = "{{ .BaseConfig.PrivValidatorListenAddr }}"
 
@@ -246,17 +246,17 @@ max_body_bytes = {{ .RPC.MaxBodyBytes }}
 max_header_bytes = {{ .RPC.MaxHeaderBytes }}
 
 # The path to a file containing certificate that is used to create the HTTPS server.
-# Might be either absolute path or path related to Tendermint's config directory.
+# Might be either absolute path or path related to CometBFT's config directory.
 # If the certificate is signed by a certificate authority,
 # the certFile should be the concatenation of the server's certificate, any intermediates,
 # and the CA's certificate.
-# NOTE: both tls_cert_file and tls_key_file must be present for Tendermint to create HTTPS server.
+# NOTE: both tls_cert_file and tls_key_file must be present for CometBFT to create HTTPS server.
 # Otherwise, HTTP server is run.
 tls_cert_file = "{{ .RPC.TLSCertFile }}"
 
 # The path to a file containing matching private key that is used to create the HTTPS server.
-# Might be either absolute path or path related to Tendermint's config directory.
-# NOTE: both tls-cert-file and tls-key-file must be present for Tendermint to create HTTPS server.
+# Might be either absolute path or path related to CometBFT's config directory.
+# NOTE: both tls-cert-file and tls-key-file must be present for CometBFT to create HTTPS server.
 # Otherwise, HTTP server is run.
 tls_key_file = "{{ .RPC.TLSKeyFile }}"
 
@@ -348,6 +348,11 @@ dial_timeout = "{{ .P2P.DialTimeout }}"
 #   3) "v2" - content addressable transaction pool
 version = "{{ .Mempool.Version }}"
 
+# Recheck (default: true) defines whether CometBFT should recheck the
+# validity for all remaining transaction in the mempool after a block.
+# Since a block affects the application state, some transactions in the
+# mempool may become invalid. If this does not apply to your application,
+# you can disable rechecking.
 recheck = {{ .Mempool.Recheck }}
 broadcast = {{ .Mempool.Broadcast }}
 wal_dir = "{{ js .Mempool.WalPath }}"
@@ -566,10 +571,10 @@ func ResetTestRootWithChainID(testName string, chainID string) *Config {
 		panic(err)
 	}
 	// ensure config and data subdirs are created
-	if err := tmos.EnsureDir(filepath.Join(rootDir, defaultConfigDir), DefaultDirPerm); err != nil {
+	if err := cmtos.EnsureDir(filepath.Join(rootDir, defaultConfigDir), DefaultDirPerm); err != nil {
 		panic(err)
 	}
-	if err := tmos.EnsureDir(filepath.Join(rootDir, defaultDataDir), DefaultDirPerm); err != nil {
+	if err := cmtos.EnsureDir(filepath.Join(rootDir, defaultDataDir), DefaultDirPerm); err != nil {
 		panic(err)
 	}
 
@@ -580,19 +585,19 @@ func ResetTestRootWithChainID(testName string, chainID string) *Config {
 	privStateFilePath := filepath.Join(rootDir, baseConfig.PrivValidatorState)
 
 	// Write default config file if missing.
-	if !tmos.FileExists(configFilePath) {
+	if !cmtos.FileExists(configFilePath) {
 		writeDefaultConfigFile(configFilePath)
 	}
-	if !tmos.FileExists(genesisFilePath) {
+	if !cmtos.FileExists(genesisFilePath) {
 		if chainID == "" {
-			chainID = "tendermint_test"
+			chainID = "cometbft_test"
 		}
 		testGenesis := fmt.Sprintf(testGenesisFmt, chainID)
-		tmos.MustWriteFile(genesisFilePath, []byte(testGenesis), 0o644)
+		cmtos.MustWriteFile(genesisFilePath, []byte(testGenesis), 0o644)
 	}
 	// we always overwrite the priv val
-	tmos.MustWriteFile(privKeyFilePath, []byte(testPrivValidatorKey), 0o644)
-	tmos.MustWriteFile(privStateFilePath, []byte(testPrivValidatorState), 0o644)
+	cmtos.MustWriteFile(privKeyFilePath, []byte(testPrivValidatorKey), 0o644)
+	cmtos.MustWriteFile(privStateFilePath, []byte(testPrivValidatorState), 0o644)
 
 	config := TestConfig().SetRoot(rootDir)
 	return config

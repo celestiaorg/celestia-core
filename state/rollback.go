@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 
-	tmstate "github.com/tendermint/tendermint/proto/tendermint/state"
-	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
+	cmtstate "github.com/tendermint/tendermint/proto/tendermint/state"
+	cmtversion "github.com/tendermint/tendermint/proto/tendermint/version"
 	"github.com/tendermint/tendermint/version"
 )
 
-// Rollback overwrites the current Tendermint state (height n) with the most
+// Rollback overwrites the current CometBFT state (height n) with the most
 // recent previous state (height n - 1).
 // Note that this function does not affect application state.
 func Rollback(bs BlockStore, ss Store) (int64, []byte, error) {
@@ -74,8 +74,8 @@ func Rollback(bs BlockStore, ss Store) (int64, []byte, error) {
 
 	// build the new state from the old state and the prior block
 	rolledBackState := State{
-		Version: tmstate.Version{
-			Consensus: tmversion.Consensus{
+		Version: cmtstate.Version{
+			Consensus: cmtversion.Consensus{
 				Block: version.BlockProtocol,
 				App:   previousParams.Version.AppVersion,
 			},
