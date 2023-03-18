@@ -671,7 +671,7 @@ func (cs *State) updateToState(state sm.State) {
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
 		cs.StartTime = cs.config.NextStartTime(cmttime.Now())
 	} else {
-		cs.StartTime = cs.config.NextStartTime(cs.StartTime)
+		cs.StartTime = cs.config.NextStartTime(cs.CommitTime)
 	}
 
 	cs.Validators = validators
@@ -702,10 +702,6 @@ func (cs *State) newStep() {
 	}
 
 	cs.nSteps++
-
-	cs.eventCollector.WritePoint("consensus", map[string]interface{}{
-		"round_data": []interface{}{rs.Height, rs.Round, rs.Step},
-	})
 
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {

@@ -902,7 +902,7 @@ func (cs *State) updateToState(state sm.State) {
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
 		cs.StartTime = cs.config.NextStartTime(cmttime.Now())
 	} else {
-		cs.StartTime = cs.config.NextStartTime(cs.StartTime)
+		cs.StartTime = cs.config.NextStartTime(cs.CommitTime)
 	}
 
 	cs.Validators = validators
