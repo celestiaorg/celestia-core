@@ -467,7 +467,7 @@ timeout_precommit_delta = "{{ .Consensus.TimeoutPrecommitDelta }}"
 # TargetHeigtDuration is used to determine how long we wait after a
 # block is committed. If this time is shorter than the actual time to reach
 # consensus for that height, then we do not wait at all.
-target_round_duration = "{{ .Consensus.TargetHeightDuration }}"
+target_height_duration = "{{ .Consensus.TargetHeightDuration }}"
 
 # How many blocks to look back to check existence of the node's consensus votes before joining consensus
 # When non-zero, the node will panic upon restart

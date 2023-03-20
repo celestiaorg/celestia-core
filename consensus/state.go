@@ -664,22 +664,11 @@ func (cs *State) updateToState(state sm.State) {
 	cs.updateRoundStep(0, cstypes.RoundStepNewHeight)
 
 	if cs.CommitTime.IsZero() {
-		// "Now" makes it easier to sync up dev nodes.
-		// We add timeoutCommit to allow transactions
-		// to be gathered for the first block.
-		// And alternative solution that relies on clocks:
-		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
-		cs.StartTime = cs.config.NextStartTime(cmttime.Now())
+		// If it is the first block, start time is equal to
+		// states last block time which is the genesis time.
+		cs.StartTime = state.LastBlockTime
 	} else {
-		elapsed := cs.CommitTime.Sub(cs.StartTime)
-		nst := cs.config.TargetHeightDuration - elapsed
-		if nst < time.Millisecond*1 || elapsed < 0 {
-			nst = time.Millisecond * 1
-		}
-		cs.eventCollector.WritePoint("consensus", map[string]interface{}{
-			"elapsed_info": []interface{}{cs.Height, cs.Round, elapsed, nst},
-		})
-		cs.StartTime = cs.CommitTime.Add(nst)
+		cs.StartTime = cs.config.NextStartTime(cs.StartTime)
 	}
 
 	cs.Validators = validators

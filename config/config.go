@@ -1029,7 +1029,11 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 
 // NextStartTime adds the TargetHeightDuration to the provided starting time.
 func (cfg *ConsensusConfig) NextStartTime(t time.Time) time.Time {
-	return t.Add(cfg.TargetHeightDuration)
+	newStartTime := t.Add(cfg.TargetHeightDuration)
+	if newStartTime.Before(time.Now()) {
+		return time.Now()
+	}
+	return newStartTime
 }
 
 // WalFile returns the full path to the write-ahead log file
