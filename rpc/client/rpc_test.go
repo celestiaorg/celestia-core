@@ -638,7 +638,7 @@ func TestDataCommitment(t *testing.T) {
 
 	// check if data commitment is not nil.
 	// Checking if the commitment is correct is done in `core/blocks_test.go`.
-	dataCommitment, err := c.DataCommitment(ctx, 0, uint64(expectedHeight))
+	dataCommitment, err := c.DataCommitment(ctx, 1, uint64(expectedHeight))
 	require.NotNil(t, dataCommitment, "data commitment shouldn't be nul.")
 	require.Nil(t, err, "%+v when creating data commitment.", err)
 }
