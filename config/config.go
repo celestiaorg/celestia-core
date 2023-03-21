@@ -967,13 +967,13 @@ type ConsensusConfig struct {
 func DefaultConsensusConfig() *ConsensusConfig {
 	return &ConsensusConfig{
 		WalPath:                     filepath.Join(defaultDataDir, "cs.wal", "wal"),
-		TimeoutPropose:              3000 * time.Millisecond,
+		TimeoutPropose:              2000 * time.Millisecond,
 		TimeoutProposeDelta:         500 * time.Millisecond,
 		TimeoutPrevote:              1000 * time.Millisecond,
 		TimeoutPrevoteDelta:         500 * time.Millisecond,
 		TimeoutPrecommit:            1000 * time.Millisecond,
 		TimeoutPrecommitDelta:       500 * time.Millisecond,
-		TargetHeightDuration:        3500 * time.Millisecond,
+		TargetHeightDuration:        3000 * time.Millisecond,
 		SkipTimeoutCommit:           false,
 		CreateEmptyBlocks:           true,
 		CreateEmptyBlocksInterval:   0 * time.Second,
@@ -1029,7 +1029,12 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 
 // NextStartTime adds the TargetHeightDuration to the provided starting time.
 func (cfg *ConsensusConfig) NextStartTime(t time.Time) time.Time {
-	return t.Add(cfg.TargetHeightDuration)
+	newStartTime := t.Add(cfg.TargetHeightDuration)
+	now := time.Now()
+	if newStartTime.Before(now) {
+		return now
+	}
+	return newStartTime
 }
 
 // WalFile returns the full path to the write-ahead log file
