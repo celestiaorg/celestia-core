@@ -166,6 +166,7 @@ func TestDataCommitmentResults(t *testing.T) {
 		{2727, 2828, false},
 		{10, 9, false},
 		{0, 1000, false},
+		{0, 10, false},
 		{10, 8, false},
 	}
 
@@ -225,6 +226,7 @@ func TestDataRootInclusionProofResults(t *testing.T) {
 		expectPass bool
 	}{
 		{8, 10, 15, false},
+		{10, 0, 15, false},
 		{10, 10, 15, true},
 		{13, 10, 15, true},
 		{15, 10, 15, true},
