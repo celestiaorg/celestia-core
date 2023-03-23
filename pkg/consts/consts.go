@@ -2,8 +2,6 @@ package consts
 
 import (
 	"crypto/sha256"
-
-	"github.com/celestiaorg/nmt/namespace"
 )
 
 const (
@@ -35,8 +33,9 @@ const (
 )
 
 var (
-	// TxNamespaceID is the namespace reserved for transaction data.
-	TxNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+	// TxNamespaceID is the namespace ID reserved for transaction data. It does
+	// not contain a leading version byte.
+	TxNamespaceID = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 
 	// NewBaseHashFunc change accordingly if another hash.Hash should be used as a base hasher in the NMT:
 	NewBaseHashFunc = sha256.New
