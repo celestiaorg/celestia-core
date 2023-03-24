@@ -606,7 +606,7 @@ func TestFireEventSignedBlockEvent(t *testing.T) {
 	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
 
 	state, stateDB, _ := makeState(2, 1)
-	// modify the last validators so it's different to the current validators
+	// modify the current validators so it's different to the last validators
 	state.Validators.Validators[0].VotingPower = 10
 	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
 		DiscardABCIResponses: false,
@@ -631,13 +631,6 @@ func TestFireEventSignedBlockEvent(t *testing.T) {
 
 	block := makeBlock(state, 1)
 	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
-
-	vp, err := cryptoenc.PubKeyToProto(state.Validators.Validators[0].PubKey)
-	require.NoError(t, err)
-	// Update the validator so that the validator hash is now different
-	app.ValidatorUpdates = []abci.ValidatorUpdate{
-		{PubKey: vp, Power: 100},
-	}
 
 	commit := &types.Commit{
 		Height:  block.Height,
