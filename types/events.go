@@ -165,6 +165,7 @@ var (
 	EventQueryNewEvidence         = QueryForEvent(EventNewEvidence)
 	EventQueryNewRound            = QueryForEvent(EventNewRound)
 	EventQueryNewRoundStep        = QueryForEvent(EventNewRoundStep)
+	EventQueryNewSignedBlock      = QueryForEvent(EventSignedBlock)
 	EventQueryPolka               = QueryForEvent(EventPolka)
 	EventQueryRelock              = QueryForEvent(EventRelock)
 	EventQueryTimeoutPropose      = QueryForEvent(EventTimeoutPropose)

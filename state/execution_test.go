@@ -1,6 +1,7 @@
 package state_test
 
 import (
+	"bytes"
 	"context"
 	"io/ioutil"
 	"net/http"
@@ -594,6 +595,80 @@ func TestEndBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 	assert.NotPanics(t, func() { state, _, err = blockExec.ApplyBlock(state, blockID, block, nil) })
 	assert.NotNil(t, err)
 	assert.NotEmpty(t, state.NextValidators.Validators)
+}
+
+func TestFireEventSignedBlockEvent(t *testing.T) {
+	app := &testApp{}
+	cc := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(cc)
+	err := proxyApp.Start()
+	require.NoError(t, err)
+	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
+
+	state, stateDB, _ := makeState(2, 1)
+	// modify the last validators so it's different to the current validators
+	state.Validators.Validators[0].VotingPower = 10
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	blockExec := sm.NewBlockExecutor(
+		stateStore,
+		log.TestingLogger(),
+		proxyApp.Consensus(),
+		mmock.Mempool{},
+		sm.EmptyEvidencePool{},
+	)
+	eventBus := types.NewEventBus()
+	err = eventBus.Start()
+	require.NoError(t, err)
+	defer eventBus.Stop()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub, err := eventBus.Subscribe(ctx, "test-client", types.EventQueryNewSignedBlock)
+	require.NoError(t, err)
+	blockExec.SetEventBus(eventBus)
+
+	block := makeBlock(state, 1)
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
+
+	vp, err := cryptoenc.PubKeyToProto(state.Validators.Validators[0].PubKey)
+	require.NoError(t, err)
+	// Update the validator so that the validator hash is now different
+	app.ValidatorUpdates = []abci.ValidatorUpdate{
+		{PubKey: vp, Power: 100},
+	}
+
+	commit := &types.Commit{
+		Height:  block.Height,
+		Round:   0,
+		BlockID: blockID,
+		Signatures: []types.CommitSig{
+			types.NewCommitSigAbsent(),
+		},
+	}
+
+	state, _, err = blockExec.ApplyBlock(state, blockID, block, commit)
+	require.NoError(t, err)
+
+	select {
+	case msg := <-sub.Out():
+		signedBlock, ok := msg.Data().(types.EventDataSignedBlock)
+		require.True(t, ok)
+
+		// check that the published data are all from the same height
+		if signedBlock.Header.Height != signedBlock.Commit.Height {
+			t.Fatalf("expected commit height and header height to match")
+		}
+
+		if valHash := signedBlock.ValidatorSet.Hash(); !bytes.Equal(signedBlock.Header.ValidatorsHash, valHash) {
+			t.Fatalf("expected validator hashes to match")
+		}
+	case <-sub.Cancelled():
+		t.Fatalf("subscription was unexpectedly cancelled")
+	case <-time.After(5 * time.Second):
+		t.Fatalf("test timed out waiting for signed block")
+	}
 }
 
 func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {
