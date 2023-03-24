@@ -1086,6 +1086,10 @@ func BlobFromProto(p *tmproto.Blob) Blob {
 		return Blob{}
 	}
 
+	if p.ShareVersion > math.MaxUint8 {
+		return Blob{}
+	}
+
 	if p.NamespaceVersion > math.MaxUint8 {
 		return Blob{}
 	}
