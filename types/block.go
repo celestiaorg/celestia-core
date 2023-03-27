@@ -15,11 +15,11 @@ import (
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/bits"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-	tmmath "github.com/tendermint/tendermint/libs/math"
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
+	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
+	cmtmath "github.com/tendermint/tendermint/libs/math"
+	cmtsync "github.com/tendermint/tendermint/libs/sync"
+	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	cmtversion "github.com/tendermint/tendermint/proto/tendermint/version"
 	"github.com/tendermint/tendermint/version"
 )
 
@@ -40,9 +40,9 @@ const (
 	MaxOverheadForBlock int64 = 11
 )
 
-// Block defines the atomic unit of a Tendermint blockchain.
+// Block defines the atomic unit of a CometBFT blockchain.
 type Block struct {
-	mtx tmsync.Mutex
+	mtx cmtsync.Mutex
 
 	Header     `json:"header"`
 	Data       `json:"data"`
@@ -115,7 +115,7 @@ func (b *Block) fillHeader() {
 
 // Hash computes and returns the block hash.
 // If the block is incomplete, block hash is nil for safety.
-func (b *Block) Hash() tmbytes.HexBytes {
+func (b *Block) Hash() cmtbytes.HexBytes {
 	if b == nil {
 		return nil
 	}
@@ -212,12 +212,12 @@ func (b *Block) StringShort() string {
 }
 
 // ToProto converts Block to protobuf
-func (b *Block) ToProto() (*tmproto.Block, error) {
+func (b *Block) ToProto() (*cmtproto.Block, error) {
 	if b == nil {
 		return nil, errors.New("nil Block")
 	}
 
-	pb := new(tmproto.Block)
+	pb := new(cmtproto.Block)
 
 	pb.Header = *b.Header.ToProto()
 	pb.LastCommit = b.LastCommit.ToProto()
@@ -234,7 +234,7 @@ func (b *Block) ToProto() (*tmproto.Block, error) {
 
 // FromProto sets a protobuf Block to the given pointer.
 // It returns an error if the block is invalid.
-func BlockFromProto(bp *tmproto.Block) (*Block, error) {
+func BlockFromProto(bp *cmtproto.Block) (*Block, error) {
 	if bp == nil {
 		return nil, errors.New("nil block")
 	}
@@ -320,7 +320,7 @@ func MakeBlock(
 	evidence []Evidence) *Block {
 	block := &Block{
 		Header: Header{
-			Version: tmversion.Consensus{Block: version.BlockProtocol, App: 0},
+			Version: cmtversion.Consensus{Block: version.BlockProtocol, App: 0},
 			Height:  height,
 		},
 		Data:       data,
@@ -333,43 +333,43 @@ func MakeBlock(
 
 //-----------------------------------------------------------------------------
 
-// Header defines the structure of a Tendermint block header.
+// Header defines the structure of a CometBFT block header.
 // NOTE: changes to the Header should be duplicated in:
 // - header.Hash()
 // - abci.Header
 // - https://github.com/tendermint/tendermint/blob/v0.34.x/spec/blockchain/blockchain.md
 type Header struct {
 	// basic block info
-	Version tmversion.Consensus `json:"version"`
-	ChainID string              `json:"chain_id"`
-	Height  int64               `json:"height"`
-	Time    time.Time           `json:"time"`
+	Version cmtversion.Consensus `json:"version"`
+	ChainID string               `json:"chain_id"`
+	Height  int64                `json:"height"`
+	Time    time.Time            `json:"time"`
 
 	// prev block info
 	LastBlockID BlockID `json:"last_block_id"`
 
 	// hashes of block data
-	LastCommitHash tmbytes.HexBytes `json:"last_commit_hash"` // commit from validators from the last block
-	DataHash       tmbytes.HexBytes `json:"data_hash"`        // transactions
+	LastCommitHash cmtbytes.HexBytes `json:"last_commit_hash"` // commit from validators from the last block
+	DataHash       cmtbytes.HexBytes `json:"data_hash"`        // transactions
 
 	// hashes from the app output from the prev block
-	ValidatorsHash     tmbytes.HexBytes `json:"validators_hash"`      // validators for the current block
-	NextValidatorsHash tmbytes.HexBytes `json:"next_validators_hash"` // validators for the next block
-	ConsensusHash      tmbytes.HexBytes `json:"consensus_hash"`       // consensus params for current block
-	AppHash            tmbytes.HexBytes `json:"app_hash"`             // state after txs from the previous block
+	ValidatorsHash     cmtbytes.HexBytes `json:"validators_hash"`      // validators for the current block
+	NextValidatorsHash cmtbytes.HexBytes `json:"next_validators_hash"` // validators for the next block
+	ConsensusHash      cmtbytes.HexBytes `json:"consensus_hash"`       // consensus params for current block
+	AppHash            cmtbytes.HexBytes `json:"app_hash"`             // state after txs from the previous block
 	// root hash of all results from the txs from the previous block
 	// see `deterministicResponseDeliverTx` to understand which parts of a tx is hashed into here
-	LastResultsHash tmbytes.HexBytes `json:"last_results_hash"`
+	LastResultsHash cmtbytes.HexBytes `json:"last_results_hash"`
 
 	// consensus info
-	EvidenceHash    tmbytes.HexBytes `json:"evidence_hash"`    // evidence included in the block
-	ProposerAddress Address          `json:"proposer_address"` // original proposer of the block
+	EvidenceHash    cmtbytes.HexBytes `json:"evidence_hash"`    // evidence included in the block
+	ProposerAddress Address           `json:"proposer_address"` // original proposer of the block
 }
 
 // Populate the Header with state-derived data.
 // Call this after MakeBlock to complete the Header.
 func (h *Header) Populate(
-	version tmversion.Consensus, chainID string,
+	version cmtversion.Consensus, chainID string,
 	timestamp time.Time, lastBlockID BlockID,
 	valHash, nextValHash []byte,
 	consensusHash, appHash, lastResultsHash []byte,
@@ -453,7 +453,7 @@ func (h Header) ValidateBasic() error {
 // Returns nil if ValidatorHash is missing,
 // since a Header is not valid unless there is
 // a ValidatorsHash (corresponding to the validator set).
-func (h *Header) Hash() tmbytes.HexBytes {
+func (h *Header) Hash() cmtbytes.HexBytes {
 	if h == nil || len(h.ValidatorsHash) == 0 {
 		return nil
 	}
@@ -529,12 +529,12 @@ func (h *Header) StringIndented(indent string) string {
 }
 
 // ToProto converts Header to protobuf
-func (h *Header) ToProto() *tmproto.Header {
+func (h *Header) ToProto() *cmtproto.Header {
 	if h == nil {
 		return nil
 	}
 
-	return &tmproto.Header{
+	return &cmtproto.Header{
 		Version:            h.Version,
 		ChainID:            h.ChainID,
 		Height:             h.Height,
@@ -554,7 +554,7 @@ func (h *Header) ToProto() *tmproto.Header {
 
 // FromProto sets a protobuf Header to the given pointer.
 // It returns an error if the header is invalid.
-func HeaderFromProto(ph *tmproto.Header) (Header, error) {
+func HeaderFromProto(ph *cmtproto.Header) (Header, error) {
 	if ph == nil {
 		return Header{}, errors.New("nil Header")
 	}
@@ -657,8 +657,8 @@ func (cs CommitSig) Absent() bool {
 // 4. timestamp
 func (cs CommitSig) String() string {
 	return fmt.Sprintf("CommitSig{%X by %X on %v @ %s}",
-		tmbytes.Fingerprint(cs.Signature),
-		tmbytes.Fingerprint(cs.ValidatorAddress),
+		cmtbytes.Fingerprint(cs.Signature),
+		cmtbytes.Fingerprint(cs.ValidatorAddress),
 		cs.BlockIDFlag,
 		CanonicalTime(cs.Timestamp))
 }
@@ -721,13 +721,13 @@ func (cs CommitSig) ValidateBasic() error {
 }
 
 // ToProto converts CommitSig to protobuf
-func (cs *CommitSig) ToProto() *tmproto.CommitSig {
+func (cs *CommitSig) ToProto() *cmtproto.CommitSig {
 	if cs == nil {
 		return nil
 	}
 
-	return &tmproto.CommitSig{
-		BlockIdFlag:      tmproto.BlockIDFlag(cs.BlockIDFlag),
+	return &cmtproto.CommitSig{
+		BlockIdFlag:      cmtproto.BlockIDFlag(cs.BlockIDFlag),
 		ValidatorAddress: cs.ValidatorAddress,
 		Timestamp:        cs.Timestamp,
 		Signature:        cs.Signature,
@@ -736,7 +736,7 @@ func (cs *CommitSig) ToProto() *tmproto.CommitSig {
 
 // FromProto sets a protobuf CommitSig to the given pointer.
 // It returns an error if the CommitSig is invalid.
-func (cs *CommitSig) FromProto(csp tmproto.CommitSig) error {
+func (cs *CommitSig) FromProto(csp cmtproto.CommitSig) error {
 
 	cs.BlockIDFlag = BlockIDFlag(csp.BlockIdFlag)
 	cs.ValidatorAddress = csp.ValidatorAddress
@@ -763,7 +763,7 @@ type Commit struct {
 	// Memoized in first call to corresponding method.
 	// NOTE: can't memoize in constructor because constructor isn't used for
 	// unmarshaling.
-	hash     tmbytes.HexBytes
+	hash     cmtbytes.HexBytes
 	bitArray *bits.BitArray
 }
 
@@ -781,7 +781,7 @@ func NewCommit(height int64, round int32, blockID BlockID, commitSigs []CommitSi
 // Panics if signatures from the commit can't be added to the voteset.
 // Inverse of VoteSet.MakeCommit().
 func CommitToVoteSet(chainID string, commit *Commit, vals *ValidatorSet) *VoteSet {
-	voteSet := NewVoteSet(chainID, commit.Height, commit.Round, tmproto.PrecommitType, vals)
+	voteSet := NewVoteSet(chainID, commit.Height, commit.Round, cmtproto.PrecommitType, vals)
 	for idx, commitSig := range commit.Signatures {
 		if commitSig.Absent() {
 			continue // OK, some precommits can be missing.
@@ -800,7 +800,7 @@ func CommitToVoteSet(chainID string, commit *Commit, vals *ValidatorSet) *VoteSe
 func (commit *Commit) GetVote(valIdx int32) *Vote {
 	commitSig := commit.Signatures[valIdx]
 	return &Vote{
-		Type:             tmproto.PrecommitType,
+		Type:             cmtproto.PrecommitType,
 		Height:           commit.Height,
 		Round:            commit.Round,
 		BlockID:          commitSig.BlockID(commit.BlockID),
@@ -828,7 +828,7 @@ func (commit *Commit) VoteSignBytes(chainID string, valIdx int32) []byte {
 // Type returns the vote type of the commit, which is always VoteTypePrecommit
 // Implements VoteSetReader.
 func (commit *Commit) Type() byte {
-	return byte(tmproto.PrecommitType)
+	return byte(cmtproto.PrecommitType)
 }
 
 // GetHeight returns height of the commit.
@@ -907,7 +907,7 @@ func (commit *Commit) ValidateBasic() error {
 }
 
 // Hash returns the hash of the commit
-func (commit *Commit) Hash() tmbytes.HexBytes {
+func (commit *Commit) Hash() cmtbytes.HexBytes {
 	if commit == nil {
 		return nil
 	}
@@ -952,13 +952,13 @@ func (commit *Commit) StringIndented(indent string) string {
 }
 
 // ToProto converts Commit to protobuf
-func (commit *Commit) ToProto() *tmproto.Commit {
+func (commit *Commit) ToProto() *cmtproto.Commit {
 	if commit == nil {
 		return nil
 	}
 
-	c := new(tmproto.Commit)
-	sigs := make([]tmproto.CommitSig, len(commit.Signatures))
+	c := new(cmtproto.Commit)
+	sigs := make([]cmtproto.CommitSig, len(commit.Signatures))
 	for i := range commit.Signatures {
 		sigs[i] = *commit.Signatures[i].ToProto()
 	}
@@ -973,7 +973,7 @@ func (commit *Commit) ToProto() *tmproto.Commit {
 
 // FromProto sets a protobuf Commit to the given pointer.
 // It returns an error if the commit is invalid.
-func CommitFromProto(cp *tmproto.Commit) (*Commit, error) {
+func CommitFromProto(cp *cmtproto.Commit) (*Commit, error) {
 	if cp == nil {
 		return nil, errors.New("nil Commit")
 	}
@@ -1023,14 +1023,11 @@ type Data struct {
 	SquareSize uint64 `json:"square_size"`
 
 	// Volatile
-	hash tmbytes.HexBytes
+	hash cmtbytes.HexBytes
 }
 
-// Hash returns the hash of the data. `data.hash` is expected to be set by
-// PrepareProposal in celestia-app. However, this function falls back to
-// calculating `data.hash` as vanilla tendermint would in order to satisfy unit
-// and e2e tests.
-func (data *Data) Hash() tmbytes.HexBytes {
+// Hash returns the hash of the data
+func (data *Data) Hash() cmtbytes.HexBytes {
 	if data == nil {
 		return (Txs{}).Hash()
 	}
@@ -1081,7 +1078,7 @@ type Blob struct {
 	ShareVersion uint8
 }
 
-func BlobFromProto(p *tmproto.Blob) Blob {
+func BlobFromProto(p *cmtproto.Blob) Blob {
 	if p == nil {
 		return Blob{}
 	}
@@ -1102,7 +1099,7 @@ func BlobFromProto(p *tmproto.Blob) Blob {
 	}
 }
 
-func BlobsFromProto(p []*tmproto.Blob) []Blob {
+func BlobsFromProto(p []*cmtproto.Blob) []Blob {
 	if p == nil {
 		return []Blob{}
 	}
@@ -1120,7 +1117,7 @@ func (data *Data) StringIndented(indent string) string {
 	if data == nil {
 		return "nil-Data"
 	}
-	txStrings := make([]string, tmmath.MinInt(len(data.Txs), 21))
+	txStrings := make([]string, cmtmath.MinInt(len(data.Txs), 21))
 	for i, tx := range data.Txs {
 		if i == 20 {
 			txStrings[i] = fmt.Sprintf("... (%v total)", len(data.Txs))
@@ -1135,8 +1132,8 @@ func (data *Data) StringIndented(indent string) string {
 }
 
 // ToProto converts Data to protobuf
-func (data *Data) ToProto() tmproto.Data {
-	tp := new(tmproto.Data)
+func (data *Data) ToProto() cmtproto.Data {
+	tp := new(cmtproto.Data)
 
 	if len(data.Txs) > 0 {
 		txBzs := make([][]byte, len(data.Txs))
@@ -1146,9 +1143,9 @@ func (data *Data) ToProto() tmproto.Data {
 		tp.Txs = txBzs
 	}
 
-	protoBlobs := make([]tmproto.Blob, len(data.Blobs))
+	protoBlobs := make([]cmtproto.Blob, len(data.Blobs))
 	for i, b := range data.Blobs {
-		protoBlobs[i] = tmproto.Blob{
+		protoBlobs[i] = cmtproto.Blob{
 			NamespaceId:      b.NamespaceID,
 			Data:             b.Data,
 			ShareVersion:     uint32(b.ShareVersion),
@@ -1165,7 +1162,7 @@ func (data *Data) ToProto() tmproto.Data {
 
 // DataFromProto takes a protobuf representation of Data &
 // returns the native type.
-func DataFromProto(dp *tmproto.Data) (Data, error) {
+func DataFromProto(dp *cmtproto.Data) (Data, error) {
 	if dp == nil {
 		return Data{}, errors.New("nil data")
 	}
@@ -1210,12 +1207,12 @@ type EvidenceData struct {
 	Evidence EvidenceList `json:"evidence"`
 
 	// Volatile. Used as cache
-	hash     tmbytes.HexBytes
+	hash     cmtbytes.HexBytes
 	byteSize int64
 }
 
 // Hash returns the hash of the data.
-func (data *EvidenceData) Hash() tmbytes.HexBytes {
+func (data *EvidenceData) Hash() cmtbytes.HexBytes {
 	if data.hash == nil {
 		data.hash = data.Evidence.Hash()
 	}
@@ -1239,7 +1236,7 @@ func (data *EvidenceData) StringIndented(indent string) string {
 	if data == nil {
 		return "nil-Evidence"
 	}
-	evStrings := make([]string, tmmath.MinInt(len(data.Evidence), 21))
+	evStrings := make([]string, cmtmath.MinInt(len(data.Evidence), 21))
 	for i, ev := range data.Evidence {
 		if i == 20 {
 			evStrings[i] = fmt.Sprintf("... (%v total)", len(data.Evidence))
@@ -1255,13 +1252,13 @@ func (data *EvidenceData) StringIndented(indent string) string {
 }
 
 // ToProto converts EvidenceData to protobuf
-func (data *EvidenceData) ToProto() (*tmproto.EvidenceList, error) {
+func (data *EvidenceData) ToProto() (*cmtproto.EvidenceList, error) {
 	if data == nil {
 		return nil, errors.New("nil evidence data")
 	}
 
-	evi := new(tmproto.EvidenceList)
-	eviBzs := make([]tmproto.Evidence, len(data.Evidence))
+	evi := new(cmtproto.EvidenceList)
+	eviBzs := make([]cmtproto.Evidence, len(data.Evidence))
 	for i := range data.Evidence {
 		protoEvi, err := EvidenceToProto(data.Evidence[i])
 		if err != nil {
@@ -1275,7 +1272,7 @@ func (data *EvidenceData) ToProto() (*tmproto.EvidenceList, error) {
 }
 
 // FromProto sets a protobuf EvidenceData to the given pointer.
-func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
+func (data *EvidenceData) FromProto(eviData *cmtproto.EvidenceList) error {
 	if eviData == nil {
 		return errors.New("nil evidenceData")
 	}
@@ -1298,8 +1295,8 @@ func (data *EvidenceData) FromProto(eviData *tmproto.EvidenceList) error {
 
 // BlockID
 type BlockID struct {
-	Hash          tmbytes.HexBytes `json:"hash"`
-	PartSetHeader PartSetHeader    `json:"parts"`
+	Hash          cmtbytes.HexBytes `json:"hash"`
+	PartSetHeader PartSetHeader     `json:"parts"`
 }
 
 // Equals returns true if the BlockID matches the given BlockID
@@ -1355,12 +1352,12 @@ func (blockID BlockID) String() string {
 }
 
 // ToProto converts BlockID to protobuf
-func (blockID *BlockID) ToProto() tmproto.BlockID {
+func (blockID *BlockID) ToProto() cmtproto.BlockID {
 	if blockID == nil {
-		return tmproto.BlockID{}
+		return cmtproto.BlockID{}
 	}
 
-	return tmproto.BlockID{
+	return cmtproto.BlockID{
 		Hash:          blockID.Hash,
 		PartSetHeader: blockID.PartSetHeader.ToProto(),
 	}
@@ -1368,7 +1365,7 @@ func (blockID *BlockID) ToProto() tmproto.BlockID {
 
 // FromProto sets a protobuf BlockID to the given pointer.
 // It returns an error if the block id is invalid.
-func BlockIDFromProto(bID *tmproto.BlockID) (*BlockID, error) {
+func BlockIDFromProto(bID *cmtproto.BlockID) (*BlockID, error) {
 	if bID == nil {
 		return nil, errors.New("nil BlockID")
 	}

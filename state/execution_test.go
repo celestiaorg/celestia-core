@@ -1,6 +1,7 @@
 package state_test
 
 import (
+	"bytes"
 	"context"
 	"io/ioutil"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	db "github.com/cometbft/cometbft-db"
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
@@ -22,17 +24,16 @@ import (
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/log"
 	mmock "github.com/tendermint/tendermint/mempool/mock"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	tmversion "github.com/tendermint/tendermint/proto/tendermint/version"
+	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	cmtversion "github.com/tendermint/tendermint/proto/tendermint/version"
 	"github.com/tendermint/tendermint/proxy"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/state/mocks"
 	sf "github.com/tendermint/tendermint/state/test/factory"
 	"github.com/tendermint/tendermint/test/factory"
 	"github.com/tendermint/tendermint/types"
-	tmtime "github.com/tendermint/tendermint/types/time"
+	cmttime "github.com/tendermint/tendermint/types/time"
 	"github.com/tendermint/tendermint/version"
-	db "github.com/tendermint/tm-db"
 )
 
 var (
@@ -89,7 +90,7 @@ func TestBeginBlockValidators(t *testing.T) {
 	prevBlockID := types.BlockID{Hash: prevHash, PartSetHeader: prevParts}
 
 	var (
-		now        = tmtime.Now()
+		now        = cmttime.Now()
 		commitSig0 = types.NewCommitSigForBlock(
 			[]byte("Signature1"),
 			state.Validators.Validators[0].Address,
@@ -159,7 +160,7 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	privVal := privVals[state.Validators.Validators[0].Address.String()]
 	blockID := makeBlockID([]byte("headerhash"), 1000, []byte("partshash"))
 	header := &types.Header{
-		Version:            tmversion.Consensus{Block: version.BlockProtocol, App: 1},
+		Version:            cmtversion.Consensus{Block: version.BlockProtocol, App: 1},
 		ChainID:            state.ChainID,
 		Height:             10,
 		Time:               defaultEvidenceTime,
@@ -365,13 +366,13 @@ func TestValidateValidatorUpdates(t *testing.T) {
 	pk2, err := cryptoenc.PubKeyToProto(pubkey2)
 	assert.NoError(t, err)
 
-	defaultValidatorParams := tmproto.ValidatorParams{PubKeyTypes: []string{types.ABCIPubKeyTypeEd25519}}
+	defaultValidatorParams := cmtproto.ValidatorParams{PubKeyTypes: []string{types.ABCIPubKeyTypeEd25519}}
 
 	testCases := []struct {
 		name string
 
 		abciUpdates     []abci.ValidatorUpdate
-		validatorParams tmproto.ValidatorParams
+		validatorParams cmtproto.ValidatorParams
 
 		shouldErr bool
 	}{
@@ -594,6 +595,73 @@ func TestEndBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 	assert.NotPanics(t, func() { state, _, err = blockExec.ApplyBlock(state, blockID, block, nil) })
 	assert.NotNil(t, err)
 	assert.NotEmpty(t, state.NextValidators.Validators)
+}
+
+func TestFireEventSignedBlockEvent(t *testing.T) {
+	app := &testApp{}
+	cc := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(cc)
+	err := proxyApp.Start()
+	require.NoError(t, err)
+	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
+
+	state, stateDB, _ := makeState(2, 1)
+	// modify the current validators so it's different to the last validators
+	state.Validators.Validators[0].VotingPower = 10
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	blockExec := sm.NewBlockExecutor(
+		stateStore,
+		log.TestingLogger(),
+		proxyApp.Consensus(),
+		mmock.Mempool{},
+		sm.EmptyEvidencePool{},
+	)
+	eventBus := types.NewEventBus()
+	err = eventBus.Start()
+	require.NoError(t, err)
+	defer eventBus.Stop()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub, err := eventBus.Subscribe(ctx, "test-client", types.EventQueryNewSignedBlock)
+	require.NoError(t, err)
+	blockExec.SetEventBus(eventBus)
+
+	block := makeBlock(state, 1)
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
+
+	commit := &types.Commit{
+		Height:  block.Height,
+		Round:   0,
+		BlockID: blockID,
+		Signatures: []types.CommitSig{
+			types.NewCommitSigAbsent(),
+		},
+	}
+
+	state, _, err = blockExec.ApplyBlock(state, blockID, block, commit)
+	require.NoError(t, err)
+
+	select {
+	case msg := <-sub.Out():
+		signedBlock, ok := msg.Data().(types.EventDataSignedBlock)
+		require.True(t, ok)
+
+		// check that the published data are all from the same height
+		if signedBlock.Header.Height != signedBlock.Commit.Height {
+			t.Fatalf("expected commit height and header height to match")
+		}
+
+		if valHash := signedBlock.ValidatorSet.Hash(); !bytes.Equal(signedBlock.Header.ValidatorsHash, valHash) {
+			t.Fatalf("expected validator hashes to match")
+		}
+	case <-sub.Cancelled():
+		t.Fatalf("subscription was unexpectedly cancelled")
+	case <-time.After(5 * time.Second):
+		t.Fatalf("test timed out waiting for signed block")
+	}
 }
 
 func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {

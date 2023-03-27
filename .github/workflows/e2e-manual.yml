@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: '1.18'
+          go-version: '1.19'
 
       - uses: actions/checkout@v3
 
@@ -28,7 +28,7 @@ jobs:
       - name: Generate testnets
         working-directory: test/e2e
         # When changing -g, also change the matrix groups above
-        run: ./build/generator -g 4 -d networks/nightly/
+        run: ./generator-multiversion.sh -g 4 -d networks/nightly/
 
       - name: Run ${{ matrix.p2p }} p2p testnets
         working-directory: test/e2e

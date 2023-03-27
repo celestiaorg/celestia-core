@@ -10,13 +10,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	dbm "github.com/cometbft/cometbft-db"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/pubsub/query"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
-	dbm "github.com/tendermint/tm-db"
+	cmtrand "github.com/tendermint/tendermint/libs/rand"
 
 	abci "github.com/tendermint/tendermint/abci/types"
-	tmstate "github.com/tendermint/tendermint/proto/tendermint/state"
+	cmtstate "github.com/tendermint/tendermint/proto/tendermint/state"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 	sm "github.com/tendermint/tendermint/state"
@@ -76,7 +76,7 @@ func TestBlockchainInfo(t *testing.T) {
 }
 
 func TestBlockResults(t *testing.T) {
-	results := &tmstate.ABCIResponses{
+	results := &cmtstate.ABCIResponses{
 		DeliverTxs: []*abci.ResponseDeliverTx{
 			{Code: 0, Data: []byte{0x01}, Log: "ok"},
 			{Code: 0, Data: []byte{0x02}, Log: "ok"},
@@ -166,6 +166,7 @@ func TestDataCommitmentResults(t *testing.T) {
 		{2727, 2828, false},
 		{10, 9, false},
 		{0, 1000, false},
+		{0, 10, false},
 		{10, 8, false},
 	}
 
@@ -225,6 +226,7 @@ func TestDataRootInclusionProofResults(t *testing.T) {
 		expectPass bool
 	}{
 		{8, 10, 15, false},
+		{10, 0, 15, false},
 		{10, 10, 15, true},
 		{13, 10, 15, true},
 		{15, 10, 15, true},
@@ -338,7 +340,7 @@ func randomBlock(height int64) *types.Block {
 	return &types.Block{
 		Header: types.Header{
 			Height:   height,
-			DataHash: tmrand.Bytes(32),
+			DataHash: cmtrand.Bytes(32),
 		},
 	}
 }

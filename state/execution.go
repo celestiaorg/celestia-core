@@ -10,8 +10,8 @@ import (
 	"github.com/tendermint/tendermint/libs/fail"
 	"github.com/tendermint/tendermint/libs/log"
 	mempl "github.com/tendermint/tendermint/mempool"
-	tmstate "github.com/tendermint/tendermint/proto/tendermint/state"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	cmtstate "github.com/tendermint/tendermint/proto/tendermint/state"
+	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
 )
@@ -117,7 +117,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	preparedProposal, err := blockExec.proxyApp.PrepareProposalSync(
 		abci.RequestPrepareProposal{
-			BlockData:     &tmproto.Data{Txs: txs.ToSliceOfBytes()},
+			BlockData:     &cmtproto.Data{Txs: txs.ToSliceOfBytes()},
 			BlockDataSize: maxDataBytes},
 	)
 	if err != nil {
@@ -225,7 +225,7 @@ func (blockExec *BlockExecutor) ApplyBlock(
 
 	fail.Fail() // XXX
 
-	// validate the validator updates and convert to tendermint types
+	// validate the validator updates and convert to CometBFT types
 	abciValUpdates := abciResponses.EndBlock.ValidatorUpdates
 	err = validateValidatorUpdates(abciValUpdates, state.ConsensusParams.Validator)
 	if err != nil {
@@ -267,7 +267,7 @@ func (blockExec *BlockExecutor) ApplyBlock(
 
 	// Events are fired after everything else.
 	// NOTE: if we crash between Commit and Save, events wont be fired during replay
-	fireEvents(blockExec.logger, blockExec.eventBus, block, abciResponses, validatorUpdates, state.Validators, commit)
+	fireEvents(blockExec.logger, blockExec.eventBus, block, abciResponses, validatorUpdates, state.LastValidators, commit)
 
 	return state, retainHeight, nil
 }
@@ -332,11 +332,11 @@ func execBlockOnProxyApp(
 	block *types.Block,
 	store Store,
 	initialHeight int64,
-) (*tmstate.ABCIResponses, error) {
+) (*cmtstate.ABCIResponses, error) {
 	var validTxs, invalidTxs = 0, 0
 
 	txIndex := 0
-	abciResponses := new(tmstate.ABCIResponses)
+	abciResponses := new(cmtstate.ABCIResponses)
 	dtxs := make([]*abci.ResponseDeliverTx, len(block.Txs))
 	abciResponses.DeliverTxs = dtxs
 
@@ -445,7 +445,7 @@ func getBeginBlockValidatorInfo(block *types.Block, store Store,
 }
 
 func validateValidatorUpdates(abciUpdates []abci.ValidatorUpdate,
-	params tmproto.ValidatorParams) error {
+	params cmtproto.ValidatorParams) error {
 	for _, valUpdate := range abciUpdates {
 		if valUpdate.GetPower() < 0 {
 			return fmt.Errorf("voting power can't be negative %v", valUpdate)
@@ -474,7 +474,7 @@ func updateState(
 	state State,
 	blockID types.BlockID,
 	header *types.Header,
-	abciResponses *tmstate.ABCIResponses,
+	abciResponses *cmtstate.ABCIResponses,
 	validatorUpdates []*types.Validator,
 ) (State, error) {
 
@@ -537,12 +537,12 @@ func updateState(
 
 // Fire NewBlock, NewBlockHeader.
 // Fire TxEvent for every tx.
-// NOTE: if Tendermint crashes before commit, some or all of these events may be published again.
+// NOTE: if CometBFT crashes before commit, some or all of these events may be published again.
 func fireEvents(
 	logger log.Logger,
 	eventBus types.BlockEventPublisher,
 	block *types.Block,
-	abciResponses *tmstate.ABCIResponses,
+	abciResponses *cmtstate.ABCIResponses,
 	validatorUpdates []*types.Validator,
 	currentValidatorSet *types.ValidatorSet,
 	seenCommit *types.Commit,
