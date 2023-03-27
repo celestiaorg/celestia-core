@@ -23,6 +23,7 @@ import (
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/bytes"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
+	"github.com/tendermint/tendermint/pkg/consts"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	cmtversion "github.com/tendermint/tendermint/proto/tendermint/version"
 	cmttime "github.com/tendermint/tendermint/types/time"
@@ -912,6 +913,8 @@ func TestBlobsByNamespaceIsSorted(t *testing.T) {
 
 // TestDataProto tests DataFromProto and Data.ToProto
 func TestDataProto(t *testing.T) {
+	namespaceOne := stdbytes.Repeat([]byte{1}, consts.NamespaceIDSize)
+	namespaceTwo := stdbytes.Repeat([]byte{2}, consts.NamespaceIDSize)
 	type testCase struct {
 		name    string
 		proto   *cmtproto.Data
@@ -945,7 +948,7 @@ func TestDataProto(t *testing.T) {
 				Txs: [][]uint8(nil),
 				Blobs: []cmtproto.Blob{
 					{
-						NamespaceId:      []uint8{1, 2, 3, 4, 5, 6, 7, 8},
+						NamespaceId:      namespaceOne,
 						Data:             []uint8{1},
 						ShareVersion:     0x0,
 						NamespaceVersion: 0x0,
@@ -958,9 +961,10 @@ func TestDataProto(t *testing.T) {
 				Txs: []Tx{},
 				Blobs: []Blob{
 					{
-						NamespaceID:  []byte{1, 2, 3, 4, 5, 6, 7, 8},
-						Data:         []byte{1},
-						ShareVersion: 0,
+						NamespaceID:      namespaceOne,
+						Data:             []byte{1},
+						ShareVersion:     0,
+						NamespaceVersion: 0,
 					},
 				},
 				SquareSize: 0,
@@ -972,13 +976,13 @@ func TestDataProto(t *testing.T) {
 				Txs: [][]uint8(nil),
 				Blobs: []cmtproto.Blob{
 					{
-						NamespaceId:      []uint8{1, 1, 1, 1, 1, 1, 1, 1},
+						NamespaceId:      namespaceOne,
 						Data:             []uint8{1},
 						ShareVersion:     0x1,
 						NamespaceVersion: 0,
 					},
 					{
-						NamespaceId:      []uint8{2, 2, 2, 2, 2, 2, 2, 2},
+						NamespaceId:      namespaceTwo,
 						Data:             []uint8{2},
 						ShareVersion:     0x2,
 						NamespaceVersion: 0,
@@ -991,12 +995,12 @@ func TestDataProto(t *testing.T) {
 				Txs: []Tx{},
 				Blobs: []Blob{
 					{
-						NamespaceID:  []byte{1, 1, 1, 1, 1, 1, 1, 1},
+						NamespaceID:  namespaceOne,
 						Data:         []byte{1},
 						ShareVersion: 1,
 					},
 					{
-						NamespaceID:  []byte{2, 2, 2, 2, 2, 2, 2, 2},
+						NamespaceID:  namespaceTwo,
 						Data:         []byte{2},
 						ShareVersion: 2,
 					},
@@ -1010,7 +1014,7 @@ func TestDataProto(t *testing.T) {
 				Txs: [][]uint8(nil),
 				Blobs: []cmtproto.Blob{
 					{
-						NamespaceId:      []uint8{1, 2, 3, 4, 5, 6, 7, 8},
+						NamespaceId:      namespaceOne,
 						Data:             []uint8{1},
 						ShareVersion:     257, // does not fit in a uint8
 						NamespaceVersion: 0,
