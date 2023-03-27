@@ -945,9 +945,10 @@ func TestDataProto(t *testing.T) {
 				Txs: [][]uint8(nil),
 				Blobs: []tmproto.Blob{
 					{
-						NamespaceId:  []uint8{1, 2, 3, 4, 5, 6, 7, 8},
-						Data:         []uint8{1},
-						ShareVersion: 0x0,
+						NamespaceId:      []uint8{1, 2, 3, 4, 5, 6, 7, 8},
+						Data:             []uint8{1},
+						ShareVersion:     0x0,
+						NamespaceVersion: 0x0,
 					},
 				},
 				SquareSize: 0x0,
@@ -971,14 +972,16 @@ func TestDataProto(t *testing.T) {
 				Txs: [][]uint8(nil),
 				Blobs: []tmproto.Blob{
 					{
-						NamespaceId:  []uint8{1, 1, 1, 1, 1, 1, 1, 1},
-						Data:         []uint8{1},
-						ShareVersion: 0x1,
+						NamespaceId:      []uint8{1, 1, 1, 1, 1, 1, 1, 1},
+						Data:             []uint8{1},
+						ShareVersion:     0x1,
+						NamespaceVersion: 0,
 					},
 					{
-						NamespaceId:  []uint8{2, 2, 2, 2, 2, 2, 2, 2},
-						Data:         []uint8{2},
-						ShareVersion: 0x2,
+						NamespaceId:      []uint8{2, 2, 2, 2, 2, 2, 2, 2},
+						Data:             []uint8{2},
+						ShareVersion:     0x2,
+						NamespaceVersion: 0,
 					},
 				},
 				SquareSize: 0x0,
@@ -1007,9 +1010,10 @@ func TestDataProto(t *testing.T) {
 				Txs: [][]uint8(nil),
 				Blobs: []tmproto.Blob{
 					{
-						NamespaceId:  []uint8{1, 2, 3, 4, 5, 6, 7, 8},
-						Data:         []uint8{1},
-						ShareVersion: 257, // does not fit in a uint8
+						NamespaceId:      []uint8{1, 2, 3, 4, 5, 6, 7, 8},
+						Data:             []uint8{1},
+						ShareVersion:     257, // does not fit in a uint8
+						NamespaceVersion: 0,
 					},
 				},
 				SquareSize: 0x0,
