@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/celestiaorg/nmt/namespace"
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 
@@ -1062,9 +1061,13 @@ func (b BlobsByNamespace) Less(i, j int) bool {
 }
 
 type Blob struct {
-	// NamespaceID defines the namespace of this blob, i.e. the
-	// namespace it will use in the namespaced Merkle tree.
-	NamespaceID namespace.ID
+	// NamespaceVersion is the version of the namespace. Used in conjunction
+	// with NamespaceID to determine the namespace of this blob.
+	NamespaceVersion uint8
+
+	// NamespaceID defines the namespace ID of this blob. Used in conjunction
+	// with NamespaceVersion to determine the namespace of this blob.
+	NamespaceID []byte
 
 	// Data is the actual data of the blob.
 	// (e.g. a block of a virtual sidechain).
@@ -1079,10 +1082,20 @@ func BlobFromProto(p *cmtproto.Blob) Blob {
 	if p == nil {
 		return Blob{}
 	}
+
+	if p.ShareVersion > math.MaxUint8 {
+		return Blob{}
+	}
+
+	if p.NamespaceVersion > math.MaxUint8 {
+		return Blob{}
+	}
+
 	return Blob{
-		NamespaceID:  p.NamespaceId,
-		Data:         p.Data,
-		ShareVersion: uint8(p.ShareVersion),
+		NamespaceID:      p.NamespaceId,
+		Data:             p.Data,
+		ShareVersion:     uint8(p.ShareVersion),
+		NamespaceVersion: uint8(p.NamespaceVersion),
 	}
 }
 
@@ -1133,9 +1146,10 @@ func (data *Data) ToProto() cmtproto.Data {
 	protoBlobs := make([]cmtproto.Blob, len(data.Blobs))
 	for i, b := range data.Blobs {
 		protoBlobs[i] = cmtproto.Blob{
-			NamespaceId:  b.NamespaceID,
-			Data:         b.Data,
-			ShareVersion: uint32(b.ShareVersion),
+			NamespaceId:      b.NamespaceID,
+			Data:             b.Data,
+			ShareVersion:     uint32(b.ShareVersion),
+			NamespaceVersion: uint32(b.NamespaceVersion),
 		}
 	}
 	tp.Blobs = protoBlobs
@@ -1169,7 +1183,15 @@ func DataFromProto(dp *cmtproto.Data) (Data, error) {
 		if m.ShareVersion > math.MaxUint8 {
 			return Data{}, fmt.Errorf("share version %d is too large", m.ShareVersion)
 		}
-		blobs[i] = Blob{NamespaceID: m.NamespaceId, Data: m.Data, ShareVersion: uint8(m.ShareVersion)}
+		if m.NamespaceVersion > math.MaxUint8 {
+			return Data{}, fmt.Errorf("namespace version %d is too large", m.NamespaceVersion)
+		}
+		blobs[i] = Blob{
+			NamespaceID:      m.NamespaceId,
+			Data:             m.Data,
+			ShareVersion:     uint8(m.ShareVersion),
+			NamespaceVersion: uint8(m.NamespaceVersion),
+		}
 	}
 	data.Blobs = blobs
 	data.SquareSize = dp.SquareSize

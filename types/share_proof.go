@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/celestiaorg/nmt"
 	"github.com/tendermint/tendermint/pkg/consts"
@@ -18,11 +19,12 @@ type ShareProof struct {
 	// ShareProofs are NMT proofs that the shares in Data exist in a set of
 	// rows. There will be one ShareProof per row that the shares occupy.
 	ShareProofs []*tmproto.NMTProof `json:"share_proofs"`
-	// NamespaceID is the namespace ID of the shares being proven. This
-	// namespace is used when verifying the proof. If the namespace ID doesn't
+	// NamespaceID is the namespace id of the shares being proven. This
+	// namespace id is used when verifying the proof. If the namespace id doesn't
 	// match the namespace of the shares, the proof will fail verification.
-	NamespaceID []byte   `json:"namespace_id"`
-	RowProof    RowProof `json:"row_proof"`
+	NamespaceID      []byte   `json:"namespace_id"`
+	RowProof         RowProof `json:"row_proof"`
+	NamespaceVersion uint32   `json:"namespace_version"`
 }
 
 func (sp ShareProof) ToProto() tmproto.ShareProof {
@@ -43,6 +45,7 @@ func (sp ShareProof) ToProto() tmproto.ShareProof {
 			StartRow: sp.RowProof.StartRow,
 			EndRow:   sp.RowProof.EndRow,
 		},
+		NamespaceVersion: sp.NamespaceVersion,
 	}
 
 	return pbtp
@@ -52,10 +55,11 @@ func (sp ShareProof) ToProto() tmproto.ShareProof {
 // Expects the proof to be pre-validated.
 func ShareProofFromProto(pb tmproto.ShareProof) (ShareProof, error) {
 	return ShareProof{
-		RowProof:    RowProofFromProto(pb.RowProof),
-		Data:        pb.Data,
-		ShareProofs: pb.ShareProofs,
-		NamespaceID: pb.NamespaceId,
+		RowProof:         RowProofFromProto(pb.RowProof),
+		Data:             pb.Data,
+		ShareProofs:      pb.ShareProofs,
+		NamespaceID:      pb.NamespaceId,
+		NamespaceVersion: pb.NamespaceVersion,
 	}, nil
 }
 
@@ -108,9 +112,15 @@ func (sp ShareProof) VerifyProof() bool {
 			true,
 		)
 		sharesUsed := proof.End - proof.Start
+		if sp.NamespaceVersion > math.MaxUint8 {
+			return false
+		}
+		// Consider extracting celestia-app's namespace package. We can't use it
+		// here because that would introduce a circulcar import.
+		namespace := append([]byte{uint8(sp.NamespaceVersion)}, sp.NamespaceID...)
 		valid := nmtProof.VerifyInclusion(
 			consts.NewBaseHashFunc(),
-			sp.NamespaceID,
+			namespace,
 			sp.Data[cursor:sharesUsed+cursor],
 			sp.RowProof.RowRoots[i],
 		)
