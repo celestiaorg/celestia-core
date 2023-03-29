@@ -1078,40 +1078,6 @@ type Blob struct {
 	ShareVersion uint8
 }
 
-func BlobFromProto(p *cmtproto.Blob) Blob {
-	if p == nil {
-		return Blob{}
-	}
-
-	if p.ShareVersion > math.MaxUint8 {
-		return Blob{}
-	}
-
-	if p.NamespaceVersion > math.MaxUint8 {
-		return Blob{}
-	}
-
-	return Blob{
-		NamespaceID:      p.NamespaceId,
-		Data:             p.Data,
-		ShareVersion:     uint8(p.ShareVersion),
-		NamespaceVersion: uint8(p.NamespaceVersion),
-	}
-}
-
-func BlobsFromProto(p []*cmtproto.Blob) []Blob {
-	if p == nil {
-		return []Blob{}
-	}
-
-	blobs := make([]Blob, 0, len(p))
-
-	for i := 0; i < len(p); i++ {
-		blobs = append(blobs, BlobFromProto(p[i]))
-	}
-	return blobs
-}
-
 // StringIndented returns an indented string representation of the transactions.
 func (data *Data) StringIndented(indent string) string {
 	if data == nil {
