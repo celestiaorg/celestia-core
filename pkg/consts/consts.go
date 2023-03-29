@@ -2,8 +2,6 @@ package consts
 
 import (
 	"crypto/sha256"
-
-	"github.com/celestiaorg/nmt/namespace"
 )
 
 const (
@@ -23,15 +21,21 @@ const (
 	// ProtoIndexWrapperTypeID is included in each encoded IndexWrapper to help prevent
 	// decoding binaries that are not actually IndexWrappers.
 	ProtoIndexWrapperTypeID = "INDX"
+
+	// NamespaveVersionSize is the size of a namespace version in bytes.
+	NamespaceVersionSize = 1
+
+	// NamespaceIDSize is the size of a namespace ID in bytes.
+	NamespaceIDSize = 32
+
+	// NamespaceSize is the size of a namespace in bytes.
+	NamespaceSize = NamespaceIDSize + NamespaceVersionSize
 )
 
 var (
-	// See spec for further details on the types of available data
-	// https://github.com/celestiaorg/celestia-specs/blob/master/src/specs/consensus.md#reserved-namespace-ids
-	// https://github.com/celestiaorg/celestia-specs/blob/de5f4f74f56922e9fa735ef79d9e6e6492a2bad1/specs/data_structures.md#availabledata
-
-	// TxNamespaceID is the namespace reserved for transaction data
-	TxNamespaceID = namespace.ID{0, 0, 0, 0, 0, 0, 0, 1}
+	// TxNamespaceID is the namespace ID reserved for transaction data. It does
+	// not contain a leading version byte.
+	TxNamespaceID = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 
 	// NewBaseHashFunc change accordingly if another hash.Hash should be used as a base hasher in the NMT:
 	NewBaseHashFunc = sha256.New

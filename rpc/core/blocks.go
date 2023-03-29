@@ -290,6 +290,9 @@ func generateHeightsList(beginBlock uint64, endBlock uint64) []int64 {
 // validateDataCommitmentRange runs basic checks on the asc sorted list of heights
 // that will be used subsequently in generating data commitments over the defined set of heights.
 func validateDataCommitmentRange(firstBlock uint64, lastBlock uint64) error {
+	if firstBlock == 0 {
+		return fmt.Errorf("the first block is 0")
+	}
 	env := GetEnvironment()
 	heightsRange := lastBlock - firstBlock + 1
 	if heightsRange > uint64(consts.DataCommitmentBlocksLimit) {
