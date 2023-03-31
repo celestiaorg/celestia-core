@@ -415,17 +415,21 @@ func (m *Header) GetProposerAddress() []byte {
 	return nil
 }
 
-// Data contains the set of transactions included in the block
+// Data contains all the information needed for a consensus full node to
+// reconstruct an extended data square.
 type Data struct {
-	// Txs that will be applied by state @ block.Height+1.
-	// NOTE: not all txs here are valid.  We're just agreeing on the order first.
-	// This means that block.AppHash does not include these txs.
+	// Txs that will be applied to state in block.Height + 1 because deferred execution.
+	// This means that the block.AppHash of this block does not include these txs.
+	// NOTE: not all txs here are valid. We're just agreeing on the order first.
 	Txs [][]byte `protobuf:"bytes,1,rep,name=txs,proto3" json:"txs,omitempty"`
-	// field number 2 is reserved for intermediate state roots
-	// field number 3 was previously used for evidence
-	Blobs      []Blob `protobuf:"bytes,4,rep,name=blobs,proto3" json:"blobs"`
+	// Blobs are the data blobs included in the original data square.
+	Blobs []Blob `protobuf:"bytes,4,rep,name=blobs,proto3" json:"blobs"`
+	// SquareSize is the number of rows in the original data square.
 	SquareSize uint64 `protobuf:"varint,5,opt,name=square_size,json=squareSize,proto3" json:"square_size,omitempty"`
-	Hash       []byte `protobuf:"bytes,6,opt,name=hash,proto3" json:"hash,omitempty"`
+	// Hash is the root of a binary Merkle tree where the leaves of the tree are
+	// the row and column roots of an extended data square. Hash is often referred
+	// to as the "data root".
+	Hash []byte `protobuf:"bytes,6,opt,name=hash,proto3" json:"hash,omitempty"`
 }
 
 func (m *Data) Reset()         { *m = Data{} }
