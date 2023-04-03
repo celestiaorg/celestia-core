@@ -424,7 +424,7 @@ type Data struct {
 	Txs [][]byte `protobuf:"bytes,1,rep,name=txs,proto3" json:"txs,omitempty"`
 	// Blobs are the data blobs included in the original data square.
 	Blobs []Blob `protobuf:"bytes,4,rep,name=blobs,proto3" json:"blobs"`
-	// SquareSize is the number of rows in the original data square.
+	// SquareSize is the number of rows or columns in the original data square.
 	SquareSize uint64 `protobuf:"varint,5,opt,name=square_size,json=squareSize,proto3" json:"square_size,omitempty"`
 	// Hash is the root of a binary Merkle tree where the leaves of the tree are
 	// the row and column roots of an extended data square. Hash is often referred
