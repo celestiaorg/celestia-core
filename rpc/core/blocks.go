@@ -184,6 +184,9 @@ func DataCommitment(ctx *rpctypes.Context, firstBlock uint64, lastBlock uint64) 
 	}
 	heights := generateHeightsList(firstBlock, lastBlock)
 	blockResults := fetchBlocks(heights, len(heights), 0)
+	if len(blockResults) != len(heights) {
+		return nil, fmt.Errorf("couldn't fetch all the blocks in the provided range")
+	}
 	root, err := hashDataRootTuples(blockResults)
 	if err != nil {
 		return nil, err
@@ -206,6 +209,9 @@ func DataRootInclusionProof(
 	}
 	heights := generateHeightsList(beginBlock, endBlock)
 	blockResults := fetchBlocks(heights, len(heights), 0)
+	if len(blockResults) != len(heights) {
+		return nil, fmt.Errorf("couldn't fetch all the blocks in the provided range")
+	}
 	proof, err := proveDataRootTuples(blockResults, height)
 	if err != nil {
 		return nil, err
