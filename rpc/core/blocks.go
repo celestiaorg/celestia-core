@@ -266,7 +266,10 @@ func padBytes(byt []byte, length int) ([]byte, error) {
 // https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
 func EncodeDataRootTuple(height uint64, dataRoot [32]byte) ([]byte, error) {
 	hexRepresentation := strconv.FormatUint(height, 16)
-	// Make sure hex representation has even length
+	// Make sure hex representation has even length.
+	// The `strconv.FormatUint` can return odd length hex encodings.
+	// For example, `strconv.FormatUint(10, 16)` returns `a`.
+	// Thus, we need to pad it.
 	if len(hexRepresentation)%2 == 1 {
 		hexRepresentation = "0" + hexRepresentation
 	}
