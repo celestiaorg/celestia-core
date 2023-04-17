@@ -700,10 +700,6 @@ func (cs *State) newStep() {
 
 	cs.nSteps++
 
-	cs.eventCollector.WritePoint("consensus", map[string]interface{}{
-		"round_data": []interface{}{rs.Height, rs.Round, rs.Step},
-	})
-
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {
 		if err := cs.eventBus.PublishEventNewRoundStep(rs); err != nil {
