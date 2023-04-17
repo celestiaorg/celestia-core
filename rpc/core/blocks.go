@@ -237,35 +237,10 @@ func padBytes(byt []byte, length int) ([]byte, error) {
 	return tmp, nil
 }
 
-// EncodeDataRootTuple takes a height and a data root and returns the equivalent of
-// `abi.encode(...)` in Ethereum.
-// The encoded type is a DataRootTuple, which has the following ABI:
-// ```
-//
-//	{
-//	  "components": [
-//	    {
-//	      "internalType": "uint256",
-//	      "name": "height",
-//	      "type": "uint256"
-//	    },
-//	    {
-//	      "internalType": "bytes32",
-//	      "name": "dataRoot",
-//	      "type": "bytes32"
-//	    }
-//	  ],
-//	  "internalType": "structDataRootTuple",
-//	  "name": "_tuple",
-//	  "type": "tuple"
-//	},
-//
-// ```
-// padding the hex representation of the height to 32 bytes and concatenating the data root to it
-// For more information, refer to:
-// https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
-func EncodeDataRootTuple(height uint64, dataRoot [32]byte) ([]byte, error) {
-	hexRepresentation := strconv.FormatUint(height, 16)
+// To32PaddedHexBytes takes a number and returns its hex representation padded to 32 bytes.
+// Used to mimic the result of `abi.encode(number)` in Ethereum.
+func To32PaddedHexBytes(number uint64) ([]byte, error) {
+	hexRepresentation := strconv.FormatUint(number, 16)
 	// Make sure hex representation has even length.
 	// The `strconv.FormatUint` can return odd length hex encodings.
 	// For example, `strconv.FormatUint(10, 16)` returns `a`.
@@ -281,9 +256,53 @@ func EncodeDataRootTuple(height uint64, dataRoot [32]byte) ([]byte, error) {
 	if padErr != nil {
 		return nil, padErr
 	}
+	return paddedBytes, nil
+}
 
+// EncodeDataRootTuple takes a height, a data root and the original block size, and returns the equivalent of
+// `abi.encode(...)` in Ethereum.
+// The encoded type is a DataRootTuple, which has the following ABI:
+// ```
+//
+//	{
+//	  "components": [
+//	    {
+//	      "internalType": "uint256",
+//	      "name": "height",
+//	      "type": "uint256"
+//	    },
+//	    {
+//	      "internalType": "bytes32",
+//	      "name": "dataRoot",
+//	      "type": "bytes32"
+//	    },
+//		{
+//		  "internalType": "uint256",
+//		  "name": "blockSize",
+//		  "type": "uint256"
+//		}
+//	  ],
+//	  "internalType": "structDataRootTuple",
+//	  "name": "_tuple",
+//	  "type": "tuple"
+//	},
+//
+// ```
+// padding the hex representation of the height padded to 32 bytes concatenated to the data root concatenated
+// to the hex representation of the block size padded to 32 bytes.
+// For more information, refer to:
+// https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
+func EncodeDataRootTuple(height uint64, dataRoot [32]byte, originalBlockSize uint64) ([]byte, error) {
+	paddedHeight, err := To32PaddedHexBytes(height)
+	if err != nil {
+		return nil, err
+	}
 	dataSlice := dataRoot[:]
-	return append(paddedBytes, dataSlice...), nil
+	paddedBlockSize, err := To32PaddedHexBytes(originalBlockSize)
+	if err != nil {
+		return nil, err
+	}
+	return append(paddedHeight, append(dataSlice, paddedBlockSize...)...), nil
 }
 
 // generateHeightsList takes a begin and end block, then generates a list of heights
@@ -337,7 +356,7 @@ func validateDataCommitmentRange(firstBlock uint64, lastBlock uint64) error {
 func hashDataRootTuples(blocks []*ctypes.ResultBlock) ([]byte, error) {
 	dataRootEncodedTuples := make([][]byte, 0, len(blocks))
 	for _, block := range blocks {
-		encodedTuple, err := EncodeDataRootTuple(uint64(block.Block.Height), *(*[32]byte)(block.Block.DataHash))
+		encodedTuple, err := EncodeDataRootTuple(uint64(block.Block.Height), *(*[32]byte)(block.Block.DataHash), block.Block.SquareSize)
 		if err != nil {
 			return nil, err
 		}
@@ -369,7 +388,7 @@ func validateDataRootInclusionProofRequest(height uint64, firstBlock uint64, las
 func proveDataRootTuples(blocks []*ctypes.ResultBlock, height int64) (*merkle.Proof, error) {
 	dataRootEncodedTuples := make([][]byte, 0, len(blocks))
 	for _, block := range blocks {
-		encodedTuple, err := EncodeDataRootTuple(uint64(block.Block.Height), *(*[32]byte)(block.Block.DataHash))
+		encodedTuple, err := EncodeDataRootTuple(uint64(block.Block.Height), *(*[32]byte)(block.Block.DataHash), block.Block.SquareSize)
 		if err != nil {
 			return nil, err
 		}

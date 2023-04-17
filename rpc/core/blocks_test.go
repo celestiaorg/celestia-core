@@ -127,22 +127,26 @@ func TestBlockResults(t *testing.T) {
 func TestEncodeDataRootTuple(t *testing.T) {
 	height := uint64(2)
 	dataRoot, err := hex.DecodeString("82dc1607d84557d3579ce602a45f5872e821c36dbda7ec926dfa17ebc8d5c013")
+	squareSize := uint64(64)
 	require.NoError(t, err)
 
 	expectedEncoding, err := hex.DecodeString(
 		// hex representation of height padded to 32 bytes
 		"0000000000000000000000000000000000000000000000000000000000000002" +
 			// data root
-			"82dc1607d84557d3579ce602a45f5872e821c36dbda7ec926dfa17ebc8d5c013")
+			"82dc1607d84557d3579ce602a45f5872e821c36dbda7ec926dfa17ebc8d5c013" +
+			// original block size
+			"0000000000000000000000000000000000000000000000000000000000000040",
+	)
 	require.NoError(t, err)
 	require.NotNil(t, expectedEncoding)
 
-	actualEncoding, err := EncodeDataRootTuple(height, *(*[32]byte)(dataRoot))
+	actualEncoding, err := EncodeDataRootTuple(height, *(*[32]byte)(dataRoot), squareSize)
 	require.NoError(t, err)
 	require.NotNil(t, actualEncoding)
 
 	// Check that the length of packed data is correct
-	assert.Equal(t, len(actualEncoding), 64)
+	assert.Equal(t, len(actualEncoding), 96)
 	assert.Equal(t, expectedEncoding, actualEncoding)
 }
 
@@ -185,7 +189,11 @@ func TestDataCommitmentResults(t *testing.T) {
 			size := tc.endQuery - tc.beginQuery + 1
 			dataRootEncodedTuples := make([][]byte, size)
 			for i := 0; i < size; i++ {
-				encodedTuple, err := EncodeDataRootTuple(uint64(blocks[tc.beginQuery+i].Height), *(*[32]byte)(blocks[tc.beginQuery+i].DataHash))
+				encodedTuple, err := EncodeDataRootTuple(
+					uint64(blocks[tc.beginQuery+i].Height),
+					*(*[32]byte)(blocks[tc.beginQuery+i].DataHash),
+					blocks[tc.beginQuery+i].SquareSize,
+				)
 				require.NoError(t, err)
 				dataRootEncodedTuples[i] = encodedTuple
 			}
@@ -255,6 +263,7 @@ func TestDataRootInclusionProofResults(t *testing.T) {
 				encodedTuple, err := EncodeDataRootTuple(
 					uint64(blocks[tc.firstQuery+i].Height),
 					*(*[32]byte)(blocks[tc.firstQuery+i].DataHash),
+					blocks[tc.firstQuery+i].SquareSize,
 				)
 				require.NoError(t, err)
 				dataRootEncodedTuples[i] = encodedTuple
