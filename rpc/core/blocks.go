@@ -470,23 +470,6 @@ func BlockSearch(
 	return &ctypes.ResultBlockSearch{Blocks: apiResults, TotalCount: totalCount}, nil
 }
 
-// heightsByQuery returns a list of heights corresponding to the provided query.
-func heightsByQuery(ctx *rpctypes.Context, query string) ([]int64, error) {
-	env := GetEnvironment()
-	// skip if block indexing is disabled
-	if _, ok := env.BlockIndexer.(*blockidxnull.BlockerIndexer); ok {
-		return nil, errors.New("block indexing is disabled")
-	}
-
-	q, err := cmtquery.New(query)
-	if err != nil {
-		return nil, err
-	}
-
-	results, err := env.BlockIndexer.Search(ctx.Context(), q)
-	return results, err
-}
-
 // sortBlocks takes a list of block heights and sorts them according to the order: "asc" or "desc".
 // If `orderBy` is blank, then it is considered descending.
 func sortBlocks(results []int64, orderBy string) error {
