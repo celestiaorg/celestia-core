@@ -289,7 +289,7 @@ func To32PaddedHexBytes(number uint64) ([]byte, error) {
 //
 // ```
 // padding the hex representation of the height padded to 32 bytes concatenated to the data root concatenated
-// to the hex representation of the block size padded to 32 bytes.
+// to the hex representation of the square size padded to 32 bytes.
 // For more information, refer to:
 // https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
 func EncodeDataRootTuple(height uint64, dataRoot [32]byte, originalSquareSize uint64) ([]byte, error) {
