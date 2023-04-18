@@ -262,32 +262,32 @@ func To32PaddedHexBytes(number uint64) ([]byte, error) {
 // EncodeDataRootTuple takes a height, a data root and the square size, and returns the equivalent of
 // `abi.encode(...)` in Ethereum.
 // The encoded type is a DataRootTuple, which has the following ABI:
-// ```
 //
 //	{
-//	  "components": [
-//	    {
-//	      "internalType": "uint256",
-//	      "name": "height",
-//	      "type": "uint256"
-//	    },
-//	    {
-//	      "internalType": "bytes32",
-//	      "name": "dataRoot",
-//	      "type": "bytes32"
-//	    },
-//		{
-//		  "internalType": "uint256",
-//		  "name": "squareSize",
-//		  "type": "uint256"
-//		}
-//	  ],
-//	  "internalType": "structDataRootTuple",
-//	  "name": "_tuple",
-//	  "type": "tuple"
-//	},
+//	  "components":[
+//	     {
+//	        "internalType":"uint256",
+//	        "name":"height",
+//	        "type":"uint256"
+//	     },
+//	     {
+//	        "internalType":"bytes32",
+//	        "name":"dataRoot",
+//	        "type":"bytes32"
+//	     },
+//	     {
+//	        "internalType":"uint256",
+//	        "name":"squareSize",
+//	        "type":"uint256"
+//	     },
+//	     {
+//	        "internalType":"structDataRootTuple",
+//	        "name":"_tuple",
+//	        "type":"tuple"
+//	     }
+//	  ]
+//	}
 //
-// ```
 // padding the hex representation of the height padded to 32 bytes concatenated to the data root concatenated
 // to the hex representation of the square size padded to 32 bytes.
 // For more information, refer to:
