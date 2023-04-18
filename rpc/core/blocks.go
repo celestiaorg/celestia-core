@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math"
 	"sort"
 	"strconv"
 
@@ -240,8 +239,8 @@ func padBytes(byt []byte, length int) ([]byte, error) {
 
 // To32PaddedHexBytes takes a number and returns its hex representation padded to 32 bytes.
 // Used to mimic the result of `abi.encode(number)` in Ethereum.
-func To32PaddedHexBytes(number uint32) ([]byte, error) {
-	hexRepresentation := strconv.FormatUint(uint64(number), 16)
+func To32PaddedHexBytes(number uint64) ([]byte, error) {
+	hexRepresentation := strconv.FormatUint(number, 16)
 	// Make sure hex representation has even length.
 	// The `strconv.FormatUint` can return odd length hex encodings.
 	// For example, `strconv.FormatUint(10, 16)` returns `a`.
@@ -294,18 +293,12 @@ func To32PaddedHexBytes(number uint32) ([]byte, error) {
 // For more information, refer to:
 // https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
 func EncodeDataRootTuple(height uint64, dataRoot [32]byte, squareSize uint64) ([]byte, error) {
-	if height > math.MaxUint32 {
-		return nil, fmt.Errorf("height exceeds uint32 max")
-	}
-	paddedHeight, err := To32PaddedHexBytes(uint32(height))
+	paddedHeight, err := To32PaddedHexBytes(height)
 	if err != nil {
 		return nil, err
 	}
 	dataSlice := dataRoot[:]
-	if squareSize > math.MaxUint32 {
-		return nil, fmt.Errorf("square size exceeds uint32 max")
-	}
-	paddedSquareSize, err := To32PaddedHexBytes(uint32(squareSize))
+	paddedSquareSize, err := To32PaddedHexBytes(squareSize)
 	if err != nil {
 		return nil, err
 	}
