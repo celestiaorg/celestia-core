@@ -259,7 +259,7 @@ func To32PaddedHexBytes(number uint64) ([]byte, error) {
 	return paddedBytes, nil
 }
 
-// EncodeDataRootTuple takes a height, a data root and the original square size, and returns the equivalent of
+// EncodeDataRootTuple takes a height, a data root and the square size, and returns the equivalent of
 // `abi.encode(...)` in Ethereum.
 // The encoded type is a DataRootTuple, which has the following ABI:
 // ```
@@ -292,13 +292,13 @@ func To32PaddedHexBytes(number uint64) ([]byte, error) {
 // to the hex representation of the square size padded to 32 bytes.
 // For more information, refer to:
 // https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
-func EncodeDataRootTuple(height uint64, dataRoot [32]byte, originalSquareSize uint64) ([]byte, error) {
+func EncodeDataRootTuple(height uint64, dataRoot [32]byte, squareSize uint64) ([]byte, error) {
 	paddedHeight, err := To32PaddedHexBytes(height)
 	if err != nil {
 		return nil, err
 	}
 	dataSlice := dataRoot[:]
-	paddedSquareSize, err := To32PaddedHexBytes(originalSquareSize)
+	paddedSquareSize, err := To32PaddedHexBytes(squareSize)
 	if err != nil {
 		return nil, err
 	}
