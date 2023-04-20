@@ -961,11 +961,10 @@ type ConsensusConfig struct {
 	TimeoutPrecommit time.Duration `mapstructure:"timeout_precommit"`
 	// How much the timeout_precommit increases with each round
 	TimeoutPrecommitDelta time.Duration `mapstructure:"timeout_precommit_delta"`
-	// How long we wait after committing a block, before starting on the new
-	// height (this gives us a chance to receive some more precommits, even
-	// though we already have +2/3).
-	// NOTE: when modifying, make sure to update time_iota_ms genesis parameter
-	TimeoutCommit time.Duration `mapstructure:"timeout_commit"`
+	// TargetHeigtDuration is used to determine how long we wait after a
+	// block is committed. If this time is shorter than the actual time to reach
+	// consensus for that height, then we do not wait at all.
+	TargetHeightDuration time.Duration `mapstructure:"target_height_duration"`
 
 	// Make progress as soon as we have all the precommits (as if TimeoutCommit = 0)
 	SkipTimeoutCommit bool `mapstructure:"skip_timeout_commit"`
@@ -986,13 +985,13 @@ func DefaultConsensusConfig() *ConsensusConfig {
 	return &ConsensusConfig{
 		OnlyInternalWal:             true,
 		WalPath:                     filepath.Join(defaultDataDir, "cs.wal", "wal"),
-		TimeoutPropose:              3000 * time.Millisecond,
+		TimeoutPropose:              2000 * time.Millisecond,
 		TimeoutProposeDelta:         500 * time.Millisecond,
 		TimeoutPrevote:              1000 * time.Millisecond,
 		TimeoutPrevoteDelta:         500 * time.Millisecond,
 		TimeoutPrecommit:            1000 * time.Millisecond,
 		TimeoutPrecommitDelta:       500 * time.Millisecond,
-		TimeoutCommit:               1000 * time.Millisecond,
+		TargetHeightDuration:        3000 * time.Millisecond,
 		SkipTimeoutCommit:           false,
 		CreateEmptyBlocks:           true,
 		CreateEmptyBlocksInterval:   0 * time.Second,
@@ -1012,7 +1011,7 @@ func TestConsensusConfig() *ConsensusConfig {
 	cfg.TimeoutPrecommit = 10 * time.Millisecond
 	cfg.TimeoutPrecommitDelta = 1 * time.Millisecond
 	// NOTE: when modifying, make sure to update time_iota_ms (testGenesisFmt) in toml.go
-	cfg.TimeoutCommit = 10 * time.Millisecond
+	cfg.TargetHeightDuration = 70 * time.Millisecond
 	cfg.SkipTimeoutCommit = true
 	cfg.PeerGossipSleepDuration = 5 * time.Millisecond
 	cfg.PeerQueryMaj23SleepDuration = 250 * time.Millisecond
@@ -1046,10 +1045,14 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 	) * time.Nanosecond
 }
 
-// Commit returns the amount of time to wait for straggler votes after receiving +2/3 precommits
-// for a single block (ie. a commit).
-func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
-	return t.Add(cfg.TimeoutCommit)
+// NextStartTime adds the TargetHeightDuration to the provided starting time.
+func (cfg *ConsensusConfig) NextStartTime(t time.Time) time.Time {
+	newStartTime := t.Add(cfg.TargetHeightDuration)
+	now := time.Now()
+	if newStartTime.Before(now) {
+		return now
+	}
+	return newStartTime
 }
 
 // WalFile returns the full path to the write-ahead log file
@@ -1086,8 +1089,8 @@ func (cfg *ConsensusConfig) ValidateBasic() error {
 	if cfg.TimeoutPrecommitDelta < 0 {
 		return errors.New("timeout_precommit_delta can't be negative")
 	}
-	if cfg.TimeoutCommit < 0 {
-		return errors.New("timeout_commit can't be negative")
+	if cfg.TargetHeightDuration < 0 {
+		return errors.New("target_height_duration can't be negative")
 	}
 	if cfg.CreateEmptyBlocksInterval < 0 {
 		return errors.New("create_empty_blocks_interval can't be negative")
