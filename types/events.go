@@ -48,6 +48,7 @@ type TMEventData interface {
 
 func init() {
 	cmtjson.RegisterType(EventDataNewBlock{}, "tendermint/event/NewBlock")
+	cmtjson.RegisterType(EventDataSignedBlock{}, "tendermint/event/NewSignedBlock")
 	cmtjson.RegisterType(EventDataNewBlockHeader{}, "tendermint/event/NewBlockHeader")
 	cmtjson.RegisterType(EventDataNewEvidence{}, "tendermint/event/NewEvidence")
 	cmtjson.RegisterType(EventDataTx{}, "tendermint/event/Tx")
