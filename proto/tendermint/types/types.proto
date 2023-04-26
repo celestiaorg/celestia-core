@@ -89,19 +89,12 @@ message Data {
   // NOTE: not all txs here are valid. We're just agreeing on the order first.
   repeated bytes txs = 1;
 
+  reserved 2, 3, 4, 5, 6;
   // field number 2 is reserved for intermediate state roots
   // field number 3 was previously used for evidence
-
-  // Blobs are the data blobs included in the original data square.
-  repeated Blob blobs       = 4 [(gogoproto.nullable) = false];
-
-  // SquareSize is the number of rows or columns in the original data square.
-  uint64        square_size = 5;
-
-  // Hash is the root of a binary Merkle tree where the leaves of the tree are
-  // the row and column roots of an extended data square. Hash is often referred
-  // to as the "data root".
-  bytes         hash        = 6;
+  // field number 4 was previously used for blobs
+  // field number 5 was previously used for square_size
+  // field number 6 was previously used for hash of the extended data square
 }
 
 // Blob (named after binary large object) is a chunk of data submitted by a user
@@ -109,9 +102,9 @@ message Data {
 // to a namespace and is encoded into shares based on the format specified by
 // share_version.
 message Blob {
-  bytes  namespace_id  = 1;
-  bytes  data          = 2;
-  uint32 share_version = 3;
+  bytes  namespace_id      = 1;
+  bytes  data              = 2;
+  uint32 share_version     = 3;
   uint32 namespace_version = 4;
 }
 
@@ -212,17 +205,17 @@ message BlobTx {
 // ShareProof is an NMT proof that a set of shares exist in a set of rows and a
 // Merkle proof that those rows exist in a Merkle tree with a given data root.
 message ShareProof {
-  repeated bytes data = 1;
-  repeated NMTProof share_proofs = 2;
-  bytes namespace_id = 3;
-  RowProof row_proof = 4;
-  uint32 namespace_version = 5;
+  repeated bytes    data              = 1;
+  repeated NMTProof share_proofs      = 2;
+  bytes             namespace_id      = 3;
+  RowProof          row_proof         = 4;
+  uint32            namespace_version = 5;
 }
 
 // RowProof is a Merkle proof that a set of rows exist in a Merkle tree with a
 // given data root.
 message RowProof {
-  repeated bytes row_roots                  = 1;
+  repeated bytes row_roots                   = 1;
   repeated tendermint.crypto.Proof proofs    = 2;
   bytes                            root      = 3;
   uint32                           start_row = 4;

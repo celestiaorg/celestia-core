@@ -233,13 +233,13 @@ func FromProto(pb *cmtstate.State) (*State, error) { //nolint:golint
 // track rounds, and hence does not know the correct proposer. TODO: fix this!
 func (state State) MakeBlock(
 	height int64,
-	data types.Data,
+	txs types.Txs,
 	commit *types.Commit,
 	evidence []types.Evidence,
 	proposerAddress []byte,
 ) (*types.Block, *types.PartSet) {
 	// Build base block with block data.
-	block := types.MakeBlock(height, data, commit, evidence)
+	block := types.MakeBlock(height, txs, commit, evidence)
 
 	// Set time.
 	var timestamp time.Time

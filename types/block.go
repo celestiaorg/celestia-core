@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -315,7 +314,7 @@ func MaxDataBytesNoEvidence(maxBytes int64, valsCount int) int64 {
 // It populates the same set of fields validated by ValidateBasic.
 func MakeBlock(
 	height int64,
-	data Data,
+	txs Txs,
 	lastCommit *Commit,
 	evidence []Evidence) *Block {
 	block := &Block{
@@ -323,7 +322,7 @@ func MakeBlock(
 			Version: cmtversion.Consensus{Block: version.BlockProtocol, App: 0},
 			Height:  height,
 		},
-		Data:       data,
+		Data:       Data{Txs: txs},
 		Evidence:   EvidenceData{Evidence: evidence},
 		LastCommit: lastCommit,
 	}
@@ -1013,15 +1012,6 @@ type Data struct {
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
 
-	// The blobs included in this block.
-	Blobs []Blob `json:"blobs"`
-
-	// SquareSize is the size of the square after splitting all the block data
-	// into shares. The erasure data is discarded after generation, and keeping this
-	// value avoids unnecessarily regenerating all of the shares when returning
-	// proofs that some element was included in the block
-	SquareSize uint64 `json:"square_size"`
-
 	// Volatile
 	hash cmtbytes.HexBytes
 }
@@ -1109,20 +1099,6 @@ func (data *Data) ToProto() cmtproto.Data {
 		tp.Txs = txBzs
 	}
 
-	protoBlobs := make([]cmtproto.Blob, len(data.Blobs))
-	for i, b := range data.Blobs {
-		protoBlobs[i] = cmtproto.Blob{
-			NamespaceId:      b.NamespaceID,
-			Data:             b.Data,
-			ShareVersion:     uint32(b.ShareVersion),
-			NamespaceVersion: uint32(b.NamespaceVersion),
-		}
-	}
-	tp.Blobs = protoBlobs
-	tp.SquareSize = data.SquareSize
-
-	tp.Hash = data.hash
-
 	return *tp
 }
 
@@ -1143,25 +1119,6 @@ func DataFromProto(dp *cmtproto.Data) (Data, error) {
 	} else {
 		data.Txs = Txs{}
 	}
-
-	blobs := make([]Blob, len(dp.Blobs))
-	for i, m := range dp.Blobs {
-		if m.ShareVersion > math.MaxUint8 {
-			return Data{}, fmt.Errorf("share version %d is too large", m.ShareVersion)
-		}
-		if m.NamespaceVersion > math.MaxUint8 {
-			return Data{}, fmt.Errorf("namespace version %d is too large", m.NamespaceVersion)
-		}
-		blobs[i] = Blob{
-			NamespaceID:      m.NamespaceId,
-			Data:             m.Data,
-			ShareVersion:     uint8(m.ShareVersion),
-			NamespaceVersion: uint8(m.NamespaceVersion),
-		}
-	}
-	data.Blobs = blobs
-	data.SquareSize = dp.SquareSize
-	data.hash = dp.Hash
 
 	return *data, nil
 }

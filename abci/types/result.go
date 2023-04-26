@@ -43,17 +43,17 @@ func (r ResponseQuery) IsErr() bool {
 
 // IsUnknown returns true if Code is Unknown
 func (r ResponseProcessProposal) IsUnknown() bool {
-	return r.Result == ResponseProcessProposal_UNKNOWN
+	return r.Status == ResponseProcessProposal_UNKNOWN
 }
 
 // IsOK returns true if Code is OK
-func (r ResponseProcessProposal) IsOK() bool {
-	return r.Result == ResponseProcessProposal_ACCEPT
+func (r ResponseProcessProposal) IsAccepted() bool {
+	return r.Status == ResponseProcessProposal_ACCEPT
 }
 
 // IsRejected returns true if this ResponseProcessProposal was rejected
 func (r ResponseProcessProposal) IsRejected() bool {
-	return r.Result == ResponseProcessProposal_REJECT
+	return r.Status == ResponseProcessProposal_REJECT
 }
 
 //---------------------------------------------------------------------------

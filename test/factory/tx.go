@@ -15,9 +15,8 @@ func MakeTenTxs(height int64) (txs []types.Tx) {
 	return MakeTxs(height, 10)
 }
 
-func MakeData(txs []types.Tx, blobs []types.Blob) types.Data {
+func MakeData(txs []types.Tx) types.Data {
 	return types.Data{
-		Txs:   txs,
-		Blobs: blobs,
+		Txs: txs,
 	}
 }

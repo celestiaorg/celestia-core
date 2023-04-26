@@ -118,7 +118,7 @@ func TestBeginBlockValidators(t *testing.T) {
 		// block for height 2
 		block, _ := state.MakeBlock(
 			2,
-			factory.MakeData(factory.MakeTenTxs(2), nil),
+			factory.MakeTenTxs(2),
 			lastCommit,
 			nil,
 			state.Validators.GetProposer().Address,
@@ -200,16 +200,16 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 
 	ev := []types.Evidence{dve, lcae}
 
-	abciEv := []abci.Evidence{
+	abciEv := []abci.Misbehavior{
 		{
-			Type:             abci.EvidenceType_DUPLICATE_VOTE,
+			Type:             abci.MisbehaviorType_DUPLICATE_VOTE,
 			Height:           3,
 			Time:             defaultEvidenceTime,
 			Validator:        types.TM2PB.Validator(state.Validators.Validators[0]),
 			TotalVotingPower: 10,
 		},
 		{
-			Type:             abci.EvidenceType_LIGHT_CLIENT_ATTACK,
+			Type:             abci.MisbehaviorType_LIGHT_CLIENT_ATTACK,
 			Height:           8,
 			Time:             defaultEvidenceTime,
 			Validator:        types.TM2PB.Validator(state.Validators.Validators[0]),
@@ -258,7 +258,7 @@ func TestProcessProposal(t *testing.T) {
 
 		block := sf.MakeBlock(state, int64(height), new(types.Commit))
 		block.Txs = txs
-		acceptBlock, err := blockExec.ProcessProposal(block)
+		acceptBlock, err := blockExec.ProcessProposal(block, state)
 		require.Nil(t, err)
 		require.Equal(t, expectAccept, acceptBlock)
 	}
@@ -306,7 +306,7 @@ func TestProcessProposalRejectedMetric(t *testing.T) {
 	for _, test := range tests {
 		blockExec := makeBlockExec(t, test.name, test.block, stateDB, metrics)
 
-		_, err := blockExec.ProcessProposal(test.block)
+		_, err := blockExec.ProcessProposal(test.block, state)
 		require.Nil(t, err, test.name)
 
 		prometheusOutput := getPrometheusOutput()

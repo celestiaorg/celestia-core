@@ -292,17 +292,12 @@ func To32PaddedHexBytes(number uint64) ([]byte, error) {
 // to the hex representation of the square size padded to 32 bytes.
 // For more information, refer to:
 // https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
-func EncodeDataRootTuple(height uint64, dataRoot [32]byte, squareSize uint64) ([]byte, error) {
+func EncodeDataRootTuple(height uint64, dataRoot []byte) ([]byte, error) {
 	paddedHeight, err := To32PaddedHexBytes(height)
 	if err != nil {
 		return nil, err
 	}
-	dataSlice := dataRoot[:]
-	paddedSquareSize, err := To32PaddedHexBytes(squareSize)
-	if err != nil {
-		return nil, err
-	}
-	return append(paddedHeight, append(dataSlice, paddedSquareSize...)...), nil
+	return append(paddedHeight, dataRoot...), nil
 }
 
 // generateHeightsList takes a begin and end block, then generates a list of heights
@@ -356,7 +351,7 @@ func validateDataCommitmentRange(firstBlock uint64, lastBlock uint64) error {
 func hashDataRootTuples(blocks []*ctypes.ResultBlock) ([]byte, error) {
 	dataRootEncodedTuples := make([][]byte, 0, len(blocks))
 	for _, block := range blocks {
-		encodedTuple, err := EncodeDataRootTuple(uint64(block.Block.Height), *(*[32]byte)(block.Block.DataHash), block.Block.SquareSize)
+		encodedTuple, err := EncodeDataRootTuple(uint64(block.Block.Height), block.Block.DataHash)
 		if err != nil {
 			return nil, err
 		}
@@ -388,7 +383,7 @@ func validateDataRootInclusionProofRequest(height uint64, firstBlock uint64, las
 func proveDataRootTuples(blocks []*ctypes.ResultBlock, height int64) (*merkle.Proof, error) {
 	dataRootEncodedTuples := make([][]byte, 0, len(blocks))
 	for _, block := range blocks {
-		encodedTuple, err := EncodeDataRootTuple(uint64(block.Block.Height), *(*[32]byte)(block.Block.DataHash), block.Block.SquareSize)
+		encodedTuple, err := EncodeDataRootTuple(uint64(block.Block.Height), block.Block.DataHash)
 		if err != nil {
 			return nil, err
 		}

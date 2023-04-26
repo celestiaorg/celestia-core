@@ -98,11 +98,11 @@ func (BaseApplication) ApplySnapshotChunk(req RequestApplySnapshotChunk) Respons
 }
 
 func (BaseApplication) PrepareProposal(req RequestPrepareProposal) ResponsePrepareProposal {
-	return ResponsePrepareProposal{BlockData: req.BlockData}
+	return ResponsePrepareProposal{Txs: req.Txs}
 }
 
 func (BaseApplication) ProcessProposal(req RequestProcessProposal) ResponseProcessProposal {
-	return ResponseProcessProposal{Result: ResponseProcessProposal_ACCEPT}
+	return ResponseProcessProposal{Status: ResponseProcessProposal_ACCEPT}
 }
 
 //-------------------------------------------------------

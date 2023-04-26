@@ -53,20 +53,10 @@ func TestUnmarshalIndexWrapper(t *testing.T) {
 	_, ok := UnmarshalIndexWrapper(tx)
 	require.False(t, ok)
 
-	data := Data{
-		Txs: []Tx{tx},
-		Blobs: []Blob{
-			{
-				NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
-				Data:        []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
-			},
-		},
-	}
-
 	// create a proto message that used to be decoded when it shouldn't have
 	randomBlock := MakeBlock(
 		1,
-		data,
+		[]Tx{tx},
 		&Commit{},
 		[]Evidence{},
 	)

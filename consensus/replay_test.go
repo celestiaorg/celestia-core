@@ -30,7 +30,6 @@ import (
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
 	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/state/test/factory"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -1008,7 +1007,7 @@ func makeBlock(state sm.State, lastBlock *types.Block, lastBlockMeta *types.Bloc
 
 	return state.MakeBlock(
 		height,
-		factory.MakeData([]types.Tx{}, nil),
+		[]types.Tx{},
 		lastCommit,
 		nil,
 		state.Validators.GetProposer().Address,

@@ -57,7 +57,7 @@ func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commi
 	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, types.BlockID, error) {
 	block, _ := state.MakeBlock(
 		height,
-		factory.MakeData(factory.MakeTenTxs(height), nil),
+		factory.MakeTenTxs(height),
 		lastCommit,
 		evidence,
 		proposerAddr,
@@ -143,7 +143,7 @@ func makeState(nVals, height int) (sm.State, dbm.DB, map[string]types.PrivValida
 func makeBlock(state sm.State, height int64) *types.Block {
 	block, _ := state.MakeBlock(
 		height,
-		factory.MakeData(makeTxs(state.LastBlockHeight), nil),
+		makeTxs(state.LastBlockHeight),
 		new(types.Commit),
 		nil,
 		state.Validators.GetProposer().Address,
@@ -243,7 +243,7 @@ type testApp struct {
 	abci.BaseApplication
 
 	CommitVotes         []abci.VoteInfo
-	ByzantineValidators []abci.Evidence
+	ByzantineValidators []abci.Misbehavior
 	ValidatorUpdates    []abci.ValidatorUpdate
 }
 
@@ -284,10 +284,10 @@ func (app *testApp) Query(reqQuery abci.RequestQuery) (resQuery abci.ResponseQue
 }
 
 func (app *testApp) ProcessProposal(req abci.RequestProcessProposal) abci.ResponseProcessProposal {
-	for _, tx := range req.BlockData.Txs {
+	for _, tx := range req.Txs {
 		if len(tx) == 0 {
-			return abci.ResponseProcessProposal{Result: abci.ResponseProcessProposal_REJECT}
+			return abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}
 		}
 	}
-	return abci.ResponseProcessProposal{Result: abci.ResponseProcessProposal_ACCEPT}
+	return abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}
 }
