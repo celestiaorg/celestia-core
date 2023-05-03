@@ -1008,7 +1008,7 @@ func makeBlock(state sm.State, lastBlock *types.Block, lastBlockMeta *types.Bloc
 
 	return state.MakeBlock(
 		height,
-		factory.MakeData([]types.Tx{}, nil),
+		factory.MakeData([]types.Tx{}),
 		lastCommit,
 		nil,
 		state.Validators.GetProposer().Address,
