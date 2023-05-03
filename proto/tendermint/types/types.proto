@@ -89,11 +89,10 @@ message Data {
   // NOTE: not all txs here are valid. We're just agreeing on the order first.
   repeated bytes txs = 1;
 
+  reserved 2, 3, 4;
   // field number 2 is reserved for intermediate state roots
-  // field number 3 was previously used for evidence
-
-  // Blobs are the data blobs included in the original data square.
-  repeated Blob blobs       = 4 [(gogoproto.nullable) = false];
+  // field number 3 is reserved for evidence
+  // field number 4 is reserved for blobs
 
   // SquareSize is the number of rows or columns in the original data square.
   uint64        square_size = 5;
