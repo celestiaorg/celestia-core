@@ -541,7 +541,7 @@ max_open_connections = {{ .Instrumentation.MaxOpenConnections }}
 # Instrumentation namespace
 namespace = "{{ .Instrumentation.Namespace }}"
 
-# The URL of the influxdb instance to use for remote event 
+# The URL of the influxdb instance to use for remote event
 # collection. If empty, remote event collection is disabled.
 influx_url = "{{ .Instrumentation.InfluxURL }}"
 
@@ -556,6 +556,15 @@ influx_org = "{{ .Instrumentation.InfluxOrg }}"
 
 # The size of the batches that are sent to the database.
 influx_batch_size = {{ .Instrumentation.InfluxBatchSize }}
+
+# The URL of the pyroscope instance to use for continuous profiling.
+# If empty, continuous profiling is disabled.
+pyroscope_url = {{ .Instrumentation.PyroscopeURL }}
+
+# When true, tracing data is added to the continuous profiling
+# performed by pyroscope.
+pyroscope_trace = {{ .Instrumentation.PyroscopeTrace }}
+
 `
 
 /****** these are for test settings ***********/

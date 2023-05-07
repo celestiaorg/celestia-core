@@ -105,6 +105,8 @@ type Node struct {
 	SendNoLoad       bool
 	InfluxDBURL      string
 	InfluxDBToken    string
+	PyroscopeURL     string
+	PyroscopeTrace   bool
 }
 
 // LoadTestnet loads a testnet from a manifest file, using the filename to
@@ -203,6 +205,8 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 			SendNoLoad:       nodeManifest.SendNoLoad,
 			InfluxDBURL:      ifd.InfluxDBURL,
 			InfluxDBToken:    ifd.InfluxDBToken,
+			PyroscopeURL:     ifd.PyroscopeURL,
+			PyroscopeTrace:   ifd.PyroscopeTrace,
 		}
 		if node.StartAt == testnet.InitialHeight {
 			node.StartAt = 0 // normalize to 0 for initial nodes, since code expects this

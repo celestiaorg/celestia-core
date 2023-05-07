@@ -91,6 +91,19 @@ func NewCLI() *CLI {
 				ifd.InfluxDBToken = itoken
 			}
 
+			purl, err := cmd.Flags().GetString(trace.FlagPyroscopeURL)
+			if err != nil {
+				return err
+			}
+			pTrace, err := cmd.Flags().GetBool(trace.FlagPyroscopeTrace)
+			if err != nil {
+				return err
+			}
+			if ifd.PyroscopeURL == "" {
+				ifd.PyroscopeURL = purl
+				ifd.PyroscopeTrace = pTrace
+			}
+
 			testnet, err := e2e.LoadTestnet(m, file, ifd)
 			if err != nil {
 				return fmt.Errorf("loading testnet: %s", err)
@@ -176,6 +189,10 @@ func NewCLI() *CLI {
 	cli.root.PersistentFlags().String(trace.FlagInfluxDBURL, "", trace.FlagInfluxDBURLDescription)
 
 	cli.root.PersistentFlags().String(trace.FlagInfluxDBToken, "", trace.FlagInfluxDBTokenDescription)
+
+	cli.root.PersistentFlags().String(trace.FlagPyroscopeURL, "", trace.FlagPyroscopeURLDescription)
+
+	cli.root.PersistentFlags().Bool(trace.FlagPyroscopeTrace, false, trace.FlagPyroscopeTraceDescription)
 
 	cli.root.Flags().BoolVarP(&cli.preserve, "preserve", "p", false,
 		"Preserves the running of the test net after tests are completed")
@@ -277,7 +294,7 @@ func NewCLI() *CLI {
 	Min Block Interval
 	Max Block Interval
 over a 100 block sampling period.
-		
+
 Does not run any perturbations.
 		`,
 		RunE: func(cmd *cobra.Command, args []string) error {

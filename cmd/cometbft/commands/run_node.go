@@ -107,6 +107,17 @@ func AddNodeFlags(cmd *cobra.Command) {
 		trace.FlagInfluxDBTokenDescription,
 	)
 
+	cmd.PersistentFlags().String(
+		trace.FlagPyroscopeURL,
+		config.Instrumentation.PyroscopeURL,
+		trace.FlagPyroscopeURLDescription,
+	)
+
+	cmd.PersistentFlags().Bool(
+		trace.FlagPyroscopeTrace,
+		config.Instrumentation.PyroscopeTrace,
+		trace.FlagPyroscopeTraceDescription,
+	)
 }
 
 // NewRunNodeCmd returns the command that allows the CLI to start a node.

@@ -1193,6 +1193,13 @@ type InstrumentationConfig struct {
 
 	// InfluxBatchSize is the number of points to write in a single batch.
 	InfluxBatchSize int `mapstructure:"influx_batch_size"`
+
+	// PyroscopeURL is the pyroscope url used to establish a connection with a
+	// pyroscope continuous profiling server.
+	PyroscopeURL string `mapstructure:"pyroscope_url"`
+
+	// PyroscopeProfile is a flag that enables tracing with pyroscope.
+	PyroscopeTrace bool `mapstructure:"pyroscope_trace"`
 }
 
 // DefaultInstrumentationConfig returns a default configuration for metrics
@@ -1207,6 +1214,8 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		InfluxOrg:            "celestia",
 		InfluxBucket:         "e2e",
 		InfluxBatchSize:      20,
+		PyroscopeURL:         "",
+		PyroscopeTrace:       false,
 	}
 }
 
@@ -1221,6 +1230,9 @@ func TestInstrumentationConfig() *InstrumentationConfig {
 func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.MaxOpenConnections < 0 {
 		return errors.New("max_open_connections can't be negative")
+	}
+	if cfg.PyroscopeTrace && cfg.PyroscopeURL == "" {
+		return errors.New("pyroscope_trace can't be enabled if profiling is disabled")
 	}
 	// if there is not InfluxURL configured, then we do not need to validate the rest
 	// of the config because we are not connecting.

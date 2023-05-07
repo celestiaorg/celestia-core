@@ -13,7 +13,9 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/pyroscope-io/client/pyroscope"
 	"github.com/rs/cors"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	abci "github.com/tendermint/tendermint/abci/types"
 	bcv0 "github.com/tendermint/tendermint/blockchain/v0"
@@ -233,6 +235,8 @@ type Node struct {
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
 	influxDBClient    *trace.Client
+	pyroscopeProfiler *pyroscope.Profiler
+	pyroscopeTracer   *sdktrace.TracerProvider
 }
 
 func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
@@ -1019,6 +1023,19 @@ func (n *Node) OnStart() error {
 		n.prometheusSrv = n.startPrometheusServer(n.config.Instrumentation.PrometheusListenAddr)
 	}
 
+	if n.config.Instrumentation.PyroscopeURL != "" {
+		profiler, tracer, err := n.setupPyroscope(
+			n.config.Instrumentation.PyroscopeURL,
+			string(n.nodeKey.ID()),
+			n.config.Instrumentation.PyroscopeTrace,
+		)
+		if err != nil {
+			return err
+		}
+		n.pyroscopeProfiler = profiler
+		n.pyroscopeTracer = tracer
+	}
+
 	// Start the transport.
 	addr, err := p2p.NewNetAddressString(p2p.IDAddressString(n.nodeKey.ID(), n.config.P2P.ListenAddress))
 	if err != nil {
@@ -1119,6 +1136,15 @@ func (n *Node) OnStop() {
 	if n.influxDBClient != nil {
 		n.influxDBClient.Stop()
 	}
+
+	if n.pyroscopeProfiler != nil {
+		n.pyroscopeProfiler.Stop()
+	}
+
+	if n.pyroscopeTracer != nil {
+		n.pyroscopeTracer.Shutdown(context.Background())
+	}
+
 }
 
 // ConfigureRPC makes sure RPC has all the objects it needs to operate.
