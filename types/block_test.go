@@ -23,7 +23,6 @@ import (
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/bytes"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
-	"github.com/tendermint/tendermint/pkg/consts"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	cmtversion "github.com/tendermint/tendermint/proto/tendermint/version"
 	cmttime "github.com/tendermint/tendermint/types/time"
@@ -690,7 +689,7 @@ func TestBlockDataProtobuf(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		d := Data{Txs: tt.txs, Blobs: tt.blobs}
+		d := Data{Txs: tt.txs}
 		firstHash := d.Hash()
 		pd := d.ToProto()
 		d2, err := DataFromProto(&pd)
@@ -907,138 +906,6 @@ func TestBlobsByNamespaceIsSorted(t *testing.T) {
 		t.Run(tc.descripton, func(t *testing.T) {
 			bs := tc.blobs
 			assert.Equal(t, tc.want, sort.IsSorted(BlobsByNamespace(bs)))
-		})
-	}
-}
-
-// TestDataProto tests DataFromProto and Data.ToProto
-func TestDataProto(t *testing.T) {
-	namespaceOne := stdbytes.Repeat([]byte{1}, consts.NamespaceIDSize)
-	namespaceTwo := stdbytes.Repeat([]byte{2}, consts.NamespaceIDSize)
-	type testCase struct {
-		name    string
-		proto   *cmtproto.Data
-		data    Data
-		wantErr bool
-	}
-	testCases := []testCase{
-		{
-			name:    "nil proto",
-			proto:   nil,
-			data:    Data{},
-			wantErr: true,
-		},
-		{
-			name: "empty data",
-			proto: &cmtproto.Data{
-				Txs:        [][]uint8(nil),
-				Blobs:      []cmtproto.Blob{},
-				SquareSize: 0x0,
-				Hash:       []uint8(nil),
-			},
-			data: Data{
-				Txs:        []Tx{},
-				Blobs:      []Blob{},
-				SquareSize: 0,
-			},
-		},
-		{
-			name: "one blob",
-			proto: &cmtproto.Data{
-				Txs: [][]uint8(nil),
-				Blobs: []cmtproto.Blob{
-					{
-						NamespaceId:      namespaceOne,
-						Data:             []uint8{1},
-						ShareVersion:     0x0,
-						NamespaceVersion: 0x0,
-					},
-				},
-				SquareSize: 0x0,
-				Hash:       []uint8(nil),
-			},
-			data: Data{
-				Txs: []Tx{},
-				Blobs: []Blob{
-					{
-						NamespaceID:      namespaceOne,
-						Data:             []byte{1},
-						ShareVersion:     0,
-						NamespaceVersion: 0,
-					},
-				},
-				SquareSize: 0,
-			},
-		},
-		{
-			name: "two blobs",
-			proto: &cmtproto.Data{
-				Txs: [][]uint8(nil),
-				Blobs: []cmtproto.Blob{
-					{
-						NamespaceId:      namespaceOne,
-						Data:             []uint8{1},
-						ShareVersion:     0x1,
-						NamespaceVersion: 0,
-					},
-					{
-						NamespaceId:      namespaceTwo,
-						Data:             []uint8{2},
-						ShareVersion:     0x2,
-						NamespaceVersion: 0,
-					},
-				},
-				SquareSize: 0x0,
-				Hash:       []uint8(nil),
-			},
-			data: Data{
-				Txs: []Tx{},
-				Blobs: []Blob{
-					{
-						NamespaceID:  namespaceOne,
-						Data:         []byte{1},
-						ShareVersion: 1,
-					},
-					{
-						NamespaceID:  namespaceTwo,
-						Data:         []byte{2},
-						ShareVersion: 2,
-					},
-				},
-				SquareSize: 0,
-			},
-		},
-		{
-			name: "one blob with too large of a share version",
-			proto: &cmtproto.Data{
-				Txs: [][]uint8(nil),
-				Blobs: []cmtproto.Blob{
-					{
-						NamespaceId:      namespaceOne,
-						Data:             []uint8{1},
-						ShareVersion:     257, // does not fit in a uint8
-						NamespaceVersion: 0,
-					},
-				},
-				SquareSize: 0x0,
-				Hash:       []uint8(nil),
-			},
-			data:    Data{},
-			wantErr: true,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := DataFromProto(tc.proto)
-			if tc.wantErr {
-				assert.Error(t, err)
-				return
-			}
-			assert.Equal(t, tc.data, got)
-
-			proto := tc.data.ToProto()
-			assert.Equal(t, tc.proto, &proto)
 		})
 	}
 }

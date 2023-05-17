@@ -387,6 +387,11 @@ func execBlockOnProxyApp(
 
 	// run txs of block
 	for _, tx := range block.Txs {
+		// Unwrap the blob tx if necessary.
+		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
+		if isBlobTx {
+			tx = blobTx.Tx
+		}
 		proxyAppConn.DeliverTxAsync(abci.RequestDeliverTx{Tx: tx})
 		if err := proxyAppConn.Error(); err != nil {
 			return nil, err
@@ -588,6 +593,12 @@ func fireEvents(
 	}
 
 	for i, tx := range block.Data.Txs {
+		// Unwrap the blob tx and just publish the PFB without the blobs. We want
+		// the tx indexer to only be concerned with PFBs.
+		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
+		if isBlobTx {
+			tx = blobTx.Tx
+		}
 		if err := eventBus.PublishEventTx(types.EventDataTx{TxResult: abci.TxResult{
 			Height: block.Height,
 			Index:  uint32(i),
