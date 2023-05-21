@@ -316,35 +316,39 @@ func generateHeightsList(beginBlock uint64, endBlock uint64) []int64 {
 	return heights
 }
 
-// validateDataCommitmentRange runs basic checks on the asc sorted list of heights
-// that will be used subsequently in generating data commitments over the defined set of heights.
-func validateDataCommitmentRange(firstBlock uint64, lastBlock uint64) error {
-	if firstBlock == 0 {
+// validateDataCommitmentRange runs basic checks on the asc sorted list of
+// heights that will be used subsequently in generating data commitments over
+// the defined set of heights.
+func validateDataCommitmentRange(start uint64, end uint64) error {
+	if start == 0 {
 		return fmt.Errorf("the first block is 0")
 	}
 	env := GetEnvironment()
-	heightsRange := lastBlock - firstBlock
+	heightsRange := end - start
 	if heightsRange > uint64(consts.DataCommitmentBlocksLimit) {
 		return fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
 	}
-	if heightsRange <= 0 {
+	if heightsRange == 0 {
 		return fmt.Errorf("cannot create the data commitments for an empty set of blocks")
 	}
-	if lastBlock > uint64(env.BlockStore.Height()) {
+	if start >= end {
+		return fmt.Errorf("last block is smaller than first block")
+	}
+	if end > uint64(env.BlockStore.Height()) {
 		return fmt.Errorf(
 			"last block %d is higher than current chain height %d",
-			lastBlock,
+			end,
 			env.BlockStore.Height(),
 		)
 	}
-	has, err := env.BlockIndexer.Has(int64(lastBlock))
+	has, err := env.BlockIndexer.Has(int64(end))
 	if err != nil {
 		return err
 	}
 	if !has {
 		return fmt.Errorf(
 			"last block %d is still not indexed",
-			lastBlock,
+			end,
 		)
 	}
 	return nil
@@ -366,17 +370,17 @@ func hashDataRootTuples(blocks []*ctypes.ResultBlock) ([]byte, error) {
 
 // validateDataRootInclusionProofRequest validates the request to generate a data root
 // inclusion proof.
-func validateDataRootInclusionProofRequest(height uint64, firstBlock uint64, lastBlock uint64) error {
-	err := validateDataCommitmentRange(firstBlock, lastBlock)
+func validateDataRootInclusionProofRequest(height uint64, start uint64, end uint64) error {
+	err := validateDataCommitmentRange(start, end)
 	if err != nil {
 		return err
 	}
-	if height < firstBlock || height >= lastBlock {
+	if height < start || height >= end {
 		return fmt.Errorf(
 			"height %d should be in the interval first_block %d last_block %d",
 			height,
-			firstBlock,
-			lastBlock,
+			start,
+			end,
 		)
 	}
 	return nil
