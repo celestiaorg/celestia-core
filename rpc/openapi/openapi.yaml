@@ -1158,7 +1158,7 @@ paths:
       description: |
         Generates a data commitment over an ordered list of blocks matching the provided range.
 
-        The provided block range is inclusive on both sides.
+        The provided block range is end exclusive.
       operationId: data_commitment
       parameters:
         - in: query
@@ -1199,7 +1199,7 @@ paths:
         Generates a merkle proof for a data root defined by a height to the range of
         blocks defined by first and last block.
 
-        The provided block range is inclusive on both sides.
+        The provided block range is end exclusive.
       operationId: data_root_inclusion_proof
       parameters:
         - in: query
