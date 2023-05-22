@@ -176,13 +176,13 @@ func Commit(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCommit, erro
 }
 
 // DataCommitment collects the data roots over a provided ordered range of blocks,
-// and then creates a new Merkle root of those data roots.
-func DataCommitment(ctx *rpctypes.Context, firstBlock uint64, lastBlock uint64) (*ctypes.ResultDataCommitment, error) {
-	err := validateDataCommitmentRange(firstBlock, lastBlock)
+// and then creates a new Merkle root of those data roots. The range is end exclusive.
+func DataCommitment(ctx *rpctypes.Context, start, end uint64) (*ctypes.ResultDataCommitment, error) {
+	err := validateDataCommitmentRange(start, end)
 	if err != nil {
 		return nil, err
 	}
-	heights := generateHeightsList(firstBlock, lastBlock)
+	heights := generateHeightsList(start, end)
 	blockResults := fetchBlocks(heights, len(heights), 0)
 	if len(blockResults) != len(heights) {
 		return nil, fmt.Errorf("couldn't fetch all the blocks in the provided range")
@@ -196,18 +196,19 @@ func DataCommitment(ctx *rpctypes.Context, firstBlock uint64, lastBlock uint64) 
 }
 
 // DataRootInclusionProof creates an inclusion proof of the data root of block
-// height `height` in the set of blocks defined by `begin_block` and `end_block`.
+// height `height` in the set of blocks defined by `start` and `end`. The range
+// is end exclusive.
 func DataRootInclusionProof(
 	ctx *rpctypes.Context,
 	height int64,
-	beginBlock uint64,
-	endBlock uint64,
+	start,
+	end uint64,
 ) (*ctypes.ResultDataRootInclusionProof, error) {
-	err := validateDataRootInclusionProofRequest(uint64(height), beginBlock, endBlock)
+	err := validateDataRootInclusionProofRequest(uint64(height), start, end)
 	if err != nil {
 		return nil, err
 	}
-	heights := generateHeightsList(beginBlock, endBlock)
+	heights := generateHeightsList(start, end)
 	blockResults := fetchBlocks(heights, len(heights), 0)
 	if len(blockResults) != len(heights) {
 		return nil, fmt.Errorf("couldn't fetch all the blocks in the provided range")
@@ -308,45 +309,46 @@ func EncodeDataRootTuple(height uint64, dataRoot [32]byte, squareSize uint64) ([
 // generateHeightsList takes a begin and end block, then generates a list of heights
 // containing the elements of the range [beginBlock, endBlock].
 func generateHeightsList(beginBlock uint64, endBlock uint64) []int64 {
-	heights := make([]int64, endBlock-beginBlock+1)
-	for i := beginBlock; i <= endBlock; i++ {
+	heights := make([]int64, endBlock-beginBlock)
+	for i := beginBlock; i < endBlock; i++ {
 		heights[i-beginBlock] = int64(i)
 	}
 	return heights
 }
 
-// validateDataCommitmentRange runs basic checks on the asc sorted list of heights
-// that will be used subsequently in generating data commitments over the defined set of heights.
-func validateDataCommitmentRange(firstBlock uint64, lastBlock uint64) error {
-	if firstBlock == 0 {
+// validateDataCommitmentRange runs basic checks on the asc sorted list of
+// heights that will be used subsequently in generating data commitments over
+// the defined set of heights.
+func validateDataCommitmentRange(start uint64, end uint64) error {
+	if start == 0 {
 		return fmt.Errorf("the first block is 0")
 	}
 	env := GetEnvironment()
-	heightsRange := lastBlock - firstBlock + 1
+	heightsRange := end - start
 	if heightsRange > uint64(consts.DataCommitmentBlocksLimit) {
 		return fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
 	}
 	if heightsRange == 0 {
 		return fmt.Errorf("cannot create the data commitments for an empty set of blocks")
 	}
-	if firstBlock > lastBlock {
+	if start >= end {
 		return fmt.Errorf("last block is smaller than first block")
 	}
-	if lastBlock > uint64(env.BlockStore.Height()) {
+	if end > uint64(env.BlockStore.Height()) {
 		return fmt.Errorf(
 			"last block %d is higher than current chain height %d",
-			lastBlock,
+			end,
 			env.BlockStore.Height(),
 		)
 	}
-	has, err := env.BlockIndexer.Has(int64(lastBlock))
+	has, err := env.BlockIndexer.Has(int64(end))
 	if err != nil {
 		return err
 	}
 	if !has {
 		return fmt.Errorf(
 			"last block %d is still not indexed",
-			lastBlock,
+			end,
 		)
 	}
 	return nil
@@ -368,17 +370,17 @@ func hashDataRootTuples(blocks []*ctypes.ResultBlock) ([]byte, error) {
 
 // validateDataRootInclusionProofRequest validates the request to generate a data root
 // inclusion proof.
-func validateDataRootInclusionProofRequest(height uint64, firstBlock uint64, lastBlock uint64) error {
-	err := validateDataCommitmentRange(firstBlock, lastBlock)
+func validateDataRootInclusionProofRequest(height uint64, start uint64, end uint64) error {
+	err := validateDataCommitmentRange(start, end)
 	if err != nil {
 		return err
 	}
-	if height < firstBlock || height > lastBlock {
+	if height < start || height >= end {
 		return fmt.Errorf(
 			"height %d should be in the interval first_block %d last_block %d",
 			height,
-			firstBlock,
-			lastBlock,
+			start,
+			end,
 		)
 	}
 	return nil
