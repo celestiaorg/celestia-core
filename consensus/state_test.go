@@ -1268,7 +1268,7 @@ func TestSetValidBlockOnDelayedPrevote(t *testing.T) {
 // What we want:
 // P0 miss to lock B as Proposal Block is missing, but set valid block to B after
 // receiving delayed Block Proposal.
-// The "_flaky" suffix indicates that the test may fail non-deterministically especially when executed in CI.
+// The "_Flaky" suffix indicates that the test may fail non-deterministically especially when executed in CI.
 func TestSetValidBlockOnDelayedProposal_Flaky(t *testing.T) {
 	cs1, vss := randState(4)
 	vs2, vs3, vs4 := vss[1], vss[2], vss[3]
