@@ -143,24 +143,24 @@ func makeCommitFunc(c *lrpc.Client) rpcCommitFunc {
 
 type rpcDataCommitmentFunc func(
 	ctx *rpctypes.Context,
-	firstBlock uint64,
-	lastBlock uint64,
+	start uint64,
+	end uint64,
 ) (*ctypes.ResultDataCommitment, error)
 
 type rpcDataRootInclusionProofFunc func(
 	ctx *rpctypes.Context,
 	height uint64,
-	firstBlock uint64,
-	lastBlock uint64,
+	start uint64,
+	end uint64,
 ) (*ctypes.ResultDataRootInclusionProof, error)
 
 func makeDataCommitmentFunc(c *lrpc.Client) rpcDataCommitmentFunc {
 	return func(
 		ctx *rpctypes.Context,
-		firstBlock uint64,
-		lastBlock uint64,
+		start uint64,
+		end uint64,
 	) (*ctypes.ResultDataCommitment, error) {
-		return c.DataCommitment(ctx.Context(), firstBlock, lastBlock)
+		return c.DataCommitment(ctx.Context(), start, end)
 	}
 }
 
@@ -168,10 +168,10 @@ func makeDataRootInclusionProofFunc(c *lrpc.Client) rpcDataRootInclusionProofFun
 	return func(
 		ctx *rpctypes.Context,
 		height uint64,
-		firstBlock uint64,
-		lastBlock uint64,
+		start uint64,
+		end uint64,
 	) (*ctypes.ResultDataRootInclusionProof, error) {
-		return c.DataRootInclusionProof(ctx.Context(), height, firstBlock, lastBlock)
+		return c.DataRootInclusionProof(ctx.Context(), height, start, end)
 	}
 }
 

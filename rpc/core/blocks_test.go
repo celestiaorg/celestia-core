@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -174,7 +173,7 @@ func TestDataCommitmentResults(t *testing.T) {
 		{10, 8, false},
 	}
 
-	for _, tc := range testCases {
+	for i, tc := range testCases {
 		env.BlockIndexer = mockBlockIndexer{
 			height:          height,
 			beginQueryBlock: tc.beginQuery,
@@ -186,7 +185,7 @@ func TestDataCommitmentResults(t *testing.T) {
 		if tc.expectPass {
 			require.Nil(t, err, "should generate the needed data commitment.")
 
-			size := tc.endQuery - tc.beginQuery + 1
+			size := tc.endQuery - tc.beginQuery
 			dataRootEncodedTuples := make([][]byte, size)
 			for i := 0; i < size; i++ {
 				encodedTuple, err := EncodeDataRootTuple(
@@ -199,9 +198,12 @@ func TestDataCommitmentResults(t *testing.T) {
 			}
 			expectedCommitment := merkle.HashFromByteSlices(dataRootEncodedTuples)
 
-			if !bytes.Equal(expectedCommitment, actualCommitment.DataCommitment) {
-				assert.Error(t, nil, "expected data commitment and actual data commitment doesn't match.")
-			}
+			assert.Equal(
+				t,
+				expectedCommitment,
+				actualCommitment.DataCommitment.Bytes(),
+				i,
+			)
 		} else {
 			require.NotNil(t, err, "couldn't generate the needed data commitment.")
 		}
@@ -237,11 +239,12 @@ func TestDataRootInclusionProofResults(t *testing.T) {
 		{10, 0, 15, false},
 		{10, 10, 15, true},
 		{13, 10, 15, true},
-		{15, 10, 15, true},
+		{14, 10, 15, true},
+		{15, 10, 15, false},
 		{17, 10, 15, false},
 	}
 
-	for _, tc := range testCases {
+	for i, tc := range testCases {
 		env.BlockIndexer = mockBlockIndexer{
 			height:          height,
 			beginQueryBlock: tc.firstQuery,
@@ -255,9 +258,9 @@ func TestDataRootInclusionProofResults(t *testing.T) {
 			uint64(tc.lastQuery),
 		)
 		if tc.expectPass {
-			require.Nil(t, err, "should generate block height data root inclusion proof.")
+			require.Nil(t, err, "should generate block height data root inclusion proof.", i)
 
-			size := tc.lastQuery - tc.firstQuery + 1
+			size := tc.lastQuery - tc.firstQuery
 			dataRootEncodedTuples := make([][]byte, size)
 			for i := 0; i < size; i++ {
 				encodedTuple, err := EncodeDataRootTuple(
