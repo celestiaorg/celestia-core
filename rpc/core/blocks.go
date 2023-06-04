@@ -522,7 +522,7 @@ func fetchBlocks(results []int64, pageSize int, skipCount int) []*ctypes.ResultB
 	return apiResults
 }
 
-// fetchDataRootTuples takes an end exclusive range of heights and fetches their
+// fetchDataRootTuples takes an end exclusive range of heights and fetches its
 // corresponding data root tuples.
 func fetchDataRootTuples(start, end uint64) ([]DataRootTuple, error) {
 	env := GetEnvironment()
