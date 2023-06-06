@@ -179,19 +179,19 @@ func (c *Local) Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit
 
 func (c *Local) DataCommitment(
 	_ context.Context,
-	firstBlock uint64,
-	lastBlock uint64,
+	start uint64,
+	end uint64,
 ) (*ctypes.ResultDataCommitment, error) {
-	return core.DataCommitment(c.ctx, firstBlock, lastBlock)
+	return core.DataCommitment(c.ctx, start, end)
 }
 
 func (c *Local) DataRootInclusionProof(
 	_ context.Context,
 	height uint64,
-	firstBlock uint64,
-	lastBlock uint64,
+	start uint64,
+	end uint64,
 ) (*ctypes.ResultDataRootInclusionProof, error) {
-	return core.DataRootInclusionProof(c.ctx, int64(height), firstBlock, lastBlock)
+	return core.DataRootInclusionProof(c.ctx, int64(height), start, end)
 }
 
 func (c *Local) Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error) {

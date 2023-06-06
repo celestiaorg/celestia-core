@@ -165,7 +165,8 @@ func InitGenesisChunks() error {
 	if err != nil {
 		return err
 	}
-
+	mut.Lock()
+	defer mut.Unlock()
 	for i := 0; i < len(data); i += genesisChunkSize {
 		end := i + genesisChunkSize
 
@@ -173,8 +174,6 @@ func InitGenesisChunks() error {
 			end = len(data)
 		}
 
-		mut.Lock()
-		defer mut.Unlock()
 		globalEnv.genChunks = append(globalEnv.genChunks, base64.StdEncoding.EncodeToString(data[i:end]))
 	}
 

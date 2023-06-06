@@ -472,13 +472,13 @@ func (c *baseRPCClient) Commit(ctx context.Context, height *int64) (*ctypes.Resu
 
 func (c *baseRPCClient) DataCommitment(
 	ctx context.Context,
-	firstBlock uint64,
-	lastBlock uint64,
+	start uint64,
+	end uint64,
 ) (*ctypes.ResultDataCommitment, error) {
 	result := new(ctypes.ResultDataCommitment)
 	params := map[string]interface{}{
-		"firstBlock": firstBlock,
-		"lastBlock":  lastBlock,
+		"start": start,
+		"end":   end,
 	}
 
 	_, err := c.caller.Call(ctx, "data_commitment", params, result)
@@ -492,14 +492,14 @@ func (c *baseRPCClient) DataCommitment(
 func (c *baseRPCClient) DataRootInclusionProof(
 	ctx context.Context,
 	height uint64,
-	firstBlock uint64,
-	lastBlock uint64,
+	start uint64,
+	end uint64,
 ) (*ctypes.ResultDataRootInclusionProof, error) {
 	result := new(ctypes.ResultDataRootInclusionProof)
 	params := map[string]interface{}{
-		"height":     height,
-		"firstBlock": firstBlock,
-		"lastBlock":  lastBlock,
+		"height": height,
+		"start":  start,
+		"end":    end,
 	}
 
 	_, err := c.caller.Call(ctx, "data_root_inclusion_proof", params, result)
