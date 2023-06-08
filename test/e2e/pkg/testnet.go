@@ -321,12 +321,6 @@ func (t Testnet) Validate() error {
 	if len(t.Nodes) == 0 {
 		return errors.New("network has no nodes")
 	}
-	if t.MaxInboundConnections < 0 {
-		return errors.New("MaxInboundConnections must not be negative")
-	}
-	if t.MaxOutboundConnections < 0 {
-		return errors.New("MaxOutboundConnections must not be negative")
-	}
 	for _, node := range t.Nodes {
 		if err := node.Validate(t); err != nil {
 			return fmt.Errorf("invalid node %q: %w", node.Name, err)

@@ -9,6 +9,7 @@ import (
 
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/pkg/consts"
+	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 func makeTxs(cnt, size int) Txs {
@@ -90,7 +91,7 @@ func TestUnmarshalIndexWrapper(t *testing.T) {
 func TestUnmarshalBlobTx(t *testing.T) {
 	tx := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 	namespaceOne := bytes.Repeat([]byte{1}, consts.NamespaceIDSize)
-	blob := tmproto.Blob{
+	blob := cmtproto.Blob{
 		NamespaceId:      namespaceOne,
 		Data:             []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 		ShareVersion:     0,
