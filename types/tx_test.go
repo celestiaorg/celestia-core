@@ -7,17 +7,21 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tmrand "github.com/tendermint/tendermint/libs/rand"
+	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/pkg/consts"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 func makeTxs(cnt, size int) Txs {
 	txs := make(Txs, cnt)
 	for i := 0; i < cnt; i++ {
-		txs[i] = tmrand.Bytes(size)
+		txs[i] = cmtrand.Bytes(size)
 	}
 	return txs
+}
+
+func randInt(low, high int) int {
+	off := cmtrand.Int() % (high - low)
+	return low + off
 }
 
 func TestTxIndex(t *testing.T) {

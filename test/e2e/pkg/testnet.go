@@ -15,14 +15,14 @@ import (
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/crypto/secp256k1"
-	tmrand "github.com/tendermint/tendermint/libs/rand"
 	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
 	mcs "github.com/tendermint/tendermint/test/maverick/consensus"
 )
 
 const (
-	randomSeed     int64  = 2308084734268
-	proxyPortFirst uint32 = 5701
+	randomSeed               int64  = 2308084734268
+	proxyPortFirst           uint32 = 5701
+	prometheusProxyPortFirst uint32 = 6701
 
 	defaultBatchSize   = 2
 	defaultConnections = 1
@@ -58,53 +58,54 @@ const (
 
 // Testnet represents a single testnet.
 type Testnet struct {
-	Name                   string
-	File                   string
-	Dir                    string
-	IP                     *net.IPNet
-	InitialHeight          int64
-	InitialState           map[string]string
-	Validators             map[*Node]int64
-	ValidatorUpdates       map[int64]map[*Node]int64
-	Nodes                  []*Node
-	KeyType                string
-	Evidence               int
-	MaxInboundConnections  int
-	MaxOutboundConnections int
-	LoadTxSizeBytes        int
-	LoadTxBatchSize        int
-	LoadTxConnections      int
-	ABCIProtocol           string
-	UpgradeVersion         string
+	Name              string
+	File              string
+	Dir               string
+	IP                *net.IPNet
+	InitialHeight     int64
+	InitialState      map[string]string
+	Validators        map[*Node]int64
+	ValidatorUpdates  map[int64]map[*Node]int64
+	Nodes             []*Node
+	KeyType           string
+	Evidence          int
+	LoadTxSizeBytes   int
+	LoadTxBatchSize   int
+	LoadTxConnections int
+	ABCIProtocol      string
+	UpgradeVersion    string
+	Prometheus        bool
 }
 
 // Node represents a CometBFT node in a testnet.
 type Node struct {
-	Name             string
-	Version          string
-	Testnet          *Testnet
-	Mode             Mode
-	PrivvalKey       crypto.PrivKey
-	NodeKey          crypto.PrivKey
-	IP               net.IP
-	ProxyPort        uint32
-	StartAt          int64
-	FastSync         string
-	StateSync        bool
-	Mempool          string
-	Database         string
-	ABCIProtocol     Protocol
-	PrivvalProtocol  Protocol
-	PersistInterval  uint64
-	SnapshotInterval uint64
-	RetainBlocks     uint64
-	Seeds            []*Node
-	PersistentPeers  []*Node
-	Perturbations    []Perturbation
-	Misbehaviors     map[int64]string
-	SendNoLoad       bool
-	InfluxDBURL      string
-	InfluxDBToken    string
+	Name                string
+	Version             string
+	Testnet             *Testnet
+	Mode                Mode
+	PrivvalKey          crypto.PrivKey
+	NodeKey             crypto.PrivKey
+	IP                  net.IP
+	ProxyPort           uint32
+	StartAt             int64
+	FastSync            string
+	StateSync           bool
+	Mempool             string
+	Database            string
+	ABCIProtocol        Protocol
+	PrivvalProtocol     Protocol
+	PersistInterval     uint64
+	SnapshotInterval    uint64
+	RetainBlocks        uint64
+	Seeds               []*Node
+	PersistentPeers     []*Node
+	Perturbations       []Perturbation
+	Misbehaviors        map[int64]string
+	SendNoLoad          bool
+	Prometheus          bool
+	PrometheusProxyPort uint32
+	InfluxDBURL         string
+	InfluxDBToken       string
 }
 
 // LoadTestnet loads a testnet from a manifest file, using the filename to
@@ -116,28 +117,28 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 	dir := strings.TrimSuffix(fname, filepath.Ext(fname))
 	keyGen := newKeyGenerator(randomSeed)
 	proxyPortGen := newPortGenerator(proxyPortFirst)
+	prometheusProxyPortGen := newPortGenerator(prometheusProxyPortFirst)
 	_, ipNet, err := net.ParseCIDR(ifd.Network)
 	if err != nil {
 		return nil, fmt.Errorf("invalid IP network address %q: %w", ifd.Network, err)
 	}
 
 	testnet := &Testnet{
-		Name:                   filepath.Base(dir) + "-" + tmrand.Str(6),
-		File:                   fname,
-		Dir:                    dir,
-		IP:                     ipNet,
-		InitialHeight:          1,
-		InitialState:           manifest.InitialState,
-		Validators:             map[*Node]int64{},
-		ValidatorUpdates:       map[int64]map[*Node]int64{},
-		Nodes:                  []*Node{},
-		LoadTxSizeBytes:        manifest.LoadTxSizeBytes,
-		LoadTxBatchSize:        manifest.LoadTxBatchSize,
-		LoadTxConnections:      manifest.LoadTxConnections,
-		MaxInboundConnections:  manifest.MaxInboundConnections,
-		MaxOutboundConnections: manifest.MaxOutboundConnections,
-		ABCIProtocol:           manifest.ABCIProtocol,
-		UpgradeVersion:         manifest.UpgradeVersion,
+		Name:              filepath.Base(dir),
+		File:              fname,
+		Dir:               dir,
+		IP:                ipNet,
+		InitialHeight:     1,
+		InitialState:      manifest.InitialState,
+		Validators:        map[*Node]int64{},
+		ValidatorUpdates:  map[int64]map[*Node]int64{},
+		Nodes:             []*Node{},
+		LoadTxSizeBytes:   manifest.LoadTxSizeBytes,
+		LoadTxBatchSize:   manifest.LoadTxBatchSize,
+		LoadTxConnections: manifest.LoadTxConnections,
+		ABCIProtocol:      manifest.ABCIProtocol,
+		UpgradeVersion:    manifest.UpgradeVersion,
+		Prometheus:        manifest.Prometheus,
 	}
 	if len(manifest.KeyType) != 0 {
 		testnet.KeyType = manifest.KeyType
@@ -203,6 +204,7 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 			SendNoLoad:       nodeManifest.SendNoLoad,
 			InfluxDBURL:      ifd.InfluxDBURL,
 			InfluxDBToken:    ifd.InfluxDBToken,
+			Prometheus:       testnet.Prometheus,
 		}
 		if node.StartAt == testnet.InitialHeight {
 			node.StartAt = 0 // normalize to 0 for initial nodes, since code expects this
@@ -221,6 +223,9 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 		}
 		if nodeManifest.PersistInterval != nil {
 			node.PersistInterval = *nodeManifest.PersistInterval
+		}
+		if node.Prometheus {
+			node.PrometheusProxyPort = prometheusProxyPortGen.Next()
 		}
 		for _, p := range nodeManifest.Perturb {
 			node.Perturbations = append(node.Perturbations, Perturbation(p))
@@ -341,13 +346,22 @@ func (n Node) Validate(testnet Testnet) error {
 	if !testnet.IP.Contains(n.IP) {
 		return fmt.Errorf("node IP %v is not in testnet network %v", n.IP, testnet.IP)
 	}
-	if n.ProxyPort > 0 {
-		if n.ProxyPort <= 1024 {
-			return fmt.Errorf("local port %v must be >1024", n.ProxyPort)
+	if n.ProxyPort == n.PrometheusProxyPort {
+		return fmt.Errorf("node local port %v used also for Prometheus local port", n.ProxyPort)
+	}
+	if n.ProxyPort > 0 && n.ProxyPort <= 1024 {
+		return fmt.Errorf("local port %v must be >1024", n.ProxyPort)
+	}
+	if n.PrometheusProxyPort > 0 && n.PrometheusProxyPort <= 1024 {
+		return fmt.Errorf("local port %v must be >1024", n.PrometheusProxyPort)
+	}
+	for _, peer := range testnet.Nodes {
+		if peer.Name != n.Name && peer.ProxyPort == n.ProxyPort {
+			return fmt.Errorf("peer %q also has local port %v", peer.Name, n.ProxyPort)
 		}
-		for _, peer := range testnet.Nodes {
-			if peer.Name != n.Name && peer.ProxyPort == n.ProxyPort {
-				return fmt.Errorf("peer %q also has local port %v", peer.Name, n.ProxyPort)
+		if n.PrometheusProxyPort > 0 {
+			if peer.Name != n.Name && peer.PrometheusProxyPort == n.PrometheusProxyPort {
+				return fmt.Errorf("peer %q also has local port %v", peer.Name, n.PrometheusProxyPort)
 			}
 		}
 	}

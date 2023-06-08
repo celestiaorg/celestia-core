@@ -57,13 +57,6 @@ type Manifest struct {
 	// launch it instead of launching a separate CometBFT process.
 	ABCIProtocol string `toml:"abci_protocol"`
 
-	// MaxInboundConnections and MaxOutboundConnection are the maximum number
-	// of connections a node has. This can be used to throttle the degree of
-	// connectivity of the network. If not specified, the default is taken
-	// from config/config.go
-	MaxInboundConnections  int `toml:"max_inbound_connections"`
-	MaxOutboundConnections int `toml:"max_outbound_connections"`
-
 	// UpgradeVersion specifies to which version this nodes need to upgrade.
 	// Currently only uncoordinated upgrade is supported
 	UpgradeVersion string `toml:"upgrade_version"`
@@ -71,6 +64,10 @@ type Manifest struct {
 	LoadTxSizeBytes   int `toml:"load_tx_size_bytes"`
 	LoadTxBatchSize   int `toml:"load_tx_batch_size"`
 	LoadTxConnections int `toml:"load_tx_connections"`
+
+	// Enable or disable Prometheus metrics on all nodes.
+	// Defaults to false (disabled).
+	Prometheus bool `toml:"prometheus"`
 }
 
 // ManifestNode represents a node in a testnet manifest.

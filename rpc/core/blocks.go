@@ -7,10 +7,6 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/pkg/consts"
-	blockidxnull "github.com/tendermint/tendermint/state/indexer/block/null"
-
 	cmtmath "github.com/tendermint/tendermint/libs/math"
 	cmtquery "github.com/tendermint/tendermint/libs/pubsub/query"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
@@ -481,11 +477,6 @@ func BlockSearch(
 
 	skipCount := validateSkipCount(page, perPage)
 	pageSize := cmtmath.MinInt(perPage, totalCount-skipCount)
-
-	apiResults := fetchBlocks(results, pageSize, skipCount)
-
-	return &ctypes.ResultBlockSearch{Blocks: apiResults, TotalCount: totalCount}, nil
-}
 
 // sortBlocks takes a list of block heights and sorts them according to the order: "asc" or "desc".
 // If `orderBy` is blank, then it is considered descending.

@@ -541,7 +541,7 @@ max_open_connections = {{ .Instrumentation.MaxOpenConnections }}
 # Instrumentation namespace
 namespace = "{{ .Instrumentation.Namespace }}"
 
-# The URL of the influxdb instance to use for remote event 
+# The URL of the influxdb instance to use for remote event
 # collection. If empty, remote event collection is disabled.
 influx_url = "{{ .Instrumentation.InfluxURL }}"
 
