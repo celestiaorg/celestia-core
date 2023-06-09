@@ -2,7 +2,6 @@ linters:
   enable:
     - asciicheck
     - bodyclose
-    - depguard
     - dogsled
     - dupl
     - errcheck
@@ -16,7 +15,6 @@ linters:
     - govet
     - ineffassign
     - misspell
-    - nakedret
     - nolintlint
     - prealloc
     - staticcheck

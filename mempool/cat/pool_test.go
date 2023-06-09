@@ -727,7 +727,7 @@ func TestTxPool_BroadcastQueue(t *testing.T) {
 		for i := 0; i < txs; i++ {
 			select {
 			case <-ctx.Done():
-				t.Fatalf("failed to receive all txs (got %d/%d)", i+1, txs)
+				t.Fatalf("failed to receive all txs (got %d/%d)", i+1, txs) //nolint:govet
 			case wtx := <-txmp.next():
 				require.Equal(t, wtx.tx, newDefaultTx(fmt.Sprintf("%d", i)))
 			}

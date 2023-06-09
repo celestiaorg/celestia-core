@@ -91,30 +91,27 @@ func TestStoreConcurrentAccess(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			ticker := time.NewTicker(10 * time.Millisecond)
-			for {
-				select {
-				case <-ticker.C:
-					tx := types.Tx(fmt.Sprintf("tx%d", i%(numTxs/10)))
-					key := tx.Key()
-					wtx := newWrappedTx(tx, key, 1, 1, 1, "")
-					existingTx := store.get(key)
-					if existingTx != nil && bytes.Equal(existingTx.tx, tx) {
-						// tx has already been added
-						return
-					}
-					if store.reserve(key) {
-						// some fail
-						if i%3 == 0 {
-							store.release(key)
-							return
-						}
-						store.set(wtx)
-						// this should be a noop
+			for range ticker.C {
+				tx := types.Tx(fmt.Sprintf("tx%d", i%(numTxs/10)))
+				key := tx.Key()
+				wtx := newWrappedTx(tx, key, 1, 1, 1, "")
+				existingTx := store.get(key)
+				if existingTx != nil && bytes.Equal(existingTx.tx, tx) {
+					// tx has already been added
+					return
+				}
+				if store.reserve(key) {
+					// some fail
+					if i%3 == 0 {
 						store.release(key)
 						return
 					}
-					// already reserved so we retry in 10 milliseconds
+					store.set(wtx)
+					// this should be a noop
+					store.release(key)
+					return
 				}
+				// already reserved so we retry in 10 milliseconds
 			}
 		}(i)
 	}
@@ -147,7 +144,7 @@ func TestStoreGetTxs(t *testing.T) {
 	// get txs below a certain priority
 	txs, bz := store.getTxsBelowPriority(int64(numTxs / 2))
 	require.Equal(t, numTxs/2, len(txs))
-	var actualBz int64 = 0
+	var actualBz int64
 	for _, tx := range txs {
 		actualBz += tx.size()
 	}
