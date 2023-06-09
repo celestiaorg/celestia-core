@@ -87,7 +87,7 @@ CometBFT.
 ```bash
 go mod init kvstore
 go get github.com/tendermint/tendermint
-go mod edit -replace github.com/tendermint/tendermint=github.com/cometbft/cometbft@v0.34.27
+go mod edit -replace github.com/tendermint/tendermint=github.com/cometbft/cometbft@v0.34.28
 ```
 
 After running the above commands you will see two generated files, `go.mod` and `go.sum`.
