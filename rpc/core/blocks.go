@@ -514,25 +514,6 @@ func sortBlocks(results []int64, orderBy string) error {
 	return nil
 }
 
-// fetchBlocks takes a list of block heights and fetches them.
-func fetchBlocks(results []int64, pageSize int, skipCount int) []*ctypes.ResultBlock {
-	env := GetEnvironment()
-	apiResults := make([]*ctypes.ResultBlock, 0, pageSize)
-	for i := skipCount; i < skipCount+pageSize; i++ {
-		block := env.BlockStore.LoadBlock(results[i])
-		if block != nil {
-			blockMeta := env.BlockStore.LoadBlockMeta(block.Height)
-			if blockMeta != nil {
-				apiResults = append(apiResults, &ctypes.ResultBlock{
-					Block:   block,
-					BlockID: blockMeta.BlockID,
-				})
-			}
-		}
-	}
-	return apiResults
-}
-
 // fetchDataRootTuples takes an end exclusive range of heights and fetches its
 // corresponding data root tuples.
 func fetchDataRootTuples(start, end uint64) ([]DataRootTuple, error) {
