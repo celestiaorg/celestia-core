@@ -295,7 +295,8 @@ dial_timeout = "3s"
 # Mempool version to use:
 #   1) "v0" - (default) FIFO mempool.
 #   2) "v1" - prioritized mempool.
-version = "v0"
+#   3) "v2" - CAT
+version = "v2"
 
 # Recheck (default: true) defines whether CometBFT should recheck the
 # validity for all remaining transaction in the mempool after a block.
