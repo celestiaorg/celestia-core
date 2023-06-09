@@ -65,12 +65,12 @@ func (s *store) remove(txKey types.TxKey) bool {
 func (s *store) reserve(txKey types.TxKey) bool {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	if _, ok := s.txs[txKey]; ok {
-		return false // already reserved
-	} else {
+	_, has := s.txs[txKey]
+	if !has {
 		s.txs[txKey] = &wrappedTx{height: -1}
+		return true
 	}
-	return true
+	return false
 }
 
 // release is called when a pending transaction failed
