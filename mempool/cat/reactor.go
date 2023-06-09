@@ -338,7 +338,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 			continue
 		}
 
-		peer.Send(MempoolStateChannel, bz)
+		peer.Send(MempoolStateChannel, bz) //nolint:staticcheck
 	}
 }
 
@@ -371,7 +371,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 			continue
 		}
 
-		if peer.Send(mempool.MempoolChannel, bz) {
+		if peer.Send(mempool.MempoolChannel, bz) { //nolint:staticcheck
 			memR.mempool.PeerHasTx(id, wtx.key)
 		}
 	}
@@ -395,7 +395,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 		panic(err)
 	}
 
-	success := peer.Send(MempoolStateChannel, bz)
+	success := peer.Send(MempoolStateChannel, bz) //nolint:staticcheck
 	if success {
 		memR.mempool.metrics.RequestedTxs.Add(1)
 		requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)
