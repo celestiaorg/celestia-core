@@ -282,7 +282,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
-			if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{
+			if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint:staticcheck
 				ChannelID: mempool.MempoolChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{tx}},
 			}, memR.Logger) {
@@ -320,7 +320,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 
 	// Add jitter to when the node broadcasts it's seen txs to stagger when nodes
 	// in the network broadcast their seenTx messages.
-	time.Sleep(time.Duration(rand.Intn(10)*10) * time.Millisecond)
+	time.Sleep(time.Duration(rand.Intn(10)*10) * time.Millisecond) //nolint:gosec
 
 	for id, peer := range memR.ids.GetAll() {
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
@@ -338,7 +338,7 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 			continue
 		}
 
-		peer.Send(MempoolStateChannel, bz)
+		peer.Send(MempoolStateChannel, bz) //nolint:staticcheck
 	}
 }
 
@@ -371,7 +371,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 			continue
 		}
 
-		if peer.Send(mempool.MempoolChannel, bz) {
+		if peer.Send(mempool.MempoolChannel, bz) { //nolint:staticcheck
 			memR.mempool.PeerHasTx(id, wtx.key)
 		}
 	}
@@ -395,7 +395,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 		panic(err)
 	}
 
-	success := peer.Send(MempoolStateChannel, bz)
+	success := peer.Send(MempoolStateChannel, bz) //nolint:staticcheck
 	if success {
 		memR.mempool.metrics.RequestedTxs.Add(1)
 		requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)

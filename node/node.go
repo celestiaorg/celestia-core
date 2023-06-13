@@ -836,7 +836,7 @@ func NewNode(config *cfg.Config,
 
 	csMetrics, p2pMetrics, memplMetrics, smMetrics := metricsProvider(genDoc.ChainID)
 
-	// create an optional influxdb client to send arbitary data to a remote
+	// create an optional influxdb client to send arbitrary data to a remote
 	// influxdb server. This is used to collect trace data from many different nodes
 	// in a network.
 	influxdbClient, err := trace.NewClient(
