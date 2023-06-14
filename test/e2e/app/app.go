@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/tendermint/tendermint/abci/example/code"
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/log"
+	"github.com/tendermint/tendermint/types"
 	"github.com/tendermint/tendermint/version"
 )
 
@@ -259,6 +261,14 @@ func (app *Application) ApplySnapshotChunk(req abci.RequestApplySnapshotChunk) a
 
 func (app *Application) PrepareProposal(
 	req abci.RequestPrepareProposal) abci.ResponsePrepareProposal {
+	dataHash := types.ToTxs(req.Txs).Hash()
+	squareSize := len(req.Txs)
+	if squareSize == 0 {
+		squareSize = 1
+	}
+	squareSizeBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(squareSizeBytes, uint64(squareSize))
+	req.Txs = append(req.Txs, dataHash, squareSizeBytes)
 	return abci.ResponsePrepareProposal{Txs: req.Txs}
 }
 

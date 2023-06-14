@@ -1,6 +1,7 @@
 package state
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"time"
@@ -142,15 +143,24 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		}
 	}
 
-	// Celestia passes the data root back as the first transaction returned in
-	// PrepareProposal. Here it is extracted out and set in the header
-	if len(rpp.Txs) > 0 {
-		if len(rpp.Txs[0]) == tmhash.Size {
-			block.Header.DataHash = rpp.Txs[0]
-			rpp.Txs = rpp.Txs[1:]
-		}
+	// Celestia passes the data root back as the first transaction and the big endian
+	// encoding of the square size as the second transaction.
+	if len(rpp.Txs) < 2 {
+		panic("state machine returned an invalid prepare proposal response: expected at least 2 transactions")
 	}
-	block.Txs = types.ToTxs(rpp.Txs)
+
+	if len(rpp.Txs[len(rpp.Txs)-1]) != tmhash.Size {
+		panic("state machine returned an invalid prepare proposal response: expected second to last transaction to be a hash")
+	}
+
+	if len(rpp.Txs[len(rpp.Txs)-2]) != 8 {
+		panic("state machine returned an invalid prepare proposal response: expected last transaction to be a uint64 (square size)")
+	}
+
+	// update the block with the response from PrepareProposal
+	block.Header.DataHash = rpp.Txs[len(rpp.Txs)-1]
+	block.Data.SquareSize = binary.BigEndian.Uint64(rpp.Txs[len(rpp.Txs)-2])
+	block.Txs = types.ToTxs(rpp.Txs[:len(rpp.Txs)-2])
 
 	return block, block.MakePartSet(types.BlockPartSizeBytes)
 }
