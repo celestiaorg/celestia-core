@@ -8,13 +8,12 @@ import (
 	"strconv"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/pkg/consts"
-	blockidxnull "github.com/tendermint/tendermint/state/indexer/block/null"
-
 	cmtmath "github.com/tendermint/tendermint/libs/math"
 	cmtquery "github.com/tendermint/tendermint/libs/pubsub/query"
+	"github.com/tendermint/tendermint/pkg/consts"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
+	blockidxnull "github.com/tendermint/tendermint/state/indexer/block/null"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -176,18 +175,17 @@ func Commit(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultCommit, erro
 }
 
 // DataCommitment collects the data roots over a provided ordered range of blocks,
-// and then creates a new Merkle root of those data roots.
-func DataCommitment(ctx *rpctypes.Context, firstBlock uint64, lastBlock uint64) (*ctypes.ResultDataCommitment, error) {
-	err := validateDataCommitmentRange(firstBlock, lastBlock)
+// and then creates a new Merkle root of those data roots. The range is end exclusive.
+func DataCommitment(ctx *rpctypes.Context, start, end uint64) (*ctypes.ResultDataCommitment, error) {
+	err := validateDataCommitmentRange(start, end)
 	if err != nil {
 		return nil, err
 	}
-	heights := generateHeightsList(firstBlock, lastBlock)
-	blockResults := fetchBlocks(heights, len(heights), 0)
-	if len(blockResults) != len(heights) {
-		return nil, fmt.Errorf("couldn't fetch all the blocks in the provided range")
+	tuples, err := fetchDataRootTuples(start, end)
+	if err != nil {
+		return nil, err
 	}
-	root, err := hashDataRootTuples(blockResults)
+	root, err := hashDataRootTuples(tuples)
 	if err != nil {
 		return nil, err
 	}
@@ -195,24 +193,24 @@ func DataCommitment(ctx *rpctypes.Context, firstBlock uint64, lastBlock uint64) 
 	return &ctypes.ResultDataCommitment{DataCommitment: root}, nil
 }
 
-// DataRootInclusionProof creates an inclusion proof of the data root of block
-// height `height` in the set of blocks defined by `begin_block` and `end_block`.
+// DataRootInclusionProof creates an inclusion proof for the data root of block
+// height `height` in the set of blocks defined by `start` and `end`. The range
+// is end exclusive.
 func DataRootInclusionProof(
 	ctx *rpctypes.Context,
 	height int64,
-	beginBlock uint64,
-	endBlock uint64,
+	start,
+	end uint64,
 ) (*ctypes.ResultDataRootInclusionProof, error) {
-	err := validateDataRootInclusionProofRequest(uint64(height), beginBlock, endBlock)
+	err := validateDataRootInclusionProofRequest(uint64(height), start, end)
 	if err != nil {
 		return nil, err
 	}
-	heights := generateHeightsList(beginBlock, endBlock)
-	blockResults := fetchBlocks(heights, len(heights), 0)
-	if len(blockResults) != len(heights) {
-		return nil, fmt.Errorf("couldn't fetch all the blocks in the provided range")
+	tuples, err := fetchDataRootTuples(start, end)
+	if err != nil {
+		return nil, err
 	}
-	proof, err := proveDataRootTuples(blockResults, height)
+	proof, err := proveDataRootTuples(tuples, height)
 	if err != nil {
 		return nil, err
 	}
@@ -259,6 +257,15 @@ func To32PaddedHexBytes(number uint64) ([]byte, error) {
 	return paddedBytes, nil
 }
 
+// DataRootTuple contains the data that will be used to create the QGB commitments.
+// The commitments will be signed by orchestrators and submitted to an EVM chain via a relayer.
+// For more information: https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
+type DataRootTuple struct {
+	height     uint64
+	dataRoot   [32]byte
+	squareSize uint64
+}
+
 // EncodeDataRootTuple takes a height, a data root and the square size, and returns the equivalent of
 // `abi.encode(...)` in Ethereum.
 // The encoded type is a DataRootTuple, which has the following ABI:
@@ -292,66 +299,57 @@ func To32PaddedHexBytes(number uint64) ([]byte, error) {
 // to the hex representation of the square size padded to 32 bytes.
 // For more information, refer to:
 // https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
-func EncodeDataRootTuple(height uint64, dataRoot []byte) ([]byte, error) {
+func EncodeDataRootTuple(height uint64, dataRoot [32]byte, squareSize uint64) ([]byte, error) {
 	paddedHeight, err := To32PaddedHexBytes(height)
 	if err != nil {
 		return nil, err
 	}
-	return append(paddedHeight, dataRoot...), nil
-}
-
-// generateHeightsList takes a begin and end block, then generates a list of heights
-// containing the elements of the range [beginBlock, endBlock].
-func generateHeightsList(beginBlock uint64, endBlock uint64) []int64 {
-	heights := make([]int64, endBlock-beginBlock+1)
-	for i := beginBlock; i <= endBlock; i++ {
-		heights[i-beginBlock] = int64(i)
+	dataSlice := dataRoot[:]
+	paddedSquareSize, err := To32PaddedHexBytes(squareSize)
+	if err != nil {
+		return nil, err
 	}
-	return heights
+	return append(paddedHeight, append(dataSlice, paddedSquareSize...)...), nil
 }
 
-// validateDataCommitmentRange runs basic checks on the asc sorted list of heights
-// that will be used subsequently in generating data commitments over the defined set of heights.
-func validateDataCommitmentRange(firstBlock uint64, lastBlock uint64) error {
-	if firstBlock == 0 {
+// validateDataCommitmentRange runs basic checks on the asc sorted list of
+// heights that will be used subsequently in generating data commitments over
+// the defined set of heights.
+func validateDataCommitmentRange(start uint64, end uint64) error {
+	if start == 0 {
 		return fmt.Errorf("the first block is 0")
 	}
 	env := GetEnvironment()
-	heightsRange := lastBlock - firstBlock + 1
+	heightsRange := end - start
 	if heightsRange > uint64(consts.DataCommitmentBlocksLimit) {
 		return fmt.Errorf("the query exceeds the limit of allowed blocks %d", consts.DataCommitmentBlocksLimit)
 	}
 	if heightsRange == 0 {
 		return fmt.Errorf("cannot create the data commitments for an empty set of blocks")
 	}
-	if firstBlock > lastBlock {
+	if start >= end {
 		return fmt.Errorf("last block is smaller than first block")
 	}
-	if lastBlock > uint64(env.BlockStore.Height()) {
+	if end > uint64(env.BlockStore.Height()) {
 		return fmt.Errorf(
 			"last block %d is higher than current chain height %d",
-			lastBlock,
+			end,
 			env.BlockStore.Height(),
-		)
-	}
-	has, err := env.BlockIndexer.Has(int64(lastBlock))
-	if err != nil {
-		return err
-	}
-	if !has {
-		return fmt.Errorf(
-			"last block %d is still not indexed",
-			lastBlock,
 		)
 	}
 	return nil
 }
 
-// hashDataRootTuples hashes a list of blocks data root tuples, i.e. height and data root, and returns their merkle root.
-func hashDataRootTuples(blocks []*ctypes.ResultBlock) ([]byte, error) {
-	dataRootEncodedTuples := make([][]byte, 0, len(blocks))
-	for _, block := range blocks {
-		encodedTuple, err := EncodeDataRootTuple(uint64(block.Block.Height), block.Block.DataHash)
+// hashDataRootTuples hashes a list of blocks data root tuples, i.e. height, data root and square size,
+// then returns their merkle root.
+func hashDataRootTuples(tuples []DataRootTuple) ([]byte, error) {
+	dataRootEncodedTuples := make([][]byte, 0, len(tuples))
+	for _, tuple := range tuples {
+		encodedTuple, err := EncodeDataRootTuple(
+			tuple.height,
+			tuple.dataRoot,
+			tuple.squareSize,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -363,34 +361,38 @@ func hashDataRootTuples(blocks []*ctypes.ResultBlock) ([]byte, error) {
 
 // validateDataRootInclusionProofRequest validates the request to generate a data root
 // inclusion proof.
-func validateDataRootInclusionProofRequest(height uint64, firstBlock uint64, lastBlock uint64) error {
-	err := validateDataCommitmentRange(firstBlock, lastBlock)
+func validateDataRootInclusionProofRequest(height uint64, start uint64, end uint64) error {
+	err := validateDataCommitmentRange(start, end)
 	if err != nil {
 		return err
 	}
-	if height < firstBlock || height > lastBlock {
+	if height < start || height >= end {
 		return fmt.Errorf(
-			"height %d should be in the interval first_block %d last_block %d",
+			"height %d should be in the end exclusive interval first_block %d last_block %d",
 			height,
-			firstBlock,
-			lastBlock,
+			start,
+			end,
 		)
 	}
 	return nil
 }
 
 // proveDataRootTuples returns the merkle inclusion proof for a height.
-func proveDataRootTuples(blocks []*ctypes.ResultBlock, height int64) (*merkle.Proof, error) {
-	dataRootEncodedTuples := make([][]byte, 0, len(blocks))
-	for _, block := range blocks {
-		encodedTuple, err := EncodeDataRootTuple(uint64(block.Block.Height), block.Block.DataHash)
+func proveDataRootTuples(tuples []DataRootTuple, height int64) (*merkle.Proof, error) {
+	dataRootEncodedTuples := make([][]byte, 0, len(tuples))
+	for _, tuple := range tuples {
+		encodedTuple, err := EncodeDataRootTuple(
+			tuple.height,
+			tuple.dataRoot,
+			tuple.squareSize,
+		)
 		if err != nil {
 			return nil, err
 		}
 		dataRootEncodedTuples = append(dataRootEncodedTuples, encodedTuple)
 	}
 	_, proofs := merkle.ProofsFromByteSlices(dataRootEncodedTuples)
-	return proofs[height-blocks[0].Block.Height], nil
+	return proofs[height-int64(tuples[0].height)], nil
 }
 
 // BlockResults gets ABCIResults at a given height.
@@ -479,7 +481,19 @@ func BlockSearch(
 	skipCount := validateSkipCount(page, perPage)
 	pageSize := cmtmath.MinInt(perPage, totalCount-skipCount)
 
-	apiResults := fetchBlocks(results, pageSize, skipCount)
+	apiResults := make([]*ctypes.ResultBlock, 0, pageSize)
+	for i := skipCount; i < skipCount+pageSize; i++ {
+		block := GetEnvironment().BlockStore.LoadBlock(results[i])
+		if block != nil {
+			blockMeta := GetEnvironment().BlockStore.LoadBlockMeta(block.Height)
+			if blockMeta != nil {
+				apiResults = append(apiResults, &ctypes.ResultBlock{
+					Block:   block,
+					BlockID: blockMeta.BlockID,
+				})
+			}
+		}
+	}
 
 	return &ctypes.ResultBlockSearch{Blocks: apiResults, TotalCount: totalCount}, nil
 }
@@ -500,21 +514,21 @@ func sortBlocks(results []int64, orderBy string) error {
 	return nil
 }
 
-// fetchBlocks takes a list of block heights and fetches them.
-func fetchBlocks(results []int64, pageSize int, skipCount int) []*ctypes.ResultBlock {
+// fetchDataRootTuples takes an end exclusive range of heights and fetches its
+// corresponding data root tuples.
+func fetchDataRootTuples(start, end uint64) ([]DataRootTuple, error) {
 	env := GetEnvironment()
-	apiResults := make([]*ctypes.ResultBlock, 0, pageSize)
-	for i := skipCount; i < skipCount+pageSize; i++ {
-		block := env.BlockStore.LoadBlock(results[i])
-		if block != nil {
-			blockMeta := env.BlockStore.LoadBlockMeta(block.Height)
-			if blockMeta != nil {
-				apiResults = append(apiResults, &ctypes.ResultBlock{
-					Block:   block,
-					BlockID: blockMeta.BlockID,
-				})
-			}
+	tuples := make([]DataRootTuple, 0, end-start)
+	for height := start; height < end; height++ {
+		block := env.BlockStore.LoadBlock(int64(height))
+		if block == nil {
+			return nil, fmt.Errorf("couldn't load block %d", height)
 		}
+		tuples = append(tuples, DataRootTuple{
+			height:     uint64(block.Height),
+			dataRoot:   *(*[32]byte)(block.DataHash),
+			squareSize: block.SquareSize,
+		})
 	}
-	return apiResults
+	return tuples, nil
 }

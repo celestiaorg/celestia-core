@@ -3,7 +3,8 @@ package state_test
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
+
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -279,7 +280,7 @@ func TestProcessProposalRejectedMetric(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		buf, _ := ioutil.ReadAll(resp.Body)
+		buf, _ := io.ReadAll(resp.Body)
 		return string(buf)
 	}
 	metrics := sm.PrometheusMetrics(namespace)
@@ -621,7 +622,7 @@ func TestFireEventSignedBlockEvent(t *testing.T) {
 	eventBus := types.NewEventBus()
 	err = eventBus.Start()
 	require.NoError(t, err)
-	defer eventBus.Stop()
+	defer eventBus.Stop() //nolint:errcheck
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

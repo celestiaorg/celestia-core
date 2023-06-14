@@ -122,7 +122,7 @@ func (s *SeenTxSet) Add(txKey types.TxKey, peer uint16) {
 	seenSet, exists := s.set[txKey]
 	if !exists {
 		s.set[txKey] = timestampedPeerSet{
-			peers: map[uint16]struct{}{peer: struct{}{}},
+			peers: map[uint16]struct{}{peer: {}},
 			time:  time.Now().UTC(),
 		}
 	} else {

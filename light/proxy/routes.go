@@ -109,14 +109,6 @@ func makeBlockFunc(c *lrpc.Client) rpcBlockFunc {
 	}
 }
 
-type rpcSignedBlockFunc func(ctx *rpctypes.Context, height *int64) (*ctypes.ResultSignedBlock, error)
-
-func makeSignedBlockFunc(c *lrpc.Client) rpcSignedBlockFunc {
-	return func(ctx *rpctypes.Context, height *int64) (*ctypes.ResultSignedBlock, error) {
-		return c.SignedBlock(ctx.Context(), height)
-	}
-}
-
 type rpcBlockByHashFunc func(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error)
 
 func makeBlockByHashFunc(c *lrpc.Client) rpcBlockByHashFunc {
@@ -138,40 +130,6 @@ type rpcCommitFunc func(ctx *rpctypes.Context, height *int64) (*ctypes.ResultCom
 func makeCommitFunc(c *lrpc.Client) rpcCommitFunc {
 	return func(ctx *rpctypes.Context, height *int64) (*ctypes.ResultCommit, error) {
 		return c.Commit(ctx.Context(), height)
-	}
-}
-
-type rpcDataCommitmentFunc func(
-	ctx *rpctypes.Context,
-	firstBlock uint64,
-	lastBlock uint64,
-) (*ctypes.ResultDataCommitment, error)
-
-type rpcDataRootInclusionProofFunc func(
-	ctx *rpctypes.Context,
-	height uint64,
-	firstBlock uint64,
-	lastBlock uint64,
-) (*ctypes.ResultDataRootInclusionProof, error)
-
-func makeDataCommitmentFunc(c *lrpc.Client) rpcDataCommitmentFunc {
-	return func(
-		ctx *rpctypes.Context,
-		firstBlock uint64,
-		lastBlock uint64,
-	) (*ctypes.ResultDataCommitment, error) {
-		return c.DataCommitment(ctx.Context(), firstBlock, lastBlock)
-	}
-}
-
-func makeDataRootInclusionProofFunc(c *lrpc.Client) rpcDataRootInclusionProofFunc {
-	return func(
-		ctx *rpctypes.Context,
-		height uint64,
-		firstBlock uint64,
-		lastBlock uint64,
-	) (*ctypes.ResultDataRootInclusionProof, error) {
-		return c.DataRootInclusionProof(ctx.Context(), height, firstBlock, lastBlock)
 	}
 }
 

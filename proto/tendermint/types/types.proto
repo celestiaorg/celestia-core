@@ -89,12 +89,18 @@ message Data {
   // NOTE: not all txs here are valid. We're just agreeing on the order first.
   repeated bytes txs = 1;
 
-  reserved 2, 3, 4, 5, 6;
+  reserved 2, 3, 4;
   // field number 2 is reserved for intermediate state roots
-  // field number 3 was previously used for evidence
-  // field number 4 was previously used for blobs
-  // field number 5 was previously used for square_size
-  // field number 6 was previously used for hash of the extended data square
+  // field number 3 is reserved for evidence
+  // field number 4 is reserved for blobs
+
+  // SquareSize is the number of rows or columns in the original data square.
+  uint64        square_size = 5;
+
+  // Hash is the root of a binary Merkle tree where the leaves of the tree are
+  // the row and column roots of an extended data square. Hash is often referred
+  // to as the "data root".
+  bytes         hash        = 6;
 }
 
 // Blob (named after binary large object) is a chunk of data submitted by a user

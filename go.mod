@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/BurntSushi/toml v1.2.1
-	github.com/ChainSafe/go-schnorrkel v0.0.0-20200405005733-88cbf1b4c40d
+	github.com/ChainSafe/go-schnorrkel v1.0.0
 	github.com/Workiva/go-datastructures v1.0.53
 	github.com/adlio/schema v1.3.3
 	github.com/fortytw2/leaktest v1.3.0
@@ -54,7 +54,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.2.0
 	github.com/btcsuite/btcd/btcec/v2 v2.2.1
 	github.com/btcsuite/btcd/btcutil v1.1.2
-	github.com/celestiaorg/nmt v0.15.0
+	github.com/celestiaorg/nmt v0.16.0
 	github.com/cometbft/cometbft-db v0.7.0
 	github.com/go-git/go-git/v5 v5.5.1
 	github.com/vektra/mockery/v2 v2.14.0

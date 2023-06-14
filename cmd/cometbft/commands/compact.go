@@ -14,11 +14,12 @@ import (
 )
 
 var CompactGoLevelDBCmd = &cobra.Command{
-	Use:   "experimental-compact-goleveldb",
-	Short: "force compacts the CometBFT storage engine (only GoLevelDB supported)",
+	Use:     "experimental-compact-goleveldb",
+	Aliases: []string{"experimental_compact_goleveldb"},
+	Short:   "force compacts the CometBFT storage engine (only GoLevelDB supported)",
 	Long: `
-This is a temporary utility command that performs a force compaction on the state 
-and blockstores to reduce disk space for a pruning node. This should only be run 
+This is a temporary utility command that performs a force compaction on the state
+and blockstores to reduce disk space for a pruning node. This should only be run
 once the node has stopped. This command will likely be omitted in the future after
 the planned refactor to the storage engine.
 

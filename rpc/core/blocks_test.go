@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -127,23 +126,26 @@ func TestBlockResults(t *testing.T) {
 func TestEncodeDataRootTuple(t *testing.T) {
 	height := uint64(2)
 	dataRoot, err := hex.DecodeString("82dc1607d84557d3579ce602a45f5872e821c36dbda7ec926dfa17ebc8d5c013")
+	squareSize := uint64(64)
 	require.NoError(t, err)
 
 	expectedEncoding, err := hex.DecodeString(
 		// hex representation of height padded to 32 bytes
 		"0000000000000000000000000000000000000000000000000000000000000002" +
 			// data root
-			"82dc1607d84557d3579ce602a45f5872e821c36dbda7ec926dfa17ebc8d5c013",
+			"82dc1607d84557d3579ce602a45f5872e821c36dbda7ec926dfa17ebc8d5c013" +
+			// original square size
+			"0000000000000000000000000000000000000000000000000000000000000040",
 	)
 	require.NoError(t, err)
 	require.NotNil(t, expectedEncoding)
 
-	actualEncoding, err := EncodeDataRootTuple(height, dataRoot)
+	actualEncoding, err := EncodeDataRootTuple(height, *(*[32]byte)(dataRoot), squareSize)
 	require.NoError(t, err)
 	require.NotNil(t, actualEncoding)
 
 	// Check that the length of packed data is correct
-	assert.Equal(t, 64, len(actualEncoding))
+	assert.Equal(t, len(actualEncoding), 96)
 	assert.Equal(t, expectedEncoding, actualEncoding)
 }
 
@@ -171,7 +173,7 @@ func TestDataCommitmentResults(t *testing.T) {
 		{10, 8, false},
 	}
 
-	for _, tc := range testCases {
+	for i, tc := range testCases {
 		env.BlockIndexer = mockBlockIndexer{
 			height:          height,
 			beginQueryBlock: tc.beginQuery,
@@ -183,21 +185,25 @@ func TestDataCommitmentResults(t *testing.T) {
 		if tc.expectPass {
 			require.Nil(t, err, "should generate the needed data commitment.")
 
-			size := tc.endQuery - tc.beginQuery + 1
+			size := tc.endQuery - tc.beginQuery
 			dataRootEncodedTuples := make([][]byte, size)
 			for i := 0; i < size; i++ {
 				encodedTuple, err := EncodeDataRootTuple(
 					uint64(blocks[tc.beginQuery+i].Height),
-					blocks[tc.beginQuery+i].DataHash,
+					*(*[32]byte)(blocks[tc.beginQuery+i].DataHash),
+					blocks[tc.beginQuery+i].SquareSize,
 				)
 				require.NoError(t, err)
 				dataRootEncodedTuples[i] = encodedTuple
 			}
 			expectedCommitment := merkle.HashFromByteSlices(dataRootEncodedTuples)
 
-			if !bytes.Equal(expectedCommitment, actualCommitment.DataCommitment) {
-				assert.Error(t, nil, "expected data commitment and actual data commitment doesn't match.")
-			}
+			assert.Equal(
+				t,
+				expectedCommitment,
+				actualCommitment.DataCommitment.Bytes(),
+				i,
+			)
 		} else {
 			require.NotNil(t, err, "couldn't generate the needed data commitment.")
 		}
@@ -233,11 +239,12 @@ func TestDataRootInclusionProofResults(t *testing.T) {
 		{10, 0, 15, false},
 		{10, 10, 15, true},
 		{13, 10, 15, true},
-		{15, 10, 15, true},
+		{14, 10, 15, true},
+		{15, 10, 15, false},
 		{17, 10, 15, false},
 	}
 
-	for _, tc := range testCases {
+	for i, tc := range testCases {
 		env.BlockIndexer = mockBlockIndexer{
 			height:          height,
 			beginQueryBlock: tc.firstQuery,
@@ -251,14 +258,15 @@ func TestDataRootInclusionProofResults(t *testing.T) {
 			uint64(tc.lastQuery),
 		)
 		if tc.expectPass {
-			require.Nil(t, err, "should generate block height data root inclusion proof.")
+			require.Nil(t, err, "should generate block height data root inclusion proof.", i)
 
-			size := tc.lastQuery - tc.firstQuery + 1
+			size := tc.lastQuery - tc.firstQuery
 			dataRootEncodedTuples := make([][]byte, size)
 			for i := 0; i < size; i++ {
 				encodedTuple, err := EncodeDataRootTuple(
 					uint64(blocks[tc.firstQuery+i].Height),
-					blocks[tc.firstQuery+i].DataHash,
+					*(*[32]byte)(blocks[tc.firstQuery+i].DataHash),
+					blocks[tc.firstQuery+i].SquareSize,
 				)
 				require.NoError(t, err)
 				dataRootEncodedTuples[i] = encodedTuple
