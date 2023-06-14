@@ -664,9 +664,8 @@ func TestBlockProtoBuf(t *testing.T) {
 
 func TestBlockDataProtobuf(t *testing.T) {
 	type test struct {
-		name  string
-		txs   Txs
-		blobs []Blob
+		name string
+		txs  Txs
 	}
 	tests := []test{
 		{
