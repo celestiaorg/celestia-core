@@ -10,12 +10,12 @@ docker:
 # order to build a binary with a CometBFT node in it (for built-in
 # ABCI testing).
 node:
-	go build -o build/node -tags badgerdb,boltdb,cleveldb,rocksdb ./node
+	go build -o build/node -tags badgerdb,boltdb,cleveldb ./node
 	
 # To be used primarily by the e2e docker instance. If you want to produce this binary
 # elsewhere, then run go build in the maverick directory. 
 maverick:
-	go build -o build/maverick -tags badgerdb,boltdb,cleveldb,rocksdb ../maverick
+	go build -o build/maverick -tags badgerdb,boltdb,cleveldb ../maverick
 
 generator:
 	go build -o build/generator ./generator
