@@ -101,12 +101,8 @@ func (BaseApplication) ApplySnapshotChunk(req RequestApplySnapshotChunk) Respons
 }
 
 func (BaseApplication) PrepareProposal(req RequestPrepareProposal) ResponsePrepareProposal {
-	squareSize := len(req.Txs)
-	if squareSize == 0 {
-		squareSize = 1
-	}
 	squareSizeBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(squareSizeBytes, uint64(squareSize))
+	binary.BigEndian.PutUint64(squareSizeBytes, 0)
 	req.Txs = append(req.Txs, tmhash.Sum(nil), squareSizeBytes)
 	return ResponsePrepareProposal{Txs: req.Txs}
 }

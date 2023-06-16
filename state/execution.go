@@ -136,8 +136,8 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		panic(err)
 	}
 
-	// Celestia passes the data root back as the first transaction and the big endian
-	// encoding of the square size as the second transaction.
+	// Celestia passes the data root back as the second to last transaction 
+	// and the big endian encoding of the square size as the last transaction.
 	if len(rpp.Txs) < 2 {
 		panic("state machine returned an invalid prepare proposal response: expected at least 2 transactions")
 	}

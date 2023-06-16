@@ -2777,7 +2777,8 @@ func (m *ResponseApplySnapshotChunk) GetRejectSenders() []string {
 }
 
 // ResponsePrepareProposal reflects the same protobuf message as CometBFT
-// The exception here is that the first transaction is always the hash
+// The exception here is that the second to last transaction is always the
+// data hash and the last transaction is the square size (to be used in Data)
 type ResponsePrepareProposal struct {
 	Txs [][]byte `protobuf:"bytes,1,rep,name=txs,proto3" json:"txs,omitempty"`
 }

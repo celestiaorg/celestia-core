@@ -41,12 +41,13 @@ func (r ResponseQuery) IsErr() bool {
 	return r.Code != CodeTypeOK
 }
 
-// IsUnknown returns true if Code is Unknown
+// IsUnknown returns true if this ResponseProcessProposal status is unknown
+
 func (r ResponseProcessProposal) IsUnknown() bool {
 	return r.Status == ResponseProcessProposal_UNKNOWN
 }
 
-// IsOK returns true if Code is OK
+// IsAccepted returns true if this ResponseProcessProposal was accepted
 func (r ResponseProcessProposal) IsAccepted() bool {
 	return r.Status == ResponseProcessProposal_ACCEPT
 }
