@@ -11,6 +11,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/tendermint/tendermint/libs/math"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 	"github.com/tendermint/tendermint/version"
 )
@@ -146,6 +147,15 @@ func generateTestnet(r *rand.Rand, opt map[string]interface{}, upgradeVersion st
 		numFulls = r.Intn(4)
 	default:
 		return manifest, fmt.Errorf("unknown topology %q", opt["topology"])
+	}
+
+	if opt["typologoy"].(string) == "large_partially_connected" {
+		// currently this is at max 11 and minimum 4
+		totalPossibleConnections := numSeeds + numValidators + numFulls - 1
+		// this value should be between 3 and 2
+		manifest.MaxOutboundConnections = math.MaxInt(totalPossibleConnections/3, 2)
+		// this value should be between 5 and 2
+		manifest.MaxInboundConnections = math.MaxInt(totalPossibleConnections/2, 2)
 	}
 
 	// First we generate seed nodes, starting at the initial height.
