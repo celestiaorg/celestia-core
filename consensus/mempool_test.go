@@ -251,16 +251,3 @@ func (app *CounterApplication) Commit() abci.ResponseCommit {
 	binary.BigEndian.PutUint64(hash, uint64(app.txCount))
 	return abci.ResponseCommit{Data: hash}
 }
-
-func (app *CounterApplication) PrepareProposal(
-	req abci.RequestPrepareProposal) abci.ResponsePrepareProposal {
-	dataHash := types.ToTxs(req.Txs).Hash()
-	squareSize := len(req.Txs)
-	if squareSize == 0 {
-		squareSize = 1
-	}
-	squareSizeBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(squareSizeBytes, uint64(squareSize))
-	req.Txs = append(req.Txs, dataHash, squareSizeBytes)
-	return abci.ResponsePrepareProposal{Txs: req.Txs}
-}

@@ -103,6 +103,9 @@ func (BaseApplication) ApplySnapshotChunk(req RequestApplySnapshotChunk) Respons
 func (BaseApplication) PrepareProposal(req RequestPrepareProposal) ResponsePrepareProposal {
 	squareSizeBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(squareSizeBytes, 0)
+
+	// placeholderDataHash and placeholderSquareSizeBytes are expected to be
+	// overwritten by celestia-app.
 	req.Txs = append(req.Txs, tmhash.Sum(nil), squareSizeBytes)
 	return ResponsePrepareProposal{Txs: req.Txs}
 }
