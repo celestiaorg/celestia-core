@@ -9,7 +9,6 @@ import (
 	"math"
 	"os"
 	"reflect"
-	"sort"
 	"testing"
 	"time"
 
@@ -856,56 +855,4 @@ func TestBlockIDEquals(t *testing.T) {
 	assert.False(t, blockID.Equals(blockIDEmpty))
 	assert.True(t, blockIDEmpty.Equals(blockIDEmpty))
 	assert.False(t, blockIDEmpty.Equals(blockIDDifferent))
-}
-
-func TestBlobsByNamespaceIsSorted(t *testing.T) {
-	sortedBlobs := []Blob{
-		{
-			NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
-			Data:        stdbytes.Repeat([]byte{1}, 100),
-		},
-		{
-			NamespaceID: []byte{8, 7, 6, 5, 4, 3, 2, 1},
-			Data:        stdbytes.Repeat([]byte{2}, 100),
-		},
-	}
-	sameNamespacedBlobs := []Blob{
-		{
-			NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
-			Data:        stdbytes.Repeat([]byte{1}, 100),
-		},
-		{
-			NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
-			Data:        stdbytes.Repeat([]byte{2}, 100),
-		},
-	}
-	unsortedBlobs := []Blob{
-		{
-			NamespaceID: []byte{8, 7, 6, 5, 4, 3, 2, 1},
-			Data:        stdbytes.Repeat([]byte{1}, 100),
-		},
-		{
-			NamespaceID: []byte{1, 2, 3, 4, 5, 6, 7, 8},
-			Data:        stdbytes.Repeat([]byte{2}, 100),
-		},
-	}
-
-	type testCase struct {
-		description string
-		blobs       []Blob
-		want        bool
-	}
-
-	tests := []testCase{
-		{"sorted blobs", sortedBlobs, true},
-		{"same namespace blobs", sameNamespacedBlobs, true},
-		{"unsorted blobs", unsortedBlobs, false},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.description, func(t *testing.T) {
-			bs := tc.blobs
-			assert.Equal(t, tc.want, sort.IsSorted(BlobsByNamespace(bs)))
-		})
-	}
 }
