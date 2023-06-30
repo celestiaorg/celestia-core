@@ -261,6 +261,10 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	if node.Testnet.MaxOutboundConnections != 0 {
 		cfg.P2P.MaxNumOutboundPeers = node.Testnet.MaxOutboundConnections
 	}
+	if node.Prometheus {
+		cfg.Instrumentation.Prometheus = true
+	}
+
 	return cfg, nil
 }
 

@@ -1688,8 +1688,7 @@ func (cs *State) finalizeCommit(height int64) {
 		seenCommit,
 	)
 	if err != nil {
-		logger.Error("failed to apply block", "err", err)
-		return
+		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}
 
 	fail.Fail() // XXX

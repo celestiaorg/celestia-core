@@ -7,15 +7,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	tmrand "github.com/tendermint/tendermint/libs/rand"
+	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/pkg/consts"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 func makeTxs(cnt, size int) Txs {
 	txs := make(Txs, cnt)
 	for i := 0; i < cnt; i++ {
-		txs[i] = tmrand.Bytes(size)
+		txs[i] = cmtrand.Bytes(size)
 	}
 	return txs
 }
@@ -86,7 +86,7 @@ func TestUnmarshalIndexWrapper(t *testing.T) {
 func TestUnmarshalBlobTx(t *testing.T) {
 	tx := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 	namespaceOne := bytes.Repeat([]byte{1}, consts.NamespaceIDSize)
-	blob := tmproto.Blob{
+	blob := cmtproto.Blob{
 		NamespaceId:      namespaceOne,
 		Data:             []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 		ShareVersion:     0,
