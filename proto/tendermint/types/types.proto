@@ -95,12 +95,12 @@ message Data {
   // field number 4 is reserved for blobs
 
   // SquareSize is the number of rows or columns in the original data square.
-  uint64        square_size = 5;
+  uint64 square_size = 5;
 
   // Hash is the root of a binary Merkle tree where the leaves of the tree are
   // the row and column roots of an extended data square. Hash is often referred
   // to as the "data root".
-  bytes         hash        = 6;
+  bytes hash = 6;
 }
 
 // Blob (named after binary large object) is a chunk of data submitted by a user
