@@ -1056,7 +1056,7 @@ type Blob struct {
 
 // Namespace returns the namespace of this blob encoded as a byte slice.
 func (b Blob) Namespace() []byte {
-	return append([]byte{byte(b.NamespaceVersion)}, b.NamespaceID...)
+	return append([]byte{b.NamespaceVersion}, b.NamespaceID...)
 }
 
 // StringIndented returns an indented string representation of the transactions.
