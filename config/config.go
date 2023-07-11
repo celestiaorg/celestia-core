@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	tmtime "github.com/tendermint/tendermint/types/time"
 )
 
 const (
