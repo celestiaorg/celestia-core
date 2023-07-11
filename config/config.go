@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	tmtime "github.com/tendermint/tendermint/types/time"
 )
 
 const (
@@ -1030,7 +1032,7 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 // NextStartTime adds the TargetHeightDuration to the provided starting time.
 func (cfg *ConsensusConfig) NextStartTime(t time.Time) time.Time {
 	newStartTime := t.Add(cfg.TargetHeightDuration)
-	now := time.Now()
+	now := tmtime.Now()
 	if newStartTime.Before(now) {
 		return now
 	}
