@@ -664,11 +664,14 @@ func (cs *State) updateToState(state sm.State) {
 	cs.updateRoundStep(0, cstypes.RoundStepNewHeight)
 
 	if cs.CommitTime.IsZero() {
-		// If it is the first block, start time is equal to
-		// states last block time which is the genesis time.
-		cs.StartTime = state.LastBlockTime
+		// "Now" makes it easier to sync up dev nodes.
+		// We add timeoutCommit to allow transactions
+		// to be gathered for the first block.
+		// And alternative solution that relies on clocks:
+		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
+		cs.StartTime = cs.config.Commit(cmttime.Now())
 	} else {
-		cs.StartTime = cs.config.NextStartTime(cs.StartTime)
+		cs.StartTime = cs.config.Commit(cs.CommitTime)
 	}
 
 	cs.Validators = validators
