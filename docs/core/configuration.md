@@ -414,10 +414,10 @@ timeout_prevote_delta = "500ms"
 timeout_precommit = "1s"
 # How much the timeout_precommit increases with each round
 timeout_precommit_delta = "500ms"
-# TargetHeigtDuration is used to determine how long we wait after a
-# block is committed. If this time is shorter than the actual time to reach
-# consensus for that height, then we do not wait at all.
-target_height_duration = "15s"
+# How long we wait after committing a block, before starting on the new
+# height (this gives us a chance to receive some more precommits, even
+# though we already have +2/3).
+timeout_commit = "1s"
 
 # How many blocks to look back to check existence of the node's consensus votes before joining consensus
 # When non-zero, the node will panic upon restart
@@ -537,8 +537,11 @@ timeout_prevote = "1s"
 timeout_prevote_delta = "500ms"
 timeout_precommit = "1s"
 timeout_precommit_delta = "500ms"
-target_height_duration = "1s"
+timeout_commit = "1s"
 ```
+
+Note that in a successful round, the only timeout that we absolutely wait no
+matter what is `timeout_commit`.
 
 Here's a brief summary of the timeouts:
 
@@ -549,8 +552,7 @@ Here's a brief summary of the timeouts:
 - `timeout_prevote_delta` = how much the `timeout_prevote` increases with each round
 - `timeout_precommit` = how long we wait after receiving +2/3 precommits for
   anything (ie. not a single block or nil)
-- `timeout_precommit_delta` = how much the timeout_precommit increases with
-  each round
-- `target_height_duration` = used to determine how long we wait after a
-	block is committed. If this time is shorter than the actual time to reach
-	consensus for that height, then we do not wait at all.
+- `timeout_precommit_delta` = how much the `timeout_precommit` increases with each round
+- `timeout_commit` = how long we wait after committing a block, before starting
+  on the new height (this gives us a chance to receive some more precommits,
+  even though we already have +2/3)
