@@ -1276,7 +1276,8 @@ type RequestPrepareProposal struct {
 	BlockData *types1.Data `protobuf:"bytes,1,opt,name=block_data,json=blockData,proto3" json:"block_data,omitempty"`
 	// If an application decides to populate block_data with extra information, they can not exceed this value.
 	BlockDataSize int64 `protobuf:"varint,2,opt,name=block_data_size,json=blockDataSize,proto3" json:"block_data_size,omitempty"`
-	// proposal_header is the header from the proposal
+	// chain_id is a unique identifier for the blockchain network this proposal
+	// belongs to (e.g. mocha-1).
 	ChainId string `protobuf:"bytes,3,opt,name=chain_id,json=chainId,proto3" json:"chain_id,omitempty"`
 }
 
