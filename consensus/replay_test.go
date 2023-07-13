@@ -32,6 +32,7 @@ import (
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/state/test/factory"
 	"github.com/tendermint/tendermint/types"
+	"github.com/tendermint/tendermint/version"
 )
 
 func TestMain(m *testing.M) {
@@ -754,13 +755,14 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 		}
 	})
 
-	err := handshaker.Handshake(proxyApp)
+	softwareVersion, err := handshaker.Handshake(proxyApp)
 	if expectError {
 		require.Error(t, err)
 		return
 	} else if err != nil {
 		t.Fatalf("Error on abci handshake: %v", err)
 	}
+	require.Equal(t, softwareVersion, version.ABCISemVer)
 
 	// get the latest app hash from the app
 	res, err := proxyApp.Query().InfoSync(abci.RequestInfo{Version: ""})
@@ -932,7 +934,8 @@ func TestHandshakePanicsIfAppReturnsWrongAppHash(t *testing.T) {
 
 		assert.Panics(t, func() {
 			h := NewHandshaker(stateStore, state, store, genDoc)
-			if err = h.Handshake(proxyApp); err != nil {
+			_, err = h.Handshake(proxyApp)
+			if err != nil {
 				t.Log(err)
 			}
 		})
@@ -956,7 +959,8 @@ func TestHandshakePanicsIfAppReturnsWrongAppHash(t *testing.T) {
 
 		assert.Panics(t, func() {
 			h := NewHandshaker(stateStore, state, store, genDoc)
-			if err = h.Handshake(proxyApp); err != nil {
+			_, err = h.Handshake(proxyApp)
+			if err != nil {
 				t.Log(err)
 			}
 		})
@@ -1271,9 +1275,12 @@ func TestHandshakeUpdatesValidators(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if err := handshaker.Handshake(proxyApp); err != nil {
+	version, err := handshaker.Handshake(proxyApp)
+	if err != nil {
 		t.Fatalf("Error on abci handshake: %v", err)
 	}
+	require.Equal(t, version, customVersion)
+
 	// reload the state, check the validator set was updated
 	state, err = stateStore.Load()
 	require.NoError(t, err)
@@ -1284,6 +1291,8 @@ func TestHandshakeUpdatesValidators(t *testing.T) {
 	assert.Equal(t, newValAddr, expectValAddr)
 }
 
+const customVersion = "v1.0.0"
+
 // returns the vals on InitChain
 type initChainApp struct {
 	abci.BaseApplication
@@ -1293,5 +1302,11 @@ type initChainApp struct {
 func (ica *initChainApp) InitChain(req abci.RequestInitChain) abci.ResponseInitChain {
 	return abci.ResponseInitChain{
 		Validators: ica.vals,
+	}
+}
+
+func (ica *initChainApp) Info(req abci.RequestInfo) abci.ResponseInfo {
+	return abci.ResponseInfo{
+		Version: customVersion,
 	}
 }
