@@ -1279,7 +1279,7 @@ func TestHandshakeUpdatesValidators(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error on abci handshake: %v", err)
 	}
-	require.Equal(t, version, customVersion)
+	require.Equal(t, customVersion, version)
 
 	// reload the state, check the validator set was updated
 	state, err = stateStore.Load()
