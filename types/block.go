@@ -1054,6 +1054,11 @@ type Blob struct {
 	ShareVersion uint8
 }
 
+// Namespace returns the namespace of this blob encoded as a byte slice.
+func (b Blob) Namespace() []byte {
+	return append([]byte{b.NamespaceVersion}, b.NamespaceID...)
+}
+
 // StringIndented returns an indented string representation of the transactions.
 func (data *Data) StringIndented(indent string) string {
 	if data == nil {
