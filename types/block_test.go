@@ -841,3 +841,27 @@ func TestBlockIDEquals(t *testing.T) {
 	assert.True(t, blockIDEmpty.Equals(blockIDEmpty))
 	assert.False(t, blockIDEmpty.Equals(blockIDDifferent))
 }
+
+func TestBlob(t *testing.T) {
+	namespaceVersion := uint8(0)
+	namespaceID := stdbytes.Repeat([]byte{0x01}, 28)
+	data := []byte("data")
+	shareVersion := uint8(0)
+
+	blob := Blob{
+		NamespaceVersion: namespaceVersion,
+		NamespaceID:      namespaceID,
+		Data:             data,
+		ShareVersion:     shareVersion,
+	}
+
+	t.Run("blob.Namespace() returns encoded namespace", func(t *testing.T) {
+		got := blob.Namespace()
+		want := []byte{
+			0,                                        // namespace version
+			1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // namespace ID
+			1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // namespace ID
+		}
+		assert.Equal(t, want, got)
+	})
+}
