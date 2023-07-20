@@ -80,7 +80,7 @@ func TestValidateBlockHeader(t *testing.T) {
 			Invalid blocks don't pass
 		*/
 		for _, tc := range testCases {
-			block, _ := state.MakeBlock(height, factory.MakeData(makeTxs(height)), lastCommit, nil, proposerAddr)
+			block, _ := state.MakeBlock(height, makeTxs(height), lastCommit, nil, proposerAddr)
 			tc.malleateBlock(block)
 			err := blockExec.ValidateBlock(state, block)
 			require.Error(t, err, tc.name)
@@ -97,7 +97,7 @@ func TestValidateBlockHeader(t *testing.T) {
 	nextHeight := validationTestsStopHeight
 	block, _ := state.MakeBlock(
 		nextHeight,
-		factory.MakeData(factory.MakeTenTxs(nextHeight)),
+		factory.MakeTenTxs(nextHeight),
 		lastCommit,
 		nil,
 		state.Validators.GetProposer().Address,
@@ -152,7 +152,7 @@ func TestValidateBlockCommit(t *testing.T) {
 			)
 			block, _ := state.MakeBlock(
 				height,
-				factory.MakeData(factory.MakeTenTxs(height)),
+				factory.MakeTenTxs(height),
 				wrongHeightCommit,
 				nil,
 				proposerAddr,
@@ -166,7 +166,7 @@ func TestValidateBlockCommit(t *testing.T) {
 			*/
 			block, _ = state.MakeBlock(
 				height,
-				factory.MakeData(factory.MakeTenTxs(height)),
+				factory.MakeTenTxs(height),
 				wrongSigsCommit,
 				nil,
 				proposerAddr,
@@ -252,7 +252,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 	evpool.On("CheckEvidence", mock.AnythingOfType("types.EvidenceList")).Return(nil)
 	evpool.On("Update", mock.AnythingOfType("state.State"), mock.AnythingOfType("types.EvidenceList")).Return()
 	evpool.On("ABCIEvidence", mock.AnythingOfType("int64"), mock.AnythingOfType("[]types.Evidence")).Return(
-		[]abci.Evidence{})
+		[]abci.Misbehavior{})
 
 	state.ConsensusParams.Evidence.MaxBytes = 1000
 	blockExec := sm.NewBlockExecutor(
@@ -282,7 +282,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 			}
 			block, _ := state.MakeBlock(
 				height,
-				factory.MakeData(factory.MakeTenTxs(height)),
+				factory.MakeTenTxs(height),
 				lastCommit,
 				evidence,
 				proposerAddr,

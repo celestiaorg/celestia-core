@@ -78,9 +78,3 @@ func MakeVote(
 
 	return vote, nil
 }
-
-func makeData(txs []Tx) Data {
-	return Data{
-		Txs: txs,
-	}
-}

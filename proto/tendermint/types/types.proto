@@ -108,9 +108,9 @@ message Data {
 // to a namespace and is encoded into shares based on the format specified by
 // share_version.
 message Blob {
-  bytes  namespace_id  = 1;
-  bytes  data          = 2;
-  uint32 share_version = 3;
+  bytes  namespace_id      = 1;
+  bytes  data              = 2;
+  uint32 share_version     = 3;
   uint32 namespace_version = 4;
 }
 
@@ -211,17 +211,17 @@ message BlobTx {
 // ShareProof is an NMT proof that a set of shares exist in a set of rows and a
 // Merkle proof that those rows exist in a Merkle tree with a given data root.
 message ShareProof {
-  repeated bytes data = 1;
-  repeated NMTProof share_proofs = 2;
-  bytes namespace_id = 3;
-  RowProof row_proof = 4;
-  uint32 namespace_version = 5;
+  repeated bytes    data              = 1;
+  repeated NMTProof share_proofs      = 2;
+  bytes             namespace_id      = 3;
+  RowProof          row_proof         = 4;
+  uint32            namespace_version = 5;
 }
 
 // RowProof is a Merkle proof that a set of rows exist in a Merkle tree with a
 // given data root.
 message RowProof {
-  repeated bytes row_roots                  = 1;
+  repeated bytes row_roots                   = 1;
   repeated tendermint.crypto.Proof proofs    = 2;
   bytes                            root      = 3;
   uint32                           start_row = 4;

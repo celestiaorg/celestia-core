@@ -1,12 +1,14 @@
 package state
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"time"
 
 	abci "github.com/tendermint/tendermint/abci/types"
 	cryptoenc "github.com/tendermint/tendermint/crypto/encoding"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/fail"
 	"github.com/tendermint/tendermint/libs/log"
 	mempl "github.com/tendermint/tendermint/mempool"
@@ -106,19 +108,21 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	// Fetch a limited amount of valid txs
 	maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
-
-	// TODO(ismail): reaping the mempool has to happen in relation to a max
-	// allowed square size instead of (only) Gas / bytes
-	// maybe the mempool actually should track things separately
-	// meaning that CheckTx should already do the mapping:
-	// Tx -> Txs, Message
-	// https://github.com/tendermint/tendermint/issues/77
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
+	block, _ := state.MakeBlock(height, txs, commit, evidence, proposerAddr)
 
-	preparedProposal, err := blockExec.proxyApp.PrepareProposalSync(
+	localLastCommit := buildLastCommitInfo(block, blockExec.store, state.InitialHeight)
+	rpp, err := blockExec.proxyApp.PrepareProposalSync(
 		abci.RequestPrepareProposal{
-			BlockData:     &cmtproto.Data{Txs: txs.ToSliceOfBytes()},
-			BlockDataSize: maxDataBytes},
+			MaxTxBytes:         maxDataBytes,
+			Txs:                block.Txs.ToSliceOfBytes(),
+			LocalLastCommit:    extendedCommitInfo(localLastCommit),
+			Misbehavior:        block.Evidence.Evidence.ToABCI(),
+			Height:             block.Height,
+			Time:               block.Time,
+			NextValidatorsHash: block.NextValidatorsHash,
+			ProposerAddress:    block.ProposerAddress,
+		},
 	)
 	if err != nil {
 		// The App MUST ensure that only valid (and hence 'processable') transactions
@@ -131,50 +135,72 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		// purpose for now.
 		panic(err)
 	}
-	rawNewData := preparedProposal.GetBlockData()
-	var blockDataSize int
-	for _, tx := range rawNewData.GetTxs() {
-		blockDataSize += len(tx)
 
+	// Celestia passes the data root back as the second to last transaction
+	// and the big endian encoding of the square size as the last transaction.
+	if len(rpp.Txs) < 2 {
+		panic("state machine returned an invalid prepare proposal response: expected at least 2 transactions")
+	}
+
+	if len(rpp.Txs[len(rpp.Txs)-2]) != tmhash.Size {
+		panic(fmt.Sprintf("state machine returned an invalid prepare proposal response: expected second to last transaction to be a hash, got %d bytes", len(rpp.Txs[len(rpp.Txs)-2])))
+	}
+
+	if len(rpp.Txs[len(rpp.Txs)-1]) != 8 {
+		panic("state machine returned an invalid prepare proposal response: expected last transaction to be a uint64 (square size)")
+	}
+
+	// update the block with the response from PrepareProposal
+	block.Data, _ = types.DataFromProto(&cmtproto.Data{
+		SquareSize: binary.BigEndian.Uint64(rpp.Txs[len(rpp.Txs)-1]),
+		Txs:        rpp.Txs[:len(rpp.Txs)-2],
+		Hash:       rpp.Txs[len(rpp.Txs)-2],
+	})
+
+	var blockDataSize int
+	for _, tx := range block.Txs {
+		blockDataSize += len(tx)
 		if maxDataBytes < int64(blockDataSize) {
 			panic("block data exceeds max amount of allowed bytes")
 		}
 	}
 
-	newData, err := types.DataFromProto(rawNewData)
-	if err != nil {
-		// todo(evan): see if we can get rid of this panic
-		panic(err)
-	}
-
-	return state.MakeBlock(
-		height,
-		newData,
-		commit,
-		evidence,
-		proposerAddr,
-	)
+	return block, block.MakePartSet(types.BlockPartSizeBytes)
 }
 
 func (blockExec *BlockExecutor) ProcessProposal(
 	block *types.Block,
+	state State,
 ) (bool, error) {
-	pData := block.Data.ToProto()
-	req := abci.RequestProcessProposal{
-		BlockData: &pData,
-		Header:    *block.Header.ToProto(),
-	}
 
-	resp, err := blockExec.proxyApp.ProcessProposalSync(req)
+	// Similar to PrepareProposal, the last two transactions provided to Celestia
+	// in ProcessProposal are the data hash and square size respectively
+	squareSizeBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(squareSizeBytes, block.Data.SquareSize)
+	txs := append(block.Data.Txs.ToSliceOfBytes(), block.DataHash, squareSizeBytes)
+
+	resp, err := blockExec.proxyApp.ProcessProposalSync(abci.RequestProcessProposal{
+		Hash:               block.Header.Hash(),
+		Height:             block.Header.Height,
+		Time:               block.Header.Time,
+		Txs:                txs,
+		ProposedLastCommit: buildLastCommitInfo(block, blockExec.store, state.InitialHeight),
+		Misbehavior:        block.Evidence.Evidence.ToABCI(),
+		ProposerAddress:    block.ProposerAddress,
+		NextValidatorsHash: block.NextValidatorsHash,
+	})
 	if err != nil {
 		return false, ErrInvalidBlock(err)
+	}
+	if resp.IsUnknown() {
+		panic(fmt.Sprintf("ProcessProposal responded with status %s", resp.Status.String()))
 	}
 
 	if resp.IsRejected() {
 		blockExec.metrics.ProcessProposalRejected.Add(1)
 	}
 
-	return resp.IsOK(), nil
+	return resp.IsAccepted(), nil
 }
 
 // ValidateBlock validates the given block against the given state.
@@ -360,9 +386,9 @@ func execBlockOnProxyApp(
 	}
 	proxyAppConn.SetResponseCallback(proxyCb)
 
-	commitInfo := getBeginBlockValidatorInfo(block, store, initialHeight)
+	commitInfo := buildLastCommitInfo(block, store, initialHeight)
 
-	byzVals := make([]abci.Evidence, 0)
+	byzVals := make([]abci.Misbehavior, 0)
 	for _, evidence := range block.Evidence.Evidence {
 		byzVals = append(byzVals, evidence.ABCI()...)
 	}
@@ -409,43 +435,62 @@ func execBlockOnProxyApp(
 	return abciResponses, nil
 }
 
-func getBeginBlockValidatorInfo(block *types.Block, store Store,
-	initialHeight int64) abci.LastCommitInfo {
-	voteInfos := make([]abci.VoteInfo, block.LastCommit.Size())
-	// Initial block -> LastCommitInfo.Votes are empty.
-	// Remember that the first LastCommit is intentionally empty, so it makes
-	// sense for LastCommitInfo.Votes to also be empty.
-	if block.Height > initialHeight {
-		lastValSet, err := store.LoadValidators(block.Height - 1)
-		if err != nil {
-			panic(err)
-		}
+func buildLastCommitInfo(block *types.Block, store Store, initialHeight int64) abci.CommitInfo {
+	if block.Height == initialHeight {
+		// there is no last commit for the initial height.
+		// return an empty value.
+		return abci.CommitInfo{}
+	}
 
-		// Sanity check that commit size matches validator set size - only applies
-		// after first block.
-		var (
-			commitSize = block.LastCommit.Size()
-			valSetLen  = len(lastValSet.Validators)
-		)
-		if commitSize != valSetLen {
-			panic(fmt.Sprintf(
-				"commit size (%d) doesn't match valset length (%d) at height %d\n\n%v\n\n%v",
-				commitSize, valSetLen, block.Height, block.LastCommit.Signatures, lastValSet.Validators,
-			))
-		}
+	lastValSet, err := store.LoadValidators(block.Height - 1)
+	if err != nil {
+		panic(fmt.Errorf("failed to load validator set at height %d: %w", block.Height-1, err))
+	}
 
-		for i, val := range lastValSet.Validators {
-			commitSig := block.LastCommit.Signatures[i]
-			voteInfos[i] = abci.VoteInfo{
-				Validator:       types.TM2PB.Validator(val),
-				SignedLastBlock: !commitSig.Absent(),
-			}
+	var (
+		commitSize = block.LastCommit.Size()
+		valSetLen  = len(lastValSet.Validators)
+	)
+
+	// ensure that the size of the validator set in the last commit matches
+	// the size of the validator set in the state store.
+	if commitSize != valSetLen {
+		panic(fmt.Sprintf(
+			"commit size (%d) doesn't match validator set length (%d) at height %d\n\n%v\n\n%v",
+			commitSize, valSetLen, block.Height, block.LastCommit.Signatures, lastValSet.Validators,
+		))
+	}
+
+	votes := make([]abci.VoteInfo, block.LastCommit.Size())
+	for i, val := range lastValSet.Validators {
+		commitSig := block.LastCommit.Signatures[i]
+		votes[i] = abci.VoteInfo{
+			Validator:       types.TM2PB.Validator(val),
+			SignedLastBlock: commitSig.BlockIDFlag != types.BlockIDFlagAbsent,
 		}
 	}
 
-	return abci.LastCommitInfo{
+	return abci.CommitInfo{
 		Round: block.LastCommit.Round,
-		Votes: voteInfos,
+		Votes: votes,
+	}
+}
+
+func extendedCommitInfo(c abci.CommitInfo) abci.ExtendedCommitInfo {
+	vs := make([]abci.ExtendedVoteInfo, len(c.Votes))
+	for i := range vs {
+		vs[i] = abci.ExtendedVoteInfo{
+			Validator:       c.Votes[i].Validator,
+			SignedLastBlock: c.Votes[i].SignedLastBlock,
+			/*
+				TODO: Include vote extensions information when implementing vote extensions.
+				VoteExtension:   []byte{},
+			*/
+		}
+	}
+	return abci.ExtendedCommitInfo{
+		Round: c.Round,
+		Votes: vs,
 	}
 }
 

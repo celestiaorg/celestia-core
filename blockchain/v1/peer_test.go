@@ -11,7 +11,6 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/state/test/factory"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -277,5 +276,5 @@ func checkByStoppingPeerTimer(t *testing.T, peer *BpPeer, running bool) {
 }
 
 func makeSmallBlock(height int) *types.Block {
-	return types.MakeBlock(int64(height), factory.MakeData([]types.Tx{types.Tx("foo")}), nil, nil)
+	return types.MakeBlock(int64(height), []types.Tx{types.Tx("foo")}, nil, nil)
 }

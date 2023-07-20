@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	bcproto "github.com/tendermint/tendermint/proto/tendermint/blockchain"
-	"github.com/tendermint/tendermint/state/test/factory"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -81,7 +80,7 @@ func TestBcStatusResponseMessageValidateBasic(t *testing.T) {
 
 //nolint:lll // ignore line length in tests
 func TestBlockchainMessageVectors(t *testing.T) {
-	block := types.MakeBlock(int64(3), factory.MakeData([]types.Tx{types.Tx("Hello World")}), nil, nil)
+	block := types.MakeBlock(int64(3), []types.Tx{types.Tx("Hello World")}, nil, nil)
 	block.Version.Block = 11 // overwrite updated protocol version
 
 	bpb, err := block.ToProto()

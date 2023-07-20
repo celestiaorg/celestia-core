@@ -257,16 +257,6 @@ func (app *Application) ApplySnapshotChunk(req abci.RequestApplySnapshotChunk) a
 	return abci.ResponseApplySnapshotChunk{Result: abci.ResponseApplySnapshotChunk_ACCEPT}
 }
 
-func (app *Application) PrepareProposal(
-	req abci.RequestPrepareProposal) abci.ResponsePrepareProposal {
-	return abci.ResponsePrepareProposal{BlockData: req.BlockData}
-}
-
-func (app *Application) ProcessProposal(
-	req abci.RequestProcessProposal) abci.ResponseProcessProposal {
-	return abci.ResponseProcessProposal{Result: abci.ResponseProcessProposal_ACCEPT}
-}
-
 func (app *Application) Rollback() error {
 	return app.state.Rollback()
 }
