@@ -68,6 +68,8 @@ type SignClient interface {
 	SignedBlock(ctx context.Context, height *int64) (*ctypes.ResultSignedBlock, error)
 	BlockByHash(ctx context.Context, hash []byte) (*ctypes.ResultBlock, error)
 	BlockResults(ctx context.Context, height *int64) (*ctypes.ResultBlockResults, error)
+	Header(ctx context.Context, height *int64) (*ctypes.ResultHeader, error)
+	HeaderByHash(ctx context.Context, hash bytes.HexBytes) (*ctypes.ResultHeader, error)
 	Commit(ctx context.Context, height *int64) (*ctypes.ResultCommit, error)
 
 	DataCommitment(ctx context.Context, start, end uint64) (*ctypes.ResultDataCommitment, error)
