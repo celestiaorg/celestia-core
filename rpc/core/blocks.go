@@ -261,12 +261,11 @@ func To32PaddedHexBytes(number uint64) ([]byte, error) {
 // The commitments will be signed by orchestrators and submitted to an EVM chain via a relayer.
 // For more information: https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
 type DataRootTuple struct {
-	height     uint64
-	dataRoot   [32]byte
-	squareSize uint64
+	height   uint64
+	dataRoot [32]byte
 }
 
-// EncodeDataRootTuple takes a height, a data root and the square size, and returns the equivalent of
+// EncodeDataRootTuple takes a height and a data root, and returns the equivalent of
 // `abi.encode(...)` in Ethereum.
 // The encoded type is a DataRootTuple, which has the following ABI:
 //
@@ -283,11 +282,6 @@ type DataRootTuple struct {
 //	        "type":"bytes32"
 //	     },
 //	     {
-//	        "internalType":"uint256",
-//	        "name":"squareSize",
-//	        "type":"uint256"
-//	     },
-//	     {
 //	        "internalType":"structDataRootTuple",
 //	        "name":"_tuple",
 //	        "type":"tuple"
@@ -295,21 +289,15 @@ type DataRootTuple struct {
 //	  ]
 //	}
 //
-// padding the hex representation of the height padded to 32 bytes concatenated to the data root concatenated
-// to the hex representation of the square size padded to 32 bytes.
+// padding the hex representation of the height padded to 32 bytes concatenated to the data root.
 // For more information, refer to:
 // https://github.com/celestiaorg/quantum-gravity-bridge/blob/master/src/DataRootTuple.sol
-func EncodeDataRootTuple(height uint64, dataRoot [32]byte, squareSize uint64) ([]byte, error) {
+func EncodeDataRootTuple(height uint64, dataRoot [32]byte) ([]byte, error) {
 	paddedHeight, err := To32PaddedHexBytes(height)
 	if err != nil {
 		return nil, err
 	}
-	dataSlice := dataRoot[:]
-	paddedSquareSize, err := To32PaddedHexBytes(squareSize)
-	if err != nil {
-		return nil, err
-	}
-	return append(paddedHeight, append(dataSlice, paddedSquareSize...)...), nil
+	return append(paddedHeight, dataRoot[:]...), nil
 }
 
 // validateDataCommitmentRange runs basic checks on the asc sorted list of
@@ -348,7 +336,6 @@ func hashDataRootTuples(tuples []DataRootTuple) ([]byte, error) {
 		encodedTuple, err := EncodeDataRootTuple(
 			tuple.height,
 			tuple.dataRoot,
-			tuple.squareSize,
 		)
 		if err != nil {
 			return nil, err
@@ -384,7 +371,6 @@ func proveDataRootTuples(tuples []DataRootTuple, height int64) (*merkle.Proof, e
 		encodedTuple, err := EncodeDataRootTuple(
 			tuple.height,
 			tuple.dataRoot,
-			tuple.squareSize,
 		)
 		if err != nil {
 			return nil, err
@@ -525,9 +511,8 @@ func fetchDataRootTuples(start, end uint64) ([]DataRootTuple, error) {
 			return nil, fmt.Errorf("couldn't load block %d", height)
 		}
 		tuples = append(tuples, DataRootTuple{
-			height:     uint64(block.Height),
-			dataRoot:   *(*[32]byte)(block.DataHash),
-			squareSize: block.SquareSize,
+			height:   uint64(block.Height),
+			dataRoot: *(*[32]byte)(block.DataHash),
 		})
 	}
 	return tuples, nil
