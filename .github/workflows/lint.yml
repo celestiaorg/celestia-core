@@ -12,6 +12,7 @@ on:
   pull_request:
   push:
     branches:
+      - main
       - v[0-9]+.[0-9]+.x-celestia
 jobs:
   golangci:
@@ -34,7 +35,7 @@ jobs:
           # Required: the version of golangci-lint is required and
           # must be specified without patch version: we always use the
           # latest patch version.
-          version: v1.50.1
+          version: v1.53.3
           args: --timeout 10m
           github-token: ${{ secrets.github_token }}
         if: env.GIT_DIFF
