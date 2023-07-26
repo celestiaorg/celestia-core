@@ -422,8 +422,8 @@ type nilWAL struct{}
 
 var _ WAL = nilWAL{}
 
-func (nilWAL) Write(m WALMessage) error     { return nil }
-func (nilWAL) WriteSync(m WALMessage) error { return nil }
+func (nilWAL) Write(_ WALMessage) error     { return nil }
+func (nilWAL) WriteSync(_ WALMessage) error { return nil }
 func (nilWAL) FlushAndSync() error          { return nil }
 func (nilWAL) SearchForEndHeight(height int64, options *WALSearchOptions) (rd io.ReadCloser, found bool, err error) {
 	return nil, false, nil
