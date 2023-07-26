@@ -530,7 +530,7 @@ func (txi *TxIndex) match(
 
 	// Remove/reduce matches in filteredHashes that were not found in this
 	// match (tmpHashes).
-REMOVE_LOOP:	
+REMOVE_LOOP:
 	for k, v := range filteredHashes {
 		tmpHash := tmpHashes[k]
 		if tmpHash == nil || !bytes.Equal(tmpHash, v) {
