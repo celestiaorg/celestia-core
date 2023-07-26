@@ -34,7 +34,7 @@ jobs:
             go.mod
             go.sum
       - name: install
-        run: make install install_abci
+        run: make install
         if: "env.GIT_DIFF != ''"
       - uses: actions/cache@v3
         with:
