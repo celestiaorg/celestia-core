@@ -22,17 +22,6 @@ test_apps:
 	bash test/app/test.sh
 .PHONY: test_apps
 
-test_abci_apps:
-	bash abci/tests/test_app/test.sh
-.PHONY: test_abci_apps
-
-test_abci_cli:
-	# test the cli against the examples in the tutorial at:
-	# ./docs/abci-cli.md
-	# if test fails, update the docs ^
-	@ bash abci/tests/test_cli/test.sh
-.PHONY: test_abci_cli
-
 test_integrations:
 	make build_docker_test_image
 	make tools

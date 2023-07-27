@@ -1,8 +1,8 @@
 package cat
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"sync"
 	"testing"
 	"time"

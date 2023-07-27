@@ -94,15 +94,16 @@ func (app *Application) Info(req types.RequestInfo) (resInfo types.ResponseInfo)
 
 // tx is either "key=value" or just arbitrary bytes
 func (app *Application) DeliverTx(req types.RequestDeliverTx) types.ResponseDeliverTx {
-	var key, value []byte
+	var key, value string
+
 	parts := bytes.Split(req.Tx, []byte("="))
 	if len(parts) == 2 {
-		key, value = parts[0], parts[1]
+		key, value = string(parts[0]), string(parts[1])
 	} else {
-		key, value = req.Tx, req.Tx
+		key, value = string(req.Tx), string(req.Tx)
 	}
 
-	err := app.state.db.Set(prefixKey(key), value)
+	err := app.state.db.Set(prefixKey([]byte(key)), []byte(value))
 	if err != nil {
 		panic(err)
 	}
@@ -112,19 +113,10 @@ func (app *Application) DeliverTx(req types.RequestDeliverTx) types.ResponseDeli
 		{
 			Type: "app",
 			Attributes: []types.EventAttribute{
-				{Key: []byte("creator"), Value: []byte("Cosmoshi Netowoko"), Index: true},
-				{Key: []byte("key"), Value: key, Index: true},
-				{Key: []byte("index_key"), Value: []byte("index is working"), Index: true},
-				{Key: []byte("noindex_key"), Value: []byte("index is working"), Index: false},
-			},
-		},
-		{
-			Type: "app",
-			Attributes: []types.EventAttribute{
-				{Key: []byte("creator"), Value: []byte("Cosmoshi"), Index: true},
-				{Key: []byte("key"), Value: value, Index: true},
-				{Key: []byte("index_key"), Value: []byte("index is working"), Index: true},
-				{Key: []byte("noindex_key"), Value: []byte("index is working"), Index: false},
+				{Key: "creator", Value: "Cosmoshi Netowoko", Index: true},
+				{Key: "key", Value: key, Index: true},
+				{Key: "index_key", Value: "index is working", Index: true},
+				{Key: "noindex_key", Value: "index is working", Index: false},
 			},
 		},
 	}
@@ -202,13 +194,13 @@ func (app *Application) BeginBlock(req types.RequestBeginBlock) types.ResponseBe
 					Type: "begin_event",
 					Attributes: []types.EventAttribute{
 						{
-							Key:   []byte("foo"),
-							Value: []byte("100"),
+							Key:   "foo",
+							Value: "100",
 							Index: true,
 						},
 						{
-							Key:   []byte("bar"),
-							Value: []byte("200"),
+							Key:   "bar",
+							Value: "200",
 							Index: true,
 						},
 					},
@@ -217,13 +209,13 @@ func (app *Application) BeginBlock(req types.RequestBeginBlock) types.ResponseBe
 					Type: "begin_event",
 					Attributes: []types.EventAttribute{
 						{
-							Key:   []byte("foo"),
-							Value: []byte("200"),
+							Key:   "foo",
+							Value: "200",
 							Index: true,
 						},
 						{
-							Key:   []byte("bar"),
-							Value: []byte("300"),
+							Key:   "bar",
+							Value: "300",
 							Index: true,
 						},
 					},
@@ -237,13 +229,13 @@ func (app *Application) BeginBlock(req types.RequestBeginBlock) types.ResponseBe
 					Type: "begin_event",
 					Attributes: []types.EventAttribute{
 						{
-							Key:   []byte("foo"),
-							Value: []byte("400"),
+							Key:   "foo",
+							Value: "400",
 							Index: true,
 						},
 						{
-							Key:   []byte("bar"),
-							Value: []byte("300"),
+							Key:   "bar",
+							Value: "300",
 							Index: true,
 						},
 					},
