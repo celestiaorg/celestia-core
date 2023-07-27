@@ -49,6 +49,11 @@ type ResultSignedBlock struct {
 	ValidatorSet types.ValidatorSet `json:"validator_set"`
 }
 
+// ResultHeader represents the response for a Header RPC Client query
+type ResultHeader struct {
+	Header *types.Header `json:"header"`
+}
+
 // Commit and Header
 type ResultCommit struct {
 	types.SignedHeader `json:"signed_header"`

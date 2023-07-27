@@ -1170,7 +1170,7 @@ func readPieceFromWAL(msg *TimedWALMessage) interface{} {
 // fresh state and mock store
 func stateAndStore(
 	config *cfg.Config,
-	pubKey crypto.PubKey,
+	_ crypto.PubKey,
 	appVersion uint64,
 ) (dbm.DB, sm.State, *mockBlockStore) {
 	stateDB := dbm.NewMemDB()
@@ -1207,10 +1207,10 @@ func (bs *mockBlockStore) Base() int64                         { return bs.base 
 func (bs *mockBlockStore) Size() int64                         { return bs.Height() - bs.Base() + 1 }
 func (bs *mockBlockStore) LoadBaseMeta() *types.BlockMeta      { return bs.LoadBlockMeta(bs.base) }
 func (bs *mockBlockStore) LoadBlock(height int64) *types.Block { return bs.chain[height-1] }
-func (bs *mockBlockStore) LoadBlockByHash(hash []byte) *types.Block {
+func (bs *mockBlockStore) LoadBlockByHash(_ []byte) *types.Block {
 	return bs.chain[int64(len(bs.chain))-1]
 }
-
+func (bs *mockBlockStore) LoadBlockMetaByHash(hash []byte) *types.BlockMeta { return nil }
 func (bs *mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	block := bs.chain[height-1]
 	return &types.BlockMeta{
