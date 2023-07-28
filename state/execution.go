@@ -152,9 +152,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	// update the block with the response from PrepareProposal
 	block.Data, _ = types.DataFromProto(&cmtproto.Data{
-		SquareSize: binary.BigEndian.Uint64(rpp.Txs[len(rpp.Txs)-1]),
-		Txs:        rpp.Txs[:len(rpp.Txs)-2],
-		Hash:       rpp.Txs[len(rpp.Txs)-2],
+		Txs: rpp.Txs[:len(rpp.Txs)-2],
 	})
 
 	var blockDataSize int
