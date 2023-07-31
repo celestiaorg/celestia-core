@@ -155,6 +155,9 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		Txs: rpp.Txs[:len(rpp.Txs)-2],
 	})
 
+	block.DataHash = rpp.Txs[len(rpp.Txs)-2]
+	block.SquareSize = binary.BigEndian.Uint64(rpp.Txs[len(rpp.Txs)-1])
+
 	var blockDataSize int
 	for _, tx := range block.Txs {
 		blockDataSize += len(tx)
