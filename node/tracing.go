@@ -21,7 +21,9 @@ func (n *Node) setupPyroscope(addr, nodeID string, tracing bool) (*pyroscope.Pro
 	labels := map[string]string{"node_id": nodeID}
 
 	if tracing {
-		setupTracing(addr, labels)
+		if _, err = setupTracing(addr, labels); err != nil {
+			return nil, nil, err
+		}
 	} else {
 		tp = nil
 	}

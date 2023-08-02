@@ -1143,11 +1143,15 @@ func (n *Node) OnStop() {
 	}
 
 	if n.pyroscopeProfiler != nil {
-		n.pyroscopeProfiler.Stop()
+		if err := n.pyroscopeProfiler.Stop(); err != nil {
+			n.Logger.Error("Pyroscope profiler Stop", "err", err)
+		}
 	}
 
 	if n.pyroscopeTracer != nil {
-		n.pyroscopeTracer.Shutdown(context.Background())
+		if err := n.pyroscopeTracer.Shutdown(context.Background()); err != nil {
+			n.Logger.Error("Pyroscope tracer Shutdown", "err", err)
+		}
 	}
 
 }
