@@ -118,7 +118,9 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	preparedProposal, err := blockExec.proxyApp.PrepareProposalSync(
 		abci.RequestPrepareProposal{
 			BlockData:     &cmtproto.Data{Txs: txs.ToSliceOfBytes()},
-			BlockDataSize: maxDataBytes},
+			BlockDataSize: maxDataBytes,
+			ChainId:       state.ChainID,
+		},
 	)
 	if err != nil {
 		// The App MUST ensure that only valid (and hence 'processable') transactions
@@ -405,7 +407,7 @@ func execBlockOnProxyApp(
 		return nil, err
 	}
 
-	logger.Info("executed block", "height", block.Height, "num_valid_txs", validTxs, "num_invalid_txs", invalidTxs, "time", block.Time)
+	logger.Info("executed block", "height", block.Height, "num_valid_txs", validTxs, "num_invalid_txs", invalidTxs)
 	return abciResponses, nil
 }
 
