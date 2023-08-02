@@ -559,7 +559,7 @@ influx_batch_size = {{ .Instrumentation.InfluxBatchSize }}
 
 # The URL of the pyroscope instance to use for continuous profiling.
 # If empty, continuous profiling is disabled.
-pyroscope_url = {{ .Instrumentation.PyroscopeURL }}
+pyroscope_url = "{{ .Instrumentation.PyroscopeURL }}"
 
 # When true, tracing data is added to the continuous profiling
 # performed by pyroscope.
