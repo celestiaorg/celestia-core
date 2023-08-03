@@ -2,6 +2,7 @@ package node
 
 import (
 	"github.com/pyroscope-io/client/pyroscope"
+	"github.com/tendermint/tendermint/config"
 
 	otelpyroscope "github.com/pyroscope-io/otel-profiling-go"
 	"go.opentelemetry.io/otel"
@@ -12,7 +13,7 @@ import (
 )
 
 // setupPyroscope sets up pyroscope profiler and optionally tracing.
-func setupPyroscope(addr, nodeID string, tracing bool) (*pyroscope.Profiler, *sdktrace.TracerProvider, error) {
+func setupPyroscope(instCfg *config.InstrumentationConfig, nodeID string) (*pyroscope.Profiler, *sdktrace.TracerProvider, error) {
 	tp, err := tracerProviderDebug()
 	if err != nil {
 		return nil, nil, err
@@ -20,8 +21,8 @@ func setupPyroscope(addr, nodeID string, tracing bool) (*pyroscope.Profiler, *sd
 
 	labels := map[string]string{"node_id": nodeID}
 
-	if tracing {
-		if _, err = setupTracing(addr, labels); err != nil {
+	if instCfg.PyroscopeTrace {
+		if _, err = setupTracing(instCfg.PyroscopeURL, labels); err != nil {
 			return nil, nil, err
 		}
 	} else {
@@ -30,9 +31,10 @@ func setupPyroscope(addr, nodeID string, tracing bool) (*pyroscope.Profiler, *sd
 
 	pflr, err := pyroscope.Start(pyroscope.Config{
 		ApplicationName: "celestia",
-		ServerAddress:   addr,
+		ServerAddress:   instCfg.PyroscopeURL,
 		Logger:          pyroscope.StandardLogger,
 		Tags:            labels,
+		ProfileTypes:    toPyroscopeProfiles(instCfg.PyroscopeProfileTypes),
 	})
 
 	return pflr, tp, err
@@ -72,4 +74,12 @@ func tracerProviderDebug() (*sdktrace.TracerProvider, error) {
 		return nil, err
 	}
 	return sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sdktrace.NewBatchSpanProcessor(exp))), nil
+}
+
+func toPyroscopeProfiles(profiles []string) []pyroscope.ProfileType {
+	pts := make([]pyroscope.ProfileType, 0, len(profiles))
+	for _, p := range profiles {
+		pts = append(pts, pyroscope.ProfileType(p))
+	}
+	return pts
 }

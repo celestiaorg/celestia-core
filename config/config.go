@@ -1197,6 +1197,12 @@ type InstrumentationConfig struct {
 
 	// PyroscopeProfile is a flag that enables tracing with pyroscope.
 	PyroscopeTrace bool `mapstructure:"pyroscope_trace"`
+
+	// PyroscopeProfileTypes is a list of profile types to be traced with
+	// pyroscope. Available profile types are: cpu, alloc_objects, alloc_space,
+	// inuse_objects, inuse_space, goroutines, mutex_count, mutex_duration,
+	// block_count, block_duration.
+	PyroscopeProfileTypes []string `mapstructure:"pyroscope_profile_types"`
 }
 
 // DefaultInstrumentationConfig returns a default configuration for metrics
@@ -1213,6 +1219,16 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		InfluxBatchSize:      20,
 		PyroscopeURL:         "",
 		PyroscopeTrace:       false,
+		PyroscopeProfileTypes: []string{
+			"cpu",
+			"alloc_objects",
+			"inuse_objects",
+			"goroutines",
+			"mutex_count",
+			"mutex_duration",
+			"block_count",
+			"block_duration",
+		},
 	}
 }
 

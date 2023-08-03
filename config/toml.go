@@ -565,6 +565,12 @@ pyroscope_url = "{{ .Instrumentation.PyroscopeURL }}"
 # performed by pyroscope.
 pyroscope_trace = {{ .Instrumentation.PyroscopeTrace }}
 
+# pyroscope_profile_types is a list of profile types to be traced with
+# pyroscope. Available profile types are: cpu, alloc_objects, alloc_space,
+# inuse_objects, inuse_space, goroutines, mutex_count, mutex_duration,
+# block_count, block_duration.
+pyroscope_profile_types = [{{ range .Instrumentation.PyroscopeProfileTypes }}{{ printf "%q, " . }}{{end}}]
+
 `
 
 /****** these are for test settings ***********/

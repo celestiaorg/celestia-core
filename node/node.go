@@ -1030,9 +1030,8 @@ func (n *Node) OnStart() error {
 
 	if n.config.Instrumentation.PyroscopeURL != "" {
 		profiler, tracer, err := setupPyroscope(
-			n.config.Instrumentation.PyroscopeURL,
+			n.config.Instrumentation,
 			string(n.nodeKey.ID()),
-			n.config.Instrumentation.PyroscopeTrace,
 		)
 		if err != nil {
 			return err

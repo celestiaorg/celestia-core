@@ -172,6 +172,7 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.Instrumentation.InfluxToken = node.InfluxDBToken
 	cfg.Instrumentation.PyroscopeTrace = node.PyroscopeTrace
 	cfg.Instrumentation.PyroscopeURL = node.PyroscopeURL
+	cfg.Instrumentation.PyroscopeProfileTypes = node.PyroscopeProfileTypes
 
 	switch node.ABCIProtocol {
 	case e2e.ProtocolUNIX:
