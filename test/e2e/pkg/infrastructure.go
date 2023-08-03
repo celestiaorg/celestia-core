@@ -41,7 +41,7 @@ type InfrastructureData struct {
 	// Must be specified if 'influxdb-url' is specified.
 	InfluxDBToken string `json:"influxdb_token,omitempty"`
 
-	// PyroscopURL is the URL of the pyroscope instance to use for continuous
+	// PyroscopeURL is the URL of the pyroscope instance to use for continuous
 	// profiling. If not specified, data will not be collected.
 	PyroscopeURL string `json:"pyroscope_url,omitempty"`
 
