@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/tendermint/tendermint/abci/types"
 	cmtnet "github.com/tendermint/tendermint/libs/net"
@@ -88,8 +89,7 @@ func (cli *grpcClient) OnStart() error {
 
 RETRY_LOOP:
 	for {
-		//nolint:staticcheck // SA1019 Existing use of deprecated but supported dial option.
-		conn, err := grpc.Dial(cli.addr, grpc.WithInsecure(), grpc.WithContextDialer(dialerFunc))
+		conn, err := grpc.Dial(cli.addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc))
 		if err != nil {
 			if cli.mustConnect {
 				return err

@@ -556,6 +556,21 @@ influx_org = "{{ .Instrumentation.InfluxOrg }}"
 
 # The size of the batches that are sent to the database.
 influx_batch_size = {{ .Instrumentation.InfluxBatchSize }}
+
+# The URL of the pyroscope instance to use for continuous profiling.
+# If empty, continuous profiling is disabled.
+pyroscope_url = "{{ .Instrumentation.PyroscopeURL }}"
+
+# When true, tracing data is added to the continuous profiling
+# performed by pyroscope.
+pyroscope_trace = {{ .Instrumentation.PyroscopeTrace }}
+
+# pyroscope_profile_types is a list of profile types to be traced with
+# pyroscope. Available profile types are: cpu, alloc_objects, alloc_space,
+# inuse_objects, inuse_space, goroutines, mutex_count, mutex_duration,
+# block_count, block_duration.
+pyroscope_profile_types = [{{ range .Instrumentation.PyroscopeProfileTypes }}{{ printf "%q, " . }}{{end}}]
+
 `
 
 /****** these are for test settings ***********/
