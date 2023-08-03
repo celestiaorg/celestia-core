@@ -1029,7 +1029,7 @@ func (n *Node) OnStart() error {
 	}
 
 	if n.config.Instrumentation.PyroscopeURL != "" {
-		profiler, tracer, err := n.setupPyroscope(
+		profiler, tracer, err := setupPyroscope(
 			n.config.Instrumentation.PyroscopeURL,
 			string(n.nodeKey.ID()),
 			n.config.Instrumentation.PyroscopeTrace,

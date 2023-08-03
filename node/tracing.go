@@ -12,7 +12,7 @@ import (
 )
 
 // setupPyroscope sets up pyroscope profiler and optionally tracing.
-func (n *Node) setupPyroscope(addr, nodeID string, tracing bool) (*pyroscope.Profiler, *sdktrace.TracerProvider, error) {
+func setupPyroscope(addr, nodeID string, tracing bool) (*pyroscope.Profiler, *sdktrace.TracerProvider, error) {
 	tp, err := tracerProviderDebug()
 	if err != nil {
 		return nil, nil, err
