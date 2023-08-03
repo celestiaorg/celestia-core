@@ -8,11 +8,13 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	cfg "github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/libs/clist"
 	"github.com/tendermint/tendermint/libs/log"
 	cmtsync "github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/p2p"
+	"github.com/tendermint/tendermint/pkg/trace"
 	protomem "github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"github.com/tendermint/tendermint/types"
 )
@@ -22,9 +24,10 @@ import (
 // peers you received it from.
 type Reactor struct {
 	p2p.BaseReactor
-	config  *cfg.MempoolConfig
-	mempool *TxMempool
-	ids     *mempoolIDs
+	config      *cfg.MempoolConfig
+	mempool     *TxMempool
+	ids         *mempoolIDs
+	evCollector *trace.Client
 }
 
 type mempoolIDs struct {
@@ -91,11 +94,12 @@ func newMempoolIDs() *mempoolIDs {
 }
 
 // NewReactor returns a new Reactor with the given config and mempool.
-func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool) *Reactor {
+func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool, evCollector *trace.Client) *Reactor {
 	memR := &Reactor{
-		config:  config,
-		mempool: mempool,
-		ids:     newMempoolIDs(),
+		config:      config,
+		mempool:     mempool,
+		ids:         newMempoolIDs(),
+		evCollector: evCollector,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR
@@ -160,6 +164,13 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	memR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
 	switch msg := e.Message.(type) {
 	case *protomem.Txs:
+		for _, tx := range msg.Txs {
+			memR.evCollector.WritePoint("mempool", "v1", map[string]interface{}{
+				"receive_tx": bytes.HexBytes(types.Tx(tx).Hash()).String(),
+				"peer":       e.Src.ID(),
+				"size":       len(tx),
+			})
+		}
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received tmpty txs from peer", "src", e.Src)
@@ -262,6 +273,11 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		// NOTE: Transaction batching was disabled due to
 		// https://github.com/tendermint/tendermint/issues/5796
 		if !memTx.HasPeer(peerID) {
+			memR.evCollector.WritePoint("mempool", "v1", map[string]interface{}{
+				"broadcast_tx": bytes.HexBytes(memTx.tx.Hash()).String(),
+				"peer":         peerID,
+				"size":         len(memTx.tx),
+			})
 			success := p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 				ChannelID: mempool.MempoolChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{memTx.tx}},

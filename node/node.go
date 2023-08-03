@@ -377,6 +377,7 @@ func createMempoolAndMempoolReactor(
 	state sm.State,
 	memplMetrics *mempl.Metrics,
 	logger log.Logger,
+	evCollector *trace.Client,
 ) (mempl.Mempool, p2p.Reactor) {
 	switch config.Mempool.Version {
 	case cfg.MempoolV2:
@@ -393,8 +394,9 @@ func createMempoolAndMempoolReactor(
 		reactor, err := mempoolv2.NewReactor(
 			mp,
 			&mempoolv2.ReactorOptions{
-				ListenOnly: !config.Mempool.Broadcast,
-				MaxTxSize:  config.Mempool.MaxTxBytes,
+				ListenOnly:  !config.Mempool.Broadcast,
+				MaxTxSize:   config.Mempool.MaxTxBytes,
+				EvCollector: evCollector,
 			},
 		)
 		if err != nil {
@@ -421,6 +423,7 @@ func createMempoolAndMempoolReactor(
 		reactor := mempoolv1.NewReactor(
 			config.Mempool,
 			mp,
+			evCollector,
 		)
 		if config.Consensus.WaitForTxs() {
 			mp.EnableTxsAvailable()
@@ -859,7 +862,7 @@ func NewNode(config *cfg.Config,
 	}
 
 	// Make MempoolReactor
-	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger)
+	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger, influxdbClient)
 
 	// Make Evidence Reactor
 	evidenceReactor, evidencePool, err := createEvidenceReactor(config, dbProvider, stateDB, blockStore, logger)

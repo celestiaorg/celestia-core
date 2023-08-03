@@ -14,6 +14,7 @@ import (
 
 	"github.com/tendermint/tendermint/abci/example/kvstore"
 	"github.com/tendermint/tendermint/p2p/mock"
+	"github.com/tendermint/tendermint/pkg/trace"
 
 	cfg "github.com/tendermint/tendermint/config"
 
@@ -133,7 +134,7 @@ func makeAndConnectReactors(config *cfg.Config, n int) []*Reactor {
 		mempool, cleanup := newMempoolWithApp(cc)
 		defer cleanup()
 
-		reactors[i] = NewReactor(config.Mempool, mempool) // so we dont start the consensus states
+		reactors[i] = NewReactor(config.Mempool, mempool, &trace.Client{}) // so we dont start the consensus states
 		reactors[i].SetLogger(logger.With("validator", i))
 	}
 

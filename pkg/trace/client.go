@@ -134,7 +134,7 @@ func (c *Client) IsCollecting() bool {
 // timestamp to the current time. If the underlying client is nil, it does
 // nothing. The "table" arg is used as the influxdb "measurement" for the point.
 // If other tags are needed, use WriteCustomPoint.
-func (c *Client) WritePoint(table string, fields map[string]interface{}) {
+func (c *Client) WritePoint(table, tagType string, fields map[string]interface{}) {
 	if !c.IsCollecting() {
 		return
 	}
@@ -142,6 +142,7 @@ func (c *Client) WritePoint(table string, fields map[string]interface{}) {
 	tags := map[string]string{
 		NodeIDTag:  c.nodeID,
 		ChainIDTag: c.chainID,
+		"type":     tagType,
 	}
 	p := write.NewPoint(table, tags, fields, time.Now())
 	writeAPI.WritePoint(p)
