@@ -32,7 +32,7 @@ func setupPyroscope(instCfg *config.InstrumentationConfig, nodeID string) (*pyro
 	pflr, err := pyroscope.Start(pyroscope.Config{
 		ApplicationName: "celestia",
 		ServerAddress:   instCfg.PyroscopeURL,
-		Logger:          pyroscope.StandardLogger,
+		Logger:          nil, // use the noop logger by passing nil
 		Tags:            labels,
 		ProfileTypes:    toPyroscopeProfiles(instCfg.PyroscopeProfileTypes),
 	})
