@@ -1191,6 +1191,11 @@ type InstrumentationConfig struct {
 	// InfluxBatchSize is the number of points to write in a single batch.
 	InfluxBatchSize int `mapstructure:"influx_batch_size"`
 
+	// TracingProfiles is a list of profile types to be traced with influxdb.
+	// All available profiles are: mempool_tx, mempool_state, consensus_state,
+	// votes, and p2p.
+	TracingTables []string `mapstructure:"tracing_profiles"`
+
 	// PyroscopeURL is the pyroscope url used to establish a connection with a
 	// pyroscope continuous profiling server.
 	PyroscopeURL string `mapstructure:"pyroscope_url"`
@@ -1217,8 +1222,15 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		InfluxOrg:            "celestia",
 		InfluxBucket:         "e2e",
 		InfluxBatchSize:      20,
-		PyroscopeURL:         "",
-		PyroscopeTrace:       false,
+		TracingTables: []string{
+			"mempool_tx",
+			"mempool_state",
+			"consensus_state",
+			"votes",
+			"p2p",
+		},
+		PyroscopeURL:   "",
+		PyroscopeTrace: false,
 		PyroscopeProfileTypes: []string{
 			"cpu",
 			"alloc_objects",

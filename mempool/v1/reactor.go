@@ -18,11 +18,6 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-const (
-	// TracingTag is the tag used for tracing the v1 mempool reactor.
-	TracingTag = "v1"
-)
-
 // Reactor handles mempool tx broadcasting amongst peers.
 // It maintains a map from peer ID to counter, to prevent gossiping txs to the
 // peers you received it from.
@@ -169,10 +164,12 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	switch msg := e.Message.(type) {
 	case *protomem.Txs:
 		for _, tx := range msg.Txs {
-			memR.evCollector.WritePoint(
-				mempool.MeasurementTracingTag,
-				TracingTag,
-				mempool.TxTracingPoint(mempool.ReceiveTracingFieldValue, e.Src.ID(), tx),
+			mempool.WriteTxTracingPoint(
+				memR.evCollector,
+				e.Src.ID(),
+				tx,
+				mempool.TransferTypeDownload,
+				mempool.V1VersionFieldValue,
 			)
 		}
 		protoTxs := msg.GetTxs()
@@ -277,11 +274,6 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		// NOTE: Transaction batching was disabled due to
 		// https://github.com/tendermint/tendermint/issues/5796
 		if !memTx.HasPeer(peerID) {
-			memR.evCollector.WritePoint(
-				mempool.MeasurementTracingTag,
-				TracingTag,
-				mempool.TxTracingPoint(mempool.SendTracingFieldValue, peer.ID(), memTx.tx),
-			)
 			success := p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 				ChannelID: mempool.MempoolChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{memTx.tx}},
@@ -290,6 +282,13 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 				time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
 				continue
 			}
+			mempool.WriteTxTracingPoint(
+				memR.evCollector,
+				peer.ID(),
+				memTx.tx,
+				mempool.TransferTypeUpload,
+				mempool.V1VersionFieldValue,
+			)
 		}
 
 		select {

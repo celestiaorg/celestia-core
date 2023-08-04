@@ -9,7 +9,6 @@ import (
 
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/crypto/tmhash"
-	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/p2p"
@@ -30,9 +29,6 @@ const (
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
 	// the node received the tx
 	peerHeightDiff = 10
-
-	// TracingTag is the tracing tag for the cat pool
-	TracingTag = "cat"
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -213,11 +209,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// flooded the network with transactions.
 	case *protomem.Txs:
 		for _, tx := range msg.Txs {
-			memR.evCollector.WritePoint(
-				mempool.MeasurementTracingTag,
-				TracingTag,
-				mempool.TxTracingPoint(mempool.ReceiveTracingFieldValue, e.Src.ID(), tx),
-			)
+			mempool.WriteTxTracingPoint(memR.evCollector, e.Src.ID(), tx, mempool.TransferTypeDownload, mempool.CatVersionFieldValue)
 		}
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
@@ -261,9 +253,13 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
 	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
-		memR.evCollector.WritePoint(mempool.MeasurementTracingTag, TracingTag, map[string]interface{}{
-			"seen_tx": cmtbytes.HexBytes(msg.TxKey).String(),
-		})
+		mempool.WriteStateTracingPoint(
+			memR.evCollector,
+			e.Src.ID(),
+			mempool.SeenTxStateUpdateFieldValue,
+			mempool.TransferTypeDownload,
+			mempool.CatVersionFieldValue,
+		)
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent SeenTx with incorrect tx key", "err", err)
@@ -291,9 +287,13 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
 	case *protomem.WantTx:
-		memR.evCollector.WritePoint(mempool.MeasurementTracingTag, TracingTag, map[string]interface{}{
-			"want_tx": cmtbytes.HexBytes(msg.TxKey).String(),
-		})
+		mempool.WriteStateTracingPoint(
+			memR.evCollector,
+			e.Src.ID(),
+			mempool.WantTxStateUpdateFieldValue,
+			mempool.TransferTypeDownload,
+			mempool.CatVersionFieldValue,
+		)
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent WantTx with incorrect tx key", "err", err)
@@ -303,10 +303,12 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		tx, has := memR.mempool.Get(txKey)
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
-			memR.evCollector.WritePoint(
-				mempool.MeasurementTracingTag,
-				TracingTag,
-				mempool.TxTracingPoint(mempool.SendTracingFieldValue, e.Src.ID(), tx),
+			mempool.WriteTxTracingPoint(
+				memR.evCollector,
+				e.Src.ID(),
+				msg.TxKey,
+				mempool.TransferTypeUpload,
+				mempool.CatVersionFieldValue,
 			)
 			memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
 			if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint:staticcheck

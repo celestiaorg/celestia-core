@@ -58,6 +58,10 @@ type Client struct {
 	// nodeID is added as a tag all points
 	nodeID string
 
+	// tables is a map from table name to the schema of that table that are
+	// configured to be collected.
+	tables map[string]struct{}
+
 	// Client is the influxdb client. This field is nil if no connection is
 	// established.
 	Client influxdb2.Client
@@ -87,6 +91,7 @@ func NewClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, no
 		cancel:  cancel,
 		chainID: chainID,
 		nodeID:  nodeID,
+		tables:  sliceToMap(cfg.TracingTables),
 	}
 	if cfg == nil || cfg.InfluxURL == "" {
 		return cli, nil
@@ -125,8 +130,12 @@ func (c *Client) logErrors(logger log.Logger) {
 }
 
 // IsCollecting returns true if the client is collecting events.
-func (c *Client) IsCollecting() bool {
-	return c.Client != nil
+func (c *Client) IsCollecting(table string) bool {
+	if c.Client == nil {
+		return false
+	}
+	_, has := c.tables[table]
+	return has
 }
 
 // WritePoint async writes a point to influxdb. To enforce the schema, it
@@ -134,16 +143,23 @@ func (c *Client) IsCollecting() bool {
 // timestamp to the current time. If the underlying client is nil, it does
 // nothing. The "table" arg is used as the influxdb "measurement" for the point.
 // If other tags are needed, use WriteCustomPoint.
-func (c *Client) WritePoint(table, tagType string, fields map[string]interface{}) {
-	if !c.IsCollecting() {
+func (c *Client) WritePoint(table string, fields map[string]interface{}) {
+	if !c.IsCollecting(table) {
 		return
 	}
 	writeAPI := c.Client.WriteAPI(c.cfg.InfluxOrg, c.cfg.InfluxBucket)
 	tags := map[string]string{
 		NodeIDTag:  c.nodeID,
 		ChainIDTag: c.chainID,
-		"type":     tagType,
 	}
 	p := write.NewPoint(table, tags, fields, time.Now())
 	writeAPI.WritePoint(p)
+}
+
+func sliceToMap([]string) map[string]struct{} {
+	m := make(map[string]struct{})
+	for _, s := range []string{} {
+		m[s] = struct{}{}
+	}
+	return m
 }
