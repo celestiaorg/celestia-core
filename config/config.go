@@ -61,6 +61,12 @@ var (
 
 	minSubscriptionBufferSize     = 100
 	defaultSubscriptionBufferSize = 200
+
+	// DefaultInfluxTables is a list of tables that are used for storing traces.
+	// This global var is filled by an init function in the schema package. This
+	// allows for the schema package to contain all the relevant logic while
+	// avoiding import cycles.
+	DefaultInfluxTables = []string{}
 )
 
 // Config defines the top level configuration for a CometBFT node
@@ -1191,10 +1197,9 @@ type InstrumentationConfig struct {
 	// InfluxBatchSize is the number of points to write in a single batch.
 	InfluxBatchSize int `mapstructure:"influx_batch_size"`
 
-	// TracingProfiles is a list of profile types to be traced with influxdb.
-	// All available profiles are: mempool_tx, mempool_state, consensus_state,
-	// votes, and p2p.
-	TracingTables []string `mapstructure:"tracing_profiles"`
+	// InfluxTables is the list of tables that will be traced. See the
+	// pkg/trace/schema for a complete list of tables.
+	InfluxTables []string `mapstructure:"influx_tables"`
 
 	// PyroscopeURL is the pyroscope url used to establish a connection with a
 	// pyroscope continuous profiling server.
@@ -1222,15 +1227,9 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		InfluxOrg:            "celestia",
 		InfluxBucket:         "e2e",
 		InfluxBatchSize:      20,
-		TracingTables: []string{
-			"mempool_tx",
-			"mempool_state",
-			"consensus_state",
-			"votes",
-			"p2p",
-		},
-		PyroscopeURL:   "",
-		PyroscopeTrace: false,
+		InfluxTables:         DefaultInfluxTables,
+		PyroscopeURL:         "",
+		PyroscopeTrace:       false,
 		PyroscopeProfileTypes: []string{
 			"cpu",
 			"alloc_objects",

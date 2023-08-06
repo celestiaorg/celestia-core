@@ -13,6 +13,7 @@ import (
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	protomem "github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"github.com/tendermint/tendermint/types"
 )
@@ -209,7 +210,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// flooded the network with transactions.
 	case *protomem.Txs:
 		for _, tx := range msg.Txs {
-			mempool.WriteTxTracingPoint(memR.evCollector, e.Src.ID(), tx, mempool.TransferTypeDownload, mempool.CatVersionFieldValue)
+			schema.WriteMempoolTx(memR.evCollector, e.Src.ID(), tx, schema.TransferTypeDownload, schema.CatVersionFieldValue)
 		}
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
@@ -253,12 +254,12 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
 	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
-		mempool.WriteStateTracingPoint(
+		schema.WriteMempoolPeerState(
 			memR.evCollector,
 			e.Src.ID(),
-			mempool.SeenTxStateUpdateFieldValue,
-			mempool.TransferTypeDownload,
-			mempool.CatVersionFieldValue,
+			schema.SeenTxStateUpdateFieldValue,
+			schema.TransferTypeDownload,
+			schema.CatVersionFieldValue,
 		)
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
@@ -287,12 +288,12 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
 	case *protomem.WantTx:
-		mempool.WriteStateTracingPoint(
+		schema.WriteMempoolPeerState(
 			memR.evCollector,
 			e.Src.ID(),
-			mempool.WantTxStateUpdateFieldValue,
-			mempool.TransferTypeDownload,
-			mempool.CatVersionFieldValue,
+			schema.WantTxStateUpdateFieldValue,
+			schema.TransferTypeDownload,
+			schema.CatVersionFieldValue,
 		)
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
@@ -303,12 +304,12 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		tx, has := memR.mempool.Get(txKey)
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
-			mempool.WriteTxTracingPoint(
+			schema.WriteMempoolTx(
 				memR.evCollector,
 				e.Src.ID(),
 				msg.TxKey,
-				mempool.TransferTypeUpload,
-				mempool.CatVersionFieldValue,
+				schema.TransferTypeUpload,
+				schema.CatVersionFieldValue,
 			)
 			memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
 			if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint:staticcheck

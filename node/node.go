@@ -522,7 +522,7 @@ func createConsensusReactor(config *cfg.Config,
 		mempool,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
-		cs.SetEventCollector(evCollector),
+		cs.SetTraceClient(evCollector),
 	)
 	consensusState.SetLogger(consensusLogger)
 	if privValidator != nil {

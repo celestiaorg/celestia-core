@@ -16,9 +16,9 @@ const (
 	ChainIDTag = "chain_id"
 )
 
-// EventCollectorConfig is the influxdb client configuration used for
+// ClientConfigConfig is the influxdb client configuration used for
 // collecting events.
-type EventCollectorConfig struct {
+type ClientConfigConfig struct {
 	// URL is the influxdb url.
 	URL string `mapstructure:"influx_url"`
 	// Token is the influxdb token.
@@ -29,16 +29,6 @@ type EventCollectorConfig struct {
 	Bucket string `mapstructure:"influx_bucket"`
 	// BatchSize is the number of points to write in a single batch.
 	BatchSize int `mapstructure:"influx_batch_size"`
-}
-
-// DefaultEventCollectorConfig returns the default configuration.
-func DefaultEventCollectorConfig() EventCollectorConfig {
-	return EventCollectorConfig{
-		URL:       "",
-		Org:       "celestia",
-		Bucket:    "e2e",
-		BatchSize: 10,
-	}
 }
 
 // Client is an influxdb client that can be used to push events to influxdb. It
@@ -91,7 +81,7 @@ func NewClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, no
 		cancel:  cancel,
 		chainID: chainID,
 		nodeID:  nodeID,
-		tables:  sliceToMap(cfg.TracingTables),
+		tables:  sliceToMap(cfg.InfluxTables),
 	}
 	if cfg == nil || cfg.InfluxURL == "" {
 		return cli, nil

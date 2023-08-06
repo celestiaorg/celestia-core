@@ -14,6 +14,7 @@ import (
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	protomem "github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"github.com/tendermint/tendermint/types"
 )
@@ -164,12 +165,12 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	switch msg := e.Message.(type) {
 	case *protomem.Txs:
 		for _, tx := range msg.Txs {
-			mempool.WriteTxTracingPoint(
+			schema.WriteMempoolTx(
 				memR.evCollector,
 				e.Src.ID(),
 				tx,
-				mempool.TransferTypeDownload,
-				mempool.V1VersionFieldValue,
+				schema.TransferTypeDownload,
+				schema.V1VersionFieldValue,
 			)
 		}
 		protoTxs := msg.GetTxs()
@@ -282,12 +283,12 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 				time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
 				continue
 			}
-			mempool.WriteTxTracingPoint(
+			schema.WriteMempoolTx(
 				memR.evCollector,
 				peer.ID(),
 				memTx.tx,
-				mempool.TransferTypeUpload,
-				mempool.V1VersionFieldValue,
+				schema.TransferTypeUpload,
+				schema.V1VersionFieldValue,
 			)
 		}
 

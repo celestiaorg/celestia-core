@@ -18,8 +18,8 @@ each step of consensus is reached for each node.
 
 ```go
 
-	if cs.eventCollector.IsCollecting() {
-			cs.eventCollector.WritePoint("consensus", map[string]interface{}{
+	if cs.traceClient.IsCollecting() {
+			cs.traceClient.WritePoint("consensus", map[string]interface{}{
 				"roundData": []interface{}{rs.Height, rs.Round, rs.Step},
 			})
 	}

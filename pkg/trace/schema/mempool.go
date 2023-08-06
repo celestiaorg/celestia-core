@@ -1,4 +1,4 @@
-package mempool
+package schema
 
 import (
 	"github.com/tendermint/tendermint/libs/bytes"
@@ -7,36 +7,46 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-// Measurement names for mempool tracing. These should be used as the name of
-// the measurement to enforce the mempool tracing schema. The measurement name
-// should be the same for both receiving and sending a tx. This is similar to a
-// table in SQL.
+// Table names for mempool tracing. These should be used as the name of the
+// table (aka an influxdb measurement) to enforce the mempool tracing schema.
+// The measurement name should be the same for both receiving and sending a tx.
 const (
-	// TxMeasurement is the tracing "measurement" (aka table) for the mempool
+	// MempoolTxTable is the tracing "measurement" (aka table) for the mempool
 	// that stores tracing data related to gossiping transactions.
-	TxMeasurement = "mempool_tx"
+	//
+	// The schema for this table is:
+	// | time | peerID | tx size | tx hash | transfer type | mempool version |
+	MempoolTxTable = "mempool_tx"
 
-	// SeenMeasurement is the tracing "measurement" (aka table) for the mempool
-	// that stores tracing data related to gossiping mempool state, specifically
-	// "SeenTx".
-	StateMeasurement = "mempool_state"
+	// MempoolPeerState is the tracing "measurement" (aka table) for the mempool
+	// that stores tracing data related to mempool state, specifically
+	// the gossipping of "SeenTx" and "WantTx".
+	//
+	// The schema for this table is:
+	// | time | peerID | update type | mempool version |
+	MempoolPeerStateTable = "mempool_peer_state"
+
+	// LocalTable is the tracing "measurement" (aka table) for the local mempool
+	// updates, such as when a tx is added or removed.
+	// TODO: actually implement the local mempool tracing
+	// LocalTable = "mempool_local"
 )
 
 // Field keys for mempool tracing. These should be used as the keys for the
 // fields to enforce the mempool tracing schema.
 const (
-	// TxTracingFieldKey is the tracing field key for receiving for sending a
+	// TxFieldKey is the tracing field key for receiving for sending a
 	// tx. This should take the form of a tx hash as the value.
-	TxTracingFieldKey = "tx"
+	TxFieldKey = "tx"
 
-	// SizeTracingFieldKey is the tracing field key for the size of a tx. This
+	// SizeFieldKey is the tracing field key for the size of a tx. This
 	// should take the form of the size of the tx as the value.
-	SizeTracingFieldKey = "size"
+	SizeFieldKey = "size"
 
-	// PeerTracingFieldKey is the tracing field key for the peer that sent or
+	// PeerFieldKey is the tracing field key for the peer that sent or
 	// received a tx. This should take the form of the peer's address as the
 	// value.
-	PeerTracingFieldKey = "peer"
+	PeerFieldKey = "peer"
 
 	// TransferTypeFieldKey is the tracing field key for the class of a tx.
 	TransferTypeFieldKey = "transfer_type"
@@ -85,35 +95,47 @@ const (
 	AddedTxStateUpdateFieldValue = "added_tx"
 )
 
-// txTracingPoint returns a tracing point for a tx using the predetermined
-// schema for mempool tracing.
-func txTracingPoint(peer p2p.ID, tx []byte, transferType, version string) map[string]interface{} {
-	return map[string]interface{}{
-		TxTracingFieldKey:    bytes.HexBytes(types.Tx(tx).Hash()).String(),
-		PeerTracingFieldKey:  peer,
-		SizeTracingFieldKey:  len(tx),
-		TransferTypeFieldKey: transferType,
-		VersionFieldKey:      version,
+// MempoolTables returns the list of tables for mempool tracing.
+func MempoolTables() []string {
+	return []string{
+		MempoolTxTable,
+		MempoolPeerStateTable,
 	}
 }
 
-// WriteTxTracingPoint writes a tracing point for a tx using the predetermined
+// WriteMempoolTx writes a tracing point for a tx using the predetermined
 // schema for mempool tracing. This is used to create a table in the following
 // schema:
 //
 // | time | peerID | tx size | tx hash | transfer type | mempool version |
-func WriteTxTracingPoint(client *trace.Client, peer p2p.ID, tx []byte, transferType, version string) {
-	client.WritePoint(TxMeasurement, txTracingPoint(peer, tx, transferType, version))
+func WriteMempoolTx(client *trace.Client, peer p2p.ID, tx []byte, transferType, version string) {
+	// this check is redundant to what is checked during WritePoint, although it
+	// is an optimization to avoid allocations from the txTracingPoint function
+	if !client.IsCollecting(MempoolTxTable) {
+		return
+	}
+	client.WritePoint(MempoolTxTable, map[string]interface{}{
+		TxFieldKey:           bytes.HexBytes(types.Tx(tx).Hash()).String(),
+		PeerFieldKey:         peer,
+		SizeFieldKey:         len(tx),
+		TransferTypeFieldKey: transferType,
+		VersionFieldKey:      version,
+	})
 }
 
-// WriteStateTracingPoint writes a tracing point for the mempool state using
+// WriteMempoolPeerState writes a tracing point for the mempool state using
 // the predetermined schema for mempool tracing. This is used to create a table
 // in the following schema:
 //
 // | time | peerID | transfer type | mempool version | state update |
-func WriteStateTracingPoint(client *trace.Client, peer p2p.ID, stateUpdate, transferType, version string) {
-	client.WritePoint(StateMeasurement, map[string]interface{}{
-		PeerTracingFieldKey:  peer,
+func WriteMempoolPeerState(client *trace.Client, peer p2p.ID, stateUpdate, transferType, version string) {
+	// this check is redundant to what is checked during WritePoint, although it
+	// is an optimization to avoid allocations from creating the map of fields.
+	if !client.IsCollecting(RoundStateTable) {
+		return
+	}
+	client.WritePoint(RoundStateTable, map[string]interface{}{
+		PeerFieldKey:         peer,
 		TransferTypeFieldKey: transferType,
 		VersionFieldKey:      version,
 		"state_update":       stateUpdate,
