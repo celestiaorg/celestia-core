@@ -41,7 +41,7 @@ type Reactor struct {
 	mempool     *TxPool
 	ids         *mempoolIDs
 	requests    *requestScheduler
-	evCollector *trace.Client
+	traceClient *trace.Client
 }
 
 type ReactorOptions struct {
@@ -56,8 +56,8 @@ type ReactorOptions struct {
 	// arrive before issuing a new request to a different peer
 	MaxGossipDelay time.Duration
 
-	// EvCollector is the trace client for collecting trace level events
-	EvCollector *trace.Client
+	// TraceClient is the trace client for collecting trace level events
+	TraceClient *trace.Client
 }
 
 func (opts *ReactorOptions) VerifyAndComplete() error {
@@ -210,7 +210,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// flooded the network with transactions.
 	case *protomem.Txs:
 		for _, tx := range msg.Txs {
-			schema.WriteMempoolTx(memR.evCollector, e.Src.ID(), tx, schema.TransferTypeDownload, schema.CatVersionFieldValue)
+			schema.WriteMempoolTx(memR.traceClient, e.Src.ID(), tx, schema.TransferTypeDownload, schema.CatVersionFieldValue)
 		}
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
@@ -255,7 +255,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
 		schema.WriteMempoolPeerState(
-			memR.evCollector,
+			memR.traceClient,
 			e.Src.ID(),
 			schema.SeenTxStateUpdateFieldValue,
 			schema.TransferTypeDownload,
@@ -289,7 +289,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// transaction and broadcast it to the peer. We may no longer have the transaction
 	case *protomem.WantTx:
 		schema.WriteMempoolPeerState(
-			memR.evCollector,
+			memR.traceClient,
 			e.Src.ID(),
 			schema.WantTxStateUpdateFieldValue,
 			schema.TransferTypeDownload,
@@ -305,7 +305,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			schema.WriteMempoolTx(
-				memR.evCollector,
+				memR.traceClient,
 				e.Src.ID(),
 				msg.TxKey,
 				schema.TransferTypeUpload,

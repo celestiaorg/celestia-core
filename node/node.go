@@ -377,7 +377,7 @@ func createMempoolAndMempoolReactor(
 	state sm.State,
 	memplMetrics *mempl.Metrics,
 	logger log.Logger,
-	evCollector *trace.Client,
+	traceClient *trace.Client,
 ) (mempl.Mempool, p2p.Reactor) {
 	switch config.Mempool.Version {
 	case cfg.MempoolV2:
@@ -396,7 +396,7 @@ func createMempoolAndMempoolReactor(
 			&mempoolv2.ReactorOptions{
 				ListenOnly:  !config.Mempool.Broadcast,
 				MaxTxSize:   config.Mempool.MaxTxBytes,
-				EvCollector: evCollector,
+				TraceClient: traceClient,
 			},
 		)
 		if err != nil {
@@ -423,7 +423,7 @@ func createMempoolAndMempoolReactor(
 		reactor := mempoolv1.NewReactor(
 			config.Mempool,
 			mp,
-			evCollector,
+			traceClient,
 		)
 		if config.Consensus.WaitForTxs() {
 			mp.EnableTxsAvailable()
@@ -512,7 +512,7 @@ func createConsensusReactor(config *cfg.Config,
 	waitSync bool,
 	eventBus *types.EventBus,
 	consensusLogger log.Logger,
-	evCollector *trace.Client,
+	traceClient *trace.Client,
 ) (*cs.Reactor, *cs.State) {
 	consensusState := cs.NewState(
 		config.Consensus,
@@ -522,13 +522,18 @@ func createConsensusReactor(config *cfg.Config,
 		mempool,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
-		cs.SetTraceClient(evCollector),
+		cs.SetTraceClient(traceClient),
 	)
 	consensusState.SetLogger(consensusLogger)
 	if privValidator != nil {
 		consensusState.SetPrivValidator(privValidator)
 	}
-	consensusReactor := cs.NewReactor(consensusState, waitSync, cs.ReactorMetrics(csMetrics))
+	consensusReactor := cs.NewReactor(
+		consensusState,
+		waitSync,
+		cs.ReactorMetrics(csMetrics),
+		cs.ReactorTracing(traceClient),
+	)
 	consensusReactor.SetLogger(consensusLogger)
 	// services which will be publishing and/or subscribing for messages (events)
 	// consensusReactor will set it on consensusState and blockExecutor
