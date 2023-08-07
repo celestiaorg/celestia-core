@@ -87,10 +87,11 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		return nil, err
 	}
 	memR := &Reactor{
-		opts:     opts,
-		mempool:  mempool,
-		ids:      newMempoolIDs(),
-		requests: newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		opts:        opts,
+		mempool:     mempool,
+		ids:         newMempoolIDs(),
+		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		traceClient: &trace.Client{},
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR, nil

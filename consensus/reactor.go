@@ -59,10 +59,11 @@ type ReactorOption func(*Reactor)
 // consensusState.
 func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) *Reactor {
 	conR := &Reactor{
-		conS:     consensusState,
-		waitSync: waitSync,
-		rs:       consensusState.GetRoundState(),
-		Metrics:  NopMetrics(),
+		conS:        consensusState,
+		waitSync:    waitSync,
+		rs:          consensusState.GetRoundState(),
+		Metrics:     NopMetrics(),
+		traceClient: &trace.Client{},
 	}
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR)
 

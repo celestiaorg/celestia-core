@@ -83,7 +83,7 @@ func NewClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, no
 		nodeID:  nodeID,
 		tables:  sliceToMap(cfg.InfluxTables),
 	}
-	if cfg == nil || cfg.InfluxURL == "" {
+	if cfg.InfluxURL == "" {
 		return cli, nil
 	}
 	cli.Client = influxdb2.NewClientWithOptions(
