@@ -27,7 +27,7 @@ type Reactor struct {
 	config      *cfg.MempoolConfig
 	mempool     *TxMempool
 	ids         *mempoolIDs
-	evCollector *trace.Client
+	traceClient *trace.Client
 }
 
 type mempoolIDs struct {
@@ -94,12 +94,12 @@ func newMempoolIDs() *mempoolIDs {
 }
 
 // NewReactor returns a new Reactor with the given config and mempool.
-func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool, evCollector *trace.Client) *Reactor {
+func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool, traceClient *trace.Client) *Reactor {
 	memR := &Reactor{
 		config:      config,
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
-		evCollector: evCollector,
+		traceClient: traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR
@@ -166,7 +166,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	case *protomem.Txs:
 		for _, tx := range msg.Txs {
 			schema.WriteMempoolTx(
-				memR.evCollector,
+				memR.traceClient,
 				e.Src.ID(),
 				tx,
 				schema.TransferTypeDownload,
@@ -284,7 +284,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 				continue
 			}
 			schema.WriteMempoolTx(
-				memR.evCollector,
+				memR.traceClient,
 				peer.ID(),
 				memTx.tx,
 				schema.TransferTypeUpload,
