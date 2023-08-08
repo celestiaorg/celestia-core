@@ -15,6 +15,8 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	cmtsync "github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
+	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	cmtcons "github.com/tendermint/tendermint/proto/tendermint/consensus"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	sm "github.com/tendermint/tendermint/state"
@@ -47,7 +49,8 @@ type Reactor struct {
 	eventBus *types.EventBus
 	rs       *cstypes.RoundState
 
-	Metrics *Metrics
+	Metrics     *Metrics
+	traceClient *trace.Client
 }
 
 type ReactorOption func(*Reactor)
@@ -56,10 +59,11 @@ type ReactorOption func(*Reactor)
 // consensusState.
 func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) *Reactor {
 	conR := &Reactor{
-		conS:     consensusState,
-		waitSync: waitSync,
-		rs:       consensusState.GetRoundState(),
-		Metrics:  NopMetrics(),
+		conS:        consensusState,
+		waitSync:    waitSync,
+		rs:          consensusState.GetRoundState(),
+		Metrics:     NopMetrics(),
+		traceClient: &trace.Client{},
 	}
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR)
 
@@ -334,6 +338,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		case *BlockPartMessage:
 			ps.SetHasProposalBlockPart(msg.Height, msg.Round, int(msg.Part.Index))
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
+			schema.WriteBlockPart(conR.traceClient, msg.Height, msg.Round, e.Src.ID(), msg.Part.Index, schema.TransferTypeDownload)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
 		default:
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -590,6 +595,7 @@ OUTER_LOOP:
 						Part:   *parts,
 					},
 				}, logger) {
+					schema.WriteBlockPart(conR.traceClient, rs.Height, rs.Round, peer.ID(), part.Index, schema.TransferTypeUpload)
 					ps.SetHasProposalBlockPart(prs.Height, prs.Round, index)
 				}
 				continue OUTER_LOOP
@@ -1019,6 +1025,10 @@ func (conR *Reactor) StringIndented(indent string) string {
 // ReactorMetrics sets the metrics
 func ReactorMetrics(metrics *Metrics) ReactorOption {
 	return func(conR *Reactor) { conR.Metrics = metrics }
+}
+
+func ReactorTracing(traceClient *trace.Client) ReactorOption {
+	return func(conR *Reactor) { conR.traceClient = traceClient }
 }
 
 //-----------------------------------------------------------------------------

@@ -37,6 +37,7 @@ import (
 	mempoolv1 "github.com/tendermint/tendermint/mempool/v1"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/pex"
+	"github.com/tendermint/tendermint/pkg/trace"
 	"github.com/tendermint/tendermint/privval"
 	"github.com/tendermint/tendermint/proxy"
 	rpccore "github.com/tendermint/tendermint/rpc/core"
@@ -425,6 +426,7 @@ func createMempoolAndMempoolReactor(config *cfg.Config, proxyApp proxy.AppConns,
 		reactor := mempoolv1.NewReactor(
 			config.Mempool,
 			mp,
+			&trace.Client{},
 		)
 		if config.Consensus.WaitForTxs() {
 			mp.EnableTxsAvailable()
