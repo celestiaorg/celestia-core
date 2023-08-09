@@ -321,7 +321,7 @@ func validateDataCommitmentRange(start uint64, end uint64) error {
 	// the data commitment range is end exclusive
 	if end > uint64(env.BlockStore.Height())+1 {
 		return fmt.Errorf(
-			"last block %d is higher than current chain height %d",
+			"end block %d is higher than current chain height %d",
 			end,
 			env.BlockStore.Height(),
 		)
