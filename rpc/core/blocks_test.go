@@ -168,6 +168,11 @@ func TestDataCommitmentResults(t *testing.T) {
 		{0, 1000, false},
 		{0, 10, false},
 		{10, 8, false},
+		// to test the end exclusive support for ranges.
+		// the end block could be equal to (height+1), but the data commitment would only
+		// take up to height. So we should be able to send request having end block equal
+		// to (height+1).
+		{int(env.BlockStore.Height()) - 100, int(env.BlockStore.Height()) + 1, true},
 	}
 
 	for i, tc := range testCases {
@@ -335,8 +340,8 @@ func (indexer mockBlockIndexer) Search(ctx context.Context, _ *query.Query) ([]i
 
 // randomBlocks generates a set of random blocks up to the provided height.
 func randomBlocks(height int64) []*types.Block {
-	blocks := make([]*types.Block, height)
-	for i := int64(0); i < height; i++ {
+	blocks := make([]*types.Block, height+1)
+	for i := int64(0); i <= height; i++ {
 		blocks[i] = randomBlock(i)
 	}
 	return blocks
