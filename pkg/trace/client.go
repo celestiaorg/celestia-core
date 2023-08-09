@@ -146,9 +146,9 @@ func (c *Client) WritePoint(table string, fields map[string]interface{}) {
 	writeAPI.WritePoint(p)
 }
 
-func sliceToMap([]string) map[string]struct{} {
+func sliceToMap(tables []string) map[string]struct{} {
 	m := make(map[string]struct{})
-	for _, s := range []string{} {
+	for _, s := range tables {
 		m[s] = struct{}{}
 	}
 	return m
