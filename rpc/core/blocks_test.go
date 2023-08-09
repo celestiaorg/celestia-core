@@ -338,7 +338,7 @@ func (indexer mockBlockIndexer) Search(ctx context.Context, _ *query.Query) ([]i
 	return results, nil
 }
 
-// randomBlocks generates a set of random blocks up to the provided height.
+// randomBlocks generates a set of random blocks up to (and including) the provided height.
 func randomBlocks(height int64) []*types.Block {
 	blocks := make([]*types.Block, height+1)
 	for i := int64(0); i <= height; i++ {
