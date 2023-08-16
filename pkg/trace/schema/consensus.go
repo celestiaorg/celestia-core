@@ -88,7 +88,7 @@ const (
 	// BlockTable is the name of the table that stores metadata about consensus blocks.
 	// following schema:
 	//
-	//  | time  | height |
+	//  | time  | height | timestamp |
 	BlockTable = "consensus_block"
 
 	// TimestampFieldKey is the name of the field that stores the time at which
