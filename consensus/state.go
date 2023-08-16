@@ -1712,9 +1712,7 @@ func (cs *State) finalizeCommit(height int64) {
 	// must be called before we update state
 	cs.recordMetrics(height, block)
 
-	// TODO log block.time
-	// blockTime := block.Header.Time
-	// block.Header.Height
+	schema.WriteBlock(cs.traceClient, block.Header.Height, block.Header.Time)
 
 	// NewHeightStep!
 	cs.updateToState(stateCopy)
