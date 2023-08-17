@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"time"
+
 	cstypes "github.com/tendermint/tendermint/consensus/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
@@ -12,6 +14,7 @@ func ConsensusTables() []string {
 	return []string{
 		RoundStateTable,
 		BlockPartsTable,
+		BlockTable,
 	}
 }
 
@@ -79,5 +82,24 @@ func WriteBlockPart(
 		BlockPartIndexFieldKey: index,
 		PeerFieldKey:           peer,
 		TransferTypeFieldKey:   transferType,
+	})
+}
+
+const (
+	// BlockTable is the name of the table that stores metadata about consensus blocks.
+	// following schema:
+	//
+	//  | time  | height | timestamp |
+	BlockTable = "consensus_block_time"
+
+	// TimestampFieldKey is the name of the field that stores the time at which
+	// the block is proposed.
+	TimestampFieldKey = "timestamp"
+)
+
+func WriteBlock(client *trace.Client, height int64, blockTimestamp time.Time) {
+	client.WritePoint(BlockTable, map[string]interface{}{
+		HeightFieldKey:    height,
+		TimestampFieldKey: blockTimestamp,
 	})
 }
