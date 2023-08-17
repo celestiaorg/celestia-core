@@ -1,10 +1,11 @@
 package schema
 
 import (
+	"time"
+
 	cstypes "github.com/tendermint/tendermint/consensus/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
-	"time"
 )
 
 // ConsensusTables returns the list of tables that are used for consensus
