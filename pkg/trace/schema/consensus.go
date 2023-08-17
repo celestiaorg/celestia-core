@@ -90,7 +90,7 @@ const (
 	// following schema:
 	//
 	//  | time  | height | timestamp |
-	BlockTable = "consensus_block"
+	BlockTable = "consensus_block_time"
 
 	// TimestampFieldKey is the name of the field that stores the time at which
 	// the block is proposed.
