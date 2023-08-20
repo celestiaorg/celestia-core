@@ -104,7 +104,7 @@ const (
 	SquareSizeFieldKey = "square_size"
 
 	// BlockSizeFieldKey is the name of the field that stores the size of
-	// the block data.
+	// the block data in bytes.
 	BlockSizeFieldKey = "block_size"
 
 	// ProposerFieldKey is the name of the field that stores the proposer of
