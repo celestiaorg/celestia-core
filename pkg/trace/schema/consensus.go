@@ -120,7 +120,7 @@ const (
 func WriteBlock(client *trace.Client, block *types.Block, size int) {
 	client.WritePoint(BlockTable, map[string]interface{}{
 		HeightFieldKey:          block.Height,
-		TimestampFieldKey:       block.Time,
+		TimestampFieldKey:       block.Time.UnixMilli(),
 		TxCountFieldKey:         len(block.Data.Txs),
 		SquareSizeFieldKey:      block.SquareSize,
 		BlockSizeFieldKey:       size,
