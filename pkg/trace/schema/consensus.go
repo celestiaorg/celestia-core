@@ -91,9 +91,9 @@ const (
 	//  | time  | height | timestamp |
 	BlockTable = "consensus_block"
 
-	// TimestampFieldKey is the name of the field that stores the timestamp in
-	// the last commit.
-	TimestampFieldKey = "timestamp"
+	// UnixMillisecondTimestampFieldKey is the name of the field that stores the timestamp in
+	// the last commit in unix milliseconds.
+	UnixMillisecondTimestampFieldKey = "unix_millisecond_timestamp"
 
 	// TxCountFieldKey is the name of the field that stores the number of
 	// transactions in the block.
@@ -119,12 +119,12 @@ const (
 
 func WriteBlock(client *trace.Client, block *types.Block, size int) {
 	client.WritePoint(BlockTable, map[string]interface{}{
-		HeightFieldKey:          block.Height,
-		TimestampFieldKey:       block.Time.UnixMilli(),
-		TxCountFieldKey:         len(block.Data.Txs),
-		SquareSizeFieldKey:      block.SquareSize,
-		BlockSizeFieldKey:       size,
-		ProposerFieldKey:        block.ProposerAddress.String(),
-		LastCommitRoundFieldKey: block.LastCommit.Round,
+		HeightFieldKey:                   block.Height,
+		UnixMillisecondTimestampFieldKey: block.Time.UnixMilli(),
+		TxCountFieldKey:                  len(block.Data.Txs),
+		SquareSizeFieldKey:               block.SquareSize,
+		BlockSizeFieldKey:                size,
+		ProposerFieldKey:                 block.ProposerAddress.String(),
+		LastCommitRoundFieldKey:          block.LastCommit.Round,
 	})
 }
