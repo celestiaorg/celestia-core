@@ -136,27 +136,21 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		panic(err)
 	}
 
-	// Celestia passes the data root back as the second to last transaction
-	// and the big endian encoding of the square size as the last transaction.
-	if len(rpp.Txs) < 2 {
+	// Celestia passes the data root back as the last transaction
+	if len(rpp.Txs) < 1 {
 		panic("state machine returned an invalid prepare proposal response: expected at least 2 transactions")
 	}
 
-	if len(rpp.Txs[len(rpp.Txs)-2]) != tmhash.Size {
+	if len(rpp.Txs[len(rpp.Txs)-1]) != tmhash.Size {
 		panic(fmt.Sprintf("state machine returned an invalid prepare proposal response: expected second to last transaction to be a hash, got %d bytes", len(rpp.Txs[len(rpp.Txs)-2])))
-	}
-
-	if len(rpp.Txs[len(rpp.Txs)-1]) != 8 {
-		panic("state machine returned an invalid prepare proposal response: expected last transaction to be a uint64 (square size)")
 	}
 
 	// update the block with the response from PrepareProposal
 	block.Data, _ = types.DataFromProto(&cmtproto.Data{
-		Txs: rpp.Txs[:len(rpp.Txs)-2],
+		Txs: rpp.Txs[:len(rpp.Txs)-1],
 	})
 
-	block.DataHash = rpp.Txs[len(rpp.Txs)-2]
-	block.SquareSize = binary.BigEndian.Uint64(rpp.Txs[len(rpp.Txs)-1])
+	block.DataHash = rpp.Txs[len(rpp.Txs)-1]
 
 	var blockDataSize int
 	for _, tx := range block.Txs {

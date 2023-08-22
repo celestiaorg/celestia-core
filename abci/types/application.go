@@ -2,7 +2,6 @@ package types
 
 import (
 	"context"
-	"encoding/binary"
 
 	"github.com/tendermint/tendermint/crypto/tmhash"
 )
@@ -96,10 +95,8 @@ func (BaseApplication) ApplySnapshotChunk(req RequestApplySnapshotChunk) Respons
 }
 
 func (BaseApplication) PrepareProposal(req RequestPrepareProposal) ResponsePrepareProposal {
-	// we use placeholder values for the hash and square size
-	squareSizeBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(squareSizeBytes, 0)
-	req.Txs = append(req.Txs, tmhash.Sum(nil), squareSizeBytes)
+	// we use placeholder values for the hash
+	req.Txs = append(req.Txs, tmhash.Sum(nil))
 	return ResponsePrepareProposal{Txs: req.Txs}
 }
 
