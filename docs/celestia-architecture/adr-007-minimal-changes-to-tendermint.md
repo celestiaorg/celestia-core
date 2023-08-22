@@ -131,7 +131,7 @@ describe how to hash the block data here:
 
 #### Only produce blocks on some interval
 
-- Control block times (https://github.com/tendermint/tendermint/issues/5911)
+- Control block times (https://github.com/cometbft/cometbft/issues/5911)
 
 #### Stop signing over the PartSetHeader
 

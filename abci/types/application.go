@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 
-	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/cometbft/cometbft/crypto/tmhash"
 )
 
 // Application is an interface that enables any finite, deterministic state machine

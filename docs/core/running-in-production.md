@@ -279,7 +279,7 @@ Recommended:
 
 While for now, CometBFT stores all the history and it may require significant
 disk space over time, we are planning to implement state syncing (See [this
-issue](https://github.com/tendermint/tendermint/issues/828)). So, storing all
+issue](https://github.com/cometbft/cometbft/issues/828)). So, storing all
 the past blocks will not be necessary.
 
 ### Validator signing on 32 bit architectures (or ARM)

@@ -7,15 +7,15 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/libs/bytes"
-	cmtmath "github.com/tendermint/tendermint/libs/math"
-	cmtquery "github.com/tendermint/tendermint/libs/pubsub/query"
-	"github.com/tendermint/tendermint/pkg/consts"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
-	blockidxnull "github.com/tendermint/tendermint/state/indexer/block/null"
-	"github.com/tendermint/tendermint/types"
+	"github.com/cometbft/cometbft/crypto/merkle"
+	"github.com/cometbft/cometbft/libs/bytes"
+	cmtmath "github.com/cometbft/cometbft/libs/math"
+	cmtquery "github.com/cometbft/cometbft/libs/pubsub/query"
+	"github.com/cometbft/cometbft/pkg/consts"
+	ctypes "github.com/cometbft/cometbft/rpc/core/types"
+	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
+	blockidxnull "github.com/cometbft/cometbft/state/indexer/block/null"
+	"github.com/cometbft/cometbft/types"
 )
 
 // BlockchainInfo gets block headers for minHeight <= height <= maxHeight.
@@ -110,7 +110,7 @@ func Header(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultHeader, erro
 func HeaderByHash(ctx *rpctypes.Context, hash bytes.HexBytes) (*ctypes.ResultHeader, error) {
 	// N.B. The hash parameter is HexBytes so that the reflective parameter
 	// decoding logic in the HTTP service will correctly translate from JSON.
-	// See https://github.com/tendermint/tendermint/issues/6802 for context.
+	// See https://github.com/cometbft/cometbft/issues/6802 for context.
 
 	blockMeta := GetEnvironment().BlockStore.LoadBlockMetaByHash(hash)
 	if blockMeta == nil {

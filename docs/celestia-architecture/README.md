@@ -13,7 +13,7 @@ Hence, we do not provide any extensive documentation here.
 Instead of keeping a copy of the Tendermint documentation, we refer to the existing extensive and maintained documentation and specification:
 
 - <https://docs.tendermint.com/>
-- <https://github.com/tendermint/tendermint/tree/master/docs/>
+- <https://github.com/cometbft/cometbft/tree/master/docs/>
 - <https://github.com/tendermint/spec>
 
 Reading these will give you a lot of background and context on Tendermint which will also help you understand how celestia-core and [celestia-app](https://github.com/celestiaorg/celestia-app) interact with each other.

@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/tendermint/tendermint/libs/log"
-	rpctypes "github.com/tendermint/tendermint/rpc/core/types"
-	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
+	"github.com/cometbft/cometbft/libs/log"
+	rpctypes "github.com/cometbft/cometbft/rpc/core/types"
+	e2e "github.com/cometbft/cometbft/test/e2e/pkg"
 )
 
 // Perturbs a running testnet.
