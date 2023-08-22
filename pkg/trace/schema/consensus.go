@@ -1,11 +1,10 @@
 package schema
 
 import (
-	"time"
-
 	cstypes "github.com/tendermint/tendermint/consensus/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/types"
 )
 
 // ConsensusTables returns the list of tables that are used for consensus
@@ -90,16 +89,42 @@ const (
 	// following schema:
 	//
 	//  | time  | height | timestamp |
-	BlockTable = "consensus_block_time"
+	BlockTable = "consensus_block"
 
-	// TimestampFieldKey is the name of the field that stores the time at which
-	// the block is proposed.
-	TimestampFieldKey = "timestamp"
+	// UnixMillisecondTimestampFieldKey is the name of the field that stores the timestamp in
+	// the last commit in unix milliseconds.
+	UnixMillisecondTimestampFieldKey = "unix_millisecond_timestamp"
+
+	// TxCountFieldKey is the name of the field that stores the number of
+	// transactions in the block.
+	TxCountFieldKey = "tx_count"
+
+	// SquareSizeFieldKey is the name of the field that stores the square size
+	// of the block. SquareSize is the number of shares in a single row or
+	// column of the origianl data square.
+	SquareSizeFieldKey = "square_size"
+
+	// BlockSizeFieldKey is the name of the field that stores the size of
+	// the block data in bytes.
+	BlockSizeFieldKey = "block_size"
+
+	// ProposerFieldKey is the name of the field that stores the proposer of
+	// the block.
+	ProposerFieldKey = "proposer"
+
+	// LastCommitRoundFieldKey is the name of the field that stores the round
+	// of the last commit.
+	LastCommitRoundFieldKey = "last_commit_round"
 )
 
-func WriteBlock(client *trace.Client, height int64, blockTimestamp time.Time) {
+func WriteBlock(client *trace.Client, block *types.Block, size int) {
 	client.WritePoint(BlockTable, map[string]interface{}{
-		HeightFieldKey:    height,
-		TimestampFieldKey: blockTimestamp,
+		HeightFieldKey:                   block.Height,
+		UnixMillisecondTimestampFieldKey: block.Time.UnixMilli(),
+		TxCountFieldKey:                  len(block.Data.Txs),
+		SquareSizeFieldKey:               block.SquareSize,
+		BlockSizeFieldKey:                size,
+		ProposerFieldKey:                 block.ProposerAddress.String(),
+		LastCommitRoundFieldKey:          block.LastCommit.Round,
 	})
 }
