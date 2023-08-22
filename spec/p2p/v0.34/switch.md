@@ -173,7 +173,7 @@ precisely, not providing to the switch any "reason" for that.
 In both cases the `Peer` instance is stopped, the peer is removed from all
 registered reactors, and finally from the list of connected peers.
 
-> Issue <https://github.com/tendermint/tendermint/issues/3338> is mentioned in
+> Issue <https://github.com/cometbft/cometbft/issues/3338> is mentioned in
 > the internal `stopAndRemovePeer` method explaining why removing the peer from
 > the list of connected peers is the last action taken.
 

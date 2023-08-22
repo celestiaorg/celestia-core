@@ -6,7 +6,7 @@
 
 ## Context
 
-We decided to augment the existing [RPC-based Tendermint light client](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/light/doc.go#L2-L126) by adding the possibility to additionally validate blocks by doing Data Availability Sampling (DAS).
+We decided to augment the existing [RPC-based Tendermint light client](https://github.com/cometbft/cometbft/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/light/doc.go#L2-L126) by adding the possibility to additionally validate blocks by doing Data Availability Sampling (DAS).
 In general, DAS gives light clients assurance that the data behind the block header they validated is actually available in the network and hence, that state fraud proofs could be generated.
 See [ADR 002](adr-002-ipld-da-sampling.md) for more context on DAS.
 
@@ -16,13 +16,13 @@ This ADR describes the changes necessary to augment the existing Tendermint ligh
 
 ## Alternative Approaches
 
-Ideally, the light client should not just request [signed headers](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/light/doc.go#L35-L52) from [a few pre-configured peers](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/light/setup.go#L51-L52) but instead also discover peers from a p2p network.
+Ideally, the light client should not just request [signed headers](https://github.com/cometbft/cometbft/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/light/doc.go#L35-L52) from [a few pre-configured peers](https://github.com/cometbft/cometbft/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/light/setup.go#L51-L52) but instead also discover peers from a p2p network.
 We will eventually implement this. For more context, we refer to this [issue](https://github.com/celestiaorg/celestia-core/issues/86).
 This would require that the (signed) headers are provided via other means than the RPC.
-See this [abandoned pull request](https://github.com/tendermint/tendermint/pull/4508) and [issue](https://github.com/tendermint/tendermint/issues/4456) in the Tendermint repository and also this [suggestion](https://github.com/celestiaorg/celestia-core/issues/86#issuecomment-831182564) by [@Wondertan](https://github.com/Wondertan) in this repository.
+See this [abandoned pull request](https://github.com/cometbft/cometbft/pull/4508) and [issue](https://github.com/cometbft/cometbft/issues/4456) in the Tendermint repository and also this [suggestion](https://github.com/celestiaorg/celestia-core/issues/86#issuecomment-831182564) by [@Wondertan](https://github.com/Wondertan) in this repository.
 
-For some use-cases—like DAS light validator nodes, or the light clients of a Data Availability Layer that are run by full nodes of an Optimistic Rollup—it would even make sense that the light client (passively) participates in the consensus protocol to some extent; i.e. runs a subset of the consensus reactor to Consensus messages ([Votes](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/types/vote.go#L48-L59) etc.) come in as early as possible.
-Then light clients would not need to wait for the canonical commit to be included in the next [block](https://github.com/tendermint/tendermint/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/types/block.go#L48).
+For some use-cases—like DAS light validator nodes, or the light clients of a Data Availability Layer that are run by full nodes of an Optimistic Rollup—it would even make sense that the light client (passively) participates in the consensus protocol to some extent; i.e. runs a subset of the consensus reactor to Consensus messages ([Votes](https://github.com/cometbft/cometbft/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/types/vote.go#L48-L59) etc.) come in as early as possible.
+Then light clients would not need to wait for the canonical commit to be included in the next [block](https://github.com/cometbft/cometbft/blob/bc643b19c48495077e0394d3e21e1d2a52c99548/types/block.go#L48).
 
 For the RPC-based light client it could also make sense to add a new RPC endpoint to tendermint for clients to retrieve the [`DataAvailabilityHeader`](https://github.com/celestiaorg/celestia-core/blob/50f722a510dd2ba8e3d31931c9d83132d6318d4b/types/block.go#L52-L69) (DAHeader), or embed the DAHeader.
 The [Commit](https://github.com/celestiaorg/celestia-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/rpc/core/routes.go#L25) only contains the [SignedHeader](https://github.com/celestiaorg/celestia-core/blob/cbf1f1a4a0472373289a9834b0d33e0918237b7f/rpc/core/types/responses.go#L32-L36) (Header and Commit signatures).
@@ -110,8 +110,8 @@ The first has the downside that not every light client needs the DAHeader.
 The second explicitly reveals to full-nodes which clients are doing DAS and which not.
 
 **Implementation Note:** The additional (or modified) RPC endpoint could work as a simple first step until we implement downloading the DAHeader from a given data root in the header.
-Also, the light client uses a so called [`Provider`](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/provider.go#L9-L26) to retrieve [LightBlocks](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/types/light.go#L11-L16), i.e. signed headers and validator sets.
-Currently, only the [`http` provider](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/http/http.go#L1) is implemented.
+Also, the light client uses a so called [`Provider`](https://github.com/cometbft/cometbft/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/provider.go#L9-L26) to retrieve [LightBlocks](https://github.com/cometbft/cometbft/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/types/light.go#L11-L16), i.e. signed headers and validator sets.
+Currently, only the [`http` provider](https://github.com/cometbft/cometbft/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/http/http.go#L1) is implemented.
 Hence, as _a first implementation step_, we should augment the `Provider` and the `LightBlock` to optionally include the DAHeader (details below).
 In parallel but in a separate pull request, we add a separate RPC endpoint to download the DAHeader for a certain height.
 
@@ -133,7 +133,7 @@ A major downside of storing block data inside of tendermint's store as well as i
 The changes for DAS are very simple from a high-level perspective assuming that the light client has the ability to download the DAHeader along with the required data (signed header + validator set) of a given height:
 
 Every time the light client validates a retrieved light-block, it additionally starts DAS in the background (once).
-For a DAS light client it is important to use [sequential](https://github.com/tendermint/tendermint/blob/f366ae3c875a4f4f61f37f4b39383558ac5a58cc/light/client.go#L46-L53) verification and not [skipping](https://github.com/tendermint/tendermint/blob/f366ae3c875a4f4f61f37f4b39383558ac5a58cc/light/client.go#L55-L69) verification.
+For a DAS light client it is important to use [sequential](https://github.com/cometbft/cometbft/blob/f366ae3c875a4f4f61f37f4b39383558ac5a58cc/light/client.go#L46-L53) verification and not [skipping](https://github.com/cometbft/cometbft/blob/f366ae3c875a4f4f61f37f4b39383558ac5a58cc/light/client.go#L55-L69) verification.
 Skipping verification only works under the assumption that 2/3+1 of voting power is honest.
 The whole point of doing DAS (and state fraud proofs) is to remove that assumption.
 See also this related issue in the LL specification: [#159](https://github.com/celestiaorg/celestia-specs/issues/159).
@@ -179,7 +179,7 @@ Instead, adding a field to the existing `LightBlock`is backwards compatible and 
 
 ##### Provider
 
-The [`Provider`](https://github.com/tendermint/tendermint/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/provider.go#L9-L26) should be changed to additionally provide the `DataAvailabilityHeader` to enable DAS light clients.
+The [`Provider`](https://github.com/cometbft/cometbft/blob/7f30bc96f014b27fbe74a546ea912740eabdda74/light/provider/provider.go#L9-L26) should be changed to additionally provide the `DataAvailabilityHeader` to enable DAS light clients.
 Implementations of the interface need to additionally retrieve the `DataAvailabilityHeader` for the [modified LightBlock](#lightblock).
 Users of the provider need to indicate this to the provider.
 
@@ -234,7 +234,7 @@ In an environment were any bandwidth must be saved, or, were the network conditi
 
 ##### Client
 
-We add another [`Option`](https://github.com/tendermint/tendermint/blob/a91680efee3653e3de620f24eb8ddca1c95ce8f9/light/client.go#L43-L117) to the [`Client`](https://github.com/tendermint/tendermint/blob/a91680efee3653e3de620f24eb8ddca1c95ce8f9/light/client.go#L173) that indicates that this client does DAS.
+We add another [`Option`](https://github.com/cometbft/cometbft/blob/a91680efee3653e3de620f24eb8ddca1c95ce8f9/light/client.go#L43-L117) to the [`Client`](https://github.com/cometbft/cometbft/blob/a91680efee3653e3de620f24eb8ddca1c95ce8f9/light/client.go#L173) that indicates that this client does DAS.
 
 This option indicates:
 1. to do sequential verification and
@@ -259,7 +259,7 @@ A DAS light client will have to request the `DASLightBlock` for this as per abov
 
 Ideally, we add the DAS light client to the existing e2e tests.
 It might be worth to catch up with some relevant changes from tendermint upstream.
-In particular, [tendermint/tendermint#6196](https://github.com/tendermint/tendermint/pull/6196) and previous changes that it depends on.
+In particular, [tendermint/tendermint#6196](https://github.com/cometbft/cometbft/pull/6196) and previous changes that it depends on.
 
 Additionally, we should provide a simple example in the documentation that walks through the DAS light client.
 It would be good if the light client logs some (info) output related to DAS to provide feedback to the user.

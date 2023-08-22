@@ -166,7 +166,7 @@ relayer can figure that out:
 - in both detection scenarios, the relayer should submit evidence to
   full nodes of chain A where there is a fork. As we assume a fullnode
   has a complete list of blocks, it is sufficient to send "Bucky's
-  evidence" (<https://github.com/tendermint/tendermint/issues/5083>),
+  evidence" (<https://github.com/cometbft/cometbft/issues/5083>),
   that is,
     - two lightblocks from different branches +
     - a lightblock (perhaps just a height) from which both blocks

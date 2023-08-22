@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/cometbft/cometbft/crypto/merkle"
+	tmbytes "github.com/cometbft/cometbft/libs/bytes"
 	"github.com/stretchr/testify/assert"
-	"github.com/tendermint/tendermint/crypto/merkle"
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 )
 
 func TestRowProofValidate(t *testing.T) {
