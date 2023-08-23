@@ -1,7 +1,6 @@
 package state
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"time"
@@ -168,11 +167,9 @@ func (blockExec *BlockExecutor) ProcessProposal(
 	state State,
 ) (bool, error) {
 
-	// Similar to PrepareProposal, the last two transactions provided to Celestia
-	// in ProcessProposal are the data hash and square size respectively
-	squareSizeBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(squareSizeBytes, block.Data.SquareSize)
-	txs := append(block.Data.Txs.ToSliceOfBytes(), block.DataHash, squareSizeBytes)
+	// Similar to PrepareProposal, the last transaction provided to Celestia
+	// in ProcessProposal is the data hash
+	txs := append(block.Data.Txs.ToSliceOfBytes(), block.DataHash)
 
 	resp, err := blockExec.proxyApp.ProcessProposalSync(abci.RequestProcessProposal{
 		Hash:               block.Header.Hash(),
