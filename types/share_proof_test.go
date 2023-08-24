@@ -3,9 +3,9 @@ package types
 import (
 	"testing"
 
+	"github.com/cometbft/cometbft/pkg/consts"
+	"github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/stretchr/testify/assert"
-	"github.com/tendermint/tendermint/pkg/consts"
-	"github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 func TestShareProofValidate(t *testing.T) {

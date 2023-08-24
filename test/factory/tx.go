@@ -1,6 +1,6 @@
 package factory
 
-import "github.com/tendermint/tendermint/types"
+import "github.com/cometbft/cometbft/types"
 
 // MakeTxs is a helper function to generate mock transactions by given the block height
 // and the transaction numbers.

@@ -71,7 +71,7 @@ as well any error returned in this process are added to a queue of accepted conn
 This queue is consumed by the `Accept` method.
 
 > Handling accepted connection asynchronously was introduced due to this issue:
-> <https://github.com/tendermint/tendermint/issues/2047>
+> <https://github.com/cometbft/cometbft/issues/2047>
 
 ## Connection Filtering
 
@@ -219,4 +219,4 @@ For this reason, this method is not invoked with a started transport.
 [peer-sts]: https://github.com/cometbft/cometbft/blob/v0.34.x/spec/p2p/peer.md#authenticated-encryption-handshake
 [peer-handshake]:https://github.com/cometbft/cometbft/blob/v0.34.x/spec/p2p/peer.md#cometbft-version-handshake
 [sts-paper]: https://link.springer.com/article/10.1007/BF00124891
-[sts-paper-pdf]: https://github.com/tendermint/tendermint/blob/0.1/docs/sts-final.pdf
+[sts-paper-pdf]: https://github.com/cometbft/cometbft/blob/0.1/docs/sts-final.pdf

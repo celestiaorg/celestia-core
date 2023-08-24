@@ -1,6 +1,6 @@
 # Results of Discussions and Decisions
 
-- Generating a minimal proof of fork (as suggested in [Issue #5083](https://github.com/tendermint/tendermint/issues/5083)) is too costly at the light client
+- Generating a minimal proof of fork (as suggested in [Issue #5083](https://github.com/cometbft/cometbft/issues/5083)) is too costly at the light client
     - we do not know all lightblocks from the primary
     - therefore there are many scenarios. we might even need to ask
       the primary again for additional lightblocks to isolate the

@@ -193,7 +193,7 @@ The `GasUsed` field is ignored completely by CometBFT. That said, applications s
 
 In the future, we intend to add a `Priority` field to the responses that can be
 used to explicitly prioritize txs in the mempool for inclusion in a block
-proposal. See [#1861](https://github.com/tendermint/tendermint/issues/1861).
+proposal. See [#1861](https://github.com/cometbft/cometbft/issues/1861).
 
 ### CheckTx
 

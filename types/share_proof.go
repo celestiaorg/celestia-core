@@ -6,9 +6,9 @@ import (
 	"math"
 
 	"github.com/celestiaorg/nmt"
-	"github.com/tendermint/tendermint/pkg/consts"
-	"github.com/tendermint/tendermint/proto/tendermint/crypto"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	"github.com/cometbft/cometbft/pkg/consts"
+	"github.com/cometbft/cometbft/proto/tendermint/crypto"
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 )
 
 // ShareProof is an NMT proof that a set of shares exist in a set of rows and a

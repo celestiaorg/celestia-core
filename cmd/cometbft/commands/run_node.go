@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	cfg "github.com/tendermint/tendermint/config"
-	cmtos "github.com/tendermint/tendermint/libs/os"
-	nm "github.com/tendermint/tendermint/node"
-	"github.com/tendermint/tendermint/pkg/trace"
+	cfg "github.com/cometbft/cometbft/config"
+	cmtos "github.com/cometbft/cometbft/libs/os"
+	nm "github.com/cometbft/cometbft/node"
+	"github.com/cometbft/cometbft/pkg/trace"
 )
 
 var (

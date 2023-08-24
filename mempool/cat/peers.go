@@ -3,9 +3,9 @@ package cat
 import (
 	"fmt"
 
-	tmsync "github.com/tendermint/tendermint/libs/sync"
-	"github.com/tendermint/tendermint/mempool"
-	"github.com/tendermint/tendermint/p2p"
+	tmsync "github.com/cometbft/cometbft/libs/sync"
+	"github.com/cometbft/cometbft/mempool"
+	"github.com/cometbft/cometbft/p2p"
 )
 
 const firstPeerID = mempool.UnknownPeerID + 1

@@ -3,11 +3,11 @@ package factory
 import (
 	"time"
 
-	sm "github.com/tendermint/tendermint/state"
-	"github.com/tendermint/tendermint/test/factory"
+	sm "github.com/cometbft/cometbft/state"
+	"github.com/cometbft/cometbft/test/factory"
 
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	"github.com/tendermint/tendermint/types"
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	"github.com/cometbft/cometbft/types"
 )
 
 func MakeBlocks(n int, state *sm.State, privVal types.PrivValidator) []*types.Block {

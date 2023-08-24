@@ -100,7 +100,7 @@ paths:
         1. malicious node can drop or pretend it had committed your tx
         2. malicious proposer (not necessary the one you're communicating with) can
         drop transactions, which might become valid in the future
-        (https://github.com/tendermint/tendermint/issues/3322)
+        (https://github.com/cometbft/cometbft/issues/3322)
 
         Please refer to
         https://docs.cometbft.com/v0.34/core/using-cometbft.html#formatting
@@ -144,7 +144,7 @@ paths:
         1. malicious node can drop or pretend it had committed your tx
         2. malicious proposer (not necessary the one you're communicating with) can
         drop transactions, which might become valid in the future
-        (https://github.com/tendermint/tendermint/issues/3322)
+        (https://github.com/cometbft/cometbft/issues/3322)
         3. node can be offline
 
         Please refer to

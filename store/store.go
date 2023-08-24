@@ -7,10 +7,10 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/gogo/protobuf/proto"
 
-	cmtsync "github.com/tendermint/tendermint/libs/sync"
-	cmtstore "github.com/tendermint/tendermint/proto/tendermint/store"
-	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	"github.com/tendermint/tendermint/types"
+	cmtsync "github.com/cometbft/cometbft/libs/sync"
+	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	"github.com/cometbft/cometbft/types"
 )
 
 /*
@@ -37,7 +37,7 @@ type BlockStore struct {
 	// fine-grained concurrency control for its data, and thus this mutex does not apply to
 	// database contents. The only reason for keeping these fields in the struct is that the data
 	// can't efficiently be queried from the database since the key encoding we use is not
-	// lexicographically ordered (see https://github.com/tendermint/tendermint/issues/4567).
+	// lexicographically ordered (see https://github.com/cometbft/cometbft/issues/4567).
 	mtx    cmtsync.RWMutex
 	base   int64
 	height int64

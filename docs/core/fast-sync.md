@@ -45,4 +45,4 @@ version = "v0"
 ```
 
 If we're lagging sufficiently, we should go back to fast syncing, but
-this is an [open issue](https://github.com/tendermint/tendermint/issues/129).
+this is an [open issue](https://github.com/cometbft/cometbft/issues/129).

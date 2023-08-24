@@ -78,14 +78,14 @@ seed node are added to the address book.
 As a result, in the next invocation of the `ensurePeers` method, the node
 should be able to dial some of the peer addresses provided by the seed node.
 
-However, as observed in this [issue](https://github.com/tendermint/tendermint/issues/2093),
+However, as observed in this [issue](https://github.com/cometbft/cometbft/issues/2093),
 it can take some time, up to `ensurePeersPeriod` or 30 seconds, from when the
 node receives new peer addresses and when it dials the received addresses.
 To avoid this delay, which can be particularly relevant when the node has no
 peers, a node immediately attempts to dial peer addresses when they are
 received from a peer that is locally configured as a seed node.
 
-> FIXME: The current logic was introduced in [#3762](https://github.com/tendermint/tendermint/pull/3762).
+> FIXME: The current logic was introduced in [#3762](https://github.com/cometbft/cometbft/pull/3762).
 > Although it fix the issue, the delay between receiving an address and dialing
 > the peer, it does not impose and limit on how many addresses are dialed in this
 > scenario.
@@ -93,7 +93,7 @@ received from a peer that is locally configured as a seed node.
 > current number of outbound peers, the number of dialing routines, or the
 > `MaxNumOutboundPeers` parameter.
 >
-> Issue [#9548](https://github.com/tendermint/tendermint/issues/9548) was
+> Issue [#9548](https://github.com/cometbft/cometbft/issues/9548) was
 > created to handle this situation.
 
 ### First round
