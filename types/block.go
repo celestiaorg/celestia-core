@@ -1090,6 +1090,8 @@ func (data *Data) ToProto() cmtproto.Data {
 		tp.Txs = txBzs
 	}
 
+	tp.Hash = data.hash
+
 	return *tp
 }
 
@@ -1110,6 +1112,8 @@ func DataFromProto(dp *cmtproto.Data) (Data, error) {
 	} else {
 		data.Txs = Txs{}
 	}
+
+	data.hash = dp.Hash
 
 	return *data, nil
 }
