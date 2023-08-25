@@ -316,7 +316,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			if votes := ourVotes.ToProto(); votes != nil {
 				eMsg.Votes = *votes
 			}
-			p2p.TrySendEnvelopeShim(e.Src, p2p.Envelope{ //nolint: staticcheck
+			p2p.TrySendEnvelopeShim(e.Src, p2p.Envelope{ // nolint: staticcheck
 				ChannelID: VoteSetBitsChannel,
 				Message:   eMsg,
 			}, conR.Logger)
@@ -338,7 +338,15 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		case *BlockPartMessage:
 			ps.SetHasProposalBlockPart(msg.Height, msg.Round, int(msg.Part.Index))
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
-			schema.WriteBlockPart(conR.traceClient, msg.Height, msg.Round, e.Src.ID(), msg.Part.Index, schema.TransferTypeDownload)
+			part, err := msg.Part.ToProto() // this conversion is only needed to get the part size
+			// consistent with how it is measured in the gossipDataRoutine
+			partSize := -1
+			if err != nil {
+				partSize = part.Size()
+			}
+			schema.WriteBlockPart(conR.traceClient, msg.Height, msg.Round,
+				e.Src.ID(), msg.Part.Index, schema.TransferTypeDownload,
+				int64(partSize))
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
 		default:
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -540,7 +548,7 @@ func makeRoundStepMessage(rs *cstypes.RoundState) (nrsMsg *cmtcons.NewRoundStep)
 func (conR *Reactor) sendNewRoundStepMessage(peer p2p.Peer) {
 	rs := conR.getRoundState()
 	nrsMsg := makeRoundStepMessage(rs)
-	p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+	p2p.SendEnvelopeShim(peer, p2p.Envelope{ // nolint: staticcheck
 		ChannelID: StateChannel,
 		Message:   nrsMsg,
 	}, conR.Logger)
@@ -587,7 +595,7 @@ OUTER_LOOP:
 					panic(err)
 				}
 				logger.Debug("Sending block part", "height", prs.Height, "round", prs.Round)
-				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ // nolint: staticcheck
 					ChannelID: DataChannel,
 					Message: &cmtcons.BlockPart{
 						Height: rs.Height, // This tells peer that this part applies to us.
@@ -644,7 +652,7 @@ OUTER_LOOP:
 			// Proposal: share the proposal metadata with peer.
 			{
 				logger.Debug("Sending proposal", "height", prs.Height, "round", prs.Round)
-				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ // nolint: staticcheck
 					ChannelID: DataChannel,
 					Message:   &cmtcons.Proposal{Proposal: *rs.Proposal.ToProto()},
 				}, logger) {
@@ -658,7 +666,7 @@ OUTER_LOOP:
 			// so we definitely have rs.Votes.Prevotes(rs.Proposal.POLRound).
 			if 0 <= rs.Proposal.POLRound {
 				logger.Debug("Sending POL", "height", prs.Height, "round", prs.Round)
-				p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+				p2p.SendEnvelopeShim(peer, p2p.Envelope{ // nolint: staticcheck
 					ChannelID: DataChannel,
 					Message: &cmtcons.ProposalPOL{
 						Height:           rs.Height,
@@ -708,7 +716,7 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 			logger.Error("Could not convert part to proto", "index", index, "error", err)
 			return
 		}
-		if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+		if p2p.SendEnvelopeShim(peer, p2p.Envelope{ // nolint: staticcheck
 			ChannelID: DataChannel,
 			Message: &cmtcons.BlockPart{
 				Height: prs.Height, // Not our height, so it doesn't matter.
@@ -877,7 +885,7 @@ OUTER_LOOP:
 			if rs.Height == prs.Height {
 				if maj23, ok := rs.Votes.Prevotes(prs.Round).TwoThirdsMajority(); ok {
 
-					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ // nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
 							Height:  prs.Height,
@@ -897,7 +905,7 @@ OUTER_LOOP:
 			prs := ps.GetRoundState()
 			if rs.Height == prs.Height {
 				if maj23, ok := rs.Votes.Precommits(prs.Round).TwoThirdsMajority(); ok {
-					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ // nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
 							Height:  prs.Height,
@@ -918,7 +926,7 @@ OUTER_LOOP:
 			if rs.Height == prs.Height && prs.ProposalPOLRound >= 0 {
 				if maj23, ok := rs.Votes.Prevotes(prs.ProposalPOLRound).TwoThirdsMajority(); ok {
 
-					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ // nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
 							Height:  prs.Height,
@@ -941,7 +949,7 @@ OUTER_LOOP:
 			if prs.CatchupCommitRound != -1 && prs.Height > 0 && prs.Height <= conR.conS.blockStore.Height() &&
 				prs.Height >= conR.conS.blockStore.Base() {
 				if commit := conR.conS.LoadCommit(prs.Height); commit != nil {
-					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ // nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
 							Height:  prs.Height,
@@ -1168,7 +1176,7 @@ func (ps *PeerState) SetHasProposalBlockPart(height int64, round int32, index in
 func (ps *PeerState) PickSendVote(votes types.VoteSetReader) bool {
 	if vote, ok := ps.PickVoteToSend(votes); ok {
 		ps.logger.Debug("Sending vote message", "ps", ps, "vote", vote)
-		if p2p.SendEnvelopeShim(ps.peer, p2p.Envelope{ //nolint: staticcheck
+		if p2p.SendEnvelopeShim(ps.peer, p2p.Envelope{ // nolint: staticcheck
 			ChannelID: VoteChannel,
 			Message: &cmtcons.Vote{
 				Vote: vote.ToProto(),
