@@ -1,7 +1,6 @@
 package state
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"time"
@@ -136,25 +135,19 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		panic(err)
 	}
 
-	// Celestia passes the data root back as the second to last transaction
-	// and the big endian encoding of the square size as the last transaction.
-	if len(rpp.Txs) < 2 {
-		panic("state machine returned an invalid prepare proposal response: expected at least 2 transactions")
+	// Celestia passes the data root back as the last transaction
+	if len(rpp.Txs) < 1 {
+		panic("state machine returned an invalid prepare proposal response: expected at least 1 transaction")
 	}
 
-	if len(rpp.Txs[len(rpp.Txs)-2]) != tmhash.Size {
-		panic(fmt.Sprintf("state machine returned an invalid prepare proposal response: expected second to last transaction to be a hash, got %d bytes", len(rpp.Txs[len(rpp.Txs)-2])))
-	}
-
-	if len(rpp.Txs[len(rpp.Txs)-1]) != 8 {
-		panic("state machine returned an invalid prepare proposal response: expected last transaction to be a uint64 (square size)")
+	if len(rpp.Txs[len(rpp.Txs)-1]) != tmhash.Size {
+		panic(fmt.Sprintf("state machine returned an invalid prepare proposal response: expected last transaction to be a hash, got %d bytes", len(rpp.Txs[len(rpp.Txs)-2])))
 	}
 
 	// update the block with the response from PrepareProposal
 	block.Data, _ = types.DataFromProto(&cmtproto.Data{
-		SquareSize: binary.BigEndian.Uint64(rpp.Txs[len(rpp.Txs)-1]),
-		Txs:        rpp.Txs[:len(rpp.Txs)-2],
-		Hash:       rpp.Txs[len(rpp.Txs)-2],
+		Txs:  rpp.Txs[:len(rpp.Txs)-1],
+		Hash: rpp.Txs[len(rpp.Txs)-1],
 	})
 
 	var blockDataSize int
@@ -173,11 +166,9 @@ func (blockExec *BlockExecutor) ProcessProposal(
 	state State,
 ) (bool, error) {
 
-	// Similar to PrepareProposal, the last two transactions provided to Celestia
-	// in ProcessProposal are the data hash and square size respectively
-	squareSizeBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(squareSizeBytes, block.Data.SquareSize)
-	txs := append(block.Data.Txs.ToSliceOfBytes(), block.DataHash, squareSizeBytes)
+	// Similar to PrepareProposal, the last transaction provided to Celestia
+	// in ProcessProposal is the data hash
+	txs := append(block.Data.Txs.ToSliceOfBytes(), block.DataHash)
 
 	resp, err := blockExec.proxyApp.ProcessProposalSync(abci.RequestProcessProposal{
 		Hash:               block.Header.Hash(),

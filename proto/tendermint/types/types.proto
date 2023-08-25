@@ -89,13 +89,11 @@ message Data {
   // NOTE: not all txs here are valid. We're just agreeing on the order first.
   repeated bytes txs = 1;
 
-  reserved 2, 3, 4;
+  reserved 2, 3, 4, 5;
   // field number 2 is reserved for intermediate state roots
   // field number 3 is reserved for evidence
   // field number 4 is reserved for blobs
-
-  // SquareSize is the number of rows or columns in the original data square.
-  uint64 square_size = 5;
+  // field number 5 is reserved for square size
 
   // Hash is the root of a binary Merkle tree where the leaves of the tree are
   // the row and column roots of an extended data square. Hash is often referred
