@@ -595,7 +595,9 @@ OUTER_LOOP:
 						Part:   *parts,
 					},
 				}, logger) {
-					schema.WriteBlockPart(conR.traceClient, rs.Height, rs.Round, peer.ID(), part.Index, schema.TransferTypeUpload)
+					schema.WriteBlockPart(conR.traceClient, rs.Height,
+						rs.Round, peer.ID(), part.Index,
+						schema.TransferTypeUpload, int64(parts.Size()))
 					ps.SetHasProposalBlockPart(prs.Height, prs.Round, index)
 				}
 				continue OUTER_LOOP

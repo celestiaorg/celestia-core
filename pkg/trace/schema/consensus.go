@@ -55,13 +55,17 @@ const (
 	// BlockPartIndexFieldKey is the name of the field that stores the block
 	// part
 	BlockPartIndexFieldKey = "index"
+
+	// BlockPartSizeFieldKey is the name of the field that stores the size of a block
+	// part in bytes. The value is an int64.
+	BlockPartSizeFieldKey = "block_part_size"
 )
 
 // WriteBlockPart writes a tracing point for a BlockPart using the predetermined
 // schema for consensus state tracing. This is used to create a table in the
 // following schema:
 //
-// | time | height | round | index | peer | transfer type |
+// | time | height | round | peer | index | transfer type | block_part_size |
 func WriteBlockPart(
 	client *trace.Client,
 	height int64,
@@ -69,6 +73,7 @@ func WriteBlockPart(
 	peer p2p.ID,
 	index uint32,
 	transferType string,
+	size int64,
 ) {
 	// this check is redundant to what is checked during WritePoint, although it
 	// is an optimization to avoid allocations from the map of fields.
@@ -78,9 +83,10 @@ func WriteBlockPart(
 	client.WritePoint(BlockPartsTable, map[string]interface{}{
 		HeightFieldKey:         height,
 		RoundFieldKey:          round,
-		BlockPartIndexFieldKey: index,
 		PeerFieldKey:           peer,
+		BlockPartIndexFieldKey: index,
 		TransferTypeFieldKey:   transferType,
+		BlockPartSizeFieldKey:  size,
 	})
 }
 
@@ -88,7 +94,7 @@ const (
 	// BlockTable is the name of the table that stores metadata about consensus blocks.
 	// following schema:
 	//
-	//  | time  | height | timestamp |
+	//  | time  | height | unix_millisecond_timestamp | tx_count | square_size | block_size | proposer | last_commit_round |
 	BlockTable = "consensus_block"
 
 	// UnixMillisecondTimestampFieldKey is the name of the field that stores the timestamp in
@@ -101,7 +107,7 @@ const (
 
 	// SquareSizeFieldKey is the name of the field that stores the square size
 	// of the block. SquareSize is the number of shares in a single row or
-	// column of the origianl data square.
+	// column of the original data square.
 	SquareSizeFieldKey = "square_size"
 
 	// BlockSizeFieldKey is the name of the field that stores the size of
