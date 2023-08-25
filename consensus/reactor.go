@@ -338,8 +338,9 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		case *BlockPartMessage:
 			ps.SetHasProposalBlockPart(msg.Height, msg.Round, int(msg.Part.Index))
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
-			part, err := msg.Part.ToProto() // this conversion is only needed to get the part size
-			// consistent with how it is measured in the gossipDataRoutine
+			// The .ToProto conversion is only needed to get the part size.
+			// This is consistent with how it is measured in the gossipDataRoutine.
+			part, err := msg.Part.ToProto()
 			partSize := -1
 			if err != nil {
 				partSize = part.Size()
