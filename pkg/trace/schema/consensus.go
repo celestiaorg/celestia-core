@@ -58,6 +58,7 @@ const (
 
 	// BlockPartSizeFieldKey is the name of the field that stores the size of a block
 	// part in bytes. The value is an int64.
+	// Negative value indicates unknown block part size.
 	BlockPartSizeFieldKey = "block_part_size"
 )
 
@@ -66,6 +67,8 @@ const (
 // following schema:
 //
 // | time | height | round | peer | index | transfer type | block_part_size |
+// Negative value for `size` i.e., block_part_size indicates unknown block part
+// size.
 func WriteBlockPart(
 	client *trace.Client,
 	height int64,
