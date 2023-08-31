@@ -19,6 +19,13 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+const (
+	MempoolPriorityChannel = byte(0x80)
+
+	mempoolPriorityInterval          = 10 * time.Second
+	mempoolPriorityBroadcastMaxBytes = 2 * 1024 * 1024 // 2MB
+)
+
 // Reactor handles mempool tx broadcasting amongst peers.
 // It maintains a map from peer ID to counter, to prevent gossiping txs to the
 // peers you received it from.
@@ -28,6 +35,9 @@ type Reactor struct {
 	mempool     *TxMempool
 	ids         *mempoolIDs
 	traceClient *trace.Client
+
+	sortedTxs                   []*WrappedTx // sorted by priority
+	mempoolPriorityIntervalChan chan struct{}
 }
 
 type mempoolIDs struct {
@@ -120,6 +130,8 @@ func (memR *Reactor) SetLogger(l log.Logger) {
 func (memR *Reactor) OnStart() error {
 	if !memR.config.Broadcast {
 		memR.Logger.Info("Tx broadcasting is disabled")
+	} else {
+		go memR.priorityIntervalRoutine()
 	}
 	return nil
 }
@@ -141,6 +153,12 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			RecvMessageCapacity: batchMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
+		{
+			ID:                  MempoolPriorityChannel,
+			Priority:            5,
+			RecvMessageCapacity: batchMsg.Size(),
+			MessageType:         &protomem.Message{},
+		},
 	}
 }
 
@@ -149,6 +167,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 func (memR *Reactor) AddPeer(peer p2p.Peer) {
 	if memR.config.Broadcast {
 		go memR.broadcastTxRoutine(peer)
+		go memR.broadcastPriorityTxRoutine(peer)
 	}
 }
 
@@ -222,6 +241,96 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 // PeerState describes the state of a peer.
 type PeerState interface {
 	GetHeight() int64
+}
+
+// Sort txes by priority at a regular interval and signal the broadcast routine.
+func (memR *Reactor) priorityIntervalRoutine() {
+	memR.mempoolPriorityIntervalChan = make(chan struct{}, 1)
+	lastRoutine := time.Now()
+	for {
+		// Sleep until the next interval.
+		time.Sleep(mempoolPriorityInterval - time.Since(lastRoutine))
+		lastRoutine = time.Now()
+
+		if !memR.IsRunning() {
+			return
+		}
+
+		// Sort txes by priority.
+		sortedTxs := memR.mempool.allEntriesSorted()
+
+		// Reap enough txes to fill mempoolPriorityBroadcastMaxBytes.
+		var totalSize int64
+		for i, tx := range sortedTxs {
+			totalSize += tx.Size()
+			if totalSize > mempoolPriorityBroadcastMaxBytes {
+				sortedTxs = sortedTxs[:i]
+				break
+			}
+		}
+
+		memR.sortedTxs = sortedTxs
+
+		// Signal the priority broadcast routine.
+		close(memR.mempoolPriorityIntervalChan)
+		memR.mempoolPriorityIntervalChan = make(chan struct{}, 1)
+	}
+}
+
+// Send new high priority mempool txs to peer.
+func (memR *Reactor) broadcastPriorityTxRoutine(peer p2p.Peer) {
+	peerID := memR.ids.GetForPeer(peer)
+
+	for {
+		select {
+		case <-memR.mempoolPriorityIntervalChan:
+			// We have new high priority txs to broadcast.
+		case <-peer.Quit():
+			return
+
+		case <-memR.Quit():
+			return
+		}
+
+		// In case of both memR.mempoolPriorityIntervalChan and peer.Quit() are variable at the same time
+		if !memR.IsRunning() || !peer.IsRunning() {
+			return
+		}
+
+		// Make sure the peer is up to date.
+		peerState, ok := peer.Get(types.PeerStateKey).(PeerState)
+		if !ok {
+			// Peer does not have a state yet. We set it in the consensus reactor, but
+			// when we add peer in Switch, the order we call reactors#AddPeer is
+			// different every time due to us using a map. Sometimes other reactors
+			// will be initialized before the consensus reactor. We should wait a few
+			// milliseconds and retry.
+			time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
+			continue
+		}
+
+		// Loop through all the high priority txs.
+		for _, memTx := range memR.sortedTxs {
+			// Allow for a lag of 1 block.
+			if peerState.GetHeight() < memTx.height-1 {
+				time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
+				continue
+			}
+
+			// NOTE: Transaction batching was disabled due to
+			// https://github.com/cometbft/cometbft/issues/5796
+			if !memTx.HasPeer(peerID) {
+				success := p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					ChannelID: mempool.MempoolChannel,
+					Message:   &protomem.Txs{Txs: [][]byte{memTx.tx}},
+				}, memR.Logger)
+				if !success {
+					time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
+					continue
+				}
+			}
+		}
+	}
 }
 
 // Send new mempool txs to peer.
