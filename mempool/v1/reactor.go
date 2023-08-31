@@ -236,11 +236,11 @@ func (memR *Reactor) priorityIntervalRoutine() {
 	lastRoutine := time.Now()
 	for {
 		// Sleep until the next interval.
-		time.Sleep(mempoolPriorityInterval - time.Since(lastRoutine))
-		lastRoutine = time.Now()
-
-		if !memR.IsRunning() {
+		select {
+		case <-memR.Quit():
 			return
+		case <-time.After(mempoolPriorityInterval - time.Since(lastRoutine)):
+			lastRoutine = time.Now()
 		}
 
 		// Sort txes by priority.
@@ -298,6 +298,11 @@ func (memR *Reactor) broadcastPriorityTxRoutine(peer p2p.Peer) {
 
 		// Loop through all the high priority txs.
 		for _, memTx := range memR.sortedTxs {
+			// Check that tx is still in mempool.
+			if !memR.mempool.HasTx(memTx.tx) {
+				continue
+			}
+
 			// Allow for a lag of 1 block.
 			if peerState.GetHeight() < memTx.height-1 {
 				time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
