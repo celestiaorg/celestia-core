@@ -333,6 +333,13 @@ func (memR *Reactor) broadcastPriorityTxRoutine(peer p2p.Peer) {
 					time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
 					continue
 				}
+				schema.WriteMempoolTx(
+					memR.traceClient,
+					peer.ID(),
+					memTx.tx,
+					schema.TransferTypeUpload,
+					schema.V1VersionFieldValue,
+				)
 			}
 		}
 	}
