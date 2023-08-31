@@ -769,3 +769,12 @@ func (txmp *TxMempool) notifyTxsAvailable() {
 		}
 	}
 }
+
+// HasTx returns true if the mempool contains the given transaction.
+func (txmp *TxMempool) HasTx(tx types.Tx) bool {
+	txmp.mtx.RLock()
+	defer txmp.mtx.RUnlock()
+
+	_, ok := txmp.txByKey[tx.Key()]
+	return ok
+}
