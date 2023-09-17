@@ -135,7 +135,9 @@ message RequestPrepareProposal {
   int64 block_data_size = 2;
   // chain_id is a unique identifier for the blockchain network this proposal
   // belongs to (e.g. mocha-1).
-  string chain_id = 3;
+  string                    chain_id = 3;
+  int64                     height   = 4;
+  google.protobuf.Timestamp time     = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
 }
 
 message RequestProcessProposal {
