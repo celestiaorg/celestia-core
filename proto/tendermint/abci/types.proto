@@ -141,7 +141,8 @@ message RequestPrepareProposal {
   int64 height = 4;
   // time is the time that will end up in the header. This is the voting power
   // weighted median of the last commit.
-  google.protobuf.Timestamp    time    = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  google.protobuf.Timestamp time = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  // version is the block and app versions for the proposal.
   tendermint.version.Consensus version = 6 [(gogoproto.nullable) = false];
 }
 

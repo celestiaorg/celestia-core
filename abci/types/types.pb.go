@@ -1284,7 +1284,8 @@ type RequestPrepareProposal struct {
 	Height int64 `protobuf:"varint,4,opt,name=height,proto3" json:"height,omitempty"`
 	// time is the time that will end up in the header. This is the voting power
 	// weighted median of the last commit.
-	Time    time.Time         `protobuf:"bytes,5,opt,name=time,proto3,stdtime" json:"time"`
+	Time time.Time `protobuf:"bytes,5,opt,name=time,proto3,stdtime" json:"time"`
+	// version is the block and app versions for the proposal.
 	Version version.Consensus `protobuf:"bytes,6,opt,name=version,proto3" json:"version"`
 }
 
