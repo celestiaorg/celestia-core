@@ -129,6 +129,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 			ChainId:       state.ChainID,
 			Height:        height,
 			Time:          timestamp,
+			Version:       state.Version.Consensus,
 		},
 	)
 	if err != nil {
