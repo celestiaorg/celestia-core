@@ -115,11 +115,20 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	// https://github.com/tendermint/tendermint/issues/77
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
 
+	var timestamp time.Time
+	if height == state.InitialHeight {
+		timestamp = state.LastBlockTime // genesis time
+	} else {
+		timestamp = MedianTime(commit, state.LastValidators)
+	}
+
 	preparedProposal, err := blockExec.proxyApp.PrepareProposalSync(
 		abci.RequestPrepareProposal{
 			BlockData:     &cmtproto.Data{Txs: txs.ToSliceOfBytes()},
 			BlockDataSize: maxDataBytes,
 			ChainId:       state.ChainID,
+			Height:        height,
+			Time:          timestamp,
 		},
 	)
 	if err != nil {
