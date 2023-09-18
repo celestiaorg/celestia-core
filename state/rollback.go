@@ -77,7 +77,7 @@ func Rollback(bs BlockStore, ss Store) (int64, []byte, error) {
 		Version: cmtstate.Version{
 			Consensus: cmtversion.Consensus{
 				Block: version.BlockProtocol,
-				App:   previousParams.Version.AppVersion,
+				App:   previousParams.Version.App,
 			},
 			Software: version.TMCoreSemVer,
 		},
