@@ -87,13 +87,13 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Subsystem: MetricsSubsystem,
 			Name:      "message_receive_bytes_total",
 			Help:      "Number of bytes of each message type received.",
-		}, append(labels, "message_type")).With(labelsAndValues...),
+		}, append(labels, "message_type", "chID")).With(labelsAndValues...),
 		MessageSendBytesTotal: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "message_send_bytes_total",
 			Help:      "Number of bytes of each message type sent.",
-		}, append(labels, "message_type")).With(labelsAndValues...),
+		}, append(labels, "message_type", "chID")).With(labelsAndValues...),
 	}
 }
 
