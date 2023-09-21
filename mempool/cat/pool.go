@@ -59,7 +59,8 @@ type TxPool struct {
 	txsAvailable         chan struct{} // one value sent per height when mempool is not empty
 	preCheckFn           mempool.PreCheckFunc
 	postCheckFn          mempool.PostCheckFunc
-	height               int64 // the latest height passed to Update
+	height               int64     // the latest height passed to Update
+	lastPurgeTime        time.Time // the last time we attempted to purge transactions via the TTL
 
 	// Thread-safe cache of rejected transactions for quick look-up
 	rejectedTxCache *LRUTxCache
@@ -184,6 +185,22 @@ func (txmp *TxPool) Get(txKey types.TxKey) (types.Tx, bool) {
 // currently within the cache
 func (txmp *TxPool) IsRejectedTx(txKey types.TxKey) bool {
 	return txmp.rejectedTxCache.Has(txKey)
+}
+
+// CheckToPurgeExpiredTxs checks if there has been adequate time since the last time
+// the txpool looped through all transactions and if so, performs a purge of any transaction
+// that has expired according to the TTLDuration. This is thread safe.
+func (txmp *TxPool) CheckToPurgeExpiredTxs() {
+	txmp.updateMtx.Lock()
+	defer txmp.updateMtx.Unlock()
+	if txmp.config.TTLDuration > 0 && time.Since(txmp.lastPurgeTime) > txmp.config.TTLDuration {
+		expirationAge := time.Now().Add(-txmp.config.TTLDuration)
+		// a height of 0 means no transactions will be removed because of height
+		// (in other words, no transaction has a height less than 0)
+		numExpired := txmp.store.purgeExpiredTxs(0, expirationAge)
+		txmp.metrics.EvictedTxs.Add(float64(numExpired))
+		txmp.lastPurgeTime = time.Now()
+	}
 }
 
 // CheckTx adds the given transaction to the mempool if it fits and passes the
@@ -464,6 +481,7 @@ func (txmp *TxPool) Update(
 	if newPostFn != nil {
 		txmp.postCheckFn = newPostFn
 	}
+	txmp.lastPurgeTime = time.Now()
 	txmp.updateMtx.Unlock()
 
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
@@ -681,8 +699,6 @@ func (txmp *TxPool) canAddTx(size int64) bool {
 // purgeExpiredTxs removes all transactions from the mempool that have exceeded
 // their respective height or time-based limits as of the given blockHeight.
 // Transactions removed by this operation are not removed from the rejectedTxCache.
-//
-// The caller must hold txmp.mtx exclusively.
 func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 	if txmp.config.TTLNumBlocks == 0 && txmp.config.TTLDuration == 0 {
 		return // nothing to do
@@ -704,7 +720,7 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 
 	// purge old evicted and seen transactions
 	if txmp.config.TTLDuration == 0 {
-		// ensure that evictedTxs and seenByPeersSet are eventually pruned
+		// ensure that seenByPeersSet are eventually pruned
 		expirationAge = now.Add(-time.Hour)
 	}
 	txmp.seenByPeersSet.Prune(expirationAge)

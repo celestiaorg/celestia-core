@@ -97,23 +97,38 @@ func (memR *Reactor) SetLogger(l log.Logger) {
 
 // OnStart implements Service.
 func (memR *Reactor) OnStart() error {
-	if memR.opts.ListenOnly {
-		memR.Logger.Info("Tx broadcasting is disabled")
-		return nil
-	}
-	go func() {
-		for {
-			select {
-			case <-memR.Quit():
-				return
+	if !memR.opts.ListenOnly {
+		go func() {
+			for {
+				select {
+				case <-memR.Quit():
+					return
 
-			// listen in for any newly verified tx via RFC, then immediately
-			// broadcasts it to all connected peers.
-			case nextTx := <-memR.mempool.next():
-				memR.broadcastNewTx(nextTx)
+				// listen in for any newly verified tx via RPC, then immediately
+				// broadcast it to all connected peers.
+				case nextTx := <-memR.mempool.next():
+					memR.broadcastNewTx(nextTx)
+				}
 			}
-		}
-	}()
+		}()
+	} else {
+		memR.Logger.Info("Tx broadcasting is disabled")
+	}
+	// run a separate go routine to check for time based TTLs
+	if memR.mempool.config.TTLDuration > 0 {
+		go func() {
+			ticker := time.NewTicker(memR.mempool.config.TTLDuration)
+			for {
+				select {
+				case <-ticker.C:
+					memR.mempool.CheckToPurgeExpiredTxs()
+				case <-memR.Quit():
+					return
+				}
+			}
+		}()
+	}
+
 	return nil
 }
 
