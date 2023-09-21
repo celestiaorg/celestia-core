@@ -48,6 +48,8 @@ type Metrics struct {
 
 	// Time between this and the last block.
 	BlockIntervalSeconds metrics.Histogram
+	// Block time in seconds.
+	BlockTimeSeconds metrics.Gauge
 
 	// Number of transactions.
 	NumTxs metrics.Gauge
@@ -57,9 +59,9 @@ type Metrics struct {
 	TotalTxs metrics.Gauge
 	// The latest block height.
 	CommittedHeight metrics.Gauge
-	// Whether or not a node is fast syncing. 1 if yes, 0 if no.
+	// Whether a node is fast syncing. 1 if yes, 0 if no.
 	FastSyncing metrics.Gauge
-	// Whether or not a node is state syncing. 1 if yes, 0 if no.
+	// Whether a node is state syncing. 1 if yes, 0 if no.
 	StateSyncing metrics.Gauge
 
 	// Number of blockparts transmitted by peer.
@@ -170,6 +172,12 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Subsystem: MetricsSubsystem,
 			Name:      "block_interval_seconds",
 			Help:      "Time between this and the last block.",
+		}, labels).With(labelsAndValues...),
+		BlockTimeSeconds: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "block_time_seconds",
+			Help:      "Duration between this block and the preceding one.",
 		}, labels).With(labelsAndValues...),
 		NumTxs: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
