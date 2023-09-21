@@ -322,6 +322,7 @@ func createAndStartIndexerService(
 }
 
 func doHandshake(
+	ctx context.Context,
 	stateStore sm.Store,
 	state sm.State,
 	blockStore sm.BlockStore,
@@ -825,7 +826,7 @@ func NewNode(config *cfg.Config,
 	consensusLogger := logger.With("module", "consensus")
 	var softwareVersion string
 	if !stateSync {
-		softwareVersion, err = doHandshake(stateStore, state, blockStore, genDoc, eventBus, proxyApp, consensusLogger)
+		softwareVersion, err = doHandshake(context.TODO(), stateStore, state, blockStore, genDoc, eventBus, proxyApp, consensusLogger)
 		if err != nil {
 			return nil, err
 		}
@@ -1134,12 +1135,14 @@ func (n *Node) OnStop() {
 	}
 
 	if n.blockStore != nil {
+		n.Logger.Info("Closing blockstore")
 		if err := n.blockStore.Close(); err != nil {
 			n.Logger.Error("problem closing blockstore", "err", err)
 		}
 	}
 
 	if n.stateStore != nil {
+		n.Logger.Info("Closing statestore")
 		if err := n.stateStore.Close(); err != nil {
 			n.Logger.Error("problem closing statestore", "err", err)
 		}
@@ -1161,6 +1164,12 @@ func (n *Node) OnStop() {
 		}
 	}
 
+	if n.evidencePool != nil {
+		n.Logger.Info("Closing evidencestore")
+		if err := n.EvidencePool().Close(); err != nil {
+			n.Logger.Error("problem closing evidencestore", "err", err)
+		}
+	}
 }
 
 // ConfigureRPC makes sure RPC has all the objects it needs to operate.
