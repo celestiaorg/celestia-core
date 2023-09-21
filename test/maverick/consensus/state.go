@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"time"
 
@@ -1671,7 +1672,7 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 			elapsedTime := block.Time.Sub(lastBlockMeta.Header.Time).Seconds()
 			cs.metrics.BlockIntervalSeconds.Observe(elapsedTime)
 			cs.metrics.BlockTimeSeconds.With("block_height",
-				fmt.Sprintf("%d", block.Height)).Set(elapsedTime)
+				strconv.FormatInt(block.Height, 10)).Set(elapsedTime)
 
 		}
 	}
