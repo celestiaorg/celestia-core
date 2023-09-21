@@ -178,7 +178,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Subsystem: MetricsSubsystem,
 			Name:      "block_time_seconds",
 			Help:      "Duration between this block and the preceding one.",
-		}, labels).With(labelsAndValues...),
+		}, append(labels, "block_height")).With(labelsAndValues...),
 		NumTxs: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
