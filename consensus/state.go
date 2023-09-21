@@ -1830,9 +1830,11 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	if height > 1 {
 		lastBlockMeta := cs.blockStore.LoadBlockMeta(height - 1)
 		if lastBlockMeta != nil {
-			cs.metrics.BlockIntervalSeconds.Observe(
-				block.Time.Sub(lastBlockMeta.Header.Time).Seconds(),
-			)
+			elapsedTime := block.Time.Sub(lastBlockMeta.Header.Time).Seconds()
+			cs.metrics.BlockIntervalSeconds.Observe(elapsedTime)
+			cs.metrics.BlockTimeSeconds.With("block_height",
+				fmt.Sprintf("%d", block.Height)).Set(elapsedTime)
+
 		}
 	}
 
@@ -1844,6 +1846,7 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	cs.metrics.NumTxs.Set(float64(len(block.Data.Txs)))
 	cs.metrics.TotalTxs.Add(float64(len(block.Data.Txs)))
 	cs.metrics.BlockSizeBytes.Set(float64(blockSize))
+	// cs.metrics.BlockTimeSeconds
 	cs.metrics.CommittedHeight.Set(float64(block.Height))
 }
 
@@ -2003,7 +2006,7 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 		// If the vote height is off, we'll just ignore it,
 		// But if it's a conflicting sig, add it to the cs.evpool.
 		// If it's otherwise invalid, punish peer.
-		//nolint: gocritic
+		// nolint: gocritic
 		if voteErr, ok := err.(*types.ErrVoteConflictingVotes); ok {
 			if cs.privValidatorPubKey == nil {
 				return false, errPubKeyIsNotSet

@@ -272,6 +272,7 @@ func NopMetrics() *Metrics {
 		ByzantineValidatorsPower: discard.NewGauge(),
 
 		BlockIntervalSeconds: discard.NewHistogram(),
+		BlockTimeSeconds:     discard.NewGauge(),
 
 		NumTxs:                    discard.NewGauge(),
 		BlockSizeBytes:            discard.NewGauge(),
