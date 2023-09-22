@@ -14,7 +14,6 @@ import (
 	"github.com/cometbft/cometbft/evidence"
 	"github.com/cometbft/cometbft/evidence/mocks"
 	"github.com/cometbft/cometbft/libs/log"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
 	sm "github.com/cometbft/cometbft/state"
 	smmocks "github.com/cometbft/cometbft/state/mocks"
@@ -326,12 +325,12 @@ func TestRecoverPendingEvidence(t *testing.T) {
 	newStateStore.On("Load").Return(sm.State{
 		LastBlockTime:   defaultEvidenceTime.Add(25 * time.Minute),
 		LastBlockHeight: height + 15,
-		ConsensusParams: cmtproto.ConsensusParams{
-			Block: cmtproto.BlockParams{
+		ConsensusParams: types.ConsensusParams{
+			Block: types.BlockParams{
 				MaxBytes: 22020096,
 				MaxGas:   -1,
 			},
-			Evidence: cmtproto.EvidenceParams{
+			Evidence: types.EvidenceParams{
 				MaxAgeNumBlocks: 20,
 				MaxAgeDuration:  20 * time.Minute,
 				MaxBytes:        defaultEvidenceMaxBytes,
@@ -361,12 +360,12 @@ func initializeStateFromValidatorSet(valSet *types.ValidatorSet, height int64) s
 		NextValidators:              valSet.CopyIncrementProposerPriority(1),
 		LastValidators:              valSet,
 		LastHeightValidatorsChanged: 1,
-		ConsensusParams: cmtproto.ConsensusParams{
-			Block: cmtproto.BlockParams{
+		ConsensusParams: types.ConsensusParams{
+			Block: types.BlockParams{
 				MaxBytes: 22020096,
 				MaxGas:   -1,
 			},
-			Evidence: cmtproto.EvidenceParams{
+			Evidence: types.EvidenceParams{
 				MaxAgeNumBlocks: 20,
 				MaxAgeDuration:  20 * time.Minute,
 				MaxBytes:        1000,

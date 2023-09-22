@@ -25,7 +25,6 @@ import (
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	"github.com/cometbft/cometbft/libs/log"
 	mmock "github.com/cometbft/cometbft/mempool/mock"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmtversion "github.com/cometbft/cometbft/proto/tendermint/version"
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
@@ -367,13 +366,13 @@ func TestValidateValidatorUpdates(t *testing.T) {
 	pk2, err := cryptoenc.PubKeyToProto(pubkey2)
 	assert.NoError(t, err)
 
-	defaultValidatorParams := cmtproto.ValidatorParams{PubKeyTypes: []string{types.ABCIPubKeyTypeEd25519}}
+	defaultValidatorParams := types.ValidatorParams{PubKeyTypes: []string{types.ABCIPubKeyTypeEd25519}}
 
 	testCases := []struct {
 		name string
 
 		abciUpdates     []abci.ValidatorUpdate
-		validatorParams cmtproto.ValidatorParams
+		validatorParams types.ValidatorParams
 
 		shouldErr bool
 	}{

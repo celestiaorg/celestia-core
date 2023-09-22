@@ -67,7 +67,7 @@ type ResultBlockResults struct {
 	BeginBlockEvents      []abci.Event              `json:"begin_block_events"`
 	EndBlockEvents        []abci.Event              `json:"end_block_events"`
 	ValidatorUpdates      []abci.ValidatorUpdate    `json:"validator_updates"`
-	ConsensusParamUpdates *abci.ConsensusParams     `json:"consensus_param_updates"`
+	ConsensusParamUpdates *cmtproto.ConsensusParams `json:"consensus_param_updates"`
 }
 
 type ResultDataCommitment struct {
@@ -167,8 +167,8 @@ type ResultValidators struct {
 
 // ConsensusParams for given height
 type ResultConsensusParams struct {
-	BlockHeight     int64                    `json:"block_height"`
-	ConsensusParams cmtproto.ConsensusParams `json:"consensus_params"`
+	BlockHeight     int64                 `json:"block_height"`
+	ConsensusParams types.ConsensusParams `json:"consensus_params"`
 }
 
 // Info about the consensus state.
