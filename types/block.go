@@ -881,6 +881,10 @@ func (commit *Commit) IsCommit() bool {
 // ValidateBasic performs basic validation that doesn't involve state data.
 // Does not actually check the cryptographic signatures.
 func (commit *Commit) ValidateBasic() error {
+	if commit == nil {
+		return errors.New("nil commit")
+	}
+
 	if commit.Height < 0 {
 		return errors.New("negative Height")
 	}
