@@ -37,7 +37,7 @@ type mempoolIDs struct {
 	activeIDs map[uint16]struct{} // used to check if a given peerID key is used, the value doesn't matter
 }
 
-// Reserve searches for the next unused ID and assigns it to the
+// ReserveForPeer searches for the next unused ID and assigns it to the
 // peer.
 func (ids *mempoolIDs) ReserveForPeer(peer p2p.Peer) {
 	ids.mtx.Lock()
@@ -174,7 +174,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	// broadcast routine checks if peer is gone and returns
 }
 
-// Receive implements Reactor.
+// ReceiveEnvelope implements Reactor.
 // It adds any received transactions to the mempool.
 func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	memR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
@@ -191,7 +191,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		}
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
-			memR.Logger.Error("received tmpty txs from peer", "src", e.Src)
+			memR.Logger.Error("received empty txs from peer", "src", e.Src)
 			return
 		}
 		txInfo := mempool.TxInfo{SenderID: memR.ids.GetForPeer(e.Src)}
@@ -240,7 +240,7 @@ type PeerState interface {
 	GetHeight() int64
 }
 
-// Send new mempool txs to peer.
+// broadcastTxRoutine sends new mempool txs to peer.
 func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 	peerID := memR.ids.GetForPeer(peer)
 	var next *clist.CElement
