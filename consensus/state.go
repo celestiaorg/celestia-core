@@ -1832,8 +1832,7 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 		if lastBlockMeta != nil {
 			elapsedTime := block.Time.Sub(lastBlockMeta.Header.Time).Seconds()
 			cs.metrics.BlockIntervalSeconds.Observe(elapsedTime)
-			cs.metrics.BlockTimeSeconds.With("block_height",
-				fmt.Sprintf("%d", block.Height)).Set(elapsedTime)
+			cs.metrics.BlockTimeSeconds.Set(elapsedTime)
 
 		}
 	}
