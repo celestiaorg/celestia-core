@@ -177,6 +177,29 @@ func TestMempoolVectors(t *testing.T) {
 	}
 }
 
+func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
+	reactor, _ := setupReactor(t)
+	reactor.mempool.config.TTLDuration = 100 * time.Millisecond
+
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+	txMsg := &protomem.Message{
+		Sum: &protomem.Message_Txs{Txs: &protomem.Txs{Txs: [][]byte{tx}}},
+	}
+	txMsgBytes, err := txMsg.Marshal()
+	require.NoError(t, err)
+
+	peer := genPeer()
+	require.NoError(t, reactor.Start())
+	reactor.InitPeer(peer)
+	reactor.Receive(mempool.MempoolChannel, peer, txMsgBytes)
+	require.True(t, reactor.mempool.Has(key))
+
+	// wait for the transaction to expire
+	time.Sleep(reactor.mempool.config.TTLDuration * 2)
+	require.False(t, reactor.mempool.Has(key))
+}
+
 func TestLegacyReactorReceiveBasic(t *testing.T) {
 	config := cfg.TestConfig()
 	// if there were more than two reactors, the order of transactions could not be
