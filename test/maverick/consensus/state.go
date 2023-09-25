@@ -1893,7 +1893,7 @@ func (cs *State) signAddVote(msgType cmtproto.SignedMsgType, hash []byte, header
 	}
 	// if !cs.replayMode {
 	cs.Logger.Error("Error signing vote", "height", cs.Height, "round", cs.Round, "vote", vote, "err", err)
-	// }
+	//}
 	return nil
 }
 
