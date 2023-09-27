@@ -74,11 +74,15 @@ func TestReactorSendWantTxAfterReceiveingSeenTx(t *testing.T) {
 	msgWant := &protomem.Message{
 		Sum: &protomem.Message_WantTx{WantTx: &protomem.WantTx{TxKey: key[:]}},
 	}
-	msgWantB, err := msgWant.Marshal()
-	require.NoError(t, err)
+	envWant := p2p.Envelope{
+		Message:   msgWant,
+		ChannelID: MempoolStateChannel,
+	}
+	//msgWantB, err := msgWant.Marshal()
+	//require.NoError(t, err)
 
 	peer := genPeer()
-	peer.On("Send", MempoolStateChannel, msgWantB).Return(true)
+	peer.On("SendEnvelope", envWant).Return(true)
 
 	reactor.InitPeer(peer)
 	reactor.Receive(MempoolStateChannel, peer, msgSeenB)
@@ -136,13 +140,16 @@ func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
 	seenMsg := &protomem.Message{
 		Sum: &protomem.Message_SeenTx{SeenTx: &protomem.SeenTx{TxKey: key[:]}},
 	}
-	seenMsgBytes, err := seenMsg.Marshal()
-	require.NoError(t, err)
 
 	peers := genPeers(2)
 	// only peer 1 should receive the seen tx message as peer 0 broadcasted
 	// the transaction in the first place
-	peers[1].On("Send", MempoolStateChannel, seenMsgBytes).Return(true)
+	seenEnv := p2p.Envelope{
+		Message:   seenMsg,
+		ChannelID: MempoolStateChannel,
+	}
+
+	peers[1].On("SendEnvelope", seenEnv).Return(true)
 
 	reactor.InitPeer(peers[0])
 	reactor.InitPeer(peers[1])
