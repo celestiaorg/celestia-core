@@ -78,8 +78,6 @@ func TestReactorSendWantTxAfterReceiveingSeenTx(t *testing.T) {
 		Message:   msgWant,
 		ChannelID: MempoolStateChannel,
 	}
-	//msgWantB, err := msgWant.Marshal()
-	//require.NoError(t, err)
 
 	peer := genPeer()
 	peer.On("SendEnvelope", envWant).Return(true)
