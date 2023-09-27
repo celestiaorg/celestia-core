@@ -3,26 +3,9 @@ package types
 import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto"
-	"github.com/cometbft/cometbft/crypto/ed25519"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
-	"github.com/cometbft/cometbft/crypto/secp256k1"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 )
-
-//-------------------------------------------------------
-// Use strings to distinguish types in ABCI messages
-
-const (
-	ABCIPubKeyTypeEd25519   = ed25519.KeyType
-	ABCIPubKeyTypeSecp256k1 = secp256k1.KeyType
-)
-
-// TODO: Make non-global by allowing for registration of more pubkey types
-
-var ABCIPubKeyTypesToNames = map[string]string{
-	ABCIPubKeyTypeEd25519:   ed25519.PubKeyName,
-	ABCIPubKeyTypeSecp256k1: secp256k1.PubKeyName,
-}
 
 //-------------------------------------------------------
 
@@ -95,17 +78,6 @@ func (tm2pb) ValidatorUpdates(vals *ValidatorSet) []abci.ValidatorUpdate {
 		validators[i] = TM2PB.ValidatorUpdate(val)
 	}
 	return validators
-}
-
-func (tm2pb) ConsensusParams(params *cmtproto.ConsensusParams) *abci.ConsensusParams {
-	return &abci.ConsensusParams{
-		Block: &abci.BlockParams{
-			MaxBytes: params.Block.MaxBytes,
-			MaxGas:   params.Block.MaxGas,
-		},
-		Evidence:  &params.Evidence,
-		Validator: &params.Validator,
-	}
 }
 
 // XXX: panics on nil or unknown pubkey type

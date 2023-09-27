@@ -539,6 +539,7 @@ type RequestInfo struct {
 	Version      string `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
 	BlockVersion uint64 `protobuf:"varint,2,opt,name=block_version,json=blockVersion,proto3" json:"block_version,omitempty"`
 	P2PVersion   uint64 `protobuf:"varint,3,opt,name=p2p_version,json=p2pVersion,proto3" json:"p2p_version,omitempty"`
+	AbciVersion  string `protobuf:"bytes,4,opt,name=abci_version,json=abciVersion,proto3" json:"abci_version,omitempty"`
 }
 
 func (m *RequestInfo) Reset()         { *m = RequestInfo{} }
@@ -595,13 +596,20 @@ func (m *RequestInfo) GetP2PVersion() uint64 {
 	return 0
 }
 
+func (m *RequestInfo) GetAbciVersion() string {
+	if m != nil {
+		return m.AbciVersion
+	}
+	return ""
+}
+
 type RequestInitChain struct {
-	Time            time.Time         `protobuf:"bytes,1,opt,name=time,proto3,stdtime" json:"time"`
-	ChainId         string            `protobuf:"bytes,2,opt,name=chain_id,json=chainId,proto3" json:"chain_id,omitempty"`
-	ConsensusParams *ConsensusParams  `protobuf:"bytes,3,opt,name=consensus_params,json=consensusParams,proto3" json:"consensus_params,omitempty"`
-	Validators      []ValidatorUpdate `protobuf:"bytes,4,rep,name=validators,proto3" json:"validators"`
-	AppStateBytes   []byte            `protobuf:"bytes,5,opt,name=app_state_bytes,json=appStateBytes,proto3" json:"app_state_bytes,omitempty"`
-	InitialHeight   int64             `protobuf:"varint,6,opt,name=initial_height,json=initialHeight,proto3" json:"initial_height,omitempty"`
+	Time            time.Time               `protobuf:"bytes,1,opt,name=time,proto3,stdtime" json:"time"`
+	ChainId         string                  `protobuf:"bytes,2,opt,name=chain_id,json=chainId,proto3" json:"chain_id,omitempty"`
+	ConsensusParams *types1.ConsensusParams `protobuf:"bytes,3,opt,name=consensus_params,json=consensusParams,proto3" json:"consensus_params,omitempty"`
+	Validators      []ValidatorUpdate       `protobuf:"bytes,4,rep,name=validators,proto3" json:"validators"`
+	AppStateBytes   []byte                  `protobuf:"bytes,5,opt,name=app_state_bytes,json=appStateBytes,proto3" json:"app_state_bytes,omitempty"`
+	InitialHeight   int64                   `protobuf:"varint,6,opt,name=initial_height,json=initialHeight,proto3" json:"initial_height,omitempty"`
 }
 
 func (m *RequestInitChain) Reset()         { *m = RequestInitChain{} }
@@ -651,7 +659,7 @@ func (m *RequestInitChain) GetChainId() string {
 	return ""
 }
 
-func (m *RequestInitChain) GetConsensusParams() *ConsensusParams {
+func (m *RequestInitChain) GetConsensusParams() *types1.ConsensusParams {
 	if m != nil {
 		return m.ConsensusParams
 	}
@@ -1900,9 +1908,9 @@ func (m *ResponseInfo) GetLastBlockAppHash() []byte {
 }
 
 type ResponseInitChain struct {
-	ConsensusParams *ConsensusParams  `protobuf:"bytes,1,opt,name=consensus_params,json=consensusParams,proto3" json:"consensus_params,omitempty"`
-	Validators      []ValidatorUpdate `protobuf:"bytes,2,rep,name=validators,proto3" json:"validators"`
-	AppHash         []byte            `protobuf:"bytes,3,opt,name=app_hash,json=appHash,proto3" json:"app_hash,omitempty"`
+	ConsensusParams *types1.ConsensusParams `protobuf:"bytes,1,opt,name=consensus_params,json=consensusParams,proto3" json:"consensus_params,omitempty"`
+	Validators      []ValidatorUpdate       `protobuf:"bytes,2,rep,name=validators,proto3" json:"validators"`
+	AppHash         []byte                  `protobuf:"bytes,3,opt,name=app_hash,json=appHash,proto3" json:"app_hash,omitempty"`
 }
 
 func (m *ResponseInitChain) Reset()         { *m = ResponseInitChain{} }
@@ -1938,7 +1946,7 @@ func (m *ResponseInitChain) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_ResponseInitChain proto.InternalMessageInfo
 
-func (m *ResponseInitChain) GetConsensusParams() *ConsensusParams {
+func (m *ResponseInitChain) GetConsensusParams() *types1.ConsensusParams {
 	if m != nil {
 		return m.ConsensusParams
 	}
@@ -2339,9 +2347,9 @@ func (m *ResponseDeliverTx) GetCodespace() string {
 }
 
 type ResponseEndBlock struct {
-	ValidatorUpdates      []ValidatorUpdate `protobuf:"bytes,1,rep,name=validator_updates,json=validatorUpdates,proto3" json:"validator_updates"`
-	ConsensusParamUpdates *ConsensusParams  `protobuf:"bytes,2,opt,name=consensus_param_updates,json=consensusParamUpdates,proto3" json:"consensus_param_updates,omitempty"`
-	Events                []Event           `protobuf:"bytes,3,rep,name=events,proto3" json:"events,omitempty"`
+	ValidatorUpdates      []ValidatorUpdate       `protobuf:"bytes,1,rep,name=validator_updates,json=validatorUpdates,proto3" json:"validator_updates"`
+	ConsensusParamUpdates *types1.ConsensusParams `protobuf:"bytes,2,opt,name=consensus_param_updates,json=consensusParamUpdates,proto3" json:"consensus_param_updates,omitempty"`
+	Events                []Event                 `protobuf:"bytes,3,rep,name=events,proto3" json:"events,omitempty"`
 }
 
 func (m *ResponseEndBlock) Reset()         { *m = ResponseEndBlock{} }
@@ -2384,7 +2392,7 @@ func (m *ResponseEndBlock) GetValidatorUpdates() []ValidatorUpdate {
 	return nil
 }
 
-func (m *ResponseEndBlock) GetConsensusParamUpdates() *ConsensusParams {
+func (m *ResponseEndBlock) GetConsensusParamUpdates() *types1.ConsensusParams {
 	if m != nil {
 		return m.ConsensusParamUpdates
 	}
@@ -2734,131 +2742,6 @@ func (m *ResponseProcessProposal) GetStatus() ResponseProcessProposal_ProposalSt
 	return ResponseProcessProposal_UNKNOWN
 }
 
-// ConsensusParams contains all consensus-relevant parameters
-// that can be adjusted by the abci app
-type ConsensusParams struct {
-	Block     *BlockParams            `protobuf:"bytes,1,opt,name=block,proto3" json:"block,omitempty"`
-	Evidence  *types1.EvidenceParams  `protobuf:"bytes,2,opt,name=evidence,proto3" json:"evidence,omitempty"`
-	Validator *types1.ValidatorParams `protobuf:"bytes,3,opt,name=validator,proto3" json:"validator,omitempty"`
-	Version   *types1.VersionParams   `protobuf:"bytes,4,opt,name=version,proto3" json:"version,omitempty"`
-}
-
-func (m *ConsensusParams) Reset()         { *m = ConsensusParams{} }
-func (m *ConsensusParams) String() string { return proto.CompactTextString(m) }
-func (*ConsensusParams) ProtoMessage()    {}
-func (*ConsensusParams) Descriptor() ([]byte, []int) {
-	return fileDescriptor_252557cfdd89a31a, []int{35}
-}
-func (m *ConsensusParams) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *ConsensusParams) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_ConsensusParams.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *ConsensusParams) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ConsensusParams.Merge(m, src)
-}
-func (m *ConsensusParams) XXX_Size() int {
-	return m.Size()
-}
-func (m *ConsensusParams) XXX_DiscardUnknown() {
-	xxx_messageInfo_ConsensusParams.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_ConsensusParams proto.InternalMessageInfo
-
-func (m *ConsensusParams) GetBlock() *BlockParams {
-	if m != nil {
-		return m.Block
-	}
-	return nil
-}
-
-func (m *ConsensusParams) GetEvidence() *types1.EvidenceParams {
-	if m != nil {
-		return m.Evidence
-	}
-	return nil
-}
-
-func (m *ConsensusParams) GetValidator() *types1.ValidatorParams {
-	if m != nil {
-		return m.Validator
-	}
-	return nil
-}
-
-func (m *ConsensusParams) GetVersion() *types1.VersionParams {
-	if m != nil {
-		return m.Version
-	}
-	return nil
-}
-
-// BlockParams contains limits on the block size.
-type BlockParams struct {
-	// Note: must be greater than 0
-	MaxBytes int64 `protobuf:"varint,1,opt,name=max_bytes,json=maxBytes,proto3" json:"max_bytes,omitempty"`
-	// Note: must be greater or equal to -1
-	MaxGas int64 `protobuf:"varint,2,opt,name=max_gas,json=maxGas,proto3" json:"max_gas,omitempty"`
-}
-
-func (m *BlockParams) Reset()         { *m = BlockParams{} }
-func (m *BlockParams) String() string { return proto.CompactTextString(m) }
-func (*BlockParams) ProtoMessage()    {}
-func (*BlockParams) Descriptor() ([]byte, []int) {
-	return fileDescriptor_252557cfdd89a31a, []int{36}
-}
-func (m *BlockParams) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *BlockParams) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_BlockParams.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *BlockParams) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_BlockParams.Merge(m, src)
-}
-func (m *BlockParams) XXX_Size() int {
-	return m.Size()
-}
-func (m *BlockParams) XXX_DiscardUnknown() {
-	xxx_messageInfo_BlockParams.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_BlockParams proto.InternalMessageInfo
-
-func (m *BlockParams) GetMaxBytes() int64 {
-	if m != nil {
-		return m.MaxBytes
-	}
-	return 0
-}
-
-func (m *BlockParams) GetMaxGas() int64 {
-	if m != nil {
-		return m.MaxGas
-	}
-	return 0
-}
-
 type CommitInfo struct {
 	Round int32      `protobuf:"varint,1,opt,name=round,proto3" json:"round,omitempty"`
 	Votes []VoteInfo `protobuf:"bytes,2,rep,name=votes,proto3" json:"votes"`
@@ -2868,7 +2751,7 @@ func (m *CommitInfo) Reset()         { *m = CommitInfo{} }
 func (m *CommitInfo) String() string { return proto.CompactTextString(m) }
 func (*CommitInfo) ProtoMessage()    {}
 func (*CommitInfo) Descriptor() ([]byte, []int) {
-	return fileDescriptor_252557cfdd89a31a, []int{37}
+	return fileDescriptor_252557cfdd89a31a, []int{35}
 }
 func (m *CommitInfo) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -2923,7 +2806,7 @@ func (m *ExtendedCommitInfo) Reset()         { *m = ExtendedCommitInfo{} }
 func (m *ExtendedCommitInfo) String() string { return proto.CompactTextString(m) }
 func (*ExtendedCommitInfo) ProtoMessage()    {}
 func (*ExtendedCommitInfo) Descriptor() ([]byte, []int) {
-	return fileDescriptor_252557cfdd89a31a, []int{38}
+	return fileDescriptor_252557cfdd89a31a, []int{36}
 }
 func (m *ExtendedCommitInfo) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -2978,7 +2861,7 @@ func (m *Event) Reset()         { *m = Event{} }
 func (m *Event) String() string { return proto.CompactTextString(m) }
 func (*Event) ProtoMessage()    {}
 func (*Event) Descriptor() ([]byte, []int) {
-	return fileDescriptor_252557cfdd89a31a, []int{39}
+	return fileDescriptor_252557cfdd89a31a, []int{37}
 }
 func (m *Event) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -3032,7 +2915,7 @@ func (m *EventAttribute) Reset()         { *m = EventAttribute{} }
 func (m *EventAttribute) String() string { return proto.CompactTextString(m) }
 func (*EventAttribute) ProtoMessage()    {}
 func (*EventAttribute) Descriptor() ([]byte, []int) {
-	return fileDescriptor_252557cfdd89a31a, []int{40}
+	return fileDescriptor_252557cfdd89a31a, []int{38}
 }
 func (m *EventAttribute) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -3096,7 +2979,7 @@ func (m *TxResult) Reset()         { *m = TxResult{} }
 func (m *TxResult) String() string { return proto.CompactTextString(m) }
 func (*TxResult) ProtoMessage()    {}
 func (*TxResult) Descriptor() ([]byte, []int) {
-	return fileDescriptor_252557cfdd89a31a, []int{41}
+	return fileDescriptor_252557cfdd89a31a, []int{39}
 }
 func (m *TxResult) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -3164,7 +3047,7 @@ func (m *Validator) Reset()         { *m = Validator{} }
 func (m *Validator) String() string { return proto.CompactTextString(m) }
 func (*Validator) ProtoMessage()    {}
 func (*Validator) Descriptor() ([]byte, []int) {
-	return fileDescriptor_252557cfdd89a31a, []int{42}
+	return fileDescriptor_252557cfdd89a31a, []int{40}
 }
 func (m *Validator) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -3217,7 +3100,7 @@ func (m *ValidatorUpdate) Reset()         { *m = ValidatorUpdate{} }
 func (m *ValidatorUpdate) String() string { return proto.CompactTextString(m) }
 func (*ValidatorUpdate) ProtoMessage()    {}
 func (*ValidatorUpdate) Descriptor() ([]byte, []int) {
-	return fileDescriptor_252557cfdd89a31a, []int{43}
+	return fileDescriptor_252557cfdd89a31a, []int{41}
 }
 func (m *ValidatorUpdate) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -3270,7 +3153,7 @@ func (m *VoteInfo) Reset()         { *m = VoteInfo{} }
 func (m *VoteInfo) String() string { return proto.CompactTextString(m) }
 func (*VoteInfo) ProtoMessage()    {}
 func (*VoteInfo) Descriptor() ([]byte, []int) {
-	return fileDescriptor_252557cfdd89a31a, []int{44}
+	return fileDescriptor_252557cfdd89a31a, []int{42}
 }
 func (m *VoteInfo) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -3323,7 +3206,7 @@ func (m *ExtendedVoteInfo) Reset()         { *m = ExtendedVoteInfo{} }
 func (m *ExtendedVoteInfo) String() string { return proto.CompactTextString(m) }
 func (*ExtendedVoteInfo) ProtoMessage()    {}
 func (*ExtendedVoteInfo) Descriptor() ([]byte, []int) {
-	return fileDescriptor_252557cfdd89a31a, []int{45}
+	return fileDescriptor_252557cfdd89a31a, []int{43}
 }
 func (m *ExtendedVoteInfo) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -3391,7 +3274,7 @@ func (m *Misbehavior) Reset()         { *m = Misbehavior{} }
 func (m *Misbehavior) String() string { return proto.CompactTextString(m) }
 func (*Misbehavior) ProtoMessage()    {}
 func (*Misbehavior) Descriptor() ([]byte, []int) {
-	return fileDescriptor_252557cfdd89a31a, []int{46}
+	return fileDescriptor_252557cfdd89a31a, []int{44}
 }
 func (m *Misbehavior) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -3467,7 +3350,7 @@ func (m *Snapshot) Reset()         { *m = Snapshot{} }
 func (m *Snapshot) String() string { return proto.CompactTextString(m) }
 func (*Snapshot) ProtoMessage()    {}
 func (*Snapshot) Descriptor() ([]byte, []int) {
-	return fileDescriptor_252557cfdd89a31a, []int{47}
+	return fileDescriptor_252557cfdd89a31a, []int{45}
 }
 func (m *Snapshot) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -3572,8 +3455,6 @@ func init() {
 	proto.RegisterType((*ResponseApplySnapshotChunk)(nil), "tendermint.abci.ResponseApplySnapshotChunk")
 	proto.RegisterType((*ResponsePrepareProposal)(nil), "tendermint.abci.ResponsePrepareProposal")
 	proto.RegisterType((*ResponseProcessProposal)(nil), "tendermint.abci.ResponseProcessProposal")
-	proto.RegisterType((*ConsensusParams)(nil), "tendermint.abci.ConsensusParams")
-	proto.RegisterType((*BlockParams)(nil), "tendermint.abci.BlockParams")
 	proto.RegisterType((*CommitInfo)(nil), "tendermint.abci.CommitInfo")
 	proto.RegisterType((*ExtendedCommitInfo)(nil), "tendermint.abci.ExtendedCommitInfo")
 	proto.RegisterType((*Event)(nil), "tendermint.abci.Event")
@@ -4853,6 +4734,13 @@ func (m *RequestInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.AbciVersion) > 0 {
+		i -= len(m.AbciVersion)
+		copy(dAtA[i:], m.AbciVersion)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.AbciVersion)))
+		i--
+		dAtA[i] = 0x22
+	}
 	if m.P2PVersion != 0 {
 		i = encodeVarintTypes(dAtA, i, uint64(m.P2PVersion))
 		i--
@@ -6706,110 +6594,6 @@ func (m *ResponseProcessProposal) MarshalToSizedBuffer(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
-func (m *ConsensusParams) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *ConsensusParams) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *ConsensusParams) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.Version != nil {
-		{
-			size, err := m.Version.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintTypes(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x22
-	}
-	if m.Validator != nil {
-		{
-			size, err := m.Validator.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintTypes(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x1a
-	}
-	if m.Evidence != nil {
-		{
-			size, err := m.Evidence.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintTypes(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Block != nil {
-		{
-			size, err := m.Block.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintTypes(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *BlockParams) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *BlockParams) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *BlockParams) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.MaxGas != 0 {
-		i = encodeVarintTypes(dAtA, i, uint64(m.MaxGas))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.MaxBytes != 0 {
-		i = encodeVarintTypes(dAtA, i, uint64(m.MaxBytes))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *CommitInfo) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -7226,12 +7010,12 @@ func (m *Misbehavior) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x28
 	}
-	n56, err56 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Time, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Time):])
-	if err56 != nil {
-		return 0, err56
+	n52, err52 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Time, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Time):])
+	if err52 != nil {
+		return 0, err52
 	}
-	i -= n56
-	i = encodeVarintTypes(dAtA, i, uint64(n56))
+	i -= n52
+	i = encodeVarintTypes(dAtA, i, uint64(n52))
 	i--
 	dAtA[i] = 0x22
 	if m.Height != 0 {
@@ -7561,6 +7345,10 @@ func (m *RequestInfo) Size() (n int) {
 	}
 	if m.P2PVersion != 0 {
 		n += 1 + sovTypes(uint64(m.P2PVersion))
+	}
+	l = len(m.AbciVersion)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
 	}
 	return n
 }
@@ -8417,46 +8205,6 @@ func (m *ResponseProcessProposal) Size() (n int) {
 	_ = l
 	if m.Status != 0 {
 		n += 1 + sovTypes(uint64(m.Status))
-	}
-	return n
-}
-
-func (m *ConsensusParams) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Block != nil {
-		l = m.Block.Size()
-		n += 1 + l + sovTypes(uint64(l))
-	}
-	if m.Evidence != nil {
-		l = m.Evidence.Size()
-		n += 1 + l + sovTypes(uint64(l))
-	}
-	if m.Validator != nil {
-		l = m.Validator.Size()
-		n += 1 + l + sovTypes(uint64(l))
-	}
-	if m.Version != nil {
-		l = m.Version.Size()
-		n += 1 + l + sovTypes(uint64(l))
-	}
-	return n
-}
-
-func (m *BlockParams) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.MaxBytes != 0 {
-		n += 1 + sovTypes(uint64(m.MaxBytes))
-	}
-	if m.MaxGas != 0 {
-		n += 1 + sovTypes(uint64(m.MaxGas))
 	}
 	return n
 }
@@ -9514,6 +9262,38 @@ func (m *RequestInfo) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AbciVersion", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AbciVersion = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])
@@ -9659,7 +9439,7 @@ func (m *RequestInitChain) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.ConsensusParams == nil {
-				m.ConsensusParams = &ConsensusParams{}
+				m.ConsensusParams = &types1.ConsensusParams{}
 			}
 			if err := m.ConsensusParams.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -12544,7 +12324,7 @@ func (m *ResponseInitChain) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.ConsensusParams == nil {
-				m.ConsensusParams = &ConsensusParams{}
+				m.ConsensusParams = &types1.ConsensusParams{}
 			}
 			if err := m.ConsensusParams.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -13748,7 +13528,7 @@ func (m *ResponseEndBlock) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.ConsensusParamUpdates == nil {
-				m.ConsensusParamUpdates = &ConsensusParams{}
+				m.ConsensusParamUpdates = &types1.ConsensusParams{}
 			}
 			if err := m.ConsensusParamUpdates.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -14452,288 +14232,6 @@ func (m *ResponseProcessProposal) Unmarshal(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.Status |= ResponseProcessProposal_ProposalStatus(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := skipTypes(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *ConsensusParams) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowTypes
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: ConsensusParams: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ConsensusParams: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Block", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthTypes
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Block == nil {
-				m.Block = &BlockParams{}
-			}
-			if err := m.Block.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Evidence", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthTypes
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Evidence == nil {
-				m.Evidence = &types1.EvidenceParams{}
-			}
-			if err := m.Evidence.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Validator", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthTypes
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Validator == nil {
-				m.Validator = &types1.ValidatorParams{}
-			}
-			if err := m.Validator.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthTypes
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Version == nil {
-				m.Version = &types1.VersionParams{}
-			}
-			if err := m.Version.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipTypes(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *BlockParams) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowTypes
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: BlockParams: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: BlockParams: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MaxBytes", wireType)
-			}
-			m.MaxBytes = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MaxBytes |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MaxGas", wireType)
-			}
-			m.MaxGas = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MaxGas |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

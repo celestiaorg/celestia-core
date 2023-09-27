@@ -16,7 +16,6 @@ import (
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 )
@@ -139,8 +138,8 @@ func TestPruneStates(t *testing.T) {
 					LastBlockHeight: h - 1,
 					Validators:      validatorSet,
 					NextValidators:  validatorSet,
-					ConsensusParams: cmtproto.ConsensusParams{
-						Block: cmtproto.BlockParams{MaxBytes: 10e6},
+					ConsensusParams: types.ConsensusParams{
+						Block: types.BlockParams{MaxBytes: 10e6},
 					},
 					LastHeightValidatorsChanged:      valsChanged,
 					LastHeightConsensusParamsChanged: paramsChanged,
@@ -188,9 +187,10 @@ func TestPruneStates(t *testing.T) {
 				params, err := stateStore.LoadConsensusParams(h)
 				if expectParams[h] {
 					require.NoError(t, err, "params height %v", h)
-					require.False(t, params.Equal(&cmtproto.ConsensusParams{}))
+					require.NotEmpty(t, params)
 				} else {
 					require.Error(t, err, "params height %v", h)
+					require.Empty(t, params)
 				}
 
 				abci, err := stateStore.LoadABCIResponses(h)
