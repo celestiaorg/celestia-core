@@ -179,6 +179,7 @@ func (blockExec *BlockExecutor) ProcessProposal(
 		Misbehavior:        block.Evidence.Evidence.ToABCI(),
 		ProposerAddress:    block.ProposerAddress,
 		NextValidatorsHash: block.NextValidatorsHash,
+		AppVersion:         block.Header.Version.App,
 	})
 	if err != nil {
 		return false, ErrInvalidBlock(err)

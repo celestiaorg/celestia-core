@@ -18,12 +18,12 @@ func validateBlock(state State, block *types.Block) error {
 		return err
 	}
 
-	// Validate basic info.
-	if block.Version.App != state.Version.Consensus.App ||
-		block.Version.Block != state.Version.Consensus.Block {
+	// Validate block version. App version validation should
+	// happen on the application side as part of process proposal
+	if block.Version.Block != state.Version.Consensus.Block {
 		return fmt.Errorf("wrong Block.Header.Version. Expected %v, got %v",
-			state.Version.Consensus,
-			block.Version,
+			state.Version.Consensus.Block,
+			block.Version.Block,
 		)
 	}
 	if block.ChainID != state.ChainID {
