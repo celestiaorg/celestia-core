@@ -487,7 +487,7 @@ func extendedCommitInfo(c abci.CommitInfo) abci.ExtendedCommitInfo {
 }
 
 func validateValidatorUpdates(abciUpdates []abci.ValidatorUpdate,
-	params cmtproto.ValidatorParams) error {
+	params types.ValidatorParams) error {
 	for _, valUpdate := range abciUpdates {
 		if valUpdate.GetPower() < 0 {
 			return fmt.Errorf("voting power can't be negative %v", valUpdate)
@@ -543,13 +543,13 @@ func updateState(
 	lastHeightParamsChanged := state.LastHeightConsensusParamsChanged
 	if abciResponses.EndBlock.ConsensusParamUpdates != nil {
 		// NOTE: must not mutate s.ConsensusParams
-		nextParams = types.UpdateConsensusParams(state.ConsensusParams, abciResponses.EndBlock.ConsensusParamUpdates)
-		err := types.ValidateConsensusParams(nextParams)
+		nextParams = state.ConsensusParams.Update(abciResponses.EndBlock.ConsensusParamUpdates)
+		err := nextParams.ValidateBasic()
 		if err != nil {
 			return state, fmt.Errorf("error updating consensus params: %v", err)
 		}
 
-		state.Version.Consensus.App = nextParams.Version.AppVersion
+		state.Version.Consensus.App = nextParams.Version.App
 
 		// Change results from this height but only applies to the next height.
 		lastHeightParamsChanged = header.Height + 1

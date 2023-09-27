@@ -1849,9 +1849,10 @@ func (cs *State) signVote(
 func (cs *State) voteTime() time.Time {
 	now := cmttime.Now()
 	minVoteTime := now
+	// Minimum time increment between blocks
+	const timeIota = time.Millisecond
 	// TODO: We should remove next line in case we don't vote for v in case cs.ProposalBlock == nil,
-	// even if cs.LockedBlock != nil. See https://github.com/cometbft/cometbft/tree/v0.34.x/spec/.
-	timeIota := time.Duration(cs.state.ConsensusParams.Block.TimeIotaMs) * time.Millisecond
+	// even if cs.LockedBlock != nil. See https://docs.tendermint.com/master/spec/.
 	if cs.LockedBlock != nil {
 		// See the BFT time spec
 		// https://github.com/cometbft/cometbft/blob/v0.34.x/spec/consensus/bft-time.md

@@ -117,6 +117,22 @@ func (memR *Reactor) OnStart() error {
 	if !memR.config.Broadcast {
 		memR.Logger.Info("Tx broadcasting is disabled")
 	}
+
+	// run a separate go routine to check for time based TTLs
+	if memR.mempool.config.TTLDuration > 0 {
+		go func() {
+			ticker := time.NewTicker(memR.mempool.config.TTLDuration)
+			for {
+				select {
+				case <-ticker.C:
+					memR.mempool.CheckToPurgeExpiredTxs()
+				case <-memR.Quit():
+					return
+				}
+			}
+		}()
+	}
+
 	return nil
 }
 
@@ -269,6 +285,10 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			if !success {
 				time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
 				continue
+			} else {
+				// record that we have sent the peer the transaction
+				// to avoid doing it a second time
+				memTx.SetPeer(peerID)
 			}
 		}
 
