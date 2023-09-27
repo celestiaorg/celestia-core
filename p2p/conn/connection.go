@@ -347,7 +347,7 @@ func (c *MConnection) stopForError(r interface{}) {
 	}
 }
 
-// Queues a message to be sent to channel.
+// Send queues a message to be sent to channel.
 func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 	if !c.IsRunning() {
 		return false

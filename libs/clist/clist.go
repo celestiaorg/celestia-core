@@ -312,7 +312,7 @@ func (l *CList) WaitChan() <-chan struct{} {
 	return l.waitCh
 }
 
-// Panics if list grows beyond its max length.
+// PushBack panics if list grows beyond its max length.
 func (l *CList) PushBack(v interface{}) *CElement {
 	l.mtx.Lock()
 
