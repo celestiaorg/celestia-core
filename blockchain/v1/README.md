@@ -96,14 +96,19 @@ transaction rate: `TSR` total number of transactions per second submitted to the
 network
 `C`: total number of connections in the network
 
+We assume all the transactions comply with the trnasaction size limit as
+specified in the mempool config.
+We assume all the transactions are valid and are accepted by the mempool.
+
 incoming traffic rate `itr`
 outgoing traffic rate  `otr`
 In the worst case scenario: a transaction is exchanged by the two ends of
 connection simultaneously, contributing to both incoming and outgoing traffic.
 In a network, with transaction rate `T` and a node with `d` degree, the
 `itr` and `otr` are calculated as follows:
-`itr = d * T`
-`otr = d * T`
+`itr = min(bw_req / d, d * T, channel_recv_rate)`
+`otr = min(bw_req / d, d * T, channel_recv_rate)`
+
 unique-transaction-rate `UTR` is the number of unique transactions per
 second which should be `TNR`.
 
@@ -116,6 +121,8 @@ the node will undertake the following traffic:
 `itr = d * max_network_tx_throughput`
 `otr = d * max_network_tx_throughput`
 
-So the total bandwidth requirement for a node, just due to the mempool
+So the minimum bandwidth requirement for a node, just due to the mempool
 operation is, `d * max_network_tx_throughput` for download and upload.
 
+If we set the bw requirement to `bw_req`, then the `nextwork_tx_throughput`
+is at most `bw_req / d` bytes/sec.
