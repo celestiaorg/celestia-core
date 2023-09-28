@@ -1,50 +1,32 @@
 ## Mempool Protocol Description
 
-The p2p latyer of Celestia-core which is a fork of CometBFT, is comprised of channels and reactors. Peers form a network around the channels they support. Message propagation in a channel is dictated by the reactor associated with that channel. In other words, a reactor holds the protocol logic for that channel. One of such channels is the mempool channel, which is reffered to by `MempoolChannel` and holds a specific channel ID of `0x30`. The mempool reactor is responsible for the propagation of transactions in the network. It is worth noting that there is a 1-1 mapping between reactors and their
-mounted channels. This means that the mempool reactor is the only reactor
-that is mounted on the memppol channel ID  `0x30`. In this document, we describe the mempool reactor and its protocol. We also provide an anlysis around the traffic rate of the mempool protocol.
+The Celestia-core's p2p layer, which is a fork of CometBFT, consists of channels and reactors. Peers establish connections within specific channels, effectively forming peer-to-peer groups (each channel represents such a group). The transmission of messages within a channel is governed by the associated reactor, essentially containing the protocol rules for that channel.
+
+One notable channel is the mempool channel, identified as `MempoolChannel` with a specific channel ID of `0x30`. The mempool reactor manages the dissemination of transactions across the network. It's important to highlight that there's a direct correspondence between reactors and the channels they are connected to. Consequently, the mempool reactor is the exclusive reactor linked to the mempool channel with ID `0x30`. This document will provide an in-depth overview of the mempool reactor and its protocol, including an analysis of the mempool protocol's traffic rate.
 
 ## Mempool Reactor
-A node can receive a transaction in two ways:
-Either by a user sending a transaction to the node, or by the node receiving a transaction from another node.
-1. When a transaction is received:
-2. its validity is checked, and if it is valid, it is added to the mempool. The transaction's height is set to the current block height.
-3. If the transaction is received from another peer, the sending peer is
-   marked so that the transaction is not sent to that peer again.
-2. The transactions is added to the mempool. At this point there will be two concurrent processes:
-   3. **Mempool life-cycle**:
-      3. Transactions remain the mempool until a block is committed, at which point:
-         4. the block transactions are removed from the mempool
-         5. remaining transactions are re-checked for their TTL
-            and are removed from the mempool if they have been expired. ([ref](https://github.
-            com/celestiaorg/celestia-core/blob/367caa33ef5ab618ea357189e88044dbdbd17776
-            /state/execution.go#L324)).
-         6. remaining transactions are checked for their validity given the updated state. Any invalid transaction is removed.
-   3. **Broadcast process**: For every peer and for every transaction in the mempool, the following takes place:
-      1. The peer is sent a copy of the transaction if:
-         3. peer is running
-         4. supports the mempool channel ID.
-         5. The max block height difference between the peer and the tx is one.
-            Otherwise, there will be a waiting time to let the peer catches up.
-      1. Each transaction is sent only once and the receving peer is marked
-         as not to send that transaction again.
+A node can receive a transaction through one of two pathways: either a user initiates the transaction directly to the node, or the node acquires a transaction from another peer. Upon receiving a transaction, the following steps occur:
 
-<!--- The first step in the transaction life-cycle is the validity check.
-If all checks pass successfully, then the message goes throughout the following
-steps. The transaction is broadcast to all the connected and running peers
-who support the
-mempool channel ID. The broadcast happens regardless of the connection type
-of the peer, being inbound or outbound.
-When a transaction is sent to a peer, the mempool marks that peer to not to
-send that transaction again.
-If the transaction is received from another peer, then the validity check
-takes place. Also, the peer is marked to not to send that transaction again.
-When a block is committed, the block transactions are removed from the
-mempool and  remaining transactions are re-checked for their TTL
-and are removed from the mempool if they have been expired. ([ref](https://github.
-com/celestiaorg/celestia-core/blob/367caa33ef5ab618ea357189e88044dbdbd17776
-/state/execution.go#L324)). Additionally, they are checked for their
-validity given the updated state. Any invalid transaction is removed.
+1. The transaction's validity is assessed, and if it passes the validation criteria, it is added to the mempool. Furthermore, the transaction's height is set to match the current block height.
+2. **Peer Tracking**: In the event that the transaction originates from another peer, the sending peer is marked to prevent redundant transmission of the same transaction.
+Subsequently, there are two concurrent processes underway:
+3. **Mempool Life-cycle**:
+   - Transactions that find their way into the mempool remain there until one of two conditions is met: either the mempool reaches its capacity limit or a new block is committed.
+
+   - When a block is committed:
+     - the transactions within that block are removed from the mempool.
+     - The remaining transactions are subjected to two checks:
+       - their Time-to-Live (TTL) is examined, and any transactions that have expired are promptly removed from the mempool (source: [reference](https://github.com/celestiaorg/celestia-core/blob/367caa33ef5ab618ea357189e88044dbdbd17776/state/execution.go#L324)).
+       - Next, the remaining transactions are re-evaluated for validity against the updated state. Any transactions that are found to be invalid are removed from the mempool.
+4. **Broadcast Process**:
+For each peer and for every transaction residing in the mempool, the following actions are taken:
+   - A copy of the transaction is dispatched to that peer if the peer
+      -  is online
+      - supports the mempool channel ID
+      - has a height difference of one (meaning it lags behind the transaction by a single block). If the height difference is greater, a waiting period is observed to allow the peer to catch up.
+   - **Peer Tracking**: Each transaction is sent to a peer only once, and the recipient peer is marked to prevent the retransmission of the same transaction.
+
+<!---
 [//]: # (Is it possible that the marks are erased and the transaction is
 sent again? for example when the mempool is full and then gets erased)
 [//]: # (Is a transaction resent after Recheck: NO)
@@ -55,61 +37,53 @@ transactions. is it even possible? do we have a limit on the incoming
 bandwidth? consider a mempool size of 1, and then make an example) --->
 
 
-## Configurations
-The total number of connected peers are limited by `max_num_inbound_peers`
-or `max_num_outbound_peers` in the config.toml file. According to the
-current default configs, the former is set to  `40` and the latter is set to
-`10` (excluding persistent peers).
+## Constraints and  Configurations
+The relevant constraints and configurations for the mempool are as follows ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L758)):
+- `Size`: This parameter specifies the total number of transactions that the mempool can hold, with a maximum value of `5000`.
+-  `MaxTxBytes`: The `MaxTxBytes` parameter defines the maximum size of the mempool in bytes, with a limit of `1GB`.
+-  `TTLDuration` and `TTLNumBlocks`: These settings determine the time and block height after which a transaction is removed from the mempool if it has not been included in a block. The default is set to zero, thought it may be rewritten on the app side.
+<!-- TODO: Your todo message goes here -->
+-  `MaxTxSize`: The `MaxTxSize` parameter specifies the maximum size of an individual transaction, which is set to `1MB`.
 
-The max size of a transaction: `MaxTxBytes:   1024 * 1024, // 1MB`
-The mempool can accomodate up to `Size` `5000` many transactions with total
-size of `MaxTxBytes=1GB`.
-Each transaction can stay in the mempool for `TTLDuration` and `TTLNumBlocks`
-after its insertion to the mempool.
+For each connection, the following limits apply per channel ID ([ref](https://github.com/celestiaorg/celestia-core/blob/3f3b7cc57f5cfc5e846ce781a9a407920e54fb72/libs/flowrate/flowrate.go#L177)):
 
-Each p2p connection is also subject to the following limits per channel:
-```markdown
+-  `SendRate`: The `SendRate` parameter enforces a default sending rate of `500KB/s` (500 kilobytes per second). It ensures that data is sent at this maximum rate.
+- `RecvRate`: The `RecvRate` parameter enforces a default receiving rate of `500KB/s` (500 kilobytes per second). It ensures that data is received at this maximum rate.
+- `MaxPacketMsgPayloadSize`: The `MaxPacketMsgPayloadSize` parameter sets the maximum payload size for packet messages to `1024` bytes.
 
-SendRate:                defaultSendRate,= int64(512000) // 500KB/s [?] How it
-is enforced?
-RecvRate:                defaultRecvRate, = int64(512000) // 500KB/
-MaxPacketMsgPayloadSize: defaultMaxPacketMsgPayloadSize, // 1024
-FlushThrottle:           defaultFlushThrottle,
-PingInterval:            defaultPingInterval,
-PongTimeout:             defaultPongTimeout,
-```
-ref https://github.com/celestiaorg/celestia-core/blob
-/3f3b7cc57f5cfc5e846ce781a9a407920e54fb72/libs/flowrate/flowrate.go#L177
-(rate in this function is the send or rec rate)
+<!-- TODO: I am currently investigating the impact of send and rec rate in the total  traffic at each node and per connection -->
 
+Peer related configs ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L524)) that would be relevant to the traffic analysis are as follows:
+- `max_num_inbound_peers` and `max_num_outbound_peers`: These parameters indicate the total number of inbound and outbound peers, respectively. The default values are `40` for inbound peers and `10` for outbound peers (excluding persistent peers).
 
 ## Traffic Rate Analysis
-At any connection, there can be at most 2 instances of the same transaction.
-
-**test configuration:**
-`d`: Node degree (total incoming and outgoing connections)
-transaction rate: `TNR` total number of transactions per second submitted to the
+In the analsysis provided below, we consider the knowledge of the following network parameters
+- `d`: Node degree (total incoming and outgoing connections)
+- transaction rate: `transaction_num_rate` total number of transactions per second submitted to the
 network
-transaction rate: `TSR` total number of transactions per second submitted to the
+- transaction rate: `transaction_size_rate` total size of transactions per second submitted to the
 network
-`C`: total number of connections in the network
+- `C`: total number of connections in the network
 
-We assume all the transactions comply with the trnasaction size limit as
+We additionally assume all the transactions comply with the trnasaction size limit as
 specified in the mempool config.
 We assume all the transactions are valid and are accepted by the mempool.
+We also assume all the peers are up and running.
 
-incoming traffic rate `itr`
-outgoing traffic rate  `otr`
-In the worst case scenario: a transaction is exchanged by the two ends of
+### Traffic Rate Analysis for a Node
+We distinguish between the incoming and outgoing traffic rate, and denote each by  `incoming_traffic_rate` and  `outgoing_traffic_rate`, respectively.
+Worst case scenario: a transaction is exchanged by the two ends of
 connection simultaneously, contributing to both incoming and outgoing traffic.
-In a network, with transaction rate `T` and a node with `d` degree, the
+In a network, with transaction rate `transaction_size_rate` and a node with `d` degree, the
 `itr` and `otr` are calculated as follows:
-`itr = min(bw_req / d, d * T, channel_recv_rate)`
-`otr = min(bw_req / d, d * T, channel_recv_rate)`
+`incoming_traffic_rate = d * transaction_size_rate`
+`outgoing_traffic_rate = d * transaction_size_rate`
 
-unique-transaction-rate `UTR` is the number of unique transactions per
-second which should be `TNR`.
+`incoming_traffic_rate = min(bw_req / d, d * T, channel_recv_rate)`
+`outgoing_traffic_rate = min(bw_req / d, d * T, channel_send_rate)`
 
+
+### Traffic Rate Analysis for the Network
 Desired network transaction throughput `network_tx_throughput` in bytes/sec
 is capped by the `block_size` and `block_time` as follows:
 `max_network_tx_throughput = block_size / block_time`
