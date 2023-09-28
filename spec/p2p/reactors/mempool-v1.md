@@ -9,22 +9,22 @@ A node can receive a transaction through one of two pathways: either a user init
 
 1. The transaction's validity is assessed, and if it passes the validation criteria, it is added to the mempool. Furthermore, the transaction's height is set to match the current block height.
 2. **Peer Tracking**: In the event that the transaction originates from another peer, the sending peer is marked to prevent redundant transmission of the same transaction.
-Subsequently, there are two concurrent processes underway:
+   Subsequently, there are two concurrent processes underway:
 3. **Mempool Life-cycle**:
-   - Transactions that find their way into the mempool remain there until one of two conditions is met: either the mempool reaches its capacity limit or a new block is committed.
+    - Transactions that find their way into the mempool remain there until one of two conditions is met: either the mempool reaches its capacity limit or a new block is committed.
 
-   - When a block is committed:
-     - the transactions within that block are removed from the mempool.
-     - The remaining transactions are subjected to two checks:
-       - their Time-to-Live (TTL) is examined, and any transactions that have expired are promptly removed from the mempool (source: [reference](https://github.com/celestiaorg/celestia-core/blob/367caa33ef5ab618ea357189e88044dbdbd17776/state/execution.go#L324)).
-       - Next, the remaining transactions are re-evaluated for validity against the updated state. Any transactions that are found to be invalid are removed from the mempool.
+    - When a block is committed:
+        - the transactions within that block are removed from the mempool.
+        - The remaining transactions are subjected to two checks:
+            - their Time-to-Live (TTL) is examined, and any transactions that have expired are promptly removed from the mempool (source: [reference](https://github.com/celestiaorg/celestia-core/blob/367caa33ef5ab618ea357189e88044dbdbd17776/state/execution.go#L324)).
+            - Next, the remaining transactions are re-evaluated for validity against the updated state. Any transactions that are found to be invalid are removed from the mempool.
 4. **Broadcast Process**:
-For each peer and for every transaction residing in the mempool, the following actions are taken:
-   - A copy of the transaction is dispatched to that peer if the peer
-      -  is online
-      - supports the mempool channel ID
-      - has a height difference of one (meaning it lags behind the transaction by a single block). If the height difference is greater, a waiting period is observed to allow the peer to catch up.
-   - **Peer Tracking**: Each transaction is sent to a peer only once, and the recipient peer is marked to prevent the retransmission of the same transaction.
+   For each peer and for every transaction residing in the mempool, the following actions are taken:
+    - A copy of the transaction is dispatched to that peer if the peer
+        -  is online
+        - supports the mempool channel ID
+        - has a height difference of one (meaning it lags behind the transaction by a single block). If the height difference is greater, a waiting period is observed to allow the peer to catch up.
+    - **Peer Tracking**: Each transaction is sent to a peer only once, and the recipient peer is marked to prevent the retransmission of the same transaction.
 
 <!---
 [//]: # (Is it possible that the marks are erased and the transaction is
@@ -87,18 +87,6 @@ In a network, with transaction rate `transaction_rate` and a node with `d` degre
 
 ### Impact of mempool on other network aspects
 - **Block size**: One immediate impact of mempool, is the size of mempool on the block size. Clearly, block size can not exceed the mempool size. In the current setting, the mempool size is at max `7.897 MB` meaning Celestia blocks can get as large as that (excluding block header).
-- **Network throughput**: Desired network transaction throughput `max_network_tx_throughput` in bytes/sec
-  is capped by the `block_size` and `block_time` as follows:
-  `max_network_tx_throughput = block_size / block_time`
-
-For a node, in order to be able to handle this throughput in the worst case,
-the node will undertake the following traffic:
-`itr = d * max_network_tx_throughput`
-`otr = d * max_network_tx_throughput`
-
-So the minimum bandwidth requirement for a node, just due to the mempool
-operation is, `2* d * max_network_tx_throughput` for download and upload.
-
-If we set the bw requirement to `bw_limit`, then the `nextwork_tx_throughput`
-is at most `bw_limit / d` bytes/sec.
+- **Network throughput**:  TBC
+- **Block Time**: TBC
 
