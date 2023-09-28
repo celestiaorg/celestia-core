@@ -40,15 +40,14 @@ bandwidth? consider a mempool size of 1, and then make an example) --->
 ## Constraints and  Configurations
 The relevant constraints and configurations for the mempool are as follows ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L758)):
 - `Size`: This parameter specifies the total number of transactions that the mempool can hold, with a maximum value of `5000`.
--  `MaxTxBytes`: The `MaxTxBytes` parameter defines the maximum size of the mempool in bytes, with a limit of `1GB`.
--  `TTLDuration` and `TTLNumBlocks`: These settings determine the time and block height after which a transaction is removed from the mempool if it has not been included in a block. The default is set to zero, thought it may be rewritten on the app side.
-<!-- TODO: Your todo message goes here -->
+-  `MaxTxBytes`: The `MaxTxBytes` parameter defines the maximum size of the mempool in bytes, with a limit of `1GB`  by default consensus configs but is later modified on the celestia-app side to `128 * 128 * 482 = 7897088 = 7897.088 KB = 7.897 MB`.
+-  `TTLNumBlocks` and `TTLDuration` : These settings determine the number of blocks and time after which a transaction is removed from the mempool if it has not been included in a block. The default is set to zero, however, on [celestia-app side](https://github.com/celestiaorg/celestia-app/blob/0d70807442ba0545058d353b44f6f9a583d3e11d/app/default_overrides.go#L209) these values are over-written to `5` and `5*15 s`, respectively.
 -  `MaxTxSize`: The `MaxTxSize` parameter specifies the maximum size of an individual transaction, which is set to `1MB`.
 
 For each connection, the following limits apply per channel ID ([ref](https://github.com/celestiaorg/celestia-core/blob/3f3b7cc57f5cfc5e846ce781a9a407920e54fb72/libs/flowrate/flowrate.go#L177)):
 
--  `SendRate`: The `SendRate` parameter enforces a default sending rate of `500KB/s` (500 kilobytes per second). It ensures that data is sent at this maximum rate.
-- `RecvRate`: The `RecvRate` parameter enforces a default receiving rate of `500KB/s` (500 kilobytes per second). It ensures that data is received at this maximum rate.
+-  `SendRate`: The `SendRate` parameter enforces a default sending rate of `500KB/s`. It ensures that data is sent at this maximum rate.
+- `RecvRate`: The `RecvRate` parameter enforces a default receiving rate of `500KB/s`. It ensures that data is received at this maximum rate.
 - `MaxPacketMsgPayloadSize`: The `MaxPacketMsgPayloadSize` parameter sets the maximum payload size for packet messages to `1024` bytes.
 
 <!-- TODO: I am currently investigating the impact of send and rec rate in the total  traffic at each node and per connection -->
@@ -56,45 +55,32 @@ For each connection, the following limits apply per channel ID ([ref](https://gi
 Peer related configs ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L524)) that would be relevant to the traffic analysis are as follows:
 - `max_num_inbound_peers` and `max_num_outbound_peers`: These parameters indicate the total number of inbound and outbound peers, respectively. The default values are `40` for inbound peers and `10` for outbound peers (excluding persistent peers).
 
+<!-- Depending on the state of this [PR](https://github.com/celestiaorg/celestia-app/pull/2390) we may have further constraints on the bandwidth. -->
+
 ## Traffic Rate Analysis
-In the analsysis provided below, we consider the knowledge of the following network parameters
+In the analysis provided below, we consider the knowledge of the following network parameters
 - `d`: Node degree (total incoming and outgoing connections)
-- transaction rate: `transaction_num_rate` total number of transactions per second submitted to the
-network
-- transaction rate: `transaction_size_rate` total size of transactions per second submitted to the
-network
+<!-- - transaction rate: `transaction_rate` total number of transactions per second submitted to the network -->
+- `transaction_rate` which specifies that total size of transactions in bytes per second submitted to the network.
 - `C`: total number of connections in the network
 
-We additionally assume all the transactions comply with the trnasaction size limit as
-specified in the mempool config.
-We assume all the transactions are valid and are accepted by the mempool.
+Transactions are assumed to comply with the transaction size, are valid and are accepted by the mempool.
 We also assume all the peers are up and running.
 
 ### Traffic Rate Analysis for a Node
-We distinguish between the incoming and outgoing traffic rate, and denote each by  `incoming_traffic_rate` and  `outgoing_traffic_rate`, respectively.
+We distinguish between the incoming and outgoing traffic rate, and denote them by  `incoming_traffic_rate` and  `outgoing_traffic_rate`, respectively.
 Worst case scenario: a transaction is exchanged by the two ends of
 connection simultaneously, contributing to both incoming and outgoing traffic.
-In a network, with transaction rate `transaction_size_rate` and a node with `d` degree, the
-`itr` and `otr` are calculated as follows:
-`incoming_traffic_rate = d * transaction_size_rate`
-`outgoing_traffic_rate = d * transaction_size_rate`
+In a network, with transaction rate `transaction_rate` and a node with `d` degree, the traffic rates are calculated as follows:
+`incoming_traffic_rate = d * transaction_rate`
+`outgoing_traffic_rate = d * transaction_rate`
 
-`incoming_traffic_rate = min(bw_req / d, d * T, channel_recv_rate)`
-`outgoing_traffic_rate = min(bw_req / d, d * T, channel_send_rate)`
+These rates are further constrained by the channel send and receive rates, and bandwidth constraint `bw_limit` if any.
+`incoming_traffic_rate = min(bw_limit / d, d * transaction_rate, SendRate)`
+`outgoing_traffic_rate = min(bw_limit / d, d * transaction_rate, RecRate)`
+
+Best case scenario: a transaction is exchanged only once, contributing to either incoming or outgoing traffic.
+In a network, with transaction rate `transaction_rate` and a node with `d` degree, the node's traffic rate is capped by:
+`traffic_rate (=incoming_traffic_rate + outgoing_traffic_rate) = d * transaction_rate`
 
 
-### Traffic Rate Analysis for the Network
-Desired network transaction throughput `network_tx_throughput` in bytes/sec
-is capped by the `block_size` and `block_time` as follows:
-`max_network_tx_throughput = block_size / block_time`
-
-For a node, in order to be able to handle this throughput in the worst case,
-the node will undertake the following traffic:
-`itr = d * max_network_tx_throughput`
-`otr = d * max_network_tx_throughput`
-
-So the minimum bandwidth requirement for a node, just due to the mempool
-operation is, `d * max_network_tx_throughput` for download and upload.
-
-If we set the bw requirement to `bw_req`, then the `nextwork_tx_throughput`
-is at most `bw_req / d` bytes/sec.
