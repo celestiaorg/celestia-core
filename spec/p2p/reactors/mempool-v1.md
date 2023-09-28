@@ -26,17 +26,6 @@ A node can receive a transaction through one of two pathways: either a user init
         - has a height difference of one (meaning it lags behind the transaction by a single block). If the height difference is greater, a waiting period is observed to allow the peer to catch up.
     - **Peer Tracking**: Each transaction is sent to a peer only once, and the recipient peer is marked to prevent the retransmission of the same transaction.
 
-<!---
-[//]: # (Is it possible that the marks are erased and the transaction is
-sent again? for example when the mempool is full and then gets erased)
-[//]: # (Is a transaction resent after Recheck: NO)
-[?] Is there any cap on the number of transactions sent to another peer? No
-[//]: # (Consider the case that one sends 1000 txs with size 1MB, filling up
-the entire mempool size wise, in that case, we keep erasing the past
-transactions. is it even possible? do we have a limit on the incoming
-bandwidth? consider a mempool size of 1, and then make an example) --->
-
-
 ## Constraints and  Configurations
 The relevant constraints and configurations for the mempool are as follows ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L758)):
 - `Size`: This parameter specifies the total number of transactions that the mempool can hold, with a maximum value of `5000`.
