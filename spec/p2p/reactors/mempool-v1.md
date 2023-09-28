@@ -16,7 +16,7 @@ A node can receive a transaction through one of two pathways: either a user init
     - When a block is committed:
         - the transactions within that block are removed from the mempool.
         - The remaining transactions are subjected to two checks:
-            - their Time-to-Live (TTL) is examined, and any transactions that have expired are promptly removed from the mempool (source: [reference](https://github.com/celestiaorg/celestia-core/blob/367caa33ef5ab618ea357189e88044dbdbd17776/state/execution.go#L324)).
+            - their Time-to-Live (TTL) is examined, and any transactions that have expired are promptly removed from the mempool ([reference](https://github.com/celestiaorg/celestia-core/blob/367caa33ef5ab618ea357189e88044dbdbd17776/state/execution.go#L324)).
             - Next, the remaining transactions are re-evaluated for validity against the updated state. Any transactions that are found to be invalid are removed from the mempool.
 4. **Broadcast Process**:
    For each peer and for every transaction residing in the mempool, the following actions are taken:
