@@ -1,8 +1,8 @@
 package node
 
 import (
+	"github.com/cometbft/cometbft/config"
 	"github.com/pyroscope-io/client/pyroscope"
-	"github.com/tendermint/tendermint/config"
 
 	otelpyroscope "github.com/pyroscope-io/otel-profiling-go"
 	"go.opentelemetry.io/otel"
