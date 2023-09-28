@@ -306,7 +306,7 @@ func (s *syncer) Sync(snapshot *snapshot, chunks *chunkQueue) (sm.State, *types.
 	}
 
 	// Verify app and app version
-	if err := s.verifyApp(snapshot, state.Version.Consensus.App); err != nil {
+	if err := s.verifyApp(snapshot); err != nil {
 		return sm.State{}, nil, err
 	}
 
@@ -482,20 +482,12 @@ func (s *syncer) requestChunk(snapshot *snapshot, chunk uint32) {
 }
 
 // verifyApp verifies the sync, checking the app hash, last block height and app version
-func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) error {
+func (s *syncer) verifyApp(snapshot *snapshot) error {
 	resp, err := s.connQuery.InfoSync(proxy.RequestInfo)
 	if err != nil {
 		return fmt.Errorf("failed to query ABCI app for appHash: %w", err)
 	}
 
-	// sanity check that the app version in the block matches the application's own record
-	// of its version
-	if resp.AppVersion != appVersion {
-		// An error here most likely means that the app hasn't inplemented state sync
-		// or the Info call correctly
-		return fmt.Errorf("app version mismatch. Expected: %d, got: %d",
-			appVersion, resp.AppVersion)
-	}
 	if !bytes.Equal(snapshot.trustedAppHash, resp.LastBlockAppHash) {
 		s.logger.Error("appHash verification failed",
 			"expected", snapshot.trustedAppHash,
