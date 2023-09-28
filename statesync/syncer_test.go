@@ -634,7 +634,6 @@ func TestSyncer_applyChunks_RejectSenders(t *testing.T) {
 func TestSyncer_verifyApp(t *testing.T) {
 	boom := errors.New("boom")
 	const appVersion = 9
-	appVersionMismatchErr := errors.New("app version mismatch. Expected: 9, got: 2")
 	s := &snapshot{Height: 3, Format: 1, Chunks: 5, Hash: []byte{1, 2, 3}, trustedAppHash: []byte("app_hash")}
 
 	testcases := map[string]struct {
@@ -647,11 +646,6 @@ func TestSyncer_verifyApp(t *testing.T) {
 			LastBlockAppHash: []byte("app_hash"),
 			AppVersion:       appVersion,
 		}, nil, nil},
-		"invalid app version": {&abci.ResponseInfo{
-			LastBlockHeight:  3,
-			LastBlockAppHash: []byte("app_hash"),
-			AppVersion:       2,
-		}, nil, appVersionMismatchErr},
 		"invalid height": {&abci.ResponseInfo{
 			LastBlockHeight:  5,
 			LastBlockAppHash: []byte("app_hash"),
@@ -675,7 +669,7 @@ func TestSyncer_verifyApp(t *testing.T) {
 			syncer := newSyncer(*cfg, log.NewNopLogger(), connSnapshot, connQuery, stateProvider, "")
 
 			connQuery.On("InfoSync", proxy.RequestInfo).Return(tc.response, tc.err)
-			err := syncer.verifyApp(s, appVersion)
+			err := syncer.verifyApp(s)
 			unwrapped := errors.Unwrap(err)
 			if unwrapped != nil {
 				err = unwrapped
