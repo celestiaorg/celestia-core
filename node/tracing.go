@@ -2,7 +2,7 @@ package node
 
 import (
 	"github.com/cometbft/cometbft/config"
-	"github.com/pyroscope-io/client/pyroscope"
+	"github.com/grafana/pyroscope-go"
 
 	otelpyroscope "github.com/pyroscope-io/otel-profiling-go"
 	"go.opentelemetry.io/otel"
