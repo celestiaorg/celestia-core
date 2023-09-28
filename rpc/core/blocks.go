@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
+	"github.com/tendermint/tendermint/libs/bytes"
 	cmtmath "github.com/tendermint/tendermint/libs/math"
 	cmtquery "github.com/tendermint/tendermint/libs/pubsub/query"
 	"github.com/tendermint/tendermint/pkg/consts"
@@ -85,6 +86,38 @@ func filterMinMax(base, height, min, max, limit int64) (int64, int64, error) {
 		return min, max, fmt.Errorf("min height %d can't be greater than max height %d", min, max)
 	}
 	return min, max, nil
+}
+
+// Header gets block header at a given height.
+// If no height is provided, it will fetch the latest header.
+// More: https://docs.tendermint.com/master/rpc/#/Info/header
+func Header(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultHeader, error) {
+	height, err := getHeight(GetEnvironment().BlockStore.Height(), heightPtr)
+	if err != nil {
+		return nil, err
+	}
+
+	blockMeta := GetEnvironment().BlockStore.LoadBlockMeta(height)
+	if blockMeta == nil {
+		return &ctypes.ResultHeader{}, nil
+	}
+
+	return &ctypes.ResultHeader{Header: &blockMeta.Header}, nil
+}
+
+// HeaderByHash gets header by hash.
+// More: https://docs.tendermint.com/master/rpc/#/Info/header_by_hash
+func HeaderByHash(ctx *rpctypes.Context, hash bytes.HexBytes) (*ctypes.ResultHeader, error) {
+	// N.B. The hash parameter is HexBytes so that the reflective parameter
+	// decoding logic in the HTTP service will correctly translate from JSON.
+	// See https://github.com/tendermint/tendermint/issues/6802 for context.
+
+	blockMeta := GetEnvironment().BlockStore.LoadBlockMetaByHash(hash)
+	if blockMeta == nil {
+		return &ctypes.ResultHeader{}, nil
+	}
+
+	return &ctypes.ResultHeader{Header: &blockMeta.Header}, nil
 }
 
 // Block gets block at a given height.
