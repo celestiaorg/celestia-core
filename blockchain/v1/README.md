@@ -84,3 +84,21 @@ In a network, with transaction rate `transaction_rate` and a node with `d` degre
 `traffic_rate (=incoming_traffic_rate + outgoing_traffic_rate) = d * transaction_rate`
 
 
+
+### Impact of mempool on other network aspects
+- **Block size**: One immediate impact of mempool, is the size of mempool on the block size. Clearly, block size can not exceed the mempool size. In the current setting, the mempool size is at max `7.897 MB` meaning Celestia blocks can get as large as that (excluding block header).
+- **Network throughput**: Desired network transaction throughput `max_network_tx_throughput` in bytes/sec
+  is capped by the `block_size` and `block_time` as follows:
+  `max_network_tx_throughput = block_size / block_time`
+
+For a node, in order to be able to handle this throughput in the worst case,
+the node will undertake the following traffic:
+`itr = d * max_network_tx_throughput`
+`otr = d * max_network_tx_throughput`
+
+So the minimum bandwidth requirement for a node, just due to the mempool
+operation is, `2* d * max_network_tx_throughput` for download and upload.
+
+If we set the bw requirement to `bw_limit`, then the `nextwork_tx_throughput`
+is at most `bw_limit / d` bytes/sec.
+
