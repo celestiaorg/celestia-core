@@ -29,9 +29,9 @@ A node can receive a transaction through one of two pathways: either a user init
 ## Constraints and  Configurations
 The relevant constraints and configurations for the mempool are as follows ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L758)):
 - `Size`: This parameter specifies the total number of transactions that the mempool can hold, with a maximum value of `5000`.
--  `MaxTxBytes`: The `MaxTxBytes` parameter defines the maximum size of the mempool in bytes, with a limit of `1GB`  by default consensus configs but is later modified on the celestia-app side to `128 * 128 * 482 = 7897088 = 7897.088 KB = 7.897 MB`.
+-  `MaxTxsBytes`: The `MaxTxsBytes` parameter defines the maximum size of the mempool in bytes, with a limit of `1GB`  by default.
 -  `TTLNumBlocks` and `TTLDuration` : These settings determine the number of blocks and time after which a transaction is removed from the mempool if it has not been included in a block. The default is set to zero, however, on [celestia-app side](https://github.com/celestiaorg/celestia-app/blob/0d70807442ba0545058d353b44f6f9a583d3e11d/app/default_overrides.go#L209) these values are over-written to `5` and `5*15 s`, respectively.
--  `MaxTxSize`: The `MaxTxSize` parameter specifies the maximum size of an individual transaction, which is set to `1MB`.
+-  `MaxTxBytes`: The `MaxTxBytes` parameter specifies the maximum size of an individual transaction, which is set to `1MB`.
 
 For each connection, the following limits apply per channel ID ([ref](https://github.com/celestiaorg/celestia-core/blob/3f3b7cc57f5cfc5e846ce781a9a407920e54fb72/libs/flowrate/flowrate.go#L177)):
 
@@ -75,14 +75,6 @@ In a network, with transaction rate `transaction_rate` and a node with `d` degre
 
 This yields the following conclusions (to be extended and verified):
 - With a known given transaction rate `transaction_rate`, a node's (in + out) traffic rate should range from `d * transaction_rate` to `2 * d * transaction_rate`.
-- To handle a particular `transaction_rate` (network throughput), the node's `SendRate` and `RecRate`  with `d` connections should be at least `d * transaction_rate` to handle the worst case scenario (this is only to undertake the load incurred by the mempool reactor).
+- To handle a particular `transaction_rate` (network throughput), the node's `SendRate` and `RecRate` should be at least `transaction_rate` to handle the worst case scenario (this is only to undertake the load incurred by the mempool reactor).
 
-
-
-
-
-### Impact of mempool on other network aspects
-- **Block size**: (this to be verified) One immediate impact of mempool, is the size of mempool on the block size. Clearly, block size can not exceed the mempool size. In the current setting, the mempool size is at max `7.897 MB` meaning Celestia blocks can get as large as that (excluding block header).
-- **Network throughput**:  TBC
-- **Block Time**: TBC
 
