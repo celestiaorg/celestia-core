@@ -75,4 +75,7 @@ We can draw the following conclusions (to be extended and verified):
 - With a known given transaction rate `transaction_rate`, a node's (in + out) traffic rate should range from `d * transaction_rate` to `2 * d * transaction_rate`.
 - To handle a particular `transaction_rate` (network throughput), the node's `SendRate` and `RecRate` should be at least `transaction_rate` to handle the worst case scenario (this is only to undertake the load incurred by the mempool reactor).
 
-
+### Impact of mempool on other network aspects
+- **Block size**: One immediate impact of mempool, is the size of mempool on the block size. Block size can not exceed the mempool size. In the current setting, the mempool size is at max `1GB` meaning Celestia blocks can get as large as that (excluding block header).
+- **Network throughput**:  TBC
+- **Block Time**: TBC
