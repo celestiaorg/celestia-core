@@ -33,7 +33,7 @@ The relevant constraints and configurations for the mempool are as follows ([ref
 - `MaxTxBytes`: The `MaxTxBytes` parameter specifies the maximum size of an individual transaction, which is set to `1MB`.
 -  `TTLNumBlocks` and `TTLDuration` : These settings determine the number of blocks and time after which a transaction is removed from the mempool if it has not been included in a block. The default is set to zero, however, on [celestia-app side](https://github.com/celestiaorg/celestia-app/blob/ccfb3e5e87d05d75a92ad85ab199d4f0c4879a0a/app/default_overrides.go#L221-L222) these values are over-written to `5` and `5*15 s`, respectively.
 
-For each connection, the following limits apply (on the aggregate traffic rate of all the channels) ([ref](https://github.com/celestiaorg/celestia-core/blob/3f3b7cc57f5cfc5e846ce781a9a407920e54fb72/libs/flowrate/flowrate.go#L177)):
+For each peer to peer connection, the following limits apply (on the aggregate traffic rate of all the channels) ([ref](https://github.com/celestiaorg/celestia-core/blob/3f3b7cc57f5cfc5e846ce781a9a407920e54fb72/libs/flowrate/flowrate.go#L177)):
 
 -  `SendRate`: The `SendRate` parameter enforces a default average sending rate of [`5120000 B= 5MB/s`](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L615). It ensures that data is sent at this maximum rate. This parameter does not seem to be overwritten by the celestia-app.
 - `RecvRate`: The `RecvRate` parameter enforces a default average receiving rate of [`5120000 B= 5MB/s`](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L616). It ensures that data is received at this maximum rate. This parameter does not seem to be overwritten by the celestia-app.
@@ -43,8 +43,8 @@ For each connection, the following limits apply (on the aggregate traffic rate o
 <!-- Depending on the state of this [PR](https://github.com/celestiaorg/celestia-app/pull/2390) we may have further constraints on the bandwidth. -->
 
 P2P configs ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L524)) that would be relevant to the traffic analysis are as follows:
-- `max_num_inbound_peers` and `max_num_outbound_peers`: These parameters indicate the total number of inbound and outbound peers, respectively. The default values are `40` for inbound peers and `10` for outbound peers ([excluding persistent peers](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L553-L554)).
-<!-- The breakdown of max_num_inbound_peers/max_num_outbound_peers accross different connection types should be clarified e.g.,  does the max_num_inbound_peers include unconditional peers and persistent peers or not-->
+- [`max_num_inbound_peers` and `max_num_outbound_peers`](https://github.com/celestiaorg/celestia-core/blob/37f950717381e8d8f6393437624652693e4775b8/config/config.go#L604-L605): These parameters indicate the total number of inbound and outbound peers, respectively. The default values are `40` for inbound peers and `10` for outbound peers ([excluding persistent peers](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L553-L554)).
+<!-- The allocation of max_num_inbound_peers and max_num_outbound_peers across various connection types requires clarification. For instance, whether max_num_inbound_peers includes both unconditional peers and persistent peers or not. -->
 
 ## Traffic Rate Analysis
 In the analysis provided below, we consider the knowledge of the following network parameters
