@@ -42,7 +42,7 @@ For each peer-to-peer connection, the following limits apply to the aggregate tr
 <!-- TODO: I am currently investigating the impact of send and rec rate in the total  traffic at each node and per connection. It looks like that this is the average rate, but not necessarily a hard limit i.e., the rate may exceed this value but then the excess is amortized over the next period  -->
 <!-- Depending on the state of this [PR](https://github.com/celestiaorg/celestia-app/pull/2390) we may have further constraints on the bandwidth. -->
 
-P2P configs ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L524)) that would be relevant to the traffic analysis are as follows:
+Other P2P configs ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L524)) that would be relevant to the traffic analysis are:
 - [`max_num_inbound_peers` and `max_num_outbound_peers`](https://github.com/celestiaorg/celestia-core/blob/37f950717381e8d8f6393437624652693e4775b8/config/config.go#L604-L605): These parameters indicate the total number of inbound and outbound peers, respectively. The default values are `40` for inbound peers and `10` for outbound peers ([excluding persistent peers](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L553-L554)).
 <!-- The allocation of max_num_inbound_peers and max_num_outbound_peers across various connection types requires clarification. For instance, whether max_num_inbound_peers includes both unconditional peers and persistent peers or not. -->
 
