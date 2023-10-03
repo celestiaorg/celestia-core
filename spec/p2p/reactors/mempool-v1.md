@@ -35,8 +35,8 @@ The relevant constraints and configurations for the mempool are as follows ([ref
 
 For each connection, the following limits apply per channel ID ([ref](https://github.com/celestiaorg/celestia-core/blob/3f3b7cc57f5cfc5e846ce781a9a407920e54fb72/libs/flowrate/flowrate.go#L177)):
 
--  `SendRate`: The `SendRate` parameter enforces a default average sending rate of `5120000 B= 5MB/s`. It ensures that data is sent at this maximum rate. This parameter does not seem to be overwritten by the celestia-app.
-- `RecvRate`: The `RecvRate` parameter enforces a default average receiving rate of `5120000 B= 5MB/s`. It ensures that data is received at this maximum rate. This parameter does not seem to be overwritten by the celestia-app.
+-  `SendRate`: The `SendRate` parameter enforces a default average sending rate of [`5120000 B= 5MB/s`](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L615). It ensures that data is sent at this maximum rate. This parameter does not seem to be overwritten by the celestia-app.
+- `RecvRate`: The `RecvRate` parameter enforces a default average receiving rate of [`5120000 B= 5MB/s`](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L616). It ensures that data is received at this maximum rate. This parameter does not seem to be overwritten by the celestia-app.
 - `MaxPacketMsgPayloadSize`: The `MaxPacketMsgPayloadSize` parameter sets the maximum payload size for packet messages to `1024` bytes.
 
 <!-- TODO: I am currently investigating the impact of send and rec rate in the total  traffic at each node and per connection -->
@@ -65,8 +65,8 @@ In a network, with transaction rate `transaction_rate` and a node with `d` degre
 `outgoing_traffic_rate = d * transaction_rate`
 
 These rates are further constrained by the channel send and receive rates, and bandwidth constraint `bw_limit` if any.
-`incoming_traffic_rate = min(bw_limit / d, d * transaction_rate, SendRate)`
-`outgoing_traffic_rate = min(bw_limit / d, d * transaction_rate, RecRate)`
+`incoming_traffic_rate = min(d * transaction_rate, SendRate)`
+`outgoing_traffic_rate = min(d * transaction_rate, RecRate)`
 
 Best case scenario: a transaction is exchanged only once, contributing to either incoming or outgoing traffic.
 In a network, with transaction rate `transaction_rate` and a node with `d` degree, the node's traffic rate is capped by:
