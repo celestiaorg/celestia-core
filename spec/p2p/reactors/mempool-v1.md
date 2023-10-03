@@ -39,7 +39,7 @@ For each connection, the following limits apply per channel ID ([ref](https://gi
 - `RecvRate`: The `RecvRate` parameter enforces a default average receiving rate of [`5120000 B= 5MB/s`](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L616). It ensures that data is received at this maximum rate. This parameter does not seem to be overwritten by the celestia-app.
 - `MaxPacketMsgPayloadSize`: The `MaxPacketMsgPayloadSize` parameter sets the maximum payload size for packet messages to `1024` bytes.
 
-<!-- TODO: I am currently investigating the impact of send and rec rate in the total  traffic at each node and per connection -->
+<!-- TODO: I am currently investigating the impact of send and rec rate in the total  traffic at each node and per connection. It looks like that this is the average rate, but not necessarily a hard limit i.e., the rate may exceed this value but then the excess is amortized over the next period  -->
 
 Peer related configs ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L524)) that would be relevant to the traffic analysis are as follows:
 - `max_num_inbound_peers` and `max_num_outbound_peers`: These parameters indicate the total number of inbound and outbound peers, respectively. The default values are `40` for inbound peers and `10` for outbound peers (excluding persistent peers).
@@ -64,7 +64,7 @@ In a network, with transaction rate `transaction_rate` and a node with `d` degre
 `incoming_traffic_rate = d * transaction_rate`
 `outgoing_traffic_rate = d * transaction_rate`
 
-These rates are further constrained by the channel send and receive rates, and bandwidth constraint `bw_limit` if any.
+These rates are further constrained by the channel send and receive rates.
 `incoming_traffic_rate = min(d * transaction_rate, SendRate)`
 `outgoing_traffic_rate = min(d * transaction_rate, RecRate)`
 
@@ -73,9 +73,16 @@ In a network, with transaction rate `transaction_rate` and a node with `d` degre
 `traffic_rate (=incoming_traffic_rate + outgoing_traffic_rate) = d * transaction_rate`
 
 
+This yields the following conclusions (to be extended and verified):
+- With a known given transaction rate `transaction_rate`, a node's (in + out) traffic rate should range from `d * transaction_rate` to `2 * d * transaction_rate`.
+- To handle a particular `transaction_rate` (network throughput), the node's `SendRate` and `RecRate`  with `d` connections should be at least `d * transaction_rate` to handle the worst case scenario (this is only to undertake the load incurred by the mempool reactor).
+
+
+
+
 
 ### Impact of mempool on other network aspects
-- **Block size**: One immediate impact of mempool, is the size of mempool on the block size. Clearly, block size can not exceed the mempool size. In the current setting, the mempool size is at max `7.897 MB` meaning Celestia blocks can get as large as that (excluding block header).
+- **Block size**: (this to be verified) One immediate impact of mempool, is the size of mempool on the block size. Clearly, block size can not exceed the mempool size. In the current setting, the mempool size is at max `7.897 MB` meaning Celestia blocks can get as large as that (excluding block header).
 - **Network throughput**:  TBC
 - **Block Time**: TBC
 
