@@ -67,7 +67,7 @@ These max rates are further constrained by the `SendRate` and `RecRate`.
 `incoming_traffic_rate = d * min(transaction_rate, SendRate)`
 `outgoing_traffic_rate = d * min(transaction_rate, RecRate)`
 
-- **Best case scenario**: a transaction is exchanged only once, contributing to either incoming or outgoing traffic. This is because both ends of the connection keep track of the transactions they have seen on a connection (wither vua sending or receiving). If one peer sends a transaction before the other, they both mark it as sent/received, ensuring they do not redundantly transmit it to each other.
+- **Best case scenario**: a transaction is exchanged only once, contributing to either incoming or outgoing traffic. This is because both ends of the connection keep track of the transactions they have seen on a connection (whether via sending or receiving). If one peer sends a transaction before the other, they both mark it as sent/received, ensuring they do not redundantly transmit it to each other.
 In a network, with transaction rate `transaction_rate` and a node with  degree of `d`, the node's traffic rate in best case would be:
 `traffic_rate (=incoming_traffic_rate + outgoing_traffic_rate) = d * transaction_rate`
 
