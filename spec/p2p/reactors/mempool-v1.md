@@ -1,10 +1,10 @@
-## Mempool Protocol Description
+## Mempool V1 Protocol Description
 
 The Celestia-core's p2p layer, which is a fork of CometBFT, consists of channels and reactors. Peers establish connections within specific channels, effectively forming peer-to-peer groups (each channel represents such a group). The transmission of messages within a channel is governed by the associated reactor, essentially containing the protocol rules for that channel.
 
 One notable channel is the mempool channel, identified as [`MempoolChannel`](https://github.com/celestiaorg/celestia-core/blob/3f3b7cc57f5cfc5e846ce781a9a407920e54fb72/mempool/mempool.go#L14) with a specific channel ID of [`0x30`](https://github.com/celestiaorg/celestia-core/blob/3f3b7cc57f5cfc5e846ce781a9a407920e54fb72/mempool/mempool.go#L14). The mempool reactor manages the dissemination of transactions across the network. It's important to highlight that there's a direct correspondence between reactors and the channels they are connected to. Consequently, the mempool reactor is the exclusive reactor linked to the mempool channel with ID `0x30`. This document will provide an in-depth overview of the protocol implemented by the mempool v1 reactor. At the end, we will provide a traffic analysis of the said reactor as well.
 
-## Mempool V1 Reactor
+## Transaction Flow and Lifecycle in a Node
 A node can receive a transaction through one of two pathways: either a user initiates the transaction directly to the node, or the node acquires a transaction from another peer. Upon receiving a transaction, the following steps occur:
 
 1. The transaction's validity is assessed, and if it passes the validation criteria, it is added to the mempool. Furthermore, the transaction's height is set to match the current block height.
@@ -70,7 +70,6 @@ These max rates are further constrained by the `SendRate` and `RecRate`.
 - **Best case scenario**: a transaction is exchanged only once, contributing to either incoming or outgoing traffic. This is because both ends of the connection keep track of the transactions they have seen on a connection (whether via sending or receiving). If one peer sends a transaction before the other, they both mark it as sent/received, ensuring they do not redundantly transmit it to each other.
 In a network, with transaction rate `transaction_rate` and a node with  degree of `d`, the node's traffic rate in best case would be:
 `traffic_rate (=incoming_traffic_rate + outgoing_traffic_rate) = d * transaction_rate`
-
 
 We can draw the following conclusions (to be extended and verified):
 - With a known given transaction rate `transaction_rate`, a node's (in + out) traffic rate should range from `d * transaction_rate` to `2 * d * transaction_rate`.
