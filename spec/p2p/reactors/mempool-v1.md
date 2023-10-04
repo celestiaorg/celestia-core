@@ -58,7 +58,6 @@ In the analysis provided below, we consider the knowledge of the following netwo
 - `d`: Node degree (total incoming and outgoing connections)
 <!-- - transaction rate: `transaction_rate` total number of transactions per second submitted to the network -->
 - `transaction_rate` which specifies that total size of transactions in bytes per second submitted to the network.
-- `C`: total number of connections in the network
 
 Transactions are assumed to comply with the transaction size, are valid and are accepted by the mempool. We also assume all the peers are up and running.
 
