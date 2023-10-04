@@ -10,14 +10,14 @@ A node can receive a transaction through one of two pathways: either a user init
 
 1. The transaction's validity is assessed, and if it passes the validation criteria, it is added to the mempool. Furthermore, the height at which the transaction is received is set to the current block height. This information will later be useful in purging old transactions from the mempool once their time-to-live (TTL) has elapsed and have not been included in any blocks.
 2. **Peer Tracking**: In the event that the transaction originates from another peer, the sending peer is marked to prevent redundant transmission of the same transaction.
-   Subsequently, there are two concurrent processes underway:
-3. **Mempool Life-cycle**:
-    - Transactions that find their way into the mempool remain there until one of two conditions is met: either the mempool reaches its capacity limit or a new block is committed.
+Subsequently, there are two concurrent processes underway, namely, the _mempool management_ and _broadcast process_, as explained in the remaining items below.
+3. **Mempool Management**:
 
+    - Transactions that find their way into the mempool remain there until one of two conditions is met: either the mempool reaches its capacity limit or a new block is committed.
     - When a [block is committed](https://github.com/celestiaorg/celestia-core/blob/367caa33ef5ab618ea357189e88044dbdbd17776/state/execution.go#L324):
-        - the transactions within that block that are successfully delivered to the app are removed from the mempool ([ref](https://github.com/celestiaorg/celestia-core/blob/993c1228977f206c80cb0f87ac1d4f002826e904/mempool/v1/mempool.go#L418)). They are also placed in the mempool cache ([ref](https://github.com/celestiaorg/celestia-core/blob/993c1228977f206c80cb0f87ac1d4f002826e904/mempool/v1/mempool.go#L411-L412)).
+        - The transactions within that block that are successfully delivered to the app are removed from the mempool ([ref](https://github.com/celestiaorg/celestia-core/blob/993c1228977f206c80cb0f87ac1d4f002826e904/mempool/v1/mempool.go#L418)). They are also placed in the mempool cache ([ref](https://github.com/celestiaorg/celestia-core/blob/993c1228977f206c80cb0f87ac1d4f002826e904/mempool/v1/mempool.go#L411-L412)).
         - The remaining transactions are subjected to two checks:
-            - their Time-to-Live (TTL) is examined ([ref](https://github.com/celestiaorg/celestia-core/blob/993c1228977f206c80cb0f87ac1d4f002826e904/mempool/v1/mempool.go#L421)), and any transactions that have expired are promptly removed from the mempool ([ref](https://github.com/celestiaorg/celestia-core/blob/993c1228977f206c80cb0f87ac1d4f002826e904/mempool/v1/mempool.go#L743)).
+            - Their Time-to-Live (TTL) is examined ([ref](https://github.com/celestiaorg/celestia-core/blob/993c1228977f206c80cb0f87ac1d4f002826e904/mempool/v1/mempool.go#L421)), and any transactions that have expired are promptly removed from the mempool ([ref](https://github.com/celestiaorg/celestia-core/blob/993c1228977f206c80cb0f87ac1d4f002826e904/mempool/v1/mempool.go#L743)).
             - Next, the remaining transactions are re-evaluated for validity against the updated state ([ref](https://github.com/celestiaorg/celestia-core/blob/993c1228977f206c80cb0f87ac1d4f002826e904/mempool/v1/mempool.go#L429-L430)) duo to the mempool [`recheck` config](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L708) that is set to `true` ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L761)). Any transactions that are found to be invalid are removed from the mempool.
 4. **Broadcast Process**:
    For each peer and for every transaction residing in the mempool, the following actions are taken ([ref](https://github.com/celestiaorg/celestia-core/blob/64cd9ab7c67c945d755fb4fbd5afb2d352874eea/mempool/v1/reactor.go#L244)):
