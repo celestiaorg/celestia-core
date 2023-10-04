@@ -38,8 +38,8 @@ The relevant constraints and configurations for the mempool are as follows ([ref
 
 For each peer-to-peer connection, the following limits apply to the aggregate traffic rate of all the channels ([ref](https://github.com/celestiaorg/celestia-core/blob/3f3b7cc57f5cfc5e846ce781a9a407920e54fb72/libs/flowrate/flowrate.go#L177)):
 
-- `SendRate`: The `SendRate` parameter enforces a default average sending rate of [`5120000 B= 5MB/s`](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L615). It ensures that data is sent at this maximum rate. This parameter does not seem to be overwritten by the celestia-app.
-- `RecvRate`: The `RecvRate` parameter enforces a default average receiving rate of [`5120000 B= 5MB/s`](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L616). It ensures that data is received at this maximum rate. This parameter does not seem to be overwritten by the celestia-app.
+- `SendRate`: The `SendRate` parameter enforces a default sending rate of [`5120000 B= 5MB/s`](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L615). It ensures that data is sent at this maximum rate. This parameter does not seem to be overwritten by the celestia-app.
+- `RecvRate`: The `RecvRate` parameter enforces a default receiving rate of [`5120000 B= 5MB/s`](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L616). It ensures that data is received at this maximum rate. This parameter does not seem to be overwritten by the celestia-app.
 - `MaxPacketMsgPayloadSize`: The `MaxPacketMsgPayloadSize` parameter sets the maximum payload size for packet messages to `1024` bytes.
 
 <!-- TODO: I am currently investigating the impact of send and rec rate in the total  traffic at each node and per connection. It looks like that this is the average rate, but not necessarily a hard limit i.e., the rate may exceed this value but then the excess is amortized over the next period  -->
