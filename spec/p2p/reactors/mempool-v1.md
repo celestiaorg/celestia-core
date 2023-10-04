@@ -8,7 +8,7 @@ One notable channel is the mempool channel, identified as [`MempoolChannel`](htt
 
 A node can receive a transaction through one of two pathways: either a user initiates the transaction directly to the node, or the node acquires a transaction from another peer. Upon receiving a transaction, the following steps occur:
 
-1. The transaction's validity is assessed, and if it passes the validation criteria, it is added to the mempool. Furthermore, the transaction's height is set to match the current block height.
+1. The transaction's validity is assessed, and if it passes the validation criteria, it is added to the mempool. Furthermore, the height at which the transaction is received is set to the current block height. This information will later be useful in purging old transactions from the mempool once their time-to-live (TTL) has elapsed and have not been included in any blocks.
 2. **Peer Tracking**: In the event that the transaction originates from another peer, the sending peer is marked to prevent redundant transmission of the same transaction.
    Subsequently, there are two concurrent processes underway:
 3. **Mempool Life-cycle**:
