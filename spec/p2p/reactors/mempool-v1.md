@@ -31,7 +31,7 @@ Subsequently, there are two concurrent processes underway, namely, the _mempool 
 
 The relevant constraints and configurations for the mempool are as follows ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L758)):
 
-- `Size`: This parameter specifies the total number of transactions that the mempool can hold, with a maximum value of `5000`.
+- `Size`: This parameter specifies the total number of transactions that the mempool can hold. It is a configurable setting, with a default value of `5000`.
 - `MaxTxsBytes`: The `MaxTxsBytes` parameter defines the maximum size of the mempool in bytes, with a limit of `1GB`  by default.
 - `MaxTxBytes`: The `MaxTxBytes` parameter specifies the maximum size of an individual transaction, which is set to `1MB`.
 - `TTLNumBlocks` and `TTLDuration` : These settings determine the number of blocks and time after which a transaction is removed from the mempool if it has not been included in a block. The default is set to zero, however, on [celestia-app side](https://github.com/celestiaorg/celestia-app/blob/ccfb3e5e87d05d75a92ad85ab199d4f0c4879a0a/app/default_overrides.go#L221-L222) these values are over-written to `5` and `5*15 s`, respectively.
