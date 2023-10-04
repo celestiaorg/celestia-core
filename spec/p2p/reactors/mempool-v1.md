@@ -70,9 +70,9 @@ In a network, with transaction rate `transaction_rate` and a node with `d` degre
 `incoming_traffic_rate = d * transaction_rate`
 `outgoing_traffic_rate = d * transaction_rate`
 
-These max rates are further constrained by the `SendRate` and `RecRate`.
-`incoming_traffic_rate = d * min(transaction_rate, SendRate)`
-`outgoing_traffic_rate = d * min(transaction_rate, RecRate)`
+These max rates are further constrained by the `SendRate` and `RecvRate`.
+`incoming_traffic_rate = d * min(transaction_rate, RecvRate)`
+`outgoing_traffic_rate = d * min(transaction_rate, SendRate)`
 
 - **Best case scenario**: a transaction is exchanged only once, contributing to either incoming or outgoing traffic. This is because both ends of the connection keep track of the transactions they have seen on a connection (whether via sending or receiving). If one peer sends a transaction before the other, they both mark it as sent/received, ensuring they do not redundantly transmit it to each other.
 In a network, with transaction rate `transaction_rate` and a node with  degree of `d`, the node's traffic rate in best case would be:
@@ -81,7 +81,7 @@ In a network, with transaction rate `transaction_rate` and a node with  degree o
 We can draw the following conclusions (to be extended and verified):
 
 - With a known given transaction rate `transaction_rate`, a node's (in + out) traffic rate should range from `d * transaction_rate` to `2 * d * transaction_rate`.
-- To handle a particular `transaction_rate` (network throughput), the node's `SendRate` and `RecRate` should be at least `transaction_rate` to handle the worst case scenario (this is only to undertake the load incurred by the mempool reactor).
+- To handle a particular `transaction_rate` (network throughput), the node's `SendRate` and `RecvRate` should be at least `transaction_rate` to handle the worst case scenario (this is only to undertake the load incurred by the mempool reactor).
 
 ## Impact of mempool on other network aspects
 
