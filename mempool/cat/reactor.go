@@ -97,23 +97,38 @@ func (memR *Reactor) SetLogger(l log.Logger) {
 
 // OnStart implements Service.
 func (memR *Reactor) OnStart() error {
-	if memR.opts.ListenOnly {
-		memR.Logger.Info("Tx broadcasting is disabled")
-		return nil
-	}
-	go func() {
-		for {
-			select {
-			case <-memR.Quit():
-				return
+	if !memR.opts.ListenOnly {
+		go func() {
+			for {
+				select {
+				case <-memR.Quit():
+					return
 
-			// listen in for any newly verified tx via RFC, then immediately
-			// broadcasts it to all connected peers.
-			case nextTx := <-memR.mempool.next():
-				memR.broadcastNewTx(nextTx)
+				// listen in for any newly verified tx via RPC, then immediately
+				// broadcast it to all connected peers.
+				case nextTx := <-memR.mempool.next():
+					memR.broadcastNewTx(nextTx)
+				}
 			}
-		}
-	}()
+		}()
+	} else {
+		memR.Logger.Info("Tx broadcasting is disabled")
+	}
+	// run a separate go routine to check for time based TTLs
+	if memR.mempool.config.TTLDuration > 0 {
+		go func() {
+			ticker := time.NewTicker(memR.mempool.config.TTLDuration)
+			for {
+				select {
+				case <-ticker.C:
+					memR.mempool.CheckToPurgeExpiredTxs()
+				case <-memR.Quit():
+					return
+				}
+			}
+		}()
+	}
+
 	return nil
 }
 
@@ -313,10 +328,6 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 			},
 		},
 	}
-	bz, err := msg.Marshal()
-	if err != nil {
-		panic(err)
-	}
 
 	// Add jitter to when the node broadcasts it's seen txs to stagger when nodes
 	// in the network broadcast their seenTx messages.
@@ -338,7 +349,10 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 			continue
 		}
 
-		peer.Send(MempoolStateChannel, bz) //nolint:staticcheck
+		p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+			ChannelID: MempoolStateChannel,
+			Message:   msg,
+		}, memR.Logger)
 	}
 }
 
@@ -350,10 +364,6 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 				Txs: [][]byte{wtx.tx},
 			},
 		},
-	}
-	bz, err := msg.Marshal()
-	if err != nil {
-		panic(err)
 	}
 
 	for id, peer := range memR.ids.GetAll() {
@@ -371,9 +381,10 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 			continue
 		}
 
-		if peer.Send(mempool.MempoolChannel, bz) { //nolint:staticcheck
-			memR.mempool.PeerHasTx(id, wtx.key)
-		}
+		p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+			ChannelID: mempool.MempoolChannel,
+			Message:   msg,
+		}, memR.Logger)
 	}
 }
 
@@ -390,12 +401,11 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 			WantTx: &protomem.WantTx{TxKey: txKey[:]},
 		},
 	}
-	bz, err := msg.Marshal()
-	if err != nil {
-		panic(err)
-	}
 
-	success := peer.Send(MempoolStateChannel, bz) //nolint:staticcheck
+	success := p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+		ChannelID: MempoolStateChannel,
+		Message:   msg,
+	}, memR.Logger)
 	if success {
 		memR.mempool.metrics.RequestedTxs.Add(1)
 		requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)

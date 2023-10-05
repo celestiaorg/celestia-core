@@ -17,3 +17,13 @@ pull_request_rules:
           {{ title }} (#{{ number }})
 
           {{ body }}
+
+  - name: Backport to v0.34.x-celestia
+    conditions:
+      - base=main
+      - label=S:backport-to-v0.34.x
+      - merged
+    actions:
+      backport:
+        branches:
+          - v0.34.x-celestia
