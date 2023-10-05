@@ -1,10 +1,12 @@
-# Mempool Reactor Overview
+# Mempool V1 Reactor
+
+## Overview
 
 The Celestia-core's p2p layer, which is a fork of CometBFT, consists of channels and reactors. Peers establish connections within specific channels, effectively forming peer-to-peer groups (each channel represents such a group). The transmission of messages within a channel is governed by the associated reactor, essentially containing the protocol rules for that channel.
 
 One notable channel is the mempool channel, identified as [`MempoolChannel`](https://github.com/celestiaorg/celestia-core/blob/3f3b7cc57f5cfc5e846ce781a9a407920e54fb72/mempool/mempool.go#L14) with a specific channel ID of [`0x30`](https://github.com/celestiaorg/celestia-core/blob/3f3b7cc57f5cfc5e846ce781a9a407920e54fb72/mempool/mempool.go#L14). The mempool reactor manages the dissemination of transactions across the network. It's important to highlight that there's a direct correspondence between reactors and the channels they are connected to. Consequently, the mempool reactor is the exclusive reactor linked to the mempool channel with ID `0x30`. This document will provide an overview of the protocol implemented by the mempool v1 reactor along with its traffic analysis.
 
-# Transaction Flow and Lifecycle in a Node
+## Transaction Flow and Lifecycle in a Node
 
 A node can receive a transaction through one of two pathways: either a user initiates the transaction directly to the node, or the node acquires a transaction from another peer. Upon receiving a transaction, the following steps occur:
 
@@ -27,7 +29,7 @@ Subsequently, there are two concurrent processes underway, namely, the _mempool 
       - has a height difference of one (meaning it lags behind the transaction by a single block). If the height difference is greater, a waiting period is observed to allow the peer to catch up ([ref](https://github.com/celestiaorg/celestia-core/blob/64cd9ab7c67c945d755fb4fbd5afb2d352874eea/mempool/v1/reactor.go#L286-L289)).
     - **Peer Tracking**: Each transaction is sent to a peer only once, and the recipient peer is marked to prevent the retransmission of the same transaction ([ref](https://github.com/celestiaorg/celestia-core/blob/64cd9ab7c67c945d755fb4fbd5afb2d352874eea/mempool/v1/reactor.go#L304)).
 
-# Constraints and  Configurations
+## Constraints and Configurations
 
 The relevant constraints and configurations for the mempool are as follows ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L758)):
 
@@ -48,10 +50,9 @@ For each peer-to-peer connection, the following limits apply to the aggregate tr
 Other P2P configs ([ref](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L524)) that would be relevant to the traffic analysis are:
 
 - [`max_num_inbound_peers` and `max_num_outbound_peers`](https://github.com/celestiaorg/celestia-core/blob/37f950717381e8d8f6393437624652693e4775b8/config/config.go#L604-L605): These parameters indicate the total number of inbound and outbound peers, respectively. The default values are `40` for inbound peers and `10` for outbound peers ([excluding persistent peers](https://github.com/celestiaorg/celestia-core/blob/2f93fc823f17c36c7090f84694880c85d3244764/config/config.go#L553-L554)).
--
 <!-- The allocation of max_num_inbound_peers and max_num_outbound_peers across various connection types requires clarification. For instance, whether max_num_inbound_peers includes both unconditional peers and persistent peers or not. -->
 
-# Traffic Rate Analysis
+## Traffic Rate Analysis
 
 In the analysis provided below, we consider the knowledge of the following network parameters:
 
@@ -60,7 +61,7 @@ In the analysis provided below, we consider the knowledge of the following netwo
 
 Transactions are assumed to comply with the transaction size, are valid and are accepted by the mempool. We also assume all the peers are up and running.
 
-## Traffic Rate Analysis for a Node
+### Traffic Rate Analysis for a Node
 
 We distinguish between the incoming and outgoing traffic rate, and denote them by  `incoming_traffic_rate` and  `outgoing_traffic_rate`, respectively.
 
@@ -83,7 +84,7 @@ We can draw the following conclusions (to be extended and verified):
 - With a known given transaction rate `transaction_rate`, a node's (in + out) traffic rate should range from `d * transaction_rate` to `2 * d * transaction_rate`.
 - To handle a particular `transaction_rate` (network throughput), the node's `SendRate` and `RecvRate` should be at least `transaction_rate` to handle the worst case scenario (this is only to undertake the load incurred by the mempool reactor).
 
-## Impact of mempool on other network aspects
+### Impact of mempool on other network aspects
 
 - **Block size**: One immediate impact of mempool, is the size of mempool on the block size. Block size can not exceed the mempool size. In the current setting, the mempool size is at max `1GB` meaning Celestia blocks can get as large as that (excluding block header).
 - **Network throughput**:  TBC
