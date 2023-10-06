@@ -112,6 +112,29 @@ func TestMConnectionSend(t *testing.T) {
 	assert.False(t, mconn.Send(0x05, []byte("Absorbing Man")), "Send should return false because channel is unknown")
 }
 
+func TestMConnectionSendRate(t *testing.T) {
+	server, client := NetPipe()
+	defer server.Close()
+	defer client.Close()
+
+	mconn := createTestMConnection(client)
+	err := mconn.Start()
+	require.Nil(t, err)
+	defer mconn.Stop() //nolint:errcheck // ignore for tests
+
+	msg := make([]byte, 100*1024, 100*1024)
+	assert.Equal(t, 100*1024, len(msg))
+	assert.True(t, mconn.Send(0x01, msg))
+	// Note: subsequent Send/TrySend calls could pass because we are reading from
+	// the send queue in a separate goroutine.
+	_, err = server.Read(make([]byte, len(msg)))
+	if err != nil {
+		t.Error(err)
+	}
+
+	assert.True(t, mconn.Status().SendMonitor.PeakRate <= mconn.config.SendRate)
+}
+
 func TestMConnectionReceive(t *testing.T) {
 	server, client := NetPipe()
 	defer server.Close()
