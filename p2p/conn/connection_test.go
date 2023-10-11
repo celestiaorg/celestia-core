@@ -119,31 +119,44 @@ func TestMConnectionSendRate(t *testing.T) {
 	defer server.Close()
 	defer client.Close()
 
-	mconn := createTestMConnection(client)
-	err := mconn.Start()
+	clientConn := createTestMConnection(client)
+	err := clientConn.Start()
 	require.Nil(t, err)
-	defer mconn.Stop() //nolint:errcheck // ignore for tests
+	defer clientConn.Stop() //nolint:errcheck // ignore for tests
 
+	// prepare a message to send from client to the server
 	msg := make([]byte, 1000*1024, 1000*1024)
-	assert.Equal(t, 1000*1024, len(msg))
-	assert.True(t, mconn.Send(0x01, msg))
-	// Note: subsequent Send/TrySend calls could pass because we are reading from
-	// the send queue in a separate goroutine.
-	_, err = server.Read(make([]byte, len(msg)))
+
+	// send the message and check if it was sent successfully
+	done := clientConn.Send(0x01, msg)
+	assert.True(t, done)
+
+	// read the message from the server
+	n, err := server.Read(make([]byte, len(msg)))
 	if err != nil {
 		t.Error(err)
 	}
+	// ensure that the retrieved messages is the same size as the sent message
+	assert.Equal(t, len(msg), n)
 
-	peakRate := mconn.Status().SendMonitor.PeakRate
-	sendRate := round(float64(mconn.config.SendRate) * 0.1) //  mconn.sendMonitor.sRate.Seconds()
-	fmt.Println("Debugging information:", peakRate, sendRate)
-	// batch_size_bytes = numBatchPacketMsgs * maxPacketMsgSize
-	// max_rate_per_100_ms = ceil((SendRate * 0.1) / batch_size_bytes) * batch_size_bytes
-	// Rate per second: 10 * max_rate_per_100_ms
-	batch_size_bytes := int64(numBatchPacketMsgs * mconn._maxPacketMsgSize)
-	max_rate_per_100_ms := int64(math.Ceil(float64(sendRate)/float64(batch_size_bytes))) * batch_size_bytes
-	rate_per_second := 10 * max_rate_per_100_ms
-	assert.False(t, peakRate <= rate_per_second, fmt.Sprintf("PeakRate %d > SendRate %d", mconn.Status().SendMonitor.PeakRate, rate_per_second))
+	// check if the peak send rate is within the expected range
+	peakSendRate := clientConn.Status().SendMonitor.PeakRate
+	// the peak send rate should be less than or equal to the max send rate
+	// the max send rate is calculated based on the configured SendRate and other configs
+	maxSendRate := clientConn.maxSendRate()
+	assert.True(t, peakSendRate <= clientConn.maxSendRate(), fmt.Sprintf("peakSendRate %d > maxSendRate %d", peakSendRate, maxSendRate))
+}
+
+// maxSendRate returns the maximum send rate in bytes per second based on the MConnection's SendRate and other configs. It is used to calculate the highest expected value for the peak send rate.
+// The returned value is slightly higher than the configured SendRate.
+func (mconn *MConnection) maxSendRate() int64 {
+	sampleRate := 100 * time.Millisecond
+	sendRate := round(float64(mconn.config.SendRate) * sampleRate.Seconds())
+	batchSizeBytes := int64(numBatchPacketMsgs * mconn._maxPacketMsgSize)
+	effectiveRatePerSample := int64(math.Ceil(float64(sendRate)/float64(batchSizeBytes))) * batchSizeBytes
+	effectiveSendRate := 10 * effectiveRatePerSample
+
+	return effectiveSendRate
 }
 
 // round returns x rounded to the nearest int64 (non-negative values only).
