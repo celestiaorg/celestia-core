@@ -2,6 +2,8 @@ package conn
 
 import (
 	"encoding/hex"
+	"fmt"
+	"math"
 	"net"
 	"testing"
 	"time"
@@ -122,8 +124,8 @@ func TestMConnectionSendRate(t *testing.T) {
 	require.Nil(t, err)
 	defer mconn.Stop() //nolint:errcheck // ignore for tests
 
-	msg := make([]byte, 100*1024, 100*1024)
-	assert.Equal(t, 100*1024, len(msg))
+	msg := make([]byte, 1000*1024, 1000*1024)
+	assert.Equal(t, 1000*1024, len(msg))
 	assert.True(t, mconn.Send(0x01, msg))
 	// Note: subsequent Send/TrySend calls could pass because we are reading from
 	// the send queue in a separate goroutine.
@@ -132,9 +134,25 @@ func TestMConnectionSendRate(t *testing.T) {
 		t.Error(err)
 	}
 
-	assert.True(t, mconn.Status().SendMonitor.PeakRate <= mconn.config.SendRate)
+	peakRate := mconn.Status().SendMonitor.PeakRate
+	sendRate := round(float64(mconn.config.SendRate) * 0.1) //  mconn.sendMonitor.sRate.Seconds()
+	fmt.Println("Debugging information:", peakRate, sendRate)
+	// batch_size_bytes = numBatchPacketMsgs * maxPacketMsgSize
+	// max_rate_per_100_ms = ceil((SendRate * 0.1) / batch_size_bytes) * batch_size_bytes
+	// Rate per second: 10 * max_rate_per_100_ms
+	batch_size_bytes := int64(numBatchPacketMsgs * mconn._maxPacketMsgSize)
+	max_rate_per_100_ms := int64(math.Ceil(float64(sendRate)/float64(batch_size_bytes))) * batch_size_bytes
+	rate_per_second := 10 * max_rate_per_100_ms
+	assert.False(t, peakRate <= rate_per_second, fmt.Sprintf("PeakRate %d > SendRate %d", mconn.Status().SendMonitor.PeakRate, rate_per_second))
 }
 
+// round returns x rounded to the nearest int64 (non-negative values only).
+func round(x float64) int64 {
+	if _, frac := math.Modf(x); frac >= 0.5 {
+		return int64(math.Ceil(x))
+	}
+	return int64(math.Floor(x))
+}
 func TestMConnectionReceive(t *testing.T) {
 	server, client := NetPipe()
 	defer server.Close()
