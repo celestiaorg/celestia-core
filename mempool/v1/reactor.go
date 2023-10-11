@@ -34,7 +34,7 @@ type mempoolIDs struct {
 	activeIDs map[uint16]struct{} // used to check if a given peerID key is used, the value doesn't matter
 }
 
-// Reserve searches for the next unused ID and assigns it to the
+// ReserveForPeer searches for the next unused ID and assigns it to the
 // peer.
 func (ids *mempoolIDs) ReserveForPeer(peer p2p.Peer) {
 	ids.mtx.Lock()
@@ -170,7 +170,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	// broadcast routine checks if peer is gone and returns
 }
 
-// Receive implements Reactor.
+// ReceiveEnvelope implements Reactor.
 // It adds any received transactions to the mempool.
 func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	memR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
