@@ -149,6 +149,8 @@ func TestMConnectionSendRate(t *testing.T) {
 // maxSendRate returns the maximum send rate in bytes per second based on the MConnection's SendRate and other configs. It is used to calculate the highest expected value for the peak send rate.
 // The returned value is slightly higher than the configured SendRate.
 func (c *MConnection) maxSendRate() int64 {
+	// the sample rate is set when creating the MConnection and setting up its send monitor i.e., `c.sendMonitor`
+	// it defaults to 100ms which is what we use here
 	sampleRate := 100 * time.Millisecond
 	sendRate := round(float64(c.config.SendRate) * sampleRate.Seconds())
 	batchSizeBytes := int64(numBatchPacketMsgs * c._maxPacketMsgSize)
