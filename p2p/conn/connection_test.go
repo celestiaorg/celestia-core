@@ -165,6 +165,62 @@ func round(x float64) int64 {
 	}
 	return int64(math.Floor(x))
 }
+
+func TestMConnectionReceiveRate(t *testing.T) {
+	server, client := NetPipe()
+	defer server.Close()
+	defer client.Close()
+
+	receivedCh := make(chan []byte)
+	errorsCh := make(chan interface{})
+	onReceive := func(chID byte, msgBytes []byte) {
+		receivedCh <- msgBytes
+	}
+	onError := func(r interface{}) {
+		errorsCh <- r
+	}
+	clientConn := createMConnectionWithCallbacks(client, onReceive, onError)
+	err := clientConn.Start()
+	require.Nil(t, err)
+	defer clientConn.Stop() //nolint:errcheck // ignore for tests
+
+	serverConn := createTestMConnection(server)
+	err = serverConn.Start()
+	require.Nil(t, err)
+	defer serverConn.Stop() //nolint:errcheck // ignore for tests
+
+	for i := 0; i < 1; i++ {
+		msg := bytes.Repeat([]byte{1}, 103400)
+		assert.True(t, serverConn.Send(0x01, msg))
+
+		select {
+		case receivedBytes := <-receivedCh:
+			assert.Equal(t, msg, receivedBytes)
+		case err := <-errorsCh:
+			t.Fatalf("Expected %s, got %+v", msg, err)
+		case <-time.After(500 * time.Millisecond):
+			t.Fatalf("Did not receive %s message in 500ms", msg)
+		}
+	}
+
+	peakRecvRate := clientConn.recvMonitor.Status().PeakRate
+	maxRecvRate := clientConn.maxRecvRate()
+
+	assert.True(t, peakRecvRate <= maxRecvRate, fmt.Sprintf("peakRecvRate %d > maxRecvRate %d", peakRecvRate, maxRecvRate))
+}
+
+// maxSendRate returns the maximum send rate in bytes per second based on the MConnection's SendRate and other configs. It is used to calculate the highest expected value for the peak send rate.
+// The returned value is slightly higher than the configured SendRate.
+func (c *MConnection) maxRecvRate() int64 {
+	sampleRate := 100 * time.Millisecond
+	recvRate := round(float64(c.config.RecvRate) * sampleRate.Seconds())
+	batchSizeBytes := int64(c._maxPacketMsgSize)
+	effectiveRecvRatePerSample := int64(math.Ceil(float64(recvRate)/float64(batchSizeBytes))) * batchSizeBytes
+	effectiveRecvRate := 10 * effectiveRecvRatePerSample
+
+	return effectiveRecvRate
+}
+
 func TestMConnectionReceive(t *testing.T) {
 	server, client := NetPipe()
 	defer server.Close()
