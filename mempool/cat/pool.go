@@ -418,7 +418,7 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 		// encoding as protobuf to send to the application. This actually overestimates it
 		// as we add the proto overhead to each transaction
 		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx})
-		if (maxGas >= 0 && totalGas + w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes + txBytes > maxBytes) {
+		if (maxGas >= 0 && totalGas+w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes+txBytes > maxBytes) {
 			continue
 		}
 		totalBytes += txBytes
