@@ -194,8 +194,8 @@ func TestMConnectionReceiveRate(t *testing.T) {
 	}
 
 	cnfgs := DefaultMConnConfig()
-	cnfgs.SendRate = 512000 // 500 KB/s
-	cnfgs.RecvRate = 512000 // 500 KB/s
+	cnfgs.SendRate = 512_000 // 500 KB/s
+	cnfgs.RecvRate = 512_000 // 500 KB/s
 
 	clientConn := createMConnectionWithCallbacksConfigs(client, onReceive, onError, cnfgs)
 	err := clientConn.Start()
@@ -207,19 +207,21 @@ func TestMConnectionReceiveRate(t *testing.T) {
 	require.Nil(t, err)
 	defer serverConn.Stop() //nolint:errcheck // ignore for tests
 
-	//for i := 0; i < 1; i++ {
-	msg := bytes.Repeat([]byte{1}, 1034000)
+	msgSize := int(cnfgs.RecvRate)
+	msg := bytes.Repeat([]byte{1}, msgSize)
 	assert.True(t, serverConn.Send(0x01, msg))
+
+	// approximate the time it takes to receive the message given the configured RecvRate
+	approxDelay := time.Duration(int64(math.Ceil(float64(msgSize)/float64(cnfgs.RecvRate))) * int64(time.Second) * 2)
 
 	select {
 	case receivedBytes := <-receivedCh:
 		assert.Equal(t, msg, receivedBytes)
 	case err := <-errorsCh:
 		t.Fatalf("Expected %s, got %+v", msg, err)
-		//case <-time.After((int64(math.Ceil(1034000/cnfgs.RecvRate)) * time.Second)):
-		//	t.Fatalf("Did not receive %s message in 500ms", msg)
+	case <-time.After(approxDelay):
+		t.Fatalf("Did not receive the message in %fs", approxDelay.Seconds())
 	}
-	//}
 
 	peakRecvRate := clientConn.recvMonitor.Status().PeakRate
 	maxRecvRate := clientConn.maxRecvRate()
