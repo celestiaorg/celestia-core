@@ -595,6 +595,7 @@ type P2PConfig struct { //nolint: maligned
 
 // DefaultP2PConfig returns a default configuration for the peer-to-peer layer
 func DefaultP2PConfig() *P2PConfig {
+	defaultMConConfig := conn.DefaultMConnConfig()
 	return &P2PConfig{
 		ListenAddress:                "tcp://0.0.0.0:26656",
 		ExternalAddress:              "",
@@ -604,10 +605,10 @@ func DefaultP2PConfig() *P2PConfig {
 		MaxNumInboundPeers:           40,
 		MaxNumOutboundPeers:          10,
 		PersistentPeersMaxDialPeriod: 0 * time.Second,
-		FlushThrottleTimeout:         100 * time.Millisecond,
-		MaxPacketMsgPayloadSize:      1024,    // 1 kB
-		SendRate:                     5120000, // 5 mB/s
-		RecvRate:                     5120000, // 5 mB/s
+		FlushThrottleTimeout:         defaultMConConfig.FlushThrottle,
+		MaxPacketMsgPayloadSize:      1024, // 1 kB
+		SendRate:                     defaultMConConfig.SendRate,
+		RecvRate:                     defaultMConConfig.RecvRate,
 		PexReactor:                   true,
 		SeedMode:                     false,
 		AllowDuplicateIP:             false,
