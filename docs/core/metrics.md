@@ -63,3 +63,12 @@ Percentage of missing + byzantine validators:
 ```md
 ((consensus\_byzantine\_validators\_power + consensus\_missing\_validators\_power) / consensus\_validators\_power) * 100
 ```
+
+## Profiling with Pyroscope
+
+Flamegraphs for metrics such as execution time and allocations can be generated
+using [Pyroscope](https://pyroscope.io/docs/). To enable pyroscope profiling,
+set `pyroscope_trace` to `true`  and add the url of the pyroscope server being
+used to `pyroscope_url` in the config file (`config.toml`). The types of
+profiling can be refined by removing or adding profile types to the
+`pyroscope_profile_types` string list in the same config.
