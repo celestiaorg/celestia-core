@@ -193,26 +193,26 @@ func TestMConnectionReceiveRate(t *testing.T) {
 		errorsCh <- r
 	}
 
-	cnfgs := DefaultMConnConfig()
-	cnfgs.SendRate = 512_000 // 500 KB/s
-	cnfgs.RecvRate = 512_000 // 500 KB/s
+	cnfg := DefaultMConnConfig()
+	cnfg.SendRate = 500_000 // 500 KB/s
+	cnfg.RecvRate = 500_000 // 500 KB/s
 
-	clientConn := createMConnectionWithCallbacksConfigs(client, onReceive, onError, cnfgs)
+	clientConn := createMConnectionWithCallbacksConfigs(client, onReceive, onError, cnfg)
 	err := clientConn.Start()
 	require.Nil(t, err)
 	defer clientConn.Stop() //nolint:errcheck // ignore for tests
 
-	serverConn := createMConnectionWithCallbacksConfigs(server, func(chID byte, msgBytes []byte) {}, func(r interface{}) {}, cnfgs)
+	serverConn := createMConnectionWithCallbacksConfigs(server, func(chID byte, msgBytes []byte) {}, func(r interface{}) {}, cnfg)
 	err = serverConn.Start()
 	require.Nil(t, err)
 	defer serverConn.Stop() //nolint:errcheck // ignore for tests
 
-	msgSize := int(cnfgs.RecvRate)
+	msgSize := int(cnfg.RecvRate)
 	msg := bytes.Repeat([]byte{1}, msgSize)
 	assert.True(t, serverConn.Send(0x01, msg))
 
 	// approximate the time it takes to receive the message given the configured RecvRate
-	approxDelay := time.Duration(int64(math.Ceil(float64(msgSize)/float64(cnfgs.RecvRate))) * int64(time.Second) * 2)
+	approxDelay := time.Duration(int64(math.Ceil(float64(msgSize)/float64(cnfg.RecvRate))) * int64(time.Second) * 2)
 
 	select {
 	case receivedBytes := <-receivedCh:
