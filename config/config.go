@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/p2p/conn"
 	"net/http"
 	"os"
 	"path/filepath"
