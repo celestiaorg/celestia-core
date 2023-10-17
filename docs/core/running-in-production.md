@@ -169,7 +169,7 @@ wrong.
 Other useful endpoints include mentioned earlier `/status`, `/net_info` and
 `/validators`.
 
-CometBFT also can report and serve Prometheus metrics. See
+CometBFT also can report and serve Prometheus and Pyroscope metrics. See
 [Metrics](./metrics.md).
 
 `cometbft debug dump` sub-command can be used to periodically dump useful
