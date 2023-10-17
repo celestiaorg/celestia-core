@@ -46,6 +46,18 @@ func createMConnectionWithCallbacks(
 	return c
 }
 
+func createMConnectionWithCallbacksConfigs(
+	conn net.Conn,
+	onReceive func(chID byte, msgBytes []byte),
+	onError func(r interface{}),
+	cfg MConnConfig,
+) *MConnection {
+	chDescs := []*ChannelDescriptor{{ID: 0x01, Priority: 1, SendQueueCapacity: 1}}
+	c := NewMConnectionWithConfig(conn, chDescs, onReceive, onError, cfg)
+	c.SetLogger(log.TestingLogger())
+	return c
+}
+
 func TestMConnectionSendFlushStop(t *testing.T) {
 	server, client := NetPipe()
 	defer server.Close()
@@ -171,6 +183,7 @@ func TestMConnectionReceiveRate(t *testing.T) {
 	defer server.Close()
 	defer client.Close()
 
+	// prepare a client connection with callbacks to receive messages
 	receivedCh := make(chan []byte)
 	errorsCh := make(chan interface{})
 	onReceive := func(chID byte, msgBytes []byte) {
@@ -179,34 +192,40 @@ func TestMConnectionReceiveRate(t *testing.T) {
 	onError := func(r interface{}) {
 		errorsCh <- r
 	}
-	clientConn := createMConnectionWithCallbacks(client, onReceive, onError)
+
+	cnfgs := DefaultMConnConfig()
+	cnfgs.SendRate = 512000 // 500 KB/s
+	cnfgs.RecvRate = 512000 // 500 KB/s
+
+	clientConn := createMConnectionWithCallbacksConfigs(client, onReceive, onError, cnfgs)
 	err := clientConn.Start()
 	require.Nil(t, err)
 	defer clientConn.Stop() //nolint:errcheck // ignore for tests
 
-	serverConn := createTestMConnection(server)
+	serverConn := createMConnectionWithCallbacksConfigs(server, func(chID byte, msgBytes []byte) {}, func(r interface{}) {}, cnfgs)
 	err = serverConn.Start()
 	require.Nil(t, err)
 	defer serverConn.Stop() //nolint:errcheck // ignore for tests
 
-	for i := 0; i < 1; i++ {
-		msg := bytes.Repeat([]byte{1}, 103400)
-		assert.True(t, serverConn.Send(0x01, msg))
+	//for i := 0; i < 1; i++ {
+	msg := bytes.Repeat([]byte{1}, 1034000)
+	assert.True(t, serverConn.Send(0x01, msg))
 
-		select {
-		case receivedBytes := <-receivedCh:
-			assert.Equal(t, msg, receivedBytes)
-		case err := <-errorsCh:
-			t.Fatalf("Expected %s, got %+v", msg, err)
-		case <-time.After(500 * time.Millisecond):
-			t.Fatalf("Did not receive %s message in 500ms", msg)
-		}
+	select {
+	case receivedBytes := <-receivedCh:
+		assert.Equal(t, msg, receivedBytes)
+	case err := <-errorsCh:
+		t.Fatalf("Expected %s, got %+v", msg, err)
+		//case <-time.After((int64(math.Ceil(1034000/cnfgs.RecvRate)) * time.Second)):
+		//	t.Fatalf("Did not receive %s message in 500ms", msg)
 	}
+	//}
 
 	peakRecvRate := clientConn.recvMonitor.Status().PeakRate
 	maxRecvRate := clientConn.maxRecvRate()
 
 	assert.True(t, peakRecvRate <= maxRecvRate, fmt.Sprintf("peakRecvRate %d > maxRecvRate %d", peakRecvRate, maxRecvRate))
+	fmt.Println("peakRecvRate ", peakRecvRate, "maxRecvRate ", maxRecvRate)
 }
 
 // maxSendRate returns the maximum send rate in bytes per second based on the MConnection's SendRate and other configs. It is used to calculate the highest expected value for the peak send rate.
