@@ -233,6 +233,8 @@ func TestMConnectionReceiveRate(t *testing.T) {
 // maxRecvRate returns the maximum receive rate in bytes per second based on the MConnection's RecvRate and other configs. It is used to calculate the highest expected value for the peak send rate.
 // The returned value is slightly higher than the configured RecvRate.
 func (c *MConnection) maxRecvRate() int64 {
+	// the sample rate is set when creating the MConnection and setting up its receive monitor i.e., `c.recvMonitor`
+	// it defaults to 100ms which is what we use here
 	sampleRate := 100 * time.Millisecond
 	recvRate := round(float64(c.config.RecvRate) * sampleRate.Seconds())
 	batchSizeBytes := int64(c._maxPacketMsgSize)
