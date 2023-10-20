@@ -187,8 +187,10 @@ func TestMConnectionReceiveRate(t *testing.T) {
 	fmt.Println("peakRecvRate ", peakRecvRate, "maxRecvRate ", maxRecvRate)
 }
 
-// maxRecvRate returns the maximum receive rate in bytes per second based on the MConnection's RecvRate and other configs. It is used to calculate the highest expected value for the peak send rate.
-// The returned value is slightly higher than the configured RecvRate.
+// maxRecvRate returns the maximum receive rate in bytes per second based on
+// the MConnection's RecvRate and other configs.
+// It is used to calculate the highest expected value for the peak receive rate.
+// Note that the returned value is slightly higher than the configured RecvRate.
 func (c *MConnection) maxRecvRate() int64 {
 	// the sample rate is set when creating the MConnection and setting up its receive monitor i.e., `c.recvMonitor`
 	// it defaults to 100ms which is what we use here
