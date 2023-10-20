@@ -527,7 +527,7 @@ func (c *MConnection) sendPacketMsg() bool {
 		if !channel.isSendPending() {
 			continue
 		}
-		// Get ratio, and keep track of the lowest ratio.
+		// Get ratio, and keep track of lowest ratio.
 		ratio := float32(channel.recentlySent) / float32(channel.desc.Priority)
 		if ratio < leastRatio {
 			leastRatio = ratio
