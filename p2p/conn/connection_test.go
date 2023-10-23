@@ -184,7 +184,6 @@ func TestMConnectionReceiveRate(t *testing.T) {
 	maxRecvRate := clientConn.maxRecvRate()
 
 	assert.True(t, peakRecvRate <= maxRecvRate, fmt.Sprintf("peakRecvRate %d > maxRecvRate %d", peakRecvRate, maxRecvRate))
-	fmt.Println("peakRecvRate ", peakRecvRate, "maxRecvRate ", maxRecvRate)
 }
 
 // maxRecvRate returns the maximum receive rate in bytes per second based on
