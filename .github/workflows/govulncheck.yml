@@ -10,23 +10,21 @@ on:
     branches:
       - v[0-9]+.[0-9]+.x-celestia
 
-# TODO: re-enable after figuring out what needs to get fixed or if this is
-# handled upstream in main
-# jobs:
-#   govulncheck:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/setup-go@v3
-#         with:
-#           go-version: "1.21"
-#       - uses: actions/checkout@v3
-#       - uses: technote-space/get-diff-action@v6
-#         with:
-#           PATTERNS: |
-#             **/*.go
-#             go.mod
-#             go.sum
-#             Makefile
-#       - name: govulncheck
-#         run: make vulncheck
-#         if: "env.GIT_DIFF != ''"
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v3
+        with:
+          go-version: "1.21"
+      - uses: actions/checkout@v3
+      - uses: technote-space/get-diff-action@v6
+        with:
+          PATTERNS: |
+            **/*.go
+            go.mod
+            go.sum
+            Makefile
+      - name: govulncheck
+        run: make vulncheck
+        if: "env.GIT_DIFF != ''"
