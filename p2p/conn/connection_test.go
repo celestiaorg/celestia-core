@@ -1,7 +1,10 @@
 package conn
 
 import (
+	"bytes"
 	"encoding/hex"
+	"fmt"
+	"math"
 	"net"
 	"testing"
 	"time"
@@ -112,6 +115,58 @@ func TestMConnectionSend(t *testing.T) {
 	assert.False(t, mconn.Send(0x05, []byte("Absorbing Man")), "Send should return false because channel is unknown")
 }
 
+func TestMConnectionSendRate(t *testing.T) {
+	server, client := NetPipe()
+	defer server.Close()
+	defer client.Close()
+
+	clientConn := createTestMConnection(client)
+	err := clientConn.Start()
+	require.Nil(t, err)
+	defer clientConn.Stop() //nolint:errcheck // ignore for tests
+
+	// prepare a message to send from client to the server
+	msg := bytes.Repeat([]byte{1}, 1000*1024)
+
+	// send the message and check if it was sent successfully
+	done := clientConn.Send(0x01, msg)
+	assert.True(t, done)
+
+	// read the message from the server
+	_, err = server.Read(make([]byte, len(msg)))
+	if err != nil {
+		t.Error(err)
+	}
+
+	// check if the peak send rate is within the expected range
+	peakSendRate := clientConn.Status().SendMonitor.PeakRate
+	// the peak send rate should be less than or equal to the max send rate
+	// the max send rate is calculated based on the configured SendRate and other configs
+	maxSendRate := clientConn.maxSendRate()
+	assert.True(t, peakSendRate <= clientConn.maxSendRate(), fmt.Sprintf("peakSendRate %d > maxSendRate %d", peakSendRate, maxSendRate))
+}
+
+// maxSendRate returns the maximum send rate in bytes per second based on the MConnection's SendRate and other configs. It is used to calculate the highest expected value for the peak send rate.
+// The returned value is slightly higher than the configured SendRate.
+func (c *MConnection) maxSendRate() int64 {
+	// the sample rate is set when creating the MConnection and setting up its send monitor i.e., `c.sendMonitor`
+	// it defaults to 100ms which is what we use here
+	sampleRate := 100 * time.Millisecond
+	sendRate := round(float64(c.config.SendRate) * sampleRate.Seconds())
+	batchSizeBytes := int64(numBatchPacketMsgs * c._maxPacketMsgSize)
+	effectiveRatePerSample := int64(math.Ceil(float64(sendRate)/float64(batchSizeBytes))) * batchSizeBytes
+	effectiveSendRate := 10 * effectiveRatePerSample
+
+	return effectiveSendRate
+}
+
+// round returns x rounded to the nearest int64 (non-negative values only).
+func round(x float64) int64 {
+	if _, frac := math.Modf(x); frac >= 0.5 {
+		return int64(math.Ceil(x))
+	}
+	return int64(math.Floor(x))
+}
 func TestMConnectionReceive(t *testing.T) {
 	server, client := NetPipe()
 	defer server.Close()
