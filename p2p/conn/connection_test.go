@@ -179,13 +179,6 @@ func round(x float64) int64 {
 	}
 	return int64(math.Floor(x))
 }
-// round returns x rounded to the nearest int64 (non-negative values only).
-func round(x float64) int64 {
-	if _, frac := math.Modf(x); frac >= 0.5 {
-		return int64(math.Ceil(x))
-	}
-	return int64(math.Floor(x))
-}
 
 func TestMConnectionReceiveRate(t *testing.T) {
 	server, client := NetPipe()
