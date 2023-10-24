@@ -164,7 +164,7 @@ func TestMConnectionReceiveRate(t *testing.T) {
 	require.Nil(t, err)
 	defer serverConn.Stop() //nolint:errcheck // ignore for tests
 
-	msgSize := int(cnfg.RecvRate)
+	msgSize := int(2 * cnfg.RecvRate)
 	msg := bytes.Repeat([]byte{1}, msgSize)
 	assert.True(t, serverConn.Send(0x01, msg))
 
