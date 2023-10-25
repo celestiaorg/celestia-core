@@ -39,9 +39,9 @@ const (
 
 	defaultSendQueueCapacity   = 1
 	defaultRecvBufferCapacity  = 4096
-	defaultRecvMessageCapacity = 22020096      // 21MB
-	defaultSendRate            = int64(512000) // 500KB/s
-	defaultRecvRate            = int64(512000) // 500KB/s
+	defaultRecvMessageCapacity = 22020096         // 21MB
+	defaultSendRate            = int64(5_120_000) // 5MB/s
+	defaultRecvRate            = int64(5_120_000) // 5MB/s
 	defaultSendTimeout         = 10 * time.Second
 	defaultPingInterval        = 60 * time.Second
 	defaultPongTimeout         = 45 * time.Second
@@ -347,7 +347,7 @@ func (c *MConnection) stopForError(r interface{}) {
 	}
 }
 
-// Queues a message to be sent to channel.
+// Send queues a message to be sent to channel.
 func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 	if !c.IsRunning() {
 		return false
@@ -375,7 +375,7 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 	return success
 }
 
-// Queues a message to be sent to channel.
+// TrySend queues a message to be sent to channel.
 // Nonblocking, returns true if successful.
 func (c *MConnection) TrySend(chID byte, msgBytes []byte) bool {
 	if !c.IsRunning() {
@@ -527,7 +527,7 @@ func (c *MConnection) sendPacketMsg() bool {
 		if !channel.isSendPending() {
 			continue
 		}
-		// Get ratio, and keep track of lowest ratio.
+		// Get ratio, and keep track of the lowest ratio.
 		ratio := float32(channel.recentlySent) / float32(channel.desc.Priority)
 		if ratio < leastRatio {
 			leastRatio = ratio

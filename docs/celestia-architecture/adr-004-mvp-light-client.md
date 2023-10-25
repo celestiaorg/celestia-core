@@ -174,7 +174,7 @@ diff --git a/types/light.go b/types/light.go
 ```
 
 Alternatively, we could introduce a `DASLightBlock` that embeds a `LightBlock` and has the `DataAvailabilityHeader` as the only (non-optional) field.
-This would be more explict as it is a new type.
+This would be more explicit as it is a new type.
 Instead, adding a field to the existing `LightBlock`is backwards compatible and does not require any further code changes; the new type requires `To`- and `FromProto` functions at least.
 
 ##### Provider

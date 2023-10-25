@@ -355,6 +355,28 @@ func TestTxMempool_ReapMaxBytesMaxGas(t *testing.T) {
 	require.Len(t, reapedTxs, 25)
 }
 
+func TestTxMempoolTxLargerThanMaxBytes(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	txmp := setup(t, 0)
+	bigPrefix := make([]byte, 100)
+	_, err := rng.Read(bigPrefix)
+	require.NoError(t, err)
+	// large high priority tx
+	bigTx := []byte(fmt.Sprintf("sender-1-1=%X=2", bigPrefix))
+	smallPrefix := make([]byte, 20)
+	_, err = rng.Read(smallPrefix)
+	require.NoError(t, err)
+	// smaller low priority tx with different sender
+	smallTx := []byte(fmt.Sprintf("sender-2-1=%X=1", smallPrefix))
+	require.NoError(t, txmp.CheckTx(bigTx, nil, mempool.TxInfo{SenderID: 1}))
+	require.NoError(t, txmp.CheckTx(smallTx, nil, mempool.TxInfo{SenderID: 1}))
+
+	// reap by max bytes less than the large tx
+	reapedTxs := txmp.ReapMaxBytesMaxGas(100, -1)
+	require.Len(t, reapedTxs, 1)
+	require.Equal(t, types.Tx(smallTx), reapedTxs[0])
+}
+
 func TestTxMempool_ReapMaxTxs(t *testing.T) {
 	txmp := setup(t, 0)
 	tTxs := checkTxs(t, txmp, 100, 0)
