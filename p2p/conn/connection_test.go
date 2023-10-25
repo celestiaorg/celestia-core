@@ -161,14 +161,12 @@ func TestMConnectionSendRate(t *testing.T) {
 // maxSendRate returns the maximum send rate in bytes per second based on the MConnection's SendRate and other configs. It is used to calculate the highest expected value for the peak send rate.
 // The returned value is slightly higher than the configured SendRate.
 func (c *MConnection) maxSendRate() int64 {
-	// the sample rate is set when creating the MConnection and setting up its send monitor i.e., `c.sendMonitor`
-	// it defaults to 100ms which is what we use here
 	sampleRate := c.sendMonitor.GetSampleRate().Seconds()
-	sendRate := round(float64(c.config.SendRate) * sampleRate)
+	numberOfSamplePerSecond := 1 / sampleRate
+	sendRate := float64(round(float64(c.config.SendRate) * sampleRate))
 	batchSizeBytes := float64(numBatchPacketMsgs * c._maxPacketMsgSize)
-	effectiveRatePerSample := math.Ceil(float64(sendRate)/float64(batchSizeBytes)) * batchSizeBytes
-	numberOfSampleRatePerSecond := 1 / sampleRate
-	effectiveSendRate := round(numberOfSampleRatePerSecond * effectiveRatePerSample)
+	effectiveRatePerSample := math.Ceil(sendRate/batchSizeBytes) * batchSizeBytes
+	effectiveSendRate := round(numberOfSamplePerSecond * effectiveRatePerSample)
 
 	return effectiveSendRate
 }
@@ -243,11 +241,11 @@ func TestMConnectionReceiveRate(t *testing.T) {
 // Note that the returned value is slightly higher than the configured RecvRate.
 func (c *MConnection) maxRecvRate() int64 {
 	sampleRate := c.recvMonitor.GetSampleRate().Seconds()
-	recvRate := round(float64(c.config.RecvRate) * sampleRate)
+	numberOfSamplePerSeccond := 1 / sampleRate
+	recvRate := float64(round(float64(c.config.RecvRate) * sampleRate))
 	batchSizeBytes := float64(c._maxPacketMsgSize)
-	effectiveRecvRatePerSample := math.Ceil(float64(recvRate)/batchSizeBytes) * batchSizeBytes
-	numberOfSampleRatePerSeccond := 1 / sampleRate
-	effectiveRecvRate := round(numberOfSampleRatePerSeccond * effectiveRecvRatePerSample)
+	effectiveRecvRatePerSample := math.Ceil(recvRate/batchSizeBytes) * batchSizeBytes
+	effectiveRecvRate := round(numberOfSamplePerSeccond * effectiveRecvRatePerSample)
 
 	return effectiveRecvRate
 }
