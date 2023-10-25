@@ -136,7 +136,6 @@ func TestWriter(t *testing.T) {
 
 	w.SetTransferSize(100)
 	status := []Status{w.Status(), nextStatus(w.Monitor)}
-
 	start = status[0].Start
 
 	// Active, Bytes, Samples, InstRate, CurRate, AvgRate, PeakRate, BytesRem, Start, Duration, Idle, TimeRem, Progress
