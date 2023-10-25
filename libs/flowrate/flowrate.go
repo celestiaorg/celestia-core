@@ -64,6 +64,13 @@ func New(sampleRate, windowSize time.Duration) *Monitor {
 	}
 }
 
+// GetSampleRate returns the current sampling rate.
+func (m *Monitor) GetSampleRate() time.Duration {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.sRate
+}
+
 // Update records the transfer of n bytes and returns n. It should be called
 // after each Read/Write operation, even if n is 0.
 func (m *Monitor) Update(n int) int {
@@ -108,20 +115,19 @@ const timeRemLimit = 999*time.Hour + 59*time.Minute + 59*time.Second
 // Status represents the current Monitor status. All transfer rates are in bytes
 // per second rounded to the nearest byte.
 type Status struct {
-	Start      time.Time     // Transfer start time
-	Bytes      int64         // Total number of bytes transferred
-	Samples    int64         // Total number of samples taken
-	InstRate   int64         // Instantaneous transfer rate
-	CurRate    int64         // Current transfer rate (EMA of InstRate)
-	AvgRate    int64         // Average transfer rate (Bytes / Duration)
-	PeakRate   int64         // Maximum instantaneous transfer rate
-	BytesRem   int64         // Number of bytes remaining in the transfer
-	Duration   time.Duration // Time period covered by the statistics
-	Idle       time.Duration // Time since the last transfer of at least 1 byte
-	TimeRem    time.Duration // Estimated time to completion
-	Progress   Percent       // Overall transfer progress
-	Active     bool          // Flag indicating an active transfer
-	SampleRate time.Duration // Sample Rate used for monitoring
+	Start    time.Time     // Transfer start time
+	Bytes    int64         // Total number of bytes transferred
+	Samples  int64         // Total number of samples taken
+	InstRate int64         // Instantaneous transfer rate
+	CurRate  int64         // Current transfer rate (EMA of InstRate)
+	AvgRate  int64         // Average transfer rate (Bytes / Duration)
+	PeakRate int64         // Maximum instantaneous transfer rate
+	BytesRem int64         // Number of bytes remaining in the transfer
+	Duration time.Duration // Time period covered by the statistics
+	Idle     time.Duration // Time since the last transfer of at least 1 byte
+	TimeRem  time.Duration // Estimated time to completion
+	Progress Percent       // Overall transfer progress
+	Active   bool          // Flag indicating an active transfer
 }
 
 // Status returns current transfer status information. The returned value
@@ -130,16 +136,15 @@ func (m *Monitor) Status() Status {
 	m.mu.Lock()
 	now := m.update(0)
 	s := Status{
-		Active:     m.active,
-		Start:      clockToTime(m.start),
-		Duration:   m.sLast - m.start,
-		Idle:       now - m.tLast,
-		Bytes:      m.bytes,
-		Samples:    m.samples,
-		PeakRate:   round(m.rPeak),
-		BytesRem:   m.tBytes - m.bytes,
-		Progress:   percentOf(float64(m.bytes), float64(m.tBytes)),
-		SampleRate: m.sRate,
+		Active:   m.active,
+		Start:    clockToTime(m.start),
+		Duration: m.sLast - m.start,
+		Idle:     now - m.tLast,
+		Bytes:    m.bytes,
+		Samples:  m.samples,
+		PeakRate: round(m.rPeak),
+		BytesRem: m.tBytes - m.bytes,
+		Progress: percentOf(float64(m.bytes), float64(m.tBytes)),
 	}
 	if s.BytesRem < 0 {
 		s.BytesRem = 0
