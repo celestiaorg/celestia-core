@@ -161,13 +161,12 @@ func TestMConnectionSendRate(t *testing.T) {
 // maxSendRate returns the maximum send rate in bytes per second based on the MConnection's SendRate and other configs. It is used to calculate the highest expected value for the peak send rate.
 // The returned value is slightly higher than the configured SendRate.
 func (c *MConnection) maxSendRate() int64 {
-	// the sample rate is set when creating the MConnection and setting up its send monitor i.e., `c.sendMonitor`
-	// it defaults to 100ms which is what we use here
-	sampleRate := 100 * time.Millisecond
-	sendRate := round(float64(c.config.SendRate) * sampleRate.Seconds())
-	batchSizeBytes := int64(numBatchPacketMsgs * c._maxPacketMsgSize)
-	effectiveRatePerSample := int64(math.Ceil(float64(sendRate)/float64(batchSizeBytes))) * batchSizeBytes
-	effectiveSendRate := 10 * effectiveRatePerSample
+	sampleRate := c.sendMonitor.GetSampleRate().Seconds()
+	numberOfSamplePerSecond := 1 / sampleRate
+	sendRate := float64(round(float64(c.config.SendRate) * sampleRate))
+	batchSizeBytes := float64(numBatchPacketMsgs * c._maxPacketMsgSize)
+	effectiveRatePerSample := math.Ceil(sendRate/batchSizeBytes) * batchSizeBytes
+	effectiveSendRate := round(numberOfSamplePerSecond * effectiveRatePerSample)
 
 	return effectiveSendRate
 }
@@ -229,6 +228,11 @@ func TestMConnectionReceiveRate(t *testing.T) {
 	maxRecvRate := clientConn.maxRecvRate()
 
 	assert.True(t, peakRecvRate <= maxRecvRate, fmt.Sprintf("peakRecvRate %d > maxRecvRate %d", peakRecvRate, maxRecvRate))
+
+	peakSendRate := clientConn.sendMonitor.Status().PeakRate
+	maxSendRate := clientConn.maxSendRate()
+
+	assert.True(t, peakSendRate <= maxSendRate, fmt.Sprintf("peakSendRate %d > maxSendRate %d", peakSendRate, maxSendRate))
 }
 
 // maxRecvRate returns the maximum receive rate in bytes per second based on
@@ -236,13 +240,12 @@ func TestMConnectionReceiveRate(t *testing.T) {
 // It is used to calculate the highest expected value for the peak receive rate.
 // Note that the returned value is slightly higher than the configured RecvRate.
 func (c *MConnection) maxRecvRate() int64 {
-	// the sample rate is set when creating the MConnection and setting up its receive monitor i.e., `c.recvMonitor`
-	// it defaults to 100ms which is what we use here
-	sampleRate := 100 * time.Millisecond
-	recvRate := round(float64(c.config.RecvRate) * sampleRate.Seconds())
-	batchSizeBytes := int64(c._maxPacketMsgSize)
-	effectiveRecvRatePerSample := int64(math.Ceil(float64(recvRate)/float64(batchSizeBytes))) * batchSizeBytes
-	effectiveRecvRate := 10 * effectiveRecvRatePerSample
+	sampleRate := c.recvMonitor.GetSampleRate().Seconds()
+	numberOfSamplePerSeccond := 1 / sampleRate
+	recvRate := float64(round(float64(c.config.RecvRate) * sampleRate))
+	batchSizeBytes := float64(c._maxPacketMsgSize)
+	effectiveRecvRatePerSample := math.Ceil(recvRate/batchSizeBytes) * batchSizeBytes
+	effectiveRecvRate := round(numberOfSamplePerSeccond * effectiveRecvRatePerSample)
 
 	return effectiveRecvRate
 }
