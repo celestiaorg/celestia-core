@@ -10,10 +10,6 @@ import (
 	"github.com/cometbft/cometbft/libs/service"
 )
 
-const (
-	MaxConcurrentStreams = 100
-)
-
 type GRPCServer struct {
 	service.BaseService
 
@@ -47,9 +43,7 @@ func (s *GRPCServer) OnStart() error {
 	}
 
 	s.listener = ln
-	// Explicitly set MaxConcurrentStreams to apply a limit to the server's resources used for any single connection.
-	// https://github.com/grpc/grpc-go/security/advisories/GHSA-m425-mq94-257g
-	s.server = grpc.NewServer(grpc.MaxConcurrentStreams(MaxConcurrentStreams))
+	s.server = grpc.NewServer()
 	types.RegisterABCIApplicationServer(s.server, s.app)
 
 	s.Logger.Info("Listening", "proto", s.proto, "addr", s.addr)

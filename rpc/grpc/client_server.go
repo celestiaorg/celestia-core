@@ -10,10 +10,6 @@ import (
 	cmtnet "github.com/cometbft/cometbft/libs/net"
 )
 
-const (
-	MaxConcurrentStreams = 100
-)
-
 // Config is an gRPC server configuration.
 type Config struct {
 	MaxOpenConnections int
@@ -23,9 +19,7 @@ type Config struct {
 // net.Listener.
 // NOTE: This function blocks - you may want to call it in a go-routine.
 func StartGRPCServer(ln net.Listener) error {
-	// Explicitly set MaxConcurrentStreams to apply a limit to the server's resources used for any single connection.
-	// https://github.com/grpc/grpc-go/security/advisories/GHSA-m425-mq94-257g
-	grpcServer := grpc.NewServer(grpc.MaxConcurrentStreams(MaxConcurrentStreams))
+	grpcServer := grpc.NewServer()
 	RegisterBroadcastAPIServer(grpcServer, &broadcastAPI{})
 	return grpcServer.Serve(ln)
 }
