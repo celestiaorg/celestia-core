@@ -64,6 +64,13 @@ func New(sampleRate, windowSize time.Duration) *Monitor {
 	}
 }
 
+// GetSampleRate returns the current sampling rate.
+func (m *Monitor) GetSampleRate() time.Duration {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.sRate
+}
+
 // Update records the transfer of n bytes and returns n. It should be called
 // after each Read/Write operation, even if n is 0.
 func (m *Monitor) Update(n int) int {
