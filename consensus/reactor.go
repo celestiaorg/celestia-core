@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
+
 	cstypes "github.com/cometbft/cometbft/consensus/types"
 	"github.com/cometbft/cometbft/libs/bits"
 	cmtevents "github.com/cometbft/cometbft/libs/events"
@@ -19,7 +21,6 @@ import (
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 	cmttime "github.com/cometbft/cometbft/types/time"
-	"github.com/gogo/protobuf/proto"
 )
 
 const (
@@ -225,7 +226,7 @@ func (conR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	// ps.Disconnect()
 }
 
-// Receive implements Reactor
+// ReceiveEnvelope implements Reactor
 // NOTE: We process these messages even when we're fast_syncing.
 // Messages affect either a peer state or the consensus state.
 // Peer state updates can happen in parallel, but processing of
@@ -641,6 +642,7 @@ OUTER_LOOP:
 					Message:   &cmtcons.Proposal{Proposal: *rs.Proposal.ToProto()},
 				}, logger) {
 					// NOTE[ZM]: A peer might have received different proposal msg so this Proposal msg will be rejected!
+					// TODO But yet we send block parts of this proposal to the peer (in the first if statement of the current function) while the proposal is rejected. This part of the protocol could be improved by sending the proposal block parts only if the proposal is accepted.
 					ps.SetHasProposal(rs.Proposal)
 				}
 			}
