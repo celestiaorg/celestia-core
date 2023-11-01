@@ -163,7 +163,12 @@ If the received message is a `Proposal` message, the node checks whether:
 - The peer's round state hasn't been initialized yet.
 
 If both conditions are met, the node initializes the peer's round state with the `ProposalBlockPartSetHeader` from the message and creates an empty bit array for `ProposalBlockParts` with a size equal to the number of parts in the header. 
-Then, it adds the message to the `peerMsgQueue` channel for processing.
+Then, it proceeds with updating its own state with the received proposal.
+Namely, the receiving peer performs the following checks:
+- The height and round of the proposal is the same as its own height and round.
+- The proposal is signed by the correct proposer.
+If  the above checks pass, the node sets its own proposal to the received proposal and initialized the `ProposalBlockParts` with an empty bit array with a size equal to the number of parts in the header (unless it is already initialized and is non-empty).
+Note that a node only accepts block parts of a proposal if it has received the proposal first.
 
 ## State Channel Protocol
 
@@ -214,7 +219,7 @@ Upon receiving this message, the node will only modify the peer's round state un
 
 Following these verifications, the node will then update its peer state's `ProposaBlockPartSetHeader` and `ProposaBlockParts` based on the `BlockPartSetHeader` and `BlockParts` values from the received message.
 
-[//]: # (The BlockParts field of the message seem to represent the parts that the sending peer has received so far for this particular proposal, from all of its connectins, so this means that the receving peer becomes aware of which part that peer has, potentially sending less block parts afterwards. )
+[//]: # (The BlockParts field in the message appears to represent the parts of a specific proposal that the sending peer has received from all its connections. This informs the receiving peer about the parts the sending peer possesses, possibly reducing the number of block parts sent subsequently.)
 
 [//]: # (Does this message also signify that the sender has the entire proposal? 
 or can a node send this merely based on the observed votes?  
