@@ -33,8 +33,10 @@ type BlockPart struct {
 
 ### Part Set Header
 
-A `PartSetHeader` is a representation of the Merkle root of the block parts.
-`Total` is the total number of parts in the block.
+A `PartSetHeader` contains the metadata about a block part set.
+`Total` is the total number of parts in the block part set, and
+`Hash` is the Merkle root of the block parts.
+.
 ```go
 type PartSetHeader struct {
 	Total uint32            `json:"total"` 
@@ -57,7 +59,7 @@ type Proposal struct {
 ```
 
 ### Peer Round State
-`PeerRoundState` is used to represent the known state of a peer.
+[`PeerRoundState`](https://github.com/celestiaorg/celestia-core/blob/4b925ca55acc75d51098a7e02ea1e3abeb9bab76/consensus/types/peer_round_state.go#L15) is used to represent the known state of a peer.
 Many fields are omitted for brevity.
 ```go
 type PeerRoundState struct {
@@ -108,10 +110,6 @@ If such a block part is not found, other cases are examined.
   - The round and height of the peer remain consistent pre and post-transmission of the part. 
   References can be found [here](https://github.com/celestiaorg/celestia-core/blob/5a7dff4f3a5f99a4a22bb8a4528363f733177a2e/consensus/reactor.go#L593) and [here](https://github.com/celestiaorg/celestia-core/blob/5a7dff4f3a5f99a4a22bb8a4528363f733177a2e/consensus/reactor.go#L588).
 
-[//]: # (<!-- OPT: why the hash is not persisted alongside the part? -->)
-[//]: # (No check for the height and round of the peer?
-[//]: # (<!-- how does height and round play out on the other side? -->)
-
 
 Case2:  The peer's height is not recent rather falls within the range of the node's earliest and most recent heights.
 The goal is to send a single block part corresponding to the block height the peer is syncing with.
@@ -132,9 +130,6 @@ If  the above check passes successfully, the node proceeds to send the `BlockPar
 If there are no issues encountered during the transmission of the `BlockPart` message, the peer is marked as having received the block part for the specific round, height, and part index, provided that its state has not changed since the block part was sent.
 Following this, the node advances to the next iteration of the gossip procedure.
 
-[//]: # (The reactos has access to the state of the consensus &#40;[link]&#40;https://github.com/celestiaorg/celestia-core/blob/7f2a4ad8646751dc9866370c3598d394a683c29f/consensus/reactor.go#L43&#41;&#41;&#41;.)
-[//]: # (<!-- the metadata `BlockMeta` associated with the block height of the peer. Metadata includes, block id, size, header and number of transactions. What it actually needs is the part set header of that metadata which consists of the block hash and total number of parts. -->)
-
 Case 3: If the peer's round OR height don't match
 The node sleeps for [`PeerGossipSleepDuration duration`, i.e., 100 ms](https://github.com/celestiaorg/celestia-core/blob/7f2a4ad8646751dc9866370c3598d394a683c29f/config/config.go#L984) and reinstates the gossip procedure.
 
@@ -144,10 +139,7 @@ The node sends the `Proposal` to the peer and updates the peer's round state wit
 - The current round and height of the receiving peer match the proposal's, and the peer's state hasn't been updated yet.
 - If the peer's state for that proposal remains uninitialized since the proposal's transmission, the node initializes it by assigning the `ProposalBlockPartSetHeader` and an empty bit array with a size equal to the number of parts in the header for the `ProposalBlockParts`.
 
-[//]: # (, ProposalPOLRound, and ProposalPOL.)
-[//]: # (<!-- 2. It sends the proof of lock message to the peer.)
-[//]: # (It consists if height, proposal proof of lock round, and the proposal proof of lock.)
-[//]: # (Proposal proof of lock consists of [votes]&#40;https://github.com/celestiaorg/celestia-core/blob/7f2a4ad8646751dc9866370c3598d394a683c29f/types/vote_set.go#L61&#41;. -->)
+[//]: # (There are further parts pertaining the communication of proof of lock messages which are ommitted here.)
 
 ### Receiving messages
 On the receiving side, the node performs basic message validation [reference](https://github.com/celestiaorg/celestia-core/blob/2f2dfcdb0614f81da4c12ca2d509ff72fc676161/consensus/reactor.go#L250). 
@@ -193,6 +185,7 @@ type NewRoundStepMessage struct {
 }
 ```
 
+[//]: # (The proposal part set header hash is not communicated in the state channel, then wondering how the two parties know they have the same proposal part set header hash befor commencing block part tranfer for a specific height and round. The only p-->)
 
 ### New Valid Block Message
 
@@ -215,8 +208,9 @@ Upon receiving this message, the node will only modify the peer state under thes
 - The `Round` surpasses the most recent round known for the peer.
 - The message indicates the block's commitment.
 
-Following these verifications, the node will then update its peer state's `BlockPartSetHeader` and `BlockParts` based on the `BlockPartSetHeader` and `BlockParts` values from the received message.
+Following these verifications, the node will then update its peer state's `ProposaBlockPartSetHeader` and `ProposaBlockParts` based on the `BlockPartSetHeader` and `BlockParts` values from the received message.
 
+[//]: # (Does this message also signify that the sender has the entire proposal? or can a node send this merely based on the observed votes?  After further investigation, it looks like that this is purely based on votes. There is also another odd facts abot this message and that is the field BlockParts (ass far as I can tell) is always a bit array of zeros, basically it reflects the consensus state ProposalBlockParts -->)
 
 ## Network Traffic Analysis
 
@@ -238,6 +232,9 @@ This number can further reduce if one the peers acquires block parts from additi
 Upon receiving information about the other peer's updated state, they cease transmitting block parts to that peer.
 
 Based on above, it can be established that one network health indicator is that the cumulative number of block parts sent and received over each p2p connection should not surpass the total block parts specified in the proposal for a particular height.
+This should hold true even when a node lags behind and is catching up by obtaining block parts of the past blocks. 
+
+[//]: # (TODO: will verify this by inspecting the Prometheus metrics for the number of block parts sent and received over each p2p connection. Alternatively, will develop a go test to verify this. -->)
 
 ### Questions and Optimization Ideas
 
@@ -247,4 +244,4 @@ Based on above, it can be established that one network health indicator is that 
 Each part carries a [Merkle proof](https://github.com/celestiaorg/celestia-core/blob/5a7dff4f3a5f99a4a22bb8a4528363f733177a2e/types/part_set.go#L26).
 However, there appears to be no specific point where this proof undergoes verification not even in the [ValidateBasics](https://github.com/celestiaorg/celestia-core/blob/ca1411af9e9e3d63920bc7cccf8b8d9b5c9e9e40/crypto/merkle/proof.go#L113).
 
-1. [Optimization idea] If a peer reaches the prevote step, indicating it possesses the complete block, we could halt the transmission of block parts.
+1. [Optimization idea] could other peers halt the transmission of block parts to a peer that reaches the prevote step (taking prevote step as an indication that the node must have possessed the entire block)?
