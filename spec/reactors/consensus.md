@@ -11,6 +11,7 @@ We will refer to the following message types in the following sections.
 
 The `Part` serves as a representation for a block part.
 Its `bytes` field is constrained to a maximum size of [64kB](https://github.com/celestiaorg/celestia-core/blob/5a7dff4f3a5f99a4a22bb8a4528363f733177a2e/types/params.go#L19).
+`Proof` is the Merkle inclusion proof of the block part in the block (it is the proof of its inclusion in the Merkle root `Hash` found in the `PartSetHeader` of that particular block)
 ```go
 type Part struct {
 Index uint32       `protobuf:"varint,1,opt,name=index,proto3" json:"index,omitempty"`
@@ -74,8 +75,6 @@ type PeerRoundState struct {
 	ProposalBlockParts         *bits.BitArray      `json:"proposal_block_parts"`
 }
 ```
-
-[//]: # (<!-- How parts are generated? who generates them? --> )
 
 ## Data Channel
 
@@ -149,7 +148,14 @@ If the node is in the fast sync state, it disregards the received message [refer
 
 #### Block Part Message
 For `BlockPartMessage`, the node updates the peer state to indicate that the sending peer has the block part only if the round and height of the received block part message match the sending peer's round state. 
-Additionally, it places the message in the `peerMsgQueue` channel for processing.
+Additionally, it sends the block part to the list of parts known for the current proposal, given that:
+- The receiving node's height matches the block part message's height
+- The receiving node is expecting a block part (no proposal is currently being processed)
+- The block part message is valid:
+  - Has an index less that the total number of parts for the current proposal
+  - The block part's merkle inclusion proof is valid w.r.t. the block part set hash 
+
+[//]: # (The completion of the block proposal parts triggers the [CompleteProposal event](https://github.com/celestiaorg/celestia-core/blob/0498541b8db00c7fefa918d906877ef2ee0a3710/consensus/state.go#L1942), yet other peers don't seem to be signalled to stop gossiping further block parts of that proposal.)
 
 #### Proposal Message
 If the received message is a `Proposal` message, the node checks whether:
@@ -171,8 +177,6 @@ The node on the receiving end takes the following actions:
 - If there's a change in `Height` or `Round` compared to the previous peer state, the node reinitializes the peer state to reflect the absence of a proposal for that specific `Height` and `Round`.
   This essentially resets the `ProposalBlockParts` and `ProposalBlockPartSetHeader` within the peer's round state.
 
-[//]: # (What if only the round changes, but the proposal remains the same (locked)? by resetting the peer's state, we lose the history of the block parts that the peer has received, hence the same block parts may need to be sent again.)
-
 ```go
 // NewRoundStepMessage is sent for every step taken in the ConsensusState.
 // For every height/round/step transition
@@ -185,11 +189,12 @@ type NewRoundStepMessage struct {
 }
 ```
 
-[//]: # (The proposal part set header hash is not communicated in the state channel, then wondering how the two parties know they have the same proposal part set header hash befor commencing block part tranfer for a specific height and round. The only p-->)
+[//]: # (The merkle hash of the proposal is not communicated in the state channel, then wondering how the two parties know they have the same proposal part set header hash befor commencing block part tranfer for a specific height and round. -->)
+[//]: # (Related to the above question, what if only the round changes, but the proposal remains the same (locked)? by resetting the peer's state, we lose the history of the block parts that the peer has received, hence the same block parts may need to be sent again.)
 
 ### New Valid Block Message
 
-A peer might send a `NewValidBlockMessage` to the node via the `StateChannel`.
+A peer might send a `NewValidBlockMessage` to the node via the `StateChannel` when two third prevotes is observed for a block.
 ```go
 // NewValidBlockMessage is sent when a validator observes a valid block B in some round r,
 // i.e., there is a Proposal for block B and 2/3+ prevotes for the block B in the round r.
@@ -203,14 +208,17 @@ type NewValidBlockMessage struct {
 }
 ```
 
-Upon receiving this message, the node will only modify the peer state under these conditions:
+Upon receiving this message, the node will only modify the peer's round state under these conditions:
 - The `Height` specified in the message aligns with the peer's current `Height`.
-- The `Round` surpasses the most recent round known for the peer.
-- The message indicates the block's commitment.
+- The `Round` matches the most recent round known for the peer OR the message indicates the block's commitment i.e., `IsCommit` is `ture`.
 
 Following these verifications, the node will then update its peer state's `ProposaBlockPartSetHeader` and `ProposaBlockParts` based on the `BlockPartSetHeader` and `BlockParts` values from the received message.
 
-[//]: # (Does this message also signify that the sender has the entire proposal? or can a node send this merely based on the observed votes?  After further investigation, it looks like that this is purely based on votes. There is also another odd facts abot this message and that is the field BlockParts (ass far as I can tell) is always a bit array of zeros, basically it reflects the consensus state ProposalBlockParts -->)
+[//]: # (The BlockParts field of the message seem to represent the parts that the sending peer has received so far for this particular proposal, from all of its connectins, so this means that the receving peer becomes aware of which part that peer has, potentially sending less block parts afterwards. )
+
+[//]: # (Does this message also signify that the sender has the entire proposal? 
+or can a node send this merely based on the observed votes?  
+After further investigation, it looks like that this is purely based on votes. -->)
 
 ## Network Traffic Analysis
 
@@ -240,8 +248,4 @@ This should hold true even when a node lags behind and is catching up by obtaini
 
 1. Can a peer round state advances to the subsequent height or round while retaining the same proposal header as before? No, it can't. Any change at height or round level will reset the proposal of the peer's round state.  
 1. In the event of a connection disruption, is the peer's round state reset, or does the process pick up from the last known point?
-1. At what stage does the proof of inclusion for a block part in the block part set header occur?
-Each part carries a [Merkle proof](https://github.com/celestiaorg/celestia-core/blob/5a7dff4f3a5f99a4a22bb8a4528363f733177a2e/types/part_set.go#L26).
-However, there appears to be no specific point where this proof undergoes verification not even in the [ValidateBasics](https://github.com/celestiaorg/celestia-core/blob/ca1411af9e9e3d63920bc7cccf8b8d9b5c9e9e40/crypto/merkle/proof.go#L113).
-
 1. [Optimization idea] could other peers halt the transmission of block parts to a peer that reaches the prevote step (taking prevote step as an indication that the node must have possessed the entire block)?
