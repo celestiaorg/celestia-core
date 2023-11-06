@@ -43,7 +43,7 @@ A [`PartSetHeader`](https://github.com/celestiaorg/celestia-core/blob/0498541b8d
 
 ```go
 type PartSetHeader struct {
-	Total uint32            `json:"total"` 
+	Total uint32            `json:"total"`
 	Hash  cmtbytes.HexBytes `json:"hash"`
 }
 ```
@@ -74,7 +74,7 @@ type PeerRoundState struct {
 	Height int64         `json:"height"` // Height peer is at
 	Round  int32         `json:"round"`  // Round peer is at, -1 if unknown.
 	Step   RoundStepType `json:"step"`   // Step peer is at
-	
+
 
 	// True if peer has proposal for this round and height
 	Proposal                   bool                `json:"proposal"`
@@ -97,14 +97,13 @@ This refreshed state guides the decision on the type of data to be sent to the p
 
 
 The `DataChannel` protocol is articulated in two separate sections:
-the first elucidates the _gossiping procedure_, while the second delves into the _receiving procedure_.
+the first elucidates the [_gossiping procedure_](#gossiping-procedure), while the second delves into the [_receiving procedure_](#receiving-procedure) .
 
 ### Gossiping Procedure
 
 For every peer connected to a node that supports the `DataChannel`, a gossiping procedure is initiated.
 This procedure is concurrent and continuously runs in an infinite loop, with one action executed in each iteration.
 During each iteration, the node captures a snapshot of the connected peer's state, denoted as [`PeerRoundState`](#peer-round-state), and then follows the steps outlined below.
-It's important to note that the peer state is regularly updated through a push-based protocol operating on a separate channel i.e., `StateChannel`.
 
 Case1: The `ProposalBlockPartSetHeader` from the peer's state aligns with the node's own `PartSetHeader`.
 Essentially, this ensures both entities are observing the identical proposal hash accompanied by an equal count of block parts.
@@ -153,7 +152,7 @@ The node sends the `Proposal` to the peer and updates the peer's round state wit
 
 <!-- There are further parts pertaining the communication of proof of lock messages which are ommitted here. -->
 
-### Receiving messages
+### Receiving Procedure
 
 On the receiving side, the node performs basic message validation [reference](https://github.com/celestiaorg/celestia-core/blob/2f2dfcdb0614f81da4c12ca2d509ff72fc676161/consensus/reactor.go#L250).
 If the message is invalid, the node stops the peer (for persistent peers, a reattempt may occur).
@@ -245,7 +244,7 @@ Following these verifications, the node will then update its peer state's `Propo
 <!-- The BlockParts field in the message appears to represent the parts of a specific proposal that the sending peer has received from all its connections. This informs the receiving peer about the parts the sending peer possesses, possibly reducing the number of block parts sent subsequently. -->
 
 <!-- Question: Does this message also signify that the sender has the entire proposal?
-or can a node send this merely based on the observed votes?  
+or can a node send this merely based on the observed votes?
 Answer: After further investigation, it looks like that this is purely based on votes and does not signify the proposal completeion on the sender side. -->
 
 ## Network Traffic Analysis
@@ -281,4 +280,4 @@ This should hold true even when one of the  two ends of communication lags behin
 ### Optimization Ideas
 
 1. Could other peers halt the transmission of block parts to a peer that reaches the prevote step (taking prevote step as an indication that the node must have possessed the entire block)?
-1. [Another optimization idea](https://github.com/cometbft/cometbft/pull/904) is explained and implemented in the original CometBFt repo. However, that constitutes a breaking change if we wish to integrate.
+1. [Another optimization idea](https://github.com/cometbft/cometbft/pull/904) is explained and implemented in the original CometBFT repo. However, that constitutes a breaking change if we wish to integrate.
