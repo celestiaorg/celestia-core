@@ -133,7 +133,7 @@ func (psh *PartSetHeader) ToProto() cmtproto.PartSetHeader {
 	}
 }
 
-// FromProto sets a protobuf PartSetHeader to the given pointer
+// PartSetHeaderFromProto sets a protobuf PartSetHeader to the given pointer
 func PartSetHeaderFromProto(ppsh *cmtproto.PartSetHeader) (*PartSetHeader, error) {
 	if ppsh == nil {
 		return nil, errors.New("nil PartSetHeader")
