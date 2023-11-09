@@ -7,7 +7,7 @@ labels: bug, needs-triage
 Please fill in as much of the template below as you can.
 
 If you have general questions, please create a new discussion:
-https://github.com/cometbft/cometbft/discussions
+https://github.com/celestiaorg/celestia-core/discussions
 
 Be ready for followup questions, and please respond in a timely manner. We might
 ask you to provide additional logs and data (CometBFT & App).
