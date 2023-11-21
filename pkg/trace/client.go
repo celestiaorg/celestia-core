@@ -16,9 +16,9 @@ const (
 	ChainIDTag = "chain_id"
 )
 
-// EventCollectorConfig is the influxdb client configuration used for
+// ClientConfigConfig is the influxdb client configuration used for
 // collecting events.
-type EventCollectorConfig struct {
+type ClientConfigConfig struct {
 	// URL is the influxdb url.
 	URL string `mapstructure:"influx_url"`
 	// Token is the influxdb token.
@@ -29,16 +29,6 @@ type EventCollectorConfig struct {
 	Bucket string `mapstructure:"influx_bucket"`
 	// BatchSize is the number of points to write in a single batch.
 	BatchSize int `mapstructure:"influx_batch_size"`
-}
-
-// DefaultEventCollectorConfig returns the default configuration.
-func DefaultEventCollectorConfig() EventCollectorConfig {
-	return EventCollectorConfig{
-		URL:       "",
-		Org:       "celestia",
-		Bucket:    "e2e",
-		BatchSize: 10,
-	}
 }
 
 // Client is an influxdb client that can be used to push events to influxdb. It
@@ -57,6 +47,10 @@ type Client struct {
 
 	// nodeID is added as a tag all points
 	nodeID string
+
+	// tables is a map from table name to the schema of that table that are
+	// configured to be collected.
+	tables map[string]struct{}
 
 	// Client is the influxdb client. This field is nil if no connection is
 	// established.
@@ -87,8 +81,9 @@ func NewClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, no
 		cancel:  cancel,
 		chainID: chainID,
 		nodeID:  nodeID,
+		tables:  sliceToMap(cfg.InfluxTables),
 	}
-	if cfg == nil || cfg.InfluxURL == "" {
+	if cfg.InfluxURL == "" {
 		return cli, nil
 	}
 	cli.Client = influxdb2.NewClientWithOptions(
@@ -125,8 +120,12 @@ func (c *Client) logErrors(logger log.Logger) {
 }
 
 // IsCollecting returns true if the client is collecting events.
-func (c *Client) IsCollecting() bool {
-	return c.Client != nil
+func (c *Client) IsCollecting(table string) bool {
+	if c.Client == nil {
+		return false
+	}
+	_, has := c.tables[table]
+	return has
 }
 
 // WritePoint async writes a point to influxdb. To enforce the schema, it
@@ -135,7 +134,7 @@ func (c *Client) IsCollecting() bool {
 // nothing. The "table" arg is used as the influxdb "measurement" for the point.
 // If other tags are needed, use WriteCustomPoint.
 func (c *Client) WritePoint(table string, fields map[string]interface{}) {
-	if !c.IsCollecting() {
+	if !c.IsCollecting(table) {
 		return
 	}
 	writeAPI := c.Client.WriteAPI(c.cfg.InfluxOrg, c.cfg.InfluxBucket)
@@ -145,4 +144,12 @@ func (c *Client) WritePoint(table string, fields map[string]interface{}) {
 	}
 	p := write.NewPoint(table, tags, fields, time.Now())
 	writeAPI.WritePoint(p)
+}
+
+func sliceToMap([]string) map[string]struct{} {
+	m := make(map[string]struct{})
+	for _, s := range []string{} {
+		m[s] = struct{}{}
+	}
+	return m
 }

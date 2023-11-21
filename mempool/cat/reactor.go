@@ -7,13 +7,15 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	cfg "github.com/cometbft/cometbft/config"
-	"github.com/cometbft/cometbft/crypto/tmhash"
-	"github.com/cometbft/cometbft/libs/log"
-	"github.com/cometbft/cometbft/mempool"
-	"github.com/cometbft/cometbft/p2p"
-	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
-	"github.com/cometbft/cometbft/types"
+	cfg "github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/crypto/tmhash"
+	"github.com/tendermint/tendermint/libs/log"
+	"github.com/tendermint/tendermint/mempool"
+	"github.com/tendermint/tendermint/p2p"
+	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
+	protomem "github.com/tendermint/tendermint/proto/tendermint/mempool"
+	"github.com/tendermint/tendermint/types"
 )
 
 const (
@@ -35,10 +37,11 @@ const (
 // spec under /.spec.md
 type Reactor struct {
 	p2p.BaseReactor
-	opts     *ReactorOptions
-	mempool  *TxPool
-	ids      *mempoolIDs
-	requests *requestScheduler
+	opts        *ReactorOptions
+	mempool     *TxPool
+	ids         *mempoolIDs
+	requests    *requestScheduler
+	traceClient *trace.Client
 }
 
 type ReactorOptions struct {
@@ -52,6 +55,9 @@ type ReactorOptions struct {
 	// MaxGossipDelay is the maximum allotted time that the reactor expects a transaction to
 	// arrive before issuing a new request to a different peer
 	MaxGossipDelay time.Duration
+
+	// TraceClient is the trace client for collecting trace level events
+	TraceClient *trace.Client
 }
 
 func (opts *ReactorOptions) VerifyAndComplete() error {
@@ -81,10 +87,11 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		return nil, err
 	}
 	memR := &Reactor{
-		opts:     opts,
-		mempool:  mempool,
-		ids:      newMempoolIDs(),
-		requests: newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		opts:        opts,
+		mempool:     mempool,
+		ids:         newMempoolIDs(),
+		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		traceClient: &trace.Client{},
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR, nil
@@ -218,6 +225,9 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// NOTE: This setup also means that we can support older mempool implementations that simply
 	// flooded the network with transactions.
 	case *protomem.Txs:
+		for _, tx := range msg.Txs {
+			schema.WriteMempoolTx(memR.traceClient, e.Src.ID(), tx, schema.TransferTypeDownload, schema.CatVersionFieldValue)
+		}
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received empty txs from peer", "src", e.Src)
@@ -260,6 +270,13 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
 	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
+		schema.WriteMempoolPeerState(
+			memR.traceClient,
+			e.Src.ID(),
+			schema.SeenTxStateUpdateFieldValue,
+			schema.TransferTypeDownload,
+			schema.CatVersionFieldValue,
+		)
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent SeenTx with incorrect tx key", "err", err)
@@ -287,6 +304,13 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
 	case *protomem.WantTx:
+		schema.WriteMempoolPeerState(
+			memR.traceClient,
+			e.Src.ID(),
+			schema.WantTxStateUpdateFieldValue,
+			schema.TransferTypeDownload,
+			schema.CatVersionFieldValue,
+		)
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent WantTx with incorrect tx key", "err", err)
@@ -296,6 +320,13 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		tx, has := memR.mempool.Get(txKey)
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
+			schema.WriteMempoolTx(
+				memR.traceClient,
+				e.Src.ID(),
+				msg.TxKey,
+				schema.TransferTypeUpload,
+				schema.CatVersionFieldValue,
+			)
 			memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
 			if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint:staticcheck
 				ChannelID: mempool.MempoolChannel,

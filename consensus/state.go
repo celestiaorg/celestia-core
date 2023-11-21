@@ -12,23 +12,24 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	cfg "github.com/cometbft/cometbft/config"
-	cstypes "github.com/cometbft/cometbft/consensus/types"
-	"github.com/cometbft/cometbft/crypto"
-	cmtevents "github.com/cometbft/cometbft/libs/events"
-	"github.com/cometbft/cometbft/libs/fail"
-	cmtjson "github.com/cometbft/cometbft/libs/json"
-	"github.com/cometbft/cometbft/libs/log"
-	cmtmath "github.com/cometbft/cometbft/libs/math"
-	cmtos "github.com/cometbft/cometbft/libs/os"
-	"github.com/cometbft/cometbft/libs/service"
-	cmtsync "github.com/cometbft/cometbft/libs/sync"
-	"github.com/cometbft/cometbft/p2p"
-	"github.com/cometbft/cometbft/pkg/trace"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	sm "github.com/cometbft/cometbft/state"
-	"github.com/cometbft/cometbft/types"
-	cmttime "github.com/cometbft/cometbft/types/time"
+	cfg "github.com/tendermint/tendermint/config"
+	cstypes "github.com/tendermint/tendermint/consensus/types"
+	"github.com/tendermint/tendermint/crypto"
+	cmtevents "github.com/tendermint/tendermint/libs/events"
+	"github.com/tendermint/tendermint/libs/fail"
+	cmtjson "github.com/tendermint/tendermint/libs/json"
+	"github.com/tendermint/tendermint/libs/log"
+	cmtmath "github.com/tendermint/tendermint/libs/math"
+	cmtos "github.com/tendermint/tendermint/libs/os"
+	"github.com/tendermint/tendermint/libs/service"
+	cmtsync "github.com/tendermint/tendermint/libs/sync"
+	"github.com/tendermint/tendermint/p2p"
+	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
+	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	sm "github.com/tendermint/tendermint/state"
+	"github.com/tendermint/tendermint/types"
+	cmttime "github.com/tendermint/tendermint/types/time"
 )
 
 // Consensus sentinel errors
@@ -142,7 +143,7 @@ type State struct {
 	// for reporting metrics
 	metrics *Metrics
 
-	eventCollector *trace.Client
+	traceClient *trace.Client
 }
 
 // StateOption sets an optional parameter on the State.
@@ -173,7 +174,7 @@ func NewState(
 		evpool:           evpool,
 		evsw:             cmtevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
-		eventCollector:   &trace.Client{},
+		traceClient:      &trace.Client{},
 	}
 
 	// set function defaults (may be overwritten before calling Start)
@@ -215,9 +216,9 @@ func StateMetrics(metrics *Metrics) StateOption {
 	return func(cs *State) { cs.metrics = metrics }
 }
 
-// SetEventCollector sets the remote event collector.
-func SetEventCollector(ec *trace.Client) StateOption {
-	return func(cs *State) { cs.eventCollector = ec }
+// SetTraceClient sets the remote event collector.
+func SetTraceClient(ec *trace.Client) StateOption {
+	return func(cs *State) { cs.traceClient = ec }
 }
 
 // String returns a string.
@@ -702,6 +703,8 @@ func (cs *State) newStep() {
 	}
 
 	cs.nSteps++
+
+	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, cs.Step)
 
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {
