@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/abci/example/kvstore"
-	"github.com/tendermint/tendermint/p2p/mock"
-	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/cometbft/cometbft/abci/example/kvstore"
+	"github.com/cometbft/cometbft/p2p/mock"
+	"github.com/cometbft/cometbft/pkg/trace"
 
 	cfg "github.com/cometbft/cometbft/config"
 

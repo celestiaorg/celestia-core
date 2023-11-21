@@ -1,10 +1,10 @@
 package schema
 
 import (
-	"github.com/tendermint/tendermint/libs/bytes"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/pkg/trace"
-	"github.com/tendermint/tendermint/types"
+	"github.com/cometbft/cometbft/libs/bytes"
+	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/pkg/trace"
+	"github.com/cometbft/cometbft/types"
 )
 
 // MempoolTables returns the list of tables for mempool tracing.

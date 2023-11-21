@@ -1,10 +1,10 @@
 package schema
 
 import (
-	cstypes "github.com/tendermint/tendermint/consensus/types"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/pkg/trace"
-	"github.com/tendermint/tendermint/types"
+	cstypes "github.com/cometbft/cometbft/consensus/types"
+	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/pkg/trace"
+	"github.com/cometbft/cometbft/types"
 )
 
 // ConsensusTables returns the list of tables that are used for consensus

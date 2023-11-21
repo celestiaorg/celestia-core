@@ -1,6 +1,6 @@
 package schema
 
-import "github.com/tendermint/tendermint/config"
+import "github.com/cometbft/cometbft/config"
 
 func init() {
 	config.DefaultInfluxTables = AllTables()
