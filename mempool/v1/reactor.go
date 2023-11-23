@@ -13,6 +13,8 @@ import (
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/pkg/trace"
+	"github.com/cometbft/cometbft/pkg/trace/schema"
 	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
 	"github.com/cometbft/cometbft/types"
 )
@@ -22,9 +24,10 @@ import (
 // peers you received it from.
 type Reactor struct {
 	p2p.BaseReactor
-	config  *cfg.MempoolConfig
-	mempool *TxMempool
-	ids     *mempoolIDs
+	config      *cfg.MempoolConfig
+	mempool     *TxMempool
+	ids         *mempoolIDs
+	traceClient *trace.Client
 }
 
 type mempoolIDs struct {
@@ -91,11 +94,12 @@ func newMempoolIDs() *mempoolIDs {
 }
 
 // NewReactor returns a new Reactor with the given config and mempool.
-func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool) *Reactor {
+func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool, traceClient *trace.Client) *Reactor {
 	memR := &Reactor{
-		config:  config,
-		mempool: mempool,
-		ids:     newMempoolIDs(),
+		config:      config,
+		mempool:     mempool,
+		ids:         newMempoolIDs(),
+		traceClient: traceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR
@@ -176,6 +180,15 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	memR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
 	switch msg := e.Message.(type) {
 	case *protomem.Txs:
+		for _, tx := range msg.Txs {
+			schema.WriteMempoolTx(
+				memR.traceClient,
+				e.Src.ID(),
+				tx,
+				schema.TransferTypeDownload,
+				schema.V1VersionFieldValue,
+			)
+		}
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received tmpty txs from peer", "src", e.Src)
@@ -290,6 +303,13 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 				// to avoid doing it a second time
 				memTx.SetPeer(peerID)
 			}
+			schema.WriteMempoolTx(
+				memR.traceClient,
+				peer.ID(),
+				memTx.tx,
+				schema.TransferTypeUpload,
+				schema.V1VersionFieldValue,
+			)
 		}
 
 		select {

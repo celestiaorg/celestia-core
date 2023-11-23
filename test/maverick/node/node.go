@@ -37,6 +37,7 @@ import (
 	mempoolv1 "github.com/cometbft/cometbft/mempool/v1"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/pex"
+	"github.com/cometbft/cometbft/pkg/trace"
 	"github.com/cometbft/cometbft/privval"
 	"github.com/cometbft/cometbft/proxy"
 	rpccore "github.com/cometbft/cometbft/rpc/core"
@@ -425,6 +426,7 @@ func createMempoolAndMempoolReactor(config *cfg.Config, proxyApp proxy.AppConns,
 		reactor := mempoolv1.NewReactor(
 			config.Mempool,
 			mp,
+			&trace.Client{},
 		)
 		if config.Consensus.WaitForTxs() {
 			mp.EnableTxsAvailable()

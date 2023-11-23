@@ -16,17 +16,17 @@ example, we're pushing a point in the consensus reactor to measure exactly when
 each step of consensus is reached for each node.
 
 ```go
-if cs.eventCollector.IsCollecting() {
-		cs.eventCollector.WritePoint("consensus", map[string]interface{}{
-			"roundData": []interface{}{rs.Height, rs.Round, rs.Step},
-		})
-}
+client.WritePoint(RoundStateTable, map[string]interface{}{
+		HeightFieldKey: height,
+		RoundFieldKey:  round,
+		StepFieldKey:   step.String(),
+})
 ```
 
 Using this method enforces the typical schema, where we are tagging (aka
 indexing) each point by the chain-id and the node-id, then adding the local time
 of the creation of the event. If you need to push a custom point, you can use
-the underlying client directly. See influxdb2.WriteAPI for more details.
+the underlying client directly. See `influxdb2.WriteAPI` for more details.
 
 ### Schema
 
@@ -40,19 +40,54 @@ node.
 from(bucket: "e2e")
   |> range(start: -1h)
   |> filter(
-    fn: (r) => r["_measurement"] == "consensus"
+    fn: (r) => r["_measurement"] == "consensus_round_state"
       and r.chain_id == "ci-YREG8X"
       and r.node_id == "0b529c309608172a29c49979394734260b42acfb"
     )
 ```
 
+We can easily retrieve all fields in a relatively standard table format by using
+the pivot `fluxQL` command.
+
+```flux
+from(bucket: "mocha")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "consensus_round_state")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+```
+
+### Querying Data Using Python
+
+Python can be used to quickly search for and isolate specific patterns.
+
+```python
+from influxdb_client import InfluxDBClient
+from influxdb_client.client.write_api import SYNCHRONOUS
+
+client = InfluxDBClient(url="http://your-influx-url:8086/", token="your-influx-token", org="celestia")
+
+query_api = client.query_api()
+
+def create_flux_table_query(start, bucket, measurement, filter_clause):
+    flux_table_query = f'''
+    from(bucket: "{bucket}")
+      |> range(start: {start})
+      |> filter(fn: (r) => r._measurement == "{measurement}")
+      {filter_clause}
+      |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+    '''
+    return flux_table_query
+
+query = create_flux_table_query("-1h", "mocha", "consenus_round_state", "")
+result = query_api.query(query=query)
+```
 
 ### Running a node with remote tracing on
 
 Tracing will only occur if an influxdb URL in specified either directly in the
 `config.toml` or as flags provided to the start sub command.
 
-configure in the config.toml
+#### Configure in the `config.toml`
 
 ```toml
 #######################################################
@@ -62,7 +97,7 @@ configure in the config.toml
 
 ...
 
-# The URL of the influxdb instance to use for remote event 
+# The URL of the influxdb instance to use for remote event
 # collection. If empty, remote event collection is disabled.
 influx_url = "http://your-influx-ip:8086/"
 
@@ -77,9 +112,15 @@ influx_org = "celestia"
 
 # The size of the batches that are sent to the database.
 influx_batch_size = 20
+
+# The list of tables that are updated when tracing. All available tables and
+# their schema can be found in the pkg/trace/schema package.
+influx_tables = ["consensus_round_state", "mempool_tx", ]
+
 ```
 
-or 
+or
+
 ```sh
 celestia-appd start --influxdb-url=http://your-influx-ip:8086/ --influxdb-token="your-token"
 ```

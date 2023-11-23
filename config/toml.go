@@ -557,6 +557,10 @@ influx_org = "{{ .Instrumentation.InfluxOrg }}"
 # The size of the batches that are sent to the database.
 influx_batch_size = {{ .Instrumentation.InfluxBatchSize }}
 
+# The list of tables that are updated when tracing. All available tables and
+# their schema can be found in the pkg/trace/schema package.
+influx_tables = [{{ range .Instrumentation.InfluxTables }}{{ printf "%q, " . }}{{end}}]
+
 # The URL of the pyroscope instance to use for continuous profiling.
 # If empty, continuous profiling is disabled.
 pyroscope_url = "{{ .Instrumentation.PyroscopeURL }}"

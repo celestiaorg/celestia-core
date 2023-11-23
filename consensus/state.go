@@ -25,6 +25,7 @@ import (
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/pkg/trace"
+	"github.com/cometbft/cometbft/pkg/trace/schema"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
@@ -142,7 +143,7 @@ type State struct {
 	// for reporting metrics
 	metrics *Metrics
 
-	eventCollector *trace.Client
+	traceClient *trace.Client
 }
 
 // StateOption sets an optional parameter on the State.
@@ -173,7 +174,7 @@ func NewState(
 		evpool:           evpool,
 		evsw:             cmtevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
-		eventCollector:   &trace.Client{},
+		traceClient:      &trace.Client{},
 	}
 
 	// set function defaults (may be overwritten before calling Start)
@@ -215,9 +216,9 @@ func StateMetrics(metrics *Metrics) StateOption {
 	return func(cs *State) { cs.metrics = metrics }
 }
 
-// SetEventCollector sets the remote event collector.
-func SetEventCollector(ec *trace.Client) StateOption {
-	return func(cs *State) { cs.eventCollector = ec }
+// SetTraceClient sets the remote event collector.
+func SetTraceClient(ec *trace.Client) StateOption {
+	return func(cs *State) { cs.traceClient = ec }
 }
 
 // String returns a string.
@@ -702,6 +703,8 @@ func (cs *State) newStep() {
 	}
 
 	cs.nSteps++
+
+	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, cs.Step)
 
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {
@@ -1827,9 +1830,14 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 		}
 	}
 
+	blockSize := block.Size()
+
+	// trace some metadata about the block
+	schema.WriteBlock(cs.traceClient, block, blockSize)
+
 	cs.metrics.NumTxs.Set(float64(len(block.Data.Txs)))
 	cs.metrics.TotalTxs.Add(float64(len(block.Data.Txs)))
-	cs.metrics.BlockSizeBytes.Set(float64(block.Size()))
+	cs.metrics.BlockSizeBytes.Set(float64(blockSize))
 	cs.metrics.CommittedHeight.Set(float64(block.Height))
 }
 
