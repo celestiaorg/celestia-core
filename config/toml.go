@@ -574,7 +574,7 @@ pyroscope_trace = {{ .Instrumentation.PyroscopeTrace }}
 # pyroscope. Available profile types are: cpu, alloc_objects, alloc_space,
 # inuse_objects, inuse_space, goroutines, mutex_count, mutex_duration,
 # block_count, block_duration. It is represented as a comma separate
-// string. For example: "goroutines,alloc_objects".
+# string. For example: "goroutines,alloc_objects".
 pyroscope_profile_types = "{{ .Instrumentation.PyroscopeProfileTypes }}"
 
 `
