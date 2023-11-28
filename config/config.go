@@ -1199,7 +1199,8 @@ type InstrumentationConfig struct {
 	InfluxBatchSize int `mapstructure:"influx_batch_size"`
 
 	// InfluxTables is the list of tables that will be traced. See the
-	// pkg/trace/schema for a complete list of tables.
+	// pkg/trace/schema for a complete list of tables. It is represented as a
+	// comma separate string. For example: "consensus_round_state,mempool_tx".
 	InfluxTables string `mapstructure:"influx_tables"`
 
 	// PyroscopeURL is the pyroscope url used to establish a connection with a
@@ -1212,7 +1213,8 @@ type InstrumentationConfig struct {
 	// PyroscopeProfileTypes is a list of profile types to be traced with
 	// pyroscope. Available profile types are: cpu, alloc_objects, alloc_space,
 	// inuse_objects, inuse_space, goroutines, mutex_count, mutex_duration,
-	// block_count, block_duration.
+	// block_count, block_duration. It is represented as a comma separate
+	// string. For example: "goroutines,alloc_objects".
 	PyroscopeProfileTypes string `mapstructure:"pyroscope_profile_types"`
 }
 
