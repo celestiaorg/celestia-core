@@ -3,6 +3,7 @@ package trace
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
@@ -81,7 +82,7 @@ func NewClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, no
 		cancel:  cancel,
 		chainID: chainID,
 		nodeID:  nodeID,
-		tables:  sliceToMap(cfg.InfluxTables),
+		tables:  stringToMap(cfg.InfluxTables),
 	}
 	if cfg.InfluxURL == "" {
 		return cli, nil
@@ -146,10 +147,27 @@ func (c *Client) WritePoint(table string, fields map[string]interface{}) {
 	writeAPI.WritePoint(p)
 }
 
-func sliceToMap(tables []string) map[string]struct{} {
+func stringToMap(tables string) map[string]struct{} {
+	parsedTables := splitAndTrimEmpty(tables, ",", " ")
 	m := make(map[string]struct{})
-	for _, s := range tables {
+	for _, s := range parsedTables {
 		m[s] = struct{}{}
 	}
 	return m
+}
+
+func splitAndTrimEmpty(s, sep, cutset string) []string {
+	if s == "" {
+		return []string{}
+	}
+
+	spl := strings.Split(s, sep)
+	nonEmptyStrings := make([]string, 0, len(spl))
+	for i := 0; i < len(spl); i++ {
+		element := strings.Trim(spl[i], cutset)
+		if element != "" {
+			nonEmptyStrings = append(nonEmptyStrings, element)
+		}
+	}
+	return nonEmptyStrings
 }
