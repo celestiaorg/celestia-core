@@ -156,6 +156,14 @@ func stringToMap(tables string) map[string]struct{} {
 	return m
 }
 
+// splitAndTrimEmpty slices s into all subslices separated by sep and returns a
+// slice of the string s with all leading and trailing Unicode code points
+// contained in cutset removed. If sep is empty, SplitAndTrim splits after each
+// UTF-8 sequence. First part is equivalent to strings.SplitN with a count of
+// -1.  also filter out empty strings, only return non-empty strings.
+//
+// NOTE: this is copy pasted from the config pacakage to avoid a circular
+// dependency. See the function of the same name for tests.
 func splitAndTrimEmpty(s, sep, cutset string) []string {
 	if s == "" {
 		return []string{}
