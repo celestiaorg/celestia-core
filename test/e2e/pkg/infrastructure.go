@@ -49,7 +49,7 @@ type InfrastructureData struct {
 	PyroscopeTrace bool `json:"pyroscope_trace,omitempty"`
 
 	// PyroscopeProfileTypes is the list of profile types to collect.
-	PyroscopeProfileTypes []string `json:"pyroscope_profile_types,omitempty"`
+	PyroscopeProfileTypes string `json:"pyroscope_profile_types,omitempty"`
 }
 
 // InstanceData contains the relevant information for a machine instance backing

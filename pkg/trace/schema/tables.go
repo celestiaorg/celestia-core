@@ -1,9 +1,13 @@
 package schema
 
-import "github.com/cometbft/cometbft/config"
+import (
+	"strings"
+
+	"github.com/cometbft/cometbft/config"
+)
 
 func init() {
-	config.DefaultInfluxTables = AllTables()
+	config.DefaultInfluxTables = strings.Join(AllTables(), ",")
 }
 
 func AllTables() []string {
