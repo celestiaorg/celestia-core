@@ -78,9 +78,12 @@ make proto-gen
 
 ## Branches
 
-The canonical branches in this repo are based on CometBFT releases. For example: [`v0.34.x-celestia`](https://github.com/celestiaorg/celestia-core/tree/v0.34.x-celestia) is based on the CometBFT `v0.34.x` release branch and contains Celestia-specific changes.
+There are two actively maintained branches in this repo:
 
-Usually PRs should target the `main` branch. After the PR merges to main, if the PR contained non-breaking changes, a maintainer may cherry-pick it to an existing release branch (e.g. [`v0.34.x-celestia`](https://github.com/celestiaorg/celestia-core/tree/v0.34.x-celestia)) and cut a new release.
+- `v0.34.x-celestia` was originally based on tendermint's `v0.34.x` release branch but now it receives patches from the CometBFT `v0.34.x` release branch. This branch also contains Celestia-specific changes. Future `v1.x.0-tm-v0.34.x` releases of this repo will be based on this branch.
+- `main` is based on CometBFT and contains Celestia-specific changes. Future `v2.x.x-tm-v0.x.x` releases of this repo will be based on this branch.
+
+Usually PRs should target the `main` branch. After the PR merges to main, if the PR contained non-breaking changes, a maintainer may cherry-pick it to an existing release branch (e.g. `v0.34.x-celestia`) and cut a new release.
 
 ## Versioning
 
