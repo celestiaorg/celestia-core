@@ -143,7 +143,7 @@ It does not deal with IPFS internals.
 // The context can be used to provide a timeout.
 // TODO: Should there be a constant = lower bound for #samples
 func ValidateAvailability(
-    ctx contex.Context,
+    ctx context.Context,
     dah *DataAvailabilityHeader,
     numSamples int,
     onLeafValidity func(namespace.PrefixedData8),
@@ -154,7 +154,7 @@ func ValidateAvailability(
 // The key difference is that it will sample enough chunks until it can recover the
 // full extended data square, including original data (e.g. by using rsmt2d.RepairExtendedDataSquare).
 func RetrieveBlockData(
-    ctx contex.Context,
+    ctx context.Context,
     dah *DataAvailabilityHeader,
     api coreiface.CoreAPI,
     codec rsmt2d.Codec,
@@ -166,7 +166,7 @@ func RetrieveBlockData(
 // the row to the Merkle Dag, in our case a Namespaced Merkle Tree.
 // Note, that this method could also fill the DA header.
 // The data will be pinned by default.
-func (b *Block) PutBlock(ctx contex.Context, nodeAdder ipld.NodeAdder) error
+func (b *Block) PutBlock(ctx context.Context, nodeAdder ipld.NodeAdder) error
 ```
 
 We now describe the lower-level library that will be used by above methods.
@@ -231,7 +231,7 @@ Proposed
 ### Positive
 
 - simplicity & ease of implementation
-- can re-use an existing networking and p2p stack (go-ipfs)
+- can reuse an existing networking and p2p stack (go-ipfs)
 - potential support of large, cool, and helpful community
 - high-level API definitions independent of the used stack
 

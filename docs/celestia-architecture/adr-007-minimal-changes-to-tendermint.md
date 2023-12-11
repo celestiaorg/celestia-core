@@ -140,7 +140,7 @@ describe how to hash the block data here:
 
 #### Optionally remove some unused code
 
-- Removing misc unsued code (https://github.com/celestiaorg/celestia-core/pull/208)
+- Removing misc unused code (https://github.com/celestiaorg/celestia-core/pull/208)
 - Remove docs deployment (https://github.com/celestiaorg/celestia-core/pull/134)
 - Start deleting docs (https://github.com/celestiaorg/celestia-core/pull/209)
 - Remove tendermint-db in favor of badgerdb (https://github.com/celestiaorg/celestia-core/pull/241)
@@ -174,7 +174,7 @@ minimum desired changes specified above.
 - Introduction (https://github.com/celestiaorg/celestia-core/pull/144)
 - Initial integration (https://github.com/celestiaorg/celestia-core/pull/152)
 - Custom Multihash (https://github.com/celestiaorg/celestia-core/pull/155)
-- Puting data during proposal (https://github.com/celestiaorg/celestia-core/pull/178)
+- Putting data during proposal (https://github.com/celestiaorg/celestia-core/pull/178)
 - Module name (https://github.com/celestiaorg/celestia-core/pull/151)
 - Update rsmt2d (https://github.com/celestiaorg/celestia-core/pull/290)
 - Make plugin a package (https://github.com/celestiaorg/celestia-core/pull/294)
