@@ -1,0 +1,4 @@
+[codespell]
+skip = *.sum,*.mod,*.bib,*.cls,*.tla,*ivy,*bst
+quiet-level = 2
+ignore-words = .github/linters/ignore-words.txt
