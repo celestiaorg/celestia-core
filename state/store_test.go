@@ -266,10 +266,10 @@ func TestLastABCIResponses(t *testing.T) {
 		require.NoError(t, err)
 		// check to see if the saved response height is the same as the loaded height.
 		assert.Equal(t, lastResponse, response1)
-		// use an incorret height to make sure the state store errors.
+		// use an incorrect height to make sure the state store errors.
 		_, err = stateStore.LoadLastABCIResponse(height + 1)
 		assert.Error(t, err)
-		// check if the abci response didnt save in the abciresponses.
+		// check if the abci response didn't save in the abciresponses.
 		responses, err = stateStore.LoadABCIResponses(height)
 		require.NoError(t, err, responses)
 		require.Equal(t, response1, responses)

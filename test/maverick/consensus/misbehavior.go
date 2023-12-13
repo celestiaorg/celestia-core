@@ -137,7 +137,7 @@ func defaultEnterPropose(cs *State, height int64, round int32) {
 	if err != nil {
 		// If this node is a validator & proposer in the currentx round, it will
 		// miss the opportunity to create a block.
-		logger.Error("Error on retrival of pubkey", "err", err)
+		logger.Error("Error on retrieval of pubkey", "err", err)
 		return
 	}
 	address := pubKey.Address()

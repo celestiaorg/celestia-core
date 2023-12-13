@@ -150,7 +150,7 @@ The node sends the `Proposal` to the peer and updates the peer's round state wit
 - The current round and height of the receiving peer match the proposal's, and the peer's state hasn't been updated yet.
 - If the peer's state for that proposal remains uninitialized since the proposal's transmission, the node initializes it by assigning the `ProposalBlockPartSetHeader` and an empty bit array with a size equal to the number of parts in the header for the `ProposalBlockParts`.
 
-<!-- There are further parts pertaining the communication of proof of lock messages which are ommitted here. -->
+<!-- There are further parts pertaining the communication of proof of lock messages which are omitted here. -->
 
 ### Receiving Procedure
 
@@ -214,7 +214,7 @@ type NewRoundStepMessage struct {
 }
 ```
 
-<!--Question: The merkle hash of the proposal is not communicated in the state channel, then wondering how the two parties know they have the same proposal part set header hash befor commencing block part tranfer for a specific height and round? Answer: It seems that the height and round uniquely identify the proposer, and by extension, the proposal itself. Consequently, the presence of multiple proposals for the same height and round could indicate misbehavior.-->
+<!--Question: The merkle hash of the proposal is not communicated in the state channel, then wondering how the two parties know they have the same proposal part set header hash before commencing block part transfer for a specific height and round? Answer: It seems that the height and round uniquely identify the proposer, and by extension, the proposal itself. Consequently, the presence of multiple proposals for the same height and round could indicate misbehavior.-->
 <!-- Related to the above question, what if only the round changes, but the proposal remains the same (locked)? by resetting the peer's state, we lose the history of the block parts that the peer has received, hence the same block parts may need to be sent again. -->
 
 ### New Valid Block Message
@@ -237,7 +237,7 @@ type NewValidBlockMessage struct {
 Upon receiving this message, the node will only modify the peer's round state under these conditions:
 
 - The `Height` specified in the message aligns with the peer's current `Height`.
-- The `Round` matches the most recent round known for the peer OR the message indicates the block's commitment i.e., `IsCommit` is `ture`.
+- The `Round` matches the most recent round known for the peer OR the message indicates the block's commitment i.e., `IsCommit` is `true`.
 
 Following these verifications, the node will then update its peer state's `ProposaBlockPartSetHeader` and `ProposaBlockParts` based on the `BlockPartSetHeader` and `BlockParts` values from the received message.
 
@@ -245,7 +245,7 @@ Following these verifications, the node will then update its peer state's `Propo
 
 <!-- Question: Does this message also signify that the sender has the entire proposal?
 or can a node send this merely based on the observed votes?
-Answer: After further investigation, it looks like that this is purely based on votes and does not signify the proposal completeion on the sender side. -->
+Answer: After further investigation, it looks like that this is purely based on votes and does not signify the proposal completion on the sender side. -->
 
 ## Network Traffic Analysis
 

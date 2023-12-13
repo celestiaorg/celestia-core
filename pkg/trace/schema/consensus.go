@@ -101,7 +101,7 @@ const (
 
 	// SquareSizeFieldKey is the name of the field that stores the square size
 	// of the block. SquareSize is the number of shares in a single row or
-	// column of the origianl data square.
+	// column of the original data square.
 	SquareSizeFieldKey = "square_size"
 
 	// BlockSizeFieldKey is the name of the field that stores the size of

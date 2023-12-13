@@ -6,7 +6,7 @@
 
 ## Context
 
-One of the criterias of success for Celestia as a reliable data availability layer is the ability to handle large transactional throughput. A component that plays a significant role in this is the mempool. It's purpose is to receive transactions from clients and broadcast them to all other nodes, eventually reaching the next block proposer who includes it in their block. Given Celestia's aggregator-like role whereby larger transactions, i.e. blobs, are expected to dominate network traffic, a content-addressable algorithm, common in many other [peer-to-peer file sharing protocols](https://en.wikipedia.org/wiki/InterPlanetary_File_System), could be far more beneficial than the current transaction-flooding protocol that Tendermint currently uses.
+One of the criteria of success for Celestia as a reliable data availability layer is the ability to handle large transactional throughput. A component that plays a significant role in this is the mempool. It's purpose is to receive transactions from clients and broadcast them to all other nodes, eventually reaching the next block proposer who includes it in their block. Given Celestia's aggregator-like role whereby larger transactions, i.e. blobs, are expected to dominate network traffic, a content-addressable algorithm, common in many other [peer-to-peer file sharing protocols](https://en.wikipedia.org/wiki/InterPlanetary_File_System), could be far more beneficial than the current transaction-flooding protocol that Tendermint currently uses.
 
 This ADR describes the content addressable transaction protocol and through a comparative analysis with the existing gossip protocol, presents the case for it's adoption in Celestia.
 
@@ -32,7 +32,7 @@ A series of new metrics have been added to monitor effectiveness:
 - SuccessfulTxs: number of transactions committed in a block (to be used as a baseline)
 - AlreadySeenTxs: transactions that are received more than once
 - RequestedTxs: the number of initial requests for a transaction
-- RerequestedTxs: the numer of follow up requests for a transaction. If this is high, it may indicate that the request timeout is too short.
+- RerequestedTxs: the number of follow up requests for a transaction. If this is high, it may indicate that the request timeout is too short.
 
 The CAT pool has had numerous unit tests added. It has been tested in the local e2e networks and put under strain in large, geographically dispersed 100 node networks.
 

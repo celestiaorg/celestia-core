@@ -36,9 +36,9 @@ message WantTx {
 }
 ```
 
-Both `SeenTx` and `WantTx` contain the sha256 hash of the raw transaction bytes. `SeenTx` also contains an optional `p2p.ID` that corresponds to the peer that the node recieved the tx from. The only validation for both is that the byte slice of the `tx_key` MUST have a length of 32.
+Both `SeenTx` and `WantTx` contain the sha256 hash of the raw transaction bytes. `SeenTx` also contains an optional `p2p.ID` that corresponds to the peer that the node received the tx from. The only validation for both is that the byte slice of the `tx_key` MUST have a length of 32.
 
-Both messages are sent across a new channel with the ID: `byte(0x31)`. This enables cross compatability as discussed in greater detail below.
+Both messages are sent across a new channel with the ID: `byte(0x31)`. This enables cross compatibility as discussed in greater detail below.
 
 > **Note:**
 > The term `SeenTx` is used over the more common `HasTx` because the transaction pool contains sophisticated eviction logic. TTL's, higher priority transactions and reCheckTx may mean that a transaction pool *had* a transaction but does not have it any more. Semantically it's more appropriate to use `SeenTx` to imply not the presence of a transaction but that the node has seen it and dealt with it accordingly.
@@ -75,7 +75,7 @@ Transaction pools are solely run in-memory; thus when a node stops, all transact
 
 Upon receiving a `Txs` message:
 
-- Check whether it is in reponse to a request or simply an unsolicited broadcast
+- Check whether it is in response to a request or simply an unsolicited broadcast
 - Validate the tx against current resources and the applications `CheckTx`
 - If rejected or evicted, mark accordingly
 - If successful, send a `SeenTx` message to all connected peers excluding the original sender. If it was from an initial broadcast, the `SeenTx` should populate the `From` field with the `p2p.ID` of the recipient else if it is in response to a request `From` should remain empty.

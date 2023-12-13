@@ -90,7 +90,7 @@ func (blockExec *BlockExecutor) SetEventBus(eventBus types.BlockEventPublisher) 
 
 // CreateProposalBlock calls state.MakeBlock with evidence from the evpool
 // and txs from the mempool. The max bytes must be big enough to fit the commit.
-// Up to 1/10th of the block space is allcoated for maximum sized evidence.
+// Up to 1/10th of the block space is allocated for maximum sized evidence.
 // The rest is given to txs, up to the max gas.
 //
 // Contract: application will not return more bytes than are sent over the wire.
@@ -283,7 +283,7 @@ func (blockExec *BlockExecutor) ApplyBlock(
 	fail.Fail() // XXX
 
 	// Events are fired after everything else.
-	// NOTE: if we crash between Commit and Save, events wont be fired during replay
+	// NOTE: if we crash between Commit and Save, events won't be fired during replay
 	fireEvents(blockExec.logger, blockExec.eventBus, block, abciResponses, validatorUpdates, state.LastValidators, commit)
 
 	return state, retainHeight, nil

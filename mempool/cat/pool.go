@@ -29,7 +29,7 @@ var (
 // TxPoolOption sets an optional parameter on the TxPool.
 type TxPoolOption func(*TxPool)
 
-// TxPool implemements the Mempool interface and allows the application to
+// TxPool implements the Mempool interface and allows the application to
 // set priority values on transactions in the CheckTx response. When selecting
 // transactions to include in a block, higher-priority transactions are chosen
 // first.  When evicting transactions from the mempool for size constraints,

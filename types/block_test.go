@@ -75,7 +75,7 @@ func TestBlockValidateBasic(t *testing.T) {
 		{"Negative Height", func(blk *Block) { blk.Height = -1 }, true},
 		{"Remove 1/2 the commits", func(blk *Block) {
 			blk.LastCommit.Signatures = commit.Signatures[:commit.Size()/2]
-			blk.LastCommit.hash = nil // clear hash or change wont be noticed
+			blk.LastCommit.hash = nil // clear hash or change won't be noticed
 		}, true},
 		{"Remove LastCommitHash", func(blk *Block) { blk.LastCommitHash = []byte("something else") }, true},
 		{"Tampered EvidenceHash", func(blk *Block) {
