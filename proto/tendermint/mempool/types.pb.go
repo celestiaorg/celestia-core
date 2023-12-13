@@ -156,7 +156,6 @@ func (m *WantTx) GetTxKey() []byte {
 
 type Message struct {
 	// Types that are valid to be assigned to Sum:
-	//
 	//	*Message_Txs
 	//	*Message_SeenTx
 	//	*Message_WantTx
