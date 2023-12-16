@@ -38,6 +38,9 @@ coherence in the larger context. If you are not comfortable with writing an ADR,
 you can open a less-formal issue and the maintainers will help you turn it into
 an ADR.
 
+Once your pull requests are merged to one of celestiaorg's GitHub repositories, you will be automatically awared  the right to mint a [Celestia Contributor GitPOAP](https://www.gitpoap.io/gh/celestiaorg/celestia-core). (You can check which repositories here: [Celestia Contributor GitPOAP](https://www.gitpoap.io/gh/celestiaorg/celestia-core))
+
+
 > How to pick a number for the ADR?
 
 Find the largest existing ADR number and bump it by 1.
