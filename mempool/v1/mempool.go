@@ -83,6 +83,7 @@ func NewTxMempool(
 		height:       height,
 		txByKey:      make(map[types.TxKey]*clist.CElement),
 		txBySender:   make(map[string]*clist.CElement),
+		traceClient:  &trace.Client{},
 	}
 	if cfg.CacheSize > 0 {
 		txmp.cache = mempool.NewLRUTxCache(cfg.CacheSize)
@@ -116,9 +117,6 @@ func WithMetrics(metrics *mempool.Metrics) TxMempoolOption {
 
 func WithTraceClient(tc *trace.Client) TxMempoolOption {
 	return func(txmp *TxMempool) {
-		if tc == nil {
-			tc = &trace.Client{}
-		}
 		txmp.traceClient = tc
 	}
 }
