@@ -482,9 +482,14 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		)
 
 		txmp.metrics.FailedTxs.With(mempool.FailedAdding).Add(1)
-		if err != nil {
-			schema.WriteMempoolRejected(txmp.traceClient, err.Error())
-		}
+		reason := fmt.Sprintf(
+			"code: %d codespace: %s logs: %s postCheck error: %v",
+			checkTxRes.Code,
+			checkTxRes.Codespace,
+			checkTxRes.Log,
+			err,
+		)
+		schema.WriteMempoolRejected(txmp.traceClient, reason)
 
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
