@@ -40,7 +40,6 @@ an ADR.
 
 Once your pull request is merged to an eligible celestiaorg GitHub repository, you will be rewarded the ability to mint a [GitPOAP](https://www.gitpoap.io). You can check which repositories are eligible at [gitpoap/celestiaorg](https://www.gitpoap.io/gh/celestiaorg)
 
-
 > How to pick a number for the ADR?
 
 Find the largest existing ADR number and bump it by 1.
