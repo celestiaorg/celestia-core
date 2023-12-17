@@ -91,6 +91,10 @@ Releases are formatted: `v<CELESTIA_CORE_VERSION>-tm-v<TENDERMINT_CORE_VERSION>`
 For example: [`v1.4.0-tm-v0.34.20`](https://github.com/celestiaorg/celestia-core/releases/tag/v1.4.0-tm-v0.34.20) is celestia-core version `1.4.0` based on CometBFT `0.34.20`.
 `CELESTIA_CORE_VERSION` strives to adhere to [Semantic Versioning](http://semver.org/).
 
+## GitPOAP
+
+Once your pull request is merged to an eligible celestiaorg GitHub repository, you will be rewarded the ability to mint a [GitPOAP](https://www.gitpoap.io). You can check which repositories are eligible at [gitpoap/celestiaorg](https://www.gitpoap.io/gh/celestiaorg)
+
 ## Careers
 
 We are hiring Go engineers! Join us in building the future of blockchain scaling and interoperability. [Apply here](https://jobs.lever.co/celestia).
