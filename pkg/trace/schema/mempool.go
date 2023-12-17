@@ -12,6 +12,7 @@ func MempoolTables() []string {
 	return []string{
 		MempoolTxTable,
 		MempoolPeerStateTable,
+		MempoolRejectedTable,
 	}
 }
 
@@ -115,8 +116,18 @@ func WriteMempoolPeerState(client *trace.Client, peer p2p.ID, stateUpdate, trans
 }
 
 const (
-// LocalTable is the tracing "measurement" (aka table) for the local mempool
-// updates, such as when a tx is added or removed.
-// TODO: actually implement the local mempool tracing
-// LocalTable = "mempool_local"
+	MempoolRejectedTable = "mempool_rejected"
+	ReasonFieldKey       = "reason"
 )
+
+// WriteMempoolRejected records why a transaction was rejected.
+func WriteMempoolRejected(client *trace.Client, reason string) {
+	// this check is redundant to what is checked during WritePoint, although it
+	// is an optimization to avoid allocations from creating the map of fields.
+	if !client.IsCollecting(RoundStateTable) {
+		return
+	}
+	client.WritePoint(RoundStateTable, map[string]interface{}{
+		ReasonFieldKey: reason,
+	})
+}

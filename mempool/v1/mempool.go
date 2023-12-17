@@ -15,6 +15,8 @@ import (
 	"github.com/tendermint/tendermint/libs/clist"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool"
+	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
 )
@@ -56,6 +58,8 @@ type TxMempool struct {
 	txs        *clist.CList // valid transactions (passed CheckTx)
 	txByKey    map[types.TxKey]*clist.CElement
 	txBySender map[string]*clist.CElement // for sender != ""
+
+	traceClient *trace.Client
 }
 
 // NewTxMempool constructs a new, empty priority mempool at the specified
@@ -108,6 +112,10 @@ func WithPostCheck(f mempool.PostCheckFunc) TxMempoolOption {
 // WithMetrics sets the mempool's metrics collector.
 func WithMetrics(metrics *mempool.Metrics) TxMempoolOption {
 	return func(txmp *TxMempool) { txmp.metrics = metrics }
+}
+
+func WithTraceClient(tc *trace.Client) TxMempoolOption {
+	return func(txmp *TxMempool) { txmp.traceClient = tc }
 }
 
 // Lock obtains a write-lock on the mempool. A caller must be sure to explicitly
@@ -193,6 +201,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		if txmp.preCheck != nil {
 			if err := txmp.preCheck(tx); err != nil {
 				txmp.metrics.FailedTxs.With(mempool.FailedPrecheck).Add(1)
+				schema.WriteMempoolRejected(txmp.traceClient, err.Error())
 				return 0, mempool.ErrPreCheck{Reason: err}
 			}
 		}
@@ -470,6 +479,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		)
 
 		txmp.metrics.FailedTxs.With(mempool.FailedAdding).Add(1)
+		schema.WriteMempoolRejected(txmp.traceClient, err.Error())
 
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
