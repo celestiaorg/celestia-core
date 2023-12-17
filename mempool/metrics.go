@@ -72,6 +72,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 	for i := 0; i < len(labelsAndValues); i += 2 {
 		labels = append(labels, labelsAndValues[i])
 	}
+	typedCounterLabels := append(append(make([]string, 0, len(labels)+1), labels...), TypeLabel)
 	return &Metrics{
 		Size: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
@@ -93,14 +94,14 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Subsystem: MetricsSubsystem,
 			Name:      "failed_txs",
 			Help:      "Number of failed transactions.",
-		}, labels).With(labelsAndValues...),
+		}, typedCounterLabels).With(labelsAndValues...),
 
 		EvictedTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "evicted_txs",
 			Help:      "Number of evicted transactions.",
-		}, labels).With(labelsAndValues...),
+		}, typedCounterLabels).With(labelsAndValues...),
 
 		SuccessfulTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
