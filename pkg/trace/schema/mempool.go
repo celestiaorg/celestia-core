@@ -104,7 +104,7 @@ const (
 func WriteMempoolPeerState(client *trace.Client, peer p2p.ID, stateUpdate, transferType, version string) {
 	// this check is redundant to what is checked during WritePoint, although it
 	// is an optimization to avoid allocations from creating the map of fields.
-	if !client.IsCollecting(RoundStateTable) {
+	if !client.IsCollecting(MempoolPeerStateTable) {
 		return
 	}
 	client.WritePoint(RoundStateTable, map[string]interface{}{
@@ -124,7 +124,7 @@ const (
 func WriteMempoolRejected(client *trace.Client, reason string) {
 	// this check is redundant to what is checked during WritePoint, although it
 	// is an optimization to avoid allocations from creating the map of fields.
-	if !client.IsCollecting(RoundStateTable) {
+	if !client.IsCollecting(MempoolRejectedTable) {
 		return
 	}
 	client.WritePoint(RoundStateTable, map[string]interface{}{
