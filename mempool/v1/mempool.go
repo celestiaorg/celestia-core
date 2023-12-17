@@ -552,7 +552,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			checkTxRes.MempoolError =
 				fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
 					wtx.tx.Hash())
-			txmp.metrics.EvictedTxs.With(mempool.EvictedTxIncomingFullMempool).Add(1)
+			txmp.metrics.EvictedTxs.With(mempool.EvictedNewTxFullMempool).Add(1)
 			return
 		}
 
@@ -584,7 +584,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			)
 			txmp.removeTxByElement(vic)
 			txmp.cache.Remove(w.tx)
-			txmp.metrics.EvictedTxs.With(mempool.EvictedTxExistingFullMempool).Add(1)
+			txmp.metrics.EvictedTxs.With(mempool.EvictedExistingTxFullMempool).Add(1)
 
 			// We may not need to evict all the eligible transactions.  Bail out
 			// early if we have made enough room.
@@ -664,6 +664,9 @@ func (txmp *TxMempool) handleRecheckResult(tx types.Tx, checkTxRes *abci.Respons
 	txmp.metrics.FailedTxs.With(mempool.FailedRecheck).Add(1)
 	if !txmp.config.KeepInvalidTxsInCache {
 		txmp.cache.Remove(wtx.tx)
+		if err != nil {
+			schema.WriteMempoolRejected(txmp.traceClient, err.Error())
+		}
 	}
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 }

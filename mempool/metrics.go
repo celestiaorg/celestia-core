@@ -16,8 +16,8 @@ const (
 	FailedAdding   = "adding"
 	FailedRecheck  = "recheck"
 
-	EvictedTxIncomingFullMempool = "full-removed-incoming"
-	EvictedTxExistingFullMempool = "full-removed-existing"
+	EvictedNewTxFullMempool      = "full-removed-incoming"
+	EvictedExistingTxFullMempool = "full-removed-existing"
 	EvictedTxExpiredBlocks       = "expired-ttl-blocks"
 	EvictedTxExpiredTime         = "expired-ttl-time"
 )
