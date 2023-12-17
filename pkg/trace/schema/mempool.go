@@ -107,7 +107,7 @@ func WriteMempoolPeerState(client *trace.Client, peer p2p.ID, stateUpdate, trans
 	if !client.IsCollecting(MempoolPeerStateTable) {
 		return
 	}
-	client.WritePoint(RoundStateTable, map[string]interface{}{
+	client.WritePoint(MempoolPeerStateTable, map[string]interface{}{
 		PeerFieldKey:         peer,
 		TransferTypeFieldKey: transferType,
 		StateUpdateFieldKey:  stateUpdate,
@@ -127,7 +127,7 @@ func WriteMempoolRejected(client *trace.Client, reason string) {
 	if !client.IsCollecting(MempoolRejectedTable) {
 		return
 	}
-	client.WritePoint(RoundStateTable, map[string]interface{}{
+	client.WritePoint(MempoolRejectedTable, map[string]interface{}{
 		ReasonFieldKey: reason,
 	})
 }
