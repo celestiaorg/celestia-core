@@ -115,7 +115,12 @@ func WithMetrics(metrics *mempool.Metrics) TxMempoolOption {
 }
 
 func WithTraceClient(tc *trace.Client) TxMempoolOption {
-	return func(txmp *TxMempool) { txmp.traceClient = tc }
+	return func(txmp *TxMempool) {
+		if tc == nil {
+			tc = &trace.Client{}
+		}
+		txmp.traceClient = tc
+	}
 }
 
 // Lock obtains a write-lock on the mempool. A caller must be sure to explicitly
