@@ -12,6 +12,8 @@ const (
 	// package.
 	MetricsSubsystem = "mempool"
 
+	TypeLabel = "type"
+
 	FailedPrecheck = "precheck"
 	FailedAdding   = "adding"
 	FailedRecheck  = "recheck"
