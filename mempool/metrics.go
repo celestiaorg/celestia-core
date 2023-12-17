@@ -11,6 +11,15 @@ const (
 	// MetricsSubsystem is a subsystem shared by all metrics exposed by this
 	// package.
 	MetricsSubsystem = "mempool"
+
+	FailedPrecheck = "precheck"
+	FailedAdding   = "adding"
+	FailedRecheck  = "recheck"
+
+	EvictedTxIncomingFullMempool = "full-removed-incoming"
+	EvictedTxExistingFullMempool = "full-removed-existing"
+	EvictedTxExpiredBlocks       = "expired-ttl-blocks"
+	EvictedTxExpiredTime         = "expired-ttl-time"
 )
 
 // Metrics contains metrics exposed by this package.
