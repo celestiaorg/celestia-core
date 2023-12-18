@@ -93,7 +93,7 @@ For example: [`v1.4.0-tm-v0.34.20`](https://github.com/celestiaorg/celestia-core
 
 ## GitPOAP
 
-Once your pull request is merged to an eligible celestiaorg GitHub repository, you will be rewarded the ability to mint a [GitPOAP](https://www.gitpoap.io). You can check which repositories are eligible at [gitpoap/celestiaorg](https://www.gitpoap.io/gh/celestiaorg)
+This repo is eligible for [GitPOAP](https://www.gitpoap.io). You can see the remaining eligible repositories at [gitpoap/celestiaorg](https://www.gitpoap.io/gh/celestiaorg).
 
 ## Careers
 
