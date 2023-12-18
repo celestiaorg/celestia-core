@@ -483,10 +483,11 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 
 		txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedAdding).Add(1)
 		reason := fmt.Sprintf(
-			"code: %d codespace: %s logs: %s postCheck error: %v",
+			"code: %d codespace: %s logs: %s local: %v postCheck error: %v",
 			checkTxRes.Code,
 			checkTxRes.Codespace,
 			checkTxRes.Log,
+			wtx.HasPeer(0), // this checks if the peer id is local
 			err,
 		)
 		schema.WriteMempoolRejected(txmp.traceClient, reason)
