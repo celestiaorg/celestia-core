@@ -52,7 +52,7 @@ func TestMain(m *testing.M) {
 // These tests ensure we can always recover from failure at any part of the consensus process.
 // There are two general failure scenarios: failure during consensus, and failure while applying the block.
 // Only the latter interacts with the app and store,
-// but the former has to deal with restrictions on re-use of priv_validator keys.
+// but the former has to deal with restrictions on reuse of priv_validator keys.
 // The `WAL Tests` are for failures during the consensus;
 // the `Handshake Tests` are for failures in applying the block.
 // With the help of the WAL, we can recover from it all!
@@ -1102,7 +1102,7 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.Commit, error) {
 				}
 				commitHeight := thisBlockCommit.Height
 				if commitHeight != height+1 {
-					panic(fmt.Sprintf("commit doesnt match. got height %d, expected %d", commitHeight, height+1))
+					panic(fmt.Sprintf("commit doesn't match. got height %d, expected %d", commitHeight, height+1))
 				}
 				blocks = append(blocks, block)
 				commits = append(commits, thisBlockCommit)
@@ -1141,7 +1141,7 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.Commit, error) {
 	}
 	commitHeight := thisBlockCommit.Height
 	if commitHeight != height+1 {
-		panic(fmt.Sprintf("commit doesnt match. got height %d, expected %d", commitHeight, height+1))
+		panic(fmt.Sprintf("commit doesn't match. got height %d, expected %d", commitHeight, height+1))
 	}
 	blocks = append(blocks, block)
 	commits = append(commits, thisBlockCommit)

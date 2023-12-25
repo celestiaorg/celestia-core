@@ -24,7 +24,7 @@ type requestScheduler struct {
 	globalTimeout time.Duration
 
 	// requestsByPeer is a lookup table of requests by peer.
-	// Multiple tranasctions can be requested by a single peer at one
+	// Multiple transactions can be requested by a single peer at one
 	requestsByPeer map[uint16]requestSet
 
 	// requestsByTx is a lookup table for requested txs.

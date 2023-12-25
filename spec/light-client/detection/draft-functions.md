@@ -120,7 +120,7 @@ func SubmitIBCProofOfFork(
     else {
         // the ibc component does not have the TrustedBlock and might
   // even be on yet a different branch. We have to compute a PoF
-  // that the ibc component can verifiy based on its current
+  // that the ibc component can verify based on its current
         // knowledge
   
         ibcLightBlock, lblock, _, result := commonRoot(lightStore, ibc, PoF.TrustedBlock)
@@ -194,7 +194,7 @@ LightBlock) (LightBlock, LightBlock, LightStore, Result) {
         - a lightBlock b1 from the IBC component, and
         - a lightBlock b2
             from the local lightStore with height less than
-   lblock.Header.Hight, s.t. b1 supports b2, and
+   lblock.Header.Height, s.t. b1 supports b2, and
         - a lightstore with the blocks downloaded from
           the ibc component
 
@@ -281,7 +281,7 @@ func DetectIBCFork(ibc IBCComponent, lightStore LightStore) (LightNodeProofOfFor
 **TODO:** finish conditions
 
 - Implementation remark
-    - we ask the handler for the lastest check. Cross-check with the
+    - we ask the handler for the latest check. Cross-check with the
       chain. In case they deviate we generate PoF.
     - we assume IBC component is correct. It has verified the
       consensus state

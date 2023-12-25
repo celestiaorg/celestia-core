@@ -147,7 +147,7 @@ also be interested in!
 
 * Conceptual flaws
 * Ambiguities, inconsistencies, or incorrect statements
-* Mis-match between specification and implementation of any component
+* Mismatch between specification and implementation of any component
 
 ### Consensus
 

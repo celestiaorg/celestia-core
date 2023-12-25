@@ -285,7 +285,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 	batch := bs.db.NewBatch()
 	defer batch.Close()
 	flush := func(batch dbm.Batch, base int64) error {
-		// We can't trust batches to be atomic, so update base first to make sure noone
+		// We can't trust batches to be atomic, so update base first to make sure no one
 		// tries to access missing blocks.
 		bs.mtx.Lock()
 		bs.base = base

@@ -687,7 +687,7 @@ func (vals *ValidatorSet) VerifyCommit(chainID string, blockID BlockID,
 			continue // OK, some signatures can be absent.
 		}
 
-		// The vals and commit have a 1-to-1 correspondance.
+		// The vals and commit have a 1-to-1 correspondence.
 		// This means we don't need the validator address or to do any lookup.
 		val := vals.Validators[idx]
 
@@ -743,7 +743,7 @@ func (vals *ValidatorSet) VerifyCommitLight(chainID string, blockID BlockID,
 			continue
 		}
 
-		// The vals and commit have a 1-to-1 correspondance.
+		// The vals and commit have a 1-to-1 correspondence.
 		// This means we don't need the validator address or to do any lookup.
 		val := vals.Validators[idx]
 

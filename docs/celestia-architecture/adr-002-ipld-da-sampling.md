@@ -231,7 +231,7 @@ Proposed
 ### Positive
 
 - simplicity & ease of implementation
-- can re-use an existing networking and p2p stack (go-ipfs)
+- can reuse an existing networking and p2p stack (go-ipfs)
 - potential support of large, cool, and helpful community
 - high-level API definitions independent of the used stack
 

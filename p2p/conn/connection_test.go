@@ -640,7 +640,7 @@ func TestMConnectionReadErrorLongMessage(t *testing.T) {
 	client := mconnClient.conn
 	protoWriter := protoio.NewDelimitedWriter(client)
 
-	// send msg thats just right
+	// send msg that's just right
 	var packet = tmp2p.PacketMsg{
 		ChannelID: 0x01,
 		EOF:       true,
@@ -651,7 +651,7 @@ func TestMConnectionReadErrorLongMessage(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, expectSend(chOnRcv), "msg just right")
 
-	// send msg thats too long
+	// send msg that's too long
 	packet = tmp2p.PacketMsg{
 		ChannelID: 0x01,
 		EOF:       true,
