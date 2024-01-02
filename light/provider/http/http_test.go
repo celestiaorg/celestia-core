@@ -15,8 +15,8 @@ import (
 	lighthttp "github.com/cometbft/cometbft/light/provider/http"
 	rpcclient "github.com/cometbft/cometbft/rpc/client"
 	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
-	rpctest "github.com/cometbft/cometbft/rpc/test"
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
+	rpctest "github.com/cometbft/cometbft/rpc/test"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -85,7 +85,7 @@ func TestProvider(t *testing.T) {
 	// fetching with the context cancelled
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	lb, err = p.LightBlock(ctx, lower + 3)
+	_, err = p.LightBlock(ctx, lower+3)
 	require.Error(t, err)
 	require.Equal(t, context.Canceled, err)
 
@@ -93,7 +93,7 @@ func TestProvider(t *testing.T) {
 	c2, err := newMockHTTP(rpcAddr)
 	require.NoError(t, err)
 	p2 := lighthttp.NewWithClient(chainID, c2)
-	lb, err = p2.LightBlock(context.Background(), 0)
+	_, err = p2.LightBlock(context.Background(), 0)
 	require.Error(t, err)
 	require.Equal(t, context.DeadlineExceeded, err)
 
@@ -118,7 +118,6 @@ func newMockHTTP(remote string) (*mockHTTP, error) {
 	}
 	return &mockHTTP{c}, nil
 }
-
 
 func (m *mockHTTP) Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error) {
 	return nil, fmt.Errorf("post failed: %w", context.DeadlineExceeded)
