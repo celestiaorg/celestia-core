@@ -203,7 +203,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		// If a precheck hook is defined, call it before invoking the application.
 		if txmp.preCheck != nil {
 			if err := txmp.preCheck(tx); err != nil {
-				txmp.metrics.FailedTxs.With(mempool.FailedPrecheck).Add(1)
+				txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedPrecheck).Add(1)
 				schema.WriteMempoolRejected(txmp.traceClient, err.Error())
 				return 0, mempool.ErrPreCheck{Reason: err}
 			}
@@ -481,10 +481,16 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			"post_check_err", err,
 		)
 
-		txmp.metrics.FailedTxs.With(mempool.FailedAdding).Add(1)
-		if err != nil {
-			schema.WriteMempoolRejected(txmp.traceClient, err.Error())
-		}
+		txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedAdding).Add(1)
+		reason := fmt.Sprintf(
+			"code: %d codespace: %s logs: %s local: %v postCheck error: %v",
+			checkTxRes.Code,
+			checkTxRes.Codespace,
+			checkTxRes.Log,
+			wtx.HasPeer(0), // this checks if the peer id is local
+			err,
+		)
+		schema.WriteMempoolRejected(txmp.traceClient, reason)
 
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
@@ -552,7 +558,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			checkTxRes.MempoolError =
 				fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
 					wtx.tx.Hash())
-			txmp.metrics.EvictedTxs.With(mempool.EvictedNewTxFullMempool).Add(1)
+			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedNewTxFullMempool).Add(1)
 			return
 		}
 
@@ -584,7 +590,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			)
 			txmp.removeTxByElement(vic)
 			txmp.cache.Remove(w.tx)
-			txmp.metrics.EvictedTxs.With(mempool.EvictedExistingTxFullMempool).Add(1)
+			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedExistingTxFullMempool).Add(1)
 
 			// We may not need to evict all the eligible transactions.  Bail out
 			// early if we have made enough room.
@@ -661,7 +667,7 @@ func (txmp *TxMempool) handleRecheckResult(tx types.Tx, checkTxRes *abci.Respons
 		"code", checkTxRes.Code,
 	)
 	txmp.removeTxByElement(elt)
-	txmp.metrics.FailedTxs.With(mempool.FailedRecheck).Add(1)
+	txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedRecheck).Add(1)
 	if !txmp.config.KeepInvalidTxsInCache {
 		txmp.cache.Remove(wtx.tx)
 		if err != nil {
@@ -776,11 +782,11 @@ func (txmp *TxMempool) purgeExpiredTxs(blockHeight int64) {
 		if txmp.config.TTLNumBlocks > 0 && (blockHeight-w.height) > txmp.config.TTLNumBlocks {
 			txmp.removeTxByElement(cur)
 			txmp.cache.Remove(w.tx)
-			txmp.metrics.EvictedTxs.With(mempool.EvictedTxExpiredBlocks).Add(1)
+			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedTxExpiredBlocks).Add(1)
 		} else if txmp.config.TTLDuration > 0 && now.Sub(w.timestamp) > txmp.config.TTLDuration {
 			txmp.removeTxByElement(cur)
 			txmp.cache.Remove(w.tx)
-			txmp.metrics.EvictedTxs.With(mempool.EvictedTxExpiredTime).Add(1)
+			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedTxExpiredTime).Add(1)
 		}
 		cur = next
 	}
