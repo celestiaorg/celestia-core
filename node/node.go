@@ -419,6 +419,7 @@ func createMempoolAndMempoolReactor(
 			mempoolv1.WithMetrics(memplMetrics),
 			mempoolv1.WithPreCheck(sm.TxPreCheck(state)),
 			mempoolv1.WithPostCheck(sm.TxPostCheck(state)),
+			mempoolv1.WithTraceClient(traceClient),
 		)
 
 		reactor := mempoolv1.NewReactor(
