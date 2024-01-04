@@ -160,6 +160,14 @@ OUTER_LOOP:
 				time.Sleep(backoffTimeout(uint16(attempt)))
 				continue
 
+			// NOTE: it seems like the context errors are being wrapped in a way that
+			// makes them hard to detect. For now, we just check the error string.
+			case strings.Contains(err.Error(), context.DeadlineExceeded.Error()):
+				return nil, context.DeadlineExceeded
+
+			case ctx.Err() != nil:
+				return nil, ctx.Err()
+
 			// context canceled or connection refused we return the error
 			default:
 				return nil, err
@@ -201,6 +209,14 @@ func (p *http) signedHeader(ctx context.Context, height *int64) (*types.SignedHe
 			// we wait and try again with exponential backoff
 			time.Sleep(backoffTimeout(uint16(attempt)))
 			continue
+
+		// NOTE: it seems like the context errors are being wrapped in a way that
+		// makes them hard to detect. For now, we just check the error string.
+		case strings.Contains(err.Error(), context.DeadlineExceeded.Error()):
+			return nil, context.DeadlineExceeded
+
+		case ctx.Err() != nil:
+			return nil, ctx.Err()
 
 		// either context was cancelled or connection refused.
 		default:

@@ -15,6 +15,7 @@ import (
 	lighthttp "github.com/tendermint/tendermint/light/provider/http"
 	rpcclient "github.com/tendermint/tendermint/rpc/client"
 	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
+	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	rpctest "github.com/tendermint/tendermint/rpc/test"
 	"github.com/tendermint/tendermint/types"
 )
@@ -46,10 +47,9 @@ func TestProvider(t *testing.T) {
 	chainID := genDoc.ChainID
 
 	c, err := rpchttp.New(rpcAddr, "/websocket")
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	p := lighthttp.NewWithClient(chainID, c)
-	require.NoError(t, err)
 	require.NotNil(t, p)
 
 	// let it produce some blocks
@@ -82,6 +82,21 @@ func TestProvider(t *testing.T) {
 	require.Nil(t, lb)
 	assert.Equal(t, provider.ErrLightBlockNotFound, err)
 
+	// fetching with the context cancelled
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = p.LightBlock(ctx, lower+3)
+	require.Error(t, err)
+	require.Equal(t, context.Canceled, err)
+
+	// fetching with the deadline exceeded (a mock RPC client is used to simulate this)
+	c2, err := newMockHTTP(rpcAddr)
+	require.NoError(t, err)
+	p2 := lighthttp.NewWithClient(chainID, c2)
+	_, err = p2.LightBlock(context.Background(), 0)
+	require.Error(t, err)
+	require.Equal(t, context.DeadlineExceeded, err)
+
 	// stop the full node and check that a no response error is returned
 	rpctest.StopTendermint(node)
 	time.Sleep(10 * time.Second)
@@ -90,4 +105,20 @@ func TestProvider(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "connection refused")
 	require.Nil(t, lb)
+}
+
+type mockHTTP struct {
+	*rpchttp.HTTP
+}
+
+func newMockHTTP(remote string) (*mockHTTP, error) {
+	c, err := rpchttp.New(remote, "/websocket")
+	if err != nil {
+		return nil, err
+	}
+	return &mockHTTP{c}, nil
+}
+
+func (m *mockHTTP) Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error) {
+	return nil, fmt.Errorf("post failed: %w", context.DeadlineExceeded)
 }
