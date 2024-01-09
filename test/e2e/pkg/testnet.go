@@ -110,7 +110,7 @@ type Node struct {
 	InfluxDBToken         string
 	PyroscopeURL          string
 	PyroscopeTrace        bool
-	PyroscopeProfileTypes string
+	PyroscopeProfileTypes []string
 }
 
 // LoadTestnet loads a testnet from a manifest file, using the filename to

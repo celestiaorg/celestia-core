@@ -1,13 +1,9 @@
 package schema
 
-import (
-	"strings"
-
-	"github.com/tendermint/tendermint/config"
-)
+import "github.com/tendermint/tendermint/config"
 
 func init() {
-	config.DefaultInfluxTables = strings.Join(AllTables(), ",")
+	config.DefaultInfluxTables = AllTables()
 }
 
 func AllTables() []string {
