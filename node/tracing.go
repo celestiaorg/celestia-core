@@ -76,9 +76,8 @@ func tracerProviderDebug() (*sdktrace.TracerProvider, error) {
 	return sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sdktrace.NewBatchSpanProcessor(exp))), nil
 }
 
-func toPyroscopeProfiles(profiles string) []pyroscope.ProfileType {
-	parsedProfiles := splitAndTrimEmpty(profiles, ",", " ")
-	pts := make([]pyroscope.ProfileType, 0, len(parsedProfiles))
+func toPyroscopeProfiles(profiles []string) []pyroscope.ProfileType {
+	pts := make([]pyroscope.ProfileType, 0, len(profiles))
 	for _, p := range profiles {
 		pts = append(pts, pyroscope.ProfileType(p))
 	}
