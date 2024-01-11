@@ -306,6 +306,10 @@ func TestTxMempool_Flush(t *testing.T) {
 }
 
 func TestTxMempool_ReapMaxBytesMaxGas(t *testing.T) {
+	// totalSizeBytes is the expected size of the mempool after adding 100 txs
+	// this value is highly dependant upon the size of the txs and the overhead
+	// introduced in the mempool. This number will need to be adjusted if
+	// changes are made to any of those things.
 	totalSizeBytes := int64(5800)
 	txmp := setup(t, 0)
 	tTxs := checkTxs(t, txmp, 100, 0) // all txs request 1 gas unit
