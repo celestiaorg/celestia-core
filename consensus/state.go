@@ -1186,6 +1186,8 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 // Returns true if the proposal block is complete &&
 // (if POLRound was proposed, we have +2/3 prevotes from there).
 func (cs *State) isProposalComplete() bool {
+	cs.mtx.RLock()
+	defer cs.mtx.RUnlock()
 	if cs.Proposal == nil || cs.ProposalBlock == nil {
 		return false
 	}
