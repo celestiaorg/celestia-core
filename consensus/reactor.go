@@ -577,10 +577,13 @@ OUTER_LOOP:
 		}
 
 		isProposer := conR.conS.isProposer(conR.conS.privValidatorPubKey.Address())
+		conR.conS.mtx.RLock()
+		completeProposal := conR.conS.Proposal != nil || conR.conS.ProposalBlock != nil
+		conR.conS.mtx.RUnlock()
 
 		// if we are the proposer wait for proposal to be complete before
 		// sending anything. This ensures block parts are distributed randomly.
-		if isProposer && !conR.conS.isProposalComplete() {
+		if isProposer && !completeProposal {
 			time.Sleep(10 * time.Millisecond)
 			continue OUTER_LOOP
 		}
