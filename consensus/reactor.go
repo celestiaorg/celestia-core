@@ -566,8 +566,6 @@ func (conR *Reactor) getRoundState() *cstypes.RoundState {
 	return conR.rs
 }
 
-var UseProposalFix = true
-
 func (conR *Reactor) gossipDataRoutine(peer p2p.Peer, ps *PeerState) {
 	logger := conR.Logger.With("peer", peer)
 
@@ -582,7 +580,7 @@ OUTER_LOOP:
 
 		// if we are the proposer wait for proposal to be complete before
 		// sending anything. This ensures block parts are distributed randomly.
-		if isProposer && UseProposalFix && !conR.conS.isProposalComplete() {
+		if isProposer && !conR.conS.isProposalComplete() {
 			time.Sleep(10 * time.Millisecond)
 			continue OUTER_LOOP
 		}
