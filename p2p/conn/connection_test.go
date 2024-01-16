@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"os"
+	"runtime"
+	"runtime/pprof"
+	"sync"
 	"testing"
 	"time"
 
@@ -768,4 +772,138 @@ func stopAll(t *testing.T, stoppers ...stopper) func() {
 			}
 		}
 	}
+}
+
+func fib(n int) int {
+	if n < 2 {
+		return n
+	}
+	return fib(n-1) + fib(n-2)
+}
+
+// GenerateMessages generates messages of a given size at specified rate `messagingRate`
+// for a given duration `totalDuration`.
+func GenerateMessages(mc *MConnection, messagingRate time.Duration,
+	totalDuration time.Duration, totalSize int, msgSize int, chID byte) {
+	// all messages have an identical content
+	msg := bytes.Repeat([]byte{'x'}, msgSize)
+
+	// message generation interval ticker
+	ticker := time.NewTicker(messagingRate)
+	defer ticker.Stop()
+
+	// timer for the total duration
+	timer := time.NewTimer(totalDuration)
+	defer timer.Stop()
+
+	sentBytes := 0
+	// generating messages
+	for {
+		select {
+		case <-ticker.C:
+			// generate message
+			if mc.Send(chID, msg) {
+				sentBytes += msgSize
+				if sentBytes >= totalSize && totalSize > 0 {
+					fmt.Println("Completed the message generation")
+					return
+				}
+			}
+		case <-timer.C:
+			// time's up
+			fmt.Println("Completed the message generation")
+			return
+		}
+	}
+}
+
+func BenchmarkMConnection(b *testing.B) {
+	txSize := 10
+	totalNumberOfMessages := 100
+	var msgList [100][]byte
+	for i := 0; i < totalNumberOfMessages; i++ {
+		msgList[i] = bytes.Repeat([]byte{byte(i)}, txSize)
+	}
+	chID := byte(0x01)
+	SendQueueCapacity := 1
+
+	b.Run("test capacity", func(b *testing.B) {
+		cpuFile, _ := os.Create("cpu.pprof")
+		pprof.StartCPUProfile(cpuFile)
+		defer pprof.StopCPUProfile()
+
+		f, _ := os.Create("block.pprof")
+		runtime.SetBlockProfileRate(1)
+
+		for n := 0; n < b.N; n++ {
+			//	set up two nodes
+			//server, client := NetPipe()
+			server, client := tcpNetPipe()
+			defer server.Close()
+			defer client.Close()
+
+			onReceive := func(chID byte, msgBytes []byte) {
+				log.TestingLogger().Info("onReceive: received message")
+			}
+			onError := func(r interface{}) {
+				log.TestingLogger().Info("onError: received error")
+			}
+
+			cnfg := DefaultMConnConfig()
+			cnfg.SendRate = 500_000_000 // 500 MB/s
+			cnfg.RecvRate = 500_000_000 // 500 MB/s
+			chDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
+				SendQueueCapacity: SendQueueCapacity}}
+			clientMconn := NewMConnectionWithConfig(client, chDescs, onReceive,
+				onError,
+				cnfg)
+			serverChDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
+				SendQueueCapacity: SendQueueCapacity}}
+			serverMconn := NewMConnectionWithConfig(server, serverChDescs,
+				onReceive,
+				onError,
+				cnfg)
+			clientMconn.SetLogger(log.TestingLogger())
+			serverMconn.SetLogger(log.TestingLogger())
+
+			err := clientMconn.Start()
+			require.Nil(b, err)
+			defer clientMconn.Stop() //nolint:errcheck // ignore for tests
+
+			err = serverMconn.Start()
+			require.Nil(b, err)
+			defer serverMconn.Stop() //nolint:errcheck // ignore for tests
+
+			// blocking call to generate messages
+			GenerateMessages(clientMconn, 1000*time.Millisecond,
+				1*time.Minute,
+				-1,               // unlimited
+				txSize+100, chID) // this mimics network load of 10KB per second
+
+			pprof.Lookup("block").WriteTo(f, 0)
+		}
+		//_, err = server.Read(make([]byte, len(msg)))
+		//require.NoError(b, err)
+	})
+
+	//}
+}
+
+// testPipe creates a pair of connected net.
+// Conn objects that can be used in tests.
+func tcpNetPipe() (net.Conn, net.Conn) {
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	var clientConn net.Conn
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func(c *net.Conn) {
+		*c, _ = ln.Accept()
+		wg.Done()
+	}(&clientConn)
+
+	serverAddr := ln.Addr().String()
+	serverConn, _ := net.Dial("tcp", serverAddr)
+
+	wg.Wait()
+	return serverConn, clientConn // sender, receiver
 }
