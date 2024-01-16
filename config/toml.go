@@ -398,6 +398,12 @@ ttl-duration = "{{ .Mempool.TTLDuration }}"
 # it's insertion time into the mempool is beyond ttl-duration.
 ttl-num-blocks = {{ .Mempool.TTLNumBlocks }}
 
+# max-gossip-delay is the maximum allotted time that the reactor expects a transaction to
+# arrive before issuing a new request to a different peer
+# Only applicable to the v2 / CAT mempool
+# Default is 200ms
+max-gossip-delay = "{{ .Mempool.MaxGossipDelay }}"
+
 #######################################################
 ###         State Sync Configuration Options        ###
 #######################################################
