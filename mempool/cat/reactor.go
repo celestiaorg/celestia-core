@@ -21,7 +21,7 @@ import (
 const (
 	// default duration to wait before considering a peer non-responsive
 	// and searching for the tx from a new peer
-	defaultGossipDelay = 200 * time.Millisecond
+	DefaultGossipDelay = 200 * time.Millisecond
 
 	// Content Addressable Tx Pool gossips state based messages (SeenTx and WantTx) on a separate channel
 	// for cross compatibility
@@ -66,7 +66,7 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 	}
 
 	if opts.MaxGossipDelay == 0 {
-		opts.MaxGossipDelay = defaultGossipDelay
+		opts.MaxGossipDelay = DefaultGossipDelay
 	}
 
 	if opts.MaxTxSize < 0 {
