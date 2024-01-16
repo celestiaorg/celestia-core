@@ -228,7 +228,9 @@ func (c *MConnection) OnStart() error {
 	c.quitSendRoutine = make(chan struct{})
 	c.doneSendRoutine = make(chan struct{})
 	c.quitRecvRoutine = make(chan struct{})
+	c.Logger.Debug("Starting sendRoutine")
 	go c.sendRoutine()
+	c.Logger.Debug("Starting recvRoutine")
 	go c.recvRoutine()
 	return nil
 }
@@ -564,6 +566,7 @@ func (c *MConnection) recvRoutine() {
 
 FOR_LOOP:
 	for {
+		c.Logger.Debug("recvRoutine", "address", c.conn.RemoteAddr())
 		// Block until .recvMonitor says we can read.
 		c.recvMonitor.Limit(c._maxPacketMsgSize, atomic.LoadInt64(&c.config.RecvRate), true)
 
@@ -583,7 +586,6 @@ FOR_LOOP:
 
 		// Read packet type
 		var packet tmp2p.Packet
-
 		_n, err := protoReader.ReadMsg(&packet)
 		c.recvMonitor.Update(_n)
 		if err != nil {
@@ -606,6 +608,7 @@ FOR_LOOP:
 			break FOR_LOOP
 		}
 
+		c.Logger.Debug("Reading packet")
 		// Read more depending on packet type.
 		switch pkt := packet.Sum.(type) {
 		case *tmp2p.Packet_PacketPing:
@@ -636,6 +639,7 @@ FOR_LOOP:
 
 			msgBytes, err := channel.recvPacketMsg(*pkt.PacketMsg)
 			if err != nil {
+				c.Logger.Debug("error in reading packet message", "err", err)
 				if c.IsRunning() {
 					c.Logger.Debug("Connection failed @ recvRoutine", "conn", c, "err", err)
 					c.stopForError(err)
@@ -782,6 +786,8 @@ func (ch *Channel) sendBytes(bytes []byte) bool {
 	select {
 	case ch.sendQueue <- bytes:
 		atomic.AddInt32(&ch.sendQueueSize, 1)
+		ch.Logger.Debug("send queue size changed", "size",
+			ch.loadSendQueueSize())
 		return true
 	case <-time.After(defaultSendTimeout):
 		return false
@@ -795,6 +801,7 @@ func (ch *Channel) trySendBytes(bytes []byte) bool {
 	select {
 	case ch.sendQueue <- bytes:
 		atomic.AddInt32(&ch.sendQueueSize, 1)
+		ch.Logger.Debug("send queue size changed", "size", ch.loadSendQueueSize())
 		return true
 	default:
 		return false
@@ -835,6 +842,7 @@ func (ch *Channel) nextPacketMsg() tmp2p.PacketMsg {
 		packet.EOF = true
 		ch.sending = nil
 		atomic.AddInt32(&ch.sendQueueSize, -1) // decrement sendQueueSize
+		ch.Logger.Debug("send queue size changed", "size", ch.loadSendQueueSize())
 	} else {
 		packet.EOF = false
 		ch.sending = ch.sending[cmtmath.MinInt(maxSize, len(ch.sending)):]
