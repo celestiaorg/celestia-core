@@ -822,7 +822,7 @@ func BenchmarkMConnection(b *testing.B) {
 	// be fully utilized. This will be tested by increasing the total
 	// load while maintaining consistent send and receive rates. The expectation is
 	// that the time taken to transmit the messages will increase proportionally
-	// with the total load and the exact time should be close to the totalMsg*msgSize/ sendRate.
+	// with the total load and the exact time should be close to the totalMsg*msgSize/sendRate.
 
 	// Testcases 7-9 are aimed at verifying that increasing the message rate beyond
 	// the available bandwidth does not lead to a reduction or change in
