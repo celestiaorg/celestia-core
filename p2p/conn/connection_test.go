@@ -824,8 +824,8 @@ func BenchmarkMConnection(b *testing.B) {
 	// with the total load and the exact time should be close to the totalMsg*msgSize/ sendRate.
 
 	// Testcases 7-9 are aimed at verifying that increasing the message rate beyond
-	// the available bandwidth does not lead to a reduction in transmission
-	// delay. The delay is expected to be the same for all the testcases.
+	// the available bandwidth does not lead to a reduction or change in
+	// transmission delay. The delay is expected to be the same for all the testcases.
 
 	tests := []struct {
 		name              string
@@ -841,7 +841,7 @@ func BenchmarkMConnection(b *testing.B) {
 			// testcase 1
 			// in this test case, one message of size 1KB is sent every 20ms,
 			// resulting in 50 messages per second i.e., 50KB/s
-			// the time taken to send 50 messages ideally should be 1 second
+			// the time taken to send 50 messages ideally should be ~ 1 second
 			// the sendQueueCapacity should have no impact on the transmission delay
 			name: "queue capacity = 1, " +
 				"total load = 50 KB, " +
@@ -858,7 +858,7 @@ func BenchmarkMConnection(b *testing.B) {
 			// testcase 2
 			// in this test case, one message of size 1KB is sent every 20ms,
 			// resulting in 50 messages per second i.e., 50KB/s
-			// the time taken to send 50 messages ideally should be 1 second
+			// the time taken to send 50 messages ideally should be ~ 1 second
 			// the sendQueueCapacity should have no impact on the transmission delay
 			name: "queue capacity = 50, " +
 				"total load = 50 KB, " +
@@ -875,7 +875,7 @@ func BenchmarkMConnection(b *testing.B) {
 			// testcase 3
 			// in this test case, one message of size 1KB is sent every 20ms,
 			// resulting in 50 messages per second i.e., 50KB/s
-			// the time taken to send 50 messages ideally should be 1 second
+			// the time taken to send 50 messages ideally should be ~ 1 second
 			// the sendQueueCapacity should have no impact on the transmission delay
 			name: "queue capacity = 100, " +
 				"total load = 50 KB, " +
@@ -893,9 +893,9 @@ func BenchmarkMConnection(b *testing.B) {
 			// in this test case, one message of size 1KB is sent every 20ms,
 			// resulting in 50 messages per second i.e., 50KB/s
 			// the sending operation continues for 100 messages
-			// the time taken to send 100 messages is expected to be 2 seconds
+			// the time taken to send 100 messages is expected to be ~ 2 seconds
 			name: "queue capacity = 100, " +
-				" total load = 2 * 50 KB, " +
+				"total load = 2 * 50 KB, " +
 				"traffic rate = send rate",
 			msgSize:           1 * 1024,
 			totalMsg:          2 * 50,
@@ -910,9 +910,9 @@ func BenchmarkMConnection(b *testing.B) {
 			// in this test case, one message of size 1KB is sent every 20ms,
 			// resulting in 50 messages per second i.e., 50KB/s
 			// the sending operation continues for 400 messages
-			// the time taken to send 400 messages is expected to be 8 seconds
+			// the time taken to send 400 messages is expected to be ~ 8 seconds
 			name: "queue capacity = 100, " +
-				" total load = 8 * 50 KB, " +
+				"total load = 8 * 50 KB, " +
 				"traffic rate = send rate",
 			msgSize:           1 * 1024,
 			totalMsg:          8 * 50,
@@ -927,9 +927,9 @@ func BenchmarkMConnection(b *testing.B) {
 			// in this test case, one message of size 1KB is sent every 10ms,
 			// resulting in 100 messages per second i.e., 100KB/s
 			// the sending operation continues for 400 messages
-			// the time taken to send 400 messages is expected to be 8 seconds
+			// the time taken to send 400 messages is expected to be ~ 8 seconds
 			name: "queue capacity = 100, " +
-				" total load = 8 * 50 KB, " +
+				"total load = 8 * 50 KB, " +
 				"traffic rate = 2 * send rate",
 			msgSize:           1 * 1024,
 			totalMsg:          8 * 50,
@@ -944,9 +944,9 @@ func BenchmarkMConnection(b *testing.B) {
 			// in this test case, one message of size 1KB is sent every 2ms,
 			// resulting in 500 messages per second i.e., 500KB/s
 			// the sending operation continues for 400 messages
-			// the time taken to send 400 messages is expected to be 8 seconds
+			// the time taken to send 400 messages is expected to be ~ 8 seconds
 			name: "queue capacity = 100, " +
-				" total load = 8 * 50 KB, " +
+				"total load = 8 * 50 KB, " +
 				"traffic rate = 10 * send rate",
 			msgSize:           1 * 1024,
 			totalMsg:          8 * 50,
@@ -969,24 +969,19 @@ func BenchmarkMConnection(b *testing.B) {
 
 			for n := 0; n < b.N; n++ {
 				// set up two networked connections
-				// server, client := NetPipe()
+				// server, client := NetPipe() // can alternatively use this and comment out the line below
 				server, client := tcpNetPipe()
 				defer server.Close()
 				defer client.Close()
 
-				// prepare call backs to receive messages
+				// prepare callback to receive messages
 				allReceived := make(chan bool)
 				receivedLoad := 0 // number of messages received
 				onReceive := func(chID byte, msgBytes []byte) {
 					receivedLoad++
-					//log.TestingLogger().Info("onReceive: received message")
 					if receivedLoad >= tt.totalMsg && tt.totalMsg > 0 {
-						//log.TestingLogger().Info("onReceive: received all messages")
 						allReceived <- true
 					}
-				}
-				onError := func(r interface{}) {
-					//log.TestingLogger().Info("onError: received error")
 				}
 
 				cnfg := DefaultMConnConfig()
@@ -1002,7 +997,7 @@ func BenchmarkMConnection(b *testing.B) {
 					SendQueueCapacity: tt.sendQueueCapacity}}
 				serverMconn := NewMConnectionWithConfig(server, serverChDescs,
 					onReceive,
-					onError,
+					func(r interface{}) {},
 					cnfg)
 				clientMconn.SetLogger(log.TestingLogger())
 				serverMconn.SetLogger(log.TestingLogger())
@@ -1018,9 +1013,11 @@ func BenchmarkMConnection(b *testing.B) {
 					_ = serverMconn.Stop()
 				}()
 
+				// start measuring the time from here to exclude the time
+				// taken  to set up the connections
 				b.StartTimer()
-				// generate messages, is a blocking call
-				go GenerateMessages(clientMconn,
+				// start generating messages, it is a blocking call
+				GenerateMessages(clientMconn,
 					tt.messagingRate,
 					tt.totalDuration,
 					tt.totalMsg,
