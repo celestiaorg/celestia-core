@@ -818,12 +818,12 @@ func GenerateMessages(mc *MConnection, messagingRate time.Duration,
 }
 
 func BenchmarkMConnection(b *testing.B) {
-	msgSize := 1024 // in bytes
-	totalMsg := 100 // total number of messages to be sent
+	msgSize := 50 * 1024 // in bytes
+	totalMsg := 100      // total number of messages to be sent
 	chID := byte(0x01)
-	SendQueueCapacity := 10 // in messages
+	SendQueueCapacity := 100 // in messages
 
-	b.Run("test capacity", func(b *testing.B) {
+	b.Run("benchmark MConnection", func(b *testing.B) {
 		//cpuFile, _ := os.Create("cpu.pprof")
 		//pprof.StartCPUProfile(cpuFile)
 		//defer pprof.StopCPUProfile()
@@ -832,7 +832,7 @@ func BenchmarkMConnection(b *testing.B) {
 		//runtime.SetBlockProfileRate(1)
 
 		for n := 0; n < b.N; n++ {
-			//	set up two nodes
+			//	set up two networked connections
 			//server, client := NetPipe()
 			server, client := tcpNetPipe()
 			defer server.Close()
@@ -840,7 +840,7 @@ func BenchmarkMConnection(b *testing.B) {
 
 			// prepare call backs to receive messages
 			allReceived := make(chan bool)
-			receivedLoad := 0 // in messages
+			receivedLoad := 0 // number of messages received
 			onReceive := func(chID byte, msgBytes []byte) {
 				receivedLoad++
 				log.TestingLogger().Info("onReceive: received message")
@@ -870,7 +870,6 @@ func BenchmarkMConnection(b *testing.B) {
 			clientMconn.SetLogger(log.TestingLogger())
 			serverMconn.SetLogger(log.TestingLogger())
 
-			//b.ResetTimer()
 			err := clientMconn.Start()
 			require.Nil(b, err)
 			defer clientMconn.Stop() //nolint:errcheck // ignore for tests
@@ -881,13 +880,13 @@ func BenchmarkMConnection(b *testing.B) {
 
 			// generate messages, is a blocking call
 			go GenerateMessages(clientMconn,
-				1*time.Millisecond, // the messaging rate
-				1*time.Minute,      // the total duration
-				totalMsg,           // unlimited
-				msgSize, chID)      // this mimics network load of 10KB per second
+				1*time.Second, // the messaging rate
+				1*time.Minute, // the total duration
+				totalMsg,      // unlimited
+				msgSize, chID) // this mimics network load of 10KB per second
 
 			// wait for all messages to be received
-			assert.True(b, <-allReceived)
+			<-allReceived
 
 		}
 		//pprof.Lookup("block").WriteTo(f, 0)
@@ -895,7 +894,6 @@ func BenchmarkMConnection(b *testing.B) {
 		//require.NoError(b, err)
 	})
 
-	//}
 }
 
 // testPipe creates a pair of connected net.
