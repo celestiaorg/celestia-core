@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"math"
 	"net"
-	"os"
-	"runtime"
-	"runtime/pprof"
 	"sync"
 	"testing"
 	"time"
@@ -782,9 +779,11 @@ func fib(n int) int {
 }
 
 // GenerateMessages generates messages of a given size at specified rate `messagingRate`
-// for a given duration `totalDuration`.
+// for a given duration `totalDuration` until the total number of messages
+// `totalNum` is reached. If `totalNum` is less than zero,
+// then the message generation continues until the `totalDuration` is reached.
 func GenerateMessages(mc *MConnection, messagingRate time.Duration,
-	totalDuration time.Duration, totalSize int, msgSize int, chID byte) {
+	totalDuration time.Duration, totalNum int, msgSize int, chID byte) {
 	// all messages have an identical content
 	msg := bytes.Repeat([]byte{'x'}, msgSize)
 
@@ -796,44 +795,41 @@ func GenerateMessages(mc *MConnection, messagingRate time.Duration,
 	timer := time.NewTimer(totalDuration)
 	defer timer.Stop()
 
-	sentBytes := 0
+	sentNum := 0
 	// generating messages
 	for {
 		select {
 		case <-ticker.C:
 			// generate message
 			if mc.Send(chID, msg) {
-				sentBytes += msgSize
-				if sentBytes >= totalSize && totalSize > 0 {
-					fmt.Println("Completed the message generation")
+				sentNum++
+				if totalNum > 0 && sentNum >= totalNum {
+					log.TestingLogger().Info("Completed the message generation as the" +
+						" total number of messages is reached")
 					return
 				}
 			}
 		case <-timer.C:
 			// time's up
-			fmt.Println("Completed the message generation")
+			log.TestingLogger().Info("Completed the message generation as the total " + "duration is reached")
 			return
 		}
 	}
 }
 
 func BenchmarkMConnection(b *testing.B) {
-	txSize := 10
-	totalNumberOfMessages := 100
-	var msgList [100][]byte
-	for i := 0; i < totalNumberOfMessages; i++ {
-		msgList[i] = bytes.Repeat([]byte{byte(i)}, txSize)
-	}
+	msgSize := 1024 // in bytes
+	totalMsg := 100 // total number of messages to be sent
 	chID := byte(0x01)
-	SendQueueCapacity := 1
+	SendQueueCapacity := 10 // in messages
 
 	b.Run("test capacity", func(b *testing.B) {
-		cpuFile, _ := os.Create("cpu.pprof")
-		pprof.StartCPUProfile(cpuFile)
-		defer pprof.StopCPUProfile()
+		//cpuFile, _ := os.Create("cpu.pprof")
+		//pprof.StartCPUProfile(cpuFile)
+		//defer pprof.StopCPUProfile()
 
-		f, _ := os.Create("block.pprof")
-		runtime.SetBlockProfileRate(1)
+		//f, _ := os.Create("block.pprof")
+		//runtime.SetBlockProfileRate(1)
 
 		for n := 0; n < b.N; n++ {
 			//	set up two nodes
@@ -842,16 +838,24 @@ func BenchmarkMConnection(b *testing.B) {
 			defer server.Close()
 			defer client.Close()
 
+			// prepare call backs to receive messages
+			allReceived := make(chan bool)
+			receivedLoad := 0 // in messages
 			onReceive := func(chID byte, msgBytes []byte) {
+				receivedLoad++
 				log.TestingLogger().Info("onReceive: received message")
+				if receivedLoad >= totalMsg && totalMsg > 0 {
+					log.TestingLogger().Info("onReceive: received all messages")
+					allReceived <- true
+				}
 			}
 			onError := func(r interface{}) {
 				log.TestingLogger().Info("onError: received error")
 			}
 
 			cnfg := DefaultMConnConfig()
-			cnfg.SendRate = 500_000_000 // 500 MB/s
-			cnfg.RecvRate = 500_000_000 // 500 MB/s
+			cnfg.SendRate = 500 * 1024 // 500 KB/s
+			cnfg.RecvRate = 500 * 1024 // 500 KB/s
 			chDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
 				SendQueueCapacity: SendQueueCapacity}}
 			clientMconn := NewMConnectionWithConfig(client, chDescs, onReceive,
@@ -866,6 +870,7 @@ func BenchmarkMConnection(b *testing.B) {
 			clientMconn.SetLogger(log.TestingLogger())
 			serverMconn.SetLogger(log.TestingLogger())
 
+			//b.ResetTimer()
 			err := clientMconn.Start()
 			require.Nil(b, err)
 			defer clientMconn.Stop() //nolint:errcheck // ignore for tests
@@ -874,14 +879,18 @@ func BenchmarkMConnection(b *testing.B) {
 			require.Nil(b, err)
 			defer serverMconn.Stop() //nolint:errcheck // ignore for tests
 
-			// blocking call to generate messages
-			GenerateMessages(clientMconn, 1000*time.Millisecond,
-				1*time.Minute,
-				-1,               // unlimited
-				txSize+100, chID) // this mimics network load of 10KB per second
+			// generate messages, is a blocking call
+			go GenerateMessages(clientMconn,
+				1*time.Millisecond, // the messaging rate
+				1*time.Minute,      // the total duration
+				totalMsg,           // unlimited
+				msgSize, chID)      // this mimics network load of 10KB per second
 
-			pprof.Lookup("block").WriteTo(f, 0)
+			// wait for all messages to be received
+			assert.True(b, <-allReceived)
+
 		}
+		//pprof.Lookup("block").WriteTo(f, 0)
 		//_, err = server.Read(make([]byte, len(msg)))
 		//require.NoError(b, err)
 	})
