@@ -818,10 +818,10 @@ func GenerateMessages(mc *MConnection, messagingRate time.Duration,
 }
 
 func BenchmarkMConnection(b *testing.B) {
-	msgSize := 50 * 1024 // in bytes
-	totalMsg := 100      // total number of messages to be sent
+	msgSize := 5 * 1024 // in bytes
+	totalMsg := 100     // total number of messages to be sent
 	chID := byte(0x01)
-	SendQueueCapacity := 100 // in messages
+	SendQueueCapacity := 10 // in messages
 
 	b.Run("benchmark MConnection", func(b *testing.B) {
 		//cpuFile, _ := os.Create("cpu.pprof")
@@ -854,8 +854,8 @@ func BenchmarkMConnection(b *testing.B) {
 			}
 
 			cnfg := DefaultMConnConfig()
-			cnfg.SendRate = 500 * 1024 // 500 KB/s
-			cnfg.RecvRate = 500 * 1024 // 500 KB/s
+			cnfg.SendRate = 500 * 1024 * 1024 // 500 MB/s
+			cnfg.RecvRate = 500 * 1024 * 1024 // 500 MB/s
 			chDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
 				SendQueueCapacity: SendQueueCapacity}}
 			clientMconn := NewMConnectionWithConfig(client, chDescs, onReceive,
@@ -880,18 +880,17 @@ func BenchmarkMConnection(b *testing.B) {
 
 			// generate messages, is a blocking call
 			go GenerateMessages(clientMconn,
-				1*time.Second, // the messaging rate
-				1*time.Minute, // the total duration
-				totalMsg,      // unlimited
-				msgSize, chID) // this mimics network load of 10KB per second
+				1*time.Millisecond, // the messaging rate
+				1*time.Minute,      // the total duration
+				totalMsg,           // unlimited
+				msgSize, chID)      // this mimics network load of 10KB per second
 
 			// wait for all messages to be received
 			<-allReceived
 
 		}
 		//pprof.Lookup("block").WriteTo(f, 0)
-		//_, err = server.Read(make([]byte, len(msg)))
-		//require.NoError(b, err)
+
 	})
 
 }
@@ -900,17 +899,18 @@ func BenchmarkMConnection(b *testing.B) {
 // Conn objects that can be used in tests.
 func tcpNetPipe() (net.Conn, net.Conn) {
 	ln, _ := net.Listen("tcp", "127.0.0.1:0")
-	var clientConn net.Conn
+	var conn1 net.Conn
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func(c *net.Conn) {
 		*c, _ = ln.Accept()
 		wg.Done()
-	}(&clientConn)
+	}(&conn1)
 
-	serverAddr := ln.Addr().String()
-	serverConn, _ := net.Dial("tcp", serverAddr)
+	addr := ln.Addr().String()
+	conn2, _ := net.Dial("tcp", addr)
 
 	wg.Wait()
-	return serverConn, clientConn // sender, receiver
+
+	return conn2, conn1
 }
