@@ -775,7 +775,8 @@ func stopAll(t *testing.T, stoppers ...stopper) func() {
 // for a given duration `totalDuration` until the total number of messages
 // `totalNum` is reached. If `totalNum` is less than zero,
 // then the message generation continues until the `totalDuration` is reached.
-func GenerateMessages(mc *MConnection, messagingRate time.Duration,
+func GenerateMessages(mc *MConnection,
+	messagingRate time.Duration,
 	totalDuration time.Duration, totalNum int, msgSize int, chID byte) {
 	// all messages have an identical content
 	msg := bytes.Repeat([]byte{'x'}, msgSize)
@@ -811,81 +812,212 @@ func GenerateMessages(mc *MConnection, messagingRate time.Duration,
 }
 
 func BenchmarkMConnection(b *testing.B) {
-	msgSize := 5 * 1024 // in bytes
-	totalMsg := 100     // total number of messages to be sent
 	chID := byte(0x01)
-	SendQueueCapacity := 10 // in messages
 
-	b.Run("benchmark MConnection", func(b *testing.B) {
-		//cpuFile, _ := os.Create("cpu.pprof")
-		//pprof.StartCPUProfile(cpuFile)
-		//defer pprof.StopCPUProfile()
+	tests := []struct {
+		name              string
+		msgSize           int // size of each message in bytes
+		totalMsg          int // total number of messages to be sent
+		sendQueueCapacity int // send queue capacity
+		messagingRate     time.Duration
+		totalDuration     time.Duration
+		sendRate          int64
+		recRate           int64
+	}{
+		{
+			// in this test case, one message of size 1KB is sent every 20ms,
+			// resulting in 50 messages per second i.e., 50KB/s
+			// the time taken to send 50 messages  ideally should be 1 seconds
+			name: "queue capacity = 1, " +
+				" total load = 50 KB, " +
+				"traffic rate = send rate",
+			msgSize:           1 * 1024,
+			totalMsg:          1 * 50,
+			sendQueueCapacity: 1,
+			messagingRate:     20 * time.Millisecond,
+			totalDuration:     1 * time.Minute,
+			sendRate:          50 * 1024,
+			recRate:           50 * 1024,
+		},
+		{
+			// in this test case, one message of size 1KB is sent every 20ms,
+			// resulting in 50 messages per second i.e., 50KB/s
+			// the time taken to send 50 messages  ideally should be 1 seconds
+			name: "queue capacity = 50, " +
+				" total load = 50 KB, " +
+				"traffic rate = send rate",
+			msgSize:           1 * 1024,
+			totalMsg:          1 * 50,
+			sendQueueCapacity: 50,
+			messagingRate:     20 * time.Millisecond,
+			totalDuration:     1 * time.Minute,
+			sendRate:          50 * 1024,
+			recRate:           50 * 1024,
+		},
+		{
+			// in this test case, one message of size 1KB is sent every 20ms,
+			// resulting in 50 messages per second i.e., 50KB/s
+			// the time taken to send 50 messages  ideally should be 1 seconds
+			name: "queue capacity = 100, " +
+				" total load = 50 KB, " +
+				"traffic rate = send rate",
+			msgSize:           1 * 1024,
+			totalMsg:          1 * 50,
+			sendQueueCapacity: 100,
+			messagingRate:     20 * time.Millisecond,
+			totalDuration:     1 * time.Minute,
+			sendRate:          50 * 1024,
+			recRate:           50 * 1024,
+		},
+		{
+			// in this test case, one message of size 1KB is sent every 20ms,
+			// resulting in 50 messages per second i.e., 50KB/s
+			// the sending operation continues for 100 messages
+			// the time taken to send 100 messages is expected to be 2 times
+			// more than the first test case, and ideally should be 2 seconds
+			name: "queue capacity = 100, " +
+				" total load = 2 * 50 KB, " +
+				"traffic rate = send rate",
+			msgSize:           1 * 1024,
+			totalMsg:          2 * 50,
+			sendQueueCapacity: 10,
+			messagingRate:     20 * time.Millisecond,
+			totalDuration:     1 * time.Minute,
+			sendRate:          50 * 1024,
+			recRate:           50 * 1024,
+		},
+		{
+			// in this test case, one message of size 1KB is sent every 20ms,
+			// resulting in 50 messages per second i.e., 50KB/s
+			// the sending operation continues for 400 messages
+			// the time taken to send 400 messages is expected to be 8 times
+			// more than the first test case, and ideally should be 8 seconds
+			name: "queue capacity = 100, " +
+				" total load = 8 * 50 KB, " +
+				"traffic rate = send rate",
+			msgSize:           1 * 1024,
+			totalMsg:          8 * 50,
+			sendQueueCapacity: 10,
+			messagingRate:     20 * time.Millisecond,
+			totalDuration:     1 * time.Minute,
+			sendRate:          50 * 1024,
+			recRate:           50 * 1024,
+		},
+		{
+			// in this test case, one message of size 1KB is sent every 20ms,
+			// resulting in 50 messages per second i.e., 50KB/s
+			// the sending operation continues for 400 messages
+			// the time taken to send 400 messages is expected to be 8 times
+			// more than the first test case, and ideally should be 8 seconds
+			name: "queue capacity = 100, " +
+				" total load = 8 * 50 KB, " +
+				"traffic rate = 2 * send rate",
+			msgSize:           1 * 1024,
+			totalMsg:          8 * 50,
+			sendQueueCapacity: 10,
+			messagingRate:     10 * time.Millisecond,
+			totalDuration:     1 * time.Minute,
+			sendRate:          50 * 1024,
+			recRate:           50 * 1024,
+		},
+		{
+			// in this test case, one message of size 1KB is sent every 20ms,
+			// resulting in 50 messages per second i.e., 50KB/s
+			// the sending operation continues for 400 messages
+			// the time taken to send 400 messages is expected to be 8 times
+			// more than the first test case, and ideally should be 8 seconds
+			name: "queue capacity = 100, " +
+				" total load = 8 * 50 KB, " +
+				"traffic rate = 10 * send rate",
+			msgSize:           1 * 1024,
+			totalMsg:          8 * 50,
+			sendQueueCapacity: 10,
+			messagingRate:     2 * time.Millisecond,
+			totalDuration:     1 * time.Minute,
+			sendRate:          50 * 1024,
+			recRate:           50 * 1024,
+		},
+	}
 
-		//f, _ := os.Create("block.pprof")
-		//runtime.SetBlockProfileRate(1)
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			//cpuFile, _ := os.Create("cpu.pprof")
+			//pprof.StartCPUProfile(cpuFile)
+			//defer pprof.StopCPUProfile()
 
-		for n := 0; n < b.N; n++ {
-			//	set up two networked connections
-			//server, client := NetPipe()
-			server, client := tcpNetPipe()
-			defer server.Close()
-			defer client.Close()
+			//f, _ := os.Create("block.pprof")
+			//runtime.SetBlockProfileRate(1)
 
-			// prepare call backs to receive messages
-			allReceived := make(chan bool)
-			receivedLoad := 0 // number of messages received
-			onReceive := func(chID byte, msgBytes []byte) {
-				receivedLoad++
-				log.TestingLogger().Info("onReceive: received message")
-				if receivedLoad >= totalMsg && totalMsg > 0 {
-					log.TestingLogger().Info("onReceive: received all messages")
-					allReceived <- true
+			for n := 0; n < b.N; n++ {
+				//	set up two networked connections
+				//server, client := NetPipe()
+				server, client := tcpNetPipe()
+				defer server.Close()
+				defer client.Close()
+
+				// prepare call backs to receive messages
+				allReceived := make(chan bool)
+				receivedLoad := 0 // number of messages received
+				onReceive := func(chID byte, msgBytes []byte) {
+					receivedLoad++
+					//log.TestingLogger().Info("onReceive: received message")
+					if receivedLoad >= tt.totalMsg && tt.totalMsg > 0 {
+						//log.TestingLogger().Info("onReceive: received all messages")
+						allReceived <- true
+					}
 				}
+				onError := func(r interface{}) {
+					//log.TestingLogger().Info("onError: received error")
+				}
+
+				cnfg := DefaultMConnConfig()
+				cnfg.SendRate = 50 * 1024 // 500 KB/s
+				cnfg.RecvRate = 50 * 1024 // 500 KB/s
+				chDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
+					SendQueueCapacity: tt.sendQueueCapacity}}
+				clientMconn := NewMConnectionWithConfig(client, chDescs,
+					func(chID byte, msgBytes []byte) {},
+					func(r interface{}) {},
+					cnfg)
+				serverChDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
+					SendQueueCapacity: tt.sendQueueCapacity}}
+				serverMconn := NewMConnectionWithConfig(server, serverChDescs,
+					onReceive,
+					onError,
+					cnfg)
+				clientMconn.SetLogger(log.TestingLogger())
+				serverMconn.SetLogger(log.TestingLogger())
+
+				err := clientMconn.Start()
+				require.Nil(b, err)
+				defer func() {
+					_ = clientMconn.Stop()
+				}()
+				err = serverMconn.Start()
+				require.Nil(b, err)
+				defer func() {
+					_ = serverMconn.Stop()
+				}()
+
+				b.StartTimer()
+				// generate messages, is a blocking call
+				go GenerateMessages(clientMconn,
+					tt.messagingRate, // the messaging rate
+					tt.totalDuration, // the total duration
+					tt.totalMsg,      // unlimited
+					tt.msgSize, chID) // this mimics network load of 10KB per
+				// second
+
+				// wait for all messages to be received
+				<-allReceived
+				b.StopTimer()
+
 			}
-			onError := func(r interface{}) {
-				log.TestingLogger().Info("onError: received error")
-			}
+			//pprof.Lookup("block").WriteTo(f, 0)
 
-			cnfg := DefaultMConnConfig()
-			cnfg.SendRate = 500 * 1024 * 1024 // 500 MB/s
-			cnfg.RecvRate = 500 * 1024 * 1024 // 500 MB/s
-			chDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
-				SendQueueCapacity: SendQueueCapacity}}
-			clientMconn := NewMConnectionWithConfig(client, chDescs,
-				func(chID byte, msgBytes []byte) {},
-				func(r interface{}) {},
-				cnfg)
-			serverChDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
-				SendQueueCapacity: SendQueueCapacity}}
-			serverMconn := NewMConnectionWithConfig(server, serverChDescs,
-				onReceive,
-				onError,
-				cnfg)
-			clientMconn.SetLogger(log.TestingLogger())
-			serverMconn.SetLogger(log.TestingLogger())
+		})
 
-			err := clientMconn.Start()
-			require.Nil(b, err)
-			defer clientMconn.Stop() //nolint:errcheck // ignore for tests
-
-			err = serverMconn.Start()
-			require.Nil(b, err)
-			defer serverMconn.Stop() //nolint:errcheck // ignore for tests
-
-			// generate messages, is a blocking call
-			go GenerateMessages(clientMconn,
-				1*time.Millisecond, // the messaging rate
-				1*time.Minute,      // the total duration
-				totalMsg,           // unlimited
-				msgSize, chID)      // this mimics network load of 10KB per second
-
-			// wait for all messages to be received
-			<-allReceived
-
-		}
-		//pprof.Lookup("block").WriteTo(f, 0)
-
-	})
+	}
 
 }
 
