@@ -851,8 +851,9 @@ func BenchmarkMConnection(b *testing.B) {
 			cnfg.RecvRate = 500 * 1024 * 1024 // 500 MB/s
 			chDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
 				SendQueueCapacity: SendQueueCapacity}}
-			clientMconn := NewMConnectionWithConfig(client, chDescs, onReceive,
-				onError,
+			clientMconn := NewMConnectionWithConfig(client, chDescs,
+				func(chID byte, msgBytes []byte) {},
+				func(r interface{}) {},
 				cnfg)
 			serverChDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
 				SendQueueCapacity: SendQueueCapacity}}
