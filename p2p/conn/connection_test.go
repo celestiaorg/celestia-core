@@ -771,13 +771,6 @@ func stopAll(t *testing.T, stoppers ...stopper) func() {
 	}
 }
 
-func fib(n int) int {
-	if n < 2 {
-		return n
-	}
-	return fib(n-1) + fib(n-2)
-}
-
 // GenerateMessages generates messages of a given size at specified rate `messagingRate`
 // for a given duration `totalDuration` until the total number of messages
 // `totalNum` is reached. If `totalNum` is less than zero,
