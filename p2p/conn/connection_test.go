@@ -771,11 +771,11 @@ func stopAll(t *testing.T, stoppers ...stopper) func() {
 	}
 }
 
-// GenerateMessages generates messages of a given size at specified rate `messagingRate`
+// generateMessages generates messages of a given size at specified rate `messagingRate`
 // for a given duration `totalDuration` until the total number of messages
 // `totalNum` is reached. If `totalNum` is less than zero,
 // then the message generation continues until the `totalDuration` is reached.
-func GenerateMessages(mc *MConnection,
+func generateMessages(mc *MConnection,
 	messagingRate time.Duration,
 	totalDuration time.Duration, totalNum int, msgSize int, chID byte) {
 	// all messages have an identical content
@@ -805,7 +805,8 @@ func GenerateMessages(mc *MConnection,
 			}
 		case <-timer.C:
 			// time's up
-			log.TestingLogger().Info("Completed the message generation as the total " + "duration is reached")
+			log.TestingLogger().Info("Completed the message generation as the total " +
+				"duration is reached")
 			return
 		}
 	}
@@ -960,13 +961,6 @@ func BenchmarkMConnection(b *testing.B) {
 
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {
-			//cpuFile, _ := os.Create("cpu.pprof")
-			//pprof.StartCPUProfile(cpuFile)
-			//defer pprof.StopCPUProfile()
-
-			//f, _ := os.Create("block.pprof")
-			//runtime.SetBlockProfileRate(1)
-
 			for n := 0; n < b.N; n++ {
 				// set up two networked connections
 				// server, client := NetPipe() // can alternatively use this and comment out the line below
@@ -1014,10 +1008,10 @@ func BenchmarkMConnection(b *testing.B) {
 				}()
 
 				// start measuring the time from here to exclude the time
-				// taken  to set up the connections
+				// taken to set up the connections
 				b.StartTimer()
 				// start generating messages, it is a blocking call
-				GenerateMessages(clientMconn,
+				generateMessages(clientMconn,
 					tt.messagingRate,
 					tt.totalDuration,
 					tt.totalMsg,
@@ -1026,10 +1020,7 @@ func BenchmarkMConnection(b *testing.B) {
 				// wait for all messages to be received
 				<-allReceived
 				b.StopTimer()
-
 			}
-			//pprof.Lookup("block").WriteTo(f, 0)
-
 		})
 
 	}
