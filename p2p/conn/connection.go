@@ -228,9 +228,7 @@ func (c *MConnection) OnStart() error {
 	c.quitSendRoutine = make(chan struct{})
 	c.doneSendRoutine = make(chan struct{})
 	c.quitRecvRoutine = make(chan struct{})
-	c.Logger.Debug("Starting sendRoutine")
 	go c.sendRoutine()
-	c.Logger.Debug("Starting recvRoutine")
 	go c.recvRoutine()
 	return nil
 }
@@ -566,7 +564,6 @@ func (c *MConnection) recvRoutine() {
 
 FOR_LOOP:
 	for {
-		c.Logger.Debug("recvRoutine", "address", c.conn.RemoteAddr())
 		// Block until .recvMonitor says we can read.
 		c.recvMonitor.Limit(c._maxPacketMsgSize, atomic.LoadInt64(&c.config.RecvRate), true)
 
@@ -608,7 +605,6 @@ FOR_LOOP:
 			break FOR_LOOP
 		}
 
-		c.Logger.Debug("Reading packet")
 		// Read more depending on packet type.
 		switch pkt := packet.Sum.(type) {
 		case *tmp2p.Packet_PacketPing:
@@ -639,7 +635,6 @@ FOR_LOOP:
 
 			msgBytes, err := channel.recvPacketMsg(*pkt.PacketMsg)
 			if err != nil {
-				c.Logger.Debug("error in reading packet message", "err", err)
 				if c.IsRunning() {
 					c.Logger.Debug("Connection failed @ recvRoutine", "conn", c, "err", err)
 					c.stopForError(err)
