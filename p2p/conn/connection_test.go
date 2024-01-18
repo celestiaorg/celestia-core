@@ -825,10 +825,9 @@ func BenchmarkMConnection(b *testing.B) {
 	// indicating that the actual sendRate is in effect and has been
 	// utilized.
 
-	// Testcases 5-7
-	// Assess if surpassing available bandwidth maintains consistent transmission
-	// delay without congestion or performance degradation.
-	// A uniform delay across these testcases is expected.
+	// Testcases 5-7 assess if surpassing available bandwidth maintains
+	// consistent transmission delay without congestion or performance
+	// degradation. A uniform delay across these testcases is expected.
 
 	tests := []struct {
 		name              string
