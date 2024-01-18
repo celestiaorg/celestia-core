@@ -583,7 +583,7 @@ FOR_LOOP:
 
 		// Read packet type
 		var packet tmp2p.Packet
-		
+
 		_n, err := protoReader.ReadMsg(&packet)
 		c.recvMonitor.Update(_n)
 		if err != nil {
