@@ -819,8 +819,8 @@ func BenchmarkMConnection(b *testing.B) {
 	// Testcases 1-3 evaluate the effect of send queue capacity on message transmission delay.
 
 	// Testcases 3-5 assess the full utilization of maximum bandwidth by
-	// incrementally increasing the total load ( to higher than the bandwidth)
-	// while keeping send and receive rates constant.
+	// incrementally increasing the total load while keeping send and
+	// receive rates constant.
 	// The transmission time should be ~ totalMsg*msgSize/sendRate,
 	// indicating that the actual sendRate is in effect and has been
 	// utilized.
@@ -898,7 +898,7 @@ func BenchmarkMConnection(b *testing.B) {
 				"traffic rate = send rate",
 			msgSize:           1 * 1024,
 			totalMsg:          2 * 50,
-			sendQueueCapacity: 10,
+			sendQueueCapacity: 100,
 			messagingRate:     20 * time.Millisecond,
 			totalDuration:     1 * time.Minute,
 			sendRate:          50 * 1024,
@@ -914,7 +914,7 @@ func BenchmarkMConnection(b *testing.B) {
 				"traffic rate = send rate",
 			msgSize:           1 * 1024,
 			totalMsg:          8 * 50,
-			sendQueueCapacity: 10,
+			sendQueueCapacity: 100,
 			messagingRate:     20 * time.Millisecond,
 			totalDuration:     1 * time.Minute,
 			sendRate:          50 * 1024,
@@ -930,7 +930,7 @@ func BenchmarkMConnection(b *testing.B) {
 				"traffic rate = 2 * send rate",
 			msgSize:           1 * 1024,
 			totalMsg:          8 * 50,
-			sendQueueCapacity: 10,
+			sendQueueCapacity: 100,
 			messagingRate:     10 * time.Millisecond,
 			totalDuration:     1 * time.Minute,
 			sendRate:          50 * 1024,
@@ -946,7 +946,7 @@ func BenchmarkMConnection(b *testing.B) {
 				"traffic rate = 10 * send rate",
 			msgSize:           1 * 1024,
 			totalMsg:          8 * 50,
-			sendQueueCapacity: 10,
+			sendQueueCapacity: 100,
 			messagingRate:     2 * time.Millisecond,
 			totalDuration:     1 * time.Minute,
 			sendRate:          50 * 1024,
