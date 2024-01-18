@@ -819,11 +819,16 @@ func BenchmarkMConnection(b *testing.B) {
 	// Testcases 1-3 evaluate the effect of send queue capacity on message transmission delay.
 
 	// Testcases 3-5 assess the full utilization of maximum bandwidth by
-	// incrementally increasing the total load while keeping send and receive
-	// rates constant. The transmission time should be ~ totalMsg*msgSize/sendRate.
+	// incrementally increasing the total load ( to higher than the bandwidth)
+	// while keeping send and receive rates constant.
+	// The transmission time should be ~ totalMsg*msgSize/sendRate,
+	// indicating that the actual sendRate is in effect and has been
+	// utilized.
 
-	// Testcases 5-7 verify that exceeding available bandwidth does not affect
-	// transmission delay, expecting consistent delay across all testcases.
+	// Testcases 5-7
+	// Assess if surpassing available bandwidth maintains consistent transmission
+	// delay without congestion or performance degradation.
+	// A uniform delay across these testcases is expected.
 
 	tests := []struct {
 		name              string
