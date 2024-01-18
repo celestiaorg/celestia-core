@@ -771,10 +771,11 @@ func stopAll(t *testing.T, stoppers ...stopper) func() {
 	}
 }
 
-// generateMessages generates messages of a given size at specified rate `messagingRate`
-// for a given duration `totalDuration` until the total number of messages
-// `totalNum` is reached. If `totalNum` is less than zero,
-// then the message generation continues until the `totalDuration` is reached.
+// generateMessages sends a sequence of messages to the specified multiplex connection `mc`.
+// Each message has the given size and is sent at the specified rate
+// `messagingRate`. This process continues for the duration `totalDuration` or
+// until `totalNum` messages are sent. If `totalNum` is negative,
+// messaging persists for the entire `totalDuration`.
 func generateMessages(mc *MConnection,
 	messagingRate time.Duration,
 	totalDuration time.Duration, totalNum int, msgSize int, chID byte) {
@@ -815,18 +816,14 @@ func generateMessages(mc *MConnection,
 func BenchmarkMConnection(b *testing.B) {
 	chID := byte(0x01)
 
-	// Testcases 1-3 are designed to assess the impact of send queue capacity on
-	// message transmission delay.
+	// Testcases 1-3 evaluate the effect of send queue capacity on message transmission delay.
 
-	// Testcases 3-5 are focused on evaluating whether the maximum bandwidth can
-	// be fully utilized. This will be tested by increasing the total
-	// load while maintaining consistent send and receive rates. The expectation is
-	// that the time taken to transmit the messages will increase proportionally
-	// with the total load and the exact time should be close to the totalMsg*msgSize/sendRate.
+	// Testcases 3-5 assess the full utilization of maximum bandwidth by
+	// incrementally increasing the total load while keeping send and receive
+	// rates constant. The transmission time should be ~ totalMsg*msgSize/sendRate.
 
-	// Testcases 7-9 are aimed at verifying that increasing the message rate beyond
-	// the available bandwidth does not lead to a reduction or change in
-	// transmission delay. The delay is expected to be the same for all the testcases.
+	// Testcases 5-7 verify that exceeding available bandwidth does not affect
+	// transmission delay, expecting consistent delay across all testcases.
 
 	tests := []struct {
 		name              string
@@ -840,10 +837,9 @@ func BenchmarkMConnection(b *testing.B) {
 	}{
 		{
 			// testcase 1
-			// in this test case, one message of size 1KB is sent every 20ms,
-			// resulting in 50 messages per second i.e., 50KB/s
-			// the time taken to send 50 messages ideally should be ~ 1 second
-			// the sendQueueCapacity should have no impact on the transmission delay
+			// Sends one 1KB message every 20ms, totaling 50 messages (50KB/s) per second.
+			// Ideal transmission time for 50 messages is ~1 second.
+			// SendQueueCapacity should not affect transmission delay.
 			name: "queue capacity = 1, " +
 				"total load = 50 KB, " +
 				"msg rate = send rate",
@@ -857,10 +853,10 @@ func BenchmarkMConnection(b *testing.B) {
 		},
 		{
 			// testcase 2
-			// in this test case, one message of size 1KB is sent every 20ms,
-			// resulting in 50 messages per second i.e., 50KB/s
-			// the time taken to send 50 messages ideally should be ~ 1 second
-			// the sendQueueCapacity should have no impact on the transmission delay
+			// Sends one 1KB message every 20ms, totaling 50 messages (50KB/s) per second.
+			// Ideal transmission time for 50 messages is ~1 second.
+			// Increasing SendQueueCapacity should not affect transmission
+			// delay.
 			name: "queue capacity = 50, " +
 				"total load = 50 KB, " +
 				"traffic rate = send rate",
@@ -874,10 +870,10 @@ func BenchmarkMConnection(b *testing.B) {
 		},
 		{
 			// testcase 3
-			// in this test case, one message of size 1KB is sent every 20ms,
-			// resulting in 50 messages per second i.e., 50KB/s
-			// the time taken to send 50 messages ideally should be ~ 1 second
-			// the sendQueueCapacity should have no impact on the transmission delay
+			// Sends one 1KB message every 20ms, totaling 50 messages (50KB/s) per second.
+			// Ideal transmission time for 50 messages is ~1 second.
+			// Increasing SendQueueCapacity should not affect transmission
+			// delay.
 			name: "queue capacity = 100, " +
 				"total load = 50 KB, " +
 				"traffic rate = send rate",
@@ -891,10 +887,8 @@ func BenchmarkMConnection(b *testing.B) {
 		},
 		{
 			// testcase 4
-			// in this test case, one message of size 1KB is sent every 20ms,
-			// resulting in 50 messages per second i.e., 50KB/s
-			// the sending operation continues for 100 messages
-			// the time taken to send 100 messages is expected to be ~ 2 seconds
+			// Sends one 1KB message every 20ms, totaling 50 messages (50KB/s) per second.
+			// The test runs for 100 messages, expecting a total transmission time of ~2 seconds.
 			name: "queue capacity = 100, " +
 				"total load = 2 * 50 KB, " +
 				"traffic rate = send rate",
@@ -908,10 +902,9 @@ func BenchmarkMConnection(b *testing.B) {
 		},
 		{
 			// testcase 5
-			// in this test case, one message of size 1KB is sent every 20ms,
-			// resulting in 50 messages per second i.e., 50KB/s
-			// the sending operation continues for 400 messages
-			// the time taken to send 400 messages is expected to be ~ 8 seconds
+			// Sends one 1KB message every 20ms, totaling 50 messages (50KB/s) per second.
+			// The test runs for 400 messages,
+			// expecting a total transmission time of ~8 seconds.
 			name: "queue capacity = 100, " +
 				"total load = 8 * 50 KB, " +
 				"traffic rate = send rate",
@@ -925,10 +918,9 @@ func BenchmarkMConnection(b *testing.B) {
 		},
 		{
 			// testcase 6
-			// in this test case, one message of size 1KB is sent every 10ms,
-			// resulting in 100 messages per second i.e., 100KB/s
-			// the sending operation continues for 400 messages
-			// the time taken to send 400 messages is expected to be ~ 8 seconds
+			// Sends one 1KB message every 10ms, totaling 100 messages (100KB/s) per second.
+			// The test runs for 400 messages,
+			// expecting a total transmission time of ~8 seconds.
 			name: "queue capacity = 100, " +
 				"total load = 8 * 50 KB, " +
 				"traffic rate = 2 * send rate",
@@ -942,10 +934,9 @@ func BenchmarkMConnection(b *testing.B) {
 		},
 		{
 			// testcase 7
-			// in this test case, one message of size 1KB is sent every 2ms,
-			// resulting in 500 messages per second i.e., 500KB/s
-			// the sending operation continues for 400 messages
-			// the time taken to send 400 messages is expected to be ~ 8 seconds
+			// Sends one 1KB message every 2ms, totaling 500 messages (500KB/s) per second.
+			// The test runs for 400 messages,
+			// expecting a total transmission time of ~8 seconds.
 			name: "queue capacity = 100, " +
 				"total load = 8 * 50 KB, " +
 				"traffic rate = 10 * send rate",
