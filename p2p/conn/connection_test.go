@@ -1022,7 +1022,7 @@ func BenchmarkMConnection(b *testing.B) {
 
 }
 
-// testPipe creates a pair of connected net.Conn objects that can be used in tests.
+// tcpNetPipe creates a pair of connected net.Conn objects that can be used in tests.
 func tcpNetPipe() (net.Conn, net.Conn) {
 	ln, _ := net.Listen("tcp", "127.0.0.1:0")
 	var conn1 net.Conn
