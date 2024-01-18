@@ -781,8 +781,6 @@ func (ch *Channel) sendBytes(bytes []byte) bool {
 	select {
 	case ch.sendQueue <- bytes:
 		atomic.AddInt32(&ch.sendQueueSize, 1)
-		ch.Logger.Debug("send queue size changed", "size",
-			ch.loadSendQueueSize())
 		return true
 	case <-time.After(defaultSendTimeout):
 		return false
@@ -796,7 +794,6 @@ func (ch *Channel) trySendBytes(bytes []byte) bool {
 	select {
 	case ch.sendQueue <- bytes:
 		atomic.AddInt32(&ch.sendQueueSize, 1)
-		ch.Logger.Debug("send queue size changed", "size", ch.loadSendQueueSize())
 		return true
 	default:
 		return false
@@ -837,7 +834,6 @@ func (ch *Channel) nextPacketMsg() tmp2p.PacketMsg {
 		packet.EOF = true
 		ch.sending = nil
 		atomic.AddInt32(&ch.sendQueueSize, -1) // decrement sendQueueSize
-		ch.Logger.Debug("send queue size changed", "size", ch.loadSendQueueSize())
 	} else {
 		packet.EOF = false
 		ch.sending = ch.sending[cmtmath.MinInt(maxSize, len(ch.sending)):]
