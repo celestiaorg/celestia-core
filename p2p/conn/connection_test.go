@@ -1296,3 +1296,5 @@ func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
 
 	}
 }
+
+// generateMessages sends a sequence of messages to the specified multiplex connection `mc`.
