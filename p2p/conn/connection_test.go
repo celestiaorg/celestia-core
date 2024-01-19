@@ -1099,9 +1099,9 @@ func BenchmarkMConnection_ScalingPayloadSizes_HighSendRate(b *testing.B) {
 	msgs := generateExponentialSizedMessages(maxSize, 1024)
 
 	// create test cases for each message size
-	var testCases []testCase
-	for _, msg := range msgs {
-		testCases = append(testCases, testCase{
+	var testCases = make([]testCase, len(msgs))
+	for i, msg := range msgs {
+		testCases[i] = testCase{
 			name:              fmt.Sprintf("msgSize = %d KB", len(msg)/1024),
 			msgSize:           len(msg),
 			msg:               msg,
@@ -1111,7 +1111,7 @@ func BenchmarkMConnection_ScalingPayloadSizes_HighSendRate(b *testing.B) {
 			sendQueueCapacity: 100,
 			sendRate:          512 * 1024 * 1024,
 			recRate:           512 * 1024 * 1024,
-		})
+		}
 	}
 
 	chID := byte(0x01)
@@ -1209,11 +1209,11 @@ func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
 	msgs := generateExponentialSizedMessages(maxSize, 1024)
 	totalLoad := float64(maxSize)
 	// create test cases for each message size
-	var testCases []testCase
-	for _, msg := range msgs {
+	var testCases = make([]testCase, len(msgs))
+	for i, msg := range msgs {
 		msgSize := len(msg)
 		totalMsg := int(math.Ceil(totalLoad / float64(msgSize)))
-		testCases = append(testCases, testCase{
+		testCases[i] = testCase{
 			name:              fmt.Sprintf("msgSize = %d KB", msgSize/1024),
 			msgSize:           msgSize,
 			msg:               msg,
@@ -1223,7 +1223,7 @@ func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
 			sendQueueCapacity: 100,
 			sendRate:          4 * 1024,
 			recRate:           4 * 1024,
-		})
+		}
 	}
 
 	chID := byte(0x01)
