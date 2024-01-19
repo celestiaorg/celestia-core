@@ -1066,7 +1066,7 @@ func generateExponentialSizedMessages(maxSize int, divisor int) [][]byte {
 	return msgs
 }
 
-func BenchmarkMConnection_ScalingPayloadSizes_HighSendRate( (b *testing.B) {
+func BenchmarkMConnection_ScalingPayloadSizes_HighSendRate(b *testing.B) {
 	// One aspect that could impact the performance of MConnection and the
 	// transmission rate is the size of the messages sent over the network,
 	// especially when they exceed the MConnection.MaxPacketMsgPayloadSize (
@@ -1115,7 +1115,7 @@ func BenchmarkMConnection_ScalingPayloadSizes_HighSendRate( (b *testing.B) {
 	}
 
 	chID := byte(0x01)
-	
+
 	for _, tt := range testCases {
 		b.Run(tt.name, func(b *testing.B) {
 			for n := 0; n < b.N; n++ {
@@ -1296,5 +1296,3 @@ func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
 
 	}
 }
-
-// generateMessages sends a sequence of messages to the specified multiplex connection `mc`.
