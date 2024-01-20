@@ -37,11 +37,12 @@ const (
 // spec under /.spec.md
 type Reactor struct {
 	p2p.BaseReactor
-	opts        *ReactorOptions
-	mempool     *TxPool
-	ids         *mempoolIDs
-	requests    *requestScheduler
-	traceClient *trace.Client
+	opts         *ReactorOptions
+	mempool      *TxPool
+	ids          *mempoolIDs
+	requests     *requestScheduler
+	blockFetcher *blockFetcher
+	traceClient  *trace.Client
 }
 
 type ReactorOptions struct {
@@ -87,11 +88,12 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		return nil, err
 	}
 	memR := &Reactor{
-		opts:        opts,
-		mempool:     mempool,
-		ids:         newMempoolIDs(),
-		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		traceClient: &trace.Client{},
+		opts:         opts,
+		mempool:      mempool,
+		ids:          newMempoolIDs(),
+		requests:     newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		blockFetcher: NewBlockFetcher(),
+		traceClient:  &trace.Client{},
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR, nil
@@ -256,6 +258,9 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				memR.Logger.Info("Could not add tx", "txKey", key, "err", err)
 				return
 			}
+			// If a block has been proposed with this transaction and
+			// consensus was waiting for it, it will now be published.
+			memR.blockFetcher.TryAddMissingTx(key, tx)
 			if !memR.opts.ListenOnly {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
 				memR.broadcastSeenTx(key)

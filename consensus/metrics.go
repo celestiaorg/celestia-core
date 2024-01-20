@@ -1,12 +1,16 @@
 package consensus
 
 import (
+	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/go-kit/kit/metrics"
 	"github.com/go-kit/kit/metrics/discard"
 	cstypes "github.com/tendermint/tendermint/consensus/types"
+	"github.com/tendermint/tendermint/libs/os"
 
 	prometheus "github.com/go-kit/kit/metrics/prometheus"
 	stdprometheus "github.com/prometheus/client_golang/prometheus"
@@ -298,4 +302,50 @@ func (m *Metrics) MarkStep(s cstypes.RoundStepType) {
 		m.StepDuration.With("step", stepName).Observe(stepTime)
 	}
 	m.stepStart = time.Now()
+}
+
+type JSONMetrics struct {
+	dir                  string
+	interval             int
+	StartTime            time.Time
+	EndTime              time.Time
+	Blocks               uint64
+	Rounds               uint64
+	SentConsensusBytes   uint64
+	SentCompactBlocks    uint64
+	SentCompactBytes     uint64
+	CompactBlockFailures uint64
+	SentBlockParts       uint64
+	SentBlockPartsBytes  uint64
+}
+
+func NewJSONMetrics(dir string) *JSONMetrics {
+	return &JSONMetrics{
+		dir:       dir,
+		StartTime: time.Now().UTC(),
+	}
+}
+
+func (m *JSONMetrics) Save() {
+	m.EndTime = time.Now().UTC()
+	content, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	path := filepath.Join(m.dir, fmt.Sprintf("metrics_%d.json", m.interval))
+	os.MustWriteFile(path, content, 0644)
+	m.StartTime = m.EndTime
+	m.interval++
+	m.reset()
+}
+
+func (m *JSONMetrics) reset() {
+	m.Blocks = 0
+	m.Rounds = 0
+	m.SentConsensusBytes = 0
+	m.SentBlockParts = 0
+	m.SentBlockPartsBytes = 0
+	m.SentCompactBlocks = 0
+	m.SentCompactBytes = 0
+	m.CompactBlockFailures = 0
 }

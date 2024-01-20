@@ -1284,7 +1284,9 @@ func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.Pa
 	}
 	proposerAddr := cs.privValidatorPubKey.Address()
 
-	return cs.blockExec.CreateProposalBlock(cs.Height, cs.state, commit, proposerAddr)
+	block = cs.blockExec.CreateProposalBlock(cs.Height, cs.state, commit, proposerAddr)
+	blockParts = block.MakePartSet(types.BlockPartSizeBytes)
+	return
 }
 
 // Enter: any +2/3 prevotes at next round.

@@ -20,12 +20,8 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/service"
 	cmtsync "github.com/tendermint/tendermint/libs/sync"
-	mempl "github.com/tendermint/tendermint/mempool"
 
-	cfg "github.com/tendermint/tendermint/config"
-	mempoolv2 "github.com/tendermint/tendermint/mempool/cat"
-	mempoolv0 "github.com/tendermint/tendermint/mempool/v0"
-	mempoolv1 "github.com/tendermint/tendermint/mempool/v1"
+	"github.com/tendermint/tendermint/mempool/cat"
 	"github.com/tendermint/tendermint/p2p"
 	cmtcons "github.com/tendermint/tendermint/proto/tendermint/consensus"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
@@ -48,6 +44,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 	genDoc, privVals := randGenesisDoc(nValidators, false, 30)
 	css := make([]*State, nValidators)
+	catReactors := make([]*cat.Reactor, nValidators)
 
 	for i := 0; i < nValidators; i++ {
 		logger := consensusLogger().With("test", "byzantine", "validator", i)
@@ -72,33 +69,21 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		proxyAppConnConMem := abcicli.NewLocalClient(mtx, app)
 
 		// Make Mempool
-		var mempool mempl.Mempool
-
-		switch thisConfig.Mempool.Version {
-		case cfg.MempoolV0:
-			mempool = mempoolv0.NewCListMempool(config.Mempool,
-				proxyAppConnConMem,
-				state.LastBlockHeight,
-				mempoolv0.WithPreCheck(sm.TxPreCheck(state)),
-				mempoolv0.WithPostCheck(sm.TxPostCheck(state)))
-		case cfg.MempoolV1:
-			mempool = mempoolv1.NewTxMempool(logger,
-				config.Mempool,
-				proxyAppConnConMem,
-				state.LastBlockHeight,
-				mempoolv1.WithPreCheck(sm.TxPreCheck(state)),
-				mempoolv1.WithPostCheck(sm.TxPostCheck(state)),
-			)
-		case cfg.MempoolV2:
-			mempool = mempoolv2.NewTxPool(
-				logger,
-				config.Mempool,
-				proxyAppConnConMem,
-				state.LastBlockHeight,
-				mempoolv2.WithPreCheck(sm.TxPreCheck(state)),
-				mempoolv2.WithPostCheck(sm.TxPostCheck(state)),
-			)
-		}
+		mempool := cat.NewTxPool(
+			logger,
+			config.Mempool,
+			proxyAppConnConMem,
+			state.LastBlockHeight,
+			cat.WithPreCheck(sm.TxPreCheck(state)),
+			cat.WithPostCheck(sm.TxPostCheck(state)),
+		)
+		var err error
+		catReactors[i], err = cat.NewReactor(mempool, &cat.ReactorOptions{
+			ListenOnly:     !config.Mempool.Broadcast,
+			MaxTxSize:      config.Mempool.MaxTxBytes,
+			MaxGossipDelay: config.Mempool.MaxGossipDelay,
+		})
+		require.NoError(t, err)
 
 		if thisConfig.Consensus.WaitForTxs() {
 			mempool.EnableTxsAvailable()
@@ -112,7 +97,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool)
+		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, catReactors[i], evpool)
 		cs.SetLogger(cs.Logger)
 		// set private validator
 		pv := privVals[i]
@@ -154,6 +139,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	// make connected switches and start all reactors
 	p2p.MakeConnectedSwitches(config.P2P, nValidators, func(i int, s *p2p.Switch) *p2p.Switch {
 		s.AddReactor("CONSENSUS", reactors[i])
+		s.AddReactor("MEMPOOL", catReactors[i])
 		s.SetLogger(reactors[i].conS.Logger.With("module", "p2p"))
 		return s
 	}, p2p.Connect2Switches)
@@ -230,9 +216,10 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		}
 		proposerAddr := lazyProposer.privValidatorPubKey.Address()
 
-		block, blockParts := lazyProposer.blockExec.CreateProposalBlock(
+		block := lazyProposer.blockExec.CreateProposalBlock(
 			lazyProposer.Height, lazyProposer.state, commit, proposerAddr,
 		)
+		blockParts := block.MakePartSet(types.BlockPartSizeBytes)
 
 		// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
 		// and the privValidator will refuse to sign anything.
@@ -480,7 +467,8 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	// Avoid sending on internalMsgQueue and running consensus state.
 
 	// Create a new proposal block from state/txs from the mempool.
-	block1, blockParts1 := cs.createProposalBlock()
+	block1 := cs.createProposalBlock()
+	blockParts1 := block1.MakePartSet(types.BlockPartSizeBytes)
 	polRound := cs.TwoThirdPrevoteRound
 	propBlockID := types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
 	proposal1 := types.NewProposal(height, round, polRound, propBlockID)
@@ -495,7 +483,8 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	deliverTxsRange(cs, 0, 1)
 
 	// Create a new proposal block from state/txs from the mempool.
-	block2, blockParts2 := cs.createProposalBlock()
+	block2 := cs.createProposalBlock()
+	blockParts2 := block2.MakePartSet(types.BlockPartSizeBytes)
 	polRound = cs.TwoThirdPrevoteRound
 	propBlockID = types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
 	proposal2 := types.NewProposal(height, round, polRound, propBlockID)
