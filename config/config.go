@@ -752,6 +752,12 @@ type MempoolConfig struct {
 	// has existed in the mempool at least TTLNumBlocks number of blocks or if
 	// it's insertion time into the mempool is beyond TTLDuration.
 	TTLNumBlocks int64 `mapstructure:"ttl-num-blocks"`
+
+	// MaxGossipDelay is the maximum allotted time that the reactor expects a transaction to
+	// arrive before issuing a new request to a different peer
+	// Only applicable to the v2 / CAT mempool
+	// Default is 200ms
+	MaxGossipDelay time.Duration `mapstructure:"max-gossip-delay"`
 }
 
 // DefaultMempoolConfig returns a default configuration for the CometBFT mempool
