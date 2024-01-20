@@ -3,6 +3,7 @@ package cat
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
+	tmos "github.com/cometbft/cometbft/libs/os"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
@@ -52,6 +54,7 @@ type TxPool struct {
 	config       *config.MempoolConfig
 	proxyAppConn proxy.AppConnMempool
 	metrics      *mempool.Metrics
+	jsonMetrics  *mempool.JSONMetrics
 
 	// these values are modified once per height
 	updateMtx            sync.Mutex
@@ -86,6 +89,12 @@ func NewTxPool(
 	height int64,
 	options ...TxPoolOption,
 ) *TxPool {
+	// set up the directory for tracking metrics
+	path := filepath.Join(cfg.RootDir, "data", "mempool")
+	if err := tmos.EnsureDir(path, 0700); err != nil {
+		panic(err)
+	}
+
 	txmp := &TxPool{
 		logger:           logger,
 		config:           cfg,
@@ -99,6 +108,7 @@ func NewTxPool(
 		store:            newStore(),
 		broadcastCh:      make(chan *wrappedTx),
 		txsToBeBroadcast: make([]types.TxKey, 0),
+		jsonMetrics:      mempool.NewJSONMetrics(path),
 	}
 
 	for _, opt := range options {

@@ -98,7 +98,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	height int64,
 	state State, commit *types.Commit,
 	proposerAddr []byte,
-) (*types.Block, *types.PartSet) {
+) *types.Block {
 
 	maxBytes := state.ConsensusParams.Block.MaxBytes
 	maxGas := state.ConsensusParams.Block.MaxGas
@@ -158,7 +158,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		}
 	}
 
-	return block, block.MakePartSet(types.BlockPartSizeBytes)
+	return block
 }
 
 func (blockExec *BlockExecutor) ProcessProposal(

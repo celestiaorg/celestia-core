@@ -2,10 +2,12 @@ package consensus
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"sort"
 	"time"
@@ -67,6 +69,27 @@ type txNotifier interface {
 	TxsAvailable() <-chan struct{}
 }
 
+type TxFetcher interface {
+	// For constructing the compact block
+	FetchKeysFromTxs(context.Context, [][]byte) ([][]byte, error)
+	// For reconstructing the full block from the compact block
+	FetchTxsFromKeys(context.Context, []byte, [][]byte) ([][]byte, error)
+}
+
+var _ TxFetcher = (*StandardTxFetcher)(nil)
+
+// StandardTxFetcher implements TxFetcher. Unlike the CATPool, it gossips the entire transaction set
+// instead of the set of keys. This aligns with Tendermint's vanilla block propagation method
+type StandardTxFetcher struct{}
+
+func (tf *StandardTxFetcher) FetchKeysFromTxs(_ context.Context, txs [][]byte) ([][]byte, error) {
+	return txs, nil
+}
+
+func (tf *StandardTxFetcher) FetchTxsFromKeys(_ context.Context, _ []byte, txs [][]byte) ([][]byte, error) {
+	return txs, nil
+}
+
 // interface to the evidence pool
 type evidencePool interface {
 	// reports conflicting votes to the evidence pool to be processed into evidence
@@ -92,6 +115,8 @@ type State struct {
 
 	// notify us if txs are available
 	txNotifier txNotifier
+	// fetch txs based on tx keys. Used for compact blocks.
+	txFetcher TxFetcher
 
 	// add evidence to the pool
 	// when it's detected
@@ -141,8 +166,8 @@ type State struct {
 	evsw cmtevents.EventSwitch
 
 	// for reporting metrics
-	metrics *Metrics
-
+	metrics     *Metrics
+	jsonMetrics *JSONMetrics
 	traceClient *trace.Client
 }
 
@@ -156,14 +181,21 @@ func NewState(
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
 	txNotifier txNotifier,
+	txFetcher TxFetcher,
 	evpool evidencePool,
 	options ...StateOption,
 ) *State {
+	path := filepath.Join(config.RootDir, "data", "consensus")
+	if err := cmtos.EnsureDir(path, 0700); err != nil {
+		panic(err)
+	}
+
 	cs := &State{
 		config:           config,
 		blockExec:        blockExec,
 		blockStore:       blockStore,
 		txNotifier:       txNotifier,
+		txFetcher:        txFetcher,
 		peerMsgQueue:     make(chan msgInfo, msgQueueSize),
 		internalMsgQueue: make(chan msgInfo, msgQueueSize),
 		timeoutTicker:    NewTimeoutTicker(),
@@ -174,7 +206,12 @@ func NewState(
 		evpool:           evpool,
 		evsw:             cmtevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
+		jsonMetrics:      NewJSONMetrics(path),
 		traceClient:      &trace.Client{},
+	}
+
+	if cs.txFetcher == nil {
+		cs.txFetcher = &StandardTxFetcher{}
 	}
 
 	// set function defaults (may be overwritten before calling Start)
@@ -1150,10 +1187,19 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		block, blockParts = cs.TwoThirdPrevoteBlock, cs.TwoThirdPrevoteBlockParts
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
-		block, blockParts = cs.createProposalBlock()
+		block = cs.createProposalBlock()
 		if block == nil {
 			return
 		}
+
+		keys, err := cs.txFetcher.FetchKeysFromTxs(context.Background(), block.Txs.ToSliceOfBytes())
+		if err != nil {
+			cs.Logger.Error("failed to fetch tx keys", "err", err)
+			return
+		}
+
+		block.Txs = types.ToTxs(keys)
+		blockParts = block.MakePartSet(types.BlockPartSizeBytes)
 	}
 
 	// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
@@ -1205,7 +1251,7 @@ func (cs *State) isProposalComplete() bool {
 //
 // NOTE: keep it side-effect free for clarity.
 // CONTRACT: cs.privValidator is not nil.
-func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.PartSet) {
+func (cs *State) createProposalBlock() *types.Block {
 	if cs.privValidator == nil {
 		panic("entered createProposalBlock with privValidator being nil")
 	}
@@ -1223,14 +1269,14 @@ func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.Pa
 
 	default: // This shouldn't happen.
 		cs.Logger.Error("propose step; cannot propose anything without commit for the previous block")
-		return
+		return nil
 	}
 
 	if cs.privValidatorPubKey == nil {
 		// If this node is a validator & proposer in the current round, it will
 		// miss the opportunity to create a block.
 		cs.Logger.Error("propose step; empty priv validator public key", "err", errPubKeyIsNotSet)
-		return
+		return nil
 	}
 
 	proposerAddr := cs.privValidatorPubKey.Address()
@@ -1941,7 +1987,25 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		if err != nil {
 			return added, err
 		}
+		blockHash := cs.ProposalBlockParts.Header().Hash
+		timeout := cs.config.Propose(round)
 
+		// Yield the lock while we fetch the transactions from the mempool so that votes
+		// and other operations can be processed.
+		cs.mtx.Unlock()
+
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		txs, err := cs.txFetcher.FetchTxsFromKeys(ctx, blockHash, block.Data.Txs.ToSliceOfBytes())
+
+		cs.mtx.Lock()
+		if err != nil {
+			cs.Logger.Error("failed to fetch transactions for compact block", "err", err)
+			cs.jsonMetrics.CompactBlockFailures++
+			return true, err
+		}
+		block.Data.Txs = types.ToTxs(txs)
 		cs.ProposalBlock = block
 
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
