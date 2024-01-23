@@ -1048,21 +1048,17 @@ func tcpNetPipe() (net.Conn, net.Conn) {
 	return conn2, conn1
 }
 
-// generateExponentialSizedMessages creates a series of messages with sizes
-// increasing exponentially.
-// Each message is filled with the byte 'x'.
-// The size of each message doubles, starting from 1 up to maxSize.
-func generateExponentialSizedMessages(maxSize int, divisor int) [][]byte {
-	iterations := math.Ceil(math.Log2(float64(maxSize / divisor)))
-	msgs := make([][]byte, int(iterations))
+// generateExponentialSizedMessages creates and returns a series of messages
+// with sizes (in the specified unit) increasing exponentially.
+// The size of each message doubles, starting from 1 up to maxSizeBytes.
+// unit is expected to be a power of 2.
+func generateExponentialSizedMessages(maxSizeBytes int, unit int) [][]byte {
+	maxSizeToUnit := int(math.Ceil(float64(maxSizeBytes / unit)))
+	msgs := make([][]byte, 0)
 
-	for i := 0; i < int(iterations); i++ {
-		size := int(math.Pow(2,
-			float64(i))) * divisor // calculate the size of the message for this
-		// iteration
-		msgs[i] = bytes.Repeat([]byte{'x'}, size) // create a message of the calculated size
+	for size := 1; size <= maxSizeToUnit; size *= 2 {
+		msgs = append(msgs, bytes.Repeat([]byte{'x'}, size*unit)) // create a message of the calculated size
 	}
-
 	return msgs
 }
 
