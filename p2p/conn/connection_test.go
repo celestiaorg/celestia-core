@@ -1056,7 +1056,7 @@ func generateExponentialSizedMessages(maxSize int, divisor int) [][]byte {
 	iterations := math.Ceil(math.Log2(float64(maxSize / divisor)))
 	msgs := make([][]byte, int(iterations))
 
-	for i := 0; i <= int(iterations); i++ {
+	for i := 0; i < int(iterations); i++ {
 		size := int(math.Pow(2,
 			float64(i))) * divisor // calculate the size of the message for this
 		// iteration
