@@ -1053,7 +1053,7 @@ func tcpNetPipe() (net.Conn, net.Conn) {
 // The size of each message doubles, starting from 1 up to maxSizeBytes.
 // unit is expected to be a power of 2.
 func generateExponentialSizedMessages(maxSizeBytes int, unit int) [][]byte {
-	maxSizeToUnit := int(math.Ceil(float64(maxSizeBytes / unit)))
+	maxSizeToUnit := maxSizeBytes / unit
 	msgs := make([][]byte, 0)
 
 	for size := 1; size <= maxSizeToUnit; size *= 2 {
