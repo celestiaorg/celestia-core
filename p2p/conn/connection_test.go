@@ -1142,43 +1142,6 @@ func runBenchmarkTest(b *testing.B, tt testCase) {
 	})
 }
 
-func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
-	// This benchmark test builds upon the previous one i.e.,
-	// BenchmarkMConnection_ScalingPayloadSizes_HighSendRate
-	// by setting the send/and receive rates lower than the message load.
-	// Test cases involve sending the same load of messages but with different message sizes.
-	// Since the message load and bandwidth are consistent across all test cases,
-	// they are expected to complete in the same amount of time. i.e.,
-	//totalLoad/sendRate.
-
-	maxSize := 32 * 1024 // 32KB
-	msgs := generateExponentialSizedMessages(maxSize, 1024)
-	totalLoad := float64(maxSize)
-	chID := byte(0x01)
-	// create test cases for each message size
-	var testCases = make([]testCase, len(msgs))
-	for i, msg := range msgs {
-		msgSize := len(msg)
-		totalMsg := int(math.Ceil(totalLoad / float64(msgSize)))
-		testCases[i] = testCase{
-			name:              fmt.Sprintf("msgSize = %d KB", msgSize/1024),
-			msgSize:           msgSize,
-			msg:               msg,
-			totalMsg:          totalMsg,
-			messagingRate:     time.Millisecond,
-			totalDuration:     1 * time.Minute,
-			sendQueueCapacity: 100,
-			sendRate:          4 * 1024,
-			recRate:           4 * 1024,
-			chID:              chID,
-		}
-	}
-
-	for _, tt := range testCases {
-		runBenchmarkTest(b, tt)
-	}
-}
-
 func BenchmarkMConnection_ScalingPayloadSizes_HighSendRate(b *testing.B) {
 	// One aspect that could impact the performance of MConnection and the
 	// transmission rate is the size of the messages sent over the network,
@@ -1213,6 +1176,43 @@ func BenchmarkMConnection_ScalingPayloadSizes_HighSendRate(b *testing.B) {
 			sendQueueCapacity: 100,
 			sendRate:          512 * 1024 * 1024,
 			recRate:           512 * 1024 * 1024,
+			chID:              chID,
+		}
+	}
+
+	for _, tt := range testCases {
+		runBenchmarkTest(b, tt)
+	}
+}
+
+func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
+	// This benchmark test builds upon the previous one i.e.,
+	// BenchmarkMConnection_ScalingPayloadSizes_HighSendRate
+	// by setting the send/and receive rates lower than the message load.
+	// Test cases involve sending the same load of messages but with different message sizes.
+	// Since the message load and bandwidth are consistent across all test cases,
+	// they are expected to complete in the same amount of time. i.e.,
+	//totalLoad/sendRate.
+
+	maxSize := 32 * 1024 // 32KB
+	msgs := generateExponentialSizedMessages(maxSize, 1024)
+	totalLoad := float64(maxSize)
+	chID := byte(0x01)
+	// create test cases for each message size
+	var testCases = make([]testCase, len(msgs))
+	for i, msg := range msgs {
+		msgSize := len(msg)
+		totalMsg := int(math.Ceil(totalLoad / float64(msgSize)))
+		testCases[i] = testCase{
+			name:              fmt.Sprintf("msgSize = %d KB", msgSize/1024),
+			msgSize:           msgSize,
+			msg:               msg,
+			totalMsg:          totalMsg,
+			messagingRate:     time.Millisecond,
+			totalDuration:     1 * time.Minute,
+			sendQueueCapacity: 100,
+			sendRate:          4 * 1024,
+			recRate:           4 * 1024,
 			chID:              chID,
 		}
 	}
