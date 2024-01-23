@@ -771,6 +771,11 @@ func stopAll(t *testing.T, stoppers ...stopper) func() {
 	}
 }
 
+const (
+	kibibyte = 1024
+	mebibyte = 1024 * 1024
+)
+
 // generateAndSendMessages sends a sequence of messages to the specified multiplex connection `mc`.
 // Each message has the given size and is sent at the specified rate
 // `messagingRate`. This process continues for the duration `totalDuration` or
@@ -781,7 +786,6 @@ func generateAndSendMessages(mc *MConnection,
 	totalDuration time.Duration, totalNum int, msgSize int,
 	msgContnet []byte, chID byte) {
 	var msg []byte
-	// all messages have an identical content
 	if msgContnet == nil {
 		msg = bytes.Repeat([]byte{'x'}, msgSize)
 	} else {
@@ -853,13 +857,13 @@ func BenchmarkMConnection(b *testing.B) {
 			name: "queue capacity = 1, " +
 				"total load = 50 KB, " +
 				"msg rate = send rate",
-			msgSize:           1 * 1024,
+			msgSize:           1 * kibibyte,
 			totalMsg:          1 * 50,
 			sendQueueCapacity: 1,
 			messagingRate:     20 * time.Millisecond,
 			totalDuration:     1 * time.Minute,
-			sendRate:          50 * 1024,
-			recRate:           50 * 1024,
+			sendRate:          50 * kibibyte,
+			recRate:           50 * kibibyte,
 		},
 		{
 			// testcase 2
@@ -870,13 +874,13 @@ func BenchmarkMConnection(b *testing.B) {
 			name: "queue capacity = 50, " +
 				"total load = 50 KB, " +
 				"traffic rate = send rate",
-			msgSize:           1 * 1024,
+			msgSize:           1 * kibibyte,
 			totalMsg:          1 * 50,
 			sendQueueCapacity: 50,
 			messagingRate:     20 * time.Millisecond,
 			totalDuration:     1 * time.Minute,
-			sendRate:          50 * 1024,
-			recRate:           50 * 1024,
+			sendRate:          50 * kibibyte,
+			recRate:           50 * kibibyte,
 		},
 		{
 			// testcase 3
@@ -887,13 +891,13 @@ func BenchmarkMConnection(b *testing.B) {
 			name: "queue capacity = 100, " +
 				"total load = 50 KB, " +
 				"traffic rate = send rate",
-			msgSize:           1 * 1024,
+			msgSize:           1 * kibibyte,
 			totalMsg:          1 * 50,
 			sendQueueCapacity: 100,
 			messagingRate:     20 * time.Millisecond,
 			totalDuration:     1 * time.Minute,
-			sendRate:          50 * 1024,
-			recRate:           50 * 1024,
+			sendRate:          50 * kibibyte,
+			recRate:           50 * kibibyte,
 		},
 		{
 			// testcase 4
@@ -902,13 +906,13 @@ func BenchmarkMConnection(b *testing.B) {
 			name: "queue capacity = 100, " +
 				"total load = 2 * 50 KB, " +
 				"traffic rate = send rate",
-			msgSize:           1 * 1024,
+			msgSize:           1 * kibibyte,
 			totalMsg:          2 * 50,
 			sendQueueCapacity: 100,
 			messagingRate:     20 * time.Millisecond,
 			totalDuration:     1 * time.Minute,
-			sendRate:          50 * 1024,
-			recRate:           50 * 1024,
+			sendRate:          50 * kibibyte,
+			recRate:           50 * kibibyte,
 		},
 		{
 			// testcase 5
@@ -918,13 +922,13 @@ func BenchmarkMConnection(b *testing.B) {
 			name: "queue capacity = 100, " +
 				"total load = 8 * 50 KB, " +
 				"traffic rate = send rate",
-			msgSize:           1 * 1024,
+			msgSize:           1 * kibibyte,
 			totalMsg:          8 * 50,
 			sendQueueCapacity: 100,
 			messagingRate:     20 * time.Millisecond,
 			totalDuration:     1 * time.Minute,
-			sendRate:          50 * 1024,
-			recRate:           50 * 1024,
+			sendRate:          50 * kibibyte,
+			recRate:           50 * kibibyte,
 		},
 		{
 			// testcase 6
@@ -934,13 +938,13 @@ func BenchmarkMConnection(b *testing.B) {
 			name: "queue capacity = 100, " +
 				"total load = 8 * 50 KB, " +
 				"traffic rate = 2 * send rate",
-			msgSize:           1 * 1024,
+			msgSize:           1 * kibibyte,
 			totalMsg:          8 * 50,
 			sendQueueCapacity: 100,
 			messagingRate:     10 * time.Millisecond,
 			totalDuration:     1 * time.Minute,
-			sendRate:          50 * 1024,
-			recRate:           50 * 1024,
+			sendRate:          50 * kibibyte,
+			recRate:           50 * kibibyte,
 		},
 		{
 			// testcase 7
@@ -950,13 +954,13 @@ func BenchmarkMConnection(b *testing.B) {
 			name: "queue capacity = 100, " +
 				"total load = 8 * 50 KB, " +
 				"traffic rate = 10 * send rate",
-			msgSize:           1 * 1024,
+			msgSize:           1 * kibibyte,
 			totalMsg:          8 * 50,
 			sendQueueCapacity: 100,
 			messagingRate:     2 * time.Millisecond,
 			totalDuration:     1 * time.Minute,
-			sendRate:          50 * 1024,
-			recRate:           50 * 1024,
+			sendRate:          50 * kibibyte,
+			recRate:           50 * kibibyte,
 		},
 	}
 
@@ -1149,9 +1153,9 @@ func BenchmarkMConnection_ScalingPayloadSizes_HighSendRate(b *testing.B) {
 	// messages are sent in packets of maximum size MConnection.
 	// MaxPacketMsgPayloadSize).
 	// The test cases in this benchmark involve sending messages with sizes
-	// ranging exponentially from 1KB to 4096KB (
-	// the max value of 4096KB is inspired by the largest possible PFB in a
-	// Celestia block with 128*18 number of 512-byte shares)
+	// ranging exponentially from 1KB to 8192KB (
+	// the max value of 8192KB is inspired by the largest possible PFB in a
+	// Celestia block with 128*128 number of 512-byte shares)
 	// The bandwidth is set significantly higher than the message load to ensure
 	// it does not become a limiting factor.
 	// All test cases are expected to complete in less than one second,
@@ -1160,22 +1164,22 @@ func BenchmarkMConnection_ScalingPayloadSizes_HighSendRate(b *testing.B) {
 	squareSize := 128                              // number of shares in a row/column
 	shareSize := 512                               // bytes
 	maxSize := squareSize * squareSize * shareSize // bytes
-	msgs := generateExponentialSizedMessages(maxSize, 1024)
+	msgs := generateExponentialSizedMessages(maxSize, kibibyte)
 	chID := byte(0x01)
 
 	// create test cases for each message size
 	var testCases = make([]testCase, len(msgs))
 	for i, msg := range msgs {
 		testCases[i] = testCase{
-			name:              fmt.Sprintf("msgSize = %d KB", len(msg)/1024),
+			name:              fmt.Sprintf("msgSize = %d KB", len(msg)/kibibyte),
 			msgSize:           len(msg),
 			msg:               msg,
 			totalMsg:          10,
 			messagingRate:     time.Millisecond,
 			totalDuration:     1 * time.Minute,
 			sendQueueCapacity: 100,
-			sendRate:          512 * 1024 * 1024,
-			recRate:           512 * 1024 * 1024,
+			sendRate:          512 * mebibyte,
+			recRate:           512 * mebibyte,
 			chID:              chID,
 		}
 	}
@@ -1194,8 +1198,8 @@ func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
 	// they are expected to complete in the same amount of time. i.e.,
 	//totalLoad/sendRate.
 
-	maxSize := 32 * 1024 // 32KB
-	msgs := generateExponentialSizedMessages(maxSize, 1024)
+	maxSize := 32 * kibibyte // 32KB
+	msgs := generateExponentialSizedMessages(maxSize, kibibyte)
 	totalLoad := float64(maxSize)
 	chID := byte(0x01)
 	// create test cases for each message size
@@ -1204,15 +1208,15 @@ func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
 		msgSize := len(msg)
 		totalMsg := int(math.Ceil(totalLoad / float64(msgSize)))
 		testCases[i] = testCase{
-			name:              fmt.Sprintf("msgSize = %d KB", msgSize/1024),
+			name:              fmt.Sprintf("msgSize = %d KB", msgSize/kibibyte),
 			msgSize:           msgSize,
 			msg:               msg,
 			totalMsg:          totalMsg,
 			messagingRate:     time.Millisecond,
 			totalDuration:     1 * time.Minute,
 			sendQueueCapacity: 100,
-			sendRate:          4 * 1024,
-			recRate:           4 * 1024,
+			sendRate:          4 * kibibyte,
+			recRate:           4 * kibibyte,
 			chID:              chID,
 		}
 	}
