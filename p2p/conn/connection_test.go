@@ -1081,22 +1081,11 @@ func BenchmarkMConnection_ScalingPayloadSizes_HighSendRate(b *testing.B) {
 	// All test cases are expected to complete in less than one second,
 	// indicating a healthy performance.
 
-	type testCase struct {
-		name              string
-		msgSize           int           // size of each message in bytes
-		msg               []byte        // message to be sent
-		totalMsg          int           // total number of messages to be sent
-		messagingRate     time.Duration // rate at which messages are sent
-		totalDuration     time.Duration // total duration for which messages are sent
-		sendQueueCapacity int           // send queue capacity i.e., the number of messages that can be buffered
-		sendRate          int64         // send rate in bytes per second
-		recRate           int64         // receive rate in bytes per second
-	}
-
 	squareSize := 128                              // number of shares in a row/column
 	shareSize := 512                               // bytes
 	maxSize := squareSize * squareSize * shareSize // bytes
 	msgs := generateExponentialSizedMessages(maxSize, 1024)
+	chID := byte(0x01)
 
 	// create test cases for each message size
 	var testCases = make([]testCase, len(msgs))
@@ -1111,78 +1100,94 @@ func BenchmarkMConnection_ScalingPayloadSizes_HighSendRate(b *testing.B) {
 			sendQueueCapacity: 100,
 			sendRate:          512 * 1024 * 1024,
 			recRate:           512 * 1024 * 1024,
+			chID:              chID,
 		}
 	}
 
-	chID := byte(0x01)
-
 	for _, tt := range testCases {
-		b.Run(tt.name, func(b *testing.B) {
-			for n := 0; n < b.N; n++ {
-				// set up two networked connections
-				// server, client := NetPipe() // can alternatively use this and comment out the line below
-				server, client := tcpNetPipe()
-				defer server.Close()
-				defer client.Close()
-
-				// prepare callback to receive messages
-				allReceived := make(chan bool)
-				receivedLoad := 0 // number of messages received
-				onReceive := func(chID byte, msgBytes []byte) {
-					receivedLoad++
-					if receivedLoad >= tt.totalMsg && tt.totalMsg > 0 {
-						allReceived <- true
-					}
-				}
-
-				cnfg := DefaultMConnConfig()
-				cnfg.SendRate = tt.sendRate // 500 KB/s
-				cnfg.RecvRate = tt.recRate  // 500 KB/s
-				chDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
-					SendQueueCapacity: tt.sendQueueCapacity}}
-				clientMconn := NewMConnectionWithConfig(client, chDescs,
-					func(chID byte, msgBytes []byte) {},
-					func(r interface{}) {},
-					cnfg)
-				serverChDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
-					SendQueueCapacity: tt.sendQueueCapacity}}
-				serverMconn := NewMConnectionWithConfig(server, serverChDescs,
-					onReceive,
-					func(r interface{}) {},
-					cnfg)
-				clientMconn.SetLogger(log.TestingLogger())
-				serverMconn.SetLogger(log.TestingLogger())
-
-				err := clientMconn.Start()
-				require.Nil(b, err)
-				defer func() {
-					_ = clientMconn.Stop()
-				}()
-				err = serverMconn.Start()
-				require.Nil(b, err)
-				defer func() {
-					_ = serverMconn.Stop()
-				}()
-
-				// start measuring the time from here to exclude the time
-				// taken to set up the connections
-				b.StartTimer()
-				// start generating messages, it is a blocking call
-				generateAndSendMessages(clientMconn,
-					tt.messagingRate,
-					tt.totalDuration,
-					tt.totalMsg,
-					tt.msgSize,
-					tt.msg,
-					chID)
-
-				// wait for all messages to be received
-				<-allReceived
-				b.StopTimer()
-			}
-		})
+		runBenchmarkTest(b, tt)
 
 	}
+}
+
+type testCase struct {
+	name              string
+	msgSize           int           // size of each message in bytes
+	msg               []byte        // message to be sent
+	totalMsg          int           // total number of messages to be sent
+	messagingRate     time.Duration // rate at which messages are sent
+	totalDuration     time.Duration // total duration for which messages are sent
+	sendQueueCapacity int           // send queue capacity i.e., the number of messages that can be buffered
+	sendRate          int64         // send rate in bytes per second
+	recRate           int64         // receive rate in bytes per second
+	chID              byte          // channel ID
+}
+
+func runBenchmarkTest(b *testing.B, tt testCase) {
+	b.Run(tt.name, func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			// set up two networked connections
+			// server, client := NetPipe() // can alternatively use this and comment out the line below
+			server, client := tcpNetPipe()
+			defer server.Close()
+			defer client.Close()
+
+			// prepare callback to receive messages
+			allReceived := make(chan bool)
+			receivedLoad := 0 // number of messages received
+			onReceive := func(chID byte, msgBytes []byte) {
+				receivedLoad++
+				if receivedLoad >= tt.totalMsg && tt.totalMsg > 0 {
+					allReceived <- true
+				}
+			}
+
+			cnfg := DefaultMConnConfig()
+			cnfg.SendRate = tt.sendRate // 500 KB/s
+			cnfg.RecvRate = tt.recRate  // 500 KB/s
+			chDescs := []*ChannelDescriptor{{ID: tt.chID, Priority: 1,
+				SendQueueCapacity: tt.sendQueueCapacity}}
+			clientMconn := NewMConnectionWithConfig(client, chDescs,
+				func(chID byte, msgBytes []byte) {},
+				func(r interface{}) {},
+				cnfg)
+			serverChDescs := []*ChannelDescriptor{{ID: tt.chID, Priority: 1,
+				SendQueueCapacity: tt.sendQueueCapacity}}
+			serverMconn := NewMConnectionWithConfig(server, serverChDescs,
+				onReceive,
+				func(r interface{}) {},
+				cnfg)
+			clientMconn.SetLogger(log.TestingLogger())
+			serverMconn.SetLogger(log.TestingLogger())
+
+			err := clientMconn.Start()
+			require.Nil(b, err)
+			defer func() {
+				_ = clientMconn.Stop()
+			}()
+			err = serverMconn.Start()
+			require.Nil(b, err)
+			defer func() {
+				_ = serverMconn.Stop()
+			}()
+
+			// start measuring the time from here to exclude the time
+			// taken to set up the connections
+			b.StartTimer()
+			// start generating messages, it is a blocking call
+			generateAndSendMessages(clientMconn,
+				tt.messagingRate,
+				tt.totalDuration,
+				tt.totalMsg,
+				tt.msgSize,
+				tt.msg,
+				tt.chID)
+
+			// wait for all messages to be received
+			<-allReceived
+			b.StopTimer()
+		}
+	})
 }
 
 func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
@@ -1192,18 +1197,6 @@ func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
 	// Test cases involve sending the same load of messages but with different message sizes.
 	// Since the message load and bandwidth are consistent across all test cases,
 	// they are expected to complete in the same amount of time.
-
-	type testCase struct {
-		name              string
-		msgSize           int           // size of each message in bytes
-		msg               []byte        // message to be sent
-		totalMsg          int           // total number of messages to be sent
-		messagingRate     time.Duration // rate at which messages are sent
-		totalDuration     time.Duration // total duration for which messages are sent
-		sendQueueCapacity int           // send queue capacity i.e., the number of messages that can be buffered
-		sendRate          int64         // send rate in bytes per second
-		recRate           int64         // receive rate in bytes per second
-	}
 
 	maxSize := 32 * 1024 // 32KB
 	msgs := generateExponentialSizedMessages(maxSize, 1024)
@@ -1223,76 +1216,12 @@ func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
 			sendQueueCapacity: 100,
 			sendRate:          4 * 1024,
 			recRate:           4 * 1024,
+			chID:              byte(0x01),
 		}
 	}
 
-	chID := byte(0x01)
-
 	for _, tt := range testCases {
-		b.Run(tt.name, func(b *testing.B) {
-			for n := 0; n < b.N; n++ {
-				// set up two networked connections
-				// server, client := NetPipe() // can alternatively use this and comment out the line below
-				server, client := tcpNetPipe()
-				defer server.Close()
-				defer client.Close()
-
-				// prepare callback to receive messages
-				allReceived := make(chan bool)
-				receivedLoad := 0 // number of messages received
-				onReceive := func(chID byte, msgBytes []byte) {
-					receivedLoad++
-					if receivedLoad >= tt.totalMsg && tt.totalMsg > 0 {
-						allReceived <- true
-					}
-				}
-
-				cnfg := DefaultMConnConfig()
-				cnfg.SendRate = tt.sendRate // 500 KB/s
-				cnfg.RecvRate = tt.recRate  // 500 KB/s
-				chDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
-					SendQueueCapacity: tt.sendQueueCapacity}}
-				clientMconn := NewMConnectionWithConfig(client, chDescs,
-					func(chID byte, msgBytes []byte) {},
-					func(r interface{}) {},
-					cnfg)
-				serverChDescs := []*ChannelDescriptor{{ID: chID, Priority: 1,
-					SendQueueCapacity: tt.sendQueueCapacity}}
-				serverMconn := NewMConnectionWithConfig(server, serverChDescs,
-					onReceive,
-					func(r interface{}) {},
-					cnfg)
-				clientMconn.SetLogger(log.TestingLogger())
-				serverMconn.SetLogger(log.TestingLogger())
-
-				err := clientMconn.Start()
-				require.Nil(b, err)
-				defer func() {
-					_ = clientMconn.Stop()
-				}()
-				err = serverMconn.Start()
-				require.Nil(b, err)
-				defer func() {
-					_ = serverMconn.Stop()
-				}()
-
-				// start measuring the time from here to exclude the time
-				// taken to set up the connections
-				b.StartTimer()
-				// start generating messages, it is a blocking call
-				generateAndSendMessages(clientMconn,
-					tt.messagingRate,
-					tt.totalDuration,
-					tt.totalMsg,
-					tt.msgSize,
-					tt.msg,
-					chID)
-
-				// wait for all messages to be received
-				<-allReceived
-				b.StopTimer()
-			}
-		})
+		runBenchmarkTest(b, tt)
 
 	}
 }
