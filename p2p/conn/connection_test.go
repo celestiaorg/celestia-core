@@ -1095,8 +1095,8 @@ func runBenchmarkTest(b *testing.B, tt testCase) {
 			}
 
 			cnfg := DefaultMConnConfig()
-			cnfg.SendRate = tt.sendRate // 500 KB/s
-			cnfg.RecvRate = tt.recRate  // 500 KB/s
+			cnfg.SendRate = tt.sendRate
+			cnfg.RecvRate = tt.recRate
 			chDescs := []*ChannelDescriptor{{ID: tt.chID, Priority: 1,
 				SendQueueCapacity: tt.sendQueueCapacity}}
 			clientMconn := NewMConnectionWithConfig(client, chDescs,
