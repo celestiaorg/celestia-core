@@ -1066,50 +1066,6 @@ func generateExponentialSizedMessages(maxSize int, divisor int) [][]byte {
 	return msgs
 }
 
-func BenchmarkMConnection_ScalingPayloadSizes_HighSendRate(b *testing.B) {
-	// One aspect that could impact the performance of MConnection and the
-	// transmission rate is the size of the messages sent over the network,
-	// especially when they exceed the MConnection.MaxPacketMsgPayloadSize (
-	// messages are sent in packets of maximum size MConnection.
-	// MaxPacketMsgPayloadSize).
-	// The test cases in this benchmark involve sending messages with sizes
-	// ranging exponentially from 1KB to 4096KB (
-	// the max value of 4096KB is inspired by the largest possible PFB in a
-	// Celestia block with 128*18 number of 512-byte shares)
-	// The bandwidth is set significantly higher than the message load to ensure
-	// it does not become a limiting factor.
-	// All test cases are expected to complete in less than one second,
-	// indicating a healthy performance.
-
-	squareSize := 128                              // number of shares in a row/column
-	shareSize := 512                               // bytes
-	maxSize := squareSize * squareSize * shareSize // bytes
-	msgs := generateExponentialSizedMessages(maxSize, 1024)
-	chID := byte(0x01)
-
-	// create test cases for each message size
-	var testCases = make([]testCase, len(msgs))
-	for i, msg := range msgs {
-		testCases[i] = testCase{
-			name:              fmt.Sprintf("msgSize = %d KB", len(msg)/1024),
-			msgSize:           len(msg),
-			msg:               msg,
-			totalMsg:          10,
-			messagingRate:     time.Millisecond,
-			totalDuration:     1 * time.Minute,
-			sendQueueCapacity: 100,
-			sendRate:          512 * 1024 * 1024,
-			recRate:           512 * 1024 * 1024,
-			chID:              chID,
-		}
-	}
-
-	for _, tt := range testCases {
-		runBenchmarkTest(b, tt)
-
-	}
-}
-
 type testCase struct {
 	name              string
 	msgSize           int           // size of each message in bytes
@@ -1196,11 +1152,13 @@ func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
 	// by setting the send/and receive rates lower than the message load.
 	// Test cases involve sending the same load of messages but with different message sizes.
 	// Since the message load and bandwidth are consistent across all test cases,
-	// they are expected to complete in the same amount of time.
+	// they are expected to complete in the same amount of time. i.e.,
+	//totalLoad/sendRate.
 
 	maxSize := 32 * 1024 // 32KB
 	msgs := generateExponentialSizedMessages(maxSize, 1024)
 	totalLoad := float64(maxSize)
+	chID := byte(0x01)
 	// create test cases for each message size
 	var testCases = make([]testCase, len(msgs))
 	for i, msg := range msgs {
@@ -1216,12 +1174,54 @@ func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
 			sendQueueCapacity: 100,
 			sendRate:          4 * 1024,
 			recRate:           4 * 1024,
-			chID:              byte(0x01),
+			chID:              chID,
 		}
 	}
 
 	for _, tt := range testCases {
 		runBenchmarkTest(b, tt)
+	}
+}
 
+func BenchmarkMConnection_ScalingPayloadSizes_HighSendRate(b *testing.B) {
+	// One aspect that could impact the performance of MConnection and the
+	// transmission rate is the size of the messages sent over the network,
+	// especially when they exceed the MConnection.MaxPacketMsgPayloadSize (
+	// messages are sent in packets of maximum size MConnection.
+	// MaxPacketMsgPayloadSize).
+	// The test cases in this benchmark involve sending messages with sizes
+	// ranging exponentially from 1KB to 4096KB (
+	// the max value of 4096KB is inspired by the largest possible PFB in a
+	// Celestia block with 128*18 number of 512-byte shares)
+	// The bandwidth is set significantly higher than the message load to ensure
+	// it does not become a limiting factor.
+	// All test cases are expected to complete in less than one second,
+	// indicating a healthy performance.
+
+	squareSize := 128                              // number of shares in a row/column
+	shareSize := 512                               // bytes
+	maxSize := squareSize * squareSize * shareSize // bytes
+	msgs := generateExponentialSizedMessages(maxSize, 1024)
+	chID := byte(0x01)
+
+	// create test cases for each message size
+	var testCases = make([]testCase, len(msgs))
+	for i, msg := range msgs {
+		testCases[i] = testCase{
+			name:              fmt.Sprintf("msgSize = %d KB", len(msg)/1024),
+			msgSize:           len(msg),
+			msg:               msg,
+			totalMsg:          10,
+			messagingRate:     time.Millisecond,
+			totalDuration:     1 * time.Minute,
+			sendQueueCapacity: 100,
+			sendRate:          512 * 1024 * 1024,
+			recRate:           512 * 1024 * 1024,
+			chID:              chID,
+		}
+	}
+
+	for _, tt := range testCases {
+		runBenchmarkTest(b, tt)
 	}
 }
