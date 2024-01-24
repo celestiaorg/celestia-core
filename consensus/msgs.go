@@ -60,6 +60,16 @@ func MsgToProto(msg Message) (*cmtcons.Message, error) {
 		}
 		return m.Wrap().(*cmtcons.Message), nil
 
+	case *CompactBlockMessage:
+		block, err := msg.Block.ToProto()
+		if err != nil {
+			return nil, fmt.Errorf("msg to proto error: %w", err)
+		}
+		m := &cmtcons.CompactBlock{
+			Block: block,
+		}
+		return m.Wrap().(*cmtcons.Message), nil
+
 	case *BlockPartMessage:
 		parts, err := msg.Part.ToProto()
 		if err != nil {
@@ -188,6 +198,15 @@ func MsgFromProto(p *cmtcons.Message) (Message, error) {
 			Round:  msg.Round,
 			Part:   parts,
 		}
+	case *cmtcons.CompactBlock:
+		block, err := types.BlockFromProto(msg.Block)
+		if err != nil {
+			return nil, fmt.Errorf("compactBlock msg to proto error: %w", err)
+		}
+		pb = &CompactBlockMessage{
+			Block: block,
+		}
+
 	case *cmtcons.Vote:
 		vote, err := types.VoteFromProto(msg.Vote)
 		if err != nil {
