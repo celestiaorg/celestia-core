@@ -361,8 +361,6 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			ps.EnsureVoteBitArrays(height, valSize)
 			ps.EnsureVoteBitArrays(height-1, lastCommitSize)
 			ps.SetHasVote(msg.Vote)
-			// If we receive a vote we can deduce that an honest peer also has the block
-			ps.SetHasBlock(msg.Vote.Height, msg.Vote.Round)
 
 			cs.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
 
