@@ -335,6 +335,9 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
 		case *ProposalPOLMessage:
 			ps.ApplyProposalPOLMessage(msg)
+		case *CompactBlockMessage:
+			ps.SetHasBlock(msg.Block.Height, ps.PRS.Round)
+			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
 		case *BlockPartMessage:
 			ps.SetHasProposalBlockPart(msg.Height, msg.Round, int(msg.Part.Index))
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
@@ -358,6 +361,8 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			ps.EnsureVoteBitArrays(height, valSize)
 			ps.EnsureVoteBitArrays(height-1, lastCommitSize)
 			ps.SetHasVote(msg.Vote)
+			// If we receive a vote we can deduce that an honest peer also has the block
+			ps.SetHasBlock(msg.Vote.Height, msg.Vote.Round)
 
 			cs.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
 
@@ -578,25 +583,22 @@ OUTER_LOOP:
 		rs := conR.getRoundState()
 		prs := ps.GetRoundState()
 
-		// Send proposal Block parts?
-		if rs.ProposalBlockParts.HasHeader(prs.ProposalBlockPartSetHeader) {
-			if index, ok := rs.ProposalBlockParts.BitArray().Sub(prs.ProposalBlockParts.Copy()).PickRandom(); ok {
-				part := rs.ProposalBlockParts.GetPart(index)
-				parts, err := part.ToProto()
+		// Send compact block
+		if !prs.Block && rs.ProposalBlockParts.HasHeader(prs.ProposalBlockPartSetHeader) {
+			logger.Info("Peer has proposal but not block", "height", prs.Height, "round", prs.Round)
+			if rs.ProposalCompactBlock != nil {
+				compactBlock, err := rs.ProposalCompactBlock.ToProto()
 				if err != nil {
 					panic(err)
 				}
-				logger.Debug("Sending block part", "height", prs.Height, "round", prs.Round)
+				logger.Info("Sending compact block", "height", prs.Height, "round", prs.Round)
 				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 					ChannelID: DataChannel,
-					Message: &cmtcons.BlockPart{
-						Height: rs.Height, // This tells peer that this part applies to us.
-						Round:  rs.Round,  // This tells peer that this part applies to us.
-						Part:   *parts,
+					Message: &cmtcons.CompactBlock{
+						Block: compactBlock,
 					},
 				}, logger) {
-					schema.WriteBlockPart(conR.traceClient, rs.Height, rs.Round, peer.ID(), part.Index, schema.TransferTypeUpload)
-					ps.SetHasProposalBlockPart(prs.Height, prs.Round, index)
+					ps.SetHasBlock(prs.Height, prs.Round)
 				}
 				continue OUTER_LOOP
 			}
@@ -641,7 +643,7 @@ OUTER_LOOP:
 		if rs.Proposal != nil && !prs.Proposal {
 			// Proposal: share the proposal metadata with peer.
 			{
-				logger.Debug("Sending proposal", "height", prs.Height, "round", prs.Round)
+				logger.Info("Sending proposal", "height", prs.Height, "round", prs.Round)
 				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 					ChannelID: DataChannel,
 					Message:   &cmtcons.Proposal{Proposal: *rs.Proposal.ToProto()},
@@ -1160,6 +1162,18 @@ func (ps *PeerState) SetHasProposalBlockPart(height int64, round int32, index in
 	}
 
 	ps.PRS.ProposalBlockParts.SetIndex(index, true)
+}
+
+// SetHasCompactBlock sets the given block part index as known for the peer.
+func (ps *PeerState) SetHasBlock(height int64, round int32) {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+
+	if ps.PRS.Height != height || ps.PRS.Round != round {
+		return
+	}
+
+	ps.PRS.Block = true
 }
 
 // PickSendVote picks a vote and sends it to the peer.
@@ -1688,6 +1702,23 @@ func (m *ProposalPOLMessage) ValidateBasic() error {
 // String returns a string representation.
 func (m *ProposalPOLMessage) String() string {
 	return fmt.Sprintf("[ProposalPOL H:%v POLR:%v POL:%v]", m.Height, m.ProposalPOLRound, m.ProposalPOL)
+}
+
+//-------------------------------------
+
+// CompactBlockMessage is sent when gossipping a piece of the proposed block.
+type CompactBlockMessage struct {
+	Block *types.Block
+}
+
+// ValidateBasic performs basic validation.
+func (m *CompactBlockMessage) ValidateBasic() error {
+	return m.Block.ValidateBasic()
+}
+
+// String returns a string representation.
+func (m *CompactBlockMessage) String() string {
+	return fmt.Sprintf("[CompactBlock H:%v]", m.Block.Height)
 }
 
 //-------------------------------------

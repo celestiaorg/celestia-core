@@ -869,6 +869,13 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// once proposal is set, we can receive block parts
 		err = cs.setProposal(msg.Proposal)
 
+	case *CompactBlockMessage:
+		err = cs.addCompactBlock(msg, peerID)
+
+		if err == nil {
+			cs.handleCompleteProposal(msg.Block.Height)
+		}
+
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
 		added, err = cs.addProposalBlockPart(msg, peerID)
@@ -1191,6 +1198,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		if block == nil {
 			return
 		}
+		fmt.Println(block)
+		blockParts = block.MakePartSet(types.BlockPartSizeBytes)
+		fmt.Println("generated blockParts", blockParts.Header(), "squareSize", block.Data.SquareSize, "numTxs", len(block.Txs))
 
 		keys, err := cs.txFetcher.FetchKeysFromTxs(context.Background(), block.Txs.ToSliceOfBytes())
 		if err != nil {
@@ -1199,7 +1209,8 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		}
 
 		block.Txs = types.ToTxs(keys)
-		blockParts = block.MakePartSet(types.BlockPartSizeBytes)
+		secondBlockParst := block.MakePartSet(types.BlockPartSizeBytes)
+		fmt.Println("normal block parts", blockParts.Header(), "compact block parts", secondBlockParst.Header())
 	}
 
 	// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
@@ -1217,6 +1228,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
+		cs.sendInternalMessage(msgInfo{&CompactBlockMessage{block}, ""})
 
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
@@ -1924,7 +1936,95 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		cs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader)
 	}
 
-	cs.Logger.Info("received proposal", "proposal", proposal)
+	cs.Logger.Info("received proposal", "proposal", proposal, "partSetHeader", proposal.BlockID.PartSetHeader)
+	return nil
+}
+
+func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error {
+	fmt.Println("received compact block message")
+	compactBlock := msg.Block
+	height := compactBlock.Height
+
+	// Blocks might be reused, so round mismatch is OK
+	if cs.Height != height {
+		cs.Logger.Debug("received compact block from wrong height", "height", height)
+		cs.metrics.BlockGossipPartsReceived.With("matches_current", "false").Add(1)
+		return nil
+	}
+
+	// We're not expecting a block part.
+	if cs.ProposalBlockParts == nil || cs.Proposal == nil {
+		cs.metrics.BlockGossipPartsReceived.With("matches_current", "false").Add(1)
+		// NOTE: this can happen when we've gone to a higher round and
+		// then receive parts from the previous round - not necessarily a bad peer.
+		cs.Logger.Debug(
+			"received a block part when we are not expecting any",
+			"height", height,
+			"peer", peerID,
+		)
+		return nil
+	}
+
+	blockHash := cs.Proposal.BlockID.Hash
+	timeout := cs.config.Propose(cs.Round)
+
+	fmt.Println("fetching txs from keys")
+
+	// Yield the lock while we fetch the transactions from the mempool so that votes
+	// and other operations can be processed.
+	cs.mtx.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	txs, err := cs.txFetcher.FetchTxsFromKeys(ctx, blockHash, compactBlock.Data.Txs.ToSliceOfBytes())
+
+	cs.mtx.Lock()
+	if err != nil {
+		cs.jsonMetrics.CompactBlockFailures++
+		if ctx.Err() != nil {
+			return nil
+		}
+		cs.Logger.Error("failed to fetch transactions for compact block", "err", err)
+		return err
+	}
+	block := &types.Block{
+		Header:     compactBlock.Header,
+		LastCommit: compactBlock.LastCommit,
+		Evidence:   compactBlock.Evidence,
+	}
+	block.Data, _ = types.DataFromProto(&cmtproto.Data{
+		Txs:  txs,
+		Hash: block.Header.DataHash,
+	})
+
+	if err := block.ValidateBasic(); err != nil {
+		return fmt.Errorf("received invalid block: %w", err)
+	}
+
+	if !bytes.Equal(block.Hash(), cs.Proposal.BlockID.Hash) {
+		return fmt.Errorf("received compact block with header hash [%v] that does not match proposal [%v]", block.Hash(), cs.Proposal.BlockID.Hash)
+	}
+
+	// check that the part set header matched that of the
+	fmt.Println(block)
+	partSet := block.MakePartSet(types.BlockPartSizeBytes)
+	fmt.Println(partSet.Header())
+	if !partSet.HasHeader(cs.Proposal.BlockID.PartSetHeader) {
+		return fmt.Errorf("received compact block with part set header [%v] that does not match proposal [%v]", partSet.Header(), cs.Proposal.BlockID.PartSetHeader)
+	}
+
+	cs.ProposalCompactBlock = compactBlock
+	cs.ProposalBlock = block
+	cs.ProposalBlockParts = partSet
+
+	// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
+	cs.Logger.Info("assembled proposal block from compact block", "height", cs.ProposalBlock.Height, "hash", cs.ProposalBlock.Hash())
+
+	if err := cs.eventBus.PublishEventCompleteProposal(cs.CompleteProposalEvent()); err != nil {
+		cs.Logger.Error("failed publishing event complete proposal", "err", err)
+	}
+
 	return nil
 }
 
@@ -1987,25 +2087,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		if err != nil {
 			return added, err
 		}
-		blockHash := cs.ProposalBlockParts.Header().Hash
-		timeout := cs.config.Propose(round)
 
-		// Yield the lock while we fetch the transactions from the mempool so that votes
-		// and other operations can be processed.
-		cs.mtx.Unlock()
-
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-
-		txs, err := cs.txFetcher.FetchTxsFromKeys(ctx, blockHash, block.Data.Txs.ToSliceOfBytes())
-
-		cs.mtx.Lock()
-		if err != nil {
-			cs.Logger.Error("failed to fetch transactions for compact block", "err", err)
-			cs.jsonMetrics.CompactBlockFailures++
-			return true, err
-		}
-		block.Data.Txs = types.ToTxs(txs)
 		cs.ProposalBlock = block
 
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal

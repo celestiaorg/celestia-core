@@ -5,6 +5,7 @@ option go_package = "github.com/cometbft/cometbft/proto/tendermint/consensus";
 
 import "gogoproto/gogo.proto";
 import "tendermint/types/types.proto";
+import "tendermint/types/block.proto";
 import "tendermint/libs/bits/types.proto";
 
 // NewRoundStep is sent for every step taken in the ConsensusState.
@@ -40,7 +41,12 @@ message ProposalPOL {
   tendermint.libs.bits.BitArray proposal_pol       = 3 [(gogoproto.nullable) = false];
 }
 
-// BlockPart is sent when gossipping a piece of the proposed block.
+// CompactBlock is for gossiping a block
+message CompactBlock {
+  tendermint.types.Block block = 1;
+}
+
+// BlockPart is sent when catching up
 message BlockPart {
   int64                 height = 1;
   int32                 round  = 2;
@@ -88,5 +94,6 @@ message Message {
     HasVote       has_vote        = 7;
     VoteSetMaj23  vote_set_maj23  = 8;
     VoteSetBits   vote_set_bits   = 9;
+    CompactBlock  compact_block   = 10;
   }
 }

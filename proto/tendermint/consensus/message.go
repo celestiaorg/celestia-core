@@ -16,6 +16,7 @@ var _ p2p.Wrapper = &NewValidBlock{}
 var _ p2p.Wrapper = &NewRoundStep{}
 var _ p2p.Wrapper = &HasVote{}
 var _ p2p.Wrapper = &BlockPart{}
+var _ p2p.Wrapper = &CompactBlock{}
 
 func (m *VoteSetBits) Wrap() proto.Message {
 	cm := &Message{}
@@ -39,6 +40,12 @@ func (m *HasVote) Wrap() proto.Message {
 func (m *Vote) Wrap() proto.Message {
 	cm := &Message{}
 	cm.Sum = &Message_Vote{Vote: m}
+	return cm
+}
+
+func (m *CompactBlock) Wrap() proto.Message {
+	cm := &Message{}
+	cm.Sum = &Message_CompactBlock{CompactBlock: m}
 	return cm
 }
 
@@ -87,6 +94,9 @@ func (m *Message) Unwrap() (proto.Message, error) {
 
 	case *Message_ProposalPol:
 		return m.GetProposalPol(), nil
+
+	case *Message_CompactBlock:
+		return m.GetCompactBlock(), nil
 
 	case *Message_BlockPart:
 		return m.GetBlockPart(), nil
