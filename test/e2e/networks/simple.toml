@@ -1,3 +1,6 @@
+load_tx_connections = 10
+load_tx_batch_size = 10
+
 [node.validator01]
 [node.validator02]
 [node.validator03]

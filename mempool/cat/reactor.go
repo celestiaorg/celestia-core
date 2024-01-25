@@ -451,7 +451,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 		memR.mempool.metrics.RequestedTxs.Add(1)
 		requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)
 		if !requested {
-			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
+			memR.Logger.Debug("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
 		}
 	}
 }
@@ -464,7 +464,7 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		return
 	}
 
-	// pop the next peer in the list of remaining peers that have seen the tx
+	// get the next peer in the list of remaining peers that have seen the tx
 	// and does not already have an outbound request for that tx
 	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
 	var peerID uint16
@@ -479,12 +479,14 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		// No other free peer has the transaction we are looking for.
 		// We give up 🤷‍♂️ and hope either a peer responds late or the tx
 		// is gossiped again
-		memR.Logger.Info("no other peer has the tx we are looking for", "txKey", txKey)
+		memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
+		// TODO: should add a metric to see how common this is
 		return
 	}
 	peer := memR.ids.GetPeer(peerID)
 	if peer == nil {
 		// we disconnected from that peer, retry again until we exhaust the list
+		memR.mempool.seenByPeersSet.Remove(txKey, peerID)
 		memR.findNewPeerToRequestTx(txKey)
 	} else {
 		memR.mempool.metrics.RerequestedTxs.Add(1)

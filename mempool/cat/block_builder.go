@@ -68,6 +68,11 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 		memR.mempool.jsonMetrics.Unlock()
 	}()
 
+	// request the missing transactions if we haven't already
+	for _, key := range missingKeys {
+		memR.findNewPeerToRequestTx(key)
+	}
+
 	// Wait for the reactor to retrieve and post all transactions.
 	return request.WaitForBlock(ctx)
 }
@@ -260,4 +265,10 @@ func (br *blockRequest) TimeTaken() uint64 {
 		return 0
 	}
 	return uint64(br.endTime.Sub(br.startTime).Milliseconds())
+}
+
+func (br *blockRequest) NewTxsFound() string {
+	br.mtx.Lock()
+	defer br.mtx.Unlock()
+	return fmt.Sprintf("BlockRequest{height:%d, missing:%d}", br.height, len(br.missingKeys))
 }

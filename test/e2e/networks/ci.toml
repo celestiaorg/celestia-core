@@ -6,6 +6,8 @@ initial_height = 1000
 initial_state = { initial01 = "a", initial02 = "b", initial03 = "c" }
 # The most common case (e.g. Cosmos SDK-based chains).
 abci_protocol = "builtin"
+load_tx_connections = 10
+load_tx_batch_size = 10
 
 [validators]
 validator01 = 100
@@ -39,7 +41,6 @@ seeds = ["seed01"]
 seeds = ["seed01"]
 snapshot_interval = 5
 perturb = ["disconnect"]
-misbehaviors = { 1018 = "double-prevote" }
 
 [node.validator02]
 seeds = ["seed02"]
@@ -66,7 +67,6 @@ start_at = 1005 # Becomes part of the validator set at 1010
 seeds = ["seed02"]
 database = "cleveldb"
 fast_sync = "v0"
-mempool_version = "v1"
 privval_protocol = "tcp"
 perturb = ["kill", "pause", "disconnect", "restart"]
 

@@ -64,6 +64,9 @@ type TxPool struct {
 	postCheckFn          mempool.PostCheckFunc
 	height               int64     // the latest height passed to Update
 	lastPurgeTime        time.Time // the last time we attempted to purge transactions via the TTL
+	// cache of committed transactions to be pruned the following height
+	// we don't want to prune immediately because lagging nodes may still be requesting these transactions
+	committedCache map[types.TxKey]struct{}
 
 	// Thread-safe cache of rejected transactions for quick look-up
 	rejectedTxCache *LRUTxCache
@@ -497,9 +500,16 @@ func (txmp *TxPool) Update(
 	txmp.updateMtx.Unlock()
 
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
+
+	for txKey := range txmp.committedCache {
+		// Remove the transaction from the mempool.
+		txmp.removeTxByKey(txKey)
+	}
+
+	// add the recently committed transactions to the cache
+	txmp.committedCache = make(map[types.TxKey]struct{})
 	for _, tx := range blockTxs {
-		// Regardless of success, remove the transaction from the mempool.
-		txmp.removeTxByKey(tx.Key())
+		txmp.committedCache[tx.Key()] = struct{}{}
 	}
 
 	txmp.purgeExpiredTxs(blockHeight)
