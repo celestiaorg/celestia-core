@@ -115,7 +115,7 @@ func BenchmarkMConnection(b *testing.B) {
 			// delay.
 			name: "queue capacity = 50, " +
 				"total load = 50 KB, " +
-				"trafficMap rate = send rate",
+				"traffic rate = send rate",
 			msgSize:           1 * kibibyte,
 			totalMsg:          1 * 50,
 			sendQueueCapacity: 50,
@@ -132,7 +132,7 @@ func BenchmarkMConnection(b *testing.B) {
 			// delay.
 			name: "queue capacity = 100, " +
 				"total load = 50 KB, " +
-				"trafficMap rate = send rate",
+				"traffic rate = send rate",
 			msgSize:           1 * kibibyte,
 			totalMsg:          1 * 50,
 			sendQueueCapacity: 100,
@@ -147,7 +147,7 @@ func BenchmarkMConnection(b *testing.B) {
 			// The test runs for 100 messages, expecting a total transmission time of ~2 seconds.
 			name: "queue capacity = 100, " +
 				"total load = 2 * 50 KB, " +
-				"trafficMap rate = send rate",
+				"traffic rate = send rate",
 			msgSize:           1 * kibibyte,
 			totalMsg:          2 * 50,
 			sendQueueCapacity: 100,
@@ -163,7 +163,7 @@ func BenchmarkMConnection(b *testing.B) {
 			// expecting a total transmission time of ~8 seconds.
 			name: "queue capacity = 100, " +
 				"total load = 8 * 50 KB, " +
-				"trafficMap rate = send rate",
+				"traffic rate = send rate",
 			msgSize:           1 * kibibyte,
 			totalMsg:          8 * 50,
 			sendQueueCapacity: 100,
@@ -179,7 +179,7 @@ func BenchmarkMConnection(b *testing.B) {
 			// expecting a total transmission time of ~8 seconds.
 			name: "queue capacity = 100, " +
 				"total load = 8 * 50 KB, " +
-				"trafficMap rate = 2 * send rate",
+				"traffic rate = 2 * send rate",
 			msgSize:           1 * kibibyte,
 			totalMsg:          8 * 50,
 			sendQueueCapacity: 100,
@@ -195,7 +195,7 @@ func BenchmarkMConnection(b *testing.B) {
 			// expecting a total transmission time of ~8 seconds.
 			name: "queue capacity = 100, " +
 				"total load = 8 * 50 KB, " +
-				"trafficMap rate = 10 * send rate",
+				"traffic rate = 10 * send rate",
 			msgSize:           1 * kibibyte,
 			totalMsg:          8 * 50,
 			sendQueueCapacity: 100,
@@ -465,104 +465,5 @@ func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
 
 	for _, tt := range testCases {
 		runBenchmarkTest(b, tt)
-	}
-}
-
-// BenchmarkMConnection_Multiple_ChannelIDS assesses the max bw/send rate
-// utilization of MConnection when configured with multiple channel IDs.
-func BenchmarkMConnection_Multiple_ChannelID(b *testing.B) {
-	// These tests create two connections with two channels each, one channel having higher priority.
-	// Traffic is sent from the client to the server, split between the channels with varying proportions in each test case.
-	// All tests should complete in 2 seconds (calculated as totalTraffic* msgSize / sendRate),
-	// demonstrating that channel count doesn't affect max bandwidth utilization.
-	totalTraffic := 100
-	msgSize := 1 * kibibyte
-	sendRate := 50 * kibibyte
-	recRate := 50 * kibibyte
-	chDescs := []*ChannelDescriptor{
-		{ID: 0x01, Priority: 1, SendQueueCapacity: 50},
-		{ID: 0x02, Priority: 2, SendQueueCapacity: 50},
-	}
-	type testCase struct {
-		name       string
-		trafficMap map[byte]int // channel ID -> number of messages to be sent
-	}
-	var tests []testCase
-	for i := 0.0; i < 1; i += 0.1 {
-		tests = append(tests, testCase{
-			name: fmt.Sprintf("2 channel IDs with traffic proportion %f %f",
-				i, 1-i),
-			trafficMap: map[byte]int{ // channel ID -> number of messages to be sent
-				0x01: int(i * float64(totalTraffic)),
-				0x02: totalTraffic - int(i*float64(totalTraffic)), // the rest of the traffic
-			},
-		})
-	}
-	for _, tt := range tests {
-		b.Run(tt.name, func(b *testing.B) {
-			for n := 0; n < b.N; n++ {
-				// set up two networked connections
-				// server, client := NetPipe() // can alternatively use this and comment out the line below
-				server, client := tcpNetPipe()
-				defer server.Close()
-				defer client.Close()
-
-				// prepare callback to receive messages
-				allReceived := make(chan bool)
-				receivedLoad := 0 // number of messages received
-				onReceive := func(chID byte, msgBytes []byte) {
-					receivedLoad++
-					if receivedLoad >= totalTraffic {
-						allReceived <- true
-					}
-				}
-
-				cnfg := DefaultMConnConfig()
-				cnfg.SendRate = int64(sendRate)
-				cnfg.RecvRate = int64(recRate)
-
-				// mount the channel descriptors to the connections
-				clientMconn := NewMConnectionWithConfig(client, chDescs,
-					func(chID byte, msgBytes []byte) {},
-					func(r interface{}) {},
-					cnfg)
-				serverMconn := NewMConnectionWithConfig(server, chDescs,
-					onReceive,
-					func(r interface{}) {},
-					cnfg)
-				clientMconn.SetLogger(log.TestingLogger())
-				serverMconn.SetLogger(log.TestingLogger())
-
-				err := clientMconn.Start()
-				require.Nil(b, err)
-				defer func() {
-					_ = clientMconn.Stop()
-				}()
-				err = serverMconn.Start()
-				require.Nil(b, err)
-				defer func() {
-					_ = serverMconn.Stop()
-				}()
-
-				// start measuring the time from here to exclude the time
-				// taken to set up the connections
-				b.StartTimer()
-				// start generating messages over the two channels,
-				// concurrently, with the specified proportions
-				for chID, trafficPortion := range tt.trafficMap {
-					go generateAndSendMessages(clientMconn,
-						time.Millisecond,
-						1*time.Minute,
-						trafficPortion,
-						msgSize,
-						nil,
-						chID)
-				}
-
-				// wait for all messages to be received
-				<-allReceived
-				b.StopTimer()
-			}
-		})
 	}
 }
