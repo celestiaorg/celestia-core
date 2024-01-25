@@ -219,7 +219,12 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		block := lazyProposer.blockExec.CreateProposalBlock(
 			lazyProposer.Height, lazyProposer.state, commit, proposerAddr,
 		)
+		blockHash := block.Hash()
 		blockParts := block.MakePartSet(types.BlockPartSizeBytes)
+
+		keys, err := lazyProposer.txFetcher.FetchKeysFromTxs(context.Background(), block.Txs.ToSliceOfBytes())
+		require.NoError(t, err)
+		block.Txs = types.ToTxs(keys)
 
 		// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
 		// and the privValidator will refuse to sign anything.
@@ -228,7 +233,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		}
 
 		// Make proposal
-		propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
+		propBlockID := types.BlockID{Hash: blockHash, PartSetHeader: blockParts.Header()}
 		proposal := types.NewProposal(height, round, lazyProposer.TwoThirdPrevoteRound, propBlockID)
 		p := proposal.ToProto()
 		if err := lazyProposer.privValidator.SignProposal(lazyProposer.state.ChainID, p); err == nil {
@@ -236,6 +241,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 			// send proposal and block parts on internal msg queue
 			lazyProposer.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
+			lazyProposer.sendInternalMessage(msgInfo{&CompactBlockMessage{block}, ""})
 			for i := 0; i < int(blockParts.Total()); i++ {
 				part := blockParts.GetPart(i)
 				lazyProposer.sendInternalMessage(msgInfo{&BlockPartMessage{lazyProposer.Height, lazyProposer.Round, part}, ""})
@@ -294,7 +300,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		}
 	case <-time.After(20 * time.Second):
 		for i, reactor := range reactors {
-			t.Logf("Consensus Reactor %d\n%v", i, reactor)
+			t.Logf("Consensus Reactor %d\n%v", i, reactor.conS.GetRoundState())
 		}
 		t.Fatalf("Timed out waiting for validators to commit evidence")
 	}

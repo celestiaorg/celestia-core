@@ -583,7 +583,6 @@ OUTER_LOOP:
 
 		// Send compact block
 		if !prs.Block && rs.ProposalBlockParts.HasHeader(prs.ProposalBlockPartSetHeader) {
-			logger.Info("Peer has proposal but not block", "height", prs.Height, "round", prs.Round)
 			if rs.ProposalCompactBlock != nil {
 				compactBlock, err := rs.ProposalCompactBlock.ToProto()
 				if err != nil {
@@ -1414,6 +1413,7 @@ func (ps *PeerState) ApplyNewRoundStepMessage(msg *NewRoundStepMessage) {
 	ps.PRS.StartTime = startTime
 	if psHeight != msg.Height || psRound != msg.Round {
 		ps.PRS.Proposal = false
+		ps.PRS.Block = false
 		ps.PRS.ProposalBlockPartSetHeader = types.PartSetHeader{}
 		ps.PRS.ProposalBlockParts = nil
 		ps.PRS.ProposalPOLRound = -1

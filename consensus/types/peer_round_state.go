@@ -54,6 +54,7 @@ func (prs PeerRoundState) StringIndented(indent string) string {
 	return fmt.Sprintf(`PeerRoundState{
 %s  %v/%v/%v @%v
 %s  Proposal %v -> %v
+%s	Block %v
 %s  POL      %v (round %v)
 %s  Prevotes   %v
 %s  Precommits %v
@@ -62,6 +63,7 @@ func (prs PeerRoundState) StringIndented(indent string) string {
 %s}`,
 		indent, prs.Height, prs.Round, prs.Step, prs.StartTime,
 		indent, prs.ProposalBlockPartSetHeader, prs.ProposalBlockParts,
+		indent, prs.Block,
 		indent, prs.ProposalPOL, prs.ProposalPOLRound,
 		indent, prs.Prevotes,
 		indent, prs.Precommits,
