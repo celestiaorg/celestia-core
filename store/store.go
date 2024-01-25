@@ -10,8 +10,21 @@ import (
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	// "github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
 )
+
+/* TODO
+
+1. Extend the block store with a secondary index with the tx hash as the key and the and transactional meta data as the value.
+This should include the height, index and exec that it was committed so that it can be retrieved.
+
+
+2. Introduce a new RPC endpoint TxStatus that returns the status of the transaction. To begin with this is just committed or not-committed. In the future, we may want to incorporate the mempool to understand whether it is pending or has been evicted.
+
+3. Modify the Tx endpoint to use this secondary index in the event that the tx indexer is not enabled to be able to retrieve the committed transaction.
+
+4. Actually mark broadcast_tx_commit as deprecated. We can plan to remove it in v3. */
 
 /*
 BlockStore is a simple low level store for blocks.
@@ -41,6 +54,12 @@ type BlockStore struct {
 	mtx    cmtsync.RWMutex
 	base   int64
 	height int64
+}
+
+type TxIndex struct {
+	blockHeight int64
+	index       int
+	exec        bool
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
@@ -322,6 +341,21 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 				return 0, err
 			}
 		}
+
+		// batch these txs and prune them like that 
+		block := bs.LoadBlock(h)
+		for _, tx := range block.Txs {
+			txKey := calcTxHashKey(tx.Hash())
+			txValue, err := bs.db.Get(txKey)
+			if err != nil {
+				return 0, err
+			}
+			if txValue != nil {
+				if err := bs.db.Delete(txKey); err != nil {
+					return 0, err
+				}
+			}
+        }
 		pruned++
 
 		// flush every 1000 blocks to avoid batches becoming too large
@@ -387,6 +421,22 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 		panic(err)
 	}
 
+	for i, tx := range block.Txs {
+		txHash := tx.Hash()
+		txIndex := cmtstore.TxIndex{
+			Height: height,
+			Index:       int64(i),
+			Committed:  true,
+		}
+		bz, err := proto.Marshal(&txIndex)
+		if err != nil {
+			panic(fmt.Errorf("error serializing txIndex: %v", err))
+		}
+		if err := bs.db.Set(calcTxHashKey(txHash), bz); err != nil {
+			panic(err)
+		}
+	}
+
 	// Save block commit (duplicate and separate from the Block)
 	pbc := block.LastCommit.ToProto()
 	blockCommitBytes := mustEncode(pbc)
@@ -445,6 +495,23 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
 }
 
+// func (bs *BlockStore) SaveTxIndex(txHash string, txIndex *TxIndex) error {
+// 	// Serialize the TxIndex object
+// 	bz, err := proto.Marshal(txIndex)
+
+//     if err != nil {
+//         return fmt.Errorf("failed to marshal TxIndex: %w", err)
+//     }
+
+//     // Save the serialized TxIndex object to the database
+//     err = bs.db.Set([]byte(txHash), bz)
+//     if err != nil {
+//         return fmt.Errorf("failed to save TxIndex to database: %w", err)
+//     }
+
+//     return nil
+// }
+
 func (bs *BlockStore) Close() error {
 	return bs.db.Close()
 }
@@ -469,6 +536,10 @@ func calcSeenCommitKey(height int64) []byte {
 
 func calcBlockHashKey(hash []byte) []byte {
 	return []byte(fmt.Sprintf("BH:%x", hash))
+}
+
+func calcTxHashKey(hash []byte) []byte {
+	return []byte(fmt.Sprintf("TH:%x", hash))
 }
 
 //-----------------------------------------------------------------------------
@@ -512,6 +583,23 @@ func LoadBlockStoreState(db dbm.DB) cmtstore.BlockStoreState {
 	}
 	return bsj
 }
+
+// func (bs *BlockStore) LoadTxIndex(txHash string) (*TxIndex, error) {
+// 	bz, err := bs.db.Get([]byte(txHash))
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	if len(bz) == 0 {
+// 		return nil, nil
+// 	}
+
+// 	var txIndex TxIndex
+// 	err = proto.Unmarshal(bz, &txIndex)
+// 	if err != nil {
+// 		panic(fmt.Errorf("unmarshal to TxIndex failed: %w", err))
+// 	}
+// 	return &txIndex, nil
+// }
 
 // mustEncode proto encodes a proto.message and panics if fails
 func mustEncode(pb proto.Message) []byte {
