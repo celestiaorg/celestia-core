@@ -468,7 +468,7 @@ func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
 	}
 }
 
-// BenchmarkMConnection_Multiple_ChannelIDS assesses the max bw/send rate
+// BenchmarkMConnection_Multiple_ChannelID assesses the max bw/send rate
 // utilization of MConnection when configured with multiple channel IDs.
 func BenchmarkMConnection_Multiple_ChannelID(b *testing.B) {
 	// These tests create two connections with two channels each, one channel having higher priority.
