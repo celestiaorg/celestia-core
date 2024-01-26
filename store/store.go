@@ -24,7 +24,6 @@ This should include the height, index and exec that it was committed so that it 
 
 3. Modify the Tx endpoint to use this secondary index in the event that the tx indexer is not enabled to be able to retrieve the committed transaction.
 
-4. Actually mark broadcast_tx_commit as deprecated. We can plan to remove it in v3. */
 
 /*
 BlockStore is a simple low level store for blocks.
@@ -50,7 +49,7 @@ type BlockStore struct {
 	// fine-grained concurrency control for its data, and thus this mutex does not apply to
 	// database contents. The only reason for keeping these fields in the struct is that the data
 	// can't efficiently be queried from the database since the key encoding we use is not
-	// lexicographically ordered (see https://github.com/cometbft/cometbft/issues/4567).
+	// lexicographically ordered.
 	mtx    cmtsync.RWMutex
 	base   int64
 	height int64
@@ -302,8 +301,9 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 
 	pruned := uint64(0)
 	batch := bs.db.NewBatch()
+	batchTxs := bs.db.NewBatch()
 	defer batch.Close()
-	flush := func(batch dbm.Batch, base int64) error {
+	flush := func(batch dbm.Batch, txBatch dbm.Batch, base int64) error {
 		// We can't trust batches to be atomic, so update base first to make sure no one
 		// tries to access missing blocks.
 		bs.mtx.Lock()
@@ -315,7 +315,11 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 		if err != nil {
 			return fmt.Errorf("failed to prune up to height %v: %w", base, err)
 		}
+		if err := txBatch.WriteSync(); err != nil {
+			return fmt.Errorf("failed to prune transactions up to height %v: %w", base, err)
+		}
 		batch.Close()
+		txBatch.Close()
 		return nil
 	}
 
@@ -342,7 +346,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 			}
 		}
 
-		// batch these txs and prune them like that 
+		// TODO: batch these txs and flush them when we flush the blocks
 		block := bs.LoadBlock(h)
 		for _, tx := range block.Txs {
 			txKey := calcTxHashKey(tx.Hash())
@@ -351,25 +355,29 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 				return 0, err
 			}
 			if txValue != nil {
-				if err := bs.db.Delete(txKey); err != nil {
+				if err := batchTxs.Delete(txKey); err != nil {
 					return 0, err
 				}
 			}
-        }
+		}
 		pruned++
 
 		// flush every 1000 blocks to avoid batches becoming too large
+		// when flushing every 1000 blocks, we need to flush the txs as well that accumulated over the time
 		if pruned%1000 == 0 && pruned > 0 {
-			err := flush(batch, h)
+
+			err := flush(batch, batchTxs, h)
 			if err != nil {
 				return 0, err
 			}
 			batch = bs.db.NewBatch()
+			batchTxs = bs.db.NewBatch()
 			defer batch.Close()
+			defer batchTxs.Close()
 		}
 	}
 
-	err := flush(batch, height)
+	err := flush(batch, batchTxs, height)
 	if err != nil {
 		return 0, err
 	}
@@ -422,17 +430,12 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 	}
 
 	for i, tx := range block.Txs {
-		txHash := tx.Hash()
 		txIndex := cmtstore.TxIndex{
-			Height: height,
-			Index:       int64(i),
-			Committed:  true,
+			Height:    height,
+			Index:     int64(i),
+			Committed: true,
 		}
-		bz, err := proto.Marshal(&txIndex)
-		if err != nil {
-			panic(fmt.Errorf("error serializing txIndex: %v", err))
-		}
-		if err := bs.db.Set(calcTxHashKey(txHash), bz); err != nil {
+		if err := bs.SaveTxIndex(tx.Hash(), &txIndex); err != nil {
 			panic(err)
 		}
 	}
@@ -495,22 +498,16 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
 }
 
-// func (bs *BlockStore) SaveTxIndex(txHash string, txIndex *TxIndex) error {
-// 	// Serialize the TxIndex object
-// 	bz, err := proto.Marshal(txIndex)
-
-//     if err != nil {
-//         return fmt.Errorf("failed to marshal TxIndex: %w", err)
-//     }
-
-//     // Save the serialized TxIndex object to the database
-//     err = bs.db.Set([]byte(txHash), bz)
-//     if err != nil {
-//         return fmt.Errorf("failed to save TxIndex to database: %w", err)
-//     }
-
-//     return nil
-// }
+func (bs *BlockStore) SaveTxIndex(txHash []byte, txIndex *cmtstore.TxIndex) error {
+	bz, err := proto.Marshal(txIndex)
+	if err != nil {
+		panic(fmt.Errorf("error serializing txIndex: %v", err))
+	}
+	if err := bs.db.Set(calcTxHashKey(txHash), bz); err != nil {
+		panic(err)
+	}
+	return nil
+}
 
 func (bs *BlockStore) Close() error {
 	return bs.db.Close()
@@ -584,22 +581,24 @@ func LoadBlockStoreState(db dbm.DB) cmtstore.BlockStoreState {
 	return bsj
 }
 
-// func (bs *BlockStore) LoadTxIndex(txHash string) (*TxIndex, error) {
-// 	bz, err := bs.db.Get([]byte(txHash))
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	if len(bz) == 0 {
-// 		return nil, nil
-// 	}
+func (bs *BlockStore) LoadTxIndex(txHash string) (*cmtstore.TxIndex, error) {
+	bz, err := bs.db.Get([]byte(txHash))
+	if err != nil {
+		panic(err)
+	}
+	if len(bz) == 0 {
+		return nil, nil
+	}
 
-// 	var txIndex TxIndex
-// 	err = proto.Unmarshal(bz, &txIndex)
-// 	if err != nil {
-// 		panic(fmt.Errorf("unmarshal to TxIndex failed: %w", err))
-// 	}
-// 	return &txIndex, nil
-// }
+	var txi cmtstore.TxIndex
+	if err = proto.Unmarshal(bz, &txi); err != nil {
+		panic(fmt.Errorf("unmarshal to TxIndex failed: %w", err))
+	}
+	if err != nil {
+		panic(fmt.Errorf("unmarshal to TxIndex failed: %w", err))
+	}
+	return &txi, nil
+}
 
 // mustEncode proto encodes a proto.message and panics if fails
 func mustEncode(pb proto.Message) []byte {
