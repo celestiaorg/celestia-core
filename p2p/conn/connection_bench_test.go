@@ -65,6 +65,49 @@ func generateAndSendMessages(mc *MConnection,
 	}
 }
 
+// sendMessages sends the supplied messages `msgs` to the specified multiplex
+// connection in order and according to the specified rate `messagingRate`.
+// chIDs is the list of channel IDs to which the messages are sent.
+// This process terminates after the duration `timeout` or when all
+// messages are sent.
+func sendMessages(mc *MConnection,
+	messagingRate time.Duration,
+	timeout time.Duration,
+	msgs [][]byte, chIDs []byte) {
+
+	var i int = 0
+	total := len(msgs)
+	// message generation interval ticker
+	ticker := time.NewTicker(messagingRate)
+	defer ticker.Stop()
+
+	// timer for the total duration
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	// generating messages
+	for {
+		select {
+		case <-ticker.C:
+			// generate message
+			if mc.Send(chIDs[i], msgs[i]) {
+				fmt.Println("Sent message ", i, " on channel ", chIDs[i])
+				i++
+				if i >= total {
+					log.TestingLogger().Info("Completed the message generation as the" +
+						" total number of messages is reached")
+					return
+				}
+			}
+		case <-timer.C:
+			// time's up
+			log.TestingLogger().Info("Completed the message generation as the total " +
+				"duration is reached")
+			return
+		}
+	}
+}
+
 func BenchmarkMConnection(b *testing.B) {
 	chID := byte(0x01)
 
@@ -466,4 +509,211 @@ func BenchmarkMConnection_ScalingPayloadSizes_LowSendRate(b *testing.B) {
 	for _, tt := range testCases {
 		runBenchmarkTest(b, tt)
 	}
+}
+
+// BenchmarkMConnection_Multiple_ChannelID assesses the max bw/send rate
+// utilization of MConnection when configured with multiple channel IDs.
+func BenchmarkMConnection_Multiple_ChannelID(b *testing.B) {
+	// These tests create two connections with two channels each, one channel having higher priority.
+	// Traffic is sent from the client to the server, split between the channels with varying proportions in each test case.
+	// All tests should complete in 2 seconds (calculated as totalTraffic* msgSize / sendRate),
+	// demonstrating that channel count doesn't affect max bandwidth utilization.
+	totalTraffic := 100
+	msgSize := 1 * kibibyte
+	sendRate := 50 * kibibyte
+	recRate := 50 * kibibyte
+	chDescs := []*ChannelDescriptor{
+		{ID: 0x01, Priority: 1, SendQueueCapacity: 50},
+		{ID: 0x02, Priority: 2, SendQueueCapacity: 50},
+	}
+	type testCase struct {
+		name       string
+		trafficMap map[byte]int // channel ID -> number of messages to be sent
+	}
+	var tests []testCase
+	for i := 0.0; i < 1; i += 0.1 {
+		tests = append(tests, testCase{
+			name: fmt.Sprintf("2 channel IDs with traffic proportion %f %f",
+				i, 1-i),
+			trafficMap: map[byte]int{ // channel ID -> number of messages to be sent
+				0x01: int(i * float64(totalTraffic)),
+				0x02: totalTraffic - int(i*float64(totalTraffic)), // the rest of the traffic
+			},
+		})
+	}
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			for n := 0; n < b.N; n++ {
+				// set up two networked connections
+				// server, client := NetPipe() // can alternatively use this and comment out the line below
+				server, client := tcpNetPipe()
+				defer server.Close()
+				defer client.Close()
+
+				// prepare callback to receive messages
+				allReceived := make(chan bool)
+				receivedLoad := 0 // number of messages received
+				onReceive := func(chID byte, msgBytes []byte) {
+					receivedLoad++
+					if receivedLoad >= totalTraffic {
+						allReceived <- true
+					}
+				}
+
+				cnfg := DefaultMConnConfig()
+				cnfg.SendRate = int64(sendRate)
+				cnfg.RecvRate = int64(recRate)
+
+				// mount the channel descriptors to the connections
+				clientMconn := NewMConnectionWithConfig(client, chDescs,
+					func(chID byte, msgBytes []byte) {},
+					func(r interface{}) {},
+					cnfg)
+				serverMconn := NewMConnectionWithConfig(server, chDescs,
+					onReceive,
+					func(r interface{}) {},
+					cnfg)
+				clientMconn.SetLogger(log.TestingLogger())
+				serverMconn.SetLogger(log.TestingLogger())
+
+				err := clientMconn.Start()
+				require.Nil(b, err)
+				defer func() {
+					_ = clientMconn.Stop()
+				}()
+				err = serverMconn.Start()
+				require.Nil(b, err)
+				defer func() {
+					_ = serverMconn.Stop()
+				}()
+
+				// start measuring the time from here to exclude the time
+				// taken to set up the connections
+				b.StartTimer()
+				// start generating messages over the two channels,
+				// concurrently, with the specified proportions
+				for chID, trafficPortion := range tt.trafficMap {
+					go generateAndSendMessages(clientMconn,
+						time.Millisecond,
+						1*time.Minute,
+						trafficPortion,
+						msgSize,
+						nil,
+						chID)
+				}
+
+				// wait for all messages to be received
+				<-allReceived
+				b.StopTimer()
+			}
+		})
+	}
+}
+
+// BenchmarkMConnection_Multiple_ChannelID assesses the max bw/send rate
+// utilization of MConnection when configured with multiple channel IDs.
+func TestMConnection_Message_Order_ChannelID(t *testing.T) {
+	// This test involves two connections, each with two channels:
+	// channel ID 1 (high priority) and channel ID 2 (low priority).
+	// It sends 11 messages from client to server, with the first 10 on
+	// channel ID 2 and the final one on channel ID 1.
+	// The aim is to show that message order at the receiver is based solely
+	// on the send order, as the receiver does not prioritize channels.
+	// To enforce a specific send order,
+	// channel ID 2's send queue capacity is limited to 1;
+	// preventing message queuing on channel ID 2 that could otherwise give
+	// priority to channel ID 1's message (despite being the last message),
+	// disrupting the send order.
+	totalMsgs := 11
+	msgSize := 1 * kibibyte
+	sendRate := 50 * kibibyte
+	recRate := 50 * kibibyte
+	clientChDesc := []*ChannelDescriptor{
+		{ID: 0x01, Priority: 1, SendQueueCapacity: 10,
+			RecvMessageCapacity: defaultRecvMessageCapacity,
+			RecvBufferCapacity:  defaultRecvBufferCapacity},
+		{ID: 0x02, Priority: 2, SendQueueCapacity: 1,
+			// channel ID 2's send queue capacity is limited to 1;
+			// to enforce a specific send order.
+			RecvMessageCapacity: defaultRecvMessageCapacity,
+			RecvBufferCapacity:  defaultRecvBufferCapacity},
+	}
+	serverChDesc := []*ChannelDescriptor{
+		{ID: 0x01, Priority: 1, SendQueueCapacity: 50,
+			RecvMessageCapacity: defaultRecvMessageCapacity,
+			RecvBufferCapacity:  defaultRecvBufferCapacity},
+		{ID: 0x02, Priority: 2, SendQueueCapacity: 50,
+			RecvMessageCapacity: defaultRecvMessageCapacity,
+			RecvBufferCapacity:  defaultRecvBufferCapacity},
+	}
+
+	// prepare messages and channel IDs
+	// 10 messages on channel ID 2 and 1 message on channel ID 1
+	msgs := make([][]byte, totalMsgs)
+	chIDs := make([]byte, totalMsgs)
+	for i := 0; i < totalMsgs-1; i++ {
+		msg := bytes.Repeat([]byte{'x'}, msgSize)
+		msgs[i] = msg
+		chIDs[i] = 0x02
+	}
+	msgs[totalMsgs-1] = bytes.Repeat([]byte{'y'}, msgSize)
+	chIDs[totalMsgs-1] = 0x01
+
+	// set up two networked connections
+	// server, client := NetPipe() // can alternatively use this and comment out the line below
+	server, client := tcpNetPipe()
+	defer server.Close()
+	defer client.Close()
+
+	// prepare callback to receive messages
+	allReceived := make(chan bool)
+	received := 0 // number of messages received
+	recvChIds := make([]byte,
+		totalMsgs) // keep track of the order of channel IDs of received messages
+	onReceive := func(chID byte, msgBytes []byte) {
+		time.Sleep(1 * time.Second)
+		recvChIds[received] = chID
+		received++
+		if received >= totalMsgs {
+			allReceived <- true
+		}
+	}
+
+	cnfg := DefaultMConnConfig()
+	cnfg.SendRate = int64(sendRate)
+	cnfg.RecvRate = int64(recRate)
+
+	// mount the channel descriptors to the connections
+	clientMconn := NewMConnectionWithConfig(client, clientChDesc,
+		func(chID byte, msgBytes []byte) {},
+		func(r interface{}) {},
+		cnfg)
+	serverMconn := NewMConnectionWithConfig(server, serverChDesc,
+		onReceive,
+		func(r interface{}) {},
+		cnfg)
+	clientMconn.SetLogger(log.TestingLogger())
+	serverMconn.SetLogger(log.TestingLogger())
+
+	err := clientMconn.Start()
+	require.Nil(t, err)
+	defer func() {
+		_ = clientMconn.Stop()
+	}()
+	err = serverMconn.Start()
+	require.Nil(t, err)
+	defer func() {
+		_ = serverMconn.Stop()
+	}()
+
+	// start sending messages
+	go sendMessages(clientMconn,
+		time.Millisecond,
+		1*time.Minute,
+		msgs, chIDs)
+
+	// wait for all messages to be received
+	<-allReceived
+
+	require.Equal(t, chIDs, recvChIds)
 }
