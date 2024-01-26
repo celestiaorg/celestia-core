@@ -1234,7 +1234,10 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
-		cs.sendInternalMessage(msgInfo{&CompactBlockMessage{block}, ""})
+		cs.sendInternalMessage(msgInfo{&CompactBlockMessage{
+			Block: block,
+			Round: p.Round,
+		}, ""})
 
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
@@ -2028,7 +2031,7 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 	cs.ProposalBlockParts = partSet
 
 	// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
-	cs.Logger.Info("assembled proposal block from compact block", "height", cs.ProposalBlock.Height, "hash", cs.ProposalBlock.Hash())
+	cs.Logger.Info("assembled proposal block from compact block", "height", cs.ProposalBlock.Height, "round", cs.Round, "hash", cs.ProposalBlock.Hash())
 
 	if err := cs.eventBus.PublishEventCompleteProposal(cs.CompleteProposalEvent()); err != nil {
 		cs.Logger.Error("failed publishing event complete proposal", "err", err)

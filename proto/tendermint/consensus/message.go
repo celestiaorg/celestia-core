@@ -49,6 +49,12 @@ func (m *CompactBlock) Wrap() proto.Message {
 	return cm
 }
 
+func (m *HasCompactBlock) Wrap() proto.Message {
+	cm := &Message{}
+	cm.Sum = &Message_HasCompactBlock{HasCompactBlock: m}
+	return cm
+}
+
 func (m *BlockPart) Wrap() proto.Message {
 	cm := &Message{}
 	cm.Sum = &Message_BlockPart{BlockPart: m}
@@ -97,6 +103,9 @@ func (m *Message) Unwrap() (proto.Message, error) {
 
 	case *Message_CompactBlock:
 		return m.GetCompactBlock(), nil
+
+	case *Message_HasCompactBlock:
+		return m.GetHasCompactBlock(), nil
 
 	case *Message_BlockPart:
 		return m.GetBlockPart(), nil

@@ -336,8 +336,10 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		case *ProposalPOLMessage:
 			ps.ApplyProposalPOLMessage(msg)
 		case *CompactBlockMessage:
-			ps.SetHasBlock(msg.Block.Height, ps.PRS.Round)
+			ps.SetHasBlock(msg.Block.Height, msg.Round)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
+		case *HasBlockMessage:
+			ps.SetHasBlock(msg.Height, msg.Round)
 		case *BlockPartMessage:
 			ps.SetHasProposalBlockPart(msg.Height, msg.Round, int(msg.Part.Index))
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
@@ -449,6 +451,13 @@ func (conR *Reactor) subscribeToBroadcastEvents() {
 		conR.Logger.Error("Error adding listener for events", "err", err)
 	}
 
+	if err := conR.conS.evsw.AddListenerForEvent(subscriber, types.EventCompleteProposal,
+		func(data cmtevents.EventData) {
+			conR.broadcastHasBlockMessage(data.(*types.EventDataCompleteProposal))
+		}); err != nil {
+		conR.Logger.Error("Error adding listener for events", "err", err)
+	}
+
 	if err := conR.conS.evsw.AddListenerForEvent(subscriber, types.EventValidBlock,
 		func(data cmtevents.EventData) {
 			conR.broadcastNewValidBlockMessage(data.(*cstypes.RoundState))
@@ -505,28 +514,17 @@ func (conR *Reactor) broadcastHasVoteMessage(vote *types.Vote) {
 		ChannelID: StateChannel,
 		Message:   msg,
 	})
-	/*
-		// TODO: Make this broadcast more selective.
-		for _, peer := range conR.Switch.Peers().List() {
-			ps, ok := peer.Get(PeerStateKey).(*PeerState)
-			if !ok {
-				panic(fmt.Sprintf("Peer %v has no state", peer))
-			}
-			prs := ps.GetRoundState()
-			if prs.Height == vote.Height {
-				// TODO: Also filter on round?
-				e := p2p.Envelope{
-					ChannelID: StateChannel, struct{ ConsensusMessage }{msg},
-					Message: p,
-				}
-				p2p.TrySendEnvelopeShim(peer, e) //nolint: staticcheck
-			} else {
-				// Height doesn't match
-				// TODO: check a field, maybe CatchupCommitRound?
-				// TODO: But that requires changing the struct field comment.
-			}
-		}
-	*/
+}
+
+// Broadcasts HasBlockMessage to peers that care.
+func (conR *Reactor) broadcastHasBlockMessage(data *types.EventDataCompleteProposal) {
+	conR.Switch.BroadcastEnvelope(p2p.Envelope{
+		ChannelID: DataChannel,
+		Message: &cmtcons.HasCompactBlock{
+			Height: data.Height,
+			Round:  data.Round,
+		},
+	})
 }
 
 func makeRoundStepMessage(rs *cstypes.RoundState) (nrsMsg *cmtcons.NewRoundStep) {
@@ -593,6 +591,7 @@ OUTER_LOOP:
 					ChannelID: DataChannel,
 					Message: &cmtcons.CompactBlock{
 						Block: compactBlock,
+						Round: rs.Round,
 					},
 				}, logger) {
 					ps.SetHasBlock(prs.Height, prs.Round)
@@ -640,7 +639,7 @@ OUTER_LOOP:
 		if rs.Proposal != nil && !prs.Proposal {
 			// Proposal: share the proposal metadata with peer.
 			{
-				logger.Info("Sending proposal", "height", prs.Height, "round", prs.Round)
+				logger.Debug("Sending proposal", "height", prs.Height, "round", prs.Round)
 				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 					ChannelID: DataChannel,
 					Message:   &cmtcons.Proposal{Proposal: *rs.Proposal.ToProto()},
@@ -685,7 +684,10 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 			return
 		} else if !blockMeta.BlockID.PartSetHeader.Equals(prs.ProposalBlockPartSetHeader) {
-			logger.Info("Peer ProposalBlockPartSetHeader mismatch, sleeping",
+			// this happens when the peer is on a different round to the round of the proposal
+			// that was eventually committed. They should eventually receive 2/3 precommits and
+			// update the part set header to the one of the block that is committed
+			logger.Debug("Peer ProposalBlockPartSetHeader mismatch, sleeping",
 				"blockPartSetHeader", blockMeta.BlockID.PartSetHeader, "peerBlockPartSetHeader", prs.ProposalBlockPartSetHeader)
 			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 			return
@@ -1707,6 +1709,7 @@ func (m *ProposalPOLMessage) String() string {
 // CompactBlockMessage is sent when gossipping a piece of the proposed block.
 type CompactBlockMessage struct {
 	Block *types.Block
+	Round int32
 }
 
 // ValidateBasic performs basic validation.
@@ -1716,7 +1719,28 @@ func (m *CompactBlockMessage) ValidateBasic() error {
 
 // String returns a string representation.
 func (m *CompactBlockMessage) String() string {
-	return fmt.Sprintf("[CompactBlock H:%v]", m.Block.Height)
+	return fmt.Sprintf("[CompactBlock H:%d, R: %d]", m.Block.Height, m.Round)
+}
+
+//-------------------------------------
+
+// HasBlockMessage is sent when gossipping the receiving of a block
+type HasBlockMessage struct {
+	Height int64
+	Round  int32
+}
+
+// ValidateBasic performs basic validation.
+func (m *HasBlockMessage) ValidateBasic() error {
+	if m.Height <= 0 {
+		return errors.New("negative or zero height")
+	}
+	return nil
+}
+
+// String returns a string representation.
+func (m *HasBlockMessage) String() string {
+	return fmt.Sprintf("[HasBlock H:%d, R: %d]", m.Height, m.Round)
 }
 
 //-------------------------------------

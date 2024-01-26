@@ -44,6 +44,13 @@ message ProposalPOL {
 // CompactBlock is for gossiping a block
 message CompactBlock {
   tendermint.types.Block block = 1;
+  int32                  round = 2;
+}
+
+// HasCompactBlock to signal that the node has the block
+message HasCompactBlock {
+  int64 height = 1;
+  int32 round  = 2;
 }
 
 // BlockPart is sent when catching up
@@ -85,15 +92,16 @@ message VoteSetBits {
 
 message Message {
   oneof sum {
-    NewRoundStep  new_round_step  = 1;
-    NewValidBlock new_valid_block = 2;
-    Proposal      proposal        = 3;
-    ProposalPOL   proposal_pol    = 4;
-    BlockPart     block_part      = 5;
-    Vote          vote            = 6;
-    HasVote       has_vote        = 7;
-    VoteSetMaj23  vote_set_maj23  = 8;
-    VoteSetBits   vote_set_bits   = 9;
-    CompactBlock  compact_block   = 10;
+    NewRoundStep    new_round_step    = 1;
+    NewValidBlock   new_valid_block   = 2;
+    Proposal        proposal          = 3;
+    ProposalPOL     proposal_pol      = 4;
+    BlockPart       block_part        = 5;
+    Vote            vote              = 6;
+    HasVote         has_vote          = 7;
+    VoteSetMaj23    vote_set_maj23    = 8;
+    VoteSetBits     vote_set_bits     = 9;
+    CompactBlock    compact_block     = 10;
+    HasCompactBlock has_compact_block = 11;
   }
 }
