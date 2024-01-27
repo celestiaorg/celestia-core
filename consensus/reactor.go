@@ -986,7 +986,7 @@ func (conR *Reactor) peerStatsRoutine() {
 				if numVotes := ps.RecordVote(); numVotes%votesToContributeToBecomeGoodPeer == 0 {
 					conR.Switch.MarkPeerAsGood(peer)
 				}
-			case *BlockPartMessage:
+			case *BlockPartMessage, *CompactBlockMessage:
 				if numParts := ps.RecordBlockPart(); numParts%blocksToContributeToBecomeGoodPeer == 0 {
 					conR.Switch.MarkPeerAsGood(peer)
 				}
@@ -1366,14 +1366,6 @@ func (ps *PeerState) BlockPartsSent() int {
 	defer ps.mtx.Unlock()
 
 	return ps.Stats.BlockParts
-}
-
-// HasBlock returns true if the peer has received a valid block for the current round
-func (ps *PeerState) HasBlock() bool {
-	ps.mtx.Lock()
-	defer ps.mtx.Unlock()
-
-	return ps.PRS.Block
 }
 
 // SetHasVote sets the given vote as known by the peer

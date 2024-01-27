@@ -367,7 +367,7 @@ func TestReactorRecordsVotesAndBlockParts(t *testing.T) {
 	ps := peer.Get(types.PeerStateKey).(*PeerState)
 
 	assert.Equal(t, true, ps.VotesSent() > 0, "number of votes sent should have increased")
-	assert.Equal(t, true, ps.HasBlock(), "should have block")
+	assert.Equal(t, true, ps.BlockPartsSent(), "should have block")
 }
 
 //-------------------------------------------------------------
