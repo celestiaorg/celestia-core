@@ -499,6 +499,7 @@ func (txmp *TxPool) Update(
 	// transactions are left.
 	size := txmp.Size()
 	txmp.metrics.Size.Set(float64(size))
+	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 	if size > 0 {
 		if txmp.config.Recheck {
 			txmp.recheckTransactions()
@@ -576,6 +577,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 
 	txmp.metrics.TxSizeBytes.Observe(float64(wtx.size()))
 	txmp.metrics.Size.Set(float64(txmp.Size()))
+	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 	txmp.logger.Debug(
 		"inserted new valid transaction",
 		"priority", wtx.priority,
@@ -628,6 +630,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 	}
 	txmp.metrics.FailedTxs.Add(1)
 	txmp.metrics.Size.Set(float64(txmp.Size()))
+	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 }
 
 // recheckTransactions initiates re-CheckTx ABCI calls for all the transactions
