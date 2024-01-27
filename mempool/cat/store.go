@@ -12,6 +12,7 @@ type store struct {
 	mtx   sync.RWMutex
 	bytes int64
 	txs   map[types.TxKey]*wrappedTx
+	committedTxs map[types.TxKey]*wrappedTx
 }
 
 func newStore() *store {
@@ -41,11 +42,35 @@ func (s *store) get(txKey types.TxKey) *wrappedTx {
 	return s.txs[txKey]
 }
 
+func (s *store) getCommitted(txKey types.TxKey) *wrappedTx {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	return s.committedTxs[txKey]
+}
+
 func (s *store) has(txKey types.TxKey) bool {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 	_, has := s.txs[txKey]
 	return has
+}
+
+func (s *store) markAsCommitted(txKeys []types.TxKey) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	for _, key := range txKeys {
+		if tx, exists := s.txs[key]; exists {
+			s.bytes -= tx.size()
+			delete(s.txs, key)
+			s.committedTxs[key] = tx
+		}
+	}
+}
+
+func (s *store) clearCommitted() {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.committedTxs = make(map[types.TxKey]*wrappedTx)
 }
 
 func (s *store) remove(txKey types.TxKey) bool {

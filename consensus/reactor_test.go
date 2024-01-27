@@ -367,7 +367,7 @@ func TestReactorRecordsVotesAndBlockParts(t *testing.T) {
 	ps := peer.Get(types.PeerStateKey).(*PeerState)
 
 	assert.Equal(t, true, ps.VotesSent() > 0, "number of votes sent should have increased")
-	assert.Equal(t, true, ps.BlockPartsSent() > 0, "number of votes sent should have increased")
+	assert.Equal(t, true, ps.HasBlock(), "should have block")
 }
 
 //-------------------------------------------------------------
@@ -1056,6 +1056,7 @@ func TestMarshalJSONPeerState(t *testing.T) {
 			"step": 0,
 			"start_time": "0001-01-01T00:00:00Z",
 			"proposal": false,
+			"block": false,
 			"proposal_block_part_set_header":
 				{"total":0, "hash":""},
 			"proposal_block_parts": null,

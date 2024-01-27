@@ -157,7 +157,6 @@ func MakeGenesis(testnet *e2e.Testnet) (types.GenesisDoc, error) {
 // MakeConfig generates a CometBFT config for a node.
 func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg := config.DefaultConfig()
-	cfg.Consensus.TimeoutPropose = 5 * time.Second
 	cfg.Moniker = node.Name
 	cfg.ProxyApp = AppAddressTCP
 	cfg.RPC.ListenAddress = "tcp://0.0.0.0:26657"

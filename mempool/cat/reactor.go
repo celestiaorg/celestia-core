@@ -92,7 +92,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		mempool:      mempool,
 		ids:          newMempoolIDs(),
 		requests:     newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		blockFetcher: NewBlockFetcher(),
+		blockFetcher: newBlockFetcher(),
 		traceClient:  &trace.Client{},
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
@@ -187,6 +187,14 @@ func (memR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
 	return peer
 }
 
+// AddPeer broadcasts all the transactions that this node has seen
+func (memR *Reactor) AddPeer(peer p2p.Peer) {
+	keys := memR.mempool.store.getAllKeys()
+	for _, key := range keys {
+		memR.broadcastSeenTx(key)
+	}
+}
+
 // RemovePeer implements Reactor. For all current outbound requests to this
 // peer it will find a new peer to rerequest the same transactions.
 func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
@@ -195,7 +203,6 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	// we won't receive any responses from them.
 	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
 	for key := range outboundRequests {
-		memR.mempool.metrics.RequestedTxs.Add(1)
 		memR.findNewPeerToRequestTx(key)
 	}
 }
@@ -323,6 +330,10 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			return
 		}
 		tx, has := memR.mempool.Get(txKey)
+		if !has {
+			// see if the tx was recently committed
+			tx, has = memR.mempool.GetCommitted(txKey)
+		}
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			schema.WriteMempoolTx(

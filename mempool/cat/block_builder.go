@@ -52,7 +52,7 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 	memR.mempool.jsonMetrics.Unlock()
 
 	// setup a request for this block and begin to track and retrieve all missing transactions
-	request := memR.blockFetcher.NewRequest(
+	request := memR.blockFetcher.newRequest(
 		blockID,
 		memR.mempool.Height(),
 		missingKeys,
@@ -124,8 +124,8 @@ type blockFetcher struct {
 	requests map[string]*blockRequest
 }
 
-// NewBlockFetcher returns a new blockFetcher for managing block requests
-func NewBlockFetcher() *blockFetcher {
+// newBlockFetcher returns a new blockFetcher for managing block requests
+func newBlockFetcher() *blockFetcher {
 	return &blockFetcher{
 		requests: make(map[string]*blockRequest),
 	}
@@ -140,7 +140,7 @@ func (bf *blockFetcher) GetRequest(blockID []byte) (*blockRequest, bool) {
 
 // NewRequest creates a new block request and returns it.
 // If a request already exists it returns that instead
-func (bf *blockFetcher) NewRequest(
+func (bf *blockFetcher) newRequest(
 	blockID []byte,
 	height int64,
 	missingKeys map[int]types.TxKey,

@@ -1368,6 +1368,14 @@ func (ps *PeerState) BlockPartsSent() int {
 	return ps.Stats.BlockParts
 }
 
+// HasBlock returns true if the peer has received a valid block for the current round
+func (ps *PeerState) HasBlock() bool {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+
+	return ps.PRS.Block
+}
+
 // SetHasVote sets the given vote as known by the peer
 func (ps *PeerState) SetHasVote(vote *types.Vote) {
 	ps.mtx.Lock()

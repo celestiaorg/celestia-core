@@ -210,6 +210,8 @@ func TestTxPool_Size(t *testing.T) {
 
 	txmp.Lock()
 	require.NoError(t, txmp.Update(1, rawTxs[:50], responses, nil, nil))
+	// txs are removed with a one block delay so we need to call this twice
+	require.NoError(t, txmp.Update(1, nil, nil, nil, nil))
 	txmp.Unlock()
 
 	require.Equal(t, len(rawTxs)/2, txmp.Size())
@@ -288,6 +290,8 @@ func TestTxPool_Eviction(t *testing.T) {
 	// Free up some space so we can add back previously evicted txs
 	err = txmp.Update(1, types.Txs{types.Tx("key10=0123456789abcdef=11")}, []*abci.ResponseDeliverTx{{Code: abci.CodeTypeOK}}, nil, nil)
 	require.NoError(t, err)
+	// need to call Update twice to actually remove the transaction
+	_ = txmp.Update(2, nil, nil, nil, nil)
 	require.False(t, txExists("key10=0123456789abcdef=11"))
 	mustCheckTx(t, txmp, "key3=0002=10")
 	require.True(t, txExists("key3=0002=10"))
@@ -598,9 +602,8 @@ func TestTxPool_ExpiredTxs_NumBlocks(t *testing.T) {
 		responses[i] = &abci.ResponseDeliverTx{Code: abci.CodeTypeOK}
 	}
 
-	txmp.Lock()
 	require.NoError(t, txmp.Update(txmp.height+1, reapedTxs, responses, nil, nil))
-	txmp.Unlock()
+	require.NoError(t, txmp.Update(txmp.height+1, nil, nil, nil, nil))
 
 	require.Equal(t, 95, txmp.Size())
 
@@ -694,6 +697,8 @@ func TestTxPool_RemoveBlobTx(t *testing.T) {
 	require.NoError(t, err)
 
 	err = txmp.Update(1, []types.Tx{indexWrapper}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+	require.NoError(t, err)
+	err = txmp.Update(1, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.EqualValues(t, 0, txmp.Size())
 	require.EqualValues(t, 0, txmp.SizeBytes())

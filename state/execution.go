@@ -255,7 +255,7 @@ func (blockExec *BlockExecutor) ApplyBlock(
 	// Update the state with the block and responses.
 	state, err = updateState(state, blockID, &block.Header, abciResponses, validatorUpdates)
 	if err != nil {
-		return state, 0, fmt.Errorf("commit failed for application: %v", err)
+		return state, 0, fmt.Errorf("failed to update state: %v", err)
 	}
 
 	// Lock mempool, commit app state, update mempoool.

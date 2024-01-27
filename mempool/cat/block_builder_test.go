@@ -91,23 +91,23 @@ func TestBlockRequestConcurrently(t *testing.T) {
 }
 
 func TestBlockFetcherSimple(t *testing.T) {
-	bf := NewBlockFetcher()
+	bf := newBlockFetcher()
 	tx := types.Tx("hello world")
 	key := tx.Key()
 	missingKeys := map[int]types.TxKey{
 		0: key,
 	}
 	blockID := []byte("blockID")
-	req := bf.NewRequest(blockID, 1, missingKeys, make([][]byte, 1))
+	req := bf.newRequest(blockID, 1, missingKeys, make([][]byte, 1))
 	req2, ok := bf.GetRequest(blockID)
 	require.True(t, ok)
 	require.Equal(t, req, req2)
 	// a different request for the same blockID should
 	// return the same original request object.
-	req3 := bf.NewRequest(blockID, 2, missingKeys, make([][]byte, 2))
+	req3 := bf.newRequest(blockID, 2, missingKeys, make([][]byte, 2))
 	require.Equal(t, req, req3)
 
-	req4 := bf.NewRequest([]byte("differentBlockID"), 1, missingKeys, make([][]byte, 1))
+	req4 := bf.newRequest([]byte("differentBlockID"), 1, missingKeys, make([][]byte, 1))
 
 	bf.TryAddMissingTx(key, tx)
 	require.False(t, req4.TryAddMissingTx(key, tx))
@@ -117,7 +117,7 @@ func TestBlockFetcherSimple(t *testing.T) {
 
 func TestBlockFetcherConcurrentRequests(t *testing.T) {
 	var (
-		bf                  = NewBlockFetcher()
+		bf                  = newBlockFetcher()
 		numBlocks           = 5
 		numRequestsPerBlock = 5
 		numTxs              = 5
@@ -154,7 +154,7 @@ func TestBlockFetcherConcurrentRequests(t *testing.T) {
 				}
 				txsCopy := make([][]byte, len(txs))
 				copy(txsCopy, txs)
-				request := bf.NewRequest(blockID, 1, mk, txs)
+				request := bf.newRequest(blockID, 1, mk, txs)
 				if routine == 0 {
 					requestWG.Done()
 				}
