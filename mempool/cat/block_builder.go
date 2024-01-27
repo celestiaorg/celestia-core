@@ -151,7 +151,7 @@ func (bf *blockFetcher) newRequest(
 	if request, ok := bf.requests[string(blockID)]; ok {
 		return request
 	}
-	request := NewBlockRequest(height, missingKeys, txs)
+	request := newBlockRequest(height, missingKeys, txs)
 	bf.requests[string(blockID)] = request
 	bf.pruneOldRequests(height)
 	return request
@@ -194,7 +194,7 @@ type blockRequest struct {
 	endTime   time.Time
 }
 
-func NewBlockRequest(
+func newBlockRequest(
 	height int64,
 	missingKeys map[int]types.TxKey,
 	txs [][]byte,

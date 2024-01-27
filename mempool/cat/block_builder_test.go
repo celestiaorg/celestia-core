@@ -27,7 +27,7 @@ func TestBlockRequest(t *testing.T) {
 		1: key2,
 	}
 
-	request := NewBlockRequest(1, missingKeys, txs)
+	request := newBlockRequest(1, missingKeys, txs)
 
 	require.True(t, request.TryAddMissingTx(key1, tx1))
 	// cannot add the same missing tx twice
@@ -69,7 +69,7 @@ func TestBlockRequestConcurrently(t *testing.T) {
 		}
 	}
 
-	request := NewBlockRequest(1, missingKeys, txs)
+	request := newBlockRequest(1, missingKeys, txs)
 
 	wg := sync.WaitGroup{}
 	for i := 0; i < numTxs; i++ {
