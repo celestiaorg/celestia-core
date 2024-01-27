@@ -565,8 +565,6 @@ func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 	time.Sleep(3 * time.Millisecond)
 
 	// Trigger an update so that pruning will occur.
-	txmp.Lock()
-	defer txmp.Unlock()
 	require.NoError(t, txmp.Update(txmp.height+1, nil, nil, nil, nil))
 
 	// All the transactions in the original set should have been purged.

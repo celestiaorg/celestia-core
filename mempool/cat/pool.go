@@ -64,9 +64,6 @@ type TxPool struct {
 	postCheckFn          mempool.PostCheckFunc
 	height               int64     // the latest height passed to Update
 	lastPurgeTime        time.Time // the last time we attempted to purge transactions via the TTL
-	// cache of committed transactions to be pruned the following height
-	// we don't want to prune immediately because lagging nodes may still be requesting these transactions
-	committedCache map[types.TxKey]struct{}
 
 	// Thread-safe cache of rejected transactions for quick look-up
 	rejectedTxCache *LRUTxCache
