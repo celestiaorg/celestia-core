@@ -121,7 +121,6 @@ func TestBlockFetcherConcurrentRequests(t *testing.T) {
 		numBlocks           = 5
 		numRequestsPerBlock = 5
 		numTxs              = 5
-		requestWG           = sync.WaitGroup{}
 		goRoutinesWG        = sync.WaitGroup{}
 		allTxs              = make([][]byte, numTxs)
 		txs                 = make([][]byte, numTxs)
@@ -142,7 +141,6 @@ func TestBlockFetcherConcurrentRequests(t *testing.T) {
 	}
 
 	for i := 0; i < numBlocks; i++ {
-		requestWG.Add(1)
 		for j := 0; j < numRequestsPerBlock; j++ {
 			goRoutinesWG.Add(1)
 			go func(blockID []byte, routine int) {
@@ -155,17 +153,16 @@ func TestBlockFetcherConcurrentRequests(t *testing.T) {
 				txsCopy := make([][]byte, len(txs))
 				copy(txsCopy, txs)
 				request := bf.newRequest(blockID, 1, mk, txs)
-				if routine == 0 {
-					requestWG.Done()
-				}
 				_, _ = request.WaitForBlock(ctx)
 			}([]byte(fmt.Sprintf("blockID%d", i)), j)
 		}
+	}
+	goRoutinesWG.Wait()
+	
+	for i := 0; i < numBlocks; i++ {
 		goRoutinesWG.Add(1)
 		go func() {
 			defer goRoutinesWG.Done()
-			// Wait until all the request have started
-			requestWG.Wait()
 			for _, tx := range allTxs {
 				bf.TryAddMissingTx(types.Tx(tx).Key(), tx)
 			}
