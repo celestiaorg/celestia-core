@@ -158,7 +158,7 @@ func TestBlockFetcherConcurrentRequests(t *testing.T) {
 		}
 	}
 	goRoutinesWG.Wait()
-	
+
 	for i := 0; i < numBlocks; i++ {
 		goRoutinesWG.Add(1)
 		go func() {
