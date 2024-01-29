@@ -75,7 +75,7 @@ func sendMessages(mc *MConnection,
 	timeout time.Duration,
 	msgs [][]byte, chIDs []byte) {
 
-	var i int = 0
+	var i = 0
 	total := len(msgs)
 	// message generation interval ticker
 	ticker := time.NewTicker(messagingRate)
@@ -91,7 +91,8 @@ func sendMessages(mc *MConnection,
 		case <-ticker.C:
 			// generate message
 			if mc.Send(chIDs[i], msgs[i]) {
-				fmt.Println("Sent message ", i, " on channel ", chIDs[i])
+				log.TestingLogger().Info("Sent message ", i, " on channel ",
+					chIDs[i])
 				i++
 				if i >= total {
 					log.TestingLogger().Info("Completed the message generation as the" +
@@ -719,41 +720,37 @@ func TestMConnection_Message_Order_ChannelID(t *testing.T) {
 }
 
 func TestMConnection_Failing_Large_Messages(t *testing.T) {
+	// This test evaluates how MConnection handles messages exceeding channel
+	// ID's receive message capacity i.e., `RecvMessageCapacity`.
+	// It involves two connections, each with two channels: Channel ID 1 (
+	// capacity 1024 bytes) and Channel ID 2 (capacity 1023 bytes).
+	// All the other channel ID's and MConnection's configurations are set high
+	// enough to not be a limiting factor.
+	// A 1KB message is sent over the first and second channels in succession.
+	// Message on Channel ID 1 (capacity equal to message size) is received,
+	// while the message on Channel ID 2 (capacity less than message size) is dropped.
 
-	totalMsgs := 11
+	totalMsgs := 2
 	msgSize := 1 * kibibyte
 	sendRate := 50 * kibibyte
 	recRate := 50 * kibibyte
-	clientChDesc := []*ChannelDescriptor{
-		{ID: 0x01, Priority: 1, SendQueueCapacity: 10,
-			RecvMessageCapacity: defaultRecvMessageCapacity,
-			RecvBufferCapacity:  defaultRecvBufferCapacity},
-		{ID: 0x02, Priority: 2, SendQueueCapacity: 1,
-			// channel ID 2's send queue capacity is limited to 1;
-			// to enforce a specific send order.
-			RecvMessageCapacity: defaultRecvMessageCapacity,
-			RecvBufferCapacity:  defaultRecvBufferCapacity},
-	}
-	serverChDesc := []*ChannelDescriptor{
+	chDesc := []*ChannelDescriptor{
 		{ID: 0x01, Priority: 1, SendQueueCapacity: 50,
-			RecvMessageCapacity: defaultRecvMessageCapacity,
+			RecvMessageCapacity: msgSize,
 			RecvBufferCapacity:  defaultRecvBufferCapacity},
-		{ID: 0x02, Priority: 2, SendQueueCapacity: 50,
-			RecvMessageCapacity: defaultRecvMessageCapacity,
+		{ID: 0x02, Priority: 1, SendQueueCapacity: 50,
+			RecvMessageCapacity: msgSize - 1,
 			RecvBufferCapacity:  defaultRecvBufferCapacity},
 	}
 
 	// prepare messages and channel IDs
-	// 10 messages on channel ID 2 and 1 message on channel ID 1
+	// 1 message on channel ID 1 and 1 message on channel ID 2
 	msgs := make([][]byte, totalMsgs)
 	chIDs := make([]byte, totalMsgs)
-	for i := 0; i < totalMsgs-1; i++ {
-		msg := bytes.Repeat([]byte{'x'}, msgSize)
-		msgs[i] = msg
-		chIDs[i] = 0x02
-	}
-	msgs[totalMsgs-1] = bytes.Repeat([]byte{'y'}, msgSize)
-	chIDs[totalMsgs-1] = 0x01
+	msgs[0] = bytes.Repeat([]byte{'x'}, msgSize)
+	chIDs[0] = 0x01
+	msgs[1] = bytes.Repeat([]byte{'y'}, msgSize)
+	chIDs[1] = 0x02
 
 	// set up two networked connections
 	// server, client := NetPipe() // can alternatively use this and comment out the line below
@@ -763,14 +760,12 @@ func TestMConnection_Failing_Large_Messages(t *testing.T) {
 
 	// prepare callback to receive messages
 	allReceived := make(chan bool)
-	received := 0 // number of messages received
-	recvChIds := make([]byte,
-		totalMsgs) // keep track of the order of channel IDs of received messages
+	recvMsgsChIds := make([]byte, totalMsgs)
+	recvTotal := 0 // number of messages received
 	onReceive := func(chID byte, msgBytes []byte) {
-		time.Sleep(1 * time.Second)
-		recvChIds[received] = chID
-		received++
-		if received >= totalMsgs {
+		recvMsgsChIds[recvTotal] = chID
+		recvTotal++
+		if recvTotal >= totalMsgs {
 			allReceived <- true
 		}
 	}
@@ -780,11 +775,11 @@ func TestMConnection_Failing_Large_Messages(t *testing.T) {
 	cnfg.RecvRate = int64(recRate)
 
 	// mount the channel descriptors to the connections
-	clientMconn := NewMConnectionWithConfig(client, clientChDesc,
+	clientMconn := NewMConnectionWithConfig(client, chDesc,
 		func(chID byte, msgBytes []byte) {},
 		func(r interface{}) {},
 		cnfg)
-	serverMconn := NewMConnectionWithConfig(server, serverChDesc,
+	serverMconn := NewMConnectionWithConfig(server, chDesc,
 		onReceive,
 		func(r interface{}) {},
 		cnfg)
@@ -805,11 +800,17 @@ func TestMConnection_Failing_Large_Messages(t *testing.T) {
 	// start sending messages
 	go sendMessages(clientMconn,
 		time.Millisecond,
-		1*time.Minute,
+		1*time.Second,
 		msgs, chIDs)
 
-	// wait for all messages to be received
-	<-allReceived
-
-	require.Equal(t, chIDs, recvChIds)
+	// wait for messages to be received
+	select {
+	case <-allReceived:
+		require.Fail(t, "All messages should not have been received") // the message sent
+		// on channel ID 2 should have been dropped
+	case <-time.After(500 * time.Millisecond):
+		require.Equal(t, 1, recvTotal)
+		require.Equal(t, chIDs[0], recvMsgsChIds[0]) // the first message should be received
+		require.True(t, !serverMconn.IsRunning())    // the serverMconn should have stopped due to the error
+	}
 }
