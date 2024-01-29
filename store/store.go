@@ -372,8 +372,10 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 			}
 			batch = bs.db.NewBatch()
 			batchTxs = bs.db.NewBatch()
-			defer batch.Close()
-			defer batchTxs.Close()
+			defer func (){
+				batch.Close()
+				batchTxs.Close()
+			}()
 		}
 	}
 
