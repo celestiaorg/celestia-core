@@ -670,7 +670,6 @@ func TestMConnection_Message_Order_ChannelID(t *testing.T) {
 	recvChIds := make([]byte,
 		totalMsgs) // keep track of the order of channel IDs of received messages
 	onReceive := func(chID byte, msgBytes []byte) {
-		time.Sleep(1 * time.Second)
 		recvChIds[received] = chID
 		received++
 		if received >= totalMsgs {
