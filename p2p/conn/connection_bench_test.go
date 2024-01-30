@@ -609,8 +609,6 @@ func BenchmarkMConnection_Multiple_ChannelID(b *testing.B) {
 	}
 }
 
-// BenchmarkMConnection_Multiple_ChannelID assesses the max bw/send rate
-// utilization of MConnection when configured with multiple channel IDs.
 func TestMConnection_Message_Order_ChannelID(t *testing.T) {
 	// This test involves two connections, each with two channels:
 	// channel ID 1 (high priority) and channel ID 2 (low priority).
@@ -631,9 +629,10 @@ func TestMConnection_Message_Order_ChannelID(t *testing.T) {
 		{ID: 0x01, Priority: 1, SendQueueCapacity: 10,
 			RecvMessageCapacity: defaultRecvMessageCapacity,
 			RecvBufferCapacity:  defaultRecvBufferCapacity},
-		{ID: 0x02, Priority: 2, SendQueueCapacity: 1,
+		{ID: 0x02, Priority: 2,
 			// channel ID 2's send queue capacity is limited to 1;
 			// to enforce a specific send order.
+			SendQueueCapacity:   1,
 			RecvMessageCapacity: defaultRecvMessageCapacity,
 			RecvBufferCapacity:  defaultRecvBufferCapacity},
 	}
@@ -666,9 +665,8 @@ func TestMConnection_Message_Order_ChannelID(t *testing.T) {
 
 	// prepare callback to receive messages
 	allReceived := make(chan bool)
-	received := 0 // number of messages received
-	recvChIds := make([]byte,
-		totalMsgs) // keep track of the order of channel IDs of received messages
+	received := 0                        // number of messages received
+	recvChIds := make([]byte, totalMsgs) // keep track of the order of channel IDs of received messages
 	onReceive := func(chID byte, msgBytes []byte) {
 		// wait for 100ms to simulate processing time
 		// Also, the added delay allows the receiver to buffer all 11 messages,
