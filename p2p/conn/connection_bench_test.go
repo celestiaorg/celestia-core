@@ -709,16 +709,10 @@ func TestMConnection_Message_Order_ChannelID(t *testing.T) {
 		_ = serverMconn.Stop()
 	}()
 
-	// start sending messages
-	var chIDsCopy []byte
-	copy(chIDsCopy, chIDs)
-	var msgsCopy [][]byte
-	copy(msgsCopy, msgs)
-
 	go sendMessages(clientMconn,
 		time.Millisecond,
 		1*time.Minute,
-		msgsCopy, chIDsCopy)
+		msgs, chIDs)
 
 	// wait for all messages to be received
 	<-allReceived
