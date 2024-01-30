@@ -295,6 +295,14 @@ func createAndStartIndexerService(
 		txIndexer = kv.NewTxIndex(store)
 		blockIndexer = blockidxkv.New(dbm.NewPrefixDB(store, []byte("block_events")))
 
+	case "kv_lite":
+		store, err := dbProvider(&DBContext{"tx_index", config})
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		txIndexer = kv.NewTxIndexWithConfig(store, config)
+		blockIndexer = blockidxkv.New(dbm.NewPrefixDB(store, []byte("block_events")))
+
 	case "psql":
 		if config.TxIndex.PsqlConn == "" {
 			return nil, nil, nil, errors.New(`no psql-conn is set for the "psql" indexer`)
@@ -1162,7 +1170,6 @@ func (n *Node) OnStop() {
 			n.Logger.Error("Pyroscope tracer Shutdown", "err", err)
 		}
 	}
-
 }
 
 // ConfigureRPC makes sure RPC has all the objects it needs to operate.

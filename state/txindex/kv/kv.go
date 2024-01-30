@@ -12,6 +12,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	abci "github.com/cometbft/cometbft/abci/types"
+	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/pubsub/query"
 	"github.com/cometbft/cometbft/state/indexer"
 	"github.com/cometbft/cometbft/state/txindex"
@@ -29,6 +30,7 @@ var _ txindex.TxIndexer = (*TxIndex)(nil)
 type TxIndex struct {
 	store dbm.DB
 	// Number the events in the event list
+	config   *cfg.Config
 	eventSeq int64
 }
 
@@ -36,6 +38,13 @@ type TxIndex struct {
 func NewTxIndex(store dbm.DB) *TxIndex {
 	return &TxIndex{
 		store: store,
+	}
+}
+
+func NewTxIndexWithConfig(store dbm.DB, config *cfg.Config) *TxIndex {
+	return &TxIndex{
+		store:  store,
+		config: config,
 	}
 }
 
@@ -121,6 +130,12 @@ func (txi *TxIndex) Index(result *abci.TxResult) error {
 		return err
 	}
 
+	if txi.config.TxIndex.Indexer == "kv-lite" {
+		// set the transaction bytes to empty
+		// this is to avoid the transaction bytes being set
+		// in the kv_lite indexer
+		result.Tx = []byte{}
+	}
 	rawBytes, err := proto.Marshal(result)
 	if err != nil {
 		return err
@@ -282,7 +297,7 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 	// extract ranges
 	// if both upper and lower bounds exist, it's better to get them in order not
 	// no iterate over kvs that are not within range.
-	//If we have a query range over height and want to still look for
+	// If we have a query range over height and want to still look for
 	// specific event values we do not want to simply return all
 	// transactios in this height range. We remember the height range info
 	// and pass it on to match() to take into account when processing events.
@@ -381,6 +396,7 @@ func lookForHeight(conditions []query.Condition) (height int64, heightIdx int) {
 	}
 	return 0, -1
 }
+
 func (txi *TxIndex) setTmpHashes(tmpHeights map[string][]byte, it dbm.Iterator, matchEvents bool) {
 	if matchEvents {
 		eventSeq := extractEventSeqFromKey(it.Key())
@@ -663,6 +679,7 @@ func extractHeightFromKey(key []byte) (int64, error) {
 	parts := strings.SplitN(string(key), tagKeySeparator, -1)
 	return strconv.ParseInt(parts[len(parts)-2], 10, 64)
 }
+
 func extractValueFromKey(key []byte) string {
 	keyString := string(key)
 	parts := strings.SplitN(keyString, tagKeySeparator, -1)
@@ -688,6 +705,7 @@ func extractEventSeqFromKey(key []byte) string {
 	}
 	return "0"
 }
+
 func keyForEvent(key string, value string, result *abci.TxResult, eventSeq int64) []byte {
 	return []byte(fmt.Sprintf("%s/%s/%d/%d%s",
 		key,
