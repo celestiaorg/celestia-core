@@ -690,10 +690,14 @@ func TestMConnection_Failing_Large_Messages(t *testing.T) {
 	}()
 
 	// start sending messages
+	chIDsCopy := make([]byte, totalMsgs)
+	copy(chIDsCopy, chIDs)
+	msgsCopy := make([][]byte, totalMsgs)
+	copy(msgsCopy, msgs)
 	sendMessages(clientMconn,
 		time.Millisecond,
 		1*time.Second,
-		msgs, chIDs)
+		msgsCopy, chIDsCopy)
 
 	// wait for messages to be received
 	select {
