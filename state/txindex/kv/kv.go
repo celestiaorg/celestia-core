@@ -130,7 +130,7 @@ func (txi *TxIndex) Index(result *abci.TxResult) error {
 		return err
 	}
 
-	if txi.config.TxIndex.Indexer == "kv-lite" {
+	if txi.config != nil && txi.config.TxIndex.Indexer == "kv-lite" {
 		// set the transaction bytes to empty
 		// this is to avoid the transaction bytes being set
 		// in the kv_lite indexer
