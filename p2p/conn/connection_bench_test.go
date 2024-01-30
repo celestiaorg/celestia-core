@@ -91,7 +91,6 @@ func sendMessages(mc *MConnection,
 		case <-ticker.C:
 			// generate message
 			if mc.Send(chIDs[i], msgs[i]) {
-				fmt.Println("Sent message ", i, " on channel ", chIDs[i])
 				i++
 				if i >= total {
 					log.TestingLogger().Info("Completed the message generation as the" +
