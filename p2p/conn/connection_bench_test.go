@@ -651,13 +651,12 @@ func TestMConnection_Failing_Large_Messages(t *testing.T) {
 	defer client.Close()
 
 	// prepare callback to receive messages
+	m := sync.Mutex{}
 	allReceived := make(chan bool)
-	recvMsgsChIds := make([]byte, totalMsgs)
-	recvTotal := 0 // number of messages received
+	recvChIds := make(chan byte, totalMsgs)
 	onReceive := func(chID byte, msgBytes []byte) {
-		recvMsgsChIds[recvTotal] = chID
-		recvTotal++
-		if recvTotal >= totalMsgs {
+		recvChIds <- chID
+		if len(recvChIds) >= totalMsgs {
 			allReceived <- true
 		}
 	}
@@ -690,14 +689,10 @@ func TestMConnection_Failing_Large_Messages(t *testing.T) {
 	}()
 
 	// start sending messages
-	chIDsCopy := make([]byte, totalMsgs)
-	copy(chIDsCopy, chIDs)
-	msgsCopy := make([][]byte, totalMsgs)
-	copy(msgsCopy, msgs)
-	sendMessages(clientMconn,
+	go sendMessages(clientMconn,
 		time.Millisecond,
 		1*time.Second,
-		msgsCopy, chIDsCopy)
+		msgs, chIDs)
 
 	// wait for messages to be received
 	select {
@@ -705,8 +700,9 @@ func TestMConnection_Failing_Large_Messages(t *testing.T) {
 		require.Fail(t, "All messages should not have been received") // the message sent
 		// on channel ID 2 should have been dropped
 	case <-time.After(500 * time.Millisecond):
-		require.Equal(t, 1, recvTotal)
-		require.Equal(t, chIDs[0], recvMsgsChIds[0]) // the first message should be received
-		require.True(t, !serverMconn.IsRunning())    // the serverMconn should have stopped due to the error
+		m.Lock()
+		require.Equal(t, 1, len(recvChIds))
+		require.Equal(t, chIDs[0], <-recvChIds)   // the first message should be received
+		require.True(t, !serverMconn.IsRunning()) // the serverMconn should have stopped due to the error
 	}
 }
