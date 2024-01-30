@@ -75,7 +75,7 @@ func sendMessages(mc *MConnection,
 	timeout time.Duration,
 	msgs [][]byte, chIDs []byte) {
 
-	var i int = 0
+	var i = 0
 	total := len(msgs)
 	// message generation interval ticker
 	ticker := time.NewTicker(messagingRate)
