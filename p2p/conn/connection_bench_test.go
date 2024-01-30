@@ -690,7 +690,7 @@ func TestMConnection_Failing_Large_Messages(t *testing.T) {
 	}()
 
 	// start sending messages
-	go sendMessages(clientMconn,
+	sendMessages(clientMconn,
 		time.Millisecond,
 		1*time.Second,
 		msgs, chIDs)
