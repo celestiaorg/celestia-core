@@ -651,7 +651,6 @@ func TestMConnection_Failing_Large_Messages(t *testing.T) {
 	defer client.Close()
 
 	// prepare callback to receive messages
-	m := sync.Mutex{}
 	allReceived := make(chan bool)
 	recvChIds := make(chan byte, totalMsgs)
 	onReceive := func(chID byte, msgBytes []byte) {
@@ -700,7 +699,6 @@ func TestMConnection_Failing_Large_Messages(t *testing.T) {
 		require.Fail(t, "All messages should not have been received") // the message sent
 		// on channel ID 2 should have been dropped
 	case <-time.After(500 * time.Millisecond):
-		m.Lock()
 		require.Equal(t, 1, len(recvChIds))
 		require.Equal(t, chIDs[0], <-recvChIds)   // the first message should be received
 		require.True(t, !serverMconn.IsRunning()) // the serverMconn should have stopped due to the error
