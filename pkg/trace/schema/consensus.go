@@ -145,7 +145,7 @@ const (
 	VoteHeightFieldKey       = "vote_height"
 	VoteRoundFieldKey        = "vote_round"
 	VoteBlockIDFieldKey      = "vote_block_id"
-	VoteTimestampFieldKey    = "vote_timestamp"
+	VoteTimestampFieldKey    = "vote_unix_millisecond_timestamp"
 	ValidatorAddressFieldKey = "vote_validator_address"
 	ValidatorIndexFieldKey   = "vote_validator_index"
 )
@@ -160,8 +160,8 @@ const (
 // | vote_validator_address | vote_validator_index | peer
 // | transfer_type |
 func WriteVote(client *trace.Client,
-	height int64, // height of the current peer when it received the vote
-	round int32, // round of the current peer when it received the vote
+	height int64, // height of the current peer when it received/sent the vote
+	round int32, // round of the current peer when it received/sent the vote
 	vote *types.Vote, // vote received by the current peer
 	peer p2p.ID, // the peer from which it received the vote or the peer to which it sent the vote
 	transferType string, // download (received) or upload(sent)
