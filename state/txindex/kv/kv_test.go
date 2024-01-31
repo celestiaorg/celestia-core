@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -13,6 +14,7 @@ import (
 	db "github.com/cometbft/cometbft-db"
 
 	abci "github.com/cometbft/cometbft/abci/types"
+	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/pubsub/query"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/state/txindex"
@@ -63,6 +65,57 @@ func TestTxIndex(t *testing.T) {
 	loadedTxResult2, err := indexer.Get(hash2)
 	require.NoError(t, err)
 	assert.True(t, proto.Equal(txResult2, loadedTxResult2))
+}
+
+func TestKvLiteTxIndex(t *testing.T) {
+	// create kv_lite indexer
+	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
+		TxIndex: &config.TxIndexConfig{
+			Indexer: "kv_lite",
+		},
+	})
+
+	tx := types.Tx("TX SHOULD BE EMPTY AFTER INDEXING")
+	txResult := &abci.TxResult{
+		Height: 1,
+		Index:  0,
+		Tx:     tx,
+		Result: abci.ResponseDeliverTx{
+			Data: []byte{0},
+			Code: abci.CodeTypeOK, Log: "", Events: nil,
+		},
+	}
+	hash := tx.Hash()
+
+	batch := txindex.NewBatch(1)
+	if err := batch.Add(txResult); err != nil {
+		t.Error(err)
+	}
+	err := indexer.AddBatch(batch)
+	require.NoError(t, err)
+
+	loadedTxResult, err := indexer.Get(hash)
+	require.NoError(t, err)
+	assert.True(t, bytes.Equal(loadedTxResult.Tx, []byte{}))
+
+	tx2 := types.Tx("BYE BYE WORLD")
+	txResult2 := &abci.TxResult{
+		Height: 1,
+		Index:  0,
+		Tx:     tx2,
+		Result: abci.ResponseDeliverTx{
+			Data: []byte{0},
+			Code: abci.CodeTypeOK, Log: "", Events: nil,
+		},
+	}
+	hash2 := tx2.Hash()
+
+	err = indexer.Index(txResult2)
+	require.NoError(t, err)
+
+	loadedTxResult2, err := indexer.Get(hash2)
+	require.NoError(t, err)
+	assert.True(t, bytes.Equal(loadedTxResult2.Tx, []byte{}))
 }
 
 func TestWrappedTxIndex(t *testing.T) {

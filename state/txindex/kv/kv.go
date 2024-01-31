@@ -130,7 +130,7 @@ func (txi *TxIndex) Index(result *abci.TxResult) error {
 		return err
 	}
 
-	if txi.config != nil && txi.config.TxIndex.Indexer == "kv-lite" {
+	if txi.config != nil && txi.config.TxIndex.Indexer == "kv_lite" {
 		// set the transaction bytes to empty
 		// this is to avoid the transaction bytes being set
 		// in the kv_lite indexer
@@ -182,6 +182,13 @@ func (txi *TxIndex) indexEvents(result *abci.TxResult, hash []byte, store dbm.Ba
 
 func (txi *TxIndex) indexResult(batch dbm.Batch, result *abci.TxResult) error {
 	hash := types.Tx(result.Tx).Hash()
+
+	if txi.config != nil && txi.config.TxIndex.Indexer == "kv_lite" {
+		// set the transaction bytes to empty
+		// this is to avoid the transaction bytes being set
+		// in the kv_lite indexer
+		result.Tx = []byte{}
+	}
 
 	rawBytes, err := proto.Marshal(result)
 	if err != nil {
