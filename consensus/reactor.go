@@ -1073,8 +1073,6 @@ type PeerState struct {
 	mtx   sync.Mutex             // NOTE: Modify below using setters, never directly.
 	PRS   cstypes.PeerRoundState `json:"round_state"` // Exposed.
 	Stats *peerStateStats        `json:"stats"`       // Exposed.
-
-	traceClient *trace.Client
 }
 
 // peerStateStats holds internal statistics for a peer.
@@ -1100,7 +1098,6 @@ func NewPeerState(peer p2p.Peer) *PeerState {
 			CatchupCommitRound: -1,
 		},
 		Stats: &peerStateStats{},
-		//traceClient: &trace.Client{},
 	}
 }
 
