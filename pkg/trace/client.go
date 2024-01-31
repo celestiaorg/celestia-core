@@ -3,6 +3,7 @@ package trace
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
@@ -81,7 +82,7 @@ func NewClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, no
 		cancel:  cancel,
 		chainID: chainID,
 		nodeID:  nodeID,
-		tables:  sliceToMap(cfg.InfluxTables),
+		tables:  stringToMap(cfg.InfluxTables),
 	}
 	if cfg.InfluxURL == "" {
 		return cli, nil
@@ -146,10 +147,35 @@ func (c *Client) WritePoint(table string, fields map[string]interface{}) {
 	writeAPI.WritePoint(p)
 }
 
-func sliceToMap(tables []string) map[string]struct{} {
+func stringToMap(tables string) map[string]struct{} {
+	parsedTables := splitAndTrimEmpty(tables, ",", " ")
 	m := make(map[string]struct{})
-	for _, s := range tables {
+	for _, s := range parsedTables {
 		m[s] = struct{}{}
 	}
 	return m
+}
+
+// splitAndTrimEmpty slices s into all subslices separated by sep and returns a
+// slice of the string s with all leading and trailing Unicode code points
+// contained in cutset removed. If sep is empty, SplitAndTrim splits after each
+// UTF-8 sequence. First part is equivalent to strings.SplitN with a count of
+// -1.  also filter out empty strings, only return non-empty strings.
+//
+// NOTE: this is copy pasted from the config pacakage to avoid a circular
+// dependency. See the function of the same name for tests.
+func splitAndTrimEmpty(s, sep, cutset string) []string {
+	if s == "" {
+		return []string{}
+	}
+
+	spl := strings.Split(s, sep)
+	nonEmptyStrings := make([]string, 0, len(spl))
+	for i := 0; i < len(spl); i++ {
+		element := strings.Trim(spl[i], cutset)
+		if element != "" {
+			nonEmptyStrings = append(nonEmptyStrings, element)
+		}
+	}
+	return nonEmptyStrings
 }
