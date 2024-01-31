@@ -817,7 +817,7 @@ func (conR *Reactor) gossipVotesForHeight(
 ) bool {
 	var vote *types.Vote
 	defer func() {
-		if vote != nil {
+		if vote != nil { // if a vote is sent, trace it
 			schema.WriteVote(conR.traceClient, rs.Height, rs.Round, vote,
 				ps.peer.ID(), schema.TransferTypeUpload)
 		}
