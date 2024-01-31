@@ -105,6 +105,7 @@ func (tm2pb) ConsensusParams(params *cmtproto.ConsensusParams) *abci.ConsensusPa
 		},
 		Evidence:  &params.Evidence,
 		Validator: &params.Validator,
+		Version:   &params.Version,
 	}
 }
 
