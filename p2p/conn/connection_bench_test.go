@@ -611,6 +611,115 @@ func BenchmarkMConnection_Multiple_ChannelID(b *testing.B) {
 	}
 }
 
+func TestMConnection_Message_Order_ChannelID(t *testing.T) {
+	// This test involves two connections, each with two channels:
+	// channel ID 1 (high priority) and channel ID 2 (low priority).
+	// It sends 11 messages from client to server, with the first 10 on
+	// channel ID 2 and the final one on channel ID 1.
+	// The aim is to show that message order at the receiver is based solely
+	// on the send order, as the receiver does not prioritize channels.
+	// To enforce a specific send order,
+	// channel ID 2's send queue capacity is limited to 1;
+	// preventing message queuing on channel ID 2 that could otherwise give
+	// priority to channel ID 1's message (despite being the last message),
+	// disrupting the send order.
+	totalMsgs := 11
+	msgSize := 1 * kibibyte
+	sendRate := 50 * kibibyte
+	recRate := 50 * kibibyte
+	clientChDesc := []*ChannelDescriptor{
+		{ID: 0x01, Priority: 1, SendQueueCapacity: 10,
+			RecvMessageCapacity: defaultRecvMessageCapacity,
+			RecvBufferCapacity:  defaultRecvBufferCapacity},
+		{ID: 0x02, Priority: 2,
+			// channel ID 2's send queue capacity is limited to 1;
+			// to enforce a specific send order.
+			SendQueueCapacity:   1,
+			RecvMessageCapacity: defaultRecvMessageCapacity,
+			RecvBufferCapacity:  defaultRecvBufferCapacity},
+	}
+	serverChDesc := []*ChannelDescriptor{
+		{ID: 0x01, Priority: 1, SendQueueCapacity: 50,
+			RecvMessageCapacity: defaultRecvMessageCapacity,
+			RecvBufferCapacity:  defaultRecvBufferCapacity},
+		{ID: 0x02, Priority: 2, SendQueueCapacity: 50,
+			RecvMessageCapacity: defaultRecvMessageCapacity,
+			RecvBufferCapacity:  defaultRecvBufferCapacity},
+	}
+
+	// prepare messages and channel IDs
+	// 10 messages on channel ID 2 and 1 message on channel ID 1
+	msgs := make([][]byte, totalMsgs)
+	chIDs := make([]byte, totalMsgs)
+	for i := 0; i < totalMsgs-1; i++ {
+		msg := bytes.Repeat([]byte{'x'}, msgSize)
+		msgs[i] = msg
+		chIDs[i] = 0x02
+	}
+	msgs[totalMsgs-1] = bytes.Repeat([]byte{'y'}, msgSize)
+	chIDs[totalMsgs-1] = 0x01
+
+	// set up two networked connections
+	// server, client := NetPipe() // can alternatively use this and comment out the line below
+	server, client := tcpNetPipe()
+	defer server.Close()
+	defer client.Close()
+
+	// prepare callback to receive messages
+	allReceived := make(chan bool)
+	received := 0                        // number of messages received
+	recvChIds := make([]byte, totalMsgs) // keep track of the order of channel IDs of received messages
+	onReceive := func(chID byte, msgBytes []byte) {
+		// wait for 100ms to simulate processing time
+		// Also, the added delay allows the receiver to buffer all 11 messages,
+		// testing if the message on channel ID 1 (high priority) is received last or
+		// prioritized among the 10 messages on channel ID 2.
+		time.Sleep(100 * time.Millisecond)
+		recvChIds[received] = chID
+		received++
+		if received >= totalMsgs {
+			allReceived <- true
+		}
+	}
+
+	cnfg := DefaultMConnConfig()
+	cnfg.SendRate = int64(sendRate)
+	cnfg.RecvRate = int64(recRate)
+
+	// mount the channel descriptors to the connections
+	clientMconn := NewMConnectionWithConfig(client, clientChDesc,
+		func(chID byte, msgBytes []byte) {},
+		func(r interface{}) {},
+		cnfg)
+	serverMconn := NewMConnectionWithConfig(server, serverChDesc,
+		onReceive,
+		func(r interface{}) {},
+		cnfg)
+	clientMconn.SetLogger(log.TestingLogger())
+	serverMconn.SetLogger(log.TestingLogger())
+
+	err := clientMconn.Start()
+	require.Nil(t, err)
+	defer func() {
+		_ = clientMconn.Stop()
+	}()
+	err = serverMconn.Start()
+	require.Nil(t, err)
+	defer func() {
+		_ = serverMconn.Stop()
+	}()
+
+	go sendMessages(clientMconn,
+		time.Millisecond,
+		1*time.Minute,
+		msgs, chIDs)
+
+	// wait for all messages to be received
+	<-allReceived
+
+	require.Equal(t, chIDs, recvChIds) // assert that the order of received messages is the same as the order of sent messages
+}
+
 func TestMConnection_Failing_Large_Messages(t *testing.T) {
 	// This test evaluates how MConnection handles messages exceeding channel
 	// ID's receive message capacity i.e., `RecvMessageCapacity`.
