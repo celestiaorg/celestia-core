@@ -68,7 +68,8 @@ func (txi *TxIndex) Get(hash []byte) (*abci.TxResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error reading TxResult: %v", err)
 	}
-
+    
+	fmt.Println("txResult is nil", txResult.Tx == nil)
 	return txResult, nil
 }
 
@@ -136,6 +137,7 @@ func (txi *TxIndex) Index(result *abci.TxResult) error {
 		// in the kv_lite indexer
 		result.Tx = []byte{}
 	}
+	fmt.Println("txResult is nil after indexing", result.Tx == nil)
 	rawBytes, err := proto.Marshal(result)
 	if err != nil {
 		return err

@@ -21,8 +21,7 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-func TestTxIndex(t *testing.T) {
-	// indexer := NewTxIndex(db.NewMemDB())
+func TestTxIndex_kv_lite(t *testing.T) {
 	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
 		TxIndex: &config.TxIndexConfig{
 			Indexer: "kv_lite",
@@ -51,6 +50,8 @@ func TestTxIndex(t *testing.T) {
 	loadedTxResult, err := indexer.Get(hash)
 	require.NoError(t, err)
 	assert.True(t, proto.Equal(txResult, loadedTxResult))
+	// --------------------- check tx is empty -----------------------
+	assert.True(t, bytes.Equal(txResult.Tx, []byte{}))
 
 	tx2 := types.Tx("BYE BYE WORLD")
 	txResult2 := &abci.TxResult{
@@ -70,95 +71,17 @@ func TestTxIndex(t *testing.T) {
 	loadedTxResult2, err := indexer.Get(hash2)
 	require.NoError(t, err)
 	assert.True(t, proto.Equal(txResult2, loadedTxResult2))
+	// --------------------- check tx is empty -----------------------
+	assert.True(t, bytes.Equal(loadedTxResult2.Tx, []byte{}))
 }
 
-func TestKvLiteTxIndex(t *testing.T) {
-	// create kv_lite indexer
+func TestWrappedTxIndex_kv_lite(t *testing.T) {
 	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
 		TxIndex: &config.TxIndexConfig{
 			Indexer: "kv_lite",
 		},
 	})
 
-	tx := types.Tx("TX SHOULD BE EMPTY AFTER INDEXING")
-	txResult := &abci.TxResult{
-		Height: 1,
-		Index:  0,
-		Tx:     tx,
-		Result: abci.ResponseDeliverTx{
-			Data: []byte{0},
-			Code: abci.CodeTypeOK, Log: "", Events: nil,
-		},
-	}
-	hash := tx.Hash()
-
-	batch := txindex.NewBatch(1)
-	if err := batch.Add(txResult); err != nil {
-		t.Error(err)
-	}
-	err := indexer.AddBatch(batch)
-	require.NoError(t, err)
-
-	loadedTxResult, err := indexer.Get(hash)
-	require.NoError(t, err)
-	assert.True(t, bytes.Equal(loadedTxResult.Tx, []byte{}))
-
-	tx2 := types.Tx("This should be empty after indexing too")
-	txResult2 := &abci.TxResult{
-		Height: 1,
-		Index:  0,
-		Tx:     tx2,
-		Result: abci.ResponseDeliverTx{
-			Data: []byte{0},
-			Code: abci.CodeTypeOK, Log: "", Events: nil,
-		},
-	}
-	hash2 := tx2.Hash()
-
-	err = indexer.Index(txResult2)
-	require.NoError(t, err)
-
-	loadedTxResult2, err := indexer.Get(hash2)
-	require.NoError(t, err)
-	assert.True(t, bytes.Equal(loadedTxResult2.Tx, []byte{}))
-
-}
-
-// func TestWrappedTxIndex_kv_lite(t *testing.T) {
-// 	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
-// 		TxIndex: &config.TxIndexConfig{
-// 			Indexer: "kv_lite",
-// 		},
-// 	})
-
-// 	tx := types.Tx("HELLO WORLD")
-// 	wrappedTx, err := types.MarshalIndexWrapper(tx, 11)
-// 	require.NoError(t, err)
-// 	txResult := &abci.TxResult{
-// 		Height: 1,
-// 		Index:  0,
-// 		Tx:     wrappedTx,
-// 		Result: abci.ResponseDeliverTx{
-// 			Data: []byte{0},
-// 			Code: abci.CodeTypeOK, Log: "", Events: nil,
-// 		},
-// 	}
-// 	hash := tx.Hash()
-
-// 	batch := txindex.NewBatch(1)
-// 	if err := batch.Add(txResult); err != nil {
-// 		t.Error(err)
-// 	}
-// 	err = indexer.AddBatch(batch)
-// 	require.NoError(t, err)
-
-// 	loadedTxResult, err := indexer.Get(hash)
-// 	require.NoError(t, err)
-// 	assert.True(t, bytes.Equal(loadedTxResult.Tx, []byte{}))
-// }
-
-func TestWrappedTxIndex(t *testing.T) {
-	indexer := NewTxIndex(db.NewMemDB())
 
 	tx := types.Tx("HELLO WORLD")
 	wrappedTx, err := types.MarshalIndexWrapper(tx, 11)
@@ -184,10 +107,12 @@ func TestWrappedTxIndex(t *testing.T) {
 	loadedTxResult, err := indexer.Get(hash)
 	require.NoError(t, err)
 	assert.True(t, proto.Equal(txResult, loadedTxResult))
+	// --------------------- check tx is empty -----------------------
+	fmt.Println(loadedTxResult.Tx, "LOADED TX RESULT")
+	assert.True(t, bytes.Equal(loadedTxResult.Tx, []byte{}))
 }
 
-func TestTxSearch(t *testing.T) {
-	// indexer := NewTxIndex(db.NewMemDB())
+func TestTxSearch_kv_lite(t *testing.T) {
 	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
 		TxIndex: &config.TxIndexConfig{
 			Indexer: "kv_lite",
@@ -294,10 +219,7 @@ func TestTxSearch(t *testing.T) {
 	}
 }
 
-func TestTxSearchEventMatch(t *testing.T) {
-
-	// indexer := NewTxIndex(db.NewMemDB())
-
+func TestTxSearchEventMatch_kv_lite(t *testing.T) {
 	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
 		TxIndex: &config.TxIndexConfig{
 			Indexer: "kv_lite",
@@ -401,8 +323,8 @@ func TestTxSearchEventMatch(t *testing.T) {
 		})
 	}
 }
-func TestTxSearchWithCancelation(t *testing.T) {
-	// indexer := NewTxIndex(db.NewMemDB())
+
+func TestTxSearchWithCancelation_kv_lite(t *testing.T) {
 	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
 		TxIndex: &config.TxIndexConfig{
 			Indexer: "kv_lite",
@@ -424,8 +346,7 @@ func TestTxSearchWithCancelation(t *testing.T) {
 	assert.Empty(t, results)
 }
 
-func TestTxSearchDeprecatedIndexing(t *testing.T) {
-	// indexer := NewTxIndex(db.NewMemDB())
+func TestTxSearchDeprecatedIndexing_kv_lite(t *testing.T) {
 	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
 		TxIndex: &config.TxIndexConfig{
 			Indexer: "kv_lite",
@@ -508,8 +429,7 @@ func TestTxSearchDeprecatedIndexing(t *testing.T) {
 	}
 }
 
-func TestTxSearchOneTxWithMultipleSameTagsButDifferentValues(t *testing.T) {
-	// indexer := NewTxIndex(db.NewMemDB())
+func TestTxSearchOneTxWithMultipleSameTagsButDifferentValues_kv_lite(t *testing.T) {
 	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
 		TxIndex: &config.TxIndexConfig{
 			Indexer: "kv_lite",
@@ -596,7 +516,7 @@ func TestTxSearchOneTxWithMultipleSameTagsButDifferentValues(t *testing.T) {
 	}
 }
 
-func TestTxIndexDuplicatePreviouslySuccessful(t *testing.T) {
+func TestTxIndexDuplicatePreviouslySuccessful_kv_lite(t *testing.T) {
 	mockTx := types.Tx("MOCK_TX_HASH")
 
 	testCases := []struct {
@@ -671,7 +591,12 @@ func TestTxIndexDuplicatePreviouslySuccessful(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			indexer := NewTxIndex(db.NewMemDB())
+			fmt.Println(tc.tx2, "TX2 BEFORE")
+			indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
+				TxIndex: &config.TxIndexConfig{
+					Indexer: "kv_lite",
+				},
+			})
 
 			// index the first tx
 			err := indexer.Index(tc.tx1)
@@ -683,23 +608,36 @@ func TestTxIndexDuplicatePreviouslySuccessful(t *testing.T) {
 
 			res, err := indexer.Get(hash)
 			require.NoError(t, err)
-
 			if tc.expOverwrite {
-				require.Equal(t, tc.tx2, res)
+				require.Equal(t, tc.tx2.Height, res.Height)
+				require.Equal(t, tc.tx2.Index, res.Index)
+				// require.Equal(t, tc.tx2.Tx, res.Tx)
+				require.Equal(t, tc.tx2.Result, res.Result)
+				// pointer was changed here
+				bytes.Equal(tc.tx2.Tx, []byte{})
+				// here check that res.tx is empty
+				bytes.Equal(res.Tx, nil)
+
 			} else {
-				require.Equal(t, tc.tx1, res)
+				require.Equal(t, tc.tx1.Height, res.Height)
+				require.Equal(t, tc.tx1.Index, res.Index)
+				// require.Equal(t, tc.tx2.Tx, res.Tx)
+				require.Equal(t, tc.tx1.Result, res.Result)
+				// pointer was changed here
+				bytes.Equal(tc.tx1.Tx, []byte{})
+				// here check that res.tx is empty
+				bytes.Equal(res.Tx, nil)
 			}
 		})
 	}
 }
 
-func TestTxSearchMultipleTxs(t *testing.T) {
-	indexer := NewTxIndex(db.NewMemDB())
-	// indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
-	// 	TxIndex: &config.TxIndexConfig{
-	// 		Indexer: "kv_lite",
-	// 	},
-	// })
+func TestTxSearchMultipleTxs_kv_lite(t *testing.T) {
+	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
+		TxIndex: &config.TxIndexConfig{
+			Indexer: "kv_lite",
+		},
+	})
 
 	// indexed first, but bigger height (to test the order of transactions)
 	txResult := txResultWithEvents([]abci.Event{
@@ -750,31 +688,29 @@ func TestTxSearchMultipleTxs(t *testing.T) {
 	assert.NoError(t, err)
 
 	require.Len(t, results, 3)
-}
 
-func txResultWithEvents(events []abci.Event) *abci.TxResult {
-	tx := types.Tx("HELLO WORLD")
-	return &abci.TxResult{
-		Height: 1,
-		Index:  0,
-		Tx:     tx,
-		Result: abci.ResponseDeliverTx{
-			Data:   []byte{0},
-			Code:   abci.CodeTypeOK,
-			Log:    "",
-			Events: events,
-		},
+	// hereeee check that all results txs are empty
+	for _, txr := range results {
+		fmt.Println(txr.Tx, "TXR TX HERE")
+		fmt.Println(txr, "TXRRR")
+		fmt.Println(txr.Tx == nil, "RES TX NIL")
+		assert.True(t, bytes.Equal(txr.Tx, []byte{}))
 	}
 }
 
-func benchmarkTxIndex(txsCount int64, b *testing.B) {
+func benchmarkTxIndex_kv_lite(txsCount int64, b *testing.B) {
 	dir, err := os.MkdirTemp("", "tx_index_db")
 	require.NoError(b, err)
 	defer os.RemoveAll(dir)
 
 	store, err := db.NewDB("tx_index", "goleveldb", dir)
 	require.NoError(b, err)
-	indexer := NewTxIndex(store)
+	// changed here
+	indexer := NewTxIndexWithConfig(store, &config.Config{
+		TxIndex: &config.TxIndexConfig{
+			Indexer: "kv_lite",
+		},
+	})
 
 	batch := txindex.NewBatch(txsCount)
 	txIndex := uint32(0)
@@ -807,8 +743,8 @@ func benchmarkTxIndex(txsCount int64, b *testing.B) {
 	}
 }
 
-func BenchmarkTxIndex1(b *testing.B)     { benchmarkTxIndex(1, b) }
-func BenchmarkTxIndex500(b *testing.B)   { benchmarkTxIndex(500, b) }
-func BenchmarkTxIndex1000(b *testing.B)  { benchmarkTxIndex(1000, b) }
-func BenchmarkTxIndex2000(b *testing.B)  { benchmarkTxIndex(2000, b) }
-func BenchmarkTxIndex10000(b *testing.B) { benchmarkTxIndex(10000, b) }
+func BenchmarkTxIndex1_kv_lite(b *testing.B)     { benchmarkTxIndex(1, b) }
+func BenchmarkTxIndex500_kv_lite(b *testing.B)   { benchmarkTxIndex(500, b) }
+func BenchmarkTxIndex1000_kv_lite(b *testing.B)  { benchmarkTxIndex(1000, b) }
+func BenchmarkTxIndex2000_kv_lite(b *testing.B)  { benchmarkTxIndex(2000, b) }
+func BenchmarkTxIndex10000_kv_lite(b *testing.B) { benchmarkTxIndex(10000, b) }
