@@ -136,7 +136,7 @@ const (
 	// voting traces. Follows this schema:
 	//
 	// | time | height | round | vote_type | vote_height | vote_round
-	// | vote_block_id| vote_timestamp
+	// | vote_block_id| vote_unix_millisecond_timestamp
 	// | vote_validator_address | vote_validator_index | peer
 	// | transfer_type |
 	VoteTable = "consensus_vote"

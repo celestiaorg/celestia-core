@@ -767,11 +767,8 @@ OUTER_LOOP:
 		// Special catchup logic.
 		// If peer is lagging by height 1, send LastCommit.
 		if prs.Height != 0 && rs.Height == prs.Height+1 {
-			vote := ps.PickSendVote(rs.LastCommit)
-			if vote != nil {
+			if conR.pickSendVoteAndTrace(rs.LastCommit, rs, ps) {
 				logger.Debug("Picked rs.LastCommit to send", "height", prs.Height)
-				schema.WriteVote(conR.traceClient, rs.Height, rs.Round, vote,
-					ps.peer.ID(), schema.TransferTypeUpload)
 				continue OUTER_LOOP
 			}
 		}
@@ -809,24 +806,28 @@ OUTER_LOOP:
 	}
 }
 
+// pickSendVoteAndTrace picks a vote to send and traces it.
+// It returns true if a vote is sent.
+// Note that it is a wrapper around PickSendVote with the addition of tracing the vote.
+func (conR *Reactor) pickSendVoteAndTrace(votes types.VoteSetReader, rs *cstypes.RoundState, ps *PeerState) bool {
+	vote := ps.PickSendVote(votes)
+	if vote != nil { // if a vote is sent, trace it
+		schema.WriteVote(conR.traceClient, rs.Height, rs.Round, vote,
+			ps.peer.ID(), schema.TransferTypeUpload)
+		return true
+	}
+	return false
+}
 func (conR *Reactor) gossipVotesForHeight(
 	logger log.Logger,
 	rs *cstypes.RoundState,
 	prs *cstypes.PeerRoundState,
 	ps *PeerState,
 ) bool {
-	var vote *types.Vote
-	defer func() {
-		if vote != nil { // if a vote is sent, trace it
-			schema.WriteVote(conR.traceClient, rs.Height, rs.Round, vote,
-				ps.peer.ID(), schema.TransferTypeUpload)
-		}
-	}()
 
 	// If there are lastCommits to send...
 	if prs.Step == cstypes.RoundStepNewHeight {
-		vote = ps.PickSendVote(rs.LastCommit)
-		if vote != nil {
+		if conR.pickSendVoteAndTrace(rs.LastCommit, rs, ps) {
 			logger.Debug("Picked rs.LastCommit to send")
 			return true
 		}
@@ -834,8 +835,7 @@ func (conR *Reactor) gossipVotesForHeight(
 	// If there are POL prevotes to send...
 	if prs.Step <= cstypes.RoundStepPropose && prs.Round != -1 && prs.Round <= rs.Round && prs.ProposalPOLRound != -1 {
 		if polPrevotes := rs.Votes.Prevotes(prs.ProposalPOLRound); polPrevotes != nil {
-			vote = ps.PickSendVote(polPrevotes)
-			if vote != nil {
+			if conR.pickSendVoteAndTrace(polPrevotes, rs, ps) {
 				logger.Debug("Picked rs.Prevotes(prs.ProposalPOLRound) to send",
 					"round", prs.ProposalPOLRound)
 				return true
@@ -844,24 +844,21 @@ func (conR *Reactor) gossipVotesForHeight(
 	}
 	// If there are prevotes to send...
 	if prs.Step <= cstypes.RoundStepPrevoteWait && prs.Round != -1 && prs.Round <= rs.Round {
-		vote = ps.PickSendVote(rs.Votes.Prevotes(prs.Round))
-		if vote != nil {
+		if conR.pickSendVoteAndTrace(rs.Votes.Prevotes(prs.Round), rs, ps) {
 			logger.Debug("Picked rs.Prevotes(prs.Round) to send", "round", prs.Round)
 			return true
 		}
 	}
 	// If there are precommits to send...
 	if prs.Step <= cstypes.RoundStepPrecommitWait && prs.Round != -1 && prs.Round <= rs.Round {
-		vote = ps.PickSendVote(rs.Votes.Precommits(prs.Round))
-		if vote != nil {
+		if conR.pickSendVoteAndTrace(rs.Votes.Precommits(prs.Round), rs, ps) {
 			logger.Debug("Picked rs.Precommits(prs.Round) to send", "round", prs.Round)
 			return true
 		}
 	}
 	// If there are prevotes to send...Needed because of validBlock mechanism
 	if prs.Round != -1 && prs.Round <= rs.Round {
-		vote = ps.PickSendVote(rs.Votes.Prevotes(prs.Round))
-		if vote != nil {
+		if conR.pickSendVoteAndTrace(rs.Votes.Prevotes(prs.Round), rs, ps) {
 			logger.Debug("Picked rs.Prevotes(prs.Round) to send", "round", prs.Round)
 			return true
 		}
@@ -869,8 +866,7 @@ func (conR *Reactor) gossipVotesForHeight(
 	// If there are POLPrevotes to send...
 	if prs.ProposalPOLRound != -1 {
 		if polPrevotes := rs.Votes.Prevotes(prs.ProposalPOLRound); polPrevotes != nil {
-			vote = ps.PickSendVote(polPrevotes)
-			if vote != nil {
+			if conR.pickSendVoteAndTrace(polPrevotes, rs, ps) {
 				logger.Debug("Picked rs.Prevotes(prs.ProposalPOLRound) to send",
 					"round", prs.ProposalPOLRound)
 				return true
