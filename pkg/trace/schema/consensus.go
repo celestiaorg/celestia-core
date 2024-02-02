@@ -136,7 +136,7 @@ const (
 	// voting traces. Follows this schema:
 	//
 	// | time | height | round | vote_type | vote_height | vote_round
-	// | vote_block_id| vote_timestamp
+	// | vote_block_id| vote_unix_millisecond_timestamp
 	// | vote_validator_address | vote_validator_index | peer
 	// | transfer_type |
 	VoteTable = "consensus_vote"
@@ -145,17 +145,9 @@ const (
 	VoteHeightFieldKey       = "vote_height"
 	VoteRoundFieldKey        = "vote_round"
 	VoteBlockIDFieldKey      = "vote_block_id"
-	VoteTimestampFieldKey    = "vote_timestamp"
+	VoteTimestampFieldKey    = "vote_unix_millisecond_timestamp"
 	ValidatorAddressFieldKey = "vote_validator_address"
 	ValidatorIndexFieldKey   = "vote_validator_index"
-
-	//	Type             cmtproto.SignedMsgType `json:"type"`
-	//	Height           int64                  `json:"height"`
-	//	Round            int32                  `json:"round"`    // assume there will not be greater than 2_147_483_647 rounds
-	//	BlockID          BlockID                `json:"block_id"` // zero if vote is nil.
-	//	Timestamp        time.Time              `json:"timestamp"`
-	//	ValidatorAddress Address                `json:"validator_address"`
-	//	ValidatorIndex
 )
 
 // WriteVote writes a tracing point for a vote using the predetermined
@@ -164,12 +156,12 @@ const (
 // schema:
 //
 // | time | height | round | vote_type | vote_height | vote_round
-// | vote_block_id| vote_timestamp
+// | vote_block_id| vote_unix_millisecond_timestamp
 // | vote_validator_address | vote_validator_index | peer
 // | transfer_type |
 func WriteVote(client *trace.Client,
-	height int64, // height of the current peer when it received the vote
-	round int32, // round of the current peer when it received the vote
+	height int64, // height of the current peer when it received/sent the vote
+	round int32, // round of the current peer when it received/sent the vote
 	vote *types.Vote, // vote received by the current peer
 	peer p2p.ID, // the peer from which it received the vote or the peer to which it sent the vote
 	transferType string, // download (received) or upload(sent)
