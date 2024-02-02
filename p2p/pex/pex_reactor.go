@@ -183,6 +183,7 @@ func (r *Reactor) GetChannels() []*conn.ChannelDescriptor {
 			ID:                  PexChannel,
 			Priority:            1,
 			SendQueueCapacity:   10,
+			RcvQueueCapacity:    10,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &tmp2p.Message{},
 		},
