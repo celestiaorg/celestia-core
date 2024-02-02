@@ -162,6 +162,17 @@ func (s *SeenTxSet) Remove(txKey types.TxKey, peer uint16) {
 	}
 }
 
+func (s *SeenTxSet) RemovePeer(peer uint16) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	for key, seenSet := range s.set {
+		delete(seenSet.peers, peer)
+		if len(seenSet.peers) == 0 {
+			delete(s.set, key)
+		}
+	}
+}
+
 func (s *SeenTxSet) Prune(limit time.Time) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()

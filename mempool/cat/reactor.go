@@ -188,10 +188,15 @@ func (memR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
 // RemovePeer implements Reactor. For all current outbound requests to this
 // peer it will find a new peer to rerequest the same transactions.
 func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
+	// fmt.Println("removing peer")
 	peerID := memR.ids.Reclaim(peer.ID())
+
 	// remove and rerequest all pending outbound requests to that peer since we know
 	// we won't receive any responses from them.
 	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
+
+	memR.mempool.seenByPeersSet.RemovePeer(peerID)
+
 	for key := range outboundRequests {
 		memR.mempool.metrics.RequestedTxs.Add(1)
 		memR.findNewPeerToRequestTx(key)
@@ -454,8 +459,10 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 // findNewPeerToSendTx finds a new peer that has already seen the transaction to
 // request a transaction from.
 func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
+	// fmt.Println("finding peer to request tx")
 	// ensure that we are connected to peers
 	if memR.ids.Len() == 0 {
+		// fmt.Println("no peers to request tx from")
 		return
 	}
 
@@ -463,9 +470,12 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 	// and does not already have an outbound request for that tx
 	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
 	var peerID uint16
+	// 	fmt.Println(seenMap)
 	for possiblePeer := range seenMap {
+		// fmt.Println("haspeer", haspeer)
 		if !memR.requests.Has(possiblePeer, txKey) {
 			peerID = possiblePeer
+			// fmt.Println("set possible peerID", peerID)
 			break
 		}
 	}
@@ -478,6 +488,7 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		return
 	}
 	peer := memR.ids.GetPeer(peerID)
+	// fmt.Println("problematic nil peer", peer == nil)
 	if peer == nil {
 		// we disconnected from that peer, retry again until we exhaust the list
 		memR.findNewPeerToRequestTx(txKey)

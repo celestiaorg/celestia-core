@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log/term"
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/tendermint/tendermint/abci/example/kvstore"
@@ -231,6 +232,61 @@ func TestLegacyReactorReceiveBasic(t *testing.T) {
 	assert.NotPanics(t, func() {
 		reactor.Receive(mempool.MempoolChannel, peer, m)
 	})
+}
+
+func TestRemovePeerOverflow(t *testing.T) {
+	reactor, _ := setupReactor(t)
+	wantedTx := types.Tx([]byte("hello"))
+
+	peers := []*mocks.Peer{}
+
+	for i := 0; i < 2; i++ {
+		peer := genPeer()
+		peer.On("Send", MempoolStateChannel, mock.Anything).Return(true)
+		p := reactor.InitPeer(peer)
+		require.NotNil(t, p)
+		require.Equal(t, reactor.ids.Len(), i+1)
+		reactor.mempool.seenByPeersSet.Add(wantedTx.Key(), reactor.ids.GetIDForPeer(peer.ID()))
+		_ = reactor.requests.Add(wantedTx.Key(), reactor.ids.GetIDForPeer(peer.ID()), func(_ types.TxKey) {})
+		peers = append(peers, peer)
+	}
+
+	delete(reactor.mempool.seenByPeersSet.set[wantedTx.Key()].peers, reactor.ids.GetIDForPeer(peers[1].ID()))
+
+	// remove the first peer
+	reactor.RemovePeer(peers[0], nil)
+}
+
+func TestRemovePeerOverflow2(t *testing.T) {
+	reactor, _ := setupReactor(t)
+
+	wantedTx := types.Tx([]byte("hello"))
+
+	peers := []*mocks.Peer{}
+
+	for i := 0; i < 2; i++ {
+		peer := genPeer()
+		peer.On("Send", MempoolStateChannel, mock.Anything).Return(true)
+		p := reactor.InitPeer(peer)
+		require.NotNil(t, p)
+		peers = append(peers, peer)
+	}
+
+	// mark the tx as seen by the second peer
+	peer := peers[1]
+	reactor.mempool.seenByPeersSet.Add(wantedTx.Key(), reactor.ids.GetIDForPeer(peer.ID()))
+	_ = reactor.requests.Add(wantedTx.Key(), reactor.ids.GetIDForPeer(peer.ID()), func(_ types.TxKey) {})
+
+	// prune the second peer from seenByPeersSet by pruning everything (1 minute in the future)
+	reactor.mempool.seenByPeersSet.Prune(time.Now().Add(time.Minute))
+
+	// mark the tx as seen by the second peer
+	peer = peers[0]
+	reactor.mempool.seenByPeersSet.Add(wantedTx.Key(), reactor.ids.GetIDForPeer(peer.ID()))
+	_ = reactor.requests.Add(wantedTx.Key(), reactor.ids.GetIDForPeer(peer.ID()), func(_ types.TxKey) {})
+
+	// remove the first peer
+	reactor.RemovePeer(peers[0], nil)
 }
 
 func setupReactor(t *testing.T) (*Reactor, *TxPool) {
