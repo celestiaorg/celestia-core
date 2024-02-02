@@ -38,6 +38,7 @@ const (
 	defaultFlushThrottle = 100 * time.Millisecond
 
 	defaultSendQueueCapacity   = 1
+	defaultRecvQueueCapacity   = 1
 	defaultRecvBufferCapacity  = 4096
 	defaultRecvMessageCapacity = 22020096         // 21MB
 	defaultSendRate            = int64(5_120_000) // 5MB/s
@@ -645,6 +646,8 @@ FOR_LOOP:
 			if msgBytes != nil {
 				c.Logger.Debug("Received bytes", "chID", channelID, "msgBytes", msgBytes)
 				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
+				// put messages into their channels and as the result signal
+				// a goroutine to pick a message to send to a reactor
 				c.onReceive(channelID, msgBytes)
 			}
 		default:
@@ -722,6 +725,7 @@ type ChannelDescriptor struct {
 	ID                  byte
 	Priority            int
 	SendQueueCapacity   int
+	RcvQueueCapacity    int
 	RecvBufferCapacity  int
 	RecvMessageCapacity int
 	MessageType         proto.Message
@@ -737,6 +741,9 @@ func (chDesc ChannelDescriptor) FillDefaults() (filled ChannelDescriptor) {
 	if chDesc.RecvMessageCapacity == 0 {
 		chDesc.RecvMessageCapacity = defaultRecvMessageCapacity
 	}
+	if chDesc.RcvQueueCapacity == 0 {
+		chDesc.RcvQueueCapacity = defaultRecvQueueCapacity
+	}
 	filled = chDesc
 	return
 }
@@ -748,6 +755,8 @@ type Channel struct {
 	desc          ChannelDescriptor
 	sendQueue     chan []byte
 	sendQueueSize int32 // atomic.
+	rcvQueue      chan []byte
+	rcvQueueSize  int32 // atomic.
 	recving       []byte
 	sending       []byte
 	recentlySent  int64 // exponential moving average
@@ -766,6 +775,7 @@ func newChannel(conn *MConnection, desc ChannelDescriptor) *Channel {
 		conn:                    conn,
 		desc:                    desc,
 		sendQueue:               make(chan []byte, desc.SendQueueCapacity),
+		rcvQueue:                make(chan []byte, desc.RcvQueueCapacity),
 		recving:                 make([]byte, 0, desc.RecvBufferCapacity),
 		maxPacketMsgPayloadSize: conn.config.MaxPacketMsgPayloadSize,
 	}
