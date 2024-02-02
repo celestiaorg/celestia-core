@@ -85,6 +85,7 @@ type MConnection struct {
 	sendMonitor   *flow.Monitor
 	recvMonitor   *flow.Monitor
 	send          chan struct{}
+	receive       chan struct{}
 	pong          chan struct{}
 	channels      []*Channel
 	channelsIdx   map[byte]*Channel
@@ -376,6 +377,34 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 	return success
 }
 
+func (c *MConnection) Receive(chID byte, msgBytes []byte) bool {
+	if !c.IsRunning() {
+		return false
+	}
+	c.Logger.Debug("Receive", "channel", chID, "conn", c, "msgBytes",
+		log.NewLazySprintf("%X", msgBytes))
+
+	// Send message to channel.
+	channel, ok := c.channelsIdx[chID]
+	if !ok {
+		c.Logger.Error(fmt.Sprintf("Cannot send bytes, unknown channel %X", chID))
+		return false
+	}
+
+	success := channel.receiveBytes(msgBytes)
+	if success {
+		// Wake up sendRoutine if necessary
+		select {
+		case c.receive <- struct{}{}:
+		default:
+		}
+	} else {
+		c.Logger.Debug("Receive failed", "channel", chID, "conn", c,
+			"msgBytes", log.NewLazySprintf("%X", msgBytes))
+	}
+	return success
+}
+
 // TrySend queues a message to be sent to channel.
 // Nonblocking, returns true if successful.
 func (c *MConnection) TrySend(chID byte, msgBytes []byte) bool {
@@ -648,6 +677,7 @@ FOR_LOOP:
 				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
 				// put messages into their channels and as the result signal
 				// a goroutine to pick a message to send to a reactor
+				success := c.Receive(channelID, msgBytes)
 				c.onReceive(channelID, msgBytes)
 			}
 		default:
@@ -807,6 +837,20 @@ func (ch *Channel) trySendBytes(bytes []byte) bool {
 		atomic.AddInt32(&ch.sendQueueSize, 1)
 		return true
 	default:
+		return false
+	}
+}
+
+// Queues message to submit to this channel.
+// Goroutine-safe
+// Times out (and returns false) after defaultSendTimeout
+func (ch *Channel) receiveBytes(msg []byte) bool {
+	select {
+	case ch.rcvQueue <- msg:
+		atomic.AddInt32(&ch.rcvQueueSize, 1)
+		return true
+	case <-time.After(defaultSendTimeout): // having timeout may not be
+		// necessary
 		return false
 	}
 }
