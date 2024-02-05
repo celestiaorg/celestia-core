@@ -1,7 +1,6 @@
 package kv
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -14,7 +13,6 @@ import (
 	db "github.com/cometbft/cometbft-db"
 
 	abci "github.com/cometbft/cometbft/abci/types"
-	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/pubsub/query"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/state/txindex"
@@ -22,12 +20,7 @@ import (
 )
 
 func TestTxIndex(t *testing.T) {
-	// indexer := NewTxIndex(db.NewMemDB())
-	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
-		TxIndex: &config.TxIndexConfig{
-			Indexer: "kv_lite",
-		},
-	})
+	indexer := NewTxIndex(db.NewMemDB())
 
 	tx := types.Tx("HELLO WORLD")
 	txResult := &abci.TxResult{
@@ -72,91 +65,6 @@ func TestTxIndex(t *testing.T) {
 	assert.True(t, proto.Equal(txResult2, loadedTxResult2))
 }
 
-func TestKvLiteTxIndex(t *testing.T) {
-	// create kv_lite indexer
-	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
-		TxIndex: &config.TxIndexConfig{
-			Indexer: "kv_lite",
-		},
-	})
-
-	tx := types.Tx("TX SHOULD BE EMPTY AFTER INDEXING")
-	txResult := &abci.TxResult{
-		Height: 1,
-		Index:  0,
-		Tx:     tx,
-		Result: abci.ResponseDeliverTx{
-			Data: []byte{0},
-			Code: abci.CodeTypeOK, Log: "", Events: nil,
-		},
-	}
-	hash := tx.Hash()
-
-	batch := txindex.NewBatch(1)
-	if err := batch.Add(txResult); err != nil {
-		t.Error(err)
-	}
-	err := indexer.AddBatch(batch)
-	require.NoError(t, err)
-
-	loadedTxResult, err := indexer.Get(hash)
-	require.NoError(t, err)
-	assert.True(t, bytes.Equal(loadedTxResult.Tx, []byte{}))
-
-	tx2 := types.Tx("This should be empty after indexing too")
-	txResult2 := &abci.TxResult{
-		Height: 1,
-		Index:  0,
-		Tx:     tx2,
-		Result: abci.ResponseDeliverTx{
-			Data: []byte{0},
-			Code: abci.CodeTypeOK, Log: "", Events: nil,
-		},
-	}
-	hash2 := tx2.Hash()
-
-	err = indexer.Index(txResult2)
-	require.NoError(t, err)
-
-	loadedTxResult2, err := indexer.Get(hash2)
-	require.NoError(t, err)
-	assert.True(t, bytes.Equal(loadedTxResult2.Tx, []byte{}))
-
-}
-
-// func TestWrappedTxIndex_kv_lite(t *testing.T) {
-// 	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
-// 		TxIndex: &config.TxIndexConfig{
-// 			Indexer: "kv_lite",
-// 		},
-// 	})
-
-// 	tx := types.Tx("HELLO WORLD")
-// 	wrappedTx, err := types.MarshalIndexWrapper(tx, 11)
-// 	require.NoError(t, err)
-// 	txResult := &abci.TxResult{
-// 		Height: 1,
-// 		Index:  0,
-// 		Tx:     wrappedTx,
-// 		Result: abci.ResponseDeliverTx{
-// 			Data: []byte{0},
-// 			Code: abci.CodeTypeOK, Log: "", Events: nil,
-// 		},
-// 	}
-// 	hash := tx.Hash()
-
-// 	batch := txindex.NewBatch(1)
-// 	if err := batch.Add(txResult); err != nil {
-// 		t.Error(err)
-// 	}
-// 	err = indexer.AddBatch(batch)
-// 	require.NoError(t, err)
-
-// 	loadedTxResult, err := indexer.Get(hash)
-// 	require.NoError(t, err)
-// 	assert.True(t, bytes.Equal(loadedTxResult.Tx, []byte{}))
-// }
-
 func TestWrappedTxIndex(t *testing.T) {
 	indexer := NewTxIndex(db.NewMemDB())
 
@@ -187,12 +95,7 @@ func TestWrappedTxIndex(t *testing.T) {
 }
 
 func TestTxSearch(t *testing.T) {
-	// indexer := NewTxIndex(db.NewMemDB())
-	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
-		TxIndex: &config.TxIndexConfig{
-			Indexer: "kv_lite",
-		},
-	})
+	indexer := NewTxIndex(db.NewMemDB())
 
 	txResult := txResultWithEvents([]abci.Event{
 		{Type: "account", Attributes: []abci.EventAttribute{{Key: "number", Value: "1", Index: true}}},
@@ -200,7 +103,6 @@ func TestTxSearch(t *testing.T) {
 		{Type: "account", Attributes: []abci.EventAttribute{{Key: "owner", Value: "/Ivan/", Index: true}, {Key: "number", Value: "10", Index: true}}},
 		{Type: "", Attributes: []abci.EventAttribute{{Key: "not_allowed", Value: "Vlad", Index: true}}},
 	})
-	fmt.Println(txResult, "TXRESULt")
 	hash := types.Tx(txResult.Tx).Hash()
 
 	err := indexer.Index(txResult)
@@ -279,14 +181,11 @@ func TestTxSearch(t *testing.T) {
 		tc := tc
 		t.Run(tc.q, func(t *testing.T) {
 			results, err := indexer.Search(ctx, query.MustParse(tc.q))
-
 			assert.NoError(t, err)
 
 			assert.Len(t, results, tc.resultsLength)
 			if tc.resultsLength > 0 {
 				for _, txr := range results {
-					fmt.Println(txr, "TXR")
-					fmt.Println(txResult, "TXRESULT")
 					assert.True(t, proto.Equal(txResult, txr))
 				}
 			}
@@ -296,13 +195,7 @@ func TestTxSearch(t *testing.T) {
 
 func TestTxSearchEventMatch(t *testing.T) {
 
-	// indexer := NewTxIndex(db.NewMemDB())
-
-	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
-		TxIndex: &config.TxIndexConfig{
-			Indexer: "kv_lite",
-		},
-	})
+	indexer := NewTxIndex(db.NewMemDB())
 
 	txResult := txResultWithEvents([]abci.Event{
 		{Type: "account", Attributes: []abci.EventAttribute{{Key: "number", Value: "1", Index: true}, {Key: "owner", Value: "Ana", Index: true}}},
@@ -402,12 +295,7 @@ func TestTxSearchEventMatch(t *testing.T) {
 	}
 }
 func TestTxSearchWithCancelation(t *testing.T) {
-	// indexer := NewTxIndex(db.NewMemDB())
-	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
-		TxIndex: &config.TxIndexConfig{
-			Indexer: "kv_lite",
-		},
-	})
+	indexer := NewTxIndex(db.NewMemDB())
 
 	txResult := txResultWithEvents([]abci.Event{
 		{Type: "account", Attributes: []abci.EventAttribute{{Key: "number", Value: "1", Index: true}}},
@@ -425,12 +313,7 @@ func TestTxSearchWithCancelation(t *testing.T) {
 }
 
 func TestTxSearchDeprecatedIndexing(t *testing.T) {
-	// indexer := NewTxIndex(db.NewMemDB())
-	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
-		TxIndex: &config.TxIndexConfig{
-			Indexer: "kv_lite",
-		},
-	})
+	indexer := NewTxIndex(db.NewMemDB())
 
 	// index tx using events indexing (composite key)
 	txResult1 := txResultWithEvents([]abci.Event{
@@ -509,12 +392,7 @@ func TestTxSearchDeprecatedIndexing(t *testing.T) {
 }
 
 func TestTxSearchOneTxWithMultipleSameTagsButDifferentValues(t *testing.T) {
-	// indexer := NewTxIndex(db.NewMemDB())
-	indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
-		TxIndex: &config.TxIndexConfig{
-			Indexer: "kv_lite",
-		},
-	})
+	indexer := NewTxIndex(db.NewMemDB())
 
 	txResult := txResultWithEvents([]abci.Event{
 		{Type: "account", Attributes: []abci.EventAttribute{{Key: "number", Value: "1", Index: true}}},
@@ -695,11 +573,6 @@ func TestTxIndexDuplicatePreviouslySuccessful(t *testing.T) {
 
 func TestTxSearchMultipleTxs(t *testing.T) {
 	indexer := NewTxIndex(db.NewMemDB())
-	// indexer := NewTxIndexWithConfig(db.NewMemDB(), &config.Config{
-	// 	TxIndex: &config.TxIndexConfig{
-	// 		Indexer: "kv_lite",
-	// 	},
-	// })
 
 	// indexed first, but bigger height (to test the order of transactions)
 	txResult := txResultWithEvents([]abci.Event{

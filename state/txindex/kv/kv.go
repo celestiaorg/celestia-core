@@ -137,7 +137,6 @@ func (txi *TxIndex) Index(result *abci.TxResult) error {
 		// in the kv_lite indexer
 		result.Tx = []byte{}
 	}
-	fmt.Println("txResult is nil after indexing", result.Tx == nil)
 	rawBytes, err := proto.Marshal(result)
 	if err != nil {
 		return err
