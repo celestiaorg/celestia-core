@@ -68,7 +68,7 @@ func (txi *TxIndex) Get(hash []byte) (*abci.TxResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error reading TxResult: %v", err)
 	}
-    
+
 	fmt.Println("txResult is nil", txResult.Tx == nil)
 	return txResult, nil
 }

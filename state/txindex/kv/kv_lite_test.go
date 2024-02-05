@@ -235,6 +235,7 @@ func TestTxSearchEventMatch_kv_lite(t *testing.T) {
 	err := indexer.Index(txResult)
 	require.NoError(t, err)
 
+	//nolint:dupl
 	testCases := map[string]struct {
 		q             string
 		resultsLength int
@@ -521,6 +522,7 @@ func TestTxSearchOneTxWithMultipleSameTagsButDifferentValues_kv_lite(t *testing.
 func TestTxIndexDuplicatePreviouslySuccessful_kv_lite(t *testing.T) {
 	mockTx := types.Tx("MOCK_TX_HASH")
 
+	//nolint:dupl
 	testCases := []struct {
 		name         string
 		tx1          *abci.TxResult
@@ -698,7 +700,7 @@ func TestTxSearchMultipleTxs_kv_lite(t *testing.T) {
 	}
 }
 
-func benchmarkTxIndex_kv_lite(txsCount int64, b *testing.B) {
+func benchmarkTxIndexKvLite(txsCount int64, b *testing.B) {
 	dir, err := os.MkdirTemp("", "tx_index_db")
 	require.NoError(b, err)
 	defer os.RemoveAll(dir)
@@ -743,8 +745,8 @@ func benchmarkTxIndex_kv_lite(txsCount int64, b *testing.B) {
 	}
 }
 
-func BenchmarkTxIndex1_kv_lite(b *testing.B)     { benchmarkTxIndex(1, b) }
-func BenchmarkTxIndex500_kv_lite(b *testing.B)   { benchmarkTxIndex(500, b) }
-func BenchmarkTxIndex1000_kv_lite(b *testing.B)  { benchmarkTxIndex(1000, b) }
-func BenchmarkTxIndex2000_kv_lite(b *testing.B)  { benchmarkTxIndex(2000, b) }
-func BenchmarkTxIndex10000_kv_lite(b *testing.B) { benchmarkTxIndex(10000, b) }
+func BenchmarkTxIndex1_kv_lite(b *testing.B)     { benchmarkTxIndexKvLite(1, b) }
+func BenchmarkTxIndex500_kv_lite(b *testing.B)   { benchmarkTxIndexKvLite(500, b) }
+func BenchmarkTxIndex1000_kv_lite(b *testing.B)  { benchmarkTxIndexKvLite(1000, b) }
+func BenchmarkTxIndex2000_kv_lite(b *testing.B)  { benchmarkTxIndexKvLite(2000, b) }
+func BenchmarkTxIndex10000_kv_lite(b *testing.B) { benchmarkTxIndexKvLite(10000, b) }

@@ -207,6 +207,7 @@ func TestTxSearchEventMatch(t *testing.T) {
 	err := indexer.Index(txResult)
 	require.NoError(t, err)
 
+	//nolint:dupl
 	testCases := map[string]struct {
 		q             string
 		resultsLength int
@@ -477,6 +478,7 @@ func TestTxSearchOneTxWithMultipleSameTagsButDifferentValues(t *testing.T) {
 func TestTxIndexDuplicatePreviouslySuccessful(t *testing.T) {
 	mockTx := types.Tx("MOCK_TX_HASH")
 
+	//nolint:dupl
 	testCases := []struct {
 		name         string
 		tx1          *abci.TxResult
