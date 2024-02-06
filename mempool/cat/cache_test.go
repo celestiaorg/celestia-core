@@ -22,7 +22,7 @@ func TestSeenTxSet(t *testing.T) {
 	)
 
 	seenSet := NewSeenTxSet()
-	require.Zero(t, seenSet.Pop(tx1Key))
+	require.Nil(t, seenSet.Get(tx1Key))
 
 	seenSet.Add(tx1Key, peer1)
 	seenSet.Add(tx1Key, peer1)
@@ -36,8 +36,8 @@ func TestSeenTxSet(t *testing.T) {
 	require.Equal(t, 3, seenSet.Len())
 	seenSet.RemoveKey(tx2Key)
 	require.Equal(t, 2, seenSet.Len())
-	require.Zero(t, seenSet.Pop(tx2Key))
-	require.Equal(t, peer1, seenSet.Pop(tx3Key))
+	require.Nil(t, seenSet.Get(tx2Key))
+	require.True(t, seenSet.Has(tx3Key, peer1))
 }
 
 func TestLRUTxCacheRemove(t *testing.T) {
