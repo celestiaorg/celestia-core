@@ -130,19 +130,6 @@ func (s *SeenTxSet) Add(txKey types.TxKey, peer uint16) {
 	}
 }
 
-func (s *SeenTxSet) Pop(txKey types.TxKey) uint16 {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-	seenSet, exists := s.set[txKey]
-	if exists {
-		for peer := range seenSet.peers {
-			delete(seenSet.peers, peer)
-			return peer
-		}
-	}
-	return 0
-}
-
 func (s *SeenTxSet) RemoveKey(txKey types.TxKey) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -158,6 +145,17 @@ func (s *SeenTxSet) Remove(txKey types.TxKey, peer uint16) {
 			delete(s.set, txKey)
 		} else {
 			delete(set.peers, peer)
+		}
+	}
+}
+
+func (s *SeenTxSet) RemovePeer(peer uint16) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	for key, seenSet := range s.set {
+		delete(seenSet.peers, peer)
+		if len(seenSet.peers) == 0 {
+			delete(s.set, key)
 		}
 	}
 }
