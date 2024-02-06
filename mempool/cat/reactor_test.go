@@ -163,14 +163,13 @@ func TestRemovePeerRequestFromOtherPeer(t *testing.T) {
 
 	seenMsg := &protomem.SeenTx{TxKey: key[:]}
 
-	wantEnv := p2p.Envelope{
-		Message: &protomem.Message{
-			Sum: &protomem.Message_WantTx{WantTx: &protomem.WantTx{TxKey: key[:]}},
-		},
-		ChannelID: MempoolStateChannel,
+	wantMsg := &protomem.Message{
+		Sum: &protomem.Message_WantTx{WantTx: &protomem.WantTx{TxKey: key[:]}},
 	}
-	peers[0].On("SendEnvelope", wantEnv).Return(true)
-	peers[1].On("SendEnvelope", wantEnv).Return(true)
+	wantMsgBytes, err := wantMsg.Marshal()
+	require.NoError(t, err)
+	peers[0].On("Send", MempoolStateChannel, wantMsgBytes).Return(true)
+	peers[1].On("Send", MempoolStateChannel, wantMsgBytes).Return(true)
 
 	reactor.ReceiveEnvelope(p2p.Envelope{
 		Src:       peers[0],
