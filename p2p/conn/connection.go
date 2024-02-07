@@ -391,6 +391,7 @@ func (c *MConnection) Receive(chID byte, msgBytes []byte) bool {
 		return false
 	}
 
+	// places the message in the channel's recving buffer
 	success := channel.receiveBytes(msgBytes)
 	if success {
 		// Wake up sendRoutine if necessary
@@ -583,11 +584,58 @@ func (c *MConnection) sendPacketMsg() bool {
 	return false
 }
 
+func (c *MConnection) receiverManager() {
+FOR_LOOP:
+	for {
+		select {
+		case <-c.quitRecvRoutine:
+			break FOR_LOOP
+		case <-c.receive:
+			// read a message
+			c.chooseMessage()
+		}
+	}
+}
+
+func (c *MConnection) chooseMessage() {
+	// Choose a channel to read a PacketMsg from.
+	// The chosen channel will be the one whose recentlyRecv/priority is the least.
+	var leastRatio float32 = math.MaxFloat32
+	var leastChannel *Channel
+	for _, channel := range c.channels {
+		// If nothing to read, skip this channel
+		if !channel.isRecvPending() {
+			continue
+		}
+		// Get ratio, and keep track of the lowest ratio.
+		ratio := float32(channel.recentlyRecv) / float32(channel.desc.Priority)
+		if ratio < leastRatio {
+			leastRatio = ratio
+			leastChannel = channel
+		}
+	}
+
+	// Nothing to read?
+	if leastChannel == nil {
+	}
+
+	// read a message
+
+	var msg []byte
+	msg, ok := <-leastChannel.rcvQueue
+	if !ok {
+		return
+	}
+	c.onReceive(leastChannel.desc.ID, msg)
+}
+
 // recvRoutine reads PacketMsgs and reconstructs the message using the channels' "recving" buffer.
 // After a whole message has been assembled, it's pushed to onReceive().
 // Blocks depending on how the connection is throttled.
 // Otherwise, it never blocks.
 func (c *MConnection) recvRoutine() {
+	go c.receiverManager() // start managing the incoming messages based on
+	// their priorities
 	defer c._recover()
 
 	protoReader := protoio.NewDelimitedReader(c.bufConnReader, c._maxPacketMsgSize)
@@ -678,7 +726,7 @@ FOR_LOOP:
 				// put messages into their channels and as the result signal
 				// a goroutine to pick a message to send to a reactor
 				success := c.Receive(channelID, msgBytes)
-				c.onReceive(channelID, msgBytes)
+				//c.onReceive(channelID, msgBytes)
 			}
 		default:
 			err := fmt.Errorf("unknown message type %v", reflect.TypeOf(packet))
