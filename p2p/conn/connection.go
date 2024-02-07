@@ -85,7 +85,7 @@ type MConnection struct {
 	sendMonitor   *flow.Monitor
 	recvMonitor   *flow.Monitor
 	send          chan struct{}
-	receive       chan struct{}
+	receive       chan struct{} // this is signal that a message for some channel is ready to be read
 	pong          chan struct{}
 	channels      []*Channel
 	channelsIdx   map[byte]*Channel
@@ -377,7 +377,8 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 	return success
 }
 
-func (c *MConnection) Receive(chID byte, msgBytes []byte) bool {
+// QueueMsg places the message in the channel's recving buffer.
+func (c *MConnection) QueueMsg(chID byte, msgBytes []byte) bool {
 	if !c.IsRunning() {
 		return false
 	}
@@ -392,9 +393,9 @@ func (c *MConnection) Receive(chID byte, msgBytes []byte) bool {
 	}
 
 	// places the message in the channel's recving buffer
-	success := channel.receiveBytes(msgBytes)
+	success := channel.receiveMsg(msgBytes)
 	if success {
-		// Wake up sendRoutine if necessary
+		// Wake up  if necessary
 		select {
 		case c.receive <- struct{}{}:
 		default:
@@ -402,6 +403,7 @@ func (c *MConnection) Receive(chID byte, msgBytes []byte) bool {
 	} else {
 		c.Logger.Debug("Receive failed", "channel", chID, "conn", c,
 			"msgBytes", log.NewLazySprintf("%X", msgBytes))
+		return false
 	}
 	return success
 }
@@ -592,41 +594,38 @@ FOR_LOOP:
 			break FOR_LOOP
 		case <-c.receive:
 			// read a message
-			c.chooseMessage()
+			// Choose a channel to read a message from.
+			// The chosen channel will be the one whose recentlyRecvMsg/priority is the least.
+			var leastRatio float32 = math.MaxFloat32
+			var leastChannel *Channel
+			for _, channel := range c.channels {
+				// If nothing to read, skip this channel
+				if len(channel.rcvMsgQueue) == 0 {
+					continue
+				}
+				// Get ratio, and keep track of the lowest ratio.
+				ratio := float32(channel.recentlyRecvMsg) / float32(channel.desc.Priority)
+				if ratio < leastRatio {
+					leastRatio = ratio
+					leastChannel = channel
+				}
+			}
+
+			// Nothing to read
+			if leastChannel == nil {
+				return
+			}
+
+			// read a message
+			var msg []byte
+			msg, ok := <-leastChannel.rcvMsgQueue
+			if !ok {
+				return
+			}
+			// process the message
+			c.onReceive(leastChannel.desc.ID, msg)
 		}
 	}
-}
-
-func (c *MConnection) chooseMessage() {
-	// Choose a channel to read a PacketMsg from.
-	// The chosen channel will be the one whose recentlyRecv/priority is the least.
-	var leastRatio float32 = math.MaxFloat32
-	var leastChannel *Channel
-	for _, channel := range c.channels {
-		// If nothing to read, skip this channel
-		if !channel.isRecvPending() {
-			continue
-		}
-		// Get ratio, and keep track of the lowest ratio.
-		ratio := float32(channel.recentlyRecv) / float32(channel.desc.Priority)
-		if ratio < leastRatio {
-			leastRatio = ratio
-			leastChannel = channel
-		}
-	}
-
-	// Nothing to read?
-	if leastChannel == nil {
-	}
-
-	// read a message
-
-	var msg []byte
-	msg, ok := <-leastChannel.rcvQueue
-	if !ok {
-		return
-	}
-	c.onReceive(leastChannel.desc.ID, msg)
 }
 
 // recvRoutine reads PacketMsgs and reconstructs the message using the channels' "recving" buffer.
@@ -725,7 +724,7 @@ FOR_LOOP:
 				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
 				// put messages into their channels and as the result signal
 				// a goroutine to pick a message to send to a reactor
-				success := c.Receive(channelID, msgBytes)
+				c.QueueMsg(channelID, msgBytes)
 				//c.onReceive(channelID, msgBytes)
 			}
 		default:
@@ -833,11 +832,15 @@ type Channel struct {
 	desc          ChannelDescriptor
 	sendQueue     chan []byte
 	sendQueueSize int32 // atomic.
-	rcvQueue      chan []byte
-	rcvQueueSize  int32 // atomic.
-	recving       []byte
-	sending       []byte
-	recentlySent  int64 // exponential moving average
+
+	rcvMsgQueue     chan []byte
+	rcvMsgQueueSize int32 // atomic.
+	recentlyRecvMsg int64 // exponential moving average based on the number
+	// of messages received
+
+	recving      []byte
+	sending      []byte
+	recentlySent int64 // exponential moving average
 
 	maxPacketMsgPayloadSize int
 
@@ -853,7 +856,7 @@ func newChannel(conn *MConnection, desc ChannelDescriptor) *Channel {
 		conn:                    conn,
 		desc:                    desc,
 		sendQueue:               make(chan []byte, desc.SendQueueCapacity),
-		rcvQueue:                make(chan []byte, desc.RcvQueueCapacity),
+		rcvMsgQueue:             make(chan []byte, desc.RcvQueueCapacity),
 		recving:                 make([]byte, 0, desc.RecvBufferCapacity),
 		maxPacketMsgPayloadSize: conn.config.MaxPacketMsgPayloadSize,
 	}
@@ -889,13 +892,13 @@ func (ch *Channel) trySendBytes(bytes []byte) bool {
 	}
 }
 
-// Queues message to submit to this channel.
+// receiveMsg queues message to submit to this channel.
 // Goroutine-safe
 // Times out (and returns false) after defaultSendTimeout
-func (ch *Channel) receiveBytes(msg []byte) bool {
+func (ch *Channel) receiveMsg(msg []byte) bool {
 	select {
-	case ch.rcvQueue <- msg:
-		atomic.AddInt32(&ch.rcvQueueSize, 1)
+	case ch.rcvMsgQueue <- msg:
+		atomic.AddInt32(&ch.rcvMsgQueueSize, 1)
 		return true
 	case <-time.After(defaultSendTimeout): // having timeout may not be
 		// necessary
