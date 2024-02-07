@@ -600,11 +600,11 @@ FOR_LOOP:
 			var leastChannel *Channel
 			for _, channel := range c.channels {
 				// If nothing to read, skip this channel
-				if len(channel.rcvMsgQueue) == 0 {
+				if channel.loadRecvMsgQueueSize() == 0 {
 					continue
 				}
 				// Get ratio, and keep track of the lowest ratio.
-				ratio := float32(channel.recentlyRecvMsg) / float32(channel.desc.Priority)
+				ratio := float32(atomic.LoadInt64(&channel.recentlyRecvMsg)) / float32(channel.desc.Priority)
 				if ratio < leastRatio {
 					leastRatio = ratio
 					leastChannel = channel
@@ -910,6 +910,11 @@ func (ch *Channel) receiveMsg(msg []byte) bool {
 // Goroutine-safe
 func (ch *Channel) loadSendQueueSize() (size int) {
 	return int(atomic.LoadInt32(&ch.sendQueueSize))
+}
+
+// Goroutine-safe
+func (ch *Channel) loadRecvMsgQueueSize() (size int) {
+	return int(atomic.LoadInt32(&ch.rcvMsgQueueSize))
 }
 
 // Goroutine-safe
