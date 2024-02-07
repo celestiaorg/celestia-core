@@ -622,6 +622,7 @@ FOR_LOOP:
 			if !ok {
 				return
 			}
+			atomic.AddInt64(&leastChannel.recentlyRecvMsg, int64(len(msg)))
 			// process the message
 			c.onReceive(leastChannel.desc.ID, msg)
 		}
@@ -835,7 +836,7 @@ type Channel struct {
 
 	rcvMsgQueue     chan []byte
 	rcvMsgQueueSize int32 // atomic.
-	recentlyRecvMsg int64 // exponential moving average based on the number
+	recentlyRecvMsg int64 // exponential moving average based on the byte size
 	// of messages received
 
 	recving      []byte
@@ -985,6 +986,7 @@ func (ch *Channel) updateStats() {
 	// Exponential decay of stats.
 	// TODO: optimize.
 	atomic.StoreInt64(&ch.recentlySent, int64(float64(atomic.LoadInt64(&ch.recentlySent))*0.8))
+	atomic.StoreInt64(&ch.recentlyRecvMsg, int64(float64(atomic.LoadInt64(&ch.recentlyRecvMsg))*0.8))
 }
 
 //----------------------------------------
