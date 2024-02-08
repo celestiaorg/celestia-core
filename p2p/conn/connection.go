@@ -604,6 +604,7 @@ FOR_LOOP:
 		case <-c.quitReceiverManager:
 			break FOR_LOOP
 		case <-c.receive:
+			c.Logger.Debug("Receiver manager is up")
 			// read a message
 			// Choose a channel to read a message from.
 			// The chosen channel will be the one whose recentlyRecvMsg/priority is the least.
@@ -611,7 +612,7 @@ FOR_LOOP:
 			var leastChannel *Channel
 			for _, channel := range c.channels {
 				// If nothing to read, skip this channel
-				if channel.loadRecvMsgQueueSize() == 0 {
+				if channel.loadRecvMsgQueueSize() == 0 { //len(channel.rcvMsgQueue) == 0 {
 					continue
 				}
 				// Get ratio, and keep track of the lowest ratio.
@@ -624,15 +625,23 @@ FOR_LOOP:
 
 			// Nothing to read
 			if leastChannel == nil {
-				return
+				continue
 			}
+			// keep the manager alive
+			c.receive <- struct{}{}
 
-			var msg []byte
+			c.Logger.Debug("Receiver manager is up", "channel_won",
+				leastChannel.desc.ID)
+			//var msg []byte
 			msg, ok := <-leastChannel.rcvMsgQueue
+			c.Logger.Debug("Receiver manager read a message", "channel", leastChannel.desc.ID)
 			if !ok {
-				return
+				c.Logger.Debug("Receiver manager could not access the msg",
+					"channel", leastChannel.desc.ID)
+				continue
 			}
 			atomic.AddInt64(&leastChannel.recentlyRecvMsg, int64(len(msg)))
+			atomic.AddInt32(&leastChannel.rcvMsgQueueSize, int32(-1))
 			count++
 			// read a message
 			c.Logger.Debug("Receiver manager read a message", "num",
@@ -640,6 +649,8 @@ FOR_LOOP:
 				leastChannel.desc.ID, "conn", c, "msgBytes", log.NewLazySprintf("%X", leastChannel.rcvMsgQueue))
 			// process the message
 			c.onReceive(leastChannel.desc.ID, msg)
+		default:
+			//c.Logger.Debug("Receiver manager is not up")
 		}
 	}
 }
@@ -914,6 +925,7 @@ func (ch *Channel) receiveMsg(msg []byte) bool {
 	select {
 	case ch.rcvMsgQueue <- msg:
 		atomic.AddInt32(&ch.rcvMsgQueueSize, 1)
+		ch.Logger.Debug("ReceiveMsg queued", "channel", ch.desc.ID, "msg", msg)
 		return true
 	case <-time.After(defaultRecvTimeout): // having timeout may not be
 		// necessary
