@@ -609,14 +609,17 @@ func BenchmarkMConnection_Multiple_ChannelID(b *testing.B) {
 	}
 }
 
-func TestMConnection_Receiving_Message_Prioratized_By_ChannelID(t *testing.T) {
-	// The aim of the test is to assess if the receiver prioritizes received
-	// messages based on their channel ID's priority.
-	// To this end, the test sends 11 messages from client to server, with the first 10 on
-	// channel ID 2 (low priority) and the final one on channel ID 1 (
-	// high priority). It is expected that the message on channel ID 1
+// TestMConnection_Receiving_Message_Prioritized_By_ChannelID assess if a
+//
+//	MConnection  prioritizes received messages based on their channel ID's
+//
+// priority.
+func TestMConnection_Receiving_Message_Prioritized_By_ChannelID(t *testing.T) {
+	// The test sends 11 messages from client MConnection to server's
+	// MConnection, with the first 10 on channel ID 2 (low priority)
+	// and the final one on channel ID 1 (high priority).
+	// It is expected that the message on channel ID 1
 	// to be received and processed NOT the last.
-
 	totalMsgs := 11
 	msgSize := 1 * kibibyte
 	sendRate := 50 * kibibyte
