@@ -646,8 +646,6 @@ FOR_LOOP:
 
 			// process the message
 			c.onReceive(leastChannel.desc.ID, msg)
-		default:
-			// no messages to read
 		}
 	}
 }
