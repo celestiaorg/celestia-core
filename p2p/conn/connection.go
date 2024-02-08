@@ -400,14 +400,13 @@ func (c *MConnection) QueueReceivedMsg(chID byte, msgBytes []byte) bool {
 		return false
 	}
 
-	// places the message in the channel's receiving buffer
-	success := channel.receiveMsg(msgBytes)
+	// places the message in the channel's rcvMsgQueue
+	success := channel.receiveBytes(msgBytes)
 	if success {
-		// Wake up  if necessary
+		// signal the receiverManager that there is a message to be read
 		select {
-		case c.receive <- struct{}{}:
-			c.Logger.Debug("Receive wake up", "channel", chID, "conn", c)
-		default:
+		case c.receive <- struct{}{}: // signal the receiverManager
+		default: // if the receiverManager is already signaled, do nothing
 		}
 	} else {
 		c.Logger.Debug("QueueMsg failed", "channel", chID, "conn", c,
@@ -631,10 +630,13 @@ FOR_LOOP:
 			}
 
 			// read a message
-			msg, ok := leastChannel.readRecvMsgQueue()
+			msg, ok := <-leastChannel.rcvMsgQueue
 			if !ok {
-				continue
+				return
 			}
+			// update the channel's stats
+			atomic.AddInt64(&leastChannel.recentlyRecvMsg, int64(len(msg)))
+			atomic.AddInt32(&leastChannel.rcvMsgQueueSize, int32(-1))
 
 			count++
 			c.Logger.Debug("Receiver manager read a message", "index",
@@ -740,11 +742,9 @@ FOR_LOOP:
 			}
 			if msgBytes != nil {
 				c.Logger.Debug("Received bytes", "chID", channelID, "msgBytes", msgBytes)
-				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
-				// put messages into their channels and as the result signal
-				// a goroutine to pick a message to send to a reactor
+				// messages are placed into their channels' queues,
+				// the manager will decide which message to process first
 				c.QueueReceivedMsg(channelID, msgBytes)
-				//c.onReceive(channelID, msgBytes)
 			}
 		default:
 			err := fmt.Errorf("unknown message type %v", reflect.TypeOf(packet))
@@ -911,10 +911,15 @@ func (ch *Channel) trySendBytes(bytes []byte) bool {
 	}
 }
 
-// receiveMsg queues message to submit to this channel.
+// Goroutine-safe
+func (ch *Channel) loadSendQueueSize() (size int) {
+	return int(atomic.LoadInt32(&ch.sendQueueSize))
+}
+
+// receiveBytes queues message received on this channel.
 // Goroutine-safe
 // Times out (and returns false) after defaultRecvTimeout
-func (ch *Channel) receiveMsg(msg []byte) bool {
+func (ch *Channel) receiveBytes(msg []byte) bool {
 	select {
 	case ch.rcvMsgQueue <- msg:
 		atomic.AddInt32(&ch.rcvMsgQueueSize, 1)
@@ -924,23 +929,6 @@ func (ch *Channel) receiveMsg(msg []byte) bool {
 		// necessary
 		return false
 	}
-}
-
-// Goroutine-safe
-func (ch *Channel) loadSendQueueSize() (size int) {
-	return int(atomic.LoadInt32(&ch.sendQueueSize))
-}
-
-func (ch *Channel) readRecvMsgQueue() (msg []byte, ok bool) {
-	// read a message
-	msg, ok = <-ch.rcvMsgQueue
-	if !ok {
-		return
-	}
-	// update the channel's stats
-	atomic.AddInt64(&ch.recentlyRecvMsg, int64(len(msg)))
-	atomic.AddInt32(&ch.rcvMsgQueueSize, int32(-1))
-	return
 }
 
 // Goroutine-safe

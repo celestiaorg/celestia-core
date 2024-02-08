@@ -775,7 +775,7 @@ func TestReceiveMsg(t *testing.T) {
 		RecvMessageCapacity: defaultRecvMessageCapacity,
 		RecvBufferCapacity:  defaultRecvBufferCapacity}
 	ch := newChannel(nil, desc)
-	assert.True(t, ch.receiveMsg([]byte("data")))
+	assert.True(t, ch.receiveBytes([]byte("data")))
 	msg := <-ch.rcvMsgQueue
 	assert.Equal(t, msg, []byte("data"))
 
