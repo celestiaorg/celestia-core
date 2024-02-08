@@ -596,7 +596,7 @@ func (c *MConnection) sendPacketMsg() bool {
 
 func (c *MConnection) receiverManager() {
 	c.Logger.Debug("Receiver manager started")
-	count := 0
+	count := 0 // just for debugging, keeping track of the order of messages
 FOR_LOOP:
 	for {
 		select {
@@ -610,7 +610,7 @@ FOR_LOOP:
 			var leastChannel *Channel
 			for _, channel := range c.channels {
 				// If nothing to read, skip this channel
-				if channel.loadRecvMsgQueueSize() == 0 { //len(channel.rcvMsgQueue) == 0 {
+				if channel.loadRecvMsgQueueSize() == 0 {
 					continue
 				}
 				// Get ratio, and keep track of the lowest ratio.
@@ -632,7 +632,7 @@ FOR_LOOP:
 			// read a message
 			msg, ok := <-leastChannel.rcvMsgQueue
 			if !ok {
-				return
+				continue
 			}
 			// update the channel's stats
 			atomic.AddInt64(&leastChannel.recentlyRecvMsg, int64(len(msg)))
@@ -643,9 +643,11 @@ FOR_LOOP:
 				count, "channel",
 				leastChannel.desc.ID, "conn", c, "msgBytes",
 				log.NewLazySprintf("%X", leastChannel.rcvMsgQueue))
+
 			// process the message
 			c.onReceive(leastChannel.desc.ID, msg)
 		default:
+			// no messages to read
 		}
 	}
 }
