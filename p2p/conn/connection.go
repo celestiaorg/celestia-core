@@ -385,7 +385,7 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 	return success
 }
 
-// QueueReceivedMsg places the message in the channel's receiving buffer.
+// QueueReceivedMsg places the msgBytes in its respective channel.
 func (c *MConnection) QueueReceivedMsg(chID byte, msgBytes []byte) bool {
 	if !c.IsRunning() {
 		return false
