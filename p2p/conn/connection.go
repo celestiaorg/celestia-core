@@ -37,15 +37,16 @@ const (
 	// TODO: remove values present in config
 	defaultFlushThrottle = 100 * time.Millisecond
 
-	defaultSendQueueCapacity   = 1
-	defaultRecvQueueCapacity   = 1
-	defaultRecvBufferCapacity  = 4096
-	defaultRecvMessageCapacity = 22020096         // 21MB
-	defaultSendRate            = int64(5_120_000) // 5MB/s
-	defaultRecvRate            = int64(5_120_000) // 5MB/s
-	defaultSendTimeout         = 10 * time.Second
-	defaultPingInterval        = 60 * time.Second
-	defaultPongTimeout         = 45 * time.Second
+	defaultSendQueueCapacity    = 1
+	defaultRecvMsgQueueCapacity = 100
+	defaultRecvBufferCapacity   = 4096
+	defaultRecvMessageCapacity  = 22020096         // 21MB
+	defaultSendRate             = int64(5_120_000) // 5MB/s
+	defaultRecvRate             = int64(5_120_000) // 5MB/s
+	defaultSendTimeout          = 10 * time.Second
+	defaultRecvTimeout          = 10 * time.Second
+	defaultPingInterval         = 60 * time.Second
+	defaultPongTimeout          = 45 * time.Second
 )
 
 type receiveCbFunc func(chID byte, msgBytes []byte)
@@ -99,8 +100,10 @@ type MConnection struct {
 	quitSendRoutine chan struct{}
 	doneSendRoutine chan struct{}
 
-	// Closing quitRecvRouting will cause the recvRouting to eventually quit.
+	// Closing quitRecvRouting will cause the recvRoutine to eventually quit.
 	quitRecvRoutine chan struct{}
+	// quitReceiverManager will cause the receiverManager to eventually quit.
+	quitReceiverManager chan struct{}
 
 	// used to ensure FlushStop and OnStop
 	// are safe to call concurrently.
@@ -184,6 +187,7 @@ func NewMConnectionWithConfig(
 		sendMonitor:   flow.New(0, 0),
 		recvMonitor:   flow.New(0, 0),
 		send:          make(chan struct{}, 1),
+		receive:       make(chan struct{}, 1),
 		pong:          make(chan struct{}, 1),
 		onReceive:     onReceive,
 		onError:       onError,
@@ -230,8 +234,11 @@ func (c *MConnection) OnStart() error {
 	c.quitSendRoutine = make(chan struct{})
 	c.doneSendRoutine = make(chan struct{})
 	c.quitRecvRoutine = make(chan struct{})
+	c.quitReceiverManager = make(chan struct{})
 	go c.sendRoutine()
 	go c.recvRoutine()
+	go c.receiverManager() // start managing the incoming messages based on
+	// the channels priorities
 	return nil
 }
 
@@ -264,6 +271,7 @@ func (c *MConnection) stopServices() (alreadyStopped bool) {
 	// inform the recvRouting that we are shutting down
 	close(c.quitRecvRoutine)
 	close(c.quitSendRoutine)
+	close(c.quitReceiverManager)
 	return false
 }
 
@@ -385,19 +393,20 @@ func (c *MConnection) QueueMsg(chID byte, msgBytes []byte) bool {
 	c.Logger.Debug("Receive", "channel", chID, "conn", c, "msgBytes",
 		log.NewLazySprintf("%X", msgBytes))
 
-	// Send message to channel.
+	// check the channel exists.
 	channel, ok := c.channelsIdx[chID]
 	if !ok {
 		c.Logger.Error(fmt.Sprintf("Cannot send bytes, unknown channel %X", chID))
 		return false
 	}
 
-	// places the message in the channel's recving buffer
+	// places the message in the channel's receiving buffer
 	success := channel.receiveMsg(msgBytes)
 	if success {
 		// Wake up  if necessary
 		select {
 		case c.receive <- struct{}{}:
+			c.Logger.Debug("Receive wake up", "channel", chID, "conn", c)
 		default:
 		}
 	} else {
@@ -587,10 +596,12 @@ func (c *MConnection) sendPacketMsg() bool {
 }
 
 func (c *MConnection) receiverManager() {
+	c.Logger.Debug("Receiver manager started")
+	count := 0
 FOR_LOOP:
 	for {
 		select {
-		case <-c.quitRecvRoutine:
+		case <-c.quitReceiverManager:
 			break FOR_LOOP
 		case <-c.receive:
 			// read a message
@@ -616,13 +627,17 @@ FOR_LOOP:
 				return
 			}
 
-			// read a message
 			var msg []byte
 			msg, ok := <-leastChannel.rcvMsgQueue
 			if !ok {
 				return
 			}
 			atomic.AddInt64(&leastChannel.recentlyRecvMsg, int64(len(msg)))
+			count++
+			// read a message
+			c.Logger.Debug("Receiver manager read a message", "num",
+				count, "channel",
+				leastChannel.desc.ID, "conn", c, "msgBytes", log.NewLazySprintf("%X", leastChannel.rcvMsgQueue))
 			// process the message
 			c.onReceive(leastChannel.desc.ID, msg)
 		}
@@ -634,7 +649,6 @@ FOR_LOOP:
 // Blocks depending on how the connection is throttled.
 // Otherwise, it never blocks.
 func (c *MConnection) recvRoutine() {
-	go c.receiverManager() // start managing the incoming messages based on
 	// their priorities
 	defer c._recover()
 
@@ -803,7 +817,7 @@ type ChannelDescriptor struct {
 	ID                  byte
 	Priority            int
 	SendQueueCapacity   int
-	RcvQueueCapacity    int
+	RcvMsgQueueCapacity int
 	RecvBufferCapacity  int
 	RecvMessageCapacity int
 	MessageType         proto.Message
@@ -819,8 +833,8 @@ func (chDesc ChannelDescriptor) FillDefaults() (filled ChannelDescriptor) {
 	if chDesc.RecvMessageCapacity == 0 {
 		chDesc.RecvMessageCapacity = defaultRecvMessageCapacity
 	}
-	if chDesc.RcvQueueCapacity == 0 {
-		chDesc.RcvQueueCapacity = defaultRecvQueueCapacity
+	if chDesc.RcvMsgQueueCapacity == 0 {
+		chDesc.RcvMsgQueueCapacity = defaultRecvMsgQueueCapacity
 	}
 	filled = chDesc
 	return
@@ -857,7 +871,7 @@ func newChannel(conn *MConnection, desc ChannelDescriptor) *Channel {
 		conn:                    conn,
 		desc:                    desc,
 		sendQueue:               make(chan []byte, desc.SendQueueCapacity),
-		rcvMsgQueue:             make(chan []byte, desc.RcvQueueCapacity),
+		rcvMsgQueue:             make(chan []byte, desc.RcvMsgQueueCapacity),
 		recving:                 make([]byte, 0, desc.RecvBufferCapacity),
 		maxPacketMsgPayloadSize: conn.config.MaxPacketMsgPayloadSize,
 	}
@@ -901,7 +915,7 @@ func (ch *Channel) receiveMsg(msg []byte) bool {
 	case ch.rcvMsgQueue <- msg:
 		atomic.AddInt32(&ch.rcvMsgQueueSize, 1)
 		return true
-	case <-time.After(defaultSendTimeout): // having timeout may not be
+	case <-time.After(defaultRecvTimeout): // having timeout may not be
 		// necessary
 		return false
 	}

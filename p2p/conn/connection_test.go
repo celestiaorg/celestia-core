@@ -769,3 +769,14 @@ func stopAll(t *testing.T, stoppers ...stopper) func() {
 		}
 	}
 }
+
+func TestReceiveMsg(t *testing.T) {
+	desc := ChannelDescriptor{ID: 0x01, Priority: 1, SendQueueCapacity: 50,
+		RecvMessageCapacity: defaultRecvMessageCapacity,
+		RecvBufferCapacity:  defaultRecvBufferCapacity}
+	ch := newChannel(nil, desc)
+	assert.True(t, ch.receiveMsg([]byte("data")))
+	msg := <-ch.rcvMsgQueue
+	assert.Equal(t, msg, []byte("data"))
+
+}
