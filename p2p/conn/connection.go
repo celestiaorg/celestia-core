@@ -385,8 +385,8 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 	return success
 }
 
-// QueueMsg places the message in the channel's recving buffer.
-func (c *MConnection) QueueMsg(chID byte, msgBytes []byte) bool {
+// QueueReceivedMsg places the message in the channel's receiving buffer.
+func (c *MConnection) QueueReceivedMsg(chID byte, msgBytes []byte) bool {
 	if !c.IsRunning() {
 		return false
 	}
@@ -410,7 +410,7 @@ func (c *MConnection) QueueMsg(chID byte, msgBytes []byte) bool {
 		default:
 		}
 	} else {
-		c.Logger.Debug("Receive failed", "channel", chID, "conn", c,
+		c.Logger.Debug("QueueMsg failed", "channel", chID, "conn", c,
 			"msgBytes", log.NewLazySprintf("%X", msgBytes))
 		return false
 	}
@@ -604,7 +604,6 @@ FOR_LOOP:
 		case <-c.quitReceiverManager:
 			break FOR_LOOP
 		case <-c.receive:
-			c.Logger.Debug("Receiver manager is up")
 			// read a message
 			// Choose a channel to read a message from.
 			// The chosen channel will be the one whose recentlyRecvMsg/priority is the least.
@@ -626,31 +625,25 @@ FOR_LOOP:
 			// Nothing to read
 			if leastChannel == nil {
 				continue
+			} else {
+				// keep the manager alive, there are still messages to read
+				c.receive <- struct{}{}
 			}
-			// keep the manager alive
-			c.receive <- struct{}{}
 
-			c.Logger.Debug("Receiver manager is up", "channel_won",
-				leastChannel.desc.ID)
-			//var msg []byte
-			msg, ok := <-leastChannel.rcvMsgQueue
-			c.Logger.Debug("Receiver manager read a message", "channel", leastChannel.desc.ID)
+			// read a message
+			msg, ok := leastChannel.readRecvMsgQueue()
 			if !ok {
-				c.Logger.Debug("Receiver manager could not access the msg",
-					"channel", leastChannel.desc.ID)
 				continue
 			}
-			atomic.AddInt64(&leastChannel.recentlyRecvMsg, int64(len(msg)))
-			atomic.AddInt32(&leastChannel.rcvMsgQueueSize, int32(-1))
+
 			count++
-			// read a message
-			c.Logger.Debug("Receiver manager read a message", "num",
+			c.Logger.Debug("Receiver manager read a message", "index",
 				count, "channel",
-				leastChannel.desc.ID, "conn", c, "msgBytes", log.NewLazySprintf("%X", leastChannel.rcvMsgQueue))
+				leastChannel.desc.ID, "conn", c, "msgBytes",
+				log.NewLazySprintf("%X", leastChannel.rcvMsgQueue))
 			// process the message
 			c.onReceive(leastChannel.desc.ID, msg)
 		default:
-			//c.Logger.Debug("Receiver manager is not up")
 		}
 	}
 }
@@ -750,7 +743,7 @@ FOR_LOOP:
 				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
 				// put messages into their channels and as the result signal
 				// a goroutine to pick a message to send to a reactor
-				c.QueueMsg(channelID, msgBytes)
+				c.QueueReceivedMsg(channelID, msgBytes)
 				//c.onReceive(channelID, msgBytes)
 			}
 		default:
@@ -920,7 +913,7 @@ func (ch *Channel) trySendBytes(bytes []byte) bool {
 
 // receiveMsg queues message to submit to this channel.
 // Goroutine-safe
-// Times out (and returns false) after defaultSendTimeout
+// Times out (and returns false) after defaultRecvTimeout
 func (ch *Channel) receiveMsg(msg []byte) bool {
 	select {
 	case ch.rcvMsgQueue <- msg:
@@ -936,6 +929,18 @@ func (ch *Channel) receiveMsg(msg []byte) bool {
 // Goroutine-safe
 func (ch *Channel) loadSendQueueSize() (size int) {
 	return int(atomic.LoadInt32(&ch.sendQueueSize))
+}
+
+func (ch *Channel) readRecvMsgQueue() (msg []byte, ok bool) {
+	// read a message
+	msg, ok = <-ch.rcvMsgQueue
+	if !ok {
+		return
+	}
+	// update the channel's stats
+	atomic.AddInt64(&ch.recentlyRecvMsg, int64(len(msg)))
+	atomic.AddInt32(&ch.rcvMsgQueueSize, int32(-1))
+	return
 }
 
 // Goroutine-safe
