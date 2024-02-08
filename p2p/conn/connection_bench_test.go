@@ -609,40 +609,30 @@ func BenchmarkMConnection_Multiple_ChannelID(b *testing.B) {
 	}
 }
 
-func TestMConnection_Message_Order_ChannelID(t *testing.T) {
-	// This test involves two connections, each with two channels:
-	// channel ID 1 (high priority) and channel ID 2 (low priority).
-	// It sends 11 messages from client to server, with the first 10 on
-	// channel ID 2 and the final one on channel ID 1.
-	// The aim is to show that message order at the receiver is based solely
-	// on the send order, as the receiver does not prioritize channels.
-	// To enforce a specific send order,
-	// channel ID 2's send queue capacity is limited to 1;
-	// preventing message queuing on channel ID 2 that could otherwise give
-	// priority to channel ID 1's message (despite being the last message),
-	// disrupting the send order.
+func TestMConnection_Receiving_Message_Prioratized_By_ChannelID(t *testing.T) {
+	// The aim of the test is to assess if the receiver prioritizes received
+	// messages based on their channel ID's priority.
+	// To this end, the test sends 11 messages from client to server, with the first 10 on
+	// channel ID 2 (low priority) and the final one on channel ID 1 (
+	// high priority). It is expected that the message on channel ID 1
+	// to be received and processed NOT the last.
+
 	totalMsgs := 11
 	msgSize := 1 * kibibyte
 	sendRate := 50 * kibibyte
 	recRate := 50 * kibibyte
-	clientChDesc := []*ChannelDescriptor{
-		{ID: 0x01, Priority: 1, SendQueueCapacity: 10,
+	chDesc := []*ChannelDescriptor{
+		{ID: 0x01, Priority: 1, SendQueueCapacity: 50,
 			RecvMessageCapacity: defaultRecvMessageCapacity,
-			RecvBufferCapacity:  defaultRecvBufferCapacity},
+			RecvBufferCapacity:  defaultRecvBufferCapacity,
+			RcvMsgQueueCapacity: defaultRecvMsgQueueCapacity},
 		{ID: 0x02, Priority: 2,
 			// channel ID 2's send queue capacity is limited to 1;
 			// to enforce a specific send order.
 			SendQueueCapacity:   1,
 			RecvMessageCapacity: defaultRecvMessageCapacity,
-			RecvBufferCapacity:  defaultRecvBufferCapacity},
-	}
-	serverChDesc := []*ChannelDescriptor{
-		{ID: 0x01, Priority: 1, SendQueueCapacity: 50,
-			RecvMessageCapacity: defaultRecvMessageCapacity,
-			RecvBufferCapacity:  defaultRecvBufferCapacity},
-		{ID: 0x02, Priority: 2, SendQueueCapacity: 50,
-			RecvMessageCapacity: defaultRecvMessageCapacity,
-			RecvBufferCapacity:  defaultRecvBufferCapacity},
+			RecvBufferCapacity:  defaultRecvBufferCapacity,
+			RcvMsgQueueCapacity: defaultRecvMsgQueueCapacity},
 	}
 
 	// prepare messages and channel IDs
@@ -665,15 +655,15 @@ func TestMConnection_Message_Order_ChannelID(t *testing.T) {
 
 	// prepare callback to receive messages
 	allReceived := make(chan bool)
-	received := 0 // number of messages received
-	//recvChIds := make([]byte, totalMsgs) // keep track of the order of channel IDs of received messages
+	received := 0                        // number of messages received
+	recvChIds := make([]byte, totalMsgs) // keep track of the order of channel IDs of received messages
 	onReceive := func(chID byte, msgBytes []byte) {
 		// wait for 100ms to simulate processing time
 		// Also, the added delay allows the receiver to buffer all 11 messages,
 		// testing if the message on channel ID 1 (high priority) is received last or
 		// prioritized among the 10 messages on channel ID 2.
 		time.Sleep(100 * time.Millisecond)
-		//recvChIds[received] = chID
+		recvChIds[received] = chID
 		received++
 		if received >= totalMsgs {
 			allReceived <- true
@@ -685,11 +675,11 @@ func TestMConnection_Message_Order_ChannelID(t *testing.T) {
 	cnfg.RecvRate = int64(recRate)
 
 	// mount the channel descriptors to the connections
-	clientMconn := NewMConnectionWithConfig(client, clientChDesc,
+	clientMconn := NewMConnectionWithConfig(client, chDesc,
 		func(chID byte, msgBytes []byte) {},
 		func(r interface{}) {},
 		cnfg)
-	serverMconn := NewMConnectionWithConfig(server, serverChDesc,
+	serverMconn := NewMConnectionWithConfig(server, chDesc,
 		onReceive,
 		func(r interface{}) {},
 		cnfg)
@@ -707,13 +697,13 @@ func TestMConnection_Message_Order_ChannelID(t *testing.T) {
 		_ = serverMconn.Stop()
 	}()
 
-	go sendMessages(clientMconn,
-		time.Millisecond,
-		1*time.Minute,
-		msgs, chIDs)
+	go sendMessages(clientMconn, time.Millisecond, 1*time.Minute, msgs, chIDs)
 
 	// wait for all messages to be received
 	<-allReceived
 
-	//require.Equal(t, chIDs, recvChIds) // assert that the order of received messages is the same as the order of sent messages
+	// assert that the order of received messages is NOT the
+	// same as the order of sent messages,
+	// indicating that channel IDs are prioritized on the receiver side.
+	require.NotEqual(t, chIDs, recvChIds)
 }
