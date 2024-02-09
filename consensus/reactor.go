@@ -582,14 +582,6 @@ OUTER_LOOP:
 			return
 		}
 
-		// sleep random amount to give reactor a chance to receive HasProposalBlockPart messages
-		// so we can reduce the amount of redundant block parts we send
-		if conR.conS.config.PeerGossipIntraloopSleepDuration > 0 {
-			// the config sets an upper bound for how long we sleep.
-			randDuration := cmtrand.Int63n(int64(conR.conS.config.PeerGossipIntraloopSleepDuration))
-			time.Sleep(time.Duration(randDuration))
-		}
-
 		isProposer := conR.conS.isProposer(conR.conS.privValidatorPubKey.Address())
 
 		// if we are the proposer wait for proposal to be complete before
