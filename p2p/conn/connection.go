@@ -237,7 +237,7 @@ func (c *MConnection) OnStart() error {
 	c.quitReceiverManager = make(chan struct{})
 	go c.sendRoutine()
 	go c.recvRoutine()
-	//go c.receiverManager() // start managing the incoming messages based on
+	go c.receiverManager() // start managing the incoming messages based on
 	// the channels priorities
 	return nil
 }
@@ -657,7 +657,7 @@ FOR_LOOP:
 func (c *MConnection) recvRoutine() {
 	// their priorities
 	defer c._recover()
-	go c.receiverManager()
+	//go c.receiverManager()
 
 	protoReader := protoio.NewDelimitedReader(c.bufConnReader, c._maxPacketMsgSize)
 
@@ -1000,7 +1000,8 @@ func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 		//   suggests this could be a memory leak, but we might as well keep the memory for the channel until it closes,
 		//	at which point the recving slice stops being used and should be garbage collected
 		ch.recving = ch.recving[:0] // make([]byte, 0, ch.desc.RecvBufferCapacity)
-		return msgBytes, nil
+		// create a copy of the message bytes to return
+		return append([]byte(nil), msgBytes...), nil
 	}
 	return nil, nil
 }
