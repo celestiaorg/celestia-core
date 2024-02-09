@@ -237,7 +237,7 @@ func (c *MConnection) OnStart() error {
 	c.quitReceiverManager = make(chan struct{})
 	go c.sendRoutine()
 	go c.recvRoutine()
-	go c.receiverManager() // start managing the incoming messages based on
+	//go c.receiverManager() // start managing the incoming messages based on
 	// the channels priorities
 	return nil
 }
@@ -657,6 +657,7 @@ FOR_LOOP:
 func (c *MConnection) recvRoutine() {
 	// their priorities
 	defer c._recover()
+	go c.receiverManager()
 
 	protoReader := protoio.NewDelimitedReader(c.bufConnReader, c._maxPacketMsgSize)
 
