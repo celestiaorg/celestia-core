@@ -642,7 +642,7 @@ FOR_LOOP:
 			c.Logger.Debug("Receiver manager read a message", "index",
 				count, "channel",
 				leastChannel.desc.ID, "conn", c, "msgBytes",
-				log.NewLazySprintf("%X", leastChannel.rcvMsgQueue))
+				log.NewLazySprintf("%X", msg))
 
 			// process the message
 			c.onReceive(leastChannel.desc.ID, msg)
