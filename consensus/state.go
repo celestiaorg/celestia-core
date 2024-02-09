@@ -705,6 +705,8 @@ func (cs *State) updateToState(state sm.State) {
 
 	// Finally, broadcast RoundState
 	cs.newStep()
+
+	cs.jsonMetrics.Save()
 }
 
 func (cs *State) newStep() {
@@ -2405,7 +2407,7 @@ func (cs *State) signAddVote(msgType tmproto.SignedMsgType, blockID types.BlockI
 	vote, err := cs.signVote(msgType, blockID.Hash, blockID.PartSetHeader)
 	if err == nil {
 		cs.sendInternalMessage(msgInfo{&VoteMessage{vote}, ""})
-		cs.Logger.Debug("signed and pushed vote", "height", cs.Height, "round", cs.Round, "vote", vote)
+		cs.Logger.Info("signed and pushed vote", "height", cs.Height, "round", cs.Round, "vote", vote)
 		return vote
 	}
 
