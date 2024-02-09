@@ -582,17 +582,18 @@ OUTER_LOOP:
 			return
 		}
 
+		rs := conR.getRoundState()
+		prs := ps.GetRoundState()
+
 		isProposer := conR.conS.isProposer(conR.conS.privValidatorPubKey.Address())
 
 		// if we are the proposer wait for proposal to be complete before
 		// sending anything. This ensures block parts are distributed randomly.
-		if isProposer && UseProposalFix && !conR.conS.isProposalComplete() {
-			time.Sleep(10 * time.Millisecond)
+		if isProposer && UseProposalFix && rs.ProposalBlock == nil {
+			conR.Logger.Info("proposer does not have the block", "count", rs.ProposalBlockParts.Count(), "total", rs.ProposalBlockParts.Total())
+			time.Sleep(50 * time.Millisecond)
 			continue OUTER_LOOP
 		}
-
-		rs := conR.getRoundState()
-		prs := ps.GetRoundState()
 
 		// Send proposal Block parts?
 		if rs.ProposalBlockParts.HasHeader(prs.ProposalBlockPartSetHeader) {
