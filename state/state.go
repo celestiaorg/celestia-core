@@ -28,7 +28,7 @@ var (
 // but leaves the Consensus.App version blank.
 // The Consensus.App version will be set during the Handshake, once
 // we hear from the app what protocol version it is running.
-func InitStateVersion(appVersion uint64) cmstate.Version {
+func InitStateVersion(appVersion uint64) cmtstate.Version {
  	return cmtstate.Version{
 		Consensus: cmtversion.Consensus{
 			Block: version.BlockProtocol,
