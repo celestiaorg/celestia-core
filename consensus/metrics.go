@@ -22,6 +22,8 @@ const (
 type Metrics struct {
 	// Height of the chain.
 	Height metrics.Gauge
+	// The height when the metrics started from
+	StartHeight metrics.Gauge
 
 	// ValidatorLastSignedHeight of a validator.
 	ValidatorLastSignedHeight metrics.Gauge
@@ -88,6 +90,12 @@ type Metrics struct {
 	// timestamp and the timestamp of the latest prevote in a round where 100%
 	// of the voting power on the network issued prevotes.
 	FullPrevoteMessageDelay metrics.Gauge
+
+	// The amount of proposals that were rejected by the application.
+	ApplicationRejectedProposals metrics.Counter
+
+	// The amount of proposals that failed to be received in time
+	TimedOutProposals metrics.Counter
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -104,6 +112,12 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Subsystem: MetricsSubsystem,
 			Name:      "height",
 			Help:      "Height of the chain.",
+		}, labels).With(labelsAndValues...),
+		StartHeight: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "start_height",
+			Help:      "Height that metrics began",
 		}, labels).With(labelsAndValues...),
 		Rounds: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
@@ -241,13 +255,26 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Help: "Difference in seconds between the proposal timestamp and the timestamp " +
 				"of the latest prevote that achieved 100% of the voting power in the prevote step.",
 		}, labels).With(labelsAndValues...),
+		ApplicationRejectedProposals: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "application_rejected_proposals",
+			Help:      "Number of proposals rejected by the application",
+		}, labels).With(labelsAndValues...),
+		TimedOutProposals: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "timed_out_proposals",
+			Help:      "Number of proposals that failed to be received in time",
+		}, labels).With(labelsAndValues...),
 	}
 }
 
 // NopMetrics returns no-op Metrics.
 func NopMetrics() *Metrics {
 	return &Metrics{
-		Height: discard.NewGauge(),
+		Height:      discard.NewGauge(),
+		StartHeight: discard.NewGauge(),
 
 		ValidatorLastSignedHeight: discard.NewGauge(),
 
@@ -265,16 +292,18 @@ func NopMetrics() *Metrics {
 
 		BlockIntervalSeconds: discard.NewHistogram(),
 
-		NumTxs:                    discard.NewGauge(),
-		BlockSizeBytes:            discard.NewGauge(),
-		TotalTxs:                  discard.NewGauge(),
-		CommittedHeight:           discard.NewGauge(),
-		FastSyncing:               discard.NewGauge(),
-		StateSyncing:              discard.NewGauge(),
-		BlockParts:                discard.NewCounter(),
-		BlockGossipPartsReceived:  discard.NewCounter(),
-		QuorumPrevoteMessageDelay: discard.NewGauge(),
-		FullPrevoteMessageDelay:   discard.NewGauge(),
+		NumTxs:                       discard.NewGauge(),
+		BlockSizeBytes:               discard.NewGauge(),
+		TotalTxs:                     discard.NewGauge(),
+		CommittedHeight:              discard.NewGauge(),
+		FastSyncing:                  discard.NewGauge(),
+		StateSyncing:                 discard.NewGauge(),
+		BlockParts:                   discard.NewCounter(),
+		BlockGossipPartsReceived:     discard.NewCounter(),
+		QuorumPrevoteMessageDelay:    discard.NewGauge(),
+		FullPrevoteMessageDelay:      discard.NewGauge(),
+		ApplicationRejectedProposals: discard.NewCounter(),
+		TimedOutProposals:            discard.NewCounter(),
 	}
 }
 
