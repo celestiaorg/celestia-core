@@ -363,10 +363,11 @@ func (h *Handshaker) ReplayBlocksWithContext(
 
 			if res.ConsensusParams != nil {
 				state.ConsensusParams = types.UpdateConsensusParams(state.ConsensusParams, res.ConsensusParams)
-				state.Version.Consensus.App = state.ConsensusParams.Version.AppVersion
+				state.Version.Consensus.App = res.ConsensusParams.Version.AppVersion
 			}
 			// We update the last results hash with the empty hash, to conform with RFC-6962.
 			state.LastResultsHash = merkle.HashFromByteSlices(nil)
+			fmt.Println("state", state)
 			if err := h.stateStore.Save(state); err != nil {
 				return nil, err
 			}

@@ -28,12 +28,14 @@ var (
 // but leaves the Consensus.App version blank.
 // The Consensus.App version will be set during the Handshake, once
 // we hear from the app what protocol version it is running.
-var InitStateVersion = cmtstate.Version{
-	Consensus: cmtversion.Consensus{
-		Block: version.BlockProtocol,
-		App:   0,
-	},
-	Software: version.TMCoreSemVer,
+func InitStateVersion(appVersion uint64) cmstate.Version {
+ 	return cmtstate.Version{
+		Consensus: cmtversion.Consensus{
+			Block: version.BlockProtocol,
+			App:   appVersion,
+		},
+		Software: version.TMCoreSemVer,
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -331,9 +333,14 @@ func MakeGenesisState(genDoc *types.GenesisDoc) (State, error) {
 		validatorSet = types.NewValidatorSet(validators)
 		nextValidatorSet = types.NewValidatorSet(validators).CopyIncrementProposerPriority(1)
 	}
+	
+	appVersion := uint64(0)
+	if genDoc.ConsensusParams != nil {
+		appVersion = genDoc.ConsensusParams.Version.AppVersion
+	}
 
 	return State{
-		Version:       InitStateVersion,
+		Version:       InitStateVersion(appVersion),
 		ChainID:       genDoc.ChainID,
 		InitialHeight: genDoc.InitialHeight,
 
