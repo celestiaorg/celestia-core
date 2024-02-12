@@ -126,6 +126,7 @@ func (memR *Reactor) OnStart() error {
 	if memR.mempool.config.TTLDuration > 0 {
 		go func() {
 			ticker := time.NewTicker(memR.mempool.config.TTLDuration)
+			defer ticker.Stop()
 			for {
 				select {
 				case <-ticker.C:

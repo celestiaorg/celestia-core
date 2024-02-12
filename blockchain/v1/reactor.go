@@ -332,6 +332,7 @@ func (bcR *BlockchainReactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte)
 func (bcR *BlockchainReactor) processBlocksRoutine(stopProcessing chan struct{}) {
 
 	processReceivedBlockTicker := time.NewTicker(trySyncIntervalMS * time.Millisecond)
+	defer processReceivedBlockTicker.Stop()
 	doProcessBlockCh := make(chan struct{}, 1)
 
 	lastHundred := time.Now()
@@ -386,7 +387,9 @@ func (bcR *BlockchainReactor) poolRoutine() {
 	bcR.fsm.Start()
 
 	sendBlockRequestTicker := time.NewTicker(trySendIntervalMS * time.Millisecond)
+	defer sendBlockRequestTicker.Stop()
 	statusUpdateTicker := time.NewTicker(statusUpdateIntervalSeconds * time.Second)
+	defer statusUpdateTicker.Stop()
 
 	stopProcessing := make(chan struct{}, 1)
 	go bcR.processBlocksRoutine(stopProcessing)
