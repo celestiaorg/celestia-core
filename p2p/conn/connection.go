@@ -78,19 +78,20 @@ Inbound message bytes are handled with an onReceive callback function.
 type MConnection struct {
 	service.BaseService
 
-	conn          net.Conn
-	bufConnReader *bufio.Reader
-	bufConnWriter *bufio.Writer
-	sendMonitor   *flow.Monitor
-	recvMonitor   *flow.Monitor
-	send          chan struct{}
-	pong          chan struct{}
-	channels      []*Channel
-	channelsIdx   map[byte]*Channel
-	onReceive     receiveCbFunc
-	onError       errorCbFunc
-	errored       uint32
-	config        MConnConfig
+	conn            net.Conn
+	bufConnReader   *bufio.Reader
+	bufConnWriter   *bufio.Writer
+	sendMonitor     *flow.Monitor
+	recvMonitor     *flow.Monitor
+	send            chan struct{}
+	pong            chan struct{}
+	channels        []*Channel
+	channelsIdx     map[byte]*Channel
+	onReceive       receiveCbFunc
+	onError         errorCbFunc
+	errored         uint32
+	config          MConnConfig
+	receivedFullMsg chan channelMsg
 
 	// Closing quitSendRoutine will cause the sendRoutine to eventually quit.
 	// doneSendRoutine is closed when the sendRoutine actually quits.
@@ -99,6 +100,8 @@ type MConnection struct {
 
 	// Closing quitRecvRouting will cause the recvRouting to eventually quit.
 	quitRecvRoutine chan struct{}
+	// Closing quitRecvRouting will cause the recvRouting to eventually quit.
+	quitProcessFullMsg chan struct{}
 
 	// used to ensure FlushStop and OnStop
 	// are safe to call concurrently.
@@ -116,6 +119,11 @@ type MConnection struct {
 	created time.Time // time of creation
 
 	_maxPacketMsgSize int
+}
+
+type channelMsg struct {
+	chID     byte
+	msgBytes []byte
 }
 
 // MConnConfig is a MConnection configuration.
@@ -176,17 +184,18 @@ func NewMConnectionWithConfig(
 	}
 
 	mconn := &MConnection{
-		conn:          conn,
-		bufConnReader: bufio.NewReaderSize(conn, minReadBufferSize),
-		bufConnWriter: bufio.NewWriterSize(conn, minWriteBufferSize),
-		sendMonitor:   flow.New(0, 0),
-		recvMonitor:   flow.New(0, 0),
-		send:          make(chan struct{}, 1),
-		pong:          make(chan struct{}, 1),
-		onReceive:     onReceive,
-		onError:       onError,
-		config:        config,
-		created:       time.Now(),
+		conn:            conn,
+		bufConnReader:   bufio.NewReaderSize(conn, minReadBufferSize),
+		bufConnWriter:   bufio.NewWriterSize(conn, minWriteBufferSize),
+		sendMonitor:     flow.New(0, 0),
+		recvMonitor:     flow.New(0, 0),
+		send:            make(chan struct{}, 1),
+		pong:            make(chan struct{}, 1),
+		receivedFullMsg: make(chan channelMsg, 100),
+		onReceive:       onReceive,
+		onError:         onError,
+		config:          config,
+		created:         time.Now(),
 	}
 
 	// Create channels
@@ -228,8 +237,10 @@ func (c *MConnection) OnStart() error {
 	c.quitSendRoutine = make(chan struct{})
 	c.doneSendRoutine = make(chan struct{})
 	c.quitRecvRoutine = make(chan struct{})
+	c.quitProcessFullMsg = make(chan struct{})
 	go c.sendRoutine()
 	go c.recvRoutine()
+	go c.processFullMsg()
 	return nil
 }
 
@@ -254,6 +265,13 @@ func (c *MConnection) stopServices() (alreadyStopped bool) {
 	default:
 	}
 
+	select {
+	case <-c.quitProcessFullMsg:
+		// already quit
+		return true
+	default:
+	}
+
 	c.BaseService.OnStop()
 	c.flushTimer.Stop()
 	c.pingTimer.Stop()
@@ -262,6 +280,7 @@ func (c *MConnection) stopServices() (alreadyStopped bool) {
 	// inform the recvRouting that we are shutting down
 	close(c.quitRecvRoutine)
 	close(c.quitSendRoutine)
+	close(c.receivedFullMsg)
 	return false
 }
 
@@ -553,6 +572,19 @@ func (c *MConnection) sendPacketMsg() bool {
 	return false
 }
 
+func (c *MConnection) processFullMsg() {
+FOR_LOOP:
+	for {
+		select {
+		case <-c.quitProcessFullMsg:
+			break FOR_LOOP
+		case msg := <-c.receivedFullMsg:
+			c.onReceive(msg.chID, msg.msgBytes)
+		}
+	}
+
+}
+
 // recvRoutine reads PacketMsgs and reconstructs the message using the channels' "recving" buffer.
 // After a whole message has been assembled, it's pushed to onReceive().
 // Blocks depending on how the connection is throttled.
@@ -645,6 +677,8 @@ FOR_LOOP:
 			if msgBytes != nil {
 				c.Logger.Debug("Received bytes", "chID", channelID, "msgBytes", msgBytes)
 				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
+				// signal the c.receivedFullMsg
+				c.receivedFullMsg <- channelMsg{channelID, msgBytes}
 				c.onReceive(channelID, msgBytes)
 			}
 		default:
