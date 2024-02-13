@@ -779,7 +779,7 @@ func NewNode(config *cfg.Config,
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("loaded gendoc", genDoc, state)
+	fmt.Println("loaded state", state, state.Version.Consensus.App)
 
 	// Create the proxyApp and establish connections to the ABCI app (consensus, mempool, query).
 	proxyApp, err := createAndStartProxyAppConns(clientCreator, logger)

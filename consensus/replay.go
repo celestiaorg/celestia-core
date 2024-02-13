@@ -265,8 +265,8 @@ func (h *Handshaker) HandshakeWithContext(ctx context.Context, proxyApp proxy.Ap
 		"protocol-version", res.AppVersion,
 	)
 
-	// Only set the version if there is no existing state.
-	if h.initialState.LastBlockHeight == 0 {
+	// Only set the version if there is no existing version set.
+	if h.initialState.Version.Consensus.App == 0 && res.AppVersion != 0 {
 		h.initialState.Version.Consensus.App = res.AppVersion
 	}
 
