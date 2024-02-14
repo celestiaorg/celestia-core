@@ -578,8 +578,10 @@ FOR_LOOP:
 		select {
 		case <-c.quitProcessFullMsg:
 			break FOR_LOOP
-		case msg := <-c.receivedFullMsg:
-			c.onReceive(msg.chID, msg.msgBytes)
+		case <-c.receivedFullMsg:
+			//c.onReceive(msg.chID, msg.msgBytes)
+		default:
+			// never block
 		}
 	}
 
@@ -678,7 +680,8 @@ FOR_LOOP:
 				c.Logger.Debug("Received bytes", "chID", channelID, "msgBytes", msgBytes)
 				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
 				// signal the c.receivedFullMsg
-				c.receivedFullMsg <- channelMsg{channelID, msgBytes}
+				c.receivedFullMsg <- channelMsg{channelID,
+					append([]byte(nil), msgBytes...)}
 				c.onReceive(channelID, msgBytes)
 			}
 		default:
@@ -902,8 +905,9 @@ func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 		// http://stackoverflow.com/questions/16971741/how-do-you-clear-a-slice-in-go
 		//   suggests this could be a memory leak, but we might as well keep the memory for the channel until it closes,
 		//	at which point the recving slice stops being used and should be garbage collected
-		ch.recving = ch.recving[:0] // make([]byte, 0, ch.desc.RecvBufferCapacity)
-		return msgBytes, nil
+
+		msg := append([]byte(nil), msgBytes...)
+		return msg, nil
 	}
 	return nil, nil
 }
