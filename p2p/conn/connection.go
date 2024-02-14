@@ -578,8 +578,8 @@ FOR_LOOP:
 		select {
 		case <-c.quitProcessFullMsg:
 			break FOR_LOOP
-		case <-c.receivedFullMsg:
-			//c.onReceive(msg.chID, msg.msgBytes)
+		case msg := <-c.receivedFullMsg:
+			c.onReceive(msg.chID, append([]byte(nil), msg.msgBytes...))
 		default:
 			// never block
 		}
@@ -682,7 +682,7 @@ FOR_LOOP:
 				// signal the c.receivedFullMsg
 				c.receivedFullMsg <- channelMsg{channelID,
 					append([]byte(nil), msgBytes...)}
-				c.onReceive(channelID, msgBytes)
+				//c.onReceive(channelID, msgBytes)
 			}
 		default:
 			err := fmt.Errorf("unknown message type %v", reflect.TypeOf(packet))
