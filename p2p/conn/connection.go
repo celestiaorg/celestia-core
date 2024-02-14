@@ -580,7 +580,7 @@ FOR_LOOP:
 			break FOR_LOOP
 		case msg := <-c.receivedFullMsg:
 			c.onReceive(msg.chID, append([]byte(nil), msg.msgBytes...))
-		default:
+			copy(msgCopy, msg.msgBytes)
 			// never block
 		}
 	}
