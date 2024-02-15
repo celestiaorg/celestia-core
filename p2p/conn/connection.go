@@ -682,10 +682,7 @@ FOR_LOOP:
 					"msgBytes", msgBytes[:1])
 				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
 				// signal the c.receivedFullMsg
-				msgCopy := make([]byte, len(msgBytes))
-				copy(msgCopy, msgBytes)
-				chID := channelID
-				c.receivedFullMsg <- channelMsg{chID, msgCopy}
+				c.receivedFullMsg <- channelMsg{channelID, msgBytes}
 				//c.onReceive(channelID, msgBytes)
 			}
 		default:
