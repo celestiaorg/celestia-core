@@ -281,7 +281,7 @@ func (c *MConnection) stopServices() (alreadyStopped bool) {
 	c.Logger.Info(" stopServices is called")
 	close(c.quitRecvRoutine)
 	close(c.quitSendRoutine)
-	close(c.receivedFullMsg)
+	close(c.quitProcessFullMsg)
 	return false
 }
 
@@ -578,19 +578,9 @@ FOR_LOOP:
 	for {
 		select {
 		case <-c.quitProcessFullMsg:
+			c.Logger.Info("ReceivedFullMsg channel closed")
 			break FOR_LOOP
-		case msg, ok := <-c.receivedFullMsg:
-			if !c.IsRunning() {
-				break FOR_LOOP
-			}
-			if !ok {
-				c.Logger.Info("ReceivedFullMsg channel closed")
-				break FOR_LOOP
-			}
-			//if msg.msgBytes == nil {
-			//	c.Logger.Info("Received nil msgBytes")
-			//	continue
-			//}
+		case msg := <-c.receivedFullMsg:
 			msgCopy := make([]byte, len(msg.msgBytes))
 			copy(msgCopy, msg.msgBytes)
 			chID := msg.chID
