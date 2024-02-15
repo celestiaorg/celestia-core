@@ -79,21 +79,21 @@ Inbound message bytes are handled with an onReceive callback function.
 type MConnection struct {
 	service.BaseService
 
-	conn                  net.Conn
-	bufConnReader         *bufio.Reader
-	bufConnWriter         *bufio.Writer
-	sendMonitor           *flow.Monitor
-	recvMonitor           *flow.Monitor
-	send                  chan struct{}
-	pong                  chan struct{}
-	channels              []*Channel
-	channelsIdx           map[byte]*Channel
-	onReceive             receiveCbFunc
-	onError               errorCbFunc
-	errored               uint32
-	config                MConnConfig
-	receivedFullMsg       chan channelMsg
-	receivedFullMsgSignal chan interface{}
+	conn                   net.Conn
+	bufConnReader          *bufio.Reader
+	bufConnWriter          *bufio.Writer
+	sendMonitor            *flow.Monitor
+	recvMonitor            *flow.Monitor
+	send                   chan struct{}
+	pong                   chan struct{}
+	channels               []*Channel
+	channelsIdx            map[byte]*Channel
+	onReceive              receiveCbFunc
+	onError                errorCbFunc
+	errored                uint32
+	config                 MConnConfig
+	receivedFullMsg        chan channelMsg
+	processReceivedFullMsg chan interface{}
 
 	// Closing quitSendRoutine will cause the sendRoutine to eventually quit.
 	// doneSendRoutine is closed when the sendRoutine actually quits.
@@ -103,7 +103,7 @@ type MConnection struct {
 	// Closing quitRecvRouting will cause the recvRouting to eventually quit.
 	quitRecvRoutine chan struct{}
 	// Closing quitRecvRouting will cause the recvRouting to eventually quit.
-	quitProcessFullMsg chan struct{}
+	quitProcessReceivedFullMsgRoutine chan struct{}
 
 	// used to ensure FlushStop and OnStop
 	// are safe to call concurrently.
@@ -186,18 +186,19 @@ func NewMConnectionWithConfig(
 	}
 
 	mconn := &MConnection{
-		conn:            conn,
-		bufConnReader:   bufio.NewReaderSize(conn, minReadBufferSize),
-		bufConnWriter:   bufio.NewWriterSize(conn, minWriteBufferSize),
-		sendMonitor:     flow.New(0, 0),
-		recvMonitor:     flow.New(0, 0),
-		send:            make(chan struct{}, 1),
-		pong:            make(chan struct{}, 1),
-		receivedFullMsg: make(chan channelMsg, 100),
-		onReceive:       onReceive,
-		onError:         onError,
-		config:          config,
-		created:         time.Now(),
+		conn:                   conn,
+		bufConnReader:          bufio.NewReaderSize(conn, minReadBufferSize),
+		bufConnWriter:          bufio.NewWriterSize(conn, minWriteBufferSize),
+		sendMonitor:            flow.New(0, 0),
+		recvMonitor:            flow.New(0, 0),
+		send:                   make(chan struct{}, 1),
+		pong:                   make(chan struct{}, 1),
+		receivedFullMsg:        make(chan channelMsg, 100),
+		processReceivedFullMsg: make(chan interface{}, 1),
+		onReceive:              onReceive,
+		onError:                onError,
+		config:                 config,
+		created:                time.Now(),
 	}
 
 	// Create channels
@@ -239,10 +240,10 @@ func (c *MConnection) OnStart() error {
 	c.quitSendRoutine = make(chan struct{})
 	c.doneSendRoutine = make(chan struct{})
 	c.quitRecvRoutine = make(chan struct{})
-	c.quitProcessFullMsg = make(chan struct{})
+	c.quitProcessReceivedFullMsgRoutine = make(chan struct{})
 	go c.sendRoutine()
 	go c.recvRoutine()
-	go c.processFullMsg()
+	go c.processReceivedFullMsgRoutine()
 	return nil
 }
 
@@ -268,7 +269,7 @@ func (c *MConnection) stopServices() (alreadyStopped bool) {
 	}
 
 	select {
-	case <-c.quitProcessFullMsg:
+	case <-c.quitProcessReceivedFullMsgRoutine:
 		// already quit
 		return true
 	default:
@@ -282,7 +283,7 @@ func (c *MConnection) stopServices() (alreadyStopped bool) {
 	// inform the recvRouting that we are shutting down
 	close(c.quitRecvRoutine)
 	close(c.quitSendRoutine)
-	close(c.quitProcessFullMsg)
+	close(c.quitProcessReceivedFullMsgRoutine)
 	return false
 }
 
@@ -574,16 +575,17 @@ func (c *MConnection) sendPacketMsg() bool {
 	return false
 }
 
-func (c *MConnection) processFullMsg() {
+// processReceivedFullMsgRoutine constantly checks the channels for incoming messages and processes them.
+//
+//	It processes messages based on the priority levels of their channels.
+func (c *MConnection) processReceivedFullMsgRoutine() {
 FOR_LOOP:
 	for {
 		select {
-		case <-c.quitProcessFullMsg:
-			c.Logger.Info("processFullMsg stopped")
+		case <-c.quitProcessReceivedFullMsgRoutine:
+			c.Logger.Debug("processReceivedFullMsgRoutine is shutting down")
 			break FOR_LOOP
-		//case msg := <-c.receivedFullMsg:
-		//	c.onReceive(msg.chID, msg.msgBytes)
-		case <-c.receivedFullMsgSignal:
+		case <-c.processReceivedFullMsg:
 			// read a message
 			// Choose a channel to read a message from.
 			// The chosen channel will be the one whose recentlyRecvFullMsgs/priority is the least.
@@ -607,19 +609,22 @@ FOR_LOOP:
 			if leastChannel == nil {
 				continue
 			} else {
-				// keep processing, there may still be messages to read
-				c.receivedFullMsgSignal <- struct{}{}
+				// keep processReceivedFullMsgRoutine alive,
+				// there may still be messages to process
+				select {
+				case c.processReceivedFullMsg <- struct{}{}:
+				default:
+				}
 			}
 
-			// read a message
+			// get a message from the chosen channel
 			msg, ok := <-leastChannel.recvFullMsgQueue
 			if !ok {
 				break FOR_LOOP // it should never happen unless the channel is
-				// closed in which case the quitProcessFullMsg should be closed too
+				// closed in which case the quitProcessReceivedFullMsgRoutine should be closed too
 			}
 
 			// update the channel's stats
-			// decrement the queue size
 			leastChannel.updateRecvFullMsgQueueSize(-1)
 			leastChannel.updateRecentlyRecvFullMsgs(int64(len(msg)))
 
@@ -721,19 +726,16 @@ FOR_LOOP:
 				break FOR_LOOP
 			}
 			if msgBytes != nil {
-				c.Logger.Info("recvRoutine Received bytes", "chID", channelID,
-					"msgBytes", msgBytes[:1])
-				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
-				// signal the c.receivedFullMsg
-				//c.receivedFullMsg <- channelMsg{channelID, msgBytes}
+				// send the message to its channel
 				channel.recvFullMsgQueue <- msgBytes
 				channel.updateRecvFullMsgQueueSize(1)
+
+				// wake up processReceivedFullMsgRoutine
 				select {
-				case c.receivedFullMsgSignal <- struct{}{}:
+				case c.processReceivedFullMsg <- struct{}{}:
 				default:
 					//already up
 				}
-				//c.onReceive(channelID, msgBytes)
 			}
 		default:
 			err := fmt.Errorf("unknown message type %v", reflect.TypeOf(packet))
