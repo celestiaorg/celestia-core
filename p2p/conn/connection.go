@@ -92,7 +92,6 @@ type MConnection struct {
 	onError                errorCbFunc
 	errored                uint32
 	config                 MConnConfig
-	receivedFullMsg        chan channelMsg
 	processReceivedFullMsg chan interface{}
 
 	// Closing quitSendRoutine will cause the sendRoutine to eventually quit.
@@ -102,7 +101,8 @@ type MConnection struct {
 
 	// Closing quitRecvRouting will cause the recvRouting to eventually quit.
 	quitRecvRoutine chan struct{}
-	// Closing quitRecvRouting will cause the recvRouting to eventually quit.
+	// Closing quitProcessReceivedFullMsgRoutine will cause the
+	// processReceivedFullMsgRoutine to eventually quit.
 	quitProcessReceivedFullMsgRoutine chan struct{}
 
 	// used to ensure FlushStop and OnStop
@@ -121,11 +121,6 @@ type MConnection struct {
 	created time.Time // time of creation
 
 	_maxPacketMsgSize int
-}
-
-type channelMsg struct {
-	chID     byte
-	msgBytes []byte
 }
 
 // MConnConfig is a MConnection configuration.
@@ -193,7 +188,6 @@ func NewMConnectionWithConfig(
 		recvMonitor:            flow.New(0, 0),
 		send:                   make(chan struct{}, 1),
 		pong:                   make(chan struct{}, 1),
-		receivedFullMsg:        make(chan channelMsg, 100),
 		processReceivedFullMsg: make(chan interface{}, 1),
 		onReceive:              onReceive,
 		onError:                onError,
