@@ -37,14 +37,15 @@ const (
 	// TODO: remove values present in config
 	defaultFlushThrottle = 100 * time.Millisecond
 
-	defaultSendQueueCapacity   = 1
-	defaultRecvBufferCapacity  = 4096
-	defaultRecvMessageCapacity = 22020096         // 21MB
-	defaultSendRate            = int64(5_120_000) // 5MB/s
-	defaultRecvRate            = int64(5_120_000) // 5MB/s
-	defaultSendTimeout         = 10 * time.Second
-	defaultPingInterval        = 60 * time.Second
-	defaultPongTimeout         = 45 * time.Second
+	defaultSendQueueCapacity        = 1
+	defaultRecvBufferCapacity       = 4096
+	defaultRecvMessageCapacity      = 22020096         // 21MB
+	defaultRecvFullMsgQueueCapacity = 100              //number of queued incoming messages
+	defaultSendRate                 = int64(5_120_000) // 5MB/s
+	defaultRecvRate                 = int64(5_120_000) // 5MB/s
+	defaultSendTimeout              = 10 * time.Second
+	defaultPingInterval             = 60 * time.Second
+	defaultPongTimeout              = 45 * time.Second
 )
 
 type receiveCbFunc func(chID byte, msgBytes []byte)
@@ -756,12 +757,13 @@ func (c *MConnection) Status() ConnectionStatus {
 //-----------------------------------------------------------------------------
 
 type ChannelDescriptor struct {
-	ID                  byte
-	Priority            int
-	SendQueueCapacity   int
-	RecvBufferCapacity  int
-	RecvMessageCapacity int
-	MessageType         proto.Message
+	ID                       byte
+	Priority                 int
+	SendQueueCapacity        int
+	RecvBufferCapacity       int
+	RecvMessageCapacity      int
+	RecvFullMsgQueueCapacity int
+	MessageType              proto.Message
 }
 
 func (chDesc ChannelDescriptor) FillDefaults() (filled ChannelDescriptor) {
@@ -773,6 +775,9 @@ func (chDesc ChannelDescriptor) FillDefaults() (filled ChannelDescriptor) {
 	}
 	if chDesc.RecvMessageCapacity == 0 {
 		chDesc.RecvMessageCapacity = defaultRecvMessageCapacity
+	}
+	if chDesc.RecvFullMsgQueueCapacity == 0 {
+		chDesc.RecvFullMsgQueueCapacity = defaultRecvFullMsgQueueCapacity
 	}
 	filled = chDesc
 	return
@@ -788,6 +793,8 @@ type Channel struct {
 	recving       []byte
 	sending       []byte
 	recentlySent  int64 // exponential moving average
+
+	recvFullMsgQueue chan []byte
 
 	maxPacketMsgPayloadSize int
 
@@ -805,6 +812,7 @@ func newChannel(conn *MConnection, desc ChannelDescriptor) *Channel {
 		sendQueue:               make(chan []byte, desc.SendQueueCapacity),
 		recving:                 make([]byte, 0, desc.RecvBufferCapacity),
 		maxPacketMsgPayloadSize: conn.config.MaxPacketMsgPayloadSize,
+		recvFullMsgQueue:        make(chan []byte, desc.RecvFullMsgQueueCapacity),
 	}
 }
 
