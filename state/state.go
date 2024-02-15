@@ -23,10 +23,7 @@ var (
 
 //-----------------------------------------------------------------------------
 
-// InitStateVersion sets the Consensus.Block and Software versions,
-// but leaves the Consensus.App version blank.
-// The Consensus.App version will be set during the Handshake, once
-// we hear from the app what protocol version it is running.
+// InitStateVersion sets the Consensus.Block, Consensus.App and Software versions
 func InitStateVersion(appVersion uint64) cmtstate.Version {
 	return cmtstate.Version{
 		Consensus: cmtversion.Consensus{
