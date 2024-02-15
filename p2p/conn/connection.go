@@ -794,7 +794,9 @@ type Channel struct {
 	sending       []byte
 	recentlySent  int64 // exponential moving average
 
-	recvFullMsgQueue chan []byte
+	recvFullMsgQueue     chan []byte
+	recvFullMsgQueueSize int32 // atomic.
+	// this is to track the number of messages in the recvFullMsgQueue
 
 	maxPacketMsgPayloadSize int
 
