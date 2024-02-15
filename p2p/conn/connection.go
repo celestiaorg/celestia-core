@@ -79,20 +79,21 @@ Inbound message bytes are handled with an onReceive callback function.
 type MConnection struct {
 	service.BaseService
 
-	conn            net.Conn
-	bufConnReader   *bufio.Reader
-	bufConnWriter   *bufio.Writer
-	sendMonitor     *flow.Monitor
-	recvMonitor     *flow.Monitor
-	send            chan struct{}
-	pong            chan struct{}
-	channels        []*Channel
-	channelsIdx     map[byte]*Channel
-	onReceive       receiveCbFunc
-	onError         errorCbFunc
-	errored         uint32
-	config          MConnConfig
-	receivedFullMsg chan channelMsg
+	conn                  net.Conn
+	bufConnReader         *bufio.Reader
+	bufConnWriter         *bufio.Writer
+	sendMonitor           *flow.Monitor
+	recvMonitor           *flow.Monitor
+	send                  chan struct{}
+	pong                  chan struct{}
+	channels              []*Channel
+	channelsIdx           map[byte]*Channel
+	onReceive             receiveCbFunc
+	onError               errorCbFunc
+	errored               uint32
+	config                MConnConfig
+	receivedFullMsg       chan channelMsg
+	receivedFullMsgSignal chan interface{}
 
 	// Closing quitSendRoutine will cause the sendRoutine to eventually quit.
 	// doneSendRoutine is closed when the sendRoutine actually quits.
@@ -580,8 +581,50 @@ FOR_LOOP:
 		case <-c.quitProcessFullMsg:
 			c.Logger.Info("processFullMsg stopped")
 			break FOR_LOOP
-		case msg := <-c.receivedFullMsg:
-			c.onReceive(msg.chID, msg.msgBytes)
+		//case msg := <-c.receivedFullMsg:
+		//	c.onReceive(msg.chID, msg.msgBytes)
+		case <-c.receivedFullMsgSignal:
+			// read a message
+			// Choose a channel to read a message from.
+			// The chosen channel will be the one whose recentlyRecvFullMsgs/priority is the least.
+			var leastRatio float32 = math.MaxFloat32
+			var leastChannel *Channel
+			for _, channel := range c.channels {
+				// If nothing to read, skip this channel
+				if channel.loadRecvFullMsgQueueSize() == 0 {
+					// skip this channel
+					continue
+				}
+				// Get ratio, and keep track of the lowest ratio.
+				ratio := float32(channel.loadRecentlyRecvFullMsgs()) / float32(channel.desc.Priority)
+				if ratio < leastRatio {
+					leastRatio = ratio
+					leastChannel = channel
+				}
+			}
+
+			// Nothing to read
+			if leastChannel == nil {
+				continue
+			} else {
+				// keep processing, there may still be messages to read
+				c.receivedFullMsgSignal <- struct{}{}
+			}
+
+			// read a message
+			msg, ok := <-leastChannel.recvFullMsgQueue
+			if !ok {
+				break FOR_LOOP // it should never happen unless the channel is
+				// closed in which case the quitProcessFullMsg should be closed too
+			}
+
+			// update the channel's stats
+			// decrement the queue size
+			leastChannel.updateRecvFullMsgQueueSize(-1)
+			leastChannel.updateRecentlyRecvFullMsgs(int64(len(msg)))
+
+			// process the message
+			c.onReceive(leastChannel.desc.ID, msg)
 		}
 	}
 
@@ -682,7 +725,14 @@ FOR_LOOP:
 					"msgBytes", msgBytes[:1])
 				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
 				// signal the c.receivedFullMsg
-				c.receivedFullMsg <- channelMsg{channelID, msgBytes}
+				//c.receivedFullMsg <- channelMsg{channelID, msgBytes}
+				channel.recvFullMsgQueue <- msgBytes
+				channel.updateRecvFullMsgQueueSize(1)
+				select {
+				case c.receivedFullMsgSignal <- struct{}{}:
+				default:
+					//already up
+				}
 				//c.onReceive(channelID, msgBytes)
 			}
 		default:
@@ -797,10 +847,32 @@ type Channel struct {
 	recvFullMsgQueue     chan []byte
 	recvFullMsgQueueSize int32 // atomic.
 	// this is to track the number of messages in the recvFullMsgQueue
+	recentlyRecvFullMsgs int64 // exponential moving average based on the
+	// byte size of full messages received
 
 	maxPacketMsgPayloadSize int
 
 	Logger log.Logger
+}
+
+// Goroutine-safe
+func (ch *Channel) loadRecvFullMsgQueueSize() (size int32) {
+	return atomic.LoadInt32(&ch.recvFullMsgQueueSize)
+}
+
+// Goroutine-safe
+func (ch *Channel) updateRecvFullMsgQueueSize(delta int32) {
+	atomic.AddInt32(&ch.recvFullMsgQueueSize, delta)
+}
+
+// Goroutine-safe
+func (ch *Channel) loadRecentlyRecvFullMsgs() (size int64) {
+	return atomic.LoadInt64(&ch.recentlyRecvFullMsgs)
+}
+
+// Goroutine-safe
+func (ch *Channel) updateRecentlyRecvFullMsgs(delta int64) {
+	atomic.AddInt64(&ch.recentlyRecvFullMsgs, delta)
 }
 
 func newChannel(conn *MConnection, desc ChannelDescriptor) *Channel {
