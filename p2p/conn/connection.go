@@ -578,16 +578,10 @@ FOR_LOOP:
 	for {
 		select {
 		case <-c.quitProcessFullMsg:
-			c.Logger.Info("ReceivedFullMsg channel closed")
+			c.Logger.Info("processFullMsg stopped")
 			break FOR_LOOP
 		case msg := <-c.receivedFullMsg:
-			msgCopy := make([]byte, len(msg.msgBytes))
-			copy(msgCopy, msg.msgBytes)
-			chID := msg.chID
-			c.Logger.Info("processFullMsg Received bytes", "chID", chID,
-				"msgBytes", msg.msgBytes[:1],
-				"msgCopyBytes", msgCopy[:1])
-			c.onReceive(chID, msgCopy)
+			c.onReceive(msg.chID, msg.msgBytes)
 		}
 	}
 
