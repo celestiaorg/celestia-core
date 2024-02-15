@@ -587,10 +587,10 @@ FOR_LOOP:
 				c.Logger.Info("ReceivedFullMsg channel closed")
 				break FOR_LOOP
 			}
-			if msg.msgBytes == nil {
-				c.Logger.Info("Received nil msgBytes")
-				continue
-			}
+			//if msg.msgBytes == nil {
+			//	c.Logger.Info("Received nil msgBytes")
+			//	continue
+			//}
 			msgCopy := make([]byte, len(msg.msgBytes))
 			copy(msgCopy, msg.msgBytes)
 			chID := msg.chID
