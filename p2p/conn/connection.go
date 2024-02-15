@@ -278,6 +278,7 @@ func (c *MConnection) stopServices() (alreadyStopped bool) {
 	c.chStatsTimer.Stop()
 
 	// inform the recvRouting that we are shutting down
+	c.Logger.Info(" stopServices is called")
 	close(c.quitRecvRoutine)
 	close(c.quitSendRoutine)
 	close(c.receivedFullMsg)
@@ -296,7 +297,7 @@ func (c *MConnection) FlushStop() {
 	// this block is unique to FlushStop
 	{
 		// wait until the sendRoutine exits
-		// so we dont race on calling sendSomePacketMsgs
+		// so, we don't race on calling sendSomePacketMsgs
 		<-c.doneSendRoutine
 
 		// Send and flush all pending msgs.
@@ -578,10 +579,25 @@ FOR_LOOP:
 		select {
 		case <-c.quitProcessFullMsg:
 			break FOR_LOOP
-		case msg := <-c.receivedFullMsg:
-			c.onReceive(msg.chID, append([]byte(nil), msg.msgBytes...))
+		case msg, ok := <-c.receivedFullMsg:
+			if !c.IsRunning() {
+				break FOR_LOOP
+			}
+			if !ok {
+				c.Logger.Info("ReceivedFullMsg channel closed")
+				break FOR_LOOP
+			}
+			if msg.msgBytes == nil {
+				c.Logger.Info("Received nil msgBytes")
+				continue
+			}
+			msgCopy := make([]byte, len(msg.msgBytes))
 			copy(msgCopy, msg.msgBytes)
-			// never block
+			chID := msg.chID
+			c.Logger.Info("processFullMsg Received bytes", "chID", chID,
+				"msgBytes", msg.msgBytes[:1],
+				"msgCopyBytes", msgCopy[:1])
+			c.onReceive(chID, msgCopy)
 		}
 	}
 
@@ -621,10 +637,11 @@ FOR_LOOP:
 		_n, err := protoReader.ReadMsg(&packet)
 		c.recvMonitor.Update(_n)
 		if err != nil {
-			// stopServices was invoked and we are shutting down
+			// stopServices was invoked, and we are shutting down
 			// receiving is expected to fail since we will close the connection
 			select {
 			case <-c.quitRecvRoutine:
+				c.Logger.Info("recvRoutine is shutting down")
 				break FOR_LOOP
 			default:
 			}
@@ -677,11 +694,14 @@ FOR_LOOP:
 				break FOR_LOOP
 			}
 			if msgBytes != nil {
-				c.Logger.Debug("Received bytes", "chID", channelID, "msgBytes", msgBytes)
+				c.Logger.Info("recvRoutine Received bytes", "chID", channelID,
+					"msgBytes", msgBytes[:1])
 				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
 				// signal the c.receivedFullMsg
-				c.receivedFullMsg <- channelMsg{channelID,
-					append([]byte(nil), msgBytes...)}
+				msgCopy := make([]byte, len(msgBytes))
+				copy(msgCopy, msgBytes)
+				chID := channelID
+				c.receivedFullMsg <- channelMsg{chID, msgCopy}
 				//c.onReceive(channelID, msgBytes)
 			}
 		default:
@@ -906,8 +926,9 @@ func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 		//   suggests this could be a memory leak, but we might as well keep the memory for the channel until it closes,
 		//	at which point the recving slice stops being used and should be garbage collected
 
-		msg := append([]byte(nil), msgBytes...)
-		return msg, nil
+		msgCopy := make([]byte, len(msgBytes))
+		copy(msgCopy, msgBytes)
+		return msgCopy, nil
 	}
 	return nil, nil
 }
