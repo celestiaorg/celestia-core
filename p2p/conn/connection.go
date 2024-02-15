@@ -278,7 +278,6 @@ func (c *MConnection) stopServices() (alreadyStopped bool) {
 	c.chStatsTimer.Stop()
 
 	// inform the recvRouting that we are shutting down
-	c.Logger.Info(" stopServices is called")
 	close(c.quitRecvRoutine)
 	close(c.quitSendRoutine)
 	close(c.quitProcessFullMsg)
