@@ -92,7 +92,7 @@ type MConnection struct {
 	onError                errorCbFunc
 	errored                uint32
 	config                 MConnConfig
-	processReceivedFullMsg chan interface{}
+	processReceivedFullMsg chan struct{}
 
 	// Closing quitSendRoutine will cause the sendRoutine to eventually quit.
 	// doneSendRoutine is closed when the sendRoutine actually quits.
@@ -188,7 +188,7 @@ func NewMConnectionWithConfig(
 		recvMonitor:            flow.New(0, 0),
 		send:                   make(chan struct{}, 1),
 		pong:                   make(chan struct{}, 1),
-		processReceivedFullMsg: make(chan interface{}, 1),
+		processReceivedFullMsg: make(chan struct{}, 1),
 		onReceive:              onReceive,
 		onError:                onError,
 		config:                 config,
@@ -573,6 +573,7 @@ func (c *MConnection) sendPacketMsg() bool {
 //
 //	It processes messages based on the priority levels of their channels.
 func (c *MConnection) processReceivedFullMsgRoutine() {
+	c.Logger.Info("processReceivedFullMsgRoutine started")
 FOR_LOOP:
 	for {
 		select {
