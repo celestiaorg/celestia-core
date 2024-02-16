@@ -262,6 +262,13 @@ func (c *MConnection) stopServices() (alreadyStopped bool) {
 	default:
 	}
 
+	select {
+	case <-c.quitProcessReceivedFullMsgRoutine:
+		// already quit
+		return true
+	default:
+	}
+
 	c.BaseService.OnStop()
 	c.flushTimer.Stop()
 	c.pingTimer.Stop()
