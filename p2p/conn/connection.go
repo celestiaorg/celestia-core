@@ -99,7 +99,7 @@ type MConnection struct {
 	quitSendRoutine chan struct{}
 	doneSendRoutine chan struct{}
 
-	// Closing quitRecvRouting will cause the recvRouting to eventually quit.
+	// Closing quitRecvRouting will cause the recvRoutine to eventually quit.
 	quitRecvRoutine chan struct{}
 	// Closing quitProcessReceivedFullMsgRoutine will cause the
 	// processReceivedFullMsgRoutine to eventually quit.
