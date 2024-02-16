@@ -997,6 +997,7 @@ func (ch *Channel) updateStats() {
 	// Exponential decay of stats.
 	// TODO: optimize.
 	atomic.StoreInt64(&ch.recentlySent, int64(float64(atomic.LoadInt64(&ch.recentlySent))*0.8))
+	atomic.StoreInt64(&ch.recentlyRecvFullMsgs, int64(float64(ch.loadRecentlyRecvFullMsgs())*0.8))
 }
 
 //----------------------------------------
