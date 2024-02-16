@@ -984,6 +984,8 @@ func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 		//   suggests this could be a memory leak, but we might as well keep the memory for the channel until it closes,
 		//	at which point the recving slice stops being used and should be garbage collected
 
+		ch.recving = ch.recving[:0]
+
 		msgCopy := make([]byte, len(msgBytes))
 		copy(msgCopy, msgBytes)
 		return msgCopy, nil
