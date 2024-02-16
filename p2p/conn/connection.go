@@ -977,10 +977,8 @@ func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 	}
 	ch.recving = append(ch.recving, packet.Data...)
 	if packet.EOF {
-		msgBytes := ch.recving
-
-		msgCopy := make([]byte, len(msgBytes))
-		copy(msgCopy, msgBytes)
+		msgBytes := make([]byte, len(ch.recving))
+		copy(msgBytes, ch.recving)
 
 		// clear the slice without re-allocating.
 		// http://stackoverflow.com/questions/16971741/how-do-you-clear-a-slice-in-go
@@ -988,7 +986,7 @@ func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 		//	at which point the recving slice stops being used and should be garbage collected
 		ch.recving = ch.recving[:0] // make([]byte, 0, ch.desc.RecvBufferCapacity)
 
-		return msgCopy, nil
+		return msgBytes, nil
 	}
 	return nil, nil
 }
