@@ -118,7 +118,7 @@ func initDBs(config *cfg.Config, dbProvider cfg.DBProvider) (blockStore *store.B
 	if err != nil {
 		return
 	}
-	blockStore = store.NewBlockStore(blockStoreDB)
+	blockStore = store.NewBlockStore(blockStoreDB, store.WithCompaction(config.Storage.Compact, config.Storage.CompactionInterval))
 
 	stateDB, err = dbProvider(&cfg.DBContext{ID: "state", Config: config, Path: config.DBDir()})
 	if err != nil {

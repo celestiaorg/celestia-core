@@ -56,6 +56,10 @@ type BlockExecutor struct {
 
 	// tracer optional tracer
 	tracer trace.Tracer
+
+	// running count of state entries pruned, used to decide when to trigger
+	// state-store compaction via PruneStates.
+	prunedStates uint64
 }
 
 type BlockExecutorOption func(executor *BlockExecutor)
@@ -934,10 +938,11 @@ func (blockExec *BlockExecutor) pruneBlocks(retainHeight int64, state State) (ui
 		return 0, fmt.Errorf("failed to prune block store: %w", err)
 	}
 
-	err = blockExec.Store().PruneStates(base, retainHeight, prunedHeaderHeight)
+	prunedStates, err := blockExec.Store().PruneStates(base, retainHeight, prunedHeaderHeight, blockExec.prunedStates)
 	if err != nil {
 		return 0, fmt.Errorf("failed to prune state store: %w", err)
 	}
+	blockExec.prunedStates += prunedStates
 	return amountPruned, nil
 }
 

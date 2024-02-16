@@ -59,11 +59,25 @@ type BlockStore struct {
 	seenCommitCache          *lru.Cache[int64, *types.Commit]
 	blockCommitCache         *lru.Cache[int64, *types.Commit]
 	blockExtendedCommitCache *lru.Cache[int64, *types.ExtendedCommit]
+
+	blocksDeleted      int64
+	compact            bool
+	compactionInterval int64
+}
+
+type BlockStoreOption func(*BlockStore)
+
+// WithCompaction sets the compaction parameters.
+func WithCompaction(compact bool, compactionInterval int64) BlockStoreOption {
+	return func(bs *BlockStore) {
+		bs.compact = compact
+		bs.compactionInterval = compactionInterval
+	}
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
 // initialized to the last height that was committed to the DB.
-func NewBlockStore(db dbm.DB) *BlockStore {
+func NewBlockStore(db dbm.DB, options ...BlockStoreOption) *BlockStore {
 	bs := LoadBlockStoreState(db)
 	bStore := &BlockStore{
 		base:   bs.Base,
@@ -71,6 +85,9 @@ func NewBlockStore(db dbm.DB) *BlockStore {
 		db:     db,
 	}
 	bStore.addCaches()
+	for _, option := range options {
+		option(bStore)
+	}
 	return bStore
 }
 
@@ -462,7 +479,21 @@ func (bs *BlockStore) PruneBlocks(height int64, state sm.State) (uint64, int64, 
 	if err != nil {
 		return 0, -1, err
 	}
-	return pruned, evidencePoint, nil
+	bs.blocksDeleted += int64(pruned)
+
+	if bs.compact && bs.blocksDeleted >= bs.compactionInterval {
+		// When the range is nil,nil, the database will try to compact
+		// ALL levels. Another option is to set a predefined range of
+		// specific keys.
+		err = bs.db.Compact(nil, nil)
+		if err == nil {
+			// If there was no error in compaction we reset the counter.
+			// Otherwise we preserve the number of blocks deleted so
+			// we can trigger compaction in the next pruning iteration
+			bs.blocksDeleted = 0
+		}
+	}
+	return pruned, evidencePoint, err
 }
 
 // SaveBlock persists the given block, blockParts, and seenCommit to the underlying db.
