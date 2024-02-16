@@ -37,14 +37,15 @@ const (
 	// TODO: remove values present in config
 	defaultFlushThrottle = 100 * time.Millisecond
 
-	defaultSendQueueCapacity   = 1
-	defaultRecvBufferCapacity  = 4096
-	defaultRecvMessageCapacity = 22020096      // 21MB
-	defaultSendRate            = int64(512000) // 500KB/s
-	defaultRecvRate            = int64(512000) // 500KB/s
-	defaultSendTimeout         = 10 * time.Second
-	defaultPingInterval        = 60 * time.Second
-	defaultPongTimeout         = 45 * time.Second
+	defaultSendQueueCapacity        = 1
+	defaultRecvBufferCapacity       = 4096
+	defaultRecvMessageCapacity      = 22020096         // 21MB
+	defaultRecvFullMsgQueueCapacity = 100              //number of queued incoming messages
+	defaultSendRate                 = int64(5_120_000) // 5MB/s
+	defaultRecvRate                 = int64(5_120_000) // 5MB/s
+	defaultSendTimeout              = 10 * time.Second
+	defaultPingInterval             = 60 * time.Second
+	defaultPongTimeout              = 45 * time.Second
 )
 
 type receiveCbFunc func(chID byte, msgBytes []byte)
@@ -78,27 +79,31 @@ Inbound message bytes are handled with an onReceive callback function.
 type MConnection struct {
 	service.BaseService
 
-	conn          net.Conn
-	bufConnReader *bufio.Reader
-	bufConnWriter *bufio.Writer
-	sendMonitor   *flow.Monitor
-	recvMonitor   *flow.Monitor
-	send          chan struct{}
-	pong          chan struct{}
-	channels      []*Channel
-	channelsIdx   map[byte]*Channel
-	onReceive     receiveCbFunc
-	onError       errorCbFunc
-	errored       uint32
-	config        MConnConfig
+	conn                   net.Conn
+	bufConnReader          *bufio.Reader
+	bufConnWriter          *bufio.Writer
+	sendMonitor            *flow.Monitor
+	recvMonitor            *flow.Monitor
+	send                   chan struct{}
+	pong                   chan struct{}
+	channels               []*Channel
+	channelsIdx            map[byte]*Channel
+	onReceive              receiveCbFunc
+	onError                errorCbFunc
+	errored                uint32
+	config                 MConnConfig
+	processReceivedFullMsg chan struct{}
 
 	// Closing quitSendRoutine will cause the sendRoutine to eventually quit.
 	// doneSendRoutine is closed when the sendRoutine actually quits.
 	quitSendRoutine chan struct{}
 	doneSendRoutine chan struct{}
 
-	// Closing quitRecvRouting will cause the recvRouting to eventually quit.
+	// Closing quitRecvRouting will cause the recvRoutine to eventually quit.
 	quitRecvRoutine chan struct{}
+	// Closing quitProcessReceivedFullMsgRoutine will cause the
+	// processReceivedFullMsgRoutine to eventually quit.
+	quitProcessReceivedFullMsgRoutine chan struct{}
 
 	// used to ensure FlushStop and OnStop
 	// are safe to call concurrently.
@@ -176,17 +181,18 @@ func NewMConnectionWithConfig(
 	}
 
 	mconn := &MConnection{
-		conn:          conn,
-		bufConnReader: bufio.NewReaderSize(conn, minReadBufferSize),
-		bufConnWriter: bufio.NewWriterSize(conn, minWriteBufferSize),
-		sendMonitor:   flow.New(0, 0),
-		recvMonitor:   flow.New(0, 0),
-		send:          make(chan struct{}, 1),
-		pong:          make(chan struct{}, 1),
-		onReceive:     onReceive,
-		onError:       onError,
-		config:        config,
-		created:       time.Now(),
+		conn:                   conn,
+		bufConnReader:          bufio.NewReaderSize(conn, minReadBufferSize),
+		bufConnWriter:          bufio.NewWriterSize(conn, minWriteBufferSize),
+		sendMonitor:            flow.New(0, 0),
+		recvMonitor:            flow.New(0, 0),
+		send:                   make(chan struct{}, 1),
+		pong:                   make(chan struct{}, 1),
+		processReceivedFullMsg: make(chan struct{}, 1),
+		onReceive:              onReceive,
+		onError:                onError,
+		config:                 config,
+		created:                time.Now(),
 	}
 
 	// Create channels
@@ -228,8 +234,10 @@ func (c *MConnection) OnStart() error {
 	c.quitSendRoutine = make(chan struct{})
 	c.doneSendRoutine = make(chan struct{})
 	c.quitRecvRoutine = make(chan struct{})
+	c.quitProcessReceivedFullMsgRoutine = make(chan struct{})
 	go c.sendRoutine()
 	go c.recvRoutine()
+	go c.processReceivedFullMsgRoutine()
 	return nil
 }
 
@@ -254,6 +262,13 @@ func (c *MConnection) stopServices() (alreadyStopped bool) {
 	default:
 	}
 
+	select {
+	case <-c.quitProcessReceivedFullMsgRoutine:
+		// already quit
+		return true
+	default:
+	}
+
 	c.BaseService.OnStop()
 	c.flushTimer.Stop()
 	c.pingTimer.Stop()
@@ -262,6 +277,7 @@ func (c *MConnection) stopServices() (alreadyStopped bool) {
 	// inform the recvRouting that we are shutting down
 	close(c.quitRecvRoutine)
 	close(c.quitSendRoutine)
+	close(c.quitProcessReceivedFullMsgRoutine)
 	return false
 }
 
@@ -277,7 +293,7 @@ func (c *MConnection) FlushStop() {
 	// this block is unique to FlushStop
 	{
 		// wait until the sendRoutine exits
-		// so we dont race on calling sendSomePacketMsgs
+		// so, we don't race on calling sendSomePacketMsgs
 		<-c.doneSendRoutine
 
 		// Send and flush all pending msgs.
@@ -347,7 +363,7 @@ func (c *MConnection) stopForError(r interface{}) {
 	}
 }
 
-// Queues a message to be sent to channel.
+// Send queues a message to be sent to channel.
 func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 	if !c.IsRunning() {
 		return false
@@ -375,7 +391,7 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 	return success
 }
 
-// Queues a message to be sent to channel.
+// TrySend queues a message to be sent to channel.
 // Nonblocking, returns true if successful.
 func (c *MConnection) TrySend(chID byte, msgBytes []byte) bool {
 	if !c.IsRunning() {
@@ -527,7 +543,7 @@ func (c *MConnection) sendPacketMsg() bool {
 		if !channel.isSendPending() {
 			continue
 		}
-		// Get ratio, and keep track of lowest ratio.
+		// Get ratio, and keep track of the lowest ratio.
 		ratio := float32(channel.recentlySent) / float32(channel.desc.Priority)
 		if ratio < leastRatio {
 			leastRatio = ratio
@@ -551,6 +567,67 @@ func (c *MConnection) sendPacketMsg() bool {
 	c.sendMonitor.Update(_n)
 	c.flushTimer.Set()
 	return false
+}
+
+// processReceivedFullMsgRoutine constantly checks the channels for incoming messages and processes them.
+//
+//	It processes messages based on the priority levels of their channels.
+func (c *MConnection) processReceivedFullMsgRoutine() {
+	c.Logger.Info("processReceivedFullMsgRoutine started")
+FOR_LOOP:
+	for {
+		select {
+		case <-c.quitProcessReceivedFullMsgRoutine:
+			c.Logger.Debug("processReceivedFullMsgRoutine is shutting down")
+			break FOR_LOOP
+		case <-c.processReceivedFullMsg:
+			// read a message
+			// Choose a channel to read a message from.
+			// The chosen channel will be the one whose recentlyRecvFullMsgs/priority is the least.
+			var leastRatio float32 = math.MaxFloat32
+			var leastChannel *Channel
+			for _, channel := range c.channels {
+				// If nothing to read, skip this channel
+				if channel.loadRecvFullMsgQueueSize() == 0 {
+					// skip this channel
+					continue
+				}
+				// Get ratio, and keep track of the lowest ratio.
+				ratio := float32(channel.loadRecentlyRecvFullMsgs()) / float32(channel.desc.Priority)
+				if ratio < leastRatio {
+					leastRatio = ratio
+					leastChannel = channel
+				}
+			}
+
+			// Nothing to read
+			if leastChannel == nil {
+				continue
+			} else {
+				// keep processReceivedFullMsgRoutine alive,
+				// there may still be messages to process
+				select {
+				case c.processReceivedFullMsg <- struct{}{}:
+				default:
+				}
+			}
+
+			// get a message from the chosen channel
+			msg, ok := <-leastChannel.recvFullMsgQueue
+			if !ok {
+				break FOR_LOOP // it should never happen unless the channel is
+				// closed in which case the quitProcessReceivedFullMsgRoutine should be closed too
+			}
+
+			// update the channel's stats
+			leastChannel.updateRecvFullMsgQueueSize(-1)
+			leastChannel.updateRecentlyRecvFullMsgs(int64(len(msg)))
+
+			// process the message
+			c.onReceive(leastChannel.desc.ID, msg)
+		}
+	}
+
 }
 
 // recvRoutine reads PacketMsgs and reconstructs the message using the channels' "recving" buffer.
@@ -587,10 +664,11 @@ FOR_LOOP:
 		_n, err := protoReader.ReadMsg(&packet)
 		c.recvMonitor.Update(_n)
 		if err != nil {
-			// stopServices was invoked and we are shutting down
-			// receiving is excpected to fail since we will close the connection
+			// stopServices was invoked, and we are shutting down
+			// receiving is expected to fail since we will close the connection
 			select {
 			case <-c.quitRecvRoutine:
+				c.Logger.Info("recvRoutine is shutting down")
 				break FOR_LOOP
 			default:
 			}
@@ -643,9 +721,16 @@ FOR_LOOP:
 				break FOR_LOOP
 			}
 			if msgBytes != nil {
-				c.Logger.Debug("Received bytes", "chID", channelID, "msgBytes", msgBytes)
-				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
-				c.onReceive(channelID, msgBytes)
+				// send the message to its channel
+				channel.recvFullMsgQueue <- msgBytes
+				channel.updateRecvFullMsgQueueSize(1)
+
+				// wake up processReceivedFullMsgRoutine
+				select {
+				case c.processReceivedFullMsg <- struct{}{}:
+				default:
+					//already up
+				}
 			}
 		default:
 			err := fmt.Errorf("unknown message type %v", reflect.TypeOf(packet))
@@ -719,12 +804,13 @@ func (c *MConnection) Status() ConnectionStatus {
 //-----------------------------------------------------------------------------
 
 type ChannelDescriptor struct {
-	ID                  byte
-	Priority            int
-	SendQueueCapacity   int
-	RecvBufferCapacity  int
-	RecvMessageCapacity int
-	MessageType         proto.Message
+	ID                       byte
+	Priority                 int
+	SendQueueCapacity        int
+	RecvBufferCapacity       int
+	RecvMessageCapacity      int
+	RecvFullMsgQueueCapacity int
+	MessageType              proto.Message
 }
 
 func (chDesc ChannelDescriptor) FillDefaults() (filled ChannelDescriptor) {
@@ -736,6 +822,9 @@ func (chDesc ChannelDescriptor) FillDefaults() (filled ChannelDescriptor) {
 	}
 	if chDesc.RecvMessageCapacity == 0 {
 		chDesc.RecvMessageCapacity = defaultRecvMessageCapacity
+	}
+	if chDesc.RecvFullMsgQueueCapacity == 0 {
+		chDesc.RecvFullMsgQueueCapacity = defaultRecvFullMsgQueueCapacity
 	}
 	filled = chDesc
 	return
@@ -752,9 +841,35 @@ type Channel struct {
 	sending       []byte
 	recentlySent  int64 // exponential moving average
 
+	recvFullMsgQueue     chan []byte
+	recvFullMsgQueueSize int32 // atomic.
+	// this is to track the number of messages in the recvFullMsgQueue
+	recentlyRecvFullMsgs int64 // exponential moving average based on the
+	// byte size of full messages received
+
 	maxPacketMsgPayloadSize int
 
 	Logger log.Logger
+}
+
+// Goroutine-safe
+func (ch *Channel) loadRecvFullMsgQueueSize() (size int32) {
+	return atomic.LoadInt32(&ch.recvFullMsgQueueSize)
+}
+
+// Goroutine-safe
+func (ch *Channel) updateRecvFullMsgQueueSize(delta int32) {
+	atomic.AddInt32(&ch.recvFullMsgQueueSize, delta)
+}
+
+// Goroutine-safe
+func (ch *Channel) loadRecentlyRecvFullMsgs() (size int64) {
+	return atomic.LoadInt64(&ch.recentlyRecvFullMsgs)
+}
+
+// Goroutine-safe
+func (ch *Channel) updateRecentlyRecvFullMsgs(delta int64) {
+	atomic.AddInt64(&ch.recentlyRecvFullMsgs, delta)
 }
 
 func newChannel(conn *MConnection, desc ChannelDescriptor) *Channel {
@@ -768,6 +883,7 @@ func newChannel(conn *MConnection, desc ChannelDescriptor) *Channel {
 		sendQueue:               make(chan []byte, desc.SendQueueCapacity),
 		recving:                 make([]byte, 0, desc.RecvBufferCapacity),
 		maxPacketMsgPayloadSize: conn.config.MaxPacketMsgPayloadSize,
+		recvFullMsgQueue:        make(chan []byte, desc.RecvFullMsgQueueCapacity),
 	}
 }
 
@@ -862,13 +978,15 @@ func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 	}
 	ch.recving = append(ch.recving, packet.Data...)
 	if packet.EOF {
-		msgBytes := ch.recving
+		msgBytes := make([]byte, len(ch.recving))
+		copy(msgBytes, ch.recving)
 
 		// clear the slice without re-allocating.
 		// http://stackoverflow.com/questions/16971741/how-do-you-clear-a-slice-in-go
 		//   suggests this could be a memory leak, but we might as well keep the memory for the channel until it closes,
 		//	at which point the recving slice stops being used and should be garbage collected
 		ch.recving = ch.recving[:0] // make([]byte, 0, ch.desc.RecvBufferCapacity)
+
 		return msgBytes, nil
 	}
 	return nil, nil
@@ -880,6 +998,7 @@ func (ch *Channel) updateStats() {
 	// Exponential decay of stats.
 	// TODO: optimize.
 	atomic.StoreInt64(&ch.recentlySent, int64(float64(atomic.LoadInt64(&ch.recentlySent))*0.8))
+	atomic.StoreInt64(&ch.recentlyRecvFullMsgs, int64(float64(ch.loadRecentlyRecvFullMsgs())*0.8))
 }
 
 //----------------------------------------
