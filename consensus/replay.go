@@ -252,15 +252,10 @@ func (h *Handshaker) Handshake(proxyApp proxy.AppConns) (string, error) {
 	}
 	appHash := res.LastBlockAppHash
 
-	h.logger.Info("ABCI Handshake App Info",
-		"height", blockHeight,
-		"hash", appHash,
-		"software-version", res.Version,
-		"protocol-version", res.AppVersion,
-	)
-
-	// Only set the version if there is no existing state.
-	if h.initialState.LastBlockHeight == 0 {
+	appVersion := h.initialState.Version.Consensus.App
+	// set app version if it's not set via genesis
+	if h.initialState.LastBlockHeight == 0 && appVersion == 0 && res.AppVersion != 0 {
+		appVersion = res.AppVersion
 		h.initialState.Version.Consensus.App = res.AppVersion
 	}
 
@@ -271,7 +266,10 @@ func (h *Handshaker) Handshake(proxyApp proxy.AppConns) (string, error) {
 	}
 
 	h.logger.Info("Completed ABCI Handshake - CometBFT and App are synced",
-		"appHeight", blockHeight, "appHash", appHash)
+		"appHeight", blockHeight,
+		"appHash", appHash,
+		"appVersion", appVersion,
+	)
 
 	// TODO: (on restart) replay mempool
 
