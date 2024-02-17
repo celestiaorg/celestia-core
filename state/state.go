@@ -333,7 +333,7 @@ func MakeGenesisState(genDoc *types.GenesisDoc) (State, error) {
 
 	appVersion := uint64(0)
 	if genDoc.ConsensusParams != nil {
-		appVersion = genDoc.ConsensusParams.Version.App
+		appVersion = genDoc.ConsensusParams.Version.AppVersion
 	}
 
 	return State{
