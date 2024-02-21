@@ -1,10 +1,10 @@
 package node
 
 import (
-	"github.com/pyroscope-io/client/pyroscope"
+	otelpyroscope "github.com/grafana/otel-profiling-go"
+	pyroscope "github.com/grafana/pyroscope-go"
 	"github.com/tendermint/tendermint/config"
 
-	otelpyroscope "github.com/pyroscope-io/otel-profiling-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"

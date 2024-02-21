@@ -11,9 +11,9 @@ import (
 	"time"
 
 	dbm "github.com/cometbft/cometbft-db"
+	pyroscope "github.com/grafana/pyroscope-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/pyroscope-io/client/pyroscope"
 	"github.com/rs/cors"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
