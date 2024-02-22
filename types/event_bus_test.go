@@ -13,7 +13,6 @@ import (
 	abci "github.com/tendermint/tendermint/abci/types"
 	cmtpubsub "github.com/tendermint/tendermint/libs/pubsub"
 	cmtquery "github.com/tendermint/tendermint/libs/pubsub/query"
-	cmtrand "github.com/tendermint/tendermint/libs/rand"
 )
 
 func TestEventBusPublishEventTx(t *testing.T) {
@@ -455,7 +454,8 @@ func BenchmarkEventBus(b *testing.B) {
 
 func benchmarkEventBus(numClients int, randQueries bool, randEvents bool, b *testing.B) {
 	// for random* functions
-	rand.Seed(time.Now().Unix())
+	randSource := rand.NewSource(time.Now().UnixNano())
+	randGen := rand.New(randSource)
 
 	eventBus := NewEventBusWithBufferCapacity(0) // set buffer capacity to 0 so we are not testing cache
 	err := eventBus.Start()
@@ -473,7 +473,7 @@ func benchmarkEventBus(numClients int, randQueries bool, randEvents bool, b *tes
 
 	for i := 0; i < numClients; i++ {
 		if randQueries {
-			q = randQuery()
+			q = randQuery(randGen)
 		}
 		sub, err := eventBus.Subscribe(ctx, fmt.Sprintf("client-%d", i), q)
 		if err != nil {
@@ -496,7 +496,7 @@ func benchmarkEventBus(numClients int, randQueries bool, randEvents bool, b *tes
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if randEvents {
-			eventType = randEvent()
+			eventType = randEvent(randGen)
 		}
 
 		err := eventBus.Publish(eventType, EventDataString("Gamora"))
@@ -520,10 +520,6 @@ var events = []string{
 	EventTimeoutWait,
 	EventVote}
 
-func randEvent() string {
-	return events[cmtrand.Intn(len(events))]
-}
-
 var queries = []cmtpubsub.Query{
 	EventQueryNewBlock,
 	EventQueryNewBlockHeader,
@@ -538,6 +534,10 @@ var queries = []cmtpubsub.Query{
 	EventQueryTimeoutWait,
 	EventQueryVote}
 
-func randQuery() cmtpubsub.Query {
-	return queries[cmtrand.Intn(len(queries))]
+func randEvent(r *rand.Rand) string {
+	return events[r.Intn(len(events))]
+}
+
+func randQuery(r *rand.Rand) cmtpubsub.Query {
+	return queries[r.Intn(len(queries))]
 }
