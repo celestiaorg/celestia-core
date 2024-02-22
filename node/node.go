@@ -395,9 +395,10 @@ func createMempoolAndMempoolReactor(
 		reactor, err := mempoolv2.NewReactor(
 			mp,
 			&mempoolv2.ReactorOptions{
-				ListenOnly:  !config.Mempool.Broadcast,
-				MaxTxSize:   config.Mempool.MaxTxBytes,
-				TraceClient: traceClient,
+				ListenOnly:     !config.Mempool.Broadcast,
+				MaxTxSize:      config.Mempool.MaxTxBytes,
+				TraceClient:    traceClient,
+				MaxGossipDelay: config.Mempool.MaxGossipDelay,
 			},
 		)
 		if err != nil {
@@ -419,6 +420,7 @@ func createMempoolAndMempoolReactor(
 			mempoolv1.WithMetrics(memplMetrics),
 			mempoolv1.WithPreCheck(sm.TxPreCheck(state)),
 			mempoolv1.WithPostCheck(sm.TxPostCheck(state)),
+			mempoolv1.WithTraceClient(traceClient),
 		)
 
 		reactor := mempoolv1.NewReactor(

@@ -14,6 +14,7 @@ func ConsensusTables() []string {
 		RoundStateTable,
 		BlockPartsTable,
 		BlockTable,
+		VoteTable,
 	}
 }
 
@@ -126,5 +127,56 @@ func WriteBlock(client *trace.Client, block *types.Block, size int) {
 		BlockSizeFieldKey:                size,
 		ProposerFieldKey:                 block.ProposerAddress.String(),
 		LastCommitRoundFieldKey:          block.LastCommit.Round,
+	})
+}
+
+// Schema constants for the consensus votes tracing database.
+const (
+	// VoteTable is the name of the table that stores the consensus
+	// voting traces. Follows this schema:
+	//
+	// | time | height | round | vote_type | vote_height | vote_round
+	// | vote_block_id| vote_unix_millisecond_timestamp
+	// | vote_validator_address | vote_validator_index | peer
+	// | transfer_type |
+	VoteTable = "consensus_vote"
+
+	VoteTypeFieldKey         = "vote_type"
+	VoteHeightFieldKey       = "vote_height"
+	VoteRoundFieldKey        = "vote_round"
+	VoteBlockIDFieldKey      = "vote_block_id"
+	VoteTimestampFieldKey    = "vote_unix_millisecond_timestamp"
+	ValidatorAddressFieldKey = "vote_validator_address"
+	ValidatorIndexFieldKey   = "vote_validator_index"
+)
+
+// WriteVote writes a tracing point for a vote using the predetermined
+// schema for consensus vote tracing.
+// This is used to create a table in the following
+// schema:
+//
+// | time | height | round | vote_type | vote_height | vote_round
+// | vote_block_id| vote_unix_millisecond_timestamp
+// | vote_validator_address | vote_validator_index | peer
+// | transfer_type |
+func WriteVote(client *trace.Client,
+	height int64, // height of the current peer when it received/sent the vote
+	round int32, // round of the current peer when it received/sent the vote
+	vote *types.Vote, // vote received by the current peer
+	peer p2p.ID, // the peer from which it received the vote or the peer to which it sent the vote
+	transferType string, // download (received) or upload(sent)
+) {
+	client.WritePoint(VoteTable, map[string]interface{}{
+		HeightFieldKey:           height,
+		RoundFieldKey:            round,
+		VoteTypeFieldKey:         vote.Type.String(),
+		VoteHeightFieldKey:       vote.Height,
+		VoteRoundFieldKey:        vote.Round,
+		VoteBlockIDFieldKey:      vote.BlockID.Hash.String(),
+		VoteTimestampFieldKey:    vote.Timestamp.UnixMilli(),
+		ValidatorAddressFieldKey: vote.ValidatorAddress.String(),
+		ValidatorIndexFieldKey:   vote.ValidatorIndex,
+		PeerFieldKey:             peer,
+		TransferTypeFieldKey:     transferType,
 	})
 }

@@ -399,8 +399,9 @@ func createMempoolAndMempoolReactor(config *cfg.Config, proxyApp proxy.AppConns,
 		reactor, err := mempoolv2.NewReactor(
 			mp,
 			&mempoolv2.ReactorOptions{
-				ListenOnly: !config.Mempool.Broadcast,
-				MaxTxSize:  config.Mempool.MaxTxBytes,
+				ListenOnly:     !config.Mempool.Broadcast,
+				MaxTxSize:      config.Mempool.MaxTxBytes,
+				MaxGossipDelay: config.Mempool.MaxGossipDelay,
 			},
 		)
 		if err != nil {

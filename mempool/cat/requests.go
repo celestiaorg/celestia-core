@@ -113,8 +113,9 @@ func (r *requestScheduler) ClearAllRequestsFrom(peer uint16) requestSet {
 	if !ok {
 		return requestSet{}
 	}
-	for _, timer := range requests {
+	for tx, timer := range requests {
 		timer.Stop()
+		delete(r.requestsByTx, tx)
 	}
 	delete(r.requestsByPeer, peer)
 	return requests

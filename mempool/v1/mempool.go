@@ -15,6 +15,8 @@ import (
 	"github.com/tendermint/tendermint/libs/clist"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool"
+	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
 )
@@ -56,6 +58,8 @@ type TxMempool struct {
 	txs        *clist.CList // valid transactions (passed CheckTx)
 	txByKey    map[types.TxKey]*clist.CElement
 	txBySender map[string]*clist.CElement // for sender != ""
+
+	traceClient *trace.Client
 }
 
 // NewTxMempool constructs a new, empty priority mempool at the specified
@@ -79,6 +83,7 @@ func NewTxMempool(
 		height:       height,
 		txByKey:      make(map[types.TxKey]*clist.CElement),
 		txBySender:   make(map[string]*clist.CElement),
+		traceClient:  &trace.Client{},
 	}
 	if cfg.CacheSize > 0 {
 		txmp.cache = mempool.NewLRUTxCache(cfg.CacheSize)
@@ -108,6 +113,12 @@ func WithPostCheck(f mempool.PostCheckFunc) TxMempoolOption {
 // WithMetrics sets the mempool's metrics collector.
 func WithMetrics(metrics *mempool.Metrics) TxMempoolOption {
 	return func(txmp *TxMempool) { txmp.metrics = metrics }
+}
+
+func WithTraceClient(tc *trace.Client) TxMempoolOption {
+	return func(txmp *TxMempool) {
+		txmp.traceClient = tc
+	}
 }
 
 // Lock obtains a write-lock on the mempool. A caller must be sure to explicitly
@@ -192,7 +203,8 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		// If a precheck hook is defined, call it before invoking the application.
 		if txmp.preCheck != nil {
 			if err := txmp.preCheck(tx); err != nil {
-				txmp.metrics.FailedTxs.Add(1)
+				txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedPrecheck).Add(1)
+				schema.WriteMempoolRejected(txmp.traceClient, err.Error())
 				return 0, mempool.ErrPreCheck{Reason: err}
 			}
 		}
@@ -330,12 +342,14 @@ func (txmp *TxMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	var keep []types.Tx //nolint:prealloc
 	for _, w := range txmp.allEntriesSorted() {
 		// N.B. When computing byte size, we need to include the overhead for
-		// encoding as protobuf to send to the application.
-		totalGas += w.gasWanted
-		totalBytes += types.ComputeProtoSizeForTxs([]types.Tx{w.tx})
-		if (maxGas >= 0 && totalGas > maxGas) || (maxBytes >= 0 && totalBytes > maxBytes) {
-			break
+		// encoding as protobuf to send to the application. This actually overestimates it
+		// as we add the proto overhead to each transaction
+		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx})
+		if (maxGas >= 0 && totalGas+w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes+txBytes > maxBytes) {
+			continue
 		}
+		totalBytes += txBytes
+		totalGas += w.gasWanted
 		keep = append(keep, w.tx)
 	}
 	return keep
@@ -425,6 +439,7 @@ func (txmp *TxMempool) Update(
 	// transactions are left.
 	size := txmp.Size()
 	txmp.metrics.Size.Set(float64(size))
+	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 	if size > 0 {
 		if txmp.config.Recheck {
 			txmp.recheckTransactions()
@@ -467,7 +482,16 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			"post_check_err", err,
 		)
 
-		txmp.metrics.FailedTxs.Add(1)
+		txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedAdding).Add(1)
+		reason := fmt.Sprintf(
+			"code: %d codespace: %s logs: %s local: %v postCheck error: %v",
+			checkTxRes.Code,
+			checkTxRes.Codespace,
+			checkTxRes.Log,
+			wtx.HasPeer(0), // this checks if the peer id is local
+			err,
+		)
+		schema.WriteMempoolRejected(txmp.traceClient, reason)
 
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
@@ -535,7 +559,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			checkTxRes.MempoolError =
 				fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
 					wtx.tx.Hash())
-			txmp.metrics.EvictedTxs.Add(1)
+			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedNewTxFullMempool).Add(1)
 			return
 		}
 
@@ -567,7 +591,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			)
 			txmp.removeTxByElement(vic)
 			txmp.cache.Remove(w.tx)
-			txmp.metrics.EvictedTxs.Add(1)
+			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedExistingTxFullMempool).Add(1)
 
 			// We may not need to evict all the eligible transactions.  Bail out
 			// early if we have made enough room.
@@ -585,6 +609,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 
 	txmp.metrics.TxSizeBytes.Observe(float64(wtx.Size()))
 	txmp.metrics.Size.Set(float64(txmp.Size()))
+	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 	txmp.logger.Debug(
 		"inserted new valid transaction",
 		"priority", wtx.Priority(),
@@ -644,11 +669,15 @@ func (txmp *TxMempool) handleRecheckResult(tx types.Tx, checkTxRes *abci.Respons
 		"code", checkTxRes.Code,
 	)
 	txmp.removeTxByElement(elt)
-	txmp.metrics.FailedTxs.Add(1)
+	txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedRecheck).Add(1)
 	if !txmp.config.KeepInvalidTxsInCache {
 		txmp.cache.Remove(wtx.tx)
+		if err != nil {
+			schema.WriteMempoolRejected(txmp.traceClient, err.Error())
+		}
 	}
 	txmp.metrics.Size.Set(float64(txmp.Size()))
+	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 }
 
 // recheckTransactions initiates re-CheckTx ABCI calls for all the transactions
@@ -756,11 +785,11 @@ func (txmp *TxMempool) purgeExpiredTxs(blockHeight int64) {
 		if txmp.config.TTLNumBlocks > 0 && (blockHeight-w.height) > txmp.config.TTLNumBlocks {
 			txmp.removeTxByElement(cur)
 			txmp.cache.Remove(w.tx)
-			txmp.metrics.EvictedTxs.Add(1)
+			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedTxExpiredBlocks).Add(1)
 		} else if txmp.config.TTLDuration > 0 && now.Sub(w.timestamp) > txmp.config.TTLDuration {
 			txmp.removeTxByElement(cur)
 			txmp.cache.Remove(w.tx)
-			txmp.metrics.EvictedTxs.Add(1)
+			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedTxExpiredTime).Add(1)
 		}
 		cur = next
 	}

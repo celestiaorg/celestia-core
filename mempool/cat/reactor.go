@@ -21,7 +21,7 @@ import (
 const (
 	// default duration to wait before considering a peer non-responsive
 	// and searching for the tx from a new peer
-	defaultGossipDelay = 200 * time.Millisecond
+	DefaultGossipDelay = 200 * time.Millisecond
 
 	// Content Addressable Tx Pool gossips state based messages (SeenTx and WantTx) on a separate channel
 	// for cross compatibility
@@ -66,7 +66,7 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 	}
 
 	if opts.MaxGossipDelay == 0 {
-		opts.MaxGossipDelay = defaultGossipDelay
+		opts.MaxGossipDelay = DefaultGossipDelay
 	}
 
 	if opts.MaxTxSize < 0 {
@@ -189,6 +189,9 @@ func (memR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
 // peer it will find a new peer to rerequest the same transactions.
 func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	peerID := memR.ids.Reclaim(peer.ID())
+	// clear all memory of seen txs by that peer
+	memR.mempool.seenByPeersSet.RemovePeer(peerID)
+
 	// remove and rerequest all pending outbound requests to that peer since we know
 	// we won't receive any responses from them.
 	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)

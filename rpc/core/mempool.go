@@ -13,6 +13,8 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+var ErrTimedOutWaitingForTx = errors.New("timed out waiting for tx to be included in a block")
+
 //-----------------------------------------------------------------------------
 // NOTE: tx should be signed, but this is only checked at the app level (not by CometBFT!)
 
@@ -137,7 +139,7 @@ func BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadc
 				Hash:      tx.Hash(),
 			}, err
 		case <-time.After(env.Config.TimeoutBroadcastTxCommit):
-			err = errors.New("timed out waiting for tx to be included in a block")
+			err = ErrTimedOutWaitingForTx
 			env.Logger.Error("Error on broadcastTxCommit", "err", err)
 			return &ctypes.ResultBroadcastTxCommit{
 				CheckTx:   *checkTxRes,

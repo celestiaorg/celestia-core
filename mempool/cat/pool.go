@@ -415,12 +415,14 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	var keep []types.Tx //nolint:prealloc
 	for _, w := range txmp.allEntriesSorted() {
 		// N.B. When computing byte size, we need to include the overhead for
-		// encoding as protobuf to send to the application.
-		totalGas += w.gasWanted
-		totalBytes += types.ComputeProtoSizeForTxs([]types.Tx{w.tx})
-		if (maxGas >= 0 && totalGas > maxGas) || (maxBytes >= 0 && totalBytes > maxBytes) {
-			break
+		// encoding as protobuf to send to the application. This actually overestimates it
+		// as we add the proto overhead to each transaction
+		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx})
+		if (maxGas >= 0 && totalGas+w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes+txBytes > maxBytes) {
+			continue
 		}
+		totalBytes += txBytes
+		totalGas += w.gasWanted
 		keep = append(keep, w.tx)
 	}
 	return keep
@@ -497,6 +499,7 @@ func (txmp *TxPool) Update(
 	// transactions are left.
 	size := txmp.Size()
 	txmp.metrics.Size.Set(float64(size))
+	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 	if size > 0 {
 		if txmp.config.Recheck {
 			txmp.recheckTransactions()
@@ -574,6 +577,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 
 	txmp.metrics.TxSizeBytes.Observe(float64(wtx.size()))
 	txmp.metrics.Size.Set(float64(txmp.Size()))
+	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 	txmp.logger.Debug(
 		"inserted new valid transaction",
 		"priority", wtx.priority,
@@ -626,6 +630,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 	}
 	txmp.metrics.FailedTxs.Add(1)
 	txmp.metrics.Size.Set(float64(txmp.Size()))
+	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 }
 
 // recheckTransactions initiates re-CheckTx ABCI calls for all the transactions
