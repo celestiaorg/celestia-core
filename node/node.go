@@ -10,13 +10,17 @@ import (
 	"strings"
 	"time"
 
-	dbm "github.com/cometbft/cometbft-db"
 	pyroscope "github.com/grafana/pyroscope-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
+	_ "net/http/pprof" //nolint: gosec // securely exposed on separate, optional port
+
+	_ "github.com/lib/pq" // provide the psql db driver
+
+	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/tendermint/tendermint/abci/types"
 	bcv0 "github.com/tendermint/tendermint/blockchain/v0"
 	bcv1 "github.com/tendermint/tendermint/blockchain/v1"
@@ -25,8 +29,6 @@ import (
 	cs "github.com/tendermint/tendermint/consensus"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/evidence"
-	"github.com/tendermint/tendermint/pkg/trace"
-
 	cmtjson "github.com/tendermint/tendermint/libs/json"
 	"github.com/tendermint/tendermint/libs/log"
 	cmtpubsub "github.com/tendermint/tendermint/libs/pubsub"
@@ -38,6 +40,7 @@ import (
 	mempoolv1 "github.com/tendermint/tendermint/mempool/v1"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/pex"
+	"github.com/tendermint/tendermint/pkg/trace"
 	"github.com/tendermint/tendermint/privval"
 	"github.com/tendermint/tendermint/proxy"
 	rpccore "github.com/tendermint/tendermint/rpc/core"
@@ -56,10 +59,6 @@ import (
 	"github.com/tendermint/tendermint/types"
 	cmttime "github.com/tendermint/tendermint/types/time"
 	"github.com/tendermint/tendermint/version"
-
-	_ "net/http/pprof" //nolint: gosec // securely exposed on separate, optional port
-
-	_ "github.com/lib/pq" // provide the psql db driver
 )
 
 //------------------------------------------------------------------------------
@@ -1319,7 +1318,6 @@ func (n *Node) startRPC() ([]net.Listener, error) {
 			}
 		}()
 		listeners = append(listeners, listener)
-
 	}
 
 	return listeners, nil
@@ -1532,7 +1530,7 @@ func LoadStateFromDBOrGenesisDocProvider(
 	return state, genDoc, nil
 }
 
-// panics if failed to unmarshal bytes
+// panics if failed to unmarshal bytes.
 func loadGenesisDoc(db dbm.DB) (*types.GenesisDoc, error) {
 	b, err := db.Get(genesisDocKey)
 	if err != nil {
@@ -1549,7 +1547,7 @@ func loadGenesisDoc(db dbm.DB) (*types.GenesisDoc, error) {
 	return genDoc, nil
 }
 
-// panics if failed to marshal the given genesis document
+// panics if failed to marshal the given genesis document.
 func saveGenesisDoc(db dbm.DB, genDoc *types.GenesisDoc) error {
 	b, err := cmtjson.Marshal(genDoc)
 	if err != nil {

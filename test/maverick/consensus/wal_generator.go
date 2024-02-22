@@ -10,7 +10,6 @@ import (
 	"time"
 
 	db "github.com/cometbft/cometbft-db"
-
 	"github.com/tendermint/tendermint/abci/example/kvstore"
 	cfg "github.com/tendermint/tendermint/config"
 	cmtcon "github.com/tendermint/tendermint/consensus"
@@ -151,7 +150,7 @@ func makeAddrs() (string, string, string) {
 		fmt.Sprintf("tcp://127.0.0.1:%d", start+2)
 }
 
-// getConfig returns a config for test cases
+// getConfig returns a config for test cases.
 func getConfig(t *testing.T) *cfg.Config {
 	c := cfg.ResetTestRoot(t.Name())
 
@@ -175,7 +174,7 @@ type byteBufferWAL struct {
 	logger log.Logger
 }
 
-// needed for determinism
+// needed for determinism.
 var fixedTime, _ = time.Parse(time.RFC3339, "2017-01-02T15:04:05Z")
 
 func newByteBufferWAL(logger log.Logger, enc *WALEncoder, nBlocks int64, signalStop chan<- struct{}) *byteBufferWAL {
@@ -223,7 +222,8 @@ func (w *byteBufferWAL) FlushAndSync() error { return nil }
 
 func (w *byteBufferWAL) SearchForEndHeight(
 	height int64,
-	options *cmtcon.WALSearchOptions) (rd io.ReadCloser, found bool, err error) {
+	options *cmtcon.WALSearchOptions,
+) (rd io.ReadCloser, found bool, err error) {
 	return nil, false, nil
 }
 

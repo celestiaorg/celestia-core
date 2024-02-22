@@ -24,9 +24,9 @@ type ThrottleTimer struct {
 }
 
 func NewThrottleTimer(name string, dur time.Duration) *ThrottleTimer {
-	var ch = make(chan struct{})
-	var quit = make(chan struct{})
-	var t = &ThrottleTimer{Name: name, Ch: ch, dur: dur, quit: quit}
+	ch := make(chan struct{})
+	quit := make(chan struct{})
+	t := &ThrottleTimer{Name: name, Ch: ch, dur: dur, quit: quit}
 	t.mtx.Lock()
 	t.timer = time.AfterFunc(dur, t.fireRoutine)
 	t.mtx.Unlock()
@@ -64,7 +64,7 @@ func (t *ThrottleTimer) Unset() {
 }
 
 // For ease of .Stop()'ing services before .Start()'ing them,
-// we ignore .Stop()'s on nil ThrottleTimers
+// we ignore .Stop()'s on nil ThrottleTimers.
 func (t *ThrottleTimer) Stop() bool {
 	if t == nil {
 		return false

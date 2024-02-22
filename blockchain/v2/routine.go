@@ -111,7 +111,7 @@ func (rt *Routine) start() {
 	}
 }
 
-// XXX: look into returning OpError in the net package
+// XXX: look into returning OpError in the net package.
 func (rt *Routine) send(event Event) bool {
 	rt.logger.Debug("routine send", "msg", log.NewLazySprintf("%s: received %T %+v", rt.name, event, event))
 	if !rt.isRunning() {
@@ -153,7 +153,7 @@ func (rt *Routine) final() chan error {
 	return rt.fin
 }
 
-// XXX: Maybe get rid of this
+// XXX: Maybe get rid of this.
 func (rt *Routine) terminate(reason error) {
 	// We don't close the rt.out channel here, to avoid spinning on the closed channel
 	// in the event loop.

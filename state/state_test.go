@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	abci "github.com/tendermint/tendermint/abci/types"
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/crypto/ed25519"
@@ -44,7 +43,7 @@ func setupTestCase(t *testing.T) (func(t *testing.T), dbm.DB, sm.State) {
 	return tearDown, stateDB, state
 }
 
-// TestStateCopy tests the correct copying behaviour of State.
+// TestStateCopy tests the correct copying behavior of State.
 func TestStateCopy(t *testing.T) {
 	tearDown, _, state := setupTestCase(t)
 	defer tearDown(t)
@@ -170,7 +169,8 @@ func TestABCIResponsesSaveLoad2(t *testing.T) {
 			},
 			[]*abci.ResponseDeliverTx{
 				{Code: 32, Data: []byte("Hello")},
-			}},
+			},
+		},
 		2: {
 			[]*abci.ResponseDeliverTx{
 				{Code: 383},
@@ -188,7 +188,8 @@ func TestABCIResponsesSaveLoad2(t *testing.T) {
 					{Type: "type1", Attributes: []abci.EventAttribute{{Key: []byte("a"), Value: []byte("1")}}},
 					{Type: "type2", Attributes: []abci.EventAttribute{{Key: []byte("build"), Value: []byte("stuff")}}},
 				}},
-			}},
+			},
+		},
 		3: {
 			nil,
 			nil,
@@ -332,7 +333,6 @@ func TestOneValidatorChangesSaveLoad(t *testing.T) {
 }
 
 func TestProposerFrequency(t *testing.T) {
-
 	// some explicit test cases
 	testCases := []struct {
 		powers []int64
@@ -404,7 +404,7 @@ func TestProposerFrequency(t *testing.T) {
 	}
 }
 
-// new val set with given powers and random initial priorities
+// new val set with given powers and random initial priorities.
 func genValSetWithPowers(powers []int64) *types.ValidatorSet {
 	size := len(powers)
 	vals := make([]*types.Validator, size)
@@ -420,7 +420,7 @@ func genValSetWithPowers(powers []int64) *types.ValidatorSet {
 	return valSet
 }
 
-// test a proposer appears as frequently as expected
+// test a proposer appears as frequently as expected.
 func testProposerFreq(t *testing.T, caseNum int, valSet *types.ValidatorSet) {
 	N := valSet.Size()
 	totalPower := valSet.TotalVotingPower()
@@ -966,7 +966,7 @@ func TestManyValidatorChangesSaveLoad(t *testing.T) {
 	require.NoError(t, err)
 
 	_, valOld := state.Validators.GetByIndex(0)
-	var pubkeyOld = valOld.PubKey
+	pubkeyOld := valOld.PubKey
 	pubkey := ed25519.GenPrivKey().PubKey()
 
 	// Swap the first validator with a new one (validator set size stays the same).

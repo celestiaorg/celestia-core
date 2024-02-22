@@ -200,11 +200,13 @@ func (app *appConnSnapshot) OfferSnapshotSync(req types.RequestOfferSnapshot) (*
 }
 
 func (app *appConnSnapshot) LoadSnapshotChunkSync(
-	req types.RequestLoadSnapshotChunk) (*types.ResponseLoadSnapshotChunk, error) {
+	req types.RequestLoadSnapshotChunk,
+) (*types.ResponseLoadSnapshotChunk, error) {
 	return app.appConn.LoadSnapshotChunkSync(req)
 }
 
 func (app *appConnSnapshot) ApplySnapshotChunkSync(
-	req types.RequestApplySnapshotChunk) (*types.ResponseApplySnapshotChunk, error) {
+	req types.RequestApplySnapshotChunk,
+) (*types.ResponseApplySnapshotChunk, error) {
 	return app.appConn.ApplySnapshotChunkSync(req)
 }

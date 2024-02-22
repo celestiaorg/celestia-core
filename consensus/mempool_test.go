@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	"github.com/tendermint/tendermint/abci/example/code"
 	abci "github.com/tendermint/tendermint/abci/types"
 	cfg "github.com/tendermint/tendermint/config"
@@ -20,7 +19,7 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-// for testing
+// for testing.
 func assertMempool(txn txNotifier) mempl.Mempool {
 	return txn.(mempl.Mempool)
 }
@@ -186,7 +185,7 @@ func TestMempoolRmBadTx(t *testing.T) {
 	}
 }
 
-// CounterApplication that maintains a mempool state and resets it upon commit
+// CounterApplication that maintains a mempool state and resets it upon commit.
 type CounterApplication struct {
 	abci.BaseApplication
 
@@ -207,7 +206,8 @@ func (app *CounterApplication) DeliverTx(req abci.RequestDeliverTx) abci.Respons
 	if txValue != uint64(app.txCount) {
 		return abci.ResponseDeliverTx{
 			Code: code.CodeTypeBadNonce,
-			Log:  fmt.Sprintf("Invalid nonce. Expected %v, got %v", app.txCount, txValue)}
+			Log:  fmt.Sprintf("Invalid nonce. Expected %v, got %v", app.txCount, txValue),
+		}
 	}
 	app.txCount++
 	return abci.ResponseDeliverTx{Code: code.CodeTypeOK}
@@ -253,6 +253,7 @@ func (app *CounterApplication) Commit() abci.ResponseCommit {
 }
 
 func (app *CounterApplication) PrepareProposal(
-	req abci.RequestPrepareProposal) abci.ResponsePrepareProposal {
+	req abci.RequestPrepareProposal,
+) abci.ResponsePrepareProposal {
 	return abci.ResponsePrepareProposal{BlockData: req.BlockData}
 }

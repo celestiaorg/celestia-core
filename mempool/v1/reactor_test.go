@@ -13,14 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tendermint/tendermint/abci/example/kvstore"
-	"github.com/tendermint/tendermint/p2p/mock"
-	"github.com/tendermint/tendermint/pkg/trace"
-
 	cfg "github.com/tendermint/tendermint/config"
-
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/p2p"
+	"github.com/tendermint/tendermint/p2p/mock"
+	"github.com/tendermint/tendermint/pkg/trace"
 	memproto "github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
@@ -171,7 +169,6 @@ func makeAndConnectReactors(config *cfg.Config, n int) []*Reactor {
 	p2p.MakeConnectedSwitches(config.P2P, n, func(i int, s *p2p.Switch) *p2p.Switch {
 		s.AddReactor("MEMPOOL", reactors[i])
 		return s
-
 	}, p2p.Connect2Switches)
 	return reactors
 }

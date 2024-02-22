@@ -74,7 +74,6 @@ func NewCListMempool(
 	height int64,
 	options ...CListMempoolOption,
 ) *CListMempool {
-
 	mp := &CListMempool{
 		config:        cfg,
 		proxyAppConn:  proxyAppConn,
@@ -101,7 +100,7 @@ func NewCListMempool(
 	return mp
 }
 
-// NOTE: not thread safe - should only be called once, on startup
+// NOTE: not thread safe - should only be called once, on startup.
 func (mem *CListMempool) EnableTxsAvailable() {
 	mem.txsAvailable = make(chan struct{}, 1)
 }
@@ -205,7 +204,6 @@ func (mem *CListMempool) CheckTx(
 	cb func(*abci.Response),
 	txInfo mempool.TxInfo,
 ) error {
-
 	mem.updateMtx.RLock()
 	// use defer to unlock mutex because application (*local client*) might panic
 	defer mem.updateMtx.RUnlock()
@@ -683,7 +681,7 @@ func (mem *CListMempool) recheckTxs() {
 
 //--------------------------------------------------------------------------------
 
-// mempoolTx is a transaction that successfully ran
+// mempoolTx is a transaction that successfully ran.
 type mempoolTx struct {
 	height    int64    // height that this tx had been validated in
 	gasWanted int64    // amount of gas this tx states it will require
@@ -694,7 +692,7 @@ type mempoolTx struct {
 	senders sync.Map
 }
 
-// Height returns the height for this transaction
+// Height returns the height for this transaction.
 func (memTx *mempoolTx) Height() int64 {
 	return atomic.LoadInt64(&memTx.height)
 }

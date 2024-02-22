@@ -9,7 +9,6 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	cmtnet "github.com/tendermint/tendermint/libs/net"
 	cmtos "github.com/tendermint/tendermint/libs/os"
-
 	"github.com/tendermint/tendermint/privval"
 )
 

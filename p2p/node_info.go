@@ -17,7 +17,7 @@ const (
 	maxNumChannels  = 16    // plenty of room for upgrades, for now
 )
 
-// Max size of the NodeInfo struct
+// Max size of the NodeInfo struct.
 func MaxNodeInfoSize() int {
 	return maxNodeInfoSize
 }
@@ -71,7 +71,7 @@ func NewProtocolVersion(p2p, block, app uint64) ProtocolVersion {
 
 //-------------------------------------------------------------
 
-// Assert DefaultNodeInfo satisfies NodeInfo
+// Assert DefaultNodeInfo satisfies NodeInfo.
 var _ NodeInfo = DefaultNodeInfo{}
 
 // DefaultNodeInfo is the basic node information exchanged
@@ -95,7 +95,7 @@ type DefaultNodeInfo struct {
 	Other   DefaultNodeInfoOther `json:"other"`   // other application specific data
 }
 
-// DefaultNodeInfoOther is the misc. applcation specific data
+// DefaultNodeInfoOther is the misc. applcation specific data.
 type DefaultNodeInfoOther struct {
 	TxIndex    string `json:"tx_index"`
 	RPCAddress string `json:"rpc_address"`
@@ -120,7 +120,6 @@ func (info DefaultNodeInfo) ID() ID {
 // url-encoding), and we just need to be careful with how we handle that in our
 // clients. (e.g. off by default).
 func (info DefaultNodeInfo) Validate() error {
-
 	// ID is already validated.
 
 	// Validate ListenAddr.
@@ -134,7 +133,6 @@ func (info DefaultNodeInfo) Validate() error {
 	// Validate Version
 	if len(info.Version) > 0 &&
 		(!cmtstrings.IsASCIIText(info.Version) || cmtstrings.ASCIITrim(info.Version) == "") {
-
 		return fmt.Errorf("info.Version must be valid ASCII text without tabs, but got %v", info.Version)
 	}
 
@@ -228,7 +226,6 @@ func (info DefaultNodeInfo) HasChannel(chID byte) bool {
 }
 
 func (info DefaultNodeInfo) ToProto() *tmp2p.DefaultNodeInfo {
-
 	dni := new(tmp2p.DefaultNodeInfo)
 	dni.ProtocolVersion = tmp2p.ProtocolVersion{
 		P2P:   info.ProtocolVersion.P2P,

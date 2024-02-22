@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/light"
 	"github.com/tendermint/tendermint/light/provider"
@@ -302,7 +301,6 @@ func TestLightClientAttackEvidence_ForwardLunatic(t *testing.T) {
 
 	_, err = c.Update(ctx, bTime.Add(time.Duration(forgedHeight)*time.Minute))
 	assert.NoError(t, err)
-
 }
 
 // 1. Different nodes therefore a divergent header is produced.
@@ -333,7 +331,7 @@ func TestClientDivergentTraces1(t *testing.T) {
 }
 
 // 2. Two out of three nodes don't respond but the third has a header that matches
-// => verification should be successful and all the witnesses should remain
+// => verification should be successful and all the witnesses should remain.
 func TestClientDivergentTraces2(t *testing.T) {
 	primary := mockp.New(genMockNode(chainID, 10, 5, 2, bTime))
 	firstBlock, err := primary.LightBlock(ctx, 1)
@@ -360,7 +358,7 @@ func TestClientDivergentTraces2(t *testing.T) {
 }
 
 // 3. witness has the same first header, but different second header
-// => creation should succeed, but the verification should fail
+// => creation should succeed, but the verification should fail.
 func TestClientDivergentTraces3(t *testing.T) {
 	_, primaryHeaders, primaryVals := genMockNode(chainID, 10, 5, 2, bTime)
 	primary := mockp.New(chainID, primaryHeaders, primaryVals)
@@ -395,7 +393,7 @@ func TestClientDivergentTraces3(t *testing.T) {
 }
 
 // 4. Witness has a divergent header but can not produce a valid trace to back it up.
-// It should be ignored
+// It should be ignored.
 func TestClientDivergentTraces4(t *testing.T) {
 	_, primaryHeaders, primaryVals := genMockNode(chainID, 10, 5, 2, bTime)
 	primary := mockp.New(chainID, primaryHeaders, primaryVals)

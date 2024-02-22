@@ -8,13 +8,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/libs/service"
-
 	abcicli "github.com/tendermint/tendermint/abci/client"
 	"github.com/tendermint/tendermint/abci/example/code"
 	abciserver "github.com/tendermint/tendermint/abci/server"
 	"github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/libs/log"
+	"github.com/tendermint/tendermint/libs/service"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
@@ -116,7 +115,7 @@ func TestPersistentKVStoreInfo(t *testing.T) {
 	}
 }
 
-// add a validator, remove a validator, update a validator
+// add a validator, remove a validator, update a validator.
 func TestValUpdates(t *testing.T) {
 	dir, err := os.MkdirTemp("/tmp", "abci-kvstore-test") // TODO
 	if err != nil {
@@ -161,7 +160,7 @@ func TestValUpdates(t *testing.T) {
 
 	makeApplyBlock(t, kvstore, 2, diff, tx1, tx2, tx3)
 
-	vals1 = append(vals[:nInit-2], vals[nInit+1]) //nolint: gocritic
+	vals1 = append(vals[:nInit-2], vals[nInit+1])
 	vals2 = kvstore.Validators()
 	valsEqual(t, vals1, vals2)
 
@@ -208,7 +207,7 @@ func makeApplyBlock(
 	valsEqual(t, diff, resEndBlock.ValidatorUpdates)
 }
 
-// order doesn't matter
+// order doesn't matter.
 func valsEqual(t *testing.T, vals1, vals2 []types.ValidatorUpdate) {
 	if len(vals1) != len(vals2) {
 		t.Fatalf("vals dont match in len. got %d, expected %d", len(vals2), len(vals1))

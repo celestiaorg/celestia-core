@@ -12,9 +12,11 @@ type priority interface {
 	Priority() int
 }
 
-type priorityLow struct{}
-type priorityNormal struct{}
-type priorityHigh struct{}
+type (
+	priorityLow    struct{}
+	priorityNormal struct{}
+	priorityHigh   struct{}
+)
 
 func (p priorityLow) Priority() int {
 	return 1

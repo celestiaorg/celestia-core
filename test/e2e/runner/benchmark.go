@@ -18,7 +18,7 @@ import (
 // 4. Min block interval (fastest block)
 //
 // Metrics are based of the `benchmarkLength`, the amount of consecutive blocks
-// sampled from in the testnet
+// sampled from in the testnet.
 func Benchmark(testnet *e2e.Testnet, benchmarkLength int64) error {
 	block, _, err := waitForHeight(testnet, 0)
 	if err != nil {

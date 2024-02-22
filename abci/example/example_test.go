@@ -10,20 +10,17 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	"golang.org/x/net/context"
-
-	"github.com/tendermint/tendermint/libs/log"
-	cmtnet "github.com/tendermint/tendermint/libs/net"
 
 	abcicli "github.com/tendermint/tendermint/abci/client"
 	"github.com/tendermint/tendermint/abci/example/code"
 	"github.com/tendermint/tendermint/abci/example/kvstore"
 	abciserver "github.com/tendermint/tendermint/abci/server"
 	"github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/libs/log"
+	cmtnet "github.com/tendermint/tendermint/libs/net"
 )
 
 func init() {
@@ -182,6 +179,5 @@ func testGRPCSync(t *testing.T, app types.ABCIApplicationServer) {
 				time.Sleep(time.Second * 1) // Wait for a bit to allow counter overflow
 			}()
 		}
-
 	}
 }

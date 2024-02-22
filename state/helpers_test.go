@@ -6,7 +6,6 @@ import (
 	"time"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
@@ -38,7 +37,8 @@ func makeAndCommitGoodBlock(
 	proposerAddr []byte,
 	blockExec *sm.BlockExecutor,
 	privVals map[string]types.PrivValidator,
-	evidence []types.Evidence) (sm.State, types.BlockID, *types.Commit, error) {
+	evidence []types.Evidence,
+) (sm.State, types.BlockID, *types.Commit, error) {
 	// A good block passes
 	state, blockID, err := makeAndApplyGoodBlock(state, height, lastCommit, proposerAddr, blockExec, evidence)
 	if err != nil {
@@ -54,7 +54,8 @@ func makeAndCommitGoodBlock(
 }
 
 func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commit, proposerAddr []byte,
-	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, types.BlockID, error) {
+	blockExec *sm.BlockExecutor, evidence []types.Evidence,
+) (sm.State, types.BlockID, error) {
 	block, _ := state.MakeBlock(
 		height,
 		factory.MakeData(factory.MakeTenTxs(height)),
@@ -65,8 +66,10 @@ func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commi
 	if err := blockExec.ValidateBlock(state, block); err != nil {
 		return state, types.BlockID{}, err
 	}
-	blockID := types.BlockID{Hash: block.Hash(),
-		PartSetHeader: types.PartSetHeader{Total: 3, Hash: cmtrand.Bytes(32)}}
+	blockID := types.BlockID{
+		Hash:          block.Hash(),
+		PartSetHeader: types.PartSetHeader{Total: 3, Hash: cmtrand.Bytes(32)},
+	}
 	state, _, err := blockExec.ApplyBlock(state, blockID, block, lastCommit)
 	if err != nil {
 		return state, types.BlockID{}, err
@@ -92,7 +95,7 @@ func makeValidCommit(
 	return types.NewCommit(height, 0, blockID, sigs), nil
 }
 
-// make some bogus txs
+// make some bogus txs.
 func makeTxs(height int64) (txs []types.Tx) {
 	for i := 0; i < nTxsPerBlock; i++ {
 		txs = append(txs, types.Tx([]byte{byte(height), byte(i)}))
@@ -163,7 +166,6 @@ func makeHeaderPartsResponsesValPubKeyChange(
 	state sm.State,
 	pubkey crypto.PubKey,
 ) (types.Header, types.BlockID, *cmtstate.ABCIResponses) {
-
 	block := makeBlock(state, state.LastBlockHeight+1)
 	abciResponses := &cmtstate.ABCIResponses{
 		BeginBlock: &abci.ResponseBeginBlock{},
@@ -187,7 +189,6 @@ func makeHeaderPartsResponsesValPowerChange(
 	state sm.State,
 	power int64,
 ) (types.Header, types.BlockID, *cmtstate.ABCIResponses) {
-
 	block := makeBlock(state, state.LastBlockHeight+1)
 	abciResponses := &cmtstate.ABCIResponses{
 		BeginBlock: &abci.ResponseBeginBlock{},
@@ -211,7 +212,6 @@ func makeHeaderPartsResponsesParams(
 	state sm.State,
 	params cmtproto.ConsensusParams,
 ) (types.Header, types.BlockID, *cmtstate.ABCIResponses) {
-
 	block := makeBlock(state, state.LastBlockHeight+1)
 	abciResponses := &cmtstate.ABCIResponses{
 		BeginBlock: &abci.ResponseBeginBlock{},
@@ -264,7 +264,10 @@ func (app *testApp) EndBlock(req abci.RequestEndBlock) abci.ResponseEndBlock {
 		ValidatorUpdates: app.ValidatorUpdates,
 		ConsensusParamUpdates: &abci.ConsensusParams{
 			Version: &cmtproto.VersionParams{
-				AppVersion: 1}}}
+				AppVersion: 1,
+			},
+		},
+	}
 }
 
 func (app *testApp) DeliverTx(req abci.RequestDeliverTx) abci.ResponseDeliverTx {

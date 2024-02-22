@@ -18,17 +18,15 @@ const (
 
 // State is the application state.
 type State struct {
-	sync.RWMutex
-	Height uint64
-	Values map[string]string
-	Hash   []byte
-
+	sync.RWMutex `json:"-"`
+	Height       uint64            `json:"height"`
+	Values       map[string]string `json:"values"`
+	Hash         []byte            `json:"hash"`
 	// private fields aren't marshaled to disk.
-	currentFile string
-	// app saves current and previous state for rollback functionality
-	previousFile    string
-	persistInterval uint64
-	initialHeight   uint64
+	currentFile     string `json:"-"`
+	previousFile    string `json:"-"`
+	persistInterval uint64 `json:"-"`
+	initialHeight   uint64 `json:"-"`
 }
 
 // NewState creates a new state.

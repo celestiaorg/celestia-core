@@ -55,7 +55,8 @@ func UnsafeDialSeeds(ctx *rpctypes.Context, seeds []string) (*ctypes.ResultDialS
 // UnsafeDialPeers dials the given peers (comma-separated id@IP:PORT),
 // optionally making them persistent.
 func UnsafeDialPeers(ctx *rpctypes.Context, peers []string, persistent, unconditional, private bool) (
-	*ctypes.ResultDialPeers, error) {
+	*ctypes.ResultDialPeers, error,
+) {
 	if len(peers) == 0 {
 		return &ctypes.ResultDialPeers{}, errors.New("no peers provided")
 	}
@@ -132,13 +133,11 @@ func getIDs(peers []string) ([]string, error) {
 	ids := make([]string, 0, len(peers))
 
 	for _, peer := range peers {
-
 		spl := strings.Split(peer, "@")
 		if len(spl) != 2 {
 			return nil, p2p.ErrNetAddressNoID{Addr: peer}
 		}
 		ids = append(ids, spl[0])
-
 	}
 	return ids, nil
 }

@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	cfg "github.com/tendermint/tendermint/config"
 	cmtcon "github.com/tendermint/tendermint/consensus"
 	"github.com/tendermint/tendermint/libs/log"
@@ -23,14 +22,14 @@ import (
 )
 
 const (
-	// event bus subscriber
+	// event bus subscriber.
 	subscriber = "replay-file"
 )
 
 //--------------------------------------------------------
 // replay messages interactively or all at once
 
-// replay the wal file
+// replay the wal file.
 func RunReplayFile(config cfg.BaseConfig, csConfig *cfg.ConsensusConfig, console bool) {
 	consensusState := newConsensusStateForReplay(config, csConfig)
 
@@ -39,9 +38,8 @@ func RunReplayFile(config cfg.BaseConfig, csConfig *cfg.ConsensusConfig, console
 	}
 }
 
-// Replay msgs in file or start the console
+// Replay msgs in file or start the console.
 func (cs *State) ReplayFile(file string, console bool) error {
-
 	if cs.IsRunning() {
 		return errors.New("cs is already running, cannot replay")
 	}
@@ -65,7 +63,7 @@ func (cs *State) ReplayFile(file string, console bool) error {
 	}()
 
 	// just open the file for reading, no need to use wal
-	fp, err := os.OpenFile(file, os.O_RDONLY, 0600)
+	fp, err := os.OpenFile(file, os.O_RDONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -123,7 +121,7 @@ func newPlayback(fileName string, fp *os.File, cs *State, genState sm.State) *pl
 	}
 }
 
-// go back count steps by resetting the state and running (pb.count - count) steps
+// go back count steps by resetting the state and running (pb.count - count) steps.
 func (pb *playback) replayReset(count int, newStepSub types.Subscription) error {
 	if err := pb.cs.Stop(); err != nil {
 		return err
@@ -138,7 +136,7 @@ func (pb *playback) replayReset(count int, newStepSub types.Subscription) error 
 	if err := pb.fp.Close(); err != nil {
 		return err
 	}
-	fp, err := os.OpenFile(pb.fileName, os.O_RDONLY, 0600)
+	fp, err := os.OpenFile(pb.fileName, os.O_RDONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -179,7 +177,7 @@ func (cs *State) startForReplay() {
 		}()*/
 }
 
-// console function for parsing input and running commands
+// console function for parsing input and running commands.
 func (pb *playback) replayConsoleLoop() int {
 	for {
 		fmt.Printf("> ")
@@ -283,7 +281,7 @@ func (pb *playback) replayConsoleLoop() int {
 
 //--------------------------------------------------------------------------------
 
-// convenience for replay mode
+// convenience for replay mode.
 func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusConfig) *State {
 	dbType := dbm.BackendType(config.DBBackend)
 	// Get BlockStore

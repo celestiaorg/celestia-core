@@ -28,9 +28,7 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-var (
-	ctx = context.Background()
-)
+var ctx = context.Background()
 
 func getHTTPClient() *rpchttp.HTTP {
 	rpcAddr := rpctest.GetConfig().RPC.ListenAddress
@@ -56,7 +54,7 @@ func getLocalClient() *rpclocal.Local {
 	return rpclocal.New(node)
 }
 
-// GetClients returns a slice of clients for table-driven tests
+// GetClients returns a slice of clients for table-driven tests.
 func GetClients() []client.Client {
 	return []client.Client{
 		getHTTPClient(),
@@ -97,7 +95,7 @@ func TestCorsEnabled(t *testing.T) {
 	assert.Equal(t, resp.Header.Get("Access-Control-Allow-Origin"), origin)
 }
 
-// Make sure status is correct (we connect properly)
+// Make sure status is correct (we connect properly).
 func TestStatus(t *testing.T) {
 	for i, c := range GetClients() {
 		moniker := rpctest.GetConfig().Moniker
@@ -107,7 +105,7 @@ func TestStatus(t *testing.T) {
 	}
 }
 
-// Make sure info is correct (we connect properly)
+// Make sure info is correct (we connect properly).
 func TestInfo(t *testing.T) {
 	for i, c := range GetClients() {
 		// status, err := c.Status()
@@ -165,7 +163,6 @@ func TestHealth(t *testing.T) {
 
 func TestGenesisAndValidators(t *testing.T) {
 	for i, c := range GetClients() {
-
 		// make sure this is the right genesis file
 		gen, err := c.Genesis(context.Background())
 		require.Nil(t, err, "%d: %+v", i, err)
@@ -203,7 +200,6 @@ func TestGenesisChunked(t *testing.T) {
 			data, err := base64.StdEncoding.DecodeString(chunk.Data)
 			require.NoError(t, err)
 			decoded = append(decoded, string(data))
-
 		}
 		doc := []byte(strings.Join(decoded, ""))
 
@@ -232,11 +228,10 @@ func TestABCIQuery(t *testing.T) {
 	}
 }
 
-// Make some app checks
+// Make some app checks.
 func TestAppCalls(t *testing.T) {
 	assert, require := assert.New(t), require.New(t)
 	for i, c := range GetClients() {
-
 		// get an offset of height to avoid racing and guessing
 		s, err := c.Status(context.Background())
 		require.NoError(err)
@@ -533,8 +528,8 @@ func TestBlockSearch(t *testing.T) {
 
 	// otherwise it is 0
 	require.Equal(t, blockCount, 0)
-
 }
+
 func TestTxSearch(t *testing.T) {
 	c := getHTTPClient()
 
@@ -556,7 +551,6 @@ func TestTxSearch(t *testing.T) {
 	anotherTxHash := types.Tx("a different tx").Hash()
 
 	for _, c := range GetClients() {
-
 		// now we query for the tx.
 		result, err := c.TxSearch(context.Background(), fmt.Sprintf("tx.hash='%v'", find.Hash), true, nil, nil, "asc")
 		require.Nil(t, err)

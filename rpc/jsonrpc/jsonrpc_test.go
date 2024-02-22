@@ -21,13 +21,12 @@ import (
 	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/libs/log"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
-
 	client "github.com/tendermint/tendermint/rpc/jsonrpc/client"
 	server "github.com/tendermint/tendermint/rpc/jsonrpc/server"
 	types "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 )
 
-// Client and Server should work over tcp or unix sockets
+// Client and Server should work over tcp or unix sockets.
 const (
 	tcpAddr = "tcp://127.0.0.1:47768"
 
@@ -61,7 +60,7 @@ type ResultEchoWithDefault struct {
 	Value int `json:"value"`
 }
 
-// Define some routes
+// Define some routes.
 var Routes = map[string]*server.RPCFunc{
 	"echo":            server.NewRPCFunc(EchoResult, "arg"),
 	"echo_ws":         server.NewWSRPCFunc(EchoWSResult, "arg"),
@@ -118,7 +117,7 @@ var colorFn = func(keyvals ...interface{}) term.FgBgColor {
 	return term.FgBgColor{}
 }
 
-// launch unix and tcp servers
+// launch unix and tcp servers.
 func setup() {
 	logger := log.NewTMLoggerWithColorFn(log.NewSyncWriter(os.Stdout), colorFn)
 

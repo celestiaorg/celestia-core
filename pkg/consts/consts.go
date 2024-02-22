@@ -37,7 +37,7 @@ var (
 	// not contain a leading version byte.
 	TxNamespaceID = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 
-	// NewBaseHashFunc change accordingly if another hash.Hash should be used as a base hasher in the NMT:
+	// NewBaseHashFunc change accordingly if another hash.Hash should be used as a base hasher in the NMT:.
 	NewBaseHashFunc = sha256.New
 
 	// DataCommitmentBlocksLimit is the limit to the number of blocks we can generate a data commitment for.

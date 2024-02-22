@@ -23,7 +23,7 @@ const (
 	// RoundStateTable is the name of the table that stores the consensus
 	// state traces. Follows this schema:
 	//
-	// | time | height | round | step |
+	// | time | height | round | step |.
 	RoundStateTable = "consensus_round_state"
 
 	// StepFieldKey is the name of the field that stores the consensus step. The
@@ -35,7 +35,7 @@ const (
 // schema for consensus state tracing. This is used to create a table in the following
 // schema:
 //
-// | time | height | round | step |
+// | time | height | round | step |.
 func WriteRoundState(client *trace.Client, height int64, round int32, step cstypes.RoundStepType) {
 	client.WritePoint(RoundStateTable, map[string]interface{}{
 		HeightFieldKey: height,
@@ -50,11 +50,11 @@ const (
 	// parts.
 	// following schema:
 	//
-	// | time | height | round | index | peer | transfer type |
+	// | time | height | round | index | peer | transfer type |.
 	BlockPartsTable = "consensus_block_parts"
 
 	// BlockPartIndexFieldKey is the name of the field that stores the block
-	// part
+	// part.
 	BlockPartIndexFieldKey = "index"
 )
 
@@ -62,7 +62,7 @@ const (
 // schema for consensus state tracing. This is used to create a table in the
 // following schema:
 //
-// | time | height | round | index | peer | transfer type |
+// | time | height | round | index | peer | transfer type |.
 func WriteBlockPart(
 	client *trace.Client,
 	height int64,
@@ -138,7 +138,7 @@ const (
 	// | time | height | round | vote_type | vote_height | vote_round
 	// | vote_block_id| vote_unix_millisecond_timestamp
 	// | vote_validator_address | vote_validator_index | peer
-	// | transfer_type |
+	// | transfer_type |.
 	VoteTable = "consensus_vote"
 
 	VoteTypeFieldKey         = "vote_type"
@@ -158,7 +158,7 @@ const (
 // | time | height | round | vote_type | vote_height | vote_round
 // | vote_block_id| vote_unix_millisecond_timestamp
 // | vote_validator_address | vote_validator_index | peer
-// | transfer_type |
+// | transfer_type |.
 func WriteVote(client *trace.Client,
 	height int64, // height of the current peer when it received/sent the vote
 	round int32, // round of the current peer when it received/sent the vote

@@ -55,8 +55,8 @@ func (cs *State) readReplayMessage(msg *cmtcon.TimedWALMessage, newStepSub types
 				if m.Height != m2.Height || m.Round != m2.Round || m.Step != m2.Step {
 					return fmt.Errorf("roundState mismatch. Got %v; Expected %v", m2, m)
 				}
-			case <-newStepSub.Cancelled():
-				return fmt.Errorf("failed to read off newStepSub.Out(). newStepSub was cancelled")
+			case <-newStepSub.Canceled():
+				return fmt.Errorf("failed to read off newStepSub.Out(). newStepSub was canceled")
 			case <-ticker:
 				return fmt.Errorf("failed to read off newStepSub.Out()")
 			}
@@ -92,7 +92,6 @@ func (cs *State) readReplayMessage(msg *cmtcon.TimedWALMessage, newStepSub types
 // Replay only those messages since the last block.  `timeoutRoutine` should
 // run concurrently to read off tickChan.
 func (cs *State) catchupReplay(csHeight int64) error {
-
 	// Set replayMode to true so we don't log signing errors.
 	cs.replayMode = true
 	defer func() { cs.replayMode = false }()
@@ -210,8 +209,8 @@ type Handshaker struct {
 }
 
 func NewHandshaker(stateStore sm.Store, state sm.State,
-	store sm.BlockStore, genDoc *types.GenesisDoc) *Handshaker {
-
+	store sm.BlockStore, genDoc *types.GenesisDoc,
+) *Handshaker {
 	return &Handshaker{
 		stateStore:   stateStore,
 		initialState: state,
@@ -240,7 +239,6 @@ func (h *Handshaker) NBlocks() int {
 
 // TODO: retry the handshake/replay if it fails ?
 func (h *Handshaker) Handshake(proxyApp proxy.AppConns) error {
-
 	// Handshake is done via ABCI Info on the query conn.
 	res, err := proxyApp.Query().InfoSync(proxy.RequestInfo)
 	if err != nil {
@@ -392,13 +390,11 @@ func (h *Handshaker) ReplayBlocks(
 		if appBlockHeight < storeBlockHeight {
 			// the app is behind, so replay blocks, but no need to go through WAL (state is already synced to store)
 			return h.replayBlocks(state, proxyApp, appBlockHeight, storeBlockHeight, false)
-
 		} else if appBlockHeight == storeBlockHeight {
 			// We're good!
 			assertAppHashEqualsOneFromState(appHash, state)
 			return appHash, nil
 		}
-
 	} else if storeBlockHeight == stateBlockHeight+1 {
 		// We saved the block in the store but haven't updated the state,
 		// so we'll need to replay a block using the WAL.
@@ -428,7 +424,6 @@ func (h *Handshaker) ReplayBlocks(
 			state, err = h.replayBlock(state, storeBlockHeight, mockApp)
 			return state.AppHash, err
 		}
-
 	}
 
 	panic(fmt.Sprintf("uncovered case! appHeight: %d, storeHeight: %d, stateHeight: %d",
@@ -440,7 +435,8 @@ func (h *Handshaker) replayBlocks(
 	proxyApp proxy.AppConns,
 	appBlockHeight,
 	storeBlockHeight int64,
-	mutateState bool) ([]byte, error) {
+	mutateState bool,
+) ([]byte, error) {
 	// App is further behind than it should be, so we need to replay blocks.
 	// We replay all blocks from appBlockHeight+1.
 	//

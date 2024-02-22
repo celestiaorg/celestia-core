@@ -1,12 +1,11 @@
 package abcicli
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync"
 	"time"
-
-	"context"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -20,7 +19,7 @@ import (
 var _ Client = (*grpcClient)(nil)
 
 // A stripped copy of the remoteClient that makes
-// synchronous calls using grpc
+// synchronous calls using grpc.
 type grpcClient struct {
 	service.BaseService
 	mustConnect bool
@@ -304,7 +303,6 @@ func (cli *grpcClient) ApplySnapshotChunkAsync(params types.RequestApplySnapshot
 func (cli *grpcClient) PrepareProposalAsync(
 	params types.RequestPrepareProposal,
 ) *ReqRes {
-
 	req := types.ToRequestPrepareProposal(params)
 	res, err := cli.client.PrepareProposal(context.Background(), req.GetPrepareProposal(), grpc.WaitForReady(true))
 	if err != nil {
@@ -323,7 +321,6 @@ func (cli *grpcClient) PrepareProposalAsync(
 func (cli *grpcClient) ProcessProposalAsync(
 	params types.RequestProcessProposal,
 ) *ReqRes {
-
 	req := types.ToRequestProcessProposal(params)
 	res, err := cli.client.ProcessProposal(context.Background(), req.GetProcessProposal(), grpc.WaitForReady(true))
 	if err != nil {
@@ -447,13 +444,15 @@ func (cli *grpcClient) OfferSnapshotSync(params types.RequestOfferSnapshot) (*ty
 }
 
 func (cli *grpcClient) LoadSnapshotChunkSync(
-	params types.RequestLoadSnapshotChunk) (*types.ResponseLoadSnapshotChunk, error) {
+	params types.RequestLoadSnapshotChunk,
+) (*types.ResponseLoadSnapshotChunk, error) {
 	reqres := cli.LoadSnapshotChunkAsync(params)
 	return cli.finishSyncCall(reqres).GetLoadSnapshotChunk(), cli.Error()
 }
 
 func (cli *grpcClient) ApplySnapshotChunkSync(
-	params types.RequestApplySnapshotChunk) (*types.ResponseApplySnapshotChunk, error) {
+	params types.RequestApplySnapshotChunk,
+) (*types.ResponseApplySnapshotChunk, error) {
 	reqres := cli.ApplySnapshotChunkAsync(params)
 	return cli.finishSyncCall(reqres).GetApplySnapshotChunk(), cli.Error()
 }
@@ -461,7 +460,6 @@ func (cli *grpcClient) ApplySnapshotChunkSync(
 func (cli *grpcClient) PrepareProposalSync(
 	params types.RequestPrepareProposal,
 ) (*types.ResponsePrepareProposal, error) {
-
 	reqres := cli.PrepareProposalAsync(params)
 	return cli.finishSyncCall(reqres).GetPrepareProposal(), cli.Error()
 }

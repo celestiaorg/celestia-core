@@ -1,36 +1,81 @@
+run:
+  tests: true
+  timeout: 10m
+  skip-files:
+    - libs/pubsub/query/query.peg.go
+
 linters:
-  enable:
-    - asciicheck
-    - bodyclose
-    - dogsled
-    - dupl
-    - errcheck
-    - exportloopref
-    - goconst
-    - gofmt
-    - goimports
+  enable-all: true
+  disable:
+    - containedctx
+    - contextcheck
+    - cyclop
+    - depguard
+    - deadcode
+    - dupword
+    - errname
+    - errorlint
+    - exhaustive
+    - exhaustivestruct
+    - exhaustruct
+    - forbidigo
+    - forcetypeassert
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - gocyclo
+    - godox
+    - goerr113
+    - golint
+    - gomnd
+    - ifshort
+    - interfacebloat
+    - interfacer
+    - inamedparam
+    - ireturn
+    - lll
+    - maintidx
+    - maligned
+    - nestif
+    - nilnil
+    - nlreturn
+    - nonamedreturns
+    - nosnakecase
+    - paralleltest
+    - perfsprint
+    - predeclared
     - revive
-    - gosec
-    - gosimple
-    - govet
-    - ineffassign
-    - misspell
-    - nakedret
-    - nolintlint
-    - prealloc
-    - staticcheck
-    - stylecheck
+    - scopelint
+    - structcheck
+    - tagliatelle
+    - testpackage
     - testifylint
-    - typecheck
-    - unconvert
-    - unused
+    - varcheck
+    - varnamelen
+    - wrapcheck
+    - wsl
 
 issues:
   exclude-rules:
     - path: _test\.go
       linters:
+        - gocritic
+        - gofmt
+        - goimport
         - gosec
-  max-same-issues: 50
+        - noctx
+        - paralleltest
+        - testpackage
+        - tparallel
+    - path: \.pb\.go
+      linters:
+        - gofmt
+        - goimports
+        - govet
+        - stylecheck
+  max-same-issues: 10000
+  max-issues-per-linter: 10000
 
 linters-settings:
   dogsled:
@@ -39,7 +84,16 @@ linters-settings:
     min-confidence: 0
   maligned:
     suggest-new: true
+  misspell:
+    locale: US
+  gci:
+    sections:
+      - standard # Standard section: captures all standard packages.
+      - default # Default section: contains all imports that could not be matched to another section type.
+      - blank # blank imports
+      - dot # dot imports
+      - prefix(github.com/tendermint/tendermint, github.com/cometbft/cometbft-db)
+    custom-order: true
 
-run:
-  skip-files:
-    - libs/pubsub/query/query.peg.go
+
+

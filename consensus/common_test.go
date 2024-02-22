@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	abcicli "github.com/tendermint/tendermint/abci/client"
 	"github.com/tendermint/tendermint/abci/example/counter"
 	"github.com/tendermint/tendermint/abci/example/kvstore"
@@ -49,7 +48,7 @@ const (
 // test.
 type cleanupFunc func()
 
-// genesis, chain_id, priv_val
+// genesis, chain_id, priv_val.
 var (
 	config                *cfg.Config // NOTE: must be reset for each _test.go file
 	consensusReplayConfig *cfg.Config
@@ -124,7 +123,7 @@ func (vs *validatorStub) signVote(
 	return vote, err
 }
 
-// Sign vote for type/hash/header
+// Sign vote for type/hash/header.
 func signVote(vs *validatorStub, voteType cmtproto.SignedMsgType, hash []byte, header types.PartSetHeader) *types.Vote {
 	v, err := vs.signVote(voteType, hash, header)
 	if err != nil {
@@ -762,7 +761,7 @@ func randConsensusNet(nValidators int, testName string, tickerFunc func() Timeou
 	}
 }
 
-// nPeers = nValidators + nNotValidator
+// nPeers = nValidators + nNotValidator.
 func randConsensusNetWithPeers(
 	nValidators,
 	nPeers int,
@@ -875,7 +874,7 @@ func newMockTickerFunc(onlyOnce bool) func() TimeoutTicker {
 }
 
 // mock ticker only fires on RoundStepNewHeight
-// and only once if onlyOnce=true
+// and only once if onlyOnce=true.
 type mockTicker struct {
 	c chan timeoutInfo
 

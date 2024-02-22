@@ -7,7 +7,6 @@ import (
 	"time"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	"github.com/tendermint/tendermint/libs/log"
 	cmtsync "github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/light"
@@ -191,7 +190,7 @@ func (s *lightClientStateProvider) State(ctx context.Context, height uint64) (sm
 	return state, nil
 }
 
-// rpcClient sets up a new RPC client
+// rpcClient sets up a new RPC client.
 func rpcClient(server string) (*rpchttp.HTTP, error) {
 	if !strings.Contains(server, "://") {
 		server = "http://" + server

@@ -379,7 +379,6 @@ func (n Node) Validate(testnet Testnet) error {
 	case "", "v0", "v1", "v2":
 	default:
 		return fmt.Errorf("invalid fast sync setting %q", n.FastSync)
-
 	}
 	switch n.Mempool {
 	case "", config.MempoolV0, config.MempoolV1, config.MempoolV2:
@@ -554,7 +553,7 @@ func (n Node) Client() (*rpchttp.HTTP, error) {
 	return rpchttp.New(fmt.Sprintf("http://127.0.0.1:%v", n.ProxyPort), "/websocket")
 }
 
-// Stateless returns true if the node is either a seed node or a light node
+// Stateless returns true if the node is either a seed node or a light node.
 func (n Node) Stateless() bool {
 	return n.Mode == ModeLight || n.Mode == ModeSeed
 }

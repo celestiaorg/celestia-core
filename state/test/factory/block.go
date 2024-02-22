@@ -3,10 +3,9 @@ package factory
 import (
 	"time"
 
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/test/factory"
-
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -55,8 +54,8 @@ func MakeData(txs []types.Tx) types.Data {
 }
 
 func makeBlockAndPartSet(state sm.State, lastBlock *types.Block, lastBlockMeta *types.BlockMeta,
-	privVal types.PrivValidator, height int64) (*types.Block, *types.PartSet) {
-
+	privVal types.PrivValidator, height int64,
+) (*types.Block, *types.PartSet) {
 	lastCommit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
 	if height > 1 {
 		vote, _ := MakeVote(

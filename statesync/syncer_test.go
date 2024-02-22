@@ -28,7 +28,7 @@ import (
 
 const testAppVersion = 9
 
-// Sets up a basic syncer that can be used to test OfferSnapshot requests
+// Sets up a basic syncer that can be used to test OfferSnapshot requests.
 func setupOfferSyncer(t *testing.T) (*syncer, *proxymocks.AppConnSnapshot) {
 	connQuery := &proxymocks.AppConnQuery{}
 	connSnapshot := &proxymocks.AppConnSnapshot{}
@@ -40,7 +40,7 @@ func setupOfferSyncer(t *testing.T) (*syncer, *proxymocks.AppConnSnapshot) {
 	return syncer, connSnapshot
 }
 
-// Sets up a simple peer mock with an ID
+// Sets up a simple peer mock with an ID.
 func simplePeer(id string) *p2pmocks.Peer {
 	peer := &p2pmocks.Peer{}
 	peer.On("ID").Return(p2p.ID(id))
@@ -447,7 +447,8 @@ func TestSyncer_applyChunks_Results(t *testing.T) {
 				connSnapshot.On("ApplySnapshotChunkSync", abci.RequestApplySnapshotChunk{
 					Index: 0, Chunk: body,
 				}).Once().Return(&abci.ResponseApplySnapshotChunk{
-					Result: abci.ResponseApplySnapshotChunk_ACCEPT}, nil)
+					Result: abci.ResponseApplySnapshotChunk_ACCEPT,
+				}, nil)
 			}
 
 			err = syncer.applyChunks(chunks)

@@ -181,7 +181,6 @@ func TestPeerAddBlock(t *testing.T) {
 }
 
 func TestPeerOnErrFuncCalledDueToExpiration(t *testing.T) {
-
 	params := &BpPeerParams{timeout: 10 * time.Millisecond}
 	var (
 		numErrFuncCalls int        // number of calls to the onErr function

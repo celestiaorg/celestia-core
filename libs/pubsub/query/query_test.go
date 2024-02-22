@@ -26,7 +26,6 @@ func TestBigNumbers(t *testing.T) {
 		matches  bool
 		matchErr bool
 	}{
-
 		{"account.balance <= " + bigInt, map[string][]string{"account.balance": {bigInt}}, false, true, false},
 		{"account.balance <= " + bigInt, map[string][]string{"account.balance": {bigIntAsFloat}}, false, true, false},
 		{"account.balance <= " + doubleBigInt, map[string][]string{"account.balance": {bigInt}}, false, true, false},
@@ -164,40 +163,50 @@ func TestMatches(t *testing.T) {
 			false,
 			false,
 		},
-		{"slash EXISTS",
+		{
+			"slash EXISTS",
 			map[string][]string{"slash.reason": {"missing_signature"}, "slash.power": {"6000"}},
 			false,
 			true,
 			false,
 		},
-		{"sl EXISTS",
+		{
+			"sl EXISTS",
 			map[string][]string{"slash.reason": {"missing_signature"}, "slash.power": {"6000"}},
 			false,
 			true,
 			false,
 		},
-		{"slash EXISTS",
-			map[string][]string{"transfer.recipient": {"cosmos1gu6y2a0ffteesyeyeesk23082c6998xyzmt9mz"},
-				"transfer.sender": {"cosmos1crje20aj4gxdtyct7z3knxqry2jqt2fuaey6u5"}},
+		{
+			"slash EXISTS",
+			map[string][]string{
+				"transfer.recipient": {"cosmos1gu6y2a0ffteesyeyeesk23082c6998xyzmt9mz"},
+				"transfer.sender":    {"cosmos1crje20aj4gxdtyct7z3knxqry2jqt2fuaey6u5"},
+			},
 			false,
 			false,
 			false,
 		},
-		{"slash.reason EXISTS AND slash.power > 1000",
+		{
+			"slash.reason EXISTS AND slash.power > 1000",
 			map[string][]string{"slash.reason": {"missing_signature"}, "slash.power": {"6000"}},
 			false,
 			true,
 			false,
 		},
-		{"slash.reason EXISTS AND slash.power > 1000",
+		{
+			"slash.reason EXISTS AND slash.power > 1000",
 			map[string][]string{"slash.reason": {"missing_signature"}, "slash.power": {"500"}},
 			false,
 			false,
 			false,
 		},
-		{"slash.reason EXISTS",
-			map[string][]string{"transfer.recipient": {"cosmos1gu6y2a0ffteesyeyeesk23082c6998xyzmt9mz"},
-				"transfer.sender": {"cosmos1crje20aj4gxdtyct7z3knxqry2jqt2fuaey6u5"}},
+		{
+			"slash.reason EXISTS",
+			map[string][]string{
+				"transfer.recipient": {"cosmos1gu6y2a0ffteesyeyeesk23082c6998xyzmt9mz"},
+				"transfer.sender":    {"cosmos1crje20aj4gxdtyct7z3knxqry2jqt2fuaey6u5"},
+			},
 			false,
 			false,
 			false,
@@ -254,7 +263,6 @@ func TestConditions(t *testing.T) {
 			},
 		},
 		{
-
 			s: "tx.gas > 7.5 AND tx.gas < 9",
 			conditions: []query.Condition{
 				{CompositeKey: "tx.gas", Op: query.OpGreater, Operand: 7.5},
@@ -262,7 +270,6 @@ func TestConditions(t *testing.T) {
 			},
 		},
 		{
-
 			s: "tx.gas > " + bigInt.String() + " AND tx.gas < 9",
 			conditions: []query.Condition{
 				{CompositeKey: "tx.gas", Op: query.OpGreater, Operand: bigInt},

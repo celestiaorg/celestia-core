@@ -770,10 +770,10 @@ func countOldAndNewAddrsInSelection(addrs []*p2p.NetAddress, book *addrBook) (nO
 	return
 }
 
-// Analyse the layout of the selection specified by 'addrs'
+// Analyze the layout of the selection specified by 'addrs'
 // Returns:
 // - seqLens - the lengths of the sequences of addresses of same type
-// - seqTypes - the types of sequences in selection
+// - seqTypes - the types of sequences in selection.
 func analyseSelectionLayout(book *addrBook, addrs []*p2p.NetAddress) (seqLens, seqTypes []int, err error) {
 	// address types are: 0 - nil, 1 - new, 2 - old
 	var (

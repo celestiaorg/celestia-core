@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -133,7 +132,6 @@ func TestBeginBlockValidators(t *testing.T) {
 		for i, v := range app.CommitVotes {
 			if ctr < len(tc.expectedAbsentValidators) &&
 				tc.expectedAbsentValidators[ctr] == i {
-
 				assert.False(t, v.SignedLastBlock)
 				ctr++
 			} else {
@@ -318,7 +316,8 @@ func TestProcessProposalRejectedMetric(t *testing.T) {
 }
 
 func makeBlockExec(t *testing.T, testName string, block *types.Block, stateDB db.DB,
-	metrics *sm.Metrics) (blockExec *sm.BlockExecutor) {
+	metrics *sm.Metrics,
+) (blockExec *sm.BlockExecutor) {
 	app := &testApp{}
 	clientCreator := proxy.NewLocalClientCreator(app)
 	proxyApp := proxy.NewAppConns(clientCreator)
@@ -554,15 +553,15 @@ func TestEndBlockValidatorUpdates(t *testing.T) {
 			assert.Equal(t, pubkey, event.ValidatorUpdates[0].PubKey)
 			assert.EqualValues(t, 10, event.ValidatorUpdates[0].VotingPower)
 		}
-	case <-updatesSub.Cancelled():
-		t.Fatalf("updatesSub was cancelled (reason: %v)", updatesSub.Err())
+	case <-updatesSub.Canceled():
+		t.Fatalf("updatesSub was canceled (reason: %v)", updatesSub.Err())
 	case <-time.After(1 * time.Second):
 		t.Fatal("Did not receive EventValidatorSetUpdates within 1 sec.")
 	}
 }
 
 // TestEndBlockValidatorUpdatesResultingInEmptySet checks that processing validator updates that
-// would result in empty set causes no panic, an error is raised and NextValidators is not updated
+// would result in empty set causes no panic, an error is raised and NextValidators is not updated.
 func TestEndBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 	app := &testApp{}
 	cc := proxy.NewLocalClientCreator(app)
@@ -658,8 +657,8 @@ func TestFireEventSignedBlockEvent(t *testing.T) {
 		if valHash := signedBlock.ValidatorSet.Hash(); !bytes.Equal(signedBlock.Header.ValidatorsHash, valHash) {
 			t.Fatalf("expected validator hashes to match")
 		}
-	case <-sub.Cancelled():
-		t.Fatalf("subscription was unexpectedly cancelled")
+	case <-sub.Canceled():
+		t.Fatalf("subscription was unexpectedly canceled")
 	case <-time.After(5 * time.Second):
 		t.Fatalf("test timed out waiting for signed block")
 	}

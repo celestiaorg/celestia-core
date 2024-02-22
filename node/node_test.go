@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	"github.com/tendermint/tendermint/abci/example/kvstore"
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/crypto/ed25519"
@@ -52,8 +51,8 @@ func TestNodeStartStop(t *testing.T) {
 	require.NoError(t, err)
 	select {
 	case <-blocksSub.Out():
-	case <-blocksSub.Cancelled():
-		t.Fatal("blocksSub was cancelled")
+	case <-blocksSub.Canceled():
+		t.Fatal("blocksSub was canceled")
 	case <-time.After(10 * time.Second):
 		t.Fatal("timed out waiting for the node to produce a block")
 	}
@@ -112,7 +111,7 @@ func TestNodeDelayedStart(t *testing.T) {
 	defer n.Stop() //nolint:errcheck // ignore for tests
 
 	startTime := cmttime.Now()
-	assert.Equal(t, true, startTime.After(n.GenesisDoc().GenesisTime))
+	assert.True(t, startTime.After(n.GenesisDoc().GenesisTime))
 }
 
 func TestNodeSetAppVersion(t *testing.T) {
@@ -168,7 +167,7 @@ func TestNodeSetPrivValTCP(t *testing.T) {
 	assert.IsType(t, &privval.RetrySignerClient{}, n.PrivValidator())
 }
 
-// address without a protocol must result in error
+// address without a protocol must result in error.
 func TestPrivValidatorListenAddrNoProtocol(t *testing.T) {
 	addrNoPrefix := testFreeAddr(t)
 

@@ -40,8 +40,8 @@ type BpPeer struct {
 
 // NewBpPeer creates a new peer.
 func NewBpPeer(peerID p2p.ID, base int64, height int64,
-	onErr func(err error, peerID p2p.ID), params *BpPeerParams) *BpPeer {
-
+	onErr func(err error, peerID p2p.ID), params *BpPeerParams,
+) *BpPeer {
 	if params == nil {
 		params = BpPeerDefaultParams()
 	}
@@ -126,7 +126,7 @@ func (peer *BpPeer) AddBlock(block *types.Block, recvSize int) error {
 	return nil
 }
 
-// RemoveBlock removes the block of given height
+// RemoveBlock removes the block of given height.
 func (peer *BpPeer) RemoveBlock(height int64) {
 	delete(peer.blocks, height)
 }

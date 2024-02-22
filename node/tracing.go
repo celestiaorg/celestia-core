@@ -3,13 +3,12 @@ package node
 import (
 	otelpyroscope "github.com/grafana/otel-profiling-go"
 	pyroscope "github.com/grafana/pyroscope-go"
-	"github.com/tendermint/tendermint/config"
-
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
-
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+
+	"github.com/tendermint/tendermint/config"
 )
 
 // setupPyroscope sets up pyroscope profiler and optionally tracing.

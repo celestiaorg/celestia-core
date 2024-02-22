@@ -50,7 +50,7 @@ type EvidencePool interface {
 }
 
 // EmptyEvidencePool is an empty implementation of EvidencePool, useful for testing. It also complies
-// to the consensus evidence pool interface
+// to the consensus evidence pool interface.
 type EmptyEvidencePool struct{}
 
 func (EmptyEvidencePool) PendingEvidence(maxBytes int64) (ev []types.Evidence, size int64) {

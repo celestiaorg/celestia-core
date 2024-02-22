@@ -14,14 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tendermint/tendermint/abci/example/kvstore"
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	p2pmock "github.com/tendermint/tendermint/p2p/mock"
-
 	cfg "github.com/tendermint/tendermint/config"
-
+	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/p2p"
+	p2pmock "github.com/tendermint/tendermint/p2p/mock"
 	"github.com/tendermint/tendermint/p2p/mocks"
 	protomem "github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"github.com/tendermint/tendermint/proxy"
@@ -395,7 +393,6 @@ func genPeers(n int) []*mocks.Peer {
 		peers[i] = genPeer()
 	}
 	return peers
-
 }
 
 func genPeer() *mocks.Peer {

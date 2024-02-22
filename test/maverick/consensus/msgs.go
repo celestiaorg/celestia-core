@@ -66,7 +66,7 @@ func WALToProto(msg cmtcon.WALMessage) (*cmtcons.WALMessage, error) {
 	return &pb, nil
 }
 
-// WALFromProto takes a proto wal message and return a consensus walMessage and error
+// WALFromProto takes a proto wal message and return a consensus walMessage and error.
 func WALFromProto(msg *cmtcons.WALMessage) (cmtcon.WALMessage, error) {
 	if msg == nil {
 		return nil, errors.New("nil WAL message")

@@ -13,16 +13,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	abcicli "github.com/tendermint/tendermint/abci/client"
 	abci "github.com/tendermint/tendermint/abci/types"
+	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/evidence"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/service"
 	cmtsync "github.com/tendermint/tendermint/libs/sync"
 	mempl "github.com/tendermint/tendermint/mempool"
-
-	cfg "github.com/tendermint/tendermint/config"
 	mempoolv2 "github.com/tendermint/tendermint/mempool/cat"
 	mempoolv0 "github.com/tendermint/tendermint/mempool/v0"
 	mempoolv1 "github.com/tendermint/tendermint/mempool/v1"
@@ -37,7 +35,7 @@ import (
 //----------------------------------------------
 // byzantine failures
 
-// Byzantine node sends two different prevotes (nil and blockID) to the same validator
+// Byzantine node sends two different prevotes (nil and blockID) to the same validator.
 func TestByzantinePrevoteEquivocation(t *testing.T) {
 	const nValidators = 4
 	const byzantineNode = 0
@@ -58,7 +56,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		state, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 		thisConfig := ResetConfig(fmt.Sprintf("%s_%d", testName, i))
 		defer os.RemoveAll(thisConfig.RootDir)
-		ensureDir(path.Dir(thisConfig.Consensus.WalFile()), 0700) // dir for wal
+		ensureDir(path.Dir(thisConfig.Consensus.WalFile()), 0o700) // dir for wal
 		app := appFunc()
 		vals := types.TM2PB.ValidatorUpdates(state.Validators)
 		app.InitChain(abci.RequestInitChain{Validators: vals})
@@ -317,7 +315,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 // byzantine validator sends conflicting proposals into A and B,
 // and prevotes/precommits on both of them.
 // B sees a commit, A doesn't.
-// Heal partition and ensure A sees the commit
+// Heal partition and ensure A sees the commit.
 func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 	N := 4
 	logger := consensusLogger().With("test", "byzantine")
@@ -346,7 +344,6 @@ func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 	blocksSubs := make([]types.Subscription, N)
 	reactors := make([]p2p.Reactor, N)
 	for i := 0; i < N; i++ {
-
 		// enable txs so we can create different proposals
 		assertMempool(css[i].txNotifier).EnableTxsAvailable()
 		// make first val byzantine
@@ -600,12 +597,15 @@ func (br *ByzantineReactor) AddPeer(peer p2p.Peer) {
 		br.reactor.sendNewRoundStepMessage(peer)
 	}
 }
+
 func (br *ByzantineReactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	br.reactor.RemovePeer(peer, reason)
 }
+
 func (br *ByzantineReactor) ReceiveEnvelope(e p2p.Envelope) {
 	br.reactor.ReceiveEnvelope(e)
 }
+
 func (br *ByzantineReactor) Receive(chID byte, p p2p.Peer, m []byte) {
 	br.reactor.Receive(chID, p, m)
 }

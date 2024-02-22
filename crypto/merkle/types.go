@@ -26,7 +26,7 @@ type Tree interface {
 
 //-----------------------------------------------------------------------
 
-// Uvarint length prefixed byteslice
+// Uvarint length prefixed byteslice.
 func encodeByteSlice(w io.Writer, bz []byte) (err error) {
 	var buf [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(buf[:], uint64(len(bz)))

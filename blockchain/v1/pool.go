@@ -69,7 +69,6 @@ func (pool *BlockPool) updateMaxPeerHeight() {
 // UpdatePeer adds a new peer or updates an existing peer with a new base and height.
 // If a peer is short it is not added.
 func (pool *BlockPool) UpdatePeer(peerID p2p.ID, base int64, height int64) error {
-
 	peer := pool.peers[peerID]
 
 	if peer == nil {
@@ -266,7 +265,7 @@ type BlockData struct {
 }
 
 // BlockAndPeerAtHeight retrieves the block and delivery peer at specified height.
-// Returns errMissingBlock if a block was not found
+// Returns errMissingBlock if a block was not found.
 func (pool *BlockPool) BlockAndPeerAtHeight(height int64) (bData *BlockData, err error) {
 	peerID := pool.blocks[height]
 	peer := pool.peers[peerID]
@@ -280,7 +279,6 @@ func (pool *BlockPool) BlockAndPeerAtHeight(height int64) (bData *BlockData, err
 	}
 
 	return &BlockData{peer: peer, block: block}, nil
-
 }
 
 // FirstTwoBlocksAndPeers returns the blocks and the delivery peers at pool's height H and H+1.
@@ -346,7 +344,7 @@ func (pool *BlockPool) RemovePeerAtCurrentHeights(err error) {
 	}
 }
 
-// Cleanup performs pool and peer cleanup
+// Cleanup performs pool and peer cleanup.
 func (pool *BlockPool) Cleanup() {
 	for id, peer := range pool.peers {
 		peer.Cleanup()
@@ -359,7 +357,7 @@ func (pool *BlockPool) Cleanup() {
 	pool.MaxPeerHeight = 0
 }
 
-// NumPeers returns the number of peers in the pool
+// NumPeers returns the number of peers in the pool.
 func (pool *BlockPool) NumPeers() int {
 	return len(pool.peers)
 }

@@ -96,7 +96,7 @@ func (c *LRUTxCache) Has(txKey types.TxKey) bool {
 }
 
 // SeenTxSet records transactions that have been
-// seen by other peers but not yet by us
+// seen by other peers but not yet by us.
 type SeenTxSet struct {
 	mtx tmsync.Mutex
 	set map[types.TxKey]timestampedPeerSet

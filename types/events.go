@@ -93,12 +93,12 @@ type EventDataNewEvidence struct {
 	Height int64 `json:"height"`
 }
 
-// All txs fire EventDataTx
+// All txs fire EventDataTx.
 type EventDataTx struct {
 	abci.TxResult
 }
 
-// NOTE: This goes into the replay WAL
+// NOTE: This goes into the replay WAL.
 type EventDataRoundState struct {
 	Height int64  `json:"height"`
 	Round  int32  `json:"round"`
@@ -142,10 +142,10 @@ const (
 	// EventTypeKey is a reserved composite key for event name.
 	EventTypeKey = "tm.event"
 	// TxHashKey is a reserved key, used to specify transaction's hash.
-	// see EventBus#PublishEventTx
+	// see EventBus#PublishEventTx.
 	TxHashKey = "tx.hash"
 	// TxHeightKey is a reserved key, used to specify transaction block's height.
-	// see EventBus#PublishEventTx
+	// see EventBus#PublishEventTx.
 	TxHeightKey = "tx.height"
 
 	// BlockHeightKey is a reserved key used for indexing BeginBlock and Endblock
@@ -154,7 +154,7 @@ const (
 
 	// MatchEventsKey is a reserved key used to indicate to the indexer that the
 	// conditions in the query have to have occurred both on the same height
-	// as well as in the same event
+	// as well as in the same event.
 	MatchEventKey = "match.events"
 )
 
@@ -186,7 +186,7 @@ func QueryForEvent(eventType string) cmtpubsub.Query {
 	return cmtquery.MustParse(fmt.Sprintf("%s='%s'", EventTypeKey, eventType))
 }
 
-// BlockEventPublisher publishes all block related events
+// BlockEventPublisher publishes all block related events.
 type BlockEventPublisher interface {
 	PublishEventNewBlock(block EventDataNewBlock) error
 	PublishEventNewSignedBlock(event EventDataSignedBlock) error

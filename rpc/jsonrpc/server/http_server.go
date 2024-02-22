@@ -230,7 +230,7 @@ func RecoverAndLogHandler(handler http.Handler, logger log.Logger) http.Handler 
 	})
 }
 
-// Remember the status for logging
+// Remember the status for logging.
 type responseWriterWrapper struct {
 	Status int
 	http.ResponseWriter
@@ -241,7 +241,7 @@ func (w *responseWriterWrapper) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
 }
 
-// implements http.Hijacker
+// implements http.Hijacker.
 func (w *responseWriterWrapper) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return w.ResponseWriter.(http.Hijacker).Hijack()
 }

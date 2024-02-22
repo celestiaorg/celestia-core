@@ -52,7 +52,7 @@ events whose attribute values are numeric.
 - Floating point to floating point comparison leads to a loss of precision for very big floating point numbers
 (e.g., `10000000000000000000.0` is treated the same as `10000000000000000000.6`) 
 - When floating points do get converted to integers, they are always rounded down.
-This has been done to preserve the behaviour present before introducing the support for BigInts in the query parameters. 
+This has been done to preserve the behavior present before introducing the support for BigInts in the query parameters. 
 
 ## ValidatorSetUpdates
 

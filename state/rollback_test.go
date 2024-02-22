@@ -4,9 +4,9 @@ import (
 	"crypto/rand"
 	"testing"
 
-	dbm "github.com/cometbft/cometbft-db"
 	"github.com/stretchr/testify/require"
 
+	dbm "github.com/cometbft/cometbft-db"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	cmtstate "github.com/tendermint/tendermint/proto/tendermint/state"

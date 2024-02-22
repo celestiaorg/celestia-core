@@ -16,7 +16,7 @@ import (
 // byzantine failures
 
 // one byz val sends a precommit for a random block at each height
-// Ensure a testnet makes blocks
+// Ensure a testnet makes blocks.
 func TestReactorInvalidPrecommit(t *testing.T) {
 	N := 4
 	css, cleanup := randConsensusNet(N, "consensus_reactor_test", newMockTickerFunc(true), newCounter)
@@ -26,7 +26,6 @@ func TestReactorInvalidPrecommit(t *testing.T) {
 		ticker := NewTimeoutTicker()
 		ticker.SetLogger(css[i].Logger)
 		css[i].SetTimeoutTicker(ticker)
-
 	}
 
 	reactors, blocksSubs, eventBuses := startConsensusNet(t, css, N)
@@ -81,7 +80,8 @@ func invalidDoPrevoteFunc(t *testing.T, height int64, round int32, cs *State, sw
 			Type:             cmtproto.PrecommitType,
 			BlockID: types.BlockID{
 				Hash:          blockHash,
-				PartSetHeader: types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(32)}},
+				PartSetHeader: types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(32)},
+			},
 		}
 		p := precommit.ToProto()
 		err = cs.privValidator.SignVote(cs.state.ChainID, p)

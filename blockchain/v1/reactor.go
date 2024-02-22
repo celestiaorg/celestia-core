@@ -6,7 +6,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	"github.com/tendermint/tendermint/behaviour"
+	"github.com/tendermint/tendermint/behavior"
 	bc "github.com/tendermint/tendermint/blockchain"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/p2p"
@@ -17,12 +17,12 @@ import (
 )
 
 const (
-	// BlockchainChannel is a channel for blocks and status updates (`BlockStore` height)
+	// BlockchainChannel is a channel for blocks and status updates (`BlockStore` height).
 	BlockchainChannel = byte(0x40)
 	trySyncIntervalMS = 10
 	trySendIntervalMS = 10
 
-	// ask for best height every 10s
+	// ask for best height every 10s.
 	statusUpdateIntervalSeconds = 10
 )
 
@@ -67,13 +67,13 @@ type BlockchainReactor struct {
 	// the switch.
 	eventsFromFSMCh chan bcFsmMessage
 
-	swReporter *behaviour.SwitchReporter
+	swReporter *behavior.SwitchReporter
 }
 
 // NewBlockchainReactor returns new reactor instance.
 func NewBlockchainReactor(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockStore,
-	fastSync bool) *BlockchainReactor {
-
+	fastSync bool,
+) *BlockchainReactor {
 	if state.LastBlockHeight != store.Height() {
 		panic(fmt.Sprintf("state (%v) and store (%v) height mismatch", state.LastBlockHeight,
 			store.Height()))
@@ -101,7 +101,7 @@ func NewBlockchainReactor(state sm.State, blockExec *sm.BlockExecutor, store *st
 	fsm := NewFSM(startHeight, bcR)
 	bcR.fsm = fsm
 	bcR.BaseReactor = *p2p.NewBaseReactor("BlockchainReactor", bcR)
-	// bcR.swReporter = behaviour.NewSwitchReporter(bcR.BaseReactor.Switch)
+	// bcR.swReporter = behavior.NewSwitchReporter(bcR.BaseReactor.Switch)
 
 	return bcR
 }
@@ -115,7 +115,7 @@ type bcReactorMessage struct {
 type bFsmEvent uint
 
 const (
-	// message type events
+	// message type events.
 	peerErrorEv = iota + 1
 	syncFinishedEv
 )
@@ -125,7 +125,7 @@ type bFsmEventData struct {
 	err    error
 }
 
-// bcFsmMessage is used by the FSM to send messages to the reactor
+// bcFsmMessage is used by the FSM to send messages to the reactor.
 type bcFsmMessage struct {
 	event bFsmEvent
 	data  bFsmEventData
@@ -139,7 +139,7 @@ func (bcR *BlockchainReactor) SetLogger(l log.Logger) {
 
 // OnStart implements service.Service.
 func (bcR *BlockchainReactor) OnStart() error {
-	bcR.swReporter = behaviour.NewSwitchReporter(bcR.BaseReactor.Switch)
+	bcR.swReporter = behavior.NewSwitchReporter(bcR.BaseReactor.Switch)
 	if bcR.fastSync {
 		go bcR.poolRoutine()
 	}
@@ -164,7 +164,7 @@ func (bcR *BlockchainReactor) SwitchToFastSync(state sm.State) error {
 	return nil
 }
 
-// GetChannels implements Reactor
+// GetChannels implements Reactor.
 func (bcR *BlockchainReactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
@@ -197,8 +197,8 @@ func (bcR *BlockchainReactor) AddPeer(peer p2p.Peer) {
 // If the block doesn't exist a bcNoBlockResponseMessage is sent.
 // If all nodes are honest, no node should be requesting for a block that doesn't exist.
 func (bcR *BlockchainReactor) sendBlockToPeer(msg *bcproto.BlockRequest,
-	src p2p.Peer) (queued bool) {
-
+	src p2p.Peer,
+) (queued bool) {
 	block := bcR.store.LoadBlock(msg.Height)
 	if block != nil {
 		pbbi, err := block.ToProto()
@@ -246,7 +246,7 @@ func (bcR *BlockchainReactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 func (bcR *BlockchainReactor) ReceiveEnvelope(e p2p.Envelope) {
 	if err := bc.ValidateMsg(e.Message); err != nil {
 		bcR.Logger.Error("peer sent us invalid msg", "peer", e.Src, "msg", e.Message, "err", err)
-		_ = bcR.swReporter.Report(behaviour.BadMessage(e.Src.ID(), err.Error()))
+		_ = bcR.swReporter.Report(behavior.BadMessage(e.Src.ID(), err.Error()))
 		return
 	}
 
@@ -328,9 +328,8 @@ func (bcR *BlockchainReactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte)
 	})
 }
 
-// processBlocksRoutine processes blocks until signlaed to stop over the stopProcessing channel
+// processBlocksRoutine processes blocks until signlaed to stop over the stopProcessing channel.
 func (bcR *BlockchainReactor) processBlocksRoutine(stopProcessing chan struct{}) {
-
 	processReceivedBlockTicker := time.NewTicker(trySyncIntervalMS * time.Millisecond)
 	doProcessBlockCh := make(chan struct{}, 1)
 
@@ -382,7 +381,6 @@ ForLoop:
 
 // poolRoutine receives and handles messages from the Receive() routine and from the FSM.
 func (bcR *BlockchainReactor) poolRoutine() {
-
 	bcR.fsm.Start()
 
 	sendBlockRequestTicker := time.NewTicker(trySendIntervalMS * time.Millisecond)
@@ -394,7 +392,6 @@ func (bcR *BlockchainReactor) poolRoutine() {
 ForLoop:
 	for {
 		select {
-
 		case <-sendBlockRequestTicker.C:
 			if !bcR.fsm.NeedsBlocks() {
 				continue
@@ -402,7 +399,9 @@ ForLoop:
 			_ = bcR.fsm.Handle(&bcReactorMessage{
 				event: makeRequestsEv,
 				data: bReactorEventData{
-					maxNumRequests: maxNumRequests}})
+					maxNumRequests: maxNumRequests,
+				},
+			})
 
 		case <-statusUpdateTicker.C:
 			// Ask for status updates.
@@ -454,12 +453,11 @@ ForLoop:
 func (bcR *BlockchainReactor) reportPeerErrorToSwitch(err error, peerID p2p.ID) {
 	peer := bcR.Switch.Peers().Get(peerID)
 	if peer != nil {
-		_ = bcR.swReporter.Report(behaviour.BadMessage(peerID, err.Error()))
+		_ = bcR.swReporter.Report(behavior.BadMessage(peerID, err.Error()))
 	}
 }
 
 func (bcR *BlockchainReactor) processBlock() error {
-
 	first, second, err := bcR.fsm.FirstTwoBlocks()
 	if err != nil {
 		// We need both to sync the first block.
@@ -519,7 +517,7 @@ func (bcR *BlockchainReactor) sendBlockRequest(peerID p2p.ID, height int64) erro
 	return nil
 }
 
-// Implements bcRNotifier
+// Implements bcRNotifier.
 func (bcR *BlockchainReactor) switchToConsensus() {
 	conR, ok := bcR.Switch.Reactor("CONSENSUS").(consensusReactor)
 	if ok {
@@ -549,7 +547,7 @@ func (bcR *BlockchainReactor) sendPeerError(err error, peerID p2p.ID) {
 	bcR.eventsFromFSMCh <- msgData
 }
 
-// Implements bcRNotifier
+// Implements bcRNotifier.
 func (bcR *BlockchainReactor) resetStateTimer(name string, timer **time.Timer, timeout time.Duration) {
 	if timer == nil {
 		panic("nil timer pointer parameter")

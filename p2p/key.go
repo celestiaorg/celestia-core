@@ -12,7 +12,7 @@ import (
 	cmtos "github.com/tendermint/tendermint/libs/os"
 )
 
-// ID is a hex-encoded crypto.Address
+// ID is a hex-encoded crypto.Address.
 type ID string
 
 // IDByteLength is the length of a crypto.Address. Currently only 20.
@@ -34,7 +34,7 @@ func (nodeKey *NodeKey) ID() ID {
 	return PubKeyToID(nodeKey.PubKey())
 }
 
-// PubKey returns the peer's PubKey
+// PubKey returns the peer's PubKey.
 func (nodeKey *NodeKey) PubKey() crypto.PubKey {
 	return nodeKey.PrivKey.PubKey()
 }

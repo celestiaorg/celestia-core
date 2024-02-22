@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	dbm "github.com/cometbft/cometbft-db"
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	dbm "github.com/cometbft/cometbft-db"
 	"github.com/tendermint/tendermint/abci/example/kvstore"
 	abci "github.com/tendermint/tendermint/abci/types"
 	cfg "github.com/tendermint/tendermint/config"
@@ -99,8 +99,8 @@ func startNewStateAndWaitForBlock(t *testing.T, consensusReplayConfig *cfg.Confi
 	require.NoError(t, err)
 	select {
 	case <-newBlockSub.Out():
-	case <-newBlockSub.Cancelled():
-		t.Fatal("newBlockSub was cancelled")
+	case <-newBlockSub.Canceled():
+		t.Fatal("newBlockSub was canceled")
 	case <-time.After(120 * time.Second):
 		t.Fatal("Timed out waiting for new block (see trace above)")
 	}
@@ -300,7 +300,7 @@ func (w *crashingWAL) Start() error { return w.next.Start() }
 func (w *crashingWAL) Stop() error  { return w.next.Stop() }
 func (w *crashingWAL) Wait()        { w.next.Wait() }
 
-// ------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------.
 type testSim struct {
 	GenesisState sm.State
 	Config       *cfg.Config
@@ -326,10 +326,10 @@ var (
 // 0 - all synced up
 // 1 - saved block but app and state are behind
 // 2 - save block and committed but state is behind
-// 3 - save block and committed with truncated block store and state behind
+// 3 - save block and committed with truncated block store and state behind.
 var modes = []uint{0, 1, 2, 3}
 
-// This is actually not a test, it's for storing validator change tx data for testHandshakeReplay
+// This is actually not a test, it's for storing validator change tx data for testHandshakeReplay.
 func TestSimulateValidatorsChange(t *testing.T) {
 	nPeers := 7
 	nVals := 4
@@ -552,7 +552,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	}
 }
 
-// Sync from scratch
+// Sync from scratch.
 func TestHandshakeReplayAll(t *testing.T) {
 	for _, m := range modes {
 		testHandshakeReplay(t, config, 0, m, false)
@@ -562,7 +562,7 @@ func TestHandshakeReplayAll(t *testing.T) {
 	}
 }
 
-// Sync many, not from scratch
+// Sync many, not from scratch.
 func TestHandshakeReplaySome(t *testing.T) {
 	for _, m := range modes {
 		testHandshakeReplay(t, config, 2, m, false)
@@ -572,7 +572,7 @@ func TestHandshakeReplaySome(t *testing.T) {
 	}
 }
 
-// Sync from lagging by one
+// Sync from lagging by one.
 func TestHandshakeReplayOne(t *testing.T) {
 	for _, m := range modes {
 		testHandshakeReplay(t, config, numBlocks-1, m, false)
@@ -582,7 +582,7 @@ func TestHandshakeReplayOne(t *testing.T) {
 	}
 }
 
-// Sync from caught up
+// Sync from caught up.
 func TestHandshakeReplayNone(t *testing.T) {
 	for _, m := range modes {
 		testHandshakeReplay(t, config, numBlocks, m, false)
@@ -592,7 +592,7 @@ func TestHandshakeReplayNone(t *testing.T) {
 	}
 }
 
-// Test mockProxyApp should not panic when app return ABCIResponses with some empty ResponseDeliverTx
+// Test mockProxyApp should not panic when app return ABCIResponses with some empty ResponseDeliverTx.
 func TestMockProxyApp(t *testing.T) {
 	sim.CleanupFunc() // clean the test env created in TestSimulateValidatorsChange
 	logger := log.TestingLogger()
@@ -659,7 +659,7 @@ func tempWALWithData(data []byte) string {
 }
 
 // Make some blocks. Start a fresh app and apply nBlocks blocks.
-// Then restart the app and sync it up with the remaining blocks
+// Then restart the app and sync it up with the remaining blocks.
 func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uint, testValidatorsChange bool) {
 	var chain []*types.Block
 	var commits []*types.Commit
@@ -701,7 +701,6 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 		pubKey, err := privVal.GetPubKey()
 		require.NoError(t, err)
 		stateDB, genesisState, store = stateAndStore(config, pubKey, kvstore.ProtocolVersion)
-
 	}
 	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
 		DiscardABCIResponses: false,
@@ -1168,7 +1167,7 @@ func readPieceFromWAL(msg *TimedWALMessage) interface{} {
 	return nil
 }
 
-// fresh state and mock store
+// fresh state and mock store.
 func stateAndStore(
 	config *cfg.Config,
 	pubKey crypto.PubKey,
@@ -1293,7 +1292,7 @@ func TestHandshakeUpdatesValidators(t *testing.T) {
 
 const customVersion = "v1.0.0"
 
-// returns the vals on InitChain
+// returns the vals on InitChain.
 type initChainApp struct {
 	abci.BaseApplication
 	vals []abci.ValidatorUpdate

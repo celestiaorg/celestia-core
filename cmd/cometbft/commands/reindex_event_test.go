@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 	cmtcfg "github.com/tendermint/tendermint/config"
 	protocmtstate "github.com/tendermint/tendermint/proto/tendermint/state"
@@ -124,7 +123,6 @@ func TestLoadBlockStore(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, bs)
 	require.NotNil(t, ss)
-
 }
 
 func TestReIndexEvent(t *testing.T) {

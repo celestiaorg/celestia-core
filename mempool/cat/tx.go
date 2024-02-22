@@ -8,7 +8,7 @@ import (
 
 // wrappedTx defines a wrapper around a raw transaction with additional metadata
 // that is used for indexing. With the exception of the map of peers who have
-// seen this transaction, this struct should never be modified
+// seen this transaction, this struct should never be modified.
 type wrappedTx struct {
 	// these fields are immutable
 	tx        types.Tx    // the original transaction data

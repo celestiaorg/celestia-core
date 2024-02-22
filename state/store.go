@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 
-	dbm "github.com/cometbft/cometbft-db"
 	"github.com/gogo/protobuf/proto"
 
+	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/tendermint/tendermint/abci/types"
 	cmtmath "github.com/tendermint/tendermint/libs/math"
 	cmtos "github.com/tendermint/tendermint/libs/os"
@@ -19,7 +19,7 @@ const (
 	// persist validators every valSetCheckpointInterval blocks to avoid
 	// LoadValidators taking too much time.
 	// https://github.com/tendermint/tendermint/pull/3438
-	// 100000 results in ~ 100ms to get 100 validators (see BenchmarkLoadValidators)
+	// 100000 results in ~ 100ms to get 100 validators (see BenchmarkLoadValidators).
 	valSetCheckpointInterval = 100000
 )
 
@@ -39,16 +39,14 @@ func calcABCIResponsesKey(height int64) []byte {
 
 //----------------------
 
-var (
-	lastABCIResponseKey = []byte("lastABCIResponseKey")
-)
+var lastABCIResponseKey = []byte("lastABCIResponseKey")
 
 //go:generate ../scripts/mockery_generate.sh Store
 
 // Store defines the state store interface
 //
 // It is used to retrieve current state and save and load ABCI responses,
-// validators and consensus parameters
+// validators and consensus parameters.
 type Store interface {
 	// LoadFromDBOrGenesisFile loads the most recent state.
 	// If the chain is new it will use the genesis file from the provided genesis file path as the current state.
@@ -78,7 +76,7 @@ type Store interface {
 	Close() error
 }
 
-// dbStore wraps a db (github.com/cometbft/cometbft-db)
+// dbStore wraps a db (github.com/cometbft/cometbft-db).
 type dbStore struct {
 	db dbm.DB
 
@@ -86,7 +84,6 @@ type dbStore struct {
 }
 
 type StoreOptions struct {
-
 	// DiscardABCIResponses determines whether or not the store
 	// retains all ABCIResponses. If DiscardABCiResponses is enabled,
 	// the store will maintain only the response object from the latest
@@ -369,7 +366,7 @@ func (store dbStore) PruneStates(from int64, to int64) error {
 // ABCIResponsesResultsHash returns the root hash of a Merkle tree of
 // ResponseDeliverTx responses (see ABCIResults.Hash)
 //
-// See merkle.SimpleHashFromByteSlices
+// See merkle.SimpleHashFromByteSlices.
 func ABCIResponsesResultsHash(ar *cmtstate.ABCIResponses) []byte {
 	return types.NewResults(ar.DeliverTxs).Hash()
 }
@@ -387,7 +384,6 @@ func (store dbStore) LoadABCIResponses(height int64) (*cmtstate.ABCIResponses, e
 		return nil, err
 	}
 	if len(buf) == 0 {
-
 		return nil, ErrNoABCIResponsesForHeight{height}
 	}
 

@@ -332,7 +332,7 @@ func mempoolLogger() log.Logger {
 	})
 }
 
-// connect N mempool reactors through N switches
+// connect N mempool reactors through N switches.
 func makeAndConnectReactors(config *cfg.Config, n int) []*Reactor {
 	reactors := make([]*Reactor, n)
 	logger := mempoolLogger()
@@ -349,7 +349,6 @@ func makeAndConnectReactors(config *cfg.Config, n int) []*Reactor {
 	p2p.MakeConnectedSwitches(config.P2P, n, func(i int, s *p2p.Switch) *p2p.Switch {
 		s.AddReactor("MEMPOOL", reactors[i])
 		return s
-
 	}, p2p.Connect2Switches)
 	return reactors
 }
@@ -392,7 +391,7 @@ func waitForTxsOnReactor(t *testing.T, txs types.Txs, reactor *Reactor, reactorI
 	}
 }
 
-// ensure no txs on reactor after some timeout
+// ensure no txs on reactor after some timeout.
 func ensureNoTxs(t *testing.T, reactor *Reactor, timeout time.Duration) {
 	time.Sleep(timeout) // wait for the txs in all mempools
 	assert.Zero(t, reactor.mempool.Size())

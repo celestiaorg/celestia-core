@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	_ "net/http/pprof" //nolint: gosec // securely exposed on separate, optional port
 	"strconv"
 	"strings"
 	"time"
@@ -16,8 +15,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 
-	dbm "github.com/cometbft/cometbft-db"
+	_ "net/http/pprof" //nolint: gosec // securely exposed on separate, optional port
 
+	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/tendermint/tendermint/abci/types"
 	bcv0 "github.com/tendermint/tendermint/blockchain/v0"
 	bcv1 "github.com/tendermint/tendermint/blockchain/v1"
@@ -61,7 +61,7 @@ import (
 //------------------------------------------------------------------------------
 
 // ParseMisbehaviors is a util function that converts a comma separated string into
-// a map of misbehaviors to be executed by the maverick node
+// a map of misbehaviors to be executed by the maverick node.
 func ParseMisbehaviors(str string) (map[int64]cs.Misbehavior, error) {
 	// check if string is empty in which case we run a normal node
 	misbehaviors := make(map[int64]cs.Misbehavior)
@@ -1443,7 +1443,7 @@ func LoadStateFromDBOrGenesisDocProvider(
 	return state, genDoc, nil
 }
 
-// panics if failed to unmarshal bytes
+// panics if failed to unmarshal bytes.
 func loadGenesisDoc(db dbm.DB) (*types.GenesisDoc, error) {
 	b, err := db.Get(genesisDocKey)
 	if err != nil {
@@ -1460,7 +1460,7 @@ func loadGenesisDoc(db dbm.DB) (*types.GenesisDoc, error) {
 	return genDoc, nil
 }
 
-// panics if failed to marshal the given genesis document
+// panics if failed to marshal the given genesis document.
 func saveGenesisDoc(db dbm.DB, genDoc *types.GenesisDoc) {
 	b, err := cmtjson.Marshal(genDoc)
 	if err != nil {

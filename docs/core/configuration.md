@@ -180,7 +180,7 @@ experimental_websocket_write_buffer_size = 200
 #
 # Enabling this experimental parameter will cause the WebSocket connection to
 # be closed instead if it cannot read fast enough, allowing for greater
-# predictability in subscription behaviour.
+# predictability in subscription behavior.
 experimental_close_on_slow_client = false
 
 # How long to wait for a tx to be committed during /broadcast_tx_commit.

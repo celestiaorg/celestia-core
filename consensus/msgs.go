@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/gogo/protobuf/proto"
+
 	cstypes "github.com/tendermint/tendermint/consensus/types"
 	"github.com/tendermint/tendermint/libs/bits"
 	cmtmath "github.com/tendermint/tendermint/libs/math"
@@ -120,7 +121,7 @@ func MsgToProto(msg Message) (*cmtcons.Message, error) {
 	}
 }
 
-// MsgFromProto takes a consensus proto message and returns the native go type
+// MsgFromProto takes a consensus proto message and returns the native go type.
 func MsgFromProto(p *cmtcons.Message) (Message, error) {
 	if p == nil {
 		return nil, errors.New("consensus: nil message")
@@ -257,7 +258,7 @@ func MustEncode(msg Message) []byte {
 	return enc
 }
 
-// WALToProto takes a WAL message and return a proto walMessage and error
+// WALToProto takes a WAL message and return a proto walMessage and error.
 func WALToProto(msg WALMessage) (*cmtcons.WALMessage, error) {
 	var pb cmtcons.WALMessage
 
@@ -311,7 +312,7 @@ func WALToProto(msg WALMessage) (*cmtcons.WALMessage, error) {
 	return &pb, nil
 }
 
-// WALFromProto takes a proto wal message and return a consensus walMessage and error
+// WALFromProto takes a proto wal message and return a consensus walMessage and error.
 func WALFromProto(msg *cmtcons.WALMessage) (WALMessage, error) {
 	if msg == nil {
 		return nil, errors.New("nil WAL message")

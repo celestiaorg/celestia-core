@@ -10,16 +10,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
+	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/pubsub/query"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
-	"github.com/tendermint/tendermint/types"
-
-	abci "github.com/tendermint/tendermint/abci/types"
 	cmtstate "github.com/tendermint/tendermint/proto/tendermint/state"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 	sm "github.com/tendermint/tendermint/state"
+	"github.com/tendermint/tendermint/types"
 )
 
 func TestBlockchainInfo(t *testing.T) {
@@ -30,7 +29,6 @@ func TestBlockchainInfo(t *testing.T) {
 		resultLength int64
 		wantErr      bool
 	}{
-
 		// min > max
 		{0, 0, 0, 0, 10, 0, true},  // min set to 1
 		{0, 1, 0, 0, 10, 0, true},  // max set to height (0)

@@ -24,13 +24,13 @@ import (
 // For some reason the empty node used in tests has a time of
 // 2018-10-10 08:20:13.695936996 +0000 UTC
 // this is because the test genesis time is set here
-// so in order to validate evidence we need evidence to be the same time
+// so in order to validate evidence we need evidence to be the same time.
 var defaultTestTime = time.Date(2018, 10, 10, 8, 20, 13, 695936996, time.UTC)
 
 func newEvidence(t *testing.T, val *privval.FilePV,
 	vote *types.Vote, vote2 *types.Vote,
-	chainID string) *types.DuplicateVoteEvidence {
-
+	chainID string,
+) *types.DuplicateVoteEvidence {
 	var err error
 
 	v := vote.ToProto()

@@ -8,6 +8,7 @@ import (
 
 	"github.com/fortytw2/leaktest"
 	"github.com/stretchr/testify/require"
+
 	"github.com/tendermint/tendermint/types"
 )
 

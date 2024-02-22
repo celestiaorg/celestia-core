@@ -483,7 +483,7 @@ func benchmarkEventBus(numClients int, randQueries bool, randEvents bool, b *tes
 			for {
 				select {
 				case <-sub.Out():
-				case <-sub.Cancelled():
+				case <-sub.Canceled():
 					return
 				}
 			}
@@ -518,7 +518,8 @@ var events = []string{
 	EventLock,
 	EventRelock,
 	EventTimeoutWait,
-	EventVote}
+	EventVote,
+}
 
 var queries = []cmtpubsub.Query{
 	EventQueryNewBlock,
@@ -532,7 +533,8 @@ var queries = []cmtpubsub.Query{
 	EventQueryLock,
 	EventQueryRelock,
 	EventQueryTimeoutWait,
-	EventQueryVote}
+	EventQueryVote,
+}
 
 func randEvent(r *rand.Rand) string {
 	return events[r.Intn(len(events))]

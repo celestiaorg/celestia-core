@@ -27,7 +27,7 @@ var ABCIPubKeyTypesToNames = map[string]string{
 //-------------------------------------------------------
 
 // TM2PB is used for converting CometBFT ABCI to protobuf ABCI.
-// UNSTABLE
+// UNSTABLE.
 var TM2PB = tm2pb{}
 
 type tm2pb struct{}
@@ -76,7 +76,7 @@ func (tm2pb) PartSetHeader(header PartSetHeader) cmtproto.PartSetHeader {
 	}
 }
 
-// XXX: panics on unknown pubkey type
+// XXX: panics on unknown pubkey type.
 func (tm2pb) ValidatorUpdate(val *Validator) abci.ValidatorUpdate {
 	pk, err := cryptoenc.PubKeyToProto(val.PubKey)
 	if err != nil {
@@ -88,7 +88,7 @@ func (tm2pb) ValidatorUpdate(val *Validator) abci.ValidatorUpdate {
 	}
 }
 
-// XXX: panics on nil or unknown pubkey type
+// XXX: panics on nil or unknown pubkey type.
 func (tm2pb) ValidatorUpdates(vals *ValidatorSet) []abci.ValidatorUpdate {
 	validators := make([]abci.ValidatorUpdate, vals.Size())
 	for i, val := range vals.Validators {
@@ -109,7 +109,7 @@ func (tm2pb) ConsensusParams(params *cmtproto.ConsensusParams) *abci.ConsensusPa
 	}
 }
 
-// XXX: panics on nil or unknown pubkey type
+// XXX: panics on nil or unknown pubkey type.
 func (tm2pb) NewValidatorUpdate(pubkey crypto.PubKey, power int64) abci.ValidatorUpdate {
 	pubkeyABCI, err := cryptoenc.PubKeyToProto(pubkey)
 	if err != nil {
@@ -124,7 +124,7 @@ func (tm2pb) NewValidatorUpdate(pubkey crypto.PubKey, power int64) abci.Validato
 //----------------------------------------------------------------------------
 
 // PB2TM is used for converting protobuf ABCI to CometBFT ABCI.
-// UNSTABLE
+// UNSTABLE.
 var PB2TM = pb2tm{}
 
 type pb2tm struct{}

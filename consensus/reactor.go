@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+
 	cstypes "github.com/tendermint/tendermint/consensus/types"
 	"github.com/tendermint/tendermint/libs/bits"
 	cmtevents "github.com/tendermint/tendermint/libs/events"
@@ -108,7 +109,7 @@ func (conR *Reactor) OnStop() {
 }
 
 // SwitchToConsensus switches from fast_sync mode to consensus mode.
-// It resets the state, turns off fast_sync, and starts the consensus state-machine
+// It resets the state, turns off fast_sync, and starts the consensus state-machine.
 func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 	conR.Logger.Info("SwitchToConsensus")
 
@@ -147,7 +148,7 @@ conR:
 	}
 }
 
-// GetChannels implements Reactor
+// GetChannels implements Reactor.
 func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	// TODO optimize
 	return []*p2p.ChannelDescriptor{
@@ -234,7 +235,7 @@ func (conR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 // Messages affect either a peer state or the consensus state.
 // Peer state updates can happen in parallel, but processing of
 // proposals, block parts, and votes are ordered by the receiveRoutine
-// NOTE: blocks on consensus state for proposals, block parts, and votes
+// NOTE: blocks on consensus state for proposals, block parts, and votes.
 func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	if !conR.IsRunning() {
 		conR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID)
@@ -463,7 +464,6 @@ func (conR *Reactor) subscribeToBroadcastEvents() {
 		}); err != nil {
 		conR.Logger.Error("Error adding listener for events", "err", err)
 	}
-
 }
 
 func (conR *Reactor) unsubscribeFromBroadcastEvents() {
@@ -679,8 +679,8 @@ OUTER_LOOP:
 }
 
 func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundState,
-	prs *cstypes.PeerRoundState, ps *PeerState, peer p2p.Peer) {
-
+	prs *cstypes.PeerRoundState, ps *PeerState, peer p2p.Peer,
+) {
 	if index, ok := prs.ProposalBlockParts.Not().PickRandom(); ok {
 		// Ensure that the peer's PartSetHeader is correct
 		blockMeta := conR.conS.blockStore.LoadBlockMeta(prs.Height)
@@ -734,7 +734,7 @@ func (conR *Reactor) gossipVotesRoutine(peer p2p.Peer, ps *PeerState) {
 	logger := conR.Logger.With("peer", peer)
 
 	// Simple hack to throttle logs upon sleep.
-	var sleeping = 0
+	sleeping := 0
 
 OUTER_LOOP:
 	for {
@@ -817,13 +817,13 @@ func (conR *Reactor) pickSendVoteAndTrace(votes types.VoteSetReader, rs *cstypes
 	}
 	return false
 }
+
 func (conR *Reactor) gossipVotesForHeight(
 	logger log.Logger,
 	rs *cstypes.RoundState,
 	prs *cstypes.PeerRoundState,
 	ps *PeerState,
 ) bool {
-
 	// If there are lastCommits to send...
 	if prs.Step == cstypes.RoundStepNewHeight {
 		if conR.pickSendVoteAndTrace(rs.LastCommit, rs, ps) {
@@ -879,7 +879,6 @@ func (conR *Reactor) gossipVotesForHeight(
 // NOTE: `queryMaj23Routine` has a simple crude design since it only comes
 // into play for liveness when there's a signature DDoS attack happening.
 func (conR *Reactor) queryMaj23Routine(peer p2p.Peer, ps *PeerState) {
-
 OUTER_LOOP:
 	for {
 		// Manage disconnects from self or peer.
@@ -893,7 +892,6 @@ OUTER_LOOP:
 			prs := ps.GetRoundState()
 			if rs.Height == prs.Height {
 				if maj23, ok := rs.Votes.Prevotes(prs.Round).TwoThirdsMajority(); ok {
-
 					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
@@ -934,7 +932,6 @@ OUTER_LOOP:
 			prs := ps.GetRoundState()
 			if rs.Height == prs.Height && prs.ProposalPOLRound >= 0 {
 				if maj23, ok := rs.Votes.Prevotes(prs.ProposalPOLRound).TwoThirdsMajority(); ok {
-
 					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
@@ -1026,7 +1023,7 @@ func (conR *Reactor) String() string {
 	return "ConsensusReactor" // conR.StringIndented("")
 }
 
-// StringIndented returns an indented string representation of the Reactor
+// StringIndented returns an indented string representation of the Reactor.
 func (conR *Reactor) StringIndented(indent string) string {
 	s := "ConsensusReactor{\n"
 	s += indent + "  " + conR.conS.StringIndented(indent+"  ") + "\n"
@@ -1041,7 +1038,7 @@ func (conR *Reactor) StringIndented(indent string) string {
 	return s
 }
 
-// ReactorMetrics sets the metrics
+// ReactorMetrics sets the metrics.
 func ReactorMetrics(metrics *Metrics) ReactorOption {
 	return func(conR *Reactor) { conR.Metrics = metrics }
 }
@@ -1081,7 +1078,7 @@ func (pss peerStateStats) String() string {
 		pss.Votes, pss.BlockParts)
 }
 
-// NewPeerState returns a new PeerState for the given Peer
+// NewPeerState returns a new PeerState for the given Peer.
 func NewPeerState(peer p2p.Peer) *PeerState {
 	return &PeerState{
 		peer:   peer,
@@ -1123,7 +1120,7 @@ func (ps *PeerState) MarshalJSON() ([]byte, error) {
 }
 
 // GetHeight returns an atomic snapshot of the PeerRoundState's height
-// used by the mempool to ensure peers are caught up before broadcasting new txs
+// used by the mempool to ensure peers are caught up before broadcasting new txs.
 func (ps *PeerState) GetHeight() int64 {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
@@ -1211,8 +1208,7 @@ func (ps *PeerState) PickVoteToSend(votes types.VoteSetReader) (vote *types.Vote
 		return nil, false
 	}
 
-	height, round, votesType, size :=
-		votes.GetHeight(), votes.GetRound(), cmtproto.SignedMsgType(votes.Type()), votes.Size()
+	height, round, votesType, size := votes.GetHeight(), votes.GetRound(), cmtproto.SignedMsgType(votes.Type()), votes.Size()
 
 	// Lazily set data using 'votes'.
 	if votes.IsCommit() {
@@ -1374,7 +1370,7 @@ func (ps *PeerState) BlockPartsSent() int {
 	return ps.Stats.BlockParts
 }
 
-// SetHasVote sets the given vote as known by the peer
+// SetHasVote sets the given vote as known by the peer.
 func (ps *PeerState) SetHasVote(vote *types.Vote) {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
@@ -1518,12 +1514,12 @@ func (ps *PeerState) ApplyVoteSetBitsMessage(msg *VoteSetBitsMessage, ourVotes *
 	}
 }
 
-// String returns a string representation of the PeerState
+// String returns a string representation of the PeerState.
 func (ps *PeerState) String() string {
 	return ps.StringIndented("")
 }
 
-// StringIndented returns a string representation of the PeerState
+// StringIndented returns a string representation of the PeerState.
 func (ps *PeerState) StringIndented(indent string) string {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
@@ -1541,7 +1537,7 @@ func (ps *PeerState) StringIndented(indent string) string {
 //-----------------------------------------------------------------------------
 // Messages
 
-// Message is a message that can be sent and received on the Reactor
+// Message is a message that can be sent and received on the Reactor.
 type Message interface {
 	ValidateBasic() error
 }
@@ -1561,7 +1557,7 @@ func init() {
 //-------------------------------------
 
 // NewRoundStepMessage is sent for every step taken in the ConsensusState.
-// For every height/round/step transition
+// For every height/round/step transition.
 type NewRoundStepMessage struct {
 	Height                int64
 	Round                 int32

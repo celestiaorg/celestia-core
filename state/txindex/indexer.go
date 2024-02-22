@@ -52,5 +52,5 @@ func (b *Batch) Size() int {
 	return len(b.Ops)
 }
 
-// ErrorEmptyHash indicates empty hash
+// ErrorEmptyHash indicates empty hash.
 var ErrorEmptyHash = errors.New("transaction hash cannot be empty")

@@ -23,7 +23,7 @@ type EventBusSubscriber interface {
 
 type Subscription interface {
 	Out() <-chan cmtpubsub.Message
-	Cancelled() <-chan struct{}
+	Canceled() <-chan struct{}
 	Err() error
 }
 
@@ -231,7 +231,7 @@ func (b *EventBus) PublishEventValidatorSetUpdates(data EventDataValidatorSetUpd
 	return b.Publish(EventValidatorSetUpdates, data)
 }
 
-// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------.
 type NopEventBus struct{}
 
 func (NopEventBus) Subscribe(

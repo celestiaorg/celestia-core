@@ -21,21 +21,21 @@ import (
 )
 
 const (
-	// see README
+	// see README.
 	defaultPerPage = 30
 	maxPerPage     = 100
 
 	// SubscribeTimeout is the maximum time we wait to subscribe for an event.
-	// must be less than the server's write timeout (see rpcserver.DefaultConfig)
+	// must be less than the server's write timeout (see rpcserver.DefaultConfig).
 	SubscribeTimeout = 5 * time.Second
 
 	// genesisChunkSize is the maximum size, in bytes, of each
-	// chunk in the genesis structure for the chunked API
+	// chunk in the genesis structure for the chunked API.
 	genesisChunkSize = 16 * 1024 * 1024 // 16
 )
 
 var (
-	// set by Node
+	// set by Node.
 	mut       = &sync.Mutex{}
 	globalEnv *Environment
 )

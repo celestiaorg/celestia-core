@@ -27,7 +27,7 @@ func clearConfig(t *testing.T, dir string) {
 	config = cfg.DefaultConfig()
 }
 
-// prepare new rootCmd
+// prepare new rootCmd.
 func testRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:               RootCmd.Use,
@@ -65,7 +65,7 @@ func TestRootHome(t *testing.T) {
 	}{
 		{nil, nil, root},
 		{[]string{"--home", newRoot}, nil, newRoot},
-		{nil, map[string]string{"TMHOME": newRoot}, newRoot}, //XXX: Deprecated.
+		{nil, map[string]string{"TMHOME": newRoot}, newRoot}, // XXX: Deprecated.
 		{nil, map[string]string{"CMTHOME": newRoot}, newRoot},
 	}
 

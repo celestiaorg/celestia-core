@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	dbm "github.com/cometbft/cometbft-db"
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/behaviour"
+	"github.com/tendermint/tendermint/behavior"
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/service"
@@ -129,7 +129,7 @@ type testReactorParams struct {
 
 func newTestReactor(p testReactorParams) *BlockchainReactor {
 	store, state, _ := newReactorStore(p.genDoc, p.privVals, p.startHeight)
-	reporter := behaviour.NewMockReporter()
+	reporter := behavior.NewMockReporter()
 
 	var appl blockApplier
 
@@ -288,7 +288,7 @@ func newTestReactor(p testReactorParams) *BlockchainReactor {
 // 		t.Run(tt.name, func(t *testing.T) {
 // 			reactor := newTestReactor(params)
 // 			reactor.Start()
-// 			reactor.reporter = behaviour.NewMockReporter()
+// 			reactor.reporter = behavior.NewMockReporter()
 // 			mockSwitch := &mockSwitchIo{switchedToConsensus: false}
 // 			reactor.io = mockSwitch
 // 			// time for go routines to start
@@ -390,7 +390,8 @@ func TestReactorHelperMode(t *testing.T) {
 					reactor.ReceiveEnvelope(p2p.Envelope{
 						ChannelID: channelID,
 						Src:       mockPeer{id: p2p.ID(step.peer)},
-						Message:   ev})
+						Message:   ev,
+					})
 					assert.Equal(t, old+1, mockSwitch.numStatusResponse)
 				case *bcproto.BlockRequest:
 					if ev.Height > params.startHeight {
@@ -398,14 +399,16 @@ func TestReactorHelperMode(t *testing.T) {
 						reactor.ReceiveEnvelope(p2p.Envelope{
 							ChannelID: channelID,
 							Src:       mockPeer{id: p2p.ID(step.peer)},
-							Message:   ev})
+							Message:   ev,
+						})
 						assert.Equal(t, old+1, mockSwitch.numNoBlockResponse)
 					} else {
 						old := mockSwitch.numBlockResponse
 						reactor.ReceiveEnvelope(p2p.Envelope{
 							ChannelID: channelID,
 							Src:       mockPeer{id: p2p.ID(step.peer)},
-							Message:   ev})
+							Message:   ev,
+						})
 						assert.Equal(t, old+1, mockSwitch.numBlockResponse)
 					}
 				}
@@ -508,7 +511,7 @@ func randGenesisDoc(chainID string, numValidators int, randPower bool, minPower 
 }
 
 // Why are we importing the entire blockExecutor dependency graph here
-// when we have the facilities to
+// when we have the facilities to.
 func newReactorStore(
 	genDoc *types.GenesisDoc,
 	privVals []types.PrivValidator,

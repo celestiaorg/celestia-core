@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"testing"
 
-	db "github.com/cometbft/cometbft-db"
 	"github.com/stretchr/testify/require"
 
+	db "github.com/cometbft/cometbft-db"
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/pubsub/query"
 	blockidxkv "github.com/tendermint/tendermint/state/indexer/block/kv"
@@ -360,7 +360,6 @@ func TestBlockIndexerMulti(t *testing.T) {
 }
 
 func TestBigInt(t *testing.T) {
-
 	bigInt := "10000000000000000000"
 	store := db.NewPrefixDB(db.NewMemDB(), []byte("block_events"))
 	indexer := blockidxkv.New(store)
@@ -420,7 +419,6 @@ func TestBigInt(t *testing.T) {
 		q       *query.Query
 		results []int64
 	}{
-
 		"query return all events from a height - exact": {
 			q:       query.MustParse("block.height = 1"),
 			results: []int64{1},

@@ -46,7 +46,8 @@ func newMempoolWithAppMock(cc proxy.ClientCreator, client abciclient.Client) (*C
 
 func newMempoolWithAppAndConfigMock(cc proxy.ClientCreator,
 	cfg *config.Config,
-	client abciclient.Client) (*CListMempool, cleanupFunc) {
+	client abciclient.Client,
+) (*CListMempool, cleanupFunc) {
 	appConnMem := client
 	appConnMem.SetLogger(log.TestingLogger().With("module", "abci-client", "connection", "mempool"))
 	err := appConnMem.Start()
@@ -410,7 +411,6 @@ func TestSerialReap(t *testing.T) {
 	deliverTxsRange := func(start, end int) {
 		// Deliver some txs.
 		for i := start; i < end; i++ {
-
 			// This will succeed
 			txBytes := make([]byte, 8)
 			binary.BigEndian.PutUint64(txBytes, uint64(i))
@@ -639,7 +639,6 @@ func TestMempoolTxsBytes(t *testing.T) {
 	assert.EqualValues(t, 9, mp.SizeBytes())
 	assert.NoError(t, mp.RemoveTxByKey(types.Tx([]byte{0x06}).Key()))
 	assert.EqualValues(t, 8, mp.SizeBytes())
-
 }
 
 func TestMempoolNoCacheOverflow(t *testing.T) {
@@ -656,7 +655,7 @@ func TestMempoolNoCacheOverflow(t *testing.T) {
 	defer cleanup()
 
 	// add tx0
-	var tx0 = types.Tx([]byte{0x01})
+	tx0 := types.Tx([]byte{0x01})
 	err := mp.CheckTx(tx0, nil, mempool.TxInfo{})
 	require.NoError(t, err)
 	err = mp.FlushAppConn()
@@ -763,7 +762,7 @@ func TestRemoveBlobTx(t *testing.T) {
 	assert.EqualValues(t, 0, mp.SizeBytes())
 }
 
-// caller must close server
+// caller must close server.
 func newRemoteApp(t *testing.T, addr string, app abci.Application) (abciclient.Client, service.Service) {
 	clientCreator, err := abciclient.NewClient(addr, "socket", true)
 	require.NoError(t, err)

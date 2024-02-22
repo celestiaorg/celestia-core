@@ -106,7 +106,7 @@ func (p *Proposal) String() string {
 // for backwards-compatibility with the Amino encoding, due to e.g. hardware
 // devices that rely on this encoding.
 //
-// See CanonicalizeProposal
+// See CanonicalizeProposal.
 func ProposalSignBytes(chainID string, p *cmtproto.Proposal) []byte {
 	pb := CanonicalizeProposal(chainID, p)
 	bz, err := protoio.MarshalDelimited(&pb)
@@ -117,7 +117,7 @@ func ProposalSignBytes(chainID string, p *cmtproto.Proposal) []byte {
 	return bz
 }
 
-// ToProto converts Proposal to protobuf
+// ToProto converts Proposal to protobuf.
 func (p *Proposal) ToProto() *cmtproto.Proposal {
 	if p == nil {
 		return &cmtproto.Proposal{}

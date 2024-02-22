@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	db "github.com/cometbft/cometbft-db"
-
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/pubsub/query"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
@@ -265,7 +264,6 @@ func TestTxSearch(t *testing.T) {
 }
 
 func TestTxSearchEventMatch(t *testing.T) {
-
 	indexer := NewTxIndex(db.NewMemDB())
 
 	txResult := txResultWithEvents([]abci.Event{
@@ -365,6 +363,7 @@ func TestTxSearchEventMatch(t *testing.T) {
 		})
 	}
 }
+
 func TestTxSearchWithCancelation(t *testing.T) {
 	indexer := NewTxIndex(db.NewMemDB())
 

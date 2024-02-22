@@ -32,7 +32,7 @@ import (
 	cmttime "github.com/tendermint/tendermint/types/time"
 )
 
-// Consensus sentinel errors
+// Consensus sentinel errors.
 var (
 	ErrInvalidProposalSignature   = errors.New("error invalid proposal signature")
 	ErrInvalidProposalPOLRound    = errors.New("error invalid proposal POL round")
@@ -44,13 +44,13 @@ var (
 
 var msgQueueSize = 1000
 
-// msgs from the reactor which may update the state
+// msgs from the reactor which may update the state.
 type msgInfo struct {
 	Msg    Message `json:"msg"`
 	PeerID p2p.ID  `json:"peer_key"`
 }
 
-// internally generated messages which may update the state
+// internally generated messages which may update the state.
 type timeoutInfo struct {
 	Duration time.Duration         `json:"duration"`
 	Height   int64                 `json:"height"`
@@ -62,12 +62,12 @@ func (ti *timeoutInfo) String() string {
 	return fmt.Sprintf("%v ; %d/%d %v", ti.Duration, ti.Height, ti.Round, ti.Step)
 }
 
-// interface to the mempool
+// interface to the mempool.
 type txNotifier interface {
 	TxsAvailable() <-chan struct{}
 }
 
-// interface to the evidence pool
+// interface to the evidence pool.
 type evidencePool interface {
 	// reports conflicting votes to the evidence pool to be processed into evidence
 	ReportConflictingVotes(voteA, voteB *types.Vote)
@@ -257,7 +257,7 @@ func (cs *State) GetRoundStateJSON() ([]byte, error) {
 	return cmtjson.Marshal(cs.RoundState)
 }
 
-// GetRoundStateSimpleJSON returns a json of RoundStateSimple
+// GetRoundStateSimpleJSON returns a json of RoundStateSimple.
 func (cs *State) GetRoundStateSimpleJSON() ([]byte, error) {
 	cs.mtx.RLock()
 	defer cs.mtx.RUnlock()
@@ -398,7 +398,7 @@ func (cs *State) OnStart() error {
 }
 
 // timeoutRoutine: receive requests for timeouts on tickChan and fire timeouts on tockChan
-// receiveRoutine: serializes processing of proposoals, block parts, votes; coordinates state transitions
+// receiveRoutine: serializes processing of proposoals, block parts, votes; coordinates state transitions.
 func (cs *State) startRoutines(maxSteps int) {
 	err := cs.timeoutTicker.Start()
 	if err != nil {
@@ -435,7 +435,7 @@ func (cs *State) OnStop() {
 
 // Wait waits for the the main routine to return.
 // NOTE: be sure to Stop() the event switch and drain
-// any event channels or this may deadlock
+// any event channels or this may deadlock.
 func (cs *State) Wait() {
 	<-cs.done
 }
@@ -551,12 +551,12 @@ func (cs *State) scheduleRound0(rs *cstypes.RoundState) {
 	cs.scheduleTimeout(sleepDuration, rs.Height, 0, cstypes.RoundStepNewHeight)
 }
 
-// Attempt to schedule a timeout (by sending timeoutInfo on the tickChan)
+// Attempt to schedule a timeout (by sending timeoutInfo on the tickChan).
 func (cs *State) scheduleTimeout(duration time.Duration, height int64, round int32, step cstypes.RoundStepType) {
 	cs.timeoutTicker.ScheduleTimeout(timeoutInfo{duration, height, round, step})
 }
 
-// send a msg into the receiveRoutine regarding our own proposal, block part, or vote
+// send a msg into the receiveRoutine regarding our own proposal, block part, or vote.
 func (cs *State) sendInternalMessage(mi msgInfo) {
 	select {
 	case cs.internalMsgQueue <- mi:
@@ -571,7 +571,7 @@ func (cs *State) sendInternalMessage(mi msgInfo) {
 }
 
 // Reconstruct LastCommit from SeenCommit, which we saved along with the block,
-// (which happens even before saving the state)
+// (which happens even before saving the state).
 func (cs *State) reconstructLastCommit(state sm.State) {
 	seenCommit := cs.blockStore.LoadSeenCommit(state.LastBlockHeight)
 	if seenCommit == nil {
@@ -817,7 +817,7 @@ func (cs *State) receiveRoutine(maxSteps int) {
 	}
 }
 
-// state transitions on complete-proposal, 2/3-any, 2/3-one
+// state transitions on complete-proposal, 2/3-any, 2/3-one.
 func (cs *State) handleMsg(mi msgInfo) {
 	cs.mtx.Lock()
 	defer cs.mtx.Unlock()
@@ -1062,7 +1062,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 }
 
 // needProofBlock returns true on the first height (so the genesis app hash is signed right away)
-// and where the last block (height-1) caused the app hash to change
+// and where the last block (height-1) caused the app hash to change.
 func (cs *State) needProofBlock(height int64) bool {
 	if height == cs.state.InitialHeight {
 		return true
@@ -1083,7 +1083,7 @@ func (cs *State) needProofBlock(height int64) bool {
 //
 //	after enterNewRound(height,round), after timeout of CreateEmptyBlocksInterval
 //
-// Enter (!CreateEmptyBlocks) : after enterNewRound(height,round), once txs are in the mempool
+// Enter (!CreateEmptyBlocks) : after enterNewRound(height,round), once txs are in the mempool.
 func (cs *State) enterPropose(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
 
@@ -1231,14 +1231,14 @@ func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.Pa
 
 	default: // This shouldn't happen.
 		cs.Logger.Error("propose step; cannot propose anything without commit for the previous block")
-		return
+		return nil, nil
 	}
 
 	if cs.privValidatorPubKey == nil {
 		// If this node is a validator & proposer in the current round, it will
 		// miss the opportunity to create a block.
 		cs.Logger.Error("propose step; empty priv validator public key", "err", errPubKeyIsNotSet)
-		return
+		return nil, nil
 	}
 
 	proposerAddr := cs.privValidatorPubKey.Address()
@@ -1515,7 +1515,7 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 	cs.scheduleTimeout(cs.config.Precommit(round), height, round, cstypes.RoundStepPrecommitWait)
 }
 
-// Enter: +2/3 precommits for block
+// Enter: +2/3 precommits for block.
 func (cs *State) enterCommit(height int64, commitRound int32) {
 	logger := cs.Logger.With("height", height, "commit_round", commitRound)
 
@@ -1606,7 +1606,7 @@ func (cs *State) tryFinalizeCommit(height int64) {
 	cs.finalizeCommit(height)
 }
 
-// Increment height and goto cstypes.RoundStepNewHeight
+// Increment height and goto cstypes.RoundStepNewHeight.
 func (cs *State) finalizeCommit(height int64) {
 	logger := cs.Logger.With("height", height)
 
@@ -1810,7 +1810,6 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 					cs.metrics.ValidatorMissedBlocks.With(label...).Add(float64(1))
 				}
 			}
-
 		}
 	}
 	cs.metrics.MissingValidators.Set(float64(missingValidators))
@@ -1838,7 +1837,6 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 			elapsedTime := block.Time.Sub(lastBlockMeta.Header.Time).Seconds()
 			cs.metrics.BlockIntervalSeconds.Observe(elapsedTime)
 			cs.metrics.BlockTimeSeconds.Set(elapsedTime)
-
 		}
 	}
 
@@ -2002,14 +2000,14 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 	}
 }
 
-// Attempt to add the vote. if its a duplicate signature, dupeout the validator
+// Attempt to add the vote. if its a duplicate signature, dupeout the validator.
 func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 	added, err := cs.addVote(vote, peerID)
 	if err != nil {
 		// If the vote height is off, we'll just ignore it,
 		// But if it's a conflicting sig, add it to the cs.evpool.
 		// If it's otherwise invalid, punish peer.
-		//nolint: gocritic
+
 		if voteErr, ok := err.(*types.ErrVoteConflictingVotes); ok {
 			if cs.privValidatorPubKey == nil {
 				return false, errPubKeyIsNotSet
@@ -2066,12 +2064,12 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		if cs.Step != cstypes.RoundStepNewHeight {
 			// Late precommit at prior height is ignored
 			cs.Logger.Debug("precommit vote came in after commit timeout and has been ignored", "vote", vote)
-			return
+			return false, nil
 		}
 
 		added, err = cs.LastCommit.AddVote(vote)
 		if !added {
-			return
+			return added, err
 		}
 
 		cs.Logger.Debug("added vote to last precommits", "last_commit", cs.LastCommit.StringShort())
@@ -2088,21 +2086,21 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 			cs.enterNewRound(cs.Height, 0)
 		}
 
-		return
+		return added, nil
 	}
 
 	// Height mismatch is ignored.
-	// Not necessarily a bad peer, but not favourable behaviour.
+	// Not necessarily a bad peer, but not favorable behavior.
 	if vote.Height != cs.Height {
 		cs.Logger.Debug("vote ignored and not added", "vote_height", vote.Height, "cs_height", cs.Height, "peer", peerID)
-		return
+		return false, nil
 	}
 
 	height := cs.Height
 	added, err = cs.Votes.AddVote(vote, peerID)
 	if !added {
 		// Either duplicate, or error upon cs.Votes.AddByIndex()
-		return
+		return added, err
 	}
 
 	if err := cs.eventBus.PublishEventVote(types.EventDataVote{Vote: vote}); err != nil {
@@ -2127,7 +2125,6 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 				(cs.LockedRound < vote.Round) &&
 				(vote.Round <= cs.Round) &&
 				!cs.LockedBlock.HashesTo(blockID.Hash) {
-
 				cs.Logger.Debug("unlocking because of POL", "locked_round", cs.LockedRound, "pol_round", vote.Round)
 
 				cs.LockedRound = -1
@@ -2288,7 +2285,7 @@ func (cs *State) voteTime() time.Time {
 	return minVoteTime
 }
 
-// sign the vote and publish on internalMsgQueue
+// sign the vote and publish on internalMsgQueue.
 func (cs *State) signAddVote(msgType cmtproto.SignedMsgType, hash []byte, header types.PartSetHeader) *types.Vote {
 	if cs.privValidator == nil { // the node does not have a key
 		return nil
@@ -2333,7 +2330,7 @@ func (cs *State) updatePrivValidatorPubKey() error {
 	return nil
 }
 
-// look back to check existence of the node's consensus votes before joining consensus
+// look back to check existence of the node's consensus votes before joining consensus.
 func (cs *State) checkDoubleSigningRisk(height int64) error {
 	if cs.privValidator != nil && cs.privValidatorPubKey != nil && cs.config.DoubleSignCheckHeight > 0 && height > 0 {
 		valAddr := cs.privValidatorPubKey.Address()

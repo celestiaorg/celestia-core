@@ -20,21 +20,21 @@ import (
 
 const (
 	// default duration to wait before considering a peer non-responsive
-	// and searching for the tx from a new peer
+	// and searching for the tx from a new peer.
 	DefaultGossipDelay = 200 * time.Millisecond
 
 	// Content Addressable Tx Pool gossips state based messages (SeenTx and WantTx) on a separate channel
-	// for cross compatibility
+	// for cross compatibility.
 	MempoolStateChannel = byte(0x31)
 
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
-	// the node received the tx
+	// the node received the tx.
 	peerHeightDiff = 10
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
 // logic behind the protocol, refer to `ReceiveEnvelope` or to the english
-// spec under /.spec.md
+// spec under /.spec.md.
 type Reactor struct {
 	p2p.BaseReactor
 	opts        *ReactorOptions
@@ -139,7 +139,7 @@ func (memR *Reactor) OnStart() error {
 	return nil
 }
 
-// OnStop implements Service
+// OnStop implements Service.
 func (memR *Reactor) OnStop() {
 	// stop all the timers tracking outbound requests
 	memR.requests.Close()
@@ -222,7 +222,6 @@ func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 // It processes one of three messages: Txs, SeenTx, WantTx.
 func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	switch msg := e.Message.(type) {
-
 	// A peer has sent us one or more transactions. This could be either because we requested them
 	// or because the peer received a new transaction and is broadcasting it to us.
 	// NOTE: This setup also means that we can support older mempool implementations that simply
@@ -352,7 +351,7 @@ type PeerState interface {
 }
 
 // broadcastSeenTx broadcasts a SeenTx message to all peers unless we
-// know they have already seen the transaction
+// know they have already seen the transaction.
 func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 	memR.Logger.Debug("broadcasting seen tx to all peers", "tx_key", txKey.String())
 	msg := &protomem.Message{

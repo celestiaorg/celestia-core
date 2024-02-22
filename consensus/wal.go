@@ -21,10 +21,10 @@ import (
 )
 
 const (
-	// time.Time + max consensus msg size
+	// time.Time + max consensus msg size.
 	maxMsgSizeBytes = maxMsgSize + 24
 
-	// how often the WAL should be sync'd during period sync'ing
+	// how often the WAL should be sync'd during period sync'ing.
 	walDefaultFlushInterval = 2 * time.Second
 )
 
@@ -89,7 +89,7 @@ var _ WAL = &BaseWAL{}
 // NewWAL returns a new write-ahead logger based on `baseWAL`, which implements
 // WAL. It's flushed and synced to disk every 2s and once when stopped.
 func NewWAL(walFile string, groupOptions ...func(*auto.Group)) (*BaseWAL, error) {
-	err := cmtos.EnsureDir(filepath.Dir(walFile), 0700)
+	err := cmtos.EnsureDir(filepath.Dir(walFile), 0o700)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure WAL directory is in place: %w", err)
 	}
@@ -153,7 +153,7 @@ func (wal *BaseWAL) processFlushTicks() {
 }
 
 // FlushAndSync flushes and fsync's the underlying group's data to disk.
-// See auto#FlushAndSync
+// See auto#FlushAndSync.
 func (wal *BaseWAL) FlushAndSync() error {
 	return wal.group.FlushAndSync()
 }
@@ -180,7 +180,7 @@ func (wal *BaseWAL) Wait() {
 
 // Write is called in newStep and for each receive on the
 // peerMsgQueue and the timeoutTicker.
-// NOTE: does not call fsync()
+// NOTE: does not call fsync().
 func (wal *BaseWAL) Write(msg WALMessage) error {
 	if wal == nil {
 		return nil
@@ -197,7 +197,7 @@ func (wal *BaseWAL) Write(msg WALMessage) error {
 
 // WriteSync is called when we receive a msg from ourselves
 // so that we write to disk before sending signed messages.
-// NOTE: calls fsync()
+// NOTE: calls fsync().
 func (wal *BaseWAL) WriteSync(msg WALMessage) error {
 	if wal == nil {
 		return nil
@@ -230,7 +230,8 @@ type WALSearchOptions struct {
 // CONTRACT: caller must close group reader.
 func (wal *BaseWAL) SearchForEndHeight(
 	height int64,
-	options *WALSearchOptions) (rd io.ReadCloser, found bool, err error) {
+	options *WALSearchOptions,
+) (rd io.ReadCloser, found bool, err error) {
 	var (
 		msg *TimedWALMessage
 		gr  *auto.GroupReader
@@ -284,7 +285,7 @@ func (wal *BaseWAL) SearchForEndHeight(
 
 // A WALEncoder writes custom-encoded WAL messages to an output stream.
 //
-// Format: 4 bytes CRC sum + 4 bytes length + arbitrary-length value
+// Format: 4 bytes CRC sum + 4 bytes length + arbitrary-length value.
 type WALEncoder struct {
 	wr io.Writer
 }
@@ -400,7 +401,7 @@ func (dec *WALDecoder) Decode() (*TimedWALMessage, error) {
 		return nil, DataCorruptionError{fmt.Errorf("checksums do not match: read: %v, actual: %v", crc, actualCRC)}
 	}
 
-	var res = new(cmtcons.TimedWALMessage)
+	res := new(cmtcons.TimedWALMessage)
 	err = proto.Unmarshal(data, res)
 	if err != nil {
 		return nil, DataCorruptionError{fmt.Errorf("failed to decode data: %v", err)}

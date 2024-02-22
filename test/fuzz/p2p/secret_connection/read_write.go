@@ -46,7 +46,7 @@ func (drw kvstoreConn) Close() (err error) {
 	return err1
 }
 
-// Each returned ReadWriteCloser is akin to a net.Connection
+// Each returned ReadWriteCloser is akin to a net.Connection.
 func makeKVStoreConnPair() (fooConn, barConn kvstoreConn) {
 	barReader, fooWriter := io.Pipe()
 	fooReader, barWriter := io.Pipe()
@@ -63,7 +63,7 @@ func makeSecretConnPair() (fooSecConn, barSecConn *sc.SecretConnection) {
 	)
 
 	// Make connections from both sides in parallel.
-	var trs, ok = async.Parallel(
+	trs, ok := async.Parallel(
 		func(_ int) (val interface{}, abort bool, err error) {
 			fooSecConn, err = sc.MakeSecretConnection(fooConn, fooPrvKey)
 			if err != nil {

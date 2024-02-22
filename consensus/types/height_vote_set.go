@@ -18,10 +18,8 @@ type RoundVoteSet struct {
 	Precommits *types.VoteSet
 }
 
-var (
-	ErrGotVoteFromUnwantedRound = errors.New(
-		"peer has sent a vote that does not match our round for more than one round",
-	)
+var ErrGotVoteFromUnwantedRound = errors.New(
+	"peer has sent a vote that does not match our round for more than one round",
 )
 
 /*
@@ -181,12 +179,13 @@ func (hvs *HeightVoteSet) getVoteSet(round int32, voteType cmtproto.SignedMsgTyp
 // If a peer claims that it has 2/3 majority for given blockKey, call this.
 // NOTE: if there are too many peers, or too much peer churn,
 // this can cause memory issues.
-// TODO: implement ability to remove peers too
+// TODO: implement ability to remove peers too.
 func (hvs *HeightVoteSet) SetPeerMaj23(
 	round int32,
 	voteType cmtproto.SignedMsgType,
 	peerID p2p.ID,
-	blockID types.BlockID) error {
+	blockID types.BlockID,
+) error {
 	hvs.mtx.Lock()
 	defer hvs.mtx.Unlock()
 	if !types.IsVoteTypeValid(voteType) {

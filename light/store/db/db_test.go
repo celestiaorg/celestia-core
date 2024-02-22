@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
@@ -70,7 +69,6 @@ func Test_SaveLightBlock(t *testing.T) {
 	h, err = dbStore.LightBlock(1)
 	require.Error(t, err)
 	assert.Nil(t, h)
-
 }
 
 func Test_LightBlockBefore(t *testing.T) {

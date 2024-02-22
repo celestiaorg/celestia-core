@@ -7,7 +7,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	"github.com/tendermint/tendermint/behaviour"
+	"github.com/tendermint/tendermint/behavior"
 	bc "github.com/tendermint/tendermint/blockchain"
 	"github.com/tendermint/tendermint/libs/log"
 	cmtsync "github.com/tendermint/tendermint/libs/sync"
@@ -44,7 +44,7 @@ type BlockchainReactor struct {
 	syncHeight    int64
 	events        chan Event // non-nil during a fast sync
 
-	reporter behaviour.Reporter
+	reporter behavior.Reporter
 	io       iIO
 	store    blockStore
 }
@@ -58,9 +58,10 @@ type blockApplier interface {
 	ApplyBlock(state state.State, blockID types.BlockID, block *types.Block, seenCommit *types.Commit) (state.State, int64, error)
 }
 
-// XXX: unify naming in this package around cmtState
-func newReactor(state state.State, store blockStore, reporter behaviour.Reporter,
-	blockApplier blockApplier, fastSync bool) *BlockchainReactor {
+// XXX: unify naming in this package around cmtState.
+func newReactor(state state.State, store blockStore, reporter behavior.Reporter,
+	blockApplier blockApplier, fastSync bool,
+) *BlockchainReactor {
 	initHeight := state.LastBlockHeight + 1
 	if initHeight == 1 {
 		initHeight = state.InitialHeight
@@ -86,8 +87,9 @@ func NewBlockchainReactor(
 	state state.State,
 	blockApplier blockApplier,
 	store blockStore,
-	fastSync bool) *BlockchainReactor {
-	reporter := behaviour.NewMockReporter()
+	fastSync bool,
+) *BlockchainReactor {
+	reporter := behavior.NewMockReporter()
 	return newReactor(state, store, reporter, blockApplier, fastSync)
 }
 
@@ -129,9 +131,9 @@ func (r *BlockchainReactor) SetLogger(logger log.Logger) {
 	r.processor.setLogger(logger)
 }
 
-// Start implements cmn.Service interface
+// Start implements cmn.Service interface.
 func (r *BlockchainReactor) Start() error {
-	r.reporter = behaviour.NewSwitchReporter(r.BaseReactor.Switch)
+	r.reporter = behavior.NewSwitchReporter(r.BaseReactor.Switch)
 	if r.fastSync {
 		err := r.startSync(nil)
 		if err != nil {
@@ -141,7 +143,7 @@ func (r *BlockchainReactor) Start() error {
 	return nil
 }
 
-// startSync begins a fast sync, signalled by r.events being non-nil. If state is non-nil,
+// startSync begins a fast sync, signaled by r.events being non-nil. If state is non-nil,
 // the scheduler and processor is updated with this state on startup.
 func (r *BlockchainReactor) startSync(state *state.State) error {
 	r.mtx.Lock()
@@ -162,7 +164,7 @@ func (r *BlockchainReactor) startSync(state *state.State) error {
 	return nil
 }
 
-// endSync ends a fast sync
+// endSync ends a fast sync.
 func (r *BlockchainReactor) endSync() {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -182,7 +184,7 @@ func (r *BlockchainReactor) SwitchToFastSync(state state.State) error {
 }
 
 // reactor generated ticker events:
-// ticker for cleaning peers
+// ticker for cleaning peers.
 type rTryPrunePeer struct {
 	priorityHigh
 	time time.Time
@@ -192,7 +194,7 @@ func (e rTryPrunePeer) String() string {
 	return fmt.Sprintf("rTryPrunePeer{%v}", e.time)
 }
 
-// ticker event for scheduling block requests
+// ticker event for scheduling block requests.
 type rTrySchedule struct {
 	priorityHigh
 	time time.Time
@@ -202,7 +204,7 @@ func (e rTrySchedule) String() string {
 	return fmt.Sprintf("rTrySchedule{%v}", e.time)
 }
 
-// ticker for block processing
+// ticker for block processing.
 type rProcessBlock struct {
 	priorityNormal
 }
@@ -212,7 +214,7 @@ func (e rProcessBlock) String() string {
 }
 
 // reactor generated events based on blockchain related messages from peers:
-// blockResponse message received from a peer
+// blockResponse message received from a peer.
 type bcBlockResponse struct {
 	priorityNormal
 	time   time.Time
@@ -226,7 +228,7 @@ func (resp bcBlockResponse) String() string {
 		resp.block.Height, resp.block.Hash(), resp.size, resp.peerID, resp.time)
 }
 
-// blockNoResponse message received from a peer
+// blockNoResponse message received from a peer.
 type bcNoBlockResponse struct {
 	priorityNormal
 	time   time.Time
@@ -239,7 +241,7 @@ func (resp bcNoBlockResponse) String() string {
 		resp.peerID, resp.height, resp.time)
 }
 
-// statusResponse message received from a peer
+// statusResponse message received from a peer.
 type bcStatusResponse struct {
 	priorityNormal
 	time   time.Time
@@ -253,7 +255,7 @@ func (resp bcStatusResponse) String() string {
 		resp.peerID, resp.height, resp.base, resp.time)
 }
 
-// new peer is connected
+// new peer is connected.
 type bcAddNewPeer struct {
 	priorityNormal
 	peerID p2p.ID
@@ -263,7 +265,7 @@ func (resp bcAddNewPeer) String() string {
 	return fmt.Sprintf("bcAddNewPeer{%v}", resp.peerID)
 }
 
-// existing peer is removed
+// existing peer is removed.
 type bcRemovePeer struct {
 	priorityHigh
 	peerID p2p.ID
@@ -274,7 +276,7 @@ func (resp bcRemovePeer) String() string {
 	return fmt.Sprintf("bcRemovePeer{%v due to %v}", resp.peerID, resp.reason)
 }
 
-// resets the scheduler and processor state, e.g. following a switch from state syncing
+// resets the scheduler and processor state, e.g. following a switch from state syncing.
 type bcResetState struct {
 	priorityHigh
 	state state.State
@@ -286,8 +288,8 @@ func (e bcResetState) String() string {
 
 // Takes the channel as a parameter to avoid race conditions on r.events.
 func (r *BlockchainReactor) demux(events <-chan Event) {
-	var lastRate = 0.0
-	var lastHundred = time.Now()
+	lastRate := 0.0
+	lastHundred := time.Now()
 
 	var (
 		processBlockFreq = 20 * time.Millisecond
@@ -376,7 +378,7 @@ func (r *BlockchainReactor) demux(events <-chan Event) {
 				r.processor.send(event)
 			case scPeerError:
 				r.processor.send(event)
-				if err := r.reporter.Report(behaviour.BadMessage(event.peerID, "scPeerError")); err != nil {
+				if err := r.reporter.Report(behavior.BadMessage(event.peerID, "scPeerError")); err != nil {
 					r.logger.Error("Error reporting peer", "err", err)
 				}
 			case scBlockRequest:
@@ -458,7 +460,7 @@ func (r *BlockchainReactor) Stop() error {
 func (r *BlockchainReactor) ReceiveEnvelope(e p2p.Envelope) {
 	if err := bc.ValidateMsg(e.Message); err != nil {
 		r.logger.Error("peer sent us invalid msg", "peer", e.Src, "msg", e.Message, "err", err)
-		_ = r.reporter.Report(behaviour.BadMessage(e.Src.ID(), err.Error()))
+		_ = r.reporter.Report(behavior.BadMessage(e.Src.ID(), err.Error()))
 		return
 	}
 
@@ -534,7 +536,7 @@ func (r *BlockchainReactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 	})
 }
 
-// AddPeer implements Reactor interface
+// AddPeer implements Reactor interface.
 func (r *BlockchainReactor) AddPeer(peer p2p.Peer) {
 	err := r.io.sendStatusResponse(r.store.Base(), r.store.Height(), peer.ID())
 	if err != nil {
@@ -559,7 +561,7 @@ func (r *BlockchainReactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	}
 }
 
-// GetChannels implements Reactor
+// GetChannels implements Reactor.
 func (r *BlockchainReactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{

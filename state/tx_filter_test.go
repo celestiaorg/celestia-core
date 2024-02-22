@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"

@@ -83,7 +83,8 @@ func (c *Local) ABCIQueryWithOptions(
 	ctx context.Context,
 	path string,
 	data bytes.HexBytes,
-	opts rpcclient.ABCIQueryOptions) (*ctypes.ResultABCIQuery, error) {
+	opts rpcclient.ABCIQueryOptions,
+) (*ctypes.ResultABCIQuery, error) {
 	return core.ABCIQuery(c.ctx, path, data, opts.Height, opts.Prove)
 }
 
@@ -247,7 +248,8 @@ func (c *Local) Subscribe(
 	ctx context.Context,
 	subscriber,
 	query string,
-	outCapacity ...int) (out <-chan ctypes.ResultEvent, err error) {
+	outCapacity ...int,
+) (out <-chan ctypes.ResultEvent, err error) {
 	q, err := cmtquery.New(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse query: %w", err)
@@ -278,7 +280,8 @@ func (c *Local) eventsRoutine(
 	sub types.Subscription,
 	subscriber string,
 	q cmtpubsub.Query,
-	outc chan<- ctypes.ResultEvent) {
+	outc chan<- ctypes.ResultEvent,
+) {
 	for {
 		select {
 		case msg := <-sub.Out():
@@ -292,12 +295,12 @@ func (c *Local) eventsRoutine(
 					c.Logger.Error("wanted to publish ResultEvent, but out channel is full", "result", result, "query", result.Query)
 				}
 			}
-		case <-sub.Cancelled():
+		case <-sub.Canceled():
 			if sub.Err() == cmtpubsub.ErrUnsubscribed {
 				return
 			}
 
-			c.Logger.Error("subscription was cancelled, resubscribing...", "err", sub.Err(), "query", q.String())
+			c.Logger.Error("subscription was canceled, resubscribing...", "err", sub.Err(), "query", q.String())
 			sub = c.resubscribe(subscriber, q)
 			if sub == nil { // client was stopped
 				return

@@ -5,17 +5,16 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"github.com/tendermint/tendermint/types"
 )
 
 func populate(cache TxCache, numTxs int) ([][]byte, error) {
-
 	txs := make([][]byte, numTxs)
 	for i := 0; i < numTxs; i++ {
 		// probability of collision is 2**-256
 		txBytes := make([]byte, 32)
 		_, err := rand.Read(txBytes)
-
 		if err != nil {
 			return nil, err
 		}

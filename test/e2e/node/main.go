@@ -312,7 +312,7 @@ func setupNode() (*config.Config, log.Logger, *p2p.NodeKey, error) {
 }
 
 // rpcEndpoints takes a list of persistent peers and splits them into a list of rpc endpoints
-// using 26657 as the port number
+// using 26657 as the port number.
 func rpcEndpoints(peers string) []string {
 	arr := strings.Split(peers, ",")
 	endpoints := make([]string, len(arr))

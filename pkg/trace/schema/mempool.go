@@ -16,13 +16,13 @@ func MempoolTables() []string {
 	}
 }
 
-// Schema constants for the mempool_tx table
+// Schema constants for the mempool_tx table.
 const (
 	// MempoolTxTable is the tracing "measurement" (aka table) for the mempool
 	// that stores tracing data related to gossiping transactions.
 	//
 	// The schema for this table is:
-	// | time | peerID | tx size | tx hash | transfer type | mempool version |
+	// | time | peerID | tx size | tx hash | transfer type | mempool version |.
 	MempoolTxTable = "mempool_tx"
 
 	// TxFieldKey is the tracing field key for receiving for sending a
@@ -50,7 +50,7 @@ const (
 // schema for mempool tracing. This is used to create a table in the following
 // schema:
 //
-// | time | peerID | tx size | tx hash | transfer type | mempool version |
+// | time | peerID | tx size | tx hash | transfer type | mempool version |.
 func WriteMempoolTx(client *trace.Client, peer p2p.ID, tx []byte, transferType, version string) {
 	// this check is redundant to what is checked during WritePoint, although it
 	// is an optimization to avoid allocations from the map of fields.
@@ -72,7 +72,7 @@ const (
 	// the gossipping of "SeenTx" and "WantTx".
 	//
 	// The schema for this table is:
-	// | time | peerID | update type | mempool version |
+	// | time | peerID | update type | mempool version |.
 	MempoolPeerStateTable = "mempool_peer_state"
 
 	// StateUpdateFieldKey is the tracing field key for state updates of the mempool.
@@ -100,7 +100,7 @@ const (
 // the predetermined schema for mempool tracing. This is used to create a table
 // in the following schema:
 //
-// | time | peerID | transfer type | state update | mempool version |
+// | time | peerID | transfer type | state update | mempool version |.
 func WriteMempoolPeerState(client *trace.Client, peer p2p.ID, stateUpdate, transferType, version string) {
 	// this check is redundant to what is checked during WritePoint, although it
 	// is an optimization to avoid allocations from creating the map of fields.

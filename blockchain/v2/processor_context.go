@@ -60,7 +60,8 @@ type mockPContext struct {
 func newMockProcessorContext(
 	state state.State,
 	verificationBlackList []int64,
-	applicationBlackList []int64) *mockPContext {
+	applicationBlackList []int64,
+) *mockPContext {
 	return &mockPContext{
 		applicationBL:  applicationBlackList,
 		verificationBL: verificationBlackList,
@@ -88,7 +89,6 @@ func (mpc *mockPContext) verifyCommit(chainID string, blockID types.BlockID, hei
 }
 
 func (mpc *mockPContext) saveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
-
 }
 
 func (mpc *mockPContext) setState(state state.State) {

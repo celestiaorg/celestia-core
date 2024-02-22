@@ -13,7 +13,7 @@ import (
 
 // ABCIApp will send all abci related request to the named app,
 // so you can test app behavior from a client without needing
-// an entire CometBFT node
+// an entire CometBFT node.
 type ABCIApp struct {
 	App abci.Application
 }
@@ -36,7 +36,8 @@ func (a ABCIApp) ABCIQueryWithOptions(
 	ctx context.Context,
 	path string,
 	data bytes.HexBytes,
-	opts client.ABCIQueryOptions) (*ctypes.ResultABCIQuery, error) {
+	opts client.ABCIQueryOptions,
+) (*ctypes.ResultABCIQuery, error) {
 	q := a.App.Query(abci.RequestQuery{
 		Data:   data,
 		Path:   path,
@@ -92,7 +93,7 @@ func (a ABCIApp) BroadcastTxSync(ctx context.Context, tx types.Tx) (*ctypes.Resu
 
 // ABCIMock will send all abci related request to the named app,
 // so you can test app behavior from a client without needing
-// an entire CometBFT node
+// an entire CometBFT node.
 type ABCIMock struct {
 	Info            Call
 	Query           Call
@@ -116,7 +117,8 @@ func (m ABCIMock) ABCIQueryWithOptions(
 	ctx context.Context,
 	path string,
 	data bytes.HexBytes,
-	opts client.ABCIQueryOptions) (*ctypes.ResultABCIQuery, error) {
+	opts client.ABCIQueryOptions,
+) (*ctypes.ResultABCIQuery, error) {
 	res, err := m.Query.GetResponse(QueryArgs{path, data, opts.Height, opts.Prove})
 	if err != nil {
 		return nil, err
@@ -196,7 +198,8 @@ func (r *ABCIRecorder) ABCIQueryWithOptions(
 	ctx context.Context,
 	path string,
 	data bytes.HexBytes,
-	opts client.ABCIQueryOptions) (*ctypes.ResultABCIQuery, error) {
+	opts client.ABCIQueryOptions,
+) (*ctypes.ResultABCIQuery, error) {
 	res, err := r.Client.ABCIQueryWithOptions(ctx, path, data, opts)
 	r.addCall(Call{
 		Name:     "abci_query",

@@ -19,9 +19,7 @@ import (
 	"time"
 )
 
-var (
-	numRegex = regexp.MustCompile(`([0-9\.]+)`)
-)
+var numRegex = regexp.MustCompile(`([0-9\.]+)`)
 
 // Query holds the query string and the query parser.
 type Query struct {
@@ -68,15 +66,15 @@ func (q *Query) String() string {
 type Operator uint8
 
 const (
-	// "<="
+	// "<=".
 	OpLessEqual Operator = iota
-	// ">="
+	// ">=".
 	OpGreaterEqual
-	// "<"
+	// "<".
 	OpLess
-	// ">"
+	// ">".
 	OpGreater
-	// "="
+	// "=".
 	OpEqual
 	// "CONTAINS"; used to check if a string contains a certain sub string.
 	OpContains
@@ -85,9 +83,9 @@ const (
 )
 
 const (
-	// DateLayout defines a layout for all dates (`DATE date`)
+	// DateLayout defines a layout for all dates (`DATE date`).
 	DateLayout = "2006-01-02"
-	// TimeLayout defines a layout for all times (`TIME time`)
+	// TimeLayout defines a layout for all times (`TIME time`).
 	TimeLayout = time.RFC3339
 )
 
@@ -162,7 +160,6 @@ func (q *Query) Conditions() ([]Condition, error) {
 					return nil, err
 				}
 				conditions = append(conditions, Condition{eventAttr, op, valueBig})
-
 			}
 
 		case ruletime:
@@ -370,7 +367,7 @@ func (q *Query) Matches(events map[string][]string) (bool, error) {
 // First, it looks up the key in the events and if it finds one, tries to compare
 // all the values from it to the operand using the operator.
 //
-// "tx.gas", "=", "7", {"tx": [{"gas": 7, "ID": "4AE393495334"}]}
+// "tx.gas", "=", "7", {"tx": [{"gas": 7, "ID": "4AE393495334"}]}.
 func match(attr string, op Operator, operand reflect.Value, events map[string][]string) (bool, error) {
 	// look up the tag from the query in tags
 	values, ok := events[attr]
@@ -489,7 +486,6 @@ func matchValue(value string, op Operator, operand reflect.Value) (bool, error) 
 				if !ok {
 					return false, fmt.Errorf("failed to convert value %v from event attribute to big int", filteredValue)
 				}
-
 			}
 			cmpRes := operandVal.Cmp(v)
 			switch op {
@@ -504,7 +500,6 @@ func matchValue(value string, op Operator, operand reflect.Value) (bool, error) 
 			case OpEqual:
 				return cmpRes == 0, nil
 			}
-
 		}
 	case reflect.String:
 		switch op {
