@@ -10,7 +10,6 @@ import (
 	"time"
 
 	db "github.com/cometbft/cometbft-db"
-
 	"github.com/tendermint/tendermint/abci/example/kvstore"
 	cfg "github.com/tendermint/tendermint/config"
 	cmtcon "github.com/tendermint/tendermint/consensus"
@@ -29,6 +28,7 @@ import (
 // (byteBufferWAL) and waits until numBlocks are created.
 // If the node fails to produce given numBlocks, it returns an error.
 func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
+	t.Helper()
 	config := getConfig(t)
 
 	app := kvstore.NewPersistentKVStoreApplication(filepath.Join(config.DBDir(), "wal_generator"))
@@ -127,6 +127,7 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 
 // WALWithNBlocks returns a WAL content with numBlocks.
 func WALWithNBlocks(t *testing.T, numBlocks int) (data []byte, err error) {
+	t.Helper()
 	var b bytes.Buffer
 	wr := bufio.NewWriter(&b)
 
@@ -151,8 +152,9 @@ func makeAddrs() (string, string, string) {
 		fmt.Sprintf("tcp://127.0.0.1:%d", start+2)
 }
 
-// getConfig returns a config for test cases
+// getConfig returns a config for test cases.
 func getConfig(t *testing.T) *cfg.Config {
+	t.Helper()
 	c := cfg.ResetTestRoot(t.Name())
 
 	// and we use random ports to run in parallel
@@ -175,7 +177,7 @@ type byteBufferWAL struct {
 	logger log.Logger
 }
 
-// needed for determinism
+// needed for determinism.
 var fixedTime, _ = time.Parse(time.RFC3339, "2017-01-02T15:04:05Z")
 
 func newByteBufferWAL(logger log.Logger, enc *WALEncoder, nBlocks int64, signalStop chan<- struct{}) *byteBufferWAL {
@@ -223,7 +225,8 @@ func (w *byteBufferWAL) FlushAndSync() error { return nil }
 
 func (w *byteBufferWAL) SearchForEndHeight(
 	height int64,
-	options *cmtcon.WALSearchOptions) (rd io.ReadCloser, found bool, err error) {
+	options *cmtcon.WALSearchOptions,
+) (rd io.ReadCloser, found bool, err error) {
 	return nil, false, nil
 }
 

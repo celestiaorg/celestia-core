@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	"github.com/tendermint/tendermint/abci/example/code"
 	"github.com/tendermint/tendermint/abci/types"
 	cryptoenc "github.com/tendermint/tendermint/crypto/encoding"
@@ -54,6 +53,7 @@ func NewPersistentKVStoreApplication(dbDir string) *PersistentKVStoreApplication
 func (app *PersistentKVStoreApplication) SetGenBlockEvents() {
 	app.app.genBlockEvents = true
 }
+
 func (app *PersistentKVStoreApplication) SetLogger(l log.Logger) {
 	app.logger = l
 }
@@ -69,7 +69,7 @@ func (app *PersistentKVStoreApplication) SetOption(req types.RequestSetOption) t
 	return app.app.SetOption(req)
 }
 
-// tx is either "val:pubkey!power" or "key=value" or just arbitrary bytes
+// tx is either "val:pubkey!power" or "key=value" or just arbitrary bytes.
 func (app *PersistentKVStoreApplication) DeliverTx(req types.RequestDeliverTx) types.ResponseDeliverTx {
 	// if it starts with "val:", update the validator set
 	// format is "val:pubkey!power"
@@ -87,7 +87,7 @@ func (app *PersistentKVStoreApplication) CheckTx(req types.RequestCheckTx) types
 	return app.app.CheckTx(req)
 }
 
-// Commit will panic if InitChain was not called
+// Commit will panic if InitChain was not called.
 func (app *PersistentKVStoreApplication) Commit() types.ResponseCommit {
 	return app.app.Commit()
 }
@@ -111,7 +111,7 @@ func (app *PersistentKVStoreApplication) Query(reqQuery types.RequestQuery) (res
 	}
 }
 
-// Save the validators in the merkle tree
+// Save the validators in the merkle tree.
 func (app *PersistentKVStoreApplication) InitChain(req types.RequestInitChain) types.ResponseInitChain {
 	for _, v := range req.Validators {
 		r := app.updateValidator(v)
@@ -122,7 +122,7 @@ func (app *PersistentKVStoreApplication) InitChain(req types.RequestInitChain) t
 	return types.ResponseInitChain{}
 }
 
-// Track the block hash and header information
+// Track the block hash and header information.
 func (app *PersistentKVStoreApplication) BeginBlock(req types.RequestBeginBlock) types.ResponseBeginBlock {
 	// reset valset changes
 	app.ValUpdates = make([]types.ValidatorUpdate, 0)
@@ -148,38 +148,44 @@ func (app *PersistentKVStoreApplication) BeginBlock(req types.RequestBeginBlock)
 	return app.app.BeginBlock(req)
 }
 
-// Update the validator set
+// Update the validator set.
 func (app *PersistentKVStoreApplication) EndBlock(req types.RequestEndBlock) types.ResponseEndBlock {
 	return types.ResponseEndBlock{ValidatorUpdates: app.ValUpdates}
 }
 
 func (app *PersistentKVStoreApplication) ListSnapshots(
-	req types.RequestListSnapshots) types.ResponseListSnapshots {
+	req types.RequestListSnapshots,
+) types.ResponseListSnapshots {
 	return types.ResponseListSnapshots{}
 }
 
 func (app *PersistentKVStoreApplication) LoadSnapshotChunk(
-	req types.RequestLoadSnapshotChunk) types.ResponseLoadSnapshotChunk {
+	req types.RequestLoadSnapshotChunk,
+) types.ResponseLoadSnapshotChunk {
 	return types.ResponseLoadSnapshotChunk{}
 }
 
 func (app *PersistentKVStoreApplication) OfferSnapshot(
-	req types.RequestOfferSnapshot) types.ResponseOfferSnapshot {
+	req types.RequestOfferSnapshot,
+) types.ResponseOfferSnapshot {
 	return types.ResponseOfferSnapshot{Result: types.ResponseOfferSnapshot_ABORT}
 }
 
 func (app *PersistentKVStoreApplication) ApplySnapshotChunk(
-	req types.RequestApplySnapshotChunk) types.ResponseApplySnapshotChunk {
+	req types.RequestApplySnapshotChunk,
+) types.ResponseApplySnapshotChunk {
 	return types.ResponseApplySnapshotChunk{Result: types.ResponseApplySnapshotChunk_ABORT}
 }
 
 func (app *PersistentKVStoreApplication) PrepareProposal(
-	req types.RequestPrepareProposal) types.ResponsePrepareProposal {
+	req types.RequestPrepareProposal,
+) types.ResponsePrepareProposal {
 	return app.app.PrepareProposal(req)
 }
 
 func (app *PersistentKVStoreApplication) ProcessProposal(
-	req types.RequestProcessProposal) types.ResponseProcessProposal {
+	req types.RequestProcessProposal,
+) types.ResponseProcessProposal {
 	return types.ResponseProcessProposal{Result: types.ResponseProcessProposal_ACCEPT}
 }
 
@@ -221,7 +227,7 @@ func isValidatorTx(tx []byte) bool {
 }
 
 // format is "val:pubkey!power"
-// pubkey is a base64-encoded 32-byte ed25519 key
+// pubkey is a base64-encoded 32-byte ed25519 key.
 func (app *PersistentKVStoreApplication) execValidatorTx(tx []byte) types.ResponseDeliverTx {
 	tx = tx[len(ValidatorSetChangePrefix):]
 
@@ -230,7 +236,8 @@ func (app *PersistentKVStoreApplication) execValidatorTx(tx []byte) types.Respon
 	if len(pubKeyAndPower) != 2 {
 		return types.ResponseDeliverTx{
 			Code: code.CodeTypeEncodingError,
-			Log:  fmt.Sprintf("Expected 'pubkey!power'. Got %v", pubKeyAndPower)}
+			Log:  fmt.Sprintf("Expected 'pubkey!power'. Got %v", pubKeyAndPower),
+		}
 	}
 	pubkeyS, powerS := pubKeyAndPower[0], pubKeyAndPower[1]
 
@@ -239,7 +246,8 @@ func (app *PersistentKVStoreApplication) execValidatorTx(tx []byte) types.Respon
 	if err != nil {
 		return types.ResponseDeliverTx{
 			Code: code.CodeTypeEncodingError,
-			Log:  fmt.Sprintf("Pubkey (%s) is invalid base64", pubkeyS)}
+			Log:  fmt.Sprintf("Pubkey (%s) is invalid base64", pubkeyS),
+		}
 	}
 
 	// decode the power
@@ -247,14 +255,15 @@ func (app *PersistentKVStoreApplication) execValidatorTx(tx []byte) types.Respon
 	if err != nil {
 		return types.ResponseDeliverTx{
 			Code: code.CodeTypeEncodingError,
-			Log:  fmt.Sprintf("Power (%s) is not an int", powerS)}
+			Log:  fmt.Sprintf("Power (%s) is not an int", powerS),
+		}
 	}
 
 	// update
 	return app.updateValidator(types.UpdateValidator(pubkey, power, ""))
 }
 
-// add, update, or remove a validator
+// add, update, or remove a validator.
 func (app *PersistentKVStoreApplication) updateValidator(v types.ValidatorUpdate) types.ResponseDeliverTx {
 	pubkey, err := cryptoenc.PubKeyFromProto(v.PubKey)
 	if err != nil {
@@ -272,7 +281,8 @@ func (app *PersistentKVStoreApplication) updateValidator(v types.ValidatorUpdate
 			pubStr := base64.StdEncoding.EncodeToString(pubkey.Bytes())
 			return types.ResponseDeliverTx{
 				Code: code.CodeTypeUnauthorized,
-				Log:  fmt.Sprintf("Cannot remove non-existent validator %s", pubStr)}
+				Log:  fmt.Sprintf("Cannot remove non-existent validator %s", pubStr),
+			}
 		}
 		if err = app.app.state.db.Delete(key); err != nil {
 			panic(err)
@@ -284,7 +294,8 @@ func (app *PersistentKVStoreApplication) updateValidator(v types.ValidatorUpdate
 		if err := types.WriteMessage(&v, value); err != nil {
 			return types.ResponseDeliverTx{
 				Code: code.CodeTypeEncodingError,
-				Log:  fmt.Sprintf("Error encoding validator: %v", err)}
+				Log:  fmt.Sprintf("Error encoding validator: %v", err),
+			}
 		}
 		if err = app.app.state.db.Set(key, value.Bytes()); err != nil {
 			panic(err)

@@ -17,14 +17,14 @@ import (
 	"github.com/tendermint/tendermint/version"
 )
 
-// database key
+// database key.
 var (
 	stateKey = []byte("stateKey")
 )
 
 //-----------------------------------------------------------------------------
 
-// InitStateVersion sets the Consensus.Block, Consensus.App and Software versions
+// InitStateVersion sets the Consensus.Block, Consensus.App and Software versions.
 func InitStateVersion(appVersion uint64) cmtstate.Version {
 	return cmtstate.Version{
 		Consensus: cmtversion.Consensus{
@@ -129,7 +129,7 @@ func (state State) IsEmpty() bool {
 	return state.Validators == nil // XXX can't compare to Empty
 }
 
-// ToProto takes the local state type and returns the equivalent proto type
+// ToProto takes the local state type and returns the equivalent proto type.
 func (state *State) ToProto() (*cmtstate.State, error) {
 	if state == nil {
 		return nil, errors.New("state is nil")
@@ -173,7 +173,7 @@ func (state *State) ToProto() (*cmtstate.State, error) {
 	return sm, nil
 }
 
-// FromProto takes a state proto message & returns the local state type
+// FromProto takes a state proto message & returns the local state type.
 func FromProto(pb *cmtstate.State) (*State, error) { //nolint:golint
 	if pb == nil {
 		return nil, errors.New("nil State")

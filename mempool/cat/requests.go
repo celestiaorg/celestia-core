@@ -67,7 +67,7 @@ func (r *requestScheduler) Add(key types.TxKey, peer uint16, onTimeout func(key 
 
 		// We set another timeout because the peer could still send
 		// a late response after the first timeout and it's important
-		// to recognise that it is a transaction in response to a
+		// to recognize that it is a transaction in response to a
 		// request and not a new transaction being broadcasted to the entire
 		// network. This timer cannot be stopped and is used to ensure
 		// garbage collection.

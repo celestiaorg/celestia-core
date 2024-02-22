@@ -159,16 +159,16 @@ func GenerateFromBlockStore(s BlockStore) (*Reports, error) {
 					continue
 				}
 
-				l := b.bt.Sub(p.Time.AsTime())
-				idb := (*[16]byte)(p.Id)
+				l := b.bt.Sub(p.GetTime().AsTime())
+				idb := (*[16]byte)(p.GetId())
 				pdc <- payloadData{
 					l:           l,
 					bt:          b.bt,
 					hash:        b.tx.Hash(),
 					id:          uuid.UUID(*idb),
-					connections: p.Connections,
-					rate:        p.Rate,
-					size:        p.Size,
+					connections: p.GetConnections(),
+					rate:        p.GetRate(),
+					size:        p.GetSize(),
 				}
 			}
 		}()

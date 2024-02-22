@@ -12,7 +12,7 @@ import (
 )
 
 // SignerClient implements PrivValidator.
-// Handles remote validator connections that provide signing services
+// Handles remote validator connections that provide signing services.
 type SignerClient struct {
 	endpoint *SignerListenerEndpoint
 	chainID  string
@@ -21,7 +21,7 @@ type SignerClient struct {
 var _ types.PrivValidator = (*SignerClient)(nil)
 
 // NewSignerClient returns an instance of SignerClient.
-// it will start the endpoint (if not already started)
+// it will start the endpoint (if not already started).
 func NewSignerClient(endpoint *SignerListenerEndpoint, chainID string) (*SignerClient, error) {
 	if !endpoint.IsRunning() {
 		if err := endpoint.Start(); err != nil {
@@ -32,17 +32,17 @@ func NewSignerClient(endpoint *SignerListenerEndpoint, chainID string) (*SignerC
 	return &SignerClient{endpoint: endpoint, chainID: chainID}, nil
 }
 
-// Close closes the underlying connection
+// Close closes the underlying connection.
 func (sc *SignerClient) Close() error {
 	return sc.endpoint.Close()
 }
 
-// IsConnected indicates with the signer is connected to a remote signing service
+// IsConnected indicates with the signer is connected to a remote signing service.
 func (sc *SignerClient) IsConnected() bool {
 	return sc.endpoint.IsConnected()
 }
 
-// WaitForConnection waits maxWait for a connection or returns a timeout error
+// WaitForConnection waits maxWait for a connection or returns a timeout error.
 func (sc *SignerClient) WaitForConnection(maxWait time.Duration) error {
 	return sc.endpoint.WaitForConnection(maxWait)
 }
@@ -50,7 +50,7 @@ func (sc *SignerClient) WaitForConnection(maxWait time.Duration) error {
 //--------------------------------------------------------
 // Implement PrivValidator
 
-// Ping sends a ping request to the remote signer
+// Ping sends a ping request to the remote signer.
 func (sc *SignerClient) Ping() error {
 	response, err := sc.endpoint.SendRequest(mustWrapMsg(&privvalproto.PingRequest{}))
 	if err != nil {
@@ -67,7 +67,7 @@ func (sc *SignerClient) Ping() error {
 }
 
 // GetPubKey retrieves a public key from a remote signer
-// returns an error if client is not able to provide the key
+// returns an error if client is not able to provide the key.
 func (sc *SignerClient) GetPubKey() (crypto.PubKey, error) {
 	response, err := sc.endpoint.SendRequest(mustWrapMsg(&privvalproto.PubKeyRequest{ChainId: sc.chainID}))
 	if err != nil {
@@ -90,7 +90,7 @@ func (sc *SignerClient) GetPubKey() (crypto.PubKey, error) {
 	return pk, nil
 }
 
-// SignVote requests a remote signer to sign a vote
+// SignVote requests a remote signer to sign a vote.
 func (sc *SignerClient) SignVote(chainID string, vote *cmtproto.Vote) error {
 	response, err := sc.endpoint.SendRequest(mustWrapMsg(&privvalproto.SignVoteRequest{Vote: vote, ChainId: chainID}))
 	if err != nil {
@@ -110,7 +110,7 @@ func (sc *SignerClient) SignVote(chainID string, vote *cmtproto.Vote) error {
 	return nil
 }
 
-// SignProposal requests a remote signer to sign a proposal
+// SignProposal requests a remote signer to sign a proposal.
 func (sc *SignerClient) SignProposal(chainID string, proposal *cmtproto.Proposal) error {
 	response, err := sc.endpoint.SendRequest(mustWrapMsg(
 		&privvalproto.SignProposalRequest{Proposal: proposal, ChainId: chainID},

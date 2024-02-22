@@ -236,7 +236,7 @@ func TestValidateBlockCommit(t *testing.T) {
 	}
 }
 
-// TODO potentially delete
+// TODO potentially delete.
 func TestValidateBlockEvidence(t *testing.T) {
 	proxyApp := newTestApp()
 	require.NoError(t, proxyApp.Start())

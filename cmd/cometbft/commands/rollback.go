@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/os"
 	"github.com/tendermint/tendermint/state"

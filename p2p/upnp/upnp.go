@@ -24,7 +24,7 @@ type upnpNAT struct {
 	urnDomain  string
 }
 
-// protocol is either "udp" or "tcp"
+// protocol is either "udp" or "tcp".
 type NAT interface {
 	GetExternalAddress() (addr net.IP, err error)
 	AddPortMapping(
@@ -39,11 +39,11 @@ type NAT interface {
 func Discover() (nat NAT, err error) {
 	ssdp, err := net.ResolveUDPAddr("udp4", "239.255.255.250:1900")
 	if err != nil {
-		return
+		return nil, err
 	}
 	conn, err := net.ListenPacket("udp4", ":0")
 	if err != nil {
-		return
+		return nil, err
 	}
 	socket := conn.(*net.UDPConn)
 	defer socket.Close()
@@ -65,12 +65,12 @@ func Discover() (nat NAT, err error) {
 	for i := 0; i < 3; i++ {
 		_, err = socket.WriteToUDP(message, ssdp)
 		if err != nil {
-			return
+			return nil, err
 		}
 		var n int
 		_, _, err = socket.ReadFromUDP(answerBytes)
 		if err != nil {
-			return
+			return nil, err
 		}
 		for {
 			n, _, err = socket.ReadFromUDP(answerBytes)
@@ -98,15 +98,15 @@ func Discover() (nat NAT, err error) {
 			var serviceURL, urnDomain string
 			serviceURL, urnDomain, err = getServiceURL(locURL)
 			if err != nil {
-				return
+				return nil, err
 			}
 			var ourIP net.IP
 			ourIP, err = localIPv4()
 			if err != nil {
-				return
+				return nil, err
 			}
 			nat = &upnpNAT{serviceURL: serviceURL, ourIP: ourIP.String(), urnDomain: urnDomain}
-			return
+			return nat, nil
 		}
 	}
 	err = errors.New("upnp port discovery failed")
@@ -204,33 +204,33 @@ func localIPv4() (net.IP, error) {
 func getServiceURL(rootURL string) (url, urnDomain string, err error) {
 	r, err := http.Get(rootURL) //nolint: gosec
 	if err != nil {
-		return
+		return "", "", err
 	}
 	defer r.Body.Close()
 
 	if r.StatusCode >= 400 {
 		err = errors.New(string(rune(r.StatusCode)))
-		return
+		return "", "", err
 	}
 	var root Root
 	err = xml.NewDecoder(r.Body).Decode(&root)
 	if err != nil {
-		return
+		return "", "", err
 	}
 	a := &root.Device
 	if !strings.Contains(a.DeviceType, "InternetGatewayDevice:1") {
 		err = errors.New("no InternetGatewayDevice")
-		return
+		return "", "", err
 	}
 	b := getChildDevice(a, "WANDevice:1")
 	if b == nil {
 		err = errors.New("no WANDevice")
-		return
+		return "", "", err
 	}
 	c := getChildDevice(b, "WANConnectionDevice:1")
 	if c == nil {
 		err = errors.New("no WANConnectionDevice")
-		return
+		return "", "", err
 	}
 	d := getChildService(c, "WANIPConnection:1")
 	if d == nil {
@@ -240,7 +240,7 @@ func getServiceURL(rootURL string) (url, urnDomain string, err error) {
 
 		if d == nil {
 			err = errors.New("no WANIPConnection")
-			return
+			return "", "", err
 		}
 	}
 	// Extract the domain name, which isn't always 'schemas-upnp-org'
@@ -289,7 +289,7 @@ func soapRequest(url, function, message, domain string) (r *http.Response, err e
 		// log.Stderr(function, r.StatusCode)
 		err = errors.New("error " + strconv.Itoa(r.StatusCode) + " for " + function)
 		r = nil
-		return
+		return nil, err
 	}
 	return r, err
 }
@@ -368,7 +368,7 @@ func (n *upnpNAT) AddPortMapping(
 		defer response.Body.Close()
 	}
 	if err != nil {
-		return
+		return 0, err
 	}
 
 	// TODO: check response to see if the port was forwarded

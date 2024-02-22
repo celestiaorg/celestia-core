@@ -19,6 +19,7 @@ import (
 
 // clearConfig clears env vars, the given root dir, and resets viper.
 func clearConfig(t *testing.T, dir string) {
+	t.Helper()
 	os.Clearenv()
 	err := os.RemoveAll(dir)
 	require.NoError(t, err)
@@ -27,7 +28,7 @@ func clearConfig(t *testing.T, dir string) {
 	config = cfg.DefaultConfig()
 }
 
-// prepare new rootCmd
+// prepare new rootCmd.
 func testRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:               RootCmd.Use,
@@ -41,6 +42,7 @@ func testRootCmd() *cobra.Command {
 }
 
 func testSetup(t *testing.T, root string, args []string, env map[string]string) error {
+	t.Helper()
 	clearConfig(t, root)
 
 	rootCmd := testRootCmd()
@@ -65,7 +67,7 @@ func TestRootHome(t *testing.T) {
 	}{
 		{nil, nil, root},
 		{[]string{"--home", newRoot}, nil, newRoot},
-		{nil, map[string]string{"TMHOME": newRoot}, newRoot}, //XXX: Deprecated.
+		{nil, map[string]string{"TMHOME": newRoot}, newRoot}, // XXX: Deprecated.
 		{nil, map[string]string{"CMTHOME": newRoot}, newRoot},
 	}
 

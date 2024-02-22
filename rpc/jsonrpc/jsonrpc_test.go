@@ -21,13 +21,12 @@ import (
 	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/libs/log"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
-
 	client "github.com/tendermint/tendermint/rpc/jsonrpc/client"
 	server "github.com/tendermint/tendermint/rpc/jsonrpc/server"
 	types "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 )
 
-// Client and Server should work over tcp or unix sockets
+// Client and Server should work over tcp or unix sockets.
 const (
 	tcpAddr = "tcp://127.0.0.1:47768"
 
@@ -61,7 +60,7 @@ type ResultEchoWithDefault struct {
 	Value int `json:"value"`
 }
 
-// Define some routes
+// Define some routes.
 var Routes = map[string]*server.RPCFunc{
 	"echo":            server.NewRPCFunc(EchoResult, "arg"),
 	"echo_ws":         server.NewWSRPCFunc(EchoWSResult, "arg"),
@@ -118,7 +117,7 @@ var colorFn = func(keyvals ...interface{}) term.FgBgColor {
 	return term.FgBgColor{}
 }
 
-// launch unix and tcp servers
+// launch unix and tcp servers.
 func setup() {
 	logger := log.NewTMLoggerWithColorFn(log.NewSyncWriter(os.Stdout), colorFn)
 
@@ -225,6 +224,7 @@ func echoWithDefaultViaHTTP(cl client.Caller, v *int) (int, error) {
 }
 
 func testWithHTTPClient(t *testing.T, cl client.HTTPClient) {
+	t.Helper()
 	val := testVal
 	got, err := echoViaHTTP(cl, val)
 	require.NoError(t, err)
@@ -298,6 +298,7 @@ func echoBytesViaWS(cl *client.WSClient, bytes []byte) ([]byte, error) {
 }
 
 func testWithWSClient(t *testing.T, cl *client.WSClient) {
+	t.Helper()
 	val := testVal
 	got, err := echoViaWS(cl, val)
 	require.Nil(t, err)
@@ -458,6 +459,7 @@ func TestJSONRPCCaching(t *testing.T) {
 }
 
 func rawJSONRPCRequest(t *testing.T, cl *http.Client, url string, req interface{}) (*http.Response, error) {
+	t.Helper()
 	reqBytes, err := json.Marshal(req)
 	require.NoError(t, err)
 
@@ -491,6 +493,7 @@ func TestURICaching(t *testing.T) {
 }
 
 func rawURIRequest(t *testing.T, cl *http.Client, url string, args url.Values) (*http.Response, error) {
+	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(args.Encode()))
 	require.NoError(t, err)
 
@@ -500,6 +503,7 @@ func rawURIRequest(t *testing.T, cl *http.Client, url string, args url.Values) (
 }
 
 func randBytes(t *testing.T) []byte {
+	t.Helper()
 	n := cmtrand.Intn(10) + 2
 	buf := make([]byte, n)
 	_, err := crand.Read(buf)

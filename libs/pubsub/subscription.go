@@ -19,7 +19,7 @@ var (
 // consists of three things:
 // 1) channel onto which messages and events are published
 // 2) channel which is closed if a client is too slow or choose to unsubscribe
-// 3) err indicating the reason for (2)
+// 3) err indicating the reason for (2).
 type Subscription struct {
 	out chan Message
 
@@ -43,9 +43,9 @@ func (s *Subscription) Out() <-chan Message {
 	return s.out
 }
 
-// Cancelled returns a channel that's closed when the subscription is
+// Canceled returns a channel that's closed when the subscription is
 // terminated and supposed to be used in a select statement.
-func (s *Subscription) Cancelled() <-chan struct{} {
+func (s *Subscription) Canceled() <-chan struct{} {
 	return s.canceled
 }
 

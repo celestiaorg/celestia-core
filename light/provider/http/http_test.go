@@ -82,7 +82,7 @@ func TestProvider(t *testing.T) {
 	require.Nil(t, lb)
 	assert.Equal(t, provider.ErrLightBlockNotFound, err)
 
-	// fetching with the context cancelled
+	// fetching with the context canceled
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err = p.LightBlock(ctx, lower+3)

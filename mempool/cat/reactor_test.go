@@ -14,14 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tendermint/tendermint/abci/example/kvstore"
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	p2pmock "github.com/tendermint/tendermint/p2p/mock"
-
 	cfg "github.com/tendermint/tendermint/config"
-
+	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/p2p"
+	p2pmock "github.com/tendermint/tendermint/p2p/mock"
 	"github.com/tendermint/tendermint/p2p/mocks"
 	protomem "github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"github.com/tendermint/tendermint/proxy"
@@ -277,6 +275,7 @@ func TestLegacyReactorReceiveBasic(t *testing.T) {
 }
 
 func setupReactor(t *testing.T) (*Reactor, *TxPool) {
+	t.Helper()
 	app := &application{kvstore.NewApplication()}
 	cc := proxy.NewLocalClientCreator(app)
 	pool, cleanup := newMempoolWithApp(cc)
@@ -287,6 +286,7 @@ func setupReactor(t *testing.T) (*Reactor, *TxPool) {
 }
 
 func makeAndConnectReactors(t *testing.T, config *cfg.Config, n int) []*Reactor {
+	t.Helper()
 	reactors := make([]*Reactor, n)
 	logger := mempoolLogger()
 	for i := 0; i < n; i++ {
@@ -351,6 +351,7 @@ func newMempoolWithAppAndConfig(cc proxy.ClientCreator, conf *cfg.Config) (*TxPo
 }
 
 func waitForTxsOnReactors(t *testing.T, txs types.Txs, reactors []*Reactor) {
+	t.Helper()
 	// wait for the txs in all mempools
 	wg := new(sync.WaitGroup)
 	for i, reactor := range reactors {
@@ -376,6 +377,7 @@ func waitForTxsOnReactors(t *testing.T, txs types.Txs, reactors []*Reactor) {
 }
 
 func waitForTxsOnReactor(t *testing.T, txs types.Txs, reactor *Reactor, reactorIndex int) {
+	t.Helper()
 	mempool := reactor.mempool
 	for mempool.Size() < len(txs) {
 		time.Sleep(time.Millisecond * 100)
@@ -395,7 +397,6 @@ func genPeers(n int) []*mocks.Peer {
 		peers[i] = genPeer()
 	}
 	return peers
-
 }
 
 func genPeer() *mocks.Peer {

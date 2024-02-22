@@ -11,9 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tendermint/tendermint/libs/log"
-	cmtos "github.com/tendermint/tendermint/libs/os"
-
 	abcicli "github.com/tendermint/tendermint/abci/client"
 	"github.com/tendermint/tendermint/abci/example/code"
 	"github.com/tendermint/tendermint/abci/example/counter"
@@ -22,32 +19,34 @@ import (
 	servertest "github.com/tendermint/tendermint/abci/tests/server"
 	"github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/abci/version"
+	"github.com/tendermint/tendermint/libs/log"
+	cmtos "github.com/tendermint/tendermint/libs/os"
 	"github.com/tendermint/tendermint/proto/tendermint/crypto"
 )
 
-// client is a global variable so it can be reused by the console
+// client is a global variable so it can be reused by the console.
 var (
 	client abcicli.Client
 	logger log.Logger
 )
 
-// flags
+// flags.
 var (
-	// global
+	// global.
 	flagAddress  string
 	flagAbci     string
 	flagVerbose  bool   // for the println output
 	flagLogLevel string // for the logger
 
-	// query
+	// query.
 	flagPath   string
 	flagHeight int
 	flagProve  bool
 
-	// counter
+	// counter.
 	flagSerial bool
 
-	// kvstore
+	// kvstore.
 	flagPersist string
 )
 
@@ -56,7 +55,6 @@ var RootCmd = &cobra.Command{
 	Short: "the ABCI CLI tool wraps an ABCI client",
 	Long:  "the ABCI CLI tool wraps an ABCI client and is used for testing ABCI servers",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-
 		switch cmd.Use {
 		case "counter", "kvstore": // for the examples apps, don't pre-run
 			return nil
@@ -209,6 +207,7 @@ var echoCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE:  cmdEcho,
 }
+
 var infoCmd = &cobra.Command{
 	Use:   "info",
 	Short: "get some info about the application",
@@ -216,6 +215,7 @@ var infoCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(0),
 	RunE:  cmdInfo,
 }
+
 var setOptionCmd = &cobra.Command{
 	Use:   "set_option",
 	Short: "set an option on the application",
@@ -291,9 +291,8 @@ var testCmd = &cobra.Command{
 	RunE:  cmdTest,
 }
 
-// Generates new Args array based off of previous call args to maintain flag persistence
+// Generates new Args array based off of previous call args to maintain flag persistence.
 func persistentArgs(line []byte) []string {
-
 	// generate the arguments to run from original os.Args
 	// to maintain flag arguments
 	args := os.Args
@@ -346,7 +345,6 @@ func cmdBatch(cmd *cobra.Command, args []string) error {
 	bufReader := bufio.NewReader(os.Stdin)
 LOOP:
 	for {
-
 		line, more, err := bufReader.ReadLine()
 		switch {
 		case more:
@@ -470,7 +468,7 @@ func cmdUnimplemented(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// Have the application echo a message
+// Have the application echo a message.
 func cmdEcho(cmd *cobra.Command, args []string) error {
 	msg := ""
 	if len(args) > 0 {
@@ -486,7 +484,7 @@ func cmdEcho(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// Get some info from the application
+// Get some info from the application.
 func cmdInfo(cmd *cobra.Command, args []string) error {
 	var version string
 	if len(args) == 1 {
@@ -504,7 +502,7 @@ func cmdInfo(cmd *cobra.Command, args []string) error {
 
 const codeBad uint32 = 10
 
-// Set an option on the application
+// Set an option on the application.
 func cmdSetOption(cmd *cobra.Command, args []string) error {
 	if len(args) < 2 {
 		printResponse(cmd, args, response{
@@ -523,7 +521,7 @@ func cmdSetOption(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// Append a new tx to application
+// Append a new tx to application.
 func cmdDeliverTx(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		printResponse(cmd, args, response{
@@ -549,7 +547,7 @@ func cmdDeliverTx(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// Validate a tx
+// Validate a tx.
 func cmdCheckTx(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		printResponse(cmd, args, response{
@@ -575,7 +573,7 @@ func cmdCheckTx(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// Get application Merkle root hash
+// Get application Merkle root hash.
 func cmdCommit(cmd *cobra.Command, args []string) error {
 	res, err := client.CommitSync()
 	if err != nil {
@@ -587,7 +585,7 @@ func cmdCommit(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// Query application state
+// Query application state.
 func cmdQuery(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		printResponse(cmd, args, response{
@@ -688,7 +686,6 @@ func cmdKVStore(cmd *cobra.Command, args []string) error {
 //--------------------------------------------------------------------------------
 
 func printResponse(cmd *cobra.Command, args []string, rsp response) {
-
 	if flagVerbose {
 		fmt.Println(">", cmd.Use, strings.Join(args, " "))
 	}
@@ -698,7 +695,6 @@ func printResponse(cmd *cobra.Command, args []string, rsp response) {
 		fmt.Printf("-> code: OK\n")
 	} else {
 		fmt.Printf("-> code: %d\n", rsp.Code)
-
 	}
 
 	if len(rsp.Data) != 0 {
@@ -729,7 +725,7 @@ func printResponse(cmd *cobra.Command, args []string, rsp response) {
 	}
 }
 
-// NOTE: s is interpreted as a string unless prefixed with 0x
+// NOTE: s is interpreted as a string unless prefixed with 0x.
 func stringOrHexToBytes(s string) ([]byte, error) {
 	if len(s) > 2 && strings.ToLower(s[:2]) == "0x" {
 		b, err := hex.DecodeString(s[2:])

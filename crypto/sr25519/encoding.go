@@ -17,7 +17,6 @@ const (
 )
 
 func init() {
-
 	cmtjson.RegisterType(PubKey{}, PubKeyName)
 	cmtjson.RegisterType(PrivKey{}, PrivKeyName)
 }

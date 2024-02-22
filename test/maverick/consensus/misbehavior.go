@@ -12,7 +12,7 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-// MisbehaviorList encompasses a list of all possible behaviors
+// MisbehaviorList encompasses a list of all possible behaviors.
 var MisbehaviorList = map[string]Misbehavior{
 	"double-prevote": DoublePrevoteMisbehavior(),
 }
@@ -53,7 +53,6 @@ func DoublePrevoteMisbehavior() Misbehavior {
 	b := DefaultMisbehavior()
 	b.Name = "double-prevote"
 	b.EnterPrevote = func(cs *State, height int64, round int32) {
-
 		// If a block is locked, prevote that.
 		if cs.LockedBlock != nil {
 			cs.Logger.Debug("enterPrevote: already locked on a block, prevoting locked block")
@@ -281,7 +280,6 @@ func defaultReceivePrevote(cs *State, vote *types.Vote) {
 
 	// If +2/3 prevotes for a block or nil for *any* round:
 	if blockID, ok := prevotes.TwoThirdsMajority(); ok {
-
 		// There was a polka!
 		// If we're locked but this is a recent polka, unlock.
 		// If it matches our ProposalBlock, update the ValidBlock
@@ -292,7 +290,6 @@ func defaultReceivePrevote(cs *State, vote *types.Vote) {
 			(cs.LockedRound < vote.Round) &&
 			(vote.Round <= cs.Round) &&
 			!cs.LockedBlock.HashesTo(blockID.Hash) {
-
 			cs.Logger.Info("Unlocking because of POL.", "lockedRound", cs.LockedRound, "POLRound", vote.Round)
 			cs.LockedRound = -1
 			cs.LockedBlock = nil
@@ -303,7 +300,6 @@ func defaultReceivePrevote(cs *State, vote *types.Vote) {
 		// Update Valid* if we can.
 		// NOTE: our proposal block may be nil or not what received a polka..
 		if len(blockID.Hash) != 0 && (cs.TwoThirdPrevoteRound < vote.Round) && (vote.Round == cs.Round) {
-
 			if cs.ProposalBlock.HashesTo(blockID.Hash) {
 				cs.Logger.Info(
 					"Updating ValidBlock because of POL.", "validRound", cs.TwoThirdPrevoteRound, "POLRound", vote.Round)
@@ -346,7 +342,6 @@ func defaultReceivePrevote(cs *State, vote *types.Vote) {
 			cs.enterPrevote(height, cs.Round)
 		}
 	}
-
 }
 
 func defaultReceivePrecommit(cs *State, vote *types.Vote) {

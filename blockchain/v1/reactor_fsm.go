@@ -11,7 +11,7 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-// Blockchain Reactor State
+// Blockchain Reactor State.
 type bcReactorFSMState struct {
 	name string
 
@@ -29,7 +29,7 @@ func (s *bcReactorFSMState) String() string {
 	return s.name
 }
 
-// BcReactorFSM is the datastructure for the Blockchain Reactor State Machine
+// BcReactorFSM is the datastructure for the Blockchain Reactor State Machine.
 type BcReactorFSM struct {
 	logger log.Logger
 	mtx    sync.Mutex
@@ -66,11 +66,11 @@ type bReactorEventData struct {
 	maxNumRequests int          // for request needed event, maximum number of pending requests
 }
 
-// Blockchain Reactor Events (the input to the state machine)
+// Blockchain Reactor Events (the input to the state machine).
 type bReactorEvent uint
 
 const (
-	// message type events
+	// message type events.
 	startFSMEv = iota + 1
 	statusResponseEv
 	blockResponseEv
@@ -79,7 +79,7 @@ const (
 	makeRequestsEv
 	stopFSMEv
 
-	// other events
+	// other events.
 	peerRemoveEv = iota + 256
 	stateTimeoutEv
 )
@@ -138,10 +138,9 @@ func (ev bReactorEvent) String() string {
 	default:
 		return "event unknown"
 	}
-
 }
 
-// states
+// states.
 var (
 	unknown      *bcReactorFSMState
 	waitForPeer  *bcReactorFSMState
@@ -149,15 +148,15 @@ var (
 	finished     *bcReactorFSMState
 )
 
-// timeouts for state timers
+// timeouts for state timers.
 const (
 	waitForPeerTimeout                 = 3 * time.Second
 	waitForBlockAtCurrentHeightTimeout = 10 * time.Second
 )
 
-// errors
+// errors.
 var (
-	// internal to the package
+	// internal to the package.
 	errNoErrorFinished        = errors.New("fast sync is finished")
 	errInvalidEvent           = errors.New("invalid event in current state")
 	errMissingBlock           = errors.New("missing blocks")
@@ -169,9 +168,9 @@ var (
 	errNoTallerPeer           = errors.New("fast sync timed out on waiting for a peer taller than this node")
 
 	// reported eventually to the switch
-	// handle return
+	// handle return.
 	errPeerLowersItsHeight = errors.New("fast sync peer reports a height lower than previous")
-	// handle return
+	// handle return.
 	errNoPeerResponseForCurrentHeights = errors.New("fast sync timed out on peer block response for current heights")
 	errNoPeerResponse                  = errors.New("fast sync timed out on peer block response")               // xx
 	errBadDataFromPeer                 = errors.New("fast sync received block from wrong peer or block is bad") // xx
@@ -251,7 +250,6 @@ func init() {
 		},
 		handle: func(fsm *BcReactorFSM, ev bReactorEvent, data bReactorEventData) (*bcReactorFSMState, error) {
 			switch ev {
-
 			case statusResponseEv:
 				err := fsm.pool.UpdatePeer(data.peerID, data.base, data.height)
 				if fsm.pool.NumPeers() == 0 {
@@ -362,7 +360,7 @@ func init() {
 
 // Interface used by FSM for sending Block and Status requests,
 // informing of peer errors and state timeouts
-// Implemented by BlockchainReactor and tests
+// Implemented by BlockchainReactor and tests.
 type bcReactor interface {
 	sendStatusRequest()
 	sendBlockRequest(peerID p2p.ID, height int64) error
@@ -442,7 +440,7 @@ func (fsm *BcReactorFSM) NeedsBlocks() bool {
 	return fsm.state.name == "waitForBlock" && fsm.pool.NeedsBlocks()
 }
 
-// FirstTwoBlocks returns the two blocks at pool height and height+1
+// FirstTwoBlocks returns the two blocks at pool height and height+1.
 func (fsm *BcReactorFSM) FirstTwoBlocks() (first, second *types.Block, err error) {
 	fsm.mtx.Lock()
 	defer fsm.mtx.Unlock()

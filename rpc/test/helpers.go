@@ -9,9 +9,8 @@ import (
 	"time"
 
 	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/libs/log"
-
 	cfg "github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/libs/log"
 	cmtnet "github.com/tendermint/tendermint/libs/net"
 	nm "github.com/tendermint/tendermint/node"
 	"github.com/tendermint/tendermint/p2p"
@@ -31,11 +30,13 @@ type Options struct {
 	SpecificConfig *cfg.Config
 }
 
-var globalConfig *cfg.Config
-var defaultOptions = Options{
-	suppressStdout: false,
-	recreateConfig: false,
-}
+var (
+	globalConfig   *cfg.Config
+	defaultOptions = Options{
+		suppressStdout: false,
+		recreateConfig: false,
+	}
+)
 
 func waitForRPC() {
 	laddr := GetConfig().RPC.ListenAddress
@@ -65,7 +66,7 @@ func waitForGRPC() {
 	}
 }
 
-// f**ing long, but unique for each test
+// f**ing long, but unique for each test.
 func makePathname() string {
 	// get path
 	p, err := os.Getwd()
@@ -104,7 +105,7 @@ func createConfig() *cfg.Config {
 	return c
 }
 
-// GetConfig returns a config for the test cases as a singleton
+// GetConfig returns a config for the test cases as a singleton.
 func GetConfig(forceCreate ...bool) *cfg.Config {
 	if globalConfig == nil || (len(forceCreate) > 0 && forceCreate[0]) {
 		globalConfig = createConfig()
@@ -117,7 +118,7 @@ func GetGRPCClient() core_grpc.BroadcastAPIClient {
 	return core_grpc.StartGRPCClient(grpcAddr)
 }
 
-// StartTendermint starts a test CometBFT server in a go routine and returns when it is initialized
+// StartTendermint starts a test CometBFT server in a go routine and returns when it is initialized.
 func StartTendermint(app abci.Application, opts ...func(*Options)) *nm.Node {
 	nodeOpts := defaultOptions
 	for _, opt := range opts {
@@ -150,7 +151,7 @@ func StopTendermint(node *nm.Node) {
 	os.RemoveAll(node.Config().RootDir)
 }
 
-// NewTendermint creates a new CometBFT server and sleeps forever
+// NewTendermint creates a new CometBFT server and sleeps forever.
 func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 	// Create & start node
 	if opts.SpecificConfig != nil {

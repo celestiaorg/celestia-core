@@ -52,7 +52,8 @@ func BlockchainInfo(ctx *rpctypes.Context, minHeight, maxHeight int64) (*ctypes.
 
 	return &ctypes.ResultBlockchainInfo{
 		LastHeight: env.BlockStore.Height(),
-		BlockMetas: blockMetas}, nil
+		BlockMetas: blockMetas,
+	}, nil
 }
 
 // error if either min or max are negative or min > max
@@ -250,7 +251,7 @@ func DataRootInclusionProof(
 	return &ctypes.ResultDataRootInclusionProof{Proof: *proof}, nil
 }
 
-// padBytes Pad bytes to given length
+// padBytes Pad bytes to given length.
 func padBytes(byt []byte, length int) ([]byte, error) {
 	l := len(byt)
 	if l > length {
@@ -468,7 +469,6 @@ func BlockSearch(
 	pagePtr, perPagePtr *int,
 	orderBy string,
 ) (*ctypes.ResultBlockSearch, error) {
-
 	// skip if block indexing is disabled
 	if _, ok := GetEnvironment().BlockIndexer.(*blockidxnull.BlockerIndexer); ok {
 		return nil, errors.New("block indexing is disabled")

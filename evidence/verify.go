@@ -15,7 +15,7 @@ import (
 // - it is sufficiently recent (MaxAge)
 // - it is from a key who was a validator at the given height
 // - it is internally consistent with state
-// - it was properly signed by the alleged equivocator and meets the individual evidence verification requirements
+// - it was properly signed by the alleged equivocator and meets the individual evidence verification requirements.
 func (evpool *Pool) verify(evidence types.Evidence) error {
 	var (
 		state          = evpool.State()
@@ -97,7 +97,6 @@ func (evpool *Pool) verify(evidence types.Evidence) error {
 	default:
 		return fmt.Errorf("unrecognized evidence type: %T", evidence)
 	}
-
 }
 
 // VerifyLightClientAttack verifies LightClientAttackEvidence against the state of the full node. This involves
@@ -111,7 +110,8 @@ func (evpool *Pool) verify(evidence types.Evidence) error {
 //
 //	must check that the evidence has not expired (i.e. is outside the maximum age threshold)
 func VerifyLightClientAttack(e *types.LightClientAttackEvidence, commonHeader, trustedHeader *types.SignedHeader,
-	commonVals *types.ValidatorSet, now time.Time, trustPeriod time.Duration) error {
+	commonVals *types.ValidatorSet, now time.Time, trustPeriod time.Duration,
+) error {
 	// In the case of lunatic attack there will be a different commonHeader height. Therefore the node perform a single
 	// verification jump between the common header and the conflicting one
 	if commonHeader.Height != e.ConflictingBlock.Height {
@@ -222,7 +222,7 @@ func VerifyDuplicateVote(e *types.DuplicateVoteEvidence, chainID string, valSet 
 }
 
 // validateABCIEvidence validates the ABCI component of the light client attack
-// evidence i.e voting power and byzantine validators
+// evidence i.e voting power and byzantine validators.
 func validateABCIEvidence(
 	ev *types.LightClientAttackEvidence,
 	commonVals *types.ValidatorSet,

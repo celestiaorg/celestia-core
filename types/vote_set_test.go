@@ -474,7 +474,7 @@ func TestVoteSet_MakeCommit(t *testing.T) {
 	}
 }
 
-// NOTE: privValidators are in order
+// NOTE: privValidators are in order.
 func randVoteSet(
 	height int64,
 	round int32,
@@ -486,7 +486,7 @@ func randVoteSet(
 	return NewVoteSet("test_chain_id", height, round, signedMsgType, valSet), valSet, privValidators
 }
 
-// Convenience: Return new vote with different validator address/index
+// Convenience: Return new vote with different validator address/index.
 func withValidator(vote *Vote, addr []byte, idx int32) *Vote {
 	vote = vote.Copy()
 	vote.ValidatorAddress = addr
@@ -494,35 +494,35 @@ func withValidator(vote *Vote, addr []byte, idx int32) *Vote {
 	return vote
 }
 
-// Convenience: Return new vote with different height
+// Convenience: Return new vote with different height.
 func withHeight(vote *Vote, height int64) *Vote {
 	vote = vote.Copy()
 	vote.Height = height
 	return vote
 }
 
-// Convenience: Return new vote with different round
+// Convenience: Return new vote with different round.
 func withRound(vote *Vote, round int32) *Vote {
 	vote = vote.Copy()
 	vote.Round = round
 	return vote
 }
 
-// Convenience: Return new vote with different type
+// Convenience: Return new vote with different type.
 func withType(vote *Vote, signedMsgType byte) *Vote {
 	vote = vote.Copy()
 	vote.Type = cmtproto.SignedMsgType(signedMsgType)
 	return vote
 }
 
-// Convenience: Return new vote with different blockHash
+// Convenience: Return new vote with different blockHash.
 func withBlockHash(vote *Vote, blockHash []byte) *Vote {
 	vote = vote.Copy()
 	vote.BlockID.Hash = blockHash
 	return vote
 }
 
-// Convenience: Return new vote with different blockParts
+// Convenience: Return new vote with different blockParts.
 func withBlockPartSetHeader(vote *Vote, blockPartsHeader PartSetHeader) *Vote {
 	vote = vote.Copy()
 	vote.BlockID.PartSetHeader = blockPartsHeader

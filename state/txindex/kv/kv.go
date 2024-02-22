@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"strings"
 
-	dbm "github.com/cometbft/cometbft-db"
 	"github.com/gogo/protobuf/proto"
 
+	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/pubsub/query"
 	"github.com/tendermint/tendermint/state/indexer"
@@ -279,7 +279,7 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 	// extract ranges
 	// if both upper and lower bounds exist, it's better to get them in order not
 	// no iterate over kvs that are not within range.
-	//If we have a query range over height and want to still look for
+
 	// specific event values we do not want to simply return all
 	// transactios in this height range. We remember the height range info
 	// and pass it on to match() to take into account when processing events.
@@ -290,7 +290,6 @@ func (txi *TxIndex) Search(ctx context.Context, q *query.Query) ([]*abci.TxResul
 		skipIndexes = append(skipIndexes, rangeIndexes...)
 
 		for _, qr := range ranges {
-
 			// If we have additional constraints and want to query per event
 			// attributes, we cannot simply return all blocks for a height.
 			// But we remember the height we want to find and forward it to
@@ -377,6 +376,7 @@ func lookForHeight(conditions []query.Condition) (height int64, heightIdx int) {
 	}
 	return 0, -1
 }
+
 func (txi *TxIndex) setTmpHashes(tmpHeights map[string][]byte, it dbm.Iterator, matchEvents bool) {
 	if matchEvents {
 		eventSeq := extractEventSeqFromKey(it.Key())
@@ -417,7 +417,6 @@ func (txi *TxIndex) match(
 		defer it.Close()
 
 		for ; it.Valid(); it.Next() {
-
 			// If we have a height range in a query, we need only transactions
 			// for this height
 
@@ -426,7 +425,6 @@ func (txi *TxIndex) match(
 				if err != nil || !checkHeightConditions(heightInfo, keyHeight) {
 					continue
 				}
-
 			}
 
 			txi.setTmpHashes(tmpHashes, it, matchEvents)
@@ -456,7 +454,6 @@ func (txi *TxIndex) match(
 				if err != nil || !checkHeightConditions(heightInfo, keyHeight) {
 					continue
 				}
-
 			}
 			txi.setTmpHashes(tmpHashes, it, matchEvents)
 
@@ -656,6 +653,7 @@ func extractHeightFromKey(key []byte) (int64, error) {
 	parts := strings.SplitN(string(key), tagKeySeparator, -1)
 	return strconv.ParseInt(parts[len(parts)-2], 10, 64)
 }
+
 func extractValueFromKey(key []byte) string {
 	keyString := string(key)
 	parts := strings.SplitN(keyString, tagKeySeparator, -1)
@@ -681,6 +679,7 @@ func extractEventSeqFromKey(key []byte) string {
 	}
 	return "0"
 }
+
 func keyForEvent(key string, value []byte, result *abci.TxResult, eventSeq int64) []byte {
 	return []byte(fmt.Sprintf("%s/%s/%d/%d%s",
 		key,
@@ -713,7 +712,7 @@ func startKeyForCondition(c query.Condition, height int64) []byte {
 func startKey(fields ...interface{}) []byte {
 	var b bytes.Buffer
 	for _, f := range fields {
-		b.Write([]byte(fmt.Sprintf("%v", f) + tagKeySeparator))
+		b.WriteString(fmt.Sprintf("%v", f) + tagKeySeparator)
 	}
 	return b.Bytes()
 }

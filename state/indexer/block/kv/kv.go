@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	dbm "github.com/cometbft/cometbft-db"
 	"github.com/google/orderedcode"
 
+	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/pubsub/query"
 	"github.com/tendermint/tendermint/state/indexer"
@@ -54,7 +54,7 @@ func (idx *BlockerIndexer) Has(height int64) (bool, error) {
 //
 // primary key: encode(block.height | height) => encode(height)
 // BeginBlock events: encode(eventType.eventAttr|eventValue|height|begin_block) => encode(height)
-// EndBlock events: encode(eventType.eventAttr|eventValue|height|end_block) => encode(height)
+// EndBlock events: encode(eventType.eventAttr|eventValue|height|end_block) => encode(height).
 func (idx *BlockerIndexer) Index(bh types.EventDataNewBlockHeader) error {
 	batch := idx.store.NewBatch()
 	defer batch.Close()
@@ -174,7 +174,6 @@ func (idx *BlockerIndexer) Search(ctx context.Context, q *query.Query) ([]int64,
 				// Otherwise we can just return all the blocks within the height range (as there is no
 				// additional constraint on events)
 				continue
-
 			}
 			prefix, err := orderedcode.Append(nil, qr.Key)
 			if err != nil {
@@ -210,7 +209,6 @@ func (idx *BlockerIndexer) Search(ctx context.Context, q *query.Query) ([]int64,
 		}
 
 		startKey, err := orderedcode.Append(nil, c.CompositeKey, fmt.Sprintf("%v", c.Operand))
-
 		if err != nil {
 			return nil, err
 		}
@@ -280,7 +278,6 @@ func (idx *BlockerIndexer) matchRange(
 	matchEvents bool,
 	heightInfo HeightInfo,
 ) (map[string][]byte, error) {
-
 	// A previous match was attempted but resulted in no matches, so we return
 	// no matches (assuming AND operand).
 	if !firstRun && len(filteredHeights) == 0 {
@@ -418,7 +415,6 @@ func (idx *BlockerIndexer) match(
 	matchEvents bool,
 	heightInfo HeightInfo,
 ) (map[string][]byte, error) {
-
 	// A previous match was attempted but resulted in no matches, so we return
 	// no matches (assuming AND operand).
 	if !firstRun && len(filteredHeights) == 0 {
@@ -441,7 +437,6 @@ func (idx *BlockerIndexer) match(
 				if err != nil || !checkHeightConditions(heightInfo, keyHeight) {
 					continue
 				}
-
 			}
 			idx.setTmpHeights(tmpHeights, it, matchEvents)
 

@@ -1,11 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"os"
-
-	"context"
 
 	cmtjson "github.com/tendermint/tendermint/libs/json"
 	coregrpc "github.com/tendermint/tendermint/rpc/grpc"

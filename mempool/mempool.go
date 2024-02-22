@@ -13,11 +13,11 @@ import (
 const (
 	MempoolChannel = byte(0x30)
 
-	// PeerCatchupSleepIntervalMS defines how much time to sleep if a peer is behind
+	// PeerCatchupSleepIntervalMS defines how much time to sleep if a peer is behind.
 	PeerCatchupSleepIntervalMS = 100
 
 	// UnknownPeerID is the peer ID to use when running CheckTx when there is
-	// no peer (e.g. RPC)
+	// no peer (e.g. RPC).
 	UnknownPeerID uint16 = 0
 
 	MaxActiveIDs = math.MaxUint16
@@ -142,7 +142,7 @@ func PostCheckMaxGas(maxGas int64) PostCheckFunc {
 	}
 }
 
-// ErrTxInCache is returned to the client if we saw tx earlier
+// ErrTxInCache is returned to the client if we saw tx earlier.
 var ErrTxInCache = errors.New("tx already exists in cache")
 
 // TxKey is the fixed length array key used as an index.

@@ -1,6 +1,6 @@
 # CometBFT p2p configuration
 
-This document contains configurable parameters a node operator can use to tune the p2p behaviour.
+This document contains configurable parameters a node operator can use to tune the p2p behavior.
 
 | Parameter| Default| Description |
 | --- | --- | ---|

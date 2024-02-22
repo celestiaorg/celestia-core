@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"fmt"
 
+	schnorrkel "github.com/ChainSafe/go-schnorrkel"
+
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/tmhash"
-
-	schnorrkel "github.com/ChainSafe/go-schnorrkel"
 )
 
 var _ crypto.PubKey = PubKey{}
@@ -74,5 +74,4 @@ func (pubKey PubKey) Equals(other crypto.PubKey) bool {
 
 func (pubKey PubKey) Type() string {
 	return keyType
-
 }

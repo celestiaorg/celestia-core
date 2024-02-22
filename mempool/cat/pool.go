@@ -18,7 +18,7 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-// enforce compile-time satisfaction of the Mempool interface
+// enforce compile-time satisfaction of the Mempool interface.
 var _ mempool.Mempool = (*TxPool)(nil)
 
 var (
@@ -45,7 +45,7 @@ type TxPoolOption func(*TxPool)
 // are rejected because of `CheckTx` or other validity checks will be instantly
 // rejected if they are seen again. Committed transactions are also added to
 // this cache. This serves somewhat as replay protection but applications should
-// implement something more comprehensive
+// implement something more comprehensive.
 type TxPool struct {
 	// Immutable fields
 	logger       log.Logger
@@ -127,10 +127,10 @@ func WithMetrics(metrics *mempool.Metrics) TxPoolOption {
 	return func(txmp *TxPool) { txmp.metrics = metrics }
 }
 
-// Lock is a noop as ABCI calls are serialized
+// Lock is a noop as ABCI calls are serialized.
 func (txmp *TxPool) Lock() {}
 
-// Unlock is a noop as ABCI calls are serialized
+// Unlock is a noop as ABCI calls are serialized.
 func (txmp *TxPool) Unlock() {}
 
 // Size returns the number of valid transactions in the mempool. It is
@@ -159,20 +159,20 @@ func (txmp *TxPool) EnableTxsAvailable() {
 // when transactions are available in the mempool. It is thread-safe.
 func (txmp *TxPool) TxsAvailable() <-chan struct{} { return txmp.txsAvailable }
 
-// Height returns the latest height that the mempool is at
+// Height returns the latest height that the mempool is at.
 func (txmp *TxPool) Height() int64 {
 	txmp.updateMtx.Lock()
 	defer txmp.updateMtx.Unlock()
 	return txmp.height
 }
 
-// Has returns true if the transaction is currently in the mempool
+// Has returns true if the transaction is currently in the mempool.
 func (txmp *TxPool) Has(txKey types.TxKey) bool {
 	return txmp.store.has(txKey)
 }
 
 // Get retrieves a transaction based on the key. It returns a bool
-// if the transaction exists or not
+// if the transaction exists or not.
 func (txmp *TxPool) Get(txKey types.TxKey) (types.Tx, bool) {
 	wtx := txmp.store.get(txKey)
 	if wtx != nil {
@@ -182,7 +182,7 @@ func (txmp *TxPool) Get(txKey types.TxKey) (types.Tx, bool) {
 }
 
 // IsRejectedTx returns true if the transaction was recently rejected and is
-// currently within the cache
+// currently within the cache.
 func (txmp *TxPool) IsRejectedTx(txKey types.TxKey) bool {
 	return txmp.rejectedTxCache.Has(txKey)
 }
@@ -205,7 +205,7 @@ func (txmp *TxPool) CheckToPurgeExpiredTxs() {
 
 // CheckTx adds the given transaction to the mempool if it fits and passes the
 // application's ABCI CheckTx method. This should be viewed as the entry method for new transactions
-// into the network. In practice this happens via an RPC endpoint
+// into the network. In practice this happens via an RPC endpoint.
 func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo mempool.TxInfo) error {
 	// Reject transactions in excess of the configured maximum transaction size.
 	if len(tx) > txmp.config.MaxTxBytes {
@@ -276,7 +276,7 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 // TryAddNewTx attempts to add a tx that has not already been seen before. It first marks it as seen
 // to avoid races with the same tx. It then call `CheckTx` so that the application can validate it.
 // If it passes `CheckTx`, the new transaction is added to the mempool as long as it has
-// sufficient priority and space else if evicted it will return an error
+// sufficient priority and space else if evicted it will return an error.
 func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
 	// First check any of the caches to see if we can conclude early. We may have already seen and processed
 	// the transaction if:
@@ -351,7 +351,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 }
 
 // RemoveTxByKey removes the transaction with the specified key from the
-// mempool. It adds it to the rejectedTxCache so it will not be added again
+// mempool. It adds it to the rejectedTxCache so it will not be added again.
 func (txmp *TxPool) RemoveTxByKey(txKey types.TxKey) error {
 	txmp.removeTxByKey(txKey)
 	txmp.metrics.EvictedTxs.Add(1)

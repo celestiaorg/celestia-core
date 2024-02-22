@@ -6,7 +6,6 @@ import (
 	"time"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/light"
 	"github.com/tendermint/tendermint/light/provider"

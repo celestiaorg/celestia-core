@@ -7,6 +7,7 @@ import (
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
+
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
 )

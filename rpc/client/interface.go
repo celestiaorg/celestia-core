@@ -128,7 +128,7 @@ type NetworkClient interface {
 }
 
 // EventsClient is reactive, you can subscribe to any message, given the proper
-// string. see cometbft/types/events.go
+// string. see cometbft/types/events.go.
 type EventsClient interface {
 	// Subscribe subscribes given subscriber to query. Returns a channel with
 	// cap=1 onto which events are published. An error is returned if it fails to
@@ -152,7 +152,7 @@ type MempoolClient interface {
 }
 
 // EvidenceClient is used for submitting an evidence of the malicious
-// behaviour.
+// behavior.
 type EvidenceClient interface {
 	BroadcastEvidence(context.Context, types.Evidence) (*ctypes.ResultBroadcastEvidence, error)
 }

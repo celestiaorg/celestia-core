@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/cmap"
 	"github.com/tendermint/tendermint/libs/rand"
@@ -16,16 +17,16 @@ import (
 
 const (
 	// wait a random amount of time from this interval
-	// before dialing peers or reconnecting to help prevent DoS
+	// before dialing peers or reconnecting to help prevent DoS.
 	dialRandomizerIntervalMilliseconds = 3000
 
 	// repeatedly try to reconnect for a few minutes
-	// ie. 5 * 20 = 100s
+	// ie. 5 * 20 = 100s.
 	reconnectAttempts = 20
 	reconnectInterval = 5 * time.Second
 
 	// then move into exponential backoff mode for ~1day
-	// ie. 3**10 = 16hrs
+	// ie. 3**10 = 16hrs.
 	reconnectBackOffAttempts    = 10
 	reconnectBackOffBaseSeconds = 3
 )
@@ -110,7 +111,6 @@ func NewSwitch(
 	transport Transport,
 	options ...SwitchOption,
 ) *Switch {
-
 	sw := &Switch{
 		config:               cfg,
 		reactors:             make(map[string]Reactor),
@@ -591,7 +591,7 @@ func (sw *Switch) DialPeerWithAddress(addr *NetAddress) error {
 	return sw.addOutboundPeerWithConfig(addr, sw.config)
 }
 
-// sleep for interval plus some random amount of ms on [0, dialRandomizerIntervalMilliseconds]
+// sleep for interval plus some random amount of ms on [0, dialRandomizerIntervalMilliseconds].
 func (sw *Switch) randomSleep(interval time.Duration) {
 	r := time.Duration(sw.rng.Int63n(dialRandomizerIntervalMilliseconds)) * time.Millisecond
 	time.Sleep(r + interval)
@@ -735,7 +735,6 @@ func (sw *Switch) acceptRoutine() {
 
 				continue
 			}
-
 		}
 
 		if err := sw.addPeer(p); err != nil {

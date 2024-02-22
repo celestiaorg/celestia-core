@@ -14,6 +14,7 @@ import (
 )
 
 func createTestGroupWithHeadSizeLimit(t *testing.T, headSizeLimit int64) *Group {
+	t.Helper()
 	testID := cmtrand.Str(12)
 	testDir := "_test_" + testID
 	err := cmtos.EnsureDir(testDir, 0o700)
@@ -28,6 +29,8 @@ func createTestGroupWithHeadSizeLimit(t *testing.T, headSizeLimit int64) *Group 
 }
 
 func destroyTestGroup(t *testing.T, g *Group) {
+	t.Helper()
+	t.Helper()
 	g.Close()
 
 	err := os.RemoveAll(g.Dir)

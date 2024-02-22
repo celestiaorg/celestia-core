@@ -343,7 +343,7 @@ func (pv *FilePV) signProposal(chainID string, proposal *cmtproto.Proposal) erro
 	return nil
 }
 
-// Persist height/round/step and signature
+// Persist height/round/step and signature.
 func (pv *FilePV) saveSigned(height int64, round int32, step int8,
 	signBytes []byte, sig []byte,
 ) {

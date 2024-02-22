@@ -8,10 +8,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	dbm "github.com/cometbft/cometbft-db"
 	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 
+	dbm "github.com/cometbft/cometbft-db"
 	clist "github.com/tendermint/tendermint/libs/clist"
 	"github.com/tendermint/tendermint/libs/log"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
@@ -24,7 +24,7 @@ const (
 	baseKeyPending   = byte(0x01)
 )
 
-// Pool maintains a pool of valid evidence to be broadcasted and committed
+// Pool maintains a pool of valid evidence to be broadcasted and committed.
 type Pool struct {
 	logger log.Logger
 
@@ -52,7 +52,6 @@ type Pool struct {
 // NewPool creates an evidence pool. If using an existing evidence store,
 // it will add all pending evidence to the concurrent list.
 func NewPool(evidenceDB dbm.DB, stateDB sm.Store, blockStore BlockStore) (*Pool, error) {
-
 	state, err := stateDB.Load()
 	if err != nil {
 		return nil, fmt.Errorf("cannot load state: %w", err)
@@ -192,7 +191,6 @@ func (evpool *Pool) ReportConflictingVotes(voteA, voteB *types.Vote) {
 func (evpool *Pool) CheckEvidence(evList types.EvidenceList) error {
 	hashes := make([][]byte, len(evList))
 	for idx, ev := range evList {
-
 		_, isLightEv := ev.(*types.LightClientAttackEvidence)
 
 		// We must verify light client attack evidence regardless because there could be a
@@ -229,12 +227,12 @@ func (evpool *Pool) CheckEvidence(evList types.EvidenceList) error {
 	return nil
 }
 
-// EvidenceFront goes to the first evidence in the clist
+// EvidenceFront goes to the first evidence in the clist.
 func (evpool *Pool) EvidenceFront() *clist.CElement {
 	return evpool.evidenceList.Front()
 }
 
-// EvidenceWaitChan is a channel that closes once the first evidence in the list is there. i.e Front is not nil
+// EvidenceWaitChan is a channel that closes once the first evidence in the list is there. i.e Front is not nil.
 func (evpool *Pool) EvidenceWaitChan() <-chan struct{} {
 	return evpool.evidenceList.WaitChan()
 }
@@ -261,7 +259,7 @@ func (evpool *Pool) Close() error {
 }
 
 // IsExpired checks whether evidence or a polc is expired by checking whether a height and time is older
-// than set by the evidence consensus parameters
+// than set by the evidence consensus parameters.
 func (evpool *Pool) isExpired(height int64, time time.Time) bool {
 	var (
 		params       = evpool.State().ConsensusParams.Evidence
@@ -434,8 +432,8 @@ func (evpool *Pool) removeExpiredPendingEvidence() (int64, time.Time) {
 }
 
 func (evpool *Pool) removeEvidenceFromList(
-	blockEvidenceMap map[string]struct{}) {
-
+	blockEvidenceMap map[string]struct{},
+) {
 	for e := evpool.evidenceList.Front(); e != nil; e = e.Next() {
 		// Remove from clist
 		ev := e.Value.(types.Evidence)
@@ -460,7 +458,6 @@ func (evpool *Pool) processConsensusBuffer(state sm.State) {
 	evpool.mtx.Lock()
 	defer evpool.mtx.Unlock()
 	for _, voteSet := range evpool.consensusBuffer {
-
 		// Check the height of the conflicting votes and fetch the corresponding time and validator set
 		// to produce the valid evidence
 		var dve *types.DuplicateVoteEvidence
@@ -547,7 +544,7 @@ func evMapKey(ev types.Evidence) string {
 	return string(ev.Hash())
 }
 
-// big endian padded hex
+// big endian padded hex.
 func bE(h int64) string {
 	return fmt.Sprintf("%0.16X", h)
 }

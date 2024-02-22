@@ -6,9 +6,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"golang.org/x/net/netutil"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/libs/protoio"
 	"github.com/tendermint/tendermint/p2p/conn"
@@ -21,7 +21,7 @@ const (
 	defaultHandshakeTimeout = 3 * time.Second
 )
 
-// IPResolver is a behaviour subset of net.Resolver.
+// IPResolver is a behavior subset of net.Resolver.
 type IPResolver interface {
 	LookupIPAddr(context.Context, string) ([]net.IPAddr, error)
 }
@@ -38,9 +38,9 @@ type accept struct {
 // peerConfig is used to bundle data we need to fully setup a Peer with an
 // MConn, provided by the caller of Accept and Dial (currently the Switch). This
 // a temporary measure until reactor setup is less dynamic and we introduce the
-// concept of PeerBehaviour to communicate about significant Peer lifecycle
+// concept of Peerbehavior to communicate about significant Peer lifecycle
 // events.
-// TODO(xla): Refactor out with more static Reactor setup and PeerBehaviour.
+// TODO(xla): Refactor out with more static Reactor setup and Peerbehavior.
 type peerConfig struct {
 	chDescs     []*conn.ChannelDescriptor
 	onPeerError func(Peer, interface{})
@@ -73,7 +73,7 @@ type Transport interface {
 }
 
 // transportLifecycle bundles the methods for callers to control start and stop
-// behaviour.
+// behavior.
 type transportLifecycle interface {
 	Close() error
 	Listen(NetAddress) error
@@ -128,7 +128,7 @@ func MultiplexTransportResolver(resolver IPResolver) MultiplexTransportOption {
 }
 
 // MultiplexTransportMaxIncomingConnections sets the maximum number of
-// simultaneous connections (incoming). Default: 0 (unlimited)
+// simultaneous connections (incoming). Default: 0 (unlimited).
 func MultiplexTransportMaxIncomingConnections(n int) MultiplexTransportOption {
 	return func(mt *MultiplexTransport) { mt.maxIncomingConnections = n }
 }
@@ -161,8 +161,10 @@ type MultiplexTransport struct {
 }
 
 // Test multiplexTransport for interface completeness.
-var _ Transport = (*MultiplexTransport)(nil)
-var _ transportLifecycle = (*MultiplexTransport)(nil)
+var (
+	_ Transport          = (*MultiplexTransport)(nil)
+	_ transportLifecycle = (*MultiplexTransport)(nil)
+)
 
 // NewMultiplexTransport returns a tcp connected multiplexed peer.
 func NewMultiplexTransport(
@@ -267,7 +269,7 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 // AddChannel registers a channel to nodeInfo.
 // NOTE: NodeInfo must be of type DefaultNodeInfo else channels won't be updated
 // This is a bit messy at the moment but is cleaned up in the following version
-// when NodeInfo changes from an interface to a concrete type
+// when NodeInfo changes from an interface to a concrete type.
 func (mt *MultiplexTransport) AddChannel(chID byte) {
 	if ni, ok := mt.nodeInfo.(DefaultNodeInfo); ok {
 		if !ni.HasChannel(chID) {
@@ -394,7 +396,6 @@ func (mt *MultiplexTransport) filterConn(c net.Conn) (err error) {
 		case <-time.After(mt.filterTimeout):
 			return ErrFilterTimeout{}
 		}
-
 	}
 
 	mt.conns.Set(c, ips)
@@ -497,7 +498,6 @@ func (mt *MultiplexTransport) wrapPeer(
 	cfg peerConfig,
 	socketAddr *NetAddress,
 ) Peer {
-
 	persistent := false
 	if cfg.isPersistent != nil {
 		if cfg.outbound {

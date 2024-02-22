@@ -68,7 +68,6 @@ func TxSearch(
 	pagePtr, perPagePtr *int,
 	orderBy string,
 ) (*ctypes.ResultTxSearch, error) {
-
 	env := GetEnvironment()
 	// if index is disabled, return error
 	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
@@ -213,7 +212,7 @@ func ProveShares(
 }
 
 func loadRawBlock(bs state.BlockStore, height int64) ([]byte, error) {
-	var blockMeta = bs.LoadBlockMeta(height)
+	blockMeta := bs.LoadBlockMeta(height)
 	if blockMeta == nil {
 		return nil, fmt.Errorf("no block found for height %d", height)
 	}
@@ -243,12 +242,10 @@ func TxSearchMatchEvents(
 	orderBy string,
 	matchEvents bool,
 ) (*ctypes.ResultTxSearch, error) {
-
 	if matchEvents {
 		query = "match.events = 1 AND " + query
 	} else {
 		query = "match.events = 0 AND " + query
 	}
 	return TxSearch(ctx, query, prove, pagePtr, perPagePtr, orderBy)
-
 }

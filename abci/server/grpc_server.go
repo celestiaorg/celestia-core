@@ -21,7 +21,7 @@ type GRPCServer struct {
 	app types.ABCIApplicationServer
 }
 
-// NewGRPCServer returns a new gRPC ABCI server
+// NewGRPCServer returns a new gRPC ABCI server.
 func NewGRPCServer(protoAddr string, app types.ABCIApplicationServer) service.Service {
 	proto, addr := cmtnet.ProtocolAndAddress(protoAddr)
 	s := &GRPCServer{
@@ -36,7 +36,6 @@ func NewGRPCServer(protoAddr string, app types.ABCIApplicationServer) service.Se
 
 // OnStart starts the gRPC service.
 func (s *GRPCServer) OnStart() error {
-
 	ln, err := net.Listen(s.proto, s.addr)
 	if err != nil {
 		return err

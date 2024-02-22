@@ -17,18 +17,18 @@ import (
 )
 
 const (
-	// BlockchainChannel is a channel for blocks and status updates (`BlockStore` height)
+	// BlockchainChannel is a channel for blocks and status updates (`BlockStore` height).
 	BlockchainChannel = byte(0x40)
 
 	trySyncIntervalMS = 10
 
 	// stop syncing when last block's time is
 	// within this much of the system time.
-	// stopSyncingDurationMinutes = 10
+	// stopSyncingDurationMinutes = 10.
 
-	// ask for best height every 10s
+	// ask for best height every 10s.
 	statusUpdateIntervalSeconds = 10
-	// check if we should switch to consensus reactor
+	// check if we should switch to consensus reactor.
 	switchToConsensusIntervalSeconds = 1
 )
 
@@ -65,8 +65,8 @@ type BlockchainReactor struct {
 
 // NewBlockchainReactor returns new reactor instance.
 func NewBlockchainReactor(state sm.State, blockExec *sm.BlockExecutor, store *store.BlockStore,
-	fastSync bool) *BlockchainReactor {
-
+	fastSync bool,
+) *BlockchainReactor {
 	if state.LastBlockHeight != store.Height() {
 		panic(fmt.Sprintf("state (%v) and store (%v) height mismatch", state.LastBlockHeight,
 			store.Height()))
@@ -137,7 +137,7 @@ func (bcR *BlockchainReactor) OnStop() {
 	}
 }
 
-// GetChannels implements Reactor
+// GetChannels implements Reactor.
 func (bcR *BlockchainReactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
@@ -174,8 +174,8 @@ func (bcR *BlockchainReactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 // respondToPeer loads a block and sends it to the requesting peer,
 // if we have it. Otherwise, we'll respond saying we don't have it.
 func (bcR *BlockchainReactor) respondToPeer(msg *bcproto.BlockRequest,
-	src p2p.Peer) (queued bool) {
-
+	src p2p.Peer,
+) (queued bool) {
 	block := bcR.store.LoadBlock(msg.Height)
 	if block != nil {
 		bl, err := block.ToProto()
@@ -253,7 +253,6 @@ func (bcR *BlockchainReactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte)
 // Handle messages from the poolReactor telling the reactor what to do.
 // NOTE: Don't sleep in the FOR_LOOP or otherwise slow it down!
 func (bcR *BlockchainReactor) poolRoutine(stateSynced bool) {
-
 	trySyncTicker := time.NewTicker(trySyncIntervalMS * time.Millisecond)
 	defer trySyncTicker.Stop()
 
@@ -301,7 +300,6 @@ func (bcR *BlockchainReactor) poolRoutine(stateSynced bool) {
 			case <-statusUpdateTicker.C:
 				// ask for status updates
 				go bcR.BroadcastStatusRequest() //nolint: errcheck
-
 			}
 		}
 	}()

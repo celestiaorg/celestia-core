@@ -11,7 +11,6 @@ import (
 	"github.com/tendermint/tendermint/libs/cmap"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/service"
-
 	cmtconn "github.com/tendermint/tendermint/p2p/conn"
 )
 
@@ -119,7 +118,6 @@ func newPeerConn(
 	conn net.Conn,
 	socketAddr *NetAddress,
 ) peerConn {
-
 	return peerConn{
 		outbound:   outbound,
 		persistent: persistent,
@@ -134,7 +132,7 @@ func (pc peerConn) ID() ID {
 	return PubKeyToID(pc.conn.(*cmtconn.SecretConnection).RemotePubKey())
 }
 
-// Return the IP from the connection RemoteAddr
+// Return the IP from the connection RemoteAddr.
 func (pc peerConn) RemoteIP() net.IP {
 	if pc.ip != nil {
 		return pc.ip
@@ -462,7 +460,7 @@ func (p *peer) GetRemovalFailed() bool {
 // methods only used for testing
 // TODO: can we remove these?
 
-// CloseConn closes the underlying connection
+// CloseConn closes the underlying connection.
 func (pc *peerConn) CloseConn() {
 	pc.conn.Close()
 }
@@ -517,7 +515,6 @@ func createMConnection(
 	onPeerError func(Peer, interface{}),
 	config cmtconn.MConnConfig,
 ) *cmtconn.MConnection {
-
 	onReceive := func(chID byte, msgBytes []byte) {
 		reactor := reactorsByCh[chID]
 		if reactor == nil {

@@ -47,7 +47,8 @@ func (app *Application) DeliverTx(req types.RequestDeliverTx) types.ResponseDeli
 		if len(req.Tx) > 8 {
 			return types.ResponseDeliverTx{
 				Code: code.CodeTypeEncodingError,
-				Log:  fmt.Sprintf("Max tx size is 8 bytes, got %d", len(req.Tx))}
+				Log:  fmt.Sprintf("Max tx size is 8 bytes, got %d", len(req.Tx)),
+			}
 		}
 		tx8 := make([]byte, 8)
 		copy(tx8[len(tx8)-len(req.Tx):], req.Tx)
@@ -55,7 +56,8 @@ func (app *Application) DeliverTx(req types.RequestDeliverTx) types.ResponseDeli
 		if txValue != uint64(app.txCount) {
 			return types.ResponseDeliverTx{
 				Code: code.CodeTypeBadNonce,
-				Log:  fmt.Sprintf("Invalid nonce. Expected %v, got %v", app.txCount, txValue)}
+				Log:  fmt.Sprintf("Invalid nonce. Expected %v, got %v", app.txCount, txValue),
+			}
 		}
 	}
 	app.txCount++
@@ -67,7 +69,8 @@ func (app *Application) CheckTx(req types.RequestCheckTx) types.ResponseCheckTx 
 		if len(req.Tx) > 8 {
 			return types.ResponseCheckTx{
 				Code: code.CodeTypeEncodingError,
-				Log:  fmt.Sprintf("Max tx size is 8 bytes, got %d", len(req.Tx))}
+				Log:  fmt.Sprintf("Max tx size is 8 bytes, got %d", len(req.Tx)),
+			}
 		}
 		tx8 := make([]byte, 8)
 		copy(tx8[len(tx8)-len(req.Tx):], req.Tx)
@@ -75,7 +78,8 @@ func (app *Application) CheckTx(req types.RequestCheckTx) types.ResponseCheckTx 
 		if txValue < uint64(app.txCount) {
 			return types.ResponseCheckTx{
 				Code: code.CodeTypeBadNonce,
-				Log:  fmt.Sprintf("Invalid nonce. Expected >= %v, got %v", app.txCount, txValue)}
+				Log:  fmt.Sprintf("Invalid nonce. Expected >= %v, got %v", app.txCount, txValue),
+			}
 		}
 	}
 	return types.ResponseCheckTx{Code: code.CodeTypeOK}

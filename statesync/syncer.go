@@ -73,7 +73,6 @@ func newSyncer(
 	stateProvider StateProvider,
 	tempDir string,
 ) *syncer {
-
 	return &syncer{
 		logger:        logger,
 		stateProvider: stateProvider,
@@ -271,7 +270,7 @@ func (s *syncer) Sync(snapshot *snapshot, chunks *chunkQueue) (sm.State, *types.
 		return sm.State{}, nil, err
 	}
 
-	// Spawn chunk fetchers. They will terminate when the chunk queue is closed or context cancelled.
+	// Spawn chunk fetchers. They will terminate when the chunk queue is closed or context canceled.
 	fetchCtx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 	for i := int32(0); i < s.chunkFetchers; i++ {
@@ -481,7 +480,7 @@ func (s *syncer) requestChunk(snapshot *snapshot, chunk uint32) {
 	}, s.logger)
 }
 
-// verifyApp verifies the sync, checking the app hash, last block height and app version
+// verifyApp verifies the sync, checking the app hash, last block height and app version.
 func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) error {
 	resp, err := s.connQuery.InfoSync(proxy.RequestInfo)
 	if err != nil {

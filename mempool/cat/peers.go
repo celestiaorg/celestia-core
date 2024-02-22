@@ -11,7 +11,7 @@ import (
 const firstPeerID = mempool.UnknownPeerID + 1
 
 // mempoolIDs is a thread-safe map of peer IDs to shorter uint16 IDs used by the Reactor for tracking peer
-// messages and peer state such as what transactions peers have seen
+// messages and peer state such as what transactions peers have seen.
 type mempoolIDs struct {
 	mtx       tmsync.RWMutex
 	peerMap   map[p2p.ID]uint16   // quick lookup table for peer ID to short ID

@@ -258,12 +258,14 @@ func (app *Application) ApplySnapshotChunk(req abci.RequestApplySnapshotChunk) a
 }
 
 func (app *Application) PrepareProposal(
-	req abci.RequestPrepareProposal) abci.ResponsePrepareProposal {
+	req abci.RequestPrepareProposal,
+) abci.ResponsePrepareProposal {
 	return abci.ResponsePrepareProposal{BlockData: req.BlockData}
 }
 
 func (app *Application) ProcessProposal(
-	req abci.RequestProcessProposal) abci.ResponseProcessProposal {
+	req abci.RequestProcessProposal,
+) abci.ResponseProcessProposal {
 	return abci.ResponseProcessProposal{Result: abci.ResponseProcessProposal_ACCEPT}
 }
 
@@ -280,7 +282,6 @@ func (app *Application) validatorUpdates(height uint64) (abci.ValidatorUpdates, 
 
 	valUpdates := abci.ValidatorUpdates{}
 	for keyString, power := range updates {
-
 		keyBytes, err := base64.StdEncoding.DecodeString(keyString)
 		if err != nil {
 			return nil, fmt.Errorf("invalid base64 pubkey value %q: %w", keyString, err)

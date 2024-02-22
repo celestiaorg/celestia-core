@@ -150,7 +150,8 @@ func (s *Server) Subscribe(
 	ctx context.Context,
 	clientID string,
 	query Query,
-	outCapacity ...int) (*Subscription, error) {
+	outCapacity ...int,
+) (*Subscription, error) {
 	outCap := 1
 	if len(outCapacity) > 0 {
 		if outCapacity[0] <= 0 {
@@ -289,7 +290,7 @@ func (s *Server) OnStop() {
 	s.cmds <- cmd{op: shutdown}
 }
 
-// NOTE: not goroutine safe
+// NOTE: not goroutine safe.
 type state struct {
 	// query string -> client -> subscription
 	subscriptions map[string]map[string]*Subscription
@@ -313,7 +314,7 @@ func (s *Server) OnStart() error {
 	return nil
 }
 
-// OnReset implements Service.OnReset
+// OnReset implements Service.OnReset.
 func (s *Server) OnReset() error {
 	return nil
 }

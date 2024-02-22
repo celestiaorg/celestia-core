@@ -18,12 +18,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	// Register the Postgres database driver.
+	_ "github.com/lib/pq"
+
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/state/txindex"
 	"github.com/tendermint/tendermint/types"
-
-	// Register the Postgres database driver.
-	_ "github.com/lib/pq"
 )
 
 var (
@@ -273,7 +273,7 @@ func newTestBlockHeader() types.EventDataNewBlockHeader {
 	}
 }
 
-// readSchema loads the indexing database schema file
+// readSchema loads the indexing database schema file.
 func readSchema() ([]*schema.Migration, error) {
 	const filename = "schema.sql"
 	contents, err := os.ReadFile(filename)
@@ -342,6 +342,7 @@ SELECT DISTINCT %[1]s.created_at
 }
 
 func verifyBlock(t *testing.T, height int64) {
+	t.Helper()
 	// Check that the blocks table contains an entry for this height.
 	if err := testDB().QueryRow(`
 SELECT height FROM `+tableBlocks+` WHERE height = $1;

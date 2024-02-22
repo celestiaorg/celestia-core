@@ -89,7 +89,7 @@ func (vote *Vote) CommitSig() CommitSig {
 // for backwards-compatibility with the Amino encoding, due to e.g. hardware
 // devices that rely on this encoding.
 //
-// See CanonicalizeVote
+// See CanonicalizeVote.
 func VoteSignBytes(chainID string, vote *cmtproto.Vote) []byte {
 	pb := CanonicalizeVote(chainID, vote)
 	bz, err := protoio.MarshalDelimited(&pb)
@@ -115,7 +115,7 @@ func (vote *Vote) Copy() *Vote {
 // 6. type string
 // 7. first 6 bytes of block hash
 // 8. first 6 bytes of signature
-// 9. timestamp
+// 9. timestamp.
 func (vote *Vote) String() string {
 	if vote == nil {
 		return nilVoteStr
@@ -202,7 +202,7 @@ func (vote *Vote) ValidateBasic() error {
 }
 
 // ToProto converts the handwritten type to proto generated type
-// return type, nil if everything converts safely, otherwise nil, error
+// return type, nil if everything converts safely, otherwise nil, error.
 func (vote *Vote) ToProto() *cmtproto.Vote {
 	if vote == nil {
 		return nil
@@ -221,7 +221,7 @@ func (vote *Vote) ToProto() *cmtproto.Vote {
 }
 
 // FromProto converts a proto generetad type to a handwritten type
-// return type, nil if everything converts safely, otherwise nil, error
+// return type, nil if everything converts safely, otherwise nil, error.
 func VoteFromProto(pv *cmtproto.Vote) (*Vote, error) {
 	if pv == nil {
 		return nil, errors.New("nil vote")

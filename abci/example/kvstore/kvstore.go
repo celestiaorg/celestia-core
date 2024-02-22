@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	"github.com/tendermint/tendermint/abci/example/code"
 	"github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/version"
@@ -92,7 +91,7 @@ func (app *Application) Info(req types.RequestInfo) (resInfo types.ResponseInfo)
 	}
 }
 
-// tx is either "key=value" or just arbitrary bytes
+// tx is either "key=value" or just arbitrary bytes.
 func (app *Application) DeliverTx(req types.RequestDeliverTx) types.ResponseDeliverTx {
 	var key, value []byte
 	parts := bytes.Split(req.Tx, []byte("="))
@@ -168,7 +167,7 @@ func (app *Application) Query(reqQuery types.RequestQuery) (resQuery types.Respo
 		resQuery.Value = value
 		resQuery.Height = app.state.Height
 
-		return
+		return resQuery
 	}
 
 	resQuery.Key = reqQuery.Data
@@ -188,7 +187,6 @@ func (app *Application) Query(reqQuery types.RequestQuery) (resQuery types.Respo
 }
 
 func (app *Application) BeginBlock(req types.RequestBeginBlock) types.ResponseBeginBlock {
-
 	response := types.ResponseBeginBlock{}
 
 	if !app.genBlockEvents {

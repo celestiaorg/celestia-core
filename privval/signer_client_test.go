@@ -25,6 +25,7 @@ type signerTestCase struct {
 }
 
 func getSignerTestCases(t *testing.T) []signerTestCase {
+	t.Helper()
 	testCases := make([]signerTestCase, 0)
 
 	// Get test cases for each possible dialer (DialTCP / DialUnix / etc)
@@ -390,7 +391,8 @@ func TestSignerSignVoteErrors(t *testing.T) {
 }
 
 func brokenHandler(privVal types.PrivValidator, request privvalproto.Message,
-	chainID string) (privvalproto.Message, error) {
+	chainID string,
+) (privvalproto.Message, error) {
 	var res privvalproto.Message
 	var err error
 

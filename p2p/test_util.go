@@ -5,13 +5,12 @@ import (
 	"net"
 	"time"
 
+	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/libs/log"
 	cmtnet "github.com/tendermint/tendermint/libs/net"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
-
-	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/p2p/conn"
 )
 
@@ -187,7 +186,6 @@ func MakeSwitch(
 	initSwitch func(int, *Switch) *Switch,
 	opts ...SwitchOption,
 ) *Switch {
-
 	nodeKey := NodeKey{
 		PrivKey: ed25519.GenPrivKey(),
 	}
@@ -310,6 +308,7 @@ func (book *AddrBookMock) HasAddress(addr *NetAddress) bool {
 	_, ok := book.Addrs[addr.String()]
 	return ok
 }
+
 func (book *AddrBookMock) RemoveAddress(addr *NetAddress) {
 	delete(book.Addrs, addr.String())
 }

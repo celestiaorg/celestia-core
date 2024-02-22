@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/tendermint/tendermint/libs/log"
 	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
@@ -64,7 +65,7 @@ func Load(ctx context.Context, testnet *e2e.Testnet) error {
 	}
 }
 
-// loadGenerate generates jobs until the context is canceled
+// loadGenerate generates jobs until the context is canceled.
 func loadGenerate(ctx context.Context, txCh chan<- types.Tx, testnet *e2e.Testnet, id []byte) {
 	t := time.NewTimer(0)
 	defer t.Stop()

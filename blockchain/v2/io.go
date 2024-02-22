@@ -31,7 +31,7 @@ func newSwitchIo(sw *p2p.Switch) *switchIO {
 }
 
 const (
-	// BlockchainChannel is a channel for blocks and status updates (`BlockStore` height)
+	// BlockchainChannel is a channel for blocks and status updates (`BlockStore` height).
 	BlockchainChannel = byte(0x40)
 )
 

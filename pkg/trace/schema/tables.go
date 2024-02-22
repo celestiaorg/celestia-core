@@ -13,7 +13,7 @@ func AllTables() []string {
 	return tables
 }
 
-// General purpose schema constants used across multiple tables
+// General purpose schema constants used across multiple tables.
 const (
 	// PeerFieldKey is the tracing field key for the peer that sent or
 	// received a tx. This should take the form of the peer's address as the

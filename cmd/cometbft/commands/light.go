@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	"github.com/tendermint/tendermint/libs/log"
 	cmtmath "github.com/tendermint/tendermint/libs/math"
 	cmtos "github.com/tendermint/tendermint/libs/os"
@@ -25,7 +24,7 @@ import (
 	rpcserver "github.com/tendermint/tendermint/rpc/jsonrpc/server"
 )
 
-// LightCmd represents the base command when called without any subcommands
+// LightCmd represents the base command when called without any subcommands.
 var LightCmd = &cobra.Command{
 	Use:   "light [chainID]",
 	Short: "Run a light client proxy server, verifying CometBFT rpc",
@@ -101,7 +100,7 @@ func init() {
 }
 
 func runProxy(cmd *cobra.Command, args []string) error {
-	// Initialise logger.
+	// Initialize logger.
 	logger := log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 	var option log.Option
 	if verbose {

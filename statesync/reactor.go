@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	// SnapshotChannel exchanges snapshot metadata
+	// SnapshotChannel exchanges snapshot metadata.
 	SnapshotChannel = byte(0x60)
-	// ChunkChannel exchanges chunk contents
+	// ChunkChannel exchanges chunk contents.
 	ChunkChannel = byte(0x61)
 	// recentSnapshots is the number of recent snapshots to send and receive per peer.
 	recentSnapshots = 10
@@ -49,7 +49,6 @@ func NewReactor(
 	connQuery proxy.AppConnQuery,
 	tempDir string,
 ) *Reactor {
-
 	r := &Reactor{
 		cfg:       cfg,
 		conn:      conn,
@@ -243,7 +242,7 @@ func (r *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 	})
 }
 
-// recentSnapshots fetches the n most recent snapshots from the app
+// recentSnapshots fetches the n most recent snapshots from the app.
 func (r *Reactor) recentSnapshots(n uint32) ([]*snapshot, error) {
 	resp, err := r.conn.ListSnapshotsSync(abci.RequestListSnapshots{})
 	if err != nil {

@@ -106,8 +106,9 @@ func (tr *TestReactor) getMsgs(chID byte) []PeerMessage {
 //-----------------------------------------------------------------------------
 
 // convenience method for creating two switches connected to each other.
-// XXX: note this uses net.Pipe and not a proper TCP conn
-func MakeSwitchPair(t testing.TB, initSwitch func(int, *Switch) *Switch) (*Switch, *Switch) {
+// XXX: note this uses net.Pipe and not a proper TCP conn.
+func MakeSwitchPair(tb testing.TB, initSwitch func(int, *Switch) *Switch) (*Switch, *Switch) {
+	tb.Helper()
 	// Create two switches that will be interconnected.
 	switches := MakeConnectedSwitches(cfg, 2, initSwitch, Connect2Switches)
 	return switches[0], switches[1]
@@ -199,6 +200,7 @@ func assertMsgReceivedWithTimeout(
 	checkPeriod,
 	timeout time.Duration,
 ) {
+	t.Helper()
 	ticker := time.NewTicker(checkPeriod)
 	for {
 		select {
@@ -384,6 +386,7 @@ func TestSwitchPeerFilterDuplicate(t *testing.T) {
 }
 
 func assertNoPeersAfterTimeout(t *testing.T, sw *Switch, timeout time.Duration) {
+	t.Helper()
 	time.Sleep(timeout)
 	if sw.Peers().Size() != 0 {
 		t.Fatalf("Expected %v to not connect to some peers, got %d", sw, sw.Peers().Size())
@@ -786,7 +789,7 @@ func (r *mockReactor) InitCalledBeforeRemoveFinished() bool {
 	return atomic.LoadUint32(&r.initCalledBeforeRemoveFinished) == 1
 }
 
-// see stopAndRemovePeer
+// see stopAndRemovePeer.
 func TestSwitchInitPeerIsNotCalledBeforeRemovePeer(t *testing.T) {
 	// make reactor
 	reactor := &mockReactor{}

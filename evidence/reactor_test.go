@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/tmhash"
@@ -113,7 +112,7 @@ func TestReactorSelectiveBroadcast(t *testing.T) {
 // not ready for the peer through three scenarios.
 // First, committed evidence to a newly connected peer
 // Second, evidence to a peer that is behind
-// Third, evidence that was pending and became committed just before the peer caught up
+// Third, evidence that was pending and became committed just before the peer caught up.
 func TestReactorsGossipNoCommittedEvidence(t *testing.T) {
 	config := cfg.TestConfig()
 
@@ -239,9 +238,10 @@ func evidenceLogger() log.Logger {
 	})
 }
 
-// connect N evidence reactors through N switches
+// connect N evidence reactors through N switches.
 func makeAndConnectReactorsAndPools(config *cfg.Config, stateStores []sm.Store) ([]*evidence.Reactor,
-	[]*evidence.Pool) {
+	[]*evidence.Pool,
+) {
 	N := len(stateStores)
 
 	reactors := make([]*evidence.Reactor, N)
@@ -267,14 +267,14 @@ func makeAndConnectReactorsAndPools(config *cfg.Config, stateStores []sm.Store) 
 	p2p.MakeConnectedSwitches(config.P2P, N, func(i int, s *p2p.Switch) *p2p.Switch {
 		s.AddReactor("EVIDENCE", reactors[i])
 		return s
-
 	}, p2p.Connect2Switches)
 
 	return reactors, pools
 }
 
-// wait for all evidence on all reactors
+// wait for all evidence on all reactors.
 func waitForEvidence(t *testing.T, evs types.EvidenceList, pools []*evidence.Pool) {
+	t.Helper()
 	// wait for the evidence in all evpools
 	wg := new(sync.WaitGroup)
 	for i := 0; i < len(pools); i++ {
@@ -296,7 +296,7 @@ func waitForEvidence(t *testing.T, evs types.EvidenceList, pools []*evidence.Poo
 	}
 }
 
-// wait for all evidence on a single evpool
+// wait for all evidence on a single evpool.
 func _waitForEvidence(
 	t *testing.T,
 	wg *sync.WaitGroup,
@@ -304,6 +304,7 @@ func _waitForEvidence(
 	poolIdx int,
 	pools []*evidence.Pool,
 ) {
+	t.Helper()
 	evpool := pools[poolIdx]
 	var evList []types.Evidence
 	currentPoolSize := 0
@@ -329,6 +330,7 @@ func _waitForEvidence(
 }
 
 func sendEvidence(t *testing.T, evpool *evidence.Pool, val types.PrivValidator, n int) types.EvidenceList {
+	t.Helper()
 	evList := make([]types.Evidence, n)
 	for i := 0; i < n; i++ {
 		ev := types.NewMockDuplicateVoteEvidenceWithValidator(int64(i+1),
@@ -349,7 +351,7 @@ func (ps peerState) GetHeight() int64 {
 }
 
 func exampleVote(t byte) *types.Vote {
-	var stamp, err = time.Parse(types.TimeFormat, "2017-12-25T03:00:01.234Z")
+	stamp, err := time.Parse(types.TimeFormat, "2017-12-25T03:00:01.234Z")
 	if err != nil {
 		panic(err)
 	}
@@ -370,6 +372,7 @@ func exampleVote(t byte) *types.Vote {
 		ValidatorIndex:   56789,
 	}
 }
+
 func TestLegacyReactorReceiveBasic(t *testing.T) {
 	config := cfg.TestConfig()
 	N := 1
@@ -400,7 +403,6 @@ func TestLegacyReactorReceiveBasic(t *testing.T) {
 
 //nolint:lll //ignore line length for tests
 func TestEvidenceVectors(t *testing.T) {
-
 	val := &types.Validator{
 		Address:     crypto.AddressHash([]byte("validator_address")),
 		VotingPower: 10,
@@ -441,7 +443,5 @@ func TestEvidenceVectors(t *testing.T) {
 		require.NoError(t, err, tc.testName)
 
 		require.Equal(t, tc.expBytes, hex.EncodeToString(bz), tc.testName)
-
 	}
-
 }

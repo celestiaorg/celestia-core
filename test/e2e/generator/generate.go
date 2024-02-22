@@ -11,6 +11,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
+
 	"github.com/tendermint/tendermint/libs/math"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 	"github.com/tendermint/tendermint/version"
@@ -38,7 +39,7 @@ var (
 	// FIXME: grpc disabled due to https://github.com/tendermint/tendermint/issues/5439
 	nodeABCIProtocols    = uniformChoice{"unix", "tcp", "builtin"} // "grpc"
 	nodePrivvalProtocols = uniformChoice{"file", "unix", "tcp"}
-	// FIXME: v2 disabled due to flake
+	// FIXME: v2 disabled due to flake.
 	nodeFastSyncs         = uniformChoice{"v0"} // "v2"
 	nodeStateSyncs        = uniformChoice{false, true}
 	nodeMempools          = uniformChoice{"v0", "v1", "v2"}

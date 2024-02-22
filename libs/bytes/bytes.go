@@ -24,12 +24,12 @@ func (bz HexBytes) MarshalDelimited() ([]byte, error) {
 	return append(lenBuf[:n], bz...), nil
 }
 
-// Marshal needed for protobuf compatibility
+// Marshal needed for protobuf compatibility.
 func (bz HexBytes) Marshal() ([]byte, error) {
 	return bz, nil
 }
 
-// Unmarshal needed for protobuf compatibility
+// Unmarshal needed for protobuf compatibility.
 func (bz *HexBytes) Unmarshal(data []byte) error {
 	*bz = data
 	return nil

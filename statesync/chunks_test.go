@@ -11,6 +11,7 @@ import (
 )
 
 func setupChunkQueue(t *testing.T) (*chunkQueue, func()) {
+	t.Helper()
 	snapshot := &snapshot{
 		Height:   3,
 		Format:   1,

@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	abci "github.com/tendermint/tendermint/abci/types"
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
@@ -56,8 +55,9 @@ func makeVote(
 	header *types.Header,
 	blockID types.BlockID,
 	valset *types.ValidatorSet,
-	privVal types.PrivValidator) *types.Vote {
-
+	privVal types.PrivValidator,
+) *types.Vote {
+	t.Helper()
 	pubKey, err := privVal.GetPubKey()
 	require.NoError(t, err)
 
@@ -90,7 +90,9 @@ func newBlockchainReactor(
 	logger log.Logger,
 	genDoc *types.GenesisDoc,
 	privVals []types.PrivValidator,
-	maxBlockHeight int64) *BlockchainReactor {
+	maxBlockHeight int64,
+) *BlockchainReactor {
+	t.Helper()
 	if len(privVals) != 1 {
 		panic("only support one validator")
 	}
@@ -164,14 +166,16 @@ func newBlockchainReactorPair(
 	logger log.Logger,
 	genDoc *types.GenesisDoc,
 	privVals []types.PrivValidator,
-	maxBlockHeight int64) BlockchainReactorPair {
-
+	maxBlockHeight int64,
+) BlockchainReactorPair {
+	t.Helper()
 	consensusReactor := &consensusReactorTest{}
 	consensusReactor.BaseReactor = *p2p.NewBaseReactor("Consensus reactor", consensusReactor)
 
 	return BlockchainReactorPair{
 		newBlockchainReactor(t, logger, genDoc, privVals, maxBlockHeight),
-		consensusReactor}
+		consensusReactor,
+	}
 }
 
 type consensusReactorTest struct {
@@ -187,7 +191,6 @@ func (conR *consensusReactorTest) SwitchToConsensus(state sm.State, blocksSynced
 }
 
 func TestFastSyncNoBlockResponse(t *testing.T) {
-
 	config = cfg.ResetTestRoot("blockchain_new_reactor_test")
 	defer os.RemoveAll(config.RootDir)
 	genDoc, privVals := randGenesisDoc(1, false, 30)
@@ -207,7 +210,6 @@ func TestFastSyncNoBlockResponse(t *testing.T) {
 		reactorPairs[i].bcR.SetLogger(logger.With("module", moduleName))
 
 		return s
-
 	}, p2p.Connect2Switches)
 
 	defer func() {
@@ -288,7 +290,6 @@ func TestFastSyncBadBlockStopsPeer(t *testing.T) {
 		reactorPairs[i].bcR.SetLogger(logger[i].With("module", moduleName))
 		reactorPairs[i].conR.mtx.Unlock()
 		return s
-
 	}, p2p.Connect2Switches)
 
 	defer func() {
@@ -328,7 +329,6 @@ outerFor:
 		moduleName := fmt.Sprintf("blockchain-%v", len(reactorPairs)-1)
 		reactorPairs[len(reactorPairs)-1].bcR.SetLogger(lastLogger.With("module", moduleName))
 		return s
-
 	}, p2p.Connect2Switches)...)
 
 	for i := 0; i < len(reactorPairs)-1; i++ {

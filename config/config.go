@@ -11,14 +11,14 @@ import (
 )
 
 const (
-	// FuzzModeDrop is a mode in which we randomly drop reads/writes, connections or sleep
+	// FuzzModeDrop is a mode in which we randomly drop reads/writes, connections or sleep.
 	FuzzModeDrop = iota
-	// FuzzModeDelay is a mode in which we randomly sleep
+	// FuzzModeDelay is a mode in which we randomly sleep.
 	FuzzModeDelay
 
-	// LogFormatPlain is a format for colored text
+	// LogFormatPlain is a format for colored text.
 	LogFormatPlain = "plain"
-	// LogFormatJSON is a format for json output
+	// LogFormatJSON is a format for json output.
 	LogFormatJSON = "json"
 
 	// DefaultLogLevel defines a default log level as INFO.
@@ -69,7 +69,7 @@ var (
 	DefaultInfluxTables = []string{}
 )
 
-// Config defines the top level configuration for a CometBFT node
+// Config defines the top level configuration for a CometBFT node.
 type Config struct {
 	// Top level options use an anonymous struct
 	BaseConfig `mapstructure:",squash"`
@@ -86,7 +86,7 @@ type Config struct {
 	Instrumentation *InstrumentationConfig `mapstructure:"instrumentation"`
 }
 
-// DefaultConfig returns a default configuration for a CometBFT node
+// DefaultConfig returns a default configuration for a CometBFT node.
 func DefaultConfig() *Config {
 	return &Config{
 		BaseConfig:      DefaultBaseConfig(),
@@ -102,7 +102,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-// TestConfig returns a configuration that can be used for testing
+// TestConfig returns a configuration that can be used for testing.
 func TestConfig() *Config {
 	return &Config{
 		BaseConfig:      TestBaseConfig(),
@@ -118,7 +118,7 @@ func TestConfig() *Config {
 	}
 }
 
-// SetRoot sets the RootDir for all Config structs
+// SetRoot sets the RootDir for all Config structs.
 func (cfg *Config) SetRoot(root string) *Config {
 	cfg.BaseConfig.RootDir = root
 	cfg.RPC.RootDir = root
@@ -161,7 +161,7 @@ func (cfg *Config) ValidateBasic() error {
 //-----------------------------------------------------------------------------
 // BaseConfig
 
-// BaseConfig defines the base configuration for a CometBFT node
+// BaseConfig defines the base configuration for a CometBFT node.
 type BaseConfig struct { //nolint: maligned
 	// chainID is unexposed and immutable but here for convenience
 	chainID string
@@ -236,7 +236,7 @@ type BaseConfig struct { //nolint: maligned
 	FilterPeers bool `mapstructure:"filter_peers"` // false
 }
 
-// DefaultBaseConfig returns a default base configuration for a CometBFT node
+// DefaultBaseConfig returns a default base configuration for a CometBFT node.
 func DefaultBaseConfig() BaseConfig {
 	return BaseConfig{
 		Genesis:            defaultGenesisJSONPath,
@@ -255,7 +255,7 @@ func DefaultBaseConfig() BaseConfig {
 	}
 }
 
-// TestBaseConfig returns a base configuration for testing a CometBFT node
+// TestBaseConfig returns a base configuration for testing a CometBFT node.
 func TestBaseConfig() BaseConfig {
 	cfg := DefaultBaseConfig()
 	cfg.chainID = "cometbft_test"
@@ -269,27 +269,27 @@ func (cfg BaseConfig) ChainID() string {
 	return cfg.chainID
 }
 
-// GenesisFile returns the full path to the genesis.json file
+// GenesisFile returns the full path to the genesis.json file.
 func (cfg BaseConfig) GenesisFile() string {
 	return rootify(cfg.Genesis, cfg.RootDir)
 }
 
-// PrivValidatorKeyFile returns the full path to the priv_validator_key.json file
+// PrivValidatorKeyFile returns the full path to the priv_validator_key.json file.
 func (cfg BaseConfig) PrivValidatorKeyFile() string {
 	return rootify(cfg.PrivValidatorKey, cfg.RootDir)
 }
 
-// PrivValidatorFile returns the full path to the priv_validator_state.json file
+// PrivValidatorFile returns the full path to the priv_validator_state.json file.
 func (cfg BaseConfig) PrivValidatorStateFile() string {
 	return rootify(cfg.PrivValidatorState, cfg.RootDir)
 }
 
-// NodeKeyFile returns the full path to the node_key.json file
+// NodeKeyFile returns the full path to the node_key.json file.
 func (cfg BaseConfig) NodeKeyFile() string {
 	return rootify(cfg.NodeKey, cfg.RootDir)
 }
 
-// DBDir returns the full path to the database directory
+// DBDir returns the full path to the database directory.
 func (cfg BaseConfig) DBDir() string {
 	return rootify(cfg.DBPath, cfg.RootDir)
 }
@@ -308,7 +308,7 @@ func (cfg BaseConfig) ValidateBasic() error {
 //-----------------------------------------------------------------------------
 // RPCConfig
 
-// RPCConfig defines the configuration options for the CometBFT RPC server
+// RPCConfig defines the configuration options for the CometBFT RPC server.
 type RPCConfig struct {
 	RootDir string `mapstructure:"home"`
 
@@ -380,7 +380,7 @@ type RPCConfig struct {
 	//
 	// Enabling this parameter will cause the WebSocket connection to be closed
 	// instead if it cannot read fast enough, allowing for greater
-	// predictability in subscription behaviour.
+	// predictability in subscription behavior.
 	CloseOnSlowClient bool `mapstructure:"experimental_close_on_slow_client"`
 
 	// How long to wait for a tx to be committed during /broadcast_tx_commit
@@ -417,7 +417,7 @@ type RPCConfig struct {
 	PprofListenAddress string `mapstructure:"pprof_laddr"`
 }
 
-// DefaultRPCConfig returns a default configuration for the RPC server
+// DefaultRPCConfig returns a default configuration for the RPC server.
 func DefaultRPCConfig() *RPCConfig {
 	return &RPCConfig{
 		ListenAddress:          "tcp://127.0.0.1:26657",
@@ -444,7 +444,7 @@ func DefaultRPCConfig() *RPCConfig {
 	}
 }
 
-// TestRPCConfig returns a configuration for testing the RPC server
+// TestRPCConfig returns a configuration for testing the RPC server.
 func TestRPCConfig() *RPCConfig {
 	cfg := DefaultRPCConfig()
 	cfg.ListenAddress = "tcp://127.0.0.1:36657"
@@ -520,7 +520,7 @@ func (cfg RPCConfig) IsTLSEnabled() bool {
 //-----------------------------------------------------------------------------
 // P2PConfig
 
-// P2PConfig defines the configuration options for the CometBFT peer-to-peer networking layer
+// P2PConfig defines the configuration options for the CometBFT peer-to-peer networking layer.
 type P2PConfig struct { //nolint: maligned
 	RootDir string `mapstructure:"home"`
 
@@ -599,7 +599,7 @@ type P2PConfig struct { //nolint: maligned
 	TestFuzzConfig *FuzzConnConfig `mapstructure:"test_fuzz_config"`
 }
 
-// DefaultP2PConfig returns a default configuration for the peer-to-peer layer
+// DefaultP2PConfig returns a default configuration for the peer-to-peer layer.
 func DefaultP2PConfig() *P2PConfig {
 	return &P2PConfig{
 		ListenAddress:                "tcp://0.0.0.0:26656",
@@ -625,7 +625,7 @@ func DefaultP2PConfig() *P2PConfig {
 	}
 }
 
-// TestP2PConfig returns a configuration for testing the peer-to-peer layer
+// TestP2PConfig returns a configuration for testing the peer-to-peer layer.
 func TestP2PConfig() *P2PConfig {
 	cfg := DefaultP2PConfig()
 	cfg.ListenAddress = "tcp://127.0.0.1:36656"
@@ -634,7 +634,7 @@ func TestP2PConfig() *P2PConfig {
 	return cfg
 }
 
-// AddrBookFile returns the full path to the address book
+// AddrBookFile returns the full path to the address book.
 func (cfg *P2PConfig) AddrBookFile() string {
 	return rootify(cfg.AddrBook, cfg.RootDir)
 }
@@ -689,7 +689,7 @@ func DefaultFuzzConnConfig() *FuzzConnConfig {
 //-----------------------------------------------------------------------------
 // MempoolConfig
 
-// MempoolConfig defines the configuration options for the CometBFT mempool
+// MempoolConfig defines the configuration options for the CometBFT mempool.
 type MempoolConfig struct {
 	// Mempool version to use:
 	//  1) "v0" - FIFO mempool.
@@ -760,7 +760,7 @@ type MempoolConfig struct {
 	MaxGossipDelay time.Duration `mapstructure:"max-gossip-delay"`
 }
 
-// DefaultMempoolConfig returns a default configuration for the CometBFT mempool
+// DefaultMempoolConfig returns a default configuration for the CometBFT mempool.
 func DefaultMempoolConfig() *MempoolConfig {
 	return &MempoolConfig{
 		Version:   MempoolV1,
@@ -778,14 +778,14 @@ func DefaultMempoolConfig() *MempoolConfig {
 	}
 }
 
-// TestMempoolConfig returns a configuration for testing the CometBFT mempool
+// TestMempoolConfig returns a configuration for testing the CometBFT mempool.
 func TestMempoolConfig() *MempoolConfig {
 	cfg := DefaultMempoolConfig()
 	cfg.CacheSize = 1000
 	return cfg
 }
 
-// WalDir returns the full path to the mempool's write-ahead log
+// WalDir returns the full path to the mempool's write-ahead log.
 func (cfg *MempoolConfig) WalDir() string {
 	return rootify(cfg.WalPath, cfg.RootDir)
 }
@@ -816,7 +816,7 @@ func (cfg *MempoolConfig) ValidateBasic() error {
 //-----------------------------------------------------------------------------
 // StateSyncConfig
 
-// StateSyncConfig defines the configuration for the CometBFT state sync service
+// StateSyncConfig defines the configuration for the CometBFT state sync service.
 type StateSyncConfig struct {
 	Enable              bool          `mapstructure:"enable"`
 	TempDir             string        `mapstructure:"temp_dir"`
@@ -838,7 +838,7 @@ func (cfg *StateSyncConfig) TrustHashBytes() []byte {
 	return bytes
 }
 
-// DefaultStateSyncConfig returns a default configuration for the state sync service
+// DefaultStateSyncConfig returns a default configuration for the state sync service.
 func DefaultStateSyncConfig() *StateSyncConfig {
 	return &StateSyncConfig{
 		TrustPeriod:         168 * time.Hour,
@@ -848,7 +848,7 @@ func DefaultStateSyncConfig() *StateSyncConfig {
 	}
 }
 
-// TestFastSyncConfig returns a default configuration for the state sync service
+// TestFastSyncConfig returns a default configuration for the state sync service.
 func TestStateSyncConfig() *StateSyncConfig {
 	return DefaultStateSyncConfig()
 }
@@ -906,12 +906,12 @@ func (cfg *StateSyncConfig) ValidateBasic() error {
 //-----------------------------------------------------------------------------
 // FastSyncConfig
 
-// FastSyncConfig defines the configuration for the CometBFT fast sync service
+// FastSyncConfig defines the configuration for the CometBFT fast sync service.
 type FastSyncConfig struct {
 	Version string `mapstructure:"version"`
 }
 
-// DefaultFastSyncConfig returns a default configuration for the fast sync service
+// DefaultFastSyncConfig returns a default configuration for the fast sync service.
 func DefaultFastSyncConfig() *FastSyncConfig {
 	return &FastSyncConfig{
 		Version: "v0",
@@ -976,7 +976,7 @@ type ConsensusConfig struct {
 	DoubleSignCheckHeight int64 `mapstructure:"double_sign_check_height"`
 }
 
-// DefaultConsensusConfig returns a default configuration for the consensus service
+// DefaultConsensusConfig returns a default configuration for the consensus service.
 func DefaultConsensusConfig() *ConsensusConfig {
 	return &ConsensusConfig{
 		WalPath:                     filepath.Join(defaultDataDir, "cs.wal", "wal"),
@@ -996,7 +996,7 @@ func DefaultConsensusConfig() *ConsensusConfig {
 	}
 }
 
-// TestConsensusConfig returns a configuration for testing the consensus service
+// TestConsensusConfig returns a configuration for testing the consensus service.
 func TestConsensusConfig() *ConsensusConfig {
 	cfg := DefaultConsensusConfig()
 	cfg.TimeoutPropose = 40 * time.Millisecond
@@ -1014,26 +1014,26 @@ func TestConsensusConfig() *ConsensusConfig {
 	return cfg
 }
 
-// WaitForTxs returns true if the consensus should wait for transactions before entering the propose step
+// WaitForTxs returns true if the consensus should wait for transactions before entering the propose step.
 func (cfg *ConsensusConfig) WaitForTxs() bool {
 	return !cfg.CreateEmptyBlocks || cfg.CreateEmptyBlocksInterval > 0
 }
 
-// Propose returns the amount of time to wait for a proposal
+// Propose returns the amount of time to wait for a proposal.
 func (cfg *ConsensusConfig) Propose(round int32) time.Duration {
 	return time.Duration(
 		cfg.TimeoutPropose.Nanoseconds()+cfg.TimeoutProposeDelta.Nanoseconds()*int64(round),
 	) * time.Nanosecond
 }
 
-// Prevote returns the amount of time to wait for straggler votes after receiving any +2/3 prevotes
+// Prevote returns the amount of time to wait for straggler votes after receiving any +2/3 prevotes.
 func (cfg *ConsensusConfig) Prevote(round int32) time.Duration {
 	return time.Duration(
 		cfg.TimeoutPrevote.Nanoseconds()+cfg.TimeoutPrevoteDelta.Nanoseconds()*int64(round),
 	) * time.Nanosecond
 }
 
-// Precommit returns the amount of time to wait for straggler votes after receiving any +2/3 precommits
+// Precommit returns the amount of time to wait for straggler votes after receiving any +2/3 precommits.
 func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 	return time.Duration(
 		cfg.TimeoutPrecommit.Nanoseconds()+cfg.TimeoutPrecommitDelta.Nanoseconds()*int64(round),
@@ -1046,7 +1046,7 @@ func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
 	return t.Add(cfg.TimeoutCommit)
 }
 
-// WalFile returns the full path to the write-ahead log file
+// WalFile returns the full path to the write-ahead log file.
 func (cfg *ConsensusConfig) WalFile() string {
 	if cfg.walFile != "" {
 		return cfg.walFile
@@ -1054,7 +1054,7 @@ func (cfg *ConsensusConfig) WalFile() string {
 	return rootify(cfg.WalPath, cfg.RootDir)
 }
 
-// SetWalFile sets the path to the write-ahead log file
+// SetWalFile sets the path to the write-ahead log file.
 func (cfg *ConsensusConfig) SetWalFile(walFile string) {
 	cfg.walFile = walFile
 }
@@ -1287,7 +1287,7 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 //-----------------------------------------------------------------------------
 // Utils
 
-// helper function to make config creation independent of root dir
+// helper function to make config creation independent of root dir.
 func rootify(path, root string) string {
 	if filepath.IsAbs(path) {
 		return path

@@ -2,7 +2,6 @@ package state
 
 import (
 	dbm "github.com/cometbft/cometbft-db"
-
 	abci "github.com/tendermint/tendermint/abci/types"
 	cmtstate "github.com/tendermint/tendermint/proto/tendermint/state"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"

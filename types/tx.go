@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/gogo/protobuf/proto"
+
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
@@ -14,7 +15,7 @@ import (
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
-// TxKeySize is the size of the transaction key index
+// TxKeySize is the size of the transaction key index.
 const TxKeySize = sha256.Size
 
 type (
@@ -84,7 +85,7 @@ func (txs Txs) Hash() []byte {
 	return merkle.HashFromByteSlices(txBzs)
 }
 
-// Index returns the index of this transaction in the list, or -1 if not found
+// Index returns the index of this transaction in the list, or -1 if not found.
 func (txs Txs) Index(tx Tx) int {
 	for i := range txs {
 		if bytes.Equal(txs[i], tx) {
@@ -94,7 +95,7 @@ func (txs Txs) Index(tx Tx) int {
 	return -1
 }
 
-// IndexByHash returns the index of this transaction hash in the list, or -1 if not found
+// IndexByHash returns the index of this transaction hash in the list, or -1 if not found.
 func (txs Txs) IndexByHash(hash []byte) int {
 	for i := range txs {
 		if bytes.Equal(txs[i].Hash(), hash) {
@@ -175,7 +176,6 @@ func (tp TxProof) Validate(dataHash []byte) error {
 }
 
 func (tp TxProof) ToProto() cmtproto.TxProof {
-
 	pbProof := tp.Proof.ToProto()
 
 	pbtp := cmtproto.TxProof{
@@ -186,8 +186,8 @@ func (tp TxProof) ToProto() cmtproto.TxProof {
 
 	return pbtp
 }
-func TxProofFromProto(pb cmtproto.TxProof) (TxProof, error) {
 
+func TxProofFromProto(pb cmtproto.TxProof) (TxProof, error) {
 	pbProof, err := merkle.ProofFromProto(pb.Proof)
 	if err != nil {
 		return TxProof{}, err
@@ -234,7 +234,7 @@ func UnmarshalIndexWrapper(tx Tx) (indexWrapper cmtproto.IndexWrapper, isIndexWr
 // MarshalIndexWrapper creates a wrapped Tx that includes the original transaction
 // and the share index of the start of its blob.
 //
-// NOTE: must be unwrapped to be a viable sdk.Tx
+// NOTE: must be unwrapped to be a viable sdk.Tx.
 func MarshalIndexWrapper(tx Tx, shareIndexes ...uint32) (Tx, error) {
 	wTx := cmtproto.IndexWrapper{
 		Tx:           tx,
@@ -270,7 +270,7 @@ func UnmarshalBlobTx(tx Tx) (bTx cmtproto.BlobTx, isBlob bool) {
 // blobs.
 //
 // NOTE: Any checks on the blobs or the transaction must be performed in the
-// application
+// application.
 func MarshalBlobTx(tx []byte, blobs ...*cmtproto.Blob) (Tx, error) {
 	bTx := cmtproto.BlobTx{
 		Tx:     tx,

@@ -63,7 +63,6 @@ func TestSmall(t *testing.T) {
 	if l.Len() != 0 {
 		t.Error("Expected len 0, got ", l.Len())
 	}
-
 }
 
 // This test is quite hacky because it relies on SetFinalizer
@@ -71,6 +70,7 @@ func TestSmall(t *testing.T) {
 
 //nolint:unused,deadcode
 func _TestGCFifo(t *testing.T) {
+	t.Helper()
 	if runtime.GOARCH != "amd64" {
 		t.Skipf("Skipping on non-amd64 machine")
 	}
@@ -121,6 +121,7 @@ func _TestGCFifo(t *testing.T) {
 //
 //nolint:unused,deadcode
 func _TestGCRandom(t *testing.T) {
+	t.Helper()
 	if runtime.GOARCH != "amd64" {
 		t.Skipf("Skipping on non-amd64 machine")
 	}
@@ -166,7 +167,6 @@ func _TestGCRandom(t *testing.T) {
 }
 
 func TestScanRightDeleteRandom(t *testing.T) {
-
 	const numElements = 1000
 	const numTimes = 100
 	const numScanners = 10
@@ -222,7 +222,6 @@ func TestScanRightDeleteRandom(t *testing.T) {
 		if i%100000 == 0 {
 			fmt.Printf("Pushed %vK elements so far...\n", i/1000)
 		}
-
 	}
 
 	// Stop scanners

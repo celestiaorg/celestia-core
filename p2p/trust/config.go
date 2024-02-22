@@ -2,7 +2,7 @@ package trust
 
 import "time"
 
-// MetricConfig - Configures the weight functions and time intervals for the metric
+// MetricConfig - Configures the weight functions and time intervals for the metric.
 type MetricConfig struct {
 	// Determines the percentage given to current behavior
 	ProportionalWeight float64
@@ -20,7 +20,7 @@ type MetricConfig struct {
 	IntervalLength time.Duration
 }
 
-// DefaultConfig returns a config with values that have been tested and produce desirable results
+// DefaultConfig returns a config with values that have been tested and produce desirable results.
 func DefaultConfig() MetricConfig {
 	return MetricConfig{
 		ProportionalWeight: 0.4,
@@ -30,7 +30,7 @@ func DefaultConfig() MetricConfig {
 	}
 }
 
-// Ensures that all configuration elements have valid values
+// Ensures that all configuration elements have valid values.
 func customConfig(tmc MetricConfig) MetricConfig {
 	config := DefaultConfig()
 

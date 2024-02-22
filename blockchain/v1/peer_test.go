@@ -181,7 +181,6 @@ func TestPeerAddBlock(t *testing.T) {
 }
 
 func TestPeerOnErrFuncCalledDueToExpiration(t *testing.T) {
-
 	params := &BpPeerParams{timeout: 10 * time.Millisecond}
 	var (
 		numErrFuncCalls int        // number of calls to the onErr function
@@ -266,6 +265,7 @@ func TestPeerCleanup(t *testing.T) {
 // Check if peer timer is running or not (a running timer can be successfully stopped).
 // Note: stops the timer.
 func checkByStoppingPeerTimer(t *testing.T, peer *BpPeer, running bool) {
+	t.Helper()
 	assert.NotPanics(t, func() {
 		stopped := peer.stopBlockResponseTimer()
 		if running {

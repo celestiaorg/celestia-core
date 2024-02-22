@@ -7,7 +7,7 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-// simple, thread-safe in memory store for transactions
+// simple, thread-safe in memory store for transactions.
 type store struct {
 	mtx   sync.RWMutex
 	bytes int64
@@ -61,7 +61,7 @@ func (s *store) remove(txKey types.TxKey) bool {
 }
 
 // reserve adds an empty placeholder for the specified key to prevent
-// a transaction with the same key from being added
+// a transaction with the same key from being added.
 func (s *store) reserve(txKey types.TxKey) bool {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -135,7 +135,7 @@ func (s *store) getTxsBelowPriority(priority int64) ([]*wrappedTx, int64) {
 }
 
 // purgeExpiredTxs removes all transactions that are older than the given height
-// and time. Returns the amount of transactions that were removed
+// and time. Returns the amount of transactions that were removed.
 func (s *store) purgeExpiredTxs(expirationHeight int64, expirationAge time.Time) int {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()

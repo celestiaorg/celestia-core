@@ -41,17 +41,17 @@ func (r ResponseQuery) IsErr() bool {
 	return r.Code != CodeTypeOK
 }
 
-// IsUnknown returns true if Code is Unknown
+// IsUnknown returns true if Code is Unknown.
 func (r ResponseProcessProposal) IsUnknown() bool {
 	return r.Result == ResponseProcessProposal_UNKNOWN
 }
 
-// IsOK returns true if Code is OK
+// IsOK returns true if Code is OK.
 func (r ResponseProcessProposal) IsOK() bool {
 	return r.Result == ResponseProcessProposal_ACCEPT
 }
 
-// IsRejected returns true if this ResponseProcessProposal was rejected
+// IsRejected returns true if this ResponseProcessProposal was rejected.
 func (r ResponseProcessProposal) IsRejected() bool {
 	return r.Result == ResponseProcessProposal_REJECT
 }
@@ -131,16 +131,18 @@ func (r *EventAttribute) UnmarshalJSON(b []byte) error {
 // have accidental runtime surprises later on.
 
 // jsonEncodingRoundTripper ensures that asserted
-// interfaces implement both MarshalJSON and UnmarshalJSON
+// interfaces implement both MarshalJSON and UnmarshalJSON.
 type jsonRoundTripper interface {
 	json.Marshaler
 	json.Unmarshaler
 }
 
-var _ jsonRoundTripper = (*ResponseCommit)(nil)
-var _ jsonRoundTripper = (*ResponseQuery)(nil)
-var _ jsonRoundTripper = (*ResponseDeliverTx)(nil)
-var _ jsonRoundTripper = (*ResponseCheckTx)(nil)
-var _ jsonRoundTripper = (*ResponseSetOption)(nil)
+var (
+	_ jsonRoundTripper = (*ResponseCommit)(nil)
+	_ jsonRoundTripper = (*ResponseQuery)(nil)
+	_ jsonRoundTripper = (*ResponseDeliverTx)(nil)
+	_ jsonRoundTripper = (*ResponseCheckTx)(nil)
+	_ jsonRoundTripper = (*ResponseSetOption)(nil)
+)
 
 var _ jsonRoundTripper = (*EventAttribute)(nil)

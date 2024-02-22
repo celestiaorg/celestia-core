@@ -14,7 +14,7 @@ import (
 	cmttime "github.com/tendermint/tendermint/types/time"
 )
 
-// InitFilesCmd initialises a fresh CometBFT Core instance.
+// InitFilesCmd initializes a fresh CometBFT Core instance.
 var InitFilesCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize CometBFT",

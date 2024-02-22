@@ -281,7 +281,7 @@ messages received from a peer is a multiple of `10000`.
 Vote and block part messages are considered for this number, they must be valid
 and not be duplicated messages to be considered useful.
 
-> The `SwitchReporter` type of `behaviour` package also invokes the `MarkGood`
+> The `SwitchReporter` type of `behavior` package also invokes the `MarkGood`
 > method when a "reason" associated with consensus votes and block parts is
 > reported.
 > No reactor, however, currently provides these "reasons" to the `SwitchReporter`.

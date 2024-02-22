@@ -27,7 +27,7 @@ func registerFlagsRootCmd(cmd *cobra.Command) {
 }
 
 // ParseConfig retrieves the default environment configuration,
-// sets up the CometBFT root and ensures that the root exists
+// sets up the CometBFT root and ensures that the root exists.
 func ParseConfig(cmd *cobra.Command) (*cfg.Config, error) {
 	conf := cfg.DefaultConfig()
 	err := viper.Unmarshal(conf)

@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	dbm "github.com/cometbft/cometbft-db"
-
 	abcicli "github.com/tendermint/tendermint/abci/client"
 	"github.com/tendermint/tendermint/abci/example/counter"
 	"github.com/tendermint/tendermint/abci/example/kvstore"
@@ -49,7 +48,7 @@ const (
 // test.
 type cleanupFunc func()
 
-// genesis, chain_id, priv_val
+// genesis, chain_id, priv_val.
 var (
 	config                *cfg.Config // NOTE: must be reset for each _test.go file
 	consensusReplayConfig *cfg.Config
@@ -124,7 +123,7 @@ func (vs *validatorStub) signVote(
 	return vote, err
 }
 
-// Sign vote for type/hash/header
+// Sign vote for type/hash/header.
 func signVote(vs *validatorStub, voteType cmtproto.SignedMsgType, hash []byte, header types.PartSetHeader) *types.Vote {
 	v, err := vs.signVote(voteType, hash, header)
 	if err != nil {
@@ -246,6 +245,7 @@ func signAddVotes(
 }
 
 func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStub, blockHash []byte) {
+	t.Helper()
 	prevotes := cs.Votes.Prevotes(round)
 	pubKey, err := privVal.GetPubKey()
 	require.NoError(t, err)
@@ -266,6 +266,7 @@ func validatePrevote(t *testing.T, cs *State, round int32, privVal *validatorStu
 }
 
 func validateLastPrecommit(t *testing.T, cs *State, privVal *validatorStub, blockHash []byte) {
+	t.Helper()
 	votes := cs.LastCommit
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
@@ -288,6 +289,7 @@ func validatePrecommit(
 	votedBlockHash,
 	lockedBlockHash []byte,
 ) {
+	t.Helper()
 	precommits := cs.Votes.Precommits(thisRound)
 	pv, err := privVal.GetPubKey()
 	require.NoError(t, err)
@@ -336,6 +338,7 @@ func validatePrevoteAndPrecommit(
 	votedBlockHash,
 	lockedBlockHash []byte,
 ) {
+	t.Helper()
 	// verify the prevote
 	validatePrevote(t, cs, thisRound, privVal, votedBlockHash)
 	// verify precommit
@@ -762,7 +765,7 @@ func randConsensusNet(nValidators int, testName string, tickerFunc func() Timeou
 	}
 }
 
-// nPeers = nValidators + nNotValidator
+// nPeers = nValidators + nNotValidator.
 func randConsensusNetWithPeers(
 	nValidators,
 	nPeers int,
@@ -875,7 +878,7 @@ func newMockTickerFunc(onlyOnce bool) func() TimeoutTicker {
 }
 
 // mock ticker only fires on RoundStepNewHeight
-// and only once if onlyOnce=true
+// and only once if onlyOnce=true.
 type mockTicker struct {
 	c chan timeoutInfo
 
