@@ -304,12 +304,14 @@ func (cs *State) LoadCommit(height int64) *types.Commit {
 	return cs.blockStore.LoadBlockCommit(height)
 }
 
+var UseWAL = false
+
 // OnStart loads the latest state via the WAL, and starts the timeout and
 // receive routines.
 func (cs *State) OnStart() error {
 	// We may set the WAL in testing before calling Start, so only OpenWAL if its
 	// still the nilWAL.
-	if _, ok := cs.wal.(nilWAL); ok {
+	if _, ok := cs.wal.(nilWAL); ok && UseWAL {
 		if err := cs.loadWalFile(); err != nil {
 			return err
 		}
