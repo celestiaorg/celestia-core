@@ -18,6 +18,10 @@ type AppConnConsensus struct {
 func (_m *AppConnConsensus) BeginBlockSync(_a0 types.RequestBeginBlock) (*types.ResponseBeginBlock, error) {
 	ret := _m.Called(_a0)
 
+	if len(ret) == 0 {
+		panic("no return value specified for BeginBlockSync")
+	}
+
 	var r0 *types.ResponseBeginBlock
 	var r1 error
 	if rf, ok := ret.Get(0).(func(types.RequestBeginBlock) (*types.ResponseBeginBlock, error)); ok {
@@ -43,6 +47,10 @@ func (_m *AppConnConsensus) BeginBlockSync(_a0 types.RequestBeginBlock) (*types.
 // CommitSync provides a mock function with given fields:
 func (_m *AppConnConsensus) CommitSync() (*types.ResponseCommit, error) {
 	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for CommitSync")
+	}
 
 	var r0 *types.ResponseCommit
 	var r1 error
@@ -70,6 +78,10 @@ func (_m *AppConnConsensus) CommitSync() (*types.ResponseCommit, error) {
 func (_m *AppConnConsensus) DeliverTxAsync(_a0 types.RequestDeliverTx) *abcicli.ReqRes {
 	ret := _m.Called(_a0)
 
+	if len(ret) == 0 {
+		panic("no return value specified for DeliverTxAsync")
+	}
+
 	var r0 *abcicli.ReqRes
 	if rf, ok := ret.Get(0).(func(types.RequestDeliverTx) *abcicli.ReqRes); ok {
 		r0 = rf(_a0)
@@ -85,6 +97,10 @@ func (_m *AppConnConsensus) DeliverTxAsync(_a0 types.RequestDeliverTx) *abcicli.
 // EndBlockSync provides a mock function with given fields: _a0
 func (_m *AppConnConsensus) EndBlockSync(_a0 types.RequestEndBlock) (*types.ResponseEndBlock, error) {
 	ret := _m.Called(_a0)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EndBlockSync")
+	}
 
 	var r0 *types.ResponseEndBlock
 	var r1 error
@@ -112,6 +128,10 @@ func (_m *AppConnConsensus) EndBlockSync(_a0 types.RequestEndBlock) (*types.Resp
 func (_m *AppConnConsensus) Error() error {
 	ret := _m.Called()
 
+	if len(ret) == 0 {
+		panic("no return value specified for Error")
+	}
+
 	var r0 error
 	if rf, ok := ret.Get(0).(func() error); ok {
 		r0 = rf()
@@ -125,6 +145,10 @@ func (_m *AppConnConsensus) Error() error {
 // InitChainSync provides a mock function with given fields: _a0
 func (_m *AppConnConsensus) InitChainSync(_a0 types.RequestInitChain) (*types.ResponseInitChain, error) {
 	ret := _m.Called(_a0)
+
+	if len(ret) == 0 {
+		panic("no return value specified for InitChainSync")
+	}
 
 	var r0 *types.ResponseInitChain
 	var r1 error
@@ -152,6 +176,10 @@ func (_m *AppConnConsensus) InitChainSync(_a0 types.RequestInitChain) (*types.Re
 func (_m *AppConnConsensus) PrepareProposalSync(_a0 types.RequestPrepareProposal) (*types.ResponsePrepareProposal, error) {
 	ret := _m.Called(_a0)
 
+	if len(ret) == 0 {
+		panic("no return value specified for PrepareProposalSync")
+	}
+
 	var r0 *types.ResponsePrepareProposal
 	var r1 error
 	if rf, ok := ret.Get(0).(func(types.RequestPrepareProposal) (*types.ResponsePrepareProposal, error)); ok {
@@ -177,6 +205,10 @@ func (_m *AppConnConsensus) PrepareProposalSync(_a0 types.RequestPrepareProposal
 // ProcessProposalSync provides a mock function with given fields: _a0
 func (_m *AppConnConsensus) ProcessProposalSync(_a0 types.RequestProcessProposal) (*types.ResponseProcessProposal, error) {
 	ret := _m.Called(_a0)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ProcessProposalSync")
+	}
 
 	var r0 *types.ResponseProcessProposal
 	var r1 error
@@ -205,13 +237,12 @@ func (_m *AppConnConsensus) SetResponseCallback(_a0 abcicli.Callback) {
 	_m.Called(_a0)
 }
 
-type mockConstructorTestingTNewAppConnConsensus interface {
+// NewAppConnConsensus creates a new instance of AppConnConsensus. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
+// The first argument is typically a *testing.T value.
+func NewAppConnConsensus(t interface {
 	mock.TestingT
 	Cleanup(func())
-}
-
-// NewAppConnConsensus creates a new instance of AppConnConsensus. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
-func NewAppConnConsensus(t mockConstructorTestingTNewAppConnConsensus) *AppConnConsensus {
+}) *AppConnConsensus {
 	mock := &AppConnConsensus{}
 	mock.Mock.Test(t)
 

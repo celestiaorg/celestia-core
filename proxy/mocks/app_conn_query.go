@@ -17,6 +17,10 @@ type AppConnQuery struct {
 func (_m *AppConnQuery) EchoSync(_a0 string) (*types.ResponseEcho, error) {
 	ret := _m.Called(_a0)
 
+	if len(ret) == 0 {
+		panic("no return value specified for EchoSync")
+	}
+
 	var r0 *types.ResponseEcho
 	var r1 error
 	if rf, ok := ret.Get(0).(func(string) (*types.ResponseEcho, error)); ok {
@@ -43,6 +47,10 @@ func (_m *AppConnQuery) EchoSync(_a0 string) (*types.ResponseEcho, error) {
 func (_m *AppConnQuery) Error() error {
 	ret := _m.Called()
 
+	if len(ret) == 0 {
+		panic("no return value specified for Error")
+	}
+
 	var r0 error
 	if rf, ok := ret.Get(0).(func() error); ok {
 		r0 = rf()
@@ -56,6 +64,10 @@ func (_m *AppConnQuery) Error() error {
 // InfoSync provides a mock function with given fields: _a0
 func (_m *AppConnQuery) InfoSync(_a0 types.RequestInfo) (*types.ResponseInfo, error) {
 	ret := _m.Called(_a0)
+
+	if len(ret) == 0 {
+		panic("no return value specified for InfoSync")
+	}
 
 	var r0 *types.ResponseInfo
 	var r1 error
@@ -83,6 +95,10 @@ func (_m *AppConnQuery) InfoSync(_a0 types.RequestInfo) (*types.ResponseInfo, er
 func (_m *AppConnQuery) QuerySync(_a0 types.RequestQuery) (*types.ResponseQuery, error) {
 	ret := _m.Called(_a0)
 
+	if len(ret) == 0 {
+		panic("no return value specified for QuerySync")
+	}
+
 	var r0 *types.ResponseQuery
 	var r1 error
 	if rf, ok := ret.Get(0).(func(types.RequestQuery) (*types.ResponseQuery, error)); ok {
@@ -105,13 +121,12 @@ func (_m *AppConnQuery) QuerySync(_a0 types.RequestQuery) (*types.ResponseQuery,
 	return r0, r1
 }
 
-type mockConstructorTestingTNewAppConnQuery interface {
+// NewAppConnQuery creates a new instance of AppConnQuery. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
+// The first argument is typically a *testing.T value.
+func NewAppConnQuery(t interface {
 	mock.TestingT
 	Cleanup(func())
-}
-
-// NewAppConnQuery creates a new instance of AppConnQuery. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
-func NewAppConnQuery(t mockConstructorTestingTNewAppConnQuery) *AppConnQuery {
+}) *AppConnQuery {
 	mock := &AppConnQuery{}
 	mock.Mock.Test(t)
 
