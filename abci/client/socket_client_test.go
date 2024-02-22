@@ -94,8 +94,10 @@ func TestHangingSyncCalls(t *testing.T) {
 }
 
 func setupClientServer(t *testing.T, app types.Application) (
+
 	service.Service, abcicli.Client,
 ) {
+	t.Helper()
 	// some port between 20k and 30k
 	port := 20000 + cmtrand.Int32()%10000
 	addr := fmt.Sprintf("localhost:%d", port)

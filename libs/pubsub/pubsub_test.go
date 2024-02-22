@@ -502,6 +502,7 @@ func assertReceive(t *testing.T, expected interface{}, ch <-chan pubsub.Message,
 }
 
 func assertCancelled(t *testing.T, subscription *pubsub.Subscription, err error) {
+	t.Helper()
 	_, ok := <-subscription.Canceled()
 	assert.False(t, ok)
 	assert.Equal(t, err, subscription.Err())

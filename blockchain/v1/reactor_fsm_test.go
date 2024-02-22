@@ -221,6 +221,7 @@ type testFields struct {
 }
 
 func executeFSMTests(t *testing.T, tests []testFields, matchRespToReq bool) {
+	t.Helper()
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {

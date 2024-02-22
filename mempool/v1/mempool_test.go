@@ -75,30 +75,31 @@ func (app *application) CheckTx(req abci.RequestCheckTx) abci.ResponseCheckTx {
 	}
 }
 
-func setup(t testing.TB, cacheSize int, options ...TxMempoolOption) *TxMempool {
-	t.Helper()
+func setup(tb testing.TB, cacheSize int, options ...TxMempoolOption) *TxMempool {
+	tb.Helper()
 
 	app := &application{kvstore.NewApplication()}
 	cc := proxy.NewLocalClientCreator(app)
 
-	cfg := config.ResetTestRoot(strings.ReplaceAll(t.Name(), "/", "|"))
+	cfg := config.ResetTestRoot(strings.ReplaceAll(tb.Name(), "/", "|"))
 	cfg.Mempool.CacheSize = cacheSize
 
 	appConnMem, err := cc.NewABCIClient()
-	require.NoError(t, err)
-	require.NoError(t, appConnMem.Start())
+	require.NoError(tb, err)
+	require.NoError(tb, appConnMem.Start())
 
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		os.RemoveAll(cfg.RootDir)
-		require.NoError(t, appConnMem.Stop())
+		require.NoError(tb, appConnMem.Stop())
 	})
 
-	return NewTxMempool(log.TestingLogger().With("test", t.Name()), cfg.Mempool, appConnMem, 0, options...)
+	return NewTxMempool(log.TestingLogger().With("test", tb.Name()), cfg.Mempool, appConnMem, 0, options...)
 }
 
 // mustCheckTx invokes txmp.CheckTx for the given transaction and waits until
 // its callback has finished executing. It fails t if CheckTx fails.
 func mustCheckTx(t *testing.T, txmp *TxMempool, spec string) {
+	t.Helper()
 	done := make(chan struct{})
 	if err := txmp.CheckTx([]byte(spec), func(*abci.Response) {
 		close(done)
@@ -109,6 +110,7 @@ func mustCheckTx(t *testing.T, txmp *TxMempool, spec string) {
 }
 
 func checkTxs(t *testing.T, txmp *TxMempool, numTxs int, peerID uint16) []testTx {
+	t.Helper()
 	txs := make([]testTx, numTxs)
 	txInfo := mempool.TxInfo{SenderID: peerID}
 

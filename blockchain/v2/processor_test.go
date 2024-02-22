@@ -70,6 +70,7 @@ type testFields struct {
 }
 
 func executeProcessorTests(t *testing.T, tests []testFields) {
+	t.Helper()
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {

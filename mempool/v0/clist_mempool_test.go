@@ -92,6 +92,7 @@ func ensureNoFire(t *testing.T, ch <-chan struct{}, timeoutMS int) {
 }
 
 func ensureFire(t *testing.T, ch <-chan struct{}, timeoutMS int) {
+	t.Helper()
 	timer := time.NewTimer(time.Duration(timeoutMS) * time.Millisecond)
 	select {
 	case <-ch:
@@ -101,6 +102,7 @@ func ensureFire(t *testing.T, ch <-chan struct{}, timeoutMS int) {
 }
 
 func checkTxs(t *testing.T, mp mempool.Mempool, count int, peerID uint16) types.Txs {
+	t.Helper()
 	txs := make(types.Txs, count)
 	txInfo := mempool.TxInfo{SenderID: peerID}
 	for i := 0; i < count; i++ {

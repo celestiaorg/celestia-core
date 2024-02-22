@@ -200,6 +200,7 @@ func newMempoolWithAppAndConfig(cc proxy.ClientCreator, conf *cfg.Config) (*TxMe
 }
 
 func waitForTxsOnReactors(t *testing.T, txs types.Txs, reactors []*Reactor) {
+	t.Helper()
 	// wait for the txs in all mempools
 	wg := new(sync.WaitGroup)
 	for i, reactor := range reactors {
@@ -225,6 +226,7 @@ func waitForTxsOnReactors(t *testing.T, txs types.Txs, reactors []*Reactor) {
 }
 
 func waitForTxsOnReactor(t *testing.T, txs types.Txs, reactor *Reactor, reactorIndex int) {
+	t.Helper()
 	mempool := reactor.mempool
 	for mempool.Size() < len(txs) {
 		time.Sleep(time.Millisecond * 100)

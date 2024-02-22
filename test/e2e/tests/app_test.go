@@ -17,6 +17,7 @@ import (
 // Tests that any initial state given in genesis has made it into the app.
 func TestApp_InitialState(t *testing.T) {
 	testNode(t, func(t *testing.T, node e2e.Node) {
+		t.Helper()
 		if len(node.Testnet.InitialState) == 0 {
 			return
 		}
@@ -36,6 +37,7 @@ func TestApp_InitialState(t *testing.T) {
 // block and the node sync status.
 func TestApp_Hash(t *testing.T) {
 	testNode(t, func(t *testing.T, node e2e.Node) {
+		t.Helper()
 		client, err := node.Client()
 		require.NoError(t, err)
 		info, err := client.ABCIInfo(ctx)
@@ -57,6 +59,7 @@ func TestApp_Hash(t *testing.T) {
 // Tests that we can set a value and retrieve it.
 func TestApp_Tx(t *testing.T) {
 	testNode(t, func(t *testing.T, node e2e.Node) {
+		t.Helper()
 		client, err := node.Client()
 		require.NoError(t, err)
 

@@ -28,6 +28,7 @@ func TestEvidenceList(t *testing.T) {
 }
 
 func randomDuplicateVoteEvidence(t *testing.T) *DuplicateVoteEvidence {
+	t.Helper()
 	val := NewMockPV()
 	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
 	blockID2 := makeBlockID([]byte("blockhash2"), 1000, []byte("partshash"))
@@ -231,6 +232,7 @@ func makeVote(
 	t *testing.T, val PrivValidator, chainID string, valIndex int32, height int64, round int32, step int, blockID BlockID,
 	time time.Time,
 ) *Vote {
+	t.Helper()
 	pubKey, err := val.GetPubKey()
 	require.NoError(t, err)
 	v := &Vote{

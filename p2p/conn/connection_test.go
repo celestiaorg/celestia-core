@@ -398,6 +398,7 @@ func TestMConnectionStopsAndReturnsError(t *testing.T) {
 }
 
 func newClientAndServerConnsForReadErrors(t *testing.T, chOnErr chan struct{}) (*MConnection, *MConnection) {
+	t.Helper()
 	server, client := NetPipe()
 
 	onReceive := func(chID byte, msgBytes []byte) {}
@@ -621,6 +622,7 @@ type stopper interface {
 }
 
 func stopAll(t *testing.T, stoppers ...stopper) func() {
+	t.Helper()
 	return func() {
 		for _, s := range stoppers {
 			if err := s.Stop(); err != nil {

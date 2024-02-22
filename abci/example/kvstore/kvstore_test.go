@@ -188,6 +188,7 @@ func makeApplyBlock(
 	diff []types.ValidatorUpdate,
 	txs ...[]byte,
 ) {
+	t.Helper()
 	// make and apply block
 	height := int64(heightInt)
 	hash := []byte("foo")
@@ -209,6 +210,7 @@ func makeApplyBlock(
 
 // order doesn't matter.
 func valsEqual(t *testing.T, vals1, vals2 []types.ValidatorUpdate) {
+	t.Helper()
 	if len(vals1) != len(vals2) {
 		t.Fatalf("vals dont match in len. got %d, expected %d", len(vals2), len(vals1))
 	}
@@ -271,6 +273,7 @@ func makeGRPCClientServer(app types.Application, name string) (abcicli.Client, s
 }
 
 func TestClientServer(t *testing.T) {
+	t.Helper()
 	// set up socket app
 	kvstore := NewApplication()
 	client, server, err := makeSocketClientServer(kvstore, "kvstore-socket")
@@ -308,6 +311,7 @@ func TestClientServer(t *testing.T) {
 }
 
 func runClientTests(t *testing.T, client abcicli.Client) {
+	t.Helper()
 	// run some tests....
 	key := testKey
 	value := key
@@ -320,6 +324,7 @@ func runClientTests(t *testing.T, client abcicli.Client) {
 }
 
 func testClient(t *testing.T, app abcicli.Client, tx []byte, key, value string) {
+	t.Helper()
 	ar, err := app.DeliverTxSync(types.RequestDeliverTx{Tx: tx})
 	require.NoError(t, err)
 	require.False(t, ar.IsErr(), ar)

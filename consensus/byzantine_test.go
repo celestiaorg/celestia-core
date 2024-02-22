@@ -473,6 +473,7 @@ func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 // byzantine consensus functions
 
 func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *State, sw *p2p.Switch) {
+	t.Helper()
 	// byzantine user should create two proposals and try to split the vote.
 	// Avoid sending on internalMsgQueue and running consensus state.
 

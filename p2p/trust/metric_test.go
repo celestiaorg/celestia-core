@@ -75,6 +75,7 @@ func TestTrustMetricCopyNilPointer(t *testing.T) {
 //
 //nolint:unused,deadcode
 func _TestTrustMetricStopPause(t *testing.T) {
+	t.Helper()
 	// The TestTicker will provide manual control over
 	// the passing of time within the metric
 	tt := NewTestTicker()

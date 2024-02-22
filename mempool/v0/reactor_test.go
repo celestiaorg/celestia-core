@@ -354,6 +354,7 @@ func makeAndConnectReactors(config *cfg.Config, n int) []*Reactor {
 }
 
 func waitForTxsOnReactors(t *testing.T, txs types.Txs, reactors []*Reactor) {
+	t.Helper()
 	// wait for the txs in all mempools
 	wg := new(sync.WaitGroup)
 	for i, reactor := range reactors {
@@ -379,6 +380,7 @@ func waitForTxsOnReactors(t *testing.T, txs types.Txs, reactors []*Reactor) {
 }
 
 func waitForTxsOnReactor(t *testing.T, txs types.Txs, reactor *Reactor, reactorIndex int) {
+	t.Helper()
 	mempool := reactor.mempool
 	for mempool.Size() < len(txs) {
 		time.Sleep(time.Millisecond * 100)
@@ -393,6 +395,7 @@ func waitForTxsOnReactor(t *testing.T, txs types.Txs, reactor *Reactor, reactorI
 
 // ensure no txs on reactor after some timeout.
 func ensureNoTxs(t *testing.T, reactor *Reactor, timeout time.Duration) {
+	t.Helper()
 	time.Sleep(timeout) // wait for the txs in all mempools
 	assert.Zero(t, reactor.mempool.Size())
 }

@@ -454,6 +454,7 @@ func makeLunaticEvidence(
 	totalVals, byzVals, phantomVals int,
 	commonTime, attackTime time.Time,
 ) (ev *types.LightClientAttackEvidence, trusted *types.LightBlock, common *types.LightBlock) {
+	t.Helper()
 	commonValSet, commonPrivVals := types.RandValidatorSet(totalVals, defaultVotingPower)
 
 	require.Greater(t, totalVals, byzVals)
@@ -530,6 +531,7 @@ func makeVote(
 	t *testing.T, val types.PrivValidator, chainID string, valIndex int32, height int64,
 	round int32, step int, blockID types.BlockID, time time.Time,
 ) *types.Vote {
+	t.Helper()
 	pubKey, err := val.GetPubKey()
 	require.NoError(t, err)
 	v := &types.Vote{
@@ -589,6 +591,7 @@ func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.Bloc
 func orderPrivValsByValSet(
 	t *testing.T, vals *types.ValidatorSet, privVals []types.PrivValidator,
 ) []types.PrivValidator {
+	t.Helper()
 	output := make([]types.PrivValidator, len(privVals))
 	for idx, v := range vals.Validators {
 		for _, p := range privVals {

@@ -1395,6 +1395,7 @@ func makeScBlock(height int64) *types.Block {
 // used in place of assert.Equal(t, want, actual) to avoid failures due to
 // scheduler.lastAdvanced timestamp inequalities.
 func checkSameScheduler(t *testing.T, want *scheduler, actual *scheduler) {
+	t.Helper()
 	assert.Equal(t, want.initHeight, actual.initHeight)
 	assert.Equal(t, want.height, actual.height)
 	assert.Equal(t, want.peers, actual.peers)
@@ -1408,6 +1409,7 @@ func checkSameScheduler(t *testing.T, want *scheduler, actual *scheduler) {
 
 // checkScResults checks scheduler handler test results.
 func checkScResults(t *testing.T, wantErr bool, err error, wantEvent Event, event Event) {
+	t.Helper()
 	if (err != nil) != wantErr {
 		t.Errorf("error = %v, wantErr %v", err, wantErr)
 		return

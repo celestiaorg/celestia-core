@@ -274,6 +274,7 @@ func makeAndConnectReactorsAndPools(config *cfg.Config, stateStores []sm.Store) 
 
 // wait for all evidence on all reactors.
 func waitForEvidence(t *testing.T, evs types.EvidenceList, pools []*evidence.Pool) {
+	t.Helper()
 	// wait for the evidence in all evpools
 	wg := new(sync.WaitGroup)
 	for i := 0; i < len(pools); i++ {
@@ -303,6 +304,7 @@ func _waitForEvidence(
 	poolIdx int,
 	pools []*evidence.Pool,
 ) {
+	t.Helper()
 	evpool := pools[poolIdx]
 	var evList []types.Evidence
 	currentPoolSize := 0
@@ -328,6 +330,7 @@ func _waitForEvidence(
 }
 
 func sendEvidence(t *testing.T, evpool *evidence.Pool, val types.PrivValidator, n int) types.EvidenceList {
+	t.Helper()
 	evList := make([]types.Evidence, n)
 	for i := 0; i < n; i++ {
 		ev := types.NewMockDuplicateVoteEvidenceWithValidator(int64(i+1),

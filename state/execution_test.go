@@ -343,6 +343,7 @@ func makeBlockExec(t *testing.T, testName string, block *types.Block, stateDB db
 }
 
 func getProcessProposalRejectedCount(t *testing.T, prometheusOutput string) (count int) {
+	t.Helper()
 	metricName := strings.Join([]string{namespace, sm.MetricsSubsystem, "process_proposal_rejected"}, "_")
 	lines := strings.Split(prometheusOutput, "\n")
 

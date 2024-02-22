@@ -183,6 +183,7 @@ type netAddressPair struct {
 }
 
 func randNetAddressPairs(t *testing.T, n int) []netAddressPair {
+	t.Helper()
 	randAddrs := make([]netAddressPair, n)
 	for i := 0; i < n; i++ {
 		randAddrs[i] = netAddressPair{addr: randIPv4Address(t), src: randIPv4Address(t)}
@@ -191,6 +192,7 @@ func randNetAddressPairs(t *testing.T, n int) []netAddressPair {
 }
 
 func randIPv4Address(t *testing.T) *p2p.NetAddress {
+	t.Helper()
 	for {
 		ip := fmt.Sprintf("%v.%v.%v.%v",
 			cmtrand.Intn(254)+1,
@@ -400,6 +402,7 @@ func TestAddrBookHasAddress(t *testing.T) {
 }
 
 func testCreatePrivateAddrs(t *testing.T, numAddrs int) ([]*p2p.NetAddress, []string) {
+	t.Helper()
 	addrs := make([]*p2p.NetAddress, numAddrs)
 	for i := 0; i < numAddrs; i++ {
 		addrs[i] = randIPv4Address(t)
@@ -489,6 +492,7 @@ func TestPrivatePeers(t *testing.T) {
 }
 
 func testAddrBookAddressSelection(t *testing.T, bookSize int) {
+	t.Helper()
 	// generate all combinations of old (m) and new addresses
 	for nBookOld := 0; nBookOld <= bookSize; nBookOld++ {
 		nBookNew := bookSize - nBookOld
@@ -711,6 +715,7 @@ func TestAddrBookGroupKey(t *testing.T) {
 }
 
 func assertMOldAndNNewAddrsInSelection(t *testing.T, m, n int, addrs []*p2p.NetAddress, book *addrBook) {
+	t.Helper()
 	nOld, nNew := countOldAndNewAddrsInSelection(addrs, book)
 	assert.Equal(t, m, nOld, "old addresses")
 	assert.Equal(t, n, nNew, "new addresses")
@@ -737,6 +742,7 @@ func deleteTempFile(fname string) {
 }
 
 func createAddrBookWithMOldAndNNewAddrs(t *testing.T, nOld, nNew int) (book *addrBook, fname string) {
+	t.Helper()
 	fname = createTempFileName("addrbook_test")
 
 	book = NewAddrBook(fname, true).(*addrBook)

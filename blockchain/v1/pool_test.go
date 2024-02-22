@@ -87,6 +87,7 @@ func makeBlockPool(bcr *testBcR, height int64, peers []BpPeer, blocks map[int64]
 }
 
 func assertPeerSetsEquivalent(t *testing.T, set1 map[p2p.ID]*BpPeer, set2 map[p2p.ID]*BpPeer) {
+	t.Helper()
 	assert.Equal(t, len(set1), len(set2))
 	for peerID, peer1 := range set1 {
 		peer2 := set2[peerID]
@@ -104,6 +105,7 @@ func assertPeerSetsEquivalent(t *testing.T, set1 map[p2p.ID]*BpPeer, set2 map[p2
 }
 
 func assertBlockPoolEquivalent(t *testing.T, poolWanted, pool *BlockPool) {
+	t.Helper()
 	assert.Equal(t, poolWanted.blocks, pool.blocks)
 	assertPeerSetsEquivalent(t, poolWanted.peers, pool.peers)
 	assert.Equal(t, poolWanted.MaxPeerHeight, pool.MaxPeerHeight)

@@ -43,6 +43,7 @@ func TestGRPC(t *testing.T) {
 }
 
 func testStream(t *testing.T, app types.Application) {
+	t.Helper()
 	numDeliverTxs := 20000
 	socketFile := fmt.Sprintf("test-%08x.sock", rand.Int31n(1<<30))
 	defer os.Remove(socketFile)
@@ -127,6 +128,7 @@ func dialerFunc(ctx context.Context, addr string) (net.Conn, error) {
 }
 
 func testGRPCSync(t *testing.T, app types.ABCIApplicationServer) {
+	t.Helper()
 	numDeliverTxs := 2000
 	socketFile := fmt.Sprintf("/tmp/test-%08x.sock", rand.Int31n(1<<30))
 	defer os.Remove(socketFile)

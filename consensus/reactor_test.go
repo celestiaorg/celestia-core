@@ -53,6 +53,7 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 	[]types.Subscription,
 	[]*types.EventBus,
 ) {
+	t.Helper()
 	reactors := make([]*Reactor, n)
 	blocksSubs := make([]types.Subscription, 0)
 	eventBuses := make([]*types.EventBus, n)
@@ -599,6 +600,7 @@ func waitForAndValidateBlock(
 	css []*State,
 	txs ...[]byte,
 ) {
+	t.Helper()
 	timeoutWaitGroup(t, n, func(j int) {
 		css[j].Logger.Debug("waitForAndValidateBlock")
 		msg := <-blocksSubs[j].Out()
@@ -621,6 +623,7 @@ func waitForAndValidateBlockWithTx(
 	css []*State,
 	txs ...[]byte,
 ) {
+	t.Helper()
 	timeoutWaitGroup(t, n, func(j int) {
 		ntxs := 0
 	BLOCK_TX_LOOP:
@@ -654,6 +657,7 @@ func waitForBlockWithUpdatedValsAndValidateIt(
 	blocksSubs []types.Subscription,
 	css []*State,
 ) {
+	t.Helper()
 	timeoutWaitGroup(t, n, func(j int) {
 		var newBlock *types.Block
 	LOOP:
@@ -695,6 +699,7 @@ func validateBlock(block *types.Block, activeVals map[string]struct{}) error {
 }
 
 func timeoutWaitGroup(t *testing.T, n int, f func(int), css []*State) {
+	t.Helper()
 	wg := new(sync.WaitGroup)
 	wg.Add(n)
 	for i := 0; i < n; i++ {

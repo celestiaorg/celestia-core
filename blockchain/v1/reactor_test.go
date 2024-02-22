@@ -57,6 +57,7 @@ func makeVote(
 	valset *types.ValidatorSet,
 	privVal types.PrivValidator,
 ) *types.Vote {
+	t.Helper()
 	pubKey, err := privVal.GetPubKey()
 	require.NoError(t, err)
 
@@ -91,6 +92,7 @@ func newBlockchainReactor(
 	privVals []types.PrivValidator,
 	maxBlockHeight int64,
 ) *BlockchainReactor {
+	t.Helper()
 	if len(privVals) != 1 {
 		panic("only support one validator")
 	}
@@ -166,6 +168,7 @@ func newBlockchainReactorPair(
 	privVals []types.PrivValidator,
 	maxBlockHeight int64,
 ) BlockchainReactorPair {
+	t.Helper()
 	consensusReactor := &consensusReactorTest{}
 	consensusReactor.BaseReactor = *p2p.NewBaseReactor("Consensus reactor", consensusReactor)
 

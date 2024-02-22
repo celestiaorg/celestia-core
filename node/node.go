@@ -16,9 +16,8 @@ import (
 	"github.com/rs/cors"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	_ "net/http/pprof" //nolint: gosec // securely exposed on separate, optional port
-
 	_ "github.com/lib/pq" // provide the psql db driver
+	_ "net/http/pprof"    //nolint: gosec // securely exposed on separate, optional port
 
 	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/tendermint/tendermint/abci/types"

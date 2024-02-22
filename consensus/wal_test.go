@@ -237,6 +237,7 @@ func nBytes(n int) []byte {
 }
 
 func benchmarkWalDecode(b *testing.B, n int) {
+	b.Helper()
 	// registerInterfacesOnce()
 
 	buf := new(bytes.Buffer)

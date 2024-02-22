@@ -53,6 +53,7 @@ linters:
     - testifylint
     - varcheck
     - varnamelen
+    - wastedassign
     - wrapcheck
     - wsl
 
