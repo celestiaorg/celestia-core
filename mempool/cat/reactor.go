@@ -189,6 +189,9 @@ func (memR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
 // peer it will find a new peer to rerequest the same transactions.
 func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	peerID := memR.ids.Reclaim(peer.ID())
+	// clear all memory of seen txs by that peer
+	memR.mempool.seenByPeersSet.RemovePeer(peerID)
+
 	// remove and rerequest all pending outbound requests to that peer since we know
 	// we won't receive any responses from them.
 	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
@@ -253,7 +256,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			}
 			_, err = memR.mempool.TryAddNewTx(ntx, key, txInfo)
 			if err != nil && err != ErrTxInMempool {
-				memR.Logger.Info("Could not add tx", "txKey", key, "err", err)
+				memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
 				return
 			}
 			if !memR.opts.ListenOnly {
