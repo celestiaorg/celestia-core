@@ -311,7 +311,7 @@ var UseWAL = false
 func (cs *State) OnStart() error {
 	// We may set the WAL in testing before calling Start, so only OpenWAL if its
 	// still the nilWAL.
-	if _, ok := cs.wal.(nilWAL); ok && UseWAL {
+	if _, ok := cs.wal.(nilWAL); ok {
 		if err := cs.loadWalFile(); err != nil {
 			return err
 		}
@@ -411,6 +411,10 @@ func (cs *State) startRoutines(maxSteps int) {
 
 // loadWalFile loads WAL data from file. It overwrites cs.wal.
 func (cs *State) loadWalFile() error {
+	if !UseWAL {
+		cs.wal = nilWAL{}
+		return nil
+	}
 	wal, err := cs.OpenWAL(cs.config.WalFile())
 	if err != nil {
 		cs.Logger.Error("failed to load state WAL", "err", err)
