@@ -10,6 +10,7 @@ import (
 )
 
 func TestDefaultConfig(t *testing.T) {
+	// trigger a lint
 	assert := assert.New(t)
 
 	// set up some defaults
