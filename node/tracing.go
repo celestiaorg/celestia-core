@@ -4,7 +4,7 @@ import (
 	"github.com/pyroscope-io/client/pyroscope"
 	"github.com/tendermint/tendermint/config"
 
-	otelpyroscope "github.com/pyroscope-io/otel-profiling-go"
+	otelpyroscope "github.com/grafana/otel-profiling-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
