@@ -1039,14 +1039,22 @@ func (n *Node) OnStart() error {
 		n.prometheusSrv = n.startPrometheusServer(n.config.Instrumentation.PrometheusListenAddr)
 	}
 
+	n.Logger.Info("pyroscope url", "url", n.config.Instrumentation.PyroscopeURL)
+
 	if n.config.Instrumentation.PyroscopeURL != "" {
+		l, ok := n.Logger.(pyroscope.Logger)
+		if !ok {
+			l = nil
+		}
 		profiler, tracer, err := setupPyroscope(
 			n.config.Instrumentation,
+			l,
 			string(n.nodeKey.ID()),
 		)
 		if err != nil {
 			return err
 		}
+		n.Logger.Info("Pyroscope profiler and tracer started")
 		n.pyroscopeProfiler = profiler
 		n.pyroscopeTracer = tracer
 	}

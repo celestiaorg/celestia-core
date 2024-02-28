@@ -14,6 +14,24 @@ const (
 	moduleKey = "module"
 )
 
+type PryoscopeLogger interface {
+	Infof(_ string, _ ...interface{})
+	Debugf(_ string, _ ...interface{})
+	Errorf(_ string, _ ...interface{})
+}
+
+func (l *tmLogger) Infof(s string, is ...interface{}) {
+	l.Info(fmt.Sprintf(s, is...))
+}
+
+func (l *tmLogger) Debugf(s string, is ...interface{}) {
+	l.Debug(fmt.Sprintf(s, is...))
+}
+
+func (l *tmLogger) Errorf(s string, is ...interface{}) {
+	l.Error(fmt.Sprintf(s, is...))
+}
+
 type tmLogger struct {
 	srcLogger kitlog.Logger
 }

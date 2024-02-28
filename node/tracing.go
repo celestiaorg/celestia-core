@@ -13,7 +13,7 @@ import (
 )
 
 // setupPyroscope sets up pyroscope profiler and optionally tracing.
-func setupPyroscope(instCfg *config.InstrumentationConfig, nodeID string) (*pyroscope.Profiler, *sdktrace.TracerProvider, error) {
+func setupPyroscope(instCfg *config.InstrumentationConfig, l pyroscope.Logger, nodeID string) (*pyroscope.Profiler, *sdktrace.TracerProvider, error) {
 	tp, err := tracerProviderDebug()
 	if err != nil {
 		return nil, nil, err
@@ -32,7 +32,7 @@ func setupPyroscope(instCfg *config.InstrumentationConfig, nodeID string) (*pyro
 	pflr, err := pyroscope.Start(pyroscope.Config{
 		ApplicationName: "celestia",
 		ServerAddress:   instCfg.PyroscopeURL,
-		Logger:          nil, // use the noop logger by passing nil
+		Logger:          l, // use the noop logger by passing nil
 		Tags:            labels,
 		ProfileTypes:    toPyroscopeProfiles(instCfg.PyroscopeProfileTypes),
 	})
