@@ -5,24 +5,38 @@ go 1.19
 require (
 	github.com/BurntSushi/toml v1.2.1
 	github.com/ChainSafe/go-schnorrkel v1.0.0
+	github.com/Masterminds/semver/v3 v3.2.0
 	github.com/Workiva/go-datastructures v1.0.53
 	github.com/adlio/schema v1.3.3
+	github.com/btcsuite/btcd/btcec/v2 v2.3.2
+	github.com/btcsuite/btcd/btcutil v1.1.3
+	github.com/bufbuild/buf v1.15.1
+	github.com/celestiaorg/nmt v0.20.0
+	github.com/cometbft/cometbft-db v0.7.0
+	github.com/creachadair/taskgroup v0.3.2
 	github.com/fortytw2/leaktest v1.3.0
+	github.com/go-git/go-git/v5 v5.6.1
 	github.com/go-kit/kit v0.12.0
 	github.com/go-kit/log v0.2.1
 	github.com/go-logfmt/logfmt v0.6.0
 	github.com/gofrs/uuid v4.4.0+incompatible
+	github.com/gogo/protobuf v1.3.2
 	github.com/golang/protobuf v1.5.3
 	github.com/golangci/golangci-lint v1.52.0
 	github.com/google/orderedcode v0.0.1
+	github.com/google/uuid v1.3.1
 	github.com/gorilla/websocket v1.5.0
 	github.com/gtank/merlin v0.1.1
+	github.com/influxdata/influxdb-client-go/v2 v2.12.2
+	github.com/informalsystems/tm-load-test v1.3.0
 	github.com/lib/pq v1.10.7
 	github.com/libp2p/go-buffer-pool v0.1.0
 	github.com/minio/highwayhash v1.0.2
 	github.com/ory/dockertest v3.3.5+incompatible
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.14.0
+	github.com/pyroscope-io/client v0.7.2
+	github.com/pyroscope-io/otel-profiling-go v0.4.0
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/rs/cors v1.8.3
 	github.com/sasha-s/go-deadlock v0.3.1
@@ -30,45 +44,16 @@ require (
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.2
-)
-
-require (
-	github.com/google/uuid v1.3.1
-	golang.org/x/crypto v0.14.0
-	golang.org/x/net v0.17.0
-	google.golang.org/grpc v1.59.0
-)
-
-require (
-	github.com/gogo/protobuf v1.3.2
-	github.com/informalsystems/tm-load-test v1.3.0
-)
-
-require (
-	github.com/bufbuild/buf v1.15.1
-	github.com/creachadair/taskgroup v0.3.2
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
-)
-
-require (
-	github.com/Masterminds/semver/v3 v3.2.0
-	github.com/btcsuite/btcd/btcec/v2 v2.3.2
-	github.com/btcsuite/btcd/btcutil v1.1.3
-	github.com/celestiaorg/nmt v0.20.0
-	github.com/cometbft/cometbft-db v0.7.0
-	github.com/go-git/go-git/v5 v5.6.1
 	github.com/vektra/mockery/v2 v2.23.1
-	gonum.org/v1/gonum v0.12.0
-	google.golang.org/protobuf v1.31.0
-)
-
-require (
-	github.com/influxdata/influxdb-client-go/v2 v2.12.2
-	github.com/pyroscope-io/client v0.7.2
-	github.com/pyroscope-io/otel-profiling-go v0.4.0
 	go.opentelemetry.io/otel v1.15.1
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.15.1
 	go.opentelemetry.io/otel/sdk v1.15.1
+	golang.org/x/crypto v0.14.0
+	golang.org/x/net v0.17.0
+	gonum.org/v1/gonum v0.12.0
+	google.golang.org/grpc v1.59.0
+	google.golang.org/protobuf v1.31.0
 )
 
 require (
