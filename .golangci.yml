@@ -91,6 +91,11 @@ linters-settings:
           - github.com/spf13
           - github.com/stretchr/testify/require
           - github.com/syndtr/goleveldb
+          # celestia-core specific
+          - github.com/influxdata/influxdb-client-go/v2
+          - github.com/grafana/pyroscope-go
+          - github.com/grafana/otel-profiling-go
+          - github.com/celestiaorg/nmt
       test:
         files:
           - "$test"
