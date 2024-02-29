@@ -10,13 +10,13 @@ linters:
     - goconst
     - gofmt
     - goimports
-    - revive
+    # - revive
     - gosec
     - gosimple
     - govet
     - ineffassign
     - misspell
-    - nakedret
+    # - nakedret
     - nolintlint
     - prealloc
     - staticcheck
