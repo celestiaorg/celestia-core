@@ -1,7 +1,7 @@
 package node
 
 import (
-	"github.com/pyroscope-io/client/pyroscope"
+	"github.com/grafana/pyroscope-go"
 	"github.com/tendermint/tendermint/config"
 
 	otelpyroscope "github.com/grafana/otel-profiling-go"
