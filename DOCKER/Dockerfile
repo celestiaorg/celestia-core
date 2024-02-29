@@ -1,6 +1,6 @@
 # Use a build arg to ensure that both stages use the same,
 # hopefully current, go version.
-ARG GOLANG_BASE_IMAGE=golang:1.19-alpine
+ARG GOLANG_BASE_IMAGE=golang:1.22-alpine
 
 # stage 1 Generate CometBFT Binary
 FROM --platform=$BUILDPLATFORM $GOLANG_BASE_IMAGE as builder
@@ -58,4 +58,3 @@ CMD ["node"]
 
 # Expose the data directory as a volume since there's mutable state in there
 VOLUME [ "$CMTHOME" ]
-
