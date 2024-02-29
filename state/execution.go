@@ -97,7 +97,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	height int64,
 	state State, commit *types.Commit,
 	proposerAddr []byte,
-) (*types.Block, *types.PartSet) {
+) *types.Block {
 
 	maxBytes := state.ConsensusParams.Block.MaxBytes
 	maxGas := state.ConsensusParams.Block.MaxGas
@@ -158,13 +158,14 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		panic(err)
 	}
 
-	return state.MakeBlock(
+	block, _ := state.MakeBlock(
 		height,
 		newData,
 		commit,
 		evidence,
 		proposerAddr,
 	)
+	return block
 }
 
 func (blockExec *BlockExecutor) ProcessProposal(
@@ -254,7 +255,7 @@ func (blockExec *BlockExecutor) ApplyBlock(
 	// Update the state with the block and responses.
 	state, err = updateState(state, blockID, &block.Header, abciResponses, validatorUpdates)
 	if err != nil {
-		return state, 0, fmt.Errorf("commit failed for application: %v", err)
+		return state, 0, fmt.Errorf("failed to update state: %v", err)
 	}
 
 	// Lock mempool, commit app state, update mempoool.

@@ -37,11 +37,12 @@ const (
 // spec under /.spec.md
 type Reactor struct {
 	p2p.BaseReactor
-	opts        *ReactorOptions
-	mempool     *TxPool
-	ids         *mempoolIDs
-	requests    *requestScheduler
-	traceClient *trace.Client
+	opts         *ReactorOptions
+	mempool      *TxPool
+	ids          *mempoolIDs
+	requests     *requestScheduler
+	blockFetcher *blockFetcher
+	traceClient  *trace.Client
 }
 
 type ReactorOptions struct {
@@ -87,11 +88,12 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		return nil, err
 	}
 	memR := &Reactor{
-		opts:        opts,
-		mempool:     mempool,
-		ids:         newMempoolIDs(),
-		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		traceClient: &trace.Client{},
+		opts:         opts,
+		mempool:      mempool,
+		ids:          newMempoolIDs(),
+		requests:     newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
+		blockFetcher: newBlockFetcher(),
+		traceClient:  &trace.Client{},
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR, nil
@@ -185,6 +187,14 @@ func (memR *Reactor) InitPeer(peer p2p.Peer) p2p.Peer {
 	return peer
 }
 
+// AddPeer broadcasts all the transactions that this node has seen
+func (memR *Reactor) AddPeer(peer p2p.Peer) {
+	keys := memR.mempool.store.getAllKeys()
+	for _, key := range keys {
+		memR.broadcastSeenTx(key)
+	}
+}
+
 // RemovePeer implements Reactor. For all current outbound requests to this
 // peer it will find a new peer to rerequest the same transactions.
 func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
@@ -196,7 +206,6 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	// we won't receive any responses from them.
 	outboundRequests := memR.requests.ClearAllRequestsFrom(peerID)
 	for key := range outboundRequests {
-		memR.mempool.metrics.RequestedTxs.Add(1)
 		memR.findNewPeerToRequestTx(key)
 	}
 }
@@ -259,6 +268,9 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				memR.Logger.Info("Could not add tx", "txKey", key, "err", err)
 				return
 			}
+			// If a block has been proposed with this transaction and
+			// consensus was waiting for it, it will now be published.
+			memR.blockFetcher.TryAddMissingTx(key, tx)
 			if !memR.opts.ListenOnly {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
 				memR.broadcastSeenTx(key)
@@ -321,6 +333,10 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			return
 		}
 		tx, has := memR.mempool.Get(txKey)
+		if !has {
+			// see if the tx was recently committed
+			tx, has = memR.mempool.GetCommitted(txKey)
+		}
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			schema.WriteMempoolTx(
@@ -449,7 +465,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 		memR.mempool.metrics.RequestedTxs.Add(1)
 		requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)
 		if !requested {
-			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
+			memR.Logger.Debug("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
 		}
 	}
 }
@@ -462,7 +478,7 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		return
 	}
 
-	// pop the next peer in the list of remaining peers that have seen the tx
+	// get the next peer in the list of remaining peers that have seen the tx
 	// and does not already have an outbound request for that tx
 	seenMap := memR.mempool.seenByPeersSet.Get(txKey)
 	var peerID uint16
@@ -477,12 +493,14 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		// No other free peer has the transaction we are looking for.
 		// We give up 🤷‍♂️ and hope either a peer responds late or the tx
 		// is gossiped again
-		memR.Logger.Info("no other peer has the tx we are looking for", "txKey", txKey)
+		memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
+		// TODO: should add a metric to see how common this is
 		return
 	}
 	peer := memR.ids.GetPeer(peerID)
 	if peer == nil {
 		// we disconnected from that peer, retry again until we exhaust the list
+		memR.mempool.seenByPeersSet.Remove(txKey, peerID)
 		memR.findNewPeerToRequestTx(txKey)
 	} else {
 		memR.mempool.metrics.RerequestedTxs.Add(1)

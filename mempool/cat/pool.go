@@ -3,6 +3,7 @@ package cat
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
+	tmos "github.com/tendermint/tendermint/libs/os"
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
@@ -52,6 +54,7 @@ type TxPool struct {
 	config       *config.MempoolConfig
 	proxyAppConn proxy.AppConnMempool
 	metrics      *mempool.Metrics
+	jsonMetrics  *mempool.JSONMetrics
 
 	// these values are modified once per height
 	updateMtx            sync.Mutex
@@ -86,6 +89,12 @@ func NewTxPool(
 	height int64,
 	options ...TxPoolOption,
 ) *TxPool {
+	// set up the directory for tracking metrics
+	path := filepath.Join(cfg.RootDir, "data", "mempool")
+	if err := tmos.EnsureDir(path, 0700); err != nil {
+		panic(err)
+	}
+
 	txmp := &TxPool{
 		logger:           logger,
 		config:           cfg,
@@ -99,6 +108,7 @@ func NewTxPool(
 		store:            newStore(),
 		broadcastCh:      make(chan *wrappedTx),
 		txsToBeBroadcast: make([]types.TxKey, 0),
+		jsonMetrics:      mempool.NewJSONMetrics(path),
 	}
 
 	for _, opt := range options {
@@ -175,6 +185,16 @@ func (txmp *TxPool) Has(txKey types.TxKey) bool {
 // if the transaction exists or not
 func (txmp *TxPool) Get(txKey types.TxKey) (types.Tx, bool) {
 	wtx := txmp.store.get(txKey)
+	if wtx != nil {
+		return wtx.tx, true
+	}
+	return types.Tx{}, false
+}
+
+// GetCommitted retrieves a committed transaction based on the key.
+// It returns the transaction and a bool indicating if the transaction exists or not.
+func (txmp *TxPool) GetCommitted(txKey types.TxKey) (types.Tx, bool) {
+	wtx := txmp.store.getCommitted(txKey)
 	if wtx != nil {
 		return wtx.tx, true
 	}
@@ -361,7 +381,6 @@ func (txmp *TxPool) RemoveTxByKey(txKey types.TxKey) error {
 func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
 	txmp.rejectedTxCache.Push(txKey)
 	_ = txmp.store.remove(txKey)
-	txmp.seenByPeersSet.RemoveKey(txKey)
 }
 
 // Flush purges the contents of the mempool and the cache, leaving both empty.
@@ -487,12 +506,25 @@ func (txmp *TxPool) Update(
 	txmp.updateMtx.Unlock()
 
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
-	for _, tx := range blockTxs {
-		// Regardless of success, remove the transaction from the mempool.
-		txmp.removeTxByKey(tx.Key())
-	}
 
+	txmp.store.clearCommitted()
+
+	// add the recently committed transactions to the cache
+	keys := make([]types.TxKey, len(blockTxs))
+	for idx, tx := range blockTxs {
+		keys[idx] = tx.Key()
+		// this prevents the node from reprocessing recently committed transactions
+		txmp.rejectedTxCache.Push(keys[idx])
+	}
+	txmp.store.markAsCommitted(keys)
+
+	// purge transactions that are past the TTL
 	txmp.purgeExpiredTxs(blockHeight)
+
+	// prune record of peers seen transactions after an hour
+	// We assume by then that the transaction will no longer
+	// need to be requested
+	txmp.seenByPeersSet.Prune(time.Now().Add(time.Hour))
 
 	// If there any uncommitted transactions left in the mempool, we either
 	// initiate re-CheckTx per remaining transaction or notify that remaining
@@ -722,13 +754,6 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 
 	numExpired := txmp.store.purgeExpiredTxs(expirationHeight, expirationAge)
 	txmp.metrics.EvictedTxs.Add(float64(numExpired))
-
-	// purge old evicted and seen transactions
-	if txmp.config.TTLDuration == 0 {
-		// ensure that seenByPeersSet are eventually pruned
-		expirationAge = now.Add(-time.Hour)
-	}
-	txmp.seenByPeersSet.Prune(expirationAge)
 }
 
 func (txmp *TxPool) notifyTxsAvailable() {
