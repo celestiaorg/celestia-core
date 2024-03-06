@@ -24,7 +24,7 @@ type Pusher struct {
 }
 
 func MetricsPusher(cm *cs.Metrics, pm *p2p.Metrics, mm *mempl.Metrics, sm *sm.Metrics, config *cfg.InstrumentationConfig) *Pusher {
-	if PushGateWayURL == "" || !PushMetrics {
+	if PushGateWayURL == "" || !config.Prometheus || !PushMetrics {
 		return nil
 	}
 	p := push.New(PushGateWayURL, config.Namespace)
