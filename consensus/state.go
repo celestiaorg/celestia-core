@@ -317,6 +317,8 @@ func (cs *State) OnStart() error {
 		}
 	}
 
+	cs.metrics.StartHeight.Set(float64(cs.Height))
+
 	// we need the timeoutRoutine for replay so
 	// we don't block on the tick chan.
 	// NOTE: we will get a build up of garbage go routines
@@ -1293,6 +1295,7 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	// If ProposalBlock is nil, prevote nil.
 	if cs.ProposalBlock == nil {
 		logger.Debug("prevote step: ProposalBlock is nil")
+		cs.metrics.TimedOutProposals.Add(1)
 		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{})
 		return
 	}
@@ -1309,12 +1312,14 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	stateMachineValidBlock, err := cs.blockExec.ProcessProposal(cs.ProposalBlock)
 	if err != nil {
 		cs.Logger.Error("state machine returned an error when trying to process proposal block", "err", err)
+		return
 	}
 
 	// Vote nil if application invalidated the block
 	if !stateMachineValidBlock {
 		// The app says we must vote nil
 		logger.Error("prevote step: the application deems this block to be mustVoteNil", "err", err)
+		cs.metrics.ApplicationRejectedProposals.Add(1)
 		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{})
 		return
 	}

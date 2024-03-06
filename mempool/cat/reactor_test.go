@@ -153,6 +153,49 @@ func TestReactorBroadcastsSeenTxAfterReceivingTx(t *testing.T) {
 	peers[1].AssertExpectations(t)
 }
 
+func TestRemovePeerRequestFromOtherPeer(t *testing.T) {
+	reactor, _ := setupReactor(t)
+
+	tx := newDefaultTx("hello")
+	key := tx.Key()
+	peers := genPeers(2)
+	reactor.InitPeer(peers[0])
+	reactor.InitPeer(peers[1])
+
+	seenMsg := &protomem.SeenTx{TxKey: key[:]}
+
+	wantMsg := &protomem.Message{
+		Sum: &protomem.Message_WantTx{WantTx: &protomem.WantTx{TxKey: key[:]}},
+	}
+	wantMsgBytes, err := wantMsg.Marshal()
+	require.NoError(t, err)
+	peers[0].On("Send", MempoolStateChannel, wantMsgBytes).Return(true)
+	peers[1].On("Send", MempoolStateChannel, wantMsgBytes).Return(true)
+
+	reactor.ReceiveEnvelope(p2p.Envelope{
+		Src:       peers[0],
+		Message:   seenMsg,
+		ChannelID: MempoolStateChannel,
+	})
+	time.Sleep(100 * time.Millisecond)
+	reactor.ReceiveEnvelope(p2p.Envelope{
+		Src:       peers[1],
+		Message:   seenMsg,
+		ChannelID: MempoolStateChannel,
+	})
+
+	reactor.RemovePeer(peers[0], "test")
+
+	peers[0].AssertExpectations(t)
+	peers[1].AssertExpectations(t)
+
+	require.True(t, reactor.mempool.seenByPeersSet.Has(key, 2))
+	// we should have automatically sent another request out for peer 2
+	require.EqualValues(t, 2, reactor.requests.ForTx(key))
+	require.True(t, reactor.requests.Has(2, key))
+	require.False(t, reactor.mempool.seenByPeersSet.Has(key, 1))
+}
+
 func TestMempoolVectors(t *testing.T) {
 	testCases := []struct {
 		testName string
