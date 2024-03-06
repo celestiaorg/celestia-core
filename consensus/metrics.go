@@ -10,6 +10,7 @@ import (
 
 	prometheus "github.com/go-kit/kit/metrics/prometheus"
 	stdprometheus "github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/push"
 )
 
 const (
@@ -21,59 +22,59 @@ const (
 // Metrics contains metrics exposed by this package.
 type Metrics struct {
 	// Height of the chain.
-	Height metrics.Gauge
+	Height metrics.PGauge
 
 	// ValidatorLastSignedHeight of a validator.
-	ValidatorLastSignedHeight metrics.Gauge
+	ValidatorLastSignedHeight metrics.PGauge
 
 	// Number of rounds.
-	Rounds metrics.Gauge
+	Rounds metrics.PGauge
 
 	// Number of validators.
-	Validators metrics.Gauge
+	Validators metrics.PGauge
 	// Total power of all validators.
-	ValidatorsPower metrics.Gauge
+	ValidatorsPower metrics.PGauge
 	// Power of a validator.
-	ValidatorPower metrics.Gauge
+	ValidatorPower metrics.PGauge
 	// Amount of blocks missed by a validator.
-	ValidatorMissedBlocks metrics.Gauge
+	ValidatorMissedBlocks metrics.PGauge
 	// Number of validators who did not sign.
-	MissingValidators metrics.Gauge
+	MissingValidators metrics.PGauge
 	// Total power of the missing validators.
-	MissingValidatorsPower metrics.Gauge
+	MissingValidatorsPower metrics.PGauge
 	// Number of validators who tried to double sign.
-	ByzantineValidators metrics.Gauge
+	ByzantineValidators metrics.PGauge
 	// Total power of the byzantine validators.
-	ByzantineValidatorsPower metrics.Gauge
+	ByzantineValidatorsPower metrics.PGauge
 
 	// Time between this and the last block.
-	BlockIntervalSeconds metrics.Histogram
+	BlockIntervalSeconds metrics.PHistogram
 	// Block time in seconds.
-	BlockTimeSeconds metrics.Gauge
+	BlockTimeSeconds metrics.PGauge
 
 	// Number of transactions.
-	NumTxs metrics.Gauge
+	NumTxs metrics.PGauge
 	// Size of the block.
-	BlockSizeBytes metrics.Gauge
+	BlockSizeBytes metrics.PGauge
 	// Total number of transactions.
-	TotalTxs metrics.Gauge
+	TotalTxs metrics.PGauge
 	// The latest block height.
-	CommittedHeight metrics.Gauge
+	CommittedHeight metrics.PGauge
 	// Whether a node is fast syncing. 1 if yes, 0 if no.
-	FastSyncing metrics.Gauge
+	FastSyncing metrics.PGauge
 	// Whether a node is state syncing. 1 if yes, 0 if no.
-	StateSyncing metrics.Gauge
+	StateSyncing metrics.PGauge
 
 	// Number of blockparts transmitted by peer.
-	BlockParts metrics.Counter
+	BlockParts metrics.PCounter
 
 	// Histogram of step duration.
-	StepDuration metrics.Histogram
+	StepDuration metrics.PHistogram
 	stepStart    time.Time
 
 	// Number of block parts received by the node, separated by whether the part
 	// was relevant to the block the node is trying to gather or not.
-	BlockGossipPartsReceived metrics.Counter
+	BlockGossipPartsReceived metrics.PCounter
 
 	// QuroumPrevoteMessageDelay is the interval in seconds between the proposal
 	// timestamp and the timestamp of the earliest prevote that achieved a quorum
@@ -84,12 +85,40 @@ type Metrics struct {
 	// be above 2/3 of the total voting power of the network defines the endpoint
 	// the endpoint of the interval. Subtract the proposal timestamp from this endpoint
 	// to obtain the quorum delay.
-	QuorumPrevoteMessageDelay metrics.Gauge
+	QuorumPrevoteMessageDelay metrics.PGauge
 
 	// FullPrevoteMessageDelay is the interval in seconds between the proposal
 	// timestamp and the timestamp of the latest prevote in a round where 100%
 	// of the voting power on the network issued prevotes.
-	FullPrevoteMessageDelay metrics.Gauge
+	FullPrevoteMessageDelay metrics.PGauge
+}
+
+func (m *Metrics) Push(p *push.Pusher) *push.Pusher {
+	p = p.Collector(m.Height.Collector())
+	p = p.Collector(m.Rounds.Collector())
+	p = p.Collector(m.Validators.Collector())
+	p = p.Collector(m.ValidatorLastSignedHeight.Collector())
+	p = p.Collector(m.ValidatorsPower.Collector())
+	p = p.Collector(m.ValidatorPower.Collector())
+	p = p.Collector(m.ValidatorMissedBlocks.Collector())
+	p = p.Collector(m.MissingValidators.Collector())
+	p = p.Collector(m.MissingValidatorsPower.Collector())
+	p = p.Collector(m.ByzantineValidators.Collector())
+	p = p.Collector(m.ByzantineValidatorsPower.Collector())
+	p = p.Collector(m.BlockIntervalSeconds.Collector())
+	p = p.Collector(m.BlockTimeSeconds.Collector())
+	p = p.Collector(m.NumTxs.Collector())
+	p = p.Collector(m.BlockSizeBytes.Collector())
+	p = p.Collector(m.TotalTxs.Collector())
+	p = p.Collector(m.CommittedHeight.Collector())
+	p = p.Collector(m.FastSyncing.Collector())
+	p = p.Collector(m.StateSyncing.Collector())
+	p = p.Collector(m.BlockParts.Collector())
+	p = p.Collector(m.StepDuration.Collector())
+	p = p.Collector(m.BlockGossipPartsReceived.Collector())
+	p = p.Collector(m.QuorumPrevoteMessageDelay.Collector())
+	p = p.Collector(m.FullPrevoteMessageDelay.Collector())
+	return p
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -106,184 +135,184 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Subsystem: MetricsSubsystem,
 			Name:      "height",
 			Help:      "Height of the chain.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		Rounds: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "rounds",
 			Help:      "Number of rounds.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		Validators: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "validators",
 			Help:      "Number of validators.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		ValidatorLastSignedHeight: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "validator_last_signed_height",
 			Help:      "Last signed height for a validator",
-		}, append(labels, "validator_address")).With(labelsAndValues...),
+		}, append(labels, "validator_address")).WithP(labelsAndValues...),
 		ValidatorMissedBlocks: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "validator_missed_blocks",
 			Help:      "Total missed blocks for a validator",
-		}, append(labels, "validator_address")).With(labelsAndValues...),
+		}, append(labels, "validator_address")).WithP(labelsAndValues...),
 		ValidatorsPower: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "validators_power",
 			Help:      "Total power of all validators.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		ValidatorPower: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "validator_power",
 			Help:      "Power of a validator",
-		}, append(labels, "validator_address")).With(labelsAndValues...),
+		}, append(labels, "validator_address")).WithP(labelsAndValues...),
 		MissingValidators: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "missing_validators",
 			Help:      "Number of validators who did not sign.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		MissingValidatorsPower: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "missing_validators_power",
 			Help:      "Total power of the missing validators.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		ByzantineValidators: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "byzantine_validators",
 			Help:      "Number of validators who tried to double sign.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		ByzantineValidatorsPower: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "byzantine_validators_power",
 			Help:      "Total power of the byzantine validators.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		BlockIntervalSeconds: prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "block_interval_seconds",
 			Help:      "Time between this and the last block.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		BlockTimeSeconds: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "block_time_seconds",
 			Help:      "Duration between this block and the preceding one.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		NumTxs: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "num_txs",
 			Help:      "Number of transactions.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		BlockSizeBytes: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "block_size_bytes",
 			Help:      "Size of the block.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		TotalTxs: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "total_txs",
 			Help:      "Total number of transactions.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		CommittedHeight: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "latest_block_height",
 			Help:      "The latest block height.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		FastSyncing: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "fast_syncing",
 			Help:      "Whether or not a node is fast syncing. 1 if yes, 0 if no.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		StateSyncing: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "state_syncing",
 			Help:      "Whether or not a node is state syncing. 1 if yes, 0 if no.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		BlockParts: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "block_parts",
 			Help:      "Number of blockparts transmitted by peer.",
-		}, append(labels, "peer_id")).With(labelsAndValues...),
+		}, append(labels, "peer_id")).WithP(labelsAndValues...),
 		BlockGossipPartsReceived: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "block_gossip_parts_received",
 			Help: "Number of block parts received by the node, labeled by whether the " +
 				"part was relevant to the block the node was currently gathering or not.",
-		}, append(labels, "matches_current")).With(labelsAndValues...),
+		}, append(labels, "matches_current")).WithP(labelsAndValues...),
 		StepDuration: prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "step_duration_seconds",
 			Help:      "Time spent per step.",
 			Buckets:   stdprometheus.ExponentialBucketsRange(0.1, 100, 8),
-		}, append(labels, "step")).With(labelsAndValues...),
+		}, append(labels, "step")).WithP(labelsAndValues...),
 		QuorumPrevoteMessageDelay: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "quorum_prevote_message_delay",
 			Help: "Difference in seconds between the proposal timestamp and the timestamp " +
 				"of the latest prevote that achieved a quorum in the prevote step.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		FullPrevoteMessageDelay: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "full_prevote_message_delay",
 			Help: "Difference in seconds between the proposal timestamp and the timestamp " +
 				"of the latest prevote that achieved 100% of the voting power in the prevote step.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 	}
 }
 
 // NopMetrics returns no-op Metrics.
 func NopMetrics() *Metrics {
 	return &Metrics{
-		Height: discard.NewGauge(),
+		Height: discard.NewPGauge(),
 
-		ValidatorLastSignedHeight: discard.NewGauge(),
+		ValidatorLastSignedHeight: discard.NewPGauge(),
 
-		Rounds:       discard.NewGauge(),
-		StepDuration: discard.NewHistogram(),
+		Rounds:       discard.NewPGauge(),
+		StepDuration: discard.NewPHistogram(),
 
-		Validators:               discard.NewGauge(),
-		ValidatorsPower:          discard.NewGauge(),
-		ValidatorPower:           discard.NewGauge(),
-		ValidatorMissedBlocks:    discard.NewGauge(),
-		MissingValidators:        discard.NewGauge(),
-		MissingValidatorsPower:   discard.NewGauge(),
-		ByzantineValidators:      discard.NewGauge(),
-		ByzantineValidatorsPower: discard.NewGauge(),
+		Validators:               discard.NewPGauge(),
+		ValidatorsPower:          discard.NewPGauge(),
+		ValidatorPower:           discard.NewPGauge(),
+		ValidatorMissedBlocks:    discard.NewPGauge(),
+		MissingValidators:        discard.NewPGauge(),
+		MissingValidatorsPower:   discard.NewPGauge(),
+		ByzantineValidators:      discard.NewPGauge(),
+		ByzantineValidatorsPower: discard.NewPGauge(),
 
-		BlockIntervalSeconds: discard.NewHistogram(),
-		BlockTimeSeconds:     discard.NewGauge(),
+		BlockIntervalSeconds: discard.NewPHistogram(),
+		BlockTimeSeconds:     discard.NewPGauge(),
 
-		NumTxs:                    discard.NewGauge(),
-		BlockSizeBytes:            discard.NewGauge(),
-		TotalTxs:                  discard.NewGauge(),
-		CommittedHeight:           discard.NewGauge(),
-		FastSyncing:               discard.NewGauge(),
-		StateSyncing:              discard.NewGauge(),
-		BlockParts:                discard.NewCounter(),
-		BlockGossipPartsReceived:  discard.NewCounter(),
-		QuorumPrevoteMessageDelay: discard.NewGauge(),
-		FullPrevoteMessageDelay:   discard.NewGauge(),
+		NumTxs:                    discard.NewPGauge(),
+		BlockSizeBytes:            discard.NewPGauge(),
+		TotalTxs:                  discard.NewPGauge(),
+		CommittedHeight:           discard.NewPGauge(),
+		FastSyncing:               discard.NewPGauge(),
+		StateSyncing:              discard.NewPGauge(),
+		BlockParts:                discard.NewPCounter(),
+		BlockGossipPartsReceived:  discard.NewPCounter(),
+		QuorumPrevoteMessageDelay: discard.NewPGauge(),
+		FullPrevoteMessageDelay:   discard.NewPGauge(),
 	}
 }
 
@@ -295,7 +324,7 @@ func (m *Metrics) MarkStep(s cstypes.RoundStepType) {
 	if !m.stepStart.IsZero() {
 		stepTime := time.Since(m.stepStart).Seconds()
 		stepName := strings.TrimPrefix(s.String(), "RoundStep")
-		m.StepDuration.With("step", stepName).Observe(stepTime)
+		m.StepDuration.WithP("step", stepName).Observe(stepTime)
 	}
 	m.stepStart = time.Now()
 }

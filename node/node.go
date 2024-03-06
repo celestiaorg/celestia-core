@@ -237,6 +237,7 @@ type Node struct {
 	influxDBClient    *trace.Client
 	pyroscopeProfiler *pyroscope.Profiler
 	pyroscopeTracer   *sdktrace.TracerProvider
+	pusher            *Pusher
 }
 
 func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
@@ -856,6 +857,8 @@ func NewNode(config *cfg.Config,
 
 	csMetrics, p2pMetrics, memplMetrics, smMetrics := metricsProvider(genDoc.ChainID, softwareVersion)
 
+	pusher := MetricsPusher(csMetrics, p2pMetrics, memplMetrics, smMetrics, config.Instrumentation)
+
 	// create an optional influxdb client to send arbitrary data to a remote
 	// influxdb server. This is used to collect trace data from many different nodes
 	// in a network.
@@ -1002,6 +1005,7 @@ func NewNode(config *cfg.Config,
 		blockIndexer:     blockIndexer,
 		eventBus:         eventBus,
 		influxDBClient:   influxdbClient,
+		pusher:           pusher,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
@@ -1037,6 +1041,7 @@ func (n *Node) OnStart() error {
 	if n.config.Instrumentation.Prometheus &&
 		n.config.Instrumentation.PrometheusListenAddr != "" {
 		n.prometheusSrv = n.startPrometheusServer(n.config.Instrumentation.PrometheusListenAddr)
+		go n.pusher.Start(n.Logger)
 	}
 
 	n.Logger.Info("pyroscope url", "url", n.config.Instrumentation.PyroscopeURL)
@@ -1142,6 +1147,7 @@ func (n *Node) OnStop() {
 			// Error from closing listeners, or context timeout:
 			n.Logger.Error("Prometheus HTTP server Shutdown", "err", err)
 		}
+		n.pusher.Stop()
 	}
 
 	if n.blockStore != nil {
