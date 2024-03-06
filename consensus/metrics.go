@@ -125,7 +125,6 @@ func (m *Metrics) Push(p *push.Pusher) *push.Pusher {
 	p = p.Collector(m.StepDuration.Collector())
 	p = p.Collector(m.BlockGossipPartsReceived.Collector())
 	p = p.Collector(m.QuorumPrevoteMessageDelay.Collector())
-	p = p.Collector(m.FullPrevoteMessageDelay.Collector())
 	return p
 }
 
