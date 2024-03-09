@@ -27,8 +27,12 @@ func MetricsPusher(cm *cs.Metrics, pm *p2p.Metrics, mm *mempl.Metrics, sm *sm.Me
 	if PushGateWayURL == "" || !config.Prometheus || !PushMetrics {
 		return nil
 	}
+
 	p := push.New(PushGateWayURL, config.Namespace)
 	p = cm.Push(p)
+	p = pm.Push(p)
+	p = mm.Push(p)
+	p = sm.Push(p)
 
 	return &Pusher{Pusher: p, done: make(chan struct{}, 1)}
 }

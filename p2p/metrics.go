@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/kit/metrics/discard"
 	"github.com/go-kit/kit/metrics/prometheus"
 	stdprometheus "github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/push"
 )
 
 const (
@@ -28,19 +29,30 @@ var (
 // Metrics contains metrics exposed by this package.
 type Metrics struct {
 	// Number of peers.
-	Peers metrics.Gauge
+	Peers metrics.PGauge
 	// Number of bytes received from a given peer.
-	PeerReceiveBytesTotal metrics.Counter
+	PeerReceiveBytesTotal metrics.PCounter
 	// Number of bytes sent to a given peer.
-	PeerSendBytesTotal metrics.Counter
+	PeerSendBytesTotal metrics.PCounter
 	// Pending bytes to be sent to a given peer.
-	PeerPendingSendBytes metrics.Gauge
+	PeerPendingSendBytes metrics.PGauge
 	// Number of transactions submitted by each peer.
-	NumTxs metrics.Gauge
+	NumTxs metrics.PGauge
 	// Number of bytes of each message type received.
-	MessageReceiveBytesTotal metrics.Counter
+	MessageReceiveBytesTotal metrics.PCounter
 	// Number of bytes of each message type sent.
-	MessageSendBytesTotal metrics.Counter
+	MessageSendBytesTotal metrics.PCounter
+}
+
+func (m *Metrics) Push(p *push.Pusher) *push.Pusher {
+	p = p.Collector(m.Peers.Collector())
+	p = p.Collector(m.PeerReceiveBytesTotal.Collector())
+	p = p.Collector(m.PeerSendBytesTotal.Collector())
+	p = p.Collector(m.PeerPendingSendBytes.Collector())
+	p = p.Collector(m.NumTxs.Collector())
+	p = p.Collector(m.MessageReceiveBytesTotal.Collector())
+	p = p.Collector(m.MessageSendBytesTotal.Collector())
+	return p
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -57,55 +69,55 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Subsystem: MetricsSubsystem,
 			Name:      "peers",
 			Help:      "Number of peers.",
-		}, labels).With(labelsAndValues...),
+		}, labels).WithP(labelsAndValues...),
 		PeerReceiveBytesTotal: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "peer_receive_bytes_total",
 			Help:      "Number of bytes received from a given peer.",
-		}, append(labels, "peer_id", "chID")).With(labelsAndValues...),
+		}, append(labels, "peer_id", "chID")).WithP(labelsAndValues...),
 		PeerSendBytesTotal: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "peer_send_bytes_total",
 			Help:      "Number of bytes sent to a given peer.",
-		}, append(labels, "peer_id", "chID")).With(labelsAndValues...),
+		}, append(labels, "peer_id", "chID")).WithP(labelsAndValues...),
 		PeerPendingSendBytes: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "peer_pending_send_bytes",
 			Help:      "Pending bytes to be sent to a given peer.",
-		}, append(labels, "peer_id")).With(labelsAndValues...),
+		}, append(labels, "peer_id")).WithP(labelsAndValues...),
 		NumTxs: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "num_txs",
 			Help:      "Number of transactions submitted by each peer.",
-		}, append(labels, "peer_id")).With(labelsAndValues...),
+		}, append(labels, "peer_id")).WithP(labelsAndValues...),
 		MessageReceiveBytesTotal: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "message_receive_bytes_total",
 			Help:      "Number of bytes of each message type received.",
-		}, append(labels, "message_type", "chID", "peer_id")).With(labelsAndValues...),
+		}, append(labels, "message_type", "chID", "peer_id")).WithP(labelsAndValues...),
 		MessageSendBytesTotal: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "message_send_bytes_total",
 			Help:      "Number of bytes of each message type sent.",
-		}, append(labels, "message_type", "chID", "peer_id")).With(labelsAndValues...),
+		}, append(labels, "message_type", "chID", "peer_id")).WithP(labelsAndValues...),
 	}
 }
 
 func NopMetrics() *Metrics {
 	return &Metrics{
-		Peers:                    discard.NewGauge(),
-		PeerReceiveBytesTotal:    discard.NewCounter(),
-		PeerSendBytesTotal:       discard.NewCounter(),
-		PeerPendingSendBytes:     discard.NewGauge(),
-		NumTxs:                   discard.NewGauge(),
-		MessageReceiveBytesTotal: discard.NewCounter(),
-		MessageSendBytesTotal:    discard.NewCounter(),
+		Peers:                    discard.NewPGauge(),
+		PeerReceiveBytesTotal:    discard.NewPCounter(),
+		PeerSendBytesTotal:       discard.NewPCounter(),
+		PeerPendingSendBytes:     discard.NewPGauge(),
+		NumTxs:                   discard.NewPGauge(),
+		MessageReceiveBytesTotal: discard.NewPCounter(),
+		MessageSendBytesTotal:    discard.NewPCounter(),
 	}
 }
 
