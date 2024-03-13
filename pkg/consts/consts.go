@@ -41,5 +41,5 @@ var (
 	NewBaseHashFunc = sha256.New
 
 	// DataCommitmentBlocksLimit is the limit to the number of blocks we can generate a data commitment for.
-	DataCommitmentBlocksLimit = 1000
+	DataCommitmentBlocksLimit = 2048
 )
