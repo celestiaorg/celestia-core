@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cometbft/cometbft/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -172,4 +173,15 @@ func TestStoreExpiredTxs(t *testing.T) {
 
 	store.purgeExpiredTxs(int64(0), time.Now().Add(time.Second))
 	require.Empty(t, store.getAllTxs())
+}
+
+func TestReadReserved(t *testing.T) {
+	store := newStore()
+	tx := types.Tx("tx1")
+	store.reserve(tx.Key())
+
+	assert.Nil(t, store.get(tx.Key()))
+	assert.False(t, store.has(tx.Key()))
+	assert.Len(t, store.getAllKeys(), 0)
+	assert.Len(t, store.getAllTxs(), 0)
 }
