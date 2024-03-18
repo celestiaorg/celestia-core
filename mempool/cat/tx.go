@@ -35,4 +35,6 @@ func newWrappedTx(tx types.Tx, key types.TxKey, height, gasWanted, priority int6
 // Size reports the size of the raw transaction in bytes.
 func (w *wrappedTx) size() int64 { return int64(len(w.tx)) }
 
+// isReserved returns true if the transaction is reserved. Reserved transactions
+// are currently being processed by the mempool.
 func (w *wrappedTx) isReserved() bool { return w.height == -1 }
