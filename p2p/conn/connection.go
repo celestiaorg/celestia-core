@@ -520,17 +520,16 @@ func (c *MConnection) sendSomePacketMsgs() bool {
 func (c *MConnection) sendPacketMsg() bool {
 	// Choose a channel to create a PacketMsg from.
 	// The chosen channel will be the one whose recentlySent/priority is the least.
-	var leastRatio float32 = math.MaxFloat32
+	var highestPriority int
 	var leastChannel *Channel
 	for _, channel := range c.channels {
 		// If nothing to send, skip this channel
 		if !channel.isSendPending() {
 			continue
 		}
-		// Get ratio, and keep track of lowest ratio.
-		ratio := float32(channel.recentlySent) / float32(channel.desc.Priority)
-		if ratio < leastRatio {
-			leastRatio = ratio
+		// Find the channel with the highest priority
+		if channel.desc.Priority > highestPriority {
+			highestPriority = channel.desc.Priority
 			leastChannel = channel
 		}
 	}
