@@ -12,7 +12,6 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	mempl "github.com/cometbft/cometbft/mempool"
 	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
 )
@@ -145,13 +144,9 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	}
 
 	// update the block with the response from PrepareProposal
-	block.Data, err = types.DataFromProto(&cmtproto.Data{
-		Txs:  rpp.Txs[:len(rpp.Txs)-1],
-		Hash: rpp.Txs[len(rpp.Txs)-1],
-	})
-	if err != nil {
-		panic(err)
-	}
+	block.Data.Txs = types.ToTxs(rpp.Txs[:len(rpp.Txs)-1])
+	// update the data hash with the one passed back by celestia-app
+	block.DataHash = rpp.Txs[len(rpp.Txs)-1]
 
 	var blockDataSize int
 	for _, tx := range block.Txs {
@@ -160,8 +155,6 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 			panic("block data exceeds max amount of allowed bytes")
 		}
 	}
-	// update the data hash with the one passed back by celestia-app
-	block.DataHash = rpp.Txs[len(rpp.Txs)-1]
 
 	return block, block.MakePartSet(types.BlockPartSizeBytes)
 }
