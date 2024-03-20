@@ -145,10 +145,13 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	}
 
 	// update the block with the response from PrepareProposal
-	block.Data, _ = types.DataFromProto(&cmtproto.Data{
+	block.Data, err = types.DataFromProto(&cmtproto.Data{
 		Txs:  rpp.Txs[:len(rpp.Txs)-1],
 		Hash: rpp.Txs[len(rpp.Txs)-1],
 	})
+	if err != nil {
+		panic(err)
+	}
 
 	var blockDataSize int
 	for _, tx := range block.Txs {
@@ -157,6 +160,8 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 			panic("block data exceeds max amount of allowed bytes")
 		}
 	}
+	// update the data hash with the one passed back by celestia-app
+	block.DataHash = rpp.Txs[len(rpp.Txs)-1]
 
 	return block, block.MakePartSet(types.BlockPartSizeBytes)
 }
