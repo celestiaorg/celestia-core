@@ -1016,12 +1016,6 @@ type Data struct {
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
 
-	// SquareSize is the size of the square after splitting all the block data
-	// into shares. The erasure data is discarded after generation, and keeping this
-	// value avoids unnecessarily regenerating all of the shares when returning
-	// proofs that some element was included in the block
-	SquareSize uint64 `json:"square_size"`
-
 	// Volatile
 	hash cmtbytes.HexBytes
 }

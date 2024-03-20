@@ -123,7 +123,6 @@ func WriteBlock(client *trace.Client, block *types.Block, size int) {
 		HeightFieldKey:                   block.Height,
 		UnixMillisecondTimestampFieldKey: block.Time.UnixMilli(),
 		TxCountFieldKey:                  len(block.Data.Txs),
-		SquareSizeFieldKey:               block.SquareSize,
 		BlockSizeFieldKey:                size,
 		ProposerFieldKey:                 block.ProposerAddress.String(),
 		LastCommitRoundFieldKey:          block.LastCommit.Round,

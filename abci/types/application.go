@@ -3,7 +3,7 @@ package types
 import (
 	"context"
 
-	"github.com/cometbft/cometbft/crypto/merkle"
+	"github.com/cometbft/cometbft/crypto/tmhash"
 )
 
 // Application is an interface that enables any finite, deterministic state machine
@@ -96,7 +96,7 @@ func (BaseApplication) ApplySnapshotChunk(req RequestApplySnapshotChunk) Respons
 
 func (BaseApplication) PrepareProposal(req RequestPrepareProposal) ResponsePrepareProposal {
 	// we use placeholder values for the hash
-	req.Txs = append(req.Txs, merkle.HashFromByteSlices(req.Txs))
+	req.Txs = append(req.Txs, tmhash.Sum(nil))
 	return ResponsePrepareProposal{Txs: req.Txs}
 }
 
