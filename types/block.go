@@ -1007,9 +1007,7 @@ func CommitFromProto(cp *cmtproto.Commit) (*Commit, error) {
 
 //-----------------------------------------------------------------------------
 
-// Data contains all the available Data of the block.
-// Data with reserved namespaces (Txs, IntermediateStateRoots, Evidence) and
-// Celestia application specific Blobs.
+// Data contains all the Txs in a block.
 type Data struct {
 	// Txs that will be applied by state @ block.Height+1.
 	// NOTE: not all txs here are valid.  We're just agreeing on the order first.
