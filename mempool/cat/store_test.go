@@ -54,7 +54,7 @@ func TestStoreReservingTxs(t *testing.T) {
 
 	// reserve a tx
 	store.reserve(key)
-	require.True(t, store.has(key))
+	require.True(t, store.isReserved(key))
 	// should not update the total bytes
 	require.Zero(t, store.totalBytes())
 
@@ -73,7 +73,7 @@ func TestStoreReservingTxs(t *testing.T) {
 
 	// reserve the tx again
 	store.reserve(key)
-	require.True(t, store.has(key))
+	require.True(t, store.isReserved(key))
 
 	// release should remove the tx
 	store.release(key)
