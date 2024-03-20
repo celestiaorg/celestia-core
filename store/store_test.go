@@ -375,6 +375,49 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 }
 
+func TestSaveBlockIndexesTxs(t *testing.T) {
+	// Create a state and a block store
+	state, blockStore, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
+	defer cleanup()
+
+	// Create a block with some transactions
+	block := makeBlock(1, state, new(types.Commit))
+
+	// Save the block
+	blockStore.SaveBlock(block, block.MakePartSet(2), makeTestCommit(1, cmttime.Now()))
+
+	// Check that each transaction has been indexed correctly
+	for i, tx := range block.Txs {
+		txIndex, err := blockStore.LoadTxIndex(tx.Hash())
+		require.NoError(t, err)
+		require.Equal(t, block.Height, txIndex.Height)
+		require.Equal(t, int64(i), txIndex.Index)
+		require.True(t, txIndex.Committed)
+	}
+
+	// blockk := blockStore.LoadBlock(1)
+	// // fmt.Println(block.Txs, "Txs")
+	// for _, tx := range blockk.Txs {
+	// 	fmt.Println(tx, "TX INSIDE BLOCK")
+	// 	// fmt.Print(tx.Hash())
+	// 	loadedTx, err := blockStore.LoadTxIndex(tx.Hash())
+	// 	fmt.Println(loadedTx, "FIRST TEST")
+	// 	fmt.Println(err)
+	// 	// require.NoError(t, err)
+	// 	// require.Equal(t, h, txIndex.Height)
+	// 	// require.Equal(t, int64(i), txIndex.Index)
+	// 	// require.True(t, txIndex.Committed)
+	// }
+
+	// Now try get a random transaction and make sure it's indexed properly
+	tx := block.Txs[0]
+	txIndex, err := blockStore.LoadTxIndex(tx.Hash())
+	require.NoError(t, err)
+	require.Equal(t, block.Height, txIndex.Height)
+	require.Equal(t, int64(0), txIndex.Index)
+	require.True(t, txIndex.Committed)
+}
+
 func TestLoadBaseMeta(t *testing.T) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)
@@ -524,6 +567,71 @@ func TestPruneBlocks(t *testing.T) {
 	assert.Nil(t, bs.LoadBlock(1499))
 	assert.NotNil(t, bs.LoadBlock(1500))
 	assert.Nil(t, bs.LoadBlock(1501))
+}
+
+func TestPruneTxs(t *testing.T) {
+	config := cfg.ResetTestRoot("blockchain_reactor_test")
+	defer os.RemoveAll(config.RootDir)
+
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
+	require.NoError(t, err)
+	db := dbm.NewMemDB()
+	blockStore := NewBlockStore(db)
+
+	// Make more than 1000 blocks, to test batch deletions
+	// Make a local copy of txs before batches are deleted
+	// so we can test that pruning txs works
+	var txHashes [][]byte
+	for h := int64(1); h <= 1500; h++ {
+		block := makeBlock(h, state, new(types.Commit))
+		partSet := block.MakePartSet(2)
+		seenCommit := makeTestCommit(h, cmttime.Now())
+		blockStore.SaveBlock(block, partSet, seenCommit)
+		for _, tx := range block.Txs {
+			txHashes = append(txHashes, tx.Hash())
+		}
+	}
+
+	// check that the transactions exist in the block
+	for _, txHash := range txHashes {
+		retrievedTxs, err := blockStore.LoadTxIndex(txHash)
+
+		require.NoError(t, err)
+		require.NotNil(t, retrievedTxs, "Transaction was not saved in the database")
+	}
+
+	
+
+	pruned, err := blockStore.PruneBlocks(1200)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1199, pruned)
+
+	// check that the transactions in the pruned blocks have been removed
+	for _, hash := range txHashes {
+		txIndex, err := blockStore.LoadTxIndex(hash)
+		require.NoError(t, err)
+		require.Nil(t, txIndex)
+	}
+
+	// Check that transactions in remaining blocks are still there
+	for h := int64(pruned + 1); h <= 1500; h++ {
+		fmt.Println(h, "HEIGHT")
+		block := blockStore.LoadBlock(h)
+		// fmt.Println(block.Txs, "Txs")
+		for _, tx := range block.Txs {
+            // fmt.Print(tx.Hash())
+			loadedTx, _ := blockStore.LoadTxIndex(tx.Hash())
+			fmt.Print(loadedTx)
+			// fmt.Println(err)
+			// require.NoError(t, err)
+			// require.Equal(t, h, txIndex.Height)
+			// require.Equal(t, int64(i), txIndex.Index)
+			// require.True(t, txIndex.Committed)
+		}
+	}
 }
 
 func TestLoadBlockMeta(t *testing.T) {

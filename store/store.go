@@ -10,20 +10,10 @@ import (
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+
 	// "github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
 )
-
-/* TODO
-
-1. Extend the block store with a secondary index with the tx hash as the key and the and transactional meta data as the value.
-This should include the height, index and exec that it was committed so that it can be retrieved.
-
-
-2. Introduce a new RPC endpoint TxStatus that returns the status of the transaction. To begin with this is just committed or not-committed. In the future, we may want to incorporate the mempool to understand whether it is pending or has been evicted.
-
-3. Modify the Tx endpoint to use this secondary index in the event that the tx indexer is not enabled to be able to retrieve the committed transaction.
-
 
 /*
 BlockStore is a simple low level store for blocks.
@@ -53,12 +43,6 @@ type BlockStore struct {
 	mtx    cmtsync.RWMutex
 	base   int64
 	height int64
-}
-
-type TxIndex struct {
-	blockHeight int64
-	index       int
-	exec        bool
 }
 
 // NewBlockStore returns a new BlockStore with the given DB,
@@ -303,7 +287,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 	batch := bs.db.NewBatch()
 	batchTxs := bs.db.NewBatch()
 	defer batch.Close()
-	flush := func(batch dbm.Batch, txBatch dbm.Batch, base int64) error {
+	flush := func(batch dbm.Batch, batchTxs dbm.Batch, base int64) error {
 		// We can't trust batches to be atomic, so update base first to make sure no one
 		// tries to access missing blocks.
 		bs.mtx.Lock()
@@ -311,15 +295,16 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 		bs.mtx.Unlock()
 		bs.saveState()
 
-		err := batch.WriteSync()
-		if err != nil {
-			return fmt.Errorf("failed to prune up to height %v: %w", base, err)
-		}
-		if err := txBatch.WriteSync(); err != nil {
+		if err := batchTxs.WriteSync(); err != nil {
 			return fmt.Errorf("failed to prune transactions up to height %v: %w", base, err)
 		}
+
+		if err := batch.WriteSync(); err != nil {
+			return fmt.Errorf("failed to prune up to height %v: %w", base, err)
+		}
+
 		batch.Close()
-		txBatch.Close()
+		batchTxs.Close()
 		return nil
 	}
 
@@ -347,10 +332,16 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 		}
 
 		// TODO: batch these txs and flush them when we flush the blocks
+		fmt.Println(h, "HEIGHT STORE.go")
 		block := bs.LoadBlock(h)
 		for _, tx := range block.Txs {
+			// fmt.Println(tx.Hash(), "TX HASH")
 			txKey := calcTxHashKey(tx.Hash())
 			txValue, err := bs.db.Get(txKey)
+			// fmt.Println(txValue, "TX VALUE")
+			// txVALUE2 := bs.LoadTxIndex(tx.Hash())
+			// fmt.Println(txVALUE2, "TX VALUE 2")
+
 			if err != nil {
 				return 0, err
 			}
@@ -372,7 +363,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 			}
 			batch = bs.db.NewBatch()
 			batchTxs = bs.db.NewBatch()
-			defer func (){
+			defer func() {
 				batch.Close()
 				batchTxs.Close()
 			}()
@@ -431,17 +422,6 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 		panic(err)
 	}
 
-	for i, tx := range block.Txs {
-		txIndex := cmtstore.TxIndex{
-			Height:    height,
-			Index:     int64(i),
-			Committed: true,
-		}
-		if err := bs.SaveTxIndex(tx.Hash(), &txIndex); err != nil {
-			panic(err)
-		}
-	}
-
 	// Save block commit (duplicate and separate from the Block)
 	pbc := block.LastCommit.ToProto()
 	blockCommitBytes := mustEncode(pbc)
@@ -454,6 +434,10 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 	pbsc := seenCommit.ToProto()
 	seenCommitBytes := mustEncode(pbsc)
 	if err := bs.db.Set(calcSeenCommitKey(height), seenCommitBytes); err != nil {
+		panic(err)
+	}
+
+	if err := bs.IndexTxs(block); err != nil {
 		panic(err)
 	}
 
@@ -500,14 +484,35 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
 }
 
-func (bs *BlockStore) SaveTxIndex(txHash []byte, txIndex *cmtstore.TxIndex) error {
-	bz, err := proto.Marshal(txIndex)
-	if err != nil {
-		panic(fmt.Errorf("error serializing txIndex: %v", err))
+// IndexTxs batches and saves Txs, used to retrieve the transaction by hash.
+func (bs *BlockStore) IndexTxs(block *types.Block) error {
+	// Create a new batch
+	txBatch := bs.db.NewBatch()
+
+	// save txs from the block but they should be batched
+	for i, tx := range block.Txs {
+		// fmt.Println("index while being saved", i)
+		txIndex := cmtstore.TxIndex{
+			Height:    block.Height,
+			Index:     int64(i),
+			Committed: true,
+		}
+		// fmt.Println(txIndex, "TX INDEX")
+		txIndexBytes, err := proto.Marshal(&txIndex)
+		if err != nil {
+			return err
+		}
+		// Add the transaction to the batch instead of saving it immediately
+		if err := txBatch.Set(calcTxHashKey(tx.Hash()), txIndexBytes); err != nil {
+			return err
+		}
 	}
-	if err := bs.db.Set(calcTxHashKey(txHash), bz); err != nil {
-		panic(err)
+
+	// After all transactions have been added to the batch, write the batch to the database
+	if err := txBatch.WriteSync(); err != nil {
+		return err
 	}
+
 	return nil
 }
 
@@ -583,23 +588,22 @@ func LoadBlockStoreState(db dbm.DB) cmtstore.BlockStoreState {
 	return bsj
 }
 
-func (bs *BlockStore) LoadTxIndex(txHash string) (*cmtstore.TxIndex, error) {
-	bz, err := bs.db.Get([]byte(txHash))
+func (bs *BlockStore) LoadTxIndex(txHash []byte) (*cmtstore.TxIndex) {
+	bz, err := bs.db.Get(calcTxHashKey(txHash))
 	if err != nil {
 		panic(err)
 	}
+	// TODO: error handling needs rework 
+	// missing panics
 	if len(bz) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	var txi cmtstore.TxIndex
 	if err = proto.Unmarshal(bz, &txi); err != nil {
 		panic(fmt.Errorf("unmarshal to TxIndex failed: %w", err))
 	}
-	if err != nil {
-		panic(fmt.Errorf("unmarshal to TxIndex failed: %w", err))
-	}
-	return &txi, nil
+	return &txi
 }
 
 // mustEncode proto encodes a proto.message and panics if fails

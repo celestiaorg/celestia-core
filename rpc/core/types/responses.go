@@ -78,6 +78,12 @@ type ResultDataRootInclusionProof struct {
 	Proof merkle.Proof `json:"proof"`
 }
 
+type ResultTxIndex struct {
+	height int64
+	index int64
+	committed bool
+}
+
 // NewResultCommit is a helper to initialize the ResultCommit with
 // the embedded struct
 func NewResultCommit(header *types.Header, commit *types.Commit,
