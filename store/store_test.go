@@ -388,11 +388,9 @@ func TestSaveBlockIndexesTxs(t *testing.T) {
 
 	// Check that each transaction has been indexed correctly
 	for i, tx := range block.Txs {
-		txIndex, err := blockStore.LoadTxIndex(tx.Hash())
-		require.NoError(t, err)
+		txIndex := blockStore.LoadTxIndex(tx.Hash())
 		require.Equal(t, block.Height, txIndex.Height)
 		require.Equal(t, int64(i), txIndex.Index)
-		require.True(t, txIndex.Committed)
 	}
 
 	// blockk := blockStore.LoadBlock(1)
@@ -411,11 +409,9 @@ func TestSaveBlockIndexesTxs(t *testing.T) {
 
 	// Now try get a random transaction and make sure it's indexed properly
 	tx := block.Txs[0]
-	txIndex, err := blockStore.LoadTxIndex(tx.Hash())
-	require.NoError(t, err)
+	txIndex := blockStore.LoadTxIndex(tx.Hash())
 	require.Equal(t, block.Height, txIndex.Height)
 	require.Equal(t, int64(0), txIndex.Index)
-	require.True(t, txIndex.Committed)
 }
 
 func TestLoadBaseMeta(t *testing.T) {
@@ -597,7 +593,7 @@ func TestPruneTxs(t *testing.T) {
 
 	// check that the transactions exist in the block
 	for _, txHash := range txHashes {
-		retrievedTxs, err := blockStore.LoadTxIndex(txHash)
+		retrievedTxs := blockStore.LoadTxIndex(txHash)
 
 		require.NoError(t, err)
 		require.NotNil(t, retrievedTxs, "Transaction was not saved in the database")
@@ -611,8 +607,7 @@ func TestPruneTxs(t *testing.T) {
 
 	// check that the transactions in the pruned blocks have been removed
 	for _, hash := range txHashes {
-		txIndex, err := blockStore.LoadTxIndex(hash)
-		require.NoError(t, err)
+		txIndex := blockStore.LoadTxIndex(hash)
 		require.Nil(t, txIndex)
 	}
 
@@ -623,7 +618,7 @@ func TestPruneTxs(t *testing.T) {
 		// fmt.Println(block.Txs, "Txs")
 		for _, tx := range block.Txs {
             // fmt.Print(tx.Hash())
-			loadedTx, _ := blockStore.LoadTxIndex(tx.Hash())
+			loadedTx := blockStore.LoadTxIndex(tx.Hash())
 			fmt.Print(loadedTx)
 			// fmt.Println(err)
 			// require.NoError(t, err)

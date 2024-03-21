@@ -60,6 +60,11 @@ type ResultCommit struct {
 	CanonicalCommit    bool `json:"canonical"`
 }
 
+type ResultTxStatus struct {
+	Height     int64  `json:"height"`
+	Index      int64  `json:"index"`
+}
+
 // ABCI results from a block
 type ResultBlockResults struct {
 	Height                int64                     `json:"height"`

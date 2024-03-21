@@ -491,11 +491,9 @@ func (bs *BlockStore) IndexTxs(block *types.Block) error {
 
 	// save txs from the block but they should be batched
 	for i, tx := range block.Txs {
-		// fmt.Println("index while being saved", i)
 		txIndex := cmtstore.TxIndex{
 			Height:    block.Height,
 			Index:     int64(i),
-			Committed: true,
 		}
 		// fmt.Println(txIndex, "TX INDEX")
 		txIndexBytes, err := proto.Marshal(&txIndex)

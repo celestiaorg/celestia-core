@@ -11,5 +11,4 @@ message BlockStoreState {
 message TxIndex {
   int64 height    = 1;
   int64 index     = 2;
-  bool  committed = 3;
 }
