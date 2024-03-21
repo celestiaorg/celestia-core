@@ -85,10 +85,10 @@ func TestReadReserved(t *testing.T) {
 	tx := types.Tx("tx1")
 	store.reserve(tx.Key())
 
-	assert.Nil(t, store.get(tx.Key()))
-	assert.False(t, store.has(tx.Key()))
-	assert.Len(t, store.getAllKeys(), 0)
-	assert.Len(t, store.getAllTxs(), 0)
+	require.Nil(t, store.get(tx.Key()))
+	require.False(t, store.has(tx.Key()))
+	require.Len(t, store.getAllKeys(), 0)
+	require.Len(t, store.getAllTxs(), 0)
 }
 
 func TestStoreConcurrentAccess(t *testing.T) {
