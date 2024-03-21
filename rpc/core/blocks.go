@@ -16,6 +16,7 @@ import (
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
 	blockidxnull "github.com/cometbft/cometbft/state/indexer/block/null"
 	"github.com/cometbft/cometbft/types"
+	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 )
 
 // BlockchainInfo gets block headers for minHeight <= height <= maxHeight.
@@ -177,6 +178,12 @@ func BlockByHash(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error
 	// If block is not nil, then blockMeta can't be nil.
 	blockMeta := env.BlockStore.LoadBlockMeta(block.Height)
 	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
+}
+
+func TxStatus(hash []byte) (*cmtstore.TxIndex) {
+	env := GetEnvironment()
+	tx := env.BlockStore.LoadTxIndex(hash)
+    return tx
 }
 
 // Commit gets block commit at a given height.

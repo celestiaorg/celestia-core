@@ -593,8 +593,6 @@ func (bs *BlockStore) LoadTxIndex(txHash []byte) (*cmtstore.TxIndex) {
 	if err != nil {
 		panic(err)
 	}
-	// TODO: error handling needs rework 
-	// missing panics
 	if len(bz) == 0 {
 		return nil
 	}
