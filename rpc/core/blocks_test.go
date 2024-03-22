@@ -1,7 +1,9 @@
 package core
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"testing"
@@ -17,6 +19,7 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
+	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
 	sm "github.com/cometbft/cometbft/state"
@@ -121,6 +124,31 @@ func TestBlockResults(t *testing.T) {
 			assert.Equal(t, tc.wantRes, res)
 		}
 	}
+}
+
+func TestTxStatus(t *testing.T) {
+	env := &Environment{}
+	height := int64(50)
+
+	blocks := randomBlocks(height)
+	blockStore := mockBlockStore{
+		height: height,
+		blocks: blocks,
+	}
+	env.BlockStore = blockStore
+
+	SetEnvironment(env)
+
+	// Iterate over each block
+	for _, block := range blocks {
+		// Iterate over each transaction in the block
+		for i, tx := range block.Data.Txs {
+			status, _ := TxStatus(tx.Hash())
+			assert.Equal(t, block.Header.Height, status.Height)
+			assert.Equal(t, int64(i), status.Index)
+		}
+	}
+
 }
 
 func TestEncodeDataRootTuple(t *testing.T) {
@@ -294,8 +322,10 @@ func (mockBlockStore) LoadBlockByHash(hash []byte) *types.Block          { retur
 func (mockBlockStore) LoadBlockPart(height int64, index int) *types.Part { return nil }
 func (mockBlockStore) LoadBlockMetaByHash(hash []byte) *types.BlockMeta  { return nil }
 func (mockBlockStore) LoadBlockCommit(height int64) *types.Commit        { return nil }
-func (mockBlockStore) LoadSeenCommit(height int64) *types.Commit         { return nil }
-func (mockBlockStore) PruneBlocks(height int64) (uint64, error)          { return 0, nil }
+
+// func (mockBlockStore) LoadTxIndex(hash []byte) *cmtstore.TxIndex         { return nil }
+func (mockBlockStore) LoadSeenCommit(height int64) *types.Commit { return nil }
+func (mockBlockStore) PruneBlocks(height int64) (uint64, error)  { return 0, nil }
 func (mockBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 }
 func (mockBlockStore) DeleteLatestBlock() error { return nil }
@@ -316,6 +346,24 @@ func (store mockBlockStore) LoadBlock(height int64) *types.Block {
 		return nil
 	}
 	return store.blocks[height]
+}
+
+func (store mockBlockStore) LoadTxIndex(hash []byte) *cmtstore.TxIndex {
+	// iterate over blocks in store
+	for _, block := range store.blocks {
+		// iterate over transactions in block
+		for i, tx := range block.Data.Txs {
+			// check if transaction hash matches
+			// check if tx hash exists and return it
+			if bytes.Equal(tx.Hash(), hash) {
+				return &cmtstore.TxIndex{
+					Height: block.Header.Height,
+					Index:  int64(i),
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // mockBlockIndexer used to mock the set of indexed blocks and return a predefined one.
@@ -349,12 +397,26 @@ func randomBlocks(height int64) []*types.Block {
 	return blocks
 }
 
+func makeTxs(height int64) (txs []types.Tx) {
+	for i := 0; i < 10; i++ {
+		numbytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(numbytes, uint64(height))
+
+		txs = append(txs, types.Tx(append(numbytes, byte(i))))
+	}
+	// fmt.Println(txs, "TXS")
+	return txs
+}
+
 // randomBlock generates a Block with a certain height and random data hash.
 func randomBlock(height int64) *types.Block {
 	return &types.Block{
 		Header: types.Header{
 			Height:   height,
 			DataHash: cmtrand.Bytes(32),
+		},
+		Data: types.Data{
+			Txs: makeTxs(height),
 		},
 	}
 }

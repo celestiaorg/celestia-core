@@ -93,6 +93,7 @@ func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 // LoadBlock returns the block with the given height.
 // If no block is found for that height, it returns nil.
 func (bs *BlockStore) LoadBlock(height int64) *types.Block {
+	fmt.Println("Load block called")
 	var blockMeta = bs.LoadBlockMeta(height)
 	if blockMeta == nil {
 		return nil
@@ -285,9 +286,13 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 
 	pruned := uint64(0)
 	batch := bs.db.NewBatch()
-	batchTxs := bs.db.NewBatch()
+	// batchTxs := bs.db.NewBatch()
 	defer batch.Close()
-	flush := func(batch dbm.Batch, batchTxs dbm.Batch, base int64) error {
+
+	// TODO: batch these txs and flush them when we flush the blocks
+	// fmt.Println(h, "HEIGHT STORE.go")
+
+	flush := func(batch dbm.Batch, base int64) error {
 		// We can't trust batches to be atomic, so update base first to make sure no one
 		// tries to access missing blocks.
 		bs.mtx.Lock()
@@ -295,16 +300,11 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 		bs.mtx.Unlock()
 		bs.saveState()
 
-		if err := batchTxs.WriteSync(); err != nil {
-			return fmt.Errorf("failed to prune transactions up to height %v: %w", base, err)
-		}
-
 		if err := batch.WriteSync(); err != nil {
 			return fmt.Errorf("failed to prune up to height %v: %w", base, err)
 		}
 
 		batch.Close()
-		batchTxs.Close()
 		return nil
 	}
 
@@ -312,6 +312,16 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 		meta := bs.LoadBlockMeta(h)
 		if meta == nil { // assume already deleted
 			continue
+		}
+		block := bs.LoadBlock(h)
+		fmt.Println(block.Height, "Block height")
+		for _, tx := range block.Txs {
+			queryTx := bs.LoadTxIndex(tx.Hash())
+			fmt.Println(queryTx, "QUERY TX BEFORE DELETION")
+
+			if err := batch.Delete(calcTxHashKey(tx.Hash())); err != nil {
+				return 0, err
+			}
 		}
 		if err := batch.Delete(calcBlockMetaKey(h)); err != nil {
 			return 0, err
@@ -330,47 +340,24 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 				return 0, err
 			}
 		}
-
-		// TODO: batch these txs and flush them when we flush the blocks
-		fmt.Println(h, "HEIGHT STORE.go")
-		block := bs.LoadBlock(h)
-		for _, tx := range block.Txs {
-			// fmt.Println(tx.Hash(), "TX HASH")
-			txKey := calcTxHashKey(tx.Hash())
-			txValue, err := bs.db.Get(txKey)
-			// fmt.Println(txValue, "TX VALUE")
-			// txVALUE2 := bs.LoadTxIndex(tx.Hash())
-			// fmt.Println(txVALUE2, "TX VALUE 2")
-
-			if err != nil {
-				return 0, err
-			}
-			if txValue != nil {
-				if err := batchTxs.Delete(txKey); err != nil {
-					return 0, err
-				}
-			}
-		}
 		pruned++
 
 		// flush every 1000 blocks to avoid batches becoming too large
 		// when flushing every 1000 blocks, we need to flush the txs as well that accumulated over the time
 		if pruned%1000 == 0 && pruned > 0 {
 
-			err := flush(batch, batchTxs, h)
+			err := flush(batch, h)
 			if err != nil {
 				return 0, err
 			}
 			batch = bs.db.NewBatch()
-			batchTxs = bs.db.NewBatch()
 			defer func() {
 				batch.Close()
-				batchTxs.Close()
 			}()
 		}
 	}
 
-	err := flush(batch, batchTxs, height)
+	err := flush(batch, height)
 	if err != nil {
 		return 0, err
 	}
@@ -489,13 +476,12 @@ func (bs *BlockStore) IndexTxs(block *types.Block) error {
 	// Create a new batch
 	txBatch := bs.db.NewBatch()
 
-	// save txs from the block but they should be batched
+	// Save txs from the block but they should be batched
 	for i, tx := range block.Txs {
 		txIndex := cmtstore.TxIndex{
-			Height:    block.Height,
-			Index:     int64(i),
+			Height: block.Height,
+			Index:  int64(i),
 		}
-		// fmt.Println(txIndex, "TX INDEX")
 		txIndexBytes, err := proto.Marshal(&txIndex)
 		if err != nil {
 			return err
@@ -586,7 +572,8 @@ func LoadBlockStoreState(db dbm.DB) cmtstore.BlockStoreState {
 	return bsj
 }
 
-func (bs *BlockStore) LoadTxIndex(txHash []byte) (*cmtstore.TxIndex) {
+func (bs *BlockStore) LoadTxIndex(txHash []byte) *cmtstore.TxIndex {
+	fmt.Println("LOAD TX INDEX")
 	bz, err := bs.db.Get(calcTxHashKey(txHash))
 	if err != nil {
 		panic(err)

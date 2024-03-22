@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"runtime/debug"
@@ -45,7 +46,10 @@ func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 
 func makeTxs(height int64) (txs []types.Tx) {
 	for i := 0; i < 10; i++ {
-		txs = append(txs, types.Tx([]byte{byte(height), byte(i)}))
+		numbytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(numbytes, uint64(height))
+
+		txs = append(txs, types.Tx(append(numbytes, byte(i))))
 	}
 	return txs
 }
@@ -381,37 +385,32 @@ func TestSaveBlockIndexesTxs(t *testing.T) {
 	defer cleanup()
 
 	// Create a block with some transactions
-	block := makeBlock(1, state, new(types.Commit))
-
-	// Save the block
-	blockStore.SaveBlock(block, block.MakePartSet(2), makeTestCommit(1, cmttime.Now()))
-
-	// Check that each transaction has been indexed correctly
-	for i, tx := range block.Txs {
-		txIndex := blockStore.LoadTxIndex(tx.Hash())
-		require.Equal(t, block.Height, txIndex.Height)
-		require.Equal(t, int64(i), txIndex.Index)
+	for h := int64(1); h <= 1000; h++ {
+		block := makeBlock(h, state, new(types.Commit))
+		partSet := block.MakePartSet(2)
+		seenCommit := makeTestCommit(h, cmttime.Now())
+		blockStore.SaveBlock(block, partSet, seenCommit)
 	}
 
-	// blockk := blockStore.LoadBlock(1)
-	// // fmt.Println(block.Txs, "Txs")
-	// for _, tx := range blockk.Txs {
-	// 	fmt.Println(tx, "TX INSIDE BLOCK")
-	// 	// fmt.Print(tx.Hash())
-	// 	loadedTx, err := blockStore.LoadTxIndex(tx.Hash())
-	// 	fmt.Println(loadedTx, "FIRST TEST")
-	// 	fmt.Println(err)
-	// 	// require.NoError(t, err)
-	// 	// require.Equal(t, h, txIndex.Height)
-	// 	// require.Equal(t, int64(i), txIndex.Index)
-	// 	// require.True(t, txIndex.Committed)
-	// }
+	// Get the blocks from blockstore up to the height
+	for h := int64(1); h <= 1000; h++ {
+		block := blockStore.LoadBlock(h)
+		// now check that transactions exist in that block and everything matches as expected
+		for i, tx := range block.Txs {
+			txIndex := blockStore.LoadTxIndex(tx.Hash())
+			require.Equal(t, block.Height, txIndex.Height)
+			require.Equal(t, int64(i), txIndex.Index)
+		}
+	}
 
 	// Now try get a random transaction and make sure it's indexed properly
-	tx := block.Txs[0]
+	block := blockStore.LoadBlock(777)
+	tx := block.Txs[5]
 	txIndex := blockStore.LoadTxIndex(tx.Hash())
 	require.Equal(t, block.Height, txIndex.Height)
-	require.Equal(t, int64(0), txIndex.Index)
+	require.Equal(t, block.Height, int64(777))
+	require.Equal(t, txIndex.Height, int64(777))
+	require.Equal(t, int64(5), txIndex.Index)
 }
 
 func TestLoadBaseMeta(t *testing.T) {
@@ -595,11 +594,11 @@ func TestPruneTxs(t *testing.T) {
 	for _, txHash := range txHashes {
 		retrievedTxs := blockStore.LoadTxIndex(txHash)
 
+		// fmt.Println(retrievedTxs, "retrievedTxs")
+
 		require.NoError(t, err)
 		require.NotNil(t, retrievedTxs, "Transaction was not saved in the database")
 	}
-
-	
 
 	pruned, err := blockStore.PruneBlocks(1200)
 	require.NoError(t, err)
@@ -613,13 +612,12 @@ func TestPruneTxs(t *testing.T) {
 
 	// Check that transactions in remaining blocks are still there
 	for h := int64(pruned + 1); h <= 1500; h++ {
-		fmt.Println(h, "HEIGHT")
 		block := blockStore.LoadBlock(h)
 		// fmt.Println(block.Txs, "Txs")
 		for _, tx := range block.Txs {
-            // fmt.Print(tx.Hash())
+			// fmt.Print(tx.Hash())
 			loadedTx := blockStore.LoadTxIndex(tx.Hash())
-			fmt.Print(loadedTx)
+			fmt.Print(loadedTx, "FIRST TEST")
 			// fmt.Println(err)
 			// require.NoError(t, err)
 			// require.Equal(t, h, txIndex.Height)
