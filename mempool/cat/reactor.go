@@ -77,6 +77,10 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 		return fmt.Errorf("max gossip delay (%d) cannot be negative", opts.MaxGossipDelay)
 	}
 
+	if opts.TraceClient == nil {
+		opts.TraceClient = &trace.Client{}
+	}
+
 	return nil
 }
 
@@ -91,7 +95,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		traceClient: &trace.Client{},
+		traceClient: opts.TraceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR, nil
