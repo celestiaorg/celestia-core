@@ -706,7 +706,9 @@ func (cs *State) newStep() {
 
 	cs.nSteps++
 
-	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, cs.Step)
+	schema.WriteRoundState(cs.traceClient, cs.RoundState.Height,
+		cs.RoundState.Round,
+		cs.RoundState.Step)
 
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {
