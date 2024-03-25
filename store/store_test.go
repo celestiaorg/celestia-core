@@ -384,7 +384,7 @@ func TestSaveBlockIndexesTxs(t *testing.T) {
 	state, blockStore, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	defer cleanup()
 
-	// Create a block with some transactions
+	// Create a block with 1000 txs
 	for h := int64(1); h <= 1000; h++ {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
@@ -395,22 +395,22 @@ func TestSaveBlockIndexesTxs(t *testing.T) {
 	// Get the blocks from blockstore up to the height
 	for h := int64(1); h <= 1000; h++ {
 		block := blockStore.LoadBlock(h)
-		// now check that transactions exist in that block and everything matches as expected
+		// Check that transactions exist in the block
 		for i, tx := range block.Txs {
-			txIndex := blockStore.LoadTxIndex(tx.Hash())
-			require.Equal(t, block.Height, txIndex.Height)
-			require.Equal(t, int64(i), txIndex.Index)
+			txStatus := blockStore.LoadTxStatus(tx.Hash())
+			require.Equal(t, block.Height, txStatus.Height)
+			require.Equal(t, int64(i), txStatus.Index)
 		}
 	}
 
-	// Now try get a random transaction and make sure it's indexed properly
+	// Get a random transaction and make sure it's indexed properly
 	block := blockStore.LoadBlock(777)
 	tx := block.Txs[5]
-	txIndex := blockStore.LoadTxIndex(tx.Hash())
-	require.Equal(t, block.Height, txIndex.Height)
+	txStatus := blockStore.LoadTxStatus(tx.Hash())
+	require.Equal(t, block.Height, txStatus.Height)
 	require.Equal(t, block.Height, int64(777))
-	require.Equal(t, txIndex.Height, int64(777))
-	require.Equal(t, int64(5), txIndex.Index)
+	require.Equal(t, txStatus.Height, int64(777))
+	require.Equal(t, int64(5), txStatus.Index)
 }
 
 func TestLoadBaseMeta(t *testing.T) {
@@ -577,52 +577,49 @@ func TestPruneTxs(t *testing.T) {
 	blockStore := NewBlockStore(db)
 
 	// Make more than 1000 blocks, to test batch deletions
-	// Make a local copy of txs before batches are deleted
-	// so we can test that pruning txs works
-	var txHashes [][]byte
+	// Make a copy of txs before batches are deleted
+	// to make sure that they are correctly pruned
+	var indexedTxHashes [][]byte
 	for h := int64(1); h <= 1500; h++ {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, cmttime.Now())
 		blockStore.SaveBlock(block, partSet, seenCommit)
 		for _, tx := range block.Txs {
-			txHashes = append(txHashes, tx.Hash())
+			indexedTxHashes = append(indexedTxHashes, tx.Hash())
 		}
 	}
 
-	// check that the transactions exist in the block
-	for _, txHash := range txHashes {
-		retrievedTxs := blockStore.LoadTxIndex(txHash)
-
-		// fmt.Println(retrievedTxs, "retrievedTxs")
+	// Check that the saved txs exist in the db
+	for _, hash := range indexedTxHashes {
+		txStatus := blockStore.LoadTxStatus(hash)
 
 		require.NoError(t, err)
-		require.NotNil(t, retrievedTxs, "Transaction was not saved in the database")
+		require.NotNil(t, txStatus, "Transaction was not saved in the database")
 	}
 
 	pruned, err := blockStore.PruneBlocks(1200)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1199, pruned)
 
-	// check that the transactions in the pruned blocks have been removed
-	for _, hash := range txHashes {
-		txIndex := blockStore.LoadTxIndex(hash)
-		require.Nil(t, txIndex)
+	// Check that the transactions in the pruned blocks have been removed
+	// We removed 1199 blocks, each block has 10 txs
+	// so 11990 txs should no longer exist in the db
+	for i, hash := range indexedTxHashes {
+		if int64(i) < 1199*10 {
+			txStatus := blockStore.LoadTxStatus(hash)
+			require.Nil(t, txStatus)
+		}
 	}
 
 	// Check that transactions in remaining blocks are still there
 	for h := int64(pruned + 1); h <= 1500; h++ {
 		block := blockStore.LoadBlock(h)
-		// fmt.Println(block.Txs, "Txs")
-		for _, tx := range block.Txs {
-			// fmt.Print(tx.Hash())
-			loadedTx := blockStore.LoadTxIndex(tx.Hash())
-			fmt.Print(loadedTx, "FIRST TEST")
-			// fmt.Println(err)
-			// require.NoError(t, err)
-			// require.Equal(t, h, txIndex.Height)
-			// require.Equal(t, int64(i), txIndex.Index)
-			// require.True(t, txIndex.Committed)
+		for i, tx := range block.Txs {
+			txStatus := blockStore.LoadTxStatus(tx.Hash())
+			require.NoError(t, err)
+			require.Equal(t, h, txStatus.Height)
+			require.Equal(t, int64(i), txStatus.Index)
 		}
 	}
 }

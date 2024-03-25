@@ -143,9 +143,9 @@ func TestTxStatus(t *testing.T) {
 	for _, block := range blocks {
 		// Iterate over each transaction in the block
 		for i, tx := range block.Data.Txs {
-			status, _ := TxStatus(tx.Hash())
-			assert.Equal(t, block.Header.Height, status.Height)
-			assert.Equal(t, int64(i), status.Index)
+			txStatus, _ := TxStatus(tx.Hash())
+			assert.Equal(t, block.Height, txStatus.Height)
+			assert.Equal(t, int64(i), txStatus.Index)
 		}
 	}
 
@@ -322,10 +322,8 @@ func (mockBlockStore) LoadBlockByHash(hash []byte) *types.Block          { retur
 func (mockBlockStore) LoadBlockPart(height int64, index int) *types.Part { return nil }
 func (mockBlockStore) LoadBlockMetaByHash(hash []byte) *types.BlockMeta  { return nil }
 func (mockBlockStore) LoadBlockCommit(height int64) *types.Commit        { return nil }
-
-// func (mockBlockStore) LoadTxIndex(hash []byte) *cmtstore.TxIndex         { return nil }
-func (mockBlockStore) LoadSeenCommit(height int64) *types.Commit { return nil }
-func (mockBlockStore) PruneBlocks(height int64) (uint64, error)  { return 0, nil }
+func (mockBlockStore) LoadSeenCommit(height int64) *types.Commit         { return nil }
+func (mockBlockStore) PruneBlocks(height int64) (uint64, error)          { return 0, nil }
 func (mockBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 }
 func (mockBlockStore) DeleteLatestBlock() error { return nil }
@@ -348,15 +346,12 @@ func (store mockBlockStore) LoadBlock(height int64) *types.Block {
 	return store.blocks[height]
 }
 
-func (store mockBlockStore) LoadTxIndex(hash []byte) *cmtstore.TxIndex {
-	// iterate over blocks in store
+func (store mockBlockStore) LoadTxStatus(hash []byte) *cmtstore.TxStatus {
 	for _, block := range store.blocks {
-		// iterate over transactions in block
 		for i, tx := range block.Data.Txs {
-			// check if transaction hash matches
-			// check if tx hash exists and return it
+			// Check if transaction hash matches
 			if bytes.Equal(tx.Hash(), hash) {
-				return &cmtstore.TxIndex{
+				return &cmtstore.TxStatus{
 					Height: block.Header.Height,
 					Index:  int64(i),
 				}
@@ -404,7 +399,6 @@ func makeTxs(height int64) (txs []types.Tx) {
 
 		txs = append(txs, types.Tx(append(numbytes, byte(i))))
 	}
-	// fmt.Println(txs, "TXS")
 	return txs
 }
 

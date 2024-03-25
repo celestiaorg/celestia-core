@@ -11,7 +11,6 @@ import (
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 
-	// "github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -93,7 +92,6 @@ func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 // LoadBlock returns the block with the given height.
 // If no block is found for that height, it returns nil.
 func (bs *BlockStore) LoadBlock(height int64) *types.Block {
-	fmt.Println("Load block called")
 	var blockMeta = bs.LoadBlockMeta(height)
 	if blockMeta == nil {
 		return nil
@@ -286,11 +284,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 
 	pruned := uint64(0)
 	batch := bs.db.NewBatch()
-	// batchTxs := bs.db.NewBatch()
 	defer batch.Close()
-
-	// TODO: batch these txs and flush them when we flush the blocks
-	// fmt.Println(h, "HEIGHT STORE.go")
 
 	flush := func(batch dbm.Batch, base int64) error {
 		// We can't trust batches to be atomic, so update base first to make sure no one
@@ -314,11 +308,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 			continue
 		}
 		block := bs.LoadBlock(h)
-		fmt.Println(block.Height, "Block height")
 		for _, tx := range block.Txs {
-			queryTx := bs.LoadTxIndex(tx.Hash())
-			fmt.Println(queryTx, "QUERY TX BEFORE DELETION")
-
 			if err := batch.Delete(calcTxHashKey(tx.Hash())); err != nil {
 				return 0, err
 			}
@@ -424,7 +414,8 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 		panic(err)
 	}
 
-	if err := bs.IndexTxs(block); err != nil {
+	// Save Txs from the block
+	if err := bs.SaveTransactions(block); err != nil {
 		panic(err)
 	}
 
@@ -471,29 +462,28 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
 }
 
-// IndexTxs batches and saves Txs, used to retrieve the transaction by hash.
-func (bs *BlockStore) IndexTxs(block *types.Block) error {
+// SaveTxs gets Tx hashes from the block converts them to TxStatus and persists them to the db.
+func (bs *BlockStore) SaveTransactions(block *types.Block) error {
 	// Create a new batch
-	txBatch := bs.db.NewBatch()
+	batch := bs.db.NewBatch()
 
-	// Save txs from the block but they should be batched
+	// Batch and save txs from the block
 	for i, tx := range block.Txs {
-		txIndex := cmtstore.TxIndex{
+		txStatus := cmtstore.TxStatus{
 			Height: block.Height,
 			Index:  int64(i),
 		}
-		txIndexBytes, err := proto.Marshal(&txIndex)
+		txStatusBytes, err := proto.Marshal(&txStatus)
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to marshal tx: %w", err)
 		}
-		// Add the transaction to the batch instead of saving it immediately
-		if err := txBatch.Set(calcTxHashKey(tx.Hash()), txIndexBytes); err != nil {
+		if err := batch.Set(calcTxHashKey(tx.Hash()), txStatusBytes); err != nil {
 			return err
 		}
 	}
 
-	// After all transactions have been added to the batch, write the batch to the database
-	if err := txBatch.WriteSync(); err != nil {
+	// Write the batch to the db
+	if err := batch.WriteSync(); err != nil {
 		return err
 	}
 
@@ -572,8 +562,8 @@ func LoadBlockStoreState(db dbm.DB) cmtstore.BlockStoreState {
 	return bsj
 }
 
-func (bs *BlockStore) LoadTxIndex(txHash []byte) *cmtstore.TxIndex {
-	fmt.Println("LOAD TX INDEX")
+// LoadTxStatus retrieves the status of a transaction from the block store given its hash.
+func (bs *BlockStore) LoadTxStatus(txHash []byte) *cmtstore.TxStatus {
 	bz, err := bs.db.Get(calcTxHashKey(txHash))
 	if err != nil {
 		panic(err)
@@ -582,11 +572,11 @@ func (bs *BlockStore) LoadTxIndex(txHash []byte) *cmtstore.TxIndex {
 		return nil
 	}
 
-	var txi cmtstore.TxIndex
-	if err = proto.Unmarshal(bz, &txi); err != nil {
+	var txs cmtstore.TxStatus
+	if err = proto.Unmarshal(bz, &txs); err != nil {
 		panic(fmt.Errorf("unmarshal to TxIndex failed: %w", err))
 	}
-	return &txi
+	return &txs
 }
 
 // mustEncode proto encodes a proto.message and panics if fails

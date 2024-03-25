@@ -61,8 +61,8 @@ type ResultCommit struct {
 }
 
 type ResultTxStatus struct {
-	Height     int64  `json:"height"`
-	Index      int64  `json:"index"`
+	Height int64 `json:"height"`
+	Index  int64 `json:"index"`
 }
 
 // ABCI results from a block
@@ -82,13 +82,6 @@ type ResultDataCommitment struct {
 type ResultDataRootInclusionProof struct {
 	Proof merkle.Proof `json:"proof"`
 }
-
-// probably not need this 
-// type ResultTxIndex struct {
-// 	height int64
-// 	index int64
-// 	committed bool
-// }
 
 // NewResultCommit is a helper to initialize the ResultCommit with
 // the embedded struct

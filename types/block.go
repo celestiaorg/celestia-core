@@ -1303,14 +1303,3 @@ func BlockIDFromProto(bID *cmtproto.BlockID) (*BlockID, error) {
 
 	return blockID, blockID.ValidateBasic()
 }
-
-
-// 	most probably don't need it
-// //--------------------------------------------------------------------------------
-
-// type TxIndex struct {
-// 	height int64 
-// 	index  int64 
-// 	committed  int64 
-// }
-
