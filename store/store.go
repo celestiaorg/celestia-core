@@ -337,7 +337,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 				return 0, err
 			}
 			batch = bs.db.NewBatch()
-			batch.Close()
+			defer batch.Close()
 		}
 	}
 

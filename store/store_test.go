@@ -564,7 +564,7 @@ func TestPruneBlocks(t *testing.T) {
 	assert.Nil(t, bs.LoadBlock(1501))
 }
 
-func TestPruneTxs(t *testing.T) {
+func TestPruneBlocksPrunesTxs(t *testing.T) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)
 
