@@ -1019,6 +1019,9 @@ type Data struct {
 }
 
 // Hash returns the hash of the data
+// NOTE: for the data hash, Celestia overwrites this one and uses what is
+// known as the data availaibility hash which is the merkle root of a square
+// encoding of the block
 func (data *Data) Hash() cmtbytes.HexBytes {
 	if data == nil {
 		return (Txs{}).Hash()
@@ -1027,8 +1030,6 @@ func (data *Data) Hash() cmtbytes.HexBytes {
 		data.hash = data.Txs.Hash() // NOTE: leaves of merkle tree are TxIDs
 	}
 
-	// this is the expected behavior where `data.hash` was set by celestia-app
-	// in PrepareProposal
 	return data.hash
 }
 
@@ -1086,8 +1087,6 @@ func (data *Data) ToProto() cmtproto.Data {
 		tp.Txs = txBzs
 	}
 
-	tp.Hash = data.hash
-
 	return *tp
 }
 
@@ -1108,8 +1107,6 @@ func DataFromProto(dp *cmtproto.Data) (Data, error) {
 	} else {
 		data.Txs = Txs{}
 	}
-
-	data.hash = dp.Hash
 
 	return *data, nil
 }

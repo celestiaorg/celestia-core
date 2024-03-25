@@ -165,7 +165,9 @@ func (blockExec *BlockExecutor) ProcessProposal(
 ) (bool, error) {
 
 	// Similar to PrepareProposal, the last transaction provided to Celestia
-	// in ProcessProposal is the data hash
+	// in ProcessProposal is the data hash. The data hash needs to be passed to
+	// the application so that is can be verified against the nodes own construction
+	// of the data square
 	txs := append(block.Data.Txs.ToSliceOfBytes(), block.DataHash)
 
 	resp, err := blockExec.proxyApp.ProcessProposalSync(abci.RequestProcessProposal{
