@@ -24,7 +24,8 @@ const (
 	// value.
 	PeerFieldKey = "peer"
 
-	// TransferTypeFieldKey is the tracing field key for the class of a tx.
+	// TransferTypeFieldKey is the tracing field key for the class of a tx
+	// and votes.
 	TransferTypeFieldKey = "transfer_type"
 
 	// TransferTypeDownload is a tracing field value for receiving some
