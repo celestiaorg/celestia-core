@@ -10,7 +10,6 @@ import (
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
-
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -285,7 +284,6 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 	pruned := uint64(0)
 	batch := bs.db.NewBatch()
 	defer batch.Close()
-
 	flush := func(batch dbm.Batch, base int64) error {
 		// We can't trust batches to be atomic, so update base first to make sure no one
 		// tries to access missing blocks.
@@ -297,7 +295,6 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 		if err := batch.WriteSync(); err != nil {
 			return fmt.Errorf("failed to prune up to height %v: %w", base, err)
 		}
-
 		batch.Close()
 		return nil
 	}
@@ -333,7 +330,6 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 		pruned++
 
 		// flush every 1000 blocks to avoid batches becoming too large
-		// when flushing every 1000 blocks, we need to flush the txs as well that accumulated over the time
 		if pruned%1000 == 0 && pruned > 0 {
 
 			err := flush(batch, h)
@@ -341,9 +337,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 				return 0, err
 			}
 			batch = bs.db.NewBatch()
-			defer func() {
-				batch.Close()
-			}()
+			batch.Close()
 		}
 	}
 

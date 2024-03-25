@@ -46,10 +46,10 @@ func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 
 func makeTxs(height int64) (txs []types.Tx) {
 	for i := 0; i < 10; i++ {
-		numbytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(numbytes, uint64(height))
+		numBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(numBytes, uint64(height))
 
-		txs = append(txs, types.Tx(append(numbytes, byte(i))))
+		txs = append(txs, types.Tx(append(numBytes, byte(i))))
 	}
 	return txs
 }
