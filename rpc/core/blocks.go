@@ -332,9 +332,9 @@ func EncodeDataRootTuple(height uint64, dataRoot [32]byte) ([]byte, error) {
 	return append(paddedHeight, dataRoot[:]...), nil
 }
 
-// DataCommitmentBlocksLimit The maximum number of blocks to be used to create a data commitment.
+// dataCommitmentBlocksLimit The maximum number of blocks to be used to create a data commitment.
 // It's a local parameter to protect the API from creating unnecessarily large commitments.
-const DataCommitmentBlocksLimit = 10000
+const dataCommitmentBlocksLimit = 10_000 // ~33 hours of blocks assuming 12-second blocks.
 
 // validateDataCommitmentRange runs basic checks on the asc sorted list of
 // heights that will be used subsequently in generating data commitments over
@@ -345,8 +345,8 @@ func validateDataCommitmentRange(start uint64, end uint64) error {
 	}
 	env := GetEnvironment()
 	heightsRange := end - start
-	if heightsRange > uint64(DataCommitmentBlocksLimit) {
-		return fmt.Errorf("the query exceeds the limit of allowed blocks %d", DataCommitmentBlocksLimit)
+	if heightsRange > uint64(dataCommitmentBlocksLimit) {
+		return fmt.Errorf("the query exceeds the limit of allowed blocks %d", dataCommitmentBlocksLimit)
 	}
 	if heightsRange == 0 {
 		return fmt.Errorf("cannot create the data commitments for an empty set of blocks")
