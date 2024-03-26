@@ -123,7 +123,7 @@ describe how to hash the block data here:
 - Add PreprocessTxs method to ABCI (https://github.com/celestiaorg/celestia-core/pull/110)
 - Add method to ABCI interface
 - Create sync and async versions
-- Add sync version the the CreateProposalBlock method of BlockExecutor
+- Add sync version the CreateProposalBlock method of BlockExecutor
 
 #### Fill the DAH while making the block
 
