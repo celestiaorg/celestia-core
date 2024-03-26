@@ -477,11 +477,7 @@ func (bs *BlockStore) SaveTransactions(block *types.Block) error {
 	}
 
 	// Write the batch to the db
-	if err := batch.WriteSync(); err != nil {
-		return err
-	}
-
-	return nil
+	return batch.WriteSync()
 }
 
 func (bs *BlockStore) Close() error {
