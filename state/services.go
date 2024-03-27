@@ -36,7 +36,7 @@ type BlockStore interface {
 	LoadBlockCommit(height int64) *types.Commit
 	LoadSeenCommit(height int64) *types.Commit
 
-	LoadTxStatus(hash []byte) *cmtstore.TxStatus
+	LoadTxInfo(hash []byte) *cmtstore.TxInfo
 
 	DeleteLatestBlock() error
 }

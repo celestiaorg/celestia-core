@@ -181,13 +181,13 @@ func BlockByHash(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error
 
 // TxStatus retrieves the status of a transaction given its hash. It returns a ResultTxStatus
 // containing the height and index of the transaction within the block.
-func TxStatus(hash []byte) (*ctypes.ResultTxStatus, error) {
+func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
 	env := GetEnvironment()
-	txStatus := env.BlockStore.LoadTxStatus(hash)
-	if txStatus == nil {
+	txInfo := env.BlockStore.LoadTxInfo(hash)
+	if txInfo == nil {
 		return &ctypes.ResultTxStatus{}, nil
 	}
-	return &ctypes.ResultTxStatus{Height: txStatus.Height, Index: txStatus.Index}, nil
+	return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index}, nil
 }
 
 // Commit gets block commit at a given height.

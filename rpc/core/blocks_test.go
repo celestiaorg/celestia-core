@@ -143,7 +143,7 @@ func TestTxStatus(t *testing.T) {
 	for _, block := range blocks {
 		// Iterate over each transaction in the block
 		for i, tx := range block.Data.Txs {
-			txStatus, _ := TxStatus(tx.Hash())
+			txStatus, _ := TxStatus(&rpctypes.Context{}, tx.Hash())
 			assert.Equal(t, block.Height, txStatus.Height)
 			assert.Equal(t, int64(i), txStatus.Index)
 		}
@@ -346,12 +346,12 @@ func (store mockBlockStore) LoadBlock(height int64) *types.Block {
 	return store.blocks[height]
 }
 
-func (store mockBlockStore) LoadTxStatus(hash []byte) *cmtstore.TxStatus {
+func (store mockBlockStore) LoadTxInfo(hash []byte) *cmtstore.TxInfo {
 	for _, block := range store.blocks {
 		for i, tx := range block.Data.Txs {
 			// Check if transaction hash matches
 			if bytes.Equal(tx.Hash(), hash) {
-				return &cmtstore.TxStatus{
+				return &cmtstore.TxInfo{
 					Height: block.Header.Height,
 					Index:  int64(i),
 				}

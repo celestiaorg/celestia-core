@@ -223,8 +223,8 @@ func (_m *BlockStore) Size() int64 {
 	return r0
 }
 
-func (_m BlockStore) LoadTxStatus(txHash []byte) *cmtstore.TxStatus {
-	return &cmtstore.TxStatus{}
+func (_m BlockStore) LoadTxInfo(txHash []byte) *cmtstore.TxInfo {
+	return &cmtstore.TxInfo{}
 }
 
 type mockConstructorTestingTNewBlockStore interface {

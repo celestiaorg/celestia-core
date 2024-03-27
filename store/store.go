@@ -409,7 +409,7 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 	}
 
 	// Save Txs from the block
-	if err := bs.SaveTransactions(block); err != nil {
+	if err := bs.SaveTxInfo(block); err != nil {
 		panic(err)
 	}
 
@@ -456,22 +456,22 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
 }
 
-// SaveTxs gets Tx hashes from the block converts them to TxStatus and persists them to the db.
-func (bs *BlockStore) SaveTransactions(block *types.Block) error {
+// SaveTxInfo gets Tx hashes from the block converts them to TxInfo and persists them to the db.
+func (bs *BlockStore) SaveTxInfo(block *types.Block) error {
 	// Create a new batch
 	batch := bs.db.NewBatch()
 
 	// Batch and save txs from the block
 	for i, tx := range block.Txs {
-		txStatus := cmtstore.TxStatus{
+		txInfo := cmtstore.TxInfo{
 			Height: block.Height,
 			Index:  int64(i),
 		}
-		txStatusBytes, err := proto.Marshal(&txStatus)
+		txInfoBytes, err := proto.Marshal(&txInfo)
 		if err != nil {
 			return fmt.Errorf("unable to marshal tx: %w", err)
 		}
-		if err := batch.Set(calcTxHashKey(tx.Hash()), txStatusBytes); err != nil {
+		if err := batch.Set(calcTxHashKey(tx.Hash()), txInfoBytes); err != nil {
 			return err
 		}
 	}
@@ -552,8 +552,8 @@ func LoadBlockStoreState(db dbm.DB) cmtstore.BlockStoreState {
 	return bsj
 }
 
-// LoadTxStatus retrieves the status of a transaction from the block store given its hash.
-func (bs *BlockStore) LoadTxStatus(txHash []byte) *cmtstore.TxStatus {
+// LoadTxInfo loads the TxInfo from disk given its hash.
+func (bs *BlockStore) LoadTxInfo(txHash []byte) *cmtstore.TxInfo {
 	bz, err := bs.db.Get(calcTxHashKey(txHash))
 	if err != nil {
 		panic(err)
@@ -562,11 +562,11 @@ func (bs *BlockStore) LoadTxStatus(txHash []byte) *cmtstore.TxStatus {
 		return nil
 	}
 
-	var txs cmtstore.TxStatus
-	if err = proto.Unmarshal(bz, &txs); err != nil {
-		panic(fmt.Errorf("unmarshal to TxIndex failed: %w", err))
+	var txi cmtstore.TxInfo
+	if err = proto.Unmarshal(bz, &txi); err != nil {
+		panic(fmt.Errorf("unmarshal to TxInfo failed: %w", err))
 	}
-	return &txs
+	return &txi
 }
 
 // mustEncode proto encodes a proto.message and panics if fails

@@ -384,7 +384,7 @@ func TestSaveBlockIndexesTxs(t *testing.T) {
 	state, blockStore, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	defer cleanup()
 
-	// Create a block with 1000 txs
+	// Create 1000 blocks
 	for h := int64(1); h <= 1000; h++ {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
@@ -397,20 +397,20 @@ func TestSaveBlockIndexesTxs(t *testing.T) {
 		block := blockStore.LoadBlock(h)
 		// Check that transactions exist in the block
 		for i, tx := range block.Txs {
-			txStatus := blockStore.LoadTxStatus(tx.Hash())
-			require.Equal(t, block.Height, txStatus.Height)
-			require.Equal(t, int64(i), txStatus.Index)
+			txInfo := blockStore.LoadTxInfo(tx.Hash())
+			require.Equal(t, block.Height, txInfo.Height)
+			require.Equal(t, int64(i), txInfo.Index)
 		}
 	}
 
 	// Get a random transaction and make sure it's indexed properly
 	block := blockStore.LoadBlock(777)
 	tx := block.Txs[5]
-	txStatus := blockStore.LoadTxStatus(tx.Hash())
-	require.Equal(t, block.Height, txStatus.Height)
+	txInfo := blockStore.LoadTxInfo(tx.Hash())
+	require.Equal(t, block.Height, txInfo.Height)
 	require.Equal(t, block.Height, int64(777))
-	require.Equal(t, txStatus.Height, int64(777))
-	require.Equal(t, int64(5), txStatus.Index)
+	require.Equal(t, txInfo.Height, int64(777))
+	require.Equal(t, int64(5), txInfo.Index)
 }
 
 func TestLoadBaseMeta(t *testing.T) {
@@ -592,10 +592,10 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 
 	// Check that the saved txs exist in the db
 	for _, hash := range indexedTxHashes {
-		txStatus := blockStore.LoadTxStatus(hash)
+		txInfo := blockStore.LoadTxInfo(hash)
 
 		require.NoError(t, err)
-		require.NotNil(t, txStatus, "Transaction was not saved in the database")
+		require.NotNil(t, txInfo, "Transaction was not saved in the database")
 	}
 
 	pruned, err := blockStore.PruneBlocks(1200)
@@ -607,8 +607,8 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 	// so 11990 txs should no longer exist in the db
 	for i, hash := range indexedTxHashes {
 		if int64(i) < 1199*10 {
-			txStatus := blockStore.LoadTxStatus(hash)
-			require.Nil(t, txStatus)
+			txInfo := blockStore.LoadTxInfo(hash)
+			require.Nil(t, txInfo)
 		}
 	}
 
@@ -616,10 +616,10 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 	for h := int64(pruned + 1); h <= 1500; h++ {
 		block := blockStore.LoadBlock(h)
 		for i, tx := range block.Txs {
-			txStatus := blockStore.LoadTxStatus(tx.Hash())
+			txInfo := blockStore.LoadTxInfo(tx.Hash())
 			require.NoError(t, err)
-			require.Equal(t, h, txStatus.Height)
-			require.Equal(t, int64(i), txStatus.Index)
+			require.Equal(t, h, txInfo.Height)
+			require.Equal(t, int64(i), txInfo.Index)
 		}
 	}
 }
