@@ -464,9 +464,9 @@ func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 	select {
 	case <-done:
 	case <-tick.C:
-		for i, reactor := range reactors {
+		for i := range reactors {
 			t.Logf(fmt.Sprintf("Consensus Reactor %v", i))
-			t.Logf(fmt.Sprintf("%v", reactor))
+			t.Logf(fmt.Sprintf("%v", css[i].GetRoundState()))
 		}
 		t.Fatalf("Timed out waiting for all validators to commit first block")
 	}
