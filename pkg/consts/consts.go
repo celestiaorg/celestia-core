@@ -41,5 +41,7 @@ var (
 	NewBaseHashFunc = sha256.New
 
 	// DataCommitmentBlocksLimit is the limit to the number of blocks we can generate a data commitment for.
+	// NOTE: this is no longer used as we're moving towards Blobstream X. However, we're leaving it
+	// here for backwards compatibility purpose until it's removed in the next breaking release.
 	DataCommitmentBlocksLimit = 1000
 )
