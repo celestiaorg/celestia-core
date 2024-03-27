@@ -331,7 +331,6 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 
 		// flush every 1000 blocks to avoid batches becoming too large
 		if pruned%1000 == 0 && pruned > 0 {
-
 			err := flush(batch, h)
 			if err != nil {
 				return 0, err
