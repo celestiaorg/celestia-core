@@ -24,6 +24,11 @@ import (
 	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
 )
 
+var (
+	DefaultRecvBufferCapacity = 4096
+	defaultRecvBufferCapacity = DefaultRecvBufferCapacity
+)
+
 const (
 	defaultMaxPacketMsgPayloadSize = 1024
 
@@ -38,7 +43,6 @@ const (
 	defaultFlushThrottle = 100 * time.Millisecond
 
 	defaultSendQueueCapacity   = 1
-	defaultRecvBufferCapacity  = 4096
 	defaultRecvMessageCapacity = 22020096      // 21MB
 	defaultSendRate            = int64(512000) // 500KB/s
 	defaultRecvRate            = int64(512000) // 500KB/s
