@@ -541,12 +541,14 @@ func TestTxStatus(t *testing.T) {
 
 	// first we broadcast a few txs
 	var txHashes [][]byte
+	var txHeights []int64
 	for i := 0; i < 10; i++ {
 		_, _, tx := MakeTxKV()
 
 		result, err := c.BroadcastTxCommit(context.Background(), tx)
 		require.NoError(t, err)
 		txHashes = append(txHashes, result.Hash)
+		txHeights = append(txHeights, result.Height)
 	}
 
 	require.NoError(t, client.WaitForHeight(c, 5, nil))
@@ -556,9 +558,8 @@ func TestTxStatus(t *testing.T) {
 		result, err := c.TxStatus(context.Background(), hash)
 		require.NoError(t, err)
 
-		expectedHeight := int64(2*i + 2) // This will generate 2, 4, 6, ..., 20 as i ranges from 0 to 9
 		expectedIndex := int64(0)
-		require.Equal(t, expectedHeight, result.Height)
+		require.Equal(t, txHeights[i], result.Height)
 		require.Equal(t, expectedIndex, result.Index)
 	}
 }
