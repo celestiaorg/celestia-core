@@ -8,6 +8,7 @@ message BlockStoreState {
   int64 height = 2;
 }
 
+// TxInfo describes the location of a tx inside a committed block.
 message TxInfo {
   int64 height    = 1;
   int64 index     = 2;
