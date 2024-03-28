@@ -487,6 +487,11 @@ func (c *Client) BlockResults(ctx context.Context, height *int64) (*ctypes.Resul
 	return res, nil
 }
 
+// TxStatus retrieves the status of the transaction given its hash.
+func (c *Client) TxStatus(ctx context.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
+	return c.next.TxStatus(ctx, hash)
+}
+
 // Header fetches and verifies the header directly via the light client
 func (c *Client) Header(ctx context.Context, height *int64) (*ctypes.ResultHeader, error) {
 	lb, err := c.updateLightClientIfNeededTo(ctx, height)

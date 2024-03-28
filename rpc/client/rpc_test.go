@@ -535,6 +535,35 @@ func TestBlockSearch(t *testing.T) {
 	require.Equal(t, blockCount, 0)
 
 }
+
+func TestTxStatus(t *testing.T) {
+	c := getHTTPClient()
+
+	// first we broadcast a few txs
+	var txHashes [][]byte
+	var txHeights []int64
+	for i := 0; i < 10; i++ {
+		_, _, tx := MakeTxKV()
+
+		result, err := c.BroadcastTxCommit(context.Background(), tx)
+		require.NoError(t, err)
+		txHashes = append(txHashes, result.Hash)
+		txHeights = append(txHeights, result.Height)
+	}
+
+	require.NoError(t, client.WaitForHeight(c, 5, nil))
+
+	// check the status of each transaction
+	for i, hash := range txHashes {
+		result, err := c.TxStatus(context.Background(), hash)
+		require.NoError(t, err)
+
+		expectedIndex := int64(0)
+		require.Equal(t, txHeights[i], result.Height)
+		require.Equal(t, expectedIndex, result.Index)
+	}
+}
+
 func TestTxSearch(t *testing.T) {
 	c := getHTTPClient()
 

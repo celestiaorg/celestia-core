@@ -37,7 +37,7 @@ type BlockStore struct {
 	// fine-grained concurrency control for its data, and thus this mutex does not apply to
 	// database contents. The only reason for keeping these fields in the struct is that the data
 	// can't efficiently be queried from the database since the key encoding we use is not
-	// lexicographically ordered (see https://github.com/cometbft/cometbft/issues/4567).
+	// lexicographically ordered.
 	mtx    cmtsync.RWMutex
 	base   int64
 	height int64
@@ -292,8 +292,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 		bs.mtx.Unlock()
 		bs.saveState()
 
-		err := batch.WriteSync()
-		if err != nil {
+		if err := batch.WriteSync(); err != nil {
 			return fmt.Errorf("failed to prune up to height %v: %w", base, err)
 		}
 		batch.Close()
@@ -304,6 +303,12 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 		meta := bs.LoadBlockMeta(h)
 		if meta == nil { // assume already deleted
 			continue
+		}
+		block := bs.LoadBlock(h)
+		for _, tx := range block.Txs {
+			if err := batch.Delete(calcTxHashKey(tx.Hash())); err != nil {
+				return 0, err
+			}
 		}
 		if err := batch.Delete(calcBlockMetaKey(h)); err != nil {
 			return 0, err
@@ -402,6 +407,11 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 		panic(err)
 	}
 
+	// Save Txs from the block
+	if err := bs.SaveTxInfo(block); err != nil {
+		panic(err)
+	}
+
 	// Done!
 	bs.mtx.Lock()
 	bs.height = height
@@ -445,6 +455,30 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
 }
 
+// SaveTxInfo gets Tx hashes from the block converts them to TxInfo and persists them to the db.
+func (bs *BlockStore) SaveTxInfo(block *types.Block) error {
+	// Create a new batch
+	batch := bs.db.NewBatch()
+
+	// Batch and save txs from the block
+	for i, tx := range block.Txs {
+		txInfo := cmtstore.TxInfo{
+			Height: block.Height,
+			Index:  int64(i),
+		}
+		txInfoBytes, err := proto.Marshal(&txInfo)
+		if err != nil {
+			return fmt.Errorf("unable to marshal tx: %w", err)
+		}
+		if err := batch.Set(calcTxHashKey(tx.Hash()), txInfoBytes); err != nil {
+			return err
+		}
+	}
+
+	// Write the batch to the db
+	return batch.WriteSync()
+}
+
 func (bs *BlockStore) Close() error {
 	return bs.db.Close()
 }
@@ -469,6 +503,10 @@ func calcSeenCommitKey(height int64) []byte {
 
 func calcBlockHashKey(hash []byte) []byte {
 	return []byte(fmt.Sprintf("BH:%x", hash))
+}
+
+func calcTxHashKey(hash []byte) []byte {
+	return []byte(fmt.Sprintf("TH:%x", hash))
 }
 
 //-----------------------------------------------------------------------------
@@ -511,6 +549,23 @@ func LoadBlockStoreState(db dbm.DB) cmtstore.BlockStoreState {
 		bsj.Base = 1
 	}
 	return bsj
+}
+
+// LoadTxInfo loads the TxInfo from disk given its hash.
+func (bs *BlockStore) LoadTxInfo(txHash []byte) *cmtstore.TxInfo {
+	bz, err := bs.db.Get(calcTxHashKey(txHash))
+	if err != nil {
+		panic(err)
+	}
+	if len(bz) == 0 {
+		return nil
+	}
+
+	var txi cmtstore.TxInfo
+	if err = proto.Unmarshal(bz, &txi); err != nil {
+		panic(fmt.Errorf("unmarshal to TxInfo failed: %w", err))
+	}
+	return &txi
 }
 
 // mustEncode proto encodes a proto.message and panics if fails

@@ -59,6 +59,7 @@ func BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcas
 	}
 }
 
+// DEPRECATED: Use BroadcastTxSync or BroadcastTxAsync instead.
 // BroadcastTxCommit returns with the responses from CheckTx and DeliverTx.
 // More: https://docs.cometbft.com/v0.34/rpc/#/Tx/broadcast_tx_commit
 func BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTxCommit, error) {

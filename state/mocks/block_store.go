@@ -4,7 +4,7 @@ package mocks
 
 import (
 	mock "github.com/stretchr/testify/mock"
-
+	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	types "github.com/cometbft/cometbft/types"
 )
 
@@ -221,6 +221,10 @@ func (_m *BlockStore) Size() int64 {
 	}
 
 	return r0
+}
+
+func (_m BlockStore) LoadTxInfo(txHash []byte) *cmtstore.TxInfo {
+	return &cmtstore.TxInfo{}
 }
 
 type mockConstructorTestingTNewBlockStore interface {
