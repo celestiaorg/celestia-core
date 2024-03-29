@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"runtime/debug"
@@ -45,7 +46,10 @@ func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 
 func makeTxs(height int64) (txs []types.Tx) {
 	for i := 0; i < 10; i++ {
-		txs = append(txs, types.Tx([]byte{byte(height), byte(i)}))
+		numBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(numBytes, uint64(height))
+
+		txs = append(txs, types.Tx(append(numBytes, byte(i))))
 	}
 	return txs
 }

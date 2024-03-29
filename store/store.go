@@ -37,7 +37,7 @@ type BlockStore struct {
 	// fine-grained concurrency control for its data, and thus this mutex does not apply to
 	// database contents. The only reason for keeping these fields in the struct is that the data
 	// can't efficiently be queried from the database since the key encoding we use is not
-	// lexicographically ordered (see https://github.com/tendermint/tendermint/issues/4567).
+	// lexicographically ordered.
 	mtx    cmtsync.RWMutex
 	base   int64
 	height int64
@@ -292,8 +292,7 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 		bs.mtx.Unlock()
 		bs.saveState()
 
-		err := batch.WriteSync()
-		if err != nil {
+		if err := batch.WriteSync(); err != nil {
 			return fmt.Errorf("failed to prune up to height %v: %w", base, err)
 		}
 		batch.Close()
@@ -304,6 +303,12 @@ func (bs *BlockStore) PruneBlocks(height int64) (uint64, error) {
 		meta := bs.LoadBlockMeta(h)
 		if meta == nil { // assume already deleted
 			continue
+		}
+		block := bs.LoadBlock(h)
+		for _, tx := range block.Txs {
+			if err := batch.Delete(calcTxHashKey(tx.Hash())); err != nil {
+				return 0, err
+			}
 		}
 		if err := batch.Delete(calcBlockMetaKey(h)); err != nil {
 			return 0, err
@@ -544,6 +549,23 @@ func LoadBlockStoreState(db dbm.DB) cmtstore.BlockStoreState {
 		bsj.Base = 1
 	}
 	return bsj
+}
+
+// LoadTxInfo loads the TxInfo from disk given its hash.
+func (bs *BlockStore) LoadTxInfo(txHash []byte) *cmtstore.TxInfo {
+	bz, err := bs.db.Get(calcTxHashKey(txHash))
+	if err != nil {
+		panic(err)
+	}
+	if len(bz) == 0 {
+		return nil
+	}
+
+	var txi cmtstore.TxInfo
+	if err = proto.Unmarshal(bz, &txi); err != nil {
+		panic(fmt.Errorf("unmarshal to TxInfo failed: %w", err))
+	}
+	return &txi
 }
 
 // mustEncode proto encodes a proto.message and panics if fails

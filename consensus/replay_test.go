@@ -27,6 +27,7 @@ import (
 	mempl "github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/privval"
 	cmtstate "github.com/tendermint/tendermint/proto/tendermint/state"
+	cmtstore "github.com/tendermint/tendermint/proto/tendermint/store"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
 	sm "github.com/tendermint/tendermint/state"
@@ -1246,8 +1247,6 @@ func (bs *mockBlockStore) PruneBlocks(height int64) (uint64, error) {
 	bs.base = height
 	return pruned, nil
 }
-
-func (bs *mockBlockStore) DeleteLatestBlock() error { return nil }
 
 // ---------------------------------------
 // Test handshake/init chain

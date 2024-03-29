@@ -2,15 +2,15 @@
 // Source: ./mempool/mempool.go
 
 // Package mock_mempool is a generated GoMock package.
-package mocks
+package mock_mempool
 
 import (
 	reflect "reflect"
 
-	types "github.com/cometbft/cometbft/abci/types"
-	mempool "github.com/cometbft/cometbft/mempool"
-	types0 "github.com/cometbft/cometbft/types"
 	gomock "github.com/golang/mock/gomock"
+	types "github.com/tendermint/tendermint/abci/types"
+	mempool "github.com/tendermint/tendermint/mempool"
+	types0 "github.com/tendermint/tendermint/types"
 )
 
 // MockMempool is a mock of Mempool interface.
@@ -101,20 +101,6 @@ func (m *MockMempool) GetTxByKey(key types0.TxKey) (types0.Tx, bool) {
 func (mr *MockMempoolMockRecorder) GetTxByKey(key interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTxByKey", reflect.TypeOf((*MockMempool)(nil).GetTxByKey), key)
-}
-
-// WasRecentlyEvicted mocks base method.
-func (m *MockMempool) WasRecentlyEvicted(key types0.TxKey) bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WasRecentlyEvicted", key)
-	ret0, _ := ret[0].(bool)
-	return ret0
-}
-
-// WasRecentlyEvicted indicates an expected call of WasRecentlyEvicted.
-func (mr *MockMempoolMockRecorder) WasRecentlyEvicted(key interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WasRecentlyEvicted", reflect.TypeOf((*MockMempool)(nil).WasRecentlyEvicted), key)
 }
 
 // Lock mocks base method.
@@ -237,4 +223,18 @@ func (m *MockMempool) Update(blockHeight int64, blockTxs types0.Txs, deliverTxRe
 func (mr *MockMempoolMockRecorder) Update(blockHeight, blockTxs, deliverTxResponses, newPreFn, newPostFn interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockMempool)(nil).Update), blockHeight, blockTxs, deliverTxResponses, newPreFn, newPostFn)
+}
+
+// WasRecentlyEvicted mocks base method.
+func (m *MockMempool) WasRecentlyEvicted(key types0.TxKey) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WasRecentlyEvicted", key)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// WasRecentlyEvicted indicates an expected call of WasRecentlyEvicted.
+func (mr *MockMempoolMockRecorder) WasRecentlyEvicted(key interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WasRecentlyEvicted", reflect.TypeOf((*MockMempool)(nil).WasRecentlyEvicted), key)
 }

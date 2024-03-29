@@ -1,7 +1,9 @@
 package core
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"testing"
@@ -17,6 +19,7 @@ import (
 
 	abci "github.com/tendermint/tendermint/abci/types"
 	cmtstate "github.com/tendermint/tendermint/proto/tendermint/state"
+	cmtstore "github.com/tendermint/tendermint/proto/tendermint/store"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 	sm "github.com/tendermint/tendermint/state"
@@ -301,7 +304,6 @@ func (mockBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 func (mockBlockStore) SaveTxInfo(block *types.Block, txResponseCode []uint32) error {
 	return nil
 }
-func (mockBlockStore) DeleteLatestBlock() error { return nil }
 
 func (store mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	if height > store.height {
@@ -368,12 +370,25 @@ func randomBlocks(height int64) []*types.Block {
 	return blocks
 }
 
+func makeTxs(height int64) (txs []types.Tx) {
+	for i := 0; i < 10; i++ {
+		numBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(numBytes, uint64(height))
+
+		txs = append(txs, types.Tx(append(numBytes, byte(i))))
+	}
+	return txs
+}
+
 // randomBlock generates a Block with a certain height and random data hash.
 func randomBlock(height int64) *types.Block {
 	return &types.Block{
 		Header: types.Header{
 			Height:   height,
 			DataHash: cmtrand.Bytes(32),
+		},
+		Data: types.Data{
+			Txs: makeTxs(height),
 		},
 	}
 }
