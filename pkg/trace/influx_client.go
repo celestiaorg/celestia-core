@@ -94,7 +94,7 @@ func NewInfluxClient(cfg *config.InstrumentationConfig, logger log.Logger, chain
 		cfg.TracePushURL,
 		cfg.TraceAuthToken,
 		influxdb2.DefaultOptions().
-			SetBatchSize(uint(cfg.TracePushBatchSize)),
+			SetBatchSize(uint(cfg.TraceBufferSize)),
 	)
 	ctx, cancel = context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()

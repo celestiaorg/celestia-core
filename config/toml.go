@@ -561,7 +561,7 @@ trace_db = "{{ .Instrumentation.TraceDB }}"
 trace_org = "{{ .Instrumentation.TraceOrg }}"
 
 # The size of the batches that are sent to the database.
-trace_push_batch_size = {{ .Instrumentation.TracePushBatchSize }}
+trace_push_batch_size = {{ .Instrumentation.TraceBufferSize }}
 
 # The list of tables that are updated when tracing. All available tables and
 # their schema can be found in the pkg/trace/schema package. It is represented as a

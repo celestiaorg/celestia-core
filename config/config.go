@@ -1206,8 +1206,8 @@ type InstrumentationConfig struct {
 	// a set of tables.
 	TraceDB string `mapstructure:"trace_db"`
 
-	// TracePushBatchSize is the number of traces to write in a single batch.
-	TracePushBatchSize int `mapstructure:"trace_push_batch_size"`
+	// TraceBufferSize is the number of traces to write in a single batch.
+	TraceBufferSize int `mapstructure:"trace_push_batch_size"`
 
 	// TracingTables is the list of tables that will be traced. See the
 	// pkg/trace/schema for a complete list of tables. It is represented as a
@@ -1240,7 +1240,7 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		TracePushURL:         "",
 		TraceOrg:             "celestia",
 		TraceDB:              "e2e",
-		TracePushBatchSize:   20,
+		TraceBufferSize:      20,
 		TracingTables:        DefaultTracingTables,
 		PyroscopeURL:         "",
 		PyroscopeTrace:       false,
@@ -1287,7 +1287,7 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.TraceDB == "" {
 		return fmt.Errorf("bucket is required")
 	}
-	if cfg.TracePushBatchSize <= 0 {
+	if cfg.TraceBufferSize <= 0 {
 		return fmt.Errorf("batch size must be greater than 0")
 	}
 	return nil
