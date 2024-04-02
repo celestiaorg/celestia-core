@@ -106,7 +106,7 @@ type Node struct {
 	SendNoLoad            bool
 	Prometheus            bool
 	PrometheusProxyPort   uint32
-	TracePushURL          string
+	TracePushConfig       string
 	TracePullAddress      string
 	PyroscopeURL          string
 	PyroscopeTrace        bool
@@ -209,7 +209,7 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 			Perturbations:         []Perturbation{},
 			Misbehaviors:          make(map[int64]string),
 			SendNoLoad:            nodeManifest.SendNoLoad,
-			TracePushURL:          ifd.TracePushURL,
+			TracePushConfig:       ifd.TracePushConfig,
 			TracePullAddress:      ifd.TracePullAddress,
 			PyroscopeURL:          ifd.PyroscopeURL,
 			PyroscopeTrace:        ifd.PyroscopeTrace,

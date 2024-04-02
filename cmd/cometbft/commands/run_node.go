@@ -96,9 +96,9 @@ func AddNodeFlags(cmd *cobra.Command) {
 		"database directory")
 
 	cmd.PersistentFlags().String(
-		trace.FlagTracePushURL,
-		config.Instrumentation.TracePushURL,
-		trace.FlagTracePushURLDescription,
+		trace.FlagTracePushConfig,
+		config.Instrumentation.TracePushConfig,
+		trace.FlagTracePushConfigDescription,
 	)
 
 	cmd.PersistentFlags().String(

@@ -78,7 +78,7 @@ func NewCLI() *CLI {
 				return fmt.Errorf("unknown infrastructure type '%s'", inft)
 			}
 
-			iurl, err := cmd.Flags().GetString(trace.FlagTracePushURL)
+			iurl, err := cmd.Flags().GetString(trace.FlagTracePushConfig)
 			if err != nil {
 				return err
 			}
@@ -86,8 +86,8 @@ func NewCLI() *CLI {
 			if err != nil {
 				return err
 			}
-			if ifd.TracePushURL == "" {
-				ifd.TracePushURL = iurl
+			if ifd.TracePushConfig == "" {
+				ifd.TracePushConfig = iurl
 				ifd.TracePullAddress = itoken
 			}
 
@@ -186,7 +186,7 @@ func NewCLI() *CLI {
 
 	cli.root.PersistentFlags().StringP("infrastructure-data", "", "", "path to the json file containing the infrastructure data. Only used if the 'infrastructure-type' is set to a value other than 'docker'")
 
-	cli.root.PersistentFlags().String(trace.FlagTracePushURL, "", trace.FlagTracePushURLDescription)
+	cli.root.PersistentFlags().String(trace.FlagTracePushConfig, "", trace.FlagTracePushConfigDescription)
 
 	cli.root.PersistentFlags().String(trace.FlagTracePullAddress, "", trace.FlagTracePullAddressDescription)
 

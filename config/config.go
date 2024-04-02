@@ -1189,16 +1189,13 @@ type InstrumentationConfig struct {
 	// Instrumentation namespace.
 	Namespace string `mapstructure:"namespace"`
 
-	// InfluxURL is the influxdb url.
-	InfluxURL string `mapstructure:"influx_url"`
+	// TracePushConfig is the relative path of the push config. This second
+	// config contains credentials for where and how often to.
+	TracePushConfig string `mapstructure:"trace_push_config"`
 
 	// TracePullAddress is the address that the trace server will listen on for
 	// pulling data.
 	TracePullAddress string `mapstructure:"trace_pull_address"`
-
-	// TracePushURL is the address that the trace server will listen on for
-	// pulling data.
-	TracePushURL string `mapstructure:"trace_push_url"`
 
 	// TraceType is the type of tracer used. Options are "local" and "noop".
 	TraceType string `mapstructure:"trace_type"`
@@ -1209,7 +1206,7 @@ type InstrumentationConfig struct {
 	// TracingTables is the list of tables that will be traced. See the
 	// pkg/trace/schema for a complete list of tables. It is represented as a
 	// comma separate string. For example: "consensus_round_state,mempool_tx".
-	TracingTables string `mapstructure:"influx_tables"`
+	TracingTables string `mapstructure:"tracing_tables"`
 
 	// PyroscopeURL is the pyroscope url used to establish a connection with a
 	// pyroscope continuous profiling server.
@@ -1234,8 +1231,8 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		PrometheusListenAddr: ":26660",
 		MaxOpenConnections:   3,
 		Namespace:            "cometbft",
-		TracePushURL:         "",
-		TracePullAddress:     ":26661",
+		TracePushConfig:      "",
+		TracePullAddress:     "",
 		TraceType:            "noop",
 		TraceBufferSize:      1000,
 		TracingTables:        DefaultTracingTables,
@@ -1270,9 +1267,9 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.PyroscopeTrace && cfg.PyroscopeURL == "" {
 		return errors.New("pyroscope_trace can't be enabled if profiling is disabled")
 	}
-	// if there is not InfluxURL configured, then we do not need to validate the rest
+	// if there is not TracePushConfig configured, then we do not need to validate the rest
 	// of the config because we are not connecting.
-	if cfg.InfluxURL == "" {
+	if cfg.TracePushConfig == "" {
 		return nil
 	}
 	if cfg.TracePullAddress == "" {

@@ -193,6 +193,12 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		var err error
 		for _, tx := range protoTxs {
 			ntx := types.Tx(tx)
+			schema.WriteMempoolTx(
+				memR.traceClient,
+				e.Src.ID(),
+				ntx.Hash(),
+				schema.Download,
+			)
 			err = memR.mempool.CheckTx(ntx, nil, txInfo)
 			if errors.Is(err, mempool.ErrTxInCache) {
 				memR.Logger.Debug("Tx already exists in cache")

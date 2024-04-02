@@ -1,9 +1,9 @@
 package trace
 
 const (
-	FlagTracePushURL                = "trace-push-url"
+	FlagTracePushConfig             = "trace-push-url"
 	FlagTracePullAddress            = "trace-pull-address"
-	FlagTracePushURLDescription     = "URL of the trace push server"
+	FlagTracePushConfigDescription  = "URL of the trace push server"
 	FlagTracePullAddressDescription = "address to listen on for pulling trace data"
 
 	FlagPyroscopeURL              = "pyroscope-url"
