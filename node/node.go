@@ -857,7 +857,7 @@ func NewNode(config *cfg.Config,
 
 	// create an optional tracer client to collect trace data.
 	tracer, err := trace.NewTracer(
-		config.Instrumentation,
+		config,
 		logger,
 		genDoc.ChainID,
 		string(nodeKey.ID()),

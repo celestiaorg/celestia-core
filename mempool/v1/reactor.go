@@ -180,15 +180,6 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	memR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
 	switch msg := e.Message.(type) {
 	case *protomem.Txs:
-		for _, tx := range msg.Txs {
-			schema.WriteMempoolTx(
-				memR.traceClient,
-				e.Src.ID(),
-				tx,
-				schema.TransferTypeDownload,
-				schema.V1VersionFieldValue,
-			)
-		}
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received tmpty txs from peer", "src", e.Src)
@@ -208,6 +199,12 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			} else if err != nil {
 				memR.Logger.Info("Could not check tx", "tx", ntx.String(), "err", err)
 			}
+			schema.WriteMempoolTx(
+				memR.traceClient,
+				e.Src.ID(),
+				ntx.Hash(),
+				schema.Download,
+			)
 		}
 	default:
 		memR.Logger.Error("unknown message type", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
@@ -302,14 +299,13 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 				// record that we have sent the peer the transaction
 				// to avoid doing it a second time
 				memTx.SetPeer(peerID)
+				schema.WriteMempoolTx(
+					memR.traceClient,
+					peer.ID(),
+					memTx.tx.Hash(),
+					schema.Upload,
+				)
 			}
-			schema.WriteMempoolTx(
-				memR.traceClient,
-				peer.ID(),
-				memTx.tx,
-				schema.TransferTypeUpload,
-				schema.V1VersionFieldValue,
-			)
 		}
 
 		select {

@@ -7,15 +7,20 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 )
 
+type Entry interface {
+	Table() string
+	InfluxRepr() (map[string]interface{}, error)
+}
+
 type Tracer interface {
-	Write(table string, data map[string]interface{})
+	Write(Entry)
 	ReadTable(table string) ([]byte, error)
 	IsCollecting(table string) bool
 	Stop()
 }
 
-func NewTracer(cfg *config.InstrumentationConfig, logger log.Logger, chainID, nodeID string) (Tracer, error) {
-	return NewInfluxClient(cfg, logger, chainID, nodeID)
+func NewTracer(cfg *config.Config, logger log.Logger, chainID, nodeID string) (Tracer, error) {
+	return NewInfluxClient(cfg.Instrumentation, logger, chainID, nodeID)
 }
 
 func NoOpTracer() Tracer {
@@ -24,7 +29,7 @@ func NoOpTracer() Tracer {
 
 type noOpTracer struct{}
 
-func (n *noOpTracer) Write(_ string, _ map[string]interface{}) {}
+func (n *noOpTracer) Write(_ Entry) {}
 func (n *noOpTracer) ReadTable(_ string) ([]byte, error) {
 	return nil, errors.New("no-op tracer does not support reading")
 }

@@ -70,6 +70,7 @@ func NewLocalClient(cfg *config.InstrumentationConfig, logger log.Logger, chainI
 		}
 		fm[table] = file
 	}
+
 	lc := &LocalClient{
 		fileMap: fm,
 		cannal:  make(chan Event, cfg.TraceBufferSize),
@@ -78,15 +79,17 @@ func NewLocalClient(cfg *config.InstrumentationConfig, logger log.Logger, chainI
 		logger:  logger,
 		mu:      sync.RWMutex{},
 	}
+
 	go lc.drainCannal()
+
 	return lc, nil
 }
 
-func (fm *LocalClient) Write(table string, data map[string]interface{}) {
-	if !fm.IsCollecting(table) {
+func (fm *LocalClient) Write(e Entry) {
+	if !fm.IsCollecting(e.Table()) {
 		return
 	}
-	fm.cannal <- NewEvent(fm.chainID, fm.nodeID, table, data)
+	fm.cannal <- NewEvent(fm.chainID, fm.nodeID, e.Table(), e)
 }
 
 func (fm *LocalClient) ReadTable(table string) ([]byte, error) {
