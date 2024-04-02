@@ -549,24 +549,24 @@ namespace = "{{ .Instrumentation.Namespace }}"
 
 # The URL of the influxdb instance to use for remote event
 # collection. If empty, remote event collection is disabled.
-influx_url = "{{ .Instrumentation.InfluxURL }}"
+trace_push_url = "{{ .Instrumentation.TracePushURL }}"
 
 # The influxdb token to use for remote event collection.
-influx_token = "{{ .Instrumentation.InfluxToken }}"
+trace_auth_token = "{{ .Instrumentation.TraceAuthToken }}"
 
 # The influxdb bucket to use for remote event collection.
-influx_bucket = "{{ .Instrumentation.InfluxBucket }}"
+trace_db = "{{ .Instrumentation.TraceDB }}"
 
 # The influxdb org to use for event remote collection.
-influx_org = "{{ .Instrumentation.InfluxOrg }}"
+trace_org = "{{ .Instrumentation.TraceOrg }}"
 
 # The size of the batches that are sent to the database.
-influx_batch_size = {{ .Instrumentation.InfluxBatchSize }}
+trace_push_batch_size = {{ .Instrumentation.TracePushBatchSize }}
 
 # The list of tables that are updated when tracing. All available tables and
 # their schema can be found in the pkg/trace/schema package. It is represented as a
 # comma separate string. For example: "consensus_round_state,mempool_tx".
-influx_tables = "{{ .Instrumentation.InfluxTables }}"
+tracing_tables = "{{ .Instrumentation.TracingTables }}"
 
 # The URL of the pyroscope instance to use for continuous profiling.
 # If empty, continuous profiling is disabled.

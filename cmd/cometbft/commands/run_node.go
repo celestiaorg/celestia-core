@@ -97,13 +97,13 @@ func AddNodeFlags(cmd *cobra.Command) {
 
 	cmd.PersistentFlags().String(
 		trace.FlagInfluxDBURL,
-		config.Instrumentation.InfluxURL,
+		config.Instrumentation.TracePushURL,
 		trace.FlagInfluxDBURLDescription,
 	)
 
 	cmd.PersistentFlags().String(
 		trace.FlagInfluxDBToken,
-		config.Instrumentation.InfluxToken,
+		config.Instrumentation.TraceAuthToken,
 		trace.FlagInfluxDBTokenDescription,
 	)
 

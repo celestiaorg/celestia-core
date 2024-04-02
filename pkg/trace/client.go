@@ -21,15 +21,15 @@ const (
 // collecting events.
 type ClientConfigConfig struct {
 	// URL is the influxdb url.
-	URL string `mapstructure:"influx_url"`
+	URL string `mapstructure:"trace_push_url"`
 	// Token is the influxdb token.
-	Token string `mapstructure:"influx_token"`
+	Token string `mapstructure:"trace_auth_token"`
 	// Org is the influxdb organization.
-	Org string `mapstructure:"influx_org"`
+	Org string `mapstructure:"trace_org"`
 	// Bucket is the influxdb bucket.
-	Bucket string `mapstructure:"influx_bucket"`
+	Bucket string `mapstructure:"trace_db"`
 	// BatchSize is the number of points to write in a single batch.
-	BatchSize int `mapstructure:"influx_batch_size"`
+	BatchSize int `mapstructure:"trace_push_batch_size"`
 }
 
 // Client is an influxdb client that can be used to push events to influxdb. It
@@ -64,7 +64,7 @@ func (c *Client) Stop() {
 	if c.Client == nil {
 		return
 	}
-	writeAPI := c.Client.WriteAPI(c.cfg.InfluxOrg, c.cfg.InfluxBucket)
+	writeAPI := c.Client.WriteAPI(c.cfg.TraceOrg, c.cfg.TraceDB)
 	writeAPI.Flush()
 	c.Client.Close()
 }
@@ -82,16 +82,16 @@ func NewClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, no
 		cancel:  cancel,
 		chainID: chainID,
 		nodeID:  nodeID,
-		tables:  stringToMap(cfg.InfluxTables),
+		tables:  stringToMap(cfg.TracingTables),
 	}
-	if cfg.InfluxURL == "" {
+	if cfg.TracePushURL == "" {
 		return cli, nil
 	}
 	cli.Client = influxdb2.NewClientWithOptions(
-		cfg.InfluxURL,
-		cfg.InfluxToken,
+		cfg.TracePushURL,
+		cfg.TraceAuthToken,
 		influxdb2.DefaultOptions().
-			SetBatchSize(uint(cfg.InfluxBatchSize)),
+			SetBatchSize(uint(cfg.TracePushBatchSize)),
 	)
 	ctx, cancel = context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -100,16 +100,16 @@ func NewClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, no
 		return nil, err
 	}
 	if !alive {
-		return nil, fmt.Errorf("failure to ping configured influxdb: %s", cfg.InfluxURL)
+		return nil, fmt.Errorf("failure to ping configured influxdb: %s", cfg.TracePushURL)
 	}
-	logger.Info("connected to influxdb", "url", cfg.InfluxURL)
+	logger.Info("connected to influxdb", "url", cfg.TracePushURL)
 	go cli.logErrors(logger)
 	return cli, nil
 }
 
 // logErrors empties the writeAPI error channel and logs any errors.
 func (c *Client) logErrors(logger log.Logger) {
-	writeAPI := c.Client.WriteAPI(c.cfg.InfluxOrg, c.cfg.InfluxBucket)
+	writeAPI := c.Client.WriteAPI(c.cfg.TraceOrg, c.cfg.TraceDB)
 	for {
 		select {
 		case err := <-writeAPI.Errors():
@@ -138,7 +138,7 @@ func (c *Client) WritePoint(table string, fields map[string]interface{}) {
 	if !c.IsCollecting(table) {
 		return
 	}
-	writeAPI := c.Client.WriteAPI(c.cfg.InfluxOrg, c.cfg.InfluxBucket)
+	writeAPI := c.Client.WriteAPI(c.cfg.TraceOrg, c.cfg.TraceDB)
 	tags := map[string]string{
 		NodeIDTag:  c.nodeID,
 		ChainIDTag: c.chainID,

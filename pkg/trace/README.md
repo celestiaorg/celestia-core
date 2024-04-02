@@ -99,23 +99,23 @@ Tracing will only occur if an influxdb URL in specified either directly in the
 
 # The URL of the influxdb instance to use for remote event
 # collection. If empty, remote event collection is disabled.
-influx_url = "http://your-influx-ip:8086/"
+trace_push_url = "http://your-influx-ip:8086/"
 
 # The influxdb token to use for remote event collection.
-influx_token = "your-token"
+trace_auth_token = "your-token"
 
 # The influxdb bucket to use for remote event collection.
-influx_bucket = "e2e"
+trace_db = "e2e"
 
 # The influxdb org to use for event remote collection.
-influx_org = "celestia"
+trace_org = "celestia"
 
 # The size of the batches that are sent to the database.
-influx_batch_size = 20
+trace_push_batch_size = 20
 
 # The list of tables that are updated when tracing. All available tables and
 # their schema can be found in the pkg/trace/schema package.
-influx_tables = ["consensus_round_state", "mempool_tx", ]
+tracing_tables = ["consensus_round_state", "mempool_tx", ]
 
 ```
 

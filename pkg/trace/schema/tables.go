@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	config.DefaultInfluxTables = strings.Join(AllTables(), ",")
+	config.DefaultTracingTables = strings.Join(AllTables(), ",")
 }
 
 func AllTables() []string {

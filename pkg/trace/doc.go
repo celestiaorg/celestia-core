@@ -68,19 +68,19 @@ configure in the config.toml
 
 # The URL of the influxdb instance to use for remote event
 # collection. If empty, remote event collection is disabled.
-influx_url = "http://your-influx-ip:8086/"
+trace_push_url = "http://your-influx-ip:8086/"
 
 # The influxdb token to use for remote event collection.
-influx_token = "your-token"
+trace_auth_token = "your-token"
 
 # The influxdb bucket to use for remote event collection.
-influx_bucket = "e2e"
+trace_db = "e2e"
 
 # The influxdb org to use for event remote collection.
-influx_org = "celestia"
+trace_org = "celestia"
 
 # The size of the batches that are sent to the database.
-influx_batch_size = 20
+trace_push_batch_size = 20
 ```
 
 or
