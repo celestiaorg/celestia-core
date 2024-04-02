@@ -41,7 +41,7 @@ type Reactor struct {
 	mempool     *TxPool
 	ids         *mempoolIDs
 	requests    *requestScheduler
-	traceClient *trace.Client
+	traceClient trace.Tracer
 }
 
 type ReactorOptions struct {
@@ -57,7 +57,7 @@ type ReactorOptions struct {
 	MaxGossipDelay time.Duration
 
 	// TraceClient is the trace client for collecting trace level events
-	TraceClient *trace.Client
+	TraceClient trace.Tracer
 }
 
 func (opts *ReactorOptions) VerifyAndComplete() error {
@@ -91,7 +91,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		traceClient: &trace.Client{},
+		traceClient: trace.NoOpTracer(),
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR, nil

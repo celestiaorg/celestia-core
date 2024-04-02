@@ -59,7 +59,7 @@ type TxMempool struct {
 	txByKey    map[types.TxKey]*clist.CElement
 	txBySender map[string]*clist.CElement // for sender != ""
 
-	traceClient *trace.Client
+	traceClient trace.Tracer
 }
 
 // NewTxMempool constructs a new, empty priority mempool at the specified
@@ -83,7 +83,7 @@ func NewTxMempool(
 		height:       height,
 		txByKey:      make(map[types.TxKey]*clist.CElement),
 		txBySender:   make(map[string]*clist.CElement),
-		traceClient:  &trace.Client{},
+		traceClient:  trace.NoOpTracer(),
 	}
 	if cfg.CacheSize > 0 {
 		txmp.cache = mempool.NewLRUTxCache(cfg.CacheSize)
@@ -115,7 +115,7 @@ func WithMetrics(metrics *mempool.Metrics) TxMempoolOption {
 	return func(txmp *TxMempool) { txmp.metrics = metrics }
 }
 
-func WithTraceClient(tc *trace.Client) TxMempoolOption {
+func WithTraceClient(tc trace.Tracer) TxMempoolOption {
 	return func(txmp *TxMempool) {
 		txmp.traceClient = tc
 	}

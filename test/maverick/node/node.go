@@ -427,7 +427,7 @@ func createMempoolAndMempoolReactor(config *cfg.Config, proxyApp proxy.AppConns,
 		reactor := mempoolv1.NewReactor(
 			config.Mempool,
 			mp,
-			&trace.Client{},
+			trace.NoOpTracer(),
 		)
 		if config.Consensus.WaitForTxs() {
 			mp.EnableTxsAvailable()
