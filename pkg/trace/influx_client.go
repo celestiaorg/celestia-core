@@ -8,6 +8,7 @@ import (
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
@@ -59,6 +60,12 @@ type InfluxClient struct {
 	// client is the influxdb client. This field is nil if no connection is
 	// established.
 	client influxdb2.Client
+
+	// writeAPI is the write api for the client.
+	writeAPI api.WriteAPI
+
+	// Logger is the logger for the client.
+	Logger log.Logger
 }
 
 // Stop closes the influxdb client.
@@ -85,7 +92,8 @@ func NewInfluxClient(cfg *config.InstrumentationConfig, logger log.Logger, chain
 		cancel:  cancel,
 		chainID: chainID,
 		nodeID:  nodeID,
-		tables:  stringToMap(cfg.InfluxTables),
+		tables:  stringToMap(cfg.TracingTables),
+		Logger:  logger,
 	}
 	if cfg.InfluxURL == "" {
 		return cli, nil
@@ -107,6 +115,7 @@ func NewInfluxClient(cfg *config.InstrumentationConfig, logger log.Logger, chain
 	}
 	logger.Info("connected to influxdb", "url", cfg.InfluxURL)
 	go cli.logErrors(logger)
+	cli.writeAPI = cli.client.WriteAPI(cfg.TraceOrg, cfg.TraceDB)
 	return cli, nil
 }
 
@@ -137,21 +146,27 @@ func (c *InfluxClient) IsCollecting(table string) bool {
 // timestamp to the current time. If the underlying client is nil, it does
 // nothing. The "table" arg is used as the influxdb "measurement" for the point.
 // If other tags are needed, use WriteCustomPoint.
-func (c *InfluxClient) Write(table string, fields map[string]interface{}) {
+func (c *InfluxClient) Write(e Entry) {
+	table := e.Table()
 	if !c.IsCollecting(table) {
 		return
 	}
-	writeAPI := c.client.WriteAPI(c.cfg.TraceOrg, c.cfg.TraceDB)
+
 	tags := map[string]string{
 		NodeIDTag:  c.nodeID,
 		ChainIDTag: c.chainID,
 	}
-	p := write.NewPoint(table, tags, fields, time.Now())
-	writeAPI.WritePoint(p)
+	ir, err := e.InfluxRepr()
+	if err != nil {
+		c.Logger.Error("failed to convert event to influx representation", "err", err)
+		return
+	}
+	p := write.NewPoint(table, tags, ir, time.Now())
+	c.writeAPI.WritePoint(p)
 }
 
 func (c *InfluxClient) ReadTable(string) ([]byte, error) {
-	return nil, errors.New("Reading not supported using the InfluxDB tracing client")
+	return nil, errors.New("reading not supported using the InfluxDB tracing client")
 }
 
 func stringToMap(tables string) map[string]struct{} {
