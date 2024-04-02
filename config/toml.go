@@ -561,7 +561,7 @@ influx_bucket = "{{ .Instrumentation.InfluxBucket }}"
 influx_org = "{{ .Instrumentation.InfluxOrg }}"
 
 # The size of the batches that are sent to the database.
-influx_batch_size = {{ .Instrumentation.InfluxBatchSize }}
+trace_push_batch_size = {{ .Instrumentation.TraceBufferSize }}
 
 # The list of tables that are updated when tracing. All available tables and
 # their schema can be found in the pkg/trace/schema package. It is represented as a

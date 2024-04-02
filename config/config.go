@@ -1201,8 +1201,8 @@ type InstrumentationConfig struct {
 	// InfluxBucket is the influxdb bucket.
 	InfluxBucket string `mapstructure:"influx_bucket"`
 
-	// InfluxBatchSize is the number of points to write in a single batch.
-	InfluxBatchSize int `mapstructure:"influx_batch_size"`
+	// TraceBufferSize is the number of traces to write in a single batch.
+	TraceBufferSize int `mapstructure:"trace_push_batch_size"`
 
 	// InfluxTables is the list of tables that will be traced. See the
 	// pkg/trace/schema for a complete list of tables. It is represented as a
@@ -1232,11 +1232,11 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		PrometheusListenAddr: ":26660",
 		MaxOpenConnections:   3,
 		Namespace:            "cometbft",
-		InfluxURL:            "",
-		InfluxOrg:            "celestia",
-		InfluxBucket:         "e2e",
-		InfluxBatchSize:      20,
-		InfluxTables:         DefaultInfluxTables,
+		TracePushURL:         "",
+		TraceOrg:             "celestia",
+		TraceDB:              "e2e",
+		TraceBufferSize:      20,
+		TracingTables:        DefaultTracingTables,
 		PyroscopeURL:         "",
 		PyroscopeTrace:       false,
 		PyroscopeProfileTypes: strings.Join([]string{
@@ -1282,7 +1282,7 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.InfluxBucket == "" {
 		return fmt.Errorf("bucket is required")
 	}
-	if cfg.InfluxBatchSize <= 0 {
+	if cfg.TraceBufferSize <= 0 {
 		return fmt.Errorf("batch size must be greater than 0")
 	}
 	return nil
