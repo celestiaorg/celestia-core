@@ -51,13 +51,13 @@ const (
 // schema:
 //
 // | time | peerID | tx size | tx hash | transfer type | mempool version |
-func WriteMempoolTx(client *trace.Client, peer p2p.ID, tx []byte, transferType, version string) {
+func WriteMempoolTx(client trace.Tracer, peer p2p.ID, tx []byte, transferType, version string) {
 	// this check is redundant to what is checked during WritePoint, although it
 	// is an optimization to avoid allocations from the map of fields.
 	if !client.IsCollecting(MempoolTxTable) {
 		return
 	}
-	client.WritePoint(MempoolTxTable, map[string]interface{}{
+	client.Write(MempoolTxTable, map[string]interface{}{
 		TxFieldKey:           bytes.HexBytes(types.Tx(tx).Hash()).String(),
 		PeerFieldKey:         peer,
 		SizeFieldKey:         len(tx),
@@ -101,13 +101,13 @@ const (
 // in the following schema:
 //
 // | time | peerID | transfer type | state update | mempool version |
-func WriteMempoolPeerState(client *trace.Client, peer p2p.ID, stateUpdate, transferType, version string) {
+func WriteMempoolPeerState(client trace.Tracer, peer p2p.ID, stateUpdate, transferType, version string) {
 	// this check is redundant to what is checked during WritePoint, although it
 	// is an optimization to avoid allocations from creating the map of fields.
 	if !client.IsCollecting(MempoolPeerStateTable) {
 		return
 	}
-	client.WritePoint(MempoolPeerStateTable, map[string]interface{}{
+	client.Write(MempoolPeerStateTable, map[string]interface{}{
 		PeerFieldKey:         peer,
 		TransferTypeFieldKey: transferType,
 		StateUpdateFieldKey:  stateUpdate,
@@ -121,13 +121,13 @@ const (
 )
 
 // WriteMempoolRejected records why a transaction was rejected.
-func WriteMempoolRejected(client *trace.Client, reason string) {
+func WriteMempoolRejected(client trace.Tracer, reason string) {
 	// this check is redundant to what is checked during WritePoint, although it
 	// is an optimization to avoid allocations from creating the map of fields.
 	if !client.IsCollecting(MempoolRejectedTable) {
 		return
 	}
-	client.WritePoint(MempoolRejectedTable, map[string]interface{}{
+	client.Write(MempoolRejectedTable, map[string]interface{}{
 		ReasonFieldKey: reason,
 	})
 }

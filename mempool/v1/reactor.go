@@ -27,7 +27,7 @@ type Reactor struct {
 	config      *cfg.MempoolConfig
 	mempool     *TxMempool
 	ids         *mempoolIDs
-	traceClient *trace.Client
+	traceClient trace.Tracer
 }
 
 type mempoolIDs struct {
@@ -94,7 +94,7 @@ func newMempoolIDs() *mempoolIDs {
 }
 
 // NewReactor returns a new Reactor with the given config and mempool.
-func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool, traceClient *trace.Client) *Reactor {
+func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool, traceClient trace.Tracer) *Reactor {
 	memR := &Reactor{
 		config:      config,
 		mempool:     mempool,

@@ -50,7 +50,7 @@ type Reactor struct {
 	rs       *cstypes.RoundState
 
 	Metrics     *Metrics
-	traceClient *trace.Client
+	traceClient trace.Tracer
 }
 
 type ReactorOption func(*Reactor)
@@ -63,7 +63,7 @@ func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) 
 		waitSync:    waitSync,
 		rs:          consensusState.GetRoundState(),
 		Metrics:     NopMetrics(),
-		traceClient: &trace.Client{},
+		traceClient: trace.NoOpTracer(),
 	}
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR)
 
@@ -1047,7 +1047,7 @@ func ReactorMetrics(metrics *Metrics) ReactorOption {
 	return func(conR *Reactor) { conR.Metrics = metrics }
 }
 
-func ReactorTracing(traceClient *trace.Client) ReactorOption {
+func ReactorTracing(traceClient trace.Tracer) ReactorOption {
 	return func(conR *Reactor) { conR.traceClient = traceClient }
 }
 

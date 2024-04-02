@@ -36,8 +36,8 @@ const (
 // schema:
 //
 // | time | height | round | step |
-func WriteRoundState(client *trace.Client, height int64, round int32, step cstypes.RoundStepType) {
-	client.WritePoint(RoundStateTable, map[string]interface{}{
+func WriteRoundState(client trace.Tracer, height int64, round int32, step cstypes.RoundStepType) {
+	client.Write(RoundStateTable, map[string]interface{}{
 		HeightFieldKey: height,
 		RoundFieldKey:  round,
 		StepFieldKey:   step.String(),
@@ -64,7 +64,7 @@ const (
 //
 // | time | height | round | index | peer | transfer type |
 func WriteBlockPart(
-	client *trace.Client,
+	client trace.Tracer,
 	height int64,
 	round int32,
 	peer p2p.ID,
@@ -76,7 +76,7 @@ func WriteBlockPart(
 	if !client.IsCollecting(BlockPartsTable) {
 		return
 	}
-	client.WritePoint(BlockPartsTable, map[string]interface{}{
+	client.Write(BlockPartsTable, map[string]interface{}{
 		HeightFieldKey:         height,
 		RoundFieldKey:          round,
 		BlockPartIndexFieldKey: index,
@@ -118,8 +118,8 @@ const (
 	LastCommitRoundFieldKey = "last_commit_round"
 )
 
-func WriteBlock(client *trace.Client, block *types.Block, size int) {
-	client.WritePoint(BlockTable, map[string]interface{}{
+func WriteBlock(client trace.Tracer, block *types.Block, size int) {
+	client.Write(BlockTable, map[string]interface{}{
 		HeightFieldKey:                   block.Height,
 		UnixMillisecondTimestampFieldKey: block.Time.UnixMilli(),
 		TxCountFieldKey:                  len(block.Data.Txs),
@@ -159,14 +159,14 @@ const (
 // | vote_block_id| vote_unix_millisecond_timestamp
 // | vote_validator_address | vote_validator_index | peer
 // | transfer_type |
-func WriteVote(client *trace.Client,
+func WriteVote(client trace.Tracer,
 	height int64, // height of the current peer when it received/sent the vote
 	round int32, // round of the current peer when it received/sent the vote
 	vote *types.Vote, // vote received by the current peer
 	peer p2p.ID, // the peer from which it received the vote or the peer to which it sent the vote
 	transferType string, // download (received) or upload(sent)
 ) {
-	client.WritePoint(VoteTable, map[string]interface{}{
+	client.Write(VoteTable, map[string]interface{}{
 		HeightFieldKey:           height,
 		RoundFieldKey:            round,
 		VoteTypeFieldKey:         vote.Type.String(),

@@ -2,6 +2,7 @@ package trace
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -32,13 +33,15 @@ type ClientConfigConfig struct {
 	BatchSize int `mapstructure:"influx_batch_size"`
 }
 
+var _ Tracer = (*InfluxClient)(nil)
+
 // Client is an influxdb client that can be used to push events to influxdb. It
 // is used to collect trace data from many different nodes in a network. If
 // there is no URL in the config.toml, then the underlying client is nil and no
 // points will be written. The provided chainID and nodeID are used to tag all
 // points. The underlying client is exposed to allow for custom writes, but the
 // WritePoint method should be used for most cases, as it enforces the schema.
-type Client struct {
+type InfluxClient struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	cfg    *config.InstrumentationConfig
@@ -53,31 +56,31 @@ type Client struct {
 	// configured to be collected.
 	tables map[string]struct{}
 
-	// Client is the influxdb client. This field is nil if no connection is
+	// client is the influxdb client. This field is nil if no connection is
 	// established.
-	Client influxdb2.Client
+	client influxdb2.Client
 }
 
 // Stop closes the influxdb client.
-func (c *Client) Stop() {
+func (c *InfluxClient) Stop() {
 	c.cancel()
-	if c.Client == nil {
+	if c.client == nil {
 		return
 	}
-	writeAPI := c.Client.WriteAPI(c.cfg.InfluxOrg, c.cfg.InfluxBucket)
+	writeAPI := c.client.WriteAPI(c.cfg.TraceOrg, c.cfg.TraceDB)
 	writeAPI.Flush()
-	c.Client.Close()
+	c.client.Close()
 }
 
-// NewClient creates a new influxdb client using the provided config. If there
+// NewInfluxClient creates a new influxdb client using the provided config. If there
 // is no URL configured, then the underlying client will be nil, and each
 // attempt to write a point will do nothing. The provided chainID and nodeID are
 // used to tag all points.
-func NewClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, nodeID string) (*Client, error) {
+func NewInfluxClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, nodeID string) (*InfluxClient, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cli := &Client{
+	cli := &InfluxClient{
 		cfg:     cfg,
-		Client:  nil,
+		client:  nil,
 		ctx:     ctx,
 		cancel:  cancel,
 		chainID: chainID,
@@ -87,15 +90,15 @@ func NewClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, no
 	if cfg.InfluxURL == "" {
 		return cli, nil
 	}
-	cli.Client = influxdb2.NewClientWithOptions(
-		cfg.InfluxURL,
-		cfg.InfluxToken,
+	cli.client = influxdb2.NewClientWithOptions(
+		cfg.TracePushURL,
+		cfg.TraceAuthToken,
 		influxdb2.DefaultOptions().
 			SetBatchSize(uint(cfg.InfluxBatchSize)),
 	)
 	ctx, cancel = context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	alive, err := cli.Client.Ping(ctx)
+	alive, err := cli.client.Ping(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +111,8 @@ func NewClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, no
 }
 
 // logErrors empties the writeAPI error channel and logs any errors.
-func (c *Client) logErrors(logger log.Logger) {
-	writeAPI := c.Client.WriteAPI(c.cfg.InfluxOrg, c.cfg.InfluxBucket)
+func (c *InfluxClient) logErrors(logger log.Logger) {
+	writeAPI := c.client.WriteAPI(c.cfg.TraceOrg, c.cfg.TraceDB)
 	for {
 		select {
 		case err := <-writeAPI.Errors():
@@ -121,30 +124,34 @@ func (c *Client) logErrors(logger log.Logger) {
 }
 
 // IsCollecting returns true if the client is collecting events.
-func (c *Client) IsCollecting(table string) bool {
-	if c.Client == nil {
+func (c *InfluxClient) IsCollecting(table string) bool {
+	if c.client == nil {
 		return false
 	}
 	_, has := c.tables[table]
 	return has
 }
 
-// WritePoint async writes a point to influxdb. To enforce the schema, it
+// Write async writes a point to influxdb. To enforce the schema, it
 // automatically adds the chain_id and node_id tags, along with setting the
 // timestamp to the current time. If the underlying client is nil, it does
 // nothing. The "table" arg is used as the influxdb "measurement" for the point.
 // If other tags are needed, use WriteCustomPoint.
-func (c *Client) WritePoint(table string, fields map[string]interface{}) {
+func (c *InfluxClient) Write(table string, fields map[string]interface{}) {
 	if !c.IsCollecting(table) {
 		return
 	}
-	writeAPI := c.Client.WriteAPI(c.cfg.InfluxOrg, c.cfg.InfluxBucket)
+	writeAPI := c.client.WriteAPI(c.cfg.TraceOrg, c.cfg.TraceDB)
 	tags := map[string]string{
 		NodeIDTag:  c.nodeID,
 		ChainIDTag: c.chainID,
 	}
 	p := write.NewPoint(table, tags, fields, time.Now())
 	writeAPI.WritePoint(p)
+}
+
+func (c *InfluxClient) ReadTable(string) ([]byte, error) {
+	return nil, errors.New("Reading not supported using the InfluxDB tracing client")
 }
 
 func stringToMap(tables string) map[string]struct{} {
