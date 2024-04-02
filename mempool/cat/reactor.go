@@ -41,7 +41,7 @@ type Reactor struct {
 	mempool     *TxPool
 	ids         *mempoolIDs
 	requests    *requestScheduler
-	traceClient *trace.Client
+	traceClient trace.Tracer
 }
 
 type ReactorOptions struct {
@@ -57,7 +57,7 @@ type ReactorOptions struct {
 	MaxGossipDelay time.Duration
 
 	// TraceClient is the trace client for collecting trace level events
-	TraceClient *trace.Client
+	TraceClient trace.Tracer
 }
 
 func (opts *ReactorOptions) VerifyAndComplete() error {
@@ -91,7 +91,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		mempool:     mempool,
 		ids:         newMempoolIDs(),
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
-		traceClient: &trace.Client{},
+		traceClient: trace.NoOpTracer(),
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR, nil
@@ -228,9 +228,6 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// NOTE: This setup also means that we can support older mempool implementations that simply
 	// flooded the network with transactions.
 	case *protomem.Txs:
-		for _, tx := range msg.Txs {
-			schema.WriteMempoolTx(memR.traceClient, e.Src.ID(), tx, schema.TransferTypeDownload, schema.CatVersionFieldValue)
-		}
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received empty txs from peer", "src", e.Src)
@@ -244,6 +241,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		for _, tx := range protoTxs {
 			ntx := types.Tx(tx)
 			key := ntx.Key()
+			schema.WriteMempoolTx(memR.traceClient, e.Src.ID(), key[:], schema.Download)
 			// If we requested the transaction we mark it as received.
 			if memR.requests.Has(peerID, key) {
 				memR.requests.MarkReceived(peerID, key)
@@ -273,19 +271,19 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// 3. If we recently evicted the tx and still don't have space for it, we do nothing.
 	// 4. Else, we request the transaction from that peer.
 	case *protomem.SeenTx:
-		schema.WriteMempoolPeerState(
-			memR.traceClient,
-			e.Src.ID(),
-			schema.SeenTxStateUpdateFieldValue,
-			schema.TransferTypeDownload,
-			schema.CatVersionFieldValue,
-		)
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent SeenTx with incorrect tx key", "err", err)
 			memR.Switch.StopPeerForError(e.Src, err)
 			return
 		}
+		schema.WriteMempoolPeerState(
+			memR.traceClient,
+			e.Src.ID(),
+			schema.SeenTx,
+			txKey[:],
+			schema.Download,
+		)
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		memR.mempool.PeerHasTx(peerID, txKey)
 		// Check if we don't already have the transaction and that it was recently rejected
@@ -307,35 +305,34 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// A peer is requesting a transaction that we have claimed to have. Find the specified
 	// transaction and broadcast it to the peer. We may no longer have the transaction
 	case *protomem.WantTx:
-		schema.WriteMempoolPeerState(
-			memR.traceClient,
-			e.Src.ID(),
-			schema.WantTxStateUpdateFieldValue,
-			schema.TransferTypeDownload,
-			schema.CatVersionFieldValue,
-		)
 		txKey, err := types.TxKeyFromBytes(msg.TxKey)
 		if err != nil {
 			memR.Logger.Error("peer sent WantTx with incorrect tx key", "err", err)
 			memR.Switch.StopPeerForError(e.Src, err)
 			return
 		}
+		schema.WriteMempoolPeerState(
+			memR.traceClient,
+			e.Src.ID(),
+			schema.WantTx,
+			txKey[:],
+			schema.Download,
+		)
 		tx, has := memR.mempool.Get(txKey)
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
-			schema.WriteMempoolTx(
-				memR.traceClient,
-				e.Src.ID(),
-				msg.TxKey,
-				schema.TransferTypeUpload,
-				schema.CatVersionFieldValue,
-			)
 			memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
 			if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint:staticcheck
 				ChannelID: mempool.MempoolChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{tx}},
 			}, memR.Logger) {
 				memR.mempool.PeerHasTx(peerID, txKey)
+				schema.WriteMempoolTx(
+					memR.traceClient,
+					e.Src.ID(),
+					txKey[:],
+					schema.Upload,
+				)
 			}
 		}
 

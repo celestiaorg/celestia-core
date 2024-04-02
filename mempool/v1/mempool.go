@@ -16,7 +16,6 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/pkg/trace"
-	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
 )
@@ -59,7 +58,7 @@ type TxMempool struct {
 	txByKey    map[types.TxKey]*clist.CElement
 	txBySender map[string]*clist.CElement // for sender != ""
 
-	traceClient *trace.Client
+	traceClient trace.Tracer
 }
 
 // NewTxMempool constructs a new, empty priority mempool at the specified
@@ -83,7 +82,7 @@ func NewTxMempool(
 		height:       height,
 		txByKey:      make(map[types.TxKey]*clist.CElement),
 		txBySender:   make(map[string]*clist.CElement),
-		traceClient:  &trace.Client{},
+		traceClient:  trace.NoOpTracer(),
 	}
 	if cfg.CacheSize > 0 {
 		txmp.cache = mempool.NewLRUTxCache(cfg.CacheSize)
@@ -115,7 +114,7 @@ func WithMetrics(metrics *mempool.Metrics) TxMempoolOption {
 	return func(txmp *TxMempool) { txmp.metrics = metrics }
 }
 
-func WithTraceClient(tc *trace.Client) TxMempoolOption {
+func WithTraceClient(tc trace.Tracer) TxMempoolOption {
 	return func(txmp *TxMempool) {
 		txmp.traceClient = tc
 	}
@@ -204,7 +203,6 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		if txmp.preCheck != nil {
 			if err := txmp.preCheck(tx); err != nil {
 				txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedPrecheck).Add(1)
-				schema.WriteMempoolRejected(txmp.traceClient, err.Error())
 				return 0, mempool.ErrPreCheck{Reason: err}
 			}
 		}
@@ -483,15 +481,6 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		)
 
 		txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedAdding).Add(1)
-		reason := fmt.Sprintf(
-			"code: %d codespace: %s logs: %s local: %v postCheck error: %v",
-			checkTxRes.Code,
-			checkTxRes.Codespace,
-			checkTxRes.Log,
-			wtx.HasPeer(0), // this checks if the peer id is local
-			err,
-		)
-		schema.WriteMempoolRejected(txmp.traceClient, reason)
 
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
@@ -672,9 +661,6 @@ func (txmp *TxMempool) handleRecheckResult(tx types.Tx, checkTxRes *abci.Respons
 	txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedRecheck).Add(1)
 	if !txmp.config.KeepInvalidTxsInCache {
 		txmp.cache.Remove(wtx.tx)
-		if err != nil {
-			schema.WriteMempoolRejected(txmp.traceClient, err.Error())
-		}
 	}
 	txmp.metrics.Size.Set(float64(txmp.Size()))
 	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))

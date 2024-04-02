@@ -143,7 +143,7 @@ type State struct {
 	// for reporting metrics
 	metrics *Metrics
 
-	traceClient *trace.Client
+	traceClient trace.Tracer
 }
 
 // StateOption sets an optional parameter on the State.
@@ -174,7 +174,7 @@ func NewState(
 		evpool:           evpool,
 		evsw:             cmtevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
-		traceClient:      &trace.Client{},
+		traceClient:      trace.NoOpTracer(),
 	}
 
 	// set function defaults (may be overwritten before calling Start)
@@ -217,7 +217,7 @@ func StateMetrics(metrics *Metrics) StateOption {
 }
 
 // SetTraceClient sets the remote event collector.
-func SetTraceClient(ec *trace.Client) StateOption {
+func SetTraceClient(ec trace.Tracer) StateOption {
 	return func(cs *State) { cs.traceClient = ec }
 }
 
@@ -1845,7 +1845,7 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	blockSize := block.Size()
 
 	// trace some metadata about the block
-	schema.WriteBlock(cs.traceClient, block, blockSize)
+	schema.WriteBlockSummary(cs.traceClient, block, blockSize)
 
 	cs.metrics.NumTxs.Set(float64(len(block.Data.Txs)))
 	cs.metrics.TotalTxs.Add(float64(len(block.Data.Txs)))
