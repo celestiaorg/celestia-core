@@ -553,10 +553,7 @@ influx_url = "{{ .Instrumentation.InfluxURL }}"
 
 # The tracer url token to use for remote event collection.
 # This is not needed for local tracing.
-trace_auth_token = "{{ .Instrumentation.TraceAuthToken }}"
-
-# The tracer bucket to use for remote event collection.
-trace_db = "{{ .Instrumentation.TraceDB }}"
+trace_pull_address = "{{ .Instrumentation.TracePullAddress }}"
 
 # The tracer org to use for event remote collection.
 trace_type = "{{ .Instrumentation.TraceType }}"

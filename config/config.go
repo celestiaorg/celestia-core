@@ -1192,14 +1192,12 @@ type InstrumentationConfig struct {
 	// InfluxURL is the influxdb url.
 	InfluxURL string `mapstructure:"influx_url"`
 
-	// InfluxToken is the influxdb token.
-	InfluxToken string `mapstructure:"influx_token"`
+	// TracePullAddress is the address that the trace server will listen on for
+	// pulling data.
+	TracePullAddress string `mapstructure:"trace_pull_address"`
 
-	// TraceType is the type of tracer used. Options are "influx",  "local", and "noop".
+	// TraceType is the type of tracer used. Options are "local" and "noop".
 	TraceType string `mapstructure:"trace_type"`
-
-	// InfluxBucket is the influxdb bucket.
-	InfluxBucket string `mapstructure:"influx_bucket"`
 
 	// TraceBufferSize is the number of traces to write in a single batch.
 	TraceBufferSize int `mapstructure:"trace_push_batch_size"`
@@ -1233,8 +1231,8 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		MaxOpenConnections:   3,
 		Namespace:            "cometbft",
 		TracePushURL:         "",
+		TracePullAddress:     ":26661",
 		TraceType:            "noop",
-		TraceDB:              "trace",
 		TraceBufferSize:      1000,
 		TracingTables:        DefaultTracingTables,
 		PyroscopeURL:         "",
@@ -1273,14 +1271,11 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.InfluxURL == "" {
 		return nil
 	}
-	if cfg.InfluxToken == "" {
+	if cfg.TracePullAddress == "" {
 		return fmt.Errorf("token is required")
 	}
 	if cfg.TraceType == "" {
 		return fmt.Errorf("org is required")
-	}
-	if cfg.InfluxBucket == "" {
-		return fmt.Errorf("bucket is required")
 	}
 	if cfg.TraceBufferSize <= 0 {
 		return fmt.Errorf("batch size must be greater than 0")

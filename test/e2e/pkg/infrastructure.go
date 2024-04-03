@@ -33,13 +33,11 @@ type InfrastructureData struct {
 	// IP addresses are expected to be within.
 	Network string `json:"network"`
 
-	// InfluxDBURL is the URL of the InfluxDB instance to use for arbitrary data
-	// collection. If not specified, data will not be collected.
-	InfluxDBURL string `json:"influxdb_url,omitempty"`
+	// TracePushURL is the URL of the server to push trace data to.
+	TracePushURL string `json:"trace_push_url,omitempty"`
 
-	// InfluxDBToken is the token to use when writing to the InfluxDB instance.
-	// Must be specified if 'influxdb-url' is specified.
-	InfluxDBToken string `json:"influxdb_token,omitempty"`
+	// TracePullAddress is the address to listen on for pulling trace data.
+	TracePullAddress string `json:"trace_pull_address,omitempty"`
 
 	// PyroscopeURL is the URL of the pyroscope instance to use for continuous
 	// profiling. If not specified, data will not be collected.

@@ -23,13 +23,6 @@ func (c Cannal) Table() string {
 	return CannalTable
 }
 
-func (c Cannal) InfluxRepr() (map[string]interface{}, error) {
-	return map[string]interface{}{
-		"city":   c.Ville,
-		"length": c.Longueur,
-	}, nil
-}
-
 // TestLocalClientIntegrationTest tests the local client by writing some events,
 // reading them back and comparing them, writing at the same time as reading,
 // then uploads the files to a server and compares those.
@@ -70,10 +63,9 @@ func setupLocalClient(t *testing.T) *LocalClient {
 	logger := log.NewNopLogger()
 	cfg := config.DefaultConfig()
 	cfg.SetRoot(t.TempDir())
-	cfg.Instrumentation.TraceDB = "test"
 	cfg.Instrumentation.TraceBufferSize = 100
 	cfg.Instrumentation.TracingTables = CannalTable
-	cfg.Instrumentation.TracePullAddress = "http://localhost:42042/upload"
+	cfg.Instrumentation.TracePushURL = "http://localhost:42042/upload"
 
 	client, err := NewLocalClient(cfg, logger, "test_chain", "test_node")
 	if err != nil {

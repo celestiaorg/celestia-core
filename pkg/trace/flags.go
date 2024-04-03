@@ -1,10 +1,10 @@
 package trace
 
 const (
-	FlagInfluxDBURL              = "influxdb-url"
-	FlagInfluxDBToken            = "influxdb-token"
-	FlagInfluxDBURLDescription   = "URL of the InfluxDB instance to use for arbitrary data collection. If not specified, data will not be collected"
-	FlagInfluxDBTokenDescription = "Token to use when writing to the InfluxDB instance. Must be specified if 'influxdb-url' is specified" //nolint:gosec
+	FlagTracePushURL                = "trace-push-url"
+	FlagTracePullAddress            = "trace-pull-address"
+	FlagTracePushURLDescription     = "URL of the trace push server"
+	FlagTracePullAddressDescription = "address to listen on for pulling trace data" //nolint:gosec
 
 	FlagPyroscopeURL              = "pyroscope-url"
 	FlagPyroscopeURLDescription   = "URL of the Pyroscope instance to use for continuous profiling. If not specified, profiling will not be enabled"

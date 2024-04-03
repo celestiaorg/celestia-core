@@ -155,8 +155,8 @@ func (lc *LocalClient) draincanal() {
 // Stop optionally uploads and closes all open files.
 func (lc *LocalClient) Stop() {
 	for table, file := range lc.fileMap {
-		if lc.cfg.Instrumentation.TracePullAddress != "" {
-			err := UploadFile(lc.cfg.Instrumentation.TracePullAddress, lc.chainID, lc.nodeID, table, file)
+		if lc.cfg.Instrumentation.TracePushURL != "" {
+			err := UploadFile(lc.cfg.Instrumentation.TracePushURL, lc.chainID, lc.nodeID, table, file)
 			if err != nil {
 				lc.logger.Error("failed to upload trace file", "error", err)
 			}
