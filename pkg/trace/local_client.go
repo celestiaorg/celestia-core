@@ -65,6 +65,9 @@ func NewLocalClient(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 	for _, table := range splitAndTrimEmpty(cfg.Instrumentation.TracingTables, ",", " ") {
 		fileName := fmt.Sprintf("%s/%s.jsonl", path, table)
 		err := os.MkdirAll(path, 0700)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
+		}
 		file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open or create file %s: %w", fileName, err)
