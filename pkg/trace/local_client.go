@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/cometbft/cometbft/config"
@@ -154,8 +155,8 @@ func (lc *LocalClient) draincanal() {
 // Stop optionally uploads and closes all open files.
 func (lc *LocalClient) Stop() {
 	for table, file := range lc.fileMap {
-		if lc.cfg.Instrumentation.TracePushURL != "" {
-			err := UploadFile(lc.cfg.Instrumentation.TracePushURL, lc.chainID, lc.nodeID, table, file)
+		if lc.cfg.Instrumentation.TracePullAddress != "" {
+			err := UploadFile(lc.cfg.Instrumentation.TracePullAddress, lc.chainID, lc.nodeID, table, file)
 			if err != nil {
 				lc.logger.Error("failed to upload trace file", "error", err)
 			}
@@ -216,4 +217,28 @@ func UploadFile(url, chainID, nodeID, table string, file *os.File) error {
 	}
 
 	return nil
+}
+
+// splitAndTrimEmpty slices s into all subslices separated by sep and returns a
+// slice of the string s with all leading and trailing Unicode code points
+// contained in cutset removed. If sep is empty, SplitAndTrim splits after each
+// UTF-8 sequence. First part is equivalent to strings.SplitN with a count of
+// -1.  also filter out empty strings, only return non-empty strings.
+//
+// NOTE: this is copy pasted from the config package to avoid a circular
+// dependency. See the function of the same name for tests.
+func splitAndTrimEmpty(s, sep, cutset string) []string {
+	if s == "" {
+		return []string{}
+	}
+
+	spl := strings.Split(s, sep)
+	nonEmptyStrings := make([]string, 0, len(spl))
+	for i := 0; i < len(spl); i++ {
+		element := strings.Trim(spl[i], cutset)
+		if element != "" {
+			nonEmptyStrings = append(nonEmptyStrings, element)
+		}
+	}
+	return nonEmptyStrings
 }
