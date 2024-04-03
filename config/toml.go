@@ -548,14 +548,14 @@ max_open_connections = {{ .Instrumentation.MaxOpenConnections }}
 namespace = "{{ .Instrumentation.Namespace }}"
 
 # The URL of the trace db to use for remote event
-# collection. If empty, remote event collection is disabled.
-influx_url = "{{ .Instrumentation.InfluxURL }}"
+# collection. If empty, remote event pushing is disabled.
+trace_push_url = "{{ .Instrumentation.TracePushURL }}"
 
 # The tracer url token to use for remote event collection.
-# This is not needed for local tracing.
+# If empty, remote event pulling is disabled.
 trace_pull_address = "{{ .Instrumentation.TracePullAddress }}"
 
-# The tracer to use for event remote collection.
+# The tracer to use for collecting trace data.
 trace_type = "{{ .Instrumentation.TraceType }}"
 
 # The size of the batches that are sent to the database.
