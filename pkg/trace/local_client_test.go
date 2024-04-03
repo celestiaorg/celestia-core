@@ -73,7 +73,7 @@ func setupLocalClient(t *testing.T) *LocalClient {
 	cfg.Instrumentation.TraceDB = "test"
 	cfg.Instrumentation.TraceBufferSize = 100
 	cfg.Instrumentation.TracingTables = CannalTable
-	cfg.Instrumentation.TracePushURL = "http://localhost:42042/upload"
+	cfg.Instrumentation.TracePullAddress = "http://localhost:42042/upload"
 
 	client, err := NewLocalClient(cfg, logger, "test_chain", "test_node")
 	if err != nil {

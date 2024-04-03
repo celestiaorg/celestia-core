@@ -37,11 +37,6 @@ func (r RoundState) Table() string {
 	return RoundStateTable
 }
 
-// InfluxRepr returns the InfluxDB representation of the RoundState struct.
-func (r RoundState) InfluxRepr() (map[string]interface{}, error) {
-	return toMap(r)
-}
-
 // WriteRoundState writes a tracing point for a tx using the predetermined
 // schema for consensus state tracing.
 func WriteRoundState(client trace.Tracer, height int64, round int32, step cstypes.RoundStepType) {
@@ -67,11 +62,6 @@ type BlockPart struct {
 // Table returns the table name for the BlockPart struct.
 func (b BlockPart) Table() string {
 	return BlockPartsTable
-}
-
-// InfluxRepr returns the InfluxDB representation of the BlockPart struct.
-func (b BlockPart) InfluxRepr() (map[string]interface{}, error) {
-	return toMap(b)
 }
 
 // WriteBlockPart writes a tracing point for a BlockPart using the predetermined
@@ -122,10 +112,6 @@ func (v Vote) Table() string {
 	return VoteTable
 }
 
-func (v Vote) InfluxRepr() (map[string]interface{}, error) {
-	return toMap(v)
-}
-
 // WriteVote writes a tracing point for a vote using the predetermined
 // schema for consensus vote tracing.
 func WriteVote(client trace.Tracer,
@@ -166,10 +152,6 @@ type BlockSummary struct {
 
 func (b BlockSummary) Table() string {
 	return BlockTable
-}
-
-func (b BlockSummary) InfluxRepr() (map[string]interface{}, error) {
-	return toMap(b)
 }
 
 // WriteBlockSummary writes a tracing point for a block using the predetermined

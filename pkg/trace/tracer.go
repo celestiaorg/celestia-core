@@ -13,8 +13,6 @@ import (
 type Entry interface {
 	// Table defines which table the struct belongs to.
 	Table() string
-	// InfluxRepr returns the InfluxDB representation of the struct.
-	InfluxRepr() (map[string]interface{}, error)
 }
 
 // Tracer defines the methods for a client that can write and read trace data.
@@ -29,8 +27,6 @@ func NewTracer(cfg *config.Config, logger log.Logger, chainID, nodeID string) (T
 	switch cfg.Instrumentation.TraceType {
 	case "local":
 		return NewLocalClient(cfg, logger, chainID, nodeID)
-	case "influx":
-		return NewInfluxClient(cfg.Instrumentation, logger, chainID, nodeID)
 	case "noop":
 		return NoOpTracer(), nil
 	default:

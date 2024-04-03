@@ -34,11 +34,6 @@ func (m MempoolTx) Table() string {
 	return MempoolTxTable
 }
 
-// InfluxRepr returns the InfluxDB representation of the MempoolTx struct.
-func (m MempoolTx) InfluxRepr() (map[string]interface{}, error) {
-	return toMap(m)
-}
-
 // WriteMempoolTx writes a tracing point for a tx using the predetermined
 // schema for mempool tracing.
 func WriteMempoolTx(client trace.Tracer, peer p2p.ID, txHash []byte, transferType TransferType) {
@@ -81,11 +76,6 @@ type MempoolPeerState struct {
 // Table returns the table name for the MempoolPeerState struct.
 func (m MempoolPeerState) Table() string {
 	return MempoolPeerStateTable
-}
-
-// InfluxRepr returns the InfluxDB representation of the MempoolPeerState struct.
-func (m MempoolPeerState) InfluxRepr() (map[string]interface{}, error) {
-	return toMap(m)
 }
 
 // WriteMempoolPeerState writes a tracing point for the mempool state using
