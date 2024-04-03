@@ -36,7 +36,7 @@ func NewEvent[T any](chainID, nodeID, table string, msg T) Event[T] {
 
 // LocalClient saves all of the events passed to the retuen channel to files
 // based on their "type" (a string field in the event). Each type gets its own
-// file. The internals are purposefully not *explicity* thread safe to avoid the
+// file. The internals are purposefully not *explicitly* thread safe to avoid the
 // overhead of locking with each event save. Only pass events to the returned
 // channel. Call CloseAll to close all open files.
 type LocalClient struct {
