@@ -23,10 +23,9 @@ func (c Cannal) Table() string {
 	return CannalTable
 }
 
-// TestLocalClientIntegrationTest tests the local client by writing some events,
-// reading them back and comparing them, writing at the same time as reading,
-// then uploads the files to a server and compares those.
-func TestLocalClientIntegrationTest(t *testing.T) {
+// TestLocalClientReadWrite tests the local client by writing some events,
+// reading them back and comparing them, writing at the same time as reading.
+func TestLocalClientReadWrite(t *testing.T) {
 	// Setup
 	client := setupLocalClient(t)
 
@@ -35,24 +34,39 @@ func TestLocalClientIntegrationTest(t *testing.T) {
 	client.Write(annecy)
 	client.Write(paris)
 
-	// Wait for the write to complete.
 	time.Sleep(100 * time.Millisecond)
+	// flush the buffered file
+	bf, _ := client.getFile(CannalTable)
+	err := bf.Flush()
+	require.NoError(t, err)
 
 	f, err := client.ReadTable(CannalTable)
 	require.NoError(t, err)
 
-	events, err := ScanDecodeFile[Cannal](f)
-	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(events), 2)
-	require.Equal(t, annecy, events[0].Msg)
-	require.Equal(t, paris, events[1].Msg)
-
+	// write at the same time as reading to test thread safety this test will be
+	// flakey if this is not being handled correctly
 	migenees := Cannal{"Migennes", 620}
 	pontivy := Cannal{"Pontivy", 720}
 	client.Write(migenees)
 	client.Write(pontivy)
+
+	events, err := DecodeFile[Cannal](f)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(events), 2)
+	require.Equal(t, annecy, events[0].Msg)
+	require.Equal(t, paris, events[1].Msg)
+	f.Close()
+
 	time.Sleep(100 * time.Millisecond)
-	events, err = ScanDecodeFile[Cannal](f)
+
+	// flush the buffered file
+	err = bf.Flush()
+	require.NoError(t, err)
+
+	f, err = client.ReadTable(CannalTable)
+	require.NoError(t, err)
+	defer f.Close()
+	events, err = DecodeFile[Cannal](f)
 	require.NoError(t, err)
 	require.Len(t, events, 4)
 	require.Equal(t, migenees, events[2].Msg)

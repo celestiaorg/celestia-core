@@ -47,7 +47,7 @@ type LocalClient struct {
 	// fileMap maps tables to their open files files are threadsafe, but the map
 	// is not. Therefore don't create new files after initialization to remain
 	// threadsafe.
-	fileMap map[string]*os.File
+	fileMap map[string]*bufferedFile
 	// canal is a channel for all events that are being written. It acts as an
 	// extra buffer to avoid blocking the caller when writing to files.
 	canal chan Event[Entry]
@@ -60,7 +60,7 @@ type LocalClient struct {
 // to the returned channel. Call CloseAll to close all open files. Goroutine to
 // save events is started in this function.
 func NewLocalClient(cfg *config.Config, logger log.Logger, chainID, nodeID string) (*LocalClient, error) {
-	fm := make(map[string]*os.File)
+	fm := make(map[string]*bufferedFile)
 	path := path.Join(cfg.RootDir, "data", "traces")
 	for _, table := range splitAndTrimEmpty(cfg.Instrumentation.TracingTables, ",", " ") {
 		fileName := fmt.Sprintf("%s/%s.jsonl", path, table)
@@ -72,7 +72,8 @@ func NewLocalClient(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 		if err != nil {
 			return nil, fmt.Errorf("failed to open or create file %s: %w", fileName, err)
 		}
-		fm[table] = file
+		bf := newbufferedFile(file)
+		fm[table] = bf
 	}
 
 	lc := &LocalClient{
@@ -99,12 +100,12 @@ func (lc *LocalClient) Write(e Entry) {
 // ReadTable returns a file for the given table. If the table is not being
 // collected, an error is returned. This method is not thread-safe.
 func (lc *LocalClient) ReadTable(table string) (*os.File, error) {
-	file, has := lc.getFile(table)
+	bf, has := lc.getFile(table)
 	if !has {
 		return nil, fmt.Errorf("table %s not found", table)
 	}
 
-	return file, nil
+	return bf.File()
 }
 
 func (lc *LocalClient) IsCollecting(table string) bool {
@@ -116,7 +117,7 @@ func (lc *LocalClient) IsCollecting(table string) bool {
 
 // getFile gets a file for the given type. This method is purposely
 // not thread-safe to avoid the overhead of locking with each event save.
-func (lc *LocalClient) getFile(table string) (*os.File, bool) {
+func (lc *LocalClient) getFile(table string) (*bufferedFile, bool) {
 	f, has := lc.fileMap[table]
 	return f, has
 }
@@ -154,7 +155,14 @@ func (lc *LocalClient) draincanal() {
 // Stop optionally uploads and closes all open files.
 func (lc *LocalClient) Stop() {
 	for _, file := range lc.fileMap {
-		file.Close()
+		err := file.Flush()
+		if err != nil {
+			lc.logger.Error("failed to flush file", "error", err)
+		}
+		err = file.Close()
+		if err != nil {
+			lc.logger.Error("failed to close file", "error", err)
+		}
 	}
 }
 
