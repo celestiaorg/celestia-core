@@ -555,7 +555,7 @@ influx_url = "{{ .Instrumentation.InfluxURL }}"
 # This is not needed for local tracing.
 trace_pull_address = "{{ .Instrumentation.TracePullAddress }}"
 
-# The tracer org to use for event remote collection.
+# The tracer to use for event remote collection.
 trace_type = "{{ .Instrumentation.TraceType }}"
 
 # The size of the batches that are sent to the database.
