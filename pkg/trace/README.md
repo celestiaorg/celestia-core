@@ -8,7 +8,7 @@ change the config.toml to store traces in the .celestia-app/data/traces
 directory.
 
 ```toml
-# The tracer to use for event remote collection.
+# The tracer to use for collecting trace data.
 trace_type = "local"
 
 # The size of the batches that are sent to the database.
