@@ -30,7 +30,8 @@ func NewTracer(cfg *config.Config, logger log.Logger, chainID, nodeID string) (T
 	case "noop":
 		return NoOpTracer(), nil
 	default:
-		return nil, errors.New("unknown tracing type")
+		logger.Error("unknown tracer type, using noop", "type", cfg.Instrumentation.TraceType)
+		return NoOpTracer(), nil
 	}
 }
 
