@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -165,7 +166,7 @@ func (c *InfluxClient) Write(e Entry) {
 	c.writeAPI.WritePoint(p)
 }
 
-func (c *InfluxClient) ReadTable(string) ([]byte, error) {
+func (c *InfluxClient) ReadTable(string) (*os.File, error) {
 	return nil, errors.New("reading not supported using the InfluxDB tracing client")
 }
 

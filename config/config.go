@@ -1240,7 +1240,7 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		TracePushURL:         "",
 		TraceOrg:             "celestia",
 		TraceDB:              "e2e",
-		TraceBufferSize:      20,
+		TraceBufferSize:      1000,
 		TracingTables:        DefaultTracingTables,
 		PyroscopeURL:         "",
 		PyroscopeTrace:       false,
