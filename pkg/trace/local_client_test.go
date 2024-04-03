@@ -35,10 +35,6 @@ func TestLocalClientReadWrite(t *testing.T) {
 	client.Write(paris)
 
 	time.Sleep(100 * time.Millisecond)
-	// flush the buffered file
-	bf, _ := client.getFile(CannalTable)
-	err := bf.Flush()
-	require.NoError(t, err)
 
 	f, err := client.ReadTable(CannalTable)
 	require.NoError(t, err)
@@ -58,10 +54,6 @@ func TestLocalClientReadWrite(t *testing.T) {
 	f.Close()
 
 	time.Sleep(100 * time.Millisecond)
-
-	// flush the buffered file
-	err = bf.Flush()
-	require.NoError(t, err)
 
 	f, err = client.ReadTable(CannalTable)
 	require.NoError(t, err)
