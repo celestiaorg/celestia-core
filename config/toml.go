@@ -547,18 +547,19 @@ max_open_connections = {{ .Instrumentation.MaxOpenConnections }}
 # Instrumentation namespace
 namespace = "{{ .Instrumentation.Namespace }}"
 
-# The URL of the influxdb instance to use for remote event
+# The URL of the trace db to use for remote event
 # collection. If empty, remote event collection is disabled.
 influx_url = "{{ .Instrumentation.InfluxURL }}"
 
-# The influxdb token to use for remote event collection.
-influx_token = "{{ .Instrumentation.InfluxToken }}"
+# The tracer url token to use for remote event collection.
+# This is not needed for local tracing.
+trace_auth_token = "{{ .Instrumentation.TraceAuthToken }}"
 
-# The influxdb bucket to use for remote event collection.
-influx_bucket = "{{ .Instrumentation.InfluxBucket }}"
+# The tracer bucket to use for remote event collection.
+trace_db = "{{ .Instrumentation.TraceDB }}"
 
-# The influxdb org to use for event remote collection.
-influx_org = "{{ .Instrumentation.InfluxOrg }}"
+# The tracer org to use for event remote collection.
+trace_type = "{{ .Instrumentation.TraceType }}"
 
 # The size of the batches that are sent to the database.
 trace_push_batch_size = {{ .Instrumentation.TraceBufferSize }}

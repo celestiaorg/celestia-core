@@ -105,10 +105,10 @@ influx_url = "http://your-influx-ip:8086/"
 influx_token = "your-token"
 
 # The influxdb bucket to use for remote event collection.
-influx_bucket = "e2e"
+trace_db = "tracer"
 
 # The influxdb org to use for event remote collection.
-influx_org = "celestia"
+trace_type = "noop"
 
 # The size of the batches that are sent to the database.
 influx_batch_size = 20

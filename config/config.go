@@ -1195,8 +1195,8 @@ type InstrumentationConfig struct {
 	// InfluxToken is the influxdb token.
 	InfluxToken string `mapstructure:"influx_token"`
 
-	// InfluxOrg is the influxdb organization.
-	InfluxOrg string `mapstructure:"influx_org"`
+	// TraceType is the type of tracer used. Options are "influx",  "local", and "noop".
+	TraceType string `mapstructure:"trace_type"`
 
 	// InfluxBucket is the influxdb bucket.
 	InfluxBucket string `mapstructure:"influx_bucket"`
@@ -1233,8 +1233,8 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		MaxOpenConnections:   3,
 		Namespace:            "cometbft",
 		TracePushURL:         "",
-		TraceOrg:             "celestia",
-		TraceDB:              "e2e",
+		TraceType:            "noop",
+		TraceDB:              "trace",
 		TraceBufferSize:      1000,
 		TracingTables:        DefaultTracingTables,
 		PyroscopeURL:         "",
@@ -1276,7 +1276,7 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.InfluxToken == "" {
 		return fmt.Errorf("token is required")
 	}
-	if cfg.InfluxOrg == "" {
+	if cfg.TraceType == "" {
 		return fmt.Errorf("org is required")
 	}
 	if cfg.InfluxBucket == "" {
