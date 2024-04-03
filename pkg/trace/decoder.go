@@ -3,26 +3,34 @@ package trace
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 )
 
-// ScanDecodeFile reads a file and decodes it into a slice of events via
+// DecodeFile reads a file and decodes it into a slice of events via
 // scanning. The table parameter is used to determine the type of the events.
 // The file should be a jsonl file. The generic here are passed to the event
 // type.
-func ScanDecodeFile[T any](file *os.File) ([]Event[T], error) {
-	scanner := bufio.NewScanner(file)
+func DecodeFile[T any](f *os.File) ([]Event[T], error) {
 	var out []Event[T]
-	_, err := file.Seek(0, 0)
-	if err != nil {
-		return out, nil
-	}
-	for scanner.Scan() {
-		var row Event[T]
-		if err := json.Unmarshal(scanner.Bytes(), &row); err != nil {
-			return out, err
+	r := bufio.NewReader(f)
+	for {
+		line, err := r.ReadString('\n')
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			fmt.Println("error: ", err)
+			return nil, err
 		}
-		out = append(out, row)
+
+		var e Event[T]
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			return nil, err
+		}
+
+		out = append(out, e)
 	}
-	return out, scanner.Err()
+
+	return out, nil
 }
