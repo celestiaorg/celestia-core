@@ -28,7 +28,7 @@ type ClientConfigConfig struct {
 	// Token is the influxdb token.
 	Token string `mapstructure:"trace_auth_token"`
 	// Org is the influxdb organization.
-	Org string `mapstructure:"trace_org"`
+	Org string `mapstructure:"trace_type"`
 	// Bucket is the influxdb bucket.
 	Bucket string `mapstructure:"trace_db"`
 	// BatchSize is the number of points to write in a single batch.
@@ -75,7 +75,7 @@ func (c *InfluxClient) Stop() {
 	if c.client == nil {
 		return
 	}
-	writeAPI := c.client.WriteAPI(c.cfg.TraceOrg, c.cfg.TraceDB)
+	writeAPI := c.client.WriteAPI(c.cfg.TraceType, c.cfg.TraceDB)
 	writeAPI.Flush()
 	c.client.Close()
 }
@@ -116,13 +116,13 @@ func NewInfluxClient(cfg *config.InstrumentationConfig, logger log.Logger, chain
 	}
 	logger.Info("connected to influxdb", "url", cfg.TracePushURL)
 	go cli.logErrors(logger)
-	cli.writeAPI = cli.client.WriteAPI(cfg.TraceOrg, cfg.TraceDB)
+	cli.writeAPI = cli.client.WriteAPI(cfg.TraceType, cfg.TraceDB)
 	return cli, nil
 }
 
 // logErrors empties the writeAPI error channel and logs any errors.
 func (c *InfluxClient) logErrors(logger log.Logger) {
-	writeAPI := c.client.WriteAPI(c.cfg.TraceOrg, c.cfg.TraceDB)
+	writeAPI := c.client.WriteAPI(c.cfg.TraceType, c.cfg.TraceDB)
 	for {
 		select {
 		case err := <-writeAPI.Errors():

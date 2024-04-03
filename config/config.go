@@ -1199,8 +1199,8 @@ type InstrumentationConfig struct {
 	// traces.
 	TraceAuthToken string `mapstructure:"trace_auth_token"`
 
-	// TraceOrg is the trace db organization. This is used to group databases.
-	TraceOrg string `mapstructure:"trace_org"`
+	// TraceType is the type of tracer used. Options are "influx",  "local", and "noop".
+	TraceType string `mapstructure:"trace_type"`
 
 	// TraceDB is the name of the database to use when tracing. Each database is
 	// a set of tables.
@@ -1238,8 +1238,8 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		MaxOpenConnections:   3,
 		Namespace:            "cometbft",
 		TracePushURL:         "",
-		TraceOrg:             "celestia",
-		TraceDB:              "e2e",
+		TraceType:            "noop",
+		TraceDB:              "trace",
 		TraceBufferSize:      1000,
 		TracingTables:        DefaultTracingTables,
 		PyroscopeURL:         "",
@@ -1281,7 +1281,7 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.TraceAuthToken == "" {
 		return fmt.Errorf("token is required")
 	}
-	if cfg.TraceOrg == "" {
+	if cfg.TraceType == "" {
 		return fmt.Errorf("org is required")
 	}
 	if cfg.TraceDB == "" {

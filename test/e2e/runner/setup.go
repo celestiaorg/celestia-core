@@ -166,7 +166,7 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.DBBackend = node.Database
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
 
-	cfg.Instrumentation.TraceOrg = "celestia"
+	cfg.Instrumentation.TraceType = "celestia"
 	cfg.Instrumentation.TraceDB = "e2e"
 	cfg.Instrumentation.TracePushURL = node.InfluxDBURL
 	cfg.Instrumentation.TraceAuthToken = node.InfluxDBToken

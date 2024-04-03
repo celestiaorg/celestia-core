@@ -26,7 +26,16 @@ type Tracer interface {
 }
 
 func NewTracer(cfg *config.Config, logger log.Logger, chainID, nodeID string) (Tracer, error) {
-	return NewInfluxClient(cfg.Instrumentation, logger, chainID, nodeID)
+	switch cfg.Instrumentation.TraceType {
+	case "local":
+		return NewLocalClient(cfg, logger, chainID, nodeID)
+	case "influx":
+		return NewInfluxClient(cfg.Instrumentation, logger, chainID, nodeID)
+	case "noop":
+		return NoOpTracer(), nil
+	default:
+		return nil, errors.New("unknown tracing type")
+	}
 }
 
 func NoOpTracer() Tracer {

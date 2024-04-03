@@ -74,10 +74,10 @@ trace_push_url = "http://your-influx-ip:8086/"
 trace_auth_token = "your-token"
 
 # The influxdb bucket to use for remote event collection.
-trace_db = "e2e"
+trace_db = "tracer"
 
 # The influxdb org to use for event remote collection.
-trace_org = "celestia"
+trace_type = "local"
 
 # The size of the batches that are sent to the database.
 trace_push_batch_size = 20
