@@ -1,12 +1,8 @@
 package trace
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"mime/multipart"
-	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -154,69 +150,9 @@ func (lc *LocalClient) draincanal() {
 
 // Stop optionally uploads and closes all open files.
 func (lc *LocalClient) Stop() {
-	for table, file := range lc.fileMap {
-		if lc.cfg.Instrumentation.TracePushURL != "" {
-			err := UploadFile(lc.cfg.Instrumentation.TracePushURL, lc.chainID, lc.nodeID, table, file)
-			if err != nil {
-				lc.logger.Error("failed to upload trace file", "error", err)
-			}
-		}
+	for _, file := range lc.fileMap {
 		file.Close()
 	}
-}
-
-// UploadFile uploads a file to the given URL. This function does not close the
-// file.
-func UploadFile(url, chainID, nodeID, table string, file *os.File) error {
-	// Prepare a form that you will submit to that URL
-	var requestBody bytes.Buffer
-	multipartWriter := multipart.NewWriter(&requestBody)
-	fileWriter, err := multipartWriter.CreateFormFile("file", file.Name())
-	if err != nil {
-		return err
-	}
-
-	if err := multipartWriter.WriteField("chain_id", chainID); err != nil {
-		return err
-	}
-
-	if err := multipartWriter.WriteField("node_id", nodeID); err != nil {
-		return err
-	}
-
-	if err := multipartWriter.WriteField("table", table); err != nil {
-		return err
-	}
-
-	// Copy the file data to the multipart writer
-	if _, err := io.Copy(fileWriter, file); err != nil {
-		return err
-	}
-	multipartWriter.Close()
-
-	// Create a new request to the given URL
-	request, err := http.NewRequest("POST", url, &requestBody)
-	if err != nil {
-		return err
-	}
-
-	// Set the content type, this will contain the boundary.
-	request.Header.Set("Content-Type", multipartWriter.FormDataContentType())
-
-	// Do the request
-	client := &http.Client{}
-	response, err := client.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-
-	// Check the response
-	if response.StatusCode != http.StatusOK {
-		return io.ErrUnexpectedEOF
-	}
-
-	return nil
 }
 
 // splitAndTrimEmpty slices s into all subslices separated by sep and returns a
