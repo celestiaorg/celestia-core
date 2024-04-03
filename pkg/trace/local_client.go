@@ -1,11 +1,14 @@
 package trace
 
 import (
+	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
 	"os"
-	"sync"
+	"path"
 	"time"
 
 	"github.com/cometbft/cometbft/config"
@@ -14,18 +17,18 @@ import (
 
 // Event wraps some trace data with metadata that dictates the table and things
 // like the chainID and nodeID.
-type Event struct {
-	ChainID   string      `json:"chain_id"`
-	NodeID    string      `json:"node_id"`
-	Table     string      `json:"table"`
-	Timestamp time.Time   `json:"timestamp"`
-	Msg       interface{} `json:"msg"`
+type Event[T any] struct {
+	ChainID   string    `json:"chain_id"`
+	NodeID    string    `json:"node_id"`
+	Table     string    `json:"table"`
+	Timestamp time.Time `json:"timestamp"`
+	Msg       T         `json:"msg"`
 }
 
 // NewEvent creates a new Event with the given chainID, nodeID, table, and msg.
 // It adds the current time as the timestamp.
-func NewEvent(chainID, nodeID, table string, msg interface{}) Event {
-	return Event{
+func NewEvent[T any](chainID, nodeID, table string, msg T) Event[T] {
+	return Event[T]{
 		ChainID:   chainID,
 		NodeID:    nodeID,
 		Table:     table,
@@ -42,16 +45,15 @@ func NewEvent(chainID, nodeID, table string, msg interface{}) Event {
 type LocalClient struct {
 	chainID, nodeID string
 	logger          log.Logger
-
-	mu sync.RWMutex // Protects access to the fileMap
+	cfg             *config.Config
 
 	// fileMap maps tables to their open files files are threadsafe, but the map
 	// is not. Therefore don't create new files after initialization to remain
 	// threadsafe.
 	fileMap map[string]*os.File
-	// cannal is a channel for all events that are being written. It acts as an
+	// canal is a channel for all events that are being written. It acts as an
 	// extra buffer to avoid blocking the caller when writing to files.
-	cannal chan Event
+	canal chan Event[Entry]
 }
 
 // NewLocalClient creates a struct that will save all of the events passed to
@@ -60,11 +62,13 @@ type LocalClient struct {
 // safe to avoid the overhead of locking with each event save. Only pass events
 // to the returned channel. Call CloseAll to close all open files. Goroutine to
 // save events is started in this function.
-func NewLocalClient(cfg *config.InstrumentationConfig, logger log.Logger, chainID, nodeID string) (*LocalClient, error) {
+func NewLocalClient(cfg *config.Config, logger log.Logger, chainID, nodeID string) (*LocalClient, error) {
 	fm := make(map[string]*os.File)
-	for _, table := range splitAndTrimEmpty(cfg.TracingTables, ",", " ") {
-		fileName := fmt.Sprintf("%s.jsonl", table)
-		file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	path := path.Join(cfg.RootDir, "data", "traces")
+	for _, table := range splitAndTrimEmpty(cfg.Instrumentation.TracingTables, ",", " ") {
+		fileName := fmt.Sprintf("%s/%s.jsonl", path, table)
+		err := os.MkdirAll(path, 0700)
+		file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open or create file %s: %w", fileName, err)
 		}
@@ -73,46 +77,53 @@ func NewLocalClient(cfg *config.InstrumentationConfig, logger log.Logger, chainI
 
 	lc := &LocalClient{
 		fileMap: fm,
-		cannal:  make(chan Event, cfg.TraceBufferSize),
+		cfg:     cfg,
+		canal:   make(chan Event[Entry], cfg.Instrumentation.TraceBufferSize),
 		chainID: chainID,
 		nodeID:  nodeID,
 		logger:  logger,
-		mu:      sync.RWMutex{},
 	}
 
-	go lc.drainCannal()
+	go lc.draincanal()
 
 	return lc, nil
 }
 
-func (fm *LocalClient) Write(e Entry) {
-	if !fm.IsCollecting(e.Table()) {
+func (lc *LocalClient) Write(e Entry) {
+	if !lc.IsCollecting(e.Table()) {
 		return
 	}
-	fm.cannal <- NewEvent(fm.chainID, fm.nodeID, e.Table(), e)
+	lc.canal <- NewEvent(lc.chainID, lc.nodeID, e.Table(), e)
 }
 
-func (fm *LocalClient) ReadTable(table string) ([]byte, error) {
-	return nil, errors.New("reading not supported using the Local tracing client")
+// ReadTable returns a file for the given table. If the table is not being
+// collected, an error is returned. This method is not thread-safe.
+func (lc *LocalClient) ReadTable(table string) (*os.File, error) {
+	file, has := lc.getFile(table)
+	if !has {
+		return nil, fmt.Errorf("table %s not found", table)
+	}
+
+	return file, nil
 }
 
-func (fm *LocalClient) IsCollecting(table string) bool {
-	if _, has := fm.getFile(table); has {
+func (lc *LocalClient) IsCollecting(table string) bool {
+	if _, has := lc.getFile(table); has {
 		return true
 	}
 	return false
 }
 
-// getFile gets or creates a file for the given type. This method is purposely
+// getFile gets a file for the given type. This method is purposely
 // not thread-safe to avoid the overhead of locking with each event save.
-func (fm *LocalClient) getFile(table string) (*os.File, bool) {
-	f, has := fm.fileMap[table]
+func (lc *LocalClient) getFile(table string) (*os.File, bool) {
+	f, has := lc.fileMap[table]
 	return f, has
 }
 
 // saveEventToFile marshals an Event into JSON and appends it to a file named after the event's Type.
-func (fm *LocalClient) saveEventToFile(event Event) error {
-	file, has := fm.getFile(event.Table)
+func (lc *LocalClient) saveEventToFile(event Event[Entry]) error {
+	file, has := lc.getFile(event.Table)
 	if !has {
 		return fmt.Errorf("table %s not found", event.Table)
 	}
@@ -129,20 +140,80 @@ func (fm *LocalClient) saveEventToFile(event Event) error {
 	return nil
 }
 
-// drainCannal takes a variadic number of channels of Event pointers and drains them into files.
-func (fm *LocalClient) drainCannal() {
+// draincanal takes a variadic number of channels of Event pointers and drains them into files.
+func (lc *LocalClient) draincanal() {
 	// purposefully do not lock, and rely on the channel to provide sync
 	// actions, to avoid overhead of locking with each event save.
-	for ev := range fm.cannal {
-		if err := fm.saveEventToFile(ev); err != nil {
-			fm.logger.Error("failed to save event to file", "error", err)
+	for ev := range lc.canal {
+		if err := lc.saveEventToFile(ev); err != nil {
+			lc.logger.Error("failed to save event to file", "error", err)
 		}
 	}
 }
 
-// CloseAll closes all open files.
-func (fm *LocalClient) Stop() {
-	for _, file := range fm.fileMap {
+// Stop optionally uploads and closes all open files.
+func (lc *LocalClient) Stop() {
+	for table, file := range lc.fileMap {
+		if lc.cfg.Instrumentation.TracePushURL != "" {
+			err := UploadFile(lc.cfg.Instrumentation.TracePushURL, lc.chainID, lc.nodeID, table, file)
+			if err != nil {
+				lc.logger.Error("failed to upload trace file", "error", err)
+			}
+		}
 		file.Close()
 	}
+}
+
+// UploadFile uploads a file to the given URL. This function does not close the
+// file.
+func UploadFile(url, chainID, nodeID, table string, file *os.File) error {
+	// Prepare a form that you will submit to that URL
+	var requestBody bytes.Buffer
+	multipartWriter := multipart.NewWriter(&requestBody)
+	fileWriter, err := multipartWriter.CreateFormFile("file", file.Name())
+	if err != nil {
+		return err
+	}
+
+	if err := multipartWriter.WriteField("chain_id", chainID); err != nil {
+		return err
+	}
+
+	if err := multipartWriter.WriteField("node_id", nodeID); err != nil {
+		return err
+	}
+
+	if err := multipartWriter.WriteField("table", table); err != nil {
+		return err
+	}
+
+	// Copy the file data to the multipart writer
+	if _, err := io.Copy(fileWriter, file); err != nil {
+		return err
+	}
+	multipartWriter.Close()
+
+	// Create a new request to the given URL
+	request, err := http.NewRequest("POST", url, &requestBody)
+	if err != nil {
+		return err
+	}
+
+	// Set the content type, this will contain the boundary.
+	request.Header.Set("Content-Type", multipartWriter.FormDataContentType())
+
+	// Do the request
+	client := &http.Client{}
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	// Check the response
+	if response.StatusCode != http.StatusOK {
+		return io.ErrUnexpectedEOF
+	}
+
+	return nil
 }
