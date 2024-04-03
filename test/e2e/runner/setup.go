@@ -168,8 +168,8 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 
 	cfg.Instrumentation.TraceType = "celestia"
 	cfg.Instrumentation.TraceDB = "e2e"
-	cfg.Instrumentation.TracePushURL = node.InfluxDBURL
-	cfg.Instrumentation.TraceAuthToken = node.InfluxDBToken
+	cfg.Instrumentation.TracePushURL = node.TracePushURL
+	cfg.Instrumentation.TracePullAddress = node.TracePullAddress
 	cfg.Instrumentation.PyroscopeTrace = node.PyroscopeTrace
 	cfg.Instrumentation.PyroscopeURL = node.PyroscopeURL
 	cfg.Instrumentation.PyroscopeProfileTypes = node.PyroscopeProfileTypes

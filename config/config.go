@@ -1195,16 +1195,12 @@ type InstrumentationConfig struct {
 	// TracePushURL is the URL that the tracer will push to.
 	TracePushURL string `mapstructure:"trace_push_url"`
 
-	// TraceAuthToken is the token used by the tracer for authentication to push
-	// traces.
-	TraceAuthToken string `mapstructure:"trace_auth_token"`
+	// TracePullAddress is the address that the trace server will listen on for
+	// pulling data.
+	TracePullAddress string `mapstructure:"trace_pull_address"`
 
-	// TraceType is the type of tracer used. Options are "influx",  "local", and "noop".
+	// TraceType is the type of tracer used. Options are "local" and "noop".
 	TraceType string `mapstructure:"trace_type"`
-
-	// TraceDB is the name of the database to use when tracing. Each database is
-	// a set of tables.
-	TraceDB string `mapstructure:"trace_db"`
 
 	// TraceBufferSize is the number of traces to write in a single batch.
 	TraceBufferSize int `mapstructure:"trace_push_batch_size"`
@@ -1238,8 +1234,8 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		MaxOpenConnections:   3,
 		Namespace:            "cometbft",
 		TracePushURL:         "",
+		TracePullAddress:     ":26661",
 		TraceType:            "noop",
-		TraceDB:              "trace",
 		TraceBufferSize:      1000,
 		TracingTables:        DefaultTracingTables,
 		PyroscopeURL:         "",
@@ -1278,14 +1274,11 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.TracePushURL == "" {
 		return nil
 	}
-	if cfg.TraceAuthToken == "" {
+	if cfg.TracePullAddress == "" {
 		return fmt.Errorf("token is required")
 	}
 	if cfg.TraceType == "" {
 		return fmt.Errorf("org is required")
-	}
-	if cfg.TraceDB == "" {
-		return fmt.Errorf("bucket is required")
 	}
 	if cfg.TraceBufferSize <= 0 {
 		return fmt.Errorf("batch size must be greater than 0")

@@ -78,17 +78,17 @@ func NewCLI() *CLI {
 				return fmt.Errorf("unknown infrastructure type '%s'", inft)
 			}
 
-			iurl, err := cmd.Flags().GetString(trace.FlagInfluxDBURL)
+			iurl, err := cmd.Flags().GetString(trace.FlagTracePushURL)
 			if err != nil {
 				return err
 			}
-			itoken, err := cmd.Flags().GetString(trace.FlagInfluxDBToken)
+			itoken, err := cmd.Flags().GetString(trace.FlagTracePullAddress)
 			if err != nil {
 				return err
 			}
-			if ifd.InfluxDBURL == "" {
-				ifd.InfluxDBURL = iurl
-				ifd.InfluxDBToken = itoken
+			if ifd.TracePushURL == "" {
+				ifd.TracePushURL = iurl
+				ifd.TracePullAddress = itoken
 			}
 
 			purl, err := cmd.Flags().GetString(trace.FlagPyroscopeURL)
@@ -186,9 +186,9 @@ func NewCLI() *CLI {
 
 	cli.root.PersistentFlags().StringP("infrastructure-data", "", "", "path to the json file containing the infrastructure data. Only used if the 'infrastructure-type' is set to a value other than 'docker'")
 
-	cli.root.PersistentFlags().String(trace.FlagInfluxDBURL, "", trace.FlagInfluxDBURLDescription)
+	cli.root.PersistentFlags().String(trace.FlagTracePushURL, "", trace.FlagTracePushURLDescription)
 
-	cli.root.PersistentFlags().String(trace.FlagInfluxDBToken, "", trace.FlagInfluxDBTokenDescription)
+	cli.root.PersistentFlags().String(trace.FlagTracePullAddress, "", trace.FlagTracePullAddressDescription)
 
 	cli.root.PersistentFlags().String(trace.FlagPyroscopeURL, "", trace.FlagPyroscopeURLDescription)
 
