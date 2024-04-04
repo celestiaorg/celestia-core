@@ -1,11 +1,7 @@
 # We need to build in a Linux environment to support C libraries, e.g. RocksDB.
 # We use Debian instead of Alpine, so that we can use binary database packages
 # instead of spending time compiling them.
-<<<<<<< HEAD
-FROM golang:1.22-bullseye
-=======
 FROM golang:1.22.2-bullseye
->>>>>>> abc516304 (chore: go vuln (#1283))
 
 RUN apt-get -qq update -y && apt-get -qq upgrade -y >/dev/null
 RUN apt-get -qq install -y libleveldb-dev librocksdb-dev >/dev/null
