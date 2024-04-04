@@ -80,7 +80,7 @@ func pump(table string, br *bufio.Reader) (*io.PipeReader, *multipart.Writer) {
 
 func (lc *LocalClient) servePullData() {
 	http.HandleFunc("/get_table", lc.getTableHandler())
-	err := http.ListenAndServe(":42042", nil)
+	err := http.ListenAndServe(":42042", nil) //nolint:gosec
 	if err != nil {
 		lc.logger.Error("trace pull server failure", "err", err)
 	}
@@ -92,7 +92,7 @@ func GetTable(serverURL, table, dirPath string) error {
 	data := url.Values{}
 	data.Set("table", table)
 
-	resp, err := http.PostForm(serverURL, data)
+	resp, err := http.PostForm(serverURL, data) //nolint:gosec
 	if err != nil {
 		return err
 	}

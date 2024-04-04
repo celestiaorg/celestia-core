@@ -121,7 +121,8 @@ func TestLocalClientServerPull(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, originalBz, downloadedBz)
 
-	downloadedFile.Seek(0, 0) // reset the seek on the file to read it again
+	_, err = downloadedFile.Seek(0, 0) // reset the seek on the file to read it again
+	require.NoError(t, err)
 	events, err := DecodeFile[Cannal](downloadedFile)
 	require.NoError(t, err)
 	require.Len(t, events, 5)
