@@ -86,6 +86,9 @@ func NewLocalClient(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 	}
 
 	go lc.draincanal()
+	if cfg.Instrumentation.TracePushURL != "" {
+		go lc.servePullData()
+	}
 
 	return lc, nil
 }

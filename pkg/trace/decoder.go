@@ -3,7 +3,6 @@ package trace
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 )
@@ -20,7 +19,6 @@ func DecodeFile[T any](f *os.File) ([]Event[T], error) {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			fmt.Println("error: ", err)
 			return nil, err
 		}
 
