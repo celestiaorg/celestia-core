@@ -32,6 +32,7 @@ func (c Cannal) Table() string {
 // reading them back and comparing them, writing at the same time as reading.
 func TestLocalTracerReadWrite(t *testing.T) {
 	port, err := getFreePort()
+	require.NoError(t, err)
 	client := setupLocalTracer(t, port)
 
 	annecy := Cannal{"Annecy", 420}
