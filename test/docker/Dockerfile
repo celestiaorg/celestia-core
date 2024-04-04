@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 FROM golang:1.22
+=======
+FROM golang:1.22.2
+>>>>>>> abc516304 (chore: go vuln (#1283))
 
 # Grab deps (jq, hexdump, xxd, killall)
 RUN apt-get update && \

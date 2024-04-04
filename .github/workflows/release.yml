@@ -16,7 +16,11 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
+<<<<<<< HEAD
           go-version: '1.22'
+=======
+          go-version: '1.22.2'
+>>>>>>> abc516304 (chore: go vuln (#1283))
 
       - name: Generate release notes
         run: |
