@@ -241,6 +241,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		for _, tx := range protoTxs {
 			ntx := types.Tx(tx)
 			key := ntx.Key()
+			schema.WriteMempoolTx(memR.traceClient, e.Src.ID(), key[:], schema.Download)
 			// If we requested the transaction we mark it as received.
 			if memR.requests.Has(peerID, key) {
 				memR.requests.MarkReceived(peerID, key)
@@ -260,7 +261,6 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
 				memR.broadcastSeenTx(key)
 			}
-			schema.WriteMempoolTx(memR.traceClient, e.Src.ID(), key[:], schema.Download)
 		}
 
 	// A peer has indicated to us that it has a transaction. We first verify the txkey and
