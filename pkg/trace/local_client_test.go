@@ -93,8 +93,6 @@ func TestLocalClientServerPull(t *testing.T) {
 		client.Write(Cannal{"Annecy", i})
 	}
 
-	go client.servePullData()
-
 	// Wait for the server to start
 	time.Sleep(100 * time.Millisecond)
 
