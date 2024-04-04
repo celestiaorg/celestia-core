@@ -12,7 +12,7 @@ import (
 	"path"
 )
 
-func (lc *LocalClient) getTableHandler() http.HandlerFunc {
+func (lt *LocalTracer) getTableHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Parse the request to get the data
 		if err := r.ParseForm(); err != nil {
@@ -26,7 +26,7 @@ func (lc *LocalClient) getTableHandler() http.HandlerFunc {
 			return
 		}
 
-		f, err := lc.ReadTable(inputString)
+		f, err := lt.ReadTable(inputString)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to read table: %v", err), http.StatusInternalServerError)
 			return
@@ -56,7 +56,7 @@ func pump(table string, br *bufio.Reader) (*io.PipeReader, *multipart.Writer) {
 	m := multipart.NewWriter(w)
 
 	go func(
-		tableq string,
+		table string,
 		m *multipart.Writer,
 		w *io.PipeWriter,
 		br *bufio.Reader,
@@ -78,11 +78,12 @@ func pump(table string, br *bufio.Reader) (*io.PipeReader, *multipart.Writer) {
 	return r, m
 }
 
-func (lc *LocalClient) servePullData() {
-	http.HandleFunc("/get_table", lc.getTableHandler())
-	err := http.ListenAndServe(":42042", nil) //nolint:gosec
+func (lt *LocalTracer) servePullData() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/get_table", lt.getTableHandler())
+	err := http.ListenAndServe(lt.cfg.Instrumentation.TracePullAddress, mux) //nolint:gosec
 	if err != nil {
-		lc.logger.Error("trace pull server failure", "err", err)
+		lt.logger.Error("trace pull server failure", "err", err)
 	}
 }
 
@@ -91,6 +92,8 @@ func (lc *LocalClient) servePullData() {
 func GetTable(serverURL, table, dirPath string) error {
 	data := url.Values{}
 	data.Set("table", table)
+
+	serverURL = serverURL + "/get_table"
 
 	resp, err := http.PostForm(serverURL, data) //nolint:gosec
 	if err != nil {

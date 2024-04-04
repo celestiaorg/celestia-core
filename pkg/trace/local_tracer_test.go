@@ -1,7 +1,9 @@
 package trace
 
 import (
+	"fmt"
 	"io"
+	"net"
 	"os"
 	"path"
 	"testing"
@@ -26,11 +28,11 @@ func (c Cannal) Table() string {
 	return CannalTable
 }
 
-// TestLocalClientReadWrite tests the local client by writing some events,
+// TestLocalTracerReadWrite tests the local client by writing some events,
 // reading them back and comparing them, writing at the same time as reading.
-func TestLocalClientReadWrite(t *testing.T) {
-	// Setup
-	client := setupLocalClient(t)
+func TestLocalTracerReadWrite(t *testing.T) {
+	port, err := getFreePort()
+	client := setupLocalTracer(t, port)
 
 	annecy := Cannal{"Annecy", 420}
 	paris := Cannal{"Paris", 420}
@@ -68,15 +70,15 @@ func TestLocalClientReadWrite(t *testing.T) {
 	require.Equal(t, pontivy, events[3].Msg)
 }
 
-func setupLocalClient(t *testing.T) *LocalClient {
+func setupLocalTracer(t *testing.T, port int) *LocalTracer {
 	logger := log.NewNopLogger()
 	cfg := config.DefaultConfig()
 	cfg.SetRoot(t.TempDir())
 	cfg.Instrumentation.TraceBufferSize = 100
 	cfg.Instrumentation.TracingTables = CannalTable
-	cfg.Instrumentation.TracePushURL = ":42042"
+	cfg.Instrumentation.TracePullAddress = fmt.Sprintf(":%d", port)
 
-	client, err := NewLocalClient(cfg, logger, "test_chain", "test_node")
+	client, err := NewLocalTracer(cfg, logger, "test_chain", "test_node")
 	if err != nil {
 		t.Fatalf("failed to create local client: %v", err)
 	}
@@ -84,10 +86,11 @@ func setupLocalClient(t *testing.T) *LocalClient {
 	return client
 }
 
-// TestLocalClientServerPull tests the pull portion of the server.
-func TestLocalClientServerPull(t *testing.T) {
-	// Setup
-	client := setupLocalClient(t)
+// TestLocalTracerServerPull tests the pull portion of the server.
+func TestLocalTracerServerPull(t *testing.T) {
+	port, err := getFreePort()
+	require.NoError(t, err)
+	client := setupLocalTracer(t, port)
 
 	for i := 0; i < 5; i++ {
 		client.Write(Cannal{"Annecy", i})
@@ -99,11 +102,13 @@ func TestLocalClientServerPull(t *testing.T) {
 	// Test the server
 	newDir := t.TempDir()
 
+	url := fmt.Sprintf("http://localhost:%d", port)
+
 	// try to read a table that is not being collected. error expected.
-	err := GetTable("http://localhost:42042/get_table", "canal", newDir)
+	err = GetTable(url, "canal", newDir)
 	require.Error(t, err)
 
-	err = GetTable("http://localhost:42042/get_table", CannalTable, newDir)
+	err = GetTable(url, CannalTable, newDir)
 	require.NoError(t, err)
 
 	originalFile, err := client.ReadTable(CannalTable)
@@ -129,4 +134,19 @@ func TestLocalClientServerPull(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		require.Equal(t, i, events[i].Msg.Longueur)
 	}
+}
+
+// getFreePort returns a free port and optionally an error.
+func getFreePort() (int, error) {
+	a, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		return 0, err
+	}
+
+	l, err := net.ListenTCP("tcp", a)
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
 }

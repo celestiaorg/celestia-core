@@ -28,7 +28,7 @@ To retrieve a table remotely using the pull based server, call the following
 function:
 
 ```go
-err := GetTable("http://1.2.3.4:26661/get_table", "mempool_tx", "directory to store the file")
+err := GetTable("http://1.2.3.4:26661", "mempool_tx", "directory to store the file")
 if err != nil {
     return err
 }

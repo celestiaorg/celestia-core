@@ -26,7 +26,7 @@ type Tracer interface {
 func NewTracer(cfg *config.Config, logger log.Logger, chainID, nodeID string) (Tracer, error) {
 	switch cfg.Instrumentation.TraceType {
 	case "local":
-		return NewLocalClient(cfg, logger, chainID, nodeID)
+		return NewLocalTracer(cfg, logger, chainID, nodeID)
 	case "noop":
 		return NoOpTracer(), nil
 	default:
