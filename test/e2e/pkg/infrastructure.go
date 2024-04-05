@@ -33,8 +33,8 @@ type InfrastructureData struct {
 	// IP addresses are expected to be within.
 	Network string `json:"network"`
 
-	// TracePushURL is the URL of the server to push trace data to.
-	TracePushURL string `json:"trace_push_url,omitempty"`
+	// TracePushConfig is the URL of the server to push trace data to.
+	TracePushConfig string `json:"trace_push_config,omitempty"`
 
 	// TracePullAddress is the address to listen on for pulling trace data.
 	TracePullAddress string `json:"trace_pull_address,omitempty"`

@@ -1192,8 +1192,9 @@ type InstrumentationConfig struct {
 	// Instrumentation namespace.
 	Namespace string `mapstructure:"namespace"`
 
-	// TracePushURL is the URL that the tracer will push to.
-	TracePushURL string `mapstructure:"trace_push_url"`
+	// TracePushConfig is the relative path of the push config. This second
+	// config contains credentials for where and how often to.
+	TracePushConfig string `mapstructure:"trace_push_config"`
 
 	// TracePullAddress is the address that the trace server will listen on for
 	// pulling data.
@@ -1233,8 +1234,8 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		PrometheusListenAddr: ":26660",
 		MaxOpenConnections:   3,
 		Namespace:            "cometbft",
-		TracePushURL:         "",
-		TracePullAddress:     ":26661",
+		TracePushConfig:      "",
+		TracePullAddress:     "",
 		TraceType:            "noop",
 		TraceBufferSize:      1000,
 		TracingTables:        DefaultTracingTables,
@@ -1269,9 +1270,9 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.PyroscopeTrace && cfg.PyroscopeURL == "" {
 		return errors.New("pyroscope_trace can't be enabled if profiling is disabled")
 	}
-	// if there is not TracePushURL configured, then we do not need to validate the rest
+	// if there is not TracePushConfig configured, then we do not need to validate the rest
 	// of the config because we are not connecting.
-	if cfg.TracePushURL == "" {
+	if cfg.TracePushConfig == "" {
 		return nil
 	}
 	if cfg.TracePullAddress == "" {

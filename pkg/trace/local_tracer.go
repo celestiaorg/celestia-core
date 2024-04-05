@@ -34,15 +34,16 @@ func NewEvent[T any](chainID, nodeID, table string, msg T) Event[T] {
 	}
 }
 
-// LocalClient saves all of the events passed to the retuen channel to files
+// LocalTracer saves all of the events passed to the retuen channel to files
 // based on their "type" (a string field in the event). Each type gets its own
 // file. The internals are purposefully not *explicitly* thread safe to avoid the
 // overhead of locking with each event save. Only pass events to the returned
 // channel. Call CloseAll to close all open files.
-type LocalClient struct {
+type LocalTracer struct {
 	chainID, nodeID string
 	logger          log.Logger
 	cfg             *config.Config
+	s3Config        S3Config
 
 	// fileMap maps tables to their open files files are threadsafe, but the map
 	// is not. Therefore don't create new files after initialization to remain
@@ -53,20 +54,20 @@ type LocalClient struct {
 	canal chan Event[Entry]
 }
 
-// NewLocalClient creates a struct that will save all of the events passed to
+// NewLocalTracer creates a struct that will save all of the events passed to
 // the retuen channel to files based on their "table" (a string field in the
 // event). Each type gets its own file. The internal are purposefully not thread
 // safe to avoid the overhead of locking with each event save. Only pass events
 // to the returned channel. Call CloseAll to close all open files. Goroutine to
 // save events is started in this function.
-func NewLocalClient(cfg *config.Config, logger log.Logger, chainID, nodeID string) (*LocalClient, error) {
+func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID string) (*LocalTracer, error) {
 	fm := make(map[string]*bufferedFile)
-	path := path.Join(cfg.RootDir, "data", "traces")
+	p := path.Join(cfg.RootDir, "data", "traces")
 	for _, table := range splitAndTrimEmpty(cfg.Instrumentation.TracingTables, ",", " ") {
-		fileName := fmt.Sprintf("%s/%s.jsonl", path, table)
-		err := os.MkdirAll(path, 0700)
+		fileName := fmt.Sprintf("%s/%s.jsonl", p, table)
+		err := os.MkdirAll(p, 0700)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
+			return nil, fmt.Errorf("failed to create directory %s: %w", p, err)
 		}
 		file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 		if err != nil {
@@ -76,7 +77,7 @@ func NewLocalClient(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 		fm[table] = bf
 	}
 
-	lc := &LocalClient{
+	lt := &LocalTracer{
 		fileMap: fm,
 		cfg:     cfg,
 		canal:   make(chan Event[Entry], cfg.Instrumentation.TraceBufferSize),
@@ -85,22 +86,33 @@ func NewLocalClient(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 		logger:  logger,
 	}
 
-	go lc.draincanal()
+	go lt.drainCanal()
+	if cfg.Instrumentation.TracePullAddress != "" {
+		go lt.servePullData()
+	}
+	if cfg.Instrumentation.TracePushConfig != "" {
+		s3Config, err := readS3Config(path.Join(cfg.RootDir, "config", cfg.Instrumentation.TracePushConfig))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read s3 config: %w", err)
+		}
+		lt.s3Config = s3Config
+		go lt.pushLoop()
+	}
 
-	return lc, nil
+	return lt, nil
 }
 
-func (lc *LocalClient) Write(e Entry) {
-	if !lc.IsCollecting(e.Table()) {
+func (lt *LocalTracer) Write(e Entry) {
+	if !lt.IsCollecting(e.Table()) {
 		return
 	}
-	lc.canal <- NewEvent(lc.chainID, lc.nodeID, e.Table(), e)
+	lt.canal <- NewEvent(lt.chainID, lt.nodeID, e.Table(), e)
 }
 
 // ReadTable returns a file for the given table. If the table is not being
 // collected, an error is returned. This method is not thread-safe.
-func (lc *LocalClient) ReadTable(table string) (*os.File, error) {
-	bf, has := lc.getFile(table)
+func (lt *LocalTracer) ReadTable(table string) (*os.File, error) {
+	bf, has := lt.getFile(table)
 	if !has {
 		return nil, fmt.Errorf("table %s not found", table)
 	}
@@ -108,8 +120,8 @@ func (lc *LocalClient) ReadTable(table string) (*os.File, error) {
 	return bf.File()
 }
 
-func (lc *LocalClient) IsCollecting(table string) bool {
-	if _, has := lc.getFile(table); has {
+func (lt *LocalTracer) IsCollecting(table string) bool {
+	if _, has := lt.getFile(table); has {
 		return true
 	}
 	return false
@@ -117,14 +129,14 @@ func (lc *LocalClient) IsCollecting(table string) bool {
 
 // getFile gets a file for the given type. This method is purposely
 // not thread-safe to avoid the overhead of locking with each event save.
-func (lc *LocalClient) getFile(table string) (*bufferedFile, bool) {
-	f, has := lc.fileMap[table]
+func (lt *LocalTracer) getFile(table string) (*bufferedFile, bool) {
+	f, has := lt.fileMap[table]
 	return f, has
 }
 
 // saveEventToFile marshals an Event into JSON and appends it to a file named after the event's Type.
-func (lc *LocalClient) saveEventToFile(event Event[Entry]) error {
-	file, has := lc.getFile(event.Table)
+func (lt *LocalTracer) saveEventToFile(event Event[Entry]) error {
+	file, has := lt.getFile(event.Table)
 	if !has {
 		return fmt.Errorf("table %s not found", event.Table)
 	}
@@ -142,26 +154,26 @@ func (lc *LocalClient) saveEventToFile(event Event[Entry]) error {
 }
 
 // draincanal takes a variadic number of channels of Event pointers and drains them into files.
-func (lc *LocalClient) draincanal() {
+func (lt *LocalTracer) drainCanal() {
 	// purposefully do not lock, and rely on the channel to provide sync
 	// actions, to avoid overhead of locking with each event save.
-	for ev := range lc.canal {
-		if err := lc.saveEventToFile(ev); err != nil {
-			lc.logger.Error("failed to save event to file", "error", err)
+	for ev := range lt.canal {
+		if err := lt.saveEventToFile(ev); err != nil {
+			lt.logger.Error("failed to save event to file", "error", err)
 		}
 	}
 }
 
 // Stop optionally uploads and closes all open files.
-func (lc *LocalClient) Stop() {
-	for _, file := range lc.fileMap {
+func (lt *LocalTracer) Stop() {
+	for _, file := range lt.fileMap {
 		err := file.Flush()
 		if err != nil {
-			lc.logger.Error("failed to flush file", "error", err)
+			lt.logger.Error("failed to flush file", "error", err)
 		}
 		err = file.Close()
 		if err != nil {
-			lc.logger.Error("failed to close file", "error", err)
+			lt.logger.Error("failed to close file", "error", err)
 		}
 	}
 }

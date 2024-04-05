@@ -547,12 +547,14 @@ max_open_connections = {{ .Instrumentation.MaxOpenConnections }}
 # Instrumentation namespace
 namespace = "{{ .Instrumentation.Namespace }}"
 
-# The URL of the trace db to use for remote event
-# collection. If empty, remote event pushing is disabled.
-trace_push_url = "{{ .Instrumentation.TracePushURL }}"
+# TracePushConfig is the relative path of the push config.
+# This second config contains credentials for where and how often to
+# push trace data to. For example, if the config is next to this config,
+# it would be "push_config.json".
+trace_push_config = "{{ .Instrumentation.TracePushConfig }}"
 
-# The tracer url token to use for remote event collection.
-# If empty, remote event pulling is disabled.
+# The tracer pull address specifies which address will be used for pull based
+# event collection. If empty, the pull based server will not be started.
 trace_pull_address = "{{ .Instrumentation.TracePullAddress }}"
 
 # The tracer to use for collecting trace data.
