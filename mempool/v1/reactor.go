@@ -193,18 +193,18 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		var err error
 		for _, tx := range protoTxs {
 			ntx := types.Tx(tx)
-			err = memR.mempool.CheckTx(ntx, nil, txInfo)
-			if errors.Is(err, mempool.ErrTxInCache) {
-				memR.Logger.Debug("Tx already exists in cache", "tx", ntx.String())
-			} else if err != nil {
-				memR.Logger.Info("Could not check tx", "tx", ntx.String(), "err", err)
-			}
 			schema.WriteMempoolTx(
 				memR.traceClient,
 				e.Src.ID(),
 				ntx.Hash(),
 				schema.Download,
 			)
+			err = memR.mempool.CheckTx(ntx, nil, txInfo)
+			if errors.Is(err, mempool.ErrTxInCache) {
+				memR.Logger.Debug("Tx already exists in cache", "tx", ntx.String())
+			} else if err != nil {
+				memR.Logger.Info("Could not check tx", "tx", ntx.String(), "err", err)
+			}
 		}
 	default:
 		memR.Logger.Error("unknown message type", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
