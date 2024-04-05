@@ -1270,17 +1270,6 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.PyroscopeTrace && cfg.PyroscopeURL == "" {
 		return errors.New("pyroscope_trace can't be enabled if profiling is disabled")
 	}
-	// if there is not TracePushConfig configured, then we do not need to validate the rest
-	// of the config because we are not connecting.
-	if cfg.TracePushConfig == "" {
-		return nil
-	}
-	if cfg.TracePullAddress == "" {
-		return fmt.Errorf("token is required")
-	}
-	if cfg.TraceType == "" {
-		return fmt.Errorf("org is required")
-	}
 	if cfg.TraceBufferSize <= 0 {
 		return fmt.Errorf("batch size must be greater than 0")
 	}
