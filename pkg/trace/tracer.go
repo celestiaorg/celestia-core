@@ -23,6 +23,9 @@ type Tracer interface {
 	Stop()
 }
 
+// NewTracer creates a new Tracer based on the configuration. By default, a
+// no-op tracer is returned. ChainID and NodeID are used to identify the node in
+// the trace data. NodeID is the node's peer ID.
 func NewTracer(cfg *config.Config, logger log.Logger, chainID, nodeID string) (Tracer, error) {
 	switch cfg.Instrumentation.TraceType {
 	case "local":
