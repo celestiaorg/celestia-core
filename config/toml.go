@@ -557,7 +557,7 @@ trace_push_config = "{{ .Instrumentation.TracePushConfig }}"
 # event collection. If empty, the pull based server will not be started.
 trace_pull_address = "{{ .Instrumentation.TracePullAddress }}"
 
-# The tracer to use for collecting trace data.
+# The tracer type to use for collecting trace data.
 trace_type = "{{ .Instrumentation.TraceType }}"
 
 # The size of the batches that are sent to the database.

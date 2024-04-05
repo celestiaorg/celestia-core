@@ -1271,7 +1271,7 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 		return errors.New("pyroscope_trace can't be enabled if profiling is disabled")
 	}
 	if cfg.TraceBufferSize <= 0 {
-		return fmt.Errorf("batch size must be greater than 0")
+		return fmt.Errorf("trace buffer size must be greater than 0")
 	}
 	return nil
 }
