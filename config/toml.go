@@ -551,8 +551,8 @@ namespace = "{{ .Instrumentation.Namespace }}"
 # collection. If empty, remote event pushing is disabled.
 trace_push_url = "{{ .Instrumentation.TracePushURL }}"
 
-# The tracer url token to use for remote event collection.
-# If empty, remote event pulling is disabled.
+# The tracer pull address specifies which address will be used for pull based
+# event collection. If empty, the pull based server will not be started.
 trace_pull_address = "{{ .Instrumentation.TracePullAddress }}"
 
 # The tracer to use for collecting trace data.

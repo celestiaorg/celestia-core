@@ -8,8 +8,8 @@ change the config.toml to store traces in the .celestia-app/data/traces
 directory.
 
 ```toml
-# The tracer url token to use for remote event collection.
-# If empty, remote event pulling is disabled.
+# The tracer pull address specifies which address will be used for pull based
+# event collection. If empty, the pull based server will not be started.
 trace_pull_address = ":26661"
 
 # The tracer to use for collecting trace data.
