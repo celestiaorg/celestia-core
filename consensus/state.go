@@ -1076,7 +1076,7 @@ func (cs *State) needProofBlock(height int64) bool {
 
 	lastBlockMeta := cs.blockStore.LoadBlockMeta(height - 1)
 	if lastBlockMeta == nil {
-		// See https://github.com/cometbft/cometbft/issues/370
+		// See https://github.com/tendermint/tendermint/issues/370
 		cs.Logger.Info("short-circuited needProofBlock", "height", height, "InitialHeight", cs.state.InitialHeight)
 		return true
 	}

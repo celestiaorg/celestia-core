@@ -78,7 +78,7 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 	}
 
 	if opts.TraceClient == nil {
-		opts.TraceClient = &trace.Client{}
+		opts.TraceClient = trace.NoOpTracer()
 	}
 
 	return nil

@@ -25,6 +25,7 @@ type Config struct {
 	PrivValState     string                      `toml:"privval_state"`
 	Misbehaviors     map[string]string           `toml:"misbehaviors"`
 	KeyType          string                      `toml:"key_type"`
+	ID               int                         `toml:"id"`
 }
 
 // App extracts out the application specific configuration parameters

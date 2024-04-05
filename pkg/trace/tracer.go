@@ -4,8 +4,8 @@ import (
 	"errors"
 	"os"
 
-	"github.com/cometbft/cometbft/config"
-	"github.com/cometbft/cometbft/libs/log"
+	"github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/libs/log"
 )
 
 // Entry is an interface for all structs that are used to define the schema for

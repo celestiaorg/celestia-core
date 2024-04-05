@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cometbft/cometbft/config"
-	"github.com/cometbft/cometbft/libs/log"
+	"github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/libs/log"
 )
 
 // Event wraps some trace data with metadata that dictates the table and things
@@ -68,7 +68,7 @@ func NewLocalClient(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 		if err != nil {
 			return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
 		}
-		file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+		file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0777)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open or create file %s: %w", fileName, err)
 		}

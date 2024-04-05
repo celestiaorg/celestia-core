@@ -63,11 +63,11 @@ var (
 	minSubscriptionBufferSize     = 100
 	defaultSubscriptionBufferSize = 200
 
-	// DefaultInfluxTables is a list of tables that are used for storing traces.
+	// DefaultTracingTables is a list of tables that are used for storing traces.
 	// This global var is filled by an init function in the schema package. This
 	// allows for the schema package to contain all the relevant logic while
 	// avoiding import cycles.
-	DefaultInfluxTables = ""
+	DefaultTracingTables = ""
 )
 
 // Config defines the top level configuration for a CometBFT node
@@ -1196,16 +1196,20 @@ type InstrumentationConfig struct {
 	// pulling data.
 	TracePullAddress string `mapstructure:"trace_pull_address"`
 
+	// TracePushURL is the address that the trace server will listen on for
+	// pulling data.
+	TracePushURL string `mapstructure:"trace_push_url"`
+
 	// TraceType is the type of tracer used. Options are "local" and "noop".
 	TraceType string `mapstructure:"trace_type"`
 
 	// TraceBufferSize is the number of traces to write in a single batch.
 	TraceBufferSize int `mapstructure:"trace_push_batch_size"`
 
-	// InfluxTables is the list of tables that will be traced. See the
+	// TracingTables is the list of tables that will be traced. See the
 	// pkg/trace/schema for a complete list of tables. It is represented as a
 	// comma separate string. For example: "consensus_round_state,mempool_tx".
-	InfluxTables string `mapstructure:"influx_tables"`
+	TracingTables string `mapstructure:"influx_tables"`
 
 	// PyroscopeURL is the pyroscope url used to establish a connection with a
 	// pyroscope continuous profiling server.

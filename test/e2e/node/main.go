@@ -25,6 +25,7 @@ import (
 	dbs "github.com/tendermint/tendermint/light/store/db"
 	"github.com/tendermint/tendermint/node"
 	"github.com/tendermint/tendermint/p2p"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"github.com/tendermint/tendermint/privval"
 	"github.com/tendermint/tendermint/proxy"
 	rpcserver "github.com/tendermint/tendermint/rpc/jsonrpc/server"
@@ -129,6 +130,9 @@ func startNode(cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to setup config: %w", err)
 	}
+
+	cmtcfg.Instrumentation.TraceType = "local"
+	cmtcfg.Instrumentation.TracingTables = strings.Join(schema.AllTables(), ",")
 
 	n, err := node.NewNode(cmtcfg,
 		privval.LoadOrGenFilePV(cmtcfg.PrivValidatorKeyFile(), cmtcfg.PrivValidatorStateFile()),

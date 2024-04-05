@@ -188,7 +188,7 @@ func (p *http) signedHeader(ctx context.Context, height *int64) (*types.SignedHe
 		commit, err := p.client.Commit(ctx, height)
 		switch {
 		case err == nil:
-			// See https://github.com/cometbft/cometbft/issues/575
+			// See https://github.com/tendermint/tendermint/issues/575
 			// If the node is starting at a non-zero height, but does not yet
 			// have any blocks, it can return an empty signed header without
 			// returning an error.
