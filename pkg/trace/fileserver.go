@@ -2,6 +2,8 @@ package trace
 
 import (
 	"bufio"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -10,6 +12,14 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 func (lt *LocalTracer) getTableHandler() http.HandlerFunc {
@@ -153,4 +163,155 @@ func GetTable(serverURL, table, dirPath string) error {
 	}
 
 	return nil
+}
+
+// S3Config is a struct that holds the configuration for an S3 bucket.
+type S3Config struct {
+	BucketName string `json:"bucket_name"`
+	Region     string `json:"region"`
+	AccessKey  string `json:"access_key"`
+	SecretKey  string `json:"secret_key"`
+	// PushDelay is the time in seconds to wait before pushing the file to S3.
+	// If this is 0, it defaults is used.
+	PushDelay int64 `json:"push_delay"`
+}
+
+// readS3Config reads an S3Config from a file in the given directory.
+func readS3Config(dir string) (S3Config, error) {
+	cfg := S3Config{}
+	f, err := os.Open(filepath.Join(dir, "s3.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return cfg, nil
+	}
+	if err != nil {
+		return cfg, err
+	}
+	defer f.Close()
+	err = json.NewDecoder(f).Decode(&cfg)
+	if cfg.PushDelay == 0 {
+		cfg.PushDelay = 60
+	}
+	return cfg, err
+}
+
+// PushS3 pushes a file to an S3 bucket using the given S3Config. It uses the
+// chainID and the nodeID to organize the files in the bucket. The directory
+// structure is chainID/nodeID/table.jsonl .
+func PushS3(chainID, nodeID string, s3cfg S3Config, f *os.File) error {
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String(s3cfg.Region),
+		Credentials: credentials.NewStaticCredentials(
+			s3cfg.AccessKey,
+			s3cfg.SecretKey,
+			"",
+		),
+	},
+	)
+	if err != nil {
+		return err
+	}
+
+	s3Svc := s3.New(sess)
+
+	key := fmt.Sprintf("%s/%s/%s", chainID, nodeID, filepath.Base(f.Name()))
+
+	_, err = s3Svc.PutObject(&s3.PutObjectInput{
+		Bucket: aws.String(s3cfg.BucketName),
+		Key:    aws.String(key),
+		Body:   f,
+	})
+
+	return err
+}
+
+func (lt *LocalTracer) pushLoop() {
+	for {
+		time.Sleep(time.Second * time.Duration(lt.s3Config.PushDelay))
+		err := lt.PushAll()
+		if err != nil {
+			lt.logger.Error("failed to push tables", "error", err)
+		}
+	}
+}
+
+func (lt *LocalTracer) PushAll() error {
+	for table := range lt.fileMap {
+		f, err := lt.ReadTable(table)
+		if err != nil {
+			return err
+		}
+		if err := PushS3(lt.chainID, lt.nodeID, lt.s3Config, f); err != nil {
+			return err
+		}
+		f.Close()
+	}
+	return nil
+}
+
+// S3Download downloads files that match some prefix from an S3 bucket to a
+// local directory dst.
+func S3Download(dst, prefix string, cfg S3Config) error {
+	// Ensure local directory structure exists
+	err := os.MkdirAll(dst, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String(cfg.Region),
+		Credentials: credentials.NewStaticCredentials(
+			cfg.AccessKey,
+			cfg.SecretKey,
+			"",
+		),
+	},
+	)
+	if err != nil {
+		return err
+	}
+
+	s3Svc := s3.New(sess)
+	input := &s3.ListObjectsV2Input{
+		Bucket:    aws.String(cfg.BucketName),
+		Prefix:    aws.String(prefix),
+		Delimiter: aws.String(""),
+	}
+
+	err = s3Svc.ListObjectsV2Pages(input, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
+		for _, content := range page.Contents {
+			localFilePath := filepath.Join(dst, strings.TrimPrefix(*content.Key, prefix))
+			fmt.Printf("Downloading %s to %s\n", *content.Key, localFilePath)
+
+			// Create the directories in the path
+			if err := os.MkdirAll(filepath.Dir(localFilePath), os.ModePerm); err != nil {
+				return false
+			}
+
+			// Create a file to write the S3 Object contents to.
+			f, err := os.Create(localFilePath)
+			if err != nil {
+				return false
+			}
+
+			resp, err := s3Svc.GetObject(&s3.GetObjectInput{
+				Bucket: aws.String(cfg.BucketName),
+				Key:    aws.String(*content.Key),
+			})
+			if err != nil {
+				f.Close()
+				continue
+			}
+			defer resp.Body.Close()
+
+			// Copy the contents of the S3 object to the local file
+			if _, err := io.Copy(f, resp.Body); err != nil {
+				return false
+			}
+
+			fmt.Printf("Successfully downloaded %s to %s\n", *content.Key, localFilePath)
+			f.Close()
+		}
+		return !lastPage // continue paging
+	})
+	return err
 }

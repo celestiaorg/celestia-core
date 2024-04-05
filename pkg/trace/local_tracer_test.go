@@ -71,22 +71,6 @@ func TestLocalTracerReadWrite(t *testing.T) {
 	require.Equal(t, pontivy, events[3].Msg)
 }
 
-func setupLocalTracer(t *testing.T, port int) *LocalTracer {
-	logger := log.NewNopLogger()
-	cfg := config.DefaultConfig()
-	cfg.SetRoot(t.TempDir())
-	cfg.Instrumentation.TraceBufferSize = 100
-	cfg.Instrumentation.TracingTables = testEventTable
-	cfg.Instrumentation.TracePullAddress = fmt.Sprintf(":%d", port)
-
-	client, err := NewLocalTracer(cfg, logger, "test_chain", "test_node")
-	if err != nil {
-		t.Fatalf("failed to create local client: %v", err)
-	}
-
-	return client
-}
-
 // TestLocalTracerServerPull tests the pull portion of the server.
 func TestLocalTracerServerPull(t *testing.T) {
 	port, err := getFreePort()
@@ -135,6 +119,22 @@ func TestLocalTracerServerPull(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		require.Equal(t, i, events[i].Msg.Length)
 	}
+}
+
+func setupLocalTracer(t *testing.T, port int) *LocalTracer {
+	logger := log.NewNopLogger()
+	cfg := config.DefaultConfig()
+	cfg.SetRoot(t.TempDir())
+	cfg.Instrumentation.TraceBufferSize = 100
+	cfg.Instrumentation.TracingTables = testEventTable
+	cfg.Instrumentation.TracePullAddress = fmt.Sprintf(":%d", port)
+
+	client, err := NewLocalTracer(cfg, logger, "test_chain", "test_node")
+	if err != nil {
+		t.Fatalf("failed to create local client: %v", err)
+	}
+
+	return client
 }
 
 // getFreePort returns a free port and optionally an error.

@@ -43,6 +43,7 @@ type LocalTracer struct {
 	chainID, nodeID string
 	logger          log.Logger
 	cfg             *config.Config
+	s3Config        S3Config
 
 	// fileMap maps tables to their open files files are threadsafe, but the map
 	// is not. Therefore don't create new files after initialization to remain
@@ -61,12 +62,12 @@ type LocalTracer struct {
 // save events is started in this function.
 func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID string) (*LocalTracer, error) {
 	fm := make(map[string]*bufferedFile)
-	path := path.Join(cfg.RootDir, "data", "traces")
+	p := path.Join(cfg.RootDir, "data", "traces")
 	for _, table := range splitAndTrimEmpty(cfg.Instrumentation.TracingTables, ",", " ") {
-		fileName := fmt.Sprintf("%s/%s.jsonl", path, table)
-		err := os.MkdirAll(path, 0700)
+		fileName := fmt.Sprintf("%s/%s.jsonl", p, table)
+		err := os.MkdirAll(p, 0700)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
+			return nil, fmt.Errorf("failed to create directory %s: %w", p, err)
 		}
 		file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 		if err != nil {
@@ -85,9 +86,17 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 		logger:  logger,
 	}
 
-	go lt.draincanal()
+	go lt.drainCanal()
 	if cfg.Instrumentation.TracePullAddress != "" {
 		go lt.servePullData()
+	}
+	if cfg.Instrumentation.TracePushConfig != "" {
+		s3Config, err := readS3Config(path.Join(cfg.RootDir, "config", cfg.Instrumentation.TracePushConfig))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read s3 config: %w", err)
+		}
+		lt.s3Config = s3Config
+		go lt.pushLoop()
 	}
 
 	return lt, nil
@@ -145,7 +154,7 @@ func (lt *LocalTracer) saveEventToFile(event Event[Entry]) error {
 }
 
 // draincanal takes a variadic number of channels of Event pointers and drains them into files.
-func (lt *LocalTracer) draincanal() {
+func (lt *LocalTracer) drainCanal() {
 	// purposefully do not lock, and rely on the channel to provide sync
 	// actions, to avoid overhead of locking with each event save.
 	for ev := range lt.canal {
