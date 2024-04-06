@@ -1272,13 +1272,7 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.TracePushConfig == "" {
 		return nil
 	}
-	if cfg.TracePullAddress == "" {
-		return fmt.Errorf("token is required")
-	}
-	if cfg.TraceType == "" {
-		return fmt.Errorf("org is required")
-	}
-	if cfg.TraceBufferSize <= 0 {
+	if cfg.TraceBufferSize < 0 {
 		return fmt.Errorf("batch size must be greater than 0")
 	}
 	return nil
