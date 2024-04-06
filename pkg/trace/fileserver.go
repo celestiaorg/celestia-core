@@ -177,11 +177,11 @@ type S3Config struct {
 }
 
 // readS3Config reads an S3Config from a file in the given directory.
-func readS3Config(dir string) (S3Config, error) {
+func readS3Config(path string) (S3Config, error) {
 	cfg := S3Config{}
-	f, err := os.Open(filepath.Join(dir, "s3.json"))
+	f, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return cfg, nil
+		return cfg, err
 	}
 	if err != nil {
 		return cfg, err
