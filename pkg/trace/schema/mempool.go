@@ -4,7 +4,6 @@ import (
 	"github.com/cometbft/cometbft/libs/bytes"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/pkg/trace"
-	"github.com/cometbft/cometbft/types"
 )
 
 // MempoolTables returns the list of tables for mempool tracing.
@@ -12,7 +11,6 @@ func MempoolTables() []string {
 	return []string{
 		MempoolTxTable,
 		MempoolPeerStateTable,
-		MempoolRejectedTable,
 	}
 }
 
@@ -20,49 +18,35 @@ func MempoolTables() []string {
 const (
 	// MempoolTxTable is the tracing "measurement" (aka table) for the mempool
 	// that stores tracing data related to gossiping transactions.
-	//
-	// The schema for this table is:
-	// | time | peerID | tx size | tx hash | transfer type | mempool version |
 	MempoolTxTable = "mempool_tx"
-
-	// TxFieldKey is the tracing field key for receiving for sending a
-	// tx. This should take the form of a tx hash as the value.
-	TxFieldKey = "tx"
-
-	// SizeFieldKey is the tracing field key for the size of a tx. This
-	// should take the form of the size of the tx as the value.
-	SizeFieldKey = "size"
-
-	// VersionFieldKey is the tracing field key for the version of the mempool.
-	// This is used to distinguish between versions of the mempool.
-	VersionFieldKey = "version"
-
-	// V1VersionFieldValue is a tracing field value for the version of
-	// the mempool. This value is used by the "version" field key.
-	V1VersionFieldValue = "v1"
-
-	// CatVersionFieldValue is a tracing field value for the version of
-	// the mempool. This value is used by the "version" field key.
-	CatVersionFieldValue = "cat"
 )
 
+// MemPoolTx describes the schema for the "mempool_tx" table.
+type MempoolTx struct {
+	TxHash       string       `json:"tx_hash"`
+	Peer         p2p.ID       `json:"peer"`
+	Size         int          `json:"size"`
+	TransferType TransferType `json:"transfer_type"`
+}
+
+// Table returns the table name for the MempoolTx struct.
+func (m MempoolTx) Table() string {
+	return MempoolTxTable
+}
+
 // WriteMempoolTx writes a tracing point for a tx using the predetermined
-// schema for mempool tracing. This is used to create a table in the following
-// schema:
-//
-// | time | peerID | tx size | tx hash | transfer type | mempool version |
-func WriteMempoolTx(client *trace.Client, peer p2p.ID, tx []byte, transferType, version string) {
+// schema for mempool tracing.
+func WriteMempoolTx(client trace.Tracer, peer p2p.ID, txHash []byte, transferType TransferType) {
 	// this check is redundant to what is checked during WritePoint, although it
 	// is an optimization to avoid allocations from the map of fields.
 	if !client.IsCollecting(MempoolTxTable) {
 		return
 	}
-	client.WritePoint(MempoolTxTable, map[string]interface{}{
-		TxFieldKey:           bytes.HexBytes(types.Tx(tx).Hash()).String(),
-		PeerFieldKey:         peer,
-		SizeFieldKey:         len(tx),
-		TransferTypeFieldKey: transferType,
-		VersionFieldKey:      version,
+	client.Write(MempoolTx{
+		TxHash:       bytes.HexBytes(txHash).String(),
+		Peer:         peer,
+		Size:         len(txHash),
+		TransferType: transferType,
 	})
 }
 
@@ -70,64 +54,48 @@ const (
 	// MempoolPeerState is the tracing "measurement" (aka table) for the mempool
 	// that stores tracing data related to mempool state, specifically
 	// the gossipping of "SeenTx" and "WantTx".
-	//
-	// The schema for this table is:
-	// | time | peerID | update type | mempool version |
 	MempoolPeerStateTable = "mempool_peer_state"
-
-	// StateUpdateFieldKey is the tracing field key for state updates of the mempool.
-	StateUpdateFieldKey = "update"
-
-	// SeenTxStateUpdateFieldValue is a tracing field value for the state
-	// update of the mempool. This value is used by the "update" field key.
-	SeenTxStateUpdateFieldValue = "seen_tx"
-
-	// WantTxStateUpdateFieldValue is a tracing field value for the state
-	// update of the mempool. This value is used by the "update" field key.
-	WantTxStateUpdateFieldValue = "want_tx"
-
-	// RemovedTxStateUpdateFieldValue is a tracing field value for the local
-	// state update of the mempool. This value is used by the "update" field
-	// key.
-	RemovedTxStateUpdateFieldValue = "removed_tx"
-
-	// AddedTxStateUpdateFieldValue is a tracing field value for the local state
-	// update of the mempool. This value is used by the "update" field key.
-	AddedTxStateUpdateFieldValue = "added_tx"
 )
 
+type MempoolStateUpdateType string
+
+const (
+	SeenTx  MempoolStateUpdateType = "SeenTx"
+	WantTx  MempoolStateUpdateType = "WantTx"
+	Unknown MempoolStateUpdateType = "Unknown"
+)
+
+// MempoolPeerState describes the schema for the "mempool_peer_state" table.
+type MempoolPeerState struct {
+	Peer         p2p.ID                 `json:"peer"`
+	StateUpdate  MempoolStateUpdateType `json:"state_update"`
+	TxHash       string                 `json:"tx_hash"`
+	TransferType TransferType           `json:"transfer_type"`
+}
+
+// Table returns the table name for the MempoolPeerState struct.
+func (m MempoolPeerState) Table() string {
+	return MempoolPeerStateTable
+}
+
 // WriteMempoolPeerState writes a tracing point for the mempool state using
-// the predetermined schema for mempool tracing. This is used to create a table
-// in the following schema:
-//
-// | time | peerID | transfer type | state update | mempool version |
-func WriteMempoolPeerState(client *trace.Client, peer p2p.ID, stateUpdate, transferType, version string) {
+// the predetermined schema for mempool tracing.
+func WriteMempoolPeerState(
+	client trace.Tracer,
+	peer p2p.ID,
+	stateUpdate MempoolStateUpdateType,
+	txHash []byte,
+	transferType TransferType,
+) {
 	// this check is redundant to what is checked during WritePoint, although it
 	// is an optimization to avoid allocations from creating the map of fields.
 	if !client.IsCollecting(MempoolPeerStateTable) {
 		return
 	}
-	client.WritePoint(MempoolPeerStateTable, map[string]interface{}{
-		PeerFieldKey:         peer,
-		TransferTypeFieldKey: transferType,
-		StateUpdateFieldKey:  stateUpdate,
-		VersionFieldKey:      version,
-	})
-}
-
-const (
-	MempoolRejectedTable = "mempool_rejected"
-	ReasonFieldKey       = "reason"
-)
-
-// WriteMempoolRejected records why a transaction was rejected.
-func WriteMempoolRejected(client *trace.Client, reason string) {
-	// this check is redundant to what is checked during WritePoint, although it
-	// is an optimization to avoid allocations from creating the map of fields.
-	if !client.IsCollecting(MempoolRejectedTable) {
-		return
-	}
-	client.WritePoint(MempoolRejectedTable, map[string]interface{}{
-		ReasonFieldKey: reason,
+	client.Write(MempoolPeerState{
+		Peer:         peer,
+		StateUpdate:  stateUpdate,
+		TransferType: transferType,
+		TxHash:       bytes.HexBytes(txHash).String(),
 	})
 }
