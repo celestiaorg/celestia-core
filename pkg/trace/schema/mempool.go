@@ -21,7 +21,7 @@ const (
 	MempoolTxTable = "mempool_tx"
 )
 
-// MemPoolTx describes the schema for the "mempool_tx" table.
+// MempoolTx describes the schema for the "mempool_tx" table.
 type MempoolTx struct {
 	TxHash       string       `json:"tx_hash"`
 	Peer         p2p.ID       `json:"peer"`
