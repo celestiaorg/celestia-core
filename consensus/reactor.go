@@ -272,6 +272,15 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			conR.conS.mtx.Lock()
 			initialHeight := conR.conS.state.InitialHeight
 			conR.conS.mtx.Unlock()
+			schema.WriteConsensusState(
+				conR.traceClient,
+				msg.Height,
+				msg.Round,
+				uint8(msg.Step),
+				string(e.Src.ID()),
+				schema.ConsensusNewRoundStep,
+				schema.Download,
+			)
 			if err = msg.ValidateHeight(initialHeight); err != nil {
 				conR.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", msg, "err", err)
 				conR.Switch.StopPeerForError(e.Src, err)
@@ -279,14 +288,41 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			}
 			ps.ApplyNewRoundStepMessage(msg)
 		case *NewValidBlockMessage:
+			schema.WriteConsensusState(
+				conR.traceClient,
+				msg.Height,
+				msg.Round,
+				uint8(ps.PRS.Step),
+				string(e.Src.ID()),
+				schema.ConsensusNewValidBlock,
+				schema.Download,
+			)
 			ps.ApplyNewValidBlockMessage(msg)
 		case *HasVoteMessage:
 			ps.ApplyHasVoteMessage(msg)
+			schema.WriteConsensusState(
+				conR.traceClient,
+				msg.Height,
+				msg.Round,
+				uint8(msg.Type), // NOTE: msg.Type is not the sending node's step
+				string(e.Src.ID()),
+				schema.ConsensusHasVote,
+				schema.Download,
+			)
 		case *VoteSetMaj23Message:
 			cs := conR.conS
 			cs.mtx.Lock()
 			height, votes := cs.Height, cs.Votes
 			cs.mtx.Unlock()
+			schema.WriteConsensusState(
+				conR.traceClient,
+				msg.Height,
+				msg.Round,
+				uint8(msg.Type), // NOTE: msg.Type is not the sending node's step
+				string(e.Src.ID()),
+				schema.ConsensusVoteSet23Precommit,
+				schema.Download,
+			)
 			if height != msg.Height {
 				return
 			}
@@ -316,10 +352,20 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			if votes := ourVotes.ToProto(); votes != nil {
 				eMsg.Votes = *votes
 			}
-			p2p.TrySendEnvelopeShim(e.Src, p2p.Envelope{ //nolint: staticcheck
+			if p2p.TrySendEnvelopeShim(e.Src, p2p.Envelope{ //nolint: staticcheck
 				ChannelID: VoteSetBitsChannel,
 				Message:   eMsg,
-			}, conR.Logger)
+			}, conR.Logger) {
+				schema.WriteConsensusState(
+					conR.traceClient,
+					msg.Height,
+					msg.Round,
+					uint8(msg.Type),
+					string(e.Src.ID()),
+					schema.ConsensusVoteSetBits,
+					schema.Upload,
+				)
+			}
 		default:
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
 		}
@@ -333,12 +379,28 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		case *ProposalMessage:
 			ps.SetHasProposal(msg.Proposal)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
+			schema.WriteProposal(
+				conR.traceClient,
+				msg.Proposal.Height,
+				msg.Proposal.Round,
+				string(e.Src.ID()),
+				schema.Download,
+			)
 		case *ProposalPOLMessage:
 			ps.ApplyProposalPOLMessage(msg)
+			schema.WriteConsensusState(
+				conR.traceClient,
+				msg.Height,
+				msg.ProposalPOLRound,
+				uint8(ps.PRS.Step),
+				string(e.Src.ID()),
+				schema.ConsensusPOL,
+				schema.Download,
+			)
 		case *BlockPartMessage:
 			ps.SetHasProposalBlockPart(msg.Height, msg.Round, int(msg.Part.Index))
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
-			schema.WriteBlockPart(conR.traceClient, msg.Height, msg.Round, e.Src.ID(), msg.Part.Index, schema.Download)
+			schema.WriteBlockPart(conR.traceClient, msg.Height, msg.Round, msg.Part.Index, false, string(e.Src.ID()), schema.Download)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
 		default:
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -357,7 +419,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				cs.Validators.Size(), cs.LastCommit.Size()
 			cs.mtx.RUnlock()
 
-			schema.WriteVote(conR.traceClient, height, round, msg.Vote, e.Src.ID(), schema.Download)
+			schema.WriteVote(conR.traceClient, height, round, msg.Vote, string(e.Src.ID()), schema.Download)
 
 			ps.EnsureVoteBitArrays(height, valSize)
 			ps.EnsureVoteBitArrays(height-1, lastCommitSize)
@@ -477,6 +539,15 @@ func (conR *Reactor) broadcastNewRoundStepMessage(rs *cstypes.RoundState) {
 		ChannelID: StateChannel,
 		Message:   nrsMsg,
 	})
+	schema.WriteConsensusState(
+		conR.traceClient,
+		rs.Height,
+		rs.Round,
+		uint8(rs.Step),
+		schema.Broadcast,
+		schema.ConsensusNewRoundStep,
+		schema.Upload,
+	)
 }
 
 func (conR *Reactor) broadcastNewValidBlockMessage(rs *cstypes.RoundState) {
@@ -492,6 +563,15 @@ func (conR *Reactor) broadcastNewValidBlockMessage(rs *cstypes.RoundState) {
 		ChannelID: StateChannel,
 		Message:   csMsg,
 	})
+	schema.WriteConsensusState(
+		conR.traceClient,
+		rs.Height,
+		rs.Round,
+		uint8(rs.Step),
+		schema.Broadcast,
+		schema.ConsensusNewValidBlock,
+		schema.Upload,
+	)
 }
 
 // Broadcasts HasVoteMessage to peers that care.
@@ -506,6 +586,15 @@ func (conR *Reactor) broadcastHasVoteMessage(vote *types.Vote) {
 		ChannelID: StateChannel,
 		Message:   msg,
 	})
+	schema.WriteConsensusState(
+		conR.traceClient,
+		vote.Height,
+		vote.Round,
+		uint8(cstypes.RoundStepType(vote.Type)), // NOTE: vote.Type is not the sending node's step
+		schema.Broadcast,
+		schema.ConsensusHasVote,
+		schema.Upload,
+	)
 	/*
 		// TODO: Make this broadcast more selective.
 		for _, peer := range conR.Switch.Peers().List() {
@@ -544,10 +633,20 @@ func makeRoundStepMessage(rs *cstypes.RoundState) (nrsMsg *cmtcons.NewRoundStep)
 func (conR *Reactor) sendNewRoundStepMessage(peer p2p.Peer) {
 	rs := conR.getRoundState()
 	nrsMsg := makeRoundStepMessage(rs)
-	p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+	if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 		ChannelID: StateChannel,
 		Message:   nrsMsg,
-	}, conR.Logger)
+	}, conR.Logger) {
+		schema.WriteConsensusState(
+			conR.traceClient,
+			rs.Height,
+			rs.Round,
+			uint8(rs.Step),
+			string(peer.ID()),
+			schema.ConsensusNewRoundStep,
+			schema.Upload,
+		)
+	}
 }
 
 func (conR *Reactor) updateRoundStateRoutine() {
@@ -599,7 +698,7 @@ OUTER_LOOP:
 						Part:   *parts,
 					},
 				}, logger) {
-					schema.WriteBlockPart(conR.traceClient, rs.Height, rs.Round, peer.ID(), part.Index, schema.Upload)
+					schema.WriteBlockPart(conR.traceClient, rs.Height, rs.Round, part.Index, false, string(peer.ID()), schema.Upload)
 					ps.SetHasProposalBlockPart(prs.Height, prs.Round, index)
 				}
 				continue OUTER_LOOP
@@ -653,6 +752,13 @@ OUTER_LOOP:
 					// NOTE[ZM]: A peer might have received different proposal msg so this Proposal msg will be rejected!
 					// TODO But yet we send block parts of this proposal to the peer (in the first if statement of the current function) while the proposal is rejected. This part of the protocol could be improved by sending the proposal block parts only if the proposal is accepted.
 					ps.SetHasProposal(rs.Proposal)
+					schema.WriteProposal(
+						conR.traceClient,
+						rs.Height,
+						rs.Round,
+						string(peer.ID()),
+						schema.Upload,
+					)
 				}
 			}
 			// ProposalPOL: lets peer know which POL votes we have so far.
@@ -661,14 +767,24 @@ OUTER_LOOP:
 			// so we definitely have rs.Votes.Prevotes(rs.Proposal.POLRound).
 			if 0 <= rs.Proposal.POLRound {
 				logger.Debug("Sending POL", "height", prs.Height, "round", prs.Round)
-				p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 					ChannelID: DataChannel,
 					Message: &cmtcons.ProposalPOL{
 						Height:           rs.Height,
 						ProposalPolRound: rs.Proposal.POLRound,
 						ProposalPol:      *rs.Votes.Prevotes(rs.Proposal.POLRound).BitArray().ToProto(),
 					},
-				}, logger)
+				}, logger) {
+					schema.WriteConsensusState(
+						conR.traceClient,
+						rs.Height,
+						rs.Round,
+						uint8(rs.Step),
+						string(peer.ID()),
+						schema.ConsensusPOL,
+						schema.Upload,
+					)
+				}
 			}
 			continue OUTER_LOOP
 		}
@@ -720,6 +836,15 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 			},
 		}, logger) {
 			ps.SetHasProposalBlockPart(prs.Height, prs.Round, index)
+			schema.WriteBlockPart(
+				conR.traceClient,
+				prs.Height,
+				prs.Round,
+				uint32(index),
+				true,
+				string(peer.ID()),
+				schema.Upload,
+			)
 		} else {
 			logger.Debug("Sending block part for catchup failed")
 			// sleep to avoid retrying too fast
@@ -784,7 +909,7 @@ OUTER_LOOP:
 				if vote != nil {
 					logger.Debug("Picked Catchup commit to send", "height", prs.Height)
 					schema.WriteVote(conR.traceClient, rs.Height, rs.Round, vote,
-						ps.peer.ID(), schema.Upload)
+						string(ps.peer.ID()), schema.Upload)
 					continue OUTER_LOOP
 				}
 			}
@@ -813,7 +938,7 @@ func (conR *Reactor) pickSendVoteAndTrace(votes types.VoteSetReader, rs *cstypes
 	vote := ps.PickSendVote(votes)
 	if vote != nil { // if a vote is sent, trace it
 		schema.WriteVote(conR.traceClient, rs.Height, rs.Round, vote,
-			ps.peer.ID(), schema.Upload)
+			string(ps.peer.ID()), schema.Upload)
 		return true
 	}
 	return false
@@ -895,7 +1020,7 @@ OUTER_LOOP:
 			if rs.Height == prs.Height {
 				if maj23, ok := rs.Votes.Prevotes(prs.Round).TwoThirdsMajority(); ok {
 
-					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
 							Height:  prs.Height,
@@ -903,7 +1028,17 @@ OUTER_LOOP:
 							Type:    cmtproto.PrevoteType,
 							BlockID: maj23.ToProto(),
 						},
-					}, ps.logger)
+					}, ps.logger) {
+						schema.WriteConsensusState(
+							conR.traceClient,
+							rs.Height,
+							rs.Round,
+							uint8(rs.Step),
+							string(peer.ID()),
+							schema.ConsensusVoteSet23Prevote,
+							schema.Upload,
+						)
+					}
 					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
 				}
 			}
@@ -915,7 +1050,7 @@ OUTER_LOOP:
 			prs := ps.GetRoundState()
 			if rs.Height == prs.Height {
 				if maj23, ok := rs.Votes.Precommits(prs.Round).TwoThirdsMajority(); ok {
-					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
 							Height:  prs.Height,
@@ -923,7 +1058,17 @@ OUTER_LOOP:
 							Type:    cmtproto.PrecommitType,
 							BlockID: maj23.ToProto(),
 						},
-					}, ps.logger)
+					}, ps.logger) {
+						schema.WriteConsensusState(
+							conR.traceClient,
+							rs.Height,
+							rs.Round,
+							uint8(rs.Step),
+							string(peer.ID()),
+							schema.ConsensusVoteSet23Precommit,
+							schema.Upload,
+						)
+					}
 					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
 				}
 			}
@@ -936,7 +1081,7 @@ OUTER_LOOP:
 			if rs.Height == prs.Height && prs.ProposalPOLRound >= 0 {
 				if maj23, ok := rs.Votes.Prevotes(prs.ProposalPOLRound).TwoThirdsMajority(); ok {
 
-					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
 							Height:  prs.Height,
@@ -944,7 +1089,17 @@ OUTER_LOOP:
 							Type:    cmtproto.PrevoteType,
 							BlockID: maj23.ToProto(),
 						},
-					}, ps.logger)
+					}, ps.logger) {
+						schema.WriteConsensusState(
+							conR.traceClient,
+							rs.Height,
+							rs.Round,
+							uint8(rs.Step),
+							string(peer.ID()),
+							schema.ConsensusPOL,
+							schema.Upload,
+						)
+					}
 					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
 				}
 			}
@@ -959,7 +1114,7 @@ OUTER_LOOP:
 			if prs.CatchupCommitRound != -1 && prs.Height > 0 && prs.Height <= conR.conS.blockStore.Height() &&
 				prs.Height >= conR.conS.blockStore.Base() {
 				if commit := conR.conS.LoadCommit(prs.Height); commit != nil {
-					p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
 							Height:  prs.Height,
@@ -967,7 +1122,17 @@ OUTER_LOOP:
 							Type:    cmtproto.PrecommitType,
 							BlockID: commit.BlockID.ToProto(),
 						},
-					}, ps.logger)
+					}, ps.logger) {
+						schema.WriteConsensusState(
+							conR.traceClient,
+							prs.Height,
+							prs.Round,
+							uint8(prs.Step),
+							string(peer.ID()),
+							schema.ConsensusVoteSet23Precommit,
+							schema.Upload,
+						)
+					}
 					time.Sleep(conR.conS.config.PeerQueryMaj23SleepDuration)
 				}
 			}

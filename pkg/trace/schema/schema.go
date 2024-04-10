@@ -14,8 +14,14 @@ func AllTables() []string {
 	tables := []string{}
 	tables = append(tables, MempoolTables()...)
 	tables = append(tables, ConsensusTables()...)
+	tables = append(tables, P2PTables()...)
+	tables = append(tables, ABCITable)
 	return tables
 }
+
+const (
+	Broadcast = "broadcast"
+)
 
 type TransferType int
 
