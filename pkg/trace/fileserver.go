@@ -16,10 +16,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"             //nolint:depguard
-	"github.com/aws/aws-sdk-go/aws/credentials" //nolint:depguard
-	"github.com/aws/aws-sdk-go/aws/session"     //nolint:depguard
-	"github.com/aws/aws-sdk-go/service/s3"      //nolint:depguard
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 func (lt *LocalTracer) getTableHandler() http.HandlerFunc {
