@@ -533,7 +533,7 @@ func (mt *MultiplexTransport) wrapPeer(
 		cfg.onPeerError,
 		cfg.mlc,
 		PeerMetrics(cfg.metrics),
-		WithTracer(mt.tracer),
+		WithPeerTracer(mt.tracer),
 	)
 
 	return p
