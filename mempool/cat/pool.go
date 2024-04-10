@@ -168,7 +168,7 @@ func (txmp *TxPool) Height() int64 {
 
 // Has returns true if the transaction is currently in the mempool
 func (txmp *TxPool) Has(txKey types.TxKey) bool {
-	return txmp.store.has(txKey)
+	return txmp.store.has(txKey) || txmp.store.isReserved(txKey)
 }
 
 // Get retrieves a transaction based on the key. It returns a bool
