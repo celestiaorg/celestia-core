@@ -12,6 +12,7 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/pkg/trace"
+	"github.com/cometbft/cometbft/pkg/trace/schema"
 
 	cmtconn "github.com/cometbft/cometbft/p2p/conn"
 )
@@ -186,7 +187,7 @@ type peer struct {
 
 type PeerOption func(*peer)
 
-func WithTracer(t trace.Tracer) PeerOption {
+func WithPeerTracer(t trace.Tracer) PeerOption {
 	return func(p *peer) {
 		p.traceClient = t
 	}
