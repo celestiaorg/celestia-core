@@ -625,12 +625,14 @@ func createSwitch(config *cfg.Config,
 	nodeInfo p2p.NodeInfo,
 	nodeKey *p2p.NodeKey,
 	p2pLogger log.Logger,
+	tracer trace.Tracer,
 ) *p2p.Switch {
 	sw := p2p.NewSwitch(
 		config.P2P,
 		transport,
 		p2p.WithMetrics(p2pMetrics),
 		p2p.SwitchPeerFilters(peerFilters...),
+		p2p.WithTracer(tracer),
 	)
 	sw.SetLogger(p2pLogger)
 	sw.AddReactor("MEMPOOL", mempoolReactor)
@@ -928,7 +930,7 @@ func NewNode(config *cfg.Config,
 	p2pLogger := logger.With("module", "p2p")
 	sw := createSwitch(
 		config, transport, p2pMetrics, peerFilters, mempoolReactor, bcReactor,
-		stateSyncReactor, consensusReactor, evidenceReactor, nodeInfo, nodeKey, p2pLogger,
+		stateSyncReactor, consensusReactor, evidenceReactor, nodeInfo, nodeKey, p2pLogger, tracer,
 	)
 
 	err = sw.AddPersistentPeers(splitAndTrimEmpty(config.P2P.PersistentPeers, ",", " "))
