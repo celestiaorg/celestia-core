@@ -550,13 +550,14 @@ func createTransport(
 	nodeInfo p2p.NodeInfo,
 	nodeKey *p2p.NodeKey,
 	proxyApp proxy.AppConns,
+	tracer trace.Tracer,
 ) (
 	*p2p.MultiplexTransport,
 	[]p2p.PeerFilterFunc,
 ) {
 	var (
 		mConnConfig = p2p.MConnConfig(config.P2P)
-		transport   = p2p.NewMultiplexTransport(nodeInfo, *nodeKey, mConnConfig)
+		transport   = p2p.NewMultiplexTransport(nodeInfo, *nodeKey, mConnConfig, tracer)
 		connFilters = []p2p.ConnFilterFunc{}
 		peerFilters = []p2p.PeerFilterFunc{}
 	)
@@ -925,7 +926,7 @@ func NewNode(config *cfg.Config,
 	}
 
 	// Setup Transport.
-	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp)
+	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp, tracer)
 
 	// Setup Switch.
 	p2pLogger := logger.With("module", "p2p")
