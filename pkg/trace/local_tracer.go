@@ -73,8 +73,7 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 		if err != nil {
 			return nil, fmt.Errorf("failed to open or create file %s: %w", fileName, err)
 		}
-		bf := newbufferedFile(file)
-		fm[table] = bf
+		fm[table] = newbufferedFile(file)
 	}
 
 	lt := &LocalTracer{
@@ -121,10 +120,8 @@ func (lt *LocalTracer) ReadTable(table string) (*os.File, error) {
 }
 
 func (lt *LocalTracer) IsCollecting(table string) bool {
-	if _, has := lt.getFile(table); has {
-		return true
-	}
-	return false
+	_, has := lt.getFile(table)
+	return has
 }
 
 // getFile gets a file for the given type. This method is purposely
