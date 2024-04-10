@@ -6,6 +6,8 @@ import "github.com/cometbft/cometbft/pkg/trace"
 func P2PTables() []string {
 	return []string{
 		PeersTable,
+		PendingBytesTable,
+		ReceivedBytesTable,
 	}
 }
 
@@ -42,4 +44,39 @@ func (p PeerUpdate) Table() string {
 // schema for p2p tracing.
 func WritePeerUpdate(client trace.Tracer, peerID string, action P2PPeerUpdate, reason string) {
 	client.Write(PeerUpdate{PeerID: peerID, Action: string(action), Reason: reason})
+}
+
+const (
+	PendingBytesTable = "pending_bytes"
+)
+
+type PendingBytes struct {
+	PeerID string       `json:"peer_id"`
+	Bytes  map[byte]int `json:"bytes"`
+}
+
+func (s PendingBytes) Table() string {
+	return PendingBytesTable
+}
+
+func WritePendingBytes(client trace.Tracer, peerID string, bytes map[byte]int) {
+	client.Write(PendingBytes{PeerID: peerID, Bytes: bytes})
+}
+
+const (
+	ReceivedBytesTable = "received_bytes"
+)
+
+type ReceivedBytes struct {
+	PeerID  string `json:"peer_id"`
+	Channel byte   `json:"channel"`
+	Bytes   int    `json:"bytes"`
+}
+
+func (s ReceivedBytes) Table() string {
+	return ReceivedBytesTable
+}
+
+func WriteReceivedBytes(client trace.Tracer, peerID string, channel byte, bytes int) {
+	client.Write(ReceivedBytes{PeerID: peerID, Channel: channel, Bytes: bytes})
 }
