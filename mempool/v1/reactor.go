@@ -207,7 +207,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			}
 			schema.WriteMempoolTx(
 				memR.traceClient,
-				e.Src.ID(),
+				string(e.Src.ID()),
 				ntx.Hash(),
 				schema.Download,
 			)
