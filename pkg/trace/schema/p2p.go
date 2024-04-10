@@ -1,6 +1,6 @@
 package schema
 
-import "github.com/cometbft/cometbft/pkg/trace"
+import "github.com/tendermint/tendermint/pkg/trace"
 
 // P2PTables returns the list of tables that are used for p2p tracing.
 func P2PTables() []string {
