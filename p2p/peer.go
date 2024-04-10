@@ -187,7 +187,7 @@ type peer struct {
 
 type PeerOption func(*peer)
 
-func WithTracer(t trace.Tracer) PeerOption {
+func WithPeerTracer(t trace.Tracer) PeerOption {
 	return func(p *peer) {
 		p.traceClient = t
 	}
