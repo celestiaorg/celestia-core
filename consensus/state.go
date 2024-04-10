@@ -1703,7 +1703,7 @@ func (cs *State) finalizeCommit(height int64) {
 		retainHeight int64
 	)
 
-	schema.WriteABCI(cs.traceClient, schema.CommitStart, height, seenCommit.Round)
+	schema.WriteABCI(cs.traceClient, schema.CommitStart, height, 0)
 
 	stateCopy, retainHeight, err = cs.blockExec.ApplyBlock(
 		stateCopy,
@@ -1718,7 +1718,7 @@ func (cs *State) finalizeCommit(height int64) {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}
 
-	schema.WriteABCI(cs.traceClient, schema.CommitEnd, height, seenCommit.Round)
+	schema.WriteABCI(cs.traceClient, schema.CommitEnd, height, 0)
 
 	fail.Fail() // XXX
 
