@@ -191,6 +191,7 @@ type ConsensusState struct {
 	Round        int32        `json:"round"`
 	UpdateType   string       `json:"update_type"`
 	Peer         string       `json:"peer"`
+	Step         uint8        `json:"step"`
 	TransferType TransferType `json:"transfer_type"`
 }
 
@@ -208,10 +209,12 @@ func WriteConsensusState(
 	transferType TransferType,
 ) {
 	client.Write(ConsensusState{
-		Height:     height,
-		Round:      round,
-		Peer:       peer,
-		UpdateType: string(updateType),
+		Height:       height,
+		Round:        round,
+		Peer:         peer,
+		Step:         step,
+		UpdateType:   string(updateType),
+		TransferType: transferType,
 	})
 }
 
