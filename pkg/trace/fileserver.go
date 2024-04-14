@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -215,11 +216,25 @@ func PushS3(chainID, nodeID string, s3cfg S3Config, f *os.File) error {
 
 	key := fmt.Sprintf("%s/%s/%s", chainID, nodeID, filepath.Base(f.Name()))
 
-	_, err = s3Svc.PutObject(&s3.PutObjectInput{
-		Bucket: aws.String(s3cfg.BucketName),
-		Key:    aws.String(key),
-		Body:   f,
-	})
+	push := func() error {
+		_, err = s3Svc.PutObject(&s3.PutObjectInput{
+			Bucket: aws.String(s3cfg.BucketName),
+			Key:    aws.String(key),
+			Body:   f,
+		})
+		return err
+	}
+
+	err = push()
+	if err != nil {
+		for i := 0; i < 5; i++ {
+			time.Sleep(time.Second * time.Duration(rand.Intn(10)))
+			err = push()
+			if err == nil {
+				continue
+			}
+		}
+	}
 
 	return err
 }
@@ -240,10 +255,10 @@ func (lt *LocalTracer) PushAll() error {
 		if err != nil {
 			return err
 		}
+		defer f.Close()
 		if err := PushS3(lt.chainID, lt.nodeID, lt.s3Config, f); err != nil {
 			return err
 		}
-		f.Close()
 	}
 	return nil
 }
@@ -279,7 +294,7 @@ func S3Download(dst, prefix string, cfg S3Config) error {
 
 	err = s3Svc.ListObjectsV2Pages(input, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
 		for _, content := range page.Contents {
-			localFilePath := filepath.Join(dst, strings.TrimPrefix(*content.Key, prefix))
+			localFilePath := filepath.Join(dst, prefix, strings.TrimPrefix(*content.Key, prefix))
 			fmt.Printf("Downloading %s to %s\n", *content.Key, localFilePath)
 
 			// Create the directories in the path
