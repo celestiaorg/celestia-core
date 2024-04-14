@@ -219,25 +219,11 @@ func PushS3(chainID, nodeID string, s3cfg S3Config, f *os.File) error {
 
 	key := fmt.Sprintf("%s/%s/%s", chainID, nodeID, filepath.Base(f.Name()))
 
-	push := func() error {
-		_, err = s3Svc.PutObject(&s3.PutObjectInput{
-			Bucket: aws.String(s3cfg.BucketName),
-			Key:    aws.String(key),
-			Body:   f,
-		})
-		return err
-	}
-
-	err = push()
-	if err != nil {
-		for i := 0; i < 5; i++ {
-			time.Sleep(time.Second * time.Duration(rand.Intn(10)))
-			err = push()
-			if err == nil {
-				continue
-			}
-		}
-	}
+	_, err = s3Svc.PutObject(&s3.PutObjectInput{
+		Bucket: aws.String(s3cfg.BucketName),
+		Key:    aws.String(key),
+		Body:   f,
+	})
 
 	return err
 }
@@ -259,8 +245,13 @@ func (lt *LocalTracer) PushAll() error {
 			return err
 		}
 		defer f.Close()
-		if err := PushS3(lt.chainID, lt.nodeID, lt.s3Config, f); err != nil {
-			return err
+		for i := 0; i < 5; i++ {
+			err = PushS3(lt.chainID, lt.nodeID, lt.s3Config, f)
+			if err == nil {
+				break
+			}
+			lt.logger.Error("failed to push table", "table", table, "error", err)
+			time.Sleep(time.Second * time.Duration(rand.Intn(10)))
 		}
 	}
 	return nil
