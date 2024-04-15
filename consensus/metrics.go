@@ -183,7 +183,8 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "block_interval_seconds",
-			Help:      "Time between this and the last block.",
+			Buckets:   []float64{10, 11, 12, 13, 14, 15, 20, 25, 30, 40, 50, 60},
+			Help:      "Histogram of time intervals in seconds between consecutive blocks, capturing the distribution of block times as observed by this node.",
 		}, labels).With(labelsAndValues...),
 		NumTxs: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
