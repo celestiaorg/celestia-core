@@ -28,7 +28,7 @@ func TestConsensusParamsValidation(t *testing.T) {
 		2: {makeParams(47*1024*1024, 0, 10, 2, 0, valEd25519), true},
 		3: {makeParams(10, 0, 10, 2, 0, valEd25519), true},
 		4: {makeParams(100*1024*1024, 0, 10, 2, 0, valEd25519), true},
-		5: {makeParams(101*1024*1024, 0, 10, 2, 0, valEd25519), false},
+		5: {makeParams(MaxBlockSizeBytes+1, 0, 10, 2, 0, valEd25519), false},
 		6: {makeParams(1024*1024*1024, 0, 10, 2, 0, valEd25519), false},
 		7: {makeParams(1024*1024*1024, 0, 10, -1, 0, valEd25519), false},
 		8: {makeParams(1, 0, -10, 2, 0, valEd25519), false},
