@@ -1,136 +1,86 @@
-# trace: push arbitrary trace level data to an influxdb instance
+# trace package
 
-This package has code to create a client that can be used to push events to an
-influxdb instance. It is used to collect trace data from many different nodes in
-a network. If there is no URL in the config.toml, then the underlying client is
-nil and no points will be written. The provided chainID and nodeID are used to
-tag all points. The underlying client is exposed to allow for custom writes, but
-the WritePoint method should be used for most cases, as it enforces the schema.
+The `trace` package provides a decently fast way to store traces locally.
 
-## Usage and Schema
+## Usage
 
-To use this package, first create a new client using the `NewClient` function,
-then pass that client to the relevant components that need to push events. After
-that, you can use the `WritePoint` method to push events to influxdb. In the below
-example, we're pushing a point in the consensus reactor to measure exactly when
-each step of consensus is reached for each node.
-
-```go
-client.WritePoint(RoundStateTable, map[string]interface{}{
-		HeightFieldKey: height,
-		RoundFieldKey:  round,
-		StepFieldKey:   step.String(),
-})
-```
-
-Using this method enforces the typical schema, where we are tagging (aka
-indexing) each point by the chain-id and the node-id, then adding the local time
-of the creation of the event. If you need to push a custom point, you can use
-the underlying client directly. See `influxdb2.WriteAPI` for more details.
-
-### Schema
-
-All points in influxdb are divided into a key value pair per field. These kvs
-are indexed first by a "measurement", which is used as a "table" in other dbs.
-Additional indexes can also be added, we're using the chain-id and node-id here.
-This allows for us to quickly query for trace data for a specific chain and/or
-node.
-
-```flux
-from(bucket: "e2e")
-  |> range(start: -1h)
-  |> filter(
-    fn: (r) => r["_measurement"] == "consensus_round_state"
-      and r.chain_id == "ci-YREG8X"
-      and r.node_id == "0b529c309608172a29c49979394734260b42acfb"
-    )
-```
-
-We can easily retrieve all fields in a relatively standard table format by using
-the pivot `fluxQL` command.
-
-```flux
-from(bucket: "mocha")
-  |> range(start: -1h)
-  |> filter(fn: (r) => r._measurement == "consensus_round_state")
-  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-```
-
-### Querying Data Using Python
-
-Python can be used to quickly search for and isolate specific patterns.
-
-```python
-from influxdb_client import InfluxDBClient
-from influxdb_client.client.write_api import SYNCHRONOUS
-
-client = InfluxDBClient(url="http://your-influx-url:8086/", token="your-influx-token", org="celestia")
-
-query_api = client.query_api()
-
-def create_flux_table_query(start, bucket, measurement, filter_clause):
-    flux_table_query = f'''
-    from(bucket: "{bucket}")
-      |> range(start: {start})
-      |> filter(fn: (r) => r._measurement == "{measurement}")
-      {filter_clause}
-      |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-    '''
-    return flux_table_query
-
-query = create_flux_table_query("-1h", "mocha", "consenus_round_state", "")
-result = query_api.query(query=query)
-```
-
-### Running a node with remote tracing on
-
-Tracing will only occur if an influxdb URL in specified either directly in the
-`config.toml` or as flags provided to the start sub command.
-
-#### Configure in the `config.toml`
+To enable the local tracer, add the following to the config.toml file:
 
 ```toml
-#######################################################
-###       Instrumentation Configuration Options     ###
-#######################################################
-[instrumentation]
-
-...
-
-# The URL of the influxdb instance to use for remote event
-# collection. If empty, remote event collection is disabled.
-influx_url = "http://your-influx-ip:8086/"
-
-# The influxdb token to use for remote event collection.
-influx_token = "your-token"
-
-# The influxdb bucket to use for remote event collection.
-influx_bucket = "e2e"
-
-# The influxdb org to use for event remote collection.
-influx_org = "celestia"
+# The tracer to use for collecting trace data.
+trace_type = "local"
 
 # The size of the batches that are sent to the database.
-influx_batch_size = 20
+trace_push_batch_size = 1000
 
 # The list of tables that are updated when tracing. All available tables and
-# their schema can be found in the pkg/trace/schema package.
-influx_tables = ["consensus_round_state", "mempool_tx", ]
-
+# their schema can be found in the pkg/trace/schema package. It is represented as a
+# comma separate string. For example: "consensus_round_state,mempool_tx".
+tracing_tables = "consensus_round_state,mempool_tx"
 ```
 
-or
+Trace data will now be stored to the `.celestia-app/data/traces` directory, and
+save the file to the specified directory in the `table_name.jsonl` format.
 
-```sh
-celestia-appd start --influxdb-url=http://your-influx-ip:8086/ --influxdb-token="your-token"
+To read the contents of the file, open it and pass it the Decode function. This
+returns all of the events in that file as a slice.
+
+```go
+events, err := DecodeFile[schema.MempoolTx](file)
+if err != nil {
+    return err
+}
 ```
 
-### e2e tests
+### Pull Based Event Collection
 
-To push events from e2e tests, we only need to specify the URL and the token via
-the cli.
+Pull based event collection is where external servers connect to and pull trace
+data from the consensus node.
 
-```bash
-cd test/e2e
-make && ./build/runner -f ./networks/ci.toml --influxdb-url=http://your-influx-ip:8086/ --influxdb-token="your-token"
+To use this, change the config.toml to store traces in the
+.celestia-app/data/traces directory.
+
+```toml
+# The tracer pull address specifies which address will be used for pull based
+# event collection. If empty, the pull based server will not be started.
+trace_pull_address = ":26661"
+```
+
+To retrieve a table remotely using the pull based server, call the following
+function:
+
+```go
+err := GetTable("http://1.2.3.4:26661", "mempool_tx", "directory to store the file")
+if err != nil {
+    return err
+}
+```
+
+This stores the data locally in the specified directory.
+
+
+### Push Based Event Collection
+
+Push based event collection is where the consensus node pushes trace data to an
+external server. At the moment, this is just an S3 bucket. To use this, add the
+following to the config.toml file:
+
+```toml
+# TracePushConfig is the relative path of the push config.
+# This second config contains credentials for where and how often to
+# push trace data to. For example, if the config is next to this config,
+# it would be "push_config.json".
+trace_push_config = "{{ .Instrumentation.TracePushConfig }}"
+```
+
+The push config file should look like this:
+
+```json
+{
+    "bucket": "bucket-name",
+    "region": "region",
+    "access_key": "",
+    "secret_key": "",
+    "push_delay": 60 // number of seconds to wait between intervals of pushing all files
+}
 ```
