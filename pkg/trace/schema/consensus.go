@@ -21,161 +21,147 @@ func ConsensusTables() []string {
 // Schema constants for the consensus round state tracing database.
 const (
 	// RoundStateTable is the name of the table that stores the consensus
-	// state traces. Follows this schema:
-	//
-	// | time | height | round | step |
+	// state traces.
 	RoundStateTable = "consensus_round_state"
-
-	// StepFieldKey is the name of the field that stores the consensus step. The
-	// value is a string.
-	StepFieldKey = "step"
 )
 
+// RoundState describes schema for the "consensus_round_state" table.
+type RoundState struct {
+	Height int64                 `json:"height"`
+	Round  int32                 `json:"round"`
+	Step   cstypes.RoundStepType `json:"step"`
+}
+
+// Table returns the table name for the RoundState struct.
+func (r RoundState) Table() string {
+	return RoundStateTable
+}
+
 // WriteRoundState writes a tracing point for a tx using the predetermined
-// schema for consensus state tracing. This is used to create a table in the following
-// schema:
-//
-// | time | height | round | step |
-func WriteRoundState(client *trace.Client, height int64, round int32, step cstypes.RoundStepType) {
-	client.WritePoint(RoundStateTable, map[string]interface{}{
-		HeightFieldKey: height,
-		RoundFieldKey:  round,
-		StepFieldKey:   step.String(),
-	})
+// schema for consensus state tracing.
+func WriteRoundState(client trace.Tracer, height int64, round int32, step cstypes.RoundStepType) {
+	client.Write(RoundState{Height: height, Round: round, Step: step})
 }
 
 // Schema constants for the "consensus_block_parts" table.
 const (
 	// BlockPartsTable is the name of the table that stores the consensus block
 	// parts.
-	// following schema:
-	//
-	// | time | height | round | index | peer | transfer type |
 	BlockPartsTable = "consensus_block_parts"
-
-	// BlockPartIndexFieldKey is the name of the field that stores the block
-	// part
-	BlockPartIndexFieldKey = "index"
 )
 
+// BlockPart describes schema for the "consensus_block_parts" table.
+type BlockPart struct {
+	Height       int64        `json:"height"`
+	Round        int32        `json:"round"`
+	Index        int32        `json:"index"`
+	Peer         p2p.ID       `json:"peer"`
+	TransferType TransferType `json:"transfer_type"`
+}
+
+// Table returns the table name for the BlockPart struct.
+func (b BlockPart) Table() string {
+	return BlockPartsTable
+}
+
 // WriteBlockPart writes a tracing point for a BlockPart using the predetermined
-// schema for consensus state tracing. This is used to create a table in the
-// following schema:
-//
-// | time | height | round | index | peer | transfer type |
+// schema for consensus state tracing.
 func WriteBlockPart(
-	client *trace.Client,
+	client trace.Tracer,
 	height int64,
 	round int32,
 	peer p2p.ID,
 	index uint32,
-	transferType string,
+	transferType TransferType,
 ) {
 	// this check is redundant to what is checked during WritePoint, although it
 	// is an optimization to avoid allocations from the map of fields.
 	if !client.IsCollecting(BlockPartsTable) {
 		return
 	}
-	client.WritePoint(BlockPartsTable, map[string]interface{}{
-		HeightFieldKey:         height,
-		RoundFieldKey:          round,
-		BlockPartIndexFieldKey: index,
-		PeerFieldKey:           peer,
-		TransferTypeFieldKey:   transferType,
-	})
-}
-
-const (
-	// BlockTable is the name of the table that stores metadata about consensus blocks.
-	// following schema:
-	//
-	//  | time  | height | timestamp |
-	BlockTable = "consensus_block"
-
-	// UnixMillisecondTimestampFieldKey is the name of the field that stores the timestamp in
-	// the last commit in unix milliseconds.
-	UnixMillisecondTimestampFieldKey = "unix_millisecond_timestamp"
-
-	// TxCountFieldKey is the name of the field that stores the number of
-	// transactions in the block.
-	TxCountFieldKey = "tx_count"
-
-	// SquareSizeFieldKey is the name of the field that stores the square size
-	// of the block. SquareSize is the number of shares in a single row or
-	// column of the original data square.
-	SquareSizeFieldKey = "square_size"
-
-	// BlockSizeFieldKey is the name of the field that stores the size of
-	// the block data in bytes.
-	BlockSizeFieldKey = "block_size"
-
-	// ProposerFieldKey is the name of the field that stores the proposer of
-	// the block.
-	ProposerFieldKey = "proposer"
-
-	// LastCommitRoundFieldKey is the name of the field that stores the round
-	// of the last commit.
-	LastCommitRoundFieldKey = "last_commit_round"
-)
-
-func WriteBlock(client *trace.Client, block *types.Block, size int) {
-	client.WritePoint(BlockTable, map[string]interface{}{
-		HeightFieldKey:                   block.Height,
-		UnixMillisecondTimestampFieldKey: block.Time.UnixMilli(),
-		TxCountFieldKey:                  len(block.Data.Txs),
-		BlockSizeFieldKey:                size,
-		ProposerFieldKey:                 block.ProposerAddress.String(),
-		LastCommitRoundFieldKey:          block.LastCommit.Round,
+	client.Write(BlockPart{
+		Height:       height,
+		Round:        round,
+		Index:        int32(index),
+		Peer:         peer,
+		TransferType: transferType,
 	})
 }
 
 // Schema constants for the consensus votes tracing database.
 const (
 	// VoteTable is the name of the table that stores the consensus
-	// voting traces. Follows this schema:
-	//
-	// | time | height | round | vote_type | vote_height | vote_round
-	// | vote_block_id| vote_unix_millisecond_timestamp
-	// | vote_validator_address | vote_validator_index | peer
-	// | transfer_type |
+	// voting traces.
 	VoteTable = "consensus_vote"
-
-	VoteTypeFieldKey         = "vote_type"
-	VoteHeightFieldKey       = "vote_height"
-	VoteRoundFieldKey        = "vote_round"
-	VoteBlockIDFieldKey      = "vote_block_id"
-	VoteTimestampFieldKey    = "vote_unix_millisecond_timestamp"
-	ValidatorAddressFieldKey = "vote_validator_address"
-	ValidatorIndexFieldKey   = "vote_validator_index"
 )
+
+// Vote describes schema for the "consensus_vote" table.
+type Vote struct {
+	Height                   int64        `json:"height"`
+	Round                    int32        `json:"round"`
+	VoteType                 string       `json:"vote_type"`
+	VoteHeight               int64        `json:"vote_height"`
+	VoteRound                int32        `json:"vote_round"`
+	VoteMillisecondTimestamp int64        `json:"vote_unix_millisecond_timestamp"`
+	ValidatorAddress         string       `json:"vote_validator_address"`
+	Peer                     p2p.ID       `json:"peer"`
+	TransferType             TransferType `json:"transfer_type"`
+}
+
+func (v Vote) Table() string {
+	return VoteTable
+}
 
 // WriteVote writes a tracing point for a vote using the predetermined
 // schema for consensus vote tracing.
-// This is used to create a table in the following
-// schema:
-//
-// | time | height | round | vote_type | vote_height | vote_round
-// | vote_block_id| vote_unix_millisecond_timestamp
-// | vote_validator_address | vote_validator_index | peer
-// | transfer_type |
-func WriteVote(client *trace.Client,
+func WriteVote(client trace.Tracer,
 	height int64, // height of the current peer when it received/sent the vote
 	round int32, // round of the current peer when it received/sent the vote
 	vote *types.Vote, // vote received by the current peer
 	peer p2p.ID, // the peer from which it received the vote or the peer to which it sent the vote
-	transferType string, // download (received) or upload(sent)
+	transferType TransferType, // download (received) or upload(sent)
 ) {
-	client.WritePoint(VoteTable, map[string]interface{}{
-		HeightFieldKey:           height,
-		RoundFieldKey:            round,
-		VoteTypeFieldKey:         vote.Type.String(),
-		VoteHeightFieldKey:       vote.Height,
-		VoteRoundFieldKey:        vote.Round,
-		VoteBlockIDFieldKey:      vote.BlockID.Hash.String(),
-		VoteTimestampFieldKey:    vote.Timestamp.UnixMilli(),
-		ValidatorAddressFieldKey: vote.ValidatorAddress.String(),
-		ValidatorIndexFieldKey:   vote.ValidatorIndex,
-		PeerFieldKey:             peer,
-		TransferTypeFieldKey:     transferType,
+	client.Write(Vote{
+		Height:                   height,
+		Round:                    round,
+		VoteType:                 vote.Type.String(),
+		VoteHeight:               vote.Height,
+		VoteRound:                vote.Round,
+		VoteMillisecondTimestamp: vote.Timestamp.UnixMilli(),
+		ValidatorAddress:         vote.ValidatorAddress.String(),
+		Peer:                     peer,
+		TransferType:             transferType,
+	})
+}
+
+const (
+	// BlockTable is the name of the table that stores metadata about consensus blocks.
+	BlockTable = "consensus_block"
+)
+
+// BlockSummary describes schema for the "consensus_block" table.
+type BlockSummary struct {
+	Height                   int64  `json:"height"`
+	UnixMillisecondTimestamp int64  `json:"unix_millisecond_timestamp"`
+	TxCount                  int    `json:"tx_count"`
+	SquareSize               uint64 `json:"square_size"`
+	BlockSize                int    `json:"block_size"`
+	Proposer                 string `json:"proposer"`
+	LastCommitRound          int32  `json:"last_commit_round"`
+}
+
+func (b BlockSummary) Table() string {
+	return BlockTable
+}
+
+// WriteBlockSummary writes a tracing point for a block using the predetermined
+func WriteBlockSummary(client trace.Tracer, block *types.Block, size int) {
+	client.Write(BlockSummary{
+		Height:                   block.Height,
+		UnixMillisecondTimestamp: block.Time.UnixMilli(),
+		TxCount:                  len(block.Data.Txs),
+		BlockSize:                size,
+		Proposer:                 block.ProposerAddress.String(),
+		LastCommitRound:          block.LastCommit.Round,
 	})
 }

@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"runtime/debug"
@@ -45,7 +46,10 @@ func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 
 func makeTxs(height int64) (txs []types.Tx) {
 	for i := 0; i < 10; i++ {
-		txs = append(txs, types.Tx([]byte{byte(height), byte(i)}))
+		numBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(numBytes, uint64(height))
+
+		txs = append(txs, types.Tx(append(numBytes, byte(i))))
 	}
 	return txs
 }
@@ -375,6 +379,40 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 }
 
+func TestSaveBlockIndexesTxs(t *testing.T) {
+	// Create a state and a block store
+	state, blockStore, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
+	defer cleanup()
+
+	// Create 1000 blocks
+	for h := int64(1); h <= 1000; h++ {
+		block := makeBlock(h, state, new(types.Commit))
+		partSet := block.MakePartSet(2)
+		seenCommit := makeTestCommit(h, cmttime.Now())
+		blockStore.SaveBlock(block, partSet, seenCommit)
+	}
+
+	// Get the blocks from blockstore up to the height
+	for h := int64(1); h <= 1000; h++ {
+		block := blockStore.LoadBlock(h)
+		// Check that transactions exist in the block
+		for i, tx := range block.Txs {
+			txInfo := blockStore.LoadTxInfo(tx.Hash())
+			require.Equal(t, block.Height, txInfo.Height)
+			require.Equal(t, int64(i), txInfo.Index)
+		}
+	}
+
+	// Get a random transaction and make sure it's indexed properly
+	block := blockStore.LoadBlock(777)
+	tx := block.Txs[5]
+	txInfo := blockStore.LoadTxInfo(tx.Hash())
+	require.Equal(t, block.Height, txInfo.Height)
+	require.Equal(t, block.Height, int64(777))
+	require.Equal(t, txInfo.Height, int64(777))
+	require.Equal(t, int64(5), txInfo.Index)
+}
+
 func TestLoadBaseMeta(t *testing.T) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)
@@ -524,6 +562,66 @@ func TestPruneBlocks(t *testing.T) {
 	assert.Nil(t, bs.LoadBlock(1499))
 	assert.NotNil(t, bs.LoadBlock(1500))
 	assert.Nil(t, bs.LoadBlock(1501))
+}
+
+func TestPruneBlocksPrunesTxs(t *testing.T) {
+	config := cfg.ResetTestRoot("blockchain_reactor_test")
+	defer os.RemoveAll(config.RootDir)
+
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
+	require.NoError(t, err)
+	db := dbm.NewMemDB()
+	blockStore := NewBlockStore(db)
+
+	// Make more than 1000 blocks, to test batch deletions
+	// Make a copy of txs before batches are deleted
+	// to make sure that they are correctly pruned
+	var indexedTxHashes [][]byte
+	for h := int64(1); h <= 1500; h++ {
+		block := makeBlock(h, state, new(types.Commit))
+		partSet := block.MakePartSet(2)
+		seenCommit := makeTestCommit(h, cmttime.Now())
+		blockStore.SaveBlock(block, partSet, seenCommit)
+		for _, tx := range block.Txs {
+			indexedTxHashes = append(indexedTxHashes, tx.Hash())
+		}
+	}
+
+	// Check that the saved txs exist in the db
+	for _, hash := range indexedTxHashes {
+		txInfo := blockStore.LoadTxInfo(hash)
+
+		require.NoError(t, err)
+		require.NotNil(t, txInfo, "Transaction was not saved in the database")
+	}
+
+	pruned, err := blockStore.PruneBlocks(1200)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1199, pruned)
+
+	// Check that the transactions in the pruned blocks have been removed
+	// We removed 1199 blocks, each block has 10 txs
+	// so 11990 txs should no longer exist in the db
+	for i, hash := range indexedTxHashes {
+		if int64(i) < 1199*10 {
+			txInfo := blockStore.LoadTxInfo(hash)
+			require.Nil(t, txInfo)
+		}
+	}
+
+	// Check that transactions in remaining blocks are still there
+	for h := int64(pruned + 1); h <= 1500; h++ {
+		block := blockStore.LoadBlock(h)
+		for i, tx := range block.Txs {
+			txInfo := blockStore.LoadTxInfo(tx.Hash())
+			require.NoError(t, err)
+			require.Equal(t, h, txInfo.Height)
+			require.Equal(t, int64(i), txInfo.Index)
+		}
+	}
 }
 
 func TestLoadBlockMeta(t *testing.T) {

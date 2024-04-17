@@ -34,7 +34,7 @@ type MetricStore struct {
 
 // NewTrustMetricStore returns a store that saves data to the DB
 // and uses the config when creating new trust metrics.
-// Use Start to to initialize the trust metric store
+// Use Start to initialize the trust metric store
 func NewTrustMetricStore(db dbm.DB, tmc MetricConfig) *MetricStore {
 	tms := &MetricStore{
 		peerMetrics: make(map[string]*Metric),

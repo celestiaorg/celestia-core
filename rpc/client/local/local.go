@@ -239,6 +239,10 @@ func (c *Local) BlockSearch(
 	return core.BlockSearch(c.ctx, query, page, perPage, orderBy)
 }
 
+func (c *Local) TxStatus(ctx context.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
+	return core.TxStatus(c.ctx, hash)
+}
+
 func (c *Local) BroadcastEvidence(ctx context.Context, ev types.Evidence) (*ctypes.ResultBroadcastEvidence, error) {
 	return core.BroadcastEvidence(c.ctx, ev)
 }
