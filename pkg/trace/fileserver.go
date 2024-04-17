@@ -251,7 +251,7 @@ func (lt *LocalTracer) PushAll() error {
 				break
 			}
 			lt.logger.Error("failed to push table", "table", table, "error", err)
-			time.Sleep(time.Second * time.Duration(rand.Intn(10)))
+			time.Sleep(time.Second * time.Duration(rand.Intn(10))) //nolint:gosec
 		}
 	}
 	return nil
