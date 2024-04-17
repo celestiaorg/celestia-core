@@ -191,8 +191,8 @@ type ConsensusState struct {
 	Round        int32        `json:"round"`
 	UpdateType   string       `json:"update_type"`
 	Peer         string       `json:"peer"`
-	Step         uint8        `json:"step"`
 	TransferType TransferType `json:"transfer_type"`
+	Data         []string     `json:"data,omitempty"`
 }
 
 func (c ConsensusState) Table() string {
@@ -203,18 +203,18 @@ func WriteConsensusState(
 	client trace.Tracer,
 	height int64,
 	round int32,
-	step uint8,
 	peer string,
 	updateType ConsensusStateUpdateType,
 	transferType TransferType,
+	data ...string,
 ) {
 	client.Write(ConsensusState{
 		Height:       height,
 		Round:        round,
 		Peer:         peer,
-		Step:         step,
 		UpdateType:   string(updateType),
 		TransferType: transferType,
+		Data:         data,
 	})
 }
 
@@ -225,7 +225,7 @@ const (
 type Proposal struct {
 	Height       int64        `json:"height"`
 	Round        int32        `json:"round"`
-	Peer         string       `json:"peer"`
+	PeerID       string       `json:"peer_id"`
 	TransferType TransferType `json:"transfer_type"`
 }
 
@@ -237,13 +237,13 @@ func WriteProposal(
 	client trace.Tracer,
 	height int64,
 	round int32,
-	peer string,
+	peerID string,
 	transferType TransferType,
 ) {
 	client.Write(Proposal{
 		Height:       height,
 		Round:        round,
-		Peer:         peer,
+		PeerID:       peerID,
 		TransferType: transferType,
 	})
 }

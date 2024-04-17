@@ -276,10 +276,10 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				conR.traceClient,
 				msg.Height,
 				msg.Round,
-				uint8(msg.Step),
 				string(e.Src.ID()),
 				schema.ConsensusNewRoundStep,
 				schema.Download,
+				fmt.Sprintf("%d", msg.Step),
 			)
 			if err = msg.ValidateHeight(initialHeight); err != nil {
 				conR.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", msg, "err", err)
@@ -292,7 +292,6 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				conR.traceClient,
 				msg.Height,
 				msg.Round,
-				uint8(ps.PRS.Step),
 				string(e.Src.ID()),
 				schema.ConsensusNewValidBlock,
 				schema.Download,
@@ -304,10 +303,10 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				conR.traceClient,
 				msg.Height,
 				msg.Round,
-				uint8(msg.Type), // NOTE: msg.Type is not the sending node's step
 				string(e.Src.ID()),
 				schema.ConsensusHasVote,
 				schema.Download,
+				msg.Type.String(),
 			)
 		case *VoteSetMaj23Message:
 			cs := conR.conS
@@ -318,7 +317,6 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				conR.traceClient,
 				msg.Height,
 				msg.Round,
-				uint8(msg.Type), // NOTE: msg.Type is not the sending node's step
 				string(e.Src.ID()),
 				schema.ConsensusVoteSet23Precommit,
 				schema.Download,
@@ -360,10 +358,10 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 					conR.traceClient,
 					msg.Height,
 					msg.Round,
-					uint8(msg.Type),
 					string(e.Src.ID()),
 					schema.ConsensusVoteSetBits,
 					schema.Upload,
+					msg.Type.String(),
 				)
 			}
 		default:
@@ -392,7 +390,6 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				conR.traceClient,
 				msg.Height,
 				msg.ProposalPOLRound,
-				uint8(ps.PRS.Step),
 				string(e.Src.ID()),
 				schema.ConsensusPOL,
 				schema.Download,
@@ -541,12 +538,12 @@ func (conR *Reactor) broadcastNewRoundStepMessage(rs *cstypes.RoundState) {
 	})
 	schema.WriteConsensusState(
 		conR.traceClient,
-		rs.Height,
-		rs.Round,
-		uint8(rs.Step),
+		nrsMsg.Height,
+		nrsMsg.Round,
 		schema.Broadcast,
 		schema.ConsensusNewRoundStep,
 		schema.Upload,
+		fmt.Sprintf("%d", nrsMsg.Step),
 	)
 }
 
@@ -567,7 +564,6 @@ func (conR *Reactor) broadcastNewValidBlockMessage(rs *cstypes.RoundState) {
 		conR.traceClient,
 		rs.Height,
 		rs.Round,
-		uint8(rs.Step),
 		schema.Broadcast,
 		schema.ConsensusNewValidBlock,
 		schema.Upload,
@@ -590,10 +586,10 @@ func (conR *Reactor) broadcastHasVoteMessage(vote *types.Vote) {
 		conR.traceClient,
 		vote.Height,
 		vote.Round,
-		uint8(cstypes.RoundStepType(vote.Type)), // NOTE: vote.Type is not the sending node's step
 		schema.Broadcast,
 		schema.ConsensusHasVote,
 		schema.Upload,
+		vote.Type.String(),
 	)
 	/*
 		// TODO: Make this broadcast more selective.
@@ -639,12 +635,12 @@ func (conR *Reactor) sendNewRoundStepMessage(peer p2p.Peer) {
 	}, conR.Logger) {
 		schema.WriteConsensusState(
 			conR.traceClient,
-			rs.Height,
-			rs.Round,
-			uint8(rs.Step),
+			nrsMsg.Height,
+			nrsMsg.Round,
 			string(peer.ID()),
 			schema.ConsensusNewRoundStep,
 			schema.Upload,
+			fmt.Sprintf("%d", nrsMsg.Step),
 		)
 	}
 }
@@ -779,7 +775,6 @@ OUTER_LOOP:
 						conR.traceClient,
 						rs.Height,
 						rs.Round,
-						uint8(rs.Step),
 						string(peer.ID()),
 						schema.ConsensusPOL,
 						schema.Upload,
@@ -1033,7 +1028,6 @@ OUTER_LOOP:
 							conR.traceClient,
 							rs.Height,
 							rs.Round,
-							uint8(rs.Step),
 							string(peer.ID()),
 							schema.ConsensusVoteSet23Prevote,
 							schema.Upload,
@@ -1063,7 +1057,6 @@ OUTER_LOOP:
 							conR.traceClient,
 							rs.Height,
 							rs.Round,
-							uint8(rs.Step),
 							string(peer.ID()),
 							schema.ConsensusVoteSet23Precommit,
 							schema.Upload,
@@ -1094,7 +1087,6 @@ OUTER_LOOP:
 							conR.traceClient,
 							rs.Height,
 							rs.Round,
-							uint8(rs.Step),
 							string(peer.ID()),
 							schema.ConsensusPOL,
 							schema.Upload,
@@ -1127,7 +1119,6 @@ OUTER_LOOP:
 							conR.traceClient,
 							prs.Height,
 							prs.Round,
-							uint8(prs.Step),
 							string(peer.ID()),
 							schema.ConsensusVoteSet23Precommit,
 							schema.Upload,
