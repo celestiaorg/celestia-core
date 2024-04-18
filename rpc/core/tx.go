@@ -40,12 +40,13 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 	height := r.Height
 	index := r.Index
 
-	var shareProof *ctypes.ResultShareProof
+	var shareProof types.ShareProof
 	if prove {
-		shareProof, err = proveTx(height, index)
+		proof, err := proveTx(height, index)
 		if err != nil {
 			return nil, err
 		}
+		shareProof = proof.Proof
 	}
 
 	return &ctypes.ResultTx{
@@ -54,7 +55,7 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 		Index:    index,
 		TxResult: r.Result,
 		Tx:       r.Tx,
-		Proof:    shareProof.Proof,
+		Proof:    shareProof,
 	}, nil
 }
 
@@ -123,12 +124,13 @@ func TxSearch(
 	for i := skipCount; i < skipCount+pageSize; i++ {
 		r := results[i]
 
-		var shareProof *ctypes.ResultShareProof
+		var shareProof types.ShareProof
 		if prove {
-			shareProof, err = proveTx(r.Height, r.Index)
+			proof, err := proveTx(r.Height, r.Index)
 			if err != nil {
 				return nil, err
 			}
+			shareProof = proof.Proof
 		}
 
 		apiResults = append(apiResults, &ctypes.ResultTx{
@@ -137,7 +139,7 @@ func TxSearch(
 			Index:    r.Index,
 			TxResult: r.Result,
 			Tx:       r.Tx,
-			Proof:    shareProof.Proof,
+			Proof:    shareProof,
 		})
 	}
 
