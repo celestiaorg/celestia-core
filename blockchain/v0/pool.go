@@ -35,7 +35,7 @@ const (
 	requestRetrySeconds       = 30
 
 	// Minimum recv rate to ensure we're receiving blocks from a peer fast
-	// enough. If a peer is not sending us data at at least that rate, we
+	// enough. If a peer is not sending us data at least that rate, we
 	// consider them to have timedout and we disconnect.
 	//
 	// Assuming a DSL connection (not a good choice) 128 Kbps (upload) ~ 15 KB/s,

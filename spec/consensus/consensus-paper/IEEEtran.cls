@@ -4290,7 +4290,7 @@ between column types.}%
 \@IEEEtrantmpdimenB=0.005\@IEEEtrantmpdimenA%
 \multiply\@IEEEtrantmpdimenB by \@IEEEtrantmpcountA%
 % \@IEEEPARstartfont is globaly set to the calculated font of the big letter
-% We need to carry this out of the local calculation area to to create the
+% We need to carry this out of the local calculation area to create the
 % big letter.
 \global\font\@IEEEPARstartfont\@IEEEPARstartFONTNAME\space at \@IEEEtrantmpdimenB%
 % Now set \@IEEEtrantmpdimenA to the width of the big letter
