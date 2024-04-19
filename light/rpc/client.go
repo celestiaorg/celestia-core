@@ -586,7 +586,7 @@ func (c *Client) ProveShares(
 	height uint64,
 	startShare uint64,
 	endShare uint64,
-) (types.ShareProof, error) {
+) (*ctypes.ResultShareProof, error) {
 	res, err := c.next.ProveShares(ctx, height, startShare, endShare)
 	return res, err
 }

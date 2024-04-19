@@ -272,3 +272,8 @@ type ResultEvent struct {
 	Data   types.TMEventData   `json:"data"`
 	Events map[string][]string `json:"events"`
 }
+
+// ResultShareProof API proof response of a set of shares
+type ResultShareProof struct {
+	Proof types.ShareProof `json:"proof"`
+}
