@@ -141,6 +141,21 @@ func (txmp *TxPool) Size() int { return txmp.store.size() }
 // mempool. It is thread-safe.
 func (txmp *TxPool) SizeBytes() int64 { return txmp.store.totalBytes() }
 
+func (txmp *TxPool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
+	// e, ok := me.Load(key)
+	tx := txmp.store.get(key)
+	return tx.tx, true
+}
+
+func (mem *TxPool) GetTxEvicted(key types.TxKey) bool {
+	return false
+}
+
+// TODO: Investigate this since i think 
+func (mem *TxPool) GetTxRejected(key types.TxKey) bool {
+	return false
+}
+
 // FlushAppConn executes FlushSync on the mempool's proxyAppConn.
 //
 // The caller must hold an exclusive mempool lock (by calling txmp.Lock) before
