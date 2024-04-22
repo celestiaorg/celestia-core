@@ -42,10 +42,11 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 
 	var shareProof types.ShareProof
 	if prove {
-		shareProof, err = proveTx(height, index)
+		proof, err := proveTx(height, index)
 		if err != nil {
 			return nil, err
 		}
+		shareProof = proof.Proof
 	}
 
 	return &ctypes.ResultTx{
@@ -125,10 +126,11 @@ func TxSearch(
 
 		var shareProof types.ShareProof
 		if prove {
-			shareProof, err = proveTx(r.Height, r.Index)
+			proof, err := proveTx(r.Height, r.Index)
 			if err != nil {
 				return nil, err
 			}
+			shareProof = proof.Proof
 		}
 
 		apiResults = append(apiResults, &ctypes.ResultTx{
@@ -144,7 +146,7 @@ func TxSearch(
 	return &ctypes.ResultTxSearch{Txs: apiResults, TotalCount: totalCount}, nil
 }
 
-func proveTx(height int64, index uint32) (types.ShareProof, error) {
+func proveTx(height int64, index uint32) (*ctypes.ResultShareProof, error) {
 	var (
 		pShareProof cmtproto.ShareProof
 		shareProof  types.ShareProof
@@ -152,24 +154,24 @@ func proveTx(height int64, index uint32) (types.ShareProof, error) {
 	env := GetEnvironment()
 	rawBlock, err := loadRawBlock(env.BlockStore, height)
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
 	res, err := env.ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
 		Data: rawBlock,
 		Path: fmt.Sprintf(consts.TxInclusionProofQueryPath, index),
 	})
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
 	err = pShareProof.Unmarshal(res.Value)
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
 	shareProof, err = types.ShareProofFromProto(pShareProof)
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
-	return shareProof, nil
+	return &ctypes.ResultShareProof{Proof: shareProof}, nil
 }
 
 // ProveShares creates an NMT proof for a set of shares to a set of rows. It is
@@ -179,7 +181,7 @@ func ProveShares(
 	height int64,
 	startShare uint64,
 	endShare uint64,
-) (types.ShareProof, error) {
+) (*ctypes.ResultShareProof, error) {
 	var (
 		pShareProof cmtproto.ShareProof
 		shareProof  types.ShareProof
@@ -187,29 +189,29 @@ func ProveShares(
 	env := GetEnvironment()
 	rawBlock, err := loadRawBlock(env.BlockStore, height)
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
 	res, err := env.ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
 		Data: rawBlock,
 		Path: fmt.Sprintf(consts.ShareInclusionProofQueryPath, startShare, endShare),
 	})
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
 	if res.Value == nil && res.Log != "" {
 		// we can make the assumption that for custom queries, if the value is nil
 		// and some logs have been emitted, then an error happened.
-		return types.ShareProof{}, errors.New(res.Log)
+		return nil, errors.New(res.Log)
 	}
 	err = pShareProof.Unmarshal(res.Value)
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
 	shareProof, err = types.ShareProofFromProto(pShareProof)
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
-	return shareProof, nil
+	return &ctypes.ResultShareProof{Proof: shareProof}, nil
 }
 
 func loadRawBlock(bs state.BlockStore, height int64) ([]byte, error) {
