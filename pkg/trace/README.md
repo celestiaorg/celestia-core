@@ -90,7 +90,7 @@ The push config file is a JSON file that should look like this:
 Alternatively, you can set the following environment variables:
 
 ```bash
-export TRACE_PUSH_BUCKET=bucket-name
+export TRACE_PUSH_BUCKET_NAME=bucket-name
 export TRACE_PUSH_REGION=region
 export TRACE_PUSH_ACCESS_KEY=access-key
 export TRACE_PUSH_SECRET_KEY=secret-key
