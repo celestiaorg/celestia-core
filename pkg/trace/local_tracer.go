@@ -108,11 +108,11 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 
 // GetPushConfigFromEnv reads the required environment variables to push trace
 func GetPushConfigFromEnv() (S3Config, error) {
-	bucketName := os.Getenv("BUCKET_NAME")
-	region := os.Getenv("REGION")
-	accessKey := os.Getenv("ACCESS_KEY")
-	secretKey := os.Getenv("SECRET_KEY")
-	pushDelay, err := strconv.ParseInt(os.Getenv("PUSH_DELAY"), 10, 64)
+	bucketName := os.Getenv("TRACE_PUSH_BUCKET_NAME")
+	region := os.Getenv("TRACE_PUSH_REGION")
+	accessKey := os.Getenv("TRACE_PUSH_ACCESS_KEY")
+	secretKey := os.Getenv("TRACE_PUSH_SECRET_KEY")
+	pushDelay, err := strconv.ParseInt(os.Getenv("TRACE_PUSH_DELAY"), 10, 64)
 	if err != nil {
 		return S3Config{}, err
 	}
