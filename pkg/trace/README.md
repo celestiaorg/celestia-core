@@ -64,6 +64,7 @@ This stores the data locally in the specified directory.
 Push based event collection is where the consensus node pushes trace data to an
 external server. At the moment, this is just an S3 bucket. To use this, two options are available:
 #### Using push config file
+
 Add the following to the config.toml file:
 
 ```toml
@@ -87,6 +88,7 @@ The push config file is a JSON file that should look like this:
 ```
 
 #### Using environment variables for s3 bucket
+
 Alternatively, you can set the following environment variables:
 
 ```bash
@@ -96,4 +98,5 @@ export TRACE_PUSH_ACCESS_KEY=access-key
 export TRACE_PUSH_SECRET_KEY=secret-key
 export TRACE_PUSH_DELAY=push-delay
 ```
+
 `bucket_name` , `region`, `access_key`, `secret_key` and `push_delay` are the s3 bucket name, region, access key, secret key and the delay between pushes respectively.
