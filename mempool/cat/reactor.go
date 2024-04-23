@@ -241,7 +241,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		for _, tx := range protoTxs {
 			ntx := types.Tx(tx)
 			key := ntx.Key()
-			schema.WriteMempoolTx(memR.traceClient, e.Src.ID(), key[:], schema.Download)
+			schema.WriteMempoolTx(memR.traceClient, string(e.Src.ID()), key[:], schema.Download)
 			// If we requested the transaction we mark it as received.
 			if memR.requests.Has(peerID, key) {
 				memR.requests.MarkReceived(peerID, key)
@@ -279,7 +279,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		}
 		schema.WriteMempoolPeerState(
 			memR.traceClient,
-			e.Src.ID(),
+			string(e.Src.ID()),
 			schema.SeenTx,
 			txKey[:],
 			schema.Download,
@@ -313,7 +313,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		}
 		schema.WriteMempoolPeerState(
 			memR.traceClient,
-			e.Src.ID(),
+			string(e.Src.ID()),
 			schema.WantTx,
 			txKey[:],
 			schema.Download,
@@ -329,7 +329,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				memR.mempool.PeerHasTx(peerID, txKey)
 				schema.WriteMempoolTx(
 					memR.traceClient,
-					e.Src.ID(),
+					string(e.Src.ID()),
 					txKey[:],
 					schema.Upload,
 				)

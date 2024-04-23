@@ -11,6 +11,8 @@ import (
 	"github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/p2p/conn"
+	"github.com/cometbft/cometbft/pkg/trace"
+	"github.com/cometbft/cometbft/pkg/trace/schema"
 	"github.com/gogo/protobuf/proto"
 )
 
@@ -91,8 +93,9 @@ type Switch struct {
 
 	rng *rand.Rand // seed for randomizing dial times and orders
 
-	metrics *Metrics
-	mlc     *metricsLabelCache
+	metrics     *Metrics
+	mlc         *metricsLabelCache
+	traceClient trace.Tracer
 }
 
 // NetAddress returns the address the switch is listening on.
@@ -126,6 +129,7 @@ func NewSwitch(
 		persistentPeersAddrs: make([]*NetAddress, 0),
 		unconditionalPeerIDs: make(map[ID]struct{}),
 		mlc:                  newMetricsLabelCache(),
+		traceClient:          trace.NoOpTracer(),
 	}
 
 	// Ensure we have a completely undeterministic PRNG.
@@ -153,6 +157,10 @@ func SwitchPeerFilters(filters ...PeerFilterFunc) SwitchOption {
 // WithMetrics sets the metrics.
 func WithMetrics(metrics *Metrics) SwitchOption {
 	return func(sw *Switch) { sw.metrics = metrics }
+}
+
+func WithTracer(tracer trace.Tracer) SwitchOption {
+	return func(sw *Switch) { sw.traceClient = tracer }
 }
 
 //---------------------------------------------------------------------
@@ -398,6 +406,7 @@ func (sw *Switch) StopPeerGracefully(peer Peer) {
 
 func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
 	sw.transport.Cleanup(peer)
+	schema.WritePeerUpdate(sw.traceClient, string(peer.ID()), schema.PeerDisconnect, fmt.Sprintf("%v", reason))
 	if err := peer.Stop(); err != nil {
 		sw.Logger.Error("error while stopping peer", "error", err) // TODO: should return error to be handled accordingly
 	}
@@ -883,6 +892,7 @@ func (sw *Switch) addPeer(p Peer) error {
 		return err
 	}
 	sw.metrics.Peers.Add(float64(1))
+	schema.WritePeerUpdate(sw.traceClient, string(p.ID()), schema.PeerJoin, "")
 
 	// Start all the reactor protocols on the peer.
 	for _, reactor := range sw.reactors {
