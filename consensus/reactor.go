@@ -50,7 +50,7 @@ type Reactor struct {
 	rs       *cstypes.RoundState
 
 	Metrics     *Metrics
-	traceClient *trace.Client
+	traceClient trace.Tracer
 }
 
 type ReactorOption func(*Reactor)
@@ -63,7 +63,7 @@ func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) 
 		waitSync:    waitSync,
 		rs:          consensusState.GetRoundState(),
 		Metrics:     NopMetrics(),
-		traceClient: &trace.Client{},
+		traceClient: trace.NoOpTracer(),
 	}
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR)
 
@@ -338,7 +338,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		case *BlockPartMessage:
 			ps.SetHasProposalBlockPart(msg.Height, msg.Round, int(msg.Part.Index))
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
-			schema.WriteBlockPart(conR.traceClient, msg.Height, msg.Round, e.Src.ID(), msg.Part.Index, schema.TransferTypeDownload)
+			schema.WriteBlockPart(conR.traceClient, msg.Height, msg.Round, e.Src.ID(), msg.Part.Index, schema.Download)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
 		default:
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -357,7 +357,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				cs.Validators.Size(), cs.LastCommit.Size()
 			cs.mtx.RUnlock()
 
-			schema.WriteVote(conR.traceClient, height, round, msg.Vote, e.Src.ID(), schema.TransferTypeDownload)
+			schema.WriteVote(conR.traceClient, height, round, msg.Vote, e.Src.ID(), schema.Download)
 
 			ps.EnsureVoteBitArrays(height, valSize)
 			ps.EnsureVoteBitArrays(height-1, lastCommitSize)
@@ -599,7 +599,7 @@ OUTER_LOOP:
 						Part:   *parts,
 					},
 				}, logger) {
-					schema.WriteBlockPart(conR.traceClient, rs.Height, rs.Round, peer.ID(), part.Index, schema.TransferTypeUpload)
+					schema.WriteBlockPart(conR.traceClient, rs.Height, rs.Round, peer.ID(), part.Index, schema.Upload)
 					ps.SetHasProposalBlockPart(prs.Height, prs.Round, index)
 				}
 				continue OUTER_LOOP
@@ -783,7 +783,7 @@ OUTER_LOOP:
 				if vote != nil {
 					logger.Debug("Picked Catchup commit to send", "height", prs.Height)
 					schema.WriteVote(conR.traceClient, rs.Height, rs.Round, vote,
-						ps.peer.ID(), schema.TransferTypeUpload)
+						ps.peer.ID(), schema.Upload)
 					continue OUTER_LOOP
 				}
 			}
@@ -812,7 +812,7 @@ func (conR *Reactor) pickSendVoteAndTrace(votes types.VoteSetReader, rs *cstypes
 	vote := ps.PickSendVote(votes)
 	if vote != nil { // if a vote is sent, trace it
 		schema.WriteVote(conR.traceClient, rs.Height, rs.Round, vote,
-			ps.peer.ID(), schema.TransferTypeUpload)
+			ps.peer.ID(), schema.Upload)
 		return true
 	}
 	return false
@@ -1046,7 +1046,7 @@ func ReactorMetrics(metrics *Metrics) ReactorOption {
 	return func(conR *Reactor) { conR.Metrics = metrics }
 }
 
-func ReactorTracing(traceClient *trace.Client) ReactorOption {
+func ReactorTracing(traceClient trace.Tracer) ReactorOption {
 	return func(conR *Reactor) { conR.traceClient = traceClient }
 }
 
