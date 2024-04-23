@@ -163,7 +163,6 @@ func WriteBlockSummary(client trace.Tracer, block *types.Block, size int) {
 		Height:                   block.Height,
 		UnixMillisecondTimestamp: block.Time.UnixMilli(),
 		TxCount:                  len(block.Data.Txs),
-		SquareSize:               block.SquareSize,
 		BlockSize:                size,
 		Proposer:                 block.ProposerAddress.String(),
 		LastCommitRound:          block.LastCommit.Round,
