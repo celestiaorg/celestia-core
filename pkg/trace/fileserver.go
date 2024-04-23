@@ -37,11 +37,12 @@ func (lt *LocalTracer) getTableHandler() http.HandlerFunc {
 			return
 		}
 
-		f, err := lt.ReadTable(inputString)
+		f, done, err := lt.readTable(inputString)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to read table: %v", err), http.StatusInternalServerError)
 			return
 		}
+		defer done()
 
 		// Use the pump function to continuously read from the file and write to
 		// the response writer
@@ -240,19 +241,19 @@ func (lt *LocalTracer) pushLoop() {
 
 func (lt *LocalTracer) PushAll() error {
 	for table := range lt.fileMap {
-		f, err := lt.ReadTable(table)
+		f, done, err := lt.readTable(table)
 		if err != nil {
 			return err
 		}
-		defer f.Close()
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 3; i++ {
 			err = PushS3(lt.chainID, lt.nodeID, lt.s3Config, f)
 			if err == nil {
 				break
 			}
 			lt.logger.Error("failed to push table", "table", table, "error", err)
-			time.Sleep(time.Second * time.Duration(rand.Intn(10)))
+			time.Sleep(time.Second * time.Duration(rand.Intn(3)))
 		}
+		done()
 	}
 	return nil
 }
