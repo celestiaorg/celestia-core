@@ -13,6 +13,14 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 )
 
+const (
+	PushBucketName = "TRACE_PUSH_BUCKET_NAME"
+	PushRegion     = "TRACE_PUSH_REGION"
+	PushAccessKey  = "TRACE_PUSH_ACCESS_KEY"
+	PushKey        = "TRACE_PUSH_SECRET_KEY"
+	PushDelay      = "TRACE_PUSH_DELAY"
+)
+
 // Event wraps some trace data with metadata that dictates the table and things
 // like the chainID and nodeID.
 type Event[T any] struct {
@@ -109,11 +117,11 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 
 // GetPushConfigFromEnv reads the required environment variables to push trace
 func GetPushConfigFromEnv() (S3Config, error) {
-	bucketName := os.Getenv("TRACE_PUSH_BUCKET_NAME")
-	region := os.Getenv("TRACE_PUSH_REGION")
-	accessKey := os.Getenv("TRACE_PUSH_ACCESS_KEY")
-	secretKey := os.Getenv("TRACE_PUSH_SECRET_KEY")
-	pushDelay, err := strconv.ParseInt(os.Getenv("TRACE_PUSH_DELAY"), 10, 64)
+	bucketName := os.Getenv(PushBucketName)
+	region := os.Getenv(PushRegion)
+	accessKey := os.Getenv(PushAccessKey)
+	secretKey := os.Getenv(PushKey)
+	pushDelay, err := strconv.ParseInt(os.Getenv(PushDelay), 10, 64)
 	if err != nil {
 		return S3Config{}, err
 	}
