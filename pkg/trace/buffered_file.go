@@ -2,6 +2,7 @@ package trace
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"os"
 	"sync"
@@ -54,11 +55,13 @@ func (f *bufferedFile) startReading() error {
 
 	err := f.wr.Flush()
 	if err != nil {
+		f.reading.Store(false)
 		return err
 	}
 
 	_, err = f.file.Seek(0, io.SeekStart)
 	if err != nil {
+		f.reading.Store(false)
 		return err
 	}
 
@@ -66,8 +69,10 @@ func (f *bufferedFile) startReading() error {
 }
 
 func (f *bufferedFile) stopReading() error {
-	defer f.reading.Store(false)
+	f.mut.Lock()
+	defer f.mut.Unlock()
 	_, err := f.file.Seek(0, io.SeekEnd)
+	f.reading.Store(false)
 	return err
 }
 
@@ -76,21 +81,21 @@ func (f *bufferedFile) stopReading() error {
 // done reading from the file. This function resets the seek point to where it
 // was being written to.
 func (f *bufferedFile) File() (*os.File, func() error, error) {
+	if f.reading.Load() {
+		return nil, func() error { return nil }, errors.New("file is currently being read from")
+	}
 	err := f.startReading()
 	if err != nil {
 		return nil, func() error { return nil }, err
 	}
-	err = f.wr.Flush()
-	if err != nil {
-		return nil, func() error { return nil }, err
-	}
-
 	return f.file, f.stopReading, nil
 }
 
 // Close closes the file.
 func (f *bufferedFile) Close() error {
 	// set reading to true to prevent writes while closing the file.
+	f.mut.Lock()
+	defer f.mut.Unlock()
 	f.reading.Store(true)
 	return f.file.Close()
 }
