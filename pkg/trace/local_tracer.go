@@ -17,7 +17,7 @@ const (
 	PushBucketName = "TRACE_PUSH_BUCKET_NAME"
 	PushRegion     = "TRACE_PUSH_REGION"
 	PushAccessKey  = "TRACE_PUSH_ACCESS_KEY"
-	PushSecretKey  = "TRACE_PUSH_SECRET_KEY"
+	PushKey        = "TRACE_PUSH_SECRET_KEY"
 	PushDelay      = "TRACE_PUSH_DELAY"
 )
 
@@ -120,7 +120,7 @@ func GetPushConfigFromEnv() (S3Config, error) {
 	bucketName := os.Getenv(PushBucketName)
 	region := os.Getenv(PushRegion)
 	accessKey := os.Getenv(PushAccessKey)
-	secretKey := os.Getenv(PushSecretKey)
+	secretKey := os.Getenv(PushKey)
 	pushDelay, err := strconv.ParseInt(os.Getenv(PushDelay), 10, 64)
 	if err != nil {
 		return S3Config{}, err

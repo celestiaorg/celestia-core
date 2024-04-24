@@ -126,7 +126,7 @@ func TestReadPushConfigFromEnvVars(t *testing.T) {
 	os.Setenv(PushBucketName, "bucket")
 	os.Setenv(PushRegion, "region")
 	os.Setenv(PushAccessKey, "access")
-	os.Setenv(PushSecretKey, "secret")
+	os.Setenv(PushKey, "secret")
 	os.Setenv(PushDelay, "10")
 
 	lt := setupLocalTracer(t, 0)
