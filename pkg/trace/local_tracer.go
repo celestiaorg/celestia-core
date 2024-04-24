@@ -14,11 +14,11 @@ import (
 )
 
 const (
-	tracePushBucketName = "TRACE_PUSH_BUCKET_NAME"
-	tracePushRegion     = "TRACE_PUSH_REGION"
-	tracePushAccessKey  = "TRACE_PUSH_ACCESS_KEY"
-	tracePushSecretKey  = "TRACE_PUSH_SECRET_KEY"
-	tracePushDelay      = "TRACE_PUSH_DELAY"
+	PushBucketName = "TRACE_PUSH_BUCKET_NAME"
+	PushRegion     = "TRACE_PUSH_REGION"
+	PushAccessKey  = "TRACE_PUSH_ACCESS_KEY"
+	PushSecretKey  = "TRACE_PUSH_SECRET_KEY"
+	PushDelay      = "TRACE_PUSH_DELAY"
 )
 
 // Event wraps some trace data with metadata that dictates the table and things
@@ -116,11 +116,11 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 
 // GetPushConfigFromEnv reads the required environment variables to push trace
 func GetPushConfigFromEnv() (S3Config, error) {
-	bucketName := os.Getenv(tracePushBucketName)
-	region := os.Getenv(tracePushRegion)
-	accessKey := os.Getenv(tracePushAccessKey)
-	secretKey := os.Getenv(tracePushSecretKey)
-	pushDelay, err := strconv.ParseInt(os.Getenv(tracePushDelay), 10, 64)
+	bucketName := os.Getenv(PushBucketName)
+	region := os.Getenv(PushRegion)
+	accessKey := os.Getenv(PushAccessKey)
+	secretKey := os.Getenv(PushSecretKey)
+	pushDelay, err := strconv.ParseInt(os.Getenv(PushDelay), 10, 64)
 	if err != nil {
 		return S3Config{}, err
 	}
