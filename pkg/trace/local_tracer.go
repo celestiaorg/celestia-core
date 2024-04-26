@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -89,6 +90,7 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 	if cfg.Instrumentation.TracePullAddress != "" {
 		go lt.servePullData()
 	}
+
 	if cfg.Instrumentation.TracePushConfig != "" {
 		s3Config, err := readS3Config(path.Join(cfg.RootDir, "config", cfg.Instrumentation.TracePushConfig))
 		if err != nil {
@@ -96,9 +98,35 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 		}
 		lt.s3Config = s3Config
 		go lt.pushLoop()
+	} else if s3Config, err := GetPushConfigFromEnv(); err == nil {
+		lt.s3Config = s3Config
+		go lt.pushLoop()
 	}
 
 	return lt, nil
+}
+
+// GetPushConfigFromEnv reads the required environment variables to push trace
+func GetPushConfigFromEnv() (S3Config, error) {
+	bucketName := os.Getenv("TRACE_PUSH_BUCKET_NAME")
+	region := os.Getenv("TRACE_PUSH_REGION")
+	accessKey := os.Getenv("TRACE_PUSH_ACCESS_KEY")
+	secretKey := os.Getenv("TRACE_PUSH_SECRET_KEY")
+	pushDelay, err := strconv.ParseInt(os.Getenv("TRACE_PUSH_DELAY"), 10, 64)
+	if err != nil {
+		return S3Config{}, err
+	}
+	if bucketName == "" || region == "" || accessKey == "" || secretKey == "" {
+		return S3Config{}, fmt.Errorf("missing required environment variables")
+	}
+	var s3Config = S3Config{
+		BucketName: bucketName,
+		Region:     region,
+		AccessKey:  accessKey,
+		SecretKey:  secretKey,
+		PushDelay:  pushDelay,
+	}
+	return s3Config, nil
 }
 
 func (lt *LocalTracer) Write(e Entry) {
