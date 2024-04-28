@@ -149,7 +149,7 @@ endif
 
 check-proto-format-deps:
 ifeq (,$(shell which clang-format))
-	$(error "clang-format is required for Protobuf formatting. See ixnstructions for your platform on how to install it.")
+	$(error "clang-format is required for Protobuf formatting. See instructions for your platform on how to install it.")
 endif
 .PHONY: check-proto-format-deps
 
