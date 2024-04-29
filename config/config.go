@@ -944,6 +944,7 @@ type ConsensusConfig struct {
 	// Experimental: If set to true, only internal messages will be written
 	// to the WAL. External messages like votes, proposals
 	// block parts, will not be written
+	// Default: false
 	OnlyInternalWal bool   `mapstructure:"only_internal_wal"`
 	WalPath         string `mapstructure:"wal_file"`
 	walFile         string // overrides WalPath if set
