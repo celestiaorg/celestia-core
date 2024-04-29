@@ -776,7 +776,6 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			if !cs.config.OnlyInternalWal {
 				if err := cs.wal.Write(mi); err != nil {
 					cs.Logger.Error("failed writing to WAL", "err", err)
-					os.Exit(1)
 				}
 			}
 
