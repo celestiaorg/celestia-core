@@ -530,7 +530,7 @@ func updateState(
 		if err != nil {
 			return state, fmt.Errorf("error changing validator set: %v", err)
 		}
-		// Change results from this height but only applies to the next next height.
+		// Change results from this height but only applies to the next height.
 		lastHeightValsChanged = header.Height + 1 + 1
 	}
 

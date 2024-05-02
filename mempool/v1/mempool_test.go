@@ -627,7 +627,7 @@ func TestTxMempool_ExpiredTxs_NumBlocks(t *testing.T) {
 	// NOTE: When we reap txs below, we do not know if we're picking txs from the
 	// initial CheckTx calls or from the second round of CheckTx calls. Thus, we
 	// cannot guarantee that all 95 txs are remaining that should be expired and
-	// removed. However, we do know that that at most 95 txs can be expired and
+	// removed. However, we do know that at most 95 txs can be expired and
 	// removed.
 	reapedTxs = txmp.ReapMaxTxs(5)
 	responses = make([]*abci.ResponseDeliverTx, len(reapedTxs))

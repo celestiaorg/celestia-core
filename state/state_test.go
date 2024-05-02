@@ -257,7 +257,7 @@ func TestValidatorSimpleSaveLoad(t *testing.T) {
 	assert.Nil(err, "expected no err at height 2")
 	assert.Equal(v.Hash(), state.NextValidators.Hash(), "expected validator hashes to match")
 
-	// Increment height, save; should be able to load for next & next next height.
+	// Increment height, save; should be able to load for next & next height.
 	state.LastBlockHeight++
 	nextHeight := state.LastBlockHeight + 1
 	err = statestore.Save(state)
