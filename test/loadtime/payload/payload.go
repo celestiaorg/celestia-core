@@ -12,7 +12,7 @@ import (
 )
 
 const keyPrefix = "a="
-const maxPayloadSize = 4 * 1024 * 1024
+const maxPayloadSize = 128 * 1024 * 1024
 
 // NewBytes generates a new payload and returns the encoded representation of
 // the payload as a slice of bytes. NewBytes uses the fields on the Options
