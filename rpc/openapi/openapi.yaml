@@ -67,7 +67,7 @@ info:
     name: Apache 2.0
     url: https://github.com/cometbft/cometbft/blob/v0.34.x/LICENSE
 servers:
-  - url: https://public-celestia-rpc.numia.xyz
+  - url: https://rpc.cosmos.directory/cosmoshub
     description: Interact with the CometBFT RPC from a public node in the Cosmos registry
   - url: http://localhost:26657
     description: Interact with CometBFT RPC node running locally
