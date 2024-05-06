@@ -41,7 +41,7 @@ func (lt *LocalTracer) getTableHandler() http.HandlerFunc {
 			http.Error(w, fmt.Sprintf("failed to read table: %v", err), http.StatusInternalServerError)
 			return
 		}
-		defer done()
+		defer done() //nolint:errcheck
 
 		// Use the pump function to continuously read from the file and write to
 		// the response writer
@@ -247,9 +247,12 @@ func (lt *LocalTracer) PushAll() error {
 				break
 			}
 			lt.logger.Error("failed to push table", "table", table, "error", err)
-			time.Sleep(time.Second * time.Duration(rand.Intn(3)))
+			time.Sleep(time.Second * time.Duration(rand.Intn(3))) //nolint:gosec
 		}
-		done()
+		err = done()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
