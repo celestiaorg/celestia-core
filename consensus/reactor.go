@@ -37,7 +37,7 @@ const (
 )
 
 var (
-	PickRandomParts = true
+	PickRandomParts = false
 )
 
 //-----------------------------------------------------------------------------
