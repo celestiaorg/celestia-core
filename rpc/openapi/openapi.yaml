@@ -1006,9 +1006,9 @@ paths:
     get:
       summary: Prove shares for a given share range
       description: |
-        Generates a shares to data root inclusion proof
-        for a set of shares referenced by their range and
-        the block height they belong to.
+        Generates a proof of inclusion for a range of shares to the data root.
+        Note: shares are referenced by their range: startShare to endShare.
+        The share range is end exclusive.
 
         The share range is end exclusive.
       operationId: prove_shares
