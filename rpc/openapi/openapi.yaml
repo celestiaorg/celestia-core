@@ -67,7 +67,7 @@ info:
     name: Apache 2.0
     url: https://github.com/cometbft/cometbft/blob/v0.34.x/LICENSE
 servers:
-  - url: https://rpc.cosmos.directory/cosmoshub
+  - url: https://public-celestia-rpc.numia.xyz
     description: Interact with the CometBFT RPC from a public node in the Cosmos registry
   - url: http://localhost:26657
     description: Interact with CometBFT RPC node running locally
@@ -1002,6 +1002,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /prove_shares:
+    get:
+      summary: Prove shares for a given share range
+      description: |
+        Generates a shares to data root inclusion proof
+        for a set of shares referenced by their range and
+        the block height they belong to.
+
+        The share range is end exclusive.
+      operationId: prove_shares
+      tags:
+        - Info
+      parameters:
+        - in: query
+          name: height
+          description: The block height
+          schema:
+            type: integer
+            default: 1
+            example: 1
+        - in: query
+          name: startShare
+          description: The starting share index
+          schema:
+            type: integer
+            default: 1
+            example: 1
+        - in: query
+          name: endShare
+          description: The ending share index
+          schema:
+            type: integer
+            default: 1
+            example: 1
+      responses:
+        '200':
+          description: Successfully retrieved the share proof
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultShareProof'
+        '500':
+          description: Internal server error
+
   /data_commitment:
     get:
       summary: Generates a data commitment for a range of blocks
