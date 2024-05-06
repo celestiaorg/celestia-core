@@ -276,7 +276,7 @@ func (bA *BitArray) PickOrdered() (int, bool) {
 		return 0, false
 	}
 
-	return trueIndices[0], false
+	return trueIndices[0], true
 
 }
 
