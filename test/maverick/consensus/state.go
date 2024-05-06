@@ -900,9 +900,9 @@ func (cs *State) updateToState(state sm.State) {
 		// to be gathered for the first block.
 		// And alternative solution that relies on clocks:
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
-		cs.StartTime = cs.config.Commit(cmttime.Now())
+		cs.StartTime = cs.config.Commit(cmttime.Now(), 0)
 	} else {
-		cs.StartTime = cs.config.Commit(cs.CommitTime)
+		cs.StartTime = cs.config.Commit(cs.CommitTime, cs.ProposalBlockParts.ByteSize())
 	}
 
 	cs.Validators = validators

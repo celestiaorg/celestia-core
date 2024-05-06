@@ -1042,8 +1042,21 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 
 // Commit returns the amount of time to wait for straggler votes after receiving +2/3 precommits
 // for a single block (ie. a commit).
-func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
-	return t.Add(cfg.TimeoutCommit)
+func (cfg *ConsensusConfig) Commit(t time.Time, blockSizeBytes int64) time.Time {
+	// adjust the timeout based on how large the block size is for a total of
+	// 8MB which would decrease the timeout commit by roughly 4 seconds
+	perByteDelay := time.Duration(time.Microsecond / 2)
+	maxBlockSize := int64(8 * 1024 * 1024)
+	if blockSizeBytes > maxBlockSize {
+		blockSizeBytes = maxBlockSize
+	}
+
+	timeoutCommit := cfg.TimeoutCommit - (time.Duration(blockSizeBytes) * perByteDelay)
+	// make sure timeout is not negative
+	if timeoutCommit < 0 {
+		timeoutCommit = time.Millisecond
+	}
+	return t.Add(timeoutCommit)
 }
 
 // WalFile returns the full path to the write-ahead log file
