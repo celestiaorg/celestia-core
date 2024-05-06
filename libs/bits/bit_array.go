@@ -238,6 +238,13 @@ func (bA *BitArray) IsFull() bool {
 	return (lastElem+1)&((uint64(1)<<uint(lastElemBits))-1) == 0
 }
 
+func (bA *BitArray) Pick(random bool) (int, bool) {
+	if random {
+		return bA.PickRandom()
+	}
+	return bA.PickOrdered()
+}
+
 // PickRandom returns a random index for a set bit in the bit array.
 // If there is no such value, it returns 0, false.
 // It uses the global randomness in `random.go` to get this index.
@@ -255,6 +262,22 @@ func (bA *BitArray) PickRandom() (int, bool) {
 	}
 
 	return trueIndices[cmtrand.Intn(len(trueIndices))], true
+}
+
+func (bA *BitArray) PickOrdered() (int, bool) {
+	if bA == nil {
+		return 0, false
+	}
+	bA.mtx.Lock()
+	trueIndices := bA.getTrueIndices()
+	bA.mtx.Unlock()
+
+	if len(trueIndices) == 0 { // no bits set to true
+		return 0, false
+	}
+
+	return trueIndices[0], false
+
 }
 
 func (bA *BitArray) getTrueIndices() []int {
