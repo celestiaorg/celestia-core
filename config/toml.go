@@ -456,10 +456,9 @@ version = "{{ .FastSync.Version }}"
 #######################################################
 [consensus]
 
-# Experimental: if set to "true", only internal messages will be
+# If set to "true", only internal messages will be
 # written to the WAL. External messages like votes, proposal,
 # block parts, will not be written.
-# Use at your own risk!
 only_internal_wal = "{{ .Consensus.OnlyInternalWal }}"
 
 wal_file = "{{ js .Consensus.WalPath }}"

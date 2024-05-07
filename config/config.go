@@ -941,10 +941,10 @@ func (cfg *FastSyncConfig) ValidateBasic() error {
 // including timeouts and details about the WAL and the block structure.
 type ConsensusConfig struct {
 	RootDir string `mapstructure:"home"`
-	// Experimental: If set to true, only internal messages will be written
+	// If set to true, only internal messages will be written
 	// to the WAL. External messages like votes, proposals
 	// block parts, will not be written
-	// Default: false
+	// Default: true
 	OnlyInternalWal bool   `mapstructure:"only_internal_wal"`
 	WalPath         string `mapstructure:"wal_file"`
 	walFile         string // overrides WalPath if set
