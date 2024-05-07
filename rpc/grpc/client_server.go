@@ -19,7 +19,7 @@ type Config struct {
 // net.Listener.
 // NOTE: This function blocks - you may want to call it in a go-routine.
 func StartGRPCServer(ln net.Listener) error {
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.MaxRecvMsgSize(8 * 1024 * 1024))
 	RegisterBroadcastAPIServer(grpcServer, &broadcastAPI{})
 	return grpcServer.Serve(ln)
 }
