@@ -143,6 +143,34 @@ func TestPickRandom(t *testing.T) {
 	}
 }
 
+func TestPickOrdered(t *testing.T) {
+	bA := NewBitArray(4)
+	bA.SetIndex(0, true)
+
+	i, has := bA.PickOrdered()
+	require.True(t, has)
+	require.Equal(t, 0, i)
+
+	// it should still return the first value set to true
+	bA.SetIndex(1, true)
+	i, has = bA.PickOrdered()
+	require.True(t, has)
+	require.Equal(t, 0, i)
+
+	// it should return the next value set to true
+	bA.SetIndex(0, false)
+	i, has = bA.PickOrdered()
+	require.True(t, has)
+	require.Equal(t, 1, i)
+
+	bA2 := NewBitArray(4)
+	bA2.SetIndex(0, true)
+	bA2.SetIndex(2, true)
+	i, has = bA.Sub(bA2).Pick(false)
+	require.True(t, has)
+	require.Equal(t, 1, i)
+}
+
 func TestBytes(t *testing.T) {
 	bA := NewBitArray(4)
 	bA.SetIndex(0, true)
