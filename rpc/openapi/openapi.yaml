@@ -2677,7 +2677,7 @@ components:
     ResultShareProof:
       type: object
       properties:
-        proof:
+        share_proof:
           $ref: '#/components/schemas/ShareProof'
       description: API proof response of a set of shares.
     ShareProof:

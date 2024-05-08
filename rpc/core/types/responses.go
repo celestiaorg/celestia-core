@@ -275,5 +275,5 @@ type ResultEvent struct {
 
 // ResultShareProof API proof response of a set of shares
 type ResultShareProof struct {
-	Proof types.ShareProof `json:"proof"`
+	ShareProof types.ShareProof `json:"share_proof"`
 }

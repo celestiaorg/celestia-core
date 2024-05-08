@@ -225,7 +225,7 @@ func ProveSharesV2(
 	if err != nil {
 		return nil, err
 	}
-	return &ctypes.ResultShareProof{Proof: shareProof}, nil
+	return &ctypes.ResultShareProof{ShareProof: shareProof}, nil
 }
 
 func loadRawBlock(bs state.BlockStore, height int64) ([]byte, error) {
