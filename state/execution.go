@@ -10,11 +10,9 @@ import (
 	"github.com/tendermint/tendermint/libs/fail"
 	"github.com/tendermint/tendermint/libs/log"
 	mempl "github.com/tendermint/tendermint/mempool"
-
 	cmtstate "github.com/tendermint/tendermint/proto/tendermint/state"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
-
 	"github.com/tendermint/tendermint/types"
 )
 
