@@ -83,7 +83,10 @@ type SignClient interface {
 	Validators(ctx context.Context, height *int64, page, perPage *int) (*ctypes.ResultValidators, error)
 	Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error)
 
+	// ProveShares
+	// Deprecated. Use ProveSharesV2 instead.
 	ProveShares(_ context.Context, height uint64, startShare uint64, endShare uint64) (types.ShareProof, error)
+	ProveSharesV2(_ context.Context, height uint64, startShare uint64, endShare uint64) (*ctypes.ResultShareProof, error)
 
 	// TxSearch defines a method to search for a paginated set of transactions by
 	// DeliverTx event search criteria.

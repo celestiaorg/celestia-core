@@ -174,6 +174,7 @@ func proveTx(height int64, index uint32) (types.ShareProof, error) {
 
 // ProveShares creates an NMT proof for a set of shares to a set of rows. It is
 // end exclusive.
+// Deprecated. Use ProveSharesV2 instead.
 func ProveShares(
 	_ *rpctypes.Context,
 	height int64,
@@ -210,6 +211,21 @@ func ProveShares(
 		return shareProof, err
 	}
 	return shareProof, nil
+}
+
+// ProveSharesV2 creates an NMT proof for a set of shares to a set of rows. It is
+// end exclusive.
+func ProveSharesV2(
+	ctx *rpctypes.Context,
+	height int64,
+	startShare uint64,
+	endShare uint64,
+) (*ctypes.ResultShareProof, error) {
+	shareProof, err := ProveShares(ctx, height, startShare, endShare)
+	if err != nil {
+		return nil, err
+	}
+	return &ctypes.ResultShareProof{Proof: shareProof}, nil
 }
 
 func loadRawBlock(bs state.BlockStore, height int64) ([]byte, error) {

@@ -210,6 +210,8 @@ func (c *Local) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Result
 	return core.Tx(c.ctx, hash, prove)
 }
 
+// ProveShares
+// Deprecated. Use ProveSharesV2 instead.
 func (c *Local) ProveShares(
 	ctx context.Context,
 	height uint64,
@@ -217,6 +219,15 @@ func (c *Local) ProveShares(
 	endShare uint64,
 ) (types.ShareProof, error) {
 	return core.ProveShares(c.ctx, int64(height), startShare, endShare)
+}
+
+func (c *Local) ProveSharesV2(
+	ctx context.Context,
+	height uint64,
+	startShare uint64,
+	endShare uint64,
+) (*ctypes.ResultShareProof, error) {
+	return core.ProveSharesV2(c.ctx, int64(height), startShare, endShare)
 }
 
 func (c *Local) TxSearch(
