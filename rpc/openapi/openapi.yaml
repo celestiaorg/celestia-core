@@ -1004,50 +1004,7 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
   /prove_shares:
     get:
-      summary: Prove shares for a given share range
-      description: |
-        Generates a proof of inclusion for a range of shares to the data root.
-        Note: shares are referenced by their range: startShare to endShare.
-        The share range is end exclusive.
-        Deprecated. Use '/prove_shares_v2' instead.
-      operationId: prove_shares
-      tags:
-        - Info
-      parameters:
-        - in: query
-          name: height
-          description: The block height
-          schema:
-            type: integer
-            default: 1
-            example: 1
-        - in: query
-          name: startShare
-          description: The starting share index
-          schema:
-            type: integer
-            default: 0
-            example: 0
-        - in: query
-          name: endShare
-          description: The end exclusive ending share index
-          schema:
-            type: integer
-            default: 1
-            example: 1
-      responses:
-        '200':
-          description: Successfully retrieved the share proof
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ResultShareProof'
-        '500':
-          description: Internal server error
-
-  /prove_shares_v2:
-    get:
-      summary: Prove shares for a given share range. Replaces '/prove_shares'
+      summary: Prove shares for a given share range. Deprecated. Use '/prove_shares_v2' instead.
       description: |
         Generates a proof of inclusion for a range of shares to the data root.
         Note: shares are referenced by their range: startShare to endShare.
@@ -1084,6 +1041,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ShareProof'
+        '500':
+          description: Internal server error
+
+  /prove_shares_v2:
+    get:
+      summary: Prove shares for a given share range.
+      description: |
+        Generates a proof of inclusion for a range of shares to the data root.
+        Note: shares are referenced by their range: startShare to endShare.
+        The share range is end exclusive.
+        Replaces '/prove_shares'
+      operationId: prove_shares_v2
+      tags:
+        - Info
+      parameters:
+        - in: query
+          name: height
+          description: The block height
+          schema:
+            type: integer
+            default: 1
+            example: 1
+        - in: query
+          name: startShare
+          description: The starting share index
+          schema:
+            type: integer
+            default: 0
+            example: 0
+        - in: query
+          name: endShare
+          description: The end exclusive ending share index
+          schema:
+            type: integer
+            default: 1
+            example: 1
+      responses:
+        '200':
+          description: Successfully retrieved the share proof
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultShareProof'
         '500':
           description: Internal server error
 
