@@ -1004,11 +1004,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
   /prove_shares:
     get:
-      summary: Prove shares for a given share range. Deprecated. Use '/prove_shares_v2' instead.
+      summary: Prove shares for a given share range.
       description: |
         Generates a proof of inclusion for a range of shares to the data root.
         Note: shares are referenced by their range: startShare to endShare.
         The share range is end exclusive.
+        Deprecated: Use '/prove_shares_v2' instead.
       operationId: prove_shares
       tags:
         - Info

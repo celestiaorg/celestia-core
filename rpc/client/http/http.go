@@ -551,7 +551,7 @@ func (c *baseRPCClient) Tx(ctx context.Context, hash []byte, prove bool) (*ctype
 }
 
 // ProveShares
-// Deprecated. Use ProveSharesV2 instead.
+// Deprecated: Use ProveSharesV2 instead.
 func (c *baseRPCClient) ProveShares(
 	ctx context.Context,
 	height uint64,

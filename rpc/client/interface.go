@@ -84,7 +84,7 @@ type SignClient interface {
 	Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.ResultTx, error)
 
 	// ProveShares
-	// Deprecated. Use ProveSharesV2 instead.
+	// Deprecated: Use ProveSharesV2 instead.
 	ProveShares(_ context.Context, height uint64, startShare uint64, endShare uint64) (types.ShareProof, error)
 	ProveSharesV2(_ context.Context, height uint64, startShare uint64, endShare uint64) (*ctypes.ResultShareProof, error)
 

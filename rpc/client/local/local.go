@@ -211,7 +211,7 @@ func (c *Local) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Result
 }
 
 // ProveShares
-// Deprecated. Use ProveSharesV2 instead.
+// Deprecated: Use ProveSharesV2 instead.
 func (c *Local) ProveShares(
 	ctx context.Context,
 	height uint64,

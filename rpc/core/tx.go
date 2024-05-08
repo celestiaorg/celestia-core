@@ -174,7 +174,7 @@ func proveTx(height int64, index uint32) (types.ShareProof, error) {
 
 // ProveShares creates an NMT proof for a set of shares to a set of rows. It is
 // end exclusive.
-// Deprecated. Use ProveSharesV2 instead.
+// Deprecated: Use ProveSharesV2 instead.
 func ProveShares(
 	_ *rpctypes.Context,
 	height int64,
