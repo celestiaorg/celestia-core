@@ -11,12 +11,10 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	mempl "github.com/tendermint/tendermint/mempool"
 
-	// "github.com/tendermint/tendermint/p2p"
 	cmtstate "github.com/tendermint/tendermint/proto/tendermint/state"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
 
-	// "github.com/tendermint/tendermint/rpc/core"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -255,13 +253,11 @@ func (blockExec *BlockExecutor) ApplyBlock(
 		blockExec.logger.Info("updates to validators", "updates", types.ValidatorListString(validatorUpdates))
 	}
 
-	blockExec.logger.Info(fmt.Sprintf("state before update %v", state.ConsensusParams.Version))
 	// Update the state with the block and responses.
 	state, err = updateState(state, blockID, &block.Header, abciResponses, validatorUpdates)
 	if err != nil {
 		return state, 0, fmt.Errorf("commit failed for application: %v", err)
 	}
-	blockExec.logger.Info(fmt.Sprintf("state after update %v", state.ConsensusParams.Version))
 
 	// Lock mempool, commit app state, update mempoool.
 	appHash, retainHeight, err := blockExec.Commit(state, block, abciResponses.DeliverTxs)
@@ -662,11 +658,3 @@ func ExecCommitBlock(
 	// ResponseCommit has no error or log, just data
 	return res.Data, nil
 }
-
-// updateNodeInfo updates the NodeInfo in the environment's P2PTransport.
-// func updateNodeInfo(appVersion uint64) {
-// 	env := core.GetEnvironment()
-// 	nodeInfo := env.P2PTransport.NodeInfo().(p2p.DefaultNodeInfo)
-// 	nodeInfo.ProtocolVersion.App = appVersion
-// 	core.SetEnvironment(env)
-// }
