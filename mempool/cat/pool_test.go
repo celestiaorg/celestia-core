@@ -745,6 +745,12 @@ func TestTxPool_BroadcastQueue(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
+
+	for i := 0; i < txs; i++ {
+		tx := newDefaultTx(fmt.Sprintf("%d", i))
+		require.NoError(t, txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0}))
+	}
+
 	go func() {
 		defer wg.Done()
 		for i := 0; i < txs; i++ {
@@ -754,14 +760,8 @@ func TestTxPool_BroadcastQueue(t *testing.T) {
 			case wtx := <-txmp.next():
 				require.Equal(t, wtx.tx, newDefaultTx(fmt.Sprintf("%d", i)))
 			}
-			time.Sleep(10 * time.Millisecond)
 		}
 	}()
-
-	for i := 0; i < txs; i++ {
-		tx := newDefaultTx(fmt.Sprintf("%d", i))
-		require.NoError(t, txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0}))
-	}
 
 	wg.Wait()
 }
