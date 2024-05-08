@@ -52,8 +52,20 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 		votingPower = val.VotingPower
 	}
 
+	// Upstream CometBFT does not support coordinated network upgrades so the
+	// env.P2PTransport.NodeInfo.ProtocolVersion.App is expected to be set on
+	// node start-up and never updated. Celestia supports upgrading app version
+	// while running the same binary so the following code block fetches the app
+	// version from the state store and updates nodeInfo.ProtocolVersion.App.
+	nodeInfo := env.P2PTransport.NodeInfo().(p2p.DefaultNodeInfo)
+	consensusParams, err := env.StateStore.LoadConsensusParams(latestHeight)
+	if err != nil {
+		return nil, err
+	}
+	nodeInfo.ProtocolVersion.App = consensusParams.Version.AppVersion
+
 	result := &ctypes.ResultStatus{
-		NodeInfo: env.P2PTransport.NodeInfo().(p2p.DefaultNodeInfo),
+		NodeInfo: nodeInfo,
 		SyncInfo: ctypes.SyncInfo{
 			LatestBlockHash:     latestBlockHash,
 			LatestAppHash:       latestAppHash,
