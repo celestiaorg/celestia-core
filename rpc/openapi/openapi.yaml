@@ -1026,7 +1026,7 @@ paths:
           schema:
             type: integer
             default: 0
-            example: 1
+            example: 0
         - in: query
           name: endShare
           description: The end exclusive ending share index
