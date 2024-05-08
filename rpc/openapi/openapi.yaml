@@ -1025,7 +1025,7 @@ paths:
           description: The starting share index
           schema:
             type: integer
-            default: 1
+            default: 0
             example: 1
         - in: query
           name: endShare
