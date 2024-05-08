@@ -1704,6 +1704,8 @@ func (cs *State) finalizeCommit(height int64) {
 		block,
 		seenCommit,
 	)
+	logger.Info(fmt.Sprintf("stateCopy.ConsensusParams.Version %v\n", stateCopy.ConsensusParams.Version))
+	logger.Info(fmt.Sprintf("stateCopy.Version.Consensus %v\n", stateCopy.Version.Consensus))
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}

@@ -251,11 +251,14 @@ func (blockExec *BlockExecutor) ApplyBlock(
 		blockExec.logger.Info("updates to validators", "updates", types.ValidatorListString(validatorUpdates))
 	}
 
+	blockExec.logger.Info(fmt.Sprintf("state before update %v", state.ConsensusParams.Version))
 	// Update the state with the block and responses.
 	state, err = updateState(state, blockID, &block.Header, abciResponses, validatorUpdates)
 	if err != nil {
 		return state, 0, fmt.Errorf("commit failed for application: %v", err)
 	}
+	blockExec.logger.Info(fmt.Sprintf("state after update %v", state.ConsensusParams.Version))
+	// need to update env.P2PTransport with the new app version here
 
 	// Lock mempool, commit app state, update mempoool.
 	appHash, retainHeight, err := blockExec.Commit(state, block, abciResponses.DeliverTxs)
