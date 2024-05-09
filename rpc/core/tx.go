@@ -213,8 +213,8 @@ func ProveShares(
 	return shareProof, nil
 }
 
-// ProveSharesV2 creates an NMT proof for a set of shares to a set of rows. It is
-// end exclusive.
+// ProveSharesV2 creates a proof for a set of shares to the data root.
+// The range is end exclusive.
 func ProveSharesV2(
 	ctx *rpctypes.Context,
 	height int64,
