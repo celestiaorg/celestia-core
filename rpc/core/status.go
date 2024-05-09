@@ -51,13 +51,9 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 	if val := validatorAtHeight(latestUncommittedHeight()); val != nil {
 		votingPower = val.VotingPower
 	}
-	nodeInfo, err := GetNodeInfo(env, latestHeight)
-	if err != nil {
-		return nil, err
-	}
 
 	result := &ctypes.ResultStatus{
-		NodeInfo: nodeInfo,
+		NodeInfo: GetNodeInfo(env, latestHeight),
 		SyncInfo: ctypes.SyncInfo{
 			LatestBlockHash:     latestBlockHash,
 			LatestAppHash:       latestAppHash,
@@ -97,13 +93,16 @@ func validatorAtHeight(h int64) *types.Validator {
 // upgrading the app version while running the same binary so the
 // env.P2PTransport.NodeInfo.ProtocolVersion.App will be incorect if a node
 // upgraded app versions without restarting.
-func GetNodeInfo(env *Environment, latestHeight int64) (p2p.DefaultNodeInfo, error) {
+func GetNodeInfo(env *Environment, latestHeight int64) p2p.DefaultNodeInfo {
+	nodeInfo := env.P2PTransport.NodeInfo().(p2p.DefaultNodeInfo)
+
 	consensusParams, err := env.StateStore.LoadConsensusParams(latestHeight)
 	if err != nil {
-		return p2p.DefaultNodeInfo{}, err
+		// use the default app version if we can't load the consensus params (i.e. height 0)
+		return nodeInfo
 	}
 
-	nodeInfo := env.P2PTransport.NodeInfo().(p2p.DefaultNodeInfo)
+	// override the default app version with the latest app version
 	nodeInfo.ProtocolVersion.App = consensusParams.Version.AppVersion
-	return nodeInfo, nil
+	return nodeInfo
 }

@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/rpc/core"
@@ -40,8 +39,7 @@ func TestGetNodeInfo(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			nodeInfo, err := core.GetNodeInfo(tc.env, tc.latestHeight)
-			require.NoError(t, err)
+			nodeInfo := core.GetNodeInfo(tc.env, tc.latestHeight)
 			assert.Equal(t, tc.want, nodeInfo.ProtocolVersion.App)
 		})
 	}
