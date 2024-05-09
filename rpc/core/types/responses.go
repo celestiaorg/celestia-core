@@ -273,7 +273,7 @@ type ResultEvent struct {
 	Events map[string][]string `json:"events"`
 }
 
-// ResultShareProof API proof response of a set of shares
+// ResultShareProof is an API response that contains a ShareProof.
 type ResultShareProof struct {
 	ShareProof types.ShareProof `json:"share_proof"`
 }
