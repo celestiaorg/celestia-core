@@ -1002,6 +1002,92 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /prove_shares:
+    get:
+      summary: Prove shares for a given share range.
+      description: |
+        Generates a proof of inclusion for a range of shares to the data root.
+        Note: shares are referenced by their range: startShare to endShare.
+        The share range is end exclusive.
+        Deprecated: Use '/prove_shares_v2' instead.
+      operationId: prove_shares
+      tags:
+        - Info
+      parameters:
+        - in: query
+          name: height
+          description: The block height
+          schema:
+            type: integer
+            default: 1
+            example: 1
+        - in: query
+          name: startShare
+          description: The starting share index
+          schema:
+            type: integer
+            default: 0
+            example: 0
+        - in: query
+          name: endShare
+          description: The end exclusive ending share index
+          schema:
+            type: integer
+            default: 1
+            example: 1
+      responses:
+        '200':
+          description: Successfully retrieved the share proof
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareProof'
+        '500':
+          description: Internal server error
+
+  /prove_shares_v2:
+    get:
+      summary: Prove shares for a given share range.
+      description: |
+        Generates a proof of inclusion for a range of shares to the data root.
+        Note: shares are referenced by their range: startShare to endShare.
+        The share range is end exclusive.
+        Replaces '/prove_shares'
+      operationId: prove_shares_v2
+      tags:
+        - Info
+      parameters:
+        - in: query
+          name: height
+          description: The block height
+          schema:
+            type: integer
+            default: 1
+            example: 1
+        - in: query
+          name: startShare
+          description: The starting share index
+          schema:
+            type: integer
+            default: 0
+            example: 0
+        - in: query
+          name: endShare
+          description: The end exclusive ending share index
+          schema:
+            type: integer
+            default: 1
+            example: 1
+      responses:
+        '200':
+          description: Successfully retrieved the share proof
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultShareProof'
+        '500':
+          description: Internal server error
+
   /data_commitment:
     get:
       summary: Generates a data commitment for a range of blocks
@@ -2581,8 +2667,98 @@ components:
             tx:
               type: string
               example: "5wHwYl3uCkaoo2GaChQmSIu8hxpJxLcCuIi8fiHN4TMwrRIU/Af1cEG7Rcs/6LjTl7YjRSymJfYaFAoFdWF0b20SCzE0OTk5OTk1MDAwEhMKDQoFdWF0b20SBDUwMDAQwJoMGmoKJuta6YchAwswBShaB1wkZBctLIhYqBC3JrAI28XGzxP+rVEticGEEkAc+khTkKL9CDE47aDvjEHvUNt+izJfT4KVF2v2JkC+bmlH9K08q3PqHeMI9Z5up+XMusnTqlP985KF+SI5J3ZOIhhNYWRlIGJ5IENpcmNsZSB3aXRoIGxvdmU="
+            proof:
+              type: object
+              $ref: '#/components/schemas/ShareProof'
+              nullable: true
+              description: Optional proof of the transaction, provided only when requested.
           type: object
 
+    ResultShareProof:
+      type: object
+      properties:
+        share_proof:
+          $ref: '#/components/schemas/ShareProof'
+      description: API proof response of a set of shares.
+    ShareProof:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: string
+            format: byte
+          description: The raw shares that are being proven.
+        shareProofs:
+          type: array
+          items:
+            $ref: '#/components/schemas/NMTProof'
+          description: NMT proofs that the shares in Data exist in a set of rows.
+        namespaceID:
+          type: string
+          format: byte
+          description: The namespace id of the shares being proven.
+        rowProof:
+          $ref: '#/components/schemas/RowProof'
+        namespaceVersion:
+          type: integer
+          format: uint32
+          description: The version of the namespace used for verification.
+    NMTProof:
+      type: object
+      properties:
+        start:
+          type: integer
+          format: int32
+        end:
+          type: integer
+          format: int32
+        nodes:
+          type: array
+          items:
+            type: string
+            format: byte
+          description: Nodes used to verify the proof.
+        leaf_hash:
+          type: string
+          format: byte
+          description: Leaf hash necessary for proof of absence, if applicable.
+    RowProof:
+      type: object
+      properties:
+        rowRoots:
+          type: array
+          items:
+            type: string
+            format: byte
+        proofs:
+          type: array
+          items:
+            $ref: '#/components/schemas/Proof'
+        startRow:
+          type: integer
+          format: uint32
+        endRow:
+          type: integer
+          format: uint32
+    Proof:
+      type: object
+      description: Binary merkle proof
+      properties:
+        total:
+          type: integer
+          format: int64
+        index:
+          type: integer
+          format: int64
+        leafHash:
+          type: string
+          format: byte
+        aunts:
+          type: array
+          items:
+            type: string
+            format: byte
     ABCIInfoResponse:
       type: object
       required:
