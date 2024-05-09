@@ -5,7 +5,6 @@ import (
 
 	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/p2p"
-	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 	"github.com/tendermint/tendermint/types"
@@ -52,14 +51,13 @@ func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
 	if val := validatorAtHeight(latestUncommittedHeight()); val != nil {
 		votingPower = val.VotingPower
 	}
-
-	consensusParams, err := env.StateStore.LoadConsensusParams(latestHeight)
+	nodeInfo, err := GetNodeInfo(env, latestHeight)
 	if err != nil {
 		return nil, err
 	}
 
 	result := &ctypes.ResultStatus{
-		NodeInfo: GetNodeInfo(env, consensusParams),
+		NodeInfo: nodeInfo,
 		SyncInfo: ctypes.SyncInfo{
 			LatestBlockHash:     latestBlockHash,
 			LatestAppHash:       latestAppHash,
@@ -92,14 +90,20 @@ func validatorAtHeight(h int64) *types.Validator {
 	return val
 }
 
-func GetNodeInfo(env *Environment, consensusParams cmtproto.ConsensusParams) p2p.DefaultNodeInfo {
-	// Upstream CometBFT does not support coordinated network upgrades so the
-	// env.P2PTransport.NodeInfo.ProtocolVersion.App is expected to be set on
-	// node start-up and never updated. Celestia supports upgrading the app
-	// version while running the same binary so the following code block fetches
-	// the app version from the state store and updates
-	// nodeInfo.ProtocolVersion.App.
+// GetNodeInfo returns the node info with the app version set to the latest app
+// version from the state store. Upstream CometBFT does not support coordinated
+// network upgrades so the env.P2PTransport.NodeInfo.ProtocolVersion.App is
+// expected to be set on node start-up and never updated. Celestia supports
+// upgrading the app version while running the same binary so the
+// env.P2PTransport.NodeInfo.ProtocolVersion.App will be incorect if a node
+// upgraded app versions without restarting.
+func GetNodeInfo(env *Environment, latestHeight int64) (p2p.DefaultNodeInfo, error) {
+	consensusParams, err := env.StateStore.LoadConsensusParams(latestHeight)
+	if err != nil {
+		return p2p.DefaultNodeInfo{}, err
+	}
+
 	nodeInfo := env.P2PTransport.NodeInfo().(p2p.DefaultNodeInfo)
 	nodeInfo.ProtocolVersion.App = consensusParams.Version.AppVersion
-	return nodeInfo
+	return nodeInfo, nil
 }
