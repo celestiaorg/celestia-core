@@ -87,12 +87,15 @@ func validatorAtHeight(h int64) *types.Validator {
 }
 
 // GetNodeInfo returns the node info with the app version set to the latest app
-// version from the state store. Upstream CometBFT does not support coordinated
-// network upgrades so the env.P2PTransport.NodeInfo.ProtocolVersion.App is
-// expected to be set on node start-up and never updated. Celestia supports
-// upgrading the app version while running the same binary so the
-// env.P2PTransport.NodeInfo.ProtocolVersion.App will be incorect if a node
-// upgraded app versions without restarting.
+// version from the state store.
+//
+// This function is necessary because upstream CometBFT does not support
+// upgrading app versions for a running binary. Therefore the
+// env.P2PTransport.NodeInfo.ProtocolVersion.App is expected to be set on node
+// start-up and never updated. Celestia supports upgrading the app version for a
+// running binary so the env.P2PTransport.NodeInfo.ProtocolVersion.App will be
+// incorrect if a node upgraded app versions without restarting. This function
+// corrects that issue by fetching the latest app version from the state store.
 func GetNodeInfo(env *Environment, latestHeight int64) p2p.DefaultNodeInfo {
 	nodeInfo := env.P2PTransport.NodeInfo().(p2p.DefaultNodeInfo)
 
