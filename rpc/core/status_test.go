@@ -46,7 +46,8 @@ func TestGetNodeInfo(t *testing.T) {
 	}
 }
 
-// transport is copy + pasted from core because it isn't exported.
+// transport is copy + pasted from the core package because it isn't exported.
+// https://github.com/celestiaorg/celestia-core/blob/640d115aec834609022c842b2497fc568df53692/rpc/core/env.go#L69-L73
 type transport interface {
 	Listeners() []string
 	IsListening() bool
