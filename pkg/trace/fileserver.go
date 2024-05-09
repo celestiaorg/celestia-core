@@ -42,7 +42,7 @@ func (lt *LocalTracer) getTableHandler() http.HandlerFunc {
 			http.Error(w, fmt.Sprintf("failed to read table: %v", err), http.StatusInternalServerError)
 			return
 		}
-		defer done()
+		defer done() //nolint:errcheck
 
 		// Use the pump function to continuously read from the file and write to
 		// the response writer
@@ -252,9 +252,12 @@ func (lt *LocalTracer) PushAll() error {
 				break
 			}
 			lt.logger.Error("failed to push table", "table", table, "error", err)
-			time.Sleep(time.Second * time.Duration(rand.Intn(3)))
+			time.Sleep(time.Second * time.Duration(rand.Intn(3))) //nolint:gosec
 		}
-		done()
+		err = done()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -290,7 +293,7 @@ func S3Download(dst, prefix string, cfg S3Config) error {
 
 	err = s3Svc.ListObjectsV2Pages(input, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
 		for _, content := range page.Contents {
-			localFilePath := filepath.Join(dst, strings.TrimPrefix(*content.Key, prefix))
+			localFilePath := filepath.Join(dst, prefix, strings.TrimPrefix(*content.Key, prefix))
 			fmt.Printf("Downloading %s to %s\n", *content.Key, localFilePath)
 
 			// Create the directories in the path
