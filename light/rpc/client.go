@@ -592,7 +592,9 @@ func (c *Client) ProveShares(
 	return res, err
 }
 
-// ProveSharesV2 returns a proof of inclusion for a share range to the data root.
+// ProveSharesV2 returns a proof of inclusion for a share range to the data root
+// of the given height.
+// The range is end-exclusive and defined by startShare and endShare.
 // Note: this proof is composed of multiple proofs.
 func (c *Client) ProveSharesV2(
 	ctx context.Context,
