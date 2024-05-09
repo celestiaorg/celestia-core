@@ -592,9 +592,8 @@ func (c *Client) ProveShares(
 	return res, err
 }
 
-// ProveSharesV2 calls rpcclient#ProveSharesV2 method and returns an NMT proof for a set
-// of shares, defined by `startShare` and `endShare`, to the corresponding rows.
-// Then, a binary merkle inclusion proof from the latter rows to the data root.
+// ProveSharesV2 returns a proof of inclusion for a share range to the data root.
+// Note: this proof is composed of multiple proofs.
 func (c *Client) ProveSharesV2(
 	ctx context.Context,
 	height uint64,
