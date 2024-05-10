@@ -123,11 +123,11 @@ func TestLocalTracerServerPull(t *testing.T) {
 
 // TestReadPushConfigFromConfigFile tests reading the push config from the environment variables.
 func TestReadPushConfigFromEnvVars(t *testing.T) {
-	os.Setenv("TRACE_PUSH_BUCKET_NAME", "bucket")
-	os.Setenv("TRACE_PUSH_REGION", "region")
-	os.Setenv("TRACE_PUSH_ACCESS_KEY", "access")
-	os.Setenv("TRACE_PUSH_SECRET_KEY", "secret")
-	os.Setenv("TRACE_PUSH_DELAY", "10")
+	os.Setenv(PushBucketName, "bucket")
+	os.Setenv(PushRegion, "region")
+	os.Setenv(PushAccessKey, "access")
+	os.Setenv(PushKey, "secret")
+	os.Setenv(PushDelay, "10")
 
 	lt := setupLocalTracer(t, 0)
 	require.Equal(t, "bucket", lt.s3Config.BucketName)
