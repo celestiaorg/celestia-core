@@ -10,6 +10,7 @@ BUILD_FLAGS = -mod=readonly -ldflags "$(LD_FLAGS)"
 HTTPS_GIT := https://github.com/cometbft/cometbft.git
 CGO_ENABLED ?= 0
 
+BUF_VERSION := v1.31.0
 # handle nostrip
 ifeq (,$(findstring nostrip,$(COMETBFT_BUILD_OPTIONS)))
   BUILD_FLAGS += -trimpath
@@ -154,7 +155,11 @@ endif
 
 proto-gen: check-proto-deps
 	@echo "Generating Protobuf files"
+<<<<<<< HEAD
 	@go run github.com/bufbuild/buf/cmd/buf@v1.29.0 generate
+=======
+	@go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) generate
+>>>>>>> b67d79ecb (chore: extract buf version (#1327))
 	@mv ./proto/tendermint/abci/types.pb.go ./abci/types/
 	@cp ./proto/tendermint/rpc/grpc/types.pb.go ./rpc/grpc
 .PHONY: proto-gen
@@ -163,7 +168,11 @@ proto-gen: check-proto-deps
 # execution only.
 proto-lint: check-proto-deps
 	@echo "Linting Protobuf files"
+<<<<<<< HEAD
 	@go run github.com/bufbuild/buf/cmd/buf@v1.29.0 lint
+=======
+	@go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) lint
+>>>>>>> b67d79ecb (chore: extract buf version (#1327))
 .PHONY: proto-lint
 
 proto-format: check-proto-format-deps
@@ -176,11 +185,19 @@ proto-check-breaking: check-proto-deps
 	@echo "Note: This is only useful if your changes have not yet been committed."
 	@echo "      Otherwise read up on buf's \"breaking\" command usage:"
 	@echo "      https://docs.buf.build/breaking/usage"
+<<<<<<< HEAD
 	@go run github.com/bufbuild/buf/cmd/buf@v1.29.0 breaking --against ".git"
 .PHONY: proto-check-breaking
 
 proto-check-breaking-ci:
 	@go run github.com/bufbuild/buf/cmd/buf@v1.29.0 breaking --against $(HTTPS_GIT)#branch=v0.34.x-celestia
+=======
+	@go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) breaking --against ".git"
+.PHONY: proto-check-breaking
+
+proto-check-breaking-ci:
+	@go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) breaking --against $(HTTPS_GIT)#branch=v0.34.x-celestia
+>>>>>>> b67d79ecb (chore: extract buf version (#1327))
 .PHONY: proto-check-breaking-ci
 
 ###############################################################################
