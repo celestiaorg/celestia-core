@@ -56,52 +56,52 @@ func TestRowProofValidate(t *testing.T) {
 
 func TestRowProofVerify(t *testing.T) {
 	type testCase struct {
-		name    string
-		rp      RowProof
-		root    []byte
-		isValid bool
+		name       string
+		rp         RowProof
+		root       []byte
+		isVerified bool
 	}
 	testCases := []testCase{
 		{
-			name:    "empty row proof returns error",
-			rp:      RowProof{},
-			root:    root,
-			isValid: false,
+			name:       "empty row proof returns error",
+			rp:         RowProof{},
+			root:       root,
+			isVerified: false,
 		},
 		{
-			name:    "row proof with mismatched number of rows and row roots returns error",
-			rp:      mismatchedRowRoots(),
-			root:    root,
-			isValid: false,
+			name:       "row proof with mismatched number of rows and row roots returns error",
+			rp:         mismatchedRowRoots(),
+			root:       root,
+			isVerified: false,
 		},
 		{
-			name:    "row proof with mismatched number of proofs returns error",
-			rp:      mismatchedProofs(),
-			root:    root,
-			isValid: false,
+			name:       "row proof with mismatched number of proofs returns error",
+			rp:         mismatchedProofs(),
+			root:       root,
+			isVerified: false,
 		},
 		{
-			name:    "row proof with mismatched number of rows returns error",
-			rp:      mismatchedRows(),
-			root:    root,
-			isValid: false,
+			name:       "row proof with mismatched number of rows returns error",
+			rp:         mismatchedRows(),
+			root:       root,
+			isVerified: false,
 		},
 		{
-			name:    "valid row proof returns no error",
-			rp:      validRowProof(),
-			root:    root,
-			isValid: true,
+			name:       "valid row proof returns no error",
+			rp:         validRowProof(),
+			root:       root,
+			isVerified: true,
 		},
 		{
-			name:    "valid row proof with incorrect root returns error",
-			rp:      validRowProof(),
-			root:    incorrectRoot,
-			isValid: false,
+			name:       "valid row proof with incorrect root returns error",
+			rp:         validRowProof(),
+			root:       incorrectRoot,
+			isVerified: false,
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.isValid, tc.rp.VerifyProof(tc.root))
+			assert.Equal(t, tc.isVerified, tc.rp.VerifyProof(tc.root))
 		})
 	}
 }

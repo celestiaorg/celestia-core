@@ -52,48 +52,48 @@ func TestShareProofValidate(t *testing.T) {
 
 func TestShareProofVerify(t *testing.T) {
 	type testCase struct {
-		name    string
-		sp      ShareProof
-		root    []byte
-		isValid bool
+		name       string
+		sp         ShareProof
+		root       []byte
+		isVerified bool
 	}
 
 	testCases := []testCase{
 		{
-			name:    "empty share proof returns false",
-			sp:      ShareProof{},
-			root:    root,
-			isValid: false,
+			name:       "empty share proof returns false",
+			sp:         ShareProof{},
+			root:       root,
+			isVerified: false,
 		},
 		{
-			name:    "valid share proof returns no true",
-			sp:      validShareProof(),
-			root:    root,
-			isValid: true,
+			name:       "valid share proof returns no true",
+			sp:         validShareProof(),
+			root:       root,
+			isVerified: true,
 		},
 		{
-			name:    "share proof with mismatched number of share proofs returns false",
-			sp:      mismatchedShareProofs(),
-			root:    root,
-			isValid: false,
+			name:       "share proof with mismatched number of share proofs returns false",
+			sp:         mismatchedShareProofs(),
+			root:       root,
+			isVerified: false,
 		},
 		{
-			name:    "share proof with mismatched number of shares returns false",
-			sp:      mismatchedShares(),
-			root:    root,
-			isValid: false,
+			name:       "share proof with mismatched number of shares returns false",
+			sp:         mismatchedShares(),
+			root:       root,
+			isVerified: false,
 		},
 		{
-			name:    "valid share proof with incorrect root returns false",
-			sp:      validShareProof(),
-			root:    incorrectRoot,
-			isValid: false,
+			name:       "valid share proof with incorrect root returns false",
+			sp:         validShareProof(),
+			root:       incorrectRoot,
+			isVerified: false,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.isValid, tc.sp.VerifyProof(tc.root))
+			assert.Equal(t, tc.isVerified, tc.sp.VerifyProof(tc.root))
 		})
 	}
 }
