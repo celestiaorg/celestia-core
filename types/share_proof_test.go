@@ -51,12 +51,13 @@ func TestShareProofValidate(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := tc.sp.Validate(tc.root)
+			got := tc.sp.Validate()
 			if tc.wantErr {
 				assert.Error(t, got)
 				return
 			}
 			assert.NoError(t, got)
+			assert.True(t, tc.sp.VerifyProof(tc.root))
 		})
 	}
 }

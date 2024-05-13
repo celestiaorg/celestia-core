@@ -63,11 +63,10 @@ func ShareProofFromProto(pb tmproto.ShareProof) (ShareProof, error) {
 	}, nil
 }
 
-// Validate runs basic validations on the proof then verifies if it is consistent.
-// It returns nil if the proof is valid. Otherwise, it returns a sensible error.
-// The `root` is the block data root that the shares to be proven belong to.
+// Validate runs basic validations on the proof.
+// If the proof is not correctly constructed, it returns a sensible error.
 // Note: these proofs are tested on the app side.
-func (sp ShareProof) Validate(root []byte) error {
+func (sp ShareProof) Validate() error {
 	numberOfSharesInProofs := int32(0)
 	for _, proof := range sp.ShareProofs {
 		// the range is not inclusive from the left.
@@ -91,18 +90,15 @@ func (sp ShareProof) Validate(root []byte) error {
 		}
 	}
 
-	if err := sp.RowProof.Validate(root); err != nil {
+	if err := sp.RowProof.Validate(); err != nil {
 		return err
-	}
-
-	if ok := sp.VerifyProof(); !ok {
-		return errors.New("share proof failed to verify")
 	}
 
 	return nil
 }
 
-func (sp ShareProof) VerifyProof() bool {
+// VerifyProof verifies that the share to data root proof is valid.
+func (sp ShareProof) VerifyProof(root []byte) bool {
 	cursor := int32(0)
 	for i, proof := range sp.ShareProofs {
 		nmtProof := nmt.NewInclusionProof(
@@ -129,5 +125,5 @@ func (sp ShareProof) VerifyProof() bool {
 		}
 		cursor += sharesUsed
 	}
-	return true
+	return sp.RowProof.VerifyProof(root)
 }
