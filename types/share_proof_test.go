@@ -54,6 +54,7 @@ func TestShareProofValidate(t *testing.T) {
 			got := tc.sp.Validate()
 			if tc.wantErr {
 				assert.Error(t, got)
+				assert.False(t, tc.sp.VerifyProof(tc.root))
 				return
 			}
 			assert.NoError(t, got)

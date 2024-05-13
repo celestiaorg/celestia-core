@@ -59,6 +59,7 @@ func TestRowProofValidate(t *testing.T) {
 			got := tc.rp.Validate()
 			if tc.wantErr {
 				assert.Error(t, got)
+				assert.False(t, tc.rp.VerifyProof(tc.root))
 				return
 			}
 			assert.NoError(t, got)
