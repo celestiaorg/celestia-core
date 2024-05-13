@@ -21,7 +21,7 @@ type RowProof struct {
 }
 
 // Validate performs checks on the fields of this RowProof. Returns an error if
-// the proof fails the validation.
+// the proof is not correctly constructed.
 func (rp RowProof) Validate() error {
 	// HACKHACK performing subtraction with unsigned integers is unsafe.
 	if int(rp.EndRow-rp.StartRow+1) != len(rp.RowRoots) {
