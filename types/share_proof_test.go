@@ -12,7 +12,6 @@ func TestShareProofValidate(t *testing.T) {
 	type testCase struct {
 		name    string
 		sp      ShareProof
-		root    []byte
 		wantErr bool
 	}
 
@@ -20,31 +19,21 @@ func TestShareProofValidate(t *testing.T) {
 		{
 			name:    "empty share proof returns error",
 			sp:      ShareProof{},
-			root:    root,
 			wantErr: true,
 		},
 		{
 			name:    "valid share proof returns no error",
 			sp:      validShareProof(),
-			root:    root,
 			wantErr: false,
 		},
 		{
 			name:    "share proof with mismatched number of share proofs returns error",
 			sp:      mismatchedShareProofs(),
-			root:    root,
 			wantErr: true,
 		},
 		{
 			name:    "share proof with mismatched number of shares returns error",
 			sp:      mismatchedShares(),
-			root:    root,
-			wantErr: true,
-		},
-		{
-			name:    "valid share proof with incorrect root returns error",
-			sp:      validShareProof(),
-			root:    incorrectRoot,
 			wantErr: true,
 		},
 	}
@@ -54,11 +43,57 @@ func TestShareProofValidate(t *testing.T) {
 			got := tc.sp.Validate()
 			if tc.wantErr {
 				assert.Error(t, got)
-				assert.False(t, tc.sp.VerifyProof(tc.root))
 				return
 			}
 			assert.NoError(t, got)
-			assert.True(t, tc.sp.VerifyProof(tc.root))
+		})
+	}
+}
+
+func TestShareProofVerify(t *testing.T) {
+	type testCase struct {
+		name    string
+		sp      ShareProof
+		root    []byte
+		isValid bool
+	}
+
+	testCases := []testCase{
+		{
+			name:    "empty share proof returns false",
+			sp:      ShareProof{},
+			root:    root,
+			isValid: false,
+		},
+		{
+			name:    "valid share proof returns no true",
+			sp:      validShareProof(),
+			root:    root,
+			isValid: true,
+		},
+		{
+			name:    "share proof with mismatched number of share proofs returns false",
+			sp:      mismatchedShareProofs(),
+			root:    root,
+			isValid: false,
+		},
+		{
+			name:    "share proof with mismatched number of shares returns false",
+			sp:      mismatchedShares(),
+			root:    root,
+			isValid: false,
+		},
+		{
+			name:    "valid share proof with incorrect root returns false",
+			sp:      validShareProof(),
+			root:    incorrectRoot,
+			isValid: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.isValid, tc.sp.VerifyProof(tc.root))
 		})
 	}
 }
