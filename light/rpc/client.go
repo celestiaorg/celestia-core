@@ -584,7 +584,7 @@ func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Resul
 		return nil, err
 	}
 
-	// Verify if the proof is valid
+	// Verify the proof
 	if !res.Proof.VerifyProof(l.DataHash) {
 		return nil, fmt.Errorf("invalid transaction shares proof")
 	}

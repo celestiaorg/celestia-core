@@ -66,7 +66,7 @@ func TestShareProofVerify(t *testing.T) {
 			isVerified: false,
 		},
 		{
-			name:       "valid share proof returns no true",
+			name:       "valid share proof returns true",
 			sp:         validShareProof(),
 			root:       root,
 			isVerified: true,
