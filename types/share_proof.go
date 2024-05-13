@@ -97,8 +97,12 @@ func (sp ShareProof) Validate() error {
 	return nil
 }
 
-// VerifyProof verifies that the share to data root proof is valid.
+// VerifyProof check if the proof is valid then
+// verify that the share to data root proof is valid.
 func (sp ShareProof) VerifyProof(root []byte) bool {
+	if err := sp.Validate(); err != nil {
+		return false
+	}
 	cursor := int32(0)
 	for i, proof := range sp.ShareProofs {
 		nmtProof := nmt.NewInclusionProof(

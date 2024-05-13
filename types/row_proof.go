@@ -37,6 +37,9 @@ func (rp RowProof) Validate() error {
 // VerifyProof verifies that all the row roots in this RowProof exist in a
 // Merkle tree with the given root. Returns true if all proofs are valid.
 func (rp RowProof) VerifyProof(root []byte) bool {
+	if err := rp.Validate(); err != nil {
+		return false
+	}
 	for i, proof := range rp.Proofs {
 		err := proof.Verify(root, rp.RowRoots[i])
 		if err != nil {
