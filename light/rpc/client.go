@@ -581,6 +581,7 @@ func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Resul
 // ProveShares calls rpcclient#ProveShares method and returns an NMT proof for a set
 // of shares, defined by `startShare` and `endShare`, to the corresponding rows.
 // Then, a binary merkle inclusion proof from the latter rows to the data root.
+// Deprecated: Use ProveSharesV2 instead.
 func (c *Client) ProveShares(
 	ctx context.Context,
 	height uint64,
@@ -588,6 +589,20 @@ func (c *Client) ProveShares(
 	endShare uint64,
 ) (types.ShareProof, error) {
 	res, err := c.next.ProveShares(ctx, height, startShare, endShare)
+	return res, err
+}
+
+// ProveSharesV2 returns a proof of inclusion for a share range to the data root
+// of the given height.
+// The range is end-exclusive and defined by startShare and endShare.
+// Note: this proof is composed of multiple proofs.
+func (c *Client) ProveSharesV2(
+	ctx context.Context,
+	height uint64,
+	startShare uint64,
+	endShare uint64,
+) (*ctypes.ResultShareProof, error) {
+	res, err := c.next.ProveSharesV2(ctx, height, startShare, endShare)
 	return res, err
 }
 

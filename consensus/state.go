@@ -775,8 +775,10 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleTxsAvailable()
 
 		case mi = <-cs.peerMsgQueue:
-			if err := cs.wal.Write(mi); err != nil {
-				cs.Logger.Error("failed writing to WAL", "err", err)
+			if !cs.config.OnlyInternalWal {
+				if err := cs.wal.Write(mi); err != nil {
+					cs.Logger.Error("failed writing to WAL", "err", err)
+				}
 			}
 
 			// handles proposals, block parts, votes
