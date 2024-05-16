@@ -706,7 +706,9 @@ func (cs *State) newStep() {
 
 	cs.nSteps++
 
-	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, cs.Step)
+	step := uint8(cs.RoundState.Step)
+
+	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, step)
 
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {
@@ -1160,7 +1162,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		block, blockParts = cs.TwoThirdPrevoteBlock, cs.TwoThirdPrevoteBlockParts
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
+		schema.WriteABCI(cs.traceClient, schema.PrepareProposalStart, height, round)
 		block, blockParts = cs.createProposalBlock()
+		schema.WriteABCI(cs.traceClient, schema.PrepareProposalEnd, height, round)
 		if block == nil {
 			return
 		}
@@ -1305,11 +1309,15 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		return
 	}
 
+	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
+
 	stateMachineValidBlock, err := cs.blockExec.ProcessProposal(cs.ProposalBlock)
 	if err != nil {
 		cs.Logger.Error("state machine returned an error when trying to process proposal block", "err", err)
 		return
 	}
+
+	schema.WriteABCI(cs.traceClient, schema.ProcessProposalEnd, height, round)
 
 	// Vote nil if application invalidated the block
 	if !stateMachineValidBlock {
@@ -1697,6 +1705,8 @@ func (cs *State) finalizeCommit(height int64) {
 		retainHeight int64
 	)
 
+	schema.WriteABCI(cs.traceClient, schema.CommitStart, height, 0)
+
 	stateCopy, retainHeight, err = cs.blockExec.ApplyBlock(
 		stateCopy,
 		types.BlockID{
@@ -1709,6 +1719,8 @@ func (cs *State) finalizeCommit(height int64) {
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}
+
+	schema.WriteABCI(cs.traceClient, schema.CommitEnd, height, 0)
 
 	fail.Fail() // XXX
 

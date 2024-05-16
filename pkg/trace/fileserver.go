@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -36,11 +37,12 @@ func (lt *LocalTracer) getTableHandler() http.HandlerFunc {
 			return
 		}
 
-		f, err := lt.ReadTable(inputString)
+		f, done, err := lt.readTable(inputString)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to read table: %v", err), http.StatusInternalServerError)
 			return
 		}
+		defer done() //nolint:errcheck
 
 		// Use the pump function to continuously read from the file and write to
 		// the response writer
@@ -205,6 +207,9 @@ func PushS3(chainID, nodeID string, s3cfg S3Config, f *os.File) error {
 			s3cfg.SecretKey,
 			"",
 		),
+		HTTPClient: &http.Client{
+			Timeout: time.Duration(15) * time.Second,
+		},
 	},
 	)
 	if err != nil {
@@ -236,14 +241,22 @@ func (lt *LocalTracer) pushLoop() {
 
 func (lt *LocalTracer) PushAll() error {
 	for table := range lt.fileMap {
-		f, err := lt.ReadTable(table)
+		f, done, err := lt.readTable(table)
 		if err != nil {
 			return err
 		}
-		if err := PushS3(lt.chainID, lt.nodeID, lt.s3Config, f); err != nil {
+		for i := 0; i < 3; i++ {
+			err = PushS3(lt.chainID, lt.nodeID, lt.s3Config, f)
+			if err == nil {
+				break
+			}
+			lt.logger.Error("failed to push table", "table", table, "error", err)
+			time.Sleep(time.Second * time.Duration(rand.Intn(3))) //nolint:gosec
+		}
+		err = done()
+		if err != nil {
 			return err
 		}
-		f.Close()
 	}
 	return nil
 }
@@ -279,7 +292,7 @@ func S3Download(dst, prefix string, cfg S3Config) error {
 
 	err = s3Svc.ListObjectsV2Pages(input, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
 		for _, content := range page.Contents {
-			localFilePath := filepath.Join(dst, strings.TrimPrefix(*content.Key, prefix))
+			localFilePath := filepath.Join(dst, prefix, strings.TrimPrefix(*content.Key, prefix))
 			fmt.Printf("Downloading %s to %s\n", *content.Key, localFilePath)
 
 			// Create the directories in the path

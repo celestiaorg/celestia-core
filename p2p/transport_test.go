@@ -13,6 +13,7 @@ import (
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/libs/protoio"
 	"github.com/tendermint/tendermint/p2p/conn"
+	"github.com/tendermint/tendermint/pkg/trace"
 	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
 )
 
@@ -30,7 +31,7 @@ func newMultiplexTransport(
 	nodeKey NodeKey,
 ) *MultiplexTransport {
 	return NewMultiplexTransport(
-		nodeInfo, nodeKey, conn.DefaultMConnConfig(),
+		nodeInfo, nodeKey, conn.DefaultMConnConfig(), trace.NoOpTracer(),
 	)
 }
 
