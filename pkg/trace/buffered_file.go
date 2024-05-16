@@ -69,7 +69,7 @@ func (f *bufferedFile) startReading() error {
 }
 
 // stopReading stops reading from the file and resets the seek point to the end
-// of the file.
+// of the file to stop ignoring writes.
 func (f *bufferedFile) stopReading() error {
 	f.mut.Lock()
 	defer f.mut.Unlock()
