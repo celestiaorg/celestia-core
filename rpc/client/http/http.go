@@ -550,6 +550,8 @@ func (c *baseRPCClient) Tx(ctx context.Context, hash []byte, prove bool) (*ctype
 	return result, nil
 }
 
+// ProveShares
+// Deprecated: Use ProveSharesV2 instead.
 func (c *baseRPCClient) ProveShares(
 	ctx context.Context,
 	height uint64,
@@ -567,6 +569,25 @@ func (c *baseRPCClient) ProveShares(
 		return types.ShareProof{}, err
 	}
 	return *result, nil
+}
+
+func (c *baseRPCClient) ProveSharesV2(
+	ctx context.Context,
+	height uint64,
+	startShare uint64,
+	endShare uint64,
+) (*ctypes.ResultShareProof, error) {
+	result := new(ctypes.ResultShareProof)
+	params := map[string]interface{}{
+		"height":     height,
+		"startShare": startShare,
+		"endShare":   endShare,
+	}
+	_, err := c.caller.Call(ctx, "prove_shares_v2", params, result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (c *baseRPCClient) TxSearch(
