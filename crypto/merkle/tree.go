@@ -12,6 +12,10 @@ func HashFromByteSlices(items [][]byte) []byte {
 		return emptyHash()
 	case 1:
 		return leafHash(items[0])
+	case 2:
+		left := leafHash(items[0])
+		right := leafHash(items[1])
+		return innerHash(left, right)
 	default:
 		k := getSplitPoint(int64(len(items)))
 		left := HashFromByteSlices(items[:k])
