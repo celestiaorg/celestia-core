@@ -110,7 +110,7 @@ func TestHashAlternatives(t *testing.T) {
 		items[i] = testItem(cmtrand.Bytes(tmhash.Size))
 	}
 
-	rootHash1 := hashFromByteSlicesIterative(items)
+	rootHash1 := HashFromByteSlicesIterative(items)
 	rootHash2 := HashFromByteSlices(items)
 	require.Equal(t, rootHash1, rootHash2, "Unmatched root hashes: %X vs %X", rootHash1, rootHash2)
 }
@@ -132,7 +132,7 @@ func BenchmarkHashAlternatives(b *testing.B) {
 
 	b.Run("iterative", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = hashFromByteSlicesIterative(items)
+			_ = HashFromByteSlicesIterative(items)
 		}
 	})
 }

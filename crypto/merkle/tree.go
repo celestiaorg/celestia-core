@@ -27,7 +27,7 @@ func hashFromByteSlices(h hash.Hash, items [][]byte) []byte {
 	}
 }
 
-// HashFromByteSliceIterative is an iterative alternative to
+// HashFromByteSlicesIterative is an iterative alternative to
 // HashFromByteSlice motivated by potential performance improvements.
 // (#2611) had suggested that an iterative version of
 // HashFromByteSlice would be faster, presumably because
@@ -66,7 +66,8 @@ func hashFromByteSlices(h hash.Hash, items [][]byte) []byte {
 // Finally, considering that the recursive implementation is easier to
 // read, it might not be worthwhile to switch to a less intuitive
 // implementation for so little benefit.
-func hashFromByteSlicesIterative(input [][]byte) []byte {
+// Deprecated: use HashFromByteSlices instead.
+func HashFromByteSlicesIterative(input [][]byte) []byte {
 	items := make([][]byte, len(input))
 
 	for i, leaf := range input {
