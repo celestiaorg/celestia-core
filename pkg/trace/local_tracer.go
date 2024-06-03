@@ -145,11 +145,11 @@ func (lt *LocalTracer) Write(e Entry) {
 }
 
 // ReadTable returns a file for the given table. If the table is not being
-// collected, an error is returned. This method is not thread-safe.
-func (lt *LocalTracer) ReadTable(table string) (*os.File, error) {
+// collected, an error is returned. The caller should not close the file.
+func (lt *LocalTracer) readTable(table string) (*os.File, func() error, error) {
 	bf, has := lt.getFile(table)
 	if !has {
-		return nil, fmt.Errorf("table %s not found", table)
+		return nil, func() error { return nil }, fmt.Errorf("table %s not found", table)
 	}
 
 	return bf.File()
@@ -199,12 +199,16 @@ func (lt *LocalTracer) drainCanal() {
 
 // Stop optionally uploads and closes all open files.
 func (lt *LocalTracer) Stop() {
-	for _, file := range lt.fileMap {
-		err := file.Flush()
+	if lt.s3Config.SecretKey != "" {
+		lt.logger.Info("pushing all tables before stopping")
+		err := lt.PushAll()
 		if err != nil {
-			lt.logger.Error("failed to flush file", "error", err)
+			lt.logger.Error("failed to push tables", "error", err)
 		}
-		err = file.Close()
+	}
+
+	for _, file := range lt.fileMap {
+		err := file.Close()
 		if err != nil {
 			lt.logger.Error("failed to close file", "error", err)
 		}
