@@ -9,17 +9,10 @@ require (
 	github.com/Workiva/go-datastructures v1.0.53
 	github.com/adlio/schema v1.3.3
 	github.com/aws/aws-sdk-go v1.40.45
-<<<<<<< HEAD
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/btcsuite/btcd/btcutil v1.1.3
 	github.com/bufbuild/buf v1.15.1
-	github.com/celestiaorg/nmt v0.20.0
-=======
-	github.com/btcsuite/btcd/btcec/v2 v2.2.1
-	github.com/btcsuite/btcd/btcutil v1.1.2
-	github.com/bufbuild/buf v1.9.0
 	github.com/celestiaorg/nmt v0.21.0
->>>>>>> 966cc9797 (build(deps): Bump github.com/celestiaorg/nmt from 0.20.0 to 0.21.0 (#1367))
 	github.com/cometbft/cometbft-db v0.7.0
 	github.com/creachadair/taskgroup v0.3.2
 	github.com/fortytw2/leaktest v1.3.0
@@ -48,15 +41,9 @@ require (
 	github.com/rs/cors v1.8.3
 	github.com/sasha-s/go-deadlock v0.3.1
 	github.com/snikch/goodman v0.0.0-20171125024755-10e37e294daa
-<<<<<<< HEAD
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.15.0
-	github.com/stretchr/testify v1.8.4
-=======
-	github.com/spf13/cobra v1.6.1
-	github.com/spf13/viper v1.13.0
 	github.com/stretchr/testify v1.9.0
->>>>>>> 966cc9797 (build(deps): Bump github.com/celestiaorg/nmt from 0.20.0 to 0.21.0 (#1367))
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/vektra/mockery/v2 v2.23.1
 	go.opentelemetry.io/otel v1.24.0
@@ -269,16 +256,10 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/ssgreg/nlreturn/v2 v2.2.1 // indirect
 	github.com/stbenjam/no-sprintf-host-port v0.1.1 // indirect
-<<<<<<< HEAD
-	github.com/stretchr/objx v0.5.0 // indirect
-	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
+	github.com/subosito/gotenv v1.4.2 // indirect
 	github.com/t-yuki/gocover-cobertura v0.0.0-20180217150009-aaee18c8195c // indirect
 	github.com/tdakkota/asciicheck v0.2.0 // indirect
-=======
-	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/subosito/gotenv v1.4.1 // indirect
-	github.com/tdakkota/asciicheck v0.1.1 // indirect
->>>>>>> 966cc9797 (build(deps): Bump github.com/celestiaorg/nmt from 0.20.0 to 0.21.0 (#1367))
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c // indirect
 	github.com/tetafro/godot v1.4.11 // indirect
 	github.com/timakin/bodyclose v0.0.0-20221125081123-e39cf3fc478e // indirect
