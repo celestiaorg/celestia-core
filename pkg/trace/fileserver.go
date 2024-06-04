@@ -259,8 +259,8 @@ func (lt *LocalTracer) PushAll() error {
 
 // S3Download downloads files that match some prefix from an S3 bucket to a
 // local directory dst.
-// tableNames is a list of traced jsonl file names to download. If it is empty, all traces are downloaded.
-// tableNames should not have .jsonl suffix.
+// fileNames is a list of traced jsonl file names to download. If it is empty, all traces are downloaded.
+// fileNames should not have .jsonl suffix.
 func S3Download(dst, prefix string, fileNames []string, cfg S3Config) error {
 	// Ensure local directory structure exists
 	err := os.MkdirAll(dst, os.ModePerm)
