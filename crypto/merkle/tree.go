@@ -1,26 +1,33 @@
 package merkle
 
 import (
+	"hash"
 	"math/bits"
+
+	"github.com/cometbft/cometbft/crypto/tmhash"
 )
 
 // HashFromByteSlices computes a Merkle tree where the leaves are the byte slice,
 // in the provided order. It follows RFC-6962.
 func HashFromByteSlices(items [][]byte) []byte {
+	return hashFromByteSlices(tmhash.New(), items)
+}
+
+func hashFromByteSlices(h hash.Hash, items [][]byte) []byte {
 	switch len(items) {
 	case 0:
 		return emptyHash()
 	case 1:
-		return leafHash(items[0])
+		return leafHashOpt(h, items[0])
 	default:
 		k := getSplitPoint(int64(len(items)))
-		left := HashFromByteSlices(items[:k])
-		right := HashFromByteSlices(items[k:])
-		return innerHash(left, right)
+		left := hashFromByteSlices(h, items[:k])
+		right := hashFromByteSlices(h, items[k:])
+		return innerHashOpt(h, left, right)
 	}
 }
 
-// HashFromByteSliceIterative is an iterative alternative to
+// HashFromByteSlicesIterative is an iterative alternative to
 // HashFromByteSlice motivated by potential performance improvements.
 // (#2611) had suggested that an iterative version of
 // HashFromByteSlice would be faster, presumably because
@@ -59,6 +66,7 @@ func HashFromByteSlices(items [][]byte) []byte {
 // Finally, considering that the recursive implementation is easier to
 // read, it might not be worthwhile to switch to a less intuitive
 // implementation for so little benefit.
+// Deprecated: use HashFromByteSlices instead.
 func HashFromByteSlicesIterative(input [][]byte) []byte {
 	items := make([][]byte, len(input))
 
