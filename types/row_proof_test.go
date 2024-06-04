@@ -53,6 +53,12 @@ func TestRowProofValidate(t *testing.T) {
 			root:    incorrectRoot,
 			wantErr: true,
 		},
+		{
+			name:    "start row greater than end row",
+			rp:      RowProof{StartRow: 10, EndRow: 5},
+			root:    root,
+			wantErr: true,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
