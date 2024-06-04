@@ -26,7 +26,7 @@ type RowProof struct {
 // attempts to verify the proof. It returns nil if the proof is valid.
 func (rp RowProof) Validate(root []byte) error {
 	if rp.EndRow < rp.StartRow {
-		return fmt.Errorf("end row %d cannot be smaller than start row %d", rp.EndRow, rp.StartRow)
+		return fmt.Errorf("end row %d cannot be less than start row %d", rp.EndRow, rp.StartRow)
 	}
 	// HACKHACK performing subtraction with unsigned integers is unsafe.
 	if int(rp.EndRow-rp.StartRow+1) != len(rp.RowRoots) {
