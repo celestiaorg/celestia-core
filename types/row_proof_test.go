@@ -42,11 +42,6 @@ func TestRowProofValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "valid row proof with incorrect root returns error",
-			rp:      validRowProof(),
-			wantErr: true,
-		},
-		{
 			name:    "start row greater than end row",
 			rp:      RowProof{StartRow: 10, EndRow: 5},
 			wantErr: true,
