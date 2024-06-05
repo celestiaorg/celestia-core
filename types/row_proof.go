@@ -18,7 +18,7 @@ type RowProof struct {
 	Proofs []*merkle.Proof `json:"proofs"`
 	// StartRow the index of the start row.
 	StartRow uint32 `json:"start_row"`
-	// EndRow the end-exclusive index of the end row.
+	// EndRow is the end-exclusive index of the end row.
 	EndRow uint32 `json:"end_row"`
 }
 
