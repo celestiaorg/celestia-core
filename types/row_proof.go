@@ -16,7 +16,7 @@ type RowProof struct {
 	// Proofs is a list of Merkle proofs where each proof proves that a row
 	// exists in a Merkle tree with a given data root.
 	Proofs []*merkle.Proof `json:"proofs"`
-	// StartRow the index of the start row.
+	// StartRow is the index of the start row.
 	StartRow uint32 `json:"start_row"`
 	// EndRow is the end-exclusive index of the end row.
 	EndRow uint32 `json:"end_row"`
