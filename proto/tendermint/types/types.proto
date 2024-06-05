@@ -219,8 +219,7 @@ message ShareProof {
 }
 
 // RowProof is a Merkle proof that a set of rows exist in a Merkle tree with a
-// given data root.
-// the row range is end exclusive.
+// given data root. The row range is end exclusive.
 message RowProof {
   repeated bytes row_roots                   = 1;
   repeated tendermint.crypto.Proof proofs    = 2;
