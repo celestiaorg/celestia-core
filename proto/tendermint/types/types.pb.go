@@ -1335,8 +1335,7 @@ func (m *ShareProof) GetNamespaceVersion() uint32 {
 }
 
 // RowProof is a Merkle proof that a set of rows exist in a Merkle tree with a
-// given data root.
-// the row range is end exclusive.
+// given data root. The row range is end exclusive.
 type RowProof struct {
 	RowRoots [][]byte        `protobuf:"bytes,1,rep,name=row_roots,json=rowRoots,proto3" json:"row_roots,omitempty"`
 	Proofs   []*crypto.Proof `protobuf:"bytes,2,rep,name=proofs,proto3" json:"proofs,omitempty"`
