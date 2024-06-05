@@ -48,7 +48,7 @@ This repo intends on preserving the minimal possible diff with [cometbft/cometbf
 - **specific to Celestia**: consider if [celestia-app](https://github.com/celestiaorg/celestia-app) is a better target
 - **not specific to Celestia**: consider making the contribution upstream in CometBFT
 
-1. [Install Go](https://go.dev/doc/install) 1.22.3+
+1. [Install Go](https://go.dev/doc/install) 1.22.4+
 2. Fork this repo
 3. Clone your fork
 4. Find an issue to work on (see [good first issues](https://github.com/celestiaorg/celestia-core/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22))
