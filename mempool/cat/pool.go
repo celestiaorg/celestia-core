@@ -64,6 +64,8 @@ type TxPool struct {
 
 	// Thread-safe cache of rejected transactions for quick look-up
 	rejectedTxCache *LRUTxCache
+	// Thread-safe cache of evicted transactions for quick look-up
+	evictedTxCache *LRUTxCache
 	// Thread-safe list of transactions peers have seen that we have not yet seen
 	seenByPeersSet *SeenTxSet
 
@@ -92,6 +94,7 @@ func NewTxPool(
 		proxyAppConn:     proxyAppConn,
 		metrics:          mempool.NopMetrics(),
 		rejectedTxCache:  NewLRUTxCache(cfg.CacheSize),
+		evictedTxCache:   NewLRUTxCache(cfg.CacheSize),
 		seenByPeersSet:   NewSeenTxSet(),
 		height:           height,
 		preCheckFn:       func(_ types.Tx) error { return nil },
@@ -141,19 +144,16 @@ func (txmp *TxPool) Size() int { return txmp.store.size() }
 // mempool. It is thread-safe.
 func (txmp *TxPool) SizeBytes() int64 { return txmp.store.totalBytes() }
 
-func (txmp *TxPool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
+func (txmp *TxPool) GetTxByKey(key types.TxKey) types.Tx {
 	// e, ok := me.Load(key)
 	tx := txmp.store.get(key)
-	return tx.tx, true
+	return tx.tx
 }
 
-func (mem *TxPool) GetTxEvicted(key types.TxKey) bool {
-	return false
-}
-
-// TODO: Investigate this since i think 
-func (mem *TxPool) GetTxRejected(key types.TxKey) bool {
-	return false
+// IsEvicted returns true is the transaction was recently evicted and is
+// currently within the cache
+func (txmp *TxPool) GetTxEvicted(txKey types.TxKey) bool {
+	return txmp.evictedTxCache.Has(txKey)
 }
 
 // FlushAppConn executes FlushSync on the mempool's proxyAppConn.
@@ -212,7 +212,7 @@ func (txmp *TxPool) CheckToPurgeExpiredTxs() {
 		expirationAge := time.Now().Add(-txmp.config.TTLDuration)
 		// a height of 0 means no transactions will be removed because of height
 		// (in other words, no transaction has a height less than 0)
-		numExpired := txmp.store.purgeExpiredTxs(0, expirationAge)
+		numExpired := txmp.store.purgeExpiredTxs(0, expirationAge, txmp.evictedTxCache)
 		txmp.metrics.EvictedTxs.Add(float64(numExpired))
 		txmp.lastPurgeTime = time.Now()
 	}
@@ -374,7 +374,6 @@ func (txmp *TxPool) RemoveTxByKey(txKey types.TxKey) error {
 }
 
 func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
-	txmp.rejectedTxCache.Push(txKey)
 	_ = txmp.store.remove(txKey)
 	txmp.seenByPeersSet.RemoveKey(txKey)
 }
@@ -388,6 +387,7 @@ func (txmp *TxPool) Flush() {
 	txmp.store.reset()
 	txmp.seenByPeersSet.Reset()
 	txmp.rejectedTxCache.Reset()
+	txmp.evictedTxCache.Reset()
 	txmp.metrics.EvictedTxs.Add(float64(size))
 	txmp.broadcastMtx.Lock()
 	defer txmp.broadcastMtx.Unlock()
@@ -552,6 +552,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 		// drop the new one.
 		if len(victims) == 0 || victimBytes < wtx.size() {
 			txmp.metrics.EvictedTxs.Add(1)
+			txmp.evictedTxCache.Push(wtx.key)
 			checkTxRes.MempoolError = fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
 				wtx.key)
 			return fmt.Errorf("rejected valid incoming transaction; mempool is full (%X). Size: (%d:%d)",
@@ -606,6 +607,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 
 func (txmp *TxPool) evictTx(wtx *wrappedTx) {
 	txmp.store.remove(wtx.key)
+	txmp.evictedTxCache.Push(wtx.key)
 	txmp.metrics.EvictedTxs.Add(1)
 	txmp.logger.Debug(
 		"evicted valid existing transaction; mempool full",
@@ -735,7 +737,7 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 		expirationAge = time.Time{}
 	}
 
-	numExpired := txmp.store.purgeExpiredTxs(expirationHeight, expirationAge)
+	numExpired := txmp.store.purgeExpiredTxs(expirationHeight, expirationAge, txmp.evictedTxCache)
 	txmp.metrics.EvictedTxs.Add(float64(numExpired))
 
 	// purge old evicted and seen transactions

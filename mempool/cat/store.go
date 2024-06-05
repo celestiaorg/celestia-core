@@ -142,7 +142,7 @@ func (s *store) getTxsBelowPriority(priority int64) ([]*wrappedTx, int64) {
 
 // purgeExpiredTxs removes all transactions that are older than the given height
 // and time. Returns the amount of transactions that were removed
-func (s *store) purgeExpiredTxs(expirationHeight int64, expirationAge time.Time) int {
+func (s *store) purgeExpiredTxs(expirationHeight int64, expirationAge time.Time, evictedTxCache *LRUTxCache) int {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	counter := 0
@@ -150,6 +150,9 @@ func (s *store) purgeExpiredTxs(expirationHeight int64, expirationAge time.Time)
 		if tx.height < expirationHeight || tx.timestamp.Before(expirationAge) {
 			s.bytes -= tx.size()
 			delete(s.txs, key)
+			if evictedTxCache != nil {
+				evictedTxCache.Push(key)
+			}
 			counter++
 		}
 	}

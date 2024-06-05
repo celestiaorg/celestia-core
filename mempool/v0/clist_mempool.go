@@ -183,21 +183,17 @@ func (mem *CListMempool) TxsFront() *clist.CElement {
 	return mem.txs.Front()
 }
 
-func (mem *CListMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
+func (mem *CListMempool) GetTxByKey(key types.TxKey) types.Tx {
 	e, ok := mem.txsMap.Load(key)
 	memTx := e.(*clist.CElement).Value.(*mempoolTx)
 
 	if !ok {
-		return nil, false
+		return nil
 	}
-	return memTx.tx, true
+	return memTx.tx
 }
 
 func (mem *CListMempool) GetTxEvicted(key types.TxKey) bool {
-	return false
-}
-
-func (mem *CListMempool) GetTxRejected(key types.TxKey) bool {
 	return false
 }
 

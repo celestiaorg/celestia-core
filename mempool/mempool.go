@@ -91,9 +91,7 @@ type Mempool interface {
 	// trigger once every height when transactions are available.
 	EnableTxsAvailable()
 
-	GetTxByKey(key types.TxKey) (types.Tx, bool)
-
-	GetTxRejected(key types.TxKey) bool
+	GetTxByKey(key types.TxKey) types.Tx
 
 	GetTxEvicted(key types.TxKey) bool
 

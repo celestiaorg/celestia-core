@@ -21,7 +21,7 @@ func populate(cache TxCache, numTxs int) ([][]byte, error) {
 		}
 
 		txs[i] = txBytes
-		cache.Push(txBytes)
+		cache.Push(types.Tx(txBytes).Key())
 	}
 
 	return txs, nil
@@ -37,7 +37,7 @@ func TestCacheRemove(t *testing.T) {
 	require.Equal(t, numTxs, cache.list.Len())
 
 	for i := 0; i < numTxs; i++ {
-		cache.Remove(txs[i])
+		cache.Remove(types.Tx(txs[i]).Key())
 		// make sure its removed from both the map and the linked list
 		require.Equal(t, numTxs-(i+1), len(cache.cacheMap))
 		require.Equal(t, numTxs-(i+1), cache.list.Len())

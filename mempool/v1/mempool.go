@@ -58,10 +58,7 @@ type TxMempool struct {
 	txs        *clist.CList // valid transactions (passed CheckTx)
 	txByKey    map[types.TxKey]*clist.CElement
 	txBySender map[string]*clist.CElement // for sender != ""
-	evictedTxs mempool.TxCache // for tracking evicted transactions
-	rejectedTxs mempool.TxCache // for tracking rejected transactions
-
-
+	evictedTxs mempool.TxCache            // for tracking evicted transactions
 
 	traceClient *trace.Client
 }
@@ -91,7 +88,6 @@ func NewTxMempool(
 	}
 	if cfg.CacheSize > 0 {
 		txmp.cache = mempool.NewLRUTxCache(cfg.CacheSize)
-        txmp.rejectedTxs = mempool.NewLRUTxCache(cfg.CacheSize)
 		txmp.evictedTxs = mempool.NewLRUTxCache(cfg.CacheSize)
 	}
 
@@ -210,7 +206,6 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		if txmp.preCheck != nil {
 			if err := txmp.preCheck(tx); err != nil {
 				txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedPrecheck).Add(1)
-				txmp.rejectedTxs.Push(tx.Key())
 				schema.WriteMempoolRejected(txmp.traceClient, err.Error())
 				return 0, mempool.ErrPreCheck{Reason: err}
 			}
@@ -268,28 +263,17 @@ func (txmp *TxMempool) RemoveTxByKey(txKey types.TxKey) error {
 	return txmp.removeTxByKey(txKey)
 }
 
-func (txmp *TxMempool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
+func (txmp *TxMempool) GetTxByKey(txKey types.TxKey) types.Tx {
 	txmp.mtx.RLock()
 	defer txmp.mtx.RUnlock()
 
 	if elt, ok := txmp.txByKey[txKey]; ok {
-		return elt.Value.(*WrappedTx).tx, true
+		return elt.Value.(*WrappedTx).tx
 	}
-	return nil, false
-}
-
-// figure out how to flush rejected and evicted transactions
-func (txmp *TxMempool) GetTxRejected(txKey types.TxKey) bool {
-	txmp.mtx.RLock()
-	defer txmp.mtx.RUnlock()
-
-	return txmp.rejectedTxs.Has(txKey)
+	return nil
 }
 
 func (txmp *TxMempool) GetTxEvicted(txKey types.TxKey) bool {
-	txmp.mtx.RLock()
-	defer txmp.mtx.RUnlock()
-
 	return txmp.evictedTxs.Has(txKey)
 }
 
@@ -525,9 +509,6 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		)
 		schema.WriteMempoolRejected(txmp.traceClient, reason)
 
-		// add it to rejected transactions list 
-		txmp.rejectedTxs.Push(wtx.tx.Key())
-
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
 		if !txmp.config.KeepInvalidTxsInCache {
@@ -587,14 +568,15 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		if len(victims) == 0 || victimBytes < wtx.Size() {
 			txmp.cache.Remove(wtx.tx.Key())
 			txmp.logger.Error(
-				"rejected valid incoming transaction; mempool is full",
+				"evicted valid incoming transaction; mempool is full",
 				"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
 				"err", err.Error(),
 			)
 			checkTxRes.MempoolError =
-				fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
+				fmt.Sprintf("evicted valid incoming transaction; mempool is full (%X)",
 					wtx.tx.Hash())
 			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedNewTxFullMempool).Add(1)
+			// Add it to evicted transactions cache
 			txmp.evictedTxs.Push(wtx.tx.Key())
 			return
 		}
@@ -628,6 +610,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			txmp.removeTxByElement(vic)
 			txmp.cache.Remove(w.tx.Key())
 			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedExistingTxFullMempool).Add(1)
+			// Add it to evicted transactions cache
 			txmp.evictedTxs.Push(w.tx.Key())
 			// We may not need to evict all the eligible transactions.  Bail out
 			// early if we have made enough room.
@@ -706,7 +689,6 @@ func (txmp *TxMempool) handleRecheckResult(tx types.Tx, checkTxRes *abci.Respons
 	)
 	txmp.removeTxByElement(elt)
 	txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedRecheck).Add(1)
-	txmp.rejectedTxs.Push(wtx.tx.Key())
 	if !txmp.config.KeepInvalidTxsInCache {
 		txmp.cache.Remove(wtx.tx.Key())
 		if err != nil {
@@ -827,8 +809,8 @@ func (txmp *TxMempool) purgeExpiredTxs(blockHeight int64) {
 		} else if txmp.config.TTLDuration > 0 && now.Sub(w.timestamp) > txmp.config.TTLDuration {
 			txmp.removeTxByElement(cur)
 			txmp.cache.Remove(w.tx.Key())
-			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedTxExpiredTime).Add(1)
 			txmp.evictedTxs.Push(w.tx.Key())
+			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedTxExpiredTime).Add(1)
 		}
 		cur = next
 	}

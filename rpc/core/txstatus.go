@@ -15,14 +15,9 @@ func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error
 	if err != nil {
 		return nil, err
 	}
-	// TODO replace this with exists _,
-	txInMempool, _ := env.Mempool.GetTxByKey(txKey)
+	txInMempool := env.Mempool.GetTxByKey(txKey)
 	if txInMempool != nil {
 		return &ctypes.ResultTxStatus{Status: "PENDING"}, nil
-	}
-	txRejected := env.Mempool.GetTxRejected(txKey)
-	if txRejected {
-		return &ctypes.ResultTxStatus{Status: "REJECTED"}, nil
 	}
 	isEvicted := env.Mempool.GetTxEvicted(txKey)
 	if isEvicted {
@@ -30,9 +25,9 @@ func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error
 	}
 	// committed
 	txInfo := env.BlockStore.LoadTxInfo(hash)
-    if txInfo != nil {
+	if txInfo != nil {
 		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, Status: "COMMITTED"}, nil
 	}
-	
+
 	return &ctypes.ResultTxStatus{Status: "UNKNOWN"}, nil
 }

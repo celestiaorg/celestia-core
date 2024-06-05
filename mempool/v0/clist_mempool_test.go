@@ -342,7 +342,7 @@ func TestMempool_KeepInvalidTxsInCache(t *testing.T) {
 		binary.BigEndian.PutUint64(a, 0)
 
 		// remove a from the cache to test (2)
-		mp.cache.Remove(a)
+		mp.cache.Remove(types.Tx(a).Key())
 
 		err := mp.CheckTx(a, nil, mempool.TxInfo{})
 		require.NoError(t, err)

@@ -108,6 +108,7 @@ func mustCheckTx(t *testing.T, txmp *TxMempool, spec string) {
 	<-done
 }
 
+// checkTxs
 func checkTxs(t *testing.T, txmp *TxMempool, numTxs int, peerID uint16) []testTx {
 	txs := make([]testTx, numTxs)
 	txInfo := mempool.TxInfo{SenderID: peerID}
@@ -239,7 +240,9 @@ func TestTxMempool_Eviction(t *testing.T) {
 	mustCheckTx(t, txmp, "key1=0000=25")
 	require.True(t, txExists("key1=0000=25"))
 	require.False(t, txExists(bigTx))
-	require.False(t, txmp.cache.Has([]byte(bigTx)))
+	bigTxKey := types.Tx((bigTx)).Key()
+	require.False(t, txmp.cache.Has(bigTxKey))
+	require.True(t, txmp.GetTxEvicted(bigTxKey)) // bigTx evicted
 	require.Equal(t, int64(len("key1=0000=25")), txmp.SizeBytes())
 
 	// Now fill up the rest of the slots with other transactions.
@@ -251,13 +254,15 @@ func TestTxMempool_Eviction(t *testing.T) {
 	// A new transaction with low priority should be discarded.
 	mustCheckTx(t, txmp, "key6=0005=1")
 	require.False(t, txExists("key6=0005=1"))
+	require.True(t, txmp.GetTxEvicted(types.Tx(("key6=0005=1")).Key())) // key6 evicted
 
 	// A new transaction with higher priority should evict key5, which is the
 	// newest of the two transactions with lowest priority.
 	mustCheckTx(t, txmp, "key7=0006=7")
-	require.True(t, txExists("key7=0006=7"))  // new transaction added
-	require.False(t, txExists("key5=0004=3")) // newest low-priority tx evicted
-	require.True(t, txExists("key4=0003=3"))  // older low-priority tx retained
+	require.True(t, txExists("key7=0006=7"))                            // new transaction added
+	require.False(t, txExists("key5=0004=3"))                           // newest low-priority tx evicted
+	require.True(t, txmp.GetTxEvicted(types.Tx(("key5=0004=3")).Key())) // key5 evicted
+	require.True(t, txExists("key4=0003=3"))                            // older low-priority tx retained
 
 	// Another new transaction evicts the other low-priority element.
 	mustCheckTx(t, txmp, "key8=0007=20")
@@ -268,6 +273,7 @@ func TestTxMempool_Eviction(t *testing.T) {
 	mustCheckTx(t, txmp, "key9=0008=9")
 	require.True(t, txExists("key9=0008=9"))
 	require.False(t, txExists("key2=0001=5"))
+	require.True(t, txmp.GetTxEvicted(types.Tx(("key2=0001=5")).Key())) // key2 evicted
 
 	// Add a transaction that requires eviction of multiple lower-priority
 	// entries, in order to fit the size of the element.
@@ -276,8 +282,11 @@ func TestTxMempool_Eviction(t *testing.T) {
 	require.True(t, txExists("key8=0007=20"))
 	require.True(t, txExists("key10=0123456789abcdef=11"))
 	require.False(t, txExists("key3=0002=10"))
+	require.True(t, txmp.GetTxEvicted(types.Tx(("key3=0002=10")).Key())) // key3 evicted
 	require.False(t, txExists("key9=0008=9"))
+	require.True(t, txmp.GetTxEvicted(types.Tx(("key9=0008=9")).Key())) // key9 evicted
 	require.False(t, txExists("key7=0006=7"))
+	require.True(t, txmp.GetTxEvicted(types.Tx(("key7=0006=7")).Key())) // key7 evicted
 }
 
 func TestTxMempool_Flush(t *testing.T) {
@@ -431,7 +440,7 @@ func TestTxMempool_ReapMaxTxs(t *testing.T) {
 }
 
 func TestTxMempool_CheckTxExceedsMaxSize(t *testing.T) {
-	txmp := setup(t, 0)
+	txmp := setup(t, 1)
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	tx := make([]byte, txmp.config.MaxTxBytes+1)
@@ -580,10 +589,14 @@ func TestTxMempool_ExpiredTxs_Timestamp(t *testing.T) {
 
 	// All the transactions in the original set should have been purged.
 	for _, tx := range added1 {
+		// Check that they were adding to the evicted cache.
+		evicted := txmp.GetTxEvicted(tx.tx.Key())
+		require.True(t, evicted)
+
 		if _, ok := txmp.txByKey[tx.tx.Key()]; ok {
 			t.Errorf("Transaction %X should have been purged for TTL", tx.tx.Key())
 		}
-		if txmp.cache.Has(tx.tx) {
+		if txmp.cache.Has(tx.tx.Key()) {
 			t.Errorf("Transaction %X should have been removed from the cache", tx.tx.Key())
 		}
 	}
@@ -593,6 +606,19 @@ func TestTxMempool_ExpiredTxs_Timestamp(t *testing.T) {
 		if _, ok := txmp.txByKey[tx.tx.Key()]; !ok {
 			t.Errorf("Transaction %X should still be in the mempool, but is not", tx.tx.Key())
 		}
+	}
+}
+
+func TestGetTxByKey_GetsTx(t *testing.T) {
+	txmp := setup(t, 500)
+	txs := checkTxs(t, txmp, 100, 0)
+
+	for _, tx := range txs {
+		txKey := tx.tx.Key()
+		txFromMempool := txmp.GetTxByKey(txKey)
+		require.Equal(t, tx.tx, txFromMempool)
+		exists := txmp.GetTxEvicted(txKey)
+		require.False(t, exists)
 	}
 }
 
@@ -662,7 +688,7 @@ func TestTxMempool_CheckTxPostCheckError(t *testing.T) {
 			postCheckFn := func(_ types.Tx, _ *abci.ResponseCheckTx) error {
 				return testCase.err
 			}
-			txmp := setup(t, 0, WithPostCheck(postCheckFn))
+			txmp := setup(t, 1, WithPostCheck(postCheckFn))
 			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 			tx := make([]byte, txmp.config.MaxTxBytes-1)
 			_, err := rng.Read(tx)

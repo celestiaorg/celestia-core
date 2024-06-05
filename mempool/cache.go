@@ -115,7 +115,7 @@ type NopTxCache struct{}
 
 var _ TxCache = (*NopTxCache)(nil)
 
-func (NopTxCache) Reset()             {}
+func (NopTxCache) Reset()                {}
 func (NopTxCache) Push(types.TxKey) bool { return true }
 func (NopTxCache) Remove(types.TxKey)    {}
 func (NopTxCache) Has(types.TxKey) bool  { return false }

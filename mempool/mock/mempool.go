@@ -36,6 +36,9 @@ func (Mempool) TxsAvailable() <-chan struct{} { return make(chan struct{}) }
 func (Mempool) EnableTxsAvailable()           {}
 func (Mempool) SizeBytes() int64              { return 0 }
 
+func (Mempool) GetTxByKey(txKey types.TxKey) types.Tx { return nil }
+func (Mempool) GetTxEvicted(txKey types.TxKey) bool   { return false }
+
 func (Mempool) TxsFront() *clist.CElement    { return nil }
 func (Mempool) TxsWaitChan() <-chan struct{} { return nil }
 
