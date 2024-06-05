@@ -93,7 +93,7 @@ message Data {
   // field number 2 is reserved for intermediate state roots
   // field number 3 is reserved for evidence
   // field number 4 is reserved for blobs
-
+  
   // SquareSize is the number of rows or columns in the original data square.
   uint64 square_size = 5;
 
