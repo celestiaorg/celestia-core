@@ -15,19 +15,21 @@ type RowProof struct {
 	RowRoots []tmbytes.HexBytes `json:"row_roots"`
 	// Proofs is a list of Merkle proofs where each proof proves that a row
 	// exists in a Merkle tree with a given data root.
-	Proofs   []*merkle.Proof `json:"proofs"`
-	StartRow uint32          `json:"start_row"`
-	EndRow   uint32          `json:"end_row"`
+	Proofs []*merkle.Proof `json:"proofs"`
+	// StartRow the index of the start row.
+	StartRow uint32 `json:"start_row"`
+	// EndRow the end-exclusive index of the end row.
+	EndRow uint32 `json:"end_row"`
 }
 
 // Validate performs checks on the fields of this RowProof. Returns an error if
 // the proof is not correctly constructed.
 func (rp RowProof) Validate() error {
-	if rp.EndRow < rp.StartRow {
-		return fmt.Errorf("end row %d cannot be less than start row %d", rp.EndRow, rp.StartRow)
+	if rp.EndRow <= rp.StartRow {
+		return fmt.Errorf("end row %d cannot be less or equal to start row %d", rp.EndRow, rp.StartRow)
 	}
-	if int(rp.EndRow-rp.StartRow+1) != len(rp.RowRoots) {
-		return fmt.Errorf("the number of rows %d must equal the number of row roots %d", int(rp.EndRow-rp.StartRow+1), len(rp.RowRoots))
+	if int(rp.EndRow-rp.StartRow) != len(rp.RowRoots) {
+		return fmt.Errorf("the number of rows %d must equal the number of row roots %d", int(rp.EndRow-rp.StartRow), len(rp.RowRoots))
 	}
 	if len(rp.Proofs) != len(rp.RowRoots) {
 		return fmt.Errorf("the number of proofs %d must equal the number of row roots %d", len(rp.Proofs), len(rp.RowRoots))

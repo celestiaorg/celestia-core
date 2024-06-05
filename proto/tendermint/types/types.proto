@@ -93,7 +93,7 @@ message Data {
   // field number 2 is reserved for intermediate state roots
   // field number 3 is reserved for evidence
   // field number 4 is reserved for blobs
-  
+
   // SquareSize is the number of rows or columns in the original data square.
   uint64 square_size = 5;
 
@@ -220,6 +220,7 @@ message ShareProof {
 
 // RowProof is a Merkle proof that a set of rows exist in a Merkle tree with a
 // given data root.
+// the row range is end exclusive.
 message RowProof {
   repeated bytes row_roots                   = 1;
   repeated tendermint.crypto.Proof proofs    = 2;
@@ -235,7 +236,7 @@ message RowProof {
 message NMTProof {
   // Start index of this proof.
   int32 start = 1;
-  // End index of this proof.
+  // End exclusive index of this proof.
   int32 end = 2;
   // Nodes that together with the corresponding leaf values can be used to
   // recompute the root and verify this proof. Nodes should consist of the max
