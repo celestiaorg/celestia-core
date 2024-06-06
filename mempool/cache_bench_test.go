@@ -2,8 +2,8 @@ package mempool
 
 import (
 	"encoding/binary"
-	"testing"
 	"github.com/cometbft/cometbft/types"
+	"testing"
 )
 
 func BenchmarkCacheInsertTime(b *testing.B) {
