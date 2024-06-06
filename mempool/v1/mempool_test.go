@@ -613,7 +613,7 @@ func TestTxMempool_ExpiredTxs_Timestamp(t *testing.T) {
 func TestGetTxByKey_GetsTx(t *testing.T) {
 	txmp := setup(t, 500)
 	txs := checkTxs(t, txmp, 100, 0)
-    
+
 	// Test that it gets all valid txs
 	for _, tx := range txs {
 		txKey := tx.tx.Key()
