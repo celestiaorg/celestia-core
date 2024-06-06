@@ -8,6 +8,7 @@ import (
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
 	types "github.com/cometbft/cometbft/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTxStatus(t *testing.T) {
@@ -57,7 +58,8 @@ func TestTxStatus(t *testing.T) {
 					blocks: nil,
 				}
 				for _, tx := range txs {
-					mempool.CheckTx(tx, nil, mempl.TxInfo{})
+					err := mempool.CheckTx(tx, nil, mempl.TxInfo{})
+					require.NoError(t, err)
 				}
 			},
 			expectedStatus: "PENDING",
@@ -70,8 +72,10 @@ func TestTxStatus(t *testing.T) {
 					blocks: nil,
 				}
 				for _, tx := range txs {
-					mempool.CheckTx(tx, nil, mempl.TxInfo{})
-					mempool.RemoveTxByKey(tx.Key())
+					err := mempool.CheckTx(tx, nil, mempl.TxInfo{})
+					require.NoError(t, err)
+					err = mempool.RemoveTxByKey(tx.Key())
+					require.NoError(t, err)
 				}
 			},
 			expectedStatus: "EVICTED",

@@ -12,7 +12,7 @@ import (
 // containing the height and index of the transaction within the block(if committed).
 func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
 	env := GetEnvironment()
-    
+
 	// Get the tx key from the hash
 	txKey, err := types.TxKeyFromBytes(hash)
 	if err != nil {
@@ -21,7 +21,7 @@ func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error
 
 	// Check if the tx is in the mempool
 	txInMempool, ok := env.Mempool.GetTxByKey(txKey)
-	if txInMempool != nil && ok{
+	if txInMempool != nil && ok {
 		return &ctypes.ResultTxStatus{Status: "PENDING"}, nil
 	}
 
@@ -33,10 +33,10 @@ func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error
 
 	// Check if the tx has been committed
 	txInfo := env.BlockStore.LoadTxInfo(hash)
-    if txInfo != nil {
+	if txInfo != nil {
 		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, Status: "COMMITTED"}, nil
 	}
-	
+
 	// If the tx is not in the mempool, evicted, or committed, return unknown
 	return &ctypes.ResultTxStatus{Status: "UNKNOWN"}, nil
 }

@@ -311,7 +311,6 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			memR.Switch.StopPeerForError(e.Src, err)
 			return
 		}
-    
 		schema.WriteMempoolPeerState(
 			memR.traceClient,
 			string(e.Src.ID()),
@@ -319,7 +318,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			txKey[:],
 			schema.Download,
 		)
-    tx, has := memR.mempool.GetTxByKey(txKey)
+		tx, has := memR.mempool.GetTxByKey(txKey)
 
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
