@@ -175,7 +175,7 @@ func (txmp *TxPool) Has(txKey types.TxKey) bool {
 }
 
 // GetTxByKey retrieves a transaction based on the key. It returns a bool
-// if the transaction exists or not
+// indicating whether transaction was found in the cache.
 func (txmp *TxPool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
 	wtx := txmp.store.get(txKey)
 	if wtx != nil {
@@ -184,8 +184,8 @@ func (txmp *TxPool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
 	return types.Tx{}, false
 }
 
-// IsEvicted returns true is the transaction was recently evicted and is
-// currently within the cache
+// GetTxEvicted returns a bool indicating whether the transaction with
+// the specified key was recently evicted and is currently within the cache
 func (txmp *TxPool) GetTxEvicted(txKey types.TxKey) bool {
 	return txmp.evictedTxCache.Has(txKey)
 }
@@ -368,6 +368,7 @@ func (txmp *TxPool) RemoveTxByKey(txKey types.TxKey) error {
 }
 
 func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
+	txmp.rejectedTxCache.Push(txKey)
 	_ = txmp.store.remove(txKey)
 	txmp.seenByPeersSet.RemoveKey(txKey)
 }

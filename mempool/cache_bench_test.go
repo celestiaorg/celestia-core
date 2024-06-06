@@ -3,7 +3,6 @@ package mempool
 import (
 	"encoding/binary"
 	"testing"
-
 	"github.com/cometbft/cometbft/types"
 )
 

@@ -100,6 +100,7 @@ func setup(t testing.TB, cacheSize int, options ...TxPoolOption) *TxPool {
 		os.RemoveAll(cfg.RootDir)
 		require.NoError(t, appConnMem.Stop())
 	})
+
 	return NewTxPool(log.TestingLogger().With("test", t.Name()), cfg, appConnMem, 1, options...)
 }
 

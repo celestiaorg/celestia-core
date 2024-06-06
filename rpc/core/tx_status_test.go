@@ -11,8 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestTxStatus tests the TxStatus function in the RPC core
+// making sure it fetches the correct status for each transaction.
 func TestTxStatus(t *testing.T) {
+	// Create a new environment
 	env := &Environment{}
+
+	// Create a new mempool and block store
 	mempool := mock.Mempool{}
 	env.Mempool = &mempool
 	blockStore := mockBlockStore{
@@ -94,7 +99,7 @@ func TestTxStatus(t *testing.T) {
 				assert.Equal(t, tt.expectedStatus, txStatus.Status)
 			}
 
-			// Check the height and index of each transaction if they are committed
+			// Check the height and index of transactions that are committed
 			if blockStore.height > 0 && tt.expectedStatus == "COMMITTED" {
 				for _, block := range blockStore.blocks {
 					for i, tx := range block.Txs {

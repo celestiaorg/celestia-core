@@ -183,16 +183,12 @@ func (mem *CListMempool) TxsFront() *clist.CElement {
 	return mem.txs.Front()
 }
 
+// GetTxByKey currently not enabled in v0 but it is required by the interface.
 func (mem *CListMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
-	e, ok := mem.txsMap.Load(key)
-	memTx := e.(*clist.CElement).Value.(*mempoolTx)
-
-	if !ok {
-		return nil, false
-	}
-	return memTx.tx, true
+	return nil, false
 }
 
+// GetTxEvicted currently not enabled in v0 but it is required by the interface.
 func (mem *CListMempool) GetTxEvicted(key types.TxKey) bool {
 	return false
 }

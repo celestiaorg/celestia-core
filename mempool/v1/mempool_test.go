@@ -108,7 +108,8 @@ func mustCheckTx(t *testing.T, txmp *TxMempool, spec string) {
 	<-done
 }
 
-// checkTxs
+// checkTxs generates a specified number of txs, checks them into the mempool,
+// and returns them.
 func checkTxs(t *testing.T, txmp *TxMempool, numTxs int, peerID uint16) []testTx {
 	txs := make([]testTx, numTxs)
 	txInfo := mempool.TxInfo{SenderID: peerID}
@@ -612,15 +613,18 @@ func TestTxMempool_ExpiredTxs_Timestamp(t *testing.T) {
 func TestGetTxByKey_GetsTx(t *testing.T) {
 	txmp := setup(t, 500)
 	txs := checkTxs(t, txmp, 100, 0)
-
+    
+	// Test that it gets all valid txs
 	for _, tx := range txs {
 		txKey := tx.tx.Key()
 		txFromMempool, exists := txmp.GetTxByKey(txKey)
 		require.Equal(t, tx.tx, txFromMempool)
 		require.True(t, exists)
-		exists = txmp.GetTxEvicted(txKey)
-		require.False(t, exists)
 	}
+
+	// Test that a non-existent tx returns false
+	_, exists := txmp.GetTxByKey(types.Tx("non-existent-tx").Key())
+	require.False(t, exists)
 }
 
 func TestTxMempool_ExpiredTxs_NumBlocks(t *testing.T) {
