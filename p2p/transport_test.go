@@ -13,6 +13,7 @@ import (
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/libs/protoio"
 	"github.com/cometbft/cometbft/p2p/conn"
+	"github.com/cometbft/cometbft/pkg/trace"
 	tmp2p "github.com/cometbft/cometbft/proto/tendermint/p2p"
 )
 
@@ -30,7 +31,7 @@ func newMultiplexTransport(
 	nodeKey NodeKey,
 ) *MultiplexTransport {
 	return NewMultiplexTransport(
-		nodeInfo, nodeKey, conn.DefaultMConnConfig(),
+		nodeInfo, nodeKey, conn.DefaultMConnConfig(), trace.NoOpTracer(),
 	)
 }
 

@@ -16,7 +16,6 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/pkg/trace"
-	"github.com/cometbft/cometbft/pkg/trace/schema"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
 )
@@ -60,7 +59,7 @@ type TxMempool struct {
 	txBySender map[string]*clist.CElement // for sender != ""
 	evictedTxs mempool.TxCache            // for tracking evicted transactions
 
-	traceClient *trace.Client
+	traceClient trace.Tracer
 }
 
 // NewTxMempool constructs a new, empty priority mempool at the specified
@@ -84,7 +83,7 @@ func NewTxMempool(
 		height:       height,
 		txByKey:      make(map[types.TxKey]*clist.CElement),
 		txBySender:   make(map[string]*clist.CElement),
-		traceClient:  &trace.Client{},
+		traceClient:  trace.NoOpTracer(),
 	}
 	if cfg.CacheSize > 0 {
 		txmp.cache = mempool.NewLRUTxCache(cfg.CacheSize)
@@ -117,7 +116,7 @@ func WithMetrics(metrics *mempool.Metrics) TxMempoolOption {
 	return func(txmp *TxMempool) { txmp.metrics = metrics }
 }
 
-func WithTraceClient(tc *trace.Client) TxMempoolOption {
+func WithTraceClient(tc trace.Tracer) TxMempoolOption {
 	return func(txmp *TxMempool) {
 		txmp.traceClient = tc
 	}
@@ -206,7 +205,6 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		if txmp.preCheck != nil {
 			if err := txmp.preCheck(tx); err != nil {
 				txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedPrecheck).Add(1)
-				schema.WriteMempoolRejected(txmp.traceClient, err.Error())
 				return 0, mempool.ErrPreCheck{Reason: err}
 			}
 		}
@@ -499,15 +497,6 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		)
 
 		txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedAdding).Add(1)
-		reason := fmt.Sprintf(
-			"code: %d codespace: %s logs: %s local: %v postCheck error: %v",
-			checkTxRes.Code,
-			checkTxRes.Codespace,
-			checkTxRes.Log,
-			wtx.HasPeer(0), // this checks if the peer id is local
-			err,
-		)
-		schema.WriteMempoolRejected(txmp.traceClient, reason)
 
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.

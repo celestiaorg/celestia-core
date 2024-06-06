@@ -12,7 +12,6 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	mempl "github.com/cometbft/cometbft/mempool"
 	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
 )
@@ -145,10 +144,9 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	}
 
 	// update the block with the response from PrepareProposal
-	block.Data, _ = types.DataFromProto(&cmtproto.Data{
-		Txs:  rpp.Txs[:len(rpp.Txs)-1],
-		Hash: rpp.Txs[len(rpp.Txs)-1],
-	})
+	block.Data.Txs = types.ToTxs(rpp.Txs[:len(rpp.Txs)-1])
+	// update the data hash with the one passed back by celestia-app
+	block.DataHash = rpp.Txs[len(rpp.Txs)-1]
 
 	var blockDataSize int
 	for _, tx := range block.Txs {
@@ -167,7 +165,9 @@ func (blockExec *BlockExecutor) ProcessProposal(
 ) (bool, error) {
 
 	// Similar to PrepareProposal, the last transaction provided to Celestia
-	// in ProcessProposal is the data hash
+	// in ProcessProposal is the data hash. The data hash needs to be passed to
+	// the application so that it can be verified against the nodes own construction
+	// of the data square
 	txs := append(block.Data.Txs.ToSliceOfBytes(), block.DataHash)
 
 	resp, err := blockExec.proxyApp.ProcessProposalSync(abci.RequestProcessProposal{

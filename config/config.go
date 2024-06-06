@@ -65,11 +65,11 @@ var (
 	minSubscriptionBufferSize     = 100
 	defaultSubscriptionBufferSize = 200
 
-	// DefaultInfluxTables is a list of tables that are used for storing traces.
+	// DefaultTracingTables is a list of tables that are used for storing traces.
 	// This global var is filled by an init function in the schema package. This
 	// allows for the schema package to contain all the relevant logic while
 	// avoiding import cycles.
-	DefaultInfluxTables = ""
+	DefaultTracingTables = ""
 )
 
 // Config defines the top level configuration for a CometBFT node
@@ -282,7 +282,7 @@ func (cfg BaseConfig) PrivValidatorKeyFile() string {
 	return rootify(cfg.PrivValidatorKey, cfg.RootDir)
 }
 
-// PrivValidatorFile returns the full path to the priv_validator_state.json file
+// PrivValidatorStateFile returns the full path to the priv_validator_state.json file
 func (cfg BaseConfig) PrivValidatorStateFile() string {
 	return rootify(cfg.PrivValidatorState, cfg.RootDir)
 }
@@ -852,7 +852,7 @@ func DefaultStateSyncConfig() *StateSyncConfig {
 	}
 }
 
-// TestFastSyncConfig returns a default configuration for the state sync service
+// TestStateSyncConfig returns a default configuration for the state sync service
 func TestStateSyncConfig() *StateSyncConfig {
 	return DefaultStateSyncConfig()
 }
@@ -1192,25 +1192,24 @@ type InstrumentationConfig struct {
 	// Instrumentation namespace.
 	Namespace string `mapstructure:"namespace"`
 
-	// InfluxURL is the influxdb url.
-	InfluxURL string `mapstructure:"influx_url"`
+	// TracePushConfig is the relative path of the push config. This second
+	// config contains credentials for where and how often to.
+	TracePushConfig string `mapstructure:"trace_push_config"`
 
-	// InfluxToken is the influxdb token.
-	InfluxToken string `mapstructure:"influx_token"`
+	// TracePullAddress is the address that the trace server will listen on for
+	// pulling data.
+	TracePullAddress string `mapstructure:"trace_pull_address"`
 
-	// InfluxOrg is the influxdb organization.
-	InfluxOrg string `mapstructure:"influx_org"`
+	// TraceType is the type of tracer used. Options are "local" and "noop".
+	TraceType string `mapstructure:"trace_type"`
 
-	// InfluxBucket is the influxdb bucket.
-	InfluxBucket string `mapstructure:"influx_bucket"`
+	// TraceBufferSize is the number of traces to write in a single batch.
+	TraceBufferSize int `mapstructure:"trace_push_batch_size"`
 
-	// InfluxBatchSize is the number of points to write in a single batch.
-	InfluxBatchSize int `mapstructure:"influx_batch_size"`
-
-	// InfluxTables is the list of tables that will be traced. See the
+	// TracingTables is the list of tables that will be traced. See the
 	// pkg/trace/schema for a complete list of tables. It is represented as a
 	// comma separate string. For example: "consensus_round_state,mempool_tx".
-	InfluxTables string `mapstructure:"influx_tables"`
+	TracingTables string `mapstructure:"tracing_tables"`
 
 	// PyroscopeURL is the pyroscope url used to establish a connection with a
 	// pyroscope continuous profiling server.
@@ -1235,11 +1234,11 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		PrometheusListenAddr: ":26660",
 		MaxOpenConnections:   3,
 		Namespace:            "cometbft",
-		InfluxURL:            "",
-		InfluxOrg:            "celestia",
-		InfluxBucket:         "e2e",
-		InfluxBatchSize:      20,
-		InfluxTables:         DefaultInfluxTables,
+		TracePushConfig:      "",
+		TracePullAddress:     "",
+		TraceType:            "noop",
+		TraceBufferSize:      1000,
+		TracingTables:        DefaultTracingTables,
 		PyroscopeURL:         "",
 		PyroscopeTrace:       false,
 		PyroscopeProfileTypes: strings.Join([]string{
@@ -1271,22 +1270,8 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.PyroscopeTrace && cfg.PyroscopeURL == "" {
 		return errors.New("pyroscope_trace can't be enabled if profiling is disabled")
 	}
-	// if there is not InfluxURL configured, then we do not need to validate the rest
-	// of the config because we are not connecting.
-	if cfg.InfluxURL == "" {
-		return nil
-	}
-	if cfg.InfluxToken == "" {
-		return fmt.Errorf("token is required")
-	}
-	if cfg.InfluxOrg == "" {
-		return fmt.Errorf("org is required")
-	}
-	if cfg.InfluxBucket == "" {
-		return fmt.Errorf("bucket is required")
-	}
-	if cfg.InfluxBatchSize <= 0 {
-		return fmt.Errorf("batch size must be greater than 0")
+	if cfg.TraceBufferSize < 0 {
+		return fmt.Errorf("trace buffer size must be greater than 0")
 	}
 	return nil
 }

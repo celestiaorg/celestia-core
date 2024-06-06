@@ -573,8 +573,8 @@ func (c *baseRPCClient) ProveShares(
 	height uint64,
 	startShare uint64,
 	endShare uint64,
-) (types.ShareProof, error) {
-	result := new(types.ShareProof)
+) (*ctypes.ResultShareProof, error) {
+	result := new(ctypes.ResultShareProof)
 	params := map[string]interface{}{
 		"height":     height,
 		"startShare": startShare,
@@ -582,9 +582,9 @@ func (c *baseRPCClient) ProveShares(
 	}
 	_, err := c.caller.Call(ctx, "prove_shares", params, result)
 	if err != nil {
-		return types.ShareProof{}, err
+		return nil, err
 	}
-	return *result, nil
+	return result, nil
 }
 
 func (c *baseRPCClient) TxSearch(

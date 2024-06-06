@@ -111,9 +111,5 @@ func TestBlock_SignedData(t *testing.T) {
 		if !bytes.Equal(resp.Commit.BlockID.Hash, resp.Header.Hash()) {
 			t.Fatal("commit is for a different block")
 		}
-
-		if !bytes.Equal(resp.Header.DataHash, resp.Data.Hash()) {
-			t.Fatal("data does not match header	data hash")
-		}
 	})
 }
