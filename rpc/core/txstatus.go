@@ -15,8 +15,8 @@ func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error
 	if err != nil {
 		return nil, err
 	}
-	txInMempool := env.Mempool.GetTxByKey(txKey)
-	if txInMempool != nil {
+	txInMempool, ok := env.Mempool.GetTxByKey(txKey)
+	if txInMempool != nil && ok{
 		return &ctypes.ResultTxStatus{Status: "PENDING"}, nil
 	}
 	isEvicted := env.Mempool.GetTxEvicted(txKey)
@@ -25,9 +25,9 @@ func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error
 	}
 	// committed
 	txInfo := env.BlockStore.LoadTxInfo(hash)
-	if txInfo != nil {
+    if txInfo != nil {
 		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, Status: "COMMITTED"}, nil
 	}
-
+	
 	return &ctypes.ResultTxStatus{Status: "UNKNOWN"}, nil
 }

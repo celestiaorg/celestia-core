@@ -615,9 +615,10 @@ func TestGetTxByKey_GetsTx(t *testing.T) {
 
 	for _, tx := range txs {
 		txKey := tx.tx.Key()
-		txFromMempool := txmp.GetTxByKey(txKey)
+		txFromMempool, exists := txmp.GetTxByKey(txKey)
 		require.Equal(t, tx.tx, txFromMempool)
-		exists := txmp.GetTxEvicted(txKey)
+		require.True(t, exists)
+		exists = txmp.GetTxEvicted(txKey)
 		require.False(t, exists)
 	}
 }

@@ -144,18 +144,6 @@ func (txmp *TxPool) Size() int { return txmp.store.size() }
 // mempool. It is thread-safe.
 func (txmp *TxPool) SizeBytes() int64 { return txmp.store.totalBytes() }
 
-func (txmp *TxPool) GetTxByKey(key types.TxKey) types.Tx {
-	// e, ok := me.Load(key)
-	tx := txmp.store.get(key)
-	return tx.tx
-}
-
-// IsEvicted returns true is the transaction was recently evicted and is
-// currently within the cache
-func (txmp *TxPool) GetTxEvicted(txKey types.TxKey) bool {
-	return txmp.evictedTxCache.Has(txKey)
-}
-
 // FlushAppConn executes FlushSync on the mempool's proxyAppConn.
 //
 // The caller must hold an exclusive mempool lock (by calling txmp.Lock) before
@@ -186,14 +174,20 @@ func (txmp *TxPool) Has(txKey types.TxKey) bool {
 	return txmp.store.has(txKey)
 }
 
-// Get retrieves a transaction based on the key. It returns a bool
+// GetTxByKey retrieves a transaction based on the key. It returns a bool
 // if the transaction exists or not
-func (txmp *TxPool) Get(txKey types.TxKey) (types.Tx, bool) {
+func (txmp *TxPool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
 	wtx := txmp.store.get(txKey)
 	if wtx != nil {
 		return wtx.tx, true
 	}
 	return types.Tx{}, false
+}
+
+// IsEvicted returns true is the transaction was recently evicted and is
+// currently within the cache
+func (txmp *TxPool) GetTxEvicted(txKey types.TxKey) bool {
+	return txmp.evictedTxCache.Has(txKey)
 }
 
 // IsRejectedTx returns true if the transaction was recently rejected and is

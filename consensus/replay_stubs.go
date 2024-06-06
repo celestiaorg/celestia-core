@@ -49,7 +49,7 @@ func (emptyMempool) TxsWaitChan() <-chan struct{} { return nil }
 
 func (emptyMempool) InitWAL() error                  { return nil }
 func (emptyMempool) CloseWAL()                       {}
-func (emptyMempool) GetTxByKey(types.TxKey) types.Tx { return nil }
+func (emptyMempool) GetTxByKey(types.TxKey) (types.Tx, bool) { return nil, false }
 func (emptyMempool) GetTxEvicted(types.TxKey) bool   { return false }
 
 //-----------------------------------------------------------------------------

@@ -263,14 +263,14 @@ func (txmp *TxMempool) RemoveTxByKey(txKey types.TxKey) error {
 	return txmp.removeTxByKey(txKey)
 }
 
-func (txmp *TxMempool) GetTxByKey(txKey types.TxKey) types.Tx {
+func (txmp *TxMempool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
 	txmp.mtx.RLock()
 	defer txmp.mtx.RUnlock()
 
 	if elt, ok := txmp.txByKey[txKey]; ok {
-		return elt.Value.(*WrappedTx).tx
+		return elt.Value.(*WrappedTx).tx, true
 	}
-	return nil
+	return nil, false
 }
 
 func (txmp *TxMempool) GetTxEvicted(txKey types.TxKey) bool {

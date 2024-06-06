@@ -8,17 +8,31 @@ import (
 )
 
 // Mempool is an empty implementation of a Mempool, useful for testing.
-type Mempool struct{}
+type Mempool struct {
+	txs        map[types.TxKey]types.Tx
+	evictedTxs map[types.TxKey]bool
+}
 
-var _ mempool.Mempool = Mempool{}
+var _ mempool.Mempool = &Mempool{}
 
 func (Mempool) Lock()     {}
 func (Mempool) Unlock()   {}
 func (Mempool) Size() int { return 0 }
-func (Mempool) CheckTx(_ types.Tx, _ func(*abci.Response), _ mempool.TxInfo) error {
+func (m *Mempool) CheckTx(tx types.Tx, _ func(*abci.Response), _ mempool.TxInfo) error {
+	if m.txs == nil {
+		m.txs = make(map[types.TxKey]types.Tx)
+	}
+	if m.evictedTxs == nil {
+		m.evictedTxs = make(map[types.TxKey]bool)
+	}
+	m.txs[tx.Key()] = tx
 	return nil
 }
-func (Mempool) RemoveTxByKey(txKey types.TxKey) error   { return nil }
+func (m *Mempool) RemoveTxByKey(txKey types.TxKey) error {
+	delete(m.txs, txKey)
+	m.evictedTxs[txKey] = true
+	return nil
+}
 func (Mempool) ReapMaxBytesMaxGas(_, _ int64) types.Txs { return types.Txs{} }
 func (Mempool) ReapMaxTxs(n int) types.Txs              { return types.Txs{} }
 func (Mempool) Update(
@@ -36,8 +50,13 @@ func (Mempool) TxsAvailable() <-chan struct{} { return make(chan struct{}) }
 func (Mempool) EnableTxsAvailable()           {}
 func (Mempool) SizeBytes() int64              { return 0 }
 
-func (Mempool) GetTxByKey(txKey types.TxKey) types.Tx { return nil }
-func (Mempool) GetTxEvicted(txKey types.TxKey) bool   { return false }
+func (m Mempool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
+	tx, ok := m.txs[txKey]
+	return tx, ok
+}
+func (m Mempool) GetTxEvicted(txKey types.TxKey) bool {
+	return m.evictedTxs[txKey]
+}
 
 func (Mempool) TxsFront() *clist.CElement    { return nil }
 func (Mempool) TxsWaitChan() <-chan struct{} { return nil }

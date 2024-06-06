@@ -320,7 +320,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			memR.Switch.StopPeerForError(e.Src, err)
 			return
 		}
-		tx, has := memR.mempool.Get(txKey)
+		tx, has := memR.mempool.GetTxByKey(txKey)
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			schema.WriteMempoolTx(
