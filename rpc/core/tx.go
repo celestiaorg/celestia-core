@@ -17,6 +17,13 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
+const (
+	txStatusUnknown   string = "UNKNOWN"
+	txStatusPending   string = "PENDING"
+	txStatusEvicted   string = "EVICTED"
+	txStatusCommitted string = "COMMITTED"
+)
+
 // Tx allows you to query the transaction results. `nil` could mean the
 // transaction is in the mempool, invalidated, or was not sent in the first
 // place.
@@ -212,6 +219,40 @@ func ProveShares(
 		return nil, err
 	}
 	return &ctypes.ResultShareProof{Proof: shareProof}, nil
+}
+
+// TxStatus retrieves the status of a transaction given its hash. It returns a ResultTxStatus
+// containing the height and index of the transaction within the block(if committed)
+// or whether the transaction is pending, evicted from the mempool, or otherwise unknown.
+func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
+	env := GetEnvironment()
+
+	// Get the tx key from the hash
+	txKey, err := types.TxKeyFromBytes(hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tx key from hash: %v", err)
+	}
+
+	// Check if the tx is in the mempool
+	txInMempool, ok := env.Mempool.GetTxByKey(txKey)
+	if txInMempool != nil && ok {
+		return &ctypes.ResultTxStatus{Status: txStatusPending}, nil
+	}
+
+	// Check if the tx is evicted
+	isEvicted := env.Mempool.GetTxEvicted(txKey)
+	if isEvicted {
+		return &ctypes.ResultTxStatus{Status: txStatusEvicted}, nil
+	}
+
+	// Check if the tx has been committed
+	txInfo := env.BlockStore.LoadTxInfo(hash)
+	if txInfo != nil {
+		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, Status: txStatusCommitted}, nil
+	}
+
+	// If the tx is not in the mempool, evicted, or committed, return unknown
+	return &ctypes.ResultTxStatus{Status: txStatusUnknown}, nil
 }
 
 func loadRawBlock(bs state.BlockStore, height int64) ([]byte, error) {

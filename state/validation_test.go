@@ -36,7 +36,7 @@ func TestValidateBlockHeader(t *testing.T) {
 		stateStore,
 		log.TestingLogger(),
 		proxyApp.Consensus(),
-		&memmock.Mempool{},
+		memmock.Mempool{},
 		sm.EmptyEvidencePool{},
 	)
 	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil)
@@ -121,7 +121,7 @@ func TestValidateBlockCommit(t *testing.T) {
 		stateStore,
 		log.TestingLogger(),
 		proxyApp.Consensus(),
-		&memmock.Mempool{},
+		memmock.Mempool{},
 		sm.EmptyEvidencePool{},
 	)
 	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil)
@@ -259,7 +259,7 @@ func TestValidateBlockEvidence(t *testing.T) {
 		stateStore,
 		log.TestingLogger(),
 		proxyApp.Consensus(),
-		&memmock.Mempool{},
+		memmock.Mempool{},
 		evpool,
 	)
 	lastCommit := types.NewCommit(0, 0, types.BlockID{}, nil)

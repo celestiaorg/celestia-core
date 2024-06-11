@@ -58,7 +58,7 @@ func TestApplyBlock(t *testing.T) {
 	})
 
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
-		&mmock.Mempool{}, sm.EmptyEvidencePool{})
+		mmock.Mempool{}, sm.EmptyEvidencePool{})
 
 	block := makeBlock(state, 1)
 	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
@@ -223,7 +223,7 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	evpool.On("CheckEvidence", mock.AnythingOfType("types.EvidenceList")).Return(nil)
 
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
-		&mmock.Mempool{}, evpool)
+		mmock.Mempool{}, evpool)
 
 	block := makeBlock(state, 1)
 	block.Evidence = types.EvidenceData{Evidence: ev}
@@ -254,7 +254,7 @@ func TestProcessProposal(t *testing.T) {
 		})
 
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
-			&mmock.Mempool{}, sm.EmptyEvidencePool{})
+			mmock.Mempool{}, sm.EmptyEvidencePool{})
 
 		block := sf.MakeBlock(state, int64(height), new(types.Commit))
 		block.Txs = txs
@@ -336,7 +336,7 @@ func makeBlockExec(t *testing.T, testName string, block *types.Block, stateDB db
 		}),
 		log.TestingLogger(),
 		proxyApp.Consensus(),
-		&mmock.Mempool{},
+		mmock.Mempool{},
 		sm.EmptyEvidencePool{},
 		sm.BlockExecutorWithMetrics(metrics),
 	)
@@ -506,7 +506,7 @@ func TestEndBlockValidatorUpdates(t *testing.T) {
 		stateStore,
 		log.TestingLogger(),
 		proxyApp.Consensus(),
-		&mmock.Mempool{},
+		mmock.Mempool{},
 		sm.EmptyEvidencePool{},
 	)
 
@@ -578,7 +578,7 @@ func TestEndBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 		stateStore,
 		log.TestingLogger(),
 		proxyApp.Consensus(),
-		&mmock.Mempool{},
+		mmock.Mempool{},
 		sm.EmptyEvidencePool{},
 	)
 
@@ -615,7 +615,7 @@ func TestFireEventSignedBlockEvent(t *testing.T) {
 		stateStore,
 		log.TestingLogger(),
 		proxyApp.Consensus(),
-		&mmock.Mempool{},
+		mmock.Mempool{},
 		sm.EmptyEvidencePool{},
 	)
 	eventBus := types.NewEventBus()

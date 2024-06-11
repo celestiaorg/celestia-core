@@ -217,7 +217,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		txKey := tx.Key()
 
 		// Check for the transaction in the cache.
-		if !txmp.cache.Push(tx.Key()) {
+		if !txmp.cache.Push(txKey) {
 			// If the cached transaction is also in the pool, record its sender.
 			if elt, ok := txmp.txByKey[txKey]; ok {
 				txmp.metrics.AlreadySeenTxs.Add(1)

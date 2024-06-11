@@ -3,23 +3,26 @@ package core
 import (
 	"testing"
 
-	mempl "github.com/cometbft/cometbft/mempool"
-	"github.com/cometbft/cometbft/mempool/mock"
+	mock "github.com/cometbft/cometbft/rpc/core/mocks"
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
 	types "github.com/cometbft/cometbft/types"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // TestTxStatus tests the TxStatus function in the RPC core
 // making sure it fetches the correct status for each transaction.
 func TestTxStatus(t *testing.T) {
+	// Create a controller
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
 	// Create a new environment
 	env := &Environment{}
 
 	// Create a new mempool and block store
-	mempool := mock.Mempool{}
-	env.Mempool = &mempool
+	mempool := mock.NewMockMempool(ctrl)
+	env.Mempool = mempool
 	blockStore := mockBlockStore{
 		height: 0,
 		blocks: nil,
@@ -35,13 +38,17 @@ func TestTxStatus(t *testing.T) {
 		{
 			name: "Committed",
 			setup: func(env *Environment, txs []types.Tx) {
-				height := int64(50)
+				height := int64(5)
 				blocks := randomBlocks(height)
 				blockStore = mockBlockStore{
 					height: height,
 					blocks: blocks,
 				}
 				env.BlockStore = blockStore
+				for _, tx := range txs {
+					mempool.EXPECT().GetTxByKey(tx.Key()).Return(nil, false).AnyTimes()
+					mempool.EXPECT().GetTxEvicted(tx.Key()).Return(false).AnyTimes()
+				}
 			},
 			expectedStatus: "COMMITTED",
 		},
@@ -52,7 +59,12 @@ func TestTxStatus(t *testing.T) {
 					height: 0,
 					blocks: nil,
 				}
+				for _, tx := range txs {
+					mempool.EXPECT().GetTxByKey(tx.Key()).Return(nil, false).AnyTimes()
+					mempool.EXPECT().GetTxEvicted(tx.Key()).Return(false).AnyTimes()
+				}
 			},
+
 			expectedStatus: "UNKNOWN",
 		},
 		{
@@ -62,9 +74,13 @@ func TestTxStatus(t *testing.T) {
 					height: 0,
 					blocks: nil,
 				}
+				// Reset the mempool
+				mempool = mock.NewMockMempool(ctrl)
+				env.Mempool = mempool
+
 				for _, tx := range txs {
-					err := mempool.CheckTx(tx, nil, mempl.TxInfo{})
-					require.NoError(t, err)
+					// Set up the mock mempool to return the transaction and true when GetTxByKey is called with the transaction's key
+					mempool.EXPECT().GetTxByKey(tx.Key()).Return(tx, true).AnyTimes()
 				}
 			},
 			expectedStatus: "PENDING",
@@ -76,11 +92,13 @@ func TestTxStatus(t *testing.T) {
 					height: 0,
 					blocks: nil,
 				}
+				// Reset the mempool
+				mempool = mock.NewMockMempool(ctrl)
+				env.Mempool = mempool
+
 				for _, tx := range txs {
-					err := mempool.CheckTx(tx, nil, mempl.TxInfo{})
-					require.NoError(t, err)
-					err = mempool.RemoveTxByKey(tx.Key())
-					require.NoError(t, err)
+					mempool.EXPECT().GetTxByKey(tx.Key()).Return(nil, false).AnyTimes()
+					mempool.EXPECT().GetTxEvicted(tx.Key()).Return(true).AnyTimes()
 				}
 			},
 			expectedStatus: "EVICTED",
@@ -89,26 +107,27 @@ func TestTxStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			txs := makeTxs(2)
+			height := int64(2)
+			// Create a set of transactions on the specificed height
+			txs := makeTxs(height)
 
 			tt.setup(env, txs)
 
 			// Check the status of each transaction
-			for _, tx := range txs {
+			for i, tx := range txs {
 				txStatus, _ := TxStatus(&rpctypes.Context{}, tx.Hash())
 				assert.Equal(t, tt.expectedStatus, txStatus.Status)
-			}
 
-			// Check the height and index of transactions that are committed
-			if blockStore.height > 0 && tt.expectedStatus == "COMMITTED" {
-				for _, block := range blockStore.blocks {
-					for i, tx := range block.Txs {
-						txStatus, _ := TxStatus(&rpctypes.Context{}, tx.Hash())
-						assert.Equal(t, block.Height, txStatus.Height)
-						assert.Equal(t, int64(i), txStatus.Index)
-					}
+				// Check the height and index of transactions that are committed
+				if blockStore.height > 0 && tt.expectedStatus == "COMMITTED" {
+					txStatus, _ := TxStatus(&rpctypes.Context{}, tx.Hash())
+
+					assert.Equal(t, txStatus.Status, tt.expectedStatus)
+					assert.Equal(t, height, txStatus.Height)
+					assert.Equal(t, int64(i), txStatus.Index)
 				}
 			}
+
 		})
 	}
 }
