@@ -20,7 +20,7 @@ type TxCache interface {
 	// newly added. Otherwise, it returns false.
 	Push(tx types.TxKey) bool
 
-	// Remove removes the given raw transaction from the cache.
+	// Remove removes the given tx key from the cache.
 	Remove(tx types.TxKey)
 
 	// Has reports whether tx key is present in the cache. Checking for presence is
