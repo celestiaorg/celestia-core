@@ -382,7 +382,7 @@ func (n Node) Validate(testnet Testnet) error {
 
 	}
 	switch n.Mempool {
-	case "", config.MempoolV0, config.MempoolV1, config.MempoolV2:
+	case "", config.MempoolV1, config.MempoolV2:
 	default:
 		return fmt.Errorf("invalid mempool version %q", n.Mempool)
 	}

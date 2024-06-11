@@ -22,7 +22,6 @@ import (
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	mempl "github.com/cometbft/cometbft/mempool"
 	mempoolv2 "github.com/cometbft/cometbft/mempool/cat"
-	mempoolv0 "github.com/cometbft/cometbft/mempool/v0"
 	mempoolv1 "github.com/cometbft/cometbft/mempool/v1"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/conn"
@@ -251,13 +250,6 @@ func TestCreateProposalBlock(t *testing.T) {
 	var mempool mempl.Mempool
 
 	switch config.Mempool.Version {
-	case cfg.MempoolV0:
-		mempool = mempoolv0.NewCListMempool(config.Mempool,
-			proxyApp.Mempool(),
-			state.LastBlockHeight,
-			mempoolv0.WithMetrics(memplMetrics),
-			mempoolv0.WithPreCheck(sm.TxPreCheck(state)),
-			mempoolv0.WithPostCheck(sm.TxPostCheck(state)))
 	case cfg.MempoolV1:
 		mempool = mempoolv1.NewTxMempool(logger,
 			config.Mempool,
@@ -365,13 +357,6 @@ func TestMaxProposalBlockSize(t *testing.T) {
 	memplMetrics := mempl.NopMetrics()
 	var mempool mempl.Mempool
 	switch config.Mempool.Version {
-	case cfg.MempoolV0:
-		mempool = mempoolv0.NewCListMempool(config.Mempool,
-			proxyApp.Mempool(),
-			state.LastBlockHeight,
-			mempoolv0.WithMetrics(memplMetrics),
-			mempoolv0.WithPreCheck(sm.TxPreCheck(state)),
-			mempoolv0.WithPostCheck(sm.TxPostCheck(state)))
 	case cfg.MempoolV1:
 		mempool = mempoolv1.NewTxMempool(logger,
 			config.Mempool,
