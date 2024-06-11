@@ -7,7 +7,7 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-// Mempool is an empty implementation of a Mempool, useful for testing.
+// Mempool is a mock implementation of a Mempool, useful for testing.
 type Mempool struct {
 	txs        map[types.TxKey]types.Tx
 	evictedTxs map[types.TxKey]bool
