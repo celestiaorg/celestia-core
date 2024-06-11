@@ -16,7 +16,7 @@ type TxCache interface {
 	// Reset resets the cache to an empty state.
 	Reset()
 
-	// Push adds the given raw transaction to the cache and returns true if it was
+	// Push adds the given tx key to the cache and returns true if it was
 	// newly added. Otherwise, it returns false.
 	Push(tx types.TxKey) bool
 
