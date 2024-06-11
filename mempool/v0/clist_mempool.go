@@ -183,7 +183,7 @@ func (mem *CListMempool) TxsFront() *clist.CElement {
 	return mem.txs.Front()
 }
 
-// GetTxByKey currently not enabled in v0 but it is required by the interface.
+// GetTxByKey is not supported by the v0 mempool but it is required to satisfy the mempool interface.
 func (mem *CListMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
 	return nil, false
 }
