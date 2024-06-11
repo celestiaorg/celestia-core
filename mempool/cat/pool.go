@@ -174,12 +174,13 @@ func (txmp *TxPool) Has(txKey types.TxKey) bool {
 	return txmp.store.has(txKey)
 }
 
-// Gets tx by its key. Preserved to maintain API compatibility.
+// Get retrieves a transaction based on the key.
+// Preserved to maintain API compatibility.
 func (txmp *TxPool) Get(txKey types.TxKey) (types.Tx, bool) {
 	return txmp.GetTxByKey(txKey)
 }
 
-// GetTxByKey retrieves a transaction based on the˝ key. It returns a bool
+// GetTxByKey retrieves a transaction based on the key. It returns a bool
 // indicating whether transaction was found in the cache.
 func (txmp *TxPool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
 	wtx := txmp.store.get(txKey)
