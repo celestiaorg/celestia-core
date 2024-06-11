@@ -10,7 +10,7 @@ import (
 
 // TxStatus retrieves the status of a transaction given its hash. It returns a ResultTxStatus
 // containing the height and index of the transaction within the block(if committed)
-// or whether the transaction is pending, evicted in the mempool otherwise unknown.
+// or whether the transaction is pending, evicted from the mempool, or otherwise unknown.
 func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
 	env := GetEnvironment()
 
