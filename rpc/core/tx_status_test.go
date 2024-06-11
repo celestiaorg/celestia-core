@@ -46,7 +46,9 @@ func TestTxStatus(t *testing.T) {
 				}
 				env.BlockStore = blockStore
 				for _, tx := range txs {
+					// Set GetTxByKey to return nil and false for all transactions
 					mempool.EXPECT().GetTxByKey(tx.Key()).Return(nil, false).AnyTimes()
+					// Set GetTxEvicted to return false for all transactions
 					mempool.EXPECT().GetTxEvicted(tx.Key()).Return(false).AnyTimes()
 				}
 			},
@@ -60,7 +62,9 @@ func TestTxStatus(t *testing.T) {
 					blocks: nil,
 				}
 				for _, tx := range txs {
+					// Set GetTxByKey to return nil and false for all transactions
 					mempool.EXPECT().GetTxByKey(tx.Key()).Return(nil, false).AnyTimes()
+					// Set GetTxEvicted to return false for all transactions
 					mempool.EXPECT().GetTxEvicted(tx.Key()).Return(false).AnyTimes()
 				}
 			},
@@ -79,7 +83,7 @@ func TestTxStatus(t *testing.T) {
 				env.Mempool = mempool
 
 				for _, tx := range txs {
-					// Set up the mock mempool to return the transaction and true when GetTxByKey is called with the transaction's key
+					// Set GetTxByKey to return the transaction and true for all transactions
 					mempool.EXPECT().GetTxByKey(tx.Key()).Return(tx, true).AnyTimes()
 				}
 			},
@@ -97,7 +101,9 @@ func TestTxStatus(t *testing.T) {
 				env.Mempool = mempool
 
 				for _, tx := range txs {
+					// Set GetTxByKey to return nil and false for all transactions
 					mempool.EXPECT().GetTxByKey(tx.Key()).Return(nil, false).AnyTimes()
+					// Set GetTxEvicted to return true for all transactions
 					mempool.EXPECT().GetTxEvicted(tx.Key()).Return(true).AnyTimes()
 				}
 			},
@@ -108,7 +114,7 @@ func TestTxStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			height := int64(2)
-			// Create a set of transactions on the specificed height
+			// Create a set of transactions on the specified height
 			txs := makeTxs(height)
 
 			tt.setup(env, txs)
