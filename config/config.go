@@ -964,7 +964,7 @@ type ConsensusConfig struct {
 	// TargetHeigtDuration is used to determine how long we wait after a
 	// block is committed. If this time is shorter than the actual time to reach
 	// consensus for that height, then we do not wait at all.
-	TargetHeightDuration time.Duration `mapstructure:"target_height_duration"`
+	TimeoutCommit time.Duration `mapstructure:"target_height_duration"`
 
 	// Make progress as soon as we have all the precommits (as if TimeoutCommit = 0)
 	SkipTimeoutCommit bool `mapstructure:"skip_timeout_commit"`
@@ -991,7 +991,7 @@ func DefaultConsensusConfig() *ConsensusConfig {
 		TimeoutPrevoteDelta:         500 * time.Millisecond,
 		TimeoutPrecommit:            1000 * time.Millisecond,
 		TimeoutPrecommitDelta:       500 * time.Millisecond,
-		TargetHeightDuration:        3000 * time.Millisecond,
+		TimeoutCommit:               3000 * time.Millisecond,
 		SkipTimeoutCommit:           false,
 		CreateEmptyBlocks:           true,
 		CreateEmptyBlocksInterval:   0 * time.Second,
@@ -1011,7 +1011,7 @@ func TestConsensusConfig() *ConsensusConfig {
 	cfg.TimeoutPrecommit = 10 * time.Millisecond
 	cfg.TimeoutPrecommitDelta = 1 * time.Millisecond
 	// NOTE: when modifying, make sure to update time_iota_ms (testGenesisFmt) in toml.go
-	cfg.TargetHeightDuration = 70 * time.Millisecond
+	cfg.TimeoutCommit = 70 * time.Millisecond
 	cfg.SkipTimeoutCommit = true
 	cfg.PeerGossipSleepDuration = 5 * time.Millisecond
 	cfg.PeerQueryMaj23SleepDuration = 250 * time.Millisecond
@@ -1045,9 +1045,9 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 	) * time.Nanosecond
 }
 
-// NextStartTime adds the TargetHeightDuration to the provided starting time.
+// NextStartTime adds the TimeoutCommit to the provided starting time.
 func (cfg *ConsensusConfig) NextStartTime(t time.Time) time.Time {
-	newStartTime := t.Add(cfg.TargetHeightDuration)
+	newStartTime := t.Add(cfg.TimeoutCommit)
 	now := time.Now()
 	if newStartTime.Before(now) {
 		return now
@@ -1089,7 +1089,7 @@ func (cfg *ConsensusConfig) ValidateBasic() error {
 	if cfg.TimeoutPrecommitDelta < 0 {
 		return errors.New("timeout_precommit_delta can't be negative")
 	}
-	if cfg.TargetHeightDuration < 0 {
+	if cfg.TimeoutCommit < 0 {
 		return errors.New("target_height_duration can't be negative")
 	}
 	if cfg.CreateEmptyBlocksInterval < 0 {

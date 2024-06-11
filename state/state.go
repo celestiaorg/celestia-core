@@ -157,6 +157,7 @@ func (state *State) ToProto() (*cmtstate.State, error) {
 	sm.NextValidators = nVals
 
 	if state.LastBlockHeight >= 1 { // At Block 1 LastValidators is nil
+
 		lVals, err := state.LastValidators.ToProto()
 		if err != nil {
 			return nil, err
