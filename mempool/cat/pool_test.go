@@ -576,7 +576,7 @@ func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 
 	// All the transactions in the original set should have been purged.
 	for _, tx := range added1 {
-		// Check that it was added to the evictedTxCache store
+		// Check that it was added to the evictedTxCache
 		evicted := txmp.GetTxEvicted(tx.tx.Key())
 		require.True(t, evicted)
 
