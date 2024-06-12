@@ -175,7 +175,7 @@ func (txmp *TxPool) Has(txKey types.TxKey) bool {
 }
 
 // Get retrieves a transaction based on the key.
-// Preserved to maintain API compatibility.
+// Deprecated: use GetTxByKey instead.
 func (txmp *TxPool) Get(txKey types.TxKey) (types.Tx, bool) {
 	return txmp.GetTxByKey(txKey)
 }
