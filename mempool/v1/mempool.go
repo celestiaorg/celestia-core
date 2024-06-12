@@ -570,7 +570,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 					wtx.tx.Hash())
 			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedNewTxFullMempool).Add(1)
 			// Add it to evicted transactions cache
-			txmp.evictedTxs.Push(wtx.tx.Key())
+			txmp.evictedTxs.Push(wtx.key)
 			return
 		}
 
