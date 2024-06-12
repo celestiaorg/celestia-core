@@ -27,7 +27,7 @@ const (
 	// DefaultLogLevel defines a default log level as INFO.
 	DefaultLogLevel = "info"
 
-    // Mempool versions. v1 (prioritized) is the current default.
+	// Mempool versions. v1 (prioritized) is the current default.
 	MempoolV1 = "v1"
 	MempoolV2 = "v2"
 )
