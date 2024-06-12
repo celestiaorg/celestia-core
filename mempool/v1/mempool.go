@@ -559,7 +559,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		// those candidates is not enough to make room for the new transaction,
 		// drop the new one.
 		if len(victims) == 0 || victimBytes < wtx.Size() {
-			txmp.cache.Remove(wtx.tx.Key())
+			txmp.cache.Remove(wtx.key)
 			txmp.logger.Error(
 				"rejected valid incoming transaction; mempool is full",
 				"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
