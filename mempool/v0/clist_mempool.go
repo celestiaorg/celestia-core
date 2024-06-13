@@ -246,7 +246,7 @@ func (mem *CListMempool) CheckTx(
 		return err
 	}
 
-	if !mem.cache.Push(tx.Key()) { // if the transaction already exists in the cache
+	if !mem.cache.Push(tx) { // if the transaction already exists in the cache
 		// Record a new sender for a tx we've already seen.
 		// Note it's possible a tx is still in the cache but no longer in the mempool
 		// (eg. after committing a block, txs are removed from mempool but not cache),
@@ -346,7 +346,7 @@ func (mem *CListMempool) removeTx(tx types.Tx, elem *clist.CElement, removeFromC
 	atomic.AddInt64(&mem.txsBytes, int64(-len(tx)))
 
 	if removeFromCache {
-		mem.cache.Remove(tx.Key())
+		mem.cache.Remove(tx)
 	}
 }
 
@@ -402,7 +402,7 @@ func (mem *CListMempool) resCbFirstTime(
 			// limits.
 			if err := mem.isFull(len(tx)); err != nil {
 				// remove from cache (mempool might have a space later)
-				mem.cache.Remove(types.Tx(tx).Key())
+				mem.cache.Remove(tx)
 				mem.logger.Error(err.Error())
 				return
 			}
@@ -435,7 +435,7 @@ func (mem *CListMempool) resCbFirstTime(
 
 			if !mem.config.KeepInvalidTxsInCache {
 				// remove from cache (it might be good later)
-				mem.cache.Remove(types.Tx(tx).Key())
+				mem.cache.Remove(tx)
 			}
 		}
 
@@ -614,10 +614,10 @@ func (mem *CListMempool) Update(
 	for i, tx := range txs {
 		if deliverTxResponses[i].Code == abci.CodeTypeOK {
 			// Add valid committed tx to the cache (if missing).
-			_ = mem.cache.Push(tx.Key())
+			_ = mem.cache.Push(tx)
 		} else if !mem.config.KeepInvalidTxsInCache {
 			// Allow invalid transactions to be resubmitted.
-			mem.cache.Remove(tx.Key())
+			mem.cache.Remove(tx)
 		}
 
 		// Remove committed tx from the mempool.

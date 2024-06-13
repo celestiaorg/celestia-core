@@ -1,30 +1,23 @@
 package mempool
 
 import (
-	"crypto/rand"
 	"encoding/binary"
 	"testing"
-
-	"github.com/cometbft/cometbft/types"
 )
 
 func BenchmarkCacheInsertTime(b *testing.B) {
 	cache := NewLRUTxCache(b.N)
 
-	keys := make([][]byte, b.N)
+	txs := make([][]byte, b.N)
 	for i := 0; i < b.N; i++ {
-		keys[i] = make([]byte, 32)
-		_, err := rand.Read(keys[i])
-		if err != nil {
-			b.Fatal(err)
-		}
-		binary.BigEndian.PutUint64(keys[i], uint64(i))
+		txs[i] = make([]byte, 8)
+		binary.BigEndian.PutUint64(txs[i], uint64(i))
 	}
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		cache.Push(types.TxKey(keys[i]))
+		cache.Push(txs[i])
 	}
 }
 
@@ -33,19 +26,16 @@ func BenchmarkCacheInsertTime(b *testing.B) {
 func BenchmarkCacheRemoveTime(b *testing.B) {
 	cache := NewLRUTxCache(b.N)
 
-	keys := make([][]byte, b.N)
+	txs := make([][]byte, b.N)
 	for i := 0; i < b.N; i++ {
-		keys[i] = make([]byte, 32)
-		_, err := rand.Read(keys[i])
-		if err != nil {
-			b.Fatal(err)
-		}
-		cache.Push(types.TxKey(keys[i]))
+		txs[i] = make([]byte, 8)
+		binary.BigEndian.PutUint64(txs[i], uint64(i))
+		cache.Push(txs[i])
 	}
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		cache.Remove(types.TxKey(keys[i]))
+		cache.Remove(txs[i])
 	}
 }
