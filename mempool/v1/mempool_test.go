@@ -590,7 +590,7 @@ func TestTxMempool_ExpiredTxs_Timestamp(t *testing.T) {
 
 	// All the transactions in the original set should have been purged.
 	for _, tx := range added1 {
-		// Check that they were adding to the evicted cache.
+		// Check that they were added to the evicted cache.
 		evicted := txmp.IsTxEvicted(tx.tx.Key())
 		require.True(t, evicted)
 
@@ -614,7 +614,7 @@ func TestGetTxByKey_GetsTx(t *testing.T) {
 	txmp := setup(t, 500)
 	txs := checkTxs(t, txmp, 100, 0)
 
-	// Test that it gets all valid txs
+	// Should get all valid txs
 	for _, tx := range txs {
 		txKey := tx.tx.Key()
 		txFromMempool, exists := txmp.GetTxByKey(txKey)
@@ -622,7 +622,7 @@ func TestGetTxByKey_GetsTx(t *testing.T) {
 		require.True(t, exists)
 	}
 
-	// Test that a non-existent tx returns false
+	// Non-existent tx should return false
 	_, exists := txmp.GetTxByKey(types.Tx("non-existent-tx").Key())
 	require.False(t, exists)
 }
