@@ -671,7 +671,9 @@ func (cs *State) updateToState(state sm.State) {
 		// states last block time which is the genesis time.
 		cs.StartTime = state.LastBlockTime
 	} else {
+		lastStartTime := cs.StartTime
 		cs.StartTime = cs.config.NextStartTime(cs.StartTime)
+		cs.Logger.Info("new start time", cs.StartTime, "last start time", lastStartTime)
 	}
 
 	cs.Validators = validators
@@ -1152,6 +1154,11 @@ func (cs *State) isProposer(address []byte) bool {
 func (cs *State) defaultDecideProposal(height int64, round int32) {
 	var block *types.Block
 	var blockParts *types.PartSet
+
+	if time.Now().Unix() % 6 == 0 {
+		cs.Logger.Info("skipping proposal")
+		return 
+	}
 
 	// Decide on block
 	if cs.TwoThirdPrevoteBlock != nil {
@@ -1875,6 +1882,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 
 	// Does not apply
 	if proposal.Height != cs.Height || proposal.Round != cs.Round {
+		cs.Logger.Error("received a proposal from a different height and round", "proposalRound", proposal.Round, "csRound", cs.Round)
 		return nil
 	}
 

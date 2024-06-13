@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/rpc/client/http"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 	"github.com/tendermint/tendermint/test/e2e/pkg/infra"
 	"github.com/tendermint/tendermint/test/e2e/pkg/infra/docker"
@@ -147,7 +149,7 @@ func NewCLI() *CLI {
 					return err
 				}
 			}
-			if err := Wait(cli.testnet, 5); err != nil { // allow some txs to go through
+			if err := Wait(cli.testnet, 30); err != nil { // allow some txs to go through
 				return err
 			}
 
@@ -248,8 +250,16 @@ func NewCLI() *CLI {
 	cli.root.AddCommand(&cobra.Command{
 		Use:   "load",
 		Short: "Generates transaction load until the command is canceled",
-		RunE: func(cmd *cobra.Command, args []string) (err error) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			return Load(context.Background(), cli.testnet)
+		},
+	})
+
+	cli.root.AddCommand(&cobra.Command{
+		Use:   "blocktime",
+		Short: "Displays the block time for the last 100 blocks",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return BlockTime(cmd.Context(), cli.testnet, 100)
 		},
 	})
 
@@ -347,4 +357,56 @@ func (cli *CLI) Run() {
 		logger.Error(err.Error())
 		os.Exit(1)
 	}
+}
+
+func BlockTime(ctx context.Context, testnet *e2e.Testnet, numBlocks int) error {
+	client, err := testnet.Nodes[0].Client()
+	if err != nil {
+		return err
+	}
+	lastPrintedHeight := int64(0)
+	var latestHeight int64
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			resp, err := client.Status(ctx)
+			if err != nil {
+				return err
+			}
+			latestHeight = resp.SyncInfo.LatestBlockHeight
+			if lastPrintedHeight == 0 {
+				lastPrintedHeight = latestHeight - 1
+			}
+			if latestHeight > lastPrintedHeight {
+				printBlockTimes(ctx, client, lastPrintedHeight, latestHeight)
+				lastPrintedHeight = latestHeight
+			}
+		}
+	}
+}
+
+func printBlockTimes(
+	ctx context.Context,
+	client *http.HTTP,
+	fromHeight, toHeight int64,
+) error {
+	for height := fromHeight; height < toHeight; height++ {
+		nextHeight := height + 1
+		resp, err := client.Header(ctx, &height)
+		if err != nil {
+			return err
+		}
+		firstTime := resp.Header.Time
+		resp, err = client.Header(ctx, &nextHeight)
+		if err != nil {
+			return err
+		}
+		secondTime := resp.Header.Time
+		logger.Info("block time", "height", height, "time", secondTime.Sub(firstTime))
+	}
+	return nil
 }
