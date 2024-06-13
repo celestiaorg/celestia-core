@@ -41,7 +41,7 @@ func (emptyMempool) EnableTxsAvailable()           {}
 func (emptyMempool) TxsBytes() int64               { return 0 }
 
 func (emptyMempool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) { return nil, false }
-func (emptyMempool) GetTxEvicted(txKey types.TxKey) bool           { return false }
+func (emptyMempool) IsTxEvicted(txKey types.TxKey) bool            { return false }
 
 func (emptyMempool) TxsFront() *clist.CElement    { return nil }
 func (emptyMempool) TxsWaitChan() <-chan struct{} { return nil }

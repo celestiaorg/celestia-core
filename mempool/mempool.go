@@ -95,10 +95,10 @@ type Mempool interface {
 	// Used in the RPC endpoint: TxStatus.
 	GetTxByKey(key types.TxKey) (types.Tx, bool)
 
-	// GetTxEvicted returns true if the tx is evicted from the mempool and exists in the
+	// IsTxEvicted returns true if the tx is evicted from the mempool and exists in the
 	// evicted cache.
-	// Used in the RPC endpoint: TxStatus.
-	GetTxEvicted(key types.TxKey) bool
+	// Used in the RPC endpoint - TxStatus.
+	IsTxEvicted(key types.TxKey) bool
 
 	// Size returns the number of transactions in the mempool.
 	Size() int

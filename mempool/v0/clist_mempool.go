@@ -188,8 +188,8 @@ func (mem *CListMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
 	return nil, false
 }
 
-// GetTxEvicted is not supported by the v0 mempool but it is required to satisfy the mempool interface.
-func (mem *CListMempool) GetTxEvicted(key types.TxKey) bool {
+// IsTxEvicted is not supported by the v0 mempool but it is required to satisfy the mempool interface.
+func (mem *CListMempool) IsTxEvicted(key types.TxKey) bool {
 	return false
 }
 

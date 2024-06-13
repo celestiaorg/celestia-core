@@ -103,18 +103,18 @@ func (mr *MockMempoolMockRecorder) GetTxByKey(key interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTxByKey", reflect.TypeOf((*MockMempool)(nil).GetTxByKey), key)
 }
 
-// GetTxEvicted mocks base method.
-func (m *MockMempool) GetTxEvicted(key types0.TxKey) bool {
+// IsTxEvicted mocks base method.
+func (m *MockMempool) IsTxEvicted(key types0.TxKey) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetTxEvicted", key)
+	ret := m.ctrl.Call(m, "IsTxEvicted", key)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
-// GetTxEvicted indicates an expected call of GetTxEvicted.
-func (mr *MockMempoolMockRecorder) GetTxEvicted(key interface{}) *gomock.Call {
+// IsTxEvicted indicates an expected call of IsTxEvicted.
+func (mr *MockMempoolMockRecorder) IsTxEvicted(key interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTxEvicted", reflect.TypeOf((*MockMempool)(nil).GetTxEvicted), key)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsTxEvicted", reflect.TypeOf((*MockMempool)(nil).IsTxEvicted), key)
 }
 
 // Lock mocks base method.

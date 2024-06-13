@@ -240,7 +240,7 @@ func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error
 	}
 
 	// Check if the tx is evicted
-	isEvicted := env.Mempool.GetTxEvicted(txKey)
+	isEvicted := env.Mempool.IsTxEvicted(txKey)
 	if isEvicted {
 		return &ctypes.ResultTxStatus{Status: txStatusEvicted}, nil
 	}

@@ -273,9 +273,9 @@ func (txmp *TxMempool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
 	return nil, false
 }
 
-// GetTxEvicted returns a bool indicating whether the transaction with
+// IsTxEvicted returns a bool indicating whether the transaction with
 // the specified key was recently evicted and is currently within the cache.
-func (txmp *TxMempool) GetTxEvicted(txKey types.TxKey) bool {
+func (txmp *TxMempool) IsTxEvicted(txKey types.TxKey) bool {
 	return txmp.evictedTxs.Has(txKey)
 }
 
@@ -559,7 +559,8 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		// those candidates is not enough to make room for the new transaction,
 		// drop the new one.
 		if len(victims) == 0 || victimBytes < wtx.Size() {
-			txmp.cache.Remove(wtx.key)
+			wtxKey := wtx.tx.Key()
+			txmp.cache.Remove(wtxKey)
 			txmp.logger.Error(
 				"rejected valid incoming transaction; mempool is full",
 				"tx", fmt.Sprintf("%X", wtx.tx.Hash()),
@@ -570,7 +571,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 					wtx.tx.Hash())
 			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedNewTxFullMempool).Add(1)
 			// Add it to evicted transactions cache
-			txmp.evictedTxs.Push(wtx.key)
+			txmp.evictedTxs.Push(wtxKey)
 			return
 		}
 

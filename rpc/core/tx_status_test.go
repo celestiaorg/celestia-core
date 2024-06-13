@@ -48,8 +48,8 @@ func TestTxStatus(t *testing.T) {
 				for _, tx := range txs {
 					// Set GetTxByKey to return nil and false for all transactions
 					mempool.EXPECT().GetTxByKey(tx.Key()).Return(nil, false).AnyTimes()
-					// Set GetTxEvicted to return false for all transactions
-					mempool.EXPECT().GetTxEvicted(tx.Key()).Return(false).AnyTimes()
+					// Set IsTxEvicted to return false for all transactions
+					mempool.EXPECT().IsTxEvicted(tx.Key()).Return(false).AnyTimes()
 				}
 			},
 			expectedStatus: "COMMITTED",
@@ -64,8 +64,8 @@ func TestTxStatus(t *testing.T) {
 				for _, tx := range txs {
 					// Set GetTxByKey to return nil and false for all transactions
 					mempool.EXPECT().GetTxByKey(tx.Key()).Return(nil, false).AnyTimes()
-					// Set GetTxEvicted to return false for all transactions
-					mempool.EXPECT().GetTxEvicted(tx.Key()).Return(false).AnyTimes()
+					// Set IsTxEvicted to return false for all transactions
+					mempool.EXPECT().IsTxEvicted(tx.Key()).Return(false).AnyTimes()
 				}
 			},
 
@@ -103,8 +103,8 @@ func TestTxStatus(t *testing.T) {
 				for _, tx := range txs {
 					// Set GetTxByKey to return nil and false for all transactions
 					mempool.EXPECT().GetTxByKey(tx.Key()).Return(nil, false).AnyTimes()
-					// Set GetTxEvicted to return true for all transactions
-					mempool.EXPECT().GetTxEvicted(tx.Key()).Return(true).AnyTimes()
+					// Set IsTxEvicted to return true for all transactions
+					mempool.EXPECT().IsTxEvicted(tx.Key()).Return(true).AnyTimes()
 				}
 			},
 			expectedStatus: "EVICTED",
