@@ -227,6 +227,12 @@ func ProveShares(
 func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
 	env := GetEnvironment()
 
+	// Check if the tx has been committed
+	txInfo := env.BlockStore.LoadTxInfo(hash)
+	if txInfo != nil {
+		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, Status: txStatusCommitted}, nil
+	}
+
 	// Get the tx key from the hash
 	txKey, err := types.TxKeyFromBytes(hash)
 	if err != nil {
@@ -243,12 +249,6 @@ func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error
 	isEvicted := env.Mempool.IsTxEvicted(txKey)
 	if isEvicted {
 		return &ctypes.ResultTxStatus{Status: txStatusEvicted}, nil
-	}
-
-	// Check if the tx has been committed
-	txInfo := env.BlockStore.LoadTxInfo(hash)
-	if txInfo != nil {
-		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, Status: txStatusCommitted}, nil
 	}
 
 	// If the tx is not in the mempool, evicted, or committed, return unknown

@@ -45,12 +45,6 @@ func TestTxStatus(t *testing.T) {
 					blocks: blocks,
 				}
 				env.BlockStore = blockStore
-				for _, tx := range txs {
-					// Set GetTxByKey to return nil and false for all transactions
-					mempool.EXPECT().GetTxByKey(tx.Key()).Return(nil, false).AnyTimes()
-					// Set IsTxEvicted to return false for all transactions
-					mempool.EXPECT().IsTxEvicted(tx.Key()).Return(false).AnyTimes()
-				}
 			},
 			expectedStatus: "COMMITTED",
 		},
