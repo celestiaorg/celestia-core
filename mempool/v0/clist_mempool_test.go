@@ -549,6 +549,33 @@ func TestMempool_CheckTxChecksTxSize(t *testing.T) {
 	}
 }
 
+func TestGetTxByKey(t *testing.T) {
+	app := kvstore.NewApplication()
+	cc := proxy.NewLocalClientCreator(app)
+
+	mp, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+    
+	// Create a tx
+	tx := types.Tx([]byte{0x01})
+	// Add it to the mempool
+	err := mp.CheckTx(tx, nil, mempool.TxInfo{})
+	require.NoError(t, err)
+
+	txKey := types.Tx(tx).Key()
+	// Query the tx from the mempool
+	got, ok := mp.GetTxByKey(txKey)
+	require.True(t, ok)
+	// Ensure the returned tx is the same as the one we added
+	require.Equal(t, tx, got)
+
+	// Query a random tx from the mempool
+	randomTx, ok := mp.GetTxByKey(types.Tx([]byte{0x02}).Key())
+	// Ensure the returned tx is nil
+	require.False(t, ok)
+	require.Nil(t, randomTx)
+}
+
 func TestMempoolTxsBytes(t *testing.T) {
 	app := kvstore.NewApplication()
 	cc := proxy.NewLocalClientCreator(app)

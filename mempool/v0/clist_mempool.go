@@ -183,12 +183,17 @@ func (mem *CListMempool) TxsFront() *clist.CElement {
 	return mem.txs.Front()
 }
 
-// GetTxByKey is not supported by the v0 mempool but it is required to satisfy the mempool interface.
+// GetTxByKey retrieves a transaction from the mempool using its key. 
 func (mem *CListMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
-	return nil, false
+	e, ok := mem.txsMap.Load(key)
+	if !ok {
+		return nil, false
+	}
+	memTx, ok := e.(*clist.CElement).Value.(*mempoolTx)
+	return memTx.tx, ok
 }
 
-// IsTxEvicted is not supported by the v0 mempool but it is required to satisfy the mempool interface.
+// IsTxEvicted returns false consistently as this implementation does not support transaction eviction.
 func (mem *CListMempool) IsTxEvicted(key types.TxKey) bool {
 	return false
 }
