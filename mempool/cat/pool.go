@@ -190,9 +190,9 @@ func (txmp *TxPool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
 	return types.Tx{}, false
 }
 
-// IsTxEvicted returns a bool indicating whether the transaction with
+// WasRecentlyEvicted returns a bool indicating whether the transaction with
 // the specified key was recently evicted and is currently within the cache.
-func (txmp *TxPool) IsTxEvicted(txKey types.TxKey) bool {
+func (txmp *TxPool) WasRecentlyEvicted(txKey types.TxKey) bool {
 	return txmp.evictedTxCache.Has(txKey)
 }
 

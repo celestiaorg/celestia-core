@@ -193,8 +193,8 @@ func (mem *CListMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
 	return memTx.tx, ok
 }
 
-// IsTxEvicted returns false consistently as this implementation does not support transaction eviction.
-func (mem *CListMempool) IsTxEvicted(key types.TxKey) bool {
+// WasRecentlyEvicted returns false consistently as this implementation does not support transaction eviction.
+func (mem *CListMempool) WasRecentlyEvicted(key types.TxKey) bool {
 	return false
 }
 

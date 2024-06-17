@@ -244,7 +244,7 @@ func TestTxPool_Eviction(t *testing.T) {
 	mustCheckTx(t, txmp, "key1=0000=25")
 	require.True(t, txExists("key1=0000=25"))
 	require.False(t, txExists(bigTx))
-	require.True(t, txmp.IsTxEvicted(types.Tx(bigTx).Key()))
+	require.True(t, txmp.WasRecentlyEvicted(types.Tx(bigTx).Key()))
 	require.Equal(t, int64(len("key1=0000=25")), txmp.SizeBytes())
 
 	// Now fill up the rest of the slots with other transactions.
@@ -258,27 +258,27 @@ func TestTxPool_Eviction(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mempool is full")
 	require.False(t, txExists("key6=0005=1"))
-	require.True(t, txmp.IsTxEvicted(types.Tx("key6=0005=1").Key()))
+	require.True(t, txmp.WasRecentlyEvicted(types.Tx("key6=0005=1").Key()))
 
 	// A new transaction with higher priority should evict key5, which is the
 	// newest of the two transactions with lowest priority.
 	mustCheckTx(t, txmp, "key7=0006=7")
 	require.True(t, txExists("key7=0006=7"))  // new transaction added
 	require.False(t, txExists("key5=0004=3")) // newest low-priority tx evicted
-	require.True(t, txmp.IsTxEvicted(types.Tx("key5=0004=3").Key()))
+	require.True(t, txmp.WasRecentlyEvicted(types.Tx("key5=0004=3").Key()))
 	require.True(t, txExists("key4=0003=3")) // older low-priority tx retained
 
 	// Another new transaction evicts the other low-priority element.
 	mustCheckTx(t, txmp, "key8=0007=20")
 	require.True(t, txExists("key8=0007=20"))
 	require.False(t, txExists("key4=0003=3"))
-	require.True(t, txmp.IsTxEvicted(types.Tx("key4=0003=3").Key()))
+	require.True(t, txmp.WasRecentlyEvicted(types.Tx("key4=0003=3").Key()))
 
 	// Now the lowest-priority tx is 5, so that should be the next to go.
 	mustCheckTx(t, txmp, "key9=0008=9")
 	require.True(t, txExists("key9=0008=9"))
 	require.False(t, txExists("key2=0001=5"))
-	require.True(t, txmp.IsTxEvicted(types.Tx("key2=0001=5").Key()))
+	require.True(t, txmp.WasRecentlyEvicted(types.Tx("key2=0001=5").Key()))
 
 	// Add a transaction that requires eviction of multiple lower-priority
 	// entries, in order to fit the size of the element.
@@ -287,11 +287,11 @@ func TestTxPool_Eviction(t *testing.T) {
 	require.True(t, txExists("key8=0007=20"))
 	require.True(t, txExists("key10=0123456789abcdef=11"))
 	require.False(t, txExists("key3=0002=10"))
-	require.True(t, txmp.IsTxEvicted(types.Tx("key3=0002=10").Key()))
+	require.True(t, txmp.WasRecentlyEvicted(types.Tx("key3=0002=10").Key()))
 	require.False(t, txExists("key9=0008=9"))
-	require.True(t, txmp.IsTxEvicted(types.Tx("key9=0008=9").Key()))
+	require.True(t, txmp.WasRecentlyEvicted(types.Tx("key9=0008=9").Key()))
 	require.False(t, txExists("key7=0006=7"))
-	require.True(t, txmp.IsTxEvicted(types.Tx("key7=0006=7").Key()))
+	require.True(t, txmp.WasRecentlyEvicted(types.Tx("key7=0006=7").Key()))
 
 	// Free up some space so we can add back previously evicted txs
 	err = txmp.Update(1, types.Txs{types.Tx("key10=0123456789abcdef=11")}, []*abci.ResponseDeliverTx{{Code: abci.CodeTypeOK}}, nil, nil)
@@ -304,7 +304,7 @@ func TestTxPool_Eviction(t *testing.T) {
 	// space for the previously evicted tx
 	require.NoError(t, txmp.RemoveTxByKey(types.Tx("key8=0007=20").Key()))
 	require.False(t, txExists("key8=0007=20"))
-	require.False(t, txmp.IsTxEvicted(types.Tx("key8=0007=20").Key()))
+	require.False(t, txmp.WasRecentlyEvicted(types.Tx("key8=0007=20").Key()))
 }
 
 func TestTxPool_Flush(t *testing.T) {
@@ -577,7 +577,7 @@ func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 	// All the transactions in the original set should have been purged.
 	for _, tx := range added1 {
 		// Check that it was added to the evictedTxCache
-		evicted := txmp.IsTxEvicted(tx.tx.Key())
+		evicted := txmp.WasRecentlyEvicted(tx.tx.Key())
 		require.True(t, evicted)
 
 		if txmp.store.has(tx.tx.Key()) {
