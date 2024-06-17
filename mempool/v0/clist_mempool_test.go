@@ -562,9 +562,8 @@ func TestGetTxByKey(t *testing.T) {
 	err := mp.CheckTx(tx, nil, mempool.TxInfo{})
 	require.NoError(t, err)
 
-	txKey := types.Tx(tx).Key()
 	// Query the tx from the mempool
-	got, ok := mp.GetTxByKey(txKey)
+	got, ok := mp.GetTxByKey(tx.Key())
 	require.True(t, ok)
 	// Ensure the returned tx is the same as the one we added
 	require.Equal(t, tx, got)
