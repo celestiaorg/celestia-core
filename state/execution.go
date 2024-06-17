@@ -104,15 +104,8 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	evidence, evSize := blockExec.evpool.PendingEvidence(state.ConsensusParams.Evidence.MaxBytes)
 
-	// Fetch a limited amount of valid txs
 	maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
 
-	// TODO(ismail): reaping the mempool has to happen in relation to a max
-	// allowed square size instead of (only) Gas / bytes
-	// maybe the mempool actually should track things separately
-	// meaning that CheckTx should already do the mapping:
-	// Tx -> Txs, Message
-	// https://github.com/tendermint/tendermint/issues/77
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
 
 	var timestamp time.Time
