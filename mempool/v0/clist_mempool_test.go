@@ -555,7 +555,7 @@ func TestGetTxByKey(t *testing.T) {
 
 	mp, cleanup := newMempoolWithApp(cc)
 	defer cleanup()
-    
+
 	// Create a tx
 	tx := types.Tx([]byte{0x01})
 	// Add it to the mempool

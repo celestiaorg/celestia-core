@@ -183,7 +183,7 @@ func (mem *CListMempool) TxsFront() *clist.CElement {
 	return mem.txs.Front()
 }
 
-// GetTxByKey retrieves a transaction from the mempool using its key. 
+// GetTxByKey retrieves a transaction from the mempool using its key.
 func (mem *CListMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
 	e, ok := mem.txsMap.Load(key)
 	if !ok {
