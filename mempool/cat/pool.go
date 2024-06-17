@@ -94,7 +94,7 @@ func NewTxPool(
 		proxyAppConn:     proxyAppConn,
 		metrics:          mempool.NopMetrics(),
 		rejectedTxCache:  NewLRUTxCache(cfg.CacheSize),
-		evictedTxCache:   NewLRUTxCache(cfg.CacheSize),
+		evictedTxCache:   NewLRUTxCache(cfg.CacheSize / 5),
 		seenByPeersSet:   NewSeenTxSet(),
 		height:           height,
 		preCheckFn:       func(_ types.Tx) error { return nil },
@@ -210,9 +210,13 @@ func (txmp *TxPool) CheckToPurgeExpiredTxs() {
 	defer txmp.updateMtx.Unlock()
 	if txmp.config.TTLDuration > 0 && time.Since(txmp.lastPurgeTime) > txmp.config.TTLDuration {
 		expirationAge := time.Now().Add(-txmp.config.TTLDuration)
-		// a height of 0 means no transactions will be removed because of height
+		// A height of 0 means no transactions will be removed because of height
 		// (in other words, no transaction has a height less than 0)
-		numExpired := txmp.store.purgeExpiredTxs(0, expirationAge, txmp.evictedTxCache)
+		purgedTxs, numExpired := txmp.store.purgeExpiredTxs(0, expirationAge)
+		// Add the purged transactions to the evicted cache
+		for _, tx := range purgedTxs {
+			txmp.evictedTxCache.Push(tx.key)
+		}
 		txmp.metrics.EvictedTxs.Add(float64(numExpired))
 		txmp.lastPurgeTime = time.Now()
 	}
@@ -738,7 +742,11 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 		expirationAge = time.Time{}
 	}
 
-	numExpired := txmp.store.purgeExpiredTxs(expirationHeight, expirationAge, txmp.evictedTxCache)
+	purgedTxs, numExpired := txmp.store.purgeExpiredTxs(expirationHeight, expirationAge)
+	// Add the purged transactions to the evicted cache
+	for _, tx := range purgedTxs {
+		txmp.evictedTxCache.Push(tx.key)
+	}
 	txmp.metrics.EvictedTxs.Add(float64(numExpired))
 
 	// purge old evicted and seen transactions

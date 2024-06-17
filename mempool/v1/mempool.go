@@ -87,7 +87,7 @@ func NewTxMempool(
 	}
 	if cfg.CacheSize > 0 {
 		txmp.cache = mempool.NewLRUTxCache(cfg.CacheSize)
-		txmp.evictedTxs = mempool.NewLRUTxCache(cfg.CacheSize)
+		txmp.evictedTxs = mempool.NewLRUTxCache(cfg.CacheSize / 5)
 	}
 
 	for _, opt := range options {

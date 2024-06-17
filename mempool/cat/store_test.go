@@ -173,7 +173,7 @@ func TestStoreExpiredTxs(t *testing.T) {
 	}
 
 	// half of them should get purged
-	store.purgeExpiredTxs(int64(numTxs/2), time.Time{}, nil)
+	store.purgeExpiredTxs(int64(numTxs/2), time.Time{})
 
 	remainingTxs := store.getAllTxs()
 	require.Equal(t, numTxs/2, len(remainingTxs))
@@ -181,6 +181,6 @@ func TestStoreExpiredTxs(t *testing.T) {
 		require.GreaterOrEqual(t, tx.height, int64(numTxs/2))
 	}
 
-	store.purgeExpiredTxs(int64(0), time.Now().Add(time.Second), nil)
+	store.purgeExpiredTxs(int64(0), time.Now().Add(time.Second))
 	require.Empty(t, store.getAllTxs())
 }
