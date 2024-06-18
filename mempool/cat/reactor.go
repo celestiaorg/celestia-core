@@ -318,7 +318,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			txKey[:],
 			schema.Download,
 		)
-		tx, has := memR.mempool.Get(txKey)
+		tx, has := memR.mempool.GetTxByKey(txKey)
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)

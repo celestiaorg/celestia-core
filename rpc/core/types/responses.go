@@ -62,8 +62,9 @@ type ResultCommit struct {
 
 // ResultTxStatus contains info to locate a tx in a committed block.
 type ResultTxStatus struct {
-	Height int64 `json:"height"`
-	Index  int64 `json:"index"`
+	Height int64  `json:"height"`
+	Index  int64  `json:"index"`
+	Status string `json:"status"`
 }
 
 // ABCI results from a block

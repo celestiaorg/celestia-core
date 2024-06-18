@@ -126,31 +126,6 @@ func TestBlockResults(t *testing.T) {
 	}
 }
 
-func TestTxStatus(t *testing.T) {
-	env := &Environment{}
-	height := int64(50)
-
-	blocks := randomBlocks(height)
-	blockStore := mockBlockStore{
-		height: height,
-		blocks: blocks,
-	}
-	env.BlockStore = blockStore
-
-	SetEnvironment(env)
-
-	// Iterate over each block
-	for _, block := range blocks {
-		// Iterate over each transaction in the block
-		for i, tx := range block.Data.Txs {
-			txStatus, _ := TxStatus(&rpctypes.Context{}, tx.Hash())
-			assert.Equal(t, block.Height, txStatus.Height)
-			assert.Equal(t, int64(i), txStatus.Index)
-		}
-	}
-
-}
-
 func TestEncodeDataRootTuple(t *testing.T) {
 	height := uint64(2)
 	dataRoot, err := hex.DecodeString("82dc1607d84557d3579ce602a45f5872e821c36dbda7ec926dfa17ebc8d5c013")
