@@ -96,6 +96,9 @@ type Metrics struct {
 
 	// The amount of proposals that failed to be received in time
 	TimedOutProposals metrics.Counter
+
+	// Timings for each of the ABCI methods.
+	ABCIMethodTimingSeconds metrics.Histogram
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -267,6 +270,12 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "timed_out_proposals",
 			Help:      "Number of proposals that failed to be received in time",
 		}, labels).With(labelsAndValues...),
+		ABCIMethodTimingSeconds: prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "abci_connection_method_timing_seconds",
+			Help:      "Timings for each of the ABCI methods.",
+		}, append(labels, "method", "type")).With(labelsAndValues...),
 	}
 }
 
@@ -304,6 +313,7 @@ func NopMetrics() *Metrics {
 		FullPrevoteMessageDelay:      discard.NewGauge(),
 		ApplicationRejectedProposals: discard.NewCounter(),
 		TimedOutProposals:            discard.NewCounter(),
+		ABCIMethodTimingSeconds:      discard.NewHistogram(),
 	}
 }
 
