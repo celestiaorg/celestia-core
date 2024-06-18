@@ -58,6 +58,7 @@ type TxMempool struct {
 	txs        *clist.CList // valid transactions (passed CheckTx)
 	txByKey    map[types.TxKey]*clist.CElement
 	txBySender map[string]*clist.CElement // for sender != ""
+	evictedTxs mempool.TxCache            // for tracking evicted transactions
 
 	traceClient *trace.Client
 }
@@ -87,6 +88,7 @@ func NewTxMempool(
 	}
 	if cfg.CacheSize > 0 {
 		txmp.cache = mempool.NewLRUTxCache(cfg.CacheSize)
+		txmp.evictedTxs = mempool.NewLRUTxCache(cfg.CacheSize / 5)
 	}
 
 	for _, opt := range options {
@@ -259,6 +261,24 @@ func (txmp *TxMempool) RemoveTxByKey(txKey types.TxKey) error {
 	txmp.mtx.Lock()
 	defer txmp.mtx.Unlock()
 	return txmp.removeTxByKey(txKey)
+}
+
+// GetTxByKey retrieves a transaction based on the key. It returns a bool
+// indicating whether transaction was found in the cache.
+func (txmp *TxMempool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
+	txmp.mtx.RLock()
+	defer txmp.mtx.RUnlock()
+
+	if elt, ok := txmp.txByKey[txKey]; ok {
+		return elt.Value.(*WrappedTx).tx, true
+	}
+	return nil, false
+}
+
+// WasRecentlyEvicted returns a bool indicating whether the transaction with
+// the specified key was recently evicted and is currently within the evicted cache.
+func (txmp *TxMempool) WasRecentlyEvicted(txKey types.TxKey) bool {
+	return txmp.evictedTxs.HasKey(txKey)
 }
 
 // removeTxByKey removes the specified transaction key from the mempool.
@@ -560,6 +580,8 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 				fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
 					wtx.tx.Hash())
 			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedNewTxFullMempool).Add(1)
+			// Add it to evicted transactions cache
+			txmp.evictedTxs.Push(wtx.tx)
 			return
 		}
 
@@ -592,7 +614,8 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			txmp.removeTxByElement(vic)
 			txmp.cache.Remove(w.tx)
 			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedExistingTxFullMempool).Add(1)
-
+			// Add it to evicted transactions cache
+			txmp.evictedTxs.Push(w.tx)
 			// We may not need to evict all the eligible transactions.  Bail out
 			// early if we have made enough room.
 			evictedBytes += w.Size()
@@ -786,9 +809,11 @@ func (txmp *TxMempool) purgeExpiredTxs(blockHeight int64) {
 			txmp.removeTxByElement(cur)
 			txmp.cache.Remove(w.tx)
 			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedTxExpiredBlocks).Add(1)
+			txmp.evictedTxs.Push(w.tx)
 		} else if txmp.config.TTLDuration > 0 && now.Sub(w.timestamp) > txmp.config.TTLDuration {
 			txmp.removeTxByElement(cur)
 			txmp.cache.Remove(w.tx)
+			txmp.evictedTxs.Push(w.tx)
 			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedTxExpiredTime).Add(1)
 		}
 		cur = next
