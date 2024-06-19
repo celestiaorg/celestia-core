@@ -399,7 +399,7 @@ func TestSaveTxInfo(t *testing.T) {
 				txResponseCodes[i] = 1
 			}
 		}
-		
+
 		// Save the tx info
 		err := blockStore.SaveTxInfo(block, txResponseCodes)
 		require.NoError(t, err)
