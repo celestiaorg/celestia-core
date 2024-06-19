@@ -388,10 +388,9 @@ func TestSaveTxInfo(t *testing.T) {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, cmttime.Now())
-
-		// Save the block
 		blockStore.SaveBlock(block, partSet, seenCommit)
 
+		// Set the response codes for the transactions
 		for i := range block.Txs {
 			// If even set it to 0
 			if i%2 == 0 {
@@ -400,6 +399,7 @@ func TestSaveTxInfo(t *testing.T) {
 				txResponseCodes[i] = 1
 			}
 		}
+		
 		// Save the tx info
 		err := blockStore.SaveTxInfo(block, txResponseCodes)
 		require.NoError(t, err)
