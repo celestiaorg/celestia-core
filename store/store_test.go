@@ -377,7 +377,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 }
 
-func TestSaveBlockIndexesTxs(t *testing.T) {
+func TestSaveTxInfo(t *testing.T) {
 	// Create a state and a block store
 	state, blockStore, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	defer cleanup()
