@@ -4,7 +4,7 @@ package mocks
 
 import (
 	mock "github.com/stretchr/testify/mock"
-	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
+	store "github.com/cometbft/cometbft/proto/tendermint/store"
 	types "github.com/cometbft/cometbft/types"
 )
 
@@ -81,6 +81,22 @@ func (_m *BlockStore) LoadBlock(height int64) *types.Block {
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.Block)
+		}
+	}
+
+	return r0
+}
+
+// LoadTxInfo provides a mock function with given fields: hash
+func (_m *BlockStore) LoadTxInfo(hash []byte) *store.TxInfo {
+	ret := _m.Called(hash)
+
+	var r0 *store.TxInfo
+	if rf, ok := ret.Get(0).(func([]byte) *store.TxInfo); ok {
+		r0 = rf(hash)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*store.TxInfo)
 		}
 	}
 
@@ -204,6 +220,20 @@ func (_m *BlockStore) PruneBlocks(height int64) (uint64, error) {
 	return r0, r1
 }
 
+// SaveTxInfo provides a mock function with given fields: block, txResponseCode
+func (_m *BlockStore) SaveTxInfo(block *types.Block, txResponseCode []uint32) error {
+	ret := _m.Called(block, txResponseCode)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*types.Block, []uint32) error); ok {
+		r0 = rf(block, txResponseCode)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // SaveBlock provides a mock function with given fields: block, blockParts, seenCommit
 func (_m *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 	_m.Called(block, blockParts, seenCommit)
@@ -223,9 +253,6 @@ func (_m *BlockStore) Size() int64 {
 	return r0
 }
 
-func (_m BlockStore) LoadTxInfo(txHash []byte) *cmtstore.TxInfo {
-	return &cmtstore.TxInfo{}
-}
 
 type mockConstructorTestingTNewBlockStore interface {
 	mock.TestingT
