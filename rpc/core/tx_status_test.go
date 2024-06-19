@@ -124,7 +124,7 @@ func TestTxStatus(t *testing.T) {
 
 					assert.Equal(t, txStatus.Status, tt.expectedStatus)
 					assert.Equal(t, height, txStatus.Height)
-					assert.Equal(t, int64(i), txStatus.Index)
+					assert.Equal(t, uint32(i), txStatus.Index)
 				}
 			}
 
