@@ -91,6 +91,15 @@ type Mempool interface {
 	// trigger once every height when transactions are available.
 	EnableTxsAvailable()
 
+	// GetTxByKey gets a tx by its key from the mempool. Returns the tx and a bool indicating its presence in the tx cache.
+	// Used in the RPC endpoint: TxStatus.
+	GetTxByKey(key types.TxKey) (types.Tx, bool)
+
+	// WasRecentlyEvicted returns true if the tx was evicted from the mempool and exists in the
+	// evicted cache.
+	// Used in the RPC endpoint: TxStatus.
+	WasRecentlyEvicted(key types.TxKey) bool
+
 	// Size returns the number of transactions in the mempool.
 	Size() int
 

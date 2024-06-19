@@ -143,7 +143,7 @@ type State struct {
 	// for reporting metrics
 	metrics *Metrics
 
-	traceClient *trace.Client
+	traceClient trace.Tracer
 }
 
 // StateOption sets an optional parameter on the State.
@@ -174,7 +174,7 @@ func NewState(
 		evpool:           evpool,
 		evsw:             cmtevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
-		traceClient:      &trace.Client{},
+		traceClient:      trace.NoOpTracer(),
 	}
 
 	// set function defaults (may be overwritten before calling Start)
@@ -217,7 +217,7 @@ func StateMetrics(metrics *Metrics) StateOption {
 }
 
 // SetTraceClient sets the remote event collector.
-func SetTraceClient(ec *trace.Client) StateOption {
+func SetTraceClient(ec trace.Tracer) StateOption {
 	return func(cs *State) { cs.traceClient = ec }
 }
 
@@ -706,7 +706,9 @@ func (cs *State) newStep() {
 
 	cs.nSteps++
 
-	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, cs.Step)
+	step := uint8(cs.RoundState.Step)
+
+	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, step)
 
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {
@@ -1152,7 +1154,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		block, blockParts = cs.TwoThirdPrevoteBlock, cs.TwoThirdPrevoteBlockParts
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
+		schema.WriteABCI(cs.traceClient, schema.PrepareProposalStart, height, round)
 		block, blockParts = cs.createProposalBlock()
+		schema.WriteABCI(cs.traceClient, schema.PrepareProposalEnd, height, round)
 		if block == nil {
 			return
 		}
@@ -1297,11 +1301,15 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		return
 	}
 
+	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
+
 	stateMachineValidBlock, err := cs.blockExec.ProcessProposal(cs.ProposalBlock, cs.state)
 	if err != nil {
 		cs.Logger.Error("state machine returned an error when trying to process proposal block", "err", err)
 		return
 	}
+
+	schema.WriteABCI(cs.traceClient, schema.ProcessProposalEnd, height, round)
 
 	// Vote nil if application invalidated the block
 	if !stateMachineValidBlock {
@@ -1689,6 +1697,8 @@ func (cs *State) finalizeCommit(height int64) {
 		retainHeight int64
 	)
 
+	schema.WriteABCI(cs.traceClient, schema.CommitStart, height, 0)
+
 	stateCopy, retainHeight, err = cs.blockExec.ApplyBlock(
 		stateCopy,
 		types.BlockID{
@@ -1701,6 +1711,8 @@ func (cs *State) finalizeCommit(height int64) {
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}
+
+	schema.WriteABCI(cs.traceClient, schema.CommitEnd, height, 0)
 
 	fail.Fail() // XXX
 
@@ -1838,7 +1850,7 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	blockSize := block.Size()
 
 	// trace some metadata about the block
-	schema.WriteBlock(cs.traceClient, block, blockSize)
+	schema.WriteBlockSummary(cs.traceClient, block, blockSize)
 
 	cs.metrics.NumTxs.Set(float64(len(block.Data.Txs)))
 	cs.metrics.TotalTxs.Add(float64(len(block.Data.Txs)))

@@ -427,7 +427,7 @@ func createMempoolAndMempoolReactor(config *cfg.Config, proxyApp proxy.AppConns,
 		reactor := mempoolv1.NewReactor(
 			config.Mempool,
 			mp,
-			&trace.Client{},
+			trace.NoOpTracer(),
 		)
 		if config.Consensus.WaitForTxs() {
 			mp.EnableTxsAvailable()
@@ -551,7 +551,7 @@ func createTransport(
 ) {
 	var (
 		mConnConfig = p2p.MConnConfig(config.P2P)
-		transport   = p2p.NewMultiplexTransport(nodeInfo, *nodeKey, mConnConfig)
+		transport   = p2p.NewMultiplexTransport(nodeInfo, *nodeKey, mConnConfig, trace.NoOpTracer())
 		connFilters = []p2p.ConnFilterFunc{}
 		peerFilters = []p2p.PeerFilterFunc{}
 	)

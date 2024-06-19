@@ -234,7 +234,7 @@ type Node struct {
 	blockIndexer      indexer.BlockIndexer
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
-	influxDBClient    *trace.Client
+	tracer            trace.Tracer
 	pyroscopeProfiler *pyroscope.Profiler
 	pyroscopeTracer   *sdktrace.TracerProvider
 }
@@ -377,7 +377,7 @@ func createMempoolAndMempoolReactor(
 	state sm.State,
 	memplMetrics *mempl.Metrics,
 	logger log.Logger,
-	traceClient *trace.Client,
+	traceClient trace.Tracer,
 ) (mempl.Mempool, p2p.Reactor) {
 	switch config.Mempool.Version {
 	case cfg.MempoolV2:
@@ -514,7 +514,7 @@ func createConsensusReactor(config *cfg.Config,
 	waitSync bool,
 	eventBus *types.EventBus,
 	consensusLogger log.Logger,
-	traceClient *trace.Client,
+	traceClient trace.Tracer,
 ) (*cs.Reactor, *cs.State) {
 	consensusState := cs.NewState(
 		config.Consensus,
@@ -548,13 +548,14 @@ func createTransport(
 	nodeInfo p2p.NodeInfo,
 	nodeKey *p2p.NodeKey,
 	proxyApp proxy.AppConns,
+	tracer trace.Tracer,
 ) (
 	*p2p.MultiplexTransport,
 	[]p2p.PeerFilterFunc,
 ) {
 	var (
 		mConnConfig = p2p.MConnConfig(config.P2P)
-		transport   = p2p.NewMultiplexTransport(nodeInfo, *nodeKey, mConnConfig)
+		transport   = p2p.NewMultiplexTransport(nodeInfo, *nodeKey, mConnConfig, tracer)
 		connFilters = []p2p.ConnFilterFunc{}
 		peerFilters = []p2p.PeerFilterFunc{}
 	)
@@ -624,12 +625,14 @@ func createSwitch(config *cfg.Config,
 	nodeInfo p2p.NodeInfo,
 	nodeKey *p2p.NodeKey,
 	p2pLogger log.Logger,
+	tracer trace.Tracer,
 ) *p2p.Switch {
 	sw := p2p.NewSwitch(
 		config.P2P,
 		transport,
 		p2p.WithMetrics(p2pMetrics),
 		p2p.SwitchPeerFilters(peerFilters...),
+		p2p.WithTracer(tracer),
 	)
 	sw.SetLogger(p2pLogger)
 	sw.AddReactor("MEMPOOL", mempoolReactor)
@@ -855,11 +858,9 @@ func NewNode(config *cfg.Config,
 
 	csMetrics, p2pMetrics, memplMetrics, smMetrics := metricsProvider(genDoc.ChainID, softwareVersion)
 
-	// create an optional influxdb client to send arbitrary data to a remote
-	// influxdb server. This is used to collect trace data from many different nodes
-	// in a network.
-	influxdbClient, err := trace.NewClient(
-		config.Instrumentation,
+	// create an optional tracer client to collect trace data.
+	tracer, err := trace.NewTracer(
+		config,
 		logger,
 		genDoc.ChainID,
 		string(nodeKey.ID()),
@@ -869,7 +870,7 @@ func NewNode(config *cfg.Config,
 	}
 
 	// Make MempoolReactor
-	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger, influxdbClient)
+	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger, tracer)
 
 	// Make Evidence Reactor
 	evidenceReactor, evidencePool, err := createEvidenceReactor(config, dbProvider, stateDB, blockStore, logger)
@@ -902,7 +903,7 @@ func NewNode(config *cfg.Config,
 	}
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger, influxdbClient,
+		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger, tracer,
 	)
 
 	// Set up state sync reactor, and schedule a sync if requested.
@@ -923,13 +924,13 @@ func NewNode(config *cfg.Config,
 	}
 
 	// Setup Transport.
-	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp)
+	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp, tracer)
 
 	// Setup Switch.
 	p2pLogger := logger.With("module", "p2p")
 	sw := createSwitch(
 		config, transport, p2pMetrics, peerFilters, mempoolReactor, bcReactor,
-		stateSyncReactor, consensusReactor, evidenceReactor, nodeInfo, nodeKey, p2pLogger,
+		stateSyncReactor, consensusReactor, evidenceReactor, nodeInfo, nodeKey, p2pLogger, tracer,
 	)
 
 	err = sw.AddPersistentPeers(splitAndTrimEmpty(config.P2P.PersistentPeers, ",", " "))
@@ -1000,7 +1001,7 @@ func NewNode(config *cfg.Config,
 		indexerService:   indexerService,
 		blockIndexer:     blockIndexer,
 		eventBus:         eventBus,
-		influxDBClient:   influxdbClient,
+		tracer:           tracer,
 	}
 	node.BaseService = *service.NewBaseService(logger, "Node", node)
 
@@ -1147,8 +1148,8 @@ func (n *Node) OnStop() {
 		}
 	}
 
-	if n.influxDBClient != nil {
-		n.influxDBClient.Stop()
+	if n.tracer != nil {
+		n.tracer.Stop()
 	}
 
 	if n.pyroscopeProfiler != nil {

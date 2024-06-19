@@ -1,9 +1,7 @@
 # celestia-core
 
-[![Go Reference](https://img.shields.io/badge/godoc-reference-blue.svg)](https://pkg.go.dev/github.com/celestiaorg/celestia-core)
 [![GitHub Release](https://img.shields.io/github/v/release/celestiaorg/celestia-core)](https://github.com/celestiaorg/celestia-core/releases/latest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/celestiaorg/celestia-core)](https://goreportcard.com/report/github.com/celestiaorg/celestia-core)
-[![Build](https://github.com/celestiaorg/celestia-core/actions/workflows/build.yml/badge.svg)](https://github.com/celestiaorg/celestia-core/actions/workflows/build.yml)
 [![Lint](https://github.com/celestiaorg/celestia-core/actions/workflows/lint.yml/badge.svg)](https://github.com/celestiaorg/celestia-core/actions/workflows/lint.yml)
 [![Tests](https://github.com/celestiaorg/celestia-core/actions/workflows/tests.yml/badge.svg)](https://github.com/celestiaorg/celestia-core/actions/workflows/tests.yml)
 
@@ -50,7 +48,7 @@ This repo intends on preserving the minimal possible diff with [cometbft/cometbf
 - **specific to Celestia**: consider if [celestia-app](https://github.com/celestiaorg/celestia-app) is a better target
 - **not specific to Celestia**: consider making the contribution upstream in CometBFT
 
-1. [Install Go](https://go.dev/doc/install) 1.22.2+
+1. [Install Go](https://go.dev/doc/install) 1.22.4+
 2. Fork this repo
 3. Clone your fork
 4. Find an issue to work on (see [good first issues](https://github.com/celestiaorg/celestia-core/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22))
@@ -90,11 +88,3 @@ Usually PRs should target the `main` branch. After the PR merges to main, if the
 Releases are formatted: `v<CELESTIA_CORE_VERSION>-tm-v<TENDERMINT_CORE_VERSION>`
 For example: [`v1.4.0-tm-v0.34.20`](https://github.com/celestiaorg/celestia-core/releases/tag/v1.4.0-tm-v0.34.20) is celestia-core version `1.4.0` based on CometBFT `0.34.20`.
 `CELESTIA_CORE_VERSION` strives to adhere to [Semantic Versioning](http://semver.org/).
-
-## GitPOAP
-
-This repo is eligible for [GitPOAP](https://www.gitpoap.io). You can see the remaining eligible repositories at [gitpoap/celestiaorg](https://www.gitpoap.io/gh/celestiaorg).
-
-## Careers
-
-We are hiring Go engineers! Join us in building the future of blockchain scaling and interoperability. [Apply here](https://jobs.lever.co/celestia).

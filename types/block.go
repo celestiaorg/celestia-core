@@ -1007,26 +1007,21 @@ func CommitFromProto(cp *cmtproto.Commit) (*Commit, error) {
 
 //-----------------------------------------------------------------------------
 
-// Data contains all the available Data of the block.
-// Data with reserved namespaces (Txs, IntermediateStateRoots, Evidence) and
-// Celestia application specific Blobs.
+// Data contains all the Txs in a block.
 type Data struct {
 	// Txs that will be applied by state @ block.Height+1.
 	// NOTE: not all txs here are valid.  We're just agreeing on the order first.
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
 
-	// SquareSize is the size of the square after splitting all the block data
-	// into shares. The erasure data is discarded after generation, and keeping this
-	// value avoids unnecessarily regenerating all of the shares when returning
-	// proofs that some element was included in the block
-	SquareSize uint64 `json:"square_size"`
-
 	// Volatile
 	hash cmtbytes.HexBytes
 }
 
 // Hash returns the hash of the data
+// NOTE: for the data hash, Celestia overwrites this one and uses what is
+// known as the data availaibility hash which is the merkle root of a square
+// encoding of the block
 func (data *Data) Hash() cmtbytes.HexBytes {
 	if data == nil {
 		return (Txs{}).Hash()
@@ -1035,8 +1030,6 @@ func (data *Data) Hash() cmtbytes.HexBytes {
 		data.hash = data.Txs.Hash() // NOTE: leaves of merkle tree are TxIDs
 	}
 
-	// this is the expected behavior where `data.hash` was set by celestia-app
-	// in PrepareProposal
 	return data.hash
 }
 
@@ -1094,8 +1087,6 @@ func (data *Data) ToProto() cmtproto.Data {
 		tp.Txs = txBzs
 	}
 
-	tp.Hash = data.hash
-
 	return *tp
 }
 
@@ -1116,8 +1107,6 @@ func DataFromProto(dp *cmtproto.Data) (Data, error) {
 	} else {
 		data.Txs = Txs{}
 	}
-
-	data.hash = dp.Hash
 
 	return *data, nil
 }
