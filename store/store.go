@@ -464,7 +464,7 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32) e
 	for i, tx := range block.Txs {
 		txInfo := cmtstore.TxInfo{
 			Height: block.Height,
-			Index:  int64(i),
+			Index:  uint32(i),
 			Code:   txResponseCodes[i],
 		}
 		txInfoBytes, err := proto.Marshal(&txInfo)

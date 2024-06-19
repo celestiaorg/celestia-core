@@ -45,18 +45,18 @@ type BlockExecutor struct {
 	metrics *Metrics
 }
 
-// WithBlockStore optionally stores txInfo
-func WithBlockStore(blockStore BlockStore) BlockExecutorOption {
-	return func(blockExec *BlockExecutor) {
-		blockExec.blockStore = blockStore
-	}
-}
-
 type BlockExecutorOption func(executor *BlockExecutor)
 
 func BlockExecutorWithMetrics(metrics *Metrics) BlockExecutorOption {
 	return func(blockExec *BlockExecutor) {
 		blockExec.metrics = metrics
+	}
+}
+
+// WithBlockStore optionally stores txInfo
+func WithBlockStore(blockStore BlockStore) BlockExecutorOption {
+	return func(blockExec *BlockExecutor) {
+		blockExec.blockStore = blockStore
 	}
 }
 

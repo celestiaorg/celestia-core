@@ -61,10 +61,10 @@ type ResultCommit struct {
 }
 
 // ResultTxStatus contains info to locate a tx in a committed block.
-//TODO: nina update godoc
+// TODO: nina update godoc
 type ResultTxStatus struct {
-	Height int64 `json:"height"`
-	Index  int64 `json:"index"`
+	Height        int64  `json:"height"`
+	Index         uint32 `json:"index"`
 	ExecutionCode uint32 `json:"execution_code"`
 	Status        string `json:"status"`
 }
