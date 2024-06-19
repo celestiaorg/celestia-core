@@ -702,6 +702,7 @@ func ExecCommitBlock(
 	return res.Data, nil
 }
 
+// getResponseCodes gets response codes from a list of ResponseDeliverTx.
 func getResponseCodes(responses []*abci.ResponseDeliverTx) []uint32 {
 	responseCodes := make([]uint32, len(responses))
 	for i, response := range responses {
