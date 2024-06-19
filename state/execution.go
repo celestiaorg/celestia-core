@@ -25,6 +25,8 @@ import (
 type BlockExecutor struct {
 	// save state, validators, consensus params, abci responses here
 	store Store
+	// optionally to store txInfo
+	blockStore BlockStore
 
 	// execute the app against this
 	proxyApp proxy.AppConnConsensus
@@ -47,6 +49,13 @@ type BlockExecutorOption func(executor *BlockExecutor)
 func BlockExecutorWithMetrics(metrics *Metrics) BlockExecutorOption {
 	return func(blockExec *BlockExecutor) {
 		blockExec.metrics = metrics
+	}
+}
+
+// WithBlockStore optionally stores txInfo
+func WithBlockStore(blockStore BlockStore) BlockExecutorOption {
+	return func(blockExec *BlockExecutor) {
+		blockExec.blockStore = blockStore
 	}
 }
 
@@ -238,6 +247,16 @@ func (blockExec *BlockExecutor) ApplyBlock(
 	// Save the results before we commit.
 	if err := blockExec.store.SaveABCIResponses(block.Height, abciResponses); err != nil {
 		return state, 0, err
+	}
+
+	// Save indexing info of the transaction.
+	// This needs to be done prior to saving state
+	// for correct crash recovery
+	if blockExec.blockStore != nil {
+		respCodes := getResponseCodes(abciResponses.DeliverTxs)
+		if err := blockExec.blockStore.SaveTxInfo(block, respCodes); err != nil {
+			return state, 0, err
+		}
 	}
 
 	fail.Fail() // XXX
@@ -680,4 +699,12 @@ func ExecCommitBlock(
 
 	// ResponseCommit has no error or log, just data
 	return res.Data, nil
+}
+
+func getResponseCodes(responses []*abci.ResponseDeliverTx) []uint32 {
+	responseCodes := make([]uint32, len(responses))
+	for i, response := range responses {
+		responseCodes[i] = response.Code
+	}
+	return responseCodes
 }

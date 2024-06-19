@@ -407,11 +407,6 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 		panic(err)
 	}
 
-	// Save Txs from the block
-	if err := bs.SaveTxInfo(block); err != nil {
-		panic(err)
-	}
-
 	// Done!
 	bs.mtx.Lock()
 	bs.height = height
@@ -456,7 +451,11 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 }
 
 // SaveTxInfo gets Tx hashes from the block converts them to TxInfo and persists them to the db.
-func (bs *BlockStore) SaveTxInfo(block *types.Block) error {
+func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32) error {
+	if len(txResponseCodes) != len(block.Txs) {
+		return fmt.Errorf("txResponseCodes length mismatch with block txs length")
+	}
+
 	// Create a new batch
 	batch := bs.db.NewBatch()
 
@@ -464,7 +463,8 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block) error {
 	for i, tx := range block.Txs {
 		txInfo := cmtstore.TxInfo{
 			Height: block.Height,
-			Index:  int64(i),
+			Index:  uint32(i),
+			Code:   txResponseCodes[i],
 		}
 		txInfoBytes, err := proto.Marshal(&txInfo)
 		if err != nil {

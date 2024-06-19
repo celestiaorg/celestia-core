@@ -1190,6 +1190,8 @@ func stateAndStore(
 //----------------------------------
 // mock block store
 
+var _ sm.BlockStore = &mockBlockStore{}
+
 type mockBlockStore struct {
 	config  *cfg.Config
 	params  types.ConsensusParams
@@ -1221,6 +1223,9 @@ func (bs *mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 }
 func (bs *mockBlockStore) LoadBlockPart(height int64, index int) *types.Part { return nil }
 func (bs *mockBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
+}
+func (bs *mockBlockStore) SaveTxInfo(block *types.Block, txResponseCode []uint32) error {
+	return nil
 }
 func (bs *mockBlockStore) LoadTxInfo(hash []byte) *cmtstore.TxInfo { return &cmtstore.TxInfo{} }
 
