@@ -599,6 +599,7 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, cmttime.Now())
 		blockStore.SaveBlock(block, partSet, seenCommit)
+		blockStore.SaveTxInfo(block, make([]uint32, len(block.Txs)))
 		for _, tx := range block.Txs {
 			indexedTxHashes = append(indexedTxHashes, tx.Hash())
 		}
@@ -633,7 +634,8 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 			txInfo := blockStore.LoadTxInfo(tx.Hash())
 			require.NoError(t, err)
 			require.Equal(t, h, txInfo.Height)
-			require.Equal(t, int64(i), txInfo.Index)
+			require.Equal(t, uint32(i), txInfo.Index)
+			require.Equal(t, uint32(0), txInfo.Code)
 		}
 	}
 }
