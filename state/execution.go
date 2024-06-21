@@ -26,7 +26,7 @@ type BlockExecutor struct {
 	// save state, validators, consensus params, abci responses here
 	store Store
 
-	// optionally to store txInfo
+	// blockStore is optional and  used to store txInfo
 	blockStore BlockStore
 
 	// execute the app against this
