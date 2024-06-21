@@ -562,6 +562,23 @@ func TestLoadBlockMeta(t *testing.T) {
 	}
 }
 
+func TestSaveAndLoadHeightStartTime(t *testing.T) {
+	bs, _ := freshBlockStore()
+
+	height := int64(10)
+	startTime := time.Now()
+
+	// Save the start time for the height
+	err := bs.SaveHeightStartTime(height, startTime)
+	require.NoError(t, err, "saving height start time should not produce an error")
+
+	// Load the start time for the height
+	loadedTime, err := bs.LoadHeightStartTime(height)
+	require.NoError(t, err, "loading height start time should not produce an error")
+	require.Equal(t, startTime.UnixNano(), loadedTime.UnixNano(), "the loaded start time should match the saved start time")
+}
+
+
 func TestLoadBlockMetaByHash(t *testing.T) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)

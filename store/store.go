@@ -447,7 +447,7 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 }
 
 func (bs *BlockStore) SaveHeightStartTime(height int64, startTime time.Time) error {
-	return bs.db.Set(calcStartTimeKey(height), []byte(startTime.Format(time.RFC3339)))
+	return bs.db.Set(calcStartTimeKey(height), []byte(startTime.Format(time.RFC3339Nano)))
 }
 
 func (bs *BlockStore) LoadHeightStartTime(height int64) (time.Time, error) {
@@ -459,7 +459,7 @@ func (bs *BlockStore) LoadHeightStartTime(height int64) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("no start time found for height %d", height)
 	}
 	startTimeString := string(startTimeBytes)
-	startTime, err := time.Parse(time.RFC3339, startTimeString)
+	startTime, err := time.Parse(time.RFC3339Nano, startTimeString)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to parse start time for height %d: %w", height, err)
 	}
