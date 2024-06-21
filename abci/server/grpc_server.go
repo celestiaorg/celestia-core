@@ -43,7 +43,7 @@ func (s *GRPCServer) OnStart() error {
 	}
 
 	s.listener = ln
-	s.server = grpc.NewServer(grpc.MaxRecvMsgSize(8 * 1024 * 1024))
+	s.server = grpc.NewServer()
 	types.RegisterABCIApplicationServer(s.server, s.app)
 
 	s.Logger.Info("Listening", "proto", s.proto, "addr", s.addr)
