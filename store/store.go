@@ -450,7 +450,7 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
 }
 
-// SaveTxInfo indexes the txs from the block with the given response codes during execution.
+// SaveTxInfo indexes the txs from the block with the given response codes from execution.
 func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32) error {
 	if len(txResponseCodes) != len(block.Txs) {
 		return fmt.Errorf("txResponseCodes length mismatch with block txs length")
