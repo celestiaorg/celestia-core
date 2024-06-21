@@ -107,6 +107,15 @@ func TestStatus(t *testing.T) {
 	}
 }
 
+func TestStartTime(t *testing.T) {
+	for i, c := range GetClients() {
+		height := int64(1)
+		startTime, err := c.StartTime(context.Background(), &height)
+		require.NoError(t, err, "%d: %+v", i, err)
+		assert.NotEmpty(t, startTime.StartTime)
+	}
+}
+
 // Make sure info is correct (we connect properly)
 func TestInfo(t *testing.T) {
 	for i, c := range GetClients() {

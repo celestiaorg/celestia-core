@@ -3,6 +3,7 @@ package e2e_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -45,6 +46,10 @@ func TestBlock_Header(t *testing.T) {
 
 			require.NoError(t, resp.Block.ValidateBasic(),
 				"block at height %d is invalid", block.Header.Height)
+
+			startTimeResp, err := client.StartTime(ctx, &block.Header.Height)
+			require.NoError(t, err)
+			fmt.Println("startTimeResp", startTimeResp)
 		}
 	})
 }
