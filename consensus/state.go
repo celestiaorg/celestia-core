@@ -1155,11 +1155,6 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	var block *types.Block
 	var blockParts *types.PartSet
 
-	if time.Now().Unix() % 6 == 0 {
-		cs.Logger.Info("skipping proposal")
-		return 
-	}
-
 	// Decide on block
 	if cs.TwoThirdPrevoteBlock != nil {
 		// If there is valid block, choose that.
