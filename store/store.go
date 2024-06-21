@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/gogo/protobuf/proto"
@@ -445,6 +446,26 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
 }
 
+func (bs *BlockStore) SaveHeightStartTime(height int64, startTime time.Time) error {
+	return bs.db.Set(calcStartTimeKey(height), []byte(startTime.Format(time.RFC3339)))
+}
+
+func (bs *BlockStore) LoadHeightStartTime(height int64) (time.Time, error) {
+	startTimeBytes, err := bs.db.Get(calcStartTimeKey(height))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to get start time for height %d: %w", height, err)
+	}
+	if len(startTimeBytes) == 0 {
+		return time.Time{}, fmt.Errorf("no start time found for height %d", height)
+	}
+	startTimeString := string(startTimeBytes)
+	startTime, err := time.Parse(time.RFC3339, startTimeString)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse start time for height %d: %w", height, err)
+	}
+	return startTime, nil
+}
+
 func (bs *BlockStore) Close() error {
 	return bs.db.Close()
 }
@@ -469,6 +490,10 @@ func calcSeenCommitKey(height int64) []byte {
 
 func calcBlockHashKey(hash []byte) []byte {
 	return []byte(fmt.Sprintf("BH:%x", hash))
+}
+
+func calcStartTimeKey(height int64) []byte {
+	return []byte(fmt.Sprintf("ST:%v", height))
 }
 
 //-----------------------------------------------------------------------------

@@ -675,6 +675,9 @@ func (cs *State) updateToState(state sm.State) {
 		cs.StartTime = cs.config.NextStartTime(cs.StartTime)
 		cs.Logger.Info("new start time", cs.StartTime, "last start time", lastStartTime)
 	}
+	if err := cs.blockStore.SaveHeightStartTime(cs.Height, cs.StartTime); err != nil {
+		cs.Logger.Error("failed to save start time", "height", cs.Height, "start time", cs.StartTime, "error", err)
+	}
 
 	cs.Validators = validators
 	cs.Proposal = nil

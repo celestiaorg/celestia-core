@@ -5,6 +5,8 @@ package mocks
 import (
 	mock "github.com/stretchr/testify/mock"
 
+	time "time"
+
 	types "github.com/tendermint/tendermint/types"
 )
 
@@ -153,6 +155,30 @@ func (_m *BlockStore) LoadBlockPart(height int64, index int) *types.Part {
 	return r0
 }
 
+// LoadHeightStartTime provides a mock function with given fields: height
+func (_m *BlockStore) LoadHeightStartTime(height int64) (time.Time, error) {
+	ret := _m.Called(height)
+
+	var r0 time.Time
+	var r1 error
+	if rf, ok := ret.Get(0).(func(int64) (time.Time, error)); ok {
+		return rf(height)
+	}
+	if rf, ok := ret.Get(0).(func(int64) time.Time); ok {
+		r0 = rf(height)
+	} else {
+		r0 = ret.Get(0).(time.Time)
+	}
+
+	if rf, ok := ret.Get(1).(func(int64) error); ok {
+		r1 = rf(height)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // LoadSeenCommit provides a mock function with given fields: height
 func (_m *BlockStore) LoadSeenCommit(height int64) *types.Commit {
 	ret := _m.Called(height)
@@ -174,13 +200,16 @@ func (_m *BlockStore) PruneBlocks(height int64) (uint64, error) {
 	ret := _m.Called(height)
 
 	var r0 uint64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(int64) (uint64, error)); ok {
+		return rf(height)
+	}
 	if rf, ok := ret.Get(0).(func(int64) uint64); ok {
 		r0 = rf(height)
 	} else {
 		r0 = ret.Get(0).(uint64)
 	}
 
-	var r1 error
 	if rf, ok := ret.Get(1).(func(int64) error); ok {
 		r1 = rf(height)
 	} else {
@@ -193,6 +222,20 @@ func (_m *BlockStore) PruneBlocks(height int64) (uint64, error) {
 // SaveBlock provides a mock function with given fields: block, blockParts, seenCommit
 func (_m *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 	_m.Called(block, blockParts, seenCommit)
+}
+
+// SaveHeightStartTime provides a mock function with given fields: height, startTime
+func (_m *BlockStore) SaveHeightStartTime(height int64, startTime time.Time) error {
+	ret := _m.Called(height, startTime)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(int64, time.Time) error); ok {
+		r0 = rf(height, startTime)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 // Size provides a mock function with given fields:

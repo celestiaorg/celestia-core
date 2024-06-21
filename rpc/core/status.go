@@ -109,3 +109,12 @@ func GetNodeInfo(env *Environment, latestHeight int64) p2p.DefaultNodeInfo {
 	nodeInfo.ProtocolVersion.App = consensusParams.Version.AppVersion
 	return nodeInfo
 }
+
+func StartTime(ctx *rpctypes.Context, height *int64) (*ctypes.ResultStartTime, error) {
+	env := GetEnvironment()
+	startTime, err := env.BlockStore.LoadHeightStartTime(*height)
+	if err != nil {
+		return nil, err
+	}
+	return &ctypes.ResultStartTime{StartTime: startTime}, nil
+}

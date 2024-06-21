@@ -213,6 +213,20 @@ func (c *baseRPCClient) Status(ctx context.Context) (*ctypes.ResultStatus, error
 	return result, nil
 }
 
+func (c *baseRPCClient) StartTime(ctx context.Context, height *int64) (*ctypes.ResultStartTime, error) {
+	result := new(ctypes.ResultStartTime)
+	params := make(map[string]interface{})
+	if height != nil {
+		params["height"] = height
+	}
+	_, err := c.caller.Call(ctx, "start_time", params, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 func (c *baseRPCClient) ABCIInfo(ctx context.Context) (*ctypes.ResultABCIInfo, error) {
 	result := new(ctypes.ResultABCIInfo)
 	_, err := c.caller.Call(ctx, "abci_info", map[string]interface{}{}, result)

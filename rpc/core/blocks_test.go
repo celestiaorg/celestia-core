@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -315,6 +316,14 @@ func (store mockBlockStore) LoadBlock(height int64) *types.Block {
 		return nil
 	}
 	return store.blocks[height]
+}
+
+func (store mockBlockStore) LoadHeightStartTime(height int64) (time.Time, error) {
+	return time.Time{}, nil
+}
+
+func (store mockBlockStore) SaveHeightStartTime(height int64, startTime time.Time) error {
+	return nil
 }
 
 // mockBlockIndexer used to mock the set of indexed blocks and return a predefined one.

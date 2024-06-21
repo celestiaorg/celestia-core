@@ -1,6 +1,8 @@
 package state
 
 import (
+	"time"
+
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -34,6 +36,8 @@ type BlockStore interface {
 
 	LoadBlockCommit(height int64) *types.Commit
 	LoadSeenCommit(height int64) *types.Commit
+	LoadHeightStartTime(height int64) (time.Time, error)
+	SaveHeightStartTime(height int64, startTime time.Time) error
 }
 
 //-----------------------------------------------------------------------------

@@ -1227,6 +1227,14 @@ func (bs *mockBlockStore) LoadBlockCommit(height int64) *types.Commit {
 	return bs.commits[height-1]
 }
 
+func (bs *mockBlockStore) LoadHeightStartTime(height int64) (time.Time, error) {
+	return time.Time{}, nil
+}
+
+func (bs *mockBlockStore) SaveHeightStartTime(height int64, startTime time.Time) error {
+	return nil
+}
+
 func (bs *mockBlockStore) LoadSeenCommit(height int64) *types.Commit {
 	return bs.commits[height-1]
 }

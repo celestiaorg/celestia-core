@@ -121,6 +121,10 @@ type ResultStatus struct {
 	ValidatorInfo ValidatorInfo       `json:"validator_info"`
 }
 
+type ResultStartTime struct {
+	StartTime time.Time `json:"start_time"`
+}
+
 // Is TxIndexing enabled
 func (s *ResultStatus) TxIndexEnabled() bool {
 	if s == nil {
