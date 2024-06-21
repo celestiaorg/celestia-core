@@ -96,6 +96,7 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 
 	go lt.drainCanal()
 	if cfg.Instrumentation.TracePullAddress != "" {
+		logger.Info("starting pull server", "address", cfg.Instrumentation.TracePullAddress)
 		go lt.servePullData()
 	}
 
