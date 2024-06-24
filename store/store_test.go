@@ -169,7 +169,6 @@ func TestMain(m *testing.M) {
 }
 
 // TODO: This test should be simplified ...
-
 func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	state, bs, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	defer cleanup()
@@ -206,7 +205,6 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 
 	// End of setup, test data
-
 	commitAtH10 := makeTestCommit(10, cmttime.Now())
 	tuples := []struct {
 		block      *types.Block
@@ -379,17 +377,32 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 }
 
-func TestSaveBlockIndexesTxs(t *testing.T) {
+func TestSaveTxInfo(t *testing.T) {
 	// Create a state and a block store
 	state, blockStore, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	defer cleanup()
 
 	// Create 1000 blocks
+	txResponseCodes := make([]uint32, len(block.Txs))
 	for h := int64(1); h <= 1000; h++ {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, cmttime.Now())
 		blockStore.SaveBlock(block, partSet, seenCommit)
+
+		// Set the response codes for the transactions
+		for i := range block.Txs {
+			// If even set it to 0
+			if i%2 == 0 {
+				txResponseCodes[i] = 0
+			} else {
+				txResponseCodes[i] = 1
+			}
+		}
+
+		// Save the tx info
+		err := blockStore.SaveTxInfo(block, txResponseCodes)
+		require.NoError(t, err)
 	}
 
 	// Get the blocks from blockstore up to the height
@@ -399,7 +412,8 @@ func TestSaveBlockIndexesTxs(t *testing.T) {
 		for i, tx := range block.Txs {
 			txInfo := blockStore.LoadTxInfo(tx.Hash())
 			require.Equal(t, block.Height, txInfo.Height)
-			require.Equal(t, int64(i), txInfo.Index)
+			require.Equal(t, uint32(i), txInfo.Index)
+			require.Equal(t, txResponseCodes[i], txInfo.Code)
 		}
 	}
 
@@ -410,7 +424,8 @@ func TestSaveBlockIndexesTxs(t *testing.T) {
 	require.Equal(t, block.Height, txInfo.Height)
 	require.Equal(t, block.Height, int64(777))
 	require.Equal(t, txInfo.Height, int64(777))
-	require.Equal(t, int64(5), txInfo.Index)
+	require.Equal(t, uint32(1), txInfo.Code)
+	require.Equal(t, uint32(5), txInfo.Index)
 }
 
 func TestLoadBaseMeta(t *testing.T) {
@@ -585,6 +600,8 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, cmttime.Now())
 		blockStore.SaveBlock(block, partSet, seenCommit)
+		err := blockStore.SaveTxInfo(block, make([]uint32, len(block.Txs)))
+		require.NoError(t, err)
 		for _, tx := range block.Txs {
 			indexedTxHashes = append(indexedTxHashes, tx.Hash())
 		}
@@ -619,7 +636,8 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 			txInfo := blockStore.LoadTxInfo(tx.Hash())
 			require.NoError(t, err)
 			require.Equal(t, h, txInfo.Height)
-			require.Equal(t, int64(i), txInfo.Index)
+			require.Equal(t, uint32(i), txInfo.Index)
+			require.Equal(t, uint32(0), txInfo.Code)
 		}
 	}
 }

@@ -301,6 +301,9 @@ func (mockBlockStore) LoadSeenCommit(height int64) *types.Commit         { retur
 func (mockBlockStore) PruneBlocks(height int64) (uint64, error)          { return 0, nil }
 func (mockBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 }
+func (mockBlockStore) SaveTxInfo(block *types.Block, txResponseCode []uint32) error {
+	return nil
+}
 func (mockBlockStore) DeleteLatestBlock() error { return nil }
 
 func (store mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
@@ -328,7 +331,8 @@ func (store mockBlockStore) LoadTxInfo(hash []byte) *cmtstore.TxInfo {
 			if bytes.Equal(tx.Hash(), hash) {
 				return &cmtstore.TxInfo{
 					Height: block.Header.Height,
-					Index:  int64(i),
+					Index:  uint32(i),
+					Code:   uint32(0),
 				}
 			}
 		}
