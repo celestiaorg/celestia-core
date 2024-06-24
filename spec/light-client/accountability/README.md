@@ -103,7 +103,7 @@ F3 is similar to F1, except that no two correct validators decide on different b
 In addition, without creating a fork on the main chain, light clients can be contaminated by more than a third of validators that are faulty and sign a forged header
 F4 cannot fool correct full nodes as they know the current validator set. Similarly, LCS know who the validators are. Hence, F4 is an attack against LCB that do not necessarily know the complete prefix of headers (Fork-Light), as they trust a header that is signed by at least one correct validator (trusting period method).
 
-The following table gives an overview of how the different attacks may affect different nodes. F1-F3 are *on-chain* attacks so they can corrupt the state of full nodes. Then if a light client (LCS or LCB) contacts a full node to obtain headers (or blocks), the corrupted state may propagate to the light client.  
+The following table gives an overview of how the different attacks may affect different nodes. F1-F3 are *on-chain* attacks so they can corrupt the state of full nodes. Then if a light client (LCS or LCB) contacts a full node to obtain headers (or blocks), the corrupted state may propagate to the light client.
 
 F4 and F5 are *off-chain*, that is, these attacks cannot be used to corrupt the state of full nodes (which have sufficient knowledge on the state of the chain to not be fooled).
 
@@ -231,7 +231,7 @@ Execution
 
 Consequences:
 
-* The validators in F1 will be detectable by the the fork accountability mechanisms.
+* The validators in F1 will be detectable by the fork accountability mechanisms.
 * The validators in F2 cannot be detected using this mechanism.
 Only in case they signed something which conflicts with the application this can be used against them. Otherwise they do not do anything incorrect. <!-- markdown-link-check-disable-next-line -->
 * This case is not covered by the report <https://docs.google.com/document/d/11ZhMsCj3y7zIZz4udO9l25xqb0kl7gmWqNpGVRzOeyY/edit?usp=sharing> as it only assumes at most 2/3 of faulty validators.
@@ -291,7 +291,7 @@ Execution:
 Consequences:
 
 * To detect this, a node needs to see both, the forged header and the canonical header from the chain.
-* If this is the case, detecting these kind of attacks is easy as it just requires verifying if processes are signing messages in heights in which they are not part of the validator set.  
+* If this is the case, detecting these kind of attacks is easy as it just requires verifying if processes are signing messages in heights in which they are not part of the validator set.
 
 **Remark.** We can have phantom-validator-based attacks as a follow up of equivocation or amnesia based attack where forked state contains validators that are not part of the validator set at the main chain. In this case, they keep signing messages contributed to a forked chain (the wrong branch) although they are not part of the validator set on the main chain. This attack can also be used to attack full node during a period of time it is eclipsed.
 
@@ -305,6 +305,6 @@ punishing the 1/3+ lunatic cabal, that is the root cause of the attack.
 
 Lunatic validator agrees to sign commit messages for arbitrary application state. It is used to attack light clients.
 Note that detecting this behavior require application knowledge. Detecting this behavior can probably be done by
-referring to the block before the one in which height happen.  
+referring to the block before the one in which height happen.
 
 **Q:** can we say that in this case a validator declines to check if a proposed value is valid before voting for it?
