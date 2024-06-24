@@ -4,7 +4,7 @@
  * following the English spec:
  *
  * https://github.com/informalsystems/tendermint-rs/blob/master/docs/spec/lightclient/verification.md
- *) 
+ *)
 
 EXTENDS Integers, FiniteSets
 
@@ -22,7 +22,7 @@ CONSTANTS
     (* the actual clock drift, which under normal circumstances should not
        be larger than CLOCK_DRIFT (otherwise, there will be a bug) *)
   IS_PRIMARY_CORRECT,
-    (* is primary correct? *)  
+    (* is primary correct? *)
   FAULTY_RATIO
     (* a pair <<a, b>> that limits that ratio of faulty validator in the blockchain
        from above (exclusive). Cosmos security model prescribes 1 / 3. *)
@@ -32,9 +32,9 @@ VARIABLES       (* see TypeOK below for the variable types *)
   state,        (* the current state of the light client *)
   nextHeight,   (* the next height to explore by the light client *)
   nprobes       (* the lite client iteration, or the number of block tests *)
-  
+
 (* the light store *)
-VARIABLES  
+VARIABLES
   fetchedLightBlocks, (* a function from heights to LightBlocks *)
   lightBlockStatus,   (* a function from heights to block statuses *)
   latestVerified      (* the latest verified block *)
@@ -79,18 +79,18 @@ bcvars == <<refClock, blockchain, Faulty>>
 (* Create an instance of Blockchain.
    We could write EXTENDS Blockchain, but then all the constants and state variables
    would be hidden inside the Blockchain module.
- *) 
-ULTIMATE_HEIGHT == TARGET_HEIGHT + 1 
- 
+ *)
+ULTIMATE_HEIGHT == TARGET_HEIGHT + 1
+
 BC == INSTANCE Blockchain_003_draft WITH
   refClock <- refClock, blockchain <- blockchain, Faulty <- Faulty
 
 (************************** Lite client ************************************)
 
-(* the heights on which the light client is working *)  
+(* the heights on which the light client is working *)
 HEIGHTS == TRUSTED_HEIGHT..TARGET_HEIGHT
 
-(* the control states of the lite client *) 
+(* the control states of the lite client *)
 States == { "working", "finishedSuccess", "finishedFailure" }
 
 \* The verification functions are implemented in the API
@@ -114,7 +114,7 @@ LCInit ==
         /\ fetchedLightBlocks = [h \in {TRUSTED_HEIGHT} |-> trustedLightBlock]
         \* initially, lightBlockStatus is a function of one element, i.e., TRUSTED_HEIGHT
         /\ lightBlockStatus = [h \in {TRUSTED_HEIGHT} |-> "StateVerified"]
-        \* the latest verified block the the trusted block
+        \* the latest verified block the trusted block
         /\ latestVerified = trustedLightBlock
         /\ InitMonitor(trustedLightBlock, trustedLightBlock, localClock, "SUCCESS")
 
@@ -125,9 +125,9 @@ CopyLightBlockFromChain(block, height) ==
           IF height < ULTIMATE_HEIGHT
           THEN blockchain[height + 1].lastCommit
             \* for the ultimate block, which we never use, as ULTIMATE_HEIGHT = TARGET_HEIGHT + 1
-          ELSE blockchain[height].VS 
+          ELSE blockchain[height].VS
     IN
-    block = [header |-> ref, Commits |-> lastCommit]      
+    block = [header |-> ref, Commits |-> lastCommit]
 
 \* Either the primary is correct and the block comes from the reference chain,
 \* or the block is produced by a faulty primary.
@@ -138,20 +138,20 @@ FetchLightBlockInto(block, height) ==
     THEN CopyLightBlockFromChain(block, height)
     ELSE BC!IsLightBlockAllowedByDigitalSignatures(height, block)
 
-\* add a block into the light store    
+\* add a block into the light store
 \*
 \* [LCV-FUNC-UPDATE.1::TLA.1]
 LightStoreUpdateBlocks(lightBlocks, block) ==
-    LET ht == block.header.height IN    
+    LET ht == block.header.height IN
     [h \in DOMAIN lightBlocks \union {ht} |->
         IF h = ht THEN block ELSE lightBlocks[h]]
 
-\* update the state of a light block      
+\* update the state of a light block
 \*
 \* [LCV-FUNC-UPDATE.1::TLA.1]
 LightStoreUpdateStates(statuses, ht, blockState) ==
     [h \in DOMAIN statuses \union {ht} |->
-        IF h = ht THEN blockState ELSE statuses[h]]      
+        IF h = ht THEN blockState ELSE statuses[h]]
 
 \* Check, whether newHeight is a possible next height for the light client.
 \*
@@ -201,7 +201,7 @@ VerifyToTargetLoop ==
               /\ \E newHeight \in HEIGHTS:
                  /\ CanScheduleTo(newHeight, current, nextHeight, TARGET_HEIGHT)
                  /\ nextHeight' = newHeight
-                  
+
            [] verdict = "NOT_ENOUGH_TRUST" ->
               (*
                 do nothing: the light block current passed validation, but the validator
@@ -212,9 +212,9 @@ VerifyToTargetLoop ==
               /\ lightBlockStatus' = LightStoreUpdateStates(lightBlockStatus, nextHeight, "StateUnverified")
               /\ \E newHeight \in HEIGHTS:
                  /\ CanScheduleTo(newHeight, latestVerified, nextHeight, TARGET_HEIGHT)
-                 /\ nextHeight' = newHeight 
+                 /\ nextHeight' = newHeight
               /\ UNCHANGED <<latestVerified, state>>
-              
+
            [] OTHER ->
               \* verdict is some error code
               /\ lightBlockStatus' = LightStoreUpdateStates(lightBlockStatus, nextHeight, "StateFailed")
@@ -244,7 +244,7 @@ AdvanceClocks ==
         /\ localClock' = tm
         \* if you like the clock to always grow monotonically, uncomment the next line:
         \*/\ localClock' > localClock
-            
+
 (********************* Lite client + Blockchain *******************)
 Init ==
     \* the blockchain is initialized immediately to the ULTIMATE_HEIGHT
@@ -260,7 +260,7 @@ Init ==
  *)
 Next ==
     /\ state = "working"
-    /\ VerifyToTargetLoop \/ VerifyToTargetDone 
+    /\ VerifyToTargetLoop \/ VerifyToTargetDone
     /\ AdvanceClocks
 
 (************************* Types ******************************************)
@@ -278,21 +278,21 @@ TypeOK ==
 (************************* Properties ******************************************)
 
 (* The properties to check *)
-\* this invariant candidate is false    
+\* this invariant candidate is false
 NeverFinish ==
     state = "working"
 
-\* this invariant candidate is false    
+\* this invariant candidate is false
 NeverFinishNegative ==
     state /= "finishedFailure"
 
-\* This invariant holds true, when the primary is correct. 
-\* This invariant candidate is false when the primary is faulty.    
+\* This invariant holds true, when the primary is correct.
+\* This invariant candidate is false when the primary is faulty.
 NeverFinishNegativeWhenTrusted ==
     BC!InTrustingPeriod(blockchain[TRUSTED_HEIGHT])
-      => state /= "finishedFailure"     
+      => state /= "finishedFailure"
 
-\* this invariant candidate is false    
+\* this invariant candidate is false
 NeverFinishPositive ==
     state /= "finishedSuccess"
 
@@ -307,12 +307,12 @@ TargetHeightOnSuccessInv ==
 
 (**
   Correctness states that all the obtained headers are exactly like in the blockchain.
- 
+
   It is always the case that every verified header in LightStore was generated by
   an instance of Tendermint consensus.
-  
+
   [LCV-DIST-SAFE.1::CORRECTNESS-INV.1]
- *)  
+ *)
 CorrectnessInv ==
     \A h \in DOMAIN fetchedLightBlocks:
         lightBlockStatus[h] = "StateVerified" =>
@@ -362,7 +362,7 @@ StoredHeadersAreVerifiedOrNotTrustedInv ==
             \/ "SUCCESS" = API!ValidAndVerified(fetchedLightBlocks[lh],
                                                 fetchedLightBlocks[rh], FALSE)
                \* or the left header is outside the trusting period, so no guarantees
-            \/ ~API!InTrustingPeriodLocal(fetchedLightBlocks[lh].header) 
+            \/ ~API!InTrustingPeriodLocal(fetchedLightBlocks[lh].header)
 
 (**
  * An improved version of StoredHeadersAreSoundOrNotTrusted,
@@ -387,12 +387,12 @@ ProofOfChainOfTrustInv ==
                                                 fetchedLightBlocks[rh], FALSE)
 
 (**
- * When the light client terminates, there are no failed blocks. (Otherwise, someone lied to us.) 
- *)            
+ * When the light client terminates, there are no failed blocks. (Otherwise, someone lied to us.)
+ *)
 NoFailedBlocksOnSuccessInv ==
     state = "finishedSuccess" =>
         \A h \in DOMAIN fetchedLightBlocks:
-            lightBlockStatus[h] /= "StateFailed"            
+            lightBlockStatus[h] /= "StateFailed"
 
 \* This property states that whenever the light client finishes with a positive outcome,
 \* the trusted header is still within the trusting period.
@@ -400,14 +400,14 @@ NoFailedBlocksOnSuccessInv ==
 PositiveBeforeTrustedHeaderExpires ==
     (state = "finishedSuccess") =>
         BC!InTrustingPeriod(blockchain[TRUSTED_HEIGHT])
-    
+
 \* If the primary is correct and the initial trusted block has not expired,
 \* then whenever the algorithm terminates, it reports "success".
 \* This property fails.
 CorrectPrimaryAndTimeliness ==
   (BC!InTrustingPeriod(blockchain[TRUSTED_HEIGHT])
     /\ state /= "working" /\ IS_PRIMARY_CORRECT) =>
-      state = "finishedSuccess"     
+      state = "finishedSuccess"
 
 (**
   If the primary is correct and there is a trusted block that has not expired,
@@ -423,7 +423,7 @@ SuccessOnCorrectPrimaryAndChainOfTrustLocal ==
         /\ lightBlockStatus[h] = "StateVerified"
         /\ API!InTrustingPeriodLocal(blockchain[h])
     /\ state /= "working" /\ IS_PRIMARY_CORRECT) =>
-      state = "finishedSuccess"     
+      state = "finishedSuccess"
 
 (**
   Similar to SuccessOnCorrectPrimaryAndChainOfTrust, but using the blockchain clock.
@@ -434,7 +434,7 @@ SuccessOnCorrectPrimaryAndChainOfTrustGlobal ==
   (\E h \in DOMAIN fetchedLightBlocks:
         lightBlockStatus[h] = "StateVerified" /\ BC!InTrustingPeriod(blockchain[h])
     /\ state /= "working" /\ IS_PRIMARY_CORRECT) =>
-      state = "finishedSuccess"     
+      state = "finishedSuccess"
 
 \* Lite Client Completeness: If header h was correctly generated by an instance
 \* of Tendermint consensus (and its age is less than the trusting period),
@@ -444,7 +444,7 @@ SuccessOnCorrectPrimaryAndChainOfTrustGlobal ==
 \*
 \* We decompose completeness into Termination (liveness) and Precision (safety).
 \* Once again, Precision is an inverse version of the safety property in Completeness,
-\* as A => B is logically equivalent to ~B => ~A. 
+\* as A => B is logically equivalent to ~B => ~A.
 \*
 \* This property holds only when CLOCK_DRIFT = 0 and REAL_CLOCK_DRIFT = 0.
 PrecisionInv ==
@@ -470,7 +470,7 @@ PrecisionBuggyInv ==
 Complexity ==
     LET N == TARGET_HEIGHT - TRUSTED_HEIGHT + 1 IN
     state /= "working" =>
-        (2 * nprobes <= N * (N - 1)) 
+        (2 * nprobes <= N * (N - 1))
 
 (**
  If the light client has terminated, then the expected postcondition holds true.
