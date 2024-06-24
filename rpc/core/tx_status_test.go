@@ -3,7 +3,7 @@ package core
 import (
 	"testing"
 
-	mock "github.com/cometbft/cometbft/rpc/core/mocks"
+	mock "github.com/tendermint/tendermint/rpc/core/mocks"
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
 	types "github.com/cometbft/cometbft/types"
 	"github.com/golang/mock/gomock"
@@ -124,7 +124,8 @@ func TestTxStatus(t *testing.T) {
 
 					assert.Equal(t, txStatus.Status, tt.expectedStatus)
 					assert.Equal(t, height, txStatus.Height)
-					assert.Equal(t, int64(i), txStatus.Index)
+					assert.Equal(t, uint32(i), txStatus.Index)
+					assert.Equal(t, uint32(0), txStatus.ExecutionCode)
 				}
 			}
 

@@ -298,6 +298,10 @@ func (mockBlockStore) LoadSeenCommit(height int64) *types.Commit         { retur
 func (mockBlockStore) PruneBlocks(height int64) (uint64, error)          { return 0, nil }
 func (mockBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 }
+func (mockBlockStore) SaveTxInfo(block *types.Block, txResponseCode []uint32) error {
+	return nil
+}
+func (mockBlockStore) DeleteLatestBlock() error { return nil }
 
 func (store mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	if height > store.height {
@@ -315,6 +319,22 @@ func (store mockBlockStore) LoadBlock(height int64) *types.Block {
 		return nil
 	}
 	return store.blocks[height]
+}
+
+func (store mockBlockStore) LoadTxInfo(hash []byte) *cmtstore.TxInfo {
+	for _, block := range store.blocks {
+		for i, tx := range block.Data.Txs {
+			// Check if transaction hash matches
+			if bytes.Equal(tx.Hash(), hash) {
+				return &cmtstore.TxInfo{
+					Height: block.Header.Height,
+					Index:  uint32(i),
+					Code:   uint32(0),
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // mockBlockIndexer used to mock the set of indexed blocks and return a predefined one.

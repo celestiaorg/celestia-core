@@ -445,6 +445,35 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
 }
 
+// SaveTxInfo indexes the txs from the block with the given response codes from execution.
+func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32) error {
+	if len(txResponseCodes) != len(block.Txs) {
+		return fmt.Errorf("txResponseCodes length mismatch with block txs length")
+	}
+
+	// Create a new batch
+	batch := bs.db.NewBatch()
+
+	// Batch and save txs from the block
+	for i, tx := range block.Txs {
+		txInfo := cmtstore.TxInfo{
+			Height: block.Height,
+			Index:  uint32(i),
+			Code:   txResponseCodes[i],
+		}
+		txInfoBytes, err := proto.Marshal(&txInfo)
+		if err != nil {
+			return fmt.Errorf("unable to marshal tx: %w", err)
+		}
+		if err := batch.Set(calcTxHashKey(tx.Hash()), txInfoBytes); err != nil {
+			return err
+		}
+	}
+
+	// Write the batch to the db
+	return batch.WriteSync()
+}
+
 func (bs *BlockStore) Close() error {
 	return bs.db.Close()
 }
@@ -469,6 +498,10 @@ func calcSeenCommitKey(height int64) []byte {
 
 func calcBlockHashKey(hash []byte) []byte {
 	return []byte(fmt.Sprintf("BH:%x", hash))
+}
+
+func calcTxHashKey(hash []byte) []byte {
+	return []byte(fmt.Sprintf("TH:%x", hash))
 }
 
 //-----------------------------------------------------------------------------

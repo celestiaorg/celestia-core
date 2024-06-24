@@ -7,3 +7,13 @@ message BlockStoreState {
   int64 base   = 1;
   int64 height = 2;
 }
+
+// TxInfo describes the location of a tx inside a committed block
+// as well as the result of executing the transaction.
+message TxInfo {
+  int64 height    = 1;
+  uint32 index    = 2;
+  // The response code of executing the tx. 0 means
+  // successfully executed, all others are error codes.
+  uint32 code     = 3;
+}

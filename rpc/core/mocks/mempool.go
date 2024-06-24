@@ -2,7 +2,7 @@
 // Source: ./mempool/mempool.go
 
 // Package mock_mempool is a generated GoMock package.
-package mock_mempool
+package mocks
 
 import (
 	reflect "reflect"

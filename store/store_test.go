@@ -165,7 +165,6 @@ func TestMain(m *testing.M) {
 }
 
 // TODO: This test should be simplified ...
-
 func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	state, bs, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	defer cleanup()
@@ -202,7 +201,6 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 
 	// End of setup, test data
-
 	commitAtH10 := makeTestCommit(10, cmttime.Now())
 	tuples := []struct {
 		block      *types.Block
@@ -375,6 +373,57 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 }
 
+func TestSaveTxInfo(t *testing.T) {
+	// Create a state and a block store
+	state, blockStore, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
+	defer cleanup()
+
+	// Create 1000 blocks
+	txResponseCodes := make([]uint32, len(block.Txs))
+	for h := int64(1); h <= 1000; h++ {
+		block := makeBlock(h, state, new(types.Commit))
+		partSet := block.MakePartSet(2)
+		seenCommit := makeTestCommit(h, cmttime.Now())
+		blockStore.SaveBlock(block, partSet, seenCommit)
+
+		// Set the response codes for the transactions
+		for i := range block.Txs {
+			// If even set it to 0
+			if i%2 == 0 {
+				txResponseCodes[i] = 0
+			} else {
+				txResponseCodes[i] = 1
+			}
+		}
+
+		// Save the tx info
+		err := blockStore.SaveTxInfo(block, txResponseCodes)
+		require.NoError(t, err)
+	}
+
+	// Get the blocks from blockstore up to the height
+	for h := int64(1); h <= 1000; h++ {
+		block := blockStore.LoadBlock(h)
+		// Check that transactions exist in the block
+		for i, tx := range block.Txs {
+			txInfo := blockStore.LoadTxInfo(tx.Hash())
+			require.Equal(t, block.Height, txInfo.Height)
+			require.Equal(t, uint32(i), txInfo.Index)
+			require.Equal(t, txResponseCodes[i], txInfo.Code)
+		}
+	}
+
+	// Get a random transaction and make sure it's indexed properly
+	block := blockStore.LoadBlock(777)
+	tx := block.Txs[5]
+	txInfo := blockStore.LoadTxInfo(tx.Hash())
+	require.Equal(t, block.Height, txInfo.Height)
+	require.Equal(t, block.Height, int64(777))
+	require.Equal(t, txInfo.Height, int64(777))
+	require.Equal(t, uint32(1), txInfo.Code)
+	require.Equal(t, uint32(5), txInfo.Index)
+}
+
 func TestLoadBaseMeta(t *testing.T) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)
@@ -521,6 +570,69 @@ func TestPruneBlocks(t *testing.T) {
 	assert.Nil(t, bs.LoadBlock(1499))
 	assert.NotNil(t, bs.LoadBlock(1500))
 	assert.Nil(t, bs.LoadBlock(1501))
+}
+
+func TestPruneBlocksPrunesTxs(t *testing.T) {
+	config := cfg.ResetTestRoot("blockchain_reactor_test")
+	defer os.RemoveAll(config.RootDir)
+
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
+	require.NoError(t, err)
+	db := dbm.NewMemDB()
+	blockStore := NewBlockStore(db)
+
+	// Make more than 1000 blocks, to test batch deletions
+	// Make a copy of txs before batches are deleted
+	// to make sure that they are correctly pruned
+	var indexedTxHashes [][]byte
+	for h := int64(1); h <= 1500; h++ {
+		block := makeBlock(h, state, new(types.Commit))
+		partSet := block.MakePartSet(2)
+		seenCommit := makeTestCommit(h, cmttime.Now())
+		blockStore.SaveBlock(block, partSet, seenCommit)
+		err := blockStore.SaveTxInfo(block, make([]uint32, len(block.Txs)))
+		require.NoError(t, err)
+		for _, tx := range block.Txs {
+			indexedTxHashes = append(indexedTxHashes, tx.Hash())
+		}
+	}
+
+	// Check that the saved txs exist in the db
+	for _, hash := range indexedTxHashes {
+		txInfo := blockStore.LoadTxInfo(hash)
+
+		require.NoError(t, err)
+		require.NotNil(t, txInfo, "Transaction was not saved in the database")
+	}
+
+	pruned, err := blockStore.PruneBlocks(1200)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1199, pruned)
+
+	// Check that the transactions in the pruned blocks have been removed
+	// We removed 1199 blocks, each block has 10 txs
+	// so 11990 txs should no longer exist in the db
+	for i, hash := range indexedTxHashes {
+		if int64(i) < 1199*10 {
+			txInfo := blockStore.LoadTxInfo(hash)
+			require.Nil(t, txInfo)
+		}
+	}
+
+	// Check that transactions in remaining blocks are still there
+	for h := int64(pruned + 1); h <= 1500; h++ {
+		block := blockStore.LoadBlock(h)
+		for i, tx := range block.Txs {
+			txInfo := blockStore.LoadTxInfo(tx.Hash())
+			require.NoError(t, err)
+			require.Equal(t, h, txInfo.Height)
+			require.Equal(t, uint32(i), txInfo.Index)
+			require.Equal(t, uint32(0), txInfo.Code)
+		}
+	}
 }
 
 func TestLoadBlockMeta(t *testing.T) {
