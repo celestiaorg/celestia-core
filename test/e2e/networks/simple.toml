@@ -1,6 +1,4 @@
 [node.validator01]
-perturb = ["restart"]
 [node.validator02]
-perturb = ["kill"]
 [node.validator03]
 [node.validator04]

@@ -5,11 +5,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
-	"time"
 
 	"github.com/tendermint/tendermint/abci/example/code"
 	abci "github.com/tendermint/tendermint/abci/types"
@@ -148,7 +146,6 @@ func (app *Application) DeliverTx(req abci.RequestDeliverTx) abci.ResponseDelive
 		panic(err) // shouldn't happen since we verified it in CheckTx
 	}
 	app.state.Set(key, value)
-	time.Sleep(200 * time.Millisecond)
 	return abci.ResponseDeliverTx{Code: code.CodeTypeOK}
 }
 
@@ -196,7 +193,6 @@ func (app *Application) Commit() abci.ResponseCommit {
 	if app.cfg.RetainBlocks > 0 {
 		retainHeight = int64(height - app.cfg.RetainBlocks + 1)
 	}
-	time.Sleep(time.Duration(1+rand.Intn(3)) * time.Second)
 	return abci.ResponseCommit{
 		Data:         hash,
 		RetainHeight: retainHeight,
