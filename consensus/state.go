@@ -667,9 +667,7 @@ func (cs *State) updateToState(state sm.State) {
 	cs.updateRoundStep(0, cstypes.RoundStepNewHeight)
 
 	if cs.CommitTime.IsZero() {
-		// If it is the first block, start time is equal to
-		// states last block time which is the genesis time.
-		cs.StartTime = state.LastBlockTime
+		cs.StartTime = time.Now()
 	} else {
 		lastStartTime := cs.StartTime
 		cs.StartTime = cs.config.NextStartTime(cs.StartTime)
