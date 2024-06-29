@@ -281,3 +281,8 @@ type ResultEvent struct {
 	Data   types.TMEventData   `json:"data"`
 	Events map[string][]string `json:"events"`
 }
+
+// ResultShareProof is an API response that contains a ShareProof.
+type ResultShareProof struct {
+	ShareProof types.ShareProof `json:"share_proof"`
+}
