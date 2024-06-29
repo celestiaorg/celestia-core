@@ -251,7 +251,7 @@ func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error
 	}
 
 	// If the tx is not in the mempool, evicted, or committed, return unknown
-	return &ctypes.ResultTxStatus{Status: txStatusUnknown}, nil 
+	return &ctypes.ResultTxStatus{Status: txStatusUnknown}, nil
 }
 
 // ProveSharesV2 creates a proof for a set of shares to the data root.
