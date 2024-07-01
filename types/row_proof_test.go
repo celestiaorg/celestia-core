@@ -46,6 +46,11 @@ func TestRowProofValidate(t *testing.T) {
 			rp:      RowProof{StartRow: 10, EndRow: 5},
 			wantErr: true,
 		},
+		{
+			name:    "start row equal to end row",
+			rp:      RowProof{StartRow: 10, EndRow: 10},
+			wantErr: true,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -131,7 +136,7 @@ func validRowProof() RowProof {
 			},
 		},
 		StartRow: 0,
-		EndRow:   0,
+		EndRow:   1,
 	}
 }
 

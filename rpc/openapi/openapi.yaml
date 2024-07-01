@@ -2694,9 +2694,11 @@ components:
         startRow:
           type: integer
           format: uint32
+          description: start index of the row range
         endRow:
           type: integer
           format: uint32
+          description: end exclusive index of the row range
     Proof:
       type: object
       description: Binary merkle proof
