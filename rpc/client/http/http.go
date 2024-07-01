@@ -531,7 +531,6 @@ func (c *baseRPCClient) TxStatus(
 	}
 
 	return result, nil
-
 }
 
 func (c *baseRPCClient) DataRootInclusionProof(
