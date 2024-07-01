@@ -72,6 +72,33 @@ func TestApplyBlock(t *testing.T) {
 	assert.EqualValues(t, 1, state.Version.Consensus.App, "App version wasn't updated")
 }
 
+func TestApplyBlockWithBlockStore(t *testing.T) {
+	app := &testApp{}
+	cc := proxy.NewLocalClientCreator(app)
+	proxyApp := proxy.NewAppConns(cc)
+	err := proxyApp.Start()
+	require.Nil(t, err)
+	defer proxyApp.Stop() //nolint:errcheck // ignore for tests
+	blockStore := mocks.NewBlockStore(t)
+
+	state, stateDB, _ := makeState(1, 1)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+
+	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(),
+		mmock.Mempool{}, sm.EmptyEvidencePool{}, sm.WithBlockStore(blockStore))
+
+	block := makeBlock(state, 1)
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
+
+	// Check that SaveTxInfo is called with correct arguments
+	blockStore.On("SaveTxInfo", block, mock.AnythingOfType("[]uint32")).Return(nil)
+
+	_, _, err = blockExec.ApplyBlock(state, blockID, block, nil)
+	require.Nil(t, err)
+}
+
 // TestBeginBlockValidators ensures we send absent validators list.
 func TestBeginBlockValidators(t *testing.T) {
 	app := &testApp{}
