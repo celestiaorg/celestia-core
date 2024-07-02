@@ -1,6 +1,7 @@
 package state
 
 import (
+	cmtstore "github.com/tendermint/tendermint/proto/tendermint/store"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -25,6 +26,7 @@ type BlockStore interface {
 	LoadBlock(height int64) *types.Block
 
 	SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit)
+	SaveTxInfo(block *types.Block, txResponseCode []uint32) error
 
 	PruneBlocks(height int64) (uint64, error)
 
@@ -34,6 +36,8 @@ type BlockStore interface {
 
 	LoadBlockCommit(height int64) *types.Commit
 	LoadSeenCommit(height int64) *types.Commit
+
+	LoadTxInfo(hash []byte) *cmtstore.TxInfo
 }
 
 //-----------------------------------------------------------------------------
