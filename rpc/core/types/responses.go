@@ -60,6 +60,15 @@ type ResultCommit struct {
 	CanonicalCommit    bool `json:"canonical"`
 }
 
+// ResultTxStatus represents the status of a transaction during its life cycle.
+// It contains info to locate a tx in a committed block as well as its execution code and status.
+type ResultTxStatus struct {
+	Height        int64  `json:"height"`
+	Index         uint32 `json:"index"`
+	ExecutionCode uint32 `json:"execution_code"`
+	Status        string `json:"status"`
+}
+
 // ABCI results from a block
 type ResultBlockResults struct {
 	Height                int64                     `json:"height"`
@@ -271,4 +280,9 @@ type ResultEvent struct {
 	Query  string              `json:"query"`
 	Data   types.TMEventData   `json:"data"`
 	Events map[string][]string `json:"events"`
+}
+
+// ResultShareProof is an API response that contains a ShareProof.
+type ResultShareProof struct {
+	ShareProof types.ShareProof `json:"share_proof"`
 }

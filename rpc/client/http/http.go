@@ -516,6 +516,23 @@ func (c *baseRPCClient) DataCommitment(
 	return result, nil
 }
 
+func (c *baseRPCClient) TxStatus(
+	ctx context.Context,
+	hash []byte,
+) (*ctypes.ResultTxStatus, error) {
+	result := new(ctypes.ResultTxStatus)
+	params := map[string]interface{}{
+		"hash": hash,
+	}
+
+	_, err := c.caller.Call(ctx, "tx_status", params, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 func (c *baseRPCClient) DataRootInclusionProof(
 	ctx context.Context,
 	height uint64,
@@ -550,6 +567,8 @@ func (c *baseRPCClient) Tx(ctx context.Context, hash []byte, prove bool) (*ctype
 	return result, nil
 }
 
+// ProveShares
+// Deprecated: Use ProveSharesV2 instead.
 func (c *baseRPCClient) ProveShares(
 	ctx context.Context,
 	height uint64,
@@ -567,6 +586,25 @@ func (c *baseRPCClient) ProveShares(
 		return types.ShareProof{}, err
 	}
 	return *result, nil
+}
+
+func (c *baseRPCClient) ProveSharesV2(
+	ctx context.Context,
+	height uint64,
+	startShare uint64,
+	endShare uint64,
+) (*ctypes.ResultShareProof, error) {
+	result := new(ctypes.ResultShareProof)
+	params := map[string]interface{}{
+		"height":     height,
+		"startShare": startShare,
+		"endShare":   endShare,
+	}
+	_, err := c.caller.Call(ctx, "prove_shares_v2", params, result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (c *baseRPCClient) TxSearch(

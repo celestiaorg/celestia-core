@@ -31,6 +31,7 @@ var Routes = map[string]*rpc.RPCFunc{
 	"check_tx":                  rpc.NewRPCFunc(CheckTx, "tx"),
 	"tx":                        rpc.NewRPCFunc(Tx, "hash,prove", rpc.Cacheable()),
 	"prove_shares":              rpc.NewRPCFunc(ProveShares, "height,startShare,endShare"),
+	"prove_shares_v2":           rpc.NewRPCFunc(ProveSharesV2, "height,startShare,endShare"),
 	"data_root_inclusion_proof": rpc.NewRPCFunc(DataRootInclusionProof, "height,start,end"),
 	"tx_search":                 rpc.NewRPCFunc(TxSearchMatchEvents, "query,prove,page,per_page,order_by,match_events"),
 	"block_search":              rpc.NewRPCFunc(BlockSearchMatchEvents, "query,page,per_page,order_by,match_events"),
@@ -40,6 +41,7 @@ var Routes = map[string]*rpc.RPCFunc{
 	"consensus_params":          rpc.NewRPCFunc(ConsensusParams, "height", rpc.Cacheable("height")),
 	"unconfirmed_txs":           rpc.NewRPCFunc(UnconfirmedTxs, "limit"),
 	"num_unconfirmed_txs":       rpc.NewRPCFunc(NumUnconfirmedTxs, ""),
+	"tx_status":                 rpc.NewRPCFunc(TxStatus, "hash"),
 
 	// tx broadcast API
 	"broadcast_tx_commit": rpc.NewRPCFunc(BroadcastTxCommit, "tx"),

@@ -10,6 +10,7 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	cmtnet "github.com/tendermint/tendermint/libs/net"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
+	"github.com/tendermint/tendermint/pkg/trace"
 
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/p2p/conn"
@@ -199,7 +200,7 @@ func MakeSwitch(
 		panic(err)
 	}
 
-	t := NewMultiplexTransport(nodeInfo, nodeKey, MConnConfig(cfg))
+	t := NewMultiplexTransport(nodeInfo, nodeKey, MConnConfig(cfg), trace.NoOpTracer())
 
 	if err := t.Listen(*addr); err != nil {
 		panic(err)

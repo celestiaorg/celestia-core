@@ -22,6 +22,7 @@ import (
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
+	"github.com/tendermint/tendermint/version"
 )
 
 // setupTestCase does setup common to all test cases.
@@ -72,6 +73,21 @@ func TestMakeGenesisStateNilValidators(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, 0, len(state.Validators.Validators))
 	require.Equal(t, 0, len(state.NextValidators.Validators))
+}
+
+func TestMakeGenesisStateSetsAppVersion(t *testing.T) {
+	cp := types.DefaultConsensusParams()
+	appVersion := uint64(5)
+	cp.Version.AppVersion = appVersion
+	doc := types.GenesisDoc{
+		ChainID:         "dummy",
+		ConsensusParams: cp,
+	}
+	require.Nil(t, doc.ValidateAndComplete())
+	state, err := sm.MakeGenesisState(&doc)
+	require.Nil(t, err)
+	require.Equal(t, appVersion, state.Version.Consensus.App)
+	require.Equal(t, version.BlockProtocol, state.Version.Consensus.Block)
 }
 
 // TestStateSaveLoad tests saving and loading State from a db.

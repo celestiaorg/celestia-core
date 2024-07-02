@@ -62,11 +62,11 @@ var (
 	minSubscriptionBufferSize     = 100
 	defaultSubscriptionBufferSize = 200
 
-	// DefaultInfluxTables is a list of tables that are used for storing traces.
+	// DefaultTracingTables is a list of tables that are used for storing traces.
 	// This global var is filled by an init function in the schema package. This
 	// allows for the schema package to contain all the relevant logic while
 	// avoiding import cycles.
-	DefaultInfluxTables = []string{}
+	DefaultTracingTables = ""
 )
 
 // Config defines the top level configuration for a CometBFT node
@@ -941,8 +941,13 @@ func (cfg *FastSyncConfig) ValidateBasic() error {
 // including timeouts and details about the WAL and the block structure.
 type ConsensusConfig struct {
 	RootDir string `mapstructure:"home"`
-	WalPath string `mapstructure:"wal_file"`
-	walFile string // overrides WalPath if set
+	// If set to true, only internal messages will be written
+	// to the WAL. External messages like votes, proposals
+	// block parts, will not be written
+	// Default: true
+	OnlyInternalWal bool   `mapstructure:"only_internal_wal"`
+	WalPath         string `mapstructure:"wal_file"`
+	walFile         string // overrides WalPath if set
 
 	// How long we wait for a proposal block before prevoting nil
 	TimeoutPropose time.Duration `mapstructure:"timeout_propose"`
@@ -979,6 +984,7 @@ type ConsensusConfig struct {
 // DefaultConsensusConfig returns a default configuration for the consensus service
 func DefaultConsensusConfig() *ConsensusConfig {
 	return &ConsensusConfig{
+		OnlyInternalWal:             true,
 		WalPath:                     filepath.Join(defaultDataDir, "cs.wal", "wal"),
 		TimeoutPropose:              3000 * time.Millisecond,
 		TimeoutProposeDelta:         500 * time.Millisecond,
@@ -1188,24 +1194,24 @@ type InstrumentationConfig struct {
 	// Instrumentation namespace.
 	Namespace string `mapstructure:"namespace"`
 
-	// InfluxURL is the influxdb url.
-	InfluxURL string `mapstructure:"influx_url"`
+	// TracePushConfig is the relative path of the push config. This second
+	// config contains credentials for where and how often to.
+	TracePushConfig string `mapstructure:"trace_push_config"`
 
-	// InfluxToken is the influxdb token.
-	InfluxToken string `mapstructure:"influx_token"`
+	// TracePullAddress is the address that the trace server will listen on for
+	// pulling data.
+	TracePullAddress string `mapstructure:"trace_pull_address"`
 
-	// InfluxOrg is the influxdb organization.
-	InfluxOrg string `mapstructure:"influx_org"`
+	// TraceType is the type of tracer used. Options are "local" and "noop".
+	TraceType string `mapstructure:"trace_type"`
 
-	// InfluxBucket is the influxdb bucket.
-	InfluxBucket string `mapstructure:"influx_bucket"`
+	// TraceBufferSize is the number of traces to write in a single batch.
+	TraceBufferSize int `mapstructure:"trace_push_batch_size"`
 
-	// InfluxBatchSize is the number of points to write in a single batch.
-	InfluxBatchSize int `mapstructure:"influx_batch_size"`
-
-	// InfluxTables is the list of tables that will be traced. See the
-	// pkg/trace/schema for a complete list of tables.
-	InfluxTables []string `mapstructure:"influx_tables"`
+	// TracingTables is the list of tables that will be traced. See the
+	// pkg/trace/schema for a complete list of tables. It is represented as a
+	// comma separate string. For example: "consensus_round_state,mempool_tx".
+	TracingTables string `mapstructure:"tracing_tables"`
 
 	// PyroscopeURL is the pyroscope url used to establish a connection with a
 	// pyroscope continuous profiling server.
@@ -1229,11 +1235,11 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		PrometheusListenAddr: ":26660",
 		MaxOpenConnections:   3,
 		Namespace:            "cometbft",
-		InfluxURL:            "",
-		InfluxOrg:            "celestia",
-		InfluxBucket:         "e2e",
-		InfluxBatchSize:      20,
-		InfluxTables:         DefaultInfluxTables,
+		TracePushConfig:      "",
+		TracePullAddress:     "",
+		TraceType:            "noop",
+		TraceBufferSize:      1000,
+		TracingTables:        DefaultTracingTables,
 		PyroscopeURL:         "",
 		PyroscopeTrace:       false,
 		PyroscopeProfileTypes: []string{
@@ -1264,21 +1270,18 @@ func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.PyroscopeTrace && cfg.PyroscopeURL == "" {
 		return errors.New("pyroscope_trace can't be enabled if profiling is disabled")
 	}
-	// if there is not InfluxURL configured, then we do not need to validate the rest
+	// if there is not TracePushConfig configured, then we do not need to validate the rest
 	// of the config because we are not connecting.
-	if cfg.InfluxURL == "" {
+	if cfg.TracePushConfig == "" {
 		return nil
 	}
-	if cfg.InfluxToken == "" {
+	if cfg.TracePullAddress == "" {
 		return fmt.Errorf("token is required")
 	}
-	if cfg.InfluxOrg == "" {
+	if cfg.TraceType == "" {
 		return fmt.Errorf("org is required")
 	}
-	if cfg.InfluxBucket == "" {
-		return fmt.Errorf("bucket is required")
-	}
-	if cfg.InfluxBatchSize <= 0 {
+	if cfg.TraceBufferSize <= 0 {
 		return fmt.Errorf("batch size must be greater than 0")
 	}
 	return nil

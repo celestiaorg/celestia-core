@@ -487,6 +487,11 @@ func (c *Client) BlockResults(ctx context.Context, height *int64) (*ctypes.Resul
 	return res, nil
 }
 
+// TxStatus retrieves the status of the transaction given its hash.
+func (c *Client) TxStatus(ctx context.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
+	return c.next.TxStatus(ctx, hash)
+}
+
 // Header fetches and verifies the header directly via the light client
 func (c *Client) Header(ctx context.Context, height *int64) (*ctypes.ResultHeader, error) {
 	lb, err := c.updateLightClientIfNeededTo(ctx, height)
@@ -581,6 +586,7 @@ func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Resul
 // ProveShares calls rpcclient#ProveShares method and returns an NMT proof for a set
 // of shares, defined by `startShare` and `endShare`, to the corresponding rows.
 // Then, a binary merkle inclusion proof from the latter rows to the data root.
+// Deprecated: Use ProveSharesV2 instead.
 func (c *Client) ProveShares(
 	ctx context.Context,
 	height uint64,
@@ -588,6 +594,20 @@ func (c *Client) ProveShares(
 	endShare uint64,
 ) (types.ShareProof, error) {
 	res, err := c.next.ProveShares(ctx, height, startShare, endShare)
+	return res, err
+}
+
+// ProveSharesV2 returns a proof of inclusion for a share range to the data root
+// of the given height.
+// The range is end-exclusive and defined by startShare and endShare.
+// Note: this proof is composed of multiple proofs.
+func (c *Client) ProveSharesV2(
+	ctx context.Context,
+	height uint64,
+	startShare uint64,
+	endShare uint64,
+) (*ctypes.ResultShareProof, error) {
+	res, err := c.next.ProveSharesV2(ctx, height, startShare, endShare)
 	return res, err
 }
 

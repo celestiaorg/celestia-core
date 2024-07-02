@@ -54,7 +54,7 @@ func TestStoreReservingTxs(t *testing.T) {
 
 	// reserve a tx
 	store.reserve(key)
-	require.True(t, store.has(key))
+	require.True(t, store.isReserved(key))
 	// should not update the total bytes
 	require.Zero(t, store.totalBytes())
 
@@ -73,11 +73,22 @@ func TestStoreReservingTxs(t *testing.T) {
 
 	// reserve the tx again
 	store.reserve(key)
-	require.True(t, store.has(key))
+	require.True(t, store.isReserved(key))
 
 	// release should remove the tx
 	store.release(key)
 	require.False(t, store.has(key))
+}
+
+func TestReadReserved(t *testing.T) {
+	store := newStore()
+	tx := types.Tx("tx1")
+	store.reserve(tx.Key())
+
+	require.Nil(t, store.get(tx.Key()))
+	require.False(t, store.has(tx.Key()))
+	require.Len(t, store.getAllKeys(), 0)
+	require.Len(t, store.getAllTxs(), 0)
 }
 
 func TestStoreConcurrentAccess(t *testing.T) {

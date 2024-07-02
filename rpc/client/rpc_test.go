@@ -535,6 +535,57 @@ func TestBlockSearch(t *testing.T) {
 	require.Equal(t, blockCount, 0)
 
 }
+
+func TestTxStatus(t *testing.T) {
+	c := getHTTPClient()
+	require := require.New(t)
+	mempool := node.Mempool()
+
+	// Create a new transaction
+	_, _, tx := MakeTxKV()
+
+	// Get the initial size of the mempool
+	initMempoolSize := mempool.Size()
+
+	// Add the transaction to the mempool
+	err := mempool.CheckTx(tx, nil, mempl.TxInfo{})
+	require.NoError(err)
+
+	// Check if the size of the mempool has increased
+	require.Equal(initMempoolSize+1, mempool.Size())
+
+	// Get the tx status from the mempool
+	result, err := c.TxStatus(context.Background(), types.Tx(tx).Hash())
+	require.NoError(err)
+	require.EqualValues(0, result.Height)
+	require.EqualValues(0, result.Index)
+	require.Equal("PENDING", result.Status)
+
+	// Flush the mempool
+	mempool.Flush()
+	require.Equal(0, mempool.Size())
+
+	// Get tx status after flushing it from the mempool
+	result, err = c.TxStatus(context.Background(), types.Tx(tx).Hash())
+	require.NoError(err)
+	require.EqualValues(0, result.Height)
+	require.EqualValues(0, result.Index)
+	require.Equal("UNKNOWN", result.Status)
+
+	// Broadcast the tx again
+	bres, err := c.BroadcastTxCommit(context.Background(), tx)
+	require.NoError(err)
+	require.True(bres.CheckTx.IsOK())
+	require.True(bres.DeliverTx.IsOK())
+
+	// Get the tx status
+	result, err = c.TxStatus(context.Background(), types.Tx(tx).Hash())
+	require.NoError(err)
+	require.EqualValues(bres.Height, result.Height)
+	require.EqualValues(0, result.Index)
+	require.Equal("COMMITTED", result.Status)
+}
+
 func TestTxSearch(t *testing.T) {
 	c := getHTTPClient()
 
