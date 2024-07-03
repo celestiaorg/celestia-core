@@ -1049,9 +1049,6 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 func (cfg *ConsensusConfig) NextStartTime(t time.Time) time.Time {
 	newStartTime := t.Add(cfg.TimeoutCommit)
 	now := time.Now()
-	if !t.Before(now) {
-		return now
-	}
 	if newStartTime.Before(now) {
 		return now
 	}

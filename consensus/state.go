@@ -666,11 +666,11 @@ func (cs *State) updateToState(state sm.State) {
 	cs.updateHeight(height)
 	cs.updateRoundStep(0, cstypes.RoundStepNewHeight)
 
-	if cs.CommitTime.IsZero() {
+	if cs.AgreedStartTime.IsZero() {
 		cs.StartTime = time.Now()
 	} else {
 		lastStartTime := cs.StartTime
-		cs.StartTime = cs.config.NextStartTime(cs.StartTime)
+		cs.StartTime = cs.config.NextStartTime(cs.AgreedStartTime)
 		cs.Logger.Info("new start time", cs.StartTime, "last start time", lastStartTime)
 	}
 	if err := cs.blockStore.SaveHeightStartTime(cs.Height, cs.StartTime); err != nil {
@@ -1544,7 +1544,6 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 		// keep cs.Round the same, commitRound points to the right Precommits set.
 		cs.updateRoundStep(cs.Round, cstypes.RoundStepCommit)
 		cs.CommitRound = commitRound
-		cs.CommitTime = cmttime.Now()
 		cs.newStep()
 
 		// Maybe finalize immediately.
@@ -1658,12 +1657,14 @@ func (cs *State) finalizeCommit(height int64) {
 	fail.Fail() // XXX
 
 	// Save to blockStore.
-	var seenCommit *types.Commit
+	precommits := cs.Votes.Precommits(cs.CommitRound)
+	// NOTE: the seenCommit is local justification to commit this block,
+	// but may differ from the LastCommit included in the next block
+	seenCommit := precommits.MakeCommit()
+	// The agreed start time is the weighted median of the start times of the
+	// validators who have +2/3 precommits for this block
+	cs.AgreedStartTime = sm.MedianTime(seenCommit, cs.Validators)
 	if cs.blockStore.Height() < block.Height {
-		// NOTE: the seenCommit is local justification to commit this block,
-		// but may differ from the LastCommit included in the next block
-		precommits := cs.Votes.Precommits(cs.CommitRound)
-		seenCommit = precommits.MakeCommit()
 		cs.blockStore.SaveBlock(block, blockParts, seenCommit)
 	} else {
 		// Happens during replay if we already saved the block but didn't commit
@@ -2284,21 +2285,17 @@ func (cs *State) signVote(
 }
 
 func (cs *State) voteTime() time.Time {
-	now := cmttime.Now()
-	minVoteTime := now
-	// TODO: We should remove next line in case we don't vote for v in case cs.ProposalBlock == nil,
-	// even if cs.LockedBlock != nil. See https://github.com/tendermint/tendermint/tree/v0.34.x/spec/.
-	timeIota := time.Duration(cs.state.ConsensusParams.Block.TimeIotaMs) * time.Millisecond
+	minVoteTime := cs.StartTime
+	// to ensure monontonically increasing block times, the nodes vote time must be greater than the
+	// blocks time (which is the start time of the last block)
 	if cs.LockedBlock != nil {
-		// See the BFT time spec
-		// https://github.com/tendermint/tendermint/blob/v0.34.x/spec/consensus/bft-time.md
-		minVoteTime = cs.LockedBlock.Time.Add(timeIota)
+		if minVoteTime.Before(cs.LockedBlock.Time) {
+			minVoteTime = cs.LockedBlock.Time.Add(time.Millisecond)
+		}
 	} else if cs.ProposalBlock != nil {
-		minVoteTime = cs.ProposalBlock.Time.Add(timeIota)
-	}
-
-	if now.After(minVoteTime) {
-		return now
+		if minVoteTime.Before(cs.ProposalBlock.Time) {
+			minVoteTime = cs.ProposalBlock.Time.Add(time.Millisecond)
+		}
 	}
 	return minVoteTime
 }

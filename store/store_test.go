@@ -578,7 +578,6 @@ func TestSaveAndLoadHeightStartTime(t *testing.T) {
 	require.Equal(t, startTime.UnixNano(), loadedTime.UnixNano(), "the loaded start time should match the saved start time")
 }
 
-
 func TestLoadBlockMetaByHash(t *testing.T) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)
