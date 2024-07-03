@@ -149,7 +149,7 @@ func NewCLI() *CLI {
 					return err
 				}
 			}
-			if err := Wait(cli.testnet, 30); err != nil { // allow some txs to go through
+			if err := Wait(cli.testnet, 5); err != nil { // allow some txs to go through
 				return err
 			}
 

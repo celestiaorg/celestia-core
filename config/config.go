@@ -1047,12 +1047,7 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 
 // NextStartTime adds the TimeoutCommit to the provided starting time.
 func (cfg *ConsensusConfig) NextStartTime(t time.Time) time.Time {
-	newStartTime := t.Add(cfg.TimeoutCommit)
-	now := time.Now()
-	if newStartTime.Before(now) {
-		return now
-	}
-	return newStartTime
+	return t.Add(cfg.TimeoutCommit)
 }
 
 // WalFile returns the full path to the write-ahead log file

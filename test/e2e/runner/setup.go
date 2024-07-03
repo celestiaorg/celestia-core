@@ -165,8 +165,8 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.P2P.AddrBookStrict = false
 	cfg.DBBackend = node.Database
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
-	cfg.Consensus.TimeoutPropose = 3 * time.Second
-	cfg.Consensus.TimeoutCommit = 5 * time.Second
+	cfg.Consensus.TimeoutPropose = 2 * time.Second
+	cfg.Consensus.TimeoutCommit = 3 * time.Second
 
 	cfg.Instrumentation.TraceType = "celestia"
 	cfg.Instrumentation.TracePushConfig = node.TracePushConfig
