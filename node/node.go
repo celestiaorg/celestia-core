@@ -860,7 +860,6 @@ func NewNode(config *cfg.Config,
 	csMetrics, p2pMetrics, memplMetrics, smMetrics := metricsProvider(genDoc.ChainID, softwareVersion)
 
 	// create an optional tracer client to collect trace data.
-	logger.Info("Creating tracer")
 	tracer, err := trace.NewTracer(
 		config,
 		logger,

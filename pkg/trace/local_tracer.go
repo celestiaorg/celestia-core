@@ -70,7 +70,6 @@ type LocalTracer struct {
 // to the returned channel. Call CloseAll to close all open files. Goroutine to
 // save events is started in this function.
 func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID string) (*LocalTracer, error) {
-	logger.Info("NewLocalTracer is called")
 	fm := make(map[string]*bufferedFile)
 	p := path.Join(cfg.RootDir, "data", "traces")
 	for _, table := range splitAndTrimEmpty(cfg.Instrumentation.TracingTables, ",", " ") {
