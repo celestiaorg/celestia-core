@@ -516,6 +516,23 @@ func (c *baseRPCClient) DataCommitment(
 	return result, nil
 }
 
+func (c *baseRPCClient) TxStatus(
+	ctx context.Context,
+	hash []byte,
+) (*ctypes.ResultTxStatus, error) {
+	result := new(ctypes.ResultTxStatus)
+	params := map[string]interface{}{
+		"hash": hash,
+	}
+
+	_, err := c.caller.Call(ctx, "tx_status", params, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 func (c *baseRPCClient) DataRootInclusionProof(
 	ctx context.Context,
 	height uint64,

@@ -97,7 +97,7 @@ func (lt *LocalTracer) servePullData() {
 	if err != nil {
 		lt.logger.Error("trace pull server failure", "err", err)
 	}
-	lt.logger.Info("trace pull server started")
+	lt.logger.Info("trace pull server started", "address", lt.cfg.Instrumentation.TracePullAddress)
 }
 
 // GetTable downloads a table from the server and saves it to the given directory. It uses a multipart
