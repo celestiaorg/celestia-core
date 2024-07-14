@@ -144,6 +144,11 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		panic(err)
 	}
 
+	rejectedTxs := len(rpp.Txs) - len(block.Txs)
+	if rejectedTxs > 0 {
+		blockExec.metrics.RejectedTransactions.Add(float64(rejectedTxs))
+	}
+
 	// Celestia passes the data root back as the last transaction
 	if len(rpp.Txs) < 1 {
 		panic("state machine returned an invalid prepare proposal response: expected at least 1 transaction")
