@@ -33,3 +33,12 @@ func TestBroadcastTx(t *testing.T) {
 	require.EqualValues(t, 0, res.CheckTx.Code)
 	require.EqualValues(t, 0, res.DeliverTx.Code)
 }
+
+func TestBlockByHash(t *testing.T) {
+	res, err := rpctest.GetGRPCClient().BlockByHash(
+		context.Background(),
+		&core_grpc.RequestBlockByHash{Hash: []byte("this is a block hash")},
+	)
+	require.Error(t, err)
+	require.Nil(t, res)
+}
