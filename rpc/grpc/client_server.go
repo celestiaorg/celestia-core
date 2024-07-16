@@ -25,14 +25,28 @@ func StartGRPCServer(ln net.Listener) error {
 	return grpcServer.Serve(ln)
 }
 
+type Client interface {
+	BroadcastAPIClient
+	BlockAPIClient
+}
+
+type client struct {
+	BroadcastAPIClient
+	BlockAPIClient
+}
+
 // StartGRPCClient dials the gRPC server using protoAddr and returns a new
 // BroadcastAPIClient.
-func StartGRPCClient(protoAddr string) BroadcastAPIClient {
+func StartGRPCClient(protoAddr string) Client {
 	conn, err := grpc.Dial(protoAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc))
 	if err != nil {
 		panic(err)
 	}
-	return NewBroadcastAPIClient(conn)
+
+	return &client{
+		BroadcastAPIClient: NewBroadcastAPIClient(conn),
+		BlockAPIClient:     NewBlockAPIClient(conn),
+	}
 }
 
 func dialerFunc(ctx context.Context, addr string) (net.Conn, error) {
