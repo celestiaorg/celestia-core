@@ -3,6 +3,7 @@ package tendermint.rpc.grpc;
 option  go_package = "github.com/cometbft/cometbft/rpc/grpc;coregrpc";
 
 import "tendermint/abci/types.proto";
+import "tendermint/types/block.proto";
 
 //----------------------------------------
 // Request types
@@ -11,6 +12,10 @@ message RequestPing {}
 
 message RequestBroadcastTx {
   bytes tx = 1;
+}
+
+message RequestBlockByHash {
+  bytes hash = 1;
 }
 
 //----------------------------------------
@@ -29,4 +34,8 @@ message ResponseBroadcastTx {
 service BroadcastAPI {
   rpc Ping(RequestPing) returns (ResponsePing);
   rpc BroadcastTx(RequestBroadcastTx) returns (ResponseBroadcastTx);
+}
+
+service BlockAPI {
+  rpc BlockByHash(RequestBlockByHash) returns (tendermint.types.Block);
 }
