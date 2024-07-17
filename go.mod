@@ -9,10 +9,17 @@ require (
 	github.com/Workiva/go-datastructures v1.0.53
 	github.com/adlio/schema v1.3.3
 	github.com/aws/aws-sdk-go v1.40.45
+<<<<<<< HEAD
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/btcsuite/btcd/btcutil v1.1.3
 	github.com/bufbuild/buf v1.15.1
 	github.com/celestiaorg/nmt v0.21.0
+=======
+	github.com/btcsuite/btcd/btcec/v2 v2.2.1
+	github.com/btcsuite/btcd/btcutil v1.1.2
+	github.com/bufbuild/buf v1.9.0
+	github.com/celestiaorg/nmt v0.22.0
+>>>>>>> 3d4e4aeac (build(deps): Bump github.com/celestiaorg/nmt from 0.21.0 to 0.22.0 (#1421))
 	github.com/cometbft/cometbft-db v0.7.0
 	github.com/creachadair/taskgroup v0.3.2
 	github.com/fortytw2/leaktest v1.3.0
