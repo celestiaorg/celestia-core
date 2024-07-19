@@ -559,7 +559,10 @@ func (txmp *TxPool) Update(
 			txmp.notifyTxsAvailable()
 		}
 	}
-	txmp.jsonMetrics.Save()
+	// save every 20 blocks
+	if blockHeight%20 == 0 {
+		txmp.jsonMetrics.Save()
+	}
 	return nil
 }
 

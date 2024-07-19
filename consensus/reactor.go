@@ -694,6 +694,7 @@ OUTER_LOOP:
 					},
 				}, logger) {
 					ps.SetHasBlock(prs.Height, prs.Round)
+					conR.conS.jsonMetrics.SentCompactBlocks++
 				}
 				continue OUTER_LOOP
 			}
@@ -840,6 +841,7 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 				string(peer.ID()),
 				schema.Upload,
 			)
+			conR.conS.jsonMetrics.SentBlockParts++
 		} else {
 			logger.Debug("Sending block part for catchup failed")
 			// sleep to avoid retrying too fast

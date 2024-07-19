@@ -334,18 +334,17 @@ func (m *Metrics) MarkStep(s cstypes.RoundStepType) {
 }
 
 type JSONMetrics struct {
-	dir                  string
-	interval             int
-	StartTime            time.Time
-	EndTime              time.Time
-	Blocks               uint64
-	Rounds               uint64
-	SentConsensusBytes   uint64
-	SentCompactBlocks    uint64
-	SentCompactBytes     uint64
-	CompactBlockFailures uint64
-	SentBlockParts       uint64
-	SentBlockPartsBytes  uint64
+	dir                   string
+	interval              int
+	StartTime             time.Time
+	EndTime               time.Time
+	Blocks                uint64
+	Rounds                uint64
+	SentCompactBlocks     uint64
+	CompactBlockFailures  uint64
+	SentBlockParts        uint64
+	ReceivedBlockParts    uint64
+	ReceivedCompactBlocks uint64
 }
 
 func NewJSONMetrics(dir string) *JSONMetrics {
@@ -371,10 +370,9 @@ func (m *JSONMetrics) Save() {
 func (m *JSONMetrics) reset() {
 	m.Blocks = 0
 	m.Rounds = 0
-	m.SentConsensusBytes = 0
 	m.SentBlockParts = 0
-	m.SentBlockPartsBytes = 0
 	m.SentCompactBlocks = 0
-	m.SentCompactBytes = 0
 	m.CompactBlockFailures = 0
+	m.ReceivedBlockParts = 0
+	m.ReceivedCompactBlocks = 0
 }

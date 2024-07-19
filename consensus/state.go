@@ -1801,7 +1801,11 @@ func (cs *State) finalizeCommit(height int64) {
 	// NewHeightStep!
 	cs.updateToState(stateCopy)
 
-	cs.jsonMetrics.Save()
+	cs.jsonMetrics.Blocks++
+	// Save every 20 blocks
+	if cs.Height%20 == 0 {
+		cs.jsonMetrics.Save()
+	}
 
 	fail.Fail() // XXX
 
@@ -2003,6 +2007,7 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 
 	blockHash := cs.Proposal.BlockID.Hash
 	timeout := cs.config.Propose(cs.Round)
+	cs.jsonMetrics.ReceivedCompactBlocks++
 
 	// Yield the lock while we fetch the transactions from the mempool so that votes
 	// and other operations can be processed.
@@ -2098,6 +2103,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 	}
 
 	cs.metrics.BlockGossipPartsReceived.With("matches_current", "true").Add(1)
+	cs.jsonMetrics.ReceivedBlockParts++
 
 	if cs.ProposalBlockParts.ByteSize() > cs.state.ConsensusParams.Block.MaxBytes {
 		return added, fmt.Errorf("total size of proposal block parts exceeds maximum block bytes (%d > %d)",
