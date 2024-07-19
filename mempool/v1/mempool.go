@@ -16,7 +16,6 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/pkg/trace"
-	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
 )
@@ -58,8 +57,9 @@ type TxMempool struct {
 	txs        *clist.CList // valid transactions (passed CheckTx)
 	txByKey    map[types.TxKey]*clist.CElement
 	txBySender map[string]*clist.CElement // for sender != ""
+	evictedTxs mempool.TxCache            // for tracking evicted transactions
 
-	traceClient *trace.Client
+	traceClient trace.Tracer
 }
 
 // NewTxMempool constructs a new, empty priority mempool at the specified
@@ -83,10 +83,11 @@ func NewTxMempool(
 		height:       height,
 		txByKey:      make(map[types.TxKey]*clist.CElement),
 		txBySender:   make(map[string]*clist.CElement),
-		traceClient:  &trace.Client{},
+		traceClient:  trace.NoOpTracer(),
 	}
 	if cfg.CacheSize > 0 {
 		txmp.cache = mempool.NewLRUTxCache(cfg.CacheSize)
+		txmp.evictedTxs = mempool.NewLRUTxCache(cfg.CacheSize / 5)
 	}
 
 	for _, opt := range options {
@@ -115,7 +116,7 @@ func WithMetrics(metrics *mempool.Metrics) TxMempoolOption {
 	return func(txmp *TxMempool) { txmp.metrics = metrics }
 }
 
-func WithTraceClient(tc *trace.Client) TxMempoolOption {
+func WithTraceClient(tc trace.Tracer) TxMempoolOption {
 	return func(txmp *TxMempool) {
 		txmp.traceClient = tc
 	}
@@ -204,7 +205,6 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		if txmp.preCheck != nil {
 			if err := txmp.preCheck(tx); err != nil {
 				txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedPrecheck).Add(1)
-				schema.WriteMempoolRejected(txmp.traceClient, err.Error())
 				return 0, mempool.ErrPreCheck{Reason: err}
 			}
 		}
@@ -259,6 +259,24 @@ func (txmp *TxMempool) RemoveTxByKey(txKey types.TxKey) error {
 	txmp.mtx.Lock()
 	defer txmp.mtx.Unlock()
 	return txmp.removeTxByKey(txKey)
+}
+
+// GetTxByKey retrieves a transaction based on the key. It returns a bool
+// indicating whether transaction was found in the cache.
+func (txmp *TxMempool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
+	txmp.mtx.RLock()
+	defer txmp.mtx.RUnlock()
+
+	if elt, ok := txmp.txByKey[txKey]; ok {
+		return elt.Value.(*WrappedTx).tx, true
+	}
+	return nil, false
+}
+
+// WasRecentlyEvicted returns a bool indicating whether the transaction with
+// the specified key was recently evicted and is currently within the evicted cache.
+func (txmp *TxMempool) WasRecentlyEvicted(txKey types.TxKey) bool {
+	return txmp.evictedTxs.HasKey(txKey)
 }
 
 // removeTxByKey removes the specified transaction key from the mempool.
@@ -439,6 +457,7 @@ func (txmp *TxMempool) Update(
 	// transactions are left.
 	size := txmp.Size()
 	txmp.metrics.Size.Set(float64(size))
+	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 	if size > 0 {
 		if txmp.config.Recheck {
 			txmp.recheckTransactions()
@@ -482,15 +501,6 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		)
 
 		txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedAdding).Add(1)
-		reason := fmt.Sprintf(
-			"code: %d codespace: %s logs: %s local: %v postCheck error: %v",
-			checkTxRes.Code,
-			checkTxRes.Codespace,
-			checkTxRes.Log,
-			wtx.HasPeer(0), // this checks if the peer id is local
-			err,
-		)
-		schema.WriteMempoolRejected(txmp.traceClient, reason)
 
 		// Remove the invalid transaction from the cache, unless the operator has
 		// instructed us to keep invalid transactions.
@@ -559,6 +569,8 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 				fmt.Sprintf("rejected valid incoming transaction; mempool is full (%X)",
 					wtx.tx.Hash())
 			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedNewTxFullMempool).Add(1)
+			// Add it to evicted transactions cache
+			txmp.evictedTxs.Push(wtx.tx)
 			return
 		}
 
@@ -591,7 +603,8 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 			txmp.removeTxByElement(vic)
 			txmp.cache.Remove(w.tx)
 			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedExistingTxFullMempool).Add(1)
-
+			// Add it to evicted transactions cache
+			txmp.evictedTxs.Push(w.tx)
 			// We may not need to evict all the eligible transactions.  Bail out
 			// early if we have made enough room.
 			evictedBytes += w.Size()
@@ -608,6 +621,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 
 	txmp.metrics.TxSizeBytes.Observe(float64(wtx.Size()))
 	txmp.metrics.Size.Set(float64(txmp.Size()))
+	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 	txmp.logger.Debug(
 		"inserted new valid transaction",
 		"priority", wtx.Priority(),
@@ -670,11 +684,9 @@ func (txmp *TxMempool) handleRecheckResult(tx types.Tx, checkTxRes *abci.Respons
 	txmp.metrics.FailedTxs.With(mempool.TypeLabel, mempool.FailedRecheck).Add(1)
 	if !txmp.config.KeepInvalidTxsInCache {
 		txmp.cache.Remove(wtx.tx)
-		if err != nil {
-			schema.WriteMempoolRejected(txmp.traceClient, err.Error())
-		}
 	}
 	txmp.metrics.Size.Set(float64(txmp.Size()))
+	txmp.metrics.SizeBytes.Set(float64(txmp.SizeBytes()))
 }
 
 // recheckTransactions initiates re-CheckTx ABCI calls for all the transactions
@@ -783,9 +795,11 @@ func (txmp *TxMempool) purgeExpiredTxs(blockHeight int64) {
 			txmp.removeTxByElement(cur)
 			txmp.cache.Remove(w.tx)
 			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedTxExpiredBlocks).Add(1)
+			txmp.evictedTxs.Push(w.tx)
 		} else if txmp.config.TTLDuration > 0 && now.Sub(w.timestamp) > txmp.config.TTLDuration {
 			txmp.removeTxByElement(cur)
 			txmp.cache.Remove(w.tx)
+			txmp.evictedTxs.Push(w.tx)
 			txmp.metrics.EvictedTxs.With(mempool.TypeLabel, mempool.EvictedTxExpiredTime).Add(1)
 		}
 		cur = next

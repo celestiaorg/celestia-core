@@ -168,7 +168,7 @@ type State struct {
 	// for reporting metrics
 	metrics     *Metrics
 	jsonMetrics *JSONMetrics
-	traceClient *trace.Client
+	traceClient trace.Tracer
 }
 
 // StateOption sets an optional parameter on the State.
@@ -207,7 +207,7 @@ func NewState(
 		evsw:             cmtevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
 		jsonMetrics:      NewJSONMetrics(path),
-		traceClient:      &trace.Client{},
+		traceClient:      trace.NoOpTracer(),
 	}
 
 	if cs.txFetcher == nil {
@@ -254,7 +254,7 @@ func StateMetrics(metrics *Metrics) StateOption {
 }
 
 // SetTraceClient sets the remote event collector.
-func SetTraceClient(ec *trace.Client) StateOption {
+func SetTraceClient(ec trace.Tracer) StateOption {
 	return func(cs *State) { cs.traceClient = ec }
 }
 
@@ -351,6 +351,8 @@ func (cs *State) OnStart() error {
 			return err
 		}
 	}
+
+	cs.metrics.StartHeight.Set(float64(cs.Height))
 
 	// we need the timeoutRoutine for replay so
 	// we don't block on the tick chan.
@@ -742,7 +744,9 @@ func (cs *State) newStep() {
 
 	cs.nSteps++
 
-	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, cs.Step)
+	step := uint8(cs.RoundState.Step)
+
+	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, step)
 
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {
@@ -809,8 +813,10 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleTxsAvailable()
 
 		case mi = <-cs.peerMsgQueue:
-			if err := cs.wal.Write(mi); err != nil {
-				cs.Logger.Error("failed writing to WAL", "err", err)
+			if !cs.config.OnlyInternalWal {
+				if err := cs.wal.Write(mi); err != nil {
+					cs.Logger.Error("failed writing to WAL", "err", err)
+				}
 			}
 
 			// handles proposals, block parts, votes
@@ -1203,7 +1209,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		blockHash = block.Hash()
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
+		schema.WriteABCI(cs.traceClient, schema.PrepareProposalStart, height, round)
 		block = cs.createProposalBlock()
+		schema.WriteABCI(cs.traceClient, schema.PrepareProposalEnd, height, round)
 		if block == nil {
 			return
 		}
@@ -1348,6 +1356,7 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 	// If ProposalBlock is nil, prevote nil.
 	if cs.ProposalBlock == nil {
 		logger.Debug("prevote step: ProposalBlock is nil")
+		cs.metrics.TimedOutProposals.Add(1)
 		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{})
 		return
 	}
@@ -1361,15 +1370,21 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		return
 	}
 
+	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
+
 	stateMachineValidBlock, err := cs.blockExec.ProcessProposal(cs.ProposalBlock)
 	if err != nil {
 		cs.Logger.Error("state machine returned an error when trying to process proposal block", "err", err)
+		return
 	}
+
+	schema.WriteABCI(cs.traceClient, schema.ProcessProposalEnd, height, round)
 
 	// Vote nil if application invalidated the block
 	if !stateMachineValidBlock {
 		// The app says we must vote nil
 		logger.Error("prevote step: the application deems this block to be mustVoteNil", "err", err)
+		cs.metrics.ApplicationRejectedProposals.Add(1)
 		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{})
 		return
 	}
@@ -1751,6 +1766,8 @@ func (cs *State) finalizeCommit(height int64) {
 		retainHeight int64
 	)
 
+	schema.WriteABCI(cs.traceClient, schema.CommitStart, height, 0)
+
 	stateCopy, retainHeight, err = cs.blockExec.ApplyBlock(
 		stateCopy,
 		types.BlockID{
@@ -1763,6 +1780,8 @@ func (cs *State) finalizeCommit(height int64) {
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}
+
+	schema.WriteABCI(cs.traceClient, schema.CommitEnd, height, 0)
 
 	fail.Fail() // XXX
 
@@ -1901,7 +1920,7 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	blockSize := block.Size()
 
 	// trace some metadata about the block
-	schema.WriteBlock(cs.traceClient, block, blockSize)
+	schema.WriteBlockSummary(cs.traceClient, block, blockSize)
 
 	cs.metrics.NumTxs.Set(float64(len(block.Data.Txs)))
 	cs.metrics.TotalTxs.Add(float64(len(block.Data.Txs)))

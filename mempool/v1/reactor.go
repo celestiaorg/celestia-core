@@ -27,7 +27,7 @@ type Reactor struct {
 	config      *cfg.MempoolConfig
 	mempool     *TxMempool
 	ids         *mempoolIDs
-	traceClient *trace.Client
+	traceClient trace.Tracer
 }
 
 type mempoolIDs struct {
@@ -94,7 +94,7 @@ func newMempoolIDs() *mempoolIDs {
 }
 
 // NewReactor returns a new Reactor with the given config and mempool.
-func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool, traceClient *trace.Client) *Reactor {
+func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool, traceClient trace.Tracer) *Reactor {
 	memR := &Reactor{
 		config:      config,
 		mempool:     mempool,
@@ -180,15 +180,6 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	memR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
 	switch msg := e.Message.(type) {
 	case *protomem.Txs:
-		for _, tx := range msg.Txs {
-			schema.WriteMempoolTx(
-				memR.traceClient,
-				e.Src.ID(),
-				tx,
-				schema.TransferTypeDownload,
-				schema.V1VersionFieldValue,
-			)
-		}
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
 			memR.Logger.Error("received tmpty txs from peer", "src", e.Src)
@@ -202,6 +193,12 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		var err error
 		for _, tx := range protoTxs {
 			ntx := types.Tx(tx)
+			schema.WriteMempoolTx(
+				memR.traceClient,
+				string(e.Src.ID()),
+				ntx.Hash(),
+				schema.Download,
+			)
 			err = memR.mempool.CheckTx(ntx, nil, txInfo)
 			if errors.Is(err, mempool.ErrTxInCache) {
 				memR.Logger.Debug("Tx already exists in cache", "tx", ntx.String())
@@ -302,14 +299,13 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 				// record that we have sent the peer the transaction
 				// to avoid doing it a second time
 				memTx.SetPeer(peerID)
+				schema.WriteMempoolTx(
+					memR.traceClient,
+					string(peer.ID()),
+					memTx.tx.Hash(),
+					schema.Upload,
+				)
 			}
-			schema.WriteMempoolTx(
-				memR.traceClient,
-				peer.ID(),
-				memTx.tx,
-				schema.TransferTypeUpload,
-				schema.V1VersionFieldValue,
-			)
 		}
 
 		select {

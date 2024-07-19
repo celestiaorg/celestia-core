@@ -17,6 +17,13 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+const (
+	txStatusUnknown   string = "UNKNOWN"
+	txStatusPending   string = "PENDING"
+	txStatusEvicted   string = "EVICTED"
+	txStatusCommitted string = "COMMITTED"
+)
+
 // Tx allows you to query the transaction results. `nil` could mean the
 // transaction is in the mempool, invalidated, or was not sent in the first
 // place.
@@ -174,6 +181,7 @@ func proveTx(height int64, index uint32) (types.ShareProof, error) {
 
 // ProveShares creates an NMT proof for a set of shares to a set of rows. It is
 // end exclusive.
+// Deprecated: Use ProveSharesV2 instead.
 func ProveShares(
 	_ *rpctypes.Context,
 	height int64,
@@ -210,6 +218,55 @@ func ProveShares(
 		return shareProof, err
 	}
 	return shareProof, nil
+}
+
+// TxStatus retrieves the status of a transaction given its hash. It returns a ResultTxStatus
+// containing the height and index of the transaction within the block(if committed)
+// or whether the transaction is pending, evicted from the mempool, or otherwise unknown.
+func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
+	env := GetEnvironment()
+
+	// Check if the tx has been committed
+	txInfo := env.BlockStore.LoadTxInfo(hash)
+	if txInfo != nil {
+		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, ExecutionCode: txInfo.Code, Status: txStatusCommitted}, nil
+	}
+
+	// Get the tx key from the hash
+	txKey, err := types.TxKeyFromBytes(hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tx key from hash: %v", err)
+	}
+
+	// Check if the tx is in the mempool
+	txInMempool, ok := env.Mempool.GetTxByKey(txKey)
+	if txInMempool != nil && ok {
+		return &ctypes.ResultTxStatus{Status: txStatusPending}, nil
+	}
+
+	// Check if the tx is evicted
+	isEvicted := env.Mempool.WasRecentlyEvicted(txKey)
+	if isEvicted {
+		return &ctypes.ResultTxStatus{Status: txStatusEvicted}, nil
+	}
+
+	// If the tx is not in the mempool, evicted, or committed, return unknown
+	return &ctypes.ResultTxStatus{Status: txStatusUnknown}, nil
+}
+
+// ProveSharesV2 creates a proof for a set of shares to the data root.
+// The range is end exclusive.
+func ProveSharesV2(
+	ctx *rpctypes.Context,
+	height int64,
+	startShare uint64,
+	endShare uint64,
+) (*ctypes.ResultShareProof, error) {
+	shareProof, err := ProveShares(ctx, height, startShare, endShare)
+	if err != nil {
+		return nil, err
+	}
+	return &ctypes.ResultShareProof{ShareProof: shareProof}, nil
 }
 
 func loadRawBlock(bs state.BlockStore, height int64) ([]byte, error) {

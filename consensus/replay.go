@@ -258,15 +258,10 @@ func (h *Handshaker) HandshakeWithContext(ctx context.Context, proxyApp proxy.Ap
 	}
 	appHash := res.LastBlockAppHash
 
-	h.logger.Info("ABCI Handshake App Info",
-		"height", blockHeight,
-		"hash", appHash,
-		"software-version", res.Version,
-		"protocol-version", res.AppVersion,
-	)
-
-	// Only set the version if there is no existing state.
-	if h.initialState.LastBlockHeight == 0 {
+	appVersion := h.initialState.Version.Consensus.App
+	// set app version if it's not set via genesis
+	if h.initialState.LastBlockHeight == 0 && appVersion == 0 && res.AppVersion != 0 {
+		appVersion = res.AppVersion
 		h.initialState.Version.Consensus.App = res.AppVersion
 	}
 
@@ -277,7 +272,10 @@ func (h *Handshaker) HandshakeWithContext(ctx context.Context, proxyApp proxy.Ap
 	}
 
 	h.logger.Info("Completed ABCI Handshake - CometBFT and App are synced",
-		"appHeight", blockHeight, "appHash", appHash)
+		"appHeight", blockHeight,
+		"appHash", appHash,
+		"appVersion", appVersion,
+	)
 
 	// TODO: (on restart) replay mempool
 
@@ -521,7 +519,7 @@ func (h *Handshaker) replayBlock(state sm.State, height int64, proxyApp proxy.Ap
 
 	// Use stubs for both mempool and evidence pool since no transactions nor
 	// evidence are needed here - block already exists.
-	blockExec := sm.NewBlockExecutor(h.stateStore, h.logger, proxyApp, emptyMempool{}, sm.EmptyEvidencePool{})
+	blockExec := sm.NewBlockExecutor(h.stateStore, h.logger, proxyApp, emptyMempool{}, sm.EmptyEvidencePool{}, sm.WithBlockStore(h.store))
 	blockExec.SetEventBus(h.eventBus)
 
 	var err error

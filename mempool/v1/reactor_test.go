@@ -164,7 +164,7 @@ func makeAndConnectReactors(config *cfg.Config, n int) []*Reactor {
 		mempool, cleanup := newMempoolWithAppAndConfig(cc, config)
 		defer cleanup()
 
-		reactors[i] = NewReactor(config.Mempool, mempool, &trace.Client{}) // so we dont start the consensus states
+		reactors[i] = NewReactor(config.Mempool, mempool, trace.NoOpTracer()) // so we dont start the consensus states
 		reactors[i].SetLogger(logger.With("validator", i))
 	}
 
