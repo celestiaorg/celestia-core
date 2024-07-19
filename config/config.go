@@ -1215,7 +1215,7 @@ type InstrumentationConfig struct {
 	// pyroscope continuous profiling server.
 	PyroscopeURL string `mapstructure:"pyroscope_url"`
 
-	// PyroscopeProfile is a flag that enables tracing with pyroscope.
+	// PyroscopeTrace is a flag that enables tracing with pyroscope.
 	PyroscopeTrace bool `mapstructure:"pyroscope_trace"`
 
 	// PyroscopeProfileTypes is a list of profile types to be traced with
