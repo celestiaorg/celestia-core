@@ -559,6 +559,7 @@ func (txmp *TxPool) Update(
 			txmp.notifyTxsAvailable()
 		}
 	}
+	txmp.jsonMetrics.Save()
 	return nil
 }
 
