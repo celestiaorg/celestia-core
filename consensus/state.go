@@ -1979,6 +1979,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error {
 	compactBlock := msg.Block
 	height := compactBlock.Height
+	cs.jsonMetrics.ReceivedCompactBlocks++
 
 	if cs.ProposalBlock != nil {
 		// We already have the proposal block.
@@ -2007,7 +2008,6 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 
 	blockHash := cs.Proposal.BlockID.Hash
 	timeout := cs.config.Propose(cs.Round)
-	cs.jsonMetrics.ReceivedCompactBlocks++
 
 	// Yield the lock while we fetch the transactions from the mempool so that votes
 	// and other operations can be processed.
