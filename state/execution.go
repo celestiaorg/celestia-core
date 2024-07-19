@@ -144,11 +144,6 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		panic(err)
 	}
 
-	rejectedTxs := len(rpp.Txs) - len(block.Txs)
-	if rejectedTxs > 0 {
-		blockExec.metrics.RejectedTransactions.Add(float64(rejectedTxs))
-	}
-
 	// Celestia passes the data root back as the last transaction
 	if len(rpp.Txs) < 1 {
 		panic("state machine returned an invalid prepare proposal response: expected at least 1 transaction")
@@ -156,6 +151,11 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	if len(rpp.Txs[len(rpp.Txs)-1]) != tmhash.Size {
 		panic(fmt.Sprintf("state machine returned an invalid prepare proposal response: expected last transaction to be a hash, got %d bytes", len(rpp.Txs[len(rpp.Txs)-2])))
+	}
+
+	rejectedTxs := len(rpp.Txs) - len(block.Txs)
+	if rejectedTxs > 0 {
+		blockExec.metrics.RejectedTransactions.Add(float64(rejectedTxs))
 	}
 
 	// update the block with the response from PrepareProposal
