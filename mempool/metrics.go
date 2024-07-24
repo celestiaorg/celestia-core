@@ -18,17 +18,6 @@ const (
 	// MetricsSubsystem is a subsystem shared by all metrics exposed by this
 	// package.
 	MetricsSubsystem = "mempool"
-
-	TypeLabel = "type"
-
-	FailedPrecheck = "precheck"
-	FailedAdding   = "adding"
-	FailedRecheck  = "recheck"
-
-	EvictedNewTxFullMempool      = "full-removed-incoming"
-	EvictedExistingTxFullMempool = "full-removed-existing"
-	EvictedTxExpiredBlocks       = "expired-ttl-blocks"
-	EvictedTxExpiredTime         = "expired-ttl-time"
 )
 
 // Metrics contains metrics exposed by this package.
@@ -49,9 +38,12 @@ type Metrics struct {
 
 	// EvictedTxs defines the number of evicted transactions. These are valid
 	// transactions that passed CheckTx and existed in the mempool but were later
-	// evicted to make room for higher priority valid transactions that passed
-	// CheckTx.
+	// evicted to make room for higher priority valid transactions
 	EvictedTxs metrics.Counter
+
+	// ExpiredTxs defines transactions that were removed from the mempool due
+	// to a TTL
+	ExpiredTxs metrics.Counter
 
 	// SuccessfulTxs defines the number of transactions that successfully made
 	// it into a block.
@@ -82,7 +74,6 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 	for i := 0; i < len(labelsAndValues); i += 2 {
 		labels = append(labels, labelsAndValues[i])
 	}
-	typedCounterLabels := append(append(make([]string, 0, len(labels)+1), labels...), TypeLabel)
 	return &Metrics{
 		Size: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
@@ -111,14 +102,21 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Subsystem: MetricsSubsystem,
 			Name:      "failed_txs",
 			Help:      "Number of failed transactions.",
-		}, typedCounterLabels).With(labelsAndValues...),
+		}, labels).With(labelsAndValues...),
 
 		EvictedTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "evicted_txs",
 			Help:      "Number of evicted transactions.",
-		}, typedCounterLabels).With(labelsAndValues...),
+		}, labels).With(labelsAndValues...),
+
+		ExpiredTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "expired_txs",
+			Help:      "Number of expired transactions.",
+		}, labels).With(labelsAndValues...),
 
 		SuccessfulTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
@@ -165,6 +163,7 @@ func NopMetrics() *Metrics {
 		TxSizeBytes:    discard.NewHistogram(),
 		FailedTxs:      discard.NewCounter(),
 		EvictedTxs:     discard.NewCounter(),
+		ExpiredTxs:     discard.NewCounter(),
 		SuccessfulTxs:  discard.NewCounter(),
 		RecheckTimes:   discard.NewCounter(),
 		AlreadySeenTxs: discard.NewCounter(),
