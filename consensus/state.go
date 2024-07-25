@@ -2319,6 +2319,14 @@ func (cs *State) signAddVote(msgType cmtproto.SignedMsgType, hash []byte, header
 		return nil
 	}
 
+	if msgType == cmtproto.PrecommitType {
+		targetBlockTime := 12 * time.Second
+		precommitVoteTime := cs.StartTime.Add(targetBlockTime)
+		waitTime := precommitVoteTime.Sub(time.Now())
+		if waitTime > 0 {
+			time.Sleep(waitTime)
+		}
+	}
 	// TODO: pass pubKey to signVote
 	vote, err := cs.signVote(msgType, hash, header)
 	if err == nil {
