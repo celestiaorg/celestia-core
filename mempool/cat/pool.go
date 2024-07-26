@@ -747,7 +747,7 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 	for _, tx := range purgedTxs {
 		txmp.evictedTxCache.Push(tx.key)
 	}
-	txmp.metrics.EvictedTxs.Add(float64(numExpired))
+	txmp.metrics.ExpiredTxs.Add(float64(numExpired))
 
 	// purge old evicted and seen transactions
 	if txmp.config.TTLDuration == 0 {
