@@ -77,7 +77,13 @@ func TestProvider(t *testing.T) {
 	require.Nil(t, lb)
 	assert.Equal(t, provider.ErrHeightTooHigh, err)
 
-	_, err = p.LightBlock(context.Background(), 1)
+	// when we reach here, height 1 is expected to be pruned
+	// however, due to the delayed precommit logic which makes the node to
+	// sleep to match the 12s block time,
+	// it seems the pruning does not happen immediately,
+	// so adding a sleep here to see if that fixes the issue
+	time.Sleep(12 * 10 * time.Second)
+	lb, err = p.LightBlock(context.Background(), 1)
 	require.Error(t, err)
 	require.Nil(t, lb)
 	assert.Equal(t, provider.ErrLightBlockNotFound, err)
