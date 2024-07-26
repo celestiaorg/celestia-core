@@ -2320,7 +2320,7 @@ func (cs *State) signAddVote(msgType cmtproto.SignedMsgType, hash []byte, header
 	}
 
 	if msgType == cmtproto.PrecommitType {
-		targetBlockTime := 12 * time.Second
+		targetBlockTime := 11 * time.Second
 		precommitVoteTime := cs.StartTime.Add(targetBlockTime)
 		waitTime := precommitVoteTime.Sub(time.Now())
 		if waitTime > 0 {
