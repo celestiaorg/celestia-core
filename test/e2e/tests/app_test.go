@@ -75,7 +75,8 @@ func TestApp_Tx(t *testing.T) {
 		require.NoError(t, err)
 
 		hash := tx.Hash()
-		waitTime := 1 * time.Minute
+		blockTime := 12 * time.Second
+		waitTime := blockTime
 		require.Eventuallyf(t, func() bool {
 			txResp, err := client.Tx(ctx, hash, false)
 			return err == nil && bytes.Equal(txResp.Tx, tx)
