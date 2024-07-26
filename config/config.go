@@ -433,8 +433,9 @@ func DefaultRPCConfig() *RPCConfig {
 		MaxSubscriptionClients:    100,
 		MaxSubscriptionsPerClient: 5,
 		SubscriptionBufferSize:    defaultSubscriptionBufferSize,
-		TimeoutBroadcastTxCommit:  10 * time.Second,
-		WebSocketWriteBufferSize:  defaultSubscriptionBufferSize,
+		// this value is changed to 13 seconds to align with the new consistent block time of 12ish seconds
+		TimeoutBroadcastTxCommit: 13 * time.Second,
+		WebSocketWriteBufferSize: defaultSubscriptionBufferSize,
 
 		MaxBodyBytes:   int64(1000000), // 1MB
 		MaxHeaderBytes: 1 << 20,        // same as the net/http default
