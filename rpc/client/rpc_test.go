@@ -538,30 +538,52 @@ func TestBlockSearch(t *testing.T) {
 
 func TestTxStatus(t *testing.T) {
 	c := getHTTPClient()
+	require := require.New(t)
+	mempool := node.Mempool()
 
-	// first we broadcast a few txs
-	var txHashes [][]byte
-	var txHeights []int64
-	for i := 0; i < 10; i++ {
-		_, _, tx := MakeTxKV()
+	// Create a new transaction
+	_, _, tx := MakeTxKV()
 
-		result, err := c.BroadcastTxCommit(context.Background(), tx)
-		require.NoError(t, err)
-		txHashes = append(txHashes, result.Hash)
-		txHeights = append(txHeights, result.Height)
-	}
+	// Get the initial size of the mempool
+	initMempoolSize := mempool.Size()
 
-	require.NoError(t, client.WaitForHeight(c, 5, nil))
+	// Add the transaction to the mempool
+	err := mempool.CheckTx(tx, nil, mempl.TxInfo{})
+	require.NoError(err)
 
-	// check the status of each transaction
-	for i, hash := range txHashes {
-		result, err := c.TxStatus(context.Background(), hash)
-		require.NoError(t, err)
+	// Check if the size of the mempool has increased
+	require.Equal(initMempoolSize+1, mempool.Size())
 
-		expectedIndex := int64(0)
-		require.Equal(t, txHeights[i], result.Height)
-		require.Equal(t, expectedIndex, result.Index)
-	}
+	// Get the tx status from the mempool
+	result, err := c.TxStatus(context.Background(), types.Tx(tx).Hash())
+	require.NoError(err)
+	require.EqualValues(0, result.Height)
+	require.EqualValues(0, result.Index)
+	require.Equal("PENDING", result.Status)
+
+	// Flush the mempool
+	mempool.Flush()
+	require.Equal(0, mempool.Size())
+
+	// Get tx status after flushing it from the mempool
+	result, err = c.TxStatus(context.Background(), types.Tx(tx).Hash())
+	require.NoError(err)
+	require.EqualValues(0, result.Height)
+	require.EqualValues(0, result.Index)
+	require.Equal("UNKNOWN", result.Status)
+
+	// Broadcast the tx again
+	bres, err := c.BroadcastTxCommit(context.Background(), tx)
+	require.NoError(err)
+	require.True(bres.CheckTx.IsOK())
+	require.True(bres.DeliverTx.IsOK())
+
+	// Get the tx status
+	result, err = c.TxStatus(context.Background(), types.Tx(tx).Hash())
+	require.NoError(err)
+	require.EqualValues(bres.Height, result.Height)
+	require.EqualValues(0, result.Index)
+	require.Equal("COMMITTED", result.Status)
 }
 
 func TestTxSearch(t *testing.T) {

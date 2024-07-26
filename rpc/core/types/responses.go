@@ -60,10 +60,13 @@ type ResultCommit struct {
 	CanonicalCommit    bool `json:"canonical"`
 }
 
-// ResultTxStatus contains info to locate a tx in a committed block.
+// ResultTxStatus represents the status of a transaction during its life cycle.
+// It contains info to locate a tx in a committed block as well as its execution code and status.
 type ResultTxStatus struct {
-	Height int64 `json:"height"`
-	Index  int64 `json:"index"`
+	Height        int64  `json:"height"`
+	Index         uint32 `json:"index"`
+	ExecutionCode uint32 `json:"execution_code"`
+	Status        string `json:"status"`
 }
 
 // ABCI results from a block
