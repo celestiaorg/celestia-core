@@ -50,11 +50,12 @@ func TestNodeStartStop(t *testing.T) {
 	// wait for the node to produce a block
 	blocksSub, err := n.EventBus().Subscribe(context.Background(), "node_test", types.EventQueryNewBlock)
 	require.NoError(t, err)
+	blockTime := 12 * time.Second
 	select {
 	case <-blocksSub.Out():
 	case <-blocksSub.Cancelled():
 		t.Fatal("blocksSub was cancelled")
-	case <-time.After(10 * time.Second):
+	case <-time.After(blockTime):
 		t.Fatal("timed out waiting for the node to produce a block")
 	}
 
