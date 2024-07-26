@@ -25,6 +25,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestBroadcastTx(t *testing.T) {
+	// TODO this test fails and needs fixing
 	res, err := rpctest.GetGRPCClient().BroadcastTx(
 		context.Background(),
 		&core_grpc.RequestBroadcastTx{Tx: []byte("this is a tx")},
