@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/celestiaorg/nmt"
+	"github.com/celestiaorg/nmt/pb"
 	"github.com/cometbft/cometbft/pkg/consts"
 	"github.com/cometbft/cometbft/proto/tendermint/crypto"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -18,7 +19,7 @@ type ShareProof struct {
 	Data [][]byte `json:"data"`
 	// ShareProofs are NMT proofs that the shares in Data exist in a set of
 	// rows. There will be one ShareProof per row that the shares occupy.
-	ShareProofs []*tmproto.NMTProof `json:"share_proofs"`
+	ShareProofs []*pb.Proof `json:"share_proofs"`
 	// NamespaceID is the namespace id of the shares being proven. This
 	// namespace id is used when verifying the proof. If the namespace id doesn't
 	// match the namespace of the shares, the proof will fail verification.
@@ -67,7 +68,7 @@ func ShareProofFromProto(pb tmproto.ShareProof) (ShareProof, error) {
 // If the proof is not correctly constructed, it returns a sensible error.
 // Note: these proofs are tested on the app side.
 func (sp ShareProof) Validate() error {
-	numberOfSharesInProofs := int32(0)
+	numberOfSharesInProofs := int64(0)
 	for _, proof := range sp.ShareProofs {
 		// the range is not inclusive from the left.
 		numberOfSharesInProofs += proof.End - proof.Start
@@ -103,7 +104,7 @@ func (sp ShareProof) VerifyProof(root []byte) bool {
 	if err := sp.Validate(); err != nil {
 		return false
 	}
-	cursor := int32(0)
+	cursor := int64(0)
 	for i, proof := range sp.ShareProofs {
 		nmtProof := nmt.NewInclusionProof(
 			int(proof.Start),
