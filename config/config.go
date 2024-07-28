@@ -1194,18 +1194,19 @@ type InstrumentationConfig struct {
 	// Instrumentation namespace.
 	Namespace string `mapstructure:"namespace"`
 
-	// TracePushConfig is the relative path of the push config. This second
+	// Deprecated: TracePushConfig is the relative path of the push config. This second
 	// config contains credentials for where and how often to.
 	TracePushConfig string `mapstructure:"trace_push_config"`
 
-	// TracePullAddress is the address that the trace server will listen on for
+	// Deprecated: TracePullAddress is the address that the trace server will listen on for
 	// pulling data.
 	TracePullAddress string `mapstructure:"trace_pull_address"`
 
 	// TraceType is the type of tracer used. Options are "local" and "noop".
 	TraceType string `mapstructure:"trace_type"`
 
-	// TraceBufferSize is the number of traces to write in a single batch.
+	// TraceBufferSize is the size of the buffer in number of events that will
+	// be kept before dropping events of a single type.
 	TraceBufferSize int `mapstructure:"trace_push_batch_size"`
 
 	// TracingTables is the list of tables that will be traced. See the

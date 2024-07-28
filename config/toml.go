@@ -556,16 +556,21 @@ namespace = "{{ .Instrumentation.Namespace }}"
 # This second config contains credentials for where and how often to
 # push trace data to. For example, if the config is next to this config,
 # it would be "push_config.json".
+#
+# WARNING: deprecated
 trace_push_config = "{{ .Instrumentation.TracePushConfig }}"
 
 # The tracer pull address specifies which address will be used for pull based
 # event collection. If empty, the pull based server will not be started.
+#
+# WARNING: deprecated
 trace_pull_address = "{{ .Instrumentation.TracePullAddress }}"
 
 # The tracer to use for collecting trace data.
 trace_type = "{{ .Instrumentation.TraceType }}"
 
-# The size of the batches that are sent to the database.
+# The number of events for each type that will buffered before writing.
+# If this buffer is reached events will be dropped to avoid blocking.
 trace_push_batch_size = {{ .Instrumentation.TraceBufferSize }}
 
 # The list of tables that are updated when tracing. All available tables and

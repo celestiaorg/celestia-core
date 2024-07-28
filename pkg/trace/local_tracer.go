@@ -1,24 +1,14 @@
 package trace
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
-)
-
-const (
-	PushBucketName = "TRACE_PUSH_BUCKET_NAME"
-	PushRegion     = "TRACE_PUSH_REGION"
-	PushAccessKey  = "TRACE_PUSH_ACCESS_KEY"
-	PushKey        = "TRACE_PUSH_SECRET_KEY"
-	PushDelay      = "TRACE_PUSH_DELAY"
 )
 
 // Event wraps some trace data with metadata that dictates the table and things
@@ -52,15 +42,11 @@ type LocalTracer struct {
 	chainID, nodeID string
 	logger          log.Logger
 	cfg             *config.Config
-	s3Config        S3Config
 
 	// fileMap maps tables to their open files files are threadsafe, but the map
 	// is not. Therefore don't create new files after initialization to remain
 	// threadsafe.
-	fileMap map[string]*bufferedFile
-	// canal is a channel for all events that are being written. It acts as an
-	// extra buffer to avoid blocking the caller when writing to files.
-	canal chan Event[Entry]
+	fileMap map[string]*cachedFile
 }
 
 // NewLocalTracer creates a struct that will save all of the events passed to
@@ -70,7 +56,7 @@ type LocalTracer struct {
 // to the returned channel. Call CloseAll to close all open files. Goroutine to
 // save events is started in this function.
 func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID string) (*LocalTracer, error) {
-	fm := make(map[string]*bufferedFile)
+	fm := make(map[string]*cachedFile)
 	p := path.Join(cfg.RootDir, "data", "traces")
 	for _, table := range splitAndTrimEmpty(cfg.Instrumentation.TracingTables, ",", " ") {
 		fileName := fmt.Sprintf("%s/%s.jsonl", p, table)
@@ -82,132 +68,44 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 		if err != nil {
 			return nil, fmt.Errorf("failed to open or create file %s: %w", fileName, err)
 		}
-		fm[table] = newbufferedFile(file)
+
+		fm[table] = newCachedFile(file, logger, cfg.Instrumentation.TraceBufferSize, 10)
 	}
 
 	lt := &LocalTracer{
 		fileMap: fm,
 		cfg:     cfg,
-		canal:   make(chan Event[Entry], cfg.Instrumentation.TraceBufferSize),
 		chainID: chainID,
 		nodeID:  nodeID,
 		logger:  logger,
 	}
 
-	go lt.drainCanal()
-	if cfg.Instrumentation.TracePullAddress != "" {
-		logger.Info("starting pull server", "address", cfg.Instrumentation.TracePullAddress)
-		go lt.servePullData()
-	}
-
-	if cfg.Instrumentation.TracePushConfig != "" {
-		s3Config, err := readS3Config(path.Join(cfg.RootDir, "config", cfg.Instrumentation.TracePushConfig))
-		if err != nil {
-			return nil, fmt.Errorf("failed to read s3 config: %w", err)
-		}
-		lt.s3Config = s3Config
-		go lt.pushLoop()
-	} else if s3Config, err := GetPushConfigFromEnv(); err == nil {
-		lt.s3Config = s3Config
-		go lt.pushLoop()
-	}
-
 	return lt, nil
 }
 
-// GetPushConfigFromEnv reads the required environment variables to push trace
-func GetPushConfigFromEnv() (S3Config, error) {
-	bucketName := os.Getenv(PushBucketName)
-	region := os.Getenv(PushRegion)
-	accessKey := os.Getenv(PushAccessKey)
-	secretKey := os.Getenv(PushKey)
-	pushDelay, err := strconv.ParseInt(os.Getenv(PushDelay), 10, 64)
-	if err != nil {
-		return S3Config{}, err
-	}
-	if bucketName == "" || region == "" || accessKey == "" || secretKey == "" {
-		return S3Config{}, fmt.Errorf("missing required environment variables")
-	}
-	var s3Config = S3Config{
-		BucketName: bucketName,
-		Region:     region,
-		AccessKey:  accessKey,
-		SecretKey:  secretKey,
-		PushDelay:  pushDelay,
-	}
-	return s3Config, nil
-}
-
 func (lt *LocalTracer) Write(e Entry) {
-	if !lt.IsCollecting(e.Table()) {
+	cf, has := lt.getFile(e.Table())
+	if !has {
 		return
 	}
-	lt.canal <- NewEvent(lt.chainID, lt.nodeID, e.Table(), e)
+	cf.Cache(NewEvent(lt.chainID, lt.nodeID, e.Table(), e))
 }
 
-// ReadTable returns a file for the given table. If the table is not being
-// collected, an error is returned. The caller should not close the file.
-func (lt *LocalTracer) readTable(table string) (*os.File, func() error, error) {
-	bf, has := lt.getFile(table)
-	if !has {
-		return nil, func() error { return nil }, fmt.Errorf("table %s not found", table)
-	}
-
-	return bf.File()
+// getFile gets a file for the given type. This method is purposely
+// not thread-safe to avoid the overhead of locking with each event save.
+func (lt *LocalTracer) getFile(table string) (*cachedFile, bool) {
+	f, has := lt.fileMap[table]
+	return f, has
 }
 
+// IsCollecting returns true if the table is being collected.
 func (lt *LocalTracer) IsCollecting(table string) bool {
 	_, has := lt.getFile(table)
 	return has
 }
 
-// getFile gets a file for the given type. This method is purposely
-// not thread-safe to avoid the overhead of locking with each event save.
-func (lt *LocalTracer) getFile(table string) (*bufferedFile, bool) {
-	f, has := lt.fileMap[table]
-	return f, has
-}
-
-// saveEventToFile marshals an Event into JSON and appends it to a file named after the event's Type.
-func (lt *LocalTracer) saveEventToFile(event Event[Entry]) error {
-	file, has := lt.getFile(event.Table)
-	if !has {
-		return fmt.Errorf("table %s not found", event.Table)
-	}
-
-	eventJSON, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("failed to marshal event: %v", err)
-	}
-
-	if _, err := file.Write(append(eventJSON, '\n')); err != nil {
-		return fmt.Errorf("failed to write event to file: %v", err)
-	}
-
-	return nil
-}
-
-// draincanal takes a variadic number of channels of Event pointers and drains them into files.
-func (lt *LocalTracer) drainCanal() {
-	// purposefully do not lock, and rely on the channel to provide sync
-	// actions, to avoid overhead of locking with each event save.
-	for ev := range lt.canal {
-		if err := lt.saveEventToFile(ev); err != nil {
-			lt.logger.Error("failed to save event to file", "error", err)
-		}
-	}
-}
-
 // Stop optionally uploads and closes all open files.
 func (lt *LocalTracer) Stop() {
-	if lt.s3Config.SecretKey != "" {
-		lt.logger.Info("pushing all tables before stopping")
-		err := lt.PushAll()
-		if err != nil {
-			lt.logger.Error("failed to push tables", "error", err)
-		}
-	}
-
 	for _, file := range lt.fileMap {
 		err := file.Close()
 		if err != nil {
