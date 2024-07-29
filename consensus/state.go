@@ -2324,7 +2324,15 @@ func (cs *State) signAddVote(msgType cmtproto.SignedMsgType, hash []byte, header
 		precommitVoteTime := cs.StartTime.Add(targetBlockTime)
 		waitTime := precommitVoteTime.Sub(cmttime.Now())
 		if waitTime > 0 {
-			time.Sleep(waitTime)
+			if waitTime > 11*time.Second {
+				cs.Logger.Debug("waiting for precommit vote was higher than"+
+					" expected", "height", cs.Height, "round", cs.Round,
+					"waitTime", waitTime)
+				time.Sleep(11 * time.Second)
+			} else {
+				time.Sleep(waitTime)
+			}
+
 		}
 	}
 	// TODO: pass pubKey to signVote
