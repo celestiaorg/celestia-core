@@ -167,8 +167,8 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
 
 	cfg.Instrumentation.TraceType = "celestia"
-	cfg.Instrumentation.TracePushConfig = node.TracePushConfig
-	cfg.Instrumentation.TracePullAddress = node.TracePullAddress
+	cfg.Instrumentation.TracePushConfig = node.TracePushConfig   //nolint:staticcheck
+	cfg.Instrumentation.TracePullAddress = node.TracePullAddress //nolint:staticcheck
 	cfg.Instrumentation.PyroscopeTrace = node.PyroscopeTrace
 	cfg.Instrumentation.PyroscopeURL = node.PyroscopeURL
 	cfg.Instrumentation.PyroscopeProfileTypes = node.PyroscopeProfileTypes

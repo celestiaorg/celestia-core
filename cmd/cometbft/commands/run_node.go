@@ -97,13 +97,13 @@ func AddNodeFlags(cmd *cobra.Command) {
 
 	cmd.PersistentFlags().String(
 		trace.FlagTracePushConfig,
-		config.Instrumentation.TracePushConfig,
+		config.Instrumentation.TracePushConfig, //nolint:staticcheck
 		trace.FlagTracePushConfigDescription,
 	)
 
 	cmd.PersistentFlags().String(
 		trace.FlagTracePullAddress,
-		config.Instrumentation.TracePullAddress,
+		config.Instrumentation.TracePullAddress, //nolint:staticcheck
 		trace.FlagTracePullAddressDescription,
 	)
 

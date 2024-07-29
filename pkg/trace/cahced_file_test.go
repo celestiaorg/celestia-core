@@ -74,8 +74,7 @@ func (te *TestEntry) Table() string {
 func generateEvents(count int) []Event[Entry] {
 	events := make([]Event[Entry], 0, count)
 	for i := 0; i < count; i++ {
-		var entry Entry
-		entry = &TestEntry{"test"}
+		entry := Entry(&TestEntry{"test"})
 		events = append(events, NewEvent("test", "test", "test", entry))
 	}
 	return events
