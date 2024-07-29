@@ -1,7 +1,6 @@
 package trace
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -51,9 +50,6 @@ func Test_cachedFile(t *testing.T) {
 				}
 
 				file, err := os.OpenFile(fdir, os.O_RDONLY, 0777)
-				require.NoError(t, err)
-
-				_, err = file.Seek(0, io.SeekStart)
 				require.NoError(t, err)
 
 				entries, err := DecodeFile[TestEntry](file)
