@@ -2032,11 +2032,9 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 		Header:     compactBlock.Header,
 		LastCommit: compactBlock.LastCommit,
 		Evidence:   compactBlock.Evidence,
+		Data:       compactBlock.Data,
 	}
-	block.Data, _ = types.DataFromProto(&cmtproto.Data{
-		Txs:  txs,
-		Hash: block.Header.DataHash,
-	})
+	block.Txs = types.ToTxs(txs)
 
 	if err := block.ValidateBasic(); err != nil {
 		return fmt.Errorf("received invalid block: %w", err)
