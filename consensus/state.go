@@ -1985,6 +1985,12 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 		return nil
 	}
 
+	if cs.Round != msg.Round {
+		cs.Logger.Debug("received compact block from wrong round", "round", msg.Round, "currentRound", cs.Round)
+		cs.metrics.BlockGossipPartsReceived.With("matches_current", "false").Add(1)
+		return nil
+	}
+
 	// We're not expecting a block part.
 	if cs.ProposalBlockParts == nil || cs.Proposal == nil {
 		cs.metrics.BlockGossipPartsReceived.With("matches_current", "false").Add(1)

@@ -24,8 +24,9 @@ import (
 var _ mempool.Mempool = (*TxPool)(nil)
 
 var (
-	ErrTxInMempool       = errors.New("tx already exists in mempool")
-	ErrTxAlreadyRejected = errors.New("tx was previously rejected")
+	ErrTxInMempool         = errors.New("tx already exists in mempool")
+	ErrTxAlreadyRejected   = errors.New("tx was previously rejected")
+	ErrTxRecentlyCommitted = errors.New("tx was recently committed")
 )
 
 // TxPoolOption sets an optional parameter on the TxPool.
@@ -66,6 +67,8 @@ type TxPool struct {
 
 	// Thread-safe cache of rejected transactions for quick look-up
 	rejectedTxCache *LRUTxCache
+	// Thread-safe cache of committed transactions for quick look-up
+	committedTxCache *LRUTxCache
 	// Thread-safe cache of evicted transactions for quick look-up
 	evictedTxCache *LRUTxCache
 	// Thread-safe list of transactions peers have seen that we have not yet seen
@@ -316,10 +319,11 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 // sufficient priority and space else if evicted it will return an error
 func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
 	// First check any of the caches to see if we can conclude early. We may have already seen and processed
-	// the transaction if:
-	// - We are connected to nodes running v0 or v1 which simply flood the network
-	// - If a client submits a transaction to multiple nodes (via RPC)
-	// - We send multiple requests and the first peer eventually responds after the second peer has already provided the tx
+	// the transaction, or it may have already been committed.
+	if wtx := txmp.store.getCommitted(key); wtx != nil {
+		return nil, ErrTxRecentlyCommitted
+	}
+
 	if txmp.IsRejectedTx(key) {
 		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
 		// be non-deterministic, we don't punish the peer but instead just ignore the tx
@@ -531,8 +535,6 @@ func (txmp *TxPool) Update(
 	keys := make([]types.TxKey, len(blockTxs))
 	for idx, tx := range blockTxs {
 		keys[idx] = tx.Key()
-		// this prevents the node from reprocessing recently committed transactions
-		txmp.rejectedTxCache.Push(keys[idx])
 	}
 	txmp.store.markAsCommitted(keys)
 
