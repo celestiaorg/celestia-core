@@ -156,6 +156,13 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "rerequested_txs",
 			Help:      "Number of times a transaction was requested again after a previous request timed out",
 		}, labels).With(labelsAndValues...),
+
+		MissingTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "missing_txs",
+			Help:      "Number of transactions that were not found in the mempool from the current proposal",
+		}, labels).With(labelsAndValues...),
 	}
 }
 
@@ -173,6 +180,7 @@ func NopMetrics() *Metrics {
 		AlreadySeenTxs: discard.NewCounter(),
 		RequestedTxs:   discard.NewCounter(),
 		RerequestedTxs: discard.NewCounter(),
+		MissingTxs:      discard.NewCounter(),
 	}
 }
 
