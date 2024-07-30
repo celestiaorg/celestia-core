@@ -167,7 +167,6 @@ type State struct {
 
 	// for reporting metrics
 	metrics     *Metrics
-	jsonMetrics *JSONMetrics
 	traceClient trace.Tracer
 }
 
@@ -206,7 +205,6 @@ func NewState(
 		evpool:           evpool,
 		evsw:             cmtevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
-		jsonMetrics:      NewJSONMetrics(path),
 		traceClient:      trace.NoOpTracer(),
 	}
 
@@ -1801,12 +1799,6 @@ func (cs *State) finalizeCommit(height int64) {
 	// NewHeightStep!
 	cs.updateToState(stateCopy)
 
-	cs.jsonMetrics.Blocks++
-	// Save every 20 blocks
-	if cs.Height%20 == 0 {
-		cs.jsonMetrics.Save()
-	}
-
 	fail.Fail() // XXX
 
 	// Private validator might have changed it's key pair => refetch pubkey.
@@ -1979,7 +1971,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error {
 	compactBlock := msg.Block
 	height := compactBlock.Height
-	cs.jsonMetrics.ReceivedCompactBlocks++
+	cs.metrics.CompactBlocksReceived.Add(1)
 
 	if cs.ProposalBlock != nil {
 		// We already have the proposal block.
@@ -2020,7 +2012,7 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 
 	cs.mtx.Lock()
 	if err != nil {
-		cs.jsonMetrics.CompactBlockFailures++
+		cs.metrics.CompactBlocksFailed.Add(1)
 		if ctx.Err() != nil {
 			cs.Logger.Info("failed to fetch transactions within the timeout", "timeout", timeout)
 			return nil
@@ -2101,7 +2093,6 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 	}
 
 	cs.metrics.BlockGossipPartsReceived.With("matches_current", "true").Add(1)
-	cs.jsonMetrics.ReceivedBlockParts++
 
 	if cs.ProposalBlockParts.ByteSize() > cs.state.ConsensusParams.Block.MaxBytes {
 		return added, fmt.Errorf("total size of proposal block parts exceeds maximum block bytes (%d > %d)",

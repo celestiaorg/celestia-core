@@ -54,7 +54,6 @@ type TxPool struct {
 	config       *config.MempoolConfig
 	proxyAppConn proxy.AppConnMempool
 	metrics      *mempool.Metrics
-	jsonMetrics  *mempool.JSONMetrics
 
 	// these values are modified once per height
 	updateMtx            sync.Mutex
@@ -111,7 +110,6 @@ func NewTxPool(
 		store:            newStore(),
 		broadcastCh:      make(chan *wrappedTx),
 		txsToBeBroadcast: make([]types.TxKey, 0),
-		jsonMetrics:      mempool.NewJSONMetrics(path),
 	}
 
 	for _, opt := range options {
@@ -558,10 +556,6 @@ func (txmp *TxPool) Update(
 		} else {
 			txmp.notifyTxsAvailable()
 		}
-	}
-	// save every 20 blocks
-	if blockHeight%20 == 0 {
-		txmp.jsonMetrics.Save()
 	}
 	return nil
 }

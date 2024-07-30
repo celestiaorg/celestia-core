@@ -64,6 +64,10 @@ type Metrics struct {
 	// RerequestedTxs defines the number of times that a requested tx
 	// never received a response in time and a new request was made.
 	RerequestedTxs metrics.Counter
+
+	// MissingTxs defines the number of transactions that were not found in the mempool
+	// from the current proposal
+	MissingTxs metrics.Counter
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.

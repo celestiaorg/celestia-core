@@ -102,6 +102,10 @@ type Metrics struct {
 
 	// The amount of proposals that failed to be received in time
 	TimedOutProposals metrics.Counter
+
+	CompactBlocksReceived metrics.Counter
+	CompactBlocksSent     metrics.Counter
+	CompactBlocksFailed   metrics.Counter
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -279,6 +283,24 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "timed_out_proposals",
 			Help:      "Number of proposals that failed to be received in time",
 		}, labels).With(labelsAndValues...),
+		CompactBlocksReceived: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "compact_blocks_received",
+			Help:      "Number of compact blocks received by the node",
+		}, labels).With(labelsAndValues...),
+		CompactBlocksSent: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "compact_blocks_sent",
+			Help:      "Number of compact blocks sent by the node",
+		}, labels).With(labelsAndValues...),
+		CompactBlocksFailed: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "compact_blocks_failed",
+			Help:      "Number of compact blocks failed to be received by the node",
+		}, labels).With(labelsAndValues...),
 	}
 }
 
@@ -317,6 +339,10 @@ func NopMetrics() *Metrics {
 		FullPrevoteMessageDelay:      discard.NewGauge(),
 		ApplicationRejectedProposals: discard.NewCounter(),
 		TimedOutProposals:            discard.NewCounter(),
+
+		CompactBlocksReceived: discard.NewCounter(),
+		CompactBlocksSent:     discard.NewCounter(),
+		CompactBlocksFailed:   discard.NewCounter(),
 	}
 }
 
