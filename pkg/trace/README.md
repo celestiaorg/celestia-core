@@ -10,7 +10,8 @@ To enable the local tracer, add the following to the config.toml file:
 # The tracer to use for collecting trace data.
 trace_type = "local"
 
-# The size of the batches that are sent to the database.
+# The size of the cache for each table. Data is constantly written to disk,
+# but if this is hit data past this limit is ignored.
 trace_push_batch_size = 1000
 
 # The list of tables that are updated when tracing. All available tables and
@@ -32,71 +33,17 @@ if err != nil {
 }
 ```
 
-### Pull Based Event Collection
+### Event Collection
 
-Pull based event collection is where external servers connect to and pull trace
-data from the consensus node.
-
-To use this, change the config.toml to store traces in the
-.celestia-app/data/traces directory.
-
-```toml
-# The tracer pull address specifies which address will be used for pull based
-# event collection. If empty, the pull based server will not be started.
-trace_pull_address = ":26661"
-```
-
-To retrieve a table remotely using the pull based server, call the following
-function:
-
-```go
-err := GetTable("http://1.2.3.4:26661", "mempool_tx", "directory to store the file")
-if err != nil {
-    return err
-}
-```
-
-This stores the data locally in the specified directory.
-
-
-### Push Based Event Collection
-
-Push based event collection is where the consensus node pushes trace data to an
-external server. At the moment, this is just an S3 bucket. To use this, two options are available:
-#### Using push config file
-
-Add the following to the config.toml file:
-
-```toml
-# TracePushConfig is the relative path of the push config.
-# This second config contains credentials for where and how often to
-# push trace data to. For example, if the config is next to this config,
-# it would be "push_config.json".
-trace_push_config = "{{ .Instrumentation.TracePushConfig }}"
-```
-
-The push config file is a JSON file that should look like this:
-
-```json
-{
-    "bucket": "bucket-name",
-    "region": "region",
-    "access_key": "",
-    "secret_key": "",
-    "push_delay": 60 // number of seconds to wait between intervals of pushing all files
-}
-```
-
-#### Using environment variables for s3 bucket
-
-Alternatively, you can set the following environment variables:
+Collect the events after the data collection is completed by simply transfering
+the files however you see fit. For example, using the `scp` command:
 
 ```bash
-export TRACE_PUSH_BUCKET_NAME=bucket-name
-export TRACE_PUSH_REGION=region
-export TRACE_PUSH_ACCESS_KEY=access-key
-export TRACE_PUSH_SECRET_KEY=secret-key
-export TRACE_PUSH_DELAY=push-delay
+scp -r user@host:/path/to/.celestia-app/data/traces /path/to/local/directory
 ```
 
-`bucket_name` , `region`, `access_key`, `secret_key` and `push_delay` are the s3 bucket name, region, access key, secret key and the delay between pushes respectively.
+or using aws s3 (after setting up the aws cli ofc):
+
+```bash
+aws s3 cp /path/to/.celestia-app/data/traces s3://<bucket-name>/<prefix> --recursive
+```
