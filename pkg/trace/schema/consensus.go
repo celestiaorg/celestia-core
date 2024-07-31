@@ -15,12 +15,13 @@ func ConsensusTables() []string {
 		VoteTable,
 		ConsensusStateTable,
 		ProposalTable,
+		PrecommitTimeTable,
 	}
 }
 
 const (
-	// PrecommitTime
-	PrecommitTime = "precommit_time"
+	// PrecommitTimeTable
+	PrecommitTimeTable = "precommit_time"
 )
 
 type PreCommitTime struct {
@@ -30,7 +31,7 @@ type PreCommitTime struct {
 }
 
 func (p PreCommitTime) Table() string {
-	return PrecommitTime
+	return PrecommitTimeTable
 }
 
 func WritePreCommitTime(client trace.Tracer, height int64, round int32, delay float64) {
