@@ -40,10 +40,12 @@ func TestConfigValidateBasic(t *testing.T) {
 
 func TestConfigPossibleMisconfigurations(t *testing.T) {
 	cfg := DefaultConfig()
-	// default statesync configuration set entries without enabling statesync
-	require.Len(t, cfg.PossibleMisconfigurations(), 1)
-	cfg.StateSync.Enable = true
+	require.Len(t, cfg.PossibleMisconfigurations(), 0)
+	// providing rpc_servers while enable = false is a possible misconfiguration
+	cfg.StateSync.RPCServers = []string{"first_rpc"}
+	require.Equal(t, []string{"[statesync] section: rpc_servers specified but enable = false"}, cfg.PossibleMisconfigurations())
 	// enabling statesync deletes possible misconfiguration
+	cfg.StateSync.Enable = true
 	require.Len(t, cfg.PossibleMisconfigurations(), 0)
 }
 
@@ -136,72 +138,12 @@ func TestStateSyncConfigValidateBasic(t *testing.T) {
 	require.NoError(t, cfg.ValidateBasic())
 }
 
-func TestStateSyncIsEqual(t *testing.T) {
-	tests := []struct {
-		modify func(*StateSyncConfig)
-	}{
-		{
-			modify: func(x *StateSyncConfig) {
-				x.Enable = true
-			},
-		},
-		{
-			modify: func(x *StateSyncConfig) {
-				x.TempDir = "/other-dir"
-			},
-		},
-		{
-			modify: func(x *StateSyncConfig) {
-				x.RPCServers = []string{"other-rpcserver"}
-			},
-		},
-		{
-			modify: func(x *StateSyncConfig) {
-				x.TrustPeriod = time.Duration(1000 * time.Second)
-			},
-		},
-		{
-			modify: func(x *StateSyncConfig) {
-				x.TrustHeight = 1000
-			},
-		},
-		{
-			modify: func(x *StateSyncConfig) {
-				x.TrustHash = "hash"
-			},
-		},
-		{
-			modify: func(x *StateSyncConfig) {
-				x.DiscoveryTime = time.Duration(1000 * time.Second)
-			},
-		},
-		{
-			modify: func(x *StateSyncConfig) {
-				x.ChunkRequestTimeout = time.Duration(1000 * time.Second)
-			},
-		},
-		{
-			modify: func(x *StateSyncConfig) {
-				x.ChunkFetchers = 1000
-			},
-		},
-	}
-
-	cfg1 := DefaultStateSyncConfig()
-	cfg2 := DefaultStateSyncConfig()
-	require.True(t, cfg1.isEqual(*cfg2))
-
-	for _, test := range tests {
-		cfg2 := DefaultStateSyncConfig()
-		test.modify(cfg2)
-		require.False(t, cfg1.isEqual(*cfg2))
-	}
-}
-
 func TestStateSyncPossibleMisconfigurations(t *testing.T) {
 	cfg := DefaultStateSyncConfig()
-	// default statesync configuration set entries without enabling statesync
-	require.Equal(t, []string{"entries are set meanwhile configuration is disabled"}, cfg.PossibleMisconfigurations())
+	require.Len(t, cfg.PossibleMisconfigurations(), 0)
+	// providing rpc_servers while enable = false is a possible misconfiguration
+	cfg.RPCServers = []string{"first_rpc"}
+	require.Equal(t, []string{"rpc_servers specified but enable = false"}, cfg.PossibleMisconfigurations())
 	// enabling statesync deletes possible misconfiguration
 	cfg.Enable = true
 	require.Len(t, cfg.PossibleMisconfigurations(), 0)

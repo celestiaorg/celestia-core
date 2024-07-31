@@ -870,8 +870,8 @@ func TestStateSyncConfig() *StateSyncConfig {
 // PossibleMisconfigurations returns a list of possible conflicting entries that
 // may lead to unexpected behavior
 func (cfg *StateSyncConfig) PossibleMisconfigurations() []string {
-	if !cfg.Enable && !cfg.isEqual(StateSyncConfig{}) {
-		return []string{"state sync config is set but enable = false"}
+	if !cfg.Enable && len(cfg.RPCServers) != 0 {
+		return []string{"rpc_servers specified but enable = false"}
 	}
 	return []string{}
 }
@@ -924,10 +924,6 @@ func (cfg *StateSyncConfig) ValidateBasic() error {
 	}
 
 	return nil
-}
-
-func (cfg *StateSyncConfig) isEqual(comp StateSyncConfig) bool {
-	return reflect.DeepEqual(cfg, comp)
 }
 
 //-----------------------------------------------------------------------------
