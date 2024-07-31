@@ -2325,14 +2325,15 @@ func (cs *State) signAddVote(msgType cmtproto.SignedMsgType, hash []byte, header
 		waitTime := precommitVoteTime.Sub(cmttime.Now())
 		schema.WritePreCommitTime(cs.traceClient, cs.Height, cs.Round, waitTime.Seconds())
 		if waitTime > 0 {
-			if waitTime > 11*time.Second {
-				cs.Logger.Debug("waiting for precommit vote was higher than"+
-					" expected", "height", cs.Height, "round", cs.Round,
-					"waitTime", waitTime)
-				time.Sleep(11 * time.Second)
-			} else {
-				time.Sleep(waitTime)
-			}
+			//if waitTime > 11*time.Second {
+			//	cs.Logger.Debug("waiting for precommit vote was higher than"+
+			//		" expected", "height", cs.Height, "round", cs.Round,
+			//		"waitTime", waitTime)
+			//	time.Sleep(11 * time.Second)
+			//} else {
+			//	time.Sleep(waitTime)
+			//}
+			time.Sleep(waitTime)
 
 		}
 	}
