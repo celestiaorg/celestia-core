@@ -302,7 +302,7 @@ func (p *peer) IsPersistent() bool {
 func (p *peer) IPHasChanged() bool {
 	oldIP := p.ip
 	newIP := p.RemoteIP()
-	return !oldIP.Equal(newIP) 
+	return !oldIP.Equal(newIP)
 }
 
 // NodeInfo returns a copy of the peer's NodeInfo.

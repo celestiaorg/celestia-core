@@ -43,6 +43,7 @@ func (mp mockPeer) RemoteAddr() net.Addr { return &net.TCPAddr{IP: mp.RemoteIP()
 
 func (mp mockPeer) IsOutbound() bool   { return true }
 func (mp mockPeer) IsPersistent() bool { return true }
+func (mp mockPeer) IPHasChanged() bool { return false }
 func (mp mockPeer) CloseConn() error   { return nil }
 
 func (mp mockPeer) NodeInfo() p2p.NodeInfo {
