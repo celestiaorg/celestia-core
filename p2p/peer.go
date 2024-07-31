@@ -301,6 +301,9 @@ func (p *peer) IsPersistent() bool {
 // IPHasChanged returns true and the new IP if the peer's IP has changed.
 func (p *peer) IPHasChanged() bool {
 	oldIP := p.ip
+	if oldIP == nil {
+		return false
+	}
 	newIP := p.RemoteIP()
 	return !oldIP.Equal(newIP)
 }
