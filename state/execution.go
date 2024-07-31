@@ -153,6 +153,12 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		panic(fmt.Sprintf("state machine returned an invalid prepare proposal response: expected last transaction to be a hash, got %d bytes", len(rpp.Txs[len(rpp.Txs)-2])))
 	}
 
+	// don't count the last tx in rpp.Txs which is data root back from app
+	rejectedTxs := len(block.Txs) - (len(rpp.Txs) - 1)
+	if rejectedTxs > 0 {
+		blockExec.metrics.RejectedTransactions.Add(float64(rejectedTxs))
+	}
+
 	// update the block with the response from PrepareProposal
 	block.Data.Txs = types.ToTxs(rpp.Txs[:len(rpp.Txs)-1])
 	// update the data hash with the one passed back by celestia-app
