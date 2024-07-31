@@ -21,7 +21,7 @@ func ConsensusTables() []string {
 
 const (
 	// PrecommitTimeTable
-	PrecommitTimeTable = "precommit_time"
+	PrecommitTimeTable = "consensus_precommit_time"
 )
 
 type PreCommitTime struct {
