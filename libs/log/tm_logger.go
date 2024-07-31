@@ -81,7 +81,7 @@ func (l *tmLogger) Error(msg string, keyvals ...interface{}) {
 	}
 }
 
-// Warnlogs a message at warning Error.
+// Warn logs a message at level Warn.
 func (l *tmLogger) Warn(msg string, keyvals ...interface{}) {
 	lWithLevel := kitlevel.Warn(l.srcLogger)
 

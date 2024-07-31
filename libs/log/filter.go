@@ -172,7 +172,7 @@ func AllowInfo() Option {
 	return allowed(levelError | levelWarn | levelInfo)
 }
 
-// AllowWarn allows error and info level log events to pass.
+// AllowWarn allows error and warn level log events to pass.
 func AllowWarn() Option {
 	return allowed(levelError | levelWarn)
 }
@@ -191,19 +191,19 @@ func allowed(allowed level) Option {
 	return func(l *filter) { l.allowed = allowed }
 }
 
-// AllowDebugWith allows error, info and debug level log events to pass for a specific key value pair.
+// AllowDebugWith allows error, warn, info and debug level log events to pass for a specific key value pair.
 func AllowDebugWith(key interface{}, value interface{}) Option {
 	return func(l *filter) {
 		l.allowedKeyvals[keyval{key, value}] = levelError | levelWarn | levelInfo | levelDebug
 	}
 }
 
-// AllowInfoWith allows error and info level log events to pass for a specific key value pair.
+// AllowInfoWith allows error, warn, and info level log events to pass for a specific key value pair.
 func AllowInfoWith(key interface{}, value interface{}) Option {
 	return func(l *filter) { l.allowedKeyvals[keyval{key, value}] = levelError | levelWarn | levelInfo }
 }
 
-// AllowWarnWith allows only error level log events to pass for a specific key value pair.
+// AllowWarnWith allows only error and warn log events to pass for a specific key value pair.
 func AllowWarnWith(key interface{}, value interface{}) Option {
 	return func(l *filter) { l.allowedKeyvals[keyval{key, value}] = levelError | levelWarn }
 }

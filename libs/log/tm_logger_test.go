@@ -70,7 +70,7 @@ func TestWarn(t *testing.T) {
 	var bufWarn bytes.Buffer
 
 	ld := log.NewTMLogger(&bufWarn)
-	ld.Debug("Client initialized with old header (trusted is more recent)",
+	ld.Warn("Client initialized with old header (trusted is more recent)",
 		"old", 42,
 		"trustedHeight", "forty two",
 		"trustedHash", []byte("test me"))

@@ -871,7 +871,7 @@ func TestStateSyncConfig() *StateSyncConfig {
 // may lead to unexpected behavior
 func (cfg *StateSyncConfig) PossibleMisconfigurations() []string {
 	if !cfg.Enable && !cfg.isEqual(StateSyncConfig{}) {
-		return []string{"entries are set meanwhile configuration is disabled"}
+		return []string{"state sync config is set but enable = false"}
 	}
 	return []string{}
 }
@@ -927,25 +927,7 @@ func (cfg *StateSyncConfig) ValidateBasic() error {
 }
 
 func (cfg *StateSyncConfig) isEqual(comp StateSyncConfig) bool {
-	if cfg.Enable != comp.Enable ||
-		cfg.ChunkFetchers != comp.ChunkFetchers ||
-		cfg.ChunkRequestTimeout != comp.ChunkRequestTimeout ||
-		cfg.DiscoveryTime != comp.DiscoveryTime ||
-		cfg.TempDir != comp.TempDir ||
-		cfg.TrustHash != comp.TrustHash ||
-		cfg.TrustHeight != comp.TrustHeight ||
-		cfg.TrustPeriod != comp.TrustPeriod {
-		return false
-	}
-	if len(cfg.RPCServers) != len(comp.RPCServers) {
-		return false
-	}
-	for index := range cfg.RPCServers {
-		if cfg.RPCServers[index] != comp.RPCServers[index] {
-			return false
-		}
-	}
-	return true
+	return reflect.DeepEqual(cfg, comp)
 }
 
 //-----------------------------------------------------------------------------

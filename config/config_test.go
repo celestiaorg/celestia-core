@@ -38,7 +38,7 @@ func TestConfigValidateBasic(t *testing.T) {
 	assert.Error(t, cfg.ValidateBasic())
 }
 
-func TestConfigPossibleMisConfigurations(t *testing.T) {
+func TestConfigPossibleMisconfigurations(t *testing.T) {
 	cfg := DefaultConfig()
 	// default statesync configuration set entries without enabling statesync
 	require.Len(t, cfg.PossibleMisconfigurations(), 1)
