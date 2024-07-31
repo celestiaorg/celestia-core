@@ -76,7 +76,7 @@ func (fp *fuzzPeer) RemoteAddr() net.Addr {
 }
 func (fp *fuzzPeer) IsOutbound() bool   { return false }
 func (fp *fuzzPeer) IsPersistent() bool { return false }
-func (fp *fuzzPeer) IPHasChanged() bool { return false }
+func (fp *fuzzPeer) HasIPChanged() bool { return false }
 
 func (fp *fuzzPeer) CloseConn() error                    { return nil }
 func (fp *fuzzPeer) NodeInfo() p2p.NodeInfo              { return defaultNodeInfo }

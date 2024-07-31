@@ -81,8 +81,8 @@ func (_m *Peer) ID() p2p.ID {
 	return r0
 }
 
-// IPHasChanged provides a mock function with given fields:
-func (_m *Peer) IPHasChanged() bool {
+// HasIPChanged provides a mock function with given fields:
+func (_m *Peer) HasIPChanged() bool {
 	ret := _m.Called()
 
 	var r0 bool

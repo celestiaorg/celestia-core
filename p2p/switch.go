@@ -389,7 +389,7 @@ func (sw *Switch) StopPeerForError(peer Peer, reason interface{}) {
 		go sw.reconnectToPeer(addr)
 	}
 
-	if peer.IPHasChanged() {
+	if peer.HasIPChanged() {
 		addr, err := sw.getPeerAddress(peer)
 		if err != nil {
 			sw.Logger.Error("Failed to get address for peer with changed IP", "peer", peer, "err", err)

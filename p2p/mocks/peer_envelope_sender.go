@@ -109,8 +109,8 @@ func (_m *PeerEnvelopeSender) IsPersistent() bool {
 	return r0
 }
 
-// IPHasChanged provides a mock function for given fields:
-func (_m *PeerEnvelopeSender) IPHasChanged() bool {
+// HasIPChanged provides a mock function for given fields:
+func (_m *PeerEnvelopeSender) HasIPChanged() bool {
 	ret := _m.Called()
 
 	var r0 bool

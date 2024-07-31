@@ -57,7 +57,7 @@ func (mp *Peer) Status() conn.ConnectionStatus { return conn.ConnectionStatus{} 
 func (mp *Peer) ID() p2p.ID                    { return mp.id }
 func (mp *Peer) IsOutbound() bool              { return mp.Outbound }
 func (mp *Peer) IsPersistent() bool            { return mp.Persistent }
-func (mp *Peer) IPHasChanged() bool            { return false }
+func (mp *Peer) HasIPChanged() bool            { return false }
 func (mp *Peer) Get(key string) interface{} {
 	if value, ok := mp.kv[key]; ok {
 		return value
