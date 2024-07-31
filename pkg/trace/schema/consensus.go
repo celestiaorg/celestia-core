@@ -18,6 +18,26 @@ func ConsensusTables() []string {
 	}
 }
 
+const (
+	// PrecommitTime
+	PrecommitTime = "precommit_time"
+)
+
+type PreCommitTime struct {
+	Height int64   `json:"height"`
+	Round  int32   `json:"round"`
+	Delay  float64 `json:"delay"`
+}
+
+func (p PreCommitTime) Table() string {
+	return PrecommitTime
+}
+
+func WritePreCommitTime(client trace.Tracer, height int64, round int32, delay float64) {
+	client.Write(PreCommitTime{Height: height, Round: round, Delay: delay})
+
+}
+
 // Schema constants for the consensus round state tracing database.
 const (
 	// RoundStateTable is the name of the table that stores the consensus

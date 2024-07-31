@@ -2323,6 +2323,7 @@ func (cs *State) signAddVote(msgType cmtproto.SignedMsgType, hash []byte, header
 		targetBlockTime := 11 * time.Second
 		precommitVoteTime := cs.StartTime.Add(targetBlockTime)
 		waitTime := precommitVoteTime.Sub(cmttime.Now())
+		schema.WritePreCommitTime(cs.traceClient, cs.Height, cs.Round, waitTime.Seconds())
 		if waitTime > 0 {
 			if waitTime > 11*time.Second {
 				cs.Logger.Debug("waiting for precommit vote was higher than"+
