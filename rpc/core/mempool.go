@@ -43,6 +43,7 @@ func BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcas
 
 	}, mempl.TxInfo{})
 	if err != nil {
+		fmt.Println("Error on broadcastTxSync", err)
 		return nil, err
 	}
 
