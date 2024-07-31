@@ -102,7 +102,7 @@ When a user requests a block from the LL node, the request will be set to the IP
 
 ![user request flow](./assets/user-request.png)
 
-The goal is to not change the public interface for RPC's. It is yet to be seen if this possible. This means that CIDs will need to be set and loaded from the store in order to get all the related block information an user requires.
+The goal is to not change the public interface for RPC's. It is yet to be seen if this is possible. This means that CIDs will need to be set and loaded from the store in order to get all the related block information a user requires.
 
 ## Status
 
