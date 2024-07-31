@@ -161,6 +161,16 @@ func (cfg *Config) ValidateBasic() error {
 	return nil
 }
 
+// PossibleMisconfigurations returns a list of possible conflicting entries that
+// may lead to unexpected behavior
+func (cfg *Config) PossibleMisconfigurations() []string {
+	res := []string{}
+	for _, elem := range cfg.StateSync.PossibleMisconfigurations() {
+		res = append(res, fmt.Sprintf("[statesync] section: %s", elem))
+	}
+	return res
+}
+
 //-----------------------------------------------------------------------------
 // BaseConfig
 
@@ -857,6 +867,15 @@ func TestStateSyncConfig() *StateSyncConfig {
 	return DefaultStateSyncConfig()
 }
 
+// PossibleMisconfigurations returns a list of possible conflicting entries that
+// may lead to unexpected behavior
+func (cfg *StateSyncConfig) PossibleMisconfigurations() []string {
+	if !cfg.Enable && !cfg.isEqual(StateSyncConfig{}) {
+		return []string{"entries are set meanwhile configuration is disabled"}
+	}
+	return []string{}
+}
+
 // ValidateBasic performs basic validation.
 func (cfg *StateSyncConfig) ValidateBasic() error {
 	if cfg.Enable {
@@ -905,6 +924,28 @@ func (cfg *StateSyncConfig) ValidateBasic() error {
 	}
 
 	return nil
+}
+
+func (cfg *StateSyncConfig) isEqual(comp StateSyncConfig) bool {
+	if cfg.Enable != comp.Enable ||
+		cfg.ChunkFetchers != comp.ChunkFetchers ||
+		cfg.ChunkRequestTimeout != comp.ChunkRequestTimeout ||
+		cfg.DiscoveryTime != comp.DiscoveryTime ||
+		cfg.TempDir != comp.TempDir ||
+		cfg.TrustHash != comp.TrustHash ||
+		cfg.TrustHeight != comp.TrustHeight ||
+		cfg.TrustPeriod != comp.TrustPeriod {
+		return false
+	}
+	if len(cfg.RPCServers) != len(comp.RPCServers) {
+		return false
+	}
+	for index := range cfg.RPCServers {
+		if cfg.RPCServers[index] != comp.RPCServers[index] {
+			return false
+		}
+	}
+	return true
 }
 
 //-----------------------------------------------------------------------------

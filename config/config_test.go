@@ -38,6 +38,15 @@ func TestConfigValidateBasic(t *testing.T) {
 	assert.Error(t, cfg.ValidateBasic())
 }
 
+func TestConfigPossibleMisConfigurations(t *testing.T) {
+	cfg := DefaultConfig()
+	// default statesync configuration set entries without enabling statesync
+	require.Len(t, cfg.PossibleMisconfigurations(), 1)
+	cfg.StateSync.Enable = true
+	// enabling statesync deletes possible misconfiguration
+	require.Len(t, cfg.PossibleMisconfigurations(), 0)
+}
+
 func TestTLSConfiguration(t *testing.T) {
 	assert := assert.New(t)
 	cfg := DefaultConfig()
@@ -125,6 +134,77 @@ func TestMempoolConfigValidateBasic(t *testing.T) {
 func TestStateSyncConfigValidateBasic(t *testing.T) {
 	cfg := TestStateSyncConfig()
 	require.NoError(t, cfg.ValidateBasic())
+}
+
+func TestStateSyncIsEqual(t *testing.T) {
+	tests := []struct {
+		modify func(*StateSyncConfig)
+	}{
+		{
+			modify: func(x *StateSyncConfig) {
+				x.Enable = true
+			},
+		},
+		{
+			modify: func(x *StateSyncConfig) {
+				x.TempDir = "/other-dir"
+			},
+		},
+		{
+			modify: func(x *StateSyncConfig) {
+				x.RPCServers = []string{"other-rpcserver"}
+			},
+		},
+		{
+			modify: func(x *StateSyncConfig) {
+				x.TrustPeriod = time.Duration(1000 * time.Second)
+			},
+		},
+		{
+			modify: func(x *StateSyncConfig) {
+				x.TrustHeight = 1000
+			},
+		},
+		{
+			modify: func(x *StateSyncConfig) {
+				x.TrustHash = "hash"
+			},
+		},
+		{
+			modify: func(x *StateSyncConfig) {
+				x.DiscoveryTime = time.Duration(1000 * time.Second)
+			},
+		},
+		{
+			modify: func(x *StateSyncConfig) {
+				x.ChunkRequestTimeout = time.Duration(1000 * time.Second)
+			},
+		},
+		{
+			modify: func(x *StateSyncConfig) {
+				x.ChunkFetchers = 1000
+			},
+		},
+	}
+
+	cfg1 := DefaultStateSyncConfig()
+	cfg2 := DefaultStateSyncConfig()
+	require.True(t, cfg1.isEqual(*cfg2))
+
+	for _, test := range tests {
+		cfg2 := DefaultStateSyncConfig()
+		test.modify(cfg2)
+		require.False(t, cfg1.isEqual(*cfg2))
+	}
+}
+
+func TestStateSyncPossibleMisconfigurations(t *testing.T) {
+	cfg := DefaultStateSyncConfig()
+	// default statesync configuration set entries without enabling statesync
+	require.Equal(t, []string{"entries are set meanwhile configuration is disabled"}, cfg.PossibleMisconfigurations())
+	// enabling statesync deletes possible misconfiguration
+	cfg.Enable = true
+	require.Len(t, cfg.PossibleMisconfigurations(), 0)
 }
 
 func TestFastSyncConfigValidateBasic(t *testing.T) {
