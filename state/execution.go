@@ -147,7 +147,6 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	}
 	rawNewData := preparedProposal.GetBlockData()
 
-	// don't count the last tx in rpp.Txs which is data root back from app
 	rejectedTxs := len(rawNewData.Txs) - len(txs)
 	if rejectedTxs > 0 {
 		blockExec.metrics.RejectedTransactions.Add(float64(rejectedTxs))
