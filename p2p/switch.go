@@ -383,6 +383,7 @@ func (sw *Switch) StopPeerForError(peer Peer, reason interface{}) {
 	if peer.IsPersistent() {
 		addr, err := sw.getPeerAddress(peer)
 		if err != nil {
+			sw.Logger.Error("Failed to get address for persistent peer", "peer", peer, "err", err)
 			return
 		}
 		go sw.reconnectToPeer(addr)
@@ -391,7 +392,7 @@ func (sw *Switch) StopPeerForError(peer Peer, reason interface{}) {
 	if peer.IPHasChanged() {
 		addr, err := sw.getPeerAddress(peer)
 		if err != nil {
-			return
+			sw.Logger.Error("Failed to get address for peer with changed IP", "peer", peer, "err", err)
 		}
 		go sw.reconnectToPeer(addr)
 	}
