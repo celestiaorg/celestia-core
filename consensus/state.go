@@ -106,17 +106,17 @@ type State struct {
 	privValidatorPubKey crypto.PubKey
 
 	// state changes may be triggered by: msgs from peers,
-	// msgs from ourself, or by timeouts
+	// msgs from ourselves, or by timeouts
 	peerMsgQueue     chan msgInfo
 	internalMsgQueue chan msgInfo
 	timeoutTicker    TimeoutTicker
 
-	// information about about added votes and block parts are written on this channel
+	// information about added votes and block parts are written on this channel
 	// so statistics can be computed by reactor
 	statsMsgQueue chan msgInfo
 
 	// we use eventBus to trigger msg broadcasts in the reactor,
-	// and to notify external subscribers, eg. through a websocket
+	// and to notify external subscribers, e.g., through a websocket
 	eventBus *types.EventBus
 
 	// a Write-Ahead Log ensures we can recover from any kind of crash
@@ -842,7 +842,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
 		added, err = cs.addProposalBlockPart(msg, peerID)
 
-		// We unlock here to yield to any routines that need to read the the RoundState.
+		// We unlock here to yield to any routines that need to read the RoundState.
 		// Previously, this code held the lock from the point at which the final block
 		// part was received until the block executed against the application.
 		// This prevented the reactor from being able to retrieve the most updated
@@ -1898,6 +1898,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 
 	proposal.Signature = p.Signature
 	cs.Proposal = proposal
+	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, 100)
 	// We don't update cs.ProposalBlockParts if it is already set.
 	// This happens if we're already in cstypes.RoundStepCommit or if there is a valid block in the current round.
 	// TODO: We can check if Proposal is for a different block as this is a sign of misbehavior!
