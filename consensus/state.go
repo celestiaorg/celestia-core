@@ -1010,6 +1010,11 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		return
 	}
 
+	if cs.Round == round && cs.Step == cstypes.RoundStepNewHeight {
+		schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round,
+			schema.NewHeightByStartTime)
+	}
+
 	if now := cmttime.Now(); cs.StartTime.After(now) {
 		logger.Debug("need to set a buffer and log message here for sanity", "start_time", cs.StartTime, "now", now)
 	}
@@ -1104,7 +1109,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 	defer func() {
 		// Done enterPropose:
 		cs.updateRoundStep(round, cstypes.RoundStepPropose)
-		cs.newStep()
+		cs.newStep() // announce the new step
 
 		// If we have the whole proposal + POL, then goto Prevote now.
 		// else, we'll enterPrevote when the rest of the proposal is received (in AddProposalBlockPart),
@@ -1898,7 +1903,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 
 	proposal.Signature = p.Signature
 	cs.Proposal = proposal
-	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, 100)
+	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, schema.NewProposalArrived)
 	// We don't update cs.ProposalBlockParts if it is already set.
 	// This happens if we're already in cstypes.RoundStepCommit or if there is a valid block in the current round.
 	// TODO: We can check if Proposal is for a different block as this is a sign of misbehavior!
@@ -2005,6 +2010,7 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 		// procedure at this point.
 	}
 
+	// I think this happens before the cs.StartTime starts.
 	if cs.Step <= cstypes.RoundStepPropose && cs.isProposalComplete() {
 		// Move onto the next step
 		cs.enterPrevote(blockHeight, cs.Round)

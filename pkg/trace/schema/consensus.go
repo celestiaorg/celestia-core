@@ -43,7 +43,9 @@ func WritePreCommitTime(client trace.Tracer, height int64, round int32, delay fl
 const (
 	// RoundStateTable is the name of the table that stores the consensus
 	// state traces.
-	RoundStateTable = "consensus_round_state"
+	RoundStateTable      = "consensus_round_state"
+	NewProposalArrived   = uint8(100)
+	NewHeightByStartTime = uint8(101)
 )
 
 // RoundState describes schema for the "consensus_round_state" table.
