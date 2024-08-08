@@ -75,7 +75,8 @@ func TestApp_Tx(t *testing.T) {
 		require.NoError(t, err)
 
 		hash := tx.Hash()
-		waitTime := 30 * time.Second
+		//blockTime := 30 * time.Second //12*time.Second + 3*time.Second // 3 seconds for block time variance
+		waitTime := 30 * time.Second // setting it to 15 s works locally, but not on CI
 		require.Eventuallyf(t, func() bool {
 			txResp, err := client.Tx(ctx, hash, false)
 			return err == nil && bytes.Equal(txResp.Tx, tx)

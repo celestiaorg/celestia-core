@@ -106,17 +106,17 @@ type State struct {
 	privValidatorPubKey crypto.PubKey
 
 	// state changes may be triggered by: msgs from peers,
-	// msgs from ourself, or by timeouts
+	// msgs from ourselves, or by timeouts
 	peerMsgQueue     chan msgInfo
 	internalMsgQueue chan msgInfo
 	timeoutTicker    TimeoutTicker
 
-	// information about about added votes and block parts are written on this channel
+	// information about added votes and block parts are written on this channel
 	// so statistics can be computed by reactor
 	statsMsgQueue chan msgInfo
 
 	// we use eventBus to trigger msg broadcasts in the reactor,
-	// and to notify external subscribers, eg. through a websocket
+	// and to notify external subscribers, e.g., through a websocket
 	eventBus *types.EventBus
 
 	// a Write-Ahead Log ensures we can recover from any kind of crash
@@ -842,7 +842,7 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
 		added, err = cs.addProposalBlockPart(msg, peerID)
 
-		// We unlock here to yield to any routines that need to read the the RoundState.
+		// We unlock here to yield to any routines that need to read the RoundState.
 		// Previously, this code held the lock from the point at which the final block
 		// part was received until the block executed against the application.
 		// This prevented the reactor from being able to retrieve the most updated
@@ -915,6 +915,10 @@ func (cs *State) handleMsg(mi msgInfo) {
 
 func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
 	cs.Logger.Debug("received tock", "timeout", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)
+	if ti.Height == rs.Height {
+		schema.WriteRoundState(cs.traceClient, ti.Height, ti.Round,
+			schema.StartTimeIsReached)
+	}
 
 	// timeouts must be for current height, round, step
 	if ti.Height != rs.Height || ti.Round < rs.Round || (ti.Round == rs.Round && ti.Step < rs.Step) {
@@ -1008,6 +1012,11 @@ func (cs *State) enterNewRound(height int64, round int32) {
 			"current", log.NewLazySprintf("%v/%v/%v", cs.Height, cs.Round, cs.Step),
 		)
 		return
+	}
+
+	if cs.Round == round && cs.Step == cstypes.RoundStepNewHeight {
+		schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round,
+			schema.NewHeightByStartTime)
 	}
 
 	if now := cmttime.Now(); cs.StartTime.After(now) {
@@ -1104,7 +1113,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 	defer func() {
 		// Done enterPropose:
 		cs.updateRoundStep(round, cstypes.RoundStepPropose)
-		cs.newStep()
+		cs.newStep() // announce the new step
 
 		// If we have the whole proposal + POL, then goto Prevote now.
 		// else, we'll enterPrevote when the rest of the proposal is received (in AddProposalBlockPart),
@@ -1898,6 +1907,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 
 	proposal.Signature = p.Signature
 	cs.Proposal = proposal
+	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, schema.NewProposalArrived)
 	// We don't update cs.ProposalBlockParts if it is already set.
 	// This happens if we're already in cstypes.RoundStepCommit or if there is a valid block in the current round.
 	// TODO: We can check if Proposal is for a different block as this is a sign of misbehavior!
@@ -2004,6 +2014,7 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 		// procedure at this point.
 	}
 
+	// I think this happens before the cs.StartTime starts.
 	if cs.Step <= cstypes.RoundStepPropose && cs.isProposalComplete() {
 		// Move onto the next step
 		cs.enterPrevote(blockHeight, cs.Round)
@@ -2319,6 +2330,24 @@ func (cs *State) signAddVote(msgType cmtproto.SignedMsgType, hash []byte, header
 		return nil
 	}
 
+	if msgType == cmtproto.PrecommitType {
+		targetBlockTime := 11 * time.Second
+		precommitVoteTime := cs.StartTime.Add(targetBlockTime)
+		waitTime := precommitVoteTime.Sub(cmttime.Now())
+		schema.WritePrecommitTime(cs.traceClient, cs.Height, cs.Round, waitTime.Seconds())
+		if waitTime > 0 {
+			//if waitTime > 11*time.Second {
+			//	cs.Logger.Debug("waiting for precommit vote was higher than"+
+			//		" expected", "height", cs.Height, "round", cs.Round,
+			//		"waitTime", waitTime)
+			//	time.Sleep(11 * time.Second)
+			//} else {
+			//	time.Sleep(waitTime)
+			//}
+			time.Sleep(waitTime)
+
+		}
+	}
 	// TODO: pass pubKey to signVote
 	vote, err := cs.signVote(msgType, hash, header)
 	if err == nil {
