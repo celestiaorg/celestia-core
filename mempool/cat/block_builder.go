@@ -158,6 +158,19 @@ func (bf *blockFetcher) TryAddMissingTx(key types.TxKey, tx []byte) {
 	}
 }
 
+// IsMissingTx checks if a given transaction is missing from any of the block requests.
+func (bf *blockFetcher) IsMissingTx(key types.TxKey) bool {
+	bf.mtx.Lock()
+	defer bf.mtx.Unlock()
+	for _, request := range bf.requests {
+		_, ok := request.missingKeys[key.String()]
+		if ok {
+			return true
+		}
+	}
+	return false
+}
+
 // PruneOldRequests removes any requests that are older than the given height.
 func (bf *blockFetcher) pruneOldRequests(height int64) {
 	for blockID, request := range bf.requests {

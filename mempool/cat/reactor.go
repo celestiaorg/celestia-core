@@ -263,6 +263,10 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			}
 			_, err = memR.mempool.TryAddNewTx(ntx, key, txInfo)
 			if err != nil && err != ErrTxInMempool && err != ErrTxRecentlyCommitted {
+				if memR.blockFetcher.IsMissingTx(key) {
+					memR.Logger.Error("tx in block is not valid by mempool")
+				}
+
 				memR.Logger.Info("Could not add tx from peer", "peerID", peerID, "txKey", key, "err", err)
 				return
 			}
