@@ -24,18 +24,19 @@ const (
 	PrecommitTimeTable = "consensus_precommit_time"
 )
 
-type PreCommitTime struct {
-	Height int64   `json:"height"`
-	Round  int32   `json:"round"`
-	Delay  float64 `json:"delay"`
+type PrecommitTime struct {
+	Height int64 `json:"height"`
+	Round  int32 `json:"round"`
+	// amount of delay added before casting precommit for this Height and Round
+	Delay float64 `json:"delay"`
 }
 
-func (p PreCommitTime) Table() string {
+func (p PrecommitTime) Table() string {
 	return PrecommitTimeTable
 }
 
-func WritePreCommitTime(client trace.Tracer, height int64, round int32, delay float64) {
-	client.Write(PreCommitTime{Height: height, Round: round, Delay: delay})
+func WritePrecommitTime(client trace.Tracer, height int64, round int32, delay float64) {
+	client.Write(PrecommitTime{Height: height, Round: round, Delay: delay})
 
 }
 
@@ -46,6 +47,7 @@ const (
 	RoundStateTable      = "consensus_round_state"
 	NewProposalArrived   = uint8(100)
 	NewHeightByStartTime = uint8(101)
+	StartTimeIsReached   = uint8(102)
 )
 
 // RoundState describes schema for the "consensus_round_state" table.

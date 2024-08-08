@@ -915,6 +915,10 @@ func (cs *State) handleMsg(mi msgInfo) {
 
 func (cs *State) handleTimeout(ti timeoutInfo, rs cstypes.RoundState) {
 	cs.Logger.Debug("received tock", "timeout", ti.Duration, "height", ti.Height, "round", ti.Round, "step", ti.Step)
+	if ti.Height == rs.Height {
+		schema.WriteRoundState(cs.traceClient, ti.Height, ti.Round,
+			schema.StartTimeIsReached)
+	}
 
 	// timeouts must be for current height, round, step
 	if ti.Height != rs.Height || ti.Round < rs.Round || (ti.Round == rs.Round && ti.Step < rs.Step) {
@@ -2330,7 +2334,7 @@ func (cs *State) signAddVote(msgType cmtproto.SignedMsgType, hash []byte, header
 		targetBlockTime := 11 * time.Second
 		precommitVoteTime := cs.StartTime.Add(targetBlockTime)
 		waitTime := precommitVoteTime.Sub(cmttime.Now())
-		schema.WritePreCommitTime(cs.traceClient, cs.Height, cs.Round, waitTime.Seconds())
+		schema.WritePrecommitTime(cs.traceClient, cs.Height, cs.Round, waitTime.Seconds())
 		if waitTime > 0 {
 			//if waitTime > 11*time.Second {
 			//	cs.Logger.Debug("waiting for precommit vote was higher than"+
