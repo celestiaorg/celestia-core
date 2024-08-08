@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	txStatusUnknown   string = "UNKNOWN"
-	txStatusPending   string = "PENDING"
-	txStatusEvicted   string = "EVICTED"
-	txStatusCommitted string = "COMMITTED"
+	TxStatusUnknown   string = "UNKNOWN"
+	TxStatusPending   string = "PENDING"
+	TxStatusEvicted   string = "EVICTED"
+	TxStatusCommitted string = "COMMITTED"
 )
 
 // Tx allows you to query the transaction results. `nil` could mean the
