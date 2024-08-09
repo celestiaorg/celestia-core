@@ -25,6 +25,7 @@ import (
 	cs "github.com/tendermint/tendermint/consensus"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/evidence"
+	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/pkg/trace"
 
 	cmtjson "github.com/tendermint/tendermint/libs/json"
@@ -33,9 +34,7 @@ import (
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/light"
 	mempl "github.com/tendermint/tendermint/mempool"
-	mempoolv2 "github.com/tendermint/tendermint/mempool/cat"
-	mempoolv0 "github.com/tendermint/tendermint/mempool/v0"
-	mempoolv1 "github.com/tendermint/tendermint/mempool/v1"
+	"github.com/tendermint/tendermint/mempool/cat"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/pex"
 	"github.com/tendermint/tendermint/privval"
@@ -379,88 +378,36 @@ func createMempoolAndMempoolReactor(
 	memplMetrics *mempl.Metrics,
 	logger log.Logger,
 	traceClient trace.Tracer,
-) (mempl.Mempool, p2p.Reactor) {
-	switch config.Mempool.Version {
-	case cfg.MempoolV2:
-		mp := mempoolv2.NewTxPool(
-			logger,
-			config.Mempool,
-			proxyApp.Mempool(),
-			state.LastBlockHeight,
-			mempoolv2.WithMetrics(memplMetrics),
-			mempoolv2.WithPreCheck(sm.TxPreCheck(state)),
-			mempoolv2.WithPostCheck(sm.TxPostCheck(state)),
-		)
+) (mempl.Mempool, *cat.Reactor) {
+	mp := cat.NewTxPool(
+		logger,
+		config.Mempool,
+		proxyApp.Mempool(),
+		state.LastBlockHeight,
+		cat.WithMetrics(memplMetrics),
+		cat.WithPreCheck(sm.TxPreCheck(state)),
+		cat.WithPostCheck(sm.TxPostCheck(state)),
+	)
 
-		reactor, err := mempoolv2.NewReactor(
-			mp,
-			&mempoolv2.ReactorOptions{
-				ListenOnly:     !config.Mempool.Broadcast,
-				MaxTxSize:      config.Mempool.MaxTxBytes,
-				TraceClient:    traceClient,
-				MaxGossipDelay: config.Mempool.MaxGossipDelay,
-			},
-		)
-		if err != nil {
-			// TODO: find a more polite way of handling this error
-			panic(err)
-		}
-		if config.Consensus.WaitForTxs() {
-			mp.EnableTxsAvailable()
-		}
-		reactor.SetLogger(logger)
-
-		return mp, reactor
-	case cfg.MempoolV1:
-		mp := mempoolv1.NewTxMempool(
-			logger,
-			config.Mempool,
-			proxyApp.Mempool(),
-			state.LastBlockHeight,
-			mempoolv1.WithMetrics(memplMetrics),
-			mempoolv1.WithPreCheck(sm.TxPreCheck(state)),
-			mempoolv1.WithPostCheck(sm.TxPostCheck(state)),
-			mempoolv1.WithTraceClient(traceClient),
-		)
-
-		reactor := mempoolv1.NewReactor(
-			config.Mempool,
-			mp,
-			traceClient,
-		)
-		if config.Consensus.WaitForTxs() {
-			mp.EnableTxsAvailable()
-		}
-		reactor.SetLogger(logger)
-
-		return mp, reactor
-
-	case cfg.MempoolV0:
-		mp := mempoolv0.NewCListMempool(
-			config.Mempool,
-			proxyApp.Mempool(),
-			state.LastBlockHeight,
-			mempoolv0.WithMetrics(memplMetrics),
-			mempoolv0.WithPreCheck(sm.TxPreCheck(state)),
-			mempoolv0.WithPostCheck(sm.TxPostCheck(state)),
-		)
-
-		mp.SetLogger(logger)
-
-		reactor := mempoolv0.NewReactor(
-			config.Mempool,
-			mp,
-		)
-		if config.Consensus.WaitForTxs() {
-			mp.EnableTxsAvailable()
-		}
-		reactor.SetLogger(logger)
-
-		return mp, reactor
-
-	default:
-		return nil, nil
+	reactor, err := cat.NewReactor(
+		mp,
+		&cat.ReactorOptions{
+			ListenOnly:     !config.Mempool.Broadcast,
+			MaxTxSize:      config.Mempool.MaxTxBytes,
+			TraceClient:    traceClient,
+			MaxGossipDelay: config.Mempool.MaxGossipDelay,
+		},
+	)
+	if err != nil {
+		// TODO: find a more polite way of handling this error
+		panic(err)
 	}
+	if config.Consensus.WaitForTxs() {
+		mp.EnableTxsAvailable()
+	}
+	reactor.SetLogger(logger)
+
+	return mp, reactor
 }
 
 func createEvidenceReactor(config *cfg.Config, dbProvider DBProvider,
@@ -508,7 +455,8 @@ func createConsensusReactor(config *cfg.Config,
 	state sm.State,
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
-	mempool mempl.Mempool,
+	mempool mempool.Mempool,
+	txFetcher cs.TxFetcher,
 	evidencePool *evidence.Pool,
 	privValidator types.PrivValidator,
 	csMetrics *cs.Metrics,
@@ -523,6 +471,7 @@ func createConsensusReactor(config *cfg.Config,
 		blockExec,
 		blockStore,
 		mempool,
+		txFetcher,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
 		cs.SetTraceClient(traceClient),
@@ -904,7 +853,7 @@ func NewNode(config *cfg.Config,
 		csMetrics.FastSyncing.Set(1)
 	}
 	consensusReactor, consensusState := createConsensusReactor(
-		config, state, blockExec, blockStore, mempool, evidencePool,
+		config, state, blockExec, blockStore, mempool, mempoolReactor, evidencePool,
 		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger, tracer,
 	)
 
@@ -1485,7 +1434,7 @@ func makeNodeInfo(
 	}
 
 	if config.Mempool.Version == cfg.MempoolV2 {
-		nodeInfo.Channels = append(nodeInfo.Channels, mempoolv2.MempoolStateChannel)
+		nodeInfo.Channels = append(nodeInfo.Channels, cat.MempoolStateChannel)
 	}
 
 	lAddr := config.P2P.ExternalAddress

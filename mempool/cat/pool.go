@@ -3,6 +3,7 @@ package cat
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
+	tmos "github.com/tendermint/tendermint/libs/os"
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
@@ -22,9 +24,14 @@ import (
 var _ mempool.Mempool = (*TxPool)(nil)
 
 var (
-	ErrTxInMempool       = errors.New("tx already exists in mempool")
-	ErrTxAlreadyRejected = errors.New("tx was previously rejected")
+	ErrTxInMempool         = errors.New("tx already exists in mempool")
+	ErrTxAlreadyRejected   = errors.New("tx was previously rejected")
+	ErrTxRecentlyCommitted = errors.New("tx was recently committed")
 )
+
+// InclusionDelay is the amount of time a transaction must be in the mempool
+// before it is included in the block.
+const InclusionDelay = 3 * time.Second
 
 // TxPoolOption sets an optional parameter on the TxPool.
 type TxPoolOption func(*TxPool)
@@ -88,6 +95,12 @@ func NewTxPool(
 	height int64,
 	options ...TxPoolOption,
 ) *TxPool {
+	// set up the directory for tracking metrics
+	path := filepath.Join(cfg.RootDir, "data", "mempool")
+	if err := tmos.EnsureDir(path, 0700); err != nil {
+		panic(err)
+	}
+
 	txmp := &TxPool{
 		logger:           logger,
 		config:           cfg,
@@ -196,6 +209,16 @@ func (txmp *TxPool) WasRecentlyEvicted(txKey types.TxKey) bool {
 	return txmp.evictedTxCache.Has(txKey)
 }
 
+// GetCommitted retrieves a committed transaction based on the key.
+// It returns the transaction and a bool indicating if the transaction exists or not.
+func (txmp *TxPool) GetCommitted(txKey types.TxKey) (types.Tx, bool) {
+	wtx := txmp.store.getCommitted(txKey)
+	if wtx != nil {
+		return wtx.tx, true
+	}
+	return types.Tx{}, false
+}
+
 // IsRejectedTx returns true if the transaction was recently rejected and is
 // currently within the cache
 func (txmp *TxPool) IsRejectedTx(txKey types.TxKey) bool {
@@ -298,10 +321,11 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 // sufficient priority and space else if evicted it will return an error
 func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
 	// First check any of the caches to see if we can conclude early. We may have already seen and processed
-	// the transaction if:
-	// - We are connected to nodes running v0 or v1 which simply flood the network
-	// - If a client submits a transaction to multiple nodes (via RPC)
-	// - We send multiple requests and the first peer eventually responds after the second peer has already provided the tx
+	// the transaction, or it may have already been committed.
+	if txmp.store.hasCommitted(key) {
+		return nil, ErrTxRecentlyCommitted
+	}
+
 	if txmp.IsRejectedTx(key) {
 		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
 		// be non-deterministic, we don't punish the peer but instead just ignore the tx
@@ -380,7 +404,6 @@ func (txmp *TxPool) RemoveTxByKey(txKey types.TxKey) error {
 func (txmp *TxPool) removeTxByKey(txKey types.TxKey) {
 	txmp.rejectedTxCache.Push(txKey)
 	_ = txmp.store.remove(txKey)
-	txmp.seenByPeersSet.RemoveKey(txKey)
 }
 
 // Flush purges the contents of the mempool and the cache, leaving both empty.
@@ -431,9 +454,16 @@ func (txmp *TxPool) allEntriesSorted() []*wrappedTx {
 // constraints, the result will also be empty.
 func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	var totalGas, totalBytes int64
+	currentTime := time.Now()
 
 	var keep []types.Tx //nolint:prealloc
 	for _, w := range txmp.allEntriesSorted() {
+		// skip transactions that have been in the mempool for less than the inclusion delay
+		// This gives time for the transaction to be broadcast to all peers
+		if currentTime.Sub(w.timestamp) < InclusionDelay {
+			break
+		}
+
 		// N.B. When computing byte size, we need to include the overhead for
 		// encoding as protobuf to send to the application. This actually overestimates it
 		// as we add the proto overhead to each transaction
@@ -458,8 +488,11 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 // does not have that many transactions available.
 func (txmp *TxPool) ReapMaxTxs(max int) types.Txs {
 	var keep []types.Tx //nolint:prealloc
-
+	currentTime := time.Now()
 	for _, w := range txmp.allEntriesSorted() {
+		if currentTime.Sub(w.timestamp) < InclusionDelay {
+			break
+		}
 		if max >= 0 && len(keep) >= max {
 			break
 		}
@@ -507,12 +540,23 @@ func (txmp *TxPool) Update(
 	txmp.updateMtx.Unlock()
 
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
-	for _, tx := range blockTxs {
-		// Regardless of success, remove the transaction from the mempool.
-		txmp.removeTxByKey(tx.Key())
-	}
 
+	txmp.store.clearCommitted()
+
+	// add the recently committed transactions to the cache
+	keys := make([]types.TxKey, len(blockTxs))
+	for idx, tx := range blockTxs {
+		keys[idx] = tx.Key()
+	}
+	txmp.store.markAsCommitted(keys)
+
+	// purge transactions that are past the TTL
 	txmp.purgeExpiredTxs(blockHeight)
+
+	// prune record of peers seen transactions after an hour
+	// We assume by then that the transaction will no longer
+	// need to be requested
+	txmp.seenByPeersSet.Prune(time.Now().Add(time.Hour))
 
 	// If there any uncommitted transactions left in the mempool, we either
 	// initiate re-CheckTx per remaining transaction or notify that remaining

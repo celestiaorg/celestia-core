@@ -1,12 +1,16 @@
 package consensus
 
 import (
+	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/go-kit/kit/metrics"
 	"github.com/go-kit/kit/metrics/discard"
 	cstypes "github.com/tendermint/tendermint/consensus/types"
+	"github.com/tendermint/tendermint/libs/os"
 
 	prometheus "github.com/go-kit/kit/metrics/prometheus"
 	stdprometheus "github.com/prometheus/client_golang/prometheus"
@@ -98,6 +102,10 @@ type Metrics struct {
 
 	// The amount of proposals that failed to be received in time
 	TimedOutProposals metrics.Counter
+
+	CompactBlocksReceived metrics.Counter
+	CompactBlocksSent     metrics.Counter
+	CompactBlocksFailed   metrics.Counter
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -275,6 +283,24 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "timed_out_proposals",
 			Help:      "Number of proposals that failed to be received in time",
 		}, labels).With(labelsAndValues...),
+		CompactBlocksReceived: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "compact_blocks_received",
+			Help:      "Number of compact blocks received by the node",
+		}, labels).With(labelsAndValues...),
+		CompactBlocksSent: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "compact_blocks_sent",
+			Help:      "Number of compact blocks sent by the node",
+		}, labels).With(labelsAndValues...),
+		CompactBlocksFailed: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "compact_blocks_failed",
+			Help:      "Number of compact blocks failed to be received by the node",
+		}, labels).With(labelsAndValues...),
 	}
 }
 
@@ -313,6 +339,10 @@ func NopMetrics() *Metrics {
 		FullPrevoteMessageDelay:      discard.NewGauge(),
 		ApplicationRejectedProposals: discard.NewCounter(),
 		TimedOutProposals:            discard.NewCounter(),
+
+		CompactBlocksReceived: discard.NewCounter(),
+		CompactBlocksSent:     discard.NewCounter(),
+		CompactBlocksFailed:   discard.NewCounter(),
 	}
 }
 
@@ -327,4 +357,48 @@ func (m *Metrics) MarkStep(s cstypes.RoundStepType) {
 		m.StepDuration.With("step", stepName).Observe(stepTime)
 	}
 	m.stepStart = time.Now()
+}
+
+type JSONMetrics struct {
+	dir                   string
+	interval              int
+	StartTime             time.Time
+	EndTime               time.Time
+	Blocks                uint64
+	Rounds                uint64
+	SentCompactBlocks     uint64
+	CompactBlockFailures  uint64
+	SentBlockParts        uint64
+	ReceivedBlockParts    uint64
+	ReceivedCompactBlocks uint64
+}
+
+func NewJSONMetrics(dir string) *JSONMetrics {
+	return &JSONMetrics{
+		dir:       dir,
+		StartTime: time.Now().UTC(),
+	}
+}
+
+func (m *JSONMetrics) Save() {
+	m.EndTime = time.Now().UTC()
+	content, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	path := filepath.Join(m.dir, fmt.Sprintf("metrics_%d.json", m.interval))
+	os.MustWriteFile(path, content, 0644)
+	m.StartTime = m.EndTime
+	m.interval++
+	m.reset()
+}
+
+func (m *JSONMetrics) reset() {
+	m.Blocks = 0
+	m.Rounds = 0
+	m.SentBlockParts = 0
+	m.SentCompactBlocks = 0
+	m.CompactBlockFailures = 0
+	m.ReceivedBlockParts = 0
+	m.ReceivedCompactBlocks = 0
 }
