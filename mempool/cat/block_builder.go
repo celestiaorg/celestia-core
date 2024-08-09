@@ -231,6 +231,7 @@ func (br *blockRequest) WaitForBlock(ctx context.Context) ([][]byte, error) {
 	for {
 		select {
 		case <-ctx.Done():
+			br.endTime = time.Now().UTC()
 			return nil, ctx.Err()
 		case <-br.doneCh:
 			br.mtx.Lock()

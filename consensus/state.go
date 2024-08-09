@@ -874,6 +874,10 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// once proposal is set, we can receive block parts
 		err = cs.setProposal(msg.Proposal)
 
+		if err != nil && cs.ProposalBlockParts.IsComplete() {
+
+		}
+
 	case *CompactBlockMessage:
 		err = cs.addCompactBlock(msg, peerID)
 
@@ -1079,8 +1083,6 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	} else {
 		logger.Info("resetting proposal info", "proposer", propAddress)
 		cs.Proposal = nil
-		cs.ProposalBlock = nil
-		cs.ProposalBlockParts = nil
 	}
 
 	logger.Debug("entering new round",
@@ -1202,8 +1204,12 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 	// Decide on block
 	if cs.TwoThirdPrevoteBlock != nil {
-		// If there is valid block, choose that.
+		// If there is a block that received two third prevotes, choose that.
 		block, blockParts = cs.TwoThirdPrevoteBlock, cs.TwoThirdPrevoteBlockParts
+		blockHash = block.Hash()
+	} else if cs.IsProposalBlockValid {
+		// If there is a valid block, choose that.
+		block, blockParts = cs.ProposalBlock, cs.ProposalBlockParts
 		blockHash = block.Hash()
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
@@ -1351,6 +1357,8 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		return
 	}
 
+	cs.IsProposalBlockValid = false
+
 	// If ProposalBlock is nil, prevote nil.
 	if cs.ProposalBlock == nil {
 		logger.Debug("prevote step: ProposalBlock is nil")
@@ -1386,6 +1394,8 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{})
 		return
 	}
+
+	cs.IsProposalBlockValid = true
 
 	// Prevote cs.ProposalBlock
 	// NOTE: the proposal signature is validated when it is received,
@@ -1957,6 +1967,10 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 
 	proposal.Signature = p.Signature
 	cs.Proposal = proposal
+	if cs.ProposalBlock != nil && !bytes.Equal(cs.ProposalBlock.Hash(), proposal.BlockID.Hash) {
+		cs.ProposalBlock = nil
+		cs.ProposalBlockParts = nil
+	}
 	// We don't update cs.ProposalBlockParts if it is already set.
 	// This happens if we're already in cstypes.RoundStepCommit or if there is a valid block in the current round.
 	// TODO: We can check if Proposal is for a different block as this is a sign of misbehavior!

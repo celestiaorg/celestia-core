@@ -492,7 +492,7 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		// No other free peer has the transaction we are looking for.
 		// We give up 🤷‍♂️ and hope either a peer responds late or the tx
 		// is gossiped again
-		memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
+		memR.Logger.Info("no other peer has the tx we are looking for", "txKey", txKey)
 		// TODO: should add a metric to see how common this is
 		return
 	}
