@@ -121,7 +121,7 @@ func TestEqualPeerBehaviours(t *testing.T) {
 	}
 }
 
-// TestPeerBehaviourConcurrency constructs a scenario in which
+// TestMockPeerBehaviourReporterConcurrency constructs a scenario in which
 // multiple goroutines are using the same MockReporter instance.
 // This test reproduces the conditions in which MockReporter will
 // be used within a Reactor `Receive` method tests to ensure thread safety.
