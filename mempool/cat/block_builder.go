@@ -38,13 +38,16 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 			missingKeys[i] = txKey
 		}
 	}
-	memR.Logger.Info("fetching transactions from peers", "blockID", blockID, "numTxs", len(txs), "numMissing", len(missingKeys))
+	memR.Logger.Info("fetching transactions from peers", "numTxs", len(txs), "numMissing", len(missingKeys))
 	memR.mempool.metrics.MissingTxs.Add(float64(len(missingKeys)))
 
 	// Check if we got lucky and already had all the transactions.
 	if len(missingKeys) == 0 {
-		memR.Logger.Info("fetched all txs, none missing", "blockID", blockID)
 		return txs, nil
+	}
+
+	for _, missingTx := range missingKeys {
+		memR.findNewPeerToRequestTx(missingTx)
 	}
 
 	// setup a request for this block and begin to track and retrieve all missing transactions
@@ -55,8 +58,9 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 		txs,
 	)
 	defer func() {
+		initialNumMissing := len(missingKeys)
 		timeTaken := request.TimeTaken()
-		memR.Logger.Info("fetched txs", "timeTaken", timeTaken, "numMissing", len(missingKeys))
+		memR.Logger.Info("fetched txs", "timeTaken", timeTaken, "numRetrieved", initialNumMissing-len(request.missingKeys), "numMissing", len(request.missingKeys))
 	}()
 
 	// request the missing transactions if we haven't already
