@@ -31,7 +31,7 @@ var (
 
 // InclusionDelay is the amount of time a transaction must be in the mempool
 // before it is included in the block.
-const InclusionDelay = time.Second
+const InclusionDelay = 3 * time.Second
 
 // TxPoolOption sets an optional parameter on the TxPool.
 type TxPoolOption func(*TxPool)
@@ -71,8 +71,6 @@ type TxPool struct {
 
 	// Thread-safe cache of rejected transactions for quick look-up
 	rejectedTxCache *LRUTxCache
-	// Thread-safe cache of committed transactions for quick look-up
-	committedTxCache *LRUTxCache
 	// Thread-safe cache of evicted transactions for quick look-up
 	evictedTxCache *LRUTxCache
 	// Thread-safe list of transactions peers have seen that we have not yet seen
