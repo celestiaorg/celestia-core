@@ -2,7 +2,6 @@ package cat
 
 import (
 	"fmt"
-	"math/rand"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -383,10 +382,6 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 	if err != nil {
 		panic(err)
 	}
-
-	// Add jitter to when the node broadcasts it's seen txs to stagger when nodes
-	// in the network broadcast their seenTx messages.
-	time.Sleep(time.Duration(rand.Intn(10)*10) * time.Millisecond) //nolint:gosec
 
 	for id, peer := range memR.ids.GetAll() {
 		if p, ok := peer.Get(types.PeerStateKey).(PeerState); ok {
