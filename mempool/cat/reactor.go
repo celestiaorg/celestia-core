@@ -340,7 +340,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		}
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
-			memR.Logger.Info("sending a tx in response to a want msg", "peer", peerID)
+			memR.Logger.Info("sending a tx in response to a want msg", "peer", peerID, "txKey", txKey)
 			if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint:staticcheck
 				ChannelID: mempool.MempoolChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{tx}},
@@ -399,10 +399,11 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 			continue
 		}
 
-		if peer.Send(MempoolStateChannel, bz) {
-			memR.Logger.Info("sent seen tx to peer", "peerID", peer.ID(), "txKey", txKey)
+		if !peer.Send(MempoolStateChannel, bz) {
+			memR.Logger.Error("failed to send seen tx to peer", "peerID", peer.ID(), "txKey", txKey)
 		}
 	}
+	memR.Logger.Info("broadcasted seen tx to all peers", "tx_key", txKey.String())
 }
 
 // broadcastNewTx broadcast new transaction to all peers unless we are already sure they have seen the tx.

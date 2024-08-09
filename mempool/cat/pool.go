@@ -29,6 +29,10 @@ var (
 	ErrTxRecentlyCommitted = errors.New("tx was recently committed")
 )
 
+// InclusionDelay is the amount of time a transaction must be in the mempool
+// before it is included in the block.
+const InclusionDelay = time.Second
+
 // TxPoolOption sets an optional parameter on the TxPool.
 type TxPoolOption func(*TxPool)
 
@@ -452,9 +456,16 @@ func (txmp *TxPool) allEntriesSorted() []*wrappedTx {
 // constraints, the result will also be empty.
 func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	var totalGas, totalBytes int64
+	currentTime := time.Now()
 
 	var keep []types.Tx //nolint:prealloc
 	for _, w := range txmp.allEntriesSorted() {
+		// skip transactions that have been in the mempool for less than the inclusion delay
+		// This gives time for the transaction to be broadcast to all peers
+		if currentTime.Sub(w.timestamp) < InclusionDelay {
+			break
+		}
+
 		// N.B. When computing byte size, we need to include the overhead for
 		// encoding as protobuf to send to the application. This actually overestimates it
 		// as we add the proto overhead to each transaction
@@ -479,8 +490,11 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 // does not have that many transactions available.
 func (txmp *TxPool) ReapMaxTxs(max int) types.Txs {
 	var keep []types.Tx //nolint:prealloc
-
+	currentTime := time.Now()
 	for _, w := range txmp.allEntriesSorted() {
+		if currentTime.Sub(w.timestamp) < InclusionDelay {
+			break
+		}
 		if max >= 0 && len(keep) >= max {
 			break
 		}
