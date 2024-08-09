@@ -1375,6 +1375,14 @@ func (cs *State) enterPrevoteWait(height int64, round int32) {
 	cs.scheduleTimeout(cs.config.Prevote(round), height, round, cstypes.RoundStepPrevoteWait)
 }
 
+// isReadyToPrecommit calculates if the process has waited at least 11 seconds
+// from their start time before they can vote
+func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
+	precommitVoteTime := cs.StartTime.Add(11 * time.Second)
+	waitTime := time.Until(precommitVoteTime)
+	return waitTime <= 0, waitTime
+}
+
 // Enter: `timeoutPrevote` after any +2/3 prevotes.
 // Enter: `timeoutPrecommit` after any +2/3 precommits.
 // Enter: +2/3 precomits for block or nil.
@@ -1389,6 +1397,12 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 			"entering precommit step with invalid args",
 			"current", log.NewLazySprintf("%v/%v/%v", cs.Height, cs.Round, cs.Step),
 		)
+		return
+	}
+
+	if ready, waitTime := cs.isReadyToPrecommit(); !ready {
+		// this will reenter precommit after the waitTime
+		cs.scheduleTimeout(waitTime, height, round, cstypes.RoundStepPrevoteWait)
 		return
 	}
 
@@ -2330,24 +2344,24 @@ func (cs *State) signAddVote(msgType cmtproto.SignedMsgType, hash []byte, header
 		return nil
 	}
 
-	if msgType == cmtproto.PrecommitType {
-		targetBlockTime := 11 * time.Second
-		precommitVoteTime := cs.StartTime.Add(targetBlockTime)
-		waitTime := precommitVoteTime.Sub(cmttime.Now())
-		schema.WritePrecommitTime(cs.traceClient, cs.Height, cs.Round, waitTime.Seconds())
-		if waitTime > 0 {
-			//if waitTime > 11*time.Second {
-			//	cs.Logger.Debug("waiting for precommit vote was higher than"+
-			//		" expected", "height", cs.Height, "round", cs.Round,
-			//		"waitTime", waitTime)
-			//	time.Sleep(11 * time.Second)
-			//} else {
-			//	time.Sleep(waitTime)
-			//}
-			time.Sleep(waitTime)
-
-		}
-	}
+	//if msgType == cmtproto.PrecommitType {
+	//	targetBlockTime := 11 * time.Second
+	//	precommitVoteTime := cs.StartTime.Add(targetBlockTime)
+	//	waitTime := precommitVoteTime.Sub(cmttime.Now())
+	//	schema.WritePrecommitTime(cs.traceClient, cs.Height, cs.Round, waitTime.Seconds())
+	//	if waitTime > 0 {
+	//		//if waitTime > 11*time.Second {
+	//		//	cs.Logger.Debug("waiting for precommit vote was higher than"+
+	//		//		" expected", "height", cs.Height, "round", cs.Round,
+	//		//		"waitTime", waitTime)
+	//		//	time.Sleep(11 * time.Second)
+	//		//} else {
+	//		//	time.Sleep(waitTime)
+	//		//}
+	//		time.Sleep(waitTime)
+	//
+	//	}
+	//}
 	// TODO: pass pubKey to signVote
 	vote, err := cs.signVote(msgType, hash, header)
 	if err == nil {
