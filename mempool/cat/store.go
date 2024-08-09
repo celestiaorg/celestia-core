@@ -50,6 +50,13 @@ func (s *store) getCommitted(txKey types.TxKey) *wrappedTx {
 	return s.committedTxs[txKey]
 }
 
+func (s *store) hasCommitted(txKey types.TxKey) bool {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	_, has := s.committedTxs[txKey]
+	return has
+}
+
 func (s *store) has(txKey types.TxKey) bool {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()

@@ -29,7 +29,7 @@ const (
 
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
 	// the node received the tx
-	peerHeightDiff = 10
+	peerHeightDiff = 2
 )
 
 // Reactor handles mempool tx broadcasting logic amongst peers. For the main
@@ -303,7 +303,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		peerID := memR.ids.GetIDForPeer(e.Src.ID())
 		memR.mempool.PeerHasTx(peerID, txKey)
 		// Check if we don't already have the transaction and that it was recently rejected
-		if memR.mempool.Has(txKey) || memR.mempool.IsRejectedTx(txKey) {
+		if memR.mempool.Has(txKey) || memR.mempool.IsRejectedTx(txKey) || memR.mempool.store.hasCommitted(txKey) {
 			memR.Logger.Debug("received a seen tx for a tx we already have", "txKey", txKey)
 			return
 		}
@@ -341,7 +341,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		}
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
-			memR.Logger.Debug("sending a tx in response to a want msg", "peer", peerID)
+			memR.Logger.Info("sending a tx in response to a want msg", "peer", peerID)
 			if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint:staticcheck
 				ChannelID: mempool.MempoolChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{tx}},
@@ -404,7 +404,9 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 			continue
 		}
 
-		peer.Send(MempoolStateChannel, bz) //nolint:staticcheck
+		if peer.Send(MempoolStateChannel, bz) {
+			memR.Logger.Info("sent seen tx to peer", "peerID", peer.ID(), "txKey", txKey)
+		}
 	}
 }
 
@@ -450,7 +452,6 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 		// we have disconnected from the peer
 		return
 	}
-	memR.Logger.Debug("requesting tx", "txKey", txKey, "peerID", peer.ID())
 	msg := &protomem.Message{
 		Sum: &protomem.Message_WantTx{
 			WantTx: &protomem.WantTx{TxKey: txKey[:]},
@@ -463,10 +464,11 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 
 	success := peer.Send(MempoolStateChannel, bz) //nolint:staticcheck
 	if success {
+		memR.Logger.Info("requested tx", "txKey", txKey, "peerID", peer.ID())
 		memR.mempool.metrics.RequestedTxs.Add(1)
 		requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)
 		if !requested {
-			memR.Logger.Debug("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
+			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
 		}
 	}
 }

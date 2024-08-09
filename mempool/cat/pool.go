@@ -320,7 +320,7 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
 	// First check any of the caches to see if we can conclude early. We may have already seen and processed
 	// the transaction, or it may have already been committed.
-	if wtx := txmp.store.getCommitted(key); wtx != nil {
+	if txmp.store.hasCommitted(key) {
 		return nil, ErrTxRecentlyCommitted
 	}
 
