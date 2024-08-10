@@ -183,6 +183,10 @@ func (app *PersistentKVStoreApplication) ProcessProposal(
 	return types.ResponseProcessProposal{Result: types.ResponseProcessProposal_ACCEPT}
 }
 
+func (app *PersistentKVStoreApplication) RunMigrations(req types.RequestRunMigrations) types.ResponseRunMigrations {
+	return types.ResponseRunMigrations{AppHash: []byte{}}
+}
+
 //---------------------------------------------
 // update validators
 

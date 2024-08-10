@@ -31,6 +31,14 @@ type Application interface {
 	OfferSnapshot(RequestOfferSnapshot) ResponseOfferSnapshot                // Offer a snapshot to the application
 	LoadSnapshotChunk(RequestLoadSnapshotChunk) ResponseLoadSnapshotChunk    // Load a snapshot chunk
 	ApplySnapshotChunk(RequestApplySnapshotChunk) ResponseApplySnapshotChunk // Apply a shapshot chunk
+
+	RunMigrations(RequestRunMigrations) ResponseRunMigrations
+}
+
+type RequestRunMigrations struct{}
+
+type ResponseRunMigrations struct {
+	AppHash []byte
 }
 
 //-------------------------------------------------------
@@ -103,6 +111,11 @@ func (BaseApplication) PrepareProposal(req RequestPrepareProposal) ResponsePrepa
 
 func (BaseApplication) ProcessProposal(req RequestProcessProposal) ResponseProcessProposal {
 	return ResponseProcessProposal{Result: ResponseProcessProposal_ACCEPT}
+}
+
+// RunMigrations implements Application.
+func (BaseApplication) RunMigrations(RequestRunMigrations) ResponseRunMigrations {
+	return ResponseRunMigrations{AppHash: []byte{}}
 }
 
 //-------------------------------------------------------
