@@ -31,7 +31,7 @@ var (
 
 // InclusionDelay is the amount of time a transaction must be in the mempool
 // before it is included in the block.
-const InclusionDelay = 1 * time.Second
+const InclusionDelay = 3 * time.Second
 
 // TxPoolOption sets an optional parameter on the TxPool.
 type TxPoolOption func(*TxPool)
