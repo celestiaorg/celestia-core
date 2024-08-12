@@ -350,7 +350,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			if votes := ourVotes.ToProto(); votes != nil {
 				eMsg.Votes = *votes
 			}
-			if p2p.TrySendEnvelopeShim(e.Src, p2p.Envelope{ //nolint: staticcheck
+			if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint: staticcheck
 				ChannelID: VoteSetBitsChannel,
 				Message:   eMsg,
 			}, conR.Logger) {
@@ -1014,7 +1014,7 @@ OUTER_LOOP:
 			if rs.Height == prs.Height {
 				if maj23, ok := rs.Votes.Prevotes(prs.Round).TwoThirdsMajority(); ok {
 
-					if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
 							Height:  prs.Height,
@@ -1043,7 +1043,7 @@ OUTER_LOOP:
 			prs := ps.GetRoundState()
 			if rs.Height == prs.Height {
 				if maj23, ok := rs.Votes.Precommits(prs.Round).TwoThirdsMajority(); ok {
-					if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
 							Height:  prs.Height,
@@ -1073,7 +1073,7 @@ OUTER_LOOP:
 			if rs.Height == prs.Height && prs.ProposalPOLRound >= 0 {
 				if maj23, ok := rs.Votes.Prevotes(prs.ProposalPOLRound).TwoThirdsMajority(); ok {
 
-					if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
 							Height:  prs.Height,
@@ -1105,7 +1105,7 @@ OUTER_LOOP:
 			if prs.CatchupCommitRound != -1 && prs.Height > 0 && prs.Height <= conR.conS.blockStore.Height() &&
 				prs.Height >= conR.conS.blockStore.Base() {
 				if commit := conR.conS.LoadCommit(prs.Height); commit != nil {
-					if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+					if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 						ChannelID: StateChannel,
 						Message: &cmtcons.VoteSetMaj23{
 							Height:  prs.Height,

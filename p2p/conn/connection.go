@@ -426,7 +426,7 @@ func (c *MConnection) sendRoutine() {
 
 FOR_LOOP:
 	for {
-		var _n int
+		//var _n int
 		var err error
 	SELECTION:
 		select {
@@ -440,12 +440,12 @@ FOR_LOOP:
 			}
 		case <-c.pingTimer.C:
 			c.Logger.Debug("Send Ping")
-			_n, err = protoWriter.WriteMsg(mustWrapPacket(&tmp2p.PacketPing{}))
+			_, err = protoWriter.WriteMsg(mustWrapPacket(&tmp2p.PacketPing{}))
 			if err != nil {
 				c.Logger.Error("Failed to send PacketPing", "err", err)
 				break SELECTION
 			}
-			c.sendMonitor.Update(_n)
+			//c.sendMonitor.Update(_n)
 			c.Logger.Debug("Starting pong timer", "dur", c.config.PongTimeout)
 			c.pongTimer = time.AfterFunc(c.config.PongTimeout, func() {
 				select {
@@ -463,12 +463,12 @@ FOR_LOOP:
 			}
 		case <-c.pong:
 			c.Logger.Debug("Send Pong")
-			_n, err = protoWriter.WriteMsg(mustWrapPacket(&tmp2p.PacketPong{}))
+			_, err = protoWriter.WriteMsg(mustWrapPacket(&tmp2p.PacketPong{}))
 			if err != nil {
 				c.Logger.Error("Failed to send PacketPong", "err", err)
 				break SELECTION
 			}
-			c.sendMonitor.Update(_n)
+			//c.sendMonitor.Update(_n)
 			c.flush()
 		case <-c.quitSendRoutine:
 			break FOR_LOOP
@@ -505,7 +505,7 @@ func (c *MConnection) sendSomePacketMsgs() bool {
 	// Block until .sendMonitor says we can write.
 	// Once we're ready we send more than we asked for,
 	// but amortized it should even out.
-	c.sendMonitor.Limit(c._maxPacketMsgSize, atomic.LoadInt64(&c.config.SendRate), true)
+	//c.sendMonitor.Limit(c._maxPacketMsgSize, atomic.LoadInt64(&c.config.SendRate), true)
 
 	// Now send some PacketMsgs.
 	for i := 0; i < numBatchPacketMsgs; i++ {
@@ -542,13 +542,13 @@ func (c *MConnection) sendPacketMsg() bool {
 	// c.Logger.Info("Found a msgPacket to send")
 
 	// Make & send a PacketMsg from this channel
-	_n, err := leastChannel.writePacketMsgTo(c.bufConnWriter)
+	_, err := leastChannel.writePacketMsgTo(c.bufConnWriter)
 	if err != nil {
 		c.Logger.Error("Failed to write PacketMsg", "err", err)
 		c.stopForError(err)
 		return true
 	}
-	c.sendMonitor.Update(_n)
+	//c.sendMonitor.Update(_n)
 	c.flushTimer.Set()
 	return false
 }
@@ -565,7 +565,7 @@ func (c *MConnection) recvRoutine() {
 FOR_LOOP:
 	for {
 		// Block until .recvMonitor says we can read.
-		c.recvMonitor.Limit(c._maxPacketMsgSize, atomic.LoadInt64(&c.config.RecvRate), true)
+		//c.recvMonitor.Limit(c._maxPacketMsgSize, atomic.LoadInt64(&c.config.RecvRate), true)
 
 		// Peek into bufConnReader for debugging
 		/*
@@ -584,8 +584,8 @@ FOR_LOOP:
 		// Read packet type
 		var packet tmp2p.Packet
 
-		_n, err := protoReader.ReadMsg(&packet)
-		c.recvMonitor.Update(_n)
+		_, err := protoReader.ReadMsg(&packet)
+		//c.recvMonitor.Update(_n)
 		if err != nil {
 			// stopServices was invoked and we are shutting down
 			// receiving is excpected to fail since we will close the connection
@@ -701,8 +701,8 @@ type ChannelStatus struct {
 func (c *MConnection) Status() ConnectionStatus {
 	var status ConnectionStatus
 	status.Duration = time.Since(c.created)
-	status.SendMonitor = c.sendMonitor.Status()
-	status.RecvMonitor = c.recvMonitor.Status()
+	//status.SendMonitor = c.sendMonitor.Status()
+	//status.RecvMonitor = c.recvMonitor.Status()
 	status.Channels = make([]ChannelStatus, len(c.channels))
 	for i, channel := range c.channels {
 		status.Channels[i] = ChannelStatus{
@@ -856,10 +856,10 @@ func (ch *Channel) writePacketMsgTo(w io.Writer) (n int, err error) {
 // Not goroutine-safe
 func (ch *Channel) recvPacketMsg(packet tmp2p.PacketMsg) ([]byte, error) {
 	ch.Logger.Debug("Read PacketMsg", "conn", ch.conn, "packet", packet)
-	var recvCap, recvReceived = ch.desc.RecvMessageCapacity, len(ch.recving) + len(packet.Data)
-	if recvCap < recvReceived {
-		return nil, fmt.Errorf("received message exceeds available capacity: %v < %v", recvCap, recvReceived)
-	}
+	//var recvCap, recvReceived = ch.desc.RecvMessageCapacity, len(ch.recving) + len(packet.Data)
+	//if recvCap < recvReceived {
+	//	return nil, fmt.Errorf("received message exceeds available capacity: %v < %v", recvCap, recvReceived)
+	//}
 	ch.recving = append(ch.recving, packet.Data...)
 	if packet.EOF {
 		msgBytes := ch.recving

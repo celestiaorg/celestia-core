@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"github.com/quic-go/quic-go"
 	"net"
 
 	cmtsync "github.com/tendermint/tendermint/libs/sync"
@@ -8,15 +9,15 @@ import (
 
 // ConnSet is a lookup table for connections and all their ips.
 type ConnSet interface {
-	Has(net.Conn) bool
+	Has(quic.Connection) bool
 	HasIP(net.IP) bool
-	Set(net.Conn, []net.IP)
-	Remove(net.Conn)
+	Set(quic.Connection, []net.IP)
+	Remove(quic.Connection)
 	RemoveAddr(net.Addr)
 }
 
 type connSetItem struct {
-	conn net.Conn
+	conn quic.Connection
 	ips  []net.IP
 }
 
@@ -33,7 +34,7 @@ func NewConnSet() ConnSet {
 	}
 }
 
-func (cs *connSet) Has(c net.Conn) bool {
+func (cs *connSet) Has(c quic.Connection) bool {
 	cs.RLock()
 	defer cs.RUnlock()
 
@@ -57,7 +58,7 @@ func (cs *connSet) HasIP(ip net.IP) bool {
 	return false
 }
 
-func (cs *connSet) Remove(c net.Conn) {
+func (cs *connSet) Remove(c quic.Connection) {
 	cs.Lock()
 	defer cs.Unlock()
 
@@ -71,7 +72,7 @@ func (cs *connSet) RemoveAddr(addr net.Addr) {
 	delete(cs.conns, addr.String())
 }
 
-func (cs *connSet) Set(c net.Conn, ips []net.IP) {
+func (cs *connSet) Set(c quic.Connection, ips []net.IP) {
 	cs.Lock()
 	defer cs.Unlock()
 

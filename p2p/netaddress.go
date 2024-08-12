@@ -5,10 +5,13 @@
 package p2p
 
 import (
+	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/quic-go/quic-go"
 	"net"
 	"strconv"
 	"strings"
@@ -232,8 +235,34 @@ func (na *NetAddress) DialString() string {
 }
 
 // Dial calls net.Dial on the address.
-func (na *NetAddress) Dial() (net.Conn, error) {
-	conn, err := net.Dial("tcp", na.DialString())
+func (na *NetAddress) Dial() (quic.Connection, error) {
+	tlsConfig := tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+	quickConfig := quic.Config{
+		GetConfigForClient:             nil,
+		Versions:                       nil,
+		HandshakeIdleTimeout:           0,
+		MaxIdleTimeout:                 0,
+		TokenStore:                     nil,
+		InitialStreamReceiveWindow:     0,
+		MaxStreamReceiveWindow:         0,
+		InitialConnectionReceiveWindow: 0,
+		MaxConnectionReceiveWindow:     0,
+		AllowConnectionWindowIncrease:  nil,
+		MaxIncomingStreams:             0,
+		MaxIncomingUniStreams:          0,
+		KeepAlivePeriod:                0,
+		InitialPacketSize:              0,
+		DisablePathMTUDiscovery:        false,
+		Allow0RTT:                      false,
+		EnableDatagrams:                false,
+		Tracer:                         nil,
+	}
+	conn, err := quic.DialAddr(context.Background(), na.DialString(), &tlsConfig, &quickConfig)
+	if err != nil {
+		return nil, err
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -241,8 +270,32 @@ func (na *NetAddress) Dial() (net.Conn, error) {
 }
 
 // DialTimeout calls net.DialTimeout on the address.
-func (na *NetAddress) DialTimeout(timeout time.Duration) (net.Conn, error) {
-	conn, err := net.DialTimeout("tcp", na.DialString(), timeout)
+func (na *NetAddress) DialTimeout(timeout time.Duration) (quic.Connection, error) {
+	tlsConfig := tls.Config{
+		// TLS config should come from somewhere with a private key: mt.nodeKey.PrivKey
+		MinVersion: tls.VersionTLS13,
+	}
+	quickConfig := quic.Config{
+		GetConfigForClient:             nil,
+		Versions:                       nil,
+		HandshakeIdleTimeout:           0,
+		MaxIdleTimeout:                 0,
+		TokenStore:                     nil,
+		InitialStreamReceiveWindow:     0,
+		MaxStreamReceiveWindow:         0,
+		InitialConnectionReceiveWindow: 0,
+		MaxConnectionReceiveWindow:     0,
+		AllowConnectionWindowIncrease:  nil,
+		MaxIncomingStreams:             0,
+		MaxIncomingUniStreams:          0,
+		KeepAlivePeriod:                0,
+		InitialPacketSize:              0,
+		DisablePathMTUDiscovery:        false,
+		Allow0RTT:                      false,
+		EnableDatagrams:                false,
+		Tracer:                         nil,
+	}
+	conn, err := quic.DialAddr(context.Background(), na.DialString(), &tlsConfig, &quickConfig)
 	if err != nil {
 		return nil, err
 	}

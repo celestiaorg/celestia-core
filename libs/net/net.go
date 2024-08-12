@@ -1,6 +1,10 @@
 package net
 
 import (
+	"context"
+	"crypto/tls"
+	"fmt"
+	"github.com/quic-go/quic-go"
 	"net"
 	"strings"
 )
@@ -13,14 +17,46 @@ func Connect(protoAddr string) (net.Conn, error) {
 	return conn, err
 }
 
+// Connect dials the given address and returns a net.Conn. The protoAddr argument should be prefixed with the protocol,
+// eg. "tcp://127.0.0.1:8080" or "unix:///tmp/test.sock"
+func QuicConnect(protoAddr string) (quic.Connection, error) {
+	proto, address := ProtocolAndAddress(protoAddr)
+	tlsConfig := tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+	// TODO better config
+	quickConfig := quic.Config{
+		GetConfigForClient:             nil,
+		Versions:                       nil,
+		HandshakeIdleTimeout:           0,
+		MaxIdleTimeout:                 0,
+		TokenStore:                     nil,
+		InitialStreamReceiveWindow:     0,
+		MaxStreamReceiveWindow:         0,
+		InitialConnectionReceiveWindow: 0,
+		MaxConnectionReceiveWindow:     0,
+		AllowConnectionWindowIncrease:  nil,
+		MaxIncomingStreams:             0,
+		MaxIncomingUniStreams:          0,
+		KeepAlivePeriod:                0,
+		InitialPacketSize:              0,
+		DisablePathMTUDiscovery:        false,
+		Allow0RTT:                      false,
+		EnableDatagrams:                false,
+		Tracer:                         nil,
+	}
+	conn, err := quic.DialAddr(context.Background(), fmt.Sprintf("%s:%s", proto, address), &tlsConfig, &quickConfig)
+	return conn, err
+}
+
 // ProtocolAndAddress splits an address into the protocol and address components.
 // For instance, "tcp://127.0.0.1:8080" will be split into "tcp" and "127.0.0.1:8080".
 // If the address has no protocol prefix, the default is "tcp".
 func ProtocolAndAddress(listenAddr string) (string, string) {
-	protocol, address := "tcp", listenAddr
+	protocol, address := "udp", listenAddr
 	parts := strings.SplitN(address, "://", 2)
 	if len(parts) == 2 {
-		protocol, address = parts[0], parts[1]
+		address = parts[1]
 	}
 	return protocol, address
 }
@@ -29,12 +65,12 @@ func ProtocolAndAddress(listenAddr string) (string, string) {
 // Ripped from https://github.com/phayes/freeport.
 // BSD-licensed.
 func GetFreePort() (int, error) {
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	addr, err := net.ResolveTCPAddr("udp", "localhost:0")
 	if err != nil {
 		return 0, err
 	}
 
-	l, err := net.ListenTCP("tcp", addr)
+	l, err := net.ListenTCP("udp", addr)
 	if err != nil {
 		return 0, err
 	}

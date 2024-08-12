@@ -22,10 +22,10 @@ func NetInfo(ctx *rpctypes.Context) (*ctypes.ResultNetInfo, error) {
 			return nil, fmt.Errorf("peer.NodeInfo() is not DefaultNodeInfo")
 		}
 		peers = append(peers, ctypes.Peer{
-			NodeInfo:         nodeInfo,
-			IsOutbound:       peer.IsOutbound(),
-			ConnectionStatus: peer.Status(),
-			RemoteIP:         peer.RemoteIP().String(),
+			NodeInfo:   nodeInfo,
+			IsOutbound: peer.IsOutbound(),
+			//ConnectionStatus: peer.Status(),
+			RemoteIP: peer.RemoteIP().String(),
 		})
 	}
 	// TODO: Should we include PersistentPeers and Seeds in here?

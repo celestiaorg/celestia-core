@@ -2,18 +2,15 @@ package p2p
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"github.com/quic-go/quic-go"
 	"net"
 	"time"
 
-	"golang.org/x/net/netutil"
-
 	"github.com/gogo/protobuf/proto"
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/libs/protoio"
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/pkg/trace"
-	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
 )
 
 const (
@@ -31,7 +28,7 @@ type IPResolver interface {
 // asynchronously running routine to the Accept method.
 type accept struct {
 	netAddr  *NetAddress
-	conn     net.Conn
+	conn     quic.Connection
 	nodeInfo NodeInfo
 	err      error
 }
@@ -83,12 +80,12 @@ type transportLifecycle interface {
 // ConnFilterFunc to be implemented by filter hooks after a new connection has
 // been established. The set of exisiting connections is passed along together
 // with all resolved IPs for the new connection.
-type ConnFilterFunc func(ConnSet, net.Conn, []net.IP) error
+type ConnFilterFunc func(ConnSet, quic.Connection, []net.IP) error
 
 // ConnDuplicateIPFilter resolves and keeps all ips for an incoming connection
 // and refuses new ones if they come from a known ip.
 func ConnDuplicateIPFilter() ConnFilterFunc {
-	return func(cs ConnSet, c net.Conn, ips []net.IP) error {
+	return func(cs ConnSet, c quic.Connection, ips []net.IP) error {
 		for _, ip := range ips {
 			if cs.HasIP(ip) {
 				return ErrRejected{
@@ -138,7 +135,7 @@ func MultiplexTransportMaxIncomingConnections(n int) MultiplexTransportOption {
 // multiplexed peers.
 type MultiplexTransport struct {
 	netAddr                NetAddress
-	listener               net.Listener
+	listener               *quic.Listener
 	maxIncomingConnections int // see MaxIncomingConnections
 
 	acceptc chan accept
@@ -253,19 +250,38 @@ func (mt *MultiplexTransport) Close() error {
 
 // Listen implements transportLifecycle.
 func (mt *MultiplexTransport) Listen(addr NetAddress) error {
-	ln, err := net.Listen("tcp", addr.DialString())
+	tlsConfig := tls.Config{
+		MinVersion: tls.VersionTLS13,
+	}
+	quickConfig := quic.Config{
+		GetConfigForClient:             nil,
+		Versions:                       nil,
+		HandshakeIdleTimeout:           0,
+		MaxIdleTimeout:                 0,
+		TokenStore:                     nil,
+		InitialStreamReceiveWindow:     0,
+		MaxStreamReceiveWindow:         0,
+		InitialConnectionReceiveWindow: 0,
+		MaxConnectionReceiveWindow:     0,
+		AllowConnectionWindowIncrease:  nil,
+		MaxIncomingStreams:             0,
+		MaxIncomingUniStreams:          0,
+		KeepAlivePeriod:                0,
+		InitialPacketSize:              0,
+		DisablePathMTUDiscovery:        false,
+		Allow0RTT:                      false,
+		EnableDatagrams:                false,
+		Tracer:                         nil,
+	}
+	listener, err := quic.ListenAddr(addr.DialString(), &tlsConfig, &quickConfig)
 	if err != nil {
 		return err
 	}
-
-	if mt.maxIncomingConnections > 0 {
-		ln = netutil.LimitListener(ln, mt.maxIncomingConnections)
-	}
-
+	mt.listener = listener
 	mt.netAddr = addr
-	mt.listener = ln
 
-	go mt.acceptPeers()
+	// TODO use a better context
+	go mt.acceptPeers(context.Background())
 
 	return nil
 }
@@ -283,9 +299,9 @@ func (mt *MultiplexTransport) AddChannel(chID byte) {
 	}
 }
 
-func (mt *MultiplexTransport) acceptPeers() {
+func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 	for {
-		c, err := mt.listener.Accept()
+		c, err := mt.listener.Accept(ctx)
 		if err != nil {
 			// If Close() has been called, silently exit.
 			select {
@@ -306,7 +322,7 @@ func (mt *MultiplexTransport) acceptPeers() {
 		// Reference:  https://github.com/tendermint/tendermint/issues/2047
 		//
 		// [0] https://en.wikipedia.org/wiki/Head-of-line_blocking
-		go func(c net.Conn) {
+		go func(c quic.Connection) {
 			defer func() {
 				if r := recover(); r != nil {
 					err := ErrRejected{
@@ -318,34 +334,28 @@ func (mt *MultiplexTransport) acceptPeers() {
 					case mt.acceptc <- accept{err: err}:
 					case <-mt.closec:
 						// Give up if the transport was closed.
-						_ = c.Close()
+						_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error")
 						return
 					}
 				}
 			}()
 
 			var (
-				nodeInfo   NodeInfo
-				secretConn *conn.SecretConnection
-				netAddr    *NetAddress
+				nodeInfo NodeInfo
+				netAddr  *NetAddress
 			)
 
 			err := mt.filterConn(c)
-			if err == nil {
-				secretConn, nodeInfo, err = mt.upgrade(c, nil)
-				if err == nil {
-					addr := c.RemoteAddr()
-					id := PubKeyToID(secretConn.RemotePubKey())
-					netAddr = NewNetAddress(id, addr)
-				}
+			if err != nil {
+				return
 			}
 
 			select {
-			case mt.acceptc <- accept{netAddr, secretConn, nodeInfo, err}:
+			case mt.acceptc <- accept{netAddr, c, nodeInfo, err}:
 				// Make the upgraded peer available.
 			case <-mt.closec:
 				// Give up if the transport was closed.
-				_ = c.Close()
+				_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error")
 				return
 			}
 		}(c)
@@ -359,16 +369,16 @@ func (mt *MultiplexTransport) Cleanup(p Peer) {
 	_ = p.CloseConn()
 }
 
-func (mt *MultiplexTransport) cleanup(c net.Conn) error {
+func (mt *MultiplexTransport) cleanup(c quic.Connection) error {
 	mt.conns.Remove(c)
 
-	return c.Close()
+	return c.CloseWithError(quic.ApplicationErrorCode(1), "some error")
 }
 
-func (mt *MultiplexTransport) filterConn(c net.Conn) (err error) {
+func (mt *MultiplexTransport) filterConn(c quic.Connection) (err error) {
 	defer func() {
 		if err != nil {
-			_ = c.Close()
+			_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error")
 		}
 	}()
 
@@ -386,7 +396,7 @@ func (mt *MultiplexTransport) filterConn(c net.Conn) (err error) {
 	errc := make(chan error, len(mt.connFilters))
 
 	for _, f := range mt.connFilters {
-		go func(f ConnFilterFunc, c net.Conn, ips []net.IP, errc chan<- error) {
+		go func(f ConnFilterFunc, c quic.Connection, ips []net.IP, errc chan<- error) {
 			errc <- f(mt.conns, c, ips)
 		}(f, c, ips, errc)
 	}
@@ -409,96 +419,16 @@ func (mt *MultiplexTransport) filterConn(c net.Conn) (err error) {
 }
 
 func (mt *MultiplexTransport) upgrade(
-	c net.Conn,
+	c quic.Connection,
 	dialedAddr *NetAddress,
-) (secretConn *conn.SecretConnection, nodeInfo NodeInfo, err error) {
-	defer func() {
-		if err != nil {
-			_ = mt.cleanup(c)
-		}
-	}()
-
-	secretConn, err = upgradeSecretConn(c, mt.handshakeTimeout, mt.nodeKey.PrivKey)
-	if err != nil {
-		return nil, nil, ErrRejected{
-			conn:          c,
-			err:           fmt.Errorf("secret conn failed: %v", err),
-			isAuthFailure: true,
-		}
-	}
-
-	// For outgoing conns, ensure connection key matches dialed key.
-	connID := PubKeyToID(secretConn.RemotePubKey())
-	if dialedAddr != nil {
-		if dialedID := dialedAddr.ID; connID != dialedID {
-			return nil, nil, ErrRejected{
-				conn: c,
-				id:   connID,
-				err: fmt.Errorf(
-					"conn.ID (%v) dialed ID (%v) mismatch",
-					connID,
-					dialedID,
-				),
-				isAuthFailure: true,
-			}
-		}
-	}
-
-	nodeInfo, err = handshake(secretConn, mt.handshakeTimeout, mt.nodeInfo)
-	if err != nil {
-		return nil, nil, ErrRejected{
-			conn:          c,
-			err:           fmt.Errorf("handshake failed: %v", err),
-			isAuthFailure: true,
-		}
-	}
-
-	if err := nodeInfo.Validate(); err != nil {
-		return nil, nil, ErrRejected{
-			conn:              c,
-			err:               err,
-			isNodeInfoInvalid: true,
-		}
-	}
-
-	// Ensure connection key matches self reported key.
-	if connID != nodeInfo.ID() {
-		return nil, nil, ErrRejected{
-			conn: c,
-			id:   connID,
-			err: fmt.Errorf(
-				"conn.ID (%v) NodeInfo.ID (%v) mismatch",
-				connID,
-				nodeInfo.ID(),
-			),
-			isAuthFailure: true,
-		}
-	}
-
-	// Reject self.
-	if mt.nodeInfo.ID() == nodeInfo.ID() {
-		return nil, nil, ErrRejected{
-			addr:   *NewNetAddress(nodeInfo.ID(), c.RemoteAddr()),
-			conn:   c,
-			id:     nodeInfo.ID(),
-			isSelf: true,
-		}
-	}
-
-	if err := mt.nodeInfo.CompatibleWith(nodeInfo); err != nil {
-		return nil, nil, ErrRejected{
-			conn:           c,
-			err:            err,
-			id:             nodeInfo.ID(),
-			isIncompatible: true,
-		}
-	}
-
-	return secretConn, nodeInfo, nil
+) (conn quic.Connection, nodeInfo NodeInfo, err error) {
+	// TODO should be removed since we don't need to upgrade a
+	// Quic connection
+	return c, nodeInfo, nil
 }
 
 func (mt *MultiplexTransport) wrapPeer(
-	c net.Conn,
+	c quic.Connection,
 	ni NodeInfo,
 	cfg peerConfig,
 	socketAddr *NetAddress,
@@ -525,12 +455,7 @@ func (mt *MultiplexTransport) wrapPeer(
 
 	p := newPeer(
 		peerConn,
-		mt.mConfig,
 		ni,
-		cfg.reactorsByCh,
-		cfg.msgTypeByChID,
-		cfg.chDescs,
-		cfg.onPeerError,
 		cfg.mlc,
 		PeerMetrics(cfg.metrics),
 		WithPeerTracer(mt.tracer),
@@ -539,66 +464,7 @@ func (mt *MultiplexTransport) wrapPeer(
 	return p
 }
 
-func handshake(
-	c net.Conn,
-	timeout time.Duration,
-	nodeInfo NodeInfo,
-) (NodeInfo, error) {
-	if err := c.SetDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, err
-	}
-
-	var (
-		errc = make(chan error, 2)
-
-		pbpeerNodeInfo tmp2p.DefaultNodeInfo
-		peerNodeInfo   DefaultNodeInfo
-		ourNodeInfo    = nodeInfo.(DefaultNodeInfo)
-	)
-
-	go func(errc chan<- error, c net.Conn) {
-		_, err := protoio.NewDelimitedWriter(c).WriteMsg(ourNodeInfo.ToProto())
-		errc <- err
-	}(errc, c)
-	go func(errc chan<- error, c net.Conn) {
-		protoReader := protoio.NewDelimitedReader(c, MaxNodeInfoSize())
-		_, err := protoReader.ReadMsg(&pbpeerNodeInfo)
-		errc <- err
-	}(errc, c)
-
-	for i := 0; i < cap(errc); i++ {
-		err := <-errc
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	peerNodeInfo, err := DefaultNodeInfoFromToProto(&pbpeerNodeInfo)
-	if err != nil {
-		return nil, err
-	}
-
-	return peerNodeInfo, c.SetDeadline(time.Time{})
-}
-
-func upgradeSecretConn(
-	c net.Conn,
-	timeout time.Duration,
-	privKey crypto.PrivKey,
-) (*conn.SecretConnection, error) {
-	if err := c.SetDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, err
-	}
-
-	sc, err := conn.MakeSecretConnection(c, privKey)
-	if err != nil {
-		return nil, err
-	}
-
-	return sc, sc.SetDeadline(time.Time{})
-}
-
-func resolveIPs(resolver IPResolver, c net.Conn) ([]net.IP, error) {
+func resolveIPs(resolver IPResolver, c quic.Connection) ([]net.IP, error) {
 	host, _, err := net.SplitHostPort(c.RemoteAddr().String())
 	if err != nil {
 		return nil, err

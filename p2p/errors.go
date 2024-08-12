@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"fmt"
+	"github.com/quic-go/quic-go"
 	"net"
 )
 
@@ -16,7 +17,7 @@ func (e ErrFilterTimeout) Error() string {
 // information as to the reason.
 type ErrRejected struct {
 	addr              NetAddress
-	conn              net.Conn
+	conn              quic.Connection
 	err               error
 	id                ID
 	isAuthFailure     bool

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/quic-go/quic-go"
 	"net"
 	"net/http"
 	"strings"
@@ -571,7 +572,7 @@ func createTransport(
 		connFilters = append(
 			connFilters,
 			// ABCI query for address filtering.
-			func(_ p2p.ConnSet, c net.Conn, _ []net.IP) error {
+			func(_ p2p.ConnSet, c quic.Connection, _ []net.IP) error {
 				res, err := proxyApp.Query().QuerySync(abci.RequestQuery{
 					Path: fmt.Sprintf("/p2p/filter/addr/%s", c.RemoteAddr().String()),
 				})
