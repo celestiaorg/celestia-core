@@ -231,11 +231,10 @@ func (br *blockRequest) WaitForBlock(ctx context.Context) ([][]byte, error) {
 	for {
 		select {
 		case <-ctx.Done():
+			br.setEndTime()
 			return nil, ctx.Err()
 		case <-br.doneCh:
-			br.mtx.Lock()
-			defer br.mtx.Unlock()
-			br.endTime = time.Now().UTC()
+			br.setEndTime()
 			return br.txs, nil
 		}
 	}
@@ -275,8 +274,8 @@ func (br *blockRequest) TimeTaken() uint64 {
 	return uint64(br.endTime.Sub(br.startTime).Milliseconds())
 }
 
-func (br *blockRequest) NewTxsFound() string {
+func (br *blockRequest) setEndTime() {
 	br.mtx.Lock()
 	defer br.mtx.Unlock()
-	return fmt.Sprintf("BlockRequest{height:%d, missing:%d}", br.height, len(br.missingKeys))
+	br.endTime = time.Now().UTC()
 }
