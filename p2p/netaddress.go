@@ -9,9 +9,9 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"errors"
-	"flag"
 	"fmt"
 	"github.com/quic-go/quic-go"
+	"github.com/tendermint/tendermint/crypto"
 	"net"
 	"strconv"
 	"strings"
@@ -26,9 +26,10 @@ const EmptyNetAddress = "<nil-NetAddress>"
 // NetAddress defines information about a peer on the network
 // including its ID, IP address, and port.
 type NetAddress struct {
-	ID   ID     `json:"id"`
-	IP   net.IP `json:"ip"`
-	Port uint16 `json:"port"`
+	ID         ID     `json:"id"`
+	IP         net.IP `json:"ip"`
+	Port       uint16 `json:"port"`
+	PrivateKey crypto.PrivKey
 }
 
 // IDAddressString returns id@hostPort. It strips the leading
@@ -44,16 +45,16 @@ func IDAddressString(id ID, protocolHostPort string) string {
 // panic. Panics if ID is invalid.
 // TODO: socks proxies?
 func NewNetAddress(id ID, addr net.Addr) *NetAddress {
-	tcpAddr, ok := addr.(*net.TCPAddr)
-	if !ok {
-		if flag.Lookup("test.v") == nil { // normal run
-			panic(fmt.Sprintf("Only TCPAddrs are supported. Got: %v", addr))
-		} else { // in testing
-			netAddr := NewNetAddressIPPort(net.IP("127.0.0.1"), 0)
-			netAddr.ID = id
-			return netAddr
-		}
-	}
+	tcpAddr := addr.(*net.UDPAddr)
+	//if !ok {
+	//	if flag.Lookup("test.v") == nil { // normal run
+	//		panic(fmt.Sprintf("Only TCPAddrs are supported. Got: %v", addr))
+	//	} else { // in testing
+	//		netAddr := NewNetAddressIPPort(net.IP("127.0.0.1"), 0)
+	//		netAddr.ID = id
+	//		return netAddr
+	//	}
+	//}
 
 	if err := validateID(id); err != nil {
 		panic(fmt.Sprintf("Invalid ID %v: %v (addr: %v)", id, err, addr))
@@ -237,32 +238,10 @@ func (na *NetAddress) DialString() string {
 // Dial calls net.Dial on the address.
 func (na *NetAddress) Dial() (quic.Connection, error) {
 	tlsConfig := tls.Config{
-		MinVersion: tls.VersionTLS12,
+		InsecureSkipVerify: true,
 	}
-	quickConfig := quic.Config{
-		GetConfigForClient:             nil,
-		Versions:                       nil,
-		HandshakeIdleTimeout:           0,
-		MaxIdleTimeout:                 0,
-		TokenStore:                     nil,
-		InitialStreamReceiveWindow:     0,
-		MaxStreamReceiveWindow:         0,
-		InitialConnectionReceiveWindow: 0,
-		MaxConnectionReceiveWindow:     0,
-		AllowConnectionWindowIncrease:  nil,
-		MaxIncomingStreams:             0,
-		MaxIncomingUniStreams:          0,
-		KeepAlivePeriod:                0,
-		InitialPacketSize:              0,
-		DisablePathMTUDiscovery:        false,
-		Allow0RTT:                      false,
-		EnableDatagrams:                false,
-		Tracer:                         nil,
-	}
+	quickConfig := quic.Config{}
 	conn, err := quic.DialAddr(context.Background(), na.DialString(), &tlsConfig, &quickConfig)
-	if err != nil {
-		return nil, err
-	}
 	if err != nil {
 		return nil, err
 	}
@@ -272,29 +251,9 @@ func (na *NetAddress) Dial() (quic.Connection, error) {
 // DialTimeout calls net.DialTimeout on the address.
 func (na *NetAddress) DialTimeout(timeout time.Duration) (quic.Connection, error) {
 	tlsConfig := tls.Config{
-		// TLS config should come from somewhere with a private key: mt.nodeKey.PrivKey
-		MinVersion: tls.VersionTLS13,
+		InsecureSkipVerify: true,
 	}
-	quickConfig := quic.Config{
-		GetConfigForClient:             nil,
-		Versions:                       nil,
-		HandshakeIdleTimeout:           0,
-		MaxIdleTimeout:                 0,
-		TokenStore:                     nil,
-		InitialStreamReceiveWindow:     0,
-		MaxStreamReceiveWindow:         0,
-		InitialConnectionReceiveWindow: 0,
-		MaxConnectionReceiveWindow:     0,
-		AllowConnectionWindowIncrease:  nil,
-		MaxIncomingStreams:             0,
-		MaxIncomingUniStreams:          0,
-		KeepAlivePeriod:                0,
-		InitialPacketSize:              0,
-		DisablePathMTUDiscovery:        false,
-		Allow0RTT:                      false,
-		EnableDatagrams:                false,
-		Tracer:                         nil,
-	}
+	quickConfig := quic.Config{}
 	conn, err := quic.DialAddr(context.Background(), na.DialString(), &tlsConfig, &quickConfig)
 	if err != nil {
 		return nil, err

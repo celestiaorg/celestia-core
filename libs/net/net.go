@@ -22,29 +22,10 @@ func Connect(protoAddr string) (net.Conn, error) {
 func QuicConnect(protoAddr string) (quic.Connection, error) {
 	proto, address := ProtocolAndAddress(protoAddr)
 	tlsConfig := tls.Config{
-		MinVersion: tls.VersionTLS12,
+		InsecureSkipVerify: true,
 	}
 	// TODO better config
-	quickConfig := quic.Config{
-		GetConfigForClient:             nil,
-		Versions:                       nil,
-		HandshakeIdleTimeout:           0,
-		MaxIdleTimeout:                 0,
-		TokenStore:                     nil,
-		InitialStreamReceiveWindow:     0,
-		MaxStreamReceiveWindow:         0,
-		InitialConnectionReceiveWindow: 0,
-		MaxConnectionReceiveWindow:     0,
-		AllowConnectionWindowIncrease:  nil,
-		MaxIncomingStreams:             0,
-		MaxIncomingUniStreams:          0,
-		KeepAlivePeriod:                0,
-		InitialPacketSize:              0,
-		DisablePathMTUDiscovery:        false,
-		Allow0RTT:                      false,
-		EnableDatagrams:                false,
-		Tracer:                         nil,
-	}
+	quickConfig := quic.Config{}
 	conn, err := quic.DialAddr(context.Background(), fmt.Sprintf("%s:%s", proto, address), &tlsConfig, &quickConfig)
 	return conn, err
 }

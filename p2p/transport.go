@@ -2,12 +2,19 @@ package p2p
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
 	"github.com/quic-go/quic-go"
+	"github.com/tendermint/tendermint/libs/protoio"
+	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
+	"math/big"
 	"net"
 	"time"
 
+	"crypto/rand"
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/pkg/trace"
@@ -215,6 +222,7 @@ func (mt *MultiplexTransport) Dial(
 	addr NetAddress,
 	cfg peerConfig,
 ) (Peer, error) {
+	addr.PrivateKey = mt.nodeKey.PrivKey
 	c, err := addr.DialTimeout(mt.dialTimeout)
 	if err != nil {
 		return nil, err
@@ -250,29 +258,29 @@ func (mt *MultiplexTransport) Close() error {
 
 // Listen implements transportLifecycle.
 func (mt *MultiplexTransport) Listen(addr NetAddress) error {
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	certTemplate := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"Test"},
+		},
+		BasicConstraintsValid: true,
+	}
+
+	edKey := ed25519.PrivateKey(addr.PrivateKey.Bytes())
+	derBytes, err := x509.CreateCertificate(rand.Reader, &certTemplate, &certTemplate, edKey.Public(), edKey)
+	if err != nil {
+		return err
+	}
+
 	tlsConfig := tls.Config{
-		MinVersion: tls.VersionTLS13,
+		Certificates: []tls.Certificate{{
+			Certificate: [][]byte{derBytes},
+			PrivateKey:  edKey,
+		}},
 	}
-	quickConfig := quic.Config{
-		GetConfigForClient:             nil,
-		Versions:                       nil,
-		HandshakeIdleTimeout:           0,
-		MaxIdleTimeout:                 0,
-		TokenStore:                     nil,
-		InitialStreamReceiveWindow:     0,
-		MaxStreamReceiveWindow:         0,
-		InitialConnectionReceiveWindow: 0,
-		MaxConnectionReceiveWindow:     0,
-		AllowConnectionWindowIncrease:  nil,
-		MaxIncomingStreams:             0,
-		MaxIncomingUniStreams:          0,
-		KeepAlivePeriod:                0,
-		InitialPacketSize:              0,
-		DisablePathMTUDiscovery:        false,
-		Allow0RTT:                      false,
-		EnableDatagrams:                false,
-		Tracer:                         nil,
-	}
+	quickConfig := quic.Config{}
 	listener, err := quic.ListenAddr(addr.DialString(), &tlsConfig, &quickConfig)
 	if err != nil {
 		return err
@@ -334,7 +342,7 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 					case mt.acceptc <- accept{err: err}:
 					case <-mt.closec:
 						// Give up if the transport was closed.
-						_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error")
+						_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error 1")
 						return
 					}
 				}
@@ -346,8 +354,13 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 			)
 
 			err := mt.filterConn(c)
-			if err != nil {
-				return
+			if err == nil {
+				_, nodeInfo, err = mt.upgrade(c, nil)
+				if err == nil {
+					addr := c.RemoteAddr()
+					id := PubKeyToID(mt.nodeKey.PubKey())
+					netAddr = NewNetAddress(id, addr)
+				}
 			}
 
 			select {
@@ -355,7 +368,7 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 				// Make the upgraded peer available.
 			case <-mt.closec:
 				// Give up if the transport was closed.
-				_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error")
+				_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error 2")
 				return
 			}
 		}(c)
@@ -372,13 +385,13 @@ func (mt *MultiplexTransport) Cleanup(p Peer) {
 func (mt *MultiplexTransport) cleanup(c quic.Connection) error {
 	mt.conns.Remove(c)
 
-	return c.CloseWithError(quic.ApplicationErrorCode(1), "some error")
+	return c.CloseWithError(quic.ApplicationErrorCode(1), "some error 3")
 }
 
 func (mt *MultiplexTransport) filterConn(c quic.Connection) (err error) {
 	defer func() {
 		if err != nil {
-			_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error")
+			_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error 4")
 		}
 	}()
 
@@ -422,9 +435,128 @@ func (mt *MultiplexTransport) upgrade(
 	c quic.Connection,
 	dialedAddr *NetAddress,
 ) (conn quic.Connection, nodeInfo NodeInfo, err error) {
-	// TODO should be removed since we don't need to upgrade a
-	// Quic connection
+	defer func() {
+		if err != nil {
+			_ = mt.cleanup(c)
+		}
+	}()
+
+	// For outgoing conns, ensure connection key matches dialed key.
+	//connID := PubKeyToID(mt.nodeKey.PubKey())
+	//if dialedAddr != nil {
+	//	if dialedID := dialedAddr.ID; connID != dialedID {
+	//		return nil, nil, ErrRejected{
+	//			conn: c,
+	//			id:   connID,
+	//			err: fmt.Errorf(
+	//				"conn.ID (%v) dialed ID (%v) mismatch",
+	//				connID,
+	//				dialedID,
+	//			),
+	//			isAuthFailure: true,
+	//		}
+	//	}
+	//}
+
+	nodeInfo, err = handshake(c, mt.handshakeTimeout, mt.nodeInfo)
+	if err != nil {
+		return nil, nil, ErrRejected{
+			conn:          c,
+			err:           fmt.Errorf("handshake failed: %v", err),
+			isAuthFailure: true,
+		}
+	}
+
+	if err := nodeInfo.Validate(); err != nil {
+		return nil, nil, ErrRejected{
+			conn:              c,
+			err:               err,
+			isNodeInfoInvalid: true,
+		}
+	}
+
+	// Ensure connection key matches self reported key.
+	//if connID != nodeInfo.ID() {
+	//	return nil, nil, ErrRejected{
+	//		conn: c,
+	//		id:   connID,
+	//		err: fmt.Errorf(
+	//			"conn.ID (%v) NodeInfo.ID (%v) mismatch",
+	//			connID,
+	//			nodeInfo.ID(),
+	//		),
+	//		isAuthFailure: true,
+	//	}
+	//}
+
+	// Reject self.
+	if mt.nodeInfo.ID() == nodeInfo.ID() {
+		return nil, nil, ErrRejected{
+			addr:   *NewNetAddress(nodeInfo.ID(), c.RemoteAddr()),
+			conn:   c,
+			id:     nodeInfo.ID(),
+			isSelf: true,
+		}
+	}
+
+	if err := mt.nodeInfo.CompatibleWith(nodeInfo); err != nil {
+		return nil, nil, ErrRejected{
+			conn:           c,
+			err:            err,
+			id:             nodeInfo.ID(),
+			isIncompatible: true,
+		}
+	}
+
 	return c, nodeInfo, nil
+}
+
+func handshake(
+	c quic.Connection,
+	timeout time.Duration,
+	nodeInfo NodeInfo,
+) (NodeInfo, error) {
+	var (
+		errc = make(chan error, 2)
+
+		pbpeerNodeInfo tmp2p.DefaultNodeInfo
+		peerNodeInfo   DefaultNodeInfo
+		ourNodeInfo    = nodeInfo.(DefaultNodeInfo)
+	)
+
+	go func(errc chan<- error, c quic.Connection) {
+		stream, err := c.OpenStream()
+		if err != nil {
+			errc <- err
+			return
+		}
+		_, err = protoio.NewDelimitedWriter(stream).WriteMsg(ourNodeInfo.ToProto())
+		errc <- err
+	}(errc, c)
+	go func(errc chan<- error, c quic.Connection) {
+		stream, err := c.AcceptStream(context.Background())
+		if err != nil {
+			errc <- err
+			return
+		}
+		protoReader := protoio.NewDelimitedReader(stream, MaxNodeInfoSize())
+		_, err = protoReader.ReadMsg(&pbpeerNodeInfo)
+		errc <- err
+	}(errc, c)
+
+	for i := 0; i < cap(errc); i++ {
+		err := <-errc
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	peerNodeInfo, err := DefaultNodeInfoFromToProto(&pbpeerNodeInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	return peerNodeInfo, nil
 }
 
 func (mt *MultiplexTransport) wrapPeer(

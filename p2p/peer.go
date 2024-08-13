@@ -197,7 +197,6 @@ func newPeer(
 	mlc *metricsLabelCache,
 	options ...PeerOption,
 ) *peer {
-	pc.conn.OpenStream()
 	p := &peer{
 		peerConn:      pc,
 		nodeInfo:      nodeInfo,
@@ -209,6 +208,16 @@ func newPeer(
 		traceClient:   trace.NoOpTracer(),
 		streams:       make(map[byte]quic.Stream),
 	}
+
+	//p.mconn = createMConnection(
+	//	pc.conn,
+	//	p,
+	//	reactorsByCh,
+	//	msgTypeByChID,
+	//	chDescs,
+	//	onPeerError,
+	//	mConfig,
+	//)
 
 	p.BaseService = *service.NewBaseService(nil, "Peer", p)
 	for _, option := range options {
@@ -276,12 +285,12 @@ func (p *peer) ID() ID {
 
 // IsOutbound returns true if the connection is outbound, false otherwise.
 func (p *peer) IsOutbound() bool {
-	return true
+	return p.peerConn.outbound
 }
 
 // IsPersistent returns true if the peer is persitent, false otherwise.
 func (p *peer) IsPersistent() bool {
-	return true
+	return p.peerConn.persistent
 }
 
 // NodeInfo returns a copy of the peer's NodeInfo.
@@ -464,9 +473,72 @@ func (p *peer) metricsReporter() {
 	for {
 		select {
 		case <-p.metricsTicker.C:
-			fmt.Println("in metrics reporter <-p.metricsTicker.C")
+			//fmt.Println("in metrics reporter <-p.metricsTicker.C")
 		case <-p.Quit():
 			return
 		}
 	}
 }
+
+//func createMConnection(
+//	conn quic.Connection,
+//	p *peer,
+//	reactorsByCh map[byte]Reactor,
+//	msgTypeByChID map[byte]proto.Message,
+//	chDescs []*cmtconn.ChannelDescriptor,
+//	onPeerError func(Peer, interface{}),
+//	config cmtconn.MConnConfig,
+//) *cmtconn.MConnection {
+//
+//	onReceive := func(chID byte, msgBytes []byte) {
+//		reactor := reactorsByCh[chID]
+//		if reactor == nil {
+//			// Note that its ok to panic here as it's caught in the conn._recover,
+//			// which does onPeerError.
+//			panic(fmt.Sprintf("Unknown channel %X", chID))
+//		}
+//		mt := msgTypeByChID[chID]
+//		msg := proto.Clone(mt)
+//		err := proto.Unmarshal(msgBytes, msg)
+//		if err != nil {
+//			panic(fmt.Errorf("unmarshaling message: %s into type: %s", err, reflect.TypeOf(mt)))
+//		}
+//
+//		if w, ok := msg.(Unwrapper); ok {
+//			msg, err = w.Unwrap()
+//			if err != nil {
+//				panic(fmt.Errorf("unwrapping message: %s", err))
+//			}
+//		}
+//
+//		labels := []string{
+//			"peer_id", string(p.ID()),
+//			"chID", fmt.Sprintf("%#x", chID),
+//		}
+//
+//		p.metrics.PeerReceiveBytesTotal.With(labels...).Add(float64(len(msgBytes)))
+//		p.metrics.MessageReceiveBytesTotal.With(append(labels, "message_type", p.mlc.ValueToMetricLabel(msg))...).Add(float64(len(msgBytes)))
+//		schema.WriteReceivedBytes(p.traceClient, string(p.ID()), chID, len(msgBytes))
+//		if nr, ok := reactor.(EnvelopeReceiver); ok {
+//			nr.ReceiveEnvelope(Envelope{
+//				ChannelID: chID,
+//				Src:       p,
+//				Message:   msg,
+//			})
+//		} else {
+//			reactor.Receive(chID, p, msgBytes)
+//		}
+//	}
+//
+//	onError := func(r interface{}) {
+//		onPeerError(p, r)
+//	}
+//
+//	return cmtconn.NewMConnectionWithConfig(
+//		conn,
+//		chDescs,
+//		onReceive,
+//		onError,
+//		config,
+//	)
+//}

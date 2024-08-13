@@ -1059,6 +1059,7 @@ func (n *Node) OnStart() error {
 	if err != nil {
 		return err
 	}
+	addr.PrivateKey = n.nodeKey.PrivKey
 	if err := n.transport.Listen(*addr); err != nil {
 		return err
 	}
