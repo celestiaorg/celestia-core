@@ -97,6 +97,17 @@ func (b *Block) ValidateBasic() error {
 	return nil
 }
 
+func (b *Block) CreateCompactBlock(keys [][]byte) *Block {
+	return &Block{
+		Header:     b.Header,
+		LastCommit: b.LastCommit,
+		Evidence:   b.Evidence,
+		Data: Data{
+			Txs: ToTxs(keys),
+		},
+	}
+}
+
 // fillHeader fills in any remaining header fields that are a function of the
 // block data NOTE: we expect celestia-app to populate the block DataHash but we
 // populate it here (in celestia-core) to not break existing tests in this repo.

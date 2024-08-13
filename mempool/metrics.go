@@ -180,7 +180,7 @@ func NopMetrics() *Metrics {
 		AlreadySeenTxs: discard.NewCounter(),
 		RequestedTxs:   discard.NewCounter(),
 		RerequestedTxs: discard.NewCounter(),
-		MissingTxs:      discard.NewCounter(),
+		MissingTxs:     discard.NewCounter(),
 	}
 }
 

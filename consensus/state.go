@@ -1222,7 +1222,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 			return
 		}
 
-		block.Txs = types.ToTxs(keys)
+		cs.ProposalCompactBlock = block.CreateCompactBlock(keys)
 	}
 
 	// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
@@ -1238,19 +1238,9 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
 		proposal.Signature = p.Signature
 
-		// send proposal and block parts on internal msg queue
-		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
-		cs.sendInternalMessage(msgInfo{&CompactBlockMessage{
-			Block: block,
-			Round: p.Round,
-		}, ""})
-
-		for i := 0; i < int(blockParts.Total()); i++ {
-			part := blockParts.GetPart(i)
-			cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.Height, cs.Round, part}, ""})
-		}
-
-		cs.Logger.Debug("signed proposal", "height", height, "round", round, "proposal", proposal)
+		cs.Proposal = proposal
+		cs.ProposalBlock = block
+		cs.ProposalBlockParts = blockParts
 	} else if !cs.replayMode {
 		cs.Logger.Error("propose step; failed signing proposal", "height", height, "round", round, "err", err)
 	}
