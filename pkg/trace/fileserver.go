@@ -266,7 +266,7 @@ func (lt *LocalTracer) PushAll() error {
 // local directory dst.
 // fileNames is a list of traced jsonl file names to download. If it is empty, all traces are downloaded.
 // fileNames should not have .jsonl suffix.
-func S3Download(dst, prefix string, fileNames []string, cfg S3Config) error {
+func S3Download(dst, prefix string, cfg S3Config, fileNames ...string) error {
 	// Ensure local directory structure exists
 	err := os.MkdirAll(dst, os.ModePerm)
 	if err != nil {
