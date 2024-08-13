@@ -23,6 +23,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
+const jsonL = ".jsonl"
+
 func (lt *LocalTracer) getTableHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Parse the request to get the data
@@ -76,7 +78,7 @@ func pump(table string, br *bufio.Reader) (*io.PipeReader, *multipart.Writer) {
 		defer w.Close()
 		defer m.Close()
 
-		part, err := m.CreateFormFile("filename", table+".jsonl")
+		part, err := m.CreateFormFile("filename", table+jsonL)
 		if err != nil {
 			return
 		}
@@ -133,7 +135,7 @@ func GetTable(serverURL, table, dirPath string) error {
 		return err
 	}
 
-	outputFile, err := os.Create(path.Join(dirPath, table+".jsonl"))
+	outputFile, err := os.Create(path.Join(dirPath, table+jsonL))
 	if err != nil {
 		return err
 	}
@@ -304,7 +306,7 @@ func S3Download(dst, prefix string, cfg S3Config, fileNames ...string) error {
 
 			for _, filename := range fileNames {
 				// Add .jsonl suffix to the fileNames
-				fullFilename := filename + ".jsonl"
+				fullFilename := filename + jsonL
 				if strings.HasSuffix(key, fullFilename) {
 					localFilePath := filepath.Join(dst, prefix, strings.TrimPrefix(key, prefix))
 					fmt.Printf("Downloading %s to %s\n", key, localFilePath)
