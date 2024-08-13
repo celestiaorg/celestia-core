@@ -46,10 +46,6 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 		return txs, nil
 	}
 
-	for _, missingTx := range missingKeys {
-		memR.findNewPeerToRequestTx(missingTx)
-	}
-
 	// setup a request for this block and begin to track and retrieve all missing transactions
 	request := memR.blockFetcher.newRequest(
 		blockID,
@@ -224,6 +220,7 @@ func newBlockRequest(
 // WaitForBlock is a blocking call that waits for the block to be fetched and completed.
 // It can be called concurrently. If the block was already fetched it returns immediately.
 func (br *blockRequest) WaitForBlock(ctx context.Context) ([][]byte, error) {
+	defer br.setEndTime()
 	if br.IsDone() {
 		return br.txs, nil
 	}
@@ -231,10 +228,8 @@ func (br *blockRequest) WaitForBlock(ctx context.Context) ([][]byte, error) {
 	for {
 		select {
 		case <-ctx.Done():
-			br.setEndTime()
 			return nil, ctx.Err()
 		case <-br.doneCh:
-			br.setEndTime()
 			return br.txs, nil
 		}
 	}
