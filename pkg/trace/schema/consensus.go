@@ -15,6 +15,8 @@ func ConsensusTables() []string {
 		VoteTable,
 		ConsensusStateTable,
 		ProposalTable,
+		CompactBlockTable,
+		HasBlockTable,
 	}
 }
 
@@ -246,4 +248,61 @@ func WriteProposal(
 		PeerID:       peerID,
 		TransferType: transferType,
 	})
+}
+
+const (
+	// CompactBlockTable is the name of the table that stores the consensus compact block
+	// parts.
+	CompactBlockTable = "consensus_compact_block"
+)
+
+type CompactBlock struct {
+	Height       int64        `json:"height"`
+	Round        int32        `json:"round"`
+	PeerID       string       `json:"peer_id"`
+	TransferType TransferType `json:"transfer_type"`
+}
+
+func (c CompactBlock) Table() string {
+	return CompactBlockTable
+}
+
+func WriteCompactBlock(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	peerID string,
+	transferType TransferType,
+) {
+	client.Write(CompactBlock{
+		Height:       height,
+		Round:        round,
+		PeerID:       peerID,
+		TransferType: transferType,
+	})
+}
+
+const (
+	HasBlockTable = "consensus_has_block"
+)
+
+type HasBlock struct {
+	Height       int64        `json:"height"`
+	Round        int32        `json:"round"`
+	PeerID       string       `json:"peer_id"`
+	TransferType TransferType `json:"transfer_type"`
+}
+
+func (h HasBlock) Table() string {
+	return HasBlockTable
+}
+
+func WriteHasBlock(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	peerID string,
+	transferType TransferType,
+) {
+	client.Write(HasBlock{Height: height, Round: round, PeerID: peerID, TransferType: transferType})
 }

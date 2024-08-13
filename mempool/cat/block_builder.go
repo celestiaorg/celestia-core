@@ -45,6 +45,7 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 	if len(missingKeys) == 0 {
 		return txs, nil
 	}
+	initialNumMissing := len(missingKeys)
 
 	// setup a request for this block and begin to track and retrieve all missing transactions
 	request := memR.blockFetcher.newRequest(
@@ -54,7 +55,6 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 		txs,
 	)
 	defer func() {
-		initialNumMissing := len(missingKeys)
 		timeTaken := request.TimeTaken()
 		memR.Logger.Info("fetched txs", "timeTaken", timeTaken, "numRetrieved", initialNumMissing-len(request.missingKeys), "numMissing", len(request.missingKeys))
 	}()

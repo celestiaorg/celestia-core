@@ -47,8 +47,8 @@ message CompactBlock {
   int32                  round = 2;
 }
 
-// HasCompactBlock to signal that the node has the block
-message HasCompactBlock {
+// HasBlock to signal that the node has the block
+message HasBlock {
   int64 height = 1;
   int32 round  = 2;
 }
@@ -102,6 +102,6 @@ message Message {
     VoteSetMaj23    vote_set_maj23    = 8;
     VoteSetBits     vote_set_bits     = 9;
     CompactBlock    compact_block     = 10;
-    HasCompactBlock has_compact_block = 11;
+    HasBlock        has_block         = 11;
   }
 }

@@ -397,8 +397,22 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		case *CompactBlockMessage:
 			ps.SetHasBlock(msg.Block.Height, msg.Round)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
+			schema.WriteCompactBlock(
+				conR.traceClient,
+				msg.Block.Height,
+				msg.Round,
+				string(e.Src.ID()),
+				schema.Download,
+			)
 		case *HasBlockMessage:
 			ps.SetHasBlock(msg.Height, msg.Round)
+			schema.WriteHasBlock(
+				conR.traceClient,
+				msg.Height,
+				msg.Round,
+				string(e.Src.ID()),
+				schema.Download,
+			)
 		case *BlockPartMessage:
 			ps.SetHasProposalBlockPart(msg.Height, msg.Round, int(msg.Part.Index))
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
@@ -609,11 +623,18 @@ func (conR *Reactor) broadcastHasVoteMessage(vote *types.Vote) {
 func (conR *Reactor) broadcastHasBlockMessage(data *types.EventDataCompleteProposal) {
 	conR.Switch.BroadcastEnvelope(p2p.Envelope{
 		ChannelID: DataChannel,
-		Message: &cmtcons.HasCompactBlock{
+		Message: &cmtcons.HasBlock{
 			Height: data.Height,
 			Round:  data.Round,
 		},
 	})
+	schema.WriteHasBlock(
+		conR.traceClient,
+		data.Height,
+		data.Round,
+		"",
+		schema.Upload,
+	)
 }
 
 func makeRoundStepMessage(rs *cstypes.RoundState) (nrsMsg *cmtcons.NewRoundStep) {
@@ -667,7 +688,7 @@ func (conR *Reactor) getRoundState() *cstypes.RoundState {
 }
 
 func (conR *Reactor) gossipDataRoutine(peer p2p.Peer, ps *PeerState) {
-	logger := conR.Logger.With("peer", peer)
+	logger := conR.Logger.With("peer", peer.ID())
 
 OUTER_LOOP:
 	for {
@@ -695,6 +716,13 @@ OUTER_LOOP:
 				}, logger) {
 					ps.SetHasBlock(prs.Height, prs.Round)
 					conR.conS.metrics.CompactBlocksSent.Add(1)
+					schema.WriteCompactBlock(
+						conR.traceClient,
+						prs.Height,
+						prs.Round,
+						string(peer.ID()),
+						schema.Upload,
+					)
 				}
 				continue OUTER_LOOP
 			}
@@ -1339,7 +1367,7 @@ func (ps *PeerState) SetHasProposalBlockPart(height int64, round int32, index in
 	ps.PRS.ProposalBlockParts.SetIndex(index, true)
 }
 
-// SetHasCompactBlock sets the given block part index as known for the peer.
+// SetHasBlock sets the given block part index as known for the peer.
 func (ps *PeerState) SetHasBlock(height int64, round int32) {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()

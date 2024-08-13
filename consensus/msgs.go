@@ -72,7 +72,7 @@ func MsgToProto(msg Message) (*cmtcons.Message, error) {
 		return m.Wrap().(*cmtcons.Message), nil
 
 	case *HasBlockMessage:
-		m := &cmtcons.HasCompactBlock{
+		m := &cmtcons.HasBlock{
 			Height: msg.Height,
 			Round:  msg.Round,
 		}
@@ -216,7 +216,7 @@ func MsgFromProto(p *cmtcons.Message) (Message, error) {
 			Round: msg.Round,
 		}
 
-	case *cmtcons.HasCompactBlock:
+	case *cmtcons.HasBlock:
 		pb = &HasBlockMessage{
 			Height: msg.Height,
 			Round:  msg.Round,
