@@ -10,9 +10,18 @@ name: Golang Linter
 
 on:
   pull_request:
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
   push:
     branches:
       - v[0-9]+.[0-9]+.x-celestia
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+
 jobs:
   golangci:
     name: golangci-lint
@@ -20,16 +29,12 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.22.2'
-      - uses: technote-space/get-diff-action@v6
-        with:
-          PATTERNS: |
-            **/**.go
-            go.mod
-            go.sum
-      - uses: golangci/golangci-lint-action@v3.2.0
+          go-version-file: 'go.mod'
+
+      - uses: golangci/golangci-lint-action@v4.0.0
         with:
           # Required: the version of golangci-lint is required and
           # must be specified without patch version: we always use the
@@ -37,4 +42,3 @@ jobs:
           version: v1.56.2
           args: --timeout 10m
           github-token: ${{ secrets.github_token }}
-        if: env.GIT_DIFF
