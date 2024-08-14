@@ -103,7 +103,8 @@ func (b *Block) CreateCompactBlock(keys [][]byte) *Block {
 		LastCommit: b.LastCommit,
 		Evidence:   b.Evidence,
 		Data: Data{
-			Txs: ToTxs(keys),
+			Txs:        ToTxs(keys),
+			SquareSize: b.Data.SquareSize,
 		},
 	}
 }

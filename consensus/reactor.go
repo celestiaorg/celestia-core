@@ -712,6 +712,7 @@ OUTER_LOOP:
 					Message: &cmtcons.CompactBlock{
 						Block:     compactBlock,
 						BlockHash: rs.Proposal.BlockID.Hash,
+						Round:     rs.Round,
 					},
 				}, logger) {
 					ps.SetHasBlock(prs.Height, prs.Round)
