@@ -1,9 +1,13 @@
 package p2p
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"github.com/quic-go/quic-go"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"net"
+	"reflect"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -163,6 +167,8 @@ type peer struct {
 	// raw peerConn and the multiplex connection
 	peerConn
 
+	onReceive func(chID byte, msgBytes []byte)
+
 	// peer's node info and the channel it knows about
 	// channels = nodeInfo.Channels
 	// cached to avoid copying nodeInfo in hasChannel
@@ -194,6 +200,8 @@ func WithPeerTracer(t trace.Tracer) PeerOption {
 func newPeer(
 	pc peerConn,
 	nodeInfo NodeInfo,
+	reactorsByCh map[byte]Reactor,
+	msgTypeByChID map[byte]proto.Message,
 	mlc *metricsLabelCache,
 	options ...PeerOption,
 ) *peer {
@@ -209,15 +217,52 @@ func newPeer(
 		streams:       make(map[byte]quic.Stream),
 	}
 
-	//p.mconn = createMConnection(
-	//	pc.conn,
-	//	p,
-	//	reactorsByCh,
-	//	msgTypeByChID,
-	//	chDescs,
-	//	onPeerError,
-	//	mConfig,
-	//)
+	p.onReceive = func(chID byte, msgBytes []byte) {
+		reactor := reactorsByCh[chID]
+		if reactor == nil {
+			// Note that its ok to panic here as it's caught in the conn._recover,
+			// which does onPeerError.
+			panic(fmt.Sprintf("Unknown channel %X", chID))
+		}
+		mt := msgTypeByChID[chID]
+		msg := proto.Clone(mt)
+		err := proto.Unmarshal(msgBytes, msg)
+		if err != nil {
+			panic(fmt.Errorf("unmarshaling message: %s into type: %s", err, reflect.TypeOf(mt)))
+		}
+
+		if w, ok := msg.(Unwrapper); ok {
+			msg, err = w.Unwrap()
+			if err != nil {
+				panic(fmt.Errorf("unwrapping message: %s", err))
+			}
+		}
+
+		labels := []string{
+			"peer_id", string(p.ID()),
+			"chID", fmt.Sprintf("%#x", chID),
+		}
+
+		p.metrics.PeerReceiveBytesTotal.With(labels...).Add(float64(len(msgBytes)))
+		p.metrics.MessageReceiveBytesTotal.With(append(labels, "message_type", p.mlc.ValueToMetricLabel(msg))...).Add(float64(len(msgBytes)))
+		schema.WriteReceivedBytes(p.traceClient, string(p.ID()), chID, len(msgBytes))
+		if nr, ok := reactor.(EnvelopeReceiver); ok {
+			nr.ReceiveEnvelope(Envelope{
+				ChannelID: chID,
+				Src:       p,
+				Message:   msg,
+			})
+		} else {
+			reactor.Receive(chID, p, msgBytes)
+		}
+	}
+
+	go func() {
+		err := p.OnReceive()
+		if err != nil {
+			p.Logger.Error("error receiving stuff", "err", err.Error())
+		}
+	}()
 
 	p.BaseService = *service.NewBaseService(nil, "Peer", p)
 	for _, option := range options {
@@ -362,10 +407,18 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 		}
 		p.streams[chID] = newStream
 		stream = newStream
+		_, err = stream.Write([]byte{chID})
+		if err != nil {
+			p.Logger.Error("error sending channel ID", "err", err.Error())
+			return false
+		}
+		p.Logger.Info("successfully shared channel ID", "id", chID)
 	}
 
+	p.Logger.Debug("Send", "channel", chID, "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
 	n, err := stream.Write(msgBytes)
 	if err != nil {
+		p.Logger.Debug("Send failed", "channel", "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
 		return false
 	}
 	labels := []string{
@@ -480,65 +533,33 @@ func (p *peer) metricsReporter() {
 	}
 }
 
-//func createMConnection(
-//	conn quic.Connection,
-//	p *peer,
-//	reactorsByCh map[byte]Reactor,
-//	msgTypeByChID map[byte]proto.Message,
-//	chDescs []*cmtconn.ChannelDescriptor,
-//	onPeerError func(Peer, interface{}),
-//	config cmtconn.MConnConfig,
-//) *cmtconn.MConnection {
-//
-//	onReceive := func(chID byte, msgBytes []byte) {
-//		reactor := reactorsByCh[chID]
-//		if reactor == nil {
-//			// Note that its ok to panic here as it's caught in the conn._recover,
-//			// which does onPeerError.
-//			panic(fmt.Sprintf("Unknown channel %X", chID))
-//		}
-//		mt := msgTypeByChID[chID]
-//		msg := proto.Clone(mt)
-//		err := proto.Unmarshal(msgBytes, msg)
-//		if err != nil {
-//			panic(fmt.Errorf("unmarshaling message: %s into type: %s", err, reflect.TypeOf(mt)))
-//		}
-//
-//		if w, ok := msg.(Unwrapper); ok {
-//			msg, err = w.Unwrap()
-//			if err != nil {
-//				panic(fmt.Errorf("unwrapping message: %s", err))
-//			}
-//		}
-//
-//		labels := []string{
-//			"peer_id", string(p.ID()),
-//			"chID", fmt.Sprintf("%#x", chID),
-//		}
-//
-//		p.metrics.PeerReceiveBytesTotal.With(labels...).Add(float64(len(msgBytes)))
-//		p.metrics.MessageReceiveBytesTotal.With(append(labels, "message_type", p.mlc.ValueToMetricLabel(msg))...).Add(float64(len(msgBytes)))
-//		schema.WriteReceivedBytes(p.traceClient, string(p.ID()), chID, len(msgBytes))
-//		if nr, ok := reactor.(EnvelopeReceiver); ok {
-//			nr.ReceiveEnvelope(Envelope{
-//				ChannelID: chID,
-//				Src:       p,
-//				Message:   msg,
-//			})
-//		} else {
-//			reactor.Receive(chID, p, msgBytes)
-//		}
-//	}
-//
-//	onError := func(r interface{}) {
-//		onPeerError(p, r)
-//	}
-//
-//	return cmtconn.NewMConnectionWithConfig(
-//		conn,
-//		chDescs,
-//		onReceive,
-//		onError,
-//		config,
-//	)
-//}
+func (p *peer) OnReceive() error {
+	for i := 0; i < 500; i++ {
+		stream, err := p.conn.AcceptStream(context.Background())
+		if err != nil {
+			p.Logger.Error("failed to accept stream", "err", err.Error())
+			return err
+		}
+		go func() {
+			chID := make([]byte, 1)
+			_, err := stream.Read(chID)
+			if err != nil {
+				p.Logger.Error("failed to read channel ID", "err", err.Error())
+				return
+			}
+			p.streams[chID[0]] = stream
+			p.Logger.Info("successfully got channel ID", "id", chID[0])
+			// start accepting data
+			go func() {
+				data := make([]byte, 1000000000)
+				n, err := stream.Read(data)
+				if err != nil {
+					p.Logger.Error("failed to read from stream", "err", err.Error())
+					return
+				}
+				p.onReceive(chID[0], data[:n])
+			}()
+		}()
+	}
+	return errors.New("reached 500 opened streams with peer")
+}

@@ -588,6 +588,8 @@ func (mt *MultiplexTransport) wrapPeer(
 	p := newPeer(
 		peerConn,
 		ni,
+		cfg.reactorsByCh,
+		cfg.msgTypeByChID,
 		cfg.mlc,
 		PeerMetrics(cfg.metrics),
 		WithPeerTracer(mt.tracer),
