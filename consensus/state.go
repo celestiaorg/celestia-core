@@ -1215,15 +1215,14 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		}
 		blockParts = block.MakePartSet(types.BlockPartSizeBytes)
 		blockHash = block.Hash()
-
-		keys, err := cs.txFetcher.FetchKeysFromTxs(context.Background(), block.Txs.ToSliceOfBytes())
-		if err != nil {
-			cs.Logger.Error("failed to fetch tx keys", "err", err)
-			return
-		}
-
-		cs.ProposalCompactBlock = block.CreateCompactBlock(keys)
 	}
+
+	keys, err := cs.txFetcher.FetchKeysFromTxs(context.Background(), block.Txs.ToSliceOfBytes())
+	if err != nil {
+		cs.Logger.Error("failed to fetch tx keys", "err", err)
+		return
+	}
+	block.Data.Txs = types.ToTxs(keys)
 
 	// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
 	// and the privValidator will refuse to sign anything.
@@ -1238,9 +1237,12 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
 		proposal.Signature = p.Signature
 
-		cs.Proposal = proposal
-		cs.ProposalBlock = block
-		cs.ProposalBlockParts = blockParts
+		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
+		cs.sendInternalMessage(msgInfo{&CompactBlockMessage{block, blockHash, proposal.Round}, ""})
+		for i := 0; i < int(blockParts.Total()); i++ {
+			part := blockParts.GetPart(i)
+			cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.Height, cs.Round, part}, ""})
+		}
 	} else if !cs.replayMode {
 		cs.Logger.Error("propose step; failed signing proposal", "height", height, "round", round, "err", err)
 	}
