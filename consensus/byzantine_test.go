@@ -241,7 +241,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 			// send proposal and block parts on internal msg queue
 			lazyProposer.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
-			lazyProposer.sendInternalMessage(msgInfo{&CompactBlockMessage{block, proposal.Round}, ""})
+			lazyProposer.sendInternalMessage(msgInfo{&CompactBlockMessage{block, proposal.BlockID.Hash, proposal.Round}, ""})
 			for i := 0; i < int(blockParts.Total()); i++ {
 				part := blockParts.GetPart(i)
 				lazyProposer.sendInternalMessage(msgInfo{&BlockPartMessage{lazyProposer.Height, lazyProposer.Round, part}, ""})

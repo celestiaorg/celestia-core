@@ -710,8 +710,8 @@ OUTER_LOOP:
 				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 					ChannelID: DataChannel,
 					Message: &cmtcons.CompactBlock{
-						Block: compactBlock,
-						Round: rs.Round,
+						Block:     compactBlock,
+						BlockHash: rs.Proposal.BlockID.Hash,
 					},
 				}, logger) {
 					ps.SetHasBlock(prs.Height, prs.Round)
@@ -1912,8 +1912,9 @@ func (m *ProposalPOLMessage) String() string {
 
 // CompactBlockMessage is sent when gossipping a piece of the proposed block.
 type CompactBlockMessage struct {
-	Block *types.Block
-	Round int32
+	Block     *types.Block
+	BlockHash []byte
+	Round     int32
 }
 
 // ValidateBasic performs basic validation.
@@ -1923,7 +1924,7 @@ func (m *CompactBlockMessage) ValidateBasic() error {
 
 // String returns a string representation.
 func (m *CompactBlockMessage) String() string {
-	return fmt.Sprintf("[CompactBlock H:%d, R: %d]", m.Block.Height, m.Round)
+	return fmt.Sprintf("[CompactBlock Height:%d, Hash: %X, Round: %d]", m.Block.Height, m.BlockHash, m.Round)
 }
 
 //-------------------------------------

@@ -1994,6 +1994,12 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 		return nil
 	}
 
+	// compare that this is the correct compact block
+	if !bytes.Equal(cs.Proposal.BlockID.Hash, msg.BlockHash) {
+		cs.Logger.Debug("received compact block with a different block hash", "current", cs.Proposal.BlockID.Hash, "got", msg.BlockHash)
+		return nil
+	}
+
 	blockHash := cs.Proposal.BlockID.Hash
 	timeout := cs.config.Propose(cs.Round)
 
