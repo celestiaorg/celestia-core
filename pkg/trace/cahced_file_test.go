@@ -33,7 +33,7 @@ func Test_cachedFile(t *testing.T) {
 			tt.name, func(t *testing.T) {
 				tmp := t.TempDir()
 				fdir := filepath.Join(tmp, "test.jsonl")
-				f, err := os.OpenFile(fdir, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0777)
+				f, err := os.OpenFile(fdir, os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_SYNC, 0777)
 				require.NoError(t, err)
 
 				cf := newCachedFile(f, logger, tt.cacheSize, 10)

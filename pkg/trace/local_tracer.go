@@ -64,7 +64,7 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 		if err != nil {
 			return nil, fmt.Errorf("failed to create directory %s: %w", p, err)
 		}
-		file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+		file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_SYNC, 0644)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open or create file %s: %w", fileName, err)
 		}

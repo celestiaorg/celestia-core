@@ -24,8 +24,9 @@ type cachedFile struct {
 // newcachedFile creates a cachedFile which wraps a normal file to ensure that
 // only complete data is ever written. cacheSize is the number of events that
 // will be cached and chunkSize is the number of events that will trigger a
-// write. cacheSize needs to be sufficiently larger (10x to be safe) than chunkSize in order to
-// avoid blocking.
+// write. cacheSize needs to be sufficiently larger (10x to be safe) than
+// chunkSize in order to avoid blocking. Files must be opened using os.O_SYNC in
+// order for rows of data to be written atomically.
 func newCachedFile(file *os.File, logger log.Logger, cacheSize int, chunkSize int) *cachedFile {
 	cf := &cachedFile{
 		file:      file,
@@ -88,17 +89,14 @@ func (f *cachedFile) startFlushing() {
 	}
 }
 
-// flush writes the given bytes to the file.
-func (f *cachedFile) flush(buffer [][]byte) (int, error) {
-	total := 0
+// flush writes the given bytes to the file. This method requires that the file
+// be opened with os.O_SYNC in order to write atomically to the file.
+func (f *cachedFile) flush(total int, buffer [][]byte) (int, error) {
+	bz := make([]byte, 0, total)
 	for _, b := range buffer {
-		i, err := f.file.Write(b)
-		if err != nil {
-			return total, err
-		}
-		total += i
+		bz = append(bz, b...)
 	}
-	return total, f.file.Sync()
+	return f.file.Write(bz)
 }
 
 // Close closes the file.
