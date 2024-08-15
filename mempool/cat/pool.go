@@ -367,7 +367,9 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 			txmp.rejectedTxCache.Push(key)
 		}
 		txmp.metrics.FailedTxs.Add(1)
-		return rsp, fmt.Errorf("application rejected transaction with code %d (Log: %s)", rsp.Code, rsp.Log)
+		// we don't return an error when there has been a fail code. Instead the
+		// client is expected to read the error code and the raw log
+		return rsp, nil
 	}
 
 	// Create wrapped tx
