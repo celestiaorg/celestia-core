@@ -16,7 +16,7 @@ message TxInfo {
   // The response code of executing the tx. 0 means
   // successfully executed, all others are error codes.
   uint32 code     = 3;
-  // The unprocessed log output generated during
-  // the execution of a transaction.
+  // The log output generated during the execution of a transaction.
+  // Note: this is empty if the transaction succeeded.
   string raw_log   = 4;
 }
