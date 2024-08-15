@@ -450,10 +450,14 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
 }
 
-// SaveTxInfo indexes the txs from the block with the given response codes from execution.
-func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32) error {
+// SaveTxInfo indexes the txs from the block with the given response codes and logs from execution.
+// The logs are only saved for failed transactions.
+func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error {
 	if len(txResponseCodes) != len(block.Txs) {
 		return fmt.Errorf("txResponseCodes length mismatch with block txs length")
+	}
+	if len(logs) != len(block.Txs) {
+		return fmt.Errorf("logs length mismatch with block txs length")
 	}
 
 	// Create a new batch
@@ -465,6 +469,10 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32) e
 			Height: block.Height,
 			Index:  uint32(i),
 			Code:   txResponseCodes[i],
+		}
+		// Only add rawLog for failed transactions
+		if txResponseCodes[i] != 0 {
+			txInfo.RawLog = logs[i]
 		}
 		txInfoBytes, err := proto.Marshal(&txInfo)
 		if err != nil {
