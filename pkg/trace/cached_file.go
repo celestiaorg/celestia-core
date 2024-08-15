@@ -98,7 +98,7 @@ func (f *cachedFile) flush(buffer [][]byte) (int, error) {
 		}
 		total += i
 	}
-	return total, nil
+	return total, f.file.Sync()
 }
 
 // Close closes the file.
