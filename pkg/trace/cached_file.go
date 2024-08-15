@@ -53,6 +53,7 @@ func (f *cachedFile) Cache(b Event[Entry]) {
 // file.
 func (f *cachedFile) startFlushing() {
 	buffer := make([][]byte, 0, f.chunkSize)
+	total := 0
 	defer f.wg.Done()
 
 	for {
@@ -60,7 +61,7 @@ func (f *cachedFile) startFlushing() {
 		if !ok {
 			// Channel closed, flush remaining data and exit
 			if len(buffer) > 0 {
-				_, err := f.flush(buffer)
+				_, err := f.flush(total, buffer)
 				if err != nil {
 					f.logger.Error("failure to flush remaining events", "error", err)
 				}
@@ -77,14 +78,16 @@ func (f *cachedFile) startFlushing() {
 
 		// format the file to jsonl
 		bz = append(bz, '\n')
+		total += len(bz)
 
 		buffer = append(buffer, bz)
 		if len(buffer) >= f.chunkSize {
-			_, err := f.flush(buffer)
+			_, err := f.flush(total, buffer)
 			if err != nil {
 				f.logger.Error("tracer failed to write buffered files to file", "error", err)
 			}
 			buffer = buffer[:0] // reset buffer
+			total = 0
 		}
 	}
 }
