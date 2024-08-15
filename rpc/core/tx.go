@@ -220,16 +220,16 @@ func ProveShares(
 	return shareProof, nil
 }
 
-// TxStatus retrieves the status of a transaction given its hash. It returns a ResultTxStatus
-// containing the height and index of the transaction within the block(if committed)
-// or whether the transaction is pending, evicted from the mempool, or otherwise unknown.
+// TxStatus retrieves the status of a transaction by its hash. It returns a ResultTxStatus
+// with the transaction's height and index if committed, or its pending, evicted, or unknown status.
+// It also includes the execution code and log for failed txs.
 func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
 	env := GetEnvironment()
 
 	// Check if the tx has been committed
 	txInfo := env.BlockStore.LoadTxInfo(hash)
 	if txInfo != nil {
-		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, ExecutionCode: txInfo.Code, Status: TxStatusCommitted}, nil
+		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, ExecutionCode: txInfo.Code, Log: txInfo.Log, Status: TxStatusCommitted}, nil
 	}
 
 	// Get the tx key from the hash
