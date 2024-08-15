@@ -419,9 +419,9 @@ func TestSaveTxInfo(t *testing.T) {
 			require.Equal(t, txResponseCodes[i], txInfo.Code)
 			// We don't save the logs for successful transactions
 			if txResponseCodes[i] == 0 {
-				require.Equal(t, "", txInfo.RawLog)
+				require.Equal(t, "", txInfo.Log)
 			} else {
-				require.Equal(t, logs[i], txInfo.RawLog)
+				require.Equal(t, logs[i], txInfo.Log)
 			}
 		}
 	}
@@ -435,7 +435,7 @@ func TestSaveTxInfo(t *testing.T) {
 	require.Equal(t, txInfo.Height, int64(777))
 	require.Equal(t, uint32(1), txInfo.Code)
 	require.Equal(t, uint32(5), txInfo.Index)
-	require.Equal(t, "failure", txInfo.RawLog)
+	require.Equal(t, "failure", txInfo.Log)
 }
 
 func TestLoadBaseMeta(t *testing.T) {

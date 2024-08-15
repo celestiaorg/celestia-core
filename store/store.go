@@ -7,6 +7,7 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/gogo/protobuf/proto"
 
+	abci "github.com/tendermint/tendermint/abci/types"
 	cmtsync "github.com/tendermint/tendermint/libs/sync"
 	cmtstore "github.com/tendermint/tendermint/proto/tendermint/store"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
@@ -470,9 +471,9 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, l
 			Index:  uint32(i),
 			Code:   txResponseCodes[i],
 		}
-		// Only add rawLog for failed transactions
-		if txResponseCodes[i] != 0 {
-			txInfo.RawLog = logs[i]
+		// Only save Logs for failed transactions
+		if txResponseCodes[i] != abci.CodeTypeOK {
+			txInfo.Log = logs[i]
 		}
 		txInfoBytes, err := proto.Marshal(&txInfo)
 		if err != nil {
