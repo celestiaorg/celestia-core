@@ -248,7 +248,8 @@ func (blockExec *BlockExecutor) ApplyBlock(
 	// for correct crash recovery
 	if blockExec.blockStore != nil {
 		respCodes := getResponseCodes(abciResponses.DeliverTxs)
-		if err := blockExec.blockStore.SaveTxInfo(block, respCodes); err != nil {
+		logs := getLogs(abciResponses.DeliverTxs)
+		if err := blockExec.blockStore.SaveTxInfo(block, respCodes, logs); err != nil {
 			return state, 0, err
 		}
 	}
@@ -683,4 +684,13 @@ func getResponseCodes(responses []*abci.ResponseDeliverTx) []uint32 {
 		responseCodes[i] = response.Code
 	}
 	return responseCodes
+}
+
+// getLogs gets logs from a list of ResponseDeliverTx.
+func getLogs(responses []*abci.ResponseDeliverTx) []string {
+	logs := make([]string, len(responses))
+	for i, response := range responses {
+		logs[i] = response.Log
+	}
+	return logs
 }

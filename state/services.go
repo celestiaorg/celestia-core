@@ -26,7 +26,7 @@ type BlockStore interface {
 	LoadBlock(height int64) *types.Block
 
 	SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit)
-	SaveTxInfo(block *types.Block, txResponseCode []uint32) error
+	SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error
 
 	PruneBlocks(height int64) (uint64, error)
 

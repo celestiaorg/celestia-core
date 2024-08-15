@@ -384,24 +384,27 @@ func TestSaveTxInfo(t *testing.T) {
 
 	// Create 1000 blocks
 	txResponseCodes := make([]uint32, len(block.Txs))
+	logs := make([]string, len(block.Txs))
 	for h := int64(1); h <= 1000; h++ {
 		block := makeBlock(h, state, new(types.Commit))
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, cmttime.Now())
 		blockStore.SaveBlock(block, partSet, seenCommit)
 
-		// Set the response codes for the transactions
+		// Set the response codes and logs for the transactions
 		for i := range block.Txs {
 			// If even set it to 0
 			if i%2 == 0 {
 				txResponseCodes[i] = 0
+				logs[i] = "success"
 			} else {
 				txResponseCodes[i] = 1
+				logs[i] = "failure"
 			}
 		}
 
 		// Save the tx info
-		err := blockStore.SaveTxInfo(block, txResponseCodes)
+		err := blockStore.SaveTxInfo(block, txResponseCodes, logs)
 		require.NoError(t, err)
 	}
 
@@ -414,6 +417,12 @@ func TestSaveTxInfo(t *testing.T) {
 			require.Equal(t, block.Height, txInfo.Height)
 			require.Equal(t, uint32(i), txInfo.Index)
 			require.Equal(t, txResponseCodes[i], txInfo.Code)
+			// We don't save the logs for successful transactions
+			if txResponseCodes[i] == 0 {
+				require.Equal(t, "", txInfo.Log)
+			} else {
+				require.Equal(t, logs[i], txInfo.Log)
+			}
 		}
 	}
 
@@ -426,6 +435,7 @@ func TestSaveTxInfo(t *testing.T) {
 	require.Equal(t, txInfo.Height, int64(777))
 	require.Equal(t, uint32(1), txInfo.Code)
 	require.Equal(t, uint32(5), txInfo.Index)
+	require.Equal(t, "failure", txInfo.Log)
 }
 
 func TestLoadBaseMeta(t *testing.T) {
@@ -597,7 +607,7 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 		partSet := block.MakePartSet(2)
 		seenCommit := makeTestCommit(h, cmttime.Now())
 		blockStore.SaveBlock(block, partSet, seenCommit)
-		err := blockStore.SaveTxInfo(block, make([]uint32, len(block.Txs)))
+		err := blockStore.SaveTxInfo(block, make([]uint32, len(block.Txs)), make([]string, len(block.Txs)))
 		require.NoError(t, err)
 		for _, tx := range block.Txs {
 			indexedTxHashes = append(indexedTxHashes, tx.Hash())
