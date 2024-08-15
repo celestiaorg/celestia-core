@@ -701,7 +701,7 @@ OUTER_LOOP:
 
 		// Send compact block
 		if !prs.Block && rs.ProposalBlockParts.HasHeader(prs.ProposalBlockPartSetHeader) {
-			if rs.ProposalCompactBlock != nil {
+			if rs.ProposalCompactBlock != nil && rs.Proposal != nil {
 				compactBlock, err := rs.ProposalCompactBlock.ToProto()
 				if err != nil {
 					panic(err)
