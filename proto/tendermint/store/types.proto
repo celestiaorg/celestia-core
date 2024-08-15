@@ -18,5 +18,5 @@ message TxInfo {
   uint32 code     = 3;
   // The log output generated during the execution of a transaction.
   // Note: this is empty if the transaction succeeded.
-  string raw_log   = 4;
+  string log      = 4;
 }

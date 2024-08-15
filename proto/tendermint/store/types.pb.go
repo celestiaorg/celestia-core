@@ -82,8 +82,8 @@ type TxInfo struct {
 	// The response code of executing the tx. 0 means
 	// successfully executed, all others are error codes.
 	Code uint32 `protobuf:"varint,3,opt,name=code,proto3" json:"code,omitempty"`
-	// The unprocessed log output generated during
-	// the execution of a transaction.
+	// The log output generated during the execution of a transaction.
+	// Note: this is empty if the transaction succeeded.
 	Log string `protobuf:"bytes,4,opt,name=log,proto3" json:"log,omitempty"`
 }
 
