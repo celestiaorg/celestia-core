@@ -464,7 +464,7 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 		memR.mempool.metrics.RequestedTxs.Add(1)
 		requested := memR.requests.Add(txKey, memR.ids.GetIDForPeer(peer.ID()), memR.findNewPeerToRequestTx)
 		if !requested {
-			memR.Logger.Error("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
+			memR.Logger.Debug("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
 		}
 	}
 }

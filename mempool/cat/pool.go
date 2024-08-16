@@ -558,7 +558,7 @@ func (txmp *TxPool) Update(
 	// prune record of peers seen transactions after an hour
 	// We assume by then that the transaction will no longer
 	// need to be requested
-	txmp.seenByPeersSet.Prune(time.Now().Add(time.Hour))
+	txmp.seenByPeersSet.Prune(time.Now().Add(-time.Hour))
 
 	// If there any uncommitted transactions left in the mempool, we either
 	// initiate re-CheckTx per remaining transaction or notify that remaining

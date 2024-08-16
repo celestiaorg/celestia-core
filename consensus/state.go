@@ -1081,6 +1081,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.Proposal = nil
 		cs.ProposalBlock = nil
 		cs.ProposalBlockParts = nil
+		cs.ProposalCompactBlock = nil
 	}
 
 	logger.Debug("entering new round",
