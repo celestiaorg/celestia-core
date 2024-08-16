@@ -168,12 +168,14 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  mempool.MempoolChannel,
 			Priority:            4,
+			SendQueueCapacity:   50,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 		{
 			ID:                  MempoolStateChannel,
 			Priority:            5,
+			SendQueueCapacity:   500,
 			RecvMessageCapacity: stateMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
@@ -437,6 +439,8 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 
 		if peer.Send(mempool.MempoolChannel, bz) { //nolint:staticcheck
 			memR.mempool.PeerHasTx(id, wtx.key)
+		} else {
+			memR.Logger.Error("failed to send new tx to peer", "peerID", peer.ID(), "txKey", wtx.key)
 		}
 	}
 }
@@ -466,6 +470,8 @@ func (memR *Reactor) requestTx(txKey types.TxKey, peer p2p.Peer) {
 		if !requested {
 			memR.Logger.Debug("have already marked a tx as requested", "txKey", txKey, "peerID", peer.ID())
 		}
+	} else {
+		memR.Logger.Error("failed to send message to request transaction", "txKey", txKey, "peerID", peer.ID())
 	}
 }
 

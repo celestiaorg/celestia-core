@@ -31,7 +31,10 @@ var (
 
 // InclusionDelay is the amount of time a transaction must be in the mempool
 // before it is included in the block.
-const InclusionDelay = 2 * time.Second
+const (
+	InclusionDelay = 2 * time.Second
+	SeenSetPruneInterval  = 10 * time.Minute
+)
 
 // TxPoolOption sets an optional parameter on the TxPool.
 type TxPoolOption func(*TxPool)
@@ -558,7 +561,7 @@ func (txmp *TxPool) Update(
 	// prune record of peers seen transactions after an hour
 	// We assume by then that the transaction will no longer
 	// need to be requested
-	txmp.seenByPeersSet.Prune(time.Now().Add(-time.Hour))
+	txmp.seenByPeersSet.Prune(time.Now().Add(-SeenSetPruneInterval))
 
 	// If there any uncommitted transactions left in the mempool, we either
 	// initiate re-CheckTx per remaining transaction or notify that remaining
@@ -794,13 +797,6 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 		txmp.evictedTxCache.Push(tx.key)
 	}
 	txmp.metrics.ExpiredTxs.Add(float64(numExpired))
-
-	// purge old evicted and seen transactions
-	if txmp.config.TTLDuration == 0 {
-		// ensure that seenByPeersSet are eventually pruned
-		expirationAge = now.Add(-time.Hour)
-	}
-	txmp.seenByPeersSet.Prune(expirationAge)
 }
 
 func (txmp *TxPool) notifyTxsAvailable() {
