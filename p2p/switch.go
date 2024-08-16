@@ -32,17 +32,6 @@ const (
 	reconnectBackOffBaseSeconds = 3
 )
 
-// MConnConfig returns an MConnConfig with fields updated
-// from the P2PConfig.
-func MConnConfig(cfg *config.P2PConfig) conn.MConnConfig {
-	mConfig := conn.DefaultMConnConfig()
-	mConfig.FlushThrottle = cfg.FlushThrottleTimeout
-	mConfig.SendRate = cfg.SendRate
-	mConfig.RecvRate = cfg.RecvRate
-	mConfig.MaxPacketMsgPayloadSize = cfg.MaxPacketMsgPayloadSize
-	return mConfig
-}
-
 //-----------------------------------------------------------------------------
 
 // An AddrBook represents an address book from the pex package, which is used

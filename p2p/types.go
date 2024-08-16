@@ -7,7 +7,6 @@ import (
 )
 
 type ChannelDescriptor = conn.ChannelDescriptor
-type ConnectionStatus = conn.ConnectionStatus
 
 // Envelope contains a message with sender routing info.
 type Envelope struct {

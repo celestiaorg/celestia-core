@@ -159,11 +159,6 @@ type MultiplexTransport struct {
 	nodeKey          NodeKey
 	resolver         IPResolver
 
-	// TODO(xla): This config is still needed as we parameterise peerConn and
-	// peer currently. All relevant configuration should be refactored into options
-	// with sane defaults.
-	mConfig conn.MConnConfig
-
 	// the tracer is passed to peers for collecting trace data
 	tracer trace.Tracer
 }
@@ -176,7 +171,6 @@ var _ transportLifecycle = (*MultiplexTransport)(nil)
 func NewMultiplexTransport(
 	nodeInfo NodeInfo,
 	nodeKey NodeKey,
-	mConfig conn.MConnConfig,
 	tracer trace.Tracer,
 ) *MultiplexTransport {
 	return &MultiplexTransport{
@@ -185,7 +179,6 @@ func NewMultiplexTransport(
 		dialTimeout:      defaultDialTimeout,
 		filterTimeout:    defaultFilterTimeout,
 		handshakeTimeout: defaultHandshakeTimeout,
-		mConfig:          mConfig,
 		nodeInfo:         nodeInfo,
 		nodeKey:          nodeKey,
 		conns:            NewConnSet(),
@@ -525,7 +518,7 @@ func handshake(
 	)
 
 	go func(errc chan<- error, c quic.Connection) {
-		stream, err := c.OpenStream()
+		stream, err := c.OpenStreamSync(context.Background())
 		if err != nil {
 			errc <- err
 			return

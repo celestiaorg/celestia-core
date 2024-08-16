@@ -556,8 +556,7 @@ func createTransport(
 	[]p2p.PeerFilterFunc,
 ) {
 	var (
-		mConnConfig = p2p.MConnConfig(config.P2P)
-		transport   = p2p.NewMultiplexTransport(nodeInfo, *nodeKey, mConnConfig, tracer)
+		transport   = p2p.NewMultiplexTransport(nodeInfo, *nodeKey, tracer)
 		connFilters = []p2p.ConnFilterFunc{}
 		peerFilters = []p2p.PeerFilterFunc{}
 	)
