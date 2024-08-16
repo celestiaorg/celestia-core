@@ -126,8 +126,7 @@ func TestTxStatus(t *testing.T) {
 					assert.Equal(t, height, txStatus.Height)
 					assert.Equal(t, uint32(i), txStatus.Index)
 					assert.Equal(t, uint32(0), txStatus.ExecutionCode)
-					// Log is empty for successful transactions
-					assert.Equal(t, "", txStatus.Log)
+					assert.Equal(t, "", txStatus.Error)
 				}
 			}
 

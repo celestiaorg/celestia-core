@@ -66,7 +66,7 @@ type ResultTxStatus struct {
 	Height        int64  `json:"height"`
 	Index         uint32 `json:"index"`
 	ExecutionCode uint32 `json:"execution_code"`
-	Log           string `json:"log"`
+	Error         string `json:"error"`
 	Status        string `json:"status"`
 }
 

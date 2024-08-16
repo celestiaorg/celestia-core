@@ -585,7 +585,7 @@ func TestTxStatus(t *testing.T) {
 	require.EqualValues(0, result.Index)
 	require.Equal("COMMITTED", result.Status)
 	require.Equal(abci.CodeTypeOK, result.ExecutionCode)
-	require.Equal("", result.Log)
+	require.Equal("", result.Error)
 }
 
 func TestTxSearch(t *testing.T) {

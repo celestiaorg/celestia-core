@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	abci "github.com/tendermint/tendermint/abci/types"
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/libs/log"
@@ -418,10 +419,10 @@ func TestSaveTxInfo(t *testing.T) {
 			require.Equal(t, uint32(i), txInfo.Index)
 			require.Equal(t, txResponseCodes[i], txInfo.Code)
 			// We don't save the logs for successful transactions
-			if txResponseCodes[i] == 0 {
-				require.Equal(t, "", txInfo.Log)
+			if txResponseCodes[i] == abci.CodeTypeOK {
+				require.Equal(t, "", txInfo.Error)
 			} else {
-				require.Equal(t, logs[i], txInfo.Log)
+				require.Equal(t, logs[i], txInfo.Error)
 			}
 		}
 	}
@@ -435,7 +436,7 @@ func TestSaveTxInfo(t *testing.T) {
 	require.Equal(t, txInfo.Height, int64(777))
 	require.Equal(t, uint32(1), txInfo.Code)
 	require.Equal(t, uint32(5), txInfo.Index)
-	require.Equal(t, "failure", txInfo.Log)
+	require.Equal(t, "failure", txInfo.Error)
 }
 
 func TestLoadBaseMeta(t *testing.T) {
