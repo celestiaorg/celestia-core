@@ -208,12 +208,12 @@ func (_m *BlockStore) PruneBlocks(height int64) (uint64, error) {
 }
 
 // SaveTxInfo provides a mock function with given fields: block, txResponseCode
-func (_m *BlockStore) SaveTxInfo(block *types.Block, txResponseCode []uint32) error {
-	ret := _m.Called(block, txResponseCode)
+func (_m *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error {
+	ret := _m.Called(block, txResponseCodes, logs)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(*types.Block, []uint32) error); ok {
-		r0 = rf(block, txResponseCode)
+	if rf, ok := ret.Get(0).(func(*types.Block, []uint32, []string) error); ok {
+		r0 = rf(block, txResponseCodes, logs)
 	} else {
 		r0 = ret.Error(0)
 	}

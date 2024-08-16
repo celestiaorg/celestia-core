@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	txStatusUnknown   string = "UNKNOWN"
-	txStatusPending   string = "PENDING"
-	txStatusEvicted   string = "EVICTED"
-	txStatusCommitted string = "COMMITTED"
+	TxStatusUnknown   string = "UNKNOWN"
+	TxStatusPending   string = "PENDING"
+	TxStatusEvicted   string = "EVICTED"
+	TxStatusCommitted string = "COMMITTED"
 )
 
 // Tx allows you to query the transaction results. `nil` could mean the
@@ -220,16 +220,16 @@ func ProveShares(
 	return shareProof, nil
 }
 
-// TxStatus retrieves the status of a transaction given its hash. It returns a ResultTxStatus
-// containing the height and index of the transaction within the block(if committed)
-// or whether the transaction is pending, evicted from the mempool, or otherwise unknown.
+// TxStatus retrieves the status of a transaction by its hash. It returns a ResultTxStatus
+// with the transaction's height and index if committed, or its pending, evicted, or unknown status.
+// It also includes the execution code and log for failed txs.
 func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
 	env := GetEnvironment()
 
 	// Check if the tx has been committed
 	txInfo := env.BlockStore.LoadTxInfo(hash)
 	if txInfo != nil {
-		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, ExecutionCode: txInfo.Code, Status: txStatusCommitted}, nil
+		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, ExecutionCode: txInfo.Code, Error: txInfo.Error, Status: TxStatusCommitted}, nil
 	}
 
 	// Get the tx key from the hash
@@ -241,17 +241,17 @@ func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error
 	// Check if the tx is in the mempool
 	txInMempool, ok := env.Mempool.GetTxByKey(txKey)
 	if txInMempool != nil && ok {
-		return &ctypes.ResultTxStatus{Status: txStatusPending}, nil
+		return &ctypes.ResultTxStatus{Status: TxStatusPending}, nil
 	}
 
 	// Check if the tx is evicted
 	isEvicted := env.Mempool.WasRecentlyEvicted(txKey)
 	if isEvicted {
-		return &ctypes.ResultTxStatus{Status: txStatusEvicted}, nil
+		return &ctypes.ResultTxStatus{Status: TxStatusEvicted}, nil
 	}
 
 	// If the tx is not in the mempool, evicted, or committed, return unknown
-	return &ctypes.ResultTxStatus{Status: txStatusUnknown}, nil
+	return &ctypes.ResultTxStatus{Status: TxStatusUnknown}, nil
 }
 
 // ProveSharesV2 creates a proof for a set of shares to the data root.
