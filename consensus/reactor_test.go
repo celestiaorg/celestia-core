@@ -215,7 +215,7 @@ func TestReactorWithEvidence(t *testing.T) {
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool2)
+		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, nil, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
 
@@ -367,7 +367,6 @@ func TestReactorRecordsVotesAndBlockParts(t *testing.T) {
 	ps := peer.Get(types.PeerStateKey).(*PeerState)
 
 	assert.Equal(t, true, ps.VotesSent() > 0, "number of votes sent should have increased")
-	assert.Equal(t, true, ps.BlockPartsSent() > 0, "number of votes sent should have increased")
 }
 
 //-------------------------------------------------------------
@@ -1056,6 +1055,7 @@ func TestMarshalJSONPeerState(t *testing.T) {
 			"step": 0,
 			"start_time": "0001-01-01T00:00:00Z",
 			"proposal": false,
+			"block": false,
 			"proposal_block_part_set_header":
 				{"total":0, "hash":""},
 			"proposal_block_parts": null,

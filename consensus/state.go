@@ -2,10 +2,12 @@ package consensus
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"sort"
 	"time"
@@ -67,6 +69,27 @@ type txNotifier interface {
 	TxsAvailable() <-chan struct{}
 }
 
+type TxFetcher interface {
+	// For constructing the compact block
+	FetchKeysFromTxs(context.Context, [][]byte) ([][]byte, error)
+	// For reconstructing the full block from the compact block
+	FetchTxsFromKeys(context.Context, []byte, [][]byte) ([][]byte, error)
+}
+
+var _ TxFetcher = (*StandardTxFetcher)(nil)
+
+// StandardTxFetcher implements TxFetcher. Unlike the CATPool, it gossips the entire transaction set
+// instead of the set of keys. This aligns with Tendermint's vanilla block propagation method
+type StandardTxFetcher struct{}
+
+func (tf *StandardTxFetcher) FetchKeysFromTxs(_ context.Context, txs [][]byte) ([][]byte, error) {
+	return txs, nil
+}
+
+func (tf *StandardTxFetcher) FetchTxsFromKeys(_ context.Context, _ []byte, txs [][]byte) ([][]byte, error) {
+	return txs, nil
+}
+
 // interface to the evidence pool
 type evidencePool interface {
 	// reports conflicting votes to the evidence pool to be processed into evidence
@@ -92,6 +115,8 @@ type State struct {
 
 	// notify us if txs are available
 	txNotifier txNotifier
+	// fetch txs based on tx keys. Used for compact blocks.
+	txFetcher TxFetcher
 
 	// add evidence to the pool
 	// when it's detected
@@ -141,8 +166,7 @@ type State struct {
 	evsw cmtevents.EventSwitch
 
 	// for reporting metrics
-	metrics *Metrics
-
+	metrics     *Metrics
 	traceClient trace.Tracer
 }
 
@@ -156,14 +180,21 @@ func NewState(
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
 	txNotifier txNotifier,
+	txFetcher TxFetcher,
 	evpool evidencePool,
 	options ...StateOption,
 ) *State {
+	path := filepath.Join(config.RootDir, "data", "consensus")
+	if err := cmtos.EnsureDir(path, 0700); err != nil {
+		panic(err)
+	}
+
 	cs := &State{
 		config:           config,
 		blockExec:        blockExec,
 		blockStore:       blockStore,
 		txNotifier:       txNotifier,
+		txFetcher:        txFetcher,
 		peerMsgQueue:     make(chan msgInfo, msgQueueSize),
 		internalMsgQueue: make(chan msgInfo, msgQueueSize),
 		timeoutTicker:    NewTimeoutTicker(),
@@ -175,6 +206,10 @@ func NewState(
 		evsw:             cmtevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
 		traceClient:      trace.NoOpTracer(),
+	}
+
+	if cs.txFetcher == nil {
+		cs.txFetcher = &StandardTxFetcher{}
 	}
 
 	// set function defaults (may be overwritten before calling Start)
@@ -681,6 +716,7 @@ func (cs *State) updateToState(state sm.State) {
 	cs.Proposal = nil
 	cs.ProposalBlock = nil
 	cs.ProposalBlockParts = nil
+	cs.ProposalCompactBlock = nil
 	cs.LockedRound = -1
 	cs.LockedBlock = nil
 	cs.LockedBlockParts = nil
@@ -837,6 +873,13 @@ func (cs *State) handleMsg(mi msgInfo) {
 		// will not cause transition.
 		// once proposal is set, we can receive block parts
 		err = cs.setProposal(msg.Proposal)
+
+	case *CompactBlockMessage:
+		err = cs.addCompactBlock(msg, peerID)
+
+		if err == nil {
+			cs.handleCompleteProposal(msg.Block.Height)
+		}
 
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
@@ -1038,6 +1081,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.Proposal = nil
 		cs.ProposalBlock = nil
 		cs.ProposalBlockParts = nil
+		cs.ProposalCompactBlock = nil
 	}
 
 	logger.Debug("entering new round",
@@ -1155,20 +1199,31 @@ func (cs *State) isProposer(address []byte) bool {
 func (cs *State) defaultDecideProposal(height int64, round int32) {
 	var block *types.Block
 	var blockParts *types.PartSet
+	var blockHash []byte
 
 	// Decide on block
 	if cs.TwoThirdPrevoteBlock != nil {
 		// If there is valid block, choose that.
 		block, blockParts = cs.TwoThirdPrevoteBlock, cs.TwoThirdPrevoteBlockParts
+		blockHash = block.Hash()
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		schema.WriteABCI(cs.traceClient, schema.PrepareProposalStart, height, round)
-		block, blockParts = cs.createProposalBlock()
+		block = cs.createProposalBlock()
 		schema.WriteABCI(cs.traceClient, schema.PrepareProposalEnd, height, round)
 		if block == nil {
 			return
 		}
+		blockParts = block.MakePartSet(types.BlockPartSizeBytes)
+		blockHash = block.Hash()
 	}
+
+	keys, err := cs.txFetcher.FetchKeysFromTxs(context.Background(), block.Txs.ToSliceOfBytes())
+	if err != nil {
+		cs.Logger.Error("failed to fetch tx keys", "err", err)
+		return
+	}
+	block.Data.Txs = types.ToTxs(keys)
 
 	// Flush the WAL. Otherwise, we may not recompute the same proposal to sign,
 	// and the privValidator will refuse to sign anything.
@@ -1177,21 +1232,18 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	}
 
 	// Make proposal
-	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
+	propBlockID := types.BlockID{Hash: blockHash, PartSetHeader: blockParts.Header()}
 	proposal := types.NewProposal(height, round, cs.TwoThirdPrevoteRound, propBlockID)
 	p := proposal.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
 		proposal.Signature = p.Signature
 
-		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
-
+		cs.sendInternalMessage(msgInfo{&CompactBlockMessage{block, blockHash, proposal.Round}, ""})
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
 			cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.Height, cs.Round, part}, ""})
 		}
-
-		cs.Logger.Debug("signed proposal", "height", height, "round", round, "proposal", proposal)
 	} else if !cs.replayMode {
 		cs.Logger.Error("propose step; failed signing proposal", "height", height, "round", round, "err", err)
 	}
@@ -1219,7 +1271,7 @@ func (cs *State) isProposalComplete() bool {
 //
 // NOTE: keep it side-effect free for clarity.
 // CONTRACT: cs.privValidator is not nil.
-func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.PartSet) {
+func (cs *State) createProposalBlock() *types.Block {
 	if cs.privValidator == nil {
 		panic("entered createProposalBlock with privValidator being nil")
 	}
@@ -1237,14 +1289,14 @@ func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.Pa
 
 	default: // This shouldn't happen.
 		cs.Logger.Error("propose step; cannot propose anything without commit for the previous block")
-		return
+		return nil
 	}
 
 	if cs.privValidatorPubKey == nil {
 		// If this node is a validator & proposer in the current round, it will
 		// miss the opportunity to create a block.
 		cs.Logger.Error("propose step; empty priv validator public key", "err", errPubKeyIsNotSet)
-		return
+		return nil
 	}
 
 	proposerAddr := cs.privValidatorPubKey.Address()
@@ -1905,7 +1957,107 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		cs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader)
 	}
 
-	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
+	cs.Logger.Info("received proposal", "proposal", proposal, "partSetHeader", proposal.BlockID.PartSetHeader)
+	return nil
+}
+
+func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error {
+	compactBlock := msg.Block
+	height := compactBlock.Height
+	cs.metrics.CompactBlocksReceived.Add(1)
+
+	if cs.ProposalBlock != nil {
+		// We already have the proposal block.
+		return nil
+	}
+
+	// Blocks might be reused, so round mismatch is OK
+	if cs.Height != height {
+		cs.Logger.Debug("received compact block from wrong height", "height", height, "currentHeight", cs.Height)
+		cs.metrics.BlockGossipPartsReceived.With("matches_current", "false").Add(1)
+		return nil
+	}
+
+	if cs.Round != msg.Round {
+		cs.Logger.Debug("received compact block from wrong round", "round", msg.Round, "currentRound", cs.Round)
+		cs.metrics.BlockGossipPartsReceived.With("matches_current", "false").Add(1)
+		return nil
+	}
+
+	// We're not expecting a block part.
+	if cs.ProposalBlockParts == nil || cs.Proposal == nil {
+		cs.metrics.BlockGossipPartsReceived.With("matches_current", "false").Add(1)
+		// NOTE: this can happen when we've gone to a higher round and
+		// then receive parts from the previous round - not necessarily a bad peer.
+		cs.Logger.Debug(
+			"received a block part when we are not expecting any",
+			"height", height,
+			"peer", peerID,
+		)
+		return nil
+	}
+
+	// compare that this is the correct compact block
+	if !bytes.Equal(cs.Proposal.BlockID.Hash, msg.BlockHash) {
+		cs.Logger.Debug("received compact block with a different block hash", "current", cs.Proposal.BlockID.Hash, "got", msg.BlockHash)
+		return nil
+	}
+
+	blockHash := cs.Proposal.BlockID.Hash
+	timeout := cs.config.Propose(cs.Round)
+
+	// Yield the lock while we fetch the transactions from the mempool so that votes
+	// and other operations can be processed.
+	cs.mtx.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	txs, err := cs.txFetcher.FetchTxsFromKeys(ctx, blockHash, compactBlock.Data.Txs.ToSliceOfBytes())
+
+	cs.mtx.Lock()
+	if err != nil {
+		cs.metrics.CompactBlocksFailed.Add(1)
+		if ctx.Err() != nil {
+			cs.Logger.Info("failed to fetch transactions within the timeout", "timeout", timeout)
+			return nil
+		}
+		cs.Logger.Error("failed to fetch transactions for compact block", "err", err)
+		return err
+	}
+	block := &types.Block{
+		Header:     compactBlock.Header,
+		LastCommit: compactBlock.LastCommit,
+		Evidence:   compactBlock.Evidence,
+		Data:       compactBlock.Data,
+	}
+	block.Txs = types.ToTxs(txs)
+
+	if err := block.ValidateBasic(); err != nil {
+		return fmt.Errorf("received invalid block: %w", err)
+	}
+
+	if !bytes.Equal(block.Hash(), cs.Proposal.BlockID.Hash) {
+		return fmt.Errorf("received compact block with header hash [%v] that does not match proposal [%v]", block.Hash(), cs.Proposal.BlockID.Hash)
+	}
+
+	// check that the part set header matched that of the
+	partSet := block.MakePartSet(types.BlockPartSizeBytes)
+	if !partSet.HasHeader(cs.Proposal.BlockID.PartSetHeader) {
+		return fmt.Errorf("received compact block with part set header [%v] that does not match proposal [%v]", partSet.Header(), cs.Proposal.BlockID.PartSetHeader)
+	}
+
+	cs.ProposalCompactBlock = compactBlock
+	cs.ProposalBlock = block
+	cs.ProposalBlockParts = partSet
+
+	// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
+	cs.Logger.Info("assembled proposal block from compact block", "height", cs.ProposalBlock.Height, "round", cs.Round, "hash", cs.ProposalBlock.Hash())
+
+	if err := cs.eventBus.PublishEventCompleteProposal(cs.CompleteProposalEvent()); err != nil {
+		cs.Logger.Error("failed publishing event complete proposal", "err", err)
+	}
+
 	return nil
 }
 
@@ -2323,7 +2475,7 @@ func (cs *State) signAddVote(msgType cmtproto.SignedMsgType, hash []byte, header
 	vote, err := cs.signVote(msgType, hash, header)
 	if err == nil {
 		cs.sendInternalMessage(msgInfo{&VoteMessage{vote}, ""})
-		cs.Logger.Debug("signed and pushed vote", "height", cs.Height, "round", cs.Round, "vote", vote)
+		cs.Logger.Info("signed and pushed vote", "height", cs.Height, "round", cs.Round, "vote", vote)
 		return vote
 	}
 

@@ -35,7 +35,8 @@ func BroadcastTxAsync(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadca
 // More: https://docs.cometbft.com/v0.34/rpc/#/Tx/broadcast_tx_sync
 func BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
 	resCh := make(chan *abci.Response, 1)
-	err := GetEnvironment().Mempool.CheckTx(tx, func(res *abci.Response) {
+	env := GetEnvironment()
+	err := env.Mempool.CheckTx(tx, func(res *abci.Response) {
 		select {
 		case <-ctx.Context().Done():
 		case resCh <- res:
@@ -43,6 +44,7 @@ func BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcas
 
 	}, mempl.TxInfo{})
 	if err != nil {
+		env.Logger.Error("Error on broadcastTxSync", "err", err)
 		return nil, err
 	}
 
