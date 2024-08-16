@@ -452,7 +452,7 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 }
 
 // SaveTxInfo indexes the txs from the block with the given response codes and logs from execution.
-// The logs are only saved for failed transactions.
+// Only the error logs are saved for failed transactions.
 func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error {
 	if len(txResponseCodes) != len(block.Txs) {
 		return fmt.Errorf("txResponseCodes length mismatch with block txs length")
@@ -471,9 +471,9 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, l
 			Index:  uint32(i),
 			Code:   txResponseCodes[i],
 		}
-		// Only save Logs for failed transactions
+		// Set error log for failed txs
 		if txResponseCodes[i] != abci.CodeTypeOK {
-			txInfo.Log = logs[i]
+			txInfo.Error = logs[i]
 		}
 		txInfoBytes, err := proto.Marshal(&txInfo)
 		if err != nil {

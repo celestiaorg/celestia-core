@@ -9,14 +9,13 @@ message BlockStoreState {
 }
 
 // TxInfo describes the location of a tx inside a committed block
-// as well as the result of executing the transaction and the raw log output.
+// as well as the result of executing the transaction and the error log output.
 message TxInfo {
   int64 height    = 1;
   uint32 index    = 2;
   // The response code of executing the tx. 0 means
   // successfully executed, all others are error codes.
   uint32 code     = 3;
-  // The log output generated during the execution of a transaction.
-  // Note: this is empty if the transaction succeeded.
-  string log      = 4;
+  // The error log output generated if the transaction execution fails.
+  string error     = 4;
 }
