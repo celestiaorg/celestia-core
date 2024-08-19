@@ -215,7 +215,7 @@ func (mt *MultiplexTransport) Dial(
 	addr NetAddress,
 	cfg peerConfig,
 ) (Peer, error) {
-	addr.PrivateKey = mt.nodeKey.PrivKey
+	//addr.PrivateKey = mt.nodeKey.PrivKey
 	c, err := addr.DialTimeout(mt.dialTimeout)
 	if err != nil {
 		return nil, err
@@ -261,7 +261,11 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 		BasicConstraintsValid: true,
 	}
 
-	edKey := ed25519.PrivateKey(addr.PrivateKey.Bytes())
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return err
+	}
+	edKey := ed25519.PrivateKey(private)
 	derBytes, err := x509.CreateCertificate(rand.Reader, &certTemplate, &certTemplate, edKey.Public(), edKey)
 	if err != nil {
 		return err
@@ -273,7 +277,13 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 			PrivateKey:  edKey,
 		}},
 	}
-	quickConfig := quic.Config{}
+	quickConfig := quic.Config{
+		MaxIdleTimeout:        10 * time.Minute,
+		MaxIncomingStreams:    1000000000,
+		MaxIncomingUniStreams: 1000000000,
+		KeepAlivePeriod:       15 * time.Second,
+		EnableDatagrams:       true,
+	}
 	listener, err := quic.ListenAddr(addr.DialString(), &tlsConfig, &quickConfig)
 	if err != nil {
 		return err

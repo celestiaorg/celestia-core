@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/quic-go/quic-go"
-	"github.com/tendermint/tendermint/crypto"
 	"net"
 	"strconv"
 	"strings"
@@ -26,10 +25,9 @@ const EmptyNetAddress = "<nil-NetAddress>"
 // NetAddress defines information about a peer on the network
 // including its ID, IP address, and port.
 type NetAddress struct {
-	ID         ID     `json:"id"`
-	IP         net.IP `json:"ip"`
-	Port       uint16 `json:"port"`
-	PrivateKey crypto.PrivKey
+	ID   ID     `json:"id"`
+	IP   net.IP `json:"ip"`
+	Port uint16 `json:"port"`
 }
 
 // IDAddressString returns id@hostPort. It strips the leading
@@ -244,7 +242,7 @@ func (na *NetAddress) Dial() (quic.Connection, error) {
 		MaxIdleTimeout:        10 * time.Minute,
 		MaxIncomingStreams:    1000000000,
 		MaxIncomingUniStreams: 1000000000,
-		KeepAlivePeriod:       100 * time.Millisecond,
+		KeepAlivePeriod:       15 * time.Second,
 		EnableDatagrams:       true,
 	}
 	conn, err := quic.DialAddr(context.Background(), na.DialString(), &tlsConfig, &quickConfig)
@@ -263,7 +261,7 @@ func (na *NetAddress) DialTimeout(timeout time.Duration) (quic.Connection, error
 		MaxIdleTimeout:        10 * time.Minute,
 		MaxIncomingStreams:    1000000000,
 		MaxIncomingUniStreams: 1000000000,
-		KeepAlivePeriod:       100 * time.Millisecond,
+		KeepAlivePeriod:       15 * time.Second,
 		EnableDatagrams:       true,
 	}
 	conn, err := quic.DialAddr(context.Background(), na.DialString(), &tlsConfig, &quickConfig)

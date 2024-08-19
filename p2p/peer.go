@@ -10,7 +10,6 @@ import (
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"io"
 	"net"
-	"reflect"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -69,7 +68,6 @@ type EnvelopeSender interface {
 //
 // Deprecated: Will be removed in v0.37.
 func SendEnvelopeShim(p Peer, e Envelope, lg log.Logger) bool {
-	fmt.Println(e)
 	if es, ok := p.(EnvelopeSender); ok {
 		return es.SendEnvelope(e)
 	}
@@ -234,10 +232,10 @@ func newPeer(
 		err := proto.Unmarshal(msgBytes, msg)
 		if err != nil {
 			p.Logger.Error("before panic", "msg", msg, "type", mt, "bytes", hex.EncodeToString(msgBytes))
-			panic(fmt.Errorf("unmarshaling message: %s into type: %s", err, reflect.TypeOf(mt)))
+			return
 		}
 
-		p.Logger.Error("type of message", "type", msg)
+		//p.Logger.Error("type of message", "type", msg)
 		if w, ok := msg.(Unwrapper); ok {
 			msg, err = w.Unwrap()
 			if err != nil {
@@ -422,7 +420,7 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 			p.Logger.Error("error sending channel ID", "err", err.Error())
 			return false
 		}
-		//p.Logger.Info("successfully shared channel ID", "id", chID)
+		//p.Logger.Error("successfully opened channel", "id", chID)
 	}
 
 	//p.Logger.Info("Send", "channel", chID, "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
@@ -438,7 +436,7 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 			p.Logger.Info("Send failed", "channel", "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
 			return
 		}
-		//p.Logger.Info("sent data", "channel", chID, "len_data", len(msgBytes), "data", hex.EncodeToString(msgBytes))
+		p.Logger.Info("sent data", "channel", chID, "len_data", len(msgBytes))
 		labels := []string{
 			"peer_id", string(p.ID()),
 			"chID", fmt.Sprintf("%#x", chID),
@@ -567,8 +565,7 @@ func (p *peer) OnReceive() error {
 			p.Logger.Error("failed to read channel ID", "err", err.Error())
 			return err
 		}
-		p.streams[chID] = stream
-		p.Logger.Info("successfully got channel ID", "id", chID)
+		//p.Logger.Error("successfully opened channel", "id", chID)
 		// start accepting data
 		go func() {
 			for {
@@ -585,7 +582,7 @@ func (p *peer) OnReceive() error {
 					p.Logger.Error("failed to read data from stream", "err", err.Error())
 					return
 				}
-				//p.Logger.Info("received data", "channel", chID[0], "len_data", dataLen, "data", hex.EncodeToString(data))
+				p.Logger.Info("received data", "channel", chID, "len_data", dataLen)
 				p.onReceive(chID, data)
 			}
 		}()

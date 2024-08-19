@@ -194,7 +194,7 @@ func (peer *BpPeer) stopBlockResponseTimer() bool {
 func BpPeerDefaultParams() *BpPeerParams {
 	return &BpPeerParams{
 		// Timeout for a peer to respond to a block request.
-		timeout: 15 * time.Second,
+		timeout: 15 * time.Minute,
 
 		// Minimum recv rate to ensure we're receiving blocks from a peer fast
 		// enough. If a peer is not sending data at at least that rate, we
