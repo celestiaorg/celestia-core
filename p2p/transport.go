@@ -265,8 +265,7 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 	if err != nil {
 		return err
 	}
-	edKey := ed25519.PrivateKey(private)
-	derBytes, err := x509.CreateCertificate(rand.Reader, &certTemplate, &certTemplate, edKey.Public(), edKey)
+	derBytes, err := x509.CreateCertificate(rand.Reader, &certTemplate, &certTemplate, private.Public(), private)
 	if err != nil {
 		return err
 	}
@@ -274,7 +273,7 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 	tlsConfig := tls.Config{
 		Certificates: []tls.Certificate{{
 			Certificate: [][]byte{derBytes},
-			PrivateKey:  edKey,
+			PrivateKey:  private,
 		}},
 	}
 	quickConfig := quic.Config{

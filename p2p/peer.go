@@ -220,7 +220,6 @@ func newPeer(
 	}
 
 	p.onReceive = func(chID byte, msgBytes []byte) {
-		//p.Logger.Info("handling data", "channel", chID, "data", hex.EncodeToString(msgBytes))
 		reactor := reactorsByCh[chID]
 		if reactor == nil {
 			// Note that its ok to panic here as it's caught in the conn._recover,
@@ -235,7 +234,6 @@ func newPeer(
 			return
 		}
 
-		//p.Logger.Error("type of message", "type", msg)
 		if w, ok := msg.(Unwrapper); ok {
 			msg, err = w.Unwrap()
 			if err != nil {
@@ -252,14 +250,12 @@ func newPeer(
 		p.metrics.MessageReceiveBytesTotal.With(append(labels, "message_type", p.mlc.ValueToMetricLabel(msg))...).Add(float64(len(msgBytes)))
 		schema.WriteReceivedBytes(p.traceClient, string(p.ID()), chID, len(msgBytes))
 		if nr, ok := reactor.(EnvelopeReceiver); ok {
-			//p.Logger.Info("reactor.(EnvelopeReceiver)")
 			nr.ReceiveEnvelope(Envelope{
 				ChannelID: chID,
 				Src:       p,
 				Message:   msg,
 			})
 		} else {
-			//p.Logger.Info("not reactor.(EnvelopeReceiver)")
 			reactor.Receive(chID, p, msgBytes)
 		}
 	}
@@ -420,22 +416,17 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 			p.Logger.Error("error sending channel ID", "err", err.Error())
 			return false
 		}
-		//p.Logger.Error("successfully opened channel", "id", chID)
 	}
-
-	//p.Logger.Info("Send", "channel", chID, "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
 
 	if err := binary.Write(stream, binary.BigEndian, uint32(len(msgBytes))); err != nil {
 		p.Logger.Error("Send len failed", "err", err, "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
 		return false
 	}
-	//p.Logger.Error("sending size of data", "size", len(msgBytes))
 	err := binary.Write(stream, binary.BigEndian, msgBytes)
 	if err != nil {
 		p.Logger.Info("Send failed", "channel", "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
 		return false
 	}
-	//p.Logger.Error("sent dataLen", "channel", chID, "len_data", len(msgBytes), "bytes", hex.EncodeToString(msgBytes))
 	labels := []string{
 		"peer_id", string(p.ID()),
 		"chID", fmt.Sprintf("%#x", chID),
@@ -550,7 +541,7 @@ func (p *peer) metricsReporter() {
 }
 
 func (p *peer) StartReceiving() error {
-	for i := 0; i < 500; i++ {
+	for {
 		stream, err := p.conn.AcceptStream(context.Background())
 		if err != nil {
 			p.Logger.Error("failed to accept stream", "err", err.Error())
@@ -573,17 +564,14 @@ func (p *peer) StartReceiving() error {
 					p.Logger.Error("failed to read size from stream", "err", err.Error())
 					return
 				}
-				//p.Logger.Error("received size", "size", dataLen)
 				data := make([]byte, dataLen)
 				_, err = io.ReadFull(stream, data)
 				if err != nil {
 					p.Logger.Error("failed to read data from stream", "err", err.Error())
 					return
 				}
-				//p.Logger.Info("received data", "channel", chID, "len_data", dataLen, "bytes", hex.EncodeToString(data))
 				p.onReceive(chID, data)
 			}
 		}()
 	}
-	return errors.New("reached 500 opened streams with peer")
 }
