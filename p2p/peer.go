@@ -265,7 +265,7 @@ func newPeer(
 	}
 
 	go func() {
-		err := p.OnReceive()
+		err := p.StartReceiving()
 		if err != nil {
 			p.Logger.Error("error receiving stuff", "err", err.Error())
 		}
@@ -551,7 +551,7 @@ func (p *peer) metricsReporter() {
 	}
 }
 
-func (p *peer) OnReceive() error {
+func (p *peer) StartReceiving() error {
 	for i := 0; i < 500; i++ {
 		stream, err := p.conn.AcceptStream(context.Background())
 		if err != nil {
