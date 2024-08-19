@@ -231,7 +231,7 @@ func newPeer(
 		msg := proto.Clone(mt)
 		err := proto.Unmarshal(msgBytes, msg)
 		if err != nil {
-			p.Logger.Error("before panic", "msg", msg, "type", mt, "bytes", hex.EncodeToString(msgBytes))
+			p.Logger.Error("before panic", "msg", msg, "channel", chID, "type", mt, "bytes", hex.EncodeToString(msgBytes))
 			return
 		}
 
@@ -425,24 +425,22 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 
 	//p.Logger.Info("Send", "channel", chID, "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
 
-	go func() {
-		if err := binary.Write(stream, binary.BigEndian, uint32(len(msgBytes))); err != nil {
-			p.Logger.Error("Send len failed", "err", err, "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
-			return
-		}
-		//p.Logger.Error("sending size of data", "size", len(msgBytes))
-		err := binary.Write(stream, binary.BigEndian, msgBytes)
-		if err != nil {
-			p.Logger.Info("Send failed", "channel", "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
-			return
-		}
-		p.Logger.Info("sent data", "channel", chID, "len_data", len(msgBytes))
-		labels := []string{
-			"peer_id", string(p.ID()),
-			"chID", fmt.Sprintf("%#x", chID),
-		}
-		p.metrics.PeerSendBytesTotal.With(labels...).Add(float64(len(msgBytes)))
-	}()
+	if err := binary.Write(stream, binary.BigEndian, uint32(len(msgBytes))); err != nil {
+		p.Logger.Error("Send len failed", "err", err, "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
+		return false
+	}
+	//p.Logger.Error("sending size of data", "size", len(msgBytes))
+	err := binary.Write(stream, binary.BigEndian, msgBytes)
+	if err != nil {
+		p.Logger.Info("Send failed", "channel", "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
+		return false
+	}
+	//p.Logger.Error("sent dataLen", "channel", chID, "len_data", len(msgBytes), "bytes", hex.EncodeToString(msgBytes))
+	labels := []string{
+		"peer_id", string(p.ID()),
+		"chID", fmt.Sprintf("%#x", chID),
+	}
+	p.metrics.PeerSendBytesTotal.With(labels...).Add(float64(len(msgBytes)))
 
 	return true
 }
@@ -582,7 +580,7 @@ func (p *peer) StartReceiving() error {
 					p.Logger.Error("failed to read data from stream", "err", err.Error())
 					return
 				}
-				p.Logger.Info("received data", "channel", chID, "len_data", dataLen)
+				//p.Logger.Info("received data", "channel", chID, "len_data", dataLen, "bytes", hex.EncodeToString(data))
 				p.onReceive(chID, data)
 			}
 		}()
