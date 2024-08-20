@@ -449,7 +449,7 @@ func (p *peer) TrySend(chID byte, msgBytes []byte) bool {
 	} else if !p.hasChannel(chID) {
 		return false
 	}
-	res := p.TrySend(chID, msgBytes)
+	res := p.Send(chID, msgBytes)
 	if res {
 		labels := []string{
 			"peer_id", string(p.ID()),
