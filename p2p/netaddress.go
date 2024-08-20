@@ -6,12 +6,17 @@ package p2p
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
 	"github.com/quic-go/quic-go"
+	"math/big"
 	"net"
 	"strconv"
 	"strings"
@@ -235,7 +240,8 @@ func (na *NetAddress) DialString() string {
 }
 
 // Dial calls net.Dial on the address.
-// TODO: add tls stuff here
+// TODO: add TLS stuff.
+// Note: this one is not used in the code, the DialTimeout is used instead.
 func (na *NetAddress) Dial(ctx context.Context) (quic.Connection, error) {
 	tlsConfig := tls.Config{
 		MinVersion:         tls.VersionTLS13,
@@ -259,9 +265,35 @@ func (na *NetAddress) Dial(ctx context.Context) (quic.Connection, error) {
 // TODO(rach-id): timeout
 // TODO(rach-id): tls config
 func (na *NetAddress) DialTimeout(timeout time.Duration) (quic.Connection, error) {
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	certTemplate := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"Test"},
+		},
+		BasicConstraintsValid: true,
+	}
+
+	// using rsa 4096 as ed25519 apparently is not supported and an error is returned.
+	// TODO(rach-id): investigate this
+	rsaPrivateKey, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return nil, err
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &certTemplate, &certTemplate, rsaPrivateKey.Public(), rsaPrivateKey)
+	if err != nil {
+		return nil, err
+	}
+
 	tlsConfig := tls.Config{
 		MinVersion:         tls.VersionTLS13,
 		InsecureSkipVerify: true,
+		Certificates: []tls.Certificate{{
+			Certificate: [][]byte{derBytes},
+			PrivateKey:  rsaPrivateKey,
+		}},
 	}
 	quickConfig := quic.Config{
 		MaxIdleTimeout:        10 * time.Minute,

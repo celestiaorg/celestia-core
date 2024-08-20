@@ -2,7 +2,7 @@ package p2p
 
 import (
 	"context"
-	"crypto/ed25519"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -261,11 +261,11 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 		BasicConstraintsValid: true,
 	}
 
-	_, private, err := ed25519.GenerateKey(rand.Reader)
+	rsaPrivateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		return err
 	}
-	derBytes, err := x509.CreateCertificate(rand.Reader, &certTemplate, &certTemplate, private.Public(), private)
+	derBytes, err := x509.CreateCertificate(rand.Reader, &certTemplate, &certTemplate, rsaPrivateKey.Public(), rsaPrivateKey)
 	if err != nil {
 		return err
 	}
@@ -274,7 +274,7 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 		MinVersion: tls.VersionTLS13,
 		Certificates: []tls.Certificate{{
 			Certificate: [][]byte{derBytes},
-			PrivateKey:  private,
+			PrivateKey:  rsaPrivateKey,
 		}},
 	}
 	// TODO(rach-id): valid config
