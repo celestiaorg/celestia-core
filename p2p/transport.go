@@ -271,6 +271,7 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 	}
 
 	tlsConfig := tls.Config{
+		MinVersion: tls.VersionTLS13,
 		Certificates: []tls.Certificate{{
 			Certificate: [][]byte{derBytes},
 			PrivateKey:  private,
@@ -278,6 +279,8 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 	}
 	// TODO(rach-id): valid config
 	quickConfig := quic.Config{
+		// TODO(rach-id): do we want to enable 0RTT? are the replay risks fine?
+		Allow0RTT:             false,
 		MaxIdleTimeout:        10 * time.Minute,
 		MaxIncomingStreams:    1000000000,
 		MaxIncomingUniStreams: 1000000000,

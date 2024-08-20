@@ -238,6 +238,7 @@ func (na *NetAddress) DialString() string {
 // TODO: add tls stuff here
 func (na *NetAddress) Dial(ctx context.Context) (quic.Connection, error) {
 	tlsConfig := tls.Config{
+		MinVersion:         tls.VersionTLS13,
 		InsecureSkipVerify: true,
 	}
 	quickConfig := quic.Config{
@@ -259,6 +260,7 @@ func (na *NetAddress) Dial(ctx context.Context) (quic.Connection, error) {
 // TODO(rach-id): tls config
 func (na *NetAddress) DialTimeout(timeout time.Duration) (quic.Connection, error) {
 	tlsConfig := tls.Config{
+		MinVersion:         tls.VersionTLS13,
 		InsecureSkipVerify: true,
 	}
 	quickConfig := quic.Config{
