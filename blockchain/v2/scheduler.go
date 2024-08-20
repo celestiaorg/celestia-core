@@ -209,7 +209,7 @@ func newScheduler(initHeight int64, startTime time.Time) *scheduler {
 		pendingTime:    make(map[int64]time.Time),
 		receivedBlocks: make(map[int64]p2p.ID),
 		targetPending:  10,               // TODO - pass as param
-		peerTimeout:    15 * time.Minute, // TODO - pass as param
+		peerTimeout:    15 * time.Second, // TODO - pass as param
 		minRecvRate:    0,                // int64(7680), TODO - pass as param
 	}
 

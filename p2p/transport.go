@@ -215,7 +215,6 @@ func (mt *MultiplexTransport) Dial(
 	addr NetAddress,
 	cfg peerConfig,
 ) (Peer, error) {
-	//addr.PrivateKey = mt.nodeKey.PrivKey
 	c, err := addr.DialTimeout(mt.dialTimeout)
 	if err != nil {
 		return nil, err
@@ -251,6 +250,7 @@ func (mt *MultiplexTransport) Close() error {
 
 // Listen implements transportLifecycle.
 func (mt *MultiplexTransport) Listen(addr NetAddress) error {
+	// TODO(rach-id): valid certificate
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	certTemplate := x509.Certificate{
@@ -276,6 +276,7 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 			PrivateKey:  private,
 		}},
 	}
+	// TODO(rach-id): valid config
 	quickConfig := quic.Config{
 		MaxIdleTimeout:        10 * time.Minute,
 		MaxIncomingStreams:    1000000000,
@@ -290,7 +291,7 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 	mt.listener = listener
 	mt.netAddr = addr
 
-	// TODO use a better context
+	// TODO(rach-id): use a better context
 	go mt.acceptPeers(context.Background())
 
 	return nil
@@ -344,6 +345,7 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 					case mt.acceptc <- accept{err: err}:
 					case <-mt.closec:
 						// Give up if the transport was closed.
+						// TODO(rach-id): valid error code
 						_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error 1")
 						return
 					}
@@ -370,6 +372,7 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 				// Make the upgraded peer available.
 			case <-mt.closec:
 				// Give up if the transport was closed.
+				// TODO(rach-id): valid error
 				_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error 2")
 				return
 			}
@@ -387,12 +390,14 @@ func (mt *MultiplexTransport) Cleanup(p Peer) {
 func (mt *MultiplexTransport) cleanup(c quic.Connection) error {
 	mt.conns.Remove(c)
 
+	// TODO(rach-id): valid error
 	return c.CloseWithError(quic.ApplicationErrorCode(1), "some error 3")
 }
 
 func (mt *MultiplexTransport) filterConn(c quic.Connection) (err error) {
 	defer func() {
 		if err != nil {
+			// TODO(rach-id): valid error
 			_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error 4")
 		}
 	}()
@@ -477,6 +482,7 @@ func (mt *MultiplexTransport) upgrade(
 		}
 	}
 
+	// TODO(rach-id): valid ID
 	// Ensure connection key matches self reported key.
 	//if connID != nodeInfo.ID() {
 	//	return nil, nil, ErrRejected{

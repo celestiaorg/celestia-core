@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/quic-go/quic-go"
 	"net"
@@ -43,16 +44,16 @@ func IDAddressString(id ID, protocolHostPort string) string {
 // panic. Panics if ID is invalid.
 // TODO: socks proxies?
 func NewNetAddress(id ID, addr net.Addr) *NetAddress {
-	tcpAddr := addr.(*net.UDPAddr)
-	//if !ok {
-	//	if flag.Lookup("test.v") == nil { // normal run
-	//		panic(fmt.Sprintf("Only TCPAddrs are supported. Got: %v", addr))
-	//	} else { // in testing
-	//		netAddr := NewNetAddressIPPort(net.IP("127.0.0.1"), 0)
-	//		netAddr.ID = id
-	//		return netAddr
-	//	}
-	//}
+	tcpAddr, ok := addr.(*net.UDPAddr)
+	if !ok {
+		if flag.Lookup("test.v") == nil { // normal run
+			panic(fmt.Sprintf("Only UDPAddrs are supported. Got: %v", addr))
+		} else { // in testing
+			netAddr := NewNetAddressIPPort(net.IP("127.0.0.1"), 0)
+			netAddr.ID = id
+			return netAddr
+		}
+	}
 
 	if err := validateID(id); err != nil {
 		panic(fmt.Sprintf("Invalid ID %v: %v (addr: %v)", id, err, addr))
@@ -234,7 +235,8 @@ func (na *NetAddress) DialString() string {
 }
 
 // Dial calls net.Dial on the address.
-func (na *NetAddress) Dial() (quic.Connection, error) {
+// TODO: add tls stuff here
+func (na *NetAddress) Dial(ctx context.Context) (quic.Connection, error) {
 	tlsConfig := tls.Config{
 		InsecureSkipVerify: true,
 	}
@@ -245,7 +247,7 @@ func (na *NetAddress) Dial() (quic.Connection, error) {
 		KeepAlivePeriod:       15 * time.Second,
 		EnableDatagrams:       true,
 	}
-	conn, err := quic.DialAddr(context.Background(), na.DialString(), &tlsConfig, &quickConfig)
+	conn, err := quic.DialAddr(ctx, na.DialString(), &tlsConfig, &quickConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -253,6 +255,8 @@ func (na *NetAddress) Dial() (quic.Connection, error) {
 }
 
 // DialTimeout calls net.DialTimeout on the address.
+// TODO(rach-id): timeout
+// TODO(rach-id): tls config
 func (na *NetAddress) DialTimeout(timeout time.Duration) (quic.Connection, error) {
 	tlsConfig := tls.Config{
 		InsecureSkipVerify: true,

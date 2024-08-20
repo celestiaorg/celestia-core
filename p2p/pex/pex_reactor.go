@@ -238,6 +238,8 @@ func (r *Reactor) logErrAddrBook(err error) {
 
 // Receive implements Reactor by handling incoming PEX messages.
 func (r *Reactor) ReceiveEnvelope(e p2p.Envelope) {
+	r.Logger.Debug("Received message", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
+
 	switch msg := e.Message.(type) {
 	case *tmp2p.PexRequest:
 
@@ -761,9 +763,9 @@ func (r *Reactor) cleanupCrawlPeerInfos() {
 // attemptDisconnects checks if we've been with each peer long enough to disconnect
 func (r *Reactor) attemptDisconnects() {
 	for _, peer := range r.Switch.Peers().List() {
-		//if peer.Status().Duration < r.config.SeedDisconnectWaitPeriod {
-		//	continue
-		//}
+		if peer.Status().Duration < r.config.SeedDisconnectWaitPeriod {
+			continue
+		}
 		if peer.IsPersistent() {
 			continue
 		}

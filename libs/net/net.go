@@ -1,10 +1,6 @@
 package net
 
 import (
-	"context"
-	"crypto/tls"
-	"fmt"
-	"github.com/quic-go/quic-go"
 	"net"
 	"strings"
 )
@@ -14,19 +10,6 @@ import (
 func Connect(protoAddr string) (net.Conn, error) {
 	proto, address := ProtocolAndAddress(protoAddr)
 	conn, err := net.Dial(proto, address)
-	return conn, err
-}
-
-// Connect dials the given address and returns a net.Conn. The protoAddr argument should be prefixed with the protocol,
-// eg. "tcp://127.0.0.1:8080" or "unix:///tmp/test.sock"
-func QuicConnect(protoAddr string) (quic.Connection, error) {
-	proto, address := ProtocolAndAddress(protoAddr)
-	tlsConfig := tls.Config{
-		InsecureSkipVerify: true,
-	}
-	// TODO better config
-	quickConfig := quic.Config{}
-	conn, err := quic.DialAddr(context.Background(), fmt.Sprintf("%s:%s", proto, address), &tlsConfig, &quickConfig)
 	return conn, err
 }
 

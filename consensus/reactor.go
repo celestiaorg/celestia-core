@@ -350,7 +350,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			if votes := ourVotes.ToProto(); votes != nil {
 				eMsg.Votes = *votes
 			}
-			if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint: staticcheck
+			if p2p.TrySendEnvelopeShim(e.Src, p2p.Envelope{ //nolint: staticcheck
 				ChannelID: VoteSetBitsChannel,
 				Message:   eMsg,
 			}, conR.Logger) {

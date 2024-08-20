@@ -2,11 +2,18 @@ package p2p
 
 import (
 	"github.com/gogo/protobuf/proto"
+	"github.com/quic-go/quic-go"
 	"github.com/tendermint/tendermint/p2p/conn"
 	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
+	"time"
 )
 
 type ChannelDescriptor = conn.ChannelDescriptor
+
+type ConnectionStatus struct {
+	Duration        time.Duration
+	ConnectionState quic.ConnectionState
+}
 
 // Envelope contains a message with sender routing info.
 type Envelope struct {

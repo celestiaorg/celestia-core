@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"github.com/quic-go/quic-go"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
@@ -38,7 +37,7 @@ type Peer interface {
 	CloseConn() error // close original connection
 
 	NodeInfo() NodeInfo // peer's info
-	//Status() cmtconn.ConnectionStatus
+	Status() ConnectionStatus
 	SocketAddr() *NetAddress // actual address of the socket
 
 	// Deprecated: entities looking to act as peers should implement SendEnvelope instead.
@@ -114,7 +113,7 @@ type peerConn struct {
 	conn       quic.Connection // source connection
 
 	socketAddr *NetAddress
-
+	created    time.Time // time of creation
 	// cached RemoteIP()
 	ip net.IP
 }
@@ -130,11 +129,12 @@ func newPeerConn(
 		persistent: persistent,
 		conn:       conn,
 		socketAddr: socketAddr,
+		created:    time.Now(),
 	}
 }
 
 // ID only exists for SecretConnection.
-// NOTE: Will panic if conn is not *SecretConnection.
+// TODO(rach-id): fix ID here
 func (pc peerConn) ID() ID {
 	return ID(pc.conn.RemoteAddr().String())
 }
@@ -263,7 +263,7 @@ func newPeer(
 	go func() {
 		err := p.StartReceiving()
 		if err != nil {
-			p.Logger.Error("error receiving stuff", "err", err.Error())
+			p.Logger.Error("error starting peer receive routine", "err", err.Error())
 		}
 	}()
 
@@ -278,10 +278,10 @@ func newPeer(
 // String representation.
 func (p *peer) String() string {
 	if p.outbound {
-		return fmt.Sprintf("Peer{%v %v out}", p.conn, p.ID())
+		return fmt.Sprintf("Peer{%v %v out}", p.conn.RemoteAddr().String(), p.ID())
 	}
 
-	return fmt.Sprintf("Peer{%v %v in}", p.conn, p.ID())
+	return fmt.Sprintf("Peer{%v %v in}", p.conn.RemoteAddr().String(), p.ID())
 }
 
 //---------------------------------------------------
@@ -309,6 +309,7 @@ func (p *peer) FlushStop() {
 	p.metricsTicker.Stop()
 	p.BaseService.OnStop()
 	for _, stream := range p.streams {
+		// TODO(rach-id): set valid error codes
 		stream.CancelRead(quic.StreamErrorCode(1))  // stop everything and close the conn
 		stream.CancelWrite(quic.StreamErrorCode(1)) // stop everything and close the conn
 	}
@@ -318,7 +319,8 @@ func (p *peer) FlushStop() {
 func (p *peer) OnStop() {
 	p.metricsTicker.Stop()
 	p.BaseService.OnStop()
-	if err := p.conn.CloseWithError(quic.ApplicationErrorCode(2), "stopping in peer.OnStop()"); err != nil { // stop everything and close the conn
+	// TODO(rach-id): set valid error code
+	if err := p.conn.CloseWithError(quic.ApplicationErrorCode(2), "stopping peer connection"); err != nil { // stop everything and close the conn
 		p.Logger.Debug("Error while stopping peer", "err", err)
 	}
 }
@@ -354,10 +356,13 @@ func (p *peer) SocketAddr() *NetAddress {
 	return p.socketAddr
 }
 
-//// Status returns the peer's ConnectionStatus.
-//func (p *peer) Status() cmtconn.ConnectionStatus {
-//	return cmtconn.ConnectionStatus{}
-//}
+// Status returns the peer's ConnectionStatus.
+func (p *peer) Status() ConnectionStatus {
+	return ConnectionStatus{
+		Duration:        time.Since(p.created),
+		ConnectionState: p.conn.ConnectionState(),
+	}
+}
 
 // SendEnvelope sends the message in the envelope on the channel specified by the
 // envelope. Returns false if the connection times out trying to place the message
@@ -375,7 +380,6 @@ func (p *peer) SendEnvelope(e Envelope) bool {
 	if w, ok := msg.(Wrapper); ok {
 		msg = w.Wrap()
 	}
-	p.Logger.Info("Sending envelope", "envelope", e)
 	msgBytes, err := proto.Marshal(msg)
 	if err != nil {
 		p.Logger.Error("marshaling message to send", "error", err)
@@ -445,7 +449,7 @@ func (p *peer) TrySend(chID byte, msgBytes []byte) bool {
 	} else if !p.hasChannel(chID) {
 		return false
 	}
-	res := p.Send(chID, msgBytes)
+	res := p.TrySend(chID, msgBytes)
 	if res {
 		labels := []string{
 			"peer_id", string(p.ID()),
@@ -488,7 +492,8 @@ func (p *peer) hasChannel(chID byte) bool {
 
 // CloseConn closes original connection. Used for cleaning up in cases where the peer had not been started at all.
 func (p *peer) CloseConn() error {
-	return p.conn.CloseWithError(quic.ApplicationErrorCode(1), "closed in peer.CloseConn()")
+	// TODO(rach-id): valid error code
+	return p.conn.CloseWithError(quic.ApplicationErrorCode(1), "closed peer connection")
 }
 
 func (p *peer) SetRemovalFailed() {
@@ -505,7 +510,8 @@ func (p *peer) GetRemovalFailed() bool {
 
 // CloseConn closes the underlying connection
 func (pc *peerConn) CloseConn() {
-	pc.conn.CloseWithError(quic.ApplicationErrorCode(1), "closed in CloseConn")
+	// TODO(rach-id): valid error code
+	pc.conn.CloseWithError(quic.ApplicationErrorCode(1), "closed peer connection")
 }
 
 // RemoteAddr returns peer's remote network address.
@@ -530,14 +536,6 @@ func PeerMetrics(metrics *Metrics) PeerOption {
 }
 
 func (p *peer) metricsReporter() {
-	for {
-		select {
-		case <-p.metricsTicker.C:
-			//fmt.Println("in metrics reporter <-p.metricsTicker.C")
-		case <-p.Quit():
-			return
-		}
-	}
 }
 
 func (p *peer) StartReceiving() error {
@@ -545,16 +543,14 @@ func (p *peer) StartReceiving() error {
 		stream, err := p.conn.AcceptStream(context.Background())
 		if err != nil {
 			p.Logger.Error("failed to accept stream", "err", err.Error())
-			return errors.New("failed to accept stream")
+			return err
 		}
 		var chID byte
 		err = binary.Read(stream, binary.BigEndian, &chID)
-		//_, err = stream.Read(chID)
 		if err != nil {
 			p.Logger.Error("failed to read channel ID", "err", err.Error())
 			return err
 		}
-		//p.Logger.Error("successfully opened channel", "id", chID)
 		// start accepting data
 		go func() {
 			for {
