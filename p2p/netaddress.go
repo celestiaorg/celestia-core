@@ -243,8 +243,8 @@ func (na *NetAddress) Dial(ctx context.Context) (quic.Connection, error) {
 	}
 	quickConfig := quic.Config{
 		MaxIdleTimeout:        10 * time.Minute,
-		MaxIncomingStreams:    1000000000,
-		MaxIncomingUniStreams: 1000000000,
+		MaxIncomingStreams:    10000,
+		MaxIncomingUniStreams: 10000,
 		KeepAlivePeriod:       15 * time.Second,
 		EnableDatagrams:       true,
 	}
@@ -265,8 +265,8 @@ func (na *NetAddress) DialTimeout(timeout time.Duration) (quic.Connection, error
 	}
 	quickConfig := quic.Config{
 		MaxIdleTimeout:        10 * time.Minute,
-		MaxIncomingStreams:    1000000000,
-		MaxIncomingUniStreams: 1000000000,
+		MaxIncomingStreams:    10000,
+		MaxIncomingUniStreams: 10000,
 		KeepAlivePeriod:       15 * time.Second,
 		EnableDatagrams:       true,
 	}

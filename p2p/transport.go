@@ -282,8 +282,8 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 		// TODO(rach-id): do we want to enable 0RTT? are the replay risks fine?
 		Allow0RTT:             false,
 		MaxIdleTimeout:        10 * time.Minute,
-		MaxIncomingStreams:    1000000000,
-		MaxIncomingUniStreams: 1000000000,
+		MaxIncomingStreams:    10000,
+		MaxIncomingUniStreams: 10000,
 		KeepAlivePeriod:       15 * time.Second,
 		EnableDatagrams:       true,
 	}
