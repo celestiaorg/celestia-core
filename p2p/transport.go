@@ -222,9 +222,9 @@ func (mt *MultiplexTransport) Dial(
 
 	// TODO(xla): Evaluate if we should apply filters if we explicitly dial.
 	//TODO(rach-id): remove peer when disconnected.
-	//if err := mt.filterConn(c); err != nil {
-	//	return nil, err
-	//}
+	if err := mt.filterConn(c); err != nil {
+		return nil, err
+	}
 
 	secretConn, nodeInfo, err := mt.upgrade(c, &addr)
 	if err != nil {
@@ -282,10 +282,10 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 	quickConfig := quic.Config{
 		// TODO(rach-id): do we want to enable 0RTT? are the replay risks fine?
 		Allow0RTT:             false,
-		MaxIdleTimeout:        10 * time.Minute,
+		MaxIdleTimeout:        5 * time.Second,
 		MaxIncomingStreams:    10000,
 		MaxIncomingUniStreams: 10000,
-		KeepAlivePeriod:       15 * time.Second,
+		KeepAlivePeriod:       100 * time.Millisecond,
 		EnableDatagrams:       true,
 	}
 	listener, err := quic.ListenAddr(addr.DialString(), &tlsConfig, &quickConfig)
@@ -603,6 +603,7 @@ func (mt *MultiplexTransport) wrapPeer(
 		cfg.reactorsByCh,
 		cfg.msgTypeByChID,
 		cfg.mlc,
+		cfg.onPeerError,
 		PeerMetrics(cfg.metrics),
 		WithPeerTracer(mt.tracer),
 	)

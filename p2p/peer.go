@@ -205,6 +205,7 @@ func newPeer(
 	reactorsByCh map[byte]Reactor,
 	msgTypeByChID map[byte]proto.Message,
 	mlc *metricsLabelCache,
+	onPeerError func(Peer, interface{}),
 	options ...PeerOption,
 ) *peer {
 	p := &peer{
@@ -263,7 +264,8 @@ func newPeer(
 	go func() {
 		err := p.StartReceiving()
 		if err != nil {
-			p.Logger.Error("error starting peer receive routine", "err", err.Error())
+			p.Logger.Error("error when receiving data from peer", "err", err.Error())
+			onPeerError(p, err)
 		}
 	}()
 
