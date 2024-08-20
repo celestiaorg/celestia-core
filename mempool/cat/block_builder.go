@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -43,6 +44,14 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 
 	// Check if we got lucky and already had all the transactions.
 	if len(missingKeys) == 0 {
+		schema.WriteMempoolRecoveryStats(
+			memR.traceClient,
+			0,
+			0,
+			len(compactData),
+			0,
+			blockID,
+		)
 		return txs, nil
 	}
 	initialNumMissing := len(missingKeys)
@@ -57,6 +66,15 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 	defer func() {
 		timeTaken := request.TimeTaken()
 		memR.Logger.Info("fetched txs", "timeTaken", timeTaken, "numRetrieved", initialNumMissing-len(request.missingKeys), "numMissing", len(request.missingKeys))
+		schema.WriteMempoolRecoveryStats(
+			memR.traceClient,
+			initialNumMissing,
+			initialNumMissing-len(request.missingKeys),
+			len(compactData),
+			timeTaken,
+			blockID,
+		)
+		memR.mempool.metrics.RecoveryRate.Observe(float64(initialNumMissing-len(request.missingKeys)) / float64(initialNumMissing))
 	}()
 
 	// request the missing transactions if we haven't already

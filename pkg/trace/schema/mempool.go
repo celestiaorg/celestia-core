@@ -98,3 +98,36 @@ func WriteMempoolPeerState(
 		TxHash:       bytes.HexBytes(txHash).String(),
 	})
 }
+
+const (
+	MempoolRecoveryTable = "mempool_recovery"
+)
+
+type MempoolRecovery struct {
+	Missing   int    `json:"missing"`
+	Recovered int    `json:"recovered"`
+	Total     int    `json:"total"`
+	TimeTaken uint64 `json:"time_taken"`
+	BlockID   string `json:"block_id"`
+}
+
+func (m MempoolRecovery) Table() string {
+	return MempoolRecoveryTable
+}
+
+func WriteMempoolRecoveryStats(
+	client trace.Tracer,
+	missing int,
+	recovered int,
+	total int,
+	timeTaken uint64,
+	blockID []byte,
+) {
+	client.Write(MempoolRecovery{
+		Missing:   missing,
+		Recovered: recovered,
+		Total:     total,
+		TimeTaken: timeTaken,
+		BlockID:   bytes.HexBytes(blockID).String(),
+	})
+}

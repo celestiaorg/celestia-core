@@ -68,6 +68,9 @@ type Metrics struct {
 	// MissingTxs defines the number of transactions that were not found in the mempool
 	// from the current proposal
 	MissingTxs metrics.Counter
+
+	// RecoveryRate measures what percentage of missing transactions were able to be fetched
+	RecoveryRate metrics.Histogram
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -163,6 +166,14 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "missing_txs",
 			Help:      "Number of transactions that were not found in the mempool from the current proposal",
 		}, labels).With(labelsAndValues...),
+
+		RecoveryRate: prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "recovery_rate",
+			Help:      "Percentage of missing transactions that were able to be fetched",
+			Buckets:   stdprometheus.LinearBuckets(0, 0.1, 10),
+		}, labels).With(labelsAndValues...),
 	}
 }
 
@@ -181,6 +192,7 @@ func NopMetrics() *Metrics {
 		RequestedTxs:   discard.NewCounter(),
 		RerequestedTxs: discard.NewCounter(),
 		MissingTxs:     discard.NewCounter(),
+		RecoveryRate:   discard.NewHistogram(),
 	}
 }
 

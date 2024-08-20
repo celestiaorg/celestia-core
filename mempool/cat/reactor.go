@@ -77,6 +77,10 @@ func (opts *ReactorOptions) VerifyAndComplete() error {
 		return fmt.Errorf("max gossip delay (%d) cannot be negative", opts.MaxGossipDelay)
 	}
 
+	if opts.TraceClient == nil {
+		opts.TraceClient = trace.NoOpTracer()
+	}
+
 	return nil
 }
 
@@ -92,7 +96,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		ids:          newMempoolIDs(),
 		requests:     newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
 		blockFetcher: newBlockFetcher(),
-		traceClient:  trace.NoOpTracer(),
+		traceClient:  opts.TraceClient,
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR, nil
@@ -340,6 +344,9 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			// see if the tx was recently committed
 			tx, has = memR.mempool.GetCommitted(txKey)
 		}
+		// TODO: consider handling the case where we receive a HasTx message from a peer
+		// before we receive a WantTx message from them. In this case we might
+		// ignore the request if we know it's no longer valid.
 		if has && !memR.opts.ListenOnly {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Debug("sending a transaction in response to a want msg", "peer", peerID, "txKey", txKey)
@@ -391,7 +398,8 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 			// if the peer is blocksyncing still and catching up
 			// in which case we just skip sending the transaction
 			if p.GetHeight() < memR.mempool.Height()-peerHeightDiff {
-				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx")
+				memR.Logger.Debug("peer is too far behind us. Skipping broadcast of seen tx", "peerID", peer.ID(),
+					"peerHeight", p.GetHeight(), "ourHeight", memR.mempool.Height())
 				continue
 			}
 		}
