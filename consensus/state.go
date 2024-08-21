@@ -1379,9 +1379,10 @@ func (cs *State) enterPrevoteWait(height int64, round int32) {
 
 // isReadyToPrecommit calculates if the process has waited at least 11 seconds
 // from their start time before they can vote
-func (cs *State) isReadyToPrecommit() (bool, time.Duration) {
+func (cs *State) isReadyToPrecommit(height int64, round int32) (bool, time.Duration) {
 	precommitVoteTime := cs.StartTime.Add(11 * time.Second)
 	waitTime := time.Until(precommitVoteTime)
+	schema.WritePrecommitTime(cs.traceClient, height, round, waitTime.Seconds())
 	return waitTime <= 0, waitTime
 }
 
@@ -1402,7 +1403,7 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		return
 	}
 
-	if ready, waitTime := cs.isReadyToPrecommit(); !ready {
+	if ready, waitTime := cs.isReadyToPrecommit(height, round); !ready {
 		// this will reenter precommit after the waitTime
 		cs.scheduleTimeout(waitTime, height, round, cstypes.RoundStepPrevoteWait)
 		return
