@@ -1224,7 +1224,7 @@ func (bs *mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 func (bs *mockBlockStore) LoadBlockPart(height int64, index int) *types.Part { return nil }
 func (bs *mockBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 }
-func (bs *mockBlockStore) SaveTxInfo(block *types.Block, txResponseCode []uint32) error {
+func (bs *mockBlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error {
 	return nil
 }
 func (bs *mockBlockStore) LoadTxInfo(hash []byte) *cmtstore.TxInfo { return &cmtstore.TxInfo{} }
