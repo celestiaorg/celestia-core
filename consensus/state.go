@@ -1152,6 +1152,8 @@ func (cs *State) enterPropose(height int64, round int32) {
 	}
 
 	if cs.isProposer(address) {
+		// trace if the node is the proposer
+		schema.WriteProposer(cs.traceClient, height, round, address.String())
 		logger.Debug("propose step; our turn to propose", "proposer", address)
 		cs.decideProposal(height, round)
 	} else {
@@ -1278,7 +1280,7 @@ func (cs *State) isReadyToPrevote() (bool, time.Duration) {
 // Enter: `timeoutPropose` after entering Propose.
 // Enter: proposal block and POL is ready.
 // Prevote for LockedBlock if we're locked, or ProposalBlock if valid.
-// Otherwise vote nil.
+// Otherwise, vote nil.
 func (cs *State) enterPrevote(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
 
