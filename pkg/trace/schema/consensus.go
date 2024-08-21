@@ -16,6 +16,7 @@ func ConsensusTables() []string {
 		ConsensusStateTable,
 		ProposalTable,
 		PrecommitTimeTable,
+		Proposer,
 	}
 }
 
@@ -38,6 +39,24 @@ func (p PrecommitTime) Table() string {
 func WritePrecommitTime(client trace.Tracer, height int64, round int32, delay float64) {
 	client.Write(PrecommitTime{Height: height, Round: round, Delay: delay})
 
+}
+
+const Proposer = "consensus_proposer"
+
+type ProposerInfo struct {
+	Height  int64  `json:"height"`
+	Round   int32  `json:"round"`
+	Address string `json:"address"`
+}
+
+func (p ProposerInfo) Table() string {
+	return Proposer
+
+}
+
+func WriteProposer(client trace.Tracer, height int64, round int32,
+	address string) {
+	client.Write(ProposerInfo{Height: height, Round: round, Address: address})
 }
 
 // Schema constants for the consensus round state tracing database.
