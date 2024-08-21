@@ -25,6 +25,7 @@ const (
 	RoundStepPrecommit     = RoundStepType(0x06) // Did precommit, gossip precommits
 	RoundStepPrecommitWait = RoundStepType(0x07) // Did receive any +2/3 precommits, start timeout
 	RoundStepCommit        = RoundStepType(0x08) // Entered commit state machine
+	RoundStepDelaydPrevote = RoundStepType(0x09) // Delayed prevote
 	// NOTE: RoundStepNewHeight acts as RoundStepCommitWait.
 
 	// NOTE: Update IsValid method if you change this!
