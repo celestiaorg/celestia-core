@@ -16,6 +16,7 @@ func ConsensusTables() []string {
 		ConsensusStateTable,
 		ProposalTable,
 		PrecommitTimeTable,
+		PrevoteDelayTable,
 	}
 }
 
@@ -37,6 +38,27 @@ func (p PrecommitTime) Table() string {
 
 func WritePrecommitTime(client trace.Tracer, height int64, round int32, delay float64) {
 	client.Write(PrecommitTime{Height: height, Round: round, Delay: delay})
+
+}
+
+const (
+	// PrevoteDelayTable
+	PrevoteDelayTable = "consensus_prevote_delay"
+)
+
+type PrevoteDelay struct {
+	Height int64 `json:"height"`
+	Round  int32 `json:"round"`
+	// amount of delay added before casting prevote for this Height and Round
+	Delay float64 `json:"delay"`
+}
+
+func (p PrevoteDelay) Table() string {
+	return PrevoteDelayTable
+}
+
+func WritePrevoteDelay(client trace.Tracer, height int64, round int32, delay float64) {
+	client.Write(PrevoteDelay{Height: height, Round: round, Delay: delay})
 
 }
 

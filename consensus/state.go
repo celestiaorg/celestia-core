@@ -1271,6 +1271,7 @@ func (cs *State) isReadyToPrevote() (bool, time.Duration) {
 	// Therefore, we've set the wait time to 7 seconds to account for some error margin.
 	prevoteVoteTime := cs.StartTime.Add(7 * time.Second)
 	waitTime := time.Until(prevoteVoteTime)
+	schema.WritePrevoteDelay(cs.traceClient, cs.Height, cs.Round, waitTime.Seconds())
 	return waitTime <= 0, waitTime
 }
 
