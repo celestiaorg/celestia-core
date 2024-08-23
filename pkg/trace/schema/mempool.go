@@ -10,6 +10,7 @@ func MempoolTables() []string {
 	return []string{
 		MempoolTxTable,
 		MempoolPeerStateTable,
+		MempoolRecoveryTable,
 	}
 }
 
