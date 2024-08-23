@@ -93,7 +93,7 @@ func TestApplyBlockWithBlockStore(t *testing.T) {
 	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
 
 	// Check that SaveTxInfo is called with correct arguments
-	blockStore.On("SaveTxInfo", block, mock.AnythingOfType("[]uint32")).Return(nil)
+	blockStore.On("SaveTxInfo", block, mock.AnythingOfType("[]uint32"), mock.AnythingOfType("[]string")).Return(nil)
 
 	_, _, err = blockExec.ApplyBlock(state, blockID, block, nil)
 	require.Nil(t, err)
