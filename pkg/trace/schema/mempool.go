@@ -35,7 +35,7 @@ func (m MempoolTx) Table() string {
 
 // WriteMempoolTx writes a tracing point for a tx using the predetermined
 // schema for mempool tracing.
-func WriteMempoolTx(client trace.Tracer, peer string, txHash []byte, transferType TransferType) {
+func WriteMempoolTx(client trace.Tracer, peer string, txHash []byte, size int, transferType TransferType) {
 	// this check is redundant to what is checked during client.Write, although it
 	// is an optimization to avoid allocations from the map of fields.
 	if !client.IsCollecting(MempoolTxTable) {
@@ -44,7 +44,7 @@ func WriteMempoolTx(client trace.Tracer, peer string, txHash []byte, transferTyp
 	client.Write(MempoolTx{
 		TxHash:       bytes.HexBytes(txHash).String(),
 		Peer:         peer,
-		Size:         len(txHash),
+		Size:         size,
 		TransferType: transferType,
 	})
 }
