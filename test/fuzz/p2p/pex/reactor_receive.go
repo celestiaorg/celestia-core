@@ -74,8 +74,10 @@ func (fp *fuzzPeer) RemoteIP() net.IP { return net.IPv4(0, 0, 0, 0) }
 func (fp *fuzzPeer) RemoteAddr() net.Addr {
 	return &net.TCPAddr{IP: fp.RemoteIP(), Port: 98991, Zone: ""}
 }
-func (fp *fuzzPeer) IsOutbound() bool                    { return false }
-func (fp *fuzzPeer) IsPersistent() bool                  { return false }
+func (fp *fuzzPeer) IsOutbound() bool   { return false }
+func (fp *fuzzPeer) IsPersistent() bool { return false }
+func (fp *fuzzPeer) HasIPChanged() bool { return false }
+
 func (fp *fuzzPeer) CloseConn() error                    { return nil }
 func (fp *fuzzPeer) NodeInfo() p2p.NodeInfo              { return defaultNodeInfo }
 func (fp *fuzzPeer) Status() p2p.ConnectionStatus        { var cs p2p.ConnectionStatus; return cs }
