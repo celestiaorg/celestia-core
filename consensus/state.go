@@ -1268,10 +1268,9 @@ func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.Pa
 // isReadyToPrevote calculates if the process has waited at least 7 seconds
 // from their start time before they can vote
 func (cs *State) isReadyToPrevote() (bool, time.Duration) {
-	// We wait for 7 seconds. Why 7? Based on network experiments,
-	// block propagation typically takes around 5 seconds with a standard deviation of 1 second.
-	// Therefore, we've set the wait time to 7 seconds to account for some error margin.
-	prevoteVoteTime := cs.StartTime.Add(7 * time.Second)
+	// We wait for 12 seconds. Why 12?
+	// 10s for block propagation and 2s for processing it
+	prevoteVoteTime := cs.StartTime.Add(12 * time.Second)
 	waitTime := time.Until(prevoteVoteTime)
 	schema.WritePrevoteDelay(cs.traceClient, cs.Height, cs.Round, waitTime.Seconds())
 	return waitTime <= 0, waitTime
