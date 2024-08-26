@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -71,15 +72,16 @@ type RoundState struct {
 	StartTime time.Time     `json:"start_time"`
 
 	// Subjective time when +2/3 precommits for Block at Round were found
-	CommitTime           time.Time           `json:"commit_time"`
-	Validators           *types.ValidatorSet `json:"validators"`
-	Proposal             *types.Proposal     `json:"proposal"`
-	ProposalCompactBlock *types.Block        `json:"proposal_compact_block"`
-	ProposalBlock        *types.Block        `json:"proposal_block"`
-	ProposalBlockParts   *types.PartSet      `json:"proposal_block_parts"`
-	LockedRound          int32               `json:"locked_round"`
-	LockedBlock          *types.Block        `json:"locked_block"`
-	LockedBlockParts     *types.PartSet      `json:"locked_block_parts"`
+	CommitTime              time.Time           `json:"commit_time"`
+	Validators              *types.ValidatorSet `json:"validators"`
+	Proposal                *types.Proposal     `json:"proposal"`
+	ProposalCompactBlock    *types.Block        `json:"proposal_compact_block"`
+	CancelAwaitCompactBlock context.CancelFunc
+	ProposalBlock           *types.Block   `json:"proposal_block"`
+	ProposalBlockParts      *types.PartSet `json:"proposal_block_parts"`
+	LockedRound             int32          `json:"locked_round"`
+	LockedBlock             *types.Block   `json:"locked_block"`
+	LockedBlockParts        *types.PartSet `json:"locked_block_parts"`
 
 	// Last known round with POL for non-nil valid block.
 	TwoThirdPrevoteRound int32        `json:"valid_round"`

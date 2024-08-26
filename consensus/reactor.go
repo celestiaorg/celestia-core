@@ -831,7 +831,7 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 		} else if !blockMeta.BlockID.PartSetHeader.Equals(prs.ProposalBlockPartSetHeader) {
 			// this happens when the peer is on a different round to the round of the proposal
 			// that was eventually committed. They should eventually receive 2/3 precommits and
-			// update the part set header to the one of the block that is committed
+			// update the part set header to the one of the block that is committed 
 			logger.Debug("Peer ProposalBlockPartSetHeader mismatch, sleeping",
 				"blockPartSetHeader", blockMeta.BlockID.PartSetHeader, "peerBlockPartSetHeader", prs.ProposalBlockPartSetHeader)
 			time.Sleep(conR.conS.config.PeerGossipSleepDuration)

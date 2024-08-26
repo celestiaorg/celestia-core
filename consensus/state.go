@@ -1078,6 +1078,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		// for round 0.
 	} else {
 		logger.Info("resetting proposal info", "proposer", propAddress)
+		cs.RoundState.CancelAwaitCompactBlock()
 		cs.Proposal = nil
 		cs.ProposalBlock = nil
 		cs.ProposalBlockParts = nil
@@ -2010,8 +2011,10 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 	// and other operations can be processed.
 	cs.mtx.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// this will get triggered whenever we move into a new round.
+	cs.RoundState.CancelAwaitCompactBlock = cancel
 
 	txs, err := cs.txFetcher.FetchTxsFromKeys(ctx, blockHash, compactBlock.Data.Txs.ToSliceOfBytes())
 
