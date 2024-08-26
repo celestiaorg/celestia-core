@@ -75,10 +75,14 @@ type RoundState struct {
 	CommitTime              time.Time           `json:"commit_time"`
 	Validators              *types.ValidatorSet `json:"validators"`
 	Proposal                *types.Proposal     `json:"proposal"`
-	ProposalCompactBlock    *types.Block        `json:"proposal_compact_block"`
+	FetchCompactBlockCtx    context.Context
 	CancelAwaitCompactBlock context.CancelFunc
+	ProposalCompactBlock    *types.Block   `json:"proposal_compact_block"`
 	ProposalBlock           *types.Block   `json:"proposal_block"`
 	ProposalBlockParts      *types.PartSet `json:"proposal_block_parts"`
+	ValidCompactBlock       *types.Block   `json:"valid_compact_block"`
+	ValidBlock              *types.Block   `json:"valid_block"`
+	ValidBlockParts         *types.PartSet `json:"valid_compact_block_parts"`
 	LockedRound             int32          `json:"locked_round"`
 	LockedBlock             *types.Block   `json:"locked_block"`
 	LockedBlockParts        *types.PartSet `json:"locked_block_parts"`

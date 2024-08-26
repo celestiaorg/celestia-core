@@ -581,7 +581,6 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 
 // enterNewRound(height, 0) at cs.StartTime.
 func (cs *State) scheduleRound0(rs *cstypes.RoundState) {
-	// cs.Logger.Info("scheduleRound0", "now", cmttime.Now(), "startTime", cs.StartTime)
 	sleepDuration := rs.StartTime.Sub(cmttime.Now())
 	cs.scheduleTimeout(sleepDuration, rs.Height, 0, cstypes.RoundStepNewHeight)
 }
@@ -714,9 +713,14 @@ func (cs *State) updateToState(state sm.State) {
 
 	cs.Validators = validators
 	cs.Proposal = nil
+	cs.FetchCompactBlockCtx = nil
+	cs.CancelAwaitCompactBlock = nil
 	cs.ProposalBlock = nil
 	cs.ProposalBlockParts = nil
 	cs.ProposalCompactBlock = nil
+	cs.ValidCompactBlock = nil
+	cs.ValidBlock = nil
+	cs.ValidBlockParts = nil
 	cs.LockedRound = -1
 	cs.LockedBlock = nil
 	cs.LockedBlockParts = nil
@@ -876,10 +880,6 @@ func (cs *State) handleMsg(mi msgInfo) {
 
 	case *CompactBlockMessage:
 		err = cs.addCompactBlock(msg, peerID)
-
-		if err == nil {
-			cs.handleCompleteProposal(msg.Block.Height)
-		}
 
 	case *BlockPartMessage:
 		// if the proposal is complete, we'll enterPrevote or tryFinalizeCommit
@@ -1078,7 +1078,11 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		// for round 0.
 	} else {
 		logger.Info("resetting proposal info", "proposer", propAddress)
-		cs.RoundState.CancelAwaitCompactBlock()
+		if cs.CancelAwaitCompactBlock != nil {
+			cs.CancelAwaitCompactBlock()
+			cs.CancelAwaitCompactBlock = nil
+		}
+		cs.FetchCompactBlockCtx = nil
 		cs.Proposal = nil
 		cs.ProposalBlock = nil
 		cs.ProposalBlockParts = nil
@@ -1206,6 +1210,11 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	if cs.TwoThirdPrevoteBlock != nil {
 		// If there is valid block, choose that.
 		block, blockParts = cs.TwoThirdPrevoteBlock, cs.TwoThirdPrevoteBlockParts
+		blockHash = block.Hash()
+	} else if cs.ValidBlock != nil {
+		// If there is a valid block, choose that.
+		block = cs.ValidBlock
+		blockParts = block.MakePartSet(types.BlockPartSizeBytes)
 		blockHash = block.Hash()
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
@@ -1347,7 +1356,7 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 
 	// If ProposalBlock is nil, prevote nil.
 	if cs.ProposalBlock == nil {
-		logger.Debug("prevote step: ProposalBlock is nil")
+		logger.Info("prevote step: ProposalBlock is nil")
 		cs.metrics.TimedOutProposals.Add(1)
 		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{})
 		return
@@ -1380,6 +1389,12 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{})
 		return
 	}
+
+	// Mark this block as valid. If we ever become the proposer in a future round within this height,
+	// we will first proposed the TwoThirdPrevoteBlock, and then the ValidBlock.
+	cs.ValidBlock = cs.ProposalBlock
+	cs.ValidBlockParts = cs.ProposalBlockParts
+	cs.ValidCompactBlock = cs.ProposalCompactBlock
 
 	// Prevote cs.ProposalBlock
 	// NOTE: the proposal signature is validated when it is received,
@@ -1951,10 +1966,16 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 
 	proposal.Signature = p.Signature
 	cs.Proposal = proposal
-	// We don't update cs.ProposalBlockParts if it is already set.
-	// This happens if we're already in cstypes.RoundStepCommit or if there is a valid block in the current round.
-	// TODO: We can check if Proposal is for a different block as this is a sign of misbehavior!
-	if cs.ProposalBlockParts == nil {
+
+	if cs.ValidBlock != nil && bytes.Equal(proposal.BlockID.Hash, cs.ValidBlock.Hash()) {
+		// The proposal is for an existing valid block that we already have.
+		cs.ProposalBlock = cs.ValidBlock
+		cs.ProposalCompactBlock = cs.ValidCompactBlock
+		cs.ProposalBlockParts = cs.ValidBlockParts
+	} else if cs.ProposalBlockParts == nil {
+		// We don't update cs.ProposalBlockParts if it is already set.
+		// This happens if we're already in cstypes.RoundStepCommit or if there is a valid block in the current round.
+		// TODO: We can check if Proposal is for a different block as this is a sign of misbehavior!
 		cs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader)
 	}
 
@@ -2004,29 +2025,43 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 		return nil
 	}
 
-	blockHash := cs.Proposal.BlockID.Hash
-	timeout := cs.config.Propose(cs.Round)
+	if cs.FetchCompactBlockCtx == nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		cs.FetchCompactBlockCtx = ctx
+		cs.CancelAwaitCompactBlock = cancel
+	}
 
-	// Yield the lock while we fetch the transactions from the mempool so that votes
-	// and other operations can be processed.
-	cs.mtx.Unlock()
+	// we start this as a goroutine so as to not block the reactor
+	// from recieving other messages or timeouts while the mempool
+	// attempts to fetch any missing transactions. If the block is
+	// correctly reconstructed, the handleCompleteProposal function
+	// will be called to process the block and move to the next step.
+	go cs.fetchCompactBlock(cs.FetchCompactBlockCtx, cs.Proposal.BlockID.Hash, compactBlock, cs.Round)
+	return nil
+}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	// this will get triggered whenever we move into a new round.
-	cs.RoundState.CancelAwaitCompactBlock = cancel
-
+func (cs *State) fetchCompactBlock(ctx context.Context, blockHash []byte, compactBlock *types.Block, round int32) {
 	txs, err := cs.txFetcher.FetchTxsFromKeys(ctx, blockHash, compactBlock.Data.Txs.ToSliceOfBytes())
-
+	cs.Logger.Info("requesting lock")
 	cs.mtx.Lock()
+	cs.Logger.Info("got lock")
+	defer cs.mtx.Unlock()
 	if err != nil {
 		cs.metrics.CompactBlocksFailed.Add(1)
 		if ctx.Err() != nil {
+			timeout := cs.config.Propose(round)
 			cs.Logger.Info("failed to fetch transactions within the timeout", "timeout", timeout)
-			return nil
 		}
 		cs.Logger.Error("failed to fetch transactions for compact block", "err", err)
-		return err
+	}
+	if cs.Round != round || cs.Height != compactBlock.Height {
+		// we've moved into a later round/height where we no longer have the proposal
+		return
+	}
+	if cs.ProposalBlock != nil || cs.Proposal == nil {
+		// we already have the proposal block from an earlier iteration
+		// or we've moved into a later round/height where we no longer have the proposal
+		return
 	}
 	block := &types.Block{
 		Header:     compactBlock.Header,
@@ -2037,19 +2072,23 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 	block.Txs = types.ToTxs(txs)
 
 	if err := block.ValidateBasic(); err != nil {
-		return fmt.Errorf("received invalid block: %w", err)
+		cs.Logger.Error("received invalid block", "err", err)
+		return
 	}
 
 	if !bytes.Equal(block.Hash(), cs.Proposal.BlockID.Hash) {
-		return fmt.Errorf("received compact block with header hash [%v] that does not match proposal [%v]", block.Hash(), cs.Proposal.BlockID.Hash)
+		cs.Logger.Error("received compact block with header hash [%v] that does not match proposal [%v]", block.Hash(), cs.Proposal.BlockID.Hash)
+		return
 	}
 
 	// check that the part set header matched that of the
 	partSet := block.MakePartSet(types.BlockPartSizeBytes)
 	if !partSet.HasHeader(cs.Proposal.BlockID.PartSetHeader) {
-		return fmt.Errorf("received compact block with part set header [%v] that does not match proposal [%v]", partSet.Header(), cs.Proposal.BlockID.PartSetHeader)
+		cs.Logger.Error("received compact block with part set header [%v] that does not match proposal [%v]", partSet.Header(), cs.Proposal.BlockID.PartSetHeader)
+		return
 	}
 
+	defer cs.CancelAwaitCompactBlock()
 	cs.ProposalCompactBlock = compactBlock
 	cs.ProposalBlock = block
 	cs.ProposalBlockParts = partSet
@@ -2061,7 +2100,7 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 		cs.Logger.Error("failed publishing event complete proposal", "err", err)
 	}
 
-	return nil
+	cs.handleCompleteProposal(compactBlock.Height)
 }
 
 // NOTE: block is not necessarily valid.
