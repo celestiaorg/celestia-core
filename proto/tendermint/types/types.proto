@@ -155,6 +155,7 @@ message Proposal {
   google.protobuf.Timestamp timestamp = 6
       [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   bytes signature = 7;
+  bytes compact_hash = 8;
 }
 
 message SignedHeader {

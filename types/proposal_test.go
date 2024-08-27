@@ -61,7 +61,8 @@ func TestProposalVerifySignature(t *testing.T) {
 
 	prop := NewProposal(
 		4, 2, 2,
-		BlockID{cmtrand.Bytes(tmhash.Size), PartSetHeader{777, cmtrand.Bytes(tmhash.Size)}})
+		BlockID{cmtrand.Bytes(tmhash.Size), PartSetHeader{777, cmtrand.Bytes(tmhash.Size)}},
+		tmhash.Sum([]byte("compacthash")))
 	p := prop.ToProto()
 	signBytes := ProposalSignBytes("test_chain_id", p)
 
@@ -152,7 +153,7 @@ func TestProposalValidateBasic(t *testing.T) {
 		t.Run(tc.testName, func(t *testing.T) {
 			prop := NewProposal(
 				4, 2, 2,
-				blockID)
+				blockID, tmhash.Sum([]byte("compacthash")))
 			p := prop.ToProto()
 			err := privVal.SignProposal("test_chain_id", p)
 			prop.Signature = p.Signature
@@ -164,9 +165,9 @@ func TestProposalValidateBasic(t *testing.T) {
 }
 
 func TestProposalProtoBuf(t *testing.T) {
-	proposal := NewProposal(1, 2, 3, makeBlockID([]byte("hash"), 2, []byte("part_set_hash")))
+	proposal := NewProposal(1, 2, 3, makeBlockID([]byte("hash"), 2, []byte("part_set_hash")), tmhash.Sum([]byte("compacthash")))
 	proposal.Signature = []byte("sig")
-	proposal2 := NewProposal(1, 2, 3, BlockID{})
+	proposal2 := NewProposal(1, 2, 3, BlockID{}, tmhash.Sum([]byte("compacthash")))
 
 	testCases := []struct {
 		msg     string

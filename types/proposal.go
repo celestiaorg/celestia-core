@@ -23,25 +23,27 @@ var (
 // a so-called Proof-of-Lock (POL) round, as noted in the POLRound.
 // If POLRound >= 0, then BlockID corresponds to the block that is locked in POLRound.
 type Proposal struct {
-	Type      cmtproto.SignedMsgType
-	Height    int64     `json:"height"`
-	Round     int32     `json:"round"`     // there can not be greater than 2_147_483_647 rounds
-	POLRound  int32     `json:"pol_round"` // -1 if null.
-	BlockID   BlockID   `json:"block_id"`
-	Timestamp time.Time `json:"timestamp"`
-	Signature []byte    `json:"signature"`
+	Type        cmtproto.SignedMsgType
+	Height      int64     `json:"height"`
+	Round       int32     `json:"round"`     // there can not be greater than 2_147_483_647 rounds
+	POLRound    int32     `json:"pol_round"` // -1 if null.
+	BlockID     BlockID   `json:"block_id"`
+	Timestamp   time.Time `json:"timestamp"`
+	Signature   []byte    `json:"signature"`
+	CompactHash []byte    `json:"compact_hash"`
 }
 
 // NewProposal returns a new Proposal.
 // If there is no POLRound, polRound should be -1.
-func NewProposal(height int64, round int32, polRound int32, blockID BlockID) *Proposal {
+func NewProposal(height int64, round int32, polRound int32, blockID BlockID, compactHash []byte) *Proposal {
 	return &Proposal{
-		Type:      cmtproto.ProposalType,
-		Height:    height,
-		Round:     round,
-		BlockID:   blockID,
-		POLRound:  polRound,
-		Timestamp: cmttime.Now(),
+		Type:        cmtproto.ProposalType,
+		Height:      height,
+		Round:       round,
+		BlockID:     blockID,
+		POLRound:    polRound,
+		Timestamp:   cmttime.Now(),
+		CompactHash: compactHash,
 	}
 }
 
@@ -75,6 +77,10 @@ func (p *Proposal) ValidateBasic() error {
 
 	if len(p.Signature) > MaxSignatureSize {
 		return fmt.Errorf("signature is too big (max: %d)", MaxSignatureSize)
+	}
+
+	if err := ValidateHash(p.CompactHash); err != nil {
+		return fmt.Errorf("wrong CompactHash: %v", err)
 	}
 	return nil
 }
@@ -114,6 +120,11 @@ func ProposalSignBytes(chainID string, p *cmtproto.Proposal) []byte {
 		panic(err)
 	}
 
+	// simply append the compact hash to the end of the bytes
+	if p.CompactHash != nil {
+		bz = append(bz, p.CompactHash...)
+	}
+
 	return bz
 }
 
@@ -131,6 +142,7 @@ func (p *Proposal) ToProto() *cmtproto.Proposal {
 	pb.PolRound = p.POLRound
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
+	pb.CompactHash = p.CompactHash
 
 	return pb
 }
@@ -156,6 +168,7 @@ func ProposalFromProto(pp *cmtproto.Proposal) (*Proposal, error) {
 	p.POLRound = pp.PolRound
 	p.Timestamp = pp.Timestamp
 	p.Signature = pp.Signature
+	p.CompactHash = pp.CompactHash
 
 	return p, p.ValidateBasic()
 }
