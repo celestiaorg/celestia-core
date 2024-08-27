@@ -16,6 +16,7 @@ import (
 
 	abcicli "github.com/tendermint/tendermint/abci/client"
 	abci "github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/evidence"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/service"
@@ -234,14 +235,14 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		// Make proposal
 		propBlockID := types.BlockID{Hash: blockHash, PartSetHeader: blockParts.Header()}
-		proposal := types.NewProposal(height, round, lazyProposer.TwoThirdPrevoteRound, propBlockID)
+		proposal := types.NewProposal(height, round, lazyProposer.TwoThirdPrevoteRound, propBlockID, tmhash.Sum([]byte("compacthash")))
 		p := proposal.ToProto()
 		if err := lazyProposer.privValidator.SignProposal(lazyProposer.state.ChainID, p); err == nil {
 			proposal.Signature = p.Signature
 
 			// send proposal and block parts on internal msg queue
 			lazyProposer.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
-			lazyProposer.sendInternalMessage(msgInfo{&CompactBlockMessage{block, proposal.BlockID.Hash, proposal.Round}, ""})
+			lazyProposer.sendInternalMessage(msgInfo{&CompactBlockMessage{block, proposal.Round}, ""})
 			for i := 0; i < int(blockParts.Total()); i++ {
 				part := blockParts.GetPart(i)
 				lazyProposer.sendInternalMessage(msgInfo{&BlockPartMessage{lazyProposer.Height, lazyProposer.Round, part}, ""})
@@ -477,7 +478,7 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	blockParts1 := block1.MakePartSet(types.BlockPartSizeBytes)
 	polRound := cs.TwoThirdPrevoteRound
 	propBlockID := types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
-	proposal1 := types.NewProposal(height, round, polRound, propBlockID)
+	proposal1 := types.NewProposal(height, round, polRound, propBlockID, tmhash.Sum([]byte("compacthash")))
 	p1 := proposal1.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p1); err != nil {
 		t.Error(err)
@@ -493,7 +494,7 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	blockParts2 := block2.MakePartSet(types.BlockPartSizeBytes)
 	polRound = cs.TwoThirdPrevoteRound
 	propBlockID = types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
-	proposal2 := types.NewProposal(height, round, polRound, propBlockID)
+	proposal2 := types.NewProposal(height, round, polRound, propBlockID, tmhash.Sum([]byte("compacthash")))
 	p2 := proposal2.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p2); err != nil {
 		t.Error(err)

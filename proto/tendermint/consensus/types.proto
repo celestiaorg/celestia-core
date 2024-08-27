@@ -44,8 +44,7 @@ message ProposalPOL {
 // CompactBlock is for gossiping a block
 message CompactBlock {
   tendermint.types.Block block = 1;
-  bytes block_hash = 2;
-  int32 round = 3;
+  int32 round = 2;
 }
 
 // HasBlock to signal that the node has the block

@@ -32,8 +32,8 @@ var (
 // InclusionDelay is the amount of time a transaction must be in the mempool
 // before it is included in the block.
 const (
-	InclusionDelay = 2 * time.Second
-	SeenSetPruneInterval  = 10 * time.Minute
+	InclusionDelay       = 2 * time.Second
+	SeenSetPruneInterval = 10 * time.Minute
 )
 
 // TxPoolOption sets an optional parameter on the TxPool.

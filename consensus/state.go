@@ -1240,13 +1240,13 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 	// Make proposal
 	propBlockID := types.BlockID{Hash: blockHash, PartSetHeader: blockParts.Header()}
-	proposal := types.NewProposal(height, round, cs.TwoThirdPrevoteRound, propBlockID)
+	proposal := types.NewProposal(height, round, cs.TwoThirdPrevoteRound, propBlockID, block.Hash())
 	p := proposal.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
 		proposal.Signature = p.Signature
 
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
-		cs.sendInternalMessage(msgInfo{&CompactBlockMessage{block, blockHash, proposal.Round}, ""})
+		cs.sendInternalMessage(msgInfo{&CompactBlockMessage{block, proposal.Round}, ""})
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
 			cs.sendInternalMessage(msgInfo{&BlockPartMessage{cs.Height, cs.Round, part}, ""})
@@ -1986,7 +1986,7 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 	height := compactBlock.Height
 	cs.metrics.CompactBlocksReceived.Add(1)
 
-	if cs.ProposalBlock != nil {
+	if cs.ProposalCompactBlock != nil {
 		// We already have the proposal block.
 		return nil
 	}
@@ -2018,8 +2018,8 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 	}
 
 	// compare that this is the correct compact block
-	if !bytes.Equal(cs.Proposal.BlockID.Hash, msg.BlockHash) {
-		cs.Logger.Debug("received compact block with a different block hash", "current", cs.Proposal.BlockID.Hash, "got", msg.BlockHash)
+	if !bytes.Equal(cs.Proposal.CompactHash, compactBlock.Hash()) {
+		cs.Logger.Debug("received compact block with a different block hash", "current", cs.Proposal.BlockID.Hash, "got", msg.Block.Hash())
 		return nil
 	}
 
@@ -2028,6 +2028,8 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 		cs.FetchCompactBlockCtx = ctx
 		cs.CancelAwaitCompactBlock = cancel
 	}
+
+	cs.ProposalCompactBlock = compactBlock
 
 	// we start this as a goroutine so as to not block the reactor
 	// from recieving other messages or timeouts while the mempool
@@ -2087,7 +2089,6 @@ func (cs *State) fetchCompactBlock(ctx context.Context, blockHash []byte, compac
 	}
 
 	defer cs.CancelAwaitCompactBlock()
-	cs.ProposalCompactBlock = compactBlock
 	cs.ProposalBlock = block
 	cs.ProposalBlockParts = partSet
 

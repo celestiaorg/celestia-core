@@ -710,9 +710,8 @@ OUTER_LOOP:
 				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 					ChannelID: DataChannel,
 					Message: &cmtcons.CompactBlock{
-						Block:     compactBlock,
-						BlockHash: rs.Proposal.BlockID.Hash,
-						Round:     rs.Round,
+						Block: compactBlock,
+						Round: rs.Round,
 					},
 				}, logger) {
 					ps.SetHasBlock(prs.Height, prs.Round)
@@ -831,7 +830,7 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 		} else if !blockMeta.BlockID.PartSetHeader.Equals(prs.ProposalBlockPartSetHeader) {
 			// this happens when the peer is on a different round to the round of the proposal
 			// that was eventually committed. They should eventually receive 2/3 precommits and
-			// update the part set header to the one of the block that is committed 
+			// update the part set header to the one of the block that is committed
 			logger.Debug("Peer ProposalBlockPartSetHeader mismatch, sleeping",
 				"blockPartSetHeader", blockMeta.BlockID.PartSetHeader, "peerBlockPartSetHeader", prs.ProposalBlockPartSetHeader)
 			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
@@ -1913,9 +1912,8 @@ func (m *ProposalPOLMessage) String() string {
 
 // CompactBlockMessage is sent when gossipping a piece of the proposed block.
 type CompactBlockMessage struct {
-	Block     *types.Block
-	BlockHash []byte
-	Round     int32
+	Block *types.Block
+	Round int32
 }
 
 // ValidateBasic performs basic validation.
@@ -1925,7 +1923,7 @@ func (m *CompactBlockMessage) ValidateBasic() error {
 
 // String returns a string representation.
 func (m *CompactBlockMessage) String() string {
-	return fmt.Sprintf("[CompactBlock Height:%d, Hash: %X, Round: %d]", m.Block.Height, m.BlockHash, m.Round)
+	return fmt.Sprintf("[CompactBlock Height:%d, Round: %d]", m.Block.Height, m.Round)
 }
 
 //-------------------------------------
