@@ -538,6 +538,7 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 		}
 		if cs.Step != step {
 			cs.metrics.MarkStep(cs.Step)
+			schema.WriteRoundState(cs.traceClient, cs.Height, round, uint8(step))
 		}
 	}
 	cs.Round = round
@@ -705,10 +706,6 @@ func (cs *State) newStep() {
 	}
 
 	cs.nSteps++
-
-	step := uint8(cs.RoundState.Step)
-
-	schema.WriteRoundState(cs.traceClient, cs.Height, cs.Round, step)
 
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {
@@ -1518,6 +1515,7 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 	defer func() {
 		// Done enterPrecommitWait:
 		cs.TriggeredTimeoutPrecommit = true
+		cs.updateRoundStep(round, cstypes.RoundStepPrecommitWait)
 		cs.newStep()
 	}()
 
