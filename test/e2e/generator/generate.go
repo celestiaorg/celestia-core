@@ -52,13 +52,6 @@ var (
 		"restart":    0.1,
 		"upgrade":    0.3,
 	}
-	nodeMisbehaviors = weightedChoice{
-		// FIXME: evidence disabled due to node panicking when not
-		// having sufficient block history to process evidence.
-		// https://github.com/tendermint/tendermint/issues/5617
-		// misbehaviorOption{"double-prevote"}: 1,
-		misbehaviorOption{}: 9,
-	}
 	lightNodePerturbations = probSetChoice{
 		"upgrade": 0.3,
 	}
@@ -293,17 +286,6 @@ func generateNode(
 		node.SnapshotInterval = 3
 	}
 
-	if node.Mode == string(e2e.ModeValidator) {
-		misbehaveAt := startAt + 5 + int64(r.Intn(10))
-		if startAt == 0 {
-			misbehaveAt += initialHeight - 1
-		}
-		node.Misbehaviors = nodeMisbehaviors.Choose(r).(misbehaviorOption).atHeight(misbehaveAt)
-		if len(node.Misbehaviors) != 0 {
-			node.PrivvalProtocol = "file"
-		}
-	}
-
 	// If a node which does not persist state also does not retain blocks, randomly
 	// choose to either persist state or retain all blocks.
 	if node.PersistInterval != nil && *node.PersistInterval == 0 && node.RetainBlocks > 0 {
@@ -342,19 +324,6 @@ func generateLightNode(r *rand.Rand, startAt int64, providers []string) *e2e.Man
 
 func ptrUint64(i uint64) *uint64 {
 	return &i
-}
-
-type misbehaviorOption struct {
-	misbehavior string
-}
-
-func (m misbehaviorOption) atHeight(height int64) map[string]string {
-	misbehaviorMap := make(map[string]string)
-	if m.misbehavior == "" {
-		return misbehaviorMap
-	}
-	misbehaviorMap[strconv.Itoa(int(height))] = m.misbehavior
-	return misbehaviorMap
 }
 
 // Parses strings like "v0.34.21:1,v0.34.22:2" to represent two versions
