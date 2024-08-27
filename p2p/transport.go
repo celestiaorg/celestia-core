@@ -2,19 +2,17 @@ package p2p
 
 import (
 	"context"
-	"crypto/rsa"
-	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
+	"errors"
 	"fmt"
 	"github.com/quic-go/quic-go"
 	"github.com/tendermint/tendermint/libs/protoio"
 	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
-	"math/big"
 	"net"
+	"os"
+	"runtime/debug"
 	"time"
 
-	"crypto/rand"
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/pkg/trace"
@@ -215,7 +213,38 @@ func (mt *MultiplexTransport) Dial(
 	addr NetAddress,
 	cfg peerConfig,
 ) (Peer, error) {
-	c, err := addr.DialTimeout(mt.dialTimeout)
+	tlsConfig, err := NewTLSConfig(mt.nodeKey.PrivKey)
+	if err != nil {
+		return nil, err
+	}
+	tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) (err error) {
+		defer func() {
+			if rerr := recover(); rerr != nil {
+				fmt.Fprintf(os.Stderr, "panic when processing peer certificate in TLS exchangeNodeInfo: %s\n%s\n", rerr, debug.Stack())
+				err = fmt.Errorf("panic when processing peer certificate in TLS exchangeNodeInfo: %s", rerr)
+			}
+		}()
+
+		if len(rawCerts) != 1 {
+			return errors.New("expected one certificates in the chain")
+		}
+		cert, err := x509.ParseCertificate(rawCerts[0])
+		if err != nil {
+			return err
+		}
+
+		pubKey, err := VerifyCertificate(cert)
+		if err != nil {
+			return err
+		}
+		remoteID := PubKeyToID(pubKey)
+		if remoteID != addr.ID {
+			return fmt.Errorf("mismatch peer ID")
+		}
+		return nil
+	}
+
+	c, err := addr.DialTimeout(tlsConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +255,7 @@ func (mt *MultiplexTransport) Dial(
 		return nil, err
 	}
 
-	secretConn, nodeInfo, err := mt.upgrade(c, &addr)
+	secretConn, nodeInfo, err := mt.getNodeInfo(c)
 	if err != nil {
 		return nil, err
 	}
@@ -251,34 +280,32 @@ func (mt *MultiplexTransport) Close() error {
 
 // Listen implements transportLifecycle.
 func (mt *MultiplexTransport) Listen(addr NetAddress) error {
-	// TODO(rach-id): valid certificate
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-	certTemplate := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization: []string{"Test"},
-		},
-		BasicConstraintsValid: true,
-	}
-
-	rsaPrivateKey, err := rsa.GenerateKey(rand.Reader, 4096)
+	tlsConfig, err := NewTLSConfig(mt.nodeKey.PrivKey)
 	if err != nil {
 		return err
 	}
-	derBytes, err := x509.CreateCertificate(rand.Reader, &certTemplate, &certTemplate, rsaPrivateKey.Public(), rsaPrivateKey)
-	if err != nil {
-		return err
-	}
+	tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) (err error) {
+		defer func() {
+			if rerr := recover(); rerr != nil {
+				fmt.Fprintf(os.Stderr, "panic when processing peer certificate in TLS exchangeNodeInfo: %s\n%s\n", rerr, debug.Stack())
+				err = fmt.Errorf("panic when processing peer certificate in TLS exchangeNodeInfo: %s", rerr)
+			}
+		}()
 
-	tlsConfig := tls.Config{
-		MinVersion: tls.VersionTLS13,
-		Certificates: []tls.Certificate{{
-			Certificate: [][]byte{derBytes},
-			PrivateKey:  rsaPrivateKey,
-		}},
+		if len(rawCerts) != 1 {
+			return errors.New("expected one certificates in the chain")
+		}
+		cert, err := x509.ParseCertificate(rawCerts[0])
+		if err != nil {
+			return err
+		}
+
+		_, err = VerifyCertificate(cert)
+		if err != nil {
+			return err
+		}
+		return nil
 	}
-	// TODO(rach-id): valid config
 	quickConfig := quic.Config{
 		// TODO(rach-id): do we want to enable 0RTT? are the replay risks fine?
 		Allow0RTT:             false,
@@ -288,7 +315,7 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 		KeepAlivePeriod:       100 * time.Millisecond,
 		EnableDatagrams:       true,
 	}
-	listener, err := quic.ListenAddr(addr.DialString(), &tlsConfig, &quickConfig)
+	listener, err := quic.ListenAddr(addr.DialString(), tlsConfig, &quickConfig)
 	if err != nil {
 		return err
 	}
@@ -363,7 +390,7 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 
 			err := mt.filterConn(c)
 			if err == nil {
-				_, nodeInfo, err = mt.upgrade(c, nil)
+				_, nodeInfo, err = mt.getNodeInfo(c)
 				if err == nil {
 					addr := c.RemoteAddr()
 					id := PubKeyToID(mt.nodeKey.PubKey())
@@ -442,43 +469,23 @@ func (mt *MultiplexTransport) filterConn(c quic.Connection) (err error) {
 	return nil
 }
 
-func (mt *MultiplexTransport) upgrade(
-	c quic.Connection,
-	dialedAddr *NetAddress,
-) (conn quic.Connection, nodeInfo NodeInfo, err error) {
+func (mt *MultiplexTransport) getNodeInfo(c quic.Connection) (conn quic.Connection, remoteNodeInfo NodeInfo, err error) {
 	defer func() {
 		if err != nil {
 			_ = mt.cleanup(c)
 		}
 	}()
 
-	// For outgoing conns, ensure connection key matches dialed key.
-	//connID := PubKeyToID(mt.nodeKey.PubKey())
-	//if dialedAddr != nil {
-	//	if dialedID := dialedAddr.ID; connID != dialedID {
-	//		return nil, nil, ErrRejected{
-	//			conn: c,
-	//			id:   connID,
-	//			err: fmt.Errorf(
-	//				"conn.ID (%v) dialed ID (%v) mismatch",
-	//				connID,
-	//				dialedID,
-	//			),
-	//			isAuthFailure: true,
-	//		}
-	//	}
-	//}
-
-	nodeInfo, err = handshake(c, mt.handshakeTimeout, mt.nodeInfo)
+	remoteNodeInfo, err = exchangeNodeInfo(c, mt.handshakeTimeout, mt.nodeInfo)
 	if err != nil {
 		return nil, nil, ErrRejected{
 			conn:          c,
-			err:           fmt.Errorf("handshake failed: %v", err),
+			err:           fmt.Errorf("exchangeNodeInfo failed: %v", err),
 			isAuthFailure: true,
 		}
 	}
 
-	if err := nodeInfo.Validate(); err != nil {
+	if err := remoteNodeInfo.Validate(); err != nil {
 		return nil, nil, ErrRejected{
 			conn:              c,
 			err:               err,
@@ -486,44 +493,29 @@ func (mt *MultiplexTransport) upgrade(
 		}
 	}
 
-	// TODO(rach-id): valid ID
-	// Ensure connection key matches self reported key.
-	//if connID != nodeInfo.ID() {
-	//	return nil, nil, ErrRejected{
-	//		conn: c,
-	//		id:   connID,
-	//		err: fmt.Errorf(
-	//			"conn.ID (%v) NodeInfo.ID (%v) mismatch",
-	//			connID,
-	//			nodeInfo.ID(),
-	//		),
-	//		isAuthFailure: true,
-	//	}
-	//}
-
 	// Reject self.
-	if mt.nodeInfo.ID() == nodeInfo.ID() {
+	if mt.nodeInfo.ID() == remoteNodeInfo.ID() {
 		return nil, nil, ErrRejected{
-			addr:   *NewNetAddress(nodeInfo.ID(), c.RemoteAddr()),
+			addr:   *NewNetAddress(remoteNodeInfo.ID(), c.RemoteAddr()),
 			conn:   c,
-			id:     nodeInfo.ID(),
+			id:     remoteNodeInfo.ID(),
 			isSelf: true,
 		}
 	}
 
-	if err := mt.nodeInfo.CompatibleWith(nodeInfo); err != nil {
+	if err := mt.nodeInfo.CompatibleWith(remoteNodeInfo); err != nil {
 		return nil, nil, ErrRejected{
 			conn:           c,
 			err:            err,
-			id:             nodeInfo.ID(),
+			id:             remoteNodeInfo.ID(),
 			isIncompatible: true,
 		}
 	}
 
-	return c, nodeInfo, nil
+	return c, remoteNodeInfo, nil
 }
 
-func handshake(
+func exchangeNodeInfo(
 	c quic.Connection,
 	timeout time.Duration,
 	nodeInfo NodeInfo,

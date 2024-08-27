@@ -306,7 +306,7 @@ func TestTransportMultiplexAcceptNonBlocking(t *testing.T) {
 			return
 		}
 
-		_, err = handshake(sc, 200*time.Millisecond,
+		_, err = exchangeNodeInfo(sc, 200*time.Millisecond,
 			testNodeInfo(
 				PubKeyToID(ed25519.GenPrivKey().PubKey()),
 				"slow_peer",
@@ -612,7 +612,7 @@ func TestTransportHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ni, err := handshake(c, 20*time.Millisecond, emptyNodeInfo())
+	ni, err := exchangeNodeInfo(c, 20*time.Millisecond, emptyNodeInfo())
 	if err != nil {
 		t.Fatal(err)
 	}
