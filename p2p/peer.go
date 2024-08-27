@@ -361,7 +361,8 @@ func (p *peer) SocketAddr() *NetAddress {
 // Status returns the peer's ConnectionStatus.
 func (p *peer) Status() ConnectionStatus {
 	return ConnectionStatus{
-		Duration:        time.Since(p.created),
+		Duration: time.Since(p.created),
+		// TODO(rach-id): register ecdsa.PublicKey protobuf definition
 		ConnectionState: p.conn.ConnectionState(),
 	}
 }

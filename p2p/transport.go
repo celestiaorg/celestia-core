@@ -250,7 +250,6 @@ func (mt *MultiplexTransport) Dial(
 	}
 
 	// TODO(xla): Evaluate if we should apply filters if we explicitly dial.
-	//TODO(rach-id): remove peer when disconnected.
 	if err := mt.filterConn(c); err != nil {
 		return nil, err
 	}
