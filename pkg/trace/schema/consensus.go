@@ -1,8 +1,6 @@
 package schema
 
 import (
-	cstypes "github.com/cometbft/cometbft/consensus/types"
-	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/pkg/trace"
 	"github.com/cometbft/cometbft/types"
 )
@@ -15,6 +13,8 @@ func ConsensusTables() []string {
 		BlockPartsTable,
 		BlockTable,
 		VoteTable,
+		ConsensusStateTable,
+		ProposalTable,
 	}
 }
 
@@ -27,9 +27,9 @@ const (
 
 // RoundState describes schema for the "consensus_round_state" table.
 type RoundState struct {
-	Height int64                 `json:"height"`
-	Round  int32                 `json:"round"`
-	Step   cstypes.RoundStepType `json:"step"`
+	Height int64 `json:"height"`
+	Round  int32 `json:"round"`
+	Step   uint8 `json:"step"`
 }
 
 // Table returns the table name for the RoundState struct.
@@ -39,7 +39,7 @@ func (r RoundState) Table() string {
 
 // WriteRoundState writes a tracing point for a tx using the predetermined
 // schema for consensus state tracing.
-func WriteRoundState(client trace.Tracer, height int64, round int32, step cstypes.RoundStepType) {
+func WriteRoundState(client trace.Tracer, height int64, round int32, step uint8) {
 	client.Write(RoundState{Height: height, Round: round, Step: step})
 }
 
@@ -55,7 +55,8 @@ type BlockPart struct {
 	Height       int64        `json:"height"`
 	Round        int32        `json:"round"`
 	Index        int32        `json:"index"`
-	Peer         p2p.ID       `json:"peer"`
+	Catchup      bool         `json:"catchup"`
+	Peer         string       `json:"peer"`
 	TransferType TransferType `json:"transfer_type"`
 }
 
@@ -70,11 +71,12 @@ func WriteBlockPart(
 	client trace.Tracer,
 	height int64,
 	round int32,
-	peer p2p.ID,
 	index uint32,
+	catchup bool,
+	peer string,
 	transferType TransferType,
 ) {
-	// this check is redundant to what is checked during WritePoint, although it
+	// this check is redundant to what is checked during client.Write, although it
 	// is an optimization to avoid allocations from the map of fields.
 	if !client.IsCollecting(BlockPartsTable) {
 		return
@@ -83,6 +85,7 @@ func WriteBlockPart(
 		Height:       height,
 		Round:        round,
 		Index:        int32(index),
+		Catchup:      catchup,
 		Peer:         peer,
 		TransferType: transferType,
 	})
@@ -104,7 +107,7 @@ type Vote struct {
 	VoteRound                int32        `json:"vote_round"`
 	VoteMillisecondTimestamp int64        `json:"vote_unix_millisecond_timestamp"`
 	ValidatorAddress         string       `json:"vote_validator_address"`
-	Peer                     p2p.ID       `json:"peer"`
+	Peer                     string       `json:"peer"`
 	TransferType             TransferType `json:"transfer_type"`
 }
 
@@ -118,7 +121,7 @@ func WriteVote(client trace.Tracer,
 	height int64, // height of the current peer when it received/sent the vote
 	round int32, // round of the current peer when it received/sent the vote
 	vote *types.Vote, // vote received by the current peer
-	peer p2p.ID, // the peer from which it received the vote or the peer to which it sent the vote
+	peer string, // the peer from which it received the vote or the peer to which it sent the vote
 	transferType TransferType, // download (received) or upload(sent)
 ) {
 	client.Write(Vote{
@@ -160,9 +163,86 @@ func WriteBlockSummary(client trace.Tracer, block *types.Block, size int) {
 		Height:                   block.Height,
 		UnixMillisecondTimestamp: block.Time.UnixMilli(),
 		TxCount:                  len(block.Data.Txs),
-		SquareSize:               block.SquareSize,
 		BlockSize:                size,
 		Proposer:                 block.ProposerAddress.String(),
 		LastCommitRound:          block.LastCommit.Round,
+	})
+}
+
+const (
+	ConsensusStateTable = "consensus_state"
+)
+
+type ConsensusStateUpdateType string
+
+const (
+	ConsensusNewValidBlock      ConsensusStateUpdateType = "new_valid_block"
+	ConsensusNewRoundStep       ConsensusStateUpdateType = "new_round_step"
+	ConsensusVoteSetBits        ConsensusStateUpdateType = "vote_set_bits"
+	ConsensusVoteSet23Prevote   ConsensusStateUpdateType = "vote_set_23_prevote"
+	ConsensusVoteSet23Precommit ConsensusStateUpdateType = "vote_set_23_precommit"
+	ConsensusHasVote            ConsensusStateUpdateType = "has_vote"
+	ConsensusPOL                ConsensusStateUpdateType = "pol"
+)
+
+type ConsensusState struct {
+	Height       int64        `json:"height"`
+	Round        int32        `json:"round"`
+	UpdateType   string       `json:"update_type"`
+	Peer         string       `json:"peer"`
+	TransferType TransferType `json:"transfer_type"`
+	Data         []string     `json:"data,omitempty"`
+}
+
+func (c ConsensusState) Table() string {
+	return ConsensusStateTable
+}
+
+func WriteConsensusState(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	peer string,
+	updateType ConsensusStateUpdateType,
+	transferType TransferType,
+	data ...string,
+) {
+	client.Write(ConsensusState{
+		Height:       height,
+		Round:        round,
+		Peer:         peer,
+		UpdateType:   string(updateType),
+		TransferType: transferType,
+		Data:         data,
+	})
+}
+
+const (
+	ProposalTable = "consensus_proposal"
+)
+
+type Proposal struct {
+	Height       int64        `json:"height"`
+	Round        int32        `json:"round"`
+	PeerID       string       `json:"peer_id"`
+	TransferType TransferType `json:"transfer_type"`
+}
+
+func (p Proposal) Table() string {
+	return ProposalTable
+}
+
+func WriteProposal(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	peerID string,
+	transferType TransferType,
+) {
+	client.Write(Proposal{
+		Height:       height,
+		Round:        round,
+		PeerID:       peerID,
+		TransferType: transferType,
 	})
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	cmtnet "github.com/cometbft/cometbft/libs/net"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	"github.com/cometbft/cometbft/pkg/trace"
 
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/p2p/conn"
@@ -199,7 +200,7 @@ func MakeSwitch(
 		panic(err)
 	}
 
-	t := NewMultiplexTransport(nodeInfo, nodeKey, MConnConfig(cfg))
+	t := NewMultiplexTransport(nodeInfo, nodeKey, MConnConfig(cfg), trace.NoOpTracer())
 
 	if err := t.Listen(*addr); err != nil {
 		panic(err)

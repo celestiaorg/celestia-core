@@ -47,8 +47,10 @@ func (emptyMempool) TxsBytes() int64               { return 0 }
 func (emptyMempool) TxsFront() *clist.CElement    { return nil }
 func (emptyMempool) TxsWaitChan() <-chan struct{} { return nil }
 
-func (emptyMempool) InitWAL() error { return nil }
-func (emptyMempool) CloseWAL()      {}
+func (emptyMempool) InitWAL() error                          { return nil }
+func (emptyMempool) CloseWAL()                               {}
+func (emptyMempool) GetTxByKey(types.TxKey) (types.Tx, bool) { return nil, false }
+func (emptyMempool) WasRecentlyEvicted(types.TxKey) bool     { return false }
 
 //-----------------------------------------------------------------------------
 // mockProxyApp uses ABCIResponses to give the right results.

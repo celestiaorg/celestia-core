@@ -11,6 +11,7 @@ import (
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/libs/protoio"
 	"github.com/cometbft/cometbft/p2p/conn"
+	"github.com/cometbft/cometbft/pkg/trace"
 	tmp2p "github.com/cometbft/cometbft/proto/tendermint/p2p"
 	"github.com/gogo/protobuf/proto"
 )
@@ -158,6 +159,9 @@ type MultiplexTransport struct {
 	// peer currently. All relevant configuration should be refactored into options
 	// with sane defaults.
 	mConfig conn.MConnConfig
+
+	// the tracer is passed to peers for collecting trace data
+	tracer trace.Tracer
 }
 
 // Test multiplexTransport for interface completeness.
@@ -169,6 +173,7 @@ func NewMultiplexTransport(
 	nodeInfo NodeInfo,
 	nodeKey NodeKey,
 	mConfig conn.MConnConfig,
+	tracer trace.Tracer,
 ) *MultiplexTransport {
 	return &MultiplexTransport{
 		acceptc:          make(chan accept),
@@ -181,6 +186,7 @@ func NewMultiplexTransport(
 		nodeKey:          nodeKey,
 		conns:            NewConnSet(),
 		resolver:         net.DefaultResolver,
+		tracer:           tracer,
 	}
 }
 
@@ -527,6 +533,7 @@ func (mt *MultiplexTransport) wrapPeer(
 		cfg.onPeerError,
 		cfg.mlc,
 		PeerMetrics(cfg.metrics),
+		WithPeerTracer(mt.tracer),
 	)
 
 	return p

@@ -17,6 +17,13 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
+const (
+	txStatusUnknown   string = "UNKNOWN"
+	txStatusPending   string = "PENDING"
+	txStatusEvicted   string = "EVICTED"
+	txStatusCommitted string = "COMMITTED"
+)
+
 // Tx allows you to query the transaction results. `nil` could mean the
 // transaction is in the mempool, invalidated, or was not sent in the first
 // place.
@@ -42,10 +49,11 @@ func Tx(ctx *rpctypes.Context, hash []byte, prove bool) (*ctypes.ResultTx, error
 
 	var shareProof types.ShareProof
 	if prove {
-		shareProof, err = proveTx(height, index)
+		proof, err := proveTx(height, index)
 		if err != nil {
 			return nil, err
 		}
+		shareProof = proof.Proof
 	}
 
 	return &ctypes.ResultTx{
@@ -125,10 +133,11 @@ func TxSearch(
 
 		var shareProof types.ShareProof
 		if prove {
-			shareProof, err = proveTx(r.Height, r.Index)
+			proof, err := proveTx(r.Height, r.Index)
 			if err != nil {
 				return nil, err
 			}
+			shareProof = proof.Proof
 		}
 
 		apiResults = append(apiResults, &ctypes.ResultTx{
@@ -144,7 +153,7 @@ func TxSearch(
 	return &ctypes.ResultTxSearch{Txs: apiResults, TotalCount: totalCount}, nil
 }
 
-func proveTx(height int64, index uint32) (types.ShareProof, error) {
+func proveTx(height int64, index uint32) (*ctypes.ResultShareProof, error) {
 	var (
 		pShareProof cmtproto.ShareProof
 		shareProof  types.ShareProof
@@ -152,24 +161,24 @@ func proveTx(height int64, index uint32) (types.ShareProof, error) {
 	env := GetEnvironment()
 	rawBlock, err := loadRawBlock(env.BlockStore, height)
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
 	res, err := env.ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
 		Data: rawBlock,
 		Path: fmt.Sprintf(consts.TxInclusionProofQueryPath, index),
 	})
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
 	err = pShareProof.Unmarshal(res.Value)
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
 	shareProof, err = types.ShareProofFromProto(pShareProof)
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
-	return shareProof, nil
+	return &ctypes.ResultShareProof{Proof: shareProof}, nil
 }
 
 // ProveShares creates an NMT proof for a set of shares to a set of rows. It is
@@ -179,7 +188,7 @@ func ProveShares(
 	height int64,
 	startShare uint64,
 	endShare uint64,
-) (types.ShareProof, error) {
+) (*ctypes.ResultShareProof, error) {
 	var (
 		pShareProof cmtproto.ShareProof
 		shareProof  types.ShareProof
@@ -187,29 +196,63 @@ func ProveShares(
 	env := GetEnvironment()
 	rawBlock, err := loadRawBlock(env.BlockStore, height)
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
 	res, err := env.ProxyAppQuery.QuerySync(abcitypes.RequestQuery{
 		Data: rawBlock,
 		Path: fmt.Sprintf(consts.ShareInclusionProofQueryPath, startShare, endShare),
 	})
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
 	if res.Value == nil && res.Log != "" {
 		// we can make the assumption that for custom queries, if the value is nil
 		// and some logs have been emitted, then an error happened.
-		return types.ShareProof{}, errors.New(res.Log)
+		return nil, errors.New(res.Log)
 	}
 	err = pShareProof.Unmarshal(res.Value)
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
 	shareProof, err = types.ShareProofFromProto(pShareProof)
 	if err != nil {
-		return shareProof, err
+		return nil, err
 	}
-	return shareProof, nil
+	return &ctypes.ResultShareProof{Proof: shareProof}, nil
+}
+
+// TxStatus retrieves the status of a transaction given its hash. It returns a ResultTxStatus
+// containing the height and index of the transaction within the block(if committed)
+// or whether the transaction is pending, evicted from the mempool, or otherwise unknown.
+func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
+	env := GetEnvironment()
+
+	// Check if the tx has been committed
+	txInfo := env.BlockStore.LoadTxInfo(hash)
+	if txInfo != nil {
+		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, ExecutionCode: txInfo.Code, Status: txStatusCommitted}, nil
+	}
+
+	// Get the tx key from the hash
+	txKey, err := types.TxKeyFromBytes(hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tx key from hash: %v", err)
+	}
+
+	// Check if the tx is in the mempool
+	txInMempool, ok := env.Mempool.GetTxByKey(txKey)
+	if txInMempool != nil && ok {
+		return &ctypes.ResultTxStatus{Status: txStatusPending}, nil
+	}
+
+	// Check if the tx is evicted
+	isEvicted := env.Mempool.WasRecentlyEvicted(txKey)
+	if isEvicted {
+		return &ctypes.ResultTxStatus{Status: txStatusEvicted}, nil
+	}
+
+	// If the tx is not in the mempool, evicted, or committed, return unknown
+	return &ctypes.ResultTxStatus{Status: txStatusUnknown}, nil
 }
 
 func loadRawBlock(bs state.BlockStore, height int64) ([]byte, error) {

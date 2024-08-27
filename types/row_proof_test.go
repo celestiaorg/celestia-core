@@ -13,55 +13,100 @@ func TestRowProofValidate(t *testing.T) {
 	type testCase struct {
 		name    string
 		rp      RowProof
-		root    []byte
 		wantErr bool
 	}
 	testCases := []testCase{
 		{
 			name:    "empty row proof returns error",
 			rp:      RowProof{},
-			root:    root,
 			wantErr: true,
 		},
 		{
 			name:    "row proof with mismatched number of rows and row roots returns error",
 			rp:      mismatchedRowRoots(),
-			root:    root,
 			wantErr: true,
 		},
 		{
 			name:    "row proof with mismatched number of proofs returns error",
 			rp:      mismatchedProofs(),
-			root:    root,
 			wantErr: true,
 		},
 		{
 			name:    "row proof with mismatched number of rows returns error",
 			rp:      mismatchedRows(),
-			root:    root,
 			wantErr: true,
 		},
 		{
 			name:    "valid row proof returns no error",
 			rp:      validRowProof(),
-			root:    root,
 			wantErr: false,
 		},
 		{
-			name:    "valid row proof with incorrect root returns error",
-			rp:      validRowProof(),
-			root:    incorrectRoot,
+			name:    "start row greater than end row",
+			rp:      RowProof{StartRow: 10, EndRow: 5},
 			wantErr: true,
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := tc.rp.Validate(tc.root)
+			got := tc.rp.Validate()
 			if tc.wantErr {
 				assert.Error(t, got)
 				return
 			}
 			assert.NoError(t, got)
+		})
+	}
+}
+
+func TestRowProofVerify(t *testing.T) {
+	type testCase struct {
+		name       string
+		rp         RowProof
+		root       []byte
+		isVerified bool
+	}
+	testCases := []testCase{
+		{
+			name:       "empty row proof returns error",
+			rp:         RowProof{},
+			root:       root,
+			isVerified: false,
+		},
+		{
+			name:       "row proof with mismatched number of rows and row roots returns error",
+			rp:         mismatchedRowRoots(),
+			root:       root,
+			isVerified: false,
+		},
+		{
+			name:       "row proof with mismatched number of proofs returns error",
+			rp:         mismatchedProofs(),
+			root:       root,
+			isVerified: false,
+		},
+		{
+			name:       "row proof with mismatched number of rows returns error",
+			rp:         mismatchedRows(),
+			root:       root,
+			isVerified: false,
+		},
+		{
+			name:       "valid row proof returns no error",
+			rp:         validRowProof(),
+			root:       root,
+			isVerified: true,
+		},
+		{
+			name:       "valid row proof with incorrect root returns error",
+			rp:         validRowProof(),
+			root:       incorrectRoot,
+			isVerified: false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.isVerified, tc.rp.VerifyProof(tc.root))
 		})
 	}
 }

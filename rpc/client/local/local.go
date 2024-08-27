@@ -215,7 +215,7 @@ func (c *Local) ProveShares(
 	height uint64,
 	startShare uint64,
 	endShare uint64,
-) (types.ShareProof, error) {
+) (*ctypes.ResultShareProof, error) {
 	return core.ProveShares(c.ctx, int64(height), startShare, endShare)
 }
 

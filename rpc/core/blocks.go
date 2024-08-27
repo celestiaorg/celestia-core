@@ -89,7 +89,7 @@ func filterMinMax(base, height, min, max, limit int64) (int64, int64, error) {
 
 // Header gets block header at a given height.
 // If no height is provided, it will fetch the latest header.
-// More: https://docs.tendermint.com/master/rpc/#/Info/header
+// More: https://docs.tendermint.com/main/rpc/#/Info/header
 func Header(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultHeader, error) {
 	height, err := getHeight(GetEnvironment().BlockStore.Height(), heightPtr)
 	if err != nil {
@@ -105,7 +105,7 @@ func Header(ctx *rpctypes.Context, heightPtr *int64) (*ctypes.ResultHeader, erro
 }
 
 // HeaderByHash gets header by hash.
-// More: https://docs.tendermint.com/master/rpc/#/Info/header_by_hash
+// More: https://docs.tendermint.com/main/rpc/#/Info/header_by_hash
 func HeaderByHash(ctx *rpctypes.Context, hash bytes.HexBytes) (*ctypes.ResultHeader, error) {
 	// N.B. The hash parameter is HexBytes so that the reflective parameter
 	// decoding logic in the HTTP service will correctly translate from JSON.
@@ -176,17 +176,6 @@ func BlockByHash(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultBlock, error
 	// If block is not nil, then blockMeta can't be nil.
 	blockMeta := env.BlockStore.LoadBlockMeta(block.Height)
 	return &ctypes.ResultBlock{BlockID: blockMeta.BlockID, Block: block}, nil
-}
-
-// TxStatus retrieves the status of a transaction given its hash. It returns a ResultTxStatus
-// containing the height and index of the transaction within the block.
-func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
-	env := GetEnvironment()
-	txInfo := env.BlockStore.LoadTxInfo(hash)
-	if txInfo == nil {
-		return &ctypes.ResultTxStatus{}, nil
-	}
-	return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index}, nil
 }
 
 // Commit gets block commit at a given height.

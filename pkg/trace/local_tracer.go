@@ -5,11 +5,20 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
+)
+
+const (
+	PushBucketName = "TRACE_PUSH_BUCKET_NAME"
+	PushRegion     = "TRACE_PUSH_REGION"
+	PushAccessKey  = "TRACE_PUSH_ACCESS_KEY"
+	PushKey        = "TRACE_PUSH_SECRET_KEY"
+	PushDelay      = "TRACE_PUSH_DELAY"
 )
 
 // Event wraps some trace data with metadata that dictates the table and things
@@ -73,8 +82,7 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 		if err != nil {
 			return nil, fmt.Errorf("failed to open or create file %s: %w", fileName, err)
 		}
-		bf := newbufferedFile(file)
-		fm[table] = bf
+		fm[table] = newbufferedFile(file)
 	}
 
 	lt := &LocalTracer{
@@ -90,6 +98,7 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 	if cfg.Instrumentation.TracePullAddress != "" {
 		go lt.servePullData()
 	}
+
 	if cfg.Instrumentation.TracePushConfig != "" {
 		s3Config, err := readS3Config(path.Join(cfg.RootDir, "config", cfg.Instrumentation.TracePushConfig))
 		if err != nil {
@@ -97,9 +106,35 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 		}
 		lt.s3Config = s3Config
 		go lt.pushLoop()
+	} else if s3Config, err := GetPushConfigFromEnv(); err == nil {
+		lt.s3Config = s3Config
+		go lt.pushLoop()
 	}
 
 	return lt, nil
+}
+
+// GetPushConfigFromEnv reads the required environment variables to push trace
+func GetPushConfigFromEnv() (S3Config, error) {
+	bucketName := os.Getenv(PushBucketName)
+	region := os.Getenv(PushRegion)
+	accessKey := os.Getenv(PushAccessKey)
+	secretKey := os.Getenv(PushKey)
+	pushDelay, err := strconv.ParseInt(os.Getenv(PushDelay), 10, 64)
+	if err != nil {
+		return S3Config{}, err
+	}
+	if bucketName == "" || region == "" || accessKey == "" || secretKey == "" {
+		return S3Config{}, fmt.Errorf("missing required environment variables")
+	}
+	var s3Config = S3Config{
+		BucketName: bucketName,
+		Region:     region,
+		AccessKey:  accessKey,
+		SecretKey:  secretKey,
+		PushDelay:  pushDelay,
+	}
+	return s3Config, nil
 }
 
 func (lt *LocalTracer) Write(e Entry) {
@@ -110,21 +145,19 @@ func (lt *LocalTracer) Write(e Entry) {
 }
 
 // ReadTable returns a file for the given table. If the table is not being
-// collected, an error is returned. This method is not thread-safe.
-func (lt *LocalTracer) ReadTable(table string) (*os.File, error) {
+// collected, an error is returned. The caller should not close the file.
+func (lt *LocalTracer) readTable(table string) (*os.File, func() error, error) {
 	bf, has := lt.getFile(table)
 	if !has {
-		return nil, fmt.Errorf("table %s not found", table)
+		return nil, func() error { return nil }, fmt.Errorf("table %s not found", table)
 	}
 
 	return bf.File()
 }
 
 func (lt *LocalTracer) IsCollecting(table string) bool {
-	if _, has := lt.getFile(table); has {
-		return true
-	}
-	return false
+	_, has := lt.getFile(table)
+	return has
 }
 
 // getFile gets a file for the given type. This method is purposely
@@ -166,12 +199,16 @@ func (lt *LocalTracer) drainCanal() {
 
 // Stop optionally uploads and closes all open files.
 func (lt *LocalTracer) Stop() {
-	for _, file := range lt.fileMap {
-		err := file.Flush()
+	if lt.s3Config.SecretKey != "" {
+		lt.logger.Info("pushing all tables before stopping")
+		err := lt.PushAll()
 		if err != nil {
-			lt.logger.Error("failed to flush file", "error", err)
+			lt.logger.Error("failed to push tables", "error", err)
 		}
-		err = file.Close()
+	}
+
+	for _, file := range lt.fileMap {
+		err := file.Close()
 		if err != nil {
 			lt.logger.Error("failed to close file", "error", err)
 		}

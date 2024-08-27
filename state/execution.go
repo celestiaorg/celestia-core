@@ -12,7 +12,6 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	mempl "github.com/cometbft/cometbft/mempool"
 	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
 )
@@ -26,6 +25,9 @@ import (
 type BlockExecutor struct {
 	// save state, validators, consensus params, abci responses here
 	store Store
+
+	// blockStore is optional and  used to store txInfo
+	blockStore BlockStore
 
 	// execute the app against this
 	proxyApp proxy.AppConnConsensus
@@ -48,6 +50,13 @@ type BlockExecutorOption func(executor *BlockExecutor)
 func BlockExecutorWithMetrics(metrics *Metrics) BlockExecutorOption {
 	return func(blockExec *BlockExecutor) {
 		blockExec.metrics = metrics
+	}
+}
+
+// WithBlockStore optionally stores txInfo
+func WithBlockStore(blockStore BlockStore) BlockExecutorOption {
+	return func(blockExec *BlockExecutor) {
+		blockExec.blockStore = blockStore
 	}
 }
 
@@ -144,11 +153,16 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		panic(fmt.Sprintf("state machine returned an invalid prepare proposal response: expected last transaction to be a hash, got %d bytes", len(rpp.Txs[len(rpp.Txs)-2])))
 	}
 
+	// don't count the last tx in rpp.Txs which is data root back from app
+	rejectedTxs := len(block.Txs) - (len(rpp.Txs) - 1)
+	if rejectedTxs > 0 {
+		blockExec.metrics.RejectedTransactions.Add(float64(rejectedTxs))
+	}
+
 	// update the block with the response from PrepareProposal
-	block.Data, _ = types.DataFromProto(&cmtproto.Data{
-		Txs:  rpp.Txs[:len(rpp.Txs)-1],
-		Hash: rpp.Txs[len(rpp.Txs)-1],
-	})
+	block.Data.Txs = types.ToTxs(rpp.Txs[:len(rpp.Txs)-1])
+	// update the data hash with the one passed back by celestia-app
+	block.DataHash = rpp.Txs[len(rpp.Txs)-1]
 
 	var blockDataSize int
 	for _, tx := range block.Txs {
@@ -167,7 +181,9 @@ func (blockExec *BlockExecutor) ProcessProposal(
 ) (bool, error) {
 
 	// Similar to PrepareProposal, the last transaction provided to Celestia
-	// in ProcessProposal is the data hash
+	// in ProcessProposal is the data hash. The data hash needs to be passed to
+	// the application so that it can be verified against the nodes own construction
+	// of the data square
 	txs := append(block.Data.Txs.ToSliceOfBytes(), block.DataHash)
 
 	resp, err := blockExec.proxyApp.ProcessProposalSync(abci.RequestProcessProposal{
@@ -238,6 +254,16 @@ func (blockExec *BlockExecutor) ApplyBlock(
 	// Save the results before we commit.
 	if err := blockExec.store.SaveABCIResponses(block.Height, abciResponses); err != nil {
 		return state, 0, err
+	}
+
+	// Save indexing info of the transaction.
+	// This needs to be done prior to saving state
+	// for correct crash recovery
+	if blockExec.blockStore != nil {
+		respCodes := getResponseCodes(abciResponses.DeliverTxs)
+		if err := blockExec.blockStore.SaveTxInfo(block, respCodes); err != nil {
+			return state, 0, err
+		}
 	}
 
 	fail.Fail() // XXX
@@ -680,4 +706,13 @@ func ExecCommitBlock(
 
 	// ResponseCommit has no error or log, just data
 	return res.Data, nil
+}
+
+// getResponseCodes gets response codes from a list of ResponseDeliverTx.
+func getResponseCodes(responses []*abci.ResponseDeliverTx) []uint32 {
+	responseCodes := make([]uint32, len(responses))
+	for i, response := range responses {
+		responseCodes[i] = response.Code
+	}
+	return responseCodes
 }

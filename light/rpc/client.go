@@ -579,8 +579,16 @@ func (c *Client) Tx(ctx context.Context, hash []byte, prove bool) (*ctypes.Resul
 		return nil, err
 	}
 
-	// Validate the proof.
-	return res, res.Proof.Validate(l.DataHash)
+	// Check if the proof is correctly constructed.
+	if err := res.Proof.Validate(); err != nil {
+		return nil, err
+	}
+
+	// Verify the proof
+	if !res.Proof.VerifyProof(l.DataHash) {
+		return nil, fmt.Errorf("invalid transaction shares proof")
+	}
+	return res, nil
 }
 
 // ProveShares calls rpcclient#ProveShares method and returns an NMT proof for a set
@@ -591,7 +599,7 @@ func (c *Client) ProveShares(
 	height uint64,
 	startShare uint64,
 	endShare uint64,
-) (types.ShareProof, error) {
+) (*ctypes.ResultShareProof, error) {
 	res, err := c.next.ProveShares(ctx, height, startShare, endShare)
 	return res, err
 }
