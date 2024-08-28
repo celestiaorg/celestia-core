@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"fmt"
 	"github.com/quic-go/quic-go"
 	"net"
 
@@ -38,6 +39,11 @@ func (cs *connSet) Has(c quic.Connection) bool {
 	cs.RLock()
 	defer cs.RUnlock()
 
+	fmt.Println("has")
+	for key, val := range cs.conns {
+		fmt.Printf("%s:%v\n", key, val.ips)
+	}
+	fmt.Printf("looking for %s\n", c.RemoteAddr().String())
 	_, ok := cs.conns[c.RemoteAddr().String()]
 
 	return ok

@@ -545,13 +545,13 @@ func (p *peer) StartReceiving() error {
 	for {
 		stream, err := p.conn.AcceptStream(context.Background())
 		if err != nil {
-			p.Logger.Error("failed to accept stream", "err", err.Error())
+			p.Logger.Debug("failed to accept stream", "err", err.Error())
 			return err
 		}
 		var chID byte
 		err = binary.Read(stream, binary.BigEndian, &chID)
 		if err != nil {
-			p.Logger.Error("failed to read channel ID", "err", err.Error())
+			p.Logger.Debug("failed to read channel ID", "err", err.Error())
 			return err
 		}
 		// start accepting data
@@ -560,13 +560,13 @@ func (p *peer) StartReceiving() error {
 				var dataLen uint32
 				err = binary.Read(stream, binary.BigEndian, &dataLen)
 				if err != nil {
-					p.Logger.Error("failed to read size from stream", "err", err.Error())
+					p.Logger.Debug("failed to read size from stream", "err", err.Error())
 					return
 				}
 				data := make([]byte, dataLen)
 				_, err = io.ReadFull(stream, data)
 				if err != nil {
-					p.Logger.Error("failed to read data from stream", "err", err.Error())
+					p.Logger.Debug("failed to read data from stream", "err", err.Error())
 					return
 				}
 				p.onReceive(chID, data)

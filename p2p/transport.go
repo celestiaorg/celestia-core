@@ -91,8 +91,10 @@ type ConnFilterFunc func(ConnSet, quic.Connection, []net.IP) error
 // and refuses new ones if they come from a known ip.
 func ConnDuplicateIPFilter() ConnFilterFunc {
 	return func(cs ConnSet, c quic.Connection, ips []net.IP) error {
+		fmt.Println("filtering connections:")
 		for _, ip := range ips {
 			if cs.HasIP(ip) {
+				fmt.Println("rejected")
 				return ErrRejected{
 					conn:        c,
 					err:         fmt.Errorf("ip<%v> already connected", ip),
@@ -244,7 +246,7 @@ func (mt *MultiplexTransport) Dial(
 		return nil
 	}
 
-	c, err := addr.DialTimeout(tlsConfig)
+	c, err := addr.DialTimeout(mt.dialTimeout, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -254,14 +256,14 @@ func (mt *MultiplexTransport) Dial(
 		return nil, err
 	}
 
-	secretConn, nodeInfo, err := mt.getNodeInfo(c)
+	_, nodeInfo, err := mt.getNodeInfo(c)
 	if err != nil {
 		return nil, err
 	}
 
 	cfg.outbound = true
 
-	p := mt.wrapPeer(secretConn, nodeInfo, cfg, &addr)
+	p := mt.wrapPeer(c, nodeInfo, cfg, &addr)
 
 	return p, nil
 }
@@ -308,7 +310,7 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 	quickConfig := quic.Config{
 		// TODO(rach-id): do we want to enable 0RTT? are the replay risks fine?
 		Allow0RTT:             false,
-		MaxIdleTimeout:        5 * time.Second,
+		MaxIdleTimeout:        200 * time.Millisecond,
 		MaxIncomingStreams:    10000,
 		MaxIncomingUniStreams: 10000,
 		KeepAlivePeriod:       100 * time.Millisecond,
@@ -392,8 +394,8 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 				_, nodeInfo, err = mt.getNodeInfo(c)
 				if err == nil {
 					addr := c.RemoteAddr()
-					id := PubKeyToID(mt.nodeKey.PubKey())
-					netAddr = NewNetAddress(id, addr)
+					//id := PubKeyToID(mt.nodeKey.PubKey())
+					netAddr = NewNetAddress(nodeInfo.ID(), addr)
 				}
 			}
 
@@ -402,8 +404,7 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 				// Make the upgraded peer available.
 			case <-mt.closec:
 				// Give up if the transport was closed.
-				// TODO(rach-id): valid error
-				_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error 2")
+				_ = c.CloseWithError(quic.ApplicationErrorCode(1), "closes transport")
 				return
 			}
 		}(c)
@@ -428,7 +429,7 @@ func (mt *MultiplexTransport) filterConn(c quic.Connection) (err error) {
 	defer func() {
 		if err != nil {
 			// TODO(rach-id): valid error
-			_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error 4")
+			_ = c.CloseWithError(quic.ApplicationErrorCode(1), err.Error())
 		}
 	}()
 
@@ -527,8 +528,11 @@ func exchangeNodeInfo(
 		ourNodeInfo    = nodeInfo.(DefaultNodeInfo)
 	)
 
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	go func(errc chan<- error, c quic.Connection) {
-		stream, err := c.OpenStreamSync(context.Background())
+		stream, err := c.OpenStreamSync(ctx)
 		if err != nil {
 			errc <- err
 			return
@@ -537,7 +541,7 @@ func exchangeNodeInfo(
 		errc <- err
 	}(errc, c)
 	go func(errc chan<- error, c quic.Connection) {
-		stream, err := c.AcceptStream(context.Background())
+		stream, err := c.AcceptStream(ctx)
 		if err != nil {
 			errc <- err
 			return

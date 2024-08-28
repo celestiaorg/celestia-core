@@ -257,15 +257,17 @@ func (na *NetAddress) Dial(ctx context.Context) (quic.Connection, error) {
 }
 
 // DialTimeout calls net.DialTimeout on the address.
-func (na *NetAddress) DialTimeout(tlsConf *tls.Config) (quic.Connection, error) {
+func (na *NetAddress) DialTimeout(timeout time.Duration, tlsConf *tls.Config) (quic.Connection, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 	quickConfig := quic.Config{
-		MaxIdleTimeout:        5 * time.Second,
+		MaxIdleTimeout:        200 * time.Millisecond,
 		MaxIncomingStreams:    10000,
 		MaxIncomingUniStreams: 10000,
 		KeepAlivePeriod:       100 * time.Millisecond,
 		EnableDatagrams:       true,
 	}
-	conn, err := quic.DialAddr(context.Background(), na.DialString(), tlsConf, &quickConfig)
+	conn, err := quic.DialAddr(ctx, na.DialString(), tlsConf, &quickConfig)
 	if err != nil {
 		return nil, err
 	}
