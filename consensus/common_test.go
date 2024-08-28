@@ -499,7 +499,7 @@ func ensureNoNewEvent(ch <-chan cmtpubsub.Message, timeout time.Duration,
 	case <-time.After(timeout):
 		break
 	case <-ch:
-		panic(errorMessage)
+		panic(fmt.Errorf(errorMessage))
 	}
 }
 

@@ -712,6 +712,9 @@ func (cs *State) updateToState(state sm.State) {
 		cs.StartTime = cs.config.Commit(cs.CommitTime)
 	}
 
+	cs.LastProposal = cs.Proposal
+	cs.LastCompactBlock = cs.ProposalCompactBlock
+
 	cs.Validators = validators
 	cs.Proposal = nil
 	cs.FetchCompactBlockCtx = nil
@@ -1632,25 +1635,22 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 	}
 
 	// If we don't have the block being committed, set up to get it.
-	if !cs.ProposalBlock.HashesTo(blockID.Hash) {
-		if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
-			logger.Info(
-				"commit is for a block we do not know about; set ProposalBlock=nil",
-				"proposal", log.NewLazyBlockHash(cs.ProposalBlock),
-				"commit", blockID.Hash,
-			)
+	if !cs.ProposalBlock.HashesTo(blockID.Hash) &&
+		!cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
+		logger.Info(
+			"commit is for a block we do not know about; set ProposalBlock=nil",
+			"proposal", log.NewLazyBlockHash(cs.ProposalBlock),
+			"commit", blockID.Hash,
+		)
 
-			// We're getting the wrong block.
-			// Set up ProposalBlockParts and keep waiting.
-			cs.ProposalBlock = nil
-			cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
+		// We're getting the wrong block.
+		// Set up ProposalBlockParts and keep waiting.
+		cs.Proposal = nil
+		cs.ProposalBlock = nil
+		cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
 
-			if err := cs.eventBus.PublishEventValidBlock(cs.RoundStateEvent()); err != nil {
-				logger.Error("failed publishing valid block", "err", err)
-			}
-
-			cs.evsw.FireEvent(types.EventValidBlock, &cs.RoundState)
-		}
+		// TODO: we may want to signal to peers that we're waiting for a proposal
+		// as well as the block
 	}
 }
 
@@ -2019,7 +2019,7 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 
 	// compare that this is the correct compact block
 	if !bytes.Equal(cs.Proposal.CompactHash, compactBlock.Hash()) {
-		cs.Logger.Debug("received compact block with a different block hash", "current", cs.Proposal.BlockID.Hash, "got", msg.Block.Hash())
+		cs.Logger.Error("received compact block with a different block hash", "current", cs.Proposal.CompactHash, "got", compactBlock.Hash())
 		return nil
 	}
 
@@ -2030,6 +2030,12 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 	}
 
 	cs.ProposalCompactBlock = compactBlock
+
+	// We have all the consensus components we need to reconstruct the proposal block.
+	// We can advertise this to others to stop them from sending us the same block.
+	if err := cs.eventBus.PublishEventCompleteProposal(cs.CompleteProposalEvent()); err != nil {
+		cs.Logger.Error("failed publishing event complete proposal", "err", err)
+	}
 
 	// we start this as a goroutine so as to not block the reactor
 	// from recieving other messages or timeouts while the mempool
@@ -2094,10 +2100,6 @@ func (cs *State) fetchCompactBlock(ctx context.Context, blockHash []byte, compac
 
 	// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 	cs.Logger.Info("assembled proposal block from compact block", "height", cs.ProposalBlock.Height, "round", cs.Round, "hash", cs.ProposalBlock.Hash())
-
-	if err := cs.eventBus.PublishEventCompleteProposal(cs.CompleteProposalEvent()); err != nil {
-		cs.Logger.Error("failed publishing event complete proposal", "err", err)
-	}
 
 	cs.handleCompleteProposal(compactBlock.Height)
 }

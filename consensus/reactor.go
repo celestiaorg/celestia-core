@@ -699,89 +699,20 @@ OUTER_LOOP:
 		rs := conR.getRoundState()
 		prs := ps.GetRoundState()
 
-		// Send compact block
-		if !prs.Block && rs.ProposalBlockParts.HasHeader(prs.ProposalBlockPartSetHeader) {
-			if rs.ProposalCompactBlock != nil && rs.Proposal != nil {
-				compactBlock, err := rs.ProposalCompactBlock.ToProto()
-				if err != nil {
-					panic(err)
-				}
-				logger.Info("Sending compact block", "height", prs.Height, "round", prs.Round)
-				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
-					ChannelID: DataChannel,
-					Message: &cmtcons.CompactBlock{
-						Block: compactBlock,
-						Round: rs.Round,
-					},
-				}, logger) {
-					ps.SetHasBlock(prs.Height, prs.Round)
-					conR.conS.metrics.CompactBlocksSent.Add(1)
-					schema.WriteCompactBlock(
-						conR.traceClient,
-						prs.Height,
-						prs.Round,
-						string(peer.ID()),
-						schema.Upload,
-					)
-				}
-				continue OUTER_LOOP
-			}
-		}
-
-		// If the peer is on a previous height that we have, help catch up.
-		blockStoreBase := conR.conS.blockStore.Base()
-		if blockStoreBase > 0 && 0 < prs.Height && prs.Height < rs.Height && prs.Height >= blockStoreBase {
-			heightLogger := logger.With("height", prs.Height)
-
-			// if we never received the commit message from the peer, the block parts wont be initialized
-			if prs.ProposalBlockParts == nil {
-				blockMeta := conR.conS.blockStore.LoadBlockMeta(prs.Height)
-				if blockMeta == nil {
-					heightLogger.Error("Failed to load block meta",
-						"blockstoreBase", blockStoreBase, "blockstoreHeight", conR.conS.blockStore.Height())
-					time.Sleep(conR.conS.config.PeerGossipSleepDuration)
-				} else {
-					ps.InitProposalBlockParts(blockMeta.BlockID.PartSetHeader)
-				}
-				// continue the loop since prs is a copy and not effected by this initialization
-				continue OUTER_LOOP
-			}
-			conR.gossipDataForCatchup(heightLogger, rs, prs, ps, peer)
-			continue OUTER_LOOP
-		}
-
-		// If height and round don't match, sleep.
-		if (rs.Height != prs.Height) || (rs.Round != prs.Round) {
-			// logger.Info("Peer Height|Round mismatch, sleeping",
-			// "peerHeight", prs.Height, "peerRound", prs.Round, "peer", peer)
-			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
-			continue OUTER_LOOP
-		}
-
-		// By here, height and round match.
-		// Proposal block parts were already matched and sent if any were wanted.
-		// (These can match on hash so the round doesn't matter)
-		// Now consider sending other things, like the Proposal itself.
-
-		// Send Proposal && ProposalPOL BitArray?
-		if rs.Proposal != nil && !prs.Proposal {
-			// Proposal: share the proposal metadata with peer.
-			{
-				logger.Info("Sending proposal", "height", prs.Height, "round", prs.Round)
-				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
-					ChannelID: DataChannel,
-					Message:   &cmtcons.Proposal{Proposal: *rs.Proposal.ToProto()},
-				}, logger) {
-					// NOTE[ZM]: A peer might have received different proposal msg so this Proposal msg will be rejected!
-					ps.SetHasProposal(rs.Proposal)
-					schema.WriteProposal(
-						conR.traceClient,
-						rs.Height,
-						rs.Round,
-						string(peer.ID()),
-						schema.Upload,
-					)
-				}
+		switch {
+		case prs.Height == rs.Height && !prs.Proposal && rs.Proposal != nil: // same height no proposal
+			if p2p.SendEnvelopeShim(peer, p2p.Envelope{
+				ChannelID: DataChannel,
+				Message:   &cmtcons.Proposal{Proposal: *rs.Proposal.ToProto()},
+			}, logger) {
+				ps.SetHasProposal(rs.Proposal)
+				schema.WriteProposal(
+					conR.traceClient,
+					rs.Height,
+					rs.Round,
+					string(peer.ID()),
+					schema.Upload,
+				)
 			}
 			// ProposalPOL: lets peer know which POL votes we have so far.
 			// Peer must receive ProposalMessage first.
@@ -807,12 +738,89 @@ OUTER_LOOP:
 					)
 				}
 			}
-			continue OUTER_LOOP
-		}
+		case prs.Height == rs.Height && !prs.Block && rs.ProposalCompactBlock != nil: // same height no block
+			compactBlock, err := rs.ProposalCompactBlock.ToProto()
+			if err != nil {
+				panic(err)
+			}
+			logger.Info("Sending compact block", "height", prs.Height, "round", prs.Round)
+			if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+				ChannelID: DataChannel,
+				Message: &cmtcons.CompactBlock{
+					Block: compactBlock,
+					Round: rs.Round,
+				},
+			}, logger) {
+				ps.SetHasBlock(prs.Height, prs.Round)
+				conR.conS.metrics.CompactBlocksSent.Add(1)
+				schema.WriteCompactBlock(
+					conR.traceClient,
+					prs.Height,
+					prs.Round,
+					string(peer.ID()),
+					schema.Upload,
+				)
+			}
+		case prs.Height == rs.Height-1 && !prs.Proposal && rs.LastProposal != nil: // prev height no proposal
+			if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+				ChannelID: DataChannel,
+				Message:   &cmtcons.Proposal{Proposal: *rs.LastProposal.ToProto()},
+			}, logger) {
+				ps.SetHasProposal(rs.LastProposal)
+				schema.WriteProposal(
+					conR.traceClient,
+					rs.Height,
+					rs.Round,
+					string(peer.ID()),
+					schema.Upload,
+				)
+			}
+		case prs.Height == rs.Height-1 && !prs.Block && rs.LastCompactBlock != nil: // prev height no block
+			compactBlock, err := rs.LastCompactBlock.ToProto()
+			if err != nil {
+				panic(err)
+			}
+			if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+				ChannelID: DataChannel,
+				Message: &cmtcons.CompactBlock{
+					Block: compactBlock,
+					Round: rs.Round,
+				},
+			}, logger) {
+				ps.SetHasBlock(prs.Height, prs.Round)
+				conR.conS.metrics.CompactBlocksSent.Add(1)
+				schema.WriteCompactBlock(
+					conR.traceClient,
+					prs.Height,
+					prs.Round,
+					string(peer.ID()),
+					schema.Upload,
+				)
+			}
+		case prs.Height < rs.Height-1: // catchup
+			blockStoreBase := conR.conS.blockStore.Base()
+			if blockStoreBase > 0 && prs.Height >= blockStoreBase {
+				heightLogger := logger.With("height", prs.Height)
 
-		// Nothing to do. Sleep.
-		time.Sleep(conR.conS.config.PeerGossipSleepDuration)
-		continue OUTER_LOOP
+				// if we never received the commit message from the peer, the block parts wont be initialized
+				if prs.ProposalBlockParts == nil {
+					blockMeta := conR.conS.blockStore.LoadBlockMeta(prs.Height)
+					if blockMeta == nil {
+						heightLogger.Error("Failed to load block meta",
+							"blockstoreBase", blockStoreBase, "blockstoreHeight", conR.conS.blockStore.Height())
+						time.Sleep(conR.conS.config.PeerGossipSleepDuration)
+					} else {
+						ps.InitProposalBlockParts(blockMeta.BlockID.PartSetHeader)
+					}
+					// continue the loop since prs is a copy and not effected by this initialization
+					continue OUTER_LOOP
+				}
+				conR.gossipDataForCatchup(heightLogger, rs, prs, ps, peer)
+			}
+		default:
+			// Nothing to do. Sleep.
+			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
+		}
 	}
 }
 
@@ -831,7 +839,7 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 			// this happens when the peer is on a different round to the round of the proposal
 			// that was eventually committed. They should eventually receive 2/3 precommits and
 			// update the part set header to the one of the block that is committed
-			logger.Debug("Peer ProposalBlockPartSetHeader mismatch, sleeping",
+			logger.Error("Peer ProposalBlockPartSetHeader mismatch, sleeping",
 				"blockPartSetHeader", blockMeta.BlockID.PartSetHeader, "peerBlockPartSetHeader", prs.ProposalBlockPartSetHeader)
 			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 			return
@@ -1377,6 +1385,7 @@ func (ps *PeerState) SetHasBlock(height int64, round int32) {
 	}
 
 	ps.PRS.Block = true
+	ps.PRS.Proposal = true
 }
 
 // PickSendVote picks a vote and sends it to the peer.

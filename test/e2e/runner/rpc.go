@@ -86,8 +86,6 @@ func waitForNode(node *e2e.Node, height int64, timeout time.Duration) (*rpctypes
 				return status, nil
 			}
 			lastHeight = status.SyncInfo.LatestBlockHeight
-		default:
-			return nil, err
 		}
 
 		time.Sleep(300 * time.Millisecond)

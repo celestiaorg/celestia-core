@@ -134,11 +134,19 @@ func (s *store) totalBytes() int64 {
 	return s.bytes
 }
 
+// getAllKeys returns all keys in the store, including committed transactions.
+// This is used when we first connect to a peer to send all seen transactions.
+// We include committed transactions in case the peer has fallen behind and
+// has not seen the transactions that have been committed.
 func (s *store) getAllKeys() []types.TxKey {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
-	keys := make([]types.TxKey, len(s.txs))
+	keys := make([]types.TxKey, len(s.txs)+len(s.committedTxs))
 	idx := 0
+	for key := range s.committedTxs {
+		keys[idx] = key
+		idx++
+	}
 	for key := range s.txs {
 		keys[idx] = key
 		idx++

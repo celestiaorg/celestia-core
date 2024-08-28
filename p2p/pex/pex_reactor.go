@@ -475,7 +475,7 @@ func (r *Reactor) ensurePeers() {
 		numToDial     = r.Switch.MaxNumOutboundPeers() - (out + dial)
 	)
 	r.Logger.Info(
-		"Ensure peers",
+		"Peer stats",
 		"numOutPeers", out,
 		"numInPeers", in,
 		"numDialing", dial,
@@ -539,7 +539,7 @@ func (r *Reactor) ensurePeers() {
 		peersCount := len(peers)
 		if peersCount > 0 {
 			peer := peers[cmtrand.Int()%peersCount]
-			r.Logger.Info("We need more addresses. Sending pexRequest to random peer", "peer", peer)
+			r.Logger.Debug("We need more addresses. Sending pexRequest to random peer", "peer", peer)
 			r.RequestAddrs(peer)
 		}
 
@@ -547,7 +547,7 @@ func (r *Reactor) ensurePeers() {
 		// This is done in addition to asking a peer for addresses to work-around
 		// peers not participating in PEX.
 		if len(toDial) == 0 {
-			r.Logger.Info("No addresses to dial. Falling back to seeds")
+			r.Logger.Debug("No addresses to dial. Falling back to seeds")
 			r.dialSeeds()
 		}
 	}

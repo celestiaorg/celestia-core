@@ -95,7 +95,9 @@ type RoundState struct {
 	TwoThirdPrevoteBlockParts *types.PartSet      `json:"valid_block_parts"`
 	Votes                     *HeightVoteSet      `json:"votes"`
 	CommitRound               int32               `json:"commit_round"` //
-	LastCommit                *types.VoteSet      `json:"last_commit"`  // Last precommits at Height-1
+	LastProposal              *types.Proposal     `json:"last_proposal"`
+	LastCompactBlock          *types.Block        `json:"last_proposal_compact_block"`
+	LastCommit                *types.VoteSet      `json:"last_commit"` // Last precommits at Height-1
 	LastValidators            *types.ValidatorSet `json:"last_validators"`
 	TriggeredTimeoutPrecommit bool                `json:"triggered_timeout_precommit"`
 }
