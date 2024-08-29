@@ -91,10 +91,8 @@ type ConnFilterFunc func(ConnSet, quic.Connection, []net.IP) error
 // and refuses new ones if they come from a known ip.
 func ConnDuplicateIPFilter() ConnFilterFunc {
 	return func(cs ConnSet, c quic.Connection, ips []net.IP) error {
-		fmt.Println("filtering connections:")
 		for _, ip := range ips {
 			if cs.HasIP(ip) {
-				fmt.Println("rejected")
 				return ErrRejected{
 					conn:        c,
 					err:         fmt.Errorf("ip<%v> already connected", ip),
@@ -378,7 +376,7 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 					case <-mt.closec:
 						// Give up if the transport was closed.
 						// TODO(rach-id): valid error code
-						_ = c.CloseWithError(quic.ApplicationErrorCode(1), "some error 1")
+						_ = c.CloseWithError(quic.ApplicationErrorCode(0), "some error 1")
 						return
 					}
 				}
@@ -395,7 +393,7 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 				if err == nil {
 					addr := c.RemoteAddr()
 					//id := PubKeyToID(mt.nodeKey.PubKey())
-					netAddr = NewNetAddress(nodeInfo.ID(), addr)
+					netAddr = NewUDPNetAddress(nodeInfo.ID(), addr)
 				}
 			}
 
@@ -404,7 +402,7 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 				// Make the upgraded peer available.
 			case <-mt.closec:
 				// Give up if the transport was closed.
-				_ = c.CloseWithError(quic.ApplicationErrorCode(1), "closes transport")
+				_ = c.CloseWithError(quic.ApplicationErrorCode(0), "closes transport")
 				return
 			}
 		}(c)
@@ -422,14 +420,14 @@ func (mt *MultiplexTransport) cleanup(c quic.Connection) error {
 	mt.conns.Remove(c)
 
 	// TODO(rach-id): valid error
-	return c.CloseWithError(quic.ApplicationErrorCode(1), "some error 3")
+	return c.CloseWithError(quic.ApplicationErrorCode(0), "some error 3")
 }
 
 func (mt *MultiplexTransport) filterConn(c quic.Connection) (err error) {
 	defer func() {
 		if err != nil {
 			// TODO(rach-id): valid error
-			_ = c.CloseWithError(quic.ApplicationErrorCode(1), err.Error())
+			_ = c.CloseWithError(quic.ApplicationErrorCode(0), err.Error())
 		}
 	}()
 
@@ -496,7 +494,7 @@ func (mt *MultiplexTransport) getNodeInfo(c quic.Connection) (conn quic.Connecti
 	// Reject self.
 	if mt.nodeInfo.ID() == remoteNodeInfo.ID() {
 		return nil, nil, ErrRejected{
-			addr:   *NewNetAddress(remoteNodeInfo.ID(), c.RemoteAddr()),
+			addr:   *NewUDPNetAddress(remoteNodeInfo.ID(), c.RemoteAddr()),
 			conn:   c,
 			id:     remoteNodeInfo.ID(),
 			isSelf: true,

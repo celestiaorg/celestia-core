@@ -17,10 +17,10 @@ func Connect(protoAddr string) (net.Conn, error) {
 // For instance, "tcp://127.0.0.1:8080" will be split into "tcp" and "127.0.0.1:8080".
 // If the address has no protocol prefix, the default is "tcp".
 func ProtocolAndAddress(listenAddr string) (string, string) {
-	protocol, address := "udp", listenAddr
+	protocol, address := "tcp", listenAddr
 	parts := strings.SplitN(address, "://", 2)
 	if len(parts) == 2 {
-		address = parts[1]
+		protocol, address = parts[0], parts[1]
 	}
 	return protocol, address
 }
@@ -29,12 +29,12 @@ func ProtocolAndAddress(listenAddr string) (string, string) {
 // Ripped from https://github.com/phayes/freeport.
 // BSD-licensed.
 func GetFreePort() (int, error) {
-	addr, err := net.ResolveTCPAddr("udp", "localhost:0")
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
 	if err != nil {
 		return 0, err
 	}
 
-	l, err := net.ListenTCP("udp", addr)
+	l, err := net.ListenTCP("tcp", addr)
 	if err != nil {
 		return 0, err
 	}

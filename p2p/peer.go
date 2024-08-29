@@ -312,8 +312,8 @@ func (p *peer) FlushStop() {
 	p.BaseService.OnStop()
 	for _, stream := range p.streams {
 		// TODO(rach-id): set valid error codes
-		stream.CancelRead(quic.StreamErrorCode(1))  // stop everything and close the conn
-		stream.CancelWrite(quic.StreamErrorCode(1)) // stop everything and close the conn
+		stream.CancelRead(quic.StreamErrorCode(0))  // stop everything and close the conn
+		stream.CancelWrite(quic.StreamErrorCode(0)) // stop everything and close the conn
 	}
 }
 
@@ -322,7 +322,7 @@ func (p *peer) OnStop() {
 	p.metricsTicker.Stop()
 	p.BaseService.OnStop()
 	// TODO(rach-id): set valid error code
-	if err := p.conn.CloseWithError(quic.ApplicationErrorCode(2), "stopping peer connection"); err != nil { // stop everything and close the conn
+	if err := p.conn.CloseWithError(quic.ApplicationErrorCode(0), "stopping peer connection"); err != nil { // stop everything and close the conn
 		p.Logger.Debug("Error while stopping peer", "err", err)
 	}
 }
@@ -496,7 +496,7 @@ func (p *peer) hasChannel(chID byte) bool {
 // CloseConn closes original connection. Used for cleaning up in cases where the peer had not been started at all.
 func (p *peer) CloseConn() error {
 	// TODO(rach-id): valid error code
-	return p.conn.CloseWithError(quic.ApplicationErrorCode(1), "closed peer connection")
+	return p.conn.CloseWithError(quic.ApplicationErrorCode(0), "closed peer connection")
 }
 
 func (p *peer) SetRemovalFailed() {
@@ -514,7 +514,7 @@ func (p *peer) GetRemovalFailed() bool {
 // CloseConn closes the underlying connection
 func (pc *peerConn) CloseConn() {
 	// TODO(rach-id): valid error code
-	pc.conn.CloseWithError(quic.ApplicationErrorCode(1), "closed peer connection")
+	pc.conn.CloseWithError(quic.ApplicationErrorCode(0), "closed peer connection")
 }
 
 // RemoteAddr returns peer's remote network address.

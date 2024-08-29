@@ -44,6 +44,29 @@ func IDAddressString(id ID, protocolHostPort string) string {
 // panic. Panics if ID is invalid.
 // TODO: socks proxies?
 func NewNetAddress(id ID, addr net.Addr) *NetAddress {
+	tcpAddr, ok := addr.(*net.TCPAddr)
+	if !ok {
+		if flag.Lookup("test.v") == nil { // normal run
+			panic(fmt.Sprintf("Only TCPAddrs are supported. Got: %v", addr))
+		} else { // in testing
+			netAddr := NewNetAddressIPPort(net.IP("127.0.0.1"), 0)
+			netAddr.ID = id
+			return netAddr
+		}
+	}
+
+	if err := validateID(id); err != nil {
+		panic(fmt.Sprintf("Invalid ID %v: %v (addr: %v)", id, err, addr))
+	}
+
+	ip := tcpAddr.IP
+	port := uint16(tcpAddr.Port)
+	na := NewNetAddressIPPort(ip, port)
+	na.ID = id
+	return na
+}
+
+func NewUDPNetAddress(id ID, addr net.Addr) *NetAddress {
 	tcpAddr, ok := addr.(*net.UDPAddr)
 	if !ok {
 		if flag.Lookup("test.v") == nil { // normal run

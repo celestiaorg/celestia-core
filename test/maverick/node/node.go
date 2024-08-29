@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/quic-go/quic-go"
+	abci "github.com/tendermint/tendermint/abci/types"
 	"net"
 	"net/http"
 	_ "net/http/pprof" //nolint: gosec // securely exposed on separate, optional port
@@ -554,49 +556,49 @@ func createTransport(
 		peerFilters = []p2p.PeerFilterFunc{}
 	)
 
-	//if !config.P2P.AllowDuplicateIP {
-	//	connFilters = append(connFilters, p2p.ConnDuplicateIPFilter())
-	//}
-	//
-	//// Filter peers by addr or pubkey with an ABCI query.
-	//// If the query return code is OK, add peer.
-	//if config.FilterPeers {
-	//	connFilters = append(
-	//		connFilters,
-	//		// ABCI query for address filtering.
-	//		func(_ p2p.ConnSet, c quic.Connection, _ []net.IP) error {
-	//			res, err := proxyApp.Query().QuerySync(abci.RequestQuery{
-	//				Path: fmt.Sprintf("/p2p/filter/addr/%s", c.RemoteAddr().String()),
-	//			})
-	//			if err != nil {
-	//				return err
-	//			}
-	//			if res.IsErr() {
-	//				return fmt.Errorf("error querying abci app: %v", res)
-	//			}
-	//
-	//			return nil
-	//		},
-	//	)
-	//
-	//	peerFilters = append(
-	//		peerFilters,
-	//		// ABCI query for ID filtering.
-	//		func(_ p2p.IPeerSet, p p2p.Peer) error {
-	//			res, err := proxyApp.Query().QuerySync(abci.RequestQuery{
-	//				Path: fmt.Sprintf("/p2p/filter/id/%s", p.ID()),
-	//			})
-	//			if err != nil {
-	//				return err
-	//			}
-	//			if res.IsErr() {
-	//				return fmt.Errorf("error querying abci app: %v", res)
-	//			}
-	//
-	//			return nil
-	//		},
-	//	)
-	//}
+	if !config.P2P.AllowDuplicateIP {
+		connFilters = append(connFilters, p2p.ConnDuplicateIPFilter())
+	}
+
+	// Filter peers by addr or pubkey with an ABCI query.
+	// If the query return code is OK, add peer.
+	if config.FilterPeers {
+		connFilters = append(
+			connFilters,
+			// ABCI query for address filtering.
+			func(_ p2p.ConnSet, c quic.Connection, _ []net.IP) error {
+				res, err := proxyApp.Query().QuerySync(abci.RequestQuery{
+					Path: fmt.Sprintf("/p2p/filter/addr/%s", c.RemoteAddr().String()),
+				})
+				if err != nil {
+					return err
+				}
+				if res.IsErr() {
+					return fmt.Errorf("error querying abci app: %v", res)
+				}
+
+				return nil
+			},
+		)
+
+		peerFilters = append(
+			peerFilters,
+			// ABCI query for ID filtering.
+			func(_ p2p.IPeerSet, p p2p.Peer) error {
+				res, err := proxyApp.Query().QuerySync(abci.RequestQuery{
+					Path: fmt.Sprintf("/p2p/filter/id/%s", p.ID()),
+				})
+				if err != nil {
+					return err
+				}
+				if res.IsErr() {
+					return fmt.Errorf("error querying abci app: %v", res)
+				}
+
+				return nil
+			},
+		)
+	}
 
 	p2p.MultiplexTransportConnFilters(connFilters...)(transport)
 
