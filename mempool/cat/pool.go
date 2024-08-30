@@ -475,7 +475,7 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 		}
 		totalBytes += txBytes
 		totalGas += w.gasWanted
-		w.evictable = false
+		txmp.store.markAsUnevictable(w.key)
 		keep = append(keep, w.tx)
 	}
 	return keep

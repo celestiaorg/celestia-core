@@ -35,7 +35,7 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 		wtx := memR.mempool.store.get(txKey)
 		if wtx != nil {
 			txs[i] = wtx.tx
-			wtx.evictable = false
+			memR.mempool.store.markAsUnevictable(txKey)
 		} else {
 			missingKeys[i] = txKey
 		}

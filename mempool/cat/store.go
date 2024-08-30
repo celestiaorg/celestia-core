@@ -64,6 +64,14 @@ func (s *store) has(txKey types.TxKey) bool {
 	return has
 }
 
+func (s *store) markAsUnevictable(txKey types.TxKey) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	if tx, exists := s.txs[txKey]; exists {
+		tx.evictable = false
+	}
+}
+
 func (s *store) markAsCommitted(txKeys []types.TxKey) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
