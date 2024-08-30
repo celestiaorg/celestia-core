@@ -1382,8 +1382,7 @@ func (cs *State) enterPrevoteWait(height int64, round int32) {
 func (cs *State) isReadyToPrecommit(height int64, round int32) (bool, time.Duration) {
 	// 10 s for block propagation + 2s for block processing	+ 2 s for prevotes
 	// collection = 14 s
-	precommitVoteTime := cs.StartTime.Add((cs.config.
-		TimeoutPropose + 4 + 2 + 2) * time.Second)
+	precommitVoteTime := cs.StartTime.Add(PrecommitDelay * time.Second)
 	waitTime := time.Until(precommitVoteTime)
 	schema.WritePrecommitTime(cs.traceClient, height, round, waitTime.Seconds())
 	return waitTime <= 0, waitTime

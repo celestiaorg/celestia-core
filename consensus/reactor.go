@@ -3,7 +3,9 @@ package consensus
 import (
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
@@ -34,6 +36,11 @@ const (
 
 	blocksToContributeToBecomeGoodPeer = 10000
 	votesToContributeToBecomeGoodPeer  = 10000
+)
+
+var (
+	stateKey       = []byte("stateKey")
+	PrecommitDelay = 11 * time.Second
 )
 
 //-----------------------------------------------------------------------------
@@ -1712,6 +1719,15 @@ func init() {
 	cmtjson.RegisterType(&HasVoteMessage{}, "tendermint/HasVote")
 	cmtjson.RegisterType(&VoteSetMaj23Message{}, "tendermint/VoteSetMaj23")
 	cmtjson.RegisterType(&VoteSetBitsMessage{}, "tendermint/VoteSetBits")
+
+	delay := os.Getenv("PRECOMMIT_DELAY")
+	if delay != "" {
+		parsedDelay, err := strconv.Atoi(delay)
+		if err == nil {
+			PrecommitDelay = time.Duration(parsedDelay) * time.Second
+		}
+	}
+	fmt.Println("PrecommitDelay set to", PrecommitDelay)
 }
 
 //-------------------------------------
