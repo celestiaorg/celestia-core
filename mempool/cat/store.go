@@ -166,13 +166,13 @@ func (s *store) getAllTxs() []*wrappedTx {
 	return txs
 }
 
-func (s *store) getTxsBelowPriority(priority int64) ([]*wrappedTx, int64) {
+func (s *store) getEvictableTxsBelowPriority(priority int64) ([]*wrappedTx, int64) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 	txs := make([]*wrappedTx, 0, len(s.txs))
 	bytes := int64(0)
 	for _, tx := range s.txs {
-		if tx.priority < priority {
+		if tx.priority < priority && tx.evictable {
 			txs = append(txs, tx)
 			bytes += tx.size()
 		}

@@ -266,6 +266,11 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				memR.mempool.PeerHasTx(peerID, key)
 				memR.Logger.Debug("received new trasaction", "peerID", peerID, "txKey", key)
 			}
+			// If a block has been proposed with this transaction and
+			// consensus was waiting for it, it will now be published.
+			memR.blockFetcher.TryAddMissingTx(key, tx)
+
+			// Now attempt to add the tx to the mempool.
 			_, err = memR.mempool.TryAddNewTx(ntx, key, txInfo)
 			if err != nil && err != ErrTxInMempool && err != ErrTxRecentlyCommitted {
 				if memR.blockFetcher.IsMissingTx(key) {
@@ -275,9 +280,6 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				memR.Logger.Info("Could not add tx from peer", "peerID", peerID, "txKey", key, "err", err)
 				return
 			}
-			// If a block has been proposed with this transaction and
-			// consensus was waiting for it, it will now be published.
-			memR.blockFetcher.TryAddMissingTx(key, tx)
 			if !memR.opts.ListenOnly {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
 				memR.broadcastSeenTx(key)

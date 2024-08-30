@@ -2048,9 +2048,7 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 
 func (cs *State) fetchCompactBlock(ctx context.Context, blockHash []byte, compactBlock *types.Block, round int32) {
 	txs, err := cs.txFetcher.FetchTxsFromKeys(ctx, blockHash, compactBlock.Data.Txs.ToSliceOfBytes())
-	cs.Logger.Info("requesting lock")
 	cs.mtx.Lock()
-	cs.Logger.Info("got lock")
 	defer cs.mtx.Unlock()
 	if err != nil {
 		cs.metrics.CompactBlocksFailed.Add(1)

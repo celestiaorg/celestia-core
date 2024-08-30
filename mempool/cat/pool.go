@@ -4,12 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"sync"
 	"time"
-
-	"github.com/creachadair/taskgroup"
 
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/config"
@@ -466,7 +463,7 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 		// skip transactions that have been in the mempool for less than the inclusion delay
 		// This gives time for the transaction to be broadcast to all peers
 		if currentTime.Sub(w.timestamp) < InclusionDelay {
-			break
+			continue
 		}
 
 		// N.B. When computing byte size, we need to include the overhead for
@@ -478,6 +475,7 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 		}
 		totalBytes += txBytes
 		totalGas += w.gasWanted
+		w.evictable = false
 		keep = append(keep, w.tx)
 	}
 	return keep
@@ -599,7 +597,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 	// of them as necessary to make room for tx. If no such items exist, we
 	// discard tx.
 	if !txmp.canAddTx(wtx.size()) {
-		victims, victimBytes := txmp.store.getTxsBelowPriority(wtx.priority)
+		victims, victimBytes := txmp.store.getEvictableTxsBelowPriority(wtx.priority)
 
 		// If there are no suitable eviction candidates, or the total size of
 		// those candidates is not enough to make room for the new transaction,
@@ -721,34 +719,26 @@ func (txmp *TxPool) recheckTransactions() {
 	)
 
 	// Collect transactions currently in the mempool requiring recheck.
-	wtxs := txmp.store.getAllTxs()
+	wtxs := txmp.allEntriesSorted()
 
 	// Issue CheckTx calls for each remaining transaction, and when all the
 	// rechecks are complete signal watchers that transactions may be available.
 	go func() {
-		g, start := taskgroup.New(nil).Limit(2 * runtime.NumCPU())
-
 		for _, wtx := range wtxs {
 			wtx := wtx
-			start(func() error {
-				// The response for this CheckTx is handled by the default recheckTxCallback.
-				rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{
-					Tx:   wtx.tx,
-					Type: abci.CheckTxType_Recheck,
-				})
-				if err != nil {
-					txmp.logger.Error("failed to execute CheckTx during recheck",
-						"err", err, "key", fmt.Sprintf("%x", wtx.key))
-				} else {
-					txmp.handleRecheckResult(wtx, rsp)
-				}
-				return nil
+			// The response for this CheckTx is handled by the default recheckTxCallback.
+			rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{
+				Tx:   wtx.tx,
+				Type: abci.CheckTxType_Recheck,
 			})
+			if err != nil {
+				txmp.logger.Error("failed to execute CheckTx during recheck",
+					"err", err, "key", fmt.Sprintf("%x", wtx.key))
+			} else {
+				txmp.handleRecheckResult(wtx, rsp)
+			}
 		}
 		_ = txmp.proxyAppConn.FlushAsync()
-
-		// When recheck is complete, trigger a notification for more transactions.
-		_ = g.Wait()
 		txmp.notifyTxsAvailable()
 	}()
 }
