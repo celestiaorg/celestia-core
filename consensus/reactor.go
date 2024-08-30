@@ -1722,6 +1722,7 @@ func init() {
 
 	delay := os.Getenv("PRECOMMIT_DELAY")
 	if delay != "" {
+		fmt.Println("Env var is set for PrecommitDelay, setting it to", delay)
 		parsedDelay, err := strconv.Atoi(delay)
 		if err == nil {
 			PrecommitDelay = time.Duration(parsedDelay) * time.Second
