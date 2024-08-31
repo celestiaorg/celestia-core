@@ -1380,10 +1380,6 @@ func (cs *State) enterPrevoteWait(height int64, round int32) {
 // isReadyToPrecommit calculates if the process has waited at least 11 seconds
 // from their start time before they can vote
 func (cs *State) isReadyToPrecommit(height int64, round int32) (bool, time.Duration) {
-	// 10 s for block propagation + 2s for block processing	+ 2 s for prevotes
-	// collection = 14 s
-	cs.Logger.Info("PrecommitDelay is set to", "PrecommitDelay",
-		PrecommitDelay.Seconds())
 	precommitVoteTime := cs.StartTime.Add(PrecommitDelay)
 	waitTime := time.Until(precommitVoteTime)
 	schema.WritePrecommitTime(cs.traceClient, height, round, waitTime.Seconds())
