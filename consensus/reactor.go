@@ -3,6 +3,7 @@ package consensus
 import (
 	"errors"
 	"fmt"
+	blog "log"
 	"os"
 	"reflect"
 	"strconv"
@@ -1727,6 +1728,8 @@ func init() {
 			PrecommitDelay = time.Duration(parsedDelay) * time.Second
 		}
 	}
+	blog.Println("Precommit delay is set to",
+		PrecommitDelay.Seconds(), " seconds")
 }
 
 //-------------------------------------
