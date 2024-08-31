@@ -1724,7 +1724,7 @@ func init() {
 	if delay != "" {
 		parsedDelay, err := strconv.Atoi(delay)
 		if err == nil {
-			PrecommitDelay = time.Duration(parsedDelay)
+			PrecommitDelay = time.Duration(parsedDelay) * time.Second
 		}
 	}
 }
