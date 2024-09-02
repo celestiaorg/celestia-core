@@ -153,7 +153,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  StateChannel,
-			Priority:            5,
+			Priority:            20,
 			SendQueueCapacity:   100,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
@@ -169,8 +169,8 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 		{
 			ID:                  VoteChannel,
-			Priority:            20,
-			SendQueueCapacity:   100,
+			Priority:            10,
+			SendQueueCapacity:   500,
 			RecvBufferCapacity:  100 * 100,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
@@ -542,12 +542,13 @@ func (conR *Reactor) subscribeToBroadcastEvents() {
 		conR.Logger.Error("Error adding listener for events", "err", err)
 	}
 
-	if err := conR.conS.evsw.AddListenerForEvent(subscriber, types.EventVote,
-		func(data cmtevents.EventData) {
-			conR.broadcastHasVoteMessage(data.(*types.Vote))
-		}); err != nil {
-		conR.Logger.Error("Error adding listener for events", "err", err)
-	}
+	// Don't broadcast has vote messages - they are useless. Just vote the round state
+	// if err := conR.conS.evsw.AddListenerForEvent(subscriber, types.EventVote,
+	// 	func(data cmtevents.EventData) {
+	// 		conR.broadcastHasVoteMessage(data.(*types.Vote))
+	// 	}); err != nil {
+	// 	conR.Logger.Error("Error adding listener for events", "err", err)
+	// }
 
 }
 
@@ -744,7 +745,7 @@ OUTER_LOOP:
 			if err != nil {
 				panic(err)
 			}
-			logger.Info("Sending compact block", "height", prs.Height, "round", prs.Round)
+			logger.Debug("Sending compact block", "height", prs.Height, "round", prs.Round)
 			if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 				ChannelID: DataChannel,
 				Message: &cmtcons.CompactBlock{
@@ -976,6 +977,7 @@ func (conR *Reactor) pickSendVoteAndTrace(votes types.VoteSetReader, rs *cstypes
 	}
 	return false
 }
+
 func (conR *Reactor) gossipVotesForHeight(
 	logger log.Logger,
 	rs *cstypes.RoundState,
@@ -984,7 +986,7 @@ func (conR *Reactor) gossipVotesForHeight(
 ) bool {
 
 	// If there are lastCommits to send...
-	if prs.Step == cstypes.RoundStepNewHeight {
+	if prs.Step == cstypes.RoundStepNewHeight && rs.Step < cstypes.RoundStepPrevote {
 		if conR.pickSendVoteAndTrace(rs.LastCommit, rs, ps) {
 			logger.Debug("Picked rs.LastCommit to send")
 			return true

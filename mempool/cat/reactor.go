@@ -26,6 +26,9 @@ const (
 	// for cross compatibility
 	MempoolStateChannel = byte(0x31)
 
+	// MempoolRecoveryChannel is a channel for mempool recovery messages
+	MempoolRecoveryChannel = byte(0x32)
+
 	// peerHeightDiff signifies the tolerance in difference in height between the peer and the height
 	// the node received the tx
 	peerHeightDiff = 2
@@ -172,15 +175,22 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  mempool.MempoolChannel,
 			Priority:            4,
-			SendQueueCapacity:   50,
+			SendQueueCapacity:   1,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 		{
 			ID:                  MempoolStateChannel,
-			Priority:            5,
-			SendQueueCapacity:   500,
+			Priority:            6,
+			SendQueueCapacity:   1000,
 			RecvMessageCapacity: stateMsg.Size(),
+			MessageType:         &protomem.Message{},
+		},
+		{
+			ID:                  MempoolRecoveryChannel,
+			Priority:            8,
+			SendQueueCapacity:   50,
+			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 	}
@@ -353,7 +363,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			memR.Logger.Debug("sending a transaction in response to a want msg", "peer", peerID, "txKey", txKey)
 			if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint:staticcheck
-				ChannelID: mempool.MempoolChannel,
+				ChannelID: MempoolRecoveryChannel,
 				Message:   &protomem.Txs{Txs: [][]byte{tx}},
 			}, memR.Logger) {
 				memR.mempool.PeerHasTx(peerID, txKey)
