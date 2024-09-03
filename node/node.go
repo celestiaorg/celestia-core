@@ -1435,6 +1435,7 @@ func makeNodeInfo(
 
 	if config.Mempool.Version == cfg.MempoolV2 {
 		nodeInfo.Channels = append(nodeInfo.Channels, cat.MempoolStateChannel)
+		nodeInfo.Channels = append(nodeInfo.Channels, cat.MempoolRecoveryChannel)
 	}
 
 	lAddr := config.P2P.ExternalAddress

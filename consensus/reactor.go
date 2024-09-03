@@ -162,7 +162,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			ID: DataChannel, // maybe split between gossiping current block and catchup stuff
 			// once we gossip the whole block there's nothing left to send until next height or round
 			Priority:            10,
-			SendQueueCapacity:   100,
+			SendQueueCapacity:   2,
 			RecvBufferCapacity:  50 * 4096,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
@@ -170,7 +170,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  VoteChannel,
 			Priority:            10,
-			SendQueueCapacity:   500,
+			SendQueueCapacity:   10,
 			RecvBufferCapacity:  100 * 100,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
@@ -621,6 +621,8 @@ func (conR *Reactor) broadcastHasVoteMessage(vote *types.Vote) {
 }
 
 // Broadcasts HasBlockMessage to peers that care.
+// TODO: This should be renamed to HasCompactBlockMessage. HasBlock is misleading because
+// we don't have the block. We will once we publish the valid block event.
 func (conR *Reactor) broadcastHasBlockMessage(data *types.EventDataCompleteProposal) {
 	conR.Switch.BroadcastEnvelope(p2p.Envelope{
 		ChannelID: DataChannel,
@@ -702,7 +704,7 @@ OUTER_LOOP:
 
 		switch {
 		case prs.Height == rs.Height && !prs.Proposal && rs.Proposal != nil: // same height no proposal
-			if p2p.SendEnvelopeShim(peer, p2p.Envelope{
+			if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{
 				ChannelID: DataChannel,
 				Message:   &cmtcons.Proposal{Proposal: *rs.Proposal.ToProto()},
 			}, logger) {
@@ -721,7 +723,7 @@ OUTER_LOOP:
 			// so we definitely have rs.Votes.Prevotes(rs.Proposal.POLRound).
 			if 0 <= rs.Proposal.POLRound {
 				logger.Debug("Sending POL", "height", prs.Height, "round", prs.Round)
-				if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+				if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 					ChannelID: DataChannel,
 					Message: &cmtcons.ProposalPOL{
 						Height:           rs.Height,
@@ -746,7 +748,7 @@ OUTER_LOOP:
 				panic(err)
 			}
 			logger.Debug("Sending compact block", "height", prs.Height, "round", prs.Round)
-			if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+			if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 				ChannelID: DataChannel,
 				Message: &cmtcons.CompactBlock{
 					Block: compactBlock,
@@ -764,7 +766,7 @@ OUTER_LOOP:
 				)
 			}
 		case prs.Height == rs.Height-1 && !prs.Proposal && rs.LastProposal != nil: // prev height no proposal
-			if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+			if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 				ChannelID: DataChannel,
 				Message:   &cmtcons.Proposal{Proposal: *rs.LastProposal.ToProto()},
 			}, logger) {
@@ -782,7 +784,7 @@ OUTER_LOOP:
 			if err != nil {
 				panic(err)
 			}
-			if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+			if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 				ChannelID: DataChannel,
 				Message: &cmtcons.CompactBlock{
 					Block: compactBlock,
@@ -821,8 +823,8 @@ OUTER_LOOP:
 			}
 		default:
 			// Nothing to do. Sleep.
-			time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 		}
+		time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 	}
 }
 
@@ -861,7 +863,7 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 			logger.Error("Could not convert part to proto", "index", index, "error", err)
 			return
 		}
-		if p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
+		if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 			ChannelID: DataChannel,
 			Message: &cmtcons.BlockPart{
 				Height: prs.Height, // Not our height, so it doesn't matter.
@@ -952,9 +954,6 @@ OUTER_LOOP:
 		if sleeping == 0 {
 			// We sent nothing. Sleep...
 			sleeping = 1
-			logger.Debug("No votes to send, sleeping", "rs.Height", rs.Height, "prs.Height", prs.Height,
-				"localPV", rs.Votes.Prevotes(rs.Round).BitArray(), "peerPV", prs.Prevotes,
-				"localPC", rs.Votes.Precommits(rs.Round).BitArray(), "peerPC", prs.Precommits)
 		} else if sleeping == 2 {
 			// Continued sleep...
 			sleeping = 1
@@ -1396,7 +1395,7 @@ func (ps *PeerState) SetHasBlock(height int64, round int32) {
 func (ps *PeerState) PickSendVote(votes types.VoteSetReader) *types.Vote {
 	if vote, ok := ps.PickVoteToSend(votes); ok {
 		ps.logger.Debug("Sending vote message", "ps", ps, "vote", vote)
-		if p2p.SendEnvelopeShim(ps.peer, p2p.Envelope{ //nolint: staticcheck
+		if p2p.TrySendEnvelopeShim(ps.peer, p2p.Envelope{ //nolint: staticcheck
 			ChannelID: VoteChannel,
 			Message: &cmtcons.Vote{
 				Vote: vote.ToProto(),
@@ -1629,6 +1628,7 @@ func (ps *PeerState) ApplyNewRoundStepMessage(msg *NewRoundStepMessage) {
 	ps.PRS.Round = msg.Round
 	ps.PRS.Step = msg.Step
 	ps.PRS.StartTime = startTime
+	// check if the peer has entered into a new round or new height
 	if psHeight != msg.Height || psRound != msg.Round {
 		ps.PRS.Proposal = false
 		ps.PRS.Block = false
@@ -1639,6 +1639,10 @@ func (ps *PeerState) ApplyNewRoundStepMessage(msg *NewRoundStepMessage) {
 		// We'll update the BitArray capacity later.
 		ps.PRS.Prevotes = nil
 		ps.PRS.Precommits = nil
+	}
+	if msg.Step >= cstypes.RoundStepPrevote {
+		ps.PRS.Proposal = true
+		ps.PRS.Block = true
 	}
 	if psHeight == msg.Height && psRound != msg.Round && msg.Round == psCatchupCommitRound {
 		// Peer caught up to CatchupCommitRound.
@@ -1677,6 +1681,8 @@ func (ps *PeerState) ApplyNewValidBlockMessage(msg *NewValidBlockMessage) {
 
 	ps.PRS.ProposalBlockPartSetHeader = msg.BlockPartSetHeader
 	ps.PRS.ProposalBlockParts = msg.BlockParts
+	ps.PRS.Proposal = true
+	ps.PRS.Block = true
 }
 
 // ApplyProposalPOLMessage updates the peer state for the new proposal POL.

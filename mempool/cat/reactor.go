@@ -175,7 +175,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  mempool.MempoolChannel,
 			Priority:            4,
-			SendQueueCapacity:   1,
+			SendQueueCapacity:   100,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
@@ -188,8 +188,8 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 		{
 			ID:                  MempoolRecoveryChannel,
-			Priority:            8,
-			SendQueueCapacity:   50,
+			Priority:            10,
+			SendQueueCapacity:   100,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
@@ -355,6 +355,9 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		if !has {
 			// see if the tx was recently committed
 			tx, has = memR.mempool.GetCommitted(txKey)
+		}
+		if !has {
+			memR.Logger.Info("received a want tx for a transaction we don't have", "txKey", txKey)
 		}
 		// TODO: consider handling the case where we receive a HasTx message from a peer
 		// before we receive a WantTx message from them. In this case we might
