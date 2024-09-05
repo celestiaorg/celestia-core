@@ -116,7 +116,7 @@ func TestHashAlternatives(t *testing.T) {
 }
 
 func BenchmarkHashAlternatives(b *testing.B) {
-	total := 100
+	total := 101
 
 	items := make([][]byte, total)
 	for i := 0; i < total; i++ {

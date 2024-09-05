@@ -42,29 +42,43 @@ func TestLocalTracerReadWrite(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	f, err := client.ReadTable(testEventTable)
+	f, done, err := client.readTable(testEventTable)
 	require.NoError(t, err)
 
 	// write at the same time as reading to test thread safety this test will be
-	// flakey if this is not being handled correctly
+	// flakey if this is not being handled correctly. Since we're reading from
+	// the file, we expect these write to be ignored.
 	migenees := testEvent{"Migennes", 620}
 	pontivy := testEvent{"Pontivy", 720}
 	client.Write(migenees)
 	client.Write(pontivy)
 
+	// wait to ensure that the write have been processed (and ignored in this case)
+	time.Sleep(100 * time.Millisecond)
+
 	events, err := DecodeFile[testEvent](f)
 	require.NoError(t, err)
+	err = done()
+	require.NoError(t, err)
+
+	// even though we've written twice, we expect only the first two events to be
+	// be written to the file. When reading the file, all writes are ignored.
 	require.GreaterOrEqual(t, len(events), 2)
 	require.Equal(t, annecy, events[0].Msg)
 	require.Equal(t, paris, events[1].Msg)
-	f.Close()
+
+	// write again to the file and read it back this time, we expect the writes
+	// to be written since we've called the done() function.
+	client.Write(migenees)
+	client.Write(pontivy)
 
 	time.Sleep(100 * time.Millisecond)
 
-	f, err = client.ReadTable(testEventTable)
+	f, done, err = client.readTable(testEventTable)
 	require.NoError(t, err)
-	defer f.Close()
 	events, err = DecodeFile[testEvent](f)
+	require.NoError(t, err)
+	err = done()
 	require.NoError(t, err)
 	require.Len(t, events, 4)
 	require.Equal(t, migenees, events[2].Msg)
@@ -96,10 +110,11 @@ func TestLocalTracerServerPull(t *testing.T) {
 	err = GetTable(url, testEventTable, newDir)
 	require.NoError(t, err)
 
-	originalFile, err := client.ReadTable(testEventTable)
+	originalFile, done, err := client.readTable(testEventTable)
 	require.NoError(t, err)
-	defer originalFile.Close()
 	originalBz, err := io.ReadAll(originalFile)
+	require.NoError(t, err)
+	err = done()
 	require.NoError(t, err)
 
 	path := path.Join(newDir, testEventTable+".jsonl")

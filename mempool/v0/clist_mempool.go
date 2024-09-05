@@ -183,6 +183,21 @@ func (mem *CListMempool) TxsFront() *clist.CElement {
 	return mem.txs.Front()
 }
 
+// GetTxByKey retrieves a transaction from the mempool using its key.
+func (mem *CListMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
+	e, ok := mem.txsMap.Load(key)
+	if !ok {
+		return nil, false
+	}
+	memTx, ok := e.(*clist.CElement).Value.(*mempoolTx)
+	return memTx.tx, ok
+}
+
+// WasRecentlyEvicted returns false consistently as this implementation does not support transaction eviction.
+func (mem *CListMempool) WasRecentlyEvicted(key types.TxKey) bool {
+	return false
+}
+
 // TxsWaitChan returns a channel to wait on transactions. It will be closed
 // once the mempool is not empty (ie. the internal `mem.txs` has at least one
 // element)

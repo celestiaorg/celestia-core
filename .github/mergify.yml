@@ -27,3 +27,12 @@ pull_request_rules:
       backport:
         branches:
           - v0.34.x-celestia
+
+  - name: Backport to main
+    conditions:
+      - label=S:backport-to-main
+      - merged
+    actions:
+      backport:
+        branches:
+          - main

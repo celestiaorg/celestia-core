@@ -18,7 +18,6 @@ type Entry interface {
 // Tracer defines the methods for a client that can write and read trace data.
 type Tracer interface {
 	Write(Entry)
-	ReadTable(table string) (*os.File, error)
 	IsCollecting(table string) bool
 	Stop()
 }

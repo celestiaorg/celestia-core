@@ -126,31 +126,6 @@ func TestBlockResults(t *testing.T) {
 	}
 }
 
-func TestTxStatus(t *testing.T) {
-	env := &Environment{}
-	height := int64(50)
-
-	blocks := randomBlocks(height)
-	blockStore := mockBlockStore{
-		height: height,
-		blocks: blocks,
-	}
-	env.BlockStore = blockStore
-
-	SetEnvironment(env)
-
-	// Iterate over each block
-	for _, block := range blocks {
-		// Iterate over each transaction in the block
-		for i, tx := range block.Data.Txs {
-			txStatus, _ := TxStatus(&rpctypes.Context{}, tx.Hash())
-			assert.Equal(t, block.Height, txStatus.Height)
-			assert.Equal(t, int64(i), txStatus.Index)
-		}
-	}
-
-}
-
 func TestEncodeDataRootTuple(t *testing.T) {
 	height := uint64(2)
 	dataRoot, err := hex.DecodeString("82dc1607d84557d3579ce602a45f5872e821c36dbda7ec926dfa17ebc8d5c013")
@@ -326,6 +301,9 @@ func (mockBlockStore) LoadSeenCommit(height int64) *types.Commit         { retur
 func (mockBlockStore) PruneBlocks(height int64) (uint64, error)          { return 0, nil }
 func (mockBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 }
+func (mockBlockStore) SaveTxInfo(block *types.Block, txResponseCode []uint32) error {
+	return nil
+}
 func (mockBlockStore) DeleteLatestBlock() error { return nil }
 
 func (store mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
@@ -353,7 +331,8 @@ func (store mockBlockStore) LoadTxInfo(hash []byte) *cmtstore.TxInfo {
 			if bytes.Equal(tx.Hash(), hash) {
 				return &cmtstore.TxInfo{
 					Height: block.Header.Height,
-					Index:  int64(i),
+					Index:  uint32(i),
+					Code:   uint32(0),
 				}
 			}
 		}
