@@ -185,11 +185,13 @@ func TestFetchTxsFromKeys(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	reactor, pool := setupReactor(t)
-
+	pool.config.Broadcast = false
 	numTxs := 10
 	txs := make([][]byte, numTxs)
 	keys := make([][]byte, numTxs)
 	peer := genPeer()
+	peer.On("IsRunning").Return(true)
+	peer.On("Get", types.PeerStateKey).Return(peerState{height: 1}, true)
 	blockID := tmhash.Sum([]byte("blockID"))
 	wg := sync.WaitGroup{}
 	for i := 0; i < numTxs; i++ {

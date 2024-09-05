@@ -120,3 +120,10 @@ func TestTxKeyFromBytes(t *testing.T) {
 	_, err = TxKeyFromBytes([]byte("foo"))
 	require.Error(t, err)
 }
+
+func TestTxKeyIsEmpty(t *testing.T) {
+	var key TxKey
+	require.True(t, key.IsEmpty())
+	key[0] = 1
+	require.False(t, key.IsEmpty())
+}

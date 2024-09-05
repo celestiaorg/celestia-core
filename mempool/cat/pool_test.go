@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/tendermint/tendermint/abci/example/code"
@@ -91,6 +90,7 @@ func setup(t testing.TB, cacheSize int, options ...TxPoolOption) *TxPool {
 
 	cfg := config.TestMempoolConfig()
 	cfg.CacheSize = cacheSize
+	cfg.Broadcast = false
 
 	appConnMem, err := cc.NewABCIClient()
 	require.NoError(t, err)
@@ -128,7 +128,9 @@ func checkTxs(t *testing.T, txmp *TxPool, numTxs int, peerID uint16) []testTx {
 			tx:       newTx(i, peerID, prefix, priority),
 			priority: priority,
 		}
-		require.NoError(t, txmp.CheckTx(txs[i].tx, nil, txInfo))
+		require.NoError(t, txmp.CheckTx(txs[i].tx, func(r *abci.Response) {
+			require.Equal(t, uint32(0), r.GetCheckTx().Code)
+		}, txInfo))
 		// assert that none of them get silently evicted
 		require.Equal(t, current+i+1, txmp.Size())
 	}
@@ -337,7 +339,7 @@ func TestTxPool_Flush(t *testing.T) {
 }
 
 func TestTxPool_ReapMaxBytesMaxGas(t *testing.T) {
-	txmp := setup(t, 0)
+	txmp := setup(t, 0, WithInclusionDelay(0))
 	tTxs := checkTxs(t, txmp, 100, 0) // all txs request 1 gas unit
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
@@ -389,7 +391,7 @@ func TestTxPool_ReapMaxBytesMaxGas(t *testing.T) {
 
 func TestTxMempoolTxLargerThanMaxBytes(t *testing.T) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	txmp := setup(t, 0)
+	txmp := setup(t, 0, WithInclusionDelay(0))
 	bigPrefix := make([]byte, 100)
 	_, err := rng.Read(bigPrefix)
 	require.NoError(t, err)
@@ -410,7 +412,7 @@ func TestTxMempoolTxLargerThanMaxBytes(t *testing.T) {
 }
 
 func TestTxPool_ReapMaxTxs(t *testing.T) {
-	txmp := setup(t, 0)
+	txmp := setup(t, 0, WithInclusionDelay(0))
 	txs := checkTxs(t, txmp, 100, 0)
 	require.Equal(t, len(txs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
@@ -599,7 +601,7 @@ func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 }
 
 func TestTxPool_ExpiredTxs_NumBlocks(t *testing.T) {
-	txmp := setup(t, 500)
+	txmp := setup(t, 500, WithInclusionDelay(0))
 	txmp.height = 100
 	txmp.config.TTLNumBlocks = 10
 
@@ -614,7 +616,7 @@ func TestTxPool_ExpiredTxs_NumBlocks(t *testing.T) {
 	}
 
 	require.NoError(t, txmp.Update(txmp.height+1, reapedTxs, responses, nil, nil))
-	require.NoError(t, txmp.Update(txmp.height+1, nil, nil, nil, nil))
+	require.NoError(t, txmp.Update(txmp.height+2, nil, nil, nil, nil))
 
 	require.Equal(t, 95, txmp.Size())
 
@@ -734,7 +736,7 @@ func TestTxPool_ConcurrentlyAddingTx(t *testing.T) {
 		wg.Add(1)
 		go func(sender uint16) {
 			defer wg.Done()
-			_, err := txmp.TryAddNewTx(tx, tx.Key(), mempool.TxInfo{SenderID: sender})
+			_, _, err := txmp.tryAddNewTx(tx, tx.Key(), mempool.TxInfo{SenderID: sender})
 			errCh <- err
 		}(uint16(i + 1))
 	}
@@ -757,27 +759,39 @@ func TestTxPool_BroadcastQueue(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	txmp := setup(t, 1)
+	txmp.config.Broadcast = true
 	txs := 10
 
 	wg := sync.WaitGroup{}
+
 	wg.Add(1)
-
-	for i := 0; i < txs; i++ {
-		tx := newDefaultTx(fmt.Sprintf("%d", i))
-		require.NoError(t, txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0}))
-	}
-
 	go func() {
 		defer wg.Done()
 		for i := 0; i < txs; i++ {
+			tx := newDefaultTx(fmt.Sprintf("%d", i))
+			require.NoError(t, txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0}))
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			time.Sleep(20 * time.Millisecond)
 			select {
 			case <-ctx.Done():
-				assert.FailNowf(t, "failed to receive all txs (got %d/%d)", "", i+1, txs)
-			case wtx := <-txmp.next():
-				require.Equal(t, wtx.tx, newDefaultTx(fmt.Sprintf("%d", i)))
+				return
+			case <-txmp.priorityBroadcastQueue.isReady():
+				txmp.priorityBroadcastQueue.processIncomingTxs()
+			}
+			if txmp.priorityBroadcastQueue.queue.Len() == txs {
+				return
 			}
 		}
 	}()
 
 	wg.Wait()
+	if ctx.Err() != nil {
+		t.Fatalf("test timed out without processing all txs")
+	}
 }

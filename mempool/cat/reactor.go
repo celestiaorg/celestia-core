@@ -113,19 +113,7 @@ func (memR *Reactor) SetLogger(l log.Logger) {
 // OnStart implements Service.
 func (memR *Reactor) OnStart() error {
 	if !memR.opts.ListenOnly {
-		go func() {
-			for {
-				select {
-				case <-memR.Quit():
-					return
-
-				// listen in for any newly verified tx via RPC, then immediately
-				// broadcast it to all connected peers.
-				case nextTx := <-memR.mempool.next():
-					memR.broadcastNewTx(nextTx)
-				}
-			}
-		}()
+		go memR.broadcastTxsRoutine()
 	} else {
 		memR.Logger.Info("Tx broadcasting is disabled")
 	}
@@ -145,6 +133,88 @@ func (memR *Reactor) OnStart() error {
 	}
 
 	return nil
+}
+
+func (memR *Reactor) broadcastTxsRoutine() {
+	for {
+		select {
+		case <-memR.Quit():
+			return
+		default:
+		}
+
+		// if there are no current transctions to broadcast, check if there are any new ones to add to the queue
+		if memR.mempool.priorityBroadcastQueue.queue.Len() == 0 {
+			select {
+			case <-memR.Quit():
+				return
+			case <-memR.mempool.priorityBroadcastQueue.isReady():
+				memR.mempool.priorityBroadcastQueue.processIncomingTxs()
+			}
+		}
+
+		nextTxKey, peer := memR.mempool.priorityBroadcastQueue.Pop()
+		if nextTxKey.IsEmpty() {
+			continue
+		}
+
+		nextTx, has := memR.mempool.GetTxByKey(nextTxKey)
+		if !has {
+			// the tx was evicted, remove it from the priority broadcast queue
+			continue
+		}
+
+		peers := map[uint16]p2p.Peer{}
+		if peer != nil {
+			id := memR.ids.GetIDForPeer(peer.ID())
+			peers[id] = peer
+		} else {
+			peers = memR.ids.GetAll()
+		}
+		for peerID, peer := range peers {
+			fmt.Println("sending to peer", peer.ID())
+			// we continually try to send to that peer until one of the
+			// termination conditions are met
+			for {
+				if !peer.IsRunning() {
+					// we disconnected from the peer
+					break
+				}
+
+				if !memR.IsRunning() {
+					// mempool reactor has stopped
+					return
+				}
+
+				peerState, ok := peer.Get(types.PeerStateKey).(PeerState)
+				if !ok {
+					break
+				}
+
+				if peerState.GetHeight() < memR.mempool.Height()-peerHeightDiff {
+					// peer is too far behind
+					break
+				}
+
+				if memR.mempool.seenByPeersSet.Has(nextTxKey, memR.ids.GetIDForPeer(peer.ID())) {
+					// peer already has the tx
+					break
+				}
+
+				if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{
+					ChannelID: mempool.MempoolChannel,
+					Message:   &protomem.Txs{Txs: [][]byte{nextTx}},
+				}, memR.Logger) {
+					memR.mempool.PeerHasTx(peerID, nextTxKey)
+					break
+				} else {
+					// buffer is full. Wait a bit and try again with the same peer
+					time.Sleep(10 * time.Millisecond)
+					continue
+				}
+			}
+		}
+	}
 }
 
 // OnStop implements Service
@@ -175,7 +245,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID:                  mempool.MempoolChannel,
 			Priority:            4,
-			SendQueueCapacity:   100,
+			SendQueueCapacity:   2,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
@@ -281,12 +351,8 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			memR.blockFetcher.TryAddMissingTx(key, tx)
 
 			// Now attempt to add the tx to the mempool.
-			_, err = memR.mempool.TryAddNewTx(ntx, key, txInfo)
+			_, _, err = memR.mempool.tryAddNewTx(ntx, key, txInfo)
 			if err != nil && err != ErrTxInMempool && err != ErrTxRecentlyCommitted {
-				if memR.blockFetcher.IsMissingTx(key) {
-					memR.Logger.Error("tx in block is not valid by mempool")
-				}
-
 				memR.Logger.Info("Could not add tx from peer", "peerID", peerID, "txKey", key, "err", err)
 				return
 			}
@@ -351,31 +417,37 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			txKey[:],
 			schema.Download,
 		)
-		tx, has := memR.mempool.GetTxByKey(txKey)
-		if !has {
+		tx := memR.mempool.store.get(txKey)
+		if tx == nil {
 			// see if the tx was recently committed
-			tx, has = memR.mempool.GetCommitted(txKey)
+			tx = memR.mempool.store.getCommitted(txKey)
 		}
-		if !has {
+		if tx == nil {
 			memR.Logger.Info("received a want tx for a transaction we don't have", "txKey", txKey)
 		}
-		// TODO: consider handling the case where we receive a HasTx message from a peer
-		// before we receive a WantTx message from them. In this case we might
-		// ignore the request if we know it's no longer valid.
-		if has && !memR.opts.ListenOnly {
+		if tx != nil && !memR.opts.ListenOnly {
+			// If this transaction is in an active proposal, we send it with high priority
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
-			memR.Logger.Debug("sending a transaction in response to a want msg", "peer", peerID, "txKey", txKey)
-			if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint:staticcheck
-				ChannelID: MempoolRecoveryChannel,
-				Message:   &protomem.Txs{Txs: [][]byte{tx}},
-			}, memR.Logger) {
-				memR.mempool.PeerHasTx(peerID, txKey)
-				schema.WriteMempoolTx(
-					memR.traceClient,
-					string(e.Src.ID()),
-					txKey[:],
-					schema.Upload,
-				)
+			if tx.proposed {
+				fmt.Println("sending proposed tx")
+				memR.Logger.Debug("sending a transaction in response to a want msg", "peer", peerID, "txKey", txKey)
+				if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint:staticcheck
+					ChannelID: MempoolRecoveryChannel,
+					Message:   &protomem.Txs{Txs: [][]byte{tx.tx}},
+				}, memR.Logger) {
+					memR.mempool.PeerHasTx(peerID, txKey)
+					schema.WriteMempoolTx(
+						memR.traceClient,
+						string(e.Src.ID()),
+						txKey[:],
+						schema.Upload,
+					)
+				}
+			} else {
+				memR.Logger.Debug("sending a transaction in response to a want msg", "peer", peerID, "txKey", txKey)
+				// else we add it to the queue to be sent to the peer based on
+				// the priority of the transaction
+				memR.mempool.priorityBroadcastQueue.BroadcastToPeer(tx.priority, txKey, e.Src)
 			}
 		}
 
@@ -431,8 +503,8 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 	memR.Logger.Debug("broadcasted seen tx to all peers", "tx_key", txKey.String())
 }
 
-// broadcastNewTx broadcast new transaction to all peers unless we are already sure they have seen the tx.
-func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
+// broadcastProposedTx broadcast a transaction that's already proposed in a block to all peers unless we are already sure they have seen the tx.
+func (memR *Reactor) broadcastProposedTx(wtx *wrappedTx) {
 	msg := &protomem.Message{
 		Sum: &protomem.Message_Txs{
 			Txs: &protomem.Txs{
@@ -460,7 +532,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 			continue
 		}
 
-		if peer.Send(mempool.MempoolChannel, bz) { //nolint:staticcheck
+		if peer.TrySend(MempoolRecoveryChannel, bz) { //nolint:staticcheck
 			memR.mempool.PeerHasTx(id, wtx.key)
 		} else {
 			memR.Logger.Error("failed to send new tx to peer", "peerID", peer.ID(), "txKey", wtx.key)

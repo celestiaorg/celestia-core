@@ -29,8 +29,8 @@ var (
 // InclusionDelay is the amount of time a transaction must be in the mempool
 // before it is included in the block.
 const (
-	InclusionDelay       = 2 * time.Second
-	SeenSetPruneInterval = 10 * time.Minute
+	DefaultInclusionDelay = 2 * time.Second
+	SeenSetPruneInterval  = 10 * time.Minute
 )
 
 // TxPoolOption sets an optional parameter on the TxPool.
@@ -55,10 +55,11 @@ type TxPoolOption func(*TxPool)
 // implement something more comprehensive
 type TxPool struct {
 	// Immutable fields
-	logger       log.Logger
-	config       *config.MempoolConfig
-	proxyAppConn proxy.AppConnMempool
-	metrics      *mempool.Metrics
+	logger         log.Logger
+	config         *config.MempoolConfig
+	proxyAppConn   proxy.AppConnMempool
+	metrics        *mempool.Metrics
+	inclusionDelay time.Duration
 
 	// these values are modified once per height
 	updateMtx            sync.Mutex
@@ -79,11 +80,8 @@ type TxPool struct {
 	// Store of wrapped transactions
 	store *store
 
-	// broadcastCh is an unbuffered channel of new transactions that need to
-	// be broadcasted to peers. Only populated if `broadcast` in the config is enabled
-	broadcastCh      chan *wrappedTx
-	broadcastMtx     sync.Mutex
-	txsToBeBroadcast []types.TxKey
+	// queue to determine which transactions are broadcasted.
+	priorityBroadcastQueue *priorityBroadcastQueue
 }
 
 // NewTxPool constructs a new, empty content addressable txpool at the specified
@@ -102,19 +100,19 @@ func NewTxPool(
 	}
 
 	txmp := &TxPool{
-		logger:           logger,
-		config:           cfg,
-		proxyAppConn:     proxyAppConn,
-		metrics:          mempool.NopMetrics(),
-		rejectedTxCache:  NewLRUTxCache(cfg.CacheSize),
-		evictedTxCache:   NewLRUTxCache(cfg.CacheSize / 5),
-		seenByPeersSet:   NewSeenTxSet(),
-		height:           height,
-		preCheckFn:       func(_ types.Tx) error { return nil },
-		postCheckFn:      func(_ types.Tx, _ *abci.ResponseCheckTx) error { return nil },
-		store:            newStore(),
-		broadcastCh:      make(chan *wrappedTx),
-		txsToBeBroadcast: make([]types.TxKey, 0),
+		logger:                 logger,
+		config:                 cfg,
+		proxyAppConn:           proxyAppConn,
+		metrics:                mempool.NopMetrics(),
+		rejectedTxCache:        NewLRUTxCache(cfg.CacheSize),
+		evictedTxCache:         NewLRUTxCache(cfg.CacheSize / 5),
+		seenByPeersSet:         NewSeenTxSet(),
+		height:                 height,
+		preCheckFn:             func(_ types.Tx) error { return nil },
+		postCheckFn:            func(_ types.Tx, _ *abci.ResponseCheckTx) error { return nil },
+		store:                  newStore(),
+		priorityBroadcastQueue: newPriorityBroadcastQueue(),
+		inclusionDelay:         DefaultInclusionDelay,
 	}
 
 	for _, opt := range options {
@@ -141,6 +139,13 @@ func WithPostCheck(f mempool.PostCheckFunc) TxPoolOption {
 // WithMetrics sets the mempool's metrics collector.
 func WithMetrics(metrics *mempool.Metrics) TxPoolOption {
 	return func(txmp *TxPool) { txmp.metrics = metrics }
+}
+
+// WithInclusionDelay sets the inclusion delay for new transactions. This is the
+// amount of time that must elapse before a transaction is considered for
+// inclusion in a block.
+func WithInclusionDelay(d time.Duration) TxPoolOption {
+	return func(txmp *TxPool) { txmp.inclusionDelay = d }
 }
 
 // Lock is a noop as ABCI calls are serialized
@@ -257,7 +262,7 @@ func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo mempool
 	// This is a new transaction that we haven't seen before. Verify it against the app and attempt
 	// to add it to the transaction pool.
 	key := tx.Key()
-	rsp, err := txmp.TryAddNewTx(tx, key, txInfo)
+	wtx, rsp, err := txmp.tryAddNewTx(tx, key, txInfo)
 	if err != nil {
 		return err
 	}
@@ -268,99 +273,58 @@ func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo mempool
 		}
 	}()
 
-	// push to the broadcast queue that a new transaction is ready
-	txmp.markToBeBroadcast(key)
+	if txmp.config.Broadcast && wtx != nil {
+		txmp.priorityBroadcastQueue.BroadcastToAll(wtx.priority, wtx.key)
+	}
 	return nil
-}
-
-// next is used by the reactor to get the next transaction to broadcast
-// to all other peers.
-func (txmp *TxPool) next() <-chan *wrappedTx {
-	txmp.broadcastMtx.Lock()
-	defer txmp.broadcastMtx.Unlock()
-	for len(txmp.txsToBeBroadcast) != 0 {
-		ch := make(chan *wrappedTx, 1)
-		key := txmp.txsToBeBroadcast[0]
-		txmp.txsToBeBroadcast = txmp.txsToBeBroadcast[1:]
-		wtx := txmp.store.get(key)
-		if wtx == nil {
-			continue
-		}
-		ch <- wtx
-		return ch
-	}
-
-	return txmp.broadcastCh
-}
-
-// markToBeBroadcast marks a transaction to be broadcasted to peers.
-// This should never block so we use a map to create an unbounded queue
-// of transactions that need to be gossiped.
-func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
-	if !txmp.config.Broadcast {
-		return
-	}
-
-	wtx := txmp.store.get(key)
-	if wtx == nil {
-		return
-	}
-
-	select {
-	case txmp.broadcastCh <- wtx:
-	default:
-		txmp.broadcastMtx.Lock()
-		defer txmp.broadcastMtx.Unlock()
-		txmp.txsToBeBroadcast = append(txmp.txsToBeBroadcast, key)
-	}
 }
 
 // TryAddNewTx attempts to add a tx that has not already been seen before. It first marks it as seen
 // to avoid races with the same tx. It then call `CheckTx` so that the application can validate it.
 // If it passes `CheckTx`, the new transaction is added to the mempool as long as it has
 // sufficient priority and space else if evicted it will return an error
-func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
+func (txmp *TxPool) tryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxInfo) (*wrappedTx, *abci.ResponseCheckTx, error) {
 	// First check any of the caches to see if we can conclude early. We may have already seen and processed
 	// the transaction, or it may have already been committed.
 	if txmp.store.hasCommitted(key) {
-		return nil, ErrTxRecentlyCommitted
+		return nil, nil, ErrTxRecentlyCommitted
 	}
 
 	if txmp.IsRejectedTx(key) {
 		// The peer has sent us a transaction that we have previously marked as invalid. Since `CheckTx` can
 		// be non-deterministic, we don't punish the peer but instead just ignore the tx
-		return nil, ErrTxAlreadyRejected
+		return nil, nil, ErrTxAlreadyRejected
 	}
 
 	if txmp.Has(key) {
 		txmp.metrics.AlreadySeenTxs.Add(1)
 		// The peer has sent us a transaction that we have already seen
-		return nil, ErrTxInMempool
+		return nil, nil, ErrTxInMempool
 	}
 
 	// reserve the key
 	if !txmp.store.reserve(key) {
 		txmp.logger.Debug("mempool already attempting to verify and add transaction", "txKey", fmt.Sprintf("%X", key))
 		txmp.PeerHasTx(txInfo.SenderID, key)
-		return nil, ErrTxInMempool
+		return nil, nil, ErrTxInMempool
 	}
 	defer txmp.store.release(key)
 
 	// If a precheck hook is defined, call it before invoking the application.
 	if err := txmp.preCheck(tx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
-		return nil, mempool.ErrPreCheck{Reason: err}
+		return nil, nil, mempool.ErrPreCheck{Reason: err}
 	}
 
 	// Early exit if the proxy connection has an error.
 	if err := txmp.proxyAppConn.Error(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Invoke an ABCI CheckTx for this transaction.
 	rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{Tx: tx})
 	if err != nil {
-		return rsp, err
+		return nil, rsp, err
 	}
 	if rsp.Code != abci.CodeTypeOK {
 		if txmp.config.KeepInvalidTxsInCache {
@@ -369,7 +333,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 		txmp.metrics.FailedTxs.Add(1)
 		// we don't return an error when there has been a fail code. Instead the
 		// client is expected to read the error code and the raw log
-		return rsp, nil
+		return nil, rsp, nil
 	}
 
 	// Create wrapped tx
@@ -384,15 +348,15 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 			txmp.rejectedTxCache.Push(key)
 		}
 		txmp.metrics.FailedTxs.Add(1)
-		return rsp, fmt.Errorf("rejected bad transaction after post check: %w", err)
+		return nil, nil, fmt.Errorf("rejected bad transaction after post check: %w", err)
 	}
 
 	// Now we consider the transaction to be valid. Once a transaction is valid, it
 	// can only become invalid if recheckTx is enabled and RecheckTx returns a non zero code
 	if err := txmp.addNewTransaction(wtx, rsp); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return rsp, nil
+	return wtx, rsp, nil
 }
 
 // RemoveTxByKey removes the transaction with the specified key from the
@@ -419,9 +383,7 @@ func (txmp *TxPool) Flush() {
 	txmp.rejectedTxCache.Reset()
 	txmp.evictedTxCache.Reset()
 	txmp.metrics.EvictedTxs.Add(float64(size))
-	txmp.broadcastMtx.Lock()
-	defer txmp.broadcastMtx.Unlock()
-	txmp.txsToBeBroadcast = make([]types.TxKey, 0)
+	txmp.priorityBroadcastQueue.Reset()
 }
 
 // PeerHasTx marks that the transaction has been seen by a peer.
@@ -430,17 +392,21 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 	txmp.seenByPeersSet.Add(txKey, peer)
 }
 
+func PriorityFn(wtx []*wrappedTx) func(i, j int) bool {
+	return func(i, j int) bool {
+		if wtx[i].priority == wtx[j].priority {
+			return wtx[i].timestamp.Before(wtx[j].timestamp)
+		}
+		return wtx[i].priority > wtx[j].priority
+	}
+}
+
 // allEntriesSorted returns a slice of all the transactions currently in the
 // mempool, sorted in nonincreasing order by priority with ties broken by
 // increasing order of arrival time.
 func (txmp *TxPool) allEntriesSorted() []*wrappedTx {
 	txs := txmp.store.getAllTxs()
-	sort.Slice(txs, func(i, j int) bool {
-		if txs[i].priority == txs[j].priority {
-			return txs[i].timestamp.Before(txs[j].timestamp)
-		}
-		return txs[i].priority > txs[j].priority // N.B. higher priorities first
-	})
+	sort.Slice(txs, PriorityFn(txs))
 	return txs
 }
 
@@ -458,12 +424,13 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	var totalGas, totalBytes int64
 	currentTime := time.Now()
 
-	var keep []types.Tx //nolint:prealloc
-	for _, w := range txmp.allEntriesSorted() {
+	var keep []types.Tx
+	var txKeys []types.TxKey
+	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
 		// skip transactions that have been in the mempool for less than the inclusion delay
 		// This gives time for the transaction to be broadcast to all peers
-		if currentTime.Sub(w.timestamp) < InclusionDelay {
-			continue
+		if currentTime.Sub(w.timestamp) < txmp.inclusionDelay {
+			return true
 		}
 
 		// N.B. When computing byte size, we need to include the overhead for
@@ -471,13 +438,15 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 		// as we add the proto overhead to each transaction
 		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx})
 		if (maxGas >= 0 && totalGas+w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes+txBytes > maxBytes) {
-			continue
+			return true
 		}
 		totalBytes += txBytes
 		totalGas += w.gasWanted
-		txmp.store.markAsUnevictable(w.key)
+		txKeys = append(txKeys, w.key)
 		keep = append(keep, w.tx)
-	}
+		return true
+	})
+	txmp.store.markAsProposed(txKeys...)
 	return keep
 }
 
@@ -490,17 +459,18 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 // The result may have fewer than max elements (possibly zero) if the mempool
 // does not have that many transactions available.
 func (txmp *TxPool) ReapMaxTxs(max int) types.Txs {
-	var keep []types.Tx //nolint:prealloc
+	var keep []types.Tx
 	currentTime := time.Now()
-	for _, w := range txmp.allEntriesSorted() {
-		if currentTime.Sub(w.timestamp) < InclusionDelay {
-			break
+	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
+		if currentTime.Sub(w.timestamp) < txmp.inclusionDelay {
+			return true
 		}
 		if max >= 0 && len(keep) >= max {
-			break
+			return false
 		}
 		keep = append(keep, w.tx)
-	}
+		return true
+	})
 	return keep
 }
 
@@ -718,14 +688,10 @@ func (txmp *TxPool) recheckTransactions() {
 		"height", txmp.Height(),
 	)
 
-	// Collect transactions currently in the mempool requiring recheck.
-	wtxs := txmp.allEntriesSorted()
-
 	// Issue CheckTx calls for each remaining transaction, and when all the
 	// rechecks are complete signal watchers that transactions may be available.
 	go func() {
-		for _, wtx := range wtxs {
-			wtx := wtx
+		txmp.store.iterateOrderedTxs(func(wtx *wrappedTx) bool {
 			// The response for this CheckTx is handled by the default recheckTxCallback.
 			rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{
 				Tx:   wtx.tx,
@@ -737,7 +703,8 @@ func (txmp *TxPool) recheckTransactions() {
 			} else {
 				txmp.handleRecheckResult(wtx, rsp)
 			}
-		}
+			return true
+		})
 		_ = txmp.proxyAppConn.FlushAsync()
 		txmp.notifyTxsAvailable()
 	}()

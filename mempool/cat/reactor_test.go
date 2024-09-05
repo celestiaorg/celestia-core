@@ -88,13 +88,11 @@ func TestReactorSendWantTxAfterReceiveingSeenTx(t *testing.T) {
 
 func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	reactor, pool := setupReactor(t)
+	require.NoError(t, reactor.Start())
+	defer reactor.Stop()
 
 	tx := newDefaultTx("hello")
 	key := tx.Key()
-	txEnvelope := p2p.Envelope{
-		Message:   &protomem.Txs{Txs: [][]byte{tx}},
-		ChannelID: mempool.MempoolChannel,
-	}
 
 	msgWant := &protomem.Message{
 		Sum: &protomem.Message_WantTx{WantTx: &protomem.WantTx{TxKey: key[:]}},
@@ -103,16 +101,28 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	require.NoError(t, err)
 
 	peer := genPeer()
-	peer.On("SendEnvelope", txEnvelope).Return(true)
+	peer.On("IsRunning").Return(true)
+	peer.On("TrySendEnvelope", p2p.Envelope{
+		ChannelID: mempool.MempoolChannel,
+		Message:   &protomem.Txs{Txs: [][]byte{tx}},
+	}).Return(true).Once()
 
 	// add the transaction to the nodes pool. It's not connected to
 	// any peers so it shouldn't broadcast anything yet
 	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
 
+	// wait for the first loop of broadcasting to happen
+	// the node is not connected to any peers so it should not send anything
+	time.Sleep(100 * time.Millisecond)
+
 	// Add the peer
 	reactor.InitPeer(peer)
 	// The peer sends a want msg for this tx
 	reactor.Receive(MempoolStateChannel, peer, msgWantB)
+
+	// wait for the second loop of broadcasting to happen
+	// the node should now send the tx to the peer
+	time.Sleep(100 * time.Millisecond)
 
 	// Should send the tx to the peer in response
 	peer.AssertExpectations(t)
@@ -233,6 +243,7 @@ func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
 	require.NoError(t, err)
 
 	peer := genPeer()
+
 	require.NoError(t, reactor.Start())
 	reactor.InitPeer(peer)
 	reactor.Receive(mempool.MempoolChannel, peer, txMsgBytes)
@@ -345,7 +356,7 @@ func newMempoolWithAppAndConfig(cc proxy.ClientCreator, conf *cfg.Config) (*TxPo
 		panic(err)
 	}
 
-	mp := NewTxPool(log.TestingLogger(), conf.Mempool, appConnMem, 1)
+	mp := NewTxPool(log.TestingLogger(), conf.Mempool, appConnMem, 1, WithInclusionDelay(0))
 
 	return mp, func() { os.RemoveAll(conf.RootDir) }
 }
@@ -402,6 +413,6 @@ func genPeer() *mocks.Peer {
 	peer := &mocks.Peer{}
 	nodeKey := p2p.NodeKey{PrivKey: ed25519.GenPrivKey()}
 	peer.On("ID").Return(nodeKey.ID())
-	peer.On("Get", types.PeerStateKey).Return(nil).Maybe()
+	peer.On("Get", types.PeerStateKey).Return(peerState{height: 1}, true).Maybe()
 	return peer
 }

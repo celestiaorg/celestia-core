@@ -35,7 +35,7 @@ func (memR *Reactor) FetchTxsFromKeys(ctx context.Context, blockID []byte, compa
 		wtx := memR.mempool.store.get(txKey)
 		if wtx != nil {
 			txs[i] = wtx.tx
-			memR.mempool.store.markAsUnevictable(txKey)
+			memR.mempool.store.markAsProposed(txKey)
 		} else {
 			missingKeys[i] = txKey
 		}
@@ -112,8 +112,9 @@ func (memR *Reactor) FetchKeysFromTxs(ctx context.Context, txs [][]byte) ([][]by
 			// We don't set the priority, gasWanted or sender fields because we
 			// don't know them.
 			wtx := newWrappedTx(tx, key, memR.mempool.Height(), 0, 0, "")
-			wtx.evictable = false
-			memR.broadcastNewTx(wtx)
+			wtx.proposed = true
+			memR.broadcastProposedTx(wtx)
+
 			// For safety we also store this transaction in the mempool (ignoring
 			// all size limits) so that we can retrieve it later if needed. Note
 			// as we're broadcasting it to all peers, we should not receive a `WantTx`

@@ -27,6 +27,10 @@ type (
 	TxKey [TxKeySize]byte
 )
 
+func (key TxKey) IsEmpty() bool {
+	return key == TxKey{}
+}
+
 // Hash computes the TMHASH hash of the wire encoded transaction. It attempts to
 // unwrap the transaction if it is a IndexWrapper or a BlobTx.
 func (tx Tx) Hash() []byte {

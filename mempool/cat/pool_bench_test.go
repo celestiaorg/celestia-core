@@ -13,6 +13,7 @@ import (
 func BenchmarkTxPool_CheckTx(b *testing.B) {
 	txmp := setup(b, 10000)
 	txmp.config.Size = b.N
+	txmp.config.Broadcast = false
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	b.ResetTimer()
@@ -28,5 +29,6 @@ func BenchmarkTxPool_CheckTx(b *testing.B) {
 		b.StartTimer()
 
 		require.NoError(b, txmp.CheckTx(tx, nil, mempool.TxInfo{}))
+		txmp.priorityBroadcastQueue.processIncomingTxs()
 	}
 }
