@@ -335,6 +335,11 @@ func MakeGenesisState(genDoc *types.GenesisDoc) (State, error) {
 	if genDoc.ConsensusParams != nil {
 		appVersion = genDoc.ConsensusParams.Version.AppVersion
 	}
+	// The mocha-4 genesis.json file does not have an AppVersion defined so this
+	// special cases it.
+	if genDoc.ChainID == "mocha-4" {
+		appVersion = 1
+	}
 
 	return State{
 		Version:       InitStateVersion(appVersion),
