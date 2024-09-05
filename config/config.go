@@ -161,6 +161,16 @@ func (cfg *Config) ValidateBasic() error {
 	return nil
 }
 
+// PossibleMisconfigurations returns a list of possible conflicting entries that
+// may lead to unexpected behavior
+func (cfg *Config) PossibleMisconfigurations() []string {
+	res := []string{}
+	for _, elem := range cfg.StateSync.PossibleMisconfigurations() {
+		res = append(res, fmt.Sprintf("[statesync] section: %s", elem))
+	}
+	return res
+}
+
 //-----------------------------------------------------------------------------
 // BaseConfig
 
@@ -855,6 +865,15 @@ func DefaultStateSyncConfig() *StateSyncConfig {
 // TestStateSyncConfig returns a default configuration for the state sync service
 func TestStateSyncConfig() *StateSyncConfig {
 	return DefaultStateSyncConfig()
+}
+
+// PossibleMisconfigurations returns a list of possible conflicting entries that
+// may lead to unexpected behavior
+func (cfg *StateSyncConfig) PossibleMisconfigurations() []string {
+	if !cfg.Enable && len(cfg.RPCServers) != 0 {
+		return []string{"rpc_servers specified but enable = false"}
+	}
+	return []string{}
 }
 
 // ValidateBasic performs basic validation.
