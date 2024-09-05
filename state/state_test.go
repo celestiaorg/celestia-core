@@ -88,6 +88,18 @@ func TestMakeGenesisStateSetsAppVersion(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, appVersion, state.Version.Consensus.App)
 	require.Equal(t, version.BlockProtocol, state.Version.Consensus.Block)
+	t.Run("MakeGenesisState defaults to 1 if app version is not set", func(t *testing.T) {
+		cp := types.DefaultConsensusParams()
+		cp.Version = cmtproto.VersionParams{} // zero value
+		doc := types.GenesisDoc{
+			ChainID:         "chain-id",
+			ConsensusParams: cp,
+		}
+		require.NoError(t, doc.ValidateAndComplete())
+		state, err := sm.MakeGenesisState(&doc)
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), state.Version.Consensus.App)
+	})
 }
 
 // TestStateSaveLoad tests saving and loading State from a db.
