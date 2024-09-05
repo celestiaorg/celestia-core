@@ -172,7 +172,6 @@ func (memR *Reactor) broadcastTxsRoutine() {
 			peers = memR.ids.GetAll()
 		}
 		for peerID, peer := range peers {
-			fmt.Println("sending to peer", peer.ID())
 			// we continually try to send to that peer until one of the
 			// termination conditions are met
 			for {
