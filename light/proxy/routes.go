@@ -39,6 +39,7 @@ func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {
 		"consensus_params":     rpcserver.NewRPCFunc(makeConsensusParamsFunc(c), "height", rpcserver.Cacheable("height")),
 		"unconfirmed_txs":      rpcserver.NewRPCFunc(makeUnconfirmedTxsFunc(c), "limit"),
 		"num_unconfirmed_txs":  rpcserver.NewRPCFunc(makeNumUnconfirmedTxsFunc(c), ""),
+		"tx_status":            rpcserver.NewRPCFunc(makeTxStatusFunc(c), "hash"),
 
 		// tx broadcast API
 		"broadcast_tx_commit": rpcserver.NewRPCFunc(makeBroadcastTxCommitFunc(c), "tx"),
@@ -140,6 +141,14 @@ type rpcBlockResultsFunc func(ctx *rpctypes.Context, height *int64) (*ctypes.Res
 func makeBlockResultsFunc(c *lrpc.Client) rpcBlockResultsFunc {
 	return func(ctx *rpctypes.Context, height *int64) (*ctypes.ResultBlockResults, error) {
 		return c.BlockResults(ctx.Context(), height)
+	}
+}
+
+type rpcTxStatusFunc func(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error)
+
+func makeTxStatusFunc(c *lrpc.Client) rpcTxStatusFunc {
+	return func(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
+		return c.TxStatus(ctx.Context(), hash)
 	}
 }
 

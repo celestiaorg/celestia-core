@@ -17,6 +17,13 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+const (
+	TxStatusUnknown   string = "UNKNOWN"
+	TxStatusPending   string = "PENDING"
+	TxStatusEvicted   string = "EVICTED"
+	TxStatusCommitted string = "COMMITTED"
+)
+
 // Tx allows you to query the transaction results. `nil` could mean the
 // transaction is in the mempool, invalidated, or was not sent in the first
 // place.
@@ -211,6 +218,40 @@ func ProveShares(
 		return shareProof, err
 	}
 	return shareProof, nil
+}
+
+// TxStatus retrieves the status of a transaction by its hash. It returns a ResultTxStatus
+// with the transaction's height and index if committed, or its pending, evicted, or unknown status.
+// It also includes the execution code and log for failed txs.
+func TxStatus(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
+	env := GetEnvironment()
+
+	// Check if the tx has been committed
+	txInfo := env.BlockStore.LoadTxInfo(hash)
+	if txInfo != nil {
+		return &ctypes.ResultTxStatus{Height: txInfo.Height, Index: txInfo.Index, ExecutionCode: txInfo.Code, Error: txInfo.Error, Status: TxStatusCommitted}, nil
+	}
+
+	// Get the tx key from the hash
+	txKey, err := types.TxKeyFromBytes(hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tx key from hash: %v", err)
+	}
+
+	// Check if the tx is in the mempool
+	txInMempool, ok := env.Mempool.GetTxByKey(txKey)
+	if txInMempool != nil && ok {
+		return &ctypes.ResultTxStatus{Status: TxStatusPending}, nil
+	}
+
+	// Check if the tx is evicted
+	isEvicted := env.Mempool.WasRecentlyEvicted(txKey)
+	if isEvicted {
+		return &ctypes.ResultTxStatus{Status: TxStatusEvicted}, nil
+	}
+
+	// If the tx is not in the mempool, evicted, or committed, return unknown
+	return &ctypes.ResultTxStatus{Status: TxStatusUnknown}, nil
 }
 
 // ProveSharesV2 creates a proof for a set of shares to the data root.

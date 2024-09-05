@@ -11,6 +11,8 @@ import (
 	"github.com/tendermint/tendermint/libs/cmap"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/service"
+	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 
 	cmtconn "github.com/tendermint/tendermint/p2p/conn"
 )
@@ -29,6 +31,8 @@ type Peer interface {
 
 	IsOutbound() bool   // did we dial the peer
 	IsPersistent() bool // do we redial this peer when we disconnect
+
+	HasIPChanged() bool // has the peer's IP changed
 
 	CloseConn() error // close original connection
 
@@ -175,6 +179,7 @@ type peer struct {
 	Data *cmap.CMap
 
 	metrics       *Metrics
+	traceClient   trace.Tracer
 	metricsTicker *time.Ticker
 	mlc           *metricsLabelCache
 
@@ -183,6 +188,12 @@ type peer struct {
 }
 
 type PeerOption func(*peer)
+
+func WithPeerTracer(t trace.Tracer) PeerOption {
+	return func(p *peer) {
+		p.traceClient = t
+	}
+}
 
 func newPeer(
 	pc peerConn,
@@ -203,6 +214,7 @@ func newPeer(
 		metricsTicker: time.NewTicker(metricsTickerDuration),
 		metrics:       NopMetrics(),
 		mlc:           mlc,
+		traceClient:   trace.NoOpTracer(),
 	}
 
 	p.mconn = createMConnection(
@@ -288,6 +300,18 @@ func (p *peer) IsOutbound() bool {
 // IsPersistent returns true if the peer is persitent, false otherwise.
 func (p *peer) IsPersistent() bool {
 	return p.peerConn.persistent
+}
+
+// HasIPChanged returns true and the new IP if the peer's IP has changed.
+func (p *peer) HasIPChanged() bool {
+	oldIP := p.ip
+	if oldIP == nil {
+		return false
+	}
+	// Reset the IP so we can get the new one
+	p.ip = nil
+	newIP := p.RemoteIP()
+	return !oldIP.Equal(newIP)
 }
 
 // NodeInfo returns a copy of the peer's NodeInfo.
@@ -494,11 +518,14 @@ func (p *peer) metricsReporter() {
 		case <-p.metricsTicker.C:
 			status := p.mconn.Status()
 			var sendQueueSize float64
+			queues := make(map[byte]int, len(status.Channels))
 			for _, chStatus := range status.Channels {
 				sendQueueSize += float64(chStatus.SendQueueSize)
+				queues[chStatus.ID] = chStatus.SendQueueSize
 			}
 
 			p.metrics.PeerPendingSendBytes.With("peer_id", string(p.ID())).Set(sendQueueSize)
+			schema.WritePendingBytes(p.traceClient, string(p.ID()), queues)
 		case <-p.Quit():
 			return
 		}
@@ -546,6 +573,7 @@ func createMConnection(
 
 		p.metrics.PeerReceiveBytesTotal.With(labels...).Add(float64(len(msgBytes)))
 		p.metrics.MessageReceiveBytesTotal.With(append(labels, "message_type", p.mlc.ValueToMetricLabel(msg))...).Add(float64(len(msgBytes)))
+		schema.WriteReceivedBytes(p.traceClient, string(p.ID()), chID, len(msgBytes))
 		if nr, ok := reactor.(EnvelopeReceiver); ok {
 			nr.ReceiveEnvelope(Envelope{
 				ChannelID: chID,

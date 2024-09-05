@@ -195,8 +195,9 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			ntx := types.Tx(tx)
 			schema.WriteMempoolTx(
 				memR.traceClient,
-				e.Src.ID(),
+				string(e.Src.ID()),
 				ntx.Hash(),
+				len(tx),
 				schema.Download,
 			)
 			err = memR.mempool.CheckTx(ntx, nil, txInfo)
@@ -301,8 +302,9 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 				memTx.SetPeer(peerID)
 				schema.WriteMempoolTx(
 					memR.traceClient,
-					peer.ID(),
+					string(peer.ID()),
 					memTx.tx.Hash(),
+					len(memTx.tx),
 					schema.Upload,
 				)
 			}

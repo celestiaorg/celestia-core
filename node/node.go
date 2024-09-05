@@ -549,13 +549,14 @@ func createTransport(
 	nodeInfo p2p.NodeInfo,
 	nodeKey *p2p.NodeKey,
 	proxyApp proxy.AppConns,
+	tracer trace.Tracer,
 ) (
 	*p2p.MultiplexTransport,
 	[]p2p.PeerFilterFunc,
 ) {
 	var (
 		mConnConfig = p2p.MConnConfig(config.P2P)
-		transport   = p2p.NewMultiplexTransport(nodeInfo, *nodeKey, mConnConfig)
+		transport   = p2p.NewMultiplexTransport(nodeInfo, *nodeKey, mConnConfig, tracer)
 		connFilters = []p2p.ConnFilterFunc{}
 		peerFilters = []p2p.PeerFilterFunc{}
 	)
@@ -625,12 +626,14 @@ func createSwitch(config *cfg.Config,
 	nodeInfo p2p.NodeInfo,
 	nodeKey *p2p.NodeKey,
 	p2pLogger log.Logger,
+	tracer trace.Tracer,
 ) *p2p.Switch {
 	sw := p2p.NewSwitch(
 		config.P2P,
 		transport,
 		p2p.WithMetrics(p2pMetrics),
 		p2p.SwitchPeerFilters(peerFilters...),
+		p2p.WithTracer(tracer),
 	)
 	sw.SetLogger(p2pLogger)
 	sw.AddReactor("MEMPOOL", mempoolReactor)
@@ -884,6 +887,7 @@ func NewNode(config *cfg.Config,
 		mempool,
 		evidencePool,
 		sm.BlockExecutorWithMetrics(smMetrics),
+		sm.WithBlockStore(blockStore),
 	)
 
 	// Make BlockchainReactor. Don't start fast sync if we're doing a state sync first.
@@ -922,13 +926,13 @@ func NewNode(config *cfg.Config,
 	}
 
 	// Setup Transport.
-	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp)
+	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp, tracer)
 
 	// Setup Switch.
 	p2pLogger := logger.With("module", "p2p")
 	sw := createSwitch(
 		config, transport, p2pMetrics, peerFilters, mempoolReactor, bcReactor,
-		stateSyncReactor, consensusReactor, evidenceReactor, nodeInfo, nodeKey, p2pLogger,
+		stateSyncReactor, consensusReactor, evidenceReactor, nodeInfo, nodeKey, p2pLogger, tracer,
 	)
 
 	err = sw.AddPersistentPeers(splitAndTrimEmpty(config.P2P.PersistentPeers, ",", " "))

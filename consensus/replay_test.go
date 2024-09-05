@@ -27,6 +27,7 @@ import (
 	mempl "github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/privval"
 	cmtstate "github.com/tendermint/tendermint/proto/tendermint/state"
+	cmtstore "github.com/tendermint/tendermint/proto/tendermint/store"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/proxy"
 	sm "github.com/tendermint/tendermint/state"
@@ -58,7 +59,7 @@ func TestMain(m *testing.M) {
 // the `Handshake Tests` are for failures in applying the block.
 // With the help of the WAL, we can recover from it all!
 
-//------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------
 // WAL Tests
 
 // TODO: It would be better to verify explicitly which states we can recover from without the wal
@@ -320,7 +321,7 @@ var (
 	sim testSim
 )
 
-//---------------------------------------
+// ---------------------------------------
 // Test handshake/replay
 
 // 0 - all synced up
@@ -1041,7 +1042,7 @@ func (app *badApp) Commit() abci.ResponseCommit {
 	panic("either allHashesAreWrong or onlyLastHashIsWrong must be set")
 }
 
-//--------------------------
+// --------------------------
 // utils for making blocks
 
 func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.Commit, error) {
@@ -1187,8 +1188,9 @@ func stateAndStore(
 	return stateDB, state, store
 }
 
-//----------------------------------
+// ----------------------------------
 // mock block store
+var _ sm.BlockStore = &mockBlockStore{}
 
 type mockBlockStore struct {
 	config  *cfg.Config
@@ -1222,6 +1224,10 @@ func (bs *mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 func (bs *mockBlockStore) LoadBlockPart(height int64, index int) *types.Part { return nil }
 func (bs *mockBlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
 }
+func (bs *mockBlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error {
+	return nil
+}
+func (bs *mockBlockStore) LoadTxInfo(hash []byte) *cmtstore.TxInfo { return &cmtstore.TxInfo{} }
 
 func (bs *mockBlockStore) LoadBlockCommit(height int64) *types.Commit {
 	return bs.commits[height-1]
@@ -1242,7 +1248,7 @@ func (bs *mockBlockStore) PruneBlocks(height int64) (uint64, error) {
 	return pruned, nil
 }
 
-//---------------------------------------
+// ---------------------------------------
 // Test handshake/init chain
 
 func TestHandshakeUpdatesValidators(t *testing.T) {

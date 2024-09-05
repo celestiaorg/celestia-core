@@ -1270,11 +1270,11 @@ func (m *RequestApplySnapshotChunk) GetSender() string {
 }
 
 type RequestPrepareProposal struct {
-	// block_data is an array of transactions that will be included in a block,
-	// sent to the app for possible modifications.
-	// applications can not exceed the size of the data passed to it.
+	// BlockData is a slice of candidate transactions that may be included in a
+	// block. BlockData is sent to the application so that the application can
+	// filter and re-arrange the slice of candidate transactions.
 	BlockData *types1.Data `protobuf:"bytes,1,opt,name=block_data,json=blockData,proto3" json:"block_data,omitempty"`
-	// If an application decides to populate block_data with extra information, they can not exceed this value.
+	// BlockDataSize is the maximum size (in bytes) that BlockData should be.
 	BlockDataSize int64 `protobuf:"varint,2,opt,name=block_data_size,json=blockDataSize,proto3" json:"block_data_size,omitempty"`
 	// chain_id is a unique identifier for the blockchain network this proposal
 	// belongs to (e.g. mocha-1).

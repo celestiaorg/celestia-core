@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -22,6 +23,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
+const jsonL = ".jsonl"
+
 func (lt *LocalTracer) getTableHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Parse the request to get the data
@@ -36,11 +39,12 @@ func (lt *LocalTracer) getTableHandler() http.HandlerFunc {
 			return
 		}
 
-		f, err := lt.ReadTable(inputString)
+		f, done, err := lt.readTable(inputString)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to read table: %v", err), http.StatusInternalServerError)
 			return
 		}
+		defer done() //nolint:errcheck
 
 		// Use the pump function to continuously read from the file and write to
 		// the response writer
@@ -74,7 +78,7 @@ func pump(table string, br *bufio.Reader) (*io.PipeReader, *multipart.Writer) {
 		defer w.Close()
 		defer m.Close()
 
-		part, err := m.CreateFormFile("filename", table+".jsonl")
+		part, err := m.CreateFormFile("filename", table+jsonL)
 		if err != nil {
 			return
 		}
@@ -95,6 +99,7 @@ func (lt *LocalTracer) servePullData() {
 	if err != nil {
 		lt.logger.Error("trace pull server failure", "err", err)
 	}
+	lt.logger.Info("trace pull server started", "address", lt.cfg.Instrumentation.TracePullAddress)
 }
 
 // GetTable downloads a table from the server and saves it to the given directory. It uses a multipart
@@ -130,7 +135,7 @@ func GetTable(serverURL, table, dirPath string) error {
 		return err
 	}
 
-	outputFile, err := os.Create(path.Join(dirPath, table+".jsonl"))
+	outputFile, err := os.Create(path.Join(dirPath, table+jsonL))
 	if err != nil {
 		return err
 	}
@@ -205,6 +210,9 @@ func PushS3(chainID, nodeID string, s3cfg S3Config, f *os.File) error {
 			s3cfg.SecretKey,
 			"",
 		),
+		HTTPClient: &http.Client{
+			Timeout: time.Duration(15) * time.Second,
+		},
 	},
 	)
 	if err != nil {
@@ -236,21 +244,31 @@ func (lt *LocalTracer) pushLoop() {
 
 func (lt *LocalTracer) PushAll() error {
 	for table := range lt.fileMap {
-		f, err := lt.ReadTable(table)
+		f, done, err := lt.readTable(table)
 		if err != nil {
 			return err
 		}
-		if err := PushS3(lt.chainID, lt.nodeID, lt.s3Config, f); err != nil {
+		for i := 0; i < 3; i++ {
+			err = PushS3(lt.chainID, lt.nodeID, lt.s3Config, f)
+			if err == nil {
+				break
+			}
+			lt.logger.Error("failed to push table", "table", table, "error", err)
+			time.Sleep(time.Second * time.Duration(rand.Intn(3))) //nolint:gosec
+		}
+		err = done()
+		if err != nil {
 			return err
 		}
-		f.Close()
 	}
 	return nil
 }
 
 // S3Download downloads files that match some prefix from an S3 bucket to a
 // local directory dst.
-func S3Download(dst, prefix string, cfg S3Config) error {
+// fileNames is a list of traced jsonl file names to download. If it is empty, all traces are downloaded.
+// fileNames should not have .jsonl suffix.
+func S3Download(dst, prefix string, cfg S3Config, fileNames ...string) error {
 	// Ensure local directory structure exists
 	err := os.MkdirAll(dst, os.ModePerm)
 	if err != nil {
@@ -279,37 +297,51 @@ func S3Download(dst, prefix string, cfg S3Config) error {
 
 	err = s3Svc.ListObjectsV2Pages(input, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
 		for _, content := range page.Contents {
-			localFilePath := filepath.Join(dst, strings.TrimPrefix(*content.Key, prefix))
-			fmt.Printf("Downloading %s to %s\n", *content.Key, localFilePath)
+			key := *content.Key
 
-			// Create the directories in the path
-			if err := os.MkdirAll(filepath.Dir(localFilePath), os.ModePerm); err != nil {
-				return false
+			// If no fileNames are specified, download all files
+			if len(fileNames) == 0 {
+				fileNames = append(fileNames, strings.TrimPrefix(key, prefix))
 			}
 
-			// Create a file to write the S3 Object contents to.
-			f, err := os.Create(localFilePath)
-			if err != nil {
-				return false
-			}
+			for _, filename := range fileNames {
+				// Add .jsonl suffix to the fileNames
+				fullFilename := filename + jsonL
+				if strings.HasSuffix(key, fullFilename) {
+					localFilePath := filepath.Join(dst, prefix, strings.TrimPrefix(key, prefix))
+					fmt.Printf("Downloading %s to %s\n", key, localFilePath)
 
-			resp, err := s3Svc.GetObject(&s3.GetObjectInput{
-				Bucket: aws.String(cfg.BucketName),
-				Key:    aws.String(*content.Key),
-			})
-			if err != nil {
-				f.Close()
-				continue
-			}
-			defer resp.Body.Close()
+					// Create the directories in the path
+					if err := os.MkdirAll(filepath.Dir(localFilePath), os.ModePerm); err != nil {
+						return false
+					}
 
-			// Copy the contents of the S3 object to the local file
-			if _, err := io.Copy(f, resp.Body); err != nil {
-				return false
-			}
+					// Create a file to write the S3 Object contents to.
+					f, err := os.Create(localFilePath)
+					if err != nil {
+						return false
+					}
 
-			fmt.Printf("Successfully downloaded %s to %s\n", *content.Key, localFilePath)
-			f.Close()
+					resp, err := s3Svc.GetObject(&s3.GetObjectInput{
+						Bucket: aws.String(cfg.BucketName),
+						Key:    aws.String(key),
+					})
+					if err != nil {
+						f.Close()
+						continue
+					}
+					defer resp.Body.Close()
+
+					// Copy the contents of the S3 object to the local file
+					if _, err := io.Copy(f, resp.Body); err != nil {
+						f.Close()
+						return false
+					}
+
+					fmt.Printf("Successfully downloaded %s to %s\n", key, localFilePath)
+					f.Close()
+				}
+			}
 		}
 		return !lastPage // continue paging
 	})

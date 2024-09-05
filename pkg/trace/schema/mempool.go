@@ -2,7 +2,6 @@ package schema
 
 import (
 	"github.com/tendermint/tendermint/libs/bytes"
-	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
 )
 
@@ -24,7 +23,7 @@ const (
 // MemPoolTx describes the schema for the "mempool_tx" table.
 type MempoolTx struct {
 	TxHash       string       `json:"tx_hash"`
-	Peer         p2p.ID       `json:"peer"`
+	Peer         string       `json:"peer"`
 	Size         int          `json:"size"`
 	TransferType TransferType `json:"transfer_type"`
 }
@@ -36,8 +35,8 @@ func (m MempoolTx) Table() string {
 
 // WriteMempoolTx writes a tracing point for a tx using the predetermined
 // schema for mempool tracing.
-func WriteMempoolTx(client trace.Tracer, peer p2p.ID, txHash []byte, transferType TransferType) {
-	// this check is redundant to what is checked during WritePoint, although it
+func WriteMempoolTx(client trace.Tracer, peer string, txHash []byte, size int, transferType TransferType) {
+	// this check is redundant to what is checked during client.Write, although it
 	// is an optimization to avoid allocations from the map of fields.
 	if !client.IsCollecting(MempoolTxTable) {
 		return
@@ -45,7 +44,7 @@ func WriteMempoolTx(client trace.Tracer, peer p2p.ID, txHash []byte, transferTyp
 	client.Write(MempoolTx{
 		TxHash:       bytes.HexBytes(txHash).String(),
 		Peer:         peer,
-		Size:         len(txHash),
+		Size:         size,
 		TransferType: transferType,
 	})
 }
@@ -67,7 +66,7 @@ const (
 
 // MempoolPeerState describes the schema for the "mempool_peer_state" table.
 type MempoolPeerState struct {
-	Peer         p2p.ID                 `json:"peer"`
+	Peer         string                 `json:"peer"`
 	StateUpdate  MempoolStateUpdateType `json:"state_update"`
 	TxHash       string                 `json:"tx_hash"`
 	TransferType TransferType           `json:"transfer_type"`
@@ -82,12 +81,12 @@ func (m MempoolPeerState) Table() string {
 // the predetermined schema for mempool tracing.
 func WriteMempoolPeerState(
 	client trace.Tracer,
-	peer p2p.ID,
+	peer string,
 	stateUpdate MempoolStateUpdateType,
 	txHash []byte,
 	transferType TransferType,
 ) {
-	// this check is redundant to what is checked during WritePoint, although it
+	// this check is redundant to what is checked during client.Write, although it
 	// is an optimization to avoid allocations from creating the map of fields.
 	if !client.IsCollecting(MempoolPeerStateTable) {
 		return
