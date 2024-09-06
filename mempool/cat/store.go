@@ -217,6 +217,9 @@ func (s *store) purgeExpiredTxs(expirationHeight int64, expirationAge time.Time)
 		if tx.height < expirationHeight || tx.timestamp.Before(expirationAge) {
 			s.bytes -= tx.size()
 			delete(s.txs, key)
+			if err := s.deleteOrderedTx(tx); err != nil {
+				panic(err)
+			}
 			purgedTxs = append(purgedTxs, tx)
 			counter++
 		}
@@ -229,6 +232,7 @@ func (s *store) reset() {
 	defer s.mtx.Unlock()
 	s.bytes = 0
 	s.txs = make(map[types.TxKey]*wrappedTx)
+	s.orderedTxs = make([]*wrappedTx, 0)
 }
 
 func (s *store) orderTx(tx *wrappedTx) {
