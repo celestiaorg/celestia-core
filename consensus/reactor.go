@@ -153,7 +153,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  StateChannel,
-			Priority:            20,
+			Priority:            5,
 			SendQueueCapacity:   100,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
@@ -1003,16 +1003,6 @@ func (conR *Reactor) gossipVotesForHeight(
 			return true
 		}
 	}
-	// If there are POLPrevotes to send...
-	if prs.ProposalPOLRound != -1 {
-		if polPrevotes := rs.Votes.Prevotes(prs.ProposalPOLRound); polPrevotes != nil {
-			if conR.pickSendVoteAndTrace(polPrevotes, rs, ps) {
-				logger.Debug("Picked rs.Prevotes(prs.ProposalPOLRound) to send",
-					"round", prs.ProposalPOLRound)
-				return true
-			}
-		}
-	}
 
 	return false
 }
@@ -1620,10 +1610,6 @@ func (ps *PeerState) ApplyNewRoundStepMessage(msg *NewRoundStepMessage) {
 		// We'll update the BitArray capacity later.
 		ps.PRS.Prevotes = nil
 		ps.PRS.Precommits = nil
-	}
-	if msg.Step >= cstypes.RoundStepPrevote {
-		ps.PRS.Proposal = true
-		ps.PRS.Block = true
 	}
 	if psHeight == msg.Height && psRound != msg.Round && msg.Round == psCatchupCommitRound {
 		// Peer caught up to CatchupCommitRound.
