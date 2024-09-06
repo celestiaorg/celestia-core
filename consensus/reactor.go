@@ -161,15 +161,15 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID: DataChannel, // maybe split between gossiping current block and catchup stuff
 			// once we gossip the whole block there's nothing left to send until next height or round
-			Priority:            10,
-			SendQueueCapacity:   2,
+			Priority:            12,
+			SendQueueCapacity:   20,
 			RecvBufferCapacity:  50 * 4096,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
 		},
 		{
 			ID:                  VoteChannel,
-			Priority:            10,
+			Priority:            8,
 			SendQueueCapacity:   100,
 			RecvBufferCapacity:  100 * 100,
 			RecvMessageCapacity: maxMsgSize,
@@ -256,8 +256,6 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		conR.Switch.StopPeerForError(e.Src, err)
 		return
 	}
-
-	conR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID, "msg", msg)
 
 	// Get peer states
 	ps, ok := e.Src.Get(types.PeerStateKey).(*PeerState)
@@ -709,6 +707,7 @@ OUTER_LOOP:
 				Message:   &cmtcons.Proposal{Proposal: *rs.Proposal.ToProto()},
 			}, logger) {
 				ps.SetHasProposal(rs.Proposal)
+				conR.Logger.Debug("sent ProposalMessage", "height", rs.Height, "round", rs.Round)
 				schema.WriteProposal(
 					conR.traceClient,
 					rs.Height,
@@ -722,7 +721,6 @@ OUTER_LOOP:
 			// rs.Proposal was validated, so rs.Proposal.POLRound <= rs.Round,
 			// so we definitely have rs.Votes.Prevotes(rs.Proposal.POLRound).
 			if 0 <= rs.Proposal.POLRound {
-				logger.Debug("Sending POL", "height", prs.Height, "round", prs.Round)
 				if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 					ChannelID: DataChannel,
 					Message: &cmtcons.ProposalPOL{
@@ -730,7 +728,8 @@ OUTER_LOOP:
 						ProposalPolRound: rs.Proposal.POLRound,
 						ProposalPol:      *rs.Votes.Prevotes(rs.Proposal.POLRound).BitArray().ToProto(),
 					},
-				}, logger) {
+					}, logger) {
+					logger.Debug("Sent POL", "height", prs.Height, "round", prs.Round)
 					ps.SetHasBlock(rs.Height, rs.Round)
 					schema.WriteConsensusState(
 						conR.traceClient,
@@ -747,7 +746,6 @@ OUTER_LOOP:
 			if err != nil {
 				panic(err)
 			}
-			logger.Debug("Sending compact block", "height", prs.Height, "round", prs.Round)
 			if p2p.TrySendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 				ChannelID: DataChannel,
 				Message: &cmtcons.CompactBlock{
@@ -755,6 +753,7 @@ OUTER_LOOP:
 					Round: rs.Round,
 				},
 			}, logger) {
+				logger.Debug("Sent compact block", "height", prs.Height, "round", prs.Round)
 				ps.SetHasBlock(prs.Height, prs.Round)
 				conR.conS.metrics.CompactBlocksSent.Add(1)
 				schema.WriteCompactBlock(
@@ -1365,7 +1364,6 @@ func (ps *PeerState) SetHasBlock(height int64, round int32) {
 // Returns the vote if vote was sent. Otherwise, returns nil.
 func (ps *PeerState) PickSendVote(votes types.VoteSetReader) *types.Vote {
 	if vote, ok := ps.PickVoteToSend(votes); ok {
-		ps.logger.Debug("Sending vote message", "ps", ps, "vote", vote)
 		if p2p.TrySendEnvelopeShim(ps.peer, p2p.Envelope{ //nolint: staticcheck
 			ChannelID: VoteChannel,
 			Message: &cmtcons.Vote{

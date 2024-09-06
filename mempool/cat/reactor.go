@@ -352,7 +352,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			// Now attempt to add the tx to the mempool.
 			_, _, err = memR.mempool.tryAddNewTx(ntx, key, txInfo)
 			if err != nil && err != ErrTxInMempool && err != ErrTxRecentlyCommitted {
-				memR.Logger.Info("Could not add tx from peer", "peerID", peerID, "txKey", key, "err", err)
+				memR.Logger.Info("could not add tx from peer", "peerID", peerID, "txKey", key, "err", err)
 				return
 			}
 			if !memR.opts.ListenOnly {
