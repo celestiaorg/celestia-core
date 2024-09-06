@@ -422,7 +422,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			tx = memR.mempool.store.getCommitted(txKey)
 		}
 		if tx == nil {
-			memR.Logger.Info("received a want tx for a transaction we don't have", "txKey", txKey)
+			memR.Logger.Debug("received a want tx for a transaction we don't have", "txKey", txKey)
 		}
 		if tx != nil && !memR.opts.ListenOnly {
 			// If this transaction is in an active proposal, we send it with high priority
