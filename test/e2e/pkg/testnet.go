@@ -23,9 +23,9 @@ const (
 	proxyPortFirst           uint32 = 5701
 	prometheusProxyPortFirst uint32 = 6701
 
-	defaultBatchSize   = 2
-	defaultConnections = 1
-	defaultTxSizeBytes = 1024
+	defaultBatchSize   = 100
+	defaultConnections = 4
+	defaultTxSizeBytes = 1024 * 16
 
 	localVersion = "cometbft/e2e-node:local-version"
 )

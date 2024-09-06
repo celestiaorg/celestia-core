@@ -428,8 +428,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			// If this transaction is in an active proposal, we send it with high priority
 			peerID := memR.ids.GetIDForPeer(e.Src.ID())
 			if tx.proposed {
-				fmt.Println("sending proposed tx")
-				memR.Logger.Debug("sending a transaction in response to a want msg", "peer", peerID, "txKey", txKey)
+				memR.Logger.Debug("sending a proposed transaction in response to a want msg", "peer", peerID, "txKey", txKey)
 				if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint:staticcheck
 					ChannelID: MempoolRecoveryChannel,
 					Message:   &protomem.Txs{Txs: [][]byte{tx.tx}},

@@ -895,9 +895,6 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 func (conR *Reactor) gossipVotesRoutine(peer p2p.Peer, ps *PeerState) {
 	logger := conR.Logger.With("peer", peer)
 
-	// Simple hack to throttle logs upon sleep.
-	var sleeping = 0
-
 OUTER_LOOP:
 	for {
 		// Manage disconnects from self or peer.
@@ -906,13 +903,6 @@ OUTER_LOOP:
 		}
 		rs := conR.getRoundState()
 		prs := ps.GetRoundState()
-
-		switch sleeping {
-		case 1: // First sleep
-			sleeping = 2
-		case 2: // No more sleep
-			sleeping = 0
-		}
 
 		// logger.Debug("gossipVotesRoutine", "rsHeight", rs.Height, "rsRound", rs.Round,
 		// "prsHeight", prs.Height, "prsRound", prs.Round, "prsStep", prs.Step)
@@ -951,16 +941,7 @@ OUTER_LOOP:
 			}
 		}
 
-		if sleeping == 0 {
-			// We sent nothing. Sleep...
-			sleeping = 1
-		} else if sleeping == 2 {
-			// Continued sleep...
-			sleeping = 1
-		}
-
 		time.Sleep(conR.conS.config.PeerGossipSleepDuration)
-		continue OUTER_LOOP
 	}
 }
 
