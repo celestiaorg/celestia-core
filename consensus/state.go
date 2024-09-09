@@ -1142,6 +1142,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 	}
 
 	address := cs.privValidatorPubKey.Address()
+	schema.WriteProposer(cs.traceClient, height, round, address.String())
 
 	// if not a validator, we're done
 	if !cs.Validators.HasAddress(address) {
@@ -1151,7 +1152,6 @@ func (cs *State) enterPropose(height int64, round int32) {
 
 	if cs.isProposer(address) {
 		// trace if the node is the proposer
-		schema.WriteProposer(cs.traceClient, height, round, address.String())
 		logger.Debug("propose step; our turn to propose", "proposer", address)
 		cs.decideProposal(height, round)
 	} else {
