@@ -1144,7 +1144,8 @@ func (cs *State) enterPropose(height int64, round int32) {
 
 	address := cs.privValidatorPubKey.Address()
 	logger.Info("attempting to trace proposer", "addr", address.String())
-	schema.WriteProposer(cs.traceClient, height, round, address.String())
+	schema.WriteProposer(cs.traceClient, height, round, address.String(),
+		cs.Validators.GetProposer().Address.String())
 
 	// if not a validator, we're done
 	if !cs.Validators.HasAddress(address) {
