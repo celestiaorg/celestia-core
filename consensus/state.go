@@ -1108,7 +1108,8 @@ func (cs *State) enterPropose(height int64, round int32) {
 		return
 	}
 
-	logger.Debug("entering propose step", "current", log.NewLazySprintf("%v/%v/%v", cs.Height, cs.Round, cs.Step))
+	logger.Info("entering propose step", "current",
+		log.NewLazySprintf("%v/%v/%v", cs.Height, cs.Round, cs.Step))
 
 	defer func() {
 		// Done enterPropose:
@@ -1142,6 +1143,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 	}
 
 	address := cs.privValidatorPubKey.Address()
+	logger.Info("attempting to trace proposer", "addr", address.String())
 	schema.WriteProposer(cs.traceClient, height, round, address.String())
 
 	// if not a validator, we're done
