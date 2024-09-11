@@ -204,6 +204,7 @@ func (app *CounterApplication) Info(req abci.RequestInfo) abci.ResponseInfo {
 
 func (app *CounterApplication) DeliverTx(req abci.RequestDeliverTx) abci.ResponseDeliverTx {
 	txValue := txAsUint64(req.Tx)
+	//nolint:gosec
 	if txValue != uint64(app.txCount) {
 		return abci.ResponseDeliverTx{
 			Code: code.CodeTypeBadNonce,
@@ -248,6 +249,7 @@ func (app *CounterApplication) Commit() abci.ResponseCommit {
 		return abci.ResponseCommit{}
 	}
 	hash := make([]byte, 8)
+	//nolint:gosec
 	binary.BigEndian.PutUint64(hash, uint64(app.txCount))
 	return abci.ResponseCommit{Data: hash}
 }

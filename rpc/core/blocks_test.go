@@ -330,8 +330,9 @@ func (store mockBlockStore) LoadTxInfo(hash []byte) *cmtstore.TxInfo {
 			if bytes.Equal(tx.Hash(), hash) {
 				return &cmtstore.TxInfo{
 					Height: block.Header.Height,
-					Index:  uint32(i),
-					Code:   uint32(0),
+					//nolint:gosec
+					Index: uint32(i),
+					Code:  uint32(0),
 				}
 			}
 		}

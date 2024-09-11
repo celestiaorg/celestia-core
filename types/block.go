@@ -785,6 +785,7 @@ func CommitToVoteSet(chainID string, commit *Commit, vals *ValidatorSet) *VoteSe
 		if commitSig.Absent() {
 			continue // OK, some precommits can be missing.
 		}
+		//nolint:gosec
 		added, err := voteSet.AddVote(commit.GetVote(int32(idx)))
 		if !added || err != nil {
 			panic(fmt.Sprintf("Failed to reconstruct LastCommit: %v", err))

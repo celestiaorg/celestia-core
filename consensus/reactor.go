@@ -834,6 +834,7 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 				conR.traceClient,
 				prs.Height,
 				prs.Round,
+				//nolint:gosec
 				uint32(index),
 				true,
 				string(peer.ID()),
