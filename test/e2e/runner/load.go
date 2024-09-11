@@ -99,9 +99,12 @@ func createTxBatch(ctx context.Context, txCh chan<- types.Tx, testnet *e2e.Testn
 			defer wg.Done()
 			for range genCh {
 				tx, err := payload.NewBytes(&payload.Payload{
-					Id:          id,
-					Size:        uint64(testnet.LoadTxSizeBytes),
-					Rate:        uint64(testnet.LoadTxBatchSize),
+					Id: id,
+					//nolint:gosec
+					Size: uint64(testnet.LoadTxSizeBytes),
+					//nolint:gosec
+					Rate: uint64(testnet.LoadTxBatchSize),
+					//nolint:gosec
 					Connections: uint64(testnet.LoadTxConnections),
 				})
 				if err != nil {

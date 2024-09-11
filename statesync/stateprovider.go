@@ -151,10 +151,12 @@ func (s *lightClientStateProvider) State(ctx context.Context, height uint64) (sm
 	if err != nil {
 		return sm.State{}, err
 	}
+	//nolint:gosec
 	currentLightBlock, err := s.lc.VerifyLightBlockAtHeight(ctx, int64(height+1), time.Now())
 	if err != nil {
 		return sm.State{}, err
 	}
+	//nolint:gosec
 	nextLightBlock, err := s.lc.VerifyLightBlockAtHeight(ctx, int64(height+2), time.Now())
 	if err != nil {
 		return sm.State{}, err

@@ -199,6 +199,7 @@ func (c *Local) DataRootInclusionProof(
 	start uint64,
 	end uint64,
 ) (*ctypes.ResultDataRootInclusionProof, error) {
+	//nolint:gosec
 	return core.DataRootInclusionProof(c.ctx, int64(height), start, end)
 }
 
@@ -218,6 +219,7 @@ func (c *Local) ProveShares(
 	startShare uint64,
 	endShare uint64,
 ) (types.ShareProof, error) {
+	//nolint:gosec
 	return core.ProveShares(c.ctx, int64(height), startShare, endShare)
 }
 
@@ -227,6 +229,7 @@ func (c *Local) ProveSharesV2(
 	startShare uint64,
 	endShare uint64,
 ) (*ctypes.ResultShareProof, error) {
+	//nolint:gosec
 	return core.ProveSharesV2(c.ctx, int64(height), startShare, endShare)
 }
 
@@ -337,6 +340,7 @@ func (c *Local) resubscribe(subscriber string, q cmtpubsub.Query) types.Subscrip
 		}
 
 		attempts++
+		//nolint:gosec
 		time.Sleep((10 << uint(attempts)) * time.Millisecond) // 10ms -> 20ms -> 40ms
 	}
 }

@@ -52,6 +52,7 @@ func (app *Application) DeliverTx(req types.RequestDeliverTx) types.ResponseDeli
 		tx8 := make([]byte, 8)
 		copy(tx8[len(tx8)-len(req.Tx):], req.Tx)
 		txValue := binary.BigEndian.Uint64(tx8)
+		//nolint:gosec
 		if txValue != uint64(app.txCount) {
 			return types.ResponseDeliverTx{
 				Code: code.CodeTypeBadNonce,
