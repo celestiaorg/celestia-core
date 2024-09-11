@@ -36,7 +36,7 @@ func (rp RowProof) Validate(root []byte) error {
 	}
 	if len(rp.Proofs) != 0 &&
 		(int64(rp.StartRow) != rp.Proofs[0].Index ||
-			int64(rp.StartRow) != rp.Proofs[len(rp.Proofs)-1].Index) {
+			int64(rp.EndRow) != rp.Proofs[len(rp.Proofs)-1].Index) {
 		return fmt.Errorf("invalid start/end row")
 	}
 	if !rp.VerifyProof(root) {

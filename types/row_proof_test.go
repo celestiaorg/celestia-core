@@ -59,6 +59,26 @@ func TestRowProofValidate(t *testing.T) {
 			root:    root,
 			wantErr: true,
 		},
+		{
+			name: "invalid start row",
+			rp: func() RowProof {
+				proof := validRowProof()
+				proof.StartRow += 1
+				return proof
+			}(),
+			root:    root,
+			wantErr: true,
+		},
+		{
+			name: "invalid end row",
+			rp: func() RowProof {
+				proof := validRowProof()
+				proof.EndRow += 1
+				return proof
+			}(),
+			root:    root,
+			wantErr: true,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
