@@ -29,12 +29,12 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
 
-      - uses: golangci/golangci-lint-action@v4.0.0
+      - uses: golangci/golangci-lint-action@v6.1.0
         with:
           # Required: the version of golangci-lint is required and
           # must be specified without patch version: we always use the
