@@ -18,12 +18,14 @@ type RowProof struct {
 	// exists in a Merkle tree with a given data root.
 	Proofs []*merkle.Proof `json:"proofs"`
 	// StartRow the index of the start row.
-	// Note: it's currently not used for verification, only for validation.
-	// If it's used downstream, make sure to validate it.
+	// Note: currently, StartRow is not validated as part of the proof verification.
+	// If this field is used downstream, Validate(root) should be called along with
+	// extra validation depending on how it's used.
 	StartRow uint32 `json:"start_row"`
 	// EndRow the index of the end row.
-	// Note: it's currently not used for verification, only for validation.
-	// If it's used downstream, make sure to validate it.
+	// Note: currently, EndRow is not validated as part of the proof verification.
+	// If this field is used downstream, Validate(root) should be called along with
+	// extra validation depending on how it's used.
 	EndRow uint32 `json:"end_row"`
 }
 
