@@ -34,6 +34,11 @@ func (rp RowProof) Validate(root []byte) error {
 	if len(rp.Proofs) != len(rp.RowRoots) {
 		return fmt.Errorf("the number of proofs %d must equal the number of row roots %d", len(rp.Proofs), len(rp.RowRoots))
 	}
+	if len(rp.Proofs) != 0 &&
+		(int64(rp.StartRow) != rp.Proofs[0].Index ||
+			int64(rp.StartRow) != rp.Proofs[len(rp.Proofs)-1].Index) {
+		return fmt.Errorf("invalid start/end row")
+	}
 	if !rp.VerifyProof(root) {
 		return errors.New("row proof failed to verify")
 	}
