@@ -60,6 +60,26 @@ func TestRowProofValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "proof with different total",
+			rp: func() RowProof {
+				proof := validRowProof()
+				proof.Proofs[0].Total += 1
+				return proof
+			}(),
+			root:    root,
+			wantErr: true,
+		},
+		{
+			name: "proof with inconsequential indexes",
+			rp: func() RowProof {
+				proof := validRowProof()
+				proof.Proofs[0].Index -= 1
+				return proof
+			}(),
+			root:    root,
+			wantErr: true,
+		},
+		{
 			name: "invalid start row",
 			rp: func() RowProof {
 				proof := validRowProof()
