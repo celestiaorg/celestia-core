@@ -47,7 +47,7 @@ and [`NodeAdder`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e69
 As an optimization, we can also use a [`Batch`](https://github.com/ipfs/go-ipld-format/blob/d2e09424ddee0d7e696d01143318d32d0fb1ae63/batch.go#L29)
 to batch adding and removing nodes.
 This will be achieved by passing around a [CoreAPI](https://github.com/ipfs/interface-go-ipfs-core/blob/b935dfe5375eac7ea3c65b14b3f9a0242861d0b3/coreapi.go#L15)
-object, which derive from the IPFS node which is created along a with a tendermint node (see [#152]).
+object, which derive from the IPFS node which is created along with a tendermint node (see [#152]).
 This code snippet does exactly that (see the [go-ipfs documentation] for more examples):
 ```go
 // This constructs an IPFS node instance
