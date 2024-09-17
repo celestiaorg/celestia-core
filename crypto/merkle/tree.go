@@ -98,6 +98,7 @@ func getSplitPoint(length int64) int64 {
 	}
 	uLength := uint(length)
 	bitlen := bits.Len(uLength)
+	//nolint:gosec
 	k := int64(1 << uint(bitlen-1))
 	if k == length {
 		k >>= 1

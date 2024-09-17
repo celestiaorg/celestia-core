@@ -52,6 +52,7 @@ func (app *Application) DeliverTx(req types.RequestDeliverTx) types.ResponseDeli
 		tx8 := make([]byte, 8)
 		copy(tx8[len(tx8)-len(req.Tx):], req.Tx)
 		txValue := binary.BigEndian.Uint64(tx8)
+		//nolint:gosec
 		if txValue != uint64(app.txCount) {
 			return types.ResponseDeliverTx{
 				Code: code.CodeTypeBadNonce,
@@ -72,6 +73,7 @@ func (app *Application) CheckTx(req types.RequestCheckTx) types.ResponseCheckTx 
 		tx8 := make([]byte, 8)
 		copy(tx8[len(tx8)-len(req.Tx):], req.Tx)
 		txValue := binary.BigEndian.Uint64(tx8)
+		//nolint:gosec
 		if txValue < uint64(app.txCount) {
 			return types.ResponseCheckTx{
 				Code: code.CodeTypeBadNonce,
@@ -87,6 +89,7 @@ func (app *Application) Commit() (resp types.ResponseCommit) {
 		return types.ResponseCommit{}
 	}
 	hash := make([]byte, 8)
+	//nolint:gosec
 	binary.BigEndian.PutUint64(hash, uint64(app.txCount))
 	return types.ResponseCommit{Data: hash}
 }

@@ -101,8 +101,9 @@ func NewApplication(cfg *Config) (*Application, error) {
 // Info implements ABCI.
 func (app *Application) Info(req abci.RequestInfo) abci.ResponseInfo {
 	return abci.ResponseInfo{
-		Version:          version.ABCIVersion,
-		AppVersion:       appVersion,
+		Version:    version.ABCIVersion,
+		AppVersion: appVersion,
+		//nolint:gosec
 		LastBlockHeight:  int64(app.state.Height),
 		LastBlockAppHash: app.state.Hash,
 	}
@@ -111,6 +112,7 @@ func (app *Application) Info(req abci.RequestInfo) abci.ResponseInfo {
 // Info implements ABCI.
 func (app *Application) InitChain(req abci.RequestInitChain) abci.ResponseInitChain {
 	var err error
+	//nolint:gosec
 	app.state.initialHeight = uint64(req.InitialHeight)
 	if len(req.AppStateBytes) > 0 {
 		err = app.state.Import(0, req.AppStateBytes)
@@ -151,6 +153,7 @@ func (app *Application) DeliverTx(req abci.RequestDeliverTx) abci.ResponseDelive
 
 // EndBlock implements ABCI.
 func (app *Application) EndBlock(req abci.RequestEndBlock) abci.ResponseEndBlock {
+	//nolint:gosec
 	valUpdates, err := app.validatorUpdates(uint64(req.Height))
 	if err != nil {
 		panic(err)
@@ -191,6 +194,7 @@ func (app *Application) Commit() abci.ResponseCommit {
 	}
 	retainHeight := int64(0)
 	if app.cfg.RetainBlocks > 0 {
+		//nolint:gosec
 		retainHeight = int64(height - app.cfg.RetainBlocks + 1)
 	}
 	return abci.ResponseCommit{
@@ -202,6 +206,7 @@ func (app *Application) Commit() abci.ResponseCommit {
 // Query implements ABCI.
 func (app *Application) Query(req abci.RequestQuery) abci.ResponseQuery {
 	return abci.ResponseQuery{
+		//nolint:gosec
 		Height: int64(app.state.Height),
 		Key:    req.Data,
 		Value:  []byte(app.state.Get(string(req.Data))),

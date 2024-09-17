@@ -468,8 +468,9 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, l
 	for i, tx := range block.Txs {
 		txInfo := cmtstore.TxInfo{
 			Height: block.Height,
-			Index:  uint32(i),
-			Code:   txResponseCodes[i],
+			//nolint:gosec
+			Index: uint32(i),
+			Code:  txResponseCodes[i],
 		}
 		// Set error log for failed txs
 		if txResponseCodes[i] != abci.CodeTypeOK {

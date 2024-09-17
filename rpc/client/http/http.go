@@ -124,6 +124,7 @@ func NewWithTimeout(remote, wsEndpoint string, timeout uint) (*HTTP, error) {
 	if err != nil {
 		return nil, err
 	}
+	//nolint:gosec
 	httpClient.Timeout = time.Duration(timeout) * time.Second
 	return NewWithClient(remote, wsEndpoint, httpClient)
 }
