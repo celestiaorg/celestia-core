@@ -270,6 +270,7 @@ func (vals *ValidatorSet) HasAddress(address []byte) bool {
 func (vals *ValidatorSet) GetByAddress(address []byte) (index int32, val *Validator) {
 	for idx, val := range vals.Validators {
 		if bytes.Equal(val.Address, address) {
+			//nolint:gosec
 			return int32(idx), val.Copy()
 		}
 	}
@@ -692,6 +693,7 @@ func (vals *ValidatorSet) VerifyCommit(chainID string, blockID BlockID,
 		val := vals.Validators[idx]
 
 		// Validate signature.
+		//nolint:gosec
 		voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
 		if !val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature) {
 			return fmt.Errorf("wrong signature (#%d): %X", idx, commitSig.Signature)
@@ -748,6 +750,7 @@ func (vals *ValidatorSet) VerifyCommitLight(chainID string, blockID BlockID,
 		val := vals.Validators[idx]
 
 		// Validate signature.
+		//nolint:gosec
 		voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
 		if !val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature) {
 			return fmt.Errorf("wrong signature (#%d): %X", idx, commitSig.Signature)
@@ -784,10 +787,12 @@ func (vals *ValidatorSet) VerifyCommitLightTrusting(chainID string, commit *Comm
 	)
 
 	// Safely calculate voting power needed.
+	//nolint:gosec
 	totalVotingPowerMulByNumerator, overflow := safeMul(vals.TotalVotingPower(), int64(trustLevel.Numerator))
 	if overflow {
 		return errors.New("int64 overflow while calculating voting power needed. please provide smaller trustLevel numerator")
 	}
+	//nolint:gosec
 	votingPowerNeeded := totalVotingPowerMulByNumerator / int64(trustLevel.Denominator)
 
 	for idx, commitSig := range commit.Signatures {
@@ -809,6 +814,7 @@ func (vals *ValidatorSet) VerifyCommitLightTrusting(chainID string, commit *Comm
 			seenVals[valIdx] = idx
 
 			// Validate signature.
+			//nolint:gosec
 			voteSignBytes := commit.VoteSignBytes(chainID, int32(idx))
 			if !val.PubKey.VerifySignature(voteSignBytes, commitSig.Signature) {
 				return fmt.Errorf("wrong signature (#%d): %X", idx, commitSig.Signature)

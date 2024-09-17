@@ -43,6 +43,7 @@ func writeFileRandReseed() uint64 {
 	// The important thing here is that now for a seed conflict, they would both have to be on
 	// the correct nanosecond offset, and second-based offset, which is much less likely than
 	// just a conflict with the correct nanosecond offset.
+	//nolint:gosec
 	return uint64(time.Now().UnixNano() + int64(os.Getpid()<<20))
 }
 
@@ -62,6 +63,7 @@ func randWriteFileSuffix() string {
 	atomicWriteFileRand = r
 	atomicWriteFileRandMu.Unlock()
 	// Can have a negative name, replace this in the following
+	//nolint:gosec
 	suffix := strconv.Itoa(int(r))
 	if string(suffix[0]) == "-" {
 		// Replace first "-" with "0". This is purely for UI clarity,

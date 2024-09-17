@@ -108,6 +108,7 @@ func (q *chunkQueue) Allocate() (uint32, error) {
 	if q.snapshot == nil {
 		return 0, errDone
 	}
+	//nolint:gosec
 	if uint32(len(q.chunkAllocated)) >= q.snapshot.Chunks {
 		return 0, errDone
 	}

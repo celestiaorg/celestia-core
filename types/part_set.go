@@ -165,6 +165,7 @@ type PartSet struct {
 // CONTRACT: partSize is greater than zero.
 func NewPartSetFromData(data []byte, partSize uint32) *PartSet {
 	// divide data into 4kb parts.
+	//nolint:gosec
 	total := (uint32(len(data)) + partSize - 1) / partSize
 	parts := make([]*Part, total)
 	partsBytes := make([][]byte, total)

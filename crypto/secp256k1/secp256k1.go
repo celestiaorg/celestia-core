@@ -10,7 +10,7 @@ import (
 
 	secp256k1 "github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
-	"golang.org/x/crypto/ripemd160" //nolint: staticcheck // necessary for Bitcoin address format
+	"golang.org/x/crypto/ripemd160" //nolint: staticcheck,gosec // necessary for Bitcoin address format
 
 	"github.com/tendermint/tendermint/crypto"
 	cmtjson "github.com/tendermint/tendermint/libs/json"
@@ -161,6 +161,7 @@ func (pubKey PubKey) Address() crypto.Address {
 	_, _ = hasherSHA256.Write(pubKey) // does not error
 	sha := hasherSHA256.Sum(nil)
 
+	//nolint:gosec
 	hasherRIPEMD160 := ripemd160.New()
 	_, _ = hasherRIPEMD160.Write(sha) // does not error
 

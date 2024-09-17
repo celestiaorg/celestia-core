@@ -272,18 +272,21 @@ func generateNode(
 	r *rand.Rand, mode e2e.Mode, startAt int64, initialHeight int64, forceArchive bool,
 ) *e2e.ManifestNode {
 	node := e2e.ManifestNode{
-		Version:          nodeVersions.Choose(r).(string),
-		Mode:             string(mode),
-		StartAt:          startAt,
-		Database:         nodeDatabases.Choose(r).(string),
-		PrivvalProtocol:  nodePrivvalProtocols.Choose(r).(string),
-		FastSync:         nodeFastSyncs.Choose(r).(string),
-		Mempool:          nodeMempools.Choose(r).(string),
-		StateSync:        nodeStateSyncs.Choose(r).(bool) && startAt > 0,
-		PersistInterval:  ptrUint64(uint64(nodePersistIntervals.Choose(r).(int))),
+		Version:         nodeVersions.Choose(r).(string),
+		Mode:            string(mode),
+		StartAt:         startAt,
+		Database:        nodeDatabases.Choose(r).(string),
+		PrivvalProtocol: nodePrivvalProtocols.Choose(r).(string),
+		FastSync:        nodeFastSyncs.Choose(r).(string),
+		Mempool:         nodeMempools.Choose(r).(string),
+		StateSync:       nodeStateSyncs.Choose(r).(bool) && startAt > 0,
+		//nolint:gosec
+		PersistInterval: ptrUint64(uint64(nodePersistIntervals.Choose(r).(int))),
+		//nolint:gosec
 		SnapshotInterval: uint64(nodeSnapshotIntervals.Choose(r).(int)),
-		RetainBlocks:     uint64(nodeRetainBlocks.Choose(r).(int)),
-		Perturb:          nodePerturbations.Choose(r),
+		//nolint:gosec
+		RetainBlocks: uint64(nodeRetainBlocks.Choose(r).(int)),
+		Perturb:      nodePerturbations.Choose(r),
 	}
 
 	// If this node is forced to be an archive node, retain all blocks and

@@ -82,8 +82,9 @@ func WriteBlockPart(
 		return
 	}
 	client.Write(BlockPart{
-		Height:       height,
-		Round:        round,
+		Height: height,
+		Round:  round,
+		//nolint:gosec
 		Index:        int32(index),
 		Catchup:      catchup,
 		Peer:         peer,
