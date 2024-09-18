@@ -548,12 +548,17 @@ func updateState(
 		// Change results from this height but only applies to the next height.
 		lastHeightParamsChanged = header.Height + 1
 	}
+	// change the timeouts if they are non-zero
+	if abciResponses.EndBlock.TimeoutPropose.AsDuration() != time.Duration(0) {
+		// change the timeout
+
+	}
 
 	nextVersion := state.Version
 
 	// NOTE: the AppHash has not been populated.
 	// It will be filled on state.Save.
-	return State{
+	s := State{
 		Version:                          nextVersion,
 		ChainID:                          state.ChainID,
 		InitialHeight:                    state.InitialHeight,
