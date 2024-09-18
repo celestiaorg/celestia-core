@@ -75,6 +75,7 @@ func NewPool(evidenceDB dbm.DB, stateDB sm.Store, blockStore BlockStore) (*Pool,
 	if err != nil {
 		return nil, err
 	}
+	//nolint:gosec
 	atomic.StoreUint32(&pool.evidenceSize, uint32(len(evList)))
 	for _, ev := range evList {
 		pool.evidenceList.PushBack(ev)

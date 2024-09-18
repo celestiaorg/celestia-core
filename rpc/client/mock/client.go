@@ -183,6 +183,7 @@ func (c Client) DataRootInclusionProof(
 	start uint64,
 	end uint64,
 ) (*ctypes.ResultDataRootInclusionProof, error) {
+	//nolint:gosec
 	return core.DataRootInclusionProof(&rpctypes.Context{}, int64(height), start, end)
 }
 

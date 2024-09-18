@@ -44,6 +44,7 @@ func (r *Rand) init() {
 		seed |= uint64(bz[i])
 		seed <<= 8
 	}
+	//nolint:gosec
 	r.reset(int64(seed))
 }
 
@@ -176,6 +177,7 @@ MAIN_LOOP:
 }
 
 func (r *Rand) Uint16() uint16 {
+	//nolint:gosec
 	return uint16(r.Uint32() & (1<<16 - 1))
 }
 
@@ -194,18 +196,22 @@ func (r *Rand) Uint() uint {
 	r.Lock()
 	i := r.rand.Int()
 	r.Unlock()
+	//nolint:gosec
 	return uint(i)
 }
 
 func (r *Rand) Int16() int16 {
+	//nolint:gosec
 	return int16(r.Uint32() & (1<<16 - 1))
 }
 
 func (r *Rand) Int32() int32 {
+	//nolint:gosec
 	return int32(r.Uint32())
 }
 
 func (r *Rand) Int64() int64 {
+	//nolint:gosec
 	return int64(r.Uint64())
 }
 
@@ -259,6 +265,7 @@ func (r *Rand) Float64() float64 {
 }
 
 func (r *Rand) Time() time.Time {
+	//nolint:gosec
 	return time.Unix(int64(r.Uint64()), 0)
 }
 

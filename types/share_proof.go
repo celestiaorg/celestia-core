@@ -117,6 +117,7 @@ func (sp ShareProof) VerifyProof() bool {
 		}
 		// Consider extracting celestia-app's namespace package. We can't use it
 		// here because that would introduce a circulcar import.
+		//nolint:gosec
 		namespace := append([]byte{uint8(sp.NamespaceVersion)}, sp.NamespaceID...)
 		valid := nmtProof.VerifyInclusion(
 			consts.NewBaseHashFunc(),

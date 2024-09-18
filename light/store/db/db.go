@@ -271,6 +271,7 @@ func (s *dbs) Prune(size uint16) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
+	//nolint:gosec
 	s.size -= uint16(pruned)
 
 	if wErr := s.db.SetSync(sizeKey, marshalSize(s.size)); wErr != nil {
