@@ -525,7 +525,7 @@ func updateState(
 		if err != nil {
 			return state, fmt.Errorf("error changing validator set: %v", err)
 		}
-		// Change results from this height but only applies to the next next height.
+		// Change results from this height but only applies to the next height.
 		lastHeightValsChanged = header.Height + 1 + 1
 	}
 
@@ -548,11 +548,6 @@ func updateState(
 		// Change results from this height but only applies to the next height.
 		lastHeightParamsChanged = header.Height + 1
 	}
-	// change the timeouts if they are non-zero
-	if abciResponses.EndBlock.TimeoutPropose.AsDuration() != time.Duration(0) {
-		// change the timeout
-
-	}
 
 	nextVersion := state.Version
 
@@ -573,7 +568,11 @@ func updateState(
 		LastHeightConsensusParamsChanged: lastHeightParamsChanged,
 		LastResultsHash:                  ABCIResponsesResultsHash(abciResponses),
 		AppHash:                          nil,
-	}, nil
+		timeoutCommit:                    abciResponses.EndBlock.TimeoutPropose.AsDuration(),
+		timeoutPropose:                   abciResponses.EndBlock.TimeoutCommit.AsDuration(),
+	}
+
+	return s, nil
 }
 
 // Fire NewBlock, NewBlockHeader.
