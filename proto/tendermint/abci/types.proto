@@ -11,7 +11,6 @@ import "tendermint/crypto/keys.proto";
 import "tendermint/types/params.proto";
 import "google/protobuf/timestamp.proto";
 import "gogoproto/gogo.proto";
-import "google/protobuf/duration.proto";
 
 // This file is copied from http://github.com/tendermint/abci
 // NOTE: When using custom types, mind the warnings.
@@ -265,8 +264,8 @@ message ResponseEndBlock {
   ConsensusParams          consensus_param_updates = 2;
   repeated Event           events                  = 3
       [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
-  google.protobuf.Duration timeout_propose = 4 [(gogoproto.nullable) = false];
-  google.protobuf.Duration timeout_commit  = 5 [(gogoproto.nullable) = false];
+  uint64 timeout_propose = 4;
+  uint64 timeout_commit  = 5;
 }
 
 message ResponseCommit {

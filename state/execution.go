@@ -568,8 +568,8 @@ func updateState(
 		LastHeightConsensusParamsChanged: lastHeightParamsChanged,
 		LastResultsHash:                  ABCIResponsesResultsHash(abciResponses),
 		AppHash:                          nil,
-		timeoutCommit:                    abciResponses.EndBlock.TimeoutPropose.AsDuration(),
-		timeoutPropose:                   abciResponses.EndBlock.TimeoutCommit.AsDuration(),
+		timeoutCommit:                    time.Duration(abciResponses.EndBlock.TimeoutCommit) * time.Second,
+		timeoutPropose:                   time.Duration(abciResponses.EndBlock.TimeoutPropose) * time.Second,
 	}
 
 	return s, nil
