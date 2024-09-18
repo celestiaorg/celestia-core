@@ -77,6 +77,17 @@ type State struct {
 
 	// the latest AppHash we've received from calling abci.Commit()
 	AppHash []byte
+
+	// timeouts received from app, after abci EndBlock call, to be used in the next height
+	timeoutPropose time.Duration
+	timeoutCommit  time.Duration
+}
+
+func (state *State) GetTimeoutPropose() time.Duration {
+	return state.timeoutPropose
+}
+func (state *State) GetTimeoutCommit() time.Duration {
+	return state.timeoutCommit
 }
 
 // Copy makes a copy of the State for mutating.
