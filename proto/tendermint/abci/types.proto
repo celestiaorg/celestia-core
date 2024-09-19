@@ -49,9 +49,11 @@ message RequestEcho {
 message RequestFlush {}
 
 message RequestInfo {
-  string version       = 1;
-  uint64 block_version = 2;
-  uint64 p2p_version   = 3;
+  string                   version         = 1;
+  uint64                   block_version   = 2;
+  uint64                   p2p_version     = 3;
+  google.protobuf.Duration timeout_propose = 4 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_commit  = 5 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
 }
 
 // nondeterministic
