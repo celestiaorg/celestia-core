@@ -569,7 +569,45 @@ func (p *peer) StartReceiving() error {
 					p.Logger.Debug("failed to read data from stream", "err", err.Error())
 					return
 				}
-				p.onReceive(chID, data)
+
+				reactor := reactorsByCh[chID]
+				if reactor == nil {
+					// Note that its ok to panic here as it's caught in the conn._recover,
+					// which does onPeerError.
+					panic(fmt.Sprintf("Unknown channel %X", chID))
+				}
+				mt := msgTypeByChID[chID]
+				msg := proto.Clone(mt)
+				err := proto.Unmarshal(msgBytes, msg)
+				if err != nil {
+					p.Logger.Error("before panic", "msg", msg, "channel", chID, "type", mt, "bytes", hex.EncodeToString(msgBytes))
+					return
+				}
+
+				if w, ok := msg.(Unwrapper); ok {
+					msg, err = w.Unwrap()
+					if err != nil {
+						panic(fmt.Errorf("unwrapping message: %s", err))
+					}
+				}
+
+				labels := []string{
+					"peer_id", string(p.ID()),
+					"chID", fmt.Sprintf("%#x", chID),
+				}
+
+				p.metrics.PeerReceiveBytesTotal.With(labels...).Add(float64(len(msgBytes)))
+				p.metrics.MessageReceiveBytesTotal.With(append(labels, "message_type", p.mlc.ValueToMetricLabel(msg))...).Add(float64(len(msgBytes)))
+				schema.WriteReceivedBytes(p.traceClient, string(p.ID()), chID, len(msgBytes))
+				if nr, ok := reactor.(EnvelopeReceiver); ok {
+					nr.ReceiveEnvelope(Envelope{
+						ChannelID: chID,
+						Src:       p,
+						Message:   msg,
+					})
+				} else {
+					reactor.Receive(chID, p, msgBytes)
+				}
 			}
 		}()
 	}

@@ -5,6 +5,11 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/host"
+	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/quic-go/quic-go"
 	"github.com/tendermint/tendermint/libs/protoio"
 	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
@@ -140,7 +145,7 @@ func MultiplexTransportMaxIncomingConnections(n int) MultiplexTransportOption {
 // multiplexed peers.
 type MultiplexTransport struct {
 	netAddr                NetAddress
-	listener               *quic.Listener
+	lHost                  host.Host
 	maxIncomingConnections int // see MaxIncomingConnections
 
 	acceptc chan accept
@@ -170,8 +175,18 @@ func NewMultiplexTransport(
 	nodeInfo NodeInfo,
 	nodeKey NodeKey,
 	tracer trace.Tracer,
-) *MultiplexTransport {
+) (*MultiplexTransport, error) {
+	priv, _, err := crypto.KeyPairFromStdKey(nodeKey.PrivKey)
+	if err != nil {
+		return nil, err
+	}
+	h, err := libp2p.New(libp2p.Transport(libp2pquic.NewTransport), libp2p.Identity(priv), libp2p.WithDialTimeout(defaultDialTimeout))
+	if err != nil {
+		return nil, err
+	}
+
 	return &MultiplexTransport{
+		lHost:            h,
 		acceptc:          make(chan accept),
 		closec:           make(chan struct{}),
 		dialTimeout:      defaultDialTimeout,
@@ -182,7 +197,7 @@ func NewMultiplexTransport(
 		conns:            NewConnSet(),
 		resolver:         net.DefaultResolver,
 		tracer:           tracer,
-	}
+	}, nil
 }
 
 // NetAddress implements Transport.
@@ -622,4 +637,28 @@ func resolveIPs(resolver IPResolver, c quic.Connection) ([]net.IP, error) {
 	}
 
 	return ips, nil
+}
+
+func ConvertToMultiAddr(host string, port int) (core.Multiaddr, error) {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return nil, fmt.Errorf("invalid IP address: %s", host)
+	}
+
+	var addrStr string
+	if ip.To4() != nil {
+		// IPv4
+		addrStr = fmt.Sprintf("/ip4/%s/udp/%d/quic", ip.String(), port)
+	} else {
+		// IPv6
+		addrStr = fmt.Sprintf("/ip6/%s/udp/%d/quic", ip.String(), port)
+	}
+
+	// Convert to multiaddress
+	multiAddr, err := ma.NewMultiaddr(addrStr)
+	if err != nil {
+		return nil, err
+	}
+
+	return multiAddr, nil
 }
