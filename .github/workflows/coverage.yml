@@ -58,7 +58,7 @@ jobs:
             go.sum
       - name: install
         run: GOOS=linux GOARCH=${{ matrix.goarch }} make build
-        if: "env.GIT_DIFF != ''"
+        if: env.GIT_DIFF
 
   tests:
     runs-on: ubuntu-latest
