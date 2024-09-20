@@ -54,10 +54,9 @@ message TimeoutsInfo {
 }
 
 message RequestInfo {
-  string       version       = 1;
-  uint64       block_version = 2;
-  uint64       p2p_version   = 3;
-  TimeoutsInfo timeouts      = 4;
+  string version       = 1;
+  uint64 block_version = 2;
+  uint64 p2p_version   = 3;
 }
 
 // nondeterministic
@@ -200,6 +199,8 @@ message ResponseInfo {
 
   int64 last_block_height   = 4;
   bytes last_block_app_hash = 5;
+
+  TimeoutsInfo timeouts = 6;
 }
 
 // nondeterministic

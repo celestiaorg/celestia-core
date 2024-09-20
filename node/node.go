@@ -837,7 +837,7 @@ func NewNode(config *cfg.Config,
 		}
 
 		// Reload the state. It will have the Version.Consensus.App set by the
-		// Handshake, and may have other modifications as well (ie. depending on
+		// Handshake, and may have other modifications as well (i.e., depending on
 		// what happened during block replay).
 		state, err = stateStore.Load()
 		if err != nil {
@@ -852,7 +852,8 @@ func NewNode(config *cfg.Config,
 	}
 
 	// Determine whether we should do fast sync. This must happen after the handshake, since the
-	// app may modify the validator set, specifying ourself as the only validator.
+	// app may modify the validator set,
+	//specifying ourselves as the only validator.
 	fastSync := config.FastSyncMode && !onlyValidatorIsUs(state, pubKey)
 
 	logNodeStartupInfo(state, pubKey, logger, consensusLogger)
