@@ -2,7 +2,6 @@ package store
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -46,24 +45,12 @@ func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 		types.BlockID{Hash: []byte(""), PartSetHeader: types.PartSetHeader{Hash: []byte(""), Total: 2}}, commitSigs)
 }
 
-func makeTxs(height int64) (txs []types.Tx) {
-	for i := 0; i < 10000; i++ {
-		numBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(numBytes, uint64(height))
-
-		txs = append(txs, types.Tx(append(numBytes, byte(i))))
-	}
-	return txs
-}
-
 func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Block {
-	block, _ := state.MakeBlock(
-		height,
-		factory.MakeData(makeTxs(height)),
-		lastCommit,
-		nil,
-		state.Validators.GetProposer().Address,
-	)
+	txs := []types.Tx{make([]byte, types.BlockPartSizeBytes)} // TX taking one block part alone
+	data := types.Data{
+		Txs: txs,
+	}
+	block, _ := state.MakeBlock(height, data, lastCommit, nil, state.Validators.GetProposer().Address)
 	return block
 }
 
@@ -161,7 +148,7 @@ func TestMain(m *testing.M) {
 	var cleanup cleanupFunc
 	state, _, cleanup = makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	block = makeBlock(1, state, new(types.Commit))
-	partSet = block.MakePartSet(types.BlockPartSizeBytes)
+	partSet = block.MakePartSet(2)
 	part1 = partSet.GetPart(0)
 	part2 = partSet.GetPart(1)
 	seenCommit1 = makeTestCommit(10, cmttime.Now())
@@ -185,11 +172,16 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 		}
 	}
 
-	// save a block
-	block := makeBlock(bs.Height()+1, state, new(types.Commit))
-	validPartSet := block.MakePartSet(2)
-	seenCommit := makeTestCommit(10, cmttime.Now())
-	bs.SaveBlock(block, partSet, seenCommit)
+	// save a block big enough to have two block parts
+	txs := []types.Tx{make([]byte, types.BlockPartSizeBytes)} // TX taking one block part alone
+	data := factory.MakeData(txs)
+	block, _ := state.MakeBlock(bs.Height()+1, data, new(types.Commit), nil, state.Validators.GetProposer().Address)
+	validPartSet := block.MakePartSet(types.BlockPartSizeBytes)
+	require.GreaterOrEqual(t, validPartSet.Total(), uint32(2))
+	part2 = validPartSet.GetPart(1)
+	seenCommit := makeTestCommit(block.Header.Height, cmttime.Now())
+	bs.SaveBlock(block, validPartSet, seenCommit)
+
 	require.EqualValues(t, 1, bs.Base(), "expecting the new height to be changed")
 	require.EqualValues(t, block.Header.Height, bs.Height(), "expecting the new height to be changed")
 
