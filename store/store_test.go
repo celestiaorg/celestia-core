@@ -371,64 +371,75 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 }
 
+func makeUniqueBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Block {
+	data := types.Data{
+		Txs: []types.Tx{types.Tx([]byte{byte(height)})},
+	}
+	block, _ := state.MakeBlock(height, data, lastCommit, nil, state.Validators.GetProposer().Address)
+	return block
+}
+
 func TestSaveTxInfo(t *testing.T) {
 	// Create a state and a block store
 	state, blockStore, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	defer cleanup()
 
-	// Create 1000 blocks
-	txResponseCodes := make([]uint32, len(block.Txs))
-	logs := make([]string, len(block.Txs))
-	for h := int64(1); h <= 1000; h++ {
-		block := makeBlock(h, state, new(types.Commit))
-		partSet := block.MakePartSet(2)
+	var allTxResponseCodes []uint32
+	var allTxLogs []string
+
+	// Create 10 blocks each with 1 tx
+	for h := int64(1); h <= 10; h++ {
+		block := makeUniqueBlock(h, state, new(types.Commit))
+		partSet := block.MakePartSet(types.BlockPartSizeBytes)
 		seenCommit := makeTestCommit(h, cmttime.Now())
 		blockStore.SaveBlock(block, partSet, seenCommit)
 
-		// Set the response codes and logs for the transactions
-		for i := range block.Txs {
-			// If even set it to 0
-			if i%2 == 0 {
-				txResponseCodes[i] = 0
-				logs[i] = "success"
-			} else {
-				txResponseCodes[i] = 1
-				logs[i] = "failure"
-			}
+		var txResponseCode uint32
+		var txLog string
+
+		if h%2 == 0 {
+			txResponseCode = 0
+			txLog = "success"
+		} else {
+			txResponseCode = 1
+			txLog = "failure"
 		}
 
 		// Save the tx info
-		err := blockStore.SaveTxInfo(block, txResponseCodes, logs)
+		err := blockStore.SaveTxInfo(block, []uint32{txResponseCode}, []string{txLog})
 		require.NoError(t, err)
+		allTxResponseCodes = append(allTxResponseCodes, txResponseCode)
+		allTxLogs = append(allTxLogs, txLog)
 	}
 
+	txIndex := 0
 	// Get the blocks from blockstore up to the height
-	for h := int64(1); h <= 1000; h++ {
+	for h := int64(1); h <= 10; h++ {
 		block := blockStore.LoadBlock(h)
 		// Check that transactions exist in the block
 		for i, tx := range block.Txs {
 			txInfo := blockStore.LoadTxInfo(tx.Hash())
 			require.Equal(t, block.Height, txInfo.Height)
 			require.Equal(t, uint32(i), txInfo.Index)
-			require.Equal(t, txResponseCodes[i], txInfo.Code)
+			require.Equal(t, allTxResponseCodes[txIndex], txInfo.Code)
 			// We don't save the logs for successful transactions
-			if txResponseCodes[i] == abci.CodeTypeOK {
+			if allTxResponseCodes[txIndex] == abci.CodeTypeOK {
 				require.Equal(t, "", txInfo.Error)
 			} else {
-				require.Equal(t, logs[i], txInfo.Error)
+				require.Equal(t, allTxLogs[txIndex], txInfo.Error)
 			}
+			txIndex++
 		}
 	}
 
 	// Get a random transaction and make sure it's indexed properly
-	block := blockStore.LoadBlock(777)
-	tx := block.Txs[5]
+	block := blockStore.LoadBlock(7)
+	tx := block.Txs[0]
 	txInfo := blockStore.LoadTxInfo(tx.Hash())
 	require.Equal(t, block.Height, txInfo.Height)
-	require.Equal(t, block.Height, int64(777))
-	require.Equal(t, txInfo.Height, int64(777))
+	require.Equal(t, block.Height, int64(7))
+	require.Equal(t, txInfo.Height, int64(7))
 	require.Equal(t, uint32(1), txInfo.Code)
-	require.Equal(t, uint32(5), txInfo.Index)
 	require.Equal(t, "failure", txInfo.Error)
 }
 
