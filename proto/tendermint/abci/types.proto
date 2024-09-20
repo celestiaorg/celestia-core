@@ -48,12 +48,16 @@ message RequestEcho {
 
 message RequestFlush {}
 
+message TimeoutsInfo {
+  google.protobuf.Duration timeout_propose = 1 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_commit  = 2 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+}
+
 message RequestInfo {
-  string                   version         = 1;
-  uint64                   block_version   = 2;
-  uint64                   p2p_version     = 3;
-  google.protobuf.Duration timeout_propose = 4 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
-  google.protobuf.Duration timeout_commit  = 5 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  string       version       = 1;
+  uint64       block_version = 2;
+  uint64       p2p_version   = 3;
+  TimeoutsInfo timeouts      = 4;
 }
 
 // nondeterministic
@@ -267,8 +271,7 @@ message ResponseEndBlock {
   ConsensusParams          consensus_param_updates = 2;
   repeated Event           events                  = 3
       [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
-  google.protobuf.Duration timeout_propose = 4 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
-  google.protobuf.Duration timeout_commit  = 5 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  TimeoutsInfo timeouts = 4;
 }
 
 message ResponseCommit {
