@@ -308,10 +308,10 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 	quickConfig := quic.Config{
 		// TODO(rach-id): do we want to enable 0RTT? are the replay risks fine?
 		Allow0RTT:             false,
-		MaxIdleTimeout:        200 * time.Millisecond,
+		MaxIdleTimeout:        10 * time.Minute,
 		MaxIncomingStreams:    10000,
 		MaxIncomingUniStreams: 10000,
-		KeepAlivePeriod:       100 * time.Millisecond,
+		KeepAlivePeriod:       2 * time.Minute,
 		EnableDatagrams:       true,
 	}
 	listener, err := quic.ListenAddr(addr.DialString(), tlsConfig, &quickConfig)

@@ -268,10 +268,10 @@ func (na *NetAddress) Dial(ctx context.Context) (quic.Connection, error) {
 		InsecureSkipVerify: true,
 	}
 	quickConfig := quic.Config{
-		MaxIdleTimeout:        5 * time.Second,
+		MaxIdleTimeout:        10 * time.Minute,
 		MaxIncomingStreams:    10000,
 		MaxIncomingUniStreams: 10000,
-		KeepAlivePeriod:       time.Second,
+		KeepAlivePeriod:       2 * time.Minute,
 		EnableDatagrams:       true,
 	}
 	conn, err := quic.DialAddr(ctx, na.DialString(), &tlsConfig, &quickConfig)
@@ -286,10 +286,10 @@ func (na *NetAddress) DialTimeout(timeout time.Duration, tlsConf *tls.Config) (q
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	quickConfig := quic.Config{
-		MaxIdleTimeout:        200 * time.Millisecond,
+		MaxIdleTimeout:        10 * time.Minute,
 		MaxIncomingStreams:    10000,
 		MaxIncomingUniStreams: 10000,
-		KeepAlivePeriod:       100 * time.Millisecond,
+		KeepAlivePeriod:       2 * time.Minute,
 		EnableDatagrams:       true,
 	}
 	conn, err := quic.DialAddr(ctx, na.DialString(), tlsConf, &quickConfig)
