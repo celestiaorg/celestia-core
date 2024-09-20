@@ -148,7 +148,7 @@ func TestMain(m *testing.M) {
 	var cleanup cleanupFunc
 	state, _, cleanup = makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	block = makeBlock(1, state, new(types.Commit))
-	partSet = block.MakePartSet(2)
+	partSet = block.MakePartSet(types.BlockPartSizeBytes)
 	part1 = partSet.GetPart(0)
 	part2 = partSet.GetPart(1)
 	seenCommit1 = makeTestCommit(10, cmttime.Now())
