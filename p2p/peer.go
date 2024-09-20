@@ -34,6 +34,8 @@ type Peer interface {
 	IsOutbound() bool   // did we dial the peer
 	IsPersistent() bool // do we redial this peer when we disconnect
 
+	HasIPChanged() bool // has the peer's IP changed
+
 	CloseConn() error // close original connection
 
 	NodeInfo() NodeInfo // peer's info
@@ -343,6 +345,18 @@ func (p *peer) IsOutbound() bool {
 // IsPersistent returns true if the peer is persitent, false otherwise.
 func (p *peer) IsPersistent() bool {
 	return p.peerConn.persistent
+}
+
+// HasIPChanged returns true and the new IP if the peer's IP has changed.
+func (p *peer) HasIPChanged() bool {
+	oldIP := p.ip
+	if oldIP == nil {
+		return false
+	}
+	// Reset the IP so we can get the new one
+	p.ip = nil
+	newIP := p.RemoteIP()
+	return !oldIP.Equal(newIP)
 }
 
 // NodeInfo returns a copy of the peer's NodeInfo.

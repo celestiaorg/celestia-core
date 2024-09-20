@@ -60,6 +60,7 @@ func NewNetAddress(id ID, addr net.Addr) *NetAddress {
 	}
 
 	ip := tcpAddr.IP
+	//nolint:gosec
 	port := uint16(tcpAddr.Port)
 	na := NewNetAddressIPPort(ip, port)
 	na.ID = id
@@ -172,8 +173,9 @@ func NetAddressFromProto(pb tmp2p.NetAddress) (*NetAddress, error) {
 		return nil, fmt.Errorf("invalid port number %v", pb.Port)
 	}
 	return &NetAddress{
-		ID:   ID(pb.ID),
-		IP:   ip,
+		ID: ID(pb.ID),
+		IP: ip,
+		//nolint:gosec
 		Port: uint16(pb.Port),
 	}, nil
 }

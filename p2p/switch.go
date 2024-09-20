@@ -370,20 +370,37 @@ func (sw *Switch) StopPeerForError(peer Peer, reason interface{}) {
 	sw.stopAndRemovePeer(peer, reason)
 
 	if peer.IsPersistent() {
-		var addr *NetAddress
-		if peer.IsOutbound() { // socket address for outbound peers
-			addr = peer.SocketAddr()
-		} else { // self-reported address for inbound peers
-			var err error
-			addr, err = peer.NodeInfo().NetAddress()
-			if err != nil {
-				sw.Logger.Error("Wanted to reconnect to inbound peer, but self-reported address is wrong",
-					"peer", peer, "err", err)
-				return
-			}
+		addr, err := sw.getPeerAddress(peer)
+		if err != nil {
+			sw.Logger.Error("Failed to get address for persistent peer", "peer", peer, "err", err)
+			return
 		}
 		go sw.reconnectToPeer(addr)
 	}
+
+	if peer.HasIPChanged() {
+		addr, err := sw.getPeerAddress(peer)
+		if err != nil {
+			sw.Logger.Error("Failed to get address for peer with changed IP", "peer", peer, "err", err)
+		}
+		go sw.reconnectToPeer(addr)
+	}
+}
+
+// getPeerAddress returns the appropriate NetAddress for a given peer,
+// handling both outbound and inbound peers.
+func (sw *Switch) getPeerAddress(peer Peer) (*NetAddress, error) {
+	if peer.IsOutbound() {
+		return peer.SocketAddr(), nil
+	}
+	// For inbound peers, get the self-reported address
+	addr, err := peer.NodeInfo().NetAddress()
+	if err != nil {
+		sw.Logger.Error("Failed to get address for inbound peer",
+			"peer", peer, "err", err)
+		return nil, err
+	}
+	return addr, nil
 }
 
 // StopPeerGracefully disconnects from a peer gracefully.

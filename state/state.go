@@ -331,10 +331,7 @@ func MakeGenesisState(genDoc *types.GenesisDoc) (State, error) {
 		nextValidatorSet = types.NewValidatorSet(validators).CopyIncrementProposerPriority(1)
 	}
 
-	appVersion := uint64(0)
-	if genDoc.ConsensusParams != nil {
-		appVersion = genDoc.ConsensusParams.Version.AppVersion
-	}
+	appVersion := getAppVersion(genDoc)
 
 	return State{
 		Version:       InitStateVersion(appVersion),
@@ -355,4 +352,14 @@ func MakeGenesisState(genDoc *types.GenesisDoc) (State, error) {
 
 		AppHash: genDoc.AppHash,
 	}, nil
+}
+
+func getAppVersion(genDoc *types.GenesisDoc) uint64 {
+	if genDoc.ConsensusParams != nil &&
+		genDoc.ConsensusParams.Version.AppVersion != 0 {
+		return genDoc.ConsensusParams.Version.AppVersion
+	}
+	// Default to app version 1 because some chains (e.g. mocha-4) did not set
+	// an explicit app version in genesis.json.
+	return uint64(1)
 }
