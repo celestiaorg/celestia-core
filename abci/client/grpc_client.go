@@ -89,8 +89,7 @@ func (cli *grpcClient) OnStart() error {
 
 RETRY_LOOP:
 	for {
-		//nolint:staticcheck
-		conn, err := grpc.Dial(cli.addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc))
+		conn, err := grpc.Dial(cli.addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc)) //nolint:staticcheck
 		if err != nil {
 			if cli.mustConnect {
 				return err
