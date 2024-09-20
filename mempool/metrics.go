@@ -57,6 +57,10 @@ type Metrics struct {
 	// RerequestedTxs defines the number of times that a requested tx
 	// never received a response in time and a new request was made.
 	RerequestedTxs metrics.Counter
+
+	// Number of connections being actively used for gossiping transactions
+	// (experimental feature).
+	ActiveOutboundConnections metrics.Gauge
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -144,6 +148,11 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Subsystem: MetricsSubsystem,
 			Name:      "rerequested_txs",
 			Help:      "Number of times a transaction was requested again after a previous request timed out",
+		ActiveOutboundConnections: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "active_outbound_connections",
+			Help:      "Number of connections being actively used for gossiping transactions (experimental feature).",
 		}, labels).With(labelsAndValues...),
 	}
 }
@@ -162,5 +171,6 @@ func NopMetrics() *Metrics {
 		AlreadySeenTxs: discard.NewCounter(),
 		RequestedTxs:   discard.NewCounter(),
 		RerequestedTxs: discard.NewCounter(),
+		ActiveOutboundConnections: discard.NewGauge(),
 	}
 }

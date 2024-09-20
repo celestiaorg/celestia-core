@@ -58,25 +58,28 @@ const (
 
 // Testnet represents a single testnet.
 type Testnet struct {
-	Name                   string
-	File                   string
-	Dir                    string
-	IP                     *net.IPNet
-	InitialHeight          int64
-	InitialState           map[string]string
-	Validators             map[*Node]int64
-	ValidatorUpdates       map[int64]map[*Node]int64
-	Nodes                  []*Node
-	KeyType                string
-	Evidence               int
-	LoadTxSizeBytes        int
-	MaxInboundConnections  int
-	MaxOutboundConnections int
-	LoadTxBatchSize        int
-	LoadTxConnections      int
-	ABCIProtocol           string
-	UpgradeVersion         string
-	Prometheus             bool
+	Name                                                 string
+	File                                                 string
+	Dir                                                  string
+	IP                                                   *net.IPNet
+	InitialHeight                                        int64
+	InitialState                                         map[string]string
+	Validators                                           map[*Node]int64
+	ValidatorUpdates                                     map[int64]map[*Node]int64
+	Nodes                                                []*Node
+	MaxInboundConnections                                int
+	MaxOutboundConnections                               int
+	KeyType                                              string
+	Evidence                                             int
+	LoadTxSizeBytes                                      int
+	LoadTxBatchSize                                      int
+	LoadTxConnections                                    int
+	LoadMaxTxs                                           int
+	ABCIProtocol                                         string
+	UpgradeVersion                                       string
+	Prometheus                                           bool
+	ExperimentalMaxGossipConnectionsToPersistentPeers    uint
+	ExperimentalMaxGossipConnectionsToNonPersistentPeers uint
 }
 
 // Node represents a CometBFT node in a testnet.
@@ -143,9 +146,12 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 		LoadTxSizeBytes:        manifest.LoadTxSizeBytes,
 		LoadTxBatchSize:        manifest.LoadTxBatchSize,
 		LoadTxConnections:      manifest.LoadTxConnections,
+		LoadMaxTxs:             manifest.LoadMaxTxs,
 		ABCIProtocol:           manifest.ABCIProtocol,
 		UpgradeVersion:         manifest.UpgradeVersion,
 		Prometheus:             manifest.Prometheus,
+		ExperimentalMaxGossipConnectionsToPersistentPeers:    manifest.ExperimentalMaxGossipConnectionsToPersistentPeers,
+		ExperimentalMaxGossipConnectionsToNonPersistentPeers: manifest.ExperimentalMaxGossipConnectionsToNonPersistentPeers,
 	}
 	if len(manifest.KeyType) != 0 {
 		testnet.KeyType = manifest.KeyType
