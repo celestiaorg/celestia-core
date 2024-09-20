@@ -9,6 +9,7 @@ import (
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -166,6 +167,7 @@ func (pc peerConn) RemoteIP() net.IP {
 //
 // Before using a peer, you will need to perform a handshake on connection.
 type peer struct {
+	sync.Mutex
 	service.BaseService
 
 	// raw peerConn and the multiplex connection
@@ -414,6 +416,12 @@ func (p *peer) SendEnvelope(e Envelope) bool {
 	return res
 }
 
+func (p *peer) addStream(stream quic.Stream, chID byte) {
+	p.Mutex.Lock()
+	defer p.Mutex.Unlock()
+	p.streams[chID] = stream
+}
+
 // Send msg bytes to the channel identified by chID byte. Returns false if the
 // send queue is full after timeout, specified by MConnection.
 // SendEnvelope replaces Send which will be deprecated in a future release.
@@ -430,7 +438,7 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 			p.Logger.Error("error opening quic stream", "err", err.Error())
 			return false
 		}
-		p.streams[chID] = newStream
+		p.addStream(newStream, chID)
 		stream = newStream
 		err = binary.Write(stream, binary.BigEndian, chID)
 		if err != nil {
