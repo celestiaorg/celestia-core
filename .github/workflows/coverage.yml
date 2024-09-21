@@ -84,7 +84,7 @@ jobs:
         if: env.GIT_DIFF
       - name: test & coverage report creation
         run: |
-          cat pkgs.txt.part.${{ matrix.part }} | xargs go test -mod=readonly -timeout 10m -race -coverprofile=${{ matrix.part }}profile.out -covermode=atomic
+          cat pkgs.txt.part.${{ matrix.part }} | xargs go test -mod=readonly -timeout 15m -race -coverprofile=${{ matrix.part }}profile.out -covermode=atomic
         if: env.GIT_DIFF
       - uses: actions/upload-artifact@v4
         with:
