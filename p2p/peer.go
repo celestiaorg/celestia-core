@@ -557,12 +557,12 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 		return false
 	}
 	err := binary.Write(stream, binary.BigEndian, msgBytes)
-	p.Logger.Info("sent data_len", "len", len(msgBytes))
+	p.Logger.Debug("sent data_len", "len", len(msgBytes))
 	if err != nil {
 		p.Logger.Info("Send failed", "channel", "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
 		return false
 	}
-	p.Logger.Info("sent data", "data", hex.EncodeToString(msgBytes), "raw_data", msgBytes)
+	p.Logger.Debug("sent data", "data", hex.EncodeToString(msgBytes))
 	labels := []string{
 		"peer_id", string(p.ID()),
 		"chID", fmt.Sprintf("%#x", chID),
@@ -594,14 +594,14 @@ func (p *peer) StartReceiving() error {
 					p.Logger.Debug("failed to read size from stream", "err", err.Error())
 					return
 				}
-				p.Logger.Info("received data len", "len", dataLen)
+				p.Logger.Debug("received data len", "len", dataLen)
 				data := make([]byte, dataLen)
 				_, err = io.ReadFull(stream, data)
 				if err != nil {
 					p.Logger.Debug("failed to read data from stream", "err", err.Error())
 					return
 				}
-				p.Logger.Info("received data", "bytes", hex.EncodeToString(data), "raw_bytes", data)
+				p.Logger.Debug("received data", "bytes", hex.EncodeToString(data))
 				p.onReceive(chID, data)
 			}
 		}()
