@@ -827,28 +827,28 @@ func (sw *Switch) addOutboundPeerWithConfig(
 
 func (sw *Switch) filterPeer(p Peer) error {
 	// Avoid duplicate
-	if sw.peers.Has(p.ID()) {
-		return ErrRejected{id: p.ID(), isDuplicate: true}
-	}
-
-	errc := make(chan error, len(sw.peerFilters))
-
-	for _, f := range sw.peerFilters {
-		go func(f PeerFilterFunc, p Peer, errc chan<- error) {
-			errc <- f(sw.peers, p)
-		}(f, p, errc)
-	}
-
-	for i := 0; i < cap(errc); i++ {
-		select {
-		case err := <-errc:
-			if err != nil {
-				return ErrRejected{id: p.ID(), err: err, isFiltered: true}
-			}
-		case <-time.After(sw.filterTimeout):
-			return ErrFilterTimeout{}
-		}
-	}
+	//if sw.peers.Has(p.ID()) {
+	//	return ErrRejected{id: p.ID(), isDuplicate: true}
+	//}
+	//
+	//errc := make(chan error, len(sw.peerFilters))
+	//
+	//for _, f := range sw.peerFilters {
+	//	go func(f PeerFilterFunc, p Peer, errc chan<- error) {
+	//		errc <- f(sw.peers, p)
+	//	}(f, p, errc)
+	//}
+	//
+	//for i := 0; i < cap(errc); i++ {
+	//	select {
+	//	case err := <-errc:
+	//		if err != nil {
+	//			return ErrRejected{id: p.ID(), err: err, isFiltered: true}
+	//		}
+	//	case <-time.After(sw.filterTimeout):
+	//		return ErrFilterTimeout{}
+	//	}
+	//}
 
 	return nil
 }
