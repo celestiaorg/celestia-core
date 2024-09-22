@@ -314,11 +314,11 @@ func (p *peer) OnStart() error {
 func (p *peer) FlushStop() {
 	p.metricsTicker.Stop()
 	p.BaseService.OnStop()
-	for _, stream := range p.streams {
-		// TODO(rach-id): set valid error codes
-		stream.CancelRead(quic.StreamErrorCode(0))  // stop everything and close the conn
-		stream.CancelWrite(quic.StreamErrorCode(0)) // stop everything and close the conn
-	}
+	//for _, stream := range p.streams {
+	//	// TODO(rach-id): set valid error codes
+	//	stream.CancelRead(quic.StreamErrorCode(0))  // stop everything and close the conn
+	//	stream.CancelWrite(quic.StreamErrorCode(0)) // stop everything and close the conn
+	//}
 }
 
 // OnStop implements BaseService.
@@ -422,6 +422,13 @@ func (p *peer) addStream(stream quic.Stream, chID byte) {
 	p.streams[chID] = stream
 }
 
+func (p *peer) getStream(chID byte) (quic.Stream, bool) {
+	p.Mutex.Lock()
+	defer p.Mutex.Unlock()
+	stream, has := p.streams[chID]
+	return stream, has
+}
+
 // Send msg bytes to the channel identified by chID byte. Returns false if the
 // send queue is full after timeout, specified by MConnection.
 // SendEnvelope replaces Send which will be deprecated in a future release.
@@ -431,7 +438,7 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 	} else if !p.hasChannel(chID) {
 		return false
 	}
-	stream, has := p.streams[chID]
+	stream, has := p.getStream(chID)
 	if !has {
 		newStream, err := p.conn.OpenStreamSync(context.Background())
 		if err != nil {
