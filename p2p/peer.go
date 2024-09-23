@@ -574,7 +574,7 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 		p.Logger.Error("Send failed", "channel", "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
 		return false
 	}
-	p.Logger.Debug("sent data", "data", hex.EncodeToString(msgBytes))
+	p.Logger.Debug("sent data", "channel", chID)
 	labels := []string{
 		"peer_id", string(p.ID()),
 		"chID", fmt.Sprintf("%#x", chID),
@@ -622,9 +622,25 @@ func (p *peer) StartReceiving() error {
 				}
 
 				dd := packet.Sum.(*p2p.Packet_PacketMsg)
-				p.Logger.Debug("received data", "bytes", hex.EncodeToString(dd.PacketMsg.Data))
+				//p.Logger.Debug("received data", "bytes", hex.EncodeToString(someLogData(dd.PacketMsg.Data)))
+				p.Logger.Debug("received data", "channel", chID)
 				p.onReceive(chID, dd.PacketMsg.Data)
 			}
 		}()
 	}
+}
+
+func someLogData(data []byte) []byte {
+	beginning := data
+	numBytes := 10
+	if len(data) > numBytes {
+		beginning = data[:numBytes]
+	}
+
+	// Get the last `numBytes` bytes from the end
+	end := data
+	if len(data) > numBytes {
+		end = data[len(data)-numBytes:]
+	}
+	return append(beginning, end...)
 }
