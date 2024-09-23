@@ -93,11 +93,11 @@ func ConnDuplicateIPFilter() ConnFilterFunc {
 	return func(cs ConnSet, c quic.Connection, ips []net.IP) error {
 		for _, ip := range ips {
 			if cs.HasIP(ip) {
-				return ErrRejected{
-					conn:        c,
-					err:         fmt.Errorf("ip<%v> already connected", ip),
-					isDuplicate: true,
-				}
+				//return ErrRejected{
+				//	conn:        c,
+				//	err:         fmt.Errorf("ip<%v> already connected", ip),
+				//	isDuplicate: true,
+				//}
 			}
 		}
 
@@ -366,19 +366,19 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 		go func(c quic.Connection) {
 			defer func() {
 				if r := recover(); r != nil {
-					err := ErrRejected{
-						conn:          c,
-						err:           fmt.Errorf("recovered from panic: %v", r),
-						isAuthFailure: true,
-					}
-					select {
-					case mt.acceptc <- accept{err: err}:
-					case <-mt.closec:
-						// Give up if the transport was closed.
-						// TODO(rach-id): valid error code
-						_ = c.CloseWithError(quic.ApplicationErrorCode(0), "some error 1")
-						return
-					}
+					//err := ErrRejected{
+					//	conn:          c,
+					//	err:           fmt.Errorf("recovered from panic: %v", r),
+					//	isAuthFailure: true,
+					//}
+					//select {
+					//case mt.acceptc <- accept{err: err}:
+					//case <-mt.closec:
+					//	// Give up if the transport was closed.
+					//	// TODO(rach-id): valid error code
+					//	_ = c.CloseWithError(quic.ApplicationErrorCode(0), "some error 1")
+					//	return
+					//}
 				}
 			}()
 
@@ -433,7 +433,8 @@ func (mt *MultiplexTransport) filterConn(c quic.Connection) (err error) {
 
 	// Reject if connection is already present.
 	if mt.conns.Has(c) {
-		return ErrRejected{conn: c, isDuplicate: true}
+		//return ErrRejected{conn: c, isDuplicate: true}
+		return nil
 	}
 
 	// Resolve ips for incoming conn.
@@ -454,7 +455,8 @@ func (mt *MultiplexTransport) filterConn(c quic.Connection) (err error) {
 		select {
 		case err := <-errc:
 			if err != nil {
-				return ErrRejected{conn: c, err: err, isFiltered: true}
+				return nil
+				//return ErrRejected{conn: c, err: err, isFiltered: true}
 			}
 		case <-time.After(mt.filterTimeout):
 			return ErrFilterTimeout{}
