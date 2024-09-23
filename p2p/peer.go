@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/quic-go/quic-go"
+	"github.com/tendermint/tendermint/libs/protoio"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
-	"io"
+	"github.com/tendermint/tendermint/proto/tendermint/p2p"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -552,11 +554,21 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 		}
 	}
 
-	if err := binary.Write(stream, binary.BigEndian, uint32(len(msgBytes))); err != nil {
-		p.Logger.Error("Send len failed", "err", err, "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
-		return false
+	//if err := binary.Write(stream, binary.BigEndian, uint32(len(msgBytes))); err != nil {
+	//	p.Logger.Error("Send len failed", "err", err, "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
+	//	return false
+	//}
+	packet := p2p.Packet{
+		Sum: &p2p.Packet_PacketMsg{
+			PacketMsg: &p2p.PacketMsg{
+				ChannelID: int32(chID),
+				EOF:       true,
+				Data:      msgBytes,
+			},
+		},
 	}
-	err := binary.Write(stream, binary.BigEndian, msgBytes)
+	_, err := protoio.NewDelimitedWriter(stream).WriteMsg(&packet)
+	//err := binary.Write(stream, binary.BigEndian, msgBytes)
 	p.Logger.Debug("sent data_len", "len", len(msgBytes))
 	if err != nil {
 		p.Logger.Info("Send failed", "channel", "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
@@ -587,22 +599,31 @@ func (p *peer) StartReceiving() error {
 		}
 		// start accepting data
 		go func() {
+			//reader := protoio.NewDelimitedReader(stream, math.MaxInt32)
 			for {
-				var dataLen uint32
-				err = binary.Read(stream, binary.BigEndian, &dataLen)
-				if err != nil {
-					p.Logger.Debug("failed to read size from stream", "err", err.Error())
-					return
-				}
-				p.Logger.Debug("received data len", "len", dataLen)
-				data := make([]byte, dataLen)
-				_, err = io.ReadFull(stream, data)
+				//var dataLen uint32
+				//err = binary.Read(stream, binary.BigEndian, &dataLen)
+				//if err != nil {
+				//	p.Logger.Debug("failed to read size from stream", "err", err.Error())
+				//	return
+				//}
+				//p.Logger.Debug("received data len", "len", dataLen)
+				//data := make([]byte, dataLen)
+				//_, err = io.ReadFull(stream, data)
+				//if err != nil {
+				//	p.Logger.Debug("failed to read data from stream", "err", err.Error())
+				//	return
+				//}
+				var packet p2p.Packet
+				_, err := protoio.NewDelimitedReader(stream, math.MaxInt32).ReadMsg(&packet)
 				if err != nil {
 					p.Logger.Debug("failed to read data from stream", "err", err.Error())
 					return
 				}
-				p.Logger.Debug("received data", "bytes", hex.EncodeToString(data))
-				p.onReceive(chID, data)
+
+				dd := packet.Sum.(*p2p.Packet_PacketMsg)
+				p.Logger.Debug("received data", "bytes", hex.EncodeToString(dd.PacketMsg.Data))
+				p.onReceive(chID, dd.PacketMsg.Data)
 			}
 		}()
 	}
