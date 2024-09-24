@@ -872,6 +872,7 @@ func NewNode(config *cfg.Config,
 	}
 
 	// Make MempoolReactor
+	// TODO limit the proxyApp to Mempool only
 	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger, tracer)
 
 	// Make Evidence Reactor
@@ -927,6 +928,7 @@ func NewNode(config *cfg.Config,
 	}
 
 	// Setup Transport.
+	// TODO limit the proxyApp to Query only
 	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp, tracer)
 
 	// Setup Switch.
@@ -1520,7 +1522,7 @@ func LoadStateFromDBOrGenesisDocProvider(
 			return sm.State{}, nil, err
 		}
 		// save genesis doc to prevent a certain class of user errors (e.g. when it
-		// was changed, accidentally or not). Also good for audit trail.
+		// was changed, accidentally or not). Also, good for audit trail.
 		if err := saveGenesisDoc(stateDB, genDoc); err != nil {
 			return sm.State{}, nil, err
 		}
