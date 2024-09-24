@@ -69,7 +69,7 @@ func dumpCmdHandler(_ *cobra.Command, args []string) error {
 	cfg.EnsureRoot(conf.RootDir)
 
 	dumpDebugData(outDir, conf, rpc)
-
+	//nolint:gosec
 	ticker := time.NewTicker(time.Duration(frequency) * time.Second)
 	for range ticker.C {
 		dumpDebugData(outDir, conf, rpc)

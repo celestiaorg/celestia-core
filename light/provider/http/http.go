@@ -157,6 +157,7 @@ OUTER_LOOP:
 
 			case regexpTimedOut.MatchString(err.Error()):
 				// we wait and try again with exponential backoff
+				//nolint:gosec
 				time.Sleep(backoffTimeout(uint16(attempt)))
 				continue
 
@@ -207,6 +208,7 @@ func (p *http) signedHeader(ctx context.Context, height *int64) (*types.SignedHe
 
 		case regexpTimedOut.MatchString(err.Error()):
 			// we wait and try again with exponential backoff
+			//nolint:gosec
 			time.Sleep(backoffTimeout(uint16(attempt)))
 			continue
 
