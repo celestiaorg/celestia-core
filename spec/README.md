@@ -1,1 +1,1 @@
-As celestia-core is a fork of [cometbft/cometbft](https://github.com/cometbft/cometbft, for protocol details, pelase refer to the [CometBFT Specification](https://github.com/cometbft/cometbft/tree/main/spec).
+As celestia-core is a fork of [cometbft/cometbft](https://github.com/cometbft/cometbft), for protocol details, please refer to the [CometBFT Specification](https://github.com/cometbft/cometbft/tree/main/spec).
