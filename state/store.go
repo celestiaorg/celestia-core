@@ -101,7 +101,7 @@ func NewStore(db dbm.DB, options StoreOptions) Store {
 	return dbStore{db, options}
 }
 
-// LoadStateFromDBOrGenesisFile loads the most recent state from the database,
+// LoadFromDBOrGenesisFile loads the most recent state from the database,
 // or creates a new one from the given genesisFilePath.
 func (store dbStore) LoadFromDBOrGenesisFile(genesisFilePath string) (State, error) {
 	state, err := store.Load()

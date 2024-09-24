@@ -167,14 +167,14 @@ type BaseConfig struct { //nolint: maligned
 	chainID string
 
 	// The root directory for all data.
-	// This should be set in viper so it can unmarshal into this struct
+	// This should be set in viper so that it can unmarshal into this struct
 	RootDir string `mapstructure:"home"`
 
 	// TCP or UNIX socket address of the ABCI application,
 	// or the name of an ABCI application compiled in with the CometBFT binary
 	ProxyApp string `mapstructure:"proxy_app"`
 
-	// A custom human readable name for this node
+	// A custom human-readable name for this node
 	Moniker string `mapstructure:"moniker"`
 
 	// If this node is many blocks behind the tip of the chain, FastSync
@@ -212,7 +212,7 @@ type BaseConfig struct { //nolint: maligned
 	// Output format: 'plain' (colored text) or 'json'
 	LogFormat string `mapstructure:"log_format"`
 
-	// Path to the JSON file containing the initial validator set and other meta data
+	// Path to the JSON file containing the initial validator set and other metadata
 	Genesis string `mapstructure:"genesis_file"`
 
 	// Path to the JSON file containing the private key to use as a validator in the consensus protocol
@@ -848,7 +848,7 @@ func DefaultStateSyncConfig() *StateSyncConfig {
 	}
 }
 
-// TestFastSyncConfig returns a default configuration for the state sync service
+// TestStateSyncConfig returns a default configuration for the state sync service
 func TestStateSyncConfig() *StateSyncConfig {
 	return DefaultStateSyncConfig()
 }
