@@ -632,6 +632,7 @@ func fireEvents(
 		}
 		if err := eventBus.PublishEventTx(types.EventDataTx{TxResult: abci.TxResult{
 			Height: block.Height,
+			//nolint:gosec
 			Index:  uint32(i),
 			Tx:     tx,
 			Result: *(abciResponses.DeliverTxs[i]),

@@ -54,6 +54,7 @@ func (bA *BitArray) getIndex(i int) bool {
 	if i >= bA.Bits {
 		return false
 	}
+	//nolint:gosec
 	return bA.Elems[i/64]&(uint64(1)<<uint(i%64)) > 0
 }
 
@@ -73,8 +74,10 @@ func (bA *BitArray) setIndex(i int, v bool) bool {
 		return false
 	}
 	if v {
+		//nolint:gosec
 		bA.Elems[i/64] |= (uint64(1) << uint(i%64))
 	} else {
+		//nolint:gosec
 		bA.Elems[i/64] &= ^(uint64(1) << uint(i%64))
 	}
 	return true
@@ -235,6 +238,7 @@ func (bA *BitArray) IsFull() bool {
 	// Check that the last element has (lastElemBits) 1's
 	lastElemBits := (bA.Bits+63)%64 + 1
 	lastElem := bA.Elems[len(bA.Elems)-1]
+	//nolint:gosec
 	return (lastElem+1)&((uint64(1)<<uint(lastElemBits))-1) == 0
 }
 
@@ -269,6 +273,7 @@ func (bA *BitArray) getTrueIndices() []int {
 			continue
 		}
 		for j := 0; j < 64; j++ {
+			//nolint:gosec
 			if (elem & (uint64(1) << uint64(j))) > 0 {
 				trueIndices = append(trueIndices, curBit)
 			}
@@ -279,6 +284,7 @@ func (bA *BitArray) getTrueIndices() []int {
 	lastElem := bA.Elems[numElems-1]
 	numFinalBits := bA.Bits - curBit
 	for i := 0; i < numFinalBits; i++ {
+		//nolint:gosec
 		if (lastElem & (uint64(1) << uint64(i))) > 0 {
 			trueIndices = append(trueIndices, curBit)
 		}

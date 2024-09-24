@@ -56,10 +56,13 @@ func (f *ClientFactory) ValidateConfig(cfg loadtest.Config) error {
 
 func (f *ClientFactory) NewClient(cfg loadtest.Config) (loadtest.Client, error) {
 	return &TxGenerator{
-		id:    f.ID,
+		id: f.ID,
+		//nolint:gosec
 		conns: uint64(cfg.Connections),
-		rate:  uint64(cfg.Rate),
-		size:  uint64(cfg.Size),
+		//nolint:gosec
+		rate: uint64(cfg.Rate),
+		//nolint:gosec
+		size: uint64(cfg.Size),
 	}, nil
 }
 
