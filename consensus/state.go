@@ -84,7 +84,7 @@ type State struct {
 	config        *cfg.ConsensusConfig
 	privValidator types.PrivValidator // for signing votes
 
-	// store blocks and commits
+	// blockStore blocks and commits
 	blockStore sm.BlockStore
 
 	// create and execute blocks
@@ -1699,7 +1699,7 @@ func (cs *State) finalizeCommit(height int64) {
 	stateCopy := cs.state.Copy()
 
 	// Execute and commit the block, update and save the state, and update the mempool.
-	// NOTE The block.AppHash wont reflect these txs until the next block.
+	// NOTE The block.AppHash won't reflect these txs until the next block.
 	var (
 		err          error
 		retainHeight int64
