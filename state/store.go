@@ -119,7 +119,7 @@ func (store dbStore) LoadFromDBOrGenesisFile(genesisFilePath string) (State, err
 	return state, nil
 }
 
-// LoadStateFromDBOrGenesisDoc loads the most recent state from the database,
+// LoadFromDBOrGenesisDoc loads the most recent state from the database,
 // or creates a new one from the given genesisDoc.
 func (store dbStore) LoadFromDBOrGenesisDoc(genesisDoc *types.GenesisDoc) (State, error) {
 	state, err := store.Load()
@@ -138,7 +138,7 @@ func (store dbStore) LoadFromDBOrGenesisDoc(genesisDoc *types.GenesisDoc) (State
 	return state, nil
 }
 
-// LoadState loads the State from the database.
+// Load loads the State from the database.
 func (store dbStore) Load() (State, error) {
 	return store.loadState(stateKey)
 }
@@ -203,7 +203,7 @@ func (store dbStore) save(state State, key []byte) error {
 	return nil
 }
 
-// BootstrapState saves a new state, used e.g. by state sync when starting from non-zero height.
+// Bootstrap saves a new state, used e.g. by state sync when starting from non-zero height.
 func (store dbStore) Bootstrap(state State) error {
 	height := state.LastBlockHeight + 1
 	if height == 1 {
