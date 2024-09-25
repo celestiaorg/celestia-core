@@ -77,4 +77,7 @@ message State {
 
   // the latest AppHash we've received from calling abci.Commit()
   bytes app_hash = 13;
+
+  // timeouts to be used for the next block height
+  tendermint.abci.TimeoutsInfo timeouts = 15;
 }
