@@ -149,6 +149,9 @@ func TestStateSaveLoad(t *testing.T) {
 	})
 	assert := assert.New(t)
 
+	// the timeouts coming from the setupTestCase are 0,
+	// we change it here just to ensure that they have non-zero values in the
+	// tests below
 	state.TimeoutCommit = 10 * time.Second
 	state.TimeoutPropose = 5 * time.Second
 	state.LastBlockHeight++
