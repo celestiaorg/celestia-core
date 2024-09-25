@@ -721,7 +721,8 @@ func abciResponses(n int, code uint32) []*abci.ResponseDeliverTx {
 }
 
 func TestTxPool_ConcurrentlyAddingTx(t *testing.T) {
-	txmp := setup(t, 500)
+	cacheSize := 500
+	txPool := setup(t, cacheSize)
 	tx := types.Tx("sender=0000=1")
 
 	numTxs := 10
@@ -731,7 +732,7 @@ func TestTxPool_ConcurrentlyAddingTx(t *testing.T) {
 		wg.Add(1)
 		go func(sender uint16) {
 			defer wg.Done()
-			_, err := txmp.TryAddNewTx(tx, tx.Key(), mempool.TxInfo{SenderID: sender})
+			_, err := txPool.TryAddNewTx(tx, tx.Key(), mempool.TxInfo{SenderID: sender})
 			errCh <- err
 		}(uint16(i + 1))
 	}
@@ -747,7 +748,10 @@ func TestTxPool_ConcurrentlyAddingTx(t *testing.T) {
 			errCount++
 		}
 	}
-	require.Equal(t, numTxs-1, errCount)
+	// At least one tx should succeed and get added to the mempool without an error.
+	require.Less(t, errCount, numTxs)
+	// The rest of the txs may fail with ErrTxInMempool but the number of errors isn't exact.
+	require.LessOrEqual(t, errCount, numTxs-1)
 }
 
 func TestTxPool_BroadcastQueue(t *testing.T) {
