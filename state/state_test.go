@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,17 +50,54 @@ func TestStateCopy(t *testing.T) {
 	tearDown, _, state := setupTestCase(t)
 	defer tearDown(t)
 	assert := assert.New(t)
+	// the timeouts coming from the setupTestCase are 0,
+	// we change it here just to ensure that they have non-zero values in the
+	// tests below
+	state.TimeoutPropose = 10 * time.Second
+	state.TimeoutCommit = 20 * time.Second
 
-	stateCopy := state.Copy()
+	tests := []struct {
+		name        string
+		modifyState func(sm.State) sm.State
+		expected    bool
+	}{
+		{
+			name: "no modification",
+			modifyState: func(s sm.State) sm.State {
+				stateCopy := s.Copy()
+				return stateCopy
+			},
+			expected: true,
+		},
+		{
+			name: "modify block height and validators",
+			modifyState: func(s sm.State) sm.State {
+				stateCopy := s.Copy()
+				stateCopy.LastBlockHeight++
+				stateCopy.LastValidators = s.Validators
+				return stateCopy
+			},
+			expected: false,
+		},
+		{
+			name: "modify timeouts",
+			modifyState: func(s sm.State) sm.State {
+				stateCopy := s.Copy()
+				stateCopy.TimeoutPropose = 1 * time.Second
+				stateCopy.TimeoutCommit = 2 * time.Second
+				return stateCopy
+			},
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			newState := tt.modifyState(state)
+			assert.Equal(tt.expected, state.Equals(newState),
+				fmt.Sprintf("expected state: %v\n got: %v\n", state, newState))
+		})
 
-	assert.True(state.Equals(stateCopy),
-		fmt.Sprintf("expected state and its copy to be identical.\ngot: %v\nexpected: %v\n",
-			stateCopy, state))
-
-	stateCopy.LastBlockHeight++
-	stateCopy.LastValidators = state.Validators
-	assert.False(state.Equals(stateCopy), fmt.Sprintf(`expected states to be different. got same
-        %v`, state))
+	}
 }
 
 // TestMakeGenesisStateNilValidators tests state's consistency when genesis file's validators field is nil.
