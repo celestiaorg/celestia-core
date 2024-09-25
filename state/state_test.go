@@ -193,9 +193,9 @@ func TestABCIResponsesSaveLoad1(t *testing.T) {
 
 	abciResponses.DeliverTxs[0] = &abci.ResponseDeliverTx{Data: []byte("foo"), Events: nil}
 	abciResponses.DeliverTxs[1] = &abci.ResponseDeliverTx{Data: []byte("bar"), Log: "ok", Events: nil}
-	abciResponses.EndBlock = &abci.ResponseEndBlock{ValidatorUpdates: []abci.ValidatorUpdate{
-		types.TM2PB.NewValidatorUpdate(ed25519.GenPrivKey().PubKey(), 10),
-	}}
+	abciResponses.EndBlock = &abci.ResponseEndBlock{
+		ValidatorUpdates: []abci.ValidatorUpdate{types.TM2PB.NewValidatorUpdate(ed25519.GenPrivKey().PubKey(), 10)},
+		Timeouts:         abci.TimeoutsInfo{TimeoutPropose: 1 * time.Second, TimeoutCommit: 2 * time.Second}}
 
 	err := stateStore.SaveABCIResponses(block.Height, abciResponses)
 	require.NoError(t, err)
@@ -204,6 +204,7 @@ func TestABCIResponsesSaveLoad1(t *testing.T) {
 	assert.Equal(abciResponses, loadedABCIResponses,
 		fmt.Sprintf("ABCIResponses don't match:\ngot:       %v\nexpected: %v\n",
 			loadedABCIResponses, abciResponses))
+
 }
 
 // TestResultsSaveLoad tests saving and loading ABCI results.
