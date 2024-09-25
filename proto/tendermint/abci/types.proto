@@ -200,7 +200,7 @@ message ResponseInfo {
   int64 last_block_height   = 4;
   bytes last_block_app_hash = 5;
 
-  TimeoutsInfo timeouts = 6;
+  TimeoutsInfo timeouts = 6 [(gogoproto.nullable) = false];
 }
 
 // nondeterministic
@@ -215,7 +215,7 @@ message ResponseInitChain {
   ConsensusParams          consensus_params = 1;
   repeated ValidatorUpdate validators       = 2 [(gogoproto.nullable) = false];
   bytes                    app_hash         = 3;
-  TimeoutsInfo             timeouts         = 4;
+  TimeoutsInfo             timeouts         = 4 [(gogoproto.nullable) = false];
 }
 
 message ResponseQuery {
@@ -273,7 +273,7 @@ message ResponseEndBlock {
   ConsensusParams          consensus_param_updates = 2;
   repeated Event           events                  = 3
       [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
-  TimeoutsInfo timeouts = 4;
+  TimeoutsInfo timeouts = 4 [(gogoproto.nullable) = false];
 }
 
 message ResponseCommit {
