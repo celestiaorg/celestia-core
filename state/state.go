@@ -79,15 +79,15 @@ type State struct {
 	AppHash []byte
 
 	// timeouts received from app, after abci EndBlock call, to be used in the next height
-	timeoutPropose time.Duration
-	timeoutCommit  time.Duration
+	TimeoutPropose time.Duration
+	TimeoutCommit  time.Duration
 }
 
 func (state *State) GetTimeoutPropose() time.Duration {
-	return state.timeoutPropose
+	return state.TimeoutPropose
 }
 func (state *State) GetTimeoutCommit() time.Duration {
-	return state.timeoutCommit
+	return state.TimeoutCommit
 }
 
 // Copy makes a copy of the State for mutating.
@@ -112,6 +112,9 @@ func (state State) Copy() State {
 		AppHash: state.AppHash,
 
 		LastResultsHash: state.LastResultsHash,
+
+		TimeoutCommit:  state.TimeoutCommit,
+		TimeoutPropose: state.TimeoutPropose,
 	}
 }
 
