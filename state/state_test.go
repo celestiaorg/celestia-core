@@ -1151,9 +1151,13 @@ func TestConsensusParamsChangesSaveLoad(t *testing.T) {
 func TestStateProto(t *testing.T) {
 	tearDown, _, state := setupTestCase(t)
 	defer tearDown(t)
-	// set non-zero values for the timeouts of the state
-	state.TimeoutCommit = 10 * time.Second
-	state.TimeoutPropose = 11 * time.Second
+
+	// for assurance,
+	// we make another state with non-zero timeouts to see if conversion works
+	stateCopyWithTimeouts := state.Copy()
+	stateCopyWithTimeouts.TimeoutCommit = 10 * time.Second
+	stateCopyWithTimeouts.TimeoutPropose = 11 * time.Second
+
 	tc := []struct {
 		testName string
 		state    *sm.State
@@ -1163,6 +1167,7 @@ func TestStateProto(t *testing.T) {
 		{"empty state", &sm.State{}, true, false},
 		{"nil failure state", nil, false, false},
 		{"success state", &state, true, true},
+		{"success state with timeouts", &stateCopyWithTimeouts, true, true},
 	}
 
 	for _, tt := range tc {
