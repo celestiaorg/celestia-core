@@ -601,22 +601,19 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)
 
-	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
-		DiscardABCIResponses: false,
-	})
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{DiscardABCIResponses: false})
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	require.NoError(t, err)
+
 	db := dbm.NewMemDB()
 	blockStore := NewBlockStore(db)
+	maxHeight := int64(15)
 
-	// Make more than 1000 blocks, to test batch deletions
-	// Make a copy of txs before batches are deleted
-	// to make sure that they are correctly pruned
 	var indexedTxHashes [][]byte
-	for h := int64(1); h <= 1500; h++ {
-		block := makeBlock(h, state, new(types.Commit))
-		partSet := block.MakePartSet(2)
-		seenCommit := makeTestCommit(h, cmttime.Now())
+	for height := int64(1); height <= maxHeight; height++ {
+		block := makeUniqueBlock(height, state, new(types.Commit))
+		partSet := block.MakePartSet(types.BlockPartSizeBytes)
+		seenCommit := makeTestCommit(height, cmttime.Now())
 		blockStore.SaveBlock(block, partSet, seenCommit)
 		err := blockStore.SaveTxInfo(block, make([]uint32, len(block.Txs)), make([]string, len(block.Txs)))
 		require.NoError(t, err)
@@ -624,36 +621,40 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 			indexedTxHashes = append(indexedTxHashes, tx.Hash())
 		}
 	}
+	require.Len(t, indexedTxHashes, 15)
 
-	// Check that the saved txs exist in the db
+	// Check that the saved txs exist in the block store.
 	for _, hash := range indexedTxHashes {
 		txInfo := blockStore.LoadTxInfo(hash)
-
 		require.NoError(t, err)
-		require.NotNil(t, txInfo, "Transaction was not saved in the database")
+		require.NotNil(t, txInfo, "transaction was not saved in the database")
 	}
 
-	pruned, err := blockStore.PruneBlocks(1200)
+	pruned, err := blockStore.PruneBlocks(12) // prune blocks 1 to 11.
 	require.NoError(t, err)
-	assert.EqualValues(t, 1199, pruned)
+	assert.EqualValues(t, 11, pruned)
 
-	// Check that the transactions in the pruned blocks have been removed
-	// We removed 1199 blocks, each block has 10 txs
-	// so 11990 txs should no longer exist in the db
+	// Check that the transactions in the pruned blocks have been removed. We
+	// removed 11 blocks, each block has 1 tx so 11 txs should no longer
+	// exist in the db.
 	for i, hash := range indexedTxHashes {
-		if int64(i) < 1199*10 {
-			txInfo := blockStore.LoadTxInfo(hash)
+		txInfo := blockStore.LoadTxInfo(hash)
+		if int64(i) < 11 {
 			require.Nil(t, txInfo)
+		} else {
+			require.NotNil(t, txInfo)
 		}
 	}
 
 	// Check that transactions in remaining blocks are still there
-	for h := int64(pruned + 1); h <= 1500; h++ {
-		block := blockStore.LoadBlock(h)
+	for height := int64(pruned + 1); height <= maxHeight; height++ {
+		block := blockStore.LoadBlock(height)
 		for i, tx := range block.Txs {
-			txInfo := blockStore.LoadTxInfo(tx.Hash())
+			hash := tx.Hash()
+			txInfo := blockStore.LoadTxInfo(hash)
 			require.NoError(t, err)
-			require.Equal(t, h, txInfo.Height)
+			require.NotNil(t, txInfo)
+			require.Equal(t, height, txInfo.Height)
 			require.Equal(t, uint32(i), txInfo.Index)
 			require.Equal(t, uint32(0), txInfo.Code)
 		}
