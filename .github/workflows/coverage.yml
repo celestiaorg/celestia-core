@@ -46,10 +46,10 @@ jobs:
     env:
       GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           go-version-file: "go.mod"
-      - uses: actions/checkout@v3
       - uses: technote-space/get-diff-action@v6
         with:
           PATTERNS: |
@@ -68,10 +68,10 @@ jobs:
       matrix:
         part: ["00", "01", "02", "03"]
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           go-version-file: "go.mod"
-      - uses: actions/checkout@v3
       - uses: technote-space/get-diff-action@v6
         with:
           PATTERNS: |

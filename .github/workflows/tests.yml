@@ -23,10 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           go-version-file: "go.mod"
-      - uses: actions/checkout@v3
       - uses: technote-space/get-diff-action@v6
         with:
           PATTERNS: |
@@ -55,10 +55,10 @@ jobs:
     needs: build
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           go-version-file: "go.mod"
-      - uses: actions/checkout@v4
       - uses: technote-space/get-diff-action@v6
         with:
           PATTERNS: |
@@ -87,10 +87,10 @@ jobs:
     needs: build
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           go-version-file: "go.mod"
-      - uses: actions/checkout@v4
       - uses: technote-space/get-diff-action@v6
         with:
           PATTERNS: |

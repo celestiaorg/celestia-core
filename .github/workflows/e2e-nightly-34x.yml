@@ -21,13 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/setup-go@v4
-        with:
-          go-version-file: "go.mod"
-
       - uses: actions/checkout@v4
         with:
           ref: 'v0.34.x-celestia'
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version-file: "go.mod"
 
       - name: Build
         working-directory: test/e2e
