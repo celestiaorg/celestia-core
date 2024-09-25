@@ -330,10 +330,9 @@ func (s *syncer) offerSnapshot(snapshot *snapshot) error {
 			Chunks:   snapshot.Chunks,
 			Hash:     snapshot.Hash,
 			Metadata: snapshot.Metadata,
-			// TODO consider moving this field to the RequestOfferSnapshot struct.
-			AppVersion: snapshot.trustedAppVersion,
 		},
-		AppHash: snapshot.trustedAppHash,
+		AppHash:    snapshot.trustedAppHash,
+		AppVersion: snapshot.trustedAppVersion,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to offer snapshot: %w", err)

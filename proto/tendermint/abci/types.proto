@@ -110,6 +110,7 @@ message RequestListSnapshots {}
 message RequestOfferSnapshot {
   Snapshot snapshot = 1;  // snapshot offered by peers
   bytes    app_hash = 2;  // light client-verified app hash for snapshot height
+  uint64 app_version = 3; // The application version at which the snapshot was taken
 }
 
 // loads a snapshot chunk
@@ -428,7 +429,6 @@ message Snapshot {
   uint32 chunks   = 3;  // Number of chunks in the snapshot
   bytes  hash     = 4;  // Arbitrary snapshot hash, equal only if identical
   bytes  metadata = 5;  // Arbitrary application metadata
-  uint64 app_version = 6; // The application version at which the snapshot was taken
 }
 
 //----------------------------------------
