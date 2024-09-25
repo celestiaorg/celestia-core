@@ -18,7 +18,7 @@ jobs:
 
       - uses: actions/setup-go@v4
         with:
-          go-version: '1.23.1'
+          go-version-file: "go.mod"
 
       # Similar check to ./release-version.yml, but enforces this when pushing
       # tags. The ./release-version.yml check can be bypassed and is mainly
