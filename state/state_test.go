@@ -149,6 +149,8 @@ func TestStateSaveLoad(t *testing.T) {
 	})
 	assert := assert.New(t)
 
+	state.TimeoutCommit = 10 * time.Second
+	state.TimeoutPropose = 5 * time.Second
 	state.LastBlockHeight++
 	state.LastValidators = state.Validators
 	err := stateStore.Save(state)
@@ -159,6 +161,13 @@ func TestStateSaveLoad(t *testing.T) {
 	assert.True(state.Equals(loadedState),
 		fmt.Sprintf("expected state and its copy to be identical.\ngot: %v\nexpected: %v\n",
 			loadedState, state))
+
+	// the following assertions are just for additional assurance
+	assert.Equal(state.TimeoutCommit, loadedState.TimeoutCommit,
+		fmt.Sprintf("expected TimeoutCommit to be equal."+
+			"\ngot: %v\nexpected: %v\n", loadedState.TimeoutCommit, state.TimeoutCommit))
+	assert.Equal(state.TimeoutPropose, loadedState.TimeoutPropose, fmt.Sprintf("expected TimeoutPropose to be equal."+
+		"\ngot: %v\nexpected: %v\n", loadedState.TimeoutPropose, state.TimeoutPropose))
 }
 
 // TestABCIResponsesSaveLoad tests saving and loading ABCIResponses.
