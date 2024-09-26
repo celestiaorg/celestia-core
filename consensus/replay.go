@@ -156,8 +156,8 @@ LOOP:
 		}
 
 		// NOTE: since the priv key is set when the msgs are received
-		// it will attempt to eg double sign but we can just ignore it
-		// since the votes will be replayed and we'll get to the next step
+		// it will attempt to e.g., double sign, but we can just ignore it
+		// since the votes will be replayed, and we'll get to the next step
 		if err := cs.readReplayMessage(msg, nil); err != nil {
 			return err
 		}
@@ -363,7 +363,7 @@ func (h *Handshaker) ReplayBlocksWithContext(
 				state.Version.Consensus.App = state.ConsensusParams.Version.AppVersion
 			}
 
-			// update tiemouts based on the app response
+			// update timeouts based on the InitChainSync response
 			state.TimeoutCommit = res.Timeouts.TimeoutCommit
 			state.TimeoutPropose = res.Timeouts.TimeoutPropose
 

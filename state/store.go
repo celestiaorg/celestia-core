@@ -87,7 +87,7 @@ type dbStore struct {
 
 type StoreOptions struct {
 
-	// DiscardABCIResponses determines whether or not the store
+	// DiscardABCIResponses determines whether the store
 	// retains all ABCIResponses. If DiscardABCiResponses is enabled,
 	// the store will maintain only the response object from the latest
 	// height.
@@ -236,7 +236,7 @@ func (store dbStore) Bootstrap(state State) error {
 // guaranteed to delete all states, since the last checkpointed state and states being pointed to by
 // e.g. `LastHeightChanged` must remain. The state at to must also exist.
 //
-// The from parameter is necessary since we can't do a key scan in a performant way due to the key
+// The `from` parameter is necessary since we can't do a key scan in a performant way due to the key
 // encoding not preserving ordering: https://github.com/tendermint/tendermint/issues/4567
 // This will cause some old states to be left behind when doing incremental partial prunes,
 // specifically older checkpoints and LastHeightChanged targets.
