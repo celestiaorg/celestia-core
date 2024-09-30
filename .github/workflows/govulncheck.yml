@@ -27,4 +27,4 @@ jobs:
             Makefile
       - name: govulncheck
         run: make vulncheck
-        if: "env.GIT_DIFF != ''"
+        if: env.GIT_DIFF

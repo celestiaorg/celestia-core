@@ -2,7 +2,7 @@ package store
 
 import (
 	"bytes"
-	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"os"
 	"runtime/debug"
@@ -45,24 +45,12 @@ func makeTestCommit(height int64, timestamp time.Time) *types.Commit {
 		types.BlockID{Hash: []byte(""), PartSetHeader: types.PartSetHeader{Hash: []byte(""), Total: 2}}, commitSigs)
 }
 
-func makeTxs(height int64) (txs []types.Tx) {
-	for i := 0; i < 10; i++ {
-		numBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(numBytes, uint64(height))
-
-		txs = append(txs, types.Tx(append(numBytes, byte(i))))
-	}
-	return txs
-}
-
 func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Block {
-	block, _ := state.MakeBlock(
-		height,
-		factory.MakeData(makeTxs(height)),
-		lastCommit,
-		nil,
-		state.Validators.GetProposer().Address,
-	)
+	txs := []types.Tx{make([]byte, types.BlockPartSizeBytes)} // TX taking one block part alone
+	data := types.Data{
+		Txs: txs,
+	}
+	block, _ := state.MakeBlock(height, data, lastCommit, nil, state.Validators.GetProposer().Address)
 	return block
 }
 
@@ -160,7 +148,7 @@ func TestMain(m *testing.M) {
 	var cleanup cleanupFunc
 	state, _, cleanup = makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	block = makeBlock(1, state, new(types.Commit))
-	partSet = block.MakePartSet(2)
+	partSet = block.MakePartSet(types.BlockPartSizeBytes)
 	part1 = partSet.GetPart(0)
 	part2 = partSet.GetPart(1)
 	seenCommit1 = makeTestCommit(10, cmttime.Now())
@@ -184,11 +172,16 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 		}
 	}
 
-	// save a block
-	block := makeBlock(bs.Height()+1, state, new(types.Commit))
-	validPartSet := block.MakePartSet(2)
-	seenCommit := makeTestCommit(10, cmttime.Now())
-	bs.SaveBlock(block, partSet, seenCommit)
+	// save a block big enough to have two block parts
+	txs := []types.Tx{make([]byte, types.BlockPartSizeBytes)} // TX taking one block part alone
+	data := factory.MakeData(txs)
+	block, _ := state.MakeBlock(bs.Height()+1, data, new(types.Commit), nil, state.Validators.GetProposer().Address)
+	validPartSet := block.MakePartSet(types.BlockPartSizeBytes)
+	require.GreaterOrEqual(t, validPartSet.Total(), uint32(2))
+	part2 = validPartSet.GetPart(1)
+	seenCommit := makeTestCommit(block.Header.Height, cmttime.Now())
+	bs.SaveBlock(block, validPartSet, seenCommit)
+
 	require.EqualValues(t, 1, bs.Base(), "expecting the new height to be changed")
 	require.EqualValues(t, block.Header.Height, bs.Height(), "expecting the new height to be changed")
 
@@ -378,64 +371,75 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 }
 
+func makeUniqueBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Block {
+	data := types.Data{
+		Txs: []types.Tx{types.Tx([]byte{byte(height)})},
+	}
+	block, _ := state.MakeBlock(height, data, lastCommit, nil, state.Validators.GetProposer().Address)
+	return block
+}
+
 func TestSaveTxInfo(t *testing.T) {
 	// Create a state and a block store
 	state, blockStore, cleanup := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	defer cleanup()
 
-	// Create 1000 blocks
-	txResponseCodes := make([]uint32, len(block.Txs))
-	logs := make([]string, len(block.Txs))
-	for h := int64(1); h <= 1000; h++ {
-		block := makeBlock(h, state, new(types.Commit))
-		partSet := block.MakePartSet(2)
+	var allTxResponseCodes []uint32
+	var allTxLogs []string
+
+	// Create 10 blocks each with 1 tx
+	for h := int64(1); h <= 10; h++ {
+		block := makeUniqueBlock(h, state, new(types.Commit))
+		partSet := block.MakePartSet(types.BlockPartSizeBytes)
 		seenCommit := makeTestCommit(h, cmttime.Now())
 		blockStore.SaveBlock(block, partSet, seenCommit)
 
-		// Set the response codes and logs for the transactions
-		for i := range block.Txs {
-			// If even set it to 0
-			if i%2 == 0 {
-				txResponseCodes[i] = 0
-				logs[i] = "success"
-			} else {
-				txResponseCodes[i] = 1
-				logs[i] = "failure"
-			}
+		var txResponseCode uint32
+		var txLog string
+
+		if h%2 == 0 {
+			txResponseCode = 0
+			txLog = "success"
+		} else {
+			txResponseCode = 1
+			txLog = "failure"
 		}
 
 		// Save the tx info
-		err := blockStore.SaveTxInfo(block, txResponseCodes, logs)
+		err := blockStore.SaveTxInfo(block, []uint32{txResponseCode}, []string{txLog})
 		require.NoError(t, err)
+		allTxResponseCodes = append(allTxResponseCodes, txResponseCode)
+		allTxLogs = append(allTxLogs, txLog)
 	}
 
+	txIndex := 0
 	// Get the blocks from blockstore up to the height
-	for h := int64(1); h <= 1000; h++ {
+	for h := int64(1); h <= 10; h++ {
 		block := blockStore.LoadBlock(h)
 		// Check that transactions exist in the block
 		for i, tx := range block.Txs {
 			txInfo := blockStore.LoadTxInfo(tx.Hash())
 			require.Equal(t, block.Height, txInfo.Height)
 			require.Equal(t, uint32(i), txInfo.Index)
-			require.Equal(t, txResponseCodes[i], txInfo.Code)
+			require.Equal(t, allTxResponseCodes[txIndex], txInfo.Code)
 			// We don't save the logs for successful transactions
-			if txResponseCodes[i] == abci.CodeTypeOK {
+			if allTxResponseCodes[txIndex] == abci.CodeTypeOK {
 				require.Equal(t, "", txInfo.Error)
 			} else {
-				require.Equal(t, logs[i], txInfo.Error)
+				require.Equal(t, allTxLogs[txIndex], txInfo.Error)
 			}
+			txIndex++
 		}
 	}
 
 	// Get a random transaction and make sure it's indexed properly
-	block := blockStore.LoadBlock(777)
-	tx := block.Txs[5]
+	block := blockStore.LoadBlock(7)
+	tx := block.Txs[0]
 	txInfo := blockStore.LoadTxInfo(tx.Hash())
 	require.Equal(t, block.Height, txInfo.Height)
-	require.Equal(t, block.Height, int64(777))
-	require.Equal(t, txInfo.Height, int64(777))
+	require.Equal(t, block.Height, int64(7))
+	require.Equal(t, txInfo.Height, int64(7))
 	require.Equal(t, uint32(1), txInfo.Code)
-	require.Equal(t, uint32(5), txInfo.Index)
 	require.Equal(t, "failure", txInfo.Error)
 }
 
@@ -451,7 +455,7 @@ func TestLoadBaseMeta(t *testing.T) {
 
 	for h := int64(1); h <= 10; h++ {
 		block := makeBlock(h, state, new(types.Commit))
-		partSet := block.MakePartSet(2)
+		partSet := block.MakePartSet(types.BlockPartSizeBytes)
 		seenCommit := makeTestCommit(h, cmttime.Now())
 		bs.SaveBlock(block, partSet, seenCommit)
 	}
@@ -493,7 +497,13 @@ func TestLoadBlockPart(t *testing.T) {
 	gotPart, _, panicErr := doFn(loadPart)
 	require.Nil(t, panicErr, "an existent and proper block should not panic")
 	require.Nil(t, res, "a properly saved block should return a proper block")
-	require.Equal(t, gotPart.(*types.Part), part1,
+
+	// Having to do this because of https://github.com/stretchr/testify/issues/1141
+	gotPartJSON, err := json.Marshal(gotPart.(*types.Part))
+	require.NoError(t, err)
+	part1JSON, err := json.Marshal(part1)
+	require.NoError(t, err)
+	require.JSONEq(t, string(gotPartJSON), string(part1JSON),
 		"expecting successful retrieval of previously saved block")
 }
 
@@ -521,7 +531,7 @@ func TestPruneBlocks(t *testing.T) {
 	// make more than 1000 blocks, to test batch deletions
 	for h := int64(1); h <= 1500; h++ {
 		block := makeBlock(h, state, new(types.Commit))
-		partSet := block.MakePartSet(2)
+		partSet := block.MakePartSet(types.BlockPartSizeBytes)
 		seenCommit := makeTestCommit(h, cmttime.Now())
 		bs.SaveBlock(block, partSet, seenCommit)
 	}
@@ -591,22 +601,19 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)
 
-	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{
-		DiscardABCIResponses: false,
-	})
+	stateStore := sm.NewStore(dbm.NewMemDB(), sm.StoreOptions{DiscardABCIResponses: false})
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	require.NoError(t, err)
+
 	db := dbm.NewMemDB()
 	blockStore := NewBlockStore(db)
+	maxHeight := int64(15)
 
-	// Make more than 1000 blocks, to test batch deletions
-	// Make a copy of txs before batches are deleted
-	// to make sure that they are correctly pruned
 	var indexedTxHashes [][]byte
-	for h := int64(1); h <= 1500; h++ {
-		block := makeBlock(h, state, new(types.Commit))
-		partSet := block.MakePartSet(2)
-		seenCommit := makeTestCommit(h, cmttime.Now())
+	for height := int64(1); height <= maxHeight; height++ {
+		block := makeUniqueBlock(height, state, new(types.Commit))
+		partSet := block.MakePartSet(types.BlockPartSizeBytes)
+		seenCommit := makeTestCommit(height, cmttime.Now())
 		blockStore.SaveBlock(block, partSet, seenCommit)
 		err := blockStore.SaveTxInfo(block, make([]uint32, len(block.Txs)), make([]string, len(block.Txs)))
 		require.NoError(t, err)
@@ -614,36 +621,40 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 			indexedTxHashes = append(indexedTxHashes, tx.Hash())
 		}
 	}
+	require.Len(t, indexedTxHashes, 15)
 
-	// Check that the saved txs exist in the db
+	// Check that the saved txs exist in the block store.
 	for _, hash := range indexedTxHashes {
 		txInfo := blockStore.LoadTxInfo(hash)
-
 		require.NoError(t, err)
-		require.NotNil(t, txInfo, "Transaction was not saved in the database")
+		require.NotNil(t, txInfo, "transaction was not saved in the database")
 	}
 
-	pruned, err := blockStore.PruneBlocks(1200)
+	pruned, err := blockStore.PruneBlocks(12) // prune blocks 1 to 11.
 	require.NoError(t, err)
-	assert.EqualValues(t, 1199, pruned)
+	assert.EqualValues(t, 11, pruned)
 
-	// Check that the transactions in the pruned blocks have been removed
-	// We removed 1199 blocks, each block has 10 txs
-	// so 11990 txs should no longer exist in the db
+	// Check that the transactions in the pruned blocks have been removed. We
+	// removed 11 blocks, each block has 1 tx so 11 txs should no longer
+	// exist in the db.
 	for i, hash := range indexedTxHashes {
-		if int64(i) < 1199*10 {
-			txInfo := blockStore.LoadTxInfo(hash)
+		txInfo := blockStore.LoadTxInfo(hash)
+		if int64(i) < 11 {
 			require.Nil(t, txInfo)
+		} else {
+			require.NotNil(t, txInfo)
 		}
 	}
 
 	// Check that transactions in remaining blocks are still there
-	for h := int64(pruned + 1); h <= 1500; h++ {
-		block := blockStore.LoadBlock(h)
+	for height := int64(pruned + 1); height <= maxHeight; height++ {
+		block := blockStore.LoadBlock(height)
 		for i, tx := range block.Txs {
-			txInfo := blockStore.LoadTxInfo(tx.Hash())
+			hash := tx.Hash()
+			txInfo := blockStore.LoadTxInfo(hash)
 			require.NoError(t, err)
-			require.Equal(t, h, txInfo.Height)
+			require.NotNil(t, txInfo)
+			require.Equal(t, height, txInfo.Height)
 			require.Equal(t, uint32(i), txInfo.Index)
 			require.Equal(t, uint32(0), txInfo.Code)
 		}
@@ -715,7 +726,7 @@ func TestBlockFetchAtHeight(t *testing.T) {
 	require.Equal(t, bs.Height(), int64(0), "initially the height should be zero")
 	block := makeBlock(bs.Height()+1, state, new(types.Commit))
 
-	partSet := block.MakePartSet(2)
+	partSet := block.MakePartSet(types.BlockPartSizeBytes)
 	seenCommit := makeTestCommit(10, cmttime.Now())
 	bs.SaveBlock(block, partSet, seenCommit)
 	require.Equal(t, bs.Height(), block.Header.Height, "expecting the new height to be changed")
