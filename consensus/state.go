@@ -673,8 +673,10 @@ func (cs *State) updateToState(state sm.State) {
 		// to be gathered for the first block.
 		// And alternative solution that relies on clocks:
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
+		cs.Logger.Info("timeout_commit is set to", "timeout_commit", cs.config.TimeoutCommit)
 		cs.StartTime = cs.config.Commit(cmttime.Now())
 	} else {
+		cs.Logger.Info("timeout_commit is set to", "timeout_commit", cs.config.TimeoutCommit)
 		cs.StartTime = cs.config.Commit(cs.CommitTime)
 	}
 
@@ -1114,6 +1116,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 	}()
 
 	// If we don't get the proposal and all block parts quick enough, enterPrevote
+	cs.Logger.Info("scheduling timeoutPropose", "timeout", cs.config.TimeoutPropose)
 	cs.scheduleTimeout(cs.config.Propose(round), height, round, cstypes.RoundStepPropose)
 
 	// Nothing more to do if we're not a validator
