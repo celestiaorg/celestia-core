@@ -203,6 +203,7 @@ func (store dbStore) save(state State, key []byte) error {
 	}
 
 	// save next timeouts
+	// TODO write test for this
 	if err := store.saveConsensusTimeoutsInfo(nextHeight, &abcitypes.TimeoutsInfo{TimeoutPropose: state.TimeoutPropose, TimeoutCommit: state.TimeoutCommit}); err != nil {
 		return err
 	}
