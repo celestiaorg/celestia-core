@@ -118,7 +118,7 @@ func New(remote, wsEndpoint string) (*HTTP, error) {
 	return NewWithClient(remote, wsEndpoint, httpClient)
 }
 
-// Create timeout enabled http client
+// NewWithTimeout creates timeout enabled http client
 func NewWithTimeout(remote, wsEndpoint string, timeout uint) (*HTTP, error) {
 	httpClient, err := jsonrpcclient.DefaultHTTPClient(remote)
 	if err != nil {
