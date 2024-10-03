@@ -840,21 +840,33 @@ func NewNode(config *cfg.Config,
 		// Handshake, and may have other modifications as well (i.e., depending on
 		// what happened during block replay).
 		state, err = stateStore.Load()
+		logger.Info("Loaded state after doHandshake", "height",
+			state.LastBlockHeight, "app_version",
+			state.Version.Consensus.App, "timeout_commit", state.TimeoutCommit, "timeout_propose", state.TimeoutPropose)
 		if err != nil {
+			logger.Info("Error loading state after doHandshake", "err", err)
 			return nil, fmt.Errorf("cannot load state: %w", err)
 		}
 	} else {
+		logger.Info("Skipping handshake, Starting state sync")
 		resp, err := proxyApp.Query().InfoSync(proxy.RequestInfo)
 		if err != nil {
 			return nil, fmt.Errorf("error during info call: %w", err)
 		}
-		softwareVersion = resp.Version
+		softwareVersion = resp.Version // TODO is this the same as celestia-app version
 	}
+
+	//resp, err := proxyApp.Query().InfoSync(proxy.RequestInfo)
+	//if err != nil {
+	//	return nil, fmt.Errorf("error during info call: %w", err)
+	//}
 
 	// Determine whether we should do fast sync. This must happen after the handshake, since the
 	// app may modify the validator set,
 	//specifying ourselves as the only validator.
-	fastSync := config.FastSyncMode && !onlyValidatorIsUs(state, pubKey)
+	fastSync := config.FastSyncMode && !onlyValidatorIsUs(state,
+		pubKey) // the state certainly has the latest timeouts according
+	// the app version lastBlock in the blockstore
 
 	logNodeStartupInfo(state, pubKey, logger, consensusLogger)
 
@@ -910,6 +922,9 @@ func NewNode(config *cfg.Config,
 		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger, tracer,
 	)
 
+	logger.Info("Consensus reactor created", "timeout_propose",
+		consensusState.GetState().TimeoutPropose, "timeout_commit",
+		consensusState.GetState().TimeoutCommit)
 	// Set up state sync reactor, and schedule a sync if requested.
 	// FIXME The way we do phased startups (e.g. replay -> fast sync -> consensus) is very messy,
 	// we should clean this whole thing up. See:
