@@ -769,6 +769,23 @@ func NewNode(config *cfg.Config,
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
+	return NewNodeWithContext(context.TODO(), config, privValidator,
+		nodeKey, clientCreator, genesisDocProvider, dbProvider,
+		metricsProvider, logger, options...)
+}
+
+// NewNodeWithContext is cancellable version of NewNode.
+func NewNodeWithContext(ctx context.Context,
+	config *cfg.Config,
+	privValidator types.PrivValidator,
+	nodeKey *p2p.NodeKey,
+	clientCreator proxy.ClientCreator,
+	genesisDocProvider GenesisDocProvider,
+	dbProvider DBProvider,
+	metricsProvider MetricsProvider,
+	logger log.Logger,
+	options ...Option,
+) (*Node, error) {
 	blockStore, stateDB, err := initDBs(config, dbProvider)
 	if err != nil {
 		return nil, err

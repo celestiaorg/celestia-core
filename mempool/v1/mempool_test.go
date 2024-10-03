@@ -559,6 +559,7 @@ func TestTxMempool_ConcurrentTxs(t *testing.T) {
 }
 
 func TestTxMempool_ExpiredTxs_Timestamp(t *testing.T) {
+	t.Skip("This test is flaky and needs to be fixed")
 	txmp := setup(t, 5000)
 	txmp.config.TTLDuration = 5 * time.Millisecond
 

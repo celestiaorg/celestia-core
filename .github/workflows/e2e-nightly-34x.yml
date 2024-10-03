@@ -25,7 +25,7 @@ jobs:
         with:
           ref: 'v0.34.x-celestia'
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: "go.mod"
 
