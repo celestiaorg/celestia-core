@@ -71,6 +71,8 @@ type Store interface {
 	LoadLastABCIResponse(int64) (*cmtstate.ABCIResponses, error)
 	// LoadConsensusParams loads the consensus params for a given height
 	LoadConsensusParams(int64) (cmtproto.ConsensusParams, error)
+	// LoadConsensusTimeoutsInfo loads timeouts info for a given height
+	LoadConsensusTimeoutsInfo(int64) (*abcitypes.TimeoutsInfo, error)
 	// Save overwrites the previous state with the updated one
 	Save(State) error
 	// SaveABCIResponses saves ABCIResponses for a given height
@@ -625,7 +627,7 @@ func (store dbStore) LoadConsensusParams(height int64) (cmtproto.ConsensusParams
 	return paramsInfo.ConsensusParams, nil
 }
 
-func (store dbStore) loadConsensusTimeoutsInfo(height int64) (*abcitypes.TimeoutsInfo, error) {
+func (store dbStore) LoadConsensusTimeoutsInfo(height int64) (*abcitypes.TimeoutsInfo, error) {
 	buf, err := store.db.Get(calcTimeoutsKey(height))
 	if err != nil {
 		return nil, err
