@@ -678,13 +678,13 @@ func (cs *State) updateToState(state sm.State) {
 		//	//	cs.config.TimeoutCommit.Seconds())
 		//}
 
-		cs.StartTime = cs.config.Commit(cmttime.Now())
+		cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.TimeoutCommit)
 	} else {
 		//if cs.config != nil {
 		//	//cs.Logger.Info("timeout_commit is set to", "timeout_commit",
 		//	//	cs.config.TimeoutCommit.Seconds())
 		//}
-		cs.StartTime = cs.config.Commit(cs.CommitTime)
+		cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.TimeoutCommit)
 	}
 
 	cs.Validators = validators
@@ -1128,7 +1128,9 @@ func (cs *State) enterPropose(height int64, round int32) {
 	//		cs.config.TimeoutPropose.Seconds())
 	//}
 
-	cs.scheduleTimeout(cs.config.Propose(round), height, round, cstypes.RoundStepPropose)
+	cs.scheduleTimeout(cs.config.ProposeWithCustomTimeout(round, cs.state.TimeoutPropose),
+		height,
+		round, cstypes.RoundStepPropose)
 
 	// Nothing more to do if we're not a validator
 	if cs.privValidator == nil {
