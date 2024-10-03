@@ -265,6 +265,19 @@ func (s *syncer) Sync(snapshot *snapshot, chunks *chunkQueue) (sm.State, *types.
 	}
 	snapshot.trustedAppHash = appHash
 
+	pctx, pcancel := context.WithTimeout(context.TODO(), 30*time.Second)
+	defer pcancel()
+	// Optimistically build new state, so we don't discover any light client failures at the end.
+	state, err := s.stateProvider.State(pctx, snapshot.Height)
+	if err != nil {
+		s.logger.Info("failed to fetch and verify CometBFT state", "err", err)
+		if err == light.ErrNoWitnesses {
+			return sm.State{}, nil, err
+		}
+		return sm.State{}, nil, errRejectSnapshot
+	}
+	snapshot.trustedAppVersion = state.ConsensusParams.Version.AppVersion
+
 	// Offer snapshot to ABCI app.
 	err = s.offerSnapshot(snapshot)
 	if err != nil {
@@ -278,18 +291,6 @@ func (s *syncer) Sync(snapshot *snapshot, chunks *chunkQueue) (sm.State, *types.
 		go s.fetchChunks(fetchCtx, snapshot, chunks)
 	}
 
-	pctx, pcancel := context.WithTimeout(context.TODO(), 30*time.Second)
-	defer pcancel()
-
-	// Optimistically build new state, so we don't discover any light client failures at the end.
-	state, err := s.stateProvider.State(pctx, snapshot.Height)
-	if err != nil {
-		s.logger.Info("failed to fetch and verify CometBFT state", "err", err)
-		if err == light.ErrNoWitnesses {
-			return sm.State{}, nil, err
-		}
-		return sm.State{}, nil, errRejectSnapshot
-	}
 	commit, err := s.stateProvider.Commit(pctx, snapshot.Height)
 	if err != nil {
 		s.logger.Info("failed to fetch and verify commit", "err", err)
@@ -330,7 +331,8 @@ func (s *syncer) offerSnapshot(snapshot *snapshot) error {
 			Hash:     snapshot.Hash,
 			Metadata: snapshot.Metadata,
 		},
-		AppHash: snapshot.trustedAppHash,
+		AppHash:    snapshot.trustedAppHash,
+		AppVersion: snapshot.trustedAppVersion,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to offer snapshot: %w", err)

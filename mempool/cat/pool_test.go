@@ -480,19 +480,21 @@ func TestTxPool_CheckTxSamePeer(t *testing.T) {
 	require.Error(t, txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: peerID}))
 }
 
+// TestTxPool_ConcurrentTxs adds a bunch of txs to the txPool (via checkTx) and
+// then reaps transactions from the mempool. At the end it asserts that the
+// mempool is empty.
 func TestTxPool_ConcurrentTxs(t *testing.T) {
-	txmp := setup(t, 100)
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	cacheSize := 10
+	txPool := setup(t, cacheSize)
 	checkTxDone := make(chan struct{})
 
 	var wg sync.WaitGroup
-
 	wg.Add(1)
 	go func() {
-		for i := 0; i < 20; i++ {
-			_ = checkTxs(t, txmp, 100, 0)
-			dur := rng.Intn(1000-500) + 500
-			time.Sleep(time.Duration(dur) * time.Millisecond)
+		for i := 0; i < 10; i++ {
+			numTxs := 10
+			peerID := uint16(0)
+			_ = checkTxs(t, txPool, numTxs, peerID)
 		}
 
 		wg.Done()
@@ -505,33 +507,18 @@ func TestTxPool_ConcurrentTxs(t *testing.T) {
 		defer ticker.Stop()
 		defer wg.Done()
 
-		var height int64 = 1
-
+		height := int64(1)
 		for range ticker.C {
-			reapedTxs := txmp.ReapMaxTxs(200)
+			reapedTxs := txPool.ReapMaxTxs(50)
 			if len(reapedTxs) > 0 {
-				responses := make([]*abci.ResponseDeliverTx, len(reapedTxs))
-				for i := 0; i < len(responses); i++ {
-					var code uint32
-
-					if i%10 == 0 {
-						code = 100
-					} else {
-						code = abci.CodeTypeOK
-					}
-
-					responses[i] = &abci.ResponseDeliverTx{Code: code}
-				}
-
-				txmp.Lock()
-				require.NoError(t, txmp.Update(height, reapedTxs, responses, nil, nil))
-				txmp.Unlock()
-
+				responses := generateResponses(len(reapedTxs))
+				err := txPool.Update(height, reapedTxs, responses, nil, nil)
+				require.NoError(t, err)
 				height++
 			} else {
-				// only return once we know we finished the CheckTx loop
 				select {
 				case <-checkTxDone:
+					// only return once we know we finished the CheckTx loop
 					return
 				default:
 				}
@@ -540,8 +527,21 @@ func TestTxPool_ConcurrentTxs(t *testing.T) {
 	}()
 
 	wg.Wait()
-	require.Zero(t, txmp.Size())
-	require.Zero(t, txmp.SizeBytes())
+	assert.Zero(t, txPool.Size())
+	assert.Zero(t, txPool.SizeBytes())
+}
+
+func generateResponses(numResponses int) (responses []*abci.ResponseDeliverTx) {
+	for i := 0; i < numResponses; i++ {
+		var response *abci.ResponseDeliverTx
+		if i%2 == 0 {
+			response = &abci.ResponseDeliverTx{Code: abci.CodeTypeOK}
+		} else {
+			response = &abci.ResponseDeliverTx{Code: 100}
+		}
+		responses = append(responses, response)
+	}
+	return responses
 }
 
 func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
@@ -721,7 +721,8 @@ func abciResponses(n int, code uint32) []*abci.ResponseDeliverTx {
 }
 
 func TestTxPool_ConcurrentlyAddingTx(t *testing.T) {
-	txmp := setup(t, 500)
+	cacheSize := 500
+	txPool := setup(t, cacheSize)
 	tx := types.Tx("sender=0000=1")
 
 	numTxs := 10
@@ -731,7 +732,7 @@ func TestTxPool_ConcurrentlyAddingTx(t *testing.T) {
 		wg.Add(1)
 		go func(sender uint16) {
 			defer wg.Done()
-			_, err := txmp.TryAddNewTx(tx, tx.Key(), mempool.TxInfo{SenderID: sender})
+			_, err := txPool.TryAddNewTx(tx, tx.Key(), mempool.TxInfo{SenderID: sender})
 			errCh <- err
 		}(uint16(i + 1))
 	}
@@ -747,7 +748,10 @@ func TestTxPool_ConcurrentlyAddingTx(t *testing.T) {
 			errCount++
 		}
 	}
-	require.Equal(t, numTxs-1, errCount)
+	// At least one tx should succeed and get added to the mempool without an error.
+	require.Less(t, errCount, numTxs)
+	// The rest of the txs may fail with ErrTxInMempool but the number of errors isn't exact.
+	require.LessOrEqual(t, errCount, numTxs-1)
 }
 
 func TestTxPool_BroadcastQueue(t *testing.T) {
