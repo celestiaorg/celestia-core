@@ -679,12 +679,16 @@ func (cs *State) updateToState(state sm.State) {
 		//	//	cs.config.TimeoutCommit.Seconds())
 		//}
 
+		cs.Logger.Info("Calculating StartTime for height", "height", height,
+			"timeout_commit", cs.state.TimeoutCommit.Seconds())
 		cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.TimeoutCommit)
 	} else {
 		//if cs.config != nil {
 		//	//cs.Logger.Info("timeout_commit is set to", "timeout_commit",
 		//	//	cs.config.TimeoutCommit.Seconds())
 		//}
+		cs.Logger.Info("Calculating StartTime for height", "height", height,
+			"timeout_commit", cs.state.TimeoutCommit.Seconds())
 		cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.TimeoutCommit)
 	}
 
@@ -1129,6 +1133,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 	//		cs.config.TimeoutPropose.Seconds())
 	//}
 
+	cs.Logger.Info("scheduling timeoutPropose", "timeout", cs.state.TimeoutPropose)
 	cs.scheduleTimeout(cs.config.ProposeWithCustomTimeout(round, cs.state.TimeoutPropose),
 		height,
 		round, cstypes.RoundStepPropose)
@@ -1700,7 +1705,7 @@ func (cs *State) finalizeCommit(height int64) {
 	// exists.
 	//
 	// Either way, the State should not be resumed until we
-	// successfully call ApplyBlock (ie. later here, or in Handshake after
+	// successfully call ApplyBlock (i.e., later here, or in Handshake after
 	// restart).
 	endMsg := EndHeightMessage{height}
 	if err := cs.wal.WriteSync(endMsg); err != nil { // NOTE: fsync
@@ -1759,7 +1764,7 @@ func (cs *State) finalizeCommit(height int64) {
 
 	fail.Fail() // XXX
 
-	// Private validator might have changed it's key pair => refetch pubkey.
+	// Private validator might have changed its key pair => refetch pubkey.
 	if err := cs.updatePrivValidatorPubKey(); err != nil {
 		logger.Error("failed to get private validator pubkey", "err", err)
 	}
