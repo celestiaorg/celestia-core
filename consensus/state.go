@@ -679,16 +679,16 @@ func (cs *State) updateToState(state sm.State) {
 		//	//	cs.config.TimeoutCommit.Seconds())
 		//}
 
-		cs.Logger.Info("Calculating StartTime for height", "height", height,
-			"timeout_commit", cs.state.TimeoutCommit.Seconds())
+		//cs.Logger.Info("Calculating StartTime for height", "height", height,
+		//	"timeout_commit", cs.state.TimeoutCommit.Seconds())
 		cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.TimeoutCommit)
 	} else {
 		//if cs.config != nil {
 		//	//cs.Logger.Info("timeout_commit is set to", "timeout_commit",
 		//	//	cs.config.TimeoutCommit.Seconds())
 		//}
-		cs.Logger.Info("Calculating StartTime for height", "height", height,
-			"timeout_commit", cs.state.TimeoutCommit.Seconds())
+		//cs.Logger.Info("Calculating StartTime for height", "height", height,
+		//	"timeout_commit", cs.state.TimeoutCommit.Seconds())
 		cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.TimeoutCommit)
 	}
 
