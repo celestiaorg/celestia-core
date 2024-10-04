@@ -1057,6 +1057,7 @@ func (cfg *ConsensusConfig) Propose(round int32) time.Duration {
 
 // ProposeWithCustomTimeout returns the amount of time to wait for a proposal
 func (cfg *ConsensusConfig) ProposeWithCustomTimeout(round int32, customTimeout time.Duration) time.Duration {
+	log.Println("ProposeWithCustomTimeout called with", customTimeout.Seconds())
 	return time.Duration(customTimeout.Nanoseconds()+cfg.TimeoutProposeDelta.Nanoseconds()*int64(round)) * time.Nanosecond
 }
 
@@ -1076,12 +1077,14 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 
 // Commit returns the amount of time to wait for straggler votes after receiving +2/3 precommits
 // for a single block (i.e., a commit).
+// TODO endure this is not used anymore
 func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
 	return t.Add(cfg.TimeoutCommit)
 }
 
-func (cfg *ConsensusConfig) CommitWithCustomTimeout(t time.Time, customTimeouts time.Duration) time.Time {
-	return t.Add(customTimeouts)
+func (cfg *ConsensusConfig) CommitWithCustomTimeout(t time.Time, customTimeout time.Duration) time.Time {
+	log.Println("CommitWithCustomTimeout called with", customTimeout.Seconds())
+	return t.Add(customTimeout)
 }
 
 // WalFile returns the full path to the write-ahead log file
