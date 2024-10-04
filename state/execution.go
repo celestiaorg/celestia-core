@@ -277,6 +277,8 @@ func (blockExec *BlockExecutor) ApplyBlock(
 		return state, 0, fmt.Errorf("commit failed for application: %v", err)
 	}
 
+	blockExec.logger.Info("state updated in ApplyBlock", "height", block.Height, "app version in the header", block.Header.Version.App, "updated state timeout_commit", state.TimeoutCommit, "updated state timeout_propose", state.TimeoutPropose)
+
 	// Lock mempool, commit app state, update mempoool.
 	appHash, retainHeight, err := blockExec.Commit(state, block, abciResponses.DeliverTxs)
 	if err != nil {
