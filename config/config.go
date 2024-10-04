@@ -279,7 +279,7 @@ func (cfg BaseConfig) PrivValidatorKeyFile() string {
 	return rootify(cfg.PrivValidatorKey, cfg.RootDir)
 }
 
-// PrivValidatorFile returns the full path to the priv_validator_state.json file
+// PrivValidatorStateFile returns the full path to the priv_validator_state.json file
 func (cfg BaseConfig) PrivValidatorStateFile() string {
 	return rootify(cfg.PrivValidatorState, cfg.RootDir)
 }
@@ -1057,7 +1057,7 @@ func (cfg *ConsensusConfig) Propose(round int32) time.Duration {
 
 // ProposeWithCustomTimeout returns the amount of time to wait for a proposal
 func (cfg *ConsensusConfig) ProposeWithCustomTimeout(round int32, customTimeout time.Duration) time.Duration {
-	log.Println("ProposeWithCustomTimeout called with", customTimeout.Seconds())
+	fmt.Println("ProposeWithCustomTimeout called with", customTimeout.Seconds())
 	return time.Duration(customTimeout.Nanoseconds()+cfg.TimeoutProposeDelta.Nanoseconds()*int64(round)) * time.Nanosecond
 }
 
@@ -1083,7 +1083,7 @@ func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
 }
 
 func (cfg *ConsensusConfig) CommitWithCustomTimeout(t time.Time, customTimeout time.Duration) time.Time {
-	log.Println("CommitWithCustomTimeout called with", customTimeout.Seconds())
+	fmt.Println("CommitWithCustomTimeout called with", customTimeout.Seconds())
 	return t.Add(customTimeout)
 }
 
