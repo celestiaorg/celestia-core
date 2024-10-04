@@ -1133,7 +1133,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 	//		cs.config.TimeoutPropose.Seconds())
 	//}
 
-	cs.Logger.Info("scheduling timeoutPropose", "timeout", cs.state.TimeoutPropose)
+	//cs.Logger.Info("scheduling timeoutPropose", "timeout", cs.state.TimeoutPropose)
 	cs.scheduleTimeout(cs.config.ProposeWithCustomTimeout(round, cs.state.TimeoutPropose),
 		height,
 		round, cstypes.RoundStepPropose)
