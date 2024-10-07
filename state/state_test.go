@@ -193,7 +193,7 @@ func TestLoadConsensusTimeoutsInfo(t *testing.T) {
 	require.NoError(t, err)
 
 	// State saved with LastBlockHeight is saved for the next height,
-	//hence using state1.LastBlockHeight + 1 to retrieve it
+	// hence using state1.LastBlockHeight + 1 to retrieve it
 	loadedTimeoutsInfo1, err := stateStore.LoadConsensusTimeoutsInfo(state1.LastBlockHeight + 1)
 	require.NoError(t, err)
 	assert.Equal(state1.TimeoutCommit, loadedTimeoutsInfo1.TimeoutCommit, "expected TimeoutCommit to be equal")
@@ -210,7 +210,7 @@ func TestLoadConsensusTimeoutsInfo(t *testing.T) {
 	require.NoError(t, err)
 
 	// State saved with LastBlockHeight is saved for the next height,
-	//hence using state1.LastBlockHeight + 1 to retrieve it
+	// hence using state2.LastBlockHeight + 1 to retrieve it
 	loadedTimeoutsInfo2, err := stateStore.LoadConsensusTimeoutsInfo(state2.LastBlockHeight + 1)
 	require.NoError(t, err)
 	assert.Equal(state2.TimeoutCommit, loadedTimeoutsInfo2.TimeoutCommit, "expected TimeoutCommit to be equal")
