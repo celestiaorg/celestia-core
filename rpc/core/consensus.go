@@ -1,6 +1,7 @@
 package core
 
 import (
+	abci "github.com/tendermint/tendermint/abci/types"
 	cm "github.com/tendermint/tendermint/consensus"
 	cmtmath "github.com/tendermint/tendermint/libs/math"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
@@ -85,6 +86,11 @@ func ConsensusState(ctx *rpctypes.Context) (*ctypes.ResultConsensusState, error)
 	// Get self round state.
 	bz, err := GetEnvironment().ConsensusState.GetRoundStateSimpleJSON()
 	return &ctypes.ResultConsensusState{RoundState: bz}, err
+}
+
+func ConsensusTimeoutsInfo(ctx *rpctypes.Context,
+	heightPtr *int64) (*abci.TimeoutsInfo, error) {
+	return GetEnvironment().StateStore.LoadConsensusTimeoutsInfo(*heightPtr)
 }
 
 // ConsensusParams gets the consensus parameters at the given block height.
