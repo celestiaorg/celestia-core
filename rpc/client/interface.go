@@ -23,6 +23,7 @@ implementation.
 import (
 	"context"
 
+	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/libs/service"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
@@ -116,6 +117,7 @@ type HistoryClient interface {
 	Genesis(context.Context) (*ctypes.ResultGenesis, error)
 	GenesisChunked(context.Context, uint) (*ctypes.ResultGenesisChunk, error)
 	BlockchainInfo(ctx context.Context, minHeight, maxHeight int64) (*ctypes.ResultBlockchainInfo, error)
+	ConsensusTimeoutsInfo(ctx context.Context, heightPtr int64) (*abci.TimeoutsInfo, error)
 }
 
 // StatusClient provides access to general chain info.

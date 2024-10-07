@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/bytes"
 	cmtjson "github.com/tendermint/tendermint/libs/json"
 	"github.com/tendermint/tendermint/libs/log"
@@ -382,6 +383,15 @@ func (c *baseRPCClient) BlockchainInfo(
 	_, err := c.caller.Call(ctx, "blockchain",
 		map[string]interface{}{"minHeight": minHeight, "maxHeight": maxHeight},
 		result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *baseRPCClient) ConsensusTimeoutsInfo(ctx context.Context, heightPtr int64) (*abci.TimeoutsInfo, error) {
+	result := new(abci.TimeoutsInfo)
+	_, err := c.caller.Call(ctx, "timeout", map[string]interface{}{"height": heightPtr}, result)
 	if err != nil {
 		return nil, err
 	}
