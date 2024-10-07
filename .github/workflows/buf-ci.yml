@@ -16,5 +16,5 @@ jobs:
       - uses: bufbuild/buf-setup-action@v1
       - uses: bufbuild/buf-breaking-action@v1
         with:
-          against: 'https://github.com/celestiaorg/celestia-core.git#branch=main'
+          against: 'https://github.com/celestiaorg/celestia-core.git#branch=v0.34.x'
       - uses: bufbuild/buf-lint-action@v1
