@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/libs/log"
 	cmtpubsub "github.com/tendermint/tendermint/libs/pubsub"
@@ -41,6 +42,11 @@ type Local struct {
 	*types.EventBus
 	Logger log.Logger
 	ctx    *rpctypes.Context
+}
+
+func (c *Local) ConsensusTimeoutsInfo(ctx context.Context, heightPtr int64) (*abci.TimeoutsInfo, error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 // NewLocal configures a client that calls the Node directly.

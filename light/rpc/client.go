@@ -52,6 +52,11 @@ type Client struct {
 	keyPathFn KeyPathFunc
 }
 
+func (c *Client) ConsensusTimeoutsInfo(ctx context.Context, heightPtr int64) (*abci.TimeoutsInfo, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 var _ rpcclient.Client = (*Client)(nil)
 
 // Option allow you to tweak Client.
