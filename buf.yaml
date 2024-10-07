@@ -1,8 +1,5 @@
 version: v1beta1
-
-modules:
-  - name: buf.build/celestia/celestia-core
-
+name: buf.build/celestia/celestia-core
 build:
   roots:
     - proto
