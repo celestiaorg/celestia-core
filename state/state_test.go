@@ -173,6 +173,50 @@ func TestStateSaveLoad(t *testing.T) {
 		"\ngot: %v\nexpected: %v\n", loadedState.TimeoutPropose, state.TimeoutPropose))
 }
 
+// TestLoadConsensusTimeoutsInfo tests whether timeouts are properly saved
+// while saving State to a db and can be retrieved using LoadConsensusTimeoutsInfo.
+func TestLoadConsensusTimeoutsInfo(t *testing.T) {
+	tearDown, stateDB, state := setupTestCase(t)
+	defer tearDown(t)
+	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		DiscardABCIResponses: false,
+	})
+	assert := assert.New(t)
+
+	state1 := state.Copy()
+	state1.TimeoutCommit = 1 * time.Second
+	state1.TimeoutPropose = 2 * time.Second
+	// advance height to ensure timeouts are saved for a new height
+	state1.LastBlockHeight++
+	state1.LastValidators = state.Validators
+	err := stateStore.Save(state1)
+	require.NoError(t, err)
+
+	// State saved with LastBlockHeight is saved for the next height,
+	//hence using state1.LastBlockHeight + 1 to retrieve it
+	loadedTimeoutsInfo1, err := stateStore.LoadConsensusTimeoutsInfo(state1.LastBlockHeight + 1)
+	require.NoError(t, err)
+	assert.Equal(state1.TimeoutCommit, loadedTimeoutsInfo1.TimeoutCommit, "expected TimeoutCommit to be equal")
+	assert.Equal(state1.TimeoutPropose, loadedTimeoutsInfo1.TimeoutPropose, "expected TimeoutPropose to be equal")
+
+	state2 := state.Copy()
+	// advance height by 2 to ensure timeouts are
+	// saved for a new height
+	state2.LastBlockHeight += 2
+	state2.TimeoutCommit = 3 * time.Second
+	state2.TimeoutPropose = 4 * time.Second
+	state2.LastValidators = state.Validators
+	err = stateStore.Save(state2)
+	require.NoError(t, err)
+
+	// State saved with LastBlockHeight is saved for the next height,
+	//hence using state1.LastBlockHeight + 1 to retrieve it
+	loadedTimeoutsInfo2, err := stateStore.LoadConsensusTimeoutsInfo(state2.LastBlockHeight + 1)
+	require.NoError(t, err)
+	assert.Equal(state2.TimeoutCommit, loadedTimeoutsInfo2.TimeoutCommit, "expected TimeoutCommit to be equal")
+	assert.Equal(state2.TimeoutPropose, loadedTimeoutsInfo2.TimeoutPropose, "expected TimeoutPropose to be equal")
+}
+
 // TestABCIResponsesSaveLoad tests saving and loading ABCIResponses.
 func TestABCIResponsesSaveLoad1(t *testing.T) {
 	tearDown, stateDB, state := setupTestCase(t)
