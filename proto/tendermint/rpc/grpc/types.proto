@@ -4,7 +4,6 @@ option  go_package = "github.com/tendermint/tendermint/rpc/grpc;coregrpc";
 
 import "tendermint/abci/types.proto";
 import "tendermint/types/types.proto";
-import "tendermint/crypto/proof.proto";
 import "tendermint/types/block.proto";
 import "tendermint/types/validator.proto";
 import "gogoproto/gogo.proto";
