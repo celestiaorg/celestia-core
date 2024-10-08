@@ -74,7 +74,8 @@ func (m *BlockStoreState) GetHeight() int64 {
 	return 0
 }
 
-// TxInfo describes the location of a tx inside a committed block.
+// TxInfo describes the location of a tx inside a committed block
+// as well as the result of executing the transaction.
 type TxInfo struct {
 	Height int64  `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
 	Index  uint32 `protobuf:"varint,2,opt,name=index,proto3" json:"index,omitempty"`

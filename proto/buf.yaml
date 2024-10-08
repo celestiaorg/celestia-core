@@ -1,6 +1,7 @@
 version: v1
 deps:
   - buf.build/gogo/protobuf
+  - buf.build/celestia/nmt:v0.22.2
 breaking:
   use:
     - FILE

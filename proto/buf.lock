@@ -2,6 +2,11 @@
 version: v1
 deps:
   - remote: buf.build
+    owner: celestia
+    repository: nmt
+    commit: 686a5caececf476e8b8e26994f837778
+    digest: shake256:30dc63aaf2ba645c37e0d369029bdf3a8c97663eb1ef37548a62bfd48dd7904abd3ecd8ef7e92b3c3cae3eba3360ca73c81558c807ff03c1953a944c251c75e9
+  - remote: buf.build
     owner: gogo
     repository: protobuf
     commit: 4df00b267f944190a229ce3695781e99
