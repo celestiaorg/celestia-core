@@ -85,6 +85,7 @@ message ValidatorSetResponse {
 
 message NewHeightEvent {
   int64 height = 1;
+  bytes hash   = 2;
 }
 
 //----------------------------------------
