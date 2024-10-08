@@ -3,6 +3,11 @@ package tendermint.rpc.grpc;
 option  go_package = "github.com/tendermint/tendermint/rpc/grpc;coregrpc";
 
 import "tendermint/abci/types.proto";
+import "tendermint/types/types.proto";
+import "tendermint/crypto/proof.proto";
+import "tendermint/types/block.proto";
+import "tendermint/types/validator.proto";
+import "gogoproto/gogo.proto";
 
 //----------------------------------------
 // Request types
@@ -12,6 +17,24 @@ message RequestPing {}
 message RequestBroadcastTx {
   bytes tx = 1;
 }
+
+message BlockByHashRequest {
+  bytes hash = 1;
+}
+
+message BlockByHeightRequest {
+  int64 height = 1;
+}
+
+message CommitRequest {
+  int64 height = 1;
+}
+
+message ValidatorSetRequest {
+  int64 height = 1;
+}
+
+message SubscribeNewHeightsRequest {}
 
 //----------------------------------------
 // Response types
@@ -23,10 +46,43 @@ message ResponseBroadcastTx {
   tendermint.abci.ResponseDeliverTx deliver_tx = 2;
 }
 
+message BlockByHashResponse {
+  tendermint.types.Block block = 1;
+}
+
+message BlockByHeightResponse {
+  tendermint.types.Block block = 1;
+}
+
+message CommitResponse {
+  int64                    height                = 1;
+  int32                    round                 = 2;
+  tendermint.types.BlockID block_id              = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
+  repeated tendermint.types.CommitSig signatures = 4 [(gogoproto.nullable) = false];
+}
+
+message ValidatorSetResponse {
+  repeated tendermint.types.Validator validators         = 1;
+  tendermint.types.Validator          proposer           = 2;
+  int64                               total_voting_power = 3;
+}
+
+message NewHeightEvent {
+  int64 height = 1;
+}
+
 //----------------------------------------
 // Service Definition
 
 service BroadcastAPI {
   rpc Ping(RequestPing) returns (ResponsePing);
   rpc BroadcastTx(RequestBroadcastTx) returns (ResponseBroadcastTx);
+}
+
+service BlockAPI {
+  rpc BlockByHash(BlockByHashRequest) returns (stream BlockByHashResponse);
+  rpc BlockByHeight(BlockByHeightRequest) returns (stream BlockByHeightResponse);
+  rpc Commit(CommitRequest) returns (CommitResponse);
+  rpc ValidatorSet(ValidatorSetRequest) returns (ValidatorSetResponse);
+  rpc SubscribeNewHeights(SubscribeNewHeightsRequest) returns (stream NewHeightEvent);
 }
