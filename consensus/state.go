@@ -674,22 +674,30 @@ func (cs *State) updateToState(state sm.State) {
 		// to be gathered for the first block.
 		// And alternative solution that relies on clocks:
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
-		//if cs.config != nil {
-		//	//cs.Logger.Info("timeout_commit is set to", "timeout_commit",
-		//	//	cs.config.TimeoutCommit.Seconds())
-		//}
 
-		//cs.Logger.Info("Calculating StartTime for height", "height", height,
-		//	"timeout_commit", cs.state.TimeoutCommit.Seconds())
-		cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.TimeoutCommit)
+		if state.LastBlockHeight == 0 {
+			// state represents the genesis state, hence the StartTime should be set based on the state's TimeoutCommit
+			// we don't use cs.state.TimeoutCommit because that is zero
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(),
+				state.TimeoutCommit)
+		} else {
+			// if state does not represent the genesis state,
+			// we use the cs.state.TimeoutCommit
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(),
+				cs.state.TimeoutCommit)
+		}
+
 	} else {
-		//if cs.config != nil {
-		//	//cs.Logger.Info("timeout_commit is set to", "timeout_commit",
-		//	//	cs.config.TimeoutCommit.Seconds())
-		//}
-		//cs.Logger.Info("Calculating StartTime for height", "height", height,
-		//	"timeout_commit", cs.state.TimeoutCommit.Seconds())
-		cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.TimeoutCommit)
+		if state.LastBlockHeight == 0 {
+			// state represents the genesis state, hence the StartTime should be set based on the state's TimeoutCommit
+			// we don't use cs.state.TimeoutCommit because that is zero
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, state.TimeoutCommit)
+		} else {
+			// if state does not represent the genesis state,
+			// we use the cs.state.TimeoutCommit
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.TimeoutCommit)
+		}
+
 	}
 
 	cs.Validators = validators
