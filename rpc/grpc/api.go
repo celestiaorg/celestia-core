@@ -161,9 +161,9 @@ func (blockAPI *BlockAPI) removeHeightListener(ch chan NewHeightEvent) {
 func (blockAPI *BlockAPI) closeAllListeners() {
 	blockAPI.Lock()
 	defer blockAPI.Unlock()
-	for chanel, _ := range blockAPI.heightListeners {
-		delete(blockAPI.heightListeners, chanel)
-		close(chanel)
+	for channel := range blockAPI.heightListeners {
+		delete(blockAPI.heightListeners, channel)
+		close(channel)
 	}
 }
 
