@@ -44,24 +44,29 @@ func (bapi *broadcastAPI) BroadcastTx(ctx context.Context, req *RequestBroadcast
 
 type blockAPI struct {
 	sync.Mutex
+	ctx             context.Context
 	heightListeners map[chan int64]struct{}
 }
 
-func newBlockAPI() *blockAPI {
-	return &blockAPI{
+func NewBlockAPI(ctx context.Context) *blockAPI {
+	api := &blockAPI{
 		// TODO(rach-id) make 1000 configurable if there is a need for it
 		heightListeners: make(map[chan int64]struct{}, 1000),
 	}
+	go api.listenForHeights()
+	return api
 }
 
 func (blockAPI *blockAPI) listenForHeights() {
 	env := core.GetEnvironment()
-	newBlocksChannel, err := env.EventBus.Subscribe(context.Background(), "grpc-listener", types2.EventQueryNewBlock, 500)
+	newBlocksChannel, err := env.EventBus.Subscribe(blockAPI.ctx, "grpc-listener", types2.EventQueryNewBlock, 500)
 	if err != nil {
 		log.Fatalf("Failed to subscribe to new blocks: %v", err)
 	}
 	for {
 		select {
+		case <-blockAPI.ctx.Done():
+			return
 		case <-newBlocksChannel.Cancelled():
 			env.Logger.Error("cancelled grpc subscription")
 			// TODO(rach-id): maybe retry to connect if users want this functionality
@@ -85,8 +90,9 @@ func (blockAPI *blockAPI) listenForHeights() {
 func (blockAPI *blockAPI) broadcastToListeners(height int64) {
 	for ch := range blockAPI.heightListeners {
 		select {
+		case <-blockAPI.ctx.Done():
+			return
 		case ch <- height:
-		default:
 		}
 	}
 }
@@ -201,6 +207,8 @@ func (blockAPI *blockAPI) SubscribeNewHeights(_ *SubscribeNewHeightsRequest, str
 
 	for {
 		select {
+		case <-blockAPI.ctx.Done():
+			return nil
 		case height := <-heightChan:
 			event := &NewHeightEvent{
 				Height: height,

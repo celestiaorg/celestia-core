@@ -21,9 +21,7 @@ type Config struct {
 func StartGRPCServer(ln net.Listener) error {
 	grpcServer := grpc.NewServer()
 	RegisterBroadcastAPIServer(grpcServer, &broadcastAPI{})
-	api := newBlockAPI()
-	go api.listenForHeights()
-	RegisterBlockAPIServer(grpcServer, api)
+	RegisterBlockAPIServer(grpcServer, NewBlockAPI(context.Background()))
 	return grpcServer.Serve(ln)
 }
 
