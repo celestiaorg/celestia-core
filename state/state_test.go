@@ -183,6 +183,7 @@ func TestLoadConsensusTimeoutsInfo(t *testing.T) {
 	})
 	assert := assert.New(t)
 
+	// add two states to the store
 	state1 := state.Copy()
 	state1.TimeoutCommit = 1 * time.Second
 	state1.TimeoutPropose = 2 * time.Second
@@ -191,13 +192,6 @@ func TestLoadConsensusTimeoutsInfo(t *testing.T) {
 	state1.LastValidators = state.Validators
 	err := stateStore.Save(state1)
 	require.NoError(t, err)
-
-	// State saved with LastBlockHeight is saved for the next height,
-	// hence using state1.LastBlockHeight + 1 to retrieve it
-	loadedTimeoutsInfo1, err := stateStore.LoadConsensusTimeoutsInfo(state1.LastBlockHeight + 1)
-	require.NoError(t, err)
-	assert.Equal(state1.TimeoutCommit, loadedTimeoutsInfo1.TimeoutCommit, "expected TimeoutCommit to be equal")
-	assert.Equal(state1.TimeoutPropose, loadedTimeoutsInfo1.TimeoutPropose, "expected TimeoutPropose to be equal")
 
 	state2 := state.Copy()
 	// advance height by 2 to ensure timeouts are
@@ -208,6 +202,15 @@ func TestLoadConsensusTimeoutsInfo(t *testing.T) {
 	state2.LastValidators = state.Validators
 	err = stateStore.Save(state2)
 	require.NoError(t, err)
+
+	// now try to retrieve saved sates from the store, focusing on timeouts
+
+	// State saved with LastBlockHeight is saved for the next height,
+	// hence using state1.LastBlockHeight + 1 to retrieve it
+	loadedTimeoutsInfo1, err := stateStore.LoadConsensusTimeoutsInfo(state1.LastBlockHeight + 1)
+	require.NoError(t, err)
+	assert.Equal(state1.TimeoutCommit, loadedTimeoutsInfo1.TimeoutCommit, "expected TimeoutCommit to be equal")
+	assert.Equal(state1.TimeoutPropose, loadedTimeoutsInfo1.TimeoutPropose, "expected TimeoutPropose to be equal")
 
 	// State saved with LastBlockHeight is saved for the next height,
 	// hence using state2.LastBlockHeight + 1 to retrieve it
