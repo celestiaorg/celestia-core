@@ -107,31 +107,57 @@ func (blockAPI *blockAPI) removeHeightListener(ch chan int64) {
 }
 
 func (blockAPI *blockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_BlockByHashServer) error {
-	// Question: do you want just the block, or you want the response to be similar to what
-	// the RPC endpoint returns: a ResultBlock?
-	block, err := core.GetEnvironment().BlockStore.LoadBlockByHash(req.Hash).ToProto()
-	if err != nil {
-		return err
-	}
-	err = stream.Send(&BlockByHashResponse{Block: block})
-	if err != nil {
-		return err
+	blockStore := core.GetEnvironment().BlockStore
+	blockMeta := blockStore.LoadBlockMetaByHash(req.Hash)
+	for i := 0; i < int(blockMeta.BlockID.PartSetHeader.Total); i++ {
+		part, err := blockStore.LoadBlockPart(blockMeta.Header.Height, i).ToProto()
+		if err != nil {
+			return err
+		}
+		isLastPart := i == int(blockMeta.BlockID.PartSetHeader.Total)-1
+		err = stream.Send(&BlockByHashResponse{
+			BlockPart: part,
+			IsLast:    isLastPart,
+		})
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 func (blockAPI *blockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockAPI_BlockByHeightServer) error {
-	block, err := core.GetEnvironment().BlockStore.LoadBlock(req.Height).ToProto()
-	if err != nil {
-		return err
-	}
-	err = stream.Send(&BlockByHeightResponse{
-		Block: block,
-	})
-	if err != nil {
-		return err
+	blockStore := core.GetEnvironment().BlockStore
+	blockMeta := blockStore.LoadBlockMeta(req.Height)
+	for i := 0; i < int(blockMeta.BlockID.PartSetHeader.Total); i++ {
+		part, err := blockStore.LoadBlockPart(req.Height, i).ToProto()
+		if err != nil {
+			return err
+		}
+		isLastPart := i == int(blockMeta.BlockID.PartSetHeader.Total)-1
+		err = stream.Send(&BlockByHeightResponse{
+			BlockPart: part,
+			IsLast:    isLastPart,
+		})
+		if err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func (blockAPI *blockAPI) BlockMetaByHash(ctx context.Context, req *BlockMetaByHashRequest) (*BlockMetaByHashResponse, error) {
+	blockMeta := core.GetEnvironment().BlockStore.LoadBlockMetaByHash(req.Hash).ToProto()
+	return &BlockMetaByHashResponse{
+		BlockMeta: blockMeta,
+	}, nil
+}
+
+func (blockAPI *blockAPI) BlockMetaByHeight(ctx context.Context, req *BlockMetaByHeightRequest) (*BlockMetaByHeightResponse, error) {
+	blockMeta := core.GetEnvironment().BlockStore.LoadBlockMeta(req.Height).ToProto()
+	return &BlockMetaByHeightResponse{
+		BlockMeta: blockMeta,
+	}, nil
 }
 
 func (blockAPI *blockAPI) Commit(_ context.Context, req *CommitRequest) (*CommitResponse, error) {
