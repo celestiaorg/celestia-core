@@ -2,13 +2,14 @@ package coregrpc
 
 import (
 	"context"
+	"log"
+	"sync"
+
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/rpc/core"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 	types2 "github.com/tendermint/tendermint/types"
-	"log"
-	"sync"
 )
 
 type broadcastAPI struct {
