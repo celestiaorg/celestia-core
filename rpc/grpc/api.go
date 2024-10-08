@@ -44,34 +44,38 @@ func (bapi *broadcastAPI) BroadcastTx(ctx context.Context, req *RequestBroadcast
 
 type blockAPI struct {
 	sync.Mutex
-	ctx             context.Context
-	heightListeners map[chan int64]struct{}
+	ctx                  context.Context
+	heightListeners      map[chan int64]struct{}
+	newBlockSubscription types2.Subscription
 }
 
 func NewBlockAPI(ctx context.Context) *blockAPI {
-	api := &blockAPI{
+	return &blockAPI{
+		ctx: ctx,
 		// TODO(rach-id) make 1000 configurable if there is a need for it
 		heightListeners: make(map[chan int64]struct{}, 1000),
 	}
-	go api.listenForHeights()
-	return api
 }
 
-func (blockAPI *blockAPI) listenForHeights() {
+func (blockAPI *blockAPI) StartNewBlockEventListener() {
 	env := core.GetEnvironment()
-	newBlocksChannel, err := env.EventBus.Subscribe(blockAPI.ctx, "grpc-listener", types2.EventQueryNewBlock, 500)
-	if err != nil {
-		log.Fatalf("Failed to subscribe to new blocks: %v", err)
+	if blockAPI.newBlockSubscription == nil {
+		var err error
+		blockAPI.newBlockSubscription, err = env.EventBus.Subscribe(blockAPI.ctx, "new-block-grpc-subscription", types2.EventQueryNewBlock, 500)
+		if err != nil {
+			log.Fatalf("Failed to subscribe to new blocks: %v", err)
+			return
+		}
 	}
 	for {
 		select {
 		case <-blockAPI.ctx.Done():
 			return
-		case <-newBlocksChannel.Cancelled():
+		case <-blockAPI.newBlockSubscription.Cancelled():
 			env.Logger.Error("cancelled grpc subscription")
 			// TODO(rach-id): maybe retry to connect if users want this functionality
 			return
-		case event := <-newBlocksChannel.Out():
+		case event := <-blockAPI.newBlockSubscription.Out():
 			newBlockEvent, ok := event.Events()[types2.EventTypeKey]
 			if !ok || len(newBlockEvent) == 0 || newBlockEvent[0] != types2.EventNewBlock {
 				continue
