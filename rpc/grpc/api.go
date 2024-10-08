@@ -2,8 +2,9 @@ package coregrpc
 
 import (
 	"context"
-	"log"
+	"errors"
 	"sync"
+	"time"
 
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/proto/tendermint/types"
@@ -44,38 +45,56 @@ func (bapi *broadcastAPI) BroadcastTx(ctx context.Context, req *RequestBroadcast
 
 type BlockAPI struct {
 	sync.Mutex
-	ctx                  context.Context
 	heightListeners      map[chan NewHeightEvent]struct{}
 	newBlockSubscription types2.Subscription
 }
 
-func NewBlockAPI(ctx context.Context) *BlockAPI {
+func NewBlockAPI() *BlockAPI {
 	return &BlockAPI{
-		ctx: ctx,
 		// TODO(rach-id) make 1000 configurable if there is a need for it
 		heightListeners: make(map[chan NewHeightEvent]struct{}, 1000),
 	}
 }
 
-func (blockAPI *BlockAPI) StartNewBlockEventListener() {
+func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) {
 	env := core.GetEnvironment()
 	if blockAPI.newBlockSubscription == nil {
 		var err error
-		blockAPI.newBlockSubscription, err = env.EventBus.Subscribe(blockAPI.ctx, "new-block-grpc-subscription", types2.EventQueryNewBlock, 500)
+		blockAPI.newBlockSubscription, err = env.EventBus.Subscribe(ctx, "new-block-grpc-subscription", types2.EventQueryNewBlock, 500)
 		if err != nil {
-			log.Fatalf("Failed to subscribe to new blocks: %v", err)
+			env.Logger.Error("Failed to subscribe to new blocks", "err", err)
 			return
 		}
 	}
 	for {
 		select {
-		case <-blockAPI.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-blockAPI.newBlockSubscription.Cancelled():
-			env.Logger.Error("cancelled grpc subscription")
-			// TODO(rach-id): maybe retry to connect if users want this functionality
-			return
-		case event := <-blockAPI.newBlockSubscription.Out():
+			env.Logger.Error("cancelled grpc subscription. retrying")
+			ok, err := blockAPI.retryNewBlocksSubscription(ctx)
+			if err != nil {
+				blockAPI.closeAllListeners()
+				return
+			}
+			if !ok {
+				// this will happen when the context is done. we can stop here
+				return
+			}
+		case event, ok := <-blockAPI.newBlockSubscription.Out():
+			if !ok {
+				env.Logger.Error("new blocks subscription closed. re-subscribing")
+				ok, err := blockAPI.retryNewBlocksSubscription(ctx)
+				if err != nil {
+					blockAPI.closeAllListeners()
+					return
+				}
+				if !ok {
+					// this will happen when the context is done. we can stop here
+					return
+				}
+				continue
+			}
 			newBlockEvent, ok := event.Events()[types2.EventTypeKey]
 			if !ok || len(newBlockEvent) == 0 || newBlockEvent[0] != types2.EventNewBlock {
 				continue
@@ -85,16 +104,39 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener() {
 				env.Logger.Debug("couldn't cast event data to new block")
 				continue
 			}
-			blockAPI.broadcastToListeners(data.Block.Height, data.Block.DataHash)
+			blockAPI.broadcastToListeners(ctx, data.Block.Height, data.Block.DataHash)
 		}
 	}
 
 }
 
-func (blockAPI *BlockAPI) broadcastToListeners(height int64, hash []byte) {
+func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool, error) {
+	env := core.GetEnvironment()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	blockAPI.Lock()
+	defer blockAPI.Unlock()
+	for i := 1; i < 6; i++ {
+		select {
+		case <-ctx.Done():
+			return false, nil
+		case <-ticker.C:
+			var err error
+			blockAPI.newBlockSubscription, err = env.EventBus.Subscribe(ctx, "new-block-grpc-subscription", types2.EventQueryNewBlock, 500)
+			if err != nil {
+				env.Logger.Error("Failed to subscribe to new blocks. retrying", "err", err, "retry_number", i)
+			} else {
+				return true, nil
+			}
+		}
+	}
+	return false, errors.New("couldn't recover from failed blocks subscription. stopping listeners")
+}
+
+func (blockAPI *BlockAPI) broadcastToListeners(ctx context.Context, height int64, hash []byte) {
 	for ch := range blockAPI.heightListeners {
 		select {
-		case <-blockAPI.ctx.Done():
+		case <-ctx.Done():
 			return
 		case ch <- NewHeightEvent{Height: height, Hash: hash}:
 		}
@@ -114,6 +156,15 @@ func (blockAPI *BlockAPI) removeHeightListener(ch chan NewHeightEvent) {
 	defer blockAPI.Unlock()
 	delete(blockAPI.heightListeners, ch)
 	close(ch)
+}
+
+func (blockAPI *BlockAPI) closeAllListeners() {
+	blockAPI.Lock()
+	defer blockAPI.Unlock()
+	for chanel, _ := range blockAPI.heightListeners {
+		delete(blockAPI.heightListeners, chanel)
+		close(chanel)
+	}
 }
 
 func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_BlockByHashServer) error {
@@ -206,14 +257,15 @@ func (blockAPI *BlockAPI) ValidatorSet(_ context.Context, req *ValidatorSetReque
 }
 
 func (blockAPI *BlockAPI) SubscribeNewHeights(_ *SubscribeNewHeightsRequest, stream BlockAPI_SubscribeNewHeightsServer) error {
-	eventsChan := blockAPI.addHeightListener()
-	defer blockAPI.removeHeightListener(eventsChan)
+	heightListener := blockAPI.addHeightListener()
+	defer blockAPI.removeHeightListener(heightListener)
 
 	for {
 		select {
-		case <-blockAPI.ctx.Done():
-			return nil
-		case event := <-eventsChan:
+		case event, ok := <-heightListener:
+			if !ok {
+				return errors.New("blocks subscription closed from the service side")
+			}
 			if err := stream.Send(&event); err != nil {
 				return err
 			}
