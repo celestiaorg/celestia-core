@@ -714,8 +714,8 @@ func (cs *State) updateToState(state sm.State) {
 	cs.CommitRound = -1
 	cs.LastValidators = state.LastValidators
 	cs.TriggeredTimeoutPrecommit = false
-	cs.config.TimeoutPropose = state.GetTimeoutPropose()
-	cs.config.TimeoutCommit = state.GetTimeoutCommit()
+	//cs.config.TimeoutPropose = state.GetTimeoutPropose()
+	//cs.config.TimeoutCommit = state.GetTimeoutCommit()
 
 	cs.state = state
 
