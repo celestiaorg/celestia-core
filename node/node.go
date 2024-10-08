@@ -1062,7 +1062,7 @@ func (n *Node) OnStart() error {
 	n.addrBook.AddPrivateIDs(splitAndTrimEmpty(n.config.P2P.PrivatePeerIDs, ",", " "))
 
 	// Start the RPC server before the P2P server
-	// so we can eg. receive txs for the first block
+	// so we can e.g., receive txs for the first block
 	if n.config.RPC.ListenAddress != "" {
 		listeners, err := n.startRPC()
 		if err != nil {
