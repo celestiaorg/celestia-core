@@ -8,7 +8,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	abci "github.com/tendermint/tendermint/abci/types"
-	abcitypes "github.com/tendermint/tendermint/abci/types"
 	cmtmath "github.com/tendermint/tendermint/libs/math"
 	cmtos "github.com/tendermint/tendermint/libs/os"
 	cmtstate "github.com/tendermint/tendermint/proto/tendermint/state"
@@ -72,7 +71,7 @@ type Store interface {
 	// LoadConsensusParams loads the consensus params for a given height
 	LoadConsensusParams(int64) (cmtproto.ConsensusParams, error)
 	// LoadConsensusTimeoutsInfo loads timeouts info for a given height
-	LoadConsensusTimeoutsInfo(int64) (*abcitypes.TimeoutsInfo, error)
+	LoadConsensusTimeoutsInfo(int64) (*abci.TimeoutsInfo, error)
 	// Save overwrites the previous state with the updated one
 	Save(State) error
 	// SaveABCIResponses saves ABCIResponses for a given height
@@ -206,7 +205,7 @@ func (store dbStore) save(state State, key []byte) error {
 
 	// save next timeouts
 	// TODO write test for this
-	if err := store.saveConsensusTimeoutsInfo(nextHeight, &abcitypes.TimeoutsInfo{TimeoutPropose: state.TimeoutPropose, TimeoutCommit: state.TimeoutCommit}); err != nil {
+	if err := store.saveConsensusTimeoutsInfo(nextHeight, &abci.TimeoutsInfo{TimeoutPropose: state.TimeoutPropose, TimeoutCommit: state.TimeoutCommit}); err != nil {
 		return err
 	}
 
@@ -627,7 +626,7 @@ func (store dbStore) LoadConsensusParams(height int64) (cmtproto.ConsensusParams
 	return paramsInfo.ConsensusParams, nil
 }
 
-func (store dbStore) LoadConsensusTimeoutsInfo(height int64) (*abcitypes.TimeoutsInfo, error) {
+func (store dbStore) LoadConsensusTimeoutsInfo(height int64) (*abci.TimeoutsInfo, error) {
 	buf, err := store.db.Get(calcTimeoutsKey(height))
 	if err != nil {
 		return nil, err
@@ -636,7 +635,7 @@ func (store dbStore) LoadConsensusTimeoutsInfo(height int64) (*abcitypes.Timeout
 		return nil, errors.New("value retrieved from db is empty")
 	}
 
-	timeoutsInfo := new(abcitypes.TimeoutsInfo)
+	timeoutsInfo := new(abci.TimeoutsInfo)
 	if err = timeoutsInfo.Unmarshal(buf); err != nil {
 		// DATA HAS BEEN CORRUPTED OR THE SPEC HAS CHANGED
 		cmtos.Exit(fmt.Sprintf(`LoadConsensusTimeouts: Data has been corrupted or its spec has changed:%v\n`, err))
@@ -665,7 +664,7 @@ func (store dbStore) loadConsensusParamsInfo(height int64) (*cmtstate.ConsensusP
 
 // saveConsensusTimeoutsInfo saves the timeouts info for the next block to disk.
 // It should be called from s.Save(), right before the state itself is persisted.
-func (store dbStore) saveConsensusTimeoutsInfo(height int64, timeoutsInfo *abcitypes.TimeoutsInfo) error {
+func (store dbStore) saveConsensusTimeoutsInfo(height int64, timeoutsInfo *abci.TimeoutsInfo) error {
 	bz, err := timeoutsInfo.Marshal()
 	if err != nil {
 		return err
