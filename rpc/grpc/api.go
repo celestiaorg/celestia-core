@@ -3,6 +3,8 @@ package coregrpc
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/tendermint/tendermint/libs/rand"
 	"sync"
 	"time"
 
@@ -60,7 +62,12 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) {
 	env := core.GetEnvironment()
 	if blockAPI.newBlockSubscription == nil {
 		var err error
-		blockAPI.newBlockSubscription, err = env.EventBus.Subscribe(ctx, "new-block-grpc-subscription", types2.EventQueryNewBlock, 500)
+		blockAPI.newBlockSubscription, err = env.EventBus.Subscribe(
+			ctx,
+			fmt.Sprintf("new-block-grpc-subscription-%s", rand.Str(6)),
+			types2.EventQueryNewBlock,
+			500,
+		)
 		if err != nil {
 			env.Logger.Error("Failed to subscribe to new blocks", "err", err)
 			return
@@ -122,7 +129,12 @@ func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool,
 			return false, nil
 		case <-ticker.C:
 			var err error
-			blockAPI.newBlockSubscription, err = env.EventBus.Subscribe(ctx, "new-block-grpc-subscription", types2.EventQueryNewBlock, 500)
+			blockAPI.newBlockSubscription, err = env.EventBus.Subscribe(
+				ctx,
+				fmt.Sprintf("new-block-grpc-subscription-%s", rand.Str(6)),
+				types2.EventQueryNewBlock,
+				500,
+			)
 			if err != nil {
 				env.Logger.Error("Failed to subscribe to new blocks. retrying", "err", err, "retry_number", i)
 			} else {
