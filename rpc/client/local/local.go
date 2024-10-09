@@ -44,12 +44,7 @@ type Local struct {
 	ctx    *rpctypes.Context
 }
 
-func (c *Local) ConsensusTimeoutsInfo(ctx context.Context, heightPtr int64) (*abci.TimeoutsInfo, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-// NewLocal configures a client that calls the Node directly.
+// New configures a client that calls the Node directly.
 //
 // Note that given how rpc/core works with package singletons, that
 // you can only have one node per process.  So make sure test cases
@@ -131,6 +126,10 @@ func (c *Local) ConsensusState(ctx context.Context) (*ctypes.ResultConsensusStat
 
 func (c *Local) ConsensusParams(ctx context.Context, height *int64) (*ctypes.ResultConsensusParams, error) {
 	return core.ConsensusParams(c.ctx, height)
+}
+
+func (c *Local) ConsensusTimeoutsInfo(_ context.Context, height int64) (*abci.TimeoutsInfo, error) {
+	return core.ConsensusTimeoutsInfo(c.ctx, height)
 }
 
 func (c *Local) Health(ctx context.Context) (*ctypes.ResultHealth, error) {
