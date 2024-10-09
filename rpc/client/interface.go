@@ -7,7 +7,7 @@ to a CometBFT node, as well as higher-level functionality.
 The main implementation for production code is client.HTTP, which
 connects via http to the jsonrpc interface of the CometBFT node.
 
-For connecting to a node running in the same process (eg. when
+For connecting to a node running in the same process (e.g., when
 compiling the abci app in the same process), you can use the client.Local
 implementation.
 
@@ -117,7 +117,7 @@ type HistoryClient interface {
 	Genesis(context.Context) (*ctypes.ResultGenesis, error)
 	GenesisChunked(context.Context, uint) (*ctypes.ResultGenesisChunk, error)
 	BlockchainInfo(ctx context.Context, minHeight, maxHeight int64) (*ctypes.ResultBlockchainInfo, error)
-	ConsensusTimeoutsInfo(ctx context.Context, heightPtr int64) (*abci.TimeoutsInfo, error)
+	ConsensusTimeoutsInfo(ctx context.Context, height int64) (*abci.TimeoutsInfo, error)
 }
 
 // StatusClient provides access to general chain info.
