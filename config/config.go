@@ -161,6 +161,16 @@ func (cfg *Config) ValidateBasic() error {
 	return nil
 }
 
+// PossibleMisconfigurations returns a list of possible conflicting entries that
+// may lead to unexpected behavior
+func (cfg *Config) PossibleMisconfigurations() []string {
+	res := []string{}
+	for _, elem := range cfg.StateSync.PossibleMisconfigurations() {
+		res = append(res, fmt.Sprintf("[statesync] section: %s", elem))
+	}
+	return res
+}
+
 //-----------------------------------------------------------------------------
 // BaseConfig
 
@@ -857,6 +867,15 @@ func TestStateSyncConfig() *StateSyncConfig {
 	return DefaultStateSyncConfig()
 }
 
+// PossibleMisconfigurations returns a list of possible conflicting entries that
+// may lead to unexpected behavior
+func (cfg *StateSyncConfig) PossibleMisconfigurations() []string {
+	if !cfg.Enable && len(cfg.RPCServers) != 0 {
+		return []string{"rpc_servers specified but enable = false"}
+	}
+	return []string{}
+}
+
 // ValidateBasic performs basic validation.
 func (cfg *StateSyncConfig) ValidateBasic() error {
 	if cfg.Enable {
@@ -1215,7 +1234,7 @@ type InstrumentationConfig struct {
 	// pyroscope continuous profiling server.
 	PyroscopeURL string `mapstructure:"pyroscope_url"`
 
-	// PyroscopeProfile is a flag that enables tracing with pyroscope.
+	// PyroscopeTrace is a flag that enables tracing with pyroscope.
 	PyroscopeTrace bool `mapstructure:"pyroscope_trace"`
 
 	// PyroscopeProfileTypes is a list of profile types to be traced with

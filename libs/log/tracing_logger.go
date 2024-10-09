@@ -36,6 +36,10 @@ func (l *tracingLogger) Debug(msg string, keyvals ...interface{}) {
 	l.next.Debug(msg, formatErrors(keyvals)...)
 }
 
+func (l *tracingLogger) Warn(msg string, keyvals ...interface{}) {
+	l.next.Warn(msg, formatErrors(keyvals)...)
+}
+
 func (l *tracingLogger) Error(msg string, keyvals ...interface{}) {
 	l.next.Error(msg, formatErrors(keyvals)...)
 }

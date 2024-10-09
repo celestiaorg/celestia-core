@@ -38,6 +38,17 @@ func TestConfigValidateBasic(t *testing.T) {
 	assert.Error(t, cfg.ValidateBasic())
 }
 
+func TestConfigPossibleMisconfigurations(t *testing.T) {
+	cfg := DefaultConfig()
+	require.Len(t, cfg.PossibleMisconfigurations(), 0)
+	// providing rpc_servers while enable = false is a possible misconfiguration
+	cfg.StateSync.RPCServers = []string{"first_rpc"}
+	require.Equal(t, []string{"[statesync] section: rpc_servers specified but enable = false"}, cfg.PossibleMisconfigurations())
+	// enabling statesync deletes possible misconfiguration
+	cfg.StateSync.Enable = true
+	require.Len(t, cfg.PossibleMisconfigurations(), 0)
+}
+
 func TestTLSConfiguration(t *testing.T) {
 	assert := assert.New(t)
 	cfg := DefaultConfig()
@@ -125,6 +136,17 @@ func TestMempoolConfigValidateBasic(t *testing.T) {
 func TestStateSyncConfigValidateBasic(t *testing.T) {
 	cfg := TestStateSyncConfig()
 	require.NoError(t, cfg.ValidateBasic())
+}
+
+func TestStateSyncPossibleMisconfigurations(t *testing.T) {
+	cfg := DefaultStateSyncConfig()
+	require.Len(t, cfg.PossibleMisconfigurations(), 0)
+	// providing rpc_servers while enable = false is a possible misconfiguration
+	cfg.RPCServers = []string{"first_rpc"}
+	require.Equal(t, []string{"rpc_servers specified but enable = false"}, cfg.PossibleMisconfigurations())
+	// enabling statesync deletes possible misconfiguration
+	cfg.Enable = true
+	require.Len(t, cfg.PossibleMisconfigurations(), 0)
 }
 
 func TestFastSyncConfigValidateBasic(t *testing.T) {

@@ -87,6 +87,10 @@ var RootCmd = &cobra.Command{
 		}
 
 		logger = logger.With("module", "main")
+
+		for _, possibleMisconfiguration := range config.PossibleMisconfigurations() {
+			logger.Warn(possibleMisconfiguration)
+		}
 		return nil
 	},
 }
