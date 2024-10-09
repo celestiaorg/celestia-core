@@ -89,8 +89,8 @@ func ConsensusState(ctx *rpctypes.Context) (*ctypes.ResultConsensusState, error)
 }
 
 func ConsensusTimeoutsInfo(ctx *rpctypes.Context,
-	heightPtr *int64) (*abci.TimeoutsInfo, error) {
-	return GetEnvironment().StateStore.LoadConsensusTimeoutsInfo(*heightPtr)
+	heightPtr int64) (*abci.TimeoutsInfo, error) {
+	return GetEnvironment().StateStore.LoadConsensusTimeoutsInfo(heightPtr)
 }
 
 // ConsensusParams gets the consensus parameters at the given block height.

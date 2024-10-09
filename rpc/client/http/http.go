@@ -389,9 +389,9 @@ func (c *baseRPCClient) BlockchainInfo(
 	return result, nil
 }
 
-func (c *baseRPCClient) ConsensusTimeoutsInfo(ctx context.Context, heightPtr int64) (*abci.TimeoutsInfo, error) {
+func (c *baseRPCClient) ConsensusTimeoutsInfo(ctx context.Context, height int64) (*abci.TimeoutsInfo, error) {
 	result := new(abci.TimeoutsInfo)
-	_, err := c.caller.Call(ctx, "timeout", map[string]interface{}{"height": heightPtr}, result)
+	_, err := c.caller.Call(ctx, "timeout", map[string]interface{}{"height": height}, result)
 	if err != nil {
 		return nil, err
 	}
