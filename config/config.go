@@ -1085,7 +1085,6 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 
 // Commit returns the amount of time to wait for straggler votes after receiving +2/3 precommits
 // for a single block (i.e., a commit).
-// TODO endure this is not used anymore
 func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
 	return t.Add(cfg.TimeoutCommit)
 }
