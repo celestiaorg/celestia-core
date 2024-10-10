@@ -1055,7 +1055,10 @@ func (cfg *ConsensusConfig) Propose(round int32) time.Duration {
 	) * time.Nanosecond
 }
 
-// ProposeWithCustomTimeout returns the amount of time to wait for a proposal
+// ProposeWithCustomTimeout is identical to Propose. However,
+// it calculates the amount of time to wait for a proposal using the supplied
+// customTimeout.
+// If customTimeout is 0, the default TimeoutCommit is used.
 func (cfg *ConsensusConfig) ProposeWithCustomTimeout(round int32, customTimeout time.Duration) time.Duration {
 	fmt.Println("ProposeWithCustomTimeout called with", customTimeout.Seconds())
 	// this is to capture any unforeseen cases where the customTimeout is 0
@@ -1088,6 +1091,8 @@ func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
 	return t.Add(cfg.TimeoutCommit)
 }
 
+// CommitWithCustomTimeout is identical to Commit. However, it calculates the time for commit using the supplied customTimeout.
+// If customTimeout is 0, the default TimeoutCommit is used.
 func (cfg *ConsensusConfig) CommitWithCustomTimeout(t time.Time, customTimeout time.Duration) time.Time {
 	fmt.Println("CommitWithCustomTimeout called with", customTimeout.Seconds())
 	// this is to capture any unforeseen cases where the customTimeout is 0
@@ -1115,6 +1120,8 @@ func (cfg *ConsensusConfig) SetWalFile(walFile string) {
 // ValidateBasic performs basic validation (checking param bounds, etc.) and
 // returns an error if any check fails.
 func (cfg *ConsensusConfig) ValidateBasic() error {
+	// TODO we may want to remove this check if TimeoutPropose is removed from
+	// the config
 	if cfg.TimeoutPropose < 0 {
 		return errors.New("timeout_propose can't be negative")
 	}
@@ -1133,6 +1140,8 @@ func (cfg *ConsensusConfig) ValidateBasic() error {
 	if cfg.TimeoutPrecommitDelta < 0 {
 		return errors.New("timeout_precommit_delta can't be negative")
 	}
+	// TODO we may want to remove this check if TimeoutCommit is removed from
+	// the config
 	if cfg.TimeoutCommit < 0 {
 		return errors.New("timeout_commit can't be negative")
 	}
