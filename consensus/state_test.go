@@ -144,6 +144,10 @@ func TestStateEnterProposeNoPrivValidator(t *testing.T) {
 	startTestRound(cs, height, round)
 
 	// if we're not a validator, EnterPropose should timeout
+	// The use of cs.config.TimeoutPropose.Nanoseconds() as the timeout propose is acceptable in this test case.
+	// Even though timeouts are version-dependent, cs is created with an empty previous state in this scenario.
+	// As there's no timeout propose in the previous state, we default to the timeout propose in the config.
+	// This makes the test case valid.
 	ensureNewTimeout(timeoutCh, height, round, cs.config.TimeoutPropose.Nanoseconds())
 
 	if cs.GetRoundState().Proposal != nil {
@@ -179,6 +183,10 @@ func TestStateEnterProposeYesPrivValidator(t *testing.T) {
 	}
 
 	// if we're a validator, enterPropose should not timeout
+	// The use of cs.config.TimeoutPropose.Nanoseconds() as the timeout propose is acceptable in this test case.
+	// Even though timeouts are version-dependent, cs is created with an empty previous state in this scenario.
+	// As there's no timeout propose in the previous state, we default to the timeout propose in the config.
+	// This makes the test case valid.
 	ensureNoNewTimeout(timeoutCh, cs.config.TimeoutPropose.Nanoseconds())
 }
 

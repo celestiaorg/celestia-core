@@ -92,11 +92,10 @@ func TestMempoolProgressInHigherRound(t *testing.T) {
 
 	ensureNewRound(newRoundCh, height, round) // first round at next height
 	deliverTxsRange(cs, 0, 1)                 // we deliver txs, but don't set a proposal so we get the next round
-	// The following line checks if we proceed to the next round after cs.config.TimeoutPropose.Nanoseconds().
-	// In the versioned timeout implementation, the timeout propose is version-dependent.
-	// However, in this test case, cs is created with an empty previous state,
-	// so there's no timeout propose in the previous state.
-	// Therefore, we fall back to the timeout propose in the config, making this test case valid.
+	// The use of cs.config.TimeoutPropose.Nanoseconds() as the timeout propose is acceptable in this test case, the following line.
+	// Even though timeouts are version-dependent, cs is created with an empty previous state in this scenario.
+	// As there's no timeout propose in the previous state, we default to the timeout propose in the config.
+	// This makes the test case valid.
 	ensureNewTimeout(timeoutCh, height, round, cs.config.TimeoutPropose.Nanoseconds())
 
 	round++                                   // moving to the next round
