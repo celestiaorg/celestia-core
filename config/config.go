@@ -1058,7 +1058,13 @@ func (cfg *ConsensusConfig) Propose(round int32) time.Duration {
 // ProposeWithCustomTimeout returns the amount of time to wait for a proposal
 func (cfg *ConsensusConfig) ProposeWithCustomTimeout(round int32, customTimeout time.Duration) time.Duration {
 	fmt.Println("ProposeWithCustomTimeout called with", customTimeout.Seconds())
-	return time.Duration(customTimeout.Nanoseconds()+cfg.TimeoutProposeDelta.Nanoseconds()*int64(round)) * time.Nanosecond
+	// this is to capture any unforeseen cases where the customTimeout is 0
+	var timeoutPropose time.Duration
+	if customTimeout == 0 {
+		// falling back to default timeout
+		timeoutPropose = cfg.TimeoutPropose
+	}
+	return time.Duration(timeoutPropose.Nanoseconds()+cfg.TimeoutProposeDelta.Nanoseconds()*int64(round)) * time.Nanosecond
 }
 
 // Prevote returns the amount of time to wait for straggler votes after receiving any +2/3 prevotes
@@ -1084,7 +1090,13 @@ func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
 
 func (cfg *ConsensusConfig) CommitWithCustomTimeout(t time.Time, customTimeout time.Duration) time.Time {
 	fmt.Println("CommitWithCustomTimeout called with", customTimeout.Seconds())
-	return t.Add(customTimeout)
+	// this is to capture any unforeseen cases where the customTimeout is 0
+	var timeoutCommit time.Duration
+	if customTimeout == 0 {
+		// falling back to default timeout
+		timeoutCommit = cfg.TimeoutCommit
+	}
+	return t.Add(timeoutCommit)
 }
 
 // WalFile returns the full path to the write-ahead log file
