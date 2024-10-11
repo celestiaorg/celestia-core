@@ -1134,12 +1134,6 @@ func (cs *State) enterPropose(height int64, round int32) {
 	}()
 
 	// If we don't get the proposal and all block parts quick enough, enterPrevote
-	//if cs.config != nil {
-	//	cs.Logger.Info("scheduling timeoutPropose", "timeout",
-	//		cs.config.TimeoutPropose.Seconds())
-	//}
-
-	//cs.Logger.Info("scheduling timeoutPropose", "timeout", cs.state.TimeoutPropose)
 	cs.scheduleTimeout(cs.config.ProposeWithCustomTimeout(round, cs.state.TimeoutPropose),
 		height,
 		round, cstypes.RoundStepPropose)
