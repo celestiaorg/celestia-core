@@ -194,7 +194,7 @@ func (s *lightClientStateProvider) State(ctx context.Context, height uint64) (sm
 	state.ConsensusParams = result.ConsensusParams
 	state.LastHeightConsensusParamsChanged = currentLightBlock.Height
 
-	// TODO assign timeouts
+	// TODO may need to assign timeouts?
 	// state.TimeoutPropose
 	// state.TimeoutCommit
 
