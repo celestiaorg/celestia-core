@@ -1058,7 +1058,7 @@ func (cfg *ConsensusConfig) Propose(round int32) time.Duration {
 // ProposeWithCustomTimeout is identical to Propose. However,
 // it calculates the amount of time to wait for a proposal using the supplied
 // customTimeout.
-// If customTimeout is 0, the default TimeoutCommit is used.
+// If customTimeout is 0, the TimeoutPropose from cfg is used.
 func (cfg *ConsensusConfig) ProposeWithCustomTimeout(round int32, customTimeout time.Duration) time.Duration {
 	// this is to capture any unforeseen cases where the customTimeout is 0
 	var timeoutPropose = customTimeout
@@ -1090,7 +1090,7 @@ func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
 }
 
 // CommitWithCustomTimeout is identical to Commit. However, it calculates the time for commit using the supplied customTimeout.
-// If customTimeout is 0, the default TimeoutCommit is used.
+// If customTimeout is 0, the TimeoutCommit from cfg is used.
 func (cfg *ConsensusConfig) CommitWithCustomTimeout(t time.Time, customTimeout time.Duration) time.Time {
 	// this is to capture any unforeseen cases where the customTimeout is 0
 	var timeoutCommit = customTimeout
