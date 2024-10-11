@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/tendermint/tendermint/proto/tendermint/crypto"
 	"sync"
 	"time"
 
@@ -188,6 +189,9 @@ func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_B
 		if err != nil {
 			return err
 		}
+		if !req.ProveParts {
+			part.Proof = crypto.Proof{}
+		}
 		isLastPart := i == int(blockMeta.BlockID.PartSetHeader.Total)-1
 		err = stream.Send(&BlockByHashResponse{
 			BlockPart: part,
@@ -207,6 +211,9 @@ func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockA
 		part, err := blockStore.LoadBlockPart(req.Height, i).ToProto()
 		if err != nil {
 			return err
+		}
+		if !req.ProveParts {
+			part.Proof = crypto.Proof{}
 		}
 		isLastPart := i == int(blockMeta.BlockID.PartSetHeader.Total)-1
 		err = stream.Send(&BlockByHeightResponse{
