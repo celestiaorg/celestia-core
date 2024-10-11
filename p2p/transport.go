@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 	"github.com/tendermint/tendermint/libs/protoio"
 	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
 	"net"
@@ -93,11 +94,11 @@ func ConnDuplicateIPFilter() ConnFilterFunc {
 	return func(cs ConnSet, c quic.Connection, ips []net.IP) error {
 		for _, ip := range ips {
 			if cs.HasIP(ip) {
-				//return ErrRejected{
-				//	conn:        c,
-				//	err:         fmt.Errorf("ip<%v> already connected", ip),
-				//	isDuplicate: true,
-				//}
+				return ErrRejected{
+					conn:        c,
+					err:         fmt.Errorf("ip<%v> already connected", ip),
+					isDuplicate: true,
+				}
 			}
 		}
 
@@ -366,19 +367,19 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 		go func(c quic.Connection) {
 			defer func() {
 				if r := recover(); r != nil {
-					//err := ErrRejected{
-					//	conn:          c,
-					//	err:           fmt.Errorf("recovered from panic: %v", r),
-					//	isAuthFailure: true,
-					//}
-					//select {
-					//case mt.acceptc <- accept{err: err}:
-					//case <-mt.closec:
-					//	// Give up if the transport was closed.
-					//	// TODO(rach-id): valid error code
-					//	_ = c.CloseWithError(quic.ApplicationErrorCode(0), "some error 1")
-					//	return
-					//}
+					err := ErrRejected{
+						conn:          c,
+						err:           fmt.Errorf("recovered from panic: %v", r),
+						isAuthFailure: true,
+					}
+					select {
+					case mt.acceptc <- accept{err: err}:
+					case <-mt.closec:
+						// Give up if the transport was closed.
+						// TODO(rach-id): valid error code
+						_ = c.CloseWithError(quic.ApplicationErrorCode(http3.ErrCodeConnectError), err.Error())
+						return
+					}
 				}
 			}()
 
@@ -402,7 +403,7 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 				// Make the upgraded peer available.
 			case <-mt.closec:
 				// Give up if the transport was closed.
-				_ = c.CloseWithError(quic.ApplicationErrorCode(0), "closes transport")
+				_ = c.CloseWithError(quic.ApplicationErrorCode(http3.ErrCodeConnectError), "closes transport")
 				return
 			}
 		}(c)
@@ -420,21 +421,20 @@ func (mt *MultiplexTransport) cleanup(c quic.Connection) error {
 	mt.conns.Remove(c)
 
 	// TODO(rach-id): valid error
-	return c.CloseWithError(quic.ApplicationErrorCode(0), "some error 3")
+	return c.CloseWithError(quic.ApplicationErrorCode(quic.NoError), "closing for cleanup")
 }
 
 func (mt *MultiplexTransport) filterConn(c quic.Connection) (err error) {
 	defer func() {
 		if err != nil {
 			// TODO(rach-id): valid error
-			_ = c.CloseWithError(quic.ApplicationErrorCode(0), err.Error())
+			_ = c.CloseWithError(quic.ApplicationErrorCode(http3.ErrCodeConnectError), err.Error())
 		}
 	}()
 
 	// Reject if connection is already present.
 	if mt.conns.Has(c) {
-		//return ErrRejected{conn: c, isDuplicate: true}
-		return nil
+		return ErrRejected{conn: c, isDuplicate: true}
 	}
 
 	// Resolve ips for incoming conn.
@@ -455,8 +455,7 @@ func (mt *MultiplexTransport) filterConn(c quic.Connection) (err error) {
 		select {
 		case err := <-errc:
 			if err != nil {
-				return nil
-				//return ErrRejected{conn: c, err: err, isFiltered: true}
+				return ErrRejected{conn: c, err: err, isFiltered: true}
 			}
 		case <-time.After(mt.filterTimeout):
 			return ErrFilterTimeout{}

@@ -316,11 +316,11 @@ func (p *peer) OnStart() error {
 func (p *peer) FlushStop() {
 	p.metricsTicker.Stop()
 	p.BaseService.OnStop()
-	//for _, stream := range p.streams {
-	//	// TODO(rach-id): set valid error codes
-	//	stream.CancelRead(quic.StreamErrorCode(0))  // stop everything and close the conn
-	//	stream.CancelWrite(quic.StreamErrorCode(0)) // stop everything and close the conn
-	//}
+	for _, stream := range p.streams {
+		// TODO(rach-id): set valid error codes
+		stream.CancelRead(quic.StreamErrorCode(quic.NoError))  // stop everything and close the conn
+		stream.CancelWrite(quic.StreamErrorCode(quic.NoError)) // stop everything and close the conn
+	}
 }
 
 // OnStop implements BaseService.
@@ -328,7 +328,7 @@ func (p *peer) OnStop() {
 	p.metricsTicker.Stop()
 	p.BaseService.OnStop()
 	// TODO(rach-id): set valid error code
-	if err := p.conn.CloseWithError(quic.ApplicationErrorCode(0), "stopping peer connection"); err != nil { // stop everything and close the conn
+	if err := p.conn.CloseWithError(quic.ApplicationErrorCode(quic.NoError), "stopping peer connection onStop"); err != nil { // stop everything and close the conn
 		p.Logger.Debug("Error while stopping peer", "err", err)
 	}
 }
@@ -484,7 +484,7 @@ func (p *peer) hasChannel(chID byte) bool {
 // CloseConn closes original connection. Used for cleaning up in cases where the peer had not been started at all.
 func (p *peer) CloseConn() error {
 	// TODO(rach-id): valid error code
-	return p.conn.CloseWithError(quic.ApplicationErrorCode(0), "closed peer connection")
+	return p.conn.CloseWithError(quic.ApplicationErrorCode(quic.NoError), "closed peer connection closeCon")
 }
 
 func (p *peer) SetRemovalFailed() {
@@ -502,7 +502,7 @@ func (p *peer) GetRemovalFailed() bool {
 // CloseConn closes the underlying connection
 func (pc *peerConn) CloseConn() {
 	// TODO(rach-id): valid error code
-	pc.conn.CloseWithError(quic.ApplicationErrorCode(0), "closed peer connection")
+	pc.conn.CloseWithError(quic.ApplicationErrorCode(quic.NoError), "closed peer connection closeCon")
 }
 
 // RemoteAddr returns peer's remote network address.
@@ -527,6 +527,23 @@ func PeerMetrics(metrics *Metrics) PeerOption {
 }
 
 func (p *peer) metricsReporter() {
+	//for {
+	//	select {
+	//	case <-p.metricsTicker.C:
+	//		status := p.mconn.Status()
+	//		var sendQueueSize float64
+	//		queues := make(map[byte]int, len(status.Channels))
+	//		for _, chStatus := range status.Channels {
+	//			sendQueueSize += float64(chStatus.SendQueueSize)
+	//			queues[chStatus.ID] = chStatus.SendQueueSize
+	//		}
+	//
+	//		p.metrics.PeerPendingSendBytes.With("peer_id", string(p.ID())).Set(sendQueueSize)
+	//		schema.WritePendingBytes(p.traceClient, string(p.ID()), queues)
+	//	case <-p.Quit():
+	//		return
+	//	}
+	//}
 }
 
 // Send msg bytes to the channel identified by chID byte. Returns false if the
