@@ -52,11 +52,6 @@ type Client struct {
 	keyPathFn KeyPathFunc
 }
 
-func (c *Client) ConsensusTimeoutsInfo(ctx context.Context, heightPtr int64) (*abci.TimeoutsInfo, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
 var _ rpcclient.Client = (*Client)(nil)
 
 // Option allow you to tweak Client.
@@ -259,6 +254,10 @@ func (c *Client) ConsensusParams(ctx context.Context, height *int64) (*ctypes.Re
 	}
 
 	return res, nil
+}
+
+func (c *Client) ConsensusTimeoutsInfo(ctx context.Context, height int64) (*abci.TimeoutsInfo, error) {
+	return c.next.ConsensusTimeoutsInfo(ctx, height)
 }
 
 func (c *Client) Health(ctx context.Context) (*ctypes.ResultHealth, error) {
