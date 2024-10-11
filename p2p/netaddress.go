@@ -262,34 +262,34 @@ func (na *NetAddress) DialString() string {
 // Dial calls net.Dial on the address.
 // TODO: add TLS stuff.
 // Note: this one is not used in the code, the DialTimeout is used instead.
-func (na *NetAddress) Dial(ctx context.Context) (quic.Connection, error) {
-	tlsConfig := tls.Config{
-		MinVersion:         tls.VersionTLS13,
-		InsecureSkipVerify: true,
-	}
-	quickConfig := quic.Config{
-		MaxIdleTimeout:        10 * time.Minute,
-		MaxIncomingStreams:    10000,
-		MaxIncomingUniStreams: 10000,
-		KeepAlivePeriod:       2 * time.Minute,
-		EnableDatagrams:       true,
-	}
-	conn, err := quic.DialAddr(ctx, na.DialString(), &tlsConfig, &quickConfig)
-	if err != nil {
-		return nil, err
-	}
-	return conn, nil
-}
+//func (na *NetAddress) Dial(ctx context.Context) (quic.Connection, error) {
+//	tlsConfig := tls.Config{
+//		MinVersion:         tls.VersionTLS13,
+//		InsecureSkipVerify: true,
+//	}
+//	quickConfig := quic.Config{
+//		MaxIdleTimeout:        10 * time.Minute,
+//		MaxIncomingStreams:    10000,
+//		MaxIncomingUniStreams: 10000,
+//		KeepAlivePeriod:       2 * time.Minute,
+//		EnableDatagrams:       true,
+//	}
+//	conn, err := quic.DialAddr(ctx, na.DialString(), &tlsConfig, &quickConfig)
+//	if err != nil {
+//		return nil, err
+//	}
+//	return conn, nil
+//}
 
 // DialTimeout calls net.DialTimeout on the address.
 func (na *NetAddress) DialTimeout(timeout time.Duration, tlsConf *tls.Config) (quic.Connection, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	quickConfig := quic.Config{
-		MaxIdleTimeout:        10 * time.Minute,
+		MaxIdleTimeout:        time.Minute,
 		MaxIncomingStreams:    10000,
 		MaxIncomingUniStreams: 10000,
-		KeepAlivePeriod:       2 * time.Minute,
+		KeepAlivePeriod:       5 * time.Second,
 		EnableDatagrams:       true,
 	}
 	conn, err := quic.DialAddr(ctx, na.DialString(), tlsConf, &quickConfig)
