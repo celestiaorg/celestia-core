@@ -83,13 +83,6 @@ type State struct {
 	TimeoutCommit  time.Duration
 }
 
-func (state *State) GetTimeoutPropose() time.Duration {
-	return state.TimeoutPropose
-}
-func (state *State) GetTimeoutCommit() time.Duration {
-	return state.TimeoutCommit
-}
-
 // Copy makes a copy of the State for mutating.
 func (state State) Copy() State {
 	return State{

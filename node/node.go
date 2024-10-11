@@ -870,17 +870,11 @@ func NewNodeWithContext(ctx context.Context,
 		if err != nil {
 			return nil, fmt.Errorf("error during info call: %w", err)
 		}
-		softwareVersion = resp.Version // TODO is this the same as celestia-app version
+		softwareVersion = resp.Version
 	}
 
-	//resp, err := proxyApp.Query().InfoSync(proxy.RequestInfo)
-	//if err != nil {
-	//	return nil, fmt.Errorf("error during info call: %w", err)
-	//}
-
 	// Determine whether we should do fast sync. This must happen after the handshake, since the
-	// app may modify the validator set,
-	//specifying ourselves as the only validator.
+	// app may modify the validator set, specifying ourselves as the only validator.
 	fastSync := config.FastSyncMode && !onlyValidatorIsUs(state,
 		pubKey) // the state certainly has the latest timeouts according
 	// the app version lastBlock in the blockstore
@@ -939,9 +933,7 @@ func NewNodeWithContext(ctx context.Context,
 		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger, tracer,
 	)
 
-	logger.Info("Consensus reactor created", "timeout_propose",
-		consensusState.GetState().TimeoutPropose, "timeout_commit",
-		consensusState.GetState().TimeoutCommit)
+	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
 	// Set up state sync reactor, and schedule a sync if requested.
 	// FIXME The way we do phased startups (e.g. replay -> fast sync -> consensus) is very messy,
 	// we should clean this whole thing up. See:
