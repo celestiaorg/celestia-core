@@ -85,7 +85,7 @@ type State struct {
 	config        *cfg.ConsensusConfig
 	privValidator types.PrivValidator // for signing votes
 
-	// blockStore blocks and commits
+	// store blocks and commits
 	blockStore sm.BlockStore
 
 	// create and execute blocks
@@ -712,8 +712,6 @@ func (cs *State) updateToState(state sm.State) {
 	cs.CommitRound = -1
 	cs.LastValidators = state.LastValidators
 	cs.TriggeredTimeoutPrecommit = false
-	//cs.config.TimeoutPropose = state.GetTimeoutPropose()
-	//cs.config.TimeoutCommit = state.GetTimeoutCommit()
 
 	cs.state = state
 
@@ -1134,9 +1132,7 @@ func (cs *State) enterPropose(height int64, round int32) {
 	}()
 
 	// If we don't get the proposal and all block parts quick enough, enterPrevote
-	cs.scheduleTimeout(cs.config.ProposeWithCustomTimeout(round, cs.state.TimeoutPropose),
-		height,
-		round, cstypes.RoundStepPropose)
+	cs.scheduleTimeout(cs.config.ProposeWithCustomTimeout(round, cs.state.TimeoutPropose), height, round, cstypes.RoundStepPropose)
 
 	// Nothing more to do if we're not a validator
 	if cs.privValidator == nil {
