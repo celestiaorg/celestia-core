@@ -37,10 +37,6 @@ func calcABCIResponsesKey(height int64) []byte {
 	return []byte(fmt.Sprintf("abciResponsesKey:%v", height))
 }
 
-func calcTimeoutsKey(height int64) []byte {
-	return []byte(fmt.Sprintf("consensusTimeoutsKey:%v", height))
-}
-
 //----------------------
 
 var (
