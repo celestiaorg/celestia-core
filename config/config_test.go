@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -189,4 +190,14 @@ func TestInstrumentationConfigValidateBasic(t *testing.T) {
 	// tamper with maximum open connections
 	cfg.MaxOpenConnections = -1
 	assert.Error(t, cfg.ValidateBasic())
+}
+
+func TestDebug(t *testing.T) {
+	cfg := DefaultConfig()
+
+	timeout := cfg.Consensus.ProposeWithCustomTimeout(1, time.Second*10)
+
+	pt := cfg.Consensus.Propose(1)
+
+	fmt.Println(timeout, pt)
 }

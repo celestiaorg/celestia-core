@@ -875,9 +875,7 @@ func NewNodeWithContext(ctx context.Context,
 
 	// Determine whether we should do fast sync. This must happen after the handshake, since the
 	// app may modify the validator set, specifying ourselves as the only validator.
-	fastSync := config.FastSyncMode && !onlyValidatorIsUs(state,
-		pubKey) // the state certainly has the latest timeouts according
-	// the app version lastBlock in the blockstore
+	fastSync := config.FastSyncMode && !onlyValidatorIsUs(state, pubKey)
 
 	logNodeStartupInfo(state, pubKey, logger, consensusLogger)
 
