@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -192,12 +191,30 @@ func TestInstrumentationConfigValidateBasic(t *testing.T) {
 	assert.Error(t, cfg.ValidateBasic())
 }
 
-func TestDebug(t *testing.T) {
-	cfg := DefaultConfig()
+func TestProposeWithCustomTimeout(t *testing.T) {
+	cfg := DefaultConsensusConfig()
 
-	timeout := cfg.Consensus.ProposeWithCustomTimeout(1, time.Second*10)
+	//  customTimeout is 0, should fallback to default timeout
+	round := int32(1)
+	expectedTimeout := time.Duration(cfg.TimeoutPropose.Nanoseconds()+cfg.TimeoutProposeDelta.Nanoseconds()*int64(round)) * time.Nanosecond
+	assert.Equal(t, expectedTimeout, cfg.ProposeWithCustomTimeout(round, time.Duration(0)))
 
-	pt := cfg.Consensus.Propose(1)
+	// customTimeout is not 0
+	customTimeout := 2 * time.Second
+	expectedTimeout = time.Duration(customTimeout.Nanoseconds()+cfg.TimeoutProposeDelta.Nanoseconds()*int64(round)) * time.Nanosecond
+	assert.Equal(t, expectedTimeout, cfg.ProposeWithCustomTimeout(round, customTimeout))
+}
 
-	fmt.Println(timeout, pt)
+func TestCommitWithCustomTimeout(t *testing.T) {
+	cfg := DefaultConsensusConfig()
+
+	// customTimeout is 0, should fallback to default timeout
+	inputTime := time.Now()
+	expectedTime := inputTime.Add(cfg.TimeoutCommit)
+	assert.Equal(t, expectedTime, cfg.CommitWithCustomTimeout(inputTime, time.Duration(0)))
+
+	// customTimeout is not 0
+	customTimeout := 2 * time.Second
+	expectedTime = inputTime.Add(customTimeout)
+	assert.Equal(t, expectedTime, cfg.CommitWithCustomTimeout(inputTime, customTimeout))
 }
