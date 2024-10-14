@@ -256,10 +256,6 @@ func (c *Client) ConsensusParams(ctx context.Context, height *int64) (*ctypes.Re
 	return res, nil
 }
 
-func (c *Client) ConsensusTimeoutsInfo(ctx context.Context, height int64) (*abci.TimeoutsInfo, error) {
-	return c.next.ConsensusTimeoutsInfo(ctx, height)
-}
-
 func (c *Client) Health(ctx context.Context) (*ctypes.ResultHealth, error) {
 	return c.next.Health(ctx)
 }

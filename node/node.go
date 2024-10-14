@@ -1388,12 +1388,6 @@ func (n *Node) ConsensusState() *cs.State {
 	return n.consensusState
 }
 
-// ConsensusStateTimeoutsByHeight returns the Node's timeouts info in
-// ConsensusState at a given height.
-func (n *Node) ConsensusStateTimeoutsByHeight(height int64) (*abci.TimeoutsInfo, error) {
-	return n.stateStore.LoadConsensusTimeoutsInfo(height)
-}
-
 // ConsensusReactor returns the Node's ConsensusReactor.
 func (n *Node) ConsensusReactor() *cs.Reactor {
 	return n.consensusReactor

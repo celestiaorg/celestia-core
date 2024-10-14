@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/libs/log"
 	cmtpubsub "github.com/tendermint/tendermint/libs/pubsub"
@@ -126,10 +125,6 @@ func (c *Local) ConsensusState(ctx context.Context) (*ctypes.ResultConsensusStat
 
 func (c *Local) ConsensusParams(ctx context.Context, height *int64) (*ctypes.ResultConsensusParams, error) {
 	return core.ConsensusParams(c.ctx, height)
-}
-
-func (c *Local) ConsensusTimeoutsInfo(_ context.Context, height int64) (*abci.TimeoutsInfo, error) {
-	return core.ConsensusTimeoutsInfo(c.ctx, height)
 }
 
 func (c *Local) Health(ctx context.Context) (*ctypes.ResultHealth, error) {

@@ -18,7 +18,6 @@ import (
 	"context"
 	"reflect"
 
-	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/rpc/client"
@@ -130,10 +129,6 @@ func (c Client) DumpConsensusState(ctx context.Context) (*ctypes.ResultDumpConse
 
 func (c Client) ConsensusParams(ctx context.Context, height *int64) (*ctypes.ResultConsensusParams, error) {
 	return core.ConsensusParams(&rpctypes.Context{}, height)
-}
-
-func (c Client) ConsensusTimeoutsInfo(_ context.Context, height int64) (*abci.TimeoutsInfo, error) {
-	return core.ConsensusTimeoutsInfo(&rpctypes.Context{}, height)
 }
 
 func (c Client) Health(ctx context.Context) (*ctypes.ResultHealth, error) {

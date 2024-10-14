@@ -54,9 +54,6 @@ var Routes = map[string]*rpc.RPCFunc{
 
 	// evidence API
 	"broadcast_evidence": rpc.NewRPCFunc(BroadcastEvidence, "evidence"),
-
-	// get Timeouts by height
-	"timeout": rpc.NewRPCFunc(ConsensusTimeoutsInfo, "height"),
 }
 
 // AddUnsafeRoutes adds unsafe routes.
