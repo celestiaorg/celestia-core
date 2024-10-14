@@ -246,10 +246,12 @@ func (blockAPI *BlockAPI) Commit(_ context.Context, req *CommitRequest) (*Commit
 	commit := core.GetEnvironment().BlockStore.LoadBlockCommit(req.Height).ToProto()
 
 	return &CommitResponse{
-		Height:     commit.Height,
-		Round:      commit.Round,
-		BlockID:    commit.BlockID,
-		Signatures: commit.Signatures,
+		Commit: &types.Commit{
+			Height:     commit.Height,
+			Round:      commit.Round,
+			BlockID:    commit.BlockID,
+			Signatures: commit.Signatures,
+		},
 	}, nil
 }
 
@@ -271,9 +273,11 @@ func (blockAPI *BlockAPI) ValidatorSet(_ context.Context, req *ValidatorSetReque
 		validators = append(validators, protoValidator)
 	}
 	return &ValidatorSetResponse{
-		Validators:       validators,
-		Proposer:         proposer,
-		TotalVotingPower: validatorSet.TotalVotingPower(),
+		ValidatorSet: &types.ValidatorSet{
+			Validators:       validators,
+			Proposer:         proposer,
+			TotalVotingPower: validatorSet.TotalVotingPower(),
+		},
 	}, nil
 }
 

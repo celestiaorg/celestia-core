@@ -73,16 +73,11 @@ message BlockMetaByHeightResponse {
 }
 
 message CommitResponse {
-  int64                    height                = 1;
-  int32                    round                 = 2;
-  tendermint.types.BlockID block_id              = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
-  repeated tendermint.types.CommitSig signatures = 4 [(gogoproto.nullable) = false];
+  tendermint.types.Commit commit = 1;
 }
 
 message ValidatorSetResponse {
-  repeated tendermint.types.Validator validators         = 1;
-  tendermint.types.Validator          proposer           = 2;
-  int64                               total_voting_power = 3;
+  tendermint.types.ValidatorSet validator_set = 1;
 }
 
 message NewHeightEvent {
