@@ -271,6 +271,20 @@ func (ps *PartSet) Total() uint32 {
 }
 
 func (ps *PartSet) AddPart(part *Part) (bool, error) {
+	// The proof should be compatible with the number of parts.
+	if part.Proof.Total != int64(ps.total) {
+		return false, ErrPartSetInvalidProof
+	}
+
+	// Check hash proof
+	if part.Proof.Verify(ps.Hash(), part.Bytes) != nil {
+		return false, ErrPartSetInvalidProof
+	}
+
+	return ps.AddPartWithoutProof(part)
+}
+
+func (ps *PartSet) AddPartWithoutProof(part *Part) (bool, error) {
 	if ps == nil {
 		return false, nil
 	}
@@ -285,16 +299,6 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 	// If part already exists, return false.
 	if ps.parts[part.Index] != nil {
 		return false, nil
-	}
-
-	// The proof should be compatible with the number of parts.
-	if part.Proof.Total != int64(ps.total) {
-		return false, ErrPartSetInvalidProof
-	}
-
-	// Check hash proof
-	if part.Proof.Verify(ps.Hash(), part.Bytes) != nil {
-		return false, ErrPartSetInvalidProof
 	}
 
 	// Add part
