@@ -949,7 +949,6 @@ func NewNodeWithContext(ctx context.Context,
 	}
 
 	// Setup Transport.
-	// TODO limit the proxyApp to Query only
 	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp, tracer)
 
 	// Setup Switch.

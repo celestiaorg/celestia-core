@@ -676,23 +676,16 @@ func (cs *State) updateToState(state sm.State) {
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
 
 		if state.LastBlockHeight == 0 {
-			// state represents the genesis state, hence the StartTime should be set based on the state's TimeoutCommit
-			// we don't use cs.state.TimeoutCommit because that is zero
+			// Don't use cs.state.TimeoutCommit because that is zero
 			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.TimeoutCommit)
 		} else {
-			// if state does not represent the genesis state,
-			// we use the cs.state.TimeoutCommit
 			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.TimeoutCommit)
 		}
 
 	} else {
 		if state.LastBlockHeight == 0 {
-			// state represents the genesis state, hence the StartTime should be set based on the state's TimeoutCommit
-			// we don't use cs.state.TimeoutCommit because that is zero
 			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, state.TimeoutCommit)
 		} else {
-			// if state does not represent the genesis state,
-			// we use the cs.state.TimeoutCommit
 			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.TimeoutCommit)
 		}
 
