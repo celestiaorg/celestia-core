@@ -78,7 +78,7 @@ type State struct {
 	// the latest AppHash we've received from calling abci.Commit()
 	AppHash []byte
 
-	// timeouts received from app, after abci EndBlock call, to be used in the next height
+	// timeouts received from app, after ABCI EndBlock call, to be used in the next height
 	TimeoutPropose time.Duration
 	TimeoutCommit  time.Duration
 }

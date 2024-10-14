@@ -893,7 +893,6 @@ func NewNodeWithContext(ctx context.Context,
 	}
 
 	// Make MempoolReactor
-	// TODO limit the proxyApp to Mempool only
 	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger, tracer)
 
 	// Make Evidence Reactor

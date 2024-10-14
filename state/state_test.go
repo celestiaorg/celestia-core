@@ -166,9 +166,7 @@ func TestStateSaveLoad(t *testing.T) {
 			loadedState, state))
 
 	// the following assertions are just for additional assurance
-	assert.Equal(state.TimeoutCommit, loadedState.TimeoutCommit,
-		fmt.Sprintf("expected TimeoutCommit to be equal."+
-			"\ngot: %v\nexpected: %v\n", loadedState.TimeoutCommit, state.TimeoutCommit))
+	assert.Equal(state.TimeoutCommit, loadedState.TimeoutCommit)
 	assert.Equal(state.TimeoutPropose, loadedState.TimeoutPropose, fmt.Sprintf("expected TimeoutPropose to be equal."+
 		"\ngot: %v\nexpected: %v\n", loadedState.TimeoutPropose, state.TimeoutPropose))
 }
@@ -203,7 +201,7 @@ func TestLoadConsensusTimeoutsInfo(t *testing.T) {
 	err = stateStore.Save(state2)
 	require.NoError(t, err)
 
-	// now try to retrieve saved sates from the store, focusing on timeouts
+	// now try to retrieve saved state from the store, focusing on timeouts
 
 	// State saved with LastBlockHeight is saved for the next height,
 	// hence using state1.LastBlockHeight + 1 to retrieve it
