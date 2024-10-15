@@ -79,7 +79,7 @@ func (bs *BlockStore) Size() int64 {
 	return bs.height - bs.base + 1
 }
 
-// LoadBase atomically loads the base block meta, or returns nil if no base is found.
+// LoadBaseMeta atomically loads the base block meta, or returns nil if no base is found.
 func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 	bs.mtx.RLock()
 	defer bs.mtx.RUnlock()
@@ -197,8 +197,7 @@ func (bs *BlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	return blockMeta
 }
 
-// LoadBlockMetaByHash returns the blockmeta who's header corresponds to the given
-// hash. If none is found, returns nil.
+// LoadBlockMetaByHash returns the blockmeta whose header corresponds to the given hash. If none is found, returns nil.
 func (bs *BlockStore) LoadBlockMetaByHash(hash []byte) *types.BlockMeta {
 	bz, err := bs.db.Get(calcBlockHashKey(hash))
 	if err != nil {

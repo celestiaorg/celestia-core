@@ -43,7 +43,7 @@ type Local struct {
 	ctx    *rpctypes.Context
 }
 
-// NewLocal configures a client that calls the Node directly.
+// New configures a client that calls the Node directly.
 //
 // Note that given how rpc/core works with package singletons, that
 // you can only have one node per process.  So make sure test cases

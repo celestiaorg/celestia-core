@@ -19,7 +19,7 @@ import (
 	types "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 )
 
-// Config is a RPC server configuration.
+// Config is an RPC server configuration.
 type Config struct {
 	// see netutil.LimitListener
 	MaxOpenConnections int
@@ -64,7 +64,7 @@ func Serve(listener net.Listener, handler http.Handler, logger log.Logger, confi
 	return err
 }
 
-// Serve creates a http.Server and calls ServeTLS with the given listener,
+// ServeTLS creates a http.Server and calls ServeTLS with the given listener,
 // certFile and keyFile. It wraps handler with RecoverAndLogHandler and a
 // handler, which limits the max body size to config.MaxBodyBytes.
 //

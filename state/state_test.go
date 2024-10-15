@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,17 +50,54 @@ func TestStateCopy(t *testing.T) {
 	tearDown, _, state := setupTestCase(t)
 	defer tearDown(t)
 	assert := assert.New(t)
+	// the timeouts coming from the setupTestCase are 0,
+	// we change it here just to ensure that they have non-zero values in the
+	// tests below
+	state.TimeoutPropose = 10 * time.Second
+	state.TimeoutCommit = 20 * time.Second
 
-	stateCopy := state.Copy()
+	tests := []struct {
+		name        string
+		modifyState func(sm.State) sm.State
+		expected    bool
+	}{
+		{
+			name: "no modification",
+			modifyState: func(s sm.State) sm.State {
+				stateCopy := s.Copy()
+				return stateCopy
+			},
+			expected: true,
+		},
+		{
+			name: "modify block height and validators",
+			modifyState: func(s sm.State) sm.State {
+				stateCopy := s.Copy()
+				stateCopy.LastBlockHeight++
+				stateCopy.LastValidators = s.Validators
+				return stateCopy
+			},
+			expected: false,
+		},
+		{
+			name: "modify timeouts",
+			modifyState: func(s sm.State) sm.State {
+				stateCopy := s.Copy()
+				stateCopy.TimeoutPropose = 1 * time.Second
+				stateCopy.TimeoutCommit = 2 * time.Second
+				return stateCopy
+			},
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			newState := tt.modifyState(state)
+			assert.Equal(tt.expected, state.Equals(newState),
+				fmt.Sprintf("expected state: %v\n got: %v\n", state, newState))
+		})
 
-	assert.True(state.Equals(stateCopy),
-		fmt.Sprintf("expected state and its copy to be identical.\ngot: %v\nexpected: %v\n",
-			stateCopy, state))
-
-	stateCopy.LastBlockHeight++
-	stateCopy.LastValidators = state.Validators
-	assert.False(state.Equals(stateCopy), fmt.Sprintf(`expected states to be different. got same
-        %v`, state))
+	}
 }
 
 // TestMakeGenesisStateNilValidators tests state's consistency when genesis file's validators field is nil.
@@ -111,6 +149,11 @@ func TestStateSaveLoad(t *testing.T) {
 	})
 	assert := assert.New(t)
 
+	// the timeouts coming from the setupTestCase are 0,
+	// we change it here just to ensure that they have non-zero values in the
+	// tests below
+	state.TimeoutCommit = 10 * time.Second
+	state.TimeoutPropose = 5 * time.Second
 	state.LastBlockHeight++
 	state.LastValidators = state.Validators
 	err := stateStore.Save(state)
@@ -121,6 +164,11 @@ func TestStateSaveLoad(t *testing.T) {
 	assert.True(state.Equals(loadedState),
 		fmt.Sprintf("expected state and its copy to be identical.\ngot: %v\nexpected: %v\n",
 			loadedState, state))
+
+	// the following assertions are just for additional assurance
+	assert.Equal(state.TimeoutCommit, loadedState.TimeoutCommit)
+	assert.Equal(state.TimeoutPropose, loadedState.TimeoutPropose, fmt.Sprintf("expected TimeoutPropose to be equal."+
+		"\ngot: %v\nexpected: %v\n", loadedState.TimeoutPropose, state.TimeoutPropose))
 }
 
 // TestABCIResponsesSaveLoad tests saving and loading ABCIResponses.
@@ -143,9 +191,9 @@ func TestABCIResponsesSaveLoad1(t *testing.T) {
 
 	abciResponses.DeliverTxs[0] = &abci.ResponseDeliverTx{Data: []byte("foo"), Events: nil}
 	abciResponses.DeliverTxs[1] = &abci.ResponseDeliverTx{Data: []byte("bar"), Log: "ok", Events: nil}
-	abciResponses.EndBlock = &abci.ResponseEndBlock{ValidatorUpdates: []abci.ValidatorUpdate{
-		types.TM2PB.NewValidatorUpdate(ed25519.GenPrivKey().PubKey(), 10),
-	}}
+	abciResponses.EndBlock = &abci.ResponseEndBlock{
+		ValidatorUpdates: []abci.ValidatorUpdate{types.TM2PB.NewValidatorUpdate(ed25519.GenPrivKey().PubKey(), 10)},
+		Timeouts:         abci.TimeoutsInfo{TimeoutPropose: 1 * time.Second, TimeoutCommit: 2 * time.Second}}
 
 	err := stateStore.SaveABCIResponses(block.Height, abciResponses)
 	require.NoError(t, err)
@@ -154,6 +202,7 @@ func TestABCIResponsesSaveLoad1(t *testing.T) {
 	assert.Equal(abciResponses, loadedABCIResponses,
 		fmt.Sprintf("ABCIResponses don't match:\ngot:       %v\nexpected: %v\n",
 			loadedABCIResponses, abciResponses))
+
 }
 
 // TestResultsSaveLoad tests saving and loading ABCI results.
@@ -1101,6 +1150,12 @@ func TestStateProto(t *testing.T) {
 	tearDown, _, state := setupTestCase(t)
 	defer tearDown(t)
 
+	// for assurance,
+	// we make another state with non-zero timeouts to see if conversion works
+	stateCopyWithTimeouts := state.Copy()
+	stateCopyWithTimeouts.TimeoutCommit = 10 * time.Second
+	stateCopyWithTimeouts.TimeoutPropose = 11 * time.Second
+
 	tc := []struct {
 		testName string
 		state    *sm.State
@@ -1110,6 +1165,7 @@ func TestStateProto(t *testing.T) {
 		{"empty state", &sm.State{}, true, false},
 		{"nil failure state", nil, false, false},
 		{"success state", &state, true, true},
+		{"success state with timeouts", &stateCopyWithTimeouts, true, true},
 	}
 
 	for _, tt := range tc {
