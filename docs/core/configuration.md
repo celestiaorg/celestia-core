@@ -7,11 +7,11 @@ order: 3
 CometBFT can be configured via a TOML file in
 `$CMTHOME/config/config.toml`. Some of these parameters can be overridden by
 command-line flags. For most users, the options in the `##### main base configuration options #####` are intended to be modified while config options
-further below are intended for advance power users.
+further below are intended for advanced power users.
 
 ## Options
 
-The default configuration file create by `cometbft init` has all
+The default configuration file created by `cometbft init` has all
 the parameters set with their default values. It will look something
 like the file below, however, double check by inspecting the
 `config.toml` created with your version of `cometbft` installed:

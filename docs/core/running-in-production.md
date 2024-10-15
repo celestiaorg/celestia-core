@@ -166,7 +166,7 @@ Each CometBFT instance has a standard `/health` RPC endpoint, which responds
 with 200 (OK) if everything is fine and 500 (or no response) - if something is
 wrong.
 
-Other useful endpoints include mentioned earlier `/status`, `/net_info` and
+Other useful endpoints include those mentioned earlier `/status`, `/net_info` and
 `/validators`.
 
 CometBFT also can report and serve Prometheus metrics. See
@@ -358,7 +358,7 @@ applications, setting it to true is not a problem.
 - `consensus.peer_gossip_sleep_duration`
 
 You can try to reduce the time your node sleeps before checking if
-theres something to send its peers.
+there is something to send its peers.
 
 - `consensus.timeout_commit`
 

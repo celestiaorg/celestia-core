@@ -19,7 +19,7 @@ to elections, to infrastructure orchestration, and beyond.
 The ability to tolerate machines failing in arbitrary ways, including
 becoming malicious, is known as Byzantine fault tolerance (BFT). The
 theory of BFT is decades old, but software implementations have only
-became popular recently, due largely to the success of "blockchain
+become popular recently, due largely to the success of "blockchain
 technology" like Bitcoin and Ethereum. Blockchain technology is just a
 reformalization of BFT in a more modern setting, with emphasis on
 peer-to-peer networking and cryptographic authentication. The name
