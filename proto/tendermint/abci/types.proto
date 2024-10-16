@@ -237,13 +237,14 @@ message ResponseCheckTx {
   int64          gas_used   = 6 [json_name = "gas_used"];
   repeated Event events     = 7
       [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
-  string codespace = 8;
-  string sender    = 9;
-  int64  priority  = 10;
+  string codespace          = 8;
+  string sender             = 9;
+  int64  priority           = 10;
 
   // mempool_error is set by CometBFT.
-  // ABCI applictions creating a ResponseCheckTX should not set mempool_error.
-  string mempool_error = 11;
+  // ABCI applications creating a ResponseCheckTX should not set mempool_error.
+  string mempool_error      = 11;
+  int64 nonce               = 12;
 }
 
 message ResponseDeliverTx {
