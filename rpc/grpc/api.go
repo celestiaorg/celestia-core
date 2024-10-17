@@ -185,6 +185,17 @@ func (blockAPI *BlockAPI) closeAllListeners() {
 func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_BlockByHashServer) error {
 	blockStore := core.GetEnvironment().BlockStore
 	blockMeta := blockStore.LoadBlockMetaByHash(req.Hash)
+	commit := core.GetEnvironment().BlockStore.LoadBlockCommit(blockMeta.Header.Height).ToProto()
+
+	validatorSet, err := core.GetEnvironment().StateStore.LoadValidators(blockMeta.Header.Height)
+	if err != nil {
+		return err
+	}
+	protoValidatorSet, err := validatorSet.ToProto()
+	if err != nil {
+		return err
+	}
+
 	for i := 0; i < int(blockMeta.BlockID.PartSetHeader.Total); i++ {
 		part, err := blockStore.LoadBlockPart(blockMeta.Header.Height, i).ToProto()
 		if err != nil {
@@ -194,10 +205,16 @@ func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_B
 			part.Proof = crypto.Proof{}
 		}
 		isLastPart := i == int(blockMeta.BlockID.PartSetHeader.Total)-1
-		err = stream.Send(&BlockByHashResponse{
+		resp := BlockByHashResponse{
 			BlockPart: part,
 			IsLast:    isLastPart,
-		})
+		}
+		if i == 0 {
+			resp.BlockMeta = blockMeta.ToProto()
+			resp.ValidatorSet = protoValidatorSet
+			resp.Commit = commit
+		}
+		err = stream.Send(&resp)
 		if err != nil {
 			return err
 		}
@@ -260,24 +277,12 @@ func (blockAPI *BlockAPI) ValidatorSet(_ context.Context, req *ValidatorSetReque
 	if err != nil {
 		return nil, err
 	}
-	proposer, err := validatorSet.Proposer.ToProto()
+	protoValidatorSet, err := validatorSet.ToProto()
 	if err != nil {
 		return nil, err
 	}
-	validators := make([]*types.Validator, 0, len(validatorSet.Validators))
-	for _, validator := range validatorSet.Validators {
-		protoValidator, err := validator.ToProto()
-		if err != nil {
-			return nil, err
-		}
-		validators = append(validators, protoValidator)
-	}
 	return &ValidatorSetResponse{
-		ValidatorSet: &types.ValidatorSet{
-			Validators:       validators,
-			Proposer:         proposer,
-			TotalVotingPower: validatorSet.TotalVotingPower(),
-		},
+		ValidatorSet: protoValidatorSet,
 	}, nil
 }
 

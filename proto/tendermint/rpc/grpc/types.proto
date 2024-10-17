@@ -55,13 +55,19 @@ message ResponseBroadcastTx {
 }
 
 message BlockByHashResponse {
-  tendermint.types.Part block_part = 1;
-  bool                  is_last    = 2;
+  tendermint.types.Part         block_part    = 1;
+  tendermint.types.Commit       commit        = 2;
+  tendermint.types.ValidatorSet validator_set = 3;
+  tendermint.types.BlockMeta    block_meta    = 4;
+  bool                          is_last       = 5;
 }
 
 message BlockByHeightResponse {
-  tendermint.types.Part block_part = 1;
-  bool                  is_last    = 2;
+  tendermint.types.Part         block_part    = 1;
+  tendermint.types.Commit       commit        = 2;
+  tendermint.types.ValidatorSet validator_set = 3;
+  tendermint.types.BlockMeta    block_meta    = 4;
+  bool                          is_last       = 5;
 }
 
 message BlockMetaByHashResponse {
