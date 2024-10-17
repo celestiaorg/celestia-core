@@ -21,6 +21,9 @@ type Config struct {
 func StartGRPCServer(ln net.Listener) error {
 	grpcServer := grpc.NewServer()
 	RegisterBroadcastAPIServer(grpcServer, &broadcastAPI{})
+	api := NewBlockAPI()
+	go api.StartNewBlockEventListener(context.Background())
+	RegisterBlockAPIServer(grpcServer, api)
 	return grpcServer.Serve(ln)
 }
 
@@ -32,6 +35,16 @@ func StartGRPCClient(protoAddr string) BroadcastAPIClient {
 		panic(err)
 	}
 	return NewBroadcastAPIClient(conn)
+}
+
+// StartBlockAPIGRPCClient dials the gRPC server using protoAddr and returns a new
+// BlockAPIClient.
+func StartBlockAPIGRPCClient(protoAddr string) BlockAPIClient {
+	conn, err := grpc.Dial(protoAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc)) //nolint:staticcheck
+	if err != nil {
+		panic(err)
+	}
+	return NewBlockAPIClient(conn)
 }
 
 func dialerFunc(ctx context.Context, addr string) (net.Conn, error) {

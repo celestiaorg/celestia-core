@@ -3,6 +3,8 @@ package tendermint.rpc.grpc;
 option  go_package = "github.com/tendermint/tendermint/rpc/grpc;coregrpc";
 
 import "tendermint/abci/types.proto";
+import "tendermint/types/types.proto";
+import "tendermint/types/validator.proto";
 
 //----------------------------------------
 // Request types
@@ -12,6 +14,34 @@ message RequestPing {}
 message RequestBroadcastTx {
   bytes tx = 1;
 }
+
+message BlockByHashRequest {
+  bytes hash         = 1;
+  bool  ignore_proof = 2;
+}
+
+message BlockByHeightRequest {
+  int64 height       = 1;
+  bool  ignore_proof = 2;
+}
+
+message BlockMetaByHashRequest {
+  bytes hash = 1;
+}
+
+message BlockMetaByHeightRequest {
+  int64 height = 1;
+}
+
+message CommitRequest {
+  int64 height = 1;
+}
+
+message ValidatorSetRequest {
+  int64 height = 1;
+}
+
+message SubscribeNewHeightsRequest {}
 
 //----------------------------------------
 // Response types
@@ -23,10 +53,57 @@ message ResponseBroadcastTx {
   tendermint.abci.ResponseDeliverTx deliver_tx = 2;
 }
 
+message BlockByHashResponse {
+  tendermint.types.Part         block_part    = 1;
+  tendermint.types.Commit       commit        = 2;
+  tendermint.types.ValidatorSet validator_set = 3;
+  tendermint.types.BlockMeta    block_meta    = 4;
+  bool                          is_last       = 5;
+}
+
+message BlockByHeightResponse {
+  tendermint.types.Part         block_part    = 1;
+  tendermint.types.Commit       commit        = 2;
+  tendermint.types.ValidatorSet validator_set = 3;
+  tendermint.types.BlockMeta    block_meta    = 4;
+  bool                          is_last       = 5;
+}
+
+message BlockMetaByHashResponse {
+  tendermint.types.BlockMeta block_meta = 1;
+}
+
+message BlockMetaByHeightResponse {
+  tendermint.types.BlockMeta block_meta = 1;
+}
+
+message CommitResponse {
+  tendermint.types.Commit commit = 1;
+}
+
+message ValidatorSetResponse {
+  tendermint.types.ValidatorSet validator_set = 1;
+}
+
+message NewHeightEvent {
+  int64 height = 1;
+  bytes hash   = 2;
+}
+
 //----------------------------------------
 // Service Definition
 
 service BroadcastAPI {
   rpc Ping(RequestPing) returns (ResponsePing);
   rpc BroadcastTx(RequestBroadcastTx) returns (ResponseBroadcastTx);
+}
+
+service BlockAPI {
+  rpc BlockByHash(BlockByHashRequest) returns (stream BlockByHashResponse);
+  rpc BlockMetaByHash(BlockMetaByHashRequest) returns (BlockMetaByHashResponse);
+  rpc BlockByHeight(BlockByHeightRequest) returns (stream BlockByHeightResponse);
+  rpc BlockMetaByHeight(BlockMetaByHeightRequest) returns (BlockMetaByHeightResponse);
+  rpc Commit(CommitRequest) returns (CommitResponse);
+  rpc ValidatorSet(ValidatorSetRequest) returns (ValidatorSetResponse);
+  rpc SubscribeNewHeights(SubscribeNewHeightsRequest) returns (stream NewHeightEvent);
 }
