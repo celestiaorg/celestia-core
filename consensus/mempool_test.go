@@ -75,7 +75,7 @@ func TestMempoolProgressInHigherRound(t *testing.T) {
 	timeoutCh := subscribe(cs.eventBus, types.EventQueryTimeoutPropose)
 	cs.setProposal = func(proposal *types.Proposal) error {
 		if cs.Height == 2 && cs.Round == 0 {
-			// dont set the proposal in round 0 so we timeout and
+			// don't set the proposal in round 0 so we timeout and
 			// go to next round
 			cs.Logger.Info("Ignoring set proposal at height 2, round 0")
 			return nil
@@ -91,7 +91,11 @@ func TestMempoolProgressInHigherRound(t *testing.T) {
 	round = 0
 
 	ensureNewRound(newRoundCh, height, round) // first round at next height
-	deliverTxsRange(cs, 0, 1)                 // we deliver txs, but dont set a proposal so we get the next round
+	deliverTxsRange(cs, 0, 1)                 // we deliver txs, but don't set a proposal so we get the next round
+	// The use of cs.config.TimeoutPropose.Nanoseconds() as the timeout propose is acceptable in this test case, the following line.
+	// Even though timeouts are version-dependent, cs is created with an empty previous state in this scenario.
+	// As there's no timeout propose in the previous state, we default to the timeout propose in the config.
+	// This makes the test case valid.
 	ensureNewTimeout(timeoutCh, height, round, cs.config.TimeoutPropose.Nanoseconds())
 
 	round++                                   // moving to the next round

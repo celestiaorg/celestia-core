@@ -854,13 +854,18 @@ func NewNodeWithContext(ctx context.Context,
 		}
 
 		// Reload the state. It will have the Version.Consensus.App set by the
-		// Handshake, and may have other modifications as well (ie. depending on
+		// Handshake, and may have other modifications as well (i.e., depending on
 		// what happened during block replay).
 		state, err = stateStore.Load()
+		logger.Info("Loaded state after doHandshake", "height",
+			state.LastBlockHeight, "app_version",
+			state.Version.Consensus.App, "timeout_commit", state.TimeoutCommit, "timeout_propose", state.TimeoutPropose)
 		if err != nil {
+			logger.Info("Error loading state after doHandshake", "err", err)
 			return nil, fmt.Errorf("cannot load state: %w", err)
 		}
 	} else {
+		logger.Info("Skipping handshake, Starting state sync")
 		resp, err := proxyApp.Query().InfoSync(proxy.RequestInfo)
 		if err != nil {
 			return nil, fmt.Errorf("error during info call: %w", err)
@@ -869,7 +874,7 @@ func NewNodeWithContext(ctx context.Context,
 	}
 
 	// Determine whether we should do fast sync. This must happen after the handshake, since the
-	// app may modify the validator set, specifying ourself as the only validator.
+	// app may modify the validator set, specifying ourselves as the only validator.
 	fastSync := config.FastSyncMode && !onlyValidatorIsUs(state, pubKey)
 
 	logNodeStartupInfo(state, pubKey, logger, consensusLogger)
@@ -925,6 +930,7 @@ func NewNodeWithContext(ctx context.Context,
 		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger, tracer,
 	)
 
+	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
 	// Set up state sync reactor, and schedule a sync if requested.
 	// FIXME The way we do phased startups (e.g. replay -> fast sync -> consensus) is very messy,
 	// we should clean this whole thing up. See:
@@ -1044,7 +1050,7 @@ func (n *Node) OnStart() error {
 	n.addrBook.AddPrivateIDs(splitAndTrimEmpty(n.config.P2P.PrivatePeerIDs, ",", " "))
 
 	// Start the RPC server before the P2P server
-	// so we can eg. receive txs for the first block
+	// so we can e.g., receive txs for the first block
 	if n.config.RPC.ListenAddress != "" {
 		listeners, err := n.startRPC()
 		if err != nil {
@@ -1536,7 +1542,7 @@ func LoadStateFromDBOrGenesisDocProvider(
 			return sm.State{}, nil, err
 		}
 		// save genesis doc to prevent a certain class of user errors (e.g. when it
-		// was changed, accidentally or not). Also good for audit trail.
+		// was changed, accidentally or not). Also, good for audit trail.
 		if err := saveGenesisDoc(stateDB, genDoc); err != nil {
 			return sm.State{}, nil, err
 		}

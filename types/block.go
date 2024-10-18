@@ -1289,7 +1289,7 @@ func (blockID *BlockID) ToProto() cmtproto.BlockID {
 	}
 }
 
-// FromProto sets a protobuf BlockID to the given pointer.
+// BlockIDFromProto sets a protobuf BlockID to the given pointer.
 // It returns an error if the block id is invalid.
 func BlockIDFromProto(bID *cmtproto.BlockID) (*BlockID, error) {
 	if bID == nil {

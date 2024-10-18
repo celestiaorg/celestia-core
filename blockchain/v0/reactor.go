@@ -410,8 +410,7 @@ FOR_LOOP:
 			// TODO: batch saves so we dont persist to disk every block
 			bcR.store.SaveBlock(first, firstParts, second.LastCommit)
 
-			// TODO: same thing for app - but we would need a way to
-			// get the hash without persisting the state
+			// TODO: same thing for app - but we would need a way to get the hash without persisting the state
 			state, _, err = bcR.blockExec.ApplyBlock(state, firstID, first, second.LastCommit)
 			if err != nil {
 				// TODO This is bad, are we zombie?
