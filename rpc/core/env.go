@@ -27,6 +27,7 @@ const (
 
 	// SubscribeTimeout is the maximum time we wait to subscribe for an event.
 	// must be less than the server's write timeout (see rpcserver.DefaultConfig)
+	// TODO this may need adjustment
 	SubscribeTimeout = 5 * time.Second
 
 	// genesisChunkSize is the maximum size, in bytes, of each

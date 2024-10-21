@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -25,8 +26,10 @@ func TestMain(m *testing.M) {
 }
 
 func TestBroadcastTx(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	res, err := rpctest.GetGRPCClient().BroadcastTx(
-		context.Background(),
+		ctx,
 		&core_grpc.RequestBroadcastTx{Tx: []byte("this is a tx")},
 	)
 	require.NoError(t, err)

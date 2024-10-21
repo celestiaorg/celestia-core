@@ -29,6 +29,8 @@ func Benchmark(testnet *e2e.Testnet, benchmarkLength int64) error {
 
 	// wait for the length of the benchmark period in blocks to pass. We allow 5 seconds for each block
 	// which should be sufficient.
+	// TODO the waitingTime may need some adjustment e.g.,
+	// waitingTime := time.Duration(benchmarkLength*5) * 12 * time.Second
 	waitingTime := time.Duration(benchmarkLength*5) * time.Second
 	endHeight, err := waitForAllNodes(testnet, block.Height+benchmarkLength, waitingTime)
 	if err != nil {
