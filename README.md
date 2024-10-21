@@ -85,7 +85,3 @@ The canonical branches in this repo are based on CometBFT releases. For example:
 Releases are formatted: `v<CELESTIA_CORE_VERSION>-tm-v<TENDERMINT_CORE_VERSION>`
 For example: [`v1.4.0-tm-v0.34.20`](https://github.com/celestiaorg/celestia-core/releases/tag/v1.4.0-tm-v0.34.20) is celestia-core version `1.4.0` based on CometBFT `0.34.20`.
 `CELESTIA_CORE_VERSION` strives to adhere to [Semantic Versioning](http://semver.org/).
-
-## Careers
-
-We are hiring Go engineers! Join us in building the future of blockchain scaling and interoperability. [Apply here](https://jobs.lever.co/celestia).
