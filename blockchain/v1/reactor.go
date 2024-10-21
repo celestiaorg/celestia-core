@@ -250,7 +250,7 @@ func (bcR *BlockchainReactor) ReceiveEnvelope(e p2p.Envelope) {
 		return
 	}
 
-	bcR.Logger.Debug("Receive", "src", e.Src, "chID", e.ChannelID, "msg", e.Message)
+	//bcR.Logger.Debug("Receive", "src", e.Src, "chID", e.ChannelID, "msg", e.Message)
 
 	switch msg := e.Message.(type) {
 	case *bcproto.BlockRequest:

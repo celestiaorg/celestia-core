@@ -58,6 +58,8 @@ type Peer interface {
 
 	SetRemovalFailed()
 	GetRemovalFailed() bool
+
+	GetConnectionContext() context.Context
 }
 
 type EnvelopeSender interface {
@@ -424,6 +426,12 @@ func (p *peer) addStream(stream quic.Stream, chID byte) {
 	p.streams[chID] = stream
 }
 
+func (p *peer) removeStream(chID byte) {
+	p.Mutex.Lock()
+	defer p.Mutex.Unlock()
+	delete(p.streams, chID)
+}
+
 func (p *peer) getStream(chID byte) (quic.Stream, bool) {
 	p.Mutex.Lock()
 	defer p.Mutex.Unlock()
@@ -616,21 +624,7 @@ func (p *peer) StartReceiving() error {
 		}
 		// start accepting data
 		go func() {
-			//reader := protoio.NewDelimitedReader(stream, math.MaxInt32)
 			for {
-				//var dataLen uint32
-				//err = binary.Read(stream, binary.BigEndian, &dataLen)
-				//if err != nil {
-				//	p.Logger.Debug("failed to read size from stream", "err", err.Error())
-				//	return
-				//}
-				//p.Logger.Debug("received data len", "len", dataLen)
-				//data := make([]byte, dataLen)
-				//_, err = io.ReadFull(stream, data)
-				//if err != nil {
-				//	p.Logger.Debug("failed to read data from stream", "err", err.Error())
-				//	return
-				//}
 				var packet p2p.Packet
 				_, err := protoio.NewDelimitedReader(stream, math.MaxInt32).ReadMsg(&packet)
 				if err != nil {
@@ -639,7 +633,6 @@ func (p *peer) StartReceiving() error {
 				}
 
 				dd := packet.Sum.(*p2p.Packet_PacketMsg)
-				//p.Logger.Debug("received data", "bytes", hex.EncodeToString(someLogData(dd.PacketMsg.Data)))
 				p.Logger.Debug("received data", "channel", chID)
 				p.onReceive(chID, dd.PacketMsg.Data)
 			}
@@ -660,4 +653,16 @@ func someLogData(data []byte) []byte {
 		end = data[len(data)-numBytes:]
 	}
 	return append(beginning, end...)
+}
+
+func (p *peer) SendDatagram(bytes []byte) error {
+	return p.conn.SendDatagram(bytes)
+}
+
+func (p *peer) ReceiveDatagram(ctx context.Context) ([]byte, error) {
+	return p.conn.ReceiveDatagram(ctx)
+}
+
+func (p *peer) GetConnectionContext() context.Context {
+	return p.conn.Context()
 }

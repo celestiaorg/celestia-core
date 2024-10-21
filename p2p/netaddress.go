@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/logging"
 	"net"
 	"strconv"
 	"strings"
@@ -289,8 +290,11 @@ func (na *NetAddress) DialTimeout(timeout time.Duration, tlsConf *tls.Config) (q
 		MaxIdleTimeout:        time.Minute,
 		MaxIncomingStreams:    10000,
 		MaxIncomingUniStreams: 10000,
-		KeepAlivePeriod:       5 * time.Second,
+		KeepAlivePeriod:       10 * time.Second,
 		EnableDatagrams:       true,
+		Tracer: func(ctx context.Context, perspective logging.Perspective, id quic.ConnectionID) *logging.ConnectionTracer {
+			return logging.NewMultiplexedConnectionTracer(GetNewTracer())
+		},
 	}
 	conn, err := quic.DialAddr(ctx, na.DialString(), tlsConf, &quickConfig)
 	if err != nil {

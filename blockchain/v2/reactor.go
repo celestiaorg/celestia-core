@@ -462,7 +462,7 @@ func (r *BlockchainReactor) ReceiveEnvelope(e p2p.Envelope) {
 		return
 	}
 
-	r.logger.Debug("Receive", "src", e.Src.ID(), "chID", e.ChannelID, "msg", e.Message)
+	//r.logger.Debug("Receive", "src", e.Src.ID(), "chID", e.ChannelID, "msg", e.Message)
 
 	switch msg := e.Message.(type) {
 	case *bcproto.StatusRequest:
