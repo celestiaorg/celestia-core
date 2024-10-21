@@ -10,6 +10,7 @@ import (
 	"github.com/quic-go/quic-go/logging"
 	"github.com/tendermint/tendermint/libs/protoio"
 	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
+	"github.com/tendermint/tendermint/rpc/core"
 	"net"
 	"os"
 	"runtime/debug"
@@ -333,99 +334,44 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 }
 
 func GetNewTracer() *logging.ConnectionTracer {
+	logger := core.GetEnvironment().Logger
 	return &logging.ConnectionTracer{
 		StartedConnection: func(local, remote net.Addr, srcConnID, destConnID quic.ConnectionID) {
-			fmt.Println(fmt.Sprintf("StartedConnection: local=%v, remote=%v, srcConnID=%v, destConnID=%v", local, remote, srcConnID, destConnID))
-		},
-		NegotiatedVersion: func(chosen quic.Version, clientVersions, serverVersions []quic.Version) {
-			//fmt.Println(fmt.Sprintf("NegotiatedVersion: chosen=%v, clientVersions=%v, serverVersions=%v", chosen, clientVersions, serverVersions))
+			logger.Debug("StartedConnection",
+				"local", local,
+				"remote", remote,
+				"srcConnID", srcConnID,
+				"destConnID", destConnID,
+			)
 		},
 		ClosedConnection: func(err error) {
-			fmt.Println(fmt.Sprintf("ClosedConnection: error=%v", err))
-		},
-		SentTransportParameters: func(params *logging.TransportParameters) {
-			//fmt.Println(fmt.Sprintf("SentTransportParameters: params=%v", params))
-		},
-		ReceivedTransportParameters: func(params *logging.TransportParameters) {
-			//fmt.Println(fmt.Sprintf("ReceivedTransportParameters: params=%v", params))
-		},
-		RestoredTransportParameters: func(params *logging.TransportParameters) {
-			//fmt.Println(fmt.Sprintf("RestoredTransportParameters: params=%v", params))
-		},
-		SentLongHeaderPacket: func(header *logging.ExtendedHeader, byteCount logging.ByteCount, ecn logging.ECN, ack *logging.AckFrame, frames []logging.Frame) {
-			//fmt.Println(fmt.Sprintf("SentLongHeaderPacket: header=%v, byteCount=%v, ecn=%v, ack=%v, frames=%v", header, byteCount, ecn, ack, frames))
-		},
-		SentShortHeaderPacket: func(header *logging.ShortHeader, byteCount logging.ByteCount, ecn logging.ECN, ack *logging.AckFrame, frames []logging.Frame) {
-			//fmt.Println(fmt.Sprintf("SentShortHeaderPacket: header=%v, byteCount=%v, ecn=%v, ack=%v, frames=%v", header, byteCount, ecn, ack, frames))
-		},
-		ReceivedVersionNegotiationPacket: func(dest, src logging.ArbitraryLenConnectionID, versions []logging.Version) {
-			//fmt.Println(fmt.Sprintf("ReceivedVersionNegotiationPacket: dest=%v, src=%v, versions=%v", dest, src, versions))
-		},
-		ReceivedRetry: func(header *logging.Header) {
-			fmt.Println(fmt.Sprintf("ReceivedRetry: header=%v", header))
-		},
-		ReceivedLongHeaderPacket: func(header *logging.ExtendedHeader, byteCount logging.ByteCount, ecn logging.ECN, frames []logging.Frame) {
-			//fmt.Println(fmt.Sprintf("ReceivedLongHeaderPacket: header=%v, byteCount=%v, ecn=%v, frames=%v", header, byteCount, ecn, frames))
-		},
-		ReceivedShortHeaderPacket: func(header *logging.ShortHeader, byteCount logging.ByteCount, ecn logging.ECN, frames []logging.Frame) {
-			//fmt.Println(fmt.Sprintf("ReceivedShortHeaderPacket: header=%v, byteCount=%v, ecn=%v, frames=%v", header, byteCount, ecn, frames))
-		},
-		BufferedPacket: func(packetType logging.PacketType, byteCount logging.ByteCount) {
-			//fmt.Println(fmt.Sprintf("BufferedPacket: packetType=%v, byteCount=%v", packetType, byteCount))
+			logger.Debug("ClosedConnection",
+				"error", err,
+			)
 		},
 		DroppedPacket: func(packetType logging.PacketType, packetNum logging.PacketNumber, byteCount logging.ByteCount, reason logging.PacketDropReason) {
-			fmt.Println(fmt.Sprintf("DroppedPacket: packetType=%v, packetNum=%v, byteCount=%v, reason=%v", packetType, packetNum, byteCount, reason))
-		},
-		UpdatedMetrics: func(rttStats *logging.RTTStats, cwnd, bytesInFlight logging.ByteCount, packetsInFlight int) {
-			//fmt.Println(fmt.Sprintf("UpdatedMetrics: rttStats=%v, cwnd=%v, bytesInFlight=%v, packetsInFlight=%v", rttStats, cwnd, bytesInFlight, packetsInFlight))
-		},
-		AcknowledgedPacket: func(encLevel logging.EncryptionLevel, packetNum logging.PacketNumber) {
-			//fmt.Println(fmt.Sprintf("AcknowledgedPacket: encLevel=%v, packetNum=%v", encLevel, packetNum))
+			logger.Debug("DroppedPacket",
+				"packetType", packetType,
+				"packetNum", packetNum,
+				"byteCount", byteCount,
+				"reason", reason,
+			)
 		},
 		LostPacket: func(encLevel logging.EncryptionLevel, packetNum logging.PacketNumber, reason logging.PacketLossReason) {
-			fmt.Println(fmt.Sprintf("LostPacket: encLevel=%v, packetNum=%v, reason=%v", encLevel, packetNum, reason))
-		},
-		UpdatedMTU: func(mtu logging.ByteCount, done bool) {
-			//fmt.Println(fmt.Sprintf("UpdatedMTU: mtu=%v, done=%v", mtu, done))
-		},
-		UpdatedCongestionState: func(state logging.CongestionState) {
-			//fmt.Println(fmt.Sprintf("UpdatedCongestionState: state=%v", state))
-		},
-		UpdatedPTOCount: func(value uint32) {
-			//fmt.Println(fmt.Sprintf("UpdatedPTOCount: value=%v", value))
-		},
-		UpdatedKeyFromTLS: func(encLevel logging.EncryptionLevel, perspective logging.Perspective) {
-			//fmt.Println(fmt.Sprintf("UpdatedKeyFromTLS: encLevel=%v, perspective=%v", encLevel, perspective))
-		},
-		UpdatedKey: func(phase logging.KeyPhase, remote bool) {
-			//fmt.Println(fmt.Sprintf("UpdatedKey: phase=%v, remote=%v", phase, remote))
-		},
-		DroppedEncryptionLevel: func(encLevel logging.EncryptionLevel) {
-			//fmt.Println(fmt.Sprintf("DroppedEncryptionLevel: encLevel=%v", encLevel))
-		},
-		DroppedKey: func(phase logging.KeyPhase) {
-			//fmt.Println(fmt.Sprintf("DroppedKey: phase=%v", phase))
-		},
-		SetLossTimer: func(timerType logging.TimerType, encLevel logging.EncryptionLevel, t time.Time) {
-			//fmt.Println(fmt.Sprintf("SetLossTimer: timerType=%v, encLevel=%v, time=%v", timerType, encLevel, t))
-		},
-		LossTimerExpired: func(timerType logging.TimerType, encLevel logging.EncryptionLevel) {
-			//fmt.Println(fmt.Sprintf("LossTimerExpired: timerType=%v, encLevel=%v", timerType, encLevel))
-		},
-		LossTimerCanceled: func() {
-			//fmt.Println(fmt.Sprintf("LossTimerCanceled"))
-		},
-		ECNStateUpdated: func(state logging.ECNState, trigger logging.ECNStateTrigger) {
-			//fmt.Println(fmt.Sprintf("ECNStateUpdated: state=%v, trigger=%v", state, trigger))
-		},
-		ChoseALPN: func(protocol string) {
-			//fmt.Println(fmt.Sprintf("ChoseALPN: protocol=%v", protocol))
+			logger.Debug("LostPacket",
+				"encLevel", encLevel,
+				"packetNum", packetNum,
+				"reason", reason,
+			)
 		},
 		Close: func() {
-			fmt.Println(fmt.Sprintf("Close"))
+			logger.Debug("ClosedConnection")
 		},
 		Debug: func(name, msg string) {
-			fmt.Println(fmt.Sprintf("Debug: name=%v, msg=%v", name, msg))
+			logger.Debug("Debug",
+				"name", name,
+				"msg", msg,
+			)
 		},
 	}
 }
@@ -478,7 +424,6 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 					case mt.acceptc <- accept{err: err}:
 					case <-mt.closec:
 						// Give up if the transport was closed.
-						// TODO(rach-id): valid error code
 						_ = c.CloseWithError(quic.ApplicationErrorCode(http3.ErrCodeConnectError), err.Error())
 						return
 					}
@@ -495,7 +440,6 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 				_, nodeInfo, err = mt.getNodeInfo(c)
 				if err == nil {
 					addr := c.RemoteAddr()
-					//id := PubKeyToID(mt.nodeKey.PubKey())
 					netAddr = NewUDPNetAddress(nodeInfo.ID(), addr)
 				}
 			}
@@ -529,7 +473,6 @@ func (mt *MultiplexTransport) cleanup(c quic.Connection) error {
 func (mt *MultiplexTransport) filterConn(c quic.Connection) (err error) {
 	defer func() {
 		if err != nil {
-			// TODO(rach-id): valid error
 			_ = c.CloseWithError(quic.ApplicationErrorCode(http3.ErrCodeConnectError), err.Error())
 		}
 	}()

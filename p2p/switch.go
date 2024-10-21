@@ -372,10 +372,9 @@ func (sw *Switch) Peers() IPeerSet {
 // TODO: make record depending on reason.
 func (sw *Switch) StopPeerForError(peer Peer, reason interface{}) {
 	if !peer.IsRunning() {
-		fmt.Println("Peer is not running!!!! we should stop but we CAN'T!!!!")
+		return
 	}
 
-	sw.Logger.Error("Stopping peer for error", "peer", peer, "err", reason)
 	sw.stopAndRemovePeer(peer, reason)
 
 	if peer.IsPersistent() {
@@ -422,14 +421,11 @@ func (sw *Switch) StopPeerGracefully(peer Peer) {
 func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
 	sw.transport.Cleanup(peer)
 	schema.WritePeerUpdate(sw.traceClient, string(peer.ID()), schema.PeerDisconnect, fmt.Sprintf("%v", reason))
-	sw.Logger.Error("entering stop and remove peer", "peer", peer.ID())
 	if err := peer.Stop(); err != nil {
 		sw.Logger.Error("error while stopping peer", "error", err) // TODO: should return error to be handled accordingly
 	}
 
-	sw.Logger.Error("after peer stopped", "peer", peer.ID())
 	for _, reactor := range sw.reactors {
-		sw.Logger.Error("stopping peer reactors", "peer", peer.ID(), "reactor", reactor)
 		reactor.RemovePeer(peer, reason)
 	}
 
@@ -437,7 +433,6 @@ func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
 	// reconnect to our node and the switch calls InitPeer before
 	// RemovePeer is finished.
 	// https://github.com/tendermint/tendermint/issues/3338
-	sw.Logger.Error("after removing all reactors", "peer", peer.ID())
 	if sw.peers.Remove(peer) {
 		sw.metrics.Peers.Add(float64(-1))
 	} else {
@@ -445,7 +440,6 @@ func (sw *Switch) stopAndRemovePeer(peer Peer, reason interface{}) {
 		// We keep this message here as information to the developer.
 		sw.Logger.Debug("error on peer removal", ",", "peer", peer.ID())
 	}
-	sw.Logger.Error("after removing peer from peers list", "peer", peer.ID())
 }
 
 // reconnectToPeer tries to reconnect to the addr, first repeatedly
@@ -922,20 +916,9 @@ func (sw *Switch) addPeer(p Peer) error {
 	sw.Logger.Debug("Added peer", "peer", p)
 
 	go func() {
-		fmt.Println("listening for connection to stop")
-		fmt.Println(p.ID())
-		fmt.Println(p.RemoteAddr().String())
-		fmt.Println("------------------------------------")
 		select {
 		case <-p.GetConnectionContext().Done():
-			fmt.Println("----------------------------- connection stopped, context cancelled")
-			fmt.Println(p.ID())
-			fmt.Println(p.RemoteAddr().String())
-			fmt.Println("------------------------------------")
-			err := p.Stop()
-			if err != nil {
-				fmt.Println(err)
-			}
+			sw.Logger.Debug("counterparty connection closed", "peer_id", p.ID(), "remote_address", p.RemoteAddr().String())
 			sw.StopPeerForError(p, p.GetConnectionContext().Err())
 		}
 	}()
