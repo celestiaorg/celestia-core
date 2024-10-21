@@ -319,9 +319,11 @@ func (p *peer) FlushStop() {
 	p.metricsTicker.Stop()
 	p.BaseService.OnStop()
 	for _, stream := range p.streams {
-		// TODO(rach-id): set valid error codes
 		stream.CancelRead(quic.StreamErrorCode(quic.NoError))  // stop everything and close the conn
 		stream.CancelWrite(quic.StreamErrorCode(quic.NoError)) // stop everything and close the conn
+	}
+	if err := p.conn.CloseWithError(quic.ApplicationErrorCode(quic.NoError), "stopping peer connection onStop"); err != nil { // stop everything and close the conn
+		p.Logger.Debug("Error while stopping peer", "err", err)
 	}
 }
 
@@ -329,7 +331,6 @@ func (p *peer) FlushStop() {
 func (p *peer) OnStop() {
 	p.metricsTicker.Stop()
 	p.BaseService.OnStop()
-	// TODO(rach-id): set valid error code
 	if err := p.conn.CloseWithError(quic.ApplicationErrorCode(quic.NoError), "stopping peer connection onStop"); err != nil { // stop everything and close the conn
 		p.Logger.Debug("Error while stopping peer", "err", err)
 	}
@@ -491,7 +492,6 @@ func (p *peer) hasChannel(chID byte) bool {
 
 // CloseConn closes original connection. Used for cleaning up in cases where the peer had not been started at all.
 func (p *peer) CloseConn() error {
-	// TODO(rach-id): valid error code
 	return p.conn.CloseWithError(quic.ApplicationErrorCode(quic.NoError), "closed peer connection closeCon")
 }
 
@@ -509,7 +509,6 @@ func (p *peer) GetRemovalFailed() bool {
 
 // CloseConn closes the underlying connection
 func (pc *peerConn) CloseConn() {
-	// TODO(rach-id): valid error code
 	pc.conn.CloseWithError(quic.ApplicationErrorCode(quic.NoError), "closed peer connection closeCon")
 }
 
@@ -579,10 +578,6 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 		}
 	}
 
-	//if err := binary.Write(stream, binary.BigEndian, uint32(len(msgBytes))); err != nil {
-	//	p.Logger.Error("Send len failed", "err", err, "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
-	//	return false
-	//}
 	packet := p2p.Packet{
 		Sum: &p2p.Packet_PacketMsg{
 			PacketMsg: &p2p.PacketMsg{
@@ -593,13 +588,10 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 		},
 	}
 	_, err := protoio.NewDelimitedWriter(stream).WriteMsg(&packet)
-	//err := binary.Write(stream, binary.BigEndian, msgBytes)
-	p.Logger.Debug("sent data_len", "len", len(msgBytes))
 	if err != nil {
-		p.Logger.Error("Send failed", "channel", "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
+		p.Logger.Debug("Send failed", "channel", "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
 		return false
 	}
-	p.Logger.Debug("sent data", "channel", chID)
 	labels := []string{
 		"peer_id", string(p.ID()),
 		"chID", fmt.Sprintf("%#x", chID),
@@ -613,13 +605,13 @@ func (p *peer) StartReceiving() error {
 	for {
 		stream, err := p.conn.AcceptStream(context.Background())
 		if err != nil {
-			p.Logger.Error("failed to accept stream", "err", err.Error())
+			p.Logger.Debug("failed to accept stream", "err", err.Error())
 			return err
 		}
 		var chID byte
 		err = binary.Read(stream, binary.BigEndian, &chID)
 		if err != nil {
-			p.Logger.Error("failed to read channel ID", "err", err.Error())
+			p.Logger.Debug("failed to read channel ID", "err", err.Error())
 			return err
 		}
 		// start accepting data
@@ -628,12 +620,11 @@ func (p *peer) StartReceiving() error {
 				var packet p2p.Packet
 				_, err := protoio.NewDelimitedReader(stream, math.MaxInt32).ReadMsg(&packet)
 				if err != nil {
-					p.Logger.Error("failed to read data from stream", "err", err.Error())
+					p.Logger.Debug("failed to read data from stream", "err", err.Error())
 					return
 				}
 
 				dd := packet.Sum.(*p2p.Packet_PacketMsg)
-				p.Logger.Debug("received data", "channel", chID)
 				p.onReceive(chID, dd.PacketMsg.Data)
 			}
 		}()
