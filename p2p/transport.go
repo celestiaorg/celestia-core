@@ -10,7 +10,6 @@ import (
 	"github.com/quic-go/quic-go/logging"
 	"github.com/tendermint/tendermint/libs/protoio"
 	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
-	"github.com/tendermint/tendermint/rpc/core"
 	"net"
 	"os"
 	"runtime/debug"
@@ -334,44 +333,27 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 }
 
 func GetNewTracer() *logging.ConnectionTracer {
-	logger := core.GetEnvironment().Logger
 	return &logging.ConnectionTracer{
 		StartedConnection: func(local, remote net.Addr, srcConnID, destConnID quic.ConnectionID) {
-			logger.Debug("StartedConnection",
-				"local", local,
-				"remote", remote,
-				"srcConnID", srcConnID,
-				"destConnID", destConnID,
-			)
+			fmt.Println(fmt.Sprintf("StartedConnection: local=%v, remote=%v, srcConnID=%v, destConnID=%v", local, remote, srcConnID, destConnID))
 		},
 		ClosedConnection: func(err error) {
-			logger.Debug("ClosedConnection",
-				"error", err,
-			)
+			fmt.Println(fmt.Sprintf("ClosedConnection: error=%v", err))
+		},
+		ReceivedRetry: func(header *logging.Header) {
+			fmt.Println(fmt.Sprintf("ReceivedRetry: header=%v", header))
 		},
 		DroppedPacket: func(packetType logging.PacketType, packetNum logging.PacketNumber, byteCount logging.ByteCount, reason logging.PacketDropReason) {
-			logger.Debug("DroppedPacket",
-				"packetType", packetType,
-				"packetNum", packetNum,
-				"byteCount", byteCount,
-				"reason", reason,
-			)
+			fmt.Println(fmt.Sprintf("DroppedPacket: packetType=%v, packetNum=%v, byteCount=%v, reason=%v", packetType, packetNum, byteCount, reason))
 		},
 		LostPacket: func(encLevel logging.EncryptionLevel, packetNum logging.PacketNumber, reason logging.PacketLossReason) {
-			logger.Debug("LostPacket",
-				"encLevel", encLevel,
-				"packetNum", packetNum,
-				"reason", reason,
-			)
+			fmt.Println(fmt.Sprintf("LostPacket: encLevel=%v, packetNum=%v, reason=%v", encLevel, packetNum, reason))
 		},
 		Close: func() {
-			logger.Debug("ClosedConnection")
+			fmt.Println(fmt.Sprintf("ClosedConnection"))
 		},
 		Debug: func(name, msg string) {
-			logger.Debug("Debug",
-				"name", name,
-				"msg", msg,
-			)
+			fmt.Println(fmt.Sprintf("Debug: name=%v, msg=%v", name, msg))
 		},
 	}
 }
