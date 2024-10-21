@@ -389,7 +389,7 @@ func GetNewTracer() *logging.ConnectionTracer {
 			//fmt.Println(fmt.Sprintf("UpdatedMTU: mtu=%v, done=%v", mtu, done))
 		},
 		UpdatedCongestionState: func(state logging.CongestionState) {
-			fmt.Println(fmt.Sprintf("UpdatedCongestionState: state=%v", state))
+			//fmt.Println(fmt.Sprintf("UpdatedCongestionState: state=%v", state))
 		},
 		UpdatedPTOCount: func(value uint32) {
 			//fmt.Println(fmt.Sprintf("UpdatedPTOCount: value=%v", value))
