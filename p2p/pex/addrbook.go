@@ -393,6 +393,7 @@ func (a *addrBook) GetSelection() []*p2p.NetAddress {
 	defer a.mtx.Unlock()
 
 	bookSize := a.size()
+	fmt.Println(bookSize)
 	if bookSize <= 0 {
 		if bookSize < 0 {
 			panic(fmt.Sprintf("Addrbook size %d (new: %d + old: %d) is less than 0", a.nNew+a.nOld, a.nNew, a.nOld))
@@ -405,14 +406,17 @@ func (a *addrBook) GetSelection() []*p2p.NetAddress {
 		bookSize*getSelectionPercent/100)
 	numAddresses = cmtmath.MinInt(maxGetSelection, numAddresses)
 
+	fmt.Println(numAddresses)
 	// XXX: instead of making a list of all addresses, shuffling, and slicing a random chunk,
 	// could we just select a random numAddresses of indexes?
 	allAddr := make([]*p2p.NetAddress, bookSize)
+	fmt.Println(a.addrLookup)
 	i := 0
 	for _, ka := range a.addrLookup {
 		allAddr[i] = ka.Addr
 		i++
 	}
+	fmt.Println(allAddr)
 
 	// Fisher-Yates shuffle the array. We only need to do the first
 	// `numAddresses' since we are throwing the rest.
@@ -442,7 +446,10 @@ func (a *addrBook) GetSelectionWithBias(biasTowardsNewAddrs int) []*p2p.NetAddre
 	a.mtx.Lock()
 	defer a.mtx.Unlock()
 
+	fmt.Println(a.ourAddrs)
 	bookSize := a.size()
+	fmt.Println("book size")
+	fmt.Println(bookSize)
 	if bookSize <= 0 {
 		if bookSize < 0 {
 			panic(fmt.Sprintf("Addrbook size %d (new: %d + old: %d) is less than 0", a.nNew+a.nOld, a.nNew, a.nOld))
@@ -461,12 +468,16 @@ func (a *addrBook) GetSelectionWithBias(biasTowardsNewAddrs int) []*p2p.NetAddre
 		cmtmath.MinInt(minGetSelection, bookSize),
 		bookSize*getSelectionPercent/100)
 	numAddresses = cmtmath.MinInt(maxGetSelection, numAddresses)
+	fmt.Println(numAddresses)
 
 	// number of new addresses that, if possible, should be in the beginning of the selection
 	// if there are no enough old addrs, will choose new addr instead.
 	numRequiredNewAdd := cmtmath.MaxInt(percentageOfNum(biasTowardsNewAddrs, numAddresses), numAddresses-a.nOld)
+	fmt.Println(numRequiredNewAdd)
 	selection := a.randomPickAddresses(bucketTypeNew, numRequiredNewAdd)
+	fmt.Println(selection)
 	selection = append(selection, a.randomPickAddresses(bucketTypeOld, numAddresses-len(selection))...)
+	fmt.Println(selection)
 	return selection
 }
 
@@ -525,13 +536,16 @@ func (a *addrBook) getBucket(bucketType byte, bucketIdx int) map[string]*knownAd
 // NOTE: currently it always returns true.
 func (a *addrBook) addToNewBucket(ka *knownAddress, bucketIdx int) error {
 	// Consistency check to ensure we don't add an already known address
+	fmt.Println("add to new bucket")
 	if ka.isOld() {
 		return errAddrBookOldAddressNewBucket{ka.Addr, bucketIdx}
 	}
+	fmt.Println(1)
 
 	addrStr := ka.Addr.String()
 	bucket := a.getBucket(bucketTypeNew, bucketIdx)
 
+	fmt.Println(2)
 	// Already exists?
 	if _, ok := bucket[addrStr]; ok {
 		return nil
@@ -543,15 +557,18 @@ func (a *addrBook) addToNewBucket(ka *knownAddress, bucketIdx int) error {
 		a.expireNew(bucketIdx)
 	}
 
+	fmt.Println(3)
 	// Add to bucket.
 	bucket[addrStr] = ka
 	// increment nNew if the peer doesnt already exist in a bucket
 	if ka.addBucketRef(bucketIdx) == 1 {
 		a.nNew++
 	}
+	fmt.Println(4)
 
 	// Add it to addrLookup
 	a.addrLookup[ka.ID()] = ka
+	fmt.Println(5)
 	return nil
 }
 
@@ -643,31 +660,33 @@ func (a *addrBook) addAddress(addr, src *p2p.NetAddress) error {
 		return ErrAddrBookNilAddr{addr, src}
 	}
 
+	fmt.Println(1)
 	if err := addr.Valid(); err != nil {
 		return ErrAddrBookInvalidAddr{Addr: addr, AddrErr: err}
 	}
 
+	fmt.Println(2)
 	if _, ok := a.badPeers[addr.ID]; ok {
 		return ErrAddressBanned{addr}
 	}
-
+	fmt.Println(3)
 	if _, ok := a.privateIDs[addr.ID]; ok {
 		return ErrAddrBookPrivate{addr}
 	}
-
+	fmt.Println(4)
 	if _, ok := a.privateIDs[src.ID]; ok {
 		return ErrAddrBookPrivateSrc{src}
 	}
-
+	fmt.Println(5)
 	// TODO: we should track ourAddrs by ID and by IP:PORT and refuse both.
 	if _, ok := a.ourAddrs[addr.String()]; ok {
 		return ErrAddrBookSelf{addr}
 	}
-
+	fmt.Println(6)
 	if a.routabilityStrict && !addr.Routable() {
 		return ErrAddrBookNonRoutable{addr}
 	}
-
+	fmt.Println(7)
 	ka := a.addrLookup[addr.ID]
 	if ka != nil {
 		// If its already old and the address ID's are the same, ignore it.
@@ -694,6 +713,7 @@ func (a *addrBook) addAddress(addr, src *p2p.NetAddress) error {
 	if err != nil {
 		return err
 	}
+	fmt.Println(8)
 	return a.addToNewBucket(ka, bucket)
 }
 

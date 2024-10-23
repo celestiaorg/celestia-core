@@ -426,6 +426,11 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 				}
 			}
 
+			fmt.Println("kelellelelelelellel")
+			fmt.Println(netAddr)
+			fmt.Println(nodeInfo)
+			fmt.Println("kelellelelelelellel")
+
 			select {
 			case mt.acceptc <- accept{netAddr, c, nodeInfo, err}:
 				// Make the upgraded peer available.
@@ -510,6 +515,8 @@ func (mt *MultiplexTransport) getNodeInfo(c quic.Connection) (conn quic.Connecti
 			isAuthFailure: true,
 		}
 	}
+	fmt.Println("remote node info")
+	fmt.Println(remoteNodeInfo)
 
 	if err := remoteNodeInfo.Validate(); err != nil {
 		return nil, nil, ErrRejected{
@@ -556,6 +563,8 @@ func exchangeNodeInfo(
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	fmt.Println("our node info")
+	fmt.Println(ourNodeInfo)
 
 	go func(errc chan<- error, c quic.Connection) {
 		stream, err := c.OpenStreamSync(ctx)

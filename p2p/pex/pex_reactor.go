@@ -200,12 +200,14 @@ func (r *Reactor) AddPeer(p Peer) {
 			r.RequestAddrs(p)
 		}
 	} else {
+		fmt.Println("---- .>>>>   in add peeer ")
 		// inbound peer is its own source
 		addr, err := p.NodeInfo().NetAddress()
 		if err != nil {
 			r.Logger.Error("Failed to get peer NetAddress", "err", err, "peer", p)
 			return
 		}
+		fmt.Println(addr)
 
 		// Make it explicit that addr and src are the same for an inbound peer.
 		src := addr
@@ -213,7 +215,11 @@ func (r *Reactor) AddPeer(p Peer) {
 		// add to book. dont RequestAddrs right away because
 		// we don't trust inbound as much - let ensurePeersRoutine handle it.
 		err = r.book.AddAddress(addr, src)
+		fmt.Println(err)
 		r.logErrAddrBook(err)
+		r.book.Save()
+		fmt.Println("....................................")
+		fmt.Println(r.book.GetSelection())
 	}
 }
 
@@ -238,11 +244,14 @@ func (r *Reactor) logErrAddrBook(err error) {
 
 // Receive implements Reactor by handling incoming PEX messages.
 func (r *Reactor) ReceiveEnvelope(e p2p.Envelope) {
+	fmt.Println("receive enveloppe in pex")
+	fmt.Println(e)
 	r.Logger.Debug("Received message", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
 
 	switch msg := e.Message.(type) {
 	case *tmp2p.PexRequest:
 
+		fmt.Println("pex request")
 		// NOTE: this is a prime candidate for amplification attacks,
 		// so it's important we
 		// 1) restrict how frequently peers can request
@@ -251,6 +260,8 @@ func (r *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		// If we're a seed and this is an inbound peer,
 		// respond once and disconnect.
 		if r.config.SeedMode && !e.Src.IsOutbound() {
+
+			fmt.Println("first close")
 			id := string(e.Src.ID())
 			v := r.lastReceivedRequests.Get(id)
 			if v != nil {
@@ -269,6 +280,7 @@ func (r *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			}()
 
 		} else {
+			fmt.Println("else")
 			// Check we're not receiving requests too frequently.
 			if err := r.receiveRequest(e.Src); err != nil {
 				r.Switch.StopPeerForError(e.Src, err)
@@ -279,6 +291,7 @@ func (r *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		}
 
 	case *tmp2p.PexAddrs:
+		fmt.Println("pex addresses")
 		// If we asked for addresses, add them to the book
 		addrs, err := p2p.NetAddressesFromProto(msg.Addrs)
 		if err != nil {
@@ -310,6 +323,8 @@ func (r *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("in receive bo76dha")
+	fmt.Println(um)
 	r.ReceiveEnvelope(p2p.Envelope{
 		ChannelID: chID,
 		Src:       peer,
@@ -354,6 +369,7 @@ func (r *Reactor) receiveRequest(src Peer) error {
 // RequestAddrs asks peer for more addresses if we do not already have a
 // request out for this peer.
 func (r *Reactor) RequestAddrs(p Peer) {
+	fmt.Println("requesting addresses")
 	id := string(p.ID())
 	if r.requestsSent.Has(id) {
 		return
@@ -370,6 +386,8 @@ func (r *Reactor) RequestAddrs(p Peer) {
 // request for this peer and deletes the open request.
 // If there's no open request for the src peer, it returns an error.
 func (r *Reactor) ReceiveAddrs(addrs []*p2p.NetAddress, src Peer) error {
+	fmt.Println("receved addresses")
+	fmt.Println(addrs)
 	id := string(src.ID())
 	if !r.requestsSent.Has(id) {
 		return ErrUnsolicitedList
@@ -421,6 +439,8 @@ func (r *Reactor) ReceiveAddrs(addrs []*p2p.NetAddress, src Peer) error {
 
 // SendAddrs sends addrs to the peer.
 func (r *Reactor) SendAddrs(p Peer, netAddrs []*p2p.NetAddress) {
+	fmt.Println("sending addrs")
+	fmt.Println(netAddrs)
 	e := p2p.Envelope{
 		ChannelID: PexChannel,
 		Message:   &tmp2p.PexAddrs{Addrs: p2p.NetAddressesToProto(netAddrs)},

@@ -908,6 +908,8 @@ func (sw *Switch) addPeer(p Peer) error {
 	sw.metrics.Peers.Add(float64(1))
 	schema.WritePeerUpdate(sw.traceClient, string(p.ID()), schema.PeerJoin, "")
 
+	addr, _ := p.NodeInfo().NetAddress()
+	fmt.Println(addr)
 	// Start all the reactor protocols on the peer.
 	for _, reactor := range sw.reactors {
 		reactor.AddPeer(p)
