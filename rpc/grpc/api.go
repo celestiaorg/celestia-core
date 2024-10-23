@@ -225,6 +225,18 @@ func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_B
 func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockAPI_BlockByHeightServer) error {
 	blockStore := core.GetEnvironment().BlockStore
 	blockMeta := blockStore.LoadBlockMeta(req.Height)
+
+	commit := blockStore.LoadBlockCommit(blockMeta.Header.Height).ToProto()
+
+	validatorSet, err := core.GetEnvironment().StateStore.LoadValidators(blockMeta.Header.Height)
+	if err != nil {
+		return err
+	}
+	protoValidatorSet, err := validatorSet.ToProto()
+	if err != nil {
+		return err
+	}
+
 	for i := 0; i < int(blockMeta.BlockID.PartSetHeader.Total); i++ {
 		part, err := blockStore.LoadBlockPart(req.Height, i).ToProto()
 		if err != nil {
@@ -234,10 +246,16 @@ func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockA
 			part.Proof = crypto.Proof{}
 		}
 		isLastPart := i == int(blockMeta.BlockID.PartSetHeader.Total)-1
-		err = stream.Send(&BlockByHeightResponse{
+		resp := BlockByHeightResponse{
 			BlockPart: part,
 			IsLast:    isLastPart,
-		})
+		}
+		if i == 0 {
+			resp.BlockMeta = blockMeta.ToProto()
+			resp.ValidatorSet = protoValidatorSet
+			resp.Commit = commit
+		}
+		err = stream.Send(&resp)
 		if err != nil {
 			return err
 		}
