@@ -589,6 +589,11 @@ func exchangeNodeInfo(
 		return nil, err
 	}
 
+	fmt.Println("peer node info")
+	fmt.Println(peerNodeInfo)
+
+	peerNodeInfo.ListenAddr = c.RemoteAddr().String()
+
 	return peerNodeInfo, nil
 }
 
