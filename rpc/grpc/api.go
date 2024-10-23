@@ -185,7 +185,7 @@ func (blockAPI *BlockAPI) closeAllListeners() {
 func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_BlockByHashServer) error {
 	blockStore := core.GetEnvironment().BlockStore
 	blockMeta := blockStore.LoadBlockMetaByHash(req.Hash)
-	commit := core.GetEnvironment().BlockStore.LoadBlockCommit(blockMeta.Header.Height).ToProto()
+	commit := blockStore.LoadBlockCommit(blockMeta.Header.Height).ToProto()
 
 	validatorSet, err := core.GetEnvironment().StateStore.LoadValidators(blockMeta.Header.Height)
 	if err != nil {
