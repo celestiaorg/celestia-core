@@ -20,7 +20,7 @@ import (
 
 // TODO(rach-id): mention this code is adapted from libp2p p2p/security/tls/crypto.go
 
-const certValidityPeriod = 24 * time.Hour
+const certValidityPeriod = 24 * 39 * time.Hour
 const certificatePrefix = "tendermint-tls:"
 
 // TODO(rach-id): update the OID prefix to reflect Celestia/Tendermint
