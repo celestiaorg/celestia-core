@@ -39,12 +39,12 @@ func StartGRPCClient(protoAddr string) BroadcastAPIClient {
 
 // StartBlockAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlockAPIClient.
-func StartBlockAPIGRPCClient(protoAddr string) BlockAPIClient {
+func StartBlockAPIGRPCClient(protoAddr string) (BlockAPIClient, error) {
 	conn, err := grpc.Dial(protoAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc)) //nolint:staticcheck
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return NewBlockAPIClient(conn)
+	return NewBlockAPIClient(conn), nil
 }
 
 func dialerFunc(ctx context.Context, addr string) (net.Conn, error) {
