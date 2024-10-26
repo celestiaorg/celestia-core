@@ -201,7 +201,7 @@ func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_B
 		if err != nil {
 			return err
 		}
-		if req.IgnoreProof {
+		if !req.Prove {
 			part.Proof = crypto.Proof{}
 		}
 		isLastPart := i == int(blockMeta.BlockID.PartSetHeader.Total)-1
@@ -242,7 +242,7 @@ func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockA
 		if err != nil {
 			return err
 		}
-		if req.IgnoreProof {
+		if !req.Prove {
 			part.Proof = crypto.Proof{}
 		}
 		isLastPart := i == int(blockMeta.BlockID.PartSetHeader.Total)-1

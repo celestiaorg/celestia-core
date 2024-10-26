@@ -16,13 +16,13 @@ message RequestBroadcastTx {
 }
 
 message BlockByHashRequest {
-  bytes hash         = 1;
-  bool  ignore_proof = 2;
+  bytes hash  = 1;
+  bool  prove = 2;
 }
 
 message BlockByHeightRequest {
-  int64 height       = 1;
-  bool  ignore_proof = 2;
+  int64 height = 1;
+  bool  prove  = 2;
 }
 
 message BlockMetaByHashRequest {
