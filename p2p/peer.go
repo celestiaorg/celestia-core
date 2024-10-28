@@ -566,10 +566,12 @@ func (p *peer) metricsReporter() {
 	//}
 }
 
+const totalStream = 50
+
 func (p *peer) initializeAboveStreams() error {
 	p.Mutex.Lock()
 	defer p.Mutex.Unlock()
-	for i := 0; i < 10; i++ {
+	for i := 0; i < totalStream; i++ {
 		stream1, err := p.conn.OpenStreamSync(context.Background())
 		if err != nil {
 			return err
@@ -656,7 +658,7 @@ func (p *peer) sendOther(id byte, bytes []byte) bool {
 	var send func([]byte) bool
 	if id == MempoolChannel {
 		send = func(bytes []byte) bool {
-			rnd := int(crypto.CRandBytes(1)[0]) % 10
+			rnd := int(crypto.CRandBytes(1)[0]) % totalStream
 			p.Mutex.Lock()
 			stream := p.mempoolStreams[rnd]
 			p.Mutex.Unlock()
@@ -678,7 +680,7 @@ func (p *peer) sendOther(id byte, bytes []byte) bool {
 		}
 	} else {
 		send = func(bytes []byte) bool {
-			rnd := int(crypto.CRandBytes(1)[0]) % 10
+			rnd := int(crypto.CRandBytes(1)[0]) % totalStream
 			p.Mutex.Lock()
 			stream := p.blockPartStreams[rnd]
 			p.Mutex.Unlock()
