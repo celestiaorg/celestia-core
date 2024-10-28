@@ -533,8 +533,8 @@ func TestTxPool_ConcurrentTxs(t *testing.T) {
 	}()
 
 	wg.Wait()
-	assert.Zero(t, txPool.Size())
-	assert.Zero(t, txPool.SizeBytes())
+	require.Zero(t, txPool.Size())
+	require.Zero(t, txPool.SizeBytes())
 }
 
 func generateResponses(numResponses int) (responses []*abci.ResponseDeliverTx) {
