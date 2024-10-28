@@ -91,9 +91,10 @@ func MakeVote(
 		ValidatorIndex:   valIndex,
 		Height:           height,
 		Round:            round,
-		Type:             tmproto.SignedMsgType(step),
-		BlockID:          blockID,
-		Timestamp:        time,
+		//nolint:gosec
+		Type:      tmproto.SignedMsgType(step),
+		BlockID:   blockID,
+		Timestamp: time,
 	}
 
 	vpb := v.ToProto()

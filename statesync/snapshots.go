@@ -21,7 +21,8 @@ type snapshot struct {
 	Hash     []byte
 	Metadata []byte
 
-	trustedAppHash []byte // populated by light client
+	trustedAppHash    []byte // populated by light client
+	trustedAppVersion uint64 // populated by light client
 }
 
 // Key generates a snapshot key, used for lookups. It takes into account not only the height and

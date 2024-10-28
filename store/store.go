@@ -7,6 +7,7 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/gogo/protobuf/proto"
 
+	abci "github.com/tendermint/tendermint/abci/types"
 	cmtsync "github.com/tendermint/tendermint/libs/sync"
 	cmtstore "github.com/tendermint/tendermint/proto/tendermint/store"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
@@ -78,7 +79,7 @@ func (bs *BlockStore) Size() int64 {
 	return bs.height - bs.base + 1
 }
 
-// LoadBase atomically loads the base block meta, or returns nil if no base is found.
+// LoadBaseMeta atomically loads the base block meta, or returns nil if no base is found.
 func (bs *BlockStore) LoadBaseMeta() *types.BlockMeta {
 	bs.mtx.RLock()
 	defer bs.mtx.RUnlock()
@@ -196,8 +197,7 @@ func (bs *BlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	return blockMeta
 }
 
-// LoadBlockMetaByHash returns the blockmeta who's header corresponds to the given
-// hash. If none is found, returns nil.
+// LoadBlockMetaByHash returns the blockmeta whose header corresponds to the given hash. If none is found, returns nil.
 func (bs *BlockStore) LoadBlockMetaByHash(hash []byte) *types.BlockMeta {
 	bz, err := bs.db.Get(calcBlockHashKey(hash))
 	if err != nil {
@@ -450,10 +450,14 @@ func (bs *BlockStore) SaveSeenCommit(height int64, seenCommit *types.Commit) err
 	return bs.db.Set(calcSeenCommitKey(height), seenCommitBytes)
 }
 
-// SaveTxInfo indexes the txs from the block with the given response codes from execution.
-func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32) error {
+// SaveTxInfo indexes the txs from the block with the given response codes and logs from execution.
+// Only the error logs are saved for failed transactions.
+func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error {
 	if len(txResponseCodes) != len(block.Txs) {
 		return fmt.Errorf("txResponseCodes length mismatch with block txs length")
+	}
+	if len(logs) != len(block.Txs) {
+		return fmt.Errorf("logs length mismatch with block txs length")
 	}
 
 	// Create a new batch
@@ -463,8 +467,13 @@ func (bs *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32) e
 	for i, tx := range block.Txs {
 		txInfo := cmtstore.TxInfo{
 			Height: block.Height,
-			Index:  uint32(i),
-			Code:   txResponseCodes[i],
+			//nolint:gosec
+			Index: uint32(i),
+			Code:  txResponseCodes[i],
+		}
+		// Set error log for failed txs
+		if txResponseCodes[i] != abci.CodeTypeOK {
+			txInfo.Error = logs[i]
 		}
 		txInfoBytes, err := proto.Marshal(&txInfo)
 		if err != nil {

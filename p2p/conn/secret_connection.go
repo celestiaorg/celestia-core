@@ -207,6 +207,7 @@ func (sc *SecretConnection) Write(data []byte) (n int, err error) {
 				data = nil
 			}
 			chunkLength := len(chunk)
+			//nolint:gosec
 			binary.LittleEndian.PutUint32(frame, uint32(chunkLength))
 			copy(frame[dataLenSize:], chunk)
 

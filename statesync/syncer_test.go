@@ -34,6 +34,10 @@ func setupOfferSyncer(t *testing.T) (*syncer, *proxymocks.AppConnSnapshot) {
 	connSnapshot := &proxymocks.AppConnSnapshot{}
 	stateProvider := &mocks.StateProvider{}
 	stateProvider.On("AppHash", mock.Anything, mock.Anything).Return([]byte("app_hash"), nil)
+	stateProvider.On("State", mock.AnythingOfType("*context.timerCtx"), uint64(1)).Return(sm.State{}, nil)
+	stateProvider.On("State", mock.AnythingOfType("*context.timerCtx"), uint64(2)).Return(sm.State{}, nil)
+	stateProvider.On("State", mock.AnythingOfType("*context.timerCtx"), uint64(4)).Return(sm.State{}, nil)
+
 	cfg := config.DefaultStateSyncConfig()
 	syncer := newSyncer(*cfg, log.NewNopLogger(), connSnapshot, connQuery, stateProvider, "")
 
@@ -84,7 +88,9 @@ func TestSyncer_SyncAny(t *testing.T) {
 	stateProvider.On("AppHash", mock.Anything, uint64(1)).Return(state.AppHash, nil)
 	stateProvider.On("AppHash", mock.Anything, uint64(2)).Return([]byte("app_hash_2"), nil)
 	stateProvider.On("Commit", mock.Anything, uint64(1)).Return(commit, nil)
-	stateProvider.On("State", mock.Anything, uint64(1)).Return(state, nil)
+	stateProvider.On("State", mock.AnythingOfType("*context.timerCtx"), uint64(1)).Return(state, nil)
+	stateProvider.On("State", mock.AnythingOfType("*context.timerCtx"), uint64(2)).Return(state, nil)
+
 	connSnapshot := &proxymocks.AppConnSnapshot{}
 	connQuery := &proxymocks.AppConnQuery{}
 
@@ -675,7 +681,7 @@ func TestSyncer_verifyApp(t *testing.T) {
 			syncer := newSyncer(*cfg, log.NewNopLogger(), connSnapshot, connQuery, stateProvider, "")
 
 			connQuery.On("InfoSync", proxy.RequestInfo).Return(tc.response, tc.err)
-			err := syncer.verifyApp(s, appVersion)
+			_, err := syncer.verifyApp(s, appVersion)
 			unwrapped := errors.Unwrap(err)
 			if unwrapped != nil {
 				err = unwrapped

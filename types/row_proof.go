@@ -16,9 +16,17 @@ type RowProof struct {
 	RowRoots []tmbytes.HexBytes `json:"row_roots"`
 	// Proofs is a list of Merkle proofs where each proof proves that a row
 	// exists in a Merkle tree with a given data root.
-	Proofs   []*merkle.Proof `json:"proofs"`
-	StartRow uint32          `json:"start_row"`
-	EndRow   uint32          `json:"end_row"`
+	Proofs []*merkle.Proof `json:"proofs"`
+	// StartRow the index of the start row.
+	// Note: currently, StartRow is not validated as part of the proof verification.
+	// If this field is used downstream, Validate(root) should be called along with
+	// extra validation depending on how it's used.
+	StartRow uint32 `json:"start_row"`
+	// EndRow the index of the end row.
+	// Note: currently, EndRow is not validated as part of the proof verification.
+	// If this field is used downstream, Validate(root) should be called along with
+	// extra validation depending on how it's used.
+	EndRow uint32 `json:"end_row"`
 }
 
 // Validate performs checks on the fields of this RowProof. Returns an error if

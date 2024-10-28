@@ -234,6 +234,7 @@ func DataRootInclusionProof(
 	start,
 	end uint64,
 ) (*ctypes.ResultDataRootInclusionProof, error) {
+	//nolint:gosec
 	err := validateDataRootInclusionProofRequest(uint64(height), start, end)
 	if err != nil {
 		return nil, err
@@ -355,6 +356,7 @@ func validateDataCommitmentRange(start uint64, end uint64) error {
 		return fmt.Errorf("last block is smaller than first block")
 	}
 	// the data commitment range is end exclusive
+	//nolint:gosec
 	if end > uint64(env.BlockStore.Height())+1 {
 		return fmt.Errorf(
 			"end block %d is higher than current chain height %d",
@@ -415,6 +417,7 @@ func proveDataRootTuples(tuples []DataRootTuple, height int64) (*merkle.Proof, e
 		dataRootEncodedTuples = append(dataRootEncodedTuples, encodedTuple)
 	}
 	_, proofs := merkle.ProofsFromByteSlices(dataRootEncodedTuples)
+	//nolint:gosec
 	return proofs[height-int64(tuples[0].height)], nil
 }
 
@@ -543,11 +546,13 @@ func fetchDataRootTuples(start, end uint64) ([]DataRootTuple, error) {
 	env := GetEnvironment()
 	tuples := make([]DataRootTuple, 0, end-start)
 	for height := start; height < end; height++ {
+		//nolint:gosec
 		block := env.BlockStore.LoadBlock(int64(height))
 		if block == nil {
 			return nil, fmt.Errorf("couldn't load block %d", height)
 		}
 		tuples = append(tuples, DataRootTuple{
+			//nolint:gosec
 			height:   uint64(block.Height),
 			dataRoot: *(*[32]byte)(block.DataHash),
 		})

@@ -115,6 +115,7 @@ func GenesisChunked(ctx *rpctypes.Context, chunk uint) (*ctypes.ResultGenesisChu
 		return nil, fmt.Errorf("service configuration error, there are no chunks")
 	}
 
+	//nolint:gosec
 	id := int(chunk)
 
 	if id > len(env.genChunks)-1 {

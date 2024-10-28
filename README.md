@@ -50,7 +50,7 @@ This repo intends on preserving the minimal possible diff with [cometbft/cometbf
 - **specific to Celestia**: consider if [celestia-app](https://github.com/celestiaorg/celestia-app) is a better target
 - **not specific to Celestia**: consider making the contribution upstream in CometBFT
 
-1. [Install Go](https://go.dev/doc/install) 1.22.4+
+1. [Install Go](https://go.dev/doc/install) 1.23.1+
 2. Fork this repo
 3. Clone your fork
 4. Find an issue to work on (see [good first issues](https://github.com/celestiaorg/celestia-core/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22))
@@ -85,7 +85,3 @@ The canonical branches in this repo are based on CometBFT releases. For example:
 Releases are formatted: `v<CELESTIA_CORE_VERSION>-tm-v<TENDERMINT_CORE_VERSION>`
 For example: [`v1.4.0-tm-v0.34.20`](https://github.com/celestiaorg/celestia-core/releases/tag/v1.4.0-tm-v0.34.20) is celestia-core version `1.4.0` based on CometBFT `0.34.20`.
 `CELESTIA_CORE_VERSION` strives to adhere to [Semantic Versioning](http://semver.org/).
-
-## Careers
-
-We are hiring Go engineers! Join us in building the future of blockchain scaling and interoperability. [Apply here](https://jobs.lever.co/celestia).

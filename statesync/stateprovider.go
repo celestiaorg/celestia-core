@@ -91,6 +91,7 @@ func (s *lightClientStateProvider) AppHash(ctx context.Context, height uint64) (
 	defer s.Unlock()
 
 	// We have to fetch the next height, which contains the app hash for the previous height.
+	//nolint:gosec
 	header, err := s.lc.VerifyLightBlockAtHeight(ctx, int64(height+1), time.Now())
 	if err != nil {
 		return nil, err
@@ -103,6 +104,7 @@ func (s *lightClientStateProvider) AppHash(ctx context.Context, height uint64) (
 	// breaking it. We should instead have a Has(ctx, height) method which checks
 	// that the state provider has access to the necessary data for the height.
 	// We piggyback on AppHash() since it's called when adding snapshots to the pool.
+	//nolint:gosec
 	_, err = s.lc.VerifyLightBlockAtHeight(ctx, int64(height+2), time.Now())
 	if err != nil {
 		return nil, err
@@ -114,6 +116,7 @@ func (s *lightClientStateProvider) AppHash(ctx context.Context, height uint64) (
 func (s *lightClientStateProvider) Commit(ctx context.Context, height uint64) (*types.Commit, error) {
 	s.Lock()
 	defer s.Unlock()
+	//nolint:gosec
 	header, err := s.lc.VerifyLightBlockAtHeight(ctx, int64(height), time.Now())
 	if err != nil {
 		return nil, err
@@ -143,14 +146,17 @@ func (s *lightClientStateProvider) State(ctx context.Context, height uint64) (sm
 	//
 	// We need to fetch the NextValidators from height+2 because if the application changed
 	// the validator set at the snapshot height then this only takes effect at height+2.
+	//nolint:gosec
 	lastLightBlock, err := s.lc.VerifyLightBlockAtHeight(ctx, int64(height), time.Now())
 	if err != nil {
 		return sm.State{}, err
 	}
+	//nolint:gosec
 	currentLightBlock, err := s.lc.VerifyLightBlockAtHeight(ctx, int64(height+1), time.Now())
 	if err != nil {
 		return sm.State{}, err
 	}
+	//nolint:gosec
 	nextLightBlock, err := s.lc.VerifyLightBlockAtHeight(ctx, int64(height+2), time.Now())
 	if err != nil {
 		return sm.State{}, err

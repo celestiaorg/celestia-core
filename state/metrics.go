@@ -19,6 +19,8 @@ type Metrics struct {
 	BlockProcessingTime metrics.Histogram
 	// Count of times a block was rejected via ProcessProposal
 	ProcessProposalRejected metrics.Counter
+	// Count of transactions rejected by application.
+	RejectedTransactions metrics.Counter
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -43,6 +45,12 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "process_proposal_rejected",
 			Help:      "Count of times a block was rejected via ProcessProposal",
 		}, labels).With(labelsAndValues...),
+		RejectedTransactions: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "rejected_transactions",
+			Help:      "Count of transactions rejected by application",
+		}, labels).With(labelsAndValues...),
 	}
 }
 
@@ -51,5 +59,6 @@ func NopMetrics() *Metrics {
 	return &Metrics{
 		BlockProcessingTime:     discard.NewHistogram(),
 		ProcessProposalRejected: discard.NewCounter(),
+		RejectedTransactions:    discard.NewCounter(),
 	}
 }

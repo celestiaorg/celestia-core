@@ -167,14 +167,14 @@ type BaseConfig struct { //nolint: maligned
 	chainID string
 
 	// The root directory for all data.
-	// This should be set in viper so it can unmarshal into this struct
+	// This should be set in viper so that it can unmarshal into this struct
 	RootDir string `mapstructure:"home"`
 
 	// TCP or UNIX socket address of the ABCI application,
 	// or the name of an ABCI application compiled in with the CometBFT binary
 	ProxyApp string `mapstructure:"proxy_app"`
 
-	// A custom human readable name for this node
+	// A custom human-readable name for this node
 	Moniker string `mapstructure:"moniker"`
 
 	// If this node is many blocks behind the tip of the chain, FastSync
@@ -212,7 +212,7 @@ type BaseConfig struct { //nolint: maligned
 	// Output format: 'plain' (colored text) or 'json'
 	LogFormat string `mapstructure:"log_format"`
 
-	// Path to the JSON file containing the initial validator set and other meta data
+	// Path to the JSON file containing the initial validator set and other metadata
 	Genesis string `mapstructure:"genesis_file"`
 
 	// Path to the JSON file containing the private key to use as a validator in the consensus protocol
@@ -279,7 +279,7 @@ func (cfg BaseConfig) PrivValidatorKeyFile() string {
 	return rootify(cfg.PrivValidatorKey, cfg.RootDir)
 }
 
-// PrivValidatorFile returns the full path to the priv_validator_state.json file
+// PrivValidatorStateFile returns the full path to the priv_validator_state.json file
 func (cfg BaseConfig) PrivValidatorStateFile() string {
 	return rootify(cfg.PrivValidatorState, cfg.RootDir)
 }
@@ -734,6 +734,21 @@ type MempoolConfig struct {
 	// Including space needed by encoding (one varint per transaction).
 	// XXX: Unused due to https://github.com/tendermint/tendermint/issues/5796
 	MaxBatchBytes int `mapstructure:"max_batch_bytes"`
+	// Experimental parameters to limit gossiping txs to up to the specified number of peers.
+	// This feature is only available for the default mempool (version config set to "v0").
+	// We use two independent upper values for persistent and non-persistent peers.
+	// Unconditional peers are not affected by this feature.
+	// If we are connected to more than the specified number of persistent peers, only send txs to
+	// ExperimentalMaxGossipConnectionsToPersistentPeers of them. If one of those
+	// persistent peers disconnects, activate another persistent peer.
+	// Similarly for non-persistent peers, with an upper limit of
+	// ExperimentalMaxGossipConnectionsToNonPersistentPeers.
+	// If set to 0, the feature is disabled for the corresponding group of peers, that is, the
+	// number of active connections to that group of peers is not bounded.
+	// For non-persistent peers, if enabled, a value of 10 is recommended based on experimental
+	// performance results using the default P2P configuration.
+	ExperimentalMaxGossipConnectionsToPersistentPeers    int `mapstructure:"experimental_max_gossip_connections_to_persistent_peers"`
+	ExperimentalMaxGossipConnectionsToNonPersistentPeers int `mapstructure:"experimental_max_gossip_connections_to_non_persistent_peers"`
 
 	// TTLDuration, if non-zero, defines the maximum amount of time a transaction
 	// can exist for in the mempool.
@@ -767,10 +782,12 @@ func DefaultMempoolConfig() *MempoolConfig {
 		WalPath:   "",
 		// Each signature verification takes .5ms, Size reduced until we implement
 		// ABCI Recheck
-		Size:         5000,
-		MaxTxsBytes:  1024 * 1024 * 1024, // 1GB
-		CacheSize:    10000,
-		MaxTxBytes:   1024 * 1024, // 1MB
+		Size:        5000,
+		MaxTxsBytes: 1024 * 1024 * 1024, // 1GB
+		CacheSize:   10000,
+		MaxTxBytes:  1024 * 1024, // 1MB
+		ExperimentalMaxGossipConnectionsToNonPersistentPeers: 0,
+		ExperimentalMaxGossipConnectionsToPersistentPeers:    0,
 		TTLDuration:  0 * time.Second,
 		TTLNumBlocks: 0,
 	}
@@ -811,6 +828,12 @@ func (cfg *MempoolConfig) ValidateBasic() error {
 	if cfg.MaxTxBytes < 0 {
 		return errors.New("max_tx_bytes can't be negative")
 	}
+	if cfg.ExperimentalMaxGossipConnectionsToPersistentPeers < 0 {
+		return errors.New("experimental_max_gossip_connections_to_persistent_peers can't be negative")
+	}
+	if cfg.ExperimentalMaxGossipConnectionsToNonPersistentPeers < 0 {
+		return errors.New("experimental_max_gossip_connections_to_non_persistent_peers can't be negative")
+	}
 	return nil
 }
 
@@ -849,7 +872,7 @@ func DefaultStateSyncConfig() *StateSyncConfig {
 	}
 }
 
-// TestFastSyncConfig returns a default configuration for the state sync service
+// TestStateSyncConfig returns a default configuration for the state sync service
 func TestStateSyncConfig() *StateSyncConfig {
 	return DefaultStateSyncConfig()
 }
@@ -1033,6 +1056,20 @@ func (cfg *ConsensusConfig) Propose(round int32) time.Duration {
 	) * time.Nanosecond
 }
 
+// ProposeWithCustomTimeout is identical to Propose. However,
+// it calculates the amount of time to wait for a proposal using the supplied
+// customTimeout.
+// If customTimeout is 0, the TimeoutPropose from cfg is used.
+func (cfg *ConsensusConfig) ProposeWithCustomTimeout(round int32, customTimeout time.Duration) time.Duration {
+	// this is to capture any unforeseen cases where the customTimeout is 0
+	var timeoutPropose = customTimeout
+	if timeoutPropose == 0 {
+		// falling back to default timeout
+		timeoutPropose = cfg.TimeoutPropose
+	}
+	return time.Duration(timeoutPropose.Nanoseconds()+cfg.TimeoutProposeDelta.Nanoseconds()*int64(round)) * time.Nanosecond
+}
+
 // Prevote returns the amount of time to wait for straggler votes after receiving any +2/3 prevotes
 func (cfg *ConsensusConfig) Prevote(round int32) time.Duration {
 	return time.Duration(
@@ -1048,9 +1085,21 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 }
 
 // Commit returns the amount of time to wait for straggler votes after receiving +2/3 precommits
-// for a single block (ie. a commit).
+// for a single block (i.e., a commit).
 func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
 	return t.Add(cfg.TimeoutCommit)
+}
+
+// CommitWithCustomTimeout is identical to Commit. However, it calculates the time for commit using the supplied customTimeout.
+// If customTimeout is 0, the TimeoutCommit from cfg is used.
+func (cfg *ConsensusConfig) CommitWithCustomTimeout(t time.Time, customTimeout time.Duration) time.Time {
+	// this is to capture any unforeseen cases where the customTimeout is 0
+	var timeoutCommit = customTimeout
+	if timeoutCommit == 0 {
+		// falling back to default timeout
+		timeoutCommit = cfg.TimeoutCommit
+	}
+	return t.Add(timeoutCommit)
 }
 
 // WalFile returns the full path to the write-ahead log file
@@ -1069,6 +1118,8 @@ func (cfg *ConsensusConfig) SetWalFile(walFile string) {
 // ValidateBasic performs basic validation (checking param bounds, etc.) and
 // returns an error if any check fails.
 func (cfg *ConsensusConfig) ValidateBasic() error {
+	// TODO we may want to remove this check if TimeoutPropose is removed from
+	// the config
 	if cfg.TimeoutPropose < 0 {
 		return errors.New("timeout_propose can't be negative")
 	}
@@ -1087,6 +1138,8 @@ func (cfg *ConsensusConfig) ValidateBasic() error {
 	if cfg.TimeoutPrecommitDelta < 0 {
 		return errors.New("timeout_precommit_delta can't be negative")
 	}
+	// TODO we may want to remove this check if TimeoutCommit is removed from
+	// the config
 	if cfg.TimeoutCommit < 0 {
 		return errors.New("timeout_commit can't be negative")
 	}

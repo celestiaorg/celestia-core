@@ -7,7 +7,7 @@ to a CometBFT node, as well as higher-level functionality.
 The main implementation for production code is client.HTTP, which
 connects via http to the jsonrpc interface of the CometBFT node.
 
-For connecting to a node running in the same process (eg. when
+For connecting to a node running in the same process (e.g., when
 compiling the abci app in the same process), you can use the client.Local
 implementation.
 

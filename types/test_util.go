@@ -18,12 +18,13 @@ func MakeCommit(blockID BlockID, height int64, round int32,
 		}
 		vote := &Vote{
 			ValidatorAddress: pubKey.Address(),
-			ValidatorIndex:   int32(i),
-			Height:           height,
-			Round:            round,
-			Type:             cmtproto.PrecommitType,
-			BlockID:          blockID,
-			Timestamp:        now,
+			//nolint:gosec
+			ValidatorIndex: int32(i),
+			Height:         height,
+			Round:          round,
+			Type:           cmtproto.PrecommitType,
+			BlockID:        blockID,
+			Timestamp:      now,
 		}
 
 		_, err = signAddVote(validators[i], vote, voteSet)

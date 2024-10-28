@@ -58,6 +58,7 @@ func (w *varintWriter) WriteMsg(msg proto.Message) (int, error) {
 			if n+binary.MaxVarintLen64 >= len(w.buffer) {
 				w.buffer = make([]byte, n+binary.MaxVarintLen64)
 			}
+			//nolint:gosec
 			lenOff := binary.PutUvarint(w.buffer, uint64(n))
 			_, err := m.MarshalTo(w.buffer[lenOff:])
 			if err != nil {

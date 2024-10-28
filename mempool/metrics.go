@@ -71,6 +71,9 @@ type Metrics struct {
 
 	// RecoveryRate measures what percentage of missing transactions were able to be fetched
 	RecoveryRate metrics.Histogram
+	// Number of connections being actively used for gossiping transactions
+	// (experimental feature).
+	ActiveOutboundConnections metrics.Gauge
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
@@ -174,6 +177,13 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Help:      "Percentage of missing transactions that were able to be fetched",
 			Buckets:   stdprometheus.LinearBuckets(0, 0.1, 10),
 		}, labels).With(labelsAndValues...),
+
+		ActiveOutboundConnections: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "active_outbound_connections",
+			Help:      "Number of connections being actively used for gossiping transactions (experimental feature).",
+		}, labels).With(labelsAndValues...),
 	}
 }
 
@@ -193,6 +203,7 @@ func NopMetrics() *Metrics {
 		RerequestedTxs: discard.NewCounter(),
 		MissingTxs:     discard.NewCounter(),
 		RecoveryRate:   discard.NewHistogram(),
+		ActiveOutboundConnections: discard.NewGauge(),
 	}
 }
 

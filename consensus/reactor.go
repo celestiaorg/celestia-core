@@ -875,6 +875,7 @@ func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundSt
 				conR.traceClient,
 				prs.Height,
 				prs.Round,
+				//nolint:gosec
 				uint32(index),
 				true,
 				string(peer.ID()),
@@ -1403,6 +1404,7 @@ func (ps *PeerState) PickVoteToSend(votes types.VoteSetReader) (vote *types.Vote
 		return nil, false // Not something worth sending
 	}
 	if index, ok := votes.BitArray().Sub(psVotes).PickRandom(); ok {
+		//nolint:gosec
 		return votes.GetByIndex(int32(index)), true
 	}
 	return nil, false

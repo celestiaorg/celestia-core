@@ -10,7 +10,7 @@ import (
 
 	secp256k1 "github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
-	"golang.org/x/crypto/ripemd160" //nolint: staticcheck // necessary for Bitcoin address format
+	"golang.org/x/crypto/ripemd160" //nolint: staticcheck,gosec // necessary for Bitcoin address format
 
 	"github.com/tendermint/tendermint/crypto"
 	cmtjson "github.com/tendermint/tendermint/libs/json"
@@ -128,10 +128,7 @@ func GenPrivKeySecp256k1(secret []byte) PrivKey {
 func (privKey PrivKey) Sign(msg []byte) ([]byte, error) {
 	priv, _ := secp256k1.PrivKeyFromBytes(privKey)
 
-	sig, err := ecdsa.SignCompact(priv, crypto.Sha256(msg), false)
-	if err != nil {
-		return nil, err
-	}
+	sig := ecdsa.SignCompact(priv, crypto.Sha256(msg), false)
 
 	// remove the first byte which is compactSigRecoveryCode
 	return sig[1:], nil
@@ -161,6 +158,7 @@ func (pubKey PubKey) Address() crypto.Address {
 	_, _ = hasherSHA256.Write(pubKey) // does not error
 	sha := hasherSHA256.Sum(nil)
 
+	//nolint:gosec
 	hasherRIPEMD160 := ripemd160.New()
 	_, _ = hasherRIPEMD160.Write(sha) // does not error
 

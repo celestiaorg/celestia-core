@@ -63,12 +63,14 @@ func (wc weightedChoice) Choose(r *rand.Rand) interface{} {
 	total := 0
 	choices := make([]interface{}, 0, len(wc))
 	for choice, weight := range wc {
+		//nolint:gosec
 		total += int(weight)
 		choices = append(choices, choice)
 	}
 
 	rem := r.Intn(total)
 	for _, choice := range choices {
+		//nolint:gosec
 		rem -= int(wc[choice])
 		if rem <= 0 {
 			return choice

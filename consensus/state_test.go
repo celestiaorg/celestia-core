@@ -144,6 +144,10 @@ func TestStateEnterProposeNoPrivValidator(t *testing.T) {
 	startTestRound(cs, height, round)
 
 	// if we're not a validator, EnterPropose should timeout
+	// The use of cs.config.TimeoutPropose.Nanoseconds() as the timeout propose is acceptable in this test case.
+	// Even though timeouts are version-dependent, cs is created with an empty previous state in this scenario.
+	// As there's no timeout propose in the previous state, we default to the timeout propose in the config.
+	// This makes the test case valid.
 	ensureNewTimeout(timeoutCh, height, round, cs.config.TimeoutPropose.Nanoseconds())
 
 	if cs.GetRoundState().Proposal != nil {
@@ -179,6 +183,10 @@ func TestStateEnterProposeYesPrivValidator(t *testing.T) {
 	}
 
 	// if we're a validator, enterPropose should not timeout
+	// The use of cs.config.TimeoutPropose.Nanoseconds() as the timeout propose is acceptable in this test case.
+	// Even though timeouts are version-dependent, cs is created with an empty previous state in this scenario.
+	// As there's no timeout propose in the previous state, we default to the timeout propose in the config.
+	// This makes the test case valid.
 	ensureNoNewTimeout(timeoutCh, cs.config.TimeoutPropose.Nanoseconds())
 }
 
@@ -241,7 +249,7 @@ func TestStateBadProposal(t *testing.T) {
 }
 
 func TestStateOversizedBlock(t *testing.T) {
-	const maxBytes = 2000
+	const maxBytes = int64(types.BlockPartSizeBytes)
 
 	for _, testCase := range []struct {
 		name      string
@@ -287,6 +295,12 @@ func TestStateOversizedBlock(t *testing.T) {
 				totalBytes += len(part.Bytes)
 			}
 
+			maxBlockParts := maxBytes / int64(types.BlockPartSizeBytes)
+			if maxBytes > maxBlockParts*int64(types.BlockPartSizeBytes) {
+				maxBlockParts++
+			}
+			numBlockParts := int64(propBlockParts.Total())
+
 			if err := cs1.SetProposalAndBlock(proposal, propBlock, propBlockParts, "some peer"); err != nil {
 				t.Fatal(err)
 			}
@@ -294,7 +308,8 @@ func TestStateOversizedBlock(t *testing.T) {
 			// start the machine
 			startTestRound(cs1, height, round)
 
-			t.Log("Block Sizes;", "Limit", cs1.state.ConsensusParams.Block.MaxBytes, "Current", totalBytes)
+			t.Log("Block Sizes;", "Limit", maxBytes, "Current", totalBytes)
+			t.Log("Proposal Parts;", "Maximum", maxBlockParts, "Current", numBlockParts)
 
 			validateHash := propBlock.Hash()
 			lockedRound := int32(1)
@@ -303,12 +318,17 @@ func TestStateOversizedBlock(t *testing.T) {
 				lockedRound = -1
 				// if the block is oversized cs1 should log an error with the block part message as it exceeds
 				// the consensus params. The block is not added to cs.ProposalBlock so the node timeouts.
-				ensureNewTimeout(timeoutProposeCh, height, round, cs1.config.Propose(round).Nanoseconds())
+				ensureNewTimeout(timeoutProposeCh, height, round, cs1.config.ProposeWithCustomTimeout(round, cs1.state.TimeoutPropose).Nanoseconds())
 				// and then should send nil prevote and precommit regardless of whether other validators prevote and
 				// precommit on it
 			}
 			ensurePrevote(voteCh, height, round)
 			validatePrevote(t, cs1, round, vss[0], validateHash)
+
+			// Should not accept a Proposal with too many block parts
+			if numBlockParts > maxBlockParts {
+				require.Nil(t, cs1.Proposal)
+			}
 
 			signAddVotes(cs1, cmtproto.PrevoteType, propBlock.Hash(), propBlock.MakePartSet(partSize).Header(), vs2)
 			ensurePrevote(voteCh, height, round)
@@ -485,7 +505,7 @@ func TestStateLockNoPOL(t *testing.T) {
 	incrementRound(vs2)
 
 	// now we're on a new round and not the proposer, so wait for timeout
-	ensureNewTimeout(timeoutProposeCh, height, round, cs1.config.Propose(round).Nanoseconds())
+	ensureNewTimeout(timeoutProposeCh, height, round, cs1.config.ProposeWithCustomTimeout(round, cs1.state.TimeoutPropose).Nanoseconds())
 
 	rs := cs1.GetRoundState()
 
@@ -1017,7 +1037,7 @@ func TestStateLockPOLSafety1(t *testing.T) {
 	*/
 
 	// timeout of propose
-	ensureNewTimeout(timeoutProposeCh, height, round, cs1.config.Propose(round).Nanoseconds())
+	ensureNewTimeout(timeoutProposeCh, height, round, cs1.config.ProposeWithCustomTimeout(round, cs1.state.TimeoutPropose).Nanoseconds())
 
 	// finish prevote
 	ensurePrevote(voteCh, height, round)
@@ -1187,7 +1207,7 @@ func TestProposeValidBlock(t *testing.T) {
 	t.Log("### ONTO ROUND 2")
 
 	// timeout of propose
-	ensureNewTimeout(timeoutProposeCh, height, round, cs1.config.Propose(round).Nanoseconds())
+	ensureNewTimeout(timeoutProposeCh, height, round, cs1.config.ProposeWithCustomTimeout(round, cs1.state.TimeoutPropose).Nanoseconds())
 
 	ensurePrevote(voteCh, height, round)
 	validatePrevote(t, cs1, round, vss[0], propBlockHash)
@@ -1314,7 +1334,7 @@ func TestSetValidBlockOnDelayedProposal(t *testing.T) {
 	startTestRound(cs1, cs1.Height, round)
 	ensureNewRound(newRoundCh, height, round)
 
-	ensureNewTimeout(timeoutProposeCh, height, round, cs1.config.Propose(round).Nanoseconds())
+	ensureNewTimeout(timeoutProposeCh, height, round, cs1.config.ProposeWithCustomTimeout(round, cs1.state.TimeoutPropose).Nanoseconds())
 
 	ensurePrevote(voteCh, height, round)
 	validatePrevote(t, cs1, round, vss[0], nil)
@@ -1395,7 +1415,7 @@ func TestWaitingTimeoutProposeOnNewRound(t *testing.T) {
 	rs := cs1.GetRoundState()
 	assert.True(t, rs.Step == cstypes.RoundStepPropose) // P0 does not prevote before timeoutPropose expires
 
-	ensureNewTimeout(timeoutWaitCh, height, round, cs1.config.Propose(round).Nanoseconds())
+	ensureNewTimeout(timeoutWaitCh, height, round, cs1.config.ProposeWithCustomTimeout(round, cs1.state.TimeoutPropose).Nanoseconds())
 
 	ensurePrevote(voteCh, height, round)
 	validatePrevote(t, cs1, round, vss[0], nil)
@@ -1459,7 +1479,7 @@ func TestWaitTimeoutProposeOnNilPolkaForTheCurrentRound(t *testing.T) {
 	incrementRound(vss[1:]...)
 	signAddVotes(cs1, cmtproto.PrevoteType, nil, types.PartSetHeader{}, vs2, vs3, vs4)
 
-	ensureNewTimeout(timeoutProposeCh, height, round, cs1.config.Propose(round).Nanoseconds())
+	ensureNewTimeout(timeoutProposeCh, height, round, cs1.config.ProposeWithCustomTimeout(round, cs1.state.TimeoutPropose).Nanoseconds())
 
 	ensurePrevote(voteCh, height, round)
 	validatePrevote(t, cs1, round, vss[0], nil)
@@ -1607,7 +1627,7 @@ func TestStartNextHeightCorrectlyAfterTimeout(t *testing.T) {
 
 	cs1.txNotifier.(*fakeTxNotifier).Notify()
 
-	ensureNewTimeout(timeoutProposeCh, height+1, round, cs1.config.Propose(round).Nanoseconds())
+	ensureNewTimeout(timeoutProposeCh, height+1, round, cs1.config.ProposeWithCustomTimeout(round, cs1.state.TimeoutPropose).Nanoseconds())
 	rs = cs1.GetRoundState()
 	assert.False(
 		t,

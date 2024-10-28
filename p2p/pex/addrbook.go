@@ -681,6 +681,7 @@ func (a *addrBook) addAddress(addr, src *p2p.NetAddress) error {
 			return nil
 		}
 		// The more entries we have, the less likely we are to add more.
+		//nolint:gosec
 		factor := int32(2 * len(ka.Buckets))
 		if a.rand.Int31n(factor) != 0 {
 			return nil
@@ -849,6 +850,7 @@ func (a *addrBook) calcNewBucket(addr, src *p2p.NetAddress) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	//nolint:gosec
 	result := int(binary.BigEndian.Uint64(hash2) % newBucketCount)
 	return result, nil
 }
@@ -875,6 +877,7 @@ func (a *addrBook) calcOldBucket(addr *p2p.NetAddress) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	//nolint:gosec
 	result := int(binary.BigEndian.Uint64(hash2) % oldBucketCount)
 	return result, nil
 }

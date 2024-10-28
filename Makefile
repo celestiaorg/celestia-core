@@ -10,6 +10,7 @@ BUILD_FLAGS = -mod=readonly -ldflags "$(LD_FLAGS)"
 HTTPS_GIT := https://github.com/cometbft/cometbft.git
 CGO_ENABLED ?= 0
 
+BUF_VERSION := v1.31.0
 # handle nostrip
 ifeq (,$(findstring nostrip,$(COMETBFT_BUILD_OPTIONS)))
   BUILD_FLAGS += -trimpath
@@ -152,9 +153,10 @@ ifeq (,$(shell which clang-format))
 endif
 .PHONY: check-proto-format-deps
 
+#? proto-gen: Generate protobuf files
 proto-gen: check-proto-deps
 	@echo "Generating Protobuf files"
-	@go run github.com/bufbuild/buf/cmd/buf@v1.29.0 generate
+	@go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) generate
 	@mv ./proto/tendermint/abci/types.pb.go ./abci/types/
 	@cp ./proto/tendermint/rpc/grpc/types.pb.go ./rpc/grpc
 .PHONY: proto-gen
@@ -163,7 +165,7 @@ proto-gen: check-proto-deps
 # execution only.
 proto-lint: check-proto-deps
 	@echo "Linting Protobuf files"
-	@go run github.com/bufbuild/buf/cmd/buf@v1.29.0 lint
+	@go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) lint
 .PHONY: proto-lint
 
 proto-format: check-proto-format-deps
@@ -176,11 +178,11 @@ proto-check-breaking: check-proto-deps
 	@echo "Note: This is only useful if your changes have not yet been committed."
 	@echo "      Otherwise read up on buf's \"breaking\" command usage:"
 	@echo "      https://docs.buf.build/breaking/usage"
-	@go run github.com/bufbuild/buf/cmd/buf@v1.29.0 breaking --against ".git"
+	@go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) breaking --against ".git"
 .PHONY: proto-check-breaking
 
 proto-check-breaking-ci:
-	@go run github.com/bufbuild/buf/cmd/buf@v1.29.0 breaking --against $(HTTPS_GIT)#branch=v0.34.x-celestia
+	@go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) breaking --against $(HTTPS_GIT)#branch=v0.34.x-celestia
 .PHONY: proto-check-breaking-ci
 
 ###############################################################################
@@ -259,7 +261,7 @@ format:
 
 lint:
 	@echo "--> Running linter"
-	@go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.56.2 run
+	@go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.61.0 run
 .PHONY: lint
 
 vulncheck:
@@ -315,15 +317,15 @@ build_c-amazonlinux:
 # Run a 4-node testnet locally
 localnet-start: localnet-stop build-docker-localnode
 	@if ! [ -f build/node0/config/genesis.json ]; then docker run --rm -v $(CURDIR)/build:/cometbft:Z cometbft/localnode testnet --config /etc/cometbft/config-template.toml --o . --starting-ip-address 192.167.10.2; fi
-	docker-compose up
+	docker compose up
 .PHONY: localnet-start
 
 # Stop testnet
 localnet-stop:
-	docker-compose down
+	docker compose down
 .PHONY: localnet-stop
 
-# Build hooks for dredd, to skip or add information on some steps
+#? build-contract-tests-hooks: Build hooks for dredd, to skip or add information on some steps
 build-contract-tests-hooks:
 ifeq ($(OS),Windows_NT)
 	go build -mod=readonly $(BUILD_FLAGS) -o build/contract_tests.exe ./cmd/contract_tests

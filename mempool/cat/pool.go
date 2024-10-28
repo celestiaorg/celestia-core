@@ -754,6 +754,7 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 		txmp.evictedTxCache.Push(tx.key)
 	}
 	txmp.metrics.ExpiredTxs.Add(float64(numExpired))
+	txmp.seenByPeersSet.Prune(now.Add(-time.Hour))
 }
 
 func (txmp *TxPool) notifyTxsAvailable() {
