@@ -223,17 +223,20 @@ func newPeer(
 	options ...PeerOption,
 ) *peer {
 	p := &peer{
-		peerConn:         pc,
-		nodeInfo:         nodeInfo,
-		channels:         nodeInfo.(DefaultNodeInfo).Channels,
-		Data:             cmap.NewCMap(),
-		metricsTicker:    time.NewTicker(metricsTickerDuration),
-		metrics:          NopMetrics(),
-		mlc:              mlc,
-		traceClient:      trace.NoOpTracer(),
-		streams:          make(map[byte]quic.Stream),
-		mempoolStreams:   make([]quic.Stream, 0),
-		blockPartStreams: make([]quic.Stream, 0),
+		peerConn:          pc,
+		nodeInfo:          nodeInfo,
+		channels:          nodeInfo.(DefaultNodeInfo).Channels,
+		Data:              cmap.NewCMap(),
+		metricsTicker:     time.NewTicker(metricsTickerDuration),
+		metrics:           NopMetrics(),
+		mlc:               mlc,
+		traceClient:       trace.NoOpTracer(),
+		streams:           make(map[byte]quic.Stream),
+		mempoolStreams:    make([]quic.Stream, 0),
+		blockPartStreams:  make([]quic.Stream, 0),
+		blockchainStreams: make([]quic.Stream, 0),
+		snapshotStreams:   make([]quic.Stream, 0),
+		chunkStreams:      make([]quic.Stream, 0),
 	}
 
 	p.onReceive = func(chID byte, msgBytes []byte) {
