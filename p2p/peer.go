@@ -589,7 +589,7 @@ func (p *peer) initializeAboveStreams() error {
 			p.Logger.Error("error sending channel ID", "err", err.Error())
 			return err
 		}
-		p.blockPartStreams = append(p.mempoolStreams, stream2)
+		p.mempoolStreams = append(p.mempoolStreams, stream2)
 	}
 	return nil
 }
