@@ -185,7 +185,9 @@ type peer struct {
 	nodeInfo NodeInfo
 	channels []byte
 
-	streams map[byte]quic.Stream
+	streams          map[byte]quic.Stream
+	blockPartStreams []quic.Stream
+	mempoolStreams   []quic.Stream
 
 	// User data
 	Data *cmap.CMap
@@ -217,15 +219,17 @@ func newPeer(
 	options ...PeerOption,
 ) *peer {
 	p := &peer{
-		peerConn:      pc,
-		nodeInfo:      nodeInfo,
-		channels:      nodeInfo.(DefaultNodeInfo).Channels,
-		Data:          cmap.NewCMap(),
-		metricsTicker: time.NewTicker(metricsTickerDuration),
-		metrics:       NopMetrics(),
-		mlc:           mlc,
-		traceClient:   trace.NoOpTracer(),
-		streams:       make(map[byte]quic.Stream),
+		peerConn:         pc,
+		nodeInfo:         nodeInfo,
+		channels:         nodeInfo.(DefaultNodeInfo).Channels,
+		Data:             cmap.NewCMap(),
+		metricsTicker:    time.NewTicker(metricsTickerDuration),
+		metrics:          NopMetrics(),
+		mlc:              mlc,
+		traceClient:      trace.NoOpTracer(),
+		streams:          make(map[byte]quic.Stream),
+		mempoolStreams:   make([]quic.Stream, 0),
+		blockPartStreams: make([]quic.Stream, 0),
 	}
 
 	p.onReceive = func(chID byte, msgBytes []byte) {
@@ -281,6 +285,14 @@ func newPeer(
 	for _, option := range options {
 		option(p)
 	}
+
+	go func() {
+		err := p.initializeAboveStreams()
+		if err != nil {
+			p.Logger.Error("error initializing mempool and block part channels", "err", err.Error())
+			onPeerError(p, err)
+		}
+	}()
 
 	return p
 }
@@ -553,6 +565,35 @@ func (p *peer) metricsReporter() {
 	//}
 }
 
+func (p *peer) initializeAboveStreams() error {
+	p.Mutex.Lock()
+	defer p.Mutex.Unlock()
+	for i := 0; i < 10; i++ {
+		stream1, err := p.conn.OpenStreamSync(context.Background())
+		if err != nil {
+			return err
+		}
+		err = binary.Write(stream1, binary.BigEndian, DataChannel)
+		if err != nil {
+			p.Logger.Error("error sending channel ID", "err", err.Error())
+			return err
+		}
+		p.blockPartStreams = append(p.blockPartStreams, stream1)
+
+		stream2, err := p.conn.OpenStreamSync(context.Background())
+		if err != nil {
+			return err
+		}
+		err = binary.Write(stream2, binary.BigEndian, MempoolChannel)
+		if err != nil {
+			p.Logger.Error("error sending channel ID", "err", err.Error())
+			return err
+		}
+		p.blockPartStreams = append(p.mempoolStreams, stream2)
+	}
+	return nil
+}
+
 // Send msg bytes to the channel identified by chID byte. Returns false if the
 // send queue is full after timeout, specified by MConnection.
 // SendEnvelope replaces Send which will be deprecated in a future release.
@@ -561,6 +602,9 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 		return false
 	} else if !p.hasChannel(chID) {
 		return false
+	}
+	if chID == MempoolChannel || chID == DataChannel {
+		return p.sendOther(chID, msgBytes)
 	}
 	stream, has := p.getStream(chID)
 	if !has {
@@ -601,6 +645,60 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 	return true
 }
 
+const MempoolChannel = byte(0x30)
+const DataChannel = byte(0x21)
+
+func (p *peer) sendOther(id byte, bytes []byte) bool {
+	if len(bytes) == 0 {
+		return true
+	}
+	var send func([]byte) bool
+	if id == MempoolChannel {
+		send = func(bytes []byte) bool {
+			p.Mutex.Lock()
+			stream := p.mempoolStreams[bytes[len(bytes)/2]%10]
+			p.Mutex.Unlock()
+			packet := p2p.Packet{
+				Sum: &p2p.Packet_PacketMsg{
+					PacketMsg: &p2p.PacketMsg{
+						ChannelID: int32(id),
+						EOF:       true,
+						Data:      bytes,
+					},
+				},
+			}
+			_, err := protoio.NewDelimitedWriter(stream).WriteMsg(&packet)
+			if err != nil {
+				p.Logger.Debug("Send failed", "channel", "stream_id", stream.StreamID(), "index", bytes[len(bytes)/2]%10, "msgBytes", log.NewLazySprintf("%X", bytes))
+				return false
+			}
+			return true
+		}
+	} else {
+		send = func(bytes []byte) bool {
+			p.Mutex.Lock()
+			stream := p.blockPartStreams[bytes[len(bytes)/2]%10]
+			p.Mutex.Unlock()
+			packet := p2p.Packet{
+				Sum: &p2p.Packet_PacketMsg{
+					PacketMsg: &p2p.PacketMsg{
+						ChannelID: int32(id),
+						EOF:       true,
+						Data:      bytes,
+					},
+				},
+			}
+			_, err := protoio.NewDelimitedWriter(stream).WriteMsg(&packet)
+			if err != nil {
+				p.Logger.Debug("Send failed", "channel", "stream_id", stream.StreamID(), "index", bytes[len(bytes)/2]%10, "msgBytes", log.NewLazySprintf("%X", bytes))
+				return false
+			}
+			return true
+		}
+	}
+	return send(bytes)
+}
+
 func (p *peer) StartReceiving() error {
 	for {
 		stream, err := p.conn.AcceptStream(context.Background())
@@ -625,6 +723,9 @@ func (p *peer) StartReceiving() error {
 				}
 
 				dd := packet.Sum.(*p2p.Packet_PacketMsg)
+				if dd.PacketMsg.ChannelID != int32(chID) {
+					p.Logger.Error("received message on wrong channel", "expected channel id", chID, "received message channel id", dd.PacketMsg.ChannelID)
+				}
 				p.onReceive(chID, dd.PacketMsg.Data)
 			}
 		}()
