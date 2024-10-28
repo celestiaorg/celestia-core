@@ -186,9 +186,12 @@ type peer struct {
 	nodeInfo NodeInfo
 	channels []byte
 
-	streams          map[byte]quic.Stream
-	blockPartStreams []quic.Stream
-	mempoolStreams   []quic.Stream
+	streams           map[byte]quic.Stream
+	blockPartStreams  []quic.Stream
+	mempoolStreams    []quic.Stream
+	blockchainStreams []quic.Stream
+	snapshotStreams   []quic.Stream
+	chunkStreams      []quic.Stream
 
 	// User data
 	Data *cmap.CMap
@@ -566,7 +569,7 @@ func (p *peer) metricsReporter() {
 	//}
 }
 
-const totalStream = 50
+const totalStream = 40
 
 func (p *peer) initializeAboveStreams() error {
 	p.Mutex.Lock()
@@ -593,6 +596,39 @@ func (p *peer) initializeAboveStreams() error {
 			return err
 		}
 		p.mempoolStreams = append(p.mempoolStreams, stream2)
+
+		stream3, err := p.conn.OpenStreamSync(context.Background())
+		if err != nil {
+			return err
+		}
+		err = binary.Write(stream3, binary.BigEndian, BlockchainChannel)
+		if err != nil {
+			p.Logger.Error("error sending channel ID", "err", err.Error())
+			return err
+		}
+		p.blockchainStreams = append(p.blockchainStreams, stream3)
+
+		stream4, err := p.conn.OpenStreamSync(context.Background())
+		if err != nil {
+			return err
+		}
+		err = binary.Write(stream4, binary.BigEndian, SnapshotChannel)
+		if err != nil {
+			p.Logger.Error("error sending channel ID", "err", err.Error())
+			return err
+		}
+		p.snapshotStreams = append(p.snapshotStreams, stream4)
+
+		stream5, err := p.conn.OpenStreamSync(context.Background())
+		if err != nil {
+			return err
+		}
+		err = binary.Write(stream5, binary.BigEndian, ChunkChannel)
+		if err != nil {
+			p.Logger.Error("error sending channel ID", "err", err.Error())
+			return err
+		}
+		p.chunkStreams = append(p.chunkStreams, stream5)
 	}
 	return nil
 }
@@ -606,7 +642,11 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 	} else if !p.hasChannel(chID) {
 		return false
 	}
-	if chID == MempoolChannel || chID == DataChannel {
+	if chID == MempoolChannel ||
+		chID == DataChannel ||
+		chID == BlockchainChannel ||
+		chID == SnapshotChannel ||
+		chID == ChunkChannel {
 		return p.sendOther(chID, msgBytes)
 	}
 	stream, has := p.getStream(chID)
@@ -648,15 +688,86 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 	return true
 }
 
-const MempoolChannel = byte(0x30)
-const DataChannel = byte(0x21)
+const (
+	BlockchainChannel = byte(0x40)
+	SnapshotChannel   = byte(0x60)
+	ChunkChannel      = byte(0x61)
+	MempoolChannel    = byte(0x30)
+	DataChannel       = byte(0x21)
+)
 
 func (p *peer) sendOther(id byte, bytes []byte) bool {
 	if len(bytes) == 0 {
 		return true
 	}
 	var send func([]byte) bool
-	if id == MempoolChannel {
+	if id == BlockchainChannel {
+		send = func(bytes []byte) bool {
+			rnd := int(crypto.CRandBytes(1)[0]) % totalStream
+			p.Mutex.Lock()
+			stream := p.blockchainStreams[rnd]
+			p.Mutex.Unlock()
+			packet := p2p.Packet{
+				Sum: &p2p.Packet_PacketMsg{
+					PacketMsg: &p2p.PacketMsg{
+						ChannelID: int32(id),
+						EOF:       true,
+						Data:      bytes,
+					},
+				},
+			}
+			_, err := protoio.NewDelimitedWriter(stream).WriteMsg(&packet)
+			if err != nil {
+				p.Logger.Debug("Send failed", "channel", "stream_id", stream.StreamID(), "index", bytes[len(bytes)/2]%10, "msgBytes", log.NewLazySprintf("%X", bytes))
+				return false
+			}
+			return true
+		}
+	} else if id == SnapshotChannel {
+		send = func(bytes []byte) bool {
+			rnd := int(crypto.CRandBytes(1)[0]) % totalStream
+			p.Mutex.Lock()
+			stream := p.snapshotStreams[rnd]
+			p.Mutex.Unlock()
+			packet := p2p.Packet{
+				Sum: &p2p.Packet_PacketMsg{
+					PacketMsg: &p2p.PacketMsg{
+						ChannelID: int32(id),
+						EOF:       true,
+						Data:      bytes,
+					},
+				},
+			}
+			_, err := protoio.NewDelimitedWriter(stream).WriteMsg(&packet)
+			if err != nil {
+				p.Logger.Debug("Send failed", "channel", "stream_id", stream.StreamID(), "index", bytes[len(bytes)/2]%10, "msgBytes", log.NewLazySprintf("%X", bytes))
+				return false
+			}
+			return true
+		}
+	} else if id == ChunkChannel {
+		send = func(bytes []byte) bool {
+			rnd := int(crypto.CRandBytes(1)[0]) % totalStream
+			p.Mutex.Lock()
+			stream := p.chunkStreams[rnd]
+			p.Mutex.Unlock()
+			packet := p2p.Packet{
+				Sum: &p2p.Packet_PacketMsg{
+					PacketMsg: &p2p.PacketMsg{
+						ChannelID: int32(id),
+						EOF:       true,
+						Data:      bytes,
+					},
+				},
+			}
+			_, err := protoio.NewDelimitedWriter(stream).WriteMsg(&packet)
+			if err != nil {
+				p.Logger.Debug("Send failed", "channel", "stream_id", stream.StreamID(), "index", bytes[len(bytes)/2]%10, "msgBytes", log.NewLazySprintf("%X", bytes))
+				return false
+			}
+			return true
+		}
+	} else if id == MempoolChannel {
 		send = func(bytes []byte) bool {
 			rnd := int(crypto.CRandBytes(1)[0]) % totalStream
 			p.Mutex.Lock()
