@@ -341,19 +341,19 @@ func GetNewTracer() *logging.ConnectionTracer {
 			fmt.Println(fmt.Sprintf("ClosedConnection: error=%v", err))
 		},
 		ReceivedRetry: func(header *logging.Header) {
-			fmt.Println(fmt.Sprintf("ReceivedRetry: header=%v", header))
+			//fmt.Println(fmt.Sprintf("ReceivedRetry: header=%v", header))
 		},
 		DroppedPacket: func(packetType logging.PacketType, packetNum logging.PacketNumber, byteCount logging.ByteCount, reason logging.PacketDropReason) {
-			fmt.Println(fmt.Sprintf("DroppedPacket: packetType=%v, packetNum=%v, byteCount=%v, reason=%v", packetType, packetNum, byteCount, reason))
+			//fmt.Println(fmt.Sprintf("DroppedPacket: packetType=%v, packetNum=%v, byteCount=%v, reason=%v", packetType, packetNum, byteCount, reason))
 		},
 		LostPacket: func(encLevel logging.EncryptionLevel, packetNum logging.PacketNumber, reason logging.PacketLossReason) {
-			fmt.Println(fmt.Sprintf("LostPacket: encLevel=%v, packetNum=%v, reason=%v", encLevel, packetNum, reason))
+			//fmt.Println(fmt.Sprintf("LostPacket: encLevel=%v, packetNum=%v, reason=%v", encLevel, packetNum, reason))
 		},
 		Close: func() {
 			fmt.Println(fmt.Sprintf("ClosedConnection"))
 		},
 		Debug: func(name, msg string) {
-			fmt.Println(fmt.Sprintf("Debug: name=%v, msg=%v", name, msg))
+			//fmt.Println(fmt.Sprintf("Debug: name=%v, msg=%v", name, msg))
 		},
 	}
 }
@@ -425,11 +425,6 @@ func (mt *MultiplexTransport) acceptPeers(ctx context.Context) {
 					netAddr = NewUDPNetAddress(nodeInfo.ID(), addr)
 				}
 			}
-
-			fmt.Println("kelellelelelelellel")
-			fmt.Println(netAddr)
-			fmt.Println(nodeInfo)
-			fmt.Println("kelellelelelelellel")
 
 			select {
 			case mt.acceptc <- accept{netAddr, c, nodeInfo, err}:
