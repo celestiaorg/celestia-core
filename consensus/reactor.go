@@ -161,15 +161,15 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		{
 			ID: DataChannel, // maybe split between gossiping current block and catchup stuff
 			// once we gossip the whole block there's nothing left to send until next height or round
-			Priority:            12,
-			SendQueueCapacity:   20,
+			Priority:            10,
+			SendQueueCapacity:   10,
 			RecvBufferCapacity:  50 * 4096,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
 		},
 		{
 			ID:                  VoteChannel,
-			Priority:            8,
+			Priority:            7,
 			SendQueueCapacity:   100,
 			RecvBufferCapacity:  100 * 100,
 			RecvMessageCapacity: maxMsgSize,
@@ -966,7 +966,7 @@ func (conR *Reactor) gossipVotesForHeight(
 ) bool {
 
 	// If there are lastCommits to send...
-	if prs.Step == cstypes.RoundStepNewHeight && rs.Step < cstypes.RoundStepPrevote {
+	if prs.Step == cstypes.RoundStepNewHeight {
 		if conR.pickSendVoteAndTrace(rs.LastCommit, rs, ps) {
 			logger.Debug("Picked rs.LastCommit to send")
 			return true
@@ -1365,7 +1365,8 @@ func (ps *PeerState) SetHasBlock(height int64, round int32) {
 // Returns the vote if vote was sent. Otherwise, returns nil.
 func (ps *PeerState) PickSendVote(votes types.VoteSetReader) *types.Vote {
 	if vote, ok := ps.PickVoteToSend(votes); ok {
-		if p2p.TrySendEnvelopeShim(ps.peer, p2p.Envelope{ //nolint: staticcheck
+		ps.logger.Debug("Sending vote message", "ps", ps, "vote", vote)
+		if p2p.SendEnvelopeShim(ps.peer, p2p.Envelope{ //nolint: staticcheck
 			ChannelID: VoteChannel,
 			Message: &cmtcons.Vote{
 				Vote: vote.ToProto(),
