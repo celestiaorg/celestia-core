@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/quic-go/quic-go"
+	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/libs/protoio"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"github.com/tendermint/tendermint/proto/tendermint/p2p"
@@ -656,7 +657,7 @@ func (p *peer) sendOther(id byte, bytes []byte) bool {
 	if id == MempoolChannel {
 		send = func(bytes []byte) bool {
 			p.Mutex.Lock()
-			stream := p.mempoolStreams[bytes[len(bytes)/2]%10]
+			stream := p.mempoolStreams[int(crypto.CRandBytes(1)[0])%10]
 			p.Mutex.Unlock()
 			packet := p2p.Packet{
 				Sum: &p2p.Packet_PacketMsg{
@@ -677,7 +678,7 @@ func (p *peer) sendOther(id byte, bytes []byte) bool {
 	} else {
 		send = func(bytes []byte) bool {
 			p.Mutex.Lock()
-			stream := p.blockPartStreams[bytes[len(bytes)/2]%10]
+			stream := p.blockPartStreams[int(crypto.CRandBytes(1)[0])%10]
 			p.Mutex.Unlock()
 			packet := p2p.Packet{
 				Sum: &p2p.Packet_PacketMsg{
