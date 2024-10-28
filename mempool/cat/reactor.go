@@ -243,7 +243,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
-			Priority:            4,
+			Priority:            3,
 			SendQueueCapacity:   2,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
@@ -257,7 +257,7 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 		{
 			ID:                  MempoolRecoveryChannel,
-			Priority:            10,
+			Priority:            12,
 			SendQueueCapacity:   100,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
@@ -355,10 +355,10 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				memR.Logger.Info("could not add tx from peer", "peerID", peerID, "txKey", key, "err", err)
 				return
 			}
-			if !memR.opts.ListenOnly {
+			// if !memR.opts.ListenOnly {
 				// We broadcast only transactions that we deem valid and actually have in our mempool.
 				memR.broadcastSeenTx(key)
-			}
+			// }
 		}
 
 	// A peer has indicated to us that it has a transaction. We first verify the txkey and
@@ -423,31 +423,30 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		}
 		if tx == nil {
 			memR.Logger.Debug("received a want tx for a transaction we don't have", "txKey", txKey)
+			return
 		}
-		if tx != nil && !memR.opts.ListenOnly {
-			// If this transaction is in an active proposal, we send it with high priority
-			peerID := memR.ids.GetIDForPeer(e.Src.ID())
-			if tx.proposed {
-				memR.Logger.Debug("sending a proposed transaction in response to a want msg", "peer", peerID, "txKey", txKey)
-				if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint:staticcheck
-					ChannelID: MempoolRecoveryChannel,
-					Message:   &protomem.Txs{Txs: [][]byte{tx.tx}},
-				}, memR.Logger) {
-					memR.mempool.PeerHasTx(peerID, txKey)
-					schema.WriteMempoolTx(
-						memR.traceClient,
-						string(e.Src.ID()),
-						txKey[:],
-						len(tx.tx),
-						schema.Upload,
-					)
-				}
-			} else {
-				memR.Logger.Debug("sending a transaction in response to a want msg", "peer", peerID, "txKey", txKey)
-				// else we add it to the queue to be sent to the peer based on
-				// the priority of the transaction
-				memR.mempool.priorityBroadcastQueue.BroadcastToPeer(tx.priority, txKey, e.Src)
+		// If this transaction is in an active proposal, we send it with high priority
+		peerID := memR.ids.GetIDForPeer(e.Src.ID())
+		if tx.proposed {
+			memR.Logger.Debug("sending a proposed transaction in response to a want msg", "peer", peerID, "txKey", txKey)
+			if p2p.SendEnvelopeShim(e.Src, p2p.Envelope{ //nolint:staticcheck
+				ChannelID: MempoolRecoveryChannel,
+				Message:   &protomem.Txs{Txs: [][]byte{tx.tx}},
+			}, memR.Logger) {
+				memR.mempool.PeerHasTx(peerID, txKey)
+				schema.WriteMempoolTx(
+					memR.traceClient,
+					string(e.Src.ID()),
+					txKey[:],
+					len(tx.tx),
+					schema.Upload,
+				)
 			}
+		} else if !memR.opts.ListenOnly {
+			memR.Logger.Debug("sending a transaction in response to a want msg", "peer", peerID, "txKey", txKey)
+			// else we add it to the queue to be sent to the peer based on
+			// the priority of the transaction
+			memR.mempool.priorityBroadcastQueue.BroadcastToPeer(tx.priority, txKey, e.Src)
 		}
 
 	default:
