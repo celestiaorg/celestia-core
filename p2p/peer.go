@@ -293,13 +293,10 @@ func newPeer(
 		option(p)
 	}
 
-	go func() {
-		err := p.initializeAboveStreams()
-		if err != nil {
-			p.Logger.Error("error initializing mempool and block part channels", "err", err.Error())
-			onPeerError(p, err)
-		}
-	}()
+	err := p.initializeAboveStreams()
+	if err != nil {
+		p.Logger.Error("error initializing mempool and block part channels", "err", err.Error())
+	}
 
 	return p
 }
