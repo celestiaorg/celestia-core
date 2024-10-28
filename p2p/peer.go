@@ -656,8 +656,10 @@ func (p *peer) sendOther(id byte, bytes []byte) bool {
 	var send func([]byte) bool
 	if id == MempoolChannel {
 		send = func(bytes []byte) bool {
+			rnd := int(crypto.CRandBytes(1)[0]) % 10
+			fmt.Println(rnd)
 			p.Mutex.Lock()
-			stream := p.mempoolStreams[int(crypto.CRandBytes(1)[0])%10]
+			stream := p.mempoolStreams[rnd]
 			p.Mutex.Unlock()
 			packet := p2p.Packet{
 				Sum: &p2p.Packet_PacketMsg{
@@ -677,8 +679,10 @@ func (p *peer) sendOther(id byte, bytes []byte) bool {
 		}
 	} else {
 		send = func(bytes []byte) bool {
+			rnd := int(crypto.CRandBytes(1)[0]) % 10
+			fmt.Println(rnd)
 			p.Mutex.Lock()
-			stream := p.blockPartStreams[int(crypto.CRandBytes(1)[0])%10]
+			stream := p.blockPartStreams[rnd]
 			p.Mutex.Unlock()
 			packet := p2p.Packet{
 				Sum: &p2p.Packet_PacketMsg{
