@@ -728,7 +728,7 @@ OUTER_LOOP:
 						ProposalPolRound: rs.Proposal.POLRound,
 						ProposalPol:      *rs.Votes.Prevotes(rs.Proposal.POLRound).BitArray().ToProto(),
 					},
-					}, logger) {
+				}, logger) {
 					logger.Debug("Sent POL", "height", prs.Height, "round", prs.Round)
 					ps.SetHasBlock(rs.Height, rs.Round)
 					schema.WriteConsensusState(

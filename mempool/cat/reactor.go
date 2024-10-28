@@ -143,7 +143,7 @@ func (memR *Reactor) broadcastTxsRoutine() {
 		default:
 		}
 
-		// if there are no current transctions to broadcast, check if there are any new ones to add to the queue
+		// if there are no current transactions to broadcast, check if there are any new ones to add to the queue
 		if memR.mempool.priorityBroadcastQueue.queue.Len() == 0 {
 			select {
 			case <-memR.Quit():
@@ -356,8 +356,8 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				return
 			}
 			// if !memR.opts.ListenOnly {
-				// We broadcast only transactions that we deem valid and actually have in our mempool.
-				memR.broadcastSeenTx(key)
+			// We broadcast only transactions that we deem valid and actually have in our mempool.
+			memR.broadcastSeenTx(key)
 			// }
 		}
 

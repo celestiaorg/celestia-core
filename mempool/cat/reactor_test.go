@@ -89,7 +89,7 @@ func TestReactorSendWantTxAfterReceiveingSeenTx(t *testing.T) {
 func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 	reactor, pool := setupReactor(t)
 	require.NoError(t, reactor.Start())
-	defer reactor.Stop()
+	defer func() { _ = reactor.Stop() }()
 
 	tx := newDefaultTx("hello")
 	key := tx.Key()

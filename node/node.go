@@ -33,7 +33,6 @@ import (
 	cmtpubsub "github.com/tendermint/tendermint/libs/pubsub"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/light"
-	mempl "github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/mempool/cat"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/pex"
@@ -118,19 +117,19 @@ func DefaultNewNode(config *cfg.Config, logger log.Logger) (*Node, error) {
 }
 
 // MetricsProvider returns a consensus, p2p and mempool Metrics.
-type MetricsProvider func(chainID, softwareVersion string) (*cs.Metrics, *p2p.Metrics, *mempl.Metrics, *sm.Metrics)
+type MetricsProvider func(chainID, softwareVersion string) (*cs.Metrics, *p2p.Metrics, *mempool.Metrics, *sm.Metrics)
 
 // DefaultMetricsProvider returns Metrics build using Prometheus client library
 // if Prometheus is enabled. Otherwise, it returns no-op Metrics.
 func DefaultMetricsProvider(config *cfg.InstrumentationConfig) MetricsProvider {
-	return func(chainID, softwareVersion string) (*cs.Metrics, *p2p.Metrics, *mempl.Metrics, *sm.Metrics) {
+	return func(chainID, softwareVersion string) (*cs.Metrics, *p2p.Metrics, *mempool.Metrics, *sm.Metrics) {
 		if config.Prometheus {
 			return cs.PrometheusMetrics(config.Namespace, "chain_id", chainID, "version", softwareVersion),
 				p2p.PrometheusMetrics(config.Namespace, "chain_id", chainID, "version", softwareVersion),
-				mempl.PrometheusMetrics(config.Namespace, "chain_id", chainID, "version", softwareVersion),
+				mempool.PrometheusMetrics(config.Namespace, "chain_id", chainID, "version", softwareVersion),
 				sm.PrometheusMetrics(config.Namespace, "chain_id", chainID, "version", softwareVersion)
 		}
-		return cs.NopMetrics(), p2p.NopMetrics(), mempl.NopMetrics(), sm.NopMetrics()
+		return cs.NopMetrics(), p2p.NopMetrics(), mempool.NopMetrics(), sm.NopMetrics()
 	}
 }
 
@@ -218,7 +217,7 @@ type Node struct {
 	blockStore        *store.BlockStore // store the blockchain to disk
 	bcReactor         p2p.Reactor       // for fast-syncing
 	mempoolReactor    p2p.Reactor       // for gossipping transactions
-	mempool           mempl.Mempool
+	mempool           mempool.Mempool
 	stateSync         bool                    // whether the node should state sync on startup
 	stateSyncReactor  *statesync.Reactor      // for hosting and restoring state sync snapshots
 	stateSyncProvider statesync.StateProvider // provides state data for bootstrapping a node
@@ -375,16 +374,16 @@ func createMempoolAndMempoolReactor(
 	config *cfg.Config,
 	proxyApp proxy.AppConns,
 	state sm.State,
-	memplMetrics *mempl.Metrics,
+	mempoolMetrics *mempool.Metrics,
 	logger log.Logger,
 	traceClient trace.Tracer,
-) (mempl.Mempool, *cat.Reactor) {
+) (mempool.Mempool, *cat.Reactor) {
 	mp := cat.NewTxPool(
 		logger,
 		config.Mempool,
 		proxyApp.Mempool(),
 		state.LastBlockHeight,
-		cat.WithMetrics(memplMetrics),
+		cat.WithMetrics(mempoolMetrics),
 		cat.WithPreCheck(sm.TxPreCheck(state)),
 		cat.WithPostCheck(sm.TxPostCheck(state)),
 	)
@@ -1347,7 +1346,7 @@ func (n *Node) MempoolReactor() p2p.Reactor {
 }
 
 // Mempool returns the Node's mempool.
-func (n *Node) Mempool() mempl.Mempool {
+func (n *Node) Mempool() mempool.Mempool {
 	return n.mempool
 }
 
@@ -1441,7 +1440,7 @@ func makeNodeInfo(
 		Channels: []byte{
 			bcChannel,
 			cs.StateChannel, cs.DataChannel, cs.VoteChannel, cs.VoteSetBitsChannel,
-			mempl.MempoolChannel,
+			mempool.MempoolChannel,
 			evidence.EvidenceChannel,
 			statesync.SnapshotChannel, statesync.ChunkChannel,
 		},

@@ -2060,7 +2060,7 @@ func (cs *State) addCompactBlock(msg *CompactBlockMessage, peerID p2p.ID) error 
 	}
 
 	// we start this as a goroutine so as to not block the reactor
-	// from recieving other messages or timeouts while the mempool
+	// from receiving other messages or timeouts while the mempool
 	// attempts to fetch any missing transactions. If the block is
 	// correctly reconstructed, the handleCompleteProposal function
 	// will be called to process the block and move to the next step.

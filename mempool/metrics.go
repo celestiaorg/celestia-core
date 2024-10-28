@@ -190,19 +190,19 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 // NopMetrics returns no-op Metrics.
 func NopMetrics() *Metrics {
 	return &Metrics{
-		Size:           discard.NewGauge(),
-		SizeBytes:      discard.NewGauge(),
-		TxSizeBytes:    discard.NewHistogram(),
-		FailedTxs:      discard.NewCounter(),
-		EvictedTxs:     discard.NewCounter(),
-		ExpiredTxs:     discard.NewCounter(),
-		SuccessfulTxs:  discard.NewCounter(),
-		RecheckTimes:   discard.NewCounter(),
-		AlreadySeenTxs: discard.NewCounter(),
-		RequestedTxs:   discard.NewCounter(),
-		RerequestedTxs: discard.NewCounter(),
-		MissingTxs:     discard.NewCounter(),
-		RecoveryRate:   discard.NewHistogram(),
+		Size:                      discard.NewGauge(),
+		SizeBytes:                 discard.NewGauge(),
+		TxSizeBytes:               discard.NewHistogram(),
+		FailedTxs:                 discard.NewCounter(),
+		EvictedTxs:                discard.NewCounter(),
+		ExpiredTxs:                discard.NewCounter(),
+		SuccessfulTxs:             discard.NewCounter(),
+		RecheckTimes:              discard.NewCounter(),
+		AlreadySeenTxs:            discard.NewCounter(),
+		RequestedTxs:              discard.NewCounter(),
+		RerequestedTxs:            discard.NewCounter(),
+		MissingTxs:                discard.NewCounter(),
+		RecoveryRate:              discard.NewHistogram(),
 		ActiveOutboundConnections: discard.NewGauge(),
 	}
 }
