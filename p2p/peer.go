@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/quic-go/quic-go"
-	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/libs/protoio"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"github.com/tendermint/tendermint/proto/tendermint/p2p"
@@ -87,7 +86,7 @@ func SendEnvelopeShim(p Peer, e Envelope, lg log.Logger) bool {
 		lg.Error("marshaling message to send", "error", err)
 		return false
 	}
-	go p.Send(e.ChannelID, msgBytes)
+	p.Send(e.ChannelID, msgBytes)
 	return true
 }
 
@@ -697,6 +696,14 @@ const (
 	DataChannel       = byte(0x21)
 )
 
+var (
+	blockchainCount = int64(0)
+	snapshotCount   = int64(0)
+	chunkCount      = int64(0)
+	memCount        = int64(0)
+	partsCount      = int64(0)
+)
+
 func (p *peer) sendOther(id byte, bytes []byte) bool {
 	if len(bytes) == 0 {
 		return true
@@ -704,9 +711,11 @@ func (p *peer) sendOther(id byte, bytes []byte) bool {
 	var send func([]byte) bool
 	if id == BlockchainChannel {
 		send = func(bytes []byte) bool {
-			rnd := int(crypto.CRandBytes(1)[0]) % totalStream
+			defer func() {
+				blockchainCount++
+			}()
 			p.Mutex.Lock()
-			stream := p.blockchainStreams[rnd]
+			stream := p.blockchainStreams[blockchainCount%totalStream]
 			p.Mutex.Unlock()
 			packet := p2p.Packet{
 				Sum: &p2p.Packet_PacketMsg{
@@ -726,9 +735,11 @@ func (p *peer) sendOther(id byte, bytes []byte) bool {
 		}
 	} else if id == SnapshotChannel {
 		send = func(bytes []byte) bool {
-			rnd := int(crypto.CRandBytes(1)[0]) % totalStream
+			defer func() {
+				snapshotCount++
+			}()
 			p.Mutex.Lock()
-			stream := p.snapshotStreams[rnd]
+			stream := p.snapshotStreams[snapshotCount%totalStream]
 			p.Mutex.Unlock()
 			packet := p2p.Packet{
 				Sum: &p2p.Packet_PacketMsg{
@@ -748,9 +759,11 @@ func (p *peer) sendOther(id byte, bytes []byte) bool {
 		}
 	} else if id == ChunkChannel {
 		send = func(bytes []byte) bool {
-			rnd := int(crypto.CRandBytes(1)[0]) % totalStream
+			defer func() {
+				chunkCount++
+			}()
 			p.Mutex.Lock()
-			stream := p.chunkStreams[rnd]
+			stream := p.chunkStreams[chunkCount%totalStream]
 			p.Mutex.Unlock()
 			packet := p2p.Packet{
 				Sum: &p2p.Packet_PacketMsg{
@@ -770,9 +783,11 @@ func (p *peer) sendOther(id byte, bytes []byte) bool {
 		}
 	} else if id == MempoolChannel {
 		send = func(bytes []byte) bool {
-			rnd := int(crypto.CRandBytes(1)[0]) % totalStream
+			defer func() {
+				memCount++
+			}()
 			p.Mutex.Lock()
-			stream := p.mempoolStreams[rnd]
+			stream := p.mempoolStreams[memCount%totalStream]
 			p.Mutex.Unlock()
 			packet := p2p.Packet{
 				Sum: &p2p.Packet_PacketMsg{
@@ -792,9 +807,11 @@ func (p *peer) sendOther(id byte, bytes []byte) bool {
 		}
 	} else {
 		send = func(bytes []byte) bool {
-			rnd := int(crypto.CRandBytes(1)[0]) % totalStream
+			defer func() {
+				partsCount++
+			}()
 			p.Mutex.Lock()
-			stream := p.blockPartStreams[rnd]
+			stream := p.blockPartStreams[partsCount%totalStream]
 			p.Mutex.Unlock()
 			packet := p2p.Packet{
 				Sum: &p2p.Packet_PacketMsg{
