@@ -87,7 +87,8 @@ func SendEnvelopeShim(p Peer, e Envelope, lg log.Logger) bool {
 		lg.Error("marshaling message to send", "error", err)
 		return false
 	}
-	return p.Send(e.ChannelID, msgBytes)
+	go p.Send(e.ChannelID, msgBytes)
+	return true
 }
 
 // EnvelopeTrySendShim implements a shim to allow the legacy peer type that
