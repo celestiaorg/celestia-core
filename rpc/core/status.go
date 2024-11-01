@@ -13,7 +13,7 @@ import (
 // Status returns CometBFT status including node info, pubkey, latest block
 // hash, app hash, block height and time.
 // More: https://docs.cometbft.com/v0.34/rpc/#/Info/status
-func Status(ctx *rpctypes.Context) (*ctypes.ResultStatus, error) {
+func Status(_ *rpctypes.Context) (*ctypes.ResultStatus, error) {
 	var (
 		earliestBlockHeight   int64
 		earliestBlockHash     cmtbytes.HexBytes

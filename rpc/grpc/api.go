@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/tendermint/tendermint/crypto/encoding"
 	"sync"
 	"time"
 
@@ -149,6 +150,12 @@ func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool,
 }
 
 func (blockAPI *BlockAPI) broadcastToListeners(ctx context.Context, height int64, hash []byte) {
+	// TODO investigate the other panics as this can lead to network going down
+	defer func() {
+		if r := recover(); r != nil {
+			core.GetEnvironment().Logger.Debug("failed to write to heights listener", "err", r)
+		}
+	}()
 	for ch := range blockAPI.heightListeners {
 		select {
 		case <-ctx.Done():
@@ -224,11 +231,20 @@ func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_B
 
 func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockAPI_BlockByHeightServer) error {
 	blockStore := core.GetEnvironment().BlockStore
+
 	blockMeta := blockStore.LoadBlockMeta(req.Height)
+	if blockMeta == nil {
+		// TODO do the same for the others above, check nil
+		return fmt.Errorf("nil block meta for height %d", req.Height)
+	}
 
-	commit := blockStore.LoadBlockCommit(blockMeta.Header.Height).ToProto()
+	commit := blockStore.LoadSeenCommit(req.Height)
+	if commit == nil {
+		return fmt.Errorf("nil block commit for height %d", req.Height)
+	}
+	protoCommit := commit.ToProto()
 
-	validatorSet, err := core.GetEnvironment().StateStore.LoadValidators(blockMeta.Header.Height)
+	validatorSet, err := core.GetEnvironment().StateStore.LoadValidators(req.Height)
 	if err != nil {
 		return err
 	}
@@ -253,7 +269,7 @@ func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockA
 		if i == 0 {
 			resp.BlockMeta = blockMeta.ToProto()
 			resp.ValidatorSet = protoValidatorSet
-			resp.Commit = commit
+			resp.Commit = protoCommit
 		}
 		err = stream.Send(&resp)
 		if err != nil {
@@ -267,6 +283,37 @@ func (blockAPI *BlockAPI) BlockMetaByHash(ctx context.Context, req *BlockMetaByH
 	blockMeta := core.GetEnvironment().BlockStore.LoadBlockMetaByHash(req.Hash).ToProto()
 	return &BlockMetaByHashResponse{
 		BlockMeta: blockMeta,
+	}, nil
+}
+
+func (blockAPI *BlockAPI) Status(ctx context.Context, req *StatusRequest) (*StatusResponse, error) {
+	status, err := core.Status(nil)
+	if err != nil {
+		return nil, err
+	}
+
+	protoPubKey, err := encoding.PubKeyToProto(status.ValidatorInfo.PubKey)
+	if err != nil {
+		return nil, err
+	}
+	return &StatusResponse{
+		NodeInfo: status.NodeInfo.ToProto(),
+		SyncInfo: &SyncInfo{
+			LatestBlockHash:     status.SyncInfo.LatestBlockHash,
+			LatestAppHash:       status.SyncInfo.LatestAppHash,
+			LatestBlockHeight:   status.SyncInfo.LatestBlockHeight,
+			LatestBlockTime:     status.SyncInfo.LatestBlockTime,
+			EarliestBlockHash:   status.SyncInfo.EarliestBlockHash,
+			EarliestAppHash:     status.SyncInfo.EarliestAppHash,
+			EarliestBlockHeight: status.SyncInfo.EarliestBlockHeight,
+			EarliestBlockTime:   status.SyncInfo.EarliestBlockTime,
+			CatchingUp:          status.SyncInfo.CatchingUp,
+		},
+		ValidatorInfo: &ValidatorInfo{
+			Address:     status.ValidatorInfo.Address,
+			PubKey:      &protoPubKey,
+			VotingPower: status.ValidatorInfo.VotingPower,
+		},
 	}, nil
 }
 

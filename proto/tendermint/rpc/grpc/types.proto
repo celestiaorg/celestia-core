@@ -4,7 +4,11 @@ option  go_package = "github.com/tendermint/tendermint/rpc/grpc;coregrpc";
 
 import "tendermint/abci/types.proto";
 import "tendermint/types/types.proto";
+import "tendermint/p2p/types.proto";
+import "tendermint/crypto/keys.proto";
 import "tendermint/types/validator.proto";
+import "google/protobuf/timestamp.proto";
+import "gogoproto/gogo.proto";
 
 //----------------------------------------
 // Request types
@@ -42,6 +46,8 @@ message ValidatorSetRequest {
 }
 
 message SubscribeNewHeightsRequest {}
+
+message StatusRequest {}
 
 //----------------------------------------
 // Response types
@@ -90,6 +96,34 @@ message NewHeightEvent {
   bytes hash   = 2;
 }
 
+message StatusResponse {
+  tendermint.p2p.DefaultNodeInfo node_info      = 1;
+  SyncInfo                       sync_info      = 2;
+  ValidatorInfo                  validator_info = 3;
+}
+
+message SyncInfo {
+  bytes                     latest_block_hash   = 1;
+  bytes                     latest_app_hash     = 2;
+  int64                     latest_block_height = 3;
+  google.protobuf.Timestamp latest_block_time   = 4
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+
+  bytes                     earliest_block_hash   = 5;
+  bytes                     earliest_app_hash     = 6;
+  int64                     earliest_block_height = 7;
+  google.protobuf.Timestamp earliest_block_time   = 8
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+
+  bool catching_up = 9;
+}
+
+message ValidatorInfo {
+  bytes                       address      = 1;
+  tendermint.crypto.PublicKey pub_key      = 2;
+  int64                       voting_power = 3;
+}
+
 //----------------------------------------
 // Service Definition
 
@@ -106,4 +140,5 @@ service BlockAPI {
   rpc Commit(CommitRequest) returns (CommitResponse);
   rpc ValidatorSet(ValidatorSetRequest) returns (ValidatorSetResponse);
   rpc SubscribeNewHeights(SubscribeNewHeightsRequest) returns (stream NewHeightEvent);
+  rpc Status(StatusRequest) returns (StatusResponse);
 }
