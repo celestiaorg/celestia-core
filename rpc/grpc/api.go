@@ -16,7 +16,7 @@ import (
 	"github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/rpc/core"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
-	types2 "github.com/tendermint/tendermint/types"
+	eventstypes "github.com/tendermint/tendermint/types"
 )
 
 type broadcastAPI struct {
@@ -52,7 +52,7 @@ func (bapi *broadcastAPI) BroadcastTx(ctx context.Context, req *RequestBroadcast
 type BlockAPI struct {
 	sync.Mutex
 	heightListeners      map[chan NewHeightEvent]struct{}
-	newBlockSubscription types2.Subscription
+	newBlockSubscription eventstypes.Subscription
 }
 
 func NewBlockAPI() *BlockAPI {
@@ -69,7 +69,7 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) {
 		blockAPI.newBlockSubscription, err = env.EventBus.Subscribe(
 			ctx,
 			fmt.Sprintf("new-block-grpc-subscription-%s", rand.Str(6)),
-			types2.EventQueryNewBlock,
+			eventstypes.EventQueryNewBlock,
 			500,
 		)
 		if err != nil {
@@ -106,11 +106,11 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) {
 				}
 				continue
 			}
-			newBlockEvent, ok := event.Events()[types2.EventTypeKey]
-			if !ok || len(newBlockEvent) == 0 || newBlockEvent[0] != types2.EventNewBlock {
+			newBlockEvent, ok := event.Events()[eventstypes.EventTypeKey]
+			if !ok || len(newBlockEvent) == 0 || newBlockEvent[0] != eventstypes.EventNewBlock {
 				continue
 			}
-			data, ok := event.Data().(types2.EventDataNewBlock)
+			data, ok := event.Data().(eventstypes.EventDataNewBlock)
 			if !ok {
 				env.Logger.Debug("couldn't cast event data to new block")
 				continue
@@ -136,7 +136,7 @@ func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool,
 			blockAPI.newBlockSubscription, err = env.EventBus.Subscribe(
 				ctx,
 				fmt.Sprintf("new-block-grpc-subscription-%s", rand.Str(6)),
-				types2.EventQueryNewBlock,
+				eventstypes.EventQueryNewBlock,
 				500,
 			)
 			if err != nil {
@@ -150,7 +150,6 @@ func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool,
 }
 
 func (blockAPI *BlockAPI) broadcastToListeners(ctx context.Context, height int64, hash []byte) {
-	// TODO investigate the other panics as this can lead to network going down
 	defer func() {
 		if r := recover(); r != nil {
 			core.GetEnvironment().Logger.Debug("failed to write to heights listener", "err", r)
@@ -177,7 +176,6 @@ func (blockAPI *BlockAPI) removeHeightListener(ch chan NewHeightEvent) {
 	blockAPI.Lock()
 	defer blockAPI.Unlock()
 	delete(blockAPI.heightListeners, ch)
-	close(ch)
 }
 
 func (blockAPI *BlockAPI) closeAllListeners() {
@@ -185,14 +183,20 @@ func (blockAPI *BlockAPI) closeAllListeners() {
 	defer blockAPI.Unlock()
 	for channel := range blockAPI.heightListeners {
 		delete(blockAPI.heightListeners, channel)
-		close(channel)
 	}
 }
 
 func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_BlockByHashServer) error {
 	blockStore := core.GetEnvironment().BlockStore
 	blockMeta := blockStore.LoadBlockMetaByHash(req.Hash)
-	commit := blockStore.LoadBlockCommit(blockMeta.Header.Height).ToProto()
+	if blockMeta == nil {
+		return fmt.Errorf("nil block meta for block hash %d", req.Hash)
+	}
+	commit := blockStore.LoadBlockCommit(blockMeta.Header.Height)
+	if commit == nil {
+		return fmt.Errorf("nil commit for block hash %d", req.Hash)
+	}
+	protoCommit := commit.ToProto()
 
 	validatorSet, err := core.GetEnvironment().StateStore.LoadValidators(blockMeta.Header.Height)
 	if err != nil {
@@ -208,6 +212,9 @@ func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_B
 		if err != nil {
 			return err
 		}
+		if part == nil {
+			return fmt.Errorf("nil block part %d for block hash %d", i, req.Hash)
+		}
 		if !req.Prove {
 			part.Proof = crypto.Proof{}
 		}
@@ -219,7 +226,7 @@ func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_B
 		if i == 0 {
 			resp.BlockMeta = blockMeta.ToProto()
 			resp.ValidatorSet = protoValidatorSet
-			resp.Commit = commit
+			resp.Commit = protoCommit
 		}
 		err = stream.Send(&resp)
 		if err != nil {
@@ -234,7 +241,6 @@ func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockA
 
 	blockMeta := blockStore.LoadBlockMeta(req.Height)
 	if blockMeta == nil {
-		// TODO do the same for the others above, check nil
 		return fmt.Errorf("nil block meta for height %d", req.Height)
 	}
 
@@ -258,6 +264,9 @@ func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockA
 		if err != nil {
 			return err
 		}
+		if part == nil {
+			return fmt.Errorf("nil block part %d for height %d", i, req.Height)
+		}
 		if !req.Prove {
 			part.Proof = crypto.Proof{}
 		}
@@ -279,14 +288,17 @@ func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockA
 	return nil
 }
 
-func (blockAPI *BlockAPI) BlockMetaByHash(ctx context.Context, req *BlockMetaByHashRequest) (*BlockMetaByHashResponse, error) {
-	blockMeta := core.GetEnvironment().BlockStore.LoadBlockMetaByHash(req.Hash).ToProto()
+func (blockAPI *BlockAPI) BlockMetaByHash(_ context.Context, req *BlockMetaByHashRequest) (*BlockMetaByHashResponse, error) {
+	blockMeta := core.GetEnvironment().BlockStore.LoadBlockMetaByHash(req.Hash)
+	if blockMeta == nil {
+		return nil, fmt.Errorf("nil block meta for block hash %d", req.Hash)
+	}
 	return &BlockMetaByHashResponse{
-		BlockMeta: blockMeta,
+		BlockMeta: blockMeta.ToProto(),
 	}, nil
 }
 
-func (blockAPI *BlockAPI) Status(ctx context.Context, req *StatusRequest) (*StatusResponse, error) {
+func (blockAPI *BlockAPI) Status(_ context.Context, _ *StatusRequest) (*StatusResponse, error) {
 	status, err := core.Status(nil)
 	if err != nil {
 		return nil, err
@@ -317,22 +329,29 @@ func (blockAPI *BlockAPI) Status(ctx context.Context, req *StatusRequest) (*Stat
 	}, nil
 }
 
-func (blockAPI *BlockAPI) BlockMetaByHeight(ctx context.Context, req *BlockMetaByHeightRequest) (*BlockMetaByHeightResponse, error) {
-	blockMeta := core.GetEnvironment().BlockStore.LoadBlockMeta(req.Height).ToProto()
+func (blockAPI *BlockAPI) BlockMetaByHeight(_ context.Context, req *BlockMetaByHeightRequest) (*BlockMetaByHeightResponse, error) {
+	blockMeta := core.GetEnvironment().BlockStore.LoadBlockMeta(req.Height)
+	if blockMeta == nil {
+		return nil, fmt.Errorf("nil block meta for block height %d", req.Height)
+	}
 	return &BlockMetaByHeightResponse{
-		BlockMeta: blockMeta,
+		BlockMeta: blockMeta.ToProto(),
 	}, nil
 }
 
 func (blockAPI *BlockAPI) Commit(_ context.Context, req *CommitRequest) (*CommitResponse, error) {
-	commit := core.GetEnvironment().BlockStore.LoadBlockCommit(req.Height).ToProto()
+	commit := core.GetEnvironment().BlockStore.LoadSeenCommit(req.Height)
+	if commit == nil {
+		return nil, fmt.Errorf("nil block commit for height %d", req.Height)
+	}
+	protoCommit := commit.ToProto()
 
 	return &CommitResponse{
 		Commit: &types.Commit{
-			Height:     commit.Height,
-			Round:      commit.Round,
-			BlockID:    commit.BlockID,
-			Signatures: commit.Signatures,
+			Height:     protoCommit.Height,
+			Round:      protoCommit.Round,
+			BlockID:    protoCommit.BlockID,
+			Signatures: protoCommit.Signatures,
 		},
 	}, nil
 }
