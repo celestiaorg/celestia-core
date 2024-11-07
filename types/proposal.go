@@ -23,13 +23,14 @@ var (
 // a so-called Proof-of-Lock (POL) round, as noted in the POLRound.
 // If POLRound >= 0, then BlockID corresponds to the block that is locked in POLRound.
 type Proposal struct {
-	Type      cmtproto.SignedMsgType
-	Height    int64     `json:"height"`
-	Round     int32     `json:"round"`     // there can not be greater than 2_147_483_647 rounds
-	POLRound  int32     `json:"pol_round"` // -1 if null.
-	BlockID   BlockID   `json:"block_id"`
-	Timestamp time.Time `json:"timestamp"`
-	Signature []byte    `json:"signature"`
+	Type         cmtproto.SignedMsgType
+	Height       int64                  `json:"height"`
+	Round        int32                  `json:"round"`     // there can not be greater than 2_147_483_647 rounds
+	POLRound     int32                  `json:"pol_round"` // -1 if null.
+	BlockID      BlockID                `json:"block_id"`
+	Timestamp    time.Time              `json:"timestamp"`
+	Signature    []byte                 `json:"signature"`
+	CompactBlock *cmtproto.CompactBlock `json:"compact_block"` // todo(evan): use a separate type
 }
 
 // NewProposal returns a new Proposal.
@@ -76,6 +77,8 @@ func (p *Proposal) ValidateBasic() error {
 	if len(p.Signature) > MaxSignatureSize {
 		return fmt.Errorf("signature is too big (max: %d)", MaxSignatureSize)
 	}
+
+	// todo(evan) validate the compact block
 	return nil
 }
 
@@ -131,6 +134,7 @@ func (p *Proposal) ToProto() *cmtproto.Proposal {
 	pb.PolRound = p.POLRound
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
+	pb.CompactBlock = p.CompactBlock
 
 	return pb
 }
@@ -156,6 +160,7 @@ func ProposalFromProto(pp *cmtproto.Proposal) (*Proposal, error) {
 	p.POLRound = pp.PolRound
 	p.Timestamp = pp.Timestamp
 	p.Signature = pp.Signature
+	p.CompactBlock = pp.CompactBlock
 
 	return p, p.ValidateBasic()
 }

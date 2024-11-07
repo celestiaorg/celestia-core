@@ -146,6 +146,10 @@ message CommitSig {
   bytes signature = 4;
 }
 
+message CompactBlock {
+  repeated bytes txs = 1;
+}
+
 message Proposal {
   SignedMsgType             type      = 1;
   int64                     height    = 2;
@@ -154,7 +158,8 @@ message Proposal {
   BlockID                   block_id  = 5 [(gogoproto.customname) = "BlockID", (gogoproto.nullable) = false];
   google.protobuf.Timestamp timestamp = 6
       [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  bytes signature = 7;
+  bytes        signature     = 7;
+  CompactBlock compact_block = 8;
 }
 
 message SignedHeader {
