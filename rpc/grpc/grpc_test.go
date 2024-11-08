@@ -1,3 +1,4 @@
+//nolint:dupl
 package coregrpc_test
 
 import (
@@ -43,10 +44,14 @@ func TestBroadcastTx(t *testing.T) {
 	require.EqualValues(t, 0, res.DeliverTx.Code)
 }
 
-func TestBlockByHash(t *testing.T) {
+func setupClient(t *testing.T) core_grpc.BlockAPIClient {
 	client, err := rpctest.GetBlockAPIClient()
 	require.NoError(t, err)
-	waitForHeight(t, 2)
+	return client
+}
+
+func TestBlockByHash(t *testing.T) {
+	client := setupClient(t)
 	expectedBlockMeta := core.GetEnvironment().BlockStore.LoadBlockMeta(1)
 
 	// query the block along with the part proofs
@@ -87,8 +92,7 @@ func TestBlockByHash(t *testing.T) {
 }
 
 func TestBlockMetaByHash(t *testing.T) {
-	client, err := rpctest.GetBlockAPIClient()
-	require.NoError(t, err)
+	client := setupClient(t)
 	waitForHeight(t, 2)
 	expectedBlockMeta := core.GetEnvironment().BlockStore.LoadBlockMeta(1)
 
@@ -101,8 +105,7 @@ func TestBlockMetaByHash(t *testing.T) {
 }
 
 func TestBlockMetaByHeight(t *testing.T) {
-	client, err := rpctest.GetBlockAPIClient()
-	require.NoError(t, err)
+	client := setupClient(t)
 	waitForHeight(t, 2)
 	expectedBlockMeta := core.GetEnvironment().BlockStore.LoadBlockMeta(1)
 
@@ -115,8 +118,7 @@ func TestBlockMetaByHeight(t *testing.T) {
 }
 
 func TestCommit(t *testing.T) {
-	client, err := rpctest.GetBlockAPIClient()
-	require.NoError(t, err)
+	client := setupClient(t)
 	waitForHeight(t, 2)
 	expectedBlockCommit := core.GetEnvironment().BlockStore.LoadSeenCommit(1)
 
@@ -129,8 +131,7 @@ func TestCommit(t *testing.T) {
 }
 
 func TestValidatorSet(t *testing.T) {
-	client, err := rpctest.GetBlockAPIClient()
-	require.NoError(t, err)
+	client := setupClient(t)
 	waitForHeight(t, 2)
 	expectedValidatorSet, err := core.GetEnvironment().StateStore.LoadValidators(1)
 	require.NoError(t, err)
@@ -144,8 +145,7 @@ func TestValidatorSet(t *testing.T) {
 }
 
 func TestStatus(t *testing.T) {
-	client, err := rpctest.GetBlockAPIClient()
-	require.NoError(t, err)
+	client := setupClient(t)
 	expectedStatus, err := core.Status(nil)
 	require.NoError(t, err)
 
@@ -155,8 +155,7 @@ func TestStatus(t *testing.T) {
 }
 
 func TestSubscribeNewHeights(t *testing.T) {
-	client, err := rpctest.GetBlockAPIClient()
-	require.NoError(t, err)
+	client := setupClient(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	stream, err := client.SubscribeNewHeights(ctx, &core_grpc.SubscribeNewHeightsRequest{})
 	require.NoError(t, err)
@@ -182,8 +181,7 @@ func TestSubscribeNewHeights(t *testing.T) {
 }
 
 func TestBlockByHash_Streaming(t *testing.T) {
-	client, err := rpctest.GetBlockAPIClient()
-	require.NoError(t, err)
+	client := setupClient(t)
 
 	// send a big transaction that would result in a block
 	// containing multiple block parts
@@ -263,8 +261,7 @@ func TestBlockByHash_Streaming(t *testing.T) {
 }
 
 func TestBlockByHeight(t *testing.T) {
-	client, err := rpctest.GetBlockAPIClient()
-	require.NoError(t, err)
+	client := setupClient(t)
 	waitForHeight(t, 2)
 	expectedBlockMeta := core.GetEnvironment().BlockStore.LoadBlockMeta(1)
 
@@ -305,9 +302,8 @@ func TestBlockByHeight(t *testing.T) {
 	assert.Equal(t, part.BlockMeta.BlockID.Hash, expectedBlockMeta.BlockID.Hash.Bytes())
 }
 
-func TestBlockByHeight_Streaming(t *testing.T) {
-	client, err := rpctest.GetBlockAPIClient()
-	require.NoError(t, err)
+func TestBlockQuery_Streaming(t *testing.T) {
+	client := setupClient(t)
 
 	// send a big transaction that would result in a block
 	// containing multiple block parts
