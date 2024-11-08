@@ -72,6 +72,12 @@ func (m *NewRoundStep) Wrap() proto.Message {
 	return cm
 }
 
+func (m *WantParts) Wrap() proto.Message {
+	cm := &Message{}
+	cm.Sum = &Message_WantParts{WantParts: m}
+	return cm
+}
+
 // Unwrap implements the p2p Wrapper interface and unwraps a wrapped consensus
 // proto message.
 func (m *Message) Unwrap() (proto.Message, error) {

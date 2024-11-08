@@ -115,6 +115,13 @@ func MsgToProto(msg Message) (*cmtcons.Message, error) {
 
 		return m.Wrap().(*cmtcons.Message), nil
 
+	case *types.WantParts:
+		m := &cmtcons.WantParts{
+			WantParts: msg.WantParts,
+		}
+
+		return m.Wrap().(*cmtcons.Message), nil
+
 	default:
 		return nil, fmt.Errorf("consensus: message not recognized: %T", msg)
 	}
@@ -230,6 +237,10 @@ func MsgFromProto(p *cmtcons.Message) (Message, error) {
 			BlockID: *bi,
 			Votes:   bits,
 		}
+	case *cmtcons.WantParts:
+		wp := types.WantPartsFromProto(msg.WantParts)
+		pb = wp
+
 	default:
 		return nil, fmt.Errorf("consensus: message not recognized: %T", msg)
 	}

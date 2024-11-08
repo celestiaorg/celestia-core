@@ -16,6 +16,28 @@ var (
 	ErrInvalidBlockPartHash      = errors.New("error invalid block part hash")
 )
 
+type WantParts struct {
+	*cmtproto.WantParts
+}
+
+func (wp *WantParts) ValidateBasic() error {
+	if wp.Height < 0 {
+		return errors.New("want parts for invalid height below zero")
+	}
+	if wp.Round < 0 {
+		return errors.New("want parts for invalid round below zero")
+	}
+	return nil
+}
+
+func (wp *WantParts) ToProto() *cmtproto.WantParts {
+	return wp.WantParts
+}
+
+func WantPartsFromProto(pwp *cmtproto.WantParts) *WantParts {
+	return &WantParts{WantParts: pwp}
+}
+
 // Proposal defines a block proposal for the consensus.
 // It refers to the block by BlockID field.
 // It must be signed by the correct proposer for the given Height/Round
