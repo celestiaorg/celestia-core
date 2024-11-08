@@ -116,7 +116,7 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) {
 				env.Logger.Debug("couldn't cast event data to new block")
 				continue
 			}
-			blockAPI.broadcastToListeners(ctx, data.Block.Height, data.Block.DataHash)
+			blockAPI.broadcastToListeners(ctx, data.Block.Height, data.Block.Hash())
 		}
 	}
 
