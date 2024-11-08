@@ -3,6 +3,7 @@ package coregrpc_test
 
 import (
 	"context"
+	"go.uber.org/atomic"
 	"os"
 	"testing"
 	"time"
@@ -161,7 +162,7 @@ func TestSubscribeNewHeights(t *testing.T) {
 	require.NoError(t, err)
 	store := core.GetEnvironment().BlockStore
 
-	listenedHeightsCount := 0
+	listenedHeightsCount := atomic.NewInt32(0)
 	go func() {
 		for {
 			res, err := stream.Recv()
@@ -171,13 +172,13 @@ func TestSubscribeNewHeights(t *testing.T) {
 			require.NoError(t, err)
 			require.Greater(t, res.Height, int64(0))
 			assert.Equal(t, store.LoadBlockMeta(res.Height).BlockID.Hash.Bytes(), res.Hash)
-			listenedHeightsCount++
+			listenedHeightsCount.Inc()
 		}
 	}()
 
 	time.Sleep(5 * time.Second)
 	cancel()
-	assert.Greater(t, listenedHeightsCount, 0)
+	assert.Greater(t, listenedHeightsCount.Load(), int32(0))
 }
 
 func TestBlockByHash_Streaming(t *testing.T) {
