@@ -15,6 +15,7 @@ import (
 	cfg "github.com/tendermint/tendermint/config"
 	cstypes "github.com/tendermint/tendermint/consensus/types"
 	"github.com/tendermint/tendermint/crypto"
+	"github.com/tendermint/tendermint/libs/bits"
 	cmtevents "github.com/tendermint/tendermint/libs/events"
 	"github.com/tendermint/tendermint/libs/fail"
 	cmtjson "github.com/tendermint/tendermint/libs/json"
@@ -1165,15 +1166,19 @@ func (cs *State) isProposer(address []byte) bool {
 func (cs *State) defaultDecideProposal(height int64, round int32) {
 	var block *types.Block
 	var blockParts *types.PartSet
+	var keys []types.TxKey
 
 	// Decide on block
 	if cs.TwoThirdPrevoteBlock != nil {
 		// If there is valid block, choose that.
 		block, blockParts = cs.TwoThirdPrevoteBlock, cs.TwoThirdPrevoteBlockParts
+		for _, tx := range block.Txs {
+			keys = append(keys, tx.Key())
+		}
 	} else {
 		// Create a new proposal block from state/txs from the mempool.
 		schema.WriteABCI(cs.traceClient, schema.PrepareProposalStart, height, round)
-		block, blockParts = cs.createProposalBlock()
+		block, blockParts, keys = cs.createProposalBlock()
 		schema.WriteABCI(cs.traceClient, schema.PrepareProposalEnd, height, round)
 		if block == nil {
 			return
@@ -1189,6 +1194,16 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	// Make proposal
 	propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
 	proposal := types.NewProposal(height, round, cs.TwoThirdPrevoteRound, propBlockID)
+	txHashes := make([][]byte, len(keys))
+	for i, key := range keys {
+		txHashes[i] = key[:]
+	}
+	proposal.CompactBlock = &cmtproto.CompactBlock{Txs: txHashes}
+	ba := bits.NewBitArray(len(txHashes))
+	ba.Fill()
+	pba := ba.ToProto()
+	proposal.HaveParts = &cmtproto.HaveParts{Parts: *pba}
+
 	p := proposal.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {
 		proposal.Signature = p.Signature
@@ -1229,7 +1244,7 @@ func (cs *State) isProposalComplete() bool {
 //
 // NOTE: keep it side-effect free for clarity.
 // CONTRACT: cs.privValidator is not nil.
-func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.PartSet) {
+func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.PartSet, txs []types.TxKey) {
 	if cs.privValidator == nil {
 		panic("entered createProposalBlock with privValidator being nil")
 	}

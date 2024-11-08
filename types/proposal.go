@@ -31,6 +31,7 @@ type Proposal struct {
 	Timestamp    time.Time              `json:"timestamp"`
 	Signature    []byte                 `json:"signature"`
 	CompactBlock *cmtproto.CompactBlock `json:"compact_block"` // todo(evan): use a separate type
+	HaveParts    *cmtproto.HaveParts    `json:"have_parts"`    // todo(evan): use a separate type
 }
 
 // NewProposal returns a new Proposal.
@@ -135,6 +136,7 @@ func (p *Proposal) ToProto() *cmtproto.Proposal {
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
 	pb.CompactBlock = p.CompactBlock
+	pb.HaveParts = p.HaveParts
 
 	return pb
 }
@@ -161,6 +163,7 @@ func ProposalFromProto(pp *cmtproto.Proposal) (*Proposal, error) {
 	p.Timestamp = pp.Timestamp
 	p.Signature = pp.Signature
 	p.CompactBlock = pp.CompactBlock
+	p.HaveParts = pp.HaveParts
 
 	return p, p.ValidateBasic()
 }

@@ -8,6 +8,7 @@ import "google/protobuf/timestamp.proto";
 import "tendermint/crypto/proof.proto";
 import "tendermint/version/types.proto";
 import "tendermint/types/validator.proto";
+import "tendermint/libs/bits/types.proto";
 
 // BlockIdFlag indicates which BlcokID the signature is for
 enum BlockIDFlag {
@@ -146,8 +147,23 @@ message CommitSig {
   bytes signature = 4;
 }
 
+// CompactBlock commits to the transaction included in a proposal.
 message CompactBlock {
   repeated bytes txs = 1;
+}
+
+// WantParts determines which portion of the proposal that the sending is
+// requesting.
+message WantParts {
+  tendermint.libs.bits.BitArray parts  = 1 [(gogoproto.nullable) = false];
+  int64                         height = 2;
+  int32                         round  = 3;
+}
+
+// HaveParts determines which portion of the proposal the sender has or is
+// planning on getting.
+message HaveParts {
+  tendermint.libs.bits.BitArray parts = 1 [(gogoproto.nullable) = false];
 }
 
 message Proposal {
@@ -160,6 +176,7 @@ message Proposal {
       [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   bytes        signature     = 7;
   CompactBlock compact_block = 8;
+  HaveParts    have_parts    = 9;
 }
 
 message SignedHeader {

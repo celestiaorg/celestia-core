@@ -429,9 +429,10 @@ func (txmp *TxPool) allEntriesSorted() []*wrappedTx {
 //
 // If the mempool is empty or has no transactions fitting within the given
 // constraints, the result will also be empty.
-func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
+func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) (types.Txs, []types.TxKey) {
 	var totalGas, totalBytes int64
 
+	var keepHashes []types.TxKey
 	var keep []types.Tx //nolint:prealloc
 	for _, w := range txmp.allEntriesSorted() {
 		// N.B. When computing byte size, we need to include the overhead for
@@ -444,8 +445,9 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 		totalBytes += txBytes
 		totalGas += w.gasWanted
 		keep = append(keep, w.tx)
+		keepHashes = append(keepHashes, w.key)
 	}
-	return keep
+	return keep, keepHashes
 }
 
 // ReapMaxTxs returns up to max transactions from the mempool. The results are

@@ -553,7 +553,7 @@ func (mem *CListMempool) notifyTxsAvailable() {
 }
 
 // Safe for concurrent use by multiple goroutines.
-func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
+func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) (types.Txs, []types.TxKey) {
 	mem.updateMtx.RLock()
 	defer mem.updateMtx.RUnlock()
 
@@ -566,16 +566,18 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	// size per tx, and set the initial capacity based off of that.
 	// txs := make([]types.Tx, 0, cmtmath.MinInt(mem.txs.Len(), max/mem.avgTxSize))
 	txs := make([]types.Tx, 0, mem.txs.Len())
+	txsHashes := make([]types.TxKey, 0, mem.txs.Len())
 	for e := mem.txs.Front(); e != nil; e = e.Next() {
 		memTx := e.Value.(*mempoolTx)
 
 		txs = append(txs, memTx.tx)
+		txsHashes = append(txsHashes, memTx.tx.Key())
 
 		dataSize := types.ComputeProtoSizeForTxs([]types.Tx{memTx.tx})
 
 		// Check total size requirement
 		if maxBytes > -1 && runningSize+dataSize > maxBytes {
-			return txs[:len(txs)-1]
+			return txs[:len(txs)-1], txsHashes
 		}
 
 		runningSize += dataSize
@@ -586,11 +588,11 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 		// must be non-negative, it follows that this won't overflow.
 		newTotalGas := totalGas + memTx.gasWanted
 		if maxGas > -1 && newTotalGas > maxGas {
-			return txs[:len(txs)-1]
+			return txs[:len(txs)-1], txsHashes
 		}
 		totalGas = newTotalGas
 	}
-	return txs
+	return txs, txsHashes
 }
 
 // Safe for concurrent use by multiple goroutines.
