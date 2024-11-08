@@ -44,7 +44,7 @@ func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAP
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 	opts = append(opts, grpc.WithContextDialer(dialerFunc))
-	conn, err := grpc.Dial(
+	conn, err := grpc.Dial( //nolint:staticcheck
 		protoAddr,
 		opts...,
 	)
