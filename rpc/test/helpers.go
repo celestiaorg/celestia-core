@@ -117,6 +117,15 @@ func GetGRPCClient() core_grpc.BroadcastAPIClient {
 	return core_grpc.StartGRPCClient(grpcAddr)
 }
 
+func GetBlockAPIClient() (core_grpc.BlockAPIClient, error) {
+	grpcAddr := globalConfig.RPC.GRPCListenAddress
+	client, err := core_grpc.StartBlockAPIGRPCClient(grpcAddr)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
 // StartTendermint starts a test CometBFT server in a go routine and returns when it is initialized
 func StartTendermint(app abci.Application, opts ...func(*Options)) *nm.Node {
 	nodeOpts := defaultOptions
