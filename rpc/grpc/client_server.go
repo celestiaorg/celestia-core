@@ -39,8 +39,15 @@ func StartGRPCClient(protoAddr string) BroadcastAPIClient {
 
 // StartBlockAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlockAPIClient.
-func StartBlockAPIGRPCClient(protoAddr string) (BlockAPIClient, error) {
-	conn, err := grpc.Dial(protoAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc)) //nolint:staticcheck
+func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAPIClient, error) {
+	if len(opts) == 0 {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+	opts = append(opts, grpc.WithContextDialer(dialerFunc))
+	conn, err := grpc.Dial(
+		protoAddr,
+		opts...,
+	)
 	if err != nil {
 		return nil, err
 	}
