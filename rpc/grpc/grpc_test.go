@@ -2,6 +2,10 @@ package coregrpc_test
 
 import (
 	"context"
+	"os"
+	"testing"
+	"time"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/proto/tendermint/crypto"
@@ -9,9 +13,6 @@ import (
 	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
 	"github.com/tendermint/tendermint/rpc/core"
 	"github.com/tendermint/tendermint/types"
-	"os"
-	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
