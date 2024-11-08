@@ -151,6 +151,8 @@ func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool,
 }
 
 func (blockAPI *BlockAPI) broadcastToListeners(ctx context.Context, height int64, hash []byte) {
+	blockAPI.Lock()
+	defer blockAPI.Unlock()
 	defer func() {
 		if r := recover(); r != nil {
 			core.GetEnvironment().Logger.Debug("failed to write to heights listener", "err", r)
