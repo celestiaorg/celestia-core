@@ -38,7 +38,7 @@ message WantTx {
 
 Both `SeenTx` and `WantTx` contain the sha256 hash of the raw transaction bytes. `SeenTx` also contains an optional `p2p.ID` that corresponds to the peer that the node recieved the tx from. The only validation for both is that the byte slice of the `tx_key` MUST have a length of 32.
 
-Both messages are sent across a new channel with the ID: `byte(0x31)`. This enables cross compatability as discussed in greater detail below.
+Both messages are sent across a new channel with the ID: `byte(0x31)`. This enables cross compatibility as discussed in greater detail below.
 
 > **Note:**
 > The term `SeenTx` is used over the more common `HasTx` because the transaction pool contains sophisticated eviction logic. TTL's, higher priority transactions and reCheckTx may mean that a transaction pool *had* a transaction but does not have it any more. Semantically it's more appropriate to use `SeenTx` to imply not the presence of a transaction but that the node has seen it and dealt with it accordingly.
@@ -53,7 +53,7 @@ A node in the protocol has two distinct modes: "broadcast" and "request/response
 A `SeenTx` is broadcasted to ALL nodes upon receiving a "new" transaction from a peer. The transaction pool does not need to track every unique inbound transaction, therefore "new" is identified as:
 
 - The node does not currently have the transaction
-- The node did not recently reject the transacton or has recently seen the same transaction committed (subject to the size of the cache)
+- The node did not recently reject the transaction or has recently seen the same transaction committed (subject to the size of the cache)
 - The node did not recently evict the transaction (subject to the size of the cache)
 
 Given this criteria, it is feasible, yet unlikely that a node receives two `SeenTx` messages from the same peer for the same transaction.
