@@ -153,17 +153,19 @@ func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool,
 func (blockAPI *BlockAPI) broadcastToListeners(ctx context.Context, height int64, hash []byte) {
 	blockAPI.Lock()
 	defer blockAPI.Unlock()
-	defer func() {
-		if r := recover(); r != nil {
-			core.GetEnvironment().Logger.Debug("failed to write to heights listener", "err", r)
-		}
-	}()
 	for ch := range blockAPI.heightListeners {
-		select {
-		case <-ctx.Done():
-			return
-		case ch <- NewHeightEvent{Height: height, Hash: hash}:
-		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					core.GetEnvironment().Logger.Debug("failed to write to heights listener", "err", r)
+				}
+			}()
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- NewHeightEvent{Height: height, Hash: hash}:
+			}
+		}()
 	}
 }
 
@@ -178,6 +180,7 @@ func (blockAPI *BlockAPI) addHeightListener() chan NewHeightEvent {
 func (blockAPI *BlockAPI) removeHeightListener(ch chan NewHeightEvent) {
 	blockAPI.Lock()
 	defer blockAPI.Unlock()
+	close(ch)
 	delete(blockAPI.heightListeners, ch)
 }
 
@@ -185,6 +188,7 @@ func (blockAPI *BlockAPI) closeAllListeners() {
 	blockAPI.Lock()
 	defer blockAPI.Unlock()
 	for channel := range blockAPI.heightListeners {
+		close(channel)
 		delete(blockAPI.heightListeners, channel)
 	}
 }
