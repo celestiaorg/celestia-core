@@ -188,7 +188,6 @@ func (blockAPI *BlockAPI) closeAllListeners() {
 	defer blockAPI.Unlock()
 	for channel := range blockAPI.heightListeners {
 		delete(blockAPI.heightListeners, channel)
-		close(channel)
 	}
 }
 
