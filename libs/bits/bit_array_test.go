@@ -303,3 +303,56 @@ func TestUnmarshalJSONDoesntCrashOnZeroBits(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ic.BitArray, &BitArray{Bits: 0, Elems: nil})
 }
+
+func TestAddBitArray(t *testing.T) {
+	// Helper function to create a BitArray with specified bits
+	createBitArray := func(bits int, elems []uint64) *BitArray {
+		return &BitArray{
+			Bits:  bits,
+			Elems: elems,
+		}
+	}
+
+	tests := []struct {
+		name     string
+		bA       *BitArray
+		b        *BitArray
+		expected *BitArray
+	}{
+		{
+			name:     "same length",
+			bA:       createBitArray(8, []uint64{0b10101010}),
+			b:        createBitArray(8, []uint64{0b01010101}),
+			expected: createBitArray(8, []uint64{0b11111111}),
+		},
+		{
+			name:     "b is longer than bA",
+			bA:       createBitArray(8, []uint64{0b1010}),
+			b:        createBitArray(16, []uint64{0b0101, 0b1111}),
+			expected: createBitArray(16, []uint64{0b1111, 0b1111}),
+		},
+		{
+			name:     "bA is longer than b",
+			bA:       createBitArray(16, []uint64{0b1010, 0b0001}),
+			b:        createBitArray(8, []uint64{0b0101}),
+			expected: createBitArray(16, []uint64{0b1111, 0b0001}),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.bA.AddBitArray(tt.b)
+
+			if tt.bA.Bits != tt.expected.Bits {
+				t.Errorf("expected bits %d, got %d", tt.expected.Bits, tt.bA.Bits)
+			}
+
+			for i := range tt.expected.Elems {
+				if tt.bA.Elems[i] != tt.expected.Elems[i] {
+					t.Errorf("expected elems %v, got %v", tt.expected.Elems, tt.bA.Elems)
+					break
+				}
+			}
+		})
+	}
+}

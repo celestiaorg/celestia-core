@@ -14,7 +14,7 @@ import (
 
 // BitArray is a thread-safe implementation of a bit array.
 type BitArray struct {
-	mtx   sync.Mutex
+	mtx   sync.RWMutex
 	Bits  int      `json:"bits"`  // NOTE: persisted via reflect, must be exported
 	Elems []uint64 `json:"elems"` // NOTE: persisted via reflect, must be exported
 }
@@ -54,8 +54,8 @@ func (bA *BitArray) GetIndex(i int) bool {
 	if bA == nil {
 		return false
 	}
-	bA.mtx.Lock()
-	defer bA.mtx.Unlock()
+	bA.mtx.RLock()
+	defer bA.mtx.RUnlock()
 	return bA.getIndex(i)
 }
 
@@ -76,6 +76,33 @@ func (bA *BitArray) SetIndex(i int, v bool) bool {
 	bA.mtx.Lock()
 	defer bA.mtx.Unlock()
 	return bA.setIndex(i, v)
+}
+
+// AddBitArray combines two bit arrays by taking the bitwise OR of the two. If
+// the two bit arrays have different lengths, AddBitArray right-pads the smaller
+// of the two bit-arrays with zeroes. Thus the size of the return value is the
+// maximum of the two provided bit arrays.
+func (bA *BitArray) AddBitArray(b *BitArray) {
+	if bA == nil || b == nil {
+		return
+	}
+	bA.mtx.Lock()
+	defer bA.mtx.Unlock()
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	// Update bA's Bits count to be the max of the two
+	bA.Bits = cmtmath.MaxInt(bA.Bits, b.Bits)
+
+	// Resize bA's Elems if b is longer
+	if len(b.Elems) > len(bA.Elems) {
+		bA.Elems = append(bA.Elems, make([]uint64, len(b.Elems)-len(bA.Elems))...)
+	}
+
+	// Perform bitwise OR operation up to the length of b
+	for i := 0; i < len(b.Elems); i++ {
+		bA.Elems[i] |= b.Elems[i]
+	}
 }
 
 func (bA *BitArray) setIndex(i int, v bool) bool {
