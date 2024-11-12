@@ -152,18 +152,13 @@ message CompactBlock {
   repeated bytes txs = 1;
 }
 
-// WantParts determines which portion of the proposal that the sending is
+// PartState determines which portion of the proposal that the sending is
 // requesting.
-message WantParts {
+message PartState {
   tendermint.libs.bits.BitArray parts  = 1 [(gogoproto.nullable) = false];
   int64                         height = 2;
   int32                         round  = 3;
-}
-
-// HaveParts determines which portion of the proposal the sender has or is
-// planning on getting.
-message HaveParts {
-  tendermint.libs.bits.BitArray parts = 1 [(gogoproto.nullable) = false];
+  bool                          have   = 4;
 }
 
 message Proposal {
@@ -174,9 +169,9 @@ message Proposal {
   BlockID                   block_id  = 5 [(gogoproto.customname) = "BlockID", (gogoproto.nullable) = false];
   google.protobuf.Timestamp timestamp = 6
       [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  bytes        signature     = 7;
-  CompactBlock compact_block = 8;
-  HaveParts    have_parts    = 9;
+  bytes                         signature     = 7;
+  CompactBlock                  compact_block = 8;
+  tendermint.libs.bits.BitArray have_parts    = 9;
 }
 
 message SignedHeader {

@@ -77,8 +77,8 @@ message VoteSetBits {
   tendermint.libs.bits.BitArray  votes    = 5 [(gogoproto.nullable) = false];
 }
 
-message WantParts {
-  tendermint.types.WantParts want_parts = 1;
+message PartState {
+  tendermint.types.PartState part_state = 1;
 }
 
 message Message {
@@ -92,6 +92,6 @@ message Message {
     HasVote       has_vote        = 7;
     VoteSetMaj23  vote_set_maj23  = 8;
     VoteSetBits   vote_set_bits   = 9;
-    WantParts     want_parts      = 10;
+    PartState     part_state      = 10;
   }
 }

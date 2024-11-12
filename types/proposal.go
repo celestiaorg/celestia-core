@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/tendermint/tendermint/libs/bits"
 	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/libs/protoio"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
@@ -53,7 +54,7 @@ type Proposal struct {
 	Timestamp    time.Time              `json:"timestamp"`
 	Signature    []byte                 `json:"signature"`
 	CompactBlock *cmtproto.CompactBlock `json:"compact_block"` // todo(evan): use a separate type
-	HaveParts    *cmtproto.HaveParts    `json:"have_parts"`    // todo(evan): use a separate type
+	HaveParts    *bits.BitArray         `json:"have_parts"`    // todo(evan): use a separate type
 }
 
 // NewProposal returns a new Proposal.
@@ -158,7 +159,7 @@ func (p *Proposal) ToProto() *cmtproto.Proposal {
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
 	pb.CompactBlock = p.CompactBlock
-	pb.HaveParts = p.HaveParts
+	pb.HaveParts = &cmtproto.HaveParts{Parts: *p.HaveParts.ToProto()}
 
 	return pb
 }
@@ -185,7 +186,10 @@ func ProposalFromProto(pp *cmtproto.Proposal) (*Proposal, error) {
 	p.Timestamp = pp.Timestamp
 	p.Signature = pp.Signature
 	p.CompactBlock = pp.CompactBlock
-	p.HaveParts = pp.HaveParts
+
+	pbBits := new(bits.BitArray)
+	pbBits.FromProto(&pp.HaveParts.Parts)
+	p.HaveParts = pbBits
 
 	return p, p.ValidateBasic()
 }
