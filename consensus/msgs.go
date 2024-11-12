@@ -115,10 +115,8 @@ func MsgToProto(msg Message) (*cmtcons.Message, error) {
 
 		return m.Wrap().(*cmtcons.Message), nil
 
-	case *types.WantParts:
-		m := &cmtcons.WantParts{
-			WantParts: msg.WantParts,
-		}
+	case *types.PartState:
+		m := &cmtcons.PartState{}
 
 		return m.Wrap().(*cmtcons.Message), nil
 
@@ -237,8 +235,8 @@ func MsgFromProto(p *cmtcons.Message) (Message, error) {
 			BlockID: *bi,
 			Votes:   bits,
 		}
-	case *cmtcons.WantParts:
-		wp := types.WantPartsFromProto(msg.WantParts)
+	case *cmtcons.PartState:
+		wp := types.PartStateFromProto(msg.PartState)
 		pb = wp
 
 	default:

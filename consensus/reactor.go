@@ -399,8 +399,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
 			schema.WriteBlockPart(conR.traceClient, msg.Height, msg.Round, msg.Part.Index, false, string(e.Src.ID()), schema.Download)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
-		case *types.WantParts:
-			fmt.Println("recieved want parts")
+		case *types.PartState:
 
 		default:
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))

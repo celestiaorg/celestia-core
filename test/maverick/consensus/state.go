@@ -1231,7 +1231,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	ba := bits.NewBitArray(len(txHashes))
 	ba.Fill()
 	pba := ba.ToProto()
-	proposal.HaveParts = &cmtproto.HaveParts{Parts: *pba}
+	proposal.HaveParts = &cmtproto.PartState{Parts: *pba}
 
 	p := proposal.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {

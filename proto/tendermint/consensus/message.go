@@ -16,6 +16,7 @@ var _ p2p.Wrapper = &NewValidBlock{}
 var _ p2p.Wrapper = &NewRoundStep{}
 var _ p2p.Wrapper = &HasVote{}
 var _ p2p.Wrapper = &BlockPart{}
+var _ p2p.Wrapper = &PartState{}
 
 func (m *VoteSetBits) Wrap() proto.Message {
 	cm := &Message{}
@@ -72,9 +73,9 @@ func (m *NewRoundStep) Wrap() proto.Message {
 	return cm
 }
 
-func (m *WantParts) Wrap() proto.Message {
+func (m *PartState) Wrap() proto.Message {
 	cm := &Message{}
-	cm.Sum = &Message_WantParts{WantParts: m}
+	cm.Sum = &Message_PartState{PartState: m}
 	return cm
 }
 

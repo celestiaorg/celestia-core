@@ -17,11 +17,11 @@ var (
 	ErrInvalidBlockPartHash      = errors.New("error invalid block part hash")
 )
 
-type WantParts struct {
-	*cmtproto.WantParts
+type PartState struct {
+	*cmtproto.PartState
 }
 
-func (wp *WantParts) ValidateBasic() error {
+func (wp *PartState) ValidateBasic() error {
 	if wp.Height < 0 {
 		return errors.New("want parts for invalid height below zero")
 	}
@@ -31,12 +31,12 @@ func (wp *WantParts) ValidateBasic() error {
 	return nil
 }
 
-func (wp *WantParts) ToProto() *cmtproto.WantParts {
-	return wp.WantParts
+func (wp *PartState) ToProto() *cmtproto.PartState {
+	return wp.PartState
 }
 
-func WantPartsFromProto(pwp *cmtproto.WantParts) *WantParts {
-	return &WantParts{WantParts: pwp}
+func PartStateFromProto(pwp *cmtproto.PartState) *PartState {
+	return &PartState{PartState: pwp}
 }
 
 // Proposal defines a block proposal for the consensus.
@@ -159,7 +159,7 @@ func (p *Proposal) ToProto() *cmtproto.Proposal {
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
 	pb.CompactBlock = p.CompactBlock
-	pb.HaveParts = &cmtproto.HaveParts{Parts: *p.HaveParts.ToProto()}
+	pb.HaveParts = p.HaveParts.ToProto()
 
 	return pb
 }
@@ -188,7 +188,7 @@ func ProposalFromProto(pp *cmtproto.Proposal) (*Proposal, error) {
 	p.CompactBlock = pp.CompactBlock
 
 	pbBits := new(bits.BitArray)
-	pbBits.FromProto(&pp.HaveParts.Parts)
+	pbBits.FromProto(pp.HaveParts)
 	p.HaveParts = pbBits
 
 	return p, p.ValidateBasic()
