@@ -262,7 +262,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	// Get peer states
 	ps, ok := e.Src.Get(types.PeerStateKey).(*PeerState)
 	if !ok {
-		panic(fmt.Sprintf("Peer %v has no state", e.Src))
+		return
 	}
 
 	switch e.ChannelID {
