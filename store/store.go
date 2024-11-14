@@ -123,6 +123,23 @@ func (bs *BlockStore) LoadBlock(height int64) *types.Block {
 	return block
 }
 
+// LoadPartSet returns the partset for a given height.
+func (bs *BlockStore) LoadPartSet(height int64) *types.PartSet {
+	meta := bs.LoadBlockMeta(height)
+	if meta == nil {
+		return nil
+	}
+	partSet := types.NewPartSetFromHeader(meta.BlockID.PartSetHeader)
+	for i := 0; i < int(meta.BlockID.PartSetHeader.Total); i++ {
+		part := bs.LoadBlockPart(height, i)
+		if part == nil {
+			return nil
+		}
+		partSet.AddPart(part)
+	}
+	return partSet
+}
+
 // LoadBlockByHash returns the block with the given hash.
 // If no block is found for that hash, it returns nil.
 // Panics if it fails to parse height associated with the given hash.

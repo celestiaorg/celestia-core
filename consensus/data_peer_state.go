@@ -144,3 +144,30 @@ func (p *partState) setWant(part int) {
 func (p *partState) getWant(part int) bool {
 	return p.wants.GetIndex(part)
 }
+
+type requestTracker struct {
+	mtx  *sync.RWMutex
+	reqs map[int64]map[int32]*bits.BitArray
+}
+
+// newRequestTracker initializes and returns a new requestTracker
+func newRequestTracker() *requestTracker {
+	return &requestTracker{
+		mtx:  &sync.RWMutex{},
+		reqs: make(map[int64]map[int32]*bits.BitArray),
+	}
+}
+
+// Add adds a request for a given height and round.
+func (r *requestTracker) Add(height int64, round int32, req *bits.BitArray) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	// Initialize the inner map if it doesn't exist
+	if r.reqs[height] == nil {
+		r.reqs[height] = make(map[int32]*bits.BitArray)
+	}
+	if r.reqs[height][round] == nil {
+		r.reqs[height][round] = bits.NewBitArray(req.Size())
+	}
+	r.reqs[height][round].AddBitArray(req)
+}

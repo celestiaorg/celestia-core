@@ -297,6 +297,12 @@ func (bA *BitArray) PickRandom() (int, bool) {
 	return trueIndices[cmtrand.Intn(len(trueIndices))], true
 }
 
+func (bA *BitArray) GetTrueIndices() []int {
+	bA.mtx.RLock()
+	defer bA.mtx.RUnlock()
+	return bA.getTrueIndices()
+}
+
 func (bA *BitArray) getTrueIndices() []int {
 	trueIndices := make([]int, 0, bA.Bits)
 	curBit := 0

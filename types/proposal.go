@@ -18,7 +18,10 @@ var (
 )
 
 type PartState struct {
-	*cmtproto.PartState
+	Parts  *bits.BitArray
+	Height int64
+	Round  int32
+	Have   bool
 }
 
 func (wp *PartState) ValidateBasic() error {
@@ -32,11 +35,23 @@ func (wp *PartState) ValidateBasic() error {
 }
 
 func (wp *PartState) ToProto() *cmtproto.PartState {
-	return wp.PartState
+	return &cmtproto.PartState{
+		Parts:  *wp.Parts.ToProto(),
+		Height: wp.Height,
+		Round:  wp.Round,
+		Have:   wp.Have,
+	}
 }
 
 func PartStateFromProto(pwp *cmtproto.PartState) *PartState {
-	return &PartState{PartState: pwp}
+	ba := new(bits.BitArray)
+	ba.FromProto(&pwp.Parts)
+	return &PartState{
+		Parts:  ba,
+		Height: pwp.Height,
+		Round:  pwp.Round,
+		Have:   pwp.Have,
+	}
 }
 
 // Proposal defines a block proposal for the consensus.
