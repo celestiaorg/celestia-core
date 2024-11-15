@@ -308,13 +308,17 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 		return nil
 	}
 	quickConfig := quic.Config{
+		InitialStreamReceiveWindow:     10_000_000_000,
+		MaxStreamReceiveWindow:         10_000_000_000,
+		InitialConnectionReceiveWindow: 10_000_000_000,
+		MaxConnectionReceiveWindow:     10_000_000_000,
+		MaxIncomingStreams:             1000000000,
+		MaxIncomingUniStreams:          1000000000,
 		// TODO(rach-id): do we want to enable 0RTT? are the replay risks fine?
-		Allow0RTT:             false,
-		MaxIdleTimeout:        time.Minute,
-		MaxIncomingStreams:    10000,
-		MaxIncomingUniStreams: 10000,
-		KeepAlivePeriod:       10 * time.Second,
-		EnableDatagrams:       true,
+		Allow0RTT:       false,
+		MaxIdleTimeout:  time.Minute,
+		KeepAlivePeriod: 10 * time.Second,
+		EnableDatagrams: true,
 		Tracer: func(ctx context.Context, perspective logging.Perspective, id quic.ConnectionID) *logging.ConnectionTracer {
 			return logging.NewMultiplexedConnectionTracer(GetNewTracer())
 		},
