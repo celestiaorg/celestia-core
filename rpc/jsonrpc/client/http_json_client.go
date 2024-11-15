@@ -88,24 +88,27 @@ func (u parsedURL) GetTrimmedHostWithPath() string {
 	return strings.ReplaceAll(u.GetHostWithPath(), "/", ".")
 }
 
-// GetDialAddress returns the endpoint to dial for the parsed URL
+// GetDialAddress returns the endpoint to dial for the parsed URL.
 func (u parsedURL) GetDialAddress() string {
-	// if it's not a unix socket we return the host, example: localhost:443
 	if !u.isUnixSocket {
-		hasPort := endsWithPortPattern.MatchString(u.Host)
-		if !hasPort {
-			// http and ws default to port 80, https and wss default to port 443
-			// https://www.rfc-editor.org/rfc/rfc9110#section-4.2
-			// https://www.rfc-editor.org/rfc/rfc6455.html#section-3
-			if u.Scheme == protoHTTP || u.Scheme == protoWS {
-				return u.Host + `:80`
-			} else if u.Scheme == protoHTTPS || u.Scheme == protoWSS {
-				return u.Host + `:443`
+		host := u.Host
+		// Check if the host already includes a port
+		_, _, err := net.SplitHostPort(host)
+		if err != nil {
+			// Add the default port based on the scheme
+			switch u.Scheme {
+			case protoHTTP, protoWS:
+				host = net.JoinHostPort(host, "80")
+			case protoHTTPS, protoWSS:
+				host = net.JoinHostPort(host, "443")
+			default:
+				// Handle unsupported schemes explicitly
+				panic("unsupported scheme: " + u.Scheme)
 			}
 		}
-		return u.Host
+		return host
 	}
-	// otherwise we return the path of the unix socket, ex /tmp/socket
+	// For Unix sockets, return the full path
 	return u.GetHostWithPath()
 }
 
