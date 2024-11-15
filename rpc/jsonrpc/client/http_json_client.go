@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
 	cmtsync "github.com/tendermint/tendermint/libs/sync"
@@ -24,7 +25,7 @@ const (
 	protoUNIX  = "unix"
 )
 
-//-------------------------------------------------------------
+var endsWithPortPattern = regexp.MustCompile(`:[0-9]+$`)
 
 // Parsed URL structure
 type parsedURL struct {
@@ -91,6 +92,17 @@ func (u parsedURL) GetTrimmedHostWithPath() string {
 func (u parsedURL) GetDialAddress() string {
 	// if it's not a unix socket we return the host, example: localhost:443
 	if !u.isUnixSocket {
+		hasPort := endsWithPortPattern.MatchString(u.Host)
+		if !hasPort {
+			// http and ws default to port 80, https and wss default to port 443
+			// https://www.rfc-editor.org/rfc/rfc9110#section-4.2
+			// https://www.rfc-editor.org/rfc/rfc6455.html#section-3
+			if u.Scheme == protoHTTP || u.Scheme == protoWS {
+				return u.Host + `:80`
+			} else if u.Scheme == protoHTTPS || u.Scheme == protoWSS {
+				return u.Host + `:443`
+			}
+		}
 		return u.Host
 	}
 	// otherwise we return the path of the unix socket, ex /tmp/socket
