@@ -68,7 +68,7 @@ func Test_parsedURL(t *testing.T) {
 			url:                  "https://example.com",
 			expectedURL:          "https://example.com",
 			expectedHostWithPath: "example.com",
-			expectedDialAddress:  "example.com",
+			expectedDialAddress:  "example.com:443",
 		},
 
 		"https endpoint with port": {
