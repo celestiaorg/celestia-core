@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 
 	cmtsync "github.com/tendermint/tendermint/libs/sync"
@@ -24,8 +23,6 @@ const (
 	protoTCP   = "tcp"
 	protoUNIX  = "unix"
 )
-
-var endsWithPortPattern = regexp.MustCompile(`:[0-9]+$`)
 
 // Parsed URL structure
 type parsedURL struct {
