@@ -85,7 +85,6 @@ func (u parsedURL) GetTrimmedHostWithPath() string {
 	return strings.ReplaceAll(u.GetHostWithPath(), "/", ".")
 }
 
-// GetDialAddress returns the endpoint to dial for the parsed URL.
 func (u parsedURL) GetDialAddress() string {
 	if !u.isUnixSocket {
 		host := u.Host
@@ -103,9 +102,8 @@ func (u parsedURL) GetDialAddress() string {
 				panic("unsupported scheme: " + u.Scheme)
 			}
 		}
-		return host
+		return "[" + host + "]" // Explicitly wrap IPv6 addresses in brackets
 	}
-	// For Unix sockets, return the full path
 	return u.GetHostWithPath()
 }
 
