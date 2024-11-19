@@ -59,7 +59,7 @@ message ResponseBroadcastTx {
   tendermint.abci.ResponseDeliverTx deliver_tx = 2;
 }
 
-message BlockByHashResponse {
+message StreamedBlockByHashResponse {
   tendermint.types.Part         block_part    = 1;
   tendermint.types.Commit       commit        = 2;
   tendermint.types.ValidatorSet validator_set = 3;
@@ -67,12 +67,18 @@ message BlockByHashResponse {
   bool                          is_last       = 5;
 }
 
-message BlockByHeightResponse {
-  tendermint.types.Part         block_part    = 1;
-  tendermint.types.Commit       commit        = 2;
+message StreamedBlockByHeightResponse {
+  tendermint.types.Part block_part = 1;
+  // Commit is only set in the first part, and
+  // it stays nil in the remaining ones.
+  tendermint.types.Commit commit = 2;
+  // ValidatorSet is only set in the first part, and
+  // it stays nil in the remaining ones.
   tendermint.types.ValidatorSet validator_set = 3;
-  tendermint.types.BlockMeta    block_meta    = 4;
-  bool                          is_last       = 5;
+  // BlockMeta is only set in the first part, and
+  // it stays nil in the remaining ones.
+  tendermint.types.BlockMeta block_meta = 4;
+  bool                       is_last    = 5;
 }
 
 message BlockMetaByHashResponse {
@@ -133,9 +139,9 @@ service BroadcastAPI {
 }
 
 service BlockAPI {
-  rpc BlockByHash(BlockByHashRequest) returns (stream BlockByHashResponse);
+  rpc BlockByHash(BlockByHashRequest) returns (stream StreamedBlockByHashResponse);
   rpc BlockMetaByHash(BlockMetaByHashRequest) returns (BlockMetaByHashResponse);
-  rpc BlockByHeight(BlockByHeightRequest) returns (stream BlockByHeightResponse);
+  rpc BlockByHeight(BlockByHeightRequest) returns (stream StreamedBlockByHeightResponse);
   rpc BlockMetaByHeight(BlockMetaByHeightRequest) returns (BlockMetaByHeightResponse);
   rpc Commit(CommitRequest) returns (CommitResponse);
   rpc ValidatorSet(ValidatorSetRequest) returns (ValidatorSetResponse);

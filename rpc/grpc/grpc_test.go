@@ -52,7 +52,9 @@ func setupClient(t *testing.T) core_grpc.BlockAPIClient {
 
 func TestBlockByHash(t *testing.T) {
 	client := setupClient(t)
+	waitForHeight(t, 2)
 	expectedBlockMeta := core.GetEnvironment().BlockStore.LoadBlockMeta(1)
+	require.NotNil(t, expectedBlockMeta)
 
 	// query the block along with the part proofs
 	res, err := client.BlockByHash(context.Background(), &core_grpc.BlockByHashRequest{

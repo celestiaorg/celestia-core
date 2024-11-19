@@ -119,7 +119,6 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) {
 			blockAPI.broadcastToListeners(ctx, data.Block.Height, data.Block.Hash())
 		}
 	}
-
 }
 
 func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool, error) {
@@ -224,7 +223,7 @@ func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_B
 			part.Proof = crypto.Proof{}
 		}
 		isLastPart := i == int(blockMeta.BlockID.PartSetHeader.Total)-1
-		resp := BlockByHashResponse{
+		resp := StreamedBlockByHashResponse{
 			BlockPart: part,
 			IsLast:    isLastPart,
 		}
@@ -276,7 +275,7 @@ func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockA
 			part.Proof = crypto.Proof{}
 		}
 		isLastPart := i == int(blockMeta.BlockID.PartSetHeader.Total)-1
-		resp := BlockByHeightResponse{
+		resp := StreamedBlockByHeightResponse{
 			BlockPart: part,
 			IsLast:    isLastPart,
 		}
