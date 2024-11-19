@@ -680,7 +680,6 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 	}
 	p.metrics.PeerSendBytesTotal.With(labels...).Add(float64(len(msgBytes)))
 
-	p.removeStream(chID)
 	return true
 }
 
@@ -830,9 +829,7 @@ func (p *peer) sendOther(id byte, bytes []byte) bool {
 }
 
 func (p *peer) StartReceiving() error {
-	count := 0
 	for {
-		count++
 		stream, err := p.conn.AcceptStream(context.Background())
 		if err != nil {
 			p.Logger.Debug("failed to accept stream", "err", err.Error())
