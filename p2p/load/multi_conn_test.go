@@ -54,11 +54,11 @@ func TestMultipleConnections(t *testing.T) {
 
 	go func() {
 		for i := 0; i < 90; i++ {
+			time.Sleep(10 * time.Second)
 			for _, reactor := range reactors {
 				reactor.PrintReceiveSpeed()
 			}
 			fmt.Println("-----------------------------")
-			time.Sleep(5 * time.Second)
 		}
 	}()
 
@@ -66,38 +66,38 @@ func TestMultipleConnections(t *testing.T) {
 		reactor.FloodAllPeers(&wg,
 			time.Minute*60,
 			FirstChannel,
-			//SecondChannel,
-			//ThirdChannel,
-			//FourthChannel,
-			//FifthChannel,
-			//SixthChannel,
-			//SeventhChannel,
-			//EighthChannel,
-			//NinthChannel,
-			//TenthChannel,
+			SecondChannel,
+			ThirdChannel,
+			FourthChannel,
+			FifthChannel,
+			SixthChannel,
+			SeventhChannel,
+			EighthChannel,
+			NinthChannel,
+			TenthChannel,
 		)
 	}
 
-	for _, size := range []int64{
-		100,
-		1_000,
-		2_000,
-		5_000,
-		10_000,
-		50_000,
-		100_000,
-		500_000,
-		1_000_000,
-		10_000_000,
-		100_000_000,
-		1_000_000_000,
-	} {
-		for _, reactor := range reactors {
-			reactor.IncreaseSize(size)
-		}
-		fmt.Printf("increased size to %d bytes\n", size)
-		time.Sleep(10 * time.Second)
-	}
+	//for _, size := range []int64{
+	//	100,
+	//	1_000,
+	//	2_000,
+	//	5_000,
+	//	10_000,
+	//	50_000,
+	//	100_000,
+	//	500_000,
+	//	1_000_000,
+	//	10_000_000,
+	//	100_000_000,
+	//	1_000_000_000,
+	//} {
+	//	for _, reactor := range reactors {
+	//		reactor.IncreaseSize(size)
+	//	}
+	//	fmt.Printf("increased size to %d bytes\n", size)
+	//	time.Sleep(10 * time.Second)
+	//}
 
 	wg.Wait()
 	time.Sleep(10 * time.Minute)

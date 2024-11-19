@@ -639,15 +639,6 @@ func (p *peer) initializeAboveStreams() error {
 func (p *peer) Send(chID byte, msgBytes []byte) bool {
 	if !p.IsRunning() {
 		return false
-	} else if !p.hasChannel(chID) {
-		return false
-	}
-	if chID == MempoolChannel ||
-		chID == DataChannel ||
-		chID == BlockchainChannel ||
-		chID == SnapshotChannel ||
-		chID == ChunkChannel {
-		return p.sendOther(chID, msgBytes)
 	}
 	stream, has := p.getStream(chID)
 	if !has {
@@ -674,9 +665,13 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 			},
 		},
 	}
-	_, err := protoio.NewDelimitedWriter(stream).WriteMsg(&packet)
+	bs, err := protoio.NewDelimitedWriter(stream).WriteMsg(&packet)
 	if err != nil {
 		p.Logger.Debug("Send failed", "channel", "stream_id", stream.StreamID(), "msgBytes", log.NewLazySprintf("%X", msgBytes))
+		return false
+	}
+	if bs < len(msgBytes) {
+		fmt.Println("not written entirely")
 		return false
 	}
 	labels := []string{
@@ -685,6 +680,7 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 	}
 	p.metrics.PeerSendBytesTotal.With(labels...).Add(float64(len(msgBytes)))
 
+	p.removeStream(chID)
 	return true
 }
 
@@ -834,7 +830,9 @@ func (p *peer) sendOther(id byte, bytes []byte) bool {
 }
 
 func (p *peer) StartReceiving() error {
+	count := 0
 	for {
+		count++
 		stream, err := p.conn.AcceptStream(context.Background())
 		if err != nil {
 			p.Logger.Debug("failed to accept stream", "err", err.Error())

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/quic-go/quic-go"
+	"github.com/tendermint/tendermint/p2p/load"
 	"net"
 	"net/http"
 	"strings"
@@ -238,6 +239,7 @@ type Node struct {
 	tracer            trace.Tracer
 	pyroscopeProfiler *pyroscope.Profiler
 	pyroscopeTracer   *sdktrace.TracerProvider
+	mockReactor       *load.MockReactor
 }
 
 func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
@@ -623,6 +625,7 @@ func createSwitch(config *cfg.Config,
 	stateSyncReactor *statesync.Reactor,
 	consensusReactor *cs.Reactor,
 	evidenceReactor *evidence.Reactor,
+	mockReactor *load.MockReactor,
 	nodeInfo p2p.NodeInfo,
 	nodeKey *p2p.NodeKey,
 	p2pLogger log.Logger,
@@ -636,11 +639,12 @@ func createSwitch(config *cfg.Config,
 		p2p.WithTracer(tracer),
 	)
 	sw.SetLogger(p2pLogger)
-	sw.AddReactor("MEMPOOL", mempoolReactor)
-	sw.AddReactor("BLOCKCHAIN", bcReactor)
-	sw.AddReactor("CONSENSUS", consensusReactor)
-	sw.AddReactor("EVIDENCE", evidenceReactor)
-	sw.AddReactor("STATESYNC", stateSyncReactor)
+	//sw.AddReactor("MEMPOOL", mempoolReactor)
+	//sw.AddReactor("BLOCKCHAIN", bcReactor)
+	//sw.AddReactor("CONSENSUS", consensusReactor)
+	//sw.AddReactor("EVIDENCE", evidenceReactor)
+	//sw.AddReactor("STATESYNC", stateSyncReactor)
+	sw.AddReactor("MOCK", mockReactor)
 
 	sw.SetNodeInfo(nodeInfo)
 	sw.SetNodeKey(nodeKey)
@@ -928,11 +932,54 @@ func NewNode(config *cfg.Config,
 	// Setup Transport.
 	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp, tracer)
 
+	mockReactor := load.NewMockReactor(load.DefaultTestChannels, 10_000)
+	mockReactor.SetLogger(logger.With("module", "mock"))
+
+	go func() {
+		time.Sleep(time.Minute)
+		logger.Error("starting benchmark")
+
+		go func() {
+			for {
+				mockReactor.PrintSpeeds()
+				time.Sleep(10 * time.Second)
+			}
+		}()
+
+		go func() {
+			mockReactor.FloodAllPeers(10*time.Minute, load.FirstChannel)
+		}()
+
+		//go func() {
+		//	for _, size := range []int{
+		//		500,
+		//		1_000,
+		//		5_000,
+		//		10_000,
+		//		50_000,
+		//		100_000,
+		//		500_000,
+		//		1_000_000,
+		//		5_000_000,
+		//		10_000_000,
+		//		20_000_000,
+		//		30_000_000,
+		//		50_000_000,
+		//		100_000_000,
+		//		200_000_000,
+		//	} {
+		//		time.Sleep(30 * time.Second)
+		//		mockReactor.IncreaseSize(int64(size))
+		//		logger.Error("======> increased flood size", "size", size)
+		//	}
+		//}()
+	}()
+
 	// Setup Switch.
 	p2pLogger := logger.With("module", "p2p")
 	sw := createSwitch(
 		config, transport, p2pMetrics, peerFilters, mempoolReactor, bcReactor,
-		stateSyncReactor, consensusReactor, evidenceReactor, nodeInfo, nodeKey, p2pLogger, tracer,
+		stateSyncReactor, consensusReactor, evidenceReactor, mockReactor, nodeInfo, nodeKey, p2pLogger, tracer,
 	)
 
 	err = sw.AddPersistentPeers(splitAndTrimEmpty(config.P2P.PersistentPeers, ",", " "))
@@ -1369,6 +1416,11 @@ func (n *Node) ConsensusReactor() *cs.Reactor {
 	return n.consensusReactor
 }
 
+// ConsensusReactor returns the Node's ConsensusReactor.
+func (n *Node) MockReactor() *load.MockReactor {
+	return n.mockReactor
+}
+
 // MempoolReactor returns the Node's mempool reactor.
 func (n *Node) MempoolReactor() p2p.Reactor {
 	return n.mempoolReactor
@@ -1472,6 +1524,7 @@ func makeNodeInfo(
 			mempl.MempoolChannel,
 			evidence.EvidenceChannel,
 			statesync.SnapshotChannel, statesync.ChunkChannel,
+			load.FirstChannel,
 		},
 		Moniker: config.Moniker,
 		Other: p2p.DefaultNodeInfoOther{

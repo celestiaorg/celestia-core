@@ -309,12 +309,16 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 	}
 	quickConfig := quic.Config{
 		// TODO(rach-id): do we want to enable 0RTT? are the replay risks fine?
-		Allow0RTT:             false,
-		MaxIdleTimeout:        time.Minute,
-		MaxIncomingStreams:    10000,
-		MaxIncomingUniStreams: 10000,
-		KeepAlivePeriod:       10 * time.Second,
-		EnableDatagrams:       true,
+		InitialStreamReceiveWindow:     10_000_000_000,
+		MaxStreamReceiveWindow:         10_000_000_000,
+		InitialConnectionReceiveWindow: 10_000_000_000,
+		MaxConnectionReceiveWindow:     10_000_000_000,
+		MaxIdleTimeout:                 time.Hour,
+		Allow0RTT:                      false,
+		MaxIncomingStreams:             1000000000,
+		MaxIncomingUniStreams:          1000000000,
+		KeepAlivePeriod:                1 * time.Second,
+		EnableDatagrams:                true,
 		Tracer: func(ctx context.Context, perspective logging.Perspective, id quic.ConnectionID) *logging.ConnectionTracer {
 			return logging.NewMultiplexedConnectionTracer(GetNewTracer())
 		},
@@ -335,10 +339,10 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 func GetNewTracer() *logging.ConnectionTracer {
 	return &logging.ConnectionTracer{
 		StartedConnection: func(local, remote net.Addr, srcConnID, destConnID quic.ConnectionID) {
-			fmt.Println(fmt.Sprintf("StartedConnection: local=%v, remote=%v, srcConnID=%v, destConnID=%v", local, remote, srcConnID, destConnID))
+			//fmt.Println(fmt.Sprintf("StartedConnection: local=%v, remote=%v, srcConnID=%v, destConnID=%v", local, remote, srcConnID, destConnID))
 		},
 		ClosedConnection: func(err error) {
-			fmt.Println(fmt.Sprintf("ClosedConnection: error=%v", err))
+			//fmt.Println(fmt.Sprintf("ClosedConnection: error=%v", err))
 		},
 		ReceivedRetry: func(header *logging.Header) {
 			//fmt.Println(fmt.Sprintf("ReceivedRetry: header=%v", header))
@@ -350,7 +354,7 @@ func GetNewTracer() *logging.ConnectionTracer {
 			//fmt.Println(fmt.Sprintf("LostPacket: encLevel=%v, packetNum=%v, reason=%v", encLevel, packetNum, reason))
 		},
 		Close: func() {
-			fmt.Println(fmt.Sprintf("ClosedConnection"))
+			//fmt.Println(fmt.Sprintf("ClosedConnection"))
 		},
 		Debug: func(name, msg string) {
 			//fmt.Println(fmt.Sprintf("Debug: name=%v, msg=%v", name, msg))

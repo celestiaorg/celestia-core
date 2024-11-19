@@ -287,11 +287,15 @@ func (na *NetAddress) DialTimeout(timeout time.Duration, tlsConf *tls.Config) (q
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	quickConfig := quic.Config{
-		MaxIdleTimeout:        time.Minute,
-		MaxIncomingStreams:    10000,
-		MaxIncomingUniStreams: 10000,
-		KeepAlivePeriod:       10 * time.Second,
-		EnableDatagrams:       true,
+		InitialStreamReceiveWindow:     10_000_000_000,
+		MaxStreamReceiveWindow:         10_000_000_000,
+		InitialConnectionReceiveWindow: 10_000_000_000,
+		MaxConnectionReceiveWindow:     10_000_000_000,
+		MaxIncomingStreams:             1000000000,
+		MaxIncomingUniStreams:          1000000000,
+		MaxIdleTimeout:                 time.Hour,
+		KeepAlivePeriod:                1 * time.Second,
+		EnableDatagrams:                true,
 		Tracer: func(ctx context.Context, perspective logging.Perspective, id quic.ConnectionID) *logging.ConnectionTracer {
 			return logging.NewMultiplexedConnectionTracer(GetNewTracer())
 		},

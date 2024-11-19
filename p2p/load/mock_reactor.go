@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	FirstChannel   = byte(0x01)
+	FirstChannel   = byte(0xee)
 	SecondChannel  = byte(0x02)
 	ThirdChannel   = byte(0x03)
 	FourthChannel  = byte(0x04)
@@ -30,92 +30,92 @@ const (
 var priorities = make(map[byte]int)
 
 func init() {
-	for _, ch := range defaultTestChannels {
+	for _, ch := range DefaultTestChannels {
 		priorities[ch.ID] = ch.Priority
 	}
 }
 
-var defaultTestChannels = []*p2p.ChannelDescriptor{
+var DefaultTestChannels = []*p2p.ChannelDescriptor{
 	{
 		ID:                  FirstChannel,
 		Priority:            1,
-		SendQueueCapacity:   100000,
+		SendQueueCapacity:   1000,
 		RecvBufferCapacity:  100000,
-		RecvMessageCapacity: 2000000,
+		RecvMessageCapacity: 20000000000,
 		MessageType:         &protomem.TestTx{},
 	},
-	{
-		ID:                  SecondChannel,
-		Priority:            3,
-		SendQueueCapacity:   1,
-		RecvBufferCapacity:  1000,
-		RecvMessageCapacity: 2000000,
-		MessageType:         &protomem.TestTx{},
-	},
-	{
-		ID:                  ThirdChannel,
-		Priority:            5,
-		SendQueueCapacity:   1,
-		RecvBufferCapacity:  100,
-		RecvMessageCapacity: 2000000,
-		MessageType:         &protomem.TestTx{},
-	},
-	{
-		ID:                  FourthChannel,
-		Priority:            7,
-		SendQueueCapacity:   1,
-		RecvBufferCapacity:  100,
-		RecvMessageCapacity: 2000000,
-		MessageType:         &protomem.TestTx{},
-	},
-	{
-		ID:                  FifthChannel,
-		Priority:            9,
-		SendQueueCapacity:   1,
-		RecvBufferCapacity:  100,
-		RecvMessageCapacity: 2000000,
-		MessageType:         &protomem.TestTx{},
-	},
-	{
-		ID:                  SixthChannel,
-		Priority:            11,
-		SendQueueCapacity:   1,
-		RecvBufferCapacity:  100,
-		RecvMessageCapacity: 2000000,
-		MessageType:         &protomem.TestTx{},
-	},
-	{
-		ID:                  SeventhChannel,
-		Priority:            13,
-		SendQueueCapacity:   100,
-		RecvBufferCapacity:  100,
-		RecvMessageCapacity: 2000000,
-		MessageType:         &protomem.TestTx{},
-	},
-	{
-		ID:                  EighthChannel,
-		Priority:            15,
-		SendQueueCapacity:   100,
-		RecvBufferCapacity:  100,
-		RecvMessageCapacity: 200000,
-		MessageType:         &protomem.TestTx{},
-	},
-	{
-		ID:                  NinthChannel,
-		Priority:            13,
-		SendQueueCapacity:   1,
-		RecvBufferCapacity:  100,
-		RecvMessageCapacity: 2000000,
-		MessageType:         &protomem.TestTx{},
-	},
-	{
-		ID:                  TenthChannel,
-		Priority:            15,
-		SendQueueCapacity:   1,
-		RecvBufferCapacity:  100,
-		RecvMessageCapacity: 2000000,
-		MessageType:         &protomem.TestTx{},
-	},
+	//{
+	//	ID:                  SecondChannel,
+	//	Priority:            3,
+	//	SendQueueCapacity:   1,
+	//	RecvBufferCapacity:  1000,
+	//	RecvMessageCapacity: 2000000,
+	//	MessageType:         &protomem.TestTx{},
+	//},
+	//{
+	//	ID:                  ThirdChannel,
+	//	Priority:            5,
+	//	SendQueueCapacity:   1,
+	//	RecvBufferCapacity:  100,
+	//	RecvMessageCapacity: 2000000,
+	//	MessageType:         &protomem.TestTx{},
+	//},
+	//{
+	//	ID:                  FourthChannel,
+	//	Priority:            7,
+	//	SendQueueCapacity:   1,
+	//	RecvBufferCapacity:  100,
+	//	RecvMessageCapacity: 2000000,
+	//	MessageType:         &protomem.TestTx{},
+	//},
+	//{
+	//	ID:                  FifthChannel,
+	//	Priority:            9,
+	//	SendQueueCapacity:   1,
+	//	RecvBufferCapacity:  100,
+	//	RecvMessageCapacity: 2000000,
+	//	MessageType:         &protomem.TestTx{},
+	//},
+	//{
+	//	ID:                  SixthChannel,
+	//	Priority:            11,
+	//	SendQueueCapacity:   1,
+	//	RecvBufferCapacity:  100,
+	//	RecvMessageCapacity: 2000000,
+	//	MessageType:         &protomem.TestTx{},
+	//},
+	//{
+	//	ID:                  SeventhChannel,
+	//	Priority:            13,
+	//	SendQueueCapacity:   100,
+	//	RecvBufferCapacity:  100,
+	//	RecvMessageCapacity: 2000000,
+	//	MessageType:         &protomem.TestTx{},
+	//},
+	//{
+	//	ID:                  EighthChannel,
+	//	Priority:            15,
+	//	SendQueueCapacity:   100,
+	//	RecvBufferCapacity:  100,
+	//	RecvMessageCapacity: 200000,
+	//	MessageType:         &protomem.TestTx{},
+	//},
+	//{
+	//	ID:                  NinthChannel,
+	//	Priority:            13,
+	//	SendQueueCapacity:   1,
+	//	RecvBufferCapacity:  100,
+	//	RecvMessageCapacity: 2000000,
+	//	MessageType:         &protomem.TestTx{},
+	//},
+	//{
+	//	ID:                  TenthChannel,
+	//	Priority:            15,
+	//	SendQueueCapacity:   1,
+	//	RecvBufferCapacity:  100,
+	//	RecvMessageCapacity: 2000000,
+	//	MessageType:         &protomem.TestTx{},
+	//},
 }
 
 var defaultMsgSizes = []int{
@@ -135,34 +135,42 @@ var defaultMsgSizes = []int{
 type MockReactor struct {
 	p2p.BaseReactor
 	channels []*conn.ChannelDescriptor
-	sizes    map[byte]int
 
-	mtx                     sync.Mutex
-	peers                   map[p2p.ID]p2p.Peer
-	received                atomic.Int64
-	startTime               map[string]time.Time
-	cumulativeReceivedBytes map[string]int
-	speed                   map[string]float64
-	size                    atomic.Int64
+	mtx      sync.Mutex
+	peers    map[p2p.ID]p2p.Peer
+	received atomic.Int64
+	metrics  metrics
+	size     atomic.Int64
 
 	tracer trace.Tracer
 }
 
+type metrics struct {
+	mtx                     sync.Mutex
+	startDownloadTime       map[string]time.Time
+	cumulativeReceivedBytes map[string]int
+	downloadSpeed           map[string]float64
+	startUploadTime         map[string]time.Time
+	cumulativeUploadBytes   map[string]int
+	uploadSpeed             map[string]float64
+}
+
 // NewMockReactor creates a new mock reactor.
-func NewMockReactor(channels []*conn.ChannelDescriptor, msgSizes []int) *MockReactor {
+func NewMockReactor(channels []*conn.ChannelDescriptor, msgSize int) *MockReactor {
 	s := atomic.Int64{}
-	s.Store(200)
+	s.Store(int64(msgSize))
 	mr := &MockReactor{
-		channels:                channels,
-		peers:                   make(map[p2p.ID]p2p.Peer),
-		sizes:                   make(map[byte]int),
-		startTime:               map[string]time.Time{},
-		speed:                   map[string]float64{},
-		cumulativeReceivedBytes: map[string]int{},
-		size:                    s,
-	}
-	for i, ch := range channels {
-		mr.sizes[ch.ID] = msgSizes[i]
+		channels: channels,
+		peers:    make(map[p2p.ID]p2p.Peer),
+		metrics: metrics{
+			startDownloadTime:       map[string]time.Time{},
+			downloadSpeed:           map[string]float64{},
+			cumulativeReceivedBytes: map[string]int{},
+			startUploadTime:         map[string]time.Time{},
+			cumulativeUploadBytes:   map[string]int{},
+			uploadSpeed:             map[string]float64{},
+		},
+		size: s,
 	}
 	mr.BaseReactor = *p2p.NewBaseReactor("MockReactor", mr)
 	return mr
@@ -204,14 +212,32 @@ func (mr *MockReactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 
 const mebibyte = 1_048_576
 
-func (mr *MockReactor) PrintReceiveSpeed() {
+func (mr *MockReactor) PrintSpeeds() {
+	mr.metrics.mtx.Lock()
 	for _, peer := range mr.peers {
-		mr.mtx.Lock()
-		cumul := mr.cumulativeReceivedBytes[string(peer.ID())]
-		speed := mr.speed[string(peer.ID())]
-		mr.mtx.Unlock()
+		cumul := mr.metrics.cumulativeReceivedBytes[string(peer.ID())]
+		speed := mr.metrics.downloadSpeed[string(peer.ID())]
 		fmt.Printf("%s: %d bytes received in speed %.2f mib/s\n", peer.ID(), cumul, speed/mebibyte)
 	}
+	total := float64(0)
+	for _, speed := range mr.metrics.downloadSpeed {
+		total += speed
+	}
+	fmt.Printf("total bandwidth download speed reached %.2f mib/s\n\n", total/mebibyte)
+
+	for _, peer := range mr.peers {
+		cumul := mr.metrics.cumulativeUploadBytes[string(peer.ID())]
+		speed := mr.metrics.uploadSpeed[string(peer.ID())]
+		fmt.Printf("%s: %d bytes sent in speed %.2f mib/s\n", peer.ID(), cumul, speed/mebibyte)
+	}
+	totalUpload := float64(0)
+	for _, speed := range mr.metrics.uploadSpeed {
+		totalUpload += speed
+	}
+	fmt.Printf("total bandwidth upload speed reached %.2f mib/s\n", totalUpload/mebibyte)
+	fmt.Println("----------------------------------")
+	fmt.Println()
+	mr.metrics.mtx.Unlock()
 }
 
 // Receive implements Reactor.
@@ -219,12 +245,12 @@ func (mr *MockReactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 	msg := &protomem.Message{}
 	err := proto.Unmarshal(msgBytes, msg)
 	if err != nil {
-		fmt.Println("failure to unmarshal")
+		mr.Logger.Error("failure to unmarshal")
 		// panic(err)
 	}
 	uw, err := msg.Unwrap()
 	if err != nil {
-		fmt.Println("failure to unwrap")
+		mr.Logger.Error("failure to unwrap")
 		// panic(err)
 	}
 	mr.ReceiveEnvelope(p2p.Envelope{
@@ -244,27 +270,29 @@ type Payload struct {
 func (mr *MockReactor) ReceiveEnvelope(e p2p.Envelope) {
 	switch msg := e.Message.(type) {
 	case *protomem.TestTx:
-		mr.mtx.Lock()
-		if _, ok := mr.startTime[string(e.Src.ID())]; !ok {
-			mr.startTime[string(e.Src.ID())] = time.Now()
+		mr.metrics.mtx.Lock()
+		if _, ok := mr.metrics.startDownloadTime[string(e.Src.ID())]; !ok {
+			mr.metrics.startDownloadTime[string(e.Src.ID())] = time.Now()
 		}
-		mr.cumulativeReceivedBytes[string(e.Src.ID())] += len(msg.Tx)
-		mr.speed[string(e.Src.ID())] = float64(mr.cumulativeReceivedBytes[string(e.Src.ID())]) / time.Now().Sub(mr.startTime[string(e.Src.ID())]).Seconds()
-		mr.mtx.Unlock()
+		mr.metrics.cumulativeReceivedBytes[string(e.Src.ID())] += len(msg.Tx)
+		mr.metrics.downloadSpeed[string(e.Src.ID())] = float64(mr.metrics.cumulativeReceivedBytes[string(e.Src.ID())]) / time.Now().Sub(mr.metrics.startDownloadTime[string(e.Src.ID())]).Seconds()
+		mr.metrics.mtx.Unlock()
 	default:
 		fmt.Printf("Unexpected message type %T\n", e.Message)
 		return
 	}
 }
 
-func (mr *MockReactor) SendBytes(id p2p.ID, chID byte) bool {
+func (mr *MockReactor) SendBytes(id p2p.ID, chID byte, size int64) bool {
+	mr.mtx.Lock()
 	peer, has := mr.peers[id]
+	mr.mtx.Unlock()
 	if !has {
 		mr.Logger.Error("Peer not found")
 		return false
 	}
 
-	b := make([]byte, mr.size.Load())
+	b := make([]byte, size)
 	_, err := rand.Read(b)
 	if err != nil {
 		mr.Logger.Error("Failed to generate random bytes")
@@ -282,7 +310,7 @@ func (mr *MockReactor) SendBytes(id p2p.ID, chID byte) bool {
 func (mr *MockReactor) FillChannel(id p2p.ID, chID byte, count, msgSize int) (bool, int, time.Duration) {
 	start := time.Now()
 	for i := 0; i < count; i++ {
-		success := mr.SendBytes(id, chID)
+		success := mr.SendBytes(id, chID, mr.size.Load())
 		if !success {
 			end := time.Now()
 			return success, i, end.Sub(start)
@@ -292,22 +320,28 @@ func (mr *MockReactor) FillChannel(id p2p.ID, chID byte, count, msgSize int) (bo
 	return true, count, end.Sub(start)
 }
 
-func (mr *MockReactor) FloodChannel(wg *sync.WaitGroup, id p2p.ID, d time.Duration, chIDs ...byte) {
+func (mr *MockReactor) FloodChannel(id p2p.ID, d time.Duration, chIDs ...byte) {
 	for _, chID := range chIDs {
-		wg.Add(1)
-		size := mr.sizes[chID]
-		go func(d time.Duration, chID byte, size int) {
+		go func(d time.Duration, chID byte) {
 			start := time.Now()
-			defer wg.Done()
 			for time.Since(start) < d {
-				mr.SendBytes(id, chID)
+				success := mr.SendBytes(id, chID, mr.size.Load())
+				if success {
+					mr.metrics.mtx.Lock()
+					if _, ok := mr.metrics.startUploadTime[string(id)]; !ok {
+						mr.metrics.startUploadTime[string(id)] = time.Now()
+					}
+					mr.metrics.cumulativeUploadBytes[string(id)] += int(mr.size.Load())
+					mr.metrics.uploadSpeed[string(id)] = float64(mr.metrics.cumulativeUploadBytes[string(id)]) / time.Now().Sub(mr.metrics.startUploadTime[string(id)]).Seconds()
+					mr.metrics.mtx.Unlock()
+				}
 			}
-		}(d, chID, size)
+		}(d, chID)
 	}
 }
 
-func (mr *MockReactor) FloodAllPeers(wg *sync.WaitGroup, d time.Duration, chIDs ...byte) {
+func (mr *MockReactor) FloodAllPeers(d time.Duration, chIDs ...byte) {
 	for _, peer := range mr.peers {
-		mr.FloodChannel(wg, peer.ID(), d, chIDs...)
+		mr.FloodChannel(peer.ID(), d, chIDs...)
 	}
 }

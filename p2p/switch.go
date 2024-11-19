@@ -121,14 +121,14 @@ func NewSwitch(
 		traceClient:          trace.NoOpTracer(),
 	}
 
-	go func() {
-		for {
-			fmt.Println("=================================")
-			fmt.Println(sw.peers.list)
-			fmt.Println("=================================")
-			time.Sleep(5 * time.Second)
-		}
-	}()
+	//go func() {
+	//	for {
+	//		fmt.Println("=================================")
+	//		fmt.Println(sw.peers.list)
+	//		fmt.Println("=================================")
+	//		time.Sleep(5 * time.Second)
+	//	}
+	//}()
 
 	// Ensure we have a completely undeterministic PRNG.
 	sw.rng = rand.NewRand()
@@ -167,6 +167,7 @@ func WithTracer(tracer trace.Tracer) SwitchOption {
 // AddReactor adds the given reactor to the switch.
 // NOTE: Not goroutine safe.
 func (sw *Switch) AddReactor(name string, reactor Reactor) Reactor {
+	sw.Logger.Error("registering reactor", "name", name, "channels", reactor.GetChannels())
 	for _, chDesc := range reactor.GetChannels() {
 		chID := chDesc.ID
 		// No two reactors can share the same channel.
@@ -375,6 +376,7 @@ func (sw *Switch) StopPeerForError(peer Peer, reason interface{}) {
 		return
 	}
 
+	sw.Logger.Error("Stopping peer for error", "peer", peer, "err", reason)
 	sw.stopAndRemovePeer(peer, reason)
 
 	if peer.IsPersistent() {
@@ -414,7 +416,7 @@ func (sw *Switch) getPeerAddress(peer Peer) (*NetAddress, error) {
 // StopPeerGracefully disconnects from a peer gracefully.
 // TODO: handle graceful disconnects.
 func (sw *Switch) StopPeerGracefully(peer Peer) {
-	sw.Logger.Info("Stopping peer gracefully", "peer", peer.ID())
+	sw.Logger.Info("Stopping peer gracefully")
 	sw.stopAndRemovePeer(peer, nil)
 }
 
