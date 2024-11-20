@@ -120,13 +120,16 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) {
 	}
 }
 
+// RETRY_ATTEMPTS the number of retry times when the subscritpion is closed.
+const RETRY_ATTEMPTS = 6
+
 func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool, error) {
 	env := core.GetEnvironment()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	blockAPI.Lock()
 	defer blockAPI.Unlock()
-	for i := 1; i < 6; i++ {
+	for i := 1; i < RETRY_ATTEMPTS; i++ {
 		select {
 		case <-ctx.Done():
 			return false, nil
