@@ -58,7 +58,6 @@ type BlockAPI struct {
 
 func NewBlockAPI() *BlockAPI {
 	return &BlockAPI{
-		// TODO(rach-id) make 1000 configurable if there is a need for it
 		heightListeners: make(map[chan NewHeightEvent]struct{}, 1000),
 	}
 }
