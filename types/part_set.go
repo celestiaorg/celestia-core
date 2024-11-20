@@ -271,6 +271,10 @@ func (ps *PartSet) Total() uint32 {
 }
 
 func (ps *PartSet) AddPart(part *Part) (bool, error) {
+	if part == nil {
+		return false, fmt.Errorf("nil part")
+	}
+
 	// The proof should be compatible with the number of parts.
 	if part.Proof.Total != int64(ps.total) {
 		return false, ErrPartSetInvalidProof
@@ -285,6 +289,9 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 }
 
 func (ps *PartSet) AddPartWithoutProof(part *Part) (bool, error) {
+	if part == nil {
+		return false, fmt.Errorf("nil part")
+	}
 	if ps == nil {
 		return false, nil
 	}
