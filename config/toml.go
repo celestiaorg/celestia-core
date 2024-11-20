@@ -89,7 +89,7 @@ const defaultConfigTemplate = `# This is a TOML config file.
 # proxy_app = "{{ .BaseConfig.ProxyApp }}"
 
 # A custom human readable name for this node
-# moniker = "{{ .BaseConfig.Moniker }}"
+moniker = "{{ .BaseConfig.Moniker }}"
 
 # If this node is many blocks behind the tip of the chain, FastSync
 # allows them to catchup quickly by downloading blocks in parallel
