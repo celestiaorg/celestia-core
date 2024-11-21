@@ -76,7 +76,7 @@ const defaultConfigTemplate = `# This is a TOML config file.
 # "$HOME/.cometbft" by default, but could be changed via $CMTHOME env variable
 # or --home cmd flag.
 
-# NOTE: All configrations here are commented out. To modify them, uncomment 
+# NOTE: All configurations here are commented out. To modify them, uncomment 
 # them and change the values. The current values are the default values
 # at creation of the config. Default values can change per release.
 
