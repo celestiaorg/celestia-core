@@ -22,9 +22,19 @@ func StartGRPCServer(ln net.Listener) error {
 	grpcServer := grpc.NewServer()
 	RegisterBroadcastAPIServer(grpcServer, &broadcastAPI{})
 	api := NewBlockAPI()
-	go api.StartNewBlockEventListener(context.Background())
 	RegisterBlockAPIServer(grpcServer, api)
-	return grpcServer.Serve(ln)
+	errCh := make(chan error, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		errCh <- api.StartNewBlockEventListener(ctx)
+	}()
+	go func() {
+		errCh <- grpcServer.Serve(ln)
+	}()
+	defer grpcServer.GracefulStop()
+	// blocks until one errors or returns nil
+	return <-errCh
 }
 
 // StartGRPCClient dials the gRPC server using protoAddr and returns a new

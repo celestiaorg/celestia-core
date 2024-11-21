@@ -63,6 +63,7 @@ func NewBlockAPI() *BlockAPI {
 }
 
 func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) {
+func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) error {
 	env := core.GetEnvironment()
 	if blockAPI.newBlockSubscription == nil {
 		var err error
@@ -74,23 +75,23 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) {
 		)
 		if err != nil {
 			env.Logger.Error("Failed to subscribe to new blocks", "err", err)
-			return
+			return err
 		}
 	}
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		case <-blockAPI.newBlockSubscription.Cancelled():
 			env.Logger.Error("cancelled grpc subscription. retrying")
 			ok, err := blockAPI.retryNewBlocksSubscription(ctx)
 			if err != nil {
 				blockAPI.closeAllListeners()
-				return
+				return err
 			}
 			if !ok {
 				// this will happen when the context is done. we can stop here
-				return
+				return nil
 			}
 		case event, ok := <-blockAPI.newBlockSubscription.Out():
 			if !ok {
@@ -98,11 +99,11 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) {
 				ok, err := blockAPI.retryNewBlocksSubscription(ctx)
 				if err != nil {
 					blockAPI.closeAllListeners()
-					return
+					return err
 				}
 				if !ok {
 					// this will happen when the context is done. we can stop here
-					return
+					return nil
 				}
 				continue
 			}
@@ -113,7 +114,7 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) {
 			data, ok := event.Data().(eventstypes.EventDataNewBlock)
 			if !ok {
 				env.Logger.Debug("couldn't cast event data to new block")
-				continue
+				return fmt.Errorf("couldn't cast event data to new block. Events: %s", event.Events())
 			}
 			blockAPI.broadcastToListeners(ctx, data.Block.Height, data.Block.Hash())
 		}
