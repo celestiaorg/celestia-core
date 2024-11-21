@@ -123,6 +123,9 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) {
 // RetryAttempts the number of retry times when the subscription is closed.
 const RetryAttempts = 6
 
+// SubscriptionCapacity the maximum number of pending blocks in the subscription.
+const SubscriptionCapacity = 500
+
 func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool, error) {
 	env := core.GetEnvironment()
 	ticker := time.NewTicker(time.Second)
@@ -139,7 +142,7 @@ func (blockAPI *BlockAPI) retryNewBlocksSubscription(ctx context.Context) (bool,
 				ctx,
 				fmt.Sprintf("new-block-grpc-subscription-%s", rand.Str(6)),
 				eventstypes.EventQueryNewBlock,
-				500,
+				SubscriptionCapacity,
 			)
 			if err != nil {
 				env.Logger.Error("Failed to subscribe to new blocks. retrying", "err", err, "retry_number", i)
