@@ -244,19 +244,23 @@ func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_B
 
 func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockAPI_BlockByHeightServer) error {
 	blockStore := core.GetEnvironment().BlockStore
-
-	blockMeta := blockStore.LoadBlockMeta(req.Height)
-	if blockMeta == nil {
-		return fmt.Errorf("nil block meta for height %d", req.Height)
+	height := req.Height
+	if height == 0 {
+		height = blockStore.Height()
 	}
 
-	commit := blockStore.LoadSeenCommit(req.Height)
+	blockMeta := blockStore.LoadBlockMeta(height)
+	if blockMeta == nil {
+		return fmt.Errorf("nil block meta for height %d", height)
+	}
+
+	commit := blockStore.LoadSeenCommit(height)
 	if commit == nil {
-		return fmt.Errorf("nil block commit for height %d", req.Height)
+		return fmt.Errorf("nil block commit for height %d", height)
 	}
 	protoCommit := commit.ToProto()
 
-	validatorSet, err := core.GetEnvironment().StateStore.LoadValidators(req.Height)
+	validatorSet, err := core.GetEnvironment().StateStore.LoadValidators(height)
 	if err != nil {
 		return err
 	}
@@ -266,12 +270,12 @@ func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockA
 	}
 
 	for i := 0; i < int(blockMeta.BlockID.PartSetHeader.Total); i++ {
-		part, err := blockStore.LoadBlockPart(req.Height, i).ToProto()
+		part, err := blockStore.LoadBlockPart(height, i).ToProto()
 		if err != nil {
 			return err
 		}
 		if part == nil {
-			return fmt.Errorf("nil block part %d for height %d", i, req.Height)
+			return fmt.Errorf("nil block part %d for height %d", i, height)
 		}
 		if !req.Prove {
 			part.Proof = crypto.Proof{}
@@ -336,9 +340,14 @@ func (blockAPI *BlockAPI) Status(_ context.Context, _ *StatusRequest) (*StatusRe
 }
 
 func (blockAPI *BlockAPI) BlockMetaByHeight(_ context.Context, req *BlockMetaByHeightRequest) (*BlockMetaByHeightResponse, error) {
-	blockMeta := core.GetEnvironment().BlockStore.LoadBlockMeta(req.Height)
+	blockStore := core.GetEnvironment().BlockStore
+	height := req.Height
+	if height == 0 {
+		height = blockStore.Height()
+	}
+	blockMeta := blockStore.LoadBlockMeta(height)
 	if blockMeta == nil {
-		return nil, fmt.Errorf("nil block meta for block height %d", req.Height)
+		return nil, fmt.Errorf("nil block meta for block height %d", height)
 	}
 	return &BlockMetaByHeightResponse{
 		BlockMeta: blockMeta.ToProto(),
@@ -346,9 +355,14 @@ func (blockAPI *BlockAPI) BlockMetaByHeight(_ context.Context, req *BlockMetaByH
 }
 
 func (blockAPI *BlockAPI) Commit(_ context.Context, req *CommitRequest) (*CommitResponse, error) {
-	commit := core.GetEnvironment().BlockStore.LoadSeenCommit(req.Height)
+	blockStore := core.GetEnvironment().BlockStore
+	height := req.Height
+	if height == 0 {
+		height = blockStore.Height()
+	}
+	commit := blockStore.LoadSeenCommit(height)
 	if commit == nil {
-		return nil, fmt.Errorf("nil block commit for height %d", req.Height)
+		return nil, fmt.Errorf("nil block commit for height %d", height)
 	}
 	protoCommit := commit.ToProto()
 
@@ -363,7 +377,12 @@ func (blockAPI *BlockAPI) Commit(_ context.Context, req *CommitRequest) (*Commit
 }
 
 func (blockAPI *BlockAPI) ValidatorSet(_ context.Context, req *ValidatorSetRequest) (*ValidatorSetResponse, error) {
-	validatorSet, err := core.GetEnvironment().StateStore.LoadValidators(req.Height)
+	blockStore := core.GetEnvironment().BlockStore
+	height := req.Height
+	if height == 0 {
+		height = blockStore.Height()
+	}
+	validatorSet, err := core.GetEnvironment().StateStore.LoadValidators(height)
 	if err != nil {
 		return nil, err
 	}
@@ -373,6 +392,7 @@ func (blockAPI *BlockAPI) ValidatorSet(_ context.Context, req *ValidatorSetReque
 	}
 	return &ValidatorSetResponse{
 		ValidatorSet: protoValidatorSet,
+		Height:       height,
 	}, nil
 }
 

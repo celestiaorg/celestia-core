@@ -25,8 +25,12 @@ message BlockByHashRequest {
 }
 
 message BlockByHeightRequest {
+  // Height the requested block height.
+  // If height is equal to 0, the latest height stored in the block store
+  // will be used.
   int64 height = 1;
-  bool  prove  = 2;
+  // Prove set to true to return the parts proofs.
+  bool prove = 2;
 }
 
 message BlockMetaByHashRequest {
@@ -34,14 +38,23 @@ message BlockMetaByHashRequest {
 }
 
 message BlockMetaByHeightRequest {
+  // Height the requested block meta height.
+  // If height is equal to 0, the latest height stored in the block store
+  // will be used.
   int64 height = 1;
 }
 
 message CommitRequest {
+  // Height the requested block commit height.
+  // If height is equal to 0, the latest height stored in the block store
+  // will be used.
   int64 height = 1;
 }
 
 message ValidatorSetRequest {
+  // Height the requested validator set height.
+  // If height is equal to 0, the latest height stored in the block store
+  // will be used.
   int64 height = 1;
 }
 
@@ -94,7 +107,11 @@ message CommitResponse {
 }
 
 message ValidatorSetResponse {
+  // ValidatorSet the requested validator set.
   tendermint.types.ValidatorSet validator_set = 1;
+  // Height the height corresponding to the returned
+  // validator set.
+  int64 height = 2;
 }
 
 message NewHeightEvent {

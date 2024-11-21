@@ -119,6 +119,18 @@ func TestBlockMetaByHeight(t *testing.T) {
 	assert.Equal(t, expectedBlockMeta.BlockID.Hash.Bytes(), res.BlockMeta.BlockID.Hash)
 }
 
+func TestLatestBlockMetaByHeight(t *testing.T) {
+	client := setupClient(t)
+	waitForHeight(t, 2)
+
+	res, err := client.BlockMetaByHeight(context.Background(), &core_grpc.BlockMetaByHeightRequest{
+		Height: 0,
+	})
+	require.NoError(t, err)
+
+	assert.Greater(t, res.BlockMeta.Header.Height, int64(2))
+}
+
 func TestCommit(t *testing.T) {
 	client := setupClient(t)
 	waitForHeight(t, 2)
@@ -130,6 +142,18 @@ func TestCommit(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedBlockCommit.BlockID.Hash.Bytes(), res.Commit.BlockID.Hash)
+}
+
+func TestLatestCommit(t *testing.T) {
+	client := setupClient(t)
+	waitForHeight(t, 2)
+
+	res, err := client.Commit(context.Background(), &core_grpc.CommitRequest{
+		Height: 0,
+	})
+	require.NoError(t, err)
+
+	assert.Greater(t, res.Commit.Height, int64(2))
 }
 
 func TestValidatorSet(t *testing.T) {
@@ -144,6 +168,18 @@ func TestValidatorSet(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, len(expectedValidatorSet.Validators), len(res.ValidatorSet.Validators))
+}
+
+func TestLatestValidatorSet(t *testing.T) {
+	client := setupClient(t)
+	waitForHeight(t, 2)
+
+	res, err := client.ValidatorSet(context.Background(), &core_grpc.ValidatorSetRequest{
+		Height: 0,
+	})
+	require.NoError(t, err)
+
+	assert.Greater(t, res.Height, int64(2))
 }
 
 func TestStatus(t *testing.T) {
@@ -304,6 +340,27 @@ func TestBlockByHeight(t *testing.T) {
 
 	assert.Equal(t, part.BlockPart.Proof, crypto.Proof{})
 	assert.Equal(t, part.BlockMeta.BlockID.Hash, expectedBlockMeta.BlockID.Hash.Bytes())
+}
+
+func TestLatestBlockByHeight(t *testing.T) {
+	client := setupClient(t)
+	waitForHeight(t, 2)
+
+	// query the block along with the part proofs
+	res, err := client.BlockByHeight(context.Background(), &core_grpc.BlockByHeightRequest{
+		Height: 0,
+	})
+	require.NoError(t, err)
+
+	part, err := res.Recv()
+	require.NoError(t, err)
+
+	require.NotNil(t, part.BlockPart)
+	require.NotNil(t, part.ValidatorSet)
+	require.NotNil(t, part.Commit)
+	require.NotNil(t, part.BlockMeta)
+
+	assert.Greater(t, part.BlockMeta.Header.Height, int64(2))
 }
 
 func TestBlockQuery_Streaming(t *testing.T) {
