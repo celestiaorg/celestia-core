@@ -62,7 +62,6 @@ func NewBlockAPI() *BlockAPI {
 	}
 }
 
-func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) {
 func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) error {
 	env := core.GetEnvironment()
 	if blockAPI.newBlockSubscription == nil {
