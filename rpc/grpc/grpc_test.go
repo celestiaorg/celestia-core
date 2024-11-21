@@ -121,7 +121,7 @@ func TestBlockMetaByHeight(t *testing.T) {
 
 func TestLatestBlockMetaByHeight(t *testing.T) {
 	client := setupClient(t)
-	waitForHeight(t, 2)
+	waitForHeight(t, 3)
 
 	res, err := client.BlockMetaByHeight(context.Background(), &core_grpc.BlockMetaByHeightRequest{
 		Height: 0,
@@ -146,7 +146,7 @@ func TestCommit(t *testing.T) {
 
 func TestLatestCommit(t *testing.T) {
 	client := setupClient(t)
-	waitForHeight(t, 2)
+	waitForHeight(t, 3)
 
 	res, err := client.Commit(context.Background(), &core_grpc.CommitRequest{
 		Height: 0,
@@ -172,7 +172,7 @@ func TestValidatorSet(t *testing.T) {
 
 func TestLatestValidatorSet(t *testing.T) {
 	client := setupClient(t)
-	waitForHeight(t, 2)
+	waitForHeight(t, 3)
 
 	res, err := client.ValidatorSet(context.Background(), &core_grpc.ValidatorSetRequest{
 		Height: 0,
