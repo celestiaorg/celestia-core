@@ -200,7 +200,7 @@ func (blockExec *BlockExecutor) ProcessProposal(
 // ValidateBlock validates the given block against the given state.
 // If the block is invalid, it returns an error.
 // Validation does not mutate state, but does require historical information from the stateDB,
-// ie. to verify evidence from a validator at an old height.
+// i.e., to verify evidence from a validator at an old height.
 func (blockExec *BlockExecutor) ValidateBlock(state State, block *types.Block) error {
 	err := validateBlock(state, block)
 	if err != nil {
@@ -514,7 +514,7 @@ func updateState(
 	validatorUpdates []*types.Validator,
 ) (State, error) {
 
-	// Copy the valset so we can apply changes from EndBlock
+	// Copy the valset so that we can apply changes from EndBlock
 	// and update s.LastValidators and s.Validators.
 	nValSet := state.NextValidators.Copy()
 
@@ -525,7 +525,7 @@ func updateState(
 		if err != nil {
 			return state, fmt.Errorf("error changing validator set: %v", err)
 		}
-		// Change results from this height but only applies to the next next height.
+		// Change results from this height but only applies to the next height.
 		lastHeightValsChanged = header.Height + 1 + 1
 	}
 
@@ -553,7 +553,7 @@ func updateState(
 
 	// NOTE: the AppHash has not been populated.
 	// It will be filled on state.Save.
-	return State{
+	s := State{
 		Version:                          nextVersion,
 		ChainID:                          state.ChainID,
 		InitialHeight:                    state.InitialHeight,
@@ -568,7 +568,11 @@ func updateState(
 		LastHeightConsensusParamsChanged: lastHeightParamsChanged,
 		LastResultsHash:                  ABCIResponsesResultsHash(abciResponses),
 		AppHash:                          nil,
-	}, nil
+		TimeoutCommit:                    abciResponses.EndBlock.Timeouts.TimeoutCommit,
+		TimeoutPropose:                   abciResponses.EndBlock.Timeouts.TimeoutPropose,
+	}
+
+	return s, nil
 }
 
 // Fire NewBlock, NewBlockHeader.

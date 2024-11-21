@@ -307,9 +307,13 @@ func (s *syncer) Sync(snapshot *snapshot, chunks *chunkQueue) (sm.State, *types.
 	}
 
 	// Verify app and app version
-	if err := s.verifyApp(snapshot, state.Version.Consensus.App); err != nil {
+	timeouts, err := s.verifyApp(snapshot, state.Version.Consensus.App)
+	if err != nil {
 		return sm.State{}, nil, err
 	}
+
+	state.TimeoutCommit = timeouts.TimeoutCommit
+	state.TimeoutPropose = timeouts.TimeoutPropose
 
 	// Done! 🎉
 	s.logger.Info("Snapshot restored", "height", snapshot.Height, "format", snapshot.Format,
@@ -484,10 +488,10 @@ func (s *syncer) requestChunk(snapshot *snapshot, chunk uint32) {
 }
 
 // verifyApp verifies the sync, checking the app hash, last block height and app version
-func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) error {
+func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) (abci.TimeoutsInfo, error) {
 	resp, err := s.connQuery.InfoSync(proxy.RequestInfo)
 	if err != nil {
-		return fmt.Errorf("failed to query ABCI app for appHash: %w", err)
+		return abci.TimeoutsInfo{}, fmt.Errorf("failed to query ABCI app for appHash: %w", err)
 	}
 
 	// sanity check that the app version in the block matches the application's own record
@@ -495,14 +499,14 @@ func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) error {
 	if resp.AppVersion != appVersion {
 		// An error here most likely means that the app hasn't inplemented state sync
 		// or the Info call correctly
-		return fmt.Errorf("app version mismatch. Expected: %d, got: %d",
+		return abci.TimeoutsInfo{}, fmt.Errorf("app version mismatch. Expected: %d, got: %d",
 			appVersion, resp.AppVersion)
 	}
 	if !bytes.Equal(snapshot.trustedAppHash, resp.LastBlockAppHash) {
 		s.logger.Error("appHash verification failed",
 			"expected", snapshot.trustedAppHash,
 			"actual", resp.LastBlockAppHash)
-		return errVerifyFailed
+		return abci.TimeoutsInfo{}, errVerifyFailed
 	}
 	//nolint:gosec
 	if uint64(resp.LastBlockHeight) != snapshot.Height {
@@ -511,9 +515,9 @@ func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) error {
 			"expected", snapshot.Height,
 			"actual", resp.LastBlockHeight,
 		)
-		return errVerifyFailed
+		return abci.TimeoutsInfo{}, errVerifyFailed
 	}
 
 	s.logger.Info("Verified ABCI app", "height", snapshot.Height, "appHash", snapshot.trustedAppHash)
-	return nil
+	return resp.Timeouts, nil
 }

@@ -156,8 +156,8 @@ LOOP:
 		}
 
 		// NOTE: since the priv key is set when the msgs are received
-		// it will attempt to eg double sign but we can just ignore it
-		// since the votes will be replayed and we'll get to the next step
+		// it will attempt to e.g., double sign, but we can just ignore it
+		// since the votes will be replayed, and we'll get to the next step
 		if err := cs.readReplayMessage(msg, nil); err != nil {
 			return err
 		}
@@ -362,6 +362,11 @@ func (h *Handshaker) ReplayBlocksWithContext(
 				state.ConsensusParams = types.UpdateConsensusParams(state.ConsensusParams, res.ConsensusParams)
 				state.Version.Consensus.App = state.ConsensusParams.Version.AppVersion
 			}
+
+			// update timeouts based on the InitChainSync response
+			state.TimeoutCommit = res.Timeouts.TimeoutCommit
+			state.TimeoutPropose = res.Timeouts.TimeoutPropose
+
 			// We update the last results hash with the empty hash, to conform with RFC-6962.
 			state.LastResultsHash = merkle.HashFromByteSlices(nil)
 			if err := h.stateStore.Save(state); err != nil {

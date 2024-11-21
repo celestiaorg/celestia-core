@@ -167,14 +167,14 @@ type BaseConfig struct { //nolint: maligned
 	chainID string
 
 	// The root directory for all data.
-	// This should be set in viper so it can unmarshal into this struct
+	// This should be set in viper so that it can unmarshal into this struct
 	RootDir string `mapstructure:"home"`
 
 	// TCP or UNIX socket address of the ABCI application,
 	// or the name of an ABCI application compiled in with the CometBFT binary
 	ProxyApp string `mapstructure:"proxy_app"`
 
-	// A custom human readable name for this node
+	// A custom human-readable name for this node
 	Moniker string `mapstructure:"moniker"`
 
 	// If this node is many blocks behind the tip of the chain, FastSync
@@ -212,7 +212,7 @@ type BaseConfig struct { //nolint: maligned
 	// Output format: 'plain' (colored text) or 'json'
 	LogFormat string `mapstructure:"log_format"`
 
-	// Path to the JSON file containing the initial validator set and other meta data
+	// Path to the JSON file containing the initial validator set and other metadata
 	Genesis string `mapstructure:"genesis_file"`
 
 	// Path to the JSON file containing the private key to use as a validator in the consensus protocol
@@ -279,7 +279,7 @@ func (cfg BaseConfig) PrivValidatorKeyFile() string {
 	return rootify(cfg.PrivValidatorKey, cfg.RootDir)
 }
 
-// PrivValidatorFile returns the full path to the priv_validator_state.json file
+// PrivValidatorStateFile returns the full path to the priv_validator_state.json file
 func (cfg BaseConfig) PrivValidatorStateFile() string {
 	return rootify(cfg.PrivValidatorState, cfg.RootDir)
 }
@@ -871,7 +871,7 @@ func DefaultStateSyncConfig() *StateSyncConfig {
 	}
 }
 
-// TestFastSyncConfig returns a default configuration for the state sync service
+// TestStateSyncConfig returns a default configuration for the state sync service
 func TestStateSyncConfig() *StateSyncConfig {
 	return DefaultStateSyncConfig()
 }
@@ -1055,6 +1055,20 @@ func (cfg *ConsensusConfig) Propose(round int32) time.Duration {
 	) * time.Nanosecond
 }
 
+// ProposeWithCustomTimeout is identical to Propose. However,
+// it calculates the amount of time to wait for a proposal using the supplied
+// customTimeout.
+// If customTimeout is 0, the TimeoutPropose from cfg is used.
+func (cfg *ConsensusConfig) ProposeWithCustomTimeout(round int32, customTimeout time.Duration) time.Duration {
+	// this is to capture any unforeseen cases where the customTimeout is 0
+	var timeoutPropose = customTimeout
+	if timeoutPropose == 0 {
+		// falling back to default timeout
+		timeoutPropose = cfg.TimeoutPropose
+	}
+	return time.Duration(timeoutPropose.Nanoseconds()+cfg.TimeoutProposeDelta.Nanoseconds()*int64(round)) * time.Nanosecond
+}
+
 // Prevote returns the amount of time to wait for straggler votes after receiving any +2/3 prevotes
 func (cfg *ConsensusConfig) Prevote(round int32) time.Duration {
 	return time.Duration(
@@ -1070,9 +1084,21 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 }
 
 // Commit returns the amount of time to wait for straggler votes after receiving +2/3 precommits
-// for a single block (ie. a commit).
+// for a single block (i.e., a commit).
 func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
 	return t.Add(cfg.TimeoutCommit)
+}
+
+// CommitWithCustomTimeout is identical to Commit. However, it calculates the time for commit using the supplied customTimeout.
+// If customTimeout is 0, the TimeoutCommit from cfg is used.
+func (cfg *ConsensusConfig) CommitWithCustomTimeout(t time.Time, customTimeout time.Duration) time.Time {
+	// this is to capture any unforeseen cases where the customTimeout is 0
+	var timeoutCommit = customTimeout
+	if timeoutCommit == 0 {
+		// falling back to default timeout
+		timeoutCommit = cfg.TimeoutCommit
+	}
+	return t.Add(timeoutCommit)
 }
 
 // WalFile returns the full path to the write-ahead log file
@@ -1091,6 +1117,8 @@ func (cfg *ConsensusConfig) SetWalFile(walFile string) {
 // ValidateBasic performs basic validation (checking param bounds, etc.) and
 // returns an error if any check fails.
 func (cfg *ConsensusConfig) ValidateBasic() error {
+	// TODO we may want to remove this check if TimeoutPropose is removed from
+	// the config
 	if cfg.TimeoutPropose < 0 {
 		return errors.New("timeout_propose can't be negative")
 	}
@@ -1109,6 +1137,8 @@ func (cfg *ConsensusConfig) ValidateBasic() error {
 	if cfg.TimeoutPrecommitDelta < 0 {
 		return errors.New("timeout_precommit_delta can't be negative")
 	}
+	// TODO we may want to remove this check if TimeoutCommit is removed from
+	// the config
 	if cfg.TimeoutCommit < 0 {
 		return errors.New("timeout_commit can't be negative")
 	}

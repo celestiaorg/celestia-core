@@ -692,8 +692,18 @@ func TestTxSearchMultipleTxs(t *testing.T) {
 
 	results, err := indexer.Search(ctx, query.MustParse("account.number >= 1"))
 	assert.NoError(t, err)
-
 	require.Len(t, results, 3)
+
+	// since two txs were added at height 1 and 2, we should have two unique transactions
+	// for both heights
+	results, err = indexer.Search(ctx, query.MustParse("tx.height=1"))
+	assert.NoError(t, err)
+	require.Len(t, results, 2)
+
+	results, err = indexer.Search(ctx, query.MustParse("tx.height=2"))
+	assert.NoError(t, err)
+	require.Len(t, results, 2)
+
 }
 
 func txResultWithEvents(events []abci.Event) *abci.TxResult {

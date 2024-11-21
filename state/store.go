@@ -87,7 +87,7 @@ type dbStore struct {
 
 type StoreOptions struct {
 
-	// DiscardABCIResponses determines whether or not the store
+	// DiscardABCIResponses determines whether the store
 	// retains all ABCIResponses. If DiscardABCiResponses is enabled,
 	// the store will maintain only the response object from the latest
 	// height.
@@ -101,7 +101,7 @@ func NewStore(db dbm.DB, options StoreOptions) Store {
 	return dbStore{db, options}
 }
 
-// LoadStateFromDBOrGenesisFile loads the most recent state from the database,
+// LoadFromDBOrGenesisFile loads the most recent state from the database,
 // or creates a new one from the given genesisFilePath.
 func (store dbStore) LoadFromDBOrGenesisFile(genesisFilePath string) (State, error) {
 	state, err := store.Load()
@@ -119,7 +119,7 @@ func (store dbStore) LoadFromDBOrGenesisFile(genesisFilePath string) (State, err
 	return state, nil
 }
 
-// LoadStateFromDBOrGenesisDoc loads the most recent state from the database,
+// LoadFromDBOrGenesisDoc loads the most recent state from the database,
 // or creates a new one from the given genesisDoc.
 func (store dbStore) LoadFromDBOrGenesisDoc(genesisDoc *types.GenesisDoc) (State, error) {
 	state, err := store.Load()
@@ -138,7 +138,7 @@ func (store dbStore) LoadFromDBOrGenesisDoc(genesisDoc *types.GenesisDoc) (State
 	return state, nil
 }
 
-// LoadState loads the State from the database.
+// Load loads the State from the database.
 func (store dbStore) Load() (State, error) {
 	return store.loadState(stateKey)
 }
@@ -196,6 +196,7 @@ func (store dbStore) save(state State, key []byte) error {
 		state.LastHeightConsensusParamsChanged, state.ConsensusParams); err != nil {
 		return err
 	}
+
 	err := store.db.SetSync(key, state.Bytes())
 	if err != nil {
 		return err
@@ -203,7 +204,7 @@ func (store dbStore) save(state State, key []byte) error {
 	return nil
 }
 
-// BootstrapState saves a new state, used e.g. by state sync when starting from non-zero height.
+// Bootstrap saves a new state, used e.g. by state sync when starting from non-zero height.
 func (store dbStore) Bootstrap(state State) error {
 	height := state.LastBlockHeight + 1
 	if height == 1 {
@@ -236,7 +237,7 @@ func (store dbStore) Bootstrap(state State) error {
 // guaranteed to delete all states, since the last checkpointed state and states being pointed to by
 // e.g. `LastHeightChanged` must remain. The state at to must also exist.
 //
-// The from parameter is necessary since we can't do a key scan in a performant way due to the key
+// The `from` parameter is necessary since we can't do a key scan in a performant way due to the key
 // encoding not preserving ordering: https://github.com/tendermint/tendermint/issues/4567
 // This will cause some old states to be left behind when doing incremental partial prunes,
 // specifically older checkpoints and LastHeightChanged targets.
@@ -403,7 +404,7 @@ func (store dbStore) LoadABCIResponses(height int64) (*cmtstate.ABCIResponses, e
 	return abciResponses, nil
 }
 
-// LoadLastABCIResponses loads the ABCIResponses from the most recent height.
+// LoadLastABCIResponse loads the ABCIResponses from the most recent height.
 // The height parameter is used to ensure that the response corresponds to the latest height.
 // If not, an error is returned.
 //

@@ -382,7 +382,11 @@ func (txi *TxIndex) setTmpHashes(tmpHeights map[string][]byte, it dbm.Iterator, 
 		eventSeq := extractEventSeqFromKey(it.Key())
 		tmpHeights[string(it.Value())+eventSeq] = it.Value()
 	} else {
-		tmpHeights[string(it.Value())] = it.Value()
+		// Copy it.Value() to ensure tmpHeights stores independent values, as iterators reuse
+		// the same memory for it.Value(), causing overwrites on each iteration.
+		valueCopy := make([]byte, len(it.Value()))
+		copy(valueCopy, it.Value())
+		tmpHeights[string(it.Value())] = valueCopy
 	}
 }
 
