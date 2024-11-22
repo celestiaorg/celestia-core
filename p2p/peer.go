@@ -674,6 +674,7 @@ func (p *peer) Send(chID byte, msgBytes []byte) bool {
 		fmt.Println("not written entirely")
 		return false
 	}
+	schema.WriteTimedSentBytes(p.traceClient, string(p.ID()), chID, len(msgBytes), time.Now())
 	labels := []string{
 		"peer_id", string(p.ID()),
 		"chID", fmt.Sprintf("%#x", chID),
@@ -855,6 +856,7 @@ func (p *peer) StartReceiving() error {
 				if dd.PacketMsg.ChannelID != int32(chID) {
 					p.Logger.Error("received message on wrong channel", "expected channel id", chID, "received message channel id", dd.PacketMsg.ChannelID)
 				}
+				schema.WriteTimedReceivedBytes(p.traceClient, string(p.ID()), chID, len(dd.PacketMsg.Data), time.Now())
 				p.onReceive(chID, dd.PacketMsg.Data)
 			}
 		}()
