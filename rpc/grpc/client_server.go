@@ -3,6 +3,8 @@ package coregrpc
 import (
 	"net"
 
+	"github.com/tendermint/tendermint/rpc/core"
+
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -33,7 +35,12 @@ func StartGRPCServer(ln net.Listener) error {
 		errCh <- grpcServer.Serve(ln)
 	}()
 	defer grpcServer.GracefulStop()
-	defer api.Stop(ctx)
+	defer func(api *BlockAPI, ctx context.Context) {
+		err := api.Stop(ctx)
+		if err != nil {
+			core.GetEnvironment().Logger.Error("error stopping block api", "err", err)
+		}
+	}(api, ctx)
 	// blocks until one errors or returns nil
 	return <-errCh
 }

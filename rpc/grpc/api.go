@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/tendermint/tendermint/libs/pubsub"
 	"sync"
 	"time"
+
+	"github.com/tendermint/tendermint/libs/pubsub"
 
 	"github.com/tendermint/tendermint/crypto/encoding"
 
@@ -206,20 +207,22 @@ func (blockAPI *BlockAPI) closeAllListeners() {
 
 // Stop cleans up the BlockAPI instance by closing all listeners
 // and ensuring no further events are processed.
-func (blockAPI *BlockAPI) Stop(ctx context.Context) {
+func (blockAPI *BlockAPI) Stop(ctx context.Context) error {
 	blockAPI.Lock()
 	defer blockAPI.Unlock()
 
 	// close all height listeners
 	blockAPI.closeAllListeners()
 
+	var err error
 	// stop the events subscription
 	if blockAPI.newBlockSubscription != nil {
-		core.GetEnvironment().EventBus.Unsubscribe(ctx, blockAPI.subscriptionID, blockAPI.subscriptionQuery)
+		err = core.GetEnvironment().EventBus.Unsubscribe(ctx, blockAPI.subscriptionID, blockAPI.subscriptionQuery)
 		blockAPI.newBlockSubscription = nil
 	}
 
 	core.GetEnvironment().Logger.Info("gRPC streaming API has been stopped")
+	return err
 }
 
 func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_BlockByHashServer) error {
