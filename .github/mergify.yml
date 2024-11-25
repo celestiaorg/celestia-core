@@ -1,19 +1,19 @@
 queue_rules:
   - name: default
-    conditions:
+    queue_conditions:
       - base=v0.34.x-celestia
       - label=S:automerge
+    merge_conditions:
+      - base=v0.34.x-celestia
+      - label=S:automerge
+    commit_message_template: |
+      {{ title }} (#{{ number }})
+
+      {{ body }}
+    merge_method: squash
 
 pull_request_rules:
   - name: Automerge to v0.34.x-celestia
-    conditions:
-      - base=v0.34.x-celestia
-      - label=S:automerge
+    conditions: []
     actions:
       queue:
-        method: squash
-        name: default
-        commit_message_template: |
-          {{ title }} (#{{ number }})
-
-          {{ body }}
