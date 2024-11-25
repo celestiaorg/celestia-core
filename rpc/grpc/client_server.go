@@ -33,6 +33,7 @@ func StartGRPCServer(ln net.Listener) error {
 		errCh <- grpcServer.Serve(ln)
 	}()
 	defer grpcServer.GracefulStop()
+	defer api.Stop(ctx)
 	// blocks until one errors or returns nil
 	return <-errCh
 }
