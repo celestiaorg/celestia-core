@@ -60,7 +60,7 @@ Given this criteria, it is feasible, yet unlikely that a node receives two `Seen
 
 A `SeenTx` MAY be sent for each transaction currently in the transaction pool when a connection with a peer is first established. This acts as a mechanism for syncing pool state across peers.
 
-The `SeenTx` message MUST only be broadcasted after validation and storage. Although it is possible that a node later drops a transaction under load shedding, a `SeenTx` should give as strong guarantees as possible that the node can be relied upon by others that don't yet have the transcation to obtain it.
+The `SeenTx` message MUST only be broadcasted after validation and storage. Although it is possible that a node later drops a transaction under load shedding, a `SeenTx` should give as strong guarantees as possible that the node can be relied upon by others that don't yet have the transaction to obtain it.
 
 > **Note:**
 > Inbound transactions submitted via the RPC do not trigger a `SeenTx` message as it is assumed that the node is the first to see the transaction and by gossiping it to others it is implied that the node has seen the transaction.

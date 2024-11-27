@@ -15,7 +15,7 @@ trace_push_batch_size = 1000
 
 # The list of tables that are updated when tracing. All available tables and
 # their schema can be found in the pkg/trace/schema package. It is represented as a
-# comma separate string. For example: "consensus_round_state,mempool_tx".
+# comma separated string. For example: "consensus_round_state,mempool_tx".
 tracing_tables = "consensus_round_state,mempool_tx"
 ```
 
