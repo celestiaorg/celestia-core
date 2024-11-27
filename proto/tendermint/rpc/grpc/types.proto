@@ -33,17 +33,6 @@ message BlockByHeightRequest {
   bool prove = 2;
 }
 
-message BlockMetaByHashRequest {
-  bytes hash = 1;
-}
-
-message BlockMetaByHeightRequest {
-  // Height the requested block meta height.
-  // If height is equal to 0, the latest height stored in the block store
-  // will be used.
-  int64 height = 1;
-}
-
 message CommitRequest {
   // Height the requested block commit height.
   // If height is equal to 0, the latest height stored in the block store
@@ -74,10 +63,13 @@ message ResponseBroadcastTx {
 
 message StreamedBlockByHashResponse {
   tendermint.types.Part         block_part    = 1;
+  // Commit is only set in the first part, and
+  // it stays nil in the remaining ones.
   tendermint.types.Commit       commit        = 2;
+  // ValidatorSet is only set in the first part, and
+  // it stays nil in the remaining ones.
   tendermint.types.ValidatorSet validator_set = 3;
-  tendermint.types.BlockMeta    block_meta    = 4;
-  bool                          is_last       = 5;
+  bool                          is_last       = 4;
 }
 
 message StreamedBlockByHeightResponse {
@@ -88,18 +80,7 @@ message StreamedBlockByHeightResponse {
   // ValidatorSet is only set in the first part, and
   // it stays nil in the remaining ones.
   tendermint.types.ValidatorSet validator_set = 3;
-  // BlockMeta is only set in the first part, and
-  // it stays nil in the remaining ones.
-  tendermint.types.BlockMeta block_meta = 4;
-  bool                       is_last    = 5;
-}
-
-message BlockMetaByHashResponse {
-  tendermint.types.BlockMeta block_meta = 1;
-}
-
-message BlockMetaByHeightResponse {
-  tendermint.types.BlockMeta block_meta = 1;
+  bool                       is_last    = 4;
 }
 
 message CommitResponse {
@@ -157,9 +138,7 @@ service BroadcastAPI {
 
 service BlockAPI {
   rpc BlockByHash(BlockByHashRequest) returns (stream StreamedBlockByHashResponse);
-  rpc BlockMetaByHash(BlockMetaByHashRequest) returns (BlockMetaByHashResponse);
   rpc BlockByHeight(BlockByHeightRequest) returns (stream StreamedBlockByHeightResponse);
-  rpc BlockMetaByHeight(BlockMetaByHeightRequest) returns (BlockMetaByHeightResponse);
   rpc Commit(CommitRequest) returns (CommitResponse);
   rpc ValidatorSet(ValidatorSetRequest) returns (ValidatorSetResponse);
   rpc SubscribeNewHeights(SubscribeNewHeightsRequest) returns (stream NewHeightEvent);

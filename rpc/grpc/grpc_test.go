@@ -69,10 +69,9 @@ func TestBlockByHash(t *testing.T) {
 	require.NotNil(t, part.BlockPart)
 	require.NotNil(t, part.ValidatorSet)
 	require.NotNil(t, part.Commit)
-	require.NotNil(t, part.BlockMeta)
 
 	assert.NotEqual(t, part.BlockPart.Proof, crypto.Proof{})
-	assert.Equal(t, part.BlockMeta.BlockID.Hash, expectedBlockMeta.BlockID.Hash.Bytes())
+	assert.Equal(t, part.Commit.Height, expectedBlockMeta.Header.Height)
 
 	// query the block along without the part proofs
 	res, err = client.BlockByHash(context.Background(), &core_grpc.BlockByHashRequest{
@@ -87,48 +86,9 @@ func TestBlockByHash(t *testing.T) {
 	require.NotNil(t, part.BlockPart)
 	require.NotNil(t, part.ValidatorSet)
 	require.NotNil(t, part.Commit)
-	require.NotNil(t, part.BlockMeta)
 
 	assert.Equal(t, part.BlockPart.Proof, crypto.Proof{})
-	assert.Equal(t, part.BlockMeta.BlockID.Hash, expectedBlockMeta.BlockID.Hash.Bytes())
-}
-
-func TestBlockMetaByHash(t *testing.T) {
-	client := setupClient(t)
-	waitForHeight(t, 2)
-	expectedBlockMeta := core.GetEnvironment().BlockStore.LoadBlockMeta(1)
-
-	res, err := client.BlockMetaByHash(context.Background(), &core_grpc.BlockMetaByHashRequest{
-		Hash: expectedBlockMeta.BlockID.Hash,
-	})
-	require.NoError(t, err)
-
-	assert.Equal(t, expectedBlockMeta.BlockID.Hash.Bytes(), res.BlockMeta.BlockID.Hash)
-}
-
-func TestBlockMetaByHeight(t *testing.T) {
-	client := setupClient(t)
-	waitForHeight(t, 2)
-	expectedBlockMeta := core.GetEnvironment().BlockStore.LoadBlockMeta(1)
-
-	res, err := client.BlockMetaByHeight(context.Background(), &core_grpc.BlockMetaByHeightRequest{
-		Height: 1,
-	})
-	require.NoError(t, err)
-
-	assert.Equal(t, expectedBlockMeta.BlockID.Hash.Bytes(), res.BlockMeta.BlockID.Hash)
-}
-
-func TestLatestBlockMetaByHeight(t *testing.T) {
-	client := setupClient(t)
-	waitForHeight(t, 3)
-
-	res, err := client.BlockMetaByHeight(context.Background(), &core_grpc.BlockMetaByHeightRequest{
-		Height: 0,
-	})
-	require.NoError(t, err)
-
-	assert.Greater(t, res.BlockMeta.Header.Height, int64(2))
+	assert.Equal(t, part.Commit.Height, expectedBlockMeta.Header.Height)
 }
 
 func TestCommit(t *testing.T) {
@@ -256,10 +216,9 @@ func TestBlockByHash_Streaming(t *testing.T) {
 	require.NotNil(t, part1.BlockPart)
 	require.NotNil(t, part1.ValidatorSet)
 	require.NotNil(t, part1.Commit)
-	require.NotNil(t, part1.BlockMeta)
 
 	assert.Equal(t, part1.BlockPart.Proof, crypto.Proof{})
-	assert.Equal(t, part1.BlockMeta.BlockID.Hash, expectedBlockMeta.BlockID.Hash.Bytes())
+	assert.Equal(t, part1.Commit.Height, expectedBlockMeta.Header.Height)
 
 	part2, err := res.Recv()
 	require.NoError(t, err)
@@ -267,7 +226,6 @@ func TestBlockByHash_Streaming(t *testing.T) {
 	require.NotNil(t, part2.BlockPart)
 	require.Nil(t, part2.ValidatorSet)
 	require.Nil(t, part2.Commit)
-	require.Nil(t, part2.BlockMeta)
 
 	assert.Equal(t, part2.BlockPart.Proof, crypto.Proof{})
 
@@ -284,10 +242,9 @@ func TestBlockByHash_Streaming(t *testing.T) {
 	require.NotNil(t, part1.BlockPart)
 	require.NotNil(t, part1.ValidatorSet)
 	require.NotNil(t, part1.Commit)
-	require.NotNil(t, part1.BlockMeta)
 
 	assert.NotEqual(t, part1.BlockPart.Proof, crypto.Proof{})
-	assert.Equal(t, part1.BlockMeta.BlockID.Hash, expectedBlockMeta.BlockID.Hash.Bytes())
+	assert.Equal(t, part1.Commit.Height, expectedBlockMeta.Header.Height)
 
 	part2, err = res.Recv()
 	require.NoError(t, err)
@@ -295,7 +252,6 @@ func TestBlockByHash_Streaming(t *testing.T) {
 	require.NotNil(t, part2.BlockPart)
 	require.Nil(t, part2.ValidatorSet)
 	require.Nil(t, part2.Commit)
-	require.Nil(t, part2.BlockMeta)
 
 	assert.NotEqual(t, part2.BlockPart.Proof, crypto.Proof{})
 }
@@ -318,10 +274,9 @@ func TestBlockByHeight(t *testing.T) {
 	require.NotNil(t, part.BlockPart)
 	require.NotNil(t, part.ValidatorSet)
 	require.NotNil(t, part.Commit)
-	require.NotNil(t, part.BlockMeta)
 
 	assert.NotEqual(t, part.BlockPart.Proof, crypto.Proof{})
-	assert.Equal(t, part.BlockMeta.BlockID.Hash, expectedBlockMeta.BlockID.Hash.Bytes())
+	assert.Equal(t, part.Commit.Height, expectedBlockMeta.Header.Height)
 
 	// query the block along without the part proofs
 	res, err = client.BlockByHeight(context.Background(), &core_grpc.BlockByHeightRequest{
@@ -336,10 +291,9 @@ func TestBlockByHeight(t *testing.T) {
 	require.NotNil(t, part.BlockPart)
 	require.NotNil(t, part.ValidatorSet)
 	require.NotNil(t, part.Commit)
-	require.NotNil(t, part.BlockMeta)
 
 	assert.Equal(t, part.BlockPart.Proof, crypto.Proof{})
-	assert.Equal(t, part.BlockMeta.BlockID.Hash, expectedBlockMeta.BlockID.Hash.Bytes())
+	assert.Equal(t, part.Commit.Height, expectedBlockMeta.Header.Height)
 }
 
 func TestLatestBlockByHeight(t *testing.T) {
@@ -358,9 +312,8 @@ func TestLatestBlockByHeight(t *testing.T) {
 	require.NotNil(t, part.BlockPart)
 	require.NotNil(t, part.ValidatorSet)
 	require.NotNil(t, part.Commit)
-	require.NotNil(t, part.BlockMeta)
 
-	assert.Greater(t, part.BlockMeta.Header.Height, int64(2))
+	assert.Greater(t, part.Commit.Height, int64(2))
 }
 
 func TestBlockQuery_Streaming(t *testing.T) {
@@ -399,10 +352,9 @@ func TestBlockQuery_Streaming(t *testing.T) {
 	require.NotNil(t, part1.BlockPart)
 	require.NotNil(t, part1.ValidatorSet)
 	require.NotNil(t, part1.Commit)
-	require.NotNil(t, part1.BlockMeta)
 
 	assert.Equal(t, part1.BlockPart.Proof, crypto.Proof{})
-	assert.Equal(t, part1.BlockMeta.BlockID.Hash, expectedBlockMeta.BlockID.Hash.Bytes())
+	assert.Equal(t, part1.Commit.Height, expectedBlockMeta.Header.Height)
 
 	part2, err := res.Recv()
 	require.NoError(t, err)
@@ -410,7 +362,6 @@ func TestBlockQuery_Streaming(t *testing.T) {
 	require.NotNil(t, part2.BlockPart)
 	require.Nil(t, part2.ValidatorSet)
 	require.Nil(t, part2.Commit)
-	require.Nil(t, part2.BlockMeta)
 
 	assert.Equal(t, part2.BlockPart.Proof, crypto.Proof{})
 
@@ -427,10 +378,9 @@ func TestBlockQuery_Streaming(t *testing.T) {
 	require.NotNil(t, part1.BlockPart)
 	require.NotNil(t, part1.ValidatorSet)
 	require.NotNil(t, part1.Commit)
-	require.NotNil(t, part1.BlockMeta)
 
 	assert.NotEqual(t, part1.BlockPart.Proof, crypto.Proof{})
-	assert.Equal(t, part1.BlockMeta.BlockID.Hash, expectedBlockMeta.BlockID.Hash.Bytes())
+	assert.Equal(t, part1.Commit.Height, expectedBlockMeta.Header.Height)
 
 	part2, err = res.Recv()
 	require.NoError(t, err)
@@ -438,7 +388,6 @@ func TestBlockQuery_Streaming(t *testing.T) {
 	require.NotNil(t, part2.BlockPart)
 	require.Nil(t, part2.ValidatorSet)
 	require.Nil(t, part2.Commit)
-	require.Nil(t, part2.BlockMeta)
 
 	assert.NotEqual(t, part2.BlockPart.Proof, crypto.Proof{})
 }

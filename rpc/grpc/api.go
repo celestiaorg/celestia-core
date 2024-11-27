@@ -263,7 +263,6 @@ func (blockAPI *BlockAPI) BlockByHash(req *BlockByHashRequest, stream BlockAPI_B
 			IsLast:    isLastPart,
 		}
 		if i == 0 {
-			resp.BlockMeta = blockMeta.ToProto()
 			resp.ValidatorSet = protoValidatorSet
 			resp.Commit = protoCommit
 		}
@@ -319,7 +318,6 @@ func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockA
 			IsLast:    isLastPart,
 		}
 		if i == 0 {
-			resp.BlockMeta = blockMeta.ToProto()
 			resp.ValidatorSet = protoValidatorSet
 			resp.Commit = protoCommit
 		}
@@ -329,16 +327,6 @@ func (blockAPI *BlockAPI) BlockByHeight(req *BlockByHeightRequest, stream BlockA
 		}
 	}
 	return nil
-}
-
-func (blockAPI *BlockAPI) BlockMetaByHash(_ context.Context, req *BlockMetaByHashRequest) (*BlockMetaByHashResponse, error) {
-	blockMeta := core.GetEnvironment().BlockStore.LoadBlockMetaByHash(req.Hash)
-	if blockMeta == nil {
-		return nil, fmt.Errorf("nil block meta for block hash %d", req.Hash)
-	}
-	return &BlockMetaByHashResponse{
-		BlockMeta: blockMeta.ToProto(),
-	}, nil
 }
 
 func (blockAPI *BlockAPI) Status(_ context.Context, _ *StatusRequest) (*StatusResponse, error) {
@@ -369,21 +357,6 @@ func (blockAPI *BlockAPI) Status(_ context.Context, _ *StatusRequest) (*StatusRe
 			PubKey:      &protoPubKey,
 			VotingPower: status.ValidatorInfo.VotingPower,
 		},
-	}, nil
-}
-
-func (blockAPI *BlockAPI) BlockMetaByHeight(_ context.Context, req *BlockMetaByHeightRequest) (*BlockMetaByHeightResponse, error) {
-	blockStore := core.GetEnvironment().BlockStore
-	height := req.Height
-	if height == 0 {
-		height = blockStore.Height()
-	}
-	blockMeta := blockStore.LoadBlockMeta(height)
-	if blockMeta == nil {
-		return nil, fmt.Errorf("nil block meta for block height %d", height)
-	}
-	return &BlockMetaByHeightResponse{
-		BlockMeta: blockMeta.ToProto(),
 	}, nil
 }
 

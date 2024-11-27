@@ -223,97 +223,6 @@ func (m *BlockByHeightRequest) GetProve() bool {
 	return false
 }
 
-type BlockMetaByHashRequest struct {
-	Hash []byte `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`
-}
-
-func (m *BlockMetaByHashRequest) Reset()         { *m = BlockMetaByHashRequest{} }
-func (m *BlockMetaByHashRequest) String() string { return proto.CompactTextString(m) }
-func (*BlockMetaByHashRequest) ProtoMessage()    {}
-func (*BlockMetaByHashRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{4}
-}
-func (m *BlockMetaByHashRequest) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *BlockMetaByHashRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_BlockMetaByHashRequest.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *BlockMetaByHashRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_BlockMetaByHashRequest.Merge(m, src)
-}
-func (m *BlockMetaByHashRequest) XXX_Size() int {
-	return m.Size()
-}
-func (m *BlockMetaByHashRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_BlockMetaByHashRequest.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_BlockMetaByHashRequest proto.InternalMessageInfo
-
-func (m *BlockMetaByHashRequest) GetHash() []byte {
-	if m != nil {
-		return m.Hash
-	}
-	return nil
-}
-
-type BlockMetaByHeightRequest struct {
-	// Height the requested block meta height.
-	// If height is equal to 0, the latest height stored in the block store
-	// will be used.
-	Height int64 `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
-}
-
-func (m *BlockMetaByHeightRequest) Reset()         { *m = BlockMetaByHeightRequest{} }
-func (m *BlockMetaByHeightRequest) String() string { return proto.CompactTextString(m) }
-func (*BlockMetaByHeightRequest) ProtoMessage()    {}
-func (*BlockMetaByHeightRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{5}
-}
-func (m *BlockMetaByHeightRequest) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *BlockMetaByHeightRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_BlockMetaByHeightRequest.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *BlockMetaByHeightRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_BlockMetaByHeightRequest.Merge(m, src)
-}
-func (m *BlockMetaByHeightRequest) XXX_Size() int {
-	return m.Size()
-}
-func (m *BlockMetaByHeightRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_BlockMetaByHeightRequest.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_BlockMetaByHeightRequest proto.InternalMessageInfo
-
-func (m *BlockMetaByHeightRequest) GetHeight() int64 {
-	if m != nil {
-		return m.Height
-	}
-	return 0
-}
-
 type CommitRequest struct {
 	// Height the requested block commit height.
 	// If height is equal to 0, the latest height stored in the block store
@@ -325,7 +234,7 @@ func (m *CommitRequest) Reset()         { *m = CommitRequest{} }
 func (m *CommitRequest) String() string { return proto.CompactTextString(m) }
 func (*CommitRequest) ProtoMessage()    {}
 func (*CommitRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{6}
+	return fileDescriptor_0ffff5682c662b95, []int{4}
 }
 func (m *CommitRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -372,7 +281,7 @@ func (m *ValidatorSetRequest) Reset()         { *m = ValidatorSetRequest{} }
 func (m *ValidatorSetRequest) String() string { return proto.CompactTextString(m) }
 func (*ValidatorSetRequest) ProtoMessage()    {}
 func (*ValidatorSetRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{7}
+	return fileDescriptor_0ffff5682c662b95, []int{5}
 }
 func (m *ValidatorSetRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -415,7 +324,7 @@ func (m *SubscribeNewHeightsRequest) Reset()         { *m = SubscribeNewHeightsR
 func (m *SubscribeNewHeightsRequest) String() string { return proto.CompactTextString(m) }
 func (*SubscribeNewHeightsRequest) ProtoMessage()    {}
 func (*SubscribeNewHeightsRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{8}
+	return fileDescriptor_0ffff5682c662b95, []int{6}
 }
 func (m *SubscribeNewHeightsRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -451,7 +360,7 @@ func (m *StatusRequest) Reset()         { *m = StatusRequest{} }
 func (m *StatusRequest) String() string { return proto.CompactTextString(m) }
 func (*StatusRequest) ProtoMessage()    {}
 func (*StatusRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{9}
+	return fileDescriptor_0ffff5682c662b95, []int{7}
 }
 func (m *StatusRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -487,7 +396,7 @@ func (m *ResponsePing) Reset()         { *m = ResponsePing{} }
 func (m *ResponsePing) String() string { return proto.CompactTextString(m) }
 func (*ResponsePing) ProtoMessage()    {}
 func (*ResponsePing) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{10}
+	return fileDescriptor_0ffff5682c662b95, []int{8}
 }
 func (m *ResponsePing) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -525,7 +434,7 @@ func (m *ResponseBroadcastTx) Reset()         { *m = ResponseBroadcastTx{} }
 func (m *ResponseBroadcastTx) String() string { return proto.CompactTextString(m) }
 func (*ResponseBroadcastTx) ProtoMessage()    {}
 func (*ResponseBroadcastTx) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{11}
+	return fileDescriptor_0ffff5682c662b95, []int{9}
 }
 func (m *ResponseBroadcastTx) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -569,18 +478,21 @@ func (m *ResponseBroadcastTx) GetDeliverTx() *types.ResponseDeliverTx {
 }
 
 type StreamedBlockByHashResponse struct {
-	BlockPart    *types1.Part         `protobuf:"bytes,1,opt,name=block_part,json=blockPart,proto3" json:"block_part,omitempty"`
-	Commit       *types1.Commit       `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"`
+	BlockPart *types1.Part `protobuf:"bytes,1,opt,name=block_part,json=blockPart,proto3" json:"block_part,omitempty"`
+	// Commit is only set in the first part, and
+	// it stays nil in the remaining ones.
+	Commit *types1.Commit `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"`
+	// ValidatorSet is only set in the first part, and
+	// it stays nil in the remaining ones.
 	ValidatorSet *types1.ValidatorSet `protobuf:"bytes,3,opt,name=validator_set,json=validatorSet,proto3" json:"validator_set,omitempty"`
-	BlockMeta    *types1.BlockMeta    `protobuf:"bytes,4,opt,name=block_meta,json=blockMeta,proto3" json:"block_meta,omitempty"`
-	IsLast       bool                 `protobuf:"varint,5,opt,name=is_last,json=isLast,proto3" json:"is_last,omitempty"`
+	IsLast       bool                 `protobuf:"varint,4,opt,name=is_last,json=isLast,proto3" json:"is_last,omitempty"`
 }
 
 func (m *StreamedBlockByHashResponse) Reset()         { *m = StreamedBlockByHashResponse{} }
 func (m *StreamedBlockByHashResponse) String() string { return proto.CompactTextString(m) }
 func (*StreamedBlockByHashResponse) ProtoMessage()    {}
 func (*StreamedBlockByHashResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{12}
+	return fileDescriptor_0ffff5682c662b95, []int{10}
 }
 func (m *StreamedBlockByHashResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -630,13 +542,6 @@ func (m *StreamedBlockByHashResponse) GetValidatorSet() *types1.ValidatorSet {
 	return nil
 }
 
-func (m *StreamedBlockByHashResponse) GetBlockMeta() *types1.BlockMeta {
-	if m != nil {
-		return m.BlockMeta
-	}
-	return nil
-}
-
 func (m *StreamedBlockByHashResponse) GetIsLast() bool {
 	if m != nil {
 		return m.IsLast
@@ -652,17 +557,14 @@ type StreamedBlockByHeightResponse struct {
 	// ValidatorSet is only set in the first part, and
 	// it stays nil in the remaining ones.
 	ValidatorSet *types1.ValidatorSet `protobuf:"bytes,3,opt,name=validator_set,json=validatorSet,proto3" json:"validator_set,omitempty"`
-	// BlockMeta is only set in the first part, and
-	// it stays nil in the remaining ones.
-	BlockMeta *types1.BlockMeta `protobuf:"bytes,4,opt,name=block_meta,json=blockMeta,proto3" json:"block_meta,omitempty"`
-	IsLast    bool              `protobuf:"varint,5,opt,name=is_last,json=isLast,proto3" json:"is_last,omitempty"`
+	IsLast       bool                 `protobuf:"varint,4,opt,name=is_last,json=isLast,proto3" json:"is_last,omitempty"`
 }
 
 func (m *StreamedBlockByHeightResponse) Reset()         { *m = StreamedBlockByHeightResponse{} }
 func (m *StreamedBlockByHeightResponse) String() string { return proto.CompactTextString(m) }
 func (*StreamedBlockByHeightResponse) ProtoMessage()    {}
 func (*StreamedBlockByHeightResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{13}
+	return fileDescriptor_0ffff5682c662b95, []int{11}
 }
 func (m *StreamedBlockByHeightResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -712,106 +614,11 @@ func (m *StreamedBlockByHeightResponse) GetValidatorSet() *types1.ValidatorSet {
 	return nil
 }
 
-func (m *StreamedBlockByHeightResponse) GetBlockMeta() *types1.BlockMeta {
-	if m != nil {
-		return m.BlockMeta
-	}
-	return nil
-}
-
 func (m *StreamedBlockByHeightResponse) GetIsLast() bool {
 	if m != nil {
 		return m.IsLast
 	}
 	return false
-}
-
-type BlockMetaByHashResponse struct {
-	BlockMeta *types1.BlockMeta `protobuf:"bytes,1,opt,name=block_meta,json=blockMeta,proto3" json:"block_meta,omitempty"`
-}
-
-func (m *BlockMetaByHashResponse) Reset()         { *m = BlockMetaByHashResponse{} }
-func (m *BlockMetaByHashResponse) String() string { return proto.CompactTextString(m) }
-func (*BlockMetaByHashResponse) ProtoMessage()    {}
-func (*BlockMetaByHashResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{14}
-}
-func (m *BlockMetaByHashResponse) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *BlockMetaByHashResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_BlockMetaByHashResponse.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *BlockMetaByHashResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_BlockMetaByHashResponse.Merge(m, src)
-}
-func (m *BlockMetaByHashResponse) XXX_Size() int {
-	return m.Size()
-}
-func (m *BlockMetaByHashResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_BlockMetaByHashResponse.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_BlockMetaByHashResponse proto.InternalMessageInfo
-
-func (m *BlockMetaByHashResponse) GetBlockMeta() *types1.BlockMeta {
-	if m != nil {
-		return m.BlockMeta
-	}
-	return nil
-}
-
-type BlockMetaByHeightResponse struct {
-	BlockMeta *types1.BlockMeta `protobuf:"bytes,1,opt,name=block_meta,json=blockMeta,proto3" json:"block_meta,omitempty"`
-}
-
-func (m *BlockMetaByHeightResponse) Reset()         { *m = BlockMetaByHeightResponse{} }
-func (m *BlockMetaByHeightResponse) String() string { return proto.CompactTextString(m) }
-func (*BlockMetaByHeightResponse) ProtoMessage()    {}
-func (*BlockMetaByHeightResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{15}
-}
-func (m *BlockMetaByHeightResponse) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *BlockMetaByHeightResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_BlockMetaByHeightResponse.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *BlockMetaByHeightResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_BlockMetaByHeightResponse.Merge(m, src)
-}
-func (m *BlockMetaByHeightResponse) XXX_Size() int {
-	return m.Size()
-}
-func (m *BlockMetaByHeightResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_BlockMetaByHeightResponse.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_BlockMetaByHeightResponse proto.InternalMessageInfo
-
-func (m *BlockMetaByHeightResponse) GetBlockMeta() *types1.BlockMeta {
-	if m != nil {
-		return m.BlockMeta
-	}
-	return nil
 }
 
 type CommitResponse struct {
@@ -822,7 +629,7 @@ func (m *CommitResponse) Reset()         { *m = CommitResponse{} }
 func (m *CommitResponse) String() string { return proto.CompactTextString(m) }
 func (*CommitResponse) ProtoMessage()    {}
 func (*CommitResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{16}
+	return fileDescriptor_0ffff5682c662b95, []int{12}
 }
 func (m *CommitResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -870,7 +677,7 @@ func (m *ValidatorSetResponse) Reset()         { *m = ValidatorSetResponse{} }
 func (m *ValidatorSetResponse) String() string { return proto.CompactTextString(m) }
 func (*ValidatorSetResponse) ProtoMessage()    {}
 func (*ValidatorSetResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{17}
+	return fileDescriptor_0ffff5682c662b95, []int{13}
 }
 func (m *ValidatorSetResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -922,7 +729,7 @@ func (m *NewHeightEvent) Reset()         { *m = NewHeightEvent{} }
 func (m *NewHeightEvent) String() string { return proto.CompactTextString(m) }
 func (*NewHeightEvent) ProtoMessage()    {}
 func (*NewHeightEvent) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{18}
+	return fileDescriptor_0ffff5682c662b95, []int{14}
 }
 func (m *NewHeightEvent) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -975,7 +782,7 @@ func (m *StatusResponse) Reset()         { *m = StatusResponse{} }
 func (m *StatusResponse) String() string { return proto.CompactTextString(m) }
 func (*StatusResponse) ProtoMessage()    {}
 func (*StatusResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{19}
+	return fileDescriptor_0ffff5682c662b95, []int{15}
 }
 func (m *StatusResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1041,7 +848,7 @@ func (m *SyncInfo) Reset()         { *m = SyncInfo{} }
 func (m *SyncInfo) String() string { return proto.CompactTextString(m) }
 func (*SyncInfo) ProtoMessage()    {}
 func (*SyncInfo) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{20}
+	return fileDescriptor_0ffff5682c662b95, []int{16}
 }
 func (m *SyncInfo) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1143,7 +950,7 @@ func (m *ValidatorInfo) Reset()         { *m = ValidatorInfo{} }
 func (m *ValidatorInfo) String() string { return proto.CompactTextString(m) }
 func (*ValidatorInfo) ProtoMessage()    {}
 func (*ValidatorInfo) Descriptor() ([]byte, []int) {
-	return fileDescriptor_0ffff5682c662b95, []int{21}
+	return fileDescriptor_0ffff5682c662b95, []int{17}
 }
 func (m *ValidatorInfo) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1198,8 +1005,6 @@ func init() {
 	proto.RegisterType((*RequestBroadcastTx)(nil), "tendermint.rpc.grpc.RequestBroadcastTx")
 	proto.RegisterType((*BlockByHashRequest)(nil), "tendermint.rpc.grpc.BlockByHashRequest")
 	proto.RegisterType((*BlockByHeightRequest)(nil), "tendermint.rpc.grpc.BlockByHeightRequest")
-	proto.RegisterType((*BlockMetaByHashRequest)(nil), "tendermint.rpc.grpc.BlockMetaByHashRequest")
-	proto.RegisterType((*BlockMetaByHeightRequest)(nil), "tendermint.rpc.grpc.BlockMetaByHeightRequest")
 	proto.RegisterType((*CommitRequest)(nil), "tendermint.rpc.grpc.CommitRequest")
 	proto.RegisterType((*ValidatorSetRequest)(nil), "tendermint.rpc.grpc.ValidatorSetRequest")
 	proto.RegisterType((*SubscribeNewHeightsRequest)(nil), "tendermint.rpc.grpc.SubscribeNewHeightsRequest")
@@ -1208,8 +1013,6 @@ func init() {
 	proto.RegisterType((*ResponseBroadcastTx)(nil), "tendermint.rpc.grpc.ResponseBroadcastTx")
 	proto.RegisterType((*StreamedBlockByHashResponse)(nil), "tendermint.rpc.grpc.StreamedBlockByHashResponse")
 	proto.RegisterType((*StreamedBlockByHeightResponse)(nil), "tendermint.rpc.grpc.StreamedBlockByHeightResponse")
-	proto.RegisterType((*BlockMetaByHashResponse)(nil), "tendermint.rpc.grpc.BlockMetaByHashResponse")
-	proto.RegisterType((*BlockMetaByHeightResponse)(nil), "tendermint.rpc.grpc.BlockMetaByHeightResponse")
 	proto.RegisterType((*CommitResponse)(nil), "tendermint.rpc.grpc.CommitResponse")
 	proto.RegisterType((*ValidatorSetResponse)(nil), "tendermint.rpc.grpc.ValidatorSetResponse")
 	proto.RegisterType((*NewHeightEvent)(nil), "tendermint.rpc.grpc.NewHeightEvent")
@@ -1221,83 +1024,76 @@ func init() {
 func init() { proto.RegisterFile("tendermint/rpc/grpc/types.proto", fileDescriptor_0ffff5682c662b95) }
 
 var fileDescriptor_0ffff5682c662b95 = []byte{
-	// 1204 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xec, 0x57, 0x4f, 0x6f, 0x1b, 0x45,
-	0x14, 0xcf, 0x3a, 0x8d, 0xe3, 0x3c, 0xff, 0x89, 0x32, 0x0e, 0xa9, 0xd9, 0xa4, 0x76, 0xba, 0x20,
-	0x9a, 0x96, 0x76, 0x1d, 0x19, 0xf5, 0xd2, 0x56, 0x48, 0x71, 0x82, 0x44, 0x94, 0x52, 0x19, 0x27,
-	0x05, 0x89, 0x8b, 0x19, 0xaf, 0x27, 0xf6, 0x12, 0x7b, 0x77, 0xd8, 0x1d, 0xbb, 0xf1, 0x99, 0x2f,
-	0xd0, 0x0b, 0x77, 0xc4, 0xf7, 0xe0, 0xc6, 0xa1, 0xc7, 0x5e, 0x90, 0x38, 0x01, 0x4a, 0x0e, 0x7c,
-	0x0d, 0xb4, 0x33, 0xb3, 0xf6, 0x6c, 0xd6, 0x9b, 0xb8, 0x88, 0x23, 0x17, 0xeb, 0xcd, 0x9b, 0xf7,
-	0x7e, 0xf3, 0xfe, 0xed, 0x7b, 0xcf, 0x50, 0x61, 0xc4, 0xe9, 0x10, 0x6f, 0x60, 0x3b, 0xac, 0xea,
-	0x51, 0xab, 0xda, 0x0d, 0x7e, 0xd8, 0x98, 0x12, 0xdf, 0xa4, 0x9e, 0xcb, 0x5c, 0x54, 0x9c, 0x0a,
-	0x98, 0x1e, 0xb5, 0xcc, 0x40, 0x40, 0xdf, 0x54, 0xb4, 0x70, 0xdb, 0xb2, 0x55, 0x0d, 0x7d, 0x4b,
-	0xb9, 0xe4, 0xfc, 0xc8, 0xad, 0xae, 0xdc, 0xd2, 0x1a, 0x4d, 0xd4, 0xb4, 0xbc, 0x31, 0x65, 0x6e,
-	0xf5, 0x8c, 0x8c, 0xc3, 0xdb, 0xed, 0x18, 0xee, 0x08, 0xf7, 0xed, 0x0e, 0x66, 0xae, 0x27, 0x25,
-	0x2a, 0x5d, 0xd7, 0xed, 0xf6, 0x49, 0x95, 0x9f, 0xda, 0xc3, 0xd3, 0x2a, 0xb3, 0x07, 0xc4, 0x67,
-	0x78, 0x40, 0xa5, 0xc0, 0x7a, 0xd7, 0xed, 0xba, 0x9c, 0xac, 0x06, 0x94, 0xe0, 0x1a, 0x79, 0xc8,
-	0x36, 0xc9, 0xf7, 0x43, 0xe2, 0xb3, 0x86, 0xed, 0x74, 0x8d, 0x0f, 0x01, 0xc9, 0x63, 0xdd, 0x73,
-	0x71, 0xc7, 0xc2, 0x3e, 0x3b, 0x39, 0x47, 0x05, 0x48, 0xb1, 0xf3, 0x92, 0xb6, 0xad, 0xed, 0xe4,
-	0x9a, 0x29, 0x76, 0x6e, 0x7c, 0x0a, 0xa8, 0xde, 0x77, 0xad, 0xb3, 0xfa, 0xf8, 0x73, 0xec, 0xf7,
-	0xa4, 0x02, 0x42, 0x70, 0xab, 0x87, 0xfd, 0x9e, 0x94, 0xe3, 0x34, 0x5a, 0x87, 0x25, 0xea, 0xb9,
-	0x23, 0x52, 0x4a, 0x6d, 0x6b, 0x3b, 0x99, 0xa6, 0x38, 0x18, 0x07, 0xb0, 0x1e, 0xea, 0x13, 0xbb,
-	0xdb, 0x63, 0x21, 0xc2, 0x06, 0xa4, 0x7b, 0x9c, 0xc1, 0x31, 0x16, 0x9b, 0xf2, 0x94, 0x80, 0xf2,
-	0x10, 0x36, 0x38, 0xca, 0x17, 0x84, 0xe1, 0x1b, 0x2d, 0x31, 0x6a, 0x50, 0x52, 0xa5, 0xe7, 0x79,
-	0xd7, 0xb8, 0x07, 0xf9, 0x7d, 0x77, 0x30, 0xb0, 0x6f, 0x14, 0x7c, 0x04, 0xc5, 0xaf, 0xc2, 0x7c,
-	0x1c, 0x93, 0x1b, 0xc5, 0xb7, 0x40, 0x3f, 0x1e, 0xb6, 0x7d, 0xcb, 0xb3, 0xdb, 0xe4, 0x05, 0x79,
-	0x25, 0x8c, 0xf1, 0xa5, 0x96, 0xb1, 0x0a, 0xf9, 0x63, 0x86, 0xd9, 0x70, 0xc2, 0x28, 0x40, 0xae,
-	0x49, 0x7c, 0xea, 0x3a, 0x3e, 0xe1, 0x49, 0xfa, 0x51, 0x83, 0x62, 0xc8, 0x50, 0xd3, 0xf4, 0x14,
-	0x32, 0x56, 0x8f, 0x58, 0x67, 0x2d, 0x99, 0xac, 0x6c, 0x6d, 0xdb, 0x54, 0x2a, 0x38, 0x28, 0x56,
-	0x33, 0xd4, 0xdb, 0x0f, 0x04, 0x4f, 0xce, 0x9b, 0xcb, 0x96, 0x20, 0xd0, 0x1e, 0x40, 0x87, 0xf4,
-	0xed, 0x11, 0xf1, 0x02, 0xf5, 0x14, 0x57, 0x37, 0x12, 0xd5, 0x0f, 0x84, 0xe8, 0xc9, 0x79, 0x73,
-	0xa5, 0x13, 0x92, 0xc6, 0x4f, 0x29, 0xd8, 0x3c, 0x66, 0x1e, 0xc1, 0x03, 0xd2, 0x89, 0xd4, 0x87,
-	0xd0, 0x41, 0x8f, 0x01, 0xda, 0x01, 0xbb, 0x45, 0xb1, 0xc7, 0xa4, 0x85, 0x1b, 0xea, 0x13, 0xe2,
-	0x7b, 0x68, 0x60, 0x8f, 0x35, 0x57, 0xb8, 0x64, 0x40, 0xa2, 0x5d, 0x48, 0x5b, 0x3c, 0x0b, 0xd2,
-	0xaa, 0x52, 0x5c, 0x45, 0x66, 0x49, 0xca, 0xa1, 0x7d, 0xc8, 0x4f, 0x3e, 0x8f, 0x96, 0x4f, 0x58,
-	0x69, 0x91, 0x2b, 0x96, 0xe3, 0x8a, 0x91, 0xac, 0xe5, 0x46, 0xca, 0x09, 0x3d, 0x09, 0xad, 0x1d,
-	0x10, 0x86, 0x4b, 0xb7, 0x38, 0xc2, 0x66, 0x1c, 0x61, 0x52, 0x54, 0xd2, 0xe4, 0x80, 0x44, 0xb7,
-	0x61, 0xd9, 0xf6, 0x5b, 0x7d, 0xec, 0xb3, 0xd2, 0x12, 0x2f, 0xd9, 0xb4, 0xed, 0x3f, 0xc7, 0x3e,
-	0x33, 0x7e, 0x4e, 0xc1, 0x9d, 0xab, 0x21, 0x92, 0xa5, 0xf8, 0x7f, 0x90, 0xc2, 0x20, 0xbd, 0x84,
-	0xdb, 0xb1, 0x0f, 0x5b, 0x46, 0x27, 0xfa, 0x9e, 0xf6, 0x2e, 0xef, 0x19, 0x5f, 0xc3, 0xfb, 0x33,
-	0x3a, 0xc0, 0x7f, 0x00, 0x5c, 0x87, 0x42, 0xd8, 0x26, 0x24, 0xda, 0x34, 0x1b, 0xda, 0x7c, 0xd9,
-	0x30, 0x7c, 0x58, 0x8f, 0x76, 0x10, 0x89, 0x14, 0xcb, 0x92, 0xf6, 0x2f, 0xb2, 0x34, 0xed, 0x43,
-	0xa9, 0x48, 0x1f, 0x7a, 0x06, 0x85, 0x49, 0xfb, 0xf9, 0x6c, 0x44, 0x9c, 0xe4, 0x0e, 0x1c, 0x76,
-	0xd4, 0x94, 0xd2, 0x51, 0x7f, 0xd3, 0xa0, 0x10, 0x36, 0x2a, 0x69, 0xed, 0x33, 0x58, 0x71, 0xdc,
-	0x0e, 0x69, 0xd9, 0xce, 0xa9, 0x2b, 0x2d, 0xad, 0xa8, 0x96, 0xd2, 0x1a, 0x35, 0x0f, 0xc8, 0x29,
-	0x1e, 0xf6, 0xd9, 0x0b, 0xb7, 0x43, 0x0e, 0x9d, 0x53, 0xb7, 0x99, 0x71, 0x24, 0x85, 0x9e, 0xc0,
-	0x8a, 0x3f, 0x76, 0x2c, 0xa1, 0x2d, 0xca, 0xf8, 0x8e, 0x39, 0x63, 0x04, 0x9b, 0xc7, 0x63, 0xc7,
-	0x12, 0xba, 0xbe, 0xa4, 0xd0, 0x21, 0x14, 0xa6, 0x71, 0xe2, 0x00, 0x8b, 0xf1, 0x16, 0x36, 0x01,
-	0x98, 0xc4, 0x8a, 0xa3, 0x4c, 0x23, 0x1c, 0x1c, 0x8d, 0xbf, 0x17, 0x21, 0x13, 0xbe, 0x80, 0x1e,
-	0xc0, 0x5a, 0x1f, 0x33, 0xe2, 0xb3, 0x96, 0x28, 0x0f, 0x65, 0xae, 0xac, 0x8a, 0x0b, 0x5e, 0x12,
-	0x41, 0x91, 0xa2, 0x8f, 0x40, 0xb2, 0x5a, 0x98, 0xd2, 0x96, 0x12, 0xaf, 0xbc, 0x60, 0xef, 0x51,
-	0xca, 0xe5, 0x4c, 0x28, 0x46, 0x31, 0x45, 0xc4, 0x17, 0x79, 0xc4, 0xd7, 0x54, 0x54, 0x11, 0xfc,
-	0xc6, 0x15, 0x1b, 0x82, 0xc9, 0x2e, 0xbf, 0x35, 0xdd, 0x14, 0x63, 0xdf, 0x0c, 0xc7, 0xbe, 0x79,
-	0x12, 0x8e, 0xfd, 0x7a, 0xe6, 0xcd, 0x1f, 0x95, 0x85, 0xd7, 0x7f, 0x56, 0xb4, 0x88, 0xa5, 0xc1,
-	0x7d, 0x60, 0x01, 0xc1, 0x5e, 0xdf, 0xbe, 0xe2, 0xd7, 0x12, 0xb7, 0x76, 0x2d, 0xbc, 0x9a, 0x7a,
-	0xf6, 0x00, 0x26, 0xcc, 0xa9, 0x6f, 0x69, 0x11, 0x85, 0xf0, 0x22, 0xf4, 0xae, 0x06, 0xef, 0x5d,
-	0xc5, 0x16, 0xfe, 0x2d, 0x73, 0xff, 0x8a, 0x51, 0x74, 0xe1, 0xe1, 0x49, 0xcc, 0x1e, 0xee, 0x63,
-	0xe6, 0x1d, 0x7c, 0x8c, 0x5a, 0xcd, 0xbd, 0xac, 0x40, 0xd6, 0xc2, 0xcc, 0xea, 0xd9, 0x4e, 0xb7,
-	0x35, 0xa4, 0xa5, 0x15, 0xde, 0x64, 0x20, 0x64, 0xbd, 0xa4, 0xc6, 0x0f, 0x1a, 0xe4, 0x23, 0xa5,
-	0x80, 0x4a, 0xb0, 0x8c, 0x3b, 0x1d, 0x8f, 0xf8, 0xbe, 0x4c, 0x72, 0x78, 0x44, 0x8f, 0x61, 0x99,
-	0x0e, 0xdb, 0xad, 0x33, 0x32, 0x96, 0xa5, 0xb9, 0xa5, 0x56, 0x96, 0xd8, 0xd8, 0xcc, 0xc6, 0xb0,
-	0xdd, 0xb7, 0xad, 0x23, 0x32, 0x6e, 0xa6, 0xe9, 0xb0, 0x7d, 0x44, 0xc6, 0xe8, 0x2e, 0xe4, 0x46,
-	0x2e, 0x0b, 0x2c, 0xa0, 0xee, 0x2b, 0xe2, 0xc9, 0x24, 0x67, 0x05, 0xaf, 0x11, 0xb0, 0x6a, 0xbf,
-	0x68, 0x90, 0x9b, 0x8c, 0xf1, 0xbd, 0xc6, 0x21, 0x3a, 0x82, 0x5b, 0xc1, 0x9c, 0x47, 0xdb, 0x33,
-	0x6b, 0x57, 0x59, 0xd7, 0xf4, 0xbb, 0x09, 0x12, 0xd3, 0x65, 0x01, 0x7d, 0x0b, 0x59, 0x75, 0x47,
-	0xb8, 0x77, 0x1d, 0xa6, 0x22, 0xa8, 0xef, 0x5c, 0x0b, 0xad, 0x48, 0xd6, 0x7e, 0x4d, 0x43, 0x86,
-	0x07, 0x3d, 0xb0, 0xfd, 0x3b, 0xc8, 0x2a, 0xa3, 0x3f, 0xe1, 0xb9, 0xf8, 0xf2, 0xa8, 0xef, 0xce,
-	0xfe, 0xd0, 0x93, 0xb7, 0x89, 0x5d, 0x0d, 0xf5, 0x61, 0xf5, 0xca, 0x9c, 0x40, 0x1f, 0x27, 0xbf,
-	0x17, 0x5b, 0x13, 0xf5, 0x87, 0xf3, 0x09, 0xcb, 0xde, 0x46, 0x21, 0x1f, 0x99, 0xd8, 0xe8, 0xfe,
-	0xb5, 0xbe, 0xa9, 0x0b, 0xa6, 0x5e, 0x9b, 0xcb, 0xbb, 0xc8, 0x44, 0xda, 0xd5, 0x90, 0x07, 0x6b,
-	0xb1, 0x81, 0x85, 0x1e, 0xdd, 0x68, 0x74, 0xe4, 0x65, 0x73, 0x5e, 0x71, 0xe9, 0xe5, 0x97, 0x90,
-	0x16, 0x93, 0x09, 0xcd, 0xee, 0x9c, 0x91, 0x7d, 0x58, 0xff, 0xe0, 0x5a, 0x19, 0x09, 0x69, 0x41,
-	0x4e, 0x9d, 0x4d, 0x68, 0xe7, 0xfa, 0x96, 0x3c, 0xdd, 0x9f, 0xf5, 0xfb, 0x73, 0x48, 0xca, 0x47,
-	0x06, 0x50, 0x9c, 0xb1, 0x52, 0xa3, 0xea, 0xec, 0xc0, 0x27, 0x2e, 0xdf, 0x09, 0x1e, 0x45, 0xa7,
-	0xe4, 0xae, 0x16, 0x84, 0x49, 0x8c, 0xbe, 0x84, 0x30, 0x45, 0x16, 0xf8, 0x04, 0xd0, 0xe8, 0xec,
-	0xac, 0x3f, 0x7f, 0x73, 0x51, 0xd6, 0xde, 0x5e, 0x94, 0xb5, 0xbf, 0x2e, 0xca, 0xda, 0xeb, 0xcb,
-	0xf2, 0xc2, 0xdb, 0xcb, 0xf2, 0xc2, 0xef, 0x97, 0xe5, 0x85, 0x6f, 0x6a, 0x5d, 0x9b, 0xf5, 0x86,
-	0x6d, 0xd3, 0x72, 0x07, 0x55, 0xf5, 0x7f, 0x60, 0xfc, 0xdf, 0xeb, 0x53, 0xcb, 0xf5, 0x48, 0x40,
-	0xb4, 0xd3, 0xbc, 0x59, 0x7e, 0xf2, 0x4f, 0x00, 0x00, 0x00, 0xff, 0xff, 0x4b, 0xec, 0x45, 0xd8,
-	0xe4, 0x0e, 0x00, 0x00,
+	// 1102 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xdc, 0x57, 0x4f, 0x6f, 0x1b, 0x45,
+	0x14, 0xcf, 0x3a, 0xa9, 0xe3, 0x3c, 0xff, 0xa9, 0x32, 0x0e, 0xc5, 0xda, 0xa6, 0x76, 0xba, 0x20,
+	0x9a, 0x56, 0x62, 0x1d, 0x19, 0xf5, 0x42, 0x2b, 0xa4, 0x38, 0x41, 0x22, 0x4a, 0x55, 0x19, 0x27,
+	0x70, 0xe0, 0x62, 0xc6, 0xeb, 0x89, 0xbd, 0xc4, 0xde, 0x19, 0x76, 0xc6, 0x6e, 0x7c, 0xe6, 0x0b,
+	0xf4, 0xc2, 0xc7, 0xe1, 0xde, 0x63, 0x2f, 0x48, 0x9c, 0x00, 0x25, 0x08, 0xbe, 0x06, 0xda, 0x99,
+	0x59, 0x7b, 0x36, 0xf6, 0xa6, 0x81, 0x63, 0x2f, 0xd6, 0x9b, 0x37, 0xef, 0xbd, 0xfd, 0xbd, 0x37,
+	0xef, 0x9f, 0xa1, 0x26, 0x48, 0xd0, 0x23, 0xe1, 0xc8, 0x0f, 0x44, 0x3d, 0x64, 0x5e, 0xbd, 0x1f,
+	0xfd, 0x88, 0x29, 0x23, 0xdc, 0x65, 0x21, 0x15, 0x14, 0x95, 0xe7, 0x02, 0x6e, 0xc8, 0x3c, 0x37,
+	0x12, 0xb0, 0xef, 0x1b, 0x5a, 0xb8, 0xeb, 0xf9, 0xa6, 0x86, 0xbd, 0x6d, 0x5c, 0x4a, 0x7e, 0xe2,
+	0xd6, 0x36, 0x6e, 0x59, 0x83, 0xa5, 0x6a, 0x7a, 0xe1, 0x94, 0x09, 0x5a, 0x3f, 0x27, 0xd3, 0xf8,
+	0x76, 0x67, 0xc1, 0xee, 0x04, 0x0f, 0xfd, 0x1e, 0x16, 0x34, 0xd4, 0x12, 0xb5, 0x3e, 0xa5, 0xfd,
+	0x21, 0xa9, 0xcb, 0x53, 0x77, 0x7c, 0x56, 0x17, 0xfe, 0x88, 0x70, 0x81, 0x47, 0x4c, 0x0b, 0x6c,
+	0xf5, 0x69, 0x9f, 0x4a, 0xb2, 0x1e, 0x51, 0x8a, 0xeb, 0x14, 0x21, 0xdf, 0x26, 0x3f, 0x8e, 0x09,
+	0x17, 0x2d, 0x3f, 0xe8, 0x3b, 0x1f, 0x03, 0xd2, 0xc7, 0x66, 0x48, 0x71, 0xcf, 0xc3, 0x5c, 0x9c,
+	0x5e, 0xa0, 0x12, 0x64, 0xc4, 0x45, 0xc5, 0xda, 0xb1, 0x76, 0x0b, 0xed, 0x8c, 0xb8, 0x70, 0xbe,
+	0x00, 0xd4, 0x1c, 0x52, 0xef, 0xbc, 0x39, 0xfd, 0x0a, 0xf3, 0x81, 0x56, 0x40, 0x08, 0xd6, 0x06,
+	0x98, 0x0f, 0xb4, 0x9c, 0xa4, 0xd1, 0x16, 0xdc, 0x61, 0x21, 0x9d, 0x90, 0x4a, 0x66, 0xc7, 0xda,
+	0xcd, 0xb5, 0xd5, 0xc1, 0x39, 0x84, 0xad, 0x58, 0x9f, 0xf8, 0xfd, 0x81, 0x88, 0x2d, 0xdc, 0x83,
+	0xec, 0x40, 0x32, 0xa4, 0x8d, 0xd5, 0xb6, 0x3e, 0xa5, 0x58, 0x79, 0x04, 0xc5, 0x03, 0x3a, 0x1a,
+	0xf9, 0xef, 0x52, 0x77, 0x3e, 0x85, 0xf2, 0xb7, 0x71, 0xb4, 0x4e, 0xc8, 0x3b, 0xc5, 0xb7, 0xc1,
+	0x3e, 0x19, 0x77, 0xb9, 0x17, 0xfa, 0x5d, 0xf2, 0x92, 0xbc, 0x52, 0x10, 0xb9, 0xd6, 0x72, 0xee,
+	0x42, 0xf1, 0x44, 0x60, 0x31, 0x9e, 0x31, 0x4a, 0x50, 0x68, 0x13, 0xce, 0x68, 0xc0, 0x89, 0x0c,
+	0xe1, 0xcf, 0x16, 0x94, 0x63, 0x86, 0x19, 0xc4, 0x67, 0x90, 0xf3, 0x06, 0xc4, 0x3b, 0xef, 0xe8,
+	0x50, 0xe6, 0x1b, 0x3b, 0xae, 0x91, 0x5f, 0x51, 0x2a, 0xb9, 0xb1, 0xde, 0x41, 0x24, 0x78, 0x7a,
+	0xd1, 0x5e, 0xf7, 0x14, 0x81, 0xf6, 0x01, 0x7a, 0x64, 0xe8, 0x4f, 0x48, 0x18, 0xa9, 0x67, 0xa4,
+	0xba, 0x93, 0xaa, 0x7e, 0xa8, 0x44, 0x4f, 0x2f, 0xda, 0x1b, 0xbd, 0x98, 0x74, 0xfe, 0xb2, 0xe0,
+	0xfe, 0x89, 0x08, 0x09, 0x1e, 0x91, 0x5e, 0xe2, 0xf5, 0x94, 0x0e, 0x7a, 0x0a, 0xd0, 0x8d, 0xd8,
+	0x1d, 0x86, 0x43, 0xa1, 0x11, 0xde, 0x33, 0x3f, 0xa1, 0xb2, 0xb5, 0x85, 0x43, 0xd1, 0xde, 0x90,
+	0x92, 0x11, 0x89, 0xf6, 0x20, 0xeb, 0xc9, 0x57, 0xd0, 0xa8, 0x2a, 0x8b, 0x2a, 0xfa, 0x95, 0xb4,
+	0x1c, 0x3a, 0x80, 0xe2, 0x2c, 0x79, 0x3b, 0x9c, 0x88, 0xca, 0xaa, 0x54, 0xac, 0x2e, 0x2a, 0x26,
+	0x5e, 0xad, 0x30, 0x31, 0x4e, 0xe8, 0x43, 0x58, 0xf7, 0x79, 0x67, 0x88, 0xb9, 0xa8, 0xac, 0xc9,
+	0xa4, 0xc8, 0xfa, 0xfc, 0x05, 0xe6, 0xc2, 0xf9, 0xdb, 0x82, 0x07, 0xd7, 0xdd, 0xd4, 0x49, 0xf6,
+	0x7e, 0x39, 0xda, 0x84, 0x52, 0x9c, 0xfe, 0xda, 0xb1, 0x39, 0x42, 0xeb, 0x76, 0x08, 0x1d, 0x0e,
+	0x5b, 0xc9, 0xca, 0xd0, 0x96, 0x16, 0x90, 0x5b, 0xff, 0x03, 0xf9, 0xbc, 0xbe, 0x32, 0x89, 0xfa,
+	0x7a, 0x0e, 0xa5, 0x59, 0x59, 0x7d, 0x39, 0x21, 0x41, 0x7a, 0xdd, 0xc7, 0x1d, 0x25, 0x33, 0xef,
+	0x28, 0xce, 0xaf, 0x16, 0x94, 0xe2, 0x02, 0xd4, 0x68, 0x9f, 0xc3, 0x46, 0x40, 0x7b, 0xa4, 0xe3,
+	0x07, 0x67, 0x54, 0x23, 0xad, 0x99, 0x48, 0x59, 0x83, 0xb9, 0x87, 0xe4, 0x0c, 0x8f, 0x87, 0xe2,
+	0x25, 0xed, 0x91, 0xa3, 0xe0, 0x8c, 0xb6, 0x73, 0x81, 0xa6, 0xd0, 0xe7, 0xb0, 0xc1, 0xa7, 0x81,
+	0xa7, 0xb4, 0xd5, 0xd3, 0x3e, 0x70, 0x97, 0x34, 0x7e, 0xf7, 0x64, 0x1a, 0x78, 0x4a, 0x97, 0x6b,
+	0x0a, 0x1d, 0x41, 0x69, 0x1e, 0x27, 0x69, 0x60, 0x75, 0xb1, 0x34, 0x67, 0x06, 0x66, 0xb1, 0x92,
+	0x56, 0xe6, 0x11, 0x8e, 0x8e, 0xce, 0x3f, 0xab, 0x90, 0x8b, 0xbf, 0x80, 0x9e, 0xc0, 0xe6, 0x10,
+	0x0b, 0xc2, 0x45, 0x47, 0x65, 0xaa, 0xd1, 0x57, 0xef, 0xaa, 0x0b, 0x99, 0xda, 0x51, 0xfd, 0xa2,
+	0x4f, 0x40, 0xb3, 0x3a, 0x98, 0xb1, 0x8e, 0x11, 0xaf, 0xa2, 0x62, 0xef, 0x33, 0x26, 0xe5, 0x5c,
+	0x28, 0x27, 0x6d, 0xaa, 0x88, 0xaf, 0xca, 0x88, 0x6f, 0x9a, 0x56, 0x55, 0xf0, 0x5b, 0xd7, 0x30,
+	0x44, 0xf3, 0x44, 0xa6, 0x60, 0xbe, 0x61, 0xbb, 0x6a, 0xd8, 0xb8, 0xf1, 0xb0, 0x71, 0x4f, 0xe3,
+	0x61, 0xd3, 0xcc, 0xbd, 0xf9, 0xbd, 0xb6, 0xf2, 0xfa, 0x8f, 0x9a, 0x95, 0x40, 0x1a, 0xdd, 0x47,
+	0x08, 0x08, 0x0e, 0x87, 0xfe, 0x35, 0xbf, 0xee, 0x48, 0xb4, 0x9b, 0xf1, 0xd5, 0xdc, 0xb3, 0x27,
+	0x30, 0x63, 0xce, 0x7d, 0xcb, 0xaa, 0x28, 0xc4, 0x17, 0xb1, 0x77, 0x0d, 0xf8, 0xe0, 0xba, 0x6d,
+	0xe5, 0xdf, 0xba, 0xf4, 0xaf, 0x9c, 0xb4, 0xae, 0x3c, 0x3c, 0x5d, 0xc0, 0x23, 0x7d, 0xcc, 0xfd,
+	0x07, 0x1f, 0x93, 0xa8, 0xa5, 0x97, 0x35, 0xc8, 0x7b, 0x58, 0x78, 0x03, 0x3f, 0xe8, 0x77, 0xc6,
+	0xac, 0xb2, 0x21, 0x8b, 0x16, 0x62, 0xd6, 0x37, 0xcc, 0xf9, 0xc9, 0x82, 0x62, 0x22, 0x15, 0x50,
+	0x05, 0xd6, 0x71, 0xaf, 0x17, 0x12, 0xce, 0xf5, 0x23, 0xc7, 0x47, 0xf4, 0x14, 0xd6, 0xd9, 0xb8,
+	0xdb, 0x39, 0x27, 0x53, 0x9d, 0x9a, 0xdb, 0x66, 0x66, 0xa9, 0x3d, 0xc1, 0x6d, 0x8d, 0xbb, 0x43,
+	0xdf, 0x3b, 0x26, 0xd3, 0x76, 0x96, 0x8d, 0xbb, 0xc7, 0x64, 0x8a, 0x1e, 0x42, 0x61, 0x42, 0x45,
+	0x84, 0x80, 0xd1, 0x57, 0x24, 0xd4, 0x8f, 0x9c, 0x57, 0xbc, 0x56, 0xc4, 0x6a, 0xfc, 0x62, 0x41,
+	0x61, 0x36, 0x9e, 0xf6, 0x5b, 0x47, 0xe8, 0x18, 0xd6, 0xa2, 0xf9, 0x85, 0x76, 0x96, 0xe6, 0xae,
+	0xb1, 0x24, 0xd8, 0x0f, 0x53, 0x24, 0xe6, 0x43, 0x10, 0x7d, 0x0f, 0x79, 0x73, 0xf6, 0x3d, 0xba,
+	0xc9, 0xa6, 0x21, 0x68, 0xef, 0xde, 0x68, 0xda, 0x90, 0x6c, 0x5c, 0xae, 0x41, 0x4e, 0x06, 0x3d,
+	0xc2, 0xfe, 0x03, 0xe4, 0x8d, 0x91, 0x96, 0xf2, 0xb9, 0xc5, 0x95, 0xc5, 0xde, 0x5b, 0x5e, 0xe8,
+	0xe9, 0x53, 0x72, 0xcf, 0x42, 0x0c, 0x8a, 0x89, 0xb9, 0x82, 0x1e, 0xdf, 0xf8, 0x35, 0x73, 0xc1,
+	0xb1, 0x1b, 0xb7, 0xfa, 0x5e, 0x62, 0x5c, 0xed, 0x59, 0xe8, 0x6b, 0xc8, 0xaa, 0xbe, 0x8d, 0x96,
+	0xf7, 0x95, 0xc4, 0x16, 0x64, 0x7f, 0x74, 0xa3, 0x8c, 0x6e, 0x99, 0x1e, 0x14, 0xcc, 0xce, 0x8d,
+	0x76, 0x6f, 0x6e, 0x58, 0xf3, 0xad, 0xc9, 0x7e, 0x7c, 0x0b, 0x49, 0xfd, 0x91, 0x11, 0x94, 0x97,
+	0x2c, 0x52, 0xa8, 0xbe, 0x3c, 0x08, 0xa9, 0x2b, 0x57, 0x8a, 0x47, 0xc9, 0x19, 0xa2, 0xc2, 0xa4,
+	0x06, 0x43, 0x4a, 0x98, 0x12, 0x6b, 0x5b, 0x8a, 0xd1, 0xe4, 0x64, 0x69, 0xbe, 0x78, 0x73, 0x59,
+	0xb5, 0xde, 0x5e, 0x56, 0xad, 0x3f, 0x2f, 0xab, 0xd6, 0xeb, 0xab, 0xea, 0xca, 0xdb, 0xab, 0xea,
+	0xca, 0x6f, 0x57, 0xd5, 0x95, 0xef, 0x1a, 0x7d, 0x5f, 0x0c, 0xc6, 0x5d, 0xd7, 0xa3, 0xa3, 0xba,
+	0xb9, 0x9b, 0x2f, 0xfe, 0xa3, 0x78, 0xe6, 0xd1, 0x90, 0x44, 0x44, 0x37, 0x2b, 0x5b, 0xc9, 0x67,
+	0xff, 0x06, 0x00, 0x00, 0xff, 0xff, 0xe7, 0x4a, 0xdc, 0x8a, 0x78, 0x0c, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -1421,9 +1217,7 @@ var _BroadcastAPI_serviceDesc = grpc.ServiceDesc{
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type BlockAPIClient interface {
 	BlockByHash(ctx context.Context, in *BlockByHashRequest, opts ...grpc.CallOption) (BlockAPI_BlockByHashClient, error)
-	BlockMetaByHash(ctx context.Context, in *BlockMetaByHashRequest, opts ...grpc.CallOption) (*BlockMetaByHashResponse, error)
 	BlockByHeight(ctx context.Context, in *BlockByHeightRequest, opts ...grpc.CallOption) (BlockAPI_BlockByHeightClient, error)
-	BlockMetaByHeight(ctx context.Context, in *BlockMetaByHeightRequest, opts ...grpc.CallOption) (*BlockMetaByHeightResponse, error)
 	Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*CommitResponse, error)
 	ValidatorSet(ctx context.Context, in *ValidatorSetRequest, opts ...grpc.CallOption) (*ValidatorSetResponse, error)
 	SubscribeNewHeights(ctx context.Context, in *SubscribeNewHeightsRequest, opts ...grpc.CallOption) (BlockAPI_SubscribeNewHeightsClient, error)
@@ -1470,15 +1264,6 @@ func (x *blockAPIBlockByHashClient) Recv() (*StreamedBlockByHashResponse, error)
 	return m, nil
 }
 
-func (c *blockAPIClient) BlockMetaByHash(ctx context.Context, in *BlockMetaByHashRequest, opts ...grpc.CallOption) (*BlockMetaByHashResponse, error) {
-	out := new(BlockMetaByHashResponse)
-	err := c.cc.Invoke(ctx, "/tendermint.rpc.grpc.BlockAPI/BlockMetaByHash", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *blockAPIClient) BlockByHeight(ctx context.Context, in *BlockByHeightRequest, opts ...grpc.CallOption) (BlockAPI_BlockByHeightClient, error) {
 	stream, err := c.cc.NewStream(ctx, &_BlockAPI_serviceDesc.Streams[1], "/tendermint.rpc.grpc.BlockAPI/BlockByHeight", opts...)
 	if err != nil {
@@ -1509,15 +1294,6 @@ func (x *blockAPIBlockByHeightClient) Recv() (*StreamedBlockByHeightResponse, er
 		return nil, err
 	}
 	return m, nil
-}
-
-func (c *blockAPIClient) BlockMetaByHeight(ctx context.Context, in *BlockMetaByHeightRequest, opts ...grpc.CallOption) (*BlockMetaByHeightResponse, error) {
-	out := new(BlockMetaByHeightResponse)
-	err := c.cc.Invoke(ctx, "/tendermint.rpc.grpc.BlockAPI/BlockMetaByHeight", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *blockAPIClient) Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*CommitResponse, error) {
@@ -1582,9 +1358,7 @@ func (c *blockAPIClient) Status(ctx context.Context, in *StatusRequest, opts ...
 // BlockAPIServer is the server API for BlockAPI service.
 type BlockAPIServer interface {
 	BlockByHash(*BlockByHashRequest, BlockAPI_BlockByHashServer) error
-	BlockMetaByHash(context.Context, *BlockMetaByHashRequest) (*BlockMetaByHashResponse, error)
 	BlockByHeight(*BlockByHeightRequest, BlockAPI_BlockByHeightServer) error
-	BlockMetaByHeight(context.Context, *BlockMetaByHeightRequest) (*BlockMetaByHeightResponse, error)
 	Commit(context.Context, *CommitRequest) (*CommitResponse, error)
 	ValidatorSet(context.Context, *ValidatorSetRequest) (*ValidatorSetResponse, error)
 	SubscribeNewHeights(*SubscribeNewHeightsRequest, BlockAPI_SubscribeNewHeightsServer) error
@@ -1598,14 +1372,8 @@ type UnimplementedBlockAPIServer struct {
 func (*UnimplementedBlockAPIServer) BlockByHash(req *BlockByHashRequest, srv BlockAPI_BlockByHashServer) error {
 	return status.Errorf(codes.Unimplemented, "method BlockByHash not implemented")
 }
-func (*UnimplementedBlockAPIServer) BlockMetaByHash(ctx context.Context, req *BlockMetaByHashRequest) (*BlockMetaByHashResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method BlockMetaByHash not implemented")
-}
 func (*UnimplementedBlockAPIServer) BlockByHeight(req *BlockByHeightRequest, srv BlockAPI_BlockByHeightServer) error {
 	return status.Errorf(codes.Unimplemented, "method BlockByHeight not implemented")
-}
-func (*UnimplementedBlockAPIServer) BlockMetaByHeight(ctx context.Context, req *BlockMetaByHeightRequest) (*BlockMetaByHeightResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method BlockMetaByHeight not implemented")
 }
 func (*UnimplementedBlockAPIServer) Commit(ctx context.Context, req *CommitRequest) (*CommitResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Commit not implemented")
@@ -1645,24 +1413,6 @@ func (x *blockAPIBlockByHashServer) Send(m *StreamedBlockByHashResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func _BlockAPI_BlockMetaByHash_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(BlockMetaByHashRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(BlockAPIServer).BlockMetaByHash(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/tendermint.rpc.grpc.BlockAPI/BlockMetaByHash",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BlockAPIServer).BlockMetaByHash(ctx, req.(*BlockMetaByHashRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _BlockAPI_BlockByHeight_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(BlockByHeightRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1682,24 +1432,6 @@ type blockAPIBlockByHeightServer struct {
 
 func (x *blockAPIBlockByHeightServer) Send(m *StreamedBlockByHeightResponse) error {
 	return x.ServerStream.SendMsg(m)
-}
-
-func _BlockAPI_BlockMetaByHeight_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(BlockMetaByHeightRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(BlockAPIServer).BlockMetaByHeight(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/tendermint.rpc.grpc.BlockAPI/BlockMetaByHeight",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BlockAPIServer).BlockMetaByHeight(ctx, req.(*BlockMetaByHeightRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _BlockAPI_Commit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -1781,14 +1513,6 @@ var _BlockAPI_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "tendermint.rpc.grpc.BlockAPI",
 	HandlerType: (*BlockAPIServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "BlockMetaByHash",
-			Handler:    _BlockAPI_BlockMetaByHash_Handler,
-		},
-		{
-			MethodName: "BlockMetaByHeight",
-			Handler:    _BlockAPI_BlockMetaByHeight_Handler,
-		},
 		{
 			MethodName: "Commit",
 			Handler:    _BlockAPI_Commit_Handler,
@@ -1945,64 +1669,6 @@ func (m *BlockByHeightRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.Height != 0 {
-		i = encodeVarintTypes(dAtA, i, uint64(m.Height))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *BlockMetaByHashRequest) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *BlockMetaByHashRequest) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *BlockMetaByHashRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if len(m.Hash) > 0 {
-		i -= len(m.Hash)
-		copy(dAtA[i:], m.Hash)
-		i = encodeVarintTypes(dAtA, i, uint64(len(m.Hash)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *BlockMetaByHeightRequest) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *BlockMetaByHeightRequest) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *BlockMetaByHeightRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
 	if m.Height != 0 {
 		i = encodeVarintTypes(dAtA, i, uint64(m.Height))
 		i--
@@ -2211,19 +1877,7 @@ func (m *StreamedBlockByHashResponse) MarshalToSizedBuffer(dAtA []byte) (int, er
 			dAtA[i] = 0
 		}
 		i--
-		dAtA[i] = 0x28
-	}
-	if m.BlockMeta != nil {
-		{
-			size, err := m.BlockMeta.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintTypes(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x20
 	}
 	if m.ValidatorSet != nil {
 		{
@@ -2292,19 +1946,7 @@ func (m *StreamedBlockByHeightResponse) MarshalToSizedBuffer(dAtA []byte) (int, 
 			dAtA[i] = 0
 		}
 		i--
-		dAtA[i] = 0x28
-	}
-	if m.BlockMeta != nil {
-		{
-			size, err := m.BlockMeta.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintTypes(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x20
 	}
 	if m.ValidatorSet != nil {
 		{
@@ -2333,76 +1975,6 @@ func (m *StreamedBlockByHeightResponse) MarshalToSizedBuffer(dAtA []byte) (int, 
 	if m.BlockPart != nil {
 		{
 			size, err := m.BlockPart.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintTypes(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *BlockMetaByHashResponse) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *BlockMetaByHashResponse) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *BlockMetaByHashResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.BlockMeta != nil {
-		{
-			size, err := m.BlockMeta.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintTypes(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *BlockMetaByHeightResponse) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *BlockMetaByHeightResponse) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *BlockMetaByHeightResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.BlockMeta != nil {
-		{
-			size, err := m.BlockMeta.MarshalToSizedBuffer(dAtA[:i])
 			if err != nil {
 				return 0, err
 			}
@@ -2614,12 +2186,12 @@ func (m *SyncInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x48
 	}
-	n18, err18 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.EarliestBlockTime, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.EarliestBlockTime):])
-	if err18 != nil {
-		return 0, err18
+	n14, err14 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.EarliestBlockTime, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.EarliestBlockTime):])
+	if err14 != nil {
+		return 0, err14
 	}
-	i -= n18
-	i = encodeVarintTypes(dAtA, i, uint64(n18))
+	i -= n14
+	i = encodeVarintTypes(dAtA, i, uint64(n14))
 	i--
 	dAtA[i] = 0x42
 	if m.EarliestBlockHeight != 0 {
@@ -2641,12 +2213,12 @@ func (m *SyncInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x2a
 	}
-	n19, err19 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.LatestBlockTime, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.LatestBlockTime):])
-	if err19 != nil {
-		return 0, err19
+	n15, err15 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.LatestBlockTime, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.LatestBlockTime):])
+	if err15 != nil {
+		return 0, err15
 	}
-	i -= n19
-	i = encodeVarintTypes(dAtA, i, uint64(n19))
+	i -= n15
+	i = encodeVarintTypes(dAtA, i, uint64(n15))
 	i--
 	dAtA[i] = 0x22
 	if m.LatestBlockHeight != 0 {
@@ -2782,31 +2354,6 @@ func (m *BlockByHeightRequest) Size() (n int) {
 	return n
 }
 
-func (m *BlockMetaByHashRequest) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.Hash)
-	if l > 0 {
-		n += 1 + l + sovTypes(uint64(l))
-	}
-	return n
-}
-
-func (m *BlockMetaByHeightRequest) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Height != 0 {
-		n += 1 + sovTypes(uint64(m.Height))
-	}
-	return n
-}
-
 func (m *CommitRequest) Size() (n int) {
 	if m == nil {
 		return 0
@@ -2893,10 +2440,6 @@ func (m *StreamedBlockByHashResponse) Size() (n int) {
 		l = m.ValidatorSet.Size()
 		n += 1 + l + sovTypes(uint64(l))
 	}
-	if m.BlockMeta != nil {
-		l = m.BlockMeta.Size()
-		n += 1 + l + sovTypes(uint64(l))
-	}
 	if m.IsLast {
 		n += 2
 	}
@@ -2921,38 +2464,8 @@ func (m *StreamedBlockByHeightResponse) Size() (n int) {
 		l = m.ValidatorSet.Size()
 		n += 1 + l + sovTypes(uint64(l))
 	}
-	if m.BlockMeta != nil {
-		l = m.BlockMeta.Size()
-		n += 1 + l + sovTypes(uint64(l))
-	}
 	if m.IsLast {
 		n += 2
-	}
-	return n
-}
-
-func (m *BlockMetaByHashResponse) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.BlockMeta != nil {
-		l = m.BlockMeta.Size()
-		n += 1 + l + sovTypes(uint64(l))
-	}
-	return n
-}
-
-func (m *BlockMetaByHeightResponse) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.BlockMeta != nil {
-		l = m.BlockMeta.Size()
-		n += 1 + l + sovTypes(uint64(l))
 	}
 	return n
 }
@@ -3393,159 +2906,6 @@ func (m *BlockByHeightRequest) Unmarshal(dAtA []byte) error {
 				}
 			}
 			m.Prove = bool(v != 0)
-		default:
-			iNdEx = preIndex
-			skippy, err := skipTypes(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *BlockMetaByHashRequest) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowTypes
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: BlockMetaByHashRequest: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: BlockMetaByHashRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Hash", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return ErrInvalidLengthTypes
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Hash = append(m.Hash[:0], dAtA[iNdEx:postIndex]...)
-			if m.Hash == nil {
-				m.Hash = []byte{}
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipTypes(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *BlockMetaByHeightRequest) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowTypes
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: BlockMetaByHeightRequest: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: BlockMetaByHeightRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Height", wireType)
-			}
-			m.Height = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Height |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])
@@ -4115,42 +3475,6 @@ func (m *StreamedBlockByHashResponse) Unmarshal(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BlockMeta", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthTypes
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.BlockMeta == nil {
-				m.BlockMeta = &types1.BlockMeta{}
-			}
-			if err := m.BlockMeta.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 5:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field IsLast", wireType)
 			}
@@ -4329,42 +3653,6 @@ func (m *StreamedBlockByHeightResponse) Unmarshal(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BlockMeta", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthTypes
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.BlockMeta == nil {
-				m.BlockMeta = &types1.BlockMeta{}
-			}
-			if err := m.BlockMeta.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 5:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field IsLast", wireType)
 			}
@@ -4384,178 +3672,6 @@ func (m *StreamedBlockByHeightResponse) Unmarshal(dAtA []byte) error {
 				}
 			}
 			m.IsLast = bool(v != 0)
-		default:
-			iNdEx = preIndex
-			skippy, err := skipTypes(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *BlockMetaByHashResponse) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowTypes
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: BlockMetaByHashResponse: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: BlockMetaByHashResponse: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BlockMeta", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthTypes
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.BlockMeta == nil {
-				m.BlockMeta = &types1.BlockMeta{}
-			}
-			if err := m.BlockMeta.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipTypes(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *BlockMetaByHeightResponse) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowTypes
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: BlockMetaByHeightResponse: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: BlockMetaByHeightResponse: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BlockMeta", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthTypes
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.BlockMeta == nil {
-				m.BlockMeta = &types1.BlockMeta{}
-			}
-			if err := m.BlockMeta.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])
