@@ -883,6 +883,7 @@ func NewNodeWithContext(ctx context.Context,
 
 	// create an optional tracer client to collect trace data.
 	tracer, err := trace.NewTracer(
+		ctx,
 		config,
 		logger,
 		genDoc.ChainID,

@@ -1,6 +1,7 @@
 package trace
 
 import (
+	"context"
 	"errors"
 	"os"
 
@@ -22,10 +23,10 @@ type Tracer interface {
 	Stop()
 }
 
-func NewTracer(cfg *config.Config, logger log.Logger, chainID, nodeID string) (Tracer, error) {
+func NewTracer(ctx context.Context, cfg *config.Config, logger log.Logger, chainID, nodeID string) (Tracer, error) {
 	switch cfg.Instrumentation.TraceType {
 	case "local":
-		return NewLocalTracer(cfg, logger, chainID, nodeID)
+		return NewLocalTracer(ctx, cfg, logger, chainID, nodeID)
 	case "noop":
 		return NoOpTracer(), nil
 	default:
