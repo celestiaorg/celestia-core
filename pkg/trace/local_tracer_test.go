@@ -1,6 +1,7 @@
 package trace
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -159,7 +160,7 @@ func setupLocalTracer(t *testing.T, port int) *LocalTracer {
 	cfg.Instrumentation.TracingTables = testEventTable
 	cfg.Instrumentation.TracePullAddress = fmt.Sprintf(":%d", port)
 
-	client, err := NewLocalTracer(cfg, logger, "test_chain", "test_node")
+	client, err := NewLocalTracer(context.Background(), cfg, logger, "test_chain", "test_node")
 	if err != nil {
 		t.Fatalf("failed to create local client: %v", err)
 	}

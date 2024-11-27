@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"github.com/tendermint/tendermint/libs/log"
 	"io"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/tendermint/tendermint/libs/log"
 )
 
 // bufferedFile is a file that is being written to and read from. It is thread
