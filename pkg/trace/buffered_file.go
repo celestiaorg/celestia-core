@@ -34,6 +34,12 @@ type bufferedFile struct {
 // newbufferedFile creates a new buffered file that writes to the given file.
 func newbufferedFile(ctx context.Context, logger log.Logger, file *os.File) *bufferedFile {
 	bufferedWriter := bufio.NewWriter(file)
+	bf := bufferedFile{
+		file:    file,
+		wr:      bufferedWriter,
+		reading: atomic.Bool{},
+		mut:     &sync.Mutex{},
+	}
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		for {
@@ -41,7 +47,9 @@ func newbufferedFile(ctx context.Context, logger log.Logger, file *os.File) *buf
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				bf.mut.Lock()
 				err := bufferedWriter.Flush()
+				bf.mut.Unlock()
 				if err != nil {
 					logger.Error("error flushing buffered file", "err", err)
 					return
@@ -49,12 +57,7 @@ func newbufferedFile(ctx context.Context, logger log.Logger, file *os.File) *buf
 			}
 		}
 	}()
-	return &bufferedFile{
-		file:    file,
-		wr:      bufferedWriter,
-		reading: atomic.Bool{},
-		mut:     &sync.Mutex{},
-	}
+	return &bf
 }
 
 // Write writes the given bytes to the file. If the file is currently being read
