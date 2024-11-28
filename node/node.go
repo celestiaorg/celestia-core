@@ -865,6 +865,7 @@ func NewNode(config *cfg.Config,
 
 	// create an optional tracer client to collect trace data.
 	tracer, err := trace.NewTracer(
+		context.Background(),
 		config,
 		logger,
 		genDoc.ChainID,
@@ -932,8 +933,9 @@ func NewNode(config *cfg.Config,
 	// Setup Transport.
 	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp, tracer)
 
-	mockReactor := load.NewMockReactor(load.DefaultTestChannels, 10_000)
+	mockReactor := load.NewMockReactor(load.DefaultTestChannels, 500_000)
 	mockReactor.SetLogger(logger.With("module", "mock"))
+	mockReactor.SetTracer(tracer)
 
 	go func() {
 		time.Sleep(time.Minute)
@@ -944,10 +946,6 @@ func NewNode(config *cfg.Config,
 				mockReactor.PrintSpeeds()
 				time.Sleep(10 * time.Second)
 			}
-		}()
-
-		go func() {
-			mockReactor.FloodAllPeers(10*time.Minute, load.FirstChannel)
 		}()
 
 		//go func() {

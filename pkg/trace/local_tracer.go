@@ -1,6 +1,7 @@
 package trace
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -69,7 +70,7 @@ type LocalTracer struct {
 // safe to avoid the overhead of locking with each event save. Only pass events
 // to the returned channel. Call CloseAll to close all open files. Goroutine to
 // save events is started in this function.
-func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID string) (*LocalTracer, error) {
+func NewLocalTracer(ctx context.Context, cfg *config.Config, logger log.Logger, chainID, nodeID string) (*LocalTracer, error) {
 	fm := make(map[string]*bufferedFile)
 	p := path.Join(cfg.RootDir, "data", "traces")
 	for _, table := range splitAndTrimEmpty(cfg.Instrumentation.TracingTables, ",", " ") {
@@ -82,7 +83,7 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 		if err != nil {
 			return nil, fmt.Errorf("failed to open or create file %s: %w", fileName, err)
 		}
-		fm[table] = newbufferedFile(file)
+		fm[table] = newbufferedFile(ctx, logger, file)
 	}
 
 	lt := &LocalTracer{

@@ -2,11 +2,14 @@ package trace
 
 import (
 	"bufio"
+	"context"
 	"errors"
+	"github.com/tendermint/tendermint/libs/log"
 	"io"
 	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // bufferedFile is a file that is being written to and read from. It is thread
@@ -28,13 +31,32 @@ type bufferedFile struct {
 }
 
 // newbufferedFile creates a new buffered file that writes to the given file.
-func newbufferedFile(file *os.File) *bufferedFile {
-	return &bufferedFile{
+func newbufferedFile(ctx context.Context, logger log.Logger, file *os.File) *bufferedFile {
+	bufferedWriter := bufio.NewWriter(file)
+	bf := bufferedFile{
 		file:    file,
-		wr:      bufio.NewWriter(file),
+		wr:      bufferedWriter,
 		reading: atomic.Bool{},
 		mut:     &sync.Mutex{},
 	}
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				bf.mut.Lock()
+				err := bufferedWriter.Flush()
+				bf.mut.Unlock()
+				if err != nil {
+					logger.Error("error flushing buffered file", "err", err)
+					return
+				}
+			}
+		}
+	}()
+	return &bf
 }
 
 // Write writes the given bytes to the file. If the file is currently being read

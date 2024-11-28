@@ -201,6 +201,7 @@ func (mr *MockReactor) AddPeer(peer p2p.Peer) {
 	mr.mtx.Lock()
 	defer mr.mtx.Unlock()
 	mr.peers[peer.ID()] = peer
+	mr.FloodChannel(peer.ID(), 10*60*time.Minute, FirstChannel)
 }
 
 // RemovePeer implements Reactor.
