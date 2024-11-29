@@ -338,71 +338,71 @@ func (mt *MultiplexTransport) Listen(addr NetAddress) error {
 
 func GetNewTracer() *logging.ConnectionTracer {
 	return &logging.ConnectionTracer{
-		//StartedConnection: func(local, remote net.Addr, srcConnID, destConnID quic.ConnectionID) {
-		//	fmt.Printf("StartedConnection: local=%v, remote=%v, srcConnID=%v, destConnID=%v\n", local, remote, srcConnID, destConnID)
-		//},
-		//ClosedConnection: func(err error) {
-		//	fmt.Printf("ClosedConnection: error=%v\n", err)
-		//},
-		//UpdatedMetrics: func(rttStats *logging.RTTStats, cwnd, bytesInFlight logging.ByteCount, packetsInFlight int) {
-		//	fmt.Printf("UpdatedMetrics: RTT=%v ms, cwnd=%d bytes, bytesInFlight=%d bytes, packetsInFlight=%d\n", rttStats,
-		//		cwnd, bytesInFlight, packetsInFlight)
-		//},
-		//LostPacket: func(encLevel logging.EncryptionLevel, packetNum logging.PacketNumber, reason logging.PacketLossReason) {
-		//	fmt.Printf("LostPacket: encLevel=%v, packetNum=%v, reason=%v\n", encLevel, packetNum, reason)
-		//},
-		//UpdatedCongestionState: func(state logging.CongestionState) {
-		//	fmt.Printf("UpdatedCongestionState: state=%v\n", state)
-		//},
-		//AcknowledgedPacket: func(encLevel logging.EncryptionLevel, packetNum logging.PacketNumber) {
-		//	fmt.Printf("AcknowledgedPacket: encLevel=%v, packetNum=%v\n", encLevel, packetNum)
-		//},
-		//SentLongHeaderPacket: func(header *logging.ExtendedHeader, bytes logging.ByteCount, ecn logging.ECN, ack *logging.AckFrame, frames []logging.Frame) {
-		//	fmt.Printf("SentLongHeaderPacket: packetNum=%v, bytes=%v, ecn=%v, frames=%v\n", header.PacketNumber, bytes, ecn, frames)
-		//},
-		//SentShortHeaderPacket: func(header *logging.ShortHeader, bytes logging.ByteCount, ecn logging.ECN, ack *logging.AckFrame, frames []logging.Frame) {
-		//	fmt.Printf("SentShortHeaderPacket: packetNum=%v, bytes=%v, ecn=%v, frames=%v\n", header.PacketNumber, bytes, ecn, frames)
-		//},
-		//ReceivedLongHeaderPacket: func(header *logging.ExtendedHeader, bytes logging.ByteCount, ecn logging.ECN, frames []logging.Frame) {
-		//	fmt.Printf("ReceivedLongHeaderPacket: packetNum=%v, bytes=%v, ecn=%v, frames=%v\n", header.PacketNumber, bytes, ecn, frames)
-		//},
-		//ReceivedShortHeaderPacket: func(header *logging.ShortHeader, bytes logging.ByteCount, ecn logging.ECN, frames []logging.Frame) {
-		//	fmt.Printf("ReceivedShortHeaderPacket: packetNum=%v, bytes=%v, ecn=%v, frames=%v\n", header.PacketNumber, bytes, ecn, frames)
-		//},
-		//SetLossTimer: func(timerType logging.TimerType, encLevel logging.EncryptionLevel, expTime time.Time) {
-		//	fmt.Printf("SetLossTimer: timerType=%v, encLevel=%v, expiresAt=%v\n", timerType, encLevel, expTime)
-		//},
-		//LossTimerExpired: func(timerType logging.TimerType, encLevel logging.EncryptionLevel) {
-		//	fmt.Printf("LossTimerExpired: timerType=%v, encLevel=%v\n", timerType, encLevel)
-		//},
-		//LossTimerCanceled: func() {
-		//	fmt.Println("LossTimerCanceled")
-		//},
-		//UpdatedPTOCount: func(value uint32) {
-		//	fmt.Printf("UpdatedPTOCount: value=%d\n", value)
-		//},
-		//Debug: func(name, msg string) {
-		//	fmt.Printf("Debug: name=%v, msg=%v\n", name, msg)
-		//},
-		//Close: func() {
-		//	fmt.Println("Tracer closed")
-		//},
-		//// Newly added methods as per your request
-		//ReceivedRetry: func(header *logging.Header) {
-		//	fmt.Printf("ReceivedRetry: header=%v\n", header)
-		//},
-		//BufferedPacket: func(packetType logging.PacketType, byteCount logging.ByteCount) {
-		//	fmt.Printf("BufferedPacket: packetType=%v, byteCount=%v\n", packetType, byteCount)
-		//},
-		//DroppedPacket: func(packetType logging.PacketType, packetNum logging.PacketNumber, byteCount logging.ByteCount, reason logging.PacketDropReason) {
-		//	fmt.Printf("DroppedPacket: packetType=%v, packetNum=%v, byteCount=%v, reason=%v\n", packetType, packetNum, byteCount, reason)
-		//},
-		//UpdatedMTU: func(mtu logging.ByteCount, acked bool) {
-		//	fmt.Printf("UpdatedMTU: mtu=%v, acked=%v\n", mtu, acked)
-		//},
-		//ECNStateUpdated: func(state logging.ECNState, trigger logging.ECNStateTrigger) {
-		//	fmt.Printf("ECNStateUpdated: state=%v, trigger=%v\n", state, trigger)
-		//},
+		StartedConnection: func(local, remote net.Addr, srcConnID, destConnID quic.ConnectionID) {
+			fmt.Printf("StartedConnection: local=%v, remote=%v, srcConnID=%v, destConnID=%v\n", local, remote, srcConnID, destConnID)
+		},
+		ClosedConnection: func(err error) {
+			fmt.Printf("ClosedConnection: error=%v\n", err)
+		},
+		UpdatedMetrics: func(rttStats *logging.RTTStats, cwnd, bytesInFlight logging.ByteCount, packetsInFlight int) {
+			fmt.Printf("UpdatedMetrics: RTT=%v ms, cwnd=%d bytes, bytesInFlight=%d bytes, packetsInFlight=%d\n", rttStats,
+				cwnd, bytesInFlight, packetsInFlight)
+		},
+		LostPacket: func(encLevel logging.EncryptionLevel, packetNum logging.PacketNumber, reason logging.PacketLossReason) {
+			fmt.Printf("LostPacket: encLevel=%v, packetNum=%v, reason=%v\n", encLevel, packetNum, reason)
+		},
+		UpdatedCongestionState: func(state logging.CongestionState) {
+			fmt.Printf("UpdatedCongestionState: state=%v\n", state)
+		},
+		AcknowledgedPacket: func(encLevel logging.EncryptionLevel, packetNum logging.PacketNumber) {
+			fmt.Printf("AcknowledgedPacket: encLevel=%v, packetNum=%v\n", encLevel, packetNum)
+		},
+		SentLongHeaderPacket: func(header *logging.ExtendedHeader, bytes logging.ByteCount, ecn logging.ECN, ack *logging.AckFrame, frames []logging.Frame) {
+			fmt.Printf("SentLongHeaderPacket: packetNum=%v, bytes=%v, ecn=%v, frames=%v\n", header.PacketNumber, bytes, ecn, frames)
+		},
+		SentShortHeaderPacket: func(header *logging.ShortHeader, bytes logging.ByteCount, ecn logging.ECN, ack *logging.AckFrame, frames []logging.Frame) {
+			fmt.Printf("SentShortHeaderPacket: packetNum=%v, bytes=%v, ecn=%v, frames=%v\n", header.PacketNumber, bytes, ecn, frames)
+		},
+		ReceivedLongHeaderPacket: func(header *logging.ExtendedHeader, bytes logging.ByteCount, ecn logging.ECN, frames []logging.Frame) {
+			fmt.Printf("ReceivedLongHeaderPacket: packetNum=%v, bytes=%v, ecn=%v, frames=%v\n", header.PacketNumber, bytes, ecn, frames)
+		},
+		ReceivedShortHeaderPacket: func(header *logging.ShortHeader, bytes logging.ByteCount, ecn logging.ECN, frames []logging.Frame) {
+			fmt.Printf("ReceivedShortHeaderPacket: packetNum=%v, bytes=%v, ecn=%v, frames=%v\n", header.PacketNumber, bytes, ecn, frames)
+		},
+		SetLossTimer: func(timerType logging.TimerType, encLevel logging.EncryptionLevel, expTime time.Time) {
+			fmt.Printf("SetLossTimer: timerType=%v, encLevel=%v, expiresAt=%v\n", timerType, encLevel, expTime)
+		},
+		LossTimerExpired: func(timerType logging.TimerType, encLevel logging.EncryptionLevel) {
+			fmt.Printf("LossTimerExpired: timerType=%v, encLevel=%v\n", timerType, encLevel)
+		},
+		LossTimerCanceled: func() {
+			fmt.Println("LossTimerCanceled")
+		},
+		UpdatedPTOCount: func(value uint32) {
+			fmt.Printf("UpdatedPTOCount: value=%d\n", value)
+		},
+		Debug: func(name, msg string) {
+			fmt.Printf("Debug: name=%v, msg=%v\n", name, msg)
+		},
+		Close: func() {
+			fmt.Println("Tracer closed")
+		},
+		// Newly added methods as per your request
+		ReceivedRetry: func(header *logging.Header) {
+			fmt.Printf("ReceivedRetry: header=%v\n", header)
+		},
+		BufferedPacket: func(packetType logging.PacketType, byteCount logging.ByteCount) {
+			fmt.Printf("BufferedPacket: packetType=%v, byteCount=%v\n", packetType, byteCount)
+		},
+		DroppedPacket: func(packetType logging.PacketType, packetNum logging.PacketNumber, byteCount logging.ByteCount, reason logging.PacketDropReason) {
+			fmt.Printf("DroppedPacket: packetType=%v, packetNum=%v, byteCount=%v, reason=%v\n", packetType, packetNum, byteCount, reason)
+		},
+		UpdatedMTU: func(mtu logging.ByteCount, acked bool) {
+			fmt.Printf("UpdatedMTU: mtu=%v, acked=%v\n", mtu, acked)
+		},
+		ECNStateUpdated: func(state logging.ECNState, trigger logging.ECNStateTrigger) {
+			fmt.Printf("ECNStateUpdated: state=%v, trigger=%v\n", state, trigger)
+		},
 	}
 }
 
