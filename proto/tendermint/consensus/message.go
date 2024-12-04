@@ -98,6 +98,9 @@ func (m *Message) Unwrap() (proto.Message, error) {
 	case *Message_BlockPart:
 		return m.GetBlockPart(), nil
 
+	case *Message_PartState:
+		return m.GetPartState(), nil
+
 	case *Message_Vote:
 		return m.GetVote(), nil
 

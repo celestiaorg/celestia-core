@@ -516,6 +516,7 @@ func createConsensusReactor(config *cfg.Config,
 	eventBus *types.EventBus,
 	consensusLogger log.Logger,
 	traceClient trace.Tracer,
+	self p2p.ID,
 ) (*cs.Reactor, *cs.State) {
 	consensusState := cs.NewState(
 		config.Consensus,
@@ -536,6 +537,7 @@ func createConsensusReactor(config *cfg.Config,
 		waitSync,
 		cs.ReactorMetrics(csMetrics),
 		cs.ReactorTracing(traceClient),
+		cs.WithID(self),
 	)
 	consensusReactor.SetLogger(consensusLogger)
 	// services which will be publishing and/or subscribing for messages (events)
@@ -928,6 +930,7 @@ func NewNodeWithContext(ctx context.Context,
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
 		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger, tracer,
+		nodeKey.ID(),
 	)
 
 	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)

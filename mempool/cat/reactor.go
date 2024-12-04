@@ -254,7 +254,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			}
 			_, err = memR.mempool.TryAddNewTx(ntx, key, txInfo)
 			if err != nil && err != ErrTxInMempool {
-				memR.Logger.Info("Could not add tx", "txKey", key, "err", err)
+				memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
 				return
 			}
 			if !memR.opts.ListenOnly {
@@ -475,7 +475,7 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		// No other free peer has the transaction we are looking for.
 		// We give up 🤷‍♂️ and hope either a peer responds late or the tx
 		// is gossiped again
-		memR.Logger.Info("no other peer has the tx we are looking for", "txKey", txKey)
+		memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
 		return
 	}
 	peer := memR.ids.GetPeer(peerID)

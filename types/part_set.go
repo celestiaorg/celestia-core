@@ -277,6 +277,10 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 
+	if part == nil {
+		return false, nil
+	}
+
 	// Invalid part index
 	if part.Index >= ps.total {
 		return false, ErrPartSetUnexpectedIndex

@@ -20,6 +20,7 @@ import (
 	cmtcons "github.com/tendermint/tendermint/proto/tendermint/consensus"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	sm "github.com/tendermint/tendermint/state"
+	"github.com/tendermint/tendermint/store"
 	"github.com/tendermint/tendermint/types"
 	cmttime "github.com/tendermint/tendermint/types/time"
 )
@@ -44,6 +45,8 @@ type Reactor struct {
 
 	conS *State
 
+	dr *DataRoutine
+
 	mtx      cmtsync.RWMutex
 	waitSync bool
 	eventBus *types.EventBus
@@ -51,9 +54,17 @@ type Reactor struct {
 
 	Metrics     *Metrics
 	traceClient trace.Tracer
+
+	self p2p.ID
 }
 
 type ReactorOption func(*Reactor)
+
+func WithID(id p2p.ID) ReactorOption {
+	return func(conR *Reactor) {
+		conR.self = id
+	}
+}
 
 // NewReactor returns a new Reactor with the given
 // consensusState.
@@ -70,6 +81,11 @@ func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) 
 	for _, option := range options {
 		option(conR)
 	}
+
+	bs := consensusState.blockStore.(*store.BlockStore)
+
+	conR.dr = NewDataRoutine(conR.Logger, conR.traceClient, bs, conR.Switch, conR.self)
+	conR.conS.SetDataRoutine(conR.dr)
 
 	return conR
 }
@@ -99,6 +115,7 @@ func (conR *Reactor) OnStart() error {
 // state.
 func (conR *Reactor) OnStop() {
 	conR.unsubscribeFromBroadcastEvents()
+	conR.dr.Stop()
 	if err := conR.conS.Stop(); err != nil {
 		conR.Logger.Error("Error stopping consensus state", "err", err)
 	}
@@ -125,7 +142,6 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 		// NewRoundStepMessage.
 		conR.conS.updateToState(state)
 	}()
-
 	conR.mtx.Lock()
 	conR.waitSync = false
 	conR.mtx.Unlock()
@@ -200,12 +216,14 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 		return
 	}
 
+	conR.dr.AddPeer(peer)
+
 	peerState, ok := peer.Get(types.PeerStateKey).(*PeerState)
 	if !ok {
 		panic(fmt.Sprintf("peer %v has no state", peer))
 	}
 	// Begin routines for this peer.
-	go conR.gossipDataRoutine(peer, peerState)
+	// go conR.gossipDataRoutine(peer, peerState)
 	go conR.gossipVotesRoutine(peer, peerState)
 	go conR.queryMaj23Routine(peer, peerState)
 
@@ -384,6 +402,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				string(e.Src.ID()),
 				schema.Download,
 			)
+			conR.dr.handleProposal(msg.Proposal, e.Src.ID())
 		case *ProposalPOLMessage:
 			ps.ApplyProposalPOLMessage(msg)
 			schema.WriteConsensusState(
@@ -399,7 +418,18 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
 			schema.WriteBlockPart(conR.traceClient, msg.Height, msg.Round, msg.Part.Index, false, string(e.Src.ID()), schema.Download)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
-		case *types.PartState:
+			conR.dr.handleBlockPart(e.Src.ID(), msg)
+		case *PartStateMessage:
+			go conR.dr.handlePartState(e.Src.ID(), msg.PartState)
+			schema.WriteBlockPartState(
+				conR.traceClient,
+				msg.PartState.Height,
+				msg.PartState.Round,
+				msg.PartState.Parts.GetTrueIndices(),
+				msg.PartState.Have,
+				string(e.Src.ID()),
+				schema.Download,
+			)
 
 		default:
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -789,6 +819,11 @@ OUTER_LOOP:
 		time.Sleep(conR.conS.config.PeerGossipSleepDuration)
 		continue OUTER_LOOP
 	}
+}
+
+func (conR *Reactor) GetPOLPrevotes(round int) *bits.BitArray {
+	rs := conR.getRoundState()
+	return rs.Votes.Prevotes(rs.Proposal.POLRound).BitArray()
 }
 
 func (conR *Reactor) gossipDataForCatchup(logger log.Logger, rs *cstypes.RoundState,
@@ -1716,6 +1751,8 @@ func init() {
 	cmtjson.RegisterType(&HasVoteMessage{}, "tendermint/HasVote")
 	cmtjson.RegisterType(&VoteSetMaj23Message{}, "tendermint/VoteSetMaj23")
 	cmtjson.RegisterType(&VoteSetBitsMessage{}, "tendermint/VoteSetBits")
+	cmtjson.RegisterType(&PartStateMessage{}, "tendermint/PartState")
+	// todo(evan): add new types here
 }
 
 //-------------------------------------
@@ -1895,6 +1932,21 @@ func (m *BlockPartMessage) ValidateBasic() error {
 // String returns a string representation.
 func (m *BlockPartMessage) String() string {
 	return fmt.Sprintf("[BlockPart H:%v R:%v P:%v]", m.Height, m.Round, m.Part)
+}
+
+type PartStateMessage struct {
+	PartState *types.PartState
+}
+
+func (m *PartStateMessage) ValidateBasic() error {
+	if m.PartState == nil {
+		return errors.New("nil PartState")
+	}
+	return m.PartState.ValidateBasic()
+}
+
+func (m *PartStateMessage) String() string {
+	return fmt.Sprintf("[PartState %v]", m.PartState)
 }
 
 //-------------------------------------

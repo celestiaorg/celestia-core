@@ -191,6 +191,12 @@ func (bs *BlockStore) LoadBlockPart(height int64, index int) *types.Part {
 // If no block is found for the given height, it returns nil.
 func (bs *BlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	var pbbm = new(cmtproto.BlockMeta)
+	if bs == nil {
+		panic("BlockStore is nil")
+	}
+	if bs.db == nil {
+		panic("BlockStore.db is nil")
+	}
 	bz, err := bs.db.Get(calcBlockMetaKey(height))
 
 	if err != nil {

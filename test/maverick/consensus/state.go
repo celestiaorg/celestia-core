@@ -1230,8 +1230,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	proposal.CompactBlock = &cmtproto.CompactBlock{Txs: txHashes}
 	ba := bits.NewBitArray(len(txHashes))
 	ba.Fill()
-	pba := ba.ToProto()
-	proposal.HaveParts = &cmtproto.PartState{Parts: *pba}
+	proposal.HaveParts = ba
 
 	p := proposal.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p); err == nil {

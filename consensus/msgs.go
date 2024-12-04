@@ -72,6 +72,13 @@ func MsgToProto(msg Message) (*cmtcons.Message, error) {
 		}
 		return m.Wrap().(*cmtcons.Message), nil
 
+	case *PartStateMessage:
+		psm := msg.PartState.ToProto()
+		m := &cmtcons.PartState{
+			PartState: psm,
+		}
+		return m.Wrap().(*cmtcons.Message), nil
+
 	case *VoteMessage:
 		vote := msg.Vote.ToProto()
 		m := &cmtcons.Vote{
@@ -193,6 +200,12 @@ func MsgFromProto(p *cmtcons.Message) (Message, error) {
 			Round:  msg.Round,
 			Part:   parts,
 		}
+	case *cmtcons.PartState:
+		psm := types.PartStateFromProto(msg.PartState)
+		pb = &PartStateMessage{
+			PartState: psm,
+		}
+
 	case *cmtcons.Vote:
 		vote, err := types.VoteFromProto(msg.Vote)
 		if err != nil {
@@ -235,9 +248,6 @@ func MsgFromProto(p *cmtcons.Message) (Message, error) {
 			BlockID: *bi,
 			Votes:   bits,
 		}
-	case *cmtcons.PartState:
-		wp := types.PartStateFromProto(msg.PartState)
-		pb = wp
 
 	default:
 		return nil, fmt.Errorf("consensus: message not recognized: %T", msg)

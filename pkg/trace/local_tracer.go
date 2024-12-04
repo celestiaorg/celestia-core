@@ -73,6 +73,7 @@ func NewLocalTracer(cfg *config.Config, logger log.Logger, chainID, nodeID strin
 	fm := make(map[string]*bufferedFile)
 	p := path.Join(cfg.RootDir, "data", "traces")
 	for _, table := range splitAndTrimEmpty(cfg.Instrumentation.TracingTables, ",", " ") {
+		fmt.Println("TRACING TABLE &&&&&&&&&", table)
 		fileName := fmt.Sprintf("%s/%s.jsonl", p, table)
 		err := os.MkdirAll(p, 0700)
 		if err != nil {

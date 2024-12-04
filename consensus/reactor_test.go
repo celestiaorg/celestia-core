@@ -79,7 +79,7 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 		}
 	}
 	// make connected switches and start all reactors
-	p2p.MakeConnectedSwitches(config.P2P, n, func(i int, s *p2p.Switch) *p2p.Switch {
+	switches := p2p.MakeConnectedSwitches(config.P2P, n, func(i int, s *p2p.Switch) *p2p.Switch {
 		s.AddReactor("CONSENSUS", reactors[i])
 		s.SetLogger(reactors[i].conS.Logger.With("module", "p2p"))
 		return s
@@ -90,6 +90,7 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 	// we'd block when the cs fires NewBlockEvent and the peers are trying to start their reactors
 	// TODO: is this still true with new pubsub?
 	for i := 0; i < n; i++ {
+		reactors[i].dr.self = switches[i].NodeInfo().ID()
 		s := reactors[i].conS.GetState()
 		reactors[i].SwitchToConsensus(s, false)
 	}

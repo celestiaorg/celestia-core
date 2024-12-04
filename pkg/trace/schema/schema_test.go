@@ -1,5 +1,11 @@
 package schema
 
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
+
 // Define a test struct with various field types and json tags
 type TestStruct struct {
 	Name  string `json:"name"`
@@ -14,4 +20,8 @@ type CustomType int
 type TestStructWithCustomType struct {
 	ID   int        `json:"id"`
 	Type CustomType `json:"type"`
+}
+
+func TestAllTables(t *testing.T) {
+	fmt.Println(strings.Join(AllTables(), ","))
 }
