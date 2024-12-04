@@ -69,7 +69,7 @@ decrease the number of required changes. Below, implementation semantics are pre
 // Row represents a blob of multiple ExtendedDataSquare shares.
 // Practically, it is half of an extended row, as other half can be recomputed.
 type Row struct {
-// Index is an top-to-bottom index of a Row in ExtendedDataSquare.
+// Index is a top-to-bottom index of a Row in ExtendedDataSquare.
 // NOTE: Row Index is unnecessary, as we can determine it's Index by hash from DAHeader. However, Index removal
 // would bring more changes to Consensus Reactor with arguable pros of less bandwidth usage.
 Index int
