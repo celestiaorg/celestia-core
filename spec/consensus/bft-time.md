@@ -18,12 +18,12 @@ a faulty process cannot arbitrarily increase the Time value.
 In the context of CometBFT, time is of type int64 and denotes UNIX time in milliseconds, i.e.,
 corresponds to the number of milliseconds since January 1, 1970.
 Before defining rules that need to be enforced by Tendermint, the consensus algorithm adopted in CometBFT,
-so the properties above holds, we introduce the following definition:
+so the properties above hold, we introduce the following definition:
 
 - median of a Commit is equal to the median of `Vote.Time` fields of the `Vote` messages,
 where the value of `Vote.Time` is counted number of times proportional to the process voting power. As
 the voting power is not uniform (one process one vote), a vote message is actually an aggregator of the same votes whose
-number is equal to the voting power of the process that has casted the corresponding votes message.
+number is equal to the voting power of the process that has cast the corresponding votes message.
 
 Let's consider the following example:
 
@@ -39,7 +39,7 @@ Furthermore, we have the following vote messages in some LastCommit field (we ig
 
 We ensure Time Monotonicity and Time Validity properties by the following rules:
   
-- let rs denotes `RoundState` (consensus internal state) of some process. Then
+- let rs denote `RoundState` (consensus internal state) of some process. Then
 `rs.ProposalBlock.Header.Time == median(rs.LastCommit) &&
 rs.Proposal.Timestamp == rs.ProposalBlock.Header.Time`.
 
@@ -50,7 +50,7 @@ rs.Proposal.Timestamp == rs.ProposalBlock.Header.Time`.
         denotes local Unix time in milliseconds
 
     - else if `rs.Proposal` is defined then
-    `vote.Time = max(rs.Proposal.Timestamp + time.Millisecond,, time.Now())`,
+    `vote.Time = max(rs.Proposal.Timestamp + time.Millisecond, time.Now())`,
 
-    - otherwise, `vote.Time = time.Now())`. In this case vote is for `nil` so it is not taken into account for
+    - otherwise, `vote.Time = time.Now()`. In this case vote is for `nil` so it is not taken into account for
     the timestamp of the next block.
