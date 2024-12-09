@@ -480,7 +480,7 @@ only_internal_wal = "{{ .Consensus.OnlyInternalWal }}"
 wal_file = "{{ js .Consensus.WalPath }}"
 
 # How long we wait for a proposal block before prevoting nil
-# Deprecated: timeout_commit is overriden by the state machine in app version >= 3.
+# Deprecated: timeout_commit is overridden by the state machine in app version >= 3.
 # Therefore, the value set in this config will be ignored.
 timeout_propose = "{{ .Consensus.TimeoutPropose }}"
 # How much timeout_propose increases with each round
