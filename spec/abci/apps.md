@@ -13,7 +13,7 @@ Here we cover the following components of ABCI applications:
   and the differences between `CheckTx` and `DeliverTx`.
 - [Transaction Results](#transaction-results) - rules around transaction
   results and validity
-- [Validator Set Updates](#validator-updates) - how validator sets are
+- [Updating the Validator Set](#updating-the-validator-set) - how validator sets are
   changed during `InitChain` and `EndBlock`
 - [Query](#query) - standards for using the `Query` method and proofs about the
   application state
@@ -32,10 +32,10 @@ be synchronized during `Commit`.
 In principle, each of the four ABCI connections operate concurrently with one
 another. This means applications need to ensure access to state is
 thread safe. In practice, both the
-[default in-process ABCI client](https://github.com/cometbft/cometbft/blob/v0.34.4/abci/client/local_client.go#L18)
+[default in-process ABCI client](https://github.com/cometbft/cometbft/blob/main/abci/client/local_client.go#L18)
 and the
 [default Go ABCI
-server](https://github.com/cometbft/cometbft/blob/v0.34.4/abci/server/socket_server.go#L32)
+server](https://github.com/cometbft/cometbft/blob/main/abci/server/socket_server.go#L32)
 use global locks across all connections, so they are not
 concurrent at all. This means if your app is written in Go, and compiled in-process with CometBFT
 using the default `NewLocalClient`, or run out-of-process using the default `SocketServer`,
@@ -137,7 +137,7 @@ returning non-OK ABCI response to either of the following queries will
 cause CometBFT to not connect to the corresponding peer:
 
 - `p2p/filter/addr/<ip addr>`, where `<ip addr>` is an IP address.
-- `p2p/filter/id/<id>`, where `<is>` is the hex-encoded node ID (the hash of
+- `p2p/filter/id/<id>`, where `<id>` is the hex-encoded node ID (the hash of
   the node's p2p pubkey).
 
 Note: these query formats are subject to change!
@@ -166,7 +166,7 @@ the difference credited back. CometBFT adopts a similar abstraction,
 though uses it only optionally and weakly, allowing applications to define
 their own sense of the cost of execution.
 
-In CometBFT, the [ConsensusParams.Block.MaxGas](../proto/types/params.proto) limits the amount of `gas` that can be used in a block.
+In CometBFT, the [ConsensusParams.Block.MaxGas](https://github.com/celestiaorg/celestia-core/blob/v0.34.x-celestia/proto/tendermint/types/params.proto) limits the amount of `gas` that can be used in a block.
 The default value is `-1`, meaning no limit, or that the concept of gas is
 meaningless.
 
@@ -413,7 +413,7 @@ verification of the transactions included in the block, etc.
 The `AppHash` is unique in that it is application specific, and allows for
 application-specific Merkle proofs about the state of the application.
 While some applications keep all relevant state in the transactions themselves
-(like Bitcoin and its UTXOs), others maintain a separated state that is
+(like Bitcoin and its UTXOs), others maintain a separate state that is
 computed deterministically *from* transactions, but is not contained directly in
 the transactions themselves (like Ethereum contracts and accounts).
 For such applications, the `AppHash` provides a much more efficient way to verify light-client proofs.
@@ -480,9 +480,9 @@ implementation of
 
 On startup, CometBFT calls the `Info` method on the Info Connection to get the latest
 committed state of the app. The app MUST return information consistent with the
-last block it succesfully completed Commit for.
+last block it successfully completed Commit for.
 
-If the app succesfully committed block H, then `last_block_height = H` and `last_block_app_hash = <hash returned by Commit for block H>`. If the app
+If the app successfully committed block H, then `last_block_height = H` and `last_block_app_hash = <hash returned by Commit for block H>`. If the app
 failed during the Commit of block H, then `last_block_height = H-1` and
 `last_block_app_hash = <hash returned by Commit for block H-1, which is the hash in the header of block H>`.
 
@@ -493,7 +493,7 @@ the app.
 storeBlockHeight = height of the last block CometBFT saw a commit for
 stateBlockHeight = height of the last block for which CometBFT completed all
     block processing and saved all ABCI results to disk
-appBlockHeight = height of the last block for which ABCI app succesfully
+appBlockHeight = height of the last block for which ABCI app successfully
     completed Commit
 
 ```
@@ -537,7 +537,7 @@ If `appBlockHeight == stateBlockHeight`,
 This happens if we crashed before the app finished Commit
 
 If `appBlockHeight == storeBlockHeight`
-    update the state using the saved ABCI responses but dont run the block against the real app.
+    update the state using the saved ABCI responses but don't run the block against the real app.
 This happens if we crashed after the app finished Commit but before CometBFT saved the state.
 
 ## State Sync
