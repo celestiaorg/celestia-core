@@ -17,7 +17,14 @@ func TestDataRoutine_basic(t *testing.T) {
 
 	// wait till everyone makes the first new block
 	timeoutWaitGroup(t, N, func(j int) {
-		<-blocksSubs[j].Out()
+		count := 0
+
+		for _ = range blocksSubs[j].Out() {
+			count++
+			if count == 3 {
+				break
+			}
+		}
 	}, css)
 
 	fmt.Println("yeah")

@@ -397,6 +397,7 @@ func (cs *State) OnStart() error {
 
 	// now start the receiveRoutine
 	go cs.receiveRoutine(0)
+	go cs.syncData()
 
 	// schedule the first round!
 	// use GetRoundState so we don't race the receiveRoutine for access
@@ -549,6 +550,14 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 			schema.WriteRoundState(cs.traceClient, cs.Height, round, uint8(step))
 		}
 	}
+	schema.WriteNote(
+		cs.traceClient,
+		cs.Height,
+		round,
+		"updateRoundStep",
+		"updating round step to %v/%v",
+		round, step.String(),
+	)
 	cs.Round = round
 	cs.Step = step
 }
@@ -562,6 +571,14 @@ func (cs *State) scheduleRound0(rs *cstypes.RoundState) {
 
 // Attempt to schedule a timeout (by sending timeoutInfo on the tickChan)
 func (cs *State) scheduleTimeout(duration time.Duration, height int64, round int32, step cstypes.RoundStepType) {
+	schema.WriteNote(
+		cs.traceClient,
+		height,
+		round,
+		"scheduleTimeout",
+		"schedule timeout: %v at %v/%v %v",
+		duration, height, round, step.String(),
+	)
 	cs.timeoutTicker.ScheduleTimeout(timeoutInfo{duration, height, round, step})
 }
 
@@ -724,23 +741,31 @@ func (cs *State) updateToState(state sm.State) {
 	if cs.dr == nil {
 		return
 	}
-	prop, parts, _, has := cs.dr.GetProposal(state.LastBlockHeight+1, 0)
-	if has {
-		cs.Logger.Info("data routine has a proposal block 3,", "height", height, "round", 0, "complete", parts.IsComplete())
-		if prop != nil {
-			cs.internalMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
-		} else {
-			cs.ProposalBlockParts = parts
-		}
 
-		for i := 0; i < int(parts.Total()); i++ {
-			part := parts.GetPart(i)
-			if part == nil {
-				continue
-			}
-			cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, 0, part}, ""}
-		}
-	}
+	// prop, parts, _, has := cs.dr.GetProposal(state.LastBlockHeight+1, 0)
+	// if has {
+	// 	cs.Logger.Info("data routine has a proposal block 3,", "height", height, "round", 0, "complete", parts.IsComplete())
+	// 	if prop != nil {
+	// 		cs.Logger.Info("Proposal was apparently not nil, so we're sending that puppy", "complete", parts.IsComplete())
+	// 		schema.WriteNote(
+	// 			cs.traceClient,
+	// 			state.LastBlockHeight,
+	// 			0,
+	// 			"updateToState",
+	// 			"found next proposal in data routine: %v/%v",
+	// 			prop.Height, prop.Round,
+	// 		)
+	// 		cs.internalMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
+	// 	}
+
+	// 	for i := 0; i < int(parts.Total()); i++ {
+	// 		part := parts.GetPart(i)
+	// 		if part == nil {
+	// 			continue
+	// 		}
+	// 		cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, 0, part}, ""}
+	// 	}
+	// }
 }
 
 func (cs *State) newStep() {
@@ -901,6 +926,18 @@ func (cs *State) handleMsg(mi msgInfo) {
 		}
 		if added {
 			cs.statsMsgQueue <- mi
+			if cs.ProposalBlockParts != nil && cs.ProposalBlockParts.BitArray() != nil {
+				total := cs.ProposalBlockParts.Total()
+				trueTotal := len(cs.ProposalBlockParts.BitArray().GetTrueIndices())
+				schema.WriteNote(
+					cs.traceClient,
+					msg.Height,
+					msg.Round,
+					"handleBlockPart",
+					"downloaded block part %v",
+					float64(trueTotal)/float64(total),
+				)
+			}
 		}
 
 		if err != nil && msg.Round != cs.Round {
@@ -950,6 +987,86 @@ func (cs *State) handleMsg(mi msgInfo) {
 			"msg_type", fmt.Sprintf("%T", msg),
 			"err", err,
 		)
+	}
+}
+
+// sync data periodically checks to make sure that all block parts in the data
+// routine are pushed through to the state.
+func (cs *State) syncData() {
+	for {
+		select {
+		case <-cs.Quit():
+			return
+		case <-time.After(time.Millisecond * 100):
+			if cs.dr == nil {
+				continue
+			}
+
+			// check if the data routine already has a proposal or block parts
+			// if so, we can add them here
+			cs.mtx.RLock()
+			h, r := cs.Height, cs.Round
+			pparts := cs.ProposalBlockParts
+			pprop := cs.Proposal
+			completeProp := cs.isProposalComplete()
+			cs.mtx.RUnlock()
+
+			if completeProp {
+				continue
+			}
+
+			prop, parts, _, has := cs.dr.GetProposal(h, r)
+
+			if !has {
+				schema.WriteNote(
+					cs.traceClient,
+					h,
+					r,
+					"syncData",
+					"no data found",
+				)
+				continue
+			}
+			schema.WriteNote(
+				cs.traceClient,
+				h,
+				r,
+				"syncData",
+				"found data: is complete %v",
+				parts.IsComplete(),
+			)
+
+			if prop != nil && pprop == nil {
+				schema.WriteNote(
+					cs.traceClient,
+					prop.Height,
+					prop.Round,
+					"syncData",
+					"found and sent proposal: %v/%v",
+					prop.Height, prop.Round,
+				)
+				cs.Logger.Info("Proposal was apparently not nil, so we're sending it", "complete", parts.IsComplete())
+				cs.peerMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
+			}
+
+			if pparts != nil && pparts.IsComplete() {
+				continue
+			}
+
+			for i := 0; i < int(parts.Total()); i++ {
+				if pparts != nil {
+					if p := pparts.GetPart(i); p != nil {
+						continue
+					}
+				}
+
+				part := parts.GetPart(i)
+				if part == nil {
+					continue
+				}
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{cs.Height, cs.Round, part}, ""}
+			}
+		}
 	}
 }
 
@@ -1042,6 +1159,14 @@ func (cs *State) handleTxsAvailable() {
 func (cs *State) enterNewRound(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
 
+	schema.WriteNote(
+		cs.traceClient,
+		height,
+		round,
+		"enterNewRound",
+		"entering new round",
+	)
+
 	if cs.Height != height || round < cs.Round || (cs.Round == round && cs.Step != cstypes.RoundStepNewHeight) {
 		logger.Debug(
 			"entering new round with invalid args",
@@ -1080,24 +1205,31 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.ProposalBlockParts = nil
 	}
 
-	// todo(evan): optimize and don't do this if we're on the same round but
-	// just calling enter new round
-	prop, parts, _, has := cs.dr.GetProposal(height, round)
-	if has {
-		cs.Logger.Info("data routine has a proposal block 4, ", "height", height, "round", round, "complete", parts.IsComplete())
-		if prop != nil {
-			cs.internalMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
-		} else {
-			cs.ProposalBlockParts = parts
-		}
-		for i := 0; i < int(parts.Total()); i++ {
-			part := parts.GetPart(i)
-			if part == nil {
-				continue
-			}
-			cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
-		}
-	}
+	// // todo(evan): optimize and don't do this if we're on the same round but
+	// // just calling enter new round
+	// prop, parts, _, has := cs.dr.GetProposal(height, round)
+	// if has {
+	// 	cs.Logger.Info("data routine has a proposal block 4, ", "height", height, "round", round, "complete", parts.IsComplete())
+	// 	if prop != nil {
+	// 		cs.Logger.Info("Proposal was apparently not nil, so we're sending that puppy", "complete", parts.IsComplete())
+	// 		cs.internalMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
+	// 		schema.WriteNote(
+	// 			cs.traceClient,
+	// 			height,
+	// 			round,
+	// 			"enterNewRound",
+	// 			"found next proposal in data routine: %v/%v",
+	// 			prop.Height, prop.Round,
+	// 		)
+	// 	}
+	// 	for i := 0; i < int(parts.Total()); i++ {
+	// 		part := parts.GetPart(i)
+	// 		if part == nil {
+	// 			continue
+	// 		}
+	// 		cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+	// 	}
+	// }
 
 	logger.Debug("entering new round",
 		"previous", log.NewLazySprintf("%v/%v/%v", prevHeight, prevRound, prevStep),
@@ -1150,10 +1282,26 @@ func (cs *State) needProofBlock(height int64) bool {
 func (cs *State) enterPropose(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
 
+	schema.WriteNote(
+		cs.traceClient,
+		height,
+		round,
+		"enterPropose",
+		"entering propose",
+	)
+
 	if cs.Height != height || round < cs.Round || (cs.Round == round && cstypes.RoundStepPropose <= cs.Step) {
 		logger.Debug(
 			"entering propose step with invalid args",
 			"current", log.NewLazySprintf("%v/%v/%v", cs.Height, cs.Round, cs.Step),
+		)
+		schema.WriteNote(
+			cs.traceClient,
+			cs.Height,
+			cs.Round,
+			"enterPropose",
+			"entering propose with invalid args: %v/%v/%v",
+			height, round, cs.Step,
 		)
 		return
 	}
@@ -1215,6 +1363,14 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 	var block *types.Block
 	var blockParts *types.PartSet
 	var keys []types.TxKey
+
+	schema.WriteNote(
+		cs.traceClient,
+		height,
+		round,
+		"defaultDecideProposal",
+		"proposing a block",
+	)
 
 	// Decide on block
 	if cs.TwoThirdPrevoteBlock != nil {
@@ -1332,6 +1488,13 @@ func (cs *State) createProposalBlock() (block *types.Block, blockParts *types.Pa
 // Otherwise vote nil.
 func (cs *State) enterPrevote(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
+	schema.WriteNote(
+		cs.traceClient,
+		height,
+		round,
+		"enterPrevote",
+		"attempting prevote step",
+	)
 
 	if cs.Height != height || round < cs.Round || (cs.Round == round && cstypes.RoundStepPrevote <= cs.Step) {
 		logger.Debug(
@@ -1359,8 +1522,23 @@ func (cs *State) enterPrevote(height int64, round int32) {
 func (cs *State) defaultDoPrevote(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
 
+	schema.WriteNote(
+		cs.traceClient,
+		height,
+		round,
+		"doPrevote",
+		"prevote step",
+	)
+
 	// If a block is locked, prevote that.
 	if cs.LockedBlock != nil {
+		schema.WriteNote(
+			cs.traceClient,
+			height,
+			round,
+			"doPrevote",
+			"prevoting locked block",
+		)
 		logger.Debug("prevote step; already locked on a block; prevoting locked block")
 		cs.signAddVote(cmtproto.PrevoteType, cs.LockedBlock.Hash(), cs.LockedBlockParts.Header())
 		return
@@ -1371,6 +1549,13 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		logger.Debug("prevote step: ProposalBlock is nil")
 		cs.metrics.TimedOutProposals.Add(1)
 		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{})
+		schema.WriteNote(
+			cs.traceClient,
+			height,
+			round,
+			"doPrevote",
+			"prevote nil as there's no proposal",
+		)
 		return
 	}
 
@@ -1380,6 +1565,14 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		// ProposalBlock is invalid, prevote nil.
 		logger.Error("prevote step: ProposalBlock is invalid", "err", err)
 		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{})
+		schema.WriteNote(
+			cs.traceClient,
+			height,
+			round,
+			"doPrevote",
+			"prevote nil as the proposal block is invalid: %v",
+			err,
+		)
 		return
 	}
 
@@ -1399,6 +1592,13 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		logger.Error("prevote step: the application deems this block to be mustVoteNil", "err", err)
 		cs.metrics.ApplicationRejectedProposals.Add(1)
 		cs.signAddVote(cmtproto.PrevoteType, nil, types.PartSetHeader{})
+		schema.WriteNote(
+			cs.traceClient,
+			height,
+			round,
+			"doPrevote",
+			"prevote nil as the application rejected the proposal",
+		)
 		return
 	}
 
@@ -1413,10 +1613,25 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 func (cs *State) enterPrevoteWait(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
 
+	schema.WriteNote(
+		cs.traceClient,
+		height,
+		round,
+		"enterPrevoteWait",
+		"waiting for more prevotes",
+	)
+
 	if cs.Height != height || round < cs.Round || (cs.Round == round && cstypes.RoundStepPrevoteWait <= cs.Step) {
 		logger.Debug(
 			"entering prevote wait step with invalid args",
 			"current", log.NewLazySprintf("%v/%v/%v", cs.Height, cs.Round, cs.Step),
+		)
+		schema.WriteNote(
+			cs.traceClient,
+			height,
+			round,
+			"enterPrevoteWait",
+			"entering prevote wait step with invalid args",
 		)
 		return
 	}
@@ -1449,11 +1664,26 @@ func (cs *State) enterPrevoteWait(height int64, round int32) {
 func (cs *State) enterPrecommit(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
 
+	schema.WriteNote(
+		cs.traceClient,
+		cs.Height,
+		cs.Round,
+		"enterPrecommit",
+		"attempting precommit step",
+	)
+
 	if cs.Height != height || round < cs.Round || (cs.Round == round && cstypes.RoundStepPrecommit <= cs.Step) {
-		// todo(evan): revert log change to info from debug
-		logger.Info(
+		logger.Debug(
 			"entering precommit step with invalid args",
 			"current", log.NewLazySprintf("%v/%v/%v", cs.Height, cs.Round, cs.Step),
+		)
+		schema.WriteNote(
+			cs.traceClient,
+			cs.Height,
+			cs.Round,
+			"enterPrecommit",
+			"entering precommit step with invalid args: %v/%v %v/%v %v",
+			cs.Height, height, cs.Round, round, cs.Step,
 		)
 		return
 	}
@@ -1476,6 +1706,14 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		} else {
 			logger.Debug("precommit step; no +2/3 prevotes during enterPrecommit; precommitting nil")
 		}
+
+		schema.WriteNote(
+			cs.traceClient,
+			cs.Height,
+			cs.Round,
+			"enterPrecommit",
+			"no polka found; precommitting nil",
+		)
 
 		cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{})
 		return
@@ -1507,6 +1745,14 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 			}
 		}
 
+		schema.WriteNote(
+			cs.traceClient,
+			cs.Height,
+			cs.Round,
+			"enterPrecommit",
+			"2/3 prevoted nil; precommitting nil",
+		)
+
 		cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{})
 		return
 	}
@@ -1521,6 +1767,14 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		if err := cs.eventBus.PublishEventRelock(cs.RoundStateEvent()); err != nil {
 			logger.Error("failed publishing event relock", "err", err)
 		}
+
+		schema.WriteNote(
+			cs.traceClient,
+			cs.Height,
+			cs.Round,
+			"enterPrecommit",
+			"2/3 prevoted locked block; relocking",
+		)
 
 		cs.signAddVote(cmtproto.PrecommitType, blockID.Hash, blockID.PartSetHeader)
 		return
@@ -1544,6 +1798,14 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 			logger.Error("failed publishing event lock", "err", err)
 		}
 
+		schema.WriteNote(
+			cs.traceClient,
+			cs.Height,
+			cs.Round,
+			"enterPrecommit",
+			"2/3 prevoted proposal block; locking",
+		)
+
 		cs.signAddVote(cmtproto.PrecommitType, blockID.Hash, blockID.PartSetHeader)
 		return
 	}
@@ -1561,32 +1823,44 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 		cs.ProposalBlock = nil
 		cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
 
-		// todo(evan): optimize and don't do this if we're on the same round but
-		// just calling enter new round
-		prop, parts, _, has := cs.dr.GetProposal(height, round)
-		if has {
-			cs.Logger.Info("data routine has a proposal block 5,  1", "height", height, "round", round, "complete", parts.IsComplete())
+		schema.WriteNote(
+			cs.traceClient,
+			cs.Height,
+			cs.Round,
+			"enterPrecommit",
+			"2/3 prevoted for a block we don't have; fetching block",
+		)
 
-			if prop != nil {
-				cs.internalMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
-			} else {
-				cs.ProposalBlockParts = parts
-			}
-			for i := 0; i < int(parts.Total()); i++ {
-				part := parts.GetPart(i)
-				if part == nil {
-					continue
-				}
-				cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
-			}
-		} else {
-			cs.dr.AskForProposal(height, -1)
-		}
+		// // todo(evan): optimize and don't do this if we're on the same round but
+		// // just calling enter new round
+		// prop, parts, _, has := cs.dr.GetProposal(height, round)
+		// if has {
+		// 	cs.Logger.Info("data routine has a proposal block 5,  1", "height", height, "round", round, "complete", parts.IsComplete())
+		// 	if prop != nil {
+		// 		cs.Logger.Info("Proposal was apparently not nil, so we're sending that puppy", "complete", parts.IsComplete())
+		// 		cs.internalMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
+		// 	}
+		// 	for i := 0; i < int(parts.Total()); i++ {
+		// 		part := parts.GetPart(i)
+		// 		if part == nil {
+		// 			continue
+		// 		}
+		// 		cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, round, part}, ""}
+		// 	}
+		// }
 	}
 
 	if err := cs.eventBus.PublishEventUnlock(cs.RoundStateEvent()); err != nil {
 		logger.Error("failed publishing event unlock", "err", err)
 	}
+
+	schema.WriteNote(
+		cs.traceClient,
+		cs.Height,
+		cs.Round,
+		"enterPrecommit",
+		"2/3 prevoted for a block we don't have; precommitting nil",
+	)
 
 	cs.signAddVote(cmtproto.PrecommitType, nil, types.PartSetHeader{})
 }
@@ -1594,6 +1868,14 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 // Enter: any +2/3 precommits for next round.
 func (cs *State) enterPrecommitWait(height int64, round int32) {
 	logger := cs.Logger.With("height", height, "round", round)
+
+	schema.WriteNote(
+		cs.traceClient,
+		cs.Height,
+		cs.Round,
+		"enterPrecommitWait",
+		"waiting for more precommits",
+	)
 
 	if cs.Height != height || round < cs.Round || (cs.Round == round && cs.TriggeredTimeoutPrecommit) {
 		logger.Debug(
@@ -1667,10 +1949,25 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 	// If we don't have the block being committed, set up to get it.
 	if !cs.ProposalBlock.HashesTo(blockID.Hash) {
 		if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
+			pheight := int64(0)
+			if cs.Proposal != nil {
+				pheight = cs.Proposal.Height
+			}
+
+			schema.WriteNote(
+				cs.traceClient,
+				cs.Height,
+				cs.Round,
+				"enterCommit",
+				"commit is for a block we do not know about; set ProposalBlock=nil",
+			)
+
 			logger.Info(
-				"commit is for a block we do not know about updated!; set ProposalBlock=nil",
+				"commit is for a block we do not know about; set ProposalBlock=nil",
 				"proposal", log.NewLazyBlockHash(cs.ProposalBlock),
+				"proposal height", pheight,
 				"commit", blockID.Hash,
+				"commit height", height,
 			)
 
 			// We're getting the wrong block.
@@ -1678,28 +1975,22 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 			cs.ProposalBlock = nil
 			cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
 
-			// check if the data routine already has this proposal block
-			prop, parts, _, has := cs.dr.GetProposal(height, commitRound)
-			if has {
-				cs.Logger.Info("data routine has a proposal block 6,  2", "height", height, "round", cs.Round, "complete", parts.IsComplete())
-				if prop != nil {
-					cs.Logger.Info("Proposal was apparently not nil, so we're sending that puppy", "complete", parts.IsComplete())
-					cs.internalMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
-				} else {
-					cs.Logger.Info("SETTING PROPOSAL BLOCK PARTS from data routine", "complete", parts.IsComplete())
-					cs.ProposalBlockParts = parts
-				}
-				for i := 0; i < int(blockID.PartSetHeader.Total); i++ {
-					part := parts.GetPart(i)
-					if part == nil {
-						continue
-					}
-					cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, cs.Round, part}, ""}
-				}
-			} else {
-				cs.Logger.Info("Asking for proposal block", "height", height, "round", cs.Round)
-				cs.dr.AskForProposal(height, commitRound)
-			}
+			// // check if the data routine already has this proposal block
+			// prop, parts, _, has := cs.dr.GetProposal(height, commitRound)
+			// if has {
+			// 	cs.Logger.Info("data routine has a proposal block 6,  2", "height", height, "round", cs.Round, "complete", parts.IsComplete())
+			// 	if prop != nil {
+			// 		cs.Logger.Info("Proposal was apparently not nil, so we're sending that puppy", "complete", parts.IsComplete())
+			// 		cs.internalMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
+			// 	}
+			// 	for i := 0; i < int(blockID.PartSetHeader.Total); i++ {
+			// 		part := parts.GetPart(i)
+			// 		if part == nil {
+			// 			continue
+			// 		}
+			// 		cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, cs.Round, part}, ""}
+			// 	}
+			// }
 
 			if err := cs.eventBus.PublishEventValidBlock(cs.RoundStateEvent()); err != nil {
 				logger.Error("failed publishing valid block", "err", err)
@@ -1997,17 +2288,42 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	// Already have one
 	// TODO: possibly catch double proposals
 	if cs.Proposal != nil {
+		schema.WriteNote(
+			cs.traceClient,
+			cs.Proposal.Height,
+			cs.Proposal.Round,
+			"setProposal",
+			"proposal already exists: %v/%v",
+			proposal.Height, proposal.Round,
+		)
 		return nil
 	}
 
 	// Does not apply
 	if proposal.Height != cs.Height || proposal.Round != cs.Round {
+		schema.WriteNote(
+			cs.traceClient,
+			cs.Height,
+			cs.Round,
+			"setProposal",
+			"proposal does not apply to current height/round: %v/%v",
+			proposal.Height, proposal.Round,
+		)
 		return nil
 	}
 
 	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
 	if proposal.POLRound < -1 ||
 		(proposal.POLRound >= 0 && proposal.POLRound >= proposal.Round) {
+		schema.WriteNote(
+			cs.traceClient,
+			cs.Height,
+			cs.Round,
+			"setProposal",
+			"proposal has invalid POL: %v/%v",
+			proposal.Height, proposal.Round,
+		)
+		cs.Logger.Error("PROPOSAL IS INVALID POL", "proposal", proposal, "height", cs.Height, "round", cs.Round)
 		return ErrInvalidProposalPOLRound
 	}
 
@@ -2017,6 +2333,15 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	if !pubKey.VerifySignature(
 		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
 	) {
+		schema.WriteNote(
+			cs.traceClient,
+			cs.Height,
+			cs.Round,
+			"setProposal",
+			"proposal signature is bad: %v/%v",
+			proposal.Height, proposal.Round,
+		)
+		cs.Logger.Error("PROPOSAL signature is bad", "proposal", proposal, "height", cs.Height, "round", cs.Round)
 		return ErrInvalidProposalSignature
 	}
 
@@ -2026,6 +2351,15 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		maxBytes = int64(types.MaxBlockSizeBytes)
 	}
 	if int64(proposal.BlockID.PartSetHeader.Total) > (maxBytes-1)/int64(types.BlockPartSizeBytes)+1 {
+		cs.Logger.Error("PROPOSAL HAS TOO MANY BLOCK PARTS SENOR", "proposal", proposal, "height", cs.Height, "round", cs.Round)
+		schema.WriteNote(
+			cs.traceClient,
+			cs.Height,
+			cs.Round,
+			"setProposal",
+			"proposal has too many block parts: %v/%v",
+			proposal.Height, proposal.Round,
+		)
 		return ErrProposalTooManyParts
 	}
 
@@ -2106,7 +2440,14 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("received complete proposal block", "height", cs.ProposalBlock.Height, "hash", cs.ProposalBlock.Hash())
-
+		schema.WriteNote(
+			cs.traceClient,
+			cs.Height,
+			cs.Round,
+			"addProposalBlockPart",
+			"complete proposal received: %v",
+			block.Height,
+		)
 		if err := cs.eventBus.PublishEventCompleteProposal(cs.CompleteProposalEvent()); err != nil {
 			cs.Logger.Error("failed publishing event complete proposal", "err", err)
 		}
@@ -2124,6 +2465,14 @@ func (cs *State) handleCompleteProposal(blockHeight int64) {
 				"updating valid block to new proposal block",
 				"valid_round", cs.Round,
 				"valid_block_hash", log.NewLazyBlockHash(cs.ProposalBlock),
+			)
+
+			schema.WriteNote(
+				cs.traceClient,
+				cs.ProposalBlock.Height,
+				cs.Round,
+				"handleCompleteProposal",
+				"updating valid block to new proposal block, proposal block is now 2/3 block",
 			)
 
 			cs.TwoThirdPrevoteRound = cs.Round
@@ -2310,25 +2659,22 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 
 					// we're getting the wrong block
 					cs.ProposalBlock = nil
-					// todo(evan): revert log change to info from debug
-					prop, parts, _, has := cs.dr.GetProposal(height, vote.Round)
-					if has {
-						cs.Logger.Info("data routine has a proposal block 7, ", "height", height, "round", vote.Round, "complete", parts.IsComplete())
-						if prop != nil {
-							cs.internalMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
-						} else {
-							cs.ProposalBlockParts = parts
-						}
-						for i := 0; i < int(parts.Total()); i++ {
-							part := parts.GetPart(i)
-							if part == nil {
-								continue
-							}
-							cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, vote.Round, part}, ""}
-						}
-					} else {
-						cs.dr.AskForProposal(height, -1)
-					}
+					// // todo(evan): revert log change to info from debug
+					// prop, parts, _, has := cs.dr.GetProposal(height, vote.Round)
+					// if has {
+					// 	cs.Logger.Info("data routine has a proposal block 7, ", "height", height, "round", vote.Round, "complete", parts.IsComplete())
+					// 	if prop != nil {
+					// 		cs.Logger.Info("Proposal was apparently not nil, so we're sending that puppy", "complete", parts.IsComplete())
+					// 		cs.internalMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
+					// 	}
+					// 	for i := 0; i < int(parts.Total()); i++ {
+					// 		part := parts.GetPart(i)
+					// 		if part == nil {
+					// 			continue
+					// 		}
+					// 		cs.internalMsgQueue <- msgInfo{&BlockPartMessage{height, vote.Round, part}, ""}
+					// 	}
+					// }
 				}
 
 				if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {

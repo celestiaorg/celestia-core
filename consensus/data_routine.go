@@ -1,7 +1,6 @@
 package consensus
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/tendermint/tendermint/libs/bits"
@@ -104,11 +103,19 @@ func (d *DataRoutine) handleProposal(proposal *types.Proposal, from p2p.ID) {
 	if from != d.self {
 		// handle the haves before this node broadcasts the proposal because the
 		// node must request data it doesn't have before it sends the proposal.
-		d.handleHaves(from, proposal.Height, proposal.Round, proposal.HaveParts)
+		d.handleHaves(from, proposal.Height, proposal.Round, proposal.HaveParts, false)
 	}
 
 	if added {
 		go d.broadcastProposal(proposal, from)
+
+		// if the proposal is new and we still don't have a complete block for
+		// the last block, request it from this peer.
+		// cprop, cps, has := d.GetCurrentProposal()
+		// if !has {
+		// 	ba := bits.NewBitArray(int(1))
+		// 	d.handleHaves(from, proposal.Height-1, -1, true)
+		// }
 	}
 }
 
@@ -116,7 +123,7 @@ func (d *DataRoutine) handlePartState(peer p2p.ID, ps *types.PartState) {
 	// fmt.Println("handlePartState", peer, ps.Height, ps.Round, ps.Have)
 	switch ps.Have {
 	case true:
-		d.handleHaves(peer, ps.Height, ps.Round, ps.Parts)
+		d.handleHaves(peer, ps.Height, ps.Round, ps.Parts, false)
 	case false:
 		d.handleWants(peer, ps.Height, ps.Round, ps.Parts)
 	}
@@ -126,7 +133,7 @@ func (d *DataRoutine) handlePartState(peer p2p.ID, ps *types.PartState) {
 // determine if the sender has or is getting portions of the proposal that this
 // node doesn't have. If the sender has parts that this node doesn't have, this
 // node will request those parts.
-func (d *DataRoutine) handleHaves(peer p2p.ID, height int64, round int32, haves *bits.BitArray) {
+func (d *DataRoutine) handleHaves(peer p2p.ID, height int64, round int32, haves *bits.BitArray, bypassRequestLimit bool) {
 	// fmt.Println("handleHaves", peer, height, round, haves)
 	p := d.getPeer(peer)
 	if p == nil || p.peer == nil {
@@ -154,17 +161,27 @@ func (d *DataRoutine) handleHaves(peer p2p.ID, height int64, round int32, haves 
 	// Update the peer's haves.
 	p.SetHaves(height, round, haves)
 
+	if parts.IsComplete() {
+		return
+	}
+
 	// Check if the sender has parts that we don't have.
 	hc := haves.Copy()
 	hc.Sub(parts.BitArray())
 
 	// remove any parts that we have already requested sufficient times.
-	hc.Sub(fullReqs)
+	if !bypassRequestLimit {
+		hc.Sub(fullReqs)
+	}
 
 	// if enough requests have been made for the parts, don't request them.
 	for _, partIndex := range hc.GetTrueIndices() {
 		peers := d.countRequests(height, round, partIndex)
-		if len(peers) >= 2 {
+		reqLimit := 3
+		if bypassRequestLimit {
+			reqLimit = 100
+		}
+		if len(peers) >= reqLimit {
 			hc.SetIndex(partIndex, false)
 			// mark the part as fully requested.
 			fullReqs.SetIndex(partIndex, true)
@@ -176,6 +193,8 @@ func (d *DataRoutine) handleHaves(peer p2p.ID, height int64, round int32, haves 
 		}
 	}
 
+	// todo(evan): check that this is legit. we can also exit early if we have
+	// all of the data already
 	if hc.IsEmpty() {
 		return
 	}
@@ -204,27 +223,67 @@ func (d *DataRoutine) handleHaves(peer p2p.ID, height int64, round int32, haves 
 		hc.GetTrueIndices(),
 		false,
 		string(peer),
-		schema.Upload,
+		schema.Haves,
 	)
 
 	// keep track of the parts that this node has requested.
 	p.SetRequests(height, round, hc)
-
-	// send the haves that we have now reqested to the rest of our peers.
-	// todo(evan): try out broadcasting haves optimistically. This could be done
-	// by verifying that the haves were signed over by the proposer.
-	// d.broadcastHaves(height, round, hc, peer)
 }
 
-// AskForProposal searches our peers to see if any of them have the proposal we
-// want but we haven't already sent requests to them. If found it asks them for
-// the proposal. If not, it asks random peers for the proposal but doesn't count
-// that as an actual request.
-func (d *DataRoutine) AskForProposal(height int64, round int32) {
-	d.logger.Info("ASKING POLITELY for proposal", "height", height, "round", round)
+// handleValidBlock is called the node finds a peer with a valid block. If this
+// node doesn't have a block, it asks the sender for the portions that it
+// doesn't have.
+func (d *DataRoutine) handleValidBlock(peer p2p.ID, height int64, round int32, psh types.PartSetHeader, exitEarly bool) {
+	p := d.getPeer(peer)
+	if p == nil || p.peer == nil {
+		d.logger.Error("peer not found", "peer", peer)
+		return
+	}
 
-	// ask two random peers for the proposal
-	haves := bits.NewBitArray(1)
+	// prepare the routine to receive the proposal
+	_, ps, _, has := d.GetProposal(height, round)
+	if has {
+		if ps.IsComplete() {
+			return
+		}
+		// assume that
+		ba := bits.NewBitArray(int(psh.Total))
+		if ba == nil {
+			ba = bits.NewBitArray(1)
+		}
+		ba.Fill()
+		schema.WriteNote(
+			d.tracer,
+			height,
+			-1,
+			"handleValidBlock",
+			"found incomplete block: %v/%v",
+			height, round,
+		)
+		d.handleHaves(peer, height, round, ba, true)
+		return
+	}
+
+	d.pmtx.Lock()
+	if _, ok := d.proposals[height]; !ok {
+		d.proposals[height] = make(map[int32]*proposalData)
+	}
+	d.proposals[height][round] = &proposalData{
+		block:       types.NewPartSetFromHeader(psh),
+		maxRequests: bits.NewBitArray(int(psh.Total)),
+	}
+	d.pmtx.Unlock()
+
+	// todo(evan): remove this hack and properly abstract logic
+	if exitEarly {
+		return
+	}
+
+	haves := bits.NewBitArray(int(psh.Total))
+	if psh.Total < 1 {
+		d.logger.Error("invalid part set header", "peer", peer, "height", height, "round", round, "total", psh.Total)
+		haves = bits.NewBitArray(1)
+	}
 
 	e := p2p.Envelope{ //nolint: staticcheck
 		ChannelID: DataChannel,
@@ -238,28 +297,80 @@ func (d *DataRoutine) AskForProposal(height int64, round int32) {
 		},
 	}
 
-	sent := 0
-	for _, peer := range shuffle(d.getPeers()) {
-		if sent >= 3 {
-			break
+	if !p2p.SendEnvelopeShim(p.peer, e, d.logger) {
+		d.logger.Error("failed to send part state", "peer", peer, "height", height, "round", round)
+		return
+	}
+
+	p.SetRequests(height, round, haves)
+
+	schema.WriteBlockPartState(
+		d.tracer,
+		height,
+		round,
+		haves.GetTrueIndices(),
+		false,
+		string(p.peer.ID()),
+		schema.AskForProposal,
+	)
+
+	d.requestAllPreviousBlocks(peer, height)
+}
+
+// requestAllPreviousBlocks is called when a node is catching up and needs to
+// request all previous blocks from a peer.
+func (d *DataRoutine) requestAllPreviousBlocks(peer p2p.ID, height int64) {
+	p := d.getPeer(peer)
+	if p == nil || p.peer == nil {
+		d.logger.Error("peer not found", "peer", peer)
+		return
+	}
+
+	d.pmtx.RLock()
+	currentHeight := d.currentHeight
+	d.pmtx.RUnlock()
+	for i := currentHeight; i < height; i++ {
+		haves := bits.NewBitArray(1)
+		_, ps, _, has := d.GetProposal(i, -1)
+		if has {
+			if ps.IsComplete() {
+				continue
+			}
+			haves = ps.BitArray()
 		}
 
-		if !p2p.SendEnvelopeShim(peer.peer, e, d.logger) {
-			d.logger.Error("failed to send part state", "peer", peer, "height", height, "round", round)
-			continue
+		// todo(evan): maybe check if the peer has already been sent a request
+		// or we have already sent enough requests
+
+		e := p2p.Envelope{ //nolint: staticcheck
+			ChannelID: DataChannel,
+			Message: &cmtcons.PartState{
+				PartState: &cmttypes.PartState{
+					Height: height,
+					Round:  -1, // -1 round means that we don't have the psh or the proposal and the peer needs to send us this first
+					Have:   false,
+					Parts:  *haves.ToProto(),
+				},
+			},
 		}
+
+		if !p2p.SendEnvelopeShim(p.peer, e, d.logger) {
+			d.logger.Error("failed to send part state", "peer", peer, "height", height, "round", -1)
+			return
+		}
+
+		p.SetRequests(height, -1, haves)
 
 		schema.WriteBlockPartState(
 			d.tracer,
 			height,
-			round,
+			-1,
 			haves.GetTrueIndices(),
 			false,
-			string(peer.peer.ID()),
-			schema.Upload,
+			string(p.peer.ID()),
+			schema.AskForProposal,
 		)
 
-		sent++
 	}
 }
 
@@ -293,6 +404,14 @@ func (d *DataRoutine) handleWants(peer p2p.ID, height int64, round int32, wants 
 		return
 	}
 
+	// send the peer the partsetheader if they don't have the propsal.
+	if round < 0 {
+		if !d.sendPsh(peer, height, round) {
+			d.logger.Error("failed to send PSH", "peer", peer, "height", height, "round", round)
+			return
+		}
+	}
+
 	// if we have the parts, send them to the peer.
 	wc := wants.Copy()
 
@@ -301,6 +420,10 @@ func (d *DataRoutine) handleWants(peer p2p.ID, height int64, round int32, wants 
 		wc = parts.BitArray()
 	}
 	canSend := parts.BitArray().And(wc)
+	if canSend == nil {
+		d.logger.Error("nil can send?", "peer", peer, "height", height, "round", round, "wants", wants, "wc", wc)
+		return
+	}
 	for _, partIndex := range canSend.GetTrueIndices() {
 		part := parts.GetPart(partIndex)
 		ppart, err := part.ToProto()
@@ -322,7 +445,7 @@ func (d *DataRoutine) handleWants(peer p2p.ID, height int64, round int32, wants 
 			continue
 		}
 		// p.SetHave(height, round, int(partIndex))
-		schema.WriteBlockPartState(d.tracer, height, round, []int{int(partIndex)}, true, string(peer), schema.Upload)
+		schema.WriteBlockPartState(d.tracer, height, round, []int{int(partIndex)}, true, string(peer), schema.AskForProposal)
 	}
 
 	// for parts that we don't have but they still want, store the wants.
@@ -348,7 +471,7 @@ func (d *DataRoutine) handleBlockPart(peer p2p.ID, part *BlockPartMessage) {
 	if !has {
 		// fmt.Println("unknown proposal")
 		d.logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
-		d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part for unknown proposal"))
+		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part for unknown proposal"))
 		return
 	}
 
@@ -400,6 +523,58 @@ func (d *DataRoutine) clearWants(part *BlockPartMessage) {
 			}
 		}
 	}
+}
+
+func (d *DataRoutine) LockForNoReason() {
+	d.mtx.Lock()
+	peerCount := len(d.peerstate)
+	d.mtx.Unlock()
+	schema.WriteNote(
+		d.tracer,
+		0,
+		-1,
+		"LockForNoReason",
+		"took mtx lock: peers %v",
+		peerCount,
+	)
+	d.pmtx.Lock()
+	d.pmtx.Unlock()
+	schema.WriteNote(
+		d.tracer,
+		0,
+		-1,
+		"LockForNoReason",
+		"took pmtx lock",
+	)
+}
+
+func (d *DataRoutine) sendPsh(peer p2p.ID, height int64, round int32) bool {
+	var psh types.PartSetHeader
+	_, parts, _, has := d.GetProposal(height, round)
+	if !has {
+		d.logger.Error("unknown proposal", "height", height, "round", round)
+		return false
+	}
+	if has {
+		psh = parts.Header()
+	} else {
+		meta := d.store.LoadBlockMeta(height)
+		if meta == nil {
+			d.logger.Error("failed to load block meta", "height", height)
+			return false
+		}
+		psh = meta.BlockID.PartSetHeader
+	}
+	e := p2p.Envelope{ //nolint: staticcheck
+		ChannelID: DataChannel, // note that we're sending over the data channel instead of state!
+		Message: &cmtcons.NewValidBlock{
+			Height:             height,
+			Round:              round,
+			BlockPartSetHeader: psh.ToProto(),
+		},
+	}
+
+	return p2p.SendEnvelopeShim(d.getPeer(peer).peer, e, d.logger)
 }
 
 // broadcastProposal gossips the provided proposal to all peers. This should

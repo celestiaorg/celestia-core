@@ -95,6 +95,8 @@ func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) 
 func (conR *Reactor) OnStart() error {
 	conR.Logger.Info("Reactor ", "waitSync", conR.WaitSync())
 
+	conR.dr.pswitch = conR.Switch
+
 	// start routine that computes peer statistics for evaluating peer quality
 	go conR.peerStatsRoutine()
 
@@ -239,6 +241,7 @@ func (conR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	if !conR.IsRunning() {
 		return
 	}
+	conR.dr.RemovePeer(peer)
 	// TODO
 	// ps, ok := peer.Get(PeerStateKey).(*PeerState)
 	// if !ok {
@@ -315,6 +318,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				schema.Download,
 			)
 			ps.ApplyNewValidBlockMessage(msg)
+			conR.dr.handleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockPartSetHeader, false)
 		case *HasVoteMessage:
 			ps.ApplyHasVoteMessage(msg)
 			schema.WriteConsensusState(
@@ -327,6 +331,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				msg.Type.String(),
 			)
 		case *VoteSetMaj23Message:
+			conR.dr.handleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockID.PartSetHeader, false)
 			cs := conR.conS
 			cs.mtx.Lock()
 			height, votes := cs.Height, cs.Votes
@@ -388,7 +393,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 
 	case DataChannel:
 		if conR.WaitSync() {
-			conR.Logger.Info("Ignoring message received during sync", "msg", msg)
+			conR.Logger.Info("Ignoring message received during sync")
 			return
 		}
 		switch msg := msg.(type) {
@@ -430,6 +435,9 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				string(e.Src.ID()),
 				schema.Download,
 			)
+		case *NewValidBlockMessage:
+			// todo(evan): probably don't reuse a message here, and just add a new one to send the psh.
+			conR.dr.handleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockPartSetHeader, true)
 
 		default:
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -437,7 +445,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 
 	case VoteChannel:
 		if conR.WaitSync() {
-			conR.Logger.Info("Ignoring message received during sync", "msg", msg)
+			conR.Logger.Info("Ignoring message received during sync")
 			return
 		}
 		switch msg := msg.(type) {
