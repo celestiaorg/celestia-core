@@ -3,7 +3,6 @@ package p2p
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -252,7 +251,7 @@ func TestSwitchPeerFilter(t *testing.T) {
 	var (
 		filters = []PeerFilterFunc{
 			func(_ IPeerSet, _ Peer) error { return nil },
-			func(_ IPeerSet, _ Peer) error { return fmt.Errorf("denied") },
+			func(_ IPeerSet, _ Peer) error { return errors.New("denied") },
 			func(_ IPeerSet, _ Peer) error { return nil },
 		}
 		sw = MakeSwitch(
@@ -481,7 +480,7 @@ func TestSwitchStopPeerForError(t *testing.T) {
 	})
 
 	// now call StopPeerForError explicitly, eg. from a reactor
-	sw1.StopPeerForError(p, fmt.Errorf("some err"))
+	sw1.StopPeerForError(p, errors.New("some err"))
 
 	assert.Equal(t, len(sw1.Peers().List()), 0)
 	assert.EqualValues(t, 0, peersMetricValue())
@@ -887,7 +886,7 @@ func TestSwitchRemovalErr(t *testing.T) {
 	assert.Equal(t, len(sw1.Peers().List()), 1)
 	p := sw1.Peers().List()[0]
 
-	sw2.StopPeerForError(p, fmt.Errorf("peer should error"))
+	sw2.StopPeerForError(p, errors.New("peer should error"))
 
 	assert.Equal(t, sw2.peers.Add(p).Error(), ErrPeerRemoval{}.Error())
 }

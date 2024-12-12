@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -48,7 +49,7 @@ func TestTransportMultiplexConnFilter(t *testing.T) {
 		func(_ ConnSet, _ net.Conn, _ []net.IP) error { return nil },
 		func(_ ConnSet, _ net.Conn, _ []net.IP) error { return nil },
 		func(_ ConnSet, _ net.Conn, _ []net.IP) error {
-			return fmt.Errorf("rejected")
+			return errors.New("rejected")
 		},
 	)(mt)
 
@@ -297,7 +298,7 @@ func TestTransportMultiplexAcceptNonBlocking(t *testing.T) {
 			// Fast peer connected.
 		case <-time.After(200 * time.Millisecond):
 			// We error if the fast peer didn't succeed.
-			errc <- fmt.Errorf("fast peer timed out")
+			errc <- errors.New("fast peer timed out")
 		}
 
 		sc, err := upgradeSecretConn(c, 200*time.Millisecond, ed25519.GenPrivKey())

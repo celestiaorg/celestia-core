@@ -19,7 +19,7 @@ func NetInfo(ctx *rpctypes.Context) (*ctypes.ResultNetInfo, error) {
 	for _, peer := range peersList {
 		nodeInfo, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
 		if !ok {
-			return nil, fmt.Errorf("peer.NodeInfo() is not DefaultNodeInfo")
+			return nil, errors.New("peer.NodeInfo() is not DefaultNodeInfo")
 		}
 		peers = append(peers, ctypes.Peer{
 			NodeInfo:         nodeInfo,
@@ -108,11 +108,11 @@ func Genesis(ctx *rpctypes.Context) (*ctypes.ResultGenesis, error) {
 func GenesisChunked(ctx *rpctypes.Context, chunk uint) (*ctypes.ResultGenesisChunk, error) {
 	env := GetEnvironment()
 	if env.genChunks == nil {
-		return nil, fmt.Errorf("service configuration error, genesis chunks are not initialized")
+		return nil, errors.New("service configuration error, genesis chunks are not initialized")
 	}
 
 	if len(env.genChunks) == 0 {
-		return nil, fmt.Errorf("service configuration error, there are no chunks")
+		return nil, errors.New("service configuration error, there are no chunks")
 	}
 
 	//nolint:gosec
