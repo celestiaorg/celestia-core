@@ -3,12 +3,9 @@ package cat
 import (
 	"errors"
 	"fmt"
-	"runtime"
 	"sort"
 	"sync"
 	"time"
-
-	"github.com/creachadair/taskgroup"
 
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/config"
@@ -672,36 +669,31 @@ func (txmp *TxPool) recheckTransactions() {
 	)
 
 	// Collect transactions currently in the mempool requiring recheck.
+	// TODO: we are iterating over a map, which may scramble the order of transactions
+	// such that they are not in order, dictated by nonce and then priority. This may
+	// cause transactions to needlessly be kicked out in RecheckTx
 	wtxs := txmp.store.getAllTxs()
 
 	// Issue CheckTx calls for each remaining transaction, and when all the
 	// rechecks are complete signal watchers that transactions may be available.
-	go func() {
-		g, start := taskgroup.New(nil).Limit(2 * runtime.NumCPU())
-
-		for _, wtx := range wtxs {
-			wtx := wtx
-			start(func() error {
-				// The response for this CheckTx is handled by the default recheckTxCallback.
-				rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{
-					Tx:   wtx.tx,
-					Type: abci.CheckTxType_Recheck,
-				})
-				if err != nil {
-					txmp.logger.Error("failed to execute CheckTx during recheck",
-						"err", err, "key", fmt.Sprintf("%x", wtx.key))
-				} else {
-					txmp.handleRecheckResult(wtx, rsp)
-				}
-				return nil
-			})
+	for _, wtx := range wtxs {
+		wtx := wtx
+		// The response for this CheckTx is handled by the default recheckTxCallback.
+		rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{
+			Tx:   wtx.tx,
+			Type: abci.CheckTxType_Recheck,
+		})
+		if err != nil {
+			txmp.logger.Error("failed to execute CheckTx during recheck",
+				"err", err, "key", fmt.Sprintf("%x", wtx.key))
+		} else {
+			txmp.handleRecheckResult(wtx, rsp)
 		}
-		_ = txmp.proxyAppConn.FlushAsync()
+	}
+	_ = txmp.proxyAppConn.FlushAsync()
 
-		// When recheck is complete, trigger a notification for more transactions.
-		_ = g.Wait()
-		txmp.notifyTxsAvailable()
-	}()
+	// When recheck is complete, trigger a notification for more transactions.
+	txmp.notifyTxsAvailable()
 }
 
 // availableBytes returns the number of bytes available in the mempool.
