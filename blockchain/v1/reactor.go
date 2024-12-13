@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -351,7 +352,7 @@ ForLoop:
 		case <-doProcessBlockCh:
 			for {
 				err := bcR.processBlock()
-				if err == errMissingBlock {
+				if errors.Is(err, errMissingBlock) {
 					break
 				}
 				// Notify FSM of block processing result.

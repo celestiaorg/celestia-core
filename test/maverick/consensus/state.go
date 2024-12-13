@@ -1796,7 +1796,7 @@ func (cs *State) tryAddVote(vote *types.Vote, peerID p2p.ID) (bool, error) {
 			}
 			cs.evpool.ReportConflictingVotes(voteErr.VoteA, voteErr.VoteB)
 			return added, err
-		} else if err == types.ErrVoteNonDeterministicSignature {
+		} else if errors.Is(err, types.ErrVoteNonDeterministicSignature) {
 			cs.Logger.Debug("Vote has non-deterministic signature", "err", err)
 		} else {
 			// Either

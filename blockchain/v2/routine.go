@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -79,7 +80,7 @@ func (rt *Routine) start() {
 
 	for {
 		events, err := rt.queue.Get(1)
-		if err == queue.ErrDisposed {
+		if errors.Is(err, queue.ErrDisposed) {
 			rt.terminate(nil)
 			return
 		} else if err != nil {

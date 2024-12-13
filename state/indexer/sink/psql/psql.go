@@ -157,7 +157,7 @@ INSERT INTO `+tableBlocks+` (height, chain_id, created_at)
   ON CONFLICT DO NOTHING
   RETURNING rowid;
 `, h.Header.Height, es.chainID, ts)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil // we already saw this block; quietly succeed
 		} else if err != nil {
 			return fmt.Errorf("indexing block header: %w", err)
@@ -210,7 +210,7 @@ INSERT INTO `+tableTxResults+` (block_id, index, created_at, tx_hash, tx_result)
   ON CONFLICT DO NOTHING
   RETURNING rowid;
 `, blockID, txr.Index, ts, txHash, resultData)
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				return nil // we already saw this transaction; quietly succeed
 			} else if err != nil {
 				return fmt.Errorf("indexing tx_result: %w", err)

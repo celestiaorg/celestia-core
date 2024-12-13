@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"errors"
 	"sort"
 
 	"github.com/tendermint/tendermint/libs/log"
@@ -219,7 +220,7 @@ func (pool *BlockPool) sendRequest(height int64) bool {
 		}
 
 		err := pool.toBcR.sendBlockRequest(peer.ID, height)
-		if err == errNilPeerForBlockRequest {
+		if errors.Is(err, errNilPeerForBlockRequest) {
 			// Switch does not have this peer, remove it and continue to look for another peer.
 			pool.logger.Error("switch does not have peer..removing peer selected for height", "peer",
 				peer.ID, "height", height)
@@ -227,7 +228,7 @@ func (pool *BlockPool) sendRequest(height int64) bool {
 			continue
 		}
 
-		if err == errSendQueueFull {
+		if errors.Is(err, errSendQueueFull) {
 			pool.logger.Error("peer queue is full", "peer", peer.ID, "height", height)
 			continue
 		}
