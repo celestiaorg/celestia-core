@@ -177,6 +177,8 @@ func NewMConnectionWithConfig(
 		panic("pongTimeout must be less than pingInterval (otherwise, next ping will reset pong timer)")
 	}
 
+	fmt.Println("new mconnection &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+
 	mconn := &MConnection{
 		conn:          conn,
 		bufConnReader: bufio.NewReaderSize(conn, minReadBufferSize),
@@ -220,6 +222,7 @@ func (c *MConnection) SetLogger(l log.Logger) {
 
 // OnStart implements BaseService
 func (c *MConnection) OnStart() error {
+	fmt.Println("starting mconnections")
 	if err := c.BaseService.OnStart(); err != nil {
 		return err
 	}

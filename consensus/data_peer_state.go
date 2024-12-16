@@ -108,7 +108,12 @@ func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal,
 
 	switch {
 	case hasStored != nil:
-		parts := p.store.LoadPartSet(height)
+		parts, _ := p.store.LoadPartSet(height)
+		// prop := &types.Proposal{
+		// 	Height: meta.Header.Height,
+		// 	Round: meta.Header.Round,
+		// 	BlockID: meta.BlockID,
+		// }
 		return nil, parts, parts.BitArray(), true
 	case has && hasRound:
 		return cachedProp.proposal, cachedProp.block, cachedProp.maxRequests, true
@@ -301,6 +306,24 @@ func (d *dataPeerState) SetHave(height int64, round int32, part int) {
 	d.state[height][round].setHave(part)
 }
 
+// SetWant sets the want bit for a given part.
+func (d *dataPeerState) SetWant(height int64, round int32, part int, wants bool) {
+	// this is only a read mtx hold because each bitarrary holds the write mtx
+	// so this function only needs to ensure that reading is safe.
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	// Initialize the inner map if it doesn't exist
+	if d.state[height] == nil {
+		d.state[height] = make(map[int32]*partState)
+	}
+	if d.state[height][round] == nil {
+		// d.state[height][round] = newpartState(wants.Size())
+		// todo(evan): actually do something here
+		return
+	}
+	d.state[height][round].setWant(part, wants)
+}
+
 // GetHaves retrieves the haves for a given height and round.
 func (d *dataPeerState) GetHaves(height int64, round int32) (empty *bits.BitArray, has bool) {
 	d.mtx.Lock()
@@ -415,12 +438,12 @@ func newpartState(size int) *partState {
 
 func (p *partState) setHaves(haves *bits.BitArray) {
 	p.haves.AddBitArray(haves)
-	p.wants.Sub(haves)
+	// p.wants.Sub(haves) // todo(evan): revert. we're only commenting this out atm so that we can simulate optimistically sending wants
 }
 
 func (p *partState) setWants(haves *bits.BitArray) {
 	p.wants.AddBitArray(haves)
-	p.haves.Sub(haves)
+	// p.haves.Sub(haves) // same as above
 }
 
 func (p *partState) setRequests(requests *bits.BitArray) {
@@ -430,13 +453,13 @@ func (p *partState) setRequests(requests *bits.BitArray) {
 // SetHave sets the have bit for a given part.
 func (p *partState) setHave(part int) {
 	p.haves.SetIndex(part, true)
-	p.wants.SetIndex(part, false)
+	// p.wants.SetIndex(part, false)
 }
 
 // SetWant sets the want bit for a given part.
-func (p *partState) setWant(part int) {
-	p.wants.SetIndex(part, true)
-	p.haves.SetIndex(part, false)
+func (p *partState) setWant(part int, wants bool) {
+	p.wants.SetIndex(part, wants)
+	// p.haves.SetIndex(part, false)
 }
 
 func (p *partState) setRequest(part int) {

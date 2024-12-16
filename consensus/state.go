@@ -1011,6 +1011,11 @@ func (cs *State) syncData() {
 			completeProp := cs.isProposalComplete()
 			cs.mtx.RUnlock()
 
+			// if h == 0 {
+			// 	h = 1
+			// 	r = -1
+			// }
+
 			if completeProp {
 				continue
 			}

@@ -113,7 +113,7 @@ func NewSwitch(
 	transport Transport,
 	options ...SwitchOption,
 ) *Switch {
-
+	fmt.Println("NewSwitch")
 	sw := &Switch{
 		config:               cfg,
 		reactors:             make(map[string]Reactor),
@@ -169,6 +169,7 @@ func WithTracer(tracer trace.Tracer) SwitchOption {
 // AddReactor adds the given reactor to the switch.
 // NOTE: Not goroutine safe.
 func (sw *Switch) AddReactor(name string, reactor Reactor) Reactor {
+	fmt.Println("AddReactor", name)
 	for _, chDesc := range reactor.GetChannels() {
 		chID := chDesc.ID
 		// No two reactors can share the same channel.
@@ -689,6 +690,7 @@ func (sw *Switch) IsPeerPersistent(na *NetAddress) bool {
 }
 
 func (sw *Switch) acceptRoutine() {
+	fmt.Println("starting acceptRoutine")
 	for {
 		p, err := sw.transport.Accept(peerConfig{
 			chDescs:       sw.chDescs,
@@ -700,6 +702,7 @@ func (sw *Switch) acceptRoutine() {
 			isPersistent:  sw.IsPeerPersistent,
 		})
 		if err != nil {
+			fmt.Println("acceptRoutine err", err)
 			switch err := err.(type) {
 			case ErrRejected:
 				if err.IsSelf() {

@@ -124,20 +124,20 @@ func (bs *BlockStore) LoadBlock(height int64) *types.Block {
 }
 
 // LoadPartSet returns the partset for a given height.
-func (bs *BlockStore) LoadPartSet(height int64) *types.PartSet {
+func (bs *BlockStore) LoadPartSet(height int64) (*types.PartSet, *types.BlockMeta) {
 	meta := bs.LoadBlockMeta(height)
 	if meta == nil {
-		return nil
+		return nil, nil
 	}
 	partSet := types.NewPartSetFromHeader(meta.BlockID.PartSetHeader)
 	for i := 0; i < int(meta.BlockID.PartSetHeader.Total); i++ {
 		part := bs.LoadBlockPart(height, i)
 		if part == nil {
-			return nil
+			return nil, nil
 		}
 		partSet.AddPart(part)
 	}
-	return partSet
+	return partSet, meta
 }
 
 // LoadBlockByHash returns the block with the given hash.

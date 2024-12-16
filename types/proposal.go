@@ -28,9 +28,6 @@ func (wp *PartState) ValidateBasic() error {
 	if wp.Height < 0 {
 		return errors.New("want parts for invalid height below zero")
 	}
-	if wp.Round < 0 {
-		return errors.New("want parts for invalid round below zero")
-	}
 	return nil
 }
 

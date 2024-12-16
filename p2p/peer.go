@@ -206,6 +206,7 @@ func newPeer(
 	mlc *metricsLabelCache,
 	options ...PeerOption,
 ) *peer {
+	fmt.Println("new peer hello hello hello")
 	p := &peer{
 		peerConn:      pc,
 		nodeInfo:      nodeInfo,

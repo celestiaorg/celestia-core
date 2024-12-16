@@ -31,7 +31,7 @@ const (
 	VoteChannel        = byte(0x22)
 	VoteSetBitsChannel = byte(0x23)
 
-	maxMsgSize = 1048576 // 1MB; NOTE/TODO: keep in sync with types.PartSet sizes.
+	maxMsgSize = 1048576 // 4MB; NOTE/TODO: keep in sync with types.PartSet sizes.
 
 	blocksToContributeToBecomeGoodPeer = 10000
 	votesToContributeToBecomeGoodPeer  = 10000
@@ -94,7 +94,7 @@ func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) 
 // broadcasted to other peers and starting state if we're not in fast sync.
 func (conR *Reactor) OnStart() error {
 	conR.Logger.Info("Reactor ", "waitSync", conR.WaitSync())
-
+	conR.Logger.Info("Starting consensus-reactor ------------------------------------------------")
 	conR.dr.pswitch = conR.Switch
 
 	// start routine that computes peer statistics for evaluating peer quality
@@ -104,10 +104,18 @@ func (conR *Reactor) OnStart() error {
 	go conR.updateRoundStateRoutine()
 
 	if !conR.WaitSync() {
+		conR.Logger.Info("Starting consensus-state!! ------------------------------------------------")
 		err := conR.conS.Start()
 		if err != nil {
 			return err
 		}
+	} else {
+		// conR.Logger.Info("Waiting for fast sync to finish apparently which doesn't make sense?")
+		// conR.Logger.Info("Starting consensus-state anyway losers!! ------------------------------------------------")
+		// err := conR.conS.Start()
+		// if err != nil {
+		// 	return err
+		// }
 	}
 
 	return nil
@@ -217,6 +225,8 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 	if !conR.IsRunning() {
 		return
 	}
+
+	conR.Logger.Info("adding peer!!!!", "peer", peer)
 
 	conR.dr.AddPeer(peer)
 
@@ -393,7 +403,38 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 
 	case DataChannel:
 		if conR.WaitSync() {
-			conR.Logger.Info("Ignoring message received during sync")
+			switch msg := msg.(type) {
+			case *ProposalMessage:
+				schema.WriteProposal(
+					conR.traceClient,
+					msg.Proposal.Height,
+					msg.Proposal.Round,
+					string(e.Src.ID()),
+					schema.Download,
+				)
+				conR.dr.handleProposal(msg.Proposal, e.Src.ID(), false)
+			case *ProposalPOLMessage:
+			case *BlockPartMessage:
+				schema.WriteBlockPart(conR.traceClient, msg.Height, msg.Round, msg.Part.Index, false, string(e.Src.ID()), schema.Download)
+				conR.dr.handleBlockPart(e.Src.ID(), msg)
+			case *PartStateMessage:
+				go conR.dr.handlePartState(e.Src.ID(), msg.PartState)
+				schema.WriteBlockPartState(
+					conR.traceClient,
+					msg.PartState.Height,
+					msg.PartState.Round,
+					msg.PartState.Parts.GetTrueIndices(),
+					msg.PartState.Have,
+					string(e.Src.ID()),
+					schema.Download,
+				)
+			case *NewValidBlockMessage:
+				// todo(evan): probably don't reuse a message here, and just add a new one to send the psh.
+				conR.dr.handleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockPartSetHeader, true)
+
+			default:
+				conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
+			}
 			return
 		}
 		switch msg := msg.(type) {
@@ -407,7 +448,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				string(e.Src.ID()),
 				schema.Download,
 			)
-			conR.dr.handleProposal(msg.Proposal, e.Src.ID())
+			conR.dr.handleProposal(msg.Proposal, e.Src.ID(), false)
 		case *ProposalPOLMessage:
 			ps.ApplyProposalPOLMessage(msg)
 			schema.WriteConsensusState(
@@ -1841,7 +1882,7 @@ func (m *NewValidBlockMessage) ValidateBasic() error {
 		return errors.New("negative Height")
 	}
 	if m.Round < 0 {
-		return errors.New("negative Round")
+		// return errors.New("negative Round")
 	}
 	if err := m.BlockPartSetHeader.ValidateBasic(); err != nil {
 		return fmt.Errorf("wrong BlockPartSetHeader: %v", err)

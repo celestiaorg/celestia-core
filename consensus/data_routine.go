@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/tendermint/tendermint/libs/bits"
@@ -83,13 +84,13 @@ func (d *DataRoutine) Stop() {
 // proposeBlock is called when the consensus routine has created a new proposal
 // and it needs to be gossiped to the rest of the network.
 func (d *DataRoutine) proposeBlock(proposal *types.Proposal) {
-	d.handleProposal(proposal, d.self)
+	d.handleProposal(proposal, d.self, true)
 }
 
 // handleProposal adds a proposal to the data routine. This should be called any
 // time a proposal is recevied from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
-func (d *DataRoutine) handleProposal(proposal *types.Proposal, from p2p.ID) {
+func (d *DataRoutine) handleProposal(proposal *types.Proposal, from p2p.ID, pbbt bool) {
 	// fmt.Println("handleProposal", proposal.Height, proposal.Round, from)
 	// set the from to the node's ID if it is empty.
 	if from == "" {
@@ -107,7 +108,7 @@ func (d *DataRoutine) handleProposal(proposal *types.Proposal, from p2p.ID) {
 	}
 
 	if added {
-		go d.broadcastProposal(proposal, from)
+		go d.broadcastProposal(proposal, from, pbbt)
 
 		// if the proposal is new and we still don't have a complete block for
 		// the last block, request it from this peer.
@@ -228,6 +229,7 @@ func (d *DataRoutine) handleHaves(peer p2p.ID, height int64, round int32, haves 
 
 	// keep track of the parts that this node has requested.
 	p.SetRequests(height, round, hc)
+	d.broadcastHaves(height, round, hc, peer)
 }
 
 // handleValidBlock is called the node finds a peer with a valid block. If this
@@ -346,7 +348,7 @@ func (d *DataRoutine) requestAllPreviousBlocks(peer p2p.ID, height int64) {
 			ChannelID: DataChannel,
 			Message: &cmtcons.PartState{
 				PartState: &cmttypes.PartState{
-					Height: height,
+					Height: i,
 					Round:  -1, // -1 round means that we don't have the psh or the proposal and the peer needs to send us this first
 					Have:   false,
 					Parts:  *haves.ToProto(),
@@ -363,7 +365,7 @@ func (d *DataRoutine) requestAllPreviousBlocks(peer p2p.ID, height int64) {
 
 		schema.WriteBlockPartState(
 			d.tracer,
-			height,
+			i,
 			-1,
 			haves.GetTrueIndices(),
 			false,
@@ -419,6 +421,7 @@ func (d *DataRoutine) handleWants(peer p2p.ID, height int64, round int32, wants 
 	if wc.IsEmpty() {
 		wc = parts.BitArray()
 	}
+
 	canSend := parts.BitArray().And(wc)
 	if canSend == nil {
 		d.logger.Error("nil can send?", "peer", peer, "height", height, "round", round, "wants", wants, "wc", wc)
@@ -450,7 +453,9 @@ func (d *DataRoutine) handleWants(peer p2p.ID, height int64, round int32, wants 
 
 	// for parts that we don't have but they still want, store the wants.
 	stillMissing := wants.Sub(canSend)
-	p.SetWants(height, round, stillMissing)
+	if !stillMissing.IsEmpty() {
+		p.SetWants(height, round, stillMissing)
+	}
 }
 
 // handleBlockPart is called when a peer sends a block part message. This is used
@@ -486,7 +491,9 @@ func (d *DataRoutine) handleBlockPart(peer p2p.ID, part *BlockPartMessage) {
 	if !added {
 		return
 	}
-	go d.broadcastHaves(part.Height, part.Round, parts.BitArray(), peer)
+
+	// todo(evan): temporarily disabling
+	// go d.broadcastHaves(part.Height, part.Round, parts.BitArray(), peer)
 	go d.clearWants(part)
 }
 
@@ -513,6 +520,7 @@ func (d *DataRoutine) clearWants(part *BlockPartMessage) {
 			}
 			if p2p.SendEnvelopeShim(peer.peer, e, d.logger) {
 				peer.SetHave(part.Height, part.Round, int(part.Part.Index))
+				peer.SetWant(part.Height, part.Round, int(part.Part.Index), false)
 				catchup := false
 				d.pmtx.RLock()
 				if part.Height < d.currentHeight {
@@ -579,16 +587,32 @@ func (d *DataRoutine) sendPsh(peer p2p.ID, height int64, round int32) bool {
 
 // broadcastProposal gossips the provided proposal to all peers. This should
 // only be called upon receiving a proposal for the first time or after creating
-// a proposal block.
-func (d *DataRoutine) broadcastProposal(proposal *types.Proposal, from p2p.ID) {
+// a proposal block. pbbt determines if the proposal should be broadcasted in portions
+func (d *DataRoutine) broadcastProposal(proposal *types.Proposal, from p2p.ID, pbbt bool) {
 	e := p2p.Envelope{ //nolint: staticcheck
 		ChannelID: DataChannel,
 		Message:   &cmtcons.Proposal{Proposal: *proposal.ToProto()},
 	}
-	for _, peer := range d.getPeers() {
+
+	peers := d.getPeers()
+	chunks := chunkParts(proposal.HaveParts.Copy(), len(peers), 3)
+
+	for i, peer := range peers {
 		if peer.peer.ID() == from {
 			continue
 		}
+
+		// pbbt (pull based broadcast tree) indicates that the proposal should
+		// only include a portion of the block and not the entiriety.
+		if pbbt {
+			// send each part of the proposal to three random peers
+			proposal.HaveParts = chunks[i]
+			e = p2p.Envelope{ //nolint: staticcheck
+				ChannelID: DataChannel,
+				Message:   &cmtcons.Proposal{Proposal: *proposal.ToProto()},
+			}
+		}
+
 		// todo(evan): don't rely strictly on try, however since we're using
 		// pull based gossip, this isn't as big as a deal since if someone asks
 		// for data, they must already have the proposal.
@@ -611,8 +635,58 @@ func (d *DataRoutine) broadcastProposal(proposal *types.Proposal, from p2p.ID) {
 		// }
 	}
 }
+func chunkParts(p *bits.BitArray, peerCount, redundancy int) []*bits.BitArray {
+	size := p.Size()
+	if peerCount == 0 {
+		peerCount = 1
+	}
+	chunkSize := size / peerCount
+	// round up to use the ceil
+	if size%peerCount != 0 || chunkSize == 0 {
+		chunkSize++
+	}
 
-//
+	// Create empty bit arrays for each peer
+	parts := make([]*bits.BitArray, peerCount)
+	for i := 0; i < peerCount; i++ {
+		parts[i] = bits.NewBitArray(size)
+	}
+
+	chunks := chunkIndexes(size, chunkSize)
+	cursor := 0
+	for p := 0; p < peerCount; p++ {
+		for r := 0; r < redundancy; r++ {
+			start, end := chunks[cursor][0], chunks[cursor][1]
+			for i := start; i < end; i++ {
+				parts[p].SetIndex(i, true)
+			}
+			cursor++
+			if cursor >= len(chunks) {
+				cursor = 0
+			}
+		}
+	}
+
+	return parts
+}
+
+func chunkIndexes(totalSize, chunkSize int) [][2]int {
+	if totalSize <= 0 || chunkSize <= 0 {
+		panic(fmt.Sprintf("invalid input: totalSize=%d, chunkSize=%d \n", totalSize, chunkSize))
+		// return nil // Handle invalid input gracefully
+	}
+
+	var chunks [][2]int
+	for start := 0; start < totalSize; start += chunkSize {
+		end := start + chunkSize
+		if end > totalSize {
+			end = totalSize // Ensure the last chunk doesn't exceed the total size
+		}
+		chunks = append(chunks, [2]int{start, end})
+	}
+
+	return chunks
+}
 
 // broadcastHaves gossips the provided have msg to all peers except to the
 // original sender. This should only be called upon receiving a new have for the
@@ -633,6 +707,17 @@ func (d *DataRoutine) broadcastHaves(height int64, round int32, haves *bits.BitA
 		if peer.peer.ID() == from {
 			continue
 		}
+
+		// skip sending anything to this peer if they already have all of the
+		// parts.
+		ph, has := peer.GetHaves(height, round)
+		if has {
+			remaining := haves.Copy().Sub(ph.Copy())
+			if remaining.IsEmpty() {
+				continue
+			}
+		}
+
 		// todo(evan): don't rely strictly on try, however since we're using
 		// pull based gossip, this isn't as big as a deal since if someone asks
 		// for data, they must already have the proposal.
