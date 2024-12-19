@@ -148,7 +148,7 @@ upon ⟨PROPOSAL, h_p, r, (v,t), ∗⟩ from proposer(h_p, r) AND 2f + 1 ⟨PREC
 }
 ```
 
-**All other rules remains unchanged.**
+**All other rules remain unchanged.**
 
 Back to [main document][main].
 

@@ -379,7 +379,7 @@ blockchain.
 #### EndBlock
 
 ResponseEndBlock includes a ConsensusParams.
-If ConsensusParams nil, CometBFT will do nothing.
+If ConsensusParams is nil, CometBFT will do nothing.
 If ConsensusParam is not nil, CometBFT will use it.
 This way the application can update the consensus params over time.
 
