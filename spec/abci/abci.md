@@ -562,7 +562,7 @@ the blockchain's `AppHash` which is verified via [light client verification](../
 
     | Name  | Type  | Description                                                                                                                                           | Field Number |
     |-------|-------|-------------------------------------------------------------------------------------------------------------------------------------------------------|--------------|
-    | chunk | bytes | The binary chunk contents, in an arbitray format. Chunk messages cannot be larger than 16 MB _including metadata_, so 10 MB is a good starting point. | 1            |
+    | chunk | bytes | The binary chunk contents, in an arbitrary format. Chunk messages cannot be larger than 16 MB _including metadata_, so 10 MB is a good starting point. | 1            |
 
 * **Usage**:
     * Used during state sync to retrieve snapshot chunks from peers.
