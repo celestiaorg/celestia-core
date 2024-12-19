@@ -88,7 +88,7 @@ describe how to hash the block data here:
 
 - Enforce a minimum square size (https://github.com/celestiaorg/celestia-core/pull/282)
 - Use squares with a width that is a power of two(https://github.com/celestiaorg/celestia-core/pull/331)
-- Adopt reamping from the mempool to max square size (https://github.com/celestiaorg/celestia-core/issues/77)
+- Adopt reaping from the mempool to max square size (https://github.com/celestiaorg/celestia-core/issues/77)
 - Proposal: Decide on a mech to pick square size and communicate that to the
   app (https://github.com/celestiaorg/celestia-core/issues/454)
 - Also see ABCI++ for a less hacky solution
