@@ -66,7 +66,7 @@ The handling of non-zero response codes by CometBFT is described below
 
 The `CheckTx` ABCI method controls what transactions are considered for inclusion in a block.
 When CometBFT receives a `ResponseCheckTx` with a non-zero `Code`, the associated
-transaction will be not be added to CometBFT's mempool or it will be removed if
+transaction will not be added to CometBFT's mempool or it will be removed if
 it is already included.
 
 ### DeliverTx
