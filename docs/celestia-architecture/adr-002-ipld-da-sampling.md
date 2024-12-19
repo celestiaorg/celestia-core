@@ -29,7 +29,7 @@ This ADR:
 The core data structures and the erasure coding of the block are already implemented in celestia-core ([#17], [#19], [#83]).
 While there are no ADRs for these changes, we can refer to the Celestia specification in this case.
 For this aspect, the existing implementation and specification should already be on par for the most part.
-The exact arrangement of the data as described in this [rationale document](https://github.com/celestiaorg/celestia-specs/blob/master/rationale/message_block_layout.md)
+The exact arrangement of the data as described in this [rationale document](https://github.com/celestiaorg/celestia-specs/blob/master/src/rationale/message_block_layout.md)
 in the specification can happen at app-side of the ABCI boundary.
 The latter was implemented in [celestiaorg/celestia-app#21](https://github.com/celestiaorg/celestia-app/pull/21)
 leveraging a new ABCI method, added in [#110](https://github.com/celestiaorg/celestia-core/pull/110).
