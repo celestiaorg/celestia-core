@@ -140,7 +140,7 @@ See also this related issue in the LL specification: [#159](https://github.com/c
 
 Independent of the existing implementation, there are three ways this could be implemented:
 1. the DAS light client only accepts a header as valid and trusts it after DAS succeeds (additionally to the tendermint verification), and it waits until DAS succeeds (or there was an error or timeout on the way)
-2. (aka 1.5) the DAS light client stages headers where the tendermint verification passes as valid and spins up DAS sampling rotines in the background; the staged headers are committed as valid iff all routines successfully return in time
+2. (aka 1.5) the DAS light client stages headers where the tendermint verification passes as valid and spins up DAS sampling routines in the background; the staged headers are committed as valid iff all routines successfully return in time
 3. the DAS light client optimistically accepts a header as valid and trusts it if the regular tendermint verification succeeds; the DAS is run in the background (with potentially much longer timeouts as in 1.) and after the background routine returns (or errs or times out), the already trusted headers are marked as unavailable; this might require rolling back the already trusted headers
 
 We note that from an implementation point of view 1. is not only the simplest approach, but it would also work best with the currently implemented light client design.
@@ -174,7 +174,7 @@ diff --git a/types/light.go b/types/light.go
 ```
 
 Alternatively, we could introduce a `DASLightBlock` that embeds a `LightBlock` and has the `DataAvailabilityHeader` as the only (non-optional) field.
-This would be more explict as it is a new type.
+This would be more explicit as it is a new type.
 Instead, adding a field to the existing `LightBlock`is backwards compatible and does not require any further code changes; the new type requires `To`- and `FromProto` functions at least.
 
 ##### Provider
