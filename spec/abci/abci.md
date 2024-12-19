@@ -72,7 +72,7 @@ it is already included.
 ### DeliverTx
 
 The `DeliverTx` ABCI method delivers transactions from CometBFT to the application.
-When CometBFT recieves a `ResponseDeliverTx` with a non-zero `Code`, the response code is logged.
+When CometBFT receives a `ResponseDeliverTx` with a non-zero `Code`, the response code is logged.
 The transaction was already included in a block, so the `Code` does not influence
 CometBFT consensus.
 
@@ -411,7 +411,7 @@ the blockchain's `AppHash` which is verified via [light client verification](../
     | Name | Type        | Description                                                                                                                                                                                                                                         | Field Number |
     |------|-------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------|
     | tx   | bytes       | The request transaction bytes                                                                                                                                                                                                                       | 1            |
-    | type | CheckTxType | One of `CheckTx_New` or `CheckTx_Recheck`. `CheckTx_New` is the default and means that a full check of the tranasaction is required. `CheckTx_Recheck` types are used when the mempool is initiating a normal recheck of a transaction.             | 2            |
+    | type | CheckTxType | One of `CheckTx_New` or `CheckTx_Recheck`. `CheckTx_New` is the default and means that a full check of the transaction is required. `CheckTx_Recheck` types are used when the mempool is initiating a normal recheck of a transaction.             | 2            |
 
 * **Response**:
 
