@@ -561,20 +561,25 @@ func LoadBlockStoreState(db dbm.DB) cmtstore.BlockStoreState {
 }
 
 // LoadTxInfo loads the TxInfo from disk given its hash.
-func (bs *BlockStore) LoadTxInfo(txHash []byte) *cmtstore.TxInfo {
+// Returns nil if the transaction is not found.
+func (bs *BlockStore) LoadTxInfo(txHash []byte) (*cmtstore.TxInfo, error) {
+	if len(txHash) == 0 {
+		return nil, fmt.Errorf("cannot load tx info with empty hash")
+	}
+
 	bz, err := bs.db.Get(calcTxHashKey(txHash))
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to get tx info from db: %w", err)
 	}
 	if len(bz) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	var txi cmtstore.TxInfo
 	if err = proto.Unmarshal(bz, &txi); err != nil {
-		panic(fmt.Errorf("unmarshal to TxInfo failed: %w", err))
+		return nil, fmt.Errorf("failed to unmarshal tx info: %w", err)
 	}
-	return &txi
+	return &txi, nil
 }
 
 // mustEncode proto encodes a proto.message and panics if fails
