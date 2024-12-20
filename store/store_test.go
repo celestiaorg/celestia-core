@@ -782,3 +782,118 @@ func newBlock(hdr types.Header, lastCommit *types.Commit) *types.Block {
 		LastCommit: lastCommit,
 	}
 }
+
+func TestLoadTxInfoErrors(t *testing.T) {
+	config := cfg.ResetTestRoot("blockchain_reactor_test")
+	defer os.RemoveAll(config.RootDir)
+	bs := NewBlockStore(dbm.NewMemDB())
+
+	testCases := []struct {
+		name          string
+		txHash        []byte
+		expectedError string
+		dbError       error 
+	}{
+		{
+			name:          "empty hash",
+			txHash:        []byte{},
+			expectedError: "cannot load tx info with empty hash",
+		},
+		{
+			name:          "non-existent tx",
+			txHash:        []byte("non_existent_hash"),
+			expectedError: "",  // no error, just nil result
+		},
+		{
+			name:          "corrupted data",
+			txHash:        []byte("corrupted_hash"),
+			expectedError: "failed to unmarshal tx info",
+		},
+		{
+			name:          "database error",
+			txHash:        []byte("error_hash"),
+			dbError:       fmt.Errorf("mock db error"),
+			expectedError: "failed to get tx info from db: mock db error",
+		},
+	}
+
+	// Test corrupted data case by manually inserting invalid data
+	err := bs.db.Set(calcTxHashKey([]byte("corrupted_hash")), []byte("invalid_data"))
+	require.NoError(t, err)
+
+	// Create a BlockStore with mock DB for testing database errors
+	bsWithMockDB := &BlockStore{
+		db: &mockDBWithError{},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.dbError != nil {
+				// Use mock DB that returns an error
+				bsWithMockDB.db = &mockDBWithError{err: tc.dbError}
+				txInfo, err := bsWithMockDB.LoadTxInfo(tc.txHash)
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedError)
+				require.Nil(t, txInfo)
+			} else {
+				// Use regular DB
+				txInfo, err := bs.LoadTxInfo(tc.txHash)
+				if tc.expectedError != "" {
+					require.Error(t, err)
+					require.Contains(t, err.Error(), tc.expectedError)
+					require.Nil(t, txInfo)
+				} else {
+					require.NoError(t, err)
+					require.Nil(t, txInfo)
+				}
+			}
+		})
+	}
+}
+
+// mockDBWithError implements a mock database that returns errors
+type mockDBWithError struct {
+	dbm.DB
+	err error
+}
+
+func (m *mockDBWithError) Get(key []byte) ([]byte, error) {
+	return nil, m.err
+}
+
+func TestLoadTxInfoNotFound(t *testing.T) {
+	bs := NewBlockStore(dbm.NewMemDB())
+
+	// Test cases for "not found" scenarios
+	testCases := []struct {
+		name   string
+		txHash []byte
+		setup  func(db dbm.DB) 
+	}{
+		{
+			name:   "completely non-existent key",
+			txHash: []byte("non_existent_hash"),
+		},
+		{
+			name:   "key exists but value is empty",
+			txHash: []byte("empty_value_hash"),
+			setup: func(db dbm.DB) {
+				err := db.Set(calcTxHashKey([]byte("empty_value_hash")), []byte{})
+				require.NoError(t, err)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.setup != nil {
+				tc.setup(bs.db)
+			}
+
+			// Both cases should return (nil, nil) to indicate "not found"
+			txInfo, err := bs.LoadTxInfo(tc.txHash)
+			require.NoError(t, err)
+			require.Nil(t, txInfo)
+		})
+	}
+}
