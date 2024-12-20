@@ -563,30 +563,35 @@ func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 	//
 	// The exact intervals are not important except that the delta should be
 	// large relative to the cost of CheckTx (ms vs. ns is fine here).
-	time.Sleep(3 * time.Millisecond)
+	time.Sleep(2500 * time.Microsecond)
 	added2 := checkTxs(t, txmp, 10, 1)
 
-	// Wait a while longer, so that the first batch will expire.
-	time.Sleep(3 * time.Millisecond)
+	// use require.Eventually to wait for the TTL to expire
+	require.Eventually(t, func() bool {
+		// Trigger an update so that pruning will occur.
+		txmp.Lock()
+		defer txmp.Unlock()
+		require.NoError(t, txmp.Update(txmp.height+1, nil, nil, nil, nil))
 
-	// Trigger an update so that pruning will occur.
-	txmp.Lock()
-	defer txmp.Unlock()
-	require.NoError(t, txmp.Update(txmp.height+1, nil, nil, nil, nil))
+		// All the transactions in the original set should have been purged.
+		for _, tx := range added1 {
+			// Check that it was added to the evictedTxCache
+			evicted := txmp.WasRecentlyEvicted(tx.tx.Key())
+			if !evicted {
+				return false
+			}
 
-	// All the transactions in the original set should have been purged.
-	for _, tx := range added1 {
-		// Check that it was added to the evictedTxCache
-		evicted := txmp.WasRecentlyEvicted(tx.tx.Key())
-		require.True(t, evicted)
-
-		if txmp.store.has(tx.tx.Key()) {
-			t.Errorf("Transaction %X should have been purged for TTL", tx.tx.Key())
+			if txmp.store.has(tx.tx.Key()) {
+				t.Errorf("Transaction %X should have been purged for TTL", tx.tx.Key())
+				return false
+			}
+			if txmp.rejectedTxCache.Has(tx.tx.Key()) {
+				t.Errorf("Transaction %X should have been removed from the cache", tx.tx.Key())
+				return false
+			}
 		}
-		if txmp.rejectedTxCache.Has(tx.tx.Key()) {
-			t.Errorf("Transaction %X should have been removed from the cache", tx.tx.Key())
-		}
-	}
+		return true
+	}, 10*time.Millisecond, 50*time.Microsecond)
 
 	// All the transactions added later should still be around.
 	for _, tx := range added2 {
