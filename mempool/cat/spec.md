@@ -36,7 +36,7 @@ message WantTx {
 }
 ```
 
-Both `SeenTx` and `WantTx` contain the sha256 hash of the raw transaction bytes. `SeenTx` also contains an optional `p2p.ID` that corresponds to the peer that the node recieved the tx from. The only validation for both is that the byte slice of the `tx_key` MUST have a length of 32.
+Both `SeenTx` and `WantTx` contain the sha256 hash of the raw transaction bytes. `SeenTx` also contains an optional `p2p.ID` that corresponds to the peer that the node received the tx from. The only validation for both is that the byte slice of the `tx_key` MUST have a length of 32.
 
 Both messages are sent across a new channel with the ID: `byte(0x31)`. This enables cross compatibility as discussed in greater detail below.
 

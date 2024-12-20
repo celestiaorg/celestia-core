@@ -26,7 +26,7 @@ type ABCI struct {
 	Round     int32  `json:"round"`
 }
 
-// Table returns the table name for the ABCI struct and fullfills the
+// Table returns the table name for the ABCI struct and fulfills the
 // trace.Entry interface.
 func (m ABCI) Table() string {
 	return ABCITable
