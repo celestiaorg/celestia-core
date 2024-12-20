@@ -418,7 +418,9 @@ func TestSaveTxInfo(t *testing.T) {
 		block := blockStore.LoadBlock(h)
 		// Check that transactions exist in the block
 		for i, tx := range block.Txs {
-			txInfo := blockStore.LoadTxInfo(tx.Hash())
+			txInfo, err := blockStore.LoadTxInfo(tx.Hash())
+			require.NoError(t, err)
+			require.NotNil(t, txInfo)
 			require.Equal(t, block.Height, txInfo.Height)
 			require.Equal(t, uint32(i), txInfo.Index)
 			require.Equal(t, allTxResponseCodes[txIndex], txInfo.Code)
@@ -435,7 +437,9 @@ func TestSaveTxInfo(t *testing.T) {
 	// Get a random transaction and make sure it's indexed properly
 	block := blockStore.LoadBlock(7)
 	tx := block.Txs[0]
-	txInfo := blockStore.LoadTxInfo(tx.Hash())
+	txInfo, err := blockStore.LoadTxInfo(tx.Hash())
+	require.NoError(t, err)
+	require.NotNil(t, txInfo)
 	require.Equal(t, block.Height, txInfo.Height)
 	require.Equal(t, block.Height, int64(7))
 	require.Equal(t, txInfo.Height, int64(7))
@@ -625,7 +629,7 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 
 	// Check that the saved txs exist in the block store.
 	for _, hash := range indexedTxHashes {
-		txInfo := blockStore.LoadTxInfo(hash)
+		txInfo, err := blockStore.LoadTxInfo(hash)
 		require.NoError(t, err)
 		require.NotNil(t, txInfo, "transaction was not saved in the database")
 	}
@@ -638,10 +642,12 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 	// removed 11 blocks, each block has 1 tx so 11 txs should no longer
 	// exist in the db.
 	for i, hash := range indexedTxHashes {
-		txInfo := blockStore.LoadTxInfo(hash)
+		txInfo, err := blockStore.LoadTxInfo(hash)
 		if int64(i) < 11 {
+			require.NoError(t, err)
 			require.Nil(t, txInfo)
 		} else {
+			require.NoError(t, err)
 			require.NotNil(t, txInfo)
 		}
 	}
@@ -651,7 +657,7 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 		block := blockStore.LoadBlock(height)
 		for i, tx := range block.Txs {
 			hash := tx.Hash()
-			txInfo := blockStore.LoadTxInfo(hash)
+			txInfo, err := blockStore.LoadTxInfo(hash)
 			require.NoError(t, err)
 			require.NotNil(t, txInfo)
 			require.Equal(t, height, txInfo.Height)
