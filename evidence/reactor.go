@@ -227,7 +227,7 @@ type PeerState interface {
 	GetHeight() int64
 }
 
-// encodemsg takes a array of evidence
+// encodemsg takes an array of evidence
 // returns the byte encoding of the List Message
 func evidenceListToProto(evis []types.Evidence) (*cmtproto.EvidenceList, error) {
 	evi := make([]cmtproto.Evidence, len(evis))
