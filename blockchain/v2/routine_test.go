@@ -32,7 +32,7 @@ func TestRoutineFinal(t *testing.T) {
 	go routine.start()
 	<-routine.ready()
 	assert.True(t, routine.isRunning(),
-		"expected an started routine")
+		"expected a started routine")
 
 	assert.True(t, routine.send(eventA{}),
 		"expected sending to a ready routine to succeed")
@@ -153,11 +153,11 @@ func TestPriority(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	assert.True(t, routine.isRunning(),
-		"expected an started routine")
+		"expected a started routine")
 	assert.True(t, routine.send(highPriorityEvent{}),
 		"expected send to succeed even when saturated")
 
 	assert.Equal(t, errDone, <-routine.final())
 	assert.False(t, routine.isRunning(),
-		"expected an started routine")
+		"expected a started routine")
 }
