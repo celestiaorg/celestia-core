@@ -553,16 +553,11 @@ func TestTxPool_ExpiredTxs_Timestamp(t *testing.T) {
 
 	// Wait a while, then add some more transactions that should not be expired
 	// when the first batch TTLs out.
-	//
-	// ms: 0   1   2   3   4   5   6
-	//     ^           ^       ^   ^
-	//     |           |       |   +-- Update (triggers pruning)
-	//     |           |       +------ first batch expires
-	//     |           +-------------- second batch added
-	//     +-------------------------- first batch added
-	//
-	// The exact intervals are not important except that the delta should be
-	// large relative to the cost of CheckTx (ms vs. ns is fine here).
+	// Because the TTL is 5ms which is very short, we need to have a more precise
+	// pruning interval to ensure that the transactions are expired
+	// so that the expired event is caught quickly enough
+	// that the second batch of transactions are not expired.
+
 	time.Sleep(2500 * time.Microsecond)
 	added2 := checkTxs(t, txmp, 10, 1)
 
