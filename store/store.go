@@ -561,10 +561,10 @@ func LoadBlockStoreState(db dbm.DB) cmtstore.BlockStoreState {
 }
 
 // LoadTxInfo loads the TxInfo from disk given its hash.
-// Returns nil if the transaction is not found.
+// Returns err notfound if the transaction is not found.
 func (bs *BlockStore) LoadTxInfo(txHash []byte) (*cmtstore.TxInfo, error) {
 	if len(txHash) == 0 {
-		return nil, fmt.Errorf("cannot load tx info with empty hash")
+		return nil, fmt.Errorf("cannot load tx info for empty txHash")
 	}
 
 	bz, err := bs.db.Get(calcTxHashKey(txHash))
@@ -572,7 +572,7 @@ func (bs *BlockStore) LoadTxInfo(txHash []byte) (*cmtstore.TxInfo, error) {
 		return nil, fmt.Errorf("failed to get tx info from db: %w", err)
 	}
 	if len(bz) == 0 {
-		return nil, nil
+		return nil, fmt.Errorf("transaction not found")
 	}
 
 	var txi cmtstore.TxInfo

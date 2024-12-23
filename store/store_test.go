@@ -644,7 +644,8 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 	for i, hash := range indexedTxHashes {
 		txInfo, err := blockStore.LoadTxInfo(hash)
 		if int64(i) < 11 {
-			require.NoError(t, err)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "transaction not found")
 			require.Nil(t, txInfo)
 		} else {
 			require.NoError(t, err)
@@ -795,22 +796,22 @@ func TestLoadTxInfoErrors(t *testing.T) {
 		dbError       error 
 	}{
 		{
-			name:          "empty hash",
+			name:          "Empty txHash",
 			txHash:        []byte{},
-			expectedError: "cannot load tx info with empty hash",
+			expectedError: "cannot load tx info for empty txHash",
 		},
 		{
-			name:          "non-existent tx",
+			name:          "Non-existent tx",
 			txHash:        []byte("non_existent_hash"),
-			expectedError: "",  // no error, just nil result
+			expectedError: "transaction not found",  // no error, just nil result
 		},
 		{
-			name:          "corrupted data",
+			name:          "Corrupted data",
 			txHash:        []byte("corrupted_hash"),
 			expectedError: "failed to unmarshal tx info",
 		},
 		{
-			name:          "database error",
+			name:          "Database error",
 			txHash:        []byte("error_hash"),
 			dbError:       fmt.Errorf("mock db error"),
 			expectedError: "failed to get tx info from db: mock db error",
@@ -892,7 +893,8 @@ func TestLoadTxInfoNotFound(t *testing.T) {
 
 			// Both cases should return (nil, nil) to indicate "not found"
 			txInfo, err := bs.LoadTxInfo(tc.txHash)
-			require.NoError(t, err)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "transaction not found")
 			require.Nil(t, txInfo)
 		})
 	}
