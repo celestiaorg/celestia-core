@@ -268,7 +268,7 @@
 \newtoks\@IEEEtrantmptoksA
 
 % we use \CLASSOPTIONpt so that we can ID the point size (even for 9pt docs)
-% as well as LaTeX's \@ptsize to retain some compatability with some
+% as well as LaTeX's \@ptsize to retain some compatibility with some
 % external packages
 \def\@ptsize{0}
 % LaTeX does not support 9pt, so we set \@ptsize to 0 - same as that of 10pt
