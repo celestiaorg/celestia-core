@@ -784,7 +784,7 @@ func newBlock(hdr types.Header, lastCommit *types.Commit) *types.Block {
 	}
 }
 
-func TestLoadTxInfoErrors(t *testing.T) {
+func TestLoadTxInfo(t *testing.T) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	defer os.RemoveAll(config.RootDir)
 	bs := NewBlockStore(dbm.NewMemDB())
@@ -793,61 +793,69 @@ func TestLoadTxInfoErrors(t *testing.T) {
 		name          string
 		txHash        []byte
 		expectedError string
-		dbError       error 
+		setup        func(db dbm.DB)
 	}{
 		{
-			name:          "Empty txHash",
+			name:          "TestLoadTxInfoWithEmptyHash",
 			txHash:        []byte{},
 			expectedError: "cannot load tx info for empty txHash",
 		},
 		{
-			name:          "Non-existent tx",
+			name:          "TestLoadTxInfoWithNonExistentTx",
 			txHash:        []byte("non_existent_hash"),
-			expectedError: "transaction not found",  // no error, just nil result
+			expectedError: "transaction not found",
 		},
 		{
-			name:          "Corrupted data",
+			name:          "TestLoadTxInfoWithCorruptedData",
 			txHash:        []byte("corrupted_hash"),
 			expectedError: "failed to unmarshal tx info",
+			setup: func(db dbm.DB) {
+				err := db.Set(calcTxHashKey([]byte("corrupted_hash")), []byte("invalid_data"))
+				require.NoError(t, err)
+			},
 		},
 		{
-			name:          "Database error",
-			txHash:        []byte("error_hash"),
-			dbError:       fmt.Errorf("mock db error"),
-			expectedError: "failed to get tx info from db: mock db error",
+			name:          "TestLoadTxInfoWithEmptyValueInDb",
+			txHash:        []byte("empty_value_hash"),
+			expectedError: "transaction not found",
+			setup: func(db dbm.DB) {
+				err := db.Set(calcTxHashKey([]byte("empty_value_hash")), []byte{})
+				require.NoError(t, err)
+			},
 		},
-	}
-
-	// Test corrupted data case by manually inserting invalid data
-	err := bs.db.Set(calcTxHashKey([]byte("corrupted_hash")), []byte("invalid_data"))
-	require.NoError(t, err)
-
-	// Create a BlockStore with mock DB for testing database errors
-	bsWithMockDB := &BlockStore{
-		db: &mockDBWithError{},
+		{
+			name:          "TestLoadTxInfoWithDatabaseError",
+			txHash:        []byte("error_hash"),
+			expectedError: "failed to get tx info from db: mock db error",
+			setup: func(db dbm.DB) {
+				// This case will be handled separately with mockDB
+			},
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.dbError != nil {
-				// Use mock DB that returns an error
-				bsWithMockDB.db = &mockDBWithError{err: tc.dbError}
+			if tc.name == "TestLoadTxInfoWithDatabaseError" {
+				// Special case for database error using mock
+				mockDB := &mockDBWithError{err: fmt.Errorf("mock db error")}
+				bsWithMockDB := &BlockStore{db: mockDB}
 				txInfo, err := bsWithMockDB.LoadTxInfo(tc.txHash)
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.expectedError)
 				require.Nil(t, txInfo)
-			} else {
-				// Use regular DB
-				txInfo, err := bs.LoadTxInfo(tc.txHash)
-				if tc.expectedError != "" {
-					require.Error(t, err)
-					require.Contains(t, err.Error(), tc.expectedError)
-					require.Nil(t, txInfo)
-				} else {
-					require.NoError(t, err)
-					require.Nil(t, txInfo)
-				}
+				return
 			}
+
+			// Run setup if provided
+			if tc.setup != nil {
+				tc.setup(bs.db)
+			}
+
+			// Test the case
+			txInfo, err := bs.LoadTxInfo(tc.txHash)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.expectedError)
+			require.Nil(t, txInfo)
 		})
 	}
 }
@@ -860,42 +868,4 @@ type mockDBWithError struct {
 
 func (m *mockDBWithError) Get(key []byte) ([]byte, error) {
 	return nil, m.err
-}
-
-func TestLoadTxInfoNotFound(t *testing.T) {
-	bs := NewBlockStore(dbm.NewMemDB())
-
-	// Test cases for "not found" scenarios
-	testCases := []struct {
-		name   string
-		txHash []byte
-		setup  func(db dbm.DB) 
-	}{
-		{
-			name:   "completely non-existent key",
-			txHash: []byte("non_existent_hash"),
-		},
-		{
-			name:   "key exists but value is empty",
-			txHash: []byte("empty_value_hash"),
-			setup: func(db dbm.DB) {
-				err := db.Set(calcTxHashKey([]byte("empty_value_hash")), []byte{})
-				require.NoError(t, err)
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			if tc.setup != nil {
-				tc.setup(bs.db)
-			}
-
-			// Both cases should return (nil, nil) to indicate "not found"
-			txInfo, err := bs.LoadTxInfo(tc.txHash)
-			require.Error(t, err)
-			require.Contains(t, err.Error(), "transaction not found")
-			require.Nil(t, txInfo)
-		})
-	}
 }
