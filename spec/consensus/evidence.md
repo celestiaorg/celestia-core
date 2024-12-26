@@ -130,7 +130,7 @@ If a node verifies evidence it then broadcasts it to all peers, continuously sen
 the same evidence once every 10 seconds until the evidence is seen on chain or
 expires.
 
-## Commiting on Chain
+## Committing on Chain
 
 Evidence takes strict priority over regular transactions, thus a block is filled
 with evidence first and transactions take up the remainder of the space. To
