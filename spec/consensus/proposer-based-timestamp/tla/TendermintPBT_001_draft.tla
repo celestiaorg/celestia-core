@@ -499,7 +499,7 @@ MessageProcessing(p) ==
     \/ OnRoundCatchup(p)
 
 (*
- * A system transition. In this specificatiom, the system may eventually deadlock,
+ * A system transition. In this specification, the system may eventually deadlock,
  * e.g., when all processes decide. This is expected behavior, as we focus on safety.
  *)
 Next ==

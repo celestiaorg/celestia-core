@@ -239,8 +239,11 @@ func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
 	require.True(t, reactor.mempool.Has(key))
 
 	// wait for the transaction to expire
-	time.Sleep(reactor.mempool.config.TTLDuration * 2)
-	require.False(t, reactor.mempool.Has(key))
+	require.Eventually(t,
+		func() bool { return !reactor.mempool.Has(key) },
+		4*reactor.mempool.config.TTLDuration,
+		50*time.Millisecond,
+		"transaction was not removed after TTL expired")
 }
 
 func TestLegacyReactorReceiveBasic(t *testing.T) {
