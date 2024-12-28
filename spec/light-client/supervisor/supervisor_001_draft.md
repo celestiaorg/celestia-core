@@ -106,8 +106,14 @@ The light client never stores a header which is not in the blockchain.
 ## Computational Model
 
 The light client communicates with remote processes only via the
-[verification](TODO) and the [detection](TODO) protocols. The
+[verification](https://github.com/celestiaorg/celestia-core/blob/main/spec/light-client/verification/README.md) and the [detection](https://github.com/celestiaorg/celestia-core/blob/main/spec/light-client/detection/README.md) protocols. The
 respective assumptions are given there.
+
+> The light store exposes functions to query and update it. They are
+> specified [here](https://github.com/celestiaorg/celestia-core/blob/main/spec/light-client/verification/README.md#light-store-specification).
+
+**TODO:** reference light store invariant [LCV-INV-LS-ROOT.2] once
+verification is merged
 
 ## Distributed Problem Statement
 
@@ -133,7 +139,7 @@ The light client has a local data structure called LightStore
 that contains light blocks (that contain a header).
 
 > The light store exposes functions to query and update it. They are
-> specified [here](TODO:onceVerificationIsMerged).
+> specified [here](https://github.com/celestiaorg/celestia-core/blob/main/spec/light-client/verification/README.md#light-store-specification).
 
 **TODO:** reference light store invariant [LCV-INV-LS-ROOT.2] once
 verification is merged
@@ -164,8 +170,8 @@ wait for another input.
 
 [LC-DIST-SAFE.1] is guaranteed by the detector; in particular it
 follows from
-[[LCD-DIST-INV-STORE.1]](TODO)
-[[LCD-DIST-LIVE.1]](TODO)
+[[LCD-DIST-INV-STORE.1]](https://github.com/celestiaorg/celestia-core/blob/main/spec/light-client/detection/README.md#store-invariants)
+[[LCD-DIST-LIVE.1]](https://github.com/celestiaorg/celestia-core/blob/main/spec/light-client/detection/README.md#liveness-properties)
 
 # Part IV - Light Client Supervisor Protocol
 
@@ -290,7 +296,7 @@ type LightStore struct {
 ```
 
 We use the functions that the LightStore exposes, which
-are defined in the [verification specification](TODO).
+are defined in the [verification specification](https://github.com/celestiaorg/celestia-core/blob/main/spec/light-client/verification/README.md).
 
 ### Inputs
 
@@ -306,8 +312,8 @@ type LCInitData struct {
 ```
 
 where only one of the components must be provided. `GenesisDoc` is
-defined in the [CometBFT
-Types](https://github.com/cometbft/cometbft/blob/v0.34.x/types/genesis.go).
+defined in the [Celestia
+Types](https://github.com/celestiaorg/celestia-core/blob/main/types/genesis.go).
 
 #### **[LC-DATA-GENESIS.1]**
 
