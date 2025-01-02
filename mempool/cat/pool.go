@@ -409,20 +409,6 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 	txmp.seenByPeersSet.Add(txKey, peer)
 }
 
-// allEntriesSorted returns a slice of all the transactions currently in the
-// mempool, sorted in nonincreasing order by priority with ties broken by
-// increasing order of arrival time.
-func (txmp *TxPool) allEntriesSorted() []*wrappedTx {
-	txs := txmp.store.getAllTxs()
-	sort.Slice(txs, func(i, j int) bool {
-		if txs[i].priority == txs[j].priority {
-			return txs[i].timestamp.Before(txs[j].timestamp)
-		}
-		return txs[i].priority > txs[j].priority // N.B. higher priorities first
-	})
-	return txs
-}
-
 // ReapMaxBytesMaxGas returns a slice of valid transactions that fit within the
 // size and gas constraints. The results are ordered by nonincreasing priority,
 // with ties broken by increasing order of arrival. Reaping transactions does
@@ -436,7 +422,7 @@ func (txmp *TxPool) allEntriesSorted() []*wrappedTx {
 func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	var totalGas, totalBytes int64
 
-	var keep []types.Tx //nolint:prealloc
+	var keep []types.Tx
 	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
 		// N.B. When computing byte size, we need to include the overhead for
 		// encoding as protobuf to send to the application. This actually overestimates it
@@ -462,7 +448,7 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 // The result may have fewer than max elements (possibly zero) if the mempool
 // does not have that many transactions available.
 func (txmp *TxPool) ReapMaxTxs(max int) types.Txs {
-	var keep []types.Tx //nolint:prealloc
+	var keep []types.Tx
 
 	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
 		if max >= 0 && len(keep) >= max {
