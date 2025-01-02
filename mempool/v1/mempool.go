@@ -46,8 +46,8 @@ type TxMempool struct {
 	mtx                  *sync.RWMutex
 	notifiedTxsAvailable bool
 	txsAvailable         chan struct{} // one value sent per height when mempool is not empty
-	preCheck             mempool.PreCheckFunc
-	postCheck            mempool.PostCheckFunc
+	preCheckFn           mempool.PreCheckFunc
+	postCheckFn          mempool.PostCheckFunc
 	height               int64     // the latest height passed to Update
 	lastPurgeTime        time.Time // the last time we attempted to purge transactions via the TTL
 
@@ -98,14 +98,14 @@ func NewTxMempool(
 // returns an error. This is executed before CheckTx. It only applies to the
 // first created block. After that, Update() overwrites the existing value.
 func WithPreCheck(f mempool.PreCheckFunc) TxMempoolOption {
-	return func(txmp *TxMempool) { txmp.preCheck = f }
+	return func(txmp *TxMempool) { txmp.preCheckFn = f }
 }
 
 // WithPostCheck sets a filter for the mempool to reject a transaction if
 // f(tx, resp) returns an error. This is executed after CheckTx. It only applies
 // to the first created block. After that, Update overwrites the existing value.
 func WithPostCheck(f mempool.PostCheckFunc) TxMempoolOption {
-	return func(txmp *TxMempool) { txmp.postCheck = f }
+	return func(txmp *TxMempool) { txmp.postCheckFn = f }
 }
 
 // WithMetrics sets the mempool's metrics collector.
@@ -193,11 +193,9 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 	}
 
 	// If a precheck hook is defined, call it before invoking the application.
-	if txmp.preCheck != nil {
-		if err := txmp.preCheck(tx); err != nil {
-			txmp.metrics.FailedTxs.Add(1)
-			return mempool.ErrPreCheck{Reason: err}
-		}
+	if err := txmp.preCheck(tx); err != nil {
+		txmp.metrics.FailedTxs.Add(1)
+		return mempool.ErrPreCheck{Reason: err}
 	}
 
 	// Early exit if the proxy connection has an error.
@@ -421,10 +419,10 @@ func (txmp *TxMempool) Update(
 	txmp.notifiedTxsAvailable = false
 
 	if newPreFn != nil {
-		txmp.preCheck = newPreFn
+		txmp.preCheckFn = newPreFn
 	}
 	if newPostFn != nil {
-		txmp.postCheck = newPostFn
+		txmp.postCheckFn = newPostFn
 	}
 
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
@@ -475,8 +473,8 @@ func (txmp *TxMempool) Update(
 // Finally, the new transaction is added and size stats updated.
 func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.ResponseCheckTx) {
 	var err error
-	if txmp.postCheck != nil {
-		err = txmp.postCheck(wtx.tx, checkTxRes)
+	if txmp.postCheckFn != nil {
+		err = txmp.postCheckFn(wtx.tx, checkTxRes)
 	}
 
 	if err != nil || checkTxRes.Code != abci.CodeTypeOK {
@@ -651,8 +649,8 @@ func (txmp *TxMempool) handleRecheckResult(tx types.Tx, checkTxRes *abci.Respons
 
 	// If a postcheck hook is defined, call it before checking the result.
 	var err error
-	if txmp.postCheck != nil {
-		err = txmp.postCheck(tx, checkTxRes)
+	if txmp.postCheckFn != nil {
+		err = txmp.postCheckFn(tx, checkTxRes)
 	}
 
 	if checkTxRes.Code == abci.CodeTypeOK && err == nil {
@@ -794,4 +792,13 @@ func (txmp *TxMempool) notifyTxsAvailable() {
 		default:
 		}
 	}
+}
+
+func (txmp *TxMempool) preCheck(tx types.Tx) error {
+	txmp.mtx.Lock()
+	defer txmp.mtx.Unlock()
+	if txmp.preCheckFn != nil {
+		return txmp.preCheckFn(tx)
+	}
+	return nil
 }
