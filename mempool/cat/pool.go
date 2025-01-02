@@ -437,18 +437,19 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	var totalGas, totalBytes int64
 
 	var keep []types.Tx //nolint:prealloc
-	for _, w := range txmp.allEntriesSorted() {
+	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
 		// N.B. When computing byte size, we need to include the overhead for
 		// encoding as protobuf to send to the application. This actually overestimates it
 		// as we add the proto overhead to each transaction
 		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx})
 		if (maxGas >= 0 && totalGas+w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes+txBytes > maxBytes) {
-			continue
+			return true
 		}
 		totalBytes += txBytes
 		totalGas += w.gasWanted
 		keep = append(keep, w.tx)
-	}
+		return true
+	})
 	return keep
 }
 
@@ -463,12 +464,13 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 func (txmp *TxPool) ReapMaxTxs(max int) types.Txs {
 	var keep []types.Tx //nolint:prealloc
 
-	for _, w := range txmp.allEntriesSorted() {
+	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
 		if max >= 0 && len(keep) >= max {
-			break
+			return false
 		}
 		keep = append(keep, w.tx)
-	}
+		return true
+	})
 	return keep
 }
 
@@ -673,16 +675,9 @@ func (txmp *TxPool) recheckTransactions() {
 		"height", txmp.height,
 	)
 
-	// Collect transactions currently in the mempool requiring recheck.
-	// TODO: we are iterating over a map, which may scramble the order of transactions
-	// such that they are not in order, dictated by nonce and then priority. This may
-	// cause transactions to needlessly be kicked out in RecheckTx
-	wtxs := txmp.store.getAllTxs()
-
 	// Issue CheckTx calls for each remaining transaction, and when all the
 	// rechecks are complete signal watchers that transactions may be available.
-	for _, wtx := range wtxs {
-		wtx := wtx
+	txmp.store.iterateOrderedTxs(func(wtx *wrappedTx) bool {
 		// The response for this CheckTx is handled by the default recheckTxCallback.
 		rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{
 			Tx:   wtx.tx,
@@ -694,7 +689,8 @@ func (txmp *TxPool) recheckTransactions() {
 		} else {
 			txmp.handleRecheckResult(wtx, rsp)
 		}
-	}
+		return true
+	})
 	_ = txmp.proxyAppConn.FlushAsync()
 
 	// When recheck is complete, trigger a notification for more transactions.
