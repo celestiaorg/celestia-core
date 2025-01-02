@@ -51,7 +51,7 @@ type TxPool struct {
 	metrics      *mempool.Metrics
 
 	// these values are modified once per height
-	updateMtx            sync.Mutex
+	mtx                  sync.Mutex
 	notifiedTxsAvailable bool
 	txsAvailable         chan struct{} // one value sent per height when mempool is not empty
 	preCheckFn           mempool.PreCheckFunc
@@ -128,10 +128,14 @@ func WithMetrics(metrics *mempool.Metrics) TxPoolOption {
 }
 
 // Lock is a noop as ABCI calls are serialized
-func (txmp *TxPool) Lock() {}
+func (txmp *TxPool) Lock() {
+	txmp.mtx.Lock()
+}
 
 // Unlock is a noop as ABCI calls are serialized
-func (txmp *TxPool) Unlock() {}
+func (txmp *TxPool) Unlock() {
+	txmp.mtx.Unlock()
+}
 
 // Size returns the number of valid transactions in the mempool. It is
 // thread-safe.
@@ -161,8 +165,8 @@ func (txmp *TxPool) TxsAvailable() <-chan struct{} { return txmp.txsAvailable }
 
 // Height returns the latest height that the mempool is at
 func (txmp *TxPool) Height() int64 {
-	txmp.updateMtx.Lock()
-	defer txmp.updateMtx.Unlock()
+	txmp.mtx.Lock()
+	defer txmp.mtx.Unlock()
 	return txmp.height
 }
 
@@ -203,8 +207,8 @@ func (txmp *TxPool) IsRejectedTx(txKey types.TxKey) bool {
 // the txpool looped through all transactions and if so, performs a purge of any transaction
 // that has expired according to the TTLDuration. This is thread safe.
 func (txmp *TxPool) CheckToPurgeExpiredTxs() {
-	txmp.updateMtx.Lock()
-	defer txmp.updateMtx.Unlock()
+	txmp.mtx.Lock()
+	defer txmp.mtx.Unlock()
 	if txmp.config.TTLDuration > 0 && time.Since(txmp.lastPurgeTime) > txmp.config.TTLDuration {
 		expirationAge := time.Now().Add(-txmp.config.TTLDuration)
 		// A height of 0 means no transactions will be removed because of height
@@ -330,6 +334,9 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 		return nil, err
 	}
 
+	txmp.mtx.Lock()
+	defer txmp.mtx.Unlock()
+
 	// Invoke an ABCI CheckTx for this transaction.
 	rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{Tx: tx})
 	if err != nil {
@@ -345,7 +352,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 
 	// Create wrapped tx
 	wtx := newWrappedTx(
-		tx, key, txmp.Height(), rsp.GasWanted, rsp.Priority, rsp.Sender,
+		tx, key, txmp.height, rsp.GasWanted, rsp.Priority, rsp.Sender,
 	)
 
 	// Perform the post check
@@ -490,7 +497,6 @@ func (txmp *TxPool) Update(
 	}
 	txmp.logger.Debug("updating mempool", "height", blockHeight, "txs", len(blockTxs))
 
-	txmp.updateMtx.Lock()
 	txmp.height = blockHeight
 	txmp.notifiedTxsAvailable = false
 
@@ -501,7 +507,6 @@ func (txmp *TxPool) Update(
 		txmp.postCheckFn = newPostFn
 	}
 	txmp.lastPurgeTime = time.Now()
-	txmp.updateMtx.Unlock()
 
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
 	for _, tx := range blockTxs {
@@ -665,7 +670,7 @@ func (txmp *TxPool) recheckTransactions() {
 	txmp.logger.Debug(
 		"executing re-CheckTx for all remaining transactions",
 		"num_txs", txmp.Size(),
-		"height", txmp.Height(),
+		"height", txmp.height,
 	)
 
 	// Collect transactions currently in the mempool requiring recheck.
@@ -766,8 +771,8 @@ func (txmp *TxPool) notifyTxsAvailable() {
 }
 
 func (txmp *TxPool) preCheck(tx types.Tx) error {
-	txmp.updateMtx.Lock()
-	defer txmp.updateMtx.Unlock()
+	txmp.mtx.Lock()
+	defer txmp.mtx.Unlock()
 	if txmp.preCheckFn != nil {
 		return txmp.preCheckFn(tx)
 	}
@@ -775,8 +780,6 @@ func (txmp *TxPool) preCheck(tx types.Tx) error {
 }
 
 func (txmp *TxPool) postCheck(tx types.Tx, res *abci.ResponseCheckTx) error {
-	txmp.updateMtx.Lock()
-	defer txmp.updateMtx.Unlock()
 	if txmp.postCheckFn != nil {
 		return txmp.postCheckFn(tx, res)
 	}

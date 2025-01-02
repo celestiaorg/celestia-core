@@ -185,49 +185,43 @@ func (txmp *TxMempool) TxsAvailable() <-chan struct{} { return txmp.txsAvailable
 // the size of tx, and adds tx instead. If no such transactions exist, tx is
 // discarded.
 func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo mempool.TxInfo) error {
-
 	// During the initial phase of CheckTx, we do not need to modify any state.
-	// A transaction will not actually be added to the mempool until it survives
-	// a call to the ABCI CheckTx method and size constraint checks.
-	height, err := func() (int64, error) {
-		txmp.mtx.RLock()
-		defer txmp.mtx.RUnlock()
 
-		// Reject transactions in excess of the configured maximum transaction size.
-		if len(tx) > txmp.config.MaxTxBytes {
-			return 0, mempool.ErrTxTooLarge{Max: txmp.config.MaxTxBytes, Actual: len(tx)}
+	// Reject transactions in excess of the configured maximum transaction size.
+	if len(tx) > txmp.config.MaxTxBytes {
+		return mempool.ErrTxTooLarge{Max: txmp.config.MaxTxBytes, Actual: len(tx)}
+	}
+
+	// If a precheck hook is defined, call it before invoking the application.
+	if txmp.preCheck != nil {
+		if err := txmp.preCheck(tx); err != nil {
+			txmp.metrics.FailedTxs.Add(1)
+			return mempool.ErrPreCheck{Reason: err}
 		}
+	}
 
-		// If a precheck hook is defined, call it before invoking the application.
-		if txmp.preCheck != nil {
-			if err := txmp.preCheck(tx); err != nil {
-				txmp.metrics.FailedTxs.Add(1)
-				return 0, mempool.ErrPreCheck{Reason: err}
-			}
-		}
-
-		// Early exit if the proxy connection has an error.
-		if err := txmp.proxyAppConn.Error(); err != nil {
-			return 0, err
-		}
-
-		txKey := tx.Key()
-
-		// Check for the transaction in the cache.
-		if !txmp.cache.Push(tx) {
-			// If the cached transaction is also in the pool, record its sender.
-			if elt, ok := txmp.txByKey[txKey]; ok {
-				txmp.metrics.AlreadySeenTxs.Add(1)
-				w := elt.Value.(*WrappedTx)
-				w.SetPeer(txInfo.SenderID)
-			}
-			return 0, mempool.ErrTxInCache
-		}
-		return txmp.height, nil
-	}()
-	if err != nil {
+	// Early exit if the proxy connection has an error.
+	if err := txmp.proxyAppConn.Error(); err != nil {
 		return err
 	}
+
+	txKey := tx.Key()
+
+	// Check for the transaction in the cache.
+	if !txmp.cache.Push(tx) {
+		// If the cached transaction is also in the pool, record its sender.
+		if elt, ok := txmp.txByKey[txKey]; ok {
+			txmp.metrics.AlreadySeenTxs.Add(1)
+			w := elt.Value.(*WrappedTx)
+			w.SetPeer(txInfo.SenderID)
+		}
+		return mempool.ErrTxInCache
+	}
+
+	// At this point, we need to ensure that passing CheckTx and adding to
+	// the mempool is atomic.
+	txmp.Lock()
+	defer txmp.Unlock()
 
 	// Invoke an ABCI CheckTx for this transaction.
 	rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{Tx: tx})
@@ -239,9 +233,10 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		tx:        tx,
 		hash:      tx.Key(),
 		timestamp: time.Now().UTC(),
-		height:    height,
+		height:    txmp.height,
 	}
 	wtx.SetPeer(txInfo.SenderID)
+	// This won't add the transaction if the response code is non zero (i.e. there was an error)
 	txmp.addNewTransaction(wtx, rsp)
 	if cb != nil {
 		cb(&abci.Response{Value: &abci.Response_CheckTx{CheckTx: rsp}})
@@ -479,9 +474,6 @@ func (txmp *TxMempool) Update(
 //
 // Finally, the new transaction is added and size stats updated.
 func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.ResponseCheckTx) {
-	txmp.mtx.Lock()
-	defer txmp.mtx.Unlock()
-
 	var err error
 	if txmp.postCheck != nil {
 		err = txmp.postCheck(wtx.tx, checkTxRes)
