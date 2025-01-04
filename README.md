@@ -86,5 +86,8 @@ For example: [`v1.4.0-tm-v0.34.20`](https://github.com/celestiaorg/celestia-core
 `CELESTIA_CORE_VERSION` strives to adhere to [Semantic Versioning](http://semver.org/).
 
 
-JOIN DISCORD
- https://discord.gg/celestiacommunity
+## Community
+
+Join our Discord community to stay updated and participate in discussions:
+
+[Celestia Community Discord](https://discord.gg/celestiacommunity)
