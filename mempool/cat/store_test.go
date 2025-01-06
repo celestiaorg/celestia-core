@@ -70,7 +70,7 @@ func TestStoreOrdering(t *testing.T) {
 
 	require.Equal(t, 3, len(orderedTxs))
 	require.Equal(t, wtx3, orderedTxs[0])
-	require.Equal(t, wtx2, orderedTxs[1]) 
+	require.Equal(t, wtx2, orderedTxs[1])
 	require.Equal(t, wtx1, orderedTxs[2])
 }
 
