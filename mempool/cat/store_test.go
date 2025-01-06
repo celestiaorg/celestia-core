@@ -74,6 +74,50 @@ func TestStoreOrdering(t *testing.T) {
 	require.Equal(t, wtx1, orderedTxs[2])
 }
 
+func TestStore(t *testing.T) {
+	t.Run("deleteOrderedTx", func(*testing.T) {
+		store := newStore()
+
+		tx1 := types.Tx("tx1")
+		tx2 := types.Tx("tx2")
+		tx3 := types.Tx("tx3")
+
+		// Create wrapped txs with different priorities
+		wtx1 := newWrappedTx(tx1, tx1.Key(), 1, 1, 1, "")
+		wtx2 := newWrappedTx(tx2, tx2.Key(), 2, 2, 2, "")
+		wtx3 := newWrappedTx(tx3, tx3.Key(), 3, 3, 3, "")
+
+		// Add txs in reverse priority order
+		store.set(wtx1)
+		store.set(wtx2)
+		store.set(wtx3)
+
+		orderedTxs := getOrderedTxs(store)
+		require.Equal(t, []*wrappedTx{wtx3, wtx2, wtx1}, orderedTxs)
+
+		store.deleteOrderedTx(wtx2)
+		require.Equal(t, []*wrappedTx{wtx3, wtx1}, getOrderedTxs(store))
+
+		store.deleteOrderedTx(wtx3)
+		require.Equal(t, []*wrappedTx{wtx1}, getOrderedTxs(store))
+
+		store.deleteOrderedTx(wtx1)
+		require.Equal(t, []*wrappedTx{}, getOrderedTxs(store))
+
+		err := store.deleteOrderedTx(wtx1)
+		require.ErrorContains(t, err, "ordered transactions list is empty")
+	})
+}
+
+func getOrderedTxs(store *store) []*wrappedTx {
+	orderedTxs := []*wrappedTx{}
+	store.iterateOrderedTxs(func(tx *wrappedTx) bool {
+		orderedTxs = append(orderedTxs, tx)
+		return true
+	})
+	return orderedTxs
+}
+
 func TestStoreReservingTxs(t *testing.T) {
 	store := newStore()
 
