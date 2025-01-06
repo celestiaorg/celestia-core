@@ -127,12 +127,12 @@ func WithMetrics(metrics *mempool.Metrics) TxPoolOption {
 	return func(txmp *TxPool) { txmp.metrics = metrics }
 }
 
-// Lock is a noop as ABCI calls are serialized
+// Lock locks the mempool, no new transactions can be processed
 func (txmp *TxPool) Lock() {
 	txmp.mtx.Lock()
 }
 
-// Unlock is a noop as ABCI calls are serialized
+// Unlock unlocks the mempool
 func (txmp *TxPool) Unlock() {
 	txmp.mtx.Unlock()
 }

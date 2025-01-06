@@ -40,6 +40,38 @@ func TestStoreSimple(t *testing.T) {
 	require.Nil(t, store.get(key))
 	require.Zero(t, store.size())
 	require.Zero(t, store.totalBytes())
+	require.Empty(t, store.orderedTxs)
+	require.Empty(t, store.txs)
+}
+
+func TestStoreOrdering(t *testing.T) {
+	store := newStore()
+
+	tx1 := types.Tx("tx1")
+	tx2 := types.Tx("tx2")
+	tx3 := types.Tx("tx3")
+
+	// Create wrapped txs with different priorities
+	wtx1 := newWrappedTx(tx1, tx1.Key(), 1, 1, 1, "")
+	wtx2 := newWrappedTx(tx2, tx2.Key(), 2, 2, 2, "")
+	wtx3 := newWrappedTx(tx3, tx3.Key(), 3, 3, 3, "")
+
+	// Add txs in reverse priority order
+	store.set(wtx1)
+	store.set(wtx2)
+	store.set(wtx3)
+
+	// Check that iteration returns txs in correct priority order
+	var orderedTxs []*wrappedTx
+	store.iterateOrderedTxs(func(tx *wrappedTx) bool {
+		orderedTxs = append(orderedTxs, tx)
+		return true
+	})
+
+	require.Equal(t, 3, len(orderedTxs))
+	require.Equal(t, wtx3, orderedTxs[0])
+	require.Equal(t, wtx2, orderedTxs[1]) 
+	require.Equal(t, wtx1, orderedTxs[2])
 }
 
 func TestStoreReservingTxs(t *testing.T) {
