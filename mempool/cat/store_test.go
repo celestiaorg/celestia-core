@@ -95,16 +95,19 @@ func TestStore(t *testing.T) {
 		orderedTxs := getOrderedTxs(store)
 		require.Equal(t, []*wrappedTx{wtx3, wtx2, wtx1}, orderedTxs)
 
-		store.deleteOrderedTx(wtx2)
+		err := store.deleteOrderedTx(wtx2)
+		require.NoError(t, err)
 		require.Equal(t, []*wrappedTx{wtx3, wtx1}, getOrderedTxs(store))
 
-		store.deleteOrderedTx(wtx3)
+		err = store.deleteOrderedTx(wtx3)
+		require.NoError(t, err)
 		require.Equal(t, []*wrappedTx{wtx1}, getOrderedTxs(store))
 
-		store.deleteOrderedTx(wtx1)
+		err = store.deleteOrderedTx(wtx1)
+		require.NoError(t, err)
 		require.Equal(t, []*wrappedTx{}, getOrderedTxs(store))
 
-		err := store.deleteOrderedTx(wtx1)
+		err = store.deleteOrderedTx(wtx1)
 		require.ErrorContains(t, err, "ordered transactions list is empty")
 	})
 }
