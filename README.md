@@ -3,7 +3,6 @@
 [![Go Reference](https://img.shields.io/badge/godoc-reference-blue.svg)](https://pkg.go.dev/github.com/celestiaorg/celestia-core)
 [![GitHub Release](https://img.shields.io/github/v/release/celestiaorg/celestia-core)](https://github.com/celestiaorg/celestia-core/releases/latest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/celestiaorg/celestia-core)](https://goreportcard.com/report/github.com/celestiaorg/celestia-core)
-[![Build](https://github.com/celestiaorg/celestia-core/actions/workflows/build.yml/badge.svg)](https://github.com/celestiaorg/celestia-core/actions/workflows/build.yml)
 [![Lint](https://github.com/celestiaorg/celestia-core/actions/workflows/lint.yml/badge.svg)](https://github.com/celestiaorg/celestia-core/actions/workflows/lint.yml)
 [![Tests](https://github.com/celestiaorg/celestia-core/actions/workflows/tests.yml/badge.svg)](https://github.com/celestiaorg/celestia-core/actions/workflows/tests.yml)
 
