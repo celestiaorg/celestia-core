@@ -74,7 +74,7 @@ func (r *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			ID:                  ChunkChannel,
 			Priority:            3,
 			SendQueueCapacity:   10,
-			RecvMessageCapacity: chunkMsgSize,
+			RecvMessageCapacity: chunkMsgSize * 16,
 			MessageType:         &ssproto.Message{},
 		},
 	}
