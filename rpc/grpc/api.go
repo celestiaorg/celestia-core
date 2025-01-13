@@ -116,7 +116,7 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) error 
 			}
 			data, ok := event.Data().(eventstypes.EventDataNewBlock)
 			if !ok {
-				env.Logger.Debug("couldn't cast event data to new block")
+				env.Logger.Error("couldn't cast event data to new block")
 				return fmt.Errorf("couldn't cast event data to new block. Events: %s", event.Events())
 			}
 			blockAPI.broadcastToListeners(ctx, data.Block.Height, data.Block.Hash())
