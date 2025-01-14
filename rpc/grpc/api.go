@@ -7,15 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tendermint/tendermint/libs/pubsub"
-
-	"github.com/tendermint/tendermint/crypto/encoding"
-
-	"github.com/tendermint/tendermint/proto/tendermint/crypto"
-
-	"github.com/tendermint/tendermint/libs/rand"
-
 	abci "github.com/tendermint/tendermint/abci/types"
+	"github.com/tendermint/tendermint/crypto/encoding"
+	"github.com/tendermint/tendermint/libs/pubsub"
+	"github.com/tendermint/tendermint/libs/rand"
+	"github.com/tendermint/tendermint/proto/tendermint/crypto"
 	"github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/rpc/core"
 	rpctypes "github.com/tendermint/tendermint/rpc/jsonrpc/types"
