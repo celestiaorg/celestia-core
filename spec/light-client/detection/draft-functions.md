@@ -60,7 +60,7 @@ func QueryHeightsRange(id, from, to) ([]Height)
 
 > This function can be used if the relayer has no information about
 > the IBC component. This allows late-joining relayers to also
-> participate in fork dection and the generation in proof of
+> participate in fork detection and the generation in proof of
 > fork. Alternatively, we may also postulate that relayers are not
 > responsible to detect forks for heights before they started (and
 > subscribed to the transactions reporting fresh headers being
@@ -120,7 +120,7 @@ func SubmitIBCProofOfFork(
     else {
         // the ibc component does not have the TrustedBlock and might
   // even be on yet a different branch. We have to compute a PoF
-  // that the ibc component can verifiy based on its current
+  // that the ibc component can verify based on its current
         // knowledge
   
         ibcLightBlock, lblock, _, result := commonRoot(lightStore, ibc, PoF.TrustedBlock)
@@ -281,7 +281,7 @@ func DetectIBCFork(ibc IBCComponent, lightStore LightStore) (LightNodeProofOfFor
 **TODO:** finish conditions
 
 - Implementation remark
-    - we ask the handler for the lastest check. Cross-check with the
+    - we ask the handler for the latest check. Cross-check with the
       chain. In case they deviate we generate PoF.
     - we assume IBC component is correct. It has verified the
       consensus state
