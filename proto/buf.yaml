@@ -10,3 +10,5 @@ lint:
     - BASIC
     - FILE_LOWER_SNAKE_CASE
     - UNARY_RPC
+  except:
+    - RPC_NO_SERVER_STREAMING

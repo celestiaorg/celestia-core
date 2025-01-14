@@ -3,6 +3,12 @@ package tendermint.rpc.grpc;
 option  go_package = "github.com/tendermint/tendermint/rpc/grpc;coregrpc";
 
 import "tendermint/abci/types.proto";
+import "tendermint/types/types.proto";
+import "tendermint/p2p/types.proto";
+import "tendermint/crypto/keys.proto";
+import "tendermint/types/validator.proto";
+import "google/protobuf/timestamp.proto";
+import "gogoproto/gogo.proto";
 
 //----------------------------------------
 // Request types
@@ -12,6 +18,38 @@ message RequestPing {}
 message RequestBroadcastTx {
   bytes tx = 1;
 }
+
+message BlockByHashRequest {
+  bytes hash  = 1;
+  bool  prove = 2;
+}
+
+message BlockByHeightRequest {
+  // Height the requested block height.
+  // If height is equal to 0, the latest height stored in the block store
+  // will be used.
+  int64 height = 1;
+  // Prove set to true to return the parts proofs.
+  bool prove = 2;
+}
+
+message CommitRequest {
+  // Height the requested block commit height.
+  // If height is equal to 0, the latest height stored in the block store
+  // will be used.
+  int64 height = 1;
+}
+
+message ValidatorSetRequest {
+  // Height the requested validator set height.
+  // If height is equal to 0, the latest height stored in the block store
+  // will be used.
+  int64 height = 1;
+}
+
+message SubscribeNewHeightsRequest {}
+
+message StatusRequest {}
 
 //----------------------------------------
 // Response types
@@ -23,10 +61,86 @@ message ResponseBroadcastTx {
   tendermint.abci.ResponseDeliverTx deliver_tx = 2;
 }
 
+message StreamedBlockByHashResponse {
+  tendermint.types.Part         block_part    = 1;
+  // Commit is only set in the first part, and
+  // it stays nil in the remaining ones.
+  tendermint.types.Commit       commit        = 2;
+  // ValidatorSet is only set in the first part, and
+  // it stays nil in the remaining ones.
+  tendermint.types.ValidatorSet validator_set = 3;
+  bool                          is_last       = 4;
+}
+
+message StreamedBlockByHeightResponse {
+  tendermint.types.Part block_part = 1;
+  // Commit is only set in the first part, and
+  // it stays nil in the remaining ones.
+  tendermint.types.Commit commit = 2;
+  // ValidatorSet is only set in the first part, and
+  // it stays nil in the remaining ones.
+  tendermint.types.ValidatorSet validator_set = 3;
+  bool                       is_last    = 4;
+}
+
+message CommitResponse {
+  tendermint.types.Commit commit = 1;
+}
+
+message ValidatorSetResponse {
+  // ValidatorSet the requested validator set.
+  tendermint.types.ValidatorSet validator_set = 1;
+  // Height the height corresponding to the returned
+  // validator set.
+  int64 height = 2;
+}
+
+message NewHeightEvent {
+  int64 height = 1;
+  bytes hash   = 2;
+}
+
+message StatusResponse {
+  tendermint.p2p.DefaultNodeInfo node_info      = 1;
+  SyncInfo                       sync_info      = 2;
+  ValidatorInfo                  validator_info = 3;
+}
+
+message SyncInfo {
+  bytes                     latest_block_hash   = 1;
+  bytes                     latest_app_hash     = 2;
+  int64                     latest_block_height = 3;
+  google.protobuf.Timestamp latest_block_time   = 4
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+
+  bytes                     earliest_block_hash   = 5;
+  bytes                     earliest_app_hash     = 6;
+  int64                     earliest_block_height = 7;
+  google.protobuf.Timestamp earliest_block_time   = 8
+      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+
+  bool catching_up = 9;
+}
+
+message ValidatorInfo {
+  bytes                       address      = 1;
+  tendermint.crypto.PublicKey pub_key      = 2;
+  int64                       voting_power = 3;
+}
+
 //----------------------------------------
 // Service Definition
 
 service BroadcastAPI {
   rpc Ping(RequestPing) returns (ResponsePing);
   rpc BroadcastTx(RequestBroadcastTx) returns (ResponseBroadcastTx);
+}
+
+service BlockAPI {
+  rpc BlockByHash(BlockByHashRequest) returns (stream StreamedBlockByHashResponse);
+  rpc BlockByHeight(BlockByHeightRequest) returns (stream StreamedBlockByHeightResponse);
+  rpc Commit(CommitRequest) returns (CommitResponse);
+  rpc ValidatorSet(ValidatorSetRequest) returns (ValidatorSetResponse);
+  rpc SubscribeNewHeights(SubscribeNewHeightsRequest) returns (stream NewHeightEvent);
+  rpc Status(StatusRequest) returns (StatusResponse);
 }
