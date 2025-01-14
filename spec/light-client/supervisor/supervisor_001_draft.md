@@ -439,7 +439,7 @@ func Sequential-Supervisor (initdata LCInitData) (Error) {
 - Implementation remark
     - infinite loop unless a light client attack is detected
     - In typical implementations (e.g., the one in Rust),
-   there are mutliple input actions:
+   there are multiple input actions:
       `VerifytoLatest`, `LatestTrusted`, and `GetStatus`. The
       information can be easily obtained from the lightstore, so that
       we do not treat these requests explicitly here but just consider
