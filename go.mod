@@ -30,6 +30,7 @@ require (
 	github.com/grafana/otel-profiling-go v0.5.1
 	github.com/grafana/pyroscope-go v1.1.2
 	github.com/gtank/merlin v0.1.1
+	github.com/klauspost/reedsolomon v1.12.4
 	github.com/lib/pq v1.10.9
 	github.com/libp2p/go-buffer-pool v0.1.0
 	github.com/minio/highwayhash v1.0.3
@@ -103,6 +104,7 @@ require (
 	github.com/jmhodges/levigo v1.0.0 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mimoo/StrobeGo v0.0.0-20210601165009-122bf33a46e0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect

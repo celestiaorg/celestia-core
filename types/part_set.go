@@ -2,10 +2,12 @@ package types
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 
+	"github.com/klauspost/reedsolomon"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
@@ -164,40 +166,70 @@ type PartSet struct {
 	// a count of the total size (in bytes). Used to ensure that the
 	// part set doesn't exceed the maximum block bytes
 	byteSize int64
+	enc      reedsolomon.Encoder
 }
 
 // Returns an immutable, full PartSet from the data bytes.
 // The data bytes are split into "partSize" chunks, and merkle tree computed.
 // CONTRACT: partSize is greater than zero.
 func NewPartSetFromData(data []byte, partSize uint32) *PartSet {
+	// var int encode the length of the data. This is used since the the last
+	// part potentially needs to be padded.
+	data = AddLengthPrefix(data)
+
 	// divide data into 4kb parts.
 	//nolint:gosec
 	total := (uint32(len(data)) + partSize - 1) / partSize
-	parts := make([]*Part, total)
-	partsBytes := make([][]byte, total)
-	partsBitArray := bits.NewBitArray(int(total))
+	etotal := total * 2
+	parts := make([]*Part, etotal)
+	partsBitArray := bits.NewBitArray(int(etotal))
+
+	chunks := make([][]byte, total)
 	for i := uint32(0); i < total; i++ {
+		chunks[i] = data[i*partSize : cmtmath.MinInt(len(data), int((i+1)*partSize))]
+
+		// pad with zeros if necessary
+		if len(chunks[i]) < int(partSize) {
+			padded := make([]byte, partSize)
+			copy(padded, chunks[i])
+			chunks[i] = padded
+		}
+	}
+
+	echunks, err := Encode(chunks)
+	if err != nil {
+		// todo: we can likely get rid of this panic, although it should never
+		// happen.
+		panic(err)
+	}
+
+	for i, chunk := range echunks {
+		ui := uint32(i)
 		part := &Part{
-			Index: i,
-			Bytes: data[i*partSize : cmtmath.MinInt(len(data), int((i+1)*partSize))],
+			Index: ui,
+			Bytes: chunk,
 		}
 		parts[i] = part
-		partsBytes[i] = part.Bytes
 		partsBitArray.SetIndex(int(i), true)
 	}
+
+	ps := &PartSet{
+		total:         etotal,
+		parts:         parts,
+		count:         etotal,
+		byteSize:      int64(len(data)), // todo(ef): this value is not really used.
+		partsBitArray: partsBitArray,
+	}
+
 	// Compute merkle proofs
-	root, proofs := merkle.ProofsFromByteSlices(partsBytes)
-	for i := uint32(0); i < total; i++ {
+	root, proofs := merkle.ProofsFromByteSlices(echunks)
+	for i := uint32(0); i < etotal; i++ {
 		parts[i].Proof = *proofs[i]
 	}
-	return &PartSet{
-		total:         total,
-		hash:          root,
-		parts:         parts,
-		partsBitArray: partsBitArray,
-		count:         total,
-		byteSize:      int64(len(data)),
-	}
+
+	ps.hash = root
+
+	return ps
 }
 
 // Returns an empty PartSet ready to be populated.
@@ -316,7 +348,7 @@ func (ps *PartSet) GetPart(index int) *Part {
 }
 
 func (ps *PartSet) IsComplete() bool {
-	return ps.count == ps.total
+	return ps.count >= (ps.total / 2)
 }
 
 func (ps *PartSet) GetReader() io.Reader {
@@ -327,16 +359,28 @@ func (ps *PartSet) GetReader() io.Reader {
 }
 
 type PartSetReader struct {
-	i      int
-	parts  []*Part
-	reader *bytes.Reader
+	i        int
+	parts    []*Part
+	reader   *bytes.Reader
+	totalLen int64 // total length from varint prefix
 }
 
 func NewPartSetReader(parts []*Part) *PartSetReader {
+	length, first, err := RemoveLengthPrefix(parts[0].Bytes)
+	if err != nil {
+		// todo: remove this before prod ready
+		panic(err)
+	}
+
+	// only use the original parts, not the ones containing erasure encoded
+	// data.
+	parts = parts[:len(parts)/2]
+
 	return &PartSetReader{
-		i:      0,
-		parts:  parts,
-		reader: bytes.NewReader(parts[0].Bytes),
+		i:        0,
+		parts:    parts,
+		reader:   bytes.NewReader(first),
+		totalLen: int64(length),
 	}
 }
 
@@ -357,7 +401,18 @@ func (psr *PartSetReader) Read(p []byte) (n int, err error) {
 	if psr.i >= len(psr.parts) {
 		return 0, io.EOF
 	}
-	psr.reader = bytes.NewReader(psr.parts[psr.i].Bytes)
+
+	// if this is the last part, we need to remove the zero padding.
+	b := psr.parts[psr.i].Bytes
+	if psr.i == len(psr.parts)-1 {
+		removeLen := (len(psr.parts) * int(BlockPartSizeBytes)) - int(psr.totalLen)
+		if removeLen >= int(BlockPartSizeBytes) {
+			return 0, fmt.Errorf("removeLen is larger than the block part's size: %d", removeLen)
+		}
+		b = psr.parts[psr.i].Bytes[:(int(BlockPartSizeBytes) - removeLen)]
+	}
+
+	psr.reader = bytes.NewReader(b)
 	return psr.Read(p)
 }
 
@@ -388,4 +443,120 @@ func (ps *PartSet) MarshalJSON() ([]byte, error) {
 		fmt.Sprintf("%d/%d", ps.Count(), ps.Total()),
 		ps.partsBitArray,
 	})
+}
+
+// Extend erasure encodes the block parts. Only the original parts should be
+// provided. The data returned has the parity parts appended to the original.
+func Encode(parts [][]byte) ([][]byte, error) {
+	// init an an encoder if it is not already initialized using the original
+	// number of parts.
+	enc, err := reedsolomon.New(len(parts), len(parts))
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a new slice of parts with the original parts and parity parts.
+	eparts := make([][]byte, len(parts)*2)
+	for i := 0; i < len(eparts); i++ {
+		if i < len(parts) {
+			eparts[i] = parts[i]
+			continue
+		}
+		eparts[i] = make([]byte, BlockPartSizeBytes)
+	}
+
+	// Encode the parts.
+	err = enc.Encode(eparts)
+	if err != nil {
+		return nil, err
+	}
+
+	return eparts, nil
+}
+
+// Decode uses the block parts that are provided to reconstruct the original
+// data. It throws an error if the PartSet is incomplete or the resulting root
+// is different from that in the PartSetHeader. Parts are fully complete with
+// proofs after decoding.
+func (ps *PartSet) Decode() error {
+	if !ps.IsComplete() {
+		return errors.New("cannot decode an incomplete PartSet")
+	}
+
+	// optionally setup an encoder if its not already initialized. the total
+	// should always be even, and thus never round down, as it is multiplied by
+	// 2.
+	enc, err := reedsolomon.New(int(ps.total/2), int(ps.total/2))
+	if err != nil {
+		return err
+	}
+
+	data := make([][]byte, ps.total)
+	for i, part := range ps.parts {
+		if part == nil {
+			data[i] = nil
+			continue
+		}
+		data[i] = part.Bytes
+	}
+
+	err = enc.Reconstruct(data)
+	if err != nil {
+		return err
+	}
+
+	// recalculate all of the proofs since we apparently don't have a function
+	// to generate a single proof... TODO: don't generate proofs for block parts
+	// we already have.
+	root, proofs := merkle.ProofsFromByteSlices(data)
+	if !bytes.Equal(root, ps.hash) {
+		return fmt.Errorf("reconstructed data has different hash!! want: %X, got: %X", ps.hash, root)
+	}
+
+	for i, d := range data {
+		if ps.parts[i] != nil {
+			continue
+		}
+		ps.parts[i] = &Part{
+			Index: uint32(i),
+			Bytes: d,
+			Proof: *proofs[i],
+		}
+	}
+
+	return nil
+}
+
+/*
+I'm currently debugging a silly bug with the length prefixes that are being used
+to preserved the original data. We need to figure out why the length is not
+being added properly.
+*/
+
+// AddLengthPrefix adds the length of the input data as a varint prefix to the beginning of the data.
+func AddLengthPrefix(data []byte) []byte {
+	length := len(data)
+	// Estimate the number of bytes needed for the varint encoding
+	var lengthBuf [binary.MaxVarintLen64]byte
+	n := binary.PutVarint(lengthBuf[:], int64(length))
+
+	// Create the result slice with enough space for the prefix and the data
+	prefixedData := make([]byte, n+len(data))
+	copy(prefixedData[:n], lengthBuf[:n]) // Copy the length prefix
+	copy(prefixedData[n:], data)          // Copy the original data
+	return prefixedData
+}
+
+// RemoveLengthPrefix removes the length prefix from the data and returns the length and the original data.
+func RemoveLengthPrefix(prefixedData []byte) (int, []byte, error) {
+	if len(prefixedData) == 0 {
+		return 0, nil, errors.New("input data is empty")
+	}
+
+	length, n := binary.Varint(prefixedData)
+	if n <= 0 {
+		return 0, nil, errors.New("failed to decode length prefix")
+	}
+
+	return int(length) + n, prefixedData[n:], nil
 }

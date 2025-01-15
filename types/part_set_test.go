@@ -221,3 +221,75 @@ func TestPartProtoBuf(t *testing.T) {
 		}
 	}
 }
+
+func TestPartSetEncodingDecoding(t *testing.T) {
+	// Construct random data of size partSize * 100
+	nParts := 1000
+	data := cmtrand.Bytes((int(BlockPartSizeBytes) * nParts) - 4)
+
+	partSet := NewPartSetFromData(data, BlockPartSizeBytes)
+	require.Equal(t, partSet.total, 2*uint32(nParts))
+
+	// delete half of the parts
+	for i := 0; i < nParts*2; i++ {
+		if i%2 == 0 {
+			partSet.parts[i] = nil
+		}
+	}
+
+	// test decoding
+	err := partSet.Decode()
+	require.NoError(t, err)
+
+	for _, part := range partSet.parts {
+		require.NotNil(t, part)
+	}
+
+	ps2 := NewPartSetFromHeader(partSet.Header())
+	require.Equal(t, partSet.Hash(), ps2.Hash())
+
+	// only add half of the parts
+	for i := 0; i < (nParts)*2; i++ {
+		if i%2 != 0 {
+			added, err := ps2.AddPart(partSet.parts[i])
+			require.NoError(t, err)
+			require.True(t, added)
+		}
+	}
+
+	err = ps2.Decode()
+	require.NoError(t, err)
+
+	bz, err := io.ReadAll(ps2.GetReader())
+	require.NoError(t, err)
+
+	require.Equal(t, len(data), len(bz))
+	require.Equal(t, data, bz)
+}
+
+// TestRoundTripVarInt tests the round-trip encoding and decoding of length-prefixed data.
+func TestVarInt(t *testing.T) {
+	t.Run("valid round-trip", func(t *testing.T) {
+		originalData := []byte("This is a test slice of bytes")
+
+		// Add length prefix
+		prefixedData := AddLengthPrefix(originalData)
+		require.NotNil(t, prefixedData)
+
+		// Remove length prefix
+		length, decodedData, err := RemoveLengthPrefix(prefixedData)
+		require.NoError(t, err)
+		require.Equal(t, len(originalData), length)
+		require.Equal(t, originalData, decodedData)
+	})
+
+	t.Run("empty input", func(t *testing.T) {
+		_, _, err := RemoveLengthPrefix([]byte{})
+		require.Error(t, err)
+	})
+
+	t.Run("corrupted prefix", func(t *testing.T) {
+		_, _, err := RemoveLengthPrefix([]byte{0xFF})
+		require.Error(t, err)
+	})
+}
