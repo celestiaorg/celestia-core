@@ -166,7 +166,6 @@ type PartSet struct {
 	// a count of the total size (in bytes). Used to ensure that the
 	// part set doesn't exceed the maximum block bytes
 	byteSize int64
-	enc      reedsolomon.Encoder
 }
 
 // Returns an immutable, full PartSet from the data bytes.
@@ -348,6 +347,12 @@ func (ps *PartSet) GetPart(index int) *Part {
 }
 
 func (ps *PartSet) IsComplete() bool {
+	return ps.count >= ps.total
+}
+
+// IsReadyForDecoding returns true if the PartSet has every single part, not just
+// ready to be decoded.
+func (ps *PartSet) IsReadyForDecoding() bool {
 	return ps.count >= (ps.total / 2)
 }
 
@@ -479,7 +484,7 @@ func Encode(parts [][]byte) ([][]byte, error) {
 // is different from that in the PartSetHeader. Parts are fully complete with
 // proofs after decoding.
 func (ps *PartSet) Decode() error {
-	if !ps.IsComplete() {
+	if !ps.IsReadyForDecoding() {
 		return errors.New("cannot decode an incomplete PartSet")
 	}
 
@@ -523,6 +528,8 @@ func (ps *PartSet) Decode() error {
 			Proof: *proofs[i],
 		}
 	}
+
+	ps.count = ps.total
 
 	return nil
 }

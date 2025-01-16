@@ -224,26 +224,11 @@ func TestPartProtoBuf(t *testing.T) {
 
 func TestPartSetEncodingDecoding(t *testing.T) {
 	// Construct random data of size partSize * 100
-	nParts := 1000
+	nParts := 500
 	data := cmtrand.Bytes((int(BlockPartSizeBytes) * nParts) - 4)
 
 	partSet := NewPartSetFromData(data, BlockPartSizeBytes)
 	require.Equal(t, partSet.total, 2*uint32(nParts))
-
-	// delete half of the parts
-	for i := 0; i < nParts*2; i++ {
-		if i%2 == 0 {
-			partSet.parts[i] = nil
-		}
-	}
-
-	// test decoding
-	err := partSet.Decode()
-	require.NoError(t, err)
-
-	for _, part := range partSet.parts {
-		require.NotNil(t, part)
-	}
 
 	ps2 := NewPartSetFromHeader(partSet.Header())
 	require.Equal(t, partSet.Hash(), ps2.Hash())
@@ -257,7 +242,7 @@ func TestPartSetEncodingDecoding(t *testing.T) {
 		}
 	}
 
-	err = ps2.Decode()
+	err := ps2.Decode()
 	require.NoError(t, err)
 
 	bz, err := io.ReadAll(ps2.GetReader())

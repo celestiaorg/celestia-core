@@ -175,19 +175,23 @@ func (d *DataRoutine) handleHaves(peer p2p.ID, height int64, round int32, haves 
 		hc.Sub(fullReqs)
 	}
 
+	reqLimit := 1
+	if bypassRequestLimit {
+		reqLimit = 100
+	}
+
 	// if enough requests have been made for the parts, don't request them.
 	for _, partIndex := range hc.GetTrueIndices() {
-		peers := d.countRequests(height, round, partIndex)
-		reqLimit := 3
-		if bypassRequestLimit {
-			reqLimit = 100
-		}
-		if len(peers) >= reqLimit {
+		reqs := d.countRequests(height, round, partIndex)
+		if len(reqs) >= reqLimit {
 			hc.SetIndex(partIndex, false)
 			// mark the part as fully requested.
 			fullReqs.SetIndex(partIndex, true)
 		}
-		for _, p := range peers {
+		// don't request the part from this peer if we've already requested it
+		// from them.
+		for _, p := range reqs {
+			// p == peer means we have already requested the part from this peer.
 			if p == peer {
 				hc.SetIndex(partIndex, false)
 			}
@@ -480,6 +484,10 @@ func (d *DataRoutine) handleBlockPart(peer p2p.ID, part *BlockPartMessage) {
 		return
 	}
 
+	if parts.IsComplete() {
+		return
+	}
+
 	added, err := parts.AddPart(part.Part)
 	if err != nil {
 		d.logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Part.Index, "error", err)
@@ -489,6 +497,30 @@ func (d *DataRoutine) handleBlockPart(peer p2p.ID, part *BlockPartMessage) {
 	// if the part was not added and there was no error, the part has already
 	// been seen, and therefore doesn't need to be cleared.
 	if !added {
+		return
+	}
+
+	// attempt to decode the remaining block parts. If they are decoded, then
+	// this node should send all the wanted parts that nodes have requested.
+	if parts.IsReadyForDecoding() {
+		err := parts.Decode()
+		if err != nil {
+			d.logger.Error("YOOO FAILED TO DECODE THE BLOCK", "height", part.Height, "round", part.Round, "error", err)
+			return
+		}
+
+		// clear all the wants if they exist
+		go func(height int64, round int32, parts *types.PartSet) {
+			for i := uint32(0); i < parts.Total(); i++ {
+				msg := &BlockPartMessage{
+					Height: height,
+					Round:  round,
+					Part:   parts.GetPart(int(i)),
+				}
+				d.clearWants(msg)
+			}
+		}(part.Height, part.Round, parts)
+
 		return
 	}
 
@@ -595,7 +627,7 @@ func (d *DataRoutine) broadcastProposal(proposal *types.Proposal, from p2p.ID, p
 	}
 
 	peers := d.getPeers()
-	chunks := chunkParts(proposal.HaveParts.Copy(), len(peers), 3)
+	chunks := chunkParts(proposal.HaveParts.Copy(), len(peers), 1)
 
 	for i, peer := range peers {
 		if peer.peer.ID() == from {
