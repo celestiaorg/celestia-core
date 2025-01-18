@@ -976,11 +976,11 @@ type ConsensusConfig struct {
 	TimeoutPropose time.Duration `mapstructure:"timeout_propose"`
 	// How much timeout_propose increases with each round
 	TimeoutProposeDelta time.Duration `mapstructure:"timeout_propose_delta"`
-	// How long we wait after receiving +2/3 prevotes for “anything” (ie. not a single block or nil)
+	// How long we wait after receiving +2/3 prevotes for "anything" (ie. not a single block or nil)
 	TimeoutPrevote time.Duration `mapstructure:"timeout_prevote"`
 	// How much the timeout_prevote increases with each round
 	TimeoutPrevoteDelta time.Duration `mapstructure:"timeout_prevote_delta"`
-	// How long we wait after receiving +2/3 precommits for “anything” (ie. not a single block or nil)
+	// How long we wait after receiving +2/3 precommits for "anything" (ie. not a single block or nil)
 	TimeoutPrecommit time.Duration `mapstructure:"timeout_precommit"`
 	// How much the timeout_precommit increases with each round
 	TimeoutPrecommitDelta time.Duration `mapstructure:"timeout_precommit_delta"`

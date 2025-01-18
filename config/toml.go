@@ -485,11 +485,11 @@ wal_file = "{{ js .Consensus.WalPath }}"
 timeout_propose = "{{ .Consensus.TimeoutPropose }}"
 # How much timeout_propose increases with each round
 timeout_propose_delta = "{{ .Consensus.TimeoutProposeDelta }}"
-# How long we wait after receiving +2/3 prevotes for “anything” (ie. not a single block or nil)
+# How long we wait after receiving +2/3 prevotes for "anything" (ie. not a single block or nil)
 timeout_prevote = "{{ .Consensus.TimeoutPrevote }}"
 # How much the timeout_prevote increases with each round
 timeout_prevote_delta = "{{ .Consensus.TimeoutPrevoteDelta }}"
-# How long we wait after receiving +2/3 precommits for “anything” (ie. not a single block or nil)
+# How long we wait after receiving +2/3 precommits for "anything" (ie. not a single block or nil)
 timeout_precommit = "{{ .Consensus.TimeoutPrecommit }}"
 # How much the timeout_precommit increases with each round
 timeout_precommit_delta = "{{ .Consensus.TimeoutPrecommitDelta }}"
