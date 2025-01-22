@@ -65,7 +65,7 @@ func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) 
 		Metrics:     NopMetrics(),
 		traceClient: trace.NoOpTracer(),
 	}
-	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR)
+	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(1000))
 
 	for _, option := range options {
 		option(conR)

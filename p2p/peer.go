@@ -3,7 +3,6 @@ package p2p
 import (
 	"fmt"
 	"net"
-	"reflect"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -53,6 +52,13 @@ type Peer interface {
 
 	SetRemovalFailed()
 	GetRemovalFailed() bool
+}
+
+type IntrospectivePeer interface {
+	Peer
+	Metrics() *Metrics
+	ChIDToMetricLabel(chID byte) string
+	ValueToMetricLabel(i any) string
 }
 
 type EnvelopeSender interface {
@@ -200,7 +206,7 @@ func newPeer(
 	mConfig cmtconn.MConnConfig,
 	nodeInfo NodeInfo,
 	reactorsByCh map[byte]Reactor,
-	msgTypeByChID map[byte]proto.Message,
+	_ map[byte]proto.Message,
 	chDescs []*cmtconn.ChannelDescriptor,
 	onPeerError func(Peer, interface{}),
 	mlc *metricsLabelCache,
@@ -221,7 +227,6 @@ func newPeer(
 		pc.conn,
 		p,
 		reactorsByCh,
-		msgTypeByChID,
 		chDescs,
 		onPeerError,
 		mConfig,
@@ -245,6 +250,19 @@ func (p *peer) String() string {
 
 //---------------------------------------------------
 // Implements service.Service
+
+func (p *peer) Metrics() *Metrics {
+	return p.metrics
+}
+
+func (p *peer) ChIDToMetricLabel(chID byte) string {
+	//return p.mlc.ChIDToMetricLabel(chID)
+	return "" // TODO: port also this change
+}
+
+func (p *peer) ValueToMetricLabel(i any) string {
+	return p.mlc.ValueToMetricLabel(i)
+}
 
 // SetLogger implements BaseService.
 func (p *peer) SetLogger(l log.Logger) {
@@ -539,7 +557,6 @@ func createMConnection(
 	conn net.Conn,
 	p *peer,
 	reactorsByCh map[byte]Reactor,
-	msgTypeByChID map[byte]proto.Message,
 	chDescs []*cmtconn.ChannelDescriptor,
 	onPeerError func(Peer, interface{}),
 	config cmtconn.MConnConfig,
@@ -552,37 +569,12 @@ func createMConnection(
 			// which does onPeerError.
 			panic(fmt.Sprintf("Unknown channel %X", chID))
 		}
-		mt := msgTypeByChID[chID]
-		msg := proto.Clone(mt)
-		err := proto.Unmarshal(msgBytes, msg)
-		if err != nil {
-			panic(fmt.Errorf("unmarshaling message: %s into type: %s", err, reflect.TypeOf(mt)))
-		}
 
-		if w, ok := msg.(Unwrapper); ok {
-			msg, err = w.Unwrap()
-			if err != nil {
-				panic(fmt.Errorf("unwrapping message: %s", err))
-			}
-		}
-
-		labels := []string{
-			"peer_id", string(p.ID()),
-			"chID", fmt.Sprintf("%#x", chID),
-		}
-
-		p.metrics.PeerReceiveBytesTotal.With(labels...).Add(float64(len(msgBytes)))
-		p.metrics.MessageReceiveBytesTotal.With(append(labels, "message_type", p.mlc.ValueToMetricLabel(msg))...).Add(float64(len(msgBytes)))
-		schema.WriteReceivedBytes(p.traceClient, string(p.ID()), chID, len(msgBytes))
-		if nr, ok := reactor.(EnvelopeReceiver); ok {
-			nr.ReceiveEnvelope(Envelope{
-				ChannelID: chID,
-				Src:       p,
-				Message:   msg,
-			})
-		} else {
-			reactor.Receive(chID, p, msgBytes)
-		}
+		reactor.QueueUnprocessedEnvelope(UnprocessedEnvelope{
+			ChannelID: chID,
+			Src:       p,
+			Message:   msgBytes,
+		})
 	}
 
 	onError := func(r interface{}) {
