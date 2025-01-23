@@ -35,8 +35,8 @@ const (
 	blocksToContributeToBecomeGoodPeer = 10000
 	votesToContributeToBecomeGoodPeer  = 10000
 
-	// ReactorIncomingQueueSize the size of the reactor's message queue.
-	ReactorIncomingQueueSize = 1000
+	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
+	ReactorIncomingMessageQueueSize = 1000
 )
 
 //-----------------------------------------------------------------------------
@@ -68,7 +68,7 @@ func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) 
 		Metrics:     NopMetrics(),
 		traceClient: trace.NoOpTracer(),
 	}
-	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingQueueSize))
+	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
 	for _, option := range options {
 		option(conR)

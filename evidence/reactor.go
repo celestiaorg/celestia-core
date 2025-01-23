@@ -25,8 +25,8 @@ const (
 	// If a message fails wait this much before sending it again
 	peerRetryMessageIntervalMS = 100
 
-	// ReactorIncomingQueueSize the size of the reactor's message queue.
-	ReactorIncomingQueueSize = 1
+	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
+	ReactorIncomingMessageQueueSize = 1
 )
 
 // Reactor handles evpool evidence broadcasting amongst peers.
@@ -41,7 +41,7 @@ func NewReactor(evpool *Pool) *Reactor {
 	evR := &Reactor{
 		evpool: evpool,
 	}
-	evR.BaseReactor = *p2p.NewBaseReactor("Evidence", evR, p2p.WithIncomingQueueSize(ReactorIncomingQueueSize))
+	evR.BaseReactor = *p2p.NewBaseReactor("Evidence", evR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 	return evR
 }
 

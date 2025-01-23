@@ -25,8 +25,8 @@ const (
 	// ask for best height every 10s
 	statusUpdateIntervalSeconds = 10
 
-	// ReactorIncomingQueueSize the size of the reactor's message queue.
-	ReactorIncomingQueueSize = 10
+	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
+	ReactorIncomingMessageQueueSize = 10
 )
 
 var (
@@ -103,7 +103,7 @@ func NewBlockchainReactor(state sm.State, blockExec *sm.BlockExecutor, store *st
 	}
 	fsm := NewFSM(startHeight, bcR)
 	bcR.fsm = fsm
-	bcR.BaseReactor = *p2p.NewBaseReactor("BlockchainReactor", bcR, p2p.WithIncomingQueueSize(ReactorIncomingQueueSize))
+	bcR.BaseReactor = *p2p.NewBaseReactor("BlockchainReactor", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 	// bcR.swReporter = behaviour.NewSwitchReporter(bcR.BaseReactor.Switch)
 
 	return bcR
