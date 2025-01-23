@@ -55,7 +55,7 @@ func NewReactor(
 		conn:      conn,
 		connQuery: connQuery,
 	}
-	r.BaseReactor = *p2p.NewBaseReactor("StateSync", r, p2p.WithIncomingQueueSize(100)) // TODO use default var instead of 100
+	r.BaseReactor = *p2p.NewBaseReactor("StateSync", r, p2p.WithIncomingQueueSize(100))
 
 	return r
 }
