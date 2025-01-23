@@ -145,6 +145,10 @@ func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
 	br.incoming <- e
 }
 
+func (br *BaseReactor) OnStop() {
+	close(br.incoming)
+}
+
 // DefaultProcessor unmarshalls the message and calls Receive on the reactor.
 // This preserves the sender's original order for all messages.
 func DefaultProcessor(impl Reactor) func(<-chan UnprocessedEnvelope) error {
