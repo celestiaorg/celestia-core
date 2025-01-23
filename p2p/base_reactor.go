@@ -95,9 +95,8 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 	base := &BaseReactor{
 		BaseService: *service.NewBaseService(nil, name, impl),
 		Switch:      nil,
-		// TODO this channel needs to be closed somewhere
-		incoming:  make(chan UnprocessedEnvelope, 100),
-		processor: DefaultProcessor(impl),
+		incoming:    make(chan UnprocessedEnvelope, 100),
+		processor:   DefaultProcessor(impl),
 	}
 	for _, opt := range opts {
 		opt(base)
