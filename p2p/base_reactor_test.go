@@ -27,8 +27,10 @@ func TestBaseReactorProcessor(t *testing.T) {
 
 	time.Sleep(300 * time.Millisecond) // wait plenty of time for the processing to finish
 
+	or.Lock()
 	require.Equal(t, len(msgs), len(or.received))
 	require.Equal(t, msgs, or.received)
+	or.Unlock()
 
 	// since the orderedReactor adds a delay to the first received message, we
 	// expect the parallel processor to not be in the original send order.
@@ -36,7 +38,9 @@ func TestBaseReactorProcessor(t *testing.T) {
 
 	pr.fillQueue(t, msgs...)
 	time.Sleep(300 * time.Millisecond)
+	pr.Lock()
 	require.NotEqual(t, msgs, pr.received)
+	pr.Unlock()
 }
 
 var _ p2p.Reactor = &orderedReactor{}
@@ -46,13 +50,13 @@ var _ p2p.Reactor = &orderedReactor{}
 type orderedReactor struct {
 	p2p.BaseReactor
 
-	mtx           *sync.RWMutex
+	sync.Mutex
 	received      []string
 	receivedFirst bool
 }
 
 func NewOrderedReactor(parallel bool) *orderedReactor {
-	r := &orderedReactor{mtx: &sync.RWMutex{}}
+	r := &orderedReactor{Mutex: sync.Mutex{}}
 	procOpt := p2p.WithProcessor(p2p.DefaultProcessor(r))
 	if parallel {
 		procOpt = p2p.WithProcessor(p2p.ParallelProcessor(r, 2))
@@ -75,17 +79,17 @@ func (r *orderedReactor) GetChannels() []*conn.ChannelDescriptor {
 
 // ReceiveEnvelope adds a delay to the first processed envelope to test ordering.
 func (r *orderedReactor) ReceiveEnvelope(e p2p.Envelope) {
-	r.mtx.Lock()
+	r.Lock()
 	f := r.receivedFirst
 	if !f {
 		r.receivedFirst = true
-		r.mtx.Unlock()
+		r.Unlock()
 		time.Sleep(100 * time.Millisecond)
 	} else {
-		r.mtx.Unlock()
+		r.Unlock()
 	}
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
+	r.Lock()
+	defer r.Unlock()
 
 	envMsg := e.Message.(*mempool.Txs)
 	r.received = append(r.received, string(envMsg.Txs[0]))
