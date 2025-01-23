@@ -178,7 +178,7 @@ func (evR *Reactor) broadcastEvidenceRoutine(peer p2p.Peer) {
 
 // Returns the message to send to the peer, or nil if the evidence is invalid for the peer.
 // If message is nil, we should sleep and try again.
-func (evR Reactor) prepareEvidenceMessage(
+func (evR *Reactor) prepareEvidenceMessage(
 	peer p2p.Peer,
 	ev types.Evidence,
 ) (evis []types.Evidence) {
