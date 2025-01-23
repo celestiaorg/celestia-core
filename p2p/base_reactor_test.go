@@ -6,6 +6,7 @@ import (
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/conn"
+	"github.com/tendermint/tendermint/pkg/trace"
 	bcproto "github.com/tendermint/tendermint/proto/tendermint/blockchain"
 	"github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"net"
@@ -120,6 +121,7 @@ type imaginaryPeer struct {
 	service.BaseService
 }
 
+func (ip *imaginaryPeer) TraceClient() trace.Tracer          { return nil }
 func (ip *imaginaryPeer) HasIPChanged() bool                 { return false }
 func (ip *imaginaryPeer) FlushStop()                         {}
 func (ip *imaginaryPeer) ID() p2p.ID                         { return "" }

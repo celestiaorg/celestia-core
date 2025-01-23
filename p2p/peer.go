@@ -59,6 +59,7 @@ type IntrospectivePeer interface {
 	Metrics() *Metrics
 	ChIDToMetricLabel(chID byte) string
 	ValueToMetricLabel(i any) string
+	TraceClient() trace.Tracer
 }
 
 type EnvelopeSender interface {
@@ -191,6 +192,10 @@ type peer struct {
 
 	// When removal of a peer fails, we set this flag
 	removalAttemptFailed bool
+}
+
+func (p *peer) TraceClient() trace.Tracer {
+	return p.traceClient
 }
 
 type PeerOption func(*peer)

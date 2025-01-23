@@ -5,6 +5,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/p2p/conn"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"reflect"
 )
 
@@ -181,13 +182,14 @@ func DefaultProcessor(impl Reactor) func(<-chan UnprocessedEnvelope) error {
 				}
 			}
 
-			//ue.Src.Metrics().PeerReceiveBytesTotal.
-			//	With("peer_id", string(ue.Src.ID()), "chID", ue.Src.ChIDToMetricLabel(ue.ChannelID)).
-			//	Add(float64(len(ue.Message)))
-			//
-			//ue.Src.Metrics().MessageReceiveBytesTotal.
-			//	With("message_type", ue.Src.ValueToMetricLabel(msg)).
-			//	Add(float64(len(ue.Message)))
+			labels := []string{
+				"peer_id", string(ue.Src.ID()),
+				"chID", fmt.Sprintf("%#x", ue.ChannelID),
+			}
+
+			ue.Src.Metrics().PeerReceiveBytesTotal.With(labels...).Add(float64(len(ue.Message)))
+			ue.Src.Metrics().MessageReceiveBytesTotal.With(append(labels, "message_type", ue.Src.ValueToMetricLabel(msg))...).Add(float64(len(ue.Message)))
+			schema.WriteReceivedBytes(ue.Src.TraceClient(), string(ue.Src.ID()), ue.ChannelID, len(ue.Message))
 
 			if nr, ok := impl.(EnvelopeReceiver); ok {
 				nr.ReceiveEnvelope(Envelope{
