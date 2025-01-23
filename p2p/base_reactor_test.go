@@ -1,6 +1,11 @@
 package p2p_test
 
 import (
+	"net"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/libs/service"
@@ -8,10 +13,6 @@ import (
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/pkg/trace"
 	"github.com/tendermint/tendermint/proto/tendermint/mempool"
-	"net"
-	"sync"
-	"testing"
-	"time"
 )
 
 // TestBaseReactorProcessor tests the BaseReactor's message processing by
@@ -60,7 +61,6 @@ func (r *orderedReactor) GetChannels() []*conn.ChannelDescriptor {
 			MessageType:         &mempool.Txs{},
 		},
 	}
-
 }
 
 // ReceiveEnvelope adds a delay to the first processed envelope to test ordering.

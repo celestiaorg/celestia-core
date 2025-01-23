@@ -2,11 +2,12 @@ package p2p
 
 import (
 	"fmt"
+	"reflect"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
-	"reflect"
 )
 
 // Reactor is responsible for handling incoming messages on one or more
