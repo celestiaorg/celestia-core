@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/libs/service"
-	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"reflect"
@@ -80,7 +79,6 @@ type EnvelopeReceiver interface {
 //--------------------------------------
 
 type BaseReactor struct {
-	sync.Mutex
 	service.BaseService // Provides Start, Stop, .Quit
 	Switch              *Switch
 
@@ -95,7 +93,6 @@ type ReactorOptions func(*BaseReactor)
 
 func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReactor {
 	base := &BaseReactor{
-		Mutex:       sync.Mutex{},
 		BaseService: *service.NewBaseService(nil, name, impl),
 		Switch:      nil,
 		incoming:    make(chan UnprocessedEnvelope, 100),
@@ -144,14 +141,10 @@ func (br *BaseReactor) SetSwitch(sw *Switch) {
 // queue to avoid blocking. The size of the queue can be changed by passing
 // options to the base reactor.
 func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
-	br.Lock()
-	defer br.Unlock()
 	br.incoming <- e
 }
 
 func (br *BaseReactor) OnStop() {
-	br.Lock()
-	defer br.Unlock()
 	close(br.incoming)
 }
 
