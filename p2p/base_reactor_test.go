@@ -110,24 +110,23 @@ type imaginaryPeer struct {
 	service.BaseService
 }
 
-func (ip *imaginaryPeer) TraceClient() trace.Tracer          { return trace.NoOpTracer() }
-func (ip *imaginaryPeer) HasIPChanged() bool                 { return false }
-func (ip *imaginaryPeer) FlushStop()                         {}
-func (ip *imaginaryPeer) ID() p2p.ID                         { return "" }
-func (ip *imaginaryPeer) RemoteIP() net.IP                   { return []byte{} }
-func (ip *imaginaryPeer) RemoteAddr() net.Addr               { return nil }
-func (ip *imaginaryPeer) IsOutbound() bool                   { return true }
-func (ip *imaginaryPeer) CloseConn() error                   { return nil }
-func (ip *imaginaryPeer) IsPersistent() bool                 { return false }
-func (ip *imaginaryPeer) NodeInfo() p2p.NodeInfo             { return nil }
-func (ip *imaginaryPeer) Status() conn.ConnectionStatus      { return conn.ConnectionStatus{} }
-func (ip *imaginaryPeer) SocketAddr() *p2p.NetAddress        { return nil }
-func (ip *imaginaryPeer) Send(byte, []byte) bool             { return true }
-func (ip *imaginaryPeer) TrySend(byte, []byte) bool          { return true }
-func (ip *imaginaryPeer) Set(key string, value any)          {}
-func (ip *imaginaryPeer) Get(key string) any                 { return nil }
-func (ip *imaginaryPeer) SetRemovalFailed()                  {}
-func (ip *imaginaryPeer) GetRemovalFailed() bool             { return false }
-func (ip *imaginaryPeer) Metrics() *p2p.Metrics              { return p2p.NopMetrics() }
-func (ip *imaginaryPeer) ChIDToMetricLabel(chID byte) string { return "" }
-func (ip *imaginaryPeer) ValueToMetricLabel(i any) string    { return "" }
+func (ip *imaginaryPeer) TraceClient() trace.Tracer       { return trace.NoOpTracer() }
+func (ip *imaginaryPeer) HasIPChanged() bool              { return false }
+func (ip *imaginaryPeer) FlushStop()                      {}
+func (ip *imaginaryPeer) ID() p2p.ID                      { return "" }
+func (ip *imaginaryPeer) RemoteIP() net.IP                { return []byte{} }
+func (ip *imaginaryPeer) RemoteAddr() net.Addr            { return nil }
+func (ip *imaginaryPeer) IsOutbound() bool                { return true }
+func (ip *imaginaryPeer) CloseConn() error                { return nil }
+func (ip *imaginaryPeer) IsPersistent() bool              { return false }
+func (ip *imaginaryPeer) NodeInfo() p2p.NodeInfo          { return nil }
+func (ip *imaginaryPeer) Status() conn.ConnectionStatus   { return conn.ConnectionStatus{} }
+func (ip *imaginaryPeer) SocketAddr() *p2p.NetAddress     { return nil }
+func (ip *imaginaryPeer) Send(byte, []byte) bool          { return true }
+func (ip *imaginaryPeer) TrySend(byte, []byte) bool       { return true }
+func (ip *imaginaryPeer) Set(key string, value any)       {}
+func (ip *imaginaryPeer) Get(key string) any              { return nil }
+func (ip *imaginaryPeer) SetRemovalFailed()               {}
+func (ip *imaginaryPeer) GetRemovalFailed() bool          { return false }
+func (ip *imaginaryPeer) Metrics() *p2p.Metrics           { return p2p.NopMetrics() }
+func (ip *imaginaryPeer) ValueToMetricLabel(i any) string { return "" }

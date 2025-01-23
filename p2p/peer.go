@@ -57,7 +57,6 @@ type Peer interface {
 type IntrospectivePeer interface {
 	Peer
 	Metrics() *Metrics
-	ChIDToMetricLabel(chID byte) string
 	ValueToMetricLabel(i any) string
 	TraceClient() trace.Tracer
 }
@@ -258,11 +257,6 @@ func (p *peer) String() string {
 
 func (p *peer) Metrics() *Metrics {
 	return p.metrics
-}
-
-func (p *peer) ChIDToMetricLabel(chID byte) string {
-	//return p.mlc.ChIDToMetricLabel(chID)
-	return "" // TODO: port also this change
 }
 
 func (p *peer) ValueToMetricLabel(i any) string {
