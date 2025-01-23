@@ -92,7 +92,7 @@ func NewBlockchainReactor(state sm.State, blockExec *sm.BlockExecutor, store *st
 		requestsCh:   requestsCh,
 		errorsCh:     errorsCh,
 	}
-	bcR.BaseReactor = *p2p.NewBaseReactor("BlockchainReactor", bcR)
+	bcR.BaseReactor = *p2p.NewBaseReactor("BlockchainReactor", bcR, p2p.WithIncomingQueueSize(10))
 	return bcR
 }
 

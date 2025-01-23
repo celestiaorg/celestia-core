@@ -100,7 +100,7 @@ func NewBlockchainReactor(state sm.State, blockExec *sm.BlockExecutor, store *st
 	}
 	fsm := NewFSM(startHeight, bcR)
 	bcR.fsm = fsm
-	bcR.BaseReactor = *p2p.NewBaseReactor("BlockchainReactor", bcR)
+	bcR.BaseReactor = *p2p.NewBaseReactor("BlockchainReactor", bcR, p2p.WithIncomingQueueSize(10))
 	// bcR.swReporter = behaviour.NewSwitchReporter(bcR.BaseReactor.Switch)
 
 	return bcR
