@@ -55,6 +55,7 @@ func NewReactor(
 		conn:      conn,
 		connQuery: connQuery,
 	}
+	// TODO set incoming queue sizes to consts per reactor
 	r.BaseReactor = *p2p.NewBaseReactor("StateSync", r, p2p.WithIncomingQueueSize(100))
 
 	return r
