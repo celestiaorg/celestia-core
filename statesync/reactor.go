@@ -24,6 +24,9 @@ const (
 	ChunkChannel = byte(0x61)
 	// recentSnapshots is the number of recent snapshots to send and receive per peer.
 	recentSnapshots = 10
+
+	// ReactorIncomingQueueSize the size of the reactor's message queue.
+	ReactorIncomingQueueSize = 100
 )
 
 // Reactor handles state sync, both restoring snapshots for the local node and serving snapshots
@@ -55,8 +58,7 @@ func NewReactor(
 		conn:      conn,
 		connQuery: connQuery,
 	}
-	// TODO set incoming queue sizes to consts per reactor
-	r.BaseReactor = *p2p.NewBaseReactor("StateSync", r, p2p.WithIncomingQueueSize(100))
+	r.BaseReactor = *p2p.NewBaseReactor("StateSync", r, p2p.WithIncomingQueueSize(ReactorIncomingQueueSize))
 
 	return r
 }
