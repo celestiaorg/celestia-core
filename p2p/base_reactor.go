@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"fmt"
+	"github.com/tendermint/tendermint/libs/sync"
 	"reflect"
 
 	"github.com/gogo/protobuf/proto"
@@ -80,6 +81,7 @@ type EnvelopeReceiver interface {
 //--------------------------------------
 
 type BaseReactor struct {
+	sync.Mutex
 	service.BaseService // Provides Start, Stop, .Quit
 	Switch              *Switch
 
@@ -142,10 +144,14 @@ func (br *BaseReactor) SetSwitch(sw *Switch) {
 // queue to avoid blocking. The size of the queue can be changed by passing
 // options to the base reactor.
 func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+	br.Lock()
+	defer br.Unlock()
 	br.incoming <- e
 }
 
 func (br *BaseReactor) OnStop() {
+	br.Lock()
+	defer br.Unlock()
 	close(br.incoming)
 }
 
