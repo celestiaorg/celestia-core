@@ -20,7 +20,7 @@ import (
 func TestBaseReactorProcessor(t *testing.T) {
 	// a reactor using the default processor should be able to queue
 	// messages, and they get processed in order.
-	or := NewOrderedReactor(false)
+	or := NewOrderedReactor()
 
 	msgs := []string{"msg1", "msg2", "msg3"}
 	or.fillQueue(t, msgs...)
@@ -31,16 +31,6 @@ func TestBaseReactorProcessor(t *testing.T) {
 	require.Equal(t, len(msgs), len(or.received))
 	require.Equal(t, msgs, or.received)
 	or.Unlock()
-
-	// since the orderedReactor adds a delay to the first received message, we
-	// expect the parallel processor to not be in the original send order.
-	pr := NewOrderedReactor(true)
-
-	pr.fillQueue(t, msgs...)
-	time.Sleep(300 * time.Millisecond)
-	pr.Lock()
-	require.NotEqual(t, msgs, pr.received)
-	pr.Unlock()
 }
 
 var _ p2p.Reactor = &orderedReactor{}
@@ -55,13 +45,9 @@ type orderedReactor struct {
 	receivedFirst bool
 }
 
-func NewOrderedReactor(parallel bool) *orderedReactor {
+func NewOrderedReactor() *orderedReactor {
 	r := &orderedReactor{Mutex: sync.Mutex{}}
-	procOpt := p2p.WithProcessor(p2p.DefaultProcessor(r))
-	if parallel {
-		procOpt = p2p.WithProcessor(p2p.ParallelProcessor(r, 2))
-	}
-	r.BaseReactor = *p2p.NewBaseReactor("Ordered Rector", r, procOpt, p2p.WithIncomingQueueSize(10))
+	r.BaseReactor = *p2p.NewBaseReactor("Ordered Rector", r, p2p.WithIncomingQueueSize(10))
 	return r
 }
 

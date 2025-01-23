@@ -206,28 +206,6 @@ func DefaultProcessor(impl Reactor) func(<-chan UnprocessedEnvelope) error {
 	}
 }
 
-// ParallelProcessor creates a processor that runs multiple goroutines to
-// process incoming messages concurrently. It uses the default processor to
-// unmarshal the messages and call Receive on the reactor. This breaks the
-// guarantee that messages passed to this reactor are processed in the order
-// that the sender sent them.
-func ParallelProcessor(impl Reactor, threads int) func(<-chan UnprocessedEnvelope) error {
-	return func(incoming <-chan UnprocessedEnvelope) error {
-		for i := 0; i < threads; i++ {
-			go func() {
-				err := DefaultProcessor(impl)(incoming)
-				if err != nil {
-					err = impl.Stop()
-					if err != nil {
-						panic(err)
-					}
-				}
-			}()
-		}
-		return nil
-	}
-}
-
 func (*BaseReactor) GetChannels() []*conn.ChannelDescriptor        { return nil }
 func (*BaseReactor) AddPeer(peer Peer)                             {}
 func (*BaseReactor) RemovePeer(peer Peer, reason interface{})      {}
