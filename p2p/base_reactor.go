@@ -2,8 +2,9 @@ package p2p
 
 import (
 	"fmt"
-	"github.com/tendermint/tendermint/libs/sync"
 	"reflect"
+
+	"github.com/tendermint/tendermint/libs/sync"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/libs/service"
