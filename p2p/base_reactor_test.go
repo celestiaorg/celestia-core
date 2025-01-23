@@ -7,7 +7,6 @@ import (
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/pkg/trace"
-	bcproto "github.com/tendermint/tendermint/proto/tendermint/blockchain"
 	"github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"net"
 	"sync"
@@ -19,8 +18,8 @@ import (
 // queueing encoded messages and adding artificial delay to the first message.
 // Depending on the processors used, the ordering of the sender could be lost.
 func TestBaseReactorProcessor(t *testing.T) {
-	// a reactor that is using the default proessor should be able to queue
-	// messages and they get processed in order.
+	// a reactor using the default processor should be able to queue
+	// messages, and they get processed in order.
 	or := NewOrderedReactor(false)
 
 	msgs := []string{"msg1", "msg2", "msg3"}
@@ -74,8 +73,8 @@ func (r *orderedReactor) GetChannels() []*conn.ChannelDescriptor {
 
 }
 
-// Receive adds a delay to the first processed envelope to test ordering.
-func (r *orderedReactor) Receive(chID byte, p p2p.Peer, msgBytes []byte) {
+// ReceiveEnvelope adds a delay to the first processed envelope to test ordering.
+func (r *orderedReactor) ReceiveEnvelope(e p2p.Envelope) {
 	r.mtx.Lock()
 	f := r.receivedFirst
 	if !f {
@@ -88,17 +87,7 @@ func (r *orderedReactor) Receive(chID byte, p p2p.Peer, msgBytes []byte) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	msg := &bcproto.Message{}
-	err := proto.Unmarshal(msgBytes, msg)
-	if err != nil {
-		panic(err)
-	}
-	uw, err := msg.Unwrap()
-	if err != nil {
-		panic(err)
-	}
-
-	envMsg := uw.(*mempool.Txs)
+	envMsg := e.Message.(*mempool.Txs)
 	r.received = append(r.received, string(envMsg.Txs[0]))
 }
 
@@ -121,7 +110,7 @@ type imaginaryPeer struct {
 	service.BaseService
 }
 
-func (ip *imaginaryPeer) TraceClient() trace.Tracer          { return nil }
+func (ip *imaginaryPeer) TraceClient() trace.Tracer          { return trace.NoOpTracer() }
 func (ip *imaginaryPeer) HasIPChanged() bool                 { return false }
 func (ip *imaginaryPeer) FlushStop()                         {}
 func (ip *imaginaryPeer) ID() p2p.ID                         { return "" }
