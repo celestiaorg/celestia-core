@@ -1,15 +1,17 @@
 package p2p
 
 import (
+	"context"
 	"fmt"
-	"reflect"
-	"sync"
-
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
+	"reflect"
 )
+
+// ProcessorFunc is the message processor function type.
+type ProcessorFunc func(context.Context, <-chan UnprocessedEnvelope) error
 
 // Reactor is responsible for handling incoming messages on one or more
 // Channel. Switch calls GetChannels when reactor is added to it. When a new
@@ -81,21 +83,26 @@ type EnvelopeReceiver interface {
 //--------------------------------------
 
 type BaseReactor struct {
-	sync.Mutex
 	service.BaseService // Provides Start, Stop, .Quit
 	Switch              *Switch
 
 	incoming chan UnprocessedEnvelope
 
+	ctx    context.Context
+	cancel context.CancelFunc
 	// processor is called with the incoming channel and is responsible for
 	// unmarshalling the messages and calling Receive on the reactor.
-	processor func(incoming <-chan UnprocessedEnvelope) error
+	processor ProcessorFunc
 }
 
 type ReactorOptions func(*BaseReactor)
 
 func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReactor {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
 	base := &BaseReactor{
+		ctx:         ctx,
+		cancel:      cancel,
 		BaseService: *service.NewBaseService(nil, name, impl),
 		Switch:      nil,
 		incoming:    make(chan UnprocessedEnvelope, 100),
@@ -106,7 +113,7 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 	}
 
 	go func() {
-		err := base.processor(base.incoming)
+		err := base.processor(ctx, base.incoming)
 		if err != nil {
 			err = base.Stop()
 			if err != nil {
@@ -121,7 +128,7 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 // WithProcessor sets the processor function for the reactor. The processor
 // function is called with the incoming channel and is responsible for
 // unmarshalling the messages and calling Receive on the reactor.
-func WithProcessor(processor func(<-chan UnprocessedEnvelope) error) ReactorOptions {
+func WithProcessor(processor ProcessorFunc) ReactorOptions {
 	return func(br *BaseReactor) {
 		br.processor = processor
 	}
@@ -144,70 +151,76 @@ func (br *BaseReactor) SetSwitch(sw *Switch) {
 // queue to avoid blocking. The size of the queue can be changed by passing
 // options to the base reactor.
 func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
-	br.Lock()
-	defer br.Unlock()
-	br.incoming <- e
+	select {
+	// if the context is done, do nothing.
+	case <-br.ctx.Done():
+	// if not, add the item to the channel.
+	case br.incoming <- e:
+	}
 }
 
 func (br *BaseReactor) OnStop() {
-	br.Lock()
-	defer br.Unlock()
+	br.cancel()
 	close(br.incoming)
 }
 
 // DefaultProcessor unmarshalls the message and calls Receive on the reactor.
 // This preserves the sender's original order for all messages.
-func DefaultProcessor(impl Reactor) func(<-chan UnprocessedEnvelope) error {
+func DefaultProcessor(impl Reactor) func(context.Context, <-chan UnprocessedEnvelope) error {
 	implChannels := impl.GetChannels()
 
 	chIDs := make(map[byte]proto.Message, len(implChannels))
 	for _, chDesc := range implChannels {
 		chIDs[chDesc.ID] = chDesc.MessageType
 	}
-	return func(incoming <-chan UnprocessedEnvelope) error {
+	return func(ctx context.Context, incoming <-chan UnprocessedEnvelope) error {
 		for {
-			ue, ok := <-incoming
-			if !ok {
-				// this means the channel was closed.
+			select {
+			case <-ctx.Done():
 				return nil
-			}
-			mt := chIDs[ue.ChannelID]
-
-			if mt == nil {
-				return fmt.Errorf("no message type registered for channel %d", ue.ChannelID)
-			}
-
-			msg := proto.Clone(mt)
-
-			err := proto.Unmarshal(ue.Message, msg)
-			if err != nil {
-				return fmt.Errorf("unmarshaling message: %v into type: %s", err, reflect.TypeOf(mt))
-			}
-
-			if w, ok := msg.(Unwrapper); ok {
-				msg, err = w.Unwrap()
-				if err != nil {
-					return fmt.Errorf("unwrapping message: %v", err)
+			case ue, ok := <-incoming:
+				if !ok {
+					// this means the channel was closed.
+					return nil
 				}
-			}
+				mt := chIDs[ue.ChannelID]
 
-			labels := []string{
-				"peer_id", string(ue.Src.ID()),
-				"chID", fmt.Sprintf("%#x", ue.ChannelID),
-			}
+				if mt == nil {
+					return fmt.Errorf("no message type registered for channel %d", ue.ChannelID)
+				}
 
-			ue.Src.Metrics().PeerReceiveBytesTotal.With(labels...).Add(float64(len(ue.Message)))
-			ue.Src.Metrics().MessageReceiveBytesTotal.With(append(labels, "message_type", ue.Src.ValueToMetricLabel(msg))...).Add(float64(len(ue.Message)))
-			schema.WriteReceivedBytes(ue.Src.TraceClient(), string(ue.Src.ID()), ue.ChannelID, len(ue.Message))
+				msg := proto.Clone(mt)
 
-			if nr, ok := impl.(EnvelopeReceiver); ok {
-				nr.ReceiveEnvelope(Envelope{
-					ChannelID: ue.ChannelID,
-					Src:       ue.Src,
-					Message:   msg,
-				})
-			} else {
-				impl.Receive(ue.ChannelID, ue.Src, ue.Message)
+				err := proto.Unmarshal(ue.Message, msg)
+				if err != nil {
+					return fmt.Errorf("unmarshaling message: %v into type: %s", err, reflect.TypeOf(mt))
+				}
+
+				if w, ok := msg.(Unwrapper); ok {
+					msg, err = w.Unwrap()
+					if err != nil {
+						return fmt.Errorf("unwrapping message: %v", err)
+					}
+				}
+
+				labels := []string{
+					"peer_id", string(ue.Src.ID()),
+					"chID", fmt.Sprintf("%#x", ue.ChannelID),
+				}
+
+				ue.Src.Metrics().PeerReceiveBytesTotal.With(labels...).Add(float64(len(ue.Message)))
+				ue.Src.Metrics().MessageReceiveBytesTotal.With(append(labels, "message_type", ue.Src.ValueToMetricLabel(msg))...).Add(float64(len(ue.Message)))
+				schema.WriteReceivedBytes(ue.Src.TraceClient(), string(ue.Src.ID()), ue.ChannelID, len(ue.Message))
+
+				if nr, ok := impl.(EnvelopeReceiver); ok {
+					nr.ReceiveEnvelope(Envelope{
+						ChannelID: ue.ChannelID,
+						Src:       ue.Src,
+						Message:   msg,
+					})
+				} else {
+					impl.Receive(ue.ChannelID, ue.Src, ue.Message)
+				}
 			}
 		}
 	}
