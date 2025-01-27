@@ -3,11 +3,12 @@ package p2p
 import (
 	"context"
 	"fmt"
+	"reflect"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
-	"reflect"
 )
 
 // ProcessorFunc is the message processor function type.
