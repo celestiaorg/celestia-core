@@ -24,9 +24,6 @@ const (
 	broadcastEvidenceIntervalS = 10
 	// If a message fails wait this much before sending it again
 	peerRetryMessageIntervalMS = 100
-
-	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
-	ReactorIncomingMessageQueueSize = 1
 )
 
 // Reactor handles evpool evidence broadcasting amongst peers.
@@ -41,7 +38,7 @@ func NewReactor(evpool *Pool) *Reactor {
 	evR := &Reactor{
 		evpool: evpool,
 	}
-	evR.BaseReactor = *p2p.NewBaseReactor("Evidence", evR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
+	evR.BaseReactor = *p2p.NewBaseReactor("Evidence", evR)
 	return evR
 }
 
@@ -178,7 +175,7 @@ func (evR *Reactor) broadcastEvidenceRoutine(peer p2p.Peer) {
 
 // Returns the message to send to the peer, or nil if the evidence is invalid for the peer.
 // If message is nil, we should sleep and try again.
-func (evR *Reactor) prepareEvidenceMessage(
+func (evR Reactor) prepareEvidenceMessage(
 	peer p2p.Peer,
 	ev types.Evidence,
 ) (evis []types.Evidence) {
@@ -223,10 +220,6 @@ func (evR *Reactor) prepareEvidenceMessage(
 
 	// send evidence
 	return []types.Evidence{ev}
-}
-
-func (evR *Reactor) OnStop() {
-	evR.BaseReactor.OnStop()
 }
 
 // PeerState describes the state of a peer.

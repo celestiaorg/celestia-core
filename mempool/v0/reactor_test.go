@@ -88,8 +88,6 @@ func TestReactorConcurrency(t *testing.T) {
 
 	const numTxs = 5
 
-	reactors[0].mempool.config.Size = 10000
-	reactors[1].mempool.config.Size = 10000
 	for i := 0; i < 1000; i++ {
 		wg.Add(2)
 
@@ -121,6 +119,9 @@ func TestReactorConcurrency(t *testing.T) {
 			err := reactors[1].mempool.Update(1, []types.Tx{}, make([]*abci.ResponseDeliverTx, 0), nil, nil)
 			assert.NoError(t, err)
 		}()
+
+		// 1. flush the mempool
+		reactors[1].mempool.Flush()
 	}
 
 	wg.Wait()

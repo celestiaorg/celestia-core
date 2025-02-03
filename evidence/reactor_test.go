@@ -224,7 +224,6 @@ func TestReactorBroadcastEvidenceMemoryLeak(t *testing.T) {
 	r.AddPeer(p)
 
 	_ = sendEvidence(t, pool, val, 2)
-	r.OnStop()
 }
 
 // evidenceLogger is a TestingLogger which uses a different
