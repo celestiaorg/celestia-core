@@ -28,23 +28,11 @@ type ShareProof struct {
 }
 
 func (sp ShareProof) ToProto() tmproto.ShareProof {
-	// TODO consider extracting a ToProto function for RowProof
-	rowRoots := make([][]byte, len(sp.RowProof.RowRoots))
-	rowProofs := make([]*crypto.Proof, len(sp.RowProof.Proofs))
-	for i := range sp.RowProof.RowRoots {
-		rowRoots[i] = sp.RowProof.RowRoots[i].Bytes()
-		rowProofs[i] = sp.RowProof.Proofs[i].ToProto()
-	}
 	pbtp := tmproto.ShareProof{
-		Data:        sp.Data,
-		ShareProofs: sp.ShareProofs,
-		NamespaceId: sp.NamespaceID,
-		RowProof: &tmproto.RowProof{
-			RowRoots: rowRoots,
-			Proofs:   rowProofs,
-			StartRow: sp.RowProof.StartRow,
-			EndRow:   sp.RowProof.EndRow,
-		},
+		Data:             sp.Data,
+		ShareProofs:      sp.ShareProofs,
+		NamespaceId:      sp.NamespaceID,
+		RowProof:         sp.RowProof.ToProto(),
 		NamespaceVersion: sp.NamespaceVersion,
 	}
 
