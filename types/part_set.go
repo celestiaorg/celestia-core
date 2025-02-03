@@ -371,7 +371,7 @@ type PartSetReader struct {
 }
 
 func NewPartSetReader(parts []*Part) *PartSetReader {
-	length, first, err := RemoveLengthPrefix(parts[0].Bytes)
+	length, n, first, err := RemoveLengthPrefix(parts[0].Bytes)
 	if err != nil {
 		// todo: remove this before prod ready
 		panic(err)
@@ -380,6 +380,11 @@ func NewPartSetReader(parts []*Part) *PartSetReader {
 	// only use the original parts, not the ones containing erasure encoded
 	// data.
 	parts = parts[:len(parts)/2]
+
+	// remove zeros if the first part is the last part.
+	if len(parts) == 1 {
+		first = first[:length-n]
+	}
 
 	return &PartSetReader{
 		i:        0,
@@ -519,6 +524,7 @@ func (ps *PartSet) Decode() error {
 	}
 
 	for i, d := range data {
+		ps.partsBitArray.SetIndex(i, true)
 		if ps.parts[i] != nil {
 			continue
 		}
@@ -555,15 +561,15 @@ func AddLengthPrefix(data []byte) []byte {
 }
 
 // RemoveLengthPrefix removes the length prefix from the data and returns the length and the original data.
-func RemoveLengthPrefix(prefixedData []byte) (int, []byte, error) {
+func RemoveLengthPrefix(prefixedData []byte) (int, int, []byte, error) {
 	if len(prefixedData) == 0 {
-		return 0, nil, errors.New("input data is empty")
+		return 0, 0, nil, errors.New("input data is empty")
 	}
 
 	length, n := binary.Varint(prefixedData)
 	if n <= 0 {
-		return 0, nil, errors.New("failed to decode length prefix")
+		return 0, 0, nil, errors.New("failed to decode length prefix")
 	}
 
-	return int(length) + n, prefixedData[n:], nil
+	return int(length) + n, n, prefixedData[n:], nil
 }

@@ -41,8 +41,6 @@ func TestDataRoutine_basic(t *testing.T) {
 		}
 	}, css)
 
-	fmt.Println("yeah")
-
 	for _, reactor := range reactors {
 		fmt.Println("reactor", reactor.dr.self, "-------------------------------")
 		fmt.Println("peer state", reactor.dr.peerstate)
@@ -103,11 +101,6 @@ func TestDataRoutine_proposal(t *testing.T) {
 	require.True(t, wants.GetIndex(1))
 }
 
-func TestDebug(t *testing.T) {
-	c := bits.NewBitArray(1)
-	fmt.Println(c.IsEmpty(), c)
-}
-
 func newTestProp(height int64, round int32, parts int) (*types.Proposal, *types.PartSet) {
 	// a sends proposal to b
 
@@ -116,7 +109,7 @@ func newTestProp(height int64, round int32, parts int) (*types.Proposal, *types.
 	ps := types.NewPartSetFromData(d, types.BlockPartSizeBytes)
 	psh := ps.Header()
 
-	if psh.Total != uint32(parts) {
+	if psh.Total != 2*uint32(parts) {
 		panic("invalid parts len")
 	}
 

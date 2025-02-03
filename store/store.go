@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 
 	dbm "github.com/cometbft/cometbft-db"
@@ -98,7 +99,7 @@ func (bs *BlockStore) LoadBlock(height int64) *types.Block {
 	}
 
 	pbb := new(cmtproto.Block)
-	buf := []byte{}
+	parts := []*types.Part{}
 	for i := 0; i < int(blockMeta.BlockID.PartSetHeader.Total); i++ {
 		part := bs.LoadBlockPart(height, i)
 		// If the part is missing (e.g. since it has been deleted after we
@@ -106,9 +107,15 @@ func (bs *BlockStore) LoadBlock(height int64) *types.Block {
 		if part == nil {
 			return nil
 		}
-		buf = append(buf, part.Bytes...)
+		parts = append(parts, part)
 	}
-	err := proto.Unmarshal(buf, pbb)
+
+	bz, err := io.ReadAll(types.NewPartSetReader(parts))
+	if err != nil {
+		panic(fmt.Errorf("unable to read all parts: %w", err))
+	}
+
+	err = proto.Unmarshal(bz, pbb)
 	if err != nil {
 		// NOTE: The existence of meta should imply the existence of the
 		// block. So, make sure meta is only saved after blocks are saved.

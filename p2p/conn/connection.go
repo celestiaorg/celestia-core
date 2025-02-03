@@ -653,7 +653,7 @@ FOR_LOOP:
 				c.onReceive(channelID, msgBytes)
 			}
 		default:
-			err := fmt.Errorf("unknown message type %v", reflect.TypeOf(packet))
+			err := fmt.Errorf("unknown message type p %v", reflect.TypeOf(packet))
 			c.Logger.Error("Connection failed @ recvRoutine", "conn", c, "err", err)
 			c.stopForError(err)
 			break FOR_LOOP

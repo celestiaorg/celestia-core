@@ -315,7 +315,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				Message:   m,
 			}, conR.Logger)
 		default:
-			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
+			conR.Logger.Error(fmt.Sprintf("Unknown message type m %v", reflect.TypeOf(msg)))
 		}
 
 	case DataChannel:
@@ -334,7 +334,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
 		default:
-			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
+			conR.Logger.Error(fmt.Sprintf("Unknown message type m %v", reflect.TypeOf(msg)))
 		}
 
 	case VoteChannel:

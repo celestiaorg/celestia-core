@@ -1,14 +1,20 @@
 package types
 
 import (
+	"crypto/rand"
+	"fmt"
 	"io"
 	"testing"
+	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
+	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 const (
@@ -262,19 +268,100 @@ func TestVarInt(t *testing.T) {
 		require.NotNil(t, prefixedData)
 
 		// Remove length prefix
-		length, decodedData, err := RemoveLengthPrefix(prefixedData)
+		length, _, decodedData, err := RemoveLengthPrefix(prefixedData)
 		require.NoError(t, err)
 		require.Equal(t, len(originalData), length)
 		require.Equal(t, originalData, decodedData)
 	})
 
 	t.Run("empty input", func(t *testing.T) {
-		_, _, err := RemoveLengthPrefix([]byte{})
+		_, _, _, err := RemoveLengthPrefix([]byte{})
 		require.Error(t, err)
 	})
 
 	t.Run("corrupted prefix", func(t *testing.T) {
-		_, _, err := RemoveLengthPrefix([]byte{0xFF})
+		_, _, _, err := RemoveLengthPrefix([]byte{0xFF})
 		require.Error(t, err)
 	})
+}
+
+func TestProtoRoundTrip(t *testing.T) {
+	b1 := MakeBlock(1, makeData([]Tx{Tx(cmtrand.Bytes(1000))}), &Commit{Signatures: []CommitSig{}}, []Evidence{})
+	b1.ProposerAddress = cmtrand.Bytes(crypto.AddressSize)
+
+	bp, err := b1.ToProto()
+	require.NoError(t, err)
+
+	bz, err := bp.Marshal()
+
+	partSet := NewPartSetFromData(bz, BlockPartSizeBytes)
+
+	partSet.parts[0] = nil
+
+	err = partSet.Decode()
+	require.NoError(t, err)
+
+	bz2, err := io.ReadAll(partSet.GetReader())
+	require.NoError(t, err)
+
+	fmt.Println("bz2", len(bz2), bz2[:10])
+
+	pbb := new(cmtproto.Block)
+	err = proto.Unmarshal(bz2, pbb)
+	require.NoError(t, err)
+
+	b2, err := BlockFromProto(pbb)
+	require.NoError(t, err)
+
+	require.Equal(t, b1, b2)
+}
+
+func BenchmarkPartSetEncoding(b *testing.B) {
+	nParts := 500
+	data := make([]byte, int(BlockPartSizeBytes)*nParts-4)
+	rand.Read(data) // Generate random data
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = NewPartSetFromData(data, BlockPartSizeBytes)
+	}
+}
+
+// Runs the decoding benchmark for different part sizes
+func BenchmarkPartSetDecoding(b *testing.B) {
+	sizes := []int{500, 1000, 2000} // Different numbers of parts
+	for _, nParts := range sizes {
+		b.Run(fmt.Sprintf("%dParts", nParts), func(b *testing.B) {
+			data := make([]byte, (int(BlockPartSizeBytes)*nParts)-100)
+			rand.Read(data)
+
+			partSet := NewPartSetFromData(data, BlockPartSizeBytes)
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				start := time.Now()
+
+				ps := NewPartSetFromHeader(partSet.Header())
+
+				// Add only half of the parts
+				for j := 0; j < (nParts)*2; j++ {
+					if j%2 != 0 {
+						_, err := ps.AddPart(partSet.parts[j])
+						require.NoError(b, err)
+					}
+				}
+
+				err := ps.Decode()
+				require.NoError(b, err)
+
+				bz, err := io.ReadAll(ps.GetReader())
+				require.NoError(b, err)
+				require.Equal(b, len(data), len(bz))
+				require.Equal(b, data, bz)
+
+				duration := time.Since(start).Seconds()
+				b.ReportMetric(duration, "s/op") // Report in seconds per operation
+			}
+		})
+	}
 }

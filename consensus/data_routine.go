@@ -177,7 +177,7 @@ func (d *DataRoutine) handleHaves(peer p2p.ID, height int64, round int32, haves 
 
 	reqLimit := 1
 	if bypassRequestLimit {
-		reqLimit = 100
+		reqLimit = 6
 	}
 
 	// if enough requests have been made for the parts, don't request them.
@@ -509,6 +509,16 @@ func (d *DataRoutine) handleBlockPart(peer p2p.ID, part *BlockPartMessage) {
 			return
 		}
 
+		d.logger.Info("decoded block", "height", part.Height, "round", part.Round)
+
+		schema.WriteNote(
+			d.tracer,
+			part.Height,
+			part.Round,
+			"decoded block!",
+			"",
+		)
+
 		// clear all the wants if they exist
 		go func(height int64, round int32, parts *types.PartSet) {
 			for i := uint32(0); i < parts.Total(); i++ {
@@ -627,7 +637,7 @@ func (d *DataRoutine) broadcastProposal(proposal *types.Proposal, from p2p.ID, p
 	}
 
 	peers := d.getPeers()
-	chunks := chunkParts(proposal.HaveParts.Copy(), len(peers), 1)
+	chunks := chunkParts(proposal.HaveParts.Copy(), len(peers), 2)
 
 	for i, peer := range peers {
 		if peer.peer.ID() == from {

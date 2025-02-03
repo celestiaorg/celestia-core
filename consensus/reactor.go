@@ -188,7 +188,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 			ID: DataChannel, // maybe split between gossiping current block and catchup stuff
 			// once we gossip the whole block there's nothing left to send until next height or round
 			Priority:            10,
-			SendQueueCapacity:   100,
+			SendQueueCapacity:   2000,
 			RecvBufferCapacity:  50 * 4096,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
@@ -244,6 +244,23 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 	if !conR.WaitSync() {
 		conR.sendNewRoundStepMessage(peer)
 	}
+}
+
+func legacyPropagation(peer p2p.Peer) (bool, error) {
+	legacyblockProp := true
+	ni, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
+	if !ok {
+		return false, errors.New("wrong NodeInfo type. Expected DefaultNodeInfo")
+	}
+
+	for _, ch := range ni.Channels {
+		if ch == types.BlockPropagationChannel {
+			legacyblockProp = false
+			break
+		}
+	}
+
+	return legacyblockProp, nil
 }
 
 // RemovePeer is a noop.
@@ -398,7 +415,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				)
 			}
 		default:
-			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
+			conR.Logger.Error(fmt.Sprintf("Unknown message type 5 %v", reflect.TypeOf(msg)))
 		}
 
 	case DataChannel:
@@ -433,7 +450,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				conR.dr.handleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockPartSetHeader, true)
 
 			default:
-				conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
+				conR.Logger.Error(fmt.Sprintf("Unknown message type 4 %v", reflect.TypeOf(msg)))
 			}
 			return
 		}
@@ -481,7 +498,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			conR.dr.handleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockPartSetHeader, true)
 
 		default:
-			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
+			conR.Logger.Error(fmt.Sprintf("Unknown message type 3 %v", reflect.TypeOf(msg)))
 		}
 
 	case VoteChannel:
@@ -507,7 +524,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 
 		default:
 			// don't punish (leave room for soft upgrades)
-			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
+			conR.Logger.Error(fmt.Sprintf("Unknown message type 2 %v", reflect.TypeOf(msg)))
 		}
 
 	case VoteSetBitsChannel:
@@ -538,7 +555,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			}
 		default:
 			// don't punish (leave room for soft upgrades)
-			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
+			conR.Logger.Error(fmt.Sprintf("Unknown message type 1 %v", reflect.TypeOf(msg)))
 		}
 
 	default:

@@ -934,8 +934,9 @@ func (cs *State) handleMsg(mi msgInfo) {
 					msg.Height,
 					msg.Round,
 					"handleBlockPart",
-					"downloaded block part %v",
+					"handling block part %v %v",
 					float64(trueTotal)/float64(total),
+					cs.ProposalBlockParts.Count(),
 				)
 			}
 		}
@@ -2355,7 +2356,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	if maxBytes == -1 {
 		maxBytes = int64(types.MaxBlockSizeBytes)
 	}
-	if int64(proposal.BlockID.PartSetHeader.Total) > (maxBytes-1)/int64(types.BlockPartSizeBytes)+1 {
+	if int64(proposal.BlockID.PartSetHeader.Total/2) > (maxBytes-1)/int64(types.BlockPartSizeBytes)+1 {
 		cs.Logger.Error("PROPOSAL HAS TOO MANY BLOCK PARTS SENOR", "proposal", proposal, "height", cs.Height, "round", cs.Round)
 		schema.WriteNote(
 			cs.traceClient,
@@ -2419,11 +2420,11 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 
 	cs.metrics.BlockGossipPartsReceived.With("matches_current", "true").Add(1)
 
-	if cs.ProposalBlockParts.ByteSize() > cs.state.ConsensusParams.Block.MaxBytes {
-		return added, fmt.Errorf("total size of proposal block parts exceeds maximum block bytes (%d > %d)",
-			cs.ProposalBlockParts.ByteSize(), cs.state.ConsensusParams.Block.MaxBytes,
-		)
-	}
+	// if cs.ProposalBlockParts.ByteSize() > cs.state.ConsensusParams.Block.MaxBytes {
+	// 	return added, fmt.Errorf("total size of proposal block parts exceeds maximum block bytes (%d > %d)",
+	// 		cs.ProposalBlockParts.ByteSize(), cs.state.ConsensusParams.Block.MaxBytes,
+	// 	)
+	// }
 	if added && cs.ProposalBlockParts.IsComplete() {
 		bz, err := io.ReadAll(cs.ProposalBlockParts.GetReader())
 		if err != nil {
