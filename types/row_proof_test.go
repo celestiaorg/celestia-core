@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 )
@@ -68,6 +69,94 @@ func TestRowProofValidate(t *testing.T) {
 				return
 			}
 			assert.NoError(t, got)
+		})
+	}
+}
+
+func TestRowProofProtoRoundTrip(t *testing.T) {
+	testCases := []struct {
+		name     string
+		rowProof RowProof
+	}{
+		{
+			name: "empty proof",
+			rowProof: RowProof{
+				RowRoots: []tmbytes.HexBytes{},
+				Proofs:   []*merkle.Proof{},
+				StartRow: 0,
+				EndRow:   0,
+			},
+		},
+		{
+			name: "single row proof",
+			rowProof: RowProof{
+				RowRoots: []tmbytes.HexBytes{
+					tmbytes.HexBytes("abc123"),
+				},
+				Proofs: []*merkle.Proof{
+					{
+						Total:    1,
+						Index:    0,
+						LeafHash: []byte("leaf"),
+						Aunts:    [][]byte{[]byte("aunt1"), []byte("aunt2")},
+					},
+				},
+				StartRow: 1,
+				EndRow:   2,
+			},
+		},
+		{
+			name: "multiple row proofs",
+			rowProof: RowProof{
+				RowRoots: []tmbytes.HexBytes{
+					tmbytes.HexBytes("abc123"),
+					tmbytes.HexBytes("def456"),
+				},
+				Proofs: []*merkle.Proof{
+					{
+						Total:    2,
+						Index:    0,
+						LeafHash: []byte("leaf1"),
+						Aunts:    [][]byte{[]byte("aunt1"), []byte("aunt2")},
+					},
+					{
+						Total:    2,
+						Index:    1,
+						LeafHash: []byte("leaf2"),
+						Aunts:    [][]byte{[]byte("aunt3"), []byte("aunt4")},
+					},
+				},
+				StartRow: 5,
+				EndRow:   7,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Convert to proto
+			proto := tc.rowProof.ToProto()
+			require.NotNil(t, proto)
+
+			// Convert back to RowProof
+			roundTripped := RowProofFromProto(proto)
+
+			// Verify all fields match
+			require.Equal(t, len(tc.rowProof.RowRoots), len(roundTripped.RowRoots))
+			for i := range tc.rowProof.RowRoots {
+				require.Equal(t, tc.rowProof.RowRoots[i].String(), roundTripped.RowRoots[i].String())
+			}
+
+			require.Equal(t, len(tc.rowProof.Proofs), len(roundTripped.Proofs))
+			for i, proof := range tc.rowProof.Proofs {
+				require.Equal(t, proof.Total, roundTripped.Proofs[i].Total)
+				require.Equal(t, proof.Index, roundTripped.Proofs[i].Index)
+				require.Equal(t, proof.LeafHash, roundTripped.Proofs[i].LeafHash)
+				require.Equal(t, proof.Aunts, roundTripped.Proofs[i].Aunts)
+			}
+
+			require.Equal(t, tc.rowProof.StartRow, roundTripped.StartRow)
+			require.Equal(t, tc.rowProof.EndRow, roundTripped.EndRow)
 		})
 	}
 }
