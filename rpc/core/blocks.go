@@ -235,6 +235,17 @@ func DataRootInclusionProof(
 	end uint64,
 ) (*ctypes.ResultDataRootInclusionProof, error) {
 	//nolint:gosec
+	proof, err := GenerateDataRootInclusionProof(height, start, end)
+	if err != nil {
+		return nil, err
+	}
+	return &ctypes.ResultDataRootInclusionProof{Proof: *proof}, nil
+}
+
+func GenerateDataRootInclusionProof(height int64, start, end uint64) (*merkle.Proof, error) {
+	if globalEnv == nil {
+		return nil, errors.New("global env is nil. this can only be called inside celestia-core")
+	}
 	err := validateDataRootInclusionProofRequest(uint64(height), start, end)
 	if err != nil {
 		return nil, err
@@ -247,7 +258,7 @@ func DataRootInclusionProof(
 	if err != nil {
 		return nil, err
 	}
-	return &ctypes.ResultDataRootInclusionProof{Proof: *proof}, nil
+	return proof, nil
 }
 
 // padBytes Pad bytes to given length

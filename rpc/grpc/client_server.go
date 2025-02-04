@@ -23,13 +23,15 @@ type Config struct {
 func StartGRPCServer(ln net.Listener) error {
 	grpcServer := grpc.NewServer()
 	RegisterBroadcastAPIServer(grpcServer, &broadcastAPI{})
-	api := NewBlockAPI()
-	RegisterBlockAPIServer(grpcServer, api)
+	blockAPI := NewBlockAPI()
+	RegisterBlockAPIServer(grpcServer, blockAPI)
+	blobstreamAPI := NewBlobstreamAPI()
+	RegisterBlobstreamAPIServer(grpcServer, blobstreamAPI)
 	errCh := make(chan error, 2)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		errCh <- api.StartNewBlockEventListener(ctx)
+		errCh <- blockAPI.StartNewBlockEventListener(ctx)
 	}()
 	go func() {
 		errCh <- grpcServer.Serve(ln)
@@ -40,7 +42,7 @@ func StartGRPCServer(ln net.Listener) error {
 		if err != nil {
 			core.GetEnvironment().Logger.Error("error stopping block api", "err", err)
 		}
-	}(api, ctx)
+	}(blockAPI, ctx)
 	// blocks until one errors or returns nil
 	return <-errCh
 }
@@ -74,4 +76,21 @@ func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAP
 
 func dialerFunc(ctx context.Context, addr string) (net.Conn, error) {
 	return cmtnet.Connect(addr)
+}
+
+// StartBlobstreamAPIGRPCClient dials the gRPC server using protoAddr and returns a new
+// BlobstreamAPIClient.
+func StartBlobstreamAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlobstreamAPIClient, error) {
+	if len(opts) == 0 {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+	opts = append(opts, grpc.WithContextDialer(dialerFunc))
+	conn, err := grpc.Dial( //nolint:staticcheck
+		protoAddr,
+		opts...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return NewBlobstreamAPIClient(conn), nil
 }

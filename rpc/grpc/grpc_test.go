@@ -392,6 +392,26 @@ func TestBlockQuery_Streaming(t *testing.T) {
 	assert.NotEqual(t, part2.BlockPart.Proof, crypto.Proof{})
 }
 
+func TestBlobstreamAPI(t *testing.T) {
+	client, err := rpctest.GetBlobstreamAPIClient()
+	require.NoError(t, err)
+	waitForHeight(t, 10)
+
+	resp, err := client.DataRootInclusionProof(
+		context.Background(),
+		&core_grpc.DataRootInclusionProofRequest{
+			Height: 6,
+			Start:  1,
+			End:    10,
+		},
+	)
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, int64(9), resp.Proof.Total)
+	assert.Equal(t, int64(5), resp.Proof.Index)
+	assert.Equal(t, 4, len(resp.Proof.Aunts))
+}
+
 func waitForHeight(t *testing.T, height int64) {
 	rpcAddr := rpctest.GetConfig().RPC.ListenAddress
 	c, err := rpchttp.New(rpcAddr, "/websocket")
