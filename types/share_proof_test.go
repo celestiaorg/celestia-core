@@ -4,8 +4,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/tendermint/tendermint/crypto/merkle"
+	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/pkg/consts"
 	"github.com/tendermint/tendermint/proto/tendermint/types"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
 func TestShareProofValidate(t *testing.T) {
@@ -90,5 +94,143 @@ func validShareProof() ShareProof {
 		NamespaceID:      consts.TxNamespaceID,
 		RowProof:         validRowProof(),
 		NamespaceVersion: uint32(0),
+	}
+}
+
+func TestShareProofProtoRoundTrip(t *testing.T) {
+	testCases := []struct {
+		name       string
+		shareProof ShareProof
+	}{
+		{
+			name: "empty proof",
+			shareProof: ShareProof{
+				Data:             [][]byte{},
+				ShareProofs:      []*tmproto.NMTProof{},
+				NamespaceID:      []byte{},
+				RowProof:         RowProof{},
+				NamespaceVersion: 0,
+			},
+		},
+		{
+			name: "single share proof",
+			shareProof: ShareProof{
+				Data: [][]byte{
+					[]byte("data1"),
+					[]byte("data2"),
+				},
+				ShareProofs: []*tmproto.NMTProof{
+					{
+						Start: 0,
+						End:   2,
+						Nodes: [][]byte{[]byte("node1"), []byte("node2")},
+					},
+				},
+				NamespaceID: []byte("namespace1"),
+				RowProof: RowProof{
+					RowRoots: []tmbytes.HexBytes{
+						tmbytes.HexBytes("abc123"),
+					},
+					Proofs: []*merkle.Proof{
+						{
+							Total:    1,
+							Index:    0,
+							LeafHash: []byte("leaf"),
+							Aunts:    [][]byte{[]byte("aunt1"), []byte("aunt2")},
+						},
+					},
+					StartRow: 1,
+					EndRow:   2,
+				},
+				NamespaceVersion: 1,
+			},
+		},
+		{
+			name: "multiple share proofs",
+			shareProof: ShareProof{
+				Data: [][]byte{
+					[]byte("data1"),
+					[]byte("data2"),
+					[]byte("data3"),
+					[]byte("data4"),
+				},
+				ShareProofs: []*tmproto.NMTProof{
+					{
+						Start: 0,
+						End:   2,
+						Nodes: [][]byte{[]byte("node1"), []byte("node2")},
+					},
+					{
+						Start: 2,
+						End:   4,
+						Nodes: [][]byte{[]byte("node3"), []byte("node4")},
+					},
+				},
+				NamespaceID: []byte("namespace1"),
+				RowProof: RowProof{
+					RowRoots: []tmbytes.HexBytes{
+						tmbytes.HexBytes("abc123"),
+						tmbytes.HexBytes("def456"),
+					},
+					Proofs: []*merkle.Proof{
+						{
+							Total:    2,
+							Index:    0,
+							LeafHash: []byte("leaf1"),
+							Aunts:    [][]byte{[]byte("aunt1"), []byte("aunt2")},
+						},
+						{
+							Total:    2,
+							Index:    1,
+							LeafHash: []byte("leaf2"),
+							Aunts:    [][]byte{[]byte("aunt3"), []byte("aunt4")},
+						},
+					},
+					StartRow: 5,
+					EndRow:   7,
+				},
+				NamespaceVersion: 2,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Convert to proto
+			proto := tc.shareProof.ToProto()
+
+			// Convert back to ShareProof
+			roundTripped, err := ShareProofFromProto(proto)
+			require.NoError(t, err)
+
+			// Verify all fields match
+			require.Equal(t, tc.shareProof.Data, roundTripped.Data)
+			require.Equal(t, len(tc.shareProof.ShareProofs), len(roundTripped.ShareProofs))
+			for i, proof := range tc.shareProof.ShareProofs {
+				require.Equal(t, proof.Start, roundTripped.ShareProofs[i].Start)
+				require.Equal(t, proof.End, roundTripped.ShareProofs[i].End)
+				require.Equal(t, proof.Nodes, roundTripped.ShareProofs[i].Nodes)
+			}
+
+			require.Equal(t, tc.shareProof.NamespaceID, roundTripped.NamespaceID)
+			require.Equal(t, tc.shareProof.NamespaceVersion, roundTripped.NamespaceVersion)
+
+			// Verify RowProof fields
+			require.Equal(t, len(tc.shareProof.RowProof.RowRoots), len(roundTripped.RowProof.RowRoots))
+			for i := range tc.shareProof.RowProof.RowRoots {
+				require.Equal(t, tc.shareProof.RowProof.RowRoots[i].String(), roundTripped.RowProof.RowRoots[i].String())
+			}
+
+			require.Equal(t, len(tc.shareProof.RowProof.Proofs), len(roundTripped.RowProof.Proofs))
+			for i, proof := range tc.shareProof.RowProof.Proofs {
+				require.Equal(t, proof.Total, roundTripped.RowProof.Proofs[i].Total)
+				require.Equal(t, proof.Index, roundTripped.RowProof.Proofs[i].Index)
+				require.Equal(t, proof.LeafHash, roundTripped.RowProof.Proofs[i].LeafHash)
+				require.Equal(t, proof.Aunts, roundTripped.RowProof.Proofs[i].Aunts)
+			}
+
+			require.Equal(t, tc.shareProof.RowProof.StartRow, roundTripped.RowProof.StartRow)
+			require.Equal(t, tc.shareProof.RowProof.EndRow, roundTripped.RowProof.EndRow)
+		})
 	}
 }
