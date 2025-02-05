@@ -6,6 +6,7 @@ import "tendermint/abci/types.proto";
 import "tendermint/types/types.proto";
 import "tendermint/p2p/types.proto";
 import "tendermint/crypto/keys.proto";
+import "tendermint/crypto/proof.proto";
 import "tendermint/types/validator.proto";
 import "google/protobuf/timestamp.proto";
 import "gogoproto/gogo.proto";
@@ -50,6 +51,15 @@ message ValidatorSetRequest {
 message SubscribeNewHeightsRequest {}
 
 message StatusRequest {}
+
+message DataRootInclusionProofRequest {
+  // Height the height of block we want to prove.
+  int64 height = 1;
+  // Start the start of the data commitment range containing the block.
+  uint64 start = 2;
+  // End the end exclusive of the data commitment range containing the block.
+  uint64 end = 3;
+}
 
 //----------------------------------------
 // Response types
@@ -128,6 +138,10 @@ message ValidatorInfo {
   int64                       voting_power = 3;
 }
 
+message DataRootInclusionProofResponse {
+  tendermint.crypto.Proof proof = 1 [(gogoproto.nullable) = false];
+}
+
 //----------------------------------------
 // Service Definition
 
@@ -143,4 +157,11 @@ service BlockAPI {
   rpc ValidatorSet(ValidatorSetRequest) returns (ValidatorSetResponse);
   rpc SubscribeNewHeights(SubscribeNewHeightsRequest) returns (stream NewHeightEvent);
   rpc Status(StatusRequest) returns (StatusResponse);
+}
+
+service BlobstreamAPI {
+  // DataRootInclusionProof creates an inclusion proof for the data root of block
+  // height `height` in the set of blocks defined by `start` and `end`. The range
+  // is end exclusive.
+  rpc DataRootInclusionProof(DataRootInclusionProofRequest) returns (DataRootInclusionProofResponse);
 }
