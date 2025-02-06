@@ -22,7 +22,7 @@ Inputs:
 |  |- <testname>.go
 ```
 
-`/corpus` directory contains corpus data. The idea is to help the fuzzier to
+`/corpus` directory contains corpus data. The idea is to help the fuzzer to
 understand what bytes sequences are semantically valid (e.g. if we're testing
 PNG decoder, then we would put black-white PNG into corpus directory; with
 blockchain reactor - we would put blockchain messages into corpus).
@@ -31,7 +31,7 @@ blockchain reactor - we would put blockchain messages into corpus).
 
 `/testdata` directory may contain an additional data (like `addrbook.json`).
 
-Upon running the fuzzier, `/crashers` and `/suppressions` dirs will be created,
+Upon running the fuzzer, `/crashers` and `/suppressions` dirs will be created,
 along with <testname>.zip archive. `/crashers` will show any inputs, which have
 lead to panics (plus a trace). `/suppressions` will show any suppressed inputs.
 
