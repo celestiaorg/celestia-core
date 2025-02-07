@@ -24,10 +24,48 @@ var (
 	ErrPartInvalidSize        = errors.New("error inner part with invalid size")
 )
 
+const (
+	SubPartsPerPart uint32 = 32
+	SubPartSize            = BlockPartSizeBytes / SubPartsPerPart
+)
+
 type Part struct {
 	Index uint32            `json:"index"`
 	Bytes cmtbytes.HexBytes `json:"bytes"`
 	Proof merkle.Proof      `json:"proof"`
+}
+
+// SubPart is a portion of a part and block that is used for generating parity
+// data.
+type SubPart struct {
+	Index uint32            `json:"index"`
+	Bytes cmtbytes.HexBytes `json:"bytes"`
+}
+
+// SubPart breaks a block part into smaller equal sized subparts.
+func (p *Part) SubParts() []SubPart {
+	sps := make([]SubPart, SubPartsPerPart)
+	for i := uint32(0); i < SubPartsPerPart; i++ {
+		sps[i] = SubPart{
+			Index: uint32(i),
+			Bytes: p.Bytes[i*SubPartSize : (i+1)*SubPartSize],
+		}
+	}
+	return sps
+}
+
+func PartFromSubParts(index uint32, sps []SubPart) *Part {
+	if len(sps) != int(SubPartsPerPart) {
+		panic(fmt.Sprintf("invalid number of subparts: %d", len(sps)))
+	}
+	b := make([]byte, 0, BlockPartSizeBytes)
+	for _, sp := range sps {
+		b = append(b, sp.Bytes...)
+	}
+	return &Part{
+		Index: index,
+		Bytes: b,
+	}
 }
 
 // ValidateBasic performs basic validation.
