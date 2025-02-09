@@ -115,6 +115,32 @@ func MsgToProto(msg Message) (*cmtcons.Message, error) {
 
 		return m.Wrap().(*cmtcons.Message), nil
 
+	case *RecoveryRequestMessage:
+		m := &cmtcons.RecoveryRequest{
+			Height:     msg.Height,
+			Round:      msg.Round,
+			FromHeight: msg.FromHeight,
+			ToHeight:   msg.ToHeight,
+		}
+		return m.Wrap().(*cmtcons.Message), nil
+
+	case *RecoveryResponseMessage:
+		blocks := make([]*cmtproto.Block, len(msg.Blocks))
+		commits := make([]*cmtproto.Commit, len(msg.Commits))
+		for i, block := range msg.Blocks {
+			blocks[i] = block.ToProto()
+		}
+		for i, commit := range msg.Commits {
+			commits[i] = commit.ToProto()
+		}
+		m := &cmtcons.RecoveryResponse{
+			Height:  msg.Height,
+			Round:   msg.Round,
+			Blocks:  blocks,
+			Commits: commits,
+		}
+		return m.Wrap().(*cmtcons.Message), nil
+
 	default:
 		return nil, fmt.Errorf("consensus: message not recognized: %T", msg)
 	}
@@ -229,6 +255,36 @@ func MsgFromProto(p *cmtcons.Message) (Message, error) {
 			Type:    msg.Type,
 			BlockID: *bi,
 			Votes:   bits,
+		}
+	case *cmtcons.RecoveryRequest:
+		pb = &RecoveryRequestMessage{
+			Height:     msg.Height,
+			Round:      msg.Round,
+			FromHeight: msg.FromHeight,
+			ToHeight:   msg.ToHeight,
+		}
+	case *cmtcons.RecoveryResponse:
+		blocks := make([]*types.Block, len(msg.Blocks))
+		commits := make([]*types.Commit, len(msg.Commits))
+		for i, block := range msg.Blocks {
+			b, err := types.BlockFromProto(block)
+			if err != nil {
+				return nil, fmt.Errorf("block conversion error at index %d: %w", i, err)
+			}
+			blocks[i] = b
+		}
+		for i, commit := range msg.Commits {
+			c, err := types.CommitFromProto(commit)
+			if err != nil {
+				return nil, fmt.Errorf("commit conversion error at index %d: %w", i, err)
+			}
+			commits[i] = c
+		}
+		pb = &RecoveryResponseMessage{
+			Height:  msg.Height,
+			Round:   msg.Round,
+			Blocks:  blocks,
+			Commits: commits,
 		}
 	default:
 		return nil, fmt.Errorf("consensus: message not recognized: %T", msg)
@@ -357,4 +413,85 @@ func WALFromProto(msg *cmtcons.WALMessage) (WALMessage, error) {
 		return nil, fmt.Errorf("from proto: wal message not recognized: %T", msg)
 	}
 	return pb, nil
+}
+
+// RecoveryRequestMessage is sent when a node needs to recover blocks
+type RecoveryRequestMessage struct {
+	Height     int64
+	Round      int32
+	FromHeight int64
+	ToHeight   int64
+}
+
+// ValidateBasic performs basic validation.
+func (m *RecoveryRequestMessage) ValidateBasic() error {
+	if m.Height < 0 {
+		return errors.New("negative Height")
+	}
+	if m.Round < 0 {
+		return errors.New("negative Round")
+	}
+	if m.FromHeight < 0 {
+		return errors.New("negative FromHeight")
+	}
+	if m.ToHeight < 0 {
+		return errors.New("negative ToHeight")
+	}
+	if m.FromHeight > m.ToHeight {
+		return errors.New("FromHeight cannot be greater than ToHeight")
+	}
+	return nil
+}
+
+// String returns a string representation.
+func (m *RecoveryRequestMessage) String() string {
+	return fmt.Sprintf("[RecoveryRequest H:%v R:%v FH:%v TH:%v]",
+		m.Height, m.Round, m.FromHeight, m.ToHeight)
+}
+
+// RecoveryResponseMessage is sent in response to a RecoveryRequest
+type RecoveryResponseMessage struct {
+	Height  int64
+	Round   int32
+	Blocks  []*types.Block
+	Commits []*types.Commit
+}
+
+// ValidateBasic performs basic validation.
+func (m *RecoveryResponseMessage) ValidateBasic() error {
+	if m.Height < 0 {
+		return errors.New("negative Height")
+	}
+	if m.Round < 0 {
+		return errors.New("negative Round")
+	}
+	if len(m.Blocks) == 0 {
+		return errors.New("empty Blocks")
+	}
+	if len(m.Blocks) != len(m.Commits) {
+		return errors.New("Blocks and Commits length mismatch")
+	}
+	for i, block := range m.Blocks {
+		if block == nil {
+			return fmt.Errorf("nil block at index %d", i)
+		}
+		if err := block.ValidateBasic(); err != nil {
+			return fmt.Errorf("invalid block at index %d: %w", i, err)
+		}
+	}
+	for i, commit := range m.Commits {
+		if commit == nil {
+			return fmt.Errorf("nil commit at index %d", i)
+		}
+		if err := commit.ValidateBasic(); err != nil {
+			return fmt.Errorf("invalid commit at index %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// String returns a string representation.
+func (m *RecoveryResponseMessage) String() string {
+	return fmt.Sprintf("[RecoveryResponse H:%v R:%v #Blocks:%v]",
+		m.Height, m.Round, len(m.Blocks))
 }
