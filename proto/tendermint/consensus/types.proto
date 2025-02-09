@@ -77,6 +77,22 @@ message VoteSetBits {
   tendermint.libs.bits.BitArray  votes    = 5 [(gogoproto.nullable) = false];
 }
 
+// RecoveryRequest is sent when a node needs to recover blocks
+message RecoveryRequest {
+  int64 height = 1;
+  int32 round = 2;
+  int64 from_height = 3;
+  int64 to_height = 4;
+}
+
+// RecoveryResponse is sent in response to a RecoveryRequest
+message RecoveryResponse {
+  int64 height = 1;
+  int32 round = 2;
+  repeated tendermint.types.Block blocks = 3;
+  repeated tendermint.types.Commit commits = 4;
+}
+
 message Message {
   oneof sum {
     NewRoundStep  new_round_step  = 1;
@@ -88,5 +104,7 @@ message Message {
     HasVote       has_vote        = 7;
     VoteSetMaj23  vote_set_maj23  = 8;
     VoteSetBits   vote_set_bits   = 9;
+    RecoveryRequest recovery_request = 10;
+    RecoveryResponse recovery_response = 11;
   }
 }
