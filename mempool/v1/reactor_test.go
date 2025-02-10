@@ -98,7 +98,7 @@ func TestMempoolVectors(t *testing.T) {
 
 func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
 	config := cfg.TestConfig()
-	config.Mempool.TTLDuration = 100 * time.Millisecond
+	config.Mempool.TTLDuration = 200 * time.Millisecond
 	const N = 1
 	reactor := makeAndConnectReactors(config, N)[0]
 

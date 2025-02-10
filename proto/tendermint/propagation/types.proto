@@ -4,7 +4,6 @@ package tendermint.propagation;
 option go_package = "github.com/tendermint/tendermint/proto/tendermint/propagation";
 
 import "gogoproto/gogo.proto";
-import "tendermint/types/types.proto";
 import "tendermint/libs/bits/types.proto";
 import "tendermint/crypto/proof.proto";
 
