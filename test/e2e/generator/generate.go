@@ -149,7 +149,7 @@ func generateTestnet(r *rand.Rand, opt map[string]interface{}, upgradeVersion st
 		return manifest, fmt.Errorf("unknown topology %q", opt["topology"])
 	}
 
-	if opt["typologoy"].(string) == "large_partially_connected" {
+	if opt["topology"].(string) == "large_partially_connected" {
 		// currently this is at max 11 and minimum 4
 		totalPossibleConnections := numSeeds + numValidators + numFulls - 1
 		// this value should be between 3 and 2
