@@ -110,6 +110,7 @@ message RequestListSnapshots {}
 message RequestOfferSnapshot {
   Snapshot snapshot = 1;  // snapshot offered by peers
   bytes    app_hash = 2;  // light client-verified app hash for snapshot height
+  uint64 app_version = 3;
 }
 
 // loads a snapshot chunk
@@ -152,6 +153,8 @@ message RequestProcessProposal {
   bytes                     next_validators_hash = 7;
   // address of the public key of the original proposer of the block.
   bytes proposer_address = 8;
+  uint64 square_size = 9;
+  bytes data_root_hash = 10;
 }
 
 // Extends a vote with application-injected data
@@ -319,6 +322,8 @@ message ResponseApplySnapshotChunk {
 
 message ResponsePrepareProposal {
   repeated bytes txs = 1;
+  uint64 square_size = 2;
+  bytes data_root_hash = 3;
 }
 
 message ResponseProcessProposal {
