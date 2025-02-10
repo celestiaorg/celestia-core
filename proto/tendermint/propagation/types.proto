@@ -1,0 +1,58 @@
+syntax = "proto3";
+package tendermint.propagation;
+
+option go_package = "github.com/tendermint/tendermint/proto/tendermint/propagation";
+
+import "gogoproto/gogo.proto";
+import "tendermint/types/types.proto";
+import "tendermint/libs/bits/types.proto";
+import "tendermint/crypto/proof.proto";
+
+message TxMetaData {
+  bytes  hash  = 1;
+  uint32 start = 2;
+  uint32 end   = 3;
+}
+
+// CompactBlock commits to the transaction included in a proposal.
+message CompactBlock {
+  int64               height    = 1;
+  int32               round     = 2;
+  bytes               bp_hash   = 3;
+  repeated TxMetaData blobs     = 4;
+  bytes               signature = 5;
+}
+
+message PartMetaData {
+  uint32                  index = 1;
+  bytes                   hash  = 2;
+  tendermint.crypto.Proof proof = 3 [(gogoproto.nullable) = false];
+}
+
+message HaveParts {
+  int64                 height = 1;
+  int32                 round  = 2;
+  repeated PartMetaData parts  = 3;
+}
+
+message WantParts {
+  tendermint.libs.bits.BitArray parts  = 1 [(gogoproto.nullable) = false];
+  int64                         height = 2;
+  int32                         round  = 3;
+}
+
+message RecoveryPart {
+  int64  height = 1;
+  int32  round  = 2;
+  uint32 index  = 3;
+  bytes  data   = 4;
+}
+
+message Message {
+  oneof sum {
+    CompactBlock compact_block = 1;
+    HaveParts    have_parts    = 2;
+    WantParts    want_parts    = 3;
+    RecoveryPart recovery_part = 4;
+  }
+}
