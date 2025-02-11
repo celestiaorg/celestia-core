@@ -123,6 +123,8 @@ func startNode(cfg *Config) error {
 		return fmt.Errorf("failed to setup config: %w", err)
 	}
 
+	cmtcfg.Instrumentation.TraceType = "local"
+
 	var clientCreator proxy.ClientCreator
 	if cfg.Protocol == string(e2e.ProtocolBuiltinConnSync) {
 		clientCreator = proxy.NewConnSyncLocalClientCreator(app)

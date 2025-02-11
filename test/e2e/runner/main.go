@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cometbft/cometbft/internal/trace"
 	"github.com/cometbft/cometbft/libs/log"
 	e2e "github.com/cometbft/cometbft/test/e2e/pkg"
 	"github.com/cometbft/cometbft/test/e2e/pkg/infra"
@@ -78,6 +79,32 @@ func NewCLI() *CLI {
 				}
 			default:
 				return fmt.Errorf("unknown infrastructure type '%s'", inft)
+			}
+
+			iurl, err := cmd.Flags().GetString(trace.FlagTracePushConfig)
+			if err != nil {
+				return err
+			}
+			itoken, err := cmd.Flags().GetString(trace.FlagTracePullAddress)
+			if err != nil {
+				return err
+			}
+			if ifd.TracePushConfig == "" {
+				ifd.TracePushConfig = iurl
+				ifd.TracePullAddress = itoken
+			}
+
+			purl, err := cmd.Flags().GetString(trace.FlagPyroscopeURL)
+			if err != nil {
+				return err
+			}
+			pTrace, err := cmd.Flags().GetBool(trace.FlagPyroscopeTrace)
+			if err != nil {
+				return err
+			}
+			if ifd.PyroscopeURL == "" {
+				ifd.PyroscopeURL = purl
+				ifd.PyroscopeTrace = pTrace
 			}
 
 			testnet, err := e2e.LoadTestnet(file, ifd)

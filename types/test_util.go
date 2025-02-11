@@ -106,18 +106,35 @@ func MakeVoteNoError(
 // MakeBlock returns a new block with an empty header, except what can be
 // computed from itself.
 // It populates the same set of fields validated by ValidateBasic.
-func MakeBlock(height int64, txs []Tx, lastCommit *Commit, evidence []Evidence) *Block {
+func MakeBlock(height int64, data Data, lastCommit *Commit, evidence []Evidence) *Block {
 	block := &Block{
 		Header: Header{
 			Version: cmtversion.Consensus{Block: version.BlockProtocol, App: 0},
 			Height:  height,
 		},
-		Data: Data{
-			Txs: txs,
-		},
+		Data:       data,
 		Evidence:   EvidenceData{Evidence: evidence},
 		LastCommit: lastCommit,
 	}
 	block.fillHeader()
 	return block
+}
+
+// MakeTxs is a helper function to generate mock transactions by given the block height
+// and the transaction numbers.
+func MakeTxs(height int64, num int) (txs []Tx) {
+	for i := 0; i < num; i++ {
+		txs = append(txs, Tx([]byte{byte(height), byte(i)}))
+	}
+	return txs
+}
+
+func MakeTenTxs(height int64) (txs []Tx) {
+	return MakeTxs(height, 10)
+}
+
+func MakeData(txs []Tx) Data {
+	return Data{
+		Txs: txs,
+	}
 }

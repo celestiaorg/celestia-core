@@ -29,6 +29,9 @@ type Options struct {
 	suppressStdout  bool
 	recreateConfig  bool
 	maxReqBatchSize int
+
+	// SpecificConfig will replace the global config if not nil
+	SpecificConfig *cfg.Config
 }
 
 var (
@@ -157,6 +160,9 @@ func StopTendermint(node *nm.Node) {
 func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 	// Create & start node
 	config := GetConfig(opts.recreateConfig)
+	if opts.SpecificConfig != nil {
+		config = opts.SpecificConfig
+	}
 	var logger log.Logger
 	if opts.suppressStdout {
 		logger = log.NewNopLogger()

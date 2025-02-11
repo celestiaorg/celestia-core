@@ -239,22 +239,22 @@ func (h *Handshaker) NBlocks() int {
 }
 
 // TODO: retry the handshake/replay if it fails ?
-func (h *Handshaker) Handshake(proxyApp proxy.AppConns) error {
+func (h *Handshaker) Handshake(proxyApp proxy.AppConns) (string, error) {
 	return h.HandshakeWithContext(context.TODO(), proxyApp)
 }
 
 // HandshakeWithContext is cancellable version of Handshake
-func (h *Handshaker) HandshakeWithContext(ctx context.Context, proxyApp proxy.AppConns) error {
+func (h *Handshaker) HandshakeWithContext(ctx context.Context, proxyApp proxy.AppConns) (string, error) {
 
 	// Handshake is done via ABCI Info on the query conn.
 	res, err := proxyApp.Query().Info(ctx, proxy.RequestInfo)
 	if err != nil {
-		return fmt.Errorf("error calling Info: %v", err)
+		return "", fmt.Errorf("error calling Info: %v", err)
 	}
 
 	blockHeight := res.LastBlockHeight
 	if blockHeight < 0 {
-		return fmt.Errorf("got a negative last block height (%d) from the app", blockHeight)
+		return "", fmt.Errorf("got a negative last block height (%d) from the app", blockHeight)
 	}
 	appHash := res.LastBlockAppHash
 
@@ -273,7 +273,7 @@ func (h *Handshaker) HandshakeWithContext(ctx context.Context, proxyApp proxy.Ap
 	// Replay blocks up to the latest in the blockstore.
 	appHash, err = h.ReplayBlocksWithContext(ctx, h.initialState, appHash, blockHeight, proxyApp)
 	if err != nil {
-		return fmt.Errorf("error on replay: %v", err)
+		return "", fmt.Errorf("error on replay: %v", err)
 	}
 
 	h.logger.Info("Completed ABCI Handshake - CometBFT and App are synced",
@@ -281,7 +281,7 @@ func (h *Handshaker) HandshakeWithContext(ctx context.Context, proxyApp proxy.Ap
 
 	// TODO: (on restart) replay mempool
 
-	return nil
+	return res.Version, nil
 }
 
 // ReplayBlocks replays all blocks since appBlockHeight and ensures the result
@@ -524,6 +524,7 @@ func (h *Handshaker) replayBlocks(
 func (h *Handshaker) replayBlock(state sm.State, height int64, proxyApp proxy.AppConnConsensus) (sm.State, error) {
 	block := h.store.LoadBlock(height)
 	meta := h.store.LoadBlockMeta(height)
+	seenCommit := h.store.LoadSeenCommit(height)
 
 	// Use stubs for both mempool and evidence pool since no transactions nor
 	// evidence are needed here - block already exists.
@@ -531,7 +532,7 @@ func (h *Handshaker) replayBlock(state sm.State, height int64, proxyApp proxy.Ap
 	blockExec.SetEventBus(h.eventBus)
 
 	var err error
-	state, err = blockExec.ApplyBlock(state, meta.BlockID, block)
+	state, err = blockExec.ApplyBlock(state, meta.BlockID, block, seenCommit)
 	if err != nil {
 		return sm.State{}, err
 	}

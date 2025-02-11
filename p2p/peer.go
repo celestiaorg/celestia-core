@@ -11,6 +11,8 @@ import (
 	"github.com/cometbft/cometbft/libs/cmap"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/service"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 
 	cmtconn "github.com/cometbft/cometbft/p2p/conn"
 )
@@ -45,6 +47,8 @@ type Peer interface {
 
 	SetRemovalFailed()
 	GetRemovalFailed() bool
+
+	HasIPChanged() bool // has the peer's IP changed
 }
 
 //----------------------------------------------------------
@@ -127,9 +131,17 @@ type peer struct {
 
 	// When removal of a peer fails, we set this flag
 	removalAttemptFailed bool
+
+	traceClient trace.Tracer
 }
 
 type PeerOption func(*peer)
+
+func WithPeerTracer(t trace.Tracer) PeerOption {
+	return func(p *peer) {
+		p.traceClient = t
+	}
+}
 
 func newPeer(
 	pc peerConn,
@@ -150,6 +162,7 @@ func newPeer(
 		metricsTicker: time.NewTicker(metricsTickerDuration),
 		metrics:       NopMetrics(),
 		mlc:           mlc,
+		traceClient:   trace.NoOpTracer(),
 	}
 
 	p.mconn = createMConnection(
@@ -240,6 +253,18 @@ func (p *peer) IsPersistent() bool {
 // NodeInfo returns a copy of the peer's NodeInfo.
 func (p *peer) NodeInfo() NodeInfo {
 	return p.nodeInfo
+}
+
+// HasIPChanged returns true and the new IP if the peer's IP has changed.
+func (p *peer) HasIPChanged() bool {
+	oldIP := p.ip
+	if oldIP == nil {
+		return false
+	}
+	// Reset the IP so we can get the new one
+	p.ip = nil
+	newIP := p.RemoteIP()
+	return !oldIP.Equal(newIP)
 }
 
 // SocketAddr returns the address of the socket.
@@ -368,6 +393,7 @@ func PeerMetrics(metrics *Metrics) PeerOption {
 }
 
 func (p *peer) metricsReporter() {
+	queues := make(map[byte]int, len(p.mconn.Status().Channels))
 	for {
 		select {
 		case <-p.metricsTicker.C:
@@ -375,9 +401,11 @@ func (p *peer) metricsReporter() {
 			var sendQueueSize float64
 			for _, chStatus := range status.Channels {
 				sendQueueSize += float64(chStatus.SendQueueSize)
+				queues[chStatus.ID] = chStatus.SendQueueSize
 			}
 
 			p.metrics.PeerPendingSendBytes.With("peer_id", string(p.ID())).Set(sendQueueSize)
+			schema.WritePendingBytes(p.traceClient, string(p.ID()), queues)
 		case <-p.Quit():
 			return
 		}
@@ -420,6 +448,7 @@ func createMConnection(
 				panic(fmt.Errorf("unwrapping message: %s", err))
 			}
 		}
+		schema.WriteReceivedBytes(p.traceClient, string(p.ID()), chID, len(msgBytes))
 		p.metrics.PeerReceiveBytesTotal.With(labels...).Add(float64(len(msgBytes)))
 		p.metrics.MessageReceiveBytesTotal.With("message_type", p.mlc.ValueToMetricLabel(msg)).Add(float64(len(msgBytes)))
 		reactor.Receive(Envelope{

@@ -138,7 +138,7 @@ func newReactor(
 
 		lastExtCommit := seenExtCommit.Clone()
 
-		thisBlock := state.MakeBlock(blockHeight, nil, lastExtCommit.ToCommit(), nil, state.Validators.Proposer.Address)
+		thisBlock := state.MakeBlock(blockHeight, types.MakeData([]types.Tx{}), lastExtCommit.ToCommit(), nil, state.Validators.Proposer.Address)
 
 		thisParts, err := thisBlock.MakePartSet(types.BlockPartSizeBytes)
 		require.NoError(t, err)
@@ -165,7 +165,7 @@ func newReactor(
 			ExtendedSignatures: []types.ExtendedCommitSig{vote.ExtendedCommitSig()},
 		}
 
-		state, err = blockExec.ApplyBlock(state, blockID, thisBlock)
+		state, err = blockExec.ApplyBlock(state, blockID, thisBlock, lastExtCommit.ToCommit())
 		if err != nil {
 			panic(fmt.Errorf("error apply block: %w", err))
 		}

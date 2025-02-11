@@ -125,6 +125,15 @@ type Metrics struct {
 	// correspond to earlier heights and rounds than this node is currently
 	// in.
 	LateVotes metrics.Counter `metrics_labels:"vote_type"`
+
+	// StartHeight is the height at which metrics began.
+	StartHeight metrics.Gauge
+	// BlockTimeSeconds is the duration between this block and the preceding one.
+	BlockTimeSeconds metrics.Gauge
+	// ApplicationRejectedProposals is the number of proposals rejected by the application.
+	ApplicationRejectedProposals metrics.Counter
+	// TimedOutProposals is the number of proposals that failed to be received in time.
+	TimedOutProposals metrics.Counter
 }
 
 func (m *Metrics) MarkProposalProcessed(accepted bool) {

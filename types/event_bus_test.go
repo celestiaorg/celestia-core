@@ -74,7 +74,7 @@ func TestEventBusPublishEventNewBlock(t *testing.T) {
 		}
 	})
 
-	block := MakeBlock(0, []Tx{}, nil, []Evidence{})
+	block := MakeBlock(0, Data{}, nil, []Evidence{})
 	resultFinalizeBlock := abci.ResponseFinalizeBlock{
 		Events: []abci.Event{
 			{Type: "testType", Attributes: []abci.EventAttribute{{Key: "baz", Value: "1"}}},
@@ -234,7 +234,7 @@ func TestEventBusPublishEventNewBlockHeader(t *testing.T) {
 		}
 	})
 
-	block := MakeBlock(0, []Tx{}, nil, []Evidence{})
+	block := MakeBlock(0, Data{}, nil, []Evidence{})
 	// PublishEventNewBlockHeader adds the tm.event compositeKey, so the query below should work
 	query := "tm.event='NewBlockHeader'"
 	headersSub, err := eventBus.Subscribe(context.Background(), "test", cmtquery.MustCompile(query))
@@ -529,4 +529,57 @@ var queries = []cmtpubsub.Query{
 
 func randQuery(r *rand.Rand) cmtpubsub.Query {
 	return queries[r.Intn(len(queries))]
+}
+
+func TestEventBusPublishEventIndexWrapper(t *testing.T) {
+	eventBus := NewEventBus()
+	err := eventBus.Start()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := eventBus.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	tx := Tx("foo")
+	require.NoError(t, err)
+
+	result := abci.ExecTxResult{
+		Data: []byte("bar"),
+		Events: []abci.Event{
+			{Type: "testType", Attributes: []abci.EventAttribute{{Key: "baz", Value: "1"}}},
+		},
+	}
+
+	// PublishEventTx adds 3 composite keys, so the query below should work
+	query := fmt.Sprintf("tm.event='Tx' AND tx.height=1 AND tx.hash='%X' AND testType.baz=1", tx.Hash())
+	queryQ, err := cmtquery.New(query)
+	require.NoError(t, err)
+	txsSub, err := eventBus.Subscribe(context.Background(), "test", queryQ)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		msg := <-txsSub.Out()
+		edt := msg.Data().(EventDataTx)
+		assert.Equal(t, int64(1), edt.Height)
+		assert.Equal(t, uint32(0), edt.Index)
+		assert.EqualValues(t, tx, edt.Tx)
+		assert.Equal(t, result, edt.Result)
+		close(done)
+	}()
+
+	err = eventBus.PublishEventTx(EventDataTx{abci.TxResult{
+		Height: 1,
+		Index:  0,
+		Tx:     tx,
+		Result: result,
+	}})
+	assert.NoError(t, err)
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("did not receive a transaction after 1 sec.")
+	}
 }
