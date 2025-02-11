@@ -1,17 +1,23 @@
 package types
 
 import (
+	"errors"
+
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	protoprop "github.com/tendermint/tendermint/proto/tendermint/propagation"
+	"github.com/tendermint/tendermint/types"
 )
 
+// TxmetaData keeps track of the hash of a transaction and its location with the
+// protobuf encoded block.
 type TxMetaData struct {
 	Hash  []byte `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`
 	Start uint32
 	End   uint32
 }
 
+// ToProto converts TxMetaData to its protobuf representation.
 func (t *TxMetaData) ToProto() *protoprop.TxMetaData {
 	return &protoprop.TxMetaData{
 		Hash:  t.Hash,
@@ -20,6 +26,7 @@ func (t *TxMetaData) ToProto() *protoprop.TxMetaData {
 	}
 }
 
+// TxMetaDataFromProto converts a protobuf TxMetaData to its Go representation.
 func TxMetaDataFromProto(t *protoprop.TxMetaData) *TxMetaData {
 	return &TxMetaData{
 		Hash:  t.Hash,
@@ -28,6 +35,18 @@ func TxMetaDataFromProto(t *protoprop.TxMetaData) *TxMetaData {
 	}
 }
 
+// ValidateBasic checks if the TxMetaData is valid. It fails if Start > End or
+// if the hash is invalid.
+func (t *TxMetaData) ValidateBasic() error {
+	if t.Start > t.End {
+		return errors.New("TxMetaData: Start > End")
+	}
+
+	return types.ValidateHash(t.Hash)
+}
+
+// CompactBlock contains commitments and metadata for reusing transactions that
+// have already been distributed.
 type CompactBlock struct {
 	Height    int64         `json:"height,omitempty"`
 	Round     int32         `json:"round,omitempty"`
@@ -36,6 +55,7 @@ type CompactBlock struct {
 	Signature []byte        `json:"signature,omitempty"`
 }
 
+// ToProto converts CompactBlock to its protobuf representation.
 func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
 	blobs := make([]*protoprop.TxMetaData, len(c.Blobs))
 	for i, blob := range c.Blobs {
@@ -50,6 +70,7 @@ func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
 	}
 }
 
+// CompactBlockFromProto converts a protobuf CompactBlock to its Go representation.
 func CompactBlockFromProto(c *protoprop.CompactBlock) *CompactBlock {
 	blobs := make([]*TxMetaData, len(c.Blobs))
 	for i, blob := range c.Blobs {
@@ -64,17 +85,23 @@ func CompactBlockFromProto(c *protoprop.CompactBlock) *CompactBlock {
 	}
 }
 
+// PartMetaData keeps track of the hash of each part, its location via the
+// index, along with the proof of inclusion to either the PartSetHeader hash or
+// the BPRoot in the CompactBlock.
 type PartMetaData struct {
 	Index uint32       `json:"index,omitempty"`
 	Hash  []byte       `json:"hash,omitempty"`
 	Proof merkle.Proof `json:"proof"`
 }
+
+// ToProto converts PartMetaData to its protobuf representation.
 type HavePart struct {
 	Height int64          `json:"height,omitempty"`
 	Round  int32          `json:"round,omitempty"`
 	Parts  []PartMetaData `json:"parts,omitempty"`
 }
 
+// ToProto converts HavePart to its protobuf representation.
 func (h *HavePart) ToProto() *protoprop.HaveParts {
 	parts := make([]*protoprop.PartMetaData, len(h.Parts))
 	for i, part := range h.Parts {
@@ -91,6 +118,7 @@ func (h *HavePart) ToProto() *protoprop.HaveParts {
 	}
 }
 
+// HavePartFromProto converts a protobuf HavePart to its Go representation.
 func HavePartFromProto(h *protoprop.HaveParts) (*HavePart, error) {
 	parts := make([]PartMetaData, len(h.Parts))
 	for i, part := range h.Parts {
@@ -111,12 +139,14 @@ func HavePartFromProto(h *protoprop.HaveParts) (*HavePart, error) {
 	}, nil
 }
 
+// WantParts is a message that requests a set of parts from a peer.
 type WantParts struct {
 	Parts  *bits.BitArray `json:"parts"`
 	Height int64          `json:"height,omitempty"`
 	Round  int32          `json:"round,omitempty"`
 }
 
+// ToProto converts WantParts to its protobuf representation.
 func (w *WantParts) ToProto() *protoprop.WantParts {
 	return &protoprop.WantParts{
 		Parts:  *w.Parts.ToProto(),
@@ -125,6 +155,7 @@ func (w *WantParts) ToProto() *protoprop.WantParts {
 	}
 }
 
+// WantPartsFromProto converts a protobuf WantParts to its Go representation.
 func WantPartsFromProto(w *protoprop.WantParts) (*WantParts, error) {
 	ba := new(bits.BitArray)
 	ba.FromProto(&w.Parts)
