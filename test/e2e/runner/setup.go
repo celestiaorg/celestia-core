@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -84,8 +83,7 @@ func Setup(testnet *e2e.Testnet, infp infra.Provider) error {
 		if err != nil {
 			return err
 		}
-		//nolint:gosec // G306: Expect WriteFile permissions to be 0600 or less
-		err = os.WriteFile(filepath.Join(nodeDir, "config", "app.toml"), appCfg, 0o644)
+		err = os.WriteFile(filepath.Join(nodeDir, "config", "app.toml"), appCfg, 0o644) //nolint:gosec
 		if err != nil {
 			return err
 		}
@@ -118,6 +116,12 @@ func Setup(testnet *e2e.Testnet, infp infra.Provider) error {
 		)).Save()
 	}
 
+	if testnet.Prometheus {
+		if err := testnet.WritePrometheusConfig(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -131,6 +135,11 @@ func MakeGenesis(testnet *e2e.Testnet) (types.GenesisDoc, error) {
 	}
 	// set the app version to 1
 	genesis.ConsensusParams.Version.AppVersion = 1
+	genesis.ConsensusParams.Evidence.MaxAgeNumBlocks = e2e.EvidenceAgeHeight
+	genesis.ConsensusParams.Evidence.MaxAgeDuration = e2e.EvidenceAgeTime
+	if testnet.BlockMaxBytes != 0 {
+		genesis.ConsensusParams.Block.MaxBytes = testnet.BlockMaxBytes
+	}
 	for validator, power := range testnet.Validators {
 		genesis.Validators = append(genesis.Validators, types.GenesisValidator{
 			Name:    validator.Name,
@@ -163,17 +172,12 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.RPC.PprofListenAddress = ":6060"
 	cfg.P2P.ExternalAddress = fmt.Sprintf("tcp://%v", node.AddressP2P(false))
 	cfg.P2P.AddrBookStrict = false
-	cfg.DBBackend = node.Database
+	cfg.DBBackend = "goleveldb"
+	cfg.Mempool.Version = "v2"
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
+	cfg.FastSync.Version = "v0"
 	cfg.Mempool.ExperimentalMaxGossipConnectionsToNonPersistentPeers = int(node.Testnet.ExperimentalMaxGossipConnectionsToNonPersistentPeers)
 	cfg.Mempool.ExperimentalMaxGossipConnectionsToPersistentPeers = int(node.Testnet.ExperimentalMaxGossipConnectionsToPersistentPeers)
-
-	cfg.Instrumentation.TraceType = "celestia"
-	cfg.Instrumentation.TracePushConfig = node.TracePushConfig
-	cfg.Instrumentation.TracePullAddress = node.TracePullAddress
-	cfg.Instrumentation.PyroscopeTrace = node.PyroscopeTrace
-	cfg.Instrumentation.PyroscopeURL = node.PyroscopeURL
-	cfg.Instrumentation.PyroscopeProfileTypes = node.PyroscopeProfileTypes
 
 	switch node.ABCIProtocol {
 	case e2e.ProtocolUNIX:
@@ -219,15 +223,6 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	default:
 		return nil, fmt.Errorf("unexpected mode %q", node.Mode)
 	}
-	if node.Mempool != "" {
-		cfg.Mempool.Version = node.Mempool
-	}
-
-	if node.FastSync == "" {
-		cfg.FastSyncMode = false
-	} else {
-		cfg.FastSync.Version = node.FastSync
-	}
 
 	if node.StateSync {
 		cfg.StateSync.Enable = true
@@ -257,12 +252,15 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 		}
 		cfg.P2P.PersistentPeers += peer.AddressP2P(true)
 	}
-	if node.Testnet.MaxInboundConnections != 0 {
-		cfg.P2P.MaxNumInboundPeers = node.Testnet.MaxInboundConnections
+
+	if node.Testnet.LogLevel != "" {
+		cfg.LogLevel = node.Testnet.LogLevel
 	}
-	if node.Testnet.MaxOutboundConnections != 0 {
-		cfg.P2P.MaxNumOutboundPeers = node.Testnet.MaxOutboundConnections
+
+	if node.Testnet.LogFormat != "" {
+		cfg.LogFormat = node.Testnet.LogFormat
 	}
+
 	if node.Prometheus {
 		cfg.Instrumentation.Prometheus = true
 	}
@@ -273,16 +271,19 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 // MakeAppConfig generates an ABCI application config for a node.
 func MakeAppConfig(node *e2e.Node) ([]byte, error) {
 	cfg := map[string]interface{}{
-		"chain_id":          node.Testnet.Name,
-		"dir":               "data/app",
-		"listen":            AppAddressUNIX,
-		"mode":              node.Mode,
-		"proxy_port":        node.ProxyPort,
-		"protocol":          "socket",
-		"persist_interval":  node.PersistInterval,
-		"snapshot_interval": node.SnapshotInterval,
-		"retain_blocks":     node.RetainBlocks,
-		"key_type":          node.PrivvalKey.Type(),
+		"chain_id":               node.Testnet.Name,
+		"dir":                    "data/app",
+		"listen":                 AppAddressUNIX,
+		"mode":                   node.Mode,
+		"protocol":               "socket",
+		"persist_interval":       node.PersistInterval,
+		"snapshot_interval":      node.SnapshotInterval,
+		"retain_blocks":          node.RetainBlocks,
+		"key_type":               node.PrivvalKey.Type(),
+		"prepare_proposal_delay": node.Testnet.PrepareProposalDelay,
+		"process_proposal_delay": node.Testnet.ProcessProposalDelay,
+		"check_tx_delay":         node.Testnet.CheckTxDelay,
+		"finalize_block_delay":   node.Testnet.FinalizeBlockDelay,
 	}
 	switch node.ABCIProtocol {
 	case e2e.ProtocolUNIX:
@@ -294,7 +295,7 @@ func MakeAppConfig(node *e2e.Node) ([]byte, error) {
 		cfg["protocol"] = "grpc"
 	case e2e.ProtocolBuiltin:
 		delete(cfg, "listen")
-		cfg["protocol"] = "builtin"
+		cfg["protocol"] = string(node.ABCIProtocol)
 	default:
 		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
 	}
@@ -313,12 +314,6 @@ func MakeAppConfig(node *e2e.Node) ([]byte, error) {
 			return nil, fmt.Errorf("unexpected privval protocol setting %q", node.PrivvalProtocol)
 		}
 	}
-
-	misbehaviors := make(map[string]string)
-	for height, misbehavior := range node.Misbehaviors {
-		misbehaviors[strconv.Itoa(int(height))] = misbehavior
-	}
-	cfg["misbehaviors"] = misbehaviors
 
 	if len(node.Testnet.ValidatorUpdates) > 0 {
 		validatorUpdates := map[string]map[string]int64{}
@@ -352,6 +347,5 @@ func UpdateConfigStateSync(node *e2e.Node, height int64, hash []byte) error {
 	}
 	bz = regexp.MustCompile(`(?m)^trust_height =.*`).ReplaceAll(bz, []byte(fmt.Sprintf(`trust_height = %v`, height)))
 	bz = regexp.MustCompile(`(?m)^trust_hash =.*`).ReplaceAll(bz, []byte(fmt.Sprintf(`trust_hash = "%X"`, hash)))
-	//nolint:gosec // G306: Expect WriteFile permissions to be 0600 or less
-	return os.WriteFile(cfgPath, bz, 0o644)
+	return os.WriteFile(cfgPath, bz, 0o644) //nolint:gosec
 }

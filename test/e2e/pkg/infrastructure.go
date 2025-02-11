@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sort"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 // InfrastructureData contains the relevant information for a set of existing
 // infrastructure that is to be used for running a testnet.
 type InfrastructureData struct {
+	Path string
 
 	// Provider is the name of infrastructure provider backing the testnet.
 	// For example, 'docker' if it is running locally in a docker network or
@@ -32,28 +34,24 @@ type InfrastructureData struct {
 	// Network is the CIDR notation range of IP addresses that all of the instances'
 	// IP addresses are expected to be within.
 	Network string `json:"network"`
-
-	// TracePushConfig is the URL of the server to push trace data to.
-	TracePushConfig string `json:"trace_push_config,omitempty"`
-
-	// TracePullAddress is the address to listen on for pulling trace data.
-	TracePullAddress string `json:"trace_pull_address,omitempty"`
-
-	// PyroscopeURL is the URL of the pyroscope instance to use for continuous
-	// profiling. If not specified, data will not be collected.
-	PyroscopeURL string `json:"pyroscope_url,omitempty"`
-
-	// PyroscopeTrace enables adding trace data to pyroscope profiling.
-	PyroscopeTrace bool `json:"pyroscope_trace,omitempty"`
-
-	// PyroscopeProfileTypes is the list of profile types to collect.
-	PyroscopeProfileTypes []string `json:"pyroscope_profile_types,omitempty"`
 }
 
 // InstanceData contains the relevant information for a machine instance backing
 // one of the nodes in the testnet.
 type InstanceData struct {
-	IPAddress net.IP `json:"ip_address"`
+	IPAddress    net.IP `json:"ip_address"`
+	ExtIPAddress net.IP `json:"ext_ip_address"`
+	Port         uint32 `json:"port"`
+}
+
+func sortNodeNames(m Manifest) []string {
+	// Set up nodes, in alphabetical order (IPs and ports get same order).
+	nodeNames := []string{}
+	for name := range m.Nodes {
+		nodeNames = append(nodeNames, name)
+	}
+	sort.Strings(nodeNames)
+	return nodeNames
 }
 
 func NewDockerInfrastructureData(m Manifest) (InfrastructureData, error) {
@@ -65,16 +63,22 @@ func NewDockerInfrastructureData(m Manifest) (InfrastructureData, error) {
 	if err != nil {
 		return InfrastructureData{}, fmt.Errorf("invalid IP network address %q: %w", netAddress, err)
 	}
+
+	portGen := newPortGenerator(proxyPortFirst)
 	ipGen := newIPGenerator(ipNet)
 	ifd := InfrastructureData{
 		Provider:  "docker",
 		Instances: make(map[string]InstanceData),
 		Network:   netAddress,
 	}
-	for name := range m.Nodes {
+	localHostIP := net.ParseIP("127.0.0.1")
+	for _, name := range sortNodeNames(m) {
 		ifd.Instances[name] = InstanceData{
-			IPAddress: ipGen.Next(),
+			IPAddress:    ipGen.Next(),
+			ExtIPAddress: localHostIP,
+			Port:         portGen.Next(),
 		}
+
 	}
 	return ifd, nil
 }
@@ -92,5 +96,6 @@ func InfrastructureDataFromFile(p string) (InfrastructureData, error) {
 	if ifd.Network == "" {
 		ifd.Network = globalIPv4CIDR
 	}
+	ifd.Path = p
 	return ifd, nil
 }
