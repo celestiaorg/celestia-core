@@ -57,13 +57,6 @@ type Manifest struct {
 	// launch it instead of launching a separate CometBFT process.
 	ABCIProtocol string `toml:"abci_protocol"`
 
-	// MaxInboundConnections and MaxOutboundConnection are the maximum number
-	// of connections a node has. This can be used to throttle the degree of
-	// connectivity of the network. If not specified, the default is taken
-	// from config/config.go
-	MaxInboundConnections  int `toml:"max_inbound_connections"`
-	MaxOutboundConnections int `toml:"max_outbound_connections"`
-
 	// UpgradeVersion specifies to which version this nodes need to upgrade.
 	// Currently only uncoordinated upgrade is supported
 	UpgradeVersion string `toml:"upgrade_version"`
@@ -123,8 +116,8 @@ type ManifestNode struct {
 	// Defaults to disabled.
 	FastSync string `toml:"fast_sync"`
 
-	// Mempool specifies which version of mempool to use. Either "v0" or "v1", or "v2"
-	// (cat). This defaults to v2.
+	// Mempool specifies which version of mempool to use. Either "v0" or "v1"
+	// This defaults to v0.
 	Mempool string `toml:"mempool_version"`
 
 	// StateSync enables state sync. The runner automatically configures trusted

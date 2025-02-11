@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/p2p"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 )
 
@@ -50,10 +49,10 @@ func Start(testnet *e2e.Testnet) error {
 		if _, err := waitForNode(node, 0, 15*time.Second); err != nil {
 			return err
 		}
-		nid := p2p.NodeKey{PrivKey: node.NodeKey}
-		logger.Info("start", "msg", log.NewLazySprintf("Node %v up on http://127.0.0.1:%v chain-id %s node-id %s", node.Name, node.ProxyPort, testnet.Name, nid.ID()))
 		if node.PrometheusProxyPort > 0 {
-			logger.Info("start", "msg", log.NewLazySprintf("with Prometheus on http://127.0.0.1:%v/metrics", node.Name, node.ProxyPort, node.PrometheusProxyPort))
+			logger.Info("start", "msg", log.NewLazySprintf("Node %v up on http://127.0.0.1:%v; with Prometheus on http://127.0.0.1:%v/metrics", node.Name, node.ProxyPort, node.PrometheusProxyPort))
+		} else {
+			logger.Info("start", "msg", log.NewLazySprintf("Node %v up on http://127.0.0.1:%v", node.Name, node.ProxyPort))
 		}
 	}
 

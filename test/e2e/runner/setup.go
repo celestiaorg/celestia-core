@@ -165,15 +165,8 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.P2P.AddrBookStrict = false
 	cfg.DBBackend = node.Database
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
-	cfg.Mempool.ExperimentalMaxGossipConnectionsToNonPersistentPeers = int(node.Testnet.ExperimentalMaxGossipConnectionsToNonPersistentPeers)
-	cfg.Mempool.ExperimentalMaxGossipConnectionsToPersistentPeers = int(node.Testnet.ExperimentalMaxGossipConnectionsToPersistentPeers)
 
-	cfg.Instrumentation.TraceType = "celestia"
-	cfg.Instrumentation.TracePushConfig = node.TracePushConfig
-	cfg.Instrumentation.TracePullAddress = node.TracePullAddress
-	cfg.Instrumentation.PyroscopeTrace = node.PyroscopeTrace
-	cfg.Instrumentation.PyroscopeURL = node.PyroscopeURL
-	cfg.Instrumentation.PyroscopeProfileTypes = node.PyroscopeProfileTypes
+	cfg.Instrumentation.TraceType = "noop"
 
 	switch node.ABCIProtocol {
 	case e2e.ProtocolUNIX:
@@ -257,12 +250,7 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 		}
 		cfg.P2P.PersistentPeers += peer.AddressP2P(true)
 	}
-	if node.Testnet.MaxInboundConnections != 0 {
-		cfg.P2P.MaxNumInboundPeers = node.Testnet.MaxInboundConnections
-	}
-	if node.Testnet.MaxOutboundConnections != 0 {
-		cfg.P2P.MaxNumOutboundPeers = node.Testnet.MaxOutboundConnections
-	}
+
 	if node.Prometheus {
 		cfg.Instrumentation.Prometheus = true
 	}

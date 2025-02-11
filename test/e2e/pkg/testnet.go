@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/crypto/secp256k1"
@@ -67,8 +66,6 @@ type Testnet struct {
 	Validators                                           map[*Node]int64
 	ValidatorUpdates                                     map[int64]map[*Node]int64
 	Nodes                                                []*Node
-	MaxInboundConnections                                int
-	MaxOutboundConnections                               int
 	KeyType                                              string
 	Evidence                                             int
 	LoadTxSizeBytes                                      int
@@ -84,36 +81,31 @@ type Testnet struct {
 
 // Node represents a CometBFT node in a testnet.
 type Node struct {
-	Name                  string
-	Version               string
-	Testnet               *Testnet
-	Mode                  Mode
-	PrivvalKey            crypto.PrivKey
-	NodeKey               crypto.PrivKey
-	IP                    net.IP
-	ProxyPort             uint32
-	StartAt               int64
-	FastSync              string
-	StateSync             bool
-	Mempool               string
-	Database              string
-	ABCIProtocol          Protocol
-	PrivvalProtocol       Protocol
-	PersistInterval       uint64
-	SnapshotInterval      uint64
-	RetainBlocks          uint64
-	Seeds                 []*Node
-	PersistentPeers       []*Node
-	Perturbations         []Perturbation
-	Misbehaviors          map[int64]string
-	SendNoLoad            bool
-	Prometheus            bool
-	PrometheusProxyPort   uint32
-	TracePushConfig       string
-	TracePullAddress      string
-	PyroscopeURL          string
-	PyroscopeTrace        bool
-	PyroscopeProfileTypes []string
+	Name                string
+	Version             string
+	Testnet             *Testnet
+	Mode                Mode
+	PrivvalKey          crypto.PrivKey
+	NodeKey             crypto.PrivKey
+	IP                  net.IP
+	ProxyPort           uint32
+	StartAt             int64
+	FastSync            string
+	StateSync           bool
+	Mempool             string
+	Database            string
+	ABCIProtocol        Protocol
+	PrivvalProtocol     Protocol
+	PersistInterval     uint64
+	SnapshotInterval    uint64
+	RetainBlocks        uint64
+	Seeds               []*Node
+	PersistentPeers     []*Node
+	Perturbations       []Perturbation
+	Misbehaviors        map[int64]string
+	SendNoLoad          bool
+	Prometheus          bool
+	PrometheusProxyPort uint32
 }
 
 // LoadTestnet loads a testnet from a manifest file, using the filename to
@@ -132,24 +124,22 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 	}
 
 	testnet := &Testnet{
-		Name:                   filepath.Base(dir),
-		File:                   fname,
-		Dir:                    dir,
-		IP:                     ipNet,
-		InitialHeight:          1,
-		InitialState:           manifest.InitialState,
-		Validators:             map[*Node]int64{},
-		ValidatorUpdates:       map[int64]map[*Node]int64{},
-		Nodes:                  []*Node{},
-		MaxInboundConnections:  manifest.MaxInboundConnections,
-		MaxOutboundConnections: manifest.MaxOutboundConnections,
-		LoadTxSizeBytes:        manifest.LoadTxSizeBytes,
-		LoadTxBatchSize:        manifest.LoadTxBatchSize,
-		LoadTxConnections:      manifest.LoadTxConnections,
-		LoadMaxTxs:             manifest.LoadMaxTxs,
-		ABCIProtocol:           manifest.ABCIProtocol,
-		UpgradeVersion:         manifest.UpgradeVersion,
-		Prometheus:             manifest.Prometheus,
+		Name:              filepath.Base(dir),
+		File:              fname,
+		Dir:               dir,
+		IP:                ipNet,
+		InitialHeight:     1,
+		InitialState:      manifest.InitialState,
+		Validators:        map[*Node]int64{},
+		ValidatorUpdates:  map[int64]map[*Node]int64{},
+		Nodes:             []*Node{},
+		LoadTxSizeBytes:   manifest.LoadTxSizeBytes,
+		LoadTxBatchSize:   manifest.LoadTxBatchSize,
+		LoadTxConnections: manifest.LoadTxConnections,
+		LoadMaxTxs:        manifest.LoadMaxTxs,
+		ABCIProtocol:      manifest.ABCIProtocol,
+		UpgradeVersion:    manifest.UpgradeVersion,
+		Prometheus:        manifest.Prometheus,
 		ExperimentalMaxGossipConnectionsToPersistentPeers:    manifest.ExperimentalMaxGossipConnectionsToPersistentPeers,
 		ExperimentalMaxGossipConnectionsToNonPersistentPeers: manifest.ExperimentalMaxGossipConnectionsToNonPersistentPeers,
 	}
@@ -194,33 +184,28 @@ func LoadTestnet(manifest Manifest, fname string, ifd InfrastructureData) (*Test
 		}
 
 		node := &Node{
-			Name:                  name,
-			Version:               v,
-			Testnet:               testnet,
-			PrivvalKey:            keyGen.Generate(manifest.KeyType),
-			NodeKey:               keyGen.Generate("ed25519"),
-			IP:                    ind.IPAddress,
-			ProxyPort:             proxyPortGen.Next(),
-			Mode:                  ModeValidator,
-			Database:              "goleveldb",
-			ABCIProtocol:          Protocol(testnet.ABCIProtocol),
-			PrivvalProtocol:       ProtocolFile,
-			StartAt:               nodeManifest.StartAt,
-			FastSync:              nodeManifest.FastSync,
-			Mempool:               nodeManifest.Mempool,
-			StateSync:             nodeManifest.StateSync,
-			PersistInterval:       1,
-			SnapshotInterval:      nodeManifest.SnapshotInterval,
-			RetainBlocks:          nodeManifest.RetainBlocks,
-			Perturbations:         []Perturbation{},
-			Misbehaviors:          make(map[int64]string),
-			SendNoLoad:            nodeManifest.SendNoLoad,
-			TracePushConfig:       ifd.TracePushConfig,
-			TracePullAddress:      ifd.TracePullAddress,
-			PyroscopeURL:          ifd.PyroscopeURL,
-			PyroscopeTrace:        ifd.PyroscopeTrace,
-			PyroscopeProfileTypes: ifd.PyroscopeProfileTypes,
-			Prometheus:            testnet.Prometheus,
+			Name:             name,
+			Version:          v,
+			Testnet:          testnet,
+			PrivvalKey:       keyGen.Generate(manifest.KeyType),
+			NodeKey:          keyGen.Generate("ed25519"),
+			IP:               ind.IPAddress,
+			ProxyPort:        proxyPortGen.Next(),
+			Mode:             ModeValidator,
+			Database:         "goleveldb",
+			ABCIProtocol:     Protocol(testnet.ABCIProtocol),
+			PrivvalProtocol:  ProtocolFile,
+			StartAt:          nodeManifest.StartAt,
+			FastSync:         nodeManifest.FastSync,
+			Mempool:          nodeManifest.Mempool,
+			StateSync:        nodeManifest.StateSync,
+			PersistInterval:  1,
+			SnapshotInterval: nodeManifest.SnapshotInterval,
+			RetainBlocks:     nodeManifest.RetainBlocks,
+			Perturbations:    []Perturbation{},
+			Misbehaviors:     make(map[int64]string),
+			SendNoLoad:       nodeManifest.SendNoLoad,
+			Prometheus:       testnet.Prometheus,
 		}
 		if node.StartAt == testnet.InitialHeight {
 			node.StartAt = 0 // normalize to 0 for initial nodes, since code expects this
@@ -334,12 +319,6 @@ func (t Testnet) Validate() error {
 	if t.IP == nil {
 		return errors.New("network has no IP")
 	}
-	if t.MaxInboundConnections < 0 {
-		return errors.New("MaxInboundConnections must not be negative")
-	}
-	if t.MaxOutboundConnections < 0 {
-		return errors.New("MaxOutboundConnections must not be negative")
-	}
 	if len(t.Nodes) == 0 {
 		return errors.New("network has no nodes")
 	}
@@ -388,7 +367,7 @@ func (n Node) Validate(testnet Testnet) error {
 
 	}
 	switch n.Mempool {
-	case "", config.MempoolV0, config.MempoolV1, config.MempoolV2:
+	case "", "v0", "v1":
 	default:
 		return fmt.Errorf("invalid mempool version %q", n.Mempool)
 	}

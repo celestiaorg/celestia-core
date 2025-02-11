@@ -11,7 +11,6 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/tendermint/tendermint/libs/math"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 	"github.com/tendermint/tendermint/version"
 )
@@ -20,7 +19,7 @@ var (
 	// testnetCombinations defines global testnet options, where we generate a
 	// separate testnet for each combination (Cartesian product) of options.
 	testnetCombinations = map[string][]interface{}{
-		"topology":      {"single", "quad", "large_connected", "large_partially_connected"},
+		"topology":      {"single", "quad", "large"},
 		"initialHeight": {0, 1000},
 		"initialState": {
 			map[string]string{},
@@ -41,7 +40,7 @@ var (
 	// FIXME: v2 disabled due to flake
 	nodeFastSyncs         = uniformChoice{"v0"} // "v2"
 	nodeStateSyncs        = uniformChoice{false, true}
-	nodeMempools          = uniformChoice{"v0", "v1", "v2"}
+	nodeMempools          = uniformChoice{"v0", "v1"}
 	nodePersistIntervals  = uniformChoice{0, 1, 5}
 	nodeSnapshotIntervals = uniformChoice{0, 3}
 	nodeRetainBlocks      = uniformChoice{0, 1, 5}
@@ -139,7 +138,7 @@ func generateTestnet(r *rand.Rand, opt map[string]interface{}, upgradeVersion st
 		numValidators = 1
 	case "quad":
 		numValidators = 4
-	case "large_connected", "large-partially_connected":
+	case "large":
 		// FIXME Networks are kept small since large ones use too much CPU.
 		numSeeds = r.Intn(2)
 		numLightClients = r.Intn(3)
@@ -147,15 +146,6 @@ func generateTestnet(r *rand.Rand, opt map[string]interface{}, upgradeVersion st
 		numFulls = r.Intn(4)
 	default:
 		return manifest, fmt.Errorf("unknown topology %q", opt["topology"])
-	}
-
-	if opt["topology"].(string) == "large_partially_connected" {
-		// currently this is at max 11 and minimum 4
-		totalPossibleConnections := numSeeds + numValidators + numFulls - 1
-		// this value should be between 3 and 2
-		manifest.MaxOutboundConnections = math.MaxInt(totalPossibleConnections/3, 2)
-		// this value should be between 5 and 2
-		manifest.MaxInboundConnections = math.MaxInt(totalPossibleConnections/2, 2)
 	}
 
 	// First we generate seed nodes, starting at the initial height.
@@ -272,21 +262,18 @@ func generateNode(
 	r *rand.Rand, mode e2e.Mode, startAt int64, initialHeight int64, forceArchive bool,
 ) *e2e.ManifestNode {
 	node := e2e.ManifestNode{
-		Version:         nodeVersions.Choose(r).(string),
-		Mode:            string(mode),
-		StartAt:         startAt,
-		Database:        nodeDatabases.Choose(r).(string),
-		PrivvalProtocol: nodePrivvalProtocols.Choose(r).(string),
-		FastSync:        nodeFastSyncs.Choose(r).(string),
-		Mempool:         nodeMempools.Choose(r).(string),
-		StateSync:       nodeStateSyncs.Choose(r).(bool) && startAt > 0,
-		//nolint:gosec
-		PersistInterval: ptrUint64(uint64(nodePersistIntervals.Choose(r).(int))),
-		//nolint:gosec
+		Version:          nodeVersions.Choose(r).(string),
+		Mode:             string(mode),
+		StartAt:          startAt,
+		Database:         nodeDatabases.Choose(r).(string),
+		PrivvalProtocol:  nodePrivvalProtocols.Choose(r).(string),
+		FastSync:         nodeFastSyncs.Choose(r).(string),
+		Mempool:          nodeMempools.Choose(r).(string),
+		StateSync:        nodeStateSyncs.Choose(r).(bool) && startAt > 0,
+		PersistInterval:  ptrUint64(uint64(nodePersistIntervals.Choose(r).(int))),
 		SnapshotInterval: uint64(nodeSnapshotIntervals.Choose(r).(int)),
-		//nolint:gosec
-		RetainBlocks: uint64(nodeRetainBlocks.Choose(r).(int)),
-		Perturb:      nodePerturbations.Choose(r),
+		RetainBlocks:     uint64(nodeRetainBlocks.Choose(r).(int)),
+		Perturb:          nodePerturbations.Choose(r),
 	}
 
 	// If this node is forced to be an archive node, retain all blocks and
