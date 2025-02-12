@@ -173,7 +173,7 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.P2P.ExternalAddress = fmt.Sprintf("tcp://%v", node.AddressP2P(false))
 	cfg.P2P.AddrBookStrict = false
 	cfg.DBBackend = "goleveldb"
-	cfg.Mempool.Version = "v1"
+	cfg.Mempool.Version = "v2"
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
 	cfg.FastSync.Version = "v0"
 	cfg.Mempool.ExperimentalMaxGossipConnectionsToNonPersistentPeers = int(node.Testnet.ExperimentalMaxGossipConnectionsToNonPersistentPeers)
