@@ -7,7 +7,7 @@ import (
 
 	"github.com/celestiaorg/nmt"
 
-	"github.com/cometbft/cometbft/internal/consts"
+	"github.com/cometbft/cometbft/libs/consts"
 	crypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 )

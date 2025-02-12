@@ -591,6 +591,116 @@ func (c *baseRPCClient) BroadcastEvidence(
 	return result, nil
 }
 
+func (c *baseRPCClient) SignedBlock(ctx context.Context, height *int64) (*ctypes.ResultSignedBlock, error) {
+	result := new(ctypes.ResultSignedBlock)
+	params := make(map[string]interface{})
+	if height != nil {
+		params["height"] = height
+	}
+	_, err := c.caller.Call(ctx, "signed_block", params, result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *baseRPCClient) DataCommitment(
+	ctx context.Context,
+	start uint64,
+	end uint64,
+) (*ctypes.ResultDataCommitment, error) {
+	result := new(ctypes.ResultDataCommitment)
+	params := map[string]interface{}{
+		"start": start,
+		"end":   end,
+	}
+
+	_, err := c.caller.Call(ctx, "data_commitment", params, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (c *baseRPCClient) TxStatus(
+	ctx context.Context,
+	hash []byte,
+) (*ctypes.ResultTxStatus, error) {
+	result := new(ctypes.ResultTxStatus)
+	params := map[string]interface{}{
+		"hash": hash,
+	}
+
+	_, err := c.caller.Call(ctx, "tx_status", params, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (c *baseRPCClient) DataRootInclusionProof(
+	ctx context.Context,
+	height uint64,
+	start uint64,
+	end uint64,
+) (*ctypes.ResultDataRootInclusionProof, error) {
+	result := new(ctypes.ResultDataRootInclusionProof)
+	params := map[string]interface{}{
+		"height": height,
+		"start":  start,
+		"end":    end,
+	}
+
+	_, err := c.caller.Call(ctx, "data_root_inclusion_proof", params, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// ProveShares
+// Deprecated: Use ProveSharesV2 instead.
+func (c *baseRPCClient) ProveShares(
+	ctx context.Context,
+	height uint64,
+	startShare uint64,
+	endShare uint64,
+) (types.ShareProof, error) {
+	result := new(types.ShareProof)
+	params := map[string]interface{}{
+		"height":     height,
+		"startShare": startShare,
+		"endShare":   endShare,
+	}
+	_, err := c.caller.Call(ctx, "prove_shares", params, result)
+	if err != nil {
+		return types.ShareProof{}, err
+	}
+	return *result, nil
+}
+
+func (c *baseRPCClient) ProveSharesV2(
+	ctx context.Context,
+	height uint64,
+	startShare uint64,
+	endShare uint64,
+) (*ctypes.ResultShareProof, error) {
+	result := new(ctypes.ResultShareProof)
+	params := map[string]interface{}{
+		"height":     height,
+		"startShare": startShare,
+		"endShare":   endShare,
+	}
+	_, err := c.caller.Call(ctx, "prove_shares_v2", params, result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 //-----------------------------------------------------------------------------
 // WSEvents
 

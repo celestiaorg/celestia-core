@@ -79,6 +79,24 @@ func (_m *Peer) GetRemovalFailed() bool {
 	return r0
 }
 
+// HasIPChanged provides a mock function with no fields
+func (_m *Peer) HasIPChanged() bool {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for HasIPChanged")
+	}
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func() bool); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	return r0
+}
+
 // ID provides a mock function with no fields
 func (_m *Peer) ID() p2p.ID {
 	ret := _m.Called()

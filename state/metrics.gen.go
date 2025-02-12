@@ -34,6 +34,18 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "validator_set_updates",
 			Help:      "Number of validator set updates returned by the application since process start.",
 		}, labels).With(labelsAndValues...),
+		RejectedTransactions: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "rejected_transactions",
+			Help:      "The number of transactions rejected by the application.",
+		}, labels).With(labelsAndValues...),
+		ProcessedTransactions: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "processed_transactions",
+			Help:      "The number of transactions processed by the application.",
+		}, labels).With(labelsAndValues...),
 	}
 }
 
@@ -42,5 +54,7 @@ func NopMetrics() *Metrics {
 		BlockProcessingTime:   discard.NewHistogram(),
 		ConsensusParamUpdates: discard.NewCounter(),
 		ValidatorSetUpdates:   discard.NewCounter(),
+		RejectedTransactions:  discard.NewCounter(),
+		ProcessedTransactions: discard.NewCounter(),
 	}
 }

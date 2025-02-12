@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/cometbft/cometbft/internal/trace"
 	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/libs/trace"
 	e2e "github.com/cometbft/cometbft/test/e2e/pkg"
 	"github.com/cometbft/cometbft/test/e2e/pkg/infra"
 	"github.com/cometbft/cometbft/test/e2e/pkg/infra/digitalocean"

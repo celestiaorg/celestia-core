@@ -48,4 +48,25 @@ type Metrics struct {
 	// Number of connections being actively used for gossiping transactions
 	// (experimental feature).
 	ActiveOutboundConnections metrics.Gauge
+
+	// ExpiredTxs defines transactions that were removed from the mempool due
+	// to a TTL
+	ExpiredTxs metrics.Counter
+
+	// SuccessfulTxs defines the number of transactions that successfully made
+	// it into a block.
+	SuccessfulTxs metrics.Counter
+
+	// AlreadySeenTxs defines the number of transactions that entered the
+	// mempool which were already present in the mempool. This is a good
+	// indicator of the degree of duplication in message gossiping.
+	AlreadySeenTxs metrics.Counter
+
+	// RequestedTxs defines the number of times that the node requested a
+	// tx to a peer
+	RequestedTxs metrics.Counter
+
+	// RerequestedTxs defines the number of times that a requested tx
+	// never received a response in time and a new request was made.
+	RerequestedTxs metrics.Counter
 }

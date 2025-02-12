@@ -42,6 +42,7 @@ const (
 
 	MempoolTypeFlood = "flood"
 	MempoolTypeNop   = "nop"
+	MempoolTypeCAT   = "cat"
 )
 
 // NOTE: Most of the structs & relevant comments + the

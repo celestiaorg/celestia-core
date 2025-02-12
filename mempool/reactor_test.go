@@ -16,6 +16,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/mock"
 	memproto "github.com/cometbft/cometbft/proto/tendermint/mempool"
@@ -327,7 +328,7 @@ func makeAndConnectReactors(config *cfg.Config, n int) ([]*Reactor, []*p2p.Switc
 		mempool, cleanup := newMempoolWithApp(cc)
 		defer cleanup()
 
-		reactors[i] = NewReactor(config.Mempool, mempool) // so we dont start the consensus states
+		reactors[i] = NewReactor(config.Mempool, mempool, trace.NoOpTracer()) // so we dont start the consensus states
 		reactors[i].SetLogger(logger.With("validator", i))
 	}
 

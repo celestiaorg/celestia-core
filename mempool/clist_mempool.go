@@ -14,6 +14,7 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	cmtmath "github.com/cometbft/cometbft/libs/math"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
+	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
 )
@@ -55,6 +56,7 @@ type CListMempool struct {
 
 	logger  log.Logger
 	metrics *Metrics
+	trace   trace.Tracer
 }
 
 var _ Mempool = &CListMempool{}
@@ -77,6 +79,7 @@ func NewCListMempool(
 		recheck:      newRecheck(),
 		logger:       log.NewNopLogger(),
 		metrics:      NopMetrics(),
+		trace:        trace.NoOpTracer(),
 	}
 	mp.height.Store(height)
 
@@ -93,6 +96,21 @@ func NewCListMempool(
 	}
 
 	return mp
+}
+
+// GetTxByKey retrieves a transaction from the mempool using its key.
+func (mem *CListMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
+	e, ok := mem.txsMap.Load(key)
+	if !ok {
+		return nil, false
+	}
+	memTx, ok := e.(*clist.CElement).Value.(*mempoolTx)
+	return memTx.tx, ok
+}
+
+// WasRecentlyEvicted returns false consistently as this implementation does not support transaction eviction.
+func (*CListMempool) WasRecentlyEvicted(key types.TxKey) bool {
+	return false
 }
 
 func (mem *CListMempool) getCElement(txKey types.TxKey) (*clist.CElement, bool) {
@@ -148,6 +166,12 @@ func WithPostCheck(f PostCheckFunc) CListMempoolOption {
 // WithMetrics sets the metrics.
 func WithMetrics(metrics *Metrics) CListMempoolOption {
 	return func(mem *CListMempool) { mem.metrics = metrics }
+}
+
+func WithTraceClient(tc trace.Tracer) CListMempoolOption {
+	return func(txmp *CListMempool) {
+		txmp.trace = tc
+	}
 }
 
 // Safe for concurrent use by multiple goroutines.
@@ -368,7 +392,10 @@ func (mem *CListMempool) RemoveTxByKey(txKey types.TxKey) error {
 		mem.txs.Remove(elem)
 		elem.DetachPrev()
 		mem.txsMap.Delete(txKey)
-		tx := elem.Value.(*mempoolTx).tx
+		var tx types.Tx
+		if memtx, ok := elem.Value.(*mempoolTx); ok {
+			tx = memtx.tx
+		}
 		mem.txsBytes.Add(int64(-len(tx)))
 		return nil
 	}
@@ -599,6 +626,7 @@ func (mem *CListMempool) Update(
 		mem.postCheck = postCheck
 	}
 
+	mem.metrics.SuccessfulTxs.Add(float64(len(txs)))
 	for i, tx := range txs {
 		if txResults[i].Code == abci.CodeTypeOK {
 			// Add valid committed tx to the cache (if missing).

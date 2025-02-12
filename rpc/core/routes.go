@@ -51,6 +51,13 @@ func (env *Environment) GetRoutes() RoutesMap {
 
 		// evidence API
 		"broadcast_evidence": rpc.NewRPCFunc(env.BroadcastEvidence, "evidence"),
+
+		// celestia-specific API
+		"prove_shares":              rpc.NewRPCFunc(env.ProveShares, "height,startShare,endShare"),
+		"prove_shares_v2":           rpc.NewRPCFunc(env.ProveSharesV2, "height,startShare,endShare"),
+		"data_root_inclusion_proof": rpc.NewRPCFunc(env.DataRootInclusionProof, "height,start,end"),
+		"signed_block":              rpc.NewRPCFunc(env.SignedBlock, "height", rpc.Cacheable("height")),
+		"data_commitment":           rpc.NewRPCFunc(env.DataCommitment, "start,end"),
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 
 	cfg "github.com/cometbft/cometbft/config"
 	cmtos "github.com/cometbft/cometbft/libs/os"
+	"github.com/cometbft/cometbft/libs/trace"
 	nm "github.com/cometbft/cometbft/node"
 )
 

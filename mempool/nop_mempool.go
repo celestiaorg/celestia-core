@@ -74,6 +74,12 @@ func (*NopMempool) Size() int { return 0 }
 // SizeBytes always returns 0.
 func (*NopMempool) SizeBytes() int64 { return 0 }
 
+// GetTxByKey always returns nil.
+func (*NopMempool) GetTxByKey(types.TxKey) (types.Tx, bool) { return nil, false }
+
+// WasRecentlyEvicted always returns false.
+func (*NopMempool) WasRecentlyEvicted(types.TxKey) bool { return false }
+
 // NopMempoolReactor is a mempool reactor that does nothing.
 type NopMempoolReactor struct {
 	service.BaseService

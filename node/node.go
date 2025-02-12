@@ -9,9 +9,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/pyroscope-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	bc "github.com/cometbft/cometbft/blocksync"
 	cfg "github.com/cometbft/cometbft/config"
@@ -22,6 +24,7 @@ import (
 	"github.com/cometbft/cometbft/libs/log"
 	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	"github.com/cometbft/cometbft/libs/service"
+	"github.com/cometbft/cometbft/libs/trace"
 	mempl "github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/pex"
@@ -82,6 +85,11 @@ type Node struct {
 	indexerService    *txindex.IndexerService
 	prometheusSrv     *http.Server
 	pprofSrv          *http.Server
+
+	// Celestia specific fields
+	tracer            trace.Tracer
+	pyroscopeProfiler *pyroscope.Profiler
+	pyroscopeTracer   *sdktrace.TracerProvider
 }
 
 // Option sets a parameter for the node.
@@ -356,8 +364,10 @@ func NewNodeWithContext(ctx context.Context,
 	// Create the handshaker, which calls RequestInfo, sets the AppVersion on the state,
 	// and replays any blocks as necessary to sync CometBFT with the app.
 	consensusLogger := logger.With("module", "consensus")
+	var softwareVersion string
 	if !stateSync {
-		if err := doHandshake(ctx, stateStore, state, blockStore, genDoc, eventBus, proxyApp, consensusLogger); err != nil {
+		softwareVersion, err = doHandshake(ctx, stateStore, state, blockStore, genDoc, eventBus, proxyApp, consensusLogger)
+		if err != nil {
 			return nil, err
 		}
 
@@ -376,7 +386,18 @@ func NewNodeWithContext(ctx context.Context,
 
 	logNodeStartupInfo(state, pubKey, logger, consensusLogger)
 
-	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger)
+	// create an optional tracer client to collect trace data.
+	tracer, err := trace.NewTracer(
+		config,
+		logger,
+		genDoc.ChainID,
+		string(nodeKey.ID()),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	mempool, mempoolReactor := createMempoolAndMempoolReactor(config, proxyApp, state, memplMetrics, logger, tracer)
 
 	evidenceReactor, evidencePool, err := createEvidenceReactor(config, dbProvider, stateStore, blockStore, logger)
 	if err != nil {
@@ -409,7 +430,7 @@ func NewNodeWithContext(ctx context.Context,
 
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight,
+		privValidator, csMetrics, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
 	)
 
 	err = stateStore.SetOfflineStateSyncHeight(0)
@@ -428,17 +449,17 @@ func NewNodeWithContext(ctx context.Context,
 	)
 	stateSyncReactor.SetLogger(logger.With("module", "statesync"))
 
-	nodeInfo, err := makeNodeInfo(config, nodeKey, txIndexer, genDoc, state)
+	nodeInfo, err := makeNodeInfo(config, nodeKey, txIndexer, genDoc, state, softwareVersion)
 	if err != nil {
 		return nil, err
 	}
 
-	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp)
+	transport, peerFilters := createTransport(config, nodeInfo, nodeKey, proxyApp, tracer)
 
 	p2pLogger := logger.With("module", "p2p")
 	sw := createSwitch(
 		config, transport, p2pMetrics, peerFilters, mempoolReactor, bcReactor,
-		stateSyncReactor, consensusReactor, evidenceReactor, nodeInfo, nodeKey, p2pLogger,
+		stateSyncReactor, consensusReactor, evidenceReactor, nodeInfo, nodeKey, p2pLogger, tracer,
 	)
 
 	err = sw.AddPersistentPeers(splitAndTrimEmpty(config.P2P.PersistentPeers, ",", " "))
@@ -543,6 +564,18 @@ func (n *Node) OnStart() error {
 		n.rpcListeners = listeners
 	}
 
+	if n.config.Instrumentation.PyroscopeURL != "" {
+		profiler, tracer, err := setupPyroscope(
+			n.config.Instrumentation,
+			string(n.nodeKey.ID()),
+		)
+		if err != nil {
+			return err
+		}
+		n.pyroscopeProfiler = profiler
+		n.pyroscopeTracer = tracer
+	}
+
 	// Start the transport.
 	addr, err := p2p.NewNetAddressString(p2p.IDAddressString(n.nodeKey.ID(), n.config.P2P.ListenAddress))
 	if err != nil {
@@ -631,6 +664,21 @@ func (n *Node) OnStop() {
 	if n.pprofSrv != nil {
 		if err := n.pprofSrv.Shutdown(context.Background()); err != nil {
 			n.Logger.Error("Pprof HTTP server Shutdown", "err", err)
+		}
+	}
+	if n.tracer != nil {
+		n.tracer.Stop()
+	}
+
+	if n.pyroscopeProfiler != nil {
+		if err := n.pyroscopeProfiler.Stop(); err != nil {
+			n.Logger.Error("Pyroscope profiler Stop", "err", err)
+		}
+	}
+
+	if n.pyroscopeTracer != nil {
+		if err := n.pyroscopeTracer.Shutdown(context.Background()); err != nil {
+			n.Logger.Error("Pyroscope tracer Shutdown", "err", err)
 		}
 	}
 	if n.blockStore != nil {
@@ -931,6 +979,7 @@ func makeNodeInfo(
 	txIndexer txindex.TxIndexer,
 	genDoc *types.GenesisDoc,
 	state sm.State,
+	softwareVersion string,
 ) (p2p.DefaultNodeInfo, error) {
 	txIndexerStatus := "on"
 	if _, ok := txIndexer.(*null.TxIndex); ok {

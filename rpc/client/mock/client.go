@@ -181,3 +181,21 @@ func (c Client) Validators(_ context.Context, height *int64, page, perPage *int)
 func (c Client) BroadcastEvidence(_ context.Context, ev types.Evidence) (*ctypes.ResultBroadcastEvidence, error) {
 	return c.env.BroadcastEvidence(&rpctypes.Context{}, ev)
 }
+
+func (c Client) DataCommitment(
+	ctx context.Context,
+	start uint64,
+	end uint64,
+) (*ctypes.ResultDataCommitment, error) {
+	return c.env.DataCommitment(&rpctypes.Context{}, start, end)
+}
+
+func (c Client) DataRootInclusionProof(
+	ctx context.Context,
+	height uint64,
+	start uint64,
+	end uint64,
+) (*ctypes.ResultDataRootInclusionProof, error) {
+	//nolint:gosec
+	return c.env.DataRootInclusionProof(&rpctypes.Context{}, int64(height), start, end)
+}

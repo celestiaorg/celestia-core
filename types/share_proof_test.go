@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cometbft/cometbft/internal/consts"
+	"github.com/cometbft/cometbft/libs/consts"
 	types "github.com/cometbft/cometbft/proto/tendermint/types"
 )
 
