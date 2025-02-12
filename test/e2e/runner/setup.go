@@ -163,9 +163,9 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.RPC.PprofListenAddress = ":6060"
 	cfg.P2P.ExternalAddress = fmt.Sprintf("tcp://%v", node.AddressP2P(false))
 	cfg.P2P.AddrBookStrict = false
-	cfg.DBBackend = node.Database
+	cfg.DBBackend = "goleveldb"
+	cfg.Mempool.Version = "v1"
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
-
 	cfg.Instrumentation.TraceType = "noop"
 
 	switch node.ABCIProtocol {
