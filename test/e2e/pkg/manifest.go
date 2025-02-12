@@ -3,6 +3,7 @@ package e2e
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -48,23 +49,33 @@ type Manifest struct {
 	Nodes map[string]*ManifestNode `toml:"node"`
 
 	// KeyType sets the curve that will be used by validators.
-	// Options are ed25519 & secp256k1
+	// Options are ed25519, secp256k1 and sr25519.
 	KeyType string `toml:"key_type"`
 
+	// Evidence indicates the amount of evidence that will be injected into the
+	// testnet via the RPC endpoint of a random node. Default is 0
+	Evidence int `toml:"evidence"`
+
 	// ABCIProtocol specifies the protocol used to communicate with the ABCI
-	// application: "unix", "tcp", "grpc", or "builtin". Defaults to builtin.
-	// builtin will build a complete CometBFT node into the application and
-	// launch it instead of launching a separate CometBFT process.
+	// application: "unix", "tcp", "grpc", "builtin" or "builtin_connsync".
+	//
+	// Defaults to "builtin". "builtin" will build a complete CometBFT node
+	// into the application and launch it instead of launching a separate
+	// CometBFT process.
+	//
+	// "builtin_connsync" is basically the same as "builtin", except that it
+	// uses a "connection-synchronized" local client creator, which attempts to
+	// replicate the same concurrency model locally as the socket client.
 	ABCIProtocol string `toml:"abci_protocol"`
 
-	// MaxInboundConnections and MaxOutboundConnection are the maximum number
-	// of connections a node has. This can be used to throttle the degree of
-	// connectivity of the network. If not specified, the default is taken
-	// from config/config.go
-	MaxInboundConnections  int `toml:"max_inbound_connections"`
-	MaxOutboundConnections int `toml:"max_outbound_connections"`
+	// Add artificial delays to each of the main ABCI calls to mimic computation time
+	// of the application
+	PrepareProposalDelay time.Duration `toml:"prepare_proposal_delay"`
+	ProcessProposalDelay time.Duration `toml:"process_proposal_delay"`
+	CheckTxDelay         time.Duration `toml:"check_tx_delay"`
+	FinalizeBlockDelay   time.Duration `toml:"finalize_block_delay"`
 
-	// UpgradeVersion specifies to which version this nodes need to upgrade.
+	// UpgradeVersion specifies to which version nodes need to upgrade.
 	// Currently only uncoordinated upgrade is supported
 	UpgradeVersion string `toml:"upgrade_version"`
 
@@ -73,9 +84,19 @@ type Manifest struct {
 	LoadTxConnections int `toml:"load_tx_connections"`
 	LoadMaxTxs        int `toml:"load_max_txs"`
 
+	// LogLevel specifies the log level to be set on all nodes.
+	LogLevel string `toml:"log_level"`
+
+	// LogFormat specifies the log format to be set on all nodes.
+	LogFormat string `toml:"log_format"`
+
 	// Enable or disable Prometheus metrics on all nodes.
 	// Defaults to false (disabled).
 	Prometheus bool `toml:"prometheus"`
+
+	// BlockMaxBytes specifies the maximum size in bytes of a block. This
+	// value will be written to the genesis file of all nodes.
+	BlockMaxBytes int64 `toml:"block_max_bytes"`
 
 	// Maximum number of peers to which the node gossips transactions
 	ExperimentalMaxGossipConnectionsToPersistentPeers    uint `toml:"experimental_max_gossip_connections_to_persistent_peers"`
@@ -119,13 +140,9 @@ type ManifestNode struct {
 	// runner will wait for the network to reach at least this block height.
 	StartAt int64 `toml:"start_at"`
 
-	// FastSync specifies the fast sync mode: "" (disable), "v0", "v1", or "v2".
-	// Defaults to disabled.
-	FastSync string `toml:"fast_sync"`
-
-	// Mempool specifies which version of mempool to use. Either "v0" or "v1", or "v2"
-	// (cat). This defaults to v2.
-	Mempool string `toml:"mempool_version"`
+	// BlockSyncVersion specifies which version of Block Sync to use (currently
+	// only "v0", the default value).
+	BlockSyncVersion string `toml:"block_sync_version"`
 
 	// StateSync enables state sync. The runner automatically configures trusted
 	// block hashes and RPC servers. At least one node in the network must have
@@ -143,8 +160,8 @@ type ManifestNode struct {
 	SnapshotInterval uint64 `toml:"snapshot_interval"`
 
 	// RetainBlocks specifies the number of recent blocks to retain. Defaults to
-	// 0, which retains all blocks. Must be greater that PersistInterval and
-	// SnapshotInterval.
+	// 0, which retains all blocks. Must be greater that PersistInterval,
+	// SnapshotInterval and EvidenceAgeHeight.
 	RetainBlocks uint64 `toml:"retain_blocks"`
 
 	// Perturb lists perturbations to apply to the node after it has been
@@ -155,16 +172,6 @@ type ManifestNode struct {
 	// pause:      temporarily pauses (freezes) the node
 	// restart:    restarts the node, shutting it down with SIGTERM
 	Perturb []string `toml:"perturb"`
-
-	// Misbehaviors sets how a validator behaves during consensus at a
-	// certain height. Multiple misbehaviors at different heights can be used
-	//
-	// An example of misbehaviors
-	//    { 10 = "double-prevote", 20 = "double-prevote"}
-	//
-	// For more information, look at the readme in the maverick folder.
-	// A list of all behaviors can be found in ../maverick/consensus/behavior.go
-	Misbehaviors map[string]string `toml:"misbehaviors"`
 
 	// SendNoLoad determines if the e2e test should send load to this node.
 	// It defaults to false so unless the configured, the node will
