@@ -36,7 +36,7 @@ var (
 	nodeDatabases = uniformChoice{"goleveldb"}
 	ipv6          = uniformChoice{false, true}
 	// FIXME: grpc disabled due to https://github.com/tendermint/tendermint/issues/5439
-	nodeABCIProtocols     = uniformChoice{"unix", "tcp", "builtin", "builtin_connsync"} // "grpc"
+	nodeABCIProtocols     = uniformChoice{"unix", "tcp", "builtin"}
 	nodePrivvalProtocols  = uniformChoice{"file", "unix", "tcp"}
 	nodeBlockSyncs        = uniformChoice{"v0"}
 	nodeStateSyncs        = uniformChoice{false, true}
