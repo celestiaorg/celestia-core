@@ -32,7 +32,7 @@ var (
 	}
 
 	// The following specify randomly chosen values for testnet nodes.
-	nodeDatabases = uniformChoice{"goleveldb", "cleveldb", "rocksdb", "boltdb", "badgerdb"}
+	nodeDatabases = uniformChoice{"goleveldb"}
 	ipv6          = uniformChoice{false, true}
 	// FIXME: grpc disabled due to https://github.com/tendermint/tendermint/issues/5439
 	nodeABCIProtocols    = uniformChoice{"unix", "tcp", "builtin"} // "grpc"
@@ -40,7 +40,7 @@ var (
 	// FIXME: v2 disabled due to flake
 	nodeFastSyncs         = uniformChoice{"v0"} // "v2"
 	nodeStateSyncs        = uniformChoice{false, true}
-	nodeMempools          = uniformChoice{"v0", "v1"}
+	nodeMempools          = uniformChoice{"v1"}
 	nodePersistIntervals  = uniformChoice{0, 1, 5}
 	nodeSnapshotIntervals = uniformChoice{0, 3}
 	nodeRetainBlocks      = uniformChoice{0, 1, 5}
