@@ -2,20 +2,21 @@ package docker
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
-	"strconv"
 	"text/template"
 
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
+	"github.com/tendermint/tendermint/test/e2e/pkg/exec"
 	"github.com/tendermint/tendermint/test/e2e/pkg/infra"
 )
 
-var _ infra.Provider = &Provider{}
+var _ infra.Provider = (*Provider)(nil)
 
 // Provider implements a docker-compose backed infrastructure provider.
 type Provider struct {
-	Testnet *e2e.Testnet
+	infra.ProviderData
 }
 
 // Setup generates the docker-compose file and write it to disk, erroring if
@@ -27,32 +28,30 @@ func (p *Provider) Setup() error {
 	}
 	//nolint: gosec
 	// G306: Expect WriteFile permissions to be 0600 or less
-	err = os.WriteFile(filepath.Join(p.Testnet.Dir, "docker-compose.yml"), compose, 0644)
+	err = os.WriteFile(filepath.Join(p.Testnet.Dir, "docker-compose.yml"), compose, 0o644)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
+func (p Provider) StartNodes(ctx context.Context, nodes ...*e2e.Node) error {
+	nodeNames := make([]string, len(nodes))
+	for i, n := range nodes {
+		nodeNames[i] = n.Name
+	}
+	return ExecCompose(ctx, p.Testnet.Dir, append([]string{"up", "-d"}, nodeNames...)...)
+}
+
+func (p Provider) StopTestnet(ctx context.Context) error {
+	return ExecCompose(ctx, p.Testnet.Dir, "down")
+}
+
 // dockerComposeBytes generates a Docker Compose config file for a testnet and returns the
 // file as bytes to be written out to disk.
 func dockerComposeBytes(testnet *e2e.Testnet) ([]byte, error) {
 	// Must use version 2 Docker Compose format, to support IPv6.
-	tmpl, err := template.New("docker-compose").Funcs(template.FuncMap{
-		"misbehaviorsToString": func(misbehaviors map[int64]string) string {
-			str := ""
-			for height, misbehavior := range misbehaviors {
-				// after the first behavior set, a comma must be prepended
-				if str != "" {
-					str += ","
-				}
-				heightString := strconv.Itoa(int(height))
-				str += misbehavior + "," + heightString
-			}
-			return str
-		},
-	}).Parse(`version: '2.4'
-
+	tmpl, err := template.New("docker-compose").Parse(`version: '2.4'
 networks:
   {{ .Name }}:
     labels:
@@ -73,11 +72,8 @@ services:
       e2e: true
     container_name: {{ .Name }}
     image: {{ .Version }}
-{{- if eq .ABCIProtocol "builtin" }}
+{{- if or (eq .ABCIProtocol "builtin") (eq .ABCIProtocol "builtin_connsync") }}
     entrypoint: /usr/bin/entrypoint-builtin
-{{- else if .Misbehaviors }}
-    entrypoint: /usr/bin/entrypoint-maverick
-    command: ["node", "--misbehaviors", "{{ misbehaviorsToString .Misbehaviors }}"]
 {{- end }}
     init: true
     ports:
@@ -92,7 +88,7 @@ services:
     - ./{{ .Name }}:/tendermint
     networks:
       {{ $.Name }}:
-        ipv{{ if $.IPv6 }}6{{ else }}4{{ end}}_address: {{ .IP }}
+        ipv{{ if $.IPv6 }}6{{ else }}4{{ end}}_address: {{ .InternalIP }}
 {{- if ne .Version $.UpgradeVersion}}
 
   {{ .Name }}_u:
@@ -100,11 +96,8 @@ services:
       e2e: true
     container_name: {{ .Name }}_u
     image: {{ $.UpgradeVersion }}
-{{- if eq .ABCIProtocol "builtin" }}
+{{- if or (eq .ABCIProtocol "builtin") (eq .ABCIProtocol "builtin_connsync") }}
     entrypoint: /usr/bin/entrypoint-builtin
-{{- else if .Misbehaviors }}
-    entrypoint: /usr/bin/entrypoint-maverick
-    command: ["node", "--misbehaviors", "{{ misbehaviorsToString .Misbehaviors }}"]
 {{- end }}
     init: true
     ports:
@@ -119,7 +112,7 @@ services:
     - ./{{ .Name }}:/tendermint
     networks:
       {{ $.Name }}:
-        ipv{{ if $.IPv6 }}6{{ else }}4{{ end}}_address: {{ .IP }}
+        ipv{{ if $.IPv6 }}6{{ else }}4{{ end}}_address: {{ .InternalIP }}
 {{- end }}
 
 {{end}}`)
@@ -132,4 +125,30 @@ services:
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// ExecCompose runs a Docker Compose command for a testnet.
+func ExecCompose(ctx context.Context, dir string, args ...string) error {
+	return exec.Command(ctx, append(
+		[]string{"docker", "compose", "-f", filepath.Join(dir, "docker-compose.yml")},
+		args...)...)
+}
+
+// ExecCompose runs a Docker Compose command for a testnet and returns the command's output.
+func ExecComposeOutput(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	return exec.CommandOutput(ctx, append(
+		[]string{"docker", "compose", "-f", filepath.Join(dir, "docker-compose.yml")},
+		args...)...)
+}
+
+// ExecComposeVerbose runs a Docker Compose command for a testnet and displays its output.
+func ExecComposeVerbose(ctx context.Context, dir string, args ...string) error {
+	return exec.CommandVerbose(ctx, append(
+		[]string{"docker", "compose", "-f", filepath.Join(dir, "docker-compose.yml")},
+		args...)...)
+}
+
+// Exec runs a Docker command.
+func Exec(ctx context.Context, args ...string) error {
+	return exec.Command(ctx, append([]string{"docker"}, args...)...)
 }
