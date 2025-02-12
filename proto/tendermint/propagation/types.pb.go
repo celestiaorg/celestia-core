@@ -25,6 +25,9 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
+// TxMetaData contains all information needed to commit to a transaction. Start
+// and end are used to insert the transaction into the protobuf encoded version
+// of the block.
 type TxMetaData struct {
 	Hash  []byte `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`
 	Start uint32 `protobuf:"varint,2,opt,name=start,proto3" json:"start,omitempty"`
@@ -85,7 +88,9 @@ func (m *TxMetaData) GetEnd() uint32 {
 	return 0
 }
 
-// CompactBlock commits to the transaction included in a proposal.
+// CompactBlock commits to the transaction included in a proposal. It enalbes
+// clients to reuse already downloaded blobs instead of gossiping them all again
+// during the block propagation.
 type CompactBlock struct {
 	Height    int64         `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
 	Round     int32         `protobuf:"varint,2,opt,name=round,proto3" json:"round,omitempty"`
@@ -162,6 +167,7 @@ func (m *CompactBlock) GetSignature() []byte {
 	return nil
 }
 
+// PartMetaData proves the inclusion of a part to the block.
 type PartMetaData struct {
 	Index uint32       `protobuf:"varint,1,opt,name=index,proto3" json:"index,omitempty"`
 	Hash  []byte       `protobuf:"bytes,2,opt,name=hash,proto3" json:"hash,omitempty"`
@@ -222,6 +228,8 @@ func (m *PartMetaData) GetProof() crypto.Proof {
 	return crypto.Proof{}
 }
 
+// HaveParts is a message sent by a peer to inform that it has or will receive a
+// part of a block.
 type HaveParts struct {
 	Height int64           `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
 	Round  int32           `protobuf:"varint,2,opt,name=round,proto3" json:"round,omitempty"`
@@ -282,6 +290,8 @@ func (m *HaveParts) GetParts() []*PartMetaData {
 	return nil
 }
 
+// WantParts is a wire message sent by peers to indicate that they wish to
+// download a specific portion of the block.
 type WantParts struct {
 	Parts  bits.BitArray `protobuf:"bytes,1,opt,name=parts,proto3" json:"parts"`
 	Height int64         `protobuf:"varint,2,opt,name=height,proto3" json:"height,omitempty"`
@@ -342,6 +352,7 @@ func (m *WantParts) GetRound() int32 {
 	return 0
 }
 
+// RecoveryPart is a wire message for sending a portion of the block to a peer.
 type RecoveryPart struct {
 	Height int64  `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
 	Round  int32  `protobuf:"varint,2,opt,name=round,proto3" json:"round,omitempty"`
