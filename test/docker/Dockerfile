@@ -6,8 +6,8 @@ RUN apt-get update && \
   jq bsdmainutils vim-common psmisc netcat curl
 
 # Setup CometBFT repo
-ENV REPO $GOPATH/src/github.com/cometbft/cometbft
-ENV GOBIN $GOPATH/bin
+ENV REPO=$GOPATH/src/github.com/cometbft/cometbft
+ENV GOBIN=$GOPATH/bin
 WORKDIR $REPO
 
 # Copy in the code

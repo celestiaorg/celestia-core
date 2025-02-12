@@ -6,7 +6,7 @@ FROM golang:1.23.6
 RUN apt-get -qq update -y && apt-get -qq upgrade -y >/dev/null
 
 # Set up build directory /src/cometbft
-# ENV COMETBFT_BUILD_OPTIONS badgerdb,boltdb,cleveldb,rocksdb
+
 WORKDIR /src/cometbft
 
 # Fetch dependencies separately (for layer caching)
@@ -17,7 +17,6 @@ RUN go mod download
 COPY . .
 RUN make build && cp build/cometbft /usr/bin/cometbft
 COPY test/e2e/docker/entrypoint* /usr/bin/
-RUN cd test/e2e && make maverick && cp build/maverick /usr/bin/maverick
 RUN cd test/e2e && make node && cp build/node /usr/bin/app
 
 # Set up runtime directory. We don't use a separate runtime image since we need
@@ -25,6 +24,7 @@ RUN cd test/e2e && make node && cp build/node /usr/bin/app
 WORKDIR /cometbft
 VOLUME /cometbft
 ENV CMTHOME=/cometbft
+ENV GORACE "halt_on_error=1"
 
 EXPOSE 26656 26657 26660 6060
 ENTRYPOINT ["/usr/bin/entrypoint"]

@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -30,8 +29,6 @@ import (
 	rpcserver "github.com/tendermint/tendermint/rpc/jsonrpc/server"
 	"github.com/tendermint/tendermint/test/e2e/app"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
-	mcs "github.com/tendermint/tendermint/test/maverick/consensus"
-	maverick "github.com/tendermint/tendermint/test/maverick/node"
 )
 
 var logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
@@ -65,7 +62,7 @@ func run(configFile string) error {
 		if err = startSigner(cfg); err != nil {
 			return err
 		}
-		if cfg.Protocol == "builtin" {
+		if cfg.Protocol == "builtin" || cfg.Protocol == "builtin_connsync" {
 			time.Sleep(1 * time.Second)
 		}
 	}
@@ -74,15 +71,11 @@ func run(configFile string) error {
 	switch cfg.Protocol {
 	case "socket", "grpc":
 		err = startApp(cfg)
-	case "builtin":
-		if len(cfg.Misbehaviors) == 0 {
-			if cfg.Mode == string(e2e.ModeLight) {
-				err = startLightClient(cfg)
-			} else {
-				err = startNode(cfg)
-			}
+	case "builtin", "builtin_connsync":
+		if cfg.Mode == string(e2e.ModeLight) {
+			err = startLightClient(cfg)
 		} else {
-			err = startMaverick(cfg)
+			err = startNode(cfg)
 		}
 	default:
 		err = fmt.Errorf("invalid protocol %q", cfg.Protocol)
@@ -130,10 +123,13 @@ func startNode(cfg *Config) error {
 		return fmt.Errorf("failed to setup config: %w", err)
 	}
 
+	clientCreator := proxy.NewLocalClientCreator(app)
+	nodeLogger.Info("Using default (synchronized) local client creator")
+
 	n, err := node.NewNode(cmtcfg,
 		privval.LoadOrGenFilePV(cmtcfg.PrivValidatorKeyFile(), cmtcfg.PrivValidatorStateFile()),
 		nodeKey,
-		proxy.NewLocalClientCreator(app),
+		clientCreator,
 		node.DefaultGenesisDocProviderFunc(cmtcfg),
 		node.DefaultDBProvider,
 		node.DefaultMetricsProvider(cmtcfg.Instrumentation),
@@ -200,43 +196,6 @@ func startLightClient(cfg *Config) error {
 	}
 
 	return nil
-}
-
-// FIXME: Temporarily disconnected maverick until it is redesigned
-// startMaverick starts a Maverick node that runs the application directly. It assumes the CometBFT
-// configuration is in $CMTHOME/config/cometbft.toml.
-func startMaverick(cfg *Config) error {
-	app, err := app.NewApplication(cfg.App())
-	if err != nil {
-		return err
-	}
-
-	cmtcfg, logger, nodeKey, err := setupNode()
-	if err != nil {
-		return fmt.Errorf("failed to setup config: %w", err)
-	}
-
-	misbehaviors := make(map[int64]mcs.Misbehavior, len(cfg.Misbehaviors))
-	for heightString, misbehaviorString := range cfg.Misbehaviors {
-		height, _ := strconv.ParseInt(heightString, 10, 64)
-		misbehaviors[height] = mcs.MisbehaviorList[misbehaviorString]
-	}
-
-	n, err := maverick.NewNode(cmtcfg,
-		maverick.LoadOrGenFilePV(cmtcfg.PrivValidatorKeyFile(), cmtcfg.PrivValidatorStateFile()),
-		nodeKey,
-		proxy.NewLocalClientCreator(app),
-		maverick.DefaultGenesisDocProviderFunc(cmtcfg),
-		maverick.DefaultDBProvider,
-		maverick.DefaultMetricsProvider(cmtcfg.Instrumentation),
-		logger,
-		misbehaviors,
-	)
-	if err != nil {
-		return err
-	}
-
-	return n.Start()
 }
 
 // startSigner starts a signer server connecting to the given endpoint.
