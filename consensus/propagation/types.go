@@ -55,6 +55,30 @@ type CompactBlock struct {
 	Signature []byte        `json:"signature,omitempty"`
 }
 
+// ValidateBasic checks if the CompactBlock is valid. It fails if the height is
+// negative, if the round is negative, if the BpHash is invalid, or if any of
+// the Blobs are invalid.
+func (c *CompactBlock) ValidateBasic() error {
+	if c.Height < 0 {
+		return errors.New("CompactBlock: Height cannot be negative")
+	}
+	if c.Round < 0 {
+		return errors.New("CompactBlock: Round cannot be negative")
+	}
+	if err := types.ValidateHash(c.BpHash); err != nil {
+		return err
+	}
+	for _, blob := range c.Blobs {
+		if err := blob.ValidateBasic(); err != nil {
+			return err
+		}
+	}
+	if len(c.Signature) > types.MaxSignatureSize {
+		return errors.New("CompactBlock: Signature is too big")
+	}
+	return nil
+}
+
 // ToProto converts CompactBlock to its protobuf representation.
 func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
 	blobs := make([]*protoprop.TxMetaData, len(c.Blobs))
@@ -71,18 +95,19 @@ func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
 }
 
 // CompactBlockFromProto converts a protobuf CompactBlock to its Go representation.
-func CompactBlockFromProto(c *protoprop.CompactBlock) *CompactBlock {
+func CompactBlockFromProto(c *protoprop.CompactBlock) (*CompactBlock, error) {
 	blobs := make([]*TxMetaData, len(c.Blobs))
 	for i, blob := range c.Blobs {
 		blobs[i] = TxMetaDataFromProto(blob)
 	}
-	return &CompactBlock{
+	cb := &CompactBlock{
 		Height:    c.Height,
 		Round:     c.Round,
 		BpHash:    c.BpHash,
 		Blobs:     blobs,
 		Signature: c.Signature,
 	}
+	return cb, cb.ValidateBasic()
 }
 
 // PartMetaData keeps track of the hash of each part, its location via the
@@ -94,15 +119,41 @@ type PartMetaData struct {
 	Proof merkle.Proof `json:"proof"`
 }
 
-// ToProto converts PartMetaData to its protobuf representation.
-type HavePart struct {
+// ValidateBasic checks if the PartMetaData is valid. It fails if the hash or
+// the proof is invalid.
+func (p *PartMetaData) ValidateBasic() error {
+	err := p.Proof.ValidateBasic()
+	if err != nil {
+		return err
+	}
+	return types.ValidateHash(p.Hash)
+}
+
+// HaveParts is the go representation of the wire message for determining the
+// route of parts.
+type HaveParts struct {
 	Height int64          `json:"height,omitempty"`
 	Round  int32          `json:"round,omitempty"`
 	Parts  []PartMetaData `json:"parts,omitempty"`
 }
 
-// ToProto converts HavePart to its protobuf representation.
-func (h *HavePart) ToProto() *protoprop.HaveParts {
+// ValidateBasic checks if the HaveParts is valid. It fails if Parts is nil or
+// empty, or if any of the parts are invalid.
+func (h *HaveParts) ValidateBasic() error {
+	if h.Parts == nil || len(h.Parts) == 0 {
+		return errors.New("HaveParts: Parts cannot be nil or empty")
+	}
+	if h.Height < 0 || h.Round < 0 {
+		return errors.New("HaveParts: Height and Round cannot be negative")
+	}
+	for _, part := range h.Parts {
+		part.ValidateBasic()
+	}
+	return nil
+}
+
+// ToProto converts HaveParts to its protobuf representation.
+func (h *HaveParts) ToProto() *protoprop.HaveParts {
 	parts := make([]*protoprop.PartMetaData, len(h.Parts))
 	for i, part := range h.Parts {
 		parts[i] = &protoprop.PartMetaData{
@@ -118,8 +169,8 @@ func (h *HavePart) ToProto() *protoprop.HaveParts {
 	}
 }
 
-// HavePartFromProto converts a protobuf HavePart to its Go representation.
-func HavePartFromProto(h *protoprop.HaveParts) (*HavePart, error) {
+// HavePartFromProto converts a protobuf HaveParts to its Go representation.
+func HavePartFromProto(h *protoprop.HaveParts) (*HaveParts, error) {
 	parts := make([]PartMetaData, len(h.Parts))
 	for i, part := range h.Parts {
 		proof, err := merkle.ProofFromProto(&part.Proof)
@@ -132,11 +183,12 @@ func HavePartFromProto(h *protoprop.HaveParts) (*HavePart, error) {
 			Proof: *proof,
 		}
 	}
-	return &HavePart{
+	hp := &HaveParts{
 		Height: h.Height,
 		Round:  h.Round,
 		Parts:  parts,
-	}, nil
+	}
+	return hp, hp.ValidateBasic()
 }
 
 // WantParts is a message that requests a set of parts from a peer.
@@ -144,6 +196,13 @@ type WantParts struct {
 	Parts  *bits.BitArray `json:"parts"`
 	Height int64          `json:"height,omitempty"`
 	Round  int32          `json:"round,omitempty"`
+}
+
+func (w *WantParts) ValidateBasic() error {
+	if w.Parts == nil {
+		return errors.New("WantParts: Parts cannot be nil")
+	}
+	return nil
 }
 
 // ToProto converts WantParts to its protobuf representation.
@@ -159,9 +218,10 @@ func (w *WantParts) ToProto() *protoprop.WantParts {
 func WantPartsFromProto(w *protoprop.WantParts) (*WantParts, error) {
 	ba := new(bits.BitArray)
 	ba.FromProto(&w.Parts)
-	return &WantParts{
+	wp := &WantParts{
 		Parts:  ba,
 		Height: w.Height,
 		Round:  w.Round,
-	}, nil
+	}
+	return wp, wp.ValidateBasic()
 }
