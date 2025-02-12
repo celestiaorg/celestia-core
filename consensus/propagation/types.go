@@ -140,14 +140,17 @@ type HaveParts struct {
 // ValidateBasic checks if the HaveParts is valid. It fails if Parts is nil or
 // empty, or if any of the parts are invalid.
 func (h *HaveParts) ValidateBasic() error {
-	if h.Parts == nil || len(h.Parts) == 0 {
+	if len(h.Parts) == 0 {
 		return errors.New("HaveParts: Parts cannot be nil or empty")
 	}
 	if h.Height < 0 || h.Round < 0 {
 		return errors.New("HaveParts: Height and Round cannot be negative")
 	}
 	for _, part := range h.Parts {
-		part.ValidateBasic()
+		err := part.ValidateBasic()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
