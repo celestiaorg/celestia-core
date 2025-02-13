@@ -58,6 +58,7 @@ func (env *Environment) GetRoutes() RoutesMap {
 		"data_root_inclusion_proof": rpc.NewRPCFunc(env.DataRootInclusionProof, "height,start,end"),
 		"signed_block":              rpc.NewRPCFunc(env.SignedBlock, "height", rpc.Cacheable("height")),
 		"data_commitment":           rpc.NewRPCFunc(env.DataCommitment, "start,end"),
+		"tx_status":                 rpc.NewRPCFunc(env.TxStatus, "hash"),
 	}
 }
 
