@@ -417,3 +417,22 @@ func (blockAPI *BlockAPI) SubscribeNewHeights(_ *SubscribeNewHeightsRequest, str
 		}
 	}
 }
+
+type BlobstreamAPI struct {
+	env *core.Environment
+}
+
+func NewBlobstreamAPI(env *core.Environment) *BlobstreamAPI {
+	return &BlobstreamAPI{env: env}
+}
+
+func (blobAPI *BlobstreamAPI) DataRootInclusionProof(_ context.Context, req *DataRootInclusionProofRequest) (*DataRootInclusionProofResponse, error) {
+	proof, err := blobAPI.env.GenerateDataRootInclusionProof(req.Height, req.Start, req.End)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DataRootInclusionProofResponse{
+		Proof: *proof.ToProto(),
+	}, nil
+}

@@ -58,6 +58,13 @@ service BlockAPIService {
   rpc Status(StatusRequest) returns (StatusResponse);
 }
 
+service BlobstreamAPI {
+  // DataRootInclusionProof creates an inclusion proof for the data root of block
+  // height `height` in the set of blocks defined by `start` and `end`. The range
+  // is end exclusive.
+  rpc DataRootInclusionProof(DataRootInclusionProofRequest) returns (DataRootInclusionProofResponse);
+}
+
 
 // BlockByHashRequest is a request to get a block by its hash.
 message BlockByHashRequest {
@@ -173,13 +180,6 @@ message BlockByHashRequest {
       int64                       voting_power = 3;
     }
 
-
-    service BlobstreamAPI {
-      // DataRootInclusionProof creates an inclusion proof for the data root of block
-      // height `height` in the set of blocks defined by `start` and `end`. The range
-      // is end exclusive.
-      rpc DataRootInclusionProof(DataRootInclusionProofRequest) returns (DataRootInclusionProofResponse);
-    }
 
     message DataRootInclusionProofRequest {
       // Height the height of block we want to prove.

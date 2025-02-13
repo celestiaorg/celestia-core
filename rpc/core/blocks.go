@@ -318,31 +318,6 @@ func (env *Environment) DataCommitment(ctx *rpctypes.Context, start, end uint64)
 	return &ctypes.ResultDataCommitment{DataCommitment: root}, nil
 }
 
-// DataRootInclusionProof creates an inclusion proof for the data root of block
-// height `height` in the set of blocks defined by `start` and `end`. The range
-// is end exclusive.
-func (env *Environment) DataRootInclusionProof(
-	ctx *rpctypes.Context,
-	height int64,
-	start,
-	end uint64,
-) (*ctypes.ResultDataRootInclusionProof, error) {
-	//nolint:gosec
-	err := env.validateDataRootInclusionProofRequest(uint64(height), start, end)
-	if err != nil {
-		return nil, err
-	}
-	tuples, err := env.fetchDataRootTuples(start, end)
-	if err != nil {
-		return nil, err
-	}
-	proof, err := env.proveDataRootTuples(tuples, height)
-	if err != nil {
-		return nil, err
-	}
-	return &ctypes.ResultDataRootInclusionProof{Proof: *proof}, nil
-}
-
 // padBytes Pad bytes to given length
 func padBytes(byt []byte, length int) ([]byte, error) {
 	l := len(byt)
@@ -547,4 +522,41 @@ func (env *Environment) fetchDataRootTuples(start, end uint64) ([]DataRootTuple,
 		})
 	}
 	return tuples, nil
+}
+
+// DataRootInclusionProof creates an inclusion proof for the data root of block
+// height `height` in the set of blocks defined by `start` and `end`. The range
+// is end exclusive.
+func (env *Environment) DataRootInclusionProof(
+	ctx *rpctypes.Context,
+	height int64,
+	start,
+	end uint64,
+) (*ctypes.ResultDataRootInclusionProof, error) {
+	//nolint:gosec
+	proof, err := env.GenerateDataRootInclusionProof(height, start, end)
+	if err != nil {
+		return nil, err
+	}
+	return &ctypes.ResultDataRootInclusionProof{Proof: *proof}, nil
+}
+
+func (env *Environment) GenerateDataRootInclusionProof(height int64, start, end uint64) (*merkle.Proof, error) {
+	// if globalEnv == nil {
+	// 	return nil, errors.New("global env is nil. this can only be called inside celestia-core")
+	// }
+
+	err := env.validateDataRootInclusionProofRequest(uint64(height), start, end)
+	if err != nil {
+		return nil, err
+	}
+	tuples, err := env.fetchDataRootTuples(start, end)
+	if err != nil {
+		return nil, err
+	}
+	proof, err := env.proveDataRootTuples(tuples, height)
+	if err != nil {
+		return nil, err
+	}
+	return proof, nil
 }

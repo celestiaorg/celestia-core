@@ -208,3 +208,21 @@ func RecreateConfig(o *Options) {
 func MaxReqBatchSize(o *Options) {
 	o.maxReqBatchSize = 2
 }
+
+func GetBlockAPIClient() (core_grpc.BlockAPIServiceClient, error) {
+	grpcAddr := globalConfig.RPC.GRPCListenAddress
+	client, err := core_grpc.StartBlockAPIGRPCClient(grpcAddr)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+func GetBlobstreamAPIClient() (core_grpc.BlobstreamAPIClient, error) {
+	grpcAddr := globalConfig.RPC.GRPCListenAddress
+	client, err := core_grpc.StartBlobstreamAPIGRPCClient(grpcAddr)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}

@@ -659,6 +659,21 @@ func TestTxSearchMultipleTxs(t *testing.T) {
 	assert.NoError(t, err)
 
 	require.Len(t, results, 3)
+
+	// since two txs were added at height 1 and 2, we should have two unique transactions
+	// for both heights
+
+	q, err := query.New("tx.height=1")
+	assert.NoError(t, err)
+	results, err = indexer.Search(ctx, q)
+	assert.NoError(t, err)
+	require.Len(t, results, 2)
+
+	q, err = query.New("tx.height=2")
+	assert.NoError(t, err)
+	results, err = indexer.Search(ctx, q)
+	assert.NoError(t, err)
+	require.Len(t, results, 2)
 }
 
 func txResultWithEvents(events []abci.Event) *abci.TxResult {
@@ -799,3 +814,32 @@ func BenchmarkTxIndex500(b *testing.B)   { benchmarkTxIndex(500, b) }
 func BenchmarkTxIndex1000(b *testing.B)  { benchmarkTxIndex(1000, b) }
 func BenchmarkTxIndex2000(b *testing.B)  { benchmarkTxIndex(2000, b) }
 func BenchmarkTxIndex10000(b *testing.B) { benchmarkTxIndex(10000, b) }
+
+func TestWrappedTxIndex(t *testing.T) {
+	indexer := NewTxIndex(db.NewMemDB())
+
+	tx := types.Tx("HELLO WORLD")
+	wrappedTx, err := types.MarshalIndexWrapper(tx, 11)
+	require.NoError(t, err)
+	txResult := &abci.TxResult{
+		Height: 1,
+		Index:  0,
+		Tx:     wrappedTx,
+		Result: abci.ExecTxResult{
+			Data: []byte{0},
+			Code: abci.CodeTypeOK, Log: "", Events: nil,
+		},
+	}
+	hash := tx.Hash()
+
+	batch := txindex.NewBatch(1)
+	if err := batch.Add(txResult); err != nil {
+		t.Error(err)
+	}
+	err = indexer.AddBatch(batch)
+	require.NoError(t, err)
+
+	loadedTxResult, err := indexer.Get(hash)
+	require.NoError(t, err)
+	assert.True(t, proto.Equal(txResult, loadedTxResult))
+}

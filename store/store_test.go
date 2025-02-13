@@ -15,6 +15,7 @@ import (
 
 	dbm "github.com/cometbft/cometbft-db"
 
+	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/internal/test"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
@@ -772,4 +773,69 @@ func makeUniqueBlock(height int64, state sm.State, lastCommit *types.Commit) *ty
 	}
 	block := state.MakeBlock(height, data, lastCommit, nil, state.Validators.GetProposer().Address)
 	return block
+}
+
+func TestSaveTxInfo(t *testing.T) {
+	// Create a state and a block store
+	state, blockStore, cleanup := makeStateAndBlockStore()
+	defer cleanup()
+
+	var allTxResponseCodes []uint32
+	var allTxLogs []string
+
+	// Create 10 blocks each with 1 tx
+	for h := int64(1); h <= 10; h++ {
+		block := makeUniqueBlock(h, state, new(types.Commit))
+		partSet, err := block.MakePartSet(types.BlockPartSizeBytes)
+		require.NoError(t, err)
+		seenCommit := makeTestExtCommit(h, cmttime.Now())
+		blockStore.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
+
+		var txResponseCode uint32
+		var txLog string
+
+		if h%2 == 0 {
+			txResponseCode = 0
+			txLog = "success"
+		} else {
+			txResponseCode = 1
+			txLog = "failure"
+		}
+
+		// Save the tx info
+		err = blockStore.SaveTxInfo(block, []uint32{txResponseCode}, []string{txLog})
+		require.NoError(t, err)
+		allTxResponseCodes = append(allTxResponseCodes, txResponseCode)
+		allTxLogs = append(allTxLogs, txLog)
+	}
+
+	txIndex := 0
+	// Get the blocks from blockstore up to the height
+	for h := int64(1); h <= 10; h++ {
+		block := blockStore.LoadBlock(h)
+		// Check that transactions exist in the block
+		for i, tx := range block.Txs {
+			txInfo := blockStore.LoadTxInfo(tx.Hash())
+			require.Equal(t, block.Height, txInfo.Height)
+			require.Equal(t, uint32(i), txInfo.Index)
+			require.Equal(t, allTxResponseCodes[txIndex], txInfo.Code)
+			// We don't save the logs for successful transactions
+			if allTxResponseCodes[txIndex] == abci.CodeTypeOK {
+				require.Equal(t, "", txInfo.Error)
+			} else {
+				require.Equal(t, allTxLogs[txIndex], txInfo.Error)
+			}
+			txIndex++
+		}
+	}
+
+	// Get a random transaction and make sure it's indexed properly
+	block := blockStore.LoadBlock(7)
+	tx := block.Txs[0]
+	txInfo := blockStore.LoadTxInfo(tx.Hash())
+	require.Equal(t, block.Height, txInfo.Height)
+	require.Equal(t, block.Height, int64(7))
+	require.Equal(t, txInfo.Height, int64(7))
+	require.Equal(t, uint32(1), txInfo.Code)
+	require.Equal(t, "failure", txInfo.Error)
 }

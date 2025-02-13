@@ -258,15 +258,17 @@ func (h *Handshaker) HandshakeWithContext(ctx context.Context, proxyApp proxy.Ap
 	}
 	appHash := res.LastBlockAppHash
 
-	h.logger.Info("ABCI Handshake App Info",
-		"height", blockHeight,
-		"hash", log.NewLazySprintf("%X", appHash),
-		"software-version", res.Version,
-		"protocol-version", res.AppVersion,
-	)
+	// h.logger.Info("ABCI Handshake App Info",
+	// 	"height", blockHeight,
+	// 	"hash", log.NewLazySprintf("%X", appHash),
+	// 	"software-version", res.Version,
+	// 	"protocol-version", res.AppVersion,
+	// )
 
 	// Only set the version if there is no existing state.
-	if h.initialState.LastBlockHeight == 0 {
+	appVersion := h.initialState.Version.Consensus.App
+	// set app version if it's not set via genesis
+	if h.initialState.LastBlockHeight == 0 && appVersion == 0 && res.AppVersion != 0 {
 		h.initialState.Version.Consensus.App = res.AppVersion
 	}
 

@@ -52,6 +52,7 @@ func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {
 		// evidence API
 		"broadcast_evidence": rpcserver.NewRPCFunc(makeBroadcastEvidenceFunc(c), "evidence"),
 
+		// Celestia Specific RPCs
 		"tx_status": rpcserver.NewRPCFunc(makeTxStatusFunc(c), "hash"),
 	}
 }

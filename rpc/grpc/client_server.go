@@ -26,8 +26,15 @@ type Config struct {
 func StartGRPCServer(env *core.Environment, ln net.Listener) error {
 	grpcServer := grpc.NewServer()
 	RegisterBroadcastAPIServer(grpcServer, &broadcastAPI{env: env})
+
+	// block api
 	api := NewBlockAPI(env)
 	RegisterBlockAPIServiceServer(grpcServer, api)
+
+	// blobstream api
+	blobstreamAPI := NewBlobstreamAPI(env)
+	RegisterBlobstreamAPIServer(grpcServer, blobstreamAPI)
+
 	errCh := make(chan error, 2)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -79,4 +86,21 @@ func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAP
 		return nil, err
 	}
 	return NewBlockAPIServiceClient(conn), nil
+}
+
+// StartBlobstreamAPIGRPCClient dials the gRPC server using protoAddr and returns a new
+// BlobstreamAPIClient.
+func StartBlobstreamAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlobstreamAPIClient, error) {
+	if len(opts) == 0 {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+	opts = append(opts, grpc.WithContextDialer(dialerFunc))
+	conn, err := grpc.Dial( //nolint:staticcheck
+		protoAddr,
+		opts...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return NewBlobstreamAPIClient(conn), nil
 }

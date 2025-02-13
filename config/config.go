@@ -1103,6 +1103,32 @@ func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
 	return t.Add(cfg.TimeoutCommit)
 }
 
+// ProposeWithCustomTimeout is identical to Propose. However,
+// it calculates the amount of time to wait for a proposal using the supplied
+// customTimeout.
+// If customTimeout is 0, the TimeoutPropose from cfg is used.
+func (cfg *ConsensusConfig) ProposeWithCustomTimeout(round int32, customTimeout time.Duration) time.Duration {
+	// this is to capture any unforeseen cases where the customTimeout is 0
+	var timeoutPropose = customTimeout
+	if timeoutPropose == 0 {
+		// falling back to default timeout
+		timeoutPropose = cfg.TimeoutPropose
+	}
+	return time.Duration(timeoutPropose.Nanoseconds()+cfg.TimeoutProposeDelta.Nanoseconds()*int64(round)) * time.Nanosecond
+}
+
+// CommitWithCustomTimeout is identical to Commit. However, it calculates the time for commit using the supplied customTimeout.
+// If customTimeout is 0, the TimeoutCommit from cfg is used.
+func (cfg *ConsensusConfig) CommitWithCustomTimeout(t time.Time, customTimeout time.Duration) time.Time {
+	// this is to capture any unforeseen cases where the customTimeout is 0
+	var timeoutCommit = customTimeout
+	if timeoutCommit == 0 {
+		// falling back to default timeout
+		timeoutCommit = cfg.TimeoutCommit
+	}
+	return t.Add(timeoutCommit)
+}
+
 // WalFile returns the full path to the write-ahead log file
 func (cfg *ConsensusConfig) WalFile() string {
 	if cfg.walFile != "" {

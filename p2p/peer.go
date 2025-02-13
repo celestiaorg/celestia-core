@@ -3,7 +3,6 @@ package p2p
 import (
 	"fmt"
 	"net"
-	"reflect"
 	"time"
 
 	"github.com/cosmos/gogoproto/proto"
@@ -49,6 +48,13 @@ type Peer interface {
 	GetRemovalFailed() bool
 
 	HasIPChanged() bool // has the peer's IP changed
+}
+
+type IntrospectivePeer interface {
+	Peer
+	Metrics() *Metrics
+	ValueToMetricLabel(i any) string
+	TraceClient() trace.Tracer
 }
 
 //----------------------------------------------------------
@@ -221,6 +227,18 @@ func (p *peer) FlushStop() {
 	p.metricsTicker.Stop()
 	p.BaseService.OnStop()
 	p.mconn.FlushStop() // stop everything and close the conn
+}
+
+func (p *peer) Metrics() *Metrics {
+	return p.metrics
+}
+
+func (p *peer) ValueToMetricLabel(i any) string {
+	return p.mlc.ValueToMetricLabel(i)
+}
+
+func (p *peer) TraceClient() trace.Tracer {
+	return p.traceClient
 }
 
 // OnStop implements BaseService.
@@ -432,29 +450,34 @@ func createMConnection(
 			// which does onPeerError.
 			panic(fmt.Sprintf("Unknown channel %X", chID))
 		}
-		mt := msgTypeByChID[chID]
-		msg := proto.Clone(mt)
-		err := proto.Unmarshal(msgBytes, msg)
-		if err != nil {
-			panic(fmt.Errorf("unmarshaling message: %s into type: %s", err, reflect.TypeOf(mt)))
-		}
-		labels := []string{
-			"peer_id", string(p.ID()),
-			"chID", fmt.Sprintf("%#x", chID),
-		}
-		if w, ok := msg.(Unwrapper); ok {
-			msg, err = w.Unwrap()
-			if err != nil {
-				panic(fmt.Errorf("unwrapping message: %s", err))
-			}
-		}
-		schema.WriteReceivedBytes(p.traceClient, string(p.ID()), chID, len(msgBytes))
-		p.metrics.PeerReceiveBytesTotal.With(labels...).Add(float64(len(msgBytes)))
-		p.metrics.MessageReceiveBytesTotal.With("message_type", p.mlc.ValueToMetricLabel(msg)).Add(float64(len(msgBytes)))
-		reactor.Receive(Envelope{
+		// mt := msgTypeByChID[chID]
+		// msg := proto.Clone(mt)
+		// err := proto.Unmarshal(msgBytes, msg)
+		// if err != nil {
+		// 	panic(fmt.Errorf("unmarshaling message: %s into type: %s", err, reflect.TypeOf(mt)))
+		// }
+		// labels := []string{
+		// 	"peer_id", string(p.ID()),
+		// 	"chID", fmt.Sprintf("%#x", chID),
+		// }
+		// if w, ok := msg.(Unwrapper); ok {
+		// 	msg, err = w.Unwrap()
+		// 	if err != nil {
+		// 		panic(fmt.Errorf("unwrapping message: %s", err))
+		// 	}
+		// }
+		// schema.WriteReceivedBytes(p.traceClient, string(p.ID()), chID, len(msgBytes))
+		// p.metrics.PeerReceiveBytesTotal.With(labels...).Add(float64(len(msgBytes)))
+		// p.metrics.MessageReceiveBytesTotal.With("message_type", p.mlc.ValueToMetricLabel(msg)).Add(float64(len(msgBytes)))
+		// reactor.Receive(Envelope{
+		// 	ChannelID: chID,
+		// 	Src:       p,
+		// 	Message:   msg,
+		// })
+		reactor.QueueUnprocessedEnvelope(UnprocessedEnvelope{
 			ChannelID: chID,
 			Src:       p,
-			Message:   msg,
+			Message:   msgBytes,
 		})
 	}
 
