@@ -65,7 +65,7 @@ func (r *orderedReactor) GetChannels() []*conn.ChannelDescriptor {
 }
 
 // ReceiveEnvelope adds a delay to the first processed envelope to test ordering.
-func (r *orderedReactor) ReceiveEnvelope(e p2p.Envelope) {
+func (r *orderedReactor) Receive(e p2p.Envelope) {
 	r.Lock()
 	f := r.receivedFirst
 	if !f {
