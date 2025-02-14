@@ -2475,6 +2475,8 @@ func repairWalFile(src, dst string) error {
 	return nil
 }
 
+const SyncDataInterval = 100
+
 // sync data periodically checks to make sure that all block parts in the data
 // routine are pushed through to the state.
 func (cs *State) syncData() {
@@ -2483,49 +2485,7 @@ func (cs *State) syncData() {
 		case <-cs.Quit():
 			return
 		case <-time.After(time.Millisecond * SyncDataInterval):
-			// TODO: fix implementation
-			if cs.dr == nil {
-				continue
-			}
-
-			cs.mtx.RLock()
-			h, r := cs.Height, cs.Round
-			pparts := cs.ProposalBlockParts
-			pprop := cs.Proposal
-			completeProp := cs.isProposalComplete()
-			cs.mtx.RUnlock()
-
-			if completeProp {
-				continue
-			}
-
-			prop, parts, _, has := cs.dr.GetProposal(h, r)
-
-			if !has {
-				continue
-			}
-
-			if prop != nil && pprop == nil {
-				cs.peerMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
-			}
-
-			if pparts != nil && pparts.IsComplete() {
-				continue
-			}
-
-			for i := 0; i < int(parts.Total()); i++ {
-				if pparts != nil {
-					if p := pparts.GetPart(i); p != nil {
-						continue
-					}
-				}
-
-				part := parts.GetPart(i)
-				if part == nil {
-					continue
-				}
-				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{cs.Height, cs.Round, part}, ""}
-			}
+			// TODO: implement then call
 		}
 	}
 }
