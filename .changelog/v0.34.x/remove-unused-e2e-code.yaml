@@ -1,0 +1,10 @@
+- id: remove-unused-e2e-code
+  type: improvement
+  scope: test
+  description: |
+    Remove unused code from e2e test suite following v0.38 migration:
+    - Remove long-running e2e nightlies
+    - Remove Digital Ocean support
+    - Simplify to Docker-only infrastructure
+  issues:
+    - 1613 
