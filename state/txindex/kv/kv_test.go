@@ -833,12 +833,11 @@ func TestWrappedTxIndex(t *testing.T) {
 	hash := tx.Hash()
 
 	batch := txindex.NewBatch(1)
-	if err := batch.Add(txResult); err != nil {
-		t.Error(err)
-	}
-	err = indexer.AddBatch(batch)
+	err = batch.Add(txResult)
 	require.NoError(t, err)
 
+	err = indexer.AddBatch(batch)
+	require.NoError(t, err)
 	loadedTxResult, err := indexer.Get(hash)
 	require.NoError(t, err)
 	assert.True(t, proto.Equal(txResult, loadedTxResult))

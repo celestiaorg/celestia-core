@@ -30,6 +30,12 @@ type (
 
 // Hash computes the TMHASH hash of the wire encoded transaction.
 func (tx Tx) Hash() []byte {
+	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
+		return tmhash.Sum(indexWrapper.Tx)
+	}
+	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
+		return tmhash.Sum(blobTx.Tx)
+	}
 	return tmhash.Sum(tx)
 }
 
