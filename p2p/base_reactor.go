@@ -12,6 +12,7 @@ import (
 	"github.com/cometbft/cometbft/p2p/conn"
 )
 
+// ProcessorFunc is the message processor function type.
 type ProcessorFunc func(context.Context, <-chan UnprocessedEnvelope) error
 
 // Reactor is responsible for handling incoming messages on one or more
@@ -83,12 +84,13 @@ func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReac
 	ctx, cancel := context.WithCancel(ctx)
 
 	br := &BaseReactor{
-		ctx:         ctx,
-		cancel:      cancel,
 		BaseService: *service.NewBaseService(nil, name, impl),
 		Switch:      nil,
-		incoming:    make(chan UnprocessedEnvelope, 100),
-		processor:   DefaultProcessor(impl),
+
+		ctx:       ctx,
+		cancel:    cancel,
+		incoming:  make(chan UnprocessedEnvelope, 100),
+		processor: DefaultProcessor(impl),
 	}
 
 	for _, opt := range opts {

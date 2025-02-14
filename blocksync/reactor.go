@@ -500,12 +500,6 @@ FOR_LOOP:
 				chainID, firstID, first.Height, second.LastCommit)
 
 			if err == nil {
-				// validate the block before we persist it
-				err = bcR.blockExec.ValidateBlock(state, first)
-				if err != nil {
-					bcR.Logger.Error("Block validation failed", "height", first.Height, "err", err)
-					continue FOR_LOOP
-				}
 				var stateMachineValid bool
 				// Block sync doesn't check that the `Data` in a block is valid.
 				// Since celestia-core can't determine if the `Data` in a block
@@ -517,6 +511,15 @@ FOR_LOOP:
 				stateMachineValid, err = bcR.blockExec.ProcessProposal(first, state)
 				if !stateMachineValid {
 					err = fmt.Errorf("application has rejected syncing block (%X) at height %d", first.Hash(), first.Height)
+				}
+			}
+
+			if err == nil {
+				// validate the block before we persist it
+				err = bcR.blockExec.ValidateBlock(state, first)
+				if err != nil {
+					bcR.Logger.Error("Block validation failed", "height", first.Height, "err", err)
+					continue FOR_LOOP
 				}
 			}
 			presentExtCommit := extCommit != nil
