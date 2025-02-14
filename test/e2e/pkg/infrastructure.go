@@ -15,14 +15,16 @@ const (
 	globalIPv4CIDR = "0.0.0.0/0"
 )
 
-// InfrastructureData contains the relevant information for a set of existing
-// infrastructure that is to be used for running a testnet.
+// InfrastructureData contains the information about the infrastructure
+// that the testnet is running on. After migration to v0.38, we only support
+// Docker infrastructure for local testing to maintain simplicity and reduce
+// maintenance overhead. While the interface remains provider-agnostic,
+// currently only Docker provider is implemented and supported.
 type InfrastructureData struct {
 	Path string
 
 	// Provider is the name of infrastructure provider backing the testnet.
-	// For example, 'docker' if it is running locally in a docker network or
-	// 'digital-ocean', 'aws', 'google', etc. if it is from a cloud provider.
+	// Currently only "docker" is supported following v0.38 migration.
 	Provider string `json:"provider"`
 
 	// Instances is a map of all of the machine instances on which to run

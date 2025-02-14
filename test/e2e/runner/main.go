@@ -13,7 +13,6 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 	"github.com/tendermint/tendermint/test/e2e/pkg/infra"
-	"github.com/tendermint/tendermint/test/e2e/pkg/infra/digitalocean"
 	"github.com/tendermint/tendermint/test/e2e/pkg/infra/docker"
 )
 
@@ -95,7 +94,7 @@ func NewCLI() *CLI {
 					},
 				}
 			case "digital-ocean":
-				cli.infp = &digitalocean.Provider{
+				cli.infp = &docker.Provider{
 					ProviderData: infra.ProviderData{
 						Testnet:            testnet,
 						InfrastructureData: ifd,
@@ -175,7 +174,7 @@ func NewCLI() *CLI {
 	cli.root.PersistentFlags().StringP("file", "f", "", "Testnet TOML manifest")
 	_ = cli.root.MarkPersistentFlagRequired("file")
 
-	cli.root.PersistentFlags().StringP("infrastructure-type", "", "docker", "Backing infrastructure used to run the testnet. Either 'digital-ocean' or 'docker'")
+	cli.root.PersistentFlags().StringP("infrastructure-type", "", "docker", "Backing infrastructure used to run the testnet")
 
 	cli.root.PersistentFlags().StringP("infrastructure-data", "", "", "path to the json file containing the infrastructure data. Only used if the 'infrastructure-type' is set to a value other than 'docker'")
 
@@ -355,4 +354,33 @@ func (cli *CLI) Run() {
 		logger.Error(err.Error())
 		os.Exit(1)
 	}
+}
+
+func (cli *CLI) setupInfrastructure() error {
+	switch cli.root.Flag("infrastructure-type").Value.String() {
+	case "docker":
+		m, err := e2e.LoadManifest(cli.root.Flag("file").Value.String())
+		if err != nil {
+			return err
+		}
+		ifd, err := e2e.NewDockerInfrastructureData(m)
+		if err != nil {
+			return err
+		}
+		cli.infp = &docker.Provider{
+			ProviderData: infra.ProviderData{
+				Testnet:            cli.testnet,
+				InfrastructureData: ifd,
+			},
+		}
+	default:
+		return fmt.Errorf("unknown infrastructure type %q", cli.root.Flag("infrastructure-type").Value.String())
+	}
+	return nil
+}
+
+func (cli *CLI) setupFlags() {
+	cli.root.PersistentFlags().StringP("infrastructure-type", "", "docker", "Backing infrastructure used to run the testnet")
+	cli.root.PersistentFlags().StringP("file", "f", "", "Testnet TOML manifest")
+	_ = cli.root.MarkPersistentFlagRequired("file")
 }

@@ -5,10 +5,12 @@
 # fails, the container logs are dumped to stdout along with the testnet
 # manifest, but the remaining testnets are still run.
 #
-# This is mostly used to run generated networks in nightly CI jobs.
+# This is used to run multiple test networks in CI jobs.
 #
 
 set -euo pipefail
+
+cd "$(dirname "$0")"
 
 if [[ $# == 0 ]]; then
 	echo "Usage: $0 [MANIFEST...]" >&2
