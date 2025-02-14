@@ -2,6 +2,7 @@ package trace
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,10 +18,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 const jsonL = ".jsonl"
@@ -203,27 +204,22 @@ func readS3Config(dir string) (S3Config, error) {
 // chainID and the nodeID to organize the files in the bucket. The directory
 // structure is chainID/nodeID/table.jsonl .
 func PushS3(chainID, nodeID string, s3cfg S3Config, f *os.File) error {
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(s3cfg.Region),
-		Credentials: credentials.NewStaticCredentials(
-			s3cfg.AccessKey,
-			s3cfg.SecretKey,
-			"",
-		),
-		HTTPClient: &http.Client{
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion(s3cfg.Region),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(s3cfg.AccessKey, s3cfg.SecretKey, "")),
+		config.WithHTTPClient(&http.Client{
 			Timeout: time.Duration(15) * time.Second,
-		},
-	},
+		}),
 	)
 	if err != nil {
 		return err
 	}
 
-	s3Svc := s3.New(sess)
+	s3Svc := s3.NewFromConfig(cfg)
 
 	key := fmt.Sprintf("%s/%s/%s", chainID, nodeID, filepath.Base(f.Name()))
 
-	_, err = s3Svc.PutObject(&s3.PutObjectInput{
+	_, err = s3Svc.PutObject(context.Background(), &s3.PutObjectInput{
 		Bucket: aws.String(s3cfg.BucketName),
 		Key:    aws.String(key),
 		Body:   f,
@@ -275,28 +271,29 @@ func S3Download(dst, prefix string, cfg S3Config, fileNames ...string) error {
 		return err
 	}
 
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(cfg.Region),
-		Credentials: credentials.NewStaticCredentials(
-			cfg.AccessKey,
-			cfg.SecretKey,
-			"",
-		),
-	},
+	awscfg, err2 := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion(cfg.Region),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.AccessKey, cfg.SecretKey, "")),
 	)
-	if err != nil {
+	if err2 != nil {
 		return err
 	}
 
-	s3Svc := s3.New(sess)
+	s3Svc := s3.NewFromConfig(awscfg)
 	input := &s3.ListObjectsV2Input{
 		Bucket:    aws.String(cfg.BucketName),
 		Prefix:    aws.String(prefix),
 		Delimiter: aws.String(""),
 	}
 
-	err = s3Svc.ListObjectsV2Pages(input, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
-		for _, content := range page.Contents {
+	totalObjects := 0
+	paginator := s3.NewListObjectsV2Paginator(s3Svc, input)
+	for paginator.HasMorePages() {
+		output, err := paginator.NextPage(context.TODO())
+		if err != nil {
+			return err
+		}
+		for _, content := range output.Contents {
 			key := *content.Key
 
 			// If no fileNames are specified, download all files
@@ -313,16 +310,16 @@ func S3Download(dst, prefix string, cfg S3Config, fileNames ...string) error {
 
 					// Create the directories in the path
 					if err := os.MkdirAll(filepath.Dir(localFilePath), os.ModePerm); err != nil {
-						return false
+						return err
 					}
 
 					// Create a file to write the S3 Object contents to.
 					f, err := os.Create(localFilePath)
 					if err != nil {
-						return false
+						return err
 					}
 
-					resp, err := s3Svc.GetObject(&s3.GetObjectInput{
+					resp, err := s3Svc.GetObject(context.Background(), &s3.GetObjectInput{
 						Bucket: aws.String(cfg.BucketName),
 						Key:    aws.String(key),
 					})
@@ -335,7 +332,7 @@ func S3Download(dst, prefix string, cfg S3Config, fileNames ...string) error {
 					// Copy the contents of the S3 object to the local file
 					if _, err := io.Copy(f, resp.Body); err != nil {
 						f.Close()
-						return false
+						return err
 					}
 
 					fmt.Printf("Successfully downloaded %s to %s\n", key, localFilePath)
@@ -343,7 +340,7 @@ func S3Download(dst, prefix string, cfg S3Config, fileNames ...string) error {
 				}
 			}
 		}
-		return !lastPage // continue paging
-	})
+		totalObjects += len(output.Contents)
+	}
 	return err
 }

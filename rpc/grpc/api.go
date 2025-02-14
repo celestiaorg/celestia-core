@@ -86,7 +86,7 @@ func (blockAPI *BlockAPI) StartNewBlockEventListener(ctx context.Context) error 
 		case <-ctx.Done():
 			return nil
 		case <-blockAPI.newBlockSubscription.Canceled():
-			blockAPI.env.Logger.Error("cancelled grpc subscription. retrying")
+			blockAPI.env.Logger.Error("canceled grpc subscription. retrying")
 			ok, err := blockAPI.retryNewBlocksSubscription(ctx)
 			if err != nil {
 				return err

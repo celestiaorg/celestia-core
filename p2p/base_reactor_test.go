@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cosmos/gogoproto/proto"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/p2p/conn"
 	"github.com/cometbft/cometbft/proto/tendermint/mempool"
-	"github.com/gogo/protobuf/proto"
-	"github.com/stretchr/testify/require"
 )
 
 // TestBaseReactorProcessor tests the BaseReactor's message processing by

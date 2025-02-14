@@ -17,6 +17,11 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
+const (
+	asc  = "asc"
+	desc = "desc"
+)
+
 // BlockchainInfo gets block headers for minHeight <= height <= maxHeight.
 //
 // If maxHeight does not yet exist, blocks up to the current height will be
@@ -231,10 +236,10 @@ func (env *Environment) BlockSearch(
 
 	// sort results (must be done before pagination)
 	switch orderBy {
-	case "desc", "":
+	case desc, "":
 		sort.Slice(results, func(i, j int) bool { return results[i] > results[j] })
 
-	case "asc":
+	case asc:
 		sort.Slice(results, func(i, j int) bool { return results[i] < results[j] })
 
 	default:
@@ -486,22 +491,6 @@ func (env *Environment) proveDataRootTuples(tuples []DataRootTuple, height int64
 	_, proofs := merkle.ProofsFromByteSlices(dataRootEncodedTuples)
 	//nolint:gosec
 	return proofs[height-int64(tuples[0].height)], nil
-}
-
-// sortBlocks takes a list of block heights and sorts them according to the order: "asc" or "desc".
-// If `orderBy` is blank, then it is considered descending.
-func sortBlocks(results []int64, orderBy string) error {
-	switch orderBy {
-	case "desc", "":
-		sort.Slice(results, func(i, j int) bool { return results[i] > results[j] })
-
-	case "asc":
-		sort.Slice(results, func(i, j int) bool { return results[i] < results[j] })
-
-	default:
-		return errors.New("expected order_by to be either `asc` or `desc` or empty")
-	}
-	return nil
 }
 
 // fetchDataRootTuples takes an end exclusive range of heights and fetches its
