@@ -4,17 +4,17 @@ import (
 	"testing"
 
 	"github.com/cometbft/cometbft/p2p"
-	"github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/rpc/core"
 	"github.com/cometbft/cometbft/state/mocks"
+	"github.com/cometbft/cometbft/types"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestGetNodeInfo(t *testing.T) {
 	p2pTransport := mockTransport{}
 	stateStore := &mocks.Store{}
-	stateStore.On("LoadConsensusParams", int64(1)).Return(types.ConsensusParams{Version: &types.VersionParams{App: 1}}, nil)
-	stateStore.On("LoadConsensusParams", int64(2)).Return(types.ConsensusParams{Version: &types.VersionParams{App: 2}}, nil)
+	stateStore.On("LoadConsensusParams", int64(1)).Return(types.ConsensusParams{Version: types.VersionParams{App: 1}}, nil)
+	stateStore.On("LoadConsensusParams", int64(2)).Return(types.ConsensusParams{Version: types.VersionParams{App: 2}}, nil)
 
 	type testCase struct {
 		name         string
