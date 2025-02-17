@@ -9,7 +9,7 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-// TxmetaData keeps track of the hash of a transaction and its location with the
+// TxMetaData keeps track of the hash of a transaction and its location within the
 // protobuf encoded block.
 type TxMetaData struct {
 	Hash  []byte `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`
