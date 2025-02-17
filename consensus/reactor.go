@@ -34,6 +34,9 @@ const (
 
 	blocksToContributeToBecomeGoodPeer = 10000
 	votesToContributeToBecomeGoodPeer  = 10000
+
+	// PropagationChannel the channel ID used by the propagation reactor.
+	PropagationChannel = byte(0x50)
 )
 
 //-----------------------------------------------------------------------------
@@ -206,7 +209,13 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 		panic(fmt.Sprintf("peer %v has no state", peer))
 	}
 	// Begin routines for this peer.
-	go conR.gossipDataRoutine(peer, peerState)
+	isLegacyPropagationPeer, err := isLegacyPropagation(peer)
+	if err != nil {
+		panic(err)
+	}
+	if isLegacyPropagationPeer {
+		go conR.gossipDataRoutine(peer, peerState)
+	}
 	go conR.gossipVotesRoutine(peer, peerState)
 	go conR.queryMaj23Routine(peer, peerState)
 
@@ -215,6 +224,21 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 	if !conR.WaitSync() {
 		conR.sendNewRoundStepMessage(peer)
 	}
+}
+
+func isLegacyPropagation(peer p2p.Peer) (bool, error) {
+	ni, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
+	if !ok {
+		return false, errors.New("wrong NodeInfo type. Expected DefaultNodeInfo")
+	}
+
+	for _, ch := range ni.Channels {
+		if ch == PropagationChannel {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 // RemovePeer is a noop.
