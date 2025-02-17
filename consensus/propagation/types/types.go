@@ -2,6 +2,7 @@ package types
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -228,3 +229,54 @@ func WantPartsFromProto(w *protoprop.WantParts) (*WantParts, error) {
 	}
 	return wp, wp.ValidateBasic()
 }
+
+type RecoveryPart struct {
+	// TODO: implement
+}
+
+func (p *RecoveryPart) ValidateBasic() error {
+	// TODO: implement
+	return nil
+}
+
+// MsgFromProto takes a consensus proto message and returns the native go type
+func MsgFromProto(p *protoprop.Message) (Message, error) {
+	if p == nil {
+		return nil, errors.New("propagation: nil message")
+	}
+	var pb Message
+	um, err := p.Unwrap()
+	if err != nil {
+		return nil, err
+	}
+
+	switch msg := um.(type) {
+	case *protoprop.TxMetaData:
+		pb = &TxMetaData{}
+	case *protoprop.CompactBlock:
+		pb = &CompactBlock{}
+	case *protoprop.PartMetaData:
+		pb = &PartMetaData{}
+	case *protoprop.HaveParts:
+		pb = &HaveParts{}
+	case *protoprop.WantParts:
+		pb = &WantParts{}
+	case *protoprop.RecoveryPart:
+		pb = &RecoveryPart{}
+	default:
+		return nil, fmt.Errorf("propagation: message not recognized: %T", msg)
+	}
+
+	if err := pb.ValidateBasic(); err != nil {
+		return nil, err
+	}
+
+	return pb, nil
+}
+
+// Message is a message that can be sent and received on the Reactor
+type Message interface {
+	ValidateBasic() error
+}
+
+// TODO: register all the underlying types in an init
