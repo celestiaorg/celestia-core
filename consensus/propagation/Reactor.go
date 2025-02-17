@@ -102,7 +102,7 @@ func (blockProp *Reactor) ReceiveEnvelop(e p2p.Envelope) {
 			// TODO: implement
 		case *types2.PartMetaData:
 			// TODO: implement
-		case *types2.HavePart:
+		case *types2.HaveParts:
 			// TODO: implement
 		case *types2.WantParts:
 			// TODO: implement
