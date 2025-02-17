@@ -2,13 +2,14 @@ package propagation
 
 import (
 	"fmt"
+	"reflect"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/consensus"
 	types2 "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
 	"github.com/tendermint/tendermint/proto/tendermint/propagation"
-	"reflect"
 )
 
 const (
@@ -22,6 +23,8 @@ const (
 type Reactor struct {
 	p2p.BaseReactor // BaseService + p2p.Switch
 
+	// TODO remove nolint
+	//nolint:unused
 	conS *consensus.State
 
 	traceClient trace.Tracer

@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"fmt"
+
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	protoprop "github.com/tendermint/tendermint/proto/tendermint/propagation"
