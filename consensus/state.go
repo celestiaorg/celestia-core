@@ -2479,6 +2479,9 @@ const SyncDataInterval = 100
 
 // sync data periodically checks to make sure that all block parts in the data
 // routine are pushed through to the state.
+// TODO remove nolint
+//
+//nolint:unused
 func (cs *State) syncData() {
 	for {
 		select {
