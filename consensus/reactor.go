@@ -211,11 +211,11 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 		panic(fmt.Sprintf("peer %v has no state", peer))
 	}
 	// Begin routines for this peer.
-	isLegacyPropagationPeer, err := legacyPropagation(peer)
+	isLegacyPropagationPeer, err := isLegacyPropagation(peer)
 	if err != nil {
-		return
+		panic(err)
 	}
-	if !isLegacyPropagationPeer {
+	if isLegacyPropagationPeer {
 		go conR.gossipDataRoutine(peer, peerState)
 	}
 	go conR.gossipVotesRoutine(peer, peerState)
@@ -228,7 +228,7 @@ func (conR *Reactor) AddPeer(peer p2p.Peer) {
 	}
 }
 
-func legacyPropagation(peer p2p.Peer) (bool, error) {
+func isLegacyPropagation(peer p2p.Peer) (bool, error) {
 	ni, ok := peer.NodeInfo().(p2p.DefaultNodeInfo)
 	if !ok {
 		return false, errors.New("wrong NodeInfo type. Expected DefaultNodeInfo")
