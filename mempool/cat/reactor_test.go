@@ -222,7 +222,7 @@ func TestMempoolVectors(t *testing.T) {
 
 func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
 	reactor, _ := setupReactor(t)
-	reactor.mempool.config.TTLDuration = 800 * time.Millisecond
+	reactor.mempool.config.TTLDuration = 200 * time.Millisecond
 
 	tx := newDefaultTx("hello")
 	key := tx.Key()

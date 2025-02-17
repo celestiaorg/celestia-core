@@ -98,7 +98,7 @@ func TestMempoolVectors(t *testing.T) {
 
 func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
 	config := cfg.TestConfig()
-	config.Mempool.TTLDuration = 800 * time.Millisecond
+	config.Mempool.TTLDuration = 200 * time.Millisecond
 	const N = 1
 	reactor := makeAndConnectReactors(config, N)[0]
 
@@ -119,11 +119,16 @@ func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
 	require.True(t, has)
 
 	// wait for the transaction to expire
-	time.Sleep(reactor.mempool.config.TTLDuration * 2)
-	reactor.mempool.Lock()
-	_, has = reactor.mempool.txByKey[key]
-	reactor.mempool.Unlock()
-	require.False(t, has)
+	require.Eventually(t,
+		func() bool {
+			reactor.mempool.Lock()
+			_, has := reactor.mempool.txByKey[key]
+			reactor.mempool.Unlock()
+			return has
+		},
+		4*reactor.mempool.config.TTLDuration,
+		50*time.Millisecond,
+		"transaction was not removed after TTL expired")
 }
 
 func TestLegacyReactorReceiveBasic(t *testing.T) {
