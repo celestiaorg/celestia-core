@@ -84,7 +84,6 @@ linters-settings:
           - github.com/aws/aws-sdk-go-v2/service/s3
           - github.com/grafana/otel-profiling-go
           - github.com/celestiaorg/nmt
-
       test:
         files:
           - "$test"
