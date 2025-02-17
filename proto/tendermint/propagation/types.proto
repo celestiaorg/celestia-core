@@ -1,0 +1,68 @@
+syntax = "proto3";
+package tendermint.propagation;
+
+option go_package = "github.com/tendermint/tendermint/proto/tendermint/propagation";
+
+import "gogoproto/gogo.proto";
+import "tendermint/libs/bits/types.proto";
+import "tendermint/crypto/proof.proto";
+
+// TxMetaData contains all information needed to commit to a transaction. Start
+// and end are used to insert the transaction into the protobuf encoded version
+// of the block.
+message TxMetaData {
+  bytes  hash  = 1;
+  uint32 start = 2;
+  uint32 end   = 3;
+}
+
+// CompactBlock commits to the transaction included in a proposal. It enalbes
+// clients to reuse already downloaded blobs instead of gossiping them all again
+// during the block propagation.
+message CompactBlock {
+  int64               height    = 1;
+  int32               round     = 2;
+  bytes               bp_hash   = 3;
+  repeated TxMetaData blobs     = 4;
+  bytes               signature = 5;
+}
+
+// PartMetaData proves the inclusion of a part to the block.
+message PartMetaData {
+  uint32                  index = 1;
+  bytes                   hash  = 2;
+  tendermint.crypto.Proof proof = 3 [(gogoproto.nullable) = false];
+}
+
+// HaveParts is a message sent by a peer to inform that it has or will receive a
+// part of a block.
+message HaveParts {
+  int64                 height = 1;
+  int32                 round  = 2;
+  repeated PartMetaData parts  = 3;
+}
+
+// WantParts is a wire message sent by peers to indicate that they wish to
+// download a specific portion of the block.
+message WantParts {
+  tendermint.libs.bits.BitArray parts  = 1 [(gogoproto.nullable) = false];
+  int64                         height = 2;
+  int32                         round  = 3;
+}
+
+// RecoveryPart is a wire message for sending a portion of the block to a peer.
+message RecoveryPart {
+  int64  height = 1;
+  int32  round  = 2;
+  uint32 index  = 3;
+  bytes  data   = 4;
+}
+
+message Message {
+  oneof sum {
+    CompactBlock compact_block = 1;
+    HaveParts    have_parts    = 2;
+    WantParts    want_parts    = 3;
+    RecoveryPart recovery_part = 4;
+  }
+}
