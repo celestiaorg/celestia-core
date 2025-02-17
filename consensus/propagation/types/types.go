@@ -94,11 +94,6 @@ func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
 	}
 }
 
-func (c *CompactBlock) ValidateBasic() error {
-	// TODO: implement
-	return nil
-}
-
 // CompactBlockFromProto converts a protobuf CompactBlock to its Go representation.
 func CompactBlockFromProto(c *protoprop.CompactBlock) (*CompactBlock, error) {
 	blobs := make([]*TxMetaData, len(c.Blobs))
@@ -222,11 +217,6 @@ func (w *WantParts) ToProto() *protoprop.WantParts {
 	}
 }
 
-func (w *WantParts) ValidateBasic() error {
-	// TODO: implement
-	return nil
-}
-
 // WantPartsFromProto converts a protobuf WantParts to its Go representation.
 func WantPartsFromProto(w *protoprop.WantParts) (*WantParts, error) {
 	ba := new(bits.BitArray)
@@ -267,7 +257,7 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 	case *protoprop.PartMetaData:
 		pb = &PartMetaData{}
 	case *protoprop.HaveParts:
-		pb = &HavePart{}
+		pb = &HaveParts{}
 	case *protoprop.WantParts:
 		pb = &WantParts{}
 	case *protoprop.RecoveryPart:
