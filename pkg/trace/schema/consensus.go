@@ -248,3 +248,52 @@ func WriteProposal(
 		TransferType: transferType,
 	})
 }
+
+// Schema constants for the "consensus_block_parts" table.
+const (
+	// BlockPartsTable is the name of the table that stores the consensus block
+	// parts.
+	BlockPartStateTable = "bp_state"
+)
+
+// BlockPart describes schema for the "consensus_block_parts" table.
+type BlockPartState struct {
+	Height       int64        `json:"height"`
+	Round        int32        `json:"round"`
+	Indexes      []int        `json:"indexes"`
+	Have         bool         `json:"have"`
+	Peer         string       `json:"peer"`
+	TransferType TransferType `json:"transfer_type"`
+}
+
+// Table returns the table name for the BlockPart struct.
+func (b BlockPartState) Table() string {
+	return BlockPartStateTable
+}
+
+// WriteBlockPart writes a tracing point for a BlockPart using the predetermined
+// schema for consensus state tracing.
+func WriteBlockPartState(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	indexes []int,
+	have bool,
+	peer string,
+	transferType TransferType,
+) {
+	// this check is redundant to what is checked during client.Write, although it
+	// is an optimization to avoid allocations from the map of fields.
+	if !client.IsCollecting(BlockPartStateTable) {
+		return
+	}
+	client.Write(BlockPartState{
+		Height: height,
+		Round:  round,
+		//nolint:gosec
+		Indexes:      indexes,
+		Have:         have,
+		Peer:         peer,
+		TransferType: transferType,
+	})
+}

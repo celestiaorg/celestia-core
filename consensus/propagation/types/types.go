@@ -171,6 +171,10 @@ func (h *HaveParts) RemoveIndex(i uint32) {
 	h.Parts = parts
 }
 
+func (h *HaveParts) IsEmpty() bool {
+	return len(h.Parts) == 0
+}
+
 func (h *HaveParts) GetIndex(i uint32) bool {
 	// TODO set the parts in an ordered way and support getting them faster and also get the proof and verify it
 	for _, part := range h.Parts {
@@ -244,6 +248,14 @@ func (h *HaveParts) ToProto() *protoprop.HaveParts {
 		Round:  h.Round,
 		Parts:  parts,
 	}
+}
+
+func (h *HaveParts) ToBitArray() *bits.BitArray {
+	array := bits.NewBitArray(len(h.Parts))
+	for _, part := range h.Parts {
+		array.SetIndex(int(part.Index), true)
+	}
+	return array
 }
 
 // HavePartFromProto converts a protobuf HaveParts to its Go representation.

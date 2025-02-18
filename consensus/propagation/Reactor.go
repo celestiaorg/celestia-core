@@ -3,6 +3,7 @@ package propagation
 import (
 	"fmt"
 	"github.com/tendermint/tendermint/libs/sync"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	"reflect"
 
 	"github.com/gogo/protobuf/proto"
@@ -229,8 +230,9 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, height int64, round int32, ha
 	for _, partIndex := range hc.GetTrueIndices() {
 		reqs := blockProp.countRequests(height, round, partIndex)
 		if len(reqs) >= reqLimit {
-			hc.SetIndex(partIndex, false)
-			// mark the part as fully requesteblockProp.
+			// TODO unify the types for the indexes and similar
+			hc.RemoveIndex(uint32(partIndex))
+			// mark the part as fully requested.
 			fullReqs.SetIndex(partIndex, true)
 		}
 		// don't request the part from this peer if we've already requested it
@@ -238,7 +240,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, height int64, round int32, ha
 		for _, p := range reqs {
 			// p == peer means we have already requested the part from this peer.
 			if p == peer {
-				hc.SetIndex(partIndex, false)
+				hc.RemoveIndex(uint32(partIndex))
 			}
 		}
 	}
@@ -250,24 +252,21 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, height int64, round int32, ha
 	}
 
 	e := p2p.Envelope{ //nolint: staticcheck
-		ChannelID: DataChannel,
-		Message: &cmtcons.PartState{
-			PartState: &cmttypes.PartState{
-				Height: height,
-				Round:  round,
-				Have:   false,
-				Parts:  *hc.ToProto(),
-			},
+		ChannelID: consensus.PropagationChannel,
+		Message: &propagation.HaveParts{
+			Height: height,
+			Round:  round,
+			Parts:  hc.ToProto().Parts,
 		},
 	}
 
-	if !p2p.SendEnvelopeShim(p.peer, e, blockProp.logger) {
-		blockProp.logger.Error("failed to send part state", "peer", peer, "height", height, "round", round)
+	if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) {
+		blockProp.Logger.Error("failed to send part state", "peer", peer, "height", height, "round", round)
 		return
 	}
 
 	schema.WriteBlockPartState(
-		blockProp.tracer,
+		blockProp.traceClient,
 		height,
 		round,
 		hc.GetTrueIndices(),
@@ -276,8 +275,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, height int64, round int32, ha
 		schema.Haves,
 	)
 
-	// keep track of the parts that this node has requesteblockProp.
-	p.SetRequests(height, round, hc)
+	// keep track of the parts that this node has requested.
+	p.SetRequests(height, round, hc.ToBitArray())
 	blockProp.broadcastHaves(height, round, hc, peer)
 }
 

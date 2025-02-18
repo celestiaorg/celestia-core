@@ -28,6 +28,7 @@ type TransferType int
 const (
 	Download TransferType = iota
 	Upload
+	Haves
 )
 
 func (t TransferType) String() string {
@@ -36,6 +37,8 @@ func (t TransferType) String() string {
 		return "download"
 	case Upload:
 		return "upload"
+	case Haves:
+		return "haves"
 	default:
 		return "unknown"
 	}
