@@ -3,6 +3,7 @@ package consensus
 import (
 	"errors"
 	"fmt"
+	"github.com/tendermint/tendermint/consensus/propagation"
 	"reflect"
 	"sync"
 	"time"
@@ -37,9 +38,6 @@ const (
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 1000
-
-	// PropagationChannel the channel ID used by the propagation reactor.
-	PropagationChannel = byte(0x50)
 )
 
 //-----------------------------------------------------------------------------
@@ -57,6 +55,8 @@ type Reactor struct {
 
 	Metrics     *Metrics
 	traceClient trace.Tracer
+
+	blockPropR propagation.Reactor
 }
 
 type ReactorOption func(*Reactor)
@@ -235,7 +235,7 @@ func isLegacyPropagation(peer p2p.Peer) (bool, error) {
 	}
 
 	for _, ch := range ni.Channels {
-		if ch == PropagationChannel {
+		if ch == propagation.PropagationChannel {
 			return false, nil
 		}
 	}
@@ -324,6 +324,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				schema.Download,
 			)
 			ps.ApplyNewValidBlockMessage(msg)
+			conR.blockPropR.HandleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockPartSetHeader, false)
 		case *HasVoteMessage:
 			ps.ApplyHasVoteMessage(msg)
 			schema.WriteConsensusState(
@@ -336,6 +337,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				msg.Type.String(),
 			)
 		case *VoteSetMaj23Message:
+			conR.blockPropR.HandleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockID.PartSetHeader, false)
 			cs := conR.conS
 			cs.mtx.Lock()
 			height, votes := cs.Height, cs.Votes

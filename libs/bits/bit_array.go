@@ -58,6 +58,15 @@ func (bA *BitArray) AddBitArray(b *BitArray) {
 	}
 }
 
+// Fill sets all bits to true
+func (bA *BitArray) Fill() {
+	bA.mtx.Lock()
+	defer bA.mtx.Unlock()
+	for i := 0; i < bA.Bits; i++ {
+		bA.setIndex(i, true)
+	}
+}
+
 // Size returns the number of bits in the bitarray
 func (bA *BitArray) Size() int {
 	if bA == nil {

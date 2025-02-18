@@ -10,7 +10,6 @@ import (
 	"reflect"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/tendermint/tendermint/consensus"
 	types2 "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
@@ -23,6 +22,17 @@ const (
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 1000
+
+	// PropagationChannel the channel ID used by the propagation reactor.
+	// TODO: rename to just Channel
+	PropagationChannel = byte(0x50)
+
+	// DataChannel Duplicate of consensus data channel
+	// added as a temporary fix for circular dependencies
+	// TODO: fix
+	DataChannel = byte(0x21)
+
+	StateChannel = byte(0x20)
 )
 
 type Reactor struct {
@@ -30,7 +40,7 @@ type Reactor struct {
 
 	// TODO remove nolint
 	//nolint:unused
-	conS *consensus.State
+	//conS *consensus.State
 
 	// TODO: we shouldn't be propagating messages when syncing.
 	// make sure that's the case and it makes sense to only pass this function here.
@@ -46,7 +56,7 @@ type Reactor struct {
 	traceClient trace.Tracer
 }
 
-func NewReactor(consensusState *consensus.State, waitSync func() bool, options ...ReactorOption) *Reactor {
+func NewReactor(waitSync func() bool, options ...ReactorOption) *Reactor {
 	reactor := &Reactor{
 		waitSync: waitSync,
 	}
@@ -79,7 +89,7 @@ func GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			// TODO: set better values
-			ID:                  consensus.PropagationChannel,
+			ID:                  PropagationChannel,
 			Priority:            6,
 			SendQueueCapacity:   100,
 			RecvMessageCapacity: maxMsgSize,
@@ -115,7 +125,7 @@ func (blockProp *Reactor) ReceiveEnvelop(e p2p.Envelope) {
 		return
 	}
 	switch e.ChannelID {
-	case consensus.PropagationChannel:
+	case PropagationChannel:
 		switch msg := msg.(type) {
 		case *types2.TxMetaData:
 			// TODO: implement
@@ -257,7 +267,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *types2.HaveParts, bypa
 	}
 
 	e := p2p.Envelope{ //nolint: staticcheck
-		ChannelID: consensus.PropagationChannel,
+		ChannelID: PropagationChannel,
 		Message: &propagation.HaveParts{
 			Height: height,
 			Round:  round,
@@ -302,7 +312,7 @@ func (blockProp *Reactor) countRequests(height int64, round int32, part int) []p
 // first time.
 func (blockProp *Reactor) broadcastHaves(height int64, round int32, haves *types2.HaveParts, from p2p.ID) {
 	e := p2p.Envelope{ //nolint: staticcheck
-		ChannelID: consensus.PropagationChannel,
+		ChannelID: PropagationChannel,
 		Message: &propagation.HaveParts{
 			Height: height,
 			Round:  round,
@@ -394,7 +404,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, height int64, round int32, wa
 		e := p2p.Envelope{ //nolint: staticcheck
 			// TODO catch this message in the consensus reactor and send it to this propagation reactor
 			// check the data routine for more information.
-			ChannelID: consensus.DataChannel,
+			ChannelID: DataChannel,
 			Message: &cmtcons.BlockPart{
 				Height: height,
 				Round:  round,
@@ -444,7 +454,9 @@ func (blockProp *Reactor) sendPsh(peer p2p.ID, height int64, round int32) bool {
 	e := p2p.Envelope{ //nolint: staticcheck
 		// TODO catch this message in the consensus reactor and send it to this propagation reactor
 		// check the data routine for more information.
-		ChannelID: consensus.DataChannel, // note that we're sending over the data channel instead of state!
+		// TODO this is being sent in the state channel. probably shouldn't and we need to send it
+		// in the propagation channel and create a new type.
+		ChannelID: StateChannel, // note that we're sending over the data channel instead of state!
 		Message: &cmtcons.NewValidBlock{
 			Height:             height,
 			Round:              round,
@@ -453,4 +465,157 @@ func (blockProp *Reactor) sendPsh(peer p2p.ID, height int64, round int32) bool {
 	}
 
 	return p2p.SendEnvelopeShim(blockProp.getPeer(peer).peer, e, blockProp.Logger)
+}
+
+// HandleValidBlock is called the node finds a peer with a valid block. If this
+// node doesn't have a block, it asks the sender for the portions that it
+// doesn't have.
+func (blockProp *Reactor) HandleValidBlock(peer p2p.ID, height int64, round int32, psh types.PartSetHeader, exitEarly bool) {
+	p := blockProp.getPeer(peer)
+	if p == nil || p.peer == nil {
+		blockProp.Logger.Error("peer not found", "peer", peer)
+		return
+	}
+
+	// prepare the routine to receive the proposal
+	_, ps, _, has := blockProp.GetProposal(height, round)
+	if has {
+		if ps.IsComplete() {
+			return
+		}
+		// assume that
+		ba := bits.NewBitArray(int(psh.Total))
+		if ba == nil {
+			ba = bits.NewBitArray(1)
+		}
+		ba.Fill()
+		schema.WriteNote(
+			blockProp.traceClient,
+			height,
+			-1,
+			"handleValidBlock",
+			"found incomplete block: %v/%v",
+			height, round,
+		)
+		haves := &types2.HaveParts{
+			Height: height,
+			Round:  round,
+			Parts:  bitArrayToParts(ba),
+		}
+		blockProp.handleHaves(peer, haves, true)
+		return
+	}
+
+	blockProp.pmtx.Lock()
+	if _, ok := blockProp.proposals[height]; !ok {
+		blockProp.proposals[height] = make(map[int32]*proposalData)
+	}
+	blockProp.proposals[height][round] = &proposalData{
+		block:       types.NewPartSetFromHeader(psh),
+		maxRequests: bits.NewBitArray(int(psh.Total)),
+	}
+	blockProp.pmtx.Unlock()
+
+	// todo(evan): remove this hack and properly abstract logic
+	if exitEarly {
+		return
+	}
+
+	haves := bits.NewBitArray(int(psh.Total))
+	if psh.Total < 1 {
+		blockProp.Logger.Error("invalid part set header", "peer", peer, "height", height, "round", round, "total", psh.Total)
+		haves = bits.NewBitArray(1)
+	}
+
+	e := p2p.Envelope{ //nolint: staticcheck
+		ChannelID: PropagationChannel,
+		Message: &propagation.WantParts{
+			Height: height,
+			Round:  round,
+			Parts:  *haves.ToProto(),
+		},
+	}
+
+	if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) {
+		blockProp.Logger.Error("failed to send part state", "peer", peer, "height", height, "round", round)
+		return
+	}
+
+	p.SetRequests(height, round, haves)
+
+	schema.WriteBlockPartState(
+		blockProp.traceClient,
+		height,
+		round,
+		haves.GetTrueIndices(),
+		false,
+		string(p.peer.ID()),
+		schema.AskForProposal,
+	)
+
+	blockProp.requestAllPreviousBlocks(peer, height)
+}
+
+// bitArrayToParts hack to get a list of have parts from a bit array
+// TODO: remove when we have verification
+func bitArrayToParts(array *bits.BitArray) []types2.PartMetaData {
+	parts := make([]types2.PartMetaData, len(array.GetTrueIndices()))
+	for i, index := range array.GetTrueIndices() {
+		parts[i] = types2.PartMetaData{Index: uint32(index)}
+	}
+	return parts
+}
+
+// requestAllPreviousBlocks is called when a node is catching up and needs to
+// request all previous blocks from a peer.
+func (blockProp *Reactor) requestAllPreviousBlocks(peer p2p.ID, height int64) {
+	p := blockProp.getPeer(peer)
+	if p == nil || p.peer == nil {
+		blockProp.Logger.Error("peer not found", "peer", peer)
+		return
+	}
+
+	blockProp.pmtx.RLock()
+	currentHeight := blockProp.currentHeight
+	blockProp.pmtx.RUnlock()
+	for i := currentHeight; i < height; i++ {
+		haves := bits.NewBitArray(1)
+		_, ps, _, has := blockProp.GetProposal(i, -1)
+		if has {
+			if ps.IsComplete() {
+				continue
+			}
+			haves = ps.BitArray()
+		}
+
+		// todo(evan): maybe check if the peer has already been sent a request
+		// or we have already sent enough requests
+
+		e := p2p.Envelope{ //nolint: staticcheck
+			ChannelID: DataChannel,
+			Message: &propagation.WantParts{
+				Height: i,
+				Round:  -1, // -1 round means that we don't have the psh or the proposal and the peer needs to send us this first
+				Parts:  *haves.ToProto(),
+			},
+		}
+
+		if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) {
+			blockProp.Logger.Error("failed to send part state", "peer", peer, "height", height, "round", -1)
+			return
+		}
+
+		p.SetRequests(height, -1, haves)
+
+		schema.WriteBlockPartState(
+			blockProp.traceClient,
+			i,
+			-1,
+			haves.GetTrueIndices(),
+			false,
+			string(p.peer.ID()),
+			schema.AskForProposal,
+		)
+
+	}
 }

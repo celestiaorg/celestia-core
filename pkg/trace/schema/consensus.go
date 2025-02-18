@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"fmt"
 	"github.com/tendermint/tendermint/pkg/trace"
 	"github.com/tendermint/tendermint/types"
 )
@@ -295,5 +296,40 @@ func WriteBlockPartState(
 		Have:         have,
 		Peer:         peer,
 		TransferType: transferType,
+	})
+}
+
+const (
+	NotesTable = "notes"
+)
+
+type Note struct {
+	Note     string `json:"note"`
+	Height   int64  `json:"height"`
+	Round    int32  `json:"round"`
+	NoteType string `json:"note_type"`
+}
+
+func (p Note) Table() string {
+	return NotesTable
+}
+
+func WriteNote(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	noteType string,
+	note string,
+	items ...interface{},
+) {
+	if !client.IsCollecting(NotesTable) {
+		return
+	}
+
+	client.Write(Note{
+		Height:   height,
+		Round:    round,
+		Note:     fmt.Sprintf(note, items...),
+		NoteType: noteType,
 	})
 }
