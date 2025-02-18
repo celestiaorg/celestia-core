@@ -2,8 +2,11 @@ package propagation
 
 import (
 	"fmt"
+	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
+	cmtcons "github.com/tendermint/tendermint/proto/tendermint/consensus"
+	"github.com/tendermint/tendermint/types"
 	"reflect"
 
 	"github.com/gogo/protobuf/proto"
@@ -124,7 +127,7 @@ func (blockProp *Reactor) ReceiveEnvelop(e p2p.Envelope) {
 			// TODO check if we need to bypass request limits
 			blockProp.handleHaves(e.Src.ID(), msg, false)
 		case *types2.WantParts:
-			// TODO: implement
+			blockProp.handleWants(e.Src.ID(), msg.Height, msg.Round, msg.Parts)
 		case *types2.RecoveryPart:
 			// TODO: implement
 		default:
@@ -337,4 +340,117 @@ func (blockProp *Reactor) broadcastHaves(height int64, round int32, haves *types
 			)
 		}
 	}
+}
+
+// handleWants is called when a peer sends a want message. This is used to send
+// peers data that this node already has and store the wants to send them data
+// in the future.
+func (blockProp *Reactor) handleWants(peer p2p.ID, height int64, round int32, wants *bits.BitArray) {
+	// fmt.Println("handleWants", peer, height, round, wants)
+	p := blockProp.getPeer(peer)
+	if p == nil {
+		blockProp.Logger.Error("peer not found", "peer", peer)
+		return
+	}
+
+	_, parts, _, has := blockProp.GetProposal(height, round)
+	// the peer must always send the proposal before sending parts, if they did
+	// not this node must disconnect from them.
+	if !has {
+		blockProp.Logger.Error("received part state request for unknown proposal", "peer", peer, "height", height, "round", round)
+		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part state for unknown proposal"))
+		return
+	}
+
+	// send the peer the partset header if they don't have the propsal.
+	// TODO get rid of this catchup case
+	if round < 0 {
+		if !blockProp.sendPsh(peer, height, round) {
+			blockProp.Logger.Error("failed to send PSH", "peer", peer, "height", height, "round", round)
+			return
+		}
+	}
+
+	// if we have the parts, send them to the peer.
+	wc := wants.Copy()
+
+	// send all the parts if the peer doesn't know which parts to request
+	if wc.IsEmpty() {
+		wc = parts.BitArray()
+	}
+
+	canSend := parts.BitArray().And(wc)
+	if canSend == nil {
+		blockProp.Logger.Error("nil can send?", "peer", peer, "height", height, "round", round, "wants", wants, "wc", wc)
+		return
+	}
+	for _, partIndex := range canSend.GetTrueIndices() {
+		part := parts.GetPart(partIndex)
+		ppart, err := part.ToProto()
+		if err != nil {
+			blockProp.Logger.Error("failed to convert part to proto", "height", height, "round", round, "part", partIndex, "error", err)
+			continue
+		}
+		e := p2p.Envelope{ //nolint: staticcheck
+			// TODO catch this message in the consensus reactor and send it to this propagation reactor
+			// check the data routine for more information.
+			ChannelID: consensus.DataChannel,
+			Message: &cmtcons.BlockPart{
+				Height: height,
+				Round:  round,
+				Part:   *ppart,
+			},
+		}
+
+		if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) {
+			blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
+			continue
+		}
+		// p.SetHave(height, round, int(partIndex))
+		schema.WriteBlockPartState(blockProp.traceClient, height, round, []int{int(partIndex)}, true, string(peer), schema.AskForProposal)
+	}
+
+	// for parts that we don't have but they still want, store the wants.
+	stillMissing := wants.Sub(canSend)
+	if !stillMissing.IsEmpty() {
+		p.SetWants(&types2.WantParts{
+			Parts:  stillMissing,
+			Height: height,
+			Round:  round,
+		})
+	}
+}
+
+// sendPsh
+// TODO rename this Psh to something less Psh
+func (blockProp *Reactor) sendPsh(peer p2p.ID, height int64, round int32) bool {
+	var psh types.PartSetHeader
+	_, parts, _, has := blockProp.GetProposal(height, round)
+	if !has {
+		blockProp.Logger.Error("unknown proposal", "height", height, "round", round)
+		return false
+	}
+	// TODO fix this case where it's always true
+	if has {
+		psh = parts.Header()
+	} else {
+		meta := blockProp.store.LoadBlockMeta(height)
+		if meta == nil {
+			blockProp.Logger.Error("failed to load block meta", "height", height)
+			return false
+		}
+		psh = meta.BlockID.PartSetHeader
+	}
+	e := p2p.Envelope{ //nolint: staticcheck
+		// TODO catch this message in the consensus reactor and send it to this propagation reactor
+		// check the data routine for more information.
+		ChannelID: consensus.DataChannel, // note that we're sending over the data channel instead of state!
+		Message: &cmtcons.NewValidBlock{
+			Height:             height,
+			Round:              round,
+			BlockPartSetHeader: psh.ToProto(),
+		},
+	}
+
+	return p2p.SendEnvelopeShim(blockProp.getPeer(peer).peer, e, blockProp.Logger)
 }

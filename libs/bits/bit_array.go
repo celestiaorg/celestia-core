@@ -14,7 +14,7 @@ import (
 
 // BitArray is a thread-safe implementation of a bit array.
 type BitArray struct {
-	mtx   sync.Mutex
+	mtx   sync.RWMutex
 	Bits  int      `json:"bits"`  // NOTE: persisted via reflect, must be exported
 	Elems []uint64 `json:"elems"` // NOTE: persisted via reflect, must be exported
 }
@@ -177,6 +177,12 @@ func (bA *BitArray) And(o *BitArray) *BitArray {
 		o.mtx.Unlock()
 	}()
 	return bA.and(o)
+}
+
+func (bA *BitArray) GetTrueIndices() []int {
+	bA.mtx.RLock()
+	defer bA.mtx.RUnlock()
+	return bA.getTrueIndices()
 }
 
 func (bA *BitArray) and(o *BitArray) *BitArray {

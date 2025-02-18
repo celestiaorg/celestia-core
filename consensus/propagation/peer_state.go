@@ -43,17 +43,17 @@ func (d *PeerState) SetHaves(height int64, round int32, haves *types.HaveParts) 
 }
 
 // SetWants sets the wants for a given height and round.
-func (d *PeerState) SetWants(height int64, round int32, wants *types.WantParts) {
+func (d *PeerState) SetWants(wants *types.WantParts) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	// Initialize the inner map if it doesn't exist
-	if d.state[height] == nil {
-		d.state[height] = make(map[int32]*partState)
+	if d.state[wants.Height] == nil {
+		d.state[wants.Height] = make(map[int32]*partState)
 	}
-	if d.state[height][round] == nil {
-		d.state[height][round] = newpartState(wants.Parts.Size(), height, round)
+	if d.state[wants.Height][wants.Round] == nil {
+		d.state[wants.Height][wants.Round] = newpartState(wants.Parts.Size(), wants.Height, wants.Round)
 	}
-	d.state[height][round].setWants(wants)
+	d.state[wants.Height][wants.Round].setWants(wants)
 }
 
 // SetRequests sets the requests for a given height and round.
