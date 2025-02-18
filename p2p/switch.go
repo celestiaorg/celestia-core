@@ -350,18 +350,6 @@ func (sw *Switch) StopPeerForError(peer Peer, reason interface{}) {
 	sw.stopAndRemovePeer(peer, reason)
 
 	if peer.IsPersistent() {
-		// var addr *NetAddress
-		// if peer.IsOutbound() { // socket address for outbound peers
-		// 	addr = peer.SocketAddr()
-		// } else { // self-reported address for inbound peers
-		// 	var err error
-		// 	addr, err = peer.NodeInfo().NetAddress()
-		// 	if err != nil {
-		// 		sw.Logger.Error("Wanted to reconnect to inbound peer, but self-reported address is wrong",
-		// 			"peer", peer, "err", err)
-		// 		return
-		// 	}
-		// }
 		addr, err := sw.getPeerAddress(peer)
 		if err != nil {
 			sw.Logger.Error("Failed to get address for persistent peer", "peer", peer, "err", err)

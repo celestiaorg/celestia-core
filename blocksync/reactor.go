@@ -122,7 +122,7 @@ func NewReactorWithAddr(state sm.State, blockExec *sm.BlockExecutor, store *stor
 		errorsCh:     errorsCh,
 		metrics:      metrics,
 	}
-	bcR.BaseReactor = *p2p.NewBaseReactor("Reactor", bcR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
+	bcR.BaseReactor = *p2p.NewBaseReactor("Reactor", bcR)
 	return bcR
 }
 
@@ -500,6 +500,11 @@ FOR_LOOP:
 				chainID, firstID, first.Height, second.LastCommit)
 
 			if err == nil {
+				// validate the block before we persist it
+				err = bcR.blockExec.ValidateBlock(state, first)
+			}
+
+			if err == nil {
 				var stateMachineValid bool
 				// Block sync doesn't check that the `Data` in a block is valid.
 				// Since celestia-core can't determine if the `Data` in a block
@@ -514,14 +519,6 @@ FOR_LOOP:
 				}
 			}
 
-			if err == nil {
-				// validate the block before we persist it
-				err = bcR.blockExec.ValidateBlock(state, first)
-				if err != nil {
-					bcR.Logger.Error("Block validation failed", "height", first.Height, "err", err)
-					continue FOR_LOOP
-				}
-			}
 			presentExtCommit := extCommit != nil
 			extensionsEnabled := state.ConsensusParams.ABCI.VoteExtensionsEnabled(first.Height)
 			if presentExtCommit != extensionsEnabled {

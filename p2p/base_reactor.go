@@ -2,13 +2,8 @@ package p2p
 
 import (
 	"context"
-	"fmt"
-	"reflect"
-
-	"github.com/cosmos/gogoproto/proto"
 
 	"github.com/cometbft/cometbft/libs/service"
-	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p/conn"
 )
 
@@ -59,7 +54,7 @@ type Reactor interface {
 	// messages in the order the sender sent them and then calls Receive on the
 	// reactor. The queue size and the processing function can be changed via
 	// passing options to the base reactor.
-	QueueUnprocessedEnvelope(e UnprocessedEnvelope)
+	// 	QueueUnprocessedEnvelope(e UnprocessedEnvelope)
 }
 
 //--------------------------------------
@@ -68,62 +63,62 @@ type BaseReactor struct {
 	service.BaseService // Provides Start, Stop, .Quit
 	Switch              *Switch
 
-	incoming chan UnprocessedEnvelope
+	// incoming chan UnprocessedEnvelope
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	// processor is called with the incoming channel and is responsible for
-	// unmarshalling the messages and calling Receive on the reactor.
-	processor ProcessorFunc
+	// ctx    context.Context
+	// cancel context.CancelFunc
+	// // processor is called with the incoming channel and is responsible for
+	// // unmarshalling the messages and calling Receive on the reactor.
+	// processor ProcessorFunc
 }
 
 type ReactorOptions func(*BaseReactor)
 
 func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReactor {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
+	// ctx := context.Background()
+	// ctx, cancel := context.WithCancel(ctx)
 
 	br := &BaseReactor{
 		BaseService: *service.NewBaseService(nil, name, impl),
 		Switch:      nil,
 
-		ctx:       ctx,
-		cancel:    cancel,
-		incoming:  make(chan UnprocessedEnvelope, 100),
-		processor: DefaultProcessor(impl),
+		// ctx:       ctx,
+		// cancel:    cancel,
+		// incoming:  make(chan UnprocessedEnvelope, 100),
+		// processor: DefaultProcessor(impl),
 	}
 
-	for _, opt := range opts {
-		opt(br)
-	}
+	// for _, opt := range opts {
+	// 	opt(br)
+	// }
 
-	go func() {
-		err := br.processor(ctx, br.incoming)
-		if err != nil {
-			err = br.Stop()
-			if err != nil {
-				panic(err)
-			}
-		}
-	}()
+	// go func() {
+	// 	err := br.processor(ctx, br.incoming)
+	// 	if err != nil {
+	// 		err = br.Stop()
+	// 		if err != nil {
+	// 			panic(err)
+	// 		}
+	// 	}
+	// }()
 
 	return br
 }
 
-// WithProcessor sets the processor function for the reactor. The processor
-// function is called with the incoming channel and is responsible for
-// unmarshalling the messages and calling Receive on the reactor.
-func WithProcessor(processor ProcessorFunc) ReactorOptions {
-	return func(br *BaseReactor) {
-		br.processor = processor
-	}
-}
+// // WithProcessor sets the processor function for the reactor. The processor
+// // function is called with the incoming channel and is responsible for
+// // unmarshalling the messages and calling Receive on the reactor.
+// func WithProcessor(processor ProcessorFunc) ReactorOptions {
+// 	return func(br *BaseReactor) {
+// 		br.processor = processor
+// 	}
+// }
 
 // WithIncomingQueueSize sets the size of the incoming message queue for a
 // reactor.
 func WithIncomingQueueSize(size int) ReactorOptions {
 	return func(br *BaseReactor) {
-		br.incoming = make(chan UnprocessedEnvelope, size)
+		// br.incoming = make(chan UnprocessedEnvelope, size)
 	}
 }
 
@@ -136,78 +131,78 @@ func (*BaseReactor) RemovePeer(Peer, interface{})           {}
 func (*BaseReactor) Receive(Envelope)                       {}
 func (*BaseReactor) InitPeer(peer Peer) Peer                { return peer }
 
-// QueueUnprocessedEnvelope is called by the switch when an unprocessed
-// envelope is received. Unprocessed envelopes are immediately buffered in a
-// queue to avoid blocking. The size of the queue can be changed by passing
-// options to the base reactor.
-func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
-	select {
-	// if the context is done, do nothing.
-	case <-br.ctx.Done():
-	// if not, add the item to the channel.
-	case br.incoming <- e:
-	}
-}
+// // QueueUnprocessedEnvelope is called by the switch when an unprocessed
+// // envelope is received. Unprocessed envelopes are immediately buffered in a
+// // queue to avoid blocking. The size of the queue can be changed by passing
+// // options to the base reactor.
+// func (br *BaseReactor) QueueUnprocessedEnvelope(e UnprocessedEnvelope) {
+// 	select {
+// 	// if the context is done, do nothing.
+// 	case <-br.ctx.Done():
+// 	// if not, add the item to the channel.
+// 	case br.incoming <- e:
+// 	}
+// }
 
-func (br *BaseReactor) OnStop() {
-	br.cancel()
-	close(br.incoming)
-}
+// func (br *BaseReactor) OnStop() {
+// 	br.cancel()
+// 	close(br.incoming)
+// }
 
-// DefaultProcessor unmarshalls the message and calls Receive on the reactor.
-// This preserves the sender's original order for all messages.
-func DefaultProcessor(impl Reactor) func(context.Context, <-chan UnprocessedEnvelope) error {
-	implChannels := impl.GetChannels()
+// // DefaultProcessor unmarshalls the message and calls Receive on the reactor.
+// // This preserves the sender's original order for all messages.
+// func DefaultProcessor(impl Reactor) func(context.Context, <-chan UnprocessedEnvelope) error {
+// 	implChannels := impl.GetChannels()
 
-	chIDs := make(map[byte]proto.Message, len(implChannels))
-	for _, chDesc := range implChannels {
-		chIDs[chDesc.ID] = chDesc.MessageType
-	}
-	return func(ctx context.Context, incoming <-chan UnprocessedEnvelope) error {
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case ue, ok := <-incoming:
-				if !ok {
-					// this means the channel was closed.
-					return nil
-				}
-				mt := chIDs[ue.ChannelID]
+// 	chIDs := make(map[byte]proto.Message, len(implChannels))
+// 	for _, chDesc := range implChannels {
+// 		chIDs[chDesc.ID] = chDesc.MessageType
+// 	}
+// 	return func(ctx context.Context, incoming <-chan UnprocessedEnvelope) error {
+// 		for {
+// 			select {
+// 			case <-ctx.Done():
+// 				return nil
+// 			case ue, ok := <-incoming:
+// 				if !ok {
+// 					// this means the channel was closed.
+// 					return nil
+// 				}
+// 				mt := chIDs[ue.ChannelID]
 
-				if mt == nil {
-					return fmt.Errorf("no message type registered for channel %d", ue.ChannelID)
-				}
+// 				if mt == nil {
+// 					return fmt.Errorf("no message type registered for channel %d", ue.ChannelID)
+// 				}
 
-				msg := proto.Clone(mt)
+// 				msg := proto.Clone(mt)
 
-				err := proto.Unmarshal(ue.Message, msg)
-				if err != nil {
-					return fmt.Errorf("unmarshaling message: %v into type: %s resulted in error %w", msg, reflect.TypeOf(mt), err)
-				}
+// 				err := proto.Unmarshal(ue.Message, msg)
+// 				if err != nil {
+// 					return fmt.Errorf("unmarshaling message: %v into type: %s resulted in error %w", msg, reflect.TypeOf(mt), err)
+// 				}
 
-				if w, ok := msg.(Unwrapper); ok {
-					msg, err = w.Unwrap()
-					if err != nil {
-						return fmt.Errorf("unwrapping message: %v", err)
-					}
-				}
+// 				if w, ok := msg.(Unwrapper); ok {
+// 					msg, err = w.Unwrap()
+// 					if err != nil {
+// 						return fmt.Errorf("unwrapping message: %v", err)
+// 					}
+// 				}
 
-				labels := []string{
-					"peer_id", string(ue.Src.ID()),
-					"chID", fmt.Sprintf("%#x", ue.ChannelID),
-				}
+// 				labels := []string{
+// 					"peer_id", string(ue.Src.ID()),
+// 					"chID", fmt.Sprintf("%#x", ue.ChannelID),
+// 				}
 
-				ue.Src.Metrics().PeerReceiveBytesTotal.With(labels...).Add(float64(len(ue.Message)))
-				ue.Src.Metrics().MessageReceiveBytesTotal.With(append(labels, "message_type", ue.Src.ValueToMetricLabel(msg))...).Add(float64(len(ue.Message)))
-				schema.WriteReceivedBytes(ue.Src.TraceClient(), string(ue.Src.ID()), ue.ChannelID, len(ue.Message))
+// 				ue.Src.Metrics().PeerReceiveBytesTotal.With(labels...).Add(float64(len(ue.Message)))
+// 				ue.Src.Metrics().MessageReceiveBytesTotal.With(append(labels, "message_type", ue.Src.ValueToMetricLabel(msg))...).Add(float64(len(ue.Message)))
+// 				schema.WriteReceivedBytes(ue.Src.TraceClient(), string(ue.Src.ID()), ue.ChannelID, len(ue.Message))
 
-				impl.Receive(Envelope{
-					ChannelID: ue.ChannelID,
-					Src:       ue.Src,
-					Message:   msg,
-				})
-			}
-		}
-	}
-}
+// 				impl.Receive(Envelope{
+// 					ChannelID: ue.ChannelID,
+// 					Src:       ue.Src,
+// 					Message:   msg,
+// 				})
+// 			}
+// 		}
+// 	}
+// }
