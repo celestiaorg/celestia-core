@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"fmt"
+	"github.com/tendermint/tendermint/libs/bits"
 	"time"
 
 	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
@@ -30,6 +31,8 @@ type Proposal struct {
 	BlockID   BlockID   `json:"block_id"`
 	Timestamp time.Time `json:"timestamp"`
 	Signature []byte    `json:"signature"`
+	// do we have these parts? or only a few?
+	HaveParts *bits.BitArray `json:"have_parts"` // todo(evan): use a separate type
 }
 
 // NewProposal returns a new Proposal.
@@ -131,6 +134,7 @@ func (p *Proposal) ToProto() *cmtproto.Proposal {
 	pb.PolRound = p.POLRound
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
+	pb.HaveParts = p.HaveParts.ToProto()
 
 	return pb
 }

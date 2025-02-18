@@ -56,20 +56,22 @@ type Reactor struct {
 	Metrics     *Metrics
 	traceClient trace.Tracer
 
-	blockPropR propagation.Reactor
+	// TODO define new messages to remove this dependency
+	blockPropR *propagation.Reactor
 }
 
 type ReactorOption func(*Reactor)
 
 // NewReactor returns a new Reactor with the given
 // consensusState.
-func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) *Reactor {
+func NewReactor(consensusState *State, blockPropR *propagation.Reactor, waitSync bool, options ...ReactorOption) *Reactor {
 	conR := &Reactor{
 		conS:        consensusState,
 		waitSync:    waitSync,
 		rs:          consensusState.GetRoundState(),
 		Metrics:     NopMetrics(),
 		traceClient: trace.NoOpTracer(),
+		blockPropR:  blockPropR,
 	}
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
@@ -428,6 +430,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			conR.Metrics.BlockParts.With("peer_id", string(e.Src.ID())).Add(1)
 			schema.WriteBlockPart(conR.traceClient, msg.Height, msg.Round, msg.Part.Index, false, string(e.Src.ID()), schema.Download)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
+			conR.blockPropR.handleBlockPart(e.Src.ID(), msg)
 		default:
 			conR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
 		}

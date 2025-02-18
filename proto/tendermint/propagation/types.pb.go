@@ -423,6 +423,7 @@ func (m *RecoveryPart) GetData() []byte {
 
 type Message struct {
 	// Types that are valid to be assigned to Sum:
+	//
 	//	*Message_CompactBlock
 	//	*Message_HaveParts
 	//	*Message_WantParts

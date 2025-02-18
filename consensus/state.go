@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/tendermint/tendermint/consensus/propagation"
 	"io"
 	"os"
 	"runtime/debug"
@@ -145,6 +146,9 @@ type State struct {
 	metrics *Metrics
 
 	traceClient trace.Tracer
+
+	// TODO define new messages to remove this dependency
+	blockPropR *propagation.Reactor
 }
 
 // StateOption sets an optional parameter on the State.
@@ -158,6 +162,7 @@ func NewState(
 	blockStore sm.BlockStore,
 	txNotifier txNotifier,
 	evpool evidencePool,
+	blockPropR *propagation.Reactor,
 	options ...StateOption,
 ) *State {
 	cs := &State{
@@ -176,6 +181,7 @@ func NewState(
 		evsw:             cmtevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
 		traceClient:      trace.NoOpTracer(),
+		blockPropR:       blockPropR,
 	}
 
 	// set function defaults (may be overwritten before calling Start)
@@ -1195,6 +1201,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
+		cs.blockPropR.ProposeBlock(proposal)
 
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
