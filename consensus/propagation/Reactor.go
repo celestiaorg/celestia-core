@@ -121,7 +121,8 @@ func (blockProp *Reactor) ReceiveEnvelop(e p2p.Envelope) {
 		case *types2.PartMetaData:
 			// TODO: implement
 		case *types2.HaveParts:
-			// TODO: implement
+			// TODO check if we need to bypass request limits
+			blockProp.handleHaves(e.Src.ID(), msg, false)
 		case *types2.WantParts:
 			// TODO: implement
 		case *types2.RecoveryPart:
@@ -181,24 +182,25 @@ func (blockProp *Reactor) setPeer(peer p2p.ID, state *PeerState) {
 // determine if the sender has or is getting portions of the proposal that this
 // node doesn't have. If the sender has parts that this node doesn't have, this
 // node will request those parts.
-func (blockProp *Reactor) handleHaves(peer p2p.ID, height int64, round int32, haves *types2.HaveParts, bypassRequestLimit bool) {
+// the peer must always send the proposal before sending parts, if they did
+// not this node must disconnect from them.
+// fmt.Println("unknown proposal", height, round, "from", peer)
+// blockProp.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part state for unknown proposal"))
+func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *types2.HaveParts, bypassRequestLimit bool) {
+	if haves == nil {
+		// fmt.Println("nil no parts to request", height, round)
+		return
+	}
+	height := haves.Height
+	round := haves.Round
 	p := blockProp.getPeer(peer)
 	if p == nil || p.peer == nil {
 		blockProp.Logger.Error("peer not found", "peer", peer)
 		return
 	}
 	_, parts, fullReqs, has := blockProp.GetProposal(height, round)
-	// the peer must always send the proposal before sending parts, if they did
-	// not this node must disconnect from them.
 	if !has {
-		// fmt.Println("unknown proposal", height, round, "from", peer)
 		blockProp.Logger.Error("received part state for unknown proposal", "peer", peer, "height", height, "round", round)
-		// blockProp.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part state for unknown proposal"))
-		return
-	}
-
-	if haves == nil {
-		// fmt.Println("nil no parts to request", height, round)
 		return
 	}
 
