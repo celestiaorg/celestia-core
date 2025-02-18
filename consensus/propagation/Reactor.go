@@ -276,6 +276,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, height int64, round int32, ha
 	)
 
 	// keep track of the parts that this node has requested.
+	// TODO check if we need to persist the have parts or just their bitarray
 	p.SetRequests(height, round, hc.ToBitArray())
 	blockProp.broadcastHaves(height, round, hc, peer)
 }
@@ -289,4 +290,49 @@ func (blockProp *Reactor) countRequests(height int64, round int32, part int) []p
 		}
 	}
 	return peers
+}
+
+// broadcastHaves gossips the provided have msg to all peers except to the
+// original sender. This should only be called upon receiving a new have for the
+// first time.
+func (blockProp *Reactor) broadcastHaves(height int64, round int32, haves *types2.HaveParts, from p2p.ID) {
+	e := p2p.Envelope{ //nolint: staticcheck
+		ChannelID: consensus.PropagationChannel,
+		Message: &propagation.HaveParts{
+			Height: height,
+			Round:  round,
+			Parts:  haves.ToProto().Parts,
+		},
+	}
+	for _, peer := range blockProp.getPeers() {
+		if peer.peer.ID() == from {
+			continue
+		}
+
+		// skip sending anything to this peer if they already have all the
+		// parts.
+		ph, has := peer.GetHaves(height, round)
+		if has {
+			havesCopy := haves.Copy()
+			havesCopy.Sub(ph.ToBitArray())
+			if havesCopy.IsEmpty() {
+				continue
+			}
+		}
+
+		// todo(evan): don't rely strictly on try, however since we're using
+		// pull based gossip, this isn't as big as a deal since if someone asks
+		// for data, they must already have the proposal.
+		if p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) {
+			schema.WriteBlockPartState(
+				blockProp.traceClient,
+				height,
+				round,
+				haves.GetTrueIndices(),
+				true,
+				string(peer.peer.ID()),
+				schema.Upload,
+			)
+		}
+	}
 }
