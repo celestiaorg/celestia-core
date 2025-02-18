@@ -156,6 +156,79 @@ func (h *HaveParts) ValidateBasic() error {
 	return nil
 }
 
+func (h *HaveParts) SetIndex(i uint32, Hash []byte, Proof *merkle.Proof) {
+	// TODO set the parts in an ordered way and support getting them faster.
+	h.Parts = append(h.Parts, PartMetaData{i, Hash, *Proof})
+}
+
+func (h *HaveParts) RemoveIndex(i uint32) {
+	parts := make([]PartMetaData, 0)
+	for _, part := range h.Parts {
+		if part.Index != i {
+			parts = append(parts, part)
+		}
+	}
+	h.Parts = parts
+}
+
+func (h *HaveParts) GetIndex(i uint32) bool {
+	// TODO set the parts in an ordered way and support getting them faster and also get the proof and verify it
+	for _, part := range h.Parts {
+		if part.Index == i {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *HaveParts) Copy() *HaveParts {
+	partsCopy := make([]PartMetaData, len(h.Parts))
+	for i, part := range h.Parts {
+		hashCopy := make([]byte, len(part.Hash))
+		copy(hashCopy, part.Hash)
+
+		partsCopy[i] = PartMetaData{
+			Index: part.Index,
+			Hash:  hashCopy,
+			Proof: merkle.Proof{
+				Total:    part.Proof.Total,
+				Index:    part.Proof.Index,
+				LeafHash: part.Proof.LeafHash,
+				Aunts:    part.Proof.Aunts, // TODO also deep copy this
+			},
+		}
+	}
+
+	return &HaveParts{
+		Height: h.Height,
+		Round:  h.Round,
+		Parts:  partsCopy,
+	}
+}
+
+// Sub
+// TODO document that this makes changes on the receiving object
+func (h *HaveParts) Sub(parts *bits.BitArray) {
+	size := min(len(h.Parts), parts.Size())
+	newParts := make([]PartMetaData, 0)
+	// TODO improve this implementation not to iterate this way on all possibilities
+	for i := 0; i < size; i++ {
+		if !parts.GetIndex(int(h.Parts[i].Index)) {
+			newParts = append(newParts, h.Parts[i])
+		}
+	}
+	h.Parts = newParts
+}
+
+func (h *HaveParts) GetTrueIndices() []int {
+	// TODO make this not iterate all over the elements
+	indices := make([]int, len(h.Parts))
+	for i, part := range h.Parts {
+		indices[i] = int(part.Index)
+	}
+	return indices
+}
+
 // ToProto converts HaveParts to its protobuf representation.
 func (h *HaveParts) ToProto() *protoprop.HaveParts {
 	parts := make([]*protoprop.PartMetaData, len(h.Parts))
