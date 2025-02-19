@@ -56,22 +56,21 @@ type Reactor struct {
 	Metrics     *Metrics
 	traceClient trace.Tracer
 
-	// TODO define a new interface
-	blockPropR *propagation.Reactor
+	propagator propagation.ProposalAndBlockPropagator
 }
 
 type ReactorOption func(*Reactor)
 
 // NewReactor returns a new Reactor with the given
 // consensusState.
-func NewReactor(consensusState *State, blockPropR *propagation.Reactor, waitSync bool, options ...ReactorOption) *Reactor {
+func NewReactor(consensusState *State, propagator propagation.ProposalAndBlockPropagator, waitSync bool, options ...ReactorOption) *Reactor {
 	conR := &Reactor{
 		conS:        consensusState,
 		waitSync:    waitSync,
 		rs:          consensusState.GetRoundState(),
 		Metrics:     NopMetrics(),
 		traceClient: trace.NoOpTracer(),
-		blockPropR:  blockPropR,
+		propagator:  propagator,
 	}
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
@@ -326,7 +325,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				schema.Download,
 			)
 			ps.ApplyNewValidBlockMessage(msg)
-			conR.blockPropR.HandleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockPartSetHeader, false)
+			conR.propagator.HandleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockPartSetHeader, false)
 		case *HasVoteMessage:
 			ps.ApplyHasVoteMessage(msg)
 			schema.WriteConsensusState(
@@ -339,7 +338,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				msg.Type.String(),
 			)
 		case *VoteSetMaj23Message:
-			conR.blockPropR.HandleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockID.PartSetHeader, false)
+			conR.propagator.HandleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockID.PartSetHeader, false)
 			cs := conR.conS
 			cs.mtx.Lock()
 			height, votes := cs.Height, cs.Votes
@@ -415,7 +414,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				string(e.Src.ID()),
 				schema.Download,
 			)
-			conR.blockPropR.HandleProposal(msg.Proposal, e.Src.ID(), nil)
+			conR.propagator.HandleProposal(msg.Proposal, e.Src.ID(), nil)
 		case *ProposalPOLMessage:
 			ps.ApplyProposalPOLMessage(msg)
 			schema.WriteConsensusState(
