@@ -236,7 +236,7 @@ func isLegacyPropagation(peer p2p.Peer) (bool, error) {
 	}
 
 	for _, ch := range ni.Channels {
-		if ch == propagation.PropagationChannel {
+		if ch == propagation.Channel {
 			return false, nil
 		}
 	}
