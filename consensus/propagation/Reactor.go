@@ -29,7 +29,7 @@ const (
 
 	// DataChannel Duplicate of consensus data channel
 	// added as a temporary fix for circular dependencies
-	// TODO: fix
+	// TODO: fix the copy pasting of these values here.
 	DataChannel = byte(0x21)
 
 	StateChannel = byte(0x20)
