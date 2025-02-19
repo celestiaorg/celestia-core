@@ -245,6 +245,14 @@ func (ps *PartSet) Hash() []byte {
 	return ps.hash
 }
 
+// IsReadyForDecoding returns true if the PartSet has every single part, not just
+// ready to be decoded.
+// TODO: this here only requires 2/3rd. We need all the data now because we have no erasure encoding.
+func (ps *PartSet) IsReadyForDecoding() bool {
+	//return ps.count >= (ps.total / 2)
+	return ps.IsComplete()
+}
+
 func (ps *PartSet) HashesTo(hash []byte) bool {
 	if ps == nil {
 		return false
