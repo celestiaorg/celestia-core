@@ -11,8 +11,6 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	cmtnet "github.com/tendermint/tendermint/libs/net"
 )
 
 // Config is an gRPC server configuration.
@@ -91,10 +89,6 @@ func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAP
 		return nil, fmt.Errorf("failed to create gRPC client: %w", err)
 	}
 	return NewBlockAPIClient(conn), nil
-}
-
-func dialerFunc(ctx context.Context, addr string) (net.Conn, error) {
-	return cmtnet.Connect(addr)
 }
 
 // StartBlobstreamAPIGRPCClient dials the gRPC server using protoAddr and returns a new

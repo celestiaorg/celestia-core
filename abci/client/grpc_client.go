@@ -2,7 +2,6 @@ package abcicli
 
 import (
 	"fmt"
-	"net"
 	"net/url"
 	"strings"
 	"sync"
@@ -14,7 +13,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/tendermint/tendermint/abci/types"
-	cmtnet "github.com/tendermint/tendermint/libs/net"
 	"github.com/tendermint/tendermint/libs/service"
 	cmtsync "github.com/tendermint/tendermint/libs/sync"
 )
@@ -51,10 +49,6 @@ func NewGRPCClient(addr string, mustConnect bool) Client {
 	}
 	cli.BaseService = *service.NewBaseService(nil, "grpcClient", cli)
 	return cli
-}
-
-func dialerFunc(ctx context.Context, addr string) (net.Conn, error) {
-	return cmtnet.Connect(addr)
 }
 
 func NormalizeGRPCAddress(address string) (string, error) {
