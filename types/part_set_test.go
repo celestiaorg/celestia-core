@@ -114,6 +114,11 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 	}
 }
 
+func TestEncoding(t *testing.T) {
+	_, err := Encode([][]byte{cmtrand.Bytes(int(BlockPartSizeBytes))})
+	require.NoError(t, err)
+}
+
 func TestWrongProof(t *testing.T) {
 	// Construct random data of size partSize * 100
 	data := cmtrand.Bytes(testPartSize * 100)

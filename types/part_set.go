@@ -241,7 +241,7 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, eps *PartSe
 		parts:         eparts,
 		partsBitArray: partsBitArray,
 		count:         total,
-		byteSize:      int64(len(echunks) * int(BlockPartSizeBytes)),
+		byteSize:      int64(len(echunks) * int(partSize)),
 	}
 
 	return ops, eps
@@ -264,7 +264,7 @@ func Encode(parts [][]byte) ([][]byte, error) {
 			eparts[i] = parts[i]
 			continue
 		}
-		eparts[i] = make([]byte, BlockPartSizeBytes)
+		eparts[i] = make([]byte, len(parts[0]))
 	}
 
 	// Encode the parts.
