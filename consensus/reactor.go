@@ -56,7 +56,7 @@ type Reactor struct {
 	Metrics     *Metrics
 	traceClient trace.Tracer
 
-	// TODO define new messages to remove this dependency
+	// TODO define a new interface
 	blockPropR *propagation.Reactor
 }
 
