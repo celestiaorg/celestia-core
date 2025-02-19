@@ -194,10 +194,9 @@ func (blockProp *Reactor) HandleProposal(proposal *types.Proposal, from p2p.ID, 
 	added, _, _ := blockProp.AddProposal(proposal)
 
 	if added {
+		blockProp.broadcastProposal(proposal, from)
 		if from == blockProp.self {
-			go blockProp.broadcastProposalAndHaves(proposal, from, haves)
-		} else {
-			go blockProp.broadcastProposal(proposal, from)
+			go blockProp.broadcastSelfProposalHaves(proposal, from, haves)
 		}
 
 		// if the proposal is new and we still don't have a complete block for
@@ -249,12 +248,8 @@ func (blockProp *Reactor) broadcastProposal(proposal *types.Proposal, from p2p.I
 	}
 }
 
-// broadcastProposal gossips the provided proposal to all peers. This should
-// only be called upon receiving a proposal for the first time or after creating
-// a proposal block. pbbt determines if the proposal should be broadcasted in portions
-func (blockProp *Reactor) broadcastProposalAndHaves(proposal *types.Proposal, from p2p.ID, haves *bits.BitArray) {
-	blockProp.broadcastProposal(proposal, from)
-
+// broadcastSelfProposalHaves broadcasts the haves when we're the proposer of the block.
+func (blockProp *Reactor) broadcastSelfProposalHaves(proposal *types.Proposal, from p2p.ID, haves *bits.BitArray) {
 	peers := blockProp.getPeers()
 	chunks := chunkParts(haves.Copy(), len(peers), 2)
 
@@ -264,7 +259,7 @@ func (blockProp *Reactor) broadcastProposalAndHaves(proposal *types.Proposal, fr
 		}
 
 		// pbbt (pull based broadcast tree) indicates that the proposal should
-		// only include a portion of the block and not the entiriety.
+		// only include a portion of the block and not the entirety.
 		// send each part of the proposal to three random peers
 		have := chunks[i]
 		havePart := p2p.Envelope{ //nolint: staticcheck
@@ -346,7 +341,6 @@ func chunkIndexes(totalSize, chunkSize int) [][2]int {
 // blockProp.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part state for unknown proposal"))
 func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, bypassRequestLimit bool) {
 	if haves == nil {
-		// fmt.Println("nil no parts to request", height, round)
 		return
 	}
 	height := haves.Height
@@ -501,7 +495,6 @@ func (blockProp *Reactor) broadcastHaves(height int64, round int32, haves *propt
 // peers data that this node already has and store the wants to send them data
 // in the future.
 func (blockProp *Reactor) handleWants(peer p2p.ID, height int64, round int32, wants *bits.BitArray) {
-	// fmt.Println("handleWants", peer, height, round, wants)
 	p := blockProp.getPeer(peer)
 	if p == nil {
 		blockProp.Logger.Error("peer not found", "peer", peer)
@@ -578,7 +571,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, height int64, round int32, wa
 	}
 }
 
-// sendPsh
+// sendPsh sends the partset header to the provided peer.
 // TODO rename this Psh to something less Psh
 func (blockProp *Reactor) sendPsh(peer p2p.ID, height int64, round int32) bool {
 	var psh types.PartSetHeader
