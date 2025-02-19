@@ -217,6 +217,7 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, eps *PartSe
 		// happen.
 		panic(err)
 	}
+	echunks = echunks[ops.Total():]
 	eparts := make([]*Part, total)
 	epartsBitArray := bits.NewBitArray(int(total))
 	for i := uint32(0); i < total; i++ {
@@ -290,13 +291,22 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 		return nil, nil, err
 	}
 
-	data := make([][]byte, ops.total+eps.Total())
+	data := make([][]byte, ops.Total()+eps.Total())
+	unpadded := []byte{}
 	for i, part := range ops.parts {
 		if part == nil {
 			data[i] = nil
 			continue
 		}
-		data[i] = part.Bytes
+		chunk := part.Bytes
+		if len(chunk) != int(BlockPartSizeBytes) {
+			unpadded = chunk
+			padded := make([]byte, BlockPartSizeBytes)
+			copy(padded, chunk)
+			chunk = padded
+		}
+		data[i] = chunk
+
 	}
 
 	for i, part := range eps.parts {
@@ -315,6 +325,10 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	// prune the last part if we need to
 	if len(data[:(ops.Total()-1)]) != lastPartLen {
 		data[(ops.Total() - 1)] = data[(ops.Total() - 1)][:lastPartLen]
+	}
+
+	if len(unpadded) != 0 {
+		data[ops.Total()-1] = unpadded
 	}
 
 	// recalculate all of the proofs since we apparently don't have a function
@@ -344,10 +358,10 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	// we already have.
 	eroot, eproofs := merkle.ProofsFromByteSlices(data[ops.total:])
 	if !bytes.Equal(eroot, eps.hash) {
-		return nil, nil, fmt.Errorf("reconstructed data has different hash!! want: %X, got: %X", eps.hash, eroot)
+		return nil, nil, fmt.Errorf("reconstructed parity data has different hash!! want: %X, got: %X", eps.hash, eroot)
 	}
 
-	for i := 0; i <= int(eps.Total()); i++ {
+	for i := 0; i < int(eps.Total()); i++ {
 		eps.partsBitArray.SetIndex(i, true)
 		if eps.parts[i] != nil {
 			continue

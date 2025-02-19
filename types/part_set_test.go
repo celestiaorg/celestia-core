@@ -1,7 +1,6 @@
 package types
 
 import (
-	"fmt"
 	"io"
 	"testing"
 
@@ -67,37 +66,52 @@ func TestBasicPartSet(t *testing.T) {
 	assert.Equal(t, data, data2)
 }
 
-func TestProtoRoundTrip(t *testing.T) {
-	b1 := MakeBlock(1, makeData([]Tx{Tx(cmtrand.Bytes(1000))}), &Commit{Signatures: []CommitSig{}}, []Evidence{})
-	b1.ProposerAddress = cmtrand.Bytes(crypto.AddressSize)
+func TestEncodingDecodingRoundTrip(t *testing.T) {
+	type test struct {
+		dataSize int
+	}
 
-	bp, err := b1.ToProto()
-	require.NoError(t, err)
+	tests := []test{
+		{
+			1000,
+		},
+		{
+			100000,
+		},
+		{
+			1000000,
+		},
+	}
+	for _, tt := range tests {
+		b1 := MakeBlock(1, makeData([]Tx{Tx(cmtrand.Bytes(tt.dataSize))}), &Commit{Signatures: []CommitSig{}}, []Evidence{})
+		b1.ProposerAddress = cmtrand.Bytes(crypto.AddressSize)
 
-	bz, err := bp.Marshal()
+		bp, err := b1.ToProto()
+		require.NoError(t, err)
 
-	ops, eps := NewPartSetFromData(bz, BlockPartSizeBytes)
+		bz, err := bp.Marshal()
 
-	lastPartLen := len(ops.GetPart(int(ops.Total() - 1)).Bytes.Bytes())
+		ops, eps := NewPartSetFromData(bz, BlockPartSizeBytes)
 
-	ops.parts[0] = nil
+		lastPartLen := len(ops.GetPart(int(ops.Total() - 1)).Bytes.Bytes())
 
-	ops, eps, err = Decode(ops, eps, lastPartLen)
-	require.NoError(t, err)
+		ops.parts[0] = nil
 
-	bz2, err := io.ReadAll(ops.GetReader())
-	require.NoError(t, err)
+		ops, eps, err = Decode(ops, eps, lastPartLen)
+		require.NoError(t, err)
 
-	fmt.Println("bz2", len(bz2), bz2[:10])
+		bz2, err := io.ReadAll(ops.GetReader())
+		require.NoError(t, err)
 
-	pbb := new(cmtproto.Block)
-	err = proto.Unmarshal(bz2, pbb)
-	require.NoError(t, err)
+		pbb := new(cmtproto.Block)
+		err = proto.Unmarshal(bz2, pbb)
+		require.NoError(t, err)
 
-	b2, err := BlockFromProto(pbb)
-	require.NoError(t, err)
+		b2, err := BlockFromProto(pbb)
+		require.NoError(t, err)
 
-	require.Equal(t, b1, b2)
+		require.Equal(t, b1, b2)
+	}
 }
 
 func TestWrongProof(t *testing.T) {
