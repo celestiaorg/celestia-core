@@ -90,6 +90,7 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 		require.NoError(t, err)
 
 		bz, err := bp.Marshal()
+		require.NoError(t, err)
 
 		ops, eps := NewPartSetFromData(bz, BlockPartSizeBytes)
 
@@ -97,7 +98,7 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 
 		ops.parts[0] = nil
 
-		ops, eps, err = Decode(ops, eps, lastPartLen)
+		ops, _, err = Decode(ops, eps, lastPartLen)
 		require.NoError(t, err)
 
 		bz2, err := io.ReadAll(ops.GetReader())
