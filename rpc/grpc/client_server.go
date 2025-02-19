@@ -1,7 +1,10 @@
 package coregrpc
 
 import (
+	"fmt"
 	"net"
+	"net/url"
+	"strings"
 
 	"github.com/tendermint/tendermint/rpc/core"
 
@@ -47,12 +50,28 @@ func StartGRPCServer(ln net.Listener) error {
 	return <-errCh
 }
 
+func NormalizeGRPCAddress(address string) (string, error) {
+	if strings.HasPrefix(address, "tcp://") {
+		u, err := url.Parse(address)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse gRPC address: %w", err)
+		}
+		return u.Host, nil
+	}
+	return address, nil
+}
+
 // StartGRPCClient dials the gRPC server using protoAddr and returns a new
 // BroadcastAPIClient.
 func StartGRPCClient(protoAddr string) BroadcastAPIClient {
-	conn, err := grpc.Dial(protoAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc)) //nolint:staticcheck
+	normalizedAddr, err := NormalizeGRPCAddress(protoAddr)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("Invalid gRPC address: %v", err))
+	}
+
+	conn, err := grpc.NewClient(normalizedAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create gRPC client: %v", err))
 	}
 	return NewBroadcastAPIClient(conn)
 }
@@ -60,16 +79,16 @@ func StartGRPCClient(protoAddr string) BroadcastAPIClient {
 // StartBlockAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlockAPIClient.
 func StartBlockAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlockAPIClient, error) {
+	normalizedAddr, err := NormalizeGRPCAddress(protoAddr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid gRPC address: %w", err)
+	}
 	if len(opts) == 0 {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
-	opts = append(opts, grpc.WithContextDialer(dialerFunc))
-	conn, err := grpc.Dial( //nolint:staticcheck
-		protoAddr,
-		opts...,
-	)
+	conn, err := grpc.NewClient(normalizedAddr, opts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create gRPC client: %w", err)
 	}
 	return NewBlockAPIClient(conn), nil
 }
@@ -81,16 +100,16 @@ func dialerFunc(ctx context.Context, addr string) (net.Conn, error) {
 // StartBlobstreamAPIGRPCClient dials the gRPC server using protoAddr and returns a new
 // BlobstreamAPIClient.
 func StartBlobstreamAPIGRPCClient(protoAddr string, opts ...grpc.DialOption) (BlobstreamAPIClient, error) {
+	normalizedAddr, err := NormalizeGRPCAddress(protoAddr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid gRPC address: %w", err)
+	}
 	if len(opts) == 0 {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
-	opts = append(opts, grpc.WithContextDialer(dialerFunc))
-	conn, err := grpc.Dial( //nolint:staticcheck
-		protoAddr,
-		opts...,
-	)
+	conn, err := grpc.NewClient(normalizedAddr, opts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create gRPC client: %w", err)
 	}
 	return NewBlobstreamAPIClient(conn), nil
 }

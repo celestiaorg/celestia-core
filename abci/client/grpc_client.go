@@ -3,6 +3,8 @@ package abcicli
 import (
 	"fmt"
 	"net"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,6 +57,17 @@ func dialerFunc(ctx context.Context, addr string) (net.Conn, error) {
 	return cmtnet.Connect(addr)
 }
 
+func NormalizeGRPCAddress(address string) (string, error) {
+	if strings.HasPrefix(address, "tcp://") {
+		u, err := url.Parse(address)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse gRPC address: %w", err)
+		}
+		return u.Host, nil
+	}
+	return address, nil
+}
+
 func (cli *grpcClient) OnStart() error {
 	if err := cli.BaseService.OnStart(); err != nil {
 		return err
@@ -89,7 +102,11 @@ func (cli *grpcClient) OnStart() error {
 
 RETRY_LOOP:
 	for {
-		conn, err := grpc.Dial(cli.addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialerFunc)) //nolint:staticcheck
+		normalizedAddr, err := NormalizeGRPCAddress(cli.addr)
+		if err != nil {
+			return fmt.Errorf("invalid gRPC address: %w", err)
+		}
+		conn, err := grpc.NewClient(normalizedAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			if cli.mustConnect {
 				return err
