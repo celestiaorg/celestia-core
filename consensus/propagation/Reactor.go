@@ -190,14 +190,14 @@ func (blockProp *Reactor) setPeer(peer p2p.ID, state *PeerState) {
 
 // ProposeBlock is called when the consensus routine has created a new proposal
 // and it needs to be gossiped to the rest of the network.
-func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal) {
-	blockProp.handleProposal(proposal, blockProp.self, true)
+func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, haves *bits.BitArray) {
+	blockProp.HandleProposal(proposal, blockProp.self, haves)
 }
 
-// handleProposal adds a proposal to the data routine. This should be called any
+// HandleProposal adds a proposal to the data routine. This should be called any
 // time a proposal is recevied from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
-func (blockProp *Reactor) handleProposal(proposal *types.Proposal, from p2p.ID, pbbt bool) {
+func (blockProp *Reactor) HandleProposal(proposal *types.Proposal, from p2p.ID, haves *bits.BitArray) {
 	// fmt.Println("handleProposal", proposal.Height, proposal.Round, from)
 	// set the from to the node's ID if it is empty.
 	if from == "" {
@@ -207,23 +207,12 @@ func (blockProp *Reactor) handleProposal(proposal *types.Proposal, from p2p.ID, 
 	// todo(evan): handle proposals with a POLRound > -1.
 	added, _, _ := blockProp.AddProposal(proposal)
 
-	// don't handle haves if the proposal is from this node
-	if from != blockProp.self {
-		// handle the haves before this node broadcasts the proposal because the
-		// node must request data it doesn't have before it sends the proposal.
-
-		// TODO fix creating these have parts on the fly
-		haveParts := &types2.HaveParts{
-			Height: proposal.Height,
-			Round:  proposal.Round,
-			// TODO this should be sent separately
-			Parts: bitArrayToParts(proposal.HaveParts),
-		}
-		blockProp.handleHaves(from, haveParts, false)
-	}
-
 	if added {
-		go blockProp.broadcastProposal(proposal, from, pbbt)
+		if from == blockProp.self {
+			go blockProp.broadcastProposalAndHaves(proposal, from, haves)
+		} else {
+			go blockProp.broadcastProposal(proposal, from)
+		}
 
 		// if the proposal is new and we still don't have a complete block for
 		// the last block, request it from this peer.
@@ -238,35 +227,23 @@ func (blockProp *Reactor) handleProposal(proposal *types.Proposal, from p2p.ID, 
 // broadcastProposal gossips the provided proposal to all peers. This should
 // only be called upon receiving a proposal for the first time or after creating
 // a proposal block. pbbt determines if the proposal should be broadcasted in portions
-func (blockProp *Reactor) broadcastProposal(proposal *types.Proposal, from p2p.ID, pbbt bool) {
-	e := p2p.Envelope{ //nolint: staticcheck
+func (blockProp *Reactor) broadcastProposal(proposal *types.Proposal, from p2p.ID) {
+	proposalE := p2p.Envelope{ //nolint: staticcheck
 		ChannelID: DataChannel,
 		Message:   &cmtcons.Proposal{Proposal: *proposal.ToProto()},
 	}
 
 	peers := blockProp.getPeers()
-	chunks := chunkParts(proposal.HaveParts.Copy(), len(peers), 2)
 
-	for i, peer := range peers {
+	for _, peer := range peers {
 		if peer.peer.ID() == from {
 			continue
-		}
-
-		// pbbt (pull based broadcast tree) indicates that the proposal should
-		// only include a portion of the block and not the entiriety.
-		if pbbt {
-			// send each part of the proposal to three random peers
-			proposal.HaveParts = chunks[i]
-			e = p2p.Envelope{ //nolint: staticcheck
-				ChannelID: DataChannel,
-				Message:   &cmtcons.Proposal{Proposal: *proposal.ToProto()},
-			}
 		}
 
 		// todo(evan): don't rely strictly on try, however since we're using
 		// pull based gossip, this isn't as big as a deal since if someone asks
 		// for data, they must already have the proposal.
-		if !p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) {
+		if !p2p.SendEnvelopeShim(peer.peer, proposalE, blockProp.Logger) {
 			blockProp.Logger.Error("failed to send proposal to peer", "peer", peer.peer.ID())
 			continue
 		}
@@ -283,6 +260,40 @@ func (blockProp *Reactor) broadcastProposal(proposal *types.Proposal, from p2p.I
 		// 		d.logger,
 		// 	)
 		// }
+	}
+}
+
+// broadcastProposal gossips the provided proposal to all peers. This should
+// only be called upon receiving a proposal for the first time or after creating
+// a proposal block. pbbt determines if the proposal should be broadcasted in portions
+func (blockProp *Reactor) broadcastProposalAndHaves(proposal *types.Proposal, from p2p.ID, haves *bits.BitArray) {
+	blockProp.broadcastProposal(proposal, from)
+
+	peers := blockProp.getPeers()
+	chunks := chunkParts(haves.Copy(), len(peers), 2)
+
+	for i, peer := range peers {
+		if peer.peer.ID() == from {
+			continue
+		}
+
+		// pbbt (pull based broadcast tree) indicates that the proposal should
+		// only include a portion of the block and not the entiriety.
+		// send each part of the proposal to three random peers
+		have := chunks[i]
+		havePart := p2p.Envelope{ //nolint: staticcheck
+			ChannelID: PropagationChannel,
+			Message: &propagation.HaveParts{
+				Height: proposal.Height,
+				Round:  proposal.Round,
+				Parts:  bitArrayToProtoParts(have),
+			},
+		}
+
+		if !p2p.SendEnvelopeShim(peer.peer, havePart, blockProp.Logger) {
+			blockProp.Logger.Error("failed to send proposal to peer", "peer", peer.peer.ID())
+			continue
+		}
 	}
 }
 
@@ -712,6 +723,16 @@ func bitArrayToParts(array *bits.BitArray) []types2.PartMetaData {
 	parts := make([]types2.PartMetaData, len(array.GetTrueIndices()))
 	for i, index := range array.GetTrueIndices() {
 		parts[i] = types2.PartMetaData{Index: uint32(index)}
+	}
+	return parts
+}
+
+// bitArrayToParts hack to get a list of have parts from a bit array
+// TODO: remove when we have verification
+func bitArrayToProtoParts(array *bits.BitArray) []*propagation.PartMetaData {
+	parts := make([]*propagation.PartMetaData, len(array.GetTrueIndices()))
+	for i, index := range array.GetTrueIndices() {
+		parts[i] = &propagation.PartMetaData{Index: uint32(index)}
 	}
 	return parts
 }

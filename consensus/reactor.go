@@ -415,6 +415,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				string(e.Src.ID()),
 				schema.Download,
 			)
+			conR.blockPropR.HandleProposal(msg.Proposal, e.Src.ID(), nil)
 		case *ProposalPOLMessage:
 			ps.ApplyProposalPOLMessage(msg)
 			schema.WriteConsensusState(
