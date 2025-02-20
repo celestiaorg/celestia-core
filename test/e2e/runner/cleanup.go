@@ -73,7 +73,7 @@ func cleanupDir(dir string) error {
 		return err
 	}
 
-	// attempt to remove things as root inside the docker conatiner. Depending on how
+	// attempt to remove things as root inside the docker container. Depending on how
 	// this is setup, it could fail (for example often in CI it will fail or be deleted
 	// elsewhere). When it does fail, users will need to delete this data in a
 	// different way or change their setup so this works.
