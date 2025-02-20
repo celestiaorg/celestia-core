@@ -38,24 +38,24 @@ func exampleVote() *types.Vote {
 	}
 }
 
-func exampleProposal() *types.Proposal {
+// func exampleProposal() *types.Proposal {
 
-	return &types.Proposal{
-		Type:      cmtproto.SignedMsgType(1),
-		Height:    3,
-		Round:     2,
-		Timestamp: stamp,
-		POLRound:  2,
-		Signature: []byte("it's a signature"),
-		BlockID: types.BlockID{
-			Hash: tmhash.Sum([]byte("blockID_hash")),
-			PartSetHeader: types.PartSetHeader{
-				Total: 1000000,
-				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
-			},
-		},
-	}
-}
+// 	return &types.Proposal{
+// 		Type:      cmtproto.SignedMsgType(1),
+// 		Height:    3,
+// 		Round:     2,
+// 		Timestamp: stamp,
+// 		POLRound:  2,
+// 		Signature: []byte("it's a signature"),
+// 		BlockID: types.BlockID{
+// 			Hash: tmhash.Sum([]byte("blockID_hash")),
+// 			PartSetHeader: types.PartSetHeader{
+// 				Total: 1000000,
+// 				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
+// 			},
+// 		},
+// 	}
+// }
 
 //nolint:lll // ignore line length for tests
 func TestPrivvalVectors(t *testing.T) {
