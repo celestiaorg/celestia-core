@@ -101,6 +101,33 @@ func (bA *BitArray) setIndex(i int, v bool) bool {
 	return true
 }
 
+// AddBitArray combines two bit arrays by taking the bitwise OR of the two. If
+// the two bit arrays have different lengths, AddBitArray right-pads the smaller
+// of the two bit-arrays with zeroes. Thus the size of the return value is the
+// maximum of the two provided bit arrays.
+func (bA *BitArray) AddBitArray(b *BitArray) {
+	if bA == nil || b == nil {
+		return
+	}
+	bA.mtx.Lock()
+	defer bA.mtx.Unlock()
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	// Update bA's Bits count to be the max of the two
+	bA.Bits = cmtmath.MaxInt(bA.Bits, b.Bits)
+
+	// Resize bA's Elems if b is longer
+	if len(b.Elems) > len(bA.Elems) {
+		bA.Elems = append(bA.Elems, make([]uint64, len(b.Elems)-len(bA.Elems))...)
+	}
+
+	// Perform bitwise OR operation up to the length of b
+	for i := 0; i < len(b.Elems); i++ {
+		bA.Elems[i] |= b.Elems[i]
+	}
+}
+
 // Copy returns a copy of the provided bit array.
 func (bA *BitArray) Copy() *BitArray {
 	if bA == nil {

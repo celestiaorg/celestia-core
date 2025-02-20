@@ -156,6 +156,35 @@ func (h *HaveParts) ValidateBasic() error {
 	return nil
 }
 
+func (h *HaveParts) SetIndex(i uint32, Hash []byte, Proof *merkle.Proof) {
+	// TODO set the parts in an ordered way and support getting them faster.
+	h.Parts = append(h.Parts, PartMetaData{i, Hash, *Proof})
+}
+
+func (h *HaveParts) RemoveIndex(i uint32) {
+	parts := make([]PartMetaData, 0)
+	for _, part := range h.Parts {
+		if part.Index != i {
+			parts = append(parts, part)
+		}
+	}
+	h.Parts = parts
+}
+
+func (h *HaveParts) IsEmpty() bool {
+	return len(h.Parts) == 0
+}
+
+func (h *HaveParts) GetIndex(i uint32) bool {
+	// TODO set the parts in an ordered way and support getting them faster and also get the proof and verify it
+	for _, part := range h.Parts {
+		if part.Index == i {
+			return true
+		}
+	}
+	return false
+}
+
 // ToProto converts HaveParts to its protobuf representation.
 func (h *HaveParts) ToProto() *protoprop.HaveParts {
 	parts := make([]*protoprop.PartMetaData, len(h.Parts))
