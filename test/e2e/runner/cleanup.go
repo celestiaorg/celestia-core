@@ -72,16 +72,11 @@ func cleanupDir(dir string) error {
 	if err != nil {
 		return err
 	}
-	err = docker.Exec(context.Background(), "run", "--rm", "--entrypoint", "", "-v", fmt.Sprintf("%v:/network", absDir),
+	// depending on how docker is setup, this can fail. If it fails, then the user needs to remove excess data.
+	_ = docker.Exec(context.Background(), "run", "--rm", "--entrypoint", "", "-v", fmt.Sprintf("%v:/network", absDir),
 		"cometbft/e2e-node", "sh", "-c", "rm -rf /network/*/")
-	if err != nil {
-		return err
-	}
 
-	err = os.RemoveAll(dir)
-	if err != nil {
-		return err
-	}
+	_ = os.RemoveAll(dir)
 
 	return nil
 }
