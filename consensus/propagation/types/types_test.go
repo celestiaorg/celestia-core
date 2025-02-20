@@ -532,7 +532,7 @@ func TestHaveParts_GetIndex(t *testing.T) {
 		{
 			name: "part not found",
 			existing: []PartMetaData{
-				{Index: 10, Hash: []byte("h10")},
+				{Index: 10, Hash: []byte("h100")},
 			},
 			checkIdx: 5,
 			expFound: false,
