@@ -10,7 +10,6 @@ import (
 	"github.com/tendermint/tendermint/types"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/tendermint/tendermint/consensus"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
@@ -125,11 +124,7 @@ func (blockProp *Reactor) ReceiveEnvelop(e p2p.Envelope) {
 		switch msg := msg.(type) {
 		case *proptypes.PartMetaData:
 			// TODO: implement
-		case *proptypes.HaveParts:
-			// TODO: implement
 		case *proptypes.WantParts:
-			// TODO: implement
-		case *proptypes.RecoveryPart:
 			// TODO: implement
 		case *proptypes.HaveParts:
 			// TODO check if we need to bypass request limits
