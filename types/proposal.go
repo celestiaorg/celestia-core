@@ -61,15 +61,17 @@ type CompactBlock struct {
 	BpHash    []byte        `json:"bp_hash,omitempty"`
 	Blobs     []*TxMetaData `json:"blobs,omitempty"`
 	Signature []byte        `json:"signature,omitempty"`
+	LastLen   uint32        `json:"last_length,omitempty"`
 }
 
 // NewCompactBlock wraps struct creation and calls validate basic before returning.
-func NewCompactBlock(height int64, round int32, extendedPS *PartSet, blobHashes []*TxMetaData) (CompactBlock, error) {
+func NewCompactBlock(height int64, round int32, lastLen uint32, extendedPS *PartSet, blobHashes []*TxMetaData) (CompactBlock, error) {
 	compBlock := CompactBlock{
-		Height: height,
-		Round:  round,
-		BpHash: extendedPS.Hash(),
-		Blobs:  blobHashes,
+		Height:  height,
+		Round:   round,
+		BpHash:  extendedPS.Hash(),
+		Blobs:   blobHashes,
+		LastLen: lastLen,
 	}
 	return compBlock, compBlock.ValidateBasic()
 }
@@ -115,11 +117,12 @@ func (c *CompactBlock) ToProto() *cmtproto.CompactBlock {
 		blobs[i] = blob.ToProto()
 	}
 	return &cmtproto.CompactBlock{
-		Height:    c.Height,
-		Round:     c.Round,
-		BpHash:    c.BpHash,
-		Blobs:     blobs,
-		Signature: c.Signature,
+		Height:     c.Height,
+		Round:      c.Round,
+		BpHash:     c.BpHash,
+		Blobs:      blobs,
+		Signature:  c.Signature,
+		LastLength: c.LastLen,
 	}
 }
 
@@ -138,6 +141,7 @@ func CompactBlockFromProto(c *cmtproto.CompactBlock) (*CompactBlock, error) {
 		BpHash:    c.BpHash,
 		Blobs:     blobs,
 		Signature: c.Signature,
+		LastLen:   c.LastLength,
 	}
 	return cb, cb.ValidateBasic()
 }

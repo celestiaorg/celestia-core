@@ -242,7 +242,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		// Make proposal
 		propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-		compB, err := types.NewCompactBlock(block.Height, 0, eps, hashes)
+		compB, err := types.NewCompactBlock(block.Height, 0, blockParts.LastLen(), eps, hashes)
 		require.NoError(t, err)
 		proposal := types.NewProposal(height, round, lazyProposer.TwoThirdPrevoteRound, propBlockID, compB)
 		p := proposal.ToProto()
@@ -502,7 +502,7 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	block2, blockParts2, eps2, hashes2 := cs.createProposalBlock()
 	polRound = cs.TwoThirdPrevoteRound
 	propBlockID = types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
-	_, err := types.NewCompactBlock(block2.Height, polRound, eps2, hashes2)
+	_, err := types.NewCompactBlock(block2.Height, polRound, blockParts2.LastLen(), eps2, hashes2)
 	fmt.Println(err)
 	// require.NoError(t, err)
 	proposal2 := types.NewProposal(height, round, polRound, propBlockID, types.CompactBlock{})

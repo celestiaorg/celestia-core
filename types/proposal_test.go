@@ -61,7 +61,7 @@ func TestProposalVerifySignature(t *testing.T) {
 	require.NoError(t, err)
 
 	h, r := int64(4), int32(2)
-	compB, err := NewCompactBlock(h, r, &PartSet{hash: cmtrand.Bytes(32)}, []*TxMetaData{})
+	compB, err := NewCompactBlock(h, r, 100, &PartSet{hash: cmtrand.Bytes(32)}, []*TxMetaData{})
 	assert.NoError(t, err)
 
 	prop := NewProposal(
@@ -158,7 +158,7 @@ func TestProposalValidateBasic(t *testing.T) {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
 			h, r := int64(4), int32(2)
-			compB, err := NewCompactBlock(h, r, &PartSet{hash: cmtrand.Bytes(32)}, []*TxMetaData{})
+			compB, err := NewCompactBlock(h, r, 100, &PartSet{hash: cmtrand.Bytes(32)}, []*TxMetaData{})
 			require.NoError(t, err)
 			prop := NewProposal(
 				h, r, r,
@@ -177,7 +177,7 @@ func TestProposalValidateBasic(t *testing.T) {
 
 func TestProposalProtoBuf(t *testing.T) {
 	h, r := int64(1), int32(2)
-	compB, err := NewCompactBlock(h, r, &PartSet{hash: cmtrand.Bytes(32)}, []*TxMetaData{})
+	compB, err := NewCompactBlock(h, r, 100, &PartSet{hash: cmtrand.Bytes(32)}, []*TxMetaData{})
 	compB.Signature = cmtrand.Bytes(64)
 	assert.NoError(t, err)
 	proposal := NewProposal(1, 2, 3, makeBlockID([]byte("hash"), 2, []byte("part_set_hash")), compB)

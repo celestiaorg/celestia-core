@@ -217,7 +217,7 @@ func decideProposal(
 
 	// Make proposal
 	polRound, propBlockID := validRound, types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	compB, err := types.NewCompactBlock(block.Height, polRound, eps, hashes)
+	compB, err := types.NewCompactBlock(block.Height, polRound, blockParts.LastLen(), eps, hashes)
 	// todo: refactor test and get rid of this panic
 	if err != nil {
 		panic(err)

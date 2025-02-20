@@ -376,7 +376,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _, _, hashes := css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts, eps := propBlock.MakePartSet(partSize)
-	compB, err := types.NewCompactBlock(height, round, eps, hashes)
+	compB, err := types.NewCompactBlock(height, round, propBlockParts.LastLen(), eps, hashes)
 	require.NoError(t, err)
 	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
@@ -408,7 +408,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	assert.Nil(t, err)
 	propBlock, _, _, hashes = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	propBlockParts, eps = propBlock.MakePartSet(partSize)
-	compB, err = types.NewCompactBlock(height, round, eps, hashes)
+	compB, err = types.NewCompactBlock(height, round, propBlockParts.LastLen(), eps, hashes)
 	require.NoError(t, err)
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 
@@ -468,7 +468,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	}
 
 	selfIndex := valIndexFn(0)
-	compB, err = types.NewCompactBlock(height, round, eps, hashes)
+	compB, err = types.NewCompactBlock(height, round, propBlockParts.LastLen(), eps, hashes)
 	require.NoError(t, err)
 	proposal = types.NewProposal(vss[3].Height, round, -1, blockID, compB)
 	p = proposal.ToProto()
@@ -524,7 +524,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	propBlock, _, _, hashes = css[0].createProposalBlock() // changeProposer(t, cs1, vs2)
 	require.NoError(t, err)
 	propBlockParts, eps = propBlock.MakePartSet(partSize)
-	compB, err = types.NewCompactBlock(height, round, eps, hashes)
+	compB, err = types.NewCompactBlock(height, round, propBlockParts.LastLen(), eps, hashes)
 	require.NoError(t, err)
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 	newVss = make([]*validatorStub, nVals+3)

@@ -1182,9 +1182,10 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		// Create a new proposal block from state/txs from the mempool.
 		schema.WriteABCI(cs.traceClient, schema.PrepareProposalStart, height, round)
 		blck, ops, eps, hashes := cs.createProposalBlock()
+		// todo(evan): refactor to not be grody
 		block = blck
 		blockParts = ops
-		compBlck, err := types.NewCompactBlock(height, round, eps, hashes)
+		compBlck, err := types.NewCompactBlock(height, round, ops.LastLen(), eps, hashes)
 		if err != nil {
 			panic(err)
 		}

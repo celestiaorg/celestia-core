@@ -164,6 +164,7 @@ message CompactBlock {
   bytes               bp_hash   = 3;
   repeated TxMetaData blobs     = 4;
   bytes               signature = 5;
+  uint32 last_length = 6;
 }
 
 message Proposal {
