@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/tendermint/tendermint/consensus/propagation"
 	"io"
 	"os"
 	"runtime/debug"
 	"sort"
 	"time"
+
+	"github.com/tendermint/tendermint/consensus/propagation"
 
 	"github.com/gogo/protobuf/proto"
 

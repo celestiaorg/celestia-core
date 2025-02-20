@@ -3,10 +3,11 @@ package consensus
 import (
 	"errors"
 	"fmt"
-	"github.com/tendermint/tendermint/consensus/propagation"
 	"reflect"
 	"sync"
 	"time"
+
+	"github.com/tendermint/tendermint/consensus/propagation"
 
 	"github.com/gogo/protobuf/proto"
 	cstypes "github.com/tendermint/tendermint/consensus/types"
