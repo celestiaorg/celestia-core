@@ -705,11 +705,11 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
 	for _, peer := range blockProp.getPeers() {
 		if peer.WantsPart(part.Height, part.Round, part.Index) {
-			e := p2p.Envelope{ //nolint: staticcheck
+			e := p2p.Envelope{
 				ChannelID: DataChannel,
 				Message:   &propproto.RecoveryPart{Height: part.Height, Round: part.Round, Index: part.Index, Data: part.Data},
 			}
-			if p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) {
+			if p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
 				peer.SetHave(part.Height, part.Round, int(part.Index))
 				peer.SetWant(part.Height, part.Round, int(part.Index), false)
 				catchup := false
