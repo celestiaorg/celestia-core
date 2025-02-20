@@ -146,6 +146,27 @@ message CommitSig {
   bytes signature = 4;
 }
 
+// TxMetaData contains all information needed to commit to a transaction. Start
+// and end are used to insert the transaction into the protobuf encoded version
+// of the block.
+message TxMetaData {
+  bytes  hash  = 1;
+  uint32 start = 2;
+  uint32 end   = 3;
+}
+
+// CompactBlock commits to the transaction included in a proposal. It enalbes
+// clients to reuse already downloaded blobs instead of gossiping them all again
+// during the block propagation.
+message CompactBlock {
+  int64               height    = 1;
+  int32               round     = 2;
+  bytes               bp_hash   = 3;
+  repeated TxMetaData blobs     = 4;
+  bytes               signature = 5;
+  uint32 last_length = 6;
+}
+
 message Proposal {
   SignedMsgType             type      = 1;
   int64                     height    = 2;
@@ -155,6 +176,7 @@ message Proposal {
   google.protobuf.Timestamp timestamp = 6
       [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   bytes signature = 7;
+  CompactBlock compact_block = 8;
 }
 
 message SignedHeader {
