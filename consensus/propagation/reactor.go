@@ -45,6 +45,7 @@ type Reactor struct {
 	self        p2p.ID
 }
 
+//nolint:unused
 func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, options ...ReactorOption) *Reactor {
 	reactor := &Reactor{
 		self:          self,
@@ -72,6 +73,7 @@ func (blockProp *Reactor) OnStop() {
 	// TODO: implement
 }
 
+//nolint:unused
 func GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
@@ -160,7 +162,9 @@ func (blockProp *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 }
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,
-// nil is returneblockProp.
+// nil is returned.
+//
+//nolint:unused
 func (blockProp *Reactor) getPeer(peer p2p.ID) *PeerState {
 	blockProp.mtx.RLock()
 	defer blockProp.mtx.RUnlock()
@@ -168,6 +172,8 @@ func (blockProp *Reactor) getPeer(peer p2p.ID) *PeerState {
 }
 
 // getPeers returns a list of all peers that the data routine is aware of.
+//
+//nolint:unused
 func (blockProp *Reactor) getPeers() []*PeerState {
 	blockProp.mtx.RLock()
 	defer blockProp.mtx.RUnlock()
@@ -179,6 +185,8 @@ func (blockProp *Reactor) getPeers() []*PeerState {
 }
 
 // setPeer sets the peer state for the given peer.
+//
+//nolint:unused
 func (blockProp *Reactor) setPeer(peer p2p.ID, state *PeerState) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
@@ -206,11 +214,15 @@ func (blockProp *Reactor) HandleProposal(proposal *types.Proposal, from p2p.ID, 
 // broadcastProposal gossips the provided proposal to all peers. This should
 // only be called upon receiving a proposal for the first time or after creating
 // a proposal block.
+//
+//nolint:unused
 func (blockProp *Reactor) broadcastProposal(proposal *types.Proposal, from p2p.ID) {
 }
 
 // broadcastSelfProposalHaves broadcasts the haves to all the connected peers when we're the proposers.
 // Note: the haves are chunked so that every peer only receives a portion of the haves.
+//
+//nolint:unused
 func (blockProp *Reactor) broadcastSelfProposalHaves(proposal *types.Proposal, from p2p.ID, haves *bits.BitArray) {
 }
 
@@ -294,6 +306,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 // broadcastHaves gossips the provided have msg to all peers except to the
 // original sender. This should only be called upon receiving a new have for the
 // first time.
+//
+//nolint:unused
 func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID) {
 }
 
@@ -315,6 +329,8 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 // - get the patset header from the block meta?
 // - send the partset header to the provided peer
 // TODO rename this Psh to something less Psh
+//
+//nolint:unused
 func (blockProp *Reactor) sendPsh(peer p2p.ID, height int64, round int32) bool {
 	return true
 }
@@ -333,6 +349,8 @@ func (blockProp *Reactor) sendPsh(peer p2p.ID, height int64, round int32) bool {
 // - send the wants of all the block parts to the peer that sent it to us
 // - set the requests
 // - request all the previous blocks if any are missing
+//
+//nolint:unused
 func (blockProp *Reactor) HandleValidBlock(peer p2p.ID, height int64, round int32, psh types.PartSetHeader, exitEarly bool) {
 }
 
@@ -348,6 +366,8 @@ func bitArrayToParts(array *bits.BitArray) []proptypes.PartMetaData {
 
 // bitArrayToParts hack to get a list of have parts from a bit array
 // TODO: remove when we have verification
+//
+//nolint:unused
 func bitArrayToProtoParts(array *bits.BitArray) []*propproto.PartMetaData {
 	parts := make([]*propproto.PartMetaData, len(array.GetTrueIndices()))
 	for i, index := range array.GetTrueIndices() {
@@ -363,10 +383,12 @@ func bitArrayToProtoParts(array *bits.BitArray) []*propproto.PartMetaData {
 // - get the reactor latest height
 // - send want parts for all the necessary blocks between [reactor.latestHeight, height)
 // while setting the want's round to a value < 0.
+//
+//nolint:unused
 func (blockProp *Reactor) requestAllPreviousBlocks(peer p2p.ID, height int64) {
 }
 
-// handleBlockPart is called when a peer sends a block part message. This is used
+// handleRecoveryPart is called when a peer sends a block part message. This is used
 // to store the part and clear any wants for that part.
 // This method will:
 // - if the peer is not provided, we set it to self
@@ -376,15 +398,19 @@ func (blockProp *Reactor) requestAllPreviousBlocks(peer p2p.ID, height int64) {
 // - add the received part to the parts
 // - if the parts are decodable, clear all the wants of that block from the proposal state
 // - otherwise, clear the want related to this part from the state
+//
+//nolint:unused
 func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.RecoveryPart) {
 }
 
-// ClearWants checks the wantState to see if any peers want the given part, if
+// clearWants checks the wantState to see if any peers want the given part, if
 // so, it attempts to send them that part.
 // This method will:
 // - get all the peers
 // - check if any of the peers need that part
 // - if so, send it to them
 // - if not, remove that want.
+//
+//nolint:unused
 func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
 }

@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+
 	"github.com/tendermint/tendermint/pkg/trace"
 	"github.com/tendermint/tendermint/types"
 )
