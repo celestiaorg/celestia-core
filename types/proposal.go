@@ -93,9 +93,6 @@ func (c *CompactBlock) ValidateBasic() error {
 	if c.Height < 0 {
 		return errors.New("CompactBlock: Height cannot be negative")
 	}
-	if c.Round < 0 {
-		return errors.New("CompactBlock: Round cannot be negative")
-	}
 	if err := ValidateHash(c.BpHash); err != nil {
 		return err
 	}

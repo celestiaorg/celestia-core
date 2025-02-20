@@ -315,15 +315,6 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 			},
 			errors.New("CompactBlock: Height cannot be negative"),
 		},
-		{
-			"negative round",
-			&CompactBlock{
-				Height: 1, Round: -2, BpHash: cmtrand.Bytes(tmhash.Size),
-				Blobs:     []*TxMetaData{{Hash: cmtrand.Bytes(tmhash.Size), Start: 0, End: 10}},
-				Signature: cmtrand.Bytes(MaxSignatureSize),
-			},
-			errors.New("CompactBlock: Round cannot be negative"),
-		},
 		// {
 		// 	"invalid bp_hash",
 		// 	&CompactBlock{

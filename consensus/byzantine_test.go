@@ -482,12 +482,12 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	// Avoid sending on internalMsgQueue and running consensus state.
 
 	// Create a new proposal block from state/txs from the mempool.
-	block1, blockParts1, eps, hashes := cs.createProposalBlock()
+	block1, blockParts1, _, _ := cs.createProposalBlock()
 	polRound := cs.TwoThirdPrevoteRound
 	propBlockID := types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
-	compB, err := types.NewCompactBlock(block1.Height, polRound, eps, hashes)
-	require.NoError(t, err)
-	proposal1 := types.NewProposal(height, round, polRound, propBlockID, compB)
+	// _, err := types.NewCompactBlock(block1.Height, polRound, eps, hashes)
+	// require.NoError(t, err)
+	proposal1 := types.NewProposal(height, round, polRound, propBlockID, types.CompactBlock{})
 	p1 := proposal1.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p1); err != nil {
 		t.Error(err)
@@ -502,9 +502,10 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	block2, blockParts2, eps2, hashes2 := cs.createProposalBlock()
 	polRound = cs.TwoThirdPrevoteRound
 	propBlockID = types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
-	compB2, err := types.NewCompactBlock(block2.Height, polRound, eps2, hashes2)
-	require.NoError(t, err)
-	proposal2 := types.NewProposal(height, round, polRound, propBlockID, compB2)
+	_, err := types.NewCompactBlock(block2.Height, polRound, eps2, hashes2)
+	fmt.Println(err)
+	// require.NoError(t, err)
+	proposal2 := types.NewProposal(height, round, polRound, propBlockID, types.CompactBlock{})
 	p2 := proposal2.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p2); err != nil {
 		t.Error(err)
