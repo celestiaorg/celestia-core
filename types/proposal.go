@@ -128,6 +128,9 @@ func (c *CompactBlock) ToProto() *cmtproto.CompactBlock {
 
 // CompactBlockFromProto converts a protobuf CompactBlock to its Go representation.
 func CompactBlockFromProto(c *cmtproto.CompactBlock) (*CompactBlock, error) {
+	if c == nil {
+		return &CompactBlock{}, nil
+	}
 	blobs := make([]*TxMetaData, len(c.Blobs))
 	for i, blob := range c.Blobs {
 		blobs[i] = TxMetaDataFromProto(blob)

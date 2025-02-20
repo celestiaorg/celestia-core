@@ -179,6 +179,7 @@ func TestProposalValidateBasic(t *testing.T) {
 func TestProposalProtoBuf(t *testing.T) {
 	h, r := int64(1), int32(2)
 	compB, err := NewCompactBlock(h, r, &PartSet{hash: rand.Bytes(32)}, []*TxMetaData{})
+	compB.Signature = rand.Bytes(64)
 	assert.NoError(t, err)
 	proposal := NewProposal(1, 2, 3, makeBlockID([]byte("hash"), 2, []byte("part_set_hash")), compB)
 	proposal.Signature = []byte("sig")

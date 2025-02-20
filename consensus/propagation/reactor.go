@@ -6,7 +6,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/consensus"
-	types2 "github.com/tendermint/tendermint/consensus/propagation/types"
+	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
 	"github.com/tendermint/tendermint/proto/tendermint/propagation"
@@ -84,7 +84,7 @@ func (blockProp *Reactor) ReceiveEnvelop(e p2p.Envelope) {
 	if wm, ok := m.(p2p.Wrapper); ok {
 		m = wm.Wrap()
 	}
-	msg, err := types2.MsgFromProto(m.(*propagation.Message))
+	msg, err := proptypes.MsgFromProto(m.(*propagation.Message))
 	if err != nil {
 		blockProp.Logger.Error("Error decoding message", "src", e.Src, "chId", e.ChannelID, "err", err)
 		blockProp.Switch.StopPeerForError(e.Src, err)
@@ -99,17 +99,13 @@ func (blockProp *Reactor) ReceiveEnvelop(e p2p.Envelope) {
 	switch e.ChannelID {
 	case consensus.PropagationChannel:
 		switch msg := msg.(type) {
-		case *types2.TxMetaData:
+		case *proptypes.PartMetaData:
 			// TODO: implement
-		case *types2.CompactBlock:
+		case *proptypes.HaveParts:
 			// TODO: implement
-		case *types2.PartMetaData:
+		case *proptypes.WantParts:
 			// TODO: implement
-		case *types2.HaveParts:
-			// TODO: implement
-		case *types2.WantParts:
-			// TODO: implement
-		case *types2.RecoveryPart:
+		case *proptypes.RecoveryPart:
 			// TODO: implement
 		default:
 			blockProp.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
