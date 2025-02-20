@@ -12,7 +12,6 @@ import (
 
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/protoio"
-	"github.com/tendermint/tendermint/libs/rand"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
@@ -62,7 +61,7 @@ func TestProposalVerifySignature(t *testing.T) {
 	require.NoError(t, err)
 
 	h, r := int64(4), int32(2)
-	compB, err := NewCompactBlock(h, r, &PartSet{hash: rand.Bytes(32)}, []*TxMetaData{})
+	compB, err := NewCompactBlock(h, r, &PartSet{hash: cmtrand.Bytes(32)}, []*TxMetaData{})
 	assert.NoError(t, err)
 
 	prop := NewProposal(
@@ -159,7 +158,7 @@ func TestProposalValidateBasic(t *testing.T) {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
 			h, r := int64(4), int32(2)
-			compB, err := NewCompactBlock(h, r, &PartSet{hash: rand.Bytes(32)}, []*TxMetaData{})
+			compB, err := NewCompactBlock(h, r, &PartSet{hash: cmtrand.Bytes(32)}, []*TxMetaData{})
 			require.NoError(t, err)
 			prop := NewProposal(
 				h, r, r,
@@ -178,8 +177,8 @@ func TestProposalValidateBasic(t *testing.T) {
 
 func TestProposalProtoBuf(t *testing.T) {
 	h, r := int64(1), int32(2)
-	compB, err := NewCompactBlock(h, r, &PartSet{hash: rand.Bytes(32)}, []*TxMetaData{})
-	compB.Signature = rand.Bytes(64)
+	compB, err := NewCompactBlock(h, r, &PartSet{hash: cmtrand.Bytes(32)}, []*TxMetaData{})
+	compB.Signature = cmtrand.Bytes(64)
 	assert.NoError(t, err)
 	proposal := NewProposal(1, 2, 3, makeBlockID([]byte("hash"), 2, []byte("part_set_hash")), compB)
 	proposal.Signature = []byte("sig")
@@ -215,7 +214,7 @@ func TestTxMetaData_RoundTrip(t *testing.T) {
 	}{
 		{
 			"valid metadata",
-			&TxMetaData{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10},
+			&TxMetaData{Hash: cmtrand.Bytes(tmhash.Size), Start: 0, End: 10},
 		},
 		{
 			"empty hash",
@@ -223,7 +222,7 @@ func TestTxMetaData_RoundTrip(t *testing.T) {
 		},
 		{
 			"same start and end",
-			&TxMetaData{Hash: rand.Bytes(tmhash.Size), Start: 7, End: 7},
+			&TxMetaData{Hash: cmtrand.Bytes(tmhash.Size), Start: 7, End: 7},
 		},
 	}
 
@@ -244,12 +243,12 @@ func TestTxMetaData_ValidateBasic(t *testing.T) {
 	}{
 		{
 			"valid metadata",
-			&TxMetaData{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10},
+			&TxMetaData{Hash: cmtrand.Bytes(tmhash.Size), Start: 0, End: 10},
 			nil,
 		},
 		{
 			"invalid start > end",
-			&TxMetaData{Hash: rand.Bytes(tmhash.Size), Start: 10, End: 5},
+			&TxMetaData{Hash: cmtrand.Bytes(tmhash.Size), Start: 10, End: 5},
 			errors.New("TxMetaData: Start > End"),
 		},
 	}
@@ -274,9 +273,9 @@ func TestCompactBlock_RoundTrip(t *testing.T) {
 		{
 			"valid block",
 			&CompactBlock{
-				Height: 1, Round: 1, BpHash: rand.Bytes(tmhash.Size),
-				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
-				Signature: rand.Bytes(MaxSignatureSize),
+				Height: 1, Round: 1, BpHash: cmtrand.Bytes(tmhash.Size),
+				Blobs:     []*TxMetaData{{Hash: cmtrand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature: cmtrand.Bytes(MaxSignatureSize),
 			},
 		},
 	}
@@ -301,45 +300,45 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 		{
 			"valid block",
 			&CompactBlock{
-				Height: 1, Round: 1, BpHash: rand.Bytes(tmhash.Size),
-				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
-				Signature: rand.Bytes(MaxSignatureSize),
+				Height: 1, Round: 1, BpHash: cmtrand.Bytes(tmhash.Size),
+				Blobs:     []*TxMetaData{{Hash: cmtrand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature: cmtrand.Bytes(MaxSignatureSize),
 			},
 			nil,
 		},
 		{
 			"negative height",
 			&CompactBlock{
-				Height: -1, Round: 1, BpHash: rand.Bytes(tmhash.Size),
-				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
-				Signature: rand.Bytes(MaxSignatureSize),
+				Height: -1, Round: 1, BpHash: cmtrand.Bytes(tmhash.Size),
+				Blobs:     []*TxMetaData{{Hash: cmtrand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature: cmtrand.Bytes(MaxSignatureSize),
 			},
 			errors.New("CompactBlock: Height cannot be negative"),
 		},
 		{
 			"negative round",
 			&CompactBlock{
-				Height: 1, Round: -2, BpHash: rand.Bytes(tmhash.Size),
-				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
-				Signature: rand.Bytes(MaxSignatureSize),
+				Height: 1, Round: -2, BpHash: cmtrand.Bytes(tmhash.Size),
+				Blobs:     []*TxMetaData{{Hash: cmtrand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature: cmtrand.Bytes(MaxSignatureSize),
 			},
 			errors.New("CompactBlock: Round cannot be negative"),
 		},
 		{
 			"invalid bp_hash",
 			&CompactBlock{
-				Height: 1, Round: 1, BpHash: rand.Bytes(tmhash.Size + 1),
-				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
-				Signature: rand.Bytes(MaxSignatureSize),
+				Height: 1, Round: 1, BpHash: cmtrand.Bytes(tmhash.Size + 1),
+				Blobs:     []*TxMetaData{{Hash: cmtrand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature: cmtrand.Bytes(MaxSignatureSize),
 			},
 			errors.New("expected size to be 32 bytes, got 33 bytes"),
 		},
 		{
 			"too big of signature",
 			&CompactBlock{
-				Height: 1, Round: 1, BpHash: rand.Bytes(tmhash.Size),
-				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
-				Signature: rand.Bytes(MaxSignatureSize + 1),
+				Height: 1, Round: 1, BpHash: cmtrand.Bytes(tmhash.Size),
+				Blobs:     []*TxMetaData{{Hash: cmtrand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature: cmtrand.Bytes(MaxSignatureSize + 1),
 			},
 			errors.New("CompactBlock: Signature is too big"),
 		},

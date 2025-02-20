@@ -16,7 +16,6 @@ import (
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/log"
 	cmtpubsub "github.com/tendermint/tendermint/libs/pubsub"
-	"github.com/tendermint/tendermint/libs/rand"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	p2pmock "github.com/tendermint/tendermint/p2p/mock"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
@@ -1137,7 +1136,7 @@ func TestStateLockPOLSafety2(t *testing.T) {
 
 	round++ // moving to the next round
 	// in round 2 we see the polkad block from round 0
-	newProp := types.NewProposal(height, round, 0, propBlockID0, types.CompactBlock{BpHash: rand.Bytes(32)})
+	newProp := types.NewProposal(height, round, 0, propBlockID0, types.CompactBlock{BpHash: cmtrand.Bytes(32)})
 	p := newProp.ToProto()
 	if err := vs3.SignProposal(config.ChainID(), p); err != nil {
 		t.Fatal(err)

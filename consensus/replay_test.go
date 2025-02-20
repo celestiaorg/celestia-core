@@ -525,6 +525,7 @@ func TestSimulateValidatorsChange(t *testing.T) {
 	require.NoError(t, err)
 	propBlockParts, eps = propBlock.MakePartSet(partSize)
 	compB, err = types.NewCompactBlock(height, round, eps, hashes)
+	require.NoError(t, err)
 	blockID = types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
 	newVss = make([]*validatorStub, nVals+3)
 	copy(newVss, vss[:nVals+3])
