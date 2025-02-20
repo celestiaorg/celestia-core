@@ -285,6 +285,14 @@ func CanDecode(ops, eps *PartSet) bool {
 	return (len(ops.BitArray().GetTrueIndices()) + len(eps.BitArray().GetTrueIndices())) >= int(ops.Total())
 }
 
+// IsReadyForDecoding returns true if the PartSet has every single part, not just
+// ready to be decoded.
+// TODO: this here only requires 2/3rd. We need all the data now because we have no erasure encoding.
+func (ps *PartSet) IsReadyForDecoding() bool {
+	//return ps.count >= (ps.total / 2)
+	return ps.IsComplete()
+}
+
 // Decode uses the block parts that are provided to reconstruct the original
 // data. It throws an error if the PartSet is incomplete or the resulting root
 // is different from that in the PartSetHeader. Parts are fully complete with
