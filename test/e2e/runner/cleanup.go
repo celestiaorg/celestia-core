@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/tendermint/tendermint/libs/log"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
+	"github.com/tendermint/tendermint/test/e2e/pkg/exec"
+	"github.com/tendermint/tendermint/test/e2e/pkg/infra/docker"
 )
 
 // Cleanup removes the Docker Compose containers and testnet directory.
@@ -32,13 +35,13 @@ func cleanupDocker() error {
 	// does this by default. Ugly, but works.
 	xargsR := `$(if [[ $OSTYPE == "linux-gnu"* ]]; then echo -n "-r"; fi)`
 
-	err := exec("bash", "-c", fmt.Sprintf(
+	err := exec.Command(context.Background(), "bash", "-c", fmt.Sprintf(
 		"docker container ls -qa --filter label=e2e | xargs %v docker container rm -f", xargsR))
 	if err != nil {
 		return err
 	}
 
-	err = exec("bash", "-c", fmt.Sprintf(
+	err = exec.Command(context.Background(), "bash", "-c", fmt.Sprintf(
 		"docker network ls -q --filter label=e2e | xargs %v docker network rm", xargsR))
 	if err != nil {
 		return err
@@ -74,7 +77,7 @@ func cleanupDir(dir string) error {
 	// this is setup, it could fail (for example often in CI it will fail or be deleted
 	// elsewhere). When it does fail, users will need to delete this data in a
 	// different way or change their setup so this works.
-	err = execDocker("run", "--rm", "--entrypoint", "", "-v", fmt.Sprintf("%v:/network", absDir),
+	err = docker.Exec(context.Background(), "run", "--rm", "--entrypoint", "", "-v", fmt.Sprintf("%v:/network", absDir),
 		"cometbft/e2e-node", "sh", "-c", "rm -rf /network/*/")
 	if err != nil {
 		logger.Error("could not remove data from inside the docker container", "err", err.Error())

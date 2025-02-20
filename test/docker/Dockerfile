@@ -1,4 +1,4 @@
-FROM golang:1.23.5
+FROM golang:1.23.6
 
 # Grab deps (jq, hexdump, xxd, killall)
 RUN apt-get update && \
@@ -6,8 +6,8 @@ RUN apt-get update && \
   jq bsdmainutils vim-common psmisc netcat curl
 
 # Setup CometBFT repo
-ENV REPO $GOPATH/src/github.com/cometbft/cometbft
-ENV GOBIN $GOPATH/bin
+ENV REPO=$GOPATH/src/github.com/cometbft/cometbft
+ENV GOBIN=$GOPATH/bin
 WORKDIR $REPO
 
 # Copy in the code
