@@ -45,7 +45,6 @@ type Reactor struct {
 	self        p2p.ID
 }
 
-//nolint:unused
 func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, options ...ReactorOption) *Reactor {
 	reactor := &Reactor{
 		self:          self,
@@ -73,7 +72,6 @@ func (blockProp *Reactor) OnStop() {
 	// TODO: implement
 }
 
-//nolint:unused
 func GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
@@ -349,13 +347,13 @@ func (blockProp *Reactor) sendPsh(peer p2p.ID, height int64, round int32) bool {
 // - send the wants of all the block parts to the peer that sent it to us
 // - set the requests
 // - request all the previous blocks if any are missing
-//
-//nolint:unused
 func (blockProp *Reactor) HandleValidBlock(peer p2p.ID, height int64, round int32, psh types.PartSetHeader, exitEarly bool) {
 }
 
 // bitArrayToParts a hack to get a list of have parts from a bit array
 // TODO: remove when we have verification
+//
+//nolint:unused
 func bitArrayToParts(array *bits.BitArray) []proptypes.PartMetaData {
 	parts := make([]proptypes.PartMetaData, len(array.GetTrueIndices()))
 	for i, index := range array.GetTrueIndices() {
@@ -398,8 +396,6 @@ func (blockProp *Reactor) requestAllPreviousBlocks(peer p2p.ID, height int64) {
 // - add the received part to the parts
 // - if the parts are decodable, clear all the wants of that block from the proposal state
 // - otherwise, clear the want related to this part from the state
-//
-//nolint:unused
 func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.RecoveryPart) {
 }
 
