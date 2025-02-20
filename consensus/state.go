@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/tendermint/tendermint/consensus/propagation"
 	"io"
 	"os"
 	"runtime/debug"
@@ -141,6 +142,8 @@ type State struct {
 	// state only emits EventNewRoundStep and EventVote
 	evsw cmtevents.EventSwitch
 
+	propagator propagation.Propagator
+
 	// for reporting metrics
 	metrics *Metrics
 
@@ -151,6 +154,7 @@ type State struct {
 type StateOption func(*State)
 
 // NewState returns a new State.
+// TODO initialise the propagator
 func NewState(
 	config *cfg.ConsensusConfig,
 	state sm.State,
@@ -1195,6 +1199,8 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
+		// TODO is this how we should propose a block? or we send the proposal through another propagator channel?
+		cs.propagator.ProposeBlock(proposal, blockParts.BitArray())
 
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
