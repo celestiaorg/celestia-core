@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/klauspost/reedsolomon"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	cmtbytes "github.com/tendermint/tendermint/libs/bytes"
@@ -172,28 +173,29 @@ type PartSet struct {
 // Returns an immutable, full PartSet from the data bytes.
 // The data bytes are split into "partSize" chunks, and merkle tree computed.
 // CONTRACT: partSize is greater than zero.
-func NewPartSetFromData(data []byte, partSize uint32) *PartSet {
-	// divide data into 4kb parts.
-	//nolint:gosec
+func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, eps *PartSet) {
 	total := (uint32(len(data)) + partSize - 1) / partSize
 	parts := make([]*Part, total)
-	partsBytes := make([][]byte, total)
 	partsBitArray := bits.NewBitArray(int(total))
+	chunks := make([][]byte, total)
 	for i := uint32(0); i < total; i++ {
+		chunk := data[i*partSize : cmtmath.MinInt(len(data), int((i+1)*partSize))]
 		part := &Part{
 			Index: i,
-			Bytes: data[i*partSize : cmtmath.MinInt(len(data), int((i+1)*partSize))],
+			Bytes: chunk,
 		}
 		parts[i] = part
-		partsBytes[i] = part.Bytes
 		partsBitArray.SetIndex(int(i), true)
+		chunks[i] = chunk
 	}
+
 	// Compute merkle proofs
-	root, proofs := merkle.ProofsFromByteSlices(partsBytes)
+	root, proofs := merkle.ProofsFromByteSlices(chunks)
 	for i := uint32(0); i < total; i++ {
 		parts[i].Proof = *proofs[i]
 	}
-	return &PartSet{
+
+	ops = &PartSet{
 		total:         total,
 		hash:          root,
 		parts:         parts,
@@ -201,6 +203,179 @@ func NewPartSetFromData(data []byte, partSize uint32) *PartSet {
 		count:         total,
 		byteSize:      int64(len(data)),
 	}
+
+	// pad ONLY the last chunk and not the part with zeros if necessary AFTER the root has been generated
+	if len(chunks[len(chunks)-1]) < int(partSize) {
+		padded := make([]byte, partSize)
+		copy(padded, chunks[len(chunks)-1])
+		chunks[len(chunks)-1] = padded
+	}
+
+	echunks, err := Encode(chunks)
+	if err != nil {
+		// todo: we can likely get rid of this panic, although it should never
+		// happen.
+		panic(err)
+	}
+	echunks = echunks[ops.Total():]
+	eparts := make([]*Part, total)
+	epartsBitArray := bits.NewBitArray(int(total))
+	for i := uint32(0); i < total; i++ {
+		part := &Part{
+			Index: i,
+			Bytes: echunks[i],
+		}
+		eparts[i] = part
+		epartsBitArray.SetIndex(int(i), true)
+	}
+
+	// Compute merkle proofs
+	eroot, eproofs := merkle.ProofsFromByteSlices(echunks)
+	for i := uint32(0); i < total; i++ {
+		eparts[i].Proof = *eproofs[i]
+	}
+
+	eps = &PartSet{
+		total:         total,
+		hash:          eroot,
+		parts:         eparts,
+		partsBitArray: partsBitArray,
+		count:         total,
+		byteSize:      int64(len(echunks) * int(partSize)),
+	}
+
+	return ops, eps
+}
+
+// Extend erasure encodes the block parts. Only the original parts should be
+// provided. The data returned has the parity parts appended to the original.
+func Encode(parts [][]byte) ([][]byte, error) {
+	// init an an encoder if it is not already initialized using the original
+	// number of parts.
+	enc, err := reedsolomon.New(len(parts), len(parts))
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a new slice of parts with the original parts and parity parts.
+	eparts := make([][]byte, len(parts)*2)
+	for i := 0; i < len(eparts); i++ {
+		if i < len(parts) {
+			eparts[i] = parts[i]
+			continue
+		}
+		eparts[i] = make([]byte, len(parts[0]))
+	}
+
+	// Encode the parts.
+	err = enc.Encode(eparts)
+	if err != nil {
+		return nil, err
+	}
+
+	return eparts, nil
+}
+
+// CanDecode determines if the set of PartSets have enough parts to decode the block.
+func CanDecode(ops, eps *PartSet) bool {
+	return (len(ops.BitArray().GetTrueIndices()) + len(eps.BitArray().GetTrueIndices())) >= int(ops.Total())
+}
+
+// Decode uses the block parts that are provided to reconstruct the original
+// data. It throws an error if the PartSet is incomplete or the resulting root
+// is different from that in the PartSetHeader. Parts are fully complete with
+// proofs after decoding.
+func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
+	enc, err := reedsolomon.New(int(ops.total), int(eps.total))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	data := make([][]byte, ops.Total()+eps.Total())
+	unpadded := []byte{}
+	for i, part := range ops.parts {
+		if part == nil {
+			data[i] = nil
+			continue
+		}
+		chunk := part.Bytes
+		if len(chunk) != int(BlockPartSizeBytes) {
+			unpadded = chunk
+			padded := make([]byte, BlockPartSizeBytes)
+			copy(padded, chunk)
+			chunk = padded
+		}
+		data[i] = chunk
+
+	}
+
+	for i, part := range eps.parts {
+		if part == nil {
+			data[int(ops.Total())+i] = nil
+			continue
+		}
+		data[int(ops.Total())+i] = part.Bytes
+	}
+
+	err = enc.Reconstruct(data)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// prune the last part if we need to
+	if len(data[:(ops.Total()-1)]) != lastPartLen {
+		data[(ops.Total() - 1)] = data[(ops.Total() - 1)][:lastPartLen]
+	}
+
+	if len(unpadded) != 0 {
+		data[ops.Total()-1] = unpadded
+	}
+
+	// recalculate all of the proofs since we apparently don't have a function
+	// to generate a single proof... TODO: don't generate proofs for block parts
+	// we already have...
+	root, proofs := merkle.ProofsFromByteSlices(data[:ops.total])
+	if !bytes.Equal(root, ops.hash) {
+		return nil, nil, fmt.Errorf("reconstructed data has different hash!! want: %X, got: %X", ops.hash, root)
+	}
+
+	for i, d := range data[:ops.Total()] {
+		ops.partsBitArray.SetIndex(i, true)
+		if ops.parts[i] != nil {
+			continue
+		}
+		ops.parts[i] = &Part{
+			Index: uint32(i),
+			Bytes: d,
+			Proof: *proofs[i],
+		}
+	}
+
+	ops.count = ops.total
+
+	// recalculate all of the proofs since we apparently don't have a function
+	// to generate a single proof... TODO: don't generate proofs for block parts
+	// we already have.
+	eroot, eproofs := merkle.ProofsFromByteSlices(data[ops.total:])
+	if !bytes.Equal(eroot, eps.hash) {
+		return nil, nil, fmt.Errorf("reconstructed parity data has different hash!! want: %X, got: %X", eps.hash, eroot)
+	}
+
+	for i := 0; i < int(eps.Total()); i++ {
+		eps.partsBitArray.SetIndex(i, true)
+		if eps.parts[i] != nil {
+			continue
+		}
+		eps.parts[i] = &Part{
+			Index: uint32(i),
+			Bytes: data[int(ops.Total())+i],
+			Proof: *eproofs[i],
+		}
+	}
+
+	eps.count = eps.total
+
+	return ops, eps, nil
 }
 
 // Returns an empty PartSet ready to be populated.
