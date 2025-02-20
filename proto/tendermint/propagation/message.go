@@ -3,8 +3,8 @@ package propagation
 import (
 	fmt "fmt"
 
+	"github.com/cometbft/cometbft/p2p"
 	"github.com/gogo/protobuf/proto"
-	"github.com/tendermint/tendermint/p2p"
 )
 
 var (

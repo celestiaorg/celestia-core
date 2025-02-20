@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/libs/bits"
-	protoprop "github.com/tendermint/tendermint/proto/tendermint/propagation"
-	"github.com/tendermint/tendermint/types"
+	"github.com/cometbft/cometbft/crypto/merkle"
+	"github.com/cometbft/cometbft/libs/bits"
+	protoprop "github.com/cometbft/cometbft/proto/tendermint/propagation"
+	"github.com/cometbft/cometbft/types"
 )
 
 // TxMetaData keeps track of the hash of a transaction and its location within the

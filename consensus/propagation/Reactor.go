@@ -4,20 +4,15 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/gogo/protobuf/proto"
-	"github.com/tendermint/tendermint/consensus"
-	types2 "github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/pkg/trace"
-	"github.com/tendermint/tendermint/proto/tendermint/propagation"
+	"github.com/cometbft/cometbft/consensus"
+	types2 "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/proto/tendermint/propagation"
 )
 
 const (
 	// TODO: set a valid max msg size
 	maxMsgSize = 1048576
-
-	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
-	ReactorIncomingMessageQueueSize = 1000
 )
 
 type Reactor struct {
@@ -26,13 +21,11 @@ type Reactor struct {
 	// TODO remove nolint
 	//nolint:unused
 	conS *consensus.State
-
-	traceClient trace.Tracer
 }
 
 func NewReactor(consensusState *consensus.State, options ...ReactorOption) *Reactor {
 	reactor := &Reactor{}
-	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
+	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor)
 
 	for _, option := range options {
 		option(reactor)
@@ -41,12 +34,6 @@ func NewReactor(consensusState *consensus.State, options ...ReactorOption) *Reac
 }
 
 type ReactorOption func(*Reactor)
-
-func ReactorWithTraceClient(traceClient trace.Tracer) ReactorOption {
-	return func(reactor *Reactor) {
-		reactor.traceClient = traceClient
-	}
-}
 
 func (blockProp *Reactor) OnStart() error {
 	// TODO: implement
@@ -74,7 +61,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 	// TODO: implement
 }
 
-func (blockProp *Reactor) ReceiveEnvelop(e p2p.Envelope) {
+func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	if !blockProp.IsRunning() {
 		blockProp.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID)
 		return
@@ -119,19 +106,6 @@ func (blockProp *Reactor) ReceiveEnvelop(e p2p.Envelope) {
 	}
 }
 
-func (blockProp *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
-	msg := &propagation.Message{}
-	err := proto.Unmarshal(msgBytes, msg)
-	if err != nil {
-		panic(err)
-	}
-	uw, err := msg.Unwrap()
-	if err != nil {
-		panic(err)
-	}
-	blockProp.ReceiveEnvelope(p2p.Envelope{
-		ChannelID: chID,
-		Src:       peer,
-		Message:   uw,
-	})
+func (blockProp *Reactor) Receive(e p2p.Envelope) {
+	blockProp.ReceiveEnvelope(e)
 }
