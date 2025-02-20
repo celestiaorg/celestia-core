@@ -99,6 +99,7 @@ func (d *PeerState) SetHave(height int64, round int32, part int) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	// Initialize the inner map if it doesn't exist
+	// TODO refactor these initialisations to a single function
 	if d.state[height] == nil {
 		d.state[height] = make(map[int32]*partState)
 	}
