@@ -2,9 +2,10 @@ package propagation
 
 import (
 	"fmt"
+	"reflect"
+
 	"github.com/tendermint/tendermint/p2p/conn"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
-	"reflect"
 
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/sync"

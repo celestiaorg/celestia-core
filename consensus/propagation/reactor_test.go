@@ -1,6 +1,9 @@
 package propagation
 
 import (
+	"testing"
+	"time"
+
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,8 +17,6 @@ import (
 	"github.com/tendermint/tendermint/pkg/trace"
 	"github.com/tendermint/tendermint/store"
 	types2 "github.com/tendermint/tendermint/types"
-	"testing"
-	"time"
 )
 
 func newPropagationReactor(s *p2p.Switch) *Reactor {
