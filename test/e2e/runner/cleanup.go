@@ -69,15 +69,20 @@ func cleanupDir(dir string) error {
 	if err != nil {
 		return err
 	}
+
+	// attempt to remove things as root inside the docker conatiner. Depending on how
+	// this is setup, it could fail (for example often in CI it will fail or be deleted
+	// elsewhere). When it does fail, users will need to delete this data in a
+	// different way or change their setup so this works.
 	err = execDocker("run", "--rm", "--entrypoint", "", "-v", fmt.Sprintf("%v:/network", absDir),
 		"cometbft/e2e-node", "sh", "-c", "rm -rf /network/*/")
 	if err != nil {
-		return err
+		logger.Error("could not remove data from inside the docker container", "err", err.Error())
 	}
 
 	err = os.RemoveAll(dir)
 	if err != nil {
-		return err
+		logger.Error("could not remove data", "err", err.Error())
 	}
 
 	return nil
