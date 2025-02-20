@@ -228,9 +228,9 @@ func decideProposal(
 	round int32,
 ) (*types.Proposal, *types.Block) {
 	cs1.mtx.Lock()
-	block, err := cs1.createProposalBlock(ctx)
+	block, _, eps, hashes, err := cs1.createProposalBlock(ctx)
 	require.NoError(t, err)
-	blockParts, err := block.MakePartSet(types.BlockPartSizeBytes)
+	blockParts, _, err := block.MakePartSet(types.BlockPartSizeBytes)
 	require.NoError(t, err)
 	validRound := cs1.ValidRound
 	chainID := cs1.state.ChainID
@@ -241,7 +241,12 @@ func decideProposal(
 
 	// Make proposal
 	polRound, propBlockID := validRound, types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	proposal := types.NewProposal(height, round, polRound, propBlockID)
+	compB, err := types.NewCompactBlock(block.Height, polRound, blockParts.LastLen(), eps, hashes)
+	// todo: refactor test and get rid of this panic
+	if err != nil {
+		panic(err)
+	}
+	proposal := types.NewProposal(height, round, polRound, propBlockID, compB)
 	p := proposal.ToProto()
 	if err := vs.SignProposal(chainID, p); err != nil {
 		panic(err)

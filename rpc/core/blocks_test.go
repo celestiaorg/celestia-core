@@ -373,12 +373,12 @@ func (store mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 		return nil
 	}
 	block := store.blocks[height]
-	partSet, err := block.MakePartSet(types.BlockPartSizeBytes)
+	ops, _, err := block.MakePartSet(types.BlockPartSizeBytes)
 	if err != nil {
 		return nil
 	}
 	return &types.BlockMeta{
-		BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()},
+		BlockID: types.BlockID{Hash: block.Hash(), PartSetHeader: ops.Header()},
 		Header:  block.Header,
 	}
 }

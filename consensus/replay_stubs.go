@@ -31,7 +31,9 @@ func (txmp emptyMempool) RemoveTxByKey(types.TxKey) error {
 	return nil
 }
 
-func (emptyMempool) ReapMaxBytesMaxGas(int64, int64) types.Txs { return types.Txs{} }
+func (emptyMempool) ReapMaxBytesMaxGas(int64, int64) (types.Txs, []types.TxKey) {
+	return types.Txs{}, []types.TxKey{}
+}
 func (emptyMempool) ReapMaxTxs(int) types.Txs                  { return types.Txs{} }
 func (emptyMempool) Update(
 	int64,

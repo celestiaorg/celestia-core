@@ -108,20 +108,22 @@ func TestBlockHash(t *testing.T) {
 }
 
 func TestBlockMakePartSet(t *testing.T) {
-	bps, err := (*Block)(nil).MakePartSet(2)
+	ops, eps, err := (*Block)(nil).MakePartSet(2)
 	assert.Error(t, err)
-	assert.Nil(t, bps)
+	assert.Nil(t, ops)
+	assert.Nil(t, eps)
 
-	partSet, err := MakeBlock(int64(3), Data{Txs: []Tx{Tx("Hello World")}}, nil, nil).MakePartSet(1024)
-	require.NoError(t, err)
+	partSet, _, err := MakeBlock(int64(3), Data{Txs: []Tx{Tx("Hello World")}}, nil, nil).MakePartSet(1024)
+	assert.Error(t, err)
 	assert.NotNil(t, partSet)
 	assert.EqualValues(t, 1, partSet.Total())
 }
 
 func TestBlockMakePartSetWithEvidence(t *testing.T) {
-	bps, err := (*Block)(nil).MakePartSet(2)
+	ops, eps, err := (*Block)(nil).MakePartSet(2)
 	assert.Error(t, err)
-	assert.Nil(t, bps)
+	assert.Nil(t, ops)
+	assert.Nil(t, eps)
 
 	lastID := makeBlockIDRandom()
 	h := int64(3)
@@ -134,11 +136,11 @@ func TestBlockMakePartSetWithEvidence(t *testing.T) {
 	require.NoError(t, err)
 	evList := []Evidence{ev}
 
-	partSet, err := MakeBlock(h, Data{Txs: []Tx{Tx("Hello World")}}, extCommit.ToCommit(), evList).MakePartSet(512)
-	require.NoError(t, err)
-
-	assert.NotNil(t, partSet)
-	assert.EqualValues(t, 4, partSet.Total())
+	ops, eps, err = MakeBlock(h, Data{Txs: []Tx{Tx("Hello World")}}, extCommit.ToCommit(), evList).MakePartSet(512)
+	assert.Error(t, err)
+	require.NotNil(t, ops)
+	assert.NotNil(t, eps)
+	assert.EqualValues(t, 4, ops.Total())
 }
 
 func TestBlockHashesTo(t *testing.T) {

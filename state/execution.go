@@ -104,7 +104,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	state State,
 	lastExtCommit *types.ExtendedCommit,
 	proposerAddr []byte,
-) (*types.Block, error) {
+) (*types.Block, *types.PartSet, *types.PartSet, []*types.TxMetaData, error) {
 
 	maxBytes := state.ConsensusParams.Block.MaxBytes
 	emptyMaxBytes := maxBytes == -1
@@ -123,9 +123,18 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		maxReapBytes = -1
 	}
 
-	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
+	// todo: use the hashes returned by the mempool in the TxMetaData returned by this function
+	// it will require expanding the request and response of prepare proposal to include hashes
+	// so that they can be excluded alongside any transaction by the application.
+	// either that, or we need to change the types.Tx type to also include the
+	// hash as a cached value.
+	txs, _ := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
+
 	commit := lastExtCommit.ToCommit()
-	block := state.MakeBlock(height, types.MakeData(txs), commit, evidence, proposerAddr)
+	block, _, _, err := state.MakeBlock(height, types.MakeData(txs), commit, evidence, proposerAddr)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
 	rpp, err := blockExec.proxyApp.PrepareProposal(
 		ctx,
 		&abci.RequestPrepareProposal{
@@ -148,7 +157,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		// Either way, we cannot recover in a meaningful way, unless we skip proposing
 		// this block, repair what caused the error and try again. Hence, we return an
 		// error for now (the production code calling this function is expected to panic).
-		return nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	rawNewData := rpp.GetTxs()
@@ -160,12 +169,20 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	txl := types.ToTxs(rpp.Txs)
 	if err := txl.Validate(maxDataBytes); err != nil {
-		return nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	data := types.NewData(txl, rpp.SquareSize, rpp.DataRootHash)
 
-	return state.MakeBlock(height, data, commit, evidence, proposerAddr), nil
+	block, ops, eps, err := state.MakeBlock(
+		height,
+		data,
+		commit,
+		evidence,
+		proposerAddr,
+	)
+
+	return block, ops, eps, []*types.TxMetaData{}, err // see todo on using hashes above
 }
 
 func (blockExec *BlockExecutor) ProcessProposal(

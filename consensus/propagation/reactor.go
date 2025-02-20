@@ -10,8 +10,8 @@ import (
 	"github.com/cometbft/cometbft/types"
 
 	proptypes "github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/p2p"
-	"github.com/cometbft/cometbft/pkg/trace"
 	propproto "github.com/cometbft/cometbft/proto/tendermint/propagation"
 )
 
@@ -49,7 +49,7 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, optio
 		mtx:           &sync.RWMutex{},
 		ProposalCache: NewProposalCache(store),
 	}
-	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
+	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor)
 
 	for _, option := range options {
 		option(reactor)
@@ -118,8 +118,6 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	switch e.ChannelID {
 	case DataChannel:
 		switch msg := msg.(type) {
-		case *proptypes.CompactBlock:
-			// TODO: implement
 		case *proptypes.HaveParts:
 			// TODO check if we need to bypass request limits
 			blockProp.handleHaves(e.Src.ID(), msg, false)

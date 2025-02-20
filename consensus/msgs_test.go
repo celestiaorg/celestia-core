@@ -54,6 +54,9 @@ func TestMsgToProto(t *testing.T) {
 		BlockID:   bi,
 		Timestamp: time.Now(),
 		Signature: cmtrand.Bytes(20),
+		CompactBlock: types.CompactBlock{
+			Blobs: []*types.TxMetaData{},
+		},
 	}
 	pbProposal := proposal.ToProto()
 

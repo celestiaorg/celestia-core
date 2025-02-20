@@ -413,13 +413,12 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) (*store.Blo
 
 	for i := int64(1); i <= state.LastBlockHeight; i++ {
 		lastCommit := makeExtCommit(i-1, valAddr)
-		block := state.MakeBlock(i, types.MakeData(test.MakeNTxs(i, 1)), lastCommit.ToCommit(), nil, state.Validators.Proposer.Address)
-		block.Header.Time = defaultEvidenceTime.Add(time.Duration(i) * time.Minute)
-		block.Header.Version = cmtversion.Consensus{Block: version.BlockProtocol, App: 1}
-		partSet, err := block.MakePartSet(types.BlockPartSizeBytes)
+		block, partSet, _, err := state.MakeBlock(i, types.MakeData(test.MakeNTxs(i, 1)), lastCommit.ToCommit(), nil, state.Validators.Proposer.Address)
 		if err != nil {
 			return nil, err
 		}
+		block.Header.Time = defaultEvidenceTime.Add(time.Duration(i) * time.Minute)
+		block.Header.Version = cmtversion.Consensus{Block: version.BlockProtocol, App: 1}
 
 		seenCommit := makeExtCommit(i, valAddr)
 		blockStore.SaveBlockWithExtendedCommit(block, partSet, seenCommit)
