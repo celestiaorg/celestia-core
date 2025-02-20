@@ -104,15 +104,19 @@ func TestBlockHash(t *testing.T) {
 }
 
 func TestBlockMakePartSet(t *testing.T) {
-	assert.Nil(t, (*Block)(nil).MakePartSet(2))
+	ops, eps := (*Block)(nil).MakePartSet(2)
+	assert.Nil(t, ops)
+	assert.Nil(t, eps)
 
-	partSet := MakeBlock(int64(3), makeData([]Tx{Tx("Hello World")}), nil, nil).MakePartSet(1024)
+	partSet, _ := MakeBlock(int64(3), makeData([]Tx{Tx("Hello World")}), nil, nil).MakePartSet(1024)
 	assert.NotNil(t, partSet)
 	assert.EqualValues(t, 1, partSet.Total())
 }
 
 func TestBlockMakePartSetWithEvidence(t *testing.T) {
-	assert.Nil(t, (*Block)(nil).MakePartSet(2))
+	ops, eps := (*Block)(nil).MakePartSet(2)
+	assert.Nil(t, ops)
+	assert.Nil(t, eps)
 
 	lastID := makeBlockIDRandom()
 	h := int64(3)
@@ -124,9 +128,10 @@ func TestBlockMakePartSetWithEvidence(t *testing.T) {
 	ev := NewMockDuplicateVoteEvidenceWithValidator(h, time.Now(), vals[0], "block-test-chain")
 	evList := []Evidence{ev}
 
-	partSet := MakeBlock(h, makeData([]Tx{Tx("Hello World")}), commit, evList).MakePartSet(512)
-	assert.NotNil(t, partSet)
-	assert.EqualValues(t, 4, partSet.Total())
+	ops, eps = MakeBlock(h, makeData([]Tx{Tx("Hello World")}), commit, evList).MakePartSet(512)
+	assert.NotNil(t, ops)
+	assert.NotNil(t, eps)
+	assert.EqualValues(t, 4, ops.Total())
 }
 
 func TestBlockHashesTo(t *testing.T) {
