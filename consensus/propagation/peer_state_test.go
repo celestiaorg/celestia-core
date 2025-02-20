@@ -17,8 +17,6 @@ func newTestPeerState() *PeerState {
 	return newPeerState(&peer, log.NewNopLogger())
 }
 
-//--- Test SetHaves ----------------------------------------------------------//
-
 func TestPeerState_SetHaves(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -66,8 +64,6 @@ func TestPeerState_SetHaves(t *testing.T) {
 	}
 }
 
-//--- Test SetWants ----------------------------------------------------------//
-
 func TestPeerState_SetWants(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -110,8 +106,6 @@ func TestPeerState_SetWants(t *testing.T) {
 		})
 	}
 }
-
-//--- Test SetRequests -------------------------------------------------------//
 
 func TestPeerState_SetRequests(t *testing.T) {
 	tests := []struct {
@@ -158,8 +152,6 @@ func TestPeerState_SetRequests(t *testing.T) {
 	}
 }
 
-//--- Test SetRequest (single bit) -------------------------------------------//
-
 func TestPeerState_SetRequest(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -202,8 +194,6 @@ func TestPeerState_SetRequest(t *testing.T) {
 		})
 	}
 }
-
-//--- Test SetHave -----------------------------------------------------------//
 
 func TestPeerState_SetHave(t *testing.T) {
 	tests := []struct {
@@ -255,8 +245,6 @@ func TestPeerState_SetHave(t *testing.T) {
 	}
 }
 
-//--- Test SetWant (single bit) ----------------------------------------------//
-
 func TestPeerState_SetWant(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -307,8 +295,6 @@ func TestPeerState_SetWant(t *testing.T) {
 		})
 	}
 }
-
-//--- Test WantsPart ---------------------------------------------------------//
 
 func TestPeerState_WantsPart(t *testing.T) {
 	tests := []struct {
@@ -368,8 +354,6 @@ func TestPeerState_WantsPart(t *testing.T) {
 	}
 }
 
-//--- Test DeleteHeight ------------------------------------------------------//
-
 func TestPeerState_DeleteHeight(t *testing.T) {
 	ps := newTestPeerState()
 	heightToDelete := int64(10)
@@ -398,8 +382,6 @@ func TestPeerState_DeleteHeight(t *testing.T) {
 	_, ok2 := ps.GetHaves(20, 0)
 	require.True(t, ok2, "Should still have data for other heights")
 }
-
-//--- Test prune -------------------------------------------------------------//
 
 func TestPeerState_prune(t *testing.T) {
 	ps := newTestPeerState()
