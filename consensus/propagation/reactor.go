@@ -292,6 +292,7 @@ func chunkIndexes(totalSize, chunkSize int) [][2]int {
 // - finally, we keep track of the want requests in the proposal state.
 func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, bypassRequestLimit bool) {
 	if haves == nil {
+		// TODO handle the disconnection case
 		return
 	}
 	height := haves.Height
@@ -303,6 +304,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 	}
 	_, parts, fullReqs, has := blockProp.GetProposal(height, round)
 	if !has {
+		// TODO disconnect from the peer
 		blockProp.Logger.Error("received part state for unknown proposal", "peer", peer, "height", height, "round", round)
 		return
 	}
@@ -328,6 +330,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 
 	reqLimit := 1
 	if bypassRequestLimit {
+		// make this configurable
 		reqLimit = 6
 	}
 
@@ -433,6 +436,7 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		// todo(evan): don't rely strictly on try, however since we're using
 		// pull based gossip, this isn't as big as a deal since if someone asks
 		// for data, they must already have the proposal.
+		// TODO: use retry and logs
 		if p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
 			schema.WriteBlockPartState(
 				blockProp.traceClient,
