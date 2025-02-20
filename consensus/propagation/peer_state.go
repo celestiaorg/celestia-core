@@ -282,10 +282,12 @@ func (p *partState) getWant(part int) bool {
 	return p.wants.Parts.GetIndex(part)
 }
 
+//nolint:unused
 func (p *partState) getHave(part int) bool {
 	return p.haves.GetIndex(uint32(part))
 }
 
+//nolint:unused
 func (p *partState) getRequest(part int) bool {
 	return p.requests.GetIndex(part)
 }
