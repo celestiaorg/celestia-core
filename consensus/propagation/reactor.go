@@ -111,10 +111,7 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 
 	// TODO pass a separate logger if needed
 	blockProp.setPeer(peer.ID(), newPeerState(peer, blockProp.Logger))
-	_, _, has := blockProp.GetCurrentProposal()
-	if !has {
-		return
-	}
+	_, _, _ = blockProp.GetCurrentProposal()
 
 	// TODO send the proposal
 }
@@ -183,8 +180,6 @@ func (blockProp *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,
 // nil is returned.
-//
-//nolint:unused
 func (blockProp *Reactor) getPeer(peer p2p.ID) *PeerState {
 	blockProp.mtx.RLock()
 	defer blockProp.mtx.RUnlock()
@@ -192,8 +187,6 @@ func (blockProp *Reactor) getPeer(peer p2p.ID) *PeerState {
 }
 
 // getPeers returns a list of all peers that the data routine is aware of.
-//
-//nolint:unused
 func (blockProp *Reactor) getPeers() []*PeerState {
 	blockProp.mtx.RLock()
 	defer blockProp.mtx.RUnlock()
@@ -205,8 +198,6 @@ func (blockProp *Reactor) getPeers() []*PeerState {
 }
 
 // setPeer sets the peer state for the given peer.
-//
-//nolint:unused
 func (blockProp *Reactor) setPeer(peer p2p.ID, state *PeerState) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
@@ -387,7 +378,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 	}
 
 	// send a want back to the sender of the haves with the wants we
-	e := p2p.Envelope{ //nolint: staticcheck
+	e := p2p.Envelope{
 		ChannelID: WantChannel,
 		Message: &propproto.WantParts{
 			Height: height,
@@ -396,7 +387,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		},
 	}
 
-	if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) {
+	if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
 		blockProp.Logger.Error("failed to send part state", "peer", peer, "height", height, "round", round)
 		return
 	}
@@ -435,10 +426,8 @@ func (blockProp *Reactor) countRequests(height int64, round int32, part int) []p
 // broadcastHaves gossips the provided have msg to all peers except to the
 // original sender. This should only be called upon receiving a new have for the
 // first time.
-//
-//nolint:unused
 func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID) {
-	e := p2p.Envelope{ //nolint: staticcheck
+	e := p2p.Envelope{
 		ChannelID: DataChannel,
 		Message: &propproto.HaveParts{
 			Height: haves.Height,
@@ -465,7 +454,7 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		// todo(evan): don't rely strictly on try, however since we're using
 		// pull based gossip, this isn't as big as a deal since if someone asks
 		// for data, they must already have the proposal.
-		if p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) {
+		if p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
 			schema.WriteBlockPartState(
 				blockProp.traceClient,
 				haves.Height,
@@ -535,7 +524,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			blockProp.Logger.Error("failed to convert part to proto", "height", height, "round", round, "part", partIndex, "error", err)
 			continue
 		}
-		e := p2p.Envelope{ //nolint: staticcheck
+		e := p2p.Envelope{
 			// TODO catch this message in the consensus reactor and send it to this propagation reactor
 			// check the data routine for more information.
 			ChannelID: DataChannel,
@@ -548,12 +537,12 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			},
 		}
 
-		if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) {
+		if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
 			blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
 			continue
 		}
 		// p.SetHave(height, round, int(partIndex))
-		schema.WriteBlockPartState(blockProp.traceClient, height, round, []int{int(partIndex)}, true, string(peer), schema.AskForProposal)
+		schema.WriteBlockPartState(blockProp.traceClient, height, round, []int{partIndex}, true, string(peer), schema.AskForProposal)
 	}
 
 	// for parts that we don't have, but they still want, store the wants.
@@ -573,8 +562,6 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 // - get the patset header from the block meta?
 // - send the partset header to the provided peer
 // TODO rename this Psh to something less Psh
-//
-//nolint:unused
 func (blockProp *Reactor) sendPsh(peer p2p.ID, height int64, round int32) bool {
 	return true
 }
