@@ -1,9 +1,10 @@
 package propagation
 
 import (
+	"testing"
+
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/p2p/mock"
-	"testing"
 
 	"github.com/stretchr/testify/require"
 
