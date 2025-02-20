@@ -55,6 +55,83 @@ func (h *HaveParts) ValidateBasic() error {
 	return nil
 }
 
+func (h *HaveParts) SetIndex(i uint32, Hash []byte, Proof *merkle.Proof) {
+	// TODO set the parts in an ordered way and support getting them faster.
+	h.Parts = append(h.Parts, PartMetaData{i, Hash, *Proof})
+}
+
+func (h *HaveParts) RemoveIndex(i uint32) {
+	parts := make([]PartMetaData, 0)
+	for _, part := range h.Parts {
+		if part.Index != i {
+			parts = append(parts, part)
+		}
+	}
+	h.Parts = parts
+}
+
+func (h *HaveParts) IsEmpty() bool {
+	return len(h.Parts) == 0
+}
+
+func (h *HaveParts) GetIndex(i uint32) bool {
+	// TODO set the parts in an ordered way and support getting them faster and also get the proof and verify it
+	for _, part := range h.Parts {
+		if part.Index == i {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *HaveParts) Copy() *HaveParts {
+	partsCopy := make([]PartMetaData, len(h.Parts))
+	for i, part := range h.Parts {
+		hashCopy := make([]byte, len(part.Hash))
+		copy(hashCopy, part.Hash)
+
+		partsCopy[i] = PartMetaData{
+			Index: part.Index,
+			Hash:  hashCopy,
+			Proof: merkle.Proof{
+				Total:    part.Proof.Total,
+				Index:    part.Proof.Index,
+				LeafHash: part.Proof.LeafHash,
+				Aunts:    part.Proof.Aunts, // TODO also deep copy this
+			},
+		}
+	}
+
+	return &HaveParts{
+		Height: h.Height,
+		Round:  h.Round,
+		Parts:  partsCopy,
+	}
+}
+
+// Sub
+// TODO document that this makes changes on the receiving object
+func (h *HaveParts) Sub(parts *bits.BitArray) {
+	size := min(len(h.Parts), parts.Size())
+	newParts := make([]PartMetaData, 0)
+	// TODO improve this implementation not to iterate this way on all possibilities
+	for i := 0; i < size; i++ {
+		if !parts.GetIndex(int(h.Parts[i].Index)) {
+			newParts = append(newParts, h.Parts[i])
+		}
+	}
+	h.Parts = newParts
+}
+
+func (h *HaveParts) GetTrueIndices() []int {
+	// TODO make this not iterate all over the elements
+	indices := make([]int, len(h.Parts))
+	for i, part := range h.Parts {
+		indices[i] = int(part.Index)
+	}
+	return indices
+}
+
 // ToProto converts HaveParts to its protobuf representation.
 func (h *HaveParts) ToProto() *protoprop.HaveParts {
 	parts := make([]*protoprop.PartMetaData, len(h.Parts))
@@ -70,6 +147,16 @@ func (h *HaveParts) ToProto() *protoprop.HaveParts {
 		Round:  h.Round,
 		Parts:  parts,
 	}
+}
+
+// ToBitArray converts a have parts to a bit array.
+// might be removed in the future once we support proofs.
+func (h *HaveParts) ToBitArray() *bits.BitArray {
+	array := bits.NewBitArray(len(h.Parts))
+	for _, part := range h.Parts {
+		array.SetIndex(int(part.Index), true)
+	}
+	return array
 }
 
 // HavePartFromProto converts a protobuf HaveParts to its Go representation.
@@ -130,7 +217,10 @@ func WantPartsFromProto(w *protoprop.WantParts) (*WantParts, error) {
 }
 
 type RecoveryPart struct {
-	// TODO: implement
+	Height int64
+	Round  int32
+	Index  uint32
+	Data   []byte
 }
 
 func (p *RecoveryPart) ValidateBasic() error {
@@ -151,13 +241,50 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 
 	switch msg := um.(type) {
 	case *protoprop.PartMetaData:
-		pb = &PartMetaData{}
+		pb = &PartMetaData{
+			Index: msg.Index,
+			Hash:  msg.Hash,
+			Proof: merkle.Proof{
+				Total:    msg.Proof.Total,
+				Index:    msg.Proof.Index,
+				LeafHash: msg.Proof.LeafHash,
+				Aunts:    msg.Proof.Aunts,
+			},
+		}
 	case *protoprop.HaveParts:
-		pb = &HaveParts{}
+		parts := make([]PartMetaData, len(msg.Parts))
+		for i, part := range msg.Parts {
+			parts[i] = PartMetaData{
+				Index: part.Index,
+				Hash:  part.Hash,
+				Proof: merkle.Proof{
+					Total:    part.Proof.Total,
+					Index:    part.Proof.Index,
+					LeafHash: part.Proof.LeafHash,
+					Aunts:    part.Proof.Aunts,
+				},
+			}
+		}
+		pb = &HaveParts{
+			Height: msg.Height,
+			Round:  msg.Round,
+			Parts:  parts,
+		}
 	case *protoprop.WantParts:
-		pb = &WantParts{}
+		array := bits.NewBitArray(msg.Parts.Size())
+		array.FromProto(&msg.Parts)
+		pb = &WantParts{
+			Parts:  array,
+			Height: msg.Height,
+			Round:  msg.Round,
+		}
 	case *protoprop.RecoveryPart:
-		pb = &RecoveryPart{}
+		pb = &RecoveryPart{
+			Height: msg.Height,
+			Round:  msg.Round,
+			Index:  msg.Index,
+			Data:   msg.Data,
+		}
 	default:
 		return nil, fmt.Errorf("propagation: message not recognized: %T", msg)
 	}
