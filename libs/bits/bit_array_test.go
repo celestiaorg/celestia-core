@@ -503,3 +503,41 @@ func BenchmarkPickRandomBitArray(b *testing.B) {
 		_, _ = bitArr.PickRandom()
 	}
 }
+
+func TestBitArray_Fill(t *testing.T) {
+	t.Run("fill sets all bits true", func(t *testing.T) {
+		bA := NewBitArray(5)
+		require.NotNil(t, bA)
+		// Initially, all bits are false
+		for i := 0; i < bA.Size(); i++ {
+			require.False(t, bA.GetIndex(i))
+		}
+
+		bA.Fill()
+		// Now all bits should be true.
+		for i := 0; i < bA.Size(); i++ {
+			require.True(t, bA.GetIndex(i), "bit at index %d should be true after Fill()", i)
+		}
+		// Also verify IsFull() returns true.
+		require.True(t, bA.IsFull(), "bit array should be full after Fill()")
+	})
+
+	t.Run("partial set then fill", func(t *testing.T) {
+		bA := NewBitArray(5)
+		bA.SetIndex(1, true)
+		bA.SetIndex(3, true)
+		// Only indexes 1 and 3 are true
+		require.True(t, bA.GetIndex(1))
+		require.True(t, bA.GetIndex(3))
+		require.False(t, bA.GetIndex(0))
+		require.False(t, bA.GetIndex(2))
+		require.False(t, bA.GetIndex(4))
+
+		bA.Fill()
+		// Fill should now set all bits to true
+		for i := 0; i < bA.Size(); i++ {
+			require.True(t, bA.GetIndex(i), "bit at index %d should be true after Fill()", i)
+		}
+		require.True(t, bA.IsFull())
+	})
+}

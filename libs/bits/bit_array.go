@@ -71,6 +71,15 @@ func (bA *BitArray) GetIndex(i int) bool {
 	return bA.getIndex(i)
 }
 
+// Fill sets all bits to true
+func (bA *BitArray) Fill() {
+	bA.mtx.Lock()
+	defer bA.mtx.Unlock()
+	for i := 0; i < bA.Bits; i++ {
+		bA.setIndex(i, true)
+	}
+}
+
 func (bA *BitArray) getIndex(i int) bool {
 	if i >= bA.Bits {
 		return false
