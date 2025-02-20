@@ -86,7 +86,7 @@ func GetChannels() []*p2p.ChannelDescriptor {
 			// TODO: set better values
 			ID:                  DataChannel,
 			Priority:            10,
-			SendQueueCapacity:   100,
+			SendQueueCapacity:   1000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
 		},
