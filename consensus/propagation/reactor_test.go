@@ -1,9 +1,10 @@
 package propagation
 
 import (
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/libs/bits"
-	"testing"
 )
 
 func TestChunkParts(t *testing.T) {

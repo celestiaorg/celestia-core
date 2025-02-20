@@ -2,11 +2,12 @@ package propagation
 
 import (
 	"fmt"
+	"reflect"
+
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/store"
 	"github.com/tendermint/tendermint/types"
-	"reflect"
 
 	"github.com/gogo/protobuf/proto"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
