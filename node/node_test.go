@@ -322,10 +322,8 @@ func TestCreateProposalBlock(t *testing.T) {
 		blockStore,
 	)
 
-	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
-	block, _, _, _ := blockExec.CreateProposalBlock(
 	extCommit := &types.ExtendedCommit{Height: height - 1}
-	block, err := blockExec.CreateProposalBlock(
+	block, _, _, _, err := blockExec.CreateProposalBlock(
 		ctx,
 		height,
 		state,
@@ -335,9 +333,7 @@ func TestCreateProposalBlock(t *testing.T) {
 	require.NoError(t, err)
 
 	// check that the part set does not exceed the maximum block size
-	partSet, _ := block.MakePartSet(partSize)
-	assert.Less(t, partSet.ByteSize(), int64(maxBytes))
-	partSet, err := block.MakePartSet(partSize)
+	partSet, _, err := block.MakePartSet(partSize)
 	require.NoError(t, err)
 	assert.Less(t, partSet.ByteSize(), maxBytes)
 
@@ -403,10 +399,8 @@ func TestMaxProposalBlockSize(t *testing.T) {
 		blockStore,
 	)
 
-	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
-	block, _, _, _ := blockExec.CreateProposalBlock(
 	extCommit := &types.ExtendedCommit{Height: height - 1}
-	block, err := blockExec.CreateProposalBlock(
+	block, _, _, _, err := blockExec.CreateProposalBlock(
 		ctx,
 		height,
 		state,
@@ -420,8 +414,7 @@ func TestMaxProposalBlockSize(t *testing.T) {
 	assert.Less(t, int64(pb.Size()), maxBytes)
 
 	// check that the part set does not exceed the maximum block size
-	partSet, _ := block.MakePartSet(partSize)
-	partSet, err := block.MakePartSet(partSize)
+	partSet, _, err := block.MakePartSet(partSize)
 	require.NoError(t, err)
 	assert.EqualValues(t, partSet.ByteSize(), int64(pb.Size()))
 }
