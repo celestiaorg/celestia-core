@@ -39,9 +39,6 @@ const (
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 1000
-
-	// PropagationChannel the channel ID used by the propagation reactor.
-	PropagationChannel = byte(0x50)
 )
 
 //-----------------------------------------------------------------------------
@@ -67,14 +64,14 @@ type ReactorOption func(*Reactor)
 
 // NewReactor returns a new Reactor with the given
 // consensusState.
-// TODO initialise the propagator
-func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) *Reactor {
+func NewReactor(consensusState *State, propagator propagation.Propagator, waitSync bool, options ...ReactorOption) *Reactor {
 	conR := &Reactor{
 		conS:        consensusState,
 		waitSync:    waitSync,
 		rs:          consensusState.GetRoundState(),
 		Metrics:     NopMetrics(),
 		traceClient: trace.NoOpTracer(),
+		propagator:  propagator,
 	}
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
@@ -240,7 +237,7 @@ func isLegacyPropagation(peer p2p.Peer) (bool, error) {
 	}
 
 	for _, ch := range ni.Channels {
-		if ch == PropagationChannel {
+		if ch == propagation.DataChannel || ch == propagation.WantChannel {
 			return false, nil
 		}
 	}
@@ -261,7 +258,7 @@ func (conR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	// ps.Disconnect()
 }
 
-// Receive implements Reactor
+// ReceiveEnvelope implements EnvelopeReceiver
 // NOTE: We process these messages even when we're fast_syncing.
 // Messages affect either a peer state or the consensus state.
 // Peer state updates can happen in parallel, but processing of

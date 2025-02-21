@@ -2511,7 +2511,74 @@ func (cs *State) syncData() {
 		case <-cs.Quit():
 			return
 		case <-time.After(time.Millisecond * SyncDataInterval):
-			// TODO: implement then call
+			if cs.propagator == nil {
+				continue
+			}
+
+			// check if the data routine already has a proposal or block parts
+			// if so, we can add them here
+			cs.mtx.RLock()
+			h, r := cs.Height, cs.Round
+			pparts := cs.ProposalBlockParts
+			pprop := cs.Proposal
+			completeProp := cs.isProposalComplete()
+			cs.mtx.RUnlock()
+
+			if completeProp {
+				continue
+			}
+
+			prop, parts, _, has := cs.propagator.GetProposal(h, r)
+
+			if !has {
+				schema.WriteNote(
+					cs.traceClient,
+					h,
+					r,
+					"syncData",
+					"no data found",
+				)
+				continue
+			}
+			schema.WriteNote(
+				cs.traceClient,
+				h,
+				r,
+				"syncData",
+				"found data: is complete %v",
+				parts.IsComplete(),
+			)
+
+			if prop != nil && pprop == nil {
+				schema.WriteNote(
+					cs.traceClient,
+					prop.Height,
+					prop.Round,
+					"syncData",
+					"found and sent proposal: %v/%v",
+					prop.Height, prop.Round,
+				)
+				cs.Logger.Info("Proposal was apparently not nil, so we're sending it", "complete", parts.IsComplete())
+				cs.peerMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
+			}
+
+			if pparts != nil && pparts.IsComplete() {
+				continue
+			}
+
+			for i := 0; i < int(parts.Total()); i++ {
+				if pparts != nil {
+					if p := pparts.GetPart(i); p != nil {
+						continue
+					}
+				}
+
+				part := parts.GetPart(i)
+				if part == nil {
+					continue
+				}
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{cs.Height, cs.Round, part}, ""}
+			}
 		}
 	}
 }
