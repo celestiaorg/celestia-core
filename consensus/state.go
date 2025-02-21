@@ -10,6 +10,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/tendermint/tendermint/consensus/propagation"
+
 	"github.com/gogo/protobuf/proto"
 
 	cfg "github.com/tendermint/tendermint/config"
@@ -141,6 +143,8 @@ type State struct {
 	// state only emits EventNewRoundStep and EventVote
 	evsw cmtevents.EventSwitch
 
+	propagator propagation.Propagator
+
 	// for reporting metrics
 	metrics *Metrics
 
@@ -154,11 +158,13 @@ type State struct {
 type StateOption func(*State)
 
 // NewState returns a new State.
+// TODO initialise the propagator
 func NewState(
 	config *cfg.ConsensusConfig,
 	state sm.State,
 	blockExec *sm.BlockExecutor,
 	blockStore sm.BlockStore,
+	propagator propagation.Propagator,
 	txNotifier txNotifier,
 	evpool evidencePool,
 	options ...StateOption,
@@ -167,6 +173,7 @@ func NewState(
 		config:           config,
 		blockExec:        blockExec,
 		blockStore:       blockStore,
+		propagator:       propagator,
 		txNotifier:       txNotifier,
 		peerMsgQueue:     make(chan msgInfo, msgQueueSize),
 		internalMsgQueue: make(chan msgInfo, msgQueueSize),
@@ -1211,6 +1218,8 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
+		// TODO is this how we should propose a block? or we send the proposal through another propagator channel?
+		cs.propagator.ProposeBlock(proposal, blockParts.BitArray())
 
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
@@ -2504,7 +2513,74 @@ func (cs *State) syncData() {
 		case <-cs.Quit():
 			return
 		case <-time.After(time.Millisecond * SyncDataInterval):
-			// TODO: implement then call
+			if cs.propagator == nil {
+				continue
+			}
+
+			// check if the data routine already has a proposal or block parts
+			// if so, we can add them here
+			cs.mtx.RLock()
+			h, r := cs.Height, cs.Round
+			pparts := cs.ProposalBlockParts
+			pprop := cs.Proposal
+			completeProp := cs.isProposalComplete()
+			cs.mtx.RUnlock()
+
+			if completeProp {
+				continue
+			}
+
+			prop, parts, _, has := cs.propagator.GetProposal(h, r)
+
+			if !has {
+				schema.WriteNote(
+					cs.traceClient,
+					h,
+					r,
+					"syncData",
+					"no data found",
+				)
+				continue
+			}
+			schema.WriteNote(
+				cs.traceClient,
+				h,
+				r,
+				"syncData",
+				"found data: is complete %v",
+				parts.IsComplete(),
+			)
+
+			if prop != nil && pprop == nil {
+				schema.WriteNote(
+					cs.traceClient,
+					prop.Height,
+					prop.Round,
+					"syncData",
+					"found and sent proposal: %v/%v",
+					prop.Height, prop.Round,
+				)
+				cs.Logger.Info("Proposal was apparently not nil, so we're sending it", "complete", parts.IsComplete())
+				cs.peerMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
+			}
+
+			if pparts != nil && pparts.IsComplete() {
+				continue
+			}
+
+			for i := 0; i < int(parts.Total()); i++ {
+				if pparts != nil {
+					if p := pparts.GetPart(i); p != nil {
+						continue
+					}
+				}
+
+				part := parts.GetPart(i)
+				if part == nil {
+					continue
+				}
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{cs.Height, cs.Round, part}, ""}
+			}
 		}
 	}
 }

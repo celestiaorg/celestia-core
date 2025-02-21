@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tendermint/tendermint/consensus/propagation"
+
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/grafana/pyroscope-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -227,6 +229,7 @@ type Node struct {
 	consensusState    *cs.State               // latest consensus state
 	consensusReactor  *cs.Reactor             // for participating in the consensus
 	pexReactor        *pex.Reactor            // for exchanging peer addresses
+	blockPropReactor  *propagation.Reactor    // the block propagation reactor
 	evidencePool      *evidence.Pool          // tracking evidence
 	proxyApp          proxy.AppConns          // connection to the application
 	rpcListeners      []net.Listener          // rpc servers
@@ -512,6 +515,7 @@ func createConsensusReactor(config *cfg.Config,
 	evidencePool *evidence.Pool,
 	privValidator types.PrivValidator,
 	csMetrics *cs.Metrics,
+	propagator propagation.Propagator,
 	waitSync bool,
 	eventBus *types.EventBus,
 	consensusLogger log.Logger,
@@ -522,6 +526,7 @@ func createConsensusReactor(config *cfg.Config,
 		state.Copy(),
 		blockExec,
 		blockStore,
+		propagator,
 		mempool,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
@@ -533,6 +538,7 @@ func createConsensusReactor(config *cfg.Config,
 	}
 	consensusReactor := cs.NewReactor(
 		consensusState,
+		propagator,
 		waitSync,
 		cs.ReactorMetrics(csMetrics),
 		cs.ReactorTracing(traceClient),
@@ -623,6 +629,7 @@ func createSwitch(config *cfg.Config,
 	stateSyncReactor *statesync.Reactor,
 	consensusReactor *cs.Reactor,
 	evidenceReactor *evidence.Reactor,
+	propagationReactor *propagation.Reactor,
 	nodeInfo p2p.NodeInfo,
 	nodeKey *p2p.NodeKey,
 	p2pLogger log.Logger,
@@ -641,6 +648,7 @@ func createSwitch(config *cfg.Config,
 	sw.AddReactor("CONSENSUS", consensusReactor)
 	sw.AddReactor("EVIDENCE", evidenceReactor)
 	sw.AddReactor("STATESYNC", stateSyncReactor)
+	sw.AddReactor("BLOCKPROP", propagationReactor)
 
 	sw.SetNodeInfo(nodeInfo)
 	sw.SetNodeKey(nodeKey)
@@ -918,6 +926,8 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, fmt.Errorf("could not create blockchain reactor: %w", err)
 	}
 
+	propagationReactor := propagation.NewReactor(nodeKey.ID(), tracer, blockStore)
+
 	// Make ConsensusReactor. Don't enable fully if doing a state sync and/or fast sync first.
 	// FIXME We need to update metrics here, since other reactors don't have access to them.
 	if stateSync {
@@ -927,7 +937,7 @@ func NewNodeWithContext(ctx context.Context,
 	}
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || fastSync, eventBus, consensusLogger, tracer,
+		privValidator, csMetrics, propagationReactor, stateSync || fastSync, eventBus, consensusLogger, tracer,
 	)
 
 	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)
@@ -955,7 +965,7 @@ func NewNodeWithContext(ctx context.Context,
 	p2pLogger := logger.With("module", "p2p")
 	sw := createSwitch(
 		config, transport, p2pMetrics, peerFilters, mempoolReactor, bcReactor,
-		stateSyncReactor, consensusReactor, evidenceReactor, nodeInfo, nodeKey, p2pLogger, tracer,
+		stateSyncReactor, consensusReactor, evidenceReactor, propagationReactor, nodeInfo, nodeKey, p2pLogger, tracer,
 	)
 
 	err = sw.AddPersistentPeers(splitAndTrimEmpty(config.P2P.PersistentPeers, ",", " "))
@@ -1020,6 +1030,7 @@ func NewNodeWithContext(ctx context.Context,
 		stateSync:        stateSync,
 		stateSyncGenesis: state, // Shouldn't be necessary, but need a way to pass the genesis state
 		pexReactor:       pexReactor,
+		blockPropReactor: propagationReactor,
 		evidencePool:     evidencePool,
 		proxyApp:         proxyApp,
 		txIndexer:        txIndexer,

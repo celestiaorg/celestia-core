@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tendermint/tendermint/consensus/propagation"
+
 	"github.com/gogo/protobuf/proto"
 	cstypes "github.com/tendermint/tendermint/consensus/types"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -37,9 +39,6 @@ const (
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 1000
-
-	// PropagationChannel the channel ID used by the propagation reactor.
-	PropagationChannel = byte(0x50)
 )
 
 //-----------------------------------------------------------------------------
@@ -57,19 +56,22 @@ type Reactor struct {
 
 	Metrics     *Metrics
 	traceClient trace.Tracer
+
+	propagator propagation.Propagator
 }
 
 type ReactorOption func(*Reactor)
 
 // NewReactor returns a new Reactor with the given
 // consensusState.
-func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) *Reactor {
+func NewReactor(consensusState *State, propagator propagation.Propagator, waitSync bool, options ...ReactorOption) *Reactor {
 	conR := &Reactor{
 		conS:        consensusState,
 		waitSync:    waitSync,
 		rs:          consensusState.GetRoundState(),
 		Metrics:     NopMetrics(),
 		traceClient: trace.NoOpTracer(),
+		propagator:  propagator,
 	}
 	conR.BaseReactor = *p2p.NewBaseReactor("Consensus", conR, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
@@ -235,7 +237,7 @@ func isLegacyPropagation(peer p2p.Peer) (bool, error) {
 	}
 
 	for _, ch := range ni.Channels {
-		if ch == PropagationChannel {
+		if ch == propagation.DataChannel || ch == propagation.WantChannel {
 			return false, nil
 		}
 	}
@@ -256,7 +258,7 @@ func (conR *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 	// ps.Disconnect()
 }
 
-// Receive implements Reactor
+// ReceiveEnvelope implements EnvelopeReceiver
 // NOTE: We process these messages even when we're fast_syncing.
 // Messages affect either a peer state or the consensus state.
 // Peer state updates can happen in parallel, but processing of
@@ -324,6 +326,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				schema.Download,
 			)
 			ps.ApplyNewValidBlockMessage(msg)
+			conR.propagator.HandleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockPartSetHeader, false)
 		case *HasVoteMessage:
 			ps.ApplyHasVoteMessage(msg)
 			schema.WriteConsensusState(
@@ -336,6 +339,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				msg.Type.String(),
 			)
 		case *VoteSetMaj23Message:
+			conR.propagator.HandleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockID.PartSetHeader, false)
 			cs := conR.conS
 			cs.mtx.Lock()
 			height, votes := cs.Height, cs.Votes
@@ -401,6 +405,7 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			return
 		}
 		switch msg := msg.(type) {
+		// TODO handle the proposal message case in the propagation reactor
 		case *ProposalMessage:
 			ps.SetHasProposal(msg.Proposal)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}
