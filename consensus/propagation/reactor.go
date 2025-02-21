@@ -633,6 +633,66 @@ func (blockProp *Reactor) requestAllPreviousBlocks(peer p2p.ID, height int64) {
 // - if the parts are decodable, clear all the wants of that block from the proposal state
 // - otherwise, clear the want related to this part from the state
 func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.RecoveryPart) {
+	if peer == "" {
+		peer = blockProp.self
+	}
+	p := blockProp.getPeer(peer)
+	if p == nil && peer != blockProp.self {
+		blockProp.Logger.Error("peer not found", "peer", peer)
+		return
+	}
+	// the peer must always send the proposal before sending parts, if they did
+	// not this node must disconnect from them.
+	_, parts, _, has := blockProp.GetProposal(part.Height, part.Round)
+	if !has {
+		// fmt.Println("unknown proposal")
+		blockProp.Logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
+		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part for unknown proposal"))
+		return
+	}
+
+	if parts.IsComplete() {
+		return
+	}
+
+	// TODO this is not verifying the proof. make it verify it
+	added, err := parts.AddPartWithoutProof(&types.Part{Index: part.Index, Bytes: part.Data})
+	if err != nil {
+		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)
+		return
+	}
+
+	// if the part was not added and there was no error, the part has already
+	// been seen, and therefore doesn't need to be cleared.
+	if !added {
+		return
+	}
+
+	// attempt to decode the remaining block parts. If they are decoded, then
+	// this node should send all the wanted parts that nodes have requested.
+	if parts.IsReadyForDecoding() {
+		// TODO decode once we have parity data support
+
+		// clear all the wants if they exist
+		go func(height int64, round int32, parts *types.PartSet) {
+			for i := uint32(0); i < parts.Total(); i++ {
+				p := parts.GetPart(int(i))
+				msg := &proptypes.RecoveryPart{
+					Height: height,
+					Round:  round,
+					Index:  p.Index,
+					Data:   p.Bytes,
+				}
+				blockProp.clearWants(msg)
+			}
+		}(part.Height, part.Round, parts)
+
+		return
+	}
+
+	// todo(evan): temporarily disabling
+	// go d.broadcastHaves(part.Height, part.Round, parts.BitArray(), peer)
+	go blockProp.clearWants(part)
 }
 
 // clearWants checks the wantState to see if any peers want the given part, if
@@ -642,7 +702,24 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 // - check if any of the peers need that part
 // - if so, send it to them
 // - if not, remove that want.
-//
-//nolint:unused
 func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
+	for _, peer := range blockProp.getPeers() {
+		if peer.WantsPart(part.Height, part.Round, part.Index) {
+			e := p2p.Envelope{
+				ChannelID: DataChannel,
+				Message:   &propproto.RecoveryPart{Height: part.Height, Round: part.Round, Index: part.Index, Data: part.Data},
+			}
+			if p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+				peer.SetHave(part.Height, part.Round, int(part.Index))
+				peer.SetWant(part.Height, part.Round, int(part.Index), false)
+				catchup := false
+				blockProp.pmtx.RLock()
+				if part.Height < blockProp.currentHeight {
+					catchup = true
+				}
+				blockProp.pmtx.RUnlock()
+				schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
+			}
+		}
+	}
 }
