@@ -55,7 +55,7 @@ func TestReactorInvalidPrecommit(t *testing.T) {
 	}
 }
 
-func invalidDoPrevoteFunc(t *testing.T, height int64, round int32, cs *State, sw *p2p.Switch, pv types.PrivValidator) {
+func invalidDoPrevoteFunc(t *testing.T, _ int64, _ int32, cs *State, sw *p2p.Switch, pv types.PrivValidator) {
 	// routine to:
 	// - precommit for a random block
 	// - send precommit to all peers

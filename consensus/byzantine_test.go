@@ -230,7 +230,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		}
 		proposerAddr := lazyProposer.privValidatorPubKey.Address()
 
-		block, blockParts := lazyProposer.blockExec.CreateProposalBlock(
+		block, blockParts, eps, hashes := lazyProposer.blockExec.CreateProposalBlock(
 			lazyProposer.Height, lazyProposer.state, commit, proposerAddr,
 		)
 
@@ -242,7 +242,9 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 
 		// Make proposal
 		propBlockID := types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-		proposal := types.NewProposal(height, round, lazyProposer.TwoThirdPrevoteRound, propBlockID)
+		compB, err := types.NewCompactBlock(block.Height, 0, blockParts.LastLen(), eps, hashes)
+		require.NoError(t, err)
+		proposal := types.NewProposal(height, round, lazyProposer.TwoThirdPrevoteRound, propBlockID, compB)
 		p := proposal.ToProto()
 		if err := lazyProposer.privValidator.SignProposal(lazyProposer.state.ChainID, p); err == nil {
 			proposal.Signature = p.Signature
@@ -480,10 +482,12 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	// Avoid sending on internalMsgQueue and running consensus state.
 
 	// Create a new proposal block from state/txs from the mempool.
-	block1, blockParts1 := cs.createProposalBlock()
+	block1, blockParts1, _, _ := cs.createProposalBlock()
 	polRound := cs.TwoThirdPrevoteRound
 	propBlockID := types.BlockID{Hash: block1.Hash(), PartSetHeader: blockParts1.Header()}
-	proposal1 := types.NewProposal(height, round, polRound, propBlockID)
+	// _, err := types.NewCompactBlock(block1.Height, polRound, eps, hashes)
+	// require.NoError(t, err)
+	proposal1 := types.NewProposal(height, round, polRound, propBlockID, types.CompactBlock{})
 	p1 := proposal1.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p1); err != nil {
 		t.Error(err)
@@ -495,10 +499,13 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int32, cs *St
 	deliverTxsRange(cs, 0, 1)
 
 	// Create a new proposal block from state/txs from the mempool.
-	block2, blockParts2 := cs.createProposalBlock()
+	block2, blockParts2, eps2, hashes2 := cs.createProposalBlock()
 	polRound = cs.TwoThirdPrevoteRound
 	propBlockID = types.BlockID{Hash: block2.Hash(), PartSetHeader: blockParts2.Header()}
-	proposal2 := types.NewProposal(height, round, polRound, propBlockID)
+	_, err := types.NewCompactBlock(block2.Height, polRound, blockParts2.LastLen(), eps2, hashes2)
+	fmt.Println(err)
+	// require.NoError(t, err)
+	proposal2 := types.NewProposal(height, round, polRound, propBlockID, types.CompactBlock{})
 	p2 := proposal2.ToProto()
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, p2); err != nil {
 		t.Error(err)

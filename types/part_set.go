@@ -247,6 +247,10 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, eps *PartSe
 	return ops, eps
 }
 
+func (ps *PartSet) LastLen() uint32 {
+	return uint32(len(ps.GetPart(int(ps.Total() - uint32(1))).Bytes.Bytes()))
+}
+
 // Extend erasure encodes the block parts. Only the original parts should be
 // provided. The data returned has the parity parts appended to the original.
 func Encode(parts [][]byte) ([][]byte, error) {
@@ -279,6 +283,14 @@ func Encode(parts [][]byte) ([][]byte, error) {
 // CanDecode determines if the set of PartSets have enough parts to decode the block.
 func CanDecode(ops, eps *PartSet) bool {
 	return (len(ops.BitArray().GetTrueIndices()) + len(eps.BitArray().GetTrueIndices())) >= int(ops.Total())
+}
+
+// IsReadyForDecoding returns true if the PartSet has every single part, not just
+// ready to be decoded.
+// TODO: this here only requires 2/3rd. We need all the data now because we have no erasure encoding.
+func (ps *PartSet) IsReadyForDecoding() bool {
+	//return ps.count >= (ps.total / 2)
+	return ps.IsComplete()
 }
 
 // Decode uses the block parts that are provided to reconstruct the original

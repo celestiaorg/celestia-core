@@ -50,11 +50,11 @@ func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Bl
 	data := types.Data{
 		Txs: txs,
 	}
-	block, _ := state.MakeBlock(height, data, lastCommit, nil, state.Validators.GetProposer().Address)
+	block, _, _ := state.MakeBlock(height, data, lastCommit, nil, state.Validators.GetProposer().Address)
 	return block
 }
 
-func makeStateAndBlockStore(logger log.Logger) (sm.State, *BlockStore, cleanupFunc) {
+func makeStateAndBlockStore(_ log.Logger) (sm.State, *BlockStore, cleanupFunc) {
 	config := cfg.ResetTestRoot("blockchain_reactor_test")
 	// blockDB := dbm.NewDebugDB("blockDB", dbm.NewMemDB())
 	// stateDB := dbm.NewDebugDB("stateDB", dbm.NewMemDB())
@@ -148,7 +148,7 @@ func TestMain(m *testing.M) {
 	var cleanup cleanupFunc
 	state, _, cleanup = makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	block = makeBlock(1, state, new(types.Commit))
-	partSet = block.MakePartSet(types.BlockPartSizeBytes)
+	partSet, _ = block.MakePartSet(types.BlockPartSizeBytes)
 	part1 = partSet.GetPart(0)
 	part2 = partSet.GetPart(1)
 	seenCommit1 = makeTestCommit(10, cmttime.Now())
@@ -175,8 +175,8 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	// save a block big enough to have two block parts
 	txs := []types.Tx{make([]byte, types.BlockPartSizeBytes)} // TX taking one block part alone
 	data := factory.MakeData(txs)
-	block, _ := state.MakeBlock(bs.Height()+1, data, new(types.Commit), nil, state.Validators.GetProposer().Address)
-	validPartSet := block.MakePartSet(types.BlockPartSizeBytes)
+	block, _, _ := state.MakeBlock(bs.Height()+1, data, new(types.Commit), nil, state.Validators.GetProposer().Address)
+	validPartSet, _ := block.MakePartSet(types.BlockPartSizeBytes)
 	require.GreaterOrEqual(t, validPartSet.Total(), uint32(2))
 	part2 = validPartSet.GetPart(1)
 	seenCommit := makeTestCommit(block.Header.Height, cmttime.Now())
@@ -375,7 +375,7 @@ func makeUniqueBlock(height int64, state sm.State, lastCommit *types.Commit) *ty
 	data := types.Data{
 		Txs: []types.Tx{types.Tx([]byte{byte(height)})},
 	}
-	block, _ := state.MakeBlock(height, data, lastCommit, nil, state.Validators.GetProposer().Address)
+	block, _, _ := state.MakeBlock(height, data, lastCommit, nil, state.Validators.GetProposer().Address)
 	return block
 }
 
@@ -390,7 +390,7 @@ func TestSaveTxInfo(t *testing.T) {
 	// Create 10 blocks each with 1 tx
 	for h := int64(1); h <= 10; h++ {
 		block := makeUniqueBlock(h, state, new(types.Commit))
-		partSet := block.MakePartSet(types.BlockPartSizeBytes)
+		partSet, _ := block.MakePartSet(types.BlockPartSizeBytes)
 		seenCommit := makeTestCommit(h, cmttime.Now())
 		blockStore.SaveBlock(block, partSet, seenCommit)
 
@@ -455,7 +455,7 @@ func TestLoadBaseMeta(t *testing.T) {
 
 	for h := int64(1); h <= 10; h++ {
 		block := makeBlock(h, state, new(types.Commit))
-		partSet := block.MakePartSet(types.BlockPartSizeBytes)
+		partSet, _ := block.MakePartSet(types.BlockPartSizeBytes)
 		seenCommit := makeTestCommit(h, cmttime.Now())
 		bs.SaveBlock(block, partSet, seenCommit)
 	}
@@ -531,7 +531,7 @@ func TestPruneBlocks(t *testing.T) {
 	// make more than 1000 blocks, to test batch deletions
 	for h := int64(1); h <= 1500; h++ {
 		block := makeBlock(h, state, new(types.Commit))
-		partSet := block.MakePartSet(types.BlockPartSizeBytes)
+		partSet, _ := block.MakePartSet(types.BlockPartSizeBytes)
 		seenCommit := makeTestCommit(h, cmttime.Now())
 		bs.SaveBlock(block, partSet, seenCommit)
 	}
@@ -612,7 +612,7 @@ func TestPruneBlocksPrunesTxs(t *testing.T) {
 	var indexedTxHashes [][]byte
 	for height := int64(1); height <= maxHeight; height++ {
 		block := makeUniqueBlock(height, state, new(types.Commit))
-		partSet := block.MakePartSet(types.BlockPartSizeBytes)
+		partSet, _ := block.MakePartSet(types.BlockPartSizeBytes)
 		seenCommit := makeTestCommit(height, cmttime.Now())
 		blockStore.SaveBlock(block, partSet, seenCommit)
 		err := blockStore.SaveTxInfo(block, make([]uint32, len(block.Txs)), make([]string, len(block.Txs)))
@@ -710,7 +710,7 @@ func TestLoadBlockMetaByHash(t *testing.T) {
 	require.NoError(t, err)
 	bs := NewBlockStore(dbm.NewMemDB())
 
-	b1, partSet := state.MakeBlock(state.LastBlockHeight+1, types.Data{Txs: factory.MakeTxs(state.LastBlockHeight+1, 10)}, new(types.Commit), nil, state.Validators.GetProposer().Address)
+	b1, partSet, _ := state.MakeBlock(state.LastBlockHeight+1, types.Data{Txs: factory.MakeTxs(state.LastBlockHeight+1, 10)}, new(types.Commit), nil, state.Validators.GetProposer().Address)
 	seenCommit := makeTestCommit(1, cmttime.Now())
 	bs.SaveBlock(b1, partSet, seenCommit)
 
@@ -726,7 +726,7 @@ func TestBlockFetchAtHeight(t *testing.T) {
 	require.Equal(t, bs.Height(), int64(0), "initially the height should be zero")
 	block := makeBlock(bs.Height()+1, state, new(types.Commit))
 
-	partSet := block.MakePartSet(types.BlockPartSizeBytes)
+	partSet, _ := block.MakePartSet(types.BlockPartSizeBytes)
 	seenCommit := makeTestCommit(10, cmttime.Now())
 	bs.SaveBlock(block, partSet, seenCommit)
 	require.Equal(t, bs.Height(), block.Header.Height, "expecting the new height to be changed")

@@ -223,7 +223,7 @@ func (bcR *BlockchainReactor) sendBlockToPeer(msg *bcproto.BlockRequest,
 	}, bcR.Logger)
 }
 
-func (bcR *BlockchainReactor) sendStatusResponseToPeer(msg *bcproto.StatusRequest, src p2p.Peer) (queued bool) {
+func (bcR *BlockchainReactor) sendStatusResponseToPeer(_ *bcproto.StatusRequest, src p2p.Peer) (queued bool) {
 	return p2p.TrySendEnvelopeShim(src, p2p.Envelope{ //nolint: staticcheck
 		ChannelID: BlockchainChannel,
 		Message: &bcproto.StatusResponse{
@@ -471,7 +471,7 @@ func (bcR *BlockchainReactor) processBlock() error {
 
 	chainID := bcR.initialState.ChainID
 
-	firstParts := first.MakePartSet(types.BlockPartSizeBytes)
+	firstParts, _ := first.MakePartSet(types.BlockPartSizeBytes)
 	firstPartSetHeader := firstParts.Header()
 	firstID := types.BlockID{Hash: first.Hash(), PartSetHeader: firstPartSetHeader}
 	// Finally, verify the first block using the second's commit

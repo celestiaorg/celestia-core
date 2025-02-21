@@ -1339,7 +1339,7 @@ type testVSetCfg struct {
 	expErr       error
 }
 
-func randTestVSetCfg(t *testing.T, nBase, nAddMax int) testVSetCfg {
+func randTestVSetCfg(_ *testing.T, nBase, nAddMax int) testVSetCfg {
 	if nBase <= 0 || nAddMax < 0 {
 		panic(fmt.Sprintf("bad parameters %v %v", nBase, nAddMax))
 	}

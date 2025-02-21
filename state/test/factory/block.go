@@ -38,7 +38,7 @@ func MakeBlocks(n int, state *sm.State, privVal types.PrivValidator) []*types.Bl
 }
 
 func MakeBlock(state sm.State, height int64, c *types.Commit) *types.Block {
-	block, _ := state.MakeBlock(
+	block, _, _ := state.MakeBlock(
 		height,
 		MakeData(factory.MakeTenTxs(state.LastBlockHeight)),
 		c,
@@ -68,8 +68,8 @@ func makeBlockAndPartSet(state sm.State, lastBlock *types.Block, lastBlockMeta *
 		lastCommit = types.NewCommit(vote.Height, vote.Round,
 			lastBlockMeta.BlockID, []types.CommitSig{vote.CommitSig()})
 	}
-
-	return state.MakeBlock(height, MakeData([]types.Tx{}), lastCommit, nil, state.Validators.GetProposer().Address)
+	block, ops, _ := state.MakeBlock(height, MakeData([]types.Tx{}), lastCommit, nil, state.Validators.GetProposer().Address)
+	return block, ops
 }
 
 func MakeVote(

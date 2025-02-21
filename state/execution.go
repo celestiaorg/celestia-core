@@ -107,7 +107,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	height int64,
 	state State, commit *types.Commit,
 	proposerAddr []byte,
-) (*types.Block, *types.PartSet) {
+) (*types.Block, *types.PartSet, *types.PartSet, []*types.TxMetaData) {
 
 	maxBytes := state.ConsensusParams.Block.MaxBytes
 	maxGas := state.ConsensusParams.Block.MaxGas
@@ -116,7 +116,12 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	maxDataBytes := types.MaxDataBytes(maxBytes, evSize, state.Validators.Size())
 
-	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
+	// todo: use the hashes returned by the mempool in the TxMetaData returned by this function
+	// it will require expanding the request and response of prepare proposal to include hashes
+	// so that they can be excluded alongside any transaction by the application.
+	// either that, or we need to change the types.Tx type to also include the
+	// hash as a cached value.
+	txs, _ := blockExec.mempool.ReapMaxBytesMaxGas(maxDataBytes, maxGas)
 
 	var timestamp time.Time
 	if height == state.InitialHeight {
@@ -167,13 +172,15 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		panic(err)
 	}
 
-	return state.MakeBlock(
+	block, ops, eps := state.MakeBlock(
 		height,
 		newData,
 		commit,
 		evidence,
 		proposerAddr,
 	)
+
+	return block, ops, eps, []*types.TxMetaData{} // see todo on using hashes above
 }
 
 func (blockExec *BlockExecutor) ProcessProposal(
