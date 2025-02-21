@@ -1,11 +1,9 @@
 # More info at https://github.com/necojackarc/auto-request-review
 reviewers:
   defaults:
-    - cmwaters
     - evan-forbes
-    - ninabarbakadze
     - rach-id
-    - rootulp
+    - tzdybal
 
 options:
   ignore_draft: true
