@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/cometbft/cometbft/consensus/propagation"
 	"net"
 	"net/http"
 	"os"
@@ -77,6 +78,7 @@ type Node struct {
 	consensusState    *cs.State               // latest consensus state
 	consensusReactor  *cs.Reactor             // for participating in the consensus
 	pexReactor        *pex.Reactor            // for exchanging peer addresses
+	blockPropReactor  *propagation.Reactor    // the block propagation reactor
 	evidencePool      *evidence.Pool          // tracking evidence
 	proxyApp          proxy.AppConns          // connection to the application
 	rpcListeners      []net.Listener          // rpc servers
@@ -428,9 +430,11 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
 	}
 
+	propagationReactor := propagation.NewReactor(nodeKey.ID(), tracer, blockStore)
+
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,
-		privValidator, csMetrics, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
+		privValidator, csMetrics, propagationReactor, stateSync || blockSync, eventBus, consensusLogger, offlineStateSyncHeight, tracer,
 	)
 
 	err = stateStore.SetOfflineStateSyncHeight(0)
@@ -459,7 +463,7 @@ func NewNodeWithContext(ctx context.Context,
 	p2pLogger := logger.With("module", "p2p")
 	sw := createSwitch(
 		config, transport, p2pMetrics, peerFilters, mempoolReactor, bcReactor,
-		stateSyncReactor, consensusReactor, evidenceReactor, nodeInfo, nodeKey, p2pLogger, tracer,
+		stateSyncReactor, consensusReactor, evidenceReactor, propagationReactor, nodeInfo, nodeKey, p2pLogger, tracer,
 	)
 
 	err = sw.AddPersistentPeers(splitAndTrimEmpty(config.P2P.PersistentPeers, ",", " "))
@@ -519,6 +523,7 @@ func NewNodeWithContext(ctx context.Context,
 		stateSync:        stateSync,
 		stateSyncGenesis: state, // Shouldn't be necessary, but need a way to pass the genesis state
 		pexReactor:       pexReactor,
+		blockPropReactor: propagationReactor,
 		evidencePool:     evidencePool,
 		proxyApp:         proxyApp,
 		txIndexer:        txIndexer,

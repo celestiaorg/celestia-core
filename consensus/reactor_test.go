@@ -3,6 +3,7 @@ package consensus
 import (
 	"context"
 	"fmt"
+	"github.com/cometbft/cometbft/consensus/propagation"
 	"os"
 	"path"
 	"sync"
@@ -56,7 +57,7 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 	for i := 0; i < n; i++ {
 		/*logger, err := cmtflags.ParseLogLevel("consensus:info,*:error", logger, "info")
 		if err != nil {	t.Fatal(err)}*/
-		reactors[i] = NewReactor(css[i], true) // so we dont start the consensus states
+		reactors[i] = NewReactor(css[i], css[i].propagator, true) // so we dont start the consensus states
 		reactors[i].SetLogger(css[i].Logger)
 
 		// eventBus is already started with the cs
@@ -190,7 +191,10 @@ func TestReactorWithEvidence(t *testing.T) {
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
-		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool2)
+		key, err := p2p.LoadNodeKey(config.NodeKey)
+		require.NoError(t, err)
+		propagator := propagation.NewReactor(key.ID(), nil, blockStore)
+		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
 
@@ -362,14 +366,12 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 			cs.state.LastValidators = cs.state.Validators.Copy()
 			cs.state.ConsensusParams.ABCI.VoteExtensionsEnableHeight = testCase.initialRequiredHeight
 
-			propBlock, err := cs.createProposalBlock(ctx)
+			propBlock, blockParts, _, _, err := cs.createProposalBlock(ctx)
 			require.NoError(t, err)
 
 			// Consensus is preparing to do the next height after the stored height.
 			cs.Height = testCase.storedHeight + 1
 			propBlock.Height = testCase.storedHeight
-			blockParts, err := propBlock.MakePartSet(types.BlockPartSizeBytes)
-			require.NoError(t, err)
 
 			var voteSet *types.VoteSet
 			if testCase.includeExtensions {
@@ -398,8 +400,14 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 			} else {
 				cs.blockStore.SaveBlock(propBlock, blockParts, voteSet.MakeExtendedCommit(veHeightParam).ToCommit())
 			}
+			blockDB := dbm.NewMemDB()
+			blockStore := store.NewBlockStore(blockDB)
+			key, err := p2p.LoadNodeKey(config.NodeKey)
+			require.NoError(t, err)
+			propagator := propagation.NewReactor(key.ID(), nil, blockStore)
 			reactor := NewReactor(
 				cs,
+				propagator,
 				true,
 			)
 

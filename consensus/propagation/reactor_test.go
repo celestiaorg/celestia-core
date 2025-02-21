@@ -5,18 +5,18 @@ import (
 	"time"
 
 	dbm "github.com/cometbft/cometbft-db"
+	cfg "github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/crypto/merkle"
+	"github.com/cometbft/cometbft/libs/bits"
+	cmtrand "github.com/cometbft/cometbft/libs/rand"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/p2p/mock"
+	"github.com/cometbft/cometbft/store"
+	types2 "github.com/cometbft/cometbft/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	cfg "github.com/tendermint/tendermint/config"
-	"github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/libs/bits"
-	cmtrand "github.com/tendermint/tendermint/libs/rand"
-	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/p2p/mock"
-	"github.com/tendermint/tendermint/pkg/trace"
-	"github.com/tendermint/tendermint/store"
-	types2 "github.com/tendermint/tendermint/types"
 )
 
 func newPropagationReactor(s *p2p.Switch) *Reactor {

@@ -3,6 +3,7 @@ package consensus
 import (
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/consensus/propagation"
 	"reflect"
 	"strconv"
 	"sync"
@@ -54,19 +55,22 @@ type Reactor struct {
 
 	Metrics     *Metrics
 	traceClient trace.Tracer
+
+	propagator propagation.Propagator
 }
 
 type ReactorOption func(*Reactor)
 
 // NewReactor returns a new Reactor with the given
 // consensusState.
-func NewReactor(consensusState *State, waitSync bool, options ...ReactorOption) *Reactor {
+func NewReactor(consensusState *State, propagator propagation.Propagator, waitSync bool, options ...ReactorOption) *Reactor {
 	conR := &Reactor{
 		conS:        consensusState,
 		waitSync:    waitSync,
 		rs:          consensusState.GetRoundState(),
 		Metrics:     NopMetrics(),
 		traceClient: trace.NoOpTracer(),
+		propagator:  propagator,
 	}
 	conR.BaseReactor = *p2p.NewBaseReactor(
 		"Consensus",
@@ -233,7 +237,7 @@ func isLegacyPropagation(peer p2p.Peer) (bool, error) {
 	}
 
 	for _, ch := range ni.Channels {
-		if ch == PropagationChannel {
+		if ch == propagation.DataChannel || ch == propagation.WantChannel {
 			return false, nil
 		}
 	}
@@ -318,6 +322,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 				schema.Download,
 			)
 			ps.ApplyNewValidBlockMessage(msg)
+			conR.propagator.HandleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockPartSetHeader, false)
 		case *HasVoteMessage:
 			schema.WriteConsensusState(
 				conR.traceClient,
@@ -330,6 +335,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			)
 			ps.ApplyHasVoteMessage(msg)
 		case *VoteSetMaj23Message:
+			conR.propagator.HandleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockID.PartSetHeader, false)
 			cs := conR.conS
 			cs.mtx.Lock()
 			height, votes := cs.Height, cs.Votes
@@ -395,6 +401,7 @@ func (conR *Reactor) Receive(e p2p.Envelope) {
 			return
 		}
 		switch msg := msg.(type) {
+		// TODO handle the proposal message case in the propagation reactor
 		case *ProposalMessage:
 			ps.SetHasProposal(msg.Proposal)
 			conR.conS.peerMsgQueue <- msgInfo{msg, e.Src.ID()}

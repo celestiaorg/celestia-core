@@ -2,6 +2,8 @@ package propagation
 
 import (
 	"fmt"
+	"github.com/cometbft/cometbft/libs/trace/schema"
+	"github.com/cometbft/cometbft/p2p/conn"
 	"reflect"
 
 	"github.com/cometbft/cometbft/libs/bits"
@@ -42,6 +44,9 @@ type Reactor struct {
 }
 
 func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, options ...ReactorOption) *Reactor {
+	if tracer == nil {
+		tracer = trace.NoOpTracer()
+	}
 	reactor := &Reactor{
 		self:          self,
 		traceClient:   tracer,
@@ -369,7 +374,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		},
 	}
 
-	if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
+	if !p.peer.Send(e) { //nolint:staticcheck
 		blockProp.Logger.Error("failed to send part state", "peer", peer, "height", height, "round", round)
 		return
 	}
@@ -437,7 +442,7 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		// pull based gossip, this isn't as big as a deal since if someone asks
 		// for data, they must already have the proposal.
 		// TODO: use retry and logs
-		if p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+		if peer.peer.Send(e) { //nolint:staticcheck
 			schema.WriteBlockPartState(
 				blockProp.traceClient,
 				haves.Height,
@@ -520,7 +525,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			},
 		}
 
-		if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
+		if !p.peer.Send(e) { //nolint:staticcheck
 			blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
 			continue
 		}
@@ -690,7 +695,7 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
 				ChannelID: DataChannel,
 				Message:   &propproto.RecoveryPart{Height: part.Height, Round: part.Round, Index: part.Index, Data: part.Data},
 			}
-			if p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+			if peer.peer.Send(e) { //nolint:staticcheck
 				peer.SetHave(part.Height, part.Round, int(part.Index))
 				peer.SetWant(part.Height, part.Round, int(part.Index), false)
 				catchup := false

@@ -3,13 +3,13 @@ package propagation
 import (
 	"testing"
 
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/p2p/mock"
+	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/p2p/mock"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/libs/bits"
+	"github.com/cometbft/cometbft/consensus/propagation/types"
+	"github.com/cometbft/cometbft/libs/bits"
 )
 
 // newTestPeerState is a helper to create a PeerState with a mock peer.

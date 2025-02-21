@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/cometbft/cometbft/consensus/propagation"
 	"net"
 	"strings"
 	"time"
@@ -367,6 +368,7 @@ func createConsensusReactor(config *cfg.Config,
 	evidencePool *evidence.Pool,
 	privValidator types.PrivValidator,
 	csMetrics *cs.Metrics,
+	propagator propagation.Propagator,
 	waitSync bool,
 	eventBus *types.EventBus,
 	consensusLogger log.Logger,
@@ -378,6 +380,7 @@ func createConsensusReactor(config *cfg.Config,
 		state.Copy(),
 		blockExec,
 		blockStore,
+		propagator,
 		mempool,
 		evidencePool,
 		cs.StateMetrics(csMetrics),
@@ -388,7 +391,7 @@ func createConsensusReactor(config *cfg.Config,
 	if privValidator != nil {
 		consensusState.SetPrivValidator(privValidator)
 	}
-	consensusReactor := cs.NewReactor(consensusState, waitSync, cs.ReactorMetrics(csMetrics), cs.ReactorTracing(traceClient))
+	consensusReactor := cs.NewReactor(consensusState, propagator, waitSync, cs.ReactorMetrics(csMetrics), cs.ReactorTracing(traceClient))
 	consensusReactor.SetLogger(consensusLogger)
 	// services which will be publishing and/or subscribing for messages (events)
 	// consensusReactor will set it on consensusState and blockExecutor
