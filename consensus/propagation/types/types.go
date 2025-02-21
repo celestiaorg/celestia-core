@@ -228,6 +228,25 @@ func (p *RecoveryPart) ValidateBasic() error {
 	return nil
 }
 
+type Proposal struct {
+	*types.Proposal
+}
+
+func (p *Proposal) ToProto() *protoprop.Proposal {
+	prop := p.Proposal.ToProto()
+	return &protoprop.Proposal{
+		Proposal: prop,
+	}
+}
+
+func ProposalFromProto(prop *protoprop.Proposal) (Proposal, error) {
+	p, err := types.ProposalFromProto(prop.Proposal)
+	if err != nil {
+		return Proposal{}, err
+	}
+	return Proposal{Proposal: p}, nil
+}
+
 // MsgFromProto takes a consensus proto message and returns the native go type
 func MsgFromProto(p *protoprop.Message) (Message, error) {
 	if p == nil {
@@ -285,6 +304,8 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			Index:  msg.Index,
 			Data:   msg.Data,
 		}
+	case *protoprop.Proposal:
+		pb = &Proposal{}
 	default:
 		return nil, fmt.Errorf("propagation: message not recognized: %T", msg)
 	}
