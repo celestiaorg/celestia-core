@@ -600,30 +600,6 @@ func (blockProp *Reactor) sendPsh(peer p2p.ID, height int64, round int32) bool {
 func (blockProp *Reactor) HandleValidBlock(peer p2p.ID, height int64, round int32, psh types.PartSetHeader, exitEarly bool) {
 }
 
-// bitArrayToParts a hack to get a list of have parts from a bit array
-// TODO: remove when we have verification
-//
-//nolint:unused
-func bitArrayToParts(array *bits.BitArray) []proptypes.PartMetaData {
-	parts := make([]proptypes.PartMetaData, len(array.GetTrueIndices()))
-	for i, index := range array.GetTrueIndices() {
-		parts[i] = proptypes.PartMetaData{Index: uint32(index)}
-	}
-	return parts
-}
-
-// bitArrayToParts hack to get a list of have parts from a bit array
-// TODO: remove when we have verification
-//
-//nolint:unused
-func bitArrayToProtoParts(array *bits.BitArray) []*propproto.PartMetaData {
-	parts := make([]*propproto.PartMetaData, len(array.GetTrueIndices()))
-	for i, index := range array.GetTrueIndices() {
-		parts[i] = &propproto.PartMetaData{Index: uint32(index)}
-	}
-	return parts
-}
-
 // requestAllPreviousBlocks is called when a node is catching up and needs to
 // request all previous blocks from a peer.
 // What this method will do:
