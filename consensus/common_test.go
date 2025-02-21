@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tendermint/tendermint/consensus/propagation"
+
 	"github.com/go-kit/log/term"
 	"github.com/stretchr/testify/require"
 
@@ -452,13 +454,18 @@ func newStateWithConfigAndBlockStore(
 	}
 
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool)
+	key, err := p2p.LoadNodeKey(config.NodeKey)
+	if err != nil {
+		cmtos.Exit(err.Error())
+	}
+	propagator := propagation.NewReactor(key.ID(), nil, blockStore)
+	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool)
 	cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 	cs.SetPrivValidator(pv)
 
 	eventBus := types.NewEventBus()
 	eventBus.SetLogger(log.TestingLogger().With("module", "events"))
-	err := eventBus.Start()
+	err = eventBus.Start()
 	if err != nil {
 		panic(err)
 	}

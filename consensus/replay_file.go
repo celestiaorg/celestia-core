@@ -10,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tendermint/tendermint/consensus/propagation"
+	"github.com/tendermint/tendermint/p2p"
+
 	dbm "github.com/cometbft/cometbft-db"
 
 	cfg "github.com/tendermint/tendermint/config"
@@ -130,7 +133,7 @@ func (pb *playback) replayReset(count int, newStepSub types.Subscription) error 
 	pb.cs.Wait()
 
 	newCS := NewState(pb.cs.config, pb.genesisState.Copy(), pb.cs.blockExec,
-		pb.cs.blockStore, pb.cs.txNotifier, pb.cs.evpool)
+		pb.cs.blockStore, pb.cs.propagator, pb.cs.txNotifier, pb.cs.evpool)
 	newCS.SetEventBus(pb.cs.eventBus)
 	newCS.startForReplay()
 
@@ -331,9 +334,14 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 
 	mempool, evpool := emptyMempool{}, sm.EmptyEvidencePool{}
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool, sm.WithBlockStore(blockStore))
-
+	key, err := p2p.LoadNodeKey(config.NodeKey)
+	if err != nil {
+		cmtos.Exit(err.Error())
+	}
+	// TODO pass a tracer from here
+	propagator := propagation.NewReactor(key.ID(), nil, blockStore)
 	consensusState := NewState(csConfig, state.Copy(), blockExec,
-		blockStore, mempool, evpool)
+		blockStore, propagator, mempool, evpool)
 
 	consensusState.SetEventBus(eventBus)
 	return consensusState

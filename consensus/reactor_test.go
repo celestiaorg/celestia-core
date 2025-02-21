@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tendermint/tendermint/consensus/propagation"
+	cmtos "github.com/tendermint/tendermint/libs/os"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -60,7 +63,7 @@ func startConsensusNet(t *testing.T, css []*State, n int) (
 	for i := 0; i < n; i++ {
 		/*logger, err := cmtflags.ParseLogLevel("consensus:info,*:error", logger, "info")
 		if err != nil {	t.Fatal(err)}*/
-		reactors[i] = NewReactor(css[i], true) // so we dont start the consensus states
+		reactors[i] = NewReactor(css[i], css[i].propagator, true) // so we dont start the consensus states
 		reactors[i].SetLogger(css[i].Logger)
 
 		// eventBus is already started with the cs
@@ -215,13 +218,18 @@ func TestReactorWithEvidence(t *testing.T) {
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, mempool, evpool2)
+		key, err := p2p.LoadNodeKey(config.NodeKey)
+		if err != nil {
+			cmtos.Exit(err.Error())
+		}
+		propagator := propagation.NewReactor(key.ID(), nil, blockStore)
+		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
 
 		eventBus := types.NewEventBus()
 		eventBus.SetLogger(log.TestingLogger().With("module", "events"))
-		err := eventBus.Start()
+		err = eventBus.Start()
 		require.NoError(t, err)
 		cs.SetEventBus(eventBus)
 

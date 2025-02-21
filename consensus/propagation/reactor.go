@@ -49,6 +49,9 @@ type Reactor struct {
 }
 
 func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, options ...ReactorOption) *Reactor {
+	if tracer == nil {
+		tracer = trace.NoOpTracer()
+	}
 	reactor := &Reactor{
 		self:          self,
 		traceClient:   tracer,

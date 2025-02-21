@@ -5,11 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/tendermint/tendermint/consensus/propagation"
 	"net"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/tendermint/tendermint/consensus/propagation"
 
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/grafana/pyroscope-go"
@@ -525,6 +526,7 @@ func createConsensusReactor(config *cfg.Config,
 		state.Copy(),
 		blockExec,
 		blockStore,
+		propagator,
 		mempool,
 		evidencePool,
 		cs.StateMetrics(csMetrics),

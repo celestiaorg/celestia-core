@@ -9,6 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tendermint/tendermint/consensus/propagation"
+	cmtos "github.com/tendermint/tendermint/libs/os"
+	"github.com/tendermint/tendermint/p2p"
+
 	db "github.com/cometbft/cometbft-db"
 
 	"github.com/tendermint/tendermint/abci/example/kvstore"
@@ -85,7 +89,12 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int) (err error) {
 	mempool := emptyMempool{}
 	evpool := sm.EmptyEvidencePool{}
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool, sm.WithBlockStore(blockStore))
-	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore, mempool, evpool)
+	key, err := p2p.LoadNodeKey(config.NodeKey)
+	if err != nil {
+		cmtos.Exit(err.Error())
+	}
+	propagator := propagation.NewReactor(key.ID(), nil, blockStore)
+	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore, propagator, mempool, evpool)
 	consensusState.SetLogger(logger)
 	consensusState.SetEventBus(eventBus)
 	if privValidator != nil {
