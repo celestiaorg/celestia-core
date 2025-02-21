@@ -672,6 +672,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 	// todo(evan): temporarily disabling
 	// go d.broadcastHaves(part.Height, part.Round, parts.BitArray(), peer)
+	// TODO better go routines management
 	go blockProp.clearWants(part)
 }
 
