@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	cfg "github.com/tendermint/tendermint/config"
-	"github.com/tendermint/tendermint/consensus/propagation/types"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -122,10 +121,10 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	// reactor 1 will receive haves from reactor 2
 	reactor1.handleHaves(
 		reactor2.self,
-		&types.HaveParts{
+		&proptypes.HaveParts{
 			Height: 10,
 			Round:  1,
-			Parts: []types.PartMetaData{
+			Parts: []proptypes.PartMetaData{
 				{Index: 2, Proof: proof},
 				{Index: 3, Proof: proof},
 				{Index: 4, Proof: proof},
@@ -138,9 +137,9 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	assert.True(t, has)
 	assert.Equal(t, int64(10), haves.Height)
 	assert.Equal(t, int32(1), haves.Round)
-	assert.Contains(t, haves.Parts, types.PartMetaData{Index: 2, Proof: proof})
-	assert.Contains(t, haves.Parts, types.PartMetaData{Index: 3, Proof: proof})
-	assert.Contains(t, haves.Parts, types.PartMetaData{Index: 4, Proof: proof})
+	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 2, Proof: proof})
+	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 3, Proof: proof})
+	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 4, Proof: proof})
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -151,8 +150,8 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 
 	r3Haves, r3Has := r3State.GetHaves(10, 1)
 	assert.True(t, r3Has)
-	assert.Contains(t, r3Haves.Parts, types.PartMetaData{Index: 3, Proof: proof})
-	assert.Contains(t, r3Haves.Parts, types.PartMetaData{Index: 4, Proof: proof})
+	assert.Contains(t, r3Haves.Parts, proptypes.PartMetaData{Index: 3, Proof: proof})
+	assert.Contains(t, r3Haves.Parts, proptypes.PartMetaData{Index: 4, Proof: proof})
 
 	// since reactor 3 received the haves from reactor 1,
 	// it will send back a want.
@@ -164,7 +163,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 
 	// add the recovery part to the reactor 1.
 	randomData := cmtrand.Bytes(10)
-	reactor1.handleRecoveryPart(reactor2.self, &types.RecoveryPart{
+	reactor1.handleRecoveryPart(reactor2.self, &proptypes.RecoveryPart{
 		Height: 10,
 		Round:  1,
 		Index:  2,

@@ -546,7 +546,7 @@ func (blockProp *Reactor) handleProposal(peer p2p.ID, prop *proptypes.Proposal) 
 // broadcastProposal gossips the provided proposal to all peers. This should
 // only be called upon receiving a proposal for the first time.
 func (blockProp *Reactor) broadcastProposal(proposal *proptypes.Proposal, from p2p.ID) {
-	e := p2p.Envelope{ //nolint: staticcheck
+	e := p2p.Envelope{
 		ChannelID: DataChannel,
 		Message:   proposal.ToProto(),
 	}
@@ -561,7 +561,7 @@ func (blockProp *Reactor) broadcastProposal(proposal *proptypes.Proposal, from p
 		// todo(evan): don't rely strictly on try, however since we're using
 		// pull based gossip, this isn't as big as a deal since if someone asks
 		// for data, they must already have the proposal.
-		if !p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) {
+		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
 			blockProp.Logger.Error("failed to send proposal to peer", "peer", peer.peer.ID())
 			continue
 		}
