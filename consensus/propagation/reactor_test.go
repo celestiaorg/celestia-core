@@ -292,7 +292,7 @@ func TestBroadcastProposal(t *testing.T) {
 
 	reactor1.handleProposal(reactor2.self, proposal)
 
-	time.Sleep(600 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	_, _, _, has := reactor2.GetProposal(1, 0)
 	assert.True(t, has)
