@@ -45,6 +45,7 @@ type Reactor struct {
 
 func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, options ...ReactorOption) *Reactor {
 	if tracer == nil {
+		// TODO not pass nil. instead, use a NOOP and allow the tracer to be passed as an option
 		tracer = trace.NoOpTracer()
 	}
 	reactor := &Reactor{
