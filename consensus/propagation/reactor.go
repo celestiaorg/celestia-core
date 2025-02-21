@@ -145,6 +145,8 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			blockProp.handleHaves(e.Src.ID(), msg, false)
 		case *proptypes.RecoveryPart:
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)
+		case *proptypes.Proposal:
+			blockProp.handleProposal(e.Src.ID(), msg)
 		default:
 			blockProp.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
 		}
@@ -186,39 +188,6 @@ func (blockProp *Reactor) setPeer(peer p2p.ID, state *PeerState) {
 	blockProp.mtx.Lock()
 	defer blockProp.mtx.Unlock()
 	blockProp.peerstate[peer] = state
-}
-
-// ProposeBlock is called when the consensus routine has created a new proposal
-// and it needs to be gossiped to the rest of the network.
-func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, haves *bits.BitArray) {
-	blockProp.HandleProposal(proposal, blockProp.self, haves)
-}
-
-// HandleProposal adds a proposal to the data routine. This should be called any
-// time a proposal is received from a peer or when a proposal is created. If the
-// proposal is new, it will be stored and broadcast to the relevant peers.
-// This function will:
-// - check if the from peer is provided. If not, set it to self.
-// - add the proposal to the reactor's state.
-// - if adding the proposal to the state is successful, broadcast the proposal to the peers.
-// Note: this method will not propagate the haves after the proposal and the compact block is propagated.
-// Check broadcastSelfProposalHaves for that.
-func (blockProp *Reactor) HandleProposal(proposal *types.Proposal, from p2p.ID, haves *bits.BitArray) {
-}
-
-// broadcastProposal gossips the provided proposal to all peers. This should
-// only be called upon receiving a proposal for the first time or after creating
-// a proposal block.
-//
-//nolint:unused
-func (blockProp *Reactor) broadcastProposal(proposal *types.Proposal, from p2p.ID) {
-}
-
-// broadcastSelfProposalHaves broadcasts the haves to all the connected peers when we're the proposers.
-// Note: the haves are chunked so that every peer only receives a portion of the haves.
-//
-//nolint:unused
-func (blockProp *Reactor) broadcastSelfProposalHaves(proposal *types.Proposal, from p2p.ID, haves *bits.BitArray) {
 }
 
 // chunkParts takes a bit array then returns an array of chunked bit arrays.
@@ -374,7 +343,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		},
 	}
 
-	if !p.peer.Send(e) { //nolint:staticcheck
+	if !p.peer.TrySend(e) { //nolint:staticcheck
 		blockProp.Logger.Error("failed to send part state", "peer", peer, "height", height, "round", round)
 		return
 	}
@@ -544,6 +513,47 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	}
 }
 
+func (blockProp *Reactor) handleProposal(peer p2p.ID, prop *proptypes.Proposal) {
+	p := blockProp.getPeer(peer)
+	if p == nil {
+		blockProp.Logger.Error("peer not found", "peer", peer)
+		return
+	}
+
+	// todo(evan) handle catchup if someone sends us a proposal that is much further in the future.
+	added, _, _ := blockProp.AddProposal(prop.Proposal)
+
+	if added {
+		blockProp.broadcastProposal(prop, peer)
+	}
+}
+
+// broadcastProposal gossips the provided proposal to all peers. This should
+// only be called upon receiving a proposal for the first time.
+func (blockProp *Reactor) broadcastProposal(proposal *proptypes.Proposal, from p2p.ID) {
+	e := p2p.Envelope{
+		ChannelID: DataChannel,
+		Message:   proposal.ToProto(),
+	}
+
+	peers := blockProp.getPeers()
+
+	for _, peer := range peers {
+		if peer.peer.ID() == from {
+			continue
+		}
+
+		// todo(evan): don't rely strictly on try, however since we're using
+		// pull based gossip, this isn't as big as a deal since if someone asks
+		// for data, they must already have the proposal.
+		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+			blockProp.Logger.Error("failed to send proposal to peer", "peer", peer.peer.ID())
+			continue
+		}
+		schema.WriteProposal(blockProp.traceClient, proposal.Height, proposal.Round, string(peer.peer.ID()), schema.Upload)
+	}
+}
+
 // sendPsh sends the partset header to the provided peer.
 // This method will:
 // - get the proposal with the provided height and round
@@ -630,7 +640,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// not this node must disconnect from them.
 	_, parts, _, has := blockProp.GetProposal(part.Height, part.Round)
 	if !has {
-		// fmt.Println("unknown proposal")
 		blockProp.Logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
 		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part for unknown proposal"))
 		return

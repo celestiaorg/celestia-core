@@ -11,6 +11,7 @@ var (
 	_ p2p.Wrapper   = &HaveParts{}
 	_ p2p.Wrapper   = &WantParts{}
 	_ p2p.Wrapper   = &RecoveryPart{}
+	_ p2p.Wrapper   = &Proposal{}
 	_ p2p.Unwrapper = &Message{}
 )
 
@@ -35,6 +36,12 @@ func (m *RecoveryPart) Wrap() proto.Message {
 	return mm
 }
 
+func (m *Proposal) Wrap() proto.Message {
+	mm := &Message{}
+	mm.Sum = &Message_Proposal{Proposal: m}
+	return mm
+}
+
 // Unwrap implements the p2p Wrapper interface and unwraps a wrapped mempool
 // message.
 func (m *Message) Unwrap() (proto.Message, error) {
@@ -47,6 +54,9 @@ func (m *Message) Unwrap() (proto.Message, error) {
 
 	case *Message_RecoveryPart:
 		return m.GetRecoveryPart(), nil
+
+	case *Message_Proposal:
+		return m.GetProposal(), nil
 
 	default:
 		return nil, fmt.Errorf("unknown message: %T", msg)
