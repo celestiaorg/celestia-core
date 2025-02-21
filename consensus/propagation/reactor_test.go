@@ -81,13 +81,14 @@ func TestCountRequests(t *testing.T) {
 	assert.Equal(t, 1, len(part3Round0Height10RequestsCount))
 }
 
-func TestHandleHavesAndWants(t *testing.T) {
+func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	reactors, _ := testBlockPropReactors(3)
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
+	reactor3 := reactors[2]
 
-	peer1 := mock.NewPeer(nil)
-	reactor1.AddPeer(peer1)
+	// adding the proposal manually so the haves/wants and recovery
+	// parts are not rejected.
 	added, _, _ := reactor1.AddProposal(&types2.Proposal{
 		BlockID: types2.BlockID{
 			Hash:          nil,
@@ -106,9 +107,20 @@ func TestHandleHavesAndWants(t *testing.T) {
 		Round:  1,
 	})
 	require.True(t, added)
+	added, _, _ = reactor3.AddProposal(&types2.Proposal{
+		BlockID: types2.BlockID{
+			Hash:          nil,
+			PartSetHeader: types2.PartSetHeader{Total: 30},
+		},
+		Height: 10,
+		Round:  1,
+	})
+	require.True(t, added)
 	proof := merkle.Proof{LeafHash: cmtrand.Bytes(32)}
+
+	// reactor 1 will receive haves from reactor 2
 	reactor1.handleHaves(
-		peer1.ID(),
+		reactor2.self,
 		&types.HaveParts{
 			Height: 10,
 			Round:  1,
@@ -121,7 +133,7 @@ func TestHandleHavesAndWants(t *testing.T) {
 		true,
 	)
 
-	haves, has := reactor1.getPeer(peer1.ID()).GetHaves(10, 1)
+	haves, has := reactor1.getPeer(reactor2.self).GetHaves(10, 1)
 	assert.True(t, has)
 	assert.Equal(t, int64(10), haves.Height)
 	assert.Equal(t, int32(1), haves.Round)
@@ -131,21 +143,40 @@ func TestHandleHavesAndWants(t *testing.T) {
 
 	time.Sleep(500 * time.Millisecond)
 
-	r2State := reactor2.getPeers()[0]
-	require.NotNil(t, r2State)
+	// reactor 1 will gossip the haves with reactor 3
+	// check if the third reactor received the haves
+	r3State := reactor3.getPeer(reactor1.self)
+	require.NotNil(t, r3State)
 
-	// check if the second reactor received the haves
-	r2Haves, r2Has := r2State.GetHaves(10, 1)
-	assert.True(t, r2Has)
-	assert.Contains(t, r2Haves.Parts, types.PartMetaData{Index: 2, Proof: proof})
-	assert.Contains(t, r2Haves.Parts, types.PartMetaData{Index: 3, Proof: proof})
-	assert.Contains(t, r2Haves.Parts, types.PartMetaData{Index: 4, Proof: proof})
+	r3Haves, r3Has := r3State.GetHaves(10, 1)
+	assert.True(t, r3Has)
+	assert.Contains(t, r3Haves.Parts, types.PartMetaData{Index: 3, Proof: proof})
+	assert.Contains(t, r3Haves.Parts, types.PartMetaData{Index: 4, Proof: proof})
 
-	// check if the peer received the wants
-	r2Want, r2Has := r2State.GetWants(10, 1)
-	assert.True(t, r2Has)
-	assert.Equal(t, int64(10), r2Want.Height)
-	assert.Equal(t, int32(1), r2Want.Round)
+	// since reactor 3 received the haves from reactor 1,
+	// it will send back a want.
+	// check if reactor 1 received the wants
+	r1Want, r1Has := reactor1.getPeer(reactor3.self).GetWants(10, 1)
+	assert.True(t, r1Has)
+	assert.Equal(t, int64(10), r1Want.Height)
+	assert.Equal(t, int32(1), r1Want.Round)
+
+	// add the recovery part to the reactor 1.
+	randomData := cmtrand.Bytes(10)
+	reactor1.handleRecoveryPart(reactor2.self, &types.RecoveryPart{
+		Height: 10,
+		Round:  1,
+		Index:  2,
+		Data:   randomData,
+	})
+
+	time.Sleep(500 * time.Millisecond)
+
+	// check if reactor 3 received the recovery part.
+	_, parts, _, found := reactor3.GetProposal(10, 1)
+	assert.True(t, found)
+	assert.Equal(t, uint32(1), parts.Count())
+	assert.Equal(t, randomData, parts.GetPart(2).Bytes.Bytes())
 }
 
 func TestChunkParts(t *testing.T) {
