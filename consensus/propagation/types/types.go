@@ -305,7 +305,26 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			Data:   msg.Data,
 		}
 	case *protoprop.Proposal:
-		pb = &Proposal{}
+		bid, err := types.BlockIDFromProto(&msg.Proposal.BlockID)
+		if err != nil {
+			return nil, err
+		}
+		compB, err := types.CompactBlockFromProto(msg.Proposal.CompactBlock)
+		if err != nil {
+			return nil, err
+		}
+		pb = &Proposal{
+			Proposal: &types.Proposal{
+				Height:       msg.Proposal.Height,
+				Round:        msg.Proposal.Round,
+				POLRound:     msg.Proposal.PolRound,
+				BlockID:      *bid,
+				Timestamp:    msg.Proposal.Timestamp,
+				Signature:    msg.Proposal.Signature,
+				CompactBlock: *compB,
+				Type:         msg.Proposal.Type,
+			},
+		}
 	default:
 		return nil, fmt.Errorf("propagation: message not recognized: %T", msg)
 	}

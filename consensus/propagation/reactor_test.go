@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/consensus/propagation/types"
+	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
@@ -262,6 +263,41 @@ func TestChunkParts(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBroadcastProposal(t *testing.T) {
+	reactors, _ := testBlockPropReactors(3)
+	reactor1 := reactors[0]
+	reactor2 := reactors[1]
+	reactor3 := reactors[2]
+
+	blockID := types2.BlockID{
+		Hash:          cmtrand.Bytes(32),
+		PartSetHeader: types2.PartSetHeader{Total: 30, Hash: cmtrand.Bytes(32)},
+	}
+
+	compBlock := types2.CompactBlock{
+		BpHash:    cmtrand.Bytes(32),
+		Height:    1,
+		Round:     0,
+		Blobs:     []*types2.TxMetaData{},
+		Signature: cmtrand.Bytes(64),
+		LastLen:   100,
+	}
+
+	proposal := &proptypes.Proposal{
+		Proposal: types2.NewProposal(1, 0, 0, blockID, compBlock),
+	}
+	proposal.Signature = cmtrand.Bytes(64)
+
+	reactor1.handleProposal(reactor2.self, proposal)
+
+	time.Sleep(600 * time.Millisecond)
+
+	_, _, _, has := reactor2.GetProposal(1, 0)
+	assert.True(t, has)
+	_, _, _, has = reactor3.GetProposal(1, 0)
+	assert.True(t, has)
 }
 
 func createBitArray(size int, indices []int) *bits.BitArray {
