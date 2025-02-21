@@ -3,6 +3,7 @@ package propagation
 import (
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/sync"
+	types2 "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/store"
 	"github.com/tendermint/tendermint/types"
 )
@@ -53,7 +54,7 @@ func (p *ProposalCache) AddProposal(proposal *types.Proposal) (added bool, gapHe
 	// height, update the current height and round.
 	if proposal.Height > p.currentHeight {
 		// add the missing heights to the gapHeights
-		for h := p.currentHeight + 1; h < proposal.Height; h++ {
+		for h := p.currentHeight; h < proposal.Height; h++ {
 			gapHeights = append(gapHeights, h)
 		}
 		p.currentHeight = proposal.Height
@@ -72,6 +73,21 @@ func (p *ProposalCache) AddProposal(proposal *types.Proposal) (added bool, gapHe
 		maxRequests: bits.NewBitArray(int(proposal.BlockID.PartSetHeader.Total)),
 	}
 	return true, gapHeights, gapRounds
+}
+
+func (p *ProposalCache) AddPsh(height int64, round int32, psh *types2.PartSetHeader) {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	if p.proposals[height] == nil {
+		p.proposals[height] = make(map[int32]*proposalData)
+	}
+	p.proposals[height][round] = &proposalData{
+		// TODO handle the types in here correctly.
+		block: types.NewPartSetFromHeader(types.PartSetHeader{
+			Total: psh.Total,
+			Hash:  psh.Hash,
+		}),
+	}
 }
 
 // GetProposal returns the proposal and block for a given height and round if

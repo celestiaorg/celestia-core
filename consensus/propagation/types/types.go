@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"fmt"
+	types2 "github.com/tendermint/tendermint/proto/tendermint/types"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -304,6 +305,10 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			Index:  msg.Index,
 			Data:   msg.Data,
 		}
+	case *protoprop.CatchupPsh:
+		pb = &CatchupPsh{
+			PartSetHeader: msg.Psh,
+		}
 	case *protoprop.Proposal:
 		bid, err := types.BlockIDFromProto(&msg.Proposal.BlockID)
 		if err != nil {
@@ -334,6 +339,36 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 	}
 
 	return pb, nil
+}
+
+type CatchupPsh struct {
+	*types2.PartSetHeader
+	Height int64
+	Round  int32
+}
+
+func (p *CatchupPsh) ValidateBasic() error {
+	//TODO implement me
+	return nil
+}
+
+func (p *CatchupPsh) ToProto() *protoprop.CatchupPsh {
+	return &protoprop.CatchupPsh{
+		Psh: &types2.PartSetHeader{
+			Total: p.Total,
+			Hash:  p.Hash,
+		},
+		Height: p.Height,
+		Round:  p.Round,
+	}
+}
+
+func CatchupFromProto(prop *protoprop.CatchupPsh) CatchupPsh {
+	return CatchupPsh{
+		PartSetHeader: prop.Psh,
+		Height:        prop.Height,
+		Round:         prop.Round,
+	}
 }
 
 // Message is a message that can be sent and received on the Reactor

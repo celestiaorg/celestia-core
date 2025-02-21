@@ -43,11 +43,18 @@ message Proposal {
   tendermint.types.Proposal proposal = 1;
 }
 
+message CatchupPsh {
+  tendermint.types.PartSetHeader psh = 1;
+  int64  height = 2;
+  int32  round  = 3;
+}
+
 message Message {
   oneof sum {
     HaveParts    have_parts    = 1;
     WantParts    want_parts    = 2;
     RecoveryPart recovery_part = 3;
     Proposal proposal = 4;
+    CatchupPsh catchup_ps = 5;
   }
 }

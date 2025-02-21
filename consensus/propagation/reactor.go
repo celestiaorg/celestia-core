@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"fmt"
+	types2 "github.com/tendermint/tendermint/proto/tendermint/types"
 	"reflect"
 
 	"github.com/tendermint/tendermint/p2p/conn"
@@ -143,6 +144,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		blockProp.Switch.StopPeerForError(e.Src, err)
 		return
 	}
+	fmt.Println(e.Message)
 	switch e.ChannelID {
 	case DataChannel:
 		switch msg := msg.(type) {
@@ -150,15 +152,23 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			// TODO check if we need to bypass request limits
 			blockProp.handleHaves(e.Src.ID(), msg, false)
 		case *proptypes.RecoveryPart:
+			fmt.Println("received recovery part")
+			fmt.Println(msg)
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)
 		case *proptypes.Proposal:
 			blockProp.handleProposal(e.Src.ID(), msg)
+		case *proptypes.CatchupPsh:
+			fmt.Println("received Psh")
+			fmt.Println(msg)
+			blockProp.handleCatchupPsh(e.Src.ID(), msg)
 		default:
 			blockProp.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
 		}
 	case WantChannel:
 		switch msg := msg.(type) {
 		case *proptypes.WantParts:
+			fmt.Println("received Want Parts")
+			fmt.Println(msg)
 			blockProp.handleWants(e.Src.ID(), msg)
 		}
 	default:
@@ -465,7 +475,8 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	_, parts, _, has := blockProp.GetProposal(height, round)
 	// the peer must always send the proposal before sending parts, if they did
 	//  not, this node must disconnect from them.
-	if !has {
+	// TODO fix this hack where we check for round -2
+	if round != -2 && !has {
 		blockProp.Logger.Error("received part state request for unknown proposal", "peer", peer, "height", height, "round", round)
 		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part state for unknown proposal"))
 		return
@@ -473,6 +484,52 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	// send the peer the partset header if they don't have the proposal.
 	// TODO get rid of this catchup case
+	if round == -2 {
+		if !blockProp.sendPsh(peer, height, round) {
+			blockProp.Logger.Error("failed to send PSH", "peer", peer, "height", height, "round", round)
+			return
+		}
+
+		meta := blockProp.store.LoadBlockMeta(height)
+		if meta == nil {
+			panic("block meta not found")
+		}
+
+		catchupWants := bits.NewBitArray(int(meta.BlockID.PartSetHeader.Total))
+		catchupWants.Fill()
+
+		for _, partIndex := range catchupWants.GetTrueIndices() {
+			part := parts.GetPart(partIndex)
+			ppart, err := part.ToProto()
+			if err != nil {
+				blockProp.Logger.Error("failed to convert part to proto", "height", height, "round", round, "part", partIndex, "error", err)
+				continue
+			}
+			fmt.Println("sending recovery part")
+			e := p2p.Envelope{
+				// TODO catch this message in the consensus reactor and send it to this propagation reactor
+				// check the data routine for more information.
+				ChannelID: DataChannel,
+				// TODO this might require sending/verifying some proof.
+				Message: &propproto.RecoveryPart{
+					Height: height,
+					Round:  round,
+					Index:  ppart.Index,
+					Data:   ppart.Bytes,
+				},
+			}
+			fmt.Println(e.Message)
+
+			if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
+				blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
+				continue
+			}
+			// p.SetHave(height, round, int(partIndex))
+			schema.WriteBlockPartState(blockProp.traceClient, height, round, []int{partIndex}, true, string(peer), schema.AskForProposal)
+		}
+		return
+	}
+
 	if round < 0 {
 		if !blockProp.sendPsh(peer, height, round) {
 			blockProp.Logger.Error("failed to send PSH", "peer", peer, "height", height, "round", round)
@@ -540,11 +597,19 @@ func (blockProp *Reactor) handleProposal(peer p2p.ID, prop *proptypes.Proposal) 
 	}
 
 	// todo(evan) handle catchup if someone sends us a proposal that is much further in the future.
-	added, _, _ := blockProp.AddProposal(prop.Proposal)
+	added, gapHeights, gapRounds := blockProp.AddProposal(prop.Proposal)
 
 	if added {
 		blockProp.broadcastProposal(prop, peer)
+
+		if len(gapHeights) != 0 || len(gapRounds) != 0 {
+			blockProp.catchup(peer, gapHeights, gapRounds)
+		}
 	}
+}
+
+func (blockProp *Reactor) handleCatchupPsh(id p2p.ID, msg *proptypes.CatchupPsh) {
+	blockProp.ProposalCache.AddPsh(msg.Height, msg.Round, msg.PartSetHeader)
 }
 
 // broadcastProposal gossips the provided proposal to all peers. This should
@@ -580,7 +645,28 @@ func (blockProp *Reactor) broadcastProposal(proposal *proptypes.Proposal, from p
 // - send the partset header to the provided peer
 // TODO rename this Psh to something less Psh
 func (blockProp *Reactor) sendPsh(peer p2p.ID, height int64, round int32) bool {
-	return true
+	meta := blockProp.store.LoadBlockMeta(height)
+	if meta == nil {
+		panic("block meta not found")
+	}
+
+	msg := proptypes.CatchupPsh{
+		PartSetHeader: &types2.PartSetHeader{
+			Total: meta.BlockID.PartSetHeader.Total,
+			Hash:  meta.BlockID.PartSetHeader.Hash,
+		},
+		Height: height,
+		Round:  round,
+	}
+	protoMsg := msg.ToProto()
+	e := p2p.Envelope{ //nolint: staticcheck
+		ChannelID: DataChannel,
+		Message:   protoMsg,
+	}
+
+	fmt.Println("sending psh message")
+	fmt.Println(msg)
+	return p2p.SendEnvelopeShim(blockProp.getPeer(peer).peer, e, blockProp.Logger)
 }
 
 // HandleValidBlock is called when the node finds a peer with a valid block. If this
@@ -624,16 +710,39 @@ func bitArrayToProtoParts(array *bits.BitArray) []*propproto.PartMetaData {
 	return parts
 }
 
-// requestAllPreviousBlocks is called when a node is catching up and needs to
-// request all previous blocks from a peer.
-// What this method will do:
-// - get the peer from state
-// - get the reactor latest height
-// - send want parts for all the necessary blocks between [reactor.latestHeight, height)
-// while setting the want's round to a value < 0.
-//
-//nolint:unused
-func (blockProp *Reactor) requestAllPreviousBlocks(peer p2p.ID, height int64) {
+// catchup takes a set of gap heights and gap rounds and requests them from the peer
+// that sent the proposal.
+func (blockProp *Reactor) catchup(peer p2p.ID, gapHeights []int64, gapRounds []int32) {
+	p := blockProp.getPeer(peer)
+	if p == nil || p.peer == nil {
+		blockProp.Logger.Error("peer not found", "peer", peer)
+		return
+	}
+
+	// a hack so that we request everything
+	gapHeights = append(gapHeights, gapHeights[len(gapHeights)-1]+1)
+	for _, height := range gapHeights {
+		wants := bits.NewBitArray(1)
+
+		e := p2p.Envelope{ //nolint: staticcheck
+			ChannelID: WantChannel,
+			Message: &propproto.WantParts{
+				Height: height,
+				Round:  -2, // -2 round means to send us the whole block
+				Parts:  *wants.ToProto(),
+			},
+		}
+		fmt.Println("sending catchup wants message")
+		fmt.Println(e)
+
+		if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) {
+			blockProp.Logger.Error("failed to send part state", "peer", peer, "height", height, "round", -1)
+			return
+		}
+
+		// TODO keep track of the requests sent
+		// p.SetRequests(height, -1, wants)
+	}
 }
 
 // handleRecoveryPart is called when a peer sends a block part message. This is used

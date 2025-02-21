@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"github.com/tendermint/tendermint/proto/tendermint/version"
 	"testing"
 	"time"
 
@@ -179,6 +180,69 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	assert.Equal(t, randomData, parts.GetPart(2).Bytes.Bytes())
 }
 
+func TestCatchup(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2)
+	reactor1 := reactors[0]
+	reactor2 := reactors[1]
+
+	time.Sleep(time.Second)
+	// add block meta of height 9
+	block, parts := makeBlock(9)
+	reactor1.store.SaveBlock(block, parts, block.LastCommit)
+	block, parts = makeBlock(10)
+	reactor1.store.SaveBlock(block, parts, block.LastCommit)
+	//reactor1.store.SaveBlock(&types2.Block{}, &types2.PartSet{}, &types2.Commit{})
+	// set reactor 1 proposal to height 10
+	added, _, _ := reactor1.AddProposal(&types2.Proposal{
+		BlockID: types2.BlockID{
+			Hash:          nil,
+			PartSetHeader: types2.PartSetHeader{Total: 30},
+		},
+		Height: 10,
+		Round:  2,
+	})
+	require.True(t, added)
+
+	// set reactor 2 proposal to height 9
+	added, _, _ = reactor2.AddProposal(&types2.Proposal{
+		BlockID: types2.BlockID{
+			Hash:          nil,
+			PartSetHeader: types2.PartSetHeader{Total: 30},
+		},
+		Height: 9,
+		Round:  0,
+	})
+	require.True(t, added)
+	proof := merkle.Proof{LeafHash: cmtrand.Bytes(32)}
+
+	// reactor 2 will receive the block 10 round 2 proposal from reactor 1
+	// so it will send him the wants for block 9 and for block 10 rounds 0 and 1
+	reactor2.handleProposal(
+		reactor1.self,
+		&proptypes.Proposal{
+			Proposal: &types2.Proposal{
+				BlockID: types2.BlockID{
+					Hash:          nil,
+					PartSetHeader: types2.PartSetHeader{Total: 30},
+				},
+				Height: 10,
+				Round:  2,
+			},
+		},
+	)
+
+	time.Sleep(50000 * time.Millisecond)
+
+	// check if the reactor received the wants
+	haves, has := reactor1.getPeer(reactor2.self).GetWants(10, 1)
+	haves, has = reactor1.getPeer(reactor2.self).GetWants(10, 0)
+	haves, has = reactor1.getPeer(reactor2.self).GetWants(9, 0)
+	assert.True(t, has)
+	assert.Equal(t, int64(10), haves.Height)
+	assert.Equal(t, int32(1), haves.Round)
+	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 2, Proof: proof})
+}
+
 func TestChunkParts(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -305,4 +369,41 @@ func createBitArray(size int, indices []int) *bits.BitArray {
 		ba.SetIndex(index, true)
 	}
 	return ba
+}
+
+func makeBlock(height int64) (*types2.Block, *types2.PartSet) {
+	// Build base block with block data.
+
+	blockID := types2.BlockID{
+		Hash:          cmtrand.Bytes(32),
+		PartSetHeader: types2.PartSetHeader{Total: 30, Hash: cmtrand.Bytes(32)},
+	}
+
+	lastCommit := types2.Commit{
+		Height:  height - 1,
+		BlockID: blockID,
+	}
+
+	block := types2.MakeBlock(height, types2.Data{Txs: makeTxs(10)}, &lastCommit, []types2.Evidence{})
+
+	// Set time.
+	timestamp := time.Now()
+
+	// Fill rest of header with state data.
+	block.Header.Populate(
+		version.Consensus{Block: 11, App: 1}, "test",
+		timestamp, block.LastBlockID,
+		cmtrand.Bytes(32), cmtrand.Bytes(32),
+		cmtrand.Bytes(32), cmtrand.Bytes(32), cmtrand.Bytes(32),
+		cmtrand.Bytes(20),
+	)
+	ops, _ := block.MakePartSet(types2.BlockPartSizeBytes)
+	return block, ops
+}
+
+func makeTxs(size int) (txs []types2.Tx) {
+	for i := 0; i < 10; i++ {
+		txs = append(txs, types2.Tx(cmtrand.Bytes(size)))
+	}
+	return txs
 }
