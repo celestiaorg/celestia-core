@@ -6,7 +6,6 @@ option go_package = "github.com/tendermint/tendermint/proto/tendermint/propagati
 import "gogoproto/gogo.proto";
 import "tendermint/libs/bits/types.proto";
 import "tendermint/crypto/proof.proto";
-import "tendermint/types/types.proto";
 
 // PartMetaData proves the inclusion of a part to the block.
 message PartMetaData {
@@ -39,15 +38,10 @@ message RecoveryPart {
   bytes  data   = 4;
 }
 
-message Proposal {
-  tendermint.types.Proposal proposal = 1;
-}
-
 message Message {
   oneof sum {
     HaveParts    have_parts    = 1;
     WantParts    want_parts    = 2;
     RecoveryPart recovery_part = 3;
-    Proposal     proposal      = 4;
   }
 }

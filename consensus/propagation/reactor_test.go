@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	cfg "github.com/tendermint/tendermint/config"
-	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
+	"github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
@@ -121,10 +121,10 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	// reactor 1 will receive haves from reactor 2
 	reactor1.handleHaves(
 		reactor2.self,
-		&proptypes.HaveParts{
+		&types.HaveParts{
 			Height: 10,
 			Round:  1,
-			Parts: []proptypes.PartMetaData{
+			Parts: []types.PartMetaData{
 				{Index: 2, Proof: proof},
 				{Index: 3, Proof: proof},
 				{Index: 4, Proof: proof},
@@ -137,9 +137,9 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	assert.True(t, has)
 	assert.Equal(t, int64(10), haves.Height)
 	assert.Equal(t, int32(1), haves.Round)
-	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 2, Proof: proof})
-	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 3, Proof: proof})
-	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 4, Proof: proof})
+	assert.Contains(t, haves.Parts, types.PartMetaData{Index: 2, Proof: proof})
+	assert.Contains(t, haves.Parts, types.PartMetaData{Index: 3, Proof: proof})
+	assert.Contains(t, haves.Parts, types.PartMetaData{Index: 4, Proof: proof})
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -150,8 +150,8 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 
 	r3Haves, r3Has := r3State.GetHaves(10, 1)
 	assert.True(t, r3Has)
-	assert.Contains(t, r3Haves.Parts, proptypes.PartMetaData{Index: 3, Proof: proof})
-	assert.Contains(t, r3Haves.Parts, proptypes.PartMetaData{Index: 4, Proof: proof})
+	assert.Contains(t, r3Haves.Parts, types.PartMetaData{Index: 3, Proof: proof})
+	assert.Contains(t, r3Haves.Parts, types.PartMetaData{Index: 4, Proof: proof})
 
 	// since reactor 3 received the haves from reactor 1,
 	// it will send back a want.
@@ -163,7 +163,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 
 	// add the recovery part to the reactor 1.
 	randomData := cmtrand.Bytes(10)
-	reactor1.handleRecoveryPart(reactor2.self, &proptypes.RecoveryPart{
+	reactor1.handleRecoveryPart(reactor2.self, &types.RecoveryPart{
 		Height: 10,
 		Round:  1,
 		Index:  2,
@@ -262,41 +262,6 @@ func TestChunkParts(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestBroadcastProposal(t *testing.T) {
-	reactors, _ := testBlockPropReactors(3)
-	reactor1 := reactors[0]
-	reactor2 := reactors[1]
-	reactor3 := reactors[2]
-
-	blockID := types2.BlockID{
-		Hash:          cmtrand.Bytes(32),
-		PartSetHeader: types2.PartSetHeader{Total: 30, Hash: cmtrand.Bytes(32)},
-	}
-
-	compBlock := types2.CompactBlock{
-		BpHash:    cmtrand.Bytes(32),
-		Height:    1,
-		Round:     0,
-		Blobs:     []*types2.TxMetaData{},
-		Signature: cmtrand.Bytes(64),
-		LastLen:   100,
-	}
-
-	proposal := &proptypes.Proposal{
-		Proposal: types2.NewProposal(1, 0, 0, blockID, compBlock),
-	}
-	proposal.Signature = cmtrand.Bytes(64)
-
-	reactor1.handleProposal(reactor2.self, proposal)
-
-	time.Sleep(500 * time.Millisecond)
-
-	_, _, _, has := reactor2.GetProposal(1, 0)
-	assert.True(t, has)
-	_, _, _, has = reactor3.GetProposal(1, 0)
-	assert.True(t, has)
 }
 
 func createBitArray(size int, indices []int) *bits.BitArray {
