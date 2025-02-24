@@ -1352,7 +1352,7 @@ func (data *Data) ToProto() cmtproto.Data {
 	}
 
 	tp.SquareSize = data.SquareSize
-	tp.DataRootHash = data.DataRootHash
+	tp.Hash = data.DataRootHash
 
 	return *tp
 }
@@ -1375,7 +1375,7 @@ func DataFromProto(dp *cmtproto.Data) (Data, error) {
 		data.Txs = Txs{}
 	}
 
-	data.DataRootHash = dp.DataRootHash
+	data.DataRootHash = dp.Hash
 	data.SquareSize = dp.SquareSize
 
 	return *data, nil

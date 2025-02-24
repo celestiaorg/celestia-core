@@ -87,7 +87,7 @@ message Data {
   // Hash is the root of a binary Merkle tree where the leaves of the tree are
   // the row and column roots of an extended data square. Hash is often referred
   // to as the "data root".
-  bytes data_root_hash = 6;
+  bytes hash = 6;
 }
 
 // Blob (named after binary large object) is a chunk of data submitted by a user
