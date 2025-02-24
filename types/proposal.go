@@ -269,7 +269,6 @@ func (p *Proposal) ToProto() *cmtproto.Proposal {
 	pb.PolRound = p.POLRound
 	pb.Timestamp = p.Timestamp
 	pb.Signature = p.Signature
-	pb.CompactBlock = p.CompactBlock.ToProto()
 
 	return pb
 }
@@ -295,11 +294,6 @@ func ProposalFromProto(pp *cmtproto.Proposal) (*Proposal, error) {
 	p.POLRound = pp.PolRound
 	p.Timestamp = pp.Timestamp
 	p.Signature = pp.Signature
-	compB, err := CompactBlockFromProto(pp.CompactBlock)
-	if err != nil {
-		return nil, err
-	}
-	p.CompactBlock = *compB
 
 	return p, p.ValidateBasic()
 }

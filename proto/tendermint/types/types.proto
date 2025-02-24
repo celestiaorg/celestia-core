@@ -159,12 +159,13 @@ message TxMetaData {
 // clients to reuse already downloaded blobs instead of gossiping them all again
 // during the block propagation.
 message CompactBlock {
-  int64               height    = 1;
-  int32               round     = 2;
-  bytes               bp_hash   = 3;
-  repeated TxMetaData blobs     = 4;
-  bytes               signature = 5;
-  uint32 last_length = 6;
+  int64               height      = 1;
+  int32               round       = 2;
+  bytes               bp_hash     = 3;
+  repeated TxMetaData blobs       = 4;
+  bytes               signature   = 5;
+  uint32              last_length = 6;
+  Proposal            proposal    = 7;
 }
 
 message Proposal {
@@ -176,7 +177,6 @@ message Proposal {
   google.protobuf.Timestamp timestamp = 6
       [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   bytes signature = 7;
-  CompactBlock compact_block = 8;
 }
 
 message SignedHeader {

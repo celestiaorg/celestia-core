@@ -48,6 +48,6 @@ message Message {
     HaveParts    have_parts    = 1;
     WantParts    want_parts    = 2;
     RecoveryPart recovery_part = 3;
-    Proposal proposal = 4;
+    Proposal     proposal      = 4;
   }
 }

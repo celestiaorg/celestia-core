@@ -72,10 +72,10 @@ message ResponseBroadcastTx {
 }
 
 message StreamedBlockByHashResponse {
-  tendermint.types.Part         block_part    = 1;
+  tendermint.types.Part block_part = 1;
   // Commit is only set in the first part, and
   // it stays nil in the remaining ones.
-  tendermint.types.Commit       commit        = 2;
+  tendermint.types.Commit commit = 2;
   // ValidatorSet is only set in the first part, and
   // it stays nil in the remaining ones.
   tendermint.types.ValidatorSet validator_set = 3;
@@ -90,7 +90,7 @@ message StreamedBlockByHeightResponse {
   // ValidatorSet is only set in the first part, and
   // it stays nil in the remaining ones.
   tendermint.types.ValidatorSet validator_set = 3;
-  bool                       is_last    = 4;
+  bool                          is_last       = 4;
 }
 
 message CommitResponse {

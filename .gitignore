@@ -32,6 +32,7 @@ scripts/cutWALUntil/cutWALUntil
 *.iml
 
 .vscode/
+.zed/
 
 libs/pubsub/query/fuzz_test/output
 shunit2
