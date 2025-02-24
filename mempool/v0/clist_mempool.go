@@ -552,9 +552,8 @@ func (mem *CListMempool) notifyTxsAvailable() {
 	}
 }
 
-// Safe for concurrent use by multiple goroutines. Note that returning keys is not supported for the
-// v0 mempool. Please v1 or v2.
-func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) (types.Txs, []types.TxKey) {
+// Safe for concurrent use by multiple goroutines.
+func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	mem.updateMtx.RLock()
 	defer mem.updateMtx.RUnlock()
 
@@ -576,7 +575,7 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) (types.Txs, 
 
 		// Check total size requirement
 		if maxBytes > -1 && runningSize+dataSize > maxBytes {
-			return txs[:len(txs)-1], []types.TxKey{}
+			return txs[:len(txs)-1]
 		}
 
 		runningSize += dataSize
@@ -587,11 +586,11 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) (types.Txs, 
 		// must be non-negative, it follows that this won't overflow.
 		newTotalGas := totalGas + memTx.gasWanted
 		if maxGas > -1 && newTotalGas > maxGas {
-			return txs[:len(txs)-1], []types.TxKey{}
+			return txs[:len(txs)-1]
 		}
 		totalGas = newTotalGas
 	}
-	return txs, []types.TxKey{}
+	return txs
 }
 
 // Safe for concurrent use by multiple goroutines.

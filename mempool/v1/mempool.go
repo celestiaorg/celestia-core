@@ -344,11 +344,10 @@ func (txmp *TxMempool) allEntriesSorted() []*WrappedTx {
 //
 // If the mempool is empty or has no transactions fitting within the given
 // constraints, the result will also be empty.
-func (txmp *TxMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) (types.Txs, []types.TxKey) {
+func (txmp *TxMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	var totalGas, totalBytes int64
 
-	var keep []types.Tx      //nolint:prealloc
-	var hashes []types.TxKey //nolint:prealloc
+	var keep []types.Tx //nolint:prealloc
 	for _, w := range txmp.allEntriesSorted() {
 		// N.B. When computing byte size, we need to include the overhead for
 		// encoding as protobuf to send to the application. This actually overestimates it
@@ -360,9 +359,8 @@ func (txmp *TxMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) (types.Txs, []
 		totalBytes += txBytes
 		totalGas += w.gasWanted
 		keep = append(keep, w.tx)
-		hashes = append(hashes, w.hash)
 	}
-	return keep, hashes
+	return keep
 }
 
 // TxsWaitChan returns a channel that is closed when there is at least one

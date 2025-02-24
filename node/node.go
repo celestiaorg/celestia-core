@@ -325,7 +325,7 @@ func createAndStartIndexerService(
 }
 
 func doHandshake(
-	_ context.Context,
+	ctx context.Context,
 	stateStore sm.Store,
 	state sm.State,
 	blockStore sm.BlockStore,

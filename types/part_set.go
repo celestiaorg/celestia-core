@@ -247,10 +247,6 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, eps *PartSe
 	return ops, eps
 }
 
-func (ps *PartSet) LastLen() uint32 {
-	return uint32(len(ps.GetPart(int(ps.Total() - uint32(1))).Bytes.Bytes()))
-}
-
 // Extend erasure encodes the block parts. Only the original parts should be
 // provided. The data returned has the parity parts appended to the original.
 func Encode(parts [][]byte) ([][]byte, error) {

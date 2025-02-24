@@ -10,6 +10,107 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+// TxMetaData keeps track of the hash of a transaction and its location within the
+// protobuf encoded block.
+type TxMetaData struct {
+	Hash  []byte `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`
+	Start uint32
+	End   uint32
+}
+
+// ToProto converts TxMetaData to its protobuf representation.
+func (t *TxMetaData) ToProto() *protoprop.TxMetaData {
+	return &protoprop.TxMetaData{
+		Hash:  t.Hash,
+		Start: t.Start,
+		End:   t.End,
+	}
+}
+
+// TxMetaDataFromProto converts a protobuf TxMetaData to its Go representation.
+func TxMetaDataFromProto(t *protoprop.TxMetaData) *TxMetaData {
+	return &TxMetaData{
+		Hash:  t.Hash,
+		Start: t.Start,
+		End:   t.End,
+	}
+}
+
+// ValidateBasic checks if the TxMetaData is valid. It fails if Start > End or
+// if the hash is invalid.
+func (t *TxMetaData) ValidateBasic() error {
+	if t.Start > t.End {
+		return errors.New("TxMetaData: Start > End")
+	}
+
+	return types.ValidateHash(t.Hash)
+}
+
+// CompactBlock contains commitments and metadata for reusing transactions that
+// have already been distributed.
+type CompactBlock struct {
+	Height    int64         `json:"height,omitempty"`
+	Round     int32         `json:"round,omitempty"`
+	BpHash    []byte        `json:"bp_hash,omitempty"`
+	Blobs     []*TxMetaData `json:"blobs,omitempty"`
+	Signature []byte        `json:"signature,omitempty"`
+}
+
+// ValidateBasic checks if the CompactBlock is valid. It fails if the height is
+// negative, if the round is negative, if the BpHash is invalid, or if any of
+// the Blobs are invalid.
+func (c *CompactBlock) ValidateBasic() error {
+	if c.Height < 0 {
+		return errors.New("CompactBlock: Height cannot be negative")
+	}
+	if c.Round < 0 {
+		return errors.New("CompactBlock: Round cannot be negative")
+	}
+	if err := types.ValidateHash(c.BpHash); err != nil {
+		return err
+	}
+	for _, blob := range c.Blobs {
+		if err := blob.ValidateBasic(); err != nil {
+			return err
+		}
+	}
+	if len(c.Signature) > types.MaxSignatureSize {
+		return errors.New("CompactBlock: Signature is too big")
+	}
+	return nil
+}
+
+// ToProto converts CompactBlock to its protobuf representation.
+func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
+	blobs := make([]*protoprop.TxMetaData, len(c.Blobs))
+	for i, blob := range c.Blobs {
+		blobs[i] = blob.ToProto()
+	}
+	return &protoprop.CompactBlock{
+		Height:    c.Height,
+		Round:     c.Round,
+		BpHash:    c.BpHash,
+		Blobs:     blobs,
+		Signature: c.Signature,
+	}
+}
+
+// CompactBlockFromProto converts a protobuf CompactBlock to its Go representation.
+func CompactBlockFromProto(c *protoprop.CompactBlock) (*CompactBlock, error) {
+	blobs := make([]*TxMetaData, len(c.Blobs))
+	for i, blob := range c.Blobs {
+		blobs[i] = TxMetaDataFromProto(blob)
+	}
+	cb := &CompactBlock{
+		Height:    c.Height,
+		Round:     c.Round,
+		BpHash:    c.BpHash,
+		Blobs:     blobs,
+		Signature: c.Signature,
+	}
+	return cb, cb.ValidateBasic()
+}
+
 // PartMetaData keeps track of the hash of each part, its location via the
 // index, along with the proof of inclusion to either the PartSetHeader hash or
 // the BPRoot in the CompactBlock.
@@ -240,6 +341,28 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 	}
 
 	switch msg := um.(type) {
+	case *protoprop.TxMetaData:
+		pb = &TxMetaData{
+			Hash:  msg.Hash,
+			Start: msg.Start,
+			End:   msg.End,
+		}
+	case *protoprop.CompactBlock:
+		blobs := make([]*TxMetaData, len(msg.Blobs))
+		for i, blob := range msg.Blobs {
+			blobs[i] = &TxMetaData{
+				Hash:  blob.Hash,
+				Start: blob.Start,
+				End:   blob.End,
+			}
+		}
+		pb = &CompactBlock{
+			Height:    msg.Height,
+			Round:     msg.Round,
+			BpHash:    msg.BpHash,
+			Blobs:     blobs,
+			Signature: msg.Signature,
+		}
 	case *protoprop.PartMetaData:
 		pb = &PartMetaData{
 			Index: msg.Index,

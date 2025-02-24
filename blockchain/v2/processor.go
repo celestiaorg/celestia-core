@@ -160,7 +160,7 @@ func (state *pcState) handle(event Event) (Event, error) {
 
 		var (
 			first, second = firstItem.block, secondItem.block
-			firstParts, _ = first.MakePartSet(types.BlockPartSizeBytes)
+			firstParts    = first.MakePartSet(types.BlockPartSizeBytes)
 			firstID       = types.BlockID{Hash: first.Hash(), PartSetHeader: firstParts.Header()}
 		)
 

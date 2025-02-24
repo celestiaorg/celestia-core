@@ -62,8 +62,7 @@ func TestApplyBlock(t *testing.T) {
 		mmock.Mempool{}, sm.EmptyEvidencePool{})
 
 	block := makeBlock(state, 1)
-	ops, _ := block.MakePartSet(testPartSize)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: ops.Header()}
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
 
 	state, retainHeight, err := blockExec.ApplyBlock(state, blockID, block, nil)
 	require.Nil(t, err)
@@ -91,8 +90,7 @@ func TestApplyBlockWithBlockStore(t *testing.T) {
 		mmock.Mempool{}, sm.EmptyEvidencePool{}, sm.WithBlockStore(blockStore))
 
 	block := makeBlock(state, 1)
-	ops, _ := block.MakePartSet(testPartSize)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: ops.Header()}
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
 
 	// Check that SaveTxInfo is called with correct arguments
 	blockStore.On("SaveTxInfo", block, mock.AnythingOfType("[]uint32"), mock.AnythingOfType("[]string")).Return(nil)
@@ -146,7 +144,7 @@ func TestBeginBlockValidators(t *testing.T) {
 		lastCommit := types.NewCommit(1, 0, prevBlockID, tc.lastCommitSigs)
 
 		// block for height 2
-		block, _, _ := state.MakeBlock(
+		block, _ := state.MakeBlock(
 			2,
 			factory.MakeData(factory.MakeTenTxs(2)),
 			lastCommit,
@@ -258,8 +256,7 @@ func TestBeginBlockByzantineValidators(t *testing.T) {
 	block := makeBlock(state, 1)
 	block.Evidence = types.EvidenceData{Evidence: ev}
 	block.Header.EvidenceHash = block.Evidence.Hash()
-	ops, _ := block.MakePartSet(testPartSize)
-	blockID = types.BlockID{Hash: block.Hash(), PartSetHeader: ops.Header()}
+	blockID = types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
 
 	state, retainHeight, err := blockExec.ApplyBlock(state, blockID, block, nil)
 	require.Nil(t, err)
@@ -347,7 +344,7 @@ func TestProcessProposalRejectedMetric(t *testing.T) {
 	}
 }
 
-func makeBlockExec(t *testing.T, testName string, _ *types.Block, stateDB db.DB,
+func makeBlockExec(t *testing.T, testName string, block *types.Block, stateDB db.DB,
 	metrics *sm.Metrics) (blockExec *sm.BlockExecutor) {
 	app := &testApp{}
 	clientCreator := proxy.NewLocalClientCreator(app)
@@ -556,8 +553,7 @@ func TestEndBlockValidatorUpdates(t *testing.T) {
 	require.NoError(t, err)
 
 	block := makeBlock(state, 1)
-	ops, _ := block.MakePartSet(testPartSize)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: ops.Header()}
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
 
 	pubkey := ed25519.GenPrivKey().PubKey()
 	pk, err := cryptoenc.PubKeyToProto(pubkey)
@@ -615,8 +611,7 @@ func TestEndBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 	)
 
 	block := makeBlock(state, 1)
-	ops, _ := block.MakePartSet(testPartSize)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: ops.Header()}
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
 
 	vp, err := cryptoenc.PubKeyToProto(state.Validators.Validators[0].PubKey)
 	require.NoError(t, err)
@@ -663,8 +658,7 @@ func TestFireEventSignedBlockEvent(t *testing.T) {
 	blockExec.SetEventBus(eventBus)
 
 	block := makeBlock(state, 1)
-	ops, _ := block.MakePartSet(testPartSize)
-	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: ops.Header()}
+	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
 
 	commit := &types.Commit{
 		Height:  block.Height,

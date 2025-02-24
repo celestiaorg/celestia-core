@@ -146,6 +146,8 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	switch e.ChannelID {
 	case DataChannel:
 		switch msg := msg.(type) {
+		case *proptypes.CompactBlock:
+			// TODO: implement
 		case *proptypes.HaveParts:
 			// TODO check if we need to bypass request limits
 			blockProp.handleHaves(e.Src.ID(), msg, false)

@@ -318,14 +318,14 @@ func TestCreateProposalBlock(t *testing.T) {
 	)
 
 	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
-	block, _, _, _ := blockExec.CreateProposalBlock(
+	block, _ := blockExec.CreateProposalBlock(
 		height,
 		state, commit,
 		proposerAddr,
 	)
 
 	// check that the part set does not exceed the maximum block size
-	partSet, _ := block.MakePartSet(partSize)
+	partSet := block.MakePartSet(partSize)
 	assert.Less(t, partSet.ByteSize(), int64(maxBytes))
 
 	partSetFromHeader := types.NewPartSetFromHeader(partSet.Header())
@@ -408,7 +408,7 @@ func TestMaxProposalBlockSize(t *testing.T) {
 	)
 
 	commit := types.NewCommit(height-1, 0, types.BlockID{}, nil)
-	block, _, _, _ := blockExec.CreateProposalBlock(
+	block, _ := blockExec.CreateProposalBlock(
 		height,
 		state, commit,
 		proposerAddr,
@@ -419,7 +419,7 @@ func TestMaxProposalBlockSize(t *testing.T) {
 	assert.Less(t, int64(pb.Size()), maxBytes)
 
 	// check that the part set does not exceed the maximum block size
-	partSet, _ := block.MakePartSet(partSize)
+	partSet := block.MakePartSet(partSize)
 	assert.EqualValues(t, partSet.ByteSize(), int64(pb.Size()))
 }
 
