@@ -234,7 +234,7 @@ func (blockProp *Reactor) handleProposal(proposal *types.Proposal, from p2p.ID, 
 // a proposal block.
 //
 //nolint:unused
-func (blockProp *Reactor) broadcastProposal(proposal *types.Proposal, from p2p.ID) {
+func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from p2p.ID) {
 }
 
 // broadcastSelfProposalHaves broadcasts the haves to all the connected peers when we're the proposers.
@@ -330,7 +330,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		blockProp.Logger.Error("peer not found", "peer", peer)
 		return
 	}
-	_, parts, fullReqs, has := blockProp.GetProposalWithRequests(height, round)
+	_, parts, fullReqs, has := blockProp.getAllState(height, round)
 	if !has {
 		// TODO disconnect from the peer
 		blockProp.Logger.Error("received part state for unknown proposal", "peer", peer, "height", height, "round", round)
@@ -652,8 +652,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// the peer must always send the proposal before sending parts, if they did
 	// not this node must disconnect from them.
 	_, parts, has := blockProp.GetProposal(part.Height, part.Round)
-	if !has {
-		// fmt.Println("unknown proposal")
+	if !has { // fmt.Println("unknown proposal")
 		blockProp.Logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
 		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part for unknown proposal"))
 		return

@@ -5,7 +5,9 @@ import (
 
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/stretchr/testify/require"
+	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
+	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/store"
 	"github.com/tendermint/tendermint/types"
 )
@@ -16,6 +18,20 @@ func makeTestBlockStore(t *testing.T) *store.BlockStore {
 	// create an in-memory DB for testing
 	db := dbm.NewMemDB()
 	return store.NewBlockStore(db)
+}
+
+func makeCompactBlock(height int64, round int32, totalParts int32) *proptypes.CompactBlock {
+	cb := &proptypes.CompactBlock{
+		BpHash:    cmtrand.Bytes(32),
+		Signature: cmtrand.Bytes(64),
+		LastLen:   0,
+		Blobs: []*proptypes.TxMetaData{
+			{Hash: cmtrand.Bytes(32)},
+			{Hash: cmtrand.Bytes(32)},
+		},
+		Proposal: *makeProposal(height, round, totalParts),
+	}
+	return cb
 }
 
 // makeProposal is a helper to create a minimal valid Proposal with the given height, round, and total parts.
@@ -37,7 +53,7 @@ func TestProposalCache_AddProposal(t *testing.T) {
 
 	type testCase struct {
 		name              string
-		inputProposal     *types.Proposal
+		inputProposal     *proptypes.CompactBlock
 		wantAdded         bool
 		wantGapHeights    []int64
 		wantGapRounds     []int32
@@ -48,7 +64,7 @@ func TestProposalCache_AddProposal(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:              "Add first proposal - updates current height/round",
-			inputProposal:     makeProposal(10, 1, 5),
+			inputProposal:     makeCompactBlock(10, 1, 5),
 			wantAdded:         true,
 			wantGapHeights:    []int64{1, 2, 3, 4, 5, 6, 7, 8, 9}, // since store.Height=0 initially
 			wantGapRounds:     nil,
@@ -57,7 +73,7 @@ func TestProposalCache_AddProposal(t *testing.T) {
 		},
 		{
 			name:              "Add proposal at same height, higher round - updates current round",
-			inputProposal:     makeProposal(10, 3, 5),
+			inputProposal:     makeCompactBlock(10, 3, 5),
 			wantAdded:         true,
 			wantGapHeights:    nil,        // same height
 			wantGapRounds:     []int32{2}, // we jumped from round=1 to round=3
@@ -66,7 +82,7 @@ func TestProposalCache_AddProposal(t *testing.T) {
 		},
 		{
 			name:              "Add proposal with same height and round - returns false",
-			inputProposal:     makeProposal(10, 3, 5),
+			inputProposal:     makeCompactBlock(10, 3, 5),
 			wantAdded:         false, // already have 10/3 from above
 			wantGapHeights:    nil,
 			wantGapRounds:     nil,
@@ -75,7 +91,7 @@ func TestProposalCache_AddProposal(t *testing.T) {
 		},
 		{
 			name:              "Add proposal at higher height, round 0 - gap in heights",
-			inputProposal:     makeProposal(12, 0, 5),
+			inputProposal:     makeCompactBlock(12, 0, 5),
 			wantAdded:         true,
 			wantGapHeights:    []int64{11},
 			wantGapRounds:     nil,
@@ -84,7 +100,7 @@ func TestProposalCache_AddProposal(t *testing.T) {
 		},
 		{
 			name:              "Add proposal with older height - no height/round update",
-			inputProposal:     makeProposal(5, 0, 5),
+			inputProposal:     makeCompactBlock(5, 0, 5),
 			wantAdded:         true, // it doesn't exist yet, so it can be added
 			wantGapHeights:    nil,  // ignoring the store, it won't fill in from 0..5
 			wantGapRounds:     nil,
@@ -110,9 +126,9 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 	pc := NewProposalCache(bs)
 
 	// Add some proposals
-	prop1 := makeProposal(5, 0, 3) // height=5, round=0
-	prop2 := makeProposal(5, 1, 3)
-	prop3 := makeProposal(6, 0, 4)
+	prop1 := makeCompactBlock(5, 0, 3) // height=5, round=0
+	prop2 := makeCompactBlock(5, 1, 3)
+	prop3 := makeCompactBlock(6, 0, 4)
 
 	pc.AddProposal(prop1)
 	pc.AddProposal(prop2)
@@ -122,7 +138,7 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 		name         string
 		height       int64
 		round        int32
-		wantProposal *types.Proposal
+		wantProposal *proptypes.CompactBlock
 		wantBitArray *bits.BitArray
 		wantOk       bool
 	}
@@ -176,7 +192,7 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotProposal, gotPartSet, gotBA, ok := pc.GetProposalWithRequests(tc.height, tc.round)
+			gotProposal, gotPartSet, gotBA, ok := pc.getAllState(tc.height, tc.round)
 			if !tc.wantOk {
 				require.False(t, ok, "should not have found proposal")
 				require.Nil(t, gotProposal)
@@ -207,7 +223,7 @@ func TestProposalCache_GetCurrentProposal(t *testing.T) {
 	require.False(t, ok)
 
 	// Add something
-	p := makeProposal(10, 1, 5)
+	p := makeCompactBlock(10, 1, 5)
 	pc.AddProposal(p)
 
 	gotProp, gotBlock, gotOk := pc.GetCurrentProposal()
@@ -220,18 +236,18 @@ func TestProposalCache_DeleteHeight(t *testing.T) {
 	bs := makeTestBlockStore(t)
 	pc := NewProposalCache(bs)
 
-	pc.AddProposal(makeProposal(10, 0, 3))
-	pc.AddProposal(makeProposal(10, 1, 3))
-	pc.AddProposal(makeProposal(11, 0, 5))
+	pc.AddProposal(makeCompactBlock(10, 0, 3))
+	pc.AddProposal(makeCompactBlock(10, 1, 3))
+	pc.AddProposal(makeCompactBlock(11, 0, 5))
 
-	_, _, _, okBefore := pc.GetProposalWithRequests(10, 0)
+	_, _, _, okBefore := pc.getAllState(10, 0)
 	require.True(t, okBefore, "proposal 10/0 should exist")
 
 	pc.DeleteHeight(10)
 
-	_, _, _, okAfter := pc.GetProposalWithRequests(10, 0)
+	_, _, _, okAfter := pc.getAllState(10, 0)
 	require.False(t, okAfter, "proposal for height=10 should have been deleted")
-	_, _, _, stillOk := pc.GetProposalWithRequests(11, 0)
+	_, _, _, stillOk := pc.getAllState(11, 0)
 	require.True(t, stillOk, "proposal for height=11 should remain")
 }
 
@@ -239,9 +255,9 @@ func TestProposalCache_DeleteRound(t *testing.T) {
 	bs := makeTestBlockStore(t)
 	pc := NewProposalCache(bs)
 
-	pc.AddProposal(makeProposal(10, 0, 3))
-	pc.AddProposal(makeProposal(10, 1, 3))
-	pc.AddProposal(makeProposal(10, 2, 3))
+	pc.AddProposal(makeCompactBlock(10, 0, 3))
+	pc.AddProposal(makeCompactBlock(10, 1, 3))
+	pc.AddProposal(makeCompactBlock(10, 2, 3))
 
 	pc.DeleteRound(10, 1)
 
@@ -266,7 +282,7 @@ func TestProposalCache_prune(t *testing.T) {
 		pc.proposals[h] = make(map[int32]*proposalData)
 		for r := int32(0); r < 3; r++ {
 			pc.proposals[h][r] = &proposalData{
-				proposal: makeProposal(h, r, 3),
+				compactBlock: makeCompactBlock(h, r, 3),
 			}
 		}
 	}

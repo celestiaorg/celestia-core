@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	cfg "github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/consensus/propagation/types"
+	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
@@ -87,34 +88,53 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	reactor2 := reactors[1]
 	reactor3 := reactors[2]
 
+	baseCompactBlock := &proptypes.CompactBlock{
+		BpHash:    cmtrand.Bytes(32),
+		Signature: cmtrand.Bytes(64),
+		LastLen:   0,
+		Blobs: []*proptypes.TxMetaData{
+			{Hash: cmtrand.Bytes(32)},
+			{Hash: cmtrand.Bytes(32)},
+		},
+	}
+
 	// adding the proposal manually so the haves/wants and recovery
 	// parts are not rejected.
-	added, _, _ := reactor1.AddProposal(&types2.Proposal{
+	p := types2.Proposal{
 		BlockID: types2.BlockID{
 			Hash:          nil,
 			PartSetHeader: types2.PartSetHeader{Total: 30},
 		},
 		Height: 10,
 		Round:  1,
-	})
+	}
+	baseCompactBlock.Proposal = p
+	added, _, _ := reactor1.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added, _, _ = reactor2.AddProposal(&types2.Proposal{
+
+	p2 := types2.Proposal{
 		BlockID: types2.BlockID{
 			Hash:          nil,
 			PartSetHeader: types2.PartSetHeader{Total: 30},
 		},
 		Height: 10,
 		Round:  1,
-	})
+	}
+	baseCompactBlock.Proposal = p2
+	added, _, _ = reactor2.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added, _, _ = reactor3.AddProposal(&types2.Proposal{
+
+	p3 := types2.Proposal{
 		BlockID: types2.BlockID{
 			Hash:          nil,
 			PartSetHeader: types2.PartSetHeader{Total: 30},
 		},
 		Height: 10,
 		Round:  1,
-	})
+	}
+	baseCompactBlock.Proposal = p3
+
+	added, _, _ = reactor3.AddProposal(baseCompactBlock)
 	require.True(t, added)
 	proof := merkle.Proof{LeafHash: cmtrand.Bytes(32)}
 
