@@ -105,7 +105,7 @@ func TestProposalCache_AddProposal(t *testing.T) {
 	}
 }
 
-func TestProposalCache_GetProposal(t *testing.T) {
+func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 	bs := makeTestBlockStore(t)
 	pc := NewProposalCache(bs)
 
@@ -176,7 +176,7 @@ func TestProposalCache_GetProposal(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotProposal, gotPartSet, gotBA, ok := pc.GetProposal(tc.height, tc.round)
+			gotProposal, gotPartSet, gotBA, ok := pc.GetProposalWithRequests(tc.height, tc.round)
 			if !tc.wantOk {
 				require.False(t, ok, "should not have found proposal")
 				require.Nil(t, gotProposal)
@@ -224,14 +224,14 @@ func TestProposalCache_DeleteHeight(t *testing.T) {
 	pc.AddProposal(makeProposal(10, 1, 3))
 	pc.AddProposal(makeProposal(11, 0, 5))
 
-	_, _, _, okBefore := pc.GetProposal(10, 0)
+	_, _, _, okBefore := pc.GetProposalWithRequests(10, 0)
 	require.True(t, okBefore, "proposal 10/0 should exist")
 
 	pc.DeleteHeight(10)
 
-	_, _, _, okAfter := pc.GetProposal(10, 0)
+	_, _, _, okAfter := pc.GetProposalWithRequests(10, 0)
 	require.False(t, okAfter, "proposal for height=10 should have been deleted")
-	_, _, _, stillOk := pc.GetProposal(11, 0)
+	_, _, _, stillOk := pc.GetProposalWithRequests(11, 0)
 	require.True(t, stillOk, "proposal for height=11 should remain")
 }
 
@@ -246,13 +246,13 @@ func TestProposalCache_DeleteRound(t *testing.T) {
 	pc.DeleteRound(10, 1)
 
 	// Check if 10/1 is gone, but 10/0 and 10/2 remain
-	_, _, _, ok10_1 := pc.GetProposal(10, 1)
+	_, _, ok10_1 := pc.GetProposal(10, 1)
 	require.False(t, ok10_1)
 
-	_, _, _, ok10_0 := pc.GetProposal(10, 0)
+	_, _, ok10_0 := pc.GetProposal(10, 0)
 	require.True(t, ok10_0)
 
-	_, _, _, ok10_2 := pc.GetProposal(10, 2)
+	_, _, ok10_2 := pc.GetProposal(10, 2)
 	require.True(t, ok10_2)
 }
 

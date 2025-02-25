@@ -55,7 +55,7 @@ func makeAndCommitGoodBlock(
 
 func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commit, proposerAddr []byte,
 	blockExec *sm.BlockExecutor, evidence []types.Evidence) (sm.State, types.BlockID, error) {
-	block, _, _ := state.MakeBlock(
+	block, _ := state.MakeBlock(
 		height,
 		factory.MakeData(factory.MakeTenTxs(height)),
 		lastCommit,
@@ -141,7 +141,7 @@ func makeState(nVals, height int) (sm.State, dbm.DB, map[string]types.PrivValida
 }
 
 func makeBlock(state sm.State, height int64) *types.Block {
-	block, _, _ := state.MakeBlock(
+	block, _ := state.MakeBlock(
 		height,
 		factory.MakeData(makeTxs(state.LastBlockHeight)),
 		new(types.Commit),

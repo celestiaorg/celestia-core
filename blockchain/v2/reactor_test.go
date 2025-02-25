@@ -472,7 +472,7 @@ func makeTxs(height int64) (txs []types.Tx) {
 }
 
 func makeBlock(height int64, state sm.State, lastCommit *types.Commit) *types.Block {
-	block, _, _ := state.MakeBlock(
+	block, _ := state.MakeBlock(
 		height,
 		factory.MakeData(makeTxs(height)),
 		lastCommit,
@@ -570,7 +570,7 @@ func newReactorStore(
 
 		thisBlock := makeBlock(blockHeight, state, lastCommit)
 
-		thisParts, _ := thisBlock.MakePartSet(types.BlockPartSizeBytes)
+		thisParts := thisBlock.MakePartSet(types.BlockPartSizeBytes)
 		blockID := types.BlockID{Hash: thisBlock.Hash(), PartSetHeader: thisParts.Header()}
 
 		state, _, err = blockExec.ApplyBlock(state, blockID, thisBlock, lastCommit)

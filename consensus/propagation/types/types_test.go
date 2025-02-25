@@ -1,6 +1,7 @@
 package types
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,7 +10,145 @@ import (
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/rand"
+	"github.com/tendermint/tendermint/types"
 )
+
+func TestTxMetaData_RoundTrip(t *testing.T) {
+	tests := []struct {
+		name string
+		data *TxMetaData
+	}{
+		{
+			"valid metadata",
+			&TxMetaData{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10},
+		},
+		{
+			"empty hash",
+			&TxMetaData{Hash: []byte{}, Start: 5, End: 10},
+		},
+		{
+			"same start and end",
+			&TxMetaData{Hash: rand.Bytes(tmhash.Size), Start: 7, End: 7},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proto := tt.data.ToProto()
+			roundTripped := TxMetaDataFromProto(proto)
+			require.Equal(t, tt.data, roundTripped)
+		})
+	}
+}
+
+func TestTxMetaData_ValidateBasic(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    *TxMetaData
+		expects error
+	}{
+		{
+			"valid metadata",
+			&TxMetaData{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10},
+			nil,
+		},
+		{
+			"invalid start > end",
+			&TxMetaData{Hash: rand.Bytes(tmhash.Size), Start: 10, End: 5},
+			errors.New("TxMetaData: Start > End"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.data.ValidateBasic()
+			if tt.expects != nil {
+				assert.EqualError(t, err, tt.expects.Error())
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestCompactBlock_RoundTrip(t *testing.T) {
+	mockProposal := types.NewProposal(
+		4, 2, 2,
+		makeBlockID(rand.Bytes(tmhash.Size), 777, rand.Bytes(tmhash.Size)),
+	)
+	mockProposal.Signature = rand.Bytes(types.MaxSignatureSize)
+	tests := []struct {
+		name string
+		data *CompactBlock
+	}{
+		{
+			"valid block",
+			&CompactBlock{
+				BpHash:    rand.Bytes(tmhash.Size),
+				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature: rand.Bytes(types.MaxSignatureSize),
+				Proposal:  *mockProposal,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proto := tt.data.ToProto()
+			// Assuming CompactBlockFromProto exists
+			roundTripped, err := CompactBlockFromProto(proto)
+			require.NoError(t, err)
+			require.Equal(t, tt.data, roundTripped)
+		})
+	}
+}
+
+func TestCompactBlock_ValidateBasic(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    *CompactBlock
+		expects error
+	}{
+		{
+			"valid block",
+			&CompactBlock{
+				BpHash:    rand.Bytes(tmhash.Size),
+				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature: rand.Bytes(types.MaxSignatureSize),
+			},
+			nil,
+		},
+		{
+			"invalid bp_hash",
+			&CompactBlock{
+				BpHash:    rand.Bytes(tmhash.Size + 1),
+				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature: rand.Bytes(types.MaxSignatureSize),
+			},
+			errors.New("expected size to be 32 bytes, got 33 bytes"),
+		},
+		{
+			"too big of signature",
+			&CompactBlock{
+				BpHash:    rand.Bytes(tmhash.Size),
+				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature: rand.Bytes(types.MaxSignatureSize + 1),
+			},
+			errors.New("CompactBlock: Signature is too big"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.data.ValidateBasic()
+			if tt.expects != nil {
+				assert.EqualError(t, err, tt.expects.Error())
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
 
 func TestWantParts_ValidateBasic(t *testing.T) {
 	tests := []struct {
@@ -403,5 +542,21 @@ func TestHaveParts_GetIndex(t *testing.T) {
 			got := hp.GetIndex(tc.checkIdx)
 			require.Equal(t, tc.expFound, got, "GetIndex result mismatch")
 		})
+	}
+}
+
+func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {
+	var (
+		h   = make([]byte, tmhash.Size)
+		psH = make([]byte, tmhash.Size)
+	)
+	copy(h, hash)
+	copy(psH, partSetHash)
+	return types.BlockID{
+		Hash: h,
+		PartSetHeader: types.PartSetHeader{
+			Total: partSetSize,
+			Hash:  psH,
+		},
 	}
 }

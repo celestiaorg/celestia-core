@@ -360,14 +360,14 @@ func TestTxPool_ReapMaxBytesMaxGas(t *testing.T) {
 	}
 
 	// reap by gas capacity only
-	reapedTxs, _ := txmp.ReapMaxBytesMaxGas(-1, 50)
+	reapedTxs := txmp.ReapMaxBytesMaxGas(-1, 50)
 	ensurePrioritized(reapedTxs)
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
 	require.Len(t, reapedTxs, 50)
 
 	// reap by transaction bytes only
-	reapedTxs, _ = txmp.ReapMaxBytesMaxGas(1200, -1)
+	reapedTxs = txmp.ReapMaxBytesMaxGas(1200, -1)
 	ensurePrioritized(reapedTxs)
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
@@ -376,9 +376,7 @@ func TestTxPool_ReapMaxBytesMaxGas(t *testing.T) {
 
 	// Reap by both transaction bytes and gas, where the size yields 31 reaped
 	// transactions and the gas limit reaps 25 transactions.
-	//
-	// todo(evan): use the returned hashes and test against them as well
-	reapedTxs, _ = txmp.ReapMaxBytesMaxGas(2000, 25)
+	reapedTxs = txmp.ReapMaxBytesMaxGas(2000, 25)
 	ensurePrioritized(reapedTxs)
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
@@ -402,8 +400,7 @@ func TestTxMempoolTxLargerThanMaxBytes(t *testing.T) {
 	require.NoError(t, txmp.CheckTx(smallTx, nil, mempool.TxInfo{SenderID: 1}))
 
 	// reap by max bytes less than the large tx
-	// todo(evan): test against the returned hashes as well
-	reapedTxs, _ := txmp.ReapMaxBytesMaxGas(100, -1)
+	reapedTxs := txmp.ReapMaxBytesMaxGas(100, -1)
 	require.Len(t, reapedTxs, 1)
 	require.Equal(t, types.Tx(smallTx), reapedTxs[0])
 }

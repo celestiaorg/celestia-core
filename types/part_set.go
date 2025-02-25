@@ -173,7 +173,7 @@ type PartSet struct {
 // Returns an immutable, full PartSet from the data bytes.
 // The data bytes are split into "partSize" chunks, and merkle tree computed.
 // CONTRACT: partSize is greater than zero.
-func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, eps *PartSet) {
+func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet) {
 	total := (uint32(len(data)) + partSize - 1) / partSize
 	parts := make([]*Part, total)
 	partsBitArray := bits.NewBitArray(int(total))
@@ -211,73 +211,72 @@ func NewPartSetFromData(data []byte, partSize uint32) (ops *PartSet, eps *PartSe
 		chunks[len(chunks)-1] = padded
 	}
 
-	echunks, err := Encode(chunks)
-	if err != nil {
-		// todo: we can likely get rid of this panic, although it should never
-		// happen.
-		panic(err)
-	}
-	echunks = echunks[ops.Total():]
-	eparts := make([]*Part, total)
-	epartsBitArray := bits.NewBitArray(int(total))
-	for i := uint32(0); i < total; i++ {
-		part := &Part{
-			Index: i,
-			Bytes: echunks[i],
-		}
-		eparts[i] = part
-		epartsBitArray.SetIndex(int(i), true)
-	}
-
-	// Compute merkle proofs
-	eroot, eproofs := merkle.ProofsFromByteSlices(echunks)
-	for i := uint32(0); i < total; i++ {
-		eparts[i].Proof = *eproofs[i]
-	}
-
-	eps = &PartSet{
-		total:         total,
-		hash:          eroot,
-		parts:         eparts,
-		partsBitArray: partsBitArray,
-		count:         total,
-		byteSize:      int64(len(echunks) * int(partSize)),
-	}
-
-	return ops, eps
-}
-
-func (ps *PartSet) LastLen() uint32 {
-	return uint32(len(ps.GetPart(int(ps.Total() - uint32(1))).Bytes.Bytes()))
+	return ops
 }
 
 // Extend erasure encodes the block parts. Only the original parts should be
-// provided. The data returned has the parity parts appended to the original.
-func Encode(parts [][]byte) ([][]byte, error) {
-	// init an an encoder if it is not already initialized using the original
-	// number of parts.
-	enc, err := reedsolomon.New(len(parts), len(parts))
-	if err != nil {
-		return nil, err
-	}
-
-	// Create a new slice of parts with the original parts and parity parts.
-	eparts := make([][]byte, len(parts)*2)
-	for i := 0; i < len(eparts); i++ {
-		if i < len(parts) {
-			eparts[i] = parts[i]
+// provided. The parity data is formed into its own PartSet and returned
+// alongside the length of the last part. The length of the last part is
+// necessary because the last part may be padded with zeros after decoding. These zeros must be removed before computi
+func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
+	chunks := make([][]byte, 2*ops.Total())
+	lastLen := len(ops.GetPart(int(ops.Total() - 1)).Bytes.Bytes())
+	// pad ONLY the last chunk and not the part with zeros if necessary AFTER the root has been generated
+	for i := range chunks {
+		if i < int(ops.Total()) {
+			chunks[i] = ops.GetPart(i).Bytes.Bytes()
 			continue
 		}
-		eparts[i] = make([]byte, len(parts[0]))
+		chunks[i] = make([]byte, partSize)
+	}
+
+	// pad ONLY the last chunk and not the part with zeros if necessary AFTER the root has been generated
+	if lastLen < int(partSize) {
+		padded := make([]byte, partSize)
+		copy(padded, chunks[ops.Total()-1])
+		chunks[ops.Total()-1] = padded
+	}
+
+	// init an an encoder if it is not already initialized using the original
+	// number of parts.
+	enc, err := reedsolomon.New(int(ops.Total()), int(ops.Total()))
+	if err != nil {
+		return nil, 0, err
 	}
 
 	// Encode the parts.
-	err = enc.Encode(eparts)
+	err = enc.Encode(chunks)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return eparts, nil
+	// only the parity data is needed for the new partset.
+	chunks = chunks[ops.Total():]
+	newParts := make([]*Part, ops.Total())
+	ba := bits.NewBitArray(int(ops.Total()))
+	eroot, eproofs := merkle.ProofsFromByteSlices(chunks)
+
+	// create a new partset using the new parity parts.
+	for i := uint32(0); i < ops.Total(); i++ {
+		part := &Part{
+			Index: i,
+			Bytes: chunks[i],
+			Proof: *eproofs[i],
+		}
+		newParts[i] = part
+		ba.SetIndex(int(i), true)
+	}
+
+	eps := &PartSet{
+		total:         ops.Total(),
+		hash:          eroot,
+		parts:         newParts,
+		partsBitArray: ba,
+		count:         ops.Total(),
+		byteSize:      int64(ops.Total()) * int64(partSize),
+	}
+
+	return eps, lastLen, nil
 }
 
 // CanDecode determines if the set of PartSets have enough parts to decode the block.

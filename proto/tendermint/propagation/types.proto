@@ -8,6 +8,26 @@ import "tendermint/libs/bits/types.proto";
 import "tendermint/crypto/proof.proto";
 import "tendermint/types/types.proto";
 
+// TxMetaData contains all information needed to commit to a transaction. Start
+// and end are used to insert the transaction into the protobuf encoded version
+// of the block.
+message TxMetaData {
+  bytes  hash  = 1;
+  uint32 start = 2;
+  uint32 end   = 3;
+}
+
+// CompactBlock commits to the transaction included in a proposal. It enalbes
+// clients to reuse already downloaded blobs instead of gossiping them all again
+// during the block propagation.
+message CompactBlock {
+  bytes                     bp_hash     = 1;
+  repeated TxMetaData       blobs       = 2;
+  bytes                     signature   = 3;
+  tendermint.types.Proposal proposal    = 4;
+  uint32                    last_length = 5;
+}
+
 // PartMetaData proves the inclusion of a part to the block.
 message PartMetaData {
   uint32                  index = 1;
@@ -39,15 +59,11 @@ message RecoveryPart {
   bytes  data   = 4;
 }
 
-message Proposal {
-  tendermint.types.Proposal proposal = 1;
-}
-
 message Message {
   oneof sum {
-    HaveParts    have_parts    = 1;
-    WantParts    want_parts    = 2;
-    RecoveryPart recovery_part = 3;
-    Proposal proposal = 4;
+    CompactBlock compact_block = 1;
+    HaveParts    have_parts    = 2;
+    WantParts    want_parts    = 3;
+    RecoveryPart recovery_part = 4;
   }
 }

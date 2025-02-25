@@ -209,7 +209,7 @@ func decideProposal(
 	round int32,
 ) (proposal *types.Proposal, block *types.Block) {
 	cs1.mtx.Lock()
-	block, blockParts, eps, hashes := cs1.createProposalBlock()
+	block, blockParts := cs1.createProposalBlock()
 	validRound := cs1.TwoThirdPrevoteRound
 	chainID := cs1.state.ChainID
 	cs1.mtx.Unlock()
@@ -219,12 +219,7 @@ func decideProposal(
 
 	// Make proposal
 	polRound, propBlockID := validRound, types.BlockID{Hash: block.Hash(), PartSetHeader: blockParts.Header()}
-	compB, err := types.NewCompactBlock(block.Height, polRound, blockParts.LastLen(), eps, hashes)
-	// todo: refactor test and get rid of this panic
-	if err != nil {
-		panic(err)
-	}
-	proposal = types.NewProposal(height, round, polRound, propBlockID, compB)
+	proposal = types.NewProposal(height, round, polRound, propBlockID)
 	p := proposal.ToProto()
 	if err := vs.SignProposal(chainID, p); err != nil {
 		panic(err)
@@ -408,9 +403,9 @@ func newStateWithConfigAndBlockStore(
 	// Make Mempool
 	var mempool mempl.Mempool
 
-	switch config.Mempool.Version {
+	switch thisConfig.Mempool.Version {
 	case cfg.MempoolV0:
-		mempool = mempoolv0.NewCListMempool(config.Mempool,
+		mempool = mempoolv0.NewCListMempool(thisConfig.Mempool,
 			proxyAppConnConMem,
 			state.LastBlockHeight,
 			mempoolv0.WithMetrics(memplMetrics),
@@ -419,7 +414,7 @@ func newStateWithConfigAndBlockStore(
 	case cfg.MempoolV1:
 		logger := consensusLogger()
 		mempool = mempoolv1.NewTxMempool(logger,
-			config.Mempool,
+			thisConfig.Mempool,
 			proxyAppConnConMem,
 			state.LastBlockHeight,
 			mempoolv1.WithMetrics(memplMetrics),
@@ -430,7 +425,7 @@ func newStateWithConfigAndBlockStore(
 		logger := consensusLogger()
 		mempool = mempoolv2.NewTxPool(
 			logger,
-			config.Mempool,
+			thisConfig.Mempool,
 			proxyAppConnConMem,
 			state.LastBlockHeight,
 			mempoolv2.WithMetrics(memplMetrics),
@@ -454,9 +449,9 @@ func newStateWithConfigAndBlockStore(
 	}
 
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-	key, err := p2p.LoadNodeKey(config.NodeKey)
+	key, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
 	if err != nil {
-		cmtos.Exit(err.Error())
+		panic(err)
 	}
 	propagator := propagation.NewReactor(key.ID(), nil, blockStore)
 	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool)

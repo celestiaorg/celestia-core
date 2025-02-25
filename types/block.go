@@ -131,9 +131,9 @@ func (b *Block) Hash() cmtbytes.HexBytes {
 // MakePartSet returns a PartSet containing parts of a serialized block.
 // This is the form in which the block is gossipped to peers.
 // CONTRACT: partSize is greater than zero.
-func (b *Block) MakePartSet(partSize uint32) (*PartSet, *PartSet) {
+func (b *Block) MakePartSet(partSize uint32) *PartSet {
 	if b == nil {
-		return nil, nil
+		return nil
 	}
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
@@ -146,8 +146,8 @@ func (b *Block) MakePartSet(partSize uint32) (*PartSet, *PartSet) {
 	if err != nil {
 		panic(err)
 	}
-	ops, eps := NewPartSetFromData(bz, partSize)
-	return ops, eps
+	ops := NewPartSetFromData(bz, partSize)
+	return ops
 }
 
 // HashesTo is a convenience function that checks if a block hashes to the given argument.

@@ -82,7 +82,8 @@ const TestHost = "localhost"
 // If connect==Connect2Switches, the switches will be fully connected.
 // initSwitch defines how the i'th switch should be initialized (ie. with what reactors).
 // NOTE: panics if any switch fails to start.
-func MakeConnectedSwitches(cfg *config.P2PConfig,
+func MakeConnectedSwitches(
+	cfg *config.P2PConfig,
 	n int,
 	initSwitch func(int, *Switch) *Switch,
 	connect func([]*Switch, int, int),
