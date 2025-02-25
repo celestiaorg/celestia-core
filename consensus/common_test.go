@@ -403,9 +403,9 @@ func newStateWithConfigAndBlockStore(
 	// Make Mempool
 	var mempool mempl.Mempool
 
-	switch config.Mempool.Version {
+	switch thisConfig.Mempool.Version {
 	case cfg.MempoolV0:
-		mempool = mempoolv0.NewCListMempool(config.Mempool,
+		mempool = mempoolv0.NewCListMempool(thisConfig.Mempool,
 			proxyAppConnConMem,
 			state.LastBlockHeight,
 			mempoolv0.WithMetrics(memplMetrics),
@@ -414,7 +414,7 @@ func newStateWithConfigAndBlockStore(
 	case cfg.MempoolV1:
 		logger := consensusLogger()
 		mempool = mempoolv1.NewTxMempool(logger,
-			config.Mempool,
+			thisConfig.Mempool,
 			proxyAppConnConMem,
 			state.LastBlockHeight,
 			mempoolv1.WithMetrics(memplMetrics),
@@ -425,7 +425,7 @@ func newStateWithConfigAndBlockStore(
 		logger := consensusLogger()
 		mempool = mempoolv2.NewTxPool(
 			logger,
-			config.Mempool,
+			thisConfig.Mempool,
 			proxyAppConnConMem,
 			state.LastBlockHeight,
 			mempoolv2.WithMetrics(memplMetrics),
@@ -449,9 +449,9 @@ func newStateWithConfigAndBlockStore(
 	}
 
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-	key, err := p2p.LoadNodeKey(config.NodeKey)
+	key, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
 	if err != nil {
-		cmtos.Exit(err.Error())
+		panic(err)
 	}
 	propagator := propagation.NewReactor(key.ID(), nil, blockStore)
 	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool)

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/tendermint/tendermint/consensus/propagation"
-	cmtos "github.com/tendermint/tendermint/libs/os"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/assert"
@@ -218,9 +217,9 @@ func TestReactorWithEvidence(t *testing.T) {
 
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool)
-		key, err := p2p.LoadNodeKey(config.NodeKey)
+		key, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
 		if err != nil {
-			cmtos.Exit(err.Error())
+			panic(err)
 		}
 		propagator := propagation.NewReactor(key.ID(), nil, blockStore)
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool2)

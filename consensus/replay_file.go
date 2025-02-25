@@ -334,9 +334,9 @@ func newConsensusStateForReplay(config cfg.BaseConfig, csConfig *cfg.ConsensusCo
 
 	mempool, evpool := emptyMempool{}, sm.EmptyEvidencePool{}
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool, sm.WithBlockStore(blockStore))
-	key, err := p2p.LoadNodeKey(config.NodeKey)
+	key, err := p2p.LoadOrGenNodeKey(config.NodeKeyFile())
 	if err != nil {
-		cmtos.Exit(err.Error())
+		panic(err)
 	}
 	// TODO pass a tracer from here
 	propagator := propagation.NewReactor(key.ID(), nil, blockStore)
