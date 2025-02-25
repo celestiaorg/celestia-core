@@ -6,6 +6,7 @@ option go_package = "github.com/tendermint/tendermint/proto/tendermint/propagati
 import "gogoproto/gogo.proto";
 import "tendermint/libs/bits/types.proto";
 import "tendermint/crypto/proof.proto";
+import "tendermint/types/types.proto";
 
 // TxMetaData contains all information needed to commit to a transaction. Start
 // and end are used to insert the transaction into the protobuf encoded version
@@ -20,11 +21,11 @@ message TxMetaData {
 // clients to reuse already downloaded blobs instead of gossiping them all again
 // during the block propagation.
 message CompactBlock {
-  int64               height    = 1;
-  int32               round     = 2;
-  bytes               bp_hash   = 3;
-  repeated TxMetaData blobs     = 4;
-  bytes               signature = 5;
+  bytes                     bp_hash     = 1;
+  repeated TxMetaData       blobs       = 2;
+  bytes                     signature   = 3;
+  tendermint.types.Proposal proposal    = 4;
+  uint32                    last_length = 5;
 }
 
 // PartMetaData proves the inclusion of a part to the block.

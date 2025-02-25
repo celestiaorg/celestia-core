@@ -49,23 +49,40 @@ func (t *TxMetaData) ValidateBasic() error {
 // CompactBlock contains commitments and metadata for reusing transactions that
 // have already been distributed.
 type CompactBlock struct {
-	Height    int64         `json:"height,omitempty"`
-	Round     int32         `json:"round,omitempty"`
-	BpHash    []byte        `json:"bp_hash,omitempty"`
-	Blobs     []*TxMetaData `json:"blobs,omitempty"`
-	Signature []byte        `json:"signature,omitempty"`
+	BpHash    []byte         `json:"bp_hash,omitempty"`
+	Blobs     []*TxMetaData  `json:"blobs,omitempty"`
+	Signature []byte         `json:"signature,omitempty"`
+	Proposal  types.Proposal `json:"proposal,omitempty"`
+	LastLen   uint32         // length of the last part
+}
+
+// NewCompactBlock creates a new CompactBlock from a Proposal, a PartSet, and a
+// list of transaction hashes.
+//
+// TODO: fill in the tx hashes and pass the length of each of the transactions
+func NewCompactBlock(prop types.Proposal, parts *types.PartSet, hashes []types.TxKey) (*CompactBlock, error) {
+	eparts, lastlen, err := types.Encode(parts, types.BlockPartSizeBytes)
+	if err != nil {
+		return nil, err
+	}
+	blobs := make([]*TxMetaData, len(hashes))
+	for i, hash := range hashes {
+		blobs[i] = &TxMetaData{
+			Hash: hash[:],
+		}
+	}
+	return &CompactBlock{
+		BpHash:   eparts.Hash(),
+		Blobs:    blobs,
+		Proposal: prop,
+		LastLen:  uint32(lastlen),
+	}, nil
 }
 
 // ValidateBasic checks if the CompactBlock is valid. It fails if the height is
 // negative, if the round is negative, if the BpHash is invalid, or if any of
 // the Blobs are invalid.
 func (c *CompactBlock) ValidateBasic() error {
-	if c.Height < 0 {
-		return errors.New("CompactBlock: Height cannot be negative")
-	}
-	if c.Round < 0 {
-		return errors.New("CompactBlock: Round cannot be negative")
-	}
 	if err := types.ValidateHash(c.BpHash); err != nil {
 		return err
 	}
@@ -74,9 +91,9 @@ func (c *CompactBlock) ValidateBasic() error {
 			return err
 		}
 	}
-	if len(c.Signature) > types.MaxSignatureSize {
-		return errors.New("CompactBlock: Signature is too big")
-	}
+	// if len(c.Signature) > types.MaxSignatureSize {
+	// 	return errors.New("CompactBlock: Signature is too big")
+	// }
 	return nil
 }
 
@@ -87,11 +104,11 @@ func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
 		blobs[i] = blob.ToProto()
 	}
 	return &protoprop.CompactBlock{
-		Height:    c.Height,
-		Round:     c.Round,
-		BpHash:    c.BpHash,
-		Blobs:     blobs,
-		Signature: c.Signature,
+		BpHash:     c.BpHash,
+		Blobs:      blobs,
+		Signature:  c.Signature,
+		Proposal:   c.Proposal.ToProto(),
+		LastLength: uint32(c.LastLen),
 	}
 }
 
@@ -101,12 +118,17 @@ func CompactBlockFromProto(c *protoprop.CompactBlock) (*CompactBlock, error) {
 	for i, blob := range c.Blobs {
 		blobs[i] = TxMetaDataFromProto(blob)
 	}
+
+	prop, err := types.ProposalFromProto(c.Proposal)
+	if err != nil {
+		return nil, err
+	}
+
 	cb := &CompactBlock{
-		Height:    c.Height,
-		Round:     c.Round,
 		BpHash:    c.BpHash,
 		Blobs:     blobs,
 		Signature: c.Signature,
+		Proposal:  *prop,
 	}
 	return cb, cb.ValidateBasic()
 }
@@ -357,8 +379,6 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			}
 		}
 		pb = &CompactBlock{
-			Height:    msg.Height,
-			Round:     msg.Round,
 			BpHash:    msg.BpHash,
 			Blobs:     blobs,
 			Signature: msg.Signature,

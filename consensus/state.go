@@ -1203,7 +1203,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
 		// TODO is this how we should propose a block? or we send the proposal through another propagator channel?
-		cs.propagator.ProposeBlock(proposal, blockParts.BitArray())
+		cs.propagator.ProposeBlock(proposal, blockParts)
 
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
@@ -2514,7 +2514,7 @@ func (cs *State) syncData() {
 				continue
 			}
 
-			prop, parts, _, has := cs.propagator.GetProposal(h, r)
+			prop, parts, has := cs.propagator.GetProposal(h, r)
 
 			if !has {
 				schema.WriteNote(

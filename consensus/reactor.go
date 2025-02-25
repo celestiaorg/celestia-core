@@ -326,7 +326,6 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				schema.Download,
 			)
 			ps.ApplyNewValidBlockMessage(msg)
-			conR.propagator.HandleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockPartSetHeader, false)
 		case *HasVoteMessage:
 			ps.ApplyHasVoteMessage(msg)
 			schema.WriteConsensusState(
@@ -339,7 +338,6 @@ func (conR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				msg.Type.String(),
 			)
 		case *VoteSetMaj23Message:
-			conR.propagator.HandleValidBlock(e.Src.ID(), msg.Height, msg.Round, msg.BlockID.PartSetHeader, false)
 			cs := conR.conS
 			cs.mtx.Lock()
 			height, votes := cs.Height, cs.Votes

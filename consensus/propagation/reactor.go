@@ -211,8 +211,8 @@ func (blockProp *Reactor) setPeer(peer p2p.ID, state *PeerState) {
 
 // ProposeBlock is called when the consensus routine has created a new proposal
 // and it needs to be gossiped to the rest of the network.
-func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, haves *bits.BitArray) {
-	blockProp.HandleProposal(proposal, blockProp.self, haves)
+func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, parts *types.PartSet) {
+	// create the parity data and the compact block
 }
 
 // HandleProposal adds a proposal to the data routine. This should be called any
@@ -224,7 +224,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, haves *bits.Bit
 // - if adding the proposal to the state is successful, broadcast the proposal to the peers.
 // Note: this method will not propagate the haves after the proposal and the compact block is propagated.
 // Check broadcastSelfProposalHaves for that.
-func (blockProp *Reactor) HandleProposal(proposal *types.Proposal, from p2p.ID, haves *bits.BitArray) {
+func (blockProp *Reactor) handleProposal(proposal *types.Proposal, from p2p.ID, haves *bits.BitArray) {
 }
 
 // broadcastProposal gossips the provided proposal to all peers. This should
@@ -328,7 +328,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		blockProp.Logger.Error("peer not found", "peer", peer)
 		return
 	}
-	_, parts, fullReqs, has := blockProp.GetProposal(height, round)
+	_, parts, fullReqs, has := blockProp.GetProposalWithRequests(height, round)
 	if !has {
 		// TODO disconnect from the peer
 		blockProp.Logger.Error("received part state for unknown proposal", "peer", peer, "height", height, "round", round)
@@ -495,7 +495,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
-	_, parts, _, has := blockProp.GetProposal(height, round)
+	_, parts, has := blockProp.GetProposal(height, round)
 	// the peer must always send the proposal before sending parts, if they did
 	//  not, this node must disconnect from them.
 	if !has {
@@ -649,7 +649,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 	// the peer must always send the proposal before sending parts, if they did
 	// not this node must disconnect from them.
-	_, parts, _, has := blockProp.GetProposal(part.Height, part.Round)
+	_, parts, has := blockProp.GetProposal(part.Height, part.Round)
 	if !has {
 		// fmt.Println("unknown proposal")
 		blockProp.Logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)

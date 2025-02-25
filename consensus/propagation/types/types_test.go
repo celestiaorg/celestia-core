@@ -79,7 +79,7 @@ func TestCompactBlock_RoundTrip(t *testing.T) {
 		{
 			"valid block",
 			&CompactBlock{
-				Height: 1, Round: 1, BpHash: rand.Bytes(tmhash.Size),
+				BpHash:    rand.Bytes(tmhash.Size),
 				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize),
 			},
@@ -106,34 +106,16 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 		{
 			"valid block",
 			&CompactBlock{
-				Height: 1, Round: 1, BpHash: rand.Bytes(tmhash.Size),
+				BpHash:    rand.Bytes(tmhash.Size),
 				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize),
 			},
 			nil,
 		},
 		{
-			"negative height",
-			&CompactBlock{
-				Height: -1, Round: 1, BpHash: rand.Bytes(tmhash.Size),
-				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
-				Signature: rand.Bytes(types.MaxSignatureSize),
-			},
-			errors.New("CompactBlock: Height cannot be negative"),
-		},
-		{
-			"negative round",
-			&CompactBlock{
-				Height: 1, Round: -2, BpHash: rand.Bytes(tmhash.Size),
-				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
-				Signature: rand.Bytes(types.MaxSignatureSize),
-			},
-			errors.New("CompactBlock: Round cannot be negative"),
-		},
-		{
 			"invalid bp_hash",
 			&CompactBlock{
-				Height: 1, Round: 1, BpHash: rand.Bytes(tmhash.Size + 1),
+				BpHash:    rand.Bytes(tmhash.Size + 1),
 				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize),
 			},
@@ -142,7 +124,7 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 		{
 			"too big of signature",
 			&CompactBlock{
-				Height: 1, Round: 1, BpHash: rand.Bytes(tmhash.Size),
+				BpHash:    rand.Bytes(tmhash.Size),
 				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize + 1),
 			},
