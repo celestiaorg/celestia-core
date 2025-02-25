@@ -217,7 +217,7 @@ func TestStateBadProposal(t *testing.T) {
 	propBlockParts, eps, err := propBlock.MakePartSet(partSize)
 	require.NoError(t, err)
 	blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
-	proposal := types.NewProposal(vs2.Height, round, -1, blockID, types.CompactBlock{BpHash: eps.Header().Hash})
+	proposal := types.NewProposal(vs2.Height, round, -1, blockID)
 	p := proposal.ToProto()
 	if err := vs2.SignProposal(cs1.state.ChainID, p); err != nil {
 		t.Fatal("failed to sign bad proposal", err)
@@ -289,7 +289,7 @@ func TestStateOversizedBlock(t *testing.T) {
 			incrementRound(vss[1:]...)
 
 			blockID := types.BlockID{Hash: propBlock.Hash(), PartSetHeader: propBlockParts.Header()}
-			proposal := types.NewProposal(height, round, -1, blockID, types.CompactBlock{Height: height, Round: round, BpHash: propBlockParts.Header().Hash})
+			proposal := types.NewProposal(height, round, -1, blockID)
 			p := proposal.ToProto()
 			if err := vs2.SignProposal(cs1.state.ChainID, p); err != nil {
 				t.Fatal("failed to sign bad proposal", err)
@@ -1182,7 +1182,7 @@ func TestStateLockPOLSafety2(t *testing.T) {
 
 	round++ // moving to the next round
 	// in round 2 we see the polkad block from round 0
-	newProp := types.NewProposal(height, round, 0, propBlockID0, types.CompactBlock{BpHash: cmtrand.Bytes(32)})
+	newProp := types.NewProposal(height, round, 0, propBlockID0)
 	p := newProp.ToProto()
 	if err := vs3.SignProposal(cs1.state.ChainID, p); err != nil {
 		t.Fatal(err)
@@ -2468,7 +2468,7 @@ func TestStateOutputsBlockPartsStats(t *testing.T) {
 	peer := p2pmock.NewPeer(nil)
 
 	// 1) new block part
-	parts, _ := types.NewPartSetFromData(cmtrand.Bytes(100), 10)
+	parts := types.NewPartSetFromData(cmtrand.Bytes(100), 10)
 	msg := &BlockPartMessage{
 		Height: 1,
 		Round:  0,

@@ -349,7 +349,7 @@ func TestFinalizeBlockMisbehavior(t *testing.T) {
 	require.NoError(t, err)
 	block.Evidence = types.EvidenceData{Evidence: ev}
 	block.Header.EvidenceHash = block.Evidence.Hash()
-	blockID = types.BlockID{Hash: block.Hash(), PartSetHeader: ops.Header()}
+	blockID = types.BlockID{Hash: block.Hash(), PartSetHeader: block.MakePartSet(testPartSize).Header()}
 
 	_, err = blockExec.ApplyBlock(state, blockID, block, nil)
 	require.NoError(t, err)

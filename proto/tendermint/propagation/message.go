@@ -8,12 +8,19 @@ import (
 )
 
 var (
+	_ p2p.Wrapper   = &CompactBlock{}
 	_ p2p.Wrapper   = &HaveParts{}
 	_ p2p.Wrapper   = &WantParts{}
 	_ p2p.Wrapper   = &RecoveryPart{}
-	_ p2p.Wrapper   = &Proposal{}
 	_ p2p.Unwrapper = &Message{}
 )
+
+// Wrap implements the p2p Wrapper interface wraps a propagation message.
+func (m *CompactBlock) Wrap() proto.Message {
+	mm := &Message{}
+	mm.Sum = &Message_CompactBlock{CompactBlock: m}
+	return mm
+}
 
 // Wrap implements the p2p Wrapper interface and wraps a propagation message.
 func (m *HaveParts) Wrap() proto.Message {
@@ -36,16 +43,13 @@ func (m *RecoveryPart) Wrap() proto.Message {
 	return mm
 }
 
-func (m *Proposal) Wrap() proto.Message {
-	mm := &Message{}
-	mm.Sum = &Message_Proposal{Proposal: m}
-	return mm
-}
-
 // Unwrap implements the p2p Wrapper interface and unwraps a wrapped mempool
 // message.
 func (m *Message) Unwrap() (proto.Message, error) {
 	switch msg := m.Sum.(type) {
+	case *Message_CompactBlock:
+		return m.GetCompactBlock(), nil
+
 	case *Message_HaveParts:
 		return m.GetHaveParts(), nil
 
@@ -54,9 +58,6 @@ func (m *Message) Unwrap() (proto.Message, error) {
 
 	case *Message_RecoveryPart:
 		return m.GetRecoveryPart(), nil
-
-	case *Message_Proposal:
-		return m.GetProposal(), nil
 
 	default:
 		return nil, fmt.Errorf("unknown message: %T", msg)

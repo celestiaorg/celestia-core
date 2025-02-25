@@ -123,12 +123,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		maxReapBytes = -1
 	}
 
-	// todo: use the hashes returned by the mempool in the TxMetaData returned by this function
-	// it will require expanding the request and response of prepare proposal to include hashes
-	// so that they can be excluded alongside any transaction by the application.
-	// either that, or we need to change the types.Tx type to also include the
-	// hash as a cached value.
-	txs, _ := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
+	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
 
 	commit := lastExtCommit.ToCommit()
 	block, _, _, err := state.MakeBlock(height, types.MakeData(txs), commit, evidence, proposerAddr)

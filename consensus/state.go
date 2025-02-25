@@ -154,9 +154,6 @@ type State struct {
 
 	// traceClient is used to trace the state machine.
 	traceClient trace.Tracer
-
-	// todo(evan): add the propagator here so that we can can the locked compact
-	// block and extended parts (we might not need to do this, but its likely good)
 }
 
 // StateOption sets an optional parameter on the State.
@@ -1237,11 +1234,8 @@ func (cs *State) isProposer(address []byte) bool {
 }
 
 func (cs *State) defaultDecideProposal(height int64, round int32) {
-	var (
-		block      *types.Block
-		blockParts *types.PartSet
-		compBlock  types.CompactBlock
-	)
+	var block *types.Block
+	var blockParts *types.PartSet
 
 	// Decide on block
 	if cs.ValidBlock != nil {
@@ -1299,7 +1293,7 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
 		// TODO is this how we should propose a block? or we send the proposal through another propagator channel?
-		cs.propagator.ProposeBlock(proposal, blockParts.BitArray())
+		cs.propagator.ProposeBlock(proposal, blockParts)
 
 		for i := 0; i < int(blockParts.Total()); i++ {
 			part := blockParts.GetPart(i)
@@ -2700,7 +2694,7 @@ func (cs *State) syncData() {
 				continue
 			}
 
-			prop, parts, _, has := cs.propagator.GetProposal(h, r)
+			prop, parts, has := cs.propagator.GetProposal(h, r)
 
 			if !has {
 				schema.WriteNote(

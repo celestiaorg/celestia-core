@@ -33,24 +33,24 @@ func exampleVote() *types.Vote {
 	}
 }
 
-// func exampleProposal() *types.Proposal {
+func exampleProposal() *types.Proposal {
 
-// 	return &types.Proposal{
-// 		Type:      cmtproto.SignedMsgType(1),
-// 		Height:    3,
-// 		Round:     2,
-// 		Timestamp: stamp,
-// 		POLRound:  2,
-// 		Signature: []byte("it's a signature"),
-// 		BlockID: types.BlockID{
-// 			Hash: tmhash.Sum([]byte("blockID_hash")),
-// 			PartSetHeader: types.PartSetHeader{
-// 				Total: 1000000,
-// 				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
-// 			},
-// 		},
-// 	}
-// }
+	return &types.Proposal{
+		Type:      cmtproto.SignedMsgType(1),
+		Height:    3,
+		Round:     2,
+		Timestamp: stamp,
+		POLRound:  2,
+		Signature: []byte("it's a signature"),
+		BlockID: types.BlockID{
+			Hash: tmhash.Sum([]byte("blockID_hash")),
+			PartSetHeader: types.PartSetHeader{
+				Total: 1000000,
+				Hash:  tmhash.Sum([]byte("blockID_part_set_header_hash")),
+			},
+		},
+	}
+}
 
 //nolint:lll // ignore line length for tests
 func TestPrivvalVectors(t *testing.T) {
@@ -63,8 +63,8 @@ func TestPrivvalVectors(t *testing.T) {
 	votepb := vote.ToProto()
 
 	// Generate a simple proposal
-	// proposal := exampleProposal()
-	// proposalpb := proposal.ToProto() // TODO: start testing the proposal again
+	proposal := exampleProposal()
+	proposalpb := proposal.ToProto()
 
 	// Create a Reuseable remote error
 	remoteError := &privproto.RemoteSignerError{Code: 1, Description: "it's a error"}
@@ -82,9 +82,9 @@ func TestPrivvalVectors(t *testing.T) {
 		{"Vote Request", &privproto.SignVoteRequest{Vote: votepb}, "1a81010a7f080210031802224a0a208b01023386c371778ecb6368573e539afc3cc860ec3a2f614e54fe5652f4fc80122608c0843d122072db3d959635dff1bb567bedaa70573392c5159666a3f8caf11e413aac52207a2a0608f49a8ded0532146af1f4111082efb388211bc72c55bcd61e9ac3d538d5bb034a09657874656e73696f6e"},
 		{"Vote Response", &privproto.SignedVoteResponse{Vote: *votepb, Error: nil}, "2281010a7f080210031802224a0a208b01023386c371778ecb6368573e539afc3cc860ec3a2f614e54fe5652f4fc80122608c0843d122072db3d959635dff1bb567bedaa70573392c5159666a3f8caf11e413aac52207a2a0608f49a8ded0532146af1f4111082efb388211bc72c55bcd61e9ac3d538d5bb034a09657874656e73696f6e"},
 		{"Vote Response with error", &privproto.SignedVoteResponse{Vote: cmtproto.Vote{}, Error: remoteError}, "22250a11220212002a0b088092b8c398feffffff0112100801120c697427732061206572726f72"},
-		// {"Proposal Request", &privproto.SignProposalRequest{Proposal: proposalpb}, "2a700a6e08011003180220022a4a0a208b01023386c371778ecb6368573e539afc3cc860ec3a2f614e54fe5652f4fc80122608c0843d122072db3d959635dff1bb567bedaa70573392c5159666a3f8caf11e413aac52207a320608f49a8ded053a10697427732061207369676e6174757265"},
-		// {"Proposal Response", &privproto.SignedProposalResponse{Proposal: *proposalpb, Error: nil}, "32700a6e08011003180220022a4a0a208b01023386c371778ecb6368573e539afc3cc860ec3a2f614e54fe5652f4fc80122608c0843d122072db3d959635dff1bb567bedaa70573392c5159666a3f8caf11e413aac52207a320608f49a8ded053a10697427732061207369676e6174757265"},
-		// {"Proposal Response with error", &privproto.SignedProposalResponse{Proposal: cmtproto.Proposal{}, Error: remoteError}, "32250a112a021200320b088092b8c398feffffff0112100801120c697427732061206572726f72"},
+		{"Proposal Request", &privproto.SignProposalRequest{Proposal: proposalpb}, "2a700a6e08011003180220022a4a0a208b01023386c371778ecb6368573e539afc3cc860ec3a2f614e54fe5652f4fc80122608c0843d122072db3d959635dff1bb567bedaa70573392c5159666a3f8caf11e413aac52207a320608f49a8ded053a10697427732061207369676e6174757265"},
+		{"Proposal Response", &privproto.SignedProposalResponse{Proposal: *proposalpb, Error: nil}, "32700a6e08011003180220022a4a0a208b01023386c371778ecb6368573e539afc3cc860ec3a2f614e54fe5652f4fc80122608c0843d122072db3d959635dff1bb567bedaa70573392c5159666a3f8caf11e413aac52207a320608f49a8ded053a10697427732061207369676e6174757265"},
+		{"Proposal Response with error", &privproto.SignedProposalResponse{Proposal: cmtproto.Proposal{}, Error: remoteError}, "32250a112a021200320b088092b8c398feffffff0112100801120c697427732061206572726f72"},
 	}
 
 	for _, tc := range testCases {

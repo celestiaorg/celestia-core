@@ -59,6 +59,8 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		})
 		state, _ := stateStore.LoadFromDBOrGenesisDoc(genDoc)
 		thisConfig := ResetConfig(fmt.Sprintf("%s_%d", testName, i))
+		nodeKey, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
+		require.NoError(t, err)
 		defer os.RemoveAll(thisConfig.RootDir)
 		ensureDir(path.Dir(thisConfig.Consensus.WalFile()), 0o700) // dir for wal
 		app := appFunc()
@@ -90,14 +92,10 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		evpool, err := evidence.NewPool(evidenceDB, stateStore, blockStore)
 		require.NoError(t, err)
 		evpool.SetLogger(logger.With("module", "evidence"))
-
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
-		key, err := p2p.LoadNodeKey(config.NodeKey)
-		if err != nil {
-			cmtos.Exit(err.Error())
-		}
-		propagationReactor := propagation.NewReactor(key.ID(), nil, blockStore)
+
+		propagationReactor := propagation.NewReactor(nodeKey.ID(), nil, blockStore)
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagationReactor, mempool, evpool)
 		cs.SetLogger(cs.Logger)
 		// set private validator

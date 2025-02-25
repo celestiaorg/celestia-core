@@ -90,7 +90,7 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int, config *cfg.C
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool, blockStore)
 	key, err := p2p.LoadNodeKey(config.NodeKey)
 	if err != nil {
-		cmtos.Exit(err.Error())
+		panic(err)
 	}
 	propagator := propagation.NewReactor(key.ID(), nil, blockStore)
 	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore, propagator, mempool, evpool)

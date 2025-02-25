@@ -438,9 +438,9 @@ func newStateWithConfigAndBlockStore(
 	}
 
 	blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
-	key, err := p2p.LoadNodeKey(config.NodeKey)
+	key, err := p2p.LoadOrGenNodeKey(thisConfig.NodeKeyFile())
 	if err != nil {
-		cmtos.Exit(err.Error())
+		panic(err)
 	}
 	propagator := propagation.NewReactor(key.ID(), nil, blockStore)
 	cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool)

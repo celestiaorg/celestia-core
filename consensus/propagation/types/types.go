@@ -10,6 +10,129 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
+// TxMetaData keeps track of the hash of a transaction and its location within the
+// protobuf encoded block.
+type TxMetaData struct {
+	Hash  []byte `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`
+	Start uint32
+	End   uint32
+}
+
+// ToProto converts TxMetaData to its protobuf representation.
+func (t *TxMetaData) ToProto() *protoprop.TxMetaData {
+	return &protoprop.TxMetaData{
+		Hash:  t.Hash,
+		Start: t.Start,
+		End:   t.End,
+	}
+}
+
+// TxMetaDataFromProto converts a protobuf TxMetaData to its Go representation.
+func TxMetaDataFromProto(t *protoprop.TxMetaData) *TxMetaData {
+	return &TxMetaData{
+		Hash:  t.Hash,
+		Start: t.Start,
+		End:   t.End,
+	}
+}
+
+// ValidateBasic checks if the TxMetaData is valid. It fails if Start > End or
+// if the hash is invalid.
+func (t *TxMetaData) ValidateBasic() error {
+	if t.Start > t.End {
+		return errors.New("TxMetaData: Start > End")
+	}
+
+	return types.ValidateHash(t.Hash)
+}
+
+// CompactBlock contains commitments and metadata for reusing transactions that
+// have already been distributed.
+type CompactBlock struct {
+	BpHash    []byte         `json:"bp_hash,omitempty"`
+	Blobs     []*TxMetaData  `json:"blobs,omitempty"`
+	Signature []byte         `json:"signature,omitempty"`
+	Proposal  types.Proposal `json:"proposal,omitempty"`
+	LastLen   uint32         // length of the last part
+}
+
+// NewCompactBlock creates a new CompactBlock from a Proposal, a PartSet, and a
+// list of transaction hashes.
+//
+// TODO: fill in the tx hashes and pass the length of each of the transactions
+func NewCompactBlock(prop types.Proposal, parts *types.PartSet, hashes []types.TxKey) (*CompactBlock, error) {
+	eparts, lastlen, err := types.Encode(parts, types.BlockPartSizeBytes)
+	if err != nil {
+		return nil, err
+	}
+	blobs := make([]*TxMetaData, len(hashes))
+	for i, hash := range hashes {
+		blobs[i] = &TxMetaData{
+			Hash: hash[:],
+		}
+	}
+	return &CompactBlock{
+		BpHash:   eparts.Hash(),
+		Blobs:    blobs,
+		Proposal: prop,
+		LastLen:  uint32(lastlen),
+	}, nil
+}
+
+// ValidateBasic checks if the CompactBlock is valid. It fails if the height is
+// negative, if the round is negative, if the BpHash is invalid, or if any of
+// the Blobs are invalid.
+func (c *CompactBlock) ValidateBasic() error {
+	if err := types.ValidateHash(c.BpHash); err != nil {
+		return err
+	}
+	for _, blob := range c.Blobs {
+		if err := blob.ValidateBasic(); err != nil {
+			return err
+		}
+	}
+	if len(c.Signature) > types.MaxSignatureSize {
+		return errors.New("CompactBlock: Signature is too big")
+	}
+	return nil
+}
+
+// ToProto converts CompactBlock to its protobuf representation.
+func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
+	blobs := make([]*protoprop.TxMetaData, len(c.Blobs))
+	for i, blob := range c.Blobs {
+		blobs[i] = blob.ToProto()
+	}
+	return &protoprop.CompactBlock{
+		BpHash:     c.BpHash,
+		Blobs:      blobs,
+		Signature:  c.Signature,
+		Proposal:   c.Proposal.ToProto(),
+		LastLength: c.LastLen,
+	}
+}
+
+// CompactBlockFromProto converts a protobuf CompactBlock to its Go representation.
+func CompactBlockFromProto(c *protoprop.CompactBlock) (*CompactBlock, error) {
+	blobs := make([]*TxMetaData, len(c.Blobs))
+	for i, blob := range c.Blobs {
+		blobs[i] = TxMetaDataFromProto(blob)
+	}
+
+	prop, err := types.ProposalFromProto(c.Proposal)
+	if err != nil {
+		return nil, err
+	}
+
+	cb := &CompactBlock{
+		BpHash:    c.BpHash,
+		Blobs:     blobs,
+		Signature: c.Signature,
+		Proposal:  *prop,
+	}
+	return cb, cb.ValidateBasic()
+}
+
 // PartMetaData keeps track of the hash of each part, its location via the
 // index, along with the proof of inclusion to either the PartSetHeader hash or
 // the BPRoot in the CompactBlock.
@@ -228,25 +351,6 @@ func (p *RecoveryPart) ValidateBasic() error {
 	return nil
 }
 
-type Proposal struct {
-	*types.Proposal
-}
-
-func (p *Proposal) ToProto() *protoprop.Proposal {
-	prop := p.Proposal.ToProto()
-	return &protoprop.Proposal{
-		Proposal: prop,
-	}
-}
-
-func ProposalFromProto(prop *protoprop.Proposal) (Proposal, error) {
-	p, err := types.ProposalFromProto(prop.Proposal)
-	if err != nil {
-		return Proposal{}, err
-	}
-	return Proposal{Proposal: p}, nil
-}
-
 // MsgFromProto takes a consensus proto message and returns the native go type
 func MsgFromProto(p *protoprop.Message) (Message, error) {
 	if p == nil {
@@ -259,6 +363,32 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 	}
 
 	switch msg := um.(type) {
+	case *protoprop.TxMetaData:
+		pb = &TxMetaData{
+			Hash:  msg.Hash,
+			Start: msg.Start,
+			End:   msg.End,
+		}
+	case *protoprop.CompactBlock:
+		blobs := make([]*TxMetaData, len(msg.Blobs))
+		for i, blob := range msg.Blobs {
+			blobs[i] = &TxMetaData{
+				Hash:  blob.Hash,
+				Start: blob.Start,
+				End:   blob.End,
+			}
+		}
+		prop, err := types.ProposalFromProto(msg.Proposal)
+		if err != nil {
+			return nil, err
+		}
+		pb = &CompactBlock{
+			BpHash:    msg.BpHash,
+			Blobs:     blobs,
+			Signature: msg.Signature,
+			Proposal:  *prop,
+			LastLen:   msg.LastLength,
+		}
 	case *protoprop.PartMetaData:
 		pb = &PartMetaData{
 			Index: msg.Index,
@@ -303,27 +433,6 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			Round:  msg.Round,
 			Index:  msg.Index,
 			Data:   msg.Data,
-		}
-	case *protoprop.Proposal:
-		bid, err := types.BlockIDFromProto(&msg.Proposal.BlockID)
-		if err != nil {
-			return nil, err
-		}
-		compB, err := types.CompactBlockFromProto(msg.Proposal.CompactBlock)
-		if err != nil {
-			return nil, err
-		}
-		pb = &Proposal{
-			Proposal: &types.Proposal{
-				Height:       msg.Proposal.Height,
-				Round:        msg.Proposal.Round,
-				POLRound:     msg.Proposal.PolRound,
-				BlockID:      *bid,
-				Timestamp:    msg.Proposal.Timestamp,
-				Signature:    msg.Proposal.Signature,
-				CompactBlock: *compB,
-				Type:         msg.Proposal.Type,
-			},
 		}
 	default:
 		return nil, fmt.Errorf("propagation: message not recognized: %T", msg)

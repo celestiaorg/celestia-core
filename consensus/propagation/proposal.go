@@ -76,7 +76,15 @@ func (p *ProposalCache) AddProposal(proposal *types.Proposal) (added bool, gapHe
 
 // GetProposal returns the proposal and block for a given height and round if
 // this node has it stored or cached.
-func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, *bits.BitArray, bool) {
+func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool) {
+	prop, parts, _, has := p.GetProposalWithRequests(height, round)
+	return prop, parts, has
+}
+
+// GetProposal returns the proposal and block for a given height and round if
+// this node has it stored or cached. It also return the max requests for that
+// block.
+func (p *ProposalCache) GetProposalWithRequests(height int64, round int32) (*types.Proposal, *types.PartSet, *bits.BitArray, bool) {
 	p.pmtx.RLock()
 	defer p.pmtx.RUnlock()
 	// try to see if we have the block stored in the store. If so, we can ignore

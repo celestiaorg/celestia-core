@@ -22,7 +22,7 @@ func TestBasicPartSet(t *testing.T) {
 	// Construct random data of size partSize * 100
 	nParts := 100
 	data := cmtrand.Bytes(testPartSize * nParts)
-	partSet, _ := NewPartSetFromData(data, testPartSize)
+	partSet := NewPartSetFromData(data, testPartSize)
 
 	assert.NotEmpty(t, partSet.Hash())
 	assert.EqualValues(t, nParts, partSet.Total())
@@ -73,13 +73,25 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 
 	tests := []test{
 		{
-			1000,
+			1000, // test single part
 		},
 		{
-			100000,
+			int(BlockPartSizeBytes), // exactly 1 part
 		},
 		{
-			1000000,
+			int(BlockPartSizeBytes) - 1,
+		},
+		{
+			int(BlockPartSizeBytes) + 1,
+		},
+		{
+			100000, // > 1 part
+		},
+		{
+			1000000, // many parts
+		},
+		{
+			int(BlockPartSizeBytes) * 100, // exactly 100 parts
 		},
 	}
 	for _, tt := range tests {
@@ -92,9 +104,10 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 		bz, err := bp.Marshal()
 		require.NoError(t, err)
 
-		ops, eps := NewPartSetFromData(bz, BlockPartSizeBytes)
+		ops := NewPartSetFromData(bz, BlockPartSizeBytes)
 
-		lastPartLen := len(ops.GetPart(int(ops.Total() - 1)).Bytes.Bytes())
+		eps, lastPartLen, err := Encode(ops, BlockPartSizeBytes)
+		require.NoError(t, err)
 
 		ops.parts[0] = nil
 
@@ -116,14 +129,16 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 }
 
 func TestEncoding(t *testing.T) {
-	_, err := Encode([][]byte{cmtrand.Bytes(int(BlockPartSizeBytes))})
+	data := cmtrand.Bytes(testPartSize * 100)
+	partSet := NewPartSetFromData(data, testPartSize)
+	_, _, err := Encode(partSet, BlockPartSizeBytes)
 	require.NoError(t, err)
 }
 
 func TestWrongProof(t *testing.T) {
 	// Construct random data of size partSize * 100
 	data := cmtrand.Bytes(testPartSize * 100)
-	partSet, _ := NewPartSetFromData(data, testPartSize)
+	partSet := NewPartSetFromData(data, testPartSize)
 
 	// Test adding a part with wrong data.
 	partSet2 := NewPartSetFromHeader(partSet.Header())
@@ -174,7 +189,7 @@ func TestPartSetHeaderValidateBasic(t *testing.T) {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
 			data := cmtrand.Bytes(testPartSize * 100)
-			ps, _ := NewPartSetFromData(data, testPartSize)
+			ps := NewPartSetFromData(data, testPartSize)
 			psHeader := ps.Header()
 			tc.malleatePartSetHeader(&psHeader)
 			assert.Equal(t, tc.expectErr, psHeader.ValidateBasic() != nil, "Validate Basic had an unexpected result")
@@ -219,7 +234,7 @@ func TestPart_ValidateBasic(t *testing.T) {
 		tc := tc
 		t.Run(tc.testName, func(t *testing.T) {
 			data := cmtrand.Bytes(testPartSize * 100)
-			ps, _ := NewPartSetFromData(data, testPartSize)
+			ps := NewPartSetFromData(data, testPartSize)
 			part := ps.GetPart(0)
 			tc.malleatePart(part)
 			assert.Equal(t, tc.expectErr, part.ValidateBasic() != nil, "Validate Basic had an unexpected result")
