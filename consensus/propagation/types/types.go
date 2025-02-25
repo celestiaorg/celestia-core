@@ -378,10 +378,16 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 				End:   blob.End,
 			}
 		}
+		prop, err := types.ProposalFromProto(msg.Proposal)
+		if err != nil {
+			return nil, err
+		}
 		pb = &CompactBlock{
 			BpHash:    msg.BpHash,
 			Blobs:     blobs,
 			Signature: msg.Signature,
+			Proposal:  *prop,
+			LastLen:   msg.LastLength,
 		}
 	case *protoprop.PartMetaData:
 		pb = &PartMetaData{
