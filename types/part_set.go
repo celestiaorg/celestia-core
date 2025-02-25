@@ -222,12 +222,9 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	chunks := make([][]byte, 2*ops.Total())
 	lastLen := len(ops.GetPart(int(ops.Total() - 1)).Bytes.Bytes())
 	// pad ONLY the last chunk and not the part with zeros if necessary AFTER the root has been generated
-	for i, part := range ops.parts {
-		if part == nil {
-			return nil, 0, fmt.Errorf("missing part at index %d", i)
-		}
+	for i := range chunks {
 		if i < int(ops.Total()) {
-			chunks[i] = part.Bytes
+			chunks[i] = ops.GetPart(i).Bytes.Bytes()
 			continue
 		}
 		chunks[i] = make([]byte, partSize)

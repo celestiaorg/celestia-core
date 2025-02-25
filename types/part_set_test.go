@@ -73,13 +73,25 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 
 	tests := []test{
 		{
-			1000,
+			1000, // test single part
 		},
 		{
-			100000,
+			int(BlockPartSizeBytes), // exactly 1 part
 		},
 		{
-			1000000,
+			int(BlockPartSizeBytes) - 1,
+		},
+		{
+			int(BlockPartSizeBytes) + 1,
+		},
+		{
+			100000, // > 1 part
+		},
+		{
+			1000000, // many parts
+		},
+		{
+			int(BlockPartSizeBytes) * 100, // exactly 100 parts
 		},
 	}
 	for _, tt := range tests {
@@ -94,10 +106,8 @@ func TestEncodingDecodingRoundTrip(t *testing.T) {
 
 		ops := NewPartSetFromData(bz, BlockPartSizeBytes)
 
-		eps, _, err := Encode(ops, BlockPartSizeBytes)
+		eps, lastPartLen, err := Encode(ops, BlockPartSizeBytes)
 		require.NoError(t, err)
-
-		lastPartLen := len(ops.GetPart(int(ops.Total() - 1)).Bytes.Bytes())
 
 		ops.parts[0] = nil
 

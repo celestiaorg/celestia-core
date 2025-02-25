@@ -91,9 +91,9 @@ func (c *CompactBlock) ValidateBasic() error {
 			return err
 		}
 	}
-	// if len(c.Signature) > types.MaxSignatureSize {
-	// 	return errors.New("CompactBlock: Signature is too big")
-	// }
+	if len(c.Signature) > types.MaxSignatureSize {
+		return errors.New("CompactBlock: Signature is too big")
+	}
 	return nil
 }
 
@@ -108,7 +108,7 @@ func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
 		Blobs:      blobs,
 		Signature:  c.Signature,
 		Proposal:   c.Proposal.ToProto(),
-		LastLength: uint32(c.LastLen),
+		LastLength: c.LastLen,
 	}
 }
 

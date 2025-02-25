@@ -72,6 +72,11 @@ func TestTxMetaData_ValidateBasic(t *testing.T) {
 }
 
 func TestCompactBlock_RoundTrip(t *testing.T) {
+	mockProposal := types.NewProposal(
+		4, 2, 2,
+		makeBlockID(rand.Bytes(tmhash.Size), 777, rand.Bytes(tmhash.Size)),
+	)
+	mockProposal.Signature = rand.Bytes(types.MaxSignatureSize)
 	tests := []struct {
 		name string
 		data *CompactBlock
@@ -82,6 +87,7 @@ func TestCompactBlock_RoundTrip(t *testing.T) {
 				BpHash:    rand.Bytes(tmhash.Size),
 				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize),
+				Proposal:  *mockProposal,
 			},
 		},
 	}
@@ -536,5 +542,21 @@ func TestHaveParts_GetIndex(t *testing.T) {
 			got := hp.GetIndex(tc.checkIdx)
 			require.Equal(t, tc.expFound, got, "GetIndex result mismatch")
 		})
+	}
+}
+
+func makeBlockID(hash []byte, partSetSize uint32, partSetHash []byte) types.BlockID {
+	var (
+		h   = make([]byte, tmhash.Size)
+		psH = make([]byte, tmhash.Size)
+	)
+	copy(h, hash)
+	copy(psH, partSetHash)
+	return types.BlockID{
+		Hash: h,
+		PartSetHeader: types.PartSetHeader{
+			Total: partSetSize,
+			Hash:  psH,
+		},
 	}
 }

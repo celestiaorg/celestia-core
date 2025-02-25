@@ -224,6 +224,8 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, parts *types.Pa
 // - if adding the proposal to the state is successful, broadcast the proposal to the peers.
 // Note: this method will not propagate the haves after the proposal and the compact block is propagated.
 // Check broadcastSelfProposalHaves for that.
+//
+//nolint:unused
 func (blockProp *Reactor) handleProposal(proposal *types.Proposal, from p2p.ID, haves *bits.BitArray) {
 }
 
