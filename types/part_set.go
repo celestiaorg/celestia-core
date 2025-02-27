@@ -281,11 +281,6 @@ func Encode(ops *PartSet, partSize uint32) (*PartSet, int, error) {
 	return eps, lastLen, nil
 }
 
-// CanDecode determines if the set of PartSets have enough parts to decode the block.
-func CanDecode(ops, eps *PartSet) bool {
-	return (len(ops.BitArray().GetTrueIndices()) + len(eps.BitArray().GetTrueIndices())) >= int(ops.Total())
-}
-
 // IsReadyForDecoding returns true if the PartSet has every single part, not just
 // ready to be decoded.
 // TODO: this here only requires 2/3rd. We need all the data now because we have no erasure encoding.
@@ -306,6 +301,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 
 	data := make([][]byte, ops.Total()+eps.Total())
 	unpadded := []byte{}
+	ops.mtx.Lock()
 	for i, part := range ops.parts {
 		if part == nil {
 			data[i] = nil
@@ -319,9 +315,10 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 			chunk = padded
 		}
 		data[i] = chunk
-
 	}
+	ops.mtx.Unlock()
 
+	eps.mtx.Lock()
 	for i, part := range eps.parts {
 		if part == nil {
 			data[int(ops.Total())+i] = nil
@@ -329,6 +326,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 		}
 		data[int(ops.Total())+i] = part.Bytes
 	}
+	eps.mtx.Unlock()
 
 	err = enc.Reconstruct(data)
 	if err != nil {
@@ -347,11 +345,12 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	// recalculate all of the proofs since we apparently don't have a function
 	// to generate a single proof... TODO: don't generate proofs for block parts
 	// we already have...
-	root, proofs := merkle.ProofsFromByteSlices(data[:ops.total])
-	if !bytes.Equal(root, ops.hash) {
+	root, proofs := merkle.ProofsFromByteSlices(data[:ops.Total()])
+	if !bytes.Equal(root, ops.Hash()) {
 		return nil, nil, fmt.Errorf("reconstructed data has different hash!! want: %X, got: %X", ops.hash, root)
 	}
 
+	ops.mtx.Lock()
 	for i, d := range data[:ops.Total()] {
 		ops.partsBitArray.SetIndex(i, true)
 		if ops.parts[i] != nil {
@@ -365,15 +364,17 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	}
 
 	ops.count = ops.total
+	ops.mtx.Unlock()
 
 	// recalculate all of the proofs since we apparently don't have a function
 	// to generate a single proof... TODO: don't generate proofs for block parts
 	// we already have.
-	eroot, eproofs := merkle.ProofsFromByteSlices(data[ops.total:])
-	if !bytes.Equal(eroot, eps.hash) {
+	eroot, eproofs := merkle.ProofsFromByteSlices(data[ops.Total():])
+	if !bytes.Equal(eroot, eps.Hash()) {
 		return nil, nil, fmt.Errorf("reconstructed parity data has different hash!! want: %X, got: %X", eps.hash, eroot)
 	}
 
+	eps.mtx.Lock()
 	for i := 0; i < int(eps.Total()); i++ {
 		eps.partsBitArray.SetIndex(i, true)
 		if eps.parts[i] != nil {
@@ -387,6 +388,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	}
 
 	eps.count = eps.total
+	eps.mtx.Unlock()
 
 	return ops, eps, nil
 }
@@ -421,8 +423,6 @@ func (ps *PartSet) HasHeader(header PartSetHeader) bool {
 }
 
 func (ps *PartSet) BitArray() *bits.BitArray {
-	ps.mtx.Lock()
-	defer ps.mtx.Unlock()
 	return ps.partsBitArray.Copy()
 }
 
@@ -444,6 +444,8 @@ func (ps *PartSet) Count() uint32 {
 	if ps == nil {
 		return 0
 	}
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 	return ps.count
 }
 
@@ -514,6 +516,8 @@ func (ps *PartSet) GetPart(index int) *Part {
 }
 
 func (ps *PartSet) IsComplete() bool {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 	return ps.count == ps.total
 }
 

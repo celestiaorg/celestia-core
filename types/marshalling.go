@@ -30,8 +30,7 @@ func MarshalBlockWithTxPositions(block proto.Message) ([]byte, []TxPosition, err
 	// We need to find it (it’s encoded as a length-delimited field).
 	dataContentOffset, _, dataContent, err := findField(b, 2)
 	if err != nil {
-		// Data field not found; perhaps return an empty positions slice.
-		return b, nil, nil
+		return b, nil, err
 	}
 
 	// Now, parse the encoded Data message to locate each repeated "txs" field.
@@ -66,22 +65,23 @@ func MarshalBlockWithTxPositions(block proto.Message) ([]byte, []TxPosition, err
 				overallEnd := dataContentOffset + fieldEndInData
 				positions = append(positions, TxPosition{Start: overallStart, End: overallEnd})
 			}
-		} else {
-			// For non length-delimited fields, skip appropriately.
-			switch wireType {
-			case 0: // varint
-				_, n, err := readVarint(dataContent[offset:])
-				if err != nil {
-					return b, nil, err
-				}
-				offset += n
-			case 1: // 64-bit
-				offset += 8
-			case 5: // 32-bit
-				offset += 4
-			default:
-				return b, nil, fmt.Errorf("unsupported wire type %d", wireType)
+			continue
+		}
+
+		// For non length-delimited fields, skip appropriately.
+		switch wireType {
+		case 0: // varint
+			_, n, err := readVarint(dataContent[offset:])
+			if err != nil {
+				return b, nil, err
 			}
+			offset += n
+		case 1: // 64-bit
+			offset += 8
+		case 5: // 32-bit
+			offset += 4
+		default:
+			return b, nil, fmt.Errorf("unsupported wire type %d", wireType)
 		}
 	}
 

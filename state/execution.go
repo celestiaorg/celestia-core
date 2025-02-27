@@ -163,7 +163,6 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	newData, err := types.DataFromProto(rawNewData)
 	if err != nil {
-		// todo(evan): see if we can get rid of this panic
 		panic(err)
 	}
 
@@ -175,8 +174,15 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		proposerAddr,
 	)
 
-	// todo: actually pass the cached hashes and starting and ending points
-	block.SetCachedHashes([][]byte{})
+	// get the cached hashes
+	// TODO: make sure that the hashes are correct here
+	// via also removing hashes that the application removed!
+	hashes := make([][]byte, len(newData.Txs))
+	for i := 0; i < len(newData.Txs); i++ {
+		hashes[i] = txs[i].Hash()
+	}
+
+	block.SetCachedHashes(hashes)
 
 	return block, partset
 }

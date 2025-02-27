@@ -79,6 +79,9 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool, gap
 // this node has it stored or cached.
 func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool) {
 	cb, parts, _, has := p.getAllState(height, round)
+	if !has {
+		return nil, nil, false
+	}
 	return &cb.Proposal, parts, has
 }
 

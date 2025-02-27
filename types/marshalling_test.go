@@ -31,6 +31,10 @@ func TestMarshalBlockWithTxPositions(t *testing.T) {
 			name:    "Multiple txs",
 			txSizes: []int{5, 20, 15},
 		},
+		{
+			name:    "Multiple large txs",
+			txSizes: []int{64000, 1000, 1000000, 2000000, 8000000},
+		},
 	}
 
 	for _, tt := range tests {
@@ -70,10 +74,6 @@ func TestMarshalBlockWithTxPositions(t *testing.T) {
 				length, _, err := readVarint(fieldBytes[n:])
 				require.NoError(t, err)
 				assert.Equal(t, tt.txSizes[i], int(length), "tx length does not match expected size")
-
-				// Optionally, one might decode or further inspect the raw tx bytes here.
-				// rawTx := fieldBytes[n+n2 : ]
-				// assert.Equal(t, tt.txSizes[i], len(rawTx), "raw tx content length mismatch")
 			}
 		})
 	}

@@ -1204,10 +1204,14 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		// send proposal and block parts on internal msg queue
 		cs.sendInternalMessage(msgInfo{&ProposalMessage{proposal}, ""})
 
-		// todo: also pass the hash
 		metaData := make([]proptypes.TxMetaData, len(block.Txs))
+		hashes := block.CachedHashes()
 		for i, pos := range blockParts.TxPos {
-			metaData[i] = proptypes.TxMetaData{Start: uint32(pos.Start), End: uint32(pos.End)}
+			metaData[i] = proptypes.TxMetaData{
+				Start: uint32(pos.Start),
+				End:   uint32(pos.End),
+				Hash:  hashes[i],
+			}
 		}
 
 		cs.propagator.ProposeBlock(proposal, blockParts, metaData)

@@ -33,6 +33,8 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	}
 
 	blockProp.broadcastCompactBlock(&cb, blockProp.self)
+
+	// distribute equal portions of haves to each of the proposer's peers
 }
 
 // handleCompactBlock adds a proposal to the data routine. This should be called any
