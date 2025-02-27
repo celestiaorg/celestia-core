@@ -168,6 +168,8 @@ type PartSet struct {
 	// a count of the total size (in bytes). Used to ensure that the
 	// part set doesn't exceed the maximum block bytes
 	byteSize int64
+
+	TxPos []TxPosition
 }
 
 // Returns an immutable, full PartSet from the data bytes.

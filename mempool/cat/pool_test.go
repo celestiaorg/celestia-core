@@ -361,14 +361,14 @@ func TestTxPool_ReapMaxBytesMaxGas(t *testing.T) {
 
 	// reap by gas capacity only
 	reapedTxs := txmp.ReapMaxBytesMaxGas(-1, 50)
-	ensurePrioritized(reapedTxs)
+	ensurePrioritized(types.TxsFromCachedTxs(reapedTxs))
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
 	require.Len(t, reapedTxs, 50)
 
 	// reap by transaction bytes only
 	reapedTxs = txmp.ReapMaxBytesMaxGas(1200, -1)
-	ensurePrioritized(reapedTxs)
+	ensurePrioritized(types.TxsFromCachedTxs(reapedTxs))
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
 	// each tx is 57 bytes, 20 * 57 = 1140 + overhead for proto encoding
@@ -377,7 +377,7 @@ func TestTxPool_ReapMaxBytesMaxGas(t *testing.T) {
 	// Reap by both transaction bytes and gas, where the size yields 31 reaped
 	// transactions and the gas limit reaps 25 transactions.
 	reapedTxs = txmp.ReapMaxBytesMaxGas(2000, 25)
-	ensurePrioritized(reapedTxs)
+	ensurePrioritized(types.TxsFromCachedTxs(reapedTxs))
 	require.Equal(t, len(tTxs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
 	require.Len(t, reapedTxs, 25)

@@ -25,7 +25,7 @@ func makeCompactBlock(height int64, round int32, totalParts int32) *proptypes.Co
 		BpHash:    cmtrand.Bytes(32),
 		Signature: cmtrand.Bytes(64),
 		LastLen:   0,
-		Blobs: []*proptypes.TxMetaData{
+		Blobs: []proptypes.TxMetaData{
 			{Hash: cmtrand.Bytes(32)},
 			{Hash: cmtrand.Bytes(32)},
 		},
