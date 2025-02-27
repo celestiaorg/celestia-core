@@ -20,7 +20,7 @@ Respective versioned files can be found <https://raw.githubusercontent.com/comet
 
 CometBFT is Byzantine Fault Tolerant (BFT) middleware that takes a state transition machine, written in any programming language, and securely replicates it on many machines.
 
-For more background, see the [the docs](https://docs.cometbft.com/v0.34/introduction/#quick-start).
+For more background, see the [docs](https://docs.cometbft.com/v0.34/introduction/#quick-start).
 
 To get started developing applications, see the [application developers guide](https://docs.cometbft.com/v0.34/introduction/quick-start.html).
 
