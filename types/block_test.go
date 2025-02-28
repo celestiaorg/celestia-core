@@ -880,19 +880,3 @@ func TestBlob(t *testing.T) {
 		assert.Equal(t, want, got)
 	})
 }
-
-func makeBlock(t *testing.T, txs []int) *cmtproto.Block {
-	bztxs := make([]Tx, len(txs))
-	for i, tx := range txs {
-		bztxs[i] = cmtrand.Bytes(tx)
-	}
-	h := cmtrand.Int63()
-	c1 := randCommit(time.Now())
-	evidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
-	evi := NewMockDuplicateVoteEvidence(h, evidenceTime, "block-test-chain")
-	b1 := MakeBlock(h, makeData(bztxs), c1, []Evidence{evi})
-	b1.ProposerAddress = cmtrand.Bytes(crypto.AddressSize)
-	pb, err := b1.ToProto()
-	require.NoError(t, err)
-	return pb
-}

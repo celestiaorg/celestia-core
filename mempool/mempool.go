@@ -42,7 +42,7 @@ type Mempool interface {
 	//
 	// If both maxes are negative, there is no cap on the size of all returned
 	// transactions (~ all available transactions).
-	ReapMaxBytesMaxGas(maxBytes, maxGas int64) []types.CachedTx
+	ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 
 	// ReapMaxTxs reaps up to max transactions from the mempool. If max is
 	// negative, there is no cap on the size of all returned transactions

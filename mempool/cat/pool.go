@@ -419,10 +419,10 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 //
 // If the mempool is empty or has no transactions fitting within the given
 // constraints, the result will also be empty.
-func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []types.CachedTx {
+func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx {
 	var totalGas, totalBytes int64
 
-	var keep []types.CachedTx
+	var keep []*types.CachedTx
 	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
 		// N.B. When computing byte size, we need to include the overhead for
 		// encoding as protobuf to send to the application. This actually overestimates it
