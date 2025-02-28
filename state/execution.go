@@ -177,6 +177,16 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		proposerAddr,
 	)
 
+	// get the cached hashes
+	// TODO: make sure that the hashes are correct here
+	// via also removing hashes that the application removed!
+	hashes := make([][]byte, len(newData.Txs))
+	for i := 0; i < len(newData.Txs); i++ {
+		hashes[i] = txs[i].Hash()
+	}
+
+	block.SetCachedHashes(hashes)
+
 	return block, ops, eps, []*types.TxMetaData{}, err // see todo on using hashes above
 }
 

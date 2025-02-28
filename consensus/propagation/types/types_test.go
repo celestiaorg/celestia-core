@@ -84,7 +84,7 @@ func TestCompactBlock_RoundTrip(t *testing.T) {
 			"valid block",
 			&CompactBlock{
 				BpHash:    rand.Bytes(tmhash.Size),
-				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Blobs:     []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize),
 				Proposal:  *mockProposal,
 			},
@@ -112,7 +112,7 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 			"valid block",
 			&CompactBlock{
 				BpHash:    rand.Bytes(tmhash.Size),
-				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Blobs:     []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize),
 			},
 			nil,
@@ -121,7 +121,7 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 			"invalid bp_hash",
 			&CompactBlock{
 				BpHash:    rand.Bytes(tmhash.Size + 1),
-				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Blobs:     []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize),
 			},
 			errors.New("expected size to be 32 bytes, got 33 bytes"),
@@ -130,7 +130,7 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 			"too big of signature",
 			&CompactBlock{
 				BpHash:    rand.Bytes(tmhash.Size),
-				Blobs:     []*TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Blobs:     []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize + 1),
 			},
 			errors.New("CompactBlock: Signature is too big"),

@@ -87,44 +87,63 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	reactor2 := reactors[1]
 	reactor3 := reactors[2]
 
+	baseCompactBlock := &proptypes.CompactBlock{
+		BpHash:    cmtrand.Bytes(32),
+		Signature: cmtrand.Bytes(64),
+		LastLen:   0,
+		Blobs: []proptypes.TxMetaData{
+			{Hash: cmtrand.Bytes(32)},
+			{Hash: cmtrand.Bytes(32)},
+		},
+	}
+
 	// adding the proposal manually so the haves/wants and recovery
 	// parts are not rejected.
-	added, _, _ := reactor1.AddProposal(&types2.Proposal{
-		BlockID: types2.BlockID{
+	p := types.Proposal{
+		BlockID: types.BlockID{
 			Hash:          nil,
-			PartSetHeader: types2.PartSetHeader{Total: 30},
+			PartSetHeader: types.PartSetHeader{Total: 30},
 		},
 		Height: 10,
 		Round:  1,
-	})
+	}
+	baseCompactBlock.Proposal = p
+	added, _, _ := reactor1.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added, _, _ = reactor2.AddProposal(&types2.Proposal{
-		BlockID: types2.BlockID{
+
+	p2 := types.Proposal{
+		BlockID: types.BlockID{
 			Hash:          nil,
-			PartSetHeader: types2.PartSetHeader{Total: 30},
+			PartSetHeader: types.PartSetHeader{Total: 30},
 		},
 		Height: 10,
 		Round:  1,
-	})
+	}
+	baseCompactBlock.Proposal = p2
+	added, _, _ = reactor2.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added, _, _ = reactor3.AddProposal(&types2.Proposal{
-		BlockID: types2.BlockID{
+
+	p3 := types.Proposal{
+		BlockID: types.BlockID{
 			Hash:          nil,
-			PartSetHeader: types2.PartSetHeader{Total: 30},
+			PartSetHeader: types.PartSetHeader{Total: 30},
 		},
 		Height: 10,
 		Round:  1,
-	})
+	}
+	baseCompactBlock.Proposal = p3
+
+	added, _, _ = reactor3.AddProposal(baseCompactBlock)
 	require.True(t, added)
 	proof := merkle.Proof{LeafHash: cmtrand.Bytes(32)}
 
 	// reactor 1 will receive haves from reactor 2
 	reactor1.handleHaves(
 		reactor2.self,
-		&types.HaveParts{
+		&proptypes.HaveParts{
 			Height: 10,
 			Round:  1,
-			Parts: []types.PartMetaData{
+			Parts: []proptypes.PartMetaData{
 				{Index: 2, Proof: proof},
 				{Index: 3, Proof: proof},
 				{Index: 4, Proof: proof},
@@ -137,9 +156,9 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	assert.True(t, has)
 	assert.Equal(t, int64(10), haves.Height)
 	assert.Equal(t, int32(1), haves.Round)
-	assert.Contains(t, haves.Parts, types.PartMetaData{Index: 2, Proof: proof})
-	assert.Contains(t, haves.Parts, types.PartMetaData{Index: 3, Proof: proof})
-	assert.Contains(t, haves.Parts, types.PartMetaData{Index: 4, Proof: proof})
+	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 2, Proof: proof})
+	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 3, Proof: proof})
+	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 4, Proof: proof})
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -150,8 +169,8 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 
 	r3Haves, r3Has := r3State.GetHaves(10, 1)
 	assert.True(t, r3Has)
-	assert.Contains(t, r3Haves.Parts, types.PartMetaData{Index: 3, Proof: proof})
-	assert.Contains(t, r3Haves.Parts, types.PartMetaData{Index: 4, Proof: proof})
+	assert.Contains(t, r3Haves.Parts, proptypes.PartMetaData{Index: 3, Proof: proof})
+	assert.Contains(t, r3Haves.Parts, proptypes.PartMetaData{Index: 4, Proof: proof})
 
 	// since reactor 3 received the haves from reactor 1,
 	// it will send back a want.
@@ -163,7 +182,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 
 	// add the recovery part to the reactor 1.
 	randomData := cmtrand.Bytes(10)
-	reactor1.handleRecoveryPart(reactor2.self, &types.RecoveryPart{
+	reactor1.handleRecoveryPart(reactor2.self, &proptypes.RecoveryPart{
 		Height: 10,
 		Round:  1,
 		Index:  2,

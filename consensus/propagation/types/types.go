@@ -50,33 +50,10 @@ func (t *TxMetaData) ValidateBasic() error {
 // have already been distributed.
 type CompactBlock struct {
 	BpHash    []byte         `json:"bp_hash,omitempty"`
-	Blobs     []*TxMetaData  `json:"blobs,omitempty"`
+	Blobs     []TxMetaData   `json:"blobs,omitempty"`
 	Signature []byte         `json:"signature,omitempty"`
 	Proposal  types.Proposal `json:"proposal,omitempty"`
 	LastLen   uint32         // length of the last part
-}
-
-// NewCompactBlock creates a new CompactBlock from a Proposal, a PartSet, and a
-// list of transaction hashes.
-//
-// TODO: fill in the tx hashes and pass the length of each of the transactions
-func NewCompactBlock(prop types.Proposal, parts *types.PartSet, hashes []types.TxKey) (*CompactBlock, error) {
-	eparts, lastlen, err := types.Encode(parts, types.BlockPartSizeBytes)
-	if err != nil {
-		return nil, err
-	}
-	blobs := make([]*TxMetaData, len(hashes))
-	for i, hash := range hashes {
-		blobs[i] = &TxMetaData{
-			Hash: hash[:],
-		}
-	}
-	return &CompactBlock{
-		BpHash:   eparts.Hash(),
-		Blobs:    blobs,
-		Proposal: prop,
-		LastLen:  uint32(lastlen),
-	}, nil
 }
 
 // ValidateBasic checks if the CompactBlock is valid. It fails if the height is
@@ -114,9 +91,9 @@ func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
 
 // CompactBlockFromProto converts a protobuf CompactBlock to its Go representation.
 func CompactBlockFromProto(c *protoprop.CompactBlock) (*CompactBlock, error) {
-	blobs := make([]*TxMetaData, len(c.Blobs))
+	blobs := make([]TxMetaData, len(c.Blobs))
 	for i, blob := range c.Blobs {
-		blobs[i] = TxMetaDataFromProto(blob)
+		blobs[i] = *TxMetaDataFromProto(blob)
 	}
 
 	prop, err := types.ProposalFromProto(c.Proposal)
@@ -370,9 +347,9 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			End:   msg.End,
 		}
 	case *protoprop.CompactBlock:
-		blobs := make([]*TxMetaData, len(msg.Blobs))
+		blobs := make([]TxMetaData, len(msg.Blobs))
 		for i, blob := range msg.Blobs {
-			blobs[i] = &TxMetaData{
+			blobs[i] = TxMetaData{
 				Hash:  blob.Hash,
 				Start: blob.Start,
 				End:   blob.End,

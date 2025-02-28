@@ -35,6 +35,65 @@ func (tx TxKey) String() string {
 }
 
 // Hash computes the TMHASH hash of the wire encoded transaction.
+type CachedTx struct {
+	Tx
+	hash []byte
+}
+
+// Hash returns the cached hash if available, otherwise it computes the hash
+// using the normal Tx.Hash method.
+func (tx *CachedTx) Hash() []byte {
+	if tx.hash != nil {
+		return tx.hash
+	}
+	h := tx.Tx.Hash()
+	tx.hash = h
+	return h
+}
+
+// Key returns the cached key if available, otherwise it computes the key
+// using the normal Tx.Key method.
+func (tx *CachedTx) Key() TxKey {
+	if tx.hash != nil {
+		return TxKey(tx.hash)
+	}
+	k := tx.Tx.Key()
+	tx.hash = k[:]
+	return k
+}
+
+// NewCachedTx creates a new CachedTx with the provided transaction and hash.
+func NewCachedTx(tx Tx, hash []byte) *CachedTx {
+	return &CachedTx{Tx: tx, hash: hash}
+}
+
+func TxsFromCachedTxs(cachedTxs []*CachedTx) Txs {
+	txs := make(Txs, len(cachedTxs))
+	for i, cachedTx := range cachedTxs {
+		txs[i] = cachedTx.Tx
+	}
+	return txs
+}
+
+// CachedTxFromTxs creates a slice of CachedTx from a slice of Tx.
+func CachedTxFromTxs(txs Txs) []*CachedTx {
+	cachedTxs := make([]*CachedTx, len(txs))
+	for i, tx := range txs {
+		cachedTxs[i] = NewCachedTx(tx, nil)
+	}
+	return cachedTxs
+}
+
+func CachedTxToSliceOfBytes(cachedTxs []*CachedTx) [][]byte {
+	txBzs := make([][]byte, len(cachedTxs))
+	for i := 0; i < len(cachedTxs); i++ {
+		txBzs[i] = cachedTxs[i].Tx
+	}
+	return txBzs
+}
+
+// Hash computes the TMHASH hash of the wire encoded transaction. It attempts to
+// unwrap the transaction if it is a IndexWrapper or a BlobTx.
 func (tx Tx) Hash() []byte {
 	if indexWrapper, isIndexWrapper := UnmarshalIndexWrapper(tx); isIndexWrapper {
 		return tmhash.Sum(indexWrapper.Tx)
