@@ -1,9 +1,13 @@
 package types
 
 import (
+	"crypto/rand"
 	"fmt"
 	"time"
 
+	"github.com/tendermint/tendermint/crypto"
+	"github.com/tendermint/tendermint/crypto/tmhash"
+	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	cmtproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
@@ -84,4 +88,54 @@ func makeData(txs []Tx) Data {
 	return Data{
 		Txs: txs,
 	}
+}
+
+func MakeRandProtoBlock(txs []int) *cmtproto.Block {
+	bztxs := make([]Tx, len(txs))
+	for i, tx := range txs {
+		bztxs[i] = cmtrand.Bytes(tx)
+	}
+	h := cmtrand.Int63()
+	c1 := RandCommit(time.Now())
+	evidenceTime := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
+	evi := NewMockDuplicateVoteEvidence(h, evidenceTime, "block-test-chain")
+	b1 := MakeBlock(h, makeData(bztxs), c1, []Evidence{evi})
+	b1.ProposerAddress = cmtrand.Bytes(crypto.AddressSize)
+	pb, err := b1.ToProto()
+	if err != nil {
+		panic(err)
+	}
+	return pb
+}
+
+func RandCommit(now time.Time) *Commit {
+	lastID := MakeBlockIDRandom()
+	h := int64(3)
+	voteSet, _, vals := RandVoteSet(h-1, 1, cmtproto.PrecommitType, 10, 1)
+	commit, err := MakeCommit(lastID, h-1, 1, voteSet, vals, now)
+	if err != nil {
+		panic(err)
+	}
+	return commit
+}
+
+func RandVoteSet(
+	height int64,
+	round int32,
+	signedMsgType cmtproto.SignedMsgType,
+	numValidators int,
+	votingPower int64,
+) (*VoteSet, *ValidatorSet, []PrivValidator) {
+	valSet, privValidators := RandValidatorSet(numValidators, votingPower)
+	return NewVoteSet("test_chain_id", height, round, signedMsgType, valSet), valSet, privValidators
+}
+
+func MakeBlockIDRandom() BlockID {
+	var (
+		blockHash   = make([]byte, tmhash.Size)
+		partSetHash = make([]byte, tmhash.Size)
+	)
+	rand.Read(blockHash)   //nolint: errcheck // ignore errcheck for read
+	rand.Read(partSetHash) //nolint: errcheck // ignore errcheck for read
+	return BlockID{blockHash, PartSetHeader{123, partSetHash}}
 }

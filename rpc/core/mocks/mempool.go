@@ -116,10 +116,10 @@ func (mr *MockMempoolMockRecorder) Lock() *gomock.Call {
 }
 
 // ReapMaxBytesMaxGas mocks base method.
-func (m *MockMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types0.Txs {
+func (m *MockMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types0.CachedTx {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReapMaxBytesMaxGas", maxBytes, maxGas)
-	ret0, _ := ret[0].(types0.Txs)
+	ret0, _ := ret[0].([]*types0.CachedTx)
 	return ret0
 }
 

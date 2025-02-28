@@ -127,7 +127,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	preparedProposal, err := blockExec.proxyApp.PrepareProposalSync(
 		abci.RequestPrepareProposal{
-			BlockData:     &cmtproto.Data{Txs: txs.ToSliceOfBytes()},
+			BlockData:     &cmtproto.Data{Txs: types.CachedTxToSliceOfBytes(txs)},
 			BlockDataSize: maxDataBytes,
 			ChainId:       state.ChainID,
 			Height:        height,
@@ -163,17 +163,28 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 
 	newData, err := types.DataFromProto(rawNewData)
 	if err != nil {
-		// todo(evan): see if we can get rid of this panic
 		panic(err)
 	}
 
-	return state.MakeBlock(
+	block, partset := state.MakeBlock(
 		height,
 		newData,
 		commit,
 		evidence,
 		proposerAddr,
 	)
+
+	// get the cached hashes
+	// TODO: make sure that the hashes are correct here
+	// via also removing hashes that the application removed!
+	hashes := make([][]byte, len(newData.Txs))
+	for i := 0; i < len(newData.Txs); i++ {
+		hashes[i] = txs[i].Hash()
+	}
+
+	block.SetCachedHashes(hashes)
+
+	return block, partset
 }
 
 func (blockExec *BlockExecutor) ProcessProposal(

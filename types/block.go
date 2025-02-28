@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	gogotypes "github.com/gogo/protobuf/types"
 
 	"github.com/tendermint/tendermint/crypto"
@@ -47,6 +46,10 @@ type Block struct {
 	Data       `json:"data"`
 	Evidence   EvidenceData `json:"evidence"`
 	LastCommit *Commit      `json:"last_commit"`
+
+	// cachedHashes is used purely for passing the hashes of the tx alongside
+	// the block. This are not included in any encoding of this struct.
+	cachedHashes [][]byte
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data. It
@@ -142,11 +145,15 @@ func (b *Block) MakePartSet(partSize uint32) *PartSet {
 	if err != nil {
 		panic(err)
 	}
-	bz, err := proto.Marshal(pbb)
+
+	bz, pos, err := MarshalBlockWithTxPositions(pbb)
 	if err != nil {
 		panic(err)
 	}
+
 	ops := NewPartSetFromData(bz, partSize)
+	ops.TxPos = pos
+
 	return ops
 }
 
@@ -230,6 +237,20 @@ func (b *Block) ToProto() (*cmtproto.Block, error) {
 	pb.Evidence = *protoEvidence
 
 	return pb, nil
+}
+
+// Cachedhashes return any hashes of transactions that were included in this
+// block. This is used for passing the hashes of the txs alongside the block,
+// they are not included in any validity rule or encoding of the block.
+func (b *Block) CachedHashes() [][]byte {
+	return b.cachedHashes
+}
+
+// SetCachedHashes sets the cached hashes of the block. This is used for passing
+// the hashes of the txs alongside the block, they are not included in any
+// validity rule or encoding of the block.
+func (b *Block) SetCachedHashes(hashes [][]byte) {
+	b.cachedHashes = hashes
 }
 
 // FromProto sets a protobuf Block to the given pointer.

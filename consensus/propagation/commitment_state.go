@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/store"
@@ -8,9 +9,9 @@ import (
 )
 
 type proposalData struct {
-	proposal    *types.Proposal
-	block       *types.PartSet
-	maxRequests *bits.BitArray
+	compactBlock *proptypes.CompactBlock
+	block        *types.PartSet
+	maxRequests  *bits.BitArray
 }
 
 type ProposalCache struct {
@@ -37,13 +38,13 @@ func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 	return pc
 }
 
-func (p *ProposalCache) AddProposal(proposal *types.Proposal) (added bool, gapHeights []int64, gapRounds []int32) {
+func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool, gapHeights []int64, gapRounds []int32) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
-	if p.proposals[proposal.Height] == nil {
-		p.proposals[proposal.Height] = make(map[int32]*proposalData)
+	if p.proposals[cb.Proposal.Height] == nil {
+		p.proposals[cb.Proposal.Height] = make(map[int32]*proposalData)
 	}
-	if p.proposals[proposal.Height][proposal.Round] != nil {
+	if p.proposals[cb.Proposal.Height][cb.Proposal.Round] != nil {
 		return false, gapHeights, gapRounds
 	}
 
@@ -51,25 +52,25 @@ func (p *ProposalCache) AddProposal(proposal *types.Proposal) (added bool, gapHe
 
 	// if we don't have this proposal, and its height is greater than the current
 	// height, update the current height and round.
-	if proposal.Height > p.currentHeight {
+	if cb.Proposal.Height > p.currentHeight {
 		// add the missing heights to the gapHeights
-		for h := p.currentHeight + 1; h < proposal.Height; h++ {
+		for h := p.currentHeight + 1; h < cb.Proposal.Height; h++ {
 			gapHeights = append(gapHeights, h)
 		}
-		p.currentHeight = proposal.Height
-		p.currentRound = proposal.Round
-	} else if proposal.Height == p.currentHeight && proposal.Round > p.currentRound {
+		p.currentHeight = cb.Proposal.Height
+		p.currentRound = cb.Proposal.Round
+	} else if cb.Proposal.Height == p.currentHeight && cb.Proposal.Round > p.currentRound {
 		// add the missing rounds to the gapRounds
-		for r := p.currentRound + 1; r < proposal.Round; r++ {
+		for r := p.currentRound + 1; r < cb.Proposal.Round; r++ {
 			gapRounds = append(gapRounds, r)
 		}
-		p.currentRound = proposal.Round
+		p.currentRound = cb.Proposal.Round
 	}
 
-	p.proposals[proposal.Height][proposal.Round] = &proposalData{
-		proposal:    proposal,
-		block:       types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader),
-		maxRequests: bits.NewBitArray(int(proposal.BlockID.PartSetHeader.Total)),
+	p.proposals[cb.Proposal.Height][cb.Proposal.Round] = &proposalData{
+		compactBlock: cb,
+		block:        types.NewPartSetFromHeader(cb.Proposal.BlockID.PartSetHeader),
+		maxRequests:  bits.NewBitArray(int(cb.Proposal.BlockID.PartSetHeader.Total)),
 	}
 	return true, gapHeights, gapRounds
 }
@@ -77,14 +78,17 @@ func (p *ProposalCache) AddProposal(proposal *types.Proposal) (added bool, gapHe
 // GetProposal returns the proposal and block for a given height and round if
 // this node has it stored or cached.
 func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool) {
-	prop, parts, _, has := p.GetProposalWithRequests(height, round)
-	return prop, parts, has
+	cb, parts, _, has := p.getAllState(height, round)
+	if !has {
+		return nil, nil, false
+	}
+	return &cb.Proposal, parts, has
 }
 
 // GetProposal returns the proposal and block for a given height and round if
 // this node has it stored or cached. It also return the max requests for that
 // block.
-func (p *ProposalCache) GetProposalWithRequests(height int64, round int32) (*types.Proposal, *types.PartSet, *bits.BitArray, bool) {
+func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *bits.BitArray, bool) {
 	p.pmtx.RLock()
 	defer p.pmtx.RUnlock()
 	// try to see if we have the block stored in the store. If so, we can ignore
@@ -119,7 +123,7 @@ func (p *ProposalCache) GetProposalWithRequests(height int64, round int32) (*typ
 		}
 		return nil, parts, parts.BitArray(), true
 	case has && hasRound:
-		return cachedProp.proposal, cachedProp.block, cachedProp.maxRequests, true
+		return cachedProp.compactBlock, cachedProp.block, cachedProp.maxRequests, true
 	default:
 		return nil, nil, nil, false
 	}
@@ -137,7 +141,7 @@ func (p *ProposalCache) GetCurrentProposal() (*types.Proposal, *types.PartSet, b
 	if !has {
 		return nil, nil, false
 	}
-	return proposalData.proposal, proposalData.block, true
+	return &proposalData.compactBlock.Proposal, proposalData.block, true
 }
 
 func (p *ProposalCache) DeleteHeight(height int64) {
