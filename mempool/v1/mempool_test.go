@@ -386,7 +386,8 @@ func TestTxMempoolTxLargerThanMaxBytes(t *testing.T) {
 	require.NoError(t, txmp.CheckTx(smallTx, nil, mempool.TxInfo{SenderID: 1}))
 
 	// reap by max bytes less than the large tx
-	reapedTxs := txmp.ReapMaxBytesMaxGas(100, -1)
+	cachedReapedTxs := txmp.ReapMaxBytesMaxGas(100, -1)
+	reapedTxs := types.TxsFromCachedTxs(cachedReapedTxs)
 	require.Len(t, reapedTxs, 1)
 	require.Equal(t, types.Tx(smallTx), reapedTxs[0])
 }
