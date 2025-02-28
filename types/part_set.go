@@ -444,8 +444,6 @@ func (ps *PartSet) Count() uint32 {
 	if ps == nil {
 		return 0
 	}
-	ps.mtx.Lock()
-	defer ps.mtx.Unlock()
 	return ps.count
 }
 
