@@ -228,7 +228,7 @@ func TestProposalCache_GetCurrentProposal(t *testing.T) {
 
 	gotProp, gotBlock, gotOk := pc.GetCurrentProposal()
 	require.True(t, gotOk, "should have current proposal now")
-	require.Equal(t, p, gotProp)
+	require.Equal(t, p.Proposal, *gotProp)
 	require.NotNil(t, gotBlock)
 }
 
