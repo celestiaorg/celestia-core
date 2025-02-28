@@ -120,7 +120,7 @@ func (slowApp) BeginBlock(req types.RequestBeginBlock) types.ResponseBeginBlock 
 	return types.ResponseBeginBlock{}
 }
 
-// TestCallbackInvokedWhenSetLaet ensures that the callback is invoked when
+// TestCallbackInvokedWhenSetLate ensures that the callback is invoked when
 // set after the client completes the call into the app. Currently this
 // test relies on the callback being allowed to be invoked twice if set multiple
 // times, once when set early and once when set late.
