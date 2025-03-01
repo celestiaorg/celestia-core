@@ -216,6 +216,8 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	// send the peer the partset header if they don't have the proposal.
 	// TODO get rid of this catchup case
 	if round < 0 {
+		// TODO do we still need this? since we're not covering the gaps,
+		// we only catchup in the case we didn't receive all the haves/parts for the previous height/round.
 		if !blockProp.sendPsh(peer, height, round) {
 			blockProp.Logger.Error("failed to send PSH", "peer", peer, "height", height, "round", round)
 			return
@@ -271,6 +273,28 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			Height: height,
 			Round:  round,
 		})
+	}
+}
+
+// broadcastWants gossips the provided want msg to all peers except to the
+// original sender. This will be called when catching up.
+func (blockProp *Reactor) broadcastWants(wants *proptypes.WantParts, from p2p.ID) {
+	e := p2p.Envelope{
+		ChannelID: WantChannel,
+		Message: &propproto.WantParts{
+			Height: wants.Height,
+			Round:  wants.Round,
+			Parts:  wants.ToProto().Parts,
+		},
+	}
+	for _, peer := range blockProp.getPeers() {
+		if peer.peer.ID() == from {
+			continue
+		}
+
+		if !p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+			blockProp.Logger.Error("couldn't send want part", "target_peer", peer.peer.ID(), "height", wants.Height, "round", wants.Round)
+		}
 	}
 }
 
