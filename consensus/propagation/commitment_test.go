@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 
@@ -54,4 +55,14 @@ func TestPropose(t *testing.T) {
 	_, _, has = reactor3.GetProposal(prop.Height, prop.Round)
 	require.True(t, has)
 
+	// Check if the other reactors received the haves
+	haves, has := reactor2.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
+	assert.True(t, has)
+	// the parts == total because we only have 2 peers
+	assert.Equal(t, len(haves.Parts), int(partSet.Total()))
+
+	haves, has = reactor3.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
+	assert.True(t, has)
+	// the parts == total because we only have 2 peers
+	assert.Equal(t, len(haves.Parts), int(partSet.Total()))
 }
