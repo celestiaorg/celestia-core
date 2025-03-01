@@ -1,9 +1,10 @@
 package propagation
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/stretchr/testify/assert"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
