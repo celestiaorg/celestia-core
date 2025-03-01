@@ -130,6 +130,7 @@ func (d *PeerState) SetWant(height int64, round int32, part int, wants bool) {
 }
 
 // GetHaves retrieves the haves for a given height and round.
+// TODO rename the empty return param
 func (d *PeerState) GetHaves(height int64, round int32) (empty *types.HaveParts, has bool) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()

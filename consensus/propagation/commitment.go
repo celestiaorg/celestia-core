@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"fmt"
+	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -35,6 +36,37 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	blockProp.broadcastCompactBlock(&cb, blockProp.self)
 
 	// distribute equal portions of haves to each of the proposer's peers
+	peers := blockProp.getPeers()
+	chunks := chunkParts(parityBlock.BitArray(), len(peers), 2) // TODO check whether the redundancy should be increased/decreased
+	for index, peer := range peers {
+		e := p2p.Envelope{
+			ChannelID: DataChannel,
+			Message: &propagation.HaveParts{
+				Height: proposal.Height,
+				Round:  proposal.Round,
+				Parts:  chunkToPartMetaData(chunks[index], parityBlock),
+			},
+		}
+		if !p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { // TODO maybe use a different logger
+			blockProp.Logger.Error("failed to send have part", "peer", peer, "height", proposal.Height, "round", proposal.Round, "part", index)
+			// TODO maybe retry
+			continue
+		}
+	}
+}
+
+func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propagation.PartMetaData {
+	partMetaData := make([]*propagation.PartMetaData, 0)
+	// TODO rename indice to a correct name
+	for _, indice := range chunk.GetTrueIndices() {
+		part := partSet.GetPart(indice)
+		partMetaData = append(partMetaData, &propagation.PartMetaData{ // TODO create the programmatic type and use the ToProto method
+			Index: part.Index,
+			Hash:  part.Proof.LeafHash, // TODO this seems like a duplicate field, do we need it?
+			Proof: *part.Proof.ToProto(),
+		})
+	}
+	return partMetaData
 }
 
 // handleCompactBlock adds a proposal to the data routine. This should be called any
