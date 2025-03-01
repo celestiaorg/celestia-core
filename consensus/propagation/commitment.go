@@ -47,7 +47,8 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 				Parts:  chunkToPartMetaData(chunks[index], parityBlock),
 			},
 		}
-		if !p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { // TODO maybe use a different logger
+		// TODO maybe use a different logger
+		if !p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
 			blockProp.Logger.Error("failed to send have part", "peer", peer, "height", proposal.Height, "round", proposal.Round, "part", index)
 			// TODO maybe retry
 			continue
