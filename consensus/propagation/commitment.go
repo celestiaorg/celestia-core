@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"fmt"
+
 	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
