@@ -113,9 +113,22 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 
 	// TODO pass a separate logger if needed
 	blockProp.setPeer(peer.ID(), newPeerState(peer, blockProp.Logger))
-	_, _, _ = blockProp.GetCurrentProposal()
+	cb, _, found := blockProp.GetCurrentCompactBlock()
 
-	// TODO send the proposal
+	if !found {
+		blockProp.Logger.Error("Failed to get current compact block", "peer", peer.ID())
+		return
+	}
+
+	// send the current proposal
+	e := p2p.Envelope{
+		ChannelID: DataChannel,
+		Message:   cb.ToProto(),
+	}
+
+	if !p2p.TrySendEnvelopeShim(peer, e, blockProp.Logger) { //nolint:staticcheck
+		blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.ID())
+	}
 }
 
 func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {

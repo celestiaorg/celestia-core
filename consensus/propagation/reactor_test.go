@@ -160,7 +160,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 3, Proof: proof})
 	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 4, Proof: proof})
 
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(400 * time.Millisecond)
 
 	// reactor 1 will gossip the haves with reactor 3
 	// check if the third reactor received the haves
@@ -189,7 +189,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 		Data:   randomData,
 	})
 
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	// check if reactor 3 received the recovery part.
 	_, parts, found := reactor3.GetProposal(10, 1)
