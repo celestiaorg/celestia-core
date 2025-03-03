@@ -213,17 +213,6 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
-	// send the peer the partset header if they don't have the proposal.
-	// TODO get rid of this catchup case
-	if round < 0 {
-		// TODO do we still need this? since we're not covering the gaps,
-		// we only catchup in the case we didn't receive all the haves/parts for the previous height/round.
-		if !blockProp.sendPsh(peer, height, round) {
-			blockProp.Logger.Error("failed to send PSH", "peer", peer, "height", height, "round", round)
-			return
-		}
-	}
-
 	// if we have the parts, send them to the peer.
 	wc := wants.Parts.Copy()
 
