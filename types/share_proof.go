@@ -72,7 +72,7 @@ func (sp ShareProof) Validate(root []byte) error {
 	numberOfSharesInProofs := int32(0)
 	for _, proof := range sp.ShareProofs {
 		// the range is not inclusive from the left.
-		numberOfSharesInProofs = proof.End - proof.Start
+		numberOfSharesInProofs += proof.End - proof.Start
 	}
 
 	if len(sp.ShareProofs) != len(sp.RowProof.RowRoots) {
