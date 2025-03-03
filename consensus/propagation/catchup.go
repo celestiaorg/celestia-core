@@ -2,14 +2,7 @@ package propagation
 
 import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/p2p"
 )
-
-// sendPsh sends the part set header to the provided peer.
-// TODO check if we still need this?
-func (blockProp *Reactor) sendPsh(peer p2p.ID, height int64, round int32) bool {
-	return true
-}
 
 // requestMissingBlocks is called when a node is catching up and needs to
 // request all previous blocks from the compact block source peer.
