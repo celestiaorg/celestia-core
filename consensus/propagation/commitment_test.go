@@ -48,10 +48,14 @@ func TestPropose(t *testing.T) {
 
 	reactor1.ProposeBlock(prop, partSet, metaData)
 
-	time.Sleep(400 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
+
+	// check that the proposal was saved in reactor 1
+	_, _, has := reactor1.GetProposal(prop.Height, prop.Round)
+	require.True(t, has)
 
 	// Check that the proposal was received by the other reactors
-	_, _, has := reactor2.GetProposal(prop.Height, prop.Round)
+	_, _, has = reactor2.GetProposal(prop.Height, prop.Round)
 	require.True(t, has)
 	_, _, has = reactor3.GetProposal(prop.Height, prop.Round)
 	require.True(t, has)

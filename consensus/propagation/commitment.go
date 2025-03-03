@@ -34,7 +34,8 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		Blobs:     txs,
 	}
 
-	blockProp.broadcastCompactBlock(&cb, blockProp.self)
+	// save the compact block locally and broadcast it to the connected peers
+	blockProp.handleCompactBlock(&cb, blockProp.self)
 
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
@@ -75,7 +76,7 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID) {
-	if cb.Proposal.Height > blockProp.currentHeight+1 || cb.Proposal.Round > blockProp.currentRound+1 {
+	if peer != blockProp.self && (cb.Proposal.Height > blockProp.currentHeight+1 || cb.Proposal.Round > blockProp.currentRound+1) {
 		// catchup on missing heights/rounds by requesting the missing parts from all connected peers.
 		go blockProp.requestMissingBlocks(cb.Proposal.Height, cb.Proposal.Round)
 	}
