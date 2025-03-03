@@ -2,6 +2,7 @@ package trace
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -126,7 +127,7 @@ func GetPushConfigFromEnv() (S3Config, error) {
 		return S3Config{}, err
 	}
 	if bucketName == "" || region == "" || accessKey == "" || secretKey == "" {
-		return S3Config{}, fmt.Errorf("missing required environment variables")
+		return S3Config{}, errors.New("missing required environment variables")
 	}
 	var s3Config = S3Config{
 		BucketName: bucketName,
