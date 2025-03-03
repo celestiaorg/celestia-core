@@ -8,12 +8,14 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+// TODO rename to CommitmentData
 type proposalData struct {
 	compactBlock *proptypes.CompactBlock
 	block        *types.PartSet
 	maxRequests  *bits.BitArray
 }
 
+// TODO rename to CommitmentCache
 type ProposalCache struct {
 	store         *store.BlockStore
 	pmtx          *sync.RWMutex
