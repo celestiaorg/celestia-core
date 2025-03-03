@@ -277,6 +277,12 @@ message ResponseCheckTx {
   // removed).
   reserved 9 to 11;
   reserved "sender", "priority", "mempool_error";
+
+
+  // these fields are used in the priority mempool
+  bytes address = 15;
+  uint64 gas_fees = 16;
+  uint64 sequence = 17;
 }
 
 message ResponseCommit {
