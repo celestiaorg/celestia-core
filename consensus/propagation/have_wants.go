@@ -47,15 +47,18 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 	blockProp.mtx.RLock()
 	defer blockProp.mtx.RUnlock()
 
-	// Update the peer's haves.
-	p.SetHaves(height, round, haves)
+	bm, has := p.GetHaves(height, round)
 
-	if parts.IsComplete() {
+	for _, pmd := range haves.Parts {
+		bm.SetIndex(int(pmd.Index), true)
+	}
+
+	if parts.Original().IsComplete() {
 		return
 	}
 
 	// Check if the sender has parts that we don't have.
-	hc := haves.Copy()
+	hc := haves.BitArray(int(parts.Total()))
 	hc.Sub(parts.BitArray())
 
 	// remove any parts that we have already requested sufficient times.
@@ -74,7 +77,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		reqs := blockProp.countRequests(height, round, partIndex)
 		if len(reqs) >= reqLimit {
 			// TODO unify the types for the indexes and similar
-			hc.RemoveIndex(uint32(partIndex))
+			hc.SetIndex(partIndex, false)
 			// mark the part as fully requested.
 			fullReqs.SetIndex(partIndex, true)
 		}
@@ -83,7 +86,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		for _, p := range reqs {
 			// p == peer means we have already requested the part from this peer.
 			if p == peer {
-				hc.RemoveIndex(uint32(partIndex))
+				hc.SetIndex(partIndex, false)
 			}
 		}
 	}
@@ -100,7 +103,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		Message: &propproto.WantParts{
 			Height: height,
 			Round:  round,
-			Parts:  *hc.ToBitArray().ToProto(),
+			Parts:  *hc.ToProto(),
 		},
 	}
 
@@ -121,8 +124,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 
 	// keep track of the parts that this node has requested.
 	// TODO check if we need to persist the have parts or just their bitarray
-	p.SetRequests(height, round, hc.ToBitArray())
-	blockProp.broadcastHaves(hc, peer)
+	p.AddRequests(height, round, hc)
+	blockProp.broadcastHaves(haves, peer)
 }
 
 // todo(evan): refactor to not iterate so often and just store which peers
@@ -161,8 +164,8 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		// parts.
 		ph, has := peer.GetHaves(haves.Height, haves.Round)
 		if has {
-			havesCopy := haves.Copy()
-			havesCopy.Sub(ph.ToBitArray())
+			havesCopy := ph.Copy()
+			havesCopy.Sub(haves.BitArray(ph.Size()))
 			if havesCopy.IsEmpty() {
 				continue
 			}
@@ -172,16 +175,8 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		// pull based gossip, this isn't as big as a deal since if someone asks
 		// for data, they must already have the proposal.
 		// TODO: use retry and logs
-		if p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
-			schema.WriteBlockPartState(
-				blockProp.traceClient,
-				haves.Height,
-				haves.Round,
-				haves.GetTrueIndices(),
-				true,
-				string(peer.peer.ID()),
-				schema.Upload,
-			)
+		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+			blockProp.Logger.Debug("failed to send haves to peer", "peer", peer.peer.ID())
 		}
 	}
 }
@@ -266,11 +261,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	// for parts that we don't have, but they still want, store the wants.
 	stillMissing := wants.Parts.Sub(canSend)
 	if !stillMissing.IsEmpty() {
-		p.SetWants(&proptypes.WantParts{
-			Parts:  stillMissing,
-			Height: height,
-			Round:  round,
-		})
+		p.AddWants(height, round, stillMissing)
 	}
 }
 
@@ -306,7 +297,8 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	// TODO this is not verifying the proof. make it verify it
+	// TODO: to verify, compare the hash with that of the have that was sent for
+	// this part and verified.
 	added, err := parts.AddPartWithoutProof(&types.Part{Index: part.Index, Bytes: part.Data})
 	if err != nil {
 		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)

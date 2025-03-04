@@ -10,7 +10,7 @@ import (
 
 type proposalData struct {
 	compactBlock *proptypes.CompactBlock
-	block        *types.PartSet
+	block        *proptypes.CombinedPartSet
 	maxRequests  *bits.BitArray
 }
 
@@ -69,7 +69,7 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool, gap
 
 	p.proposals[cb.Proposal.Height][cb.Proposal.Round] = &proposalData{
 		compactBlock: cb,
-		block:        types.NewPartSetFromHeader(cb.Proposal.BlockID.PartSetHeader),
+		block:        proptypes.NewCombinedSetFromCompactBlock(cb),
 		maxRequests:  bits.NewBitArray(int(cb.Proposal.BlockID.PartSetHeader.Total)),
 	}
 	return true, gapHeights, gapRounds
@@ -82,13 +82,13 @@ func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal,
 	if !has {
 		return nil, nil, false
 	}
-	return &cb.Proposal, parts, has
+	return &cb.Proposal, parts.Original(), has
 }
 
 // GetProposal returns the proposal and block for a given height and round if
 // this node has it stored or cached. It also return the max requests for that
 // block.
-func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *bits.BitArray, bool) {
+func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.CompactBlock, *proptypes.CombinedPartSet, *bits.BitArray, bool) {
 	p.pmtx.RLock()
 	defer p.pmtx.RUnlock()
 	// try to see if we have the block stored in the store. If so, we can ignore
@@ -121,7 +121,7 @@ func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.Compa
 		if err != nil {
 			return nil, nil, nil, false
 		}
-		return nil, parts, parts.BitArray(), true
+		return nil, proptypes.NewCombinedPartSetFromOriginal(parts), parts.BitArray(), true
 	case has && hasRound:
 		return cachedProp.compactBlock, cachedProp.block, cachedProp.maxRequests, true
 	default:
@@ -131,7 +131,7 @@ func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.Compa
 
 // GetCurrentProposal returns the current proposal and block for the current
 // height and round.
-func (p *ProposalCache) GetCurrentProposal() (*types.Proposal, *types.PartSet, bool) {
+func (p *ProposalCache) GetCurrentProposal() (*types.Proposal, *proptypes.CombinedPartSet, bool) {
 	p.pmtx.RLock()
 	defer p.pmtx.RUnlock()
 	if p.proposals[p.currentHeight] == nil {

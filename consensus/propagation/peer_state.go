@@ -1,8 +1,6 @@
 package propagation
 
 import (
-	"github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/sync"
@@ -33,104 +31,79 @@ func newPeerState(peer p2p.Peer, logger log.Logger) *PeerState {
 	}
 }
 
-// SetHaves sets the haves for a given height and round.
-func (d *PeerState) SetHaves(height int64, round int32, haves *types.HaveParts) {
+// Initialize initializes the state for a given height and round in a
+// thread-safe way.
+func (d *PeerState) Initialize(height int64, round int32, size int) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
+	d.initialize(height, round, size)
+}
+
+// initialize initializes the state for a given height and round. This method is
+// not thread-safe.
+func (d *PeerState) initialize(height int64, round int32, size int) {
 	// Initialize the inner map if it doesn't exist
 	if d.state[height] == nil {
 		d.state[height] = make(map[int32]*partState)
 	}
 	if d.state[height][round] == nil {
-		d.state[height][round] = newpartState(len(haves.Parts), height, round)
+		d.state[height][round] = newpartState(size, height, round)
 	}
-	d.state[height][round].setHaves(haves)
+}
+
+// SetHaves sets the haves for a given height and round.
+func (d *PeerState) AddHaves(height int64, round int32, haves *bits.BitArray) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	d.initialize(height, round, haves.Size())
+	d.state[height][round].addHaves(haves)
 }
 
 // SetWants sets the wants for a given height and round.
-func (d *PeerState) SetWants(wants *types.WantParts) {
+func (d *PeerState) AddWants(height int64, round int32, wants *bits.BitArray) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	// Initialize the inner map if it doesn't exist
-	if d.state[wants.Height] == nil {
-		d.state[wants.Height] = make(map[int32]*partState)
-	}
-	if d.state[wants.Height][wants.Round] == nil {
-		d.state[wants.Height][wants.Round] = newpartState(wants.Parts.Size(), wants.Height, wants.Round)
-	}
-	d.state[wants.Height][wants.Round].setWants(wants)
+	d.initialize(height, round, wants.Size())
+	d.state[height][round].addWants(wants)
 }
 
 // SetRequests sets the requests for a given height and round.
-func (d *PeerState) SetRequests(height int64, round int32, requests *bits.BitArray) {
+func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArray) {
 	if requests == nil || requests.Size() == 0 {
 		d.logger.Error("peer state requests is nil or empty")
 		return
 	}
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	// Initialize the inner map if it doesn't exist
-	if d.state[height] == nil {
-		d.state[height] = make(map[int32]*partState)
-	}
-	if d.state[height][round] == nil {
-		d.state[height][round] = newpartState(requests.Size(), height, round)
-	}
-	d.state[height][round].setRequests(requests)
+	d.initialize(height, round, requests.Size())
+	d.state[height][round].addRequests(requests)
 }
 
 // SetRequest sets the request bit for a given part.
 func (d *PeerState) SetRequest(height int64, round int32, part int) {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	if d.state[height] == nil {
-		return
-	}
-	if d.state[height][round] == nil {
-		return
-	}
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
 	d.state[height][round].setRequest(part)
 }
 
-// SetHave sets the have bit for a given part.
+// SetHave sets the have bit for a given part. WARNING: if the state is not
+// initialized for a given height and round, the function will panic.
 func (d *PeerState) SetHave(height int64, round int32, part int) {
-	// this is only a read mtx hold because each bitarrary holds the write mtx
-	// so this function only needs to ensure that reading is safe.
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	// Initialize the inner map if it doesn't exist
-	// TODO refactor these initialisations to a single function
-	if d.state[height] == nil {
-		d.state[height] = make(map[int32]*partState)
-	}
-	if d.state[height][round] == nil {
-		// d.state[height][round] = newpartState(wants.Size())
-		// todo(evan): actually do something here
-		return
-	}
-	d.state[height][round].setHave(part)
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
+	d.state[height][round].setHave(part, true)
 }
 
-// SetWant sets the want bit for a given part.
+// SetWant sets the want bit for a given part. WARNING: if the state is not
+// initialized for a given height and round, the function will panic.
 func (d *PeerState) SetWant(height int64, round int32, part int, wants bool) {
-	// this is only a read mtx hold because each bitarrary holds the write mtx
-	// so this function only needs to ensure that reading is safe.
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	// Initialize the inner map if it doesn't exist
-	if d.state[height] == nil {
-		d.state[height] = make(map[int32]*partState)
-	}
-	if d.state[height][round] == nil {
-		// d.state[height][round] = newpartState(wants.Size())
-		// todo(evan): actually do something here
-		return
-	}
+	d.mtx.RLock()
+	defer d.mtx.RUnlock()
 	d.state[height][round].setWant(part, wants)
 }
 
 // GetHaves retrieves the haves for a given height and round.
-func (d *PeerState) GetHaves(height int64, round int32) (empty *types.HaveParts, has bool) {
+func (d *PeerState) GetHaves(height int64, round int32) (empty *bits.BitArray, has bool) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	// create the maps if they don't exist
@@ -146,7 +119,7 @@ func (d *PeerState) GetHaves(height int64, round int32) (empty *types.HaveParts,
 }
 
 // GetWants retrieves the wants for a given height and round.
-func (d *PeerState) GetWants(height int64, round int32) (empty *types.WantParts, has bool) {
+func (d *PeerState) GetWants(height int64, round int32) (empty *bits.BitArray, has bool) {
 	d.mtx.RLock()
 	defer d.mtx.RUnlock()
 	// create the maps if they don't exist
@@ -179,17 +152,11 @@ func (d *PeerState) GetRequests(height int64, round int32) (empty *bits.BitArray
 
 // WantsPart checks if the peer wants a given part.
 func (d *PeerState) WantsPart(height int64, round int32, part uint32) bool {
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	hdata, has := d.state[height]
+	w, has := d.GetWants(height, round)
 	if !has {
 		return false
 	}
-	rdata, has := hdata[round]
-	if !has {
-		return false
-	}
-	return rdata.getWant(int(part))
+	return w.GetIndex(int(part))
 }
 
 // DeleteHeight removes all haves and wants for a given height.
@@ -227,51 +194,42 @@ func (d *PeerState) prune(currentHeight int64, keepRecentHeights, keepRecentRoun
 }
 
 type partState struct {
-	haves    *types.HaveParts
-	wants    *types.WantParts
+	haves    *bits.BitArray
+	wants    *bits.BitArray
 	requests *bits.BitArray
 }
 
 // newpartState initializes and returns a new partState
 func newpartState(size int, height int64, round int32) *partState {
 	return &partState{
-		haves: &types.HaveParts{
-			Height: height,
-			Round:  round,
-			Parts:  make([]types.PartMetaData, size),
-		},
-		wants: &types.WantParts{
-			Parts:  bits.NewBitArray(size),
-			Height: height,
-			Round:  round,
-		},
+		haves:    bits.NewBitArray(size),
+		wants:    bits.NewBitArray(size),
 		requests: bits.NewBitArray(size),
 	}
 }
 
-func (p *partState) setHaves(haves *types.HaveParts) {
-	p.haves = haves
-	// p.wants.Sub(haves) // todo(evan): revert. we're only commenting this out atm so that we can simulate optimistically sending wants
+func (p *partState) addHaves(haves *bits.BitArray) {
+	p.wants.AddBitArray(haves)
 }
 
-func (p *partState) setWants(wants *types.WantParts) {
-	p.wants = wants
+func (p *partState) addWants(wants *bits.BitArray) {
+	p.wants.AddBitArray(wants)
 }
 
-func (p *partState) setRequests(requests *bits.BitArray) {
+func (p *partState) addRequests(requests *bits.BitArray) {
 	// TODO delete the request state after we download the data
 	p.requests.AddBitArray(requests)
 }
 
 // SetHave sets the have bit for a given part.
 // TODO support setting the hash and the proof
-func (p *partState) setHave(part int) {
-	p.haves.SetIndex(uint32(part), nil, &merkle.Proof{})
+func (p *partState) setHave(index int, has bool) {
+	p.haves.SetIndex(index, has)
 }
 
 // SetWant sets the want bit for a given part.
 func (p *partState) setWant(part int, wants bool) {
-	p.wants.Parts.SetIndex(part, wants)
+	p.wants.SetIndex(part, wants)
 }
 
 func (p *partState) setRequest(part int) {
@@ -279,12 +237,12 @@ func (p *partState) setRequest(part int) {
 }
 
 func (p *partState) getWant(part int) bool {
-	return p.wants.Parts.GetIndex(part)
+	return p.wants.GetIndex(part)
 }
 
 //nolint:unused
 func (p *partState) getHave(part int) bool {
-	return p.haves.GetIndex(uint32(part))
+	return p.haves.GetIndex(part)
 }
 
 //nolint:unused
