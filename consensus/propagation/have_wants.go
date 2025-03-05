@@ -1,11 +1,12 @@
 package propagation
 
 import (
+	"fmt"
+
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
-	"github.com/tendermint/tendermint/types"
 )
 
 // handleHaves is called when a peer sends a have message. This is used to
@@ -37,6 +38,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		blockProp.Logger.Error("peer not found", "peer", peer)
 		return
 	}
+
 	_, parts, fullReqs, has := blockProp.getAllState(height, round)
 	if !has {
 		// TODO disconnect from the peer
@@ -44,8 +46,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		return
 	}
 
-	blockProp.mtx.RLock()
-	defer blockProp.mtx.RUnlock()
+	p.Initialize(height, round, int(parts.Total()))
 
 	bm, has := p.GetHaves(height, round)
 
@@ -286,8 +287,8 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 	// the peer must always send the proposal before sending parts, if they did
 	// not this node must disconnect from them.
-	_, parts, has := blockProp.GetProposal(part.Height, part.Round)
-	if !has { // fmt.Println("unknown proposal")
+	_, parts, _, has := blockProp.getAllState(part.Height, part.Round)
+	if !has {
 		blockProp.Logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
 		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part for unknown proposal"))
 		return
@@ -299,7 +300,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 	// TODO: to verify, compare the hash with that of the have that was sent for
 	// this part and verified.
-	added, err := parts.AddPartWithoutProof(&types.Part{Index: part.Index, Bytes: part.Data})
+	added, err := parts.AddPart(part)
 	if err != nil {
 		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)
 		return
@@ -313,13 +314,19 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 	// attempt to decode the remaining block parts. If they are decoded, then
 	// this node should send all the wanted parts that nodes have requested.
-	if parts.IsReadyForDecoding() {
-		// TODO decode once we have parity data support
+	if parts.CanDecode() {
+		err := parts.Decode()
+		if err != nil {
+			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
+			return
+		}
 
 		// clear all the wants if they exist
-		go func(height int64, round int32, parts *types.PartSet) {
+		go func(height int64, round int32, parts *proptypes.CombinedPartSet) {
 			for i := uint32(0); i < parts.Total(); i++ {
-				p := parts.GetPart(int(i))
+				fmt.Println("getting part", i)
+				p, _ := parts.GetPart(i)
+				fmt.Println("got part", p != nil)
 				msg := &proptypes.RecoveryPart{
 					Height: height,
 					Round:  round,
@@ -333,8 +340,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	// todo(evan): temporarily disabling
-	// go d.broadcastHaves(part.Height, part.Round, parts.BitArray(), peer)
 	// TODO better go routines management
 	go blockProp.clearWants(part)
 }
@@ -353,17 +358,19 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
 				ChannelID: DataChannel,
 				Message:   &propproto.RecoveryPart{Height: part.Height, Round: part.Round, Index: part.Index, Data: part.Data},
 			}
-			if p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
-				peer.SetHave(part.Height, part.Round, int(part.Index))
-				peer.SetWant(part.Height, part.Round, int(part.Index), false)
-				catchup := false
-				blockProp.pmtx.RLock()
-				if part.Height < blockProp.currentHeight {
-					catchup = true
-				}
-				blockProp.pmtx.RUnlock()
-				schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
+			if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+				blockProp.Logger.Error("failed to send part", "peer", peer.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
+				continue
 			}
+			peer.SetHave(part.Height, part.Round, int(part.Index))
+			peer.SetWant(part.Height, part.Round, int(part.Index), false)
+			catchup := false
+			blockProp.pmtx.RLock()
+			if part.Height < blockProp.currentHeight {
+				catchup = true
+			}
+			blockProp.pmtx.RUnlock()
+			schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
 		}
 	}
 }

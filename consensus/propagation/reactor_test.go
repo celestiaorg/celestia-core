@@ -87,25 +87,34 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	reactor2 := reactors[1]
 	reactor3 := reactors[2]
 
+	randomData := cmtrand.Bytes(1000)
+	ps := types.NewPartSetFromData(randomData, types.BlockPartSizeBytes)
+	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	psh := ps.Header()
+	pseh := pse.Header()
+
 	baseCompactBlock := &proptypes.CompactBlock{
-		BpHash:    cmtrand.Bytes(32),
+		BpHash:    pseh.Hash,
 		Signature: cmtrand.Bytes(64),
-		LastLen:   0,
+		LastLen:   uint32(lastLen),
 		Blobs: []proptypes.TxMetaData{
 			{Hash: cmtrand.Bytes(32)},
 			{Hash: cmtrand.Bytes(32)},
 		},
 	}
 
+	height, round := int64(10), int32(1)
+
 	// adding the proposal manually so the haves/wants and recovery
 	// parts are not rejected.
 	p := types.Proposal{
 		BlockID: types.BlockID{
-			Hash:          nil,
-			PartSetHeader: types.PartSetHeader{Total: 30},
+			Hash:          cmtrand.Bytes(32),
+			PartSetHeader: psh,
 		},
-		Height: 10,
-		Round:  1,
+		Height: height,
+		Round:  round,
 	}
 	baseCompactBlock.Proposal = p
 
@@ -120,8 +129,6 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	bm := bits.NewBitArray(10)
 	bm.Fill()
 
-	height, round := int64(10), int32(1)
-
 	// reactor 1 will receive haves from reactor 2
 	reactor1.handleHaves(
 		reactor2.self,
@@ -129,9 +136,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 			Height: height,
 			Round:  round,
 			Parts: []proptypes.PartMetaData{
-				{Index: 2, Proof: proof},
-				{Index: 3, Proof: proof},
-				{Index: 4, Proof: proof},
+				{Index: 0, Proof: proof},
 			},
 		},
 		false,
@@ -139,36 +144,21 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 
 	haves, has := reactor1.getPeer(reactor2.self).GetHaves(height, round)
 	assert.True(t, has)
-	require.True(t, haves.GetIndex(2))
-	require.True(t, haves.GetIndex(3))
-	require.True(t, haves.GetIndex(4))
+	require.True(t, haves.GetIndex(0))
 
 	time.Sleep(500 * time.Millisecond)
 
 	r3State := reactor3.getPeer(reactor1.self)
 	require.NotNil(t, r3State)
 
-	r3Haves, r3Has := r3State.GetHaves(10, 1)
+	r3Haves, r3Has := r3State.GetHaves(height, round)
 	assert.True(t, r3Has)
-	require.True(t, r3Haves.GetIndex(2))
-	require.True(t, r3Haves.GetIndex(3))
-	require.True(t, r3Haves.GetIndex(4))
+	require.True(t, r3Haves.GetIndex(0))
 
-	// since reactor 3 received the haves from reactor 1,
-	// it will send back a want.
-	// check if reactor 1 received the wants
-	r1Want, r1Has := reactor1.getPeer(reactor3.self).GetWants(10, 1)
-	assert.True(t, r1Has)
-	require.True(t, r1Want.GetIndex(2))
-	require.True(t, r1Want.GetIndex(3))
-	require.True(t, r1Want.GetIndex(4))
-
-	// add the recovery part to the reactor 1.
-	randomData := cmtrand.Bytes(10)
 	reactor1.handleRecoveryPart(reactor2.self, &proptypes.RecoveryPart{
-		Height: 10,
-		Round:  1,
-		Index:  2,
+		Height: height,
+		Round:  round,
+		Index:  0,
 		Data:   randomData,
 	})
 
@@ -178,7 +168,15 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	_, parts, found := reactor3.GetProposal(10, 1)
 	assert.True(t, found)
 	assert.Equal(t, uint32(1), parts.Count())
-	assert.Equal(t, randomData, parts.GetPart(2).Bytes.Bytes())
+	assert.Equal(t, randomData, parts.GetPart(0).Bytes.Bytes())
+
+	// check to see if the parity data was generated after receiveing the first part.
+	_, combined, _, has := reactor3.getAllState(height, round)
+	assert.True(t, has)
+	assert.True(t, combined.IsComplete())
+	parityPart, has := combined.GetPart(1)
+	assert.True(t, has)
+	assert.NotNil(t, parityPart)
 }
 
 func TestChunkParts(t *testing.T) {

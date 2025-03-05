@@ -22,7 +22,7 @@ func NewCombinedSetFromCompactBlock(cb *CompactBlock) *CombinedPartSet {
 		Total: original.Total(),
 		Hash:  cb.BpHash,
 	})
-	total := bits.NewBitArray(int(original.Total()*2) - 1)
+	total := bits.NewBitArray(int(original.Total() * 2))
 
 	return &CombinedPartSet{
 		original: original,
@@ -54,6 +54,10 @@ func (cps *CombinedPartSet) Total() uint32 {
 	return cps.original.Total() + cps.parity.Total()
 }
 
+func (cps *CombinedPartSet) IsComplete() bool {
+	return cps.original.IsComplete() && cps.parity.IsComplete()
+}
+
 // CanDecode determines if enough parts have been added to decode the block.
 func (cps *CombinedPartSet) CanDecode() bool {
 	return (cps.original.Count() + cps.parity.Count()) >= cps.original.Total()
@@ -69,7 +73,7 @@ func (cps *CombinedPartSet) Decode() error {
 
 // AddPart adds a part to the combined part set. It assumes that the parts being
 // added have already been verified.
-func (cps *CombinedPartSet) AddPart(part RecoveryPart) (bool, error) {
+func (cps *CombinedPartSet) AddPart(part *RecoveryPart) (bool, error) {
 	p := &types.Part{
 		Index: part.Index,
 		Bytes: part.Data,
@@ -103,6 +107,5 @@ func (cps *CombinedPartSet) GetPart(index uint32) (*types.Part, bool) {
 	}
 
 	part := cps.parity.GetPart(int(index - cps.original.Total()))
-
 	return part, part != nil
 }

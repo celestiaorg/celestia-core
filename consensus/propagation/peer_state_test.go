@@ -62,49 +62,6 @@ func TestPeerState_SetRequests(t *testing.T) {
 	}
 }
 
-func TestPeerState_SetRequest(t *testing.T) {
-	tests := []struct {
-		name   string
-		height int64
-		round  int32
-		part   int
-	}{
-		{
-			name:   "basic request",
-			height: 7,
-			round:  1,
-			part:   2,
-		},
-		{
-			name:   "out of range part? -> no effect if state uninitialized",
-			height: 10,
-			round:  2,
-			part:   5,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt // pin
-		t.Run(tt.name, func(t *testing.T) {
-			ps := newTestPeerState()
-
-			// Initialize only if needed
-			if tt.name != "out of range part? -> no effect if state uninitialized" {
-				ps.AddRequests(tt.height, tt.round, bits.NewBitArray(6)) // size=6
-			}
-			ps.SetRequest(tt.height, tt.round, tt.part)
-
-			got, ok := ps.GetRequests(tt.height, tt.round)
-			if tt.name == "out of range part? -> no effect if state uninitialized" {
-				require.False(t, ok, "No state created -> nothing stored")
-				return
-			}
-			require.True(t, ok, "Should have state for requests")
-			require.True(t, got.GetIndex(tt.part), "The 'part' bit should be set to true")
-		})
-	}
-}
-
 func TestPeerState_DeleteHeight(t *testing.T) {
 	ps := newTestPeerState()
 	heightToDelete := int64(10)

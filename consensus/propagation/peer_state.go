@@ -79,13 +79,6 @@ func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArr
 	d.state[height][round].addRequests(requests)
 }
 
-// SetRequest sets the request bit for a given part.
-func (d *PeerState) SetRequest(height int64, round int32, part int) {
-	d.mtx.RLock()
-	defer d.mtx.RUnlock()
-	d.state[height][round].setRequest(part)
-}
-
 // SetHave sets the have bit for a given part. WARNING: if the state is not
 // initialized for a given height and round, the function will panic.
 func (d *PeerState) SetHave(height int64, round int32, part int) {
@@ -236,6 +229,7 @@ func (p *partState) setRequest(part int) {
 	p.requests.SetIndex(part, true)
 }
 
+//nolint:unused
 func (p *partState) getWant(part int) bool {
 	return p.wants.GetIndex(part)
 }
