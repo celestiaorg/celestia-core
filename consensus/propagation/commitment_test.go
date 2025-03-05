@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/stretchr/testify/require"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
@@ -46,12 +48,26 @@ func TestPropose(t *testing.T) {
 
 	reactor1.ProposeBlock(prop, partSet, metaData)
 
-	time.Sleep(400 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
+
+	// check that the proposal was saved in reactor 1
+	_, _, has := reactor1.GetProposal(prop.Height, prop.Round)
+	require.True(t, has)
 
 	// Check that the proposal was received by the other reactors
-	_, _, has := reactor2.GetProposal(prop.Height, prop.Round)
+	_, _, has = reactor2.GetProposal(prop.Height, prop.Round)
 	require.True(t, has)
 	_, _, has = reactor3.GetProposal(prop.Height, prop.Round)
 	require.True(t, has)
 
+	// Check if the other reactors received the haves
+	haves, has := reactor2.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
+	assert.True(t, has)
+	// the parts == total because we only have 2 peers
+	assert.Equal(t, len(haves.Parts), int(partSet.Total()))
+
+	haves, has = reactor3.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
+	assert.True(t, has)
+	// the parts == total because we only have 2 peers
+	assert.Equal(t, len(haves.Parts), int(partSet.Total()))
 }

@@ -3,6 +3,8 @@ package propagation
 import (
 	"fmt"
 
+	"github.com/tendermint/tendermint/proto/tendermint/propagation"
+
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
@@ -32,16 +34,53 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		Blobs:     txs,
 	}
 
-	blockProp.broadcastCompactBlock(&cb, blockProp.self)
+	// save the compact block locally and broadcast it to the connected peers
+	blockProp.handleCompactBlock(&cb, blockProp.self)
 
 	// distribute equal portions of haves to each of the proposer's peers
+	peers := blockProp.getPeers()
+	chunks := chunkParts(parityBlock.BitArray(), len(peers), 2) // TODO check whether the redundancy should be increased/decreased
+	for index, peer := range peers {
+		e := p2p.Envelope{
+			ChannelID: DataChannel,
+			Message: &propagation.HaveParts{
+				Height: proposal.Height,
+				Round:  proposal.Round,
+				Parts:  chunkToPartMetaData(chunks[index], parityBlock),
+			},
+		}
+		// TODO maybe use a different logger
+		if !p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+			blockProp.Logger.Error("failed to send have part", "peer", peer, "height", proposal.Height, "round", proposal.Round, "part", index)
+			// TODO maybe retry
+			continue
+		}
+	}
+}
+
+func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propagation.PartMetaData {
+	partMetaData := make([]*propagation.PartMetaData, 0)
+	// TODO rename indice to a correct name
+	for _, indice := range chunk.GetTrueIndices() {
+		part := partSet.GetPart(indice)
+		partMetaData = append(partMetaData, &propagation.PartMetaData{ // TODO create the programmatic type and use the ToProto method
+			Index: part.Index,
+			Hash:  part.Proof.LeafHash, // TODO this seems like a duplicate field, do we need it?
+			Proof: *part.Proof.ToProto(),
+		})
+	}
+	return partMetaData
 }
 
 // handleCompactBlock adds a proposal to the data routine. This should be called any
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID) {
-	// todo(evan) handle catchup if someone sends us a proposal that is much further in the future.
+	if peer != blockProp.self && (cb.Proposal.Height > blockProp.currentHeight+1 || cb.Proposal.Round > blockProp.currentRound+1) {
+		// catchup on missing heights/rounds by requesting the missing parts from all connected peers.
+		go blockProp.requestMissingBlocks(cb.Proposal.Height, cb.Proposal.Round)
+	}
+
 	added, _, _ := blockProp.AddProposal(cb)
 
 	// todo: add catchup logic here by checking for gaps

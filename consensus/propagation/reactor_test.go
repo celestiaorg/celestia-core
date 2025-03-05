@@ -146,7 +146,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	assert.True(t, has)
 	require.True(t, haves.GetIndex(0))
 
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(400 * time.Millisecond)
 
 	r3State := reactor3.getPeer(reactor1.self)
 	require.NotNil(t, r3State)
@@ -162,7 +162,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 		Data:   randomData,
 	})
 
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	// check if reactor 3 received the recovery part.
 	_, parts, found := reactor3.GetProposal(10, 1)

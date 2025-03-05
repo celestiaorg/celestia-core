@@ -144,6 +144,21 @@ func (p *ProposalCache) GetCurrentProposal() (*types.Proposal, *proptypes.Combin
 	return &proposalData.compactBlock.Proposal, proposalData.block, true
 }
 
+// GetCurrentCompactBlock returns the current compact block for the current
+// height and round.
+func (p *ProposalCache) GetCurrentCompactBlock() (*proptypes.CompactBlock, *types.PartSet, bool) {
+	p.pmtx.RLock()
+	defer p.pmtx.RUnlock()
+	if p.proposals[p.currentHeight] == nil {
+		return nil, nil, false
+	}
+	proposalData, has := p.proposals[p.currentHeight][p.currentRound]
+	if !has {
+		return nil, nil, false
+	}
+	return proposalData.compactBlock, proposalData.block, true
+}
+
 func (p *ProposalCache) DeleteHeight(height int64) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
