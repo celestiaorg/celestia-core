@@ -60,7 +60,7 @@ func TestCountRequests(t *testing.T) {
 	// peer1 requests part=0 at height=10, round=0
 	array := bits.NewBitArray(3)
 	array.SetIndex(0, true)
-	peer1State.SetRequests(10, 0, array)
+	peer1State.AddRequests(10, 0, array)
 
 	peer2State := reactor.getPeer(peer2.ID())
 	// peer2 requests part=0 and part=2 and part=3  at height=10, round=0
@@ -68,7 +68,7 @@ func TestCountRequests(t *testing.T) {
 	array2.SetIndex(0, true)
 	array2.SetIndex(2, true)
 	array2.SetIndex(3, true)
-	peer2State.SetRequests(10, 0, array2)
+	peer2State.AddRequests(10, 0, array2)
 
 	// peer3 doesn't request anything
 
@@ -87,105 +87,78 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	reactor2 := reactors[1]
 	reactor3 := reactors[2]
 
+	randomData := cmtrand.Bytes(1000)
+	ps := types.NewPartSetFromData(randomData, types.BlockPartSizeBytes)
+	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	psh := ps.Header()
+	pseh := pse.Header()
+
 	baseCompactBlock := &proptypes.CompactBlock{
-		BpHash:    cmtrand.Bytes(32),
+		BpHash:    pseh.Hash,
 		Signature: cmtrand.Bytes(64),
-		LastLen:   0,
+		LastLen:   uint32(lastLen),
 		Blobs: []proptypes.TxMetaData{
 			{Hash: cmtrand.Bytes(32)},
 			{Hash: cmtrand.Bytes(32)},
 		},
 	}
 
+	height, round := int64(10), int32(1)
+
 	// adding the proposal manually so the haves/wants and recovery
 	// parts are not rejected.
 	p := types.Proposal{
 		BlockID: types.BlockID{
-			Hash:          nil,
-			PartSetHeader: types.PartSetHeader{Total: 30},
+			Hash:          cmtrand.Bytes(32),
+			PartSetHeader: psh,
 		},
-		Height: 10,
-		Round:  1,
+		Height: height,
+		Round:  round,
 	}
 	baseCompactBlock.Proposal = p
+
 	added, _, _ := reactor1.AddProposal(baseCompactBlock)
 	require.True(t, added)
-
-	p2 := types.Proposal{
-		BlockID: types.BlockID{
-			Hash:          nil,
-			PartSetHeader: types.PartSetHeader{Total: 30},
-		},
-		Height: 10,
-		Round:  1,
-	}
-	baseCompactBlock.Proposal = p2
 	added, _, _ = reactor2.AddProposal(baseCompactBlock)
 	require.True(t, added)
-
-	p3 := types.Proposal{
-		BlockID: types.BlockID{
-			Hash:          nil,
-			PartSetHeader: types.PartSetHeader{Total: 30},
-		},
-		Height: 10,
-		Round:  1,
-	}
-	baseCompactBlock.Proposal = p3
-
 	added, _, _ = reactor3.AddProposal(baseCompactBlock)
 	require.True(t, added)
+
 	proof := merkle.Proof{LeafHash: cmtrand.Bytes(32)}
+	bm := bits.NewBitArray(10)
+	bm.Fill()
 
 	// reactor 1 will receive haves from reactor 2
 	reactor1.handleHaves(
 		reactor2.self,
 		&proptypes.HaveParts{
-			Height: 10,
-			Round:  1,
+			Height: height,
+			Round:  round,
 			Parts: []proptypes.PartMetaData{
-				{Index: 2, Proof: proof},
-				{Index: 3, Proof: proof},
-				{Index: 4, Proof: proof},
+				{Index: 0, Proof: proof},
 			},
 		},
-		true,
+		false,
 	)
 
-	haves, has := reactor1.getPeer(reactor2.self).GetHaves(10, 1)
+	haves, has := reactor1.getPeer(reactor2.self).GetHaves(height, round)
 	assert.True(t, has)
-	assert.Equal(t, int64(10), haves.Height)
-	assert.Equal(t, int32(1), haves.Round)
-	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 2, Proof: proof})
-	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 3, Proof: proof})
-	assert.Contains(t, haves.Parts, proptypes.PartMetaData{Index: 4, Proof: proof})
+	require.True(t, haves.GetIndex(0))
 
 	time.Sleep(400 * time.Millisecond)
 
-	// reactor 1 will gossip the haves with reactor 3
-	// check if the third reactor received the haves
 	r3State := reactor3.getPeer(reactor1.self)
 	require.NotNil(t, r3State)
 
-	r3Haves, r3Has := r3State.GetHaves(10, 1)
+	r3Haves, r3Has := r3State.GetHaves(height, round)
 	assert.True(t, r3Has)
-	assert.Contains(t, r3Haves.Parts, proptypes.PartMetaData{Index: 3, Proof: proof})
-	assert.Contains(t, r3Haves.Parts, proptypes.PartMetaData{Index: 4, Proof: proof})
+	require.True(t, r3Haves.GetIndex(0))
 
-	// since reactor 3 received the haves from reactor 1,
-	// it will send back a want.
-	// check if reactor 1 received the wants
-	r1Want, r1Has := reactor1.getPeer(reactor3.self).GetWants(10, 1)
-	assert.True(t, r1Has)
-	assert.Equal(t, int64(10), r1Want.Height)
-	assert.Equal(t, int32(1), r1Want.Round)
-
-	// add the recovery part to the reactor 1.
-	randomData := cmtrand.Bytes(10)
 	reactor1.handleRecoveryPart(reactor2.self, &proptypes.RecoveryPart{
-		Height: 10,
-		Round:  1,
-		Index:  2,
+		Height: height,
+		Round:  round,
+		Index:  0,
 		Data:   randomData,
 	})
 
@@ -195,7 +168,15 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	_, parts, found := reactor3.GetProposal(10, 1)
 	assert.True(t, found)
 	assert.Equal(t, uint32(1), parts.Count())
-	assert.Equal(t, randomData, parts.GetPart(2).Bytes.Bytes())
+	assert.Equal(t, randomData, parts.GetPart(0).Bytes.Bytes())
+
+	// check to see if the parity data was generated after receiveing the first part.
+	_, combined, _, has := reactor3.getAllState(height, round)
+	assert.True(t, has)
+	assert.True(t, combined.IsComplete())
+	parityPart, has := combined.GetPart(1)
+	assert.True(t, has)
+	assert.NotNil(t, parityPart)
 }
 
 func TestChunkParts(t *testing.T) {
