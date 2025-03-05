@@ -205,6 +205,11 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 
 	txKey := tx.Key()
 
+	// At this point, we need to ensure that passing CheckTx and adding to
+	// the mempool is atomic.
+	txmp.Lock()
+	defer txmp.Unlock()
+
 	// Check for the transaction in the cache.
 	if !txmp.cache.Push(tx) {
 		// If the cached transaction is also in the pool, record its sender.
@@ -215,11 +220,6 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		}
 		return mempool.ErrTxInCache
 	}
-
-	// At this point, we need to ensure that passing CheckTx and adding to
-	// the mempool is atomic.
-	txmp.Lock()
-	defer txmp.Unlock()
 
 	// Invoke an ABCI CheckTx for this transaction.
 	rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{Tx: tx})
