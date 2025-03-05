@@ -64,10 +64,10 @@ func TestPropose(t *testing.T) {
 	haves, has := reactor2.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
-	assert.Equal(t, len(haves.Parts), int(partSet.Total()))
+	assert.Equal(t, haves.Size(), int(partSet.Total()))
 
 	haves, has = reactor3.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
-	assert.Equal(t, len(haves.Parts), int(partSet.Total()))
+	assert.Equal(t, haves.Size(), int(partSet.Total()))
 }

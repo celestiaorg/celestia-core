@@ -156,7 +156,7 @@ func (p *ProposalCache) GetCurrentCompactBlock() (*proptypes.CompactBlock, *type
 	if !has {
 		return nil, nil, false
 	}
-	return proposalData.compactBlock, proposalData.block, true
+	return proposalData.compactBlock, proposalData.block.Original(), true
 }
 
 func (p *ProposalCache) DeleteHeight(height int64) {
