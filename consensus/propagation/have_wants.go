@@ -1,8 +1,6 @@
 package propagation
 
 import (
-	"fmt"
-
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
@@ -348,9 +346,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		// clear all the wants if they exist
 		go func(height int64, round int32, parts *proptypes.CombinedPartSet) {
 			for i := uint32(0); i < parts.Total(); i++ {
-				fmt.Println("getting part", i)
 				p, _ := parts.GetPart(i)
-				fmt.Println("got part", p != nil)
 				msg := &proptypes.RecoveryPart{
 					Height: height,
 					Round:  round,
