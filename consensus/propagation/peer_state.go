@@ -51,7 +51,7 @@ func (d *PeerState) initialize(height int64, round int32, size int) {
 	}
 }
 
-// SetHaves sets the haves for a given height and round.
+// AddHaves sets the haves for a given height and round.
 func (d *PeerState) AddHaves(height int64, round int32, haves *bits.BitArray) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
@@ -59,7 +59,7 @@ func (d *PeerState) AddHaves(height int64, round int32, haves *bits.BitArray) {
 	d.state[height][round].addHaves(haves)
 }
 
-// SetWants sets the wants for a given height and round.
+// AddWants sets the wants for a given height and round.
 func (d *PeerState) AddWants(height int64, round int32, wants *bits.BitArray) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
@@ -67,7 +67,7 @@ func (d *PeerState) AddWants(height int64, round int32, wants *bits.BitArray) {
 	d.state[height][round].addWants(wants)
 }
 
-// SetRequests sets the requests for a given height and round.
+// AddRequests sets the requests for a given height and round.
 func (d *PeerState) AddRequests(height int64, round int32, requests *bits.BitArray) {
 	if requests == nil || requests.Size() == 0 {
 		d.logger.Error("peer state requests is nil or empty")
@@ -225,6 +225,9 @@ func (p *partState) setWant(part int, wants bool) {
 	p.wants.SetIndex(part, wants)
 }
 
+// todo: delete if we don't use this
+//
+//nolint:unused
 func (p *partState) setRequest(part int) {
 	p.requests.SetIndex(part, true)
 }

@@ -48,7 +48,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 
 	p.Initialize(height, round, int(parts.Total()))
 
-	bm, has := p.GetHaves(height, round)
+	bm, _ := p.GetHaves(height, round)
 
 	for _, pmd := range haves.Parts {
 		bm.SetIndex(int(pmd.Index), true)
