@@ -5,7 +5,6 @@ import (
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
-	"github.com/tendermint/tendermint/types"
 )
 
 // handleHaves is called when a peer sends a have message. This is used to
@@ -37,6 +36,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		blockProp.Logger.Error("peer not found", "peer", peer)
 		return
 	}
+
 	_, parts, fullReqs, has := blockProp.getAllState(height, round)
 	if !has {
 		// TODO disconnect from the peer
@@ -44,18 +44,20 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		return
 	}
 
-	blockProp.mtx.RLock()
-	defer blockProp.mtx.RUnlock()
+	p.Initialize(height, round, int(parts.Total()))
 
-	// Update the peer's haves.
-	p.SetHaves(height, round, haves)
+	bm, _ := p.GetHaves(height, round)
 
-	if parts.IsComplete() {
+	for _, pmd := range haves.Parts {
+		bm.SetIndex(int(pmd.Index), true)
+	}
+
+	if parts.Original().IsComplete() {
 		return
 	}
 
 	// Check if the sender has parts that we don't have.
-	hc := haves.Copy()
+	hc := haves.BitArray(int(parts.Total()))
 	hc.Sub(parts.BitArray())
 
 	// remove any parts that we have already requested sufficient times.
@@ -74,7 +76,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		reqs := blockProp.countRequests(height, round, partIndex)
 		if len(reqs) >= reqLimit {
 			// TODO unify the types for the indexes and similar
-			hc.RemoveIndex(uint32(partIndex))
+			hc.SetIndex(partIndex, false)
 			// mark the part as fully requested.
 			fullReqs.SetIndex(partIndex, true)
 		}
@@ -83,7 +85,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		for _, p := range reqs {
 			// p == peer means we have already requested the part from this peer.
 			if p == peer {
-				hc.RemoveIndex(uint32(partIndex))
+				hc.SetIndex(partIndex, false)
 			}
 		}
 	}
@@ -100,7 +102,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		Message: &propproto.WantParts{
 			Height: height,
 			Round:  round,
-			Parts:  *hc.ToBitArray().ToProto(),
+			Parts:  *hc.ToProto(),
 		},
 	}
 
@@ -121,8 +123,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 
 	// keep track of the parts that this node has requested.
 	// TODO check if we need to persist the have parts or just their bitarray
-	p.SetRequests(height, round, hc.ToBitArray())
-	blockProp.broadcastHaves(hc, peer)
+	p.AddRequests(height, round, hc)
+	blockProp.broadcastHaves(haves, peer, int(parts.Total()))
 }
 
 // todo(evan): refactor to not iterate so often and just store which peers
@@ -143,46 +145,35 @@ func (blockProp *Reactor) countRequests(height int64, round int32, part int) []p
 // broadcastHaves gossips the provided have msg to all peers except to the
 // original sender. This should only be called upon receiving a new have for the
 // first time.
-func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID) {
-	e := p2p.Envelope{
-		ChannelID: DataChannel,
-		Message: &propproto.HaveParts{
-			Height: haves.Height,
-			Round:  haves.Round,
-			Parts:  haves.ToProto().Parts,
-		},
-	}
+//
+// todo: add a test to ensure that we don't send the same haves to the same
+// peers more than once.
+func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID, partSetSize int) {
 	for _, peer := range blockProp.getPeers() {
 		if peer.peer.ID() == from {
 			continue
 		}
 
-		// skip sending anything to this peer if they already have all the
-		// parts.
-		ph, has := peer.GetHaves(haves.Height, haves.Round)
-		if has {
-			havesCopy := haves.Copy()
-			havesCopy.Sub(ph.ToBitArray())
-			if havesCopy.IsEmpty() {
-				continue
-			}
+		// todo: don't re-send haves to peers that already have it.
+
+		e := p2p.Envelope{
+			ChannelID: DataChannel,
+			Message: &propproto.HaveParts{
+				Height: haves.Height,
+				Round:  haves.Round,
+				Parts:  haves.ToProto().Parts,
+			},
 		}
 
 		// todo(evan): don't rely strictly on try, however since we're using
 		// pull based gossip, this isn't as big as a deal since if someone asks
 		// for data, they must already have the proposal.
 		// TODO: use retry and logs
-		if p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
-			schema.WriteBlockPartState(
-				blockProp.traceClient,
-				haves.Height,
-				haves.Round,
-				haves.GetTrueIndices(),
-				true,
-				string(peer.peer.ID()),
-				schema.Upload,
-			)
+		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+			blockProp.Logger.Debug("failed to send haves to peer", "peer", peer.peer.ID())
+			continue
 		}
+		peer.AddHaves(haves.Height, haves.Round, haves.BitArray(partSetSize))
 	}
 }
 
@@ -268,11 +259,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	// for parts that we don't have, but they still want, store the wants.
 	stillMissing := wants.Parts.Sub(canSend)
 	if !stillMissing.IsEmpty() {
-		p.SetWants(&proptypes.WantParts{
-			Parts:  stillMissing,
-			Height: height,
-			Round:  round,
-		})
+		p.AddWants(height, round, stillMissing)
 	}
 }
 
@@ -319,8 +306,8 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 	// the peer must always send the proposal before sending parts, if they did
 	// not this node must disconnect from them.
-	_, parts, has := blockProp.GetProposal(part.Height, part.Round)
-	if !has { // fmt.Println("unknown proposal")
+	_, parts, _, has := blockProp.getAllState(part.Height, part.Round)
+	if !has {
 		blockProp.Logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
 		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part for unknown proposal"))
 		return
@@ -330,8 +317,9 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	// TODO this is not verifying the proof. make it verify it
-	added, err := parts.AddPartWithoutProof(&types.Part{Index: part.Index, Bytes: part.Data})
+	// TODO: to verify, compare the hash with that of the have that was sent for
+	// this part and verified.
+	added, err := parts.AddPart(part)
 	if err != nil {
 		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)
 		return
@@ -345,13 +333,35 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 	// attempt to decode the remaining block parts. If they are decoded, then
 	// this node should send all the wanted parts that nodes have requested.
-	if parts.IsReadyForDecoding() {
-		// TODO decode once we have parity data support
+	if parts.CanDecode() {
+		err := parts.Decode()
+		if err != nil {
+			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
+			return
+		}
+
+		// broadcast haves for all parts since we've decoded the entire block.
+		// rely on the broadcast method to ensure that parts are only sent once.
+		haves := &proptypes.HaveParts{
+			Height: part.Height,
+			Round:  part.Round,
+		}
+
+		for i := uint32(0); i < parts.Total(); i++ {
+			p, has := parts.GetPart(i)
+			if !has {
+				blockProp.Logger.Error("failed to get decoded part", "peer", peer, "height", part.Height, "round", part.Round, "part", i)
+				continue
+			}
+			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Proof: p.Proof, Hash: p.Proof.LeafHash})
+		}
+
+		blockProp.broadcastHaves(haves, peer, int(parts.Total()))
 
 		// clear all the wants if they exist
-		go func(height int64, round int32, parts *types.PartSet) {
+		go func(height int64, round int32, parts *proptypes.CombinedPartSet) {
 			for i := uint32(0); i < parts.Total(); i++ {
-				p := parts.GetPart(int(i))
+				p, _ := parts.GetPart(i)
 				msg := &proptypes.RecoveryPart{
 					Height: height,
 					Round:  round,
@@ -365,8 +375,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	// todo(evan): temporarily disabling
-	// go d.broadcastHaves(part.Height, part.Round, parts.BitArray(), peer)
 	// TODO better go routines management
 	go blockProp.clearWants(part)
 }
@@ -385,17 +393,19 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
 				ChannelID: DataChannel,
 				Message:   &propproto.RecoveryPart{Height: part.Height, Round: part.Round, Index: part.Index, Data: part.Data},
 			}
-			if p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
-				peer.SetHave(part.Height, part.Round, int(part.Index))
-				peer.SetWant(part.Height, part.Round, int(part.Index), false)
-				catchup := false
-				blockProp.pmtx.RLock()
-				if part.Height < blockProp.currentHeight {
-					catchup = true
-				}
-				blockProp.pmtx.RUnlock()
-				schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
+			if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+				blockProp.Logger.Error("failed to send part", "peer", peer.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
+				continue
 			}
+			peer.SetHave(part.Height, part.Round, int(part.Index))
+			peer.SetWant(part.Height, part.Round, int(part.Index), false)
+			catchup := false
+			blockProp.pmtx.Lock()
+			if part.Height < blockProp.currentHeight {
+				catchup = true
+			}
+			blockProp.pmtx.Unlock()
+			schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
 		}
 	}
 }
