@@ -2,8 +2,8 @@ package propagation
 
 import (
 	"fmt"
-
 	"github.com/tendermint/tendermint/proto/tendermint/propagation"
+	"sort"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -88,6 +88,160 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	if added {
 		blockProp.broadcastCompactBlock(cb, peer)
 	}
+
+	// check if we have any transactions that are in the compact block
+
+	// broadcast the haves for the parts we have??
+}
+
+func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*types.Part {
+	// find the compact block transactions that exist in our mempool
+	txsFound := make([]txFound, 0)
+	for _, txMetaData := range cb.Blobs {
+		txKey, err := types.TxKeyFromBytes(txMetaData.Hash)
+		if err != nil {
+			blockProp.Logger.Error("failed to decode tx key", "err", err, "tx", txMetaData)
+			// TODO maybe do something other than just continuing
+			continue
+		}
+		tx, has := blockProp.mempool.GetTxByKey(txKey)
+		if !has {
+			// the transaction hash is not found in the mempool.
+			continue
+		}
+		txsFound = append(txsFound, txFound{metaData: txMetaData, key: txKey, txBytes: tx})
+	}
+	if len(txsFound) == 0 {
+		// no compact block transaction was found locally
+		return nil
+	}
+
+	// sort the txs found by start index
+	sort.Slice(txsFound, func(i, j int) bool {
+		return txsFound[i].metaData.Start < txsFound[j].metaData.Start
+	})
+
+	// the cumulative bytes slice will contain the transaction bytes along with
+	// any left bytes from contiguous previous transactions
+	cumulativeBytes := make([]byte, 0)
+	for index := 0; index < len(txsFound); index++ {
+		// the transaction we're parsing
+		currentTx := txsFound[index]
+		// the part index where the transaction starts
+		currentPartStart := currentTx.metaData.Start / types.BlockPartSizeBytes
+		// the index of the part relative to the block bytes where the transaction starts
+		currentPartStartIndex := currentPartStart * types.BlockPartSizeBytes
+		// the index of the part to the block bytes where the transaction ends
+		currentPartEndIndex := (currentPartStart + 1) * types.BlockPartSizeBytes
+
+		// append the current transaction bytes to the cumulative bytes slice
+		cumulativeBytes = append(cumulativeBytes, currentTx.txBytes...)
+
+		//
+		if currentPartStartIndex == currentTx.metaData.Start {
+			if currentPartEndIndex > currentTx.metaData.End {
+				// this means this transaction starts at a new part but
+				// doesn't end at one, this means we should check whether the next
+				// transaction starts as a continuation
+				if index+1 < len(txsFound) {
+					nextTx := txsFound[index+1]
+					if currentTx.metaData.End == nextTx.metaData.Start {
+						// the next transaction we have corresponds to the continuation of this part
+						// so, we can continue
+						continue
+					} else {
+						cumulativeBytes = make([]byte, 0)
+					}
+				} else {
+					// there is no next transaction, breaking.
+					break
+				}
+			}
+			if currentPartEndIndex <= currentTx.metaData.End {
+				// this means that this transaction starts at a new part and spans across one or
+				// more parts. we will decode as many parts we can and then leave the remaining
+				// bytes for the next transaction.
+				offset := uint32(0)
+				for offset < currentTx.metaData.End-currentTx.metaData.Start {
+					// take part as: [offset,offset+part_size-1)
+					// decode it
+					// add it to parts
+					partBz := cumulativeBytes[:types.BlockPartSizeBytes]
+					offset += types.BlockPartSizeBytes
+					// slice this part off the cumulative bytes
+					cumulativeBytes = cumulativeBytes[types.BlockPartSizeBytes:]
+				}
+				if index+1 < len(txsFound) {
+					nextTx := txsFound[index+1]
+					if currentTx.metaData.End == nextTx.metaData.Start {
+						// the next transaction we have corresponds to the continuation of this part
+						// so se continue.
+						continue
+					}
+				} else {
+					// there is no next transaction, breaking.
+					break
+				}
+			}
+		}
+		if currentPartStartIndex < currentTx.metaData.Start {
+			if currentPartEndIndex > currentTx.metaData.End {
+				// this means this transaction starts at a new part but
+				// doesn't end at one, this means we should check whether the next
+				// transaction starts as a continuation
+				if index+1 < len(txsFound) {
+					nextTx := txsFound[index+1]
+					if currentTx.metaData.End == nextTx.metaData.Start {
+						// the next transaction we have corresponds to the continuation of this part
+						// so, we can continue
+						continue
+					} else {
+						cumulativeBytes = make([]byte, 0)
+					}
+				} else {
+					// there is no next transaction, breaking.
+					break
+				}
+			}
+			if currentPartEndIndex <= currentTx.metaData.End {
+				// this means that this transaction starts at a new part and spans across one or
+				// more parts. we will decode as many parts we can and then leave the remaining
+				// bytes for the next transaction.
+				offset := uint32(0)
+				for offset < currentTx.metaData.End-currentTx.metaData.Start {
+					// take part as: [offset,offset+part_size-1)
+					// decode it
+					// add it to parts
+					partBz := cumulativeBytes[:types.BlockPartSizeBytes]
+					offset += types.BlockPartSizeBytes
+					// slice this part off the cumulative bytes
+					cumulativeBytes = cumulativeBytes[types.BlockPartSizeBytes:]
+				}
+				if index+1 < len(txsFound) {
+					nextTx := txsFound[index+1]
+					if currentTx.metaData.End == nextTx.metaData.Start {
+						// the next transaction we have corresponds to the continuation of this part,
+						// so se continue.
+						continue
+					} else {
+						cumulativeBytes = make([]byte, 0)
+					}
+				} else {
+					// there is no next transaction, breaking.
+					break
+				}
+			}
+		}
+	}
+}
+
+// txFound is an intermediary type that allows keeping the transaction metadata,
+// its key and the actual tx bytes.
+// This will be used to create the parts from the local txs.
+type txFound struct {
+	metaData proptypes.TxMetaData
+	key      types.TxKey
+	txBytes  []byte
 }
 
 // broadcastProposal gossips the provided proposal to all peers. This should

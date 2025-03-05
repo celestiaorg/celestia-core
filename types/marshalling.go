@@ -12,7 +12,8 @@ import (
 // for a given txs field.
 type TxPosition struct {
 	Start int
-	End   int
+	// End exclusive position of the transaction
+	End int
 }
 
 // MarshalBlockWithTxPositions marshals the given Block message using protobuf
