@@ -385,11 +385,11 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
 			peer.SetHave(part.Height, part.Round, int(part.Index))
 			peer.SetWant(part.Height, part.Round, int(part.Index), false)
 			catchup := false
-			blockProp.pmtx.RLock()
+			blockProp.pmtx.Lock()
 			if part.Height < blockProp.currentHeight {
 				catchup = true
 			}
-			blockProp.pmtx.RUnlock()
+			blockProp.pmtx.Unlock()
 			schema.WriteBlockPart(blockProp.traceClient, part.Height, part.Round, part.Index, catchup, string(peer.peer.ID()), schema.Upload)
 		}
 	}

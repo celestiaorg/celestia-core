@@ -16,7 +16,7 @@ type proposalData struct {
 
 type ProposalCache struct {
 	store         *store.BlockStore
-	pmtx          *sync.RWMutex
+	pmtx          *sync.Mutex
 	proposals     map[int64]map[int32]*proposalData
 	currentHeight int64
 	currentRound  int32
@@ -24,7 +24,7 @@ type ProposalCache struct {
 
 func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 	pc := &ProposalCache{
-		pmtx:      &sync.RWMutex{},
+		pmtx:      &sync.Mutex{},
 		proposals: make(map[int64]map[int32]*proposalData),
 		store:     bs,
 	}
@@ -89,8 +89,8 @@ func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal,
 // this node has it stored or cached. It also return the max requests for that
 // block.
 func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.CompactBlock, *proptypes.CombinedPartSet, *bits.BitArray, bool) {
-	p.pmtx.RLock()
-	defer p.pmtx.RUnlock()
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
 	// try to see if we have the block stored in the store. If so, we can ignore
 	// the round.
 	var hasStored *types.BlockMeta
@@ -132,8 +132,8 @@ func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.Compa
 // GetCurrentProposal returns the current proposal and block for the current
 // height and round.
 func (p *ProposalCache) GetCurrentProposal() (*types.Proposal, *proptypes.CombinedPartSet, bool) {
-	p.pmtx.RLock()
-	defer p.pmtx.RUnlock()
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
 	if p.proposals[p.currentHeight] == nil {
 		return nil, nil, false
 	}
@@ -147,8 +147,8 @@ func (p *ProposalCache) GetCurrentProposal() (*types.Proposal, *proptypes.Combin
 // GetCurrentCompactBlock returns the current compact block for the current
 // height and round.
 func (p *ProposalCache) GetCurrentCompactBlock() (*proptypes.CompactBlock, *types.PartSet, bool) {
-	p.pmtx.RLock()
-	defer p.pmtx.RUnlock()
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
 	if p.proposals[p.currentHeight] == nil {
 		return nil, nil, false
 	}
