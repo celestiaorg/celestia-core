@@ -751,7 +751,7 @@ func abciResponses(n int, code uint32) []*abci.ResponseDeliverTx {
 
 // TestConcurrentCheckTxPanic reproduces the concurrent map read/write panic
 // that happens when multiple goroutines call CheckTx simultaneously.
-// This test will only fail when running with the race detector enabled.
+// This test should be run with the race detector enabled.
 //
 // See https://github.com/celestiaorg/celestia-app/issues/4379
 func TestConcurrentCheckTxDataRace(t *testing.T) {
