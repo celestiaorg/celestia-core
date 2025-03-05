@@ -771,8 +771,12 @@ func TestConcurrentCheckTxDataRace(t *testing.T) {
 		app := kvstore.NewApplication()
 		cc := proxy.NewLocalClientCreator(app)
 		appConnMem, _ := cc.NewABCIClient()
-		appConnMem.Start()
-		defer appConnMem.Stop()
+		err := appConnMem.Start()
+		require.NoError(t, err)
+		defer func() {
+			err := appConnMem.Stop()
+			require.NoError(t, err)
+		}()
 
 		logger := log.TestingLogger()
 		cfg := config.DefaultMempoolConfig()
