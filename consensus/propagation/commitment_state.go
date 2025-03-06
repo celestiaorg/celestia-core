@@ -83,45 +83,57 @@ func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal,
 	return &cb.Proposal, parts.Original(), has
 }
 
+func (p *ProposalCache) dumpAll() []*proposalData {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	data := make([]*proposalData, 0, len(p.proposals))
+	for _, heightData := range p.proposals {
+		for _, pd := range heightData {
+			data = append(data, pd)
+		}
+	}
+	return data
+}
+
 // GetProposal returns the proposal and block for a given height and round if
 // this node has it stored or cached. It also return the max requests for that
 // block.
 func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.CompactBlock, *proptypes.CombinedPartSet, *bits.BitArray, bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
-	// try to see if we have the block stored in the store. If so, we can ignore
-	// the round.
+
+	cachedProps, has := p.proposals[height]
+	cachedProp, hasRound := cachedProps[round]
+
+	// // if the round is less than zero, then they're asking for the latest
+	// // proposal
+	// if round < -1 && len(cachedProps) > 0 {
+	// 	// get the latest round
+	// 	var latestRound int32
+	// 	for r := range cachedProps {
+	// 		if r > latestRound {
+	// 			latestRound = r
+	// 		}
+	// 	}
+	// 	cachedProp = cachedProps[latestRound]
+	// 	hasRound = true
+	// }
+
 	var hasStored *types.BlockMeta
 	if height < p.currentHeight {
 		hasStored = p.store.LoadBlockMeta(height)
 	}
 
-	cachedProps, has := p.proposals[height]
-	cachedProp, hasRound := cachedProps[round]
-
-	// if the round is less than zero, then they're asking for the latest
-	// proposal
-	if round < 0 && len(cachedProps) > 0 {
-		// get the latest round
-		var latestRound int32
-		for r := range cachedProps {
-			if r > latestRound {
-				latestRound = r
-			}
-		}
-		cachedProp = cachedProps[latestRound]
-		hasRound = true
-	}
-
 	switch {
+	case has && hasRound:
+		return cachedProp.compactBlock, cachedProp.block, cachedProp.maxRequests, true
 	case hasStored != nil:
 		parts, _, err := p.store.LoadPartSet(height)
 		if err != nil {
 			return nil, nil, nil, false
 		}
-		return nil, proptypes.NewCombinedPartSetFromOriginal(parts), parts.BitArray(), true
-	case has && hasRound:
-		return cachedProp.compactBlock, cachedProp.block, cachedProp.maxRequests, true
+		cparts := proptypes.NewCombinedPartSetFromOriginal(parts)
+		return nil, cparts, cparts.BitArray(), true
 	default:
 		return nil, nil, nil, false
 	}

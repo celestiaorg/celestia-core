@@ -38,7 +38,9 @@ func NewCombinedSetFromCompactBlock(cb *CompactBlock) *CombinedPartSet {
 
 func NewCombinedPartSetFromOriginal(original *types.PartSet) *CombinedPartSet {
 	return &CombinedPartSet{
+		mtx:      &sync.Mutex{},
 		original: original,
+		parity:   &types.PartSet{},
 	}
 }
 

@@ -1,6 +1,8 @@
 package propagation
 
 import (
+	"fmt"
+
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
@@ -290,6 +292,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 
 	if parts.IsComplete() {
+		fmt.Println("parts are complete yay !!!!!!!!!!!!!!!!!!!!!!!")
 		return
 	}
 

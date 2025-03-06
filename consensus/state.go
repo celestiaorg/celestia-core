@@ -398,6 +398,7 @@ func (cs *State) OnStart() error {
 
 	// now start the receiveRoutine
 	go cs.receiveRoutine(0)
+	go cs.syncData()
 
 	// schedule the first round!
 	// use GetRoundState so we don't race the receiveRoutine for access
@@ -2499,9 +2500,6 @@ const SyncDataInterval = 100
 
 // sync data periodically checks to make sure that all block parts in the data
 // routine are pushed through to the state.
-// TODO remove nolint
-//
-//nolint:unused
 func (cs *State) syncData() {
 	for {
 		select {
@@ -2520,7 +2518,10 @@ func (cs *State) syncData() {
 			pprop := cs.Proposal
 			completeProp := cs.isProposalComplete()
 			cs.mtx.RUnlock()
-
+			fmt.Println("proposal at", h, r, completeProp)
+			if pprop != nil {
+				fmt.Println("pprop", pprop.Height, pprop.Round, pprop.POLRound)
+			}
 			if completeProp {
 				continue
 			}
@@ -2555,6 +2556,7 @@ func (cs *State) syncData() {
 					"found and sent proposal: %v/%v",
 					prop.Height, prop.Round,
 				)
+				fmt.Println("found and sent proposal", prop.Height, prop.Round)
 				cs.Logger.Info("Proposal was apparently not nil, so we're sending it", "complete", parts.IsComplete())
 				cs.peerMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
 			}
