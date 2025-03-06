@@ -75,7 +75,6 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 	for _, partIndex := range hc.GetTrueIndices() {
 		reqs := blockProp.countRequests(height, round, partIndex)
 		if len(reqs) >= reqLimit {
-			// TODO unify the types for the indexes and similar
 			hc.SetIndex(partIndex, false)
 			// mark the part as fully requested.
 			fullReqs.SetIndex(partIndex, true)
@@ -90,8 +89,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		}
 	}
 
-	// todo(evan): check that this is legit. we can also exit early if we have
-	// all of the data already
+	// we can also exit early if we have all of the data already
 	if hc.IsEmpty() {
 		return
 	}
@@ -122,12 +120,11 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 	)
 
 	// keep track of the parts that this node has requested.
-	// TODO check if we need to persist the have parts or just their bitarray
 	p.AddRequests(height, round, hc)
 	blockProp.broadcastHaves(haves, peer, int(parts.Total()))
 }
 
-// todo(evan): refactor to not iterate so often and just store which peers
+// countRequests returns the number of requests for a given part.
 func (blockProp *Reactor) countRequests(height int64, round int32, part int) []p2p.ID {
 	peers := make([]p2p.ID, 0)
 	for _, peer := range blockProp.getPeers() {
@@ -145,9 +142,6 @@ func (blockProp *Reactor) countRequests(height int64, round int32, part int) []p
 // broadcastHaves gossips the provided have msg to all peers except to the
 // original sender. This should only be called upon receiving a new have for the
 // first time.
-//
-// todo: add a test to ensure that we don't send the same haves to the same
-// peers more than once.
 func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID, partSetSize int) {
 	for _, peer := range blockProp.getPeers() {
 		if peer.peer.ID() == from {
@@ -155,14 +149,9 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		}
 
 		// todo: don't re-send haves to peers that already have it.
-
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
-			Message: &propproto.HaveParts{
-				Height: haves.Height,
-				Round:  haves.Round,
-				Parts:  haves.ToProto().Parts,
-			},
+			Message:   haves.ToProto(),
 		}
 
 		// todo(evan): don't rely strictly on try, however since we're using
@@ -170,7 +159,7 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 		// for data, they must already have the proposal.
 		// TODO: use retry and logs
 		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
-			blockProp.Logger.Debug("failed to send haves to peer", "peer", peer.peer.ID())
+			blockProp.Logger.Error("failed to send haves to peer", "peer", peer.peer.ID())
 			continue
 		}
 		peer.AddHaves(haves.Height, haves.Round, haves.BitArray(partSetSize))
@@ -195,24 +184,13 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
-	_, parts, has := blockProp.GetProposal(height, round)
+	_, parts, _, has := blockProp.getAllState(height, round)
 	// the peer must always send the proposal before sending parts, if they did
 	//  not, this node must disconnect from them.
 	if !has {
 		blockProp.Logger.Error("received part state request for unknown proposal", "peer", peer, "height", height, "round", round)
 		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part state for unknown proposal"))
 		return
-	}
-
-	// send the peer the partset header if they don't have the proposal.
-	// TODO get rid of this catchup case
-	if round < 0 {
-		// TODO do we still need this? since we're not covering the gaps,
-		// we only catchup in the case we didn't receive all the haves/parts for the previous height/round.
-		if !blockProp.sendPsh(peer, height, round) {
-			blockProp.Logger.Error("failed to send PSH", "peer", peer, "height", height, "round", round)
-			return
-		}
 	}
 
 	// if we have the parts, send them to the peer.
@@ -228,18 +206,16 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		blockProp.Logger.Error("nil can send?", "peer", peer, "height", height, "round", round, "wants", wants, "wc", wc)
 		return
 	}
+
 	for _, partIndex := range canSend.GetTrueIndices() {
-		part := parts.GetPart(partIndex)
+		part, _ := parts.GetPart(uint32(partIndex))
 		ppart, err := part.ToProto()
 		if err != nil {
 			blockProp.Logger.Error("failed to convert part to proto", "height", height, "round", round, "part", partIndex, "error", err)
 			continue
 		}
 		e := p2p.Envelope{
-			// TODO catch this message in the consensus reactor and send it to this propagation reactor
-			// check the data routine for more information.
 			ChannelID: DataChannel,
-			// TODO this might require sending/verifying some proof.
 			Message: &propproto.RecoveryPart{
 				Height: height,
 				Round:  round,
@@ -375,7 +351,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
-	// TODO better go routines management
 	go blockProp.clearWants(part)
 }
 

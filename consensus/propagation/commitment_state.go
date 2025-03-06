@@ -30,8 +30,6 @@ func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 	}
 
 	// if there is a block saved in the store, set the current height and round.
-	// todo(evan): probably handle this in a more complete way so that the round
-	// and block data is stored somewhere.
 	if bs.Height() != 0 {
 		pc.currentHeight = bs.Height()
 	}
@@ -146,7 +144,7 @@ func (p *ProposalCache) GetCurrentProposal() (*types.Proposal, *proptypes.Combin
 
 // GetCurrentCompactBlock returns the current compact block for the current
 // height and round.
-func (p *ProposalCache) GetCurrentCompactBlock() (*proptypes.CompactBlock, *types.PartSet, bool) {
+func (p *ProposalCache) GetCurrentCompactBlock() (*proptypes.CompactBlock, *proptypes.CombinedPartSet, bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
 	if p.proposals[p.currentHeight] == nil {
@@ -156,7 +154,7 @@ func (p *ProposalCache) GetCurrentCompactBlock() (*proptypes.CompactBlock, *type
 	if !has {
 		return nil, nil, false
 	}
-	return proposalData.compactBlock, proposalData.block.Original(), true
+	return proposalData.compactBlock, proposalData.block, true
 }
 
 func (p *ProposalCache) DeleteHeight(height int64) {

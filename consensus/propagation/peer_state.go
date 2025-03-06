@@ -210,7 +210,6 @@ func (p *partState) addWants(wants *bits.BitArray) {
 }
 
 func (p *partState) addRequests(requests *bits.BitArray) {
-	// TODO delete the request state after we download the data
 	p.requests.AddBitArray(requests)
 }
 
@@ -223,26 +222,4 @@ func (p *partState) setHave(index int, has bool) {
 // SetWant sets the want bit for a given part.
 func (p *partState) setWant(part int, wants bool) {
 	p.wants.SetIndex(part, wants)
-}
-
-// todo: delete if we don't use this
-//
-//nolint:unused
-func (p *partState) setRequest(part int) {
-	p.requests.SetIndex(part, true)
-}
-
-//nolint:unused
-func (p *partState) getWant(part int) bool {
-	return p.wants.GetIndex(part)
-}
-
-//nolint:unused
-func (p *partState) getHave(part int) bool {
-	return p.haves.GetIndex(part)
-}
-
-//nolint:unused
-func (p *partState) getRequest(part int) bool {
-	return p.requests.GetIndex(part)
 }

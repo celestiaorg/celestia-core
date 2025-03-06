@@ -165,21 +165,6 @@ func (h *HaveParts) ValidateBasic() error {
 	return nil
 }
 
-func (h *HaveParts) SetIndex(i uint32, Hash []byte, Proof *merkle.Proof) {
-	// TODO set the parts in an ordered way and support getting them faster.
-	h.Parts = append(h.Parts, PartMetaData{i, Hash, *Proof})
-}
-
-func (h *HaveParts) RemoveIndex(i uint32) {
-	parts := make([]PartMetaData, 0)
-	for _, part := range h.Parts {
-		if part.Index != i {
-			parts = append(parts, part)
-		}
-	}
-	h.Parts = parts
-}
-
 func (h *HaveParts) IsEmpty() bool {
 	return len(h.Parts) == 0
 }
@@ -378,5 +363,3 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 type Message interface {
 	ValidateBasic() error
 }
-
-// TODO: register all the underlying types in an init

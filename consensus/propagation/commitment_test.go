@@ -70,4 +70,13 @@ func TestPropose(t *testing.T) {
 	assert.True(t, has)
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, haves.Size(), int(partSet.Total()*2))
+
+	time.Sleep(500 * time.Millisecond)
+
+	for _, r := range reactors {
+		_, parts, _, has := r.getAllState(prop.Height, prop.Round)
+		require.True(t, has)
+		assert.True(t, parts.IsComplete())
+	}
+
 }

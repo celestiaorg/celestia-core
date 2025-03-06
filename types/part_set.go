@@ -354,6 +354,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	for i, d := range data[:ops.Total()] {
 		ops.partsBitArray.SetIndex(i, true)
 		if ops.parts[i] != nil {
+			ops.parts[i].Proof = *proofs[i]
 			continue
 		}
 		ops.parts[i] = &Part{
@@ -378,6 +379,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	for i := 0; i < int(eps.Total()); i++ {
 		eps.partsBitArray.SetIndex(i, true)
 		if eps.parts[i] != nil {
+			eps.parts[i].Proof = *eproofs[i]
 			continue
 		}
 		eps.parts[i] = &Part{

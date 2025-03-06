@@ -17,8 +17,7 @@ import (
 )
 
 const (
-	// TODO: set a valid max msg size
-	maxMsgSize = 1048576
+	maxMsgSize = 4194304 // 4MiB
 
 	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
 	ReactorIncomingMessageQueueSize = 2000
@@ -47,7 +46,6 @@ type Reactor struct {
 
 func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, options ...ReactorOption) *Reactor {
 	if tracer == nil {
-		// TODO not pass nil. instead, use a NOOP and allow the tracer to be passed as an option
 		tracer = trace.NoOpTracer()
 	}
 	reactor := &Reactor{
@@ -79,18 +77,16 @@ func (blockProp *Reactor) OnStop() {
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
-			// TODO: set better values
 			ID:                  WantChannel,
 			Priority:            6,
-			SendQueueCapacity:   100,
+			SendQueueCapacity:   1000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
 		},
 		{
-			// TODO: set better values
 			ID:                  DataChannel,
 			Priority:            10,
-			SendQueueCapacity:   1000,
+			SendQueueCapacity:   5000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
 		},
@@ -108,10 +104,10 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 
 	// ignore the peer if it already exists.
 	if p := blockProp.getPeer(peer.ID()); p != nil {
+		blockProp.Logger.Error("Peer exists in propagation reactors", "peer", peer.ID())
 		return
 	}
 
-	// TODO pass a separate logger if needed
 	blockProp.setPeer(peer.ID(), newPeerState(peer, blockProp.Logger))
 	cb, _, found := blockProp.GetCurrentCompactBlock()
 
@@ -129,6 +125,12 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 	if !p2p.TrySendEnvelopeShim(peer, e, blockProp.Logger) { //nolint:staticcheck
 		blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.ID())
 	}
+}
+
+func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
+	blockProp.mtx.Lock()
+	defer blockProp.mtx.Unlock()
+	delete(blockProp.peerstate, peer.ID())
 }
 
 func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
@@ -157,10 +159,13 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	case DataChannel:
 		switch msg := msg.(type) {
 		case *proptypes.CompactBlock:
+			fmt.Println("Received compact block", msg.Proposal.Height, e.Src.ID())
 			blockProp.handleCompactBlock(msg, e.Src.ID())
 		case *proptypes.HaveParts:
+			fmt.Println("Received have parts", e.Src.ID(), len(msg.Parts))
 			blockProp.handleHaves(e.Src.ID(), msg, false)
 		case *proptypes.RecoveryPart:
+			fmt.Println("Received recovery part!!!!!!", e.Src.ID())
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)
 		default:
 			blockProp.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
@@ -168,6 +173,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	case WantChannel:
 		switch msg := msg.(type) {
 		case *proptypes.WantParts:
+			fmt.Println("Received want parts", e.Src.ID(), msg.Parts)
 			blockProp.handleWants(e.Src.ID(), msg)
 		}
 	default:

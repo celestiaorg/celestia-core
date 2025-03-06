@@ -1,12 +1,15 @@
 package types
 
 import (
+	"sync"
+
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/types"
 )
 
 // CombinedPartSet wraps two PartSet instances: one for original block data and one for parity data.
 type CombinedPartSet struct {
+	mtx      *sync.Mutex
 	totalMap *bits.BitArray
 	original *types.PartSet // holds the original parts (indexes: 0 to original.Total()-1)
 	parity   *types.PartSet // holds parity parts (logical indexes start at original.Total())
@@ -29,6 +32,7 @@ func NewCombinedSetFromCompactBlock(cb *CompactBlock) *CombinedPartSet {
 		parity:   parity,
 		lastLen:  cb.LastLen,
 		totalMap: total,
+		mtx:      &sync.Mutex{},
 	}
 }
 
@@ -38,15 +42,30 @@ func NewCombinedPartSetFromOriginal(original *types.PartSet) *CombinedPartSet {
 	}
 }
 
+func (cps *CombinedPartSet) SetProposalData(original, parity *types.PartSet) {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	cps.original = original
+	cps.parity = parity
+	cps.totalMap = bits.NewBitArray(int(original.Total() + parity.Total()))
+	cps.totalMap.Fill()
+}
+
 func (cps *CombinedPartSet) Original() *types.PartSet {
+	cps.mtx.Lock()
+	cps.mtx.Unlock()
 	return cps.original
 }
 
 func (cps *CombinedPartSet) Parity() *types.PartSet {
+	cps.mtx.Lock()
+	cps.mtx.Unlock()
 	return cps.parity
 }
 
 func (cps *CombinedPartSet) BitArray() *bits.BitArray {
+	cps.mtx.Lock()
+	cps.mtx.Unlock()
 	return cps.totalMap
 }
 
@@ -64,11 +83,16 @@ func (cps *CombinedPartSet) CanDecode() bool {
 }
 
 func (cps *CombinedPartSet) Decode() error {
-	_, _, err := types.Decode(cps.original, cps.parity, int(cps.lastLen))
-	if err == nil {
-		cps.totalMap.Fill()
+	ops, eps, err := types.Decode(cps.original, cps.parity, int(cps.lastLen))
+	if err != nil {
+		return err
 	}
-	return err
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	cps.totalMap.Fill()
+	cps.original = ops
+	cps.parity = eps
+	return nil
 }
 
 // AddPart adds a part to the combined part set. It assumes that the parts being
