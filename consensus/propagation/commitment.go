@@ -37,6 +37,29 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// save the compact block locally and broadcast it to the connected peers
 	blockProp.handleCompactBlock(&cb, blockProp.self)
 
+	// save the block parts locally
+	combinedPartSet := proptypes.NewCombinedSetFromCompactBlock(&cb)
+	added, err := combinedPartSet.AddPartSet(block)
+	if err != nil {
+		blockProp.Logger.Error("failed to add block original parts to combined part set", "err", err, "height", proposal.Height, "round", proposal.Round)
+		// TODO check if we should stop at this level or not
+	}
+	if !added {
+		blockProp.Logger.Error("original block parts not added to the combined part set", "height", proposal.Height, "round", proposal.Round)
+	}
+	added, err = combinedPartSet.AddPartSet(parityBlock)
+	if err != nil {
+		blockProp.Logger.Error("failed to add block parity parts to combined part set", "err", err, "height", proposal.Height, "round", proposal.Round)
+	}
+	if !added {
+		blockProp.Logger.Error("parity block parts not added to the combined part set", "height", proposal.Height, "round", proposal.Round)
+	}
+
+	err = blockProp.ProposalCache.SetCombinedPartSet(proposal.Height, proposal.Round, combinedPartSet)
+	if err != nil {
+		blockProp.Logger.Error("failed to set combined part set", "err", err, "height", proposal.Height, "round", proposal.Round)
+	}
+
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
 	chunks := chunkParts(parityBlock.BitArray(), len(peers), 1)
@@ -78,7 +101,7 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID) {
 	if peer != blockProp.self && (cb.Proposal.Height > blockProp.currentHeight+1 || cb.Proposal.Round > blockProp.currentRound+1) {
 		// catchup on missing heights/rounds by requesting the missing parts from the peers we didn't request from.
-		blockProp.retryLastBlocks(cb.Proposal.Height, cb.Proposal.Round)
+		go blockProp.retryLastBlocks(cb.Proposal.Height, cb.Proposal.Round)
 	}
 
 	added, _, _ := blockProp.AddProposal(cb)

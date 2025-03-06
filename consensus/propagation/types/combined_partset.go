@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/types"
 )
@@ -94,6 +95,21 @@ func (cps *CombinedPartSet) AddPart(part *RecoveryPart) (bool, error) {
 		cps.totalMap.SetIndex(int(part.Index), true)
 	}
 	return added, err
+}
+
+// AddPartSet adds a whole part set of parts
+func (cps *CombinedPartSet) AddPartSet(parts *types.PartSet) (bool, error) {
+	for index := 0; index < int(parts.Count()); index++ {
+		part := parts.GetPart(index)
+		added, err := cps.AddPart(&RecoveryPart{Index: part.Index, Data: part.Bytes})
+		if err != nil {
+			return false, err
+		}
+		if !added {
+			return false, fmt.Errorf("failed to add part %d", index)
+		}
+	}
+	return true, nil
 }
 
 func (cps *CombinedPartSet) GetPart(index uint32) (*types.Part, bool) {

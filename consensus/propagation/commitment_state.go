@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"fmt"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/sync"
@@ -196,4 +197,13 @@ func (p *ProposalCache) prune(keepRecentHeights, keepRecentRounds int) {
 			}
 		}
 	}
+}
+
+// SetCombinedPartSet set the combined part set for the provided height and round.
+func (p *ProposalCache) SetCombinedPartSet(height int64, round int32, combinedPartSet *proptypes.CombinedPartSet) error {
+	if p.proposals[height] == nil || p.proposals[height][round] == nil {
+		return fmt.Errorf("nil proposal. cannot set combined part set for height %d", height)
+	}
+	p.proposals[height][round].block = combinedPartSet
+	return nil
 }
