@@ -269,14 +269,17 @@ func (blockProp *Reactor) broadcastWants(wants *proptypes.WantParts, from p2p.ID
 		}
 
 		if _, has := peer.GetRequests(wants.Height, wants.Round); has {
-			// this means we already sent this peer a request for this height and round
+			// this means we already sent this peer a request for this height and round,
 			// so there is no need to re-request.
+			// TODO filter based on which wants we sent to this peer and request only the ones we didn't already request.
 			continue
 		}
 
 		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
 			blockProp.Logger.Error("couldn't send want part", "target_peer", peer.peer.ID(), "height", wants.Height, "round", wants.Round)
 		}
+		// TODO wait for a bit of time to see if the data was received and only request from the other peers
+		// that sent us haves if the data is still not received.
 	}
 }
 

@@ -18,7 +18,7 @@ func TestPropose(t *testing.T) {
 	reactors, _ := testBlockPropReactors(2)
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
-	//reactor3 := reactors[2]
+	reactor3 := reactors[2]
 
 	cleanup, _, sm := state.SetupTestCase(t)
 	t.Cleanup(func() {
