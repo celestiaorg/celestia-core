@@ -265,8 +265,8 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	}
 }
 
-// broadcastWants gossips the provided want msg to all peers except to the
-// original sender. This will be called when catching up.
+// broadcastWants gossips the provided want msg to all the peers it received haves from
+// but didn't send a want. This is called during cathup/retry.
 func (blockProp *Reactor) broadcastWants(wants *proptypes.WantParts, from p2p.ID) {
 	e := p2p.Envelope{
 		ChannelID: WantChannel,
@@ -281,7 +281,13 @@ func (blockProp *Reactor) broadcastWants(wants *proptypes.WantParts, from p2p.ID
 			continue
 		}
 
-		if !p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+		if _, has := peer.GetRequests(wants.Height, wants.Round); has {
+			// this means we already sent this peer a request for this height and round
+			// so there is no need to re-request.
+			continue
+		}
+
+		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
 			blockProp.Logger.Error("couldn't send want part", "target_peer", peer.peer.ID(), "height", wants.Height, "round", wants.Round)
 		}
 	}

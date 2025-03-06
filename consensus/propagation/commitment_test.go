@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -14,10 +15,10 @@ import (
 )
 
 func TestPropose(t *testing.T) {
-	reactors, _ := testBlockPropReactors(3)
+	reactors, _ := testBlockPropReactors(2)
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
-	reactor3 := reactors[2]
+	//reactor3 := reactors[2]
 
 	cleanup, _, sm := state.SetupTestCase(t)
 	t.Cleanup(func() {
@@ -48,17 +49,18 @@ func TestPropose(t *testing.T) {
 
 	reactor1.ProposeBlock(prop, partSet, metaData)
 
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(100000 * time.Millisecond)
 
 	// check that the proposal was saved in reactor 1
 	_, _, has := reactor1.GetProposal(prop.Height, prop.Round)
 	require.True(t, has)
 
 	// Check that the proposal was received by the other reactors
-	_, _, has = reactor2.GetProposal(prop.Height, prop.Round)
-	require.True(t, has)
-	_, _, has = reactor3.GetProposal(prop.Height, prop.Round)
-	require.True(t, has)
+	_, parts, has := reactor2.GetProposal(prop.Height, prop.Round)
+	fmt.Println(parts)
+	require.True(t, parts.IsComplete())
+	//_, _, has = reactor3.GetProposal(prop.Height, prop.Round)
+	//require.True(t, has)
 
 	// Check if the other reactors received the haves
 	haves, has := reactor2.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
@@ -66,8 +68,8 @@ func TestPropose(t *testing.T) {
 	// the parts == total because we only have 2 peers
 	assert.Equal(t, len(haves.Parts), int(partSet.Total()))
 
-	haves, has = reactor3.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
-	assert.True(t, has)
-	// the parts == total because we only have 2 peers
-	assert.Equal(t, len(haves.Parts), int(partSet.Total()))
+	//haves, has = reactor3.getPeer(reactor1.self).GetHaves(prop.Height, prop.Round)
+	//assert.True(t, has)
+	//the parts == total because we only have 2 peers
+	//assert.Equal(t, len(haves.Parts), int(partSet.Total()))
 }

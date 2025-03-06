@@ -78,7 +78,7 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID) {
 	if peer != blockProp.self && (cb.Proposal.Height > blockProp.currentHeight+1 || cb.Proposal.Round > blockProp.currentRound+1) {
 		// catchup on missing heights/rounds by requesting the missing parts from all connected peers.
-		go blockProp.requestMissingBlocks(cb.Proposal.Height, cb.Proposal.Round)
+		go blockProp.retryLastBlocks(cb.Proposal.Height, cb.Proposal.Round)
 	}
 
 	added, _, _ := blockProp.AddProposal(cb)
