@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/types"
 )

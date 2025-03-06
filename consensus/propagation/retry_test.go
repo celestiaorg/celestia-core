@@ -1,14 +1,15 @@
 package propagation
 
 import (
+	"testing"
+	"time"
+
 	"github.com/stretchr/testify/assert"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/types"
-	"testing"
-	"time"
 )
 
 func TestCatchup(t *testing.T) {
