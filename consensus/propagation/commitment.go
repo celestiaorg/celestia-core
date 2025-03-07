@@ -116,6 +116,10 @@ func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*typ
 		return nil
 	}
 
+	parts := TxsToParts(txsFound)
+}
+
+func TxsToParts(txsFound []txFound) []*types.Part {
 	// sort the txs found by start index
 	sort.Slice(txsFound, func(i, j int) bool {
 		return txsFound[i].metaData.Start < txsFound[j].metaData.Start
@@ -124,112 +128,81 @@ func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*typ
 	// the cumulative bytes slice will contain the transaction bytes along with
 	// any left bytes from contiguous previous transactions
 	cumulativeBytes := make([]byte, 0)
+	// the start index of where the cumulative bytes start
+	cumulativeBytesStartIndex := -1
 	for index := 0; index < len(txsFound); index++ {
 		// the transaction we're parsing
 		currentTx := txsFound[index]
 		// the part index where the transaction starts
-		currentPartStart := currentTx.metaData.Start / types.BlockPartSizeBytes
-		// the index of the part relative to the block bytes where the transaction starts
-		currentPartStartIndex := currentPartStart * types.BlockPartSizeBytes
+		currentPartStartIndex := currentTx.metaData.Start / types.BlockPartSizeBytes
 		// the index of the part to the block bytes where the transaction ends
-		currentPartEndIndex := (currentPartStart + 1) * types.BlockPartSizeBytes
+		currentPartEndIndex := (currentPartStartIndex + 1) * types.BlockPartSizeBytes
 
+		if len(cumulativeBytes) == 0 {
+			cumulativeBytesStartIndex = int(currentTx.metaData.Start)
+		}
 		// append the current transaction bytes to the cumulative bytes slice
 		cumulativeBytes = append(cumulativeBytes, currentTx.txBytes...)
 
-		//
-		if currentPartStartIndex == currentTx.metaData.Start {
-			if currentPartEndIndex > currentTx.metaData.End {
-				// this means this transaction starts at a new part but
-				// doesn't end at one, this means we should check whether the next
-				// transaction starts as a continuation
-				if index+1 < len(txsFound) {
-					nextTx := txsFound[index+1]
-					if currentTx.metaData.End == nextTx.metaData.Start {
-						// the next transaction we have corresponds to the continuation of this part
-						// so, we can continue
-						continue
-					} else {
-						cumulativeBytes = make([]byte, 0)
-					}
-				} else {
-					// there is no next transaction, breaking.
-					break
-				}
-			}
-			if currentPartEndIndex <= currentTx.metaData.End {
-				// this means that this transaction starts at a new part and spans across one or
-				// more parts. we will decode as many parts we can and then leave the remaining
-				// bytes for the next transaction.
-				offset := uint32(0)
-				for offset < currentTx.metaData.End-currentTx.metaData.Start {
-					// take part as: [offset,offset+part_size-1)
-					// decode it
-					// add it to parts
-					partBz := cumulativeBytes[:types.BlockPartSizeBytes]
-					offset += types.BlockPartSizeBytes
-					// slice this part off the cumulative bytes
-					cumulativeBytes = cumulativeBytes[types.BlockPartSizeBytes:]
-				}
-				if index+1 < len(txsFound) {
-					nextTx := txsFound[index+1]
-					if currentTx.metaData.End == nextTx.metaData.Start {
-						// the next transaction we have corresponds to the continuation of this part
-						// so se continue.
-						continue
-					}
-				} else {
-					// there is no next transaction, breaking.
-					break
-				}
-			}
+		if cumulativeBytesStartIndex > int(currentPartStartIndex) {
+			// relative part end index
+			relativePartEndIndex := int(currentPartEndIndex) - cumulativeBytesStartIndex
+			// slice the cumulative bytes to start at exactly the part end index
+			cumulativeBytes = cumulativeBytes[relativePartEndIndex:]
 		}
-		if currentPartStartIndex < currentTx.metaData.Start {
-			if currentPartEndIndex > currentTx.metaData.End {
-				// this means this transaction starts at a new part but
-				// doesn't end at one, this means we should check whether the next
-				// transaction starts as a continuation
-				if index+1 < len(txsFound) {
-					nextTx := txsFound[index+1]
-					if currentTx.metaData.End == nextTx.metaData.Start {
-						// the next transaction we have corresponds to the continuation of this part
-						// so, we can continue
-						continue
-					} else {
-						cumulativeBytes = make([]byte, 0)
-					}
-				} else {
-					// there is no next transaction, breaking.
-					break
-				}
+		if int(currentPartStartIndex) >= cumulativeBytesStartIndex && int(currentPartEndIndex) <= cumulativeBytesStartIndex+len(cumulativeBytes) {
+			// process it with index of part == currentPartStartIndex
+			// set the cumulative bytes start index to be the start index of the next part
+			relativePartStartIndex := int(currentPartStartIndex) - cumulativeBytesStartIndex
+			// slice the cumulative bytes to start at exactly the part start index
+			cumulativeBytes = cumulativeBytes[relativePartStartIndex:]
+			// process the part
+			// set the cumulative start index to the part end index
+		} else if currentPartEndIndex <= currentTx.metaData.End { // end or end-1???
+			// this means that this transaction (or this transaction
+			// along with the cumulative bytes from the previous transactions)
+			// spans across one or more parts.
+			// we will decode as many parts we can and then leave the remaining
+			// bytes for the next transaction.
+			offset := uint32(0)
+			for offset < currentTx.metaData.End-currentTx.metaData.Start {
+				// take part as: [offset, offset+part_size-1)
+				// decode it
+				// add it to parts
+				partBz := cumulativeBytes[:types.BlockPartSizeBytes]
+				offset += types.BlockPartSizeBytes
+				// slice this part off the cumulative bytes
+				cumulativeBytes = cumulativeBytes[types.BlockPartSizeBytes:]
+				// set cumulative start index
 			}
-			if currentPartEndIndex <= currentTx.metaData.End {
-				// this means that this transaction starts at a new part and spans across one or
-				// more parts. we will decode as many parts we can and then leave the remaining
-				// bytes for the next transaction.
-				offset := uint32(0)
-				for offset < currentTx.metaData.End-currentTx.metaData.Start {
-					// take part as: [offset,offset+part_size-1)
-					// decode it
-					// add it to parts
-					partBz := cumulativeBytes[:types.BlockPartSizeBytes]
-					offset += types.BlockPartSizeBytes
-					// slice this part off the cumulative bytes
-					cumulativeBytes = cumulativeBytes[types.BlockPartSizeBytes:]
+			// if cumulative is empty, set start to -1 (not needed)
+		}
+
+		// check whether the next transaction is a contingent to the current one.
+		if index+1 < len(txsFound) {
+			nextTx := txsFound[index+1]
+			if currentTx.metaData.End == nextTx.metaData.Start {
+				// the next transaction corresponds to the continuation of this part
+
+				// the part index where the transaction starts
+				nextPartStart := nextTx.metaData.Start / types.BlockPartSizeBytes
+				// the index of the part relative to the block bytes where the transaction starts.
+				// explain that this next part is the start of the next transaction!!
+				nextPartStartIndex := nextPartStart * types.BlockPartSizeBytes
+
+				if nextTx.metaData.Start != nextPartStartIndex && currentTx.metaData.Start > nextPartStartIndex {
+					// FIXME This doesn't always work
+					// this means the next transaction continues after the current part,
+					// which means the previous part can't be retrieved.
+					// so, we reset the cumulative Bytes
+					cumulativeBytes = cumulativeBytes[:0]
+					cumulativeBytesStartIndex = -1
 				}
-				if index+1 < len(txsFound) {
-					nextTx := txsFound[index+1]
-					if currentTx.metaData.End == nextTx.metaData.Start {
-						// the next transaction we have corresponds to the continuation of this part,
-						// so se continue.
-						continue
-					} else {
-						cumulativeBytes = make([]byte, 0)
-					}
-				} else {
-					// there is no next transaction, breaking.
-					break
-				}
+				continue
+			} else {
+				// using an else is more explicit and easier to understand.
+				cumulativeBytes = cumulativeBytes[:0]
+				cumulativeBytesStartIndex = -1
 			}
 		}
 	}
