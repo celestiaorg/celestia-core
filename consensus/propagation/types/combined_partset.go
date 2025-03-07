@@ -14,6 +14,7 @@ type CombinedPartSet struct {
 	original *types.PartSet // holds the original parts (indexes: 0 to original.Total()-1)
 	parity   *types.PartSet // holds parity parts (logical indexes start at original.Total())
 	lastLen  uint32
+	catchup  bool
 }
 
 // NewCombinedSetFromCompactBlock creates a new CombinedPartSet from a
@@ -36,11 +37,13 @@ func NewCombinedSetFromCompactBlock(cb *CompactBlock) *CombinedPartSet {
 	}
 }
 
-func NewCombinedPartSetFromOriginal(original *types.PartSet) *CombinedPartSet {
+func NewCombinedPartSetFromOriginal(original *types.PartSet, catchup bool) *CombinedPartSet {
 	return &CombinedPartSet{
 		mtx:      &sync.Mutex{},
 		original: original,
 		parity:   &types.PartSet{},
+		catchup:  catchup,
+		totalMap: bits.NewBitArray(int(original.Total() * 2)),
 	}
 }
 
@@ -81,7 +84,8 @@ func (cps *CombinedPartSet) IsComplete() bool {
 
 // CanDecode determines if enough parts have been added to decode the block.
 func (cps *CombinedPartSet) CanDecode() bool {
-	return (cps.original.Count() + cps.parity.Count()) >= cps.original.Total()
+	return (cps.original.Count()+cps.parity.Count()) >= cps.original.Total() &&
+		!cps.catchup
 }
 
 func (cps *CombinedPartSet) Decode() error {

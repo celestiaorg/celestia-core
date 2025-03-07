@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/tendermint/tendermint/proto/tendermint/propagation"
-	protoprop "github.com/tendermint/tendermint/proto/tendermint/propagation"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -91,55 +90,6 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	if added {
 		blockProp.broadcastCompactBlock(cb, peer)
 		blockProp.retryWants(cb.Proposal.Height, cb.Proposal.Round)
-	}
-}
-
-// retryWants ensure that all data for all unpruned compact blocks is requested.
-//
-// todo: add a request limit for each part to avoid downloading the block too
-// many times. atm, this code will request the same part from every peer.
-func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
-	data := blockProp.dumpAll()
-	for _, prop := range data {
-		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
-
-		if height == currentHeight && round == currentRound {
-			continue
-		}
-
-		if prop.block.IsComplete() {
-			continue
-		}
-
-		peers := blockProp.getPeers()
-		for _, peer := range peers {
-			missing := prop.block.BitArray().Not()
-
-			reqs, has := peer.GetRequests(height, round)
-			if has {
-				missing = missing.Sub(reqs)
-			}
-
-			if missing.IsEmpty() {
-				continue
-			}
-
-			e := p2p.Envelope{
-				ChannelID: WantChannel,
-				Message: &protoprop.WantParts{
-					Parts:  *missing.ToProto(),
-					Height: height,
-					Round:  round,
-				},
-			}
-
-			if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
-				blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round)
-				continue
-			}
-
-			peer.AddRequests(height, round, missing)
-		}
 	}
 }
 

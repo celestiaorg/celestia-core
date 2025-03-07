@@ -1515,6 +1515,8 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 		cs.ProposalBlock = nil
 		cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
+		psh := cs.ProposalBlockParts.Header()
+		cs.propagator.AddCommitment(height, round, &psh)
 	}
 
 	if err := cs.eventBus.PublishEventUnlock(cs.RoundStateEvent()); err != nil {
@@ -1610,6 +1612,8 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 			// Set up ProposalBlockParts and keep waiting.
 			cs.ProposalBlock = nil
 			cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
+			psh := blockID.PartSetHeader
+			cs.propagator.AddCommitment(height, commitRound, &psh)
 
 			if err := cs.eventBus.PublishEventValidBlock(cs.RoundStateEvent()); err != nil {
 				logger.Error("failed publishing valid block", "err", err)
@@ -1916,7 +1920,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
 	if proposal.POLRound < -1 ||
 		(proposal.POLRound >= 0 && proposal.POLRound >= proposal.Round) {
-		return ErrInvalidProposalPOLRound
+		return fmt.Errorf(ErrInvalidProposalPOLRound.Error()+"%v %v", proposal.POLRound, proposal.Round)
 	}
 
 	p := proposal.ToProto()
@@ -2221,6 +2225,9 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 
 				if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 					cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
+					psh := blockID.PartSetHeader
+					// todo: override in propagator if an existing proposal exists
+					cs.propagator.AddCommitment(height, vote.Round, &psh)
 				}
 
 				cs.evsw.FireEvent(types.EventValidBlock, &cs.RoundState)
@@ -2518,10 +2525,7 @@ func (cs *State) syncData() {
 			pprop := cs.Proposal
 			completeProp := cs.isProposalComplete()
 			cs.mtx.RUnlock()
-			fmt.Println("proposal at", h, r, completeProp)
-			if pprop != nil {
-				fmt.Println("pprop", pprop.Height, pprop.Round, pprop.POLRound)
-			}
+
 			if completeProp {
 				continue
 			}
@@ -2538,6 +2542,7 @@ func (cs *State) syncData() {
 				)
 				continue
 			}
+
 			schema.WriteNote(
 				cs.traceClient,
 				h,
@@ -2547,7 +2552,7 @@ func (cs *State) syncData() {
 				parts.IsComplete(),
 			)
 
-			if prop != nil && pprop == nil {
+			if prop != nil && pprop == nil && prop.Signature != nil { // todo: don't use the signature as a proxy for catchup
 				schema.WriteNote(
 					cs.traceClient,
 					prop.Height,
@@ -2556,7 +2561,6 @@ func (cs *State) syncData() {
 					"found and sent proposal: %v/%v",
 					prop.Height, prop.Round,
 				)
-				fmt.Println("found and sent proposal", prop.Height, prop.Round)
 				cs.Logger.Info("Proposal was apparently not nil, so we're sending it", "complete", parts.IsComplete())
 				cs.peerMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
 			}

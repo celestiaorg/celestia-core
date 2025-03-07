@@ -17,10 +17,12 @@ import (
 )
 
 var (
-	ErrPartSetUnexpectedIndex = errors.New("error part set unexpected index")
-	ErrPartSetInvalidProof    = errors.New("error part set invalid proof")
-	ErrPartTooBig             = errors.New("error part size too big")
-	ErrPartInvalidSize        = errors.New("error inner part with invalid size")
+	ErrPartSetUnexpectedIndex   = errors.New("error part set unexpected index")
+	ErrPartSetInvalidProof      = errors.New("error part set invalid proof")
+	ErrPartSetInvalidProofHash  = errors.New("error part set invalid proof: wrong hash")
+	ErrPartSetInvalidProofTotal = errors.New("error part set invalid proof: wrong total")
+	ErrPartTooBig               = errors.New("error part size too big")
+	ErrPartInvalidSize          = errors.New("error inner part with invalid size")
 )
 
 type Part struct {
@@ -470,12 +472,12 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 
 	// The proof should be compatible with the number of parts.
 	if part.Proof.Total != int64(ps.total) {
-		return false, ErrPartSetInvalidProof
+		return false, ErrPartSetInvalidProofTotal
 	}
 
 	// Check hash proof
 	if part.Proof.Verify(ps.Hash(), part.Bytes) != nil {
-		return false, ErrPartSetInvalidProof
+		return false, ErrPartSetInvalidProofHash
 	}
 
 	return ps.AddPartWithoutProof(part)

@@ -12,6 +12,7 @@ type proposalData struct {
 	compactBlock *proptypes.CompactBlock
 	block        *proptypes.CombinedPartSet
 	maxRequests  *bits.BitArray
+	catchup      bool
 }
 
 type ProposalCache struct {
@@ -132,7 +133,7 @@ func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.Compa
 		if err != nil {
 			return nil, nil, nil, false
 		}
-		cparts := proptypes.NewCombinedPartSetFromOriginal(parts)
+		cparts := proptypes.NewCombinedPartSetFromOriginal(parts, false)
 		return nil, cparts, cparts.BitArray(), true
 	default:
 		return nil, nil, nil, false

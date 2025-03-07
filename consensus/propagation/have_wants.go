@@ -1,8 +1,6 @@
 package propagation
 
 import (
-	"fmt"
-
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
@@ -292,7 +290,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 
 	if parts.IsComplete() {
-		fmt.Println("parts are complete yay !!!!!!!!!!!!!!!!!!!!!!!")
 		return
 	}
 
@@ -311,7 +308,10 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 
 	// attempt to decode the remaining block parts. If they are decoded, then
-	// this node should send all the wanted parts that nodes have requested.
+	// this node should send all the wanted parts that nodes have requested. cp
+	// == nil means that there was no compact block available and this was
+	// during catchup. todo: use the bool found in the state instead of checking
+	// for nil.
 	if parts.CanDecode() {
 		err := parts.Decode()
 		if err != nil {
