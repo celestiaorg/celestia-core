@@ -39,7 +39,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
-	chunks := chunkParts(parityBlock.BitArray(), len(peers), 2) // TODO check whether the redundancy should be increased/decreased
+	chunks := chunkParts(parityBlock.BitArray(), len(peers), 1)
 	for index, peer := range peers {
 		e := p2p.Envelope{
 			ChannelID: DataChannel,

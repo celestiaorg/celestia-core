@@ -158,6 +158,16 @@ type HaveParts struct {
 	Parts  []PartMetaData `json:"parts,omitempty"`
 }
 
+// BitArrary returns a bit array of the provided size with the indexes of the
+// parts set to true.
+func (h *HaveParts) BitArray(size int) *bits.BitArray {
+	ba := bits.NewBitArray(size)
+	for _, part := range h.Parts {
+		ba.SetIndex(int(part.Index), true)
+	}
+	return ba
+}
+
 // ValidateBasic checks if the HaveParts is valid. It fails if Parts is nil or
 // empty, or if any of the parts are invalid.
 func (h *HaveParts) ValidateBasic() error {
@@ -205,54 +215,6 @@ func (h *HaveParts) GetIndex(i uint32) bool {
 	return false
 }
 
-func (h *HaveParts) Copy() *HaveParts {
-	partsCopy := make([]PartMetaData, len(h.Parts))
-	for i, part := range h.Parts {
-		hashCopy := make([]byte, len(part.Hash))
-		copy(hashCopy, part.Hash)
-
-		partsCopy[i] = PartMetaData{
-			Index: part.Index,
-			Hash:  hashCopy,
-			Proof: merkle.Proof{
-				Total:    part.Proof.Total,
-				Index:    part.Proof.Index,
-				LeafHash: part.Proof.LeafHash,
-				Aunts:    part.Proof.Aunts, // TODO also deep copy this
-			},
-		}
-	}
-
-	return &HaveParts{
-		Height: h.Height,
-		Round:  h.Round,
-		Parts:  partsCopy,
-	}
-}
-
-// Sub
-// TODO document that this makes changes on the receiving object
-func (h *HaveParts) Sub(parts *bits.BitArray) {
-	size := min(len(h.Parts), parts.Size())
-	newParts := make([]PartMetaData, 0)
-	// TODO improve this implementation not to iterate this way on all possibilities
-	for i := 0; i < size; i++ {
-		if !parts.GetIndex(int(h.Parts[i].Index)) {
-			newParts = append(newParts, h.Parts[i])
-		}
-	}
-	h.Parts = newParts
-}
-
-func (h *HaveParts) GetTrueIndices() []int {
-	// TODO make this not iterate all over the elements
-	indices := make([]int, len(h.Parts))
-	for i, part := range h.Parts {
-		indices[i] = int(part.Index)
-	}
-	return indices
-}
-
 // ToProto converts HaveParts to its protobuf representation.
 func (h *HaveParts) ToProto() *protoprop.HaveParts {
 	parts := make([]*protoprop.PartMetaData, len(h.Parts))
@@ -268,16 +230,6 @@ func (h *HaveParts) ToProto() *protoprop.HaveParts {
 		Round:  h.Round,
 		Parts:  parts,
 	}
-}
-
-// ToBitArray converts a have parts to a bit array.
-// might be removed in the future once we support proofs.
-func (h *HaveParts) ToBitArray() *bits.BitArray {
-	array := bits.NewBitArray(len(h.Parts))
-	for _, part := range h.Parts {
-		array.SetIndex(int(part.Index), true)
-	}
-	return array
 }
 
 // HavePartFromProto converts a protobuf HaveParts to its Go representation.
