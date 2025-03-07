@@ -407,7 +407,7 @@ func (c *Client) getTargetBlockOrLatest(
 
 	if lightBlock.Height > height {
 		// the witness has caught up. We recursively call the function again. However in order
-		// to avoud a wild goose chase where the witness sends us one header below and one header
+		// to avoid a wild goose chase where the witness sends us one header below and one header
 		// above the height we set a timeout to the context
 		lightBlock, err := witness.LightBlock(ctx, height)
 		return true, lightBlock, err
