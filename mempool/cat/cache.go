@@ -10,7 +10,7 @@ import (
 
 // LRUTxCache maintains a thread-safe LRU cache of raw transactions. The cache
 // only stores the hash of the raw transaction.
-// NOTE: This has been copied from mempool/cache with the main diffence of using
+// NOTE: This has been copied from mempool/cache with the main difference of using
 // tx keys instead of raw transactions.
 type LRUTxCache struct {
 	staticSize int
