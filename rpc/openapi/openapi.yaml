@@ -3039,7 +3039,7 @@ components:
           type: string
           example: "Dialing seeds in progress. See /net_info for details"
 
-    ###### Reuseable types ######
+    ###### Reusable types ######
 
     # Validator type with proposer prioirty
     ValidatorPriority:
