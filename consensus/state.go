@@ -538,8 +538,6 @@ func (cs *State) SetProposalAndBlock(
 
 func (cs *State) updateHeight(height int64) {
 	cs.metrics.Height.Set(float64(height))
-	cs.mtx.Lock()
-	defer cs.mtx.Unlock()
 	cs.Height = height
 }
 
@@ -2588,7 +2586,7 @@ func (cs *State) syncData() {
 				if part == nil {
 					continue
 				}
-				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{cs.Height, cs.Round, part}, ""}
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part}, ""}
 			}
 		}
 	}
