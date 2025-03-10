@@ -106,19 +106,19 @@ func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.Compa
 	cachedProps, has := p.proposals[height]
 	cachedProp, hasRound := cachedProps[round]
 
-	// // if the round is less than zero, then they're asking for the latest
-	// // proposal
-	// if round < -1 && len(cachedProps) > 0 {
-	// 	// get the latest round
-	// 	var latestRound int32
-	// 	for r := range cachedProps {
-	// 		if r > latestRound {
-	// 			latestRound = r
-	// 		}
-	// 	}
-	// 	cachedProp = cachedProps[latestRound]
-	// 	hasRound = true
-	// }
+	// if the round is less than zero, then they're asking for the latest
+	// proposal
+	if round < -1 && len(cachedProps) > 0 {
+		// get the latest round
+		var latestRound int32
+		for r := range cachedProps {
+			if r > latestRound {
+				latestRound = r
+			}
+		}
+		cachedProp = cachedProps[latestRound]
+		hasRound = true
+	}
 
 	var hasStored *types.BlockMeta
 	if height < p.currentHeight {
@@ -184,9 +184,11 @@ func (p *ProposalCache) DeleteRound(height int64, round int32) {
 	}
 }
 
-// prune keeps the past X proposals / blocks in memory while deleting the rest.
+// prune deletes all cached compact blocks for heights less than the provided
+// height and round.
 //
-// todo: also prune rounds
+// todo: also prune rounds. this requires prune in the consensus reactor after
+// moving rounds.
 func (p *ProposalCache) prune(pruneHeight int64) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
@@ -195,5 +197,4 @@ func (p *ProposalCache) prune(pruneHeight int64) {
 			delete(p.proposals, height)
 		}
 	}
-	// todo: also prune rounds
 }
