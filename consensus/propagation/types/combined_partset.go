@@ -58,19 +58,19 @@ func (cps *CombinedPartSet) SetProposalData(original, parity *types.PartSet) {
 
 func (cps *CombinedPartSet) Original() *types.PartSet {
 	cps.mtx.Lock()
-	cps.mtx.Unlock()
+	defer cps.mtx.Unlock()
 	return cps.original
 }
 
 func (cps *CombinedPartSet) Parity() *types.PartSet {
 	cps.mtx.Lock()
-	cps.mtx.Unlock()
+	defer cps.mtx.Unlock()
 	return cps.parity
 }
 
 func (cps *CombinedPartSet) BitArray() *bits.BitArray {
 	cps.mtx.Lock()
-	cps.mtx.Unlock()
+	defer cps.mtx.Unlock()
 	return cps.totalMap
 }
 

@@ -755,9 +755,6 @@ func (c *Client) verifySkipping(
 
 				// if the error is benign, the client does not need to replace the primary
 				case provider.ErrLightBlockNotFound, provider.ErrNoResponse, provider.ErrHeightTooHigh:
-					if providerErr == provider.ErrLightBlockNotFound {
-						providerErr = provider.NewNotFound()
-					}
 					return nil, err
 
 				// all other errors such as ErrBadLightBlock or ErrUnreliableProvider are seen as malevolent and the

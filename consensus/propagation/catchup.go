@@ -2,7 +2,6 @@ package propagation
 
 import (
 	"math/rand"
-	"time"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -17,6 +16,7 @@ import (
 // many times. atm, this code will request the same part from every peer.
 func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 	data := blockProp.dumpAll()
+	peers := blockProp.getPeers()
 	for _, prop := range data {
 		height, round := prop.compactBlock.Proposal.Height, prop.compactBlock.Proposal.Round
 
@@ -28,22 +28,23 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 			continue
 		}
 
-		peers := blockProp.getPeers()
-		peers = Shuffle(peers)
-		last := len(peers) - 1
-		if 3 < last {
-			last = 3
+		missing := prop.block.BitArray().Not()
+		if missing.IsEmpty() {
+			// this should never be hit due to the check above.
+			continue
 		}
-		peers = peers[:last] // only request from half of the peers
-		for _, peer := range peers {
-			missing := prop.block.BitArray().Not()
 
+		// make requests from different peers
+		peers = shuffle(peers)
+
+		for _, peer := range peers {
+			mc := missing.Copy()
 			reqs, has := peer.GetRequests(height, round)
 			if has {
-				missing = missing.Sub(reqs)
+				mc = mc.Sub(reqs)
 			}
 
-			if missing.IsEmpty() {
+			if mc.IsEmpty() {
 				continue
 			}
 
@@ -61,19 +62,11 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 				continue
 			}
 
+			// keep track of which requests we've made this attempt.
+			missing.Sub(mc)
 			peer.AddRequests(height, round, missing)
 		}
 	}
-}
-
-func Shuffle[T any](slice []T) (result []T) {
-	rand.Seed(time.Now().UnixNano()) // Seed the random number generator
-	n := len(slice)
-	for i := n - 1; i > 0; i-- {
-		j := rand.Intn(i + 1)
-		slice[i], slice[j] = slice[j], slice[i]
-	}
-	return slice
 }
 
 func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
@@ -101,4 +94,13 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 		block:       combinedSet,
 		maxRequests: bits.NewBitArray(int(psh.Total * 2)), // this assumes that the parity parts are the same size
 	}
+}
+
+func shuffle[T any](slice []T) []T {
+	n := len(slice)
+	for i := n - 1; i > 0; i-- {
+		j := rand.Intn(i + 1)
+		slice[i], slice[j] = slice[j], slice[i]
+	}
+	return slice
 }
