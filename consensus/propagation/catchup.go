@@ -1,6 +1,9 @@
 package propagation
 
 import (
+	"math/rand"
+	"time"
+
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/p2p"
@@ -26,6 +29,12 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 		}
 
 		peers := blockProp.getPeers()
+		peers = Shuffle(peers)
+		last := len(peers) - 1
+		if 3 < last {
+			last = 3
+		}
+		peers = peers[:last] // only request from half of the peers
 		for _, peer := range peers {
 			missing := prop.block.BitArray().Not()
 
@@ -55,6 +64,16 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 			peer.AddRequests(height, round, missing)
 		}
 	}
+}
+
+func Shuffle[T any](slice []T) (result []T) {
+	rand.Seed(time.Now().UnixNano()) // Seed the random number generator
+	n := len(slice)
+	for i := n - 1; i > 0; i-- {
+		j := rand.Intn(i + 1)
+		slice[i], slice[j] = slice[j], slice[i]
+	}
+	return slice
 }
 
 func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {

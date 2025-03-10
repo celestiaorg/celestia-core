@@ -3,10 +3,10 @@ package propagation
 import (
 	"fmt"
 	"reflect"
+	"sync"
 
 	"github.com/tendermint/tendermint/p2p/conn"
 
-	"github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/store"
 
 	"github.com/gogo/protobuf/proto"
@@ -28,6 +28,11 @@ const (
 
 	// WantChannel the propagation reactor channel handling the wants.
 	WantChannel = byte(0x51)
+
+	// blockCacheSize determines the number of blocks to keep in the cache.
+	// After each block is committed, only the last `blockCacheSize` blocks are
+	// kept.
+	blockCacheSize = 5
 )
 
 type Reactor struct {
@@ -71,22 +76,21 @@ func (blockProp *Reactor) OnStart() error {
 }
 
 func (blockProp *Reactor) OnStop() {
-	// TODO: implement
 }
 
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  WantChannel,
-			Priority:            6,
-			SendQueueCapacity:   1000,
+			Priority:            20,
+			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
 		},
 		{
 			ID:                  DataChannel,
-			Priority:            10,
-			SendQueueCapacity:   5000,
+			Priority:            15,
+			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
 		},
@@ -192,6 +196,17 @@ func (blockProp *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 		Src:       peer,
 		Message:   uw,
 	})
+}
+
+// Prune removes all peer and proposal state from the block propagation reactor.
+// This should be called only after a block has been committed.
+func (blockProp *Reactor) Prune(committedHeight int64) {
+	prunePast := committedHeight - blockCacheSize
+	peers := blockProp.getPeers()
+	for _, peer := range peers {
+		peer.prune(prunePast)
+	}
+	blockProp.ProposalCache.prune(prunePast)
 }
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,

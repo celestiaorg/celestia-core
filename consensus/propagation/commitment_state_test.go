@@ -290,7 +290,7 @@ func TestProposalCache_prune(t *testing.T) {
 	pc.currentHeight = 12
 	pc.currentRound = 2
 
-	pc.prune(1, 1) // keep only the past 1 height, and past 1 round in memory
+	pc.prune(12 - 1) // keep only the past 1 height, and past 1 round in memory
 
 	// Expect that everything older than height=11 is removed.
 	// So height=10 is gone

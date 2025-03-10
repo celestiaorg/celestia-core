@@ -24,7 +24,7 @@ import (
 // - if so, we just gossip the haves to our connected peers.
 // - otherwise, we send the wants for the missing parts to that peer before broadcasting the haves.
 // - finally, we keep track of the want requests in the proposal state.
-func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, bypassRequestLimit bool) {
+func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, _ bool) {
 	if haves == nil {
 		// TODO handle the disconnection case
 		return
@@ -60,16 +60,17 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 	hc := haves.BitArray(int(parts.Total()))
 	hc.Sub(parts.BitArray())
 
-	// remove any parts that we have already requested sufficient times.
-	if !bypassRequestLimit {
-		hc.Sub(fullReqs)
+	if hc.IsEmpty() {
+		return
+	}
+
+	hc.Sub(fullReqs)
+
+	if hc.IsEmpty() {
+		return
 	}
 
 	reqLimit := 1
-	if bypassRequestLimit {
-		// make this configurable
-		reqLimit = 6
-	}
 
 	// if enough requests have been made for the parts, don't request them.
 	for _, partIndex := range hc.GetTrueIndices() {
@@ -89,7 +90,6 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		}
 	}
 
-	// we can also exit early if we have all of the data already
 	if hc.IsEmpty() {
 		return
 	}
@@ -104,7 +104,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, b
 		},
 	}
 
-	if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
+	if !p2p.TrySendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
 		blockProp.Logger.Error("failed to send part state", "peer", peer, "height", height, "round", round)
 		return
 	}
@@ -148,7 +148,6 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 			continue
 		}
 
-		// todo: don't re-send haves to peers that already have it.
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
 			Message:   haves.ToProto(),
@@ -195,12 +194,6 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	// if we have the parts, send them to the peer.
 	wc := wants.Parts.Copy()
-
-	// send all the parts if the peer doesn't know which parts to request
-	if wc.IsEmpty() {
-		wc = parts.BitArray()
-	}
-
 	canSend := parts.BitArray().And(wc)
 	if canSend == nil {
 		blockProp.Logger.Error("nil can send?", "peer", peer, "height", height, "round", round, "wants", wants, "wc", wc)
@@ -209,22 +202,17 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	for _, partIndex := range canSend.GetTrueIndices() {
 		part, _ := parts.GetPart(uint32(partIndex))
-		ppart, err := part.ToProto()
-		if err != nil {
-			blockProp.Logger.Error("failed to convert part to proto", "height", height, "round", round, "part", partIndex, "error", err)
-			continue
-		}
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
 			Message: &propproto.RecoveryPart{
 				Height: height,
 				Round:  round,
-				Index:  ppart.Index,
-				Data:   ppart.Bytes,
+				Index:  uint32(partIndex),
+				Data:   part.Bytes,
 			},
 		}
 
-		if !p2p.SendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
+		if !p2p.TrySendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
 			blockProp.Logger.Error("failed to send part", "peer", peer, "height", height, "round", round, "part", partIndex)
 			continue
 		}
@@ -236,28 +224,6 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	stillMissing := wants.Parts.Sub(canSend)
 	if !stillMissing.IsEmpty() {
 		p.AddWants(height, round, stillMissing)
-	}
-}
-
-// broadcastWants gossips the provided want msg to all peers except to the
-// original sender. This will be called when catching up.
-func (blockProp *Reactor) broadcastWants(wants *proptypes.WantParts, from p2p.ID) {
-	e := p2p.Envelope{
-		ChannelID: WantChannel,
-		Message: &propproto.WantParts{
-			Height: wants.Height,
-			Round:  wants.Round,
-			Parts:  wants.ToProto().Parts,
-		},
-	}
-	for _, peer := range blockProp.getPeers() {
-		if peer.peer.ID() == from {
-			continue
-		}
-
-		if !p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
-			blockProp.Logger.Error("couldn't send want part", "target_peer", peer.peer.ID(), "height", wants.Height, "round", wants.Round)
-		}
 	}
 }
 
@@ -371,6 +337,7 @@ func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
 				ChannelID: DataChannel,
 				Message:   &propproto.RecoveryPart{Height: part.Height, Round: part.Round, Index: part.Index, Data: part.Data},
 			}
+
 			if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
 				blockProp.Logger.Error("failed to send part", "peer", peer.peer.ID(), "height", part.Height, "round", part.Round, "part", part.Index)
 				continue

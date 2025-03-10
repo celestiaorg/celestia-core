@@ -47,6 +47,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
 	chunks := chunkParts(parts.BitArray(), len(peers), 1)
+	// chunks = Shuffle(chunks)
 	for index, peer := range peers {
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
@@ -71,7 +72,7 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 	for _, indice := range chunk.GetTrueIndices() {
 		part, _ := partSet.GetPart(uint32(indice))
 		partMetaData = append(partMetaData, &propagation.PartMetaData{ // TODO create the programmatic type and use the ToProto method
-			Index: part.Index,
+			Index: uint32(indice),
 			Hash:  part.Proof.LeafHash, // TODO this seems like a duplicate field, do we need it?
 			Proof: *part.Proof.ToProto(),
 		})

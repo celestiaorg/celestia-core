@@ -1,6 +1,8 @@
 package propagation
 
 import (
+	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
+	"github.com/tendermint/tendermint/libs/log"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/mock"
@@ -19,22 +22,38 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-func newPropagationReactor(s *p2p.Switch) *Reactor {
+func newPropagationReactor(s *p2p.Switch, tracer trace.Tracer) *Reactor {
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	blockPropR := NewReactor(s.NetAddress().ID, trace.NoOpTracer(), blockStore)
+	blockPropR := NewReactor(s.NetAddress().ID, tracer, blockStore)
 	blockPropR.SetSwitch(s)
 
 	return blockPropR
 }
 
-func testBlockPropReactors(n int) ([]*Reactor, []*p2p.Switch) {
+func testBlockPropReactors(n int, p2pCfg *cfg.P2PConfig) ([]*Reactor, []*p2p.Switch) {
+	return createTestReactors(n, p2pCfg, false, "")
+}
+
+func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir string) ([]*Reactor, []*p2p.Switch) {
 	reactors := make([]*Reactor, n)
 	switches := make([]*p2p.Switch, n)
 
-	p2pCfg := cfg.DefaultP2PConfig()
-
 	p2p.MakeConnectedSwitches(p2pCfg, n, func(i int, s *p2p.Switch) *p2p.Switch {
-		reactors[i] = newPropagationReactor(s)
+		var (
+			tr  trace.Tracer
+			err error
+		)
+		if !tracer {
+			tr = trace.NoOpTracer()
+		} else {
+			dconfig := cfg.DefaultConfig()
+			dconfig.SetRoot(filepath.Join(traceDir, strconv.Itoa(i)))
+			tr, err = trace.NewLocalTracer(dconfig, log.NewNopLogger(), "test", string(s.NetAddress().ID))
+			if err != nil {
+				panic(err)
+			}
+		}
+		reactors[i] = newPropagationReactor(s, tr)
 		s.AddReactor("BlockProp", reactors[i])
 		switches = append(switches, s)
 		return s
@@ -46,7 +65,7 @@ func testBlockPropReactors(n int) ([]*Reactor, []*p2p.Switch) {
 }
 
 func TestCountRequests(t *testing.T) {
-	reactors, _ := testBlockPropReactors(1)
+	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
 	reactor := reactors[0]
 
 	peer1 := mock.NewPeer(nil)
@@ -82,7 +101,7 @@ func TestCountRequests(t *testing.T) {
 }
 
 func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
-	reactors, _ := testBlockPropReactors(3)
+	reactors, _ := testBlockPropReactors(3, cfg.DefaultP2PConfig())
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
 	reactor3 := reactors[2]

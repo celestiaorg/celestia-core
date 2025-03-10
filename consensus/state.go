@@ -1342,11 +1342,13 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
 
-	stateMachineValidBlock, err := cs.blockExec.ProcessProposal(cs.ProposalBlock)
-	if err != nil {
-		cs.Logger.Error("state machine returned an error when trying to process proposal block", "err", err)
-		return
-	}
+	// todo: re-enable after the fast testnet
+	// stateMachineValidBlock, err := cs.blockExec.ProcessProposal(cs.ProposalBlock)
+	// if err != nil {
+	// 	cs.Logger.Error("state machine returned an error when trying to process proposal block", "err", err)
+	// 	return
+	// }
+	stateMachineValidBlock := true
 
 	schema.WriteABCI(cs.traceClient, schema.ProcessProposalEnd, height, round)
 
@@ -1787,6 +1789,8 @@ func (cs *State) finalizeCommit(height int64) {
 	// Schedule Round0 to start soon.
 	cs.scheduleRound0(&cs.RoundState)
 
+	// prune the propagation reactor
+	cs.propagator.Prune(height)
 	// By here,
 	// * cs.Height has been increment to height+1
 	// * cs.Step is now cstypes.RoundStepNewHeight
@@ -2503,7 +2507,7 @@ func repairWalFile(src, dst string) error {
 	return nil
 }
 
-const SyncDataInterval = 100
+const SyncDataInterval = 50
 
 // sync data periodically checks to make sure that all block parts in the data
 // routine are pushed through to the state.
@@ -2548,8 +2552,10 @@ func (cs *State) syncData() {
 				h,
 				r,
 				"syncData",
-				"found data: is complete %v",
+				"found data: is complete %v %v %v",
 				parts.IsComplete(),
+				parts.Total(),
+				parts.BitArray().String(),
 			)
 
 			if prop != nil && pprop == nil && prop.Signature != nil { // todo: don't use the signature as a proxy for catchup

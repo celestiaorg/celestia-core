@@ -105,6 +105,7 @@ func TestPeerState_prune(t *testing.T) {
 	bm.Fill()
 
 	// Populate test data
+	height := int64(13)
 	for h := int64(10); h <= 13; h++ {
 		for r := int32(0); r < 3; r++ {
 			ps.AddHaves(h, r, bm)
@@ -112,7 +113,7 @@ func TestPeerState_prune(t *testing.T) {
 	}
 
 	// Prune
-	ps.prune(13, 2, 1)
+	ps.prune(height - 2)
 
 	// Height < 11 => remove
 	_, okH10r0 := ps.GetHaves(10, 0)

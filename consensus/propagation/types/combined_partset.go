@@ -118,10 +118,11 @@ func (cps *CombinedPartSet) AddPart(part *RecoveryPart) (bool, error) {
 	}
 
 	// Adjust the index to be relative to the parity set.
+	encodedIndex := p.Index
 	p.Index -= cps.original.Total()
 	added, err := cps.parity.AddPartWithoutProof(p)
 	if added {
-		cps.totalMap.SetIndex(int(part.Index), true)
+		cps.totalMap.SetIndex(int(encodedIndex), true)
 	}
 	return added, err
 }

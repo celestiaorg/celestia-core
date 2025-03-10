@@ -185,24 +185,15 @@ func (p *ProposalCache) DeleteRound(height int64, round int32) {
 }
 
 // prune keeps the past X proposals / blocks in memory while deleting the rest.
-func (p *ProposalCache) prune(keepRecentHeights, keepRecentRounds int) {
+//
+// todo: also prune rounds
+func (p *ProposalCache) prune(pruneHeight int64) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
 	for height := range p.proposals {
-		if height < p.currentHeight-int64(keepRecentHeights) {
+		if height < pruneHeight {
 			delete(p.proposals, height)
 		}
 	}
-	// delete all but the last round for each remaining height except the current.
-	// this is because we need to keep the last round for the current height.
-	for height := range p.proposals {
-		if height == p.currentHeight {
-			continue
-		}
-		for round := range p.proposals[height] {
-			if round <= p.currentRound-int32(keepRecentRounds) {
-				delete(p.proposals[height], round)
-			}
-		}
-	}
+	// todo: also prune rounds
 }

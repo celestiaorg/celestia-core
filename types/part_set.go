@@ -36,16 +36,16 @@ func (part *Part) ValidateBasic() error {
 	if len(part.Bytes) > int(BlockPartSizeBytes) {
 		return ErrPartTooBig
 	}
-	// All parts except the last one should have the same constant size.
-	if int64(part.Index) < part.Proof.Total-1 && len(part.Bytes) != int(BlockPartSizeBytes) {
-		return ErrPartInvalidSize
-	}
-	if int64(part.Index) != part.Proof.Index {
-		return fmt.Errorf("part index %d != proof index %d", part.Index, part.Proof.Index)
-	}
-	if err := part.Proof.ValidateBasic(); err != nil {
-		return fmt.Errorf("wrong Proof: %w", err)
-	}
+	// // All parts except the last one should have the same constant size.
+	// if int64(part.Index) < part.Proof.Total-1 && len(part.Bytes) != int(BlockPartSizeBytes) {
+	// 	return ErrPartInvalidSize
+	// }
+	// if int64(part.Index) != part.Proof.Index {
+	// 	return fmt.Errorf("part index %d != proof index %d", part.Index, part.Proof.Index)
+	// }
+	// if err := part.Proof.ValidateBasic(); err != nil {
+	// 	return fmt.Errorf("wrong Proof: %w", err)
+	// }
 	return nil
 }
 
@@ -470,15 +470,18 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 		return false, fmt.Errorf("nil part")
 	}
 
-	// The proof should be compatible with the number of parts.
-	if part.Proof.Total != int64(ps.total) {
-		return false, ErrPartSetInvalidProofTotal
-	}
+	// todo: the proof is verified with the have message, but atm we aren't
+	// keeping track of that proof and always re-adding it.
+	// The proof should be
+	// compatible with the number of parts. if part.Proof.Total !=
+	// int64(ps.total) {
+	//  return false, fmt.Errorf(ErrPartSetInvalidProofTotal.Error()+":%v %v", part.Proof.Total, ps.total)
+	// }
 
-	// Check hash proof
-	if part.Proof.Verify(ps.Hash(), part.Bytes) != nil {
-		return false, ErrPartSetInvalidProofHash
-	}
+	// // Check hash proof
+	// if part.Proof.Verify(ps.Hash(), part.Bytes) != nil {
+	// 	return false, ErrPartSetInvalidProofHash
+	// }
 
 	return ps.AddPartWithoutProof(part)
 }

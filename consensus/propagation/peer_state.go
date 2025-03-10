@@ -161,29 +161,15 @@ func (d *PeerState) DeleteHeight(height int64) {
 
 // prune removes all haves and wants for heights less than the given height,
 // while keeping the last keepRecentRounds for the current height.
-func (d *PeerState) prune(currentHeight int64, keepRecentHeights, keepRecentRounds int) {
+func (d *PeerState) prune(prunePastHeight int64) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	for height := range d.state {
-		if height < currentHeight-int64(keepRecentHeights) {
+		if height < prunePastHeight {
 			delete(d.state, height)
 		}
-		if height == currentHeight {
-			continue
-		}
 	}
-	// delete all but the last round for each remaining height except the current.
-	// this is because we need to keep the last round for the current height.
-	for height := range d.state {
-		if height == currentHeight {
-			continue
-		}
-		for round := range d.state[height] {
-			if round < int32(currentHeight)-int32(keepRecentRounds) {
-				delete(d.state[height], round)
-			}
-		}
-	}
+	// todo: prune rounds separately from heights
 }
 
 type partState struct {
@@ -193,7 +179,7 @@ type partState struct {
 }
 
 // newpartState initializes and returns a new partState
-func newpartState(size int, height int64, round int32) *partState {
+func newpartState(size int, _ int64, _ int32) *partState {
 	return &partState{
 		haves:    bits.NewBitArray(size),
 		wants:    bits.NewBitArray(size),
@@ -202,7 +188,7 @@ func newpartState(size int, height int64, round int32) *partState {
 }
 
 func (p *partState) addHaves(haves *bits.BitArray) {
-	p.wants.AddBitArray(haves)
+	p.haves.AddBitArray(haves)
 }
 
 func (p *partState) addWants(wants *bits.BitArray) {
@@ -222,4 +208,49 @@ func (p *partState) setHave(index int, has bool) {
 // SetWant sets the want bit for a given part.
 func (p *partState) setWant(part int, wants bool) {
 	p.wants.SetIndex(part, wants)
+}
+
+type debugState struct {
+	mtx     *sync.Mutex
+	haves   map[uint32]int
+	wants   map[uint32]int
+	parts   map[uint32]int
+	commits int
+}
+
+func newDebugState() *debugState {
+	return &debugState{
+		mtx:   &sync.Mutex{},
+		haves: make(map[uint32]int),
+		wants: make(map[uint32]int),
+		parts: make(map[uint32]int),
+	}
+}
+
+func (d *debugState) addHaves(parts *bits.BitArray) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	for _, part := range parts.GetTrueIndices() {
+		d.haves[uint32(part)]++
+	}
+}
+
+func (d *debugState) addWants(parts *bits.BitArray) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	for _, part := range parts.GetTrueIndices() {
+		d.wants[uint32(part)]++
+	}
+}
+
+func (d *debugState) addPart(part uint32) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	d.parts[part]++
+}
+
+func (d *debugState) addCommit() {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	d.commits++
 }
