@@ -125,32 +125,45 @@ func TxsToParts(txsFound []txFound) []*types.Part {
 		return txsFound[i].metaData.Start < txsFound[j].metaData.Start
 	})
 
+	// the parts slice
+	parts := make([]*types.Part, 0)
+
 	// the cumulative bytes slice will contain the transaction bytes along with
-	// any left bytes from contiguous previous transactions
+	// any left bytes from previous contiguous transactions
 	cumulativeBytes := make([]byte, 0)
 	// the start index of where the cumulative bytes start
 	cumulativeBytesStartIndex := -1
 	for index := 0; index < len(txsFound); index++ {
 		// the transaction we're parsing
 		currentTx := txsFound[index]
-		// the part index where the transaction starts
+		// the inclusive part index where the transaction starts
 		currentPartStartIndex := currentTx.metaData.Start / types.BlockPartSizeBytes
-		// the index of the part to the block bytes where the transaction ends
+		// the exclusive index of the byte where the current part ends
 		currentPartEndIndex := (currentPartStartIndex + 1) * types.BlockPartSizeBytes
 
 		if len(cumulativeBytes) == 0 {
+			// an empty cumulative bytes means the current transaction start
+			// is where the cumulative bytes will start
 			cumulativeBytesStartIndex = int(currentTx.metaData.Start)
 		}
 		// append the current transaction bytes to the cumulative bytes slice
 		cumulativeBytes = append(cumulativeBytes, currentTx.txBytes...)
 
-		if cumulativeBytesStartIndex > int(currentPartStartIndex) {
+		// This case checks whether the cumulative bytes start index
+		// starts at the current part.
+		// If not, this means the current part, even if we might have some of its data,
+		// is not recoverable, and we can truncate it.
+		if int(currentPartStartIndex) < cumulativeBytesStartIndex {
 			// relative part end index
 			relativePartEndIndex := int(currentPartEndIndex) - cumulativeBytesStartIndex
 			// slice the cumulative bytes to start at exactly the part end index
 			cumulativeBytes = cumulativeBytes[relativePartEndIndex:]
+			// set the cumulative bytes start index to the current part end index
+			cumulativeBytesStartIndex = int(currentPartEndIndex)
 		}
-		if int(currentPartStartIndex) >= cumulativeBytesStartIndex && int(currentPartEndIndex) <= cumulativeBytesStartIndex+len(cumulativeBytes) {
+
+		// This case parses the next parts if they're parsable.
+		if cumulativeBytesStartIndex <= int(currentPartStartIndex) && int(currentPartEndIndex) <= cumulativeBytesStartIndex+len(cumulativeBytes) {
 			// process it with index of part == currentPartStartIndex
 			// set the cumulative bytes start index to be the start index of the next part
 			relativePartStartIndex := int(currentPartStartIndex) - cumulativeBytesStartIndex
@@ -190,7 +203,7 @@ func TxsToParts(txsFound []txFound) []*types.Part {
 				// explain that this next part is the start of the next transaction!!
 				nextPartStartIndex := nextPartStart * types.BlockPartSizeBytes
 
-				if nextTx.metaData.Start != nextPartStartIndex && currentTx.metaData.Start > nextPartStartIndex {
+				if nextTx.metaData.Start != nextPartStartIndex && nextPartStartIndex < currentTx.metaData.Start {
 					// FIXME This doesn't always work
 					// this means the next transaction continues after the current part,
 					// which means the previous part can't be retrieved.
@@ -206,6 +219,7 @@ func TxsToParts(txsFound []txFound) []*types.Part {
 			}
 		}
 	}
+	return parts
 }
 
 // txFound is an intermediary type that allows keeping the transaction metadata,
