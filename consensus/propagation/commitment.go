@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"fmt"
+	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 	"sort"
 
@@ -116,7 +117,8 @@ func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*typ
 		return nil
 	}
 
-	parts := TxsToParts(txsFound)
+	//parts := TxsToParts(txsFound)
+	return nil
 }
 
 func TxsToParts(txsFound []txFound) []*types.Part {
@@ -163,32 +165,31 @@ func TxsToParts(txsFound []txFound) []*types.Part {
 		}
 
 		// This case parses the next parts if they're parsable.
-		if cumulativeBytesStartIndex <= int(currentPartStartIndex) && int(currentPartEndIndex) <= cumulativeBytesStartIndex+len(cumulativeBytes) {
-			// process it with index of part == currentPartStartIndex
-			// set the cumulative bytes start index to be the start index of the next part
-			relativePartStartIndex := int(currentPartStartIndex) - cumulativeBytesStartIndex
-			// slice the cumulative bytes to start at exactly the part start index
-			cumulativeBytes = cumulativeBytes[relativePartStartIndex:]
-			// process the part
-			// set the cumulative start index to the part end index
-		} else if currentPartEndIndex <= currentTx.metaData.End { // end or end-1???
-			// this means that this transaction (or this transaction
-			// along with the cumulative bytes from the previous transactions)
-			// spans across one or more parts.
-			// we will decode as many parts we can and then leave the remaining
-			// bytes for the next transaction.
-			offset := uint32(0)
-			for offset < currentTx.metaData.End-currentTx.metaData.Start {
-				// take part as: [offset, offset+part_size-1)
-				// decode it
-				// add it to parts
-				partBz := cumulativeBytes[:types.BlockPartSizeBytes]
-				offset += types.BlockPartSizeBytes
-				// slice this part off the cumulative bytes
-				cumulativeBytes = cumulativeBytes[types.BlockPartSizeBytes:]
-				// set cumulative start index
+		//if cumulativeBytesStartIndex <= int(currentPartStartIndex) && int(currentPartEndIndex) <= cumulativeBytesStartIndex+len(cumulativeBytes) {
+		//	// process it with index of part == currentPartStartIndex
+		//	// set the cumulative bytes start index to be the start index of the next part
+		//	relativePartStartIndex := int(currentPartStartIndex) - cumulativeBytesStartIndex
+		//	// slice the cumulative bytes to start at exactly the part start index
+		//	cumulativeBytes = cumulativeBytes[relativePartStartIndex:]
+		//	// process the part
+		//	// set the cumulative start index to the part end index
+		//} FIXME: this case maybe doesn't make sense
+
+		// parse the parts
+		for len(cumulativeBytes) >= int(types.BlockPartSizeBytes) {
+			// get the part's bytes
+			partBz := cumulativeBytes[:types.BlockPartSizeBytes]
+			// create the part
+			part := &types.Part{
+				Index: uint32(cumulativeBytesStartIndex) / types.BlockPartSizeBytes,
+				Bytes: partBz,
+				Proof: merkle.Proof{}, // empty proof because we don't have the other leaves to create a valid one
 			}
-			// if cumulative is empty, set start to -1 (not needed)
+			parts = append(parts, part)
+			// slice this part off the cumulative bytes
+			cumulativeBytes = cumulativeBytes[types.BlockPartSizeBytes:]
+			// set cumulative start index
+			cumulativeBytesStartIndex += int(types.BlockPartSizeBytes)
 		}
 
 		// check whether the next transaction is a contingent to the current one.
@@ -213,7 +214,7 @@ func TxsToParts(txsFound []txFound) []*types.Part {
 				}
 				continue
 			} else {
-				// using an else is more explicit and easier to understand.
+				// using else is more explicit and easier to understand.
 				cumulativeBytes = cumulativeBytes[:0]
 				cumulativeBytesStartIndex = -1
 			}
