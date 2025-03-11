@@ -125,7 +125,6 @@ func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*typ
 			continue
 		}
 
-		// proto encode the transaction
 		protoTxs := mempool.Txs{Txs: [][]byte{tx}}
 		marshalledTx, err := proto.Marshal(&protoTxs)
 		if err != nil {
