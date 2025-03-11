@@ -2,7 +2,9 @@ package propagation
 
 import (
 	"fmt"
+	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/crypto/merkle"
+	"github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 	"sort"
 
@@ -91,10 +93,25 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	}
 
 	// check if we have any transactions that are in the compact block
-
-	// broadcast the haves for the parts we have??
+	parts := blockProp.compactBlockToParts(cb)
+	_, partSet, found := blockProp.GetProposal(cb.Proposal.Height, cb.Proposal.Round)
+	if !found {
+		return
+	}
+	for _, part := range parts {
+		added, err := partSet.AddPartWithoutProof(part)
+		if err != nil {
+			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
+			continue
+		}
+		if !added {
+			blockProp.Logger.Error("failed to add locally recovered part", "part", part.Index)
+			continue
+		}
+	}
 }
 
+// compactBlockToParts queries the mempool to see if we can recover any block parts locally.
 func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*types.Part {
 	// find the compact block transactions that exist in our mempool
 	txsFound := make([]txFound, 0)
@@ -110,24 +127,38 @@ func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*typ
 			// the transaction hash is not found in the mempool.
 			continue
 		}
-		txsFound = append(txsFound, txFound{metaData: txMetaData, key: txKey, txBytes: tx})
+
+		// proto encode the transaction
+		protoTxs := mempool.Txs{Txs: [][]byte{tx}}
+		marshalledTx, err := proto.Marshal(&protoTxs)
+		if err != nil {
+			blockProp.Logger.Error("failed to encode tx", "err", err, "tx", txMetaData)
+			continue
+		}
+
+		txsFound = append(txsFound, txFound{metaData: txMetaData, key: txKey, txBytes: marshalledTx})
 	}
 	if len(txsFound) == 0 {
 		// no compact block transaction was found locally
 		return nil
 	}
 
-	//parts := TxsToParts(txsFound)
-	return nil
+	parts := txsToParts(txsFound)
+	if nbr := len(parts); nbr > 0 {
+		// just a meaningful log we can keep for now
+		blockProp.Logger.Info("recovered parts from the mempool", "number of parts", nbr)
+	}
+
+	return parts
 }
 
-func TxsToParts(txsFound []txFound) []*types.Part {
+func txsToParts(txsFound []txFound) []*types.Part {
 	// sort the txs found by start index
 	sort.Slice(txsFound, func(i, j int) bool {
 		return txsFound[i].metaData.Start < txsFound[j].metaData.Start
 	})
 
-	// the parts slice
+	// the part slice we will return
 	parts := make([]*types.Part, 0)
 
 	// the cumulative bytes slice will contain the transaction bytes along with
@@ -135,13 +166,15 @@ func TxsToParts(txsFound []txFound) []*types.Part {
 	cumulativeBytes := make([]byte, 0)
 	// the start index of where the cumulative bytes start
 	cumulativeBytesStartIndex := -1
+
 	for index := 0; index < len(txsFound); index++ {
 		// the transaction we're parsing
 		currentTx := txsFound[index]
 		// the inclusive part index where the transaction starts
-		currentPartStartIndex := currentTx.metaData.Start / types.BlockPartSizeBytes
+		currentPartIndex := currentTx.metaData.Start / types.BlockPartSizeBytes
+		currentPartStartIndex := currentPartIndex * types.BlockPartSizeBytes
 		// the exclusive index of the byte where the current part ends
-		currentPartEndIndex := (currentPartStartIndex + 1) * types.BlockPartSizeBytes
+		currentPartEndIndex := (currentPartIndex + 1) * types.BlockPartSizeBytes
 
 		if len(cumulativeBytes) == 0 {
 			// an empty cumulative bytes means the current transaction start
@@ -158,24 +191,20 @@ func TxsToParts(txsFound []txFound) []*types.Part {
 		if int(currentPartStartIndex) < cumulativeBytesStartIndex {
 			// relative part end index
 			relativePartEndIndex := int(currentPartEndIndex) - cumulativeBytesStartIndex
-			// slice the cumulative bytes to start at exactly the part end index
-			cumulativeBytes = cumulativeBytes[relativePartEndIndex:]
-			// set the cumulative bytes start index to the current part end index
-			cumulativeBytesStartIndex = int(currentPartEndIndex)
+			if relativePartEndIndex > len(cumulativeBytes) {
+				// case where the cumulative bytes length is small.
+				// this happens with small transactions.
+				cumulativeBytes = cumulativeBytes[:0]
+				cumulativeBytesStartIndex = -1
+			} else {
+				// slice the cumulative bytes to start at exactly the part end index
+				cumulativeBytes = cumulativeBytes[relativePartEndIndex:]
+				// set the cumulative bytes start index to the current part end index
+				cumulativeBytesStartIndex = int(currentPartEndIndex)
+			}
 		}
 
-		// This case parses the next parts if they're parsable.
-		//if cumulativeBytesStartIndex <= int(currentPartStartIndex) && int(currentPartEndIndex) <= cumulativeBytesStartIndex+len(cumulativeBytes) {
-		//	// process it with index of part == currentPartStartIndex
-		//	// set the cumulative bytes start index to be the start index of the next part
-		//	relativePartStartIndex := int(currentPartStartIndex) - cumulativeBytesStartIndex
-		//	// slice the cumulative bytes to start at exactly the part start index
-		//	cumulativeBytes = cumulativeBytes[relativePartStartIndex:]
-		//	// process the part
-		//	// set the cumulative start index to the part end index
-		//} FIXME: this case maybe doesn't make sense
-
-		// parse the parts
+		// parse the parts we gathered so far
 		for len(cumulativeBytes) >= int(types.BlockPartSizeBytes) {
 			// get the part's bytes
 			partBz := cumulativeBytes[:types.BlockPartSizeBytes]
@@ -195,26 +224,8 @@ func TxsToParts(txsFound []txFound) []*types.Part {
 		// check whether the next transaction is a contingent to the current one.
 		if index+1 < len(txsFound) {
 			nextTx := txsFound[index+1]
-			if currentTx.metaData.End == nextTx.metaData.Start {
-				// the next transaction corresponds to the continuation of this part
-
-				// the part index where the transaction starts
-				nextPartStart := nextTx.metaData.Start / types.BlockPartSizeBytes
-				// the index of the part relative to the block bytes where the transaction starts.
-				// explain that this next part is the start of the next transaction!!
-				nextPartStartIndex := nextPartStart * types.BlockPartSizeBytes
-
-				if nextTx.metaData.Start != nextPartStartIndex && nextPartStartIndex < currentTx.metaData.Start {
-					// FIXME This doesn't always work
-					// this means the next transaction continues after the current part,
-					// which means the previous part can't be retrieved.
-					// so, we reset the cumulative Bytes
-					cumulativeBytes = cumulativeBytes[:0]
-					cumulativeBytesStartIndex = -1
-				}
-				continue
-			} else {
-				// using else is more explicit and easier to understand.
+			if currentTx.metaData.End != nextTx.metaData.Start {
+				// the next transaction is not contingent, we can reset the cumulative bytes.
 				cumulativeBytes = cumulativeBytes[:0]
 				cumulativeBytesStartIndex = -1
 			}
