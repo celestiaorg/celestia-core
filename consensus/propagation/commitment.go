@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"fmt"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"github.com/tendermint/tendermint/proto/tendermint/propagation"

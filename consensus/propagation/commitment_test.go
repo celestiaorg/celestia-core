@@ -1,11 +1,12 @@
 package propagation
 
 import (
+	"testing"
+	"time"
+
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/tendermint/tendermint/pkg/trace"
 	"github.com/tendermint/tendermint/store"
-	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 

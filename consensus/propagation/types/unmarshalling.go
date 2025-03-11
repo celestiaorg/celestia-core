@@ -1,9 +1,10 @@
 package types
 
 import (
+	"sort"
+
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/types"
-	"sort"
 )
 
 // TxsToParts takes a set of mempool transactions and tries to create parts from them.
