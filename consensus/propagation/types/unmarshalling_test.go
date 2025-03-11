@@ -21,55 +21,92 @@ func TestTxsToParts(t *testing.T) {
 	t.Cleanup(func() {
 		cleanup(t)
 	})
-	numberOfTxs := 18 // increasing the number of transactions increases the test time exponentially
-	txs := make([]types.Tx, 0, numberOfTxs)
-	for i := 0; i < numberOfTxs; i++ {
-		txs = append(txs, cmtrand.Bytes(int(types.BlockPartSizeBytes/3)))
+	numberOfTxs := 16 // increasing the number of transactions increases the test time exponentially
+
+	tests := []struct {
+		name string
+		txs  []types.Tx
+	}{
+		{
+			name: "txs size == types.BlockPartSizeBytes/3",
+			txs: func() []types.Tx {
+				txs := make([]types.Tx, 0, numberOfTxs)
+				for i := 0; i < numberOfTxs; i++ {
+					txs = append(txs, cmtrand.Bytes(int(types.BlockPartSizeBytes/3)))
+				}
+				return txs
+			}(),
+		},
+		{
+			name: "txs size == types.BlockPartSizeBytes",
+			txs: func() []types.Tx {
+				txs := make([]types.Tx, 0, numberOfTxs)
+				for i := 0; i < numberOfTxs; i++ {
+					txs = append(txs, cmtrand.Bytes(int(types.BlockPartSizeBytes)))
+				}
+				return txs
+			}(),
+		},
+		{
+			name: "txs size == types.BlockPartSizeBytes * 3",
+			txs: func() []types.Tx {
+				txs := make([]types.Tx, 0, numberOfTxs)
+				for i := 0; i < numberOfTxs; i++ {
+					txs = append(txs, cmtrand.Bytes(int(types.BlockPartSizeBytes)*3))
+				}
+				return txs
+			}(),
+		},
 	}
 
-	data := types.Data{Txs: txs}
-	block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data := types.Data{Txs: test.txs}
+			block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
 
-	txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
-	for i, pos := range partSet.TxPos {
-		// calculate the protobuf overhead
-		protoTxs := mempool.Txs{Txs: [][]byte{data.Txs[i]}}
-		marshalledTx, err := proto.Marshal(&protoTxs)
-		require.NoError(t, err)
+			txsFound := make([]UnmarshalledTx, len(partSet.TxPos))
+			for i, pos := range partSet.TxPos {
+				// calculate the protobuf overhead
+				protoTxs := mempool.Txs{Txs: [][]byte{data.Txs[i]}}
+				marshalledTx, err := proto.Marshal(&protoTxs)
+				require.NoError(t, err)
 
-		txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
-		require.NoError(t, err)
-		txsFound[i] = UnmarshalledTx{
-			MetaData: TxMetaData{
-				Start: uint32(pos.Start),
-				End:   uint32(pos.End),
-				Hash:  block.Txs[i].Hash(),
-			},
-			Key:     txKey,
-			TxBytes: marshalledTx,
-		}
-	}
-
-	// generate all the possible combinations for the provided number of transactions
-	txsCombinations := GenerateTxsCombinations(numberOfTxs)
-
-	for _, combination := range txsCombinations {
-		t.Run(fmt.Sprintf("%v", combination), func(t *testing.T) {
-			combinationTxs := make([]UnmarshalledTx, 0)
-			for index, val := range combination {
-				if val == 1 {
-					combinationTxs = append(combinationTxs, txsFound[index])
+				txKey, err := types.TxKeyFromBytes(block.Txs[i].Hash())
+				require.NoError(t, err)
+				txsFound[i] = UnmarshalledTx{
+					MetaData: TxMetaData{
+						Start: uint32(pos.Start),
+						End:   uint32(pos.End),
+						Hash:  block.Txs[i].Hash(),
+					},
+					Key:     txKey,
+					TxBytes: marshalledTx,
 				}
 			}
 
-			parts := TxsToParts(combinationTxs)
+			// generate all the possible combinations for the provided number of transactions
+			txsCombinations := GenerateTxsCombinations(numberOfTxs)
 
-			for _, part := range parts {
-				expectedPart := partSet.GetPart(int(part.Index))
-				assert.Equal(t, expectedPart.Bytes, part.Bytes)
+			for _, combination := range txsCombinations {
+				t.Run(fmt.Sprintf("%v", combination), func(t *testing.T) {
+					combinationTxs := make([]UnmarshalledTx, 0)
+					for index, val := range combination {
+						if val == 1 {
+							combinationTxs = append(combinationTxs, txsFound[index])
+						}
+					}
+
+					parts := TxsToParts(combinationTxs)
+
+					for _, part := range parts {
+						expectedPart := partSet.GetPart(int(part.Index))
+						assert.Equal(t, expectedPart.Bytes, part.Bytes)
+					}
+				})
 			}
 		})
 	}
+
 }
 
 // GenerateTxsCombinations generates all relevant transaction placements
