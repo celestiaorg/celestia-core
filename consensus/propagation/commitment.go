@@ -122,7 +122,6 @@ func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*typ
 		}
 		tx, has := blockProp.mempool.GetTxByKey(txKey)
 		if !has {
-			// the transaction hash is not found in the mempool.
 			continue
 		}
 
