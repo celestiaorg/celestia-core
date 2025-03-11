@@ -140,9 +140,8 @@ func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*typ
 	}
 
 	parts := proptypes.TxsToParts(txsFound)
-	if nbr := len(parts); nbr > 0 {
-		// just a meaningful log we can keep for now
-		blockProp.Logger.Info("recovered parts from the mempool", "number of parts", nbr)
+	if len(parts) > 0 {
+		blockProp.Logger.Info("recovered parts from the mempool", "number of parts", len(parts))
 	}
 
 	return parts
