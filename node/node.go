@@ -926,7 +926,7 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, fmt.Errorf("could not create blockchain reactor: %w", err)
 	}
 
-	propagationReactor := propagation.NewReactor(nodeKey.ID(), tracer, blockStore)
+	propagationReactor := propagation.NewReactor(nodeKey.ID(), tracer, blockStore, mempool)
 
 	// Make ConsensusReactor. Don't enable fully if doing a state sync and/or fast sync first.
 	// FIXME We need to update metrics here, since other reactors don't have access to them.
