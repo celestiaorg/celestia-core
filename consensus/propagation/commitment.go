@@ -118,7 +118,6 @@ func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*typ
 		txKey, err := types.TxKeyFromBytes(txMetaData.Hash)
 		if err != nil {
 			blockProp.Logger.Error("failed to decode tx key", "err", err, "tx", txMetaData)
-			// TODO maybe do something other than just continuing
 			continue
 		}
 		tx, has := blockProp.mempool.GetTxByKey(txKey)
