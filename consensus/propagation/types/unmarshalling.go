@@ -91,9 +91,9 @@ func TxsToParts(txsFound []UnmarshalledTx) []*types.Part {
 	return parts
 }
 
-// UnmarshalledTx is an intermediary type that allows keeping the transaction metadata,
-// its Key and the actual tx bytes.
-// This will be used to create the parts from the local txs.
+// UnmarshalledTx is an intermediary type that allows keeping the transaction
+// metadata, its Key and the actual tx bytes. This will be used to create the
+// parts from the local txs.
 type UnmarshalledTx struct {
 	MetaData TxMetaData
 	Key      types.TxKey
