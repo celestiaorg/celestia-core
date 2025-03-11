@@ -89,27 +89,6 @@ func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
 	}
 }
 
-// SizeWithPadding returns the total size of the compact block Blobs in bytes including
-// the padding added at the end.
-func (c *CompactBlock) SizeWithPadding() int {
-	if c.Blobs == nil || len(c.Blobs) == 0 {
-		return 0
-	}
-	lastBlockLen := c.Blobs[len(c.Blobs)-1].End - c.Blobs[len(c.Blobs)-1].Start
-	sizeWithoutPadding := c.Blobs[len(c.Blobs)-1].End
-	sizeWithPadding := sizeWithoutPadding - lastBlockLen + c.LastLen
-	return int(sizeWithPadding)
-}
-
-// Size returns the total size of the compact block Blobs in bytes without
-// the padding added at the end.
-func (c *CompactBlock) Size() int {
-	if c.Blobs == nil || len(c.Blobs) == 0 {
-		return 0
-	}
-	return int(c.Blobs[len(c.Blobs)-1].End)
-}
-
 // CompactBlockFromProto converts a protobuf CompactBlock to its Go representation.
 func CompactBlockFromProto(c *protoprop.CompactBlock) (*CompactBlock, error) {
 	blobs := make([]TxMetaData, len(c.Blobs))
