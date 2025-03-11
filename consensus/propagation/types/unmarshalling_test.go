@@ -88,19 +88,3 @@ func GenerateTxsCombinations(n int) [][]int {
 	}
 	return result
 }
-
-// checkMaxConsecutiveZeros ensures no more than 2 consecutive zeros exist
-func checkMaxConsecutiveZeros(bits []int) bool {
-	count := 0
-	for _, bit := range bits {
-		if bit == 0 {
-			count++
-			if count > 2 {
-				return false
-			}
-		} else {
-			count = 0
-		}
-	}
-	return true
-}
