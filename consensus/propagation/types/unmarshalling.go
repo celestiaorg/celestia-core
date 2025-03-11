@@ -87,7 +87,7 @@ func TxsToParts(txsFound []UnmarshalledTx) []*types.Part {
 			}
 		}
 	}
-	
+
 	return parts
 }
 

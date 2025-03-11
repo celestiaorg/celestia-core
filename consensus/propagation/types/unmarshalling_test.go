@@ -106,7 +106,6 @@ func TestTxsToParts(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 // GenerateTxsCombinations generates all relevant transaction placements
