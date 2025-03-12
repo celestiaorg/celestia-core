@@ -21,7 +21,7 @@ import (
 
 func newPropagationReactor(s *p2p.Switch) *Reactor {
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	blockPropR := NewReactor(s.NetAddress().ID, trace.NoOpTracer(), blockStore)
+	blockPropR := NewReactor(s.NetAddress().ID, trace.NoOpTracer(), blockStore, mockMempool{})
 	blockPropR.SetSwitch(s)
 
 	return blockPropR
