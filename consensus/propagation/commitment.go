@@ -3,6 +3,7 @@ package propagation
 import (
 	"bytes"
 	"fmt"
+
 	"github.com/tendermint/tendermint/crypto/tmhash"
 
 	"github.com/gogo/protobuf/proto"
