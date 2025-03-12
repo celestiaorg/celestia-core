@@ -3,6 +3,8 @@ package propagation
 import (
 	"fmt"
 
+	"github.com/gogo/protobuf/proto"
+	"github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
@@ -88,6 +90,61 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	if added {
 		blockProp.broadcastCompactBlock(cb, peer)
 	}
+
+	// check if we have any transactions that are in the compact block
+	parts := blockProp.compactBlockToParts(cb)
+	_, partSet, found := blockProp.GetProposal(cb.Proposal.Height, cb.Proposal.Round)
+	if !found {
+		return
+	}
+	for _, part := range parts {
+		added, err := partSet.AddPartWithoutProof(part)
+		if err != nil {
+			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
+			continue
+		}
+		if !added {
+			blockProp.Logger.Error("failed to add locally recovered part", "part", part.Index)
+			continue
+		}
+	}
+}
+
+// compactBlockToParts queries the mempool to see if we can recover any block parts locally.
+func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*types.Part {
+	// find the compact block transactions that exist in our mempool
+	txsFound := make([]proptypes.UnmarshalledTx, 0)
+	for _, txMetaData := range cb.Blobs {
+		txKey, err := types.TxKeyFromBytes(txMetaData.Hash)
+		if err != nil {
+			blockProp.Logger.Error("failed to decode tx key", "err", err, "tx", txMetaData)
+			continue
+		}
+		tx, has := blockProp.mempool.GetTxByKey(txKey)
+		if !has {
+			continue
+		}
+
+		protoTxs := mempool.Txs{Txs: [][]byte{tx}}
+		marshalledTx, err := proto.Marshal(&protoTxs)
+		if err != nil {
+			blockProp.Logger.Error("failed to encode tx", "err", err, "tx", txMetaData)
+			continue
+		}
+
+		txsFound = append(txsFound, proptypes.UnmarshalledTx{MetaData: txMetaData, Key: txKey, TxBytes: marshalledTx})
+	}
+	if len(txsFound) == 0 {
+		// no compact block transaction was found locally
+		return nil
+	}
+
+	parts := proptypes.TxsToParts(txsFound)
+	if len(parts) > 0 {
+		blockProp.Logger.Info("recovered parts from the mempool", "number of parts", len(parts))
+	}
+
+	return parts
 }
 
 // broadcastProposal gossips the provided proposal to all peers. This should

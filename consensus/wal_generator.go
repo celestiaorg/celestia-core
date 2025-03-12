@@ -92,7 +92,7 @@ func WALGenerateNBlocks(t *testing.T, wr io.Writer, numBlocks int, config *cfg.C
 	if err != nil {
 		panic(err)
 	}
-	propagator := propagation.NewReactor(key.ID(), nil, blockStore)
+	propagator := propagation.NewReactor(key.ID(), nil, blockStore, mempool)
 	consensusState := NewState(config.Consensus, state.Copy(), blockExec, blockStore, propagator, mempool, evpool)
 	consensusState.SetLogger(logger)
 	consensusState.SetEventBus(eventBus)

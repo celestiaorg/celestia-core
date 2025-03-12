@@ -193,7 +193,7 @@ func TestReactorWithEvidence(t *testing.T) {
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
 		key, err := p2p.LoadNodeKey(config.NodeKey)
 		require.NoError(t, err)
-		propagator := propagation.NewReactor(key.ID(), nil, blockStore)
+		propagator := propagation.NewReactor(key.ID(), nil, blockStore, mempool)
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)

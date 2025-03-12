@@ -430,7 +430,7 @@ func NewNodeWithContext(ctx context.Context,
 		return nil, fmt.Errorf("could not create blocksync reactor: %w", err)
 	}
 
-	propagationReactor := propagation.NewReactor(nodeKey.ID(), tracer, blockStore)
+	propagationReactor := propagation.NewReactor(nodeKey.ID(), tracer, blockStore, mempool)
 
 	consensusReactor, consensusState := createConsensusReactor(
 		config, state, blockExec, blockStore, mempool, evidencePool,

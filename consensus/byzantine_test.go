@@ -95,7 +95,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		// Make State
 		blockExec := sm.NewBlockExecutor(stateStore, log.TestingLogger(), proxyAppConnCon, mempool, evpool, blockStore)
 
-		propagationReactor := propagation.NewReactor(nodeKey.ID(), nil, blockStore)
+		propagationReactor := propagation.NewReactor(nodeKey.ID(), nil, blockStore, mempool)
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagationReactor, mempool, evpool)
 		cs.SetLogger(cs.Logger)
 		// set private validator
