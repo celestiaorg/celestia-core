@@ -53,7 +53,10 @@ type CompactBlock struct {
 	Blobs     []TxMetaData   `json:"blobs,omitempty"`
 	Signature []byte         `json:"signature,omitempty"`
 	Proposal  types.Proposal `json:"proposal,omitempty"`
-	LastLen   uint32         // length of the last part
+	// length of the last part
+	LastLen uint32 `json:"last_len,omitempty"`
+	// the original part set parts hashes.
+	PartsHashes [][]byte `json:"parts_hashes,omitempty"`
 }
 
 // ValidateBasic checks if the CompactBlock is valid. It fails if the height is
@@ -71,6 +74,11 @@ func (c *CompactBlock) ValidateBasic() error {
 	if len(c.Signature) > types.MaxSignatureSize {
 		return errors.New("CompactBlock: Signature is too big")
 	}
+	for index, partHash := range c.PartsHashes {
+		if err := types.ValidateHash(partHash); err != nil {
+			return fmt.Errorf("invalid part hash height %d round %d index %d: %w", c.Proposal.Height, c.Proposal.Round, index, err)
+		}
+	}
 	return nil
 }
 
@@ -81,11 +89,12 @@ func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
 		blobs[i] = blob.ToProto()
 	}
 	return &protoprop.CompactBlock{
-		BpHash:     c.BpHash,
-		Blobs:      blobs,
-		Signature:  c.Signature,
-		Proposal:   c.Proposal.ToProto(),
-		LastLength: c.LastLen,
+		BpHash:      c.BpHash,
+		Blobs:       blobs,
+		Signature:   c.Signature,
+		Proposal:    c.Proposal.ToProto(),
+		LastLength:  c.LastLen,
+		PartsHashes: c.PartsHashes,
 	}
 }
 
@@ -102,10 +111,12 @@ func CompactBlockFromProto(c *protoprop.CompactBlock) (*CompactBlock, error) {
 	}
 
 	cb := &CompactBlock{
-		BpHash:    c.BpHash,
-		Blobs:     blobs,
-		Signature: c.Signature,
-		Proposal:  *prop,
+		BpHash:      c.BpHash,
+		Blobs:       blobs,
+		Signature:   c.Signature,
+		Proposal:    *prop,
+		LastLen:     c.LastLength,
+		PartsHashes: c.PartsHashes,
 	}
 	return cb, cb.ValidateBasic()
 }
@@ -312,11 +323,12 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			return nil, err
 		}
 		pb = &CompactBlock{
-			BpHash:    msg.BpHash,
-			Blobs:     blobs,
-			Signature: msg.Signature,
-			Proposal:  *prop,
-			LastLen:   msg.LastLength,
+			BpHash:      msg.BpHash,
+			Blobs:       blobs,
+			Signature:   msg.Signature,
+			Proposal:    *prop,
+			LastLen:     msg.LastLength,
+			PartsHashes: msg.PartsHashes,
 		}
 	case *protoprop.PartMetaData:
 		pb = &PartMetaData{
