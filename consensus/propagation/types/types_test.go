@@ -83,10 +83,11 @@ func TestCompactBlock_RoundTrip(t *testing.T) {
 		{
 			"valid block",
 			&CompactBlock{
-				BpHash:    rand.Bytes(tmhash.Size),
-				Blobs:     []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
-				Signature: rand.Bytes(types.MaxSignatureSize),
-				Proposal:  *mockProposal,
+				BpHash:      rand.Bytes(tmhash.Size),
+				Blobs:       []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature:   rand.Bytes(types.MaxSignatureSize),
+				Proposal:    *mockProposal,
+				PartsHashes: [][]byte{rand.Bytes(tmhash.Size), rand.Bytes(tmhash.Size)},
 			},
 		},
 	}
@@ -125,6 +126,16 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 				Signature: rand.Bytes(types.MaxSignatureSize),
 			},
 			errors.New("expected size to be 32 bytes, got 33 bytes"),
+		},
+		{
+			"invalid part set hashes length",
+			&CompactBlock{
+				BpHash:      rand.Bytes(tmhash.Size),
+				Blobs:       []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
+				Signature:   rand.Bytes(types.MaxSignatureSize),
+				PartsHashes: [][]byte{{0x1, 0x2}},
+			},
+			errors.New("invalid part hash height 0 round 0 index 0: expected size to be 32 bytes, got 2 bytes"),
 		},
 		{
 			"too big of signature",
