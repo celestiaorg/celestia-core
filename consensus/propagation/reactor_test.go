@@ -162,7 +162,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 		Data:   randomData,
 	})
 
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
 	// check if reactor 3 received the recovery part.
 	_, parts, found := reactor3.GetProposal(10, 1)
