@@ -21,11 +21,12 @@ message TxMetaData {
 // clients to reuse already downloaded blobs instead of gossiping them all again
 // during the block propagation.
 message CompactBlock {
-  bytes                     bp_hash     = 1;
-  repeated TxMetaData       blobs       = 2;
-  bytes                     signature   = 3;
-  tendermint.types.Proposal proposal    = 4;
-  uint32                    last_length = 5;
+  bytes                     bp_hash      = 1;
+  repeated TxMetaData       blobs        = 2;
+  bytes                     signature    = 3;
+  tendermint.types.Proposal proposal     = 4;
+  uint32                    last_length  = 5;
+  repeated bytes            parts_hashes = 6;
 }
 
 // PartMetaData proves the inclusion of a part to the block.

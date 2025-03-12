@@ -1,7 +1,9 @@
 package propagation
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/proto/tendermint/mempool"
@@ -27,13 +29,19 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		return
 	}
 
+	partHashes := make([][]byte, block.Total())
+	for i := 0; i < int(block.Total()); i++ {
+		partHashes[i] = tmhash.Sum(block.GetPart(i).Bytes)
+	}
+
 	// create the compact block
 	cb := proptypes.CompactBlock{
-		Proposal:  *proposal,
-		LastLen:   uint32(lastLen),
-		Signature: cmtrand.Bytes(64), // todo: sign the proposal with a real signature
-		BpHash:    parityBlock.Hash(),
-		Blobs:     txs,
+		Proposal:    *proposal,
+		LastLen:     uint32(lastLen),
+		Signature:   cmtrand.Bytes(64), // todo: sign the proposal with a real signature
+		BpHash:      parityBlock.Hash(),
+		Blobs:       txs,
+		PartsHashes: partHashes,
 	}
 
 	// save the compact block locally and broadcast it to the connected peers
@@ -98,6 +106,18 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		return
 	}
 	for _, part := range parts {
+		if !bytes.Equal(tmhash.Sum(part.Bytes), cb.PartsHashes[part.Index]) {
+			blockProp.Logger.Error(
+				"recovered part hash is different than compact block",
+				"part",
+				part.Index,
+				"height",
+				cb.Proposal.Height,
+				"round",
+				cb.Proposal.Round,
+			)
+			continue
+		}
 		added, err := partSet.AddPartWithoutProof(part)
 		if err != nil {
 			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
