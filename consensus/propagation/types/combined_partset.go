@@ -1,6 +1,7 @@
 package types
 
 import (
+	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/types"
 )
@@ -73,10 +74,11 @@ func (cps *CombinedPartSet) Decode() error {
 
 // AddPart adds a part to the combined part set. It assumes that the parts being
 // added have already been verified.
-func (cps *CombinedPartSet) AddPart(part *RecoveryPart) (bool, error) {
+func (cps *CombinedPartSet) AddPart(part *RecoveryPart, proof merkle.Proof) (bool, error) {
 	p := &types.Part{
 		Index: part.Index,
 		Bytes: part.Data,
+		Proof: proof,
 	}
 
 	if part.Index < cps.original.Total() {

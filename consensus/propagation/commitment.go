@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/tmhash"
 
 	"github.com/gogo/protobuf/proto"
@@ -30,9 +31,18 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		return
 	}
 
-	partHashes := make([][]byte, block.Total())
-	for i := 0; i < int(block.Total()); i++ {
-		partHashes[i] = tmhash.Sum(block.GetPart(i).Bytes)
+	partHashes := make([][]byte, block.Total()+parityBlock.Total())
+	proofs := make([]merkle.Proof, block.Total()+parityBlock.Total())
+	for i := uint32(0); i < block.Total(); i++ {
+		part := block.GetPart(int(i))
+		partHashes[i] = part.Proof.LeafHash
+		proofs[i] = part.Proof
+	}
+	for i := uint32(0); i < parityBlock.Total(); i++ {
+		j := i + block.Total()
+		part := parityBlock.GetPart(int(i))
+		partHashes[j] = part.Proof.LeafHash
+		proofs[j] = part.Proof
 	}
 
 	// create the compact block
@@ -76,8 +86,7 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 		part := partSet.GetPart(indice)
 		partMetaData = append(partMetaData, &propagation.PartMetaData{ // TODO create the programmatic type and use the ToProto method
 			Index: part.Index,
-			Hash:  part.Proof.LeafHash, // TODO this seems like a duplicate field, do we need it?
-			Proof: *part.Proof.ToProto(),
+			Hash:  part.Proof.LeafHash,
 		})
 	}
 	return partMetaData
@@ -96,9 +105,19 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 
 	// todo: add catchup logic here by checking for gaps
 
-	if added {
-		blockProp.broadcastCompactBlock(cb, peer)
+	if !added {
+		return
 	}
+
+	proofs, err := cb.Proofs()
+	if err != nil {
+		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
+		blockProp.Logger.Error("received invalid compact block", "err", err.Error())
+		// todo: kick peer
+		return
+	}
+
+	blockProp.broadcastCompactBlock(cb, peer)
 
 	// check if we have any transactions that are in the compact block
 	parts := blockProp.compactBlockToParts(cb)
@@ -107,6 +126,8 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		return
 	}
 	for _, part := range parts {
+		// todo: figure out what we want to do here. we might just want to defer
+		// to the consensus reactor for invalid parts.
 		if !bytes.Equal(tmhash.Sum(part.Bytes), cb.PartsHashes[part.Index]) {
 			blockProp.Logger.Error(
 				"recovered part hash is different than compact block",
@@ -119,15 +140,23 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 			)
 			continue
 		}
+
+		part.Proof = *proofs[part.Index]
+
+		// note: using AddPartWithoutProof to skip verifying the proof that was
+		// generated and verified above.
 		added, err := partSet.AddPartWithoutProof(part)
 		if err != nil {
 			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
 			continue
 		}
+
 		if !added {
 			blockProp.Logger.Error("failed to add locally recovered part", "part", part.Index)
 			continue
 		}
+
+		// todo: broadcast haves
 	}
 }
 

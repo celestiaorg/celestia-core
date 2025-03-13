@@ -31,9 +31,8 @@ message CompactBlock {
 
 // PartMetaData proves the inclusion of a part to the block.
 message PartMetaData {
-  uint32                  index = 1;
-  bytes                   hash  = 2;
-  tendermint.crypto.Proof proof = 3 [(gogoproto.nullable) = false];
+  uint32 index = 1;
+  bytes  hash  = 2;
 }
 
 // HaveParts is a message sent by a peer to inform that it has or will receive a

@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	cfg "github.com/tendermint/tendermint/config"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/p2p"
@@ -125,7 +124,6 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	added, _, _ = reactor3.AddProposal(baseCompactBlock)
 	require.True(t, added)
 
-	proof := merkle.Proof{LeafHash: cmtrand.Bytes(32)}
 	bm := bits.NewBitArray(10)
 	bm.Fill()
 
@@ -136,7 +134,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 			Height: height,
 			Round:  round,
 			Parts: []proptypes.PartMetaData{
-				{Index: 0, Proof: proof},
+				{Index: 0},
 			},
 		},
 		false,
