@@ -404,6 +404,38 @@ func TestUnconfirmedTxs(t *testing.T) {
 	mempool.Flush()
 }
 
+func TestUncappedUnconfirmedTxs(t *testing.T) {
+	mempool := node.Mempool()
+	numberOfTransactions := 120 // needs to be greater than maxPerPage const
+	for i := 0; i < numberOfTransactions; i++ {
+		_, _, tx := MakeTxKV()
+
+		ch := make(chan *abci.Response, 1)
+		err := mempool.CheckTx(tx, func(resp *abci.Response) { ch <- resp }, mempl.TxInfo{})
+		require.NoError(t, err)
+
+		// wait for tx to arrive in mempoool.
+		select {
+		case <-ch:
+		case <-time.After(5 * time.Second):
+			t.Error("Timed out waiting for CheckTx callback")
+		}
+	}
+
+	for _, c := range GetClients() {
+		mc := c.(client.MempoolClient)
+		limit := -1 // set the limit to -1 to return everything
+		res, err := mc.UnconfirmedTxs(context.Background(), &limit)
+		require.NoError(t, err)
+
+		assert.Equal(t, numberOfTransactions, res.Count)
+		assert.Equal(t, numberOfTransactions, res.Total)
+		assert.Equal(t, mempool.SizeBytes(), res.TotalBytes)
+	}
+
+	mempool.Flush()
+}
+
 func TestNumUnconfirmedTxs(t *testing.T) {
 	_, _, tx := MakeTxKV()
 
