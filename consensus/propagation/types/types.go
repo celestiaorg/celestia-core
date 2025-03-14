@@ -60,7 +60,7 @@ type CompactBlock struct {
 	// the original part set parts hashes.
 	PartsHashes [][]byte `json:"parts_hashes,omitempty"`
 
-	mtx *sync.Mutex
+	mtx sync.Mutex
 	// proofsCache is local storage from generated proofs from the PartsHashes.
 	// It must not be included in any serialization.
 	proofsCache []*merkle.Proof
@@ -149,10 +149,18 @@ func (c *CompactBlock) Proofs() ([]*merkle.Proof, error) {
 }
 
 func (c *CompactBlock) GetProof(i uint32) *merkle.Proof {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
 	if i < uint32(len(c.proofsCache)) {
 		return c.proofsCache[i]
 	}
 	return nil
+}
+
+func (c *CompactBlock) SetProofCache(proofs []*merkle.Proof) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.proofsCache = proofs
 }
 
 // CompactBlockFromProto converts a protobuf CompactBlock to its Go representation.
@@ -175,6 +183,7 @@ func CompactBlockFromProto(c *protoprop.CompactBlock) (*CompactBlock, error) {
 		LastLen:     c.LastLength,
 		PartsHashes: c.PartsHashes,
 	}
+
 	return cb, cb.ValidateBasic()
 }
 

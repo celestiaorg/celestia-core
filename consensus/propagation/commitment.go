@@ -31,21 +31,9 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		return
 	}
 
-	partHashes := make([][]byte, block.Total()+parityBlock.Total())
-	proofs := make([]merkle.Proof, block.Total()+parityBlock.Total())
-	for i := uint32(0); i < block.Total(); i++ {
-		part := block.GetPart(int(i))
-		partHashes[i] = part.Proof.LeafHash
-		proofs[i] = part.Proof
-	}
-	for i := uint32(0); i < parityBlock.Total(); i++ {
-		j := i + block.Total()
-		part := parityBlock.GetPart(int(i))
-		partHashes[j] = part.Proof.LeafHash
-		proofs[j] = part.Proof
-	}
+	partHashes := extractHashes(block, parityBlock)
+	proofs := extractProofs(block, parityBlock)
 
-	// create the compact block
 	cb := proptypes.CompactBlock{
 		Proposal:    *proposal,
 		LastLen:     uint32(lastLen),
@@ -54,6 +42,8 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		Blobs:       txs,
 		PartsHashes: partHashes,
 	}
+
+	cb.SetProofCache(proofs)
 
 	// save the compact block locally and broadcast it to the connected peers
 	blockProp.handleCompactBlock(&cb, blockProp.self)
@@ -79,6 +69,36 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	}
 }
 
+func extractHashes(blocks ...*types.PartSet) [][]byte {
+	total := uint32(0)
+	for _, block := range blocks {
+		total += block.Total()
+	}
+
+	partHashes := make([][]byte, 0, total) // Preallocate capacity
+	for _, block := range blocks {
+		for i := uint32(0); i < block.Total(); i++ {
+			partHashes = append(partHashes, block.GetPart(int(i)).Proof.LeafHash)
+		}
+	}
+	return partHashes
+}
+
+func extractProofs(blocks ...*types.PartSet) []*merkle.Proof {
+	total := uint32(0)
+	for _, block := range blocks {
+		total += block.Total()
+	}
+
+	proofs := make([]*merkle.Proof, 0, total) // Preallocate capacity
+	for _, block := range blocks {
+		for i := uint32(0); i < block.Total(); i++ {
+			proofs = append(proofs, &block.GetPart(int(i)).Proof)
+		}
+	}
+	return proofs
+}
+
 func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propagation.PartMetaData {
 	partMetaData := make([]*propagation.PartMetaData, 0)
 	// TODO rename indice to a correct name
@@ -102,9 +122,6 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	}
 
 	added, _, _ := blockProp.AddProposal(cb)
-
-	// todo: add catchup logic here by checking for gaps
-
 	if !added {
 		return
 	}
@@ -123,7 +140,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	parts := blockProp.compactBlockToParts(cb)
 	_, partSet, found := blockProp.GetProposal(cb.Proposal.Height, cb.Proposal.Round)
 	if !found {
-		return
+		panic("failed to get proposal that was just added")
 	}
 	for _, part := range parts {
 		// todo: figure out what we want to do here. we might just want to defer

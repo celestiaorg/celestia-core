@@ -93,6 +93,9 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	psh := ps.Header()
 	pseh := pse.Header()
 
+	hashes := extractHashes(ps, pse)
+	proofs := extractProofs(ps, pse)
+
 	baseCompactBlock := &proptypes.CompactBlock{
 		BpHash:    pseh.Hash,
 		Signature: cmtrand.Bytes(64),
@@ -101,7 +104,10 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 			{Hash: cmtrand.Bytes(32)},
 			{Hash: cmtrand.Bytes(32)},
 		},
+		PartsHashes: hashes,
 	}
+
+	baseCompactBlock.SetProofCache(proofs)
 
 	height, round := int64(10), int32(1)
 
@@ -157,16 +163,16 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 		Height: height,
 		Round:  round,
 		Index:  0,
-		Data:   randomData,
+		Data:   ps.GetPart(0).Bytes.Bytes(),
 	})
 
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	// check if reactor 3 received the recovery part.
 	_, parts, found := reactor3.GetProposal(10, 1)
-	assert.True(t, found)
-	assert.Equal(t, uint32(1), parts.Count())
-	assert.Equal(t, randomData, parts.GetPart(0).Bytes.Bytes())
+	require.True(t, found)
+	require.Equal(t, uint32(1), parts.Count())
+	require.Equal(t, randomData, parts.GetPart(0).Bytes.Bytes())
 
 	// check to see if the parity data was generated after receiveing the first part.
 	_, combined, _, has := reactor3.getAllState(height, round)
