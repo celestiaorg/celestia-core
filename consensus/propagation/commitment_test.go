@@ -85,10 +85,10 @@ func TestRecoverPartsLocally(t *testing.T) {
 	})
 
 	numberOfTxs := 10
-	txsMap := make(map[types.TxKey]types.Tx)
-	txs := make([]types.Tx, numberOfTxs)
+	txsMap := make(map[types.TxKey]*types.CachedTx)
+	txs := make([]*types.CachedTx, numberOfTxs)
 	for i := 0; i < numberOfTxs; i++ {
-		tx := types.Tx(cmtrand.Bytes(int(types.BlockPartSizeBytes / 3)))
+		tx := &types.CachedTx{Tx: cmtrand.Bytes(int(types.BlockPartSizeBytes / 3))}
 		txKey, err := types.TxKeyFromBytes(tx.Hash())
 		require.NoError(t, err)
 		txsMap[txKey] = tx
@@ -100,7 +100,7 @@ func TestRecoverPartsLocally(t *testing.T) {
 		txs: txsMap,
 	})
 
-	data := types.Data{Txs: txs}
+	data := types.Data{Txs: types.TxsFromCachedTxs(txs)}
 
 	block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
 	id := types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()}
@@ -132,9 +132,9 @@ func TestRecoverPartsLocally(t *testing.T) {
 var _ Mempool = &mockMempool{}
 
 type mockMempool struct {
-	txs map[types.TxKey]types.Tx
+	txs map[types.TxKey]*types.CachedTx
 }
 
-func (m mockMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
+func (m mockMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	return m.txs[key], true
 }

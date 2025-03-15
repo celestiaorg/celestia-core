@@ -15,30 +15,30 @@ var _ mempool.Mempool = Mempool{}
 func (Mempool) Lock()     {}
 func (Mempool) Unlock()   {}
 func (Mempool) Size() int { return 0 }
-func (Mempool) CheckTx(_ types.Tx, _ func(*abci.Response), _ mempool.TxInfo) error {
+func (Mempool) CheckTx(_ *types.CachedTx, _ func(*abci.Response), _ mempool.TxInfo) error {
 	return nil
 }
 func (Mempool) RemoveTxByKey(txKey types.TxKey) error           { return nil }
 func (Mempool) ReapMaxBytesMaxGas(_, _ int64) []*types.CachedTx { return []*types.CachedTx{} }
-func (Mempool) ReapMaxTxs(n int) types.Txs                      { return types.Txs{} }
+func (Mempool) ReapMaxTxs(n int) []*types.CachedTx              { return []*types.CachedTx{} }
 func (Mempool) Update(
 	_ int64,
-	_ types.Txs,
+	_ []*types.CachedTx,
 	_ []*abci.ResponseDeliverTx,
 	_ mempool.PreCheckFunc,
 	_ mempool.PostCheckFunc,
 ) error {
 	return nil
 }
-func (Mempool) Flush()                                    {}
-func (Mempool) FlushAppConn() error                       { return nil }
-func (Mempool) TxsAvailable() <-chan struct{}             { return make(chan struct{}) }
-func (Mempool) EnableTxsAvailable()                       {}
-func (Mempool) SizeBytes() int64                          { return 0 }
-func (m Mempool) GetTxByKey(types.TxKey) (types.Tx, bool) { return nil, false }
-func (m Mempool) WasRecentlyEvicted(types.TxKey) bool     { return false }
-func (Mempool) TxsFront() *clist.CElement                 { return nil }
-func (Mempool) TxsWaitChan() <-chan struct{}              { return nil }
+func (Mempool) Flush()                                           {}
+func (Mempool) FlushAppConn() error                              { return nil }
+func (Mempool) TxsAvailable() <-chan struct{}                    { return make(chan struct{}) }
+func (Mempool) EnableTxsAvailable()                              {}
+func (Mempool) SizeBytes() int64                                 { return 0 }
+func (m Mempool) GetTxByKey(types.TxKey) (*types.CachedTx, bool) { return nil, false }
+func (m Mempool) WasRecentlyEvicted(types.TxKey) bool            { return false }
+func (Mempool) TxsFront() *clist.CElement                        { return nil }
+func (Mempool) TxsWaitChan() <-chan struct{}                     { return nil }
 
 func (Mempool) InitWAL() error { return nil }
 func (Mempool) CloseWAL()      {}

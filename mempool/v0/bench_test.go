@@ -2,6 +2,7 @@ package v0
 
 import (
 	"encoding/binary"
+	"github.com/tendermint/tendermint/types"
 	"sync/atomic"
 	"testing"
 
@@ -22,7 +23,7 @@ func BenchmarkReap(b *testing.B) {
 	for i := 0; i < size; i++ {
 		tx := make([]byte, 8)
 		binary.BigEndian.PutUint64(tx, uint64(i))
-		if err := mp.CheckTx(tx, nil, mempool.TxInfo{}); err != nil {
+		if err := mp.CheckTx(&types.CachedTx{Tx: tx}, nil, mempool.TxInfo{}); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -48,7 +49,7 @@ func BenchmarkCheckTx(b *testing.B) {
 		binary.BigEndian.PutUint64(tx, uint64(i))
 		b.StartTimer()
 
-		if err := mp.CheckTx(tx, nil, mempool.TxInfo{}); err != nil {
+		if err := mp.CheckTx(&types.CachedTx{Tx: tx}, nil, mempool.TxInfo{}); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -72,7 +73,7 @@ func BenchmarkParallelCheckTx(b *testing.B) {
 		for pb.Next() {
 			tx := make([]byte, 8)
 			binary.BigEndian.PutUint64(tx, next())
-			if err := mp.CheckTx(tx, nil, mempool.TxInfo{}); err != nil {
+			if err := mp.CheckTx(&types.CachedTx{Tx: tx}, nil, mempool.TxInfo{}); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -90,11 +91,11 @@ func BenchmarkCheckDuplicateTx(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		tx := make([]byte, 8)
 		binary.BigEndian.PutUint64(tx, uint64(i))
-		if err := mp.CheckTx(tx, nil, mempool.TxInfo{}); err != nil {
+		if err := mp.CheckTx(&types.CachedTx{Tx: tx}, nil, mempool.TxInfo{}); err != nil {
 			b.Fatal(err)
 		}
 
-		if err := mp.CheckTx(tx, nil, mempool.TxInfo{}); err == nil {
+		if err := mp.CheckTx(&types.CachedTx{Tx: tx}, nil, mempool.TxInfo{}); err == nil {
 			b.Fatal("tx should be duplicate")
 		}
 	}

@@ -19,7 +19,7 @@ func (emptyMempool) Lock()            {}
 func (emptyMempool) Unlock()          {}
 func (emptyMempool) Size() int        { return 0 }
 func (emptyMempool) SizeBytes() int64 { return 0 }
-func (emptyMempool) CheckTx(_ types.Tx, _ func(*abci.Response), _ mempl.TxInfo) error {
+func (emptyMempool) CheckTx(_ *types.CachedTx, _ func(*abci.Response), _ mempl.TxInfo) error {
 	return nil
 }
 
@@ -28,10 +28,10 @@ func (txmp emptyMempool) RemoveTxByKey(txKey types.TxKey) error {
 }
 
 func (emptyMempool) ReapMaxBytesMaxGas(_, _ int64) []*types.CachedTx { return []*types.CachedTx{} }
-func (emptyMempool) ReapMaxTxs(n int) types.Txs                      { return types.Txs{} }
+func (emptyMempool) ReapMaxTxs(n int) []*types.CachedTx              { return []*types.CachedTx{} }
 func (emptyMempool) Update(
 	_ int64,
-	_ types.Txs,
+	_ []*types.CachedTx,
 	_ []*abci.ResponseDeliverTx,
 	_ mempl.PreCheckFunc,
 	_ mempl.PostCheckFunc,
@@ -47,10 +47,10 @@ func (emptyMempool) TxsBytes() int64               { return 0 }
 func (emptyMempool) TxsFront() *clist.CElement    { return nil }
 func (emptyMempool) TxsWaitChan() <-chan struct{} { return nil }
 
-func (emptyMempool) InitWAL() error                          { return nil }
-func (emptyMempool) CloseWAL()                               {}
-func (emptyMempool) GetTxByKey(types.TxKey) (types.Tx, bool) { return nil, false }
-func (emptyMempool) WasRecentlyEvicted(types.TxKey) bool     { return false }
+func (emptyMempool) InitWAL() error                                 { return nil }
+func (emptyMempool) CloseWAL()                                      {}
+func (emptyMempool) GetTxByKey(types.TxKey) (*types.CachedTx, bool) { return nil, false }
+func (emptyMempool) WasRecentlyEvicted(types.TxKey) bool            { return false }
 
 //-----------------------------------------------------------------------------
 // mockProxyApp uses ABCIResponses to give the right results.

@@ -22,7 +22,7 @@ var ErrTimedOutWaitingForTx = errors.New("timed out waiting for tx to be include
 // CheckTx nor DeliverTx results.
 // More: https://docs.cometbft.com/v0.34/rpc/#/Tx/broadcast_tx_async
 func BroadcastTxAsync(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
-	err := GetEnvironment().Mempool.CheckTx(tx, nil, mempl.TxInfo{})
+	err := GetEnvironment().Mempool.CheckTx(tx.ToCachedTx(), nil, mempl.TxInfo{})
 
 	if err != nil {
 		return nil, err
@@ -35,7 +35,7 @@ func BroadcastTxAsync(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadca
 // More: https://docs.cometbft.com/v0.34/rpc/#/Tx/broadcast_tx_sync
 func BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
 	resCh := make(chan *abci.Response, 1)
-	err := GetEnvironment().Mempool.CheckTx(tx, func(res *abci.Response) {
+	err := GetEnvironment().Mempool.CheckTx(tx.ToCachedTx(), func(res *abci.Response) {
 		select {
 		case <-ctx.Context().Done():
 		case resCh <- res:
@@ -92,7 +92,7 @@ func BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadc
 
 	// Broadcast tx and wait for CheckTx result
 	checkTxResCh := make(chan *abci.Response, 1)
-	err = env.Mempool.CheckTx(tx, func(res *abci.Response) {
+	err = env.Mempool.CheckTx(tx.ToCachedTx(), func(res *abci.Response) {
 		select {
 		case <-ctx.Context().Done():
 		case checkTxResCh <- res:
@@ -164,7 +164,7 @@ func UnconfirmedTxs(ctx *rpctypes.Context, limitPtr *int) (*ctypes.ResultUnconfi
 		Count:      len(txs),
 		Total:      env.Mempool.Size(),
 		TotalBytes: env.Mempool.SizeBytes(),
-		Txs:        txs}, nil
+		Txs:        types.TxsFromCachedTxs(txs)}, nil
 }
 
 // NumUnconfirmedTxs gets number of unconfirmed transactions.

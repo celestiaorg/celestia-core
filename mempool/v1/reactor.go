@@ -200,7 +200,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				len(tx),
 				schema.Download,
 			)
-			err = memR.mempool.CheckTx(ntx, nil, txInfo)
+			err = memR.mempool.CheckTx(ntx.ToCachedTx(), nil, txInfo)
 			if errors.Is(err, mempool.ErrTxInCache) {
 				memR.Logger.Debug("Tx already exists in cache", "tx", ntx.String())
 			} else if err != nil {
@@ -291,7 +291,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		if !memTx.HasPeer(peerID) {
 			success := p2p.SendEnvelopeShim(peer, p2p.Envelope{ //nolint: staticcheck
 				ChannelID: mempool.MempoolChannel,
-				Message:   &protomem.Txs{Txs: [][]byte{memTx.tx}},
+				Message:   &protomem.Txs{Txs: [][]byte{memTx.tx.Tx}},
 			}, memR.Logger)
 			if !success {
 				time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
@@ -304,7 +304,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 					memR.traceClient,
 					string(peer.ID()),
 					memTx.tx.Hash(),
-					len(memTx.tx),
+					len(memTx.tx.Tx),
 					schema.Upload,
 				)
 			}

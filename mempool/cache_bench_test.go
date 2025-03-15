@@ -2,6 +2,7 @@ package mempool
 
 import (
 	"encoding/binary"
+	"github.com/tendermint/tendermint/types"
 	"testing"
 )
 
@@ -17,7 +18,7 @@ func BenchmarkCacheInsertTime(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		cache.Push(txs[i])
+		cache.Push(&types.CachedTx{Tx: txs[i]})
 	}
 }
 
@@ -30,12 +31,12 @@ func BenchmarkCacheRemoveTime(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		txs[i] = make([]byte, 8)
 		binary.BigEndian.PutUint64(txs[i], uint64(i))
-		cache.Push(txs[i])
+		cache.Push(&types.CachedTx{Tx: txs[i]})
 	}
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		cache.Remove(txs[i])
+		cache.Remove(&types.CachedTx{Tx: txs[i]})
 	}
 }

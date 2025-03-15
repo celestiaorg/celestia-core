@@ -6,6 +6,7 @@ import (
 	mempl "github.com/tendermint/tendermint/mempool"
 	mempoolv0 "github.com/tendermint/tendermint/mempool/v0"
 	"github.com/tendermint/tendermint/proxy"
+	"github.com/tendermint/tendermint/types"
 )
 
 var mempool mempl.Mempool
@@ -25,7 +26,7 @@ func init() {
 }
 
 func Fuzz(data []byte) int {
-	err := mempool.CheckTx(data, nil, mempl.TxInfo{})
+	err := mempool.CheckTx(&types.CachedTx{Tx: data}, nil, mempl.TxInfo{})
 	if err != nil {
 		return 0
 	}

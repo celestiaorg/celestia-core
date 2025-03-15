@@ -33,8 +33,8 @@ func (s *store) set(wtx *wrappedTx) bool {
 	}
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	if _, exists := s.txs[wtx.key]; !exists {
-		s.txs[wtx.key] = wtx
+	if _, exists := s.txs[wtx.key()]; !exists {
+		s.txs[wtx.key()] = wtx
 		s.orderTx(wtx)
 		s.bytes += wtx.size()
 		return true

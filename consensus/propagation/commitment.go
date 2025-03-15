@@ -125,7 +125,7 @@ func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*typ
 			continue
 		}
 
-		protoTxs := mempool.Txs{Txs: [][]byte{tx}}
+		protoTxs := mempool.Txs{Txs: [][]byte{tx.Tx}}
 		marshalledTx, err := proto.Marshal(&protoTxs)
 		if err != nil {
 			blockProp.Logger.Error("failed to encode tx", "err", err, "tx", txMetaData)

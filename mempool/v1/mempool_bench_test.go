@@ -2,6 +2,7 @@ package v1
 
 import (
 	"fmt"
+	"github.com/tendermint/tendermint/types"
 	"math/rand"
 	"testing"
 	"time"
@@ -27,6 +28,6 @@ func BenchmarkTxMempool_CheckTx(b *testing.B) {
 		tx := []byte(fmt.Sprintf("%X=%d", prefix, priority))
 		b.StartTimer()
 
-		require.NoError(b, txmp.CheckTx(tx, nil, mempool.TxInfo{}))
+		require.NoError(b, txmp.CheckTx(&types.CachedTx{Tx: tx}, nil, mempool.TxInfo{}))
 	}
 }
