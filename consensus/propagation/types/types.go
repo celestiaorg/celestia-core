@@ -135,14 +135,14 @@ func (c *CompactBlock) Proofs() ([]*merkle.Proof, error) {
 	c.proofsCache = append(c.proofsCache, proofs...)
 
 	if !bytes.Equal(root, c.Proposal.BlockID.PartSetHeader.Hash) {
-		return c.proofsCache, fmt.Errorf("incorect PartsHash: original root")
+		return c.proofsCache, fmt.Errorf("incorrect PartsHash: original root")
 	}
 
 	parityRoot, eproofs := merkle.ProofsFromLeafHashes(c.PartsHashes[total:])
 	c.proofsCache = append(c.proofsCache, eproofs...)
 
 	if !bytes.Equal(c.BpHash, parityRoot) {
-		return c.proofsCache, fmt.Errorf("incorect PartsHash: parity root")
+		return c.proofsCache, fmt.Errorf("incorrect PartsHash: parity root")
 	}
 
 	return c.proofsCache, nil
