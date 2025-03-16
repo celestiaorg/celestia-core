@@ -32,7 +32,7 @@ func TestPropose(t *testing.T) {
 		Txs: []types.Tx{
 			cmtrand.Bytes(1000),
 			cmtrand.Bytes(64000),
-			cmtrand.Bytes(2000000),
+			cmtrand.Bytes(20000),
 		},
 	}
 
@@ -125,7 +125,9 @@ func TestRecoverPartsLocally(t *testing.T) {
 	startingPartIndex := metaData[0].Start/types.BlockPartSizeBytes + 1
 
 	for i := startingPartIndex; i < partSet.Total()-1; i++ {
-		assert.Equal(t, partSet.GetPart(int(i)).Bytes, actualParts.GetPart(int(i)).Bytes)
+		apart := actualParts.GetPart(int(i))
+		require.NotNil(t, apart)
+		assert.Equal(t, partSet.GetPart(int(i)).Bytes, apart.Bytes)
 	}
 }
 

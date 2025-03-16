@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/crypto/tmhash"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/proto/tendermint/mempool"
@@ -142,10 +141,17 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	if !found {
 		panic("failed to get proposal that was just added")
 	}
+
+	// the partset will be complete if this node is the proposer, and thus
+	// doesn't need to recover any parts.
+	if partSet.IsComplete() {
+		return
+	}
+
 	for _, part := range parts {
 		// todo: figure out what we want to do here. we might just want to defer
 		// to the consensus reactor for invalid parts.
-		if !bytes.Equal(tmhash.Sum(part.Bytes), cb.PartsHashes[part.Index]) {
+		if !bytes.Equal(merkle.LeafHash(part.Bytes), cb.PartsHashes[part.Index]) {
 			blockProp.Logger.Error(
 				"recovered part hash is different than compact block",
 				"part",
