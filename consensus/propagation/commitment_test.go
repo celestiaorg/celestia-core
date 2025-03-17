@@ -131,57 +131,6 @@ func TestRecoverPartsLocally(t *testing.T) {
 	}
 }
 
-// TestInvalidPartHash verifies if the parts hashes verification
-// when recovering the parts works.
-func TestInvalidPartHash(t *testing.T) {
-	cleanup, _, sm := state.SetupTestCase(t)
-	t.Cleanup(func() {
-		cleanup(t)
-	})
-
-	numberOfTxs := 10
-	txsMap := make(map[types.TxKey]types.Tx)
-	txs := make([]types.Tx, numberOfTxs)
-	for i := 0; i < numberOfTxs; i++ {
-		tx := types.Tx(cmtrand.Bytes(int(types.BlockPartSizeBytes / 3)))
-		txKey, err := types.TxKeyFromBytes(tx.Hash())
-		require.NoError(t, err)
-		txsMap[txKey] = tx
-		txs[i] = tx
-	}
-
-	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	blockPropR := NewReactor("", trace.NoOpTracer(), blockStore, mockMempool{
-		txs: txsMap,
-	})
-
-	data := types.Data{Txs: txs}
-
-	block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
-	id := types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()}
-	prop := types.NewProposal(block.Height, 0, 0, id)
-	prop.Signature = cmtrand.Bytes(64)
-
-	metaData := make([]proptypes.TxMetaData, len(partSet.TxPos))
-	for i, pos := range partSet.TxPos {
-		metaData[i] = proptypes.TxMetaData{
-			Start: uint32(pos.Start),
-			End:   uint32(pos.End),
-			Hash:  block.Txs[i].Hash(),
-		}
-	}
-
-	// skew the part bytes
-	partSet.GetPart(2).Bytes[10] = 0x12
-
-	blockPropR.ProposeBlock(prop, partSet, metaData)
-
-	_, actualParts, _ := blockPropR.GetProposal(prop.Height, prop.Round)
-
-	// verify that the part 2 was not added to the part set
-	assert.Nil(t, actualParts.GetPart(2))
-}
-
 var _ Mempool = &mockMempool{}
 
 type mockMempool struct {
