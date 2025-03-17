@@ -104,6 +104,10 @@ func TestCompactBlock_RoundTrip(t *testing.T) {
 }
 
 func TestCompactBlock_ValidateBasic(t *testing.T) {
+	id := types.BlockID{Hash: rand.Bytes(32), PartSetHeader: types.PartSetHeader{Total: 1, Hash: rand.Bytes(32)}}
+	prop := types.NewProposal(1, 0, 0, id)
+	prop.Signature = rand.Bytes(64)
+
 	tests := []struct {
 		name    string
 		data    *CompactBlock
@@ -115,6 +119,7 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 				BpHash:    rand.Bytes(tmhash.Size),
 				Blobs:     []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize),
+				Proposal:  *prop,
 			},
 			nil,
 		},
@@ -124,6 +129,7 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 				BpHash:    rand.Bytes(tmhash.Size + 1),
 				Blobs:     []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize),
+				Proposal:  *prop,
 			},
 			errors.New("expected size to be 32 bytes, got 33 bytes"),
 		},
@@ -134,8 +140,9 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 				Blobs:       []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature:   rand.Bytes(types.MaxSignatureSize),
 				PartsHashes: [][]byte{{0x1, 0x2}},
+				Proposal:    *prop,
 			},
-			errors.New("invalid part hash height 0 round 0 index 0: expected size to be 32 bytes, got 2 bytes"),
+			errors.New("invalid part hash height 1 round 0 index 0: expected size to be 32 bytes, got 2 bytes"),
 		},
 		{
 			"too big of signature",
@@ -143,6 +150,7 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 				BpHash:    rand.Bytes(tmhash.Size),
 				Blobs:     []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize + 1),
+				Proposal:  *prop,
 			},
 			errors.New("CompactBlock: Signature is too big"),
 		},
@@ -191,11 +199,6 @@ func TestWantParts_ValidateBasic(t *testing.T) {
 }
 
 func TestHavePartsProtoRoundtrip(t *testing.T) {
-	_, proofs := merkle.ProofsFromByteSlices([][]byte{
-		[]byte("apple"),
-		[]byte("watermelon"),
-		[]byte("kiwi"),
-	})
 	tests := []struct {
 		name    string
 		have    *HaveParts
@@ -210,7 +213,6 @@ func TestHavePartsProtoRoundtrip(t *testing.T) {
 					{
 						Index: 0,
 						Hash:  rand.Bytes(tmhash.Size),
-						Proof: *proofs[0],
 					},
 				},
 			},
@@ -242,11 +244,6 @@ func TestHavePartsProtoRoundtrip(t *testing.T) {
 }
 
 func TestPartMetaDataValidateBasic(t *testing.T) {
-	_, proofs := merkle.ProofsFromByteSlices([][]byte{
-		[]byte("apple"),
-		[]byte("watermelon"),
-		[]byte("kiwi"),
-	})
 	tests := []struct {
 		name    string
 		part    PartMetaData
@@ -257,7 +254,6 @@ func TestPartMetaDataValidateBasic(t *testing.T) {
 			part: PartMetaData{
 				Index: 1,
 				Hash:  rand.Bytes(tmhash.Size),
-				Proof: *proofs[0],
 			},
 			wantErr: false,
 		},
@@ -266,13 +262,7 @@ func TestPartMetaDataValidateBasic(t *testing.T) {
 			part: PartMetaData{
 				Index: 1,
 				Hash:  []byte{0, 1, 2, 3},
-				Proof: *proofs[0],
 			},
-			wantErr: true,
-		},
-		{
-			name:    "no parts",
-			part:    PartMetaData{},
 			wantErr: true,
 		},
 	}
@@ -290,11 +280,6 @@ func TestPartMetaDataValidateBasic(t *testing.T) {
 }
 
 func TestHavePartsValidateBasic(t *testing.T) {
-	_, proofs := merkle.ProofsFromByteSlices([][]byte{
-		[]byte("apple"),
-		[]byte("watermelon"),
-		[]byte("kiwi"),
-	})
 	tests := []struct {
 		name    string
 		have    HaveParts
@@ -309,7 +294,6 @@ func TestHavePartsValidateBasic(t *testing.T) {
 					{
 						Index: 0,
 						Hash:  rand.Bytes(tmhash.Size),
-						Proof: *proofs[0],
 					},
 				},
 			},
@@ -333,7 +317,6 @@ func TestHavePartsValidateBasic(t *testing.T) {
 					{
 						Index: 0,
 						Hash:  rand.Bytes(tmhash.Size),
-						Proof: *proofs[0],
 					},
 				},
 			},
@@ -348,7 +331,6 @@ func TestHavePartsValidateBasic(t *testing.T) {
 					{
 						Index: 0,
 						Hash:  rand.Bytes(tmhash.Size),
-						Proof: *proofs[0],
 					},
 				},
 			},
@@ -364,64 +346,6 @@ func TestHavePartsValidateBasic(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
-		})
-	}
-}
-
-func TestHaveParts_SetIndex(t *testing.T) {
-	testCases := []struct {
-		name      string
-		existing  []PartMetaData
-		newIndex  uint32
-		newHash   []byte
-		newProof  *merkle.Proof
-		expLength int
-	}{
-		{
-			name:      "append single part",
-			existing:  nil,
-			newIndex:  0,
-			newHash:   []byte("hash0"),
-			newProof:  &merkle.Proof{}, // empty proof
-			expLength: 1,
-		},
-		{
-			name: "append second part",
-			existing: []PartMetaData{
-				{Index: 1, Hash: []byte("hash1")},
-			},
-			newIndex:  2,
-			newHash:   []byte("hash2"),
-			newProof:  &merkle.Proof{},
-			expLength: 2,
-		},
-		{
-			name: "append with non-empty proof",
-			existing: []PartMetaData{
-				{Index: 10, Hash: []byte("hash10")},
-			},
-			newIndex:  11,
-			newHash:   []byte("hash11"),
-			newProof:  &merkle.Proof{Total: 2, Index: 1},
-			expLength: 2,
-		},
-	}
-
-	for _, tc := range testCases {
-		tc := tc // capture range variable
-		t.Run(tc.name, func(t *testing.T) {
-			hp := &HaveParts{
-				Parts: tc.existing,
-			}
-
-			hp.SetIndex(tc.newIndex, tc.newHash, tc.newProof)
-			require.Equal(t, tc.expLength, len(hp.Parts), "length of Parts after SetIndex")
-
-			// Check last appended part
-			last := hp.Parts[len(hp.Parts)-1]
-			require.Equal(t, tc.newIndex, last.Index)
-			require.Equal(t, tc.newHash, last.Hash)
-			require.Equal(t, tc.newProof.String(), last.Proof.String())
 		})
 	}
 }

@@ -94,6 +94,9 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	psh := ps.Header()
 	pseh := pse.Header()
 
+	hashes := extractHashes(ps, pse)
+	proofs := extractProofs(ps, pse)
+
 	baseCompactBlock := &proptypes.CompactBlock{
 		BpHash:    pseh.Hash,
 		Signature: cmtrand.Bytes(64),
@@ -102,7 +105,10 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 			{Hash: cmtrand.Bytes(32)},
 			{Hash: cmtrand.Bytes(32)},
 		},
+		PartsHashes: hashes,
 	}
+
+	baseCompactBlock.SetProofCache(proofs)
 
 	height, round := int64(10), int32(1)
 
@@ -125,10 +131,6 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	added, _, _ = reactor3.AddProposal(baseCompactBlock)
 	require.True(t, added)
 
-	proof := merkle.Proof{LeafHash: cmtrand.Bytes(32)}
-	bm := bits.NewBitArray(10)
-	bm.Fill()
-
 	// reactor 1 will receive haves from reactor 2
 	reactor1.handleHaves(
 		reactor2.self,
@@ -136,7 +138,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 			Height: height,
 			Round:  round,
 			Parts: []proptypes.PartMetaData{
-				{Index: 0, Proof: proof},
+				{Index: 0},
 			},
 		},
 		false,
@@ -159,16 +161,16 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 		Height: height,
 		Round:  round,
 		Index:  0,
-		Data:   randomData,
+		Data:   ps.GetPart(0).Bytes.Bytes(),
 	})
 
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	// check if reactor 3 received the recovery part.
 	_, parts, found := reactor3.GetProposal(10, 1)
-	assert.True(t, found)
-	assert.Equal(t, uint32(1), parts.Count())
-	assert.Equal(t, randomData, parts.GetPart(0).Bytes.Bytes())
+	require.True(t, found)
+	require.Equal(t, uint32(1), parts.Count())
+	require.Equal(t, randomData, parts.GetPart(0).Bytes.Bytes())
 
 	// check to see if the parity data was generated after receiveing the first part.
 	_, combined, _, has := reactor3.getAllState(height, round)
@@ -177,6 +179,92 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	parityPart, has := combined.GetPart(1)
 	assert.True(t, has)
 	assert.NotNil(t, parityPart)
+}
+
+func TestInvalidPart(t *testing.T) {
+	reactors, _ := testBlockPropReactors(2)
+	reactor1 := reactors[0]
+	reactor2 := reactors[1]
+
+	randomData := cmtrand.Bytes(1000)
+	ps := types.NewPartSetFromData(randomData, types.BlockPartSizeBytes)
+	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	psh := ps.Header()
+	pseh := pse.Header()
+
+	hashes := extractHashes(ps, pse)
+	proofs := extractProofs(ps, pse)
+
+	baseCompactBlock := &proptypes.CompactBlock{
+		BpHash:    pseh.Hash,
+		Signature: cmtrand.Bytes(64),
+		LastLen:   uint32(lastLen),
+		Blobs: []proptypes.TxMetaData{
+			{Hash: cmtrand.Bytes(32)},
+			{Hash: cmtrand.Bytes(32)},
+		},
+		PartsHashes: hashes,
+	}
+
+	baseCompactBlock.SetProofCache(proofs)
+
+	height, round := int64(10), int32(1)
+
+	// adding the proposal manually so the haves/wants and recovery
+	// parts are not rejected.
+	p := types.Proposal{
+		BlockID: types.BlockID{
+			Hash:          cmtrand.Bytes(32),
+			PartSetHeader: psh,
+		},
+		Height: height,
+		Round:  round,
+	}
+	baseCompactBlock.Proposal = p
+
+	added, _, _ := reactor1.AddProposal(baseCompactBlock)
+	require.True(t, added)
+	added, _, _ = reactor2.AddProposal(baseCompactBlock)
+	require.True(t, added)
+
+	// reactor 1 will receive haves from reactor 2
+	reactor1.handleHaves(
+		reactor2.self,
+		&proptypes.HaveParts{
+			Height: height,
+			Round:  round,
+			Parts: []proptypes.PartMetaData{
+				{Index: 0},
+			},
+		},
+		false,
+	)
+
+	haves, has := reactor1.getPeer(reactor2.self).GetHaves(height, round)
+	assert.True(t, has)
+	require.True(t, haves.GetIndex(0))
+
+	time.Sleep(400 * time.Millisecond)
+
+	ps.GetPart(0).Bytes[0] = 0x12
+	ps.GetPart(0).Bytes[1] = 0x12
+	ps.GetPart(0).Bytes[2] = 0x12
+
+	reactor1.handleRecoveryPart(reactor2.self, &proptypes.RecoveryPart{
+		Height: height,
+		Round:  round,
+		Index:  0,
+		Data:   ps.GetPart(0).Bytes.Bytes(),
+	})
+
+	time.Sleep(500 * time.Millisecond)
+
+	// check if reactor 3 received the recovery part.
+	_, parts, found := reactor2.GetProposal(10, 1)
+	require.True(t, found)
+	badPart := parts.GetPart(0)
+	require.Nil(t, badPart)
 }
 
 func TestChunkParts(t *testing.T) {
