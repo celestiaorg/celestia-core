@@ -1,8 +1,13 @@
 package propagation
 
 import (
+	"bytes"
 	"fmt"
 
+	"github.com/tendermint/tendermint/crypto/merkle"
+
+	"github.com/gogo/protobuf/proto"
+	"github.com/tendermint/tendermint/proto/tendermint/mempool"
 	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
@@ -25,14 +30,19 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		return
 	}
 
-	// create the compact block
+	partHashes := extractHashes(block, parityBlock)
+	proofs := extractProofs(block, parityBlock)
+
 	cb := proptypes.CompactBlock{
-		Proposal:  *proposal,
-		LastLen:   uint32(lastLen),
-		Signature: cmtrand.Bytes(64), // todo: sign the proposal with a real signature
-		BpHash:    parityBlock.Hash(),
-		Blobs:     txs,
+		Proposal:    *proposal,
+		LastLen:     uint32(lastLen),
+		Signature:   cmtrand.Bytes(64), // todo: sign the proposal with a real signature
+		BpHash:      parityBlock.Hash(),
+		Blobs:       txs,
+		PartsHashes: partHashes,
 	}
+
+	cb.SetProofCache(proofs)
 
 	// save the compact block locally and broadcast it to the connected peers
 	blockProp.handleCompactBlock(&cb, blockProp.self)
@@ -66,15 +76,44 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	}
 }
 
+func extractHashes(blocks ...*types.PartSet) [][]byte {
+	total := uint32(0)
+	for _, block := range blocks {
+		total += block.Total()
+	}
+
+	partHashes := make([][]byte, 0, total) // Preallocate capacity
+	for _, block := range blocks {
+		for i := uint32(0); i < block.Total(); i++ {
+			partHashes = append(partHashes, block.GetPart(int(i)).Proof.LeafHash)
+		}
+	}
+	return partHashes
+}
+
+func extractProofs(blocks ...*types.PartSet) []*merkle.Proof {
+	total := uint32(0)
+	for _, block := range blocks {
+		total += block.Total()
+	}
+
+	proofs := make([]*merkle.Proof, 0, total) // Preallocate capacity
+	for _, block := range blocks {
+		for i := uint32(0); i < block.Total(); i++ {
+			proofs = append(proofs, &block.GetPart(int(i)).Proof)
+		}
+	}
+	return proofs
+}
+
 func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSet) []*propagation.PartMetaData {
 	partMetaData := make([]*propagation.PartMetaData, 0)
 	// TODO rename indice to a correct name
 	for _, indice := range chunk.GetTrueIndices() {
 		part, _ := partSet.GetPart(uint32(indice))
-		partMetaData = append(partMetaData, &propagation.PartMetaData{ // TODO create the programmatic type and use the ToProto method
+		partMetaData = append(partMetaData, &propagation.PartMetaData{
 			Index: uint32(indice),
-			Hash:  part.Proof.LeafHash, // TODO this seems like a duplicate field, do we need it?
-			Proof: *part.Proof.ToProto(),
+			Hash:  part.Proof.LeafHash,
 		})
 	}
 	return partMetaData
@@ -85,13 +124,103 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID) {
 	added, _, _ := blockProp.AddProposal(cb)
-
-	// todo: add catchup logic here by checking for gaps
-
-	if added {
-		blockProp.broadcastCompactBlock(cb, peer)
-		blockProp.retryWants(cb.Proposal.Height, cb.Proposal.Round)
+	if !added {
+		return
 	}
+
+	proofs, err := cb.Proofs()
+	if err != nil {
+		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
+		blockProp.Logger.Error("received invalid compact block", "err", err.Error())
+		// todo: kick peer
+		return
+	}
+
+	blockProp.broadcastCompactBlock(cb, peer)
+
+	// check if we have any transactions that are in the compact block
+	parts := blockProp.compactBlockToParts(cb)
+	_, partSet, found := blockProp.GetProposal(cb.Proposal.Height, cb.Proposal.Round)
+	if !found {
+		panic("failed to get proposal that was just added")
+	}
+
+	// the partset will be complete if this node is the proposer, and thus
+	// doesn't need to recover any parts.
+	if partSet.IsComplete() {
+		return
+	}
+
+	for _, part := range parts {
+		// todo: figure out what we want to do here. we might just want to defer
+		// to the consensus reactor for invalid parts.
+		if !bytes.Equal(merkle.LeafHash(part.Bytes), cb.PartsHashes[part.Index]) {
+			blockProp.Logger.Error(
+				"recovered part hash is different than compact block",
+				"part",
+				part.Index,
+				"height",
+				cb.Proposal.Height,
+				"round",
+				cb.Proposal.Round,
+			)
+			continue
+		}
+
+		part.Proof = *proofs[part.Index]
+
+		// note: using AddPartWithoutProof to skip verifying the proof that was
+		// generated and verified above.
+		added, err := partSet.AddPartWithoutProof(part)
+		if err != nil {
+			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
+			continue
+		}
+
+		if !added {
+			blockProp.Logger.Error("failed to add locally recovered part", "part", part.Index)
+			continue
+		}
+
+		// todo: broadcast haves
+	}
+}
+
+// compactBlockToParts queries the mempool to see if we can recover any block parts locally.
+func (blockProp *Reactor) compactBlockToParts(cb *proptypes.CompactBlock) []*types.Part {
+	// find the compact block transactions that exist in our mempool
+	txsFound := make([]proptypes.UnmarshalledTx, 0)
+	for _, txMetaData := range cb.Blobs {
+		txKey, err := types.TxKeyFromBytes(txMetaData.Hash)
+		if err != nil {
+			blockProp.Logger.Error("failed to decode tx key", "err", err, "tx", txMetaData)
+			continue
+		}
+		tx, has := blockProp.mempool.GetTxByKey(txKey)
+		if !has {
+			continue
+		}
+
+		protoTxs := mempool.Txs{Txs: [][]byte{tx}}
+		marshalledTx, err := proto.Marshal(&protoTxs)
+		if err != nil {
+			blockProp.Logger.Error("failed to encode tx", "err", err, "tx", txMetaData)
+			continue
+		}
+
+		txsFound = append(txsFound, proptypes.UnmarshalledTx{MetaData: txMetaData, Key: txKey, TxBytes: marshalledTx})
+	}
+	if len(txsFound) == 0 {
+		// no compact block transaction was found locally
+		return nil
+	}
+
+	parts := proptypes.TxsToParts(txsFound)
+	if len(parts) > 0 {
+		blockProp.Logger.Info("recovered parts from the mempool", "number of parts", len(parts))
+	}
+
+	return parts
 }
 
 // broadcastProposal gossips the provided proposal to all peers. This should

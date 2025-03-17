@@ -44,12 +44,16 @@ type Reactor struct {
 	// block data for gossiping.
 	*ProposalCache
 
+	// mempool access to read the transactions by hash from the mempool
+	// and eventually remove it.
+	mempool Mempool
+
 	mtx         *sync.RWMutex
 	traceClient trace.Tracer
 	self        p2p.ID
 }
 
-func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, options ...ReactorOption) *Reactor {
+func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempool Mempool, options ...ReactorOption) *Reactor {
 	if tracer == nil {
 		tracer = trace.NoOpTracer()
 	}
@@ -59,6 +63,7 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, optio
 		peerstate:     make(map[p2p.ID]*PeerState),
 		mtx:           &sync.RWMutex{},
 		ProposalCache: NewProposalCache(store),
+		mempool:       mempool,
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 

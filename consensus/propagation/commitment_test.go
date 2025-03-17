@@ -4,6 +4,10 @@ import (
 	"testing"
 	"time"
 
+	dbm "github.com/cometbft/cometbft-db"
+	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/store"
+
 	"github.com/stretchr/testify/assert"
 
 	"github.com/stretchr/testify/require"
@@ -87,4 +91,69 @@ func createTestProposal(
 	prop := types.NewProposal(block.Height, 0, 0, id)
 	prop.Signature = cmtrand.Bytes(64)
 	return prop, partSet, block, metaData
+}
+
+// TestRecoverPartsLocally provides a set of transactions to the mempool
+// and attempts to build the block parts from them.
+func TestRecoverPartsLocally(t *testing.T) {
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	numberOfTxs := 10
+	txsMap := make(map[types.TxKey]types.Tx)
+	txs := make([]types.Tx, numberOfTxs)
+	for i := 0; i < numberOfTxs; i++ {
+		tx := types.Tx(cmtrand.Bytes(int(types.BlockPartSizeBytes / 3)))
+		txKey, err := types.TxKeyFromBytes(tx.Hash())
+		require.NoError(t, err)
+		txsMap[txKey] = tx
+		txs[i] = tx
+	}
+
+	blockStore := store.NewBlockStore(dbm.NewMemDB())
+	blockPropR := NewReactor("", trace.NoOpTracer(), blockStore, mockMempool{
+		txs: txsMap,
+	})
+
+	data := types.Data{Txs: txs}
+
+	block, partSet := sm.MakeBlock(1, data, types.RandCommit(time.Now()), []types.Evidence{}, cmtrand.Bytes(20))
+	id := types.BlockID{Hash: block.Hash(), PartSetHeader: partSet.Header()}
+	prop := types.NewProposal(block.Height, 0, 0, id)
+	prop.Signature = cmtrand.Bytes(64)
+
+	metaData := make([]proptypes.TxMetaData, len(partSet.TxPos))
+	for i, pos := range partSet.TxPos {
+		metaData[i] = proptypes.TxMetaData{
+			Start: uint32(pos.Start),
+			End:   uint32(pos.End),
+			Hash:  block.Txs[i].Hash(),
+		}
+	}
+
+	blockPropR.ProposeBlock(prop, partSet, metaData)
+
+	_, actualParts, _ := blockPropR.GetProposal(prop.Height, prop.Round)
+
+	// we should be able to recover all the parts after where the transactions
+	// are encoded
+	startingPartIndex := metaData[0].Start/types.BlockPartSizeBytes + 1
+
+	for i := startingPartIndex; i < partSet.Total()-1; i++ {
+		apart := actualParts.GetPart(int(i))
+		require.NotNil(t, apart)
+		assert.Equal(t, partSet.GetPart(int(i)).Bytes, apart.Bytes)
+	}
+}
+
+var _ Mempool = &mockMempool{}
+
+type mockMempool struct {
+	txs map[types.TxKey]types.Tx
+}
+
+func (m mockMempool) GetTxByKey(key types.TxKey) (types.Tx, bool) {
+	return m.txs[key], true
 }

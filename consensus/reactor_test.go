@@ -221,7 +221,7 @@ func TestReactorWithEvidence(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		propagator := propagation.NewReactor(key.ID(), nil, blockStore)
+		propagator := propagation.NewReactor(key.ID(), nil, blockStore, mempool)
 		cs := NewState(thisConfig.Consensus, state, blockExec, blockStore, propagator, mempool, evpool2)
 		cs.SetLogger(log.TestingLogger().With("module", "consensus"))
 		cs.SetPrivValidator(pv)
