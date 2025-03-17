@@ -488,10 +488,10 @@ func (s *syncer) requestChunk(snapshot *snapshot, chunk uint32) {
 }
 
 // verifyApp verifies the sync, checking the app hash, last block height and app version
-func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) (abci.TimeoutsInfo, error) {
+func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) (abci.TimeoutInfo, error) {
 	resp, err := s.connQuery.Info(context.TODO(), proxy.RequestInfo)
 	if err != nil {
-		return abci.TimeoutsInfo{}, fmt.Errorf("failed to query ABCI app for appHash: %w", err)
+		return abci.TimeoutInfo{}, fmt.Errorf("failed to query ABCI app for appHash: %w", err)
 	}
 
 	// sanity check that the app version in the block matches the application's own record
@@ -499,14 +499,14 @@ func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) (abci.Timeouts
 	if resp.AppVersion != appVersion {
 		// An error here most likely means that the app hasn't inplemented state sync
 		// or the Info call correctly
-		return abci.TimeoutsInfo{}, fmt.Errorf("app version mismatch. Expected: %d, got: %d",
+		return abci.TimeoutInfo{}, fmt.Errorf("app version mismatch. Expected: %d, got: %d",
 			appVersion, resp.AppVersion)
 	}
 	if !bytes.Equal(snapshot.trustedAppHash, resp.LastBlockAppHash) {
 		s.logger.Error("appHash verification failed",
 			"expected", fmt.Sprintf("%X", snapshot.trustedAppHash),
 			"actual", fmt.Sprintf("%X", resp.LastBlockAppHash))
-		return abci.TimeoutsInfo{}, errVerifyFailed
+		return abci.TimeoutInfo{}, errVerifyFailed
 	}
 	if uint64(resp.LastBlockHeight) != snapshot.Height {
 		s.logger.Error(
@@ -514,9 +514,9 @@ func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) (abci.Timeouts
 			"expected", snapshot.Height,
 			"actual", resp.LastBlockHeight,
 		)
-		return abci.TimeoutsInfo{}, errVerifyFailed
+		return abci.TimeoutInfo{}, errVerifyFailed
 	}
 
 	s.logger.Info("Verified ABCI app", "height", snapshot.Height, "appHash", log.NewLazySprintf("%X", snapshot.trustedAppHash))
-	return resp.Timeouts, nil
+	return resp.TimeoutInfo, nil
 }

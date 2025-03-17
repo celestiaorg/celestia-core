@@ -368,8 +368,8 @@ func (h *Handshaker) ReplayBlocksWithContext(
 			}
 
 			// update timeouts based on the InitChainSync response
-			state.TimeoutCommit = res.Timeouts.TimeoutCommit
-			state.TimeoutPropose = res.Timeouts.TimeoutPropose
+			state.TimeoutCommit = res.TimeoutInfo.TimeoutCommit
+			state.TimeoutPropose = res.TimeoutInfo.TimeoutPropose
 			// We update the last results hash with the empty hash, to conform with RFC-6962.
 			state.LastResultsHash = merkle.HashFromByteSlices(nil)
 			if err := h.stateStore.Save(state); err != nil {

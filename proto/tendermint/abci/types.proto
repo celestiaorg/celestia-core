@@ -243,7 +243,7 @@ message ResponseInfo {
   int64 last_block_height   = 4;
   bytes last_block_app_hash = 5;
 
-  TimeoutsInfo timeouts = 6 [(gogoproto.nullable) = false];
+  TimeoutInfo timeout_info = 6 [(gogoproto.nullable) = false];
 }
 
 message ResponseInitChain {
@@ -251,7 +251,7 @@ message ResponseInitChain {
   repeated ValidatorUpdate         validators       = 2 [(gogoproto.nullable) = false];
   bytes                            app_hash         = 3;
 
-  TimeoutsInfo timeouts = 4 [(gogoproto.nullable) = false];
+  TimeoutInfo timeout_info = 4 [(gogoproto.nullable) = false];
 }
 
 message ResponseQuery {
@@ -379,7 +379,7 @@ message ResponseFinalizeBlock {
   // app_hash is the hash of the applications' state which is used to confirm that execution of the transactions was deterministic. It is up to the application to decide which algorithm to use.
   bytes app_hash = 5;
 
-  TimeoutsInfo timeouts = 6 [(gogoproto.nullable) = false];
+  TimeoutInfo timeout_info = 6 [(gogoproto.nullable) = false];
 }
 
 //----------------------------------------
@@ -510,7 +510,7 @@ message Snapshot {
   bytes  metadata = 5;  // Arbitrary application metadata
 }
 
-message TimeoutsInfo {
+message TimeoutInfo {
   google.protobuf.Duration timeout_propose = 1 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
   google.protobuf.Duration timeout_commit  = 2 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
 }

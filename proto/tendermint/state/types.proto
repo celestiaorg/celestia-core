@@ -95,5 +95,5 @@ message State {
   bytes app_hash = 13;
 
   // timeouts to be used for the next block height
-  tendermint.abci.TimeoutsInfo timeouts = 15 [(gogoproto.nullable) = false];
+  tendermint.abci.TimeoutInfo timeout_info = 15 [(gogoproto.nullable) = false];
 }
