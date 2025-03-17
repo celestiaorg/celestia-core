@@ -1,8 +1,8 @@
 package types
 
 import (
-	"encoding/binary"
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
