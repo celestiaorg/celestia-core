@@ -79,6 +79,9 @@ type State struct {
 
 	// the latest AppHash we've received from calling abci.Commit()
 	AppHash []byte
+
+	TimeoutCommit  time.Duration
+	TimeoutPropose time.Duration
 }
 
 // Copy makes a copy of the State for mutating.
@@ -104,6 +107,8 @@ func (state State) Copy() State {
 		AppHash: state.AppHash,
 
 		LastResultsHash: state.LastResultsHash,
+		TimeoutCommit:   state.TimeoutCommit,
+		TimeoutPropose:  state.TimeoutPropose,
 	}
 }
 
@@ -173,6 +178,9 @@ func (state *State) ToProto() (*cmtstate.State, error) {
 	sm.LastResultsHash = state.LastResultsHash
 	sm.AppHash = state.AppHash
 
+	sm.Timeouts.TimeoutPropose = state.TimeoutPropose
+	sm.Timeouts.TimeoutCommit = state.TimeoutCommit
+
 	return sm, nil
 }
 
@@ -223,6 +231,9 @@ func FromProto(pb *cmtstate.State) (*State, error) { //nolint:golint
 	state.LastHeightConsensusParamsChanged = pb.LastHeightConsensusParamsChanged
 	state.LastResultsHash = pb.LastResultsHash
 	state.AppHash = pb.AppHash
+
+	state.TimeoutCommit = pb.Timeouts.TimeoutCommit
+	state.TimeoutPropose = pb.Timeouts.TimeoutPropose
 
 	return state, nil
 }

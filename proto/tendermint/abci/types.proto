@@ -10,6 +10,7 @@ import "tendermint/crypto/keys.proto";
 import "tendermint/types/params.proto";
 import "tendermint/types/validator.proto";
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
 import "gogoproto/gogo.proto";
 
 // NOTE: When using custom types, mind the warnings.
@@ -241,12 +242,16 @@ message ResponseInfo {
 
   int64 last_block_height   = 4;
   bytes last_block_app_hash = 5;
+
+  TimeoutsInfo timeouts = 6 [(gogoproto.nullable) = false];
 }
 
 message ResponseInitChain {
   tendermint.types.ConsensusParams consensus_params = 1;
   repeated ValidatorUpdate         validators       = 2 [(gogoproto.nullable) = false];
   bytes                            app_hash         = 3;
+
+  TimeoutsInfo timeouts = 4 [(gogoproto.nullable) = false];
 }
 
 message ResponseQuery {
@@ -373,6 +378,8 @@ message ResponseFinalizeBlock {
   tendermint.types.ConsensusParams consensus_param_updates = 4;
   // app_hash is the hash of the applications' state which is used to confirm that execution of the transactions was deterministic. It is up to the application to decide which algorithm to use.
   bytes app_hash = 5;
+
+  TimeoutsInfo timeouts = 6 [(gogoproto.nullable) = false];
 }
 
 //----------------------------------------
@@ -501,4 +508,9 @@ message Snapshot {
   uint32 chunks   = 3;  // Number of chunks in the snapshot
   bytes  hash     = 4;  // Arbitrary snapshot hash, equal only if identical
   bytes  metadata = 5;  // Arbitrary application metadata
+}
+
+message TimeoutsInfo {
+  google.protobuf.Duration timeout_propose = 1 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_commit  = 2 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
 }

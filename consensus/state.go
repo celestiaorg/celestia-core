@@ -739,9 +739,19 @@ func (cs *State) updateToState(state sm.State) {
 		// to be gathered for the first block.
 		// And alternative solution that relies on clocks:
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
-		cs.StartTime = cs.config.Commit(cmttime.Now())
+		if state.LastBlockHeight == 0 {
+			// Don't use cs.state.TimeoutCommit because that is zero
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.TimeoutCommit)
+		} else {
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.TimeoutCommit)
+		}
+
 	} else {
-		cs.StartTime = cs.config.Commit(cs.CommitTime)
+		if state.LastBlockHeight == 0 {
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, state.TimeoutCommit)
+		} else {
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.TimeoutCommit)
+		}
 	}
 
 	cs.Validators = validators
