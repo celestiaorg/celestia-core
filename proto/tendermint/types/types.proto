@@ -99,7 +99,7 @@ message Blob {
   bytes  data              = 2;
   uint32 share_version     = 3;
   uint32 namespace_version = 4;
- }
+}
 
 // Vote represents a prevote or precommit vote from validators for
 // consensus.
@@ -199,7 +199,6 @@ message TxProof {
   bytes                   data      = 2;
   tendermint.crypto.Proof proof     = 3;
 }
-
 
 // IndexWrapper adds index metadata to a transaction. This is used to track
 // transactions that pay for blobs, and where the blobs start in the square.

@@ -492,11 +492,6 @@ func TestTx(t *testing.T) {
 				assert.True(t, ptx.TxResult.IsOK())
 				assert.EqualValues(t, txHash, ptx.Hash)
 
-				// time to verify the proof
-				// proof := ptx.Proof
-				// if tc.prove && assert.EqualValues(t, tx, proof.Data) {
-				// 	assert.NoError(t, proof.Proof.Verify(proof.RootHash, txHash))
-				// }
 			}
 		}
 	}

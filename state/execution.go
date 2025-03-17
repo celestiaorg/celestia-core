@@ -163,11 +163,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		return nil, err
 	}
 
-	data := types.Data{
-		SquareSize:   rpp.SquareSize,
-		DataRootHash: rpp.DataRootHash,
-		Txs:          txl,
-	}
+	data := types.NewData(txl, rpp.SquareSize, rpp.DataRootHash)
 
 	return state.MakeBlock(height, data, commit, evidence, proposerAddr), nil
 }
@@ -182,7 +178,7 @@ func (blockExec *BlockExecutor) ProcessProposal(
 		Time:               block.Header.Time,
 		Txs:                block.Data.Txs.ToSliceOfBytes(),
 		SquareSize:         block.Data.SquareSize,
-		DataRootHash:       block.Data.DataRootHash,
+		DataRootHash:       block.Data.GetDataRootHash(),
 		ProposedLastCommit: buildLastCommitInfoFromStore(block, blockExec.store, state.InitialHeight),
 		Misbehavior:        block.Evidence.Evidence.ToABCI(),
 		ProposerAddress:    block.ProposerAddress,

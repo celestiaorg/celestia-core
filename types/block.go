@@ -1301,11 +1301,16 @@ type Data struct {
 	// proofs that some element was included in the block
 	SquareSize uint64 `json:"square_size"`
 
-	// DataRootHash is the root hash of the data square.
-	DataRootHash cmtbytes.HexBytes `json:"data_root_hash"`
-
 	// Volatile
 	hash cmtbytes.HexBytes
+}
+
+func NewData(txs Txs, squareSize uint64, hash cmtbytes.HexBytes) Data {
+	return Data{
+		Txs:        txs,
+		SquareSize: squareSize,
+		hash:       hash,
+	}
 }
 
 // Hash returns the hash of the data
@@ -1316,6 +1321,11 @@ func (data *Data) Hash() cmtbytes.HexBytes {
 	if data.hash == nil {
 		data.hash = data.Txs.Hash() // NOTE: leaves of merkle tree are TxIDs
 	}
+	return data.hash
+}
+
+// GetDataRootHash returns the hash data which is not equal to calling data.Hash()
+func (data *Data) GetDataRootHash() cmtbytes.HexBytes {
 	return data.hash
 }
 
@@ -1352,7 +1362,7 @@ func (data *Data) ToProto() cmtproto.Data {
 	}
 
 	tp.SquareSize = data.SquareSize
-	tp.Hash = data.DataRootHash
+	tp.Hash = data.hash
 
 	return *tp
 }
@@ -1375,7 +1385,7 @@ func DataFromProto(dp *cmtproto.Data) (Data, error) {
 		data.Txs = Txs{}
 	}
 
-	data.DataRootHash = dp.Hash
+	data.hash = dp.Hash
 	data.SquareSize = dp.SquareSize
 
 	return *data, nil
