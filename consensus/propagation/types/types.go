@@ -1,8 +1,12 @@
 package types
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
+
+	"github.com/gogo/protobuf/proto"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -57,6 +61,40 @@ type CompactBlock struct {
 	LastLen uint32 `json:"last_len,omitempty"`
 	// the original part set parts hashes.
 	PartsHashes [][]byte `json:"parts_hashes,omitempty"`
+}
+
+// SignBytes returns the compact block commitment data that
+// needs to be signed.
+// The sign bytes are the sha256 hash over the following
+// concatenated data:
+// - BpHash
+// - Blobs
+// - Proposal.Signature
+// - Big endian encoding of LastLen
+// - PartsHashes
+func (c *CompactBlock) SignBytes() ([]byte, error) {
+	bytes := make([]byte, 0)
+	bytes = append(bytes, c.BpHash...)
+	for _, md := range c.Blobs {
+		pb, err := proto.Marshal(md.ToProto())
+		if err != nil {
+			return nil, err
+		}
+		bytes = append(bytes, pb...)
+	}
+	bytes = append(bytes, c.Proposal.Signature...)
+
+	// big endian encode the last len
+	lastLenBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(lastLenBytes, c.LastLen)
+	bytes = append(bytes, lastLenBytes...)
+
+	for _, ph := range c.PartsHashes {
+		bytes = append(bytes, ph...)
+	}
+
+	signBytes := tmhash.Sum(bytes)
+	return signBytes, nil
 }
 
 // ValidateBasic checks if the CompactBlock is valid. It fails if the height is
