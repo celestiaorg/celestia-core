@@ -115,7 +115,7 @@ func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
 }
 
 // Proofs returns the proofs to each part. If the proofs are not already
-// generated, then they are done so during the firstq call. An error is only
+// generated, then they are done so during the first call. An error is only
 // thrown if the proofs are generated and the resulting hashes don't match those
 // in the compact block. This method should be called upon first receiving a
 // compact block.
