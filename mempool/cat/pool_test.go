@@ -776,7 +776,7 @@ func TestTxPool_BroadcastQueue(t *testing.T) {
 			case <-ctx.Done():
 				assert.FailNowf(t, "failed to receive all txs (got %d/%d)", "", i+1, txs)
 			case wtx := <-txmp.next():
-				require.Equal(t, wtx.tx, newDefaultTx(fmt.Sprintf("%d", i)))
+				require.Equal(t, wtx.tx.Tx, newDefaultTx(fmt.Sprintf("%d", i)))
 			}
 		}
 	}()

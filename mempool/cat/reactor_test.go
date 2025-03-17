@@ -107,7 +107,7 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 
 	// add the transaction to the nodes pool. It's not connected to
 	// any peers so it shouldn't broadcast anything yet
-	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
+	require.NoError(t, pool.CheckTx(tx.ToCachedTx(), nil, mempool.TxInfo{}))
 
 	// Add the peer
 	reactor.InitPeer(peer)
@@ -384,7 +384,8 @@ func waitForTxsOnReactor(t *testing.T, txs types.Txs, reactor *Reactor, reactorI
 		time.Sleep(time.Millisecond * 100)
 	}
 
-	reapedTxs := mempool.ReapMaxTxs(len(txs))
+	reapedCachedTxs := mempool.ReapMaxTxs(len(txs))
+	reapedTxs := types.TxsFromCachedTxs(reapedCachedTxs)
 	for i, tx := range txs {
 		require.Contains(t, reapedTxs, tx)
 		require.Equal(t, tx, reapedTxs[i],

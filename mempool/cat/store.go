@@ -190,7 +190,7 @@ func (s *store) deleteOrderedTx(tx *wrappedTx) error {
 	}
 	idx := s.getTxOrder(tx) - 1
 	if idx >= len(s.orderedTxs) || s.orderedTxs[idx] != tx {
-		return fmt.Errorf("transaction %X not found in ordered list", tx.key)
+		return fmt.Errorf("transaction %X not found in ordered list", tx.key())
 	}
 	s.orderedTxs = append(s.orderedTxs[:idx], s.orderedTxs[idx+1:]...)
 	return nil

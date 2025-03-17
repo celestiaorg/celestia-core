@@ -577,7 +577,7 @@ func TestGetTxByKey(t *testing.T) {
 	got, ok := mp.GetTxByKey(tx.Key())
 	require.True(t, ok)
 	// Ensure the returned tx is the same as the one we added
-	require.Equal(t, tx, got)
+	require.Equal(t, tx, got.Tx)
 
 	// Query a random tx from the mempool
 	randomTx, ok := mp.GetTxByKey(types.Tx([]byte{0x02}).Key())

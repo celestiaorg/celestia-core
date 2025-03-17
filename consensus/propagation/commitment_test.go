@@ -136,5 +136,6 @@ type mockMempool struct {
 }
 
 func (m mockMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
-	return m.txs[key], true
+	val, found := m.txs[key]
+	return val, found
 }
