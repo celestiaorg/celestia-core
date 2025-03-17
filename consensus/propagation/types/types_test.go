@@ -9,7 +9,6 @@ import (
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/rand"
-	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -105,9 +104,9 @@ func TestCompactBlock_RoundTrip(t *testing.T) {
 }
 
 func TestCompactBlock_ValidateBasic(t *testing.T) {
-	id := types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(32)}}
+	id := types.BlockID{Hash: rand.Bytes(32), PartSetHeader: types.PartSetHeader{Total: 1, Hash: rand.Bytes(32)}}
 	prop := types.NewProposal(1, 0, 0, id)
-	prop.Signature = cmtrand.Bytes(64)
+	prop.Signature = rand.Bytes(64)
 
 	tests := []struct {
 		name    string
