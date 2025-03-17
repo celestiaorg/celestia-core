@@ -146,9 +146,13 @@ func (env *Environment) BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*
 // UnconfirmedTxs gets unconfirmed transactions (maximum ?limit entries)
 // including their number.
 // More: https://docs.cometbft.com/v0.38.x/rpc/#/Info/unconfirmed_txs
+// If limitPtr == -1, it will return all the unconfirmed transactions in the mempool.
 func (env *Environment) UnconfirmedTxs(_ *rpctypes.Context, limitPtr *int) (*ctypes.ResultUnconfirmedTxs, error) {
-	// reuse per_page validator
-	limit := env.validatePerPage(limitPtr)
+	limit := *limitPtr
+	if limit != -1 {
+		// reuse per_page validator
+		limit = validatePerPage(limitPtr)
+	}
 
 	txs := env.Mempool.ReapMaxTxs(limit)
 	return &ctypes.ResultUnconfirmedTxs{
