@@ -136,6 +136,9 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		return
 	}
 
+	// run the catchup routine to recover any missing parts for past heights.
+	blockProp.retryWants(cb.Proposal.Height, cb.Proposal.Round)
+
 	blockProp.broadcastCompactBlock(cb, peer)
 
 	// check if we have any transactions that are in the compact block

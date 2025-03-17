@@ -2,6 +2,7 @@ package propagation
 
 import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
+	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
@@ -259,9 +260,24 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		return
 	}
 
+	// todo: add these defensive checks in a better way
+	if cb == nil {
+		return
+	}
+	if parts == nil {
+		return
+	}
+
+	// todo: we need to figure out a way to get the proof for a part that was
+	// sent during catchup.
+	proof := cb.GetProof(part.Index)
+	if proof == nil {
+		proof = &merkle.Proof{}
+	}
+
 	// TODO: to verify, compare the hash with that of the have that was sent for
 	// this part and verified.
-	added, err := parts.AddPart(part, *cb.GetProof(part.Index))
+	added, err := parts.AddPart(part, *proof)
 	if err != nil {
 		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)
 		return
