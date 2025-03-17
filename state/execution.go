@@ -178,7 +178,7 @@ func (blockExec *BlockExecutor) ProcessProposal(
 		Time:               block.Header.Time,
 		Txs:                block.Data.Txs.ToSliceOfBytes(),
 		SquareSize:         block.Data.SquareSize,
-		DataRootHash:       block.Data.GetDataRootHash(),
+		DataRootHash:       block.Data.Hash(),
 		ProposedLastCommit: buildLastCommitInfoFromStore(block, blockExec.store, state.InitialHeight),
 		Misbehavior:        block.Evidence.Evidence.ToABCI(),
 		ProposerAddress:    block.ProposerAddress,
