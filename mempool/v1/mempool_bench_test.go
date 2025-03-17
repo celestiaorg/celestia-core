@@ -2,10 +2,11 @@ package v1
 
 import (
 	"fmt"
-	"github.com/tendermint/tendermint/types"
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/tendermint/tendermint/types"
 
 	"github.com/stretchr/testify/require"
 

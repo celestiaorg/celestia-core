@@ -2,10 +2,11 @@ package cat
 
 import (
 	"fmt"
-	"github.com/tendermint/tendermint/types"
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/tendermint/tendermint/types"
 
 	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/mempool"

@@ -2,8 +2,9 @@ package mempool
 
 import (
 	"encoding/binary"
-	"github.com/tendermint/tendermint/types"
 	"testing"
+
+	"github.com/tendermint/tendermint/types"
 )
 
 func BenchmarkCacheInsertTime(b *testing.B) {

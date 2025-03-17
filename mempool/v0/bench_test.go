@@ -2,9 +2,10 @@ package v0
 
 import (
 	"encoding/binary"
-	"github.com/tendermint/tendermint/types"
 	"sync/atomic"
 	"testing"
+
+	"github.com/tendermint/tendermint/types"
 
 	"github.com/tendermint/tendermint/abci/example/kvstore"
 	"github.com/tendermint/tendermint/mempool"
