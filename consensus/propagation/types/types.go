@@ -1,8 +1,10 @@
 package types
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -57,28 +59,42 @@ type CompactBlock struct {
 	LastLen uint32 `json:"last_len,omitempty"`
 	// the original part set parts hashes.
 	PartsHashes [][]byte `json:"parts_hashes,omitempty"`
+
+	mtx sync.Mutex
+	// proofsCache is local storage from generated proofs from the PartsHashes.
+	// It must not be included in any serialization.
+	proofsCache []*merkle.Proof
 }
 
 // ValidateBasic checks if the CompactBlock is valid. It fails if the height is
 // negative, if the round is negative, if the BpHash is invalid, or if any of
 // the Blobs are invalid.
 func (c *CompactBlock) ValidateBasic() error {
+	err := c.Proposal.ValidateBasic()
+	if err != nil {
+		return err
+	}
+
 	if err := types.ValidateHash(c.BpHash); err != nil {
 		return err
 	}
+
 	for _, blob := range c.Blobs {
 		if err := blob.ValidateBasic(); err != nil {
 			return err
 		}
 	}
+
 	if len(c.Signature) > types.MaxSignatureSize {
 		return errors.New("CompactBlock: Signature is too big")
 	}
+
 	for index, partHash := range c.PartsHashes {
 		if err := types.ValidateHash(partHash); err != nil {
 			return fmt.Errorf("invalid part hash height %d round %d index %d: %w", c.Proposal.Height, c.Proposal.Round, index, err)
 		}
 	}
+
 	return nil
 }
 
@@ -96,6 +112,55 @@ func (c *CompactBlock) ToProto() *protoprop.CompactBlock {
 		LastLength:  c.LastLen,
 		PartsHashes: c.PartsHashes,
 	}
+}
+
+// Proofs returns the proofs to each part. If the proofs are not already
+// generated, then they are done so during the first call. An error is only
+// thrown if the proofs are generated and the resulting hashes don't match those
+// in the compact block. This method should be called upon first receiving a
+// compact block.
+func (c *CompactBlock) Proofs() ([]*merkle.Proof, error) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	if c.proofsCache != nil {
+		return c.proofsCache, nil
+	}
+
+	total := c.Proposal.BlockID.PartSetHeader.Total
+
+	c.proofsCache = make([]*merkle.Proof, 0, len(c.PartsHashes))
+
+	root, proofs := merkle.ProofsFromLeafHashes(c.PartsHashes[:total])
+	c.proofsCache = append(c.proofsCache, proofs...)
+
+	if !bytes.Equal(root, c.Proposal.BlockID.PartSetHeader.Hash) {
+		return c.proofsCache, fmt.Errorf("incorrect PartsHash: original root")
+	}
+
+	parityRoot, eproofs := merkle.ProofsFromLeafHashes(c.PartsHashes[total:])
+	c.proofsCache = append(c.proofsCache, eproofs...)
+
+	if !bytes.Equal(c.BpHash, parityRoot) {
+		return c.proofsCache, fmt.Errorf("incorrect PartsHash: parity root")
+	}
+
+	return c.proofsCache, nil
+}
+
+func (c *CompactBlock) GetProof(i uint32) *merkle.Proof {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	if i < uint32(len(c.proofsCache)) {
+		return c.proofsCache[i]
+	}
+	return nil
+}
+
+func (c *CompactBlock) SetProofCache(proofs []*merkle.Proof) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.proofsCache = proofs
 }
 
 // CompactBlockFromProto converts a protobuf CompactBlock to its Go representation.
@@ -118,6 +183,7 @@ func CompactBlockFromProto(c *protoprop.CompactBlock) (*CompactBlock, error) {
 		LastLen:     c.LastLength,
 		PartsHashes: c.PartsHashes,
 	}
+
 	return cb, cb.ValidateBasic()
 }
 
@@ -125,18 +191,13 @@ func CompactBlockFromProto(c *protoprop.CompactBlock) (*CompactBlock, error) {
 // index, along with the proof of inclusion to either the PartSetHeader hash or
 // the BPRoot in the CompactBlock.
 type PartMetaData struct {
-	Index uint32       `json:"index,omitempty"`
-	Hash  []byte       `json:"hash,omitempty"`
-	Proof merkle.Proof `json:"proof"`
+	Index uint32 `json:"index,omitempty"`
+	Hash  []byte `json:"hash,omitempty"`
 }
 
 // ValidateBasic checks if the PartMetaData is valid. It fails if the hash or
 // the proof is invalid.
 func (p *PartMetaData) ValidateBasic() error {
-	err := p.Proof.ValidateBasic()
-	if err != nil {
-		return err
-	}
 	return types.ValidateHash(p.Hash)
 }
 
@@ -176,11 +237,6 @@ func (h *HaveParts) ValidateBasic() error {
 	return nil
 }
 
-func (h *HaveParts) SetIndex(i uint32, Hash []byte, Proof *merkle.Proof) {
-	// TODO set the parts in an ordered way and support getting them faster.
-	h.Parts = append(h.Parts, PartMetaData{i, Hash, *Proof})
-}
-
 func (h *HaveParts) RemoveIndex(i uint32) {
 	parts := make([]PartMetaData, 0)
 	for _, part := range h.Parts {
@@ -212,7 +268,6 @@ func (h *HaveParts) ToProto() *protoprop.HaveParts {
 		parts[i] = &protoprop.PartMetaData{
 			Index: part.Index,
 			Hash:  part.Hash,
-			Proof: *part.Proof.ToProto(),
 		}
 	}
 	return &protoprop.HaveParts{
@@ -226,14 +281,9 @@ func (h *HaveParts) ToProto() *protoprop.HaveParts {
 func HavePartFromProto(h *protoprop.HaveParts) (*HaveParts, error) {
 	parts := make([]PartMetaData, len(h.Parts))
 	for i, part := range h.Parts {
-		proof, err := merkle.ProofFromProto(&part.Proof)
-		if err != nil {
-			return nil, err
-		}
 		parts[i] = PartMetaData{
 			Index: part.Index,
 			Hash:  part.Hash,
-			Proof: *proof,
 		}
 	}
 	hp := &HaveParts{
@@ -334,12 +384,6 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 		pb = &PartMetaData{
 			Index: msg.Index,
 			Hash:  msg.Hash,
-			Proof: merkle.Proof{
-				Total:    msg.Proof.Total,
-				Index:    msg.Proof.Index,
-				LeafHash: msg.Proof.LeafHash,
-				Aunts:    msg.Proof.Aunts,
-			},
 		}
 	case *protoprop.HaveParts:
 		parts := make([]PartMetaData, len(msg.Parts))
@@ -347,12 +391,6 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			parts[i] = PartMetaData{
 				Index: part.Index,
 				Hash:  part.Hash,
-				Proof: merkle.Proof{
-					Total:    part.Proof.Total,
-					Index:    part.Proof.Index,
-					LeafHash: part.Proof.LeafHash,
-					Aunts:    part.Proof.Aunts,
-				},
 			}
 		}
 		pb = &HaveParts{

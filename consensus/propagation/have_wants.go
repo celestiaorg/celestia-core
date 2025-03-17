@@ -306,7 +306,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 	// the peer must always send the proposal before sending parts, if they did
 	// not this node must disconnect from them.
-	_, parts, _, has := blockProp.getAllState(part.Height, part.Round)
+	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round)
 	if !has {
 		blockProp.Logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
 		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part for unknown proposal"))
@@ -319,7 +319,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 	// TODO: to verify, compare the hash with that of the have that was sent for
 	// this part and verified.
-	added, err := parts.AddPart(part)
+	added, err := parts.AddPart(part, *cb.GetProof(part.Index))
 	if err != nil {
 		blockProp.Logger.Error("failed to add part to part set", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index, "error", err)
 		return
@@ -353,7 +353,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 				blockProp.Logger.Error("failed to get decoded part", "peer", peer, "height", part.Height, "round", part.Round, "part", i)
 				continue
 			}
-			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Proof: p.Proof, Hash: p.Proof.LeafHash})
+			haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: i, Hash: p.Proof.LeafHash})
 		}
 
 		blockProp.broadcastHaves(haves, peer, int(parts.Total()))
