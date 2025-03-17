@@ -250,3 +250,39 @@ func trailsFromByteSlices(items [][]byte) (trails []*ProofNode, root *ProofNode)
 		return append(lefts, rights...), root
 	}
 }
+
+func trailsFromLeafHashes(leafHashes [][]byte) (trails []*ProofNode, root *ProofNode) {
+	switch len(leafHashes) {
+	case 0:
+		return []*ProofNode{}, &ProofNode{Hash: emptyHash(), Parent: nil, Left: nil, Right: nil}
+	case 1:
+		trail := &ProofNode{Hash: leafHashes[0]}
+		return []*ProofNode{trail}, trail
+	default:
+		k := getSplitPoint(int64(len(leafHashes)))
+		lefts, leftRoot := trailsFromLeafHashes(leafHashes[:k])
+		rights, rightRoot := trailsFromLeafHashes(leafHashes[k:])
+		rootHash := innerHash(leftRoot.Hash, rightRoot.Hash)
+		root := &ProofNode{Hash: rootHash}
+		leftRoot.Parent = root
+		leftRoot.Right = rightRoot
+		rightRoot.Parent = root
+		rightRoot.Left = leftRoot
+		return append(lefts, rights...), root
+	}
+}
+
+func ProofsFromLeafHashes(leafHashes [][]byte) (rootHash []byte, proofs []*Proof) {
+	trails, rootNode := trailsFromLeafHashes(leafHashes)
+	rootHash = rootNode.Hash
+	proofs = make([]*Proof, len(leafHashes))
+	for i, trail := range trails {
+		proofs[i] = &Proof{
+			Total:    int64(len(leafHashes)),
+			Index:    int64(i),
+			LeafHash: trail.Hash,
+			Aunts:    trail.FlattenAunts(),
+		}
+	}
+	return
+}
