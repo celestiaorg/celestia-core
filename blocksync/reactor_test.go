@@ -532,7 +532,7 @@ func (bcR *ByzantineReactor) Receive(e p2p.Envelope) {
 
 	bcR.Logger.Debug("Receive", "e.Src", e.Src, "chID", e.ChannelID, "msg", e.Message)
 
-	switch msg := e.Message.(type) {
+	switch msg := e.Message.(type) { //nolint:dupl // recreated in a test
 	case *bcproto.BlockRequest:
 		bcR.respondToPeer(msg, e.Src)
 	case *bcproto.BlockResponse:

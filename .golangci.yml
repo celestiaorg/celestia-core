@@ -51,7 +51,12 @@ linters-settings:
           - "!$test"
         allow:
           - $gostd
+          - go/
+          - google.golang.org/grpc
           - github.com/cometbft
+          - google.golang.org/
+          - golang.org/x
+          - go.opentelemetry.io/otel
           - github.com/cosmos
           - github.com/btcsuite/btcd/btcec/v2
           - github.com/BurntSushi/toml
@@ -84,12 +89,18 @@ linters-settings:
           - github.com/aws/aws-sdk-go-v2/service/s3
           - github.com/grafana/otel-profiling-go
           - github.com/celestiaorg/nmt
+          - google.golang.org/protobuf/proto
+          - google.golang.org/protobuf/types/known/timestamppb
+          - gonum.org/v1/gonum/stat
       test:
         files:
           - "$test"
         allow:
           - $gostd
           - github.com/cosmos
+          - google.golang.org/grpc
+          - golang.org/x/crypto/
+          - google.golang.org/protobuf/types
           - github.com/cometbft
           - github.com/adlio/schema
           - github.com/btcsuite/btcd

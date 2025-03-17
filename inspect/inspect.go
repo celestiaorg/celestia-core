@@ -6,6 +6,8 @@ import (
 	"net"
 	"os"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/inspect/rpc"
 	"github.com/cometbft/cometbft/libs/log"
@@ -17,8 +19,6 @@ import (
 	"github.com/cometbft/cometbft/state/txindex"
 	"github.com/cometbft/cometbft/store"
 	"github.com/cometbft/cometbft/types"
-
-	"golang.org/x/sync/errgroup"
 )
 
 var logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
