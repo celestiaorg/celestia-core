@@ -44,7 +44,7 @@ func (_m *AppConnConsensus) BeginBlockSync(_a0 types.RequestBeginBlock) (*types.
 	return r0, r1
 }
 
-// CommitSync provides a mock function with no fields
+// CommitSync provides a mock function with given fields:
 func (_m *AppConnConsensus) CommitSync() (*types.ResponseCommit, error) {
 	ret := _m.Called()
 
@@ -124,7 +124,7 @@ func (_m *AppConnConsensus) EndBlockSync(_a0 types.RequestEndBlock) (*types.Resp
 	return r0, r1
 }
 
-// Error provides a mock function with no fields
+// Error provides a mock function with given fields:
 func (_m *AppConnConsensus) Error() error {
 	ret := _m.Called()
 
@@ -176,15 +176,7 @@ func (_m *AppConnConsensus) InitChainSync(_a0 types.RequestInitChain) (*types.Re
 func (_m *AppConnConsensus) PrepareProposalSync(_a0 types.RequestPrepareProposal) (*types.ResponsePrepareProposal, error) {
 	ret := _m.Called(_a0)
 
-	if len(ret) == 0 {
-		panic("no return value specified for PrepareProposalSync")
-	}
-
 	var r0 *types.ResponsePrepareProposal
-	var r1 error
-	if rf, ok := ret.Get(0).(func(types.RequestPrepareProposal) (*types.ResponsePrepareProposal, error)); ok {
-		return rf(_a0)
-	}
 	if rf, ok := ret.Get(0).(func(types.RequestPrepareProposal) *types.ResponsePrepareProposal); ok {
 		r0 = rf(_a0)
 	} else {
@@ -193,6 +185,7 @@ func (_m *AppConnConsensus) PrepareProposalSync(_a0 types.RequestPrepareProposal
 		}
 	}
 
+	var r1 error
 	if rf, ok := ret.Get(1).(func(types.RequestPrepareProposal) error); ok {
 		r1 = rf(_a0)
 	} else {
@@ -206,15 +199,7 @@ func (_m *AppConnConsensus) PrepareProposalSync(_a0 types.RequestPrepareProposal
 func (_m *AppConnConsensus) ProcessProposalSync(_a0 types.RequestProcessProposal) (*types.ResponseProcessProposal, error) {
 	ret := _m.Called(_a0)
 
-	if len(ret) == 0 {
-		panic("no return value specified for ProcessProposalSync")
-	}
-
 	var r0 *types.ResponseProcessProposal
-	var r1 error
-	if rf, ok := ret.Get(0).(func(types.RequestProcessProposal) (*types.ResponseProcessProposal, error)); ok {
-		return rf(_a0)
-	}
 	if rf, ok := ret.Get(0).(func(types.RequestProcessProposal) *types.ResponseProcessProposal); ok {
 		r0 = rf(_a0)
 	} else {
@@ -223,6 +208,7 @@ func (_m *AppConnConsensus) ProcessProposalSync(_a0 types.RequestProcessProposal
 		}
 	}
 
+	var r1 error
 	if rf, ok := ret.Get(1).(func(types.RequestProcessProposal) error); ok {
 		r1 = rf(_a0)
 	} else {

@@ -18,7 +18,7 @@ type Peer struct {
 	mock.Mock
 }
 
-// CloseConn provides a mock function with no fields
+// CloseConn provides a mock function with given fields:
 func (_m *Peer) CloseConn() error {
 	ret := _m.Called()
 
@@ -36,7 +36,7 @@ func (_m *Peer) CloseConn() error {
 	return r0
 }
 
-// FlushStop provides a mock function with no fields
+// FlushStop provides a mock function with given fields:
 func (_m *Peer) FlushStop() {
 	_m.Called()
 }
@@ -61,7 +61,7 @@ func (_m *Peer) Get(_a0 string) interface{} {
 	return r0
 }
 
-// GetRemovalFailed provides a mock function with no fields
+// GetRemovalFailed provides a mock function with given fields:
 func (_m *Peer) GetRemovalFailed() bool {
 	ret := _m.Called()
 
@@ -79,25 +79,7 @@ func (_m *Peer) GetRemovalFailed() bool {
 	return r0
 }
 
-// HasIPChanged provides a mock function with no fields
-func (_m *Peer) HasIPChanged() bool {
-	ret := _m.Called()
-
-	if len(ret) == 0 {
-		panic("no return value specified for HasIPChanged")
-	}
-
-	var r0 bool
-	if rf, ok := ret.Get(0).(func() bool); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Get(0).(bool)
-	}
-
-	return r0
-}
-
-// ID provides a mock function with no fields
+// ID provides a mock function with given fields:
 func (_m *Peer) ID() p2p.ID {
 	ret := _m.Called()
 
@@ -115,7 +97,21 @@ func (_m *Peer) ID() p2p.ID {
 	return r0
 }
 
-// IsOutbound provides a mock function with no fields
+// HasIPChanged provides a mock function with given fields:
+func (_m *Peer) HasIPChanged() bool {
+	ret := _m.Called()
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func() bool); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	return r0
+}
+
+// IsOutbound provides a mock function with given fields:
 func (_m *Peer) IsOutbound() bool {
 	ret := _m.Called()
 
@@ -133,7 +129,7 @@ func (_m *Peer) IsOutbound() bool {
 	return r0
 }
 
-// IsPersistent provides a mock function with no fields
+// IsPersistent provides a mock function with given fields:
 func (_m *Peer) IsPersistent() bool {
 	ret := _m.Called()
 
@@ -151,7 +147,7 @@ func (_m *Peer) IsPersistent() bool {
 	return r0
 }
 
-// IsRunning provides a mock function with no fields
+// IsRunning provides a mock function with given fields:
 func (_m *Peer) IsRunning() bool {
 	ret := _m.Called()
 
@@ -169,7 +165,35 @@ func (_m *Peer) IsRunning() bool {
 	return r0
 }
 
-// NodeInfo provides a mock function with no fields
+// SendEnvelope provides a mock function with given fields: _a0
+func (_m *Peer) SendEnvelope(_a0 p2p.Envelope) bool {
+	ret := _m.Called(_a0)
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func(p2p.Envelope) bool); ok {
+		r0 = rf(_a0)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	return r0
+}
+
+// TrySendEnvelope provides a mock function with given fields: _a0
+func (_m *Peer) TrySendEnvelope(_a0 p2p.Envelope) bool {
+	ret := _m.Called(_a0)
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func(p2p.Envelope) bool); ok {
+		r0 = rf(_a0)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	return r0
+}
+
+// NodeInfo provides a mock function with given fields:
 func (_m *Peer) NodeInfo() p2p.NodeInfo {
 	ret := _m.Called()
 
@@ -189,7 +213,7 @@ func (_m *Peer) NodeInfo() p2p.NodeInfo {
 	return r0
 }
 
-// OnReset provides a mock function with no fields
+// OnReset provides a mock function with given fields:
 func (_m *Peer) OnReset() error {
 	ret := _m.Called()
 
@@ -207,7 +231,7 @@ func (_m *Peer) OnReset() error {
 	return r0
 }
 
-// OnStart provides a mock function with no fields
+// OnStart provides a mock function with given fields:
 func (_m *Peer) OnStart() error {
 	ret := _m.Called()
 
@@ -225,12 +249,12 @@ func (_m *Peer) OnStart() error {
 	return r0
 }
 
-// OnStop provides a mock function with no fields
+// OnStop provides a mock function with given fields:
 func (_m *Peer) OnStop() {
 	_m.Called()
 }
 
-// Quit provides a mock function with no fields
+// Quit provides a mock function with given fields:
 func (_m *Peer) Quit() <-chan struct{} {
 	ret := _m.Called()
 
@@ -250,7 +274,7 @@ func (_m *Peer) Quit() <-chan struct{} {
 	return r0
 }
 
-// RemoteAddr provides a mock function with no fields
+// RemoteAddr provides a mock function with given fields:
 func (_m *Peer) RemoteAddr() net.Addr {
 	ret := _m.Called()
 
@@ -270,7 +294,7 @@ func (_m *Peer) RemoteAddr() net.Addr {
 	return r0
 }
 
-// RemoteIP provides a mock function with no fields
+// RemoteIP provides a mock function with given fields:
 func (_m *Peer) RemoteIP() net.IP {
 	ret := _m.Called()
 
@@ -290,7 +314,7 @@ func (_m *Peer) RemoteIP() net.IP {
 	return r0
 }
 
-// Reset provides a mock function with no fields
+// Reset provides a mock function with given fields:
 func (_m *Peer) Reset() error {
 	ret := _m.Called()
 
@@ -336,12 +360,12 @@ func (_m *Peer) SetLogger(_a0 log.Logger) {
 	_m.Called(_a0)
 }
 
-// SetRemovalFailed provides a mock function with no fields
+// SetRemovalFailed provides a mock function with given fields:
 func (_m *Peer) SetRemovalFailed() {
 	_m.Called()
 }
 
-// SocketAddr provides a mock function with no fields
+// SocketAddr provides a mock function with given fields:
 func (_m *Peer) SocketAddr() *p2p.NetAddress {
 	ret := _m.Called()
 
@@ -361,7 +385,7 @@ func (_m *Peer) SocketAddr() *p2p.NetAddress {
 	return r0
 }
 
-// Start provides a mock function with no fields
+// Start provides a mock function with given fields:
 func (_m *Peer) Start() error {
 	ret := _m.Called()
 
@@ -379,7 +403,7 @@ func (_m *Peer) Start() error {
 	return r0
 }
 
-// Status provides a mock function with no fields
+// Status provides a mock function with given fields:
 func (_m *Peer) Status() conn.ConnectionStatus {
 	ret := _m.Called()
 
@@ -397,7 +421,7 @@ func (_m *Peer) Status() conn.ConnectionStatus {
 	return r0
 }
 
-// Stop provides a mock function with no fields
+// Stop provides a mock function with given fields:
 func (_m *Peer) Stop() error {
 	ret := _m.Called()
 
@@ -415,7 +439,7 @@ func (_m *Peer) Stop() error {
 	return r0
 }
 
-// String provides a mock function with no fields
+// String provides a mock function with given fields:
 func (_m *Peer) String() string {
 	ret := _m.Called()
 

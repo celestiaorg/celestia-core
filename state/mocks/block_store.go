@@ -5,8 +5,7 @@ package mocks
 import (
 	mock "github.com/stretchr/testify/mock"
 
-	store "github.com/tendermint/tendermint/proto/tendermint/store"
-
+	cmtstore "github.com/tendermint/tendermint/proto/tendermint/store"
 	types "github.com/tendermint/tendermint/types"
 )
 
@@ -15,7 +14,7 @@ type BlockStore struct {
 	mock.Mock
 }
 
-// Base provides a mock function with no fields
+// Base provides a mock function with given fields:
 func (_m *BlockStore) Base() int64 {
 	ret := _m.Called()
 
@@ -33,7 +32,7 @@ func (_m *BlockStore) Base() int64 {
 	return r0
 }
 
-// Height provides a mock function with no fields
+// Height provides a mock function with given fields:
 func (_m *BlockStore) Height() int64 {
 	ret := _m.Called()
 
@@ -51,7 +50,7 @@ func (_m *BlockStore) Height() int64 {
 	return r0
 }
 
-// LoadBaseMeta provides a mock function with no fields
+// LoadBaseMeta provides a mock function with given fields:
 func (_m *BlockStore) LoadBaseMeta() *types.BlockMeta {
 	ret := _m.Called()
 
@@ -85,6 +84,22 @@ func (_m *BlockStore) LoadBlock(height int64) *types.Block {
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.Block)
+		}
+	}
+
+	return r0
+}
+
+// LoadTxInfo provides a mock function with given fields: hash
+func (_m *BlockStore) LoadTxInfo(hash []byte) *cmtstore.TxInfo {
+	ret := _m.Called(hash)
+
+	var r0 *cmtstore.TxInfo
+	if rf, ok := ret.Get(0).(func([]byte) *cmtstore.TxInfo); ok {
+		r0 = rf(hash)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*cmtstore.TxInfo)
 		}
 	}
 
@@ -155,10 +170,6 @@ func (_m *BlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 func (_m *BlockStore) LoadBlockMetaByHash(hash []byte) *types.BlockMeta {
 	ret := _m.Called(hash)
 
-	if len(ret) == 0 {
-		panic("no return value specified for LoadBlockMetaByHash")
-	}
-
 	var r0 *types.BlockMeta
 	if rf, ok := ret.Get(0).(func([]byte) *types.BlockMeta); ok {
 		r0 = rf(hash)
@@ -211,26 +222,6 @@ func (_m *BlockStore) LoadSeenCommit(height int64) *types.Commit {
 	return r0
 }
 
-// LoadTxInfo provides a mock function with given fields: hash
-func (_m *BlockStore) LoadTxInfo(hash []byte) *store.TxInfo {
-	ret := _m.Called(hash)
-
-	if len(ret) == 0 {
-		panic("no return value specified for LoadTxInfo")
-	}
-
-	var r0 *store.TxInfo
-	if rf, ok := ret.Get(0).(func([]byte) *store.TxInfo); ok {
-		r0 = rf(hash)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*store.TxInfo)
-		}
-	}
-
-	return r0
-}
-
 // PruneBlocks provides a mock function with given fields: height
 func (_m *BlockStore) PruneBlocks(height int64) (uint64, error) {
 	ret := _m.Called(height)
@@ -259,18 +250,9 @@ func (_m *BlockStore) PruneBlocks(height int64) (uint64, error) {
 	return r0, r1
 }
 
-// SaveBlock provides a mock function with given fields: block, blockParts, seenCommit
-func (_m *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
-	_m.Called(block, blockParts, seenCommit)
-}
-
-// SaveTxInfo provides a mock function with given fields: block, txResponseCodes, logs
+// SaveTxInfo provides a mock function with given fields: block, txResponseCode
 func (_m *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error {
 	ret := _m.Called(block, txResponseCodes, logs)
-
-	if len(ret) == 0 {
-		panic("no return value specified for SaveTxInfo")
-	}
 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(*types.Block, []uint32, []string) error); ok {
@@ -282,7 +264,12 @@ func (_m *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, l
 	return r0
 }
 
-// Size provides a mock function with no fields
+// SaveBlock provides a mock function with given fields: block, blockParts, seenCommit
+func (_m *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, seenCommit *types.Commit) {
+	_m.Called(block, blockParts, seenCommit)
+}
+
+// Size provides a mock function with given fields:
 func (_m *BlockStore) Size() int64 {
 	ret := _m.Called()
 
