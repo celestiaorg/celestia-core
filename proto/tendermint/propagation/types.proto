@@ -5,7 +5,6 @@ option go_package = "github.com/tendermint/tendermint/proto/tendermint/propagati
 
 import "gogoproto/gogo.proto";
 import "tendermint/libs/bits/types.proto";
-import "tendermint/crypto/proof.proto";
 import "tendermint/types/types.proto";
 
 // TxMetaData contains all information needed to commit to a transaction. Start
