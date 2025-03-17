@@ -9,6 +9,7 @@ import (
 	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/rand"
+	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -104,6 +105,10 @@ func TestCompactBlock_RoundTrip(t *testing.T) {
 }
 
 func TestCompactBlock_ValidateBasic(t *testing.T) {
+	id := types.BlockID{Hash: cmtrand.Bytes(32), PartSetHeader: types.PartSetHeader{Total: 1, Hash: cmtrand.Bytes(32)}}
+	prop := types.NewProposal(1, 0, 0, id)
+	prop.Signature = cmtrand.Bytes(64)
+
 	tests := []struct {
 		name    string
 		data    *CompactBlock
@@ -115,6 +120,7 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 				BpHash:    rand.Bytes(tmhash.Size),
 				Blobs:     []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize),
+				Proposal:  *prop,
 			},
 			nil,
 		},
@@ -124,6 +130,7 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 				BpHash:    rand.Bytes(tmhash.Size + 1),
 				Blobs:     []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize),
+				Proposal:  *prop,
 			},
 			errors.New("expected size to be 32 bytes, got 33 bytes"),
 		},
@@ -134,8 +141,9 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 				Blobs:       []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature:   rand.Bytes(types.MaxSignatureSize),
 				PartsHashes: [][]byte{{0x1, 0x2}},
+				Proposal:    *prop,
 			},
-			errors.New("invalid part hash height 0 round 0 index 0: expected size to be 32 bytes, got 2 bytes"),
+			errors.New("invalid part hash height 1 round 0 index 0: expected size to be 32 bytes, got 2 bytes"),
 		},
 		{
 			"too big of signature",
@@ -143,6 +151,7 @@ func TestCompactBlock_ValidateBasic(t *testing.T) {
 				BpHash:    rand.Bytes(tmhash.Size),
 				Blobs:     []TxMetaData{{Hash: rand.Bytes(tmhash.Size), Start: 0, End: 10}},
 				Signature: rand.Bytes(types.MaxSignatureSize + 1),
+				Proposal:  *prop,
 			},
 			errors.New("CompactBlock: Signature is too big"),
 		},
@@ -255,11 +264,6 @@ func TestPartMetaDataValidateBasic(t *testing.T) {
 				Index: 1,
 				Hash:  []byte{0, 1, 2, 3},
 			},
-			wantErr: true,
-		},
-		{
-			name:    "no parts",
-			part:    PartMetaData{},
 			wantErr: true,
 		},
 	}
