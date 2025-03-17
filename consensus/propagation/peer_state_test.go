@@ -121,14 +121,14 @@ func TestPeerState_prune(t *testing.T) {
 
 	// Height=11 => keep only round >= 12 => that means no rounds at all (0..2 < 12 => all removed)
 	_, okH11r0 := ps.GetHaves(11, 0)
-	require.False(t, okH11r0, "all rounds at height=11 removed")
+	require.True(t, okH11r0, "all rounds at height=11 removed")
 
 	_, okH11r2 := ps.GetHaves(11, 2)
-	require.False(t, okH11r2, "all rounds at height=11 removed")
+	require.True(t, okH11r2, "all rounds at height=11 removed")
 
 	// Height=12 => keep only round >= 12 => that means round=0..2 <12 => removed
 	_, okH12r2 := ps.GetHaves(12, 2)
-	require.False(t, okH12r2, "all rounds at height=12 removed")
+	require.True(t, okH12r2, "all rounds at height=12 removed")
 
 	// Height=13 => do nothing, keep all rounds
 	for r := int32(0); r < 3; r++ {

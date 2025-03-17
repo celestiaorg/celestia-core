@@ -201,7 +201,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 }
 
 func TestInvalidPart(t *testing.T) {
-	reactors, _ := testBlockPropReactors(2)
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
 
