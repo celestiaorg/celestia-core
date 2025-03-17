@@ -37,7 +37,7 @@ func (m *MockMempool) EXPECT() *MockMempoolMockRecorder {
 }
 
 // CheckTx mocks base method.
-func (m *MockMempool) CheckTx(tx types0.Tx, callback func(*types.Response), txInfo mempool.TxInfo) error {
+func (m *MockMempool) CheckTx(tx *types0.CachedTx, callback func(*types.Response), txInfo mempool.TxInfo) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CheckTx", tx, callback, txInfo)
 	ret0, _ := ret[0].(error)
@@ -89,10 +89,10 @@ func (mr *MockMempoolMockRecorder) FlushAppConn() *gomock.Call {
 }
 
 // GetTxByKey mocks base method.
-func (m *MockMempool) GetTxByKey(key types0.TxKey) (types0.Tx, bool) {
+func (m *MockMempool) GetTxByKey(key types0.TxKey) (*types0.CachedTx, bool) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTxByKey", key)
-	ret0, _ := ret[0].(types0.Tx)
+	ret0, _ := ret[0].(*types0.CachedTx)
 	ret1, _ := ret[1].(bool)
 	return ret0, ret1
 }
@@ -130,10 +130,10 @@ func (mr *MockMempoolMockRecorder) ReapMaxBytesMaxGas(maxBytes, maxGas interface
 }
 
 // ReapMaxTxs mocks base method.
-func (m *MockMempool) ReapMaxTxs(max int) types0.Txs {
+func (m *MockMempool) ReapMaxTxs(max int) []*types0.CachedTx {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReapMaxTxs", max)
-	ret0, _ := ret[0].(types0.Txs)
+	ret0, _ := ret[0].([]*types0.CachedTx)
 	return ret0
 }
 
@@ -212,7 +212,7 @@ func (mr *MockMempoolMockRecorder) Unlock() *gomock.Call {
 }
 
 // Update mocks base method.
-func (m *MockMempool) Update(blockHeight int64, blockTxs types0.Txs, deliverTxResponses []*types.ResponseDeliverTx, newPreFn mempool.PreCheckFunc, newPostFn mempool.PostCheckFunc) error {
+func (m *MockMempool) Update(blockHeight int64, blockTxs []*types0.CachedTx, deliverTxResponses []*types.ResponseDeliverTx, newPreFn mempool.PreCheckFunc, newPostFn mempool.PostCheckFunc) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Update", blockHeight, blockTxs, deliverTxResponses, newPreFn, newPostFn)
 	ret0, _ := ret[0].(error)

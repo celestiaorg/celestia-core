@@ -139,13 +139,13 @@ func TestStoreReservingTxs(t *testing.T) {
 
 	// should be able to add a tx
 	store.set(wtx)
-	require.Equal(t, tx, store.get(key).tx)
+	require.Equal(t, tx, store.get(key).tx.Tx)
 	require.Equal(t, wtx.size(), store.totalBytes())
 
 	// releasing should do nothing on a set tx
 	store.release(key)
 	require.True(t, store.has(key))
-	require.Equal(t, tx, store.get(key).tx)
+	require.Equal(t, tx, store.get(key).tx.Tx)
 
 	store.remove(key)
 	require.False(t, store.has(key))

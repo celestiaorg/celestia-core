@@ -620,7 +620,7 @@ func TestGetTxByKey_GetsTx(t *testing.T) {
 	for _, tx := range txs {
 		txKey := tx.tx.Key()
 		txFromMempool, exists := txmp.GetTxByKey(txKey)
-		require.Equal(t, tx.tx, txFromMempool)
+		require.Equal(t, tx.tx, txFromMempool.Tx)
 		require.True(t, exists)
 	}
 
