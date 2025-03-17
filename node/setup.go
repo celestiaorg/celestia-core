@@ -252,7 +252,6 @@ func createMempoolAndMempoolReactor(
 		reactor := mempl.NewReactor(
 			config.Mempool,
 			mp,
-			traceClient,
 		)
 		if config.Consensus.WaitForTxs() {
 			mp.EnableTxsAvailable()
