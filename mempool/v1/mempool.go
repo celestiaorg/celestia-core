@@ -232,6 +232,7 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 		hash:      tx.Key(),
 		timestamp: time.Now().UTC(),
 		height:    txmp.height,
+		FromRPC:   txInfo.SenderID == 0,
 	}
 	wtx.SetPeer(txInfo.SenderID)
 	// This won't add the transaction if the response code is non zero (i.e. there was an error)

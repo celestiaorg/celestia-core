@@ -286,6 +286,13 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			continue
 		}
 
+		// don't broadcast transactions that are not from the RPC to save
+		// bandwidth in the mammoth testnet as all validators are essentially
+		// directly connected to each other.
+		if !memTx.FromRPC {
+			continue
+		}
+
 		// NOTE: Transaction batching was disabled due to
 		// https://github.com/tendermint/tendermint/issues/5796
 		if !memTx.HasPeer(peerID) {

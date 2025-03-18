@@ -20,6 +20,7 @@ type WrappedTx struct {
 	priority  int64           // app: priority value for this transaction
 	sender    string          // app: assigned sender label
 	peers     map[uint16]bool // peer IDs who have sent us this transaction
+	FromRPC   bool
 }
 
 // Size reports the size of the raw transaction in bytes.
