@@ -144,8 +144,11 @@ func (sp *Proof) ToProto() *cmtcrypto.Proof {
 	return pb
 }
 
-func ProofFromProto(pb *cmtcrypto.Proof) (*Proof, error) {
+func ProofFromProto(pb *cmtcrypto.Proof, optional bool) (*Proof, error) {
 	if pb == nil {
+		if optional {
+			return nil, nil
+		}
 		return nil, errors.New("nil proof")
 	}
 

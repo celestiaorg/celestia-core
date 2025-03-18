@@ -55,6 +55,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 					Parts:  *missing.ToProto(),
 					Height: height,
 					Round:  round,
+					Prove:  true,
 				},
 			}
 

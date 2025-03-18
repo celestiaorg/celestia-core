@@ -2,7 +2,6 @@ package propagation
 
 import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
-	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
@@ -203,14 +202,18 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	for _, partIndex := range canSend.GetTrueIndices() {
 		part, _ := parts.GetPart(uint32(partIndex))
+		rpart := &propproto.RecoveryPart{
+			Height: height,
+			Round:  round,
+			Index:  uint32(partIndex),
+			Data:   part.Bytes,
+		}
+		if wants.Prove {
+			rpart.Proof = part.Proof.ToProto()
+		}
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
-			Message: &propproto.RecoveryPart{
-				Height: height,
-				Round:  round,
-				Index:  uint32(partIndex),
-				Data:   part.Bytes,
-			},
+			Message:   rpart,
 		}
 
 		if !p2p.TrySendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
@@ -272,7 +275,11 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// sent during catchup.
 	proof := cb.GetProof(part.Index)
 	if proof == nil {
-		proof = &merkle.Proof{}
+		if part.Proof == nil {
+			blockProp.Logger.Error("proof not found", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index)
+			return
+		}
+		proof = part.Proof
 	}
 
 	// TODO: to verify, compare the hash with that of the have that was sent for

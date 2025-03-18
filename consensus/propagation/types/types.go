@@ -289,6 +289,7 @@ type WantParts struct {
 	Parts  *bits.BitArray `json:"parts"`
 	Height int64          `json:"height,omitempty"`
 	Round  int32          `json:"round,omitempty"`
+	Prove  bool           `json:"prove,omitempty"`
 }
 
 func (w *WantParts) ValidateBasic() error {
@@ -304,6 +305,7 @@ func (w *WantParts) ToProto() *protoprop.WantParts {
 		Parts:  *w.Parts.ToProto(),
 		Height: w.Height,
 		Round:  w.Round,
+		Prove:  w.Prove,
 	}
 }
 
@@ -315,6 +317,7 @@ func WantPartsFromProto(w *protoprop.WantParts) (*WantParts, error) {
 		Parts:  ba,
 		Height: w.Height,
 		Round:  w.Round,
+		Prove:  w.Prove,
 	}
 	return wp, wp.ValidateBasic()
 }
@@ -324,6 +327,7 @@ type RecoveryPart struct {
 	Round  int32
 	Index  uint32
 	Data   []byte
+	Proof  *merkle.Proof
 }
 
 func (p *RecoveryPart) ValidateBasic() error {
@@ -395,13 +399,19 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			Parts:  array,
 			Height: msg.Height,
 			Round:  msg.Round,
+			Prove:  msg.Prove,
 		}
 	case *protoprop.RecoveryPart:
+		proof, err := merkle.ProofFromProto(msg.Proof, true)
+		if err != nil {
+			return pb, err
+		}
 		pb = &RecoveryPart{
 			Height: msg.Height,
 			Round:  msg.Round,
 			Index:  msg.Index,
 			Data:   msg.Data,
+			Proof:  proof,
 		}
 	default:
 		return nil, fmt.Errorf("propagation: message not recognized: %T", msg)

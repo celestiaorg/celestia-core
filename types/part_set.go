@@ -90,7 +90,7 @@ func PartFromProto(pb *cmtproto.Part) (*Part, error) {
 	}
 
 	part := new(Part)
-	proof, err := merkle.ProofFromProto(&pb.Proof)
+	proof, err := merkle.ProofFromProto(&pb.Proof, false)
 	if err != nil {
 		return nil, err
 	}
@@ -470,18 +470,14 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 		return false, fmt.Errorf("nil part")
 	}
 
-	// todo: the proof is verified with the have message, but atm we aren't
-	// keeping track of that proof and always re-adding it.
-	// The proof should be
-	// compatible with the number of parts. if part.Proof.Total !=
-	// int64(ps.total) {
-	//  return false, fmt.Errorf(ErrPartSetInvalidProofTotal.Error()+":%v %v", part.Proof.Total, ps.total)
-	// }
+	// The proof should be compatible with the number of parts.
+	if part.Proof.Total != int64(ps.total) {
+		return false, fmt.Errorf(ErrPartSetInvalidProofTotal.Error()+":%v %v", part.Proof.Total, ps.total)
+	}
 
-	// // Check hash proof
-	// if part.Proof.Verify(ps.Hash(), part.Bytes) != nil {
-	// 	return false, ErrPartSetInvalidProofHash
-	// }
+	if part.Proof.Verify(ps.Hash(), part.Bytes) != nil {
+		return false, ErrPartSetInvalidProofHash
+	}
 
 	return ps.AddPartWithoutProof(part)
 }
