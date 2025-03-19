@@ -5,6 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/celestiaorg/celestia-core)](https://goreportcard.com/report/github.com/celestiaorg/celestia-core)
 [![Lint](https://github.com/celestiaorg/celestia-core/actions/workflows/lint.yml/badge.svg)](https://github.com/celestiaorg/celestia-core/actions/workflows/lint.yml)
 [![Tests](https://github.com/celestiaorg/celestia-core/actions/workflows/tests.yml/badge.svg)](https://github.com/celestiaorg/celestia-core/actions/workflows/tests.yml)
+[![CodeQL](https://github.com/celestiaorg/celestia-core/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/celestiaorg/celestia-core/actions/workflows/github-code-scanning/codeql)
 
 celestia-core is a fork of [cometbft/cometbft](https://github.com/cometbft/cometbft), an implementation of the Tendermint protocol, with the following changes:
 
