@@ -330,7 +330,7 @@ func S3Download(dst, prefix string, cfg S3Config, fileNames ...string) error {
 					defer resp.Body.Close()
 
 					// Copy the contents of the S3 object to the local file
-					if _, err := io.Copy(f, resp.Body); err != nil {
+					if _, err := io.Copy(f, resp.Body); err != nil { //
 						f.Close()
 						return err
 					}
