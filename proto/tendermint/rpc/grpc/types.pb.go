@@ -1326,6 +1326,7 @@ func _BroadcastAPI_BroadcastTx_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+var BroadcastAPI_serviceDesc = _BroadcastAPI_serviceDesc
 var _BroadcastAPI_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "tendermint.rpc.grpc.BroadcastAPI",
 	HandlerType: (*BroadcastAPIServer)(nil),
@@ -1652,6 +1653,7 @@ func _BlockAPIService_Status_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+var BlockAPIService_serviceDesc = _BlockAPIService_serviceDesc
 var _BlockAPIService_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "tendermint.rpc.grpc.BlockAPIService",
 	HandlerType: (*BlockAPIServiceServer)(nil),
@@ -1754,6 +1756,7 @@ func _BlobstreamAPI_DataRootInclusionProof_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+var BlobstreamAPI_serviceDesc = _BlobstreamAPI_serviceDesc
 var _BlobstreamAPI_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "tendermint.rpc.grpc.BlobstreamAPI",
 	HandlerType: (*BlobstreamAPIServer)(nil),

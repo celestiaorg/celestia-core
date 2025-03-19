@@ -195,6 +195,7 @@ message RequestFinalizeBlock {
   bytes                     next_validators_hash = 7;
   // proposer_address is the address of the public key of the original proposer of the block.
   bytes proposer_address = 8;
+  uint64 app_version = 9;
 }
 
 //----------------------------------------
