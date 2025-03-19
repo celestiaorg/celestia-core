@@ -680,7 +680,7 @@ func TestSyncer_verifyApp(t *testing.T) {
 			syncer := newSyncer(*cfg, log.NewNopLogger(), connSnapshot, connQuery, stateProvider, "")
 
 			connQuery.On("Info", mock.Anything, proxy.RequestInfo).Return(tc.response, tc.err)
-			err := syncer.verifyApp(s, appVersion)
+			_, err := syncer.verifyApp(s, appVersion)
 			unwrapped := errors.Unwrap(err)
 			if unwrapped != nil {
 				err = unwrapped

@@ -1324,11 +1324,6 @@ func (data *Data) Hash() cmtbytes.HexBytes {
 	return data.hash
 }
 
-// GetDataRootHash returns the hash data which is not equal to calling data.Hash()
-func (data *Data) GetDataRootHash() cmtbytes.HexBytes {
-	return data.hash
-}
-
 // StringIndented returns an indented string representation of the transactions.
 func (data *Data) StringIndented(indent string) string {
 	if data == nil {
