@@ -54,7 +54,7 @@ func setupTestCaseWithStore(t *testing.T) (func(t *testing.T), dbm.DB, sm.State,
 	return tearDown, stateDB, state, stateStore
 }
 
-// TestStateCopy tests the correct copying behaviour of State.
+// TestStateCopy tests the correct copying behavior of State.
 func TestStateCopy(t *testing.T) {
 	tearDown, _, state := setupTestCase(t)
 	defer tearDown(t)

@@ -6,11 +6,9 @@ linters:
     - dogsled
     - dupl
     - errcheck
-    # - copyloopvar
     - goconst
     - gofmt
     - goimports
-    # - gosec
     - gosimple
     - govet
     - ineffassign
@@ -19,7 +17,6 @@ linters:
     - nolintlint
     - prealloc
     - staticcheck
-    # - structcheck // to be fixed by golangci-lint
     - stylecheck
     - typecheck
     - unconvert
@@ -35,12 +32,8 @@ issues:
 linters-settings:
   dogsled:
     max-blank-identifiers: 3
-  golint:
-    min-confidence: 0
   goconst:
     ignore-tests: true
-  maligned:
-    suggest-new: true
   misspell:
     locale: US
   depguard:
