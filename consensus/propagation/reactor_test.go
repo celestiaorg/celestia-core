@@ -160,7 +160,6 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 				{Index: 0},
 			},
 		},
-		false,
 	)
 
 	haves, has := reactor1.getPeer(reactor2.self).GetHaves(height, round)
@@ -257,7 +256,6 @@ func TestInvalidPart(t *testing.T) {
 				{Index: 0},
 			},
 		},
-		false,
 	)
 
 	haves, has := reactor1.getPeer(reactor2.self).GetHaves(height, round)
