@@ -1,12 +1,13 @@
 package propagation
 
 import (
-	"github.com/tendermint/tendermint/crypto/merkle"
-	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/tendermint/tendermint/crypto/merkle"
+	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/stretchr/testify/assert"
