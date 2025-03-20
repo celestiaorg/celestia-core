@@ -170,7 +170,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		case *proptypes.CompactBlock:
 			blockProp.handleCompactBlock(msg, e.Src.ID())
 		case *proptypes.HaveParts:
-			blockProp.handleHaves(e.Src.ID(), msg, false)
+			blockProp.handleHaves(e.Src.ID(), msg)
 		case *proptypes.RecoveryPart:
 			blockProp.handleRecoveryPart(e.Src.ID(), msg)
 		default:

@@ -1,6 +1,7 @@
 package propagation
 
 import (
+	"errors"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
@@ -13,22 +14,7 @@ import (
 // node will request those parts.
 // The peer must always send the proposal before sending parts. If they did
 // not, this node must disconnect from them.
-// This method will:
-// - get the provided peer from the peer state
-// - get the proposal referenced in the haves message
-// - set the provided haves as the peer's haves
-// - if the returned parts from the proposal are complete, we return
-// - otherwise, we check if the sender has parts that we don't have.
-// - if they do, we check if we already requested those parts enough times (a limit will be defined)
-// of we already requested the parts from them.
-// - if so, we just gossip the haves to our connected peers.
-// - otherwise, we send the wants for the missing parts to that peer before broadcasting the haves.
-// - finally, we keep track of the want requests in the proposal state.
-func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, _ bool) {
-	if haves == nil {
-		// TODO handle the disconnection case
-		return
-	}
+func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 	height := haves.Height
 	round := haves.Round
 	p := blockProp.getPeer(peer)
@@ -39,8 +25,8 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, _
 
 	_, parts, fullReqs, has := blockProp.getAllState(height, round)
 	if !has {
-		// TODO disconnect from the peer
 		blockProp.Logger.Error("received part state for unknown proposal", "peer", peer, "height", height, "round", round)
+		blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
 		return
 	}
 
@@ -168,12 +154,6 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 // handleWants is called when a peer sends a want message. This is used to send
 // peers data that this node already has and store the wants to send them data
 // in the future.
-// This method will:
-// - get the provided peer from the state
-// - get the proposal from the proposal cache
-// - if the round provided in the wants is < 0, send the peer the partset header
-// - if we have the wanted parts, send them to that peer.
-// - if they want other parts that we don't have, store that in the peer state.
 func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	height := wants.Height
 	round := wants.Round
@@ -188,7 +168,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	//  not, this node must disconnect from them.
 	if !has {
 		blockProp.Logger.Error("received part state request for unknown proposal", "peer", peer, "height", height, "round", round)
-		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part state for unknown proposal"))
+		blockProp.Switch.StopPeerForError(p.peer, errors.New("received want part for unknown proposal"))
 		return
 	}
 
@@ -196,7 +176,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	wc := wants.Parts.Copy()
 	canSend := parts.BitArray().And(wc)
 	if canSend == nil {
-		blockProp.Logger.Error("nil can send?", "peer", peer, "height", height, "round", round, "wants", wants, "wc", wc)
+		blockProp.Logger.Error("nil can send", "peer", peer, "height", height, "round", round, "wants", wants, "wc", wc)
 		return
 	}
 
@@ -233,14 +213,6 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 // handleRecoveryPart is called when a peer sends a block part message. This is used
 // to store the part and clear any wants for that part.
-// This method will:
-// - if the peer is not provided, we set it to self
-// - get the peer from the peer state
-// - get the proposal referenced by the recovery part height and round
-// - if the parts are complete, return
-// - add the received part to the parts
-// - if the parts are decodable, clear all the wants of that block from the proposal state
-// - otherwise, clear the want related to this part from the state
 func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.RecoveryPart) {
 	if peer == "" {
 		peer = blockProp.self
@@ -255,7 +227,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round)
 	if !has {
 		blockProp.Logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
-		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part for unknown proposal"))
+		blockProp.Switch.StopPeerForError(p.peer, errors.New("received recovery part for unknown proposal"))
 		return
 	}
 
@@ -348,11 +320,6 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 
 // clearWants checks the wantState to see if any peers want the given part, if
 // so, it attempts to send them that part.
-// This method will:
-// - get all the peers
-// - check if any of the peers need that part
-// - if so, send it to them
-// - if not, remove that want.
 func (blockProp *Reactor) clearWants(part *proptypes.RecoveryPart) {
 	for _, peer := range blockProp.getPeers() {
 		if peer.WantsPart(part.Height, part.Round, part.Index) {

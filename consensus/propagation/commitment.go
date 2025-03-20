@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
@@ -132,7 +133,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	if err != nil {
 		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
 		blockProp.Logger.Error("received invalid compact block", "err", err.Error())
-		// todo: kick peer
+		blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, err)
 		return
 	}
 
@@ -157,6 +158,8 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	for _, part := range parts {
 		// todo: figure out what we want to do here. we might just want to defer
 		// to the consensus reactor for invalid parts.
+		// re @rachid: if some peer sends us a part with an invalid hash, then it's invalid data
+		// and we should stop that peer for error.
 		if !bytes.Equal(merkle.LeafHash(part.Bytes), cb.PartsHashes[part.Index]) {
 			blockProp.Logger.Error(
 				"recovered part hash is different than compact block",
@@ -167,7 +170,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 				"round",
 				cb.Proposal.Round,
 			)
-			continue
+			blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("invalid part hash"))
 		}
 
 		part.Proof = *proofs[part.Index]
