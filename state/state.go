@@ -178,8 +178,8 @@ func (state *State) ToProto() (*cmtstate.State, error) {
 	sm.LastResultsHash = state.LastResultsHash
 	sm.AppHash = state.AppHash
 
-	sm.TimeoutInfo.TimeoutPropose = state.TimeoutPropose
-	sm.TimeoutInfo.TimeoutCommit = state.TimeoutCommit
+	sm.TimeoutPropose = state.TimeoutPropose
+	sm.TimeoutCommit = state.TimeoutCommit
 
 	return sm, nil
 }
@@ -232,8 +232,8 @@ func FromProto(pb *cmtstate.State) (*State, error) { //nolint:golint
 	state.LastResultsHash = pb.LastResultsHash
 	state.AppHash = pb.AppHash
 
-	state.TimeoutCommit = pb.TimeoutInfo.TimeoutCommit
-	state.TimeoutPropose = pb.TimeoutInfo.TimeoutPropose
+	state.TimeoutCommit = pb.TimeoutCommit
+	state.TimeoutPropose = pb.TimeoutPropose
 
 	return state, nil
 }
