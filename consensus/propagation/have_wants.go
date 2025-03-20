@@ -25,7 +25,7 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts) {
 
 	_, parts, fullReqs, has := blockProp.getAllState(height, round)
 	if !has {
-		blockProp.Logger.Error("received part state for unknown proposal", "peer", peer, "height", height, "round", round)
+		blockProp.Logger.Error("received have part for unknown proposal", "peer", peer, "height", height, "round", round)
 		blockProp.Switch.StopPeerForError(blockProp.getPeer(peer).peer, errors.New("received part for unknown proposal"))
 		return
 	}
