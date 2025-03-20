@@ -794,6 +794,22 @@ type MempoolConfig struct {
 	// Only applicable to the v2 / CAT mempool
 	// Default is 200ms
 	MaxGossipDelay time.Duration `mapstructure:"max-gossip-delay"`
+
+	// TTLDuration, if non-zero, defines the maximum amount of time a transaction
+	// can exist for in the mempool.
+	//
+	// Note, if TTLNumBlocks is also defined, a transaction will be removed if it
+	// has existed in the mempool at least TTLNumBlocks number of blocks or if it's
+	// insertion time into the mempool is beyond TTLDuration.
+	TTLDuration time.Duration `mapstructure:"ttl-duration"`
+
+	// TTLNumBlocks, if non-zero, defines the maximum number of blocks a transaction
+	// can exist for in the mempool.
+	//
+	// Note, if TTLDuration is also defined, a transaction will be removed if it
+	// has existed in the mempool at least TTLNumBlocks number of blocks or if
+	// it's insertion time into the mempool is beyond TTLDuration.
+	TTLNumBlocks int64 `mapstructure:"ttl-num-blocks"`
 }
 
 // DefaultMempoolConfig returns a default configuration for the CometBFT mempool
@@ -812,6 +828,8 @@ func DefaultMempoolConfig() *MempoolConfig {
 		MaxTxBytes:  1024 * 1024, // 1MB
 		ExperimentalMaxGossipConnectionsToNonPersistentPeers: 0,
 		ExperimentalMaxGossipConnectionsToPersistentPeers:    0,
+		TTLDuration:  0 * time.Second,
+		TTLNumBlocks: 0,
 	}
 }
 
