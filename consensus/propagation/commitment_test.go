@@ -63,7 +63,6 @@ func TestPropose(t *testing.T) {
 		require.True(t, has)
 		assert.True(t, parts.IsComplete())
 	}
-
 }
 
 func createTestProposal(

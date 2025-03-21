@@ -3,6 +3,9 @@ package propagation
 import (
 	"errors"
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	cfg "github.com/tendermint/tendermint/config"
@@ -14,8 +17,6 @@ import (
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/mock"
 	"github.com/tendermint/tendermint/types"
-	"testing"
-	"time"
 )
 
 func TestRequester_SendRequest(t *testing.T) {
