@@ -5,8 +5,6 @@ import (
 
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
-	"github.com/tendermint/tendermint/p2p"
-	protoprop "github.com/tendermint/tendermint/proto/tendermint/propagation"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -49,17 +47,17 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 				continue
 			}
 
-			e := p2p.Envelope{
-				ChannelID: WantChannel,
-				Message: &protoprop.WantParts{
-					Parts:  *missing.ToProto(),
-					Height: height,
-					Round:  round,
-					Prove:  true,
-				},
+			sent, err := blockProp.requester.sendRequest(peer.peer, &proptypes.WantParts{
+				Parts:  missing,
+				Height: height,
+				Round:  round,
+				Prove:  true,
+			})
+			if err != nil {
+				blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round, "err", err)
+				continue
 			}
-
-			if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+			if !sent {
 				blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round)
 				continue
 			}

@@ -48,6 +48,8 @@ type Reactor struct {
 	// and eventually remove it.
 	mempool Mempool
 
+	requester *requester
+
 	mtx         *sync.RWMutex
 	traceClient trace.Tracer
 	self        p2p.ID
@@ -70,6 +72,7 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 	for _, option := range options {
 		option(reactor)
 	}
+	reactor.requester = newRequester(reactor.Logger)
 	return reactor
 }
 

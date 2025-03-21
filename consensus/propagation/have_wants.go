@@ -94,18 +94,17 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, _
 		return
 	}
 
-	// send a want back to the sender of the haves with the wants we
-	e := p2p.Envelope{
-		ChannelID: WantChannel,
-		Message: &propproto.WantParts{
-			Height: height,
-			Round:  round,
-			Parts:  *hc.ToProto(),
-		},
+	sent, err := blockProp.requester.sendRequest(p.peer, &proptypes.WantParts{
+		Parts:  hc,
+		Height: height,
+		Round:  round,
+	})
+	if err != nil {
+		blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round, "err", err)
+		return
 	}
-
-	if !p2p.TrySendEnvelopeShim(p.peer, e, blockProp.Logger) { //nolint:staticcheck
-		blockProp.Logger.Error("failed to send part state", "peer", peer, "height", height, "round", round)
+	if !sent {
+		blockProp.Logger.Error("failed to send want part", "peer", peer, "height", height, "round", round)
 		return
 	}
 
@@ -280,6 +279,12 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 			return
 		}
 		proof = part.Proof
+	}
+
+	err := blockProp.requester.receivedResponse(p.peer, part)
+	if err != nil {
+		blockProp.Logger.Error("failed to update requester state", "peer", p.peer, "height", part.Height, "round", part.Round, "part", part.Index, "err", err)
+		// no need to return at this level, we can continue processing the part.
 	}
 
 	// TODO: to verify, compare the hash with that of the have that was sent for
