@@ -96,6 +96,10 @@ message State {
   bytes app_hash = 13;
 
   // timeouts to be used for the next block height
-  google.protobuf.Duration timeout_propose = 15 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
-  google.protobuf.Duration timeout_commit  = 16 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  TimeoutInfo timeout_info = 15 [(gogoproto.nullable) = false];
+}
+
+message TimeoutInfo {
+  google.protobuf.Duration timeout_propose = 1 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  google.protobuf.Duration timeout_commit  = 2 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
 }
