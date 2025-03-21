@@ -70,12 +70,11 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, _
 		return
 	}
 
-	reqLimit := 1
-
 	// if enough requests have been made for the parts, don't request them.
 	for _, partIndex := range hc.GetTrueIndices() {
 		reqs := blockProp.countRequests(height, round, partIndex)
-		if len(reqs) >= reqLimit {
+		if len(reqs) >= maxRequestsPerPart {
+			// TODO check if this is still needed
 			hc.SetIndex(partIndex, false)
 			// mark the part as fully requested.
 			fullReqs.SetIndex(partIndex, true)

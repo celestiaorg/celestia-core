@@ -2,13 +2,20 @@ package propagation
 
 import (
 	"errors"
+	"fmt"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	cfg "github.com/tendermint/tendermint/config"
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
+	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/log"
+	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/mock"
+	"github.com/tendermint/tendermint/types"
 	"testing"
+	"time"
 )
 
 func TestRequester_SendRequest(t *testing.T) {
@@ -109,4 +116,159 @@ func TestRequester_SendRequest(t *testing.T) {
 			assert.GreaterOrEqual(t, len(r.pendingRequests), tt.expectedQueueSize)
 		})
 	}
+}
+
+func TestReactorMaxConcurrentRequests(t *testing.T) {
+	reactors, _ := testBlockPropReactors(6, cfg.DefaultP2PConfig())
+	reactor1 := reactors[0]
+	reactor2 := reactors[1]
+
+	cb, originalPs, _, _ := testCompactBlock(t, 3_000_000, 10, 1)
+
+	// add the compact block to all reactors
+	for _, reactor := range reactors {
+		added, _, _ := reactor.AddProposal(cb)
+		require.True(t, added)
+	}
+
+	t.Run("test max concurrent per peer requests", func(t *testing.T) {
+		for i := 0; i < concurrentPerPeerRequestLimit+2; i++ {
+			reactor1.handleHaves(reactor2.self, &proptypes.HaveParts{
+				Height: 10,
+				Round:  1,
+				Parts: []proptypes.PartMetaData{
+					{
+						Index: uint32(i),
+						Hash:  originalPs.GetPart(i).Proof.LeafHash,
+					},
+				},
+			}, false)
+		}
+		time.Sleep(300 * time.Millisecond)
+		// check that reactor 2 only received concurrentPerPeerRequestLimit of wants
+		bitArray, has := reactor2.getPeer(reactor1.self).GetWants(10, 1)
+		require.True(t, has)
+		assert.Equal(t, concurrentPerPeerRequestLimit, len(bitArray.GetTrueIndices()))
+	})
+
+	t.Run("test max concurrent per part requests", func(t *testing.T) {
+		for i := 1; i <= maxRequestsPerPart+1; i++ {
+			fmt.Println(i)
+			reactor1.handleHaves(reactors[i].self, &proptypes.HaveParts{
+				Height: 10,
+				Round:  1,
+				Parts: []proptypes.PartMetaData{
+					{
+						Index: uint32(0),
+						Hash:  originalPs.GetPart(0).Proof.LeafHash,
+					},
+				},
+			}, false)
+		}
+		time.Sleep(500 * time.Millisecond)
+		// check that only maxRequestsPerPart number of reactors received a want
+		count := 0
+		for _, reactor := range reactors {
+			peerState := reactor.getPeer(reactor1.self)
+			if peerState == nil {
+				continue
+			}
+			bitArray, has := peerState.GetWants(10, 1)
+			require.True(t, has)
+			if bitArray.GetIndex(0) {
+				count++
+			}
+		}
+		assert.Equal(t, maxRequestsPerPart, count)
+	})
+}
+
+func TestExpiredRequest(t *testing.T) {
+	logger := log.NewNopLogger()
+	r := newRequester(logger)
+	peer1 := mock.NewPeer(nil)
+	peer2 := mock.NewPeer(nil)
+
+	// add few expired requests and a valid few
+	r.pendingRequests = []*request{
+		{
+			want:       nil,
+			targetPeer: peer1,
+			timestamp:  time.Now().Add(-time.Hour),
+		},
+		{
+			want:       nil,
+			targetPeer: peer1,
+			timestamp:  time.Now().Add(-requestTimeout * 2),
+		},
+		{
+			want:       nil,
+			targetPeer: peer1,
+			timestamp:  time.Now(),
+		},
+		{
+			want:       nil,
+			targetPeer: peer1,
+			timestamp:  time.Now().Add(-requestTimeout * 3),
+		},
+		{
+			want:       nil,
+			targetPeer: peer1,
+			timestamp:  time.Now().Add(requestTimeout / 2),
+		},
+		{
+			want:       nil,
+			targetPeer: peer1,
+			timestamp:  time.Now().Add(requestTimeout / 3),
+		},
+		{
+			want:       nil,
+			targetPeer: peer1,
+			timestamp:  time.Now().Add(-requestTimeout * 4),
+		},
+	}
+
+	r.sendNextRequest(peer2)
+
+	assert.Equal(t, 3, len(r.pendingRequests))
+}
+
+// testCompactBlock returns a test compact block with the corresponding orignal part set,
+// parity partset, and proofs.
+// TODO remove after merging https://github.com/celestiaorg/celestia-core/pull/1685 as this method
+// is already added there.
+func testCompactBlock(t *testing.T, size int, height int64, round int32) (*proptypes.CompactBlock, *types.PartSet, *types.PartSet, []*merkle.Proof) {
+	ps := types.NewPartSetFromData(cmtrand.Bytes(size), types.BlockPartSizeBytes)
+	pse, lastLen, err := types.Encode(ps, types.BlockPartSizeBytes)
+	require.NoError(t, err)
+	psh := ps.Header()
+	pseh := pse.Header()
+
+	hashes := extractHashes(ps, pse)
+	proofs := extractProofs(ps, pse)
+
+	baseCompactBlock := &proptypes.CompactBlock{
+		BpHash:    pseh.Hash,
+		Signature: cmtrand.Bytes(64),
+		LastLen:   uint32(lastLen),
+		Blobs: []proptypes.TxMetaData{
+			{Hash: cmtrand.Bytes(32)},
+			{Hash: cmtrand.Bytes(32)},
+		},
+		PartsHashes: hashes,
+	}
+
+	// adding the proposal manually so the haves/wants and recovery
+	// parts are not rejected.
+	p := types.Proposal{
+		BlockID: types.BlockID{
+			Hash:          cmtrand.Bytes(32),
+			PartSetHeader: psh,
+		},
+		Height: height,
+		Round:  round,
+	}
+	baseCompactBlock.Proposal = p
+
+	return baseCompactBlock, ps, pse, proofs
 }

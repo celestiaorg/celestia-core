@@ -86,7 +86,7 @@ func (r *requester) sendRequest(targetPeer p2p.Peer, want *proptypes.WantParts) 
 		perPartCount, has := r.perPartRequests[want.Height][want.Round][indice]
 		if !has {
 			r.initialisePerPartRequestsMap(want.Height, want.Round)
-			r.perPartRequests[want.Height][want.Round][indice] = 1
+			r.perPartRequests[want.Height][want.Round][indice]++
 			toRequest.SetIndex(indice, true)
 			continue
 		}
@@ -119,6 +119,7 @@ func (r *requester) sendRequest(targetPeer p2p.Peer, want *proptypes.WantParts) 
 				return false, err
 			}
 		}
+		r.perPeerRequests[targetPeer.ID()]++
 	}
 	if !toPostpone.IsEmpty() {
 		added, err := r.addPendingRequest(&request{
@@ -208,10 +209,15 @@ func (r *requester) addPendingRequest(req *request) (bool, error) {
 func (r *requester) sendNextRequest(from p2p.Peer) {
 	r.Lock()
 	defer r.Unlock()
-	for index, req := range r.pendingRequests {
-		if req.timestamp.Add(requestTimeout).After(time.Now()) {
+	index := 0
+	for index < len(r.pendingRequests) {
+		req := r.pendingRequests[index]
+		if !req.timestamp.Add(requestTimeout).After(time.Now()) {
 			// remove expired request
-			r.pendingRequests = append(r.pendingRequests[:index], r.pendingRequests[index+1:]...)
+			err := r.removeRequest(index)
+			if err != nil {
+				r.logger.Error("failed to remove expired request", "peer", from, "index", index, "err", err)
+			}
 			continue
 		}
 		if req.targetPeer.ID() == from.ID() {
@@ -222,8 +228,24 @@ func (r *requester) sendNextRequest(from p2p.Peer) {
 				}
 			}()
 			// remove pending request from pending requests list
-			r.pendingRequests = append(r.pendingRequests[:index], r.pendingRequests[index+1:]...)
+			err := r.removeRequest(index)
+			if err != nil {
+				r.logger.Error("failed to remove expired request", "peer", from, "index", index, "err", err)
+			}
 			return
 		}
+		index++
 	}
+}
+
+func (r *requester) removeRequest(index int) error {
+	if index >= len(r.pendingRequests) {
+		return errors.New("request index out of pending requests range")
+	}
+	if index+1 == len(r.pendingRequests) {
+		r.pendingRequests = r.pendingRequests[:index]
+		return nil
+	}
+	r.pendingRequests = append(r.pendingRequests[:index], r.pendingRequests[index+1:]...)
+	return nil
 }
