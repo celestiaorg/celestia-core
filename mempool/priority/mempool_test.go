@@ -2,6 +2,7 @@ package v1
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -19,7 +20,7 @@ import (
 
 	"github.com/cometbft/cometbft/abci/example/kvstore"
 	abci "github.com/cometbft/cometbft/abci/types"
-	"github.com/cometbft/cometbft/config"
+	internaltest "github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/consts"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
@@ -39,7 +40,7 @@ type testTx struct {
 	priority int64
 }
 
-func (app *application) CheckTx(req abci.RequestCheckTx) abci.ResponseCheckTx {
+func (app *application) CheckTx(ctx context.Context, req *abci.RequestCheckTx) (*abci.ResponseCheckTx, error) {
 	var (
 		gasFees int64
 		sender  string
@@ -50,32 +51,31 @@ func (app *application) CheckTx(req abci.RequestCheckTx) abci.ResponseCheckTx {
 	if len(parts) == 3 {
 		v, err := strconv.ParseInt(string(parts[2]), 10, 64)
 		if err != nil {
-			return abci.ResponseCheckTx{
+			return &abci.ResponseCheckTx{
 				GasFees:   uint64(gasFees),
 				GasWanted: 1,
 				Address:   []byte(sender),
 				Code:      100,
-				GasWanted: 1,
-			}
+			}, nil
 		}
 
 		gasFees = v
 		sender = string(parts[0])
 	} else {
-		return abci.ResponseCheckTx{
+		return &abci.ResponseCheckTx{
 			GasFees:   uint64(gasFees),
 			GasWanted: 1,
 			Address:   []byte(sender),
 			Code:      101,
-		}
+		}, nil
 	}
 
-	return abci.ResponseCheckTx{
+	return &abci.ResponseCheckTx{
 		GasFees:   uint64(gasFees),
 		GasWanted: 1,
 		Address:   []byte(sender),
 		Code:      abci.CodeTypeOK,
-	}
+	}, nil
 }
 
 func setup(t testing.TB, cacheSize int, options ...TxMempoolOption) *TxMempool {
@@ -84,7 +84,7 @@ func setup(t testing.TB, cacheSize int, options ...TxMempoolOption) *TxMempool {
 	app := &application{kvstore.NewApplication(db.NewMemDB())}
 	cc := proxy.NewLocalClientCreator(app)
 
-	cfg := config.ResetTestRoot(strings.ReplaceAll(t.Name(), "/", "|"))
+	cfg := internaltest.ResetTestRoot(strings.ReplaceAll(t.Name(), "/", "|"))
 	cfg.Mempool.CacheSize = cacheSize
 
 	appConnMem, err := cc.NewABCIClient()
@@ -103,7 +103,7 @@ func setup(t testing.TB, cacheSize int, options ...TxMempoolOption) *TxMempool {
 // its callback has finished executing. It fails t if CheckTx fails.
 func mustCheckTx(t *testing.T, txmp *TxMempool, spec string) {
 	done := make(chan struct{})
-	if err := txmp.CheckTx([]byte(spec), func(*abci.Response) {
+	if err := txmp.CheckTx([]byte(spec), func(*abci.ResponseCheckTx) {
 		close(done)
 	}, mempool.TxInfo{}); err != nil {
 		t.Fatalf("CheckTx for %q failed: %v", spec, err)
@@ -172,9 +172,9 @@ func TestTxMempool_TxsAvailable(t *testing.T) {
 		rawTxs[i] = tx.tx
 	}
 
-	responses := make([]*abci.ResponseDeliverTx, len(rawTxs[:50]))
+	responses := make([]*abci.ExecTxResult, len(rawTxs[:50]))
 	for i := 0; i < len(responses); i++ {
-		responses[i] = &abci.ResponseDeliverTx{Code: abci.CodeTypeOK}
+		responses[i] = &abci.ExecTxResult{Code: abci.CodeTypeOK}
 	}
 
 	// commit half the transactions and ensure we fire an event
@@ -201,9 +201,9 @@ func TestTxMempool_Size(t *testing.T) {
 		rawTxs[i] = tx.tx
 	}
 
-	responses := make([]*abci.ResponseDeliverTx, len(rawTxs[:50]))
+	responses := make([]*abci.ExecTxResult, len(rawTxs[:50]))
 	for i := 0; i < len(responses); i++ {
-		responses[i] = &abci.ResponseDeliverTx{Code: abci.CodeTypeOK}
+		responses[i] = &abci.ExecTxResult{Code: abci.CodeTypeOK}
 	}
 
 	txmp.Lock()
@@ -304,9 +304,9 @@ func TestTxMempool_Flush(t *testing.T) {
 		rawTxs[i] = tx.tx
 	}
 
-	responses := make([]*abci.ResponseDeliverTx, len(rawTxs[:50]))
+	responses := make([]*abci.ExecTxResult, len(rawTxs[:50]))
 	for i := 0; i < len(responses); i++ {
-		responses[i] = &abci.ResponseDeliverTx{Code: abci.CodeTypeOK}
+		responses[i] = &abci.ExecTxResult{Code: abci.CodeTypeOK}
 	}
 
 	txmp.Lock()
@@ -527,7 +527,7 @@ func TestTxMempool_ConcurrentTxs(t *testing.T) {
 		for range ticker.C {
 			reapedTxs := txmp.ReapMaxTxs(200)
 			if len(reapedTxs) > 0 {
-				responses := make([]*abci.ResponseDeliverTx, len(reapedTxs))
+				responses := make([]*abci.ExecTxResult, len(reapedTxs))
 				for i := 0; i < len(responses); i++ {
 					var code uint32
 
@@ -537,7 +537,7 @@ func TestTxMempool_ConcurrentTxs(t *testing.T) {
 						code = abci.CodeTypeOK
 					}
 
-					responses[i] = &abci.ResponseDeliverTx{Code: code}
+					responses[i] = &abci.ExecTxResult{Code: code}
 				}
 
 				txmp.Lock()
@@ -641,9 +641,9 @@ func TestTxMempool_ExpiredTxs_NumBlocks(t *testing.T) {
 
 	// reap 5 txs at the next height -- no txs should expire
 	reapedTxs := txmp.ReapMaxTxs(5)
-	responses := make([]*abci.ResponseDeliverTx, len(reapedTxs))
+	responses := make([]*abci.ExecTxResult, len(reapedTxs))
 	for i := 0; i < len(responses); i++ {
-		responses[i] = &abci.ResponseDeliverTx{Code: abci.CodeTypeOK}
+		responses[i] = &abci.ExecTxResult{Code: abci.CodeTypeOK}
 	}
 
 	txmp.Lock()
@@ -665,9 +665,9 @@ func TestTxMempool_ExpiredTxs_NumBlocks(t *testing.T) {
 	// removed. However, we do know that that at most 95 txs can be expired and
 	// removed.
 	reapedTxs = txmp.ReapMaxTxs(5)
-	responses = make([]*abci.ResponseDeliverTx, len(reapedTxs))
+	responses = make([]*abci.ExecTxResult, len(reapedTxs))
 	for i := 0; i < len(responses); i++ {
-		responses[i] = &abci.ResponseDeliverTx{Code: abci.CodeTypeOK}
+		responses[i] = &abci.ExecTxResult{Code: abci.CodeTypeOK}
 	}
 
 	txmp.Lock()
@@ -703,14 +703,7 @@ func TestTxMempool_CheckTxPostCheckError(t *testing.T) {
 			_, err := rng.Read(tx)
 			require.NoError(t, err)
 
-			callback := func(res *abci.Response) {
-				checkTxRes, ok := res.Value.(*abci.Response_CheckTx)
-				require.True(t, ok)
-				expectedErrString := ""
-				if testCase.err != nil {
-					expectedErrString = testCase.err.Error()
-				}
-				require.Equal(t, expectedErrString, checkTxRes.CheckTx.MempoolError)
+			callback := func(res *abci.ResponseCheckTx) {
 			}
 			require.NoError(t, txmp.CheckTx(tx, callback, mempool.TxInfo{SenderID: 0}))
 		})
@@ -744,10 +737,10 @@ func TestRemoveBlobTx(t *testing.T) {
 	assert.EqualValues(t, 0, txmp.SizeBytes())
 }
 
-func abciResponses(n int, code uint32) []*abci.ResponseDeliverTx {
-	responses := make([]*abci.ResponseDeliverTx, 0, n)
+func abciResponses(n int, code uint32) []*abci.ExecTxResult {
+	responses := make([]*abci.ExecTxResult, 0, n)
 	for i := 0; i < n; i++ {
-		responses = append(responses, &abci.ResponseDeliverTx{Code: code})
+		responses = append(responses, &abci.ExecTxResult{Code: code})
 	}
 	return responses
 }
