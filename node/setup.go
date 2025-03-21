@@ -259,6 +259,8 @@ func createMempoolAndMempoolReactor(
 		reactor.SetLogger(logger)
 
 		return mp, reactor
+	case cfg.MempoolTypePriority:
+		panic("not implemented")
 	case cfg.MempoolTypeNop:
 		// Strictly speaking, there's no need to have a `mempl.NopMempoolReactor`, but
 		// adding it leads to a cleaner code.
