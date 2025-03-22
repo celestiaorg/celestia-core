@@ -2,7 +2,6 @@ package propagation
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -120,7 +119,7 @@ func TestRequester_SendRequest(t *testing.T) {
 }
 
 func TestReactorMaxConcurrentRequests(t *testing.T) {
-	reactors, _ := testBlockPropReactors(6, cfg.DefaultP2PConfig())
+	reactors, _ := testBlockPropReactors(40, cfg.DefaultP2PConfig())
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
 
@@ -154,7 +153,6 @@ func TestReactorMaxConcurrentRequests(t *testing.T) {
 
 	t.Run("test max concurrent per part requests", func(t *testing.T) {
 		for i := 1; i <= maxRequestsPerPart+1; i++ {
-			fmt.Println(i)
 			reactor1.handleHaves(reactors[i].self, &proptypes.HaveParts{
 				Height: 10,
 				Round:  1,
