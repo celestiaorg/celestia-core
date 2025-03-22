@@ -154,7 +154,7 @@ func TestReactorMaxConcurrentPerPartRequests(t *testing.T) {
 	reactors, _ := testBlockPropReactors(maxRequestsPerPart+2, cfg.DefaultP2PConfig())
 	reactor1 := reactors[0]
 
-	cb, originalPs, _, _ := testCompactBlock(t, 30_000_000, 10, 1)
+	cb, originalPs, _, _ := testCompactBlock(t, 1000, 10, 1)
 
 	// add the compact block to all reactors
 	for _, reactor := range reactors {
