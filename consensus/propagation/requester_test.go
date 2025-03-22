@@ -118,8 +118,8 @@ func TestRequester_SendRequest(t *testing.T) {
 	}
 }
 
-func TestReactorMaxConcurrentRequests(t *testing.T) {
-	reactors, _ := testBlockPropReactors(40, cfg.DefaultP2PConfig())
+func TestReactorMaxConcurrentPerPeerRequests(t *testing.T) {
+	reactors, _ := testBlockPropReactors(10, cfg.DefaultP2PConfig())
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
 
@@ -131,55 +131,64 @@ func TestReactorMaxConcurrentRequests(t *testing.T) {
 		require.True(t, added)
 	}
 
-	t.Run("test max concurrent per peer requests", func(t *testing.T) {
-		for i := 0; i < concurrentPerPeerRequestLimit+2; i++ {
-			reactor1.handleHaves(reactor2.self, &proptypes.HaveParts{
-				Height: 10,
-				Round:  1,
-				Parts: []proptypes.PartMetaData{
-					{
-						Index: uint32(i),
-						Hash:  originalPs.GetPart(i).Proof.LeafHash,
-					},
+	for i := 0; i < concurrentPerPeerRequestLimit+2; i++ {
+		reactor1.handleHaves(reactor2.self, &proptypes.HaveParts{
+			Height: 10,
+			Round:  1,
+			Parts: []proptypes.PartMetaData{
+				{
+					Index: uint32(i),
+					Hash:  originalPs.GetPart(i).Proof.LeafHash,
 				},
-			}, false)
-		}
-		time.Sleep(300 * time.Millisecond)
-		// check that reactor 2 only received concurrentPerPeerRequestLimit of wants
-		bitArray, has := reactor2.getPeer(reactor1.self).GetWants(10, 1)
-		require.True(t, has)
-		assert.Equal(t, concurrentPerPeerRequestLimit, len(bitArray.GetTrueIndices()))
-	})
+			},
+		}, false)
+	}
+	time.Sleep(300 * time.Millisecond)
+	// check that reactor 2 only received concurrentPerPeerRequestLimit of wants
+	bitArray, has := reactor2.getPeer(reactor1.self).GetWants(10, 1)
+	require.True(t, has)
+	assert.Equal(t, concurrentPerPeerRequestLimit, len(bitArray.GetTrueIndices()))
+}
 
-	t.Run("test max concurrent per part requests", func(t *testing.T) {
-		for i := 1; i <= maxRequestsPerPart+1; i++ {
-			reactor1.handleHaves(reactors[i].self, &proptypes.HaveParts{
-				Height: 10,
-				Round:  1,
-				Parts: []proptypes.PartMetaData{
-					{
-						Index: uint32(0),
-						Hash:  originalPs.GetPart(0).Proof.LeafHash,
-					},
+func TestReactorMaxConcurrentPerPartRequests(t *testing.T) {
+	reactors, _ := testBlockPropReactors(maxRequestsPerPart+2, cfg.DefaultP2PConfig())
+	reactor1 := reactors[0]
+
+	cb, originalPs, _, _ := testCompactBlock(t, 30_000_000, 10, 1)
+
+	// add the compact block to all reactors
+	for _, reactor := range reactors {
+		added, _, _ := reactor.AddProposal(cb)
+		require.True(t, added)
+	}
+
+	for i := 1; i <= maxRequestsPerPart+1; i++ {
+		reactor1.handleHaves(reactors[i].self, &proptypes.HaveParts{
+			Height: 10,
+			Round:  1,
+			Parts: []proptypes.PartMetaData{
+				{
+					Index: uint32(0),
+					Hash:  originalPs.GetPart(0).Proof.LeafHash,
 				},
-			}, false)
+			},
+		}, false)
+	}
+	time.Sleep(500 * time.Millisecond)
+	// check that only maxRequestsPerPart number of reactors received a want
+	count := 0
+	for _, reactor := range reactors {
+		peerState := reactor.getPeer(reactor1.self)
+		if peerState == nil {
+			continue
 		}
-		time.Sleep(500 * time.Millisecond)
-		// check that only maxRequestsPerPart number of reactors received a want
-		count := 0
-		for _, reactor := range reactors {
-			peerState := reactor.getPeer(reactor1.self)
-			if peerState == nil {
-				continue
-			}
-			bitArray, has := peerState.GetWants(10, 1)
-			require.True(t, has)
-			if bitArray.GetIndex(0) {
-				count++
-			}
+		bitArray, has := peerState.GetWants(10, 1)
+		require.True(t, has)
+		if bitArray.GetIndex(0) {
+			count++
 		}
-		assert.Equal(t, maxRequestsPerPart, count)
-	})
+	}
+	assert.Equal(t, maxRequestsPerPart, count)
 }
 
 func TestExpiredRequest(t *testing.T) {
