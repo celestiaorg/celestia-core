@@ -124,7 +124,7 @@ func TestReactorMaxConcurrentRequests(t *testing.T) {
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
 
-	cb, originalPs, _, _ := testCompactBlock(t, 3_000_000, 10, 1)
+	cb, originalPs, _, _ := testCompactBlock(t, 30_000_000, 10, 1)
 
 	// add the compact block to all reactors
 	for _, reactor := range reactors {
