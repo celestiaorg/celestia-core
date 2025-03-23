@@ -123,6 +123,11 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID) {
+	err := blockProp.validateCompactBlock(cb)
+	if err != nil {
+		blockProp.Logger.Error("failed to validate proposal", "err", err)
+		return
+	}
 	added, _, _ := blockProp.AddProposal(cb)
 	if !added {
 		return
@@ -306,4 +311,16 @@ func chunkIndexes(totalSize, chunkSize int) [][2]int {
 	}
 
 	return chunks
+}
+
+// validateCompactBlock stateful validation of the compact block.
+func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error {
+	err := blockProp.proposalValidator(&cb.Proposal)
+	if err != nil {
+		return err
+	}
+
+	// TODO add compact block signature verification once implemented
+
+	return nil
 }

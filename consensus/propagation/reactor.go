@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"fmt"
+	"github.com/tendermint/tendermint/types"
 	"reflect"
 	"sync"
 
@@ -35,6 +36,8 @@ const (
 	blockCacheSize = 5
 )
 
+type validateProposalFunc func(proposal *types.Proposal) error
+
 type Reactor struct {
 	p2p.BaseReactor // BaseService + p2p.Switch
 
@@ -43,6 +46,7 @@ type Reactor struct {
 	// ProposalCache temporarily stores recently active proposals and their
 	// block data for gossiping.
 	*ProposalCache
+	proposalValidator validateProposalFunc
 
 	// mempool access to read the transactions by hash from the mempool
 	// and eventually remove it.
@@ -58,12 +62,13 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 		tracer = trace.NoOpTracer()
 	}
 	reactor := &Reactor{
-		self:          self,
-		traceClient:   tracer,
-		peerstate:     make(map[p2p.ID]*PeerState),
-		mtx:           &sync.RWMutex{},
-		ProposalCache: NewProposalCache(store),
-		mempool:       mempool,
+		self:              self,
+		traceClient:       tracer,
+		peerstate:         make(map[p2p.ID]*PeerState),
+		mtx:               &sync.RWMutex{},
+		ProposalCache:     NewProposalCache(store),
+		mempool:           mempool,
+		proposalValidator: func(proposal *types.Proposal) error { return nil },
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
@@ -74,6 +79,11 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 }
 
 type ReactorOption func(*Reactor)
+
+// SetProposalValidator sets the proposal stateful validation function.
+func (blockProp *Reactor) SetProposalValidator(validator validateProposalFunc) {
+	blockProp.proposalValidator = validator
+}
 
 func (blockProp *Reactor) OnStart() error {
 	// TODO: implement
