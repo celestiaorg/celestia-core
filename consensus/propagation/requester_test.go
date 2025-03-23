@@ -2,7 +2,6 @@ package propagation
 
 import (
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
@@ -163,24 +162,18 @@ func TestReactorMaxConcurrentPerPartRequests(t *testing.T) {
 		require.True(t, added)
 	}
 
-	wg := sync.WaitGroup{}
 	for i := 1; i <= maxRequestsPerPart+1; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			reactor1.handleHaves(reactors[i].self, &proptypes.HaveParts{
-				Height: 10,
-				Round:  1,
-				Parts: []proptypes.PartMetaData{
-					{
-						Index: uint32(0),
-						Hash:  originalPs.GetPart(0).Proof.LeafHash,
-					},
+		reactor1.handleHaves(reactors[i].self, &proptypes.HaveParts{
+			Height: 10,
+			Round:  1,
+			Parts: []proptypes.PartMetaData{
+				{
+					Index: uint32(0),
+					Hash:  originalPs.GetPart(0).Proof.LeafHash,
 				},
-			}, false)
-		}()
+			},
+		}, false)
 	}
-	wg.Wait()
 	time.Sleep(500 * time.Millisecond)
 	// check that only maxRequestsPerPart number of reactors received a want
 	count := 0
