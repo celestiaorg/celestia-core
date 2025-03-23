@@ -151,44 +151,54 @@ func TestReactorMaxConcurrentPerPeerRequests(t *testing.T) {
 }
 
 func TestReactorMaxConcurrentPerPartRequests(t *testing.T) {
-	reactors, _ := testBlockPropReactors(maxRequestsPerPart+2, cfg.DefaultP2PConfig())
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
 	reactor1 := reactors[0]
+	reactor2 := reactors[1]
 
-	cb, originalPs, _, _ := testCompactBlock(t, 10, 10, 1)
+	cb, originalPs, _, _ := testCompactBlock(t, 100_000, 10, 1)
 
 	// add the compact block to all reactors
-	for _, reactor := range reactors {
-		added, _, _ := reactor.AddProposal(cb)
-		require.True(t, added)
-	}
 
-	for i := 1; i <= maxRequestsPerPart+1; i++ {
-		reactor1.handleHaves(reactors[i].self, &proptypes.HaveParts{
-			Height: 10,
-			Round:  1,
-			Parts: []proptypes.PartMetaData{
-				{
-					Index: uint32(0),
-					Hash:  originalPs.GetPart(0).Proof.LeafHash,
-				},
+	added, _, _ := reactor1.AddProposal(cb)
+	require.True(t, added)
+	added, _, _ = reactor2.AddProposal(cb)
+	require.True(t, added)
+
+	// send a have from reactor2 to reactor 1 to create the peer state
+	reactor1.handleHaves(reactor2.self, &proptypes.HaveParts{
+		Height: 10,
+		Round:  1,
+		Parts: []proptypes.PartMetaData{
+			{
+				Index: uint32(1),
+				Hash:  originalPs.GetPart(1).Proof.LeafHash,
 			},
-		}, false)
-	}
-	time.Sleep(500 * time.Millisecond)
-	// check that only maxRequestsPerPart number of reactors received a want
-	count := 0
-	for _, reactor := range reactors {
-		peerState := reactor.getPeer(reactor1.self)
-		if peerState == nil {
-			continue
-		}
-		bitArray, has := peerState.GetWants(10, 1)
-		require.True(t, has)
-		if bitArray.GetIndex(0) {
-			count++
-		}
-	}
-	assert.Equal(t, maxRequestsPerPart, count)
+		},
+	}, false)
+
+	// set the current number of requests for part 0 to maxRequestsPerPart
+	reactor1.requester.perPartRequests[10][1][0] = maxRequestsPerPart
+
+	// receive a have message from reactor 2
+	reactor1.handleHaves(reactor2.self, &proptypes.HaveParts{
+		Height: 10,
+		Round:  1,
+		Parts: []proptypes.PartMetaData{
+			{
+				Index: uint32(0),
+				Hash:  originalPs.GetPart(0).Proof.LeafHash,
+			},
+		},
+	}, false)
+	time.Sleep(200 * time.Millisecond)
+
+	// check that reactor 1 didn't send a want to reactor 2
+	// because it already sent maxRequestsPerPart for that part
+	peerState := reactor2.getPeer(reactor1.self)
+	require.NotNil(t, peerState)
+	bitArray, has := peerState.GetWants(10, 1)
+	assert.True(t, has)
+	assert.False(t, bitArray.GetIndex(0))
 }
 
 func TestExpiredRequest(t *testing.T) {
