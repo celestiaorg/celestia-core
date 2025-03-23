@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -119,11 +120,11 @@ func TestRequester_SendRequest(t *testing.T) {
 }
 
 func TestReactorMaxConcurrentPerPeerRequests(t *testing.T) {
-	reactors, _ := testBlockPropReactors(10, cfg.DefaultP2PConfig())
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
 
-	cb, originalPs, _, _ := testCompactBlock(t, 30_000_000, 10, 1)
+	cb, originalPs, _, _ := testCompactBlock(t, 10_000_000, 10, 1)
 
 	// add the compact block to all reactors
 	for _, reactor := range reactors {
@@ -154,7 +155,7 @@ func TestReactorMaxConcurrentPerPartRequests(t *testing.T) {
 	reactors, _ := testBlockPropReactors(maxRequestsPerPart+2, cfg.DefaultP2PConfig())
 	reactor1 := reactors[0]
 
-	cb, originalPs, _, _ := testCompactBlock(t, 1000, 10, 1)
+	cb, originalPs, _, _ := testCompactBlock(t, 10, 10, 1)
 
 	// add the compact block to all reactors
 	for _, reactor := range reactors {
@@ -162,18 +163,24 @@ func TestReactorMaxConcurrentPerPartRequests(t *testing.T) {
 		require.True(t, added)
 	}
 
+	wg := sync.WaitGroup{}
 	for i := 1; i <= maxRequestsPerPart+1; i++ {
-		reactor1.handleHaves(reactors[i].self, &proptypes.HaveParts{
-			Height: 10,
-			Round:  1,
-			Parts: []proptypes.PartMetaData{
-				{
-					Index: uint32(0),
-					Hash:  originalPs.GetPart(0).Proof.LeafHash,
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			reactor1.handleHaves(reactors[i].self, &proptypes.HaveParts{
+				Height: 10,
+				Round:  1,
+				Parts: []proptypes.PartMetaData{
+					{
+						Index: uint32(0),
+						Hash:  originalPs.GetPart(0).Proof.LeafHash,
+					},
 				},
-			},
-		}, false)
+			}, false)
+		}()
 	}
+	wg.Wait()
 	time.Sleep(500 * time.Millisecond)
 	// check that only maxRequestsPerPart number of reactors received a want
 	count := 0

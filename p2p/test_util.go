@@ -3,6 +3,7 @@ package p2p
 import (
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/tendermint/tendermint/crypto"
@@ -97,11 +98,17 @@ func MakeConnectedSwitches(
 		panic(err)
 	}
 
+	wg := sync.WaitGroup{}
 	for i := 0; i < n; i++ {
 		for j := i + 1; j < n; j++ {
-			connect(switches, i, j)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				connect(switches, i, j)
+			}()
 		}
 	}
+	wg.Wait()
 
 	return switches
 }
