@@ -31,7 +31,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 		// only re-request original parts that are missing, not parity parts.
 		missing := prop.block.BitArray().Not()
 		if missing.IsEmpty() {
-			// this should never be hit due to the check above.
+			blockProp.Logger.Error("no missing parts yet block is incomplete", "height", height, "round", round)
 			continue
 		}
 

@@ -135,47 +135,46 @@ func TestEncoding(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// todo: re-enable this test after we fix the proof validation
-// func TestWrongProof(t *testing.T) {
-// 	// Construct random data of size partSize * 100
-// 	data := cmtrand.Bytes(testPartSize * 100)
-// 	partSet := NewPartSetFromData(data, testPartSize)
+func TestWrongProof(t *testing.T) {
+	// Construct random data of size partSize * 100
+	data := cmtrand.Bytes(testPartSize * 100)
+	partSet := NewPartSetFromData(data, testPartSize)
 
-// 	// Test adding a part with wrong data.
-// 	partSet2 := NewPartSetFromHeader(partSet.Header())
+	// Test adding a part with wrong data.
+	partSet2 := NewPartSetFromHeader(partSet.Header())
 
-// 	// Test adding a part with wrong trail.
-// 	part := partSet.GetPart(0)
-// 	part.Proof.Aunts[0][0] += byte(0x01)
-// 	added, err := partSet2.AddPart(part)
-// 	if added || err == nil {
-// 		t.Errorf("expected to fail adding a part with bad trail.")
-// 	}
+	// Test adding a part with wrong trail.
+	part := partSet.GetPart(0)
+	part.Proof.Aunts[0][0] += byte(0x01)
+	added, err := partSet2.AddPart(part)
+	if added || err == nil {
+		t.Errorf("expected to fail adding a part with bad trail.")
+	}
 
-// 	// Test adding a part with wrong bytes.
-// 	part = partSet.GetPart(1)
-// 	part.Bytes[0] += byte(0x01)
-// 	added, err = partSet2.AddPart(part)
-// 	if added || err == nil {
-// 		t.Errorf("expected to fail adding a part with bad bytes.")
-// 	}
+	// Test adding a part with wrong bytes.
+	part = partSet.GetPart(1)
+	part.Bytes[0] += byte(0x01)
+	added, err = partSet2.AddPart(part)
+	if added || err == nil {
+		t.Errorf("expected to fail adding a part with bad bytes.")
+	}
 
-// 	// Test adding a part with wrong proof index.
-// 	part = partSet.GetPart(2)
-// 	part.Proof.Index = 1
-// 	added, err = partSet2.AddPart(part)
-// 	if added || err == nil {
-// 		t.Errorf("expected to fail adding a part with bad proof index.")
-// 	}
+	// Test adding a part with wrong proof index.
+	part = partSet.GetPart(2)
+	part.Proof.Index = 1
+	added, err = partSet2.AddPart(part)
+	if added || err == nil {
+		t.Errorf("expected to fail adding a part with bad proof index.")
+	}
 
-// 	// Test adding a part with wrong proof total.
-// 	part = partSet.GetPart(3)
-// 	part.Proof.Total = int64(partSet.Total() - 1)
-// 	added, err = partSet2.AddPart(part)
-// 	if added || err == nil {
-// 		t.Errorf("expected to fail adding a part with bad proof total.")
-// 	}
-// }
+	// Test adding a part with wrong proof total.
+	part = partSet.GetPart(3)
+	part.Proof.Total = int64(partSet.Total() - 1)
+	added, err = partSet2.AddPart(part)
+	if added || err == nil {
+		t.Errorf("expected to fail adding a part with bad proof total.")
+	}
+}
 
 func TestPartSetHeaderValidateBasic(t *testing.T) {
 	testCases := []struct {
@@ -198,53 +197,52 @@ func TestPartSetHeaderValidateBasic(t *testing.T) {
 	}
 }
 
-// todo: re-enable this test after we find out where the proof is not being added
-// func TestPartValidateBasic(t *testing.T) {
-// 	testCases := []struct {
-// 		testName     string
-// 		malleatePart func(*Part)
-// 		expectErr    bool
-// 	}{
-// 		{"Good Part", func(pt *Part) {}, false},
-// 		{"Too big part", func(pt *Part) { pt.Bytes = make([]byte, BlockPartSizeBytes+1) }, true},
-// 		{"Good small last part", func(pt *Part) {
-// 			pt.Index = 1
-// 			pt.Bytes = make([]byte, BlockPartSizeBytes-1)
-// 			pt.Proof.Total = 2
-// 			pt.Proof.Index = 1
-// 		}, false},
-// 		{"Too small inner part", func(pt *Part) {
-// 			pt.Index = 0
-// 			pt.Bytes = make([]byte, BlockPartSizeBytes-1)
-// 			pt.Proof.Index = 1
-// 			pt.Proof.Total = 2
-// 		},
+func TestPartValidateBasic(t *testing.T) {
+	testCases := []struct {
+		testName     string
+		malleatePart func(*Part)
+		expectErr    bool
+	}{
+		{"Good Part", func(pt *Part) {}, false},
+		{"Too big part", func(pt *Part) { pt.Bytes = make([]byte, BlockPartSizeBytes+1) }, true},
+		{"Good small last part", func(pt *Part) {
+			pt.Index = 1
+			pt.Bytes = make([]byte, BlockPartSizeBytes-1)
+			pt.Proof.Total = 2
+			pt.Proof.Index = 1
+		}, false},
+		{"Too small inner part", func(pt *Part) {
+			pt.Index = 0
+			pt.Bytes = make([]byte, BlockPartSizeBytes-1)
+			pt.Proof.Index = 1
+			pt.Proof.Total = 2
+		},
 
-// 			true},
-// 		{"Too big proof", func(pt *Part) {
-// 			pt.Proof = merkle.Proof{
-// 				Total:    2,
-// 				Index:    1,
-// 				LeafHash: make([]byte, 1024*1024),
-// 			}
-// 		}, true},
-// 		{"Index mismatch", func(pt *Part) {
-// 			pt.Index = 1
-// 			pt.Proof.Index = 0
-// 		}, true},
-// 	}
+			true},
+		{"Too big proof", func(pt *Part) {
+			pt.Proof = merkle.Proof{
+				Total:    2,
+				Index:    1,
+				LeafHash: make([]byte, 1024*1024),
+			}
+		}, true},
+		{"Index mismatch", func(pt *Part) {
+			pt.Index = 1
+			pt.Proof.Index = 0
+		}, true},
+	}
 
-// 	for _, tc := range testCases {
-// 		tc := tc
-// 		t.Run(tc.testName, func(t *testing.T) {
-// 			data := cmtrand.Bytes(testPartSize * 100)
-// 			ps := NewPartSetFromData(data, testPartSize)
-// 			part := ps.GetPart(0)
-// 			tc.malleatePart(part)
-// 			assert.Equal(t, tc.expectErr, part.ValidateBasic() != nil, "Validate Basic had an unexpected result")
-// 		})
-// 	}
-// }
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.testName, func(t *testing.T) {
+			data := cmtrand.Bytes(testPartSize * 100)
+			ps := NewPartSetFromData(data, testPartSize)
+			part := ps.GetPart(0)
+			tc.malleatePart(part)
+			assert.Equal(t, tc.expectErr, part.ValidateBasic() != nil, "Validate Basic had an unexpected result")
+		})
+	}
+}
 
 func TestParSetHeaderProtoBuf(t *testing.T) {
 	testCases := []struct {
