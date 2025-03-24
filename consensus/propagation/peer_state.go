@@ -161,29 +161,15 @@ func (d *PeerState) DeleteHeight(height int64) {
 
 // prune removes all haves and wants for heights less than the given height,
 // while keeping the last keepRecentRounds for the current height.
-func (d *PeerState) prune(currentHeight int64, keepRecentHeights, keepRecentRounds int) {
+func (d *PeerState) prune(prunePastHeight int64) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	for height := range d.state {
-		if height < currentHeight-int64(keepRecentHeights) {
+		if height < prunePastHeight {
 			delete(d.state, height)
 		}
-		if height == currentHeight {
-			continue
-		}
 	}
-	// delete all but the last round for each remaining height except the current.
-	// this is because we need to keep the last round for the current height.
-	for height := range d.state {
-		if height == currentHeight {
-			continue
-		}
-		for round := range d.state[height] {
-			if round < int32(currentHeight)-int32(keepRecentRounds) {
-				delete(d.state[height], round)
-			}
-		}
-	}
+	// todo: prune rounds separately from heights
 }
 
 type partState struct {
@@ -193,7 +179,7 @@ type partState struct {
 }
 
 // newpartState initializes and returns a new partState
-func newpartState(size int, height int64, round int32) *partState {
+func newpartState(size int, _ int64, _ int32) *partState {
 	return &partState{
 		haves:    bits.NewBitArray(size),
 		wants:    bits.NewBitArray(size),
@@ -202,7 +188,7 @@ func newpartState(size int, height int64, round int32) *partState {
 }
 
 func (p *partState) addHaves(haves *bits.BitArray) {
-	p.wants.AddBitArray(haves)
+	p.haves.AddBitArray(haves)
 }
 
 func (p *partState) addWants(wants *bits.BitArray) {
@@ -210,7 +196,6 @@ func (p *partState) addWants(wants *bits.BitArray) {
 }
 
 func (p *partState) addRequests(requests *bits.BitArray) {
-	// TODO delete the request state after we download the data
 	p.requests.AddBitArray(requests)
 }
 
@@ -223,26 +208,4 @@ func (p *partState) setHave(index int, has bool) {
 // SetWant sets the want bit for a given part.
 func (p *partState) setWant(part int, wants bool) {
 	p.wants.SetIndex(part, wants)
-}
-
-// todo: delete if we don't use this
-//
-//nolint:unused
-func (p *partState) setRequest(part int) {
-	p.requests.SetIndex(part, true)
-}
-
-//nolint:unused
-func (p *partState) getWant(part int) bool {
-	return p.wants.GetIndex(part)
-}
-
-//nolint:unused
-func (p *partState) getHave(part int) bool {
-	return p.haves.GetIndex(part)
-}
-
-//nolint:unused
-func (p *partState) getRequest(part int) bool {
-	return p.requests.GetIndex(part)
 }
