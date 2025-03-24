@@ -2,10 +2,13 @@ package v1
 
 import (
 	"fmt"
+	"runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/creachadair/taskgroup"
 
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/config"
@@ -647,6 +650,8 @@ func (txmp *TxMempool) insertTx(wtx *WrappedTx) {
 // that case is handled by addNewTransaction instead.
 func (txmp *TxMempool) handleRecheckResult(tx types.Tx, checkTxRes *abci.ResponseCheckTx) {
 	txmp.metrics.RecheckTimes.Add(1)
+	txmp.mtx.Lock()
+	defer txmp.mtx.Unlock()
 
 	// Find the transaction reported by the ABCI callback. It is possible the
 	// transaction was evicted during the recheck, in which case the transaction
@@ -708,23 +713,34 @@ func (txmp *TxMempool) recheckTransactions() {
 
 	// Issue CheckTx calls for each remaining transaction, and when all the
 	// rechecks are complete signal watchers that transactions may be available.
-	for _, wtx := range wtxs {
-		wtx := wtx
-		// The response for this CheckTx is handled by the default recheckTxCallback.
-		rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{
-			Tx:   wtx.tx,
-			Type: abci.CheckTxType_Recheck,
-		})
-		if err != nil {
-			txmp.logger.Error("failed to execute CheckTx during recheck",
-				"err", err, "hash", fmt.Sprintf("%x", wtx.tx.Hash()))
-		} else {
-			txmp.handleRecheckResult(wtx.tx, rsp)
-		}
-	}
-	_ = txmp.proxyAppConn.FlushAsync()
+	go func() {
+		g, start := taskgroup.New(nil).Limit(2 * runtime.NumCPU())
 
-	txmp.notifyTxsAvailable()
+		for _, wtx := range wtxs {
+			wtx := wtx
+			start(func() error {
+				// The response for this CheckTx is handled by the default recheckTxCallback.
+				rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{
+					Tx:   wtx.tx,
+					Type: abci.CheckTxType_Recheck,
+				})
+				if err != nil {
+					txmp.logger.Error("failed to execute CheckTx during recheck",
+						"err", err, "hash", fmt.Sprintf("%x", wtx.tx.Hash()))
+				} else {
+					txmp.handleRecheckResult(wtx.tx, rsp)
+				}
+				return nil
+			})
+		}
+		_ = txmp.proxyAppConn.FlushAsync()
+
+		// When recheck is complete, trigger a notification for more transactions.
+		_ = g.Wait()
+		txmp.mtx.Lock()
+		defer txmp.mtx.Unlock()
+		txmp.notifyTxsAvailable()
+	}()
 }
 
 // canAddTx returns an error if we cannot insert the provided *WrappedTx into
