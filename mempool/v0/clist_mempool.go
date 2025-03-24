@@ -216,7 +216,7 @@ func (mem *CListMempool) TxsWaitChan() <-chan struct{} {
 //
 // Safe for concurrent use by multiple goroutines.
 func (mem *CListMempool) CheckTx(
-	tx *types.CachedTx,
+	tx types.Tx,
 	cb func(*abci.Response),
 	txInfo mempool.TxInfo,
 ) error {
@@ -225,7 +225,7 @@ func (mem *CListMempool) CheckTx(
 	// use defer to unlock mutex because application (*local client*) might panic
 	defer mem.updateMtx.RUnlock()
 
-	txSize := len(tx.Tx)
+	txSize := len(tx)
 
 	if err := mem.isFull(txSize); err != nil {
 		return err
@@ -238,8 +238,9 @@ func (mem *CListMempool) CheckTx(
 		}
 	}
 
+	cachedTx := tx.ToCachedTx()
 	if mem.preCheck != nil {
-		if err := mem.preCheck(tx); err != nil {
+		if err := mem.preCheck(cachedTx); err != nil {
 			return mempool.ErrPreCheck{
 				Reason: err,
 			}
@@ -251,7 +252,7 @@ func (mem *CListMempool) CheckTx(
 		return err
 	}
 
-	if !mem.cache.Push(tx) { // if the transaction already exists in the cache
+	if !mem.cache.Push(cachedTx) { // if the transaction already exists in the cache
 		// Record a new sender for a tx we've already seen.
 		// Note it's possible a tx is still in the cache but no longer in the mempool
 		// (eg. after committing a block, txs are removed from mempool but not cache),
@@ -267,8 +268,8 @@ func (mem *CListMempool) CheckTx(
 		return mempool.ErrTxInCache
 	}
 
-	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx.Tx})
-	reqRes.SetCallback(mem.reqResCb(tx, txInfo.SenderID, txInfo.SenderP2PID, cb))
+	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx})
+	reqRes.SetCallback(mem.reqResCb(cachedTx, txInfo.SenderID, txInfo.SenderP2PID, cb))
 
 	return nil
 }

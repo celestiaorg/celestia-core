@@ -100,7 +100,7 @@ func setup(t testing.TB, cacheSize int, options ...TxMempoolOption) *TxMempool {
 // its callback has finished executing. It fails t if CheckTx fails.
 func mustCheckTx(t *testing.T, txmp *TxMempool, spec string) {
 	done := make(chan struct{})
-	if err := txmp.CheckTx(&types.CachedTx{Tx: []byte(spec)}, func(*abci.Response) {
+	if err := txmp.CheckTx([]byte(spec), func(*abci.Response) {
 		close(done)
 	}, mempool.TxInfo{}); err != nil {
 		t.Fatalf("CheckTx for %q failed: %v", spec, err)
@@ -127,7 +127,7 @@ func checkTxs(t *testing.T, txmp *TxMempool, numTxs int, peerID uint16) []testTx
 			tx:       []byte(fmt.Sprintf("sender-%03d-%d=%X=%d", i, peerID, prefix, priority)),
 			priority: priority,
 		}
-		require.NoError(t, txmp.CheckTx(txs[i].tx.ToCachedTx(), nil, txInfo))
+		require.NoError(t, txmp.CheckTx(txs[i].tx, nil, txInfo))
 	}
 
 	return txs
@@ -382,8 +382,8 @@ func TestTxMempoolTxLargerThanMaxBytes(t *testing.T) {
 	require.NoError(t, err)
 	// smaller low priority tx with different sender
 	smallTx := []byte(fmt.Sprintf("sender-2-1=%X=1", smallPrefix))
-	require.NoError(t, txmp.CheckTx(&types.CachedTx{Tx: bigTx}, nil, mempool.TxInfo{SenderID: 1}))
-	require.NoError(t, txmp.CheckTx(&types.CachedTx{Tx: smallTx}, nil, mempool.TxInfo{SenderID: 1}))
+	require.NoError(t, txmp.CheckTx(bigTx, nil, mempool.TxInfo{SenderID: 1}))
+	require.NoError(t, txmp.CheckTx(smallTx, nil, mempool.TxInfo{SenderID: 1}))
 
 	// reap by max bytes less than the large tx
 	cachedReapedTxs := txmp.ReapMaxBytesMaxGas(100, -1)
@@ -449,13 +449,13 @@ func TestTxMempool_CheckTxExceedsMaxSize(t *testing.T) {
 	_, err := rng.Read(tx)
 	require.NoError(t, err)
 
-	require.Error(t, txmp.CheckTx(&types.CachedTx{Tx: tx}, nil, mempool.TxInfo{SenderID: 0}))
+	require.Error(t, txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0}))
 
 	tx = make([]byte, txmp.config.MaxTxBytes-1)
 	_, err = rng.Read(tx)
 	require.NoError(t, err)
 
-	require.NoError(t, txmp.CheckTx(&types.CachedTx{Tx: tx}, nil, mempool.TxInfo{SenderID: 0}))
+	require.NoError(t, txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: 0}))
 }
 
 func TestTxMempool_CheckTxSamePeer(t *testing.T) {
@@ -469,8 +469,8 @@ func TestTxMempool_CheckTxSamePeer(t *testing.T) {
 
 	tx := []byte(fmt.Sprintf("sender-0=%X=%d", prefix, 50))
 
-	require.NoError(t, txmp.CheckTx(&types.CachedTx{Tx: tx}, nil, mempool.TxInfo{SenderID: peerID}))
-	require.Error(t, txmp.CheckTx(&types.CachedTx{Tx: tx}, nil, mempool.TxInfo{SenderID: peerID}))
+	require.NoError(t, txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: peerID}))
+	require.Error(t, txmp.CheckTx(tx, nil, mempool.TxInfo{SenderID: peerID}))
 }
 
 func TestTxMempool_CheckTxSameSender(t *testing.T) {
@@ -489,9 +489,9 @@ func TestTxMempool_CheckTxSameSender(t *testing.T) {
 	tx1 := []byte(fmt.Sprintf("sender-0=%X=%d", prefix1, 50))
 	tx2 := []byte(fmt.Sprintf("sender-0=%X=%d", prefix2, 50))
 
-	require.NoError(t, txmp.CheckTx(&types.CachedTx{Tx: tx1}, nil, mempool.TxInfo{SenderID: peerID}))
+	require.NoError(t, txmp.CheckTx(tx1, nil, mempool.TxInfo{SenderID: peerID}))
 	require.Equal(t, 1, txmp.Size())
-	require.NoError(t, txmp.CheckTx(&types.CachedTx{Tx: tx2}, nil, mempool.TxInfo{SenderID: peerID}))
+	require.NoError(t, txmp.CheckTx(tx2, nil, mempool.TxInfo{SenderID: peerID}))
 	require.Equal(t, 1, txmp.Size())
 }
 
@@ -710,7 +710,7 @@ func TestTxMempool_CheckTxPostCheckError(t *testing.T) {
 				}
 				require.Equal(t, expectedErrString, checkTxRes.CheckTx.MempoolError)
 			}
-			require.NoError(t, txmp.CheckTx(&types.CachedTx{Tx: tx}, callback, mempool.TxInfo{SenderID: 0}))
+			require.NoError(t, txmp.CheckTx(tx, callback, mempool.TxInfo{SenderID: 0}))
 		})
 	}
 }
@@ -733,7 +733,7 @@ func TestRemoveBlobTx(t *testing.T) {
 	bTx, err := types.MarshalBlobTx(originalTx, &b)
 	require.NoError(t, err)
 
-	err = txmp.CheckTx(bTx.ToCachedTx(), nil, mempool.TxInfo{})
+	err = txmp.CheckTx(bTx, nil, mempool.TxInfo{})
 	require.NoError(t, err)
 
 	err = txmp.Update(1, types.CachedTxFromTxs([]types.Tx{indexWrapper}), abciResponses(1, abci.CodeTypeOK), nil, nil)

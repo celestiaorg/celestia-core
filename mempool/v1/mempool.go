@@ -184,16 +184,17 @@ func (txmp *TxMempool) TxsAvailable() <-chan struct{} { return txmp.txsAvailable
 // is (strictly) lower than the priority of tx and whose size together exceeds
 // the size of tx, and adds tx instead. If no such transactions exist, tx is
 // discarded.
-func (txmp *TxMempool) CheckTx(tx *types.CachedTx, cb func(*abci.Response), txInfo mempool.TxInfo) error {
+func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo mempool.TxInfo) error {
 	// During the initial phase of CheckTx, we do not need to modify any state.
 
 	// Reject transactions in excess of the configured maximum transaction size.
-	if len(tx.Tx) > txmp.config.MaxTxBytes {
-		return mempool.ErrTxTooLarge{Max: txmp.config.MaxTxBytes, Actual: len(tx.Tx)}
+	if len(tx) > txmp.config.MaxTxBytes {
+		return mempool.ErrTxTooLarge{Max: txmp.config.MaxTxBytes, Actual: len(tx)}
 	}
 
+	cachedTx := tx.ToCachedTx()
 	// If a precheck hook is defined, call it before invoking the application.
-	if err := txmp.preCheck(tx); err != nil {
+	if err := txmp.preCheck(cachedTx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
 		return mempool.ErrPreCheck{Reason: err}
 	}
@@ -206,7 +207,7 @@ func (txmp *TxMempool) CheckTx(tx *types.CachedTx, cb func(*abci.Response), txIn
 	txKey := tx.Key()
 
 	// Check for the transaction in the cache.
-	if !txmp.cache.Push(tx) {
+	if !txmp.cache.Push(cachedTx) {
 		// If the cached transaction is also in the pool, record its sender.
 		if elt, ok := txmp.txByKey[txKey]; ok {
 			txmp.metrics.AlreadySeenTxs.Add(1)
@@ -222,13 +223,13 @@ func (txmp *TxMempool) CheckTx(tx *types.CachedTx, cb func(*abci.Response), txIn
 	defer txmp.Unlock()
 
 	// Invoke an ABCI CheckTx for this transaction.
-	rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{Tx: tx.Tx})
+	rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{Tx: tx})
 	if err != nil {
-		txmp.cache.Remove(tx)
+		txmp.cache.Remove(cachedTx)
 		return err
 	}
 	wtx := &WrappedTx{
-		tx:        tx,
+		tx:        cachedTx,
 		timestamp: time.Now().UTC(),
 		height:    txmp.height,
 	}

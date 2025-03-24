@@ -200,7 +200,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 				len(tx),
 				schema.Download,
 			)
-			err = memR.mempool.CheckTx(ntx.ToCachedTx(), nil, txInfo)
+			err = memR.mempool.CheckTx(ntx, nil, txInfo)
 			if errors.Is(err, mempool.ErrTxInCache) {
 				memR.Logger.Debug("Tx already exists in cache", "tx", ntx.String())
 			} else if err != nil {

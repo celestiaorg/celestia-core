@@ -226,16 +226,17 @@ func (txmp *TxPool) CheckToPurgeExpiredTxs() {
 // CheckTx adds the given transaction to the mempool if it fits and passes the
 // application's ABCI CheckTx method. This should be viewed as the entry method for new transactions
 // into the network. In practice this happens via an RPC endpoint
-func (txmp *TxPool) CheckTx(tx *types.CachedTx, cb func(*abci.Response), txInfo mempool.TxInfo) error {
+func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo mempool.TxInfo) error {
 	// Reject transactions in excess of the configured maximum transaction size.
-	if len(tx.Tx) > txmp.config.MaxTxBytes {
-		return mempool.ErrTxTooLarge{Max: txmp.config.MaxTxBytes, Actual: len(tx.Tx)}
+	if len(tx) > txmp.config.MaxTxBytes {
+		return mempool.ErrTxTooLarge{Max: txmp.config.MaxTxBytes, Actual: len(tx)}
 	}
 
 	// This is a new transaction that we haven't seen before. Verify it against the app and attempt
 	// to add it to the transaction pool.
 	key := tx.Key()
-	rsp, err := txmp.TryAddNewTx(tx, key, txInfo)
+	cachedTx := tx.ToCachedTx()
+	rsp, err := txmp.TryAddNewTx(cachedTx, key, txInfo)
 	if err != nil {
 		return err
 	}

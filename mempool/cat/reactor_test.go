@@ -107,7 +107,7 @@ func TestReactorSendsTxAfterReceivingWantTx(t *testing.T) {
 
 	// add the transaction to the nodes pool. It's not connected to
 	// any peers so it shouldn't broadcast anything yet
-	require.NoError(t, pool.CheckTx(tx.ToCachedTx(), nil, mempool.TxInfo{}))
+	require.NoError(t, pool.CheckTx(tx, nil, mempool.TxInfo{}))
 
 	// Add the peer
 	reactor.InitPeer(peer)

@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tendermint/tendermint/types"
-
 	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/mempool"
 )
@@ -29,6 +27,6 @@ func BenchmarkTxPool_CheckTx(b *testing.B) {
 		tx := []byte(fmt.Sprintf("sender%d=%X=%d", n, prefix, priority))
 		b.StartTimer()
 
-		require.NoError(b, txmp.CheckTx(&types.CachedTx{Tx: tx}, nil, mempool.TxInfo{}))
+		require.NoError(b, txmp.CheckTx(tx, nil, mempool.TxInfo{}))
 	}
 }

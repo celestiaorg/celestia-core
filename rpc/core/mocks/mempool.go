@@ -37,7 +37,7 @@ func (m *MockMempool) EXPECT() *MockMempoolMockRecorder {
 }
 
 // CheckTx mocks base method.
-func (m *MockMempool) CheckTx(tx *types0.CachedTx, callback func(*types.Response), txInfo mempool.TxInfo) error {
+func (m *MockMempool) CheckTx(tx types0.Tx, callback func(*types.Response), txInfo mempool.TxInfo) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CheckTx", tx, callback, txInfo)
 	ret0, _ := ret[0].(error)
