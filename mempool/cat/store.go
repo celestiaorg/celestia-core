@@ -1,8 +1,6 @@
 package cat
 
 import (
-	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -13,7 +11,6 @@ import (
 type store struct {
 	mtx         sync.RWMutex
 	bytes       int64
-	orderedTxs  []*wrappedTx
 	txs         map[types.TxKey]*wrappedTx
 	reservedTxs map[types.TxKey]struct{}
 }
@@ -21,7 +18,6 @@ type store struct {
 func newStore() *store {
 	return &store{
 		bytes:       0,
-		orderedTxs:  make([]*wrappedTx, 0),
 		txs:         make(map[types.TxKey]*wrappedTx),
 		reservedTxs: make(map[types.TxKey]struct{}),
 	}
@@ -35,7 +31,6 @@ func (s *store) set(wtx *wrappedTx) bool {
 	defer s.mtx.Unlock()
 	if _, exists := s.txs[wtx.key]; !exists {
 		s.txs[wtx.key] = wtx
-		s.orderTx(wtx)
 		s.bytes += wtx.size()
 		return true
 	}
@@ -63,9 +58,6 @@ func (s *store) remove(txKey types.TxKey) bool {
 		return false
 	}
 	s.bytes -= tx.size()
-	if err := s.deleteOrderedTx(tx); err != nil {
-		panic(err)
-	}
 	delete(s.txs, txKey)
 	return true
 }
@@ -139,13 +131,10 @@ func (s *store) getTxsBelowPriority(priority int64) ([]*wrappedTx, int64) {
 	defer s.mtx.RUnlock()
 	txs := make([]*wrappedTx, 0, len(s.txs))
 	bytes := int64(0)
-	for i := len(s.orderedTxs) - 1; i >= 0; i-- {
-		tx := s.orderedTxs[i]
+	for _, tx := range s.txs {
 		if tx.priority < priority {
 			txs = append(txs, tx)
 			bytes += tx.size()
-		} else {
-			break
 		}
 	}
 	return txs, bytes
@@ -176,41 +165,4 @@ func (s *store) reset() {
 	defer s.mtx.Unlock()
 	s.bytes = 0
 	s.txs = make(map[types.TxKey]*wrappedTx)
-	s.orderedTxs = make([]*wrappedTx, 0)
-}
-
-func (s *store) orderTx(tx *wrappedTx) {
-	idx := s.getTxOrder(tx)
-	s.orderedTxs = append(s.orderedTxs[:idx], append([]*wrappedTx{tx}, s.orderedTxs[idx:]...)...)
-}
-
-func (s *store) deleteOrderedTx(tx *wrappedTx) error {
-	if len(s.orderedTxs) == 0 {
-		return fmt.Errorf("ordered transactions list is empty")
-	}
-	idx := s.getTxOrder(tx) - 1
-	if idx >= len(s.orderedTxs) || s.orderedTxs[idx] != tx {
-		return fmt.Errorf("transaction %X not found in ordered list", tx.key)
-	}
-	s.orderedTxs = append(s.orderedTxs[:idx], s.orderedTxs[idx+1:]...)
-	return nil
-}
-
-func (s *store) getTxOrder(tx *wrappedTx) int {
-	return sort.Search(len(s.orderedTxs), func(i int) bool {
-		if s.orderedTxs[i].priority == tx.priority {
-			return tx.timestamp.Before(s.orderedTxs[i].timestamp)
-		}
-		return s.orderedTxs[i].priority < tx.priority
-	})
-}
-
-func (s *store) iterateOrderedTxs(fn func(tx *wrappedTx) bool) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-	for _, tx := range s.orderedTxs {
-		if !fn(tx) {
-			break
-		}
-	}
 }

@@ -51,7 +51,7 @@ type TxPool struct {
 	metrics      *mempool.Metrics
 
 	// these values are modified once per height
-	mtx                  sync.Mutex
+	updateMtx            sync.Mutex
 	notifiedTxsAvailable bool
 	txsAvailable         chan struct{} // one value sent per height when mempool is not empty
 	preCheckFn           mempool.PreCheckFunc
@@ -127,15 +127,11 @@ func WithMetrics(metrics *mempool.Metrics) TxPoolOption {
 	return func(txmp *TxPool) { txmp.metrics = metrics }
 }
 
-// Lock locks the mempool, no new transactions can be processed
-func (txmp *TxPool) Lock() {
-	txmp.mtx.Lock()
-}
+// Lock is a noop as ABCI calls are serialized
+func (txmp *TxPool) Lock() {}
 
-// Unlock unlocks the mempool
-func (txmp *TxPool) Unlock() {
-	txmp.mtx.Unlock()
-}
+// Unlock is a noop as ABCI calls are serialized
+func (txmp *TxPool) Unlock() {}
 
 // Size returns the number of valid transactions in the mempool. It is
 // thread-safe.
@@ -165,8 +161,8 @@ func (txmp *TxPool) TxsAvailable() <-chan struct{} { return txmp.txsAvailable }
 
 // Height returns the latest height that the mempool is at
 func (txmp *TxPool) Height() int64 {
-	txmp.mtx.Lock()
-	defer txmp.mtx.Unlock()
+	txmp.updateMtx.Lock()
+	defer txmp.updateMtx.Unlock()
 	return txmp.height
 }
 
@@ -207,8 +203,8 @@ func (txmp *TxPool) IsRejectedTx(txKey types.TxKey) bool {
 // the txpool looped through all transactions and if so, performs a purge of any transaction
 // that has expired according to the TTLDuration. This is thread safe.
 func (txmp *TxPool) CheckToPurgeExpiredTxs() {
-	txmp.mtx.Lock()
-	defer txmp.mtx.Unlock()
+	txmp.updateMtx.Lock()
+	defer txmp.updateMtx.Unlock()
 	if txmp.config.TTLDuration > 0 && time.Since(txmp.lastPurgeTime) > txmp.config.TTLDuration {
 		expirationAge := time.Now().Add(-txmp.config.TTLDuration)
 		// A height of 0 means no transactions will be removed because of height
@@ -334,9 +330,6 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 		return nil, err
 	}
 
-	txmp.mtx.Lock()
-	defer txmp.mtx.Unlock()
-
 	// Invoke an ABCI CheckTx for this transaction.
 	rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{Tx: tx})
 	if err != nil {
@@ -352,7 +345,7 @@ func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxI
 
 	// Create wrapped tx
 	wtx := newWrappedTx(
-		tx, key, txmp.height, rsp.GasWanted, rsp.Priority, rsp.Sender,
+		tx, key, txmp.Height(), rsp.GasWanted, rsp.Priority, rsp.Sender,
 	)
 
 	// Perform the post check
@@ -409,6 +402,20 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 	txmp.seenByPeersSet.Add(txKey, peer)
 }
 
+// allEntriesSorted returns a slice of all the transactions currently in the
+// mempool, sorted in nonincreasing order by priority with ties broken by
+// increasing order of arrival time.
+func (txmp *TxPool) allEntriesSorted() []*wrappedTx {
+	txs := txmp.store.getAllTxs()
+	sort.Slice(txs, func(i, j int) bool {
+		if txs[i].priority == txs[j].priority {
+			return txs[i].timestamp.Before(txs[j].timestamp)
+		}
+		return txs[i].priority > txs[j].priority // N.B. higher priorities first
+	})
+	return txs
+}
+
 // ReapMaxBytesMaxGas returns a slice of valid transactions that fit within the
 // size and gas constraints. The results are ordered by nonincreasing priority,
 // with ties broken by increasing order of arrival. Reaping transactions does
@@ -422,20 +429,19 @@ func (txmp *TxPool) PeerHasTx(peer uint16, txKey types.TxKey) {
 func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx {
 	var totalGas, totalBytes int64
 
-	var keep []*types.CachedTx
-	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
+	var keep []*types.CachedTx //nolint:prealloc
+	for _, w := range txmp.allEntriesSorted() {
 		// N.B. When computing byte size, we need to include the overhead for
 		// encoding as protobuf to send to the application. This actually overestimates it
 		// as we add the proto overhead to each transaction
 		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx})
 		if (maxGas >= 0 && totalGas+w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes+txBytes > maxBytes) {
-			return true
+			continue
 		}
 		totalBytes += txBytes
 		totalGas += w.gasWanted
 		keep = append(keep, types.NewCachedTx(w.tx, w.key[:]))
-		return true
-	})
+	}
 	return keep
 }
 
@@ -448,15 +454,14 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 // The result may have fewer than max elements (possibly zero) if the mempool
 // does not have that many transactions available.
 func (txmp *TxPool) ReapMaxTxs(max int) types.Txs {
-	var keep []types.Tx
+	var keep []types.Tx //nolint:prealloc
 
-	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
+	for _, w := range txmp.allEntriesSorted() {
 		if max >= 0 && len(keep) >= max {
-			return false
+			break
 		}
 		keep = append(keep, w.tx)
-		return true
-	})
+	}
 	return keep
 }
 
@@ -485,6 +490,7 @@ func (txmp *TxPool) Update(
 	}
 	txmp.logger.Debug("updating mempool", "height", blockHeight, "txs", len(blockTxs))
 
+	txmp.updateMtx.Lock()
 	txmp.height = blockHeight
 	txmp.notifiedTxsAvailable = false
 
@@ -495,6 +501,7 @@ func (txmp *TxPool) Update(
 		txmp.postCheckFn = newPostFn
 	}
 	txmp.lastPurgeTime = time.Now()
+	txmp.updateMtx.Unlock()
 
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
 	for _, tx := range blockTxs {
@@ -658,12 +665,19 @@ func (txmp *TxPool) recheckTransactions() {
 	txmp.logger.Debug(
 		"executing re-CheckTx for all remaining transactions",
 		"num_txs", txmp.Size(),
-		"height", txmp.height,
+		"height", txmp.Height(),
 	)
+
+	// Collect transactions currently in the mempool requiring recheck.
+	// TODO: we are iterating over a map, which may scramble the order of transactions
+	// such that they are not in order, dictated by nonce and then priority. This may
+	// cause transactions to needlessly be kicked out in RecheckTx
+	wtxs := txmp.store.getAllTxs()
 
 	// Issue CheckTx calls for each remaining transaction, and when all the
 	// rechecks are complete signal watchers that transactions may be available.
-	txmp.store.iterateOrderedTxs(func(wtx *wrappedTx) bool {
+	for _, wtx := range wtxs {
+		wtx := wtx
 		// The response for this CheckTx is handled by the default recheckTxCallback.
 		rsp, err := txmp.proxyAppConn.CheckTxSync(abci.RequestCheckTx{
 			Tx:   wtx.tx,
@@ -675,8 +689,7 @@ func (txmp *TxPool) recheckTransactions() {
 		} else {
 			txmp.handleRecheckResult(wtx, rsp)
 		}
-		return true
-	})
+	}
 	_ = txmp.proxyAppConn.FlushAsync()
 
 	// When recheck is complete, trigger a notification for more transactions.
@@ -753,8 +766,8 @@ func (txmp *TxPool) notifyTxsAvailable() {
 }
 
 func (txmp *TxPool) preCheck(tx types.Tx) error {
-	txmp.mtx.Lock()
-	defer txmp.mtx.Unlock()
+	txmp.updateMtx.Lock()
+	defer txmp.updateMtx.Unlock()
 	if txmp.preCheckFn != nil {
 		return txmp.preCheckFn(tx)
 	}
@@ -762,6 +775,8 @@ func (txmp *TxPool) preCheck(tx types.Tx) error {
 }
 
 func (txmp *TxPool) postCheck(tx types.Tx, res *abci.ResponseCheckTx) error {
+	txmp.updateMtx.Lock()
+	defer txmp.updateMtx.Unlock()
 	if txmp.postCheckFn != nil {
 		return txmp.postCheckFn(tx, res)
 	}
