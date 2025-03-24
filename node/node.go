@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
@@ -1123,6 +1124,9 @@ func (n *Node) OnStart() error {
 		}
 	}
 
+	// todo: obviously remove
+	go n.printMemStats()
+
 	return nil
 }
 
@@ -1645,4 +1649,31 @@ func splitAndTrimEmpty(s, sep, cutset string) []string {
 		}
 	}
 	return nonEmptyStrings
+}
+
+func (n *Node) printMemStats() {
+	// print the mem stats every 15 seconds
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			printMemUsage()
+		}
+	}
+}
+
+func printMemUsage() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	// Print memory usage in a human-readable way
+	fmt.Printf("Alloc = %v MiB\n", bToMb(m.Alloc))
+	fmt.Printf("\tTotalAlloc = %v MiB\n", bToMb(m.TotalAlloc))
+	fmt.Printf("\tSys = %v MiB\n", bToMb(m.Sys))
+	fmt.Printf("\tNumGC = %v\n", m.NumGC)
+}
+
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }
