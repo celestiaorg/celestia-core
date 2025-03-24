@@ -8,10 +8,12 @@ import (
 
 	"github.com/cosmos/gogoproto/proto"
 
+	share "github.com/celestiaorg/go-square/v2/share"
+	square "github.com/celestiaorg/go-square/v2/tx"
+
 	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
-	"github.com/cometbft/cometbft/libs/consts"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 )
 
@@ -230,7 +232,7 @@ func UnmarshalIndexWrapper(tx Tx) (indexWrapper cmtproto.IndexWrapper, isIndexWr
 	if err != nil {
 		return indexWrapper, false
 	}
-	if indexWrapper.TypeId != consts.ProtoIndexWrapperTypeID {
+	if indexWrapper.TypeId != square.ProtoIndexWrapperTypeID {
 		return indexWrapper, false
 	}
 	return indexWrapper, true
@@ -244,7 +246,7 @@ func MarshalIndexWrapper(tx Tx, shareIndexes ...uint32) (Tx, error) {
 	wTx := cmtproto.IndexWrapper{
 		Tx:           tx,
 		ShareIndexes: shareIndexes,
-		TypeId:       consts.ProtoIndexWrapperTypeID,
+		TypeId:       square.ProtoIndexWrapperTypeID,
 	}
 	return proto.Marshal(&wTx)
 }
@@ -257,14 +259,14 @@ func UnmarshalBlobTx(tx Tx) (bTx cmtproto.BlobTx, isBlob bool) {
 		return cmtproto.BlobTx{}, false
 	}
 	// perform some quick basic checks to prevent false positives
-	if bTx.TypeId != consts.ProtoBlobTxTypeID {
+	if bTx.TypeId != square.ProtoBlobTxTypeID {
 		return bTx, false
 	}
 	if len(bTx.Blobs) == 0 {
 		return bTx, false
 	}
 	for _, b := range bTx.Blobs {
-		if len(b.NamespaceId) != consts.NamespaceIDSize {
+		if len(b.NamespaceId) != share.NamespaceIDSize {
 			return bTx, false
 		}
 	}
@@ -280,7 +282,7 @@ func MarshalBlobTx(tx []byte, blobs ...*cmtproto.Blob) (Tx, error) {
 	bTx := cmtproto.BlobTx{
 		Tx:     tx,
 		Blobs:  blobs,
-		TypeId: consts.ProtoBlobTxTypeID,
+		TypeId: square.ProtoBlobTxTypeID,
 	}
 	return bTx.Marshal()
 }

@@ -13,23 +13,6 @@ const (
 	// ShareInclusionProofQueryPath is the path used to query the application for the
 	// shares to data root inclusion proofs via the ABCI query method.
 	ShareInclusionProofQueryPath = "custom/shareInclusionProof/%d/%d"
-
-	// ProtoBlobTxTypeID is included in each encoded BlobTx to help prevent
-	// decoding binaries that are not actually BlobTxs.
-	ProtoBlobTxTypeID = "BLOB"
-
-	// ProtoIndexWrapperTypeID is included in each encoded IndexWrapper to help prevent
-	// decoding binaries that are not actually IndexWrappers.
-	ProtoIndexWrapperTypeID = "INDX"
-
-	// NamespaveVersionSize is the size of a namespace version in bytes.
-	NamespaceVersionSize = 1
-
-	// NamespaceIDSize is the size of a namespace ID in bytes.
-	NamespaceIDSize = 28
-
-	// NamespaceSize is the size of a namespace in bytes.
-	NamespaceSize = NamespaceIDSize + NamespaceVersionSize
 )
 
 var (

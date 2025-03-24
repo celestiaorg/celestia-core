@@ -5,10 +5,10 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/celestiaorg/go-square/v2/share"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cometbft/cometbft/libs/consts"
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	ctest "github.com/cometbft/cometbft/libs/test"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -189,7 +189,7 @@ func TestUnmarshalIndexWrapper(t *testing.T) {
 
 func TestUnmarshalBlobTx(t *testing.T) {
 	tx := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-	namespaceOne := bytes.Repeat([]byte{1}, consts.NamespaceIDSize)
+	namespaceOne := bytes.Repeat([]byte{1}, share.NamespaceIDSize)
 	blob := cmtproto.Blob{
 		NamespaceId:      namespaceOne,
 		Data:             []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9},
