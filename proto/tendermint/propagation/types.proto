@@ -5,8 +5,8 @@ option go_package = "github.com/tendermint/tendermint/proto/tendermint/propagati
 
 import "gogoproto/gogo.proto";
 import "tendermint/libs/bits/types.proto";
-import "tendermint/crypto/proof.proto";
 import "tendermint/types/types.proto";
+import "tendermint/crypto/proof.proto";
 
 // TxMetaData contains all information needed to commit to a transaction. Start
 // and end are used to insert the transaction into the protobuf encoded version
@@ -21,18 +21,18 @@ message TxMetaData {
 // clients to reuse already downloaded blobs instead of gossiping them all again
 // during the block propagation.
 message CompactBlock {
-  bytes                     bp_hash     = 1;
-  repeated TxMetaData       blobs       = 2;
-  bytes                     signature   = 3;
-  tendermint.types.Proposal proposal    = 4;
-  uint32                    last_length = 5;
+  bytes                     bp_hash      = 1;
+  repeated TxMetaData       blobs        = 2;
+  bytes                     signature    = 3;
+  tendermint.types.Proposal proposal     = 4;
+  uint32                    last_length  = 5;
+  repeated bytes            parts_hashes = 6;
 }
 
 // PartMetaData proves the inclusion of a part to the block.
 message PartMetaData {
-  uint32                  index = 1;
-  bytes                   hash  = 2;
-  tendermint.crypto.Proof proof = 3 [(gogoproto.nullable) = false];
+  uint32 index = 1;
+  bytes  hash  = 2;
 }
 
 // HaveParts is a message sent by a peer to inform that it has or will receive a
@@ -49,14 +49,16 @@ message WantParts {
   tendermint.libs.bits.BitArray parts  = 1 [(gogoproto.nullable) = false];
   int64                         height = 2;
   int32                         round  = 3;
+  bool                          prove  = 4;
 }
 
 // RecoveryPart is a wire message for sending a portion of the block to a peer.
 message RecoveryPart {
-  int64  height = 1;
-  int32  round  = 2;
-  uint32 index  = 3;
-  bytes  data   = 4;
+  int64                   height = 1;
+  int32                   round  = 2;
+  uint32                  index  = 3;
+  bytes                   data   = 4;
+  tendermint.crypto.Proof proof  = 5;
 }
 
 message Message {

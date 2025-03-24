@@ -12,6 +12,7 @@ type proposalData struct {
 	compactBlock *proptypes.CompactBlock
 	block        *proptypes.CombinedPartSet
 	maxRequests  *bits.BitArray
+	catchup      bool
 }
 
 type ProposalCache struct {
@@ -30,8 +31,6 @@ func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 	}
 
 	// if there is a block saved in the store, set the current height and round.
-	// todo(evan): probably handle this in a more complete way so that the round
-	// and block data is stored somewhere.
 	if bs.Height() != 0 {
 		pc.currentHeight = bs.Height()
 	}
@@ -85,25 +84,31 @@ func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal,
 	return &cb.Proposal, parts.Original(), has
 }
 
+func (p *ProposalCache) dumpAll() []*proposalData {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	data := make([]*proposalData, 0, len(p.proposals))
+	for _, heightData := range p.proposals {
+		for _, pd := range heightData {
+			data = append(data, pd)
+		}
+	}
+	return data
+}
+
 // GetProposal returns the proposal and block for a given height and round if
 // this node has it stored or cached. It also return the max requests for that
 // block.
 func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.CompactBlock, *proptypes.CombinedPartSet, *bits.BitArray, bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
-	// try to see if we have the block stored in the store. If so, we can ignore
-	// the round.
-	var hasStored *types.BlockMeta
-	if height < p.currentHeight {
-		hasStored = p.store.LoadBlockMeta(height)
-	}
 
 	cachedProps, has := p.proposals[height]
 	cachedProp, hasRound := cachedProps[round]
 
-	// if the round is less than zero, then they're asking for the latest
+	// if the round is less than -1, then they're asking for the latest
 	// proposal
-	if round < 0 && len(cachedProps) > 0 {
+	if round < -1 && len(cachedProps) > 0 {
 		// get the latest round
 		var latestRound int32
 		for r := range cachedProps {
@@ -115,15 +120,21 @@ func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.Compa
 		hasRound = true
 	}
 
+	var hasStored *types.BlockMeta
+	if height < p.currentHeight {
+		hasStored = p.store.LoadBlockMeta(height)
+	}
+
 	switch {
+	case has && hasRound:
+		return cachedProp.compactBlock, cachedProp.block, cachedProp.maxRequests, true
 	case hasStored != nil:
 		parts, _, err := p.store.LoadPartSet(height)
 		if err != nil {
 			return nil, nil, nil, false
 		}
-		return nil, proptypes.NewCombinedPartSetFromOriginal(parts), parts.BitArray(), true
-	case has && hasRound:
-		return cachedProp.compactBlock, cachedProp.block, cachedProp.maxRequests, true
+		cparts := proptypes.NewCombinedPartSetFromOriginal(parts, false)
+		return nil, cparts, cparts.BitArray(), true
 	default:
 		return nil, nil, nil, false
 	}
@@ -146,7 +157,7 @@ func (p *ProposalCache) GetCurrentProposal() (*types.Proposal, *proptypes.Combin
 
 // GetCurrentCompactBlock returns the current compact block for the current
 // height and round.
-func (p *ProposalCache) GetCurrentCompactBlock() (*proptypes.CompactBlock, *types.PartSet, bool) {
+func (p *ProposalCache) GetCurrentCompactBlock() (*proptypes.CompactBlock, *proptypes.CombinedPartSet, bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
 	if p.proposals[p.currentHeight] == nil {
@@ -156,7 +167,7 @@ func (p *ProposalCache) GetCurrentCompactBlock() (*proptypes.CompactBlock, *type
 	if !has {
 		return nil, nil, false
 	}
-	return proposalData.compactBlock, proposalData.block.Original(), true
+	return proposalData.compactBlock, proposalData.block, true
 }
 
 func (p *ProposalCache) DeleteHeight(height int64) {
@@ -173,25 +184,17 @@ func (p *ProposalCache) DeleteRound(height int64, round int32) {
 	}
 }
 
-// prune keeps the past X proposals / blocks in memory while deleting the rest.
-func (p *ProposalCache) prune(keepRecentHeights, keepRecentRounds int) {
+// prune deletes all cached compact blocks for heights less than the provided
+// height and round.
+//
+// todo: also prune rounds. this requires prune in the consensus reactor after
+// moving rounds.
+func (p *ProposalCache) prune(pruneHeight int64) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
 	for height := range p.proposals {
-		if height < p.currentHeight-int64(keepRecentHeights) {
+		if height < pruneHeight {
 			delete(p.proposals, height)
-		}
-	}
-	// delete all but the last round for each remaining height except the current.
-	// this is because we need to keep the last round for the current height.
-	for height := range p.proposals {
-		if height == p.currentHeight {
-			continue
-		}
-		for round := range p.proposals[height] {
-			if round <= p.currentRound-int32(keepRecentRounds) {
-				delete(p.proposals[height], round)
-			}
 		}
 	}
 }

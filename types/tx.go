@@ -249,7 +249,7 @@ func (tp TxProof) ToProto() cmtproto.TxProof {
 }
 func TxProofFromProto(pb cmtproto.TxProof) (TxProof, error) {
 
-	pbProof, err := merkle.ProofFromProto(pb.Proof)
+	pbProof, err := merkle.ProofFromProto(pb.Proof, false)
 	if err != nil {
 		return TxProof{}, err
 	}

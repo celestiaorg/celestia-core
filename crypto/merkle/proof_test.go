@@ -255,13 +255,87 @@ func TestVoteProtobuf(t *testing.T) {
 	for _, tc := range testCases {
 		pb := tc.v1.ToProto()
 
-		v, err := ProofFromProto(pb)
+		v, err := ProofFromProto(pb, false)
 		if tc.expPass {
 			require.NoError(t, err)
 			require.Equal(t, tc.v1, v, tc.testName)
 		} else {
 			require.Error(t, err)
 		}
+	}
+}
+
+func TestProofsFromLeafHashesAndByteSlices(t *testing.T) {
+	testCases := []struct {
+		name  string
+		input [][]byte
+	}{
+		{
+			name:  "Empty input",
+			input: [][]byte{},
+		},
+		{
+			name:  "Single element",
+			input: [][]byte{[]byte("A")},
+		},
+		{
+			name:  "Two elements",
+			input: [][]byte{[]byte("A"), []byte("B")},
+		},
+		{
+			name:  "Three elements",
+			input: [][]byte{[]byte("A"), []byte("B"), []byte("C")},
+		},
+		{
+			name:  "Four elements",
+			input: [][]byte{[]byte("A"), []byte("B"), []byte("C"), []byte("D")},
+		},
+		{
+			name:  "Duplicates",
+			input: [][]byte{[]byte("A"), []byte("A"), []byte("B"), []byte("B")},
+		},
+		{
+			name:  "Varying sizes",
+			input: [][]byte{[]byte("short"), []byte("medium-size"), []byte("a much longer string with more entropy")},
+		},
+		{
+			name:  "Non-UTF-8 bytes",
+			input: [][]byte{{0xff, 0xfe, 0xfd}, {0x00, 0x01, 0x02}, {0x80, 0x81, 0x82}},
+		},
+		{
+			name:  "Leading/trailing zeros",
+			input: [][]byte{{0x00, 0x00, 0x00}, {0xff, 0xff, 0xff}, {0x00, 0x01, 0x02, 0x00}},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			root1, proofs1 := ProofsFromByteSlices(tc.input)
+
+			leafHashes := make([][]byte, len(proofs1))
+			for i, proof := range proofs1 {
+				leafHashes[i] = proof.LeafHash
+			}
+
+			root2, proofs2 := ProofsFromLeafHashes(leafHashes)
+
+			// Root hashes should be identical
+			require.Equal(t, root1, root2, "root hashes should be equal")
+
+			// Proofs should be identical in length
+			require.Equal(t, len(proofs1), len(proofs2), "proofs length should be equal")
+
+			// Each proof should match exactly
+			for i := range proofs1 {
+				require.NotNil(t, proofs1[i], "proofs1[%d] should not be nil", i)
+				require.NotNil(t, proofs2[i], "proofs2[%d] should not be nil", i)
+
+				assert.Equal(t, proofs1[i].Total, proofs2[i].Total, "Total field mismatch")
+				assert.Equal(t, proofs1[i].Index, proofs2[i].Index, "Index field mismatch")
+				assert.Equal(t, proofs1[i].LeafHash, proofs2[i].LeafHash, "LeafHash field mismatch")
+				assert.Equal(t, proofs1[i].Aunts, proofs2[i].Aunts, "Aunts field mismatch")
+			}
+		})
 	}
 }
 

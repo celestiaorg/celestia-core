@@ -1,7 +1,10 @@
 package propagation
 
 import (
+	"bytes"
 	"fmt"
+
+	"github.com/tendermint/tendermint/crypto/merkle"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/tendermint/tendermint/proto/tendermint/mempool"
@@ -27,48 +30,90 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 		return
 	}
 
-	// create the compact block
+	partHashes := extractHashes(block, parityBlock)
+	proofs := extractProofs(block, parityBlock)
+
 	cb := proptypes.CompactBlock{
-		Proposal:  *proposal,
-		LastLen:   uint32(lastLen),
-		Signature: cmtrand.Bytes(64), // todo: sign the proposal with a real signature
-		BpHash:    parityBlock.Hash(),
-		Blobs:     txs,
+		Proposal:    *proposal,
+		LastLen:     uint32(lastLen),
+		Signature:   cmtrand.Bytes(64), // todo: sign the proposal with a real signature
+		BpHash:      parityBlock.Hash(),
+		Blobs:       txs,
+		PartsHashes: partHashes,
 	}
+
+	cb.SetProofCache(proofs)
 
 	// save the compact block locally and broadcast it to the connected peers
 	blockProp.handleCompactBlock(&cb, blockProp.self)
 
+	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round)
+	if !has {
+		panic(fmt.Sprintf("failed to get all state for this node's proposal %d/%d", proposal.Height, proposal.Round))
+	}
+
+	parts.SetProposalData(block, parityBlock)
+
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
-	chunks := chunkParts(parityBlock.BitArray(), len(peers), 1)
+	chunks := chunkParts(parts.BitArray(), len(peers), 1)
+	// chunks = Shuffle(chunks)
 	for index, peer := range peers {
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
 			Message: &propagation.HaveParts{
 				Height: proposal.Height,
 				Round:  proposal.Round,
-				Parts:  chunkToPartMetaData(chunks[index], parityBlock),
+				Parts:  chunkToPartMetaData(chunks[index], parts),
 			},
 		}
-		// TODO maybe use a different logger
-		if !p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+
+		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
 			blockProp.Logger.Error("failed to send have part", "peer", peer, "height", proposal.Height, "round", proposal.Round, "part", index)
-			// TODO maybe retry
+			// TODO retry
 			continue
 		}
 	}
 }
 
-func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propagation.PartMetaData {
+func extractHashes(blocks ...*types.PartSet) [][]byte {
+	total := uint32(0)
+	for _, block := range blocks {
+		total += block.Total()
+	}
+
+	partHashes := make([][]byte, 0, total) // Preallocate capacity
+	for _, block := range blocks {
+		for i := uint32(0); i < block.Total(); i++ {
+			partHashes = append(partHashes, block.GetPart(int(i)).Proof.LeafHash)
+		}
+	}
+	return partHashes
+}
+
+func extractProofs(blocks ...*types.PartSet) []*merkle.Proof {
+	total := uint32(0)
+	for _, block := range blocks {
+		total += block.Total()
+	}
+
+	proofs := make([]*merkle.Proof, 0, total) // Preallocate capacity
+	for _, block := range blocks {
+		for i := uint32(0); i < block.Total(); i++ {
+			proofs = append(proofs, &block.GetPart(int(i)).Proof)
+		}
+	}
+	return proofs
+}
+
+func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSet) []*propagation.PartMetaData {
 	partMetaData := make([]*propagation.PartMetaData, 0)
 	// TODO rename indice to a correct name
 	for _, indice := range chunk.GetTrueIndices() {
-		part := partSet.GetPart(indice)
-		partMetaData = append(partMetaData, &propagation.PartMetaData{ // TODO create the programmatic type and use the ToProto method
-			Index: part.Index,
-			Hash:  part.Proof.LeafHash, // TODO this seems like a duplicate field, do we need it?
-			Proof: *part.Proof.ToProto(),
+		part, _ := partSet.GetPart(uint32(indice))
+		partMetaData = append(partMetaData, &propagation.PartMetaData{
+			Index: uint32(indice),
+			Hash:  part.Proof.LeafHash,
 		})
 	}
 	return partMetaData
@@ -78,35 +123,69 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID) {
-	if peer != blockProp.self && (cb.Proposal.Height > blockProp.currentHeight+1 || cb.Proposal.Round > blockProp.currentRound+1) {
-		// catchup on missing heights/rounds by requesting the missing parts from all connected peers.
-		go blockProp.requestMissingBlocks(cb.Proposal.Height, cb.Proposal.Round)
-	}
-
 	added, _, _ := blockProp.AddProposal(cb)
-
-	// todo: add catchup logic here by checking for gaps
-
-	if added {
-		blockProp.broadcastCompactBlock(cb, peer)
+	if !added {
+		return
 	}
+
+	proofs, err := cb.Proofs()
+	if err != nil {
+		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
+		blockProp.Logger.Error("received invalid compact block", "err", err.Error())
+		// todo: kick peer
+		return
+	}
+
+	// run the catchup routine to recover any missing parts for past heights.
+	blockProp.retryWants(cb.Proposal.Height, cb.Proposal.Round)
+
+	blockProp.broadcastCompactBlock(cb, peer)
 
 	// check if we have any transactions that are in the compact block
 	parts := blockProp.compactBlockToParts(cb)
 	_, partSet, found := blockProp.GetProposal(cb.Proposal.Height, cb.Proposal.Round)
 	if !found {
+		panic("failed to get proposal that was just added")
+	}
+
+	// the partset will be complete if this node is the proposer, and thus
+	// doesn't need to recover any parts.
+	if partSet.IsComplete() {
 		return
 	}
+
 	for _, part := range parts {
+		// todo: figure out what we want to do here. we might just want to defer
+		// to the consensus reactor for invalid parts.
+		if !bytes.Equal(merkle.LeafHash(part.Bytes), cb.PartsHashes[part.Index]) {
+			blockProp.Logger.Error(
+				"recovered part hash is different than compact block",
+				"part",
+				part.Index,
+				"height",
+				cb.Proposal.Height,
+				"round",
+				cb.Proposal.Round,
+			)
+			continue
+		}
+
+		part.Proof = *proofs[part.Index]
+
+		// note: using AddPartWithoutProof to skip verifying the proof that was
+		// generated and verified above.
 		added, err := partSet.AddPartWithoutProof(part)
 		if err != nil {
 			blockProp.Logger.Error("failed to add locally recovered part", "err", err)
 			continue
 		}
+
 		if !added {
 			blockProp.Logger.Error("failed to add locally recovered part", "part", part.Index)
 			continue
 		}
+
+		// todo: broadcast haves
 	}
 }
 
@@ -173,7 +252,6 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 }
 
 // chunkParts takes a bit array then returns an array of chunked bit arrays.
-// TODO document how the redundancy and the peer count are used here.
 func chunkParts(p *bits.BitArray, peerCount, redundancy int) []*bits.BitArray {
 	size := p.Size()
 	if peerCount == 0 {
@@ -209,8 +287,9 @@ func chunkParts(p *bits.BitArray, peerCount, redundancy int) []*bits.BitArray {
 	return parts
 }
 
-// chunkIndexes
-// TODO document and explain the parameters
+// chunkIndexes creates a nested slice of starting and ending indexes for each
+// chunk. totalSize indicates the number of chunks. chunkSize indicates the size
+// of each chunk.
 func chunkIndexes(totalSize, chunkSize int) [][2]int {
 	if totalSize <= 0 || chunkSize <= 0 {
 		panic(fmt.Sprintf("invalid input: totalSize=%d, chunkSize=%d \n", totalSize, chunkSize))
