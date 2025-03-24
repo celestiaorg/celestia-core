@@ -1,6 +1,8 @@
 package propagation
 
 import (
+	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -19,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newPropagationReactor(s *p2p.Switch) *Reactor {
+func newPropagationReactor(s *p2p.Switch, tracer trace.Tracer) *Reactor {
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
 	blockPropR := NewReactor(s.NetAddress().ID, trace.NoOpTracer(), blockStore, mockMempool{})
 	blockPropR.SetSwitch(s)
@@ -27,14 +29,30 @@ func newPropagationReactor(s *p2p.Switch) *Reactor {
 	return blockPropR
 }
 
-func testBlockPropReactors(n int) ([]*Reactor, []*p2p.Switch) {
+func testBlockPropReactors(n int, p2pCfg *cfg.P2PConfig) ([]*Reactor, []*p2p.Switch) {
+	return createTestReactors(n, p2pCfg, false, "")
+}
+
+func createTestReactors(n int, p2pCfg *cfg.P2PConfig, tracer bool, traceDir string) ([]*Reactor, []*p2p.Switch) {
 	reactors := make([]*Reactor, n)
 	switches := make([]*p2p.Switch, n)
 
-	p2pCfg := cfg.DefaultP2PConfig()
-
 	p2p.MakeConnectedSwitches(p2pCfg, n, func(i int, s *p2p.Switch) *p2p.Switch {
-		reactors[i] = newPropagationReactor(s)
+		var (
+			tr  trace.Tracer
+			err error
+		)
+		if !tracer {
+			tr = trace.NoOpTracer()
+		} else {
+			dconfig := cfg.DefaultConfig()
+			dconfig.SetRoot(filepath.Join(traceDir, strconv.Itoa(i)))
+			tr, err = trace.NewLocalTracer(dconfig, log.NewNopLogger(), "test", string(s.NetAddress().ID))
+			if err != nil {
+				panic(err)
+			}
+		}
+		reactors[i] = newPropagationReactor(s, tr)
 		s.AddReactor("BlockProp", reactors[i])
 		switches = append(switches, s)
 		return s
@@ -46,7 +64,7 @@ func testBlockPropReactors(n int) ([]*Reactor, []*p2p.Switch) {
 }
 
 func TestCountRequests(t *testing.T) {
-	reactors, _ := testBlockPropReactors(1)
+	reactors, _ := testBlockPropReactors(1, cfg.DefaultP2PConfig())
 	reactor := reactors[0]
 
 	peer1 := mock.NewPeer(nil)
@@ -82,7 +100,7 @@ func TestCountRequests(t *testing.T) {
 }
 
 func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
-	reactors, _ := testBlockPropReactors(3)
+	reactors, _ := testBlockPropReactors(3, cfg.DefaultP2PConfig())
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
 	reactor3 := reactors[2]
@@ -182,7 +200,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 }
 
 func TestInvalidPart(t *testing.T) {
-	reactors, _ := testBlockPropReactors(2)
+	reactors, _ := testBlockPropReactors(2, cfg.DefaultP2PConfig())
 	reactor1 := reactors[0]
 	reactor2 := reactors[1]
 
@@ -350,6 +368,26 @@ func TestChunkParts(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestHugeBlock doesn't have a success or failure condition yet, although one could be added. It is very useful for debugging however
+func TestHugeBlock(t *testing.T) {
+	p2pCfg := cfg.DefaultP2PConfig()
+	p2pCfg.SendRate = 5000000
+	p2pCfg.RecvRate = 5000000
+
+	nodes := 20
+
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "/home/evan/data/experiments/celestia/fast-recovery/debug")
+
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
+
+	prop, ps, _, metaData := createTestProposal(sm, 1, 32, 1000000)
+
+	reactors[1].ProposeBlock(prop, ps, metaData)
 }
 
 func createBitArray(size int, indices []int) *bits.BitArray {

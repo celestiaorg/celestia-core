@@ -5,6 +5,7 @@ import (
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p/conn"
 	"reflect"
+	"sync"
 
 	"github.com/cometbft/cometbft/libs/bits"
 	"github.com/cometbft/cometbft/libs/sync"
@@ -18,8 +19,7 @@ import (
 )
 
 const (
-	// TODO: set a valid max msg size
-	maxMsgSize = 1048576
+	maxMsgSize = 4194304 // 4MiB
 
 	// DataChannel the propagation reactor channel handling the haves, the compact block,
 	// and the recovery parts.
@@ -27,6 +27,11 @@ const (
 
 	// WantChannel the propagation reactor channel handling the wants.
 	WantChannel = byte(0x51)
+
+	// blockCacheSize determines the number of blocks to keep in the cache.
+	// After each block is committed, only the last `blockCacheSize` blocks are
+	// kept.
+	blockCacheSize = 5
 )
 
 type Reactor struct {
@@ -49,7 +54,6 @@ type Reactor struct {
 
 func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempool Mempool, options ...ReactorOption) *Reactor {
 	if tracer == nil {
-		// TODO not pass nil. instead, use a NOOP and allow the tracer to be passed as an option
 		tracer = trace.NoOpTracer()
 	}
 	reactor := &Reactor{
@@ -76,24 +80,21 @@ func (blockProp *Reactor) OnStart() error {
 }
 
 func (blockProp *Reactor) OnStop() {
-	// TODO: implement
 }
 
 func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
-			// TODO: set better values
 			ID:                  WantChannel,
-			Priority:            6,
-			SendQueueCapacity:   100,
+			Priority:            20,
+			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
 		},
 		{
-			// TODO: set better values
 			ID:                  DataChannel,
-			Priority:            10,
-			SendQueueCapacity:   1000,
+			Priority:            15,
+			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
 		},
@@ -111,10 +112,10 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 
 	// ignore the peer if it already exists.
 	if p := blockProp.getPeer(peer.ID()); p != nil {
+		blockProp.Logger.Error("Peer exists in propagation reactors", "peer", peer.ID())
 		return
 	}
 
-	// TODO pass a separate logger if needed
 	blockProp.setPeer(peer.ID(), newPeerState(peer, blockProp.Logger))
 	cb, _, found := blockProp.GetCurrentCompactBlock()
 
@@ -132,6 +133,12 @@ func (blockProp *Reactor) AddPeer(peer p2p.Peer) {
 	if !p2p.TrySendEnvelopeShim(peer, e, blockProp.Logger) { //nolint:staticcheck
 		blockProp.Logger.Debug("failed to send proposal to peer", "peer", peer.ID())
 	}
+}
+
+func (blockProp *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
+	blockProp.mtx.Lock()
+	defer blockProp.mtx.Unlock()
+	delete(blockProp.peerstate, peer.ID())
 }
 
 func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
@@ -180,6 +187,17 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 
 func (blockProp *Reactor) Receive(e p2p.Envelope) {
 	blockProp.ReceiveEnvelope(e)
+}
+
+// Prune removes all peer and proposal state from the block propagation reactor.
+// This should be called only after a block has been committed.
+func (blockProp *Reactor) Prune(committedHeight int64) {
+	prunePast := committedHeight - blockCacheSize
+	peers := blockProp.getPeers()
+	for _, peer := range peers {
+		peer.prune(prunePast)
+	}
+	blockProp.ProposalCache.prune(prunePast)
 }
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,

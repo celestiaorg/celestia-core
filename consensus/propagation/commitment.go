@@ -47,22 +47,30 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// save the compact block locally and broadcast it to the connected peers
 	blockProp.handleCompactBlock(&cb, blockProp.self)
 
+	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round)
+	if !has {
+		panic(fmt.Sprintf("failed to get all state for this node's proposal %d/%d", proposal.Height, proposal.Round))
+	}
+
+	parts.SetProposalData(block, parityBlock)
+
 	// distribute equal portions of haves to each of the proposer's peers
 	peers := blockProp.getPeers()
-	chunks := chunkParts(parityBlock.BitArray(), len(peers), 1)
+	chunks := chunkParts(parts.BitArray(), len(peers), 1)
+	// chunks = Shuffle(chunks)
 	for index, peer := range peers {
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
 			Message: &propagation.HaveParts{
 				Height: proposal.Height,
 				Round:  proposal.Round,
-				Parts:  chunkToPartMetaData(chunks[index], parityBlock),
+				Parts:  chunkToPartMetaData(chunks[index], parts),
 			},
 		}
-		// TODO maybe use a different logger
-		if !p2p.SendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
+
+		if !p2p.TrySendEnvelopeShim(peer.peer, e, blockProp.Logger) { //nolint:staticcheck
 			blockProp.Logger.Error("failed to send have part", "peer", peer, "height", proposal.Height, "round", proposal.Round, "part", index)
-			// TODO maybe retry
+			// TODO retry
 			continue
 		}
 	}
@@ -98,13 +106,13 @@ func extractProofs(blocks ...*types.PartSet) []*merkle.Proof {
 	return proofs
 }
 
-func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propagation.PartMetaData {
+func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSet) []*propagation.PartMetaData {
 	partMetaData := make([]*propagation.PartMetaData, 0)
 	// TODO rename indice to a correct name
 	for _, indice := range chunk.GetTrueIndices() {
-		part := partSet.GetPart(indice)
-		partMetaData = append(partMetaData, &propagation.PartMetaData{ // TODO create the programmatic type and use the ToProto method
-			Index: part.Index,
+		part, _ := partSet.GetPart(uint32(indice))
+		partMetaData = append(partMetaData, &propagation.PartMetaData{
+			Index: uint32(indice),
 			Hash:  part.Proof.LeafHash,
 		})
 	}
@@ -115,11 +123,6 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *types.PartSet) []*propag
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
 func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID) {
-	if peer != blockProp.self && (cb.Proposal.Height > blockProp.currentHeight+1 || cb.Proposal.Round > blockProp.currentRound+1) {
-		// catchup on missing heights/rounds by requesting the missing parts from all connected peers.
-		go blockProp.requestMissingBlocks(cb.Proposal.Height, cb.Proposal.Round)
-	}
-
 	added, _, _ := blockProp.AddProposal(cb)
 	if !added {
 		return
@@ -132,6 +135,9 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 		// todo: kick peer
 		return
 	}
+
+	// run the catchup routine to recover any missing parts for past heights.
+	blockProp.retryWants(cb.Proposal.Height, cb.Proposal.Round)
 
 	blockProp.broadcastCompactBlock(cb, peer)
 
@@ -246,7 +252,6 @@ func (blockProp *Reactor) broadcastCompactBlock(cb *proptypes.CompactBlock, from
 }
 
 // chunkParts takes a bit array then returns an array of chunked bit arrays.
-// TODO document how the redundancy and the peer count are used here.
 func chunkParts(p *bits.BitArray, peerCount, redundancy int) []*bits.BitArray {
 	size := p.Size()
 	if peerCount == 0 {
@@ -282,8 +287,9 @@ func chunkParts(p *bits.BitArray, peerCount, redundancy int) []*bits.BitArray {
 	return parts
 }
 
-// chunkIndexes
-// TODO document and explain the parameters
+// chunkIndexes creates a nested slice of starting and ending indexes for each
+// chunk. totalSize indicates the number of chunks. chunkSize indicates the size
+// of each chunk.
 func chunkIndexes(totalSize, chunkSize int) [][2]int {
 	if totalSize <= 0 || chunkSize <= 0 {
 		panic(fmt.Sprintf("invalid input: totalSize=%d, chunkSize=%d \n", totalSize, chunkSize))

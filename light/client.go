@@ -1001,6 +1001,10 @@ func (c *Client) lightBlockFromPrimary(ctx context.Context, height int64) (*type
 		return l, err
 
 	case provider.ErrNoResponse, provider.ErrLightBlockNotFound, provider.ErrHeightTooHigh:
+
+		if err == provider.ErrLightBlockNotFound {
+			err = provider.NewNotFound()
+		}
 		// we find a new witness to replace the primary
 		c.logger.Info("error from light block request from primary, replacing...",
 			"error", err, "height", height, "primary", c.primary)
@@ -1105,6 +1109,9 @@ func (c *Client) findNewPrimary(ctx context.Context, height int64, remove bool) 
 		// process benign errors by logging them only
 		case provider.ErrNoResponse, provider.ErrLightBlockNotFound, provider.ErrHeightTooHigh:
 			lastError = response.err
+			if lastError == provider.ErrLightBlockNotFound {
+				lastError = provider.NewNotFound()
+			}
 			c.logger.Debug("error on light block request from witness",
 				"error", response.err, "primary", c.witnesses[response.witnessIndex])
 			continue

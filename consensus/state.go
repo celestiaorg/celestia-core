@@ -416,6 +416,7 @@ func (cs *State) OnStart() error {
 
 	// now start the receiveRoutine
 	go cs.receiveRoutine(0)
+	go cs.syncData()
 
 	// schedule the first round!
 	// use GetRoundState so we don't race the receiveRoutine for access
@@ -1617,6 +1618,8 @@ func (cs *State) enterPrecommit(height int64, round int32) {
 	if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 		cs.ProposalBlock = nil
 		cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
+		psh := cs.ProposalBlockParts.Header()
+		cs.propagator.AddCommitment(height, round, &psh)
 	}
 
 	if err := cs.eventBus.PublishEventUnlock(cs.RoundStateEvent()); err != nil {
@@ -1712,6 +1715,8 @@ func (cs *State) enterCommit(height int64, commitRound int32) {
 			// Set up ProposalBlockParts and keep waiting.
 			cs.ProposalBlock = nil
 			cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
+			psh := blockID.PartSetHeader
+			cs.propagator.AddCommitment(height, commitRound, &psh)
 
 			if err := cs.eventBus.PublishEventValidBlock(cs.RoundStateEvent()); err != nil {
 				logger.Error("failed publishing valid block", "err", err)
@@ -1875,6 +1880,8 @@ func (cs *State) finalizeCommit(height int64) {
 	// Schedule Round0 to start soon.
 	cs.scheduleRound0(&cs.RoundState)
 
+	// prune the propagation reactor
+	cs.propagator.Prune(height)
 	// By here,
 	// * cs.Height has been increment to height+1
 	// * cs.Step is now cstypes.RoundStepNewHeight
@@ -1992,7 +1999,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
 	if proposal.POLRound < -1 ||
 		(proposal.POLRound >= 0 && proposal.POLRound >= proposal.Round) {
-		return ErrInvalidProposalPOLRound
+		return fmt.Errorf(ErrInvalidProposalPOLRound.Error()+"%v %v", proposal.POLRound, proposal.Round)
 	}
 
 	p := proposal.ToProto()
@@ -2374,6 +2381,9 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 
 				if !cs.ProposalBlockParts.HasHeader(blockID.PartSetHeader) {
 					cs.ProposalBlockParts = types.NewPartSetFromHeader(blockID.PartSetHeader)
+					psh := blockID.PartSetHeader
+					// todo: override in propagator if an existing proposal exists
+					cs.propagator.AddCommitment(height, vote.Round, &psh)
 				}
 
 				cs.evsw.FireEvent(types.EventValidBlock, &cs.RoundState)
@@ -2674,13 +2684,10 @@ func repairWalFile(src, dst string) error {
 	return nil
 }
 
-const SyncDataInterval = 100
+const SyncDataInterval = 50
 
 // sync data periodically checks to make sure that all block parts in the data
 // routine are pushed through to the state.
-// TODO remove nolint
-//
-//nolint:unused
 func (cs *State) syncData() {
 	for {
 		select {
@@ -2716,16 +2723,19 @@ func (cs *State) syncData() {
 				)
 				continue
 			}
+
 			schema.WriteNote(
 				cs.traceClient,
 				h,
 				r,
 				"syncData",
-				"found data: is complete %v",
+				"found data: is complete %v %v %v",
 				parts.IsComplete(),
+				parts.Total(),
+				parts.BitArray().String(),
 			)
 
-			if prop != nil && pprop == nil {
+			if prop != nil && pprop == nil && prop.Signature != nil { // todo: don't use the signature as a proxy for catchup
 				schema.WriteNote(
 					cs.traceClient,
 					prop.Height,
@@ -2753,7 +2763,7 @@ func (cs *State) syncData() {
 				if part == nil {
 					continue
 				}
-				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{cs.Height, cs.Round, part}, ""}
+				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part}, ""}
 			}
 		}
 	}

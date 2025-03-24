@@ -17,10 +17,12 @@ import (
 )
 
 var (
-	ErrPartSetUnexpectedIndex = errors.New("error part set unexpected index")
-	ErrPartSetInvalidProof    = errors.New("error part set invalid proof")
-	ErrPartTooBig             = errors.New("error part size too big")
-	ErrPartInvalidSize        = errors.New("error inner part with invalid size")
+	ErrPartSetUnexpectedIndex   = errors.New("error part set unexpected index")
+	ErrPartSetInvalidProof      = errors.New("error part set invalid proof")
+	ErrPartSetInvalidProofHash  = errors.New("error part set invalid proof: wrong hash")
+	ErrPartSetInvalidProofTotal = errors.New("error part set invalid proof: wrong total")
+	ErrPartTooBig               = errors.New("error part size too big")
+	ErrPartInvalidSize          = errors.New("error inner part with invalid size")
 )
 
 // ErrInvalidPart is an error type for invalid parts.
@@ -101,7 +103,7 @@ func PartFromProto(pb *cmtproto.Part) (*Part, error) {
 	}
 
 	part := new(Part)
-	proof, err := merkle.ProofFromProto(&pb.Proof)
+	proof, err := merkle.ProofFromProto(&pb.Proof, false)
 	if err != nil {
 		return nil, err
 	}
@@ -373,6 +375,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	for i, d := range data[:ops.Total()] {
 		ops.partsBitArray.SetIndex(i, true)
 		if ops.parts[i] != nil {
+			ops.parts[i].Proof = *proofs[i]
 			continue
 		}
 		ops.parts[i] = &Part{
@@ -397,6 +400,7 @@ func Decode(ops, eps *PartSet, lastPartLen int) (*PartSet, *PartSet, error) {
 	for i := 0; i < int(eps.Total()); i++ {
 		eps.partsBitArray.SetIndex(i, true)
 		if eps.parts[i] != nil {
+			eps.parts[i].Proof = *eproofs[i]
 			continue
 		}
 		eps.parts[i] = &Part{
@@ -490,12 +494,11 @@ func (ps *PartSet) AddPart(part *Part) (bool, error) {
 
 	// The proof should be compatible with the number of parts.
 	if part.Proof.Total != int64(ps.total) {
-		return false, ErrPartSetInvalidProof
+		return false, fmt.Errorf(ErrPartSetInvalidProofTotal.Error()+":%v %v", part.Proof.Total, ps.total)
 	}
 
-	// Check hash proof
 	if part.Proof.Verify(ps.Hash(), part.Bytes) != nil {
-		return false, ErrPartSetInvalidProof
+		return false, ErrPartSetInvalidProofHash
 	}
 
 	return ps.AddPartWithoutProof(part)

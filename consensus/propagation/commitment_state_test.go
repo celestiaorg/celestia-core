@@ -175,7 +175,7 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 		{
 			name:         "Use negative round => fetch the latest round for height=5 which is 1",
 			height:       5,
-			round:        -1, // meaning "latest round"
+			round:        -2, // meaning "latest round"
 			wantProposal: prop2,
 			wantBitArray: bits.NewBitArray(3),
 			wantOk:       true,
@@ -288,7 +288,7 @@ func TestProposalCache_prune(t *testing.T) {
 	pc.currentHeight = 12
 	pc.currentRound = 2
 
-	pc.prune(1, 1) // keep only the past 1 height, and past 1 round in memory
+	pc.prune(11)
 
 	// Expect that everything older than height=11 is removed.
 	// So height=10 is gone
@@ -296,17 +296,10 @@ func TestProposalCache_prune(t *testing.T) {
 
 	// For height=11, we keep it because it's within 1 height of current (12)
 	require.NotNil(t, pc.proposals[11])
-
-	// For height=11, we also prune the older rounds. Because keepRecentRounds=1
-	// That means we only keep round=2 if it exists, or the maximum round if that's less.
-	// But the maximum round we inserted is 2, so we keep only that.
 	require.NotNil(t, pc.proposals[11][2], "round=2 of height=11 should remain")
-	require.Nil(t, pc.proposals[11][0], "round=0 of height=11 should have been pruned")
-	require.Nil(t, pc.proposals[11][1], "round=1 of height=11 should have been pruned")
-
-	// For the current height=12, we do not prune all but the last round.
-	// The code specifically skips pruning the current height's older rounds
+	require.NotNil(t, pc.proposals[11][0], "round=0 of height=11 should have been pruned")
+	require.NotNil(t, pc.proposals[11][1], "round=1 of height=11 should have been pruned")
 	require.NotNil(t, pc.proposals[12][0], "round=0 of current height=12 should remain")
 	require.NotNil(t, pc.proposals[12][1], "round=1 of current height=12 should remain")
-	require.NotNil(t, pc.proposals[12][2], "round=2 of current height=12 is definitely still there")
+	require.NotNil(t, pc.proposals[12][2], "round=2 of current height=12 should remain")
 }

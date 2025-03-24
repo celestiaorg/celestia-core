@@ -1006,7 +1006,7 @@ func makeNodeInfo(
 			mempl.MempoolChannel,
 			evidence.EvidenceChannel,
 			statesync.SnapshotChannel, statesync.ChunkChannel,
-			// propagation.DataChannel, propagation.WantChannel, // todo: reenable when new reactor is actually working
+			propagation.DataChannel, propagation.WantChannel, // todo: reenable when new reactor is actually working
 		},
 		Moniker: config.Moniker,
 		Other: p2p.DefaultNodeInfoOther{

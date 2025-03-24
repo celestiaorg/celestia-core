@@ -350,58 +350,6 @@ func TestHavePartsValidateBasic(t *testing.T) {
 	}
 }
 
-func TestHaveParts_RemoveIndex(t *testing.T) {
-	testCases := []struct {
-		name     string
-		existing []PartMetaData
-		remove   uint32
-		expLeft  []uint32 // expected remaining indexes
-	}{
-		{
-			name: "remove existing part",
-			existing: []PartMetaData{
-				{Index: 0, Hash: []byte("hash0")},
-				{Index: 1, Hash: []byte("hash1")},
-				{Index: 2, Hash: []byte("hash2")},
-			},
-			remove:  1,
-			expLeft: []uint32{0, 2},
-		},
-		{
-			name: "remove non-existing part",
-			existing: []PartMetaData{
-				{Index: 5, Hash: []byte("hash5")},
-				{Index: 6, Hash: []byte("hash6")},
-			},
-			remove:  10,
-			expLeft: []uint32{5, 6},
-		},
-		{
-			name:     "remove from empty slice",
-			existing: nil,
-			remove:   0,
-			expLeft:  []uint32{},
-		},
-	}
-
-	for _, tc := range testCases {
-		tc := tc // capture range variable
-		t.Run(tc.name, func(t *testing.T) {
-			hp := &HaveParts{
-				Parts: tc.existing,
-			}
-
-			hp.RemoveIndex(tc.remove)
-			require.Equal(t, len(tc.expLeft), len(hp.Parts), "length after removal")
-
-			// Check the leftover indexes
-			for i, part := range hp.Parts {
-				require.Equal(t, tc.expLeft[i], part.Index)
-			}
-		})
-	}
-}
-
 func TestHaveParts_IsEmpty(t *testing.T) {
 	testCases := []struct {
 		name      string
