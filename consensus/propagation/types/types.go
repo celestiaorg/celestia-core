@@ -52,7 +52,7 @@ func (t *TxMetaData) ValidateBasic() error {
 // CompactBlock contains commitments and metadata for reusing transactions that
 // have already been distributed.
 type CompactBlock struct {
-	// BpHash is the block propagation hash.
+	// BpHash is the block propagation hash. It's the root of the mekle tree where the leaves are the concatenation of the original partset elements and the parity one.
 	BpHash    []byte         `json:"bp_hash,omitempty"`
 	Blobs     []TxMetaData   `json:"blobs,omitempty"`
 	Signature []byte         `json:"signature,omitempty"`
