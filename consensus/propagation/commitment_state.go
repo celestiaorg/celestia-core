@@ -106,7 +106,7 @@ func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.Compa
 	cachedProps, has := p.proposals[height]
 	cachedProp, hasRound := cachedProps[round]
 
-	// if the round is less than zero, then they're asking for the latest
+	// if the round is less than -1, then they're asking for the latest
 	// proposal
 	if round < -1 && len(cachedProps) > 0 {
 		// get the latest round

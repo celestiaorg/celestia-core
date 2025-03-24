@@ -289,7 +289,7 @@ func chunkParts(p *bits.BitArray, peerCount, redundancy int) []*bits.BitArray {
 
 // chunkIndexes creates a nested slice of starting and ending indexes for each
 // chunk. totalSize indicates the number of chunks. chunkSize indicates the size
-// of each chunk..
+// of each chunk.
 func chunkIndexes(totalSize, chunkSize int) [][2]int {
 	if totalSize <= 0 || chunkSize <= 0 {
 		panic(fmt.Sprintf("invalid input: totalSize=%d, chunkSize=%d \n", totalSize, chunkSize))
