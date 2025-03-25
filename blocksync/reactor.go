@@ -514,7 +514,6 @@ FOR_LOOP:
 				// set of transactions that would cause a different app hash and
 				// thus cause this node to panic.
 				stateMachineValid, err = bcR.blockExec.ProcessProposal(first, state)
-				fmt.Println("aaaaaa", err)
 				if !stateMachineValid {
 					err = fmt.Errorf("application has rejected syncing block (%X) at height %d, %w", first.Hash(), first.Height, err)
 				}
