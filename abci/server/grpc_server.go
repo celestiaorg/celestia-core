@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"math"
 	"net"
 
 	"google.golang.org/grpc"
@@ -43,7 +44,10 @@ func (s *GRPCServer) OnStart() error {
 	}
 
 	s.listener = ln
-	s.server = grpc.NewServer()
+	s.server = grpc.NewServer(
+		grpc.MaxRecvMsgSize(math.MaxInt32),
+		grpc.MaxSendMsgSize(math.MaxInt32),
+	)
 	types.RegisterABCIServer(s.server, &gRPCApplication{s.app})
 
 	s.Logger.Info("Listening", "proto", s.proto, "addr", s.addr)
