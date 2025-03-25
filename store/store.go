@@ -101,7 +101,7 @@ func (bs *BlockStore) LoadPartSet(height int64) (*types.PartSet, *types.BlockMet
 		if part == nil {
 			return nil, nil, fmt.Errorf("block part not found")
 		}
-		wasAdded, err := partSet.AddPart(part)
+		wasAdded, err := partSet.AddPartWithoutProof(part)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error adding part to block store: %w", err)
 		}

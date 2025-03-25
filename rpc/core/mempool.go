@@ -22,7 +22,7 @@ var ErrTimedOutWaitingForTx = errors.New("timed out waiting for tx to be include
 // CheckTx nor DeliverTx results.
 // More: https://docs.cometbft.com/v0.34/rpc/#/Tx/broadcast_tx_async
 func BroadcastTxAsync(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
-	err := GetEnvironment().Mempool.CheckTx(tx, nil, mempl.TxInfo{})
+	err := GetEnvironment().Mempool.CheckTx(tx, nil, mempl.TxInfo{IsRPC: true})
 
 	if err != nil {
 		return nil, err
@@ -41,7 +41,7 @@ func BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcas
 		case resCh <- res:
 		}
 
-	}, mempl.TxInfo{})
+	}, mempl.TxInfo{IsRPC: true})
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadc
 		case <-ctx.Context().Done():
 		case checkTxResCh <- res:
 		}
-	}, mempl.TxInfo{})
+	}, mempl.TxInfo{IsRPC: true})
 	if err != nil {
 		env.Logger.Error("Error on broadcastTxCommit", "err", err)
 		return nil, fmt.Errorf("error on broadcastTxCommit: %v", err)

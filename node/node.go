@@ -1125,7 +1125,7 @@ func (n *Node) OnStart() error {
 	}
 
 	// todo: obviously remove
-	go n.printMemStats()
+	go n.printMemStats(n.tracer)
 
 	return nil
 }
@@ -1651,29 +1651,35 @@ func splitAndTrimEmpty(s, sep, cutset string) []string {
 	return nonEmptyStrings
 }
 
-func (n *Node) printMemStats() {
-	// print the mem stats every 15 seconds
-	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
+type MemStats struct {
+	Alloc      uint64 `json:"alloc"`
+	TotalAlloc uint64 `json:"total_alloc"`
+	Sys        uint64 `json:"sys"`
+	NumGC      uint32 `json:"num_gc"`
+}
+
+func (ms *MemStats) Table() string {
+	return "mem_stats"
+}
+
+func (n *Node) printMemStats(traceClient trace.Tracer) {
+	timer := time.NewTicker(5 * time.Second)
 	for {
 		select {
-		case <-ticker.C:
-			printMemUsage()
+		case <-timer.C:
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			ms := &MemStats{
+				Alloc:      m.Alloc,
+				TotalAlloc: m.TotalAlloc,
+				Sys:        m.Sys,
+				NumGC:      m.NumGC,
+			}
+			if traceClient != nil {
+				traceClient.Write(ms)
+			}
+		case <-n.Quit():
+			return
 		}
 	}
-}
-
-func printMemUsage() {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-
-	// Print memory usage in a human-readable way
-	fmt.Printf("Alloc = %v MiB\n", bToMb(m.Alloc))
-	fmt.Printf("\tTotalAlloc = %v MiB\n", bToMb(m.TotalAlloc))
-	fmt.Printf("\tSys = %v MiB\n", bToMb(m.Sys))
-	fmt.Printf("\tNumGC = %v\n", m.NumGC)
-}
-
-func bToMb(b uint64) uint64 {
-	return b / 1024 / 1024
 }

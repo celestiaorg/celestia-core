@@ -166,13 +166,13 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
-			Priority:            6,
+			Priority:            2,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 		{
 			ID:                  MempoolStateChannel,
-			Priority:            5,
+			Priority:            3,
 			RecvMessageCapacity: stateMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
@@ -392,9 +392,9 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 // broadcastNewTx broadcast new transaction to all peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 	msg := &protomem.Message{
-		Sum: &protomem.Message_Txs{
-			Txs: &protomem.Txs{
-				Txs: [][]byte{wtx.tx},
+		Sum: &protomem.Message_SeenTx{
+			SeenTx: &protomem.SeenTx{
+				TxKey: wtx.key[:],
 			},
 		},
 	}
@@ -418,8 +418,8 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 			continue
 		}
 
-		if peer.Send(mempool.MempoolChannel, bz) { //nolint:staticcheck
-			memR.mempool.PeerHasTx(id, wtx.key)
+		if peer.TrySend(MempoolStateChannel, bz) { //nolint:staticcheck
+			// memR.mempool.PeerHasTx(id, wtx.key)
 		}
 	}
 }

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/creachadair/taskgroup"
-
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
