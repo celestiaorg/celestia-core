@@ -44,10 +44,9 @@ func (s *GRPCServer) OnStart() error {
 	}
 
 	s.listener = ln
-	// aligns with nova client: https://github.com/01builders/nova/blob/083c7086a455c273de97ec5e2ec58a73a11f57d2/abci/multiplexer.go#L124-L125
 	s.server = grpc.NewServer(
-		grpc.MaxRecvMsgSize(math.MaxInt),
-		grpc.MaxSendMsgSize(math.MaxInt),
+		grpc.MaxRecvMsgSize(math.MaxInt32),
+		grpc.MaxSendMsgSize(math.MaxInt32),
 	)
 	types.RegisterABCIServer(s.server, &gRPCApplication{s.app})
 
