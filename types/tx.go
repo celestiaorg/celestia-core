@@ -104,6 +104,12 @@ func (tx Tx) Hash() []byte {
 	return tmhash.Sum(tx)
 }
 
+func (tx Tx) ToCachedTx() *CachedTx {
+	return &CachedTx{Tx: tx}
+}
+
+// Key returns the sha256 hash of the wire encoded transaction. It attempts to
+// unwrap the transaction if it is a BlobTx or a IndexWrapper.
 func (tx Tx) Key() TxKey {
 	if blobTx, isBlobTx := UnmarshalBlobTx(tx); isBlobTx {
 		return sha256.Sum256(blobTx.Tx)

@@ -337,7 +337,7 @@ func checkTxsInOrder(t *testing.T, txs types.Txs, reactor *Reactor, reactorIndex
 	// Check that all transactions in the mempool are in the same order as txs.
 	reapedTxs := reactor.mempool.ReapMaxTxs(len(txs))
 	for i, tx := range txs {
-		assert.Equalf(t, tx, reapedTxs[i],
+		assert.Equalf(t, tx, reapedTxs[i].Tx,
 			"txs at index %d on reactor %d don't match: %v vs %v", i, reactorIndex, tx, reapedTxs[i])
 	}
 }

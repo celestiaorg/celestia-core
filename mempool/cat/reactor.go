@@ -233,7 +233,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				memR.mempool.PeerHasTx(peerID, key)
 				memR.Logger.Debug("received new trasaction", "peerID", peerID, "txKey", key)
 			}
-			_, err = memR.mempool.TryAddNewTx(ntx, key, txInfo)
+			_, err = memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
 			if err != nil && err != ErrTxInMempool {
 				memR.Logger.Info("Could not add tx", "txKey", key, "err", err)
 				return
@@ -312,7 +312,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 					memR.traceClient,
 					string(e.Src.ID()),
 					txKey[:],
-					len(tx),
+					len(tx.Tx),
 					schema.Upload,
 				)
 			}
@@ -376,7 +376,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 	msg := &protomem.Message{
 		Sum: &protomem.Message_Txs{
 			Txs: &protomem.Txs{
-				Txs: [][]byte{wtx.tx},
+				Txs: [][]byte{wtx.tx.Tx},
 			},
 		},
 	}
@@ -392,7 +392,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 			}
 		}
 
-		if memR.mempool.seenByPeersSet.Has(wtx.key, id) {
+		if memR.mempool.seenByPeersSet.Has(wtx.key(), id) {
 			continue
 		}
 

@@ -267,6 +267,7 @@ func (mem *CListMempool) CheckTx(
 		}
 	}
 
+	cachedTx := tx.ToCachedTx()
 	if mem.preCheck != nil {
 		if err := mem.preCheck(tx); err != nil {
 			return ErrPreCheck{Err: err}
@@ -278,7 +279,7 @@ func (mem *CListMempool) CheckTx(
 		return ErrAppConnMempool{Err: err}
 	}
 
-	if !mem.cache.Push(tx) { // if the transaction already exists in the cache
+	if !mem.cache.Push(cachedTx) { // if the transaction already exists in the cache
 		// Record a new sender for a tx we've already seen.
 		// Note it's possible a tx is still in the cache but no longer in the mempool
 		// (eg. after committing a block, txs are removed from mempool but not cache),
@@ -439,7 +440,7 @@ func (mem *CListMempool) resCbFirstTime(
 		if (r.CheckTx.Code == abci.CodeTypeOK) && postCheckErr == nil {
 			// Check mempool isn't full again to reduce the chance of exceeding the
 			// limits.
-			if err := mem.isFull(len(tx)); err != nil {
+			if err := mem.isFull(len(tx.Tx)); err != nil {
 				// remove from cache (mempool might have a space later)
 				mem.cache.Remove(tx)
 				// use debug level to avoid spamming logs when traffic is high
@@ -449,12 +450,12 @@ func (mem *CListMempool) resCbFirstTime(
 			}
 
 			// Check transaction not already in the mempool
-			if e, ok := mem.txsMap.Load(types.Tx(tx).Key()); ok {
+			if e, ok := mem.txsMap.Load(tx.Key()); ok {
 				memTx := e.(*clist.CElement).Value.(*mempoolTx)
 				memTx.addSender(txInfo.SenderID)
 				mem.logger.Debug(
 					"transaction already there, not adding it again",
-					"tx", types.Tx(tx).Hash(),
+					"tx", tx.Hash(),
 					"res", r,
 					"height", mem.height.Load(),
 					"total", mem.Size(),
@@ -472,7 +473,7 @@ func (mem *CListMempool) resCbFirstTime(
 			mem.addTx(memTx)
 			mem.logger.Debug(
 				"added good transaction",
-				"tx", types.Tx(tx).Hash(),
+				"tx", tx.Hash(),
 				"res", r,
 				"height", mem.height.Load(),
 				"total", mem.Size(),
@@ -560,17 +561,17 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.Cac
 	// TODO: we will get a performance boost if we have a good estimate of avg
 	// size per tx, and set the initial capacity based off of that.
 	// txs := make([]types.Tx, 0, cmtmath.MinInt(mem.txs.Len(), max/mem.avgTxSize))
-	txs := make([]types.Tx, 0, mem.txs.Len())
+	txs := make([]*types.CachedTx, 0, mem.txs.Len())
 	for e := mem.txs.Front(); e != nil; e = e.Next() {
 		memTx := e.Value.(*mempoolTx)
 
 		txs = append(txs, memTx.tx)
 
-		dataSize := types.ComputeProtoSizeForTxs([]types.Tx{memTx.tx})
+		dataSize := types.ComputeProtoSizeForTxs([]types.Tx{memTx.tx.Tx})
 
 		// Check total size requirement
 		if maxBytes > -1 && runningSize+dataSize > maxBytes {
-			return types.CachedTxFromTxs(txs[:len(txs)-1])
+			return txs[:len(txs)-1]
 		}
 
 		runningSize += dataSize
@@ -581,15 +582,15 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.Cac
 		// must be non-negative, it follows that this won't overflow.
 		newTotalGas := totalGas + memTx.gasWanted
 		if maxGas > -1 && newTotalGas > maxGas {
-			return types.CachedTxFromTxs(txs[:len(txs)-1])
+			return txs[:len(txs)-1]
 		}
 		totalGas = newTotalGas
 	}
-	return types.CachedTxFromTxs(txs)
+	return txs
 }
 
 // Safe for concurrent use by multiple goroutines.
-func (mem *CListMempool) ReapMaxTxs(max int) types.Txs {
+func (mem *CListMempool) ReapMaxTxs(max int) []*types.CachedTx {
 	mem.updateMtx.RLock()
 	defer mem.updateMtx.RUnlock()
 
@@ -597,7 +598,7 @@ func (mem *CListMempool) ReapMaxTxs(max int) types.Txs {
 		max = mem.txs.Len()
 	}
 
-	txs := make([]types.Tx, 0, cmtmath.MinInt(mem.txs.Len(), max))
+	txs := make([]*types.CachedTx, 0, cmtmath.MinInt(mem.txs.Len(), max))
 	for e := mem.txs.Front(); e != nil && len(txs) <= max; e = e.Next() {
 		memTx := e.Value.(*mempoolTx)
 		txs = append(txs, memTx.tx)

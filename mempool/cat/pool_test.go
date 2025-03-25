@@ -167,9 +167,9 @@ func TestTxPool_TxsAvailable(t *testing.T) {
 	ensureTxFire()
 	ensureNoTxFire()
 
-	rawTxs := make([]types.Tx, len(txs))
+	rawTxs := make([]*types.CachedTx, len(txs))
 	for i, tx := range txs {
-		rawTxs[i] = tx.tx
+		rawTxs[i] = tx.tx.ToCachedTx()
 	}
 
 	responses := make([]*abci.ExecTxResult, len(rawTxs[:50]))
@@ -198,9 +198,9 @@ func TestTxPool_Size(t *testing.T) {
 	require.Equal(t, len(txs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
 
-	rawTxs := make([]types.Tx, len(txs))
+	rawTxs := make([]*types.CachedTx, len(txs))
 	for i, tx := range txs {
-		rawTxs[i] = tx.tx
+		rawTxs[i] = tx.tx.ToCachedTx()
 	}
 
 	responses := make([]*abci.ExecTxResult, len(rawTxs[:50]))
@@ -313,9 +313,9 @@ func TestTxPool_Flush(t *testing.T) {
 	require.Equal(t, len(txs), txmp.Size())
 	require.Equal(t, int64(5800), txmp.SizeBytes())
 
-	rawTxs := make([]types.Tx, len(txs))
+	rawTxs := make([]*types.CachedTx, len(txs))
 	for i, tx := range txs {
-		rawTxs[i] = tx.tx
+		rawTxs[i] = tx.tx.ToCachedTx()
 	}
 
 	responses := make([]*abci.ExecTxResult, len(rawTxs[:50]))
@@ -417,7 +417,7 @@ func TestTxPool_ReapMaxTxs(t *testing.T) {
 		txMap[tx.tx.Key()] = tx.priority
 	}
 
-	ensurePrioritized := func(reapedTxs types.Txs) {
+	ensurePrioritized := func(reapedTxs []*types.CachedTx) {
 		for i := 0; i < len(reapedTxs)-1; i++ {
 			currPriority := txMap[reapedTxs[i].Key()]
 			nextPriority := txMap[reapedTxs[i+1].Key()]
@@ -660,7 +660,7 @@ func TestTxPool_CheckTxPostCheckError(t *testing.T) {
 	for _, tc := range cases {
 		testCase := tc
 		t.Run(testCase.name, func(t *testing.T) {
-			postCheckFn := func(_ types.Tx, _ *abci.ResponseCheckTx) error {
+			postCheckFn := func(_ *types.CachedTx, _ *abci.ResponseCheckTx) error {
 				return testCase.err
 			}
 			txmp := setup(t, 0, WithPostCheck(postCheckFn))
@@ -707,7 +707,7 @@ func TestTxPool_RemoveBlobTx(t *testing.T) {
 	err = txmp.CheckTx(bTx, nil, mempool.TxInfo{})
 	require.NoError(t, err)
 
-	err = txmp.Update(1, []types.Tx{indexWrapper}, abciResponses(1, abci.CodeTypeOK), nil, nil)
+	err = txmp.Update(1, []*types.CachedTx{indexWrapper.ToCachedTx()}, abciResponses(1, abci.CodeTypeOK), nil, nil)
 	require.NoError(t, err)
 	require.EqualValues(t, 0, txmp.Size())
 	require.EqualValues(t, 0, txmp.SizeBytes())
@@ -733,7 +733,7 @@ func TestTxPool_ConcurrentlyAddingTx(t *testing.T) {
 		wg.Add(1)
 		go func(sender uint16) {
 			defer wg.Done()
-			_, err := txPool.TryAddNewTx(tx, tx.Key(), mempool.TxInfo{SenderID: sender})
+			_, err := txPool.TryAddNewTx(tx.ToCachedTx(), tx.Key(), mempool.TxInfo{SenderID: sender})
 			errCh <- err
 		}(uint16(i + 1))
 	}
@@ -776,7 +776,7 @@ func TestTxPool_BroadcastQueue(t *testing.T) {
 			case <-ctx.Done():
 				assert.FailNowf(t, "failed to receive all txs (got %d/%d)", "", i+1, txs)
 			case wtx := <-txmp.next():
-				require.Equal(t, wtx.tx, newDefaultTx(fmt.Sprintf("%d", i)))
+				require.Equal(t, wtx.tx.Tx, newDefaultTx(fmt.Sprintf("%d", i)))
 			}
 		}
 	}()

@@ -95,8 +95,8 @@ func NewTxPool(
 		evictedTxCache:   NewLRUTxCache(cfg.CacheSize / 5),
 		seenByPeersSet:   NewSeenTxSet(),
 		height:           height,
-		preCheckFn:       func(_ types.Tx) error { return nil },
-		postCheckFn:      func(_ types.Tx, _ *abci.ResponseCheckTx) error { return nil },
+		preCheckFn:       func(_ *types.CachedTx) error { return nil },
+		postCheckFn:      func(_ *types.CachedTx, _ *abci.ResponseCheckTx) error { return nil },
 		store:            newStore(),
 		broadcastCh:      make(chan *wrappedTx),
 		txsToBeBroadcast: make([]types.TxKey, 0),
@@ -178,18 +178,18 @@ func (txmp *TxPool) Has(txKey types.TxKey) bool {
 
 // Get retrieves a transaction based on the key.
 // Deprecated: use GetTxByKey instead.
-func (txmp *TxPool) Get(txKey types.TxKey) (types.Tx, bool) {
+func (txmp *TxPool) Get(txKey types.TxKey) (*types.CachedTx, bool) {
 	return txmp.GetTxByKey(txKey)
 }
 
 // GetTxByKey retrieves a transaction based on the key. It returns a bool
 // indicating whether transaction was found in the cache.
-func (txmp *TxPool) GetTxByKey(txKey types.TxKey) (types.Tx, bool) {
+func (txmp *TxPool) GetTxByKey(txKey types.TxKey) (*types.CachedTx, bool) {
 	wtx := txmp.store.get(txKey)
 	if wtx != nil {
 		return wtx.tx, true
 	}
-	return types.Tx{}, false
+	return &types.CachedTx{}, false
 }
 
 // WasRecentlyEvicted returns a bool indicating whether the transaction with
@@ -217,7 +217,7 @@ func (txmp *TxPool) CheckToPurgeExpiredTxs() {
 		purgedTxs, numExpired := txmp.store.purgeExpiredTxs(0, expirationAge)
 		// Add the purged transactions to the evicted cache
 		for _, tx := range purgedTxs {
-			txmp.evictedTxCache.Push(tx.key)
+			txmp.evictedTxCache.Push(tx.tx.Key())
 		}
 		txmp.metrics.EvictedTxs.Add(float64(numExpired))
 		txmp.lastPurgeTime = time.Now()
@@ -236,7 +236,8 @@ func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.ResponseCheckTx), txInfo 
 	// This is a new transaction that we haven't seen before. Verify it against the app and attempt
 	// to add it to the transaction pool.
 	key := tx.Key()
-	rsp, err := txmp.TryAddNewTx(tx, key, txInfo)
+	cachedTx := tx.ToCachedTx()
+	rsp, err := txmp.TryAddNewTx(cachedTx, key, txInfo)
 	if err != nil {
 		return err
 	}
@@ -298,7 +299,7 @@ func (txmp *TxPool) markToBeBroadcast(key types.TxKey) {
 // to avoid races with the same tx. It then call `CheckTx` so that the application can validate it.
 // If it passes `CheckTx`, the new transaction is added to the mempool as long as it has
 // sufficient priority and space else if evicted it will return an error
-func (txmp *TxPool) TryAddNewTx(tx types.Tx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
+func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo mempool.TxInfo) (*abci.ResponseCheckTx, error) {
 	// First check any of the caches to see if we can conclude early. We may have already seen and processed
 	// the transaction if:
 	// - We are connected to nodes running v0 or v1 which simply flood the network
@@ -428,13 +429,13 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 		// N.B. When computing byte size, we need to include the overhead for
 		// encoding as protobuf to send to the application. This actually overestimates it
 		// as we add the proto overhead to each transaction
-		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx})
+		txBytes := types.ComputeProtoSizeForTxs([]types.Tx{w.tx.Tx})
 		if (maxGas >= 0 && totalGas+w.gasWanted > maxGas) || (maxBytes >= 0 && totalBytes+txBytes > maxBytes) {
 			return true
 		}
 		totalBytes += txBytes
 		totalGas += w.gasWanted
-		keep = append(keep, types.NewCachedTx(w.tx, w.key[:]))
+		keep = append(keep, w.tx)
 		return true
 	})
 	return keep
@@ -448,8 +449,8 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 //
 // The result may have fewer than max elements (possibly zero) if the mempool
 // does not have that many transactions available.
-func (txmp *TxPool) ReapMaxTxs(max int) types.Txs {
-	var keep []types.Tx
+func (txmp *TxPool) ReapMaxTxs(max int) []*types.CachedTx {
+	var keep []*types.CachedTx
 
 	txmp.store.iterateOrderedTxs(func(w *wrappedTx) bool {
 		if max >= 0 && len(keep) >= max {
@@ -550,11 +551,11 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 			txmp.metrics.EvictedTxs.Add(1)
 			txmp.evictedTxCache.Push(wtx.key)
 			return fmt.Errorf("rejected valid incoming transaction; mempool is full (%X). Size: (%d:%d)",
-				wtx.key.String(), txmp.Size(), txmp.SizeBytes())
+				wtx.key().String(), txmp.Size(), txmp.SizeBytes())
 		}
 
 		txmp.logger.Debug("evicting lower-priority transactions",
-			"new_tx", wtx.key.String(),
+			"new_tx", wtx.key().String(),
 			"new_priority", wtx.priority,
 		)
 
@@ -591,7 +592,7 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 	txmp.logger.Debug(
 		"inserted new valid transaction",
 		"priority", wtx.priority,
-		"tx", fmt.Sprintf("%X", wtx.key),
+		"tx", fmt.Sprintf("%X", wtx.key()),
 		"height", wtx.height,
 		"num_txs", txmp.Size(),
 	)
@@ -600,12 +601,12 @@ func (txmp *TxPool) addNewTransaction(wtx *wrappedTx, checkTxRes *abci.ResponseC
 }
 
 func (txmp *TxPool) evictTx(wtx *wrappedTx) {
-	txmp.store.remove(wtx.key)
-	txmp.evictedTxCache.Push(wtx.key)
+	txmp.store.remove(wtx.key())
+	txmp.evictedTxCache.Push(wtx.key())
 	txmp.metrics.EvictedTxs.Add(1)
 	txmp.logger.Debug(
 		"evicted valid existing transaction; mempool full",
-		"old_tx", fmt.Sprintf("%X", wtx.key),
+		"old_tx", fmt.Sprintf("%X", wtx.key()),
 		"old_priority", wtx.priority,
 	)
 }
@@ -631,13 +632,13 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 	txmp.logger.Debug(
 		"existing transaction no longer valid; failed re-CheckTx callback",
 		"priority", wtx.priority,
-		"tx", fmt.Sprintf("%X", wtx.key),
+		"tx", fmt.Sprintf("%X", wtx.key()),
 		"err", err,
 		"code", checkTxRes.Code,
 	)
-	txmp.store.remove(wtx.key)
+	txmp.store.remove(wtx.key())
 	if txmp.config.KeepInvalidTxsInCache {
-		txmp.rejectedTxCache.Push(wtx.key)
+		txmp.rejectedTxCache.Push(wtx.key())
 	}
 	txmp.metrics.FailedTxs.Add(1)
 	txmp.metrics.Size.Set(float64(txmp.Size()))
@@ -670,7 +671,7 @@ func (txmp *TxPool) recheckTransactions() {
 		})
 		if err != nil {
 			txmp.logger.Error("failed to execute CheckTx during recheck",
-				"err", err, "key", fmt.Sprintf("%x", wtx.key))
+				"err", err, "key", fmt.Sprintf("%x", wtx.key()))
 		} else {
 			txmp.handleRecheckResult(wtx, rsp)
 		}
@@ -723,7 +724,7 @@ func (txmp *TxPool) purgeExpiredTxs(blockHeight int64) {
 	purgedTxs, numExpired := txmp.store.purgeExpiredTxs(expirationHeight, expirationAge)
 	// Add the purged transactions to the evicted cache
 	for _, tx := range purgedTxs {
-		txmp.evictedTxCache.Push(tx.key)
+		txmp.evictedTxCache.Push(tx.key())
 	}
 	txmp.metrics.ExpiredTxs.Add(float64(numExpired))
 
@@ -751,7 +752,7 @@ func (txmp *TxPool) notifyTxsAvailable() {
 	}
 }
 
-func (txmp *TxPool) preCheck(tx types.Tx) error {
+func (txmp *TxPool) preCheck(tx *types.CachedTx) error {
 	txmp.mtx.Lock()
 	defer txmp.mtx.Unlock()
 	if txmp.preCheckFn != nil {
@@ -760,7 +761,7 @@ func (txmp *TxPool) preCheck(tx types.Tx) error {
 	return nil
 }
 
-func (txmp *TxPool) postCheck(tx types.Tx, res *abci.ResponseCheckTx) error {
+func (txmp *TxPool) postCheck(tx *types.CachedTx, res *abci.ResponseCheckTx) error {
 	if txmp.postCheckFn != nil {
 		return txmp.postCheckFn(tx, res)
 	}
