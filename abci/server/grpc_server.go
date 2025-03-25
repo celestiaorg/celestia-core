@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"math"
 	"net"
 
 	"google.golang.org/grpc"
@@ -43,7 +44,11 @@ func (s *GRPCServer) OnStart() error {
 	}
 
 	s.listener = ln
-	s.server = grpc.NewServer()
+	// aligns with nova client: https://github.com/01builders/nova/blob/083c7086a455c273de97ec5e2ec58a73a11f57d2/abci/multiplexer.go#L124-L125
+	s.server = grpc.NewServer(
+		grpc.MaxRecvMsgSize(math.MaxInt),
+		grpc.MaxSendMsgSize(math.MaxInt),
+	)
 	types.RegisterABCIServer(s.server, &gRPCApplication{s.app})
 
 	s.Logger.Info("Listening", "proto", s.proto, "addr", s.addr)
