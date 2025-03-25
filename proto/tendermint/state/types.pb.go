@@ -588,6 +588,8 @@ func (m *State) GetTimeoutInfo() TimeoutInfo {
 	return TimeoutInfo{}
 }
 
+// TimeoutInfo represents the timeout info for the next block height
+// this is recreated from ABCI here as we had a proto merged registry issue in the app.
 type TimeoutInfo struct {
 	TimeoutPropose time.Duration `protobuf:"bytes,1,opt,name=timeout_propose,json=timeoutPropose,proto3,stdduration" json:"timeout_propose"`
 	TimeoutCommit  time.Duration `protobuf:"bytes,2,opt,name=timeout_commit,json=timeoutCommit,proto3,stdduration" json:"timeout_commit"`

@@ -9,6 +9,7 @@ import "tendermint/crypto/proof.proto";
 import "tendermint/crypto/keys.proto";
 import "tendermint/types/params.proto";
 import "tendermint/types/validator.proto";
+import "tendermint/types/types.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/duration.proto";
 import "gogoproto/gogo.proto";
@@ -195,6 +196,10 @@ message RequestFinalizeBlock {
   bytes                     next_validators_hash = 7;
   // proposer_address is the address of the public key of the original proposer of the block.
   bytes proposer_address = 8;
+
+  // header is the header of the block that is being finalized
+  // this is needed for v3 to sync with nova as the header is stored in state
+  tendermint.types.Header header = 20;
 }
 
 //----------------------------------------

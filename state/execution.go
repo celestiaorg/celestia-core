@@ -242,7 +242,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 		}
 		txs[i] = tx
 	}
-
+	pbHeader := block.Header.ToProto()
 	abciResponse, err := blockExec.proxyApp.FinalizeBlock(context.TODO(), &abci.RequestFinalizeBlock{
 		Hash:               block.Hash(),
 		NextValidatorsHash: block.NextValidatorsHash,
@@ -252,6 +252,9 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 		DecidedLastCommit:  buildLastCommitInfoFromStore(block, blockExec.store, state.InitialHeight),
 		Misbehavior:        block.Evidence.Evidence.ToABCI(),
 		Txs:                txs,
+
+		// needed for v3 to sync with nova as the header is stored in state
+		Header: pbHeader,
 	})
 	endTime := time.Now().UnixNano()
 	blockExec.metrics.BlockProcessingTime.Observe(float64(endTime-startTime) / 1000000)
