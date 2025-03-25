@@ -157,6 +157,10 @@ message RequestProcessProposal {
   bytes  proposer_address = 8;
   uint64 square_size      = 9;
   bytes  data_root_hash   = 10;
+
+  // header is the header of the block that is being processed
+  // this is needed for v3 to sync with nova as the header is stored in state
+  tendermint.types.Header header = 20;
 }
 
 // Extends a vote with application-injected data
