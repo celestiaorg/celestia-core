@@ -164,7 +164,7 @@ func UnconfirmedTxs(ctx *rpctypes.Context, limitPtr *int) (*ctypes.ResultUnconfi
 		Count:      len(txs),
 		Total:      env.Mempool.Size(),
 		TotalBytes: env.Mempool.SizeBytes(),
-		Txs:        txs}, nil
+		Txs:        types.TxsFromCachedTxs(txs)}, nil
 }
 
 // NumUnconfirmedTxs gets number of unconfirmed transactions.

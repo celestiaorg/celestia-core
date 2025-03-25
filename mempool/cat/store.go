@@ -33,8 +33,8 @@ func (s *store) set(wtx *wrappedTx) bool {
 	}
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	if _, exists := s.txs[wtx.key]; !exists {
-		s.txs[wtx.key] = wtx
+	if _, exists := s.txs[wtx.key()]; !exists {
+		s.txs[wtx.key()] = wtx
 		s.orderTx(wtx)
 		s.bytes += wtx.size()
 		return true
@@ -190,7 +190,7 @@ func (s *store) deleteOrderedTx(tx *wrappedTx) error {
 	}
 	idx := s.getTxOrder(tx) - 1
 	if idx >= len(s.orderedTxs) || s.orderedTxs[idx] != tx {
-		return fmt.Errorf("transaction %X not found in ordered list", tx.key)
+		return fmt.Errorf("transaction %X not found in ordered list", tx.key())
 	}
 	s.orderedTxs = append(s.orderedTxs[:idx], s.orderedTxs[idx+1:]...)
 	return nil

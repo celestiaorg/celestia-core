@@ -354,7 +354,7 @@ func (blockExec *BlockExecutor) Commit(
 	// Update mempool.
 	err = blockExec.mempool.Update(
 		block.Height,
-		block.Txs,
+		types.CachedTxFromTxs(block.Txs),
 		deliverTxResponses,
 		TxPreCheck(state),
 		TxPostCheck(state),
