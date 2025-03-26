@@ -10,10 +10,9 @@ import (
 // WrappedTx defines a wrapper around a raw transaction with additional metadata
 // that is used for indexing.
 type WrappedTx struct {
-	tx        types.Tx    // the original transaction data
-	hash      types.TxKey // the transaction hash
-	height    int64       // height when this transaction was initially checked (for expiry)
-	timestamp time.Time   // time when transaction was entered (for TTL)
+	tx        *types.CachedTx // the original transaction data along with a cached hash
+	height    int64           // height when this transaction was initially checked (for expiry)
+	timestamp time.Time       // time when transaction was entered (for TTL)
 
 	mtx       sync.Mutex
 	gasWanted int64           // app: gas required to execute this transaction
@@ -25,7 +24,7 @@ type WrappedTx struct {
 }
 
 // Size reports the size of the raw transaction in bytes.
-func (w *WrappedTx) Size() int64 { return int64(len(w.tx)) }
+func (w *WrappedTx) Size() int64 { return int64(len(w.tx.Tx)) }
 
 // SetPeer adds the specified peer ID as a sender of w.
 func (w *WrappedTx) SetPeer(id uint16) {
