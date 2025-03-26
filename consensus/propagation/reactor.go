@@ -87,14 +87,14 @@ func (blockProp *Reactor) GetChannels() []*conn.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  WantChannel,
-			Priority:            20,
+			Priority:            45,
 			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
 		},
 		{
 			ID:                  DataChannel,
-			Priority:            20,
+			Priority:            40,
 			SendQueueCapacity:   20000,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &propproto.Message{},
@@ -168,7 +168,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 	case DataChannel:
 		switch msg := msg.(type) {
 		case *proptypes.CompactBlock:
-			blockProp.handleCompactBlock(msg, e.Src.ID())
+			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
 		case *proptypes.HaveParts:
 			blockProp.handleHaves(e.Src.ID(), msg, false)
 		case *proptypes.RecoveryPart:
