@@ -232,9 +232,8 @@ func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo mempool
 
 	// This is a new transaction that we haven't seen before. Verify it against the app and attempt
 	// to add it to the transaction pool.
-	key := tx.Key()
 	cachedTx := tx.ToCachedTx()
-	rsp, err := txmp.TryAddNewTx(cachedTx, key, txInfo)
+	rsp, err := txmp.TryAddNewTx(cachedTx, cachedTx.Key(), txInfo)
 	if err != nil {
 		return err
 	}
@@ -246,7 +245,7 @@ func (txmp *TxPool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo mempool
 	}()
 
 	// push to the broadcast queue that a new transaction is ready
-	txmp.markToBeBroadcast(key)
+	txmp.markToBeBroadcast(cachedTx.Key())
 	return nil
 }
 
@@ -323,7 +322,7 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 	defer txmp.store.release(key)
 
 	// If a precheck hook is defined, call it before invoking the application.
-	if err := txmp.preCheck(tx); err != nil {
+	if err := txmp.preCheck(*tx); err != nil {
 		txmp.metrics.FailedTxs.Add(1)
 		return nil, mempool.ErrPreCheck{Reason: err}
 	}
@@ -348,11 +347,11 @@ func (txmp *TxPool) TryAddNewTx(tx *types.CachedTx, key types.TxKey, txInfo memp
 
 	// Create wrapped tx
 	wtx := newWrappedTx(
-		tx, key, txmp.Height(), rsp.GasWanted, rsp.Priority, rsp.Sender,
+		tx, txmp.Height(), rsp.GasWanted, rsp.Priority, rsp.Sender,
 	)
 
 	// Perform the post check
-	err = txmp.postCheck(wtx.tx, rsp)
+	err = txmp.postCheck(*wtx.tx, rsp)
 	if err != nil {
 		if txmp.config.KeepInvalidTxsInCache {
 			txmp.rejectedTxCache.Push(key)
@@ -631,7 +630,7 @@ func (txmp *TxPool) handleRecheckResult(wtx *wrappedTx, checkTxRes *abci.Respons
 	txmp.metrics.RecheckTimes.Add(1)
 
 	// If a postcheck hook is defined, call it before checking the result.
-	err := txmp.postCheck(wtx.tx, checkTxRes)
+	err := txmp.postCheck(*wtx.tx, checkTxRes)
 
 	if checkTxRes.Code == abci.CodeTypeOK && err == nil {
 		// Note that we do not update the transaction with any of the values returned in

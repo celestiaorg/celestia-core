@@ -1663,7 +1663,7 @@ func (ms *MemStats) Table() string {
 }
 
 func (n *Node) printMemStats(traceClient trace.Tracer) {
-	timer := time.NewTicker(5 * time.Second)
+	timer := time.NewTicker(30 * time.Second)
 	for {
 		select {
 		case <-timer.C:
