@@ -10,6 +10,8 @@ import (
 	"github.com/tendermint/tendermint/libs/service"
 )
 
+const mebibyte = 1024 * 1024
+
 type GRPCServer struct {
 	service.BaseService
 
@@ -44,7 +46,7 @@ func (s *GRPCServer) OnStart() error {
 
 	s.listener = ln
 	s.server = grpc.NewServer(
-		grpc.MaxRecvMsgSize(1024 * 1024 * 75),
+		grpc.MaxRecvMsgSize(mebibyte * 75),
 	)
 	types.RegisterABCIApplicationServer(s.server, s.app)
 
