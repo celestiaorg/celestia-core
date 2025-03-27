@@ -330,7 +330,7 @@ func (p *peer) send(chID byte, msg proto.Message, sendFunc func(byte, []byte) bo
 	if res {
 		labels := []string{
 			"message_type", metricLabelValue,
-			// "peer_id", string(p.ID()),
+			"peer_id", string(p.ID()),
 			"chID", fmt.Sprintf("%#x", chID),
 		}
 		p.metrics.PeerSendBytesTotal.With(labels...).Add(float64(len(msgBytes)))
