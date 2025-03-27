@@ -1,4 +1,4 @@
-COMETBFT_BUILD_OPTIONS += badgerdb
+COMETBFT_BUILD_OPTIONS += badgerdb,pebbledb
 
 include ../../common.mk
 

@@ -531,9 +531,6 @@ func (env *Environment) DataRootInclusionProof(
 }
 
 func (env *Environment) GenerateDataRootInclusionProof(height int64, start, end uint64) (*merkle.Proof, error) {
-	// if globalEnv == nil {
-	// 	return nil, errors.New("global env is nil. this can only be called inside celestia-core")
-	// }
 
 	err := env.validateDataRootInclusionProofRequest(uint64(height), start, end)
 	if err != nil {
