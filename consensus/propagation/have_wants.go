@@ -10,20 +10,8 @@ import (
 // handleHaves is called when a peer sends a have message. This is used to
 // determine if the sender has or is getting portions of the proposal that this
 // node doesn't have. If the sender has parts that this node doesn't have, this
-// node will request those parts.
-// The peer must always send the proposal before sending parts. If they did
-// not, this node must disconnect from them.
-// This method will:
-// - get the provided peer from the peer state
-// - get the proposal referenced in the haves message
-// - set the provided haves as the peer's haves
-// - if the returned parts from the proposal are complete, we return
-// - otherwise, we check if the sender has parts that we don't have.
-// - if they do, we check if we already requested those parts enough times (a limit will be defined)
-// of we already requested the parts from them.
-// - if so, we just gossip the haves to our connected peers.
-// - otherwise, we send the wants for the missing parts to that peer before broadcasting the haves.
-// - finally, we keep track of the want requests in the proposal state.
+// node will request those parts. The peer must always send the proposal before
+// sending parts. If they did not, this node must disconnect from them.
 func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, _ bool) {
 	if haves == nil {
 		// TODO handle the disconnection case
@@ -302,7 +290,7 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// during catchup. todo: use the bool found in the state instead of checking
 	// for nil.
 	if parts.CanDecode() {
-		err := parts.Decode()
+		err := parts.Decode(blockProp.codec)
 		if err != nil {
 			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
 			return
