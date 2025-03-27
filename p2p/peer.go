@@ -475,11 +475,6 @@ func createMConnection(
 			Src:       p,
 			Message:   msg,
 		})
-		// reactor.QueueUnprocessedEnvelope(UnprocessedEnvelope{
-		// 	ChannelID: chID,
-		// 	Src:       p,
-		// 	Message:   msgBytes,
-		// })
 	}
 
 	onError := func(r interface{}) {

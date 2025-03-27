@@ -753,7 +753,6 @@ func fireEvents(
 	}
 
 	for i, tx := range block.Data.Txs {
-		//TODO:  can we decode without decoding the whole blob?
 		blobTx, isBlobTx := types.UnmarshalBlobTx(tx)
 		if isBlobTx {
 			tx = blobTx.Tx
