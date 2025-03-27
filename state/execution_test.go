@@ -424,6 +424,7 @@ func TestProcessProposal(t *testing.T) {
 	block1.Txs = txs
 
 	expectedRpp := &abci.RequestProcessProposal{
+		Header:      block1.Header.ToProto(),
 		Txs:         block1.Txs.ToSliceOfBytes(),
 		Hash:        block1.Hash(),
 		Height:      block1.Header.Height,
