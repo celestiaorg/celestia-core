@@ -317,10 +317,10 @@ func (p *peer) send(chID byte, msg proto.Message, sendFunc func(byte, []byte) bo
 	} else if !p.hasChannel(chID) {
 		return false
 	}
-	// metricLabelValue := p.mlc.ValueToMetricLabel(msg)
-	// if w, ok := msg.(Wrapper); ok {
-	// 	msg = w.Wrap()
-	// }
+	metricLabelValue := p.mlc.ValueToMetricLabel(msg)
+	if w, ok := msg.(Wrapper); ok {
+		msg = w.Wrap()
+	}
 	msgBytes, err := proto.Marshal(msg)
 	if err != nil {
 		p.Logger.Error("marshaling message to send", "error", err)
@@ -329,7 +329,7 @@ func (p *peer) send(chID byte, msg proto.Message, sendFunc func(byte, []byte) bo
 	res := sendFunc(chID, msgBytes)
 	if res {
 		labels := []string{
-			// "message_type", metricLabelValue,
+			"message_type", metricLabelValue,
 			"peer_id", string(p.ID()),
 			"chID", fmt.Sprintf("%#x", chID),
 		}
