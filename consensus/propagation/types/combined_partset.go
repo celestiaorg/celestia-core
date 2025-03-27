@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -18,6 +19,8 @@ type CombinedPartSet struct {
 	parity   *types.PartSet // holds parity parts (logical indexes start at original.Total())
 	lastLen  uint32
 	catchup  bool
+
+	IsDecoding atomic.Bool
 }
 
 // NewCombinedSetFromCompactBlock creates a new CombinedPartSet from a

@@ -190,11 +190,13 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 
 	for _, partIndex := range canSend.GetTrueIndices() {
 		part, _ := parts.GetPart(uint32(partIndex))
+		partBz := make([]byte, len(part.Bytes))
+		copy(partBz, part.Bytes)
 		rpart := &propproto.RecoveryPart{
 			Height: height,
 			Round:  round,
 			Index:  uint32(partIndex),
-			Data:   part.Bytes,
+			Data:   partBz,
 		}
 		if wants.Prove {
 			rpart.Proof = part.Proof.ToProto()
@@ -290,7 +292,13 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	// during catchup. todo: use the bool found in the state instead of checking
 	// for nil.
 	if parts.CanDecode() {
-		err := parts.Decode(blockProp.codec)
+		if parts.IsDecoding.Load() {
+			return
+		}
+		parts.IsDecoding.Store(true)
+		defer parts.IsDecoding.Store(false)
+
+		err := parts.Decode()
 		if err != nil {
 			blockProp.Logger.Error("failed to decode parts", "peer", peer, "height", part.Height, "round", part.Round, "error", err)
 			return
@@ -318,11 +326,13 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 		go func(height int64, round int32, parts *proptypes.CombinedPartSet) {
 			for i := uint32(0); i < parts.Total(); i++ {
 				p, _ := parts.GetPart(i)
+				pbz := make([]byte, len(p.Bytes))
+				copy(pbz, p.Bytes)
 				msg := &proptypes.RecoveryPart{
 					Height: height,
 					Round:  round,
 					Index:  p.Index,
-					Data:   p.Bytes,
+					Data:   pbz,
 				}
 				blockProp.clearWants(msg)
 			}
