@@ -470,7 +470,7 @@ func createMConnection(
 		}
 		schema.WriteReceivedBytes(p.traceClient, string(p.ID()), chID, len(msgBytes))
 		p.metrics.PeerReceiveBytesTotal.With(labels...).Add(float64(len(msgBytes)))
-		p.metrics.MessageReceiveBytesTotal.With("message_type", p.mlc.ValueToMetricLabel(msg)).Add(float64(len(msgBytes)))
+		p.metrics.MessageReceiveBytesTotal.With(append(labels, "message_type", p.mlc.ValueToMetricLabel(msg))...).Add(float64(len(msgBytes)))
 		reactor.Receive(Envelope{
 			ChannelID: chID,
 			Src:       p,
