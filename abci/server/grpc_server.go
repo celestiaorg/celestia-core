@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"math"
 	"net"
 
 	"google.golang.org/grpc"
@@ -11,6 +10,8 @@ import (
 	cmtnet "github.com/cometbft/cometbft/libs/net"
 	"github.com/cometbft/cometbft/libs/service"
 )
+
+const mebibyte = 1024 * 1024
 
 type GRPCServer struct {
 	service.BaseService
@@ -45,8 +46,7 @@ func (s *GRPCServer) OnStart() error {
 
 	s.listener = ln
 	s.server = grpc.NewServer(
-		grpc.MaxRecvMsgSize(math.MaxInt32),
-		grpc.MaxSendMsgSize(math.MaxInt32),
+		grpc.MaxRecvMsgSize(75 * mebibyte),
 	)
 	types.RegisterABCIServer(s.server, &gRPCApplication{s.app})
 
