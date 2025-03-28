@@ -2,6 +2,7 @@ package propagation
 
 import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
@@ -175,8 +176,6 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	// the peer must always send the proposal before sending parts, if they did
 	//  not, this node must disconnect from them.
 	if !has {
-		blockProp.Logger.Error("received part state request for unknown proposal", "peer", peer, "height", height, "round", round)
-		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part state for unknown proposal"))
 		return
 	}
 
@@ -184,7 +183,6 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 	wc := wants.Parts.Copy()
 	canSend := parts.BitArray().And(wc)
 	if canSend == nil {
-		blockProp.Logger.Error("nil can send?", "peer", peer, "height", height, "round", round, "wants", wants, "wc", wc)
 		return
 	}
 
@@ -199,7 +197,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			Data:   partBz,
 		}
 		if wants.Prove {
-			rpart.Proof = part.Proof.ToProto()
+			rpart.Proof = *part.Proof.ToProto()
 		}
 		e := p2p.Envelope{
 			ChannelID: DataChannel,
@@ -267,6 +265,9 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	if proof == nil {
 		if part.Proof == nil {
 			blockProp.Logger.Error("proof not found", "peer", peer, "height", part.Height, "round", part.Round, "part", part.Index)
+			return
+		}
+		if len(part.Proof.LeafHash) != tmhash.Size {
 			return
 		}
 		proof = part.Proof

@@ -29,7 +29,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 		}
 
 		// only re-request original parts that are missing, not parity parts.
-		missing := prop.block.BitArray().Not()
+		missing := prop.block.MissingOriginal()
 		if missing.IsEmpty() {
 			blockProp.Logger.Error("no missing parts yet block is incomplete", "height", height, "round", round)
 			continue
@@ -40,6 +40,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 
 		for _, peer := range peers {
 			mc := missing.Copy()
+
 			reqs, has := peer.GetRequests(height, round)
 			if has {
 				mc = mc.Sub(reqs)
@@ -52,7 +53,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 			e := p2p.Envelope{
 				ChannelID: WantChannel,
 				Message: &protoprop.WantParts{
-					Parts:  *missing.ToProto(),
+					Parts:  *mc.ToProto(),
 					Height: height,
 					Round:  round,
 					Prove:  true,
@@ -72,8 +73,11 @@ func (blockProp *Reactor) retryWants(currentHeight int64, currentRound int32) {
 }
 
 func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.PartSetHeader) {
+	blockProp.Logger.Info("adding commitment", "height", height, "round", round, "psh", psh)
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
+
+	blockProp.Logger.Info("added commitment", "height", height, "round", round)
 
 	if blockProp.proposals[height] == nil {
 		blockProp.proposals[height] = make(map[int32]*proposalData)

@@ -16,11 +16,12 @@ type proposalData struct {
 }
 
 type ProposalCache struct {
-	store         *store.BlockStore
-	pmtx          *sync.Mutex
-	proposals     map[int64]map[int32]*proposalData
-	currentHeight int64
-	currentRound  int32
+	store           *store.BlockStore
+	pmtx            *sync.Mutex
+	proposals       map[int64]map[int32]*proposalData
+	currentHeight   int64
+	currentRound    int32
+	consensusHeight int64
 }
 
 func NewProposalCache(bs *store.BlockStore) *ProposalCache {
@@ -37,32 +38,26 @@ func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 	return pc
 }
 
-func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool, gapHeights []int64, gapRounds []int32) {
+func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
+	if cb.Proposal.Height <= p.consensusHeight {
+		return false
+	}
+
 	if p.proposals[cb.Proposal.Height] == nil {
 		p.proposals[cb.Proposal.Height] = make(map[int32]*proposalData)
 	}
 	if p.proposals[cb.Proposal.Height][cb.Proposal.Round] != nil {
-		return false, gapHeights, gapRounds
+		return false
 	}
-
-	// if the propsoal is for a lower height, make sure that we have that height
 
 	// if we don't have this proposal, and its height is greater than the current
 	// height, update the current height and round.
 	if cb.Proposal.Height > p.currentHeight {
-		// add the missing heights to the gapHeights
-		for h := p.currentHeight + 1; h < cb.Proposal.Height; h++ {
-			gapHeights = append(gapHeights, h)
-		}
 		p.currentHeight = cb.Proposal.Height
 		p.currentRound = cb.Proposal.Round
 	} else if cb.Proposal.Height == p.currentHeight && cb.Proposal.Round > p.currentRound {
-		// add the missing rounds to the gapRounds
-		for r := p.currentRound + 1; r < cb.Proposal.Round; r++ {
-			gapRounds = append(gapRounds, r)
-		}
 		p.currentRound = cb.Proposal.Round
 	}
 
@@ -71,7 +66,7 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool, gap
 		block:        proptypes.NewCombinedSetFromCompactBlock(cb),
 		maxRequests:  bits.NewBitArray(int(cb.Proposal.BlockID.PartSetHeader.Total)),
 	}
-	return true, gapHeights, gapRounds
+	return true
 }
 
 // GetProposal returns the proposal and block for a given height and round if

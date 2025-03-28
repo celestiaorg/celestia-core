@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	_ "net/http/pprof"
+
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +19,6 @@ import (
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/mock"
 	"github.com/tendermint/tendermint/pkg/trace"
-	"github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/store"
 	"github.com/tendermint/tendermint/types"
 )
@@ -143,11 +144,11 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	}
 	baseCompactBlock.Proposal = p
 
-	added, _, _ := reactor1.AddProposal(baseCompactBlock)
+	added := reactor1.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added, _, _ = reactor2.AddProposal(baseCompactBlock)
+	added = reactor2.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added, _, _ = reactor3.AddProposal(baseCompactBlock)
+	added = reactor3.AddProposal(baseCompactBlock)
 	require.True(t, added)
 
 	// reactor 1 will receive haves from reactor 2
@@ -242,9 +243,9 @@ func TestInvalidPart(t *testing.T) {
 	}
 	baseCompactBlock.Proposal = p
 
-	added, _, _ := reactor1.AddProposal(baseCompactBlock)
+	added := reactor1.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added, _, _ = reactor2.AddProposal(baseCompactBlock)
+	added = reactor2.AddProposal(baseCompactBlock)
 	require.True(t, added)
 
 	// reactor 1 will receive haves from reactor 2
@@ -371,25 +372,50 @@ func TestChunkParts(t *testing.T) {
 	}
 }
 
-// TestHugeBlock doesn't have a success or failure condition yet, although one could be added. It is very useful for debugging however
-func TestHugeBlock(t *testing.T) {
-	p2pCfg := cfg.DefaultP2PConfig()
-	p2pCfg.SendRate = 5000000
-	p2pCfg.RecvRate = 5000000
+// // TestHugeBlock doesn't have a success or failure condition yet, although one could be added. It is very useful for debugging however
+// func TestHugeBlock(t *testing.T) {
+// 	p2pCfg := cfg.DefaultP2PConfig()
+// 	p2pCfg.SendRate = 100000000
+// 	p2pCfg.RecvRate = 110000000
 
-	nodes := 20
+// 	nodes := 10
 
-	reactors, _ := createTestReactors(nodes, p2pCfg, false, "/home/evan/data/experiments/celestia/fast-recovery/debug")
+// 	reactors, _ := createTestReactors(nodes, p2pCfg, false, "/home/evan/data/experiments/celestia/fast-recovery/debug")
 
-	cleanup, _, sm := state.SetupTestCase(t)
-	t.Cleanup(func() {
-		cleanup(t)
-	})
+// 	// wg := &sync.WaitGroup{}
+// 	// for i := 0; i < nodes; i++ {
+// 	// 	reactors[i].wg = wg
+// 	// }
 
-	prop, ps, _, metaData := createTestProposal(sm, 1, 32, 1000000)
+// 	cleanup, _, sm := state.SetupTestCase(t)
+// 	t.Cleanup(func() {
+// 		cleanup(t)
+// 	})
 
-	reactors[1].ProposeBlock(prop, ps, metaData)
-}
+// 	go func() {
+// 		fmt.Println(http.ListenAndServe("localhost:6060", nil))
+// 	}()
+
+// 	for i := 0; i < 20; i++ {
+// 		fmt.Println("Proposing block ################", i)
+// 		// wg.Add(nodes - 1)
+// 		prop, ps, _, metaData := createTestProposal(sm, int64(i), 128, 1000000)
+// 		start := time.Now()
+// 		reactors[1].ProposeBlock(prop, ps, metaData)
+// 		// wg.Wait()
+// 		elapsed := time.Since(start)
+// 		fmt.Println("Elapsed time:", elapsed.Seconds())
+
+// 		for _, r := range reactors {
+// 			r.Prune(int64(i))
+// 		}
+// 		time.Sleep(100 * time.Millisecond)
+// 	}
+
+// 	// wg.Add(1)
+// 	// wg.Wait()
+
+// }
 
 func createBitArray(size int, indices []int) *bits.BitArray {
 	ba := bits.NewBitArray(size)

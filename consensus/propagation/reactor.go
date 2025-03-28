@@ -28,11 +28,6 @@ const (
 
 	// WantChannel the propagation reactor channel handling the wants.
 	WantChannel = byte(0x51)
-
-	// blockCacheSize determines the number of blocks to keep in the cache.
-	// After each block is committed, only the last `blockCacheSize` blocks are
-	// kept.
-	blockCacheSize = 5
 )
 
 type Reactor struct {
@@ -51,6 +46,7 @@ type Reactor struct {
 	mtx         *sync.RWMutex
 	traceClient trace.Tracer
 	self        p2p.ID
+	started     bool
 }
 
 func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempool Mempool, options ...ReactorOption) *Reactor {
@@ -206,12 +202,15 @@ func (blockProp *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
 // Prune removes all peer and proposal state from the block propagation reactor.
 // This should be called only after a block has been committed.
 func (blockProp *Reactor) Prune(committedHeight int64) {
-	prunePast := committedHeight - blockCacheSize
+	prunePast := committedHeight
 	peers := blockProp.getPeers()
 	for _, peer := range peers {
 		peer.prune(prunePast)
 	}
 	blockProp.ProposalCache.prune(prunePast)
+	blockProp.pmtx.Lock()
+	defer blockProp.pmtx.Unlock()
+	blockProp.consensusHeight = committedHeight
 }
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,
