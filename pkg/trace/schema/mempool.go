@@ -108,10 +108,10 @@ const (
 
 // MempoolRecoveredParts describes the schema for the "recovered" table.
 type MempoolRecoveredParts struct {
-	Height int64 `json:"height"`
-	Round  int32 `json:"round"`
-	Part   int   `json:"part_index"`
-	Ontime bool  `json:"ontime"`
+	Height         int64 `json:"height"`
+	Round          int32 `json:"round"`
+	RecoveredParts int   `json:"recovered_parts"`
+	Ontime         bool  `json:"ontime"`
 }
 
 func (m MempoolRecoveredParts) Table() string {
@@ -120,14 +120,13 @@ func (m MempoolRecoveredParts) Table() string {
 
 // WriteMempoolRecoveredParts writes a tracing point for the recovery of parts
 // using the predetermined schema for mempool tracing.
-func WriteMempoolRecoveredParts(client trace.Tracer, height int64, round int32, part int, ontime bool) {
+func WriteMempoolRecoveredParts(client trace.Tracer, height int64, round int32, parts int) {
 	if !client.IsCollecting(MempoolRecoveredPartsTable) {
 		return
 	}
 	client.Write(MempoolRecoveredParts{
-		Height: height,
-		Round:  round,
-		Part:   part,
-		Ontime: ontime,
+		Height:         height,
+		Round:          round,
+		RecoveredParts: parts,
 	})
 }

@@ -197,6 +197,7 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	}
 
 	originalParts := partSet.Original()
+	recoveredCount := 0
 	for _, p := range parts {
 		p.Proof = *proofs[p.Index]
 
@@ -210,12 +211,13 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 
 		if !added {
 			blockProp.Logger.Error("failed to add locally recovered part", "part", p.Index)
-			schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, int(p.Index), false)
 			continue
 		}
 
-		schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, int(p.Index), true)
+		recoveredCount++
 	}
+
+	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, recoveredCount)
 
 	return
 }
