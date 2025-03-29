@@ -1,8 +1,6 @@
 package propagation
 
 import (
-	"fmt"
-
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/sync"
@@ -167,9 +165,7 @@ func (d *PeerState) prune(prunePastHeight int64) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	for height := range d.state {
-		fmt.Println("attempting pruning height for peers", height, prunePastHeight, len(d.state))
 		if height < prunePastHeight {
-			fmt.Println("pruning height for peers", height, len(d.state))
 			delete(d.state, height)
 		}
 	}

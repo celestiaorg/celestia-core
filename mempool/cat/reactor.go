@@ -254,7 +254,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			}
 			_, err = memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
 			if err != nil && err != ErrTxInMempool {
-				memR.Logger.Info("Could not add tx", "txKey", key, "err", err)
+				memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
 				return
 			}
 			if !memR.opts.ListenOnly {
