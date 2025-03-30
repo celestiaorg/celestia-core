@@ -198,6 +198,11 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 
 	originalParts := partSet.Original()
 	recoveredCount := 0
+	haves := proptypes.HaveParts{
+		Height: cb.Proposal.Height,
+		Round:  cb.Proposal.Round,
+		Parts:  make([]proptypes.PartMetaData, 0),
+	}
 	for _, p := range parts {
 		p.Proof = *proofs[p.Index]
 
@@ -215,9 +220,13 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		}
 
 		recoveredCount++
+
+		haves.Parts = append(haves.Parts, proptypes.PartMetaData{Index: p.Index, Hash: p.Proof.LeafHash})
 	}
 
 	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, recoveredCount)
+
+	blockProp.broadcastHaves(&haves, blockProp.self, int(partSet.Total()))
 
 	return
 }
