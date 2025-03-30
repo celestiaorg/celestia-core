@@ -2507,7 +2507,7 @@ func repairWalFile(src, dst string) error {
 	return nil
 }
 
-const SyncDataInterval = 50
+const SyncDataInterval = 150
 
 // sync data periodically checks to make sure that all block parts in the data
 // routine are pushed through to the state.
@@ -2529,6 +2529,15 @@ func (cs *State) syncData() {
 			pprop := cs.Proposal
 			completeProp := cs.isProposalComplete()
 			cs.mtx.RUnlock()
+
+			schema.WriteNote(
+				cs.traceClient,
+				h,
+				r,
+				"syncData udpate",
+				"%d %d %v",
+				h, r, completeProp,
+			)
 
 			if completeProp {
 				continue
