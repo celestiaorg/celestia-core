@@ -150,43 +150,45 @@ conR:
 	}
 }
 
+// consensusChannels is a cached list of channel descriptors for the consensus reactor
+var consensusChannels = []*p2p.ChannelDescriptor{
+	{
+		ID:                  StateChannel,
+		Priority:            6,
+		SendQueueCapacity:   100,
+		RecvMessageCapacity: maxMsgSize,
+		MessageType:         &cmtcons.Message{},
+	},
+	{
+		ID: DataChannel, // maybe split between gossiping current block and catchup stuff
+		// once we gossip the whole block there's nothing left to send until next height or round
+		Priority:            10,
+		SendQueueCapacity:   100,
+		RecvBufferCapacity:  50 * 4096,
+		RecvMessageCapacity: maxMsgSize,
+		MessageType:         &cmtcons.Message{},
+	},
+	{
+		ID:                  VoteChannel,
+		Priority:            7,
+		SendQueueCapacity:   100,
+		RecvBufferCapacity:  100 * 100,
+		RecvMessageCapacity: maxMsgSize,
+		MessageType:         &cmtcons.Message{},
+	},
+	{
+		ID:                  VoteSetBitsChannel,
+		Priority:            1,
+		SendQueueCapacity:   2,
+		RecvBufferCapacity:  1024,
+		RecvMessageCapacity: maxMsgSize,
+		MessageType:         &cmtcons.Message{},
+	},
+}
+
 // GetChannels implements Reactor
 func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
-	// TODO optimize
-	return []*p2p.ChannelDescriptor{
-		{
-			ID:                  StateChannel,
-			Priority:            6,
-			SendQueueCapacity:   100,
-			RecvMessageCapacity: maxMsgSize,
-			MessageType:         &cmtcons.Message{},
-		},
-		{
-			ID: DataChannel, // maybe split between gossiping current block and catchup stuff
-			// once we gossip the whole block there's nothing left to send until next height or round
-			Priority:            10,
-			SendQueueCapacity:   100,
-			RecvBufferCapacity:  50 * 4096,
-			RecvMessageCapacity: maxMsgSize,
-			MessageType:         &cmtcons.Message{},
-		},
-		{
-			ID:                  VoteChannel,
-			Priority:            7,
-			SendQueueCapacity:   100,
-			RecvBufferCapacity:  100 * 100,
-			RecvMessageCapacity: maxMsgSize,
-			MessageType:         &cmtcons.Message{},
-		},
-		{
-			ID:                  VoteSetBitsChannel,
-			Priority:            1,
-			SendQueueCapacity:   2,
-			RecvBufferCapacity:  1024,
-			RecvMessageCapacity: maxMsgSize,
-			MessageType:         &cmtcons.Message{},
-		},
-	}
+	return consensusChannels
 }
 
 // InitPeer implements Reactor by creating a state for the peer.
