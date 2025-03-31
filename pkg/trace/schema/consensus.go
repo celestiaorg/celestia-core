@@ -29,9 +29,9 @@ const (
 
 // RoundState describes schema for the "consensus_round_state" table.
 type RoundState struct {
-	Height int64 `json:"height"`
-	Round  int32 `json:"round"`
-	Step   uint8 `json:"step"`
+	Height int64  `json:"height"`
+	Round  int32  `json:"round"`
+	Step   string `json:"step"`
 }
 
 // Table returns the table name for the RoundState struct.
@@ -41,7 +41,7 @@ func (r RoundState) Table() string {
 
 // WriteRoundState writes a tracing point for a tx using the predetermined
 // schema for consensus state tracing.
-func WriteRoundState(client trace.Tracer, height int64, round int32, step uint8) {
+func WriteRoundState(client trace.Tracer, height int64, round int32, step string) {
 	client.Write(RoundState{Height: height, Round: round, Step: step})
 }
 

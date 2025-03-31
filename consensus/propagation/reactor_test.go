@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	_ "net/http/pprof"
-
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,13 +17,14 @@ import (
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/mock"
 	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/store"
 	"github.com/tendermint/tendermint/types"
 )
 
-func newPropagationReactor(s *p2p.Switch, tracer trace.Tracer) *Reactor {
+func newPropagationReactor(s *p2p.Switch, _ trace.Tracer) *Reactor {
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	blockPropR := NewReactor(s.NetAddress().ID, trace.NoOpTracer(), blockStore, mockMempool{})
+	blockPropR := NewReactor(s.NetAddress().ID, trace.NoOpTracer(), blockStore, &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)})
 	blockPropR.SetSwitch(s)
 
 	return blockPropR
@@ -193,7 +192,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	require.Equal(t, randomData, parts.GetPart(0).Bytes.Bytes())
 
 	// check to see if the parity data was generated after receiveing the first part.
-	_, combined, _, has := reactor3.getAllState(height, round)
+	_, combined, _, has := reactor3.getAllState(height, round, true)
 	assert.True(t, has)
 	assert.True(t, combined.IsComplete())
 	parityPart, has := combined.GetPart(1)
@@ -372,50 +371,64 @@ func TestChunkParts(t *testing.T) {
 	}
 }
 
-// // TestHugeBlock doesn't have a success or failure condition yet, although one could be added. It is very useful for debugging however
-// func TestHugeBlock(t *testing.T) {
-// 	p2pCfg := cfg.DefaultP2PConfig()
-// 	p2pCfg.SendRate = 100000000
-// 	p2pCfg.RecvRate = 110000000
+// TestPropagationSmokeTest is a high level smoke test for 10 reactors to distrute 5 2MB
+// blocks with some data already distributed via the mempool. The passing
+// criteria is simply finishing.
+func TestPropagationSmokeTest(t *testing.T) {
+	p2pCfg := cfg.DefaultP2PConfig()
+	p2pCfg.SendRate = 100000000
+	p2pCfg.RecvRate = 110000000
 
-// 	nodes := 10
+	nodes := 10
 
-// 	reactors, _ := createTestReactors(nodes, p2pCfg, false, "/home/evan/data/experiments/celestia/fast-recovery/debug")
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
 
-// 	// wg := &sync.WaitGroup{}
-// 	// for i := 0; i < nodes; i++ {
-// 	// 	reactors[i].wg = wg
-// 	// }
+	cleanup, _, sm := state.SetupTestCase(t)
+	t.Cleanup(func() {
+		cleanup(t)
+	})
 
-// 	cleanup, _, sm := state.SetupTestCase(t)
-// 	t.Cleanup(func() {
-// 		cleanup(t)
-// 	})
+	for i := int64(1); i < 5; i++ {
+		prop, ps, block, metaData := createTestProposal(sm, int64(i), 2, 1000000)
 
-// 	go func() {
-// 		fmt.Println(http.ListenAndServe("localhost:6060", nil))
-// 	}()
+		// predistribute portions of the block
+		for _, tx := range block.Data.Txs {
+			for j := 0; j < nodes/2; j++ {
+				r := reactors[j]
+				pool := r.mempool.(*mockMempool)
+				pool.AddTx(tx)
+			}
+		}
 
-// 	for i := 0; i < 20; i++ {
-// 		fmt.Println("Proposing block ################", i)
-// 		// wg.Add(nodes - 1)
-// 		prop, ps, _, metaData := createTestProposal(sm, int64(i), 128, 1000000)
-// 		start := time.Now()
-// 		reactors[1].ProposeBlock(prop, ps, metaData)
-// 		// wg.Wait()
-// 		elapsed := time.Since(start)
-// 		fmt.Println("Elapsed time:", elapsed.Seconds())
+		reactors[1].ProposeBlock(prop, ps, metaData)
 
-// 		for _, r := range reactors {
-// 			r.Prune(int64(i))
-// 		}
-// 		time.Sleep(100 * time.Millisecond)
-// 	}
+		distributing := true
+		for distributing {
+			count := 0
+			for _, r := range reactors {
+				_, parts, _, has := r.getAllState(i, 0, false)
+				if !has {
+					continue
+				}
+				if !parts.IsComplete() {
+					continue
+				}
 
-// 	// wg.Add(1)
-// 	// wg.Wait()
+				count++
 
-// }
+				if count == nodes {
+					distributing = false
+				}
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+
+		for _, r := range reactors {
+			r.Prune(int64(i))
+		}
+	}
+
+}
 
 func createBitArray(size int, indices []int) *bits.BitArray {
 	ba := bits.NewBitArray(size)

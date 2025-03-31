@@ -59,7 +59,7 @@ func TestPropose(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	for _, r := range reactors {
-		_, parts, _, has := r.getAllState(prop.Height, prop.Round)
+		_, parts, _, has := r.getAllState(prop.Height, prop.Round, false)
 		require.True(t, has)
 		assert.True(t, parts.IsComplete())
 	}
@@ -113,7 +113,7 @@ func TestRecoverPartsLocally(t *testing.T) {
 	}
 
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	blockPropR := NewReactor("", trace.NoOpTracer(), blockStore, mockMempool{
+	blockPropR := NewReactor("", trace.NoOpTracer(), blockStore, &mockMempool{
 		txs: txsMap,
 	})
 
@@ -154,7 +154,12 @@ type mockMempool struct {
 	txs map[types.TxKey]*types.CachedTx
 }
 
-func (m mockMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
+func (m *mockMempool) AddTx(tx types.Tx) {
+	cachTx := &types.CachedTx{Tx: tx}
+	m.txs[tx.Key()] = cachTx
+}
+
+func (m *mockMempool) GetTxByKey(key types.TxKey) (*types.CachedTx, bool) {
 	val, found := m.txs[key]
 	return val, found
 }

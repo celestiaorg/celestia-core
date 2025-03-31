@@ -49,7 +49,7 @@ func TestGapCatchup(t *testing.T) {
 	added := n1.AddProposal(cb)
 	require.True(t, added)
 
-	_, parts, _, has := n1.getAllState(prop.Height, prop.Round)
+	_, parts, _, has := n1.getAllState(prop.Height, prop.Round, true)
 	require.True(t, has)
 
 	parts.SetProposalData(ps, parityBlock)
@@ -66,7 +66,7 @@ func TestGapCatchup(t *testing.T) {
 
 	// this call simulates getting a commitment for a proposal of a higher
 	// height
-	n2.retryWants(2, 0)
+	n2.retryWants(2)
 
 	time.Sleep(800 * time.Millisecond)
 

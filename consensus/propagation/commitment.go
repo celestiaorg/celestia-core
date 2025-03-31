@@ -46,7 +46,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	// save the compact block locally and broadcast it to the connected peers
 	blockProp.handleCompactBlock(&cb, blockProp.self, true)
 
-	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round)
+	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round, false)
 	if !has {
 		panic(fmt.Sprintf("failed to get all state for this node's proposal %d/%d", proposal.Height, proposal.Round))
 	}
@@ -72,6 +72,8 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 			// TODO retry
 			continue
 		}
+
+		schema.WriteBlockPartState(blockProp.traceClient, proposal.Height, proposal.Round, chunks[index].GetTrueIndices(), true, string(peer.peer.ID()), schema.Upload)
 	}
 }
 
@@ -143,7 +145,7 @@ func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2
 	}
 
 	// run the catchup routine to recover any missing parts for past heights.
-	blockProp.retryWants(cb.Proposal.Height, cb.Proposal.Round)
+	blockProp.retryWants(cb.Proposal.Height)
 
 	// check if we have any transactions that are in the compact block
 	go blockProp.recoverPartsFromMempool(cb)
@@ -180,12 +182,8 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 	}
 
 	parts := proptypes.TxsToParts(txsFound)
-	if len(parts) > 0 {
-		// todo: remove this log
-		blockProp.Logger.Info("recovered parts from the mempool", "number of parts", len(parts))
-	}
 
-	_, partSet, _, found := blockProp.getAllState(cb.Proposal.Height, cb.Proposal.Round)
+	_, partSet, _, found := blockProp.getAllState(cb.Proposal.Height, cb.Proposal.Round, false)
 	if !found {
 		blockProp.Logger.Error("failed to get all state for this node's proposal", "height", cb.Proposal.Height, "round", cb.Proposal.Round)
 	}
@@ -226,7 +224,11 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 
 	schema.WriteMempoolRecoveredParts(blockProp.traceClient, cb.Proposal.Height, cb.Proposal.Round, recoveredCount)
 
-	blockProp.broadcastHaves(&haves, blockProp.self, int(partSet.Total()))
+	if len(haves.Parts) > 0 {
+		// todo: distribute haves amongst peers in a fan out fashion similar to
+		// a proposer
+		blockProp.broadcastHaves(&haves, blockProp.self, int(partSet.Total()))
+	}
 
 	return
 }

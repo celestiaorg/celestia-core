@@ -13,6 +13,7 @@ import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	propproto "github.com/tendermint/tendermint/proto/tendermint/propagation"
 )
 
@@ -165,6 +166,7 @@ func (blockProp *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 		switch msg := msg.(type) {
 		case *proptypes.CompactBlock:
 			blockProp.handleCompactBlock(msg, e.Src.ID(), false)
+			schema.WriteProposal(blockProp.traceClient, msg.Proposal.Height, msg.Proposal.Round, string(e.Src.ID()), schema.Download)
 		case *proptypes.HaveParts:
 			blockProp.handleHaves(e.Src.ID(), msg, false)
 		case *proptypes.RecoveryPart:

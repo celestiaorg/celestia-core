@@ -178,7 +178,7 @@ func TestProposalCache_GetProposalWithRequests(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotProposal, gotPartSet, gotBA, ok := pc.getAllState(tc.height, tc.round)
+			gotProposal, gotPartSet, gotBA, ok := pc.getAllState(tc.height, tc.round, true)
 			if !tc.wantOk {
 				require.False(t, ok, "should not have found proposal")
 				require.Nil(t, gotProposal)
@@ -226,14 +226,14 @@ func TestProposalCache_DeleteHeight(t *testing.T) {
 	pc.AddProposal(makeCompactBlock(10, 1, 3))
 	pc.AddProposal(makeCompactBlock(11, 0, 5))
 
-	_, _, _, okBefore := pc.getAllState(10, 0)
+	_, _, _, okBefore := pc.getAllState(10, 0, true)
 	require.True(t, okBefore, "proposal 10/0 should exist")
 
 	pc.DeleteHeight(10)
 
-	_, _, _, okAfter := pc.getAllState(10, 0)
+	_, _, _, okAfter := pc.getAllState(10, 0, true)
 	require.False(t, okAfter, "proposal for height=10 should have been deleted")
-	_, _, _, stillOk := pc.getAllState(11, 0)
+	_, _, _, stillOk := pc.getAllState(11, 0, true)
 	require.True(t, stillOk, "proposal for height=11 should remain")
 }
 

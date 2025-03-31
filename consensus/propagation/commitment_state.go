@@ -9,19 +9,22 @@ import (
 )
 
 type proposalData struct {
-	compactBlock *proptypes.CompactBlock
-	block        *proptypes.CombinedPartSet
-	maxRequests  *bits.BitArray
-	catchup      bool
+	compactBlock  *proptypes.CompactBlock
+	block         *proptypes.CombinedPartSet
+	maxRequests   *bits.BitArray
+	catchup       bool
+	decomissioned bool
 }
 
 type ProposalCache struct {
-	store           *store.BlockStore
-	pmtx            *sync.Mutex
-	proposals       map[int64]map[int32]*proposalData
-	currentHeight   int64
-	currentRound    int32
+	store         *store.BlockStore
+	pmtx          *sync.Mutex
+	proposals     map[int64]map[int32]*proposalData
+	currentHeight int64
+	currentRound  int32
+
 	consensusHeight int64
+	consensusRound  int32
 }
 
 func NewProposalCache(bs *store.BlockStore) *ProposalCache {
@@ -41,7 +44,8 @@ func NewProposalCache(bs *store.BlockStore) *ProposalCache {
 func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
-	if cb.Proposal.Height <= p.consensusHeight {
+
+	if !p.relevant(cb.Proposal.Height, cb.Proposal.Round) {
 		return false
 	}
 
@@ -72,31 +76,58 @@ func (p *ProposalCache) AddProposal(cb *proptypes.CompactBlock) (added bool) {
 // GetProposal returns the proposal and block for a given height and round if
 // this node has it stored or cached.
 func (p *ProposalCache) GetProposal(height int64, round int32) (*types.Proposal, *types.PartSet, bool) {
-	cb, parts, _, has := p.getAllState(height, round)
+	cb, parts, _, has := p.getAllState(height, round, true)
 	if !has {
 		return nil, nil, false
 	}
 	return &cb.Proposal, parts.Original(), has
 }
 
-func (p *ProposalCache) dumpAll() []*proposalData {
+func (p *ProposalCache) unfinishedHeights() []*proposalData {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
-	data := make([]*proposalData, 0, len(p.proposals))
+	data := make([]*proposalData, 0)
 	for _, heightData := range p.proposals {
+		var prop *proposalData
 		for _, pd := range heightData {
-			data = append(data, pd)
+			if prop == nil {
+				prop = pd
+				continue
+			}
+			if pd.compactBlock.Proposal.Round > prop.compactBlock.Proposal.Round {
+				prop = pd
+			}
 		}
+		if prop.block.IsComplete() {
+			continue
+		}
+		data = append(data, prop)
 	}
 	return data
+}
+
+func (p *ProposalCache) relevant(height int64, round int32) bool {
+	if height <= p.consensusHeight {
+		return false
+	}
+
+	if round < p.consensusRound {
+		return false
+	}
+
+	return true
 }
 
 // GetProposal returns the proposal and block for a given height and round if
 // this node has it stored or cached. It also return the max requests for that
 // block.
-func (p *ProposalCache) getAllState(height int64, round int32) (*proptypes.CompactBlock, *proptypes.CombinedPartSet, *bits.BitArray, bool) {
+func (p *ProposalCache) getAllState(height int64, round int32, catchup bool) (*proptypes.CompactBlock, *proptypes.CombinedPartSet, *bits.BitArray, bool) {
 	p.pmtx.Lock()
 	defer p.pmtx.Unlock()
+
+	if !catchup && !p.relevant(height, round) {
+		return nil, nil, nil, false
+	}
 
 	cachedProps, has := p.proposals[height]
 	cachedProp, hasRound := cachedProps[round]
@@ -177,6 +208,14 @@ func (p *ProposalCache) DeleteRound(height int64, round int32) {
 	if p.proposals[height] != nil {
 		delete(p.proposals[height], round)
 	}
+}
+
+func (p *ProposalCache) SetConsensusRound(height int64, round int32) {
+	p.pmtx.Lock()
+	defer p.pmtx.Unlock()
+	p.consensusRound = round
+	// todo: delete the old round data as its no longer relevant don't delete
+	// past round data if it has a POL
 }
 
 // prune deletes all cached compact blocks for heights less than the provided

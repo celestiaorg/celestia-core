@@ -26,10 +26,10 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, _
 		return
 	}
 
-	_, parts, fullReqs, has := blockProp.getAllState(height, round)
+	_, parts, fullReqs, has := blockProp.getAllState(height, round, false)
 	if !has {
 		// TODO disconnect from the peer
-		blockProp.Logger.Error("received part state for unknown proposal", "peer", peer, "height", height, "round", round)
+		// blockProp.Logger.Debug("received part state for unknown proposal", "peer", peer, "height", height, "round", round)
 		return
 	}
 
@@ -172,7 +172,9 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 		return
 	}
 
-	_, parts, _, has := blockProp.getAllState(height, round)
+	// get data, use the prove as a proxy for determining if this Want message
+	// if for catchup
+	_, parts, _, has := blockProp.getAllState(height, round, wants.Prove)
 	// the peer must always send the proposal before sending parts, if they did
 	//  not, this node must disconnect from them.
 	if !has {
@@ -209,7 +211,7 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 			continue
 		}
 		// p.SetHave(height, round, int(partIndex))
-		schema.WriteBlockPartState(blockProp.traceClient, height, round, []int{partIndex}, true, string(peer), schema.AskForProposal)
+		schema.WriteBlockPart(blockProp.traceClient, height, round, part.Index, wants.Prove, string(peer), schema.Upload)
 	}
 
 	// for parts that we don't have, but they still want, store the wants.
@@ -240,9 +242,9 @@ func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.Recove
 	}
 	// the peer must always send the proposal before sending parts, if they did
 	// not this node must disconnect from them.
-	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round)
+	cb, parts, _, has := blockProp.getAllState(part.Height, part.Round, false)
 	if !has {
-		blockProp.Logger.Error("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
+		blockProp.Logger.Debug("received part for unknown proposal", "peer", peer, "height", part.Height, "round", part.Round)
 		// d.pswitch.StopPeerForError(p.peer, fmt.Errorf("received part for unknown proposal"))
 		return
 	}
