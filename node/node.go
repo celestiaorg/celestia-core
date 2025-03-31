@@ -244,7 +244,7 @@ type Node struct {
 }
 
 func initDBs(config *cfg.Config, dbProvider DBProvider) (blockStore *store.BlockStore, stateDB dbm.DB, err error) {
-	blockStoreDB, err := dbm.NewDB("blockstore", "pebbledb", config.DBBackend)
+	blockStoreDB, err := dbm.NewDB("blockstore", "pebbledb", config.DBDir())
 	if err != nil {
 		return nil, nil, err
 	}
