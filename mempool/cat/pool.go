@@ -688,7 +688,7 @@ func (txmp *TxPool) recheckTransactions() {
 				})
 				if err != nil {
 					txmp.logger.Error("failed to execute CheckTx during recheck",
-						"err", err, "key", fmt.Sprintf("%x", wtx.key))
+						"err", err, "key", fmt.Sprintf("%x", wtx.key()))
 				} else {
 					txmp.handleRecheckResult(wtx, rsp)
 				}
