@@ -2533,15 +2533,6 @@ func (cs *State) syncData() {
 			completeProp := cs.isProposalComplete()
 			cs.mtx.RUnlock()
 
-			schema.WriteNote(
-				cs.traceClient,
-				h,
-				r,
-				"syncData udpate",
-				"%d %d %v",
-				h, r, completeProp,
-			)
-
 			if completeProp {
 				continue
 			}

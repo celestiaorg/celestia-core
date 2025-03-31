@@ -389,7 +389,7 @@ func TestPropagationSmokeTest(t *testing.T) {
 	})
 
 	for i := int64(1); i < 5; i++ {
-		prop, ps, block, metaData := createTestProposal(sm, int64(i), 2, 1000000)
+		prop, ps, block, metaData := createTestProposal(sm, i, 2, 1000000)
 
 		// predistribute portions of the block
 		for _, tx := range block.Data.Txs {
@@ -424,7 +424,7 @@ func TestPropagationSmokeTest(t *testing.T) {
 		}
 
 		for _, r := range reactors {
-			r.Prune(int64(i))
+			r.Prune(i)
 		}
 	}
 

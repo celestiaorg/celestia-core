@@ -229,8 +229,6 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		// a proposer
 		blockProp.broadcastHaves(&haves, blockProp.self, int(partSet.Total()))
 	}
-
-	return
 }
 
 // broadcastProposal gossips the provided proposal to all peers. This should

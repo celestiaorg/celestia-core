@@ -456,7 +456,7 @@ func (txmp *TxPool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) []*types.CachedTx
 // The result may have fewer than max elements (possibly zero) if the mempool
 // does not have that many transactions available.
 func (txmp *TxPool) ReapMaxTxs(max int) []*types.CachedTx {
-	var keep []*types.CachedTx
+	var keep []*types.CachedTx //nolint:prealloc
 
 	for _, w := range txmp.allEntriesSorted() {
 		if max >= 0 && len(keep) >= max {

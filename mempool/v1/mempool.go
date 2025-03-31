@@ -223,7 +223,6 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.Response), txInfo memp
 				txmp.metrics.AlreadySeenTxs.Add(1)
 				w := elt.Value.(*WrappedTx)
 				w.SetPeer(txInfo.SenderID)
-				w.isRpc = txInfo.IsRPC
 			}
 			return 0, mempool.ErrTxInCache
 		}

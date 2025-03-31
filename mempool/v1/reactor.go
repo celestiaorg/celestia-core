@@ -185,7 +185,7 @@ func (memR *Reactor) ReceiveEnvelope(e p2p.Envelope) {
 			memR.Logger.Error("received tmpty txs from peer", "src", e.Src)
 			return
 		}
-		txInfo := mempool.TxInfo{SenderID: memR.ids.GetForPeer(e.Src), IsRPC: false}
+		txInfo := mempool.TxInfo{SenderID: memR.ids.GetForPeer(e.Src)}
 		if e.Src != nil {
 			txInfo.SenderP2PID = e.Src.ID()
 		}
@@ -283,10 +283,6 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		memTx := next.Value.(*WrappedTx)
 		if peerState.GetHeight() < memTx.height-1 {
 			time.Sleep(mempool.PeerCatchupSleepIntervalMS * time.Millisecond)
-			continue
-		}
-
-		if !memTx.isRpc {
 			continue
 		}
 

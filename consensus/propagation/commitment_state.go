@@ -9,11 +9,10 @@ import (
 )
 
 type proposalData struct {
-	compactBlock  *proptypes.CompactBlock
-	block         *proptypes.CombinedPartSet
-	maxRequests   *bits.BitArray
-	catchup       bool
-	decomissioned bool
+	compactBlock *proptypes.CompactBlock
+	block        *proptypes.CombinedPartSet
+	maxRequests  *bits.BitArray
+	catchup      bool
 }
 
 type ProposalCache struct {
