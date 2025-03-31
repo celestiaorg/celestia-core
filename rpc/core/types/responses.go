@@ -6,6 +6,7 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto"
+	"github.com/cometbft/cometbft/crypto/merkle"
 	"github.com/cometbft/cometbft/libs/bytes"
 	"github.com/cometbft/cometbft/p2p"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -201,7 +202,7 @@ type ResultTx struct {
 	Index    uint32            `json:"index"`
 	TxResult abci.ExecTxResult `json:"tx_result"`
 	Tx       types.Tx          `json:"tx"`
-	Proof    types.TxProof     `json:"proof,omitempty"`
+	Proof    types.ShareProof  `json:"proof,omitempty"`
 }
 
 // Result of searching for txs
@@ -253,4 +254,35 @@ type ResultEvent struct {
 	Query  string              `json:"query"`
 	Data   types.TMEventData   `json:"data"`
 	Events map[string][]string `json:"events"`
+}
+
+// Single block with all data for validation
+type ResultSignedBlock struct {
+	Header       types.Header       `json:"header"`
+	Commit       types.Commit       `json:"commit"`
+	Data         types.Data         `json:"data"`
+	ValidatorSet types.ValidatorSet `json:"validator_set"`
+}
+
+// ResultTxStatus represents the status of a transaction during its life cycle.
+// It contains info to locate a tx in a committed block as well as its execution code, log if it fails and status.
+type ResultTxStatus struct {
+	Height        int64  `json:"height"`
+	Index         uint32 `json:"index"`
+	ExecutionCode uint32 `json:"execution_code"`
+	Error         string `json:"error"`
+	Status        string `json:"status"`
+}
+
+type ResultDataCommitment struct {
+	DataCommitment bytes.HexBytes `json:"data_commitment"`
+}
+
+type ResultDataRootInclusionProof struct {
+	Proof merkle.Proof `json:"proof"`
+}
+
+// ResultShareProof is an API response that contains a ShareProof.
+type ResultShareProof struct {
+	ShareProof types.ShareProof `json:"share_proof"`
 }

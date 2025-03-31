@@ -1295,8 +1295,22 @@ type Data struct {
 	// This means that block.AppHash does not include these txs.
 	Txs Txs `json:"txs"`
 
+	// SquareSize is the size of the square after splitting all the block data
+	// into shares. The erasure data is discarded after generation, and keeping this
+	// value avoids unnecessarily regenerating all of the shares when returning
+	// proofs that some element was included in the block
+	SquareSize uint64 `json:"square_size"`
+
 	// Volatile
 	hash cmtbytes.HexBytes
+}
+
+func NewData(txs Txs, squareSize uint64, hash cmtbytes.HexBytes) Data {
+	return Data{
+		Txs:        txs,
+		SquareSize: squareSize,
+		hash:       hash,
+	}
 }
 
 // Hash returns the hash of the data
@@ -1342,6 +1356,9 @@ func (data *Data) ToProto() cmtproto.Data {
 		tp.Txs = txBzs
 	}
 
+	tp.SquareSize = data.SquareSize
+	tp.Hash = data.hash
+
 	return *tp
 }
 
@@ -1363,10 +1380,38 @@ func DataFromProto(dp *cmtproto.Data) (Data, error) {
 		data.Txs = Txs{}
 	}
 
+	data.hash = dp.Hash
+	data.SquareSize = dp.SquareSize
+
 	return *data, nil
 }
 
 //-----------------------------------------------------------------------------
+
+type Blob struct {
+	// NamespaceVersion is the version of the namespace. Used in conjunction
+	// with NamespaceID to determine the namespace of this blob.
+	NamespaceVersion uint8
+
+	// NamespaceID defines the namespace ID of this blob. Used in conjunction
+	// with NamespaceVersion to determine the namespace of this blob.
+	NamespaceID []byte
+
+	// Data is the actual data of the blob.
+	// (e.g. a block of a virtual sidechain).
+	Data []byte
+
+	// ShareVersion is the version of the share format that this blob should use
+	// when encoded into shares.
+	ShareVersion uint8
+}
+
+// Namespace returns the namespace of this blob encoded as a byte slice.
+func (b Blob) Namespace() []byte {
+	return append([]byte{b.NamespaceVersion}, b.NamespaceID...)
+}
+
+// -----------------------------------------------------------------------------
 
 // EvidenceData contains any evidence of malicious wrong-doing by validators
 type EvidenceData struct {

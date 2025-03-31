@@ -26,4 +26,10 @@ type Metrics struct {
 	// updated the validator set since process start.
 	//metrics:Number of validator set updates returned by the application since process start.
 	ValidatorSetUpdates metrics.Counter
+
+	// The number of transactions rejected by the application.
+	RejectedTransactions metrics.Counter
+
+	// The number of transactions processed by the application.
+	ProcessedTransactions metrics.Counter
 }

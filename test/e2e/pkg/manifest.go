@@ -112,6 +112,13 @@ type Manifest struct {
 	// Maximum number of peers to which the node gossips transactions
 	ExperimentalMaxGossipConnectionsToPersistentPeers    uint `toml:"experimental_max_gossip_connections_to_persistent_peers"`
 	ExperimentalMaxGossipConnectionsToNonPersistentPeers uint `toml:"experimental_max_gossip_connections_to_non_persistent_peers"`
+
+	// MaxInboundConnections and MaxOutboundConnection are the maximum number
+	// of connections a node has. This can be used to throttle the degree of
+	// connectivity of the network. If not specified, the default is taken
+	// from config/config.go
+	MaxInboundConnections  int `toml:"max_inbound_connections"`
+	MaxOutboundConnections int `toml:"max_outbound_connections"`
 }
 
 // ManifestNode represents a node in a testnet manifest.
@@ -137,8 +144,8 @@ type ManifestNode struct {
 	// this relates to the providers the light client is connected to.
 	PersistentPeers []string `toml:"persistent_peers"`
 
-	// Database specifies the database backend: "goleveldb", "cleveldb",
-	// "rocksdb", "boltdb", or "badgerdb". Defaults to goleveldb.
+	// Database specifies the database backend: "goleveldb", "pebbledb",
+	// or "badgerdb". Defaults to goleveldb.
 	Database string `toml:"database"`
 
 	// PrivvalProtocol specifies the protocol used to sign consensus messages:

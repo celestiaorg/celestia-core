@@ -29,6 +29,9 @@ type Options struct {
 	suppressStdout  bool
 	recreateConfig  bool
 	maxReqBatchSize int
+
+	// SpecificConfig will replace the global config if not nil
+	SpecificConfig *cfg.Config
 }
 
 var (
@@ -157,6 +160,9 @@ func StopTendermint(node *nm.Node) {
 func NewTendermint(app abci.Application, opts *Options) *nm.Node {
 	// Create & start node
 	config := GetConfig(opts.recreateConfig)
+	if opts.SpecificConfig != nil {
+		config = opts.SpecificConfig
+	}
 	var logger log.Logger
 	if opts.suppressStdout {
 		logger = log.NewNopLogger()
@@ -201,4 +207,22 @@ func RecreateConfig(o *Options) {
 // MaxReqBatchSize is an option to limit the maximum number of requests per batch.
 func MaxReqBatchSize(o *Options) {
 	o.maxReqBatchSize = 2
+}
+
+func GetBlockAPIClient() (core_grpc.BlockAPIServiceClient, error) {
+	grpcAddr := globalConfig.RPC.GRPCListenAddress
+	client, err := core_grpc.StartBlockAPIGRPCClient(grpcAddr)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+func GetBlobstreamAPIClient() (core_grpc.BlobstreamAPIClient, error) {
+	grpcAddr := globalConfig.RPC.GRPCListenAddress
+	client, err := core_grpc.StartBlobstreamAPIGRPCClient(grpcAddr)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
 }

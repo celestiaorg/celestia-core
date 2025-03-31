@@ -37,9 +37,9 @@ type Metrics struct {
 	// Number of transactions submitted by each peer.
 	NumTxs metrics.Gauge `metrics_labels:"peer_id"`
 	// Number of bytes of each message type received.
-	MessageReceiveBytesTotal metrics.Counter `metrics_labels:"message_type"`
+	MessageReceiveBytesTotal metrics.Counter `metrics_labels:"message_type,chID,peer_id"`
 	// Number of bytes of each message type sent.
-	MessageSendBytesTotal metrics.Counter `metrics_labels:"message_type"`
+	MessageSendBytesTotal metrics.Counter `metrics_labels:"message_type,chID,peer_id"`
 }
 
 type metricsLabelCache struct {

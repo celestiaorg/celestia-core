@@ -10,6 +10,12 @@ import (
 type ChannelDescriptor = conn.ChannelDescriptor
 type ConnectionStatus = conn.ConnectionStatus
 
+type UnprocessedEnvelope struct {
+	Src       IntrospectivePeer
+	Message   []byte
+	ChannelID byte
+}
+
 // Envelope contains a message with sender routing info.
 type Envelope struct {
 	Src       Peer          // sender (empty if outbound)

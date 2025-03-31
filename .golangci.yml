@@ -6,11 +6,9 @@ linters:
     - dogsled
     - dupl
     - errcheck
-    # - copyloopvar
     - goconst
     - gofmt
     - goimports
-    # - gosec
     - gosimple
     - govet
     - ineffassign
@@ -19,7 +17,6 @@ linters:
     - nolintlint
     - prealloc
     - staticcheck
-    # - structcheck // to be fixed by golangci-lint
     - stylecheck
     - typecheck
     - unconvert
@@ -35,12 +32,8 @@ issues:
 linters-settings:
   dogsled:
     max-blank-identifiers: 3
-  golint:
-    min-confidence: 0
   goconst:
     ignore-tests: true
-  maligned:
-    suggest-new: true
   misspell:
     locale: US
   depguard:
@@ -51,7 +44,12 @@ linters-settings:
           - "!$test"
         allow:
           - $gostd
+          - go/
+          - google.golang.org/grpc
           - github.com/cometbft
+          - google.golang.org/
+          - golang.org/x
+          - go.opentelemetry.io/otel
           - github.com/cosmos
           - github.com/btcsuite/btcd/btcec/v2
           - github.com/BurntSushi/toml
@@ -77,12 +75,26 @@ linters-settings:
           - github.com/stretchr/testify/require
           - github.com/syndtr/goleveldb
           - github.com/decred/dcrd/dcrec/secp256k1/v4
+          - github.com/aws/aws-sdk-go-v2/aws
+          - github.com/aws/aws-sdk-go-v2/config
+          - github.com/aws/aws-sdk-go-v2/credentials
+          - github.com/grafana/pyroscope-go
+          - github.com/aws/aws-sdk-go-v2/service/s3
+          - github.com/grafana/otel-profiling-go
+          - github.com/celestiaorg/nmt
+          - google.golang.org/protobuf/proto
+          - google.golang.org/protobuf/types/known/timestamppb
+          - gonum.org/v1/gonum/stat
+          - github.com/celestiaorg/go-square/v2
       test:
         files:
           - "$test"
         allow:
           - $gostd
           - github.com/cosmos
+          - google.golang.org/grpc
+          - golang.org/x/crypto/
+          - google.golang.org/protobuf/types
           - github.com/cometbft
           - github.com/adlio/schema
           - github.com/btcsuite/btcd
@@ -98,7 +110,7 @@ linters-settings:
           - github.com/spf13
           - github.com/stretchr/testify
           - github.com/decred/dcrd/dcrec/secp256k1/v4
-
+          - github.com/celestiaorg/go-square/v2
   revive:
     enable-all-rules: true
     rules:

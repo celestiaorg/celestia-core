@@ -24,6 +24,9 @@ func (emptyMempool) CheckTx(types.Tx, func(*abci.ResponseCheckTx), mempl.TxInfo)
 	return nil
 }
 
+func (emptyMempool) GetTxByKey(types.TxKey) (types.Tx, bool) { return nil, false }
+func (emptyMempool) WasRecentlyEvicted(types.TxKey) bool     { return false }
+
 func (txmp emptyMempool) RemoveTxByKey(types.TxKey) error {
 	return nil
 }

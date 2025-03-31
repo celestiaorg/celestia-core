@@ -1,9 +1,14 @@
 package p2p
 
 import (
+	"context"
+
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/p2p/conn"
 )
+
+// ProcessorFunc is the message processor function type.
+type ProcessorFunc func(context.Context, <-chan UnprocessedEnvelope) error
 
 // Reactor is responsible for handling incoming messages on one or more
 // Channel. Switch calls GetChannels when reactor is added to it. When a new
@@ -50,11 +55,15 @@ type BaseReactor struct {
 	Switch              *Switch
 }
 
-func NewBaseReactor(name string, impl Reactor) *BaseReactor {
-	return &BaseReactor{
+type ReactorOptions func(*BaseReactor)
+
+func NewBaseReactor(name string, impl Reactor, opts ...ReactorOptions) *BaseReactor {
+	br := &BaseReactor{
 		BaseService: *service.NewBaseService(nil, name, impl),
 		Switch:      nil,
 	}
+
+	return br
 }
 
 func (br *BaseReactor) SetSwitch(sw *Switch) {

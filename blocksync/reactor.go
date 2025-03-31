@@ -29,6 +29,9 @@ const (
 	statusUpdateIntervalSeconds = 10
 	// check if we should switch to consensus reactor
 	switchToConsensusIntervalSeconds = 1
+
+	// ReactorIncomingMessageQueueSize the size of the reactor's message queue.
+	ReactorIncomingMessageQueueSize = 10
 )
 
 type consensusReactor interface {
@@ -249,7 +252,7 @@ func (bcR *Reactor) respondToPeer(msg *bcproto.BlockRequest, src p2p.Peer) (queu
 }
 
 // Receive implements Reactor by handling 4 types of messages (look below).
-func (bcR *Reactor) Receive(e p2p.Envelope) { //nolint: dupl // recreated in a test
+func (bcR *Reactor) Receive(e p2p.Envelope) {
 	if err := ValidateMsg(e.Message); err != nil {
 		bcR.Logger.Error("Peer sent us invalid msg", "peer", e.Src, "msg", e.Message, "err", err)
 		bcR.Switch.StopPeerForError(e.Src, err)
@@ -258,7 +261,7 @@ func (bcR *Reactor) Receive(e p2p.Envelope) { //nolint: dupl // recreated in a t
 
 	bcR.Logger.Debug("Receive", "e.Src", e.Src, "chID", e.ChannelID, "msg", e.Message)
 
-	switch msg := e.Message.(type) {
+	switch msg := e.Message.(type) { //nolint:dupl // recreated in a test
 	case *bcproto.BlockRequest:
 		bcR.respondToPeer(msg, e.Src)
 	case *bcproto.BlockResponse:
@@ -500,6 +503,22 @@ FOR_LOOP:
 				// validate the block before we persist it
 				err = bcR.blockExec.ValidateBlock(state, first)
 			}
+
+			if err == nil {
+				var stateMachineValid bool
+				// Block sync doesn't check that the `Data` in a block is valid.
+				// Since celestia-core can't determine if the `Data` in a block
+				// is valid, the next line asks celestia-app to check if the
+				// block is valid via ProcessProposal. If this step wasn't
+				// performed, a malicious node could fabricate an alternative
+				// set of transactions that would cause a different app hash and
+				// thus cause this node to panic.
+				stateMachineValid, err = bcR.blockExec.ProcessProposal(first, state)
+				if !stateMachineValid {
+					err = fmt.Errorf("application has rejected syncing block (%X) at height %d, %w", first.Hash(), first.Height, err)
+				}
+			}
+
 			presentExtCommit := extCommit != nil
 			extensionsEnabled := state.ConsensusParams.ABCI.VoteExtensionsEnabled(first.Height)
 			if presentExtCommit != extensionsEnabled {
@@ -546,7 +565,7 @@ FOR_LOOP:
 
 			// TODO: same thing for app - but we would need a way to
 			// get the hash without persisting the state
-			state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first)
+			state, err = bcR.blockExec.ApplyVerifiedBlock(state, firstID, first, second.LastCommit)
 			if err != nil {
 				// TODO This is bad, are we zombie?
 				panic(fmt.Sprintf("Failed to process committed block (%d:%X): %v", first.Height, first.Hash(), err))

@@ -34,6 +34,22 @@ type InfrastructureData struct {
 	// Network is the CIDR notation range of IP addresses that all of the instances'
 	// IP addresses are expected to be within.
 	Network string `json:"network"`
+
+	// TracePushConfig is the URL of the server to push trace data to.
+	TracePushConfig string `json:"trace_push_config,omitempty"`
+
+	// TracePullAddress is the address to listen on for pulling trace data.
+	TracePullAddress string `json:"trace_pull_address,omitempty"`
+
+	// PyroscopeURL is the URL of the pyroscope instance to use for continuous
+	// profiling. If not specified, data will not be collected.
+	PyroscopeURL string `json:"pyroscope_url,omitempty"`
+
+	// PyroscopeTrace enables adding trace data to pyroscope profiling.
+	PyroscopeTrace bool `json:"pyroscope_trace,omitempty"`
+
+	// PyroscopeProfileTypes is the list of profile types to collect.
+	PyroscopeProfileTypes []string `json:"pyroscope_profile_types,omitempty"`
 }
 
 // InstanceData contains the relevant information for a machine instance backing

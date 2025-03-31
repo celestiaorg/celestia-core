@@ -17,6 +17,7 @@ const (
 	// These are also used by the tx indexer for async indexing.
 	// All of this data can be fetched through the rpc.
 	EventNewBlock            = "NewBlock"
+	EventSignedBlock         = "NewSignedBlock"
 	EventNewBlockHeader      = "NewBlockHeader"
 	EventNewBlockEvents      = "NewBlockEvents"
 	EventNewEvidence         = "NewEvidence"
@@ -48,6 +49,7 @@ type TMEventData interface {
 
 func init() {
 	cmtjson.RegisterType(EventDataNewBlock{}, "tendermint/event/NewBlock")
+	cmtjson.RegisterType(EventDataSignedBlock{}, "tendermint/event/NewSignedBlock")
 	cmtjson.RegisterType(EventDataNewBlockHeader{}, "tendermint/event/NewBlockHeader")
 	cmtjson.RegisterType(EventDataNewBlockEvents{}, "tendermint/event/NewBlockEvents")
 	cmtjson.RegisterType(EventDataNewEvidence{}, "tendermint/event/NewEvidence")
@@ -67,6 +69,15 @@ type EventDataNewBlock struct {
 	Block               *Block                     `json:"block"`
 	BlockID             BlockID                    `json:"block_id"`
 	ResultFinalizeBlock abci.ResponseFinalizeBlock `json:"result_finalize_block"`
+}
+
+// EventDataSignedBlock contains all the information needed to verify
+// the data committed in a block.
+type EventDataSignedBlock struct {
+	Header       Header       `json:"header"`
+	Commit       Commit       `json:"commit"`
+	ValidatorSet ValidatorSet `json:"validator_set"`
+	Data         Data         `json:"data"`
 }
 
 type EventDataNewBlockHeader struct {
@@ -149,6 +160,7 @@ var (
 	EventQueryCompleteProposal    = QueryForEvent(EventCompleteProposal)
 	EventQueryLock                = QueryForEvent(EventLock)
 	EventQueryNewBlock            = QueryForEvent(EventNewBlock)
+	EventQueryNewSignedBlock      = QueryForEvent(EventSignedBlock)
 	EventQueryNewBlockHeader      = QueryForEvent(EventNewBlockHeader)
 	EventQueryNewBlockEvents      = QueryForEvent(EventNewBlockEvents)
 	EventQueryNewEvidence         = QueryForEvent(EventNewEvidence)
@@ -176,6 +188,7 @@ func QueryForEvent(eventType string) cmtpubsub.Query {
 // BlockEventPublisher publishes all block related events
 type BlockEventPublisher interface {
 	PublishEventNewBlock(block EventDataNewBlock) error
+	PublishEventSignedBlock(block EventDataSignedBlock) error
 	PublishEventNewBlockHeader(header EventDataNewBlockHeader) error
 	PublishEventNewBlockEvents(events EventDataNewBlockEvents) error
 	PublishEventNewEvidence(evidence EventDataNewEvidence) error

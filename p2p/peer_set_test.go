@@ -35,6 +35,8 @@ func (mp *mockPeer) CloseConn() error         { return nil }
 func (mp *mockPeer) SetRemovalFailed()        {}
 func (mp *mockPeer) GetRemovalFailed() bool   { return false }
 
+func (mp *mockPeer) HasIPChanged() bool { return false }
+
 // Returns a mock peer
 func newMockPeer(ip net.IP) *mockPeer {
 	if ip == nil {

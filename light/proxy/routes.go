@@ -51,6 +51,9 @@ func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {
 
 		// evidence API
 		"broadcast_evidence": rpcserver.NewRPCFunc(makeBroadcastEvidenceFunc(c), "evidence"),
+
+		// Celestia Specific RPCs
+		"tx_status": rpcserver.NewRPCFunc(makeTxStatusFunc(c), "hash"),
 	}
 }
 
@@ -298,5 +301,13 @@ type rpcBroadcastEvidenceFunc func(ctx *rpctypes.Context, ev types.Evidence) (*c
 func makeBroadcastEvidenceFunc(c *lrpc.Client) rpcBroadcastEvidenceFunc {
 	return func(ctx *rpctypes.Context, ev types.Evidence) (*ctypes.ResultBroadcastEvidence, error) {
 		return c.BroadcastEvidence(ctx.Context(), ev)
+	}
+}
+
+type rpcTxStatusFunc func(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error)
+
+func makeTxStatusFunc(c *lrpc.Client) rpcTxStatusFunc {
+	return func(ctx *rpctypes.Context, hash []byte) (*ctypes.ResultTxStatus, error) {
+		return c.TxStatus(ctx.Context(), hash)
 	}
 }

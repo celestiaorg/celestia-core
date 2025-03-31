@@ -29,6 +29,7 @@ import (
 	cmtrand "github.com/cometbft/cometbft/libs/rand"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/privval"
+	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/proxy"
 	sm "github.com/cometbft/cometbft/state"
@@ -724,7 +725,7 @@ func testHandshakeReplay(t *testing.T, config *cfg.Config, nBlocks int, mode uin
 	})
 
 	// perform the replay protocol to sync Tendermint and the application
-	err = handshaker.Handshake(proxyApp)
+	_, err = handshaker.Handshake(proxyApp)
 	if expectError {
 		require.Error(t, err)
 		// finish the test early
@@ -772,7 +773,7 @@ func applyBlock(t *testing.T, stateStore sm.Store, mempool mempool.Mempool, evpo
 	bps, err := blk.MakePartSet(testPartSize)
 	require.NoError(t, err)
 	blkID := types.BlockID{Hash: blk.Hash(), PartSetHeader: bps.Header()}
-	newState, err := blockExec.ApplyBlock(st, blkID, blk)
+	newState, err := blockExec.ApplyBlock(st, blkID, blk, nil)
 	require.NoError(t, err)
 	return newState
 }
@@ -898,7 +899,7 @@ func makeBlocks(n int, state sm.State, privVals []types.PrivValidator) ([]*types
 		if err != nil {
 			return nil, err
 		}
-		block := state.MakeBlock(height, test.MakeNTxs(height, 10), lastCommit, nil, state.LastValidators.Proposer.Address)
+		block := state.MakeBlock(height, types.MakeData(test.MakeNTxs(height, 10)), lastCommit, nil, state.LastValidators.Proposer.Address)
 		blocks[i] = block
 		state.LastBlockID = blockID
 		state.LastBlockHeight = height
@@ -953,7 +954,8 @@ func TestHandshakePanicsIfAppReturnsWrongAppHash(t *testing.T) {
 
 		assert.Panics(t, func() {
 			h := NewHandshaker(stateStore, state, store, genDoc)
-			if err = h.Handshake(proxyApp); err != nil {
+			_, err = h.Handshake(proxyApp)
+			if err != nil {
 				t.Log(err)
 			}
 		})
@@ -977,7 +979,8 @@ func TestHandshakePanicsIfAppReturnsWrongAppHash(t *testing.T) {
 
 		assert.Panics(t, func() {
 			h := NewHandshaker(stateStore, state, store, genDoc)
-			if err = h.Handshake(proxyApp); err != nil {
+			_, err = h.Handshake(proxyApp)
+			if err != nil {
 				t.Log(err)
 			}
 		})
@@ -1179,6 +1182,11 @@ func newMockBlockStore(t *testing.T, config *cfg.Config, params types.ConsensusP
 	}
 }
 
+func (*mockBlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error {
+	return nil
+}
+func (bs *mockBlockStore) LoadTxInfo(hash []byte) *cmtstore.TxInfo { return &cmtstore.TxInfo{} }
+
 func (bs *mockBlockStore) Height() int64                       { return int64(len(bs.chain)) }
 func (bs *mockBlockStore) Base() int64                         { return bs.base }
 func (bs *mockBlockStore) Size() int64                         { return bs.Height() - bs.Base() + 1 }
@@ -1267,10 +1275,11 @@ func TestHandshakeUpdatesValidators(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if err := handshaker.Handshake(proxyApp); err != nil {
+	_, err := handshaker.Handshake(proxyApp)
+	if err != nil {
 		t.Fatalf("Error on abci handshake: %v", err)
 	}
-	var err error
+
 	// reload the state, check the validator set was updated
 	state, err = stateStore.Load()
 	require.NoError(t, err)

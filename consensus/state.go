@@ -24,6 +24,8 @@ import (
 	cmtos "github.com/cometbft/cometbft/libs/os"
 	"github.com/cometbft/cometbft/libs/service"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
+	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sm "github.com/cometbft/cometbft/state"
@@ -145,6 +147,9 @@ type State struct {
 
 	// offline state sync height indicating to which height the node synced offline
 	offlineStateSyncHeight int64
+
+	// traceClient is used to trace the state machine.
+	traceClient trace.Tracer
 }
 
 // StateOption sets an optional parameter on the State.
@@ -175,6 +180,7 @@ func NewState(
 		evpool:           evpool,
 		evsw:             cmtevents.NewEventSwitch(),
 		metrics:          NopMetrics(),
+		traceClient:      trace.NoOpTracer(),
 	}
 	for _, option := range options {
 		option(cs)
@@ -222,6 +228,11 @@ func (cs *State) SetEventBus(b *types.EventBus) {
 // StateMetrics sets the metrics.
 func StateMetrics(metrics *Metrics) StateOption {
 	return func(cs *State) { cs.metrics = metrics }
+}
+
+// SetTraceClient sets the remote event collector.
+func SetTraceClient(ec trace.Tracer) StateOption {
+	return func(cs *State) { cs.traceClient = ec }
 }
 
 // OfflineStateSyncHeight indicates the height at which the node
@@ -323,6 +334,8 @@ func (cs *State) OnStart() error {
 			return err
 		}
 	}
+
+	cs.metrics.Height.Set(float64(cs.Height))
 
 	// we need the timeoutRoutine for replay so
 	// we don't block on the tick chan.
@@ -546,6 +559,7 @@ func (cs *State) updateRoundStep(round int32, step cstypes.RoundStepType) {
 		}
 		if cs.Step != step {
 			cs.metrics.MarkStep(cs.Step)
+			schema.WriteRoundState(cs.traceClient, cs.Height, round, uint8(step))
 		}
 	}
 	cs.Round = round
@@ -725,9 +739,19 @@ func (cs *State) updateToState(state sm.State) {
 		// to be gathered for the first block.
 		// And alternative solution that relies on clocks:
 		// cs.StartTime = state.LastBlockTime.Add(timeoutCommit)
-		cs.StartTime = cs.config.Commit(cmttime.Now())
+		if state.LastBlockHeight == 0 {
+			// Don't use cs.state.TimeoutCommit because that is zero
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), state.TimeoutCommit)
+		} else {
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cmttime.Now(), cs.state.TimeoutCommit)
+		}
+
 	} else {
-		cs.StartTime = cs.config.Commit(cs.CommitTime)
+		if state.LastBlockHeight == 0 {
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, state.TimeoutCommit)
+		} else {
+			cs.StartTime = cs.config.CommitWithCustomTimeout(cs.CommitTime, cs.state.TimeoutCommit)
+		}
 	}
 
 	cs.Validators = validators
@@ -828,8 +852,10 @@ func (cs *State) receiveRoutine(maxSteps int) {
 			cs.handleTxsAvailable()
 
 		case mi = <-cs.peerMsgQueue:
-			if err := cs.wal.Write(mi); err != nil {
-				cs.Logger.Error("failed writing to WAL", "err", err)
+			if !cs.config.OnlyInternalWal {
+				if err := cs.wal.Write(mi); err != nil {
+					cs.Logger.Error("failed writing to WAL", "err", err)
+				}
 			}
 			// handles proposals, block parts, votes
 			// may generate internal events (votes, complete proposals, 2/3 majorities)
@@ -1358,6 +1384,8 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		return
 	}
 
+	schema.WriteABCI(cs.traceClient, schema.ProcessProposalStart, height, round)
+
 	// Validate proposal block, from consensus' perspective
 	err := cs.blockExec.ValidateBlock(cs.state, cs.ProposalBlock)
 	if err != nil {
@@ -1378,6 +1406,8 @@ func (cs *State) defaultDoPrevote(height int64, round int32) {
 		Please see `PrepareProosal`-`ProcessProposal` coherence and determinism properties
 		in the ABCI++ specification.
 	*/
+	schema.WriteABCI(cs.traceClient, schema.ProcessProposalEnd, height, round)
+
 	isAppValid, err := cs.blockExec.ProcessProposal(cs.ProposalBlock, cs.state)
 	if err != nil {
 		panic(fmt.Sprintf(
@@ -1584,6 +1614,7 @@ func (cs *State) enterPrecommitWait(height int64, round int32) {
 	defer func() {
 		// Done enterPrecommitWait:
 		cs.TriggeredTimeoutPrecommit = true
+		cs.updateRoundStep(round, cstypes.RoundStepPrecommitWait)
 		cs.newStep()
 	}()
 
@@ -1724,10 +1755,12 @@ func (cs *State) finalizeCommit(height int64) {
 	fail.Fail() // XXX
 
 	// Save to blockStore.
+	var seenCommit *types.Commit
 	if cs.blockStore.Height() < block.Height {
 		// NOTE: the seenCommit is local justification to commit this block,
 		// but may differ from the LastCommit included in the next block
 		seenExtendedCommit := cs.Votes.Precommits(cs.CommitRound).MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
+		seenCommit = seenExtendedCommit.ToCommit()
 		if cs.state.ConsensusParams.ABCI.VoteExtensionsEnabled(block.Height) {
 			cs.blockStore.SaveBlockWithExtendedCommit(block, blockParts, seenExtendedCommit)
 		} else {
@@ -1766,6 +1799,8 @@ func (cs *State) finalizeCommit(height int64) {
 	// Create a copy of the state for staging and an event cache for txs.
 	stateCopy := cs.state.Copy()
 
+	schema.WriteABCI(cs.traceClient, schema.CommitStart, height, 0)
+
 	// Execute and commit the block, update and save the state, and update the mempool.
 	// We use apply verified block here because we have verified the block in this function already.
 	// NOTE The block.AppHash won't reflect these txs until the next block.
@@ -1776,10 +1811,13 @@ func (cs *State) finalizeCommit(height int64) {
 			PartSetHeader: blockParts.Header(),
 		},
 		block,
+		seenCommit,
 	)
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}
+
+	schema.WriteABCI(cs.traceClient, schema.CommitEnd, height, 0)
 
 	fail.Fail() // XXX
 
@@ -1882,11 +1920,16 @@ func (cs *State) recordMetrics(height int64, block *types.Block) {
 	if height > 1 {
 		lastBlockMeta := cs.blockStore.LoadBlockMeta(height - 1)
 		if lastBlockMeta != nil {
-			cs.metrics.BlockIntervalSeconds.Observe(
-				block.Time.Sub(lastBlockMeta.Header.Time).Seconds(),
-			)
+			elapsedTime := block.Time.Sub(lastBlockMeta.Header.Time).Seconds()
+			cs.metrics.BlockIntervalSeconds.Observe(elapsedTime)
+			cs.metrics.BlockTimeSeconds.Set(elapsedTime)
 		}
 	}
+
+	blockSize := block.Size()
+
+	// trace some metadata about the block
+	schema.WriteBlockSummary(cs.traceClient, block, blockSize)
 
 	cs.metrics.NumTxs.Set(float64(len(block.Data.Txs)))
 	cs.metrics.TotalTxs.Add(float64(len(block.Data.Txs)))

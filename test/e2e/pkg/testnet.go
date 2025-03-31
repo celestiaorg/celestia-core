@@ -97,6 +97,9 @@ type Testnet struct {
 	VoteExtensionsUpdateHeight                           int64
 	ExperimentalMaxGossipConnectionsToPersistentPeers    uint
 	ExperimentalMaxGossipConnectionsToNonPersistentPeers uint
+
+	MaxInboundConnections  int
+	MaxOutboundConnections int
 }
 
 // Node represents a CometBFT node in a testnet.
@@ -125,6 +128,15 @@ type Node struct {
 	SendNoLoad          bool
 	Prometheus          bool
 	PrometheusProxyPort uint32
+
+	MaxInboundConnections  int
+	MaxOutboundConnections int
+
+	TracePushConfig       string
+	TracePullAddress      string
+	PyroscopeURL          string
+	PyroscopeTrace        bool
+	PyroscopeProfileTypes []string
 }
 
 // LoadTestnet loads a testnet from a manifest file, using the filename to
@@ -181,6 +193,9 @@ func NewTestnetFromManifest(manifest Manifest, file string, ifd InfrastructureDa
 		VoteExtensionsUpdateHeight: manifest.VoteExtensionsUpdateHeight,
 		ExperimentalMaxGossipConnectionsToPersistentPeers:    manifest.ExperimentalMaxGossipConnectionsToPersistentPeers,
 		ExperimentalMaxGossipConnectionsToNonPersistentPeers: manifest.ExperimentalMaxGossipConnectionsToNonPersistentPeers,
+
+		MaxInboundConnections:  manifest.MaxInboundConnections,
+		MaxOutboundConnections: manifest.MaxOutboundConnections,
 	}
 	if len(manifest.KeyType) != 0 {
 		testnet.KeyType = manifest.KeyType
@@ -241,6 +256,12 @@ func NewTestnetFromManifest(manifest Manifest, file string, ifd InfrastructureDa
 			Perturbations:    []Perturbation{},
 			SendNoLoad:       nodeManifest.SendNoLoad,
 			Prometheus:       testnet.Prometheus,
+
+			TracePushConfig:       ifd.TracePushConfig,
+			TracePullAddress:      ifd.TracePullAddress,
+			PyroscopeURL:          ifd.PyroscopeURL,
+			PyroscopeTrace:        ifd.PyroscopeTrace,
+			PyroscopeProfileTypes: ifd.PyroscopeProfileTypes,
 		}
 		if node.StartAt == testnet.InitialHeight {
 			node.StartAt = 0 // normalize to 0 for initial nodes, since code expects this
@@ -268,6 +289,12 @@ func NewTestnetFromManifest(manifest Manifest, file string, ifd InfrastructureDa
 		}
 		for _, p := range nodeManifest.Perturb {
 			node.Perturbations = append(node.Perturbations, Perturbation(p))
+		}
+		if node.MaxInboundConnections < 0 {
+			return nil, errors.New("MaxInboundConnections must not be negative")
+		}
+		if node.MaxOutboundConnections < 0 {
+			return nil, errors.New("MaxOutboundConnections must not be negative")
 		}
 		testnet.Nodes = append(testnet.Nodes, node)
 	}
@@ -431,7 +458,7 @@ func (n Node) Validate(testnet Testnet) error {
 		return fmt.Errorf("invalid block sync setting %q", n.BlockSyncVersion)
 	}
 	switch n.Database {
-	case "goleveldb", "cleveldb", "boltdb", "rocksdb", "badgerdb":
+	case "goleveldb", "pebbledb", "badgerdb":
 	default:
 		return fmt.Errorf("invalid database setting %q", n.Database)
 	}

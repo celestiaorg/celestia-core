@@ -71,3 +71,4 @@ func (mp *Peer) RemoteAddr() net.Addr        { return &net.TCPAddr{IP: mp.ip, Po
 func (mp *Peer) CloseConn() error            { return nil }
 func (mp *Peer) SetRemovalFailed()           {}
 func (mp *Peer) GetRemovalFailed() bool      { return false }
+func (*Peer) HasIPChanged() bool             { return false }

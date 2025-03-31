@@ -56,7 +56,7 @@ func makeAndCommitGoodBlock(
 func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commit, proposerAddr []byte,
 	blockExec *sm.BlockExecutor, evidence []types.Evidence,
 ) (sm.State, types.BlockID, error) {
-	block := state.MakeBlock(height, test.MakeNTxs(height, 10), lastCommit, evidence, proposerAddr)
+	block := state.MakeBlock(height, types.MakeData(test.MakeNTxs(height, 10)), lastCommit, evidence, proposerAddr)
 	partSet, err := block.MakePartSet(types.BlockPartSizeBytes)
 	if err != nil {
 		return state, types.BlockID{}, err
@@ -69,7 +69,7 @@ func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commi
 		Hash:          block.Hash(),
 		PartSetHeader: partSet.Header(),
 	}
-	state, err = blockExec.ApplyBlock(state, blockID, block)
+	state, err = blockExec.ApplyBlock(state, blockID, block, nil)
 	if err != nil {
 		return state, types.BlockID{}, err
 	}
@@ -79,7 +79,7 @@ func makeAndApplyGoodBlock(state sm.State, height int64, lastCommit *types.Commi
 func makeBlock(state sm.State, height int64, c *types.Commit) *types.Block {
 	return state.MakeBlock(
 		height,
-		test.MakeNTxs(state.LastBlockHeight, 10),
+		types.MakeData(test.MakeNTxs(state.LastBlockHeight, 10)),
 		c,
 		nil,
 		state.Validators.GetProposer().Address,

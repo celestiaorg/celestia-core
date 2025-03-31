@@ -347,6 +347,7 @@ dial_timeout = "{{ .P2P.DialTimeout }}"
 #  - "nop"   : nop-mempool (short for no operation; the ABCI app is responsible
 #  for storing, disseminating and proposing txs). "create_empty_blocks=false" is
 #  not supported.
+#  - "cat"   : content addressable mempool
 type = "flood"
 
 # Recheck (default: true) defines whether CometBFT should recheck the
@@ -420,6 +421,12 @@ max_batch_bytes = {{ .Mempool.MaxBatchBytes }}
 experimental_max_gossip_connections_to_persistent_peers = {{ .Mempool.ExperimentalMaxGossipConnectionsToPersistentPeers }}
 experimental_max_gossip_connections_to_non_persistent_peers = {{ .Mempool.ExperimentalMaxGossipConnectionsToNonPersistentPeers }}
 
+# max-gossip-delay is the maximum allotted time that the reactor expects a transaction to
+# arrive before issuing a new request to a different peer
+# Only applicable to the v2 / CAT mempool
+# Default is 200ms
+max-gossip-delay = "{{ .Mempool.MaxGossipDelay }}"
+
 #######################################################
 ###         State Sync Configuration Options        ###
 #######################################################
@@ -473,6 +480,11 @@ version = "{{ .BlockSync.Version }}"
 ###         Consensus Configuration Options         ###
 #######################################################
 [consensus]
+
+# If set to "true", only internal messages will be
+# written to the WAL. External messages like votes, proposal,
+# block parts, will not be written.
+only_internal_wal = "{{ .Consensus.OnlyInternalWal }}"
 
 wal_file = "{{ js .Consensus.WalPath }}"
 
@@ -564,4 +576,39 @@ max_open_connections = {{ .Instrumentation.MaxOpenConnections }}
 
 # Instrumentation namespace
 namespace = "{{ .Instrumentation.Namespace }}"
+
+# TracePushConfig is the relative path of the push config.
+# This second config contains credentials for where and how often to
+# push trace data to. For example, if the config is next to this config,
+# it would be "push_config.json".
+trace_push_config = "{{ .Instrumentation.TracePushConfig }}"
+
+# The tracer pull address specifies which address will be used for pull based
+# event collection. If empty, the pull based server will not be started.
+trace_pull_address = "{{ .Instrumentation.TracePullAddress }}"
+
+# The tracer to use for collecting trace data.
+trace_type = "{{ .Instrumentation.TraceType }}"
+
+# The size of the batches that are sent to the database.
+trace_push_batch_size = {{ .Instrumentation.TraceBufferSize }}
+
+# The list of tables that are updated when tracing. All available tables and
+# their schema can be found in the pkg/trace/schema package. It is represented as a
+# comma separate string. For example: "consensus_round_state,mempool_tx".
+tracing_tables = "{{ .Instrumentation.TracingTables }}"
+
+# The URL of the pyroscope instance to use for continuous profiling.
+# If empty, continuous profiling is disabled.
+pyroscope_url = "{{ .Instrumentation.PyroscopeURL }}"
+
+# When true, tracing data is added to the continuous profiling
+# performed by pyroscope.
+pyroscope_trace = {{ .Instrumentation.PyroscopeTrace }}
+
+# pyroscope_profile_types is a list of profile types to be traced with
+# pyroscope. Available profile types are: cpu, alloc_objects, alloc_space,
+# inuse_objects, inuse_space, goroutines, mutex_count, mutex_duration,
+# block_count, block_duration.
+pyroscope_profile_types = [{{ range .Instrumentation.PyroscopeProfileTypes }}{{ printf "%q, " . }}{{end}}]
 `

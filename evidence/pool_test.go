@@ -197,7 +197,7 @@ func TestEvidencePoolUpdate(t *testing.T) {
 		val, evidenceChainID)
 	require.NoError(t, err)
 	lastExtCommit := makeExtCommit(height, val.PrivKey.PubKey().Address())
-	block := types.MakeBlock(height+1, []types.Tx{}, lastExtCommit.ToCommit(), []types.Evidence{ev})
+	block := types.MakeBlock(height+1, types.MakeData([]types.Tx{}), lastExtCommit.ToCommit(), []types.Evidence{ev})
 	// update state (partially)
 	state.LastBlockHeight = height + 1
 	state.LastBlockTime = defaultEvidenceTime.Add(22 * time.Minute)
@@ -413,7 +413,7 @@ func initializeBlockStore(db dbm.DB, state sm.State, valAddr []byte) (*store.Blo
 
 	for i := int64(1); i <= state.LastBlockHeight; i++ {
 		lastCommit := makeExtCommit(i-1, valAddr)
-		block := state.MakeBlock(i, test.MakeNTxs(i, 1), lastCommit.ToCommit(), nil, state.Validators.Proposer.Address)
+		block := state.MakeBlock(i, types.MakeData(test.MakeNTxs(i, 1)), lastCommit.ToCommit(), nil, state.Validators.Proposer.Address)
 		block.Header.Time = defaultEvidenceTime.Add(time.Duration(i) * time.Minute)
 		block.Header.Version = cmtversion.Consensus{Block: version.BlockProtocol, App: 1}
 		partSet, err := block.MakePartSet(types.BlockPartSizeBytes)

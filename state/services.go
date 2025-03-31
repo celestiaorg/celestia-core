@@ -2,6 +2,8 @@ package state
 
 import (
 	"github.com/cometbft/cometbft/types"
+
+	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 )
 
 //------------------------------------------------------
@@ -36,6 +38,9 @@ type BlockStore interface {
 	LoadBlockCommit(height int64) *types.Commit
 	LoadSeenCommit(height int64) *types.Commit
 	LoadBlockExtendedCommit(height int64) *types.ExtendedCommit
+
+	LoadTxInfo(hash []byte) *cmtstore.TxInfo
+	SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error
 
 	DeleteLatestBlock() error
 

@@ -265,6 +265,19 @@ func (s *syncer) Sync(snapshot *snapshot, chunks *chunkQueue) (sm.State, *types.
 	}
 	snapshot.trustedAppHash = appHash
 
+	pctx, pcancel := context.WithTimeout(context.TODO(), 30*time.Second)
+	defer pcancel()
+	// Optimistically build new state, so we don't discover any light client failures at the end.
+	state, err := s.stateProvider.State(pctx, snapshot.Height)
+	if err != nil {
+		s.logger.Info("failed to fetch and verify CometBFT state", "err", err)
+		if err == light.ErrNoWitnesses {
+			return sm.State{}, nil, err
+		}
+		return sm.State{}, nil, errRejectSnapshot
+	}
+	snapshot.trustedAppVersion = state.ConsensusParams.Version.App
+
 	// Offer snapshot to ABCI app.
 	err = s.offerSnapshot(snapshot)
 	if err != nil {
@@ -278,18 +291,6 @@ func (s *syncer) Sync(snapshot *snapshot, chunks *chunkQueue) (sm.State, *types.
 		go s.fetchChunks(fetchCtx, snapshot, chunks)
 	}
 
-	pctx, pcancel := context.WithTimeout(context.TODO(), 30*time.Second)
-	defer pcancel()
-
-	// Optimistically build new state, so we don't discover any light client failures at the end.
-	state, err := s.stateProvider.State(pctx, snapshot.Height)
-	if err != nil {
-		s.logger.Info("failed to fetch and verify CometBFT state", "err", err)
-		if err == light.ErrNoWitnesses {
-			return sm.State{}, nil, err
-		}
-		return sm.State{}, nil, errRejectSnapshot
-	}
 	commit, err := s.stateProvider.Commit(pctx, snapshot.Height)
 	if err != nil {
 		s.logger.Info("failed to fetch and verify commit", "err", err)
@@ -306,9 +307,13 @@ func (s *syncer) Sync(snapshot *snapshot, chunks *chunkQueue) (sm.State, *types.
 	}
 
 	// Verify app and app version
-	if err := s.verifyApp(snapshot, state.Version.Consensus.App); err != nil {
+	timeouts, err := s.verifyApp(snapshot, state.Version.Consensus.App)
+	if err != nil {
 		return sm.State{}, nil, err
 	}
+
+	state.TimeoutCommit = timeouts.TimeoutCommit
+	state.TimeoutPropose = timeouts.TimeoutPropose
 
 	// Done! 🎉
 	s.logger.Info("Snapshot restored", "height", snapshot.Height, "format", snapshot.Format,
@@ -330,7 +335,8 @@ func (s *syncer) offerSnapshot(snapshot *snapshot) error {
 			Hash:     snapshot.Hash,
 			Metadata: snapshot.Metadata,
 		},
-		AppHash: snapshot.trustedAppHash,
+		AppHash:    snapshot.trustedAppHash,
+		AppVersion: snapshot.trustedAppVersion,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to offer snapshot: %w", err)
@@ -482,10 +488,10 @@ func (s *syncer) requestChunk(snapshot *snapshot, chunk uint32) {
 }
 
 // verifyApp verifies the sync, checking the app hash, last block height and app version
-func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) error {
+func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) (abci.TimeoutInfo, error) {
 	resp, err := s.connQuery.Info(context.TODO(), proxy.RequestInfo)
 	if err != nil {
-		return fmt.Errorf("failed to query ABCI app for appHash: %w", err)
+		return abci.TimeoutInfo{}, fmt.Errorf("failed to query ABCI app for appHash: %w", err)
 	}
 
 	// sanity check that the app version in the block matches the application's own record
@@ -493,14 +499,14 @@ func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) error {
 	if resp.AppVersion != appVersion {
 		// An error here most likely means that the app hasn't inplemented state sync
 		// or the Info call correctly
-		return fmt.Errorf("app version mismatch. Expected: %d, got: %d",
+		return abci.TimeoutInfo{}, fmt.Errorf("app version mismatch. Expected: %d, got: %d",
 			appVersion, resp.AppVersion)
 	}
 	if !bytes.Equal(snapshot.trustedAppHash, resp.LastBlockAppHash) {
 		s.logger.Error("appHash verification failed",
 			"expected", fmt.Sprintf("%X", snapshot.trustedAppHash),
 			"actual", fmt.Sprintf("%X", resp.LastBlockAppHash))
-		return errVerifyFailed
+		return abci.TimeoutInfo{}, errVerifyFailed
 	}
 	if uint64(resp.LastBlockHeight) != snapshot.Height {
 		s.logger.Error(
@@ -508,9 +514,9 @@ func (s *syncer) verifyApp(snapshot *snapshot, appVersion uint64) error {
 			"expected", snapshot.Height,
 			"actual", resp.LastBlockHeight,
 		)
-		return errVerifyFailed
+		return abci.TimeoutInfo{}, errVerifyFailed
 	}
 
 	s.logger.Info("Verified ABCI app", "height", snapshot.Height, "appHash", log.NewLazySprintf("%X", snapshot.trustedAppHash))
-	return nil
+	return resp.TimeoutInfo, nil
 }

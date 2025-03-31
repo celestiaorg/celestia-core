@@ -11,6 +11,7 @@ import (
 
 	cfg "github.com/cometbft/cometbft/config"
 	cmtos "github.com/cometbft/cometbft/libs/os"
+	"github.com/cometbft/cometbft/libs/trace"
 	nm "github.com/cometbft/cometbft/node"
 )
 
@@ -85,11 +86,35 @@ func AddNodeFlags(cmd *cobra.Command) {
 	cmd.Flags().String(
 		"db_backend",
 		config.DBBackend,
-		"database backend: goleveldb | cleveldb | boltdb | rocksdb | badgerdb")
+		"database backend: goleveldb")
 	cmd.Flags().String(
 		"db_dir",
 		config.DBPath,
 		"database directory")
+
+	cmd.PersistentFlags().String(
+		trace.FlagTracePushConfig,
+		config.Instrumentation.TracePushConfig,
+		trace.FlagTracePushConfigDescription,
+	)
+
+	cmd.PersistentFlags().String(
+		trace.FlagTracePullAddress,
+		config.Instrumentation.TracePullAddress,
+		trace.FlagTracePullAddressDescription,
+	)
+
+	cmd.PersistentFlags().String(
+		trace.FlagPyroscopeURL,
+		config.Instrumentation.PyroscopeURL,
+		trace.FlagPyroscopeURLDescription,
+	)
+
+	cmd.PersistentFlags().Bool(
+		trace.FlagPyroscopeTrace,
+		config.Instrumentation.PyroscopeTrace,
+		trace.FlagPyroscopeTraceDescription,
+	)
 }
 
 // NewRunNodeCmd returns the command that allows the CLI to start a node.

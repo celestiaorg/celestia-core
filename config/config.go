@@ -42,6 +42,7 @@ const (
 
 	MempoolTypeFlood = "flood"
 	MempoolTypeNop   = "nop"
+	MempoolTypeCAT   = "cat"
 )
 
 // NOTE: Most of the structs & relevant comments + the
@@ -64,6 +65,12 @@ var (
 
 	// taken from https://semver.org/
 	semverRegexp = regexp.MustCompile(`^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`)
+
+	// DefaultTracingTables is a list of tables that are used for storing traces.
+	// This global var is filled by an init function in the schema package. This
+	// allows for the schema package to contain all the relevant logic while
+	// avoiding import cycles.
+	DefaultTracingTables = ""
 )
 
 // Config defines the top level configuration for a CometBFT node
@@ -781,6 +788,12 @@ type MempoolConfig struct {
 	// performance results using the default P2P configuration.
 	ExperimentalMaxGossipConnectionsToPersistentPeers    int `mapstructure:"experimental_max_gossip_connections_to_persistent_peers"`
 	ExperimentalMaxGossipConnectionsToNonPersistentPeers int `mapstructure:"experimental_max_gossip_connections_to_non_persistent_peers"`
+
+	// MaxGossipDelay is the maximum allotted time that the reactor expects a transaction to
+	// arrive before issuing a new request to a different peer
+	// Only applicable to the v2 / CAT mempool
+	// Default is 200ms
+	MaxGossipDelay time.Duration `mapstructure:"max-gossip-delay"`
 }
 
 // DefaultMempoolConfig returns a default configuration for the CometBFT mempool
@@ -978,8 +991,13 @@ func (cfg *BlockSyncConfig) ValidateBasic() error {
 // including timeouts and details about the WAL and the block structure.
 type ConsensusConfig struct {
 	RootDir string `mapstructure:"home"`
-	WalPath string `mapstructure:"wal_file"`
-	walFile string // overrides WalPath if set
+	// If set to true, only internal messages will be written
+	// to the WAL. External messages like votes, proposals
+	// block parts, will not be written
+	// Default: true
+	OnlyInternalWal bool   `mapstructure:"only_internal_wal"`
+	WalPath         string `mapstructure:"wal_file"`
+	walFile         string // overrides WalPath if set
 
 	// How long we wait for a proposal block before prevoting nil
 	TimeoutPropose time.Duration `mapstructure:"timeout_propose"`
@@ -1016,6 +1034,7 @@ type ConsensusConfig struct {
 // DefaultConsensusConfig returns a default configuration for the consensus service
 func DefaultConsensusConfig() *ConsensusConfig {
 	return &ConsensusConfig{
+		OnlyInternalWal:             true,
 		WalPath:                     filepath.Join(DefaultDataDir, "cs.wal", "wal"),
 		TimeoutPropose:              3000 * time.Millisecond,
 		TimeoutProposeDelta:         500 * time.Millisecond,
@@ -1036,6 +1055,7 @@ func DefaultConsensusConfig() *ConsensusConfig {
 // TestConsensusConfig returns a configuration for testing the consensus service
 func TestConsensusConfig() *ConsensusConfig {
 	cfg := DefaultConsensusConfig()
+	cfg.OnlyInternalWal = false
 	cfg.TimeoutPropose = 40 * time.Millisecond
 	cfg.TimeoutProposeDelta = 1 * time.Millisecond
 	cfg.TimeoutPrevote = 10 * time.Millisecond
@@ -1081,6 +1101,32 @@ func (cfg *ConsensusConfig) Precommit(round int32) time.Duration {
 // for a single block (ie. a commit).
 func (cfg *ConsensusConfig) Commit(t time.Time) time.Time {
 	return t.Add(cfg.TimeoutCommit)
+}
+
+// ProposeWithCustomTimeout is identical to Propose. However,
+// it calculates the amount of time to wait for a proposal using the supplied
+// customTimeout.
+// If customTimeout is 0, the TimeoutPropose from cfg is used.
+func (cfg *ConsensusConfig) ProposeWithCustomTimeout(round int32, customTimeout time.Duration) time.Duration {
+	// this is to capture any unforeseen cases where the customTimeout is 0
+	var timeoutPropose = customTimeout
+	if timeoutPropose == 0 {
+		// falling back to default timeout
+		timeoutPropose = cfg.TimeoutPropose
+	}
+	return time.Duration(timeoutPropose.Nanoseconds()+cfg.TimeoutProposeDelta.Nanoseconds()*int64(round)) * time.Nanosecond
+}
+
+// CommitWithCustomTimeout is identical to Commit. However, it calculates the time for commit using the supplied customTimeout.
+// If customTimeout is 0, the TimeoutCommit from cfg is used.
+func (cfg *ConsensusConfig) CommitWithCustomTimeout(t time.Time, customTimeout time.Duration) time.Time {
+	// this is to capture any unforeseen cases where the customTimeout is 0
+	var timeoutCommit = customTimeout
+	if timeoutCommit == 0 {
+		// falling back to default timeout
+		timeoutCommit = cfg.TimeoutCommit
+	}
+	return t.Add(timeoutCommit)
 }
 
 // WalFile returns the full path to the write-ahead log file
@@ -1224,6 +1270,38 @@ type InstrumentationConfig struct {
 
 	// Instrumentation namespace.
 	Namespace string `mapstructure:"namespace"`
+
+	// TracePushConfig is the relative path of the push config. This second
+	// config contains credentials for where and how often to.
+	TracePushConfig string `mapstructure:"trace_push_config"`
+
+	// TracePullAddress is the address that the trace server will listen on for
+	// pulling data.
+	TracePullAddress string `mapstructure:"trace_pull_address"`
+
+	// TraceType is the type of tracer used. Options are "local" and "noop".
+	TraceType string `mapstructure:"trace_type"`
+
+	// TraceBufferSize is the number of traces to write in a single batch.
+	TraceBufferSize int `mapstructure:"trace_push_batch_size"`
+
+	// TracingTables is the list of tables that will be traced. See the
+	// pkg/trace/schema for a complete list of tables. It is represented as a
+	// comma separate string. For example: "consensus_round_state,mempool_tx".
+	TracingTables string `mapstructure:"tracing_tables"`
+
+	// PyroscopeURL is the pyroscope url used to establish a connection with a
+	// pyroscope continuous profiling server.
+	PyroscopeURL string `mapstructure:"pyroscope_url"`
+
+	// PyroscopeProfile is a flag that enables tracing with pyroscope.
+	PyroscopeTrace bool `mapstructure:"pyroscope_trace"`
+
+	// PyroscopeProfileTypes is a list of profile types to be traced with
+	// pyroscope. Available profile types are: cpu, alloc_objects, alloc_space,
+	// inuse_objects, inuse_space, goroutines, mutex_count, mutex_duration,
+	// block_count, block_duration.
+	PyroscopeProfileTypes []string `mapstructure:"pyroscope_profile_types"`
 }
 
 // DefaultInstrumentationConfig returns a default configuration for metrics
@@ -1234,6 +1312,23 @@ func DefaultInstrumentationConfig() *InstrumentationConfig {
 		PrometheusListenAddr: ":26660",
 		MaxOpenConnections:   3,
 		Namespace:            "cometbft",
+		TracePushConfig:      "",
+		TracePullAddress:     "",
+		TraceType:            "noop",
+		TraceBufferSize:      1000,
+		TracingTables:        DefaultTracingTables,
+		PyroscopeURL:         "",
+		PyroscopeTrace:       false,
+		PyroscopeProfileTypes: []string{
+			"cpu",
+			"alloc_objects",
+			"inuse_objects",
+			"goroutines",
+			"mutex_count",
+			"mutex_duration",
+			"block_count",
+			"block_duration",
+		},
 	}
 }
 
@@ -1248,6 +1343,23 @@ func TestInstrumentationConfig() *InstrumentationConfig {
 func (cfg *InstrumentationConfig) ValidateBasic() error {
 	if cfg.MaxOpenConnections < 0 {
 		return errors.New("max_open_connections can't be negative")
+	}
+	if cfg.PyroscopeTrace && cfg.PyroscopeURL == "" {
+		return errors.New("pyroscope_trace can't be enabled if profiling is disabled")
+	}
+	// if there is not TracePushConfig configured, then we do not need to validate the rest
+	// of the config because we are not connecting.
+	if cfg.TracePushConfig == "" {
+		return nil
+	}
+	if cfg.TracePullAddress == "" {
+		return errors.New("token is required")
+	}
+	if cfg.TraceType == "" {
+		return errors.New("org is required")
+	}
+	if cfg.TraceBufferSize <= 0 {
+		return errors.New("batch size must be greater than 0")
 	}
 	return nil
 }

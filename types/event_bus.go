@@ -140,6 +140,10 @@ func (b *EventBus) PublishEventNewBlock(data EventDataNewBlock) error {
 	return b.pubsub.PublishWithEvents(ctx, data, events)
 }
 
+func (b *EventBus) PublishEventSignedBlock(data EventDataSignedBlock) error {
+	return b.Publish(EventSignedBlock, data)
+}
+
 func (b *EventBus) PublishEventNewBlockEvents(data EventDataNewBlockEvents) error {
 	// no explicit deadline for publishing events
 	ctx := context.Background()
@@ -254,6 +258,10 @@ func (NopEventBus) PublishEventNewBlockHeader(EventDataNewBlockHeader) error {
 }
 
 func (NopEventBus) PublishEventNewBlockEvents(EventDataNewBlockEvents) error {
+	return nil
+}
+
+func (NopEventBus) PublishEventSignedBlock(EventDataSignedBlock) error {
 	return nil
 }
 

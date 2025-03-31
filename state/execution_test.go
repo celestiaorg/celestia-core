@@ -72,7 +72,7 @@ func TestApplyBlock(t *testing.T) {
 	require.NoError(t, err)
 	blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
 
-	state, err = blockExec.ApplyBlock(state, blockID, block)
+	state, err = blockExec.ApplyBlock(state, blockID, block, nil)
 	require.Nil(t, err)
 
 	// TODO check state and mempool
@@ -145,7 +145,7 @@ func TestFinalizeBlockDecidedLastCommit(t *testing.T) {
 			bps, err := block.MakePartSet(testPartSize)
 			require.NoError(t, err)
 			blockID := types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
-			_, err = blockExec.ApplyBlock(state, blockID, block)
+			_, err = blockExec.ApplyBlock(state, blockID, block, nil)
 			require.NoError(t, err)
 			require.True(t, app.LastTime.After(baseTime))
 
@@ -354,7 +354,7 @@ func TestFinalizeBlockMisbehavior(t *testing.T) {
 
 	blockID = types.BlockID{Hash: block.Hash(), PartSetHeader: bps.Header()}
 
-	_, err = blockExec.ApplyBlock(state, blockID, block)
+	_, err = blockExec.ApplyBlock(state, blockID, block, nil)
 	require.NoError(t, err)
 
 	// TODO check state and mempool
@@ -424,6 +424,7 @@ func TestProcessProposal(t *testing.T) {
 	block1.Txs = txs
 
 	expectedRpp := &abci.RequestProcessProposal{
+		Header:      block1.Header.ToProto(),
 		Txs:         block1.Txs.ToSliceOfBytes(),
 		Hash:        block1.Hash(),
 		Height:      block1.Header.Height,
@@ -435,6 +436,7 @@ func TestProcessProposal(t *testing.T) {
 		},
 		NextValidatorsHash: block1.NextValidatorsHash,
 		ProposerAddress:    block1.ProposerAddress,
+		DataRootHash:       block1.Header.DataHash,
 	}
 
 	acceptBlock, err := blockExec.ProcessProposal(block1, state)
@@ -636,7 +638,7 @@ func TestFinalizeBlockValidatorUpdates(t *testing.T) {
 		{PubKey: pk, Power: 10},
 	}
 
-	state, err = blockExec.ApplyBlock(state, blockID, block)
+	state, err = blockExec.ApplyBlock(state, blockID, block, nil)
 	require.NoError(t, err)
 	// test new validator was added to NextValidators
 	if assert.Equal(t, state.Validators.Size()+1, state.NextValidators.Size()) {
@@ -698,7 +700,7 @@ func TestFinalizeBlockValidatorUpdatesResultingInEmptySet(t *testing.T) {
 		{PubKey: vp, Power: 0},
 	}
 
-	assert.NotPanics(t, func() { state, err = blockExec.ApplyBlock(state, blockID, block) })
+	assert.NotPanics(t, func() { state, err = blockExec.ApplyBlock(state, blockID, block, nil) })
 	assert.Error(t, err)
 	assert.NotEmpty(t, state.NextValidators.Validators)
 }

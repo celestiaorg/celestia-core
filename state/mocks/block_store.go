@@ -6,6 +6,8 @@ import (
 	state "github.com/cometbft/cometbft/state"
 	mock "github.com/stretchr/testify/mock"
 
+	store "github.com/cometbft/cometbft/proto/tendermint/store"
+
 	types "github.com/cometbft/cometbft/types"
 )
 
@@ -266,6 +268,26 @@ func (_m *BlockStore) LoadSeenCommit(height int64) *types.Commit {
 	return r0
 }
 
+// LoadTxInfo provides a mock function with given fields: hash
+func (_m *BlockStore) LoadTxInfo(hash []byte) *store.TxInfo {
+	ret := _m.Called(hash)
+
+	if len(ret) == 0 {
+		panic("no return value specified for LoadTxInfo")
+	}
+
+	var r0 *store.TxInfo
+	if rf, ok := ret.Get(0).(func([]byte) *store.TxInfo); ok {
+		r0 = rf(hash)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*store.TxInfo)
+		}
+	}
+
+	return r0
+}
+
 // PruneBlocks provides a mock function with given fields: height, _a1
 func (_m *BlockStore) PruneBlocks(height int64, _a1 state.State) (uint64, int64, error) {
 	ret := _m.Called(height, _a1)
@@ -309,6 +331,24 @@ func (_m *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 // SaveBlockWithExtendedCommit provides a mock function with given fields: block, blockParts, seenCommit
 func (_m *BlockStore) SaveBlockWithExtendedCommit(block *types.Block, blockParts *types.PartSet, seenCommit *types.ExtendedCommit) {
 	_m.Called(block, blockParts, seenCommit)
+}
+
+// SaveTxInfo provides a mock function with given fields: block, txResponseCodes, logs
+func (_m *BlockStore) SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error {
+	ret := _m.Called(block, txResponseCodes, logs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SaveTxInfo")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*types.Block, []uint32, []string) error); ok {
+		r0 = rf(block, txResponseCodes, logs)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 // Size provides a mock function with no fields
