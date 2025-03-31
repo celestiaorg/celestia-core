@@ -24,7 +24,7 @@ func TxsToParts(txsFound []UnmarshalledTx) []*types.Part {
 		// Determine the boundaries of the part in which this transaction belongs.
 		partIndex := tx.MetaData.Start / types.BlockPartSizeBytes
 		partStart := partIndex * types.BlockPartSizeBytes
-		partEnd := (partIndex + 1) * types.BlockPartSizeBytes
+		partEnd := int(partIndex+1) * int(types.BlockPartSizeBytes)
 
 		// If the cumulative buffer is empty, set the starting index.
 		if len(cumulativeBytes) == 0 {
@@ -37,7 +37,7 @@ func TxsToParts(txsFound []UnmarshalledTx) []*types.Part {
 		// Check if the cumulative bytes do not start exactly at the beginning of the part.
 		// If they don't, adjust the cumulative buffer.
 		if int(partStart) < cumulativeStart {
-			relativeEnd := int(partEnd) - cumulativeStart
+			relativeEnd := partEnd - cumulativeStart
 			if relativeEnd > len(cumulativeBytes) {
 				// Not enough bytes to flush any part, reset the cumulative buffer.
 				cumulativeBytes = cumulativeBytes[:0]
@@ -45,7 +45,7 @@ func TxsToParts(txsFound []UnmarshalledTx) []*types.Part {
 			} else {
 				// Trim the cumulative buffer to start exactly at the part's end.
 				cumulativeBytes = cumulativeBytes[relativeEnd:]
-				cumulativeStart = int(partEnd)
+				cumulativeStart = partEnd
 			}
 		}
 
