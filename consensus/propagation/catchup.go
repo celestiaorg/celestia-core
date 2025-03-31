@@ -6,7 +6,7 @@ import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
 	"github.com/tendermint/tendermint/libs/bits"
 	"github.com/tendermint/tendermint/p2p"
-	"github.com/tendermint/tendermint/pkg/trace"
+	"github.com/tendermint/tendermint/pkg/trace/schema"
 	protoprop "github.com/tendermint/tendermint/proto/tendermint/propagation"
 	"github.com/tendermint/tendermint/types"
 )
@@ -40,7 +40,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 			continue
 		}
 
-		WriteRetries(blockProp.traceClient, height, round, missing.String())
+		schema.WriteRetries(blockProp.traceClient, height, round, missing.String())
 
 		// make requests from different peers
 		peers = shuffle(peers)
@@ -72,7 +72,7 @@ func (blockProp *Reactor) retryWants(currentHeight int64) {
 				continue
 			}
 
-			WriteCatchupRequest(blockProp.traceClient, height, round, mc.String(), string(peer.peer.ID()))
+			schema.WriteCatchupRequest(blockProp.traceClient, height, round, mc.String(), string(peer.peer.ID()))
 
 			// keep track of which requests we've made this attempt.
 			missing = missing.Sub(mc)
@@ -87,7 +87,7 @@ func (blockProp *Reactor) AddCommitment(height int64, round int32, psh *types.Pa
 	defer blockProp.pmtx.Unlock()
 
 	blockProp.Logger.Info("added commitment", "height", height, "round", round)
-	WriteGap(blockProp.traceClient, height, round)
+	schema.WriteGap(blockProp.traceClient, height, round)
 
 	if blockProp.proposals[height] == nil {
 		blockProp.proposals[height] = make(map[int32]*proposalData)
@@ -119,90 +119,4 @@ func shuffle[T any](slice []T) []T {
 		slice[i], slice[j] = slice[j], slice[i]
 	}
 	return slice
-}
-
-const (
-	CatchupRequestsTable = "catch_reqs"
-)
-
-type CatchupRequest struct {
-	Height int64  `json:"height"`
-	Round  int32  `json:"round"`
-	Parts  string `json:"parts"`
-	Peer   string `json:"peer"`
-}
-
-func (b CatchupRequest) Table() string {
-	return CatchupRequestsTable
-}
-
-func WriteCatchupRequest(
-	client trace.Tracer,
-	height int64,
-	round int32,
-	parts string,
-	peer string,
-) {
-	// this check is redundant to what is checked during client.Write, although it
-	// is an optimization to avoid allocations from the map of fields.
-	if !client.IsCollecting(CatchupRequestsTable) {
-		return
-	}
-	client.Write(CatchupRequest{
-		Height: height,
-		Round:  round,
-		Parts:  parts,
-		Peer:   peer,
-	})
-}
-
-const (
-	RetriesTable = "retries"
-)
-
-type Retries struct {
-	Height  int64  `json:"height"`
-	Round   int32  `json:"round"`
-	Missing string `json:"missing"`
-}
-
-func (b Retries) Table() string {
-	return RetriesTable
-}
-
-func WriteRetries(
-	client trace.Tracer,
-	height int64,
-	round int32,
-	missing string,
-) {
-	client.Write(Retries{
-		Height:  height,
-		Round:   round,
-		Missing: missing,
-	})
-}
-
-const (
-	GapTable = "gap"
-)
-
-type Gap struct {
-	Height int64 `json:"height"`
-	Round  int32 `json:"round"`
-}
-
-func (b Gap) Table() string {
-	return GapTable
-}
-
-func WriteGap(
-	client trace.Tracer,
-	height int64,
-	round int32,
-) {
-	client.Write(Gap{
-		Height: height,
-		Round:  round,
-	})
 }

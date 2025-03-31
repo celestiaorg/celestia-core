@@ -17,6 +17,9 @@ func ConsensusTables() []string {
 		VoteTable,
 		ConsensusStateTable,
 		ProposalTable,
+		GapTable,
+		RetriesTable,
+		CatchupRequestsTable,
 	}
 }
 
@@ -332,5 +335,91 @@ func WriteNote(
 		Round:    round,
 		Note:     fmt.Sprintf(note, items...),
 		NoteType: noteType,
+	})
+}
+
+const (
+	CatchupRequestsTable = "catch_reqs"
+)
+
+type CatchupRequest struct {
+	Height int64  `json:"height"`
+	Round  int32  `json:"round"`
+	Parts  string `json:"parts"`
+	Peer   string `json:"peer"`
+}
+
+func (b CatchupRequest) Table() string {
+	return CatchupRequestsTable
+}
+
+func WriteCatchupRequest(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	parts string,
+	peer string,
+) {
+	// this check is redundant to what is checked during client.Write, although it
+	// is an optimization to avoid allocations from the map of fields.
+	if !client.IsCollecting(CatchupRequestsTable) {
+		return
+	}
+	client.Write(CatchupRequest{
+		Height: height,
+		Round:  round,
+		Parts:  parts,
+		Peer:   peer,
+	})
+}
+
+const (
+	RetriesTable = "retries"
+)
+
+type Retries struct {
+	Height  int64  `json:"height"`
+	Round   int32  `json:"round"`
+	Missing string `json:"missing"`
+}
+
+func (b Retries) Table() string {
+	return RetriesTable
+}
+
+func WriteRetries(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	missing string,
+) {
+	client.Write(Retries{
+		Height:  height,
+		Round:   round,
+		Missing: missing,
+	})
+}
+
+const (
+	GapTable = "gap"
+)
+
+type Gap struct {
+	Height int64 `json:"height"`
+	Round  int32 `json:"round"`
+}
+
+func (b Gap) Table() string {
+	return GapTable
+}
+
+func WriteGap(
+	client trace.Tracer,
+	height int64,
+	round int32,
+) {
+	client.Write(Gap{
+		Height: height,
+		Round:  round,
 	})
 }
