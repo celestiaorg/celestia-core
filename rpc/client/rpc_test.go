@@ -379,7 +379,7 @@ func TestUnconfirmedTxs(t *testing.T) {
 
 	ch := make(chan *abci.Response, 1)
 	mempool := node.Mempool()
-	err := mempool.CheckTx(tx, func(resp *abci.Response) { ch <- resp }, mempl.TxInfo{IsRPC: true})
+	err := mempool.CheckTx(tx, func(resp *abci.Response) { ch <- resp }, mempl.TxInfo{})
 	require.NoError(t, err)
 
 	// wait for tx to arrive in mempoool.
@@ -409,7 +409,7 @@ func TestNumUnconfirmedTxs(t *testing.T) {
 
 	ch := make(chan *abci.Response, 1)
 	mempool := node.Mempool()
-	err := mempool.CheckTx(tx, func(resp *abci.Response) { ch <- resp }, mempl.TxInfo{IsRPC: true})
+	err := mempool.CheckTx(tx, func(resp *abci.Response) { ch <- resp }, mempl.TxInfo{})
 	require.NoError(t, err)
 
 	// wait for tx to arrive in mempoool.
@@ -548,7 +548,7 @@ func TestTxStatus(t *testing.T) {
 	initMempoolSize := mempool.Size()
 
 	// Add the transaction to the mempool
-	err := mempool.CheckTx(tx, nil, mempl.TxInfo{IsRPC: true})
+	err := mempool.CheckTx(tx, nil, mempl.TxInfo{})
 	require.NoError(err)
 
 	// Check if the size of the mempool has increased
