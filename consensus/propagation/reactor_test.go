@@ -25,6 +25,7 @@ import (
 func newPropagationReactor(s *p2p.Switch, _ trace.Tracer) *Reactor {
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
 	blockPropR := NewReactor(s.NetAddress().ID, trace.NoOpTracer(), blockStore, &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)})
+	blockPropR.started.Store(true)
 	blockPropR.SetSwitch(s)
 
 	return blockPropR
