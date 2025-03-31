@@ -18,6 +18,10 @@ func (blockProp *Reactor) handleHaves(peer p2p.ID, haves *proptypes.HaveParts, _
 		// TODO handle the disconnection case
 		return
 	}
+	if !blockProp.started.Load() {
+		return
+	}
+
 	height := haves.Height
 	round := haves.Round
 	p := blockProp.getPeer(peer)
@@ -164,6 +168,9 @@ func (blockProp *Reactor) broadcastHaves(haves *proptypes.HaveParts, from p2p.ID
 // - if we have the wanted parts, send them to that peer.
 // - if they want other parts that we don't have, store that in the peer state.
 func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
+	if !blockProp.started.Load() {
+		return
+	}
 	height := wants.Height
 	round := wants.Round
 	p := blockProp.getPeer(peer)
@@ -232,6 +239,9 @@ func (blockProp *Reactor) handleWants(peer p2p.ID, wants *proptypes.WantParts) {
 // - if the parts are decodable, clear all the wants of that block from the proposal state
 // - otherwise, clear the want related to this part from the state
 func (blockProp *Reactor) handleRecoveryPart(peer p2p.ID, part *proptypes.RecoveryPart) {
+	if !blockProp.started.Load() {
+		return
+	}
 	if peer == "" {
 		peer = blockProp.self
 	}

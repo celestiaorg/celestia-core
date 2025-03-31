@@ -16,6 +16,9 @@ import (
 // todo: add a request limit for each part to avoid downloading the block too
 // many times. atm, this code will request the same part from every peer.
 func (blockProp *Reactor) retryWants(currentHeight int64) {
+	if !blockProp.started.Load() {
+		return
+	}
 	data := blockProp.unfinishedHeights()
 	peers := blockProp.getPeers()
 	for _, prop := range data {

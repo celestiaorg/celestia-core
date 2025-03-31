@@ -2579,7 +2579,6 @@ func (cs *State) syncData() {
 					"found and sent proposal: %v/%v",
 					prop.Height, prop.Round,
 				)
-				cs.Logger.Info("Proposal was apparently not nil, so we're sending it", "complete", parts.IsComplete())
 				cs.peerMsgQueue <- msgInfo{&ProposalMessage{prop}, ""}
 			}
 

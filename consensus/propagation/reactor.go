@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 
 	"github.com/tendermint/tendermint/p2p/conn"
 
@@ -47,7 +48,7 @@ type Reactor struct {
 	mtx         *sync.RWMutex
 	traceClient trace.Tracer
 	self        p2p.ID
-	started     bool
+	started     atomic.Bool
 }
 
 func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempool Mempool, options ...ReactorOption) *Reactor {
@@ -61,6 +62,7 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 		mtx:           &sync.RWMutex{},
 		ProposalCache: NewProposalCache(store),
 		mempool:       mempool,
+		started:       atomic.Bool{},
 	}
 	reactor.BaseReactor = *p2p.NewBaseReactor("BlockProp", reactor, p2p.WithIncomingQueueSize(ReactorIncomingMessageQueueSize))
 
@@ -213,6 +215,10 @@ func (blockProp *Reactor) Prune(committedHeight int64) {
 	blockProp.pmtx.Lock()
 	defer blockProp.pmtx.Unlock()
 	blockProp.consensusHeight = committedHeight
+}
+
+func (blockProp *Reactor) StartProcessing() {
+	blockProp.started.Store(true)
 }
 
 // getPeer returns the peer state for the given peer. If the peer does not exist,
