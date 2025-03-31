@@ -194,6 +194,12 @@ func (blockProp *Reactor) recoverPartsFromMempool(cb *proptypes.CompactBlock) {
 		return
 	}
 
+	// todo: investigate why this could get hit, it shouldn't ever get hit
+	if partSet == nil {
+		blockProp.Logger.Error("unexpected nil partset while attempting to reuse transactions from the mempool")
+		return
+	}
+
 	originalParts := partSet.Original()
 	recoveredCount := 0
 	haves := proptypes.HaveParts{
