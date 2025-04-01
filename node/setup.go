@@ -263,6 +263,8 @@ func createMempoolAndMempoolReactor(
 		// Strictly speaking, there's no need to have a `mempl.NopMempoolReactor`, but
 		// adding it leads to a cleaner code.
 		return &mempl.NopMempool{}, mempl.NewNopMempoolReactor()
+	case cfg.MempoolTypePriority:
+		panic("not implemented")
 	case cfg.MempoolTypeCAT:
 		panic("not implemented")
 	default:
