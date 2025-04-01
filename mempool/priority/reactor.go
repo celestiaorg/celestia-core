@@ -234,6 +234,9 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 
 			case <-memR.Quit():
 				return
+			default:
+				//TODO:remove, this is for debugging
+				fmt.Println("default")
 			}
 		}
 

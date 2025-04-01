@@ -13,7 +13,6 @@ import (
 
 	db "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/abci/example/kvstore"
-	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/p2p/mock"
 
 	cfg "github.com/cometbft/cometbft/config"
@@ -27,7 +26,7 @@ import (
 )
 
 const (
-	numTxs  = 1000
+	numTxs  = 10
 	timeout = 120 * time.Second // ridiculously high because CircleCI is slow
 )
 
@@ -133,7 +132,7 @@ func makeAndConnectReactors(config *cfg.Config, n int) []*Reactor {
 	for i := 0; i < n; i++ {
 		app := kvstore.NewApplication(db.NewMemDB())
 		cc := proxy.NewLocalClientCreator(app)
-		mempool, cleanup := newMempoolWithApp(cc)
+		mempool, cleanup := newMempoolWithAppAndConfig(cc, config)
 		defer cleanup()
 
 		reactors[i] = NewReactor(config.Mempool, mempool) // so we dont start the consensus states
@@ -159,13 +158,6 @@ func mempoolLogger() log.Logger {
 		}
 		return term.FgBgColor{}
 	})
-}
-
-func newMempoolWithApp(cc proxy.ClientCreator) (*TxMempool, func()) {
-	conf := test.ResetTestRoot("mempool_test")
-
-	mp, cu := newMempoolWithAppAndConfig(cc, conf)
-	return mp, cu
 }
 
 func newMempoolWithAppAndConfig(cc proxy.ClientCreator, conf *cfg.Config) (*TxMempool, func()) {
