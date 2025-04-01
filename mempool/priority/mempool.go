@@ -186,11 +186,11 @@ func (txmp *TxMempool) TxsAvailable() <-chan struct{} { return txmp.txsAvailable
 // is (strictly) lower than the priority of tx and whose size together exceeds
 // the size of tx, and adds tx instead. If no such transactions exist, tx is
 // discarded.
-
-// have CheckTx("github.com/cometbft/cometbft/types".Tx, func(*"github.com/cometbft/cometbft/abci/types".Response), "github.com/cometbft/cometbft/mempool".TxInfo) error
-//
-//	want CheckTx("github.com/cometbft/cometbft/types".Tx, func(*"github.com/cometbft/cometbft/abci/types".ResponseCheckTx), "github.com/cometbft/cometbft/mempool".TxInfo) error
-func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.ResponseCheckTx), txInfo mempool.TxInfo) error {
+func (txmp *TxMempool) CheckTx(
+	tx types.Tx,
+	cb func(*abci.ResponseCheckTx),
+	txInfo mempool.TxInfo,
+) error {
 	// During the initial phase of CheckTx, we do not need to modify any state.
 
 	// Reject transactions in excess of the configured maximum transaction size.
@@ -242,10 +242,9 @@ func (txmp *TxMempool) CheckTx(tx types.Tx, cb func(*abci.ResponseCheckTx), txIn
 	wtx.SetPeer(txInfo.SenderID)
 	// This won't add the transaction if the response code is non zero (i.e. there was an error)
 	txmp.addNewTransaction(wtx, rsp)
-	// if cb != nil {
-	//TODO: check
-	// 	cb(&abci.ResponseCheckTx{Value: &abci.ResponseCheckTx_CheckTx{CheckTx: rsp}})
-	// }
+	if cb != nil {
+		cb(rsp)
+	}
 	return nil
 }
 

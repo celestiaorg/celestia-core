@@ -121,19 +121,19 @@ func (memR *Reactor) OnStart() error {
 	}
 
 	// run a separate go routine to check for time based TTLs
-	// if memR.mempool.config.TTLDuration > 0 {
-	// 	go func() {
-	// 		ticker := time.NewTicker(memR.mempool.config.TTLDuration)
-	// 		for {
-	// 			select {
-	// 			case <-ticker.C:
-	// 				memR.mempool.CheckToPurgeExpiredTxs()
-	// 			case <-memR.Quit():
-	// 				return
-	// 			}
-	// 		}
-	// 	}()
-	// }
+	if memR.mempool.config.TTLDuration > 0 {
+		go func() {
+			ticker := time.NewTicker(memR.mempool.config.TTLDuration)
+			for {
+				select {
+				case <-ticker.C:
+					memR.mempool.CheckToPurgeExpiredTxs()
+				case <-memR.Quit():
+					return
+				}
+			}
+		}()
+	}
 
 	return nil
 }
