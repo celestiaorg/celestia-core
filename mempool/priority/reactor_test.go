@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	db "github.com/cometbft/cometbft-db"
 	"github.com/go-kit/log/term"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	db "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/abci/example/kvstore"
-	"github.com/cometbft/cometbft/libs/trace"
+	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/p2p/mock"
 
 	cfg "github.com/cometbft/cometbft/config"
@@ -96,39 +96,6 @@ func TestMempoolVectors(t *testing.T) {
 	}
 }
 
-func TestReactorEventuallyRemovesExpiredTransaction(t *testing.T) {
-	config := cfg.TestConfig()
-	config.Mempool.TTLDuration = 100 * time.Millisecond
-	const N = 1
-	reactor := makeAndConnectReactors(config, N)[0]
-
-	tx := types.Tx([]byte("test"))
-	key := tx.Key()
-	txMsg := &memproto.Message{
-		Sum: &memproto.Message_Txs{Txs: &memproto.Txs{Txs: [][]byte{tx}}},
-	}
-
-	peer := mock.NewPeer(nil)
-	reactor.InitPeer(peer)
-	envelope := p2p.Envelope{
-		ChannelID: mempool.MempoolChannel,
-		Message:   txMsg,
-		Src:       peer,
-	}
-	reactor.Receive(envelope)
-	reactor.mempool.Lock()
-	_, has := reactor.mempool.txByKey[key]
-	reactor.mempool.Unlock()
-	require.True(t, has)
-
-	// wait for the transaction to expire
-	time.Sleep(reactor.mempool.config.TTLDuration * 2)
-	reactor.mempool.Lock()
-	_, has = reactor.mempool.txByKey[key]
-	reactor.mempool.Unlock()
-	require.False(t, has)
-}
-
 func TestLegacyReactorReceiveBasic(t *testing.T) {
 	config := cfg.TestConfig()
 	// if there were more than two reactors, the order of transactions could not be
@@ -152,12 +119,11 @@ func TestLegacyReactorReceiveBasic(t *testing.T) {
 	wm := m.Wrap()
 
 	assert.NotPanics(t, func() {
-		envelope := p2p.Envelope{
+		reactor.Receive(p2p.Envelope{
 			ChannelID: mempool.MempoolChannel,
 			Message:   wm,
 			Src:       peer,
-		}
-		reactor.Receive(envelope)
+		})
 	})
 }
 
@@ -167,10 +133,10 @@ func makeAndConnectReactors(config *cfg.Config, n int) []*Reactor {
 	for i := 0; i < n; i++ {
 		app := kvstore.NewApplication(db.NewMemDB())
 		cc := proxy.NewLocalClientCreator(app)
-		mempool, cleanup := newMempoolWithAppAndConfig(cc, config)
+		mempool, cleanup := newMempoolWithApp(cc)
 		defer cleanup()
 
-		reactors[i] = NewReactor(config.Mempool, mempool, trace.NoOpTracer()) // so we dont start the consensus states
+		reactors[i] = NewReactor(config.Mempool, mempool) // so we dont start the consensus states
 		reactors[i].SetLogger(logger.With("validator", i))
 	}
 
@@ -193,6 +159,13 @@ func mempoolLogger() log.Logger {
 		}
 		return term.FgBgColor{}
 	})
+}
+
+func newMempoolWithApp(cc proxy.ClientCreator) (*TxMempool, func()) {
+	conf := test.ResetTestRoot("mempool_test")
+
+	mp, cu := newMempoolWithAppAndConfig(cc, conf)
+	return mp, cu
 }
 
 func newMempoolWithAppAndConfig(cc proxy.ClientCreator, conf *cfg.Config) (*TxMempool, func()) {

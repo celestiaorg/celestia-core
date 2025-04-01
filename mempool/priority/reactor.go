@@ -9,8 +9,6 @@ import (
 	"github.com/cometbft/cometbft/libs/clist"
 	"github.com/cometbft/cometbft/libs/log"
 	cmtsync "github.com/cometbft/cometbft/libs/sync"
-	"github.com/cometbft/cometbft/libs/trace"
-	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/p2p"
 	protomem "github.com/cometbft/cometbft/proto/tendermint/mempool"
@@ -22,10 +20,9 @@ import (
 // peers you received it from.
 type Reactor struct {
 	p2p.BaseReactor
-	config      *cfg.MempoolConfig
-	mempool     *TxMempool
-	ids         *mempoolIDs
-	traceClient trace.Tracer
+	config  *cfg.MempoolConfig
+	mempool *TxMempool
+	ids     *mempoolIDs
 }
 
 type mempoolIDs struct {
@@ -92,12 +89,11 @@ func newMempoolIDs() *mempoolIDs {
 }
 
 // NewReactor returns a new Reactor with the given config and mempool.
-func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool, traceClient trace.Tracer) *Reactor {
+func NewReactor(config *cfg.MempoolConfig, mempool *TxMempool) *Reactor {
 	memR := &Reactor{
-		config:      config,
-		mempool:     mempool,
-		ids:         newMempoolIDs(),
-		traceClient: traceClient,
+		config:  config,
+		mempool: mempool,
+		ids:     newMempoolIDs(),
 	}
 	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
 	return memR
@@ -191,13 +187,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		var err error
 		for _, tx := range protoTxs {
 			ntx := types.Tx(tx)
-			schema.WriteMempoolTx(
-				memR.traceClient,
-				string(e.Src.ID()),
-				ntx.Hash(),
-				len(tx),
-				schema.Download,
-			)
 			err = memR.mempool.CheckTx(ntx, nil, txInfo)
 			if errors.Is(err, mempool.ErrTxInCache) {
 				memR.Logger.Debug("Tx already exists in cache", "tx", ntx.String())
@@ -213,23 +202,6 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 	// broadcasting happens from go routines per peer
 }
-
-// func (memR *Reactor) Receive(chID byte, peer p2p.Peer, msgBytes []byte) {
-// 	msg := &protomem.Message{}
-// 	err := proto.Unmarshal(msgBytes, msg)
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	uw, err := msg.Unwrap()
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	memR.ReceiveEnvelope(p2p.Envelope{
-// 		ChannelID: chID,
-// 		Src:       peer,
-// 		Message:   uw,
-// 	})
-// }
 
 // PeerState describes the state of a peer.
 type PeerState interface {
@@ -298,13 +270,6 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 				// record that we have sent the peer the transaction
 				// to avoid doing it a second time
 				memTx.SetPeer(peerID)
-				schema.WriteMempoolTx(
-					memR.traceClient,
-					string(peer.ID()),
-					memTx.tx.Hash(),
-					len(memTx.tx),
-					schema.Upload,
-				)
 			}
 		}
 
