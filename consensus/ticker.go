@@ -100,16 +100,10 @@ func (t *timeoutTicker) timeoutRoutine() {
 			t.Logger.Debug("Received tick", "old_ti", ti, "new_ti", newti)
 
 			// ignore tickers for old height/round/step
-			if newti.Height < ti.Height {
+			if newti.Height < ti.Height ||
+				(newti.Height == ti.Height && newti.Round < ti.Round) ||
+				(newti.Height == ti.Height && newti.Round == ti.Round && ti.Step > 0 && newti.Step <= ti.Step) {
 				continue
-			} else if newti.Height == ti.Height {
-				if newti.Round < ti.Round {
-					continue
-				} else if newti.Round == ti.Round {
-					if ti.Step > 0 && newti.Step <= ti.Step {
-						continue
-					}
-				}
 			}
 
 			// stop the last timer
