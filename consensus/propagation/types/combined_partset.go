@@ -102,6 +102,8 @@ func (cps *CombinedPartSet) Total() uint32 {
 }
 
 func (cps *CombinedPartSet) IsComplete() bool {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
 	return cps.original.IsComplete() && cps.parity.IsComplete()
 }
 
