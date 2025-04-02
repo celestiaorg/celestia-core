@@ -1,4 +1,3 @@
-
 # Priority Mempool
 
 The Priority Mempool is a specialized transaction pool for Celestia Core (based on CometBFT) that manages pending transactions with a focus on transaction prioritization. This document provides an overview of how the priority mempool works, its key components, and transaction flows.
@@ -111,7 +110,7 @@ Handles peer-to-peer communication for transaction broadcasting:
                   │                                           │         │
                   │                                           ▼         │
                   │  ┌────────────┐   ┌───────────┐    ┌─────────────┐ │
-                  │  │ 7. Update  │   │6. PostCheck│   │5. Application│ │
+                  │  │ 6. Update  │   │5. PostCheck│   │4. Application│ │
                   │  │  Mempool   │◀──│   Hook     │◀──│  CheckTx     │ │
                   │  │            │   │            │   │              │ │
                   │  └─────┬──────┘   └───────────┘    └──────────────┘ │
@@ -129,10 +128,9 @@ Handles peer-to-peer communication for transaction broadcasting:
 1. **Size Check**: Reject if transaction exceeds the configured max size
 2. **PreCheck Hook**: Run optional validation hook
 3. **Cache Check**: Check if transaction is already in cache or mempool
-4. **ABCI CheckTx**: Send transaction to application for validation
-5. **Application CheckTx**: Application checks transaction, assigns priority
-6. **PostCheck Hook**: Run optional post-validation hook
-7. **Update Mempool**: Add transaction to mempool, possibly evicting lower-priority transactions if full
+4. **Application CheckTx**: Application checks transaction, assigns priority
+5. **PostCheck Hook**: Run optional post-validation hook
+6. **Update Mempool**: Add transaction to mempool, possibly evicting lower-priority transactions if full
 
 ### Eviction Process
 
