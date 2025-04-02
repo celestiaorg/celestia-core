@@ -807,7 +807,7 @@ func getTxPriority(fee, gas int64) int64 {
 	var priority int64
 
 	p := int64(math.MaxInt64)
-	gasPrice := fee / gas //TODO: check
+	gasPrice := fee / gas
 	if gasPrice > 0 {
 		p = gasPrice
 	}
