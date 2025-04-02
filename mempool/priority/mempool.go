@@ -13,7 +13,6 @@ import (
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/clist"
 	"github.com/cometbft/cometbft/libs/log"
-	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/mempool"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
@@ -57,8 +56,6 @@ type TxMempool struct {
 	txByKey    map[types.TxKey]*clist.CElement
 	txBySender map[string]*clist.CElement // for sender != ""
 	evictedTxs mempool.TxCache            // for tracking evicted transactions
-
-	traceClient trace.Tracer
 }
 
 // NewTxMempool constructs a new, empty priority mempool at the specified
@@ -82,7 +79,6 @@ func NewTxMempool(
 		height:       height,
 		txByKey:      make(map[types.TxKey]*clist.CElement),
 		txBySender:   make(map[string]*clist.CElement),
-		traceClient:  trace.NoOpTracer(),
 	}
 	if cfg.CacheSize > 0 {
 		txmp.cache = mempool.NewLRUTxCache(cfg.CacheSize)
@@ -113,12 +109,6 @@ func WithPostCheck(f mempool.PostCheckFunc) TxMempoolOption {
 // WithMetrics sets the mempool's metrics collector.
 func WithMetrics(metrics *mempool.Metrics) TxMempoolOption {
 	return func(txmp *TxMempool) { txmp.metrics = metrics }
-}
-
-func WithTraceClient(tc trace.Tracer) TxMempoolOption {
-	return func(txmp *TxMempool) {
-		txmp.traceClient = tc
-	}
 }
 
 // Lock obtains a write-lock on the mempool. A caller must be sure to explicitly
