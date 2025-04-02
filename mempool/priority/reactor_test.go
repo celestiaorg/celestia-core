@@ -130,7 +130,7 @@ func makeAndConnectReactors(config *cfg.Config, n int) []*Reactor {
 	reactors := make([]*Reactor, n)
 	logger := mempoolLogger()
 	for i := 0; i < n; i++ {
-		app := kvstore.NewApplication(db.NewMemDB())
+		app := &application{kvstore.NewApplication(db.NewMemDB())}
 		cc := proxy.NewLocalClientCreator(app)
 		mempool, cleanup := newMempoolWithAppAndConfig(cc, config)
 		defer cleanup()
@@ -205,8 +205,19 @@ func waitForTxsOnReactor(t *testing.T, txs types.Txs, reactor *Reactor, reactorI
 	}
 
 	reapedTxs := mempool.ReapMaxTxs(len(txs))
-	for i, tx := range txs {
-		assert.Equalf(t, tx, reapedTxs[i],
-			"txs at index %d on reactor %d don't match: %v vs %v", i, reactorIndex, tx, reapedTxs[i])
+
+	// Create maps to compare sets of transactions instead of ordered slices
+	expectedTxs := make(map[string]struct{})
+	actualTxs := make(map[string]struct{})
+
+	for _, tx := range txs {
+		expectedTxs[string(tx)] = struct{}{}
 	}
+	for _, tx := range reapedTxs {
+		actualTxs[string(tx)] = struct{}{}
+	}
+
+	// Compare the sets
+	assert.Equal(t, expectedTxs, actualTxs,
+		"transaction sets don't match on reactor %d", reactorIndex)
 }
