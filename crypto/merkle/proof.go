@@ -146,7 +146,7 @@ func (sp *Proof) ToProto() *cmtcrypto.Proof {
 }
 
 func ProofFromProto(pb *cmtcrypto.Proof, optional bool) (*Proof, error) {
-	if pb == nil {
+	if pb == nil || (len(pb.LeafHash) == 0 && len(pb.Aunts) == 0) {
 		if optional {
 			return nil, nil
 		}

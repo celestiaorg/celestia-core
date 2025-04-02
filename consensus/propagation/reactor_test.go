@@ -21,9 +21,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newPropagationReactor(s *p2p.Switch, tracer trace.Tracer) *Reactor {
+func newPropagationReactor(s *p2p.Switch, _ trace.Tracer) *Reactor {
 	blockStore := store.NewBlockStore(dbm.NewMemDB())
-	blockPropR := NewReactor(s.NetAddress().ID, trace.NoOpTracer(), blockStore, mockMempool{})
+	blockPropR := NewReactor(s.NetAddress().ID, trace.NoOpTracer(), blockStore, &mockMempool{txs: make(map[types.TxKey]*types.CachedTx)})
+	blockPropR.started.Store(true)
 	blockPropR.SetSwitch(s)
 
 	return blockPropR
@@ -142,11 +143,11 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	}
 	baseCompactBlock.Proposal = p
 
-	added, _, _ := reactor1.AddProposal(baseCompactBlock)
+	added := reactor1.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added, _, _ = reactor2.AddProposal(baseCompactBlock)
+	added = reactor2.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added, _, _ = reactor3.AddProposal(baseCompactBlock)
+	added = reactor3.AddProposal(baseCompactBlock)
 	require.True(t, added)
 
 	// reactor 1 will receive haves from reactor 2
@@ -191,7 +192,7 @@ func TestHandleHavesAndWantsAndRecoveryParts(t *testing.T) {
 	require.Equal(t, randomData, parts.GetPart(0).Bytes.Bytes())
 
 	// check to see if the parity data was generated after receiveing the first part.
-	_, combined, _, has := reactor3.getAllState(height, round)
+	_, combined, _, has := reactor3.getAllState(height, round, true)
 	assert.True(t, has)
 	assert.True(t, combined.IsComplete())
 	parityPart, has := combined.GetPart(1)
@@ -241,9 +242,9 @@ func TestInvalidPart(t *testing.T) {
 	}
 	baseCompactBlock.Proposal = p
 
-	added, _, _ := reactor1.AddProposal(baseCompactBlock)
+	added := reactor1.AddProposal(baseCompactBlock)
 	require.True(t, added)
-	added, _, _ = reactor2.AddProposal(baseCompactBlock)
+	added = reactor2.AddProposal(baseCompactBlock)
 	require.True(t, added)
 
 	// reactor 1 will receive haves from reactor 2
@@ -370,24 +371,63 @@ func TestChunkParts(t *testing.T) {
 	}
 }
 
-// TestHugeBlock doesn't have a success or failure condition yet, although one could be added. It is very useful for debugging however
-func TestHugeBlock(t *testing.T) {
+// TestPropagationSmokeTest is a high level smoke test for 10 reactors to distrute 5 2MB
+// blocks with some data already distributed via the mempool. The passing
+// criteria is simply finishing.
+func TestPropagationSmokeTest(t *testing.T) {
 	p2pCfg := cfg.DefaultP2PConfig()
-	p2pCfg.SendRate = 5000000
-	p2pCfg.RecvRate = 5000000
+	p2pCfg.SendRate = 100000000
+	p2pCfg.RecvRate = 110000000
 
-	nodes := 20
+	nodes := 10
 
-	reactors, _ := createTestReactors(nodes, p2pCfg, false, "/home/evan/data/experiments/celestia/fast-recovery/debug")
+	reactors, _ := createTestReactors(nodes, p2pCfg, false, "")
 
 	cleanup, _, sm := state.SetupTestCase(t)
 	t.Cleanup(func() {
 		cleanup(t)
 	})
 
-	prop, ps, _, metaData := createTestProposal(sm, 1, 32, 1000000)
+	for i := int64(1); i < 5; i++ {
+		prop, ps, block, metaData := createTestProposal(sm, i, 2, 1000000)
 
-	reactors[1].ProposeBlock(prop, ps, metaData)
+		// predistribute portions of the block
+		for _, tx := range block.Data.Txs {
+			for j := 0; j < nodes/2; j++ {
+				r := reactors[j]
+				pool := r.mempool.(*mockMempool)
+				pool.AddTx(tx)
+			}
+		}
+
+		reactors[1].ProposeBlock(prop, ps, metaData)
+
+		distributing := true
+		for distributing {
+			count := 0
+			for _, r := range reactors {
+				_, parts, _, has := r.getAllState(i, 0, false)
+				if !has {
+					continue
+				}
+				if !parts.IsComplete() {
+					continue
+				}
+
+				count++
+
+				if count == nodes {
+					distributing = false
+				}
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+
+		for _, r := range reactors {
+			r.Prune(i)
+		}
+	}
+
 }
 
 func createBitArray(size int, indices []int) *bits.BitArray {

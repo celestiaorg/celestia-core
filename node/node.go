@@ -617,6 +617,9 @@ func (n *Node) OnStart() error {
 		}
 	}
 
+	// todo: obviously remove
+	go n.printMemStats(n.tracer)
+
 	return nil
 }
 

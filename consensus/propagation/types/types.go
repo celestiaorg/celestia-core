@@ -404,7 +404,7 @@ func MsgFromProto(p *protoprop.Message) (Message, error) {
 			Prove:  msg.Prove,
 		}
 	case *protoprop.RecoveryPart:
-		proof, err := merkle.ProofFromProto(msg.Proof, true)
+		proof, err := merkle.ProofFromProto(&msg.Proof, true)
 		if err != nil {
 			return pb, err
 		}

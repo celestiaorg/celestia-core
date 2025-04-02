@@ -143,6 +143,7 @@ func (conR *Reactor) SwitchToConsensus(state sm.State, skipWAL bool) {
 	if skipWAL {
 		conR.conS.doWALCatchup = false
 	}
+	conR.propagator.StartProcessing()
 	err := conR.conS.Start()
 	if err != nil {
 		panic(fmt.Sprintf(`Failed to start consensus state: %v
@@ -161,7 +162,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  StateChannel,
-			Priority:            6,
+			Priority:            30,
 			SendQueueCapacity:   100,
 			RecvMessageCapacity: maxMsgSize,
 			MessageType:         &cmtcons.Message{},
@@ -177,7 +178,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 		{
 			ID:                  VoteChannel,
-			Priority:            7,
+			Priority:            35,
 			SendQueueCapacity:   100,
 			RecvBufferCapacity:  100 * 100,
 			RecvMessageCapacity: maxMsgSize,
@@ -185,7 +186,7 @@ func (conR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 		},
 		{
 			ID:                  VoteSetBitsChannel,
-			Priority:            1,
+			Priority:            6,
 			SendQueueCapacity:   2,
 			RecvBufferCapacity:  1024,
 			RecvMessageCapacity: maxMsgSize,

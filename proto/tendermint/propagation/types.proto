@@ -58,7 +58,7 @@ message RecoveryPart {
   int32                   round  = 2;
   uint32                  index  = 3;
   bytes                   data   = 4;
-  tendermint.crypto.Proof proof  = 5;
+  tendermint.crypto.Proof proof  = 5 [(gogoproto.nullable) = false];
 }
 
 message Message {

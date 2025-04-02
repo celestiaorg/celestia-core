@@ -3,6 +3,7 @@ package priority
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -46,8 +47,8 @@ type TxMempool struct {
 	mtx                  *sync.RWMutex
 	notifiedTxsAvailable bool
 	txsAvailable         chan struct{} // one value sent per height when mempool is not empty
-	preCheckFn           mempool.PreCheckFunc
-	postCheckFn          mempool.PostCheckFunc
+	preCheck             mempool.PreCheckFunc
+	postCheck            mempool.PostCheckFunc
 	height               int64     // the latest height passed to Update
 	lastPurgeTime        time.Time // the last time we attempted to purge transactions via the TTL
 
@@ -95,14 +96,14 @@ func NewTxMempool(
 // returns an error. This is executed before CheckTx. It only applies to the
 // first created block. After that, Update() overwrites the existing value.
 func WithPreCheck(f mempool.PreCheckFunc) TxMempoolOption {
-	return func(txmp *TxMempool) { txmp.preCheckFn = f }
+	return func(txmp *TxMempool) { txmp.preCheck = f }
 }
 
 // WithPostCheck sets a filter for the mempool to reject a transaction if
 // f(tx, resp) returns an error. This is executed after CheckTx. It only applies
 // to the first created block. After that, Update overwrites the existing value.
 func WithPostCheck(f mempool.PostCheckFunc) TxMempoolOption {
-	return func(txmp *TxMempool) { txmp.postCheckFn = f }
+	return func(txmp *TxMempool) { txmp.postCheck = f }
 }
 
 // WithMetrics sets the mempool's metrics collector.
@@ -181,11 +182,16 @@ func (txmp *TxMempool) CheckTx(
 	txInfo mempool.TxInfo,
 ) error {
 	// During the initial phase of CheckTx, we do not need to modify any state.
+	// A transaction will not actually be added to the mempool until it survives
+	// a call to the ABCI CheckTx method and size constraint checks.
+	height, err := func() (int64, error) {
+		txmp.mtx.RLock()
+		defer txmp.mtx.RUnlock()
 
-	// Reject transactions in excess of the configured maximum transaction size.
-	if len(tx) > txmp.config.MaxTxBytes {
-		return mempool.ErrTxTooLarge{Max: txmp.config.MaxTxBytes, Actual: len(tx)}
-	}
+		// Reject transactions in excess of the configured maximum transaction size.
+		if len(tx) > txmp.config.MaxTxBytes {
+			return 0, mempool.ErrTxTooLarge{Max: txmp.config.MaxTxBytes, Actual: len(tx)}
+		}
 
 	cachedTx := tx.ToCachedTx()
 	// If a precheck hook is defined, call it before invoking the application.
@@ -194,12 +200,12 @@ func (txmp *TxMempool) CheckTx(
 		return mempool.ErrPreCheck{Err: err}
 	}
 
-	// Early exit if the proxy connection has an error.
-	if err := txmp.proxyAppConn.Error(); err != nil {
-		return err
-	}
+		// Early exit if the proxy connection has an error.
+		if err := txmp.proxyAppConn.Error(); err != nil {
+			return 0, err
+		}
 
-	txKey := tx.Key()
+		txKey := cachedTx.Key()
 
 	// At this point, we need to ensure that passing CheckTx and adding to
 	// the mempool is atomic.
@@ -214,7 +220,10 @@ func (txmp *TxMempool) CheckTx(
 			w := elt.Value.(*WrappedTx)
 			w.SetPeer(txInfo.SenderID)
 		}
-		return mempool.ErrTxInCache
+		return txmp.height, nil
+	}()
+	if err != nil {
+		return err
 	}
 
 	// Invoke an ABCI CheckTx for this transaction.
@@ -226,10 +235,9 @@ func (txmp *TxMempool) CheckTx(
 	wtx := &WrappedTx{
 		tx:        cachedTx,
 		timestamp: time.Now().UTC(),
-		height:    txmp.height,
+		height:    height,
 	}
 	wtx.SetPeer(txInfo.SenderID)
-	// This won't add the transaction if the response code is non zero (i.e. there was an error)
 	txmp.addNewTransaction(wtx, rsp)
 	if cb != nil {
 		cb(rsp)
@@ -414,10 +422,10 @@ func (txmp *TxMempool) Update(
 	txmp.notifiedTxsAvailable = false
 
 	if newPreFn != nil {
-		txmp.preCheckFn = newPreFn
+		txmp.preCheck = newPreFn
 	}
 	if newPostFn != nil {
-		txmp.postCheckFn = newPostFn
+		txmp.postCheck = newPostFn
 	}
 
 	txmp.metrics.SuccessfulTxs.Add(float64(len(blockTxs)))
@@ -467,9 +475,12 @@ func (txmp *TxMempool) Update(
 //
 // Finally, the new transaction is added and size stats updated.
 func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.ResponseCheckTx) {
+	txmp.mtx.Lock()
+	defer txmp.mtx.Unlock()
+
 	var err error
-	if txmp.postCheckFn != nil {
-		err = txmp.postCheckFn(wtx.tx, checkTxRes)
+	if txmp.postCheck != nil {
+		err = txmp.postCheck(wtx.tx, checkTxRes)
 	}
 
 	if err != nil || checkTxRes.Code != abci.CodeTypeOK {
@@ -621,6 +632,8 @@ func (txmp *TxMempool) insertTx(wtx *WrappedTx) {
 // that case is handled by addNewTransaction instead.
 func (txmp *TxMempool) handleRecheckResult(tx *types.CachedTx, checkTxRes *abci.ResponseCheckTx) {
 	txmp.metrics.RecheckTimes.Add(1)
+	txmp.mtx.Lock()
+	defer txmp.mtx.Unlock()
 
 	// Find the transaction reported by the ABCI callback. It is possible the
 	// transaction was evicted during the recheck, in which case the transaction
@@ -633,8 +646,8 @@ func (txmp *TxMempool) handleRecheckResult(tx *types.CachedTx, checkTxRes *abci.
 
 	// If a postcheck hook is defined, call it before checking the result.
 	var err error
-	if txmp.postCheckFn != nil {
-		err = txmp.postCheckFn(tx, checkTxRes)
+	if txmp.postCheck != nil {
+		err = txmp.postCheck(tx, checkTxRes)
 	}
 
 	if checkTxRes.Code == abci.CodeTypeOK && err == nil {
@@ -698,7 +711,12 @@ func (txmp *TxMempool) recheckTransactions() {
 	}
 	_ = txmp.proxyAppConn.Flush(context.TODO())
 
-	txmp.notifyTxsAvailable()
+		// When recheck is complete, trigger a notification for more transactions.
+		_ = g.Wait()
+		txmp.mtx.Lock()
+		defer txmp.mtx.Unlock()
+		txmp.notifyTxsAvailable()
+	}()
 }
 
 // canAddTx returns an error if we cannot insert the provided *WrappedTx into
@@ -776,13 +794,4 @@ func (txmp *TxMempool) notifyTxsAvailable() {
 		default:
 		}
 	}
-}
-
-func (txmp *TxMempool) preCheck(tx *types.CachedTx) error {
-	txmp.mtx.Lock()
-	defer txmp.mtx.Unlock()
-	if txmp.preCheckFn != nil {
-		return txmp.preCheckFn(tx)
-	}
-	return nil
 }

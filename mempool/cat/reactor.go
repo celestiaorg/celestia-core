@@ -91,7 +91,7 @@ func NewReactor(mempool *TxPool, opts *ReactorOptions) (*Reactor, error) {
 		requests:    newRequestScheduler(opts.MaxGossipDelay, defaultGlobalRequestTimeout),
 		traceClient: trace.NoOpTracer(),
 	}
-	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR)
+	memR.BaseReactor = *p2p.NewBaseReactor("Mempool", memR, p2p.WithIncomingQueueSize(1000))
 	return memR, nil
 }
 
@@ -164,13 +164,13 @@ func (memR *Reactor) GetChannels() []*p2p.ChannelDescriptor {
 	return []*p2p.ChannelDescriptor{
 		{
 			ID:                  mempool.MempoolChannel,
-			Priority:            6,
+			Priority:            2,
 			RecvMessageCapacity: txMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
 		{
 			ID:                  MempoolStateChannel,
-			Priority:            5,
+			Priority:            3,
 			RecvMessageCapacity: stateMsg.Size(),
 			MessageType:         &protomem.Message{},
 		},
@@ -235,7 +235,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			}
 			_, err = memR.mempool.TryAddNewTx(ntx.ToCachedTx(), key, txInfo)
 			if err != nil && err != ErrTxInMempool {
-				memR.Logger.Info("Could not add tx", "txKey", key, "err", err)
+				memR.Logger.Debug("Could not add tx", "txKey", key, "err", err)
 				return
 			}
 			if !memR.opts.ListenOnly {
@@ -374,9 +374,9 @@ func (memR *Reactor) broadcastSeenTx(txKey types.TxKey) {
 // broadcastNewTx broadcast new transaction to all peers unless we are already sure they have seen the tx.
 func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 	msg := &protomem.Message{
-		Sum: &protomem.Message_Txs{
-			Txs: &protomem.Txs{
-				Txs: [][]byte{wtx.tx.Tx},
+		Sum: &protomem.Message_SeenTx{
+			SeenTx: &protomem.SeenTx{
+				TxKey: wtx.tx.Hash(),
 			},
 		},
 	}
@@ -396,7 +396,7 @@ func (memR *Reactor) broadcastNewTx(wtx *wrappedTx) {
 			continue
 		}
 
-		if peer.Send(
+		if peer.TrySend(
 			p2p.Envelope{
 				ChannelID: mempool.MempoolChannel,
 				Message:   msg,
@@ -459,7 +459,7 @@ func (memR *Reactor) findNewPeerToRequestTx(txKey types.TxKey) {
 		// No other free peer has the transaction we are looking for.
 		// We give up 🤷‍♂️ and hope either a peer responds late or the tx
 		// is gossiped again
-		memR.Logger.Info("no other peer has the tx we are looking for", "txKey", txKey)
+		memR.Logger.Debug("no other peer has the tx we are looking for", "txKey", txKey)
 		return
 	}
 	peer := memR.ids.GetPeer(peerID)
