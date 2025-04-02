@@ -105,6 +105,9 @@ func (p *ProposalCache) unfinishedHeights() []*proposalData {
 	return data
 }
 
+// relevant determines if a height or round is currently actionable. For
+// example, passing the height that was already committed is not actionable.
+// Passing a round that has already been surpassed is not actionable.
 func (p *ProposalCache) relevant(height int64, round int32) bool {
 	if height <= p.consensusHeight {
 		return false
