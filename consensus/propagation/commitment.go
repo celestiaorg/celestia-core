@@ -3,19 +3,17 @@ package propagation
 import (
 	"bytes"
 	"fmt"
-
-	"github.com/tendermint/tendermint/crypto/merkle"
-
 	"github.com/gogo/protobuf/proto"
-	"github.com/tendermint/tendermint/proto/tendermint/mempool"
-	"github.com/tendermint/tendermint/proto/tendermint/propagation"
-
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
+	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
 	cmtrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/pkg/trace/schema"
+	"github.com/tendermint/tendermint/proto/tendermint/mempool"
+	"github.com/tendermint/tendermint/proto/tendermint/propagation"
 	"github.com/tendermint/tendermint/types"
+	"time"
 )
 
 var _ Propagator = (*Reactor)(nil)
@@ -45,7 +43,7 @@ func (blockProp *Reactor) ProposeBlock(proposal *types.Proposal, block *types.Pa
 	cb.SetProofCache(proofs)
 
 	// save the compact block locally and broadcast it to the connected peers
-	blockProp.handleCompactBlock(&cb, blockProp.self)
+	blockProp.handleCompactBlock(&cb, blockProp.self, true)
 
 	_, parts, _, has := blockProp.getAllState(proposal.Height, proposal.Round)
 	if !has {
@@ -122,17 +120,37 @@ func chunkToPartMetaData(chunk *bits.BitArray, partSet *proptypes.CombinedPartSe
 // handleCompactBlock adds a proposal to the data routine. This should be called any
 // time a proposal is received from a peer or when a proposal is created. If the
 // proposal is new, it will be stored and broadcast to the relevant peers.
-func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID) {
+func (blockProp *Reactor) handleCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID, proposer bool) {
 	err := blockProp.validateCompactBlock(cb)
-	if err != nil {
-		blockProp.Logger.Error("failed to validate proposal", "err", err)
-		return
+	if err != nil && proposer == false {
+		for {
+			blockProp.Logger.Info("failed to validate proposal", "err", err, "height", cb.Proposal.Height, "round", cb.Proposal.Round)
+			time.Sleep(500 * time.Millisecond)
+			if blockProp.validateCompactBlock(cb) == nil {
+				blockProp.Logger.Info("compact block verified")
+				fmt.Println("compact block verified")
+				break
+			}
+			if blockProp.stateInfo().Round > cb.Proposal.Round ||
+				blockProp.stateInfo().Height > cb.Proposal.Height {
+				//we can discard this compact block
+				blockProp.Logger.Info("discarding compact block")
+				fmt.Println("discarding compact block")
+				return
+			}
+		}
 	}
+
+	fmt.Println("adding proposal")
 	added, _, _ := blockProp.AddProposal(cb)
 	if !added {
 		return
 	}
 
+	blockProp.processCompactBlock(cb, peer)
+}
+
+func (blockProp *Reactor) processCompactBlock(cb *proptypes.CompactBlock, peer p2p.ID) {
 	proofs, err := cb.Proofs()
 	if err != nil {
 		blockProp.DeleteRound(cb.Proposal.Height, cb.Proposal.Round)
@@ -315,7 +333,12 @@ func chunkIndexes(totalSize, chunkSize int) [][2]int {
 
 // validateCompactBlock stateful validation of the compact block.
 func (blockProp *Reactor) validateCompactBlock(cb *proptypes.CompactBlock) error {
-	err := blockProp.proposalValidator(&cb.Proposal)
+	proposer, has := blockProp.GetProposer(cb.Proposal.Height, cb.Proposal.Round)
+	if !has {
+		return fmt.Errorf("proposer not found")
+	}
+	fmt.Println("got proposer")
+	err := blockProp.proposalValidator(proposer, &cb.Proposal)
 	if err != nil {
 		return err
 	}

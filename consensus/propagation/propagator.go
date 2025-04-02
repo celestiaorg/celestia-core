@@ -2,6 +2,7 @@ package propagation
 
 import (
 	proptypes "github.com/tendermint/tendermint/consensus/propagation/types"
+	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -12,4 +13,6 @@ type Propagator interface {
 	ProposeBlock(proposal *types.Proposal, parts *types.PartSet, txs []proptypes.TxMetaData)
 	AddCommitment(height int64, round int32, psh *types.PartSetHeader)
 	Prune(committedHeight int64)
+	SetProposer(height int64, round int32, proposer crypto.PubKey) error
+	GetProposer(height int64, round int32) (crypto.PubKey, bool)
 }

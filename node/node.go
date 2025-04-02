@@ -940,9 +940,29 @@ func NewNodeWithContext(ctx context.Context,
 		privValidator, csMetrics, propagationReactor, stateSync || fastSync, eventBus, consensusLogger, tracer,
 	)
 
-	propagationReactor.SetProposalValidator(func(proposal *types.Proposal) error {
-		_, err := consensusState.ValidateProposal(proposal)
+	propagationReactor.SetProposalValidator(func(proposer crypto.PubKey, proposal *types.Proposal) error {
+		_, err := consensusState.ValidateProposal(proposer, proposal)
 		return err
+	})
+	propagationReactor.SetLogger(logger.With("module", "propagation"))
+
+	//go func() {
+	//	ticker := time.NewTicker(200 * time.Millisecond)
+	//	for {
+	//		select {
+	//		case <-ticker.C:
+	//			if _, has := propagationReactor.GetProposer(consensusState.Height, consensusState.Round); !has {
+	//
+	//			}
+	//		}
+	//	}
+	//}()
+
+	propagationReactor.SetStateInfo(func() *propagation.StateInfo {
+		return &propagation.StateInfo{
+			Height: consensusState.Height,
+			Round:  consensusState.Round,
+		}
 	})
 
 	logger.Info("Consensus reactor created", "timeout_propose", consensusState.GetState().TimeoutPropose, "timeout_commit", consensusState.GetState().TimeoutCommit)

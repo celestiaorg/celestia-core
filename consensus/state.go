@@ -1920,12 +1920,11 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		return nil
 	}
 
-	p, err := cs.ValidateProposal(proposal)
+	pubKey := cs.Validators.GetProposer().PubKey
+	p, err := cs.ValidateProposal(pubKey, proposal)
 	if err != nil {
 		return err
 	}
-
-	pubKey := cs.Validators.GetProposer().PubKey
 
 	proposal.Signature = p.Signature
 	cs.Proposal = proposal
@@ -2503,15 +2502,32 @@ func (cs *State) syncData() {
 				continue
 			}
 
+			//fmt.Println("prop 11")
 			// check if the data routine already has a proposal or block parts
 			// if so, we can add them here
 			cs.mtx.RLock()
+			//fmt.Println("22")
 			h, r := cs.Height, cs.Round
+
+			key, has := cs.propagator.GetProposer(h, r)
+			cs.Logger.Info("trying to set proposer", "height", h, "round", r, "has", has)
+			//fmt.Println(cs.Validators.GetProposer().PubKey.Address().String())
+			//if key != nil {
+			//	fmt.Println(key.Address().String())
+			//}
+			if !has || key == nil {
+				err := cs.propagator.SetProposer(h, r, cs.Validators.GetProposer().PubKey)
+				if err != nil {
+					cs.Logger.Error("failed to set proposer", "height", h, "round", r, "err", err)
+				}
+			}
+
 			pparts := cs.ProposalBlockParts
 			pprop := cs.Proposal
 			completeProp := cs.isProposalComplete()
 			cs.mtx.RUnlock()
 
+			//fmt.Println("prop 33")
 			if completeProp {
 				continue
 			}
@@ -2570,12 +2586,13 @@ func (cs *State) syncData() {
 				}
 				cs.peerMsgQueue <- msgInfo{&BlockPartMessage{h, r, part}, ""}
 			}
+			//fmt.Println("3")
 		}
 	}
 }
 
 // ValidateProposal stateful validation of the proposal.
-func (cs *State) ValidateProposal(proposal *types.Proposal) (*cmtproto.Proposal, error) {
+func (cs *State) ValidateProposal(proposer crypto.PubKey, proposal *types.Proposal) (*cmtproto.Proposal, error) {
 	// Verify POLRound, which must be -1 or in range [0, proposal.Round).
 	if proposal.POLRound < -1 ||
 		(proposal.POLRound >= 0 && proposal.POLRound >= proposal.Round) {
@@ -2584,8 +2601,7 @@ func (cs *State) ValidateProposal(proposal *types.Proposal) (*cmtproto.Proposal,
 
 	p := proposal.ToProto()
 	// Verify signature
-	pubKey := cs.Validators.GetProposer().PubKey
-	if !pubKey.VerifySignature(
+	if !proposer.VerifySignature(
 		types.ProposalSignBytes(cs.state.ChainID, p), proposal.Signature,
 	) {
 		return nil, ErrInvalidProposalSignature
