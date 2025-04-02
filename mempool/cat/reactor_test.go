@@ -3,7 +3,6 @@ package cat
 import (
 	"encoding/hex"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
@@ -27,10 +26,10 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-const (
-	numTxs  = 10
-	timeout = 120 * time.Second // ridiculously high because CircleCI is slow
-)
+// const (
+// 	numTxs  = 10
+// 	timeout = 120 * time.Second // ridiculously high because CircleCI is slow
+// )
 
 type peerState struct {
 	height int64
@@ -353,45 +352,45 @@ func newMempoolWithAppAndConfig(cc proxy.ClientCreator, conf *cfg.Config) (*TxPo
 	return mp, func() { os.RemoveAll(conf.RootDir) }
 }
 
-func waitForTxsOnReactors(t *testing.T, txs types.Txs, reactors []*Reactor) {
-	// wait for the txs in all mempools
-	wg := new(sync.WaitGroup)
-	for i, reactor := range reactors {
-		wg.Add(1)
-		go func(r *Reactor, reactorIndex int) {
-			defer wg.Done()
-			waitForTxsOnReactor(t, txs, r, reactorIndex)
-		}(reactor, i)
-	}
+// func waitForTxsOnReactors(t *testing.T, txs types.Txs, reactors []*Reactor) {
+// 	// wait for the txs in all mempools
+// 	wg := new(sync.WaitGroup)
+// 	for i, reactor := range reactors {
+// 		wg.Add(1)
+// 		go func(r *Reactor, reactorIndex int) {
+// 			defer wg.Done()
+// 			waitForTxsOnReactor(t, txs, r, reactorIndex)
+// 		}(reactor, i)
+// 	}
 
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
+// 	done := make(chan struct{})
+// 	go func() {
+// 		wg.Wait()
+// 		close(done)
+// 	}()
 
-	timer := time.After(timeout)
-	select {
-	case <-timer:
-		t.Fatal("Timed out waiting for txs")
-	case <-done:
-	}
-}
+// 	timer := time.After(timeout)
+// 	select {
+// 	case <-timer:
+// 		t.Fatal("Timed out waiting for txs")
+// 	case <-done:
+// 	}
+// }
 
-func waitForTxsOnReactor(t *testing.T, txs types.Txs, reactor *Reactor, reactorIndex int) {
-	mempool := reactor.mempool
-	for mempool.Size() < len(txs) {
-		time.Sleep(time.Millisecond * 100)
-	}
+// func waitForTxsOnReactor(t *testing.T, txs types.Txs, reactor *Reactor, reactorIndex int) {
+// 	mempool := reactor.mempool
+// 	for mempool.Size() < len(txs) {
+// 		time.Sleep(time.Millisecond * 100)
+// 	}
 
-	reapedCachedTxs := mempool.ReapMaxTxs(len(txs))
-	reapedTxs := types.TxsFromCachedTxs(reapedCachedTxs)
-	for i, tx := range txs {
-		require.Contains(t, reapedTxs, tx)
-		require.Equal(t, tx, reapedTxs[i],
-			"txs at index %d on reactor %d don't match: %x vs %x", i, reactorIndex, tx, reapedTxs[i])
-	}
-}
+// 	reapedCachedTxs := mempool.ReapMaxTxs(len(txs))
+// 	reapedTxs := types.TxsFromCachedTxs(reapedCachedTxs)
+// 	for i, tx := range txs {
+// 		require.Contains(t, reapedTxs, tx)
+// 		require.Equal(t, tx, reapedTxs[i],
+// 			"txs at index %d on reactor %d don't match: %x vs %x", i, reactorIndex, tx, reapedTxs[i])
+// 	}
+// }
 
 func genPeers(n int) []*mocks.Peer {
 	peers := make([]*mocks.Peer, n)
