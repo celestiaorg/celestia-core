@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/bits"
@@ -18,6 +19,8 @@ type CombinedPartSet struct {
 	parity   *types.PartSet // holds parity parts (logical indexes start at original.Total())
 	lastLen  uint32
 	catchup  bool
+
+	IsDecoding atomic.Bool
 }
 
 // NewCombinedSetFromCompactBlock creates a new CombinedPartSet from a
@@ -41,13 +44,17 @@ func NewCombinedSetFromCompactBlock(cb *CompactBlock) *CombinedPartSet {
 }
 
 func NewCombinedPartSetFromOriginal(original *types.PartSet, catchup bool) *CombinedPartSet {
-	return &CombinedPartSet{
+	ps := &CombinedPartSet{
 		mtx:      &sync.Mutex{},
 		original: original,
 		parity:   &types.PartSet{},
 		catchup:  catchup,
 		totalMap: bits.NewBitArray(int(original.Total() * 2)),
 	}
+	for _, ind := range original.BitArray().GetTrueIndices() {
+		ps.totalMap.SetIndex(ind, true)
+	}
+	return ps
 }
 
 func (cps *CombinedPartSet) SetProposalData(original, parity *types.PartSet) {
@@ -77,11 +84,26 @@ func (cps *CombinedPartSet) BitArray() *bits.BitArray {
 	return cps.totalMap
 }
 
+// OringinalBitArray returns a BitArray that only missing parts if they are in the original
+// part set.
+func (cps *CombinedPartSet) MissingOriginal() *bits.BitArray {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
+	out := bits.NewBitArray(int(cps.original.Total() * 2))
+	missOrig := cps.original.BitArray().Not()
+	for _, ind := range missOrig.GetTrueIndices() {
+		out.SetIndex(ind, true)
+	}
+	return out
+}
+
 func (cps *CombinedPartSet) Total() uint32 {
 	return cps.original.Total() + cps.parity.Total()
 }
 
 func (cps *CombinedPartSet) IsComplete() bool {
+	cps.mtx.Lock()
+	defer cps.mtx.Unlock()
 	return cps.original.IsComplete() && cps.parity.IsComplete()
 }
 
