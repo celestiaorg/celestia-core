@@ -87,11 +87,11 @@ func NewReactor(self p2p.ID, tracer trace.Tracer, store *store.BlockStore, mempo
 			case <-reactor.ctx.Done():
 				return
 			case <-ticker.C:
-				if !reactor.started.Load() {
-					continue
-				}
+				reactor.pmtx.Lock()
+				currentHeight := reactor.currentHeight
+				reactor.pmtx.Unlock()
 				// run the catchup routine to recover any missing parts for past heights.
-				reactor.retryWants(reactor.currentHeight)
+				reactor.retryWants(currentHeight)
 			}
 		}
 	}()
