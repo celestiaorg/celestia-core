@@ -290,11 +290,11 @@ message ResponseCheckTx {
   // These reserved fields were used until v0.37 by the priority mempool (now
   // removed).
   reserved 9 to 11;
-  reserved "sender", "priority", "mempool_error";
+  reserved "sender",  "mempool_error";
 
   // these fields are used in the priority mempool
   bytes  address  = 15;
-  uint64 gas_fees = 16;
+  int64 priority = 16;
   uint64 sequence = 17;
 }
 

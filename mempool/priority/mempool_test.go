@@ -43,8 +43,8 @@ type testTx struct {
 
 func (app *application) CheckTx(ctx context.Context, req *abci.RequestCheckTx) (*abci.ResponseCheckTx, error) {
 	var (
-		gasFees int64
-		sender  string
+		priority int64
+		sender   string
 	)
 
 	// infer the priority from the raw transaction value (sender=key=value)
@@ -53,18 +53,18 @@ func (app *application) CheckTx(ctx context.Context, req *abci.RequestCheckTx) (
 		v, err := strconv.ParseInt(string(parts[2]), 10, 64)
 		if err != nil {
 			return &abci.ResponseCheckTx{
-				GasFees:   uint64(gasFees),
+				Priority:  priority,
 				GasWanted: 1,
 				Address:   []byte(sender),
 				Code:      100,
 			}, nil
 		}
 
-		gasFees = v
+		priority = v
 		sender = string(parts[0])
 	} else {
 		return &abci.ResponseCheckTx{
-			GasFees:   uint64(gasFees),
+			Priority:  priority,
 			GasWanted: 1,
 			Address:   []byte(sender),
 			Code:      101,
@@ -72,7 +72,7 @@ func (app *application) CheckTx(ctx context.Context, req *abci.RequestCheckTx) (
 	}
 
 	return &abci.ResponseCheckTx{
-		GasFees:   uint64(gasFees),
+		Priority:  priority,
 		GasWanted: 1,
 		Address:   []byte(sender),
 		Code:      abci.CodeTypeOK,

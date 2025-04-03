@@ -494,7 +494,7 @@ func (txmp *TxMempool) addNewTransaction(wtx *WrappedTx, checkTxRes *abci.Respon
 		return
 	}
 
-	priority := getTxPriority(int64(checkTxRes.GasFees), checkTxRes.GasWanted)
+	priority := checkTxRes.Priority
 	sender := checkTxRes.Address
 
 	// Disallow multiple concurrent transactions from the same sender assigned
@@ -639,8 +639,7 @@ func (txmp *TxMempool) handleRecheckResult(tx types.Tx, checkTxRes *abci.Respons
 	}
 
 	if checkTxRes.Code == abci.CodeTypeOK && err == nil {
-		priority := getTxPriority(int64(checkTxRes.GasFees), checkTxRes.GasWanted)
-		wtx.SetPriority(priority)
+		wtx.SetPriority(checkTxRes.Priority)
 		return // N.B. Size of mempool did not change
 	}
 
