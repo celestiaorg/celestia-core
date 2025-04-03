@@ -537,26 +537,6 @@ func testCompactBlock(t *testing.T, height int64, round int32) (*proptypes.Compa
 	return baseCompactBlock, ps, pse, proofs
 }
 
-// TestHugeBlock doesn't have a success or failure condition yet, although one could be added. It is very useful for debugging however
-func TestHugeBlock(t *testing.T) {
-	p2pCfg := cfg.DefaultP2PConfig()
-	p2pCfg.SendRate = 5000000
-	p2pCfg.RecvRate = 5000000
-
-	nodes := 20
-
-	reactors, _ := createTestReactors(nodes, p2pCfg, false, "/home/evan/data/experiments/celestia/fast-recovery/debug")
-
-	cleanup, _, sm := state.SetupTestCase(t)
-	t.Cleanup(func() {
-		cleanup(t)
-	})
-
-	prop, ps, _, metaData := createTestProposal(sm, 1, 32, 1000000)
-
-	reactors[1].ProposeBlock(prop, ps, metaData)
-}
-
 func createBitArray(size int, indices []int) *bits.BitArray {
 	ba := bits.NewBitArray(size)
 	for _, index := range indices {
