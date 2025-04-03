@@ -15,4 +15,5 @@ type Propagator interface {
 	Prune(committedHeight int64)
 	SetProposer(height int64, round int32, proposer crypto.PubKey) error
 	GetProposer(height int64, round int32) (crypto.PubKey, bool)
+	Print()
 }

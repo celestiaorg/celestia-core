@@ -2493,6 +2493,8 @@ const SyncDataInterval = 50
 // sync data periodically checks to make sure that all block parts in the data
 // routine are pushed through to the state.
 func (cs *State) syncData() {
+	currentH := int64(0)
+	currentR := int32(0)
 	for {
 		select {
 		case <-cs.Quit():
@@ -2508,14 +2510,25 @@ func (cs *State) syncData() {
 			cs.mtx.RLock()
 			//fmt.Println("22")
 			h, r := cs.Height, cs.Round
-
 			key, has := cs.propagator.GetProposer(h, r)
-			cs.Logger.Info("trying to set proposer", "height", h, "round", r, "has", has)
+			if currentR != r || currentH != h {
+				fmt.Println("========")
+				fmt.Println(h)
+				fmt.Println(r)
+				fmt.Println(cs.Validators.GetProposer().PubKey)
+				fmt.Println(has)
+				fmt.Println(key)
+				cs.propagator.Print()
+				fmt.Println("===========")
+				currentH = h
+				currentR = r
+			}
+			//cs.Logger.Info("trying to set proposer", "height", h, "round", r, "has", has)
 			//fmt.Println(cs.Validators.GetProposer().PubKey.Address().String())
 			//if key != nil {
 			//	fmt.Println(key.Address().String())
 			//}
-			if !has || key == nil {
+			if !has {
 				err := cs.propagator.SetProposer(h, r, cs.Validators.GetProposer().PubKey)
 				if err != nil {
 					cs.Logger.Error("failed to set proposer", "height", h, "round", r, "err", err)

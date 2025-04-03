@@ -2,11 +2,9 @@ package propagation
 
 import (
 	"errors"
-	"fmt"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/libs/log"
 	"sync"
-	"time"
 )
 
 // TODO table test
@@ -26,12 +24,12 @@ func NewProposersCache() *ProposersCache {
 		mutex:     sync.RWMutex{},
 	}
 	go func() {
-		for {
-			time.Sleep(time.Second)
-			p.mutex.RLock()
-			fmt.Println(p.proposers)
-			p.mutex.RUnlock()
-		}
+		//for {
+		//	time.Sleep(time.Second)
+		//	p.mutex.RLock()
+		//	fmt.Println(p.proposers)
+		//	p.mutex.RUnlock()
+		//}
 	}()
 	return &p
 }
@@ -64,7 +62,9 @@ func (pc *ProposersCache) SetProposer(height int64, round int32, proposer crypto
 		)
 		return ErrConflictingProposer
 	}
-	pc.proposers[height] = make(map[int32]crypto.PubKey)
+	if _, ok := pc.proposers[height]; !ok {
+		pc.proposers[height] = make(map[int32]crypto.PubKey)
+	}
 	pc.proposers[height][round] = proposer
 	pc.logger.Info("set proposer", "height", height, "round", round)
 	return nil

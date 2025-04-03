@@ -274,3 +274,9 @@ func (blockProp *Reactor) setPeer(peer p2p.ID, state *PeerState) {
 	defer blockProp.mtx.Unlock()
 	blockProp.peerstate[peer] = state
 }
+
+func (blockProp *Reactor) Print() {
+	blockProp.mtx.RLock()
+	fmt.Println(blockProp.proposers)
+	blockProp.mtx.RUnlock()
+}
