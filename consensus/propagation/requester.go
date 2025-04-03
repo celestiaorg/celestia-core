@@ -17,7 +17,7 @@ import (
 
 const (
 	// concurrentPerPeerRequestLimit the maximum number of requests to send a peer.
-	concurrentPerPeerRequestLimit = 40
+	concurrentPerPeerRequestLimit = 60
 
 	// maxRequestsPerPart the maximum number of requests per parts.
 	maxRequestsPerPart = 40
